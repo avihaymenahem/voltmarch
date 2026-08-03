@@ -54,7 +54,7 @@ import {
   TREAD_DARKEN, TREAD_HALF_LENGTH, TREAD_HALF_WIDTH, TREAD_LIFE_SECONDS,
   TREAD_PAVING_FALLOFF, TYRE_DARKEN, TYRE_HALF_WIDTH,
 } from '../core/config';
-import { clamp, clamp01, fbm2, smoothstep, value2 } from '../core/math';
+import { clamp, clamp01, fbm2, smoothstep } from '../core/math';
 import { LAYERS, RENDER_ORDER } from '../render/scene';
 
 /* ==========================================================================
@@ -112,8 +112,13 @@ const KIND_TINT: readonly (readonly [number, number, number])[] = [
   [0.86, 0.85, 0.82],                                          // Dust
   [0.58, 0.58, 0.60],                                          // Manhole
   [1.30, 1.20, 0.94],                                          // LightPool — #E8D089, above 1
-  [0.42, 0.42, 0.45],                                          // Crack — #1E1E22-ish
-  [0.90, 0.90, 0.91],                                          // Patch
+  // Crack and Patch are ROAD WEAR, and RA3's roads are clean. Both used to be
+  // strong enough to read as damage — a 58%-dark crack is a gash, and the eye
+  // reads a scatter of gashes on tarmac as noise, which is the exact failure
+  // this pass exists to remove. A crack is a thin dark line you notice only
+  // when you look for it; a patch is a barely-there change of tone.
+  [0.66, 0.66, 0.68],                                          // Crack
+  [0.94, 0.94, 0.95],                                          // Patch
 ];
 
 /** Default lifetime in seconds. 0 = permanent. */
@@ -128,6 +133,29 @@ const KIND_LIFE: readonly number[] = [
  * identically in a browser, in a worker and in a vitest run. RGB carries the
  * multiply factor at half scale (0.5 == neutral 1.0, so the byte range covers
  * factors 0..2) and A carries coverage.
+ *
+ * THE NOISE RULE
+ * --------------
+ * A tile is 128 texels and a decal is 1-6 m across, so at the RTS camera one
+ * texel is a fraction of a pixel. Anything in here with a period of a few
+ * texels can therefore only ever resolve as static — which is precisely what
+ * the first version of this atlas did: `value2` grit on the treads, `value2`
+ * speck on the scorch, `value2` dots for crater ejecta, `value2` grain inside
+ * the resurfacing patches, and four-to-five octave fbm warps whose top octaves
+ * landed at two-texel wavelengths.
+ *
+ * Every one of those is gone. What is left is:
+ *
+ *   - CRISP GEOMETRY  — cleat bars, tyre ribs, manhole ticks, ejecta rays,
+ *                       drawn as exact functions and smoothed over a fraction
+ *                       of their own period so they cannot alias;
+ *   - SOFT FALLOFF    — the radial windows that make a mark a mark;
+ *   - OUTLINE WARP    — two octaves of fbm applied to the RADIUS, so a burn or
+ *                       a slick has an irregular silhouette while its interior
+ *                       stays perfectly smooth.
+ *
+ * If per-pixel noise is visible at gameplay zoom it is wrong, and on a decal
+ * the whole tile is only a couple of hundred pixels — so the bar is high.
  * ========================================================================== */
 
 /** Two pixels of transparent margin so bilinear filtering cannot bleed tiles. */
@@ -167,13 +195,22 @@ function buildDecalAtlas(): THREE.DataTexture {
 
       /* -- 0: TREAD ----------------------------------------------------- */
       {
-        // Cleats across the strip, a triangular window along it so successive
-        // stamps overlap into a continuous track instead of banding.
+        // A tread mark is a FAINT DARKENING carrying a repeating cleat
+        // pattern. It is not a scar and it is not noise: every term below is a
+        // smooth or a crisp geometric function of the tile coordinates, and
+        // the old per-texel `grit` term is gone. At 0.84 x 3.2 m and a 40
+        // degree camera a tile texel is well under a pixel, so anything with a
+        // per-texel period could only ever have resolved as static.
         const along = 1 - Math.abs(sy);
         const across = 1 - smoothstep(0.55, 1.0, Math.abs(sx));
-        const cleat = 0.62 + 0.38 * (((v * 9) % 1) < 0.56 ? 1 : 0);
-        const grit = value2(u * 26, v * 26, 71) * 0.16;
-        const a = clamp01(along * 1.35) * across * cleat * (0.86 + grit) * margin;
+        // Cleats, bent into the V a real track shoe leaves: the bar phase is
+        // advanced by 0.18 of a period from the centre of the strip to its
+        // edge. The bar edges get a fifth of a period of smoothing so that a
+        // hard square wave cannot alias into a moire at distance.
+        const phase = (v * 9 + Math.abs(sx) * 0.18) % 1;
+        const cleat = 0.68 + 0.32
+          * (smoothstep(0.0, 0.10, phase) - smoothstep(0.48, 0.58, phase));
+        const a = clamp01(along * 1.35) * across * cleat * margin;
         // The rim of the track (thrown soil) is a touch lighter than the core.
         const rim = smoothstep(0.42, 0.78, Math.abs(sx)) * 0.22;
         put(DecalKind.Tread, lx, ly, 0.5 + rim, 0.5 + rim * 0.9, 0.5 + rim * 0.7, a);
@@ -183,7 +220,9 @@ function buildDecalAtlas(): THREE.DataTexture {
       {
         const along = 1 - Math.abs(sy);
         const across = 1 - smoothstep(0.30, 0.95, Math.abs(sx));
-        const tread = 0.78 + 0.22 * (((u * 5) % 1) < 0.5 ? 1 : 0);
+        const phase = (u * 5) % 1;
+        const tread = 0.82 + 0.18
+          * (smoothstep(0.0, 0.12, phase) - smoothstep(0.44, 0.56, phase));
         put(DecalKind.Tyre, lx, ly, 0.5, 0.5, 0.5, clamp01(along * 1.3) * across * tread * margin);
       }
 
@@ -191,12 +230,18 @@ function buildDecalAtlas(): THREE.DataTexture {
       {
         // Bible §8.10: 55% centre opacity feathering to 0 over the outer 35%,
         // with a faint lighter ring at 80% radius (ash, not soot).
-        const warp = fbm2(u * 3.1, v * 3.1, 4, 2, 0.5, 401) * 0.30;
+        //
+        // The fbm here is a DOMAIN WARP of the radius — it makes the outline
+        // irregular and never touches the interior value. Two octaves at 2.4
+        // puts the finest wobble at roughly 27 texels, so the silhouette is
+        // lumpy at the scale of the whole mark rather than fizzing at the
+        // scale of the texel. The old five-octave version plus a `speck` term
+        // resolved to per-pixel salt over the entire burn.
+        const warp = fbm2(u * 2.4, v * 2.4, 2, 2, 0.5, 401) * 0.26;
         const rr = clamp01(r + warp);
         const core = 1 - smoothstep(0.42, 1.0, rr);
         const ring = Math.exp(-((rr - 0.80) * (rr - 0.80)) / 0.006) * 0.35;
-        const speck = value2(u * 40, v * 40, 11) * 0.2;
-        const a = clamp01((core * (0.86 + speck) + ring * 0.5)) * margin;
+        const a = clamp01(core * 0.94 + ring * 0.5) * margin;
         // Ash ring reads lighter than the soot core.
         const f = 0.5 + ring * 0.34;
         put(DecalKind.Scorch, lx, ly, f, f * 0.98, f * 0.96, a);
@@ -204,11 +249,18 @@ function buildDecalAtlas(): THREE.DataTexture {
 
       /* -- 3: CRATER ---------------------------------------------------- */
       {
-        const warp = fbm2(u * 4.3, v * 4.3, 4, 2, 0.5, 907) * 0.22;
+        const warp = fbm2(u * 2.8, v * 2.8, 2, 2, 0.5, 907) * 0.20;
         const rr = clamp01(r + warp);
         const bowl = 1 - smoothstep(0.10, 0.62, rr);
         const lip = Math.exp(-((rr - 0.66) * (rr - 0.66)) / 0.010);
-        const ejecta = smoothstep(0.95, 0.66, rr) * value2(u * 22, v * 22, 55) * 0.5;
+        // Ejecta as ELEVEN RADIAL RAYS, not as a field of random dots. Thrown
+        // material leaves streaks pointing away from the impact, and a smooth
+        // angular function gives exactly that while staying band-limited: the
+        // finest feature is a 1/11th-turn lobe, which is 30-odd texels wide
+        // even at the tile edge.
+        const ang = Math.atan2(sy, sx);
+        const rays = 0.5 + 0.5 * Math.cos(ang * 11 + Math.cos(ang * 3) * 1.7);
+        const ejecta = smoothstep(0.95, 0.66, rr) * rays * 0.55;
         const a = clamp01(bowl * 0.95 + lip * 0.7 + ejecta * 0.45) * margin;
         // Bowl darkens hard, the lip catches the sun and brightens slightly.
         const f = 0.5 - bowl * 0.16 + lip * 0.28;
@@ -217,8 +269,10 @@ function buildDecalAtlas(): THREE.DataTexture {
 
       /* -- 4: OIL ------------------------------------------------------- */
       {
-        // Bible §6.3: 2-5 m ellipses at alpha 0.35. Irregular, not a disc.
-        const warp = fbm2(u * 2.6 + 3, v * 2.6, 5, 2, 0.55, 1301) * 0.42;
+        // Bible §6.3: 2-5 m ellipses at alpha 0.35. Irregular, not a disc —
+        // and irregular means a WARPED OUTLINE, two octaves of it, not a
+        // five-octave field that speckles the whole slick.
+        const warp = fbm2(u * 2.2 + 3, v * 2.2, 2, 2, 0.5, 1301) * 0.38;
         const rr = clamp01(r * (0.86 + Math.abs(sx) * 0.22) + warp);
         const a = clamp01(1 - smoothstep(0.34, 0.92, rr)) * 0.9 * margin;
         // A slick is darker in the middle and has a faint bright fringe.
@@ -228,7 +282,7 @@ function buildDecalAtlas(): THREE.DataTexture {
 
       /* -- 5: DUST ------------------------------------------------------ */
       {
-        const warp = fbm2(u * 3.4, v * 3.4, 3, 2, 0.5, 77) * 0.30;
+        const warp = fbm2(u * 2.4, v * 2.4, 2, 2, 0.5, 77) * 0.28;
         const a = clamp01(1 - smoothstep(0.20, 0.98, clamp01(r + warp))) * 0.75 * margin;
         put(DecalKind.Dust, lx, ly, 0.5, 0.5, 0.5, a);
       }
@@ -256,8 +310,14 @@ function buildDecalAtlas(): THREE.DataTexture {
       /* -- 8: CRACK ----------------------------------------------------- */
       {
         // Bible §6.3: cracks 0.03-0.08 m wide, meandering, +/-25 deg jitter.
-        const wob = fbm2(v * 3.2, 0.5, 4, 2, 0.55, 613) * 0.42;
-        const wob2 = fbm2(v * 7.7, 2.5, 3, 2, 0.5, 811) * 0.16;
+        //
+        // `wob` is the crack's PATH, a 1-D function of v, so cutting its top
+        // octaves is the difference between a crack that meanders and one that
+        // is serrated. Three octaves at 2.2 puts the finest kink at roughly 15
+        // texels of travel, which is a wander; the old 7.7 x 3-octave term
+        // kinked every two texels, which is a saw blade.
+        const wob = fbm2(v * 2.2, 0.5, 3, 2, 0.55, 613) * 0.42;
+        const wob2 = fbm2(v * 4.0, 2.5, 2, 2, 0.5, 811) * 0.10;
         const d = Math.abs(sx - wob - wob2);
         const branch = Math.abs(sx * 0.55 + 0.35 - wob * 1.6) * (v > 0.45 ? 1 : 4);
         const core = (1 - smoothstep(0.02, 0.075, d)) + (1 - smoothstep(0.02, 0.06, branch)) * 0.6;
@@ -268,10 +328,12 @@ function buildDecalAtlas(): THREE.DataTexture {
       /* -- 9: PATCH ----------------------------------------------------- */
       {
         // Bible §6.3: resurfacing blotches 1.5-4.0 m at +/-12% luminance.
-        const warp = fbm2(u * 2.2, v * 2.2, 4, 2, 0.5, 229) * 0.36;
+        // A patch is a FLAT area of slightly different tone with an irregular
+        // outline — the `grain` term that used to sit inside it was per-texel
+        // noise painted straight onto the road.
+        const warp = fbm2(u * 2.0, v * 2.0, 2, 2, 0.5, 229) * 0.32;
         const a = clamp01(1 - smoothstep(0.42, 0.92, clamp01(r + warp))) * 0.85 * margin;
-        const grain = value2(u * 30, v * 30, 91) * 0.1;
-        put(DecalKind.Patch, lx, ly, 0.5 + grain, 0.5 + grain, 0.5 + grain * 0.9, a);
+        put(DecalKind.Patch, lx, ly, 0.5, 0.5, 0.5, a);
       }
     }
   }

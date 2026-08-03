@@ -41,7 +41,8 @@ import {
 import { clamp01, lerp, smoothstep } from '../core/math';
 import { PartId, type ModelBuild, type ModelPart, type SocketDef } from '../core/types';
 import {
-  paintSlotForArea, type GreebleAtlas, type GreebleSpec, type SlotName, type UvRect,
+  paintSlotForArea, SURFACE_BUDGET,
+  type GreebleAtlas, type GreebleSpec, type SlotName, type UvRect,
   GreebleFactory, greebles,
 } from './Greeble';
 import {
@@ -533,8 +534,28 @@ export function createUnitMaterial(atlas: GreebleAtlas, name: string): THREE.Mes
   // that crease AO must darken ambient and never the direct key.
   mat.aoMapIntensity = 1.0;
 
-  if (DEV && mat.envMapIntensity <= 0) {
-    throw new Error('R10: envMapIntensity is 0 — units go matte and the silhouette rim dies');
+  if (DEV) {
+    // RULING #3, asserted rather than commented. Each of these has been broken
+    // once already by somebody "simplifying" the material.
+    if (mat.envMapIntensity <= 0) {
+      throw new Error('R10: envMapIntensity is 0 — units go matte and the silhouette rim dies');
+    }
+    if (!(mat as THREE.Material as { isMeshPhysicalMaterial?: boolean }).isMeshPhysicalMaterial) {
+      throw new Error('R10/RULING #3: unit materials must be MeshPhysicalMaterial, not MeshStandardMaterial');
+    }
+    if (mat.clearcoat <= 0) {
+      throw new Error(
+        'RULING #3: clearcoat is 0 — the clear coat over a broad diffuse lobe IS the ' +
+        'painted-plastic-toy read. Without it RA3 armour goes to matte plastic.');
+    }
+    if (mat.clearcoatRoughness <= 0 || mat.clearcoatRoughness >= 1) {
+      throw new Error('RULING #3: clearcoatRoughness must be a tight-but-not-mirror 0.38');
+    }
+    // The ORM map is AUTHORITATIVE. A scalar below 1 would silently scale every
+    // authored roughness in the atlas and there would be no way to see it.
+    if (mat.roughness !== 1 || mat.metalness !== 1) {
+      throw new Error('R10: roughness/metalness scalars must stay 1.0 — the ORM map is authoritative');
+    }
   }
   return mat;
 }
@@ -656,10 +677,34 @@ export function buildUnit(list: UnitMassList, atlas: GreebleAtlas, material: THR
     hullMb.triangles + turretMb.triangles,
     atlas.metrics.emissiveTileCover,
   );
-  if (atlas.metrics.paintEdgeCoverage < UNIT_VALIDATION.sobelFloor) {
+  // R1 — "units ship as untextured grey primitives" — gated on DRAWN structure,
+  // not on Sobel coverage.
+  //
+  // The old gate was `paintEdgeCoverage < UNIT_VALIDATION.sobelFloor` (22%).
+  // That is a noise detector wearing a detail detector's clothes: the cheapest
+  // way to pass it is fbm, and passing it that way is exactly how the atlas
+  // ended up covered in marbled blue-grey static. `paintDetailCoverage` counts
+  // texels the painters actually drew a seam, a pocket edge or a decal on, so
+  // there is no way to satisfy it except by drawing something.
+  if (atlas.metrics.paintDetailCoverage < SURFACE_BUDGET.detailFloorUnit) {
     stats.errors.push(
-      `atlas Sobel coverage ${(atlas.metrics.paintEdgeCoverage * 100).toFixed(1)}% is below the ` +
-      `${(UNIT_VALIDATION.sobelFloor * 100).toFixed(0)}% floor — this reads as untextured primitives (R1)`);
+      `atlas drawn-detail coverage ${(atlas.metrics.paintDetailCoverage * 100).toFixed(1)}% is below ` +
+      `the ${(SURFACE_BUDGET.detailFloorUnit * 100).toFixed(1)}% floor — this reads as untextured ` +
+      `primitives (R1)`);
+  }
+  // The other half of the gate, and the one the old atlas would have failed:
+  // per-pixel speckle. White noise scores ~0.44 here and a crisp drawn line
+  // scores 0, so anything above the ceiling is salt-and-pepper on the hull.
+  if (atlas.metrics.speckleRatio > SURFACE_BUDGET.speckleCeiling) {
+    stats.errors.push(
+      `atlas speckle ratio ${(atlas.metrics.speckleRatio * 100).toFixed(2)}% exceeds the ` +
+      `${(SURFACE_BUDGET.speckleCeiling * 100).toFixed(2)}% ceiling — there is per-pixel noise in ` +
+      `the albedo or the height field, and RA3 surfaces have none`);
+  }
+  if (UNIT_VALIDATION.sobelTarget[1] > 0 && atlas.metrics.paintEdgeCoverage > 0.50) {
+    stats.warnings.push(
+      `atlas Sobel coverage ${(atlas.metrics.paintEdgeCoverage * 100).toFixed(1)}% is above 50% — ` +
+      `bible 5.3 says a surface that busy reads as noise however it was drawn`);
   }
 
   if (stats.errors.length > 0) {
@@ -738,12 +783,31 @@ export function buildUnit(list: UnitMassList, atlas: GreebleAtlas, material: THR
  * ========================================================================== */
 
 /**
+ * SURFACE LANGUAGE PER FACTION.
+ *
+ * `UnitPalette.rivets` is the one field in the palette that is about
+ * CONSTRUCTION rather than colour, and bible 5.7 makes it the fault line
+ * between the two architectures: Allied hardware is a welded, tiled, clear-
+ * coated ceramic monocoque; Soviet hardware is bolted plate. So it selects the
+ * whole drawing language in `Greeble.ts` — seam weight, groove depth, whether a
+ * joint gets a proud strap or a bolt row — and the gloss that goes with it.
+ *
+ * Allied white ceramic is genuinely glossier than Soviet field-painted olive,
+ * and that gloss difference is a big part of why the two factions read as
+ * different materials in RA3 rather than as one material in two hues.
+ */
+const WELDED_SHEEN = 0.62;   // roughness 0.445 — clear-coated ceramic
+const RIVETED_SHEEN = 0.42;  // roughness 0.553 — field-painted plate
+
+/**
  * Build a greeble spec from a faction palette. ONE atlas per faction — every
  * field here is faction-level, never unit-level, or the spec hash would fork
  * and the whole shared-atlas argument would collapse into 18 atlases.
  */
 export function specForPalette(key: string, p: UnitPalette, size: number, seed: number): GreebleSpec {
   return {
+    plating: p.rivets ? 'riveted' : 'welded',
+    sheen: p.rivets ? RIVETED_SHEEN : WELDED_SHEEN,
     key,
     size,
     seed,

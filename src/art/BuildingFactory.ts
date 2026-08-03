@@ -44,14 +44,25 @@
  *    is extruded DOWN by `BUILDING_PAD.skirtDepth` so it meets terrain on
  *    every legal site without per-instance re-meshing — see the note there.
  *
- * 4. BUILDINGS NEVER SAMPLE `paintLarge`. That tile measures 52-60% Sobel
- *    coverage, past bible 5.3's "above 50% reads as noise". `paintMed` is
- *    41.5% (allies) / 45.3% (soviets) at the shipping panel densities, which
- *    is exactly scorecard #34's 40-46% band for buildings.
+ * 4. BUILDINGS NEVER SAMPLE `paintLarge`. That tile is authored at vehicle
+ *    scale; stretched over a 12 m wall its marks read as a tank panel
+ *    pretending to be a building. Walls take `paintMed` — see
+ *    `structurePaintSlot`.
+ *
+ * THE SURFACE, AFTER THE CLEAN-TEXTURE PASS
+ * -----------------------------------------
+ * Every wall in this file is now LARGE UNBROKEN FLAT PAINT with a few crisp
+ * seams, because that is what `docs/surface-refs/ra3-structures.png` shows. The
+ * two factions differ in construction, not in hue: `createStructureMaterial`
+ * gives Allied ceramic a thick tight clear coat and a hot env, and Soviet
+ * bolted plate a thin slack one, while `Greeble.ts` draws welded straps for one
+ * and bolt rows for the other. And the R1 gate no longer measures Sobel edge
+ * coverage — that metric rewarded noise, which is how the walls ended up
+ * marbled — it measures drawn structure and caps speckle.
  *
  * ZERO GRIME on painted surfaces. Bible 5.5 allows rust on buildings, and only
  * on chimneys, pipes and scaffolding — those masses carry the `bareMetal` slot
- * whose atlas tile already reads as weathered warm metal. Nothing here streaks
+ * whose atlas tile already reads as warm turned metal. Nothing here streaks
  * a wall.
  * ============================================================================
  */
@@ -73,9 +84,11 @@ import {
 import { clamp01, hexToLinearRgb, lerp, smoothstep } from '../core/math';
 import { PartId, type SocketDef } from '../core/types';
 import {
+  detailCoverage,
   edgeCoverage,
   greebles,
   GreebleFactory,
+  SURFACE_BUDGET,
   type GreebleAtlas,
   type SlotName,
   type UvRect,
@@ -167,11 +180,14 @@ export interface StructureMassList {
  * Pick a paint density by face area — the building variant of
  * `Greeble.paintSlotForArea`.
  *
- * `paintLarge` is DELIBERATELY unreachable. Measured Sobel coverage on that
- * tile is 52.5% (allies) / 60.2% (soviets) at the shipping panel densities,
- * which is past bible 5.3's "above 50% reads as noise". A building's biggest
- * walls therefore take `paintMed` (41.5% / 45.3%) — dead centre of scorecard
- * #34's 40-46% band — and the smaller tiles carry the greebles.
+ * `paintLarge` is DELIBERATELY unreachable, and the reason survives the surface
+ * rewrite even though the old measurement that justified it does not. That tile
+ * is authored as a VEHICLE glacis: three plates, two verticals, a stowage well,
+ * a hatch and a louvre stack, all at a scale that suits a 7 m hull. Stretched
+ * over a 12 m wall those marks come out enormous and read as a tank panel
+ * pretending to be a building. `paintMed` — a frame, one authored course plus
+ * whatever the panel-density knob buys, one vertical and one pocket — is the
+ * facade plan, and the smaller tiles carry the greebles.
  */
 export function structurePaintSlot(areaSqM: number): SlotName {
   if (areaSqM >= 3.0) return 'paintMed';
@@ -730,9 +746,38 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
   mat.needsUpdate = true;
 }
 
-/** Painted architecture. RULING #3's numbers, straight from the unit factory. */
+/**
+ * TWO MATERIAL LANGUAGES, NOT ONE MATERIAL IN TWO HUES.
+ *
+ * Bible 5.7 gives the factions different CONSTRUCTION, and construction is a
+ * material property before it is a colour one. `spec.plating` carries that
+ * distinction all the way from the palette (`UnitPalette.rivets`) through the
+ * atlas painters (seam weight, bolt rows vs welded straps, gloss) and lands
+ * here, on the coat:
+ *
+ *   WELDED / Allied — white ceramic tile and chrome. A thick, tight clear coat
+ *     over a light base, reflecting hard: RA3's Allied architecture looks
+ *     glazed, and glaze is a clearcoat with a low roughness, not a lighter
+ *     albedo. Env intensity is high because the chrome trim has to catch sky.
+ *
+ *   RIVETED / Soviet — field-painted olive over bolted plate. A thin, slack
+ *     coat: still painted (it is not raw metal and must never go chalk-matte),
+ *     but the highlight is broad and dull and the sky barely registers.
+ *
+ * RULING #3's 0.30 @ 0.38 / env 0.80 stays the CENTRE of that spread; neither
+ * branch is allowed to reach zero clearcoat, which is the failure R10 names.
+ */
 export function createStructureMaterial(atlas: GreebleAtlas, name: string): THREE.MeshPhysicalMaterial {
   const mat = createUnitMaterial(atlas, name);
+  if (atlas.spec.plating === 'welded') {
+    mat.clearcoat = 0.42;
+    mat.clearcoatRoughness = 0.26;
+    mat.envMapIntensity = 0.95;
+  } else {
+    mat.clearcoat = 0.18;
+    mat.clearcoatRoughness = 0.54;
+    mat.envMapIntensity = 0.62;
+  }
   applyStructureShader(mat);
   return mat;
 }
@@ -765,9 +810,13 @@ export interface StructureStats {
   teamFraction: number;
   emissiveFraction: number;
   insigniaCount: number;
-  /** Area-weighted Sobel coverage over the atlas tiles this model ACTUALLY
-   *  samples — scorecard #34's number, not the atlas-wide average. */
+  /** Area-weighted DRAWN-DETAIL coverage over the atlas tiles this model
+   *  actually samples. This is the R1 gate — see `validateStructure`. */
+  detailCoverage: number;
+  /** Area-weighted Sobel coverage over the same tiles. Reported, not gated. */
   edgeCoverage: number;
+  /** Salt-and-pepper ratio of the atlas. Gated to ~0. */
+  speckleRatio: number;
   /** Metres: width, height, length. */
   bounds: [number, number, number];
   /** The frozen roofline this was authored against. */
@@ -956,21 +1005,43 @@ export function validateStructure(
       `${pct(emisBand[0])}-${pct(emisBand[1])} for a ${cls} (R-T5)`);
   }
 
-  /* -- scorecard #34, weighted by the tiles this model really samples ----- */
-  let cover = 0, coverWeight = 0;
+  /* -- R1, weighted by the tiles this model really samples ----------------
+   *
+   * The gate used to be Sobel coverage against `V.sobelFloor` (30%), and that
+   * number is why the atlas generator grew a noise field in the first place:
+   * the cheapest way to raise Sobel coverage is fbm, and 30% is more edge than
+   * an RA3 building HAS. Look at `docs/surface-refs/ra3-structures.png` — the
+   * walls are large unbroken slabs of flat colour with a few strong seams and
+   * bright accent bands. Measured as Sobel that is a low number, and it is the
+   * correct look.
+   *
+   * So the floor is on DRAWN structure — texels a painter actually put a seam,
+   * a pocket edge, a louvre or a decal on — and there is a hard CEILING on
+   * speckle, which is the failure the old gate was silently rewarding.
+   */
+  let detail = 0, cover = 0, coverWeight = 0;
   for (const [slot, area] of visible) {
+    detail += detailCoverage(atlas.structure, atlas.size, slot) * area;
     cover += edgeCoverage(atlas.surface, slot) * area;
     coverWeight += area;
   }
+  const detailFrac = coverWeight > 0 ? detail / coverWeight : 0;
   const coverage = coverWeight > 0 ? cover / coverWeight : 0;
-  if (coverage < V.sobelFloor) {
+  if (detailFrac < SURFACE_BUDGET.detailFloorStructure) {
     errors.push(
-      `Sobel coverage ${pct(coverage)} is below the ${pct(V.sobelFloor)} floor — ` +
-      `this reads as untextured primitives (R1)`);
-  } else if (!bandOk(coverage, V.sobelTarget[0], V.sobelTarget[1])) {
+      `drawn-detail coverage ${pct(detailFrac)} is below the ` +
+      `${pct(SURFACE_BUDGET.detailFloorStructure)} floor — this reads as untextured primitives (R1)`);
+  }
+  if (atlas.metrics.speckleRatio > SURFACE_BUDGET.speckleCeiling) {
+    errors.push(
+      `atlas speckle ratio ${pct(atlas.metrics.speckleRatio)} exceeds the ` +
+      `${pct(SURFACE_BUDGET.speckleCeiling)} ceiling — there is per-pixel noise in the albedo or ` +
+      `the height field, and an RA3 wall has none`);
+  }
+  if (coverage > 0.50) {
     warnings.push(
-      `Sobel coverage ${pct(coverage)} outside scorecard #34's ` +
-      `${pct(V.sobelTarget[0])}-${pct(V.sobelTarget[1])} for buildings`);
+      `Sobel coverage ${pct(coverage)} is above 50% — bible 5.3 says a surface that busy reads ` +
+      `as noise however it was drawn`);
   }
 
   /* -- the frozen dimension table ---------------------------------------- */
@@ -1015,7 +1086,9 @@ export function validateStructure(
     teamFraction,
     emissiveFraction,
     insigniaCount,
+    detailCoverage: detailFrac,
     edgeCoverage: coverage,
+    speckleRatio: atlas.metrics.speckleRatio,
     bounds,
     targetHeight: list.height,
     surfaceArea,
@@ -1031,7 +1104,8 @@ export function formatStructureStats(s: StructureStats): string {
   return (
     `${s.key.padEnd(22)} ${s.primaryCount}+${s.greebleCount}  ` +
     `dom ${pct(s.dominantFraction)}  team ${pct(s.teamFraction)}  ` +
-    `emis ${pct(s.emissiveFraction)}  sobel ${pct(s.edgeCoverage)}  ` +
+    `emis ${pct(s.emissiveFraction)}  detail ${pct(s.detailCoverage)}  ` +
+    `sobel ${pct(s.edgeCoverage)}  speckle ${pct(s.speckleRatio)}  ` +
     `${s.bounds.map((b) => b.toFixed(1)).join('x')} m  ${s.triangles} tris  ${s.parts} parts`
   );
 }

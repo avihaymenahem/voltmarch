@@ -79,13 +79,55 @@
   contain: layout paint;
 }
 
-/* Law 2: the outer chrome cap with its specular hairline at y = 1. */
+/* Law 2: the outer chrome cap with its specular hairline at y = 1.
+   Layer order everywhere a plate is metal: SHEEN (one broad diagonal sweep) over
+   BRUSH (the Soviet 9-design-px sheen, `none` for Allies) over the bevel RAMP.
+   Three low-frequency gradients, no repeat below 4.5 design px, no dither. */
 .ra-cap-top {
   flex: 0 0 calc(4 * var(--ra-d));
-  background: var(--ra-bevel-ramp), var(--ra-brush);
-  background-blend-mode: overlay;
+  background: var(--ra-sheen), var(--ra-brush), var(--ra-bevel-ramp);
+  background-blend-mode: normal, overlay, normal;
   border-bottom: 1px solid var(--ra-bevel-lo);
 }
+
+/* ==========================================================================
+ * 1b. MACHINED HARDWARE (§2.14 law 5)
+ *
+ * Bolt heads are the one piece of ornament the chrome language has, and they
+ * are DRAWN, not textured: `Chrome.boltGradient()` is a five-stop radial with a
+ * hard terminator at 92% and exactly one 4%-wide fade to transparent — a single
+ * device pixel of anti-aliasing at every shipping scale. `--ra-bolt` carries the
+ * faction material, so the Soviet bolts are brass and the Allied ones gunmetal
+ * without a second rule.
+ * ========================================================================== */
+
+.ra-cap-shelf::before,
+.ra-cap-shelf::after,
+.ra-radar-bezel-top::before,
+.ra-radar-bezel-top::after,
+.ra-radar-bezel-bottom::before,
+.ra-radar-bezel-bottom::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: calc(5 * var(--ra-d));
+  height: calc(5 * var(--ra-d));
+  margin-top: calc(-2.5 * var(--ra-d));
+  border-radius: 50%;
+  background: var(--ra-bolt);
+  pointer-events: none;
+  z-index: 1;
+}
+/* Radar block: one bolt at each corner of the bezel pair, so the field reads as
+   a panel BOLTED INTO the sidebar rather than a hole cut in it. The lower pair
+   sits right of the status LEDs, which own the left of that bezel. */
+.ra-radar-bezel-top::before    { left: calc(5 * var(--ra-d)); }
+.ra-radar-bezel-top::after     { right: calc(5 * var(--ra-d)); }
+.ra-radar-bezel-bottom::before { right: calc(15 * var(--ra-d)); }
+.ra-radar-bezel-bottom::after  { right: calc(5 * var(--ra-d)); }
+/* Bottom shelf: two bolts at the left, balancing the emblem at the right. */
+.ra-cap-shelf::before { left: calc(6 * var(--ra-d)); }
+.ra-cap-shelf::after  { left: calc(15 * var(--ra-d)); }
 
 /* ==========================================================================
  * 2. CREDITS READOUT (§2.3) — a recessed, unlit LCD well
@@ -182,9 +224,10 @@
 }
 
 .ra-radar-bezel-top {
+  position: relative;
   height: calc(9 * var(--ra-d));
-  background: var(--ra-bevel-ramp), var(--ra-brush);
-  background-blend-mode: overlay;
+  background: var(--ra-sheen), var(--ra-brush), var(--ra-bevel-ramp);
+  background-blend-mode: normal, overlay, normal;
   border-top: 1px solid var(--ra-bevel-hi);
 }
 
@@ -193,8 +236,14 @@
   height: calc(110 * var(--ra-d));
   /* Law 4 again. The letterbox is part of the silhouette — keep it. */
   background: #000;
+  /* A 3-ZONE frame, not a single rule: black terminator outside, the faction
+     frame metal, black inside. All three are hairlines on exactly one device
+     pixel, which is what makes the radar read as a machined aperture. */
   border: 1px solid var(--ra-radar-frame);
-  box-shadow: inset 0 0 calc(6 * var(--ra-d)) rgba(0, 0, 0, 1);
+  box-shadow:
+    0 0 0 1px var(--ra-bevel-lo),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.92),
+    inset 0 0 calc(6 * var(--ra-d)) rgba(0, 0, 0, 1);
   cursor: crosshair;
   pointer-events: auto;
   touch-action: none;
@@ -221,13 +270,14 @@
 .ra-radar-field.is-offline .ra-radar-offline { display: flex; }
 
 .ra-radar-bezel-bottom {
+  position: relative;
   height: calc(13 * var(--ra-d));
   display: flex;
   align-items: center;
   gap: calc(2 * var(--ra-d));
   padding-left: calc(4 * var(--ra-d));
-  background: var(--ra-bevel-ramp), var(--ra-brush);
-  background-blend-mode: overlay;
+  background: var(--ra-sheen), var(--ra-brush), var(--ra-bevel-ramp);
+  background-blend-mode: normal, overlay, normal;
   border-bottom: 1px solid var(--ra-bevel-lo);
 }
 
@@ -387,15 +437,18 @@
   --ra-power-red-lo: #3b1012;
 }
 
-/* 3 px vertical pitch: 1 px bright line + 2 px dark. This hatch is what makes
-   the bar read as a segmented gauge instead of a progress bar. */
+/* 3 DESIGN px vertical pitch: 1 design px bright line + 2 dark. This hatch is
+   what makes the bar read as a segmented gauge instead of a progress bar.
+   The bright line is `1 * var(--ra-d)`, NOT a literal 1px: pinned at a device
+   pixel it thins to a hairline inside a 12 px gap at uiScale 4 and the gauge
+   stops reading as segmented at exactly the resolutions we scale up for. */
 .ra-power-hatch {
   position: absolute;
   inset: 0;
   background: repeating-linear-gradient(
     180deg,
-    rgba(255, 255, 255, 0.30) 0 1px,
-    rgba(0, 0, 0, 0.58) 1px calc(3 * var(--ra-d)));
+    rgba(255, 255, 255, 0.30) 0 calc(1 * var(--ra-d)),
+    rgba(0, 0, 0, 0.58) calc(1 * var(--ra-d)) calc(3 * var(--ra-d)));
   pointer-events: none;
 }
 
@@ -657,13 +710,15 @@
   border-left: 1px solid var(--ra-bevel-lo);
   box-shadow: inset 1px 0 0 rgba(0, 0, 0, 0.8);
 }
-/* Soviet swaps the domes for brass turbine fins — a material change, not a tint. */
+/* Soviet swaps the domes for brass turbine fins — a material change, not a tint.
+   Fin pitch is 6 DESIGN px with a 1 design px specular crown, so the fins stay
+   fins at every uiScale instead of collapsing into a device-pixel stripe. */
 .ra-hud[data-faction='soviets'] .ra-rail {
   background-color: #14171f;
   background-image: repeating-linear-gradient(
     180deg,
-    #f0e39a 0 1px,
-    #6d6720 1px calc(4 * var(--ra-d)),
+    #f0e39a 0 calc(1 * var(--ra-d)),
+    #6d6720 calc(1 * var(--ra-d)) calc(4 * var(--ra-d)),
     #422d06 calc(4 * var(--ra-d)) calc(6 * var(--ra-d)));
   background-size: 100% calc(50 * var(--ra-d));
 }
@@ -681,11 +736,11 @@
 .ra-cap-shelf {
   position: relative;
   flex: 0 0 calc(7 * var(--ra-d));
-  background: linear-gradient(180deg, #fcfbff 0%, #d0cedf 100%);
+  background: var(--ra-sheen), linear-gradient(180deg, #fcfbff 0%, #d0cedf 100%);
   border-bottom: 1px solid var(--ra-bevel-lo);
 }
 .ra-hud[data-faction='soviets'] .ra-cap-shelf {
-  background: linear-gradient(180deg, #f0e39a 0%, #a89344 100%);
+  background: var(--ra-sheen), linear-gradient(180deg, #f0e39a 0%, #a89344 100%);
 }
 .ra-cap-emblem {
   position: absolute;
@@ -705,8 +760,8 @@
   box-shadow: inset 0 1px 0 var(--ra-lens-rim-hi), inset 0 -1px 0 var(--ra-lens-rim-lo);
 }
 .ra-hud[data-faction='soviets'] .ra-cap-lens {
-  background: linear-gradient(180deg, #cdcadb 0%, #8a8b92 60%, #2a2620 100%), var(--ra-brush);
-  background-blend-mode: overlay;
+  background: var(--ra-brush), linear-gradient(180deg, #cdcadb 0%, #8a8b92 60%, #2a2620 100%);
+  background-blend-mode: overlay, normal;
 }
 /* 1 px vertical seam bisecting the lens arc. */
 .ra-cap-lens::after {

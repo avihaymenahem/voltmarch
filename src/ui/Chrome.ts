@@ -139,9 +139,12 @@ export function applySkin(root: HTMLElement, faction: Faction): void {
 
   // Law 2, expressed once: the canonical 3-zone body ramp every plate uses.
   v.setProperty('--ra-bevel-ramp', bevelGradient(s, 180));
-  // Soviet chrome is brushed, not polished: a horizontal micro-stripe on top of
+  // Soviet chrome is brushed, not polished: a broad horizontal sheen on top of
   // the ramp. Allied stays a clean lacquered ramp.
   v.setProperty('--ra-brush', k === 'soviets' ? sovietBrush() : 'none');
+  // Law 5's machined hardware and law 2's specular sweep, as reusable layers.
+  v.setProperty('--ra-bolt', boltGradient(s));
+  v.setProperty('--ra-sheen', plateSheen());
 }
 
 /**
@@ -157,13 +160,68 @@ export function bevelGradient(s: HudFactionSkin, angleDeg: number): string {
   );
 }
 
-/** Horizontal brush noise for the Soviet brushed-silver plates. */
-function sovietBrush(): string {
+/**
+ * Horizontal brush sheen for the Soviet brushed-silver plates.
+ *
+ * THIS USED TO BE A 1 px ON / 1 px OFF ALTERNATION and it was the single worst
+ * surface in the HUD: a full-contrast device-pixel stripe under an `overlay`
+ * blend is per-pixel noise, and at any uiScale above 1 it beat against the
+ * device grid and dithered. RA3's chrome has no micro-grain at all — its
+ * interest is a BROAD specular sweep across an otherwise flat plate.
+ *
+ * So: six stops over a 9 DESIGN px period (it scales with the rest of the HUD
+ * instead of the display), amplitude capped at 4.5%, and every transition is a
+ * ramp rather than a hard step. Wavelength 4.5 design px against a 4.5%
+ * amplitude gives a slope of ~1% per design px — felt, never seen.
+ */
+export function sovietBrush(): string {
   return (
     'repeating-linear-gradient(90deg,' +
-    ' rgba(255,255,255,0.055) 0 1px,' +
-    ' rgba(0,0,0,0.055) 1px 2px,' +
-    ' rgba(255,255,255,0.02) 2px 4px)'
+    ' rgba(255,255,255,0.045) 0,' +
+    ' rgba(255,255,255,0.010) calc(2.25 * var(--ra-d)),' +
+    ' rgba(0,0,0,0.045) calc(4.5 * var(--ra-d)),' +
+    ' rgba(0,0,0,0.010) calc(6.75 * var(--ra-d)),' +
+    ' rgba(255,255,255,0.045) calc(9 * var(--ra-d)))'
+  );
+}
+
+/**
+ * Law 5's machined bolt head, as one crisp radial gradient.
+ *
+ * Hard-edged on purpose: the terminator runs `bevelLo` right out to 92% and the
+ * only soft step is the 92 -> 96% fade to transparent, which is the single
+ * texel of anti-aliasing the brief allows. A bolt whose rim fades over 30% of
+ * its radius reads as an airbrushed blob rather than a turned steel dome.
+ *
+ * The specular sits at 38%/32% — upper-left, matching every other light in the
+ * interface. Faction material swap comes free: the five stops are the skin's
+ * own 3-zone bevel ramp, so the Soviet bolt is brass and the Allied one is
+ * gunmetal without a second selector.
+ */
+export function boltGradient(s: HudFactionSkin): string {
+  return (
+    'radial-gradient(circle at 38% 32%,' +
+    ` ${s.bevelHi} 0%, ${s.metalHi} 20%, ${s.metalMid} 44%,` +
+    ` ${s.metalLo} 66%, ${s.bevelLo} 84%, ${s.bevelLo} 92%,` +
+    ' rgba(0,0,0,0) 96%)'
+  );
+}
+
+/**
+ * The broad diagonal specular sweep that turns a bevel ramp into lit metal.
+ *
+ * One low-frequency band at 12% peak, no repeat, no hard stop. This is the
+ * whole of the "gradient" half of the chrome vocabulary; anything faster than
+ * one cycle across a plate is texture, and texture is what we are removing.
+ */
+export function plateSheen(): string {
+  return (
+    'linear-gradient(101deg,' +
+    ' rgba(255,255,255,0) 0%,' +
+    ' rgba(255,255,255,0.05) 26%,' +
+    ' rgba(255,255,255,0.12) 44%,' +
+    ' rgba(255,255,255,0.04) 58%,' +
+    ' rgba(255,255,255,0) 76%)'
   );
 }
 

@@ -48,18 +48,48 @@
  *  2. **Macro breakup.** A 28-38 m noise modulates luminance +/-20% and pulls
  *     the dark end toward a biome tint. This is what kills the visible repeat
  *     of an 8 m tile at 86 m of visible ground.
- *  3. **Per-cell jitter.** A hard-edged hash per 4 m build cell, +/-4.5%, with
- *     7% of cells landing markedly darker. VISUAL_DNA §1.4 layer L3 — this
+ *  3. **Per-cell jitter.** A hard-edged hash per 4 m build cell, +/-3.8%, with
+ *     3.5% of cells landing modestly darker. VISUAL_DNA §1.4 layer L3 — this
  *     quantised, deliberately un-smoothed variation is a signature of the
  *     series and reads as "authored tiles" rather than "noise function".
+ *
+ * THE NOISE PURGE (and why the layer tiles are now nearly flat)
+ * ------------------------------------------------------------
+ * These six tiles used to come out of `assets.ts` `genGround`: five octaves of
+ * fbm, plus a second fbm at 7x frequency, plus a 9x worley clump field, all of
+ * it into albedo AND into height. A layer tiles at 5-10 m across 256 texels,
+ * so one texel is 2-4 cm; the camera at RTS distance also resolves 3-4 cm per
+ * screen pixel. Those last octaves were therefore PER-PIXEL noise, which the
+ * look bible's one rule forbids outright.
+ *
+ * Every layer is now either
+ *   - a `field`: one flat colour plus two band-limited drifts whose shortest
+ *     wavelength is 48 texels (1.5 m of ground, ~40 screen px at 1440p), or
+ *   - `slab` / `cobble`: `assets.ts`'s clean `paving` / `cobblestone`
+ *     generators, which are flat faces separated by crisp drawn joints.
+ *
+ * Height is written EXACTLY 0.5 on every field tile. Nothing reads it — the
+ * terrain material has no normalMap, the cliff normal is analytic — but a flat
+ * height field is the guarantee that no future packer can resurrect the
+ * sandpaper specular from these tiles.
+ *
+ * BOUNDARIES, NOT BLENDS
+ * ----------------------
+ * RA3's ground types meet at a KERB or a hard edge, never over a four-metre
+ * dissolve. The splat control texture is one texel per 4 m build cell, so a
+ * raw linear fetch dissolves over a full cell. `uSplatSharpen` raises the
+ * weights to a power before normalising, which narrows the transition to
+ * roughly `1/sharpen` of a cell while leaving the winning layer unchanged.
  * ============================================================================
  */
 
 import * as THREE from 'three';
-import { packAlbedo, textures, type GenParams } from '../core/assets';
-import { fbm2, hexToLinearRgb, simplex2 } from '../core/math';
+import {
+  NOISE_BUDGET, budgetedNoise, createSurface, packAlbedo, textures, type Surface,
+} from '../core/assets';
+import { clamp01, fbm2, hexToLinearRgb, lerp, simplex2, smoothstep } from '../core/math';
 import { CELL, CLIFF_SLOPE, MAP_SIZE } from '../core/config';
-import { SURFACE_COUNT, SurfaceId, type BiomeDef } from './Biomes';
+import { SURFACE_COUNT, SurfaceId, type BiomeDef, type SurfaceLayerDef } from './Biomes';
 
 /* ==========================================================================
  * 1. THE UNIFORM BLOCK
@@ -94,6 +124,13 @@ export interface TerrainUniforms {
   uWarpAmp: { value: number };
   uCellSize: { value: number };
   uCellJitter: { value: number };
+  /**
+   * Exponent applied to every splat weight before renormalising. 1 = the raw
+   * linear dissolve; higher narrows the transition band. 2.8 turns a 4 m mush
+   * into roughly a 1.4 m edge, which is what a mown lawn meeting a gravel
+   * apron actually looks like.
+   */
+  uSplatSharpen: { value: number };
 
   /* -- cliff ------------------------------------------------------------- */
   /** Face-normal Y below which the cliff model is selected. */
@@ -117,6 +154,14 @@ export interface TerrainUniforms {
   [key: string]: THREE.IUniform;
 }
 
+/**
+ * Splat-weight exponent. Not per-biome: the control texture's resolution is a
+ * property of the terrain grid, not of the art, so the correct sharpening is
+ * the same everywhere. Above ~4 the boundary starts to show the control
+ * texture's own 4 m stair-stepping through the warp.
+ */
+const SPLAT_SHARPEN = 2.8;
+
 function createUniforms(): TerrainUniforms {
   return {
     uLayers: { value: null },
@@ -130,12 +175,13 @@ function createUniforms(): TerrainUniforms {
     uLayerRough: { value: [0.95, 0.92, 0.9, 0.85, 0.7, 0.68] },
 
     uMacroScale: { value: 34 },
-    uMacroStrength: { value: 0.2 },
-    uMacroTint: { value: new THREE.Vector3(0.06, 0.06, 0.02) },
-    uWarpScale: { value: 7.5 },
-    uWarpAmp: { value: 0.62 },
+    uMacroStrength: { value: 0.13 },
+    uMacroTint: { value: new THREE.Vector3(0.088, 0.068, 0.019) },
+    uWarpScale: { value: 11 },
+    uWarpAmp: { value: 0.55 },
     uCellSize: { value: CELL },
-    uCellJitter: { value: 0.045 },
+    uCellJitter: { value: 0.038 },
+    uSplatSharpen: { value: SPLAT_SHARPEN },
 
     uCliffNy: { value: Math.cos(CLIFF_SLOPE) },
     uCliffBase: { value: new THREE.Vector3(0.19, 0.17, 0.1) },
@@ -202,6 +248,7 @@ uniform float uWarpScale;
 uniform float uWarpAmp;
 uniform float uCellSize;
 uniform float uCellJitter;
+uniform float uSplatSharpen;
 
 uniform float uCliffNy;
 uniform float uFaceMix;
@@ -390,8 +437,17 @@ if ( raIsCliff ) {
   float raW[ 6 ];
   raW[ 0 ] = raS0.r; raW[ 1 ] = raS0.g; raW[ 2 ] = raS0.b; raW[ 3 ] = raS0.a;
   raW[ 4 ] = raS1.r; raW[ 5 ] = raS1.g;
+
+  // 1b. SHARPEN the blend. The control texture carries one texel per 4 m build
+  //     cell, so a raw bilinear fetch dissolves grass into gravel over a whole
+  //     cell and every surface boundary reads as mush. Raising each weight to
+  //     a power and renormalising is monotone — the layer that was winning
+  //     still wins — but it collapses the transition band to about 1/N of a
+  //     cell, which is the crisp edge RA3 actually has.
+  for ( int i = 0; i < 6; i ++ ) raW[ i ] = pow( max( raW[ i ], 0.0 ), uSplatSharpen );
+
   float raSum = raW[0] + raW[1] + raW[2] + raW[3] + raW[4] + raW[5];
-  float raNorm = 1.0 / max( raSum, 1e-3 );
+  float raNorm = 1.0 / max( raSum, 1e-6 );
 
   vec3 raAlbedo = vec3( 0.0 );
   float raR = 0.0;
@@ -404,10 +460,15 @@ if ( raIsCliff ) {
   // 2. Regional breakup.
   raAlbedo = raMacro( raAlbedo, raXZ );
 
-  // 3. Per-build-cell jitter, hard edged and un-smoothed on purpose, with a 7%
-  //    tail of markedly darker cells (VISUAL_DNA L3).
+  // 3. Per-build-cell jitter, hard edged and un-smoothed on purpose, with a
+  //    3.5% tail of modestly darker cells (VISUAL_DNA L3).
+  //
+  //    The tail used to be 7% of cells at 2.2x the jitter, i.e. cells up to
+  //    14% dark. On grass that produced texels dark enough that the blue-grey
+  //    fog lerp dragged them into the emerald hue window — the same failure
+  //    the layer palettes were retuned for. Shallower tail, same signature.
   float raCell = raHash21( floor( raXZ / uCellSize ) + 0.5 );
-  raAlbedo *= 1.0 + ( raCell - 0.5 ) * 2.0 * uCellJitter - step( 0.93, raCell ) * uCellJitter * 2.2;
+  raAlbedo *= 1.0 + ( raCell - 0.5 ) * 2.0 * uCellJitter - step( 0.965, raCell ) * uCellJitter * 1.1;
 
   raCol = raAlbedo;
   raRough = raR;
@@ -434,16 +495,23 @@ if ( raIsCliff ) {
  * Two independent fbm channels in R and G, used to displace the splat lookup.
  * They must be INDEPENDENT: a warp built from one channel and its inverse
  * pushes every boundary along a single diagonal and reads as a shear.
+ *
+ * TWO octaves, not three, and at 2/3 the base frequency. The point of the warp
+ * is to stop a surface boundary being a straight line — it is not a source of
+ * detail. The third octave landed at ~5 texels of a 128-texel tile spread over
+ * 11 m, i.e. a 40 cm wobble, which turned every grass/dirt edge into a fringe
+ * of noise instead of a shape. Mipmaps are on for the same reason: a warp that
+ * aliases at distance is a boundary that crawls when the camera pans.
  */
 function buildWarpTexture(seed: number): THREE.DataTexture {
   const N = 128;
   const data = new Uint8Array(N * N * 4);
-  const f = 6 / N;
+  const f = 4 / N;
   for (let y = 0; y < N; y++) {
     for (let x = 0; x < N; x++) {
       const o = (y * N + x) * 4;
-      const a = fbm2(x * f, y * f, 3, 2, 0.55, seed);
-      const b = fbm2(x * f + 11.3, y * f + 7.9, 3, 2, 0.55, seed + 977);
+      const a = fbm2(x * f, y * f, 2, 2, 0.5, seed);
+      const b = fbm2(x * f + 11.3, y * f + 7.9, 2, 2, 0.5, seed + 977);
       data[o] = Math.max(0, Math.min(255, Math.round((a * 0.5 + 0.5) * 255)));
       data[o + 1] = Math.max(0, Math.min(255, Math.round((b * 0.5 + 0.5) * 255)));
       data[o + 2] = 0;
@@ -456,8 +524,8 @@ function buildWarpTexture(seed: number): THREE.DataTexture {
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.magFilter = THREE.LinearFilter;
-  tex.minFilter = THREE.LinearFilter;
-  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
   tex.needsUpdate = true;
   return tex;
 }
@@ -466,16 +534,22 @@ function buildWarpTexture(seed: number): THREE.DataTexture {
  * R = regional luminance swell, G = an independent mask driving the tint pull,
  * B = a coarse blotch. Sampled at 28-38 m per repeat, this is the layer that
  * makes an 8 m grass tile invisible.
+ *
+ * TWO octaves everywhere. At four octaves and a base of 3.5 cycles per 256
+ * texels, the finest octave was ~9 texels of a tile covering 34 m — a 1.2 m
+ * blotch, which at RTS distance reads as dirt smeared on the lawn rather than
+ * as regional variation. Two octaves puts the finest feature at ~6.5 m, so the
+ * layer does exactly one job: hide the repeat of an 8 m tile.
  */
 function buildMacroTexture(seed: number): THREE.DataTexture {
   const N = 256;
   const data = new Uint8Array(N * N * 4);
-  const f = 3.5 / N;
+  const f = 2.6 / N;
   for (let y = 0; y < N; y++) {
     for (let x = 0; x < N; x++) {
       const o = (y * N + x) * 4;
-      const a = fbm2(x * f, y * f, 4, 2, 0.52, seed) * 0.5 + 0.5;
-      const b = fbm2(x * f * 1.7 + 3.1, y * f * 1.7 - 5.4, 3, 2, 0.5, seed + 421) * 0.5 + 0.5;
+      const a = fbm2(x * f, y * f, 2, 2, 0.5, seed) * 0.5 + 0.5;
+      const b = fbm2(x * f * 1.4 + 3.1, y * f * 1.4 - 5.4, 2, 2, 0.5, seed + 421) * 0.5 + 0.5;
       const c = simplex2(x * f * 0.6, y * f * 0.6, seed + 88) * 0.5 + 0.5;
       data[o] = Math.round(Math.max(0, Math.min(1, a)) * 255);
       data[o + 1] = Math.round(Math.max(0, Math.min(1, b)) * 255);
@@ -495,35 +569,185 @@ function buildMacroTexture(seed: number): THREE.DataTexture {
   return tex;
 }
 
+/* --------------------------------------------------------------------------
+ * 3B. THE CLEAN LAYER TILES
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Hard ceiling on a field layer's broad value drift. 6% peak-to-mean is what
+ * "you can tell it is not a solid fill" costs; anything past that starts to
+ * read as staining rather than as ground.
+ */
+export const FIELD_DRIFT_CAP = 0.06;
+
+/** Hard ceiling on how far a patch can pull toward `shade` / `accent`. */
+export const FIELD_PATCH_CAP = 0.45;
+
+/**
+ * Shortest wavelength any field drift may use, in texels — twice the
+ * `assets.ts` floor. A layer tiles at 5-10 m over 256 texels, so 48 texels is
+ * 1-2 m of ground and roughly 40 screen pixels at 1440p. That is the boundary
+ * between "broad soft variation" and "grain".
+ */
+export const FIELD_MIN_WAVELENGTH = NOISE_BUDGET.MIN_FEATURE_TEXELS * 2;
+
+/** Parse '#RRGGBB' to sRGB 0..1, which is the space `Surface.albedo` is in. */
+function hexTriple(hex: string, out: Float32Array): Float32Array {
+  const v = parseInt(hex.replace('#', ''), 16) | 0;
+  out[0] = ((v >> 16) & 0xff) / 255;
+  out[1] = ((v >> 8) & 0xff) / 255;
+  out[2] = (v & 0xff) / 255;
+  return out;
+}
+
+const FIELD_BASE = new Float32Array(3);
+const FIELD_SHADE = new Float32Array(3);
+const FIELD_ACCENT = new Float32Array(3);
+
+/** Field surfaces are generated here, so they need their own cache. */
+const fieldCache = new Map<string, Surface>();
+
+/**
+ * A broad, soft, near-flat natural ground tile.
+ *
+ * Three band-limited layers and nothing else:
+ *   - two out-of-phase value drifts at 1/5 and 1/2.2 of the tile,
+ *   - one very low frequency mask that pulls toward `shade` on its low side
+ *     and `accent` on its high side, giving damp/dry blotches several metres
+ *     across.
+ *
+ * Every one of them goes through `budgetedNoise`, which is a sum of six plane
+ * waves at integer frequencies: exactly periodic (so the tile is seamless),
+ * band-limited by construction (so the wavelength floor is a guarantee and not
+ * a hope), and amplitude-clamped. There is deliberately no way to ask this
+ * function for contrast.
+ */
+export function buildFieldSurface(L: SurfaceLayerDef, size: number): Surface {
+  const s = createSurface(size);
+  const base = hexTriple(L.albedo, FIELD_BASE);
+  const shade = hexTriple(L.shade, FIELD_SHADE);
+  const accent = hexTriple(L.accent, FIELD_ACCENT);
+
+  const amp = Math.min(Math.abs(L.variation ?? 0.045), FIELD_DRIFT_CAP);
+  const patch = clamp01(L.patch ?? 0.3) * FIELD_PATCH_CAP;
+  const seed = L.seed | 0;
+
+  const wlFine = Math.max(FIELD_MIN_WAVELENGTH, size / 5);
+  const wlWide = Math.max(FIELD_MIN_WAVELENGTH, size / 2.2);
+  const wlPatch = Math.max(FIELD_MIN_WAVELENGTH, size / 1.6);
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = y * size + x;
+      const drift =
+        budgetedNoise(x, y, size, wlFine, amp * 0.55, seed + 11, FIELD_DRIFT_CAP) +
+        budgetedNoise(x, y, size, wlWide, amp * 0.45, seed + 29, FIELD_DRIFT_CAP);
+
+      // One mask, two mutually exclusive pulls: below 0.5 toward shade, above
+      // toward accent. One mask rather than two because two independent masks
+      // can overlap and cancel, and the result is a flat average instead of
+      // legible patches.
+      const m = 0.5 + budgetedNoise(x, y, size, wlPatch, 0.5, seed + 53, 0.5);
+      const toAccent = smoothstep(0.50, 0.72, m) * patch;
+      const toShade = smoothstep(0.50, 0.28, m) * patch;
+
+      const o = i * 3;
+      for (let c = 0; c < 3; c++) {
+        let v = base[c] * (1 + drift);
+        v = lerp(v, accent[c], toAccent);
+        v = lerp(v, shade[c], toShade);
+        s.albedo[o + c] = clamp01(v);
+      }
+
+      // Exactly flat. Nothing on natural ground is geometry at this scale, and
+      // a constant height field is the guarantee that no packer can turn this
+      // tile back into a sandpaper normal map.
+      s.height[i] = 0.5;
+      s.roughness[i] = clamp01(L.roughness);
+      s.metalness[i] = 0;
+      s.ao[i] = 1;
+      s.teamMask[i] = 0;
+    }
+  }
+  return s;
+}
+
+/**
+ * How many slabs / setts fit across one tile.
+ *
+ * Restricted to powers of two that divide `size`, because `paving` and
+ * `cobblestone` only tile seamlessly when the cell grid divides the texture
+ * exactly — a 4.8 m tile with 1.2 m slabs wants 4 across, and asking for a
+ * non-divisor silently produces a sheared row at the wrap.
+ */
+function snapCells(tileMetres: number, featureMetres: number, size: number): number {
+  const want = Math.max(1, tileMetres / Math.max(0.05, featureMetres));
+  let best = 1;
+  for (const c of [1, 2, 4, 8, 16, 32, 64]) {
+    if (size % c !== 0) continue;
+    if (Math.abs(Math.log(c / want)) < Math.abs(Math.log(best / want))) best = c;
+  }
+  return best;
+}
+
+/** Build (or fetch) one layer's albedo Surface. */
+export function buildLayerSurface(L: SurfaceLayerDef, size: number): Surface {
+  if (L.surface === 'field') {
+    const key = [
+      size, L.seed, L.albedo, L.shade, L.accent, L.roughness, L.variation, L.patch,
+    ].join('|');
+    const hit = fieldCache.get(key);
+    if (hit !== undefined) return hit;
+    const s = buildFieldSurface(L, size);
+    if (fieldCache.size > 64) fieldCache.clear();
+    fieldCache.set(key, s);
+    return s;
+  }
+
+  const cells = snapCells(L.tileMetres, L.featureMetres ?? 1.2, size);
+  const cellTexels = size / cells;
+  // Joints are drawn at ~4.5 cm of world width, clamped so they never fall
+  // below the ~1.6 texels a crisp anti-aliased line needs, nor grow into a
+  // band wide enough to darken the surface average.
+  const jointWidth = Math.min(3.0, Math.max(1.6, (size / L.tileMetres) * 0.045));
+
+  if (L.surface === 'cobble') {
+    return textures.surface('cobblestone', {
+      size, seed: L.seed,
+      colour: L.albedo, jointColour: L.joint ?? L.shade,
+      stoneSize: cellTexels, jointWidth,
+      // 0.42 rather than the generator's 0.35 default: RA3's plaza setts are
+      // visibly irregular in outline, and at 0.35 the grid still reads.
+      variation: L.variation ?? 0.04, jitter: 0.42,
+      wear: 0.3, roughness: L.roughness,
+    });
+  }
+
+  return textures.surface('paving', {
+    size, seed: L.seed,
+    colour: L.albedo, jointColour: L.joint ?? L.shade,
+    slabW: cellTexels, slabH: cellTexels, jointWidth,
+    variation: L.variation ?? 0.03, bond: 0,
+    wear: 0.3, roughness: L.roughness,
+  });
+}
+
 /**
  * Pack all six biome layers into one `sampler2DArray`.
  *
- * `TextureFactory.surface()` caches the generated float Surface, so switching
- * biome back and forth only pays the generator cost once per (biome, layer).
- * Setting `colorSpace = SRGBColorSpace` gets the GPU's own SRGB8_ALPHA8 decode
- * for free — doing the pow(2.2) in the shader instead would cost six of them
- * per fragment.
+ * Both the field cache above and `TextureFactory.surface()` memoise the
+ * generated float Surface, so switching biome back and forth only pays the
+ * generator cost once per (biome, layer). Setting
+ * `colorSpace = SRGBColorSpace` gets the GPU's own SRGB8_ALPHA8 decode for
+ * free — doing the pow(2.2) in the shader instead would cost six of them per
+ * fragment.
  */
 export function buildLayerArrayTexture(biome: BiomeDef, size: number): THREE.DataArrayTexture {
   const layerBytes = size * size * 4;
   const data = new Uint8Array(layerBytes * SURFACE_COUNT);
 
   for (let i = 0; i < SURFACE_COUNT; i++) {
-    const L = biome.layers[i];
-    const params: Required<GenParams> = {
-      size,
-      seed: L.seed,
-      colorA: L.albedo,
-      colorB: L.shade,
-      colorC: L.accent,
-      scale: L.genScale,
-      amount: 1,
-      roughness: L.roughness,
-      metalness: 0,
-      relief: 2,
-    };
-    const surface = textures.surface(L.gen, params);
-    data.set(packAlbedo(surface), layerBytes * i);
+    data.set(packAlbedo(buildLayerSurface(biome.layers[i], size)), layerBytes * i);
   }
 
   const tex = new THREE.DataArrayTexture(data, size, size, SURFACE_COUNT);
@@ -610,7 +834,10 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = raRough;')
       .replace('#include <normal_fragment_begin>', FRAG_NORMAL);
   };
-  material.customProgramCacheKey = () => 'ra-terrain-v2';
+  // Bumped with every change to the injected GLSL above. three caches compiled
+  // programs by this string, so leaving it stale after editing a chunk hands
+  // you the OLD shader in any session that already compiled one.
+  material.customProgramCacheKey = () => 'ra-terrain-v3';
 
   function applyBiome(biome: BiomeDef): void {
     const scale = uniforms.uLayerScale.value;

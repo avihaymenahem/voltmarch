@@ -153,11 +153,13 @@ export class PropMesh {
   private readonly colArr: number[] = [];
   private readonly swyArr: number[] = [];
   private readonly emtArr: number[] = [];
+  private readonly glsArr: number[] = [];
   private readonly idxArr: number[] = [];
 
   private cr = 1; private cg = 1; private cb = 1;
   private br = 1; private bg = 1; private bb = 1;
   private emit = 0;
+  private glossV = 0;
 
   private swayAmp = 0;
   private swayBase = 0;
@@ -191,6 +193,20 @@ export class PropMesh {
 
   /** 0 = lit paint, 1 = full emissive. Bible R-T5: clean discs and rounded rects. */
   emissive(e: number): this { this.emit = e; return this; }
+
+  /**
+   * Surface finish, 0 = the material's matte default, 1 = wet lacquer.
+   *
+   * This is the ONLY thing in the prop pipeline that varies a surface, and it
+   * varies ROUGHNESS ONLY — never albedo, never a normal, never a texture. RA3
+   * separates a parked car from a hedge with a specular highlight on a flat
+   * colour, not with grime: `ra3-units-road.png` is large unbroken paint with a
+   * glossy top face, and `ra3steam_08.jpg`'s cars are the same read at 40 px.
+   *
+   * Values used below: car/sign paint 0.85, glass 1.0, painted steel 0.5,
+   * varnished wood 0.3, foliage / stone / concrete / soil 0.
+   */
+  gloss(g: number): this { this.glossV = clamp01(g); return this; }
 
   /**
    * Wind response. `amp` is the displacement in METRES reached at `top`,
@@ -544,6 +560,7 @@ export class PropMesh {
     const ts = clamp01((y - this.swayBase) / (this.swayTop - this.swayBase));
     this.swyArr.push(this.swayAmp * Math.pow(ts, 1.4));
     this.emtArr.push(this.emit);
+    this.glsArr.push(this.glossV);
 
     if (x < this.min[0]) this.min[0] = x;
     if (y < this.min[1]) this.min[1] = y;
@@ -563,6 +580,7 @@ export class PropMesh {
     g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(this.colArr), 3));
     g.setAttribute('aSway', new THREE.BufferAttribute(new Float32Array(this.swyArr), 1));
     g.setAttribute('aEmit', new THREE.BufferAttribute(new Float32Array(this.emtArr), 1));
+    g.setAttribute('aGloss', new THREE.BufferAttribute(new Float32Array(this.glsArr), 1));
     const count = this.posArr.length / 3;
     g.setIndex(count > 65535
       ? new THREE.BufferAttribute(new Uint32Array(this.idxArr), 1)
@@ -579,7 +597,34 @@ export class PropMesh {
  * One palette per biome. Every literal is a bible §6.1 / §6.5 authored albedo;
  * where the bible gives a range I took the midpoint and let the per-instance
  * hue/value jitter (scorecard #39) cover the rest.
+ *
+ * THE TONE-LADDER RULE (this is what the palette pass fixed)
+ * ---------------------------------------------------------
+ * Props carry no texture map at all — the paint is per-vertex colour. So the
+ * only place "noise" can enter a prop is the LADDER: when two adjacent masses
+ * of the same object are painted tones far apart in value, the object reads as
+ * blotchy, and when the alternation is per-blade or per-lobe it reads as an
+ * outright noise field. That was the failure here: `grassTuft` painted every
+ * third blade at 61% of the tip value, `conifer` alternated tiers at 41%
+ * apart, `boulder` alternated masses at 60% apart, and every canopy spanned
+ * 1.5x from its darkest to its brightest lobe.
+ *
+ * RA3 does the opposite (`ra3steam_08.jpg`: the plaza hedges, the cypresses,
+ * the parked cars). Each object is ONE flat saturated colour; the shape is
+ * read from the silhouette and from broad facet lighting. So:
+ *
+ *   - Every within-object ladder below spans at most ~1.30x in value. Shading
+ *     inside an object is the lighting's job and the baked AO ramp's job.
+ *   - Ladders that span more than that are only allowed BETWEEN parts that are
+ *     obviously different objects — trunk vs canopy, tyre vs car body.
+ *   - Foliage hue stays in the 74-90 degree yellow-olive band, out of the
+ *     emerald 100-120 the terrain agent is steering away from.
+ *   - Man-made paint is saturated. RA3's street props are toys: a red car is
+ *     genuinely red, not a dusty brick.
  * ========================================================================== */
+
+/** Roughness a fully glossy prop surface reaches. See `PropMesh.gloss`. */
+export const PROP_GLOSS_ROUGHNESS = 0.24;
 
 export interface PropPalette {
   leafA: string; leafB: string; leafC: string;
@@ -590,6 +635,12 @@ export interface PropPalette {
   trunk: string; trunkDark: string;
   grassGold: string; grassGoldBase: string;
   grassGreen: string; grassGreenBase: string;
+  /**
+   * `rockShade` is kept in the contract for callers outside this file (cliff
+   * skirts, scenario dressing) but the prop builders no longer use it: a
+   * boulder is now ONE stone colour with a 0.90x step between overlapping
+   * masses, because a 0.60x step made every boulder read as three rocks.
+   */
   rock: string; rockShade: string; rockCap: string;
   soil: string; hay: string;
   /* man-made — biome independent, bible §6.1 / §6.3 */
@@ -603,66 +654,74 @@ export interface PropPalette {
   crateA: string; crateB: string; containerA: string; containerB: string;
 }
 
-/** Everything a man makes looks the same in every biome. */
+/**
+ * Everything a man makes looks the same in every biome.
+ *
+ * Saturated. `ra3steam_08.jpg` parks yellow, red and white cars on a beige
+ * plaza and the read at 40 px is entirely carried by their chroma; the previous
+ * values here were all dusted toward grey and the whole street furniture set
+ * disappeared into the pavement.
+ */
 const MANMADE = {
-  concrete: '#9A968C', kerb: '#C0BAB0',
-  steel: '#7E7A6E', darkSteel: '#3A3E42', rust: '#6A4528',
-  wood: '#8A6A3E', woodDark: '#5A4028',
-  paintWhite: '#D8D2C8', paintRed: '#B03A2E', paintYellow: '#E0B12A',
-  paintBlue: '#2A4C8A', paintGreen: '#2E8A5A',
-  glass: '#17324A', tyre: '#1A1A1C', bronze: '#4C5A46',
-  lampGlow: '#E8D089', signalRed: '#E01418', signalAmber: '#FF9612', signalGreen: '#4CE05A',
-  flowerA: '#C0398F', flowerB: '#E8C33A',
-  crateA: '#B5843C', crateB: '#8A6A3E', containerA: '#B03A2E', containerB: '#C97A22',
+  concrete: '#A29D92', kerb: '#C8C2B6',
+  steel: '#8A867C', darkSteel: '#343A40', rust: '#8A5A2E',
+  wood: '#9A7442', woodDark: '#63492C',
+  paintWhite: '#E2DCD0', paintRed: '#C22E24', paintYellow: '#E8B71E',
+  paintBlue: '#2C56A6', paintGreen: '#2E8A50',
+  glass: '#1C2833', tyre: '#1C1C1E', bronze: '#4E5A4A',
+  lampGlow: '#F0DC9A', signalRed: '#E01418', signalAmber: '#FF9612', signalGreen: '#4CE05A',
+  flowerA: '#C8318F', flowerB: '#F0C82E',
+  crateA: '#C0913F', crateB: '#9C7330', containerA: '#B8382A', containerB: '#D07E22',
 } as const;
 
 const PALETTES: Record<BiomeName, PropPalette> = {
   temperate: {
-    leafA: '#4C6B1E', leafB: '#3A5417', leafC: '#6B8028',
-    autumnA: '#C4761E', autumnB: '#A8531A', autumnC: '#D9A02C',
-    conifer: '#243009', coniferDark: '#111409', frond: '#385601',
-    shrub: '#3C5220', shrubDark: '#22320F', hedge: '#2A3A16',
-    trunk: '#4A3A28', trunkDark: '#2C231A',
-    grassGold: '#C8B84A', grassGoldBase: '#7A6A2A',
-    grassGreen: '#5E8B2E', grassGreenBase: '#2E4A14',
-    rock: '#7A7258', rockShade: '#4A452F', rockCap: '#9A9078',
-    soil: '#9C7B52', hay: '#C8B84A',
+    // leafA/B/C span 1.29x in value, hue 78-79 degrees. Three masses, one tree.
+    leafA: '#6E8A30', leafB: '#5A7328', leafC: '#7D9A3A',
+    autumnA: '#D07C1E', autumnB: '#B25A18', autumnC: '#E0A62C',
+    conifer: '#3A5018', coniferDark: '#2C3E12', frond: '#4C6A18',
+    shrub: '#48602A', shrubDark: '#3A4E20', hedge: '#35481C',
+    trunk: '#6A5238', trunkDark: '#4C3B28',
+    grassGold: '#CBBA52', grassGoldBase: '#9A8A3A',
+    grassGreen: '#79A038', grassGreenBase: '#587A28',
+    rock: '#8A8270', rockShade: '#6E6857', rockCap: '#A39B88',
+    soil: '#9C7B52', hay: '#CBBA52',
     ...MANMADE,
   },
   desert: {
-    leafA: '#7E7A32', leafB: '#5E5A22', leafC: '#98903E',
-    autumnA: '#C08A2E', autumnB: '#A06A20', autumnC: '#D6B04A',
-    conifer: '#3A4014', coniferDark: '#1E2409', frond: '#4C6410',
-    shrub: '#6E6A2E', shrubDark: '#42401A', hedge: '#4A5220',
-    trunk: '#6B5433', trunkDark: '#3E3020',
-    grassGold: '#D6C258', grassGoldBase: '#8A7638',
-    grassGreen: '#8A8A3A', grassGreenBase: '#4E4C1E',
-    rock: '#A89A78', rockShade: '#6E6248', rockCap: '#C4B48E',
-    soil: '#C4A878', hay: '#D6C258',
+    leafA: '#8E8A3C', leafB: '#767230', leafC: '#A09A4A',
+    autumnA: '#CC8E28', autumnB: '#AE701C', autumnC: '#DEB84C',
+    conifer: '#4A5220', coniferDark: '#3A4218', frond: '#5E7418',
+    shrub: '#7A7638', shrubDark: '#635F2C', hedge: '#5E6828',
+    trunk: '#7E6540', trunkDark: '#5A472E',
+    grassGold: '#D8C662', grassGoldBase: '#A8964A',
+    grassGreen: '#94983E', grassGreenBase: '#6E722C',
+    rock: '#B0A382', rockShade: '#8E8368', rockCap: '#C8BA96',
+    soil: '#C4A878', hay: '#D8C662',
     ...MANMADE,
   },
   snow: {
-    leafA: '#3A4A1E', leafB: '#2A3614', leafC: '#4E5E28',
-    autumnA: '#8A6A2E', autumnB: '#6E4E20', autumnC: '#A08A46',
-    conifer: '#1A2410', coniferDark: '#0E1408', frond: '#2A3A12',
-    shrub: '#33421C', shrubDark: '#1E280E', hedge: '#26301A',
-    trunk: '#3A2E22', trunkDark: '#221A14',
-    grassGold: '#A89C64', grassGoldBase: '#6A6242',
-    grassGreen: '#4E6A32', grassGreenBase: '#28381A',
-    rock: '#8A8A88', rockShade: '#4E5254', rockCap: '#C4BAB2',
-    soil: '#6E645A', hay: '#A89C64',
+    leafA: '#54682A', leafB: '#4A5A24', leafC: '#627838',
+    autumnA: '#9A7434', autumnB: '#7E5C26', autumnC: '#AE9450',
+    conifer: '#2E4016', coniferDark: '#233210', frond: '#3A4E18',
+    shrub: '#485A28', shrubDark: '#384618', hedge: '#3A4A22',
+    trunk: '#584434', trunkDark: '#3C2E22',
+    grassGold: '#B4A870', grassGoldBase: '#8A8054',
+    grassGreen: '#68844A', grassGreenBase: '#4C6234',
+    rock: '#9A9A96', rockShade: '#7C7E80', rockCap: '#C6BEB6',
+    soil: '#7A7066', hay: '#B4A870',
     ...MANMADE,
   },
   urban: {
-    leafA: '#4C6B1E', leafB: '#3A5417', leafC: '#6B8028',
-    autumnA: '#C4761E', autumnB: '#A8531A', autumnC: '#D9A02C',
-    conifer: '#1E2A0C', coniferDark: '#111409', frond: '#385601',
-    shrub: '#3C5220', shrubDark: '#22320F', hedge: '#2A3A16',
-    trunk: '#4A3A28', trunkDark: '#2C231A',
-    grassGold: '#B8AC4A', grassGoldBase: '#6E6228',
-    grassGreen: '#5E8B2E', grassGreenBase: '#2E4A14',
-    rock: '#7C7468', rockShade: '#48453E', rockCap: '#9A968C',
-    soil: '#8A7458', hay: '#C8B84A',
+    leafA: '#6E8A30', leafB: '#5A7328', leafC: '#7D9A3A',
+    autumnA: '#D07C1E', autumnB: '#B25A18', autumnC: '#E0A62C',
+    conifer: '#33481A', coniferDark: '#28380F', frond: '#4C6A18',
+    shrub: '#48602A', shrubDark: '#3A4E20', hedge: '#35481C',
+    trunk: '#6A5238', trunkDark: '#4C3B28',
+    grassGold: '#C0B04E', grassGoldBase: '#8E8038',
+    grassGreen: '#79A038', grassGreenBase: '#587A28',
+    rock: '#8A857A', rockShade: '#6C6862', rockCap: '#A29C90',
+    soil: '#8A7458', hay: '#C0B04E',
     ...MANMADE,
   },
 };
@@ -878,9 +937,12 @@ function buildHedge(m: PropMesh, rng: Rng, p: PropPalette): void {
   // Bible §6.1: "hedge foliage #2A3A16, 0.15 m leaf noise, BOX silhouette".
   // ra3steam_08 borders every planted island with exactly this.
   const len = 3.6, w = 1.15, h = 1.25;
-  m.ao(0.42, 0, h).sway(SCATTER_WIND.canopyAmplitude * 0.25, 0, h);
+  m.ao(0.42, 0, h).sway(SCATTER_WIND.canopyAmplitude * 0.25, 0, h).gloss(0);
   m.color(p.hedge).box(0, h * 0.5, 0, len, h, w, 0.14);
-  m.color(p.shrubDark);
+  // The crown lobes are LIGHTER than the box, not darker. They sit on top and
+  // catch the sun; painting them in `shrubDark` put a band of shadow along the
+  // lit edge of every hedge in the plaza and read as mould.
+  m.color(shadeOf(p.hedge, 1.16));
   const n = Math.round(len / 0.55);
   for (let i = 0; i < n; i++) {
     const t = (i + 0.5) / n;
@@ -900,16 +962,23 @@ function grassTuft(m: PropMesh, rng: Rng, p: PropPalette, golden: boolean): void
   const h = rng.range(1.5, 2.2);
   const spread = rng.range(1.0, 1.6);
   const blades = 14;
-  m.ao(0.38, 0, h).sway(SCATTER_WIND.grassAmplitude, 0, h);
+  // ONE tone for the whole fan. Painting every third blade in `base` made a
+  // tuft a 14-cell noise field at 0.16 m per cell — the exact salt-and-pepper
+  // read the surface pass exists to kill, just built out of geometry instead of
+  // texels. The vertical AO ramp below already darkens the roots, which is the
+  // gradient the two-tone version was reaching for.
+  m.ao(0.38, 0, h).sway(SCATTER_WIND.grassAmplitude, 0, h).gloss(0);
+  m.color(tip);
   for (let i = 0; i < blades; i++) {
     const a = (i / blades) * TAU + rng.range(-0.18, 0.18);
-    m.color(i % 3 === 0 ? base : tip);
     m.blade(
       Math.cos(a) * 0.08, 0, Math.sin(a) * 0.08, Math.cos(a), Math.sin(a),
       spread * rng.range(0.7, 1.15), h * rng.range(0.72, 1.0), 0.16,
       h * rng.range(0.18, 0.42), 3,
     );
   }
+  // The soil clump the fan grows out of — the one place `base` belongs, because
+  // it is a different object from the blades, not a variation within them.
   m.color(base).sway(0, 0, 1);
   m.blob(0, 0.10, 0, 0.34, 0.16, 0.34, 7, 3, 0.5);
 }
@@ -923,12 +992,16 @@ function buildBoulder(m: PropMesh, rng: Rng, p: PropPalette): void {
   // Chamfered angular masses, not spheres — bible §6.4 wants architectural,
   // striated rock and a smooth sphere reads as a beach ball.
   const s = rng.range(1.5, 2.5);
-  m.ao(0.40, 0, s * 1.4).sway(0, 0, 1);
+  m.ao(0.40, 0, s * 1.4).sway(0, 0, 1).gloss(0);
   for (let i = 0; i < 3; i++) {
     const a = (i / 3) * TAU + rng.range(-0.5, 0.5);
     const d = i === 0 ? 0 : s * rng.range(0.25, 0.5);
     const w = s * rng.range(0.85, 1.30), hh = s * rng.range(0.60, 1.00), dd = s * rng.range(0.80, 1.20);
-    m.color(i % 2 === 0 ? p.rock : p.rockShade);
+    // One flat stone colour with a single gentle step between overlapping
+    // masses. The read comes from the FACETS and the painted chamfer band, not
+    // from a second colour — a boulder alternating rock/rockShade at 0.6x was
+    // three different rocks jammed together.
+    m.color(i % 2 === 0 ? p.rock : shadeOf(p.rock, 0.90));
     m.box(Math.cos(a) * d, hh * 0.46, Math.sin(a) * d, w, hh, dd,
       chamferFor(Math.min(w, hh, dd)) * 2.2, rng.range(0, TAU));
   }
@@ -938,12 +1011,12 @@ function buildBoulder(m: PropMesh, rng: Rng, p: PropPalette): void {
 
 function buildRockCluster(m: PropMesh, rng: Rng, p: PropPalette): void {
   // Bible §6.4: "base skirted with 0.5-1.5 m boulders, 3-6 per 10 m of run".
-  m.ao(0.42, 0, 1.4).sway(0, 0, 1);
+  m.ao(0.42, 0, 1.4).sway(0, 0, 1).gloss(0);
   for (let i = 0; i < 5; i++) {
     const a = (i / 5) * TAU + rng.range(-0.4, 0.4);
     const d = rng.range(0.3, 1.5);
     const s = rng.range(0.45, 1.05);
-    m.color(i % 3 === 0 ? p.rockShade : p.rock);
+    m.color(i % 3 === 0 ? shadeOf(p.rock, 0.90) : p.rock);
     m.box(Math.cos(a) * d, s * 0.42, Math.sin(a) * d, s * 1.3, s * 0.85, s * 1.1,
       chamferFor(s) * 2.0, rng.range(0, TAU));
   }
@@ -966,24 +1039,59 @@ function buildHaystack(m: PropMesh, rng: Rng, p: PropPalette): void {
   }
 }
 
+/**
+ * A timber crate is FLAT TAN WITH CRISP DARK SEAMS.
+ *
+ * Not tan-with-a-stripe, which is what this was. The RA3 read (`ra3steam_08`,
+ * bottom centre, six crates against the plaza kerb) is a single unbroken slab
+ * of warm colour framed by a hard dark batten at every corner and one rail
+ * across the middle — drawn lines, geometrically placed, hard edged. Exactly
+ * the `panelLines` treatment the unit and building surfaces get, expressed in
+ * the only medium a prop has: thin unchamfered boxes proud of the face.
+ *
+ * The battens carry NO chamfer. A 0.06 m batten with a bevel band would be more
+ * highlight than batten and the crisp line would turn into a smear.
+ */
+function crate(m: PropMesh, rng: Rng, p: PropPalette, x: number, y: number, z: number, s: number): void {
+  const yaw = rng.range(-0.25, 0.25);
+  const body = rng.chance(0.5) ? p.crateA : p.crateB;
+  const seam = p.woodDark;
+  const t = Math.max(s * 0.055, 0.035);   // batten thickness
+  const w = Math.max(s * 0.10, 0.06);     // batten width
+  const cy = y + s * 0.5;
+
+  m.gloss(0.25);
+  m.color(body).box(x, cy, z, s, s, s, chamferFor(s) * 1.6, yaw);
+
+  m.color(seam).gloss(0.15);
+  // Four vertical corner battens, one on each upright edge.
+  const e = s * 0.5 - w * 0.5;
+  const cs = Math.cos(yaw), sn = Math.sin(yaw);
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      const ox = sx * e, oz = sz * e;
+      m.box(x + ox * cs + oz * sn, cy, z - ox * sn + oz * cs,
+        w + t, s * 0.98, w + t, 0, yaw);
+    }
+  }
+  // One rail all the way round at mid height, and one along the top lip.
+  m.box(x, cy, z, s + t, w, s + t, 0, yaw);
+  m.box(x, y + s - w * 0.5, z, s + t, w, s + t, 0, yaw);
+  m.gloss(0);
+}
+
 function buildCrateStack(m: PropMesh, rng: Rng, p: PropPalette): void {
   m.ao(0.45, 0, 2.6).sway(0, 0, 1);
   const spots: ReadonlyArray<readonly [number, number, number, number]> = [
     [0, 0, 1.25, 0], [1.3, 0.15, 1.10, 0], [-1.2, -0.2, 1.15, 0],
     [0.2, 1.2, 1.00, 1.22], [1.1, 1.35, 0.85, 1.22],
   ];
-  for (let i = 0; i < spots.length; i++) {
-    const [x, z, s, y] = spots[i];
-    m.color(i % 2 === 0 ? p.crateA : p.crateB);
-    m.box(x, y + s * 0.5, z, s, s, s, chamferFor(s) * 1.6, rng.range(-0.25, 0.25));
-    m.color(p.woodDark);
-    m.box(x, y + s * 0.5, z, s * 1.02, s * 0.10, s * 1.02, 0.02, 0);
-  }
+  for (const [x, z, s, y] of spots) crate(m, rng, p, x, y, z, s);
 }
 
 function buildContainerStack(m: PropMesh, rng: Rng, p: PropPalette): void {
   // The container pile in ra3steam_05 — two corrugated boxes, slightly askew.
-  m.ao(0.45, 0, 5.4).sway(0, 0, 1);
+  m.ao(0.45, 0, 5.4).sway(0, 0, 1).gloss(0.45);
   const cols = [p.containerA, p.containerB];
   let y = 0;
   for (let i = 0; i < 2; i++) {
@@ -991,14 +1099,18 @@ function buildContainerStack(m: PropMesh, rng: Rng, p: PropPalette): void {
     const col = cols[i % cols.length];
     const ox = rng.range(-0.45, 0.45), oz = rng.range(-0.2, 0.2), oy = rng.range(-0.05, 0.05);
     m.color(col).box(ox, y + h * 0.5, oz, w, h, d, 0.10, oy);
-    m.color(shadeOf(col, 0.80));
+    // Corrugation. This IS legitimate drawn structure — nine regular ribs on a
+    // 6 m flank, hard edged and geometric, the container equivalent of a panel
+    // line. It only had to come down from 0.80x to 0.86x so the flank reads as
+    // one painted box with ribs rather than a nine-bar zebra.
+    m.color(shadeOf(col, 0.86));
     for (let k = 0; k < 9; k++) {
       const x = ox + ((k + 0.5) / 9 - 0.5) * (w - 0.6);
       m.box(x, y + h * 0.5, oz + d * 0.5, 0.14, h - 0.34, 0.09, 0.02, oy);
       m.box(x, y + h * 0.5, oz - d * 0.5, 0.14, h - 0.34, 0.09, 0.02, oy);
     }
     // Corner castings.
-    m.color(p.darkSteel);
+    m.color(p.darkSteel).gloss(0.35);
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
         m.box(ox + sx * (w * 0.5 - 0.18), y + 0.16, oz + sz * (d * 0.5 - 0.18),
@@ -1007,8 +1119,10 @@ function buildContainerStack(m: PropMesh, rng: Rng, p: PropPalette): void {
           0.34, 0.32, 0.34, 0.04, oy);
       }
     }
+    m.gloss(0.45);
     y += h + 0.06;
   }
+  m.gloss(0);
 }
 
 /**
@@ -1025,7 +1139,9 @@ function buildBarrelGroup(m: PropMesh, rng: Rng, p: PropPalette): void {
   const bodies = [p.rust, '#4A6B33', p.paintRed, '#3E5A6E'];
   rng.shuffle(bodies);
   const n = rng.int(3, 4);
-  m.ao(0.45, 0, h);
+  // Painted steel drum: flat saturated colour, clean rolling hoops, a lacquer
+  // sheen. No grime, no streaks — bible §0's "clean painted plastic toys".
+  m.ao(0.45, 0, h).gloss(0.6);
   for (let i = 0; i < n; i++) {
     const a = (i / n) * TAU + rng.range(-0.3, 0.3);
     const d = i === 0 ? 0 : rng.range(0.62, 0.95);
@@ -1036,20 +1152,27 @@ function buildBarrelGroup(m: PropMesh, rng: Rng, p: PropPalette): void {
       // One drum on its side, so the group has a silhouette instead of a
       // skyline of identical cylinders.
       m.color(body).box(x, r, z, h, r * 2, r * 2, 0.10, a);
-      m.color(shadeOf(body, 0.68));
+      m.color(shadeOf(body, 0.78));
       m.box(x - h * 0.26, r, z, 0.09, r * 2.05, r * 2.05, 0.02, a);
       m.box(x + h * 0.26, r, z, 0.09, r * 2.05, r * 2.05, 0.02, a);
       continue;
     }
     m.color(body).cyl(x, 0, z, r, r, h, 14, 0.06);
-    m.color(shadeOf(body, 0.68));
-    m.cyl(x, h * 0.26, z, r * 1.05, r * 1.05, 0.09, 14, 0.02, false, false);
-    m.cyl(x, h * 0.66, z, r * 1.05, r * 1.05, 0.09, 14, 0.02, false, false);
+    // Two rolling hoops and the top chime ring. Crisp, at 0.78x the body value
+    // — enough to read as a line, not enough to read as a stripe pattern.
+    m.color(shadeOf(body, 0.78));
+    m.cyl(x, h * 0.26, z, r * 1.05, r * 1.05, 0.08, 14, 0.02, false, false);
+    m.cyl(x, h * 0.66, z, r * 1.05, r * 1.05, 0.08, 14, 0.02, false, false);
+    m.color(p.darkSteel).gloss(0.5);
+    m.cyl(x, h - 0.05, z, r * 1.04, r * 1.04, 0.07, 14, 0.02, false, false);
+    m.gloss(0.6);
     if (i === 0) {
+      // One drum in the group carries a clean painted hazard band.
       m.color(p.paintYellow);
-      m.cyl(x, h * 0.46, z, r * 1.03, r * 1.03, 0.10, 14, 0.02, false, false);
+      m.cyl(x, h * 0.44, z, r * 1.03, r * 1.03, 0.13, 14, 0.02, false, false);
     }
   }
+  m.gloss(0);
 }
 
 /* ---- street furniture ---------------------------------------------------- */
@@ -1057,8 +1180,11 @@ function buildBarrelGroup(m: PropMesh, rng: Rng, p: PropPalette): void {
 function streetLamp(m: PropMesh, rng: Rng, p: PropPalette, twin: boolean): void {
   // ra3steam_08 carries a dozen of these; they are the metronome of a block.
   const h = twin ? 7.4 : 6.4;
-  m.ao(0.50, 0, h).sway(0, 0, 1);
+  m.ao(0.50, 0, h).sway(0, 0, 1).gloss(0);
   m.color(p.concrete).cyl(0, 0, 0, 0.34, 0.30, 0.24, 10, 0.05);
+  // Painted steel column: flat colour, real specular. RA3's lamps read as a
+  // dark glossy stick with a bright head, which is a roughness contrast.
+  m.gloss(0.55);
   m.color(p.darkSteel).cyl(0, 0.20, 0, 0.16, 0.10, h, 12, 0.04, false, false);
   if (twin) {
     for (const s of [-1, 1]) {
@@ -1075,6 +1201,7 @@ function streetLamp(m: PropMesh, rng: Rng, p: PropPalette, twin: boolean): void 
   }
   // Banded collar at eye height — the greeble that says "not a stick".
   m.color(p.steel).cyl(0, 1.6, 0, 0.20, 0.20, 0.22, 12, 0.04, false, false);
+  m.gloss(0);
 }
 
 function buildLamp(m: PropMesh, rng: Rng, p: PropPalette): void { streetLamp(m, rng, p, false); }
@@ -1083,50 +1210,65 @@ function buildLampTwin(m: PropMesh, rng: Rng, p: PropPalette): void { streetLamp
 function buildBench(m: PropMesh, rng: Rng, p: PropPalette): void {
   const len = 2.1;
   m.ao(0.50, 0, 0.9).sway(0, 0, 1);
-  m.color(p.darkSteel);
+  m.color(p.darkSteel).gloss(0.55);
   for (const s of [-1, 1]) {
     m.box(s * (len * 0.42), 0.22, 0, 0.10, 0.44, 0.62, 0.03);
     m.box(s * (len * 0.42), 0.64, -0.26, 0.10, 0.52, 0.10, 0.03);
   }
-  m.color(p.wood);
+  // Varnished slats — a little sheen, one flat colour, the gaps between them
+  // are the only "detail" a bench needs and they are real geometry.
+  m.color(p.wood).gloss(0.3);
   for (let i = 0; i < 3; i++) m.box(0, 0.46, -0.20 + i * 0.20, len, 0.07, 0.16, 0.025);
   for (let i = 0; i < 2; i++) m.box(0, 0.68 + i * 0.20, -0.30, len, 0.16, 0.07, 0.025);
+  m.gloss(0);
 }
 
 type CarShape = 'sedan' | 'van' | 'pickup';
 
 function car(m: PropMesh, rng: Rng, p: PropPalette, shape: CarShape): void {
-  // RA3's parked cars are saturated toys: one flat paint, one dark glass inset,
-  // 12-facet wheels. No grime (scorecard #22 applies to everything painted).
+  // RA3's parked cars are saturated toys: ONE flat paint over the whole shell,
+  // ONE continuous dark glass band round the greenhouse, ONE crisp crease down
+  // the flank, and a lacquer highlight on the upper faces. No grime, no second
+  // tone, no marbling (scorecard #22 applies to everything painted).
   const bodies = [p.paintYellow, p.paintRed, p.paintBlue, p.paintWhite, p.paintGreen];
   const body = rng.pick(bodies);
   const len = shape === 'van' ? 5.2 : shape === 'pickup' ? 5.0 : 4.3;
   const wid = shape === 'van' ? 2.1 : 1.9;
-  m.ao(0.45, 0, 1.9).sway(0, 0, 1);
+  m.ao(0.45, 0, 1.9).sway(0, 0, 1).gloss(0.85);
 
   m.color(body).box(0, 0.62, 0, len, 0.62, wid, chamferFor(0.62) * 2.4);
   if (shape === 'van') {
     m.box(0, 1.44, -len * 0.05, len * 0.86, 1.10, wid * 0.96, 0.10);
-    m.color(p.glass).box(-len * 0.40, 1.56, 0, 0.10, 0.60, wid * 0.80, 0.03);
-    m.color(p.glass).box(-len * 0.24, 1.56, wid * 0.48, len * 0.28, 0.52, 0.08, 0.03);
-    m.color(p.glass).box(-len * 0.24, 1.56, -wid * 0.48, len * 0.28, 0.52, 0.08, 0.03);
+    m.color(p.glass).gloss(1);
+    // One band, not three panes: the RA3 read at 40 px is a dark ribbon.
+    m.box(-len * 0.06, 1.60, -len * 0.05, len * 0.74, 0.52, wid * 1.00, 0.03);
+    m.color(body).gloss(0.85);
   } else if (shape === 'pickup') {
     m.box(-len * 0.16, 1.30, 0, len * 0.36, 0.72, wid * 0.94, 0.09);
-    m.color(p.glass).box(-len * 0.16, 1.42, 0, len * 0.30, 0.44, wid * 0.97, 0.03);
-    m.color(shadeOf(body, 0.86));
+    m.color(p.glass).gloss(1);
+    m.box(-len * 0.16, 1.44, 0, len * 0.32, 0.42, wid * 1.00, 0.03);
+    m.color(body).gloss(0.85);
     m.box(len * 0.24, 0.98, 0, len * 0.46, 0.42, wid * 0.94, 0.06);
-    m.color('#3A3630').box(len * 0.24, 1.02, 0, len * 0.40, 0.06, wid * 0.80, 0.02);
+    m.color(p.darkSteel).gloss(0.3);
+    m.box(len * 0.24, 1.02, 0, len * 0.40, 0.06, wid * 0.80, 0.02);
+    m.color(body).gloss(0.85);
   } else {
     m.box(0, 1.22, -len * 0.02, len * 0.56, 0.60, wid * 0.90, 0.11);
-    m.color(p.glass).box(0, 1.28, -len * 0.02, len * 0.50, 0.40, wid * 0.94, 0.03);
+    m.color(p.glass).gloss(1);
+    m.box(0, 1.28, -len * 0.02, len * 0.50, 0.40, wid * 0.96, 0.03);
+    m.color(body).gloss(0.85);
   }
-  m.color(p.paintWhite).emissive(0.30);
+  // The one crease. A single hard dark line along the sill, drawn — not a
+  // second paint tone smeared over the flank.
+  m.color(shadeOf(body, 0.42)).gloss(0.7);
+  m.box(0, 0.42, 0, len * 0.98, 0.05, wid + 0.02, 0);
+  m.color(p.paintWhite).emissive(0.30).gloss(1);
   m.box(-len * 0.49, 0.72, wid * 0.30, 0.10, 0.18, 0.36, 0.03);
   m.box(-len * 0.49, 0.72, -wid * 0.30, 0.10, 0.18, 0.36, 0.03);
   m.color(p.signalRed).emissive(0.30);
   m.box(len * 0.49, 0.76, wid * 0.32, 0.09, 0.16, 0.30, 0.03);
   m.box(len * 0.49, 0.76, -wid * 0.32, 0.09, 0.16, 0.30, 0.03);
-  m.emissive(0);
+  m.emissive(0).gloss(0);
   m.color(p.tyre);
   const ax = len * 0.32;
   for (const sx of [-1, 1]) {
@@ -1145,8 +1287,9 @@ function buildCarPickup(m: PropMesh, rng: Rng, p: PropPalette): void { car(m, rn
 
 function buildTrafficLight(m: PropMesh, rng: Rng, p: PropPalette): void {
   const h = 5.4;
-  m.ao(0.50, 0, h).sway(0, 0, 1);
+  m.ao(0.50, 0, h).sway(0, 0, 1).gloss(0);
   m.color(p.concrete).cyl(0, 0, 0, 0.30, 0.26, 0.20, 10, 0.05);
+  m.gloss(0.55);
   m.color(p.darkSteel).cyl(0, 0.18, 0, 0.13, 0.10, h, 12, 0.03, false, false);
   const arm = 3.2;
   m.box(arm * 0.5, h - 0.15, 0, arm, 0.16, 0.16, 0.04);
@@ -1160,7 +1303,7 @@ function buildTrafficLight(m: PropMesh, rng: Rng, p: PropPalette): void {
   m.color(p.signalRed).emissive(1).blob(0, h * 0.60 + 0.36, 0.40, 0.09, 0.09, 0.05, 8, 3, 0);
   m.color(p.signalAmber).emissive(1).blob(0, h * 0.60, 0.40, 0.09, 0.09, 0.05, 8, 3, 0);
   m.color(p.signalGreen).emissive(1).blob(0, h * 0.60 - 0.36, 0.40, 0.09, 0.09, 0.05, 8, 3, 0);
-  m.emissive(0);
+  m.emissive(0).gloss(0);
 }
 
 function fence(m: PropMesh, rng: Rng, p: PropPalette, iron: boolean): void {
@@ -1168,7 +1311,7 @@ function fence(m: PropMesh, rng: Rng, p: PropPalette, iron: boolean): void {
   m.ao(0.48, 0, 1.6).sway(0, 0, 1);
   if (iron) {
     // Ornamental railing, as around the roundabout in ra3steam_08.
-    m.color(p.darkSteel);
+    m.color(p.darkSteel).gloss(0.55);
     m.box(0, 0.14, 0, len, 0.28, 0.26, 0.05);
     m.box(0, 1.32, 0, len, 0.10, 0.12, 0.03);
     m.box(0, 0.72, 0, len, 0.08, 0.10, 0.03);
@@ -1178,13 +1321,15 @@ function fence(m: PropMesh, rng: Rng, p: PropPalette, iron: boolean): void {
       m.box(x, 1.42, 0, 0.09, 0.14, 0.09, 0.02);
     }
     for (const s of [-1, 1]) m.box(s * len * 0.5, 0.84, 0, 0.17, 1.62, 0.17, 0.035);
+    m.gloss(0);
     return;
   }
-  m.color(p.woodDark);
+  m.color(p.woodDark).gloss(0.15);
   for (const s of [-1, 1]) m.box(s * len * 0.5, 0.68, 0, 0.16, 1.36, 0.16, 0.035);
   m.color(p.wood);
   m.box(0, 1.14, 0, len, 0.14, 0.08, 0.025);
   m.box(0, 0.66, 0, len, 0.14, 0.08, 0.025);
+  m.gloss(0);
 }
 
 function buildFenceWood(m: PropMesh, rng: Rng, p: PropPalette): void { fence(m, rng, p, false); }
@@ -1193,22 +1338,27 @@ function buildFenceIron(m: PropMesh, rng: Rng, p: PropPalette): void { fence(m, 
 function buildTelegraphPole(m: PropMesh, rng: Rng, p: PropPalette): void {
   const h = 9.5;
   m.ao(0.45, 0, h).sway(0, 0, 1);
-  m.color(p.woodDark).cyl(0, 0, 0, 0.24, 0.17, h, 12, 0.04);
+  m.color(p.woodDark).gloss(0.15).cyl(0, 0, 0, 0.24, 0.17, h, 12, 0.04);
   for (let i = 0; i < 2; i++) {
     const y = h - 0.6 - i * 0.9;
     m.color(p.wood).box(0, y, 0, 2.4, 0.14, 0.14, 0.035);
     for (let k = -2; k <= 2; k++) {
       if (k === 0) continue;
-      m.color(p.glass).box(k * 0.5, y + 0.20, 0, 0.10, 0.24, 0.10, 0.02);
+      m.color(p.glass).gloss(1).box(k * 0.5, y + 0.20, 0, 0.10, 0.24, 0.10, 0.02);
+      m.gloss(0.15);
     }
   }
-  m.color(p.darkSteel).box(0.55, h - 1.35, 0, 1.35, 0.08, 0.08, 0.02);
+  m.color(p.darkSteel).gloss(0.55).box(0.55, h - 1.35, 0, 1.35, 0.08, 0.08, 0.02);
+  m.gloss(0);
 }
 
 function roadSign(m: PropMesh, rng: Rng, p: PropPalette, rect: boolean): void {
   const h = 2.4;
   m.ao(0.50, 0, h + 0.8).sway(0, 0, 1);
-  m.color(p.darkSteel).cyl(0, 0, 0, 0.09, 0.075, h, 10, 0.02);
+  m.color(p.darkSteel).gloss(0.55).cyl(0, 0, 0, 0.09, 0.075, h, 10, 0.02);
+  // A road sign IS a decal: two flat saturated colours with a hard boundary.
+  // Retro-reflective sheeting is the glossiest thing on the street.
+  m.gloss(0.9);
   if (rect) {
     m.color(p.paintWhite).box(0, h + 0.35, 0, 1.4, 0.70, 0.07, 0.03);
     m.color(p.paintBlue).box(0, h + 0.35, 0.05, 1.18, 0.48, 0.02, 0.01);
@@ -1216,6 +1366,7 @@ function roadSign(m: PropMesh, rng: Rng, p: PropPalette, rect: boolean): void {
     m.color(p.paintRed).cyl(0, h + 0.05, 0.036, 0.52, 0.52, 0.07, 12, 0.02);
     m.color(p.paintWhite).cyl(0, h + 0.05, 0.076, 0.36, 0.36, 0.03, 12, 0.01, false, true);
   }
+  m.gloss(0);
 }
 
 function buildSignRect(m: PropMesh, rng: Rng, p: PropPalette): void { roadSign(m, rng, p, true); }
@@ -1229,8 +1380,11 @@ function buildCafeUmbrella(m: PropMesh, rng: Rng, p: PropPalette): void {
   const h = 2.45, r = 1.7;
   const accent = rng.chance(0.7) ? p.paintRed : p.paintBlue;
   m.ao(0.55, 0, h + 0.5).sway(SCATTER_WIND.canopyAmplitude * 0.30, 0.9, h + 0.6);
-  m.color(p.steel).cyl(0, 0, 0, 0.32, 0.28, 0.14, 10, 0.03);
-  m.color(p.paintWhite).cyl(0, 0.12, 0, 0.055, 0.05, h, 8, 0.015, false, false);
+  m.color(p.steel).gloss(0.55).cyl(0, 0, 0, 0.32, 0.28, 0.14, 10, 0.03);
+  m.color(p.paintWhite).gloss(0.7).cyl(0, 0.12, 0, 0.055, 0.05, h, 8, 0.015, false, false);
+  // Canvas, not paint: matte, and the alternating panels are the detail. Eight
+  // crisp wedges of two flat colours is exactly how RA3 draws these.
+  m.gloss(0.2);
 
   // 8 sail panels from the finial down to the rim, alternating colour.
   const segs = 8;
@@ -1246,26 +1400,28 @@ function buildCafeUmbrella(m: PropMesh, rng: Rng, p: PropPalette): void {
     m.tri(0, apexY, 0, Math.cos(am) * r * 1.06, rimY - 0.10, Math.sin(am) * r * 1.06, c1 * r, rimY, s1 * r,
       Math.cos(am) * 0.3, 1, Math.sin(am) * 0.3);
     // Underside, so the canopy is not a one-sided sheet from a low angle.
-    m.color(shadeOf(i % 2 === 0 ? accent : p.paintWhite, 0.55));
+    m.color(shadeOf(i % 2 === 0 ? accent : p.paintWhite, 0.64));
     m.tri(0, apexY - 0.05, 0, c0 * r, rimY - 0.05, s0 * r,
       Math.cos(am) * r * 1.06, rimY - 0.15, Math.sin(am) * r * 1.06, 0, -1, 0);
     m.tri(0, apexY - 0.05, 0, Math.cos(am) * r * 1.06, rimY - 0.15, Math.sin(am) * r * 1.06,
       c1 * r, rimY - 0.05, s1 * r, 0, -1, 0);
   }
+  m.gloss(0.7);
   m.color(p.paintWhite).cyl(0, apexY, 0, 0.07, 0.03, 0.26, 6, 0);
   // Table + two chairs. An umbrella with no table reads as a mushroom.
   m.color(p.paintWhite).cyl(0, 0.70, 0, 0.72, 0.72, 0.08, 12, 0.03);
-  m.color(p.steel).cyl(0, 0.14, 0, 0.09, 0.09, 0.56, 8, 0.02, false, false);
+  m.color(p.steel).gloss(0.55).cyl(0, 0.14, 0, 0.09, 0.09, 0.56, 8, 0.02, false, false);
   for (const s of [-1, 1]) {
-    m.color(p.paintWhite).box(s * 1.05, 0.44, 0, 0.46, 0.06, 0.46, 0.02);
+    m.color(p.paintWhite).gloss(0.7).box(s * 1.05, 0.44, 0, 0.46, 0.06, 0.46, 0.02);
     m.box(s * 1.05, 0.72, s * 0.20, 0.44, 0.50, 0.06, 0.02);
-    m.color(p.steel);
+    m.color(p.steel).gloss(0.55);
     for (const dx of [-1, 1]) {
       for (const dz of [-1, 1]) {
         m.box(s * 1.05 + dx * 0.18, 0.21, dz * 0.18, 0.05, 0.42, 0.05, 0.01);
       }
     }
   }
+  m.gloss(0);
 }
 
 function statue(m: PropMesh, rng: Rng, p: PropPalette, equestrian: boolean): void {
@@ -1282,7 +1438,10 @@ function statue(m: PropMesh, rng: Rng, p: PropPalette, equestrian: boolean): voi
   m.color(shadeOf(p.concrete, 1.08)).box(0, 1.12, 0, 1.9, 1.02, 1.5, 0.09);
   m.color(p.concrete).box(0, 1.74, 0, 1.6, 0.26, 1.25, 0.06);
 
-  m.color(p.bronze);
+  // Patinated bronze: one flat colour over the whole figure, with a genuine
+  // specular so the silhouette catches the sun. `ra3steam_08`'s six statues are
+  // read entirely from shape — there is no surface variation on them at all.
+  m.color(p.bronze).gloss(0.5);
   if (equestrian) {
     m.box(0, 2.60, 0, 2.4, 0.88, 0.76, 0.12, 0.18);        // barrel
     m.box(-1.02, 3.20, 0, 0.56, 1.16, 0.56, 0.09, 0.18);   // neck
@@ -1303,6 +1462,7 @@ function statue(m: PropMesh, rng: Rng, p: PropPalette, equestrian: boolean): voi
     m.box(-0.56, 3.08, 0, 0.24, 1.02, 0.24, 0.05);         // lowered arm
     m.box(0, 1.92, 0.30, 1.30, 0.60, 0.30, 0.07, 0.15);    // flared hem
   }
+  m.gloss(0);
 }
 
 function buildStatue(m: PropMesh, rng: Rng, p: PropPalette): void { statue(m, rng, p, false); }
@@ -1325,7 +1485,10 @@ function buildFlowerBed(m: PropMesh, rng: Rng, p: PropPalette): void {
     for (let c = 0; c < cols; c++) {
       const x = ((c + 0.5) / cols - 0.5) * (lx - 0.8);
       const z = ((r + 0.5) / rows - 0.5) * (lz - 0.8);
-      m.color(Math.floor(c / 3) % 2 === 0 ? p.flowerA : p.flowerB);
+      // Bands of FOUR, not three. Wider bands mean fewer, larger colour
+      // masses, which is what the reference shows — a magenta block and a
+      // yellow block, not a chequerboard.
+      m.color(Math.floor(c / 4) % 2 === 0 ? p.flowerA : p.flowerB);
       m.blob(x + rng.range(-0.05, 0.05), 0.38, z + rng.range(-0.05, 0.05),
         0.15, 0.13, 0.15, 6, 3, 0.3);
     }
@@ -1335,7 +1498,7 @@ function buildFlowerBed(m: PropMesh, rng: Rng, p: PropPalette): void {
 function buildWaterTower(m: PropMesh, rng: Rng, p: PropPalette): void {
   const legH = 7.0, tankH = 4.2, tankR = 2.4;
   m.ao(0.42, 0, legH + tankH).sway(0, 0, 1);
-  m.color(p.darkSteel);
+  m.color(p.darkSteel).gloss(0.45);
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * TAU + Math.PI / 4;
     const x0 = Math.cos(a) * tankR * 0.85, z0 = Math.sin(a) * tankR * 0.85;
@@ -1363,6 +1526,7 @@ function buildWaterTower(m: PropMesh, rng: Rng, p: PropPalette): void {
       0.07, 0.86, 0.07, 0.02);
   }
   m.cyl(0, legH + tankH * 0.96 + 0.86, 0, tankR * 1.31, tankR * 1.31, 0.07, 14, 0.02, false, false);
+  m.gloss(0);
 }
 
 /* ==========================================================================
@@ -1526,12 +1690,19 @@ export function propDef(key: string): PropDef | undefined { return DEF_BY_KEY.ge
 /* ==========================================================================
  * 7. THE MATERIAL
  *
- * ONE MeshPhysicalMaterial for the whole roster. Three onBeforeCompile
+ * ONE MeshPhysicalMaterial for the whole roster. Four onBeforeCompile
  * injections:
  *
  *   aSway  -> wind displacement, per-instance phase read off instanceMatrix
  *   aEmit  -> additive emissive, so lamp heads and signal lenses glow without
  *             a second material and therefore without a second draw call
+ *   aGloss -> per-vertex ROUGHNESS ONLY, so a parked car can be wet lacquer and
+ *             the hedge beside it can be matte leaf without a second material.
+ *             This is the whole surface-variation budget for props: RA3 splits
+ *             a car from a hedge with a specular highlight over flat paint, and
+ *             a roughness lerp is the entire cost of reproducing that. Nothing
+ *             here touches albedo or normals, so no amount of it can become
+ *             per-pixel noise.
  *   depth  -> the identical wind, so a swaying canopy never casts a frozen
  *             shadow
  *
@@ -1574,6 +1745,7 @@ export function createPropMaterial(): PropMaterialSet {
   const uTime = { value: 0 };
   const uFreq = { value: SCATTER_WIND.hz * TAU };
   const uGain = { value: PROP_EMISSIVE_GAIN };
+  const uGlossRough = { value: PROP_GLOSS_ROUGHNESS };
 
   const material = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
@@ -1590,16 +1762,25 @@ export function createPropMaterial(): PropMaterialSet {
     shader.uniforms.uWindTime = uTime;
     shader.uniforms.uWindFreq = uFreq;
     shader.uniforms.uEmitGain = uGain;
+    shader.uniforms.uGlossRough = uGlossRough;
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>',
-        `#include <common>\n${WIND_PARS}\nattribute float aEmit;\nvarying float vEmit;`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvEmit = aEmit;${WIND_BODY}`);
+        `#include <common>\n${WIND_PARS}\nattribute float aEmit;\nvarying float vEmit;`
+        + '\nattribute float aGloss;\nvarying float vGloss;')
+      .replace('#include <begin_vertex>',
+        `#include <begin_vertex>\nvEmit = aEmit;\nvGloss = aGloss;${WIND_BODY}`);
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying float vEmit;\nuniform float uEmitGain;')
+      .replace('#include <common>',
+        '#include <common>\nvarying float vEmit;\nuniform float uEmitGain;'
+        + '\nvarying float vGloss;\nuniform float uGlossRough;')
+      // Straight after roughness is resolved and before it reaches the BRDF.
+      // A lerp, so vGloss = 0 leaves the matte default bit-for-bit untouched.
+      .replace('#include <roughnessmap_fragment>',
+        '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, uGlossRough, vGloss);')
       .replace('#include <emissivemap_fragment>',
         '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vColor.rgb * vEmit * uEmitGain;');
   };
-  material.customProgramCacheKey = (): string => 'ra-prop-v1';
+  material.customProgramCacheKey = (): string => 'ra-prop-v2';
 
   const depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   depthMaterial.name = 'PropDepth';

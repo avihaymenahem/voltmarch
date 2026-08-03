@@ -59,10 +59,10 @@ import {
   ROAD_PAVEMENT_SKIRT, ROAD_PAVEMENT_WIDTH, ROAD_ROUGHNESS, ROAD_SAMPLE_METRES,
   ROAD_SLAB_JOINT, ROAD_SLAB_METRES, ROAD_STOPBAR_GAP, ROAD_STOPBAR_WIDTH,
   ROAD_STRAIGHT_RUN_METRES, ROAD_STREET_KEEP, ROAD_STREET_LANES,
-  ROAD_SURFACE_LIFT, ROAD_TEXTURE_METRES, ROAD_TEXTURE_SCALE, ROAD_TEXTURE_SIZE,
+  ROAD_SURFACE_LIFT,
   ROAD_WAYPOINT_SPACING,
 } from '../core/config';
-import { linearColorTriple, textures } from '../core/assets';
+import { linearColorTriple, materialTextureSet, textures, type TextureRequest } from '../core/assets';
 import { DEG2RAD, Rng, clamp, clamp01, wrapAngle } from '../core/math';
 import { Locomotor } from '../core/types';
 import { LAYERS, RENDER_ORDER } from '../render/scene';
@@ -497,7 +497,31 @@ function orientRun(run: KerbRun): void {
 }
 
 /* ==========================================================================
- * 5. MATERIALS
+ * 5. SURFACES AND MATERIALS
+ *
+ * THE SURFACE LAW (see docs/surface-refs/ra3-units-road.png, which is the
+ * single most important reference in the project):
+ *
+ *   RA3's asphalt is almost perfectly FLAT dark grey-brown. Near-zero surface
+ *   noise. Every scrap of visual interest on an RA3 road comes from CRISP
+ *   GEOMETRIC MARKINGS — white dashed lane lines, a clean turn arrow, a smooth
+ *   pale kerb, red painted corner arcs — and NOT from surface texture. The
+ *   pavement beside it is flat pale beige with thin clean slab joints.
+ *
+ * This module used to build all three materials out of the `concrete`
+ * generator, whose 14x-frequency Worley aggregate is a white-noise generator by
+ * construction: it wrote full-contrast per-texel speckle into the albedo AND
+ * into the height field, so the roads carried salt-and-pepper colour static and
+ * a sandpaper specular on top of it. Both are gone. The three surfaces are now:
+ *
+ *   carriageway  `asphalt`    near-uniform dark colour, height EXACTLY flat
+ *   kerb         `flatPaint`  smooth pale extruded stone, height exactly flat
+ *   pavement     `paving`     real 1.2 m slabs, crisp joints, flat slab faces
+ *
+ * and every marking is a hard-edged vector shape: the lane lines, edge lines,
+ * crosswalk and stop bar are drawn analytically in road-local metres (which is
+ * why they stay crisp at any zoom and follow the road round a bend), and the
+ * junction arrows are `decal` masks rasterized from real polygon paths.
  *
  * Three MeshStandardMaterials, each with a small onBeforeCompile injection.
  * Standard rather than Physical on purpose: bible ruling #3 (base 0.52 +
@@ -505,9 +529,61 @@ function orientRun(run: KerbRun): void {
  * coat, and paying for one on 17k triangles of ground buys nothing.
  * ========================================================================== */
 
+/**
+ * Metres per repeat of each generated surface texture, and its texel edge.
+ *
+ * These live here rather than in config because they are chosen TOGETHER with
+ * the generator parameters below: 4.8 m across 512 texels puts a 1.2 m slab on
+ * exactly 128 texels and four whole slabs in the tile, which is the difference
+ * between paving that tiles seamlessly and paving whose joints step at every
+ * repeat. Asphalt and kerb are near-uniform colour fields, so their tile is
+ * sized for cheap generation rather than for feature alignment.
+ */
+const SURFACE_TILE_METRES = { asphalt: 6.0, kerb: 2.0, pavement: 4.8 } as const;
+const SURFACE_TEXELS = { asphalt: 256, kerb: 128, pavement: 512 } as const;
+
+/** Metres to pavement texels. 1.2 m lands on exactly 128; 0.03 m on 3.2. */
+function paveTexels(metres: number): number {
+  return (metres / SURFACE_TILE_METRES.pavement) * SURFACE_TEXELS.pavement;
+}
+
+/**
+ * The clean-set palette, read off `docs/surface-refs/`.
+ *
+ * `ROAD_COLORS` still owns every PAINT colour (lane white, centre yellow, kerb
+ * red) because those are correct. What it cannot own is the surface base tones:
+ * its asphalt `#46464A` is a mid neutral grey that was authored to be seen
+ * through a heavy speckle overlay, and with the speckle gone it reads as
+ * concrete. RA3's carriageway is a dark, slightly warm near-black, and its
+ * pavement is pale beige rather than grey.
+ */
+const SURFACE_COLOURS = {
+  asphalt: '#2c2926',
+  kerb: '#c9c1b3',
+  pavement: '#cbc0ae',
+  pavementJoint: '#a1968a',
+} as const;
+
 function vec3Of(hex: string): THREE.Vector3 {
   const [r, g, b] = linearColorTriple(hex);
   return new THREE.Vector3(r, g, b);
+}
+
+/**
+ * Lane arrows, painted on the approach to every junction mouth.
+ *
+ * Rasterized by the `decal` generator from real polygon paths, so the arrow has
+ * hard edges and one texel of antialiasing — it is a DRAWN SHAPE, never a
+ * noise-modulated blob. Both paths are authored tip-toward-v=0 and (for the
+ * turn) head-toward-+u, which is what lets the shader place them by
+ * `distance to the junction` and `distance from the centre line` without ever
+ * needing to know which way traffic runs.
+ */
+function arrowMask(path: 'arrowStraight' | 'arrowTurn'): THREE.DataTexture {
+  return textures.get({
+    kind: 'decal', channel: 'mask', tiling: false,
+    size: 128, colour: ROAD_COLORS.laneLine, path, amount: 1,
+  });
 }
 
 /** Shared marking uniforms, so a critic can retune the whole network at once. */
@@ -518,7 +594,8 @@ interface RoadUniforms {
   uWheelPath: { value: THREE.Vector3 };
   uKerbRed: { value: THREE.Vector3 };
   uKerbYellow: { value: THREE.Vector3 };
-  uJoint: { value: THREE.Vector3 };
+  uArrowStraight: { value: THREE.Texture };
+  uArrowTurn: { value: THREE.Texture };
   [k: string]: THREE.IUniform;
 }
 
@@ -530,9 +607,20 @@ function makeRoadUniforms(): RoadUniforms {
     uWheelPath: { value: vec3Of(ROAD_COLORS.wheelPath) },
     uKerbRed: { value: vec3Of(ROAD_COLORS.kerbRed) },
     uKerbYellow: { value: vec3Of(ROAD_COLORS.kerbYellow) },
-    uJoint: { value: vec3Of(ROAD_COLORS.pavementJoint) },
+    uArrowStraight: { value: arrowMask('arrowStraight') },
+    uArrowTurn: { value: arrowMask('arrowTurn') },
   };
 }
+
+/**
+ * Where a lane arrow sits, in metres from the junction mouth: tip at NEAR,
+ * tail at FAR. It starts past the stop bar (which ends at 9.6 m) so paint
+ * never overlaps paint, and it is 5.4 x 2.3 m — a real road arrow, drawn at
+ * bible §6.1's 2-3x oversize so it survives the RTS camera.
+ */
+const ROAD_ARROW_NEAR = 11.0;
+const ROAD_ARROW_FAR = 16.4;
+const ROAD_ARROW_HALF_WIDTH = 1.15;
 
 /**
  * The carriageway marking shader.
@@ -559,16 +647,36 @@ const ROAD_MARKING_GLSL = /* glsl */ `
   float aaU = fwidth(ru) * 0.6 + 0.004;
   float aaV = fwidth(rv) * 0.6 + 0.004;
 
+  // --- lane arrow lookup, in UNIFORM control flow -------------------------
+  // The arrow box is anchored on (distance from the centre line, distance to
+  // the junction mouth), and both decal paths are authored tip-toward-v=0 and
+  // head-toward-+u — so an arrow automatically points AT the nearest mouth and
+  // a turn arrow automatically turns TOWARD the kerb, at either end of a chain
+  // and whichever way the chain was walked. The samples are taken here rather
+  // than inside the branch below because texture2D's implicit derivatives are
+  // undefined in non-uniform control flow; the box gate does the selecting.
+  float arrowLane   = floor(abs(ru) / uLaneWidth);
+  float arrowCentre = (arrowLane + 0.5) * uLaneWidth;
+  float arrowU = (abs(ru) - arrowCentre) / ${(ROAD_ARROW_HALF_WIDTH * 2).toFixed(3)} + 0.5;
+  float arrowV = (dEnd - ${ROAD_ARROW_NEAR.toFixed(3)})
+               / ${(ROAD_ARROW_FAR - ROAD_ARROW_NEAR).toFixed(3)};
+  vec2  arrowUv = vec2(arrowU, arrowV);
+  float arrowStraightA = texture2D(uArrowStraight, arrowUv).a;
+  float arrowTurnA     = texture2D(uArrowTurn, arrowUv).a;
+
   float mark = 0.0;
   vec3  markCol = uPaint;
 
   if (dEnd >= 0.0) {
     // --- wheel paths: two 0.8 m bands per lane, +18% L (bible §6.1) --------
+    // Kept because RA3 does show them, but at well under half the old strength:
+    // this is a BROAD, smooth value change across a whole lane, and the moment
+    // it reads as "texture" rather than as "polish" it is wrong.
     float laneIdx = floor(abs(ru) / uLaneWidth);
     float inLane  = abs(ru) - laneIdx * uLaneWidth;
     float wheel = (1.0 - smoothstep(0.28, 0.46, abs(inLane - 0.85)))
                 + (1.0 - smoothstep(0.28, 0.46, abs(inLane - 2.55)));
-    diffuseColor.rgb = mix(diffuseColor.rgb, uWheelPath, clamp(wheel, 0.0, 1.0) * 0.55);
+    diffuseColor.rgb = mix(diffuseColor.rgb, uWheelPath, clamp(wheel, 0.0, 1.0) * 0.34);
 
     // --- centre line: double solid yellow, 0.12 stripe / 0.12 gap ----------
     float c = 1.0 - smoothstep(0.06 - aaU, 0.06 + aaU, abs(abs(ru) - 0.12));
@@ -606,6 +714,18 @@ const ROAD_MARKING_GLSL = /* glsl */ `
     float sB = sA + ${ROAD_STOPBAR_WIDTH.toFixed(3)};
     float stop = smoothstep(sA - aaV, sA + aaV, dEnd) * (1.0 - smoothstep(sB - aaV, sB + aaV, dEnd));
     mark = max(mark, stop * (1.0 - smoothstep(rw - 0.45, rw - 0.25, abs(ru))));
+
+    // --- lane arrow -------------------------------------------------------
+    // Hard box gate. The masks are ClampToEdge, and the turn arrow's shaft
+    // runs to v = 0.97, so without this the clamp would smear its tail into an
+    // endless stripe down the middle of the lane.
+    float inArrow = step(0.0, arrowU) * step(arrowU, 1.0)
+                  * step(0.0, arrowV) * step(arrowV, 1.0);
+    // A two-lane street's single lane does everything, so it gets the turn
+    // arrow (which is what the RA3 city-road reference shows). On a four-lane
+    // arterial the inner lane runs straight on and the kerb lane turns off.
+    float wantTurn = lanes < 4.0 ? 1.0 : step(0.5, arrowLane);
+    mark = max(mark, mix(arrowStraightA, arrowTurnA, wantTurn) * inArrow);
   }
 
   roadPaintAmt = clamp(mark, 0.0, 1.0);
@@ -650,24 +770,16 @@ const KERB_PAINT_GLSL = /* glsl */ `
 /**
  * The pavement shader. `aPave` is (across, along, outerFrac, unused).
  *
- * Slabs are laid in the pavement's OWN coordinates, not world XZ, so they
- * follow the road round a bend the way real paving does. Bible §6.1: slab
- * 1.2 x 1.2 m with a 0.03 m joint — deliberately oversized, because a correct
- * 0.15 m paver is grey mush at this camera.
+ * The slab joints themselves are NOT here any more: the pavement UV is now
+ * (along, across) in metres, so the `paving` generator's real 1.2 m slab grid
+ * follows the road round a bend exactly the way real paving does, with joints
+ * that are crisp cut lines in the texture and get proper mip filtering at
+ * distance instead of aliasing into a moire. What is left here is the one
+ * feature that cannot live in a tiling texture, because it is keyed to the
+ * pavement's own width rather than to the tile.
  */
 const PAVEMENT_GLSL = /* glsl */ `
   float roadPaintAmt = 0.0;
-  float pA = vRoad.x;
-  float pB = vRoad.y;
-  float slab = ${ROAD_SLAB_METRES.toFixed(3)};
-  float jw   = ${ROAD_SLAB_JOINT.toFixed(3)};
-  float aaA = fwidth(pA) * 0.6 + 0.002;
-  float aaB = fwidth(pB) * 0.6 + 0.002;
-  float ja = 1.0 - smoothstep(jw - aaA, jw + aaA, min(mod(pA, slab), slab - mod(pA, slab)));
-  float jb = 1.0 - smoothstep(jw - aaB, jw + aaB, min(mod(pB, slab), slab - mod(pB, slab)));
-  float joint = max(ja, jb);
-  diffuseColor.rgb = mix(diffuseColor.rgb, uJoint, joint * 0.75);
-
   // Bible §6.2(a): a 0.3 m soldier course, 12% darker, along the outer edge.
   float soldier = smoothstep(0.80, 0.94, vRoad.z);
   diffuseColor.rgb *= 1.0 - soldier * 0.12;
@@ -696,7 +808,8 @@ function patchMaterial(
     shader.fragmentShader =
       'uniform float uLaneWidth;\nuniform vec3 uCentre;\nuniform vec3 uPaint;\n' +
       'uniform vec3 uWheelPath;\nuniform vec3 uKerbRed;\nuniform vec3 uKerbYellow;\n' +
-      'uniform vec3 uJoint;\nvarying vec4 vRoad;\n' +
+      'uniform sampler2D uArrowStraight;\nuniform sampler2D uArrowTurn;\n' +
+      'varying vec4 vRoad;\n' +
       shader.fragmentShader
         .replace('#include <map_fragment>', `#include <map_fragment>\n${glsl}`)
         // Paint is smoother than the surface it sits on. Without this the
@@ -711,30 +824,22 @@ function patchMaterial(
   mat.customProgramCacheKey = () => `road:${attrName}`;
 }
 
+/**
+ * Build one road material from a CLEAN texture request.
+ *
+ * Note what is NOT here any more: `t.repeat.set(1/tileMetres, ...)`. The mesh
+ * builders already divide their UVs by the tile size, so the old code applied
+ * the repeat TWICE and every surface was tiling at the square of its intended
+ * period. Tiling now lives in exactly one place — the UV — which is also what
+ * lets the pavement tile in road-local metres instead of world XZ.
+ */
 function makeMaterial(
-  name: string, colorA: string, colorB: string, colorC: string,
-  roughness: number, tileMetres: number, texScale: number, seed: number,
-  amount: number, anisotropy: number,
+  name: string, req: TextureRequest, anisotropy: number,
 ): THREE.MeshStandardMaterial {
-  const req = {
-    kind: 'concrete' as const,
-    size: ROAD_TEXTURE_SIZE,
-    seed,
-    colorA, colorB, colorC,
-    scale: texScale,
-    amount,
-    roughness,
-    metalness: 0,
-    relief: 0.7,
-    anisotropy,
-  };
-  const map = textures.get({ ...req, channel: 'albedo' });
-  const normalMap = textures.get({ ...req, channel: 'normal' });
-  const ormMap = textures.get({ ...req, channel: 'orm' });
-  const repeat = 1 / tileMetres;
+  const { map, normalMap, ormMap } = materialTextureSet(textures, { ...req, anisotropy });
   for (const t of [map, normalMap, ormMap]) {
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(repeat, repeat);
+    t.repeat.set(1, 1);
     t.anisotropy = anisotropy;
     t.needsUpdate = true;
   }
@@ -743,6 +848,12 @@ function makeMaterial(
     map,
     normalMap,
     roughnessMap: ormMap,
+    aoMap: ormMap,
+    // The clean generators write a FLAT height field (asphalt and kerb are
+    // exactly 0.5; paving only cuts its joints), so this scale has almost
+    // nothing left to amplify — which is the point. The old concrete normal
+    // map was a Sobel of 14x-frequency Worley noise and made tarmac glitter
+    // like crumpled foil under the sun.
     normalScale: new THREE.Vector2(ROAD_NORMAL_SCALE, ROAD_NORMAL_SCALE),
     roughness: 1.0,
     metalness: 0.0,
@@ -1836,15 +1947,42 @@ export class RoadNetwork {
     for (const r of runs) { orientRun(r); this.buildKerbRun(r, kerb, pave); }
 
     const anis = this.anisotropy;
-    const roadMat = makeMaterial('RoadAsphalt', ROAD_COLORS.asphalt, ROAD_COLORS.asphaltShade,
-      ROAD_COLORS.asphaltAggr, ROAD_ROUGHNESS.asphalt, ROAD_TEXTURE_METRES.asphalt,
-      ROAD_TEXTURE_SCALE.asphalt, 0x2a11, 0.30, anis);
-    const kerbMat = makeMaterial('RoadKerb', ROAD_COLORS.kerb, ROAD_COLORS.kerbShade,
-      ROAD_COLORS.kerbShade, ROAD_ROUGHNESS.kerb, ROAD_TEXTURE_METRES.kerb,
-      ROAD_TEXTURE_SCALE.kerb, 0x51c3, 0.22, anis);
-    const paveMat = makeMaterial('RoadPavement', ROAD_COLORS.pavement, ROAD_COLORS.pavementShade,
-      ROAD_COLORS.pavementJoint, ROAD_ROUGHNESS.pavement, ROAD_TEXTURE_METRES.pavement,
-      ROAD_TEXTURE_SCALE.pavement, 0x7b09, 0.15, anis);
+
+    // Carriageway. A near-solid dark grey-brown with a perfectly flat height
+    // field — every scrap of interest on this surface is painted on top of it
+    // by ROAD_MARKING_GLSL, exactly as in the RA3 reference.
+    const roadMat = makeMaterial('RoadAsphalt', {
+      kind: 'asphalt', size: SURFACE_TEXELS.asphalt, seed: 0x2a11,
+      colour: SURFACE_COLOURS.asphalt,
+      // `wear` here buys two broad out-of-phase drifts at half and a fifth of
+      // the tile — a 2% value change across six metres. It reads as a road
+      // that has been resurfaced in patches, and it is physically incapable of
+      // becoming texture: `budgetedNoise` clamps frequency as well as
+      // amplitude, so there is no value of this that produces speckle.
+      wear: 0.6, roughness: ROAD_ROUGHNESS.asphalt,
+    }, anis);
+
+    // Kerb. Smooth pale extruded stone: no slab pattern at all, because a kerb
+    // is 0.28 m wide and any pattern on it is sub-pixel noise at this camera.
+    // The reads that matter are the geometry's own shadow, the bevel highlight
+    // in KERB_PAINT_GLSL and the red corner paint.
+    const kerbMat = makeMaterial('RoadKerb', {
+      kind: 'flatPaint', size: SURFACE_TEXELS.kerb, seed: 0x51c3,
+      colour: SURFACE_COLOURS.kerb, wear: 0.35, roughness: ROAD_ROUGHNESS.kerb,
+    }, anis);
+
+    // Pavement. Real rectangular slabs at bible §6.1's 1.2 m with a 0.03 m
+    // joint, each slab face FLAT and offset from its neighbours by a couple of
+    // percent. That offset is cell-constant, which is why it survives mip
+    // filtering — per-pixel speckle does not, and turns to crawling static at
+    // exactly the distance an RTS camera sits.
+    const paveMat = makeMaterial('RoadPavement', {
+      kind: 'paving', size: SURFACE_TEXELS.pavement, seed: 0x7b09,
+      colour: SURFACE_COLOURS.pavement, jointColour: SURFACE_COLOURS.pavementJoint,
+      slabW: paveTexels(ROAD_SLAB_METRES), slabH: paveTexels(ROAD_SLAB_METRES),
+      jointWidth: paveTexels(ROAD_SLAB_JOINT), variation: 0.03, bond: 0,
+      wear: 0.4, roughness: ROAD_ROUGHNESS.pavement,
+    }, anis);
     patchMaterial(roadMat, 'aRoad', ROAD_MARKING_GLSL, this.uniforms);
     patchMaterial(kerbMat, 'aKerb', KERB_PAINT_GLSL, this.uniforms);
     patchMaterial(paveMat, 'aPave', PAVEMENT_GLSL, this.uniforms);
@@ -1880,7 +2018,7 @@ export class RoadNetwork {
     if (n < 2) return;
 
     const w = c.halfWidth;
-    const tileInv = 1 / ROAD_TEXTURE_METRES.asphalt;
+    const tileInv = 1 / SURFACE_TILE_METRES.asphalt;
     const left: KerbRun = { pts: [], nrm: [], paint: [] };
     const right: KerbRun = { pts: [], nrm: [], paint: [] };
 
@@ -1951,7 +2089,7 @@ export class RoadNetwork {
   private buildJunctionPad(n: RoadNodeRec, road: MeshBuf, runs: KerbRun[]): void {
     const m = n.arms.length;
     const boundary: number[] = [];
-    const tileInv = 1 / ROAD_TEXTURE_METRES.asphalt;
+    const tileInv = 1 / SURFACE_TILE_METRES.asphalt;
     let maxW = 0;
     for (const a of n.arms) maxW = Math.max(maxW, a.halfWidth);
 
@@ -2062,8 +2200,13 @@ export class RoadNetwork {
     const T = ROAD_KERB_TOP;
     const PW = ROAD_PAVEMENT_WIDTH;
     const SK = ROAD_PAVEMENT_SKIRT;
-    const kTile = 1 / ROAD_TEXTURE_METRES.kerb;
-    const pTile = 1 / ROAD_TEXTURE_METRES.pavement;
+    const kTile = 1 / SURFACE_TILE_METRES.kerb;
+    // ROAD-LOCAL, not world XZ. `along` is arc length down the kerb and
+    // `across` is offset from it, so the paving texture's slab grid follows
+    // every bend and every junction corner arc — the joints run radially round
+    // a corner exactly the way real slabs are laid, instead of the road
+    // sliding underneath a world-aligned grid.
+    const pTile = 1 / SURFACE_TILE_METRES.pavement;
 
     let along = 0;
     let pFootA = -1, pTopA = -1, pOutA = -1;
@@ -2108,9 +2251,10 @@ export class RoadNetwork {
       const outX = topX + ox * pw, outZ = topZ + oz * pw;
       const skX = outX + ox * sk, skZ = outZ + oz * sk;
       const ySk = this.terrain.heightAt(skX, skZ) + 0.03;
-      const qIn = pave.push(topX, yTop, topZ, 0, 1, 0, topX * pTile, topZ * pTile, 0, along, 0, 0);
-      const qOut = pave.push(outX, yTop, outZ, 0, 1, 0, outX * pTile, outZ * pTile, pw, along, 1, 0);
-      const qSk = pave.push(skX, ySk, skZ, 0, 1, 0, skX * pTile, skZ * pTile, pw + sk, along, 1, 0);
+      const uA = along * pTile;
+      const qIn = pave.push(topX, yTop, topZ, 0, 1, 0, uA, 0, 0, along, 0, 0);
+      const qOut = pave.push(outX, yTop, outZ, 0, 1, 0, uA, pw * pTile, pw, along, 1, 0);
+      const qSk = pave.push(skX, ySk, skZ, 0, 1, 0, uA, (pw + sk) * pTile, pw + sk, along, 1, 0);
       if (i > 0) {
         pave.quad(qOutA, qInA, qOut, qIn);
         pave.quad(qSkirtA, qOutA, qSk, qOut);
@@ -2228,10 +2372,17 @@ export class RoadNetwork {
   }
 
   /**
-   * Road wear. Bible §6.3 calls these MANDATORY: manholes every ~25 m, oil
-   * stains near junctions, cracks and resurfacing patches. They cost nothing —
-   * they are slots in a decal pool that already exists — and their absence is
-   * exactly what makes procedural tarmac read as a flat grey ribbon.
+   * Road furniture and wear.
+   *
+   * Manholes every ~25 m and oil stains at junctions are bible §6.3 and are
+   * kept at full density: they are hard-edged OBJECTS, and objects are how RA3
+   * breaks up a surface.
+   *
+   * Cracks and resurfacing patches are the opposite and are now HALF as dense
+   * and weaker. A scatter of damage marks on tarmac is read by the eye as one
+   * thing — noise — and RA3's roads are conspicuously clean. Sparse enough that
+   * you notice an individual patch is the target; dense enough that they read
+   * as a pattern is the failure.
    */
   private scatterRoadDecals(): void {
     const d = this.decals;
@@ -2242,7 +2393,7 @@ export class RoadNetwork {
       if (n < 2) continue;
       let along = 0;
       let nextManhole = this.rng.range(6, ROAD_MANHOLE_INTERVAL);
-      let nextWear = this.rng.range(4, 18);
+      let nextWear = this.rng.range(8, 34);
       for (let i = 1; i < n; i++) {
         const x = c.pts[i * 2], z = c.pts[i * 2 + 1];
         const step = Math.hypot(x - c.pts[i * 2 - 2], z - c.pts[i * 2 - 1]);
@@ -2258,19 +2409,19 @@ export class RoadNetwork {
           d.manhole(x + -tz * off, z + tx * off, yaw);
         }
         if (along >= nextWear) {
-          nextWear = along + this.rng.range(9, 26);
+          nextWear = along + this.rng.range(20, 52);
           const off = this.rng.range(-c.halfWidth + 0.8, c.halfWidth - 0.8);
           const px = x + -tz * off;
           const pz = z + tx * off;
-          if (this.rng.chance(0.55)) {
+          if (this.rng.chance(0.45)) {
             d.spawn(DecalKind.Crack, px, pz, this.rng.range(0.35, 0.70),
-              this.rng.range(1.1, 2.3), yaw + this.rng.range(-0.4, 0.4), 0, 0.7);
+              this.rng.range(1.1, 2.3), yaw + this.rng.range(-0.4, 0.4), 0, 0.55);
           } else {
             // Bible §6.3: patches are 1.5-4.0 m at +/-12% luminance. The
             // strength is what carries the "12%" — a full-strength patch reads
             // as a hole in the tarmac, not as a repair.
-            d.spawn(DecalKind.Patch, px, pz, this.rng.range(0.8, 1.7),
-              this.rng.range(0.8, 1.9), this.rng.range(0, Math.PI), 0, 0.45);
+            d.spawn(DecalKind.Patch, px, pz, this.rng.range(0.9, 1.9),
+              this.rng.range(0.9, 2.1), this.rng.range(0, Math.PI), 0, 0.38);
           }
         }
       }

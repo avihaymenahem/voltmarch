@@ -29,12 +29,20 @@
  *
  * FALLBACK
  * --------
- * No building art module exists yet, and a def key may not resolve to a model.
- * Rather than shipping an empty box, `paintFallback` draws a procedural
- * diorama in 2D — same backdrop, same contact shadow, same three-quarter read,
- * a chunky faction-coloured mass instead of the mesh. It looks like an
- * unfinished cameo, not like a broken one, and it swaps to the real mesh the
- * moment a model registers under that key.
+ * A def key may not resolve to a model, and until every art module lands most
+ * of them will not. `paintFallback` therefore draws the cameo in 2D — same
+ * backdrop, same drawn horizon, same contact shadow, same three-quarter read,
+ * same crisp frame — from a library of VECTOR SILHOUETTES (§6): 29 small
+ * assemblies of boxes, cylinders and domes posed in a true isometric
+ * projection and painted as flat faces with crisp panel lines.
+ *
+ * That library is the fix for the complaint this pass exists to answer. The
+ * old fallback drew one grey box, one darker box and one lighter box for every
+ * subject in the game, so twenty cameos were twenty identical grey tiles with
+ * a stick on top. Now a Construction Yard has a crane, a refinery has a silo,
+ * a tank has tracks and a barrel, and an attack dog has four legs — all at
+ * 60 x 48 logical pixels, all drawn from paths, with no per-pixel noise
+ * anywhere in the cell.
  * ============================================================================
  */
 
@@ -42,7 +50,7 @@ import * as THREE from 'three';
 
 import { HUD_CAMEO, HUD_SKIN_ALLIES, HUD_SKIN_SOVIETS } from '../core/config';
 import { BuildTab, Faction } from '../core/types';
-import { mixHex } from './Chrome';
+import { mixHex, rgba } from './Chrome';
 
 /* ==========================================================================
  * SECTION 1 — THEATRE BACKDROPS
@@ -255,9 +263,14 @@ export class CameoRenderer {
 
     // Backdrop: a plane parked behind the subject, textured from a 2D canvas so
     // the theatre swap is a repaint rather than a shader.
+    // 5:4 and 4x the logical cell, because the backdrop now carries a CRISP
+    // horizon rule. At 64x64 that rule was three blurred texels stretched over
+    // the full plane; at 240x192 it lands inside one output pixel at every
+    // shipping uiScale, which is the whole point of drawing it rather than
+    // fading one gradient into the next.
     this.backdropCanvas = document.createElement('canvas');
-    this.backdropCanvas.width = 64;
-    this.backdropCanvas.height = 64;
+    this.backdropCanvas.width = 240;
+    this.backdropCanvas.height = 192;
     this.backdropTex = new THREE.CanvasTexture(this.backdropCanvas);
     this.backdropTex.colorSpace = THREE.SRGBColorSpace;
     this.backdropMesh = new THREE.Mesh(
@@ -527,6 +540,13 @@ export class CameoRenderer {
     ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(this.scratch, 0, 0, this.rtW, this.rtH, 0, 0, w, h);
+
+    // The same crisp frame the fallback draws, so a grid that is half meshes
+    // and half fallbacks still reads as one set of framed photographs. It goes
+    // on the ART canvas rather than in CSS on purpose: the disabled state is a
+    // filter on this canvas, and §2.8 requires that tint to be uniform with no
+    // wipe boundary — a CSS frame would stay cold inside a sepia cameo.
+    paintCameoFrame(ctx, w, h, job.subject.faction);
   }
 
   /** Local-space bounds of a prototype, measured once and cached. */
@@ -557,51 +577,12 @@ export class CameoRenderer {
     this.scratch.height = th;
   }
 
-  /** Repaint the 64x64 backdrop gradient for the current theatre. */
+  /** Repaint the backdrop for the current theatre. */
   private paintBackdrop(): void {
     const c = this.backdropCanvas;
     const ctx = c.getContext('2d');
     if (!ctx) return;
-    const b = BACKDROPS[this.theatre];
-
-    const sky = ctx.createLinearGradient(0, 0, 0, c.height * 0.62);
-    sky.addColorStop(0, b.skyTop);
-    sky.addColorStop(1, b.skyBottom);
-    ctx.fillStyle = sky;
-    ctx.fillRect(0, 0, c.width, Math.ceil(c.height * 0.62));
-
-    const ground = ctx.createLinearGradient(0, c.height * 0.62, 0, c.height);
-    ground.addColorStop(0, b.groundFar);
-    ground.addColorStop(1, b.groundNear);
-    ctx.fillStyle = ground;
-    ctx.fillRect(0, Math.floor(c.height * 0.62), c.width, c.height);
-
-    // Sun bloom upper-left, matching the key light direction. Tight and weak on
-    // purpose: a wide 55%-alpha wash lifts the whole backdrop into the subject's
-    // value range and the mesh stops reading against it. The cameo is allowed
-    // to be saturated (§2.8) but it still has to have a figure and a ground.
-    const sun = ctx.createRadialGradient(
-      c.width * 0.24, c.height * 0.18, 0,
-      c.width * 0.24, c.height * 0.18, c.width * 0.34,
-    );
-    sun.addColorStop(0, b.sun);
-    sun.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.globalAlpha = 0.30;
-    ctx.fillStyle = sun;
-    ctx.fillRect(0, 0, c.width, Math.ceil(c.height * 0.62));
-    ctx.globalAlpha = 1;
-
-    // Corner falloff: the darkest pixels in the cell belong at the edges, which
-    // is what pushes the eye to the middle where the subject is.
-    const vig = ctx.createRadialGradient(
-      c.width * 0.5, c.height * 0.5, c.width * 0.22,
-      c.width * 0.5, c.height * 0.5, c.width * 0.78,
-    );
-    vig.addColorStop(0, 'rgba(0,0,0,0)');
-    vig.addColorStop(1, 'rgba(0,0,0,0.42)');
-    ctx.fillStyle = vig;
-    ctx.fillRect(0, 0, c.width, c.height);
-
+    paintDiorama(ctx, c.width, c.height, BACKDROPS[this.theatre]);
     this.backdropTex.needsUpdate = true;
   }
 
@@ -626,13 +607,940 @@ export class CameoRenderer {
 }
 
 /* ==========================================================================
- * SECTION 4 — THE PROCEDURAL FALLBACK
+ * SECTION 5 — THE DIORAMA BACKDROP AND FRAME
  *
- * Same diorama grammar as the 3D path — backdrop, horizon, contact shadow,
- * three-quarter chunky mass, bevel highlight on the top edge, one team-colour
- * slab — so a sidebar that is half real meshes and half fallbacks still reads
- * as one set of photographs rather than a mixture of art and placeholder.
+ * Shared by BOTH cameo paths. The 3D path textures its backdrop plane from
+ * `paintDiorama`; the fallback painter calls the same function straight onto
+ * the cell canvas. One function, so a grid that is half real meshes and half
+ * fallbacks cannot drift into two different-looking sets of pictures.
+ *
+ * NO NOISE. Every value here is either a broad two-stop ramp across the whole
+ * cell or a hard-edged rule exactly one design pixel thick. The old backdrop
+ * faded sky into ground over ~15 texels of a 64 px canvas, which at cell size
+ * read as a soft brown smear where the horizon should be; a horizon is a LINE.
  * ========================================================================== */
+
+/** Fraction of the cell height at which sky meets ground. */
+const HORIZON = 0.62;
+
+/** One design pixel of the 60 x 48 art box, in this canvas's own pixels. */
+function designPx(h: number): number {
+  return Math.max(1, Math.round(h / 48));
+}
+
+function paintDiorama(ctx: CanvasRenderingContext2D, w: number, h: number, b: Backdrop): void {
+  const horizon = Math.round(h * HORIZON);
+  const px = designPx(h);
+
+  // --- sky: one broad two-stop ramp, nothing else ------------------------
+  const sky = ctx.createLinearGradient(0, 0, 0, horizon);
+  sky.addColorStop(0, b.skyTop);
+  sky.addColorStop(1, b.skyBottom);
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, w, horizon);
+
+  // Sun bloom upper-left, matching the key light. Tight and weak on purpose: a
+  // wide high-alpha wash lifts the whole sky into the subject's value range and
+  // the silhouette stops reading against it. The cameo is allowed to be
+  // saturated (§2.8) but it still has to have a figure and a ground.
+  const sun = ctx.createRadialGradient(w * 0.24, h * 0.16, 0, w * 0.24, h * 0.16, w * 0.36);
+  sun.addColorStop(0, b.sun);
+  sun.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.globalAlpha = 0.30;
+  ctx.fillStyle = sun;
+  ctx.fillRect(0, 0, w, horizon);
+  ctx.globalAlpha = 1;
+
+  // --- ground ------------------------------------------------------------
+  const ground = ctx.createLinearGradient(0, horizon, 0, h);
+  ground.addColorStop(0, b.groundFar);
+  ground.addColorStop(1, b.groundNear);
+  ctx.fillStyle = ground;
+  ctx.fillRect(0, horizon, w, h - horizon);
+
+  // --- the horizon, drawn as a rule -------------------------------------
+  // A pale haze band immediately above it and a hard dark rule on it. Two
+  // integer-aligned fills, so the boundary is exactly as sharp as the canvas
+  // can make it at every uiScale.
+  const haze = ctx.createLinearGradient(0, horizon - px * 5, 0, horizon);
+  haze.addColorStop(0, 'rgba(255,255,255,0)');
+  haze.addColorStop(1, 'rgba(255,255,255,0.22)');
+  ctx.fillStyle = haze;
+  ctx.fillRect(0, horizon - px * 5, w, px * 5);
+  ctx.fillStyle = 'rgba(12,14,18,0.55)';
+  ctx.fillRect(0, horizon, w, px);
+
+  // --- corner falloff ----------------------------------------------------
+  // The darkest pixels in the cell belong at the edges; that is what pushes the
+  // eye to the middle where the subject is.
+  const vig = ctx.createRadialGradient(w * 0.5, h * 0.5, w * 0.24, w * 0.5, h * 0.5, w * 0.80);
+  vig.addColorStop(0, 'rgba(0,0,0,0)');
+  vig.addColorStop(1, 'rgba(0,0,0,0.40)');
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, w, h);
+}
+
+/**
+ * The crisp cell frame: a 3-zone bevel, one design pixel per zone, drawn with
+ * integer-aligned `fillRect` rather than `strokeRect` so no edge lands on a
+ * half pixel. Faction metal on the lit edges, black terminator all round.
+ */
+function paintCameoFrame(ctx: CanvasRenderingContext2D, w: number, h: number, faction: Faction): void {
+  const skin = faction === Faction.Soviets ? HUD_SKIN_SOVIETS : HUD_SKIN_ALLIES;
+  const t = designPx(h);
+
+  // Black terminator, all four sides.
+  ctx.fillStyle = 'rgba(4,4,8,0.92)';
+  ctx.fillRect(0, 0, w, t);
+  ctx.fillRect(0, h - t, w, t);
+  ctx.fillRect(0, 0, t, h);
+  ctx.fillRect(w - t, 0, t, h);
+
+  // Specular hairline inside the top and left edges; the light is upper-left
+  // everywhere in this interface and the cell frame is not an exception.
+  ctx.fillStyle = rgba(skin.bevelHi, 0.36);
+  ctx.fillRect(t, t, w - t * 2, t);
+  ctx.fillRect(t, t, t, h - t * 2);
+
+  // Matching shadow inside the bottom and right edges.
+  ctx.fillStyle = 'rgba(0,0,0,0.42)';
+  ctx.fillRect(t, h - t * 2, w - t * 2, t);
+  ctx.fillRect(w - t * 2, t, t, h - t * 2);
+}
+
+/* ==========================================================================
+ * SECTION 6 — THE VECTOR SILHOUETTE LIBRARY
+ *
+ * A cameo with no mesh behind it used to be one grey box, one darker box and
+ * one lighter box, identical for all twenty slots bar a stick on top. That is
+ * the "flat grey box with a tiny icon" read, and it is what this section
+ * replaces: every subject now resolves to a small ASSEMBLY of solids posed in
+ * a true isometric projection and painted as clean flat faces.
+ *
+ * THE PROJECTION
+ * --------------
+ *     sx = (x - z) * cos30            sy = (x + z) * sin30 - y
+ *
+ * The two rows are orthogonal and both have norm sqrt(2)*cos30 = 1.2247, so
+ * this is a uniformly scaled orthographic view from 35.26 deg elevation — real
+ * isometric, not a faked shear. Consequences used below:
+ *   - a ground circle of radius r becomes an axis-aligned ellipse with
+ *     semi-axes 1.2247r and 0.7071r,
+ *   - a sphere of radius r becomes a circle of radius 1.2247r.
+ *
+ * WHICH FACE IS LIT
+ * -----------------
+ * +x projects to the lower-RIGHT and +z to the lower-LEFT, so a box shows its
+ * top, its +z face (lower-left) and its +x face (lower-right). With the key
+ * light upper-left — the same light as every other surface in this project —
+ * the +z face is lit and the +x face is in shadow. Three flat values per solid,
+ * a crisp panel line on every edge, and a one-pixel specular on the two upper
+ * edges of the top face. That is the whole shading model: no gradients on flat
+ * faces, no noise anywhere, exactly the "clean painted plastic toys" reading
+ * the look bible asks for.
+ *
+ * Curved solids (cylinders, domes) DO get a gradient across the surface,
+ * because a curved surface genuinely has one. It is a single low-frequency
+ * ramp between the same three tones, never a texture.
+ * ========================================================================== */
+
+const ISO_X = Math.cos(Math.PI / 6);          // 0.8660
+const ISO_Y = 0.5;
+const ISO_A = Math.SQRT2 * ISO_X;             // 1.2247 — ellipse semi-major
+const ISO_B = Math.SQRT2 * ISO_Y;             // 0.7071 — ellipse semi-minor
+
+/**
+ * Vertical exaggeration. True isometric at 35.26 deg squashes a tank into a
+ * plate: the elevation that makes a building read is the one that makes a
+ * vehicle look like a floor tile with a gun on it. Sprite-era isometric art
+ * solved this by drawing everything taller than the projection says, and so do
+ * we — one constant, applied inside `projY` so the bounds, the fit, the faces
+ * and the ellipses all agree and nothing has to know about it.
+ */
+const Y_GAIN = 1.3;
+
+function projX(x: number, z: number): number {
+  return (x - z) * ISO_X;
+}
+function projY(x: number, z: number, y: number): number {
+  return (x + z) * ISO_Y - y * Y_GAIN;
+}
+
+/** Material slots. A silhouette never names a colour, only a role. */
+type Tone = 'body' | 'trim' | 'dark' | 'metal' | 'team' | 'glass' | 'tread';
+
+interface BoxPart {
+  readonly k: 'box';
+  readonly x: number; readonly z: number; readonly y: number;
+  readonly w: number; readonly d: number; readonly h: number;
+  readonly t: Tone;
+}
+interface CylPart {
+  readonly k: 'cyl';
+  readonly x: number; readonly z: number; readonly y: number;
+  readonly r: number; readonly h: number;
+  readonly t: Tone;
+}
+interface DiscPart {
+  readonly k: 'disc';
+  readonly x: number; readonly z: number; readonly y: number;
+  readonly r: number;
+  readonly t: Tone;
+}
+interface DomePart {
+  readonly k: 'dome';
+  readonly x: number; readonly z: number; readonly y: number;
+  readonly r: number;
+  readonly t: Tone;
+}
+type Part = BoxPart | CylPart | DiscPart | DomePart;
+
+/* Constructors. `x`/`z` are the CENTRE in plan, `y` is the BASE height. */
+const bx = (x: number, z: number, y: number, w: number, d: number, h: number, t: Tone): BoxPart =>
+  ({ k: 'box', x, z, y, w, d, h, t });
+const cy = (x: number, z: number, y: number, r: number, h: number, t: Tone): CylPart =>
+  ({ k: 'cyl', x, z, y, r, h, t });
+const dc = (x: number, z: number, y: number, r: number, t: Tone): DiscPart =>
+  ({ k: 'disc', x, z, y, r, t });
+const dm = (x: number, z: number, y: number, r: number, t: Tone): DomePart =>
+  ({ k: 'dome', x, z, y, r, t });
+
+/** A flat ground pad, shared by every structure so they all sit on something. */
+const pad = (w: number, d: number): BoxPart => bx(0, 0, -0.34, w, d, 0.34, 'dark');
+
+export type CameoArchetype =
+  | 'conyard' | 'power' | 'refinery' | 'barracks' | 'warfactory' | 'radar'
+  | 'lab' | 'superweapon' | 'silo' | 'helipad' | 'wall' | 'repairbay' | 'depot'
+  | 'turret' | 'aa' | 'tesla' | 'prism'
+  | 'tank' | 'heavyTank' | 'artillery' | 'harvester' | 'apc' | 'mcv'
+  | 'aircraft' | 'helicopter' | 'ship' | 'rifleman' | 'rocketeer' | 'dog';
+
+/**
+ * PARTS ARE AUTHORED IN DRAW ORDER, back to front. No depth sort runs.
+ *
+ * A painter's-algorithm sort on `x + z` is right for solids that do not
+ * interpenetrate and wrong the moment one does — a barrel entering a turret, a
+ * team slab lying on a wall, a rotor over a fuselage. Twenty-eight hand-ordered
+ * lists are both cheaper and more controllable than a sort plus the special
+ * cases needed to correct it.
+ */
+const SILHOUETTES: Readonly<Record<CameoArchetype, readonly Part[]>> = {
+  /* --- structures ------------------------------------------------------- */
+
+  conyard: [
+    pad(9.4, 9.0),
+    cy(2.7, -2.7, 0, 0.24, 5.0, 'metal'),                       // crane mast
+    bx(0.4, -2.7, 4.86, 4.8, 0.24, 0.24, 'metal'),              // jib
+    bx(-1.5, -2.7, 3.9, 0.16, 0.16, 0.96, 'metal'),             // hook line
+    bx(-1.2, -0.4, 0, 5.2, 5.6, 3.0, 'body'),                   // main hall
+    bx(-1.2, 2.46, 0.9, 3.6, 0.12, 0.85, 'team'),               // team slab
+    bx(-1.2, -0.4, 3.0, 5.4, 5.8, 0.26, 'trim'),                // roof lip
+    bx(2.7, 2.2, 0, 3.4, 3.6, 1.6, 'trim'),                     // front wing
+  ],
+
+  power: [
+    pad(7.8, 7.8),
+    cy(1.9, -2.2, 0, 0.72, 4.6, 'metal'),
+    cy(3.1, -0.5, 0, 0.54, 3.4, 'metal'),
+    bx(-0.8, 0.2, 0, 5.0, 5.4, 2.2, 'body'),
+    bx(-0.8, 0.2, 2.2, 3.2, 3.6, 0.34, 'trim'),                 // roof vent
+    bx(-0.8, 2.96, 0.7, 3.2, 0.12, 0.7, 'team'),
+  ],
+
+  refinery: [
+    pad(9.4, 8.4),
+    cy(2.6, -1.8, 0, 1.45, 3.4, 'metal'),                       // ore silo
+    dm(2.6, -1.8, 3.4, 1.45, 'metal'),
+    bx(-1.4, 0.2, 0, 5.4, 5.0, 2.1, 'body'),
+    bx(-1.4, 0.2, 2.1, 5.6, 5.2, 0.24, 'trim'),
+    bx(-1.4, 2.76, 0.7, 3.4, 0.12, 0.7, 'team'),
+    bx(-1.4, 3.6, 0, 4.2, 2.2, 0.36, 'dark'),                   // unload ramp
+  ],
+
+  barracks: [
+    pad(8.4, 7.4),
+    cy(-2.8, -2.4, 0, 0.14, 4.4, 'metal'),                      // flag mast
+    bx(-2.05, -2.4, 3.5, 1.5, 0.08, 0.82, 'team'),
+    bx(0, -0.4, 0, 6.0, 4.6, 1.9, 'body'),
+    bx(0, -0.4, 1.9, 6.2, 4.8, 0.28, 'trim'),
+    bx(0, 1.95, 0, 1.5, 0.14, 1.35, 'dark'),                    // doorway
+    bx(-2.1, 1.95, 1.2, 1.1, 0.1, 0.42, 'team'),
+  ],
+
+  warfactory: [
+    pad(9.6, 8.6),
+    bx(-0.4, -0.6, 0, 6.4, 5.2, 2.4, 'body'),
+    bx(-0.4, -0.6, 2.4, 6.6, 5.4, 0.3, 'trim'),
+    cy(2.5, -2.2, 2.7, 0.46, 1.2, 'metal'),                     // roof extract
+    bx(-0.4, 2.06, 0, 3.6, 0.16, 1.85, 'dark'),                 // roller door
+    bx(-0.4, 2.06, 1.85, 3.6, 0.16, 0.4, 'team'),
+  ],
+
+  radar: [
+    pad(8.0, 8.0),
+    cy(2.0, -1.8, 0, 0.42, 3.2, 'metal'),
+    dm(2.0, -1.8, 3.2, 1.5, 'trim'),                            // dish
+    bx(-0.8, 0.4, 0, 4.8, 4.8, 2.2, 'body'),
+    bx(-0.8, 0.4, 2.2, 5.0, 5.0, 0.24, 'trim'),
+    bx(-0.8, 2.86, 0.7, 3.0, 0.12, 0.7, 'team'),
+  ],
+
+  lab: [
+    pad(8.0, 8.0),
+    bx(0, 0.2, 0, 5.0, 5.0, 1.8, 'body'),
+    dc(0, 0.2, 1.82, 2.4, 'trim'),                              // collar
+    dm(0, 0.2, 1.86, 2.0, 'glass'),
+    bx(0, 2.76, 0.6, 3.0, 0.12, 0.62, 'team'),
+  ],
+
+  superweapon: [
+    pad(9.0, 9.0),
+    cy(0, 0, 0, 3.0, 1.5, 'body'),
+    dc(0, 0, 1.52, 3.05, 'team'),                               // emitter ring
+    dm(0, 0, 1.56, 2.5, 'glass'),
+    bx(-3.3, 0, 0, 0.7, 0.7, 2.6, 'metal'),
+    bx(3.3, 0, 0, 0.7, 0.7, 2.6, 'metal'),
+  ],
+
+  silo: [
+    pad(7.6, 6.2),
+    cy(-1.5, -0.2, 0, 1.25, 2.9, 'metal'), dm(-1.5, -0.2, 2.9, 1.25, 'trim'),
+    cy(1.5, 0.2, 0, 1.25, 2.9, 'metal'), dm(1.5, 0.2, 2.9, 1.25, 'trim'),
+    bx(0, 2.4, 0, 4.6, 0.5, 0.5, 'team'),
+  ],
+
+  helipad: [
+    pad(8.6, 8.6),
+    bx(0, 0, 0, 7.0, 7.0, 0.42, 'trim'),
+    bx(-1.05, 0, 0.42, 0.46, 2.8, 0.06, 'team'),                // the H
+    bx(1.05, 0, 0.42, 0.46, 2.8, 0.06, 'team'),
+    bx(0, 0, 0.42, 2.2, 0.46, 0.06, 'team'),
+  ],
+
+  wall: [
+    bx(0, 0, -0.3, 7.4, 2.6, 0.3, 'dark'),
+    bx(-2.35, 0, 0, 1.9, 1.9, 1.5, 'trim'),
+    bx(0, 0, 0, 1.9, 1.9, 1.5, 'trim'),
+    bx(2.35, 0, 0, 1.9, 1.9, 1.5, 'trim'),
+  ],
+
+  repairbay: [
+    pad(8.8, 8.8),
+    bx(0, 0, 0, 6.8, 6.8, 0.32, 'trim'),                        // repair deck
+    bx(0, 0, 0.32, 4.4, 4.4, 0.05, 'team'),                     // painted pad
+    bx(0, -2.5, 0.32, 1.8, 1.5, 1.5, 'body'),                   // control box
+    bx(-2.7, 0.2, 0.32, 0.6, 0.6, 2.6, 'metal'),                // gantry posts
+    bx(2.7, 0.2, 0.32, 0.6, 0.6, 2.6, 'metal'),
+    bx(0, 0.2, 2.92, 6.0, 0.6, 0.5, 'metal'),                   // gantry beam
+  ],
+
+  depot: [
+    pad(8.2, 7.6),
+    bx(0, -0.2, 0, 5.4, 5.0, 2.0, 'body'),
+    bx(0, -0.2, 2.0, 5.6, 5.2, 0.26, 'trim'),
+    bx(0, 2.36, 0, 1.6, 0.14, 1.3, 'dark'),
+    bx(-1.8, 2.36, 1.45, 1.5, 0.12, 0.42, 'team'),
+  ],
+
+  /* --- defences --------------------------------------------------------- */
+
+  turret: [
+    pad(5.0, 5.0),
+    bx(0, 0, 0, 2.9, 2.9, 0.95, 'body'),
+    bx(0, 0, 0.95, 2.2, 2.2, 0.95, 'body'),
+    bx(0, 1.16, 1.2, 1.3, 0.1, 0.42, 'team'),
+    bx(2.0, 0, 1.32, 2.7, 0.34, 0.34, 'metal'),                 // barrel
+  ],
+
+  aa: [
+    pad(5.0, 5.0),
+    bx(0, 0, 0, 2.9, 2.9, 0.9, 'body'),
+    bx(0, 0, 0.9, 1.9, 1.9, 0.75, 'body'),
+    bx(0.45, -0.45, 1.55, 0.28, 0.28, 2.5, 'metal'),
+    bx(0.45, 0.45, 1.55, 0.28, 0.28, 2.5, 'metal'),
+    bx(-0.75, 0.98, 1.05, 0.9, 0.1, 0.4, 'team'),
+  ],
+
+  tesla: [
+    pad(4.6, 4.6),
+    bx(0, 0, 0, 2.4, 2.4, 1.05, 'body'),
+    cy(0, 0, 1.05, 0.3, 2.5, 'metal'),
+    dc(0, 0, 3.55, 1.2, 'metal'),
+    dc(0, 0, 3.95, 0.85, 'metal'),
+    dm(0, 0, 4.05, 0.62, 'glass'),
+  ],
+
+  prism: [
+    pad(4.6, 4.6),
+    bx(0, 0, 0, 2.5, 2.5, 1.0, 'body'),
+    bx(0, 0, 1.0, 1.5, 1.5, 1.4, 'body'),
+    bx(0, 0, 2.4, 0.95, 0.95, 1.25, 'trim'),
+    bx(0, 0, 3.65, 0.55, 0.55, 1.0, 'glass'),
+  ],
+
+  /* --- vehicles --------------------------------------------------------- */
+
+  /* Vehicles run their LONG AXIS ALONG +z, i.e. nose toward the lower-left.
+     Authored along +x first, they came out nose-right with the gun barrel
+     projecting into the lower-right corner and the near track drawn as a black
+     slab across the hull — every vehicle read as a shed with a ramp. Along z
+     the lit (+z) face is the one the nose presents to the camera, the tracks
+     flank left and right where the eye expects them, and the barrel exits into
+     the empty lower-left of the cell instead of off the edge. */
+
+  tank: [
+    bx(-1.2, 0, 0, 0.95, 3.5, 0.95, 'tread'),
+    bx(0, 0, 0.62, 1.85, 3.3, 0.55, 'body'),                    // hull, ON the tracks
+    bx(0, -1.05, 1.17, 1.6, 1.2, 0.3, 'trim'),                  // engine deck
+    bx(0, 1.5, 0.62, 1.6, 0.75, 0.36, 'body'),                  // glacis
+    bx(1.2, 0, 0, 0.95, 3.5, 0.95, 'tread'),
+    bx(0, 0.2, 1.17, 1.55, 1.7, 0.8, 'body'),                   // turret
+    bx(0, 0.2, 1.97, 0.95, 1.05, 0.05, 'team'),   // turret roof plate
+    bx(0, 1.95, 1.5, 0.3, 2.2, 0.3, 'metal'),                   // barrel
+  ],
+
+  heavyTank: [
+    bx(-1.45, 0, 0, 1.15, 4.0, 1.1, 'tread'),
+    bx(0, 0, 0.72, 2.2, 3.8, 0.62, 'body'),
+    bx(0, -1.2, 1.34, 1.9, 1.4, 0.34, 'trim'),
+    bx(0, 1.75, 0.72, 1.9, 0.85, 0.4, 'body'),
+    bx(1.45, 0, 0, 1.15, 4.0, 1.1, 'tread'),
+    bx(0, 0.25, 1.34, 1.95, 2.0, 0.95, 'body'),                 // turret
+    bx(0, 0.25, 2.29, 1.2, 1.25, 0.05, 'team'),   // turret roof plate
+    bx(-0.42, 2.2, 1.72, 0.3, 2.4, 0.3, 'metal'),
+    bx(0.42, 2.2, 1.72, 0.3, 2.4, 0.3, 'metal'),
+  ],
+
+  artillery: [
+    bx(-1.2, -0.3, 0, 0.95, 3.4, 0.95, 'tread'),
+    bx(0, -0.3, 0.62, 1.85, 3.2, 0.5, 'body'),
+    bx(1.2, -0.3, 0, 0.95, 3.4, 0.95, 'tread'),
+    bx(0, -1.15, 1.12, 1.6, 1.5, 0.85, 'body'),                 // cradle
+    bx(0, -0.38, 1.34, 0.85, 0.06, 0.34, 'team'),
+    bx(0, -1.0, 1.62, 0.66, 0.9, 0.62, 'dark'),                 // breech
+    bx(0, 1.3, 1.72, 0.34, 3.8, 0.34, 'metal'),                 // tube
+  ],
+
+  harvester: [
+    bx(-1.45, -0.2, 0, 1.1, 3.6, 1.0, 'tread'),
+    bx(0, -0.5, 0.66, 2.2, 3.1, 0.9, 'body'),
+    bx(1.45, -0.2, 0, 1.1, 3.6, 1.0, 'tread'),
+    bx(0, -1.0, 1.56, 2.1, 2.2, 1.3, 'trim'),                   // ore bin
+    bx(0, 0.14, 1.86, 1.2, 0.06, 0.5, 'team'),
+    bx(0, 1.6, 0.5, 2.3, 1.3, 0.6, 'metal'),                    // intake head
+    bx(0, 1.6, 1.1, 2.4, 1.4, 0.14, 'dark'),
+  ],
+
+  apc: [
+    bx(-1.15, 0, 0, 0.9, 3.3, 0.9, 'tread'),
+    bx(0, -0.4, 0.6, 1.85, 2.9, 1.0, 'body'),
+    bx(0, 1.35, 0.6, 1.6, 0.85, 0.62, 'body'),                  // sloped nose
+    bx(1.15, 0, 0, 0.9, 3.3, 0.9, 'tread'),
+    bx(0, 1.78, 0.78, 1.05, 0.06, 0.3, 'team'),
+    bx(0, -0.7, 1.6, 0.95, 0.95, 0.44, 'trim'),                 // cupola
+    bx(0, 0.2, 1.76, 0.18, 1.5, 0.18, 'metal'),
+  ],
+
+  mcv: [
+    bx(-1.55, 0, 0, 1.1, 4.2, 1.05, 'tread'),
+    bx(0, -0.5, 0.72, 2.4, 3.5, 1.55, 'body'),
+    bx(1.55, 0, 0, 1.1, 4.2, 1.05, 'tread'),
+    bx(0, 1.26, 0.82, 1.5, 0.06, 0.42, 'team'),
+    bx(0, -1.0, 2.27, 2.1, 2.1, 0.42, 'trim'),                  // folded gantry
+    bx(0, 1.6, 1.35, 1.9, 0.9, 0.8, 'glass'),                   // cab
+    cy(0, -1.8, 2.69, 0.18, 1.2, 'metal'),
+  ],
+
+  /* Wings and engines are SPLIT LEFT AND RIGHT and drawn either side of the
+     fuselage. As one full-span box the wing straddled the fuselage in z and the
+     painter's algorithm had no valid order for it — the aircraft came out as a
+     pile of loose plates. */
+  aircraft: [
+    bx(0, -2.9, 3.25, 0.85, 0.2, 1.1, 'trim'),                  // fin
+    bx(0, -2.55, 2.72, 3.1, 1.0, 0.22, 'trim'),                 // tailplane
+    bx(-2.95, -0.1, 2.3, 0.7, 1.5, 0.5, 'metal'),               // port nacelle
+    bx(-2.0, -0.1, 2.5, 2.5, 1.9, 0.3, 'trim'),                 // port wing
+    bx(0, 0.1, 2.24, 1.35, 5.0, 1.05, 'body'),                  // fuselage
+    bx(0, 1.9, 2.46, 0.9, 1.3, 0.62, 'glass'),                  // canopy
+    bx(0, 0.1, 3.29, 1.05, 1.3, 0.05, 'team'),
+    bx(2.0, -0.1, 2.5, 2.5, 1.9, 0.3, 'trim'),                  // starboard wing
+    bx(2.95, -0.1, 2.3, 0.7, 1.5, 0.5, 'metal'),                // starboard nacelle
+  ],
+
+  /* The rotor is TWO BLADES, not a disc. A filled 3.4-radius ellipse is 40% of
+     the cell and swallowed the airframe whole. */
+  helicopter: [
+    bx(0, -2.6, 2.5, 0.3, 2.6, 0.3, 'trim'),                    // tail boom
+    bx(0, -3.7, 2.55, 0.14, 0.26, 0.95, 'trim'),                // fin
+    bx(-1.15, -0.4, 1.2, 0.16, 2.6, 0.5, 'metal'),              // skids
+    bx(0, -0.1, 1.7, 1.85, 3.5, 1.5, 'body'),
+    bx(0, 1.86, 1.95, 1.05, 0.6, 0.62, 'glass'),                // nose glazing
+    bx(0, 0, 3.2, 1.1, 1.4, 0.05, 'team'),
+    bx(1.15, -0.4, 1.2, 0.16, 2.6, 0.5, 'metal'),
+    cy(0, 0.1, 3.25, 0.16, 0.45, 'metal'),                      // rotor mast
+    bx(0, 0.1, 3.66, 6.6, 0.24, 0.08, 'dark'),                  // blades
+    bx(0, 0.1, 3.66, 0.24, 6.6, 0.08, 'dark'),
+  ],
+
+  ship: [
+    bx(0, 0, 0, 2.4, 7.0, 1.05, 'body'),
+    bx(0, 2.9, 0, 1.5, 1.6, 1.05, 'body'),                      // bow taper
+    bx(0, -0.6, 1.05, 2.0, 4.2, 0.45, 'trim'),                  // deck house
+    bx(0, -1.2, 1.5, 1.5, 1.9, 0.9, 'body'),                    // bridge
+    bx(0, -0.24, 1.72, 0.9, 0.06, 0.4, 'team'),
+    cy(0, -1.9, 2.4, 0.13, 1.5, 'metal'),                       // mast
+    bx(0, 2.1, 1.05, 0.9, 1.5, 0.5, 'metal'),                   // fore gun
+    bx(0, 3.1, 1.2, 0.2, 1.5, 0.2, 'metal'),
+  ],
+
+  /* --- infantry ---------------------------------------------------------
+     Narrow stance, real shoulders, small head, and the weapon carried across
+     the body pointing down-left. The previous figure was one wide slab on two
+     black posts wearing a full-width team panel, which read as a cabinet. */
+
+  rifleman: [
+    bx(-0.17, 0, 0.16, 0.29, 0.32, 0.62, 'trim'),               // legs
+    bx(0.17, 0, 0.16, 0.29, 0.32, 0.62, 'trim'),
+    bx(-0.17, 0.04, 0, 0.31, 0.42, 0.16, 'dark'),               // boots
+    bx(0.17, 0.04, 0, 0.31, 0.42, 0.16, 'dark'),
+    bx(0, 0, 0.78, 0.64, 0.46, 0.66, 'body'),                   // torso
+    bx(0, 0.26, 0.92, 0.36, 0.06, 0.26, 'team'),
+    bx(0, 0, 1.44, 0.86, 0.5, 0.24, 'body'),                    // shoulders
+    bx(-0.42, 0.1, 0.92, 0.2, 0.24, 0.52, 'body'),              // arms
+    bx(0.42, 0.1, 0.92, 0.2, 0.24, 0.52, 'body'),
+    bx(0, 0, 1.68, 0.24, 0.24, 0.1, 'trim'),                    // neck
+    dm(0, 0.02, 1.78, 0.23, 'trim'),                            // helmet
+    bx(0.26, 0.62, 1.0, 0.11, 1.05, 0.11, 'metal'),             // rifle
+  ],
+
+  rocketeer: [
+    bx(-0.17, 0, 0.16, 0.29, 0.32, 0.62, 'trim'),
+    bx(0.17, 0, 0.16, 0.29, 0.32, 0.62, 'trim'),
+    bx(-0.17, 0.04, 0, 0.31, 0.42, 0.16, 'dark'),
+    bx(0.17, 0.04, 0, 0.31, 0.42, 0.16, 'dark'),
+    bx(0, -0.36, 0.94, 0.64, 0.3, 0.62, 'trim'),                // backpack
+    bx(0, 0, 0.78, 0.64, 0.46, 0.66, 'body'),
+    bx(0, 0.26, 0.92, 0.36, 0.06, 0.26, 'team'),
+    bx(0, 0, 1.44, 0.86, 0.5, 0.24, 'body'),
+    bx(-0.42, 0.1, 0.92, 0.2, 0.24, 0.52, 'body'),
+    bx(0.42, 0.1, 0.92, 0.2, 0.24, 0.52, 'body'),
+    bx(0, 0, 1.68, 0.24, 0.24, 0.1, 'trim'),
+    dm(0, 0.02, 1.78, 0.23, 'trim'),                            // helmet
+    bx(0, 0.2, 1.86, 0.3, 0.06, 0.14, 'glass'),                 // visor
+    bx(0.28, 0.5, 1.2, 0.2, 1.5, 0.2, 'metal'),                 // launcher tube
+  ],
+
+  dog: [
+    bx(-0.26, -0.5, 0, 0.19, 0.2, 0.42, 'trim'),
+    bx(0.26, -0.5, 0, 0.19, 0.2, 0.42, 'trim'),
+    bx(0, -0.86, 0.72, 0.13, 0.5, 0.13, 'trim'),                // tail
+    bx(0, -0.05, 0.42, 0.56, 1.4, 0.52, 'trim'),                // body
+    bx(0, 0.23, 0.56, 0.06, 0.42, 0.22, 'team'),                // harness
+    bx(-0.26, 0.45, 0, 0.19, 0.2, 0.42, 'trim'),
+    bx(0.26, 0.45, 0, 0.19, 0.2, 0.42, 'trim'),
+    bx(0, 0.82, 0.5, 0.46, 0.5, 0.48, 'trim'),                  // head
+    bx(-0.14, 0.72, 0.96, 0.13, 0.15, 0.18, 'dark'),            // ears
+    bx(0.14, 0.72, 0.96, 0.13, 0.15, 0.18, 'dark'),
+    bx(0, 1.16, 0.5, 0.26, 0.34, 0.24, 'dark'),                 // muzzle
+  ],
+};
+
+/**
+ * Subjects that are in the air. The assembly is lifted by this fraction of the
+ * cell height and the contact shadow stays on the ground, which is the only
+ * cue at 60 x 48 that separates an aircraft from a very odd-looking tank.
+ */
+const AIRBORNE: Partial<Record<CameoArchetype, number>> = {
+  aircraft: 0.13,
+  helicopter: 0.11,
+};
+
+/**
+ * Keyword resolution. Matched against `${key} ${name}` lowercased, FIRST RULE
+ * WINS, so the order below is the specificity order — `war factory` must beat
+ * `factory`, `tesla` must beat `tower`, and the bare `tank` catch-all sits at
+ * the very bottom of the vehicle block.
+ */
+const ARCHETYPE_RULES: ReadonlyArray<readonly [RegExp, CameoArchetype]> = [
+  // structures
+  [/con.?yard|construction/, 'conyard'],
+  [/refin|ore.?proc|processor/, 'refinery'],
+  [/power|reactor|generator/, 'power'],
+  [/war.?factory|vehicle.?fact|factory/, 'warfactory'],
+  [/barrack|infantry.?prod|clon/, 'barracks'],
+  [/radar|comm(and)?.?cent|spy.?sat/, 'radar'],
+  [/lab|tech.?cent|battle.?lab|research/, 'lab'],
+  // `nuclear` as well as `nuke`: "Nuclear Missile" carries neither `nuke` nor
+  // `missile silo`, and without it the franchise's most recognisable structure
+  // fell through to the generic block.
+  [/chrono|nuke|nuclear|atom|missile.?silo|weather|super|iron.?curtain|vertex/, 'superweapon'],
+  [/silo|storage|ore.?dump/, 'silo'],
+  [/heli.?pad|air.?pad|airfield|air.?force/, 'helipad'],
+  [/wall|fence|barrier|gate/, 'wall'],
+  [/ship.?yard|naval|dock|sub.?pen/, 'ship'],
+  [/repair|service.?depot|maintenance/, 'repairbay'],
+  [/depot|outpost|garrison|storage.?shed/, 'depot'],
+  // defences
+  [/tesla.?coil|tesla/, 'tesla'],
+  [/prism.?tower|prism|laser/, 'prism'],
+  [/flak|aa.?gun|anti.?air|sam|patriot|missile.?def/, 'aa'],
+  [/pillbox|turret|sentry|cannon|gun.?tower|bunker|tower/, 'turret'],
+  // vehicles
+  [/harvest|miner|ore.?truck|chrono.?miner/, 'harvester'],
+  [/mcv|deploy|mobile.?const/, 'mcv'],
+  [/artiller|v[234]|siege|catapult|howitz|mortar/, 'artillery'],
+  [/apc|transport|ifv|carrier|hummer|humvee|scout|ranger/, 'apc'],
+  [/apoc|mammoth|rhino|heavy.?tank|battle.?tank|kirov/, 'heavyTank'],
+  [/heli|copter|hind|chinook|twinblade|rotor/, 'helicopter'],
+  [/plane|jet|bomber|fighter|harrier|badger|migs?\b|aircraft/, 'aircraft'],
+  [/destroyer|cruiser|frigate|gunboat|sub(marine)?\b|dreadnought|boat/, 'ship'],
+  [/tank|grizzly|guardian|hammer|bull.?frog/, 'tank'],
+  // infantry
+  [/dog|bear|hound|k9/, 'dog'],
+  [/rocket|bazooka|missile|flak.?troop|tesla.?troop|desolator|javelin/, 'rocketeer'],
+  [/engineer|conscript|rifle|gi\b|guardian.?gi|soldier|sniper|spy|infantry|peacekeeper/, 'rifleman'],
+];
+
+export function archetypeFor(subject: CameoSubject): CameoArchetype {
+  const hay = `${subject.key} ${subject.name}`.toLowerCase();
+  for (const [re, arch] of ARCHETYPE_RULES) {
+    if (re.test(hay)) {
+      // A rule may fire on a name shared by a structure and a unit ("naval
+      // yard" vs "destroyer"). The class flag is authoritative: a building
+      // never resolves to a vehicle silhouette and vice versa.
+      if (subject.isBuilding && UNIT_ARCHETYPES.has(arch)) continue;
+      if (!subject.isBuilding && !UNIT_ARCHETYPES.has(arch)) continue;
+      return arch;
+    }
+  }
+  if (subject.isBuilding) return subject.tab === BuildTab.Defense ? 'turret' : 'depot';
+  if (subject.tab === BuildTab.Infantry) return 'rifleman';
+  return 'tank';
+}
+
+const UNIT_ARCHETYPES: ReadonlySet<CameoArchetype> = new Set<CameoArchetype>([
+  'tank', 'heavyTank', 'artillery', 'harvester', 'apc', 'mcv',
+  'aircraft', 'helicopter', 'ship', 'rifleman', 'rocketeer', 'dog',
+]);
+
+/**
+ * The generic structure scales with its real footprint, so a 2x2 outpost and a
+ * 5x5 hall do not produce the identical picture. Everything else is a fixed
+ * authored assembly.
+ */
+function partsFor(subject: CameoSubject, arch: CameoArchetype): readonly Part[] {
+  if (arch !== 'depot') return SILHOUETTES[arch];
+  const fw = Math.max(1, Math.min(6, subject.footprintW || 3));
+  const fh = Math.max(1, Math.min(6, subject.footprintH || 3));
+  const w = 1.5 + fw * 1.15;
+  const d = 1.5 + fh * 1.15;
+  const ht = 1.3 + Math.min(fw, fh) * 0.32;
+  return [
+    pad(w + 2.4, d + 2.4),
+    bx(0, -0.2, 0, w, d, ht, 'body'),
+    bx(0, -0.2, ht, w + 0.22, d + 0.22, 0.26, 'trim'),
+    bx(0, d * 0.5 - 0.27, 0, Math.min(1.8, w * 0.35), 0.14, ht * 0.66, 'dark'),
+    bx(-w * 0.28, d * 0.5 - 0.27, ht * 0.72, w * 0.34, 0.12, 0.42, 'team'),
+  ];
+}
+
+/* ==========================================================================
+ * SECTION 7 — THE SILHOUETTE PAINTER
+ * ========================================================================== */
+
+interface CameoPalette {
+  body: string; trim: string; dark: string;
+  metal: string; team: string; glass: string; tread: string;
+}
+
+/**
+ * Structure paint is a concrete/khaki neutral and vehicle paint is the faction
+ * hull colour. Neither is ever the TEAM colour: R12 keeps team colour to a
+ * 7-10% accent slab, which is exactly what the `team` tone is used for.
+ */
+function paletteFor(faction: Faction, isBuilding: boolean): CameoPalette {
+  if (faction === Faction.Soviets) {
+    return {
+      body: isBuilding ? '#8C8368' : '#6C7444',
+      trim: isBuilding ? '#A29878' : '#565C36',
+      dark: '#26241E',
+      metal: '#9A9086',
+      team: '#C0201C',
+      glass: '#E8A83C',
+      tread: '#2C2A24',
+    };
+  }
+  return {
+    body: isBuilding ? '#C2C4C0' : '#B9BCC4',
+    trim: isBuilding ? '#9DA0A2' : '#8E939D',
+    dark: '#23242A',
+    metal: '#9AA0A6',
+    team: '#3B90F7',
+    glass: '#7ED8FC',
+    tread: '#2A2B30',
+  };
+}
+
+/**
+ * How far a tone is allowed to travel between its lit and shaded face.
+ *
+ * Team colour and glass get the shallowest ramp: they are the two things in the
+ * cell that must stay saturated at cell size, and a 44% darkened team slab on
+ * the shaded face reads as brown rather than as the player's colour.
+ */
+const TONE_LIFT: Readonly<Record<Tone, number>> = {
+  body: 0.24, trim: 0.24, dark: 0.30, metal: 0.28, team: 0.18, glass: 0.30, tread: 0.22,
+};
+const TONE_DROP: Readonly<Record<Tone, number>> = {
+  body: 0.44, trim: 0.44, dark: 0.38, metal: 0.46, team: 0.28, glass: 0.32, tread: 0.34,
+};
+
+/** [top, lit face, shaded face] for one tone. Three flat values, no texture. */
+function toneRamp(pal: CameoPalette, t: Tone): readonly [string, string, string] {
+  const base = pal[t];
+  return [mixHex(base, '#FFFFFF', TONE_LIFT[t]), base, mixHex(base, '#0A0C12', TONE_DROP[t])];
+}
+
+interface Fit {
+  /** Model units to canvas pixels. */
+  s: number;
+  ox: number;
+  oy: number;
+  /** Canvas-space centre and half-width of the ground contact patch. */
+  shadowX: number;
+  shadowY: number;
+  shadowR: number;
+}
+
+function projectBounds(parts: readonly Part[]): { x0: number; x1: number; y0: number; y1: number } {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  const push = (sx: number, sy: number): void => {
+    if (sx < x0) x0 = sx;
+    if (sx > x1) x1 = sx;
+    if (sy < y0) y0 = sy;
+    if (sy > y1) y1 = sy;
+  };
+  for (const p of parts) {
+    if (p.k === 'box') {
+      const ax = p.x - p.w * 0.5, bxx = p.x + p.w * 0.5;
+      const az = p.z - p.d * 0.5, bz = p.z + p.d * 0.5;
+      for (const x of [ax, bxx]) {
+        for (const z of [az, bz]) {
+          push(projX(x, z), projY(x, z, p.y));
+          push(projX(x, z), projY(x, z, p.y + p.h));
+        }
+      }
+    } else {
+      const cx = projX(p.x, p.z);
+      const rx = ISO_A * p.r;
+      const ry = ISO_B * p.r;
+      const top = p.k === 'cyl' ? p.y + p.h : p.y;
+      const capUp = p.k === 'dome' ? rx * Y_GAIN : ry;
+      push(cx - rx, projY(p.x, p.z, top) - capUp);
+      push(cx + rx, projY(p.x, p.z, p.y) + ry);
+    }
+  }
+  if (x0 > x1) { x0 = -1; x1 = 1; y0 = -1; y1 = 1; }
+  return { x0, x1, y0, y1 };
+}
+
+function fitAssembly(parts: readonly Part[], w: number, h: number, lift: number): Fit {
+  const b = projectBounds(parts);
+  const bw = Math.max(0.001, b.x1 - b.x0);
+  const bh = Math.max(0.001, b.y1 - b.y0);
+  // §2.8: the subject occupies 70-85% of the frame. Fit the binding axis.
+  // The vertical budget is reduced by `lift` FIRST: an airborne subject is
+  // raised off the ground line after fitting, so a budget that ignores the
+  // lift pushes the wingtips straight out through the top of the cell.
+  const vBudget = Math.max(h * 0.30, h * (0.78 - lift));
+  const s = Math.min((w * 0.87) / bw, vBudget / bh);
+  const groundY = h * 0.845;
+  const ox = w * 0.5 - s * (b.x0 + b.x1) * 0.5;
+  const oy = groundY - h * lift - s * b.y1;
+  return {
+    s, ox, oy,
+    shadowX: w * 0.5 + s * bw * 0.05,
+    shadowY: groundY,
+    shadowR: Math.min(w * 0.44, s * bw * 0.40),
+  };
+}
+
+/** Project a model point into canvas space. */
+function sx(f: Fit, x: number, z: number): number {
+  return f.ox + f.s * projX(x, z);
+}
+function sy(f: Fit, x: number, z: number, y: number): number {
+  return f.oy + f.s * projY(x, z, y);
+}
+
+function poly(ctx: CanvasRenderingContext2D, pts: readonly (readonly [number, number])[]): void {
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+}
+
+function fillPoly(
+  ctx: CanvasRenderingContext2D,
+  pts: readonly (readonly [number, number])[],
+  fill: string,
+  line: number,
+): void {
+  poly(ctx, pts);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  // The panel line. One stroke per face, at the same width as every other line
+  // in the cell, drawn from a real path — never derived from a value threshold.
+  ctx.strokeStyle = 'rgba(6,8,12,0.46)';
+  ctx.lineWidth = line;
+  ctx.stroke();
+}
+
+function drawBox(ctx: CanvasRenderingContext2D, p: BoxPart, f: Fit, pal: CameoPalette, line: number): void {
+  const [top, lit, dark] = toneRamp(pal, p.t);
+  const x0 = p.x - p.w * 0.5, x1 = p.x + p.w * 0.5;
+  const z0 = p.z - p.d * 0.5, z1 = p.z + p.d * 0.5;
+  const y0 = p.y, y1 = p.y + p.h;
+  const P = (x: number, y: number, z: number): readonly [number, number] => [sx(f, x, z), sy(f, x, z, y)];
+
+  // Top rhombus. A = back vertex, B = right, C = front, D = left.
+  const A = P(x0, y1, z0), B = P(x1, y1, z0), C = P(x1, y1, z1), D = P(x0, y1, z1);
+  fillPoly(ctx, [A, B, C, D], top, line);
+
+  if (p.h > 0.0001) {
+    // Lit face: z = z1, the lower-LEFT one. Shaded face: x = x1, lower-right.
+    fillPoly(ctx, [P(x0, y0, z1), P(x0, y1, z1), P(x1, y1, z1), P(x1, y0, z1)], lit, line);
+    fillPoly(ctx, [P(x1, y0, z0), P(x1, y1, z0), P(x1, y1, z1), P(x1, y0, z1)], dark, line);
+  }
+
+  // Law 2 on a solid: a one-line specular on the two UPPER edges of the top
+  // face only. Highlighting all four turns the box into a wireframe.
+  ctx.strokeStyle = rgba(mixHex(pal[p.t], '#FFFFFF', 0.62), 0.75);
+  ctx.lineWidth = line;
+  ctx.beginPath();
+  ctx.moveTo(D[0], D[1]);
+  ctx.lineTo(A[0], A[1]);
+  ctx.lineTo(B[0], B[1]);
+  ctx.stroke();
+}
+
+function drawCyl(ctx: CanvasRenderingContext2D, p: CylPart, f: Fit, pal: CameoPalette, line: number): void {
+  const [top, lit, dark] = toneRamp(pal, p.t);
+  const cx = sx(f, p.x, p.z);
+  const yb = sy(f, p.x, p.z, p.y);
+  const yt = sy(f, p.x, p.z, p.y + p.h);
+  const rx = f.s * ISO_A * p.r;
+  const ry = f.s * ISO_B * p.r;
+
+  // Body: left edge up, front half of the top rim, right edge down, front half
+  // of the bottom rim. The back halves are hidden by the solid itself.
+  ctx.beginPath();
+  ctx.moveTo(cx - rx, yb);
+  ctx.lineTo(cx - rx, yt);
+  ctx.ellipse(cx, yt, rx, ry, 0, Math.PI, 0, true);
+  ctx.lineTo(cx + rx, yb);
+  ctx.ellipse(cx, yb, rx, ry, 0, 0, Math.PI, false);
+  ctx.closePath();
+  const g = ctx.createLinearGradient(cx - rx, 0, cx + rx, 0);
+  g.addColorStop(0, mixHex(pal[p.t], '#FFFFFF', TONE_LIFT[p.t] * 0.5));
+  g.addColorStop(0.38, lit);
+  g.addColorStop(1, dark);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(6,8,12,0.46)';
+  ctx.lineWidth = line;
+  ctx.stroke();
+
+  // Top cap, flat.
+  ctx.beginPath();
+  ctx.ellipse(cx, yt, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fillStyle = top;
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawDisc(ctx: CanvasRenderingContext2D, p: DiscPart, f: Fit, pal: CameoPalette, line: number): void {
+  const [top] = toneRamp(pal, p.t);
+  ctx.beginPath();
+  ctx.ellipse(
+    sx(f, p.x, p.z), sy(f, p.x, p.z, p.y),
+    f.s * ISO_A * p.r, f.s * ISO_B * p.r, 0, 0, Math.PI * 2,
+  );
+  ctx.fillStyle = top;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(6,8,12,0.46)';
+  ctx.lineWidth = line;
+  ctx.stroke();
+}
+
+function drawDome(ctx: CanvasRenderingContext2D, p: DomePart, f: Fit, pal: CameoPalette, line: number): void {
+  const [top, lit, dark] = toneRamp(pal, p.t);
+  const cx = sx(f, p.x, p.z);
+  const cyy = sy(f, p.x, p.z, p.y);
+  // A sphere of radius r projects to a CIRCLE of radius 1.2247r under this
+  // projection (the rows are orthogonal and equal-norm), which is why the cap
+  // uses ISO_A and not the raw radius — then Y_GAIN stretches it into the same
+  // ellipsoid every box in the scene has already been stretched into.
+  const R = f.s * ISO_A * p.r;
+  const rc = R * Y_GAIN;
+  const ry = f.s * ISO_B * p.r;
+
+  ctx.beginPath();
+  ctx.ellipse(cx, cyy, R, rc, 0, Math.PI, 0, false);
+  ctx.ellipse(cx, cyy, R, ry, 0, 0, Math.PI, false);
+  ctx.closePath();
+  const g = ctx.createLinearGradient(cx - R * 0.7, cyy - rc, cx + R * 0.7, cyy + ry);
+  g.addColorStop(0, top);
+  g.addColorStop(0.5, lit);
+  g.addColorStop(1, dark);
+  ctx.fillStyle = g;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(6,8,12,0.46)';
+  ctx.lineWidth = line;
+  ctx.stroke();
+}
+
+function drawAssembly(
+  ctx: CanvasRenderingContext2D,
+  parts: readonly Part[],
+  f: Fit,
+  pal: CameoPalette,
+  line: number,
+): void {
+  ctx.lineJoin = 'round';
+  for (const p of parts) {
+    switch (p.k) {
+      case 'box': drawBox(ctx, p, f, pal, line); break;
+      case 'cyl': drawCyl(ctx, p, f, pal, line); break;
+      case 'disc': drawDisc(ctx, p, f, pal, line); break;
+      case 'dome': drawDome(ctx, p, f, pal, line); break;
+    }
+  }
+}
+
+/* ==========================================================================
+ * SECTION 8 — THE FALLBACK CAMEO
+ *
+ * Same diorama grammar as the 3D path — graded backdrop, drawn horizon, ground
+ * contact shadow, three-quarter subject, crisp cell frame — so a sidebar that
+ * is half real meshes and half fallbacks still reads as one set of framed
+ * photographs rather than a mixture of art and placeholder.
+ * ========================================================================== */
+
+/**
+ * Draw one fallback cameo into an arbitrary 2D context. Exported so a contact
+ * sheet of the whole silhouette library can be rendered without a WebGL
+ * context or a live sidebar — the only way to review 28 miniatures at once.
+ */
+export function paintCameoFallback(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  subject: CameoSubject,
+  theatre: Theatre = 'temperate',
+): void {
+  paintFallback(ctx, w, h, subject, BACKDROPS[theatre]);
+}
 
 function paintFallback(
   ctx: CanvasRenderingContext2D,
@@ -641,119 +1549,42 @@ function paintFallback(
   subject: CameoSubject,
   b: Backdrop,
 ): void {
-  const skin = subject.faction === Faction.Soviets ? HUD_SKIN_SOVIETS : HUD_SKIN_ALLIES;
-  const horizon = h * 0.62;
+  paintDiorama(ctx, w, h, b);
 
-  const sky = ctx.createLinearGradient(0, 0, 0, horizon);
-  sky.addColorStop(0, b.skyTop);
-  sky.addColorStop(1, b.skyBottom);
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, w, horizon);
+  const arch = archetypeFor(subject);
+  const parts = partsFor(subject, arch);
+  const fit = fitAssembly(parts, w, h, AIRBORNE[arch] ?? 0);
+  const pal = paletteFor(subject.faction, subject.isBuilding);
+  // Panel lines at 0.7 design px: heavy enough to survive the mip-free blit at
+  // uiScale 1, light enough not to become a cage at uiScale 4.
+  const line = Math.max(1, (w / 60) * 0.7);
 
-  const sun = ctx.createRadialGradient(w * 0.22, h * 0.18, 0, w * 0.22, h * 0.18, w * 0.6);
-  sun.addColorStop(0, b.sun);
-  sun.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.globalAlpha = 0.5;
-  ctx.fillStyle = sun;
-  ctx.fillRect(0, 0, w, horizon);
-  ctx.globalAlpha = 1;
-
-  const ground = ctx.createLinearGradient(0, horizon, 0, h);
-  ground.addColorStop(0, b.groundFar);
-  ground.addColorStop(1, b.groundNear);
-  ctx.fillStyle = ground;
-  ctx.fillRect(0, horizon, w, h - horizon);
-
-  // Body colour: olive for Soviets, grey-white for Allies. Never the team
-  // colour itself — that is a 7-10% accent slab, not a hull paint (R12).
-  const body = subject.faction === Faction.Soviets ? '#4A6B33' : '#B9BCC4';
-  const bodyLo = mixHex(body, '#0A0A0C', 0.55);
-  const bodyHi = mixHex(body, '#FFFFFF', 0.38);
-  const team = subject.faction === Faction.Soviets ? '#C0201C' : '#3B90F7';
-
-  const cx = w * 0.5;
-  const baseY = h * 0.80;
-  const scale = subject.isBuilding
-    ? Math.min(1.15, 0.62 + 0.13 * Math.max(subject.footprintW, subject.footprintH))
-    : subject.tab === BuildTab.Infantry ? 0.62 : 0.86;
-
-  // Contact shadow first — the cue that stops the mass floating.
-  const shW = w * 0.46 * scale;
-  ctx.fillStyle = 'rgba(0,0,0,0.42)';
+  // Contact shadow first — the cue that stops the mass floating. Soft on
+  // purpose: it is the one place in the cell where a gradient is the honest
+  // answer, because a real contact shadow has a penumbra.
+  const sh = ctx.createRadialGradient(
+    fit.shadowX, fit.shadowY, 0,
+    fit.shadowX, fit.shadowY, Math.max(1, fit.shadowR),
+  );
+  sh.addColorStop(0, 'rgba(0,0,0,0.52)');
+  sh.addColorStop(0.55, 'rgba(0,0,0,0.34)');
+  sh.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.save();
+  ctx.translate(fit.shadowX, fit.shadowY);
+  ctx.scale(1, 0.32);
+  ctx.translate(-fit.shadowX, -fit.shadowY);
+  ctx.fillStyle = sh;
   ctx.beginPath();
-  ctx.ellipse(cx + w * 0.03, baseY + h * 0.02, shW, shW * 0.26, 0, 0, Math.PI * 2);
+  ctx.arc(fit.shadowX, fit.shadowY, Math.max(1, fit.shadowR), 0, Math.PI * 2);
   ctx.fill();
+  ctx.restore();
 
-  const bw = w * 0.44 * scale;
-  const bh = h * (subject.isBuilding ? 0.44 : subject.tab === BuildTab.Infantry ? 0.46 : 0.30) * scale;
-  const depth = bw * 0.30;
-  const left = cx - bw * 0.5 - depth * 0.35;
-  const top = baseY - bh;
-
-  // Front face.
-  ctx.fillStyle = body;
-  ctx.fillRect(left, top, bw, bh);
-  // Right (shaded) face, drawn as a parallelogram for the three-quarter read.
-  ctx.fillStyle = bodyLo;
-  ctx.beginPath();
-  ctx.moveTo(left + bw, top);
-  ctx.lineTo(left + bw + depth, top - depth * 0.45);
-  ctx.lineTo(left + bw + depth, top - depth * 0.45 + bh);
-  ctx.lineTo(left + bw, top + bh);
-  ctx.closePath();
-  ctx.fill();
-  // Top (lit) face.
-  ctx.fillStyle = mixHex(body, '#FFFFFF', 0.20);
-  ctx.beginPath();
-  ctx.moveTo(left, top);
-  ctx.lineTo(left + depth, top - depth * 0.45);
-  ctx.lineTo(left + bw + depth, top - depth * 0.45);
-  ctx.lineTo(left + bw, top);
-  ctx.closePath();
-  ctx.fill();
-
-  // Bevel highlight on every convex edge — property 2 of the look bible.
-  ctx.strokeStyle = bodyHi;
-  ctx.lineWidth = Math.max(1, w * 0.012);
-  ctx.beginPath();
-  ctx.moveTo(left, top);
-  ctx.lineTo(left + depth, top - depth * 0.45);
-  ctx.lineTo(left + bw + depth, top - depth * 0.45);
-  ctx.stroke();
-
-  // One contiguous team-colour slab on a camera-facing surface.
-  ctx.fillStyle = team;
-  ctx.fillRect(left + bw * 0.12, top + bh * 0.52, bw * 0.30, bh * 0.22);
-
-  // Class tell: a barrel for combat vehicles, a mast for defences, a stack for
-  // structures. Enough to keep the twenty fallbacks from looking identical.
-  ctx.fillStyle = '#1A1A1E';
-  if (subject.tab === BuildTab.Vehicles && !subject.isBuilding) {
-    ctx.fillRect(left + bw * 0.42, top - depth * 0.45 - bh * 0.20, bw * 0.62, Math.max(1.5, bh * 0.10));
-  } else if (subject.tab === BuildTab.Defense) {
-    ctx.fillRect(cx - bw * 0.05, top - bh * 0.55, Math.max(1.5, bw * 0.09), bh * 0.60);
-    ctx.fillStyle = team;
-    ctx.fillRect(cx - bw * 0.11, top - bh * 0.62, bw * 0.22, Math.max(1.5, bh * 0.10));
-  } else if (subject.isBuilding) {
-    ctx.fillRect(left + bw * 0.68, top - depth * 0.45 - bh * 0.34, bw * 0.14, bh * 0.36);
-  }
-
-  // Hard 1 px contact edge along the base (blob-readability rule B3).
-  ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-  ctx.lineWidth = 1;
-  ctx.strokeRect(left + 0.5, top + 0.5, bw - 1, bh - 1);
-
-  // Faint faction chrome vignette so the fallback still sits in the HUD family.
-  const vig = ctx.createLinearGradient(0, 0, 0, h);
-  vig.addColorStop(0, 'rgba(0,0,0,0)');
-  vig.addColorStop(1, `rgba(0,0,0,0.28)`);
-  ctx.fillStyle = vig;
-  ctx.fillRect(0, 0, w, h);
-  void skin;
+  drawAssembly(ctx, parts, fit, pal, line);
+  paintCameoFrame(ctx, w, h, subject.faction);
 }
 
 /* ==========================================================================
- * SECTION 5 — HELPERS
+ * SECTION 9 — HELPERS
  * ========================================================================== */
 
 /** Soft radial blob used as the ground contact shadow in the 3D path. */

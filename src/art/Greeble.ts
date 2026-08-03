@@ -20,31 +20,64 @@
  *   row 0 |  paintLarge paintMed  paintSmall paintTiny
  *           col 0      col 1      col 2      col 3
  *
- * WHY FOUR PAINT TILES. Bible 5.5 specifies panel lines as a fraction of *the
- * part's* short dimension (2%) and 6-14 runs per major hull face. That is a
- * RELATIVE spec, so one tile per face — not a tiled repeat — is the literally
- * correct mapping: a 7 m glacis and a 0.4 m sensor box both get panel lines
- * scaled to themselves. The four density variants exist so the factory can
- * pick by face area and never emit a sub-pixel greeble (bible 5.3).
+ * ============================================================================
+ * THE SURFACE LAW — read this before changing a single pixel
+ * ============================================================================
+ * RA3 is "clean painted plastic toys". Look at `docs/surface-refs/
+ * ra3-units-road.png`: the Prism tank is LARGE UNBROKEN AREAS OF FLAT PAINT —
+ * a yellow-olive base and bright saturated green team slabs — with a handful of
+ * crisp dark panel lines and a few small clean mechanical details. Glossy
+ * highlights on the upper surfaces. Zero grime, zero marbling, zero noise.
  *
- * WHAT IS PAINTED, PER BIBLE 5.5
- * ------------------------------
- *   - panel lines: dark inset groove (1.5-3 px) + a 1 px lighter lip on the
- *     sun side, long runs along the long axis plus 2-4 cross-cuts, NEVER a
- *     uniform grid (spacing is walked with jitter).
- *   - cavity darkening: the ONLY wear. recess = base x 0.32, hue-shifted
- *     toward the shadow tint. Baked into albedo AND ao, never SSAO.
- *   - rivets (Soviets only): 3-5 px discs at 10-14 px pitch on ~60% of seams,
- *     drawn as a light dot with a dark under-shadow.
- *   - vents, hatches, grilles, warning stripes, hull stencil numerals.
- *   - ZERO grime. No streaks, no mud, no rust, no scratched edges (scorecard
- *     #22). Everything that reads as "wear" here is a recess, not dirt.
+ *   >>> IF PER-PIXEL NOISE IS VISIBLE AT GAMEPLAY ZOOM, IT IS WRONG. <<<
+ *
+ * WHAT THIS FILE USED TO DO, AND WHY IT LOOKED LIKE MOULD
+ * -------------------------------------------------------
+ * `fillBase` wrote a 3-octave `fbm2` "orange peel" into BOTH albedo (+-4.5%)
+ * AND height (+-0.04), and `packNormal` Sobel'd that height at relief 2.6. The
+ * albedo half was nearly invisible; the NORMAL half was the disaster. A
+ * full-atlas field of 5-20 texel noise bumps, lit by a key light through a
+ * clearcoat and reflecting a blue-grey sky, is exactly the blobby light
+ * blue-grey marbling the user described as mould growing on the buildings. The
+ * insignia inherited it too, which is why the Soviet star read as a red
+ * splatter rather than a shape. Three further generators piled on:
+ * `paintBareMetal` (4-octave fbm at 9x frequency into albedo AND height),
+ * plus additive soft-edged strokes that fattened every crossing line into a
+ * blob and a per-line spacing jitter that turned deliberate plating into
+ * scribble.
+ *
+ * WHAT IT DOES NOW
+ * ----------------
+ *   - `fillBase` writes an EXACTLY FLAT colour. Height is exactly 0.5, so the
+ *     normal map over a plate is exactly (0,0,1). Roughness is constant. There
+ *     is no noise field anywhere in this file. Not one call to fbm2/simplex2.
+ *   - every mark is a real path: `cline`/`crect`/`cdisc`/`cring`/`cpoly` are
+ *     signed-distance rasterizers with an EXACT width and exactly one texel of
+ *     anti-aliasing, and they MAX-composite instead of accumulating, so two
+ *     crossing seams stay two crossing seams instead of becoming a blot.
+ *   - panel layouts are deliberate geometry (`PLANS`): a frame, two or three
+ *     full-width courses, one or two verticals, one recessed pocket. No walk,
+ *     no jitter. Large flat areas between them are the POINT.
+ *   - insignia come from `decalPolygons` — the same crisp vector paths the
+ *     clean texture set uses — so the Soviet star is a five-point star and the
+ *     Allied roundel is concentric circles, both with hard edges.
+ *   - rivets are stamped into HEIGHT ONLY. They read as lit relief through the
+ *     normal map instead of as a rash of pale dots painted into albedo.
+ *   - normals come from `packNormalStructural`, which box-filters 1-texel
+ *     spikes away and dead-bands sub-structural gradients to exactly zero.
+ *   - two genuinely different material languages, chosen by `spec.plating`:
+ *     WELDED (Allied — thin seams, proud banding strips, glossier ceramic, no
+ *     rivets) and RIVETED (Soviet — heavier seams, deeper grooves, rivet rows
+ *     on every course, matter paint). Not a hue swap.
  *
  * The geometric bevel highlight (scorecard #11) is NOT painted here — it is
  * baked into vertex colour on the chamfer ring by UnitFactory, which is both
  * cheaper and per-edge exact. Each tile therefore reserves a clean BEVEL PATCH
  * (bottom-left 10%) that painters must leave flat, so a chamfer strip samples
  * an unbroken colour.
+ *
+ * ZERO GRIME. No streaks, no mud, no rust, no scratched edges (scorecard #22).
+ * The only darkening is cavity darkening, which is bible 5.5's ruling.
  *
  * DETERMINISM: seeded, pure, no DOM, no Math.random. Two runs produce
  * byte-identical atlases so the screenshot harness stays diffable.
@@ -55,8 +88,11 @@
  */
 
 import * as THREE from 'three';
-import { createSurface, packAlbedo, packNormal, packOrm, type Surface } from '../core/assets';
-import { clamp01, fbm2, hexToRgb, lerp, Rng, smoothstep, TAU } from '../core/math';
+import {
+  createSurface, decalPolygons, packAlbedo, packNormalStructural, packOrm,
+  type DecalPath, type Surface,
+} from '../core/assets';
+import { clamp01, hexToRgb, lerp, Rng, TAU } from '../core/math';
 import { UNIT_GREEBLE, UNIT_MATERIAL } from '../core/config';
 
 /* ==========================================================================
@@ -88,9 +124,9 @@ export const SLOT_NAMES: readonly SlotName[] = Object.keys(TILE_XY) as SlotName[
 export const PAINT_SLOTS: readonly SlotName[] = ['paintLarge', 'paintMed', 'paintSmall', 'paintTiny'];
 
 /**
- * Pick a paint density by the face's world area, so a 7 m glacis gets 12 panel
- * runs and a 0.3 m sensor box gets one seam. This is the rule that keeps every
- * greeble >= 3 px at gameplay zoom (bible 5.3, "nothing sub-pixel").
+ * Pick a paint density by the face's world area, so a 7 m glacis gets its full
+ * plating plan and a 0.3 m sensor box gets one seam. This is the rule that
+ * keeps every greeble >= 3 px at gameplay zoom (bible 5.3, "nothing sub-pixel").
  */
 export function paintSlotForArea(areaSqM: number): SlotName {
   if (areaSqM >= 3.0) return 'paintLarge';
@@ -147,130 +183,215 @@ export function slotBevelUv(slot: SlotName, size: number): UvRect {
 }
 
 /* ==========================================================================
- * 2. RECT-CLIPPED DRAWING PRIMITIVES
+ * 2. CRISP RECT-CLIPPED RASTERIZERS
  *
- * core/assets.ts ships drawLine/drawDisc/drawDisc, but every one of them WRAPS
- * at the texture edge (they exist for seamless tiling surfaces). In an atlas a
- * wrapped stroke lands in a neighbouring tile, so this module carries its own
- * clipped equivalents. Coordinates are TILE-LOCAL; the rect does the offset.
+ * core/assets.ts ships the clean equivalents of these, but every one of them
+ * WRAPS at the texture edge (they exist for seamless tiling surfaces). In an
+ * atlas a wrapped stroke lands in a neighbouring tile, so this module carries
+ * its own CLIPPED versions. Coordinates are TILE-LOCAL; the rect does the
+ * offset.
+ *
+ * Two properties every one of them guarantees, and the old versions did not:
+ *
+ *   1. EXACT WIDTH, ONE TEXEL OF AA. Coverage comes from a signed distance:
+ *      d <= -0.5 is solid, d >= +0.5 is empty, and the ramp between is one
+ *      texel wide. A `width: 2` line covers exactly two texels. The old
+ *      `rline` used a linear `1 - d/w` falloff over a disc of radius w, which
+ *      made a "2 px" line a 5 px smear with no hard edge anywhere.
+ *
+ *   2. MAX COMPOSITE, NOT ACCUMULATE. Two crossing seams stay two crossing
+ *      seams. The old `put` added and clamped, so every junction, every rivet
+ *      that touched a groove and every corner of a rounded rect grew a bright
+ *      or dark blob. Additive coverage is how drawn geometry turns into mush.
  * ========================================================================== */
 
-/** Accumulate `value` at a tile-local pixel, clipped and clamped to 0..1. */
-function put(data: Float32Array, size: number, r: Rect, x: number, y: number, value: number): void {
+/** Max-composite a coverage value at a tile-local texel. Clipped, never wraps. */
+function put(cov: Float32Array, size: number, r: Rect, x: number, y: number, c: number): void {
+  if (c <= 0 || x < 0 || y < 0 || x >= r.w || y >= r.h) return;
+  const i = ((r.y + y) | 0) * size + ((r.x + x) | 0);
+  if (c > cov[i]) cov[i] = c;
+}
+
+/** Coverage from a signed distance in texels. Exactly one texel of ramp. */
+function cov1(d: number): number {
+  return d <= -0.5 ? 1 : d >= 0.5 ? 0 : 0.5 - d;
+}
+
+/** Add signed relief into the height field at a tile-local texel. */
+function addHeight(height: Float32Array, size: number, r: Rect, x: number, y: number, v: number): void {
   if (x < 0 || y < 0 || x >= r.w || y >= r.h) return;
   const i = ((r.y + y) | 0) * size + ((r.x + x) | 0);
-  data[i] = clamp01(data[i] + value);
+  height[i] = clamp01(height[i] + v);
 }
 
-/** Soft-edged clipped line. Panel grooves, seams, louvre slats. */
-function rline(
-  data: Float32Array, size: number, r: Rect,
-  x0: number, y0: number, x1: number, y1: number, width: number, value: number,
+/** Zero one tile's worth of a scratch channel. */
+function clearRect(data: Float32Array, size: number, r: Rect): void {
+  for (let y = 0; y < r.h; y++) {
+    const row = ((r.y + y) | 0) * size + r.x;
+    data.fill(0, row, row + r.w);
+  }
+}
+
+/**
+ * Crisp line segment. `width` is in texels and is EXACT. Panel seams, louvre
+ * slats, frame courses.
+ */
+function cline(
+  cov: Float32Array, size: number, r: Rect,
+  x0: number, y0: number, x1: number, y1: number, width: number,
 ): void {
-  const dx = x1 - x0, dy = y1 - y0;
-  const len = Math.max(1, Math.ceil(Math.hypot(dx, dy)));
-  const w = Math.max(0.5, width);
-  const wi = Math.ceil(w);
-  for (let s = 0; s <= len; s++) {
-    const t = s / len;
-    const px = Math.round(x0 + dx * t), py = Math.round(y0 + dy * t);
-    for (let oy = -wi; oy <= wi; oy++) {
-      for (let ox = -wi; ox <= wi; ox++) {
-        const d = Math.hypot(ox, oy);
-        if (d > w) continue;
-        put(data, size, r, px + ox, py + oy, value * (1 - d / w));
+  const hw = Math.max(0.5, width) * 0.5;
+  const pad = Math.ceil(hw + 1);
+  const bx0 = Math.max(0, Math.floor(Math.min(x0, x1)) - pad);
+  const bx1 = Math.min(r.w - 1, Math.ceil(Math.max(x0, x1)) + pad);
+  const by0 = Math.max(0, Math.floor(Math.min(y0, y1)) - pad);
+  const by1 = Math.min(r.h - 1, Math.ceil(Math.max(y0, y1)) + pad);
+  const ex = x1 - x0, ey = y1 - y0;
+  const el = ex * ex + ey * ey;
+  for (let y = by0; y <= by1; y++) {
+    for (let x = bx0; x <= bx1; x++) {
+      const wx = x - x0, wy = y - y0;
+      const t = el < 1e-12 ? 0 : clamp01((wx * ex + wy * ey) / el);
+      const d = Math.hypot(wx - ex * t, wy - ey * t) - hw;
+      put(cov, size, r, x, y, cov1(d));
+    }
+  }
+}
+
+/** Crisp rectangle outline. Corners meet exactly — max-composite, no blobs. */
+function crect(
+  cov: Float32Array, size: number, r: Rect,
+  x: number, y: number, w: number, h: number, width: number,
+): void {
+  cline(cov, size, r, x, y, x + w, y, width);
+  cline(cov, size, r, x, y + h, x + w, y + h, width);
+  cline(cov, size, r, x, y, x, y + h, width);
+  cline(cov, size, r, x + w, y, x + w, y + h, width);
+}
+
+/** Crisp filled rectangle, one texel of AA on every edge. */
+function cfill(
+  cov: Float32Array, size: number, r: Rect,
+  x: number, y: number, w: number, h: number,
+): void {
+  const cx = x + w * 0.5, cy = y + h * 0.5;
+  const ex = Math.abs(w) * 0.5, ey = Math.abs(h) * 0.5;
+  const bx0 = Math.max(0, Math.floor(cx - ex) - 1), bx1 = Math.min(r.w - 1, Math.ceil(cx + ex) + 1);
+  const by0 = Math.max(0, Math.floor(cy - ey) - 1), by1 = Math.min(r.h - 1, Math.ceil(cy + ey) + 1);
+  for (let py = by0; py <= by1; py++) {
+    for (let px = bx0; px <= bx1; px++) {
+      const dx = Math.abs(px - cx) - ex, dy = Math.abs(py - cy) - ey;
+      const outside = Math.hypot(Math.max(dx, 0), Math.max(dy, 0));
+      const d = Math.min(Math.max(dx, dy), 0) + outside;
+      put(cov, size, r, px, py, cov1(d));
+    }
+  }
+}
+
+/** Crisp filled disc. */
+function cdisc(cov: Float32Array, size: number, r: Rect, cx: number, cy: number, rad: number): void {
+  const bx0 = Math.max(0, Math.floor(cx - rad) - 1), bx1 = Math.min(r.w - 1, Math.ceil(cx + rad) + 1);
+  const by0 = Math.max(0, Math.floor(cy - rad) - 1), by1 = Math.min(r.h - 1, Math.ceil(cy + rad) + 1);
+  for (let y = by0; y <= by1; y++) {
+    for (let x = bx0; x <= bx1; x++) put(cov, size, r, x, y, cov1(Math.hypot(x - cx, y - cy) - rad));
+  }
+}
+
+/** Crisp annulus of exact `width`. Hatch rims, retaining rings, bolt circles. */
+function cring(
+  cov: Float32Array, size: number, r: Rect,
+  cx: number, cy: number, rad: number, width: number,
+): void {
+  const hw = Math.max(0.5, width) * 0.5;
+  const out = rad + hw + 1;
+  const bx0 = Math.max(0, Math.floor(cx - out)), bx1 = Math.min(r.w - 1, Math.ceil(cx + out));
+  const by0 = Math.max(0, Math.floor(cy - out)), by1 = Math.min(r.h - 1, Math.ceil(cy + out));
+  for (let y = by0; y <= by1; y++) {
+    for (let x = bx0; x <= bx1; x++) {
+      put(cov, size, r, x, y, cov1(Math.abs(Math.hypot(x - cx, y - cy) - rad) - hw));
+    }
+  }
+}
+
+/** A closed polygon as flat tile-local texel pairs. */
+type Poly = readonly number[];
+
+/**
+ * Crisp polygon fill or stroke, even-odd so holes are free. This is what makes
+ * an insignia a SHAPE: hard edges, one texel of AA, and not one sample of it
+ * comes from a noise field.
+ */
+function cpoly(
+  cov: Float32Array, size: number, r: Rect,
+  polys: readonly Poly[], mode: 'fill' | 'stroke' = 'fill', width = 2,
+): void {
+  const edges: number[] = [];
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of polys) {
+    const n = (p.length / 2) | 0;
+    if (n < 3) continue;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      edges.push(p[i * 2], p[i * 2 + 1], p[j * 2], p[j * 2 + 1]);
+      if (p[i * 2] < minX) minX = p[i * 2];
+      if (p[i * 2] > maxX) maxX = p[i * 2];
+      if (p[i * 2 + 1] < minY) minY = p[i * 2 + 1];
+      if (p[i * 2 + 1] > maxY) maxY = p[i * 2 + 1];
+    }
+  }
+  const ne = (edges.length / 4) | 0;
+  if (ne === 0) return;
+
+  const hw = Math.max(0.5, width) * 0.5;
+  const pad = Math.ceil((mode === 'stroke' ? hw : 0) + 2);
+  const bx0 = Math.max(0, Math.floor(minX) - pad), bx1 = Math.min(r.w - 1, Math.ceil(maxX) + pad);
+  const by0 = Math.max(0, Math.floor(minY) - pad), by1 = Math.min(r.h - 1, Math.ceil(maxY) + pad);
+
+  for (let y = by0; y <= by1; y++) {
+    for (let x = bx0; x <= bx1; x++) {
+      let best = Infinity;
+      let inside = false;
+      for (let i = 0; i < ne; i++) {
+        const ax = edges[i * 4], ay = edges[i * 4 + 1];
+        const bx = edges[i * 4 + 2], by = edges[i * 4 + 3];
+        const ex = bx - ax, ey = by - ay;
+        const wx = x - ax, wy = y - ay;
+        const el = ex * ex + ey * ey;
+        const t = el < 1e-12 ? 0 : clamp01((wx * ex + wy * ey) / el);
+        const dx = wx - ex * t, dy = wy - ey * t;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < best) best = d2;
+        if ((ay > y) !== (by > y) && x < ((bx - ax) * (y - ay)) / (by - ay) + ax) inside = !inside;
       }
+      const d = inside ? -Math.sqrt(best) : Math.sqrt(best);
+      put(cov, size, r, x, y, cov1(mode === 'fill' ? d : Math.abs(d) - hw));
     }
   }
 }
 
-/** Soft clipped disc. Rivets, bolts, hatch centres. */
-function rdisc(
-  data: Float32Array, size: number, r: Rect,
-  cx: number, cy: number, radius: number, value: number, softness = 0.4,
+/**
+ * Stamp a rivet dome into the HEIGHT field, and nothing else.
+ *
+ * The old code painted rivets as +44% value discs in albedo, which at gameplay
+ * zoom is a rash of pale dots — painted-on hardware, the single most obvious
+ * procedural tell after noise. A dome in height is lit by the key through the
+ * normal map: it catches on the sun side and shades on the other, which is what
+ * a real rivet does and costs the same.
+ */
+function stampRivet(
+  height: Float32Array, size: number, r: Rect, cx: number, cy: number, rad: number, amp: number,
 ): void {
-  const ri = Math.ceil(radius + 1);
-  const cxi = Math.round(cx), cyi = Math.round(cy);
-  for (let oy = -ri; oy <= ri; oy++) {
-    for (let ox = -ri; ox <= ri; ox++) {
-      const d = Math.hypot(ox, oy);
-      if (d > radius) continue;
-      put(data, size, r, cxi + ox, cyi + oy, value * smoothstep(radius, radius * (1 - softness), d));
+  const bx0 = Math.max(0, Math.floor(cx - rad) - 1), bx1 = Math.min(r.w - 1, Math.ceil(cx + rad) + 1);
+  const by0 = Math.max(0, Math.floor(cy - rad) - 1), by1 = Math.min(r.h - 1, Math.ceil(cy + rad) + 1);
+  const inv = 1 / Math.max(1e-6, rad);
+  for (let y = by0; y <= by1; y++) {
+    for (let x = bx0; x <= bx1; x++) {
+      const t = Math.hypot(x - cx, y - cy) * inv;
+      if (t >= 1) continue;
+      // Spherical cap, not a cone: the shading gradient is what reads.
+      addHeight(height, size, r, x, y, amp * Math.sqrt(1 - t * t));
     }
   }
-}
-
-/** Hard clipped filled rectangle. Panels, bezels, slabs. */
-function rfill(
-  data: Float32Array, size: number, r: Rect,
-  x: number, y: number, w: number, h: number, value: number,
-): void {
-  const x0 = Math.round(x), y0 = Math.round(y);
-  const x1 = Math.round(x + w), y1 = Math.round(y + h);
-  for (let py = y0; py < y1; py++) for (let px = x0; px < x1; px++) put(data, size, r, px, py, value);
-}
-
-/** Rounded-rect outline, used for emissive bezels and hatch rims. */
-function rroundRect(
-  data: Float32Array, size: number, r: Rect,
-  x: number, y: number, w: number, h: number, radius: number, width: number, value: number,
-): void {
-  const rr = Math.min(radius, Math.min(w, h) * 0.5);
-  rline(data, size, r, x + rr, y, x + w - rr, y, width, value);
-  rline(data, size, r, x + rr, y + h, x + w - rr, y + h, width, value);
-  rline(data, size, r, x, y + rr, x, y + h - rr, width, value);
-  rline(data, size, r, x + w, y + rr, x + w, y + h - rr, width, value);
-  for (const [cx, cy, a0] of [
-    [x + rr, y + rr, Math.PI], [x + w - rr, y + rr, Math.PI * 1.5],
-    [x + w - rr, y + h - rr, 0], [x + rr, y + h - rr, Math.PI * 0.5],
-  ] as const) {
-    const steps = Math.max(4, Math.ceil(rr));
-    for (let s = 0; s < steps; s++) {
-      const a = a0 + (s / steps) * Math.PI * 0.5;
-      const b = a0 + ((s + 1) / steps) * Math.PI * 0.5;
-      rline(data, size, r,
-        cx + Math.cos(a) * rr, cy + Math.sin(a) * rr,
-        cx + Math.cos(b) * rr, cy + Math.sin(b) * rr, width, value);
-    }
-  }
-}
-
-/** Scanline polygon fill. Insignia stars, eagles, chevrons. */
-function rpoly(
-  data: Float32Array, size: number, r: Rect,
-  pts: readonly (readonly [number, number])[], value: number,
-): void {
-  if (pts.length < 3) return;
-  let minY = Infinity, maxY = -Infinity;
-  for (const p of pts) { if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1]; }
-  const y0 = Math.max(0, Math.floor(minY)), y1 = Math.min(r.h - 1, Math.ceil(maxY));
-  const xs: number[] = [];
-  for (let y = y0; y <= y1; y++) {
-    xs.length = 0;
-    const sy = y + 0.5;
-    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
-      const a = pts[j], b = pts[i];
-      if ((a[1] <= sy && b[1] > sy) || (b[1] <= sy && a[1] > sy)) {
-        xs.push(a[0] + ((sy - a[1]) / (b[1] - a[1])) * (b[0] - a[0]));
-      }
-    }
-    xs.sort((p, q) => p - q);
-    for (let k = 0; k + 1 < xs.length; k += 2) {
-      const xa = Math.round(xs[k]), xb = Math.round(xs[k + 1]);
-      for (let x = xa; x < xb; x++) put(data, size, r, x, y, value);
-    }
-  }
-}
-
-/** N-pointed star polygon, for the Soviet insignia. */
-function starPoints(cx: number, cy: number, rOuter: number, rInner: number, points: number, rot: number) {
-  const out: [number, number][] = [];
-  for (let i = 0; i < points * 2; i++) {
-    const a = rot + (i / (points * 2)) * TAU;
-    const rad = (i & 1) ? rInner : rOuter;
-    out.push([cx + Math.cos(a) * rad, cy + Math.sin(a) * rad]);
-  }
-  return out;
 }
 
 /** 3x5 stencil digits. Hull numbers are one of RA3's most legible unit cues. */
@@ -287,22 +408,60 @@ const DIGITS: readonly (readonly number[])[] = [
   [0b111, 0b101, 0b111, 0b001, 0b111], // 9
 ];
 
-function rdigit(
-  data: Float32Array, size: number, r: Rect,
-  digit: number, x: number, y: number, px: number, value: number,
+function cdigit(
+  cov: Float32Array, size: number, r: Rect,
+  digit: number, x: number, y: number, px: number,
 ): void {
   const glyph = DIGITS[((digit % 10) + 10) % 10];
   for (let row = 0; row < 5; row++) {
     const bits = glyph[4 - row]; // row 0 of the glyph is the TOP; v grows upward
     for (let col = 0; col < 3; col++) {
-      if ((bits >> (2 - col)) & 1) rfill(data, size, r, x + col * px, y + row * px, px, px, value);
+      if ((bits >> (2 - col)) & 1) cfill(cov, size, r, x + col * px, y + row * px, px, px);
     }
   }
+}
+
+/**
+ * Map a `decalPolygons` path (0..1 UV, y down) into tile-local texels centred
+ * on (cx, cy) with half-extent `half`. The y flip is deliberate: a DataTexture's
+ * row 0 is v = 0, i.e. the BOTTOM, so a "point up" shape authored in canvas
+ * convention has to be mirrored to come out point up on the model.
+ */
+function placeDecal(path: DecalPath, cx: number, cy: number, half: number, glyph?: string): Poly[] {
+  return decalPolygons(path, glyph).map((p) => {
+    const out: number[] = [];
+    for (let i = 0; i < p.length; i += 2) {
+      out.push(cx + (p[i] - 0.5) * 2 * half, cy - (p[i + 1] - 0.5) * 2 * half);
+    }
+    return out;
+  });
+}
+
+/** Regular polygon approximation of a circle, as a tile-local `Poly`. */
+function discPoly(cx: number, cy: number, rad: number, segs = 48): Poly {
+  const out: number[] = [];
+  for (let i = 0; i < segs; i++) {
+    const a = (i / segs) * TAU;
+    out.push(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad);
+  }
+  return out;
 }
 
 /* ==========================================================================
  * 3. THE SPEC
  * ========================================================================== */
+
+/**
+ * The surface language a faction's hardware is built in. NOT a hue swap — the
+ * two branches draw different marks, at different weights, at different gloss.
+ *
+ *   'welded'  — Allied. White ceramic over a welded monocoque. Thin seams,
+ *               PROUD banding strips rather than cut grooves, a glossier
+ *               clear-coated finish, and never a rivet.
+ *   'riveted' — Soviet. Olive over bolted plate. Heavier seams cut deeper,
+ *               rivet rows down every course, a matter finish.
+ */
+export type Plating = 'welded' | 'riveted';
 
 /**
  * Everything that changes a pixel in an atlas. Hashed into the cache key, so
@@ -338,65 +497,121 @@ export interface GreebleSpec {
   /** Soviets rivet every seam; Allies never do. */
   rivets: boolean;
   rivetPitchPx: number;
-  /** Multiplies the panel-run count. 1.0 ships. */
+  /** Which surface language the tiles are drawn in. */
+  plating: Plating;
+  /**
+   * Paint gloss, 0 = matte primer .. 1 = wet lacquer. ROUGHNESS ONLY — it must
+   * never become texture. RA3's painted-toy read is a clear coat over a broad
+   * diffuse lobe, so this rides on top of RULING #3's clearcoat, it does not
+   * replace it.
+   */
+  sheen: number;
+  /**
+   * Extra plating COURSES on the big paint tiles, expressed the way the old
+   * panel-density knob was: 1.0 is the authored plan, higher adds evenly
+   * spaced full-width courses. It can no longer add jitter or density noise —
+   * there is none left to add.
+   */
   panelDensity: number;
   /** Four-digit hull number stencilled on the stencil tile. */
   hullNumber: number;
 }
 
 /* ==========================================================================
- * 4. THE PAINTERS
- *
- * Each fills one tile. They share a scratch band of channels so the composition
- * step (albedo/height/ao/roughness from groove + lip + rivet) lives in exactly
- * one place and every tile is guaranteed to agree about what a recess means.
+ * 4. THE SURFACE BUDGET AND THE PAINTERS
  * ========================================================================== */
+
+/**
+ * The hard limits this file holds itself to. These are the numbers that make
+ * the difference between "painted plastic toy" and "mouldy sandpaper".
+ */
+export const SURFACE_BUDGET = {
+  /** Peak-to-peak albedo variation allowed inside one flat area. */
+  albedoRipple: 0.025,
+  /** Peak-to-peak roughness variation allowed inside one flat area. */
+  roughnessRipple: 0.06,
+  /** Shortest wavelength any continuous variation may have, in texels. */
+  minFeatureTexels: 16,
+  /**
+   * Fraction of a tile that must carry DRAWN structure for it not to read as
+   * an untextured primitive (R1). Deliberately low: a flat slab with a frame
+   * and one course is a correct RA3 surface and must pass.
+   */
+  detailFloorUnit: 0.070,
+  detailFloorStructure: 0.045,
+  /**
+   * Fraction of texels allowed to be a strict local extremum in BOTH axes.
+   *
+   * White noise scores ~0.44 and 5-texel fbm scores a few percent, so this
+   * ceiling is 40x below the failure it exists to catch. The clean atlases
+   * measure 0.14% (Allied, no rivets) to 0.23% (Soviet, bolted) — the residue
+   * is rivet apexes and stroke-corner AA texels, which are drawn geometry and
+   * cannot be removed without removing the geometry.
+   */
+  speckleCeiling: 0.010,
+} as const;
 
 /** Scratch masks, allocated once per atlas build (not per tile). */
 interface Scratch {
+  /** Cut seams: darken, sink, occlude. */
   groove: Float32Array;
+  /** Proud edges catching the key: lift a little, rise a little. */
   lip: Float32Array;
-  rivet: Float32Array;
-  shadow: Float32Array;
+  /** Broad recessed pockets and contact shadows: darken and occlude only. */
+  shade: Float32Array;
+  /** Reusable coverage buffer for decals and stencils. */
+  mask: Float32Array;
+  /**
+   * The union of every mark every painter has made, over the whole atlas.
+   * Never cleared between tiles — this is what `detailCoverage` measures, and
+   * because only the drawing primitives write to it, a noise field cannot
+   * contribute to the R1 gate even in principle.
+   */
+  structure: Float32Array;
 }
 
-const RGB_BASE = new Float32Array(3);
 const RGB_SHADOW = new Float32Array(3);
 const RGB_TMP = new Float32Array(3);
 
-/** Zero the scratch masks over one tile only — full clears would dominate cost. */
 function clearScratch(sc: Scratch, size: number, r: Rect): void {
-  for (let y = 0; y < r.h; y++) {
-    const row = ((r.y + y) | 0) * size + r.x;
-    sc.groove.fill(0, row, row + r.w);
-    sc.lip.fill(0, row, row + r.w);
-    sc.rivet.fill(0, row, row + r.w);
-    sc.shadow.fill(0, row, row + r.w);
-  }
+  clearRect(sc.groove, size, r);
+  clearRect(sc.lip, size, r);
+  clearRect(sc.shade, size, r);
+  clearRect(sc.mask, size, r);
 }
 
 /**
- * Lay the base paint: flat colour with a faint orange-peel so the plate is
- * never mathematically flat, plus the roughness/metalness the class needs.
+ * Roughness for a given sheen. 0 -> 0.78 matte primer, 1 -> 0.24 lacquer,
+ * with RULING #3's 0.52 landing at sheen 0.48.
+ */
+export function sheenRoughness(sheen: number): number {
+  return clamp01(0.78 - clamp01(sheen) * 0.54);
+}
+
+/**
+ * Lay the base paint. FLAT. Exactly one colour, exactly one roughness, height
+ * exactly 0.5 so `normalFromStructure` produces exactly (0, 0, 1) over the
+ * whole plate.
+ *
+ * This is the single most important function in the file and it is four lines
+ * of assignment. Everything the old version added here — the orange peel in
+ * albedo, the peel in height, the peel in roughness — was the failure.
  */
 function fillBase(
-  s: Surface, r: Rect, hex: string, seed: number,
-  roughness: number, metalness: number, teamMask: number, peelAmount = 1,
+  s: Surface, r: Rect, hex: string,
+  roughness: number, metalness: number, teamMask: number,
 ): void {
   hexToRgb(hex, RGB_TMP);
   const size = s.size;
-  const f = 6 / r.w;
   for (let y = 0; y < r.h; y++) {
     for (let x = 0; x < r.w; x++) {
       const i = ((r.y + y) | 0) * size + ((r.x + x) | 0);
-      const peel = fbm2(x * f, y * f, 3, 2, 0.5, seed) * 0.5 + 0.5;
-      const v = 1 + (peel - 0.5) * 0.09 * peelAmount;
       const o = i * 3;
-      s.albedo[o] = clamp01(RGB_TMP[0] * v);
-      s.albedo[o + 1] = clamp01(RGB_TMP[1] * v);
-      s.albedo[o + 2] = clamp01(RGB_TMP[2] * v);
-      s.height[i] = 0.56 + peel * 0.04;
-      s.roughness[i] = clamp01(roughness + (peel - 0.5) * 0.05);
+      s.albedo[o] = RGB_TMP[0];
+      s.albedo[o + 1] = RGB_TMP[1];
+      s.albedo[o + 2] = RGB_TMP[2];
+      s.height[i] = 0.5;
+      s.roughness[i] = roughness;
       s.metalness[i] = metalness;
       s.ao[i] = 1;
       s.alpha[i] = 1;
@@ -406,38 +621,86 @@ function fillBase(
   }
 }
 
+/** Per-tile composite tuning, chosen by the faction's plating language. */
+interface Weld {
+  /** Seam width in texels. */
+  seam: number;
+  /** How deep a seam cuts into the height field. */
+  grooveDepth: number;
+  /** Rivet dome height. */
+  rivetRelief: number;
+  /** Rivet radius in texels. */
+  rivetRadius: number;
+}
+
+function weldFor(spec: GreebleSpec, tileW: number): Weld {
+  const base = tileW * UNIT_GREEBLE.panelLineWidthFraction;
+  return spec.plating === 'riveted'
+    ? { seam: Math.max(1.6, base * 1.20), grooveDepth: 0.34, rivetRelief: 0.11, rivetRadius: Math.max(1.8, tileW * 0.021) }
+    : { seam: Math.max(1.2, base * 0.85), grooveDepth: 0.22, rivetRelief: 0.00, rivetRadius: 0 };
+}
+
 /**
  * Fold the scratch masks into the surface. THIS is where bible 5.5's cavity
  * ruling is implemented: recess albedo = base x 0.32 driven toward the shadow
- * tint, a 1 px lighter lip on the sun side of every groove, and the crease AO
+ * tint, a faint lighter lip on the sun side of every groove, and the crease AO
  * that 3.3 says must be baked rather than screen-space.
+ *
+ * The lip gain is 0.16 (it was 0.34). At 0.34 with an additive rasterizer,
+ * every seam grew a white halo that read as chalk. RA3's panel lines are dark
+ * grooves in flat paint with barely a highlight; the highlight comes from the
+ * chamfer geometry, not from the texture.
  */
-function composite(s: Surface, sc: Scratch, r: Rect, shadowHex: string, reliefScale = 1): void {
+function composite(s: Surface, sc: Scratch, r: Rect, shadowHex: string, w: Weld): void {
   hexToRgb(shadowHex, RGB_SHADOW);
   const size = s.size;
   const cav = UNIT_GREEBLE.cavityMultiplier;
   for (let y = 0; y < r.h; y++) {
     for (let x = 0; x < r.w; x++) {
       const i = ((r.y + y) | 0) * size + ((r.x + x) | 0);
-      const g = sc.groove[i], l = sc.lip[i], rv = sc.rivet[i], sh = sc.shadow[i];
-      if (g === 0 && l === 0 && rv === 0 && sh === 0) continue;
+      const g = sc.groove[i], l = sc.lip[i], sh = sc.shade[i];
+      if (g === 0 && l === 0 && sh === 0) continue;
       const o = i * 3;
-      // Cavity: darken toward the shadow tint, never toward pure black.
-      const dark = clamp01(g * 0.92 + sh * 0.55);
+      const dark = clamp01(g + sh * 0.55);
       for (let c = 0; c < 3; c++) {
         const base = s.albedo[o + c];
         const recess = lerp(base * cav, RGB_SHADOW[c] * 0.9, 0.35);
         let v = lerp(base, recess, dark);
-        // Sun-side lip and rivet dome catch the key: +22% value.
-        v = clamp01(v * (1 + l * 0.34 + rv * 0.44));
+        v = clamp01(v * (1 + l * 0.16));
         s.albedo[o + c] = v;
       }
-      s.height[i] = clamp01(s.height[i] - g * 0.30 * reliefScale + l * 0.06 + rv * 0.24 * reliefScale);
-      s.ao[i] = clamp01(s.ao[i] - dark * 0.55);
+      s.height[i] = clamp01(s.height[i] - g * w.grooveDepth - sh * w.grooveDepth * 0.30 + l * 0.030);
+      s.ao[i] = clamp01(s.ao[i] - dark * 0.52);
       // Grooves are marginally rougher than the surrounding paint.
-      s.roughness[i] = clamp01(s.roughness[i] + g * 0.06 - l * 0.03);
+      s.roughness[i] = clamp01(s.roughness[i] + g * 0.05 - l * 0.02);
     }
   }
+}
+
+/**
+ * Paint a coverage mask into albedo as a flat colour. The ONLY way a decal,
+ * a stencil or an insignia glyph gets onto a tile: the mask owns the shape and
+ * the colour is constant across it, so there is no fringe and nothing the
+ * shape could inherit from underneath.
+ */
+function paintMask(s: Surface, sc: Scratch, r: Rect, hex: string, teamMask?: number): void {
+  hexToRgb(hex, RGB_TMP);
+  const size = s.size;
+  for (let y = 0; y < r.h; y++) {
+    for (let x = 0; x < r.w; x++) {
+      const i = ((r.y + y) | 0) * size + ((r.x + x) | 0);
+      const m = sc.mask[i];
+      if (m <= 0.002) continue;
+      const o = i * 3;
+      s.albedo[o] = lerp(s.albedo[o], RGB_TMP[0], m);
+      s.albedo[o + 1] = lerp(s.albedo[o + 1], RGB_TMP[1], m);
+      s.albedo[o + 2] = lerp(s.albedo[o + 2], RGB_TMP[2], m);
+      if (teamMask !== undefined && m > 0.5) s.teamMask[i] = teamMask;
+      // A decal is drawn structure too — it just lives in colour, not relief.
+      if (m > sc.structure[i]) sc.structure[i] = m;
+    }
+  }
+  clearRect(sc.mask, size, r);
 }
 
 /**
@@ -447,14 +710,12 @@ function composite(s: Surface, sc: Scratch, r: Rect, shadowHex: string, reliefSc
  * +22% V, -15% S." A greyscale vertex multiplier can raise value but can never
  * DESATURATE, so the highlight is baked here instead: each tile reserves a
  * patch painted in its own colour, pre-lifted and pre-desaturated, and every
- * chamfer strip in UnitFactory samples that patch. The band is therefore
- * exactly the bible's colour on team slabs, on olive paint and on bare metal
- * alike, with no per-part shader work.
+ * chamfer strip in UnitFactory samples that patch.
  *
  * Lerping toward (V,V,V) by 0.15 scales HSV saturation by exactly 0.85, because
  * S = (V - min)/V and only `min` moves.
  */
-function clearBevelPatch(s: Surface, r: Rect, hex: string): void {
+function clearBevelPatch(s: Surface, r: Rect, hex: string, roughness: number): void {
   // MUST match slotBevelUv's origin: that samples from the tile's INSET corner,
   // so painting the patch at the tile's raw corner leaves half the sampled
   // window sitting on top of panel lines and the bevel band comes out striped.
@@ -473,232 +734,343 @@ function clearBevelPatch(s: Surface, r: Rect, hex: string): void {
       const i = ((r.y + y) | 0) * size + ((r.x + x) | 0);
       const o = i * 3;
       s.albedo[o] = br; s.albedo[o + 1] = bg; s.albedo[o + 2] = bb;
-      s.height[i] = 0.56;
+      s.height[i] = 0.5;
+      s.roughness[i] = roughness;
       s.ao[i] = 1;
       s.emissive[i] = 0;
     }
   }
 }
 
-/**
- * Panel-line field. Long parallel runs along the tile's long axis plus 2-4
- * cross-cuts. The spacing is WALKED with jitter rather than stepped, because a
- * uniform grid is the single loudest procedural tell (bible 5.5).
- */
-function panelLines(
-  sc: Scratch, size: number, r: Rect, rng: Rng, runs: number, crossCuts: number, width: number,
-): void {
-  const lip = Math.max(1, width * 0.5);
-  // Long runs.
-  let y = r.h * rng.range(0.05, 0.14);
-  for (let n = 0; n < runs && y < r.h * 0.96; n++) {
-    // Runs are broken: RA3 panels are plates, not full-width scores.
-    const x0 = rng.chance(0.42) ? r.w * rng.range(0.0, 0.28) : 0;
-    const x1 = rng.chance(0.42) ? r.w * rng.range(0.66, 1.0) : r.w;
-    rline(sc.groove, size, r, x0, y, x1, y, width, 0.95);
-    rline(sc.lip, size, r, x0, y + width + 0.5, x1, y + width + 0.5, lip, 0.85);
-    y += r.h * rng.range(0.055, 0.16);
-  }
-  // Cross-cuts.
-  for (let n = 0; n < crossCuts; n++) {
-    const x = r.w * ((n + rng.range(0.25, 0.75)) / crossCuts);
-    const ya = r.h * rng.range(0.0, 0.25);
-    const yb = r.h * rng.range(0.75, 1.0);
-    rline(sc.groove, size, r, x, ya, x, yb, width, 0.95);
-    rline(sc.lip, size, r, x + width + 0.5, ya, x + width + 0.5, yb, lip, 0.7);
-  }
+/* ==========================================================================
+ * 5. PLATING LAYOUTS — deliberate geometry, never a walk
+ *
+ * The old `panelLines` walked down the tile taking a random step between 5.5%
+ * and 16% of the height, broke each run at a random fraction, and dropped
+ * cross-cuts at random offsets. Twelve runs of that on a 128 px tile is a line
+ * every five texels at wobbly spacing: line NOISE, which is the same failure
+ * as pixel noise one octave down.
+ *
+ * A real vehicle's plating is a handful of big plates. So a plan is a handful
+ * of numbers, authored once, in fractions of the tile: a frame, some full-width
+ * courses, some verticals, and one or two recessed pockets. Two neighbouring
+ * plates of flat paint separated by one crisp dark line is the entire effect.
+ * ========================================================================== */
+
+interface PlatePlan {
+  /** Frame inset as a fraction of the tile. 0 = no frame. */
+  frame: number;
+  /** Full-width courses, as fractions of tile height. */
+  hCuts: readonly number[];
+  /** Verticals, as [x, y0, y1] fractions. */
+  vCuts: readonly (readonly [number, number, number])[];
+  /** Recessed pockets, as [x, y, w, h] fractions. */
+  pockets: readonly (readonly [number, number, number, number])[];
+  /** Rivet rows (riveted plating only) along these height fractions. */
+  rivetRows: readonly number[];
 }
 
-/** Rivet rows along the horizontal seams. Soviet signature (bible: Soviet 6). */
-function rivetRows(
-  sc: Scratch, size: number, r: Rect, rng: Rng, rows: number, pitch: number, radius: number,
+/**
+ * The four authored plans. Read them as elevations of a plate: `large` is a
+ * glacis with three plates and a stowage box, `tiny` is a sensor housing that
+ * gets a frame and nothing else.
+ */
+const PLANS: Record<'large' | 'med' | 'small' | 'tiny', PlatePlan> = {
+  large: {
+    frame: 0.055,
+    hCuts: [0.33, 0.67],
+    vCuts: [[0.42, 0.33, 1.0], [0.70, 0.0, 0.33]],
+    pockets: [[0.10, 0.72, 0.26, 0.18], [0.60, 0.40, 0.30, 0.20]],
+    rivetRows: [0.33, 0.67],
+  },
+  med: {
+    frame: 0.065,
+    hCuts: [0.46],
+    vCuts: [[0.62, 0.46, 1.0]],
+    pockets: [[0.12, 0.60, 0.30, 0.24]],
+    rivetRows: [0.46],
+  },
+  small: {
+    frame: 0.085,
+    hCuts: [0.55],
+    vCuts: [],
+    pockets: [],
+    rivetRows: [0.55],
+  },
+  tiny: {
+    frame: 0.115,
+    hCuts: [],
+    vCuts: [],
+    pockets: [],
+    rivetRows: [],
+  },
+};
+
+/**
+ * The stencil tile's plate: a frame and nothing else. A course through the
+ * middle of a hull number is the one place a correct panel line is wrong — it
+ * reads as a crossed-out digit, which is worse than no plating at all.
+ */
+const STENCIL_PLAN: PlatePlan = { frame: 0.08, hCuts: [], vCuts: [], pockets: [], rivetRows: [] };
+
+/**
+ * Draw a plan. Everything here is a straight line at an authored position; the
+ * only thing `rng` decides is which of two mirror variants a tile uses, so two
+ * neighbouring plates are not identical without either of them being random.
+ */
+function drawPlan(
+  s: Surface, sc: Scratch, r: Rect, plan: PlatePlan, w: Weld, spec: GreebleSpec,
+  extraCourses: number, flip: boolean,
 ): void {
-  for (let n = 0; n < rows; n++) {
-    const y = r.h * ((n + 0.5) / rows) + rng.range(-2, 2);
-    // ~60% of visible edges carry rivets, per the measured reference.
-    if (rng.chance(0.4)) continue;
-    for (let x = pitch * 0.5; x < r.w; x += pitch) {
-      const jx = x + rng.range(-0.6, 0.6);
-      rdisc(sc.rivet, size, r, jx, y, radius, 1.0);
-      // The dark under-shadow is what makes a rivet read as proud, not printed.
-      rdisc(sc.shadow, size, r, jx, y - radius * 0.95, radius * 0.85, 0.75);
+  const size = s.size;
+  const W = r.w, H = r.h;
+  const fx = plan.frame * W, fy = plan.frame * H;
+  const ix = fx, iy = fy, iw = W - fx * 2, ih = H - fy * 2;
+  const X = (u: number): number => (flip ? ix + iw * (1 - u) : ix + iw * u);
+
+  // The frame. On welded plating it is a PROUD banding strip (a lip pair) —
+  // Allied architecture is banded, not cut. On riveted plating it is a cut.
+  if (plan.frame > 0) {
+    crect(sc.groove, size, r, ix, iy, iw, ih, w.seam);
+    if (spec.plating === 'welded') {
+      crect(sc.lip, size, r, ix - w.seam - 1, iy - w.seam - 1, iw + w.seam * 2 + 2, ih + w.seam * 2 + 2, 1.2);
+    }
+  }
+
+  // Courses. The authored ones plus any the panel-density knob asks for, always
+  // at even spacing — a course is a floor line or a plate joint, not a scribble.
+  const cuts: number[] = [...plan.hCuts];
+  for (let e = 0; e < extraCourses; e++) {
+    // Evenly spaced inside the frame, and skipped outright if it would land on
+    // top of an authored course. Two courses 4% apart is a double line, which
+    // is the line-noise failure this whole rewrite exists to remove.
+    const y = 0.07 + ((e + 1) / (extraCourses + 1)) * 0.86;
+    if (cuts.every((c) => Math.abs(c - y) > 0.085)) cuts.push(y);
+  }
+  cuts.sort((a, b) => a - b);
+  for (const c of cuts) {
+    const y = iy + ih * c;
+    cline(sc.groove, size, r, ix, y, ix + iw, y, w.seam);
+    // The plate ABOVE a joint sits proud of the one below: one crisp lit edge.
+    cline(sc.lip, size, r, ix, y + w.seam * 0.5 + 0.6, ix + iw, y + w.seam * 0.5 + 0.6, 1.1);
+  }
+
+  for (const [vx, y0, y1] of plan.vCuts) {
+    const x = X(vx);
+    cline(sc.groove, size, r, x, iy + ih * y0, x, iy + ih * y1, w.seam);
+  }
+
+  // Recessed pockets: an access panel or a stowage well let into the plate. The
+  // interior sinks and darkens as ONE flat step, so it reads as a pocket rather
+  // than as a patch of texture.
+  for (const [px, py, pw, ph] of plan.pockets) {
+    const x = flip ? ix + iw * (1 - px - pw) : ix + iw * px;
+    const y = iy + ih * py;
+    const ww = iw * pw, hh = ih * ph;
+    cfill(sc.shade, size, r, x + w.seam, y + w.seam, ww - w.seam * 2, hh - w.seam * 2);
+    crect(sc.groove, size, r, x, y, ww, hh, w.seam);
+  }
+
+  // Rivets: riveted plating only, height field only, on the courses and down
+  // the frame. Sparse and on a layout — never scattered.
+  if (spec.plating === 'riveted' && w.rivetRelief > 0) {
+    const pitch = Math.max(6, spec.rivetPitchPx);
+    for (const row of plan.rivetRows) {
+      const y = iy + ih * row - w.seam - w.rivetRadius - 1.2;
+      for (let x = ix + pitch * 0.5; x < ix + iw; x += pitch) {
+        stampRivet(s.height, size, r, x, y, w.rivetRadius, w.rivetRelief);
+        cdisc(sc.shade, size, r, x, y - w.rivetRadius * 0.9, w.rivetRadius * 0.7);
+      }
+    }
+    if (plan.frame > 0) {
+      for (let y = iy + pitch * 0.5; y < iy + ih; y += pitch * 1.5) {
+        for (const x of [ix + w.rivetRadius + 1.5, ix + iw - w.rivetRadius - 1.5]) {
+          stampRivet(s.height, size, r, x, y, w.rivetRadius, w.rivetRelief);
+        }
+      }
     }
   }
 }
 
-/** A recessed access hatch: rim groove, raised lid, bolt ring, grab handle. */
-function hatch(sc: Scratch, size: number, r: Rect, cx: number, cy: number, rad: number, bolts: number): void {
-  const steps = 28;
-  for (let s = 0; s < steps; s++) {
-    const a = (s / steps) * TAU, b = ((s + 1) / steps) * TAU;
-    rline(sc.groove, size, r,
-      cx + Math.cos(a) * rad, cy + Math.sin(a) * rad,
-      cx + Math.cos(b) * rad, cy + Math.sin(b) * rad, Math.max(1.2, rad * 0.09), 0.95);
-    rline(sc.lip, size, r,
-      cx + Math.cos(a) * rad * 0.9, cy + Math.sin(a) * rad * 0.9,
-      cx + Math.cos(b) * rad * 0.9, cy + Math.sin(b) * rad * 0.9, Math.max(1, rad * 0.05), 0.7);
-  }
-  for (let i = 0; i < bolts; i++) {
-    const a = (i / bolts) * TAU + 0.2;
-    rdisc(sc.rivet, size, r, cx + Math.cos(a) * rad * 0.74, cy + Math.sin(a) * rad * 0.74, Math.max(1.2, rad * 0.11), 0.9);
-  }
-  rline(sc.rivet, size, r, cx - rad * 0.34, cy, cx + rad * 0.34, cy, Math.max(1, rad * 0.08), 0.8);
-  rline(sc.shadow, size, r, cx - rad * 0.34, cy - rad * 0.14, cx + rad * 0.34, cy - rad * 0.14, Math.max(1, rad * 0.07), 0.6);
-}
-
-/** Louvre stack. Cooling vents are the cheapest legible greeble there is. */
-function louvres(sc: Scratch, size: number, r: Rect, x: number, y: number, w: number, h: number, count: number): void {
-  const pitch = h / count;
-  const t = Math.max(1.4, pitch * 0.34);
+/** A louvre stack. Cooling vents are the cheapest legible greeble there is. */
+function louvres(
+  sc: Scratch, size: number, r: Rect, x: number, y: number, ww: number, hh: number, count: number,
+): void {
+  const pitch = hh / count;
+  const t = Math.max(1.6, pitch * 0.30);
   for (let i = 0; i < count; i++) {
     const ly = y + (i + 0.5) * pitch;
-    rline(sc.groove, size, r, x, ly, x + w, ly, t, 1.0);
-    rline(sc.lip, size, r, x, ly + t + 0.5, x + w, ly + t + 0.5, Math.max(1, t * 0.4), 0.9);
+    cline(sc.groove, size, r, x, ly, x + ww, ly, t);
+    cline(sc.lip, size, r, x, ly + t * 0.5 + 0.8, x + ww, ly + t * 0.5 + 0.8, 1.1);
   }
-  rroundRect(sc.groove, size, r, x - 2, y - 2, w + 4, h + 4, 3, 1.4, 0.8);
+  crect(sc.groove, size, r, x - 2, y - 2, ww + 4, hh + 4, 1.6);
+}
+
+/** A bolted access hatch: rim groove, raised lid, bolt ring, grab handle. */
+function accessHatch(
+  s: Surface, sc: Scratch, r: Rect, cx: number, cy: number, rad: number, bolts: number, w: Weld,
+): void {
+  const size = s.size;
+  cring(sc.groove, size, r, cx, cy, rad, Math.max(1.5, rad * 0.10));
+  cring(sc.lip, size, r, cx, cy, rad * 0.90, 1.1);
+  const br = Math.max(1.3, rad * 0.11);
+  for (let i = 0; i < bolts; i++) {
+    const a = (i / bolts) * TAU + 0.2;
+    const bx = cx + Math.cos(a) * rad * 0.74, by = cy + Math.sin(a) * rad * 0.74;
+    stampRivet(s.height, size, r, bx, by, br, Math.max(0.07, w.rivetRelief));
+    cdisc(sc.shade, size, r, bx, by - br * 0.9, br * 0.7);
+  }
+  // Grab handle: a crisp bar with a contact shadow under it.
+  cfill(sc.lip, size, r, cx - rad * 0.34, cy - 1, rad * 0.68, Math.max(1.6, rad * 0.10));
+  cfill(sc.shade, size, r, cx - rad * 0.34, cy - 1 - Math.max(1.4, rad * 0.09), rad * 0.68, Math.max(1.2, rad * 0.07));
 }
 
 /* ==========================================================================
- * 5. TILE PAINTING — one function per slot
+ * 6. TILE PAINTING — one function per slot
  * ========================================================================== */
 
+type PlanKey = 'large' | 'med' | 'small' | 'tiny';
+
 function paintTile(
-  s: Surface, sc: Scratch, spec: GreebleSpec, slot: SlotName, density: number, salt: number,
+  s: Surface, sc: Scratch, spec: GreebleSpec, slot: SlotName, planKey: PlanKey, salt: number,
 ): void {
   const r = tileRect(slot, s.size);
   const rng = new Rng(spec.seed + salt);
   clearScratch(sc, s.size, r);
-  fillBase(s, r, spec.basePaint, spec.seed + salt, UNIT_MATERIAL.paintRoughness, 0, 1);
+  const rough = sheenRoughness(spec.sheen);
+  fillBase(s, r, spec.basePaint, rough, UNIT_MATERIAL.paintMetalness, 1);
 
-  const width = Math.max(1.2, r.w * UNIT_GREEBLE.panelLineWidthFraction);
-  const runs = Math.max(1, Math.round(density * spec.panelDensity));
-  const cross = Math.max(1, Math.round(density * 0.28));
-  panelLines(sc, s.size, r, rng, runs, cross, width);
+  const w = weldFor(spec, r.w);
+  // The density knob buys COURSES, never density noise. 1.0 -> the authored
+  // plan; a building at 3.4 gets two more floor lines on its facades.
+  const extra = planKey === 'tiny'
+    ? 0
+    : Math.max(0, Math.min(3, Math.round((spec.panelDensity - 1) * 0.9)));
+  drawPlan(s, sc, r, PLANS[planKey], w, spec, extra, rng.chance(0.5));
 
-  if (density >= 8) {
-    hatch(sc, s.size, r, r.w * rng.range(0.62, 0.78), r.h * rng.range(0.60, 0.76), r.w * 0.11, 8);
-    louvres(sc, s.size, r, r.w * 0.10, r.h * 0.62, r.w * 0.26, r.h * 0.24, 5);
-    // A pair of stand-off blisters: 3D-reading greebles at zero geometry cost.
-    rdisc(sc.rivet, s.size, r, r.w * 0.30, r.h * 0.24, r.w * 0.045, 0.85, 0.55);
-    rdisc(sc.rivet, s.size, r, r.w * 0.40, r.h * 0.24, r.w * 0.045, 0.85, 0.55);
-  } else if (density >= 5) {
-    hatch(sc, s.size, r, r.w * rng.range(0.60, 0.76), r.h * rng.range(0.24, 0.40), r.w * 0.13, 6);
+  // One piece of real hardware on the bigger plates. Deliberate, placed, and
+  // the same every build for a given seed.
+  if (planKey === 'large') {
+    accessHatch(s, sc, r, r.w * 0.74, r.h * 0.20, r.w * 0.105, 8, w);
+    louvres(sc, s.size, r, r.w * 0.10, r.h * 0.10, r.w * 0.24, r.h * 0.15, 4);
+  } else if (planKey === 'med') {
+    accessHatch(s, sc, r, r.w * 0.30, r.h * 0.24, r.w * 0.115, 6, w);
   }
 
-  if (spec.rivets && density >= 4) {
-    rivetRows(sc, s.size, r, rng, Math.max(2, Math.round(density * 0.4)), spec.rivetPitchPx, Math.max(1.7, r.w * 0.020));
-  }
-
-  composite(s, sc, r, spec.paintShadow);
-  clearBevelPatch(s, r, spec.basePaint);
+  composite(s, sc, r, spec.paintShadow, w);
+  clearBevelPatch(s, r, spec.basePaint, rough);
 }
 
 /**
  * TEAM SLAB. R-T2: a flat solid panel insert let into the hull — not a
- * gradient, not a tint. It gets a recessed border so it reads as an inserted
- * plate, one bright top lip, and nothing else. teamMask = 1 across the tile so
- * a future per-instance tint shader can drive it, but the colour is already
- * correct with no shader at all.
+ * gradient, not a tint, and above all not a mottled blotch. In the RA3
+ * reference the team colour is a bright saturated green against a yellow-olive
+ * base: HIGH CHROMA, CLEAN EDGES, UNBROKEN AREA.
+ *
+ * So this tile is 88% one flat colour. It gets a recessed border so it reads as
+ * an inserted plate, one lit top lip, four corner bolts on riveted hardware,
+ * and nothing else at all.
  */
 function paintTeamSlab(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   const r = tileRect('teamSlab', s.size);
   clearScratch(sc, s.size, r);
-  // R-T2: a flat solid panel insert. Orange-peel is cut to a fifth so the slab
-  // reads as painted sheet, not as a mottled camo blotch.
-  fillBase(s, r, spec.teamColor, spec.seed + 11, UNIT_MATERIAL.paintRoughness, 0, 1, 0.20);
+  // Team slabs run a touch glossier than hull paint: they are the thing the eye
+  // is meant to find, and gloss is how RA3 makes them pop without raising area.
+  const rough = sheenRoughness(Math.min(1, spec.sheen + 0.12));
+  fillBase(s, r, spec.teamColor, rough, UNIT_MATERIAL.paintMetalness, 1);
+
+  const w = weldFor(spec, r.w);
   const inset = r.w * 0.06;
-  rroundRect(sc.groove, s.size, r, inset, inset, r.w - inset * 2, r.h - inset * 2, r.w * 0.06,
-    Math.max(1.4, r.w * 0.018), 1.0);
-  rline(sc.lip, s.size, r, inset + 2, r.h - inset - 2.5, r.w - inset - 2, r.h - inset - 2.5,
-    Math.max(1, r.w * 0.012), 0.9);
-  if (spec.rivets) {
-    const rr = Math.max(1.4, r.w * 0.017);
+  crect(sc.groove, s.size, r, inset, inset, r.w - inset * 2, r.h - inset * 2, w.seam);
+  cline(sc.lip, s.size, r, inset + 2, r.h - inset - w.seam - 1, r.w - inset - 2, r.h - inset - w.seam - 1, 1.2);
+  if (spec.plating === 'riveted') {
+    const rr = w.rivetRadius;
     for (const [x, y] of [
-      [inset * 1.9, inset * 1.9], [r.w - inset * 1.9, inset * 1.9],
-      [inset * 1.9, r.h - inset * 1.9], [r.w - inset * 1.9, r.h - inset * 1.9],
+      [inset * 2.0, inset * 2.0], [r.w - inset * 2.0, inset * 2.0],
+      [inset * 2.0, r.h - inset * 2.0], [r.w - inset * 2.0, r.h - inset * 2.0],
     ] as const) {
-      rdisc(sc.rivet, s.size, r, x, y, rr, 0.9);
-      rdisc(sc.shadow, s.size, r, x, y - rr, rr * 0.8, 0.5);
+      stampRivet(s.height, s.size, r, x, y, rr, w.rivetRelief);
+      cdisc(sc.shade, s.size, r, x, y - rr * 0.9, rr * 0.7);
     }
   }
-  composite(s, sc, r, spec.paintShadow);
-  clearBevelPatch(s, r, spec.teamColor);
+  composite(s, sc, r, spec.paintShadow, w);
+  clearBevelPatch(s, r, spec.teamColor, rough);
 }
 
-/** INSIGNIA. Exactly one per unit (R-T4); the factory enforces the count. */
+/**
+ * INSIGNIA. Exactly one per unit (R-T4).
+ *
+ * This is the tile the user called "a red splatter rather than a star". It was
+ * a splatter because the disc and the glyph were painted over a noise-modulated
+ * base and then had a noise normal map laid over them. Now every mark is a
+ * vector path: the Soviet emblem is a red disc, a thin dark keyline and a real
+ * five-point star from `decalPolygons('star5')`; the Allied emblem is a proper
+ * ROUNDEL — white outer ring, cobalt field, white ring, and a hard-edged eagle
+ * wedge. Both sit on a flat plate with one crisp retaining ring.
+ */
 function paintInsignia(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   const r = tileRect('insignia', s.size);
   clearScratch(sc, s.size, r);
-  fillBase(s, r, spec.basePaint, spec.seed + 12, UNIT_MATERIAL.paintRoughness, 0, 0, 0.35);
+  const rough = sheenRoughness(spec.sheen);
+  fillBase(s, r, spec.basePaint, rough, UNIT_MATERIAL.paintMetalness, 0);
 
+  const w = weldFor(spec, r.w);
   const cx = r.w * 0.5, cy = r.h * 0.5;
-  const field = r.w * 0.40;
+  const field = r.w * 0.38;
 
-  // The insignia is painted directly into albedo — it is a decal, not relief.
-  const paintShape = (pts: readonly (readonly [number, number])[], hex: string) => {
-    const mask = sc.rivet; // reuse a scratch channel as a coverage mask
-    mask.fill(0, r.y * s.size, (r.y + r.h) * s.size);
-    rpoly(mask, s.size, r, pts, 1);
-    hexToRgb(hex, RGB_TMP);
-    for (let y = 0; y < r.h; y++) {
-      for (let x = 0; x < r.w; x++) {
-        const i = ((r.y + y) | 0) * s.size + ((r.x + x) | 0);
-        const m = mask[i];
-        if (m <= 0.001) continue;
-        const o = i * 3;
-        s.albedo[o] = lerp(s.albedo[o], RGB_TMP[0], m);
-        s.albedo[o + 1] = lerp(s.albedo[o + 1], RGB_TMP[1], m);
-        s.albedo[o + 2] = lerp(s.albedo[o + 2], RGB_TMP[2], m);
-      }
-    }
-    mask.fill(0, r.y * s.size, (r.y + r.h) * s.size);
+  const fillPolys = (polys: readonly Poly[], hex: string) => {
+    cpoly(sc.mask, s.size, r, polys, 'fill');
+    paintMask(s, sc, r, hex);
   };
-
-  const disc = (radius: number, hex: string) => {
-    const pts: [number, number][] = [];
-    for (let i = 0; i < 32; i++) {
-      const a = (i / 32) * TAU;
-      pts.push([cx + Math.cos(a) * radius, cy + Math.sin(a) * radius]);
-    }
-    paintShape(pts, hex);
+  const fillDisc = (rad: number, hex: string) => {
+    cdisc(sc.mask, s.size, r, cx, cy, rad);
+    paintMask(s, sc, r, hex);
+  };
+  const fillRing = (rad: number, width: number, hex: string) => {
+    cring(sc.mask, s.size, r, cx, cy, rad, width);
+    paintMask(s, sc, r, hex);
   };
 
   if (spec.insignia === 'star') {
-    disc(field, spec.teamSecondary);
-    paintShape(starPoints(cx, cy, field * 0.82, field * 0.34, 5, -Math.PI * 0.5), spec.insigniaColor);
+    // Soviet: red disc, dark keyline, gold five-point star. Point up.
+    fillDisc(field, spec.teamSecondary);
+    fillRing(field, Math.max(1.4, r.w * 0.014), spec.paintShadow);
+    fillPolys(placeDecal('star5', cx, cy, field * 0.82), spec.insigniaColor);
   } else if (spec.insignia === 'eagle') {
-    disc(field, spec.teamSecondary);
-    // A stylised eagle: swept wings + a wedge body. Reads at 12 px.
-    const w = field * 0.92, h = field * 0.62;
-    paintShape([
-      [cx - w, cy + h * 0.30], [cx - w * 0.30, cy + h * 0.10], [cx, cy + h * 0.42],
-      [cx + w * 0.30, cy + h * 0.10], [cx + w, cy + h * 0.30],
-      [cx + w * 0.34, cy - h * 0.12], [cx, cy - h * 0.02],
-      [cx - w * 0.34, cy - h * 0.12],
-    ], spec.insigniaColor);
-    paintShape([
-      [cx - field * 0.16, cy + h * 0.16], [cx + field * 0.16, cy + h * 0.16],
-      [cx, cy - field * 0.80],
+    // Allied roundel: white outer, cobalt field, white inner ring, eagle.
+    fillDisc(field, spec.insigniaColor);
+    fillDisc(field * 0.86, spec.teamSecondary);
+    fillRing(field * 0.60, Math.max(1.6, r.w * 0.016), spec.insigniaColor);
+    const ww = field * 0.86, hh = field * 0.46;
+    // A stylised eagle: swept wings plus a wedge body, all straight edges so it
+    // stays a shape at 12 px instead of dissolving into a smudge.
+    fillPolys([
+      [
+        cx - ww, cy - hh * 0.18,
+        cx - ww * 0.34, cy - hh * 0.02,
+        cx - ww * 0.30, cy - hh * 0.44,
+        cx, cy - hh * 0.22,
+        cx + ww * 0.30, cy - hh * 0.44,
+        cx + ww * 0.34, cy - hh * 0.02,
+        cx + ww, cy - hh * 0.18,
+        cx + ww * 0.40, cy + hh * 0.26,
+        cx, cy + hh * 0.10,
+        cx - ww * 0.40, cy + hh * 0.26,
+      ],
+      [cx - field * 0.15, cy + hh * 0.04, cx + field * 0.15, cy + hh * 0.04, cx, cy + field * 0.78],
     ], spec.insigniaColor);
   }
 
-  // A recessed retaining ring so the decal sits in a plate, not floating.
-  const steps = 40;
-  for (let i = 0; i < steps; i++) {
-    const a = (i / steps) * TAU, b = ((i + 1) / steps) * TAU;
-    rline(sc.groove, s.size, r,
-      cx + Math.cos(a) * field * 1.16, cy + Math.sin(a) * field * 1.16,
-      cx + Math.cos(b) * field * 1.16, cy + Math.sin(b) * field * 1.16,
-      Math.max(1.2, r.w * 0.016), 0.9);
-  }
-  composite(s, sc, r, spec.paintShadow);
-  clearBevelPatch(s, r, spec.basePaint);
+  // A crisp retaining ring so the decal sits in a plate, not floating on one.
+  cring(sc.groove, s.size, r, cx, cy, field * 1.18, w.seam);
+  composite(s, sc, r, spec.paintShadow, w);
+  clearBevelPatch(s, r, spec.basePaint, rough);
 }
 
 /**
  * EMISSIVE. Bible 8.1 wants emissive AREA tiny and value high, and the
  * foundation's warning is explicit: 2.6 over a whole surface veils the frame.
- * So the tile is mostly dark bezel and the glowing rounded rect covers
+ * So the tile is mostly dark bezel and the glowing rect covers
  * EMISSIVE_TILE_COVER of it; the unit-level fraction is that times the plate
  * area, which the validator holds to 1-3% of hull surface.
  */
@@ -707,81 +1079,108 @@ const EMISSIVE_TILE_COVER = 0.42;
 function paintEmissive(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   const r = tileRect('emissive', s.size);
   clearScratch(sc, s.size, r);
-  fillBase(s, r, '#1A1E22', spec.seed + 13, 0.62, 0.1, 0, 0.25);
+  fillBase(s, r, '#1A1E22', 0.62, 0.10, 0);
 
-  hexToRgb(spec.emissiveColor, RGB_TMP);
-  // Panel geometry chosen so the lit area is EMISSIVE_TILE_COVER of the tile.
+  const w = weldFor(spec, r.w);
   const pw = r.w * 0.80, ph = r.h * (EMISSIVE_TILE_COVER / 0.80);
   const px = (r.w - pw) * 0.5, py = (r.h - ph) * 0.5;
+
+  cfill(sc.mask, s.size, r, px, py, pw, ph);
+  hexToRgb(spec.emissiveColor, RGB_TMP);
+  const size = s.size;
   for (let y = 0; y < r.h; y++) {
     for (let x = 0; x < r.w; x++) {
-      const i = ((r.y + y) | 0) * s.size + ((r.x + x) | 0);
-      const inside =
-        smoothstep(px - 1.5, px + 1.5, x) * smoothstep(px + pw + 1.5, px + pw - 1.5, x) *
-        smoothstep(py - 1.5, py + 1.5, y) * smoothstep(py + ph + 1.5, py + ph - 1.5, y);
-      if (inside <= 0.002) continue;
+      const i = ((r.y + y) | 0) * size + ((r.x + x) | 0);
+      const m = sc.mask[i];
+      if (m <= 0.002) continue;
       const o = i * 3;
-      s.albedo[o] = lerp(s.albedo[o], RGB_TMP[0], inside);
-      s.albedo[o + 1] = lerp(s.albedo[o + 1], RGB_TMP[1], inside);
-      s.albedo[o + 2] = lerp(s.albedo[o + 2], RGB_TMP[2], inside);
-      s.emissive[i] = inside;
+      s.albedo[o] = lerp(s.albedo[o], RGB_TMP[0], m);
+      s.albedo[o + 1] = lerp(s.albedo[o + 1], RGB_TMP[1], m);
+      s.albedo[o + 2] = lerp(s.albedo[o + 2], RGB_TMP[2], m);
+      s.emissive[i] = m;
       s.roughness[i] = 0.30;
       s.teamMask[i] = 0;
     }
   }
-  rroundRect(sc.groove, s.size, r, px - 3, py - 3, pw + 6, ph + 6, 4, Math.max(1.4, r.w * 0.02), 1.0);
-  composite(s, sc, r, '#0A0C0E');
-  clearBevelPatch(s, r, '#1A1E22');
+  clearRect(sc.mask, size, r);
+
+  crect(sc.groove, size, r, px - 3, py - 3, pw + 6, ph + 6, Math.max(1.5, r.w * 0.018));
+  composite(s, sc, r, '#0A0C0E', w);
+  clearBevelPatch(s, r, '#1A1E22', 0.62);
 }
 
 /** GLASS. 1-3% of surface; roughness 0.10 comes from the ORM map. */
 function paintGlass(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   const r = tileRect('glass', s.size);
   clearScratch(sc, s.size, r);
-  fillBase(s, r, spec.glass, spec.seed + 14, UNIT_MATERIAL.glassRoughness, 0, 0);
-  // Two soft reflection bands so a canopy is never a flat dark rectangle.
-  for (const [y, a] of [[0.68, 0.55], [0.44, 0.28]] as const) {
-    rline(sc.lip, s.size, r, r.w * 0.06, r.h * y, r.w * 0.94, r.h * (y + 0.04), r.h * 0.045, a);
-  }
-  rroundRect(sc.groove, s.size, r, 3, 3, r.w - 6, r.h - 6, r.w * 0.10, Math.max(1.6, r.w * 0.024), 1.0);
-  composite(s, sc, r, '#05080C', 0.5);
-  clearBevelPatch(s, r, spec.glass);
+  fillBase(s, r, spec.glass, UNIT_MATERIAL.glassRoughness, 0, 0);
+  const w = weldFor(spec, r.w);
+  // Two crisp reflection bands so a canopy is never a flat dark rectangle.
+  // Straight-edged, like a window reflecting a straight-edged sky, not smeared.
+  cfill(sc.lip, s.size, r, r.w * 0.06, r.h * 0.66, r.w * 0.88, r.h * 0.055);
+  cfill(sc.lip, s.size, r, r.w * 0.06, r.h * 0.42, r.w * 0.62, r.h * 0.030);
+  crect(sc.groove, s.size, r, 3, 3, r.w - 6, r.h - 6, Math.max(1.8, r.w * 0.022));
+  composite(s, sc, r, '#05080C', { ...w, grooveDepth: w.grooveDepth * 0.5 });
+  clearBevelPatch(s, r, spec.glass, UNIT_MATERIAL.glassRoughness);
 }
 
 /**
  * BARE METAL. Barrels, rollers, pistons. Warm grey-brown at S <= 0.26 — bible
  * 5.4 is explicit that blue steel is wrong for RA3.
+ *
+ * The old version ran a 4-octave fbm at 9x frequency into albedo AND height,
+ * which is why every barrel looked like it had been rolled in sand. A real
+ * turned surface is ANISOTROPIC: the variation runs ALONG the axis and there
+ * is essentially none across it. So this is four plane waves at integer
+ * frequencies down the barrel — exactly periodic, so the tile has no seam —
+ * with the effect almost entirely in roughness, where it belongs.
  */
+const TURN_FREQ = [3, 5, 8, 13] as const;
+const TURN_NORM = 1 / (1 + 1 / 2 + 1 / 3 + 1 / 4);
+
+function turnedGrain(v: number, seed: number): number {
+  let a = 0;
+  for (let k = 0; k < TURN_FREQ.length; k++) {
+    const ph = (((seed * (k * 7 + 11)) % 211) / 211) * TAU;
+    a += Math.cos(v * TAU * TURN_FREQ[k] + ph) / (k + 1);
+  }
+  return a * TURN_NORM; // -1 .. 1
+}
+
 function paintBareMetal(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   const r = tileRect('bareMetal', s.size);
   clearScratch(sc, s.size, r);
   hexToRgb(spec.bareMetal, RGB_TMP);
-  const f = 9 / r.w;
+  const size = s.size;
+  const w = weldFor(spec, r.w);
   for (let y = 0; y < r.h; y++) {
+    // One value per ROW: the grain runs along the barrel, so there is exactly
+    // zero variation across it. That is what anisotropic means.
+    const g = turnedGrain(y / r.h, spec.seed + 15);
+    const va = 1 + g * SURFACE_BUDGET.albedoRipple;
+    const vr = clamp01(UNIT_MATERIAL.bareMetalRoughness + g * SURFACE_BUDGET.roughnessRipple * 0.5);
     for (let x = 0; x < r.w; x++) {
-      const i = ((r.y + y) | 0) * s.size + ((r.x + x) | 0);
-      // Stretched along X so it reads as turned metal rather than grey noise.
-      const grain = fbm2(x * f * 0.2, y * f * 9, 4, 2, 0.55, spec.seed + 15);
-      const v = 0.86 + grain * 0.22;
+      const i = ((r.y + y) | 0) * size + ((r.x + x) | 0);
       const o = i * 3;
-      s.albedo[o] = clamp01(RGB_TMP[0] * v);
-      s.albedo[o + 1] = clamp01(RGB_TMP[1] * v);
-      s.albedo[o + 2] = clamp01(RGB_TMP[2] * v);
-      s.height[i] = 0.5 + grain * 0.08;
-      s.roughness[i] = clamp01(UNIT_MATERIAL.bareMetalRoughness + grain * 0.10);
+      s.albedo[o] = clamp01(RGB_TMP[0] * va);
+      s.albedo[o + 1] = clamp01(RGB_TMP[1] * va);
+      s.albedo[o + 2] = clamp01(RGB_TMP[2] * va);
+      s.height[i] = 0.5;
+      s.roughness[i] = vr;
       s.metalness[i] = UNIT_MATERIAL.bareMetalMetalness;
       s.ao[i] = 1; s.alpha[i] = 1; s.teamMask[i] = 0; s.emissive[i] = 0;
     }
   }
-  // Machined rings: what makes a cylinder read as a BARREL and not a tube.
-  const rng = new Rng(spec.seed + 15);
-  for (let n = 0; n < 5; n++) {
-    const y = r.h * ((n + rng.range(0.2, 0.8)) / 5);
-    rline(sc.groove, s.size, r, 0, y, r.w, y, Math.max(1.2, r.w * 0.016), 0.9);
-    rline(sc.lip, s.size, r, 0, y + 2, r.w, y + 2, 1, 0.8);
+  // Machined rings at an EVEN pitch: what makes a cylinder read as a BARREL and
+  // not a tube. Evenly spaced, because a lathe is evenly spaced.
+  const rings = 4;
+  for (let n = 0; n < rings; n++) {
+    const y = r.h * ((n + 0.5) / rings);
+    cline(sc.groove, size, r, 0, y, r.w, y, Math.max(1.4, r.w * 0.014));
+    cline(sc.lip, size, r, 0, y + 2, r.w, y + 2, 1.0);
   }
-  composite(s, sc, r, '#241C14');
-  clearBevelPatch(s, r, spec.bareMetal);
+  composite(s, sc, r, '#241C14', w);
+  clearBevelPatch(s, r, spec.bareMetal, UNIT_MATERIAL.bareMetalRoughness);
 }
 
 /** TREAD. Near-black chevron links (bible 5.4: #030607 -> #281A11). */
@@ -792,81 +1191,88 @@ function paintTread(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   // the chevron lip lifts the proud links toward the brown one.
   hexToRgb(spec.trackLink, RGB_TMP);
   const dark = `#${[0, 1, 2].map((c) => Math.round(RGB_TMP[c] * 255 * 0.34).toString(16).padStart(2, '0')).join('')}`;
-  fillBase(s, r, dark, spec.seed + 16, 0.90, 0.35, 0, 0.4);
-  const links = 9;
+  fillBase(s, r, dark, 0.90, 0.35, 0);
+  const w = weldFor(spec, r.w);
+  const links = 8;
   const pitch = r.h / links;
   for (let i = 0; i < links; i++) {
     const y = i * pitch;
     // Chevron block: two strokes meeting at the centreline.
-    rline(sc.lip, s.size, r, r.w * 0.10, y + pitch * 0.18, r.w * 0.5, y + pitch * 0.62, pitch * 0.17, 0.9);
-    rline(sc.lip, s.size, r, r.w * 0.90, y + pitch * 0.18, r.w * 0.5, y + pitch * 0.62, pitch * 0.17, 0.9);
-    rline(sc.groove, s.size, r, 0, y, r.w, y, Math.max(1.4, pitch * 0.13), 1.0);
+    cline(sc.lip, s.size, r, r.w * 0.10, y + pitch * 0.20, r.w * 0.5, y + pitch * 0.64, pitch * 0.28);
+    cline(sc.lip, s.size, r, r.w * 0.90, y + pitch * 0.20, r.w * 0.5, y + pitch * 0.64, pitch * 0.28);
+    cline(sc.groove, s.size, r, 0, y, r.w, y, Math.max(1.6, pitch * 0.14));
+    // Guide horn on the centre line.
+    stampRivet(s.height, s.size, r, r.w * 0.5, y + pitch * 0.5, pitch * 0.18, 0.16);
   }
-  // Guide horns down the centre.
-  for (let i = 0; i < links; i++) rdisc(sc.rivet, s.size, r, r.w * 0.5, i * pitch + pitch * 0.5, pitch * 0.16, 0.8);
-  composite(s, sc, r, '#020507', 1.4);
-  clearBevelPatch(s, r, spec.trackLink);
+  composite(s, sc, r, '#020507', { ...w, grooveDepth: 0.42 });
+  clearBevelPatch(s, r, spec.trackLink, 0.90);
 }
 
 /** VENT. A full tile of louvres for engine decks and radiator faces. */
 function paintVent(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   const r = tileRect('vent', s.size);
   clearScratch(sc, s.size, r);
-  fillBase(s, r, spec.basePaint, spec.seed + 17, UNIT_MATERIAL.paintRoughness + 0.06, 0.15, 0);
-  louvres(sc, s.size, r, r.w * 0.08, r.h * 0.10, r.w * 0.84, r.h * 0.80, 9);
-  if (spec.rivets) {
-    const rr = Math.max(1.3, r.w * 0.015);
-    for (let x = r.w * 0.10; x < r.w * 0.92; x += spec.rivetPitchPx) {
-      rdisc(sc.rivet, s.size, r, x, r.h * 0.055, rr, 0.85);
-      rdisc(sc.rivet, s.size, r, x, r.h * 0.945, rr, 0.85);
+  const rough = clamp01(sheenRoughness(spec.sheen) + 0.06);
+  fillBase(s, r, spec.basePaint, rough, 0.15, 0);
+  const w = weldFor(spec, r.w);
+  louvres(sc, s.size, r, r.w * 0.08, r.h * 0.12, r.w * 0.84, r.h * 0.76, 7);
+  if (spec.plating === 'riveted') {
+    for (let x = r.w * 0.12; x < r.w * 0.90; x += spec.rivetPitchPx * 1.4) {
+      stampRivet(s.height, s.size, r, x, r.h * 0.055, w.rivetRadius, w.rivetRelief);
+      stampRivet(s.height, s.size, r, x, r.h * 0.945, w.rivetRadius, w.rivetRelief);
     }
   }
-  composite(s, sc, r, spec.paintShadow, 1.3);
-  clearBevelPatch(s, r, spec.basePaint);
+  composite(s, sc, r, spec.paintShadow, { ...w, grooveDepth: w.grooveDepth * 1.25 });
+  clearBevelPatch(s, r, spec.basePaint, rough);
 }
 
 /** HATCH. A whole tile given to one big bolted access panel. */
 function paintHatch(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   const r = tileRect('hatch', s.size);
   clearScratch(sc, s.size, r);
-  fillBase(s, r, spec.basePaint, spec.seed + 18, UNIT_MATERIAL.paintRoughness, 0, 1);
-  hatch(sc, s.size, r, r.w * 0.5, r.h * 0.5, r.w * 0.34, 10);
-  rroundRect(sc.groove, s.size, r, r.w * 0.06, r.h * 0.06, r.w * 0.88, r.h * 0.88, r.w * 0.08,
-    Math.max(1.3, r.w * 0.016), 0.85);
-  composite(s, sc, r, spec.paintShadow, 1.2);
-  clearBevelPatch(s, r, spec.basePaint);
+  const rough = sheenRoughness(spec.sheen);
+  fillBase(s, r, spec.basePaint, rough, UNIT_MATERIAL.paintMetalness, 1);
+  const w = weldFor(spec, r.w);
+  accessHatch(s, sc, r, r.w * 0.5, r.h * 0.5, r.w * 0.33, 10, w);
+  crect(sc.groove, s.size, r, r.w * 0.07, r.h * 0.07, r.w * 0.86, r.h * 0.86, w.seam);
+  composite(s, sc, r, spec.paintShadow, { ...w, grooveDepth: w.grooveDepth * 1.15 });
+  clearBevelPatch(s, r, spec.basePaint, rough);
 }
 
-/** STRIPE. 45-degree hazard chevrons. Used sparingly, on ramps and lips. */
+/**
+ * STRIPE. 45-degree hazard chevrons — the one place a hard, high-contrast
+ * repeating pattern is correct, because on a real ramp lip it IS a hard,
+ * high-contrast repeating pattern. Drawn as filled bands, not sampled noise.
+ */
 function paintStripe(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   const r = tileRect('stripe', s.size);
   clearScratch(sc, s.size, r);
-  fillBase(s, r, '#22242A', spec.seed + 19, UNIT_MATERIAL.paintRoughness, 0, 0);
-  hexToRgb(spec.hazard, RGB_TMP);
+  fillBase(s, r, '#22242A', sheenRoughness(spec.sheen), 0, 0);
+  const w = weldFor(spec, r.w);
   const band = r.w * 0.16;
-  for (let y = 0; y < r.h; y++) {
-    for (let x = 0; x < r.w; x++) {
-      const i = ((r.y + y) | 0) * s.size + ((r.x + x) | 0);
-      const t = ((x + y) % (band * 2)) / (band * 2);
-      const on = t < 0.5 ? 1 : 0;
-      if (!on) continue;
-      const o = i * 3;
-      s.albedo[o] = RGB_TMP[0]; s.albedo[o + 1] = RGB_TMP[1]; s.albedo[o + 2] = RGB_TMP[2];
-    }
+  // Bands run at 45 degrees, drawn as thick diagonal strokes so their edges are
+  // crisp and anti-aliased instead of stair-stepped. `band` is the stroke width
+  // measured PERPENDICULAR to the band, so the period along x has to be
+  // 2 * band * sqrt(2) for the painted and unpainted bands to come out equal.
+  const period = band * 2 * Math.SQRT2;
+  for (let c = -r.h; c < r.w + r.h; c += period) {
+    cline(sc.mask, s.size, r, c, 0, c + r.h, r.h, band);
   }
-  rroundRect(sc.groove, s.size, r, 2, 2, r.w - 4, r.h - 4, 3, Math.max(1.2, r.w * 0.015), 0.9);
-  composite(s, sc, r, '#101216');
-  clearBevelPatch(s, r, spec.hazard);
+  paintMask(s, sc, r, spec.hazard);
+  crect(sc.groove, s.size, r, 2, 2, r.w - 4, r.h - 4, Math.max(1.4, r.w * 0.015));
+  composite(s, sc, r, '#101216', w);
+  clearBevelPatch(s, r, spec.hazard, sheenRoughness(spec.sheen));
 }
 
 /** STENCIL. Four-digit hull number plus a service caption bar. */
 function paintStencil(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   const r = tileRect('stencil', s.size);
   clearScratch(sc, s.size, r);
-  fillBase(s, r, spec.basePaint, spec.seed + 20, UNIT_MATERIAL.paintRoughness, 0, 1);
+  const rough = sheenRoughness(spec.sheen);
+  fillBase(s, r, spec.basePaint, rough, UNIT_MATERIAL.paintMetalness, 1);
+  const w = weldFor(spec, r.w);
 
-  const mask = sc.rivet;
-  const px = Math.max(2, Math.round(r.w / 26));
+  const px = Math.max(2, Math.round(r.w / 24));
   const digits = [
     Math.floor(spec.hullNumber / 1000) % 10,
     Math.floor(spec.hullNumber / 100) % 10,
@@ -875,77 +1281,113 @@ function paintStencil(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   ];
   const glyphW = px * 4;
   const x0 = (r.w - glyphW * digits.length) * 0.5;
-  const y0 = r.h * 0.52;
-  for (let i = 0; i < digits.length; i++) rdigit(mask, s.size, r, digits[i], x0 + i * glyphW, y0, px, 1);
+  const y0 = r.h * 0.42;
+  for (let i = 0; i < digits.length; i++) cdigit(sc.mask, s.size, r, digits[i], x0 + i * glyphW, y0, px);
   // A caption bar under the number: dash-dot-dash, reads as stencilled text.
   for (let i = 0; i < 7; i++) {
-    const w = (i & 1) ? px : px * 2;
-    rfill(mask, s.size, r, x0 + i * px * 2.4, r.h * 0.30, w, px, 1);
+    const bw = (i & 1) ? px : px * 2;
+    cfill(sc.mask, s.size, r, x0 + i * px * 2.4, r.h * 0.24, bw, px);
   }
+  paintMask(s, sc, r, spec.stencil, 0);
 
-  hexToRgb(spec.stencil, RGB_TMP);
-  for (let y = 0; y < r.h; y++) {
-    for (let x = 0; x < r.w; x++) {
-      const i = ((r.y + y) | 0) * s.size + ((r.x + x) | 0);
-      const m = mask[i];
-      if (m <= 0.001) continue;
-      const o = i * 3;
-      s.albedo[o] = lerp(s.albedo[o], RGB_TMP[0], m);
-      s.albedo[o + 1] = lerp(s.albedo[o + 1], RGB_TMP[1], m);
-      s.albedo[o + 2] = lerp(s.albedo[o + 2], RGB_TMP[2], m);
-      s.teamMask[i] = 0;
-    }
-  }
-  mask.fill(0, r.y * s.size, (r.y + r.h) * s.size);
-
-  const rng = new Rng(spec.seed + 20);
-  panelLines(sc, s.size, r, rng, 3, 1, Math.max(1.2, r.w * UNIT_GREEBLE.panelLineWidthFraction));
-  composite(s, sc, r, spec.paintShadow);
-  clearBevelPatch(s, r, spec.basePaint);
+  drawPlan(s, sc, r, STENCIL_PLAN, w, spec, 0, false);
+  composite(s, sc, r, spec.paintShadow, w);
+  clearBevelPatch(s, r, spec.basePaint, rough);
 }
 
-/** GRILLE. Fine intake mesh. The highest-frequency tile in the atlas. */
+/**
+ * GRILLE. Intake mesh. Opened up from the old 7-texel pitch — at that spacing
+ * a mesh is indistinguishable from noise once mip level 1 kicks in, which is
+ * the same failure one octave down.
+ */
 function paintGrille(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   const r = tileRect('grille', s.size);
   clearScratch(sc, s.size, r);
-  fillBase(s, r, '#2A2C30', spec.seed + 21, 0.68, 0.55, 0);
-  const pitch = Math.max(4, r.w / 18);
-  for (let y = pitch * 0.5; y < r.h; y += pitch) rline(sc.groove, s.size, r, 0, y, r.w, y, 1.5, 0.95);
-  for (let x = pitch * 0.5; x < r.w; x += pitch) rline(sc.groove, s.size, r, x, 0, x, r.h, 1.5, 0.95);
-  for (let y = pitch * 0.5; y < r.h; y += pitch) rline(sc.lip, s.size, r, 0, y + 1.6, r.w, y + 1.6, 0.9, 0.8);
-  rroundRect(sc.groove, s.size, r, 2, 2, r.w - 4, r.h - 4, 3, Math.max(1.6, r.w * 0.022), 1.0);
-  composite(s, sc, r, '#0C0E10', 1.5);
-  clearBevelPatch(s, r, '#2A2C30');
+  fillBase(s, r, '#2A2C30', 0.68, 0.55, 0);
+  const w = weldFor(spec, r.w);
+  const pitch = Math.max(SURFACE_BUDGET.minFeatureTexels * 0.6, r.w / 10);
+  for (let y = pitch * 0.5; y < r.h; y += pitch) {
+    cline(sc.groove, s.size, r, 0, y, r.w, y, 2.0);
+    cline(sc.lip, s.size, r, 0, y + 1.8, r.w, y + 1.8, 1.0);
+  }
+  for (let x = pitch * 0.5; x < r.w; x += pitch) cline(sc.groove, s.size, r, x, 0, x, r.h, 2.0);
+  crect(sc.groove, s.size, r, 2, 2, r.w - 4, r.h - 4, Math.max(1.8, r.w * 0.022));
+  composite(s, sc, r, '#0C0E10', { ...w, grooveDepth: 0.44 });
+  clearBevelPatch(s, r, '#2A2C30', 0.68);
 }
 
-/** RIVET PLATE. Soviet bolted armour: dense rows, few panel runs. */
+/**
+ * RIVET PLATE. Soviet bolted armour — and on Allied hardware, a welded splice
+ * plate, because the Allies do not rivet anything (bible 5.7). This is the one
+ * tile whose whole job is hardware, so it carries the densest legal layout.
+ */
 function paintRivetPlate(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   const r = tileRect('rivetPlate', s.size);
   clearScratch(sc, s.size, r);
-  fillBase(s, r, spec.basePaint, spec.seed + 22, UNIT_MATERIAL.paintRoughness, 0, 1);
-  const rng = new Rng(spec.seed + 22);
-  panelLines(sc, s.size, r, rng, 3, 2, Math.max(1.3, r.w * UNIT_GREEBLE.panelLineWidthFraction));
-  const rr = Math.max(1.8, r.w * 0.021);
-  const pitch = spec.rivetPitchPx;
-  for (let y = pitch * 0.6; y < r.h; y += pitch * 1.35) {
-    for (let x = pitch * 0.6; x < r.w; x += pitch) {
-      rdisc(sc.rivet, s.size, r, x, y, rr, 1.0);
-      rdisc(sc.shadow, s.size, r, x, y - rr * 0.95, rr * 0.9, 0.75);
+  const rough = sheenRoughness(spec.sheen);
+  fillBase(s, r, spec.basePaint, rough, UNIT_MATERIAL.paintMetalness, 1);
+  const w = weldFor(spec, r.w);
+
+  // Three big plates butted together, the joints running the long way.
+  const seams = [0.34, 0.68];
+  for (const t of seams) {
+    const y = r.h * t;
+    cline(sc.groove, s.size, r, 0, y, r.w, y, w.seam * 1.15);
+    cline(sc.lip, s.size, r, 0, y + w.seam * 0.6 + 0.6, r.w, y + w.seam * 0.6 + 0.6, 1.2);
+  }
+  cline(sc.groove, s.size, r, r.w * 0.52, 0, r.w * 0.52, r.h * 0.34, w.seam * 1.15);
+
+  if (spec.plating === 'riveted') {
+    const pitch = Math.max(6, spec.rivetPitchPx);
+    const rr = w.rivetRadius;
+    for (const t of [0.34, 0.68]) {
+      for (const off of [-1, 1]) {
+        const y = r.h * t + off * (w.seam + rr + 1.4);
+        for (let x = pitch * 0.5; x < r.w; x += pitch) {
+          stampRivet(s.height, s.size, r, x, y, rr, w.rivetRelief);
+          cdisc(sc.shade, s.size, r, x, y - rr * 0.9, rr * 0.7);
+        }
+      }
+    }
+  } else {
+    // Welded splice: a proud strap over each joint instead of a bolt row.
+    for (const t of seams) {
+      const y = r.h * t;
+      crect(sc.lip, s.size, r, r.w * 0.06, y - r.h * 0.045, r.w * 0.88, r.h * 0.09, 1.3);
     }
   }
-  composite(s, sc, r, spec.paintShadow);
-  clearBevelPatch(s, r, spec.basePaint);
+  composite(s, sc, r, spec.paintShadow, w);
+  clearBevelPatch(s, r, spec.basePaint, rough);
 }
 
 /* ==========================================================================
- * 6. METRICS — the build-time gate (scorecard #34)
+ * 7. METRICS — the build-time gate
+ *
+ * The OLD gate was Sobel edge coverage with a floor of 22% (units) / 30%
+ * (buildings). That number is why this file grew a noise field: the cheapest
+ * way to raise Sobel coverage is to add static, and the cheapest way to add
+ * static is fbm. The metric rewarded exactly the thing that made the render
+ * look amateur.
+ *
+ * So there are now TWO numbers and they pull in opposite directions:
+ *
+ *   detailCoverage — how much of a tile carries DRAWN structure. It is measured
+ *     from the structure mask the painters themselves wrote, so noise cannot
+ *     contribute to it at all. This is the real R1 gate.
+ *
+ *   speckleRatio — how much of a tile is salt-and-pepper, counted as texels
+ *     that are a strict local extremum in BOTH axes. White noise scores ~0.44.
+ *     A crisp drawn line scores 0, because a line continues along its length.
+ *     This is the gate that would have caught the old atlas, and it is an
+ *     ERROR, not a warning.
+ *
+ * `edgeCoverage` is kept because it is still a useful report, but nothing gates
+ * on it any more.
  * ========================================================================== */
 
 /**
  * Sobel |grad| > threshold coverage over an sRGB luminance image, restricted to
- * a slot's sampled sub-rect. Scorecard #34 wants 28-36% on units and treats
- * anything below 22% as "untextured primitives". This is the texture-space
- * proxy the factory gates on; the render-space check is the harness's job.
+ * a slot's sampled sub-rect. Reported, never gated on — see above.
  */
 export function edgeCoverage(s: Surface, slot?: SlotName, threshold = 25 / 255): number {
   const size = s.size;
@@ -973,8 +1415,58 @@ export function edgeCoverage(s: Surface, slot?: SlotName, threshold = 25 / 255):
   return total === 0 ? 0 : hits / total;
 }
 
+/**
+ * Fraction of a tile carrying drawn structure — a seam, a lip, a pocket edge,
+ * a rivet, a decal. Measured from the painters' own accumulated mask, so a
+ * noise field contributes exactly nothing to it.
+ */
+export function detailCoverage(structure: Float32Array, size: number, slot?: SlotName): number {
+  const r = slot ? tileRect(slot, size) : { x: 0, y: 0, w: size, h: size };
+  const pad = slot ? Math.round(r.w * UNIT_GREEBLE.tileInsetFraction) : 0;
+  let hits = 0, total = 0;
+  for (let y = pad; y < r.h - pad; y++) {
+    for (let x = pad; x < r.w - pad; x++) {
+      if (structure[((r.y + y) | 0) * size + ((r.x + x) | 0)] > 0.10) hits++;
+      total++;
+    }
+  }
+  return total === 0 ? 0 : hits / total;
+}
+
+/**
+ * Fraction of texels that are a strict local extremum in BOTH axes — the
+ * salt-and-pepper detector. Run over albedo luminance AND over the height
+ * field, because a normal map made of noise is the failure that actually
+ * shipped, and it is invisible in albedo.
+ */
+export function speckleRatio(s: Surface): number {
+  const size = s.size;
+  const n = size * size;
+  const lum = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const o = i * 3;
+    // Height is weighted in: a flat albedo over a noisy height still speckles
+    // once the key light hits the normal map.
+    lum[i] = 0.2126 * s.albedo[o] + 0.7152 * s.albedo[o + 1] + 0.0722 * s.albedo[o + 2]
+      + (s.height[i] - 0.5) * 2;
+  }
+  let hits = 0, total = 0;
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const i = y * size + x;
+      const c = lum[i];
+      const l = lum[i - 1], r = lum[i + 1], u = lum[i - size], d = lum[i + size];
+      const maxX = c > l && c > r, minX = c < l && c < r;
+      const maxY = c > u && c > d, minY = c < u && c < d;
+      if ((maxX && maxY) || (minX && minY)) hits++;
+      total++;
+    }
+  }
+  return total === 0 ? 0 : hits / total;
+}
+
 /* ==========================================================================
- * 7. PACKING + THE FACTORY
+ * 8. PACKING + THE FACTORY
  * ========================================================================== */
 
 /** RGB = emissiveColour x mask. `three` samples emissiveMap in RGB, not alpha. */
@@ -1000,7 +1492,8 @@ export interface GreebleAtlas {
   spec: Readonly<GreebleSpec>;
   /** sRGB albedo, team mask in alpha. */
   map: THREE.DataTexture;
-  /** Tangent-space XY + cavity in B + curvature in A. */
+  /** Tangent-space XY + cavity in B + curvature in A. STRUCTURAL: a flat plate
+   *  comes out exactly (0, 0, 1) with no ripple to catch a specular. */
   normalMap: THREE.DataTexture;
   /** AO / roughness / metalness + emissive mask in alpha. */
   ormMap: THREE.DataTexture;
@@ -1008,14 +1501,21 @@ export interface GreebleAtlas {
   emissiveMap: THREE.DataTexture;
   /** Retained for build-time measurement; not uploaded. */
   surface: Surface;
+  /** Accumulated drawn-structure mask, for `detailCoverage`. Not uploaded. */
+  structure: Float32Array;
   /** Sampled UV rect per slot. */
   uv: Record<SlotName, UvRect>;
   /** Flat patch per slot, sampled by chamfer strips. */
   bevelUv: Record<SlotName, UvRect>;
   metrics: {
-    /** Sobel coverage over the four paint tiles, area-weighted equally. */
+    /** Drawn-structure coverage over the four paint tiles. THE R1 GATE. */
+    paintDetailCoverage: number;
+    /** Drawn-structure coverage over the whole atlas. */
+    atlasDetailCoverage: number;
+    /** Salt-and-pepper ratio over albedo + height. MUST be ~0. */
+    speckleRatio: number;
+    /** Legacy Sobel figures. Reported for the boot log; nothing gates on them. */
     paintEdgeCoverage: number;
-    /** Sobel coverage over the whole atlas. */
     atlasEdgeCoverage: number;
     /** Fraction of the emissive tile that actually emits. */
     emissiveTileCover: number;
@@ -1029,7 +1529,7 @@ function specHash(spec: GreebleSpec): string {
     spec.teamColor, spec.teamSecondary, spec.insignia, spec.insigniaColor,
     spec.emissiveColor, spec.bareMetal, spec.trackLink, spec.glass,
     spec.stencil, spec.hazard, spec.rivets ? 'r' : '-', spec.rivetPitchPx,
-    spec.panelDensity, spec.hullNumber,
+    spec.plating, spec.sheen, spec.panelDensity, spec.hullNumber,
   ].join('|');
 }
 
@@ -1075,36 +1575,59 @@ export class GreebleFactory {
     const size = spec.size;
     const s = createSurface(size);
     const n = size * size;
+    // Every mark every painter makes is folded into `structure`, so
+    // `detailCoverage` measures drawn geometry and can never be inflated by a
+    // noise field. `record` runs after a painter and before the next clear.
+    const structure = new Float32Array(n);
     const sc: Scratch = {
       groove: new Float32Array(n),
       lip: new Float32Array(n),
-      rivet: new Float32Array(n),
-      shadow: new Float32Array(n),
+      shade: new Float32Array(n),
+      mask: new Float32Array(n),
+      structure,
+    };
+    const record = (r: Rect): void => {
+      for (let y = 0; y < r.h; y++) {
+        for (let x = 0; x < r.w; x++) {
+          const i = ((r.y + y) | 0) * size + ((r.x + x) | 0);
+          const v = Math.max(sc.groove[i], Math.max(sc.lip[i], sc.shade[i]));
+          if (v > structure[i]) structure[i] = v;
+        }
+      }
     };
 
-    // Four paint densities. The counts are the bible's "6-14 runs per major
-    // hull face", scaled down for progressively smaller parts.
-    paintTile(s, sc, spec, 'paintLarge', 12, 1);
-    paintTile(s, sc, spec, 'paintMed', 7, 2);
-    paintTile(s, sc, spec, 'paintSmall', 4, 3);
-    paintTile(s, sc, spec, 'paintTiny', 2, 4);
+    // Four plate scales. `paintSlotForArea` picks between them by face area, so
+    // a 7 m glacis gets the full plan and a 0.3 m sensor box gets a frame.
+    const tiles: readonly (readonly [SlotName, PlanKey, number])[] = [
+      ['paintLarge', 'large', 1], ['paintMed', 'med', 2],
+      ['paintSmall', 'small', 3], ['paintTiny', 'tiny', 4],
+    ];
+    for (const [slot, plan, salt] of tiles) {
+      paintTile(s, sc, spec, slot, plan, salt);
+      record(tileRect(slot, size));
+    }
 
-    paintTeamSlab(s, sc, spec);
-    paintInsignia(s, sc, spec);
-    paintEmissive(s, sc, spec);
-    paintGlass(s, sc, spec);
-    paintBareMetal(s, sc, spec);
-    paintTread(s, sc, spec);
-    paintVent(s, sc, spec);
-    paintHatch(s, sc, spec);
-    paintStripe(s, sc, spec);
-    paintStencil(s, sc, spec);
-    paintGrille(s, sc, spec);
-    paintRivetPlate(s, sc, spec);
+    const others: readonly (readonly [SlotName, (a: Surface, b: Scratch, c: GreebleSpec) => void])[] = [
+      ['teamSlab', paintTeamSlab], ['insignia', paintInsignia],
+      ['emissive', paintEmissive], ['glass', paintGlass],
+      ['bareMetal', paintBareMetal], ['tread', paintTread],
+      ['vent', paintVent], ['hatch', paintHatch],
+      ['stripe', paintStripe], ['stencil', paintStencil],
+      ['grille', paintGrille], ['rivetPlate', paintRivetPlate],
+    ];
+    for (const [slot, painter] of others) {
+      painter(s, sc, spec);
+      record(tileRect(slot, size));
+    }
 
     const relief = UNIT_GREEBLE.normalRelief;
     const map = makeTexture(packAlbedo(s), size, true, `${spec.key}.albedo`, this.anisotropy);
-    const normalMap = makeTexture(packNormal(s, relief, UNIT_GREEBLE.cavityRadiusPx), size, false, `${spec.key}.normal`, this.anisotropy);
+    // STRUCTURAL, not raw Sobel: a 1-texel spike is filtered out and a
+    // sub-structural gradient dead-bands to exactly zero, so a flat plate is a
+    // flat plate and cannot pick up a marbled specular.
+    const normalMap = makeTexture(
+      packNormalStructural(s, relief, UNIT_GREEBLE.cavityRadiusPx), size, false,
+      `${spec.key}.normal`, this.anisotropy);
     const ormMap = makeTexture(packOrm(s), size, false, `${spec.key}.orm`, this.anisotropy);
     const emissiveMap = makeTexture(packEmissive(s, spec.emissiveColor), size, true, `${spec.key}.emissive`, 1);
 
@@ -1115,9 +1638,13 @@ export class GreebleFactory {
       bevelUv[slot] = slotBevelUv(slot, size);
     }
 
-    let paintCoverage = 0;
-    for (const slot of PAINT_SLOTS) paintCoverage += edgeCoverage(s, slot);
-    paintCoverage /= PAINT_SLOTS.length;
+    let paintDetail = 0, paintEdge = 0;
+    for (const slot of PAINT_SLOTS) {
+      paintDetail += detailCoverage(structure, size, slot);
+      paintEdge += edgeCoverage(s, slot);
+    }
+    paintDetail /= PAINT_SLOTS.length;
+    paintEdge /= PAINT_SLOTS.length;
 
     let emissiveArea = 0;
     const er = tileRect('emissive', size);
@@ -1131,9 +1658,13 @@ export class GreebleFactory {
       spec,
       map, normalMap, ormMap, emissiveMap,
       surface: s,
+      structure,
       uv, bevelUv,
       metrics: {
-        paintEdgeCoverage: paintCoverage,
+        paintDetailCoverage: paintDetail,
+        atlasDetailCoverage: detailCoverage(structure, size),
+        speckleRatio: speckleRatio(s),
+        paintEdgeCoverage: paintEdge,
         atlasEdgeCoverage: edgeCoverage(s),
         emissiveTileCover: emissiveArea / (er.w * er.h),
         generateMs: Date.now() - t0,
