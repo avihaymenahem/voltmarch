@@ -49,7 +49,48 @@ const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 /* ========================================================================== */
 
 export type ToneMappingMode = 'none' | 'agx' | 'aces' | 'neutral' | 'linear';
-export type QualityTier = 'low' | 'medium' | 'high' | 'ultra';
+
+/**
+ * The PIPELINE fidelity bucket: resolution scale, shadow map size, which post
+ * passes run. Owned here.
+ *
+ * THIS IS NOT `QualityTier` FROM `src/core/types.ts`. That one is a numeric
+ * const enum (Low=0..Ultra=3) selecting a *content* budget in
+ * `core/config.ts#QUALITY_PRESETS` — particle counts, decal pool, generated
+ * texture size, LOD bias — and it is what `loop.quality` and `RenderContext.
+ * quality` carry. Two tables, two vocabularies, deliberately: the sim must be
+ * able to shrink its pools on a machine whose GPU is fine, and vice versa.
+ *
+ * The two are ordered identically, so `RENDER_QUALITY_TIERS.indexOf(tier)` is
+ * the matching core enum value — `coreQualityTierOf()` below is the only place
+ * that conversion is written down.
+ */
+export type RenderQualityTier = 'low' | 'medium' | 'high' | 'ultra';
+
+/**
+ * @deprecated Use `RenderQualityTier`. Kept so the name a caller already
+ * imported keeps resolving; it is the same type.
+ */
+export type QualityTier = RenderQualityTier;
+
+/** Ordered low..ultra. The index IS `core/types.ts#QualityTier`. */
+export const RENDER_QUALITY_TIERS: readonly RenderQualityTier[] = ['low', 'medium', 'high', 'ultra'];
+
+/** Render's string tier -> core's numeric const-enum value (0..3). */
+export function coreQualityTierOf(tier: RenderQualityTier): number {
+  const i = RENDER_QUALITY_TIERS.indexOf(tier);
+  return i < 0 ? 2 : i;
+}
+
+/** Parse `?tier=` in either vocabulary ('high' or '2'). Null when unknown. */
+export function parseQualityTier(tier: string | null | undefined): RenderQualityTier | null {
+  if (!tier) return null;
+  const t = tier.toLowerCase();
+  if ((RENDER_QUALITY_TIERS as readonly string[]).includes(t)) return t as RenderQualityTier;
+  const n = Number(t);
+  if (Number.isInteger(n) && n >= 0 && n < RENDER_QUALITY_TIERS.length) return RENDER_QUALITY_TIERS[n];
+  return null;
+}
 
 export interface RendererConfig {
   /** Multiplies the clamped DPR. The quality governor drives this. */
@@ -432,7 +473,12 @@ export function touched(changed: ReadonlyArray<string>, prefix: string): boolean
 /* Quality tiers                                                              */
 /* ========================================================================== */
 
-const QUALITY_PRESETS: Record<QualityTier, DeepPartial<RenderConfig>> = {
+/**
+ * PIPELINE presets. Named apart from `core/config.ts#QUALITY_PRESETS`, which is
+ * a different table of different fields keyed by the numeric core tier; the two
+ * used to share a bare name and be one import away from silently swapping.
+ */
+const RENDER_QUALITY_PRESETS: Record<RenderQualityTier, DeepPartial<RenderConfig>> = {
   low: {
     renderer: { resolutionScale: 0.75, maxPixelRatio: 1.0, shadows: { enabled: true, mapSize: 1024 } },
     post: { ao: { enabled: false }, bloom: { enabled: true, radius: 0.5 }, smaa: { enabled: false } },
@@ -452,8 +498,8 @@ const QUALITY_PRESETS: Record<QualityTier, DeepPartial<RenderConfig>> = {
 };
 
 /** Apply a quality preset on top of the current config. */
-export function applyQualityTier(tier: QualityTier): ReadonlyArray<string> {
-  const preset = QUALITY_PRESETS[tier];
+export function applyQualityTier(tier: RenderQualityTier): ReadonlyArray<string> {
+  const preset = RENDER_QUALITY_PRESETS[tier];
   if (!preset) return [];
   const changed = configureRender(preset);
   if (RENDER_CONFIG.quality !== tier) {
@@ -463,7 +509,7 @@ export function applyQualityTier(tier: QualityTier): ReadonlyArray<string> {
 }
 
 /** Crude but useful auto-detection for first boot. */
-export function detectQualityTier(): QualityTier {
+export function detectQualityTier(): RenderQualityTier {
   if (typeof navigator === 'undefined') return 'high';
   const mem = (navigator as any).deviceMemory as number | undefined;
   const cores = navigator.hardwareConcurrency || 4;

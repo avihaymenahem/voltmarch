@@ -283,6 +283,21 @@ export class EntityStore {
     x: number, y: number, z: number,
     yaw = 0,
   ): EntityId {
+    // `byKind` is a fixed array of ENTITY_KIND_COUNT dense lists. An out-of-range
+    // kind used to die 80 lines later on `this.byKind[kind][kc] = i` with
+    // "Cannot set properties of undefined", naming neither the caller nor the
+    // value — a five-minute debug for a one-character content typo. Named here
+    // instead. Rejecting rather than throwing keeps the rule the rest of this
+    // method follows: alloc returns NONE, it never takes the frame down.
+    if (!Number.isInteger(kind) || kind < 0 || kind >= ENTITY_KIND_COUNT) {
+      this.allocFailures++;
+      console.error(
+        `[store] alloc rejected: EntityKind ${String(kind)} is out of range ` +
+        `(0..${ENTITY_KIND_COUNT - 1}). defId=${defId} owner=${String(owner)} at ` +
+        `(${x.toFixed(1)}, ${z.toFixed(1)}).`,
+      );
+      return NONE;
+    }
     if (this.freeCount === 0) {
       this.allocFailures++;
       return NONE;

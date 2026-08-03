@@ -29,9 +29,11 @@ import { hexToInt } from '../core/math';
 import {
   RENDER_CONFIG,
   applyQualityTier,
+  coreQualityTierOf,
   createRenderer,
   detectQualityTier,
-  type QualityTier as RenderQualityTier,
+  parseQualityTier,
+  type RenderQualityTier,
   type RendererHandle,
 } from '../render/renderer';
 import { createScene, type SceneRig } from '../render/scene';
@@ -85,22 +87,21 @@ export interface GameContext {
 
 /* -------------------------------------------------------------------------- */
 
-const RENDER_TIERS: readonly RenderQualityTier[] = ['low', 'medium', 'high', 'ultra'];
-
 function parseTier(tier: string | null | undefined): RenderQualityTier | null {
-  if (!tier) return null;
-  const t = tier.toLowerCase();
-  if ((RENDER_TIERS as readonly string[]).includes(t)) return t as RenderQualityTier;
-  // Numeric form, matching core's QualityTier const enum (0..3).
-  const n = Number(t);
-  if (Number.isInteger(n) && n >= 0 && n < RENDER_TIERS.length) return RENDER_TIERS[n];
-  console.warn(`[boot] unknown ?tier=${tier} — auto-detecting`);
-  return null;
+  const parsed = parseQualityTier(tier);
+  if (parsed === null && tier) console.warn(`[boot] unknown ?tier=${tier} — auto-detecting`);
+  return parsed;
 }
 
-/** Render's string tier -> core's numeric const enum. They are NOT the same type. */
+/**
+ * Render's string tier -> core's numeric const enum. They are NOT the same
+ * type: render's picks a PIPELINE preset (resolution, shadow map, post passes),
+ * core's picks a CONTENT budget (particles, decals, texture size, LOD). The
+ * conversion itself lives in renderer.ts so there is exactly one copy of the
+ * ordering; this wrapper only supplies the fallback core cares about.
+ */
 function coreTier(tier: RenderQualityTier): CoreQualityTier {
-  const i = RENDER_TIERS.indexOf(tier);
+  const i = coreQualityTierOf(tier);
   return (i < 0 ? (DEFAULT_QUALITY_TIER as number) : i) as CoreQualityTier;
 }
 
@@ -161,15 +162,29 @@ export function bootstrap(options: BootOptions): GameHandle {
   world.addPlayer(Faction.Allies, 'Commander', true, true);
   world.addPlayer(Faction.Soviets, 'Opponent', false, false);
 
-  const scenario = createPlaceholderScene({
-    sceneRig,
-    alliesColor: hexToInt(art.factions.allies.armorBase),
-    sovietsColor: hexToInt(art.factions.soviets.armorBase),
-    alliesEmissive: hexToInt(art.factions.allies.emissivePanel),
-    sovietsEmissive: hexToInt(art.factions.soviets.emissivePanel),
-    animate: !shotMode,
-  });
-  registry.add(scenario);
+  /*
+   * The gray-box scaffolding is OFF by default now that `world.terrain` and
+   * `game.scenario` are real modules. It used to be registered unconditionally
+   * and removed from two other modules' init()s, which meant its ground plane,
+   * grid helper and four unowned cubes drew over the real content for however
+   * many frames the race went the wrong way. `?keepPlaceholder=1` brings it
+   * back for anyone debugging the render stack with no gameplay content at all
+   * — the same flag src/game/scenarios.system.ts documents.
+   */
+  const keepPlaceholder =
+    typeof location !== 'undefined' && new URLSearchParams(location.search).has('keepPlaceholder');
+
+  const scenario = keepPlaceholder
+    ? createPlaceholderScene({
+      sceneRig,
+      alliesColor: hexToInt(art.factions.allies.armorBase),
+      sovietsColor: hexToInt(art.factions.soviets.armorBase),
+      alliesEmissive: hexToInt(art.factions.allies.emissivePanel),
+      sovietsEmissive: hexToInt(art.factions.soviets.emissivePanel),
+      animate: !shotMode,
+    })
+    : null;
+  if (scenario !== null) registry.add(scenario);
 
   const loop = new GameLoop(world, channels, registry, { render: renderFrame }, seed);
   loop.quality = coreTier(tier);
@@ -205,7 +220,9 @@ export function bootstrap(options: BootOptions): GameHandle {
     },
   });
 
-  cameraRig.setGroundHeightFn(scenario.heightAt);
+  // A flat sampler until `world.terrain`'s init replaces it. The rig must have
+  // SOMETHING before the first frame or its focus point falls through the floor.
+  cameraRig.setGroundHeightFn(scenario !== null ? scenario.heightAt : () => 0);
 
   /* -- frame body --------------------------------------------------------- */
 

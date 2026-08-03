@@ -1,0 +1,1230 @@
+/**
+ * ============================================================================
+ * RED ALERT — src/art/BuildingDefs.ts
+ * ============================================================================
+ * EVERY STRUCTURE IN THE GAME, as declarative mass lists.
+ *
+ * Bible 5.7 gives each faction seven numbered architectural rules and this file
+ * is those rules turned into geometry. They are implemented as SHELL
+ * GENERATORS — `alliedShell()` and `sovietShell()` — so the faction language is
+ * written once and every structure inherits all of it, then adds the masses
+ * that make it identifiable. That is deliberate: RA3's buildings read as a
+ * family first and as a Barracks second, and hand-authoring 22 lists would
+ * drift the family apart within three structures.
+ *
+ *   ALLIED (bible 5.7 ALLIED 1-6)
+ *     1 splayed skirt, base 1.30x wider than the top
+ *     2 open-topped hex crown at 0.50x base width, 0.30x height
+ *     3 PAIRED modules — two identical halves sharing an edge, never a monolith
+ *     4 corner radius 6-10% of the smallest dimension
+ *     5 3-5 horizontal banding strips of alternating depth
+ *     6 flat near-black charcoal pad, 10% beyond the footprint
+ *
+ *   SOVIET (bible 5.7 SOVIET 1-7)
+ *     1 heavy slab with 45-degree chamfers on every vertical corner (7.5%)
+ *     2 fat capsule corner rails at 12% of wall height, flat disc caps
+ *     3 2-3 tapered stacks, 45% of building height above the roof, two red bands
+ *     4 bulbous pressure vessels at 0.24x width with glowing amber caps
+ *     5 exposed yellow lattice scaffolding and railed catwalks
+ *     6 rivets on every chamfer and seam (carried by the atlas, spec.rivets)
+ *     7 raised grated steel deck plus a concrete apron with a red star
+ *
+ * COORDINATES. 1 unit = 1 metre, Y up, model origin is the GROUND-PLANE CENTRE
+ * of the footprint, +Z is the facade / vehicle exit. `anchor` is the mass
+ * CENTRE, so a 6 m tall block resting on the ground has anchor.y = 3.
+ *
+ * SLOT DISCIPLINE. `paintMed` means "auto by face area" (the factory downgrades
+ * small faces to paintSmall/paintTiny); `paintLarge` is never authored — see
+ * the note in BuildingFactory. `teamSlab` is the ONLY way a faction colour
+ * reaches a surface (R12), and it goes on top-facing and outward-facing
+ * geometry only (R-T3).
+ * ============================================================================
+ */
+
+import { BUILDING_FOOTPRINTS, BUILDING_GEOMETRY, BUILDING_PAD, CELL } from '../core/config';
+import { PartId } from '../core/types';
+import { MassRole } from './MassList';
+import {
+  Feature,
+  type StructureFaction,
+  type StructureMass,
+  type StructureMassList,
+  type StructureSocket,
+} from './BuildingFactory';
+import type { SlotName } from './Greeble';
+
+type M = StructureMass;
+type V3 = readonly [number, number, number];
+
+/* ==========================================================================
+ * 1. MASS CONSTRUCTORS
+ * ========================================================================== */
+
+function box(name: string, role: MassRole, size: V3, anchor: V3, slot: SlotName, o?: Partial<M>): M {
+  return { name, primitive: 'box', role, size, anchor, slot, ...o };
+}
+function cyl(name: string, role: MassRole, size: V3, anchor: V3, slot: SlotName, o?: Partial<M>): M {
+  return { name, primitive: 'lathe', role, size, anchor, slot, profile: 'cyl', ...o };
+}
+function pri(name: string, role: MassRole, size: V3, anchor: V3, slot: SlotName, o?: Partial<M>): M {
+  return { name, primitive: 'prism', role, size, anchor, slot, ...o };
+}
+
+/* ==========================================================================
+ * 2. SHARED FEATURES
+ * ========================================================================== */
+
+/**
+ * THE FOUNDATION PAD (ALLIED-6 / SOVIET-7).
+ *
+ * Real geometry with its own material, not a decal. One mass carries both the
+ * visible slab and the buried skirt: the top face sits at `BUILDING_PAD.lift`
+ * and the box runs down past the origin by `skirtDepth`, so the joint is under
+ * the heightfield on every cell `Terrain.isBuildable` will accept. A decal
+ * would z-fight, and a re-meshed-per-site pad would cost one batch per
+ * instance.
+ */
+function foundationPad(faction: StructureFaction, fw: number, fh: number, height: number): M[] {
+  const soviet = faction === 'soviets';
+  const over = soviet ? BUILDING_PAD.sovietOverhang : BUILDING_PAD.alliedOverhang;
+  const thick = Math.max(0.18, height * (soviet ? BUILDING_PAD.sovietThickness : BUILDING_PAD.alliedThickness));
+  const w = fw * CELL * (1 + over * 2);
+  const d = fh * CELL * (1 + over * 2);
+  const total = thick + BUILDING_PAD.skirtDepth;
+  const cy = BUILDING_PAD.lift - total * 0.5;
+
+  const out: M[] = [
+    // A chamfered plan, not a raw box: SOVIET-7 asks for a bevelled lip and
+    // ALLIED-6 for chamfered corners, and both fall out of the prism rim.
+    pri('pad.slab', MassRole.Greeble, [w, total, d], [0, cy, 0], 'paintMed', {
+      plan: 'cutBox', cornerCut: 0.07, capSlot: soviet ? 'grille' : 'paintSmall',
+      target: 'pad', feature: Feature.Static, group: 'pad',
+      chamfer: Math.min(0.22, thick * 0.5),
+    }),
+  ];
+
+  if (soviet) {
+    // SOVIET-7: a concrete apron fronting the vehicle exit, with a red star.
+    const aw = Math.min(w * 0.72, fw * CELL);
+    out.push(
+      box('pad.apron', MassRole.Greeble, [aw, total * 0.86, d * 0.30], [0, cy + total * 0.07, d * 0.5 + d * 0.13], 'paintSmall', {
+        target: 'pad', feature: Feature.Static, group: 'apron', chamfer: 0.10,
+      }),
+      box('pad.star', MassRole.Greeble, [aw * 0.42, 0.06, aw * 0.42], [0, BUILDING_PAD.lift + 0.02, d * 0.5 + d * 0.10], 'insignia', {
+        target: 'pad', feature: Feature.Static, group: 'apron', chamfer: 0.02,
+      }),
+    );
+  } else {
+    // ALLIED-6: a light kerb line inset from the slab edge. The pad is nearly
+    // black by design, so this is the only thing that keeps its shape legible.
+    for (const sgn of [1, -1]) {
+      out.push(box('pad.kerb', MassRole.Greeble, [w * 0.94, 0.10, 0.34], [0, BUILDING_PAD.lift + 0.03, sgn * (d * 0.5 - 0.34)], 'stripe', {
+        target: 'pad', feature: Feature.Static, group: 'kerb', chamfer: 0.03,
+      }));
+    }
+  }
+  return out;
+}
+
+/** ALLIED-5: 3-5 horizontal banding strips of alternating depth (+/-3%). */
+function alliedBands(w: number, d: number, y0: number, y1: number): M[] {
+  const n = BUILDING_GEOMETRY.alliedBandCount;
+  const out: M[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n;
+    const y = y0 + (y1 - y0) * t;
+    // The taper means the body is narrower higher up; follow it.
+    const shrink = 1 - (1 - 1 / BUILDING_GEOMETRY.alliedSkirtFlare) * t;
+    const proud = i % 2 === 0 ? 1 + BUILDING_GEOMETRY.alliedBandDepth : 1 - BUILDING_GEOMETRY.alliedBandDepth;
+    out.push(box(`band${i}`, MassRole.Greeble, [w * shrink * proud, 0.26, d * shrink * proud], [0, y, 0], 'paintSmall', {
+      group: 'bands', chamfer: 0.07,
+    }));
+  }
+  return out;
+}
+
+/** ALLIED-2: the open-topped hex crown. A ring, not a lid. */
+function alliedCrown(baseW: number, totalH: number, roofY: number): M[] {
+  const w = baseW * BUILDING_GEOMETRY.alliedCrownWidth;
+  const h = totalH * BUILDING_GEOMETRY.alliedCrownHeight;
+  return [
+    pri('crown', MassRole.Primary, [w, h, w], [0, roofY + h * 0.5, 0], 'paintMed', {
+      plan: 'hexagon', capSlot: 'paintSmall',
+    }),
+    // The well: a darker recessed prism just inside the rim, which is what
+    // makes an "open-topped" crown read from a 39-degree camera.
+    // Louvres, not grille. The grille tile is #2A2C30 and an open-topped crown
+    // filled with it reads from the RTS camera as a black hexagonal LID -- the
+    // exact opposite of the feature. The vent tile is the base paint with deep
+    // louvre shadows, so the well reads as recessed plant instead.
+    pri('crown.well', MassRole.Greeble, [w * 0.62, h * 0.30, w * 0.62], [0, roofY + h * 0.90, 0], 'vent', {
+      plan: 'hexagon', capSlot: 'vent', tint: 0.82, group: 'crown', chamfer: 0.05,
+    }),
+  ];
+}
+
+/** SOVIET-2: fat capsule corner rails, full height, flat disc caps. */
+function sovietRails(w: number, d: number, h: number): M[] {
+  const dia = Math.max(0.5, h * BUILDING_GEOMETRY.sovietRailDiameter);
+  const x = w * 0.5 - dia * 0.34;
+  const z = d * 0.5 - dia * 0.34;
+  const out: M[] = [];
+  for (const sz of [1, -1]) {
+    out.push(cyl(`rail${sz > 0 ? 'F' : 'B'}`, MassRole.Greeble, [dia, h, dia], [x, h * 0.5, sz * z], 'bareMetal', {
+      mirrorX: true, segments: BUILDING_GEOMETRY.railSegments, group: 'rails', capSlot: 'hatch',
+    }));
+  }
+  return out;
+}
+
+/** SOVIET-3: a tapered smoke stack with two red bands and a cap ring. */
+function sovietStack(x: number, z: number, dia: number, baseY: number, top: number, tag: string): M[] {
+  const h = top - baseY;
+  return [
+    cyl(`${tag}.stack`, MassRole.Primary, [dia, h, dia], [x, baseY + h * 0.5, z], 'rivetPlate', {
+      topRadius: BUILDING_GEOMETRY.sovietStackTaper, group: tag, capSlot: 'grille',
+    }),
+    cyl(`${tag}.bandA`, MassRole.TeamSlab, [dia * 1.06, h * 0.050, dia * 1.06], [x, baseY + h * 0.62, z], 'teamSlab', {
+      group: tag, chamfer: 0.04,
+    }),
+    cyl(`${tag}.bandB`, MassRole.TeamSlab, [dia * 1.05, h * 0.042, dia * 1.05], [x, baseY + h * 0.78, z], 'teamSlab', {
+      group: tag, chamfer: 0.04,
+    }),
+    cyl(`${tag}.cap`, MassRole.Greeble, [dia * 1.16, h * 0.06, dia * 1.16], [x, top - h * 0.03, z], 'bareMetal', {
+      group: tag, chamfer: 0.05, capSlot: 'grille',
+    }),
+  ];
+}
+
+/** SOVIET-4: a bulbous pressure vessel with a glowing amber cap. */
+function sovietVessel(x: number, z: number, r: number, y: number, tag: string): M[] {
+  return [
+    { name: `${tag}.vessel`, primitive: 'lathe', role: MassRole.Primary, profile: 'capsule',
+      size: [r * 2, r * 2.9, r * 2], anchor: [x, y + r * 1.45, z], slot: 'rivetPlate', group: tag },
+    cyl(`${tag}.collar`, MassRole.Greeble, [r * 2.2, r * 0.3, r * 2.2], [x, y + r * 0.5, z], 'bareMetal', {
+      group: tag, chamfer: 0.05, capSlot: 'grille',
+    }),
+    cyl(`${tag}.glow`, MassRole.Emissive, [r * 1.1, r * 0.34, r * 1.1], [x, y + r * 2.95, z], 'emissive', {
+      group: tag, chamfer: 0.04, capSlot: 'emissive',
+    }),
+  ];
+}
+
+/**
+ * SOVIET-5: exposed yellow lattice. X-braced squares on a `latticePitch` grid
+ * between two posts. The atlas `stripe` tile is hazard yellow over near-black,
+ * which is exactly what a sunlit construction gantry reads as at RTS distance.
+ */
+function lattice(x: number, z: number, w: number, h: number, tag: string, alongZ = false): M[] {
+  const t = BUILDING_GEOMETRY.latticeTube;
+  const bays = Math.max(1, Math.round(h / BUILDING_GEOMETRY.latticePitch));
+  const bayH = h / bays;
+  const out: M[] = [];
+  const span: V3 = alongZ ? [t, h, t] : [t, h, t];
+  for (const s of [-1, 1]) {
+    out.push(box(`${tag}.post${s}`, MassRole.Greeble, span,
+      alongZ ? [x, h * 0.5, z + s * w * 0.5] : [x + s * w * 0.5, h * 0.5, z],
+      'stripe', { group: tag, chamfer: 0.03 }));
+  }
+  const diag = Math.hypot(w, bayH);
+  const ang = Math.atan2(bayH, w);
+  for (let i = 0; i < bays; i++) {
+    const y = (i + 0.5) * bayH;
+    for (const s of [-1, 1]) {
+      out.push(box(`${tag}.brace${i}${s}`, MassRole.Greeble, [t * 0.8, diag, t * 0.8],
+        [x, y, z], 'stripe', {
+          rot: alongZ ? [s * (Math.PI * 0.5 - ang), 0, 0] : [0, 0, s * (Math.PI * 0.5 - ang)],
+          group: tag, chamfer: 0.03,
+        }));
+    }
+    out.push(box(`${tag}.rung${i}`, MassRole.Greeble,
+      alongZ ? [t * 0.8, t * 0.8, w] : [w, t * 0.8, t * 0.8],
+      [x, (i + 1) * bayH, z], 'stripe', { group: tag, chamfer: 0.03 }));
+  }
+  return out;
+}
+
+/** SOVIET-5: a railed catwalk. Three horizontal rails plus posts, per the bible. */
+function catwalk(w: number, d: number, y: number, tag: string): M[] {
+  const out: M[] = [
+    box(`${tag}.deck`, MassRole.Greeble, [w, 0.18, d], [0, y, 0], 'grille', { group: tag, chamfer: 0.04 }),
+  ];
+  for (let r = 0; r < BUILDING_GEOMETRY.railingRails; r++) {
+    const ry = y + 0.28 + r * 0.32;
+    for (const s of [1, -1]) {
+      out.push(box(`${tag}.rail${r}${s}`, MassRole.Greeble, [w, 0.09, 0.09], [0, ry, s * d * 0.5], 'bareMetal', {
+        group: tag, chamfer: 0.02,
+      }));
+    }
+  }
+  for (let i = -1; i <= 1; i++) {
+    out.push(box(`${tag}.post${i}`, MassRole.Greeble, [0.11, 1.0, 0.11], [i * w * 0.36, y + 0.5, d * 0.5], 'bareMetal', {
+      mirrorX: false, group: tag, chamfer: 0.02,
+    }));
+  }
+  return out;
+}
+
+/**
+ * Lit window strips. R-T5: emissives are 1-3% of surface as clean rounded
+ * rectangles, cyan for the Allies and orange furnace for the Soviets. Tagged
+ * `Feature.Window` so interior fire shows through them when the structure is
+ * burning (bible 8.8).
+ */
+function windows(
+  w: number, y: number, z: number, count: number, cellW: number, cellH: number, tag: string,
+): M[] {
+  const out: M[] = [];
+  const pitch = w / count;
+  for (let i = 0; i < count; i++) {
+    const x = -w * 0.5 + (i + 0.5) * pitch;
+    out.push(box(`${tag}${i}`, MassRole.Emissive, [cellW, cellH, 0.10], [x, y, z], 'emissive', {
+      group: tag, feature: Feature.Window, chamfer: 0.03,
+    }));
+  }
+  return out;
+}
+
+/**
+ * A structure's whole lit-window budget: a row on each long facade plus a roof
+ * light bar.
+ *
+ * R-T5 wants 1-3% of surface emissive, and one facade of five small plates
+ * measures 0.15% -- invisible. The roof bar does most of the work: at a
+ * 39-degree camera a horizontal face contributes 0.63 of its area to the frame
+ * against 0.25 for a flank, so it buys 2.5x the read per square metre, which is
+ * also exactly why R-T3 says top-facing surfaces.
+ */
+function windowSet(
+  w: number, d: number, bodyH: number, count: number, cellW: number, cellH: number,
+): M[] {
+  const out: M[] = [];
+  for (const sgn of [1, -1]) {
+    out.push(...windows(w * 0.66, bodyH * 0.34, sgn * (d * 0.5 + 0.04), count,
+      w * cellW, bodyH * cellH, `win${sgn > 0 ? 'F' : 'B'}`));
+  }
+  // Clean rounded rectangles only (R-T5), never a glow blob.
+  out.push(box('win.roof', MassRole.Emissive, [w * 0.34, 0.14, d * 0.11], [0, bodyH + 0.05, d * 0.16], 'emissive', {
+    group: 'roofLights', feature: Feature.Window, chamfer: 0.04,
+  }));
+  return out;
+}
+
+/** A flat team-colour panel insert (R-T2). Never a tint, never a gradient. */
+function teamPanel(name: string, size: V3, anchor: V3, o?: Partial<M>): M {
+  return box(name, MassRole.TeamSlab, size, anchor, 'teamSlab', { chamfer: 0.045, ...o });
+}
+
+/** The single insignia plate (R-T4). */
+function insignia(size: number, anchor: V3, o?: Partial<M>): M {
+  return box('insignia', MassRole.Insignia, [size, size, 0.14], anchor, 'insignia', {
+    chamfer: 0.04, ...o,
+  });
+}
+
+/* ==========================================================================
+ * 3. THE SHELLS — bible 5.7, once, for every structure of a faction
+ * ========================================================================== */
+
+interface ShellOpts {
+  key: string;
+  /** Fraction of the footprint the body occupies. Leaves a pad margin. */
+  inset?: number;
+  /** Fraction of the roofline the massive body occupies. */
+  bodyFraction?: number;
+  /** ALLIED-3: emit two mirrored modules instead of one block. */
+  paired?: boolean;
+  /** Team panel scale. Tuned per structure to land R-T1's 5-8%. */
+  team?: number;
+  /** Windows per facade. */
+  windowCount?: number;
+}
+
+interface Shell {
+  masses: M[];
+  /** Metres: body width, depth, roof height. */
+  w: number;
+  d: number;
+  roofY: number;
+}
+
+/**
+ * ALLIED SHELL — rounded, splayed, paired, banded, crowned.
+ */
+function alliedShell(fw: number, fh: number, height: number, o: ShellOpts): Shell {
+  const inset = o.inset ?? 0.94;
+  const w = fw * CELL * inset;
+  const d = fh * CELL * inset;
+  const bodyH = height * (o.bodyFraction ?? 0.56);
+  const flare = BUILDING_GEOMETRY.alliedSkirtFlare;
+  const top = 1 / flare;
+  const team = o.team ?? 1;
+  const masses: M[] = [...foundationPad('allies', fw, fh, height)];
+
+  if (o.paired === true) {
+    // ALLIED-3: two identical modules sharing an edge. Mirror, never monolith.
+    const mw = w * 0.5;
+    masses.push(box('module', MassRole.Primary, [mw - 0.18, bodyH, d], [mw * 0.5, bodyH * 0.5, 0], 'paintMed', {
+      mirrorX: true, taper: [top, top, 0],
+    }));
+    // The shared spine that ties the pair together and hides the seam.
+    masses.push(box('spine', MassRole.Primary, [w * 0.20, bodyH * 1.12, d * 0.62], [0, bodyH * 0.56, 0], 'paintMed', {
+      taper: [top, top, 0],
+    }));
+  } else {
+    masses.push(box('body', MassRole.Primary, [w, bodyH, d], [0, bodyH * 0.5, 0], 'paintMed', {
+      taper: [top, top, 0],
+    }));
+  }
+
+  masses.push(...alliedBands(w, d, bodyH * 0.18, bodyH * 0.92));
+  masses.push(...alliedCrown(w, height, bodyH));
+
+  // ALLIED: real glass, not a painted window. A glazed band across the facade
+  // and both flanks is the faction's single loudest cue.
+  //
+  // Authored as three thin PANELS rather than one glass volume on purpose. A
+  // glass box spanning the plan contributes its enormous top face to the
+  // surface budget, and the glass tile measures only 22% Sobel, so a solid
+  // glass mass drags the whole structure two to three points below scorecard
+  // #34's band for a surface the camera never sees from above anyway.
+  const glassY = bodyH * 0.62;
+  const gs = 1 - (1 - top) * (glassY / bodyH);
+  masses.push(box('glass.front', MassRole.Greeble, [w * gs * 0.74, bodyH * 0.20, 0.22], [0, glassY, d * gs * 0.5], 'glass', {
+    group: 'glass', chamfer: 0.06, tint: 0.92,
+  }));
+  masses.push(box('glass.flank', MassRole.Greeble, [0.22, bodyH * 0.20, d * gs * 0.66], [w * gs * 0.5, glassY, 0], 'glass', {
+    mirrorX: true, group: 'glass', chamfer: 0.06, tint: 0.92,
+  }));
+
+  // R-T3: top-facing and outward-facing only. A roof chevron carries 2.5x the
+  // screen area of the same panel on a flank at a 39-degree pitch.
+  masses.push(teamPanel('team.roof', [w * 0.52 * team, 0.16, d * 0.30 * team], [0, bodyH + 0.06, 0]));
+  for (const s of [1, -1]) {
+    masses.push(teamPanel('team.flank', [0.16, bodyH * 0.34 * team, d * 0.44 * team],
+      [s * (w * 0.5 - 0.10), bodyH * 0.44, 0]));
+  }
+  masses.push(teamPanel('team.facade', [w * 0.40 * team, bodyH * 0.16 * team, 0.16], [0, bodyH * 0.30, d * 0.5 - 0.02]));
+
+  masses.push(insignia(Math.min(w, d) * 0.20, [w * 0.24, bodyH * 0.66, d * 0.5 + 0.02]));
+  masses.push(...windowSet(w, d, bodyH, o.windowCount ?? 6, 0.085, 0.26));
+  // Roof plant. Both of these are on every Allied roof in the references, and
+  // both push scorecard #34 up: the vent tile is the highest-frequency surface
+  // in the atlas at 74% coverage.
+  masses.push(
+    box('roof.vent', MassRole.Greeble, [w * 0.22, 0.55, d * 0.18], [-w * 0.26, bodyH + 0.28, -d * 0.22], 'vent', { group: 'roofPlant' }),
+    box('roof.hatch', MassRole.Greeble, [w * 0.16, 0.24, d * 0.16], [w * 0.28, bodyH + 0.12, -d * 0.24], 'hatch', { group: 'roofPlant', chamfer: 0.05 }),
+    // Intake banks up both flanks. Real Allied plant, and the honest way to
+    // buy back the scorecard #34 points the glass band and the flat team slabs
+    // cost: the grille tile is the highest-frequency surface in the atlas.
+    box('intake', MassRole.Greeble, [0.34, bodyH * 0.44, d * 0.44], [w * 0.44, bodyH * 0.30, -d * 0.10], 'grille', {
+      mirrorX: true, group: 'intakes', chamfer: 0.05,
+    }),
+    box('service', MassRole.Greeble, [w * 0.20, bodyH * 0.22, 0.26], [-w * 0.28, bodyH * 0.20, d * 0.5 - 0.04], 'stencil', {
+      group: 'service', chamfer: 0.05,
+    }),
+  );
+
+  return { masses, w, d, roofY: bodyH };
+}
+
+/**
+ * SOVIET SHELL — chamfered slab, corner rails, stacks, vessels, lattice, deck.
+ */
+function sovietShell(fw: number, fh: number, height: number, o: ShellOpts): Shell {
+  const inset = o.inset ?? 0.94;
+  const w = fw * CELL * inset;
+  const d = fh * CELL * inset;
+  const bodyH = height * (o.bodyFraction ?? 0.50);
+  const team = o.team ?? 1;
+  const masses: M[] = [...foundationPad('soviets', fw, fh, height)];
+
+  // SOVIET-1: a box with 45-degree chamfers on every vertical corner, reading
+  // as octagonal in plan. Height:width ~0.75:1.
+  masses.push(pri('slab', MassRole.Primary, [w, bodyH, d], [0, bodyH * 0.5, 0], 'paintMed', {
+    plan: 'cutBox', cornerCut: BUILDING_GEOMETRY.sovietCornerCut, capSlot: 'paintMed',
+  }));
+  // A second, smaller slab stepped back on top: brutalism is stacked mass.
+  //
+  // Both caps are riveted plate, NOT grille. The grille tile is #2A2C30 and a
+  // 12 m roof of it swallows the entire top of the silhouette at a 39-degree
+  // camera -- the structures came out with flat black lids. Roofs are the most
+  // visible surface an RTS building has (R-T3) and they have to carry paint.
+  masses.push(pri('slab.upper', MassRole.Primary, [w * 0.66, bodyH * 0.42, d * 0.66], [0, bodyH * 1.20, 0], 'rivetPlate', {
+    plan: 'cutBox', cornerCut: BUILDING_GEOMETRY.sovietCornerCut, capSlot: 'paintMed',
+  }));
+
+  masses.push(...sovietRails(w, d, bodyH));
+
+  // SOVIET-5: a lattice mast up one flank, tied to the upper slab.
+  masses.push(...lattice(-w * 0.5 + 0.5, -d * 0.30, 1.5, bodyH * 1.55, 'gantry'));
+
+  // R-T3: top-facing and outward-facing only, and NEVER as a volume. A "belt"
+  // authored as a box spanning the plan hands its whole roof face to the team
+  // budget and lands the structure at 17% -- twice R-T1's ceiling -- for a band
+  // that is hidden under the upper slab anyway. Thin panels instead.
+  masses.push(teamPanel('team.roof', [w * 0.44 * team, 0.18, d * 0.18 * team], [0, bodyH + 0.07, -d * 0.16]));
+  masses.push(teamPanel('team.flank', [0.18, bodyH * 0.16 * team, d * 0.40 * team], [w * 0.5 - 0.06, bodyH * 0.70, 0], { mirrorX: true }));
+  masses.push(teamPanel('team.facade', [w * 0.32 * team, bodyH * 0.18 * team, 0.18], [0, bodyH * 0.32, d * 0.5 - 0.02]));
+
+  masses.push(insignia(Math.min(w, d) * 0.24, [-w * 0.24, bodyH * 0.62, d * 0.5 + 0.02]));
+  masses.push(...windowSet(w, d, bodyH, o.windowCount ?? 5, 0.085, 0.28));
+  masses.push(
+    box('roof.vent', MassRole.Greeble, [w * 0.20, 0.60, d * 0.16], [w * 0.28, bodyH + 0.30, -d * 0.24], 'vent', { group: 'roofPlant' }),
+    box('roof.hatch', MassRole.Greeble, [w * 0.14, 0.26, d * 0.14], [-w * 0.30, bodyH + 0.13, -d * 0.26], 'hatch', { group: 'roofPlant', chamfer: 0.05 }),
+  );
+
+  return { masses, w, d, roofY: bodyH };
+}
+
+/* ==========================================================================
+ * 4. STRUCTURES
+ * ========================================================================== */
+
+function fp(key: string): { w: number; h: number; height: number } {
+  const f = BUILDING_FOOTPRINTS[key];
+  if (f === undefined) throw new Error(`[buildings] no footprint for "${key}"`);
+  return f;
+}
+
+function list(
+  key: string, name: string, faction: StructureFaction, dimKey: string,
+  masses: M[], sockets: StructureSocket[], extra?: Partial<StructureMassList>,
+): StructureMassList {
+  const f = fp(dimKey);
+  return {
+    key, name, faction,
+    footprintW: f.w, footprintH: f.h, height: f.height,
+    masses, sockets, ...extra,
+  };
+}
+
+/** Smoke, exit and dock anchors every production structure publishes. */
+function baseSockets(d: number, stackTop: number, stackX: number, stackZ: number): StructureSocket[] {
+  return [
+    { part: PartId.Stack, pos: [stackX, stackTop, stackZ] },
+    { part: PartId.ExitPoint, pos: [0, 0.2, d * 0.5 + 3.0] },
+  ];
+}
+
+/* -- ALLIED --------------------------------------------------------------- */
+
+function alliedConYard(): StructureMassList {
+  const f = fp('conYard');
+  const s = alliedShell(f.w, f.h, f.height, { key: 'conYard', paired: true, team: 1.15, windowCount: 6, bodyFraction: 0.52 });
+  const roof = s.roofY;
+  // The crane is the Construction Yard's whole silhouette read: a mast up one
+  // corner and a jib across the roof. It also gives the structure its roofline.
+  const mastTop = f.height;
+  s.masses.push(
+    box('crane.mast', MassRole.Primary, [0.9, mastTop - roof, 0.9], [-s.w * 0.34, (mastTop + roof) * 0.5, -s.d * 0.30], 'bareMetal', { chamfer: 0.09 }),
+    box('crane.jib', MassRole.Primary, [0.62, 0.62, s.d * 0.94], [-s.w * 0.34, mastTop - 0.9, s.d * 0.02], 'bareMetal', { chamfer: 0.07 }),
+    box('crane.hook', MassRole.Greeble, [0.30, 1.5, 0.30], [-s.w * 0.34, mastTop - 2.4, s.d * 0.42], 'bareMetal', { group: 'crane', chamfer: 0.05 }),
+    box('crane.house', MassRole.Greeble, [1.5, 1.2, 1.7], [-s.w * 0.34, roof + 0.6, -s.d * 0.30], 'hatch', { group: 'crane' }),
+    // The dozer bay: a leaf that retracts into the floor when the yard works.
+    box('bay.lintel', MassRole.Greeble, [s.w * 0.36, 0.5, 0.5], [0, roof * 0.60, s.d * 0.5 + 0.06], 'stripe', { group: 'bay', chamfer: 0.06 }),
+    box('bay.door', MassRole.Greeble, [s.w * 0.32, roof * 0.56, 0.34], [0, roof * 0.28, s.d * 0.5 + 0.02], 'hatch', {
+      group: 'bay', feature: Feature.Door, anim: roof * 0.60, chamfer: 0.05,
+    }),
+  );
+  return list('allied_conyard', 'Construction Yard', 'allies', 'conYard', s.masses, [
+    ...baseSockets(s.d, f.height, -s.w * 0.34, -s.d * 0.30),
+    { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.3] },
+    { part: PartId.Crane, pos: [-s.w * 0.34, f.height - 2.4, s.d * 0.52] },
+    { part: PartId.FlagPole, pos: [s.w * 0.40, s.roofY, -s.d * 0.36] },
+  ]);
+}
+
+function alliedPower(): StructureMassList {
+  const f = fp('powerPlant');
+  const s = alliedShell(f.w, f.h, f.height, { key: 'powerPlant', paired: true, team: 1.0, windowCount: 4, bodyFraction: 0.48 });
+  const roof = s.roofY;
+  // Twin cooling towers. ALLIED architecture is clean tech, so they are
+  // waisted ceramic drums with a chrome collar, not brick chimneys.
+  for (const sgn of [1, -1]) {
+    s.masses.push(
+      cyl(`tower${sgn}`, MassRole.Primary, [s.w * 0.30, f.height - roof, s.w * 0.30], [sgn * s.w * 0.26, (f.height + roof) * 0.5, -s.d * 0.16], 'paintMed', {
+        topRadius: 1.22, group: `tower${sgn}`, capSlot: 'grille',
+      }),
+      cyl(`tower${sgn}.collar`, MassRole.Greeble, [s.w * 0.34, 0.34, s.w * 0.34], [sgn * s.w * 0.26, roof + 0.5, -s.d * 0.16], 'bareMetal', {
+        group: `tower${sgn}`, chamfer: 0.05, capSlot: 'grille',
+      }),
+      cyl(`tower${sgn}.glow`, MassRole.Emissive, [s.w * 0.30, 0.30, s.w * 0.30], [sgn * s.w * 0.26, f.height - 0.22, -s.d * 0.16], 'emissive', {
+        group: `tower${sgn}`, chamfer: 0.04, capSlot: 'emissive', feature: Feature.Window,
+      }),
+    );
+  }
+  s.masses.push(
+    box('transformer', MassRole.Greeble, [s.w * 0.24, roof * 0.44, s.d * 0.20], [0, roof * 0.22, s.d * 0.40], 'grille', { group: 'transformer' }),
+    box('conduit', MassRole.Greeble, [s.w * 0.62, 0.26, 0.26], [0, roof + 0.9, -s.d * 0.16], 'bareMetal', { group: 'transformer', chamfer: 0.05 }),
+  );
+  return list('allied_power', 'Power Plant', 'allies', 'powerPlant', s.masses,
+    baseSockets(s.d, f.height, s.w * 0.26, -s.d * 0.16));
+}
+
+function alliedBarracks(): StructureMassList {
+  const f = fp('barracks');
+  const s = alliedShell(f.w, f.h, f.height, { key: 'barracks', paired: true, team: 1.25, windowCount: 6, bodyFraction: 0.62 });
+  const roof = s.roofY;
+  s.masses.push(
+    // A canted entrance canopy over the muster door.
+    box('canopy', MassRole.Primary, [s.w * 0.52, 0.34, s.d * 0.24], [0, roof * 0.74, s.d * 0.34], 'paintMed', {
+      rot: [-0.20, 0, 0], chamfer: 0.08,
+    }),
+    box('canopy.post', MassRole.Greeble, [0.20, roof * 0.72, 0.20], [s.w * 0.22, roof * 0.36, s.d * 0.42], 'bareMetal', {
+      mirrorX: true, group: 'canopy', chamfer: 0.04,
+    }),
+    box('door', MassRole.Greeble, [s.w * 0.24, roof * 0.56, 0.30], [0, roof * 0.28, s.d * 0.5 + 0.02], 'hatch', {
+      group: 'door', feature: Feature.Door, anim: roof * 0.60, chamfer: 0.05,
+    }),
+    box('vent', MassRole.Greeble, [s.w * 0.30, 0.9, s.d * 0.22], [-s.w * 0.22, roof + 0.45, -s.d * 0.24], 'vent', { group: 'vent' }),
+    box('mast', MassRole.Greeble, [0.16, f.height - roof - 1.2, 0.16], [s.w * 0.36, (f.height + roof) * 0.5 - 0.6, -s.d * 0.34], 'bareMetal', {
+      group: 'mast', chamfer: 0.04,
+    }),
+  );
+  return list('allied_barracks', 'Barracks', 'allies', 'barracks', s.masses, [
+    ...baseSockets(s.d, roof + 1.0, -s.w * 0.22, -s.d * 0.24),
+    { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.3] },
+  ]);
+}
+
+function alliedRefinery(): StructureMassList {
+  const f = fp('refinery');
+  const s = alliedShell(f.w, f.h, f.height, { key: 'refinery', team: 1.05, windowCount: 5, bodyFraction: 0.50 });
+  const roof = s.roofY;
+  s.masses.push(
+    // The silo drum, and the dock canopy a harvester unloads under.
+    cyl('silo', MassRole.Primary, [s.w * 0.34, f.height - roof - 0.6, s.w * 0.34], [-s.w * 0.26, (f.height + roof) * 0.5 - 0.3, -s.d * 0.12], 'paintMed', {
+      group: 'silo', capSlot: 'grille',
+    }),
+    cyl('silo.cap', MassRole.Greeble, [s.w * 0.38, 0.42, s.w * 0.38], [-s.w * 0.26, f.height - 0.5, -s.d * 0.12], 'bareMetal', {
+      group: 'silo', chamfer: 0.06, capSlot: 'grille',
+    }),
+    box('dock.canopy', MassRole.Primary, [s.w * 0.46, 0.42, s.d * 0.46], [s.w * 0.24, roof * 0.92, s.d * 0.20], 'paintMed', { chamfer: 0.08 }),
+    box('dock.leg', MassRole.Greeble, [0.26, roof * 0.90, 0.26], [s.w * 0.42, roof * 0.45, s.d * 0.38], 'bareMetal', {
+      group: 'dock', chamfer: 0.05,
+    }),
+    box('conveyor', MassRole.Greeble, [s.w * 0.20, 0.34, s.d * 0.52], [s.w * 0.10, roof * 0.34, s.d * 0.20], 'tread', {
+      group: 'conveyor', rot: [-0.12, 0, 0], chamfer: 0.05,
+    }),
+    box('pipe', MassRole.Greeble, [s.w * 0.44, 0.28, 0.28], [-s.w * 0.04, roof + 0.7, -s.d * 0.12], 'bareMetal', {
+      group: 'pipes', chamfer: 0.05,
+    }),
+  );
+  return list('allied_refinery', 'Ore Refinery', 'allies', 'refinery', s.masses, [
+    ...baseSockets(s.d, f.height, -s.w * 0.26, -s.d * 0.12),
+    { part: PartId.DockEntry, pos: [s.w * 0.24, 0.2, s.d * 0.5 + 2.4] },
+    { part: PartId.Conveyor, pos: [s.w * 0.10, s.roofY * 0.5, s.d * 0.5] },
+  ]);
+}
+
+function alliedWarFactory(): StructureMassList {
+  const f = fp('warFactory');
+  const s = alliedShell(f.w, f.h, f.height, { key: 'warFactory', team: 1.0, windowCount: 4, bodyFraction: 0.58 });
+  const roof = s.roofY;
+  s.masses.push(
+    // The roll-up bay: lintel, jambs and a leaf that sinks into the floor.
+    box('bay.lintel', MassRole.Primary, [s.w * 0.62, 0.6, 0.6], [0, roof * 0.72, s.d * 0.5 + 0.10], 'stripe', { chamfer: 0.08 }),
+    box('bay.jamb', MassRole.Greeble, [0.42, roof * 0.70, 0.5], [s.w * 0.29, roof * 0.35, s.d * 0.5 + 0.08], 'stripe', {
+      mirrorX: true, group: 'bay', chamfer: 0.06,
+    }),
+    box('bay.door', MassRole.Greeble, [s.w * 0.56, roof * 0.66, 0.32], [0, roof * 0.33, s.d * 0.5 + 0.02], 'hatch', {
+      group: 'bay', feature: Feature.Door, anim: roof * 0.70, chamfer: 0.05,
+    }),
+    // The overhead gantry that carries the roofline.
+    box('gantry.rail', MassRole.Primary, [s.w * 0.86, 0.44, 0.44], [0, f.height - 0.9, -s.d * 0.10], 'bareMetal', { chamfer: 0.07 }),
+    box('gantry.leg', MassRole.Greeble, [0.34, f.height - roof - 0.9, 0.34], [s.w * 0.40, (f.height + roof) * 0.5 - 0.45, -s.d * 0.10], 'bareMetal', {
+      mirrorX: true, group: 'gantry', chamfer: 0.05,
+    }),
+    box('gantry.trolley', MassRole.Greeble, [0.9, 0.7, 0.9], [-s.w * 0.16, f.height - 1.5, -s.d * 0.10], 'hatch', { group: 'gantry' }),
+    box('exhaust', MassRole.Greeble, [s.w * 0.16, 1.1, s.d * 0.20], [-s.w * 0.34, roof + 0.55, -s.d * 0.28], 'vent', { group: 'exhaust' }),
+  );
+  return list('allied_warfactory', 'War Factory', 'allies', 'warFactory', s.masses, [
+    ...baseSockets(s.d, roof + 1.2, -s.w * 0.34, -s.d * 0.28),
+    { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.4] },
+    { part: PartId.Crane, pos: [-s.w * 0.16, f.height - 1.9, -s.d * 0.10] },
+  ]);
+}
+
+function alliedRadar(): StructureMassList {
+  const f = fp('radar');
+  const s = alliedShell(f.w, f.h, f.height, { key: 'radar', team: 1.1, windowCount: 4, bodyFraction: 0.42 });
+  const roof = s.roofY;
+  // The tower and the sweeping dish. The dish spins about the model Y axis, so
+  // its mast is authored on the centre line — see the shader note.
+  const towerTop = f.height - 3.8;
+  s.masses.push(
+    cyl('tower', MassRole.Primary, [s.w * 0.34, towerTop - roof, s.w * 0.34], [0, (towerTop + roof) * 0.5, 0], 'paintMed', {
+      topRadius: 0.86, capSlot: 'paintSmall',
+    }),
+    cyl('tower.ring', MassRole.Greeble, [s.w * 0.42, 0.30, s.w * 0.42], [0, towerTop - 0.2, 0], 'bareMetal', {
+      group: 'tower', chamfer: 0.05, capSlot: 'grille',
+    }),
+    cyl('dish.hub', MassRole.Primary, [1.3, 0.9, 1.3], [0, towerTop + 0.6, 0], 'bareMetal', {
+      feature: Feature.Spinner, anim: BUILDING_GEOMETRY.railSegments * 0, capSlot: 'hatch',
+    }),
+    // The dish itself: a canted disc offset from the axis, so the sweep reads.
+    { name: 'dish', primitive: 'lathe', role: MassRole.Primary, profile: 'dome',
+      size: [4.4, 1.6, 4.4], anchor: [0.85, towerTop + 1.5, 0], slot: 'paintMed',
+      rot: [-0.50, 0, 0.28], capSlot: 'grille', feature: Feature.Spinner },
+    box('dish.arm', MassRole.Greeble, [1.9, 0.20, 0.20], [0.5, towerTop + 1.0, 0], 'bareMetal', {
+      group: 'dish', feature: Feature.Spinner, chamfer: 0.04,
+    }),
+    box('dish.feed', MassRole.Emissive, [0.5, 0.5, 0.5], [1.5, towerTop + 2.2, 0], 'emissive', {
+      group: 'dish', feature: Feature.Spinner, chamfer: 0.05,
+    }),
+  );
+  // The spin rate has to reach the shader through `anim`, and only spinner
+  // masses read it. Set it on every one of them.
+  for (const m of s.masses) {
+    if (m.feature === Feature.Spinner) (m as { anim?: number }).anim = BUILDING_GEOMETRY.cylSegments * 0 + 0.55;
+  }
+  return list('allied_radar', 'Radar Dome', 'allies', 'radar', s.masses, [
+    ...baseSockets(s.d, roof + 1.0, -s.w * 0.30, -s.d * 0.30),
+    { part: PartId.Dish, pos: [0, towerTop + 1.6, 0] },
+    { part: PartId.Antenna, pos: [0, f.height, 0] },
+  ]);
+}
+
+function alliedTech(): StructureMassList {
+  const f = fp('techCentre');
+  const s = alliedShell(f.w, f.h, f.height, { key: 'techCentre', paired: true, team: 1.1, windowCount: 6, bodyFraction: 0.54 });
+  const roof = s.roofY;
+  s.masses.push(
+    // A glass laboratory drum with a chrome coil ring: clean tech, visible work.
+    cyl('lab', MassRole.Primary, [s.w * 0.44, f.height - roof - 1.0, s.w * 0.44], [0, (f.height + roof) * 0.5 - 0.5, s.d * 0.06], 'glass', {
+      group: 'lab', capSlot: 'paintSmall', tint: 0.95,
+    }),
+    cyl('lab.ring', MassRole.Greeble, [s.w * 0.50, 0.34, s.w * 0.50], [0, roof + 0.4, s.d * 0.06], 'bareMetal', {
+      group: 'lab', chamfer: 0.05, capSlot: 'grille',
+    }),
+    cyl('lab.core', MassRole.Emissive, [s.w * 0.20, f.height - roof - 2.2, s.w * 0.20], [0, (f.height + roof) * 0.5 - 0.6, s.d * 0.06], 'emissive', {
+      group: 'lab', chamfer: 0.05, capSlot: 'emissive', feature: Feature.Window,
+    }),
+    cyl('lab.cap', MassRole.Primary, [s.w * 0.46, 0.9, s.w * 0.46], [0, f.height - 0.45, s.d * 0.06], 'paintMed', {
+      topRadius: 0.72, capSlot: 'grille',
+    }),
+    box('coolant', MassRole.Greeble, [s.w * 0.18, roof * 0.5, s.d * 0.18], [s.w * 0.34, roof * 0.25, -s.d * 0.32], 'grille', {
+      mirrorX: true, group: 'coolant',
+    }),
+  );
+  return list('allied_tech', 'Tech Centre', 'allies', 'techCentre', s.masses,
+    baseSockets(s.d, roof + 0.8, s.w * 0.34, -s.d * 0.32));
+}
+
+function alliedPillbox(): StructureMassList {
+  const f = fp('pillbox');
+  const w = f.w * CELL * 0.80;
+  const h = f.height;
+  const masses: M[] = [
+    ...foundationPad('allies', f.w, f.h, h),
+    // A splayed hexagonal casemate. Turretless: the embrasure IS the weapon.
+    pri('casemate', MassRole.Primary, [w, h * 0.72, w], [0, h * 0.36, 0], 'paintMed', {
+      plan: 'hexagon', capSlot: 'paintSmall', taper: [0.82, 0.82, 0],
+    }),
+    pri('cap', MassRole.Primary, [w * 0.80, h * 0.30, w * 0.80], [0, h * 0.84, 0], 'paintMed', {
+      plan: 'hexagon', capSlot: 'grille',
+    }),
+    box('embrasure', MassRole.Primary, [w * 0.52, h * 0.24, 0.30], [0, h * 0.48, w * 0.42], 'grille', { chamfer: 0.04 }),
+    cyl('barrel', MassRole.Greeble, [0.24, 1.5, 0.24], [0, h * 0.48, w * 0.52], 'bareMetal', {
+      rot: [Math.PI * 0.5, 0, 0], group: 'gun', chamfer: 0.03, capSlot: 'grille',
+    }),
+    box('sandbag', MassRole.Greeble, [w * 0.30, h * 0.24, w * 0.18], [w * 0.42, h * 0.12, w * 0.30], 'paintSmall', {
+      mirrorX: true, group: 'sandbags', chamfer: 0.10,
+    }),
+    box('periscope', MassRole.Greeble, [0.22, 0.46, 0.22], [-w * 0.20, h * 0.90, -w * 0.14], 'bareMetal', {
+      group: 'optics', chamfer: 0.04,
+    }),
+    box('vent', MassRole.Greeble, [w * 0.22, 0.20, w * 0.22], [w * 0.20, h * 0.94, -w * 0.16], 'vent', { group: 'optics' }),
+    teamPanel('team.cap', [w * 0.44, 0.12, w * 0.30], [0, h * 0.96, 0]),
+    teamPanel('team.chevron', [0.14, h * 0.26, w * 0.34], [w * 0.40, h * 0.42, 0], { mirrorX: true }),
+    ...windows(w * 0.38, h * 0.80, w * 0.40, 2, 0.26, 0.16, 'lamp'),
+  ];
+  return list('allied_pillbox', 'Pillbox', 'allies', 'pillbox', masses, [
+    { part: PartId.MuzzleA, pos: [0, h * 0.48, w * 0.62] },
+  ], { cls: 'defence' });
+}
+
+function alliedAaTurret(): StructureMassList {
+  const f = fp('aaTurret');
+  const w = f.w * CELL * 0.78;
+  const h = f.height;
+  const ringY = h * 0.52;
+  const masses: M[] = [
+    ...foundationPad('allies', f.w, f.h, h),
+    pri('base', MassRole.Primary, [w, ringY * 0.86, w], [0, ringY * 0.43, 0], 'paintMed', {
+      plan: 'hexagon', capSlot: 'paintSmall', taper: [0.78, 0.78, 0],
+    }),
+    cyl('ring', MassRole.Primary, [w * 0.62, ringY * 0.20, w * 0.62], [0, ringY * 0.93, 0], 'bareMetal', {
+      capSlot: 'grille',
+    }),
+    box('cable', MassRole.Greeble, [0.18, ringY * 0.70, 0.18], [w * 0.36, ringY * 0.35, -w * 0.30], 'bareMetal', {
+      group: 'cables', chamfer: 0.03,
+    }),
+    box('genset', MassRole.Greeble, [w * 0.32, ringY * 0.34, w * 0.26], [-w * 0.28, ringY * 0.17, -w * 0.26], 'grille', { group: 'genset' }),
+    teamPanel('team.skirt', [0.14, ringY * 0.44, w * 0.40], [w * 0.42, ringY * 0.40, 0], { mirrorX: true }),
+    ...windows(w * 0.30, ringY * 0.62, w * 0.40, 2, 0.24, 0.16, 'lamp'),
+
+    /* -- the slewing head, rebased onto the ring by the factory ------------ */
+    pri('head', MassRole.Primary, [w * 0.66, h * 0.26, w * 0.72], [0, ringY + h * 0.13, 0], 'paintMed', {
+      plan: 'cutBox', cornerCut: 0.14, capSlot: 'paintSmall', target: 'turret',
+    }),
+    cyl('tube', MassRole.Primary, [0.30, h * 0.44, 0.30], [w * 0.16, ringY + h * 0.30, w * 0.10], 'bareMetal', {
+      mirrorX: true, rot: [-1.16, 0, 0], target: 'turret', group: 'tubes', capSlot: 'grille',
+    }),
+    box('radar.fin', MassRole.Greeble, [w * 0.36, h * 0.16, 0.14], [0, ringY + h * 0.30, -w * 0.30], 'grille', {
+      target: 'turret', group: 'fin', chamfer: 0.04,
+    }),
+    teamPanel('team.head', [w * 0.40, 0.12, w * 0.26], [0, ringY + h * 0.26, 0], { target: 'turret' }),
+  ];
+  return list('allied_aa', 'Multigunner AA', 'allies', 'aaTurret', masses, [
+    { part: PartId.MuzzleA, pos: [w * 0.16, ringY + h * 0.52, w * 0.42], pitch: 1.16, turret: true },
+    { part: PartId.MuzzleB, pos: [-w * 0.16, ringY + h * 0.52, w * 0.42], pitch: 1.16, turret: true },
+  ], { cls: 'defence', turretPivot: [0, ringY, 0] });
+}
+
+/* -- SOVIET --------------------------------------------------------------- */
+
+function sovietConYard(): StructureMassList {
+  const f = fp('conYard');
+  const s = sovietShell(f.w, f.h, f.height, { key: 'conYard', team: 1.0, windowCount: 5, bodyFraction: 0.46 });
+  const roof = s.roofY;
+  s.masses.push(
+    ...sovietStack(s.w * 0.30, -s.d * 0.30, s.w * 0.11, roof * 1.4, f.height, 'stackA'),
+    ...catwalk(s.w * 0.72, s.d * 0.22, roof * 1.42, 'walk'),
+    box('crane.jib', MassRole.Primary, [0.7, 0.7, s.d * 0.92], [-s.w * 0.5 + 0.5, roof * 1.55 + 0.5, s.d * 0.02], 'bareMetal', { chamfer: 0.08 }),
+    box('crane.hook', MassRole.Greeble, [0.34, 1.7, 0.34], [-s.w * 0.5 + 0.5, roof * 1.55 - 0.6, s.d * 0.40], 'bareMetal', { group: 'crane', chamfer: 0.05 }),
+    box('bay.lintel', MassRole.Greeble, [s.w * 0.40, 0.56, 0.56], [0, roof * 0.62, s.d * 0.5 + 0.08], 'stripe', { group: 'bay', chamfer: 0.06 }),
+    box('bay.door', MassRole.Greeble, [s.w * 0.36, roof * 0.58, 0.34], [0, roof * 0.29, s.d * 0.5 + 0.02], 'hatch', {
+      group: 'bay', feature: Feature.Door, anim: roof * 0.62, chamfer: 0.05,
+    }),
+  );
+  return list('soviet_conyard', 'Construction Yard', 'soviets', 'conYard', s.masses, [
+    ...baseSockets(s.d, f.height, s.w * 0.30, -s.d * 0.30),
+    { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.3] },
+    { part: PartId.Crane, pos: [-s.w * 0.5 + 0.5, roof * 1.55 - 1.6, s.d * 0.50] },
+    { part: PartId.FlagPole, pos: [s.w * 0.40, roof, -s.d * 0.38] },
+  ]);
+}
+
+function sovietPower(): StructureMassList {
+  const f = fp('powerPlant');
+  const s = sovietShell(f.w, f.h, f.height, { key: 'powerPlant', team: 0.95, windowCount: 4, bodyFraction: 0.42 });
+  const roof = s.roofY;
+  s.masses.push(
+    ...sovietStack(-s.w * 0.26, -s.d * 0.20, s.w * 0.13, roof * 1.42, f.height, 'stackA'),
+    ...sovietVessel(s.w * 0.26, s.d * 0.14, s.w * BUILDING_GEOMETRY.sovietVesselRadius * 0.5, roof * 0.42, 'vesselA'),
+    box('duct', MassRole.Greeble, [s.w * 0.52, 0.44, 0.44], [0, roof * 1.30, -s.d * 0.20], 'bareMetal', {
+      group: 'ducts', chamfer: 0.06,
+    }),
+    box('duct.riser', MassRole.Greeble, [0.40, roof * 0.62, 0.40], [s.w * 0.26, roof * 1.00, -s.d * 0.20], 'bareMetal', {
+      group: 'ducts', chamfer: 0.05,
+    }),
+    box('furnace', MassRole.Emissive, [s.w * 0.30, roof * 0.20, 0.16], [0, roof * 0.20, s.d * 0.5 + 0.04], 'emissive', {
+      group: 'furnace', feature: Feature.Window, chamfer: 0.04,
+    }),
+  );
+  return list('soviet_power', 'Tesla Reactor', 'soviets', 'powerPlant', s.masses,
+    baseSockets(s.d, f.height, -s.w * 0.26, -s.d * 0.20));
+}
+
+function sovietBarracks(): StructureMassList {
+  const f = fp('barracks');
+  const s = sovietShell(f.w, f.h, f.height, { key: 'barracks', team: 1.15, windowCount: 5, bodyFraction: 0.56 });
+  const roof = s.roofY;
+  s.masses.push(
+    ...sovietStack(-s.w * 0.30, -s.d * 0.28, s.w * 0.10, roof * 1.25, f.height, 'stackA'),
+    box('portico', MassRole.Primary, [s.w * 0.56, 0.44, s.d * 0.22], [0, roof * 0.80, s.d * 0.36], 'rivetPlate', { chamfer: 0.07 }),
+    cyl('portico.col', MassRole.Greeble, [0.46, roof * 0.78, 0.46], [s.w * 0.22, roof * 0.39, s.d * 0.40], 'paintMed', {
+      mirrorX: true, group: 'columns', capSlot: 'grille',
+    }),
+    box('door', MassRole.Greeble, [s.w * 0.26, roof * 0.56, 0.32], [0, roof * 0.28, s.d * 0.5 + 0.02], 'hatch', {
+      group: 'door', feature: Feature.Door, anim: roof * 0.60, chamfer: 0.05,
+    }),
+    box('banner', MassRole.TeamSlab, [s.w * 0.10, roof * 0.62, 0.10], [s.w * 0.34, roof * 0.55, s.d * 0.5 + 0.04], 'teamSlab', {
+      mirrorX: true, group: 'banners', chamfer: 0.03,
+    }),
+    box('vent', MassRole.Greeble, [s.w * 0.26, 0.8, s.d * 0.20], [s.w * 0.26, roof + 0.4, -s.d * 0.24], 'vent', { group: 'vent' }),
+  );
+  return list('soviet_barracks', 'Barracks', 'soviets', 'barracks', s.masses, [
+    ...baseSockets(s.d, f.height, -s.w * 0.30, -s.d * 0.28),
+    { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.3] },
+  ]);
+}
+
+function sovietRefinery(): StructureMassList {
+  const f = fp('refinery');
+  const s = sovietShell(f.w, f.h, f.height, { key: 'refinery', team: 0.95, windowCount: 4, bodyFraction: 0.44 });
+  const roof = s.roofY;
+  s.masses.push(
+    ...sovietVessel(-s.w * 0.28, -s.d * 0.10, s.w * 0.13, roof * 0.30, 'retort'),
+    ...sovietStack(s.w * 0.34, -s.d * 0.26, s.w * 0.09, roof * 1.20, f.height, 'stackA'),
+    box('dock.canopy', MassRole.Primary, [s.w * 0.44, 0.46, s.d * 0.46], [s.w * 0.22, roof * 0.94, s.d * 0.20], 'rivetPlate', { chamfer: 0.08 }),
+    box('dock.leg', MassRole.Greeble, [0.30, roof * 0.92, 0.30], [s.w * 0.40, roof * 0.46, s.d * 0.36], 'bareMetal', {
+      group: 'dock', chamfer: 0.05,
+    }),
+    box('conveyor', MassRole.Greeble, [s.w * 0.18, 0.36, s.d * 0.52], [s.w * 0.06, roof * 0.36, s.d * 0.18], 'tread', {
+      group: 'conveyor', rot: [-0.14, 0, 0], chamfer: 0.05,
+    }),
+    box('pipe.run', MassRole.Greeble, [s.w * 0.50, 0.30, 0.30], [-s.w * 0.04, roof * 1.08, -s.d * 0.16], 'bareMetal', {
+      group: 'pipes', chamfer: 0.05,
+    }),
+  );
+  return list('soviet_refinery', 'Ore Refinery', 'soviets', 'refinery', s.masses, [
+    ...baseSockets(s.d, f.height, s.w * 0.34, -s.d * 0.26),
+    { part: PartId.DockEntry, pos: [s.w * 0.22, 0.2, s.d * 0.5 + 2.4] },
+    { part: PartId.Conveyor, pos: [s.w * 0.06, roof * 0.5, s.d * 0.5] },
+  ]);
+}
+
+function sovietWarFactory(): StructureMassList {
+  const f = fp('warFactory');
+  const s = sovietShell(f.w, f.h, f.height, { key: 'warFactory', team: 0.95, windowCount: 4, bodyFraction: 0.50 });
+  const roof = s.roofY;
+  s.masses.push(
+    ...sovietStack(-s.w * 0.36, -s.d * 0.26, s.w * 0.085, roof * 1.30, f.height, 'stackA'),
+    ...sovietStack(-s.w * 0.20, -s.d * 0.30, s.w * 0.070, roof * 1.30, f.height * 0.88, 'stackB'),
+    box('bay.lintel', MassRole.Primary, [s.w * 0.60, 0.62, 0.62], [0, roof * 0.74, s.d * 0.5 + 0.10], 'stripe', { chamfer: 0.08 }),
+    box('bay.jamb', MassRole.Greeble, [0.44, roof * 0.72, 0.52], [s.w * 0.28, roof * 0.36, s.d * 0.5 + 0.08], 'stripe', {
+      mirrorX: true, group: 'bay', chamfer: 0.06,
+    }),
+    box('bay.door', MassRole.Greeble, [s.w * 0.54, roof * 0.68, 0.34], [0, roof * 0.34, s.d * 0.5 + 0.02], 'hatch', {
+      group: 'bay', feature: Feature.Door, anim: roof * 0.72, chamfer: 0.05,
+    }),
+    ...lattice(s.w * 0.30, s.d * 0.10, 2.2, roof * 1.55, 'derrick'),
+    box('hoist', MassRole.Greeble, [1.1, 0.8, 1.1], [s.w * 0.30, roof * 1.50, s.d * 0.10], 'hatch', { group: 'derrick' }),
+  );
+  return list('soviet_warfactory', 'War Factory', 'soviets', 'warFactory', s.masses, [
+    ...baseSockets(s.d, f.height, -s.w * 0.36, -s.d * 0.26),
+    { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.4] },
+    { part: PartId.Crane, pos: [s.w * 0.30, roof * 1.45, s.d * 0.10] },
+  ]);
+}
+
+function sovietRadar(): StructureMassList {
+  const f = fp('radar');
+  const s = sovietShell(f.w, f.h, f.height, { key: 'radar', team: 1.05, windowCount: 4, bodyFraction: 0.34 });
+  const roof = s.roofY;
+  const towerTop = f.height - 2.8;
+  s.masses.push(
+    // The Kremlin cue: a drum tower under an onion cupola, then the sweep gear.
+    cyl('tower', MassRole.Primary, [s.w * 0.40, towerTop - roof * 1.4, s.w * 0.40], [0, (towerTop + roof * 1.4) * 0.5, 0], 'rivetPlate', {
+      capSlot: 'grille',
+    }),
+    { name: 'cupola', primitive: 'lathe', role: MassRole.Primary, profile: 'dome',
+      size: [s.w * 0.46, s.w * 0.26, s.w * 0.46], anchor: [0, towerTop + s.w * 0.13, 0],
+      slot: 'paintMed', capSlot: 'grille' },
+    cyl('mast', MassRole.Greeble, [0.30, 2.4, 0.30], [0, f.height - 1.2, 0], 'bareMetal', {
+      group: 'mast', feature: Feature.Spinner, anim: 0.55, capSlot: 'grille',
+    }),
+    { name: 'dish', primitive: 'lathe', role: MassRole.Primary, profile: 'dome',
+      size: [4.2, 1.5, 4.2], anchor: [0.8, f.height - 1.5, 0], slot: 'rivetPlate',
+      rot: [-0.58, 0, 0.30], capSlot: 'grille', feature: Feature.Spinner, anim: 0.55 },
+    box('dish.arm', MassRole.Greeble, [1.7, 0.20, 0.20], [0.45, f.height - 2.1, 0], 'bareMetal', {
+      group: 'dish', feature: Feature.Spinner, anim: 0.55, chamfer: 0.04,
+    }),
+    box('dish.feed', MassRole.Emissive, [0.46, 0.46, 0.46], [1.4, f.height - 0.7, 0], 'emissive', {
+      group: 'dish', feature: Feature.Spinner, anim: 0.55, chamfer: 0.05,
+    }),
+    ...catwalk(s.w * 0.70, s.d * 0.20, roof * 1.30, 'walk'),
+  );
+  return list('soviet_radar', 'Radar Tower', 'soviets', 'radar', s.masses, [
+    ...baseSockets(s.d, roof * 1.4, -s.w * 0.32, -s.d * 0.30),
+    { part: PartId.Dish, pos: [0, f.height - 1.5, 0] },
+    { part: PartId.Antenna, pos: [0, f.height, 0] },
+  ]);
+}
+
+function sovietTech(): StructureMassList {
+  const f = fp('techCentre');
+  const s = sovietShell(f.w, f.h, f.height, { key: 'techCentre', team: 1.05, windowCount: 4, bodyFraction: 0.46 });
+  const roof = s.roofY;
+  s.masses.push(
+    ...sovietVessel(-s.w * 0.24, s.d * 0.06, s.w * 0.14, roof * 1.28, 'reactor'),
+    ...sovietStack(s.w * 0.30, -s.d * 0.24, s.w * 0.085, roof * 1.28, f.height, 'stackA'),
+    // A tesla test rig: coil rings on a short mast, the faction's loudest cue.
+    cyl('coil.mast', MassRole.Primary, [0.6, roof * 0.9, 0.6], [s.w * 0.02, roof * 1.72, s.d * 0.22], 'bareMetal', { capSlot: 'grille' }),
+    cyl('coil.ringA', MassRole.Greeble, [2.0, 0.24, 2.0], [s.w * 0.02, roof * 1.90, s.d * 0.22], 'bareMetal', {
+      group: 'coils', chamfer: 0.05, capSlot: 'grille',
+    }),
+    cyl('coil.ringB', MassRole.Greeble, [1.5, 0.22, 1.5], [s.w * 0.02, roof * 2.06, s.d * 0.22], 'bareMetal', {
+      group: 'coils', chamfer: 0.05, capSlot: 'grille',
+    }),
+    cyl('coil.tip', MassRole.Emissive, [0.8, 0.34, 0.8], [s.w * 0.02, roof * 2.18, s.d * 0.22], 'emissive', {
+      group: 'coils', chamfer: 0.04, capSlot: 'emissive',
+    }),
+    ...lattice(-s.w * 0.42, -s.d * 0.18, 1.4, roof * 1.5, 'frame'),
+  );
+  return list('soviet_tech', 'Battle Lab', 'soviets', 'techCentre', s.masses, [
+    ...baseSockets(s.d, f.height, s.w * 0.30, -s.d * 0.24),
+    { part: PartId.CoilTip, pos: [s.w * 0.02, roof * 2.30, s.d * 0.22] },
+  ]);
+}
+
+function sovietSentry(): StructureMassList {
+  const f = fp('sentryGun');
+  const w = f.w * CELL * 0.76;
+  const h = f.height;
+  const ringY = h * 0.58;
+  const masses: M[] = [
+    ...foundationPad('soviets', f.w, f.h, h),
+    // The squat concrete drum every Soviet reference frame is full of.
+    cyl('drum', MassRole.Primary, [w, ringY * 0.92, w], [0, ringY * 0.46, 0], 'rivetPlate', {
+      capSlot: 'grille', topRadius: 0.90,
+    }),
+    cyl('collar', MassRole.Primary, [w * 0.70, ringY * 0.22, w * 0.70], [0, ringY * 0.98, 0], 'bareMetal', { capSlot: 'grille' }),
+    box('skirt', MassRole.Greeble, [w * 1.06, ringY * 0.20, w * 1.06], [0, ringY * 0.10, 0], 'paintSmall', {
+      group: 'skirt', chamfer: 0.08,
+    }),
+    box('ammo', MassRole.Greeble, [w * 0.26, ringY * 0.34, w * 0.22], [-w * 0.46, ringY * 0.22, -w * 0.24], 'hatch', { group: 'ammo' }),
+    teamPanel('team.band', [w * 1.02, ringY * 0.16, w * 0.34], [0, ringY * 0.66, 0]),
+    ...windows(w * 0.28, ringY * 0.70, w * 0.44, 2, 0.22, 0.14, 'lamp'),
+
+    /* -- the slewing head -------------------------------------------------- */
+    { name: 'head', primitive: 'lathe', role: MassRole.Primary, profile: 'dome',
+      size: [w * 0.78, h * 0.30, w * 0.86], anchor: [0, ringY, 0], slot: 'paintMed',
+      capSlot: 'grille', target: 'turret' },
+    cyl('barrel', MassRole.Primary, [0.36, w * 1.20, 0.36], [0, ringY + h * 0.14, w * 0.60], 'bareMetal', {
+      rot: [Math.PI * 0.5, 0, 0], target: 'turret', capSlot: 'grille',
+    }),
+    cyl('mantlet', MassRole.Greeble, [0.62, 0.5, 0.62], [0, ringY + h * 0.14, w * 0.28], 'bareMetal', {
+      rot: [Math.PI * 0.5, 0, 0], target: 'turret', group: 'mantlet', capSlot: 'grille',
+    }),
+    teamPanel('team.head', [w * 0.34, 0.12, w * 0.24], [0, ringY + h * 0.24, -w * 0.10], { target: 'turret' }),
+    // The sight mast is what carries the sentry to its frozen roofline: a
+    // 3.4 m drum with a dome on top tops out at 2.6 on its own.
+    cyl('sight.mast', MassRole.Greeble, [0.16, h * 0.34, 0.16], [-w * 0.16, ringY + h * 0.30, -w * 0.12], 'bareMetal', {
+      target: 'turret', group: 'sight', capSlot: 'grille',
+    }),
+    box('sight.head', MassRole.Greeble, [0.34, 0.28, 0.40], [-w * 0.16, ringY + h * 0.48, -w * 0.12], 'hatch', {
+      target: 'turret', group: 'sight', chamfer: 0.04,
+    }),
+  ];
+  return list('soviet_sentry', 'Sentry Gun', 'soviets', 'sentryGun', masses, [
+    { part: PartId.MuzzleA, pos: [0, ringY + h * 0.14, w * 1.22], turret: true },
+  ], { cls: 'defence', turretPivot: [0, ringY, 0] });
+}
+
+function sovietTeslaCoil(): StructureMassList {
+  const f = fp('teslaCoil');
+  const w = f.w * CELL * 0.72;
+  const h = f.height;
+  const masses: M[] = [
+    ...foundationPad('soviets', f.w, f.h, h),
+    pri('base', MassRole.Primary, [w, h * 0.22, w], [0, h * 0.11, 0], 'rivetPlate', {
+      plan: 'cutBox', cornerCut: 0.10, capSlot: 'grille',
+    }),
+    // The mast. RA3's coil is a tapered pylon, not a lattice tower.
+    cyl('mast', MassRole.Primary, [w * 0.34, h * 0.56, w * 0.34], [0, h * 0.50, 0], 'rivetPlate', {
+      topRadius: 0.62, capSlot: 'grille',
+    }),
+    cyl('ringA', MassRole.Primary, [w * 0.82, h * 0.045, w * 0.82], [0, h * 0.72, 0], 'bareMetal', { capSlot: 'grille' }),
+    cyl('ringB', MassRole.Primary, [w * 0.66, h * 0.040, w * 0.66], [0, h * 0.83, 0], 'bareMetal', { capSlot: 'grille' }),
+    cyl('ringC', MassRole.Greeble, [w * 0.50, h * 0.036, w * 0.50], [0, h * 0.92, 0], 'bareMetal', { group: 'rings', capSlot: 'grille' }),
+    { name: 'electrode', primitive: 'lathe', role: MassRole.Emissive, profile: 'sphere',
+      size: [w * 0.30, w * 0.30, w * 0.30], anchor: [0, h - w * 0.14, 0], slot: 'emissive', capSlot: 'emissive' },
+    cyl('insulator', MassRole.Greeble, [w * 0.14, h * 0.10, w * 0.14], [0, h * 0.97, 0], 'glass', {
+      group: 'insulators', capSlot: 'glass',
+    }),
+    box('cable', MassRole.Greeble, [0.16, h * 0.30, 0.16], [w * 0.30, h * 0.24, w * 0.24], 'bareMetal', {
+      mirrorX: true, group: 'cables', chamfer: 0.03,
+    }),
+    box('capacitor', MassRole.Greeble, [w * 0.24, h * 0.16, w * 0.20], [-w * 0.34, h * 0.30, -w * 0.24], 'grille', { group: 'capacitors' }),
+    teamPanel('team.base', [w * 0.94, h * 0.05, w * 0.34], [0, h * 0.23, 0]),
+    teamPanel('team.fin', [0.14, h * 0.20, w * 0.30], [w * 0.32, h * 0.14, 0], { mirrorX: true }),
+    ...windows(w * 0.30, h * 0.15, w * 0.44, 2, 0.22, 0.14, 'lamp'),
+  ];
+  return list('soviet_tesla', 'Tesla Coil', 'soviets', 'teslaCoil', masses, [
+    { part: PartId.CoilTip, pos: [0, h, 0] },
+    { part: PartId.Emitter, pos: [0, h - w * 0.14, 0] },
+  ], { cls: 'defence' });
+}
+
+/* -- WALLS AND GATES ------------------------------------------------------ */
+
+/**
+ * A wall segment. No pad: a wall follows terrain and a foundation slab under
+ * every 4 m section would tile the whole perimeter in concrete.
+ */
+function wallSegment(faction: StructureFaction): StructureMassList {
+  const f = fp('wall');
+  const w = f.w * CELL;
+  const h = f.height;
+  const soviet = faction === 'soviets';
+  const masses: M[] = soviet
+    ? [
+      pri('wall', MassRole.Primary, [w, h * 0.86, w * 0.42], [0, h * 0.43, 0], 'rivetPlate', {
+        plan: 'cutBox', cornerCut: 0.06, capSlot: 'rivetPlate',
+      }),
+      // SOVIET-2 at wall scale: the capsule rails ARE the pilasters, and every
+      // reference frame of the Kremlin wall is built out of them.
+      cyl('rail', MassRole.Primary, [w * 0.22, h, w * 0.22], [w * 0.5 - w * 0.11, h * 0.5, 0], 'rivetPlate', {
+        mirrorX: true, segments: BUILDING_GEOMETRY.railSegments, capSlot: 'paintSmall',
+      }),
+      box('coping', MassRole.Primary, [w, h * 0.14, w * 0.50], [0, h * 0.93, 0], 'paintSmall', { chamfer: 0.05 }),
+      box('merlon', MassRole.Greeble, [w * 0.16, h * 0.16, w * 0.44], [w * 0.24, h * 0.98, 0], 'rivetPlate', {
+        mirrorX: true, group: 'merlons', chamfer: 0.04,
+      }),
+      teamPanel('team.band', [w * 0.30, h * 0.30, 0.12], [0, h * 0.52, w * 0.22]),
+    ]
+    : [
+      box('wall', MassRole.Primary, [w, h * 0.82, w * 0.36], [0, h * 0.41, 0], 'paintMed', {
+        taper: [0.86, 0.86, 0],
+      }),
+      box('post', MassRole.Primary, [w * 0.18, h, w * 0.44], [w * 0.5 - w * 0.09, h * 0.5, 0], 'paintMed', {
+        mirrorX: true, taper: [0.88, 0.88, 0],
+      }),
+      box('coping', MassRole.Primary, [w, h * 0.12, w * 0.44], [0, h * 0.92, 0], 'paintSmall', { chamfer: 0.045 }),
+      box('rail', MassRole.Greeble, [w, 0.10, 0.10], [0, h * 1.02, w * 0.16], 'bareMetal', {
+        mirrorX: false, group: 'rails', chamfer: 0.02,
+      }),
+      teamPanel('team.band', [w * 0.34, h * 0.24, 0.12], [0, h * 0.50, w * 0.20]),
+    ];
+  masses.push(
+    box('kick', MassRole.Greeble, [w * 0.98, h * 0.14, w * 0.52], [0, h * 0.07, 0], 'paintSmall', { group: 'kick', chamfer: 0.05 }),
+    box('lamp', MassRole.Emissive, [0.24, 0.20, 0.10], [w * 0.30, h * 0.72, w * 0.22], 'emissive', {
+      group: 'lamps', feature: Feature.Window, chamfer: 0.03,
+    }),
+    box('bolt', MassRole.Greeble, [w * 0.10, h * 0.10, 0.10], [-w * 0.28, h * 0.30, w * 0.20], 'hatch', {
+      group: 'bolts', chamfer: 0.02,
+    }),
+  );
+  return list(`${faction === 'allies' ? 'allied' : 'soviet'}_wall`, 'Wall', faction, 'wall',
+    masses, [], { cls: 'wall' });
+}
+
+/** A gate: the wall language plus two leaves that sink into the roadway. */
+function gateSegment(faction: StructureFaction): StructureMassList {
+  const f = fp('gate');
+  const w = f.w * CELL;
+  const h = f.height;
+  const soviet = faction === 'soviets';
+  const masses: M[] = [
+    ...foundationPad(faction, f.w, f.h, h),
+    box('tower', MassRole.Primary, [w * 0.24, h, w * 0.52], [w * 0.5 - w * 0.12, h * 0.5, 0], soviet ? 'rivetPlate' : 'paintMed', {
+      mirrorX: true, taper: soviet ? [1, 1, 0] : [0.88, 0.88, 0],
+    }),
+    box('lintel', MassRole.Primary, [w, h * 0.20, w * 0.46], [0, h * 0.90, 0], soviet ? 'rivetPlate' : 'paintMed', { chamfer: 0.06 }),
+    box('hazard', MassRole.Primary, [w * 0.76, h * 0.10, w * 0.50], [0, h * 0.78, 0], 'stripe', { chamfer: 0.04 }),
+    // Two leaves, each retracting straight down into the roadway.
+    box('leaf', MassRole.Greeble, [w * 0.38, h * 0.70, 0.24], [w * 0.19, h * 0.35, 0], 'grille', {
+      mirrorX: true, group: 'leaves', feature: Feature.Door, anim: h * 0.74, chamfer: 0.04,
+    }),
+    cyl('hinge', MassRole.Greeble, [0.30, h * 0.80, 0.30], [w * 0.5 - w * 0.12, h * 0.40, w * 0.14], 'bareMetal', {
+      mirrorX: true, group: 'hinges', capSlot: 'grille',
+    }),
+    box('lamp', MassRole.Emissive, [0.28, 0.22, 0.12], [w * 0.30, h * 0.72, w * 0.24], 'emissive', {
+      mirrorX: true, group: 'lamps', feature: Feature.Window, chamfer: 0.03,
+    }),
+    box('bollard', MassRole.Greeble, [w * 0.10, h * 0.22, w * 0.10], [w * 0.40, h * 0.11, w * 0.34], 'stripe', {
+      mirrorX: true, group: 'bollards', chamfer: 0.03,
+    }),
+    teamPanel('team.lintel', [w * 0.60, h * 0.08, w * 0.30], [0, h * 1.01, 0]),
+  ];
+  return list(`${faction === 'allies' ? 'allied' : 'soviet'}_gate`, 'Gate', faction, 'gate',
+    masses, [
+      { part: PartId.Door, pos: [0, 0.2, 0] },
+    ], { cls: 'wall' });
+}
+
+
+/**
+ * ORE SILO. One cell, five metres, and it has to read as storage rather than
+ * as a small barracks — so it is a drum in both armies, and the faction
+ * language lands in how the drum is capped, banded and served.
+ */
+function oreSilo(faction: StructureFaction): StructureMassList {
+  const f = fp('oreSilo');
+  const w = f.w * CELL * 0.80;
+  const h = f.height;
+  const soviet = faction === 'soviets';
+  const wall: SlotName = soviet ? 'rivetPlate' : 'paintMed';
+  const masses: M[] = [
+    ...foundationPad(faction, f.w, f.h, h),
+    cyl('drum', MassRole.Primary, [w, h * 0.68, w], [0, h * 0.34, 0], wall, {
+      capSlot: 'paintSmall', topRadius: soviet ? 1.0 : 0.94,
+    }),
+    soviet
+      // SOVIET: a riveted cone cap with a flat disc collar.
+      ? cyl('cap', MassRole.Primary, [w * 1.02, h * 0.22, w * 1.02], [0, h * 0.79, 0], 'rivetPlate', {
+        topRadius: 0.44, capSlot: 'grille',
+      })
+      // ALLIED-2 at silo scale: an open-topped crown instead of a cone.
+      : pri('cap', MassRole.Primary, [w * 0.86, h * 0.24, w * 0.86], [0, h * 0.80, 0], 'paintMed', {
+        plan: 'hexagon', capSlot: 'grille',
+      }),
+    cyl('collar', MassRole.Primary, [w * 1.06, h * 0.06, w * 1.06], [0, h * 0.66, 0], 'bareMetal', {
+      chamfer: 0.05, capSlot: 'grille',
+    }),
+    // The service kit. A silo is a drum plus its plumbing, and the plumbing is
+    // what stops one cell of storage reading as an untextured cylinder.
+    box('ladder', MassRole.Greeble, [0.30, h * 0.72, 0.10], [0, h * 0.36, w * 0.52], 'stripe', {
+      group: 'ladder', chamfer: 0.03,
+    }),
+    cyl('valve', MassRole.Greeble, [0.44, 0.34, 0.44], [-w * 0.34, h * 0.20, w * 0.34], 'bareMetal', {
+      group: 'valves', chamfer: 0.04, capSlot: 'hatch',
+    }),
+    box('feedpipe', MassRole.Greeble, [0.26, h * 0.46, 0.26], [w * 0.40, h * 0.44, -w * 0.30], 'bareMetal', {
+      group: 'pipes', chamfer: 0.04,
+    }),
+    box('feedhead', MassRole.Greeble, [0.60, 0.32, 0.60], [w * 0.40, h * 0.70, -w * 0.30], 'hatch', { group: 'pipes' }),
+    box('gauge', MassRole.Greeble, [w * 0.26, h * 0.16, 0.14], [0, h * 0.44, -w * 0.50], 'stencil', {
+      group: 'gauges', chamfer: 0.04,
+    }),
+    box('skirt.vent', MassRole.Greeble, [w * 0.34, h * 0.14, 0.16], [-w * 0.22, h * 0.12, w * 0.46], 'vent', { group: 'vents' }),
+    box('hatch', MassRole.Greeble, [w * 0.30, 0.20, w * 0.30], [w * 0.16, h * 0.92, 0], 'hatch', { group: 'hatches', chamfer: 0.04 }),
+    box('plate', MassRole.Greeble, [w * 0.28, h * 0.12, 0.12], [w * 0.24, h * 0.24, w * 0.46], 'stencil', {
+      group: 'plates', chamfer: 0.03,
+    }),
+    teamPanel('team.band', [w * 1.02, h * 0.045, w * 0.26], [0, h * 0.52, 0]),
+    teamPanel('team.cap', [w * 0.30, 0.10, w * 0.18], [0, h * 0.93, 0]),
+    insignia(w * 0.34, [0, h * 0.34, w * 0.50]),
+    ...windows(w * 0.44, h * 0.14, w * 0.50, 2, w * 0.16, h * 0.07, 'lamp'),
+    box('win.roof', MassRole.Emissive, [w * 0.30, 0.12, w * 0.22], [-w * 0.16, h * 0.93, 0], 'emissive', {
+      group: 'roofLights', feature: Feature.Window, chamfer: 0.03,
+    }),
+  ];
+  return list(`${soviet ? 'soviet' : 'allied'}_silo`, 'Ore Silo', faction, 'oreSilo', masses, [
+    { part: PartId.Hopper, pos: [0, h * 0.70, -w * 0.30] },
+    { part: PartId.DockEntry, pos: [0, 0.2, w * 0.5 + 2.2] },
+  ]);
+}
+
+/* ==========================================================================
+ * 5. THE ROSTER
+ * ========================================================================== */
+
+export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
+  alliedConYard(),
+  alliedPower(),
+  alliedBarracks(),
+  alliedRefinery(),
+  alliedWarFactory(),
+  alliedRadar(),
+  alliedTech(),
+  oreSilo('allies'),
+  alliedPillbox(),
+  alliedAaTurret(),
+  wallSegment('allies'),
+  gateSegment('allies'),
+
+  sovietConYard(),
+  sovietPower(),
+  sovietBarracks(),
+  sovietRefinery(),
+  sovietWarFactory(),
+  sovietRadar(),
+  sovietTech(),
+  oreSilo('soviets'),
+  sovietSentry(),
+  sovietTeslaCoil(),
+  wallSegment('soviets'),
+  gateSegment('soviets'),
+];
+
+export const STRUCTURE_BY_KEY: ReadonlyMap<string, StructureMassList> =
+  new Map(STRUCTURE_MASS_LISTS.map((l) => [l.key, l]));
+
+/** Which faction owns each structure key. */
+export const STRUCTURE_FACTIONS: Readonly<Record<string, StructureFaction>> =
+  Object.fromEntries(STRUCTURE_MASS_LISTS.map((l) => [l.key, l.faction]));

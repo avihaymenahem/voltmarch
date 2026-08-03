@@ -1,0 +1,1709 @@
+/**
+ * ============================================================================
+ * RED ALERT — src/world/PropLibrary.ts
+ * ============================================================================
+ * THE PROP FACTORY. 28 procedural prop archetypes with real silhouettes, built
+ * once per biome, each merged into ONE geometry so the scatter system can draw
+ * a whole type in a single instanced call.
+ *
+ * WHY THIS FILE EXISTS AT ALL — bible §14 R3, rated FATAL:
+ *
+ *   "Terrain is a big empty plane. Prop scatter is always the last system
+ *    written and the first cut. RA3's city reference carries 106 discrete props
+ *    on 1.3 hectares; a procedural remake ships 8 rocks."
+ *
+ * `refs/ra3steam_08.jpg` IS that city reference, and counting it by hand is the
+ * spec for this file: 6 bronze statues on hedged plinths, ~14 hedge blocks
+ * bordering every planted island, 3 flower beds in blocked magenta/yellow
+ * bands, ~11 street lamps, 9 parked cars, 7 red cafe umbrellas, 6 crates and 3
+ * barrels, ~20 cypress, ~15 autumn broadleafs, 2 iron railing runs. Every one
+ * of those has an archetype below. Eight rocks is the failure mode.
+ *
+ * THE FOUR DECISIONS THAT MATTER
+ * ------------------------------
+ * 1. EVERY CONVEX EDGE IS CHAMFERED **AND THE CHAMFER IS PAINTED BRIGHTER**
+ *    (scorecard #11, weight 3). Unit art gets its bevel band out of a texture
+ *    atlas; props have no atlas, so the band is baked into VERTEX COLOUR at
+ *    build time — base albedo +22% V, -15% S along every chamfer strip, the
+ *    exact numbers in bible 5.5. Geometry alone is only half the fix: the read
+ *    comes from the BAND, not from the facet.
+ *
+ * 2. ONE MATERIAL FOR ALL 28 TYPES. Per-vertex colour carries the paint, a
+ *    per-vertex `aEmit` channel carries lamp/signal glow, and per-instance
+ *    `instanceColor` carries the hue/value jitter (scorecard #39). A prop type
+ *    therefore costs exactly one draw call and the roster shares one program.
+ *    `createPropMaterial()` is the only place a prop material is constructed.
+ *
+ * 3. FOLIAGE SWAYS (bible §6.5: "near-zero cost and its absence reads instantly
+ *    as static"). A per-vertex `aSway` amplitude in METRES rides a shared time
+ *    uniform with a per-instance phase read straight off `instanceMatrix[3]`.
+ *    The custom depth material carries the identical displacement, so a swaying
+ *    canopy never casts a frozen shadow.
+ *
+ * 4. CYLINDERS ARE 12-16 FACETS AND SPHERES ARE FACETED TOO (scorecard #40).
+ *    Every ring count below is inside that band. A smooth 32-segment tube is a
+ *    different engine.
+ *
+ * ONE GEOMETRY PER KEY. A `PropDef` bakes exactly one mesh; where two looks
+ * must coexist on the same map (summer vs autumn foliage, golden vs green
+ * grass, timber crates vs shipping containers) they are separate KEYS with
+ * their own biome weights, because instancing cannot switch geometry per
+ * instance and `geometry.groups` draws every group.
+ *
+ * COLOUR SPACE. `THREE.ColorManagement.enabled` is true (render/renderer.ts),
+ * so vertex-colour attribute data is consumed as LINEAR. Every literal below is
+ * an sRGB hex from the bible, converted exactly once through `linear()`.
+ * ============================================================================
+ */
+
+import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+
+import { PROP_EMISSIVE_GAIN, PROP_MATERIAL, SCATTER_WIND } from '../core/config';
+import { clamp, clamp01, Rng, TAU } from '../core/math';
+import { linearColorTriple } from '../core/assets';
+import { SurfaceId, type BiomeName } from './Biomes';
+
+/* ==========================================================================
+ * 1. COLOUR
+ * ========================================================================== */
+
+const LINEAR_CACHE = new Map<string, readonly [number, number, number]>();
+
+/** sRGB hex -> linear triple, memoised. Build time only, never per frame. */
+function linear(hex: string): readonly [number, number, number] {
+  let v = LINEAR_CACHE.get(hex);
+  if (v === undefined) {
+    v = linearColorTriple(hex);
+    LINEAR_CACHE.set(hex, v);
+  }
+  return v;
+}
+
+const HSV = new Float32Array(3);
+
+function hexToHsv(hex: string, out: Float32Array): void {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d > 1e-6) {
+    if (max === r) h = (g - b) / d + (g < b ? 6 : 0);
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h /= 6;
+  }
+  out[0] = h; out[1] = max <= 0 ? 0 : d / max; out[2] = max;
+}
+
+function hsvToHex(h: number, s: number, v: number): string {
+  h -= Math.floor(h);
+  const i = Math.floor(h * 6), f = h * 6 - i;
+  const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+  let r = v, g = t, b = p;
+  switch (i % 6) {
+    case 1: r = q; g = v; b = p; break;
+    case 2: r = p; g = v; b = t; break;
+    case 3: r = p; g = q; b = v; break;
+    case 4: r = t; g = p; b = v; break;
+    case 5: r = v; g = p; b = q; break;
+    default: break;
+  }
+  const to = (x: number): string => Math.round(clamp01(x) * 255).toString(16).padStart(2, '0');
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+
+/**
+ * The painted bevel highlight, bible 5.5: "base albedo +22% V, -15% S".
+ * Scorecard #11 is weight 3 and this single function is what passes it — a
+ * chamfered edge with no brighter band still reads as an untextured primitive.
+ */
+export function bevelHighlight(hex: string): string {
+  hexToHsv(hex, HSV);
+  return hsvToHex(
+    HSV[0],
+    HSV[1] * (1 - PROP_MATERIAL.bevelSaturationLoss),
+    clamp01(HSV[2] * (1 + PROP_MATERIAL.bevelValueGain) + 0.02),
+  );
+}
+
+/** Multiply value, keep hue and saturation. Cavity / underside darkening. */
+export function shadeOf(hex: string, mul: number): string {
+  hexToHsv(hex, HSV);
+  return hsvToHex(HSV[0], HSV[1], clamp01(HSV[2] * mul));
+}
+
+/* ==========================================================================
+ * 2. THE MESH BUILDER
+ *
+ * A flat accumulator with a little state (paint, sway ramp, emissive, AO ramp)
+ * so a prop reads as a list of volumes instead of buffer bookkeeping.
+ *
+ * Every face is FLAT SHADED — vertices are never shared across faces. Props are
+ * toys, and smooth normals on a 12-facet cylinder is exactly the "smooth
+ * 32-segment tube" tell scorecard #40 punishes.
+ * ========================================================================== */
+
+const SCRATCH_A = new Float32Array(3);
+const SCRATCH_B = new Float32Array(3);
+
+export class PropMesh {
+  private readonly posArr: number[] = [];
+  private readonly nrmArr: number[] = [];
+  private readonly colArr: number[] = [];
+  private readonly swyArr: number[] = [];
+  private readonly emtArr: number[] = [];
+  private readonly idxArr: number[] = [];
+
+  private cr = 1; private cg = 1; private cb = 1;
+  private br = 1; private bg = 1; private bb = 1;
+  private emit = 0;
+
+  private swayAmp = 0;
+  private swayBase = 0;
+  private swayTop = 1;
+
+  private aoFloor = 1;
+  private aoBase = 0;
+  private aoTop = 1;
+
+  triangles = 0;
+  readonly min = new Float32Array([Infinity, Infinity, Infinity]);
+  readonly max = new Float32Array([-Infinity, -Infinity, -Infinity]);
+
+  /* ---- state ----------------------------------------------------------- */
+
+  /** Set the paint. The chamfer colour is derived unless `bevel()` follows. */
+  color(hex: string): this {
+    const c = linear(hex);
+    this.cr = c[0]; this.cg = c[1]; this.cb = c[2];
+    const b = linear(bevelHighlight(hex));
+    this.br = b[0]; this.bg = b[1]; this.bb = b[2];
+    return this;
+  }
+
+  /** Override the chamfer-strip colour (a stone kerb lip, a painted band). */
+  bevel(hex: string): this {
+    const b = linear(hex);
+    this.br = b[0]; this.bg = b[1]; this.bb = b[2];
+    return this;
+  }
+
+  /** 0 = lit paint, 1 = full emissive. Bible R-T5: clean discs and rounded rects. */
+  emissive(e: number): this { this.emit = e; return this; }
+
+  /**
+   * Wind response. `amp` is the displacement in METRES reached at `top`,
+   * ramping from zero at `base`. Bible §6.5: canopy 0.15 m, grass 0.06 m.
+   */
+  sway(amp: number, base: number, top: number): this {
+    this.swayAmp = amp;
+    this.swayBase = base;
+    this.swayTop = Math.max(top, base + 1e-3);
+    return this;
+  }
+
+  /**
+   * Baked vertical AO — albedo x `floor` at `base` rising to x1 at `top`.
+   * Bible §3.3: crease AO is baked, never screen-space, and a prop without a
+   * darkened footing floats exactly the way a unit without one does.
+   */
+  ao(floor: number, base: number, top: number): this {
+    this.aoFloor = floor;
+    this.aoBase = base;
+    this.aoTop = Math.max(top, base + 1e-3);
+    return this;
+  }
+
+  /* ---- freeform faces -------------------------------------------------- */
+
+  /**
+   * A triangle. `ox/oy/oz` is an OUTWARD reference direction: the winding and
+   * the normal are flipped to agree with it, so a builder never has to reason
+   * about vertex order.
+   */
+  tri(
+    x0: number, y0: number, z0: number,
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    ox: number, oy: number, oz: number,
+    bevelPaint = false,
+  ): void {
+    SCRATCH_A[0] = x1 - x0; SCRATCH_A[1] = y1 - y0; SCRATCH_A[2] = z1 - z0;
+    SCRATCH_B[0] = x2 - x0; SCRATCH_B[1] = y2 - y0; SCRATCH_B[2] = z2 - z0;
+    let nx = SCRATCH_A[1] * SCRATCH_B[2] - SCRATCH_A[2] * SCRATCH_B[1];
+    let ny = SCRATCH_A[2] * SCRATCH_B[0] - SCRATCH_A[0] * SCRATCH_B[2];
+    let nz = SCRATCH_A[0] * SCRATCH_B[1] - SCRATCH_A[1] * SCRATCH_B[0];
+    const len = Math.hypot(nx, ny, nz);
+    if (len < 1e-10) return;
+    nx /= len; ny /= len; nz /= len;
+    const flip = nx * ox + ny * oy + nz * oz < 0;
+    if (flip) { nx = -nx; ny = -ny; nz = -nz; }
+    const base = this.posArr.length / 3;
+    this.vertex(x0, y0, z0, nx, ny, nz, bevelPaint);
+    this.vertex(x1, y1, z1, nx, ny, nz, bevelPaint);
+    this.vertex(x2, y2, z2, nx, ny, nz, bevelPaint);
+    if (flip) this.idxArr.push(base, base + 2, base + 1);
+    else this.idxArr.push(base, base + 1, base + 2);
+    this.triangles++;
+  }
+
+  /** A quad, wound to face `ox/oy/oz`. Tolerates slightly non-planar corners. */
+  quad(
+    x0: number, y0: number, z0: number,
+    x1: number, y1: number, z1: number,
+    x2: number, y2: number, z2: number,
+    x3: number, y3: number, z3: number,
+    ox: number, oy: number, oz: number,
+    bevelPaint = false,
+  ): void {
+    SCRATCH_A[0] = x2 - x0; SCRATCH_A[1] = y2 - y0; SCRATCH_A[2] = z2 - z0;
+    SCRATCH_B[0] = x3 - x1; SCRATCH_B[1] = y3 - y1; SCRATCH_B[2] = z3 - z1;
+    let nx = SCRATCH_A[1] * SCRATCH_B[2] - SCRATCH_A[2] * SCRATCH_B[1];
+    let ny = SCRATCH_A[2] * SCRATCH_B[0] - SCRATCH_A[0] * SCRATCH_B[2];
+    let nz = SCRATCH_A[0] * SCRATCH_B[1] - SCRATCH_A[1] * SCRATCH_B[0];
+    const len = Math.hypot(nx, ny, nz);
+    if (len < 1e-10) return;
+    nx /= len; ny /= len; nz /= len;
+    const flip = nx * ox + ny * oy + nz * oz < 0;
+    if (flip) { nx = -nx; ny = -ny; nz = -nz; }
+    const base = this.posArr.length / 3;
+    this.vertex(x0, y0, z0, nx, ny, nz, bevelPaint);
+    this.vertex(x1, y1, z1, nx, ny, nz, bevelPaint);
+    this.vertex(x2, y2, z2, nx, ny, nz, bevelPaint);
+    this.vertex(x3, y3, z3, nx, ny, nz, bevelPaint);
+    if (flip) this.idxArr.push(base, base + 3, base + 2, base, base + 2, base + 1);
+    else this.idxArr.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    this.triangles += 2;
+  }
+
+  /* ---- primitives ------------------------------------------------------ */
+
+  /**
+   * A chamfered box: 6 main faces + 12 edge strips + 8 corner triangles.
+   * The strips and corners are emitted in the BEVEL colour — that band is the
+   * whole point (bible 5.5, scorecard #11).
+   *
+   * `cx/cy/cz` is the CENTRE. `yaw` rotates about +Y.
+   */
+  box(
+    cx: number, cy: number, cz: number,
+    w: number, h: number, d: number,
+    chamfer: number, yaw = 0,
+  ): void {
+    const hx = w * 0.5, hy = h * 0.5, hz = d * 0.5;
+    const c = clamp(chamfer, 0, Math.min(hx, hy, hz) * 0.92);
+    const cs = Math.cos(yaw), sn = Math.sin(yaw);
+    // Inset extents: the corner of a face is pulled back by the chamfer on the
+    // other two axes.
+    const ix = hx - c, iy = hy - c, iz = hz - c;
+
+    const px = (x: number, z: number): number => cx + x * cs + z * sn;
+    const pz = (x: number, z: number): number => cz - x * sn + z * cs;
+    const dx = (x: number, z: number): number => x * cs + z * sn;
+    const dz = (x: number, z: number): number => -x * sn + z * cs;
+
+    const q = (
+      ax: number, ay: number, az: number, bx: number, by: number, bz: number,
+      cx2: number, cy2: number, cz2: number, ex: number, ey: number, ez: number,
+      ox: number, oy: number, oz: number, bevelPaint: boolean,
+    ): void => {
+      this.quad(
+        px(ax, az), cy + ay, pz(ax, az),
+        px(bx, bz), cy + by, pz(bx, bz),
+        px(cx2, cz2), cy + cy2, pz(cx2, cz2),
+        px(ex, ez), cy + ey, pz(ex, ez),
+        dx(ox, oz), oy, dz(ox, oz), bevelPaint,
+      );
+    };
+
+    /* 6 main faces */
+    for (let s = -1; s <= 1; s += 2) {
+      q(s * hx, -iy, -iz, s * hx, iy, -iz, s * hx, iy, iz, s * hx, -iy, iz, s, 0, 0, false);
+      q(-ix, s * hy, -iz, ix, s * hy, -iz, ix, s * hy, iz, -ix, s * hy, iz, 0, s, 0, false);
+      q(-ix, -iy, s * hz, ix, -iy, s * hz, ix, iy, s * hz, -ix, iy, s * hz, 0, 0, s, false);
+    }
+    if (c <= 1e-5) return;
+
+    /* 12 chamfer strips, in the highlight colour */
+    for (let sy = -1; sy <= 1; sy += 2) {
+      for (let sz = -1; sz <= 1; sz += 2) {
+        // parallel to X — joins the +/-Y face to the +/-Z face
+        q(-ix, sy * hy, sz * iz, ix, sy * hy, sz * iz,
+          ix, sy * iy, sz * hz, -ix, sy * iy, sz * hz, 0, sy, sz, true);
+      }
+    }
+    for (let sx = -1; sx <= 1; sx += 2) {
+      for (let sz = -1; sz <= 1; sz += 2) {
+        // parallel to Y — joins +/-X to +/-Z
+        q(sx * hx, -iy, sz * iz, sx * hx, iy, sz * iz,
+          sx * ix, iy, sz * hz, sx * ix, -iy, sz * hz, sx, 0, sz, true);
+      }
+      for (let sy = -1; sy <= 1; sy += 2) {
+        // parallel to Z — joins +/-X to +/-Y
+        q(sx * hx, sy * iy, -iz, sx * hx, sy * iy, iz,
+          sx * ix, sy * hy, iz, sx * ix, sy * hy, -iz, sx, sy, 0, true);
+      }
+    }
+
+    /* 8 corner triangles */
+    for (let sx = -1; sx <= 1; sx += 2) {
+      for (let sy = -1; sy <= 1; sy += 2) {
+        for (let sz = -1; sz <= 1; sz += 2) {
+          this.tri(
+            px(sx * hx, sz * iz), cy + sy * iy, pz(sx * hx, sz * iz),
+            px(sx * ix, sz * iz), cy + sy * hy, pz(sx * ix, sz * iz),
+            px(sx * ix, sz * hz), cy + sy * iy, pz(sx * ix, sz * hz),
+            dx(sx, sz), sy, dz(sx, sz), true,
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * A faceted cylinder / truncated cone standing on +Y, with chamfered rims.
+   * `cy` is the BASE, not the centre. `segs` lives in the bible's 12-16 band.
+   */
+  cyl(
+    cx: number, cy: number, cz: number,
+    rBottom: number, rTop: number, h: number,
+    segs: number, chamfer: number,
+    capBottom = true, capTop = true, yawOffset = 0,
+  ): void {
+    const n = Math.max(3, Math.round(segs));
+    const c = clamp(chamfer, 0, Math.min(h * 0.4, Math.min(rBottom, rTop) * 0.8));
+    // [y, radius, isChamferRing]
+    const ry: number[] = [];
+    const rr: number[] = [];
+    const rb: boolean[] = [];
+    if (c > 1e-5) {
+      ry.push(cy, cy + c, cy + h - c, cy + h);
+      rr.push(Math.max(rBottom - c, 1e-4), rBottom, rTop, Math.max(rTop - c, 1e-4));
+      rb.push(true, false, false, true);
+    } else {
+      ry.push(cy, cy + h);
+      rr.push(rBottom, rTop);
+      rb.push(false, false);
+    }
+
+    for (let i = 0; i < n; i++) {
+      const a0 = yawOffset + (i / n) * TAU, a1 = yawOffset + ((i + 1) / n) * TAU;
+      const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+      const mx = (c0 + c1) * 0.5, mz = (s0 + s1) * 0.5;
+      for (let r = 0; r + 1 < ry.length; r++) {
+        const isBevel = rb[r] || rb[r + 1];
+        // Tilt the outward reference with the taper so a chamfer strip and a
+        // cone flank both wind correctly.
+        const oy = (rr[r] - rr[r + 1]) / Math.max(Math.abs(ry[r + 1] - ry[r]), 1e-4);
+        this.quad(
+          cx + c0 * rr[r], ry[r], cz + s0 * rr[r],
+          cx + c1 * rr[r], ry[r], cz + s1 * rr[r],
+          cx + c1 * rr[r + 1], ry[r + 1], cz + s1 * rr[r + 1],
+          cx + c0 * rr[r + 1], ry[r + 1], cz + s0 * rr[r + 1],
+          mx, oy * 0.5, mz, isBevel,
+        );
+      }
+    }
+    if (capBottom) this.disc(cx, ry[0], cz, rr[0], n, -1, yawOffset);
+    const last = ry.length - 1;
+    if (capTop) this.disc(cx, ry[last], cz, rr[last], n, 1, yawOffset);
+  }
+
+  /** Flat n-gon cap in the XZ plane, normal +/-Y. */
+  disc(cx: number, cy: number, cz: number, r: number, segs: number, dir: number, yawOffset = 0): void {
+    const n = Math.max(3, Math.round(segs));
+    for (let i = 1; i + 1 < n; i++) {
+      const a0 = yawOffset, a1 = yawOffset + (i / n) * TAU, a2 = yawOffset + ((i + 1) / n) * TAU;
+      this.tri(
+        cx + Math.cos(a0) * r, cy, cz + Math.sin(a0) * r,
+        cx + Math.cos(a1) * r, cy, cz + Math.sin(a1) * r,
+        cx + Math.cos(a2) * r, cy, cz + Math.sin(a2) * r,
+        0, dir, 0, false,
+      );
+    }
+  }
+
+  /**
+   * A faceted ellipsoid centred on (cx,cy,cz). Canopies, boulder masses,
+   * flower heads. `squashBottom` (0..1) lifts the lower hemisphere so a canopy
+   * blob reads as a dome sitting on a trunk rather than a floating sphere.
+   */
+  blob(
+    cx: number, cy: number, cz: number,
+    rx: number, ry: number, rz: number,
+    segs: number, rings: number, squashBottom = 0,
+  ): void {
+    const n = Math.max(4, Math.round(segs)), m = Math.max(2, Math.round(rings));
+    for (let j = 0; j < m; j++) {
+      const p0 = Math.PI * (j / m), p1 = Math.PI * ((j + 1) / m);
+      const y0raw = -Math.cos(p0), y1raw = -Math.cos(p1);
+      const y0 = y0raw < 0 ? y0raw * (1 - squashBottom) : y0raw;
+      const y1 = y1raw < 0 ? y1raw * (1 - squashBottom) : y1raw;
+      const s0 = Math.sin(p0), s1 = Math.sin(p1);
+      for (let i = 0; i < n; i++) {
+        const a0 = (i / n) * TAU, a1 = ((i + 1) / n) * TAU;
+        const c0 = Math.cos(a0), z0 = Math.sin(a0), c1 = Math.cos(a1), z1 = Math.sin(a1);
+        const sm = (s0 + s1) * 0.5;
+        const ox = (c0 + c1) * 0.5 * sm, oz = (z0 + z1) * 0.5 * sm, oy = (y0 + y1) * 0.5;
+        if (j === 0) {
+          this.tri(
+            cx, cy + y0 * ry, cz,
+            cx + c0 * s1 * rx, cy + y1 * ry, cz + z0 * s1 * rz,
+            cx + c1 * s1 * rx, cy + y1 * ry, cz + z1 * s1 * rz,
+            ox, oy, oz, false,
+          );
+        } else if (j === m - 1) {
+          this.tri(
+            cx + c0 * s0 * rx, cy + y0 * ry, cz + z0 * s0 * rz,
+            cx + c1 * s0 * rx, cy + y0 * ry, cz + z1 * s0 * rz,
+            cx, cy + y1 * ry, cz,
+            ox, oy, oz, false,
+          );
+        } else {
+          this.quad(
+            cx + c0 * s0 * rx, cy + y0 * ry, cz + z0 * s0 * rz,
+            cx + c1 * s0 * rx, cy + y0 * ry, cz + z1 * s0 * rz,
+            cx + c1 * s1 * rx, cy + y1 * ry, cz + z1 * s1 * rz,
+            cx + c0 * s1 * rx, cy + y1 * ry, cz + z0 * s1 * rz,
+            ox, oy, oz, false,
+          );
+        }
+      }
+    }
+  }
+
+  /** Faceted cone standing on +Y from base `cy`. Conifer tiers, roof caps. */
+  cone(cx: number, cy: number, cz: number, r: number, h: number, segs: number, capBottom = true): void {
+    const n = Math.max(3, Math.round(segs));
+    for (let i = 0; i < n; i++) {
+      const a0 = (i / n) * TAU, a1 = ((i + 1) / n) * TAU;
+      const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+      this.tri(
+        cx + c0 * r, cy, cz + s0 * r,
+        cx + c1 * r, cy, cz + s1 * r,
+        cx, cy + h, cz,
+        (c0 + c1) * 0.5, r / Math.max(h, 1e-3), (s0 + s1) * 0.5, false,
+      );
+    }
+    if (capBottom) this.disc(cx, cy, cz, r, n, -1);
+  }
+
+  /**
+   * A tapered blade / frond: a V-folded card arcing outward and drooping.
+   * Bible §6.5 grass tufts are "a radial fan of 14-20 tapered blade cards, each
+   * 0.15 m x 1.4-1.8 m, arcing outward". The fold gives the card a spine so it
+   * still reads as volume from the 39-degree camera instead of vanishing
+   * edge-on, without needing a double-sided material.
+   *
+   * `rise` may be negative (an umbrella panel falling away from its finial).
+   */
+  blade(
+    bx: number, by: number, bz: number,
+    dirX: number, dirZ: number,
+    length: number, rise: number, width: number,
+    droop: number, spans = 3, widenOut = false,
+  ): void {
+    const px = -dirZ, pz = dirX;
+    const s = Math.max(2, spans | 0);
+    let plx = 0, ply = 0, plz = 0, psx = 0, psy = 0, psz = 0, prx = 0, pry = 0, prz = 0;
+    for (let i = 0; i <= s; i++) {
+      const t = i / s;
+      const reach = length * Math.pow(t, widenOut ? 1.0 : 1.55);
+      const y = rise * (1 - Math.pow(1 - t, 1.7)) - droop * Math.pow(t, 3.1);
+      const w = width * (widenOut ? Math.max(t, 0.06) : Math.pow(1 - t, 0.75)) * 0.5;
+      const fold = w * (widenOut ? 0.22 : 0.9);
+      const cxp = bx + dirX * reach, cyp = by + y, czp = bz + dirZ * reach;
+      const lx = cxp + px * w, lz = czp + pz * w;
+      const sx = cxp, sy = cyp + fold, sz = czp;
+      const rx = cxp - px * w, rz = czp - pz * w;
+      if (i > 0) {
+        this.quad(plx, ply, plz, lx, cyp, lz, sx, sy, sz, psx, psy, psz, 0, 1, 0, false);
+        this.quad(psx, psy, psz, sx, sy, sz, rx, cyp, rz, prx, pry, prz, 0, 1, 0, false);
+      }
+      plx = lx; ply = cyp; plz = lz;
+      psx = sx; psy = sy; psz = sz;
+      prx = rx; pry = cyp; prz = rz;
+    }
+  }
+
+  /* ---- vertex emission ------------------------------------------------- */
+
+  private vertex(
+    x: number, y: number, z: number,
+    nx: number, ny: number, nz: number, bevelPaint: boolean,
+  ): void {
+    this.posArr.push(x, y, z);
+    this.nrmArr.push(nx, ny, nz);
+
+    const ta = clamp01((y - this.aoBase) / (this.aoTop - this.aoBase));
+    const aoMul = this.aoFloor + (1 - this.aoFloor) * Math.pow(ta, 0.65);
+    if (bevelPaint) this.colArr.push(this.br * aoMul, this.bg * aoMul, this.bb * aoMul);
+    else this.colArr.push(this.cr * aoMul, this.cg * aoMul, this.cb * aoMul);
+
+    const ts = clamp01((y - this.swayBase) / (this.swayTop - this.swayBase));
+    this.swyArr.push(this.swayAmp * Math.pow(ts, 1.4));
+    this.emtArr.push(this.emit);
+
+    if (x < this.min[0]) this.min[0] = x;
+    if (y < this.min[1]) this.min[1] = y;
+    if (z < this.min[2]) this.min[2] = z;
+    if (x > this.max[0]) this.max[0] = x;
+    if (y > this.max[1]) this.max[1] = y;
+    if (z > this.max[2]) this.max[2] = z;
+  }
+
+  get vertexCount(): number { return this.posArr.length / 3; }
+
+  toGeometry(name: string): THREE.BufferGeometry {
+    const g = new THREE.BufferGeometry();
+    g.name = name;
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(this.posArr), 3));
+    g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(this.nrmArr), 3));
+    g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(this.colArr), 3));
+    g.setAttribute('aSway', new THREE.BufferAttribute(new Float32Array(this.swyArr), 1));
+    g.setAttribute('aEmit', new THREE.BufferAttribute(new Float32Array(this.emtArr), 1));
+    const count = this.posArr.length / 3;
+    g.setIndex(count > 65535
+      ? new THREE.BufferAttribute(new Uint32Array(this.idxArr), 1)
+      : new THREE.BufferAttribute(new Uint16Array(this.idxArr), 1));
+    g.computeBoundingSphere();
+    g.computeBoundingBox();
+    return g;
+  }
+}
+
+/* ==========================================================================
+ * 3. THE PALETTE
+ *
+ * One palette per biome. Every literal is a bible §6.1 / §6.5 authored albedo;
+ * where the bible gives a range I took the midpoint and let the per-instance
+ * hue/value jitter (scorecard #39) cover the rest.
+ * ========================================================================== */
+
+export interface PropPalette {
+  leafA: string; leafB: string; leafC: string;
+  autumnA: string; autumnB: string; autumnC: string;
+  conifer: string; coniferDark: string;
+  frond: string;
+  shrub: string; shrubDark: string; hedge: string;
+  trunk: string; trunkDark: string;
+  grassGold: string; grassGoldBase: string;
+  grassGreen: string; grassGreenBase: string;
+  rock: string; rockShade: string; rockCap: string;
+  soil: string; hay: string;
+  /* man-made — biome independent, bible §6.1 / §6.3 */
+  concrete: string; kerb: string;
+  steel: string; darkSteel: string; rust: string;
+  wood: string; woodDark: string;
+  paintWhite: string; paintRed: string; paintYellow: string; paintBlue: string; paintGreen: string;
+  glass: string; tyre: string; bronze: string;
+  lampGlow: string; signalRed: string; signalAmber: string; signalGreen: string;
+  flowerA: string; flowerB: string;
+  crateA: string; crateB: string; containerA: string; containerB: string;
+}
+
+/** Everything a man makes looks the same in every biome. */
+const MANMADE = {
+  concrete: '#9A968C', kerb: '#C0BAB0',
+  steel: '#7E7A6E', darkSteel: '#3A3E42', rust: '#6A4528',
+  wood: '#8A6A3E', woodDark: '#5A4028',
+  paintWhite: '#D8D2C8', paintRed: '#B03A2E', paintYellow: '#E0B12A',
+  paintBlue: '#2A4C8A', paintGreen: '#2E8A5A',
+  glass: '#17324A', tyre: '#1A1A1C', bronze: '#4C5A46',
+  lampGlow: '#E8D089', signalRed: '#E01418', signalAmber: '#FF9612', signalGreen: '#4CE05A',
+  flowerA: '#C0398F', flowerB: '#E8C33A',
+  crateA: '#B5843C', crateB: '#8A6A3E', containerA: '#B03A2E', containerB: '#C97A22',
+} as const;
+
+const PALETTES: Record<BiomeName, PropPalette> = {
+  temperate: {
+    leafA: '#4C6B1E', leafB: '#3A5417', leafC: '#6B8028',
+    autumnA: '#C4761E', autumnB: '#A8531A', autumnC: '#D9A02C',
+    conifer: '#243009', coniferDark: '#111409', frond: '#385601',
+    shrub: '#3C5220', shrubDark: '#22320F', hedge: '#2A3A16',
+    trunk: '#4A3A28', trunkDark: '#2C231A',
+    grassGold: '#C8B84A', grassGoldBase: '#7A6A2A',
+    grassGreen: '#5E8B2E', grassGreenBase: '#2E4A14',
+    rock: '#7A7258', rockShade: '#4A452F', rockCap: '#9A9078',
+    soil: '#9C7B52', hay: '#C8B84A',
+    ...MANMADE,
+  },
+  desert: {
+    leafA: '#7E7A32', leafB: '#5E5A22', leafC: '#98903E',
+    autumnA: '#C08A2E', autumnB: '#A06A20', autumnC: '#D6B04A',
+    conifer: '#3A4014', coniferDark: '#1E2409', frond: '#4C6410',
+    shrub: '#6E6A2E', shrubDark: '#42401A', hedge: '#4A5220',
+    trunk: '#6B5433', trunkDark: '#3E3020',
+    grassGold: '#D6C258', grassGoldBase: '#8A7638',
+    grassGreen: '#8A8A3A', grassGreenBase: '#4E4C1E',
+    rock: '#A89A78', rockShade: '#6E6248', rockCap: '#C4B48E',
+    soil: '#C4A878', hay: '#D6C258',
+    ...MANMADE,
+  },
+  snow: {
+    leafA: '#3A4A1E', leafB: '#2A3614', leafC: '#4E5E28',
+    autumnA: '#8A6A2E', autumnB: '#6E4E20', autumnC: '#A08A46',
+    conifer: '#1A2410', coniferDark: '#0E1408', frond: '#2A3A12',
+    shrub: '#33421C', shrubDark: '#1E280E', hedge: '#26301A',
+    trunk: '#3A2E22', trunkDark: '#221A14',
+    grassGold: '#A89C64', grassGoldBase: '#6A6242',
+    grassGreen: '#4E6A32', grassGreenBase: '#28381A',
+    rock: '#8A8A88', rockShade: '#4E5254', rockCap: '#C4BAB2',
+    soil: '#6E645A', hay: '#A89C64',
+    ...MANMADE,
+  },
+  urban: {
+    leafA: '#4C6B1E', leafB: '#3A5417', leafC: '#6B8028',
+    autumnA: '#C4761E', autumnB: '#A8531A', autumnC: '#D9A02C',
+    conifer: '#1E2A0C', coniferDark: '#111409', frond: '#385601',
+    shrub: '#3C5220', shrubDark: '#22320F', hedge: '#2A3A16',
+    trunk: '#4A3A28', trunkDark: '#2C231A',
+    grassGold: '#B8AC4A', grassGoldBase: '#6E6228',
+    grassGreen: '#5E8B2E', grassGreenBase: '#2E4A14',
+    rock: '#7C7468', rockShade: '#48453E', rockCap: '#9A968C',
+    soil: '#8A7458', hay: '#C8B84A',
+    ...MANMADE,
+  },
+};
+
+export function propPalette(biome: BiomeName): PropPalette {
+  return PALETTES[biome] ?? PALETTES.temperate;
+}
+
+/* ==========================================================================
+ * 4. PLACEMENT METADATA
+ *
+ * The scatter system never hardcodes what a tree is; it reads these fields.
+ * ========================================================================== */
+
+export type PlacementMode =
+  /** 3-9 members in a copse. Bible §6.5 clustering. */
+  | 'clump'
+  /** A broad low-density carpet over a whole habitat region. */
+  | 'field'
+  /** Regular pitch along a kerb line. Bible §6.3 street furniture. */
+  | 'street'
+  /** A one-off landmark, placed on its own with a wide exclusion. */
+  | 'solo';
+
+export type PropFamily = 'canopy' | 'shrub' | 'grass' | 'rock' | 'street' | 'yard' | 'civic';
+
+/** Bitmasks over SurfaceId. */
+export const SURF_SOFT = (1 << SurfaceId.Ground) | (1 << SurfaceId.Dirt) | (1 << SurfaceId.Sand);
+export const SURF_HARD = (1 << SurfaceId.Concrete) | (1 << SurfaceId.Paving);
+export const SURF_STONE = 1 << SurfaceId.Rock;
+export const SURF_ANY = SURF_SOFT | SURF_HARD | SURF_STONE;
+
+export interface PropDef {
+  readonly key: string;
+  readonly family: PropFamily;
+  /** Footprint radius in metres — spacing and exclusion tests. */
+  readonly radius: number;
+  readonly height: number;
+  /**
+   * Metres of ground this prop counts as adorned for the 25x25 rule
+   * (scorecard #15). Generous on purpose: an 11 m tree and its cast shadow
+   * genuinely break up far more ground than its 2 m trunk does.
+   */
+  readonly adorn: number;
+  /** Minimum metres between two instances of this type. */
+  readonly spacing: number;
+  readonly surfaces: number;
+  /** Maximum ground slope, radians. */
+  readonly maxSlope: number;
+  readonly mode: PlacementMode;
+  readonly clumpMin: number;
+  readonly clumpMax: number;
+  /** Radius of a clump, metres. */
+  readonly clumpSpread: number;
+  /** 0 = wilderness only, 1 = city only. Blended against MapPreset.urban. */
+  readonly urban: number;
+  /** Relative abundance per biome. 0 removes the type from that biome. */
+  readonly biome: Readonly<Record<BiomeName, number>>;
+  /** Would stop a tank. Advisory — scatter never writes the nav grid. */
+  readonly blocksNav: boolean;
+  /** Per-instance uniform scale band. Defaults to SCATTER_JITTER's. */
+  readonly scaleMin?: number;
+  readonly scaleMax?: number;
+  /** Per-instance hue jitter multiplier. Man-made props want less than foliage. */
+  readonly jitter?: number;
+  readonly build: (m: PropMesh, rng: Rng, p: PropPalette) => void;
+}
+
+/* ==========================================================================
+ * 5. THE BUILDERS
+ *
+ * Sizes are bible §6.5 (vegetation) and §6.3 (street furniture) verbatim.
+ * 1 world unit = 1 metre is law, so every number below is metres.
+ * ========================================================================== */
+
+/** Bible 5.5 wants 2-4 px of bevel; at 29.6 px/m that is 0.068-0.135 m. */
+function chamferFor(minDim: number): number {
+  return clamp(minDim * 0.09, 0.02, 0.13);
+}
+
+/* ---- canopy -------------------------------------------------------------- */
+
+function broadleaf(m: PropMesh, rng: Rng, p: PropPalette, autumn: boolean): void {
+  const height = rng.range(9.5, 12.5);
+  const canopyR = rng.range(3.6, 4.8);
+  const trunkH = height * rng.range(0.34, 0.42);
+  const trunkR = rng.range(0.28, 0.40);
+
+  m.ao(0.42, 0, height * 0.55).sway(0, 0, 1).emissive(0);
+  m.color(p.trunk).cyl(0, 0, 0, trunkR * 1.5, trunkR, trunkH, 12, chamferFor(trunkR * 2));
+  // Root flares so the trunk is not a pipe stuck in the ground.
+  m.color(p.trunkDark);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * TAU + rng.range(-0.4, 0.4);
+    m.box(Math.cos(a) * trunkR * 0.9, 0.20, Math.sin(a) * trunkR * 0.9,
+      trunkR * 0.8, 0.60, trunkR * 0.8, 0.05, a);
+  }
+  // Branch stubs pushing into the canopy — kills the lollipop read.
+  m.color(p.trunk);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * TAU + 0.7;
+    const r = canopyR * 0.30;
+    m.cyl(Math.cos(a) * r, trunkH * 0.80, Math.sin(a) * r,
+      trunkR * 0.55, trunkR * 0.28, canopyR * 0.60, 8, 0.03, false, false);
+  }
+
+  // Canopy: 4 overlapping squashed blobs at three tones (bible §6.5 gives
+  // three colours per season for exactly this reason).
+  const tones = autumn
+    ? [p.autumnA, p.autumnB, p.autumnC, p.autumnA]
+    : [p.leafA, p.leafB, p.leafC, p.leafA];
+  m.sway(SCATTER_WIND.canopyAmplitude, trunkH * 0.5, height);
+  m.ao(0.60, trunkH * 0.6, height);
+  const cy = trunkH + canopyR * 0.62;
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * TAU + rng.range(-0.4, 0.4);
+    const d = i === 0 ? 0 : canopyR * rng.range(0.34, 0.56);
+    const r = canopyR * (i === 0 ? 1.0 : rng.range(0.56, 0.78));
+    m.color(tones[i]);
+    m.blob(Math.cos(a) * d, cy + (i === 0 ? 0 : rng.range(-0.3, 1.4)), Math.sin(a) * d,
+      r, r * rng.range(0.74, 0.94), r, 10, 5, 0.34);
+  }
+}
+
+function buildTree(m: PropMesh, rng: Rng, p: PropPalette): void { broadleaf(m, rng, p, false); }
+function buildTreeAutumn(m: PropMesh, rng: Rng, p: PropPalette): void { broadleaf(m, rng, p, true); }
+
+function buildConifer(m: PropMesh, rng: Rng, p: PropPalette): void {
+  const height = rng.range(9, 13);
+  const baseR = rng.range(2.1, 2.9);
+  const trunkH = height * 0.15;
+  m.ao(0.40, 0, height * 0.4).sway(0, 0, 1);
+  m.color(p.trunkDark).cyl(0, 0, 0, 0.34, 0.24, trunkH * 1.7, 10, 0.05);
+
+  // 4 stacked cones, each ~0.74x the one below. The stepped silhouette is what
+  // separates a conifer from a green traffic cone at RTS distance.
+  m.sway(SCATTER_WIND.canopyAmplitude * 0.55, trunkH, height);
+  m.ao(0.52, trunkH, height);
+  let y = trunkH;
+  let r = baseR;
+  for (let i = 0; i < 4; i++) {
+    const h = (height - trunkH) * (0.38 - i * 0.035);
+    m.color(i % 2 === 0 ? p.conifer : p.coniferDark);
+    m.cone(0, y, 0, r, h * 2.0, 12, i === 0);
+    y += h * 0.90;
+    r *= 0.74;
+  }
+}
+
+function buildPalm(m: PropMesh, rng: Rng, p: PropPalette): void {
+  const height = rng.range(6.5, 9);
+  const lean = rng.range(0.07, 0.17) * rng.sign();
+  const segs = 7;
+  const segH = height / segs;
+  m.ao(0.45, 0, height * 0.6).sway(SCATTER_WIND.canopyAmplitude * 0.5, 0, height);
+  m.color(p.trunk);
+  let x = 0;
+  for (let i = 0; i < segs; i++) {
+    const t = i / segs;
+    const r = 0.30 - 0.11 * t;
+    m.cyl(x, i * segH, 0, r, r * 0.94, segH * 1.03, 10, 0.035, i === 0, false);
+    x += lean * segH * (0.4 + t);
+  }
+  // 8 fronds. Bible §6.5 palm span is 5-7 m, so each frond reaches ~3 m.
+  m.color(p.frond).sway(SCATTER_WIND.canopyAmplitude * 1.4, height * 0.4, height + 1);
+  m.ao(0.72, height * 0.5, height);
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * TAU + rng.range(-0.12, 0.12);
+    m.blade(x, height, 0, Math.cos(a), Math.sin(a), rng.range(2.6, 3.4), 1.1, 0.85, 1.5, 4);
+  }
+  m.color(p.trunkDark).sway(SCATTER_WIND.canopyAmplitude * 0.6, height * 0.5, height);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * TAU;
+    m.blob(x + Math.cos(a) * 0.28, height - 0.22, Math.sin(a) * 0.28, 0.22, 0.22, 0.22, 8, 4, 0);
+  }
+}
+
+/* ---- shrub --------------------------------------------------------------- */
+
+function buildBush(m: PropMesh, rng: Rng, p: PropPalette): void {
+  const h = rng.range(1.2, 2.0);
+  const r = rng.range(0.95, 1.45);
+  m.ao(0.45, 0, h).sway(SCATTER_WIND.canopyAmplitude * 0.45, 0, h);
+  // Lobes are deliberately UNEVEN in all three axes and offset well past their
+  // own radius. A first pass used four concentric near-spheres and every bush
+  // on the map read as a dark green beach ball.
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * TAU + rng.range(-0.6, 0.6);
+    const d = i === 0 ? 0 : r * rng.range(0.45, 0.85);
+    const lr = r * (i === 0 ? 0.9 : rng.range(0.42, 0.70));
+    m.color(i % 2 === 0 ? p.shrub : p.shrubDark);
+    m.blob(
+      Math.cos(a) * d, h * (i === 0 ? 0.46 : rng.range(0.34, 0.78)), Math.sin(a) * d,
+      lr * rng.range(0.8, 1.25), h * rng.range(0.30, 0.50), lr * rng.range(0.8, 1.25),
+      8, 4, 0.5,
+    );
+  }
+  // Long twigs breaking the outline. These are what stop a shrub from reading
+  // as a primitive at the 39-degree camera.
+  m.color(p.shrubDark).sway(SCATTER_WIND.canopyAmplitude * 0.8, 0, h + 0.6);
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * TAU + rng.range(-0.35, 0.35);
+    m.blade(
+      Math.cos(a) * r * 0.2, h * rng.range(0.35, 0.62), Math.sin(a) * r * 0.2,
+      Math.cos(a), Math.sin(a),
+      r * rng.range(1.35, 1.85), h * rng.range(0.35, 0.62), 0.20,
+      h * rng.range(0.2, 0.5), 3,
+    );
+  }
+}
+
+function buildHedge(m: PropMesh, rng: Rng, p: PropPalette): void {
+  // Bible §6.1: "hedge foliage #2A3A16, 0.15 m leaf noise, BOX silhouette".
+  // ra3steam_08 borders every planted island with exactly this.
+  const len = 3.6, w = 1.15, h = 1.25;
+  m.ao(0.42, 0, h).sway(SCATTER_WIND.canopyAmplitude * 0.25, 0, h);
+  m.color(p.hedge).box(0, h * 0.5, 0, len, h, w, 0.14);
+  m.color(p.shrubDark);
+  const n = Math.round(len / 0.55);
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n;
+    m.blob((t - 0.5) * len, h + rng.range(-0.06, 0.10), rng.range(-w * 0.28, w * 0.28),
+      rng.range(0.20, 0.34), rng.range(0.12, 0.22), rng.range(0.20, 0.32), 6, 3, 0.4);
+  }
+}
+
+/* ---- grass --------------------------------------------------------------- */
+
+function grassTuft(m: PropMesh, rng: Rng, p: PropPalette, golden: boolean): void {
+  // Bible §6.5: a radial fan of 14-20 tapered blade cards, each 0.15 m x
+  // 1.4-1.8 m, tuft footprint 2.0-3.5 m, height 1.5-2.5 m, and TWO SPECIES
+  // MIXED 50/50 — which is why `grassTuft` and `grassTuftGreen` are two keys.
+  const tip = golden ? p.grassGold : p.grassGreen;
+  const base = golden ? p.grassGoldBase : p.grassGreenBase;
+  const h = rng.range(1.5, 2.2);
+  const spread = rng.range(1.0, 1.6);
+  const blades = 14;
+  m.ao(0.38, 0, h).sway(SCATTER_WIND.grassAmplitude, 0, h);
+  for (let i = 0; i < blades; i++) {
+    const a = (i / blades) * TAU + rng.range(-0.18, 0.18);
+    m.color(i % 3 === 0 ? base : tip);
+    m.blade(
+      Math.cos(a) * 0.08, 0, Math.sin(a) * 0.08, Math.cos(a), Math.sin(a),
+      spread * rng.range(0.7, 1.15), h * rng.range(0.72, 1.0), 0.16,
+      h * rng.range(0.18, 0.42), 3,
+    );
+  }
+  m.color(base).sway(0, 0, 1);
+  m.blob(0, 0.10, 0, 0.34, 0.16, 0.34, 7, 3, 0.5);
+}
+
+function buildGrassGold(m: PropMesh, rng: Rng, p: PropPalette): void { grassTuft(m, rng, p, true); }
+function buildGrassGreen(m: PropMesh, rng: Rng, p: PropPalette): void { grassTuft(m, rng, p, false); }
+
+/* ---- rock ---------------------------------------------------------------- */
+
+function buildBoulder(m: PropMesh, rng: Rng, p: PropPalette): void {
+  // Chamfered angular masses, not spheres — bible §6.4 wants architectural,
+  // striated rock and a smooth sphere reads as a beach ball.
+  const s = rng.range(1.5, 2.5);
+  m.ao(0.40, 0, s * 1.4).sway(0, 0, 1);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * TAU + rng.range(-0.5, 0.5);
+    const d = i === 0 ? 0 : s * rng.range(0.25, 0.5);
+    const w = s * rng.range(0.85, 1.30), hh = s * rng.range(0.60, 1.00), dd = s * rng.range(0.80, 1.20);
+    m.color(i % 2 === 0 ? p.rock : p.rockShade);
+    m.box(Math.cos(a) * d, hh * 0.46, Math.sin(a) * d, w, hh, dd,
+      chamferFor(Math.min(w, hh, dd)) * 2.2, rng.range(0, TAU));
+  }
+  // A lit cap facet — bible §6.4's coping read, scaled down to a boulder.
+  m.color(p.rockCap).box(0, s * 0.64, 0, s * 0.70, 0.16, s * 0.60, 0.05, rng.range(0, TAU));
+}
+
+function buildRockCluster(m: PropMesh, rng: Rng, p: PropPalette): void {
+  // Bible §6.4: "base skirted with 0.5-1.5 m boulders, 3-6 per 10 m of run".
+  m.ao(0.42, 0, 1.4).sway(0, 0, 1);
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * TAU + rng.range(-0.4, 0.4);
+    const d = rng.range(0.3, 1.5);
+    const s = rng.range(0.45, 1.05);
+    m.color(i % 3 === 0 ? p.rockShade : p.rock);
+    m.box(Math.cos(a) * d, s * 0.42, Math.sin(a) * d, s * 1.3, s * 0.85, s * 1.1,
+      chamferFor(s) * 2.0, rng.range(0, TAU));
+  }
+}
+
+/* ---- yard ---------------------------------------------------------------- */
+
+function buildHaystack(m: PropMesh, rng: Rng, p: PropPalette): void {
+  const h = 3.4, r = 2.0;
+  m.ao(0.44, 0, h).sway(0, 0, 1);
+  m.color(p.hay).cyl(0, 0, 0, r, r * 0.86, h * 0.45, 12, 0.10);
+  m.color(shadeOf(p.hay, 0.88)).cone(0, h * 0.45, 0, r * 0.92, h * 0.62, 12, false);
+  m.color(p.woodDark).cyl(0, h * 0.95, 0, 0.08, 0.08, 0.8, 6, 0);
+  // Rectangular bales leaning against the stack — the greeble that turns a
+  // cone into a farmyard.
+  m.color(p.hay);
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * TAU + 0.4;
+    m.box(Math.cos(a) * (r + 0.55), 0.42, Math.sin(a) * (r + 0.55), 1.4, 0.80, 0.80, 0.07, a);
+  }
+}
+
+function buildCrateStack(m: PropMesh, rng: Rng, p: PropPalette): void {
+  m.ao(0.45, 0, 2.6).sway(0, 0, 1);
+  const spots: ReadonlyArray<readonly [number, number, number, number]> = [
+    [0, 0, 1.25, 0], [1.3, 0.15, 1.10, 0], [-1.2, -0.2, 1.15, 0],
+    [0.2, 1.2, 1.00, 1.22], [1.1, 1.35, 0.85, 1.22],
+  ];
+  for (let i = 0; i < spots.length; i++) {
+    const [x, z, s, y] = spots[i];
+    m.color(i % 2 === 0 ? p.crateA : p.crateB);
+    m.box(x, y + s * 0.5, z, s, s, s, chamferFor(s) * 1.6, rng.range(-0.25, 0.25));
+    m.color(p.woodDark);
+    m.box(x, y + s * 0.5, z, s * 1.02, s * 0.10, s * 1.02, 0.02, 0);
+  }
+}
+
+function buildContainerStack(m: PropMesh, rng: Rng, p: PropPalette): void {
+  // The container pile in ra3steam_05 — two corrugated boxes, slightly askew.
+  m.ao(0.45, 0, 5.4).sway(0, 0, 1);
+  const cols = [p.containerA, p.containerB];
+  let y = 0;
+  for (let i = 0; i < 2; i++) {
+    const w = 6.0, h = 2.6, d = 2.4;
+    const col = cols[i % cols.length];
+    const ox = rng.range(-0.45, 0.45), oz = rng.range(-0.2, 0.2), oy = rng.range(-0.05, 0.05);
+    m.color(col).box(ox, y + h * 0.5, oz, w, h, d, 0.10, oy);
+    m.color(shadeOf(col, 0.80));
+    for (let k = 0; k < 9; k++) {
+      const x = ox + ((k + 0.5) / 9 - 0.5) * (w - 0.6);
+      m.box(x, y + h * 0.5, oz + d * 0.5, 0.14, h - 0.34, 0.09, 0.02, oy);
+      m.box(x, y + h * 0.5, oz - d * 0.5, 0.14, h - 0.34, 0.09, 0.02, oy);
+    }
+    // Corner castings.
+    m.color(p.darkSteel);
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        m.box(ox + sx * (w * 0.5 - 0.18), y + 0.16, oz + sz * (d * 0.5 - 0.18),
+          0.34, 0.32, 0.34, 0.04, oy);
+        m.box(ox + sx * (w * 0.5 - 0.18), y + h - 0.16, oz + sz * (d * 0.5 - 0.18),
+          0.34, 0.32, 0.34, 0.04, oy);
+      }
+    }
+    y += h + 0.06;
+  }
+}
+
+/**
+ * A GROUP of 3-4 drums, not a single barrel.
+ *
+ * One geometry per key means a lone-barrel prop would paint every barrel on the
+ * map the same colour — per-instance `instanceColor` is a multiplier and cannot
+ * turn olive into rust. Baking the group with mixed bodies fixes that in the
+ * only place it can be fixed, and it matches the reference anyway: ra3steam_08
+ * and _05 both show drums in threes and fours against a wall, never singly.
+ */
+function buildBarrelGroup(m: PropMesh, rng: Rng, p: PropPalette): void {
+  const r = 0.42, h = 1.05;
+  const bodies = [p.rust, '#4A6B33', p.paintRed, '#3E5A6E'];
+  rng.shuffle(bodies);
+  const n = rng.int(3, 4);
+  m.ao(0.45, 0, h);
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * TAU + rng.range(-0.3, 0.3);
+    const d = i === 0 ? 0 : rng.range(0.62, 0.95);
+    const x = Math.cos(a) * d, z = Math.sin(a) * d;
+    const tipped = i === n - 1 && rng.chance(0.35);
+    const body = bodies[i % bodies.length];
+    if (tipped) {
+      // One drum on its side, so the group has a silhouette instead of a
+      // skyline of identical cylinders.
+      m.color(body).box(x, r, z, h, r * 2, r * 2, 0.10, a);
+      m.color(shadeOf(body, 0.68));
+      m.box(x - h * 0.26, r, z, 0.09, r * 2.05, r * 2.05, 0.02, a);
+      m.box(x + h * 0.26, r, z, 0.09, r * 2.05, r * 2.05, 0.02, a);
+      continue;
+    }
+    m.color(body).cyl(x, 0, z, r, r, h, 14, 0.06);
+    m.color(shadeOf(body, 0.68));
+    m.cyl(x, h * 0.26, z, r * 1.05, r * 1.05, 0.09, 14, 0.02, false, false);
+    m.cyl(x, h * 0.66, z, r * 1.05, r * 1.05, 0.09, 14, 0.02, false, false);
+    if (i === 0) {
+      m.color(p.paintYellow);
+      m.cyl(x, h * 0.46, z, r * 1.03, r * 1.03, 0.10, 14, 0.02, false, false);
+    }
+  }
+}
+
+/* ---- street furniture ---------------------------------------------------- */
+
+function streetLamp(m: PropMesh, rng: Rng, p: PropPalette, twin: boolean): void {
+  // ra3steam_08 carries a dozen of these; they are the metronome of a block.
+  const h = twin ? 7.4 : 6.4;
+  m.ao(0.50, 0, h).sway(0, 0, 1);
+  m.color(p.concrete).cyl(0, 0, 0, 0.34, 0.30, 0.24, 10, 0.05);
+  m.color(p.darkSteel).cyl(0, 0.20, 0, 0.16, 0.10, h, 12, 0.04, false, false);
+  if (twin) {
+    for (const s of [-1, 1]) {
+      m.color(p.darkSteel);
+      m.cyl(s * 0.55, h - 0.35, 0, 0.075, 0.075, 1.05, 8, 0.02, false, false);
+      m.box(s * 0.55, h + 0.44, 0, 1.15, 0.18, 0.44, 0.05);
+      m.color(p.lampGlow).emissive(1).box(s * 0.55, h + 0.31, 0, 0.95, 0.10, 0.34, 0.03);
+      m.emissive(0);
+    }
+  } else {
+    m.color(p.darkSteel).box(0.44, h + 0.12, 0, 1.30, 0.22, 0.42, 0.06);
+    m.color(p.lampGlow).emissive(1).box(0.54, h - 0.01, 0, 0.98, 0.10, 0.32, 0.03);
+    m.emissive(0);
+  }
+  // Banded collar at eye height — the greeble that says "not a stick".
+  m.color(p.steel).cyl(0, 1.6, 0, 0.20, 0.20, 0.22, 12, 0.04, false, false);
+}
+
+function buildLamp(m: PropMesh, rng: Rng, p: PropPalette): void { streetLamp(m, rng, p, false); }
+function buildLampTwin(m: PropMesh, rng: Rng, p: PropPalette): void { streetLamp(m, rng, p, true); }
+
+function buildBench(m: PropMesh, rng: Rng, p: PropPalette): void {
+  const len = 2.1;
+  m.ao(0.50, 0, 0.9).sway(0, 0, 1);
+  m.color(p.darkSteel);
+  for (const s of [-1, 1]) {
+    m.box(s * (len * 0.42), 0.22, 0, 0.10, 0.44, 0.62, 0.03);
+    m.box(s * (len * 0.42), 0.64, -0.26, 0.10, 0.52, 0.10, 0.03);
+  }
+  m.color(p.wood);
+  for (let i = 0; i < 3; i++) m.box(0, 0.46, -0.20 + i * 0.20, len, 0.07, 0.16, 0.025);
+  for (let i = 0; i < 2; i++) m.box(0, 0.68 + i * 0.20, -0.30, len, 0.16, 0.07, 0.025);
+}
+
+type CarShape = 'sedan' | 'van' | 'pickup';
+
+function car(m: PropMesh, rng: Rng, p: PropPalette, shape: CarShape): void {
+  // RA3's parked cars are saturated toys: one flat paint, one dark glass inset,
+  // 12-facet wheels. No grime (scorecard #22 applies to everything painted).
+  const bodies = [p.paintYellow, p.paintRed, p.paintBlue, p.paintWhite, p.paintGreen];
+  const body = rng.pick(bodies);
+  const len = shape === 'van' ? 5.2 : shape === 'pickup' ? 5.0 : 4.3;
+  const wid = shape === 'van' ? 2.1 : 1.9;
+  m.ao(0.45, 0, 1.9).sway(0, 0, 1);
+
+  m.color(body).box(0, 0.62, 0, len, 0.62, wid, chamferFor(0.62) * 2.4);
+  if (shape === 'van') {
+    m.box(0, 1.44, -len * 0.05, len * 0.86, 1.10, wid * 0.96, 0.10);
+    m.color(p.glass).box(-len * 0.40, 1.56, 0, 0.10, 0.60, wid * 0.80, 0.03);
+    m.color(p.glass).box(-len * 0.24, 1.56, wid * 0.48, len * 0.28, 0.52, 0.08, 0.03);
+    m.color(p.glass).box(-len * 0.24, 1.56, -wid * 0.48, len * 0.28, 0.52, 0.08, 0.03);
+  } else if (shape === 'pickup') {
+    m.box(-len * 0.16, 1.30, 0, len * 0.36, 0.72, wid * 0.94, 0.09);
+    m.color(p.glass).box(-len * 0.16, 1.42, 0, len * 0.30, 0.44, wid * 0.97, 0.03);
+    m.color(shadeOf(body, 0.86));
+    m.box(len * 0.24, 0.98, 0, len * 0.46, 0.42, wid * 0.94, 0.06);
+    m.color('#3A3630').box(len * 0.24, 1.02, 0, len * 0.40, 0.06, wid * 0.80, 0.02);
+  } else {
+    m.box(0, 1.22, -len * 0.02, len * 0.56, 0.60, wid * 0.90, 0.11);
+    m.color(p.glass).box(0, 1.28, -len * 0.02, len * 0.50, 0.40, wid * 0.94, 0.03);
+  }
+  m.color(p.paintWhite).emissive(0.30);
+  m.box(-len * 0.49, 0.72, wid * 0.30, 0.10, 0.18, 0.36, 0.03);
+  m.box(-len * 0.49, 0.72, -wid * 0.30, 0.10, 0.18, 0.36, 0.03);
+  m.color(p.signalRed).emissive(0.30);
+  m.box(len * 0.49, 0.76, wid * 0.32, 0.09, 0.16, 0.30, 0.03);
+  m.box(len * 0.49, 0.76, -wid * 0.32, 0.09, 0.16, 0.30, 0.03);
+  m.emissive(0);
+  m.color(p.tyre);
+  const ax = len * 0.32;
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      // Wheels lie in the XZ plane here (a disc on its side would need a full
+      // rotation the builder does not carry); at RTS distance the read is the
+      // dark arch under the sill, which this gives.
+      m.box(sx * ax, 0.32, sz * (wid * 0.5 - 0.03), 0.72, 0.64, 0.26, 0.16);
+    }
+  }
+}
+
+function buildCarSedan(m: PropMesh, rng: Rng, p: PropPalette): void { car(m, rng, p, 'sedan'); }
+function buildCarVan(m: PropMesh, rng: Rng, p: PropPalette): void { car(m, rng, p, 'van'); }
+function buildCarPickup(m: PropMesh, rng: Rng, p: PropPalette): void { car(m, rng, p, 'pickup'); }
+
+function buildTrafficLight(m: PropMesh, rng: Rng, p: PropPalette): void {
+  const h = 5.4;
+  m.ao(0.50, 0, h).sway(0, 0, 1);
+  m.color(p.concrete).cyl(0, 0, 0, 0.30, 0.26, 0.20, 10, 0.05);
+  m.color(p.darkSteel).cyl(0, 0.18, 0, 0.13, 0.10, h, 12, 0.03, false, false);
+  const arm = 3.2;
+  m.box(arm * 0.5, h - 0.15, 0, arm, 0.16, 0.16, 0.04);
+  m.box(arm, h - 0.85, 0, 0.34, 1.24, 0.30, 0.05);
+  m.color(p.signalRed).emissive(1).blob(arm, h - 0.44, 0.18, 0.10, 0.10, 0.05, 8, 3, 0);
+  m.color(p.signalAmber).emissive(1).blob(arm, h - 0.85, 0.18, 0.10, 0.10, 0.05, 8, 3, 0);
+  m.color(p.signalGreen).emissive(1).blob(arm, h - 1.26, 0.18, 0.10, 0.10, 0.05, 8, 3, 0);
+  m.emissive(0);
+  // Pole-mounted repeater head.
+  m.color(p.darkSteel).box(0, h * 0.60, 0.24, 0.32, 1.14, 0.28, 0.05);
+  m.color(p.signalRed).emissive(1).blob(0, h * 0.60 + 0.36, 0.40, 0.09, 0.09, 0.05, 8, 3, 0);
+  m.color(p.signalAmber).emissive(1).blob(0, h * 0.60, 0.40, 0.09, 0.09, 0.05, 8, 3, 0);
+  m.color(p.signalGreen).emissive(1).blob(0, h * 0.60 - 0.36, 0.40, 0.09, 0.09, 0.05, 8, 3, 0);
+  m.emissive(0);
+}
+
+function fence(m: PropMesh, rng: Rng, p: PropPalette, iron: boolean): void {
+  const len = 4.0;
+  m.ao(0.48, 0, 1.6).sway(0, 0, 1);
+  if (iron) {
+    // Ornamental railing, as around the roundabout in ra3steam_08.
+    m.color(p.darkSteel);
+    m.box(0, 0.14, 0, len, 0.28, 0.26, 0.05);
+    m.box(0, 1.32, 0, len, 0.10, 0.12, 0.03);
+    m.box(0, 0.72, 0, len, 0.08, 0.10, 0.03);
+    for (let i = 0; i < 9; i++) {
+      const x = ((i + 0.5) / 9 - 0.5) * len;
+      m.box(x, 0.78, 0, 0.06, 1.10, 0.06, 0.015);
+      m.box(x, 1.42, 0, 0.09, 0.14, 0.09, 0.02);
+    }
+    for (const s of [-1, 1]) m.box(s * len * 0.5, 0.84, 0, 0.17, 1.62, 0.17, 0.035);
+    return;
+  }
+  m.color(p.woodDark);
+  for (const s of [-1, 1]) m.box(s * len * 0.5, 0.68, 0, 0.16, 1.36, 0.16, 0.035);
+  m.color(p.wood);
+  m.box(0, 1.14, 0, len, 0.14, 0.08, 0.025);
+  m.box(0, 0.66, 0, len, 0.14, 0.08, 0.025);
+}
+
+function buildFenceWood(m: PropMesh, rng: Rng, p: PropPalette): void { fence(m, rng, p, false); }
+function buildFenceIron(m: PropMesh, rng: Rng, p: PropPalette): void { fence(m, rng, p, true); }
+
+function buildTelegraphPole(m: PropMesh, rng: Rng, p: PropPalette): void {
+  const h = 9.5;
+  m.ao(0.45, 0, h).sway(0, 0, 1);
+  m.color(p.woodDark).cyl(0, 0, 0, 0.24, 0.17, h, 12, 0.04);
+  for (let i = 0; i < 2; i++) {
+    const y = h - 0.6 - i * 0.9;
+    m.color(p.wood).box(0, y, 0, 2.4, 0.14, 0.14, 0.035);
+    for (let k = -2; k <= 2; k++) {
+      if (k === 0) continue;
+      m.color(p.glass).box(k * 0.5, y + 0.20, 0, 0.10, 0.24, 0.10, 0.02);
+    }
+  }
+  m.color(p.darkSteel).box(0.55, h - 1.35, 0, 1.35, 0.08, 0.08, 0.02);
+}
+
+function roadSign(m: PropMesh, rng: Rng, p: PropPalette, rect: boolean): void {
+  const h = 2.4;
+  m.ao(0.50, 0, h + 0.8).sway(0, 0, 1);
+  m.color(p.darkSteel).cyl(0, 0, 0, 0.09, 0.075, h, 10, 0.02);
+  if (rect) {
+    m.color(p.paintWhite).box(0, h + 0.35, 0, 1.4, 0.70, 0.07, 0.03);
+    m.color(p.paintBlue).box(0, h + 0.35, 0.05, 1.18, 0.48, 0.02, 0.01);
+  } else {
+    m.color(p.paintRed).cyl(0, h + 0.05, 0.036, 0.52, 0.52, 0.07, 12, 0.02);
+    m.color(p.paintWhite).cyl(0, h + 0.05, 0.076, 0.36, 0.36, 0.03, 12, 0.01, false, true);
+  }
+}
+
+function buildSignRect(m: PropMesh, rng: Rng, p: PropPalette): void { roadSign(m, rng, p, true); }
+function buildSignDisc(m: PropMesh, rng: Rng, p: PropPalette): void { roadSign(m, rng, p, false); }
+
+/* ---- civic --------------------------------------------------------------- */
+
+function buildCafeUmbrella(m: PropMesh, rng: Rng, p: PropPalette): void {
+  // The red cafe umbrellas are one of the most recognisable things in
+  // ra3steam_08's plaza. Segmented canopy, alternating panels, a table under.
+  const h = 2.45, r = 1.7;
+  const accent = rng.chance(0.7) ? p.paintRed : p.paintBlue;
+  m.ao(0.55, 0, h + 0.5).sway(SCATTER_WIND.canopyAmplitude * 0.30, 0.9, h + 0.6);
+  m.color(p.steel).cyl(0, 0, 0, 0.32, 0.28, 0.14, 10, 0.03);
+  m.color(p.paintWhite).cyl(0, 0.12, 0, 0.055, 0.05, h, 8, 0.015, false, false);
+
+  // 8 sail panels from the finial down to the rim, alternating colour.
+  const segs = 8;
+  const apexY = h + 0.44, rimY = h - 0.28;
+  for (let i = 0; i < segs; i++) {
+    const a0 = (i / segs) * TAU, a1 = ((i + 1) / segs) * TAU;
+    const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+    const am = (a0 + a1) * 0.5;
+    m.color(i % 2 === 0 ? accent : p.paintWhite);
+    // A scalloped rim: the mid point hangs 0.10 m lower and 6% further out.
+    m.tri(0, apexY, 0, c0 * r, rimY, s0 * r, Math.cos(am) * r * 1.06, rimY - 0.10, Math.sin(am) * r * 1.06,
+      Math.cos(am) * 0.3, 1, Math.sin(am) * 0.3);
+    m.tri(0, apexY, 0, Math.cos(am) * r * 1.06, rimY - 0.10, Math.sin(am) * r * 1.06, c1 * r, rimY, s1 * r,
+      Math.cos(am) * 0.3, 1, Math.sin(am) * 0.3);
+    // Underside, so the canopy is not a one-sided sheet from a low angle.
+    m.color(shadeOf(i % 2 === 0 ? accent : p.paintWhite, 0.55));
+    m.tri(0, apexY - 0.05, 0, c0 * r, rimY - 0.05, s0 * r,
+      Math.cos(am) * r * 1.06, rimY - 0.15, Math.sin(am) * r * 1.06, 0, -1, 0);
+    m.tri(0, apexY - 0.05, 0, Math.cos(am) * r * 1.06, rimY - 0.15, Math.sin(am) * r * 1.06,
+      c1 * r, rimY - 0.05, s1 * r, 0, -1, 0);
+  }
+  m.color(p.paintWhite).cyl(0, apexY, 0, 0.07, 0.03, 0.26, 6, 0);
+  // Table + two chairs. An umbrella with no table reads as a mushroom.
+  m.color(p.paintWhite).cyl(0, 0.70, 0, 0.72, 0.72, 0.08, 12, 0.03);
+  m.color(p.steel).cyl(0, 0.14, 0, 0.09, 0.09, 0.56, 8, 0.02, false, false);
+  for (const s of [-1, 1]) {
+    m.color(p.paintWhite).box(s * 1.05, 0.44, 0, 0.46, 0.06, 0.46, 0.02);
+    m.box(s * 1.05, 0.72, s * 0.20, 0.44, 0.50, 0.06, 0.02);
+    m.color(p.steel);
+    for (const dx of [-1, 1]) {
+      for (const dz of [-1, 1]) {
+        m.box(s * 1.05 + dx * 0.18, 0.21, dz * 0.18, 0.05, 0.42, 0.05, 0.01);
+      }
+    }
+  }
+}
+
+function statue(m: PropMesh, rng: Rng, p: PropPalette, equestrian: boolean): void {
+  // ra3steam_08 has SIX of these. Plinth + hedged kerb + a bronze figure whose
+  // silhouette only has to read at ~60 px.
+  m.ao(0.42, 0, 5).sway(0, 0, 1);
+  m.color(p.concrete).box(0, 0.18, 0, 4.6, 0.36, 3.4, 0.10);
+  m.color(p.kerb).box(0, 0.46, 0, 3.8, 0.30, 2.8, 0.08);
+  m.color(p.hedge);
+  for (const s of [-1, 1]) {
+    m.box(s * 2.10, 0.56, 0, 0.50, 0.74, 3.20, 0.10);
+    m.box(0, 0.56, s * 1.50, 4.40, 0.74, 0.50, 0.10);
+  }
+  m.color(shadeOf(p.concrete, 1.08)).box(0, 1.12, 0, 1.9, 1.02, 1.5, 0.09);
+  m.color(p.concrete).box(0, 1.74, 0, 1.6, 0.26, 1.25, 0.06);
+
+  m.color(p.bronze);
+  if (equestrian) {
+    m.box(0, 2.60, 0, 2.4, 0.88, 0.76, 0.12, 0.18);        // barrel
+    m.box(-1.02, 3.20, 0, 0.56, 1.16, 0.56, 0.09, 0.18);   // neck
+    m.box(-1.34, 3.84, 0, 0.86, 0.46, 0.42, 0.07, 0.18);   // head
+    m.box(0.94, 2.12, 0.22, 0.30, 1.08, 0.30, 0.06);       // hind leg
+    m.box(0.94, 2.12, -0.22, 0.30, 1.08, 0.30, 0.06);
+    m.box(-0.52, 3.06, 0.30, 0.28, 1.10, 0.28, 0.05, 0.55); // raised foreleg
+    m.box(-0.52, 3.06, -0.30, 0.28, 1.10, 0.28, 0.05, 0.55);
+    m.box(0.72, 3.28, 0, 0.24, 0.90, 0.24, 0.05, -0.5);    // tail
+    m.box(0.06, 3.42, 0, 0.62, 1.20, 0.56, 0.09);          // rider
+    m.box(0.06, 4.18, 0, 0.44, 0.44, 0.42, 0.06);          // rider head
+    m.box(-0.42, 3.90, 0, 0.62, 0.20, 0.20, 0.04, 0.3);    // outstretched arm
+  } else {
+    m.box(0, 2.48, 0, 1.14, 1.46, 0.88, 0.12);             // greatcoat
+    m.box(0, 3.40, 0, 0.88, 0.56, 0.72, 0.10);             // shoulders
+    m.box(0, 3.86, 0, 0.46, 0.46, 0.44, 0.07);             // head
+    m.box(0.66, 3.62, 0, 0.26, 1.34, 0.26, 0.05);          // raised arm
+    m.box(-0.56, 3.08, 0, 0.24, 1.02, 0.24, 0.05);         // lowered arm
+    m.box(0, 1.92, 0.30, 1.30, 0.60, 0.30, 0.07, 0.15);    // flared hem
+  }
+}
+
+function buildStatue(m: PropMesh, rng: Rng, p: PropPalette): void { statue(m, rng, p, false); }
+function buildStatueRider(m: PropMesh, rng: Rng, p: PropPalette): void { statue(m, rng, p, true); }
+
+function buildFlowerBed(m: PropMesh, rng: Rng, p: PropPalette): void {
+  // Straight off ra3steam_08: a hedged rectangle of tilled soil packed with
+  // magenta and yellow blooms in BLOCKED BANDS, not salt-and-pepper.
+  const lx = 4.2, lz = 2.4;
+  m.ao(0.55, 0, 0.7).sway(0, 0, 1);
+  m.color(p.soil).box(0, 0.14, 0, lx, 0.28, lz, 0.06);
+  m.color(p.hedge);
+  m.box(0, 0.32, -lz * 0.5, lx, 0.64, 0.30, 0.07);
+  m.box(0, 0.32, lz * 0.5, lx, 0.64, 0.30, 0.07);
+  m.box(-lx * 0.5, 0.32, 0, 0.30, 0.64, lz, 0.07);
+  m.box(lx * 0.5, 0.32, 0, 0.30, 0.64, lz, 0.07);
+  m.sway(SCATTER_WIND.grassAmplitude * 0.7, 0.26, 0.80);
+  const rows = 6, cols = 12;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = ((c + 0.5) / cols - 0.5) * (lx - 0.8);
+      const z = ((r + 0.5) / rows - 0.5) * (lz - 0.8);
+      m.color(Math.floor(c / 3) % 2 === 0 ? p.flowerA : p.flowerB);
+      m.blob(x + rng.range(-0.05, 0.05), 0.38, z + rng.range(-0.05, 0.05),
+        0.15, 0.13, 0.15, 6, 3, 0.3);
+    }
+  }
+}
+
+function buildWaterTower(m: PropMesh, rng: Rng, p: PropPalette): void {
+  const legH = 7.0, tankH = 4.2, tankR = 2.4;
+  m.ao(0.42, 0, legH + tankH).sway(0, 0, 1);
+  m.color(p.darkSteel);
+  for (let i = 0; i < 4; i++) {
+    const a = (i / 4) * TAU + Math.PI / 4;
+    const x0 = Math.cos(a) * tankR * 0.85, z0 = Math.sin(a) * tankR * 0.85;
+    // Splayed legs built as 3 stacked boxes so the lean is real geometry.
+    for (let k = 0; k < 3; k++) {
+      const t = k / 3;
+      const s = 1 + 0.32 * (1 - t);
+      m.box(x0 * s, legH * (t + 1 / 6), z0 * s, 0.26, legH / 3 + 0.06, 0.26, 0.04, a);
+    }
+    // X-brace — bible 5.7's exposed lattice, on a civilian scale.
+    m.box(x0 * 1.10, legH * 0.50, z0 * 1.10, 0.14, 0.14, tankR * 1.6, 0.03, a + Math.PI / 4);
+  }
+  m.color(rng.chance(0.4) ? p.rust : p.steel);
+  m.cyl(0, legH, 0, tankR, tankR, tankH, 14, 0.20);
+  m.color(p.paintRed);
+  m.cyl(0, legH + tankH * 0.60, 0, tankR * 1.01, tankR * 1.01, 0.44, 14, 0.03, false, false);
+  m.color(p.darkSteel);
+  m.cone(0, legH + tankH, 0, tankR * 0.98, 1.15, 14, false);
+  m.cyl(0, legH + tankH + 1.0, 0, 0.18, 0.14, 0.9, 8, 0.03);
+  // Railed catwalk (bible 5.7 #5).
+  m.cyl(0, legH + tankH * 0.96, 0, tankR * 1.30, tankR * 1.30, 0.10, 14, 0.02);
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * TAU;
+    m.box(Math.cos(a) * tankR * 1.28, legH + tankH * 0.96 + 0.46, Math.sin(a) * tankR * 1.28,
+      0.07, 0.86, 0.07, 0.02);
+  }
+  m.cyl(0, legH + tankH * 0.96 + 0.86, 0, tankR * 1.31, tankR * 1.31, 0.07, 14, 0.02, false, false);
+}
+
+/* ==========================================================================
+ * 6. THE ROSTER
+ * ========================================================================== */
+
+const B = (t: number, d: number, s: number, u: number): Record<BiomeName, number> =>
+  ({ temperate: t, desert: d, snow: s, urban: u });
+
+export const PROP_DEFS: readonly PropDef[] = [
+  /* --- canopy ---------------------------------------------------------- */
+  { key: 'tree', family: 'canopy', radius: 2.2, height: 12, adorn: 7.0, spacing: 4.5,
+    surfaces: SURF_SOFT, maxSlope: 0.38, mode: 'clump', clumpMin: 3, clumpMax: 9,
+    clumpSpread: 11, urban: 0.35, biome: B(1.00, 0.10, 0.15, 0.55), blocksNav: true,
+    build: buildTree },
+  // The off-season 30% of bible §6.5's "season mixing". A separate key because
+  // instancing cannot swap geometry and a hue multiply cannot turn green orange.
+  { key: 'treeAutumn', family: 'canopy', radius: 2.2, height: 12, adorn: 7.0, spacing: 4.5,
+    surfaces: SURF_SOFT, maxSlope: 0.38, mode: 'clump', clumpMin: 2, clumpMax: 6,
+    clumpSpread: 11, urban: 0.45, biome: B(0.42, 0.06, 0.05, 0.36), blocksNav: true,
+    build: buildTreeAutumn },
+  { key: 'conifer', family: 'canopy', radius: 1.9, height: 12, adorn: 6.0, spacing: 4.0,
+    surfaces: SURF_SOFT, maxSlope: 0.46, mode: 'clump', clumpMin: 4, clumpMax: 9,
+    clumpSpread: 12, urban: 0.25, biome: B(0.70, 0.05, 1.00, 0.40), blocksNav: true,
+    build: buildConifer },
+  { key: 'palm', family: 'canopy', radius: 1.6, height: 8.5, adorn: 6.0, spacing: 5.0,
+    surfaces: SURF_SOFT, maxSlope: 0.30, mode: 'clump', clumpMin: 2, clumpMax: 5,
+    clumpSpread: 9, urban: 0.30, biome: B(0.10, 0.85, 0.00, 0.18), blocksNav: true,
+    build: buildPalm },
+
+  /* --- shrub ----------------------------------------------------------- */
+  { key: 'bush', family: 'shrub', radius: 1.1, height: 1.8, adorn: 3.4, spacing: 2.0,
+    surfaces: SURF_SOFT, maxSlope: 0.55, mode: 'clump', clumpMin: 4, clumpMax: 11,
+    clumpSpread: 8, urban: 0.30, biome: B(1.00, 0.85, 0.55, 0.60), blocksNav: false,
+    build: buildBush },
+  { key: 'hedge', family: 'shrub', radius: 1.9, height: 1.3, adorn: 4.2, spacing: 3.5,
+    surfaces: SURF_ANY, maxSlope: 0.16, mode: 'street', clumpMin: 3, clumpMax: 8,
+    clumpSpread: 14, urban: 0.90, biome: B(0.55, 0.35, 0.30, 1.00), blocksNav: false,
+    jitter: 0.5, build: buildHedge },
+
+  /* --- grass (the density workhorse) ------------------------------------ */
+  { key: 'grassTuft', family: 'grass', radius: 1.3, height: 2.1, adorn: 3.0, spacing: 1.9,
+    surfaces: (1 << SurfaceId.Ground) | (1 << SurfaceId.Dirt), maxSlope: 0.60,
+    mode: 'field', clumpMin: 5, clumpMax: 16, clumpSpread: 9,
+    urban: 0.10, biome: B(1.00, 0.95, 0.45, 0.45), blocksNav: false, build: buildGrassGold },
+  { key: 'grassTuftGreen', family: 'grass', radius: 1.3, height: 2.1, adorn: 3.0, spacing: 1.9,
+    surfaces: (1 << SurfaceId.Ground) | (1 << SurfaceId.Dirt), maxSlope: 0.60,
+    mode: 'field', clumpMin: 5, clumpMax: 16, clumpSpread: 9,
+    urban: 0.10, biome: B(1.00, 0.55, 0.40, 0.45), blocksNav: false, build: buildGrassGreen },
+
+  /* --- rock ------------------------------------------------------------ */
+  { key: 'boulder', family: 'rock', radius: 2.0, height: 2.8, adorn: 5.0, spacing: 3.6,
+    surfaces: SURF_SOFT | SURF_STONE, maxSlope: 0.75, mode: 'clump',
+    clumpMin: 2, clumpMax: 6, clumpSpread: 12,
+    urban: 0.15, biome: B(0.70, 1.00, 0.85, 0.30), blocksNav: true, build: buildBoulder },
+  { key: 'rockCluster', family: 'rock', radius: 1.7, height: 1.2, adorn: 4.2, spacing: 2.8,
+    surfaces: SURF_SOFT | SURF_STONE, maxSlope: 0.85, mode: 'field',
+    clumpMin: 3, clumpMax: 9, clumpSpread: 10,
+    urban: 0.20, biome: B(0.85, 1.00, 0.90, 0.40), blocksNav: false, build: buildRockCluster },
+
+  /* --- yard ------------------------------------------------------------ */
+  { key: 'haystack', family: 'yard', radius: 2.4, height: 3.4, adorn: 5.0, spacing: 5.5,
+    surfaces: SURF_SOFT, maxSlope: 0.14, mode: 'clump', clumpMin: 2, clumpMax: 4,
+    clumpSpread: 10, urban: 0.25, biome: B(0.70, 0.45, 0.30, 0.25), blocksNav: true,
+    build: buildHaystack },
+  { key: 'crateStack', family: 'yard', radius: 2.2, height: 2.3, adorn: 4.6, spacing: 4.0,
+    surfaces: SURF_ANY, maxSlope: 0.12, mode: 'clump', clumpMin: 1, clumpMax: 4,
+    clumpSpread: 9, urban: 0.85, biome: B(0.55, 0.80, 0.50, 1.00), blocksNav: true,
+    jitter: 0.6, build: buildCrateStack },
+  { key: 'containerStack', family: 'yard', radius: 3.4, height: 5.3, adorn: 7.0, spacing: 8.0,
+    surfaces: SURF_HARD | (1 << SurfaceId.Dirt), maxSlope: 0.08, mode: 'clump',
+    clumpMin: 1, clumpMax: 3, clumpSpread: 12,
+    urban: 1.00, biome: B(0.35, 0.60, 0.35, 1.00), blocksNav: true,
+    scaleMin: 0.96, scaleMax: 1.05, jitter: 0.5, build: buildContainerStack },
+  // A group of 3-4 drums. Share deliberately low: barrels are punctuation, and
+  // a first pass of this roster carpeted an urban map in red cylinders.
+  { key: 'barrel', family: 'yard', radius: 1.2, height: 1.1, adorn: 3.0, spacing: 4.5,
+    surfaces: SURF_ANY, maxSlope: 0.16, mode: 'clump', clumpMin: 1, clumpMax: 3,
+    clumpSpread: 5.0, urban: 0.75, biome: B(0.22, 0.34, 0.20, 0.40), blocksNav: false,
+    jitter: 0.6, build: buildBarrelGroup },
+
+  /* --- street ---------------------------------------------------------- */
+  { key: 'streetLamp', family: 'street', radius: 0.5, height: 7.0, adorn: 6.5, spacing: 7.0,
+    surfaces: SURF_ANY, maxSlope: 0.18, mode: 'street', clumpMin: 1, clumpMax: 1,
+    clumpSpread: 0, urban: 1.00, biome: B(0.75, 0.75, 0.75, 1.00), blocksNav: false,
+    scaleMin: 0.95, scaleMax: 1.08, jitter: 0.25, build: buildLamp },
+  { key: 'streetLampTwin', family: 'street', radius: 0.5, height: 8.0, adorn: 7.0, spacing: 9.0,
+    surfaces: SURF_ANY, maxSlope: 0.18, mode: 'street', clumpMin: 1, clumpMax: 1,
+    clumpSpread: 0, urban: 1.00, biome: B(0.35, 0.35, 0.35, 0.70), blocksNav: false,
+    scaleMin: 0.95, scaleMax: 1.06, jitter: 0.25, build: buildLampTwin },
+  { key: 'bench', family: 'street', radius: 1.2, height: 0.9, adorn: 3.2, spacing: 4.0,
+    surfaces: SURF_HARD, maxSlope: 0.12, mode: 'street', clumpMin: 1, clumpMax: 2,
+    clumpSpread: 6, urban: 1.00, biome: B(0.60, 0.60, 0.60, 1.00), blocksNav: false,
+    scaleMin: 0.95, scaleMax: 1.05, jitter: 0.5, build: buildBench },
+  { key: 'carSedan', family: 'street', radius: 2.4, height: 1.6, adorn: 4.4, spacing: 3.2,
+    surfaces: SURF_HARD, maxSlope: 0.10, mode: 'street', clumpMin: 2, clumpMax: 6,
+    clumpSpread: 14, urban: 1.00, biome: B(0.70, 0.70, 0.70, 1.00), blocksNav: true,
+    scaleMin: 0.96, scaleMax: 1.06, jitter: 0.4, build: buildCarSedan },
+  { key: 'carVan', family: 'street', radius: 2.8, height: 2.6, adorn: 4.8, spacing: 3.6,
+    surfaces: SURF_HARD, maxSlope: 0.10, mode: 'street', clumpMin: 1, clumpMax: 3,
+    clumpSpread: 14, urban: 1.00, biome: B(0.55, 0.55, 0.55, 1.00), blocksNav: true,
+    scaleMin: 0.96, scaleMax: 1.06, jitter: 0.4, build: buildCarVan },
+  { key: 'carPickup', family: 'street', radius: 2.6, height: 2.0, adorn: 4.6, spacing: 3.4,
+    surfaces: SURF_HARD, maxSlope: 0.10, mode: 'street', clumpMin: 1, clumpMax: 3,
+    clumpSpread: 14, urban: 0.90, biome: B(0.70, 0.80, 0.60, 1.00), blocksNav: true,
+    scaleMin: 0.96, scaleMax: 1.06, jitter: 0.4, build: buildCarPickup },
+  { key: 'trafficLight', family: 'street', radius: 0.5, height: 5.4, adorn: 5.5, spacing: 22,
+    surfaces: SURF_ANY, maxSlope: 0.16, mode: 'street', clumpMin: 1, clumpMax: 1,
+    clumpSpread: 0, urban: 1.00, biome: B(0.45, 0.45, 0.45, 1.00), blocksNav: false,
+    scaleMin: 0.97, scaleMax: 1.05, jitter: 0.2, build: buildTrafficLight },
+  { key: 'fence', family: 'street', radius: 2.1, height: 1.5, adorn: 4.0, spacing: 3.9,
+    surfaces: SURF_ANY, maxSlope: 0.22, mode: 'street', clumpMin: 3, clumpMax: 9,
+    clumpSpread: 20, urban: 0.55, biome: B(0.85, 0.75, 0.65, 0.55), blocksNav: false,
+    scaleMin: 0.98, scaleMax: 1.04, jitter: 0.5, build: buildFenceWood },
+  { key: 'railing', family: 'street', radius: 2.1, height: 1.7, adorn: 4.0, spacing: 3.9,
+    surfaces: SURF_HARD, maxSlope: 0.18, mode: 'street', clumpMin: 4, clumpMax: 12,
+    clumpSpread: 24, urban: 1.00, biome: B(0.35, 0.35, 0.35, 1.00), blocksNav: false,
+    scaleMin: 0.99, scaleMax: 1.02, jitter: 0.25, build: buildFenceIron },
+  { key: 'telegraphPole', family: 'street', radius: 0.5, height: 9.5, adorn: 7.0, spacing: 30,
+    surfaces: SURF_ANY, maxSlope: 0.28, mode: 'street', clumpMin: 1, clumpMax: 1,
+    clumpSpread: 0, urban: 0.60, biome: B(0.85, 0.85, 0.75, 0.90), blocksNav: false,
+    scaleMin: 0.95, scaleMax: 1.08, jitter: 0.35, build: buildTelegraphPole },
+  { key: 'roadSign', family: 'street', radius: 0.4, height: 3.2, adorn: 3.4, spacing: 16,
+    surfaces: SURF_ANY, maxSlope: 0.20, mode: 'street', clumpMin: 1, clumpMax: 1,
+    clumpSpread: 0, urban: 0.95, biome: B(0.60, 0.60, 0.60, 1.00), blocksNav: false,
+    scaleMin: 0.95, scaleMax: 1.05, jitter: 0.3, build: buildSignRect },
+  { key: 'roadSignDisc', family: 'street', radius: 0.4, height: 3.0, adorn: 3.2, spacing: 16,
+    surfaces: SURF_ANY, maxSlope: 0.20, mode: 'street', clumpMin: 1, clumpMax: 1,
+    clumpSpread: 0, urban: 0.95, biome: B(0.50, 0.50, 0.50, 0.90), blocksNav: false,
+    scaleMin: 0.95, scaleMax: 1.05, jitter: 0.3, build: buildSignDisc },
+
+  /* --- civic ----------------------------------------------------------- */
+  { key: 'cafeUmbrella', family: 'civic', radius: 1.8, height: 2.9, adorn: 4.0, spacing: 3.4,
+    surfaces: SURF_HARD, maxSlope: 0.08, mode: 'clump', clumpMin: 3, clumpMax: 7,
+    clumpSpread: 7, urban: 1.00, biome: B(0.55, 0.55, 0.20, 1.00), blocksNav: false,
+    scaleMin: 0.92, scaleMax: 1.10, jitter: 0.45, build: buildCafeUmbrella },
+  { key: 'flowerBed', family: 'civic', radius: 2.4, height: 0.8, adorn: 5.0, spacing: 6.0,
+    surfaces: SURF_ANY, maxSlope: 0.12, mode: 'solo', clumpMin: 1, clumpMax: 2,
+    clumpSpread: 8, urban: 0.95, biome: B(0.60, 0.30, 0.20, 1.00), blocksNav: false,
+    scaleMin: 0.90, scaleMax: 1.15, jitter: 0.6, build: buildFlowerBed },
+  { key: 'statue', family: 'civic', radius: 2.6, height: 4.6, adorn: 8.0, spacing: 26,
+    surfaces: SURF_ANY, maxSlope: 0.08, mode: 'solo', clumpMin: 1, clumpMax: 1,
+    clumpSpread: 0, urban: 1.00, biome: B(0.40, 0.40, 0.35, 1.00), blocksNav: true,
+    scaleMin: 0.94, scaleMax: 1.12, jitter: 0.3, build: buildStatue },
+  { key: 'statueRider', family: 'civic', radius: 2.6, height: 4.9, adorn: 8.0, spacing: 26,
+    surfaces: SURF_ANY, maxSlope: 0.08, mode: 'solo', clumpMin: 1, clumpMax: 1,
+    clumpSpread: 0, urban: 1.00, biome: B(0.30, 0.30, 0.25, 0.85), blocksNav: true,
+    scaleMin: 0.94, scaleMax: 1.12, jitter: 0.3, build: buildStatueRider },
+  { key: 'waterTower', family: 'civic', radius: 3.2, height: 12.3, adorn: 9.0, spacing: 70,
+    surfaces: SURF_ANY, maxSlope: 0.12, mode: 'solo', clumpMin: 1, clumpMax: 1,
+    clumpSpread: 0, urban: 0.65, biome: B(0.80, 0.90, 0.70, 0.90), blocksNav: true,
+    scaleMin: 0.92, scaleMax: 1.08, jitter: 0.3, build: buildWaterTower },
+];
+
+export const PROP_KEYS: readonly string[] = PROP_DEFS.map((d) => d.key);
+
+const DEF_BY_KEY = new Map<string, PropDef>(PROP_DEFS.map((d) => [d.key, d]));
+
+export function propDef(key: string): PropDef | undefined { return DEF_BY_KEY.get(key); }
+
+/* ==========================================================================
+ * 7. THE MATERIAL
+ *
+ * ONE MeshPhysicalMaterial for the whole roster. Three onBeforeCompile
+ * injections:
+ *
+ *   aSway  -> wind displacement, per-instance phase read off instanceMatrix
+ *   aEmit  -> additive emissive, so lamp heads and signal lenses glow without
+ *             a second material and therefore without a second draw call
+ *   depth  -> the identical wind, so a swaying canopy never casts a frozen
+ *             shadow
+ *
+ * Foliage gets only a whisper of clearcoat: bible §5.4 reserves the 0.30 coat
+ * for painted armour, and a waxy leaf reads as plastic. `envMapIntensity` is
+ * never 0 — zeroing it kills the silhouette rim scorecard #23 checks.
+ * ========================================================================== */
+
+export interface PropMaterialSet {
+  readonly material: THREE.MeshPhysicalMaterial;
+  readonly depthMaterial: THREE.MeshDepthMaterial;
+  /** Advance the wind clock. Called once per frame by the scatter system. */
+  setTime(t: number): void;
+  dispose(): void;
+}
+
+const WIND_PARS = /* glsl */`
+attribute float aSway;
+uniform float uWindTime;
+uniform float uWindFreq;
+`;
+
+const WIND_BODY = /* glsl */`
+{
+  #ifdef USE_INSTANCING
+    float swayPhase = instanceMatrix[3].x * 0.113 + instanceMatrix[3].z * 0.171;
+  #else
+    float swayPhase = 0.0;
+  #endif
+  float w = uWindTime * uWindFreq + swayPhase;
+  // Two harmonics so the motion never reads as one clean sine.
+  float sx = sin(w) * 0.78 + sin(w * 2.37 + swayPhase * 0.7) * 0.22;
+  float sz = cos(w * 0.83 + swayPhase * 1.31) * 0.78 + cos(w * 2.11) * 0.22;
+  transformed.x += sx * aSway;
+  transformed.z += sz * aSway * 0.72;
+}
+`;
+
+export function createPropMaterial(): PropMaterialSet {
+  const uTime = { value: 0 };
+  const uFreq = { value: SCATTER_WIND.hz * TAU };
+  const uGain = { value: PROP_EMISSIVE_GAIN };
+
+  const material = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    roughness: PROP_MATERIAL.roughness,
+    metalness: PROP_MATERIAL.metalness,
+    clearcoat: PROP_MATERIAL.clearcoat,
+    clearcoatRoughness: PROP_MATERIAL.clearcoatRoughness,
+    envMapIntensity: PROP_MATERIAL.envMapIntensity,
+    emissive: 0x000000,
+  });
+  material.name = 'PropMaterial';
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uWindTime = uTime;
+    shader.uniforms.uWindFreq = uFreq;
+    shader.uniforms.uEmitGain = uGain;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>',
+        `#include <common>\n${WIND_PARS}\nattribute float aEmit;\nvarying float vEmit;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\nvEmit = aEmit;${WIND_BODY}`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vEmit;\nuniform float uEmitGain;')
+      .replace('#include <emissivemap_fragment>',
+        '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vColor.rgb * vEmit * uEmitGain;');
+  };
+  material.customProgramCacheKey = (): string => 'ra-prop-v1';
+
+  const depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  depthMaterial.name = 'PropDepth';
+  depthMaterial.onBeforeCompile = (shader) => {
+    shader.uniforms.uWindTime = uTime;
+    shader.uniforms.uWindFreq = uFreq;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${WIND_PARS}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>${WIND_BODY}`);
+  };
+  depthMaterial.customProgramCacheKey = (): string => 'ra-prop-depth-v1';
+
+  return {
+    material,
+    depthMaterial,
+    setTime(t: number): void { uTime.value = t; },
+    dispose(): void { material.dispose(); depthMaterial.dispose(); },
+  };
+}
+
+/* ==========================================================================
+ * 8. THE LIBRARY
+ * ========================================================================== */
+
+export interface PropGeometry {
+  readonly def: PropDef;
+  readonly geometry: THREE.BufferGeometry;
+  readonly triangles: number;
+  /** XZ bounding radius in metres — drives the instance culling sphere. */
+  readonly boundRadius: number;
+  readonly boundHeight: number;
+}
+
+export interface PropLibraryOptions {
+  readonly biome: BiomeName;
+  readonly seed: number;
+  /** Restrict the build to these keys. Omit to build everything the biome allows. */
+  readonly keys?: readonly string[];
+}
+
+export class PropLibrary {
+  readonly palette: PropPalette;
+  readonly biome: BiomeName;
+  private readonly built = new Map<string, PropGeometry>();
+  totalTriangles = 0;
+  buildMs = 0;
+
+  constructor(options: PropLibraryOptions) {
+    this.biome = options.biome;
+    this.palette = propPalette(options.biome);
+    const seed = options.seed >>> 0;
+    const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+    const wanted = options.keys && options.keys.length > 0 ? new Set(options.keys) : null;
+    for (let i = 0; i < PROP_DEFS.length; i++) {
+      const def = PROP_DEFS[i];
+      if (wanted !== null && !wanted.has(def.key)) continue;
+      if (def.biome[this.biome] <= 0) continue;
+      // Each type gets its own stream so adding a type never reshuffles the
+      // others — a map's props must not all move because a key was added.
+      const rng = new Rng((seed ^ (i * 0x9e3779b1)) >>> 0);
+      const mesh = new PropMesh();
+      def.build(mesh, rng, this.palette);
+      const geo = mesh.toGeometry(`prop.${def.key}`);
+      this.totalTriangles += mesh.triangles;
+      const bx = Math.max(Math.abs(mesh.min[0]), Math.abs(mesh.max[0]));
+      const bz = Math.max(Math.abs(mesh.min[2]), Math.abs(mesh.max[2]));
+      this.built.set(def.key, {
+        def,
+        geometry: geo,
+        triangles: mesh.triangles,
+        boundRadius: Math.hypot(bx, bz),
+        boundHeight: Math.max(mesh.max[1], 0.5),
+      });
+    }
+    this.buildMs = (typeof performance !== 'undefined' ? performance.now() : 0) - t0;
+  }
+
+  get(key: string): PropGeometry | undefined { return this.built.get(key); }
+  has(key: string): boolean { return this.built.has(key); }
+  keys(): string[] { return [...this.built.keys()]; }
+  all(): PropGeometry[] { return [...this.built.values()]; }
+  get count(): number { return this.built.size; }
+
+  dispose(): void {
+    for (const g of this.built.values()) g.geometry.dispose();
+    this.built.clear();
+    this.totalTriangles = 0;
+  }
+}
+
+/**
+ * Merge several prop geometries into one. Kept because a future pass may want
+ * a single batch of the tiniest props; `mergeGeometries` needs identical
+ * attribute sets, which every `PropMesh` output satisfies by construction.
+ */
+export function mergePropGeometries(
+  parts: readonly THREE.BufferGeometry[],
+  name: string,
+): THREE.BufferGeometry | null {
+  if (parts.length === 0) return null;
+  const merged = mergeGeometries(parts as THREE.BufferGeometry[], false);
+  if (merged === null) return null;
+  merged.name = name;
+  merged.computeBoundingSphere();
+  merged.computeBoundingBox();
+  return merged;
+}

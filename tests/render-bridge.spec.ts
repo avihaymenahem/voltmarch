@@ -1,0 +1,407 @@
+/**
+ * RenderBridge + InstanceBatcher — the sim->render seam.
+ *
+ * Everything here runs headless: `THREE.InstancedMesh`, `BoxGeometry` and
+ * `BufferAttribute` are pure JS objects and never touch a GL context, so the
+ * whole batching/binding/interpolation path is testable in Node.
+ */
+
+import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
+
+import { EntityStore } from '../src/core/world';
+import { EntityFlag, EntityKind, Faction, PartId } from '../src/core/types';
+import type { PlayerId } from '../src/core/types';
+import { DEFAULT_ART, INSTANCE_BATCH_INITIAL_CAPACITY } from '../src/core/config';
+import { hexToLinearRgb, wrapAngle } from '../src/core/math';
+import {
+  FACTION_ANY,
+  RenderBridge,
+  clearKindMeshes,
+  registerKindMesh,
+  setRenderBridge,
+  type KindMesh,
+} from '../src/render/RenderBridge';
+
+const P0 = 0 as PlayerId;
+
+function makeRig(): { store: EntityStore; scene: THREE.Scene; bridge: RenderBridge } {
+  clearKindMeshes();
+  const store = new EntityStore();
+  const scene = new THREE.Scene();
+  const bridge = new RenderBridge(store, scene);
+  setRenderBridge(bridge);
+  return { store, scene, bridge };
+}
+
+function teardown(bridge: RenderBridge): void {
+  clearKindMeshes();
+  setRenderBridge(null);
+  bridge.dispose();
+}
+
+/** Every InstancedMesh currently under the batcher's root group. */
+function meshes(scene: THREE.Scene): THREE.InstancedMesh[] {
+  const out: THREE.InstancedMesh[] = [];
+  scene.traverse((o) => {
+    if ((o as THREE.InstancedMesh).isInstancedMesh) out.push(o as THREE.InstancedMesh);
+  });
+  return out;
+}
+
+/** Translation column of one instance. */
+function translation(mesh: THREE.InstancedMesh, slot: number): [number, number, number] {
+  const a = mesh.instanceMatrix.array;
+  return [a[slot * 16 + 12], a[slot * 16 + 13], a[slot * 16 + 14]];
+}
+
+/* ========================================================================== */
+
+describe('RenderBridge — placeholders', () => {
+  it('draws an unregistered kind rather than nothing', () => {
+    const { store, scene, bridge } = makeRig();
+    store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 100, 0, 200, 0);
+    store.snapshotPrev();
+
+    bridge.update(1);
+
+    const list = meshes(scene);
+    expect(list.length).toBe(1);
+    expect(list[0].count).toBe(1);
+    expect(list[0].visible).toBe(true);
+    expect(translation(list[0], 0)).toEqual([100, 0, 200]);
+    expect(bridge.visibleUnits).toBe(1);
+    teardown(bridge);
+  });
+
+  it('stretches a placeholder building to its real footprint', () => {
+    const { store, scene, bridge } = makeRig();
+    const id = store.alloc(EntityKind.Building, -1, P0, Faction.Soviets, 64, 0, 64, 0);
+    const i = store.index(id);
+    store.footprintW[i] = 3;
+    store.footprintH[i] = 2;
+    store.snapshotPrev();
+
+    bridge.update(1);
+
+    // Unit cube scaled by (w*CELL, height, h*CELL): column lengths are the scale.
+    const a = meshes(scene)[0].instanceMatrix.array;
+    const sx = Math.hypot(a[0], a[1], a[2]);
+    const sz = Math.hypot(a[8], a[9], a[10]);
+    expect(sx).toBeCloseTo(12, 5);
+    expect(sz).toBeCloseTo(8, 5);
+    expect(bridge.visibleBuildings).toBe(1);
+    teardown(bridge);
+  });
+
+  it('gives each kind its own batch and never mixes them', () => {
+    const { store, scene, bridge } = makeRig();
+    store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 10, 0, 10, 0);
+    store.alloc(EntityKind.Infantry, -1, P0, Faction.Allies, 20, 0, 20, 0);
+    store.alloc(EntityKind.Building, -1, P0, Faction.Allies, 30, 0, 30, 0);
+    store.snapshotPrev();
+
+    bridge.update(1);
+    expect(meshes(scene).length).toBe(3);
+    expect(bridge.batchCount).toBe(3);
+    teardown(bridge);
+  });
+});
+
+describe('RenderBridge — team colour is per-instance, never a batch key', () => {
+  it('renders both armies from ONE batch when they share a model', () => {
+    const { store, scene, bridge } = makeRig();
+    const geo = new THREE.BoxGeometry(3, 2, 6);
+    const mesh: KindMesh = { geometry: geo, material: new THREE.MeshStandardMaterial() };
+    // The SAME object registered for both factions must dedupe to one entry.
+    registerKindMesh(EntityKind.Vehicle, Faction.Allies, mesh);
+    registerKindMesh(EntityKind.Vehicle, Faction.Soviets, mesh);
+
+    store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 10, 0, 10, 0);
+    store.alloc(EntityKind.Vehicle, -1, P0, Faction.Soviets, 20, 0, 20, 0);
+    store.snapshotPrev();
+
+    bridge.update(1);
+
+    const list = meshes(scene);
+    expect(list.length).toBe(1);
+    expect(list[0].count).toBe(2);
+
+    const team = list[0].geometry.getAttribute('aTeamColor').array as Float32Array;
+    const allies = new Float32Array(3);
+    const soviets = new Float32Array(3);
+    hexToLinearRgb(DEFAULT_ART.factions.allies.team, allies);
+    hexToLinearRgb(DEFAULT_ART.factions.soviets.team, soviets);
+
+    expect(team[0]).toBeCloseTo(allies[0], 5);
+    expect(team[3]).toBeCloseTo(soviets[0], 5);
+    expect(team[4]).toBeCloseTo(soviets[1], 5);
+    teardown(bridge);
+  });
+
+  it('resolves FACTION_ANY when no faction-specific model exists', () => {
+    const { store, scene, bridge } = makeRig();
+    registerKindMesh(EntityKind.Prop, FACTION_ANY, {
+      geometry: new THREE.BoxGeometry(1, 3, 1),
+      material: new THREE.MeshStandardMaterial(),
+    });
+    store.alloc(EntityKind.Prop, -1, P0, Faction.Neutral, 40, 0, 40, 0);
+    store.snapshotPrev();
+
+    bridge.update(1);
+    expect(meshes(scene).length).toBe(1);
+    expect(bridge.batchCount).toBe(1);
+    teardown(bridge);
+  });
+});
+
+describe('RenderBridge — interpolation', () => {
+  it('lerps position between the previous and current tick', () => {
+    const { store, scene, bridge } = makeRig();
+    const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 0, 0, 0, 0);
+    const i = store.index(id);
+    store.snapshotPrev();
+    store.posX[i] = 10;
+    store.posZ[i] = 20;
+
+    bridge.update(0.25);
+    expect(translation(meshes(scene)[0], 0)).toEqual([2.5, 0, 5]);
+    teardown(bridge);
+  });
+
+  it('slews a turret the SHORT way across the +/-PI seam', () => {
+    const { store, scene, bridge } = makeRig();
+    const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 0, 0, 0, 0);
+    const i = store.index(id);
+    // Just under +PI to just over -PI: 0.2 rad apart the short way, 6.08 the long way.
+    store.turretYaw[i] = wrapAngle(Math.PI - 0.1);
+    store.snapshotPrev();
+    store.turretYaw[i] = wrapAngle(-Math.PI + 0.1);
+
+    // A registered model with a turret part, so the seam is actually rendered.
+    clearKindMeshes();
+    registerKindMesh(EntityKind.Vehicle, FACTION_ANY, {
+      geometry: new THREE.BoxGeometry(3, 1, 6),
+      material: new THREE.MeshStandardMaterial(),
+      parts: [{
+        geometry: new THREE.BoxGeometry(2, 1, 2),
+        material: new THREE.MeshStandardMaterial(),
+        y: 1.5,
+        followsTurret: true,
+        part: PartId.Turret,
+      }],
+    });
+
+    bridge.update(0.5);
+
+    // Halfway along the SHORT arc is exactly +/-PI, i.e. facing -Z.
+    const turret = meshes(scene).find((m) => m.name.endsWith('turret'))!;
+    const a = turret.instanceMatrix.array;
+    const forwardX = a[8];
+    const forwardZ = a[10];
+    expect(Math.abs(forwardX)).toBeLessThan(1e-6);
+    expect(forwardZ).toBeCloseTo(-1, 5);
+    teardown(bridge);
+  });
+
+  it('composes yaw so that local +Z is the unit forward vector', () => {
+    const { store, scene, bridge } = makeRig();
+    // yaw = PI/2 must face +X, per the core convention.
+    store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 0, 0, 0, Math.PI / 2);
+    store.snapshotPrev();
+
+    bridge.update(1);
+    const a = meshes(scene)[0].instanceMatrix.array;
+    expect(a[8]).toBeCloseTo(1, 5);   // forward.x
+    expect(a[9]).toBeCloseTo(0, 5);
+    expect(a[10]).toBeCloseTo(0, 5);
+    teardown(bridge);
+  });
+});
+
+describe('InstanceBatcher — slot lifecycle', () => {
+  it('blanks a freed slot so no stale pose survives recycling', () => {
+    const { store, scene, bridge } = makeRig();
+    const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 77, 0, 88, 0);
+    store.snapshotPrev();
+    bridge.update(1);
+    expect(translation(meshes(scene)[0], 0)).toEqual([77, 0, 88]);
+
+    store.markDead(id);
+    store.flushDestroyed();
+    bridge.update(1);
+
+    const mesh = meshes(scene)[0];
+    expect(mesh.count).toBe(0);
+    expect(mesh.visible).toBe(false);
+    // Zero basis AND zero translation: the instance collapses to a point.
+    const a = mesh.instanceMatrix.array;
+    for (let k = 0; k < 16; k++) expect(a[k]).toBe(0);
+    teardown(bridge);
+  });
+
+  it('hides garrisoned and cloaked entities and reclaims their slots', () => {
+    const { store, scene, bridge } = makeRig();
+    const id = store.alloc(EntityKind.Infantry, -1, P0, Faction.Allies, 5, 0, 5, 0);
+    const i = store.index(id);
+    store.snapshotPrev();
+    bridge.update(1);
+    expect(meshes(scene)[0].count).toBe(1);
+
+    store.flags[i] |= EntityFlag.Garrisoned;
+    bridge.update(1);
+    expect(meshes(scene)[0].count).toBe(0);
+
+    store.flags[i] &= ~EntityFlag.Garrisoned;
+    bridge.update(1);
+    expect(meshes(scene)[0].count).toBe(1);
+    teardown(bridge);
+  });
+
+  it('grows geometrically past the initial capacity without losing anyone', () => {
+    const { store, scene, bridge } = makeRig();
+    const n = INSTANCE_BATCH_INITIAL_CAPACITY * 3 + 7;
+    for (let k = 0; k < n; k++) {
+      store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, k, 0, k * 2, 0);
+    }
+    store.snapshotPrev();
+    bridge.update(1);
+
+    const mesh = meshes(scene)[0];
+    expect(mesh.count).toBe(n);
+    expect(bridge.instanceCount).toBe(n);
+    // Growth reallocates the buffer; every earlier instance must survive it.
+    expect(translation(mesh, 0)).toEqual([0, 0, 0]);
+    expect(translation(mesh, n - 1)).toEqual([n - 1, 0, (n - 1) * 2]);
+    teardown(bridge);
+  });
+
+  it('keeps a bounding sphere that encloses every live instance', () => {
+    const { store, scene, bridge } = makeRig();
+    store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 0, 0, 0, 0);
+    store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 400, 0, 300, 0);
+    store.snapshotPrev();
+    bridge.update(1);
+
+    const sphere = meshes(scene)[0].boundingSphere!;
+    expect(sphere.center.x).toBeCloseTo(200, 4);
+    expect(sphere.center.z).toBeCloseTo(150, 4);
+    // Must reach both corners plus the model's own radius.
+    expect(sphere.radius).toBeGreaterThan(Math.hypot(200, 150));
+    teardown(bridge);
+  });
+});
+
+describe('RenderBridge — per-instance state', () => {
+  it('packs hpFrac, buildProgress, selection and seed into aState', () => {
+    const { store, scene, bridge } = makeRig();
+    const id = store.alloc(EntityKind.Building, -1, P0, Faction.Allies, 8, 0, 8, 0);
+    const i = store.index(id);
+    store.maxHp[i] = 200;
+    store.hp[i] = 50;
+    store.buildProgress[i] = 0.4;
+    store.flags[i] |= EntityFlag.Selected;
+    store.snapshotPrev();
+
+    bridge.update(1);
+    const st = meshes(scene)[0].geometry.getAttribute('aState').array as Float32Array;
+    expect(st[0]).toBeCloseTo(0.25, 6);
+    expect(st[1]).toBeCloseTo(0.4, 6);
+    expect(st[2]).toBe(1);
+    expect(st[3]).toBeCloseTo(store.seed[i], 6);
+    teardown(bridge);
+  });
+});
+
+describe('RenderBridge — sockets', () => {
+  it('places a turret muzzle in world space, following the turret not the hull', () => {
+    const { store, scene, bridge } = makeRig();
+    registerKindMesh(EntityKind.Vehicle, FACTION_ANY, {
+      geometry: new THREE.BoxGeometry(3, 1, 6),
+      material: new THREE.MeshStandardMaterial(),
+      turretPivotY: 1.5,
+      sockets: [{ part: PartId.MuzzleA, x: 0, y: 1.5, z: 3, followsTurret: true }],
+    });
+
+    const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 100, 0, 100, 0);
+    const i = store.index(id);
+    // Hull faces +Z, turret faces +X. The muzzle must follow the TURRET.
+    store.yaw[i] = 0;
+    store.turretYaw[i] = Math.PI / 2;
+    store.snapshotPrev();
+    bridge.update(1);
+
+    const out = new Float32Array(7);
+    expect(bridge.socketWorld(id, PartId.MuzzleA, out)).toBe(true);
+    expect(out[0]).toBeCloseTo(103, 5);  // 3 m out along +X
+    expect(out[1]).toBeCloseTo(1.5, 5);
+    expect(out[2]).toBeCloseTo(100, 5);
+    expect(out[3]).toBeCloseTo(1, 5);    // forward is +X
+    expect(out[5]).toBeCloseTo(0, 5);
+    teardown(bridge);
+  });
+
+  it('swings an elevated muzzle about the trunnion, not the model origin', () => {
+    const { store, scene, bridge } = makeRig();
+    registerKindMesh(EntityKind.Vehicle, FACTION_ANY, {
+      geometry: new THREE.BoxGeometry(3, 1, 6),
+      material: new THREE.MeshStandardMaterial(),
+      turretPivotY: 1.5,
+      sockets: [{ part: PartId.MuzzleA, x: 0, y: 1.5, z: 4, followsTurret: true }],
+    });
+    const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 0, 0, 0, 0);
+    const i = store.index(id);
+    store.barrelPitch[i] = Math.PI / 6;  // 30 degrees of ELEVATION
+    store.snapshotPrev();
+    bridge.update(1);
+
+    const out = new Float32Array(7);
+    bridge.socketWorld(id, PartId.MuzzleA, out);
+    // Positive pitch must RAISE the muzzle, and the pivot keeps it 4 m from the
+    // ring rather than 4 m from the model origin.
+    expect(out[1]).toBeCloseTo(1.5 + 4 * Math.sin(Math.PI / 6), 5);
+    expect(out[2]).toBeCloseTo(4 * Math.cos(Math.PI / 6), 5);
+    expect(out[4]).toBeCloseTo(Math.sin(Math.PI / 6), 5);
+    teardown(bridge);
+  });
+
+  it('refuses a stale handle and an unknown socket', () => {
+    const { store, bridge } = makeRig();
+    const id = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 0, 0, 0, 0);
+    store.snapshotPrev();
+    bridge.update(1);
+
+    const out = new Float32Array(7);
+    // The placeholder model has no sockets at all.
+    expect(bridge.socketWorld(id, PartId.MuzzleA, out)).toBe(false);
+
+    store.markDead(id);
+    store.flushDestroyed();
+    bridge.update(1);
+    expect(bridge.socketWorld(id, PartId.MuzzleA, out)).toBe(false);
+    expect(bridge.entityWorld(id, out)).toBe(false);
+    teardown(bridge);
+  });
+});
+
+describe('RenderBridge — late-arriving art replaces the placeholder', () => {
+  it('rebinds live entities when a model is registered mid-match', () => {
+    const { store, scene, bridge } = makeRig();
+    store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 12, 0, 12, 0);
+    store.snapshotPrev();
+    bridge.update(1);
+    expect(meshes(scene)[0].name.startsWith('placeholder')).toBe(true);
+
+    registerKindMesh(EntityKind.Vehicle, Faction.Allies, {
+      geometry: new THREE.BoxGeometry(3.4, 2.5, 7),
+      material: new THREE.MeshStandardMaterial(),
+    });
+    bridge.update(1);
+
+    const live = meshes(scene).filter((m) => m.count > 0);
+    expect(live.length).toBe(1);
+    expect(live[0].name.startsWith('placeholder')).toBe(false);
+    expect(translation(live[0], 0)).toEqual([12, 0, 12]);
+    teardown(bridge);
+  });
+});

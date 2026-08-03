@@ -1,0 +1,908 @@
+/* ==========================================================================
+ * RED ALERT — src/ui/hud.css
+ *
+ * The Red Alert sidebar, expressed once. Read src/ui/Chrome.ts first: this file
+ * only consumes the custom properties that `applySkin()` writes, so faction
+ * recolour never touches a selector. There is no hue-rotate, no filter-based
+ * tinting and no bitmap scaling anywhere in this file.
+ *
+ * RESOLUTION INDEPENDENCE
+ * -----------------------
+ *   --ra-d   one DESIGN pixel at the current uiScale (Hud.ts writes it)
+ *   --ra-w   sidebar width in CSS px (= 168 * uiScale, integer)
+ *
+ * Every dimension is `calc(N * var(--ra-d))` where N is the design-px number
+ * straight out of VISUAL_DNA §2. Bevel hairlines stay a literal `1px` so they
+ * always land on exactly one device pixel — a 1.5 px bevel is a blurred bevel,
+ * and a blurred bevel is the single loudest "this is a web page" tell.
+ *
+ * LAYERING (bottom to top)
+ *   .ra-overlay   world-space UI, full-bleed canvas, never hit-tested
+ *   .ra-cmdbar    full-width black strip at the bottom
+ *   .ra-sidebar   the right-hand shell
+ *   .ra-tooltip   floats left of the sidebar, never overlaps it
+ * ========================================================================== */
+
+.ra-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+
+  /* Condensed, squarish, all-caps display face with flat terminals. A true
+     octagonal-O variable font is the spec (§2.16); until it is authored, the
+     narrowest grotesque the platform has, condensed and tracked out. */
+  --ra-font: 'Arial Narrow', 'Roboto Condensed', 'Liberation Sans Narrow',
+             'DIN Condensed', 'Haettenschweiler', 'Impact', system-ui, sans-serif;
+
+  --ra-d: 1px;
+  --ra-w: 168px;
+  /* 23, not 28 — the look bible's 16% HUD ceiling wins over decision D13.
+     See the note on HUD_COMMAND_BAR in src/core/config.ts. */
+  --ra-cmd-h: calc(23 * var(--ra-d));
+
+  font-family: var(--ra-font);
+  font-stretch: condensed;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  -webkit-font-smoothing: none;
+  color: #f7fbfe;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ra-hud * { box-sizing: border-box; }
+
+/* Hidden by the screenshot harness through #hud-root's visibility; nothing in
+   here may rely on being laid out to keep working. */
+
+/* ==========================================================================
+ * 1. SIDEBAR SHELL
+ * ========================================================================== */
+
+.ra-sidebar {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: var(--ra-cmd-h);
+  width: var(--ra-w);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(90deg,
+    var(--ra-bevel-lo) 0 1px,
+    var(--ra-metal-lo) 1px calc(3 * var(--ra-d)),
+    var(--ra-metal-mid) calc(3 * var(--ra-d)) calc(6 * var(--ra-d)),
+    #14141A calc(6 * var(--ra-d)) 100%);
+  border-left: 1px solid var(--ra-bevel-hi);
+  box-shadow: inset 0 0 calc(18 * var(--ra-d)) rgba(0, 0, 0, 0.75);
+  contain: layout paint;
+}
+
+/* Law 2: the outer chrome cap with its specular hairline at y = 1. */
+.ra-cap-top {
+  flex: 0 0 calc(4 * var(--ra-d));
+  background: var(--ra-bevel-ramp), var(--ra-brush);
+  background-blend-mode: overlay;
+  border-bottom: 1px solid var(--ra-bevel-lo);
+}
+
+/* ==========================================================================
+ * 2. CREDITS READOUT (§2.3) — a recessed, unlit LCD well
+ * ========================================================================== */
+
+.ra-credits {
+  position: relative;
+  flex: 0 0 calc(15 * var(--ra-d));
+  margin: 0 calc(11.5 * var(--ra-d));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Law 4: wells are BLACK AND FLAT. No gradient. */
+  background: var(--ra-well-credits);
+  border-top: 1px solid var(--ra-bevel-hi);
+  box-shadow:
+    inset 0 calc(2 * var(--ra-d)) calc(3 * var(--ra-d)) rgba(0, 0, 0, 0.95),
+    0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.ra-credits-digits {
+  font-size: calc(11 * var(--ra-d));
+  line-height: 1;
+  letter-spacing: calc(1 * var(--ra-d));
+  font-variant-numeric: tabular-nums;
+  color: var(--ra-numerals);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.85);
+}
+
+/* Δ flyout: rises 12 design px and fades over 600 ms. */
+.ra-credit-fly {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  text-align: center;
+  font-size: calc(9 * var(--ra-d));
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(0);
+}
+.ra-credit-fly.is-live {
+  animation: ra-fly 600ms linear forwards;
+}
+.ra-credit-fly.is-gain { color: #7ce87c; }
+.ra-credit-fly.is-loss { color: #e85858; }
+
+@keyframes ra-fly {
+  0%   { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(calc(-12 * var(--ra-d))); }
+}
+
+/* ==========================================================================
+ * 3. TOP BUTTON PAIR (§2.4) — one downward-pointing lens strip, split at centre
+ * ========================================================================== */
+
+.ra-toppair {
+  flex: 0 0 calc(23 * var(--ra-d));
+  position: relative;
+  display: flex;
+  padding: calc(3 * var(--ra-d)) calc(4 * var(--ra-d)) 0;
+  gap: 1px;
+}
+
+.ra-lensbtn {
+  flex: 1 1 0;
+  position: relative;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--ra-glyph);
+  pointer-events: auto;
+}
+.ra-lensbtn svg.ra-shape { display: block; width: 100%; height: 100%; }
+.ra-lensbtn .ra-glyph {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: calc(11 * var(--ra-d));
+  height: calc(11 * var(--ra-d));
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* ==========================================================================
+ * 4. RADAR / MINIMAP (§2.5)
+ * ========================================================================== */
+
+.ra-radar {
+  flex: 0 0 calc(132 * var(--ra-d));
+  position: relative;
+  margin: 0 calc(13 * var(--ra-d));
+}
+
+.ra-radar-bezel-top {
+  height: calc(9 * var(--ra-d));
+  background: var(--ra-bevel-ramp), var(--ra-brush);
+  background-blend-mode: overlay;
+  border-top: 1px solid var(--ra-bevel-hi);
+}
+
+.ra-radar-field {
+  position: relative;
+  height: calc(110 * var(--ra-d));
+  /* Law 4 again. The letterbox is part of the silhouette — keep it. */
+  background: #000;
+  border: 1px solid var(--ra-radar-frame);
+  box-shadow: inset 0 0 calc(6 * var(--ra-d)) rgba(0, 0, 0, 1);
+  cursor: crosshair;
+  pointer-events: auto;
+  touch-action: none;
+}
+.ra-radar-field canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+}
+.ra-radar-field.is-offline canvas { opacity: 0.12; }
+
+.ra-radar-offline {
+  position: absolute;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(8 * var(--ra-d));
+  color: #6a6a72;
+  letter-spacing: 0.14em;
+}
+.ra-radar-field.is-offline .ra-radar-offline { display: flex; }
+
+.ra-radar-bezel-bottom {
+  height: calc(13 * var(--ra-d));
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--ra-d));
+  padding-left: calc(4 * var(--ra-d));
+  background: var(--ra-bevel-ramp), var(--ra-brush);
+  background-blend-mode: overlay;
+  border-bottom: 1px solid var(--ra-bevel-lo);
+}
+
+.ra-led {
+  width: calc(5 * var(--ra-d));
+  height: calc(5 * var(--ra-d));
+  border-radius: 50%;
+  background: #2a6e97;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+}
+.ra-led.is-lit {
+  background: #7cd8ff;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55), 0 0 calc(3 * var(--ra-d)) #7cd8ff;
+}
+
+/* ==========================================================================
+ * 5. REPAIR / SELL ARC (§2.6) — exactly two buttons, never three
+ * ========================================================================== */
+
+.ra-arcpair {
+  flex: 0 0 calc(28 * var(--ra-d));
+  position: relative;
+  display: flex;
+  gap: 1px;
+  padding: 0 calc(21 * var(--ra-d));
+}
+
+.ra-arcbtn {
+  flex: 1 1 0;
+  position: relative;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--ra-glyph);
+  pointer-events: auto;
+}
+.ra-arcbtn svg.ra-shape { display: block; width: 100%; height: 100%; }
+.ra-arcbtn .ra-glyph {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(13 * var(--ra-d));
+  height: calc(13 * var(--ra-d));
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* Armed: the lens pulses 0.8 -> 1.0 alpha at 1.2 Hz and the cursor changes. */
+.ra-arcbtn.is-armed { animation: ra-armed 833ms ease-in-out infinite alternate; }
+.ra-arcbtn.is-armed .ra-glyph { color: var(--ra-accent-hi); }
+@keyframes ra-armed {
+  from { opacity: 0.8; filter: brightness(1); }
+  to   { opacity: 1;   filter: brightness(1.35); }
+}
+
+/* ==========================================================================
+ * 6. TAB STRIP (§2.7) — exactly four, butted, no gaps
+ * ========================================================================== */
+
+.ra-tabs {
+  flex: 0 0 calc(31 * var(--ra-d));
+  display: flex;
+  padding: 0 calc(24 * var(--ra-d));
+}
+
+.ra-tab {
+  flex: 1 1 0;
+  position: relative;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--ra-glyph-hi);
+  pointer-events: auto;
+}
+.ra-tab svg.ra-shape { display: block; width: 100%; height: 100%; }
+.ra-tab .ra-glyph {
+  position: absolute;
+  left: 50%;
+  top: 54%;
+  width: calc(16 * var(--ra-d));
+  height: calc(16 * var(--ra-d));
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+/* Allied selected = PLATE INVERSION: plate goes pale cyan-white, glyph flips
+   to dark blue. Soviet selected = GLYPH RECOLOUR only, pulsing gold<->red.
+   Both are kept; they are the fastest faction tell in the sidebar. */
+.ra-hud[data-faction='allies'] .ra-tab.is-selected .ra-glyph { color: var(--ra-glyph); }
+.ra-hud[data-faction='soviets'] .ra-tab .ra-glyph { color: #a50804; }
+.ra-hud[data-faction='soviets'] .ra-tab.is-selected .ra-glyph {
+  animation: ra-sov-tab 1000ms steps(1, end) infinite;
+}
+@keyframes ra-sov-tab {
+  0%, 49%   { color: #fceb1f; }
+  50%, 100% { color: #c40b0e; }
+}
+
+/* A tab whose queue finished something gets a hairline accent underline. */
+.ra-tab.is-alert::after {
+  content: '';
+  position: absolute;
+  left: calc(4 * var(--ra-d));
+  right: calc(4 * var(--ra-d));
+  bottom: calc(2 * var(--ra-d));
+  height: calc(2 * var(--ra-d));
+  background: var(--ra-accent);
+  box-shadow: 0 0 calc(3 * var(--ra-d)) var(--ra-accent);
+}
+
+/* ==========================================================================
+ * 7. BODY: power bar | cameo grid | piston rail (§2.8, §2.10)
+ * ========================================================================== */
+
+.ra-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  padding-top: calc(2 * var(--ra-d));
+}
+
+/* --- vertical power bar -------------------------------------------------- */
+
+.ra-power {
+  flex: 0 0 calc(21 * var(--ra-d));
+  position: relative;
+  padding: 0 calc(4 * var(--ra-d)) 0 calc(5 * var(--ra-d));
+  pointer-events: auto;
+}
+.ra-power-well {
+  position: relative;
+  height: 100%;
+  background: #05070A;
+  border: 1px solid var(--ra-bevel-lo);
+  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.10);
+  overflow: hidden;
+}
+
+/* Bottom-anchored tri-band: red (drawn) -> yellow (moving boundary) -> green
+   (surplus). Unlit black above the fill is headroom, not a colour. */
+.ra-power-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--ra-power-total, 0%);
+  background: linear-gradient(
+    to top,
+    var(--ra-power-red-lo) 0%,
+    #e16251 var(--ra-power-red, 0%),
+    #f7edb0 var(--ra-power-red, 0%),
+    #f7edb0 var(--ra-power-yellow, 0%),
+    var(--ra-power-mid) var(--ra-power-yellow, 0%),
+    var(--ra-power-hi) 100%);
+  --ra-power-red-lo: #3b1012;
+}
+
+/* 3 px vertical pitch: 1 px bright line + 2 px dark. This hatch is what makes
+   the bar read as a segmented gauge instead of a progress bar. */
+.ra-power-hatch {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.30) 0 1px,
+    rgba(0, 0, 0, 0.58) 1px calc(3 * var(--ra-d)));
+  pointer-events: none;
+}
+
+.ra-power.is-brownout .ra-power-fill { animation: ra-brownout 667ms ease-in-out infinite alternate; }
+@keyframes ra-brownout {
+  from { filter: brightness(0.7); }
+  to   { filter: brightness(1.5); }
+}
+
+/* --- cameo grid ---------------------------------------------------------- */
+
+.ra-grid {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(2, calc(60 * var(--ra-d)));
+  grid-auto-rows: calc(48 * var(--ra-d));
+  column-gap: calc(4 * var(--ra-d));
+  row-gap: calc(2 * var(--ra-d));
+  align-content: start;
+  justify-content: center;
+}
+
+/* The empty slot: a black glossy plastic key. Cross-section from §2.8:
+   1 px bevel highlight -> body -> 1 px black -> inner ramp -> flat well. */
+.ra-cameo {
+  position: relative;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: var(--ra-well-cameo);
+  border-radius: calc(3 * var(--ra-d));
+  overflow: hidden;
+  cursor: pointer;
+  pointer-events: auto;
+  color: inherit;
+  box-shadow:
+    inset 0 0 0 1px #020002,
+    inset 1px 1px 0 1px #746f75,
+    inset 0 calc(2 * var(--ra-d)) calc(5 * var(--ra-d)) rgba(90, 88, 88, 0.35),
+    inset 0 calc(-3 * var(--ra-d)) calc(4 * var(--ra-d)) rgba(0, 0, 0, 0.9);
+  transition: box-shadow 80ms linear;
+}
+.ra-hud[data-faction='soviets'] .ra-cameo {
+  /* Same key, thicker whiter bevel: polished steel rather than black plastic. */
+  box-shadow:
+    inset 0 0 0 1px #020002,
+    inset calc(1.5 * var(--ra-d)) calc(1.5 * var(--ra-d)) 0 1px #eeeeee,
+    inset 0 calc(2 * var(--ra-d)) calc(5 * var(--ra-d)) rgba(255, 255, 254, 0.18),
+    inset 0 calc(-3 * var(--ra-d)) calc(4 * var(--ra-d)) rgba(0, 0, 0, 0.9);
+}
+.ra-cameo.is-empty { cursor: default; }
+
+/* Diagonal top-left gloss sweep on the plastic key. */
+.ra-cameo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 42%);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.ra-cameo-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Disabled: remap onto a warm khaki/sepia ramp — hue 45-50, sat 0.30-0.45,
+   value +8%. Blues disappear entirely. Uniform, no wipe boundary. The NAME
+   LABEL is deliberately exempt (I13) and stays white — see .ra-cameo-name. */
+.ra-cameo.is-disabled .ra-cameo-art {
+  filter: grayscale(1) sepia(1) saturate(2.6) hue-rotate(-11deg) brightness(1.08);
+}
+
+.ra-cameo-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(1 * var(--ra-d));
+  z-index: 8;
+  text-align: center;
+  /* 8 px cap height (§2.16). The size is deliberately conservative because the
+     condensed face is a stack, not a shipped font: on a machine without Arial
+     Narrow the fallback is much wider, and a clipped cameo name is worse than
+     a slightly small one. `.is-long` drops another step for two-line names. */
+  font-size: calc(8 * var(--ra-d));
+  line-height: calc(8.5 * var(--ra-d));
+  color: #f7fbfe;
+  letter-spacing: 0;
+  overflow: hidden;
+  padding: 0 calc(1 * var(--ra-d));
+  /* A 1 DESIGN px HARD black outline on all sides (§2.16). It must scale with
+     uiScale like everything else: pinned at a device pixel it disappears under
+     18 px type at 1440p and the name stops reading over a light cameo. Never a
+     soft shadow — the hard outline is a franchise signature and a blur reads
+     as CSS. */
+  --ra-outline: var(--ra-d);
+  text-shadow:
+    var(--ra-outline) 0 0 #090000, calc(-1 * var(--ra-outline)) 0 0 #090000,
+    0 var(--ra-outline) 0 #090000, 0 calc(-1 * var(--ra-outline)) 0 #090000,
+    var(--ra-outline) var(--ra-outline) 0 #090000,
+    calc(-1 * var(--ra-outline)) var(--ra-outline) 0 #090000,
+    var(--ra-outline) calc(-1 * var(--ra-outline)) 0 #090000,
+    calc(-1 * var(--ra-outline)) calc(-1 * var(--ra-outline)) 0 #090000;
+  pointer-events: none;
+  white-space: pre-line;
+}
+/* A word long enough to touch the cell walls in the widest fallback face. */
+.ra-cameo-name.is-long {
+  font-size: calc(6.5 * var(--ra-d));
+  line-height: calc(7 * var(--ra-d));
+}
+
+/* Radial clock wipe: 60% black sweeping clockwise from 12 o'clock. At 50%
+   progress this is exactly a half-disc, which is the check a critic runs. */
+.ra-cameo-wipe {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  display: none;
+  background: conic-gradient(from 0deg,
+    rgba(0, 0, 0, 0) 0deg,
+    rgba(0, 0, 0, 0) var(--ra-wipe, 0deg),
+    rgba(0, 0, 0, 0.6) var(--ra-wipe, 0deg),
+    rgba(0, 0, 0, 0.6) 360deg);
+}
+.ra-cameo.is-building .ra-cameo-wipe { display: block; }
+
+/* The 2 px faction-coloured arc on the wipe's leading edge. */
+.ra-cameo-hand {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  width: calc(2 * var(--ra-d));
+  height: 72%;
+  z-index: 7;
+  display: none;
+  transform-origin: 50% 100%;
+  transform: translateX(-50%) rotate(var(--ra-wipe, 0deg));
+  background: var(--ra-lens-1);
+  box-shadow: 0 0 calc(3 * var(--ra-d)) var(--ra-lens-0);
+  pointer-events: none;
+}
+.ra-cameo.is-building .ra-cameo-hand { display: block; }
+
+/* Bottom fill bar, 3 px inside the cell's lower bevel. */
+.ra-cameo-fill {
+  position: absolute;
+  left: calc(1 * var(--ra-d));
+  bottom: calc(1 * var(--ra-d));
+  height: calc(3 * var(--ra-d));
+  width: var(--ra-fill, 0%);
+  z-index: 9;
+  background: var(--ra-lens-1);
+  display: none;
+  pointer-events: none;
+}
+.ra-cameo.is-building .ra-cameo-fill { display: block; }
+.ra-cameo.is-hold .ra-cameo-fill { background: #6a6a6a; }
+.ra-cameo.is-hold .ra-cameo-hand { background: #6a6a6a; box-shadow: none; }
+
+/* "Ready" — the ONLY mixed-case string in the entire HUD. Keep it that way. */
+.ra-cameo-ready {
+  position: absolute;
+  left: 50%;
+  top: calc(3 * var(--ra-d));
+  z-index: 10;
+  transform: translateX(-50%);
+  display: none;
+  width: calc(36 * var(--ra-d));
+  height: calc(13 * var(--ra-d));
+  line-height: calc(13 * var(--ra-d));
+  text-align: center;
+  text-transform: none;
+  font-weight: 700;
+  font-size: calc(11 * var(--ra-d));
+  letter-spacing: 0;
+  color: var(--ra-ready-text);
+  background: color-mix(in srgb, var(--ra-ready-fill) 65%, transparent);
+  pointer-events: none;
+}
+.ra-cameo.is-ready .ra-cameo-ready { display: block; }
+
+/* Queue badge, bottom-right, shown only at >= 2. */
+.ra-cameo-badge {
+  position: absolute;
+  right: calc(1 * var(--ra-d));
+  bottom: calc(1 * var(--ra-d));
+  z-index: 11;
+  display: none;
+  min-width: calc(16 * var(--ra-d));
+  height: calc(14 * var(--ra-d));
+  line-height: calc(13 * var(--ra-d));
+  text-align: center;
+  font-size: calc(10 * var(--ra-d));
+  color: var(--ra-numerals);
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid var(--ra-lens-1);
+  pointer-events: none;
+}
+.ra-cameo.is-queued .ra-cameo-badge { display: block; }
+.ra-cameo-badge.is-punch { animation: ra-punch 120ms ease-out; }
+@keyframes ra-punch {
+  from { transform: scale(1.25); }
+  to   { transform: scale(1); }
+}
+
+/* --- interaction states (§2.13) — the original has none ------------------ */
+
+.ra-cameo:hover:not(.is-empty) {
+  box-shadow:
+    inset 0 0 0 1px var(--ra-lens-1),
+    inset 1px 1px 0 1px #b8b8c6,
+    inset 0 calc(2 * var(--ra-d)) calc(5 * var(--ra-d)) rgba(140, 138, 138, 0.4),
+    inset 0 calc(-3 * var(--ra-d)) calc(4 * var(--ra-d)) rgba(0, 0, 0, 0.9);
+}
+.ra-cameo:hover:not(.is-empty) .ra-cameo-art { filter: brightness(1.06); }
+.ra-cameo:hover.is-disabled .ra-cameo-art {
+  filter: grayscale(1) sepia(1) saturate(2.6) hue-rotate(-11deg) brightness(1.15);
+}
+.ra-cameo:active:not(.is-empty) {
+  transform: translate(1px, 1px);
+  box-shadow:
+    inset 0 0 0 1px #020002,
+    inset -1px -1px 0 1px #8b8899,
+    inset 0 calc(3 * var(--ra-d)) calc(4 * var(--ra-d)) rgba(0, 0, 0, 0.9);
+}
+
+/* Keyboard focus must be visually distinct from hover: 2 px dashed, 8 px dash. */
+.ra-hud :focus-visible {
+  outline: calc(2 * var(--ra-d)) dashed var(--ra-accent);
+  outline-offset: calc(-2 * var(--ra-d));
+}
+.ra-hud :focus:not(:focus-visible) { outline: none; }
+
+/* --- right decorative rail: ten chrome piston domes, 50 px pitch --------- */
+
+.ra-rail {
+  flex: 0 0 calc(23 * var(--ra-d));
+  margin-left: calc(2 * var(--ra-d));
+  background-color: #050c1a;
+  /* The measured cross-section at a dome centre (§2.10):
+     #3B3A43 -> #53515D -> #6B6977 -> #8B8899 -> #AAACBE -> #BBBCD0 (peak)
+     -> #A6A5B8 -> #898795 -> #07060B. The peak is a HIGHLIGHT on a machined
+     cap, so it occupies a few percent of the dome, not half of it — a wide
+     bright core reads as a row of plastic pills instead of pistons. */
+  background-image: radial-gradient(
+    ellipse 46% 26% at 46% 40%,
+    #bbbcd0 0%, #aaacbe 9%, #8b8899 22%,
+    #6b6977 38%, #53515d 54%, #3b3a43 70%,
+    #14171f 84%, #07060b 100%);
+  background-size: 100% calc(50 * var(--ra-d));
+  background-repeat: repeat-y;
+  border-left: 1px solid var(--ra-bevel-lo);
+  box-shadow: inset 1px 0 0 rgba(0, 0, 0, 0.8);
+}
+/* Soviet swaps the domes for brass turbine fins — a material change, not a tint. */
+.ra-hud[data-faction='soviets'] .ra-rail {
+  background-color: #14171f;
+  background-image: repeating-linear-gradient(
+    180deg,
+    #f0e39a 0 1px,
+    #6d6720 1px calc(4 * var(--ra-d)),
+    #422d06 calc(4 * var(--ra-d)) calc(6 * var(--ra-d)));
+  background-size: 100% calc(50 * var(--ra-d));
+}
+
+/* ==========================================================================
+ * 8. BOTTOM CAP (§2.10) — chrome shelf, wide lens arc, plinth, emblem
+ * ========================================================================== */
+
+.ra-cap-bottom {
+  flex: 0 0 calc(41 * var(--ra-d));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+.ra-cap-shelf {
+  position: relative;
+  flex: 0 0 calc(7 * var(--ra-d));
+  background: linear-gradient(180deg, #fcfbff 0%, #d0cedf 100%);
+  border-bottom: 1px solid var(--ra-bevel-lo);
+}
+.ra-hud[data-faction='soviets'] .ra-cap-shelf {
+  background: linear-gradient(180deg, #f0e39a 0%, #a89344 100%);
+}
+.ra-cap-emblem {
+  position: absolute;
+  right: calc(6 * var(--ra-d));
+  bottom: 0;
+  width: calc(28 * var(--ra-d));
+  height: calc(18 * var(--ra-d));
+  color: var(--ra-emblem);
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.65));
+  z-index: 2;
+}
+.ra-cap-lens {
+  flex: 0 0 calc(24 * var(--ra-d));
+  position: relative;
+  background: linear-gradient(180deg, var(--ra-lens-0) 0%, var(--ra-lens-2) 55%, #000066 100%);
+  border-radius: 0 0 calc(14 * var(--ra-d)) calc(14 * var(--ra-d));
+  box-shadow: inset 0 1px 0 var(--ra-lens-rim-hi), inset 0 -1px 0 var(--ra-lens-rim-lo);
+}
+.ra-hud[data-faction='soviets'] .ra-cap-lens {
+  background: linear-gradient(180deg, #cdcadb 0%, #8a8b92 60%, #2a2620 100%), var(--ra-brush);
+  background-blend-mode: overlay;
+}
+/* 1 px vertical seam bisecting the lens arc. */
+.ra-cap-lens::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.55);
+}
+.ra-cap-plinth {
+  flex: 1 1 auto;
+  background: linear-gradient(180deg, #14141a 0%, #050508 100%);
+}
+/* Soviet radiator grille: ~24 vertical bars at 4 px pitch under the cap. */
+.ra-hud[data-faction='soviets'] .ra-cap-plinth {
+  background: repeating-linear-gradient(
+    90deg,
+    #8c2322 0 calc(2 * var(--ra-d)),
+    #730805 calc(2 * var(--ra-d)) calc(4 * var(--ra-d)));
+  box-shadow: inset 0 calc(2 * var(--ra-d)) calc(3 * var(--ra-d)) rgba(0, 0, 0, 0.8);
+}
+
+/* ==========================================================================
+ * 9. COMMAND BAR (§2.12) — full width, soft-glow line art on flat black
+ * ========================================================================== */
+
+.ra-cmdbar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--ra-cmd-h);
+  pointer-events: auto;
+  background: #000;
+  /* world view -> bright white rule -> black field -> dark red rule */
+  border-top: calc(2 * var(--ra-d)) solid #f3f7ff;
+  border-bottom: calc(2 * var(--ra-d)) solid #400e0d;
+  display: flex;
+  align-items: center;
+}
+.ra-hud[data-faction='soviets'] .ra-cmdbar { border-top-color: #aaaebd; }
+
+/* Chrome hydraulic ram / handle assembly with two rivet bosses. */
+.ra-cmd-endcap {
+  position: relative;
+  flex: 0 0 calc(48 * var(--ra-d));
+  align-self: stretch;
+  background: linear-gradient(180deg, #d8d8e4 0%, #8b8899 45%, #3b3a43 80%, #07060b 100%);
+  border-right: 1px solid #07060b;
+}
+.ra-hud[data-faction='soviets'] .ra-cmd-endcap {
+  background: linear-gradient(180deg, #f0e39a 0%, #a89344 45%, #422d06 82%, #07060b 100%);
+}
+.ra-cmd-endcap::before,
+.ra-cmd-endcap::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: calc(6 * var(--ra-d));
+  height: calc(6 * var(--ra-d));
+  margin-top: calc(-3 * var(--ra-d));
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #e8e8f2 0%, #8b8899 55%, #14141a 100%);
+}
+.ra-cmd-endcap::before { left: calc(9 * var(--ra-d)); }
+.ra-cmd-endcap::after  { left: calc(29 * var(--ra-d)); }
+/* Soviet red pull-ring on the handle. */
+.ra-hud[data-faction='soviets'] .ra-cmd-endcap::after {
+  background: radial-gradient(circle at 35% 30%, #e85858 0%, #8c2322 55%, #2a0504 100%);
+}
+
+.ra-cmd-icons {
+  position: relative;
+  flex: 1 1 auto;
+  align-self: stretch;
+}
+.ra-cmd-btn {
+  position: absolute;
+  top: 50%;
+  width: calc(20 * var(--ra-d));
+  height: calc(16 * var(--ra-d));
+  margin-top: calc(-8 * var(--ra-d));
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--ra-cmd-icon);
+  /* No plates, no separators. Soft-glow line art on black. */
+  filter: drop-shadow(0 0 calc(3 * var(--ra-d)) color-mix(in srgb, var(--ra-cmd-icon) 55%, transparent));
+  pointer-events: auto;
+}
+.ra-cmd-btn .ra-glyph { width: 100%; height: 100%; display: block; }
+.ra-cmd-btn:hover { color: var(--ra-cmd-icon-hi); }
+.ra-cmd-btn.is-active { color: var(--ra-accent); }
+
+/* ==========================================================================
+ * 10. SUPERWEAPON COUNTDOWN (§2.12)
+ *
+ * SOLID black boxes (never translucent) inside the world view, bottom-right,
+ * right-aligned with ragged left edges, 3 px clear of the sidebar.
+ * ========================================================================== */
+
+.ra-superweapons {
+  position: absolute;
+  right: calc(var(--ra-w) + 3 * var(--ra-d));
+  bottom: calc(var(--ra-cmd-h) + 4 * var(--ra-d));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: calc(2 * var(--ra-d));
+  pointer-events: none;
+}
+.ra-sw-row {
+  position: relative;
+  height: calc(18 * var(--ra-d));
+  line-height: calc(18 * var(--ra-d));
+  padding: 0 calc(6 * var(--ra-d));
+  background: #000;
+  font-size: calc(11 * var(--ra-d));
+  color: #e81b1c;
+  display: flex;
+  gap: calc(8 * var(--ra-d));
+  white-space: nowrap;
+}
+.ra-sw-time { font-variant-numeric: tabular-nums; margin-left: auto; }
+.ra-sw-row.is-ready { animation: ra-sw-flash 1000ms steps(1, end) infinite; }
+@keyframes ra-sw-flash {
+  0%, 49%   { color: #e81b1c; }
+  50%, 100% { color: #f8c820; }
+}
+/* NEW: a 1 px faction-coloured progress underline across the box width. */
+.ra-sw-row::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 1px;
+  width: var(--ra-sw-progress, 0%);
+  background: var(--ra-accent);
+}
+
+/* ==========================================================================
+ * 11. TOOLTIP (§2.13) — same material as the credits well
+ * ========================================================================== */
+
+.ra-tooltip {
+  position: fixed;
+  z-index: 40;
+  max-width: 280px;
+  padding: calc(4 * var(--ra-d)) calc(6 * var(--ra-d)) calc(5 * var(--ra-d));
+  background: #0a0a12;
+  border: 1px solid var(--ra-bevel-hi);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 calc(2 * var(--ra-d)) calc(6 * var(--ra-d)) rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  font-size: calc(10 * var(--ra-d));
+  line-height: 1.35;
+}
+.ra-tt-title { color: #f7fbfe; letter-spacing: 0.08em; }
+.ra-tt-stats {
+  display: flex;
+  gap: calc(8 * var(--ra-d));
+  color: var(--ra-numerals);
+  font-variant-numeric: tabular-nums;
+}
+.ra-tt-cost:not(:empty)::before  { content: '$'; opacity: 0.65; }
+.ra-tt-power:not(:empty)::after  { content: ' PWR'; opacity: 0.65; }
+.ra-tt-blurb {
+  color: #9aa2ae;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-top: calc(2 * var(--ra-d));
+}
+.ra-tt-req {
+  color: #e85858;
+  margin-top: calc(2 * var(--ra-d));
+}
+
+/* ==========================================================================
+ * 12. WORLD OVERLAY (§2.11)
+ *
+ * One full-bleed canvas, never hit-tested. Selection is the health bar
+ * appearing; there are NO selection circles, boxes or corner brackets.
+ * ========================================================================== */
+
+.ra-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: block;
+}
+
+/* ==========================================================================
+ * 13. SHARED SVG PLATE STYLING
+ * ========================================================================== */
+
+.ra-hud svg.ra-shape .ra-plate-rim-hi { stroke: var(--ra-lens-rim-hi); stroke-width: 1; fill: none; }
+.ra-hud svg.ra-shape .ra-plate-rim-lo { stroke: var(--ra-lens-rim-lo); stroke-width: 1; fill: none; }

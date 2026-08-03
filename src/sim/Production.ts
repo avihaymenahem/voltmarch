@@ -1,0 +1,2000 @@
+/**
+ * ============================================================================
+ * RED ALERT — src/sim/Production.ts
+ * ============================================================================
+ * THE BUILD LOOP: TECH TREE, ROSTERS, CONSTRUCTION AND EGRESS.
+ *
+ * This is the loop the player actually lives in. Click a cameo, watch a clock
+ * wipe, plant a structure, watch it rise, watch the cameos it unlocked appear.
+ * Everything in this file exists to make that circuit tight and legible.
+ *
+ * WHAT IS AUTHORED HERE AND WHAT IS BORROWED
+ * ------------------------------------------
+ * The PRODUCTION LAYER is authored here and nowhere else: which faction can
+ * build what, in which tab, for how much, in how long, gated behind which
+ * structures, and which structure services which queue. That is a tech tree,
+ * and a tech tree is a design document, not a data-table detail.
+ *
+ * The ENTITY LAYER — hit points, speed, armour, footprint, power draw — is
+ * borrowed. When `src/data/**` publishes a real `DefTables` we read cost,
+ * build time, footprint and power out of it; until then we fall back to
+ * `FALLBACK_UNITS` / `FALLBACK_BUILDINGS` in game/Scenarios.ts so that a
+ * Grizzly rolling off my War Factory is byte-for-byte the same entity as a
+ * Grizzly the scenario parked on the map. Two spawn paths that disagree about
+ * what a Grizzly is would be a bug nobody finds for a week.
+ *
+ * THE `defId` CONVENTION — READ THIS BEFORE CALLING ANYTHING
+ * ---------------------------------------------------------
+ * Every `defId` on MY api and in MY events is a CATALOG INDEX (`BuildEntry.index`),
+ * not an index into `DefTables.units`/`.buildings`. It has to be: the catalog
+ * exists at boot and is stable whether or not a def table was ever found,
+ * whereas a real def index is -1 for everything until the data module lands.
+ * The real one is still there when you need it (`entry.defId`), and
+ * `catalog.fromDefId()` maps back. The entity store keeps storing the real one,
+ * because that is what `EntityStore.defId` is documented to hold.
+ *
+ * WRITE OWNERSHIP (see the table in core/loop.ts)
+ * ----------------------------------------------
+ * This module owns `buildProgress`, `flags:UnderConstruction`, `footprintW/H`
+ * and the spawn-time initialisation of every column of a unit it produces. It
+ * writes `credits` (as the buyer; economy writes it as the earner) and
+ * `techMask`. It writes `orderKind/orderX/orderZ/state` exactly once per unit,
+ * at spawn, to point a fresh vehicle at its rally flag — the same spawn-time
+ * initialisation `ScenarioBuilder.spawnUnit` performs, and never again after.
+ * ============================================================================
+ */
+
+import {
+  BUILD_RADIUS, CELL, CONSTRUCTION_RISE_SECONDS, MAP_CELLS, MAX_PLAYERS,
+  PLACEMENT, PRODUCTION, SELL_REFUND,
+} from '../core/config';
+import {
+  BUILD_TAB_COUNT, BuildTab, CommandKind, CreditReason, EntityFlag, EntityKind, EvaLine,
+  Faction, FxKind, Locomotor, MatchPhase, NONE, OrderKind, Stance, UnitState,
+} from '../core/types';
+import type {
+  AvailabilityResult, BuildingDef, Command, DefTables, EntityId, HudCameo, HudSnapshot,
+  PlayerId, PlayerState, ProductionItem, SimContext, UnitDef,
+} from '../core/types';
+import { PerEntityI16, type World } from '../core/world';
+import type { Channels } from '../core/events';
+import { clampWorld, footprintOriginCell, isInMap, worldToCell } from '../core/math';
+
+import {
+  FALLBACK_BUILDINGS, FALLBACK_UNITS, activeScenario, entityKeyOf, resolveDefBinding,
+  type DefBinding, type FallbackBuilding, type FallbackUnit,
+} from '../game/Scenarios';
+
+import { BuildQueues, HoldReason, type QueueHooks, type QueueItemInfo } from './BuildQueue';
+import {
+  PlacementPhase, evaluatePlacement, placementReport,
+  type PlacementListener, type PlacementNotice,
+} from './Placement';
+
+// The placement vocabulary lives in Placement.ts so the runtime import edge
+// only ever points Production -> Placement. Re-exported here because callers
+// think of it as part of the production api.
+export { PlacementPhase };
+export type { PlacementListener, PlacementNotice };
+
+/* ==========================================================================
+ * 1. THE CATALOG — the authored tech tree
+ * ========================================================================== */
+
+export const enum BuildKind {
+  Building = 0,
+  Unit = 1,
+}
+
+/**
+ * Added to a unit's real def index to make `BuildEntry.publicId` unique across
+ * both def tables. Far above any plausible roster size and far below the point
+ * where a double stops being an exact integer; nothing stores a publicId in a
+ * typed array (`Command.defId` is a plain object field).
+ */
+export const UNIT_PUBLIC_ID_BASE = 4096;
+
+/** One buildable, fully resolved. `index` is the id every api here speaks in. */
+export interface BuildEntry {
+  /** Stable catalog index. Also the bit this entry occupies in `techMask`. */
+  readonly index: number;
+  /**
+   * THE ID EVERY OTHER MODULE SPEAKS IN.
+   *
+   * The real `DefTables` index when a data module published one, and the
+   * catalog index when it did not. That choice is not arbitrary: the HUD
+   * (src/ui/Hud.ts) and the AI (src/sim/AIStrategy.ts) both carry their own
+   * catalogues keyed on real def indices, and `ProductionItem.defId` is
+   * documented as "index into units[]/buildings[]". So when content exists we
+   * speak content; when it does not, the catalog index is the only id in the
+   * building, and it is unambiguous precisely because no real ones exist.
+   *
+   * UNITS ARE OFFSET BY `UNIT_PUBLIC_ID_BASE`. `DefTables` has two independent
+   * index spaces — `units[7]` is the Rhino, `buildings[7]` is the Naval Yard —
+   * so a bare def index is only meaningful next to an `isBuilding` flag, and
+   * `availability(player, defId)` does not take one. Before this offset,
+   * `resolve()` guessed buildings first and a Soviet AI asking "can I build a
+   * Rhino?" was answered about an ALLIED Naval Yard: "Wrong faction", forever.
+   * (That is a real bug this repo shipped the moment src/data/Defs.ts landed,
+   * caught by tests/ai.spec.ts.) `resolve()` strips the offset, and still
+   * accepts a bare def index when the caller supplies `isBuilding` — which is
+   * what every command path does, since the tab already says which space it
+   * meant.
+   */
+  readonly publicId: number;
+  /** Content key, shared with game/Scenarios.ts ('warFactory', 'grizzly'). */
+  readonly key: string;
+  readonly name: string;
+  readonly blurb: string;
+  readonly kind: BuildKind;
+  /** Neutral means BOTH armies field it. */
+  readonly faction: Faction;
+  readonly tab: BuildTab;
+  readonly cost: number;
+  /** Seconds at full power with exactly one factory. */
+  readonly buildTime: number;
+  /** Content keys of structures that must be built and powered first. */
+  readonly prereqs: readonly string[];
+  readonly sortOrder: number;
+  /** False for things that exist only as prereqs / MCV deploy targets. */
+  readonly buildable: boolean;
+  /** Index into DefTables.units / .buildings, or -1 when no def table exists. */
+  readonly defId: number;
+
+  /* -- buildings ------------------------------------------------------- */
+  readonly footprintW: number;
+  readonly footprintH: number;
+  /** Metres. The ghost volume's height. */
+  readonly height: number;
+  /** Positive generates power. */
+  readonly power: number;
+  readonly storage: number;
+  /** Metres within which THIS structure permits new construction. */
+  readonly buildRadius: number;
+  /** Which queues this structure services. Empty for non-factories. */
+  readonly producesTabs: readonly BuildTab[];
+  /** Local-space exit, metres, +Z forward. */
+  readonly exitX: number;
+  readonly exitZ: number;
+
+  /* -- units ------------------------------------------------------------ */
+  readonly entityKind: EntityKind;
+}
+
+/** The authored half. Everything else is derived from the fallback tables. */
+interface ContentSpec {
+  key: string;
+  name: string;
+  blurb: string;
+  kind: BuildKind;
+  faction: Faction;
+  tab: BuildTab;
+  cost: number;
+  buildTime: number;
+  prereqs: readonly string[];
+  sortOrder: number;
+  buildable?: boolean;
+  producesTabs?: readonly BuildTab[];
+  buildRadius?: number;
+}
+
+const S = BuildTab.Structures;
+const D = BuildTab.Defense;
+const I = BuildTab.Infantry;
+const V = BuildTab.Vehicles;
+
+/**
+ * THE TECH TREE.
+ *
+ * Costs and times are the RA2 curve, which is the one this game's economy
+ * constants (START_CREDITS 10000, HARVESTER_CAPACITY 700) were tuned against:
+ * a Power Plant inside 10 seconds, a Refinery paying for itself in about three
+ * loads, and an Apocalypse costing roughly two and a half Rhinos.
+ *
+ * Prerequisites are deliberately SHALLOW — three tiers, never four. RA2's real
+ * tree is: power, then economy, then army, then one tech building that opens
+ * the top of every tab at once. A deeper tree reads as homework.
+ */
+const CONTENT: readonly ContentSpec[] = [
+  /* -- tier 0: the thing you start with ---------------------------------- */
+  {
+    key: 'conyard', name: 'Construction Yard', blurb: 'Deploys your base. Builds structures.',
+    kind: BuildKind.Building, faction: Faction.Neutral, tab: S,
+    cost: 3000, buildTime: 40, prereqs: [], sortOrder: 0, buildable: false,
+    producesTabs: [S, D], buildRadius: BUILD_RADIUS,
+  },
+
+  /* -- tier 1: power and economy ----------------------------------------- */
+  {
+    key: 'powerPlant', name: 'Power Plant', blurb: 'Generates 100 power. Everything else needs it.',
+    kind: BuildKind.Building, faction: Faction.Neutral, tab: S,
+    cost: 300, buildTime: 8, prereqs: ['conyard'], sortOrder: 10,
+  },
+  {
+    key: 'refinery', name: 'Ore Refinery', blurb: 'Unloads harvesters. Ships with one.',
+    kind: BuildKind.Building, faction: Faction.Neutral, tab: S,
+    cost: 2000, buildTime: 24, prereqs: ['powerPlant'], sortOrder: 20,
+  },
+  {
+    key: 'barracks', name: 'Barracks', blurb: 'Trains infantry.',
+    kind: BuildKind.Building, faction: Faction.Neutral, tab: S,
+    cost: 500, buildTime: 10, prereqs: ['powerPlant'], sortOrder: 30,
+    producesTabs: [I],
+  },
+
+  /* -- tier 2: army and sight -------------------------------------------- */
+  {
+    key: 'warFactory', name: 'War Factory', blurb: 'Builds vehicles. Sets a rally point.',
+    kind: BuildKind.Building, faction: Faction.Neutral, tab: S,
+    cost: 2000, buildTime: 24, prereqs: ['refinery'], sortOrder: 40,
+    producesTabs: [V],
+  },
+  {
+    key: 'radar', name: 'Radar Dome', blurb: 'Reveals the minimap. Opens tier two.',
+    kind: BuildKind.Building, faction: Faction.Neutral, tab: S,
+    cost: 1000, buildTime: 14, prereqs: ['refinery'], sortOrder: 50,
+  },
+  {
+    key: 'oreSilo', name: 'Ore Silo', blurb: 'Stores 1500 credits of ore.',
+    kind: BuildKind.Building, faction: Faction.Neutral, tab: S,
+    cost: 150, buildTime: 5, prereqs: ['refinery'], sortOrder: 60,
+  },
+  {
+    key: 'navalYard', name: 'Naval Yard', blurb: 'Builds Allied warships.',
+    kind: BuildKind.Building, faction: Faction.Allies, tab: S,
+    cost: 1000, buildTime: 14, prereqs: ['refinery'], sortOrder: 70,
+    producesTabs: [V],
+  },
+  {
+    key: 'subPen', name: 'Naval Pen', blurb: 'Builds Soviet warships.',
+    kind: BuildKind.Building, faction: Faction.Soviets, tab: S,
+    cost: 1000, buildTime: 14, prereqs: ['refinery'], sortOrder: 70,
+    producesTabs: [V],
+  },
+
+  /* -- tier 3: the one tech building ------------------------------------- */
+  {
+    key: 'battleLab', name: 'Battle Lab', blurb: 'Unlocks the top of every tab.',
+    kind: BuildKind.Building, faction: Faction.Neutral, tab: S,
+    cost: 2000, buildTime: 24, prereqs: ['radar'], sortOrder: 80,
+  },
+
+  /* -- defences ----------------------------------------------------------- */
+  {
+    key: 'wall', name: 'Concrete Wall', blurb: 'Stops vehicles. Stops nothing else.',
+    kind: BuildKind.Building, faction: Faction.Neutral, tab: D,
+    cost: 100, buildTime: 2, prereqs: ['barracks'], sortOrder: 10,
+  },
+  {
+    key: 'pillbox', name: 'Pillbox', blurb: 'Cheap anti-infantry emplacement.',
+    kind: BuildKind.Building, faction: Faction.Allies, tab: D,
+    cost: 400, buildTime: 8, prereqs: ['barracks'], sortOrder: 20,
+  },
+  {
+    key: 'flameTower', name: 'Flame Tower', blurb: 'Short-ranged, brutal on infantry.',
+    kind: BuildKind.Building, faction: Faction.Soviets, tab: D,
+    cost: 600, buildTime: 10, prereqs: ['barracks'], sortOrder: 20,
+  },
+  {
+    key: 'prismTower', name: 'Prism Tower', blurb: 'Long-ranged beam defence. Needs power.',
+    kind: BuildKind.Building, faction: Faction.Allies, tab: D,
+    cost: 1500, buildTime: 16, prereqs: ['battleLab'], sortOrder: 30,
+  },
+  {
+    key: 'teslaCoil', name: 'Tesla Coil', blurb: 'Melts armour. Dies in a brownout.',
+    kind: BuildKind.Building, faction: Faction.Soviets, tab: D,
+    cost: 1500, buildTime: 16, prereqs: ['radar'], sortOrder: 30,
+  },
+
+  /* -- infantry ----------------------------------------------------------- */
+  {
+    key: 'gi', name: 'G.I.', blurb: 'Rifleman. The Allied line.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: I,
+    cost: 200, buildTime: 5, prereqs: ['barracks'], sortOrder: 10,
+  },
+  {
+    key: 'conscript', name: 'Conscript', blurb: 'Cheap, expendable, everywhere.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: I,
+    cost: 100, buildTime: 4, prereqs: ['barracks'], sortOrder: 10,
+  },
+  {
+    key: 'attackDog', name: 'Attack Dog', blurb: 'Fast scout. Shreds infantry.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: I,
+    cost: 300, buildTime: 6, prereqs: ['barracks'], sortOrder: 20,
+  },
+  {
+    key: 'engineer', name: 'Engineer', blurb: 'Captures structures. Repairs them.',
+    kind: BuildKind.Unit, faction: Faction.Neutral, tab: I,
+    cost: 500, buildTime: 10, prereqs: ['barracks', 'refinery'], sortOrder: 30,
+  },
+
+  /* -- vehicles ------------------------------------------------------------ */
+  {
+    key: 'harvester', name: 'Ore Harvester', blurb: 'Mines ore. Your entire economy.',
+    kind: BuildKind.Unit, faction: Faction.Neutral, tab: V,
+    cost: 1400, buildTime: 16, prereqs: ['warFactory', 'refinery'], sortOrder: 10,
+  },
+  {
+    key: 'grizzly', name: 'Grizzly Tank', blurb: 'The Allied main battle tank.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
+    cost: 700, buildTime: 11, prereqs: ['warFactory'], sortOrder: 20,
+  },
+  {
+    key: 'rhino', name: 'Rhino Tank', blurb: 'Slower, heavier, hits harder.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
+    cost: 900, buildTime: 13, prereqs: ['warFactory'], sortOrder: 20,
+  },
+  {
+    key: 'ifv', name: 'Multigunner IFV', blurb: 'Fast wheeled gun platform.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
+    cost: 600, buildTime: 10, prereqs: ['warFactory', 'radar'], sortOrder: 30,
+  },
+  {
+    key: 'prismTank', name: 'Prism Tank', blurb: 'Beam artillery. Fragile.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
+    cost: 1200, buildTime: 17, prereqs: ['warFactory', 'battleLab'], sortOrder: 40,
+  },
+  {
+    key: 'apocalypse', name: 'Apocalypse Tank', blurb: 'The end of an argument.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
+    cost: 1750, buildTime: 24, prereqs: ['warFactory', 'battleLab'], sortOrder: 40,
+  },
+  {
+    key: 'mcv', name: 'Construction Vehicle', blurb: 'Deploys into a second base.',
+    kind: BuildKind.Unit, faction: Faction.Neutral, tab: V,
+    cost: 3000, buildTime: 32, prereqs: ['warFactory', 'battleLab'], sortOrder: 50,
+  },
+
+  /* -- naval (shares the Vehicles tab; there are only four tabs) ---------- */
+  {
+    key: 'transport', name: 'Hover Transport', blurb: 'Carries a squad across water.',
+    kind: BuildKind.Unit, faction: Faction.Neutral, tab: V,
+    cost: 900, buildTime: 12, prereqs: ['navalYard'], sortOrder: 60,
+  },
+  {
+    key: 'gunboat', name: 'Assault Destroyer', blurb: 'Allied escort. Shoots at everything.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
+    cost: 1000, buildTime: 14, prereqs: ['navalYard'], sortOrder: 70,
+  },
+  {
+    key: 'destroyer', name: 'Aircraft Cruiser', blurb: 'Allied capital ship.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
+    cost: 1800, buildTime: 22, prereqs: ['navalYard', 'battleLab'], sortOrder: 80,
+  },
+  {
+    key: 'submarine', name: 'Attack Submarine', blurb: 'Soviet ambush hull.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
+    cost: 1000, buildTime: 14, prereqs: ['subPen'], sortOrder: 70,
+  },
+  {
+    key: 'dreadnought', name: 'Dreadnought', blurb: 'Soviet siege ship.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
+    cost: 2000, buildTime: 24, prereqs: ['subPen', 'battleLab'], sortOrder: 80,
+  },
+];
+
+/** The Soviet naval yard is called a Sub Pen but services the same queue. */
+const NAVAL_PREREQ_ALIASES: Readonly<Record<string, string>> = {
+  navalYard: 'subPen',
+  subPen: 'navalYard',
+};
+
+/* ==========================================================================
+ * 2. CATALOG CONSTRUCTION
+ * ========================================================================== */
+
+/**
+ * The resolved catalog. Built once at init, immutable afterwards.
+ *
+ * Lookups are all O(1) through pre-built maps because the HUD asks
+ * "what is entry 14" sixty times a second and the tech pass asks
+ * "who owns key 'refinery'" once per structure per tick.
+ */
+export class ProductionCatalog {
+  readonly entries: readonly BuildEntry[];
+  /** Buildable entries per (faction, tab), pre-sorted by sortOrder. */
+  private readonly byFactionTab = new Map<number, BuildEntry[]>();
+  private readonly byKeyMap = new Map<string, BuildEntry>();
+  private readonly byDefIdBuilding = new Map<number, BuildEntry>();
+  private readonly byDefIdUnit = new Map<number, BuildEntry>();
+  /** True when a real DefTables was found and merged. */
+  readonly bound: boolean;
+
+  constructor(binding: DefBinding) {
+    this.bound = binding.tables !== null;
+    const entries: BuildEntry[] = [];
+
+    for (let i = 0; i < CONTENT.length; i++) {
+      const spec = CONTENT[i];
+      const entry = resolveEntry(spec, i, binding);
+      if (entry === null) continue;
+      entries.push(entry);
+    }
+    this.entries = entries;
+
+    for (const e of entries) {
+      this.byKeyMap.set(e.key, e);
+      if (e.defId >= 0) {
+        (e.kind === BuildKind.Building ? this.byDefIdBuilding : this.byDefIdUnit).set(e.defId, e);
+      }
+    }
+
+    // One list per (faction, tab). Neutral entries appear in BOTH armies' lists,
+    // which is the whole reason 'engineer' and 'harvester' are authored once.
+    for (const faction of [Faction.Allies, Faction.Soviets]) {
+      for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+        const list = entries
+          .filter((e) => e.buildable && e.tab === (t as BuildTab)
+            && (e.faction === Faction.Neutral || e.faction === faction))
+          .sort((a, b) => a.sortOrder - b.sortOrder || a.index - b.index);
+        this.byFactionTab.set(faction * BUILD_TAB_COUNT + t, list);
+      }
+    }
+  }
+
+  /** Catalog entry by its index. Null for an out-of-range id. */
+  at(index: number): BuildEntry | null {
+    return index >= 0 && index < this.entries.length ? this.entries[index] : null;
+  }
+
+  byKey(key: string): BuildEntry | null {
+    return this.byKeyMap.get(key) ?? null;
+  }
+
+  /** Map a REAL def-table index back to a catalog entry. */
+  fromDefId(defId: number, isBuilding: boolean): BuildEntry | null {
+    if (defId < 0) return null;
+    return (isBuilding ? this.byDefIdBuilding : this.byDefIdUnit).get(defId) ?? null;
+  }
+
+  /**
+   * Turn whatever id a caller has into an entry. See `BuildEntry.publicId`.
+   *
+   * Accepts THREE spellings of the same thing, because three different modules
+   * legitimately hold different ones:
+   *   - a `publicId`      (units offset by UNIT_PUBLIC_ID_BASE) — the AI, Placement
+   *   - a bare def index  plus an `isBuilding` hint             — every command path,
+   *                                                               where the tab already
+   *                                                               said which table
+   *   - a catalog index                                         — no def table bound
+   *
+   * With no hint and no offset the id can only be read as a BUILDING def index:
+   * that is the one case where guessing is safe, because a caller holding a raw
+   * unit index without a hint has no way to have meant anything else and would
+   * have been wrong under the old code too.
+   */
+  resolve(id: number, isBuilding?: boolean): BuildEntry | null {
+    if (id < 0) return null;
+    if (this.bound) {
+      const offset = id >= UNIT_PUBLIC_ID_BASE;
+      const bare = offset ? id - UNIT_PUBLIC_ID_BASE : id;
+      if (isBuilding === true) {
+        // An offset id is a unit by construction; never answer with a building.
+        if (!offset) {
+          const b = this.byDefIdBuilding.get(id);
+          if (b !== undefined) return b;
+        }
+      } else if (isBuilding === false) {
+        const u = this.byDefIdUnit.get(bare);
+        if (u !== undefined) return u;
+      } else if (offset) {
+        const u = this.byDefIdUnit.get(bare);
+        if (u !== undefined) return u;
+      } else {
+        const b = this.byDefIdBuilding.get(id);
+        if (b !== undefined) return b;
+      }
+    }
+    const byIndex = this.at(id);
+    if (byIndex === null) return null;
+    if (isBuilding !== undefined && (byIndex.kind === BuildKind.Building) !== isBuilding) return null;
+    return byIndex;
+  }
+
+  /** Everything `faction` may build in `tab`, in sidebar order. */
+  roster(faction: Faction, tab: BuildTab): readonly BuildEntry[] {
+    return this.byFactionTab.get(faction * BUILD_TAB_COUNT + (tab as number)) ?? EMPTY_ROSTER;
+  }
+
+  get count(): number { return this.entries.length; }
+}
+
+const EMPTY_ROSTER: readonly BuildEntry[] = [];
+
+/** Merge one authored spec with the fallback tables and any real def. */
+function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): BuildEntry | null {
+  const isBuilding = spec.kind === BuildKind.Building;
+
+  if (isBuilding) {
+    const fb: FallbackBuilding | undefined = FALLBACK_BUILDINGS[spec.key];
+    if (fb === undefined) {
+      console.warn(`[production] no fallback building for "${spec.key}" — entry dropped`);
+      return null;
+    }
+    const defId = binding.buildingId[spec.key] ?? -1;
+    const def: BuildingDef | undefined = defId >= 0 ? binding.tables?.buildings[defId] : undefined;
+    const fw = def?.footprintW ?? fb.footprintW;
+    const fh = def?.footprintH ?? fb.footprintH;
+    return {
+      index,
+      key: spec.key,
+      name: def?.name ?? spec.name,
+      blurb: def?.blurb ?? spec.blurb,
+      kind: BuildKind.Building,
+      faction: spec.faction,
+      tab: def?.tab ?? spec.tab,
+      cost: def?.cost ?? spec.cost,
+      buildTime: def?.buildTime ?? spec.buildTime,
+      prereqs: spec.prereqs,
+      sortOrder: spec.sortOrder,
+      buildable: spec.buildable !== false,
+      defId,
+      publicId: defId >= 0 ? defId : index,
+      footprintW: fw,
+      footprintH: fh,
+      height: fb.height,
+      power: def?.power ?? fb.power,
+      storage: def?.storage ?? fb.storage,
+      buildRadius: spec.buildRadius ?? def?.buildRadius ?? PLACEMENT.adjacencyRadius,
+      producesTabs: spec.producesTabs ?? EMPTY_TABS,
+      // Default exit: dead centre of the front (+Z) edge, one clearance out.
+      exitX: def?.exitOffsetX ?? 0,
+      exitZ: def?.exitOffsetZ ?? (fh * CELL * 0.5 + PRODUCTION.exitClearanceMetres),
+      entityKind: EntityKind.Building,
+    };
+  }
+
+  const fb: FallbackUnit | undefined = FALLBACK_UNITS[spec.key];
+  if (fb === undefined) {
+    console.warn(`[production] no fallback unit for "${spec.key}" — entry dropped`);
+    return null;
+  }
+  const defId = binding.unitId[spec.key] ?? -1;
+  const def: UnitDef | undefined = defId >= 0 ? binding.tables?.units[defId] : undefined;
+  return {
+    index,
+    key: spec.key,
+    name: def?.name ?? spec.name,
+    blurb: def?.blurb ?? spec.blurb,
+    kind: BuildKind.Unit,
+    faction: spec.faction,
+    tab: def?.tab ?? spec.tab,
+    cost: def?.cost ?? spec.cost,
+    buildTime: def?.buildTime ?? spec.buildTime,
+    prereqs: spec.prereqs,
+    sortOrder: spec.sortOrder,
+    buildable: spec.buildable !== false,
+    defId,
+    // See BuildEntry.publicId: the offset is what keeps a unit's id from
+    // colliding with the building sharing its def index.
+    publicId: defId >= 0 ? defId + UNIT_PUBLIC_ID_BASE : index,
+    footprintW: 0,
+    footprintH: 0,
+    height: fb.height,
+    power: 0,
+    storage: 0,
+    buildRadius: 0,
+    producesTabs: EMPTY_TABS,
+    exitX: 0,
+    exitZ: 0,
+    entityKind: def?.kind ?? fb.kind,
+  };
+}
+
+const EMPTY_TABS: readonly BuildTab[] = [];
+
+/* ==========================================================================
+ * 3. INTENTS
+ *
+ * Every public mutator queues an intent instead of touching the world. The
+ * whole point is that the sim mutates in exactly one place, inside simTick, in
+ * a fixed order — so a HUD click at frame time and an AI command at tick time
+ * produce the same result in the same order on every machine.
+ * ========================================================================== */
+
+const enum IntentKind {
+  Enqueue = 0,
+  Cancel = 1,
+  Pause = 2,
+  Place = 3,
+  Rally = 4,
+  Primary = 5,
+  Sell = 6,
+}
+
+interface Intent {
+  kind: IntentKind;
+  player: number;
+  tab: BuildTab;
+  /** Catalog index. */
+  defId: number;
+  arg: number;
+  x: number;
+  z: number;
+  target: number;
+}
+
+const INTENT_CAPACITY = 256;
+
+/* ==========================================================================
+ * 4. THE SERVICE
+ * ========================================================================== */
+
+/** Per-player scratch the service owns. Sized once. */
+interface PlayerScratch {
+  /** Credits spent/refunded this tick, netted so we emit one event. */
+  creditDelta: number;
+  /** Eased credits readout for the HUD. */
+  creditsDisplay: number;
+  /** Sim time of the last "insufficient funds" line. */
+  lastFundsEva: number;
+  /** Number of available cameos last tick, to detect NEW options. */
+  availableCount: number;
+  /** Seconds until a blocked egress is retried. */
+  egressRetry: Float32Array;
+}
+
+export class ProductionService implements QueueHooks {
+  readonly queues: BuildQueues;
+  /** HUD-facing snapshot for the LOCAL player. Rebuilt in place every tick. */
+  readonly snapshot: HudSnapshot;
+
+  /** Catalog index of the entity in each slot, or -1. Generation-stamped. */
+  private readonly entryOfEntity: PerEntityI16;
+  /** Completed buildings per (player, catalog index). */
+  private readonly builtCount: Int32Array;
+  /** Live-but-unfinished buildings per (player, catalog index). */
+  private readonly buildingCount: Int32Array;
+  /** Factory count per (player, tab), recomputed every tick. */
+  private readonly factories: Int32Array;
+  /** Chosen spawn factory per (player, tab). Slot index, or -1. */
+  private readonly primaryFactory: Int32Array;
+
+  private readonly scratch: PlayerScratch[] = [];
+  private readonly intents: Intent[] = [];
+  private intentCount = 0;
+
+  private readonly placementListeners: PlacementListener[] = [];
+  private readonly notice: PlacementNotice = {
+    phase: PlacementPhase.Began, player: 0 as PlayerId, defId: -1, key: '',
+    cx: 0, cz: 0, w: 0, h: 0, ok: false, reason: '', id: NONE,
+  };
+
+  /** Cameo objects, pooled per tab so the HUD snapshot never allocates. */
+  private readonly cameoPool: HudCameo[][] = [[], [], [], []];
+  private cameoFaction: Faction = Faction.Neutral;
+
+  /**
+   * The real def tables, when a data module published some. Spawn paths read
+   * hp/speed/armour straight out of this so a produced Grizzly is identical to
+   * a scenario-placed one. Set once by `production.system.ts` at init.
+   */
+  bindingTables: DefTables | null = null;
+
+  /** True once we have decided we are the one draining the command bus. */
+  private commandFallback = false;
+  private commandFallbackLogged = false;
+
+  private tickCount = 0;
+  /** Set when a structure completes, so tech is re-derived exactly once. */
+  private techDirty = true;
+
+  constructor(
+    readonly world: World,
+    readonly channels: Channels,
+    readonly catalog: ProductionCatalog,
+  ) {
+    this.queues = new BuildQueues(this);
+    this.entryOfEntity = new PerEntityI16(world.store, -1);
+    const n = MAX_PLAYERS * catalog.count;
+    this.builtCount = new Int32Array(n);
+    this.buildingCount = new Int32Array(n);
+    this.factories = new Int32Array(MAX_PLAYERS * BUILD_TAB_COUNT);
+    this.primaryFactory = new Int32Array(MAX_PLAYERS * BUILD_TAB_COUNT).fill(-1);
+
+    for (let p = 0; p < MAX_PLAYERS; p++) {
+      this.scratch.push({
+        creditDelta: 0,
+        creditsDisplay: 0,
+        lastFundsEva: -1e9,
+        availableCount: 0,
+        egressRetry: new Float32Array(BUILD_TAB_COUNT),
+      });
+    }
+    for (let i = 0; i < INTENT_CAPACITY; i++) {
+      this.intents.push({
+        kind: IntentKind.Enqueue, player: 0, tab: BuildTab.Structures,
+        defId: -1, arg: 0, x: 0, z: 0, target: 0,
+      });
+    }
+
+    this.snapshot = {
+      credits: 0, creditsDisplay: 0,
+      powerProduced: 0, powerConsumed: 0, brownout: false, hasRadar: false,
+      activeTab: BuildTab.Structures,
+      cameos: [[], [], [], []],
+      tabAlert: [false, false, false, false],
+      selectionCount: 0, selectionPrimary: NONE,
+      gameTimeSec: 0, matchPhase: MatchPhase.Playing,
+    };
+
+    // Structures placed by anything other than us (the scenario, a deploying
+    // MCV) still have to release their nav cells when they die.
+    channels.events.on('entity:killed', (ev) => {
+      if (ev.kind === EntityKind.Building) this.onBuildingRemoved(ev.id, ev.player);
+    });
+    channels.events.on('building:captured', () => { this.techDirty = true; });
+  }
+
+  /* ======================================================================
+   * 5a. PUBLIC API — everything the HUD, the AI and the tests call
+   * ====================================================================== */
+
+  /**
+   * Queue `count` of a buildable. `defId` is a `BuildEntry.publicId` — a real
+   * def index when content exists, a catalog index when it does not. Applied
+   * at the next Phase.Production, never inline.
+   */
+  enqueue(player: PlayerId, defId: number, count = 1, isBuilding?: boolean): void {
+    const entry = this.catalog.resolve(defId, isBuilding);
+    if (entry === null) return;
+    this.push(IntentKind.Enqueue, player, entry.tab, entry.index, count, 0, 0, 0);
+  }
+
+  /** Queue by content key ('warFactory'). The unambiguous entry point. */
+  enqueueByKey(player: PlayerId, key: string, count = 1): void {
+    const entry = this.catalog.byKey(key);
+    if (entry === null) return;
+    this.push(IntentKind.Enqueue, player, entry.tab, entry.index, count, 0, 0, 0);
+  }
+
+  /** Cancel one queued item. `slot` -1 cancels the most recently queued. */
+  cancel(player: PlayerId, defId: number, slot = -1, isBuilding?: boolean): void {
+    const entry = this.catalog.resolve(defId, isBuilding);
+    if (entry === null) return;
+    this.push(IntentKind.Cancel, player, entry.tab, entry.index, slot, 0, 0, 0);
+  }
+
+  /** Pause or resume the head of a tab. */
+  setPaused(player: PlayerId, tab: BuildTab, paused: boolean): void {
+    this.push(IntentKind.Pause, player, tab, -1, paused ? 1 : 0, 0, 0, 0);
+  }
+
+  /** Commit a ready structure at an origin cell. Validity is re-checked. */
+  placeBuilding(player: PlayerId, defId: number, cx: number, cz: number): void {
+    const entry = this.catalog.resolve(defId, true);
+    if (entry === null) return;
+    this.push(IntentKind.Place, player, BuildTab.Structures, entry.index, 0, cx, cz, 0);
+  }
+
+  /** Move a factory's rally flag. Persists for the factory's whole life. */
+  setRally(player: PlayerId, factory: EntityId, x: number, z: number): void {
+    this.push(IntentKind.Rally, player, BuildTab.Structures, -1, 0, x, z, factory as number);
+  }
+
+  /** Make a factory the one that units come out of. */
+  setPrimary(player: PlayerId, factory: EntityId): void {
+    this.push(IntentKind.Primary, player, BuildTab.Structures, -1, 0, 0, 0, factory as number);
+  }
+
+  /** Sell a structure for SELL_REFUND of its cost. */
+  sell(player: PlayerId, building: EntityId): void {
+    this.push(IntentKind.Sell, player, BuildTab.Structures, -1, 0, 0, 0, building as number);
+  }
+
+  /**
+   * Can `player` build this right now? The reason string is the tooltip; it is
+   * never empty when `ok` is false.
+   */
+  availability(player: PlayerId, defId: number, out?: AvailabilityResult): AvailabilityResult {
+    const result = out ?? { ok: false, reason: '' };
+    const entry = this.catalog.resolve(defId);
+    if (entry === null) { result.ok = false; result.reason = 'Unknown'; return result; }
+    return this.availabilityOf(player, entry, result);
+  }
+
+  /** The same question with the entry already in hand. */
+  availabilityOf(player: PlayerId, entry: BuildEntry, out: AvailabilityResult): AvailabilityResult {
+    const result = out;
+    const p = this.world.players[player as number];
+    if (p === undefined) { result.ok = false; result.reason = 'Unknown player'; return result; }
+
+    if (!entry.buildable) { result.ok = false; result.reason = 'Not buildable'; return result; }
+    if (entry.faction !== Faction.Neutral && entry.faction !== p.faction) {
+      result.ok = false; result.reason = 'Wrong faction'; return result;
+    }
+    for (let i = 0; i < entry.prereqs.length; i++) {
+      const key = entry.prereqs[i];
+      if (this.hasStructure(player, key)) continue;
+      const alias = NAVAL_PREREQ_ALIASES[key];
+      if (alias !== undefined && this.hasStructure(player, alias)) continue;
+      const req = this.catalog.byKey(key);
+      result.ok = false;
+      result.reason = `Requires ${req?.name ?? key}`;
+      return result;
+    }
+    if (this.factories[(player as number) * BUILD_TAB_COUNT + (entry.tab as number)] <= 0) {
+      result.ok = false;
+      result.reason = entry.tab === BuildTab.Structures || entry.tab === BuildTab.Defense
+        ? 'Requires a Construction Yard'
+        : 'Requires a production structure';
+      return result;
+    }
+    result.ok = true;
+    result.reason = '';
+    return result;
+  }
+
+  /** True when a completed, powered structure of this key exists. */
+  hasStructure(player: PlayerId, key: string): boolean {
+    const entry = this.catalog.byKey(key);
+    if (entry === null) return false;
+    return this.builtCount[(player as number) * this.catalog.count + entry.index] > 0;
+  }
+
+  /** Completed structures of a key. */
+  structureCount(player: PlayerId, key: string): number {
+    const entry = this.catalog.byKey(key);
+    if (entry === null) return 0;
+    return this.builtCount[(player as number) * this.catalog.count + entry.index];
+  }
+
+  /** Catalog entry an existing entity was built from, or null. */
+  entryOf(id: EntityId): BuildEntry | null {
+    return this.catalog.at(this.entryOfEntity.get(id));
+  }
+
+  /** The factory a unit of `tab` would currently come out of, or NONE. */
+  spawnFactory(player: PlayerId, tab: BuildTab): EntityId {
+    const i = this.primaryFactory[(player as number) * BUILD_TAB_COUNT + (tab as number)];
+    return i < 0 ? NONE : this.world.store.handleOf(i);
+  }
+
+  /** Rally point of a factory into `out` as [x, z]. False when it has none. */
+  rallyPoint(player: PlayerId, factory: EntityId, out: Float32Array): boolean {
+    const p = this.world.players[player as number];
+    if (p === undefined) return false;
+    const x = p.rallyX.get(factory as number);
+    const z = p.rallyZ.get(factory as number);
+    if (x === undefined || z === undefined) return false;
+    out[0] = x; out[1] = z;
+    return true;
+  }
+
+  /** Which sidebar tab the HUD is showing. Snapshot-only; no sim effect. */
+  setActiveTab(tab: BuildTab): void {
+    this.snapshot.activeTab = tab;
+  }
+
+  setMatchPhase(phase: MatchPhase): void {
+    this.snapshot.matchPhase = phase;
+  }
+
+  /** Subscribe to the placement flow. Returns an unsubscribe. */
+  onPlacement(fn: PlacementListener): () => void {
+    this.placementListeners.push(fn);
+    return () => {
+      const i = this.placementListeners.indexOf(fn);
+      if (i >= 0) this.placementListeners.splice(i, 1);
+    };
+  }
+
+  /**
+   * Feed one drained Command in. Returns true when it was ours, so the module
+   * that owns the CommandBus drain can pass everything through here without
+   * knowing what production commands look like.
+   */
+  handleCommand(cmd: Command): boolean {
+    switch (cmd.kind) {
+      case CommandKind.ProductionStart:
+        this.enqueue(cmd.player, cmd.defId, Math.max(1, cmd.arg), tabIsStructural(cmd.tab));
+        return true;
+      case CommandKind.ProductionPause:
+        this.setPaused(cmd.player, cmd.tab, cmd.arg !== 0);
+        return true;
+      case CommandKind.ProductionCancel:
+        this.cancel(cmd.player, cmd.defId, cmd.arg, tabIsStructural(cmd.tab));
+        return true;
+      case CommandKind.PlaceBuilding:
+        this.placeBuilding(cmd.player, cmd.defId, cmd.cx, cmd.cz);
+        return true;
+      case CommandKind.SetRally:
+        this.setRally(cmd.player, cmd.target, cmd.x, cmd.z);
+        return true;
+      case CommandKind.SetPrimary:
+        this.setPrimary(cmd.player, cmd.target);
+        return true;
+      case CommandKind.SellBuilding:
+        this.sell(cmd.player, cmd.target);
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /* ======================================================================
+   * 5b. THE TICK
+   * ====================================================================== */
+
+  tick(s: SimContext): void {
+    this.tickCount++;
+    const world = this.world;
+
+    // 1. Intent, then commands. Player intent wins ties by arriving first.
+    this.drainIntents();
+    this.drainCommands();
+
+    // 2. Census: who owns what, which queues have a factory, what is unlocked.
+    //    One pass over every building, every tick. At a few hundred structures
+    //    that is nothing, and it means a structure captured, sold, destroyed or
+    //    spawned by ANY module is reflected without an event contract.
+    this.census();
+
+    const progressTick = (this.tickCount % PRODUCTION.progressEventInterval) === 0;
+
+    for (let pi = 0; pi < world.players.length; pi++) {
+      const p = world.players[pi];
+      if (p.faction === Faction.Neutral) continue;
+      const sc = this.scratch[pi];
+
+      this.queues.advance(p, s.dt, progressTick);
+
+      // A finished vehicle tries the door every few ticks until it fits.
+      for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+        const tab = t as BuildTab;
+        const head = this.queues.head(p, tab);
+        if (head === null || !head.ready || head.isBuilding) continue;
+        sc.egressRetry[t] -= s.dt;
+        if (sc.egressRetry[t] > 0) continue;
+        if (this.tryEgress(p, tab, head, s)) this.queues.completeHead(p, tab);
+        else sc.egressRetry[t] = PRODUCTION.egressRetrySeconds;
+      }
+
+      // One netted credits event per player per tick instead of four.
+      if (sc.creditDelta !== 0) {
+        this.emitCredits(p, sc.creditDelta, sc.creditDelta > 0 ? CreditReason.Refund : CreditReason.Build);
+        sc.creditDelta = 0;
+      }
+      // The readout eases toward the truth; a hard snap reads as a bug.
+      const k = 1 - Math.exp(-PRODUCTION.creditsDisplayLambda * s.dt);
+      sc.creditsDisplay += (p.credits - sc.creditsDisplay) * k;
+      if (Math.abs(p.credits - sc.creditsDisplay) < 1) sc.creditsDisplay = p.credits;
+    }
+
+    // 3. Structures rise.
+    this.advanceConstruction(s);
+
+    // 4. Publish for the HUD.
+    this.refreshSnapshot(s);
+  }
+
+  /* ======================================================================
+   * 5c. CENSUS — buildings, factories, tech
+   * ====================================================================== */
+
+  private census(): void {
+    const world = this.world;
+    const st = world.store;
+    const n = this.catalog.count;
+
+    this.builtCount.fill(0);
+    this.buildingCount.fill(0);
+    this.factories.fill(0);
+    this.primaryFactory.fill(-1);
+
+    const list = st.byKind[EntityKind.Building];
+    const count = st.byKindCount[EntityKind.Building];
+
+    for (let a = 0; a < count; a++) {
+      const i = list[a];
+      const flags = st.flags[i];
+      if ((flags & EntityFlag.Alive) === 0) continue;
+      if ((flags & EntityFlag.PendingDestroy) !== 0) continue;
+
+      const entry = this.entryForSlot(i);
+      if (entry === null) continue;
+      const owner = st.owner[i];
+      const base = owner * n + entry.index;
+
+      const complete = (flags & EntityFlag.UnderConstruction) === 0 && st.buildProgress[i] >= 1;
+      if (!complete) { this.buildingCount[base]++; continue; }
+
+      // NOTE: a brownout does NOT revoke a prerequisite here, even though
+      // BuildableDef.prereqs says "must exist (and be powered)". Gating
+      // construction on power soft-locks a player whose only route out of a
+      // blackout is building the Power Plant they are now forbidden from
+      // building. The blackout lever is POWER_BLACKOUT_MUL — production gets
+      // four times slower, never impossible. That is also why config says of
+      // it: "Never zero — that is a soft lock."
+      this.builtCount[base]++;
+
+      for (let t = 0; t < entry.producesTabs.length; t++) {
+        const tab = entry.producesTabs[t] as number;
+        const fi = owner * BUILD_TAB_COUNT + tab;
+        this.factories[fi]++;
+        // Primary wins; otherwise the first one found. Deterministic either way
+        // because byKind is a dense list in allocation order.
+        if (this.primaryFactory[fi] < 0) this.primaryFactory[fi] = i;
+        else if ((flags & EntityFlag.PrimaryFactory) !== 0
+          && (st.flags[this.primaryFactory[fi]] & EntityFlag.PrimaryFactory) === 0) {
+          this.primaryFactory[fi] = i;
+        }
+      }
+    }
+
+    // Mirror into the shared columns so nobody has to ask us.
+    for (let pi = 0; pi < world.players.length; pi++) {
+      const p = world.players[pi];
+      for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+        p.queues[t].factoryCount = this.factories[pi * BUILD_TAB_COUNT + t];
+      }
+    }
+
+    this.refreshTech();
+  }
+
+  /** Recompute `techMask` and announce genuinely new options. */
+  private refreshTech(): void {
+    const world = this.world;
+    const scratchResult: AvailabilityResult = { ok: false, reason: '' };
+
+    for (let pi = 0; pi < world.players.length; pi++) {
+      const p = world.players[pi];
+      if (p.faction === Faction.Neutral) continue;
+      let available = 0;
+      for (let e = 0; e < this.catalog.count; e++) {
+        const entry = this.catalog.entries[e];
+        if (!entry.buildable) { p.techMask[e] = 0; continue; }
+        this.availabilityOf(p.id, entry, scratchResult);
+        const ok = scratchResult.ok ? 1 : 0;
+        p.techMask[e] = ok;
+        available += ok;
+      }
+      const sc = this.scratch[pi];
+      if (available > sc.availableCount) {
+        // Strictly MORE options than last tick: that is the EVA line. Losing
+        // options (a bombed Radar Dome) is announced by the loss, not by this.
+        this.channels.events.emit('tech:changed', { player: p.id });
+        if (sc.availableCount > 0) this.eva(p, EvaLine.NewConstructionOptions);
+      } else if (available < sc.availableCount) {
+        this.channels.events.emit('tech:changed', { player: p.id });
+      }
+      sc.availableCount = available;
+    }
+    this.techDirty = false;
+  }
+
+  /**
+   * Catalog entry for a live building slot. Three routes, cheapest first:
+   * our own stamp, the real def table, then the scenario's content key.
+   */
+  private entryForSlot(i: number): BuildEntry | null {
+    const stamped = this.entryOfEntity.getAt(i);
+    if (stamped >= 0) return this.catalog.at(stamped);
+    // -2 is a remembered miss: a prop, a civilian structure, anything this
+    // catalog has no opinion about. Re-running the string lookup for those
+    // every tick is exactly the kind of quiet cost that never shows up in a
+    // profile until there are 200 of them.
+    if (stamped === MISS) return null;
+
+    const st = this.world.store;
+    const defId = st.defId[i];
+    if (defId >= 0) {
+      const byDef = this.catalog.fromDefId(defId, st.kind[i] === EntityKind.Building);
+      if (byDef !== null) {
+        this.entryOfEntity.setAt(i, byDef.index);
+        return byDef;
+      }
+    }
+    const key = entityKeyOf(st.handleOf(i));
+    if (key !== '') {
+      const byKey = this.catalog.byKey(key);
+      if (byKey !== null) {
+        this.entryOfEntity.setAt(i, byKey.index);
+        return byKey;
+      }
+    }
+    this.entryOfEntity.setAt(i, MISS);
+    return null;
+  }
+
+  /**
+   * The catalog entry behind a queued item.
+   *
+   * Items WE queue carry a catalog index. Items pushed in from outside — the
+   * `?shot=placement` fixture stages one directly — carry a real def index, or
+   * -1 when no def table exists. All three are resolved here, preferring our
+   * own convention, then the def table, then the scenario's published key.
+   */
+  private resolveQueueEntry(item: ProductionItem): BuildEntry | null {
+    const resolved = this.catalog.resolve(item.defId, item.isBuilding);
+    if (resolved !== null) return resolved;
+    if (item.isBuilding) {
+      const key = activeScenario()?.placement?.key;
+      if (key !== undefined) return this.catalog.byKey(key);
+    }
+    return null;
+  }
+
+  /* ======================================================================
+   * 5d. CONSTRUCTION
+   * ====================================================================== */
+
+  private advanceConstruction(s: SimContext): void {
+    const st = this.world.store;
+    const list = st.byKind[EntityKind.Building];
+    const count = st.byKindCount[EntityKind.Building];
+    const rate = s.dt / Math.max(0.05, CONSTRUCTION_RISE_SECONDS);
+
+    for (let a = 0; a < count; a++) {
+      const i = list[a];
+      const flags = st.flags[i];
+      if ((flags & EntityFlag.UnderConstruction) === 0) continue;
+      if ((flags & EntityFlag.PendingDestroy) !== 0) continue;
+
+      const next = st.buildProgress[i] + rate;
+      if (next < 1) {
+        st.buildProgress[i] = next;
+        // HP ramps with the rise, so a structure caught half-built is soft.
+        const f = PRODUCTION.buildingStartHpFrac;
+        const target = st.maxHp[i] * (f + (1 - f) * next);
+        if (st.hp[i] < target) st.hp[i] = target;
+        continue;
+      }
+
+      st.buildProgress[i] = 1;
+      st.flags[i] = flags & ~EntityFlag.UnderConstruction;
+      st.state[i] = UnitState.Idle;
+      st.hp[i] = st.maxHp[i];
+      this.onBuildingCompleted(i);
+    }
+  }
+
+  private onBuildingCompleted(i: number): void {
+    const st = this.world.store;
+    const id = st.handleOf(i);
+    const owner = st.owner[i] as PlayerId;
+    const p = this.world.players[owner as number];
+    const entry = this.entryForSlot(i);
+
+    if (p !== undefined && entry !== null) {
+      p.storageMax += entry.storage;
+      p.stats.buildingsBuilt++;
+      if (entry.defId >= 0 && entry.defId < p.buildingCount.length) p.buildingCount[entry.defId]++;
+      // Give the fresh factory a rally flag so its first unit has somewhere to
+      // go before the player ever right-clicks.
+      if (entry.producesTabs.length > 0) this.defaultRally(p, i, entry);
+    }
+    this.techDirty = true;
+
+    const ev = this.channels.events.payload('building:completed');
+    ev.id = id;
+    ev.defId = entry?.publicId ?? -1;
+    ev.player = owner;
+    ev.x = st.posX[i];
+    ev.z = st.posZ[i];
+    this.channels.events.emitPooled('building:completed');
+
+    if (p !== undefined) {
+      this.eva(p, EvaLine.ConstructionComplete);
+      this.world.vfx.play(FxKind.BuildComplete, st.posX[i], st.posY[i], st.posZ[i], 0, 1, 0, 1);
+    }
+  }
+
+  /** Release nav cells and cached economy when a structure leaves the world. */
+  private onBuildingRemoved(id: EntityId, owner: PlayerId): void {
+    const st = this.world.store;
+    const i = st.index(id);
+    if (i < 0) return;
+    const fw = st.footprintW[i];
+    const fh = st.footprintH[i];
+    if (fw > 0) {
+      footprintOriginCell(st.posX[i], st.posZ[i], fw, fh, cellScratch);
+      this.world.terrain.clearOccupied(cellScratch[0], cellScratch[1], fw, fh);
+    }
+    const p = this.world.players[owner as number];
+    const entry = this.entryForSlot(i);
+    if (p !== undefined && entry !== null) {
+      p.storageMax = Math.max(0, p.storageMax - entry.storage);
+      p.rallyX.delete(id as number);
+      p.rallyZ.delete(id as number);
+      if (entry.defId >= 0 && entry.defId < p.buildingCount.length) {
+        p.buildingCount[entry.defId] = Math.max(0, p.buildingCount[entry.defId] - 1);
+      }
+    }
+    this.techDirty = true;
+  }
+
+  /* ======================================================================
+   * 5e. INTENT APPLICATION
+   * ====================================================================== */
+
+  private push(
+    kind: IntentKind, player: PlayerId, tab: BuildTab,
+    defId: number, arg: number, x: number, z: number, target: number,
+  ): void {
+    if (this.intentCount >= INTENT_CAPACITY) return;
+    const it = this.intents[this.intentCount++];
+    it.kind = kind;
+    it.player = player as number;
+    it.tab = tab;
+    it.defId = defId;
+    it.arg = arg;
+    it.x = x;
+    it.z = z;
+    it.target = target;
+  }
+
+  private drainIntents(): void {
+    const n = this.intentCount;
+    for (let i = 0; i < n; i++) {
+      const it = this.intents[i];
+      const p = this.world.players[it.player];
+      if (p === undefined) continue;
+      switch (it.kind) {
+        case IntentKind.Enqueue: this.applyEnqueue(p, it.defId, it.arg); break;
+        case IntentKind.Cancel: {
+          const entry = this.catalog.at(it.defId);
+          if (entry !== null) this.queues.cancel(p, it.tab, entry.publicId, it.arg);
+          break;
+        }
+        case IntentKind.Pause: this.queues.setPaused(p, it.tab, it.arg !== 0); break;
+        case IntentKind.Place: this.applyPlace(p, it.defId, it.x, it.z); break;
+        case IntentKind.Rally: this.applyRally(p, it.target as EntityId, it.x, it.z); break;
+        case IntentKind.Primary: this.applyPrimary(p, it.target as EntityId); break;
+        case IntentKind.Sell: this.applySell(p, it.target as EntityId); break;
+      }
+    }
+    this.intentCount = 0;
+  }
+
+  /**
+   * Drain whatever is still on the CommandBus at Phase.Production.
+   *
+   * `src/input/Commands.ts` drains at Phase.Command, applies Order/SetRally and
+   * RE-ISSUES everything else onto the bus, so production commands are still
+   * sitting there when we get here. If no Phase.Command consumer exists at all,
+   * they are here for the same reason. Either way taking them is right, and
+   * anything we do not recognise was going nowhere regardless.
+   *
+   * A module that wants to own the drain outright should call
+   * `production().handleCommand(cmd)` for each command instead of re-issuing.
+   */
+  private drainCommands(): void {
+    const bus = this.channels.commands;
+    if (bus.pending === 0) return;
+    if (!this.commandFallbackLogged) {
+      this.commandFallbackLogged = true;
+      console.info('[production] draining leftover commands at Phase.Production');
+    }
+    this.commandFallback = true;
+    bus.drain((cmd) => { this.handleCommand(cmd); });
+  }
+
+  private applyEnqueue(p: PlayerState, index: number, count: number): void {
+    const entry = this.catalog.at(index);
+    if (entry === null) return;
+    const avail = this.availabilityOf(p.id, entry, availScratch);
+    if (!avail.ok) return;
+    // Clicking a cameo you cannot afford still queues it — that is C&C, and it
+    // is how you line up an army while the harvesters catch up. It does earn
+    // the EVA line, which is what VISUAL_DNA §3 asks for ("cameo click over
+    // budget OR production stalls on funds").
+    if (p.credits < entry.cost) this.evaFunds(p);
+    this.queues.enqueue(p, entry.tab, entry.publicId, entry.kind === BuildKind.Building, count);
+  }
+
+  private applyRally(p: PlayerState, factory: EntityId, x: number, z: number): void {
+    const st = this.world.store;
+    const i = st.index(factory);
+    if (i < 0 || st.kind[i] !== EntityKind.Building) return;
+    if (st.owner[i] !== (p.id as number)) return;
+    p.rallyX.set(factory as number, clampWorld(x, 1));
+    p.rallyZ.set(factory as number, clampWorld(z, 1));
+  }
+
+  private applyPrimary(p: PlayerState, factory: EntityId): void {
+    const st = this.world.store;
+    const i = st.index(factory);
+    if (i < 0 || st.kind[i] !== EntityKind.Building) return;
+    if (st.owner[i] !== (p.id as number)) return;
+    const entry = this.entryForSlot(i);
+    if (entry === null || entry.producesTabs.length === 0) return;
+
+    // Clear the flag on every other factory that services any of the same tabs.
+    const list = st.byKind[EntityKind.Building];
+    const count = st.byKindCount[EntityKind.Building];
+    for (let a = 0; a < count; a++) {
+      const j = list[a];
+      if (j === i) continue;
+      if (st.owner[j] !== (p.id as number)) continue;
+      const other = this.entryForSlot(j);
+      if (other === null) continue;
+      let shares = false;
+      for (let t = 0; t < other.producesTabs.length && !shares; t++) {
+        for (let u = 0; u < entry.producesTabs.length; u++) {
+          if (other.producesTabs[t] === entry.producesTabs[u]) { shares = true; break; }
+        }
+      }
+      if (shares) st.flags[j] &= ~EntityFlag.PrimaryFactory;
+    }
+    st.flags[i] |= EntityFlag.PrimaryFactory;
+  }
+
+  private applySell(p: PlayerState, building: EntityId): void {
+    const st = this.world.store;
+    const i = st.index(building);
+    if (i < 0 || st.kind[i] !== EntityKind.Building) return;
+    if (st.owner[i] !== (p.id as number)) return;
+    if ((st.flags[i] & EntityFlag.Sellable) === 0) return;
+
+    const entry = this.entryForSlot(i);
+    // A half-built structure refunds against what it is worth so far, not what
+    // it will be worth. Otherwise "place, sell, repeat" prints money.
+    const worth = (entry?.cost ?? 0) * (st.buildProgress[i] >= 1 ? 1 : st.buildProgress[i]);
+    const refund = Math.round(worth * SELL_REFUND);
+
+    st.state[i] = UnitState.Selling;
+    this.grant(p, refund);
+    this.emitCredits(p, refund, CreditReason.Sell);
+
+    const ev = this.channels.events.payload('building:sold');
+    ev.id = building;
+    ev.defId = entry?.publicId ?? -1;
+    ev.player = p.id;
+    ev.refund = refund;
+    this.channels.events.emitPooled('building:sold');
+
+    this.onBuildingRemoved(building, p.id);
+    // Forget the entry BEFORE markDead so the `entity:killed` listener that
+    // combat will fire for the same structure cannot subtract its storage a
+    // second time.
+    this.entryOfEntity.setAt(i, MISS);
+    this.world.vfx.play(FxKind.SellPuff, st.posX[i], st.posY[i], st.posZ[i], 0, 1, 0, 1);
+    st.markDead(building);
+    p.stats.buildingsLost++;
+  }
+
+  /* ======================================================================
+   * 5f. PLACEMENT
+   * ====================================================================== */
+
+  /** The ready structure a player is holding, or null. */
+  pendingStructure(player: PlayerId): BuildEntry | null {
+    const p = this.world.players[player as number];
+    if (p === undefined) return null;
+    for (const tab of PLACEABLE_TABS) {
+      const head = this.queues.head(p, tab);
+      if (head !== null && head.ready && head.isBuilding) return this.resolveQueueEntry(head);
+    }
+    return null;
+  }
+
+  /**
+   * The placement the active scenario staged, if any, resolved against this
+   * catalog. `?shot=placement` publishes a key and an origin cell and expects
+   * the ghost to be sitting exactly there when the shutter opens.
+   */
+  stagedPlacement(): { entry: BuildEntry; cx: number; cz: number } | null {
+    const spec = activeScenario()?.placement;
+    if (spec === undefined || spec === null) return null;
+    const entry = this.catalog.byKey(spec.key);
+    if (entry === null) return null;
+    if (this.pendingStructure(this.world.localPlayer) === null) return null;
+    return { entry, cx: spec.cx, cz: spec.cz };
+  }
+
+  /** Which tab holds the ready structure with this catalog index, or -1. */
+  private readyTabOf(p: PlayerState, index: number): BuildTab | -1 {
+    for (const tab of PLACEABLE_TABS) {
+      const head = this.queues.head(p, tab);
+      if (head === null || !head.ready || !head.isBuilding) continue;
+      const entry = this.resolveQueueEntry(head);
+      if (entry !== null && entry.index === index) return tab;
+    }
+    return -1;
+  }
+
+  /**
+   * Re-check and apply a placement. The ghost checked the same thing last
+   * frame, but a tank may have parked on the site since, so the authoritative
+   * answer is taken HERE, inside the sim, and it is the one that is obeyed.
+   */
+  private applyPlace(p: PlayerState, index: number, cx: number, cz: number): void {
+    const entry = this.catalog.at(index);
+    if (entry === null || entry.kind !== BuildKind.Building) return;
+    const tab = this.readyTabOf(p, index);
+    if (tab === -1) {
+      this.notifyPlacement(PlacementPhase.Rejected, p.id, entry, cx, cz, false, 'Not ready', NONE);
+      return;
+    }
+
+    const report = evaluatePlacement(this.world, p.id, entry, cx, cz, placementReport);
+    if (!report.ok) {
+      this.notifyPlacement(PlacementPhase.Rejected, p.id, entry, cx, cz, false, report.reason, NONE);
+      this.eva(p, EvaLine.CannotDeployHere);
+      return;
+    }
+
+    const id = this.spawnBuilding(p, entry, cx, cz, 0);
+    if (id === NONE) {
+      this.notifyPlacement(PlacementPhase.Rejected, p.id, entry, cx, cz, false, 'World is full', NONE);
+      return;
+    }
+
+    this.queues.completeHead(p, tab);
+    this.notifyPlacement(PlacementPhase.Committed, p.id, entry, cx, cz, true, '', id);
+  }
+
+  /**
+   * Plant a structure. `buildProgress` 0 means it rises; 1 means it is already
+   * finished (an MCV unfolding, a scenario fixture).
+   */
+  spawnBuilding(
+    p: PlayerState,
+    entry: BuildEntry,
+    cx: number,
+    cz: number,
+    buildProgress: number,
+    yaw = 0,
+  ): EntityId {
+    const st = this.world.store;
+    const fw = entry.footprintW;
+    const fh = entry.footprintH;
+    const px = (cx + fw * 0.5) * CELL;
+    const pz = (cz + fh * 0.5) * CELL;
+    const py = this.world.terrain.heightAt(px, pz);
+
+    const id = st.alloc(EntityKind.Building, entry.defId, p.id, p.faction, px, py, pz, yaw);
+    if (id === NONE) return NONE;
+    const i = st.index(id);
+    const fb = FALLBACK_BUILDINGS[entry.key];
+    const def: BuildingDef | undefined =
+      entry.defId >= 0 ? this.bindingTables?.buildings[entry.defId] : undefined;
+
+    const maxHp = def?.maxHp ?? fb.maxHp;
+    st.maxHp[i] = maxHp;
+    st.hp[i] = buildProgress >= 1 ? maxHp : maxHp * PRODUCTION.buildingStartHpFrac;
+    st.armorClass[i] = def?.armor ?? fb.armor;
+    st.sight[i] = def?.sight ?? fb.sight;
+    st.footprintW[i] = fw;
+    st.footprintH[i] = fh;
+    st.powerDraw[i] = entry.power;
+    st.locomotor[i] = Locomotor.Static;
+    st.radius[i] = Math.max(fw, fh) * CELL * 0.5;
+    st.weaponIndex[i] = def !== undefined && def.weapons.length > 0 ? def.weapons[0] : -1;
+    st.buildProgress[i] = buildProgress;
+    st.state[i] = buildProgress < 1 ? UnitState.UnderConstruction : UnitState.Idle;
+    st.spawnTick[i] = this.world.tick;
+
+    let flags = st.flags[i] | fb.flags | (def?.flags ?? 0);
+    if (def?.hasTurret ?? false) flags |= EntityFlag.HasTurret;
+    if (buildProgress < 1) flags |= EntityFlag.UnderConstruction;
+    // Only the FIRST factory of a kind claims primary; the fallback table sets
+    // the bit unconditionally and a second War Factory must not steal the flag.
+    if (entry.producesTabs.length > 0
+      && this.factories[(p.id as number) * BUILD_TAB_COUNT + (entry.producesTabs[0] as number)] > 0) {
+      flags &= ~EntityFlag.PrimaryFactory;
+    }
+    st.flags[i] = flags;
+
+    this.entryOfEntity.setAt(i, entry.index);
+
+    // Nav and render must agree about which cells are taken from the instant
+    // the foundation is poured, not from when the structure finishes.
+    this.world.terrain.markOccupied(cx, cz, fw, fh, id);
+    this.stampPad(cx, cz, fw, fh);
+
+    if (entry.power > 0) p.powerProduced += entry.power;
+    else p.powerConsumed += -entry.power;
+    p.entityCount[EntityKind.Building]++;
+
+    const spawned = this.channels.events.payload('entity:spawned');
+    spawned.id = id;
+    spawned.kind = EntityKind.Building;
+    spawned.defId = entry.publicId;
+    spawned.player = p.id;
+    spawned.x = px;
+    spawned.z = pz;
+    this.channels.events.emitPooled('entity:spawned');
+
+    const placed = this.channels.events.payload('building:placed');
+    placed.id = id;
+    placed.defId = entry.publicId;
+    placed.player = p.id;
+    placed.cx = cx;
+    placed.cz = cz;
+    placed.w = fw;
+    placed.h = fh;
+    this.channels.events.emitPooled('building:placed');
+
+    if (buildProgress >= 1) this.onBuildingCompleted(i);
+    else this.techDirty = true;
+    return id;
+  }
+
+  /**
+   * Paint concrete under the footprint.
+   *
+   * Every RA3 structure sits on a poured pad with a painted border
+   * (refs/ra3steam_07.jpg) and the terrain module generates two empty splat
+   * layers for exactly this. Duck-typed rather than imported: the port in
+   * core/types.ts has no stamp method, and reaching into world/Terrain.ts from
+   * src/sim would invert the layering for a cosmetic.
+   */
+  private stampPad(cx: number, cz: number, w: number, h: number): void {
+    const t = this.world.terrain as unknown as Partial<SurfaceStamper>;
+    if (typeof t.stampSurface !== 'function' || typeof t.commitSplat !== 'function') return;
+    const m = PLACEMENT.padMarginCells;
+    for (let z = cz - m; z < cz + h + m; z++) {
+      for (let x = cx - m; x < cx + w + m; x++) {
+        if (!isInMap(x, z)) continue;
+        // Full strength under the structure, half on the painted margin.
+        const inside = x >= cx && x < cx + w && z >= cz && z < cz + h;
+        t.stampSurface(x, z, PLACEMENT.padSurface, PLACEMENT.padWeight * (inside ? 1 : 0.5));
+      }
+    }
+    t.commitSplat();
+  }
+
+  private notifyPlacement(
+    phase: PlacementPhase, player: PlayerId, entry: BuildEntry,
+    cx: number, cz: number, ok: boolean, reason: string, id: EntityId,
+  ): void {
+    const n = this.notice;
+    n.phase = phase;
+    n.player = player;
+    n.defId = entry.publicId;
+    n.key = entry.key;
+    n.cx = cx;
+    n.cz = cz;
+    n.w = entry.footprintW;
+    n.h = entry.footprintH;
+    n.ok = ok;
+    n.reason = reason;
+    n.id = id;
+    for (let i = 0; i < this.placementListeners.length; i++) this.placementListeners[i](n);
+  }
+
+  /** Called by PlacementController so the HUD hears began/moved/cancelled too. */
+  publishPlacement(
+    phase: PlacementPhase, player: PlayerId, entry: BuildEntry,
+    cx: number, cz: number, ok: boolean, reason: string,
+  ): void {
+    this.notifyPlacement(phase, player, entry, cx, cz, ok, reason, NONE);
+  }
+
+  /* ======================================================================
+   * 5g. EGRESS — a finished unit leaves the building
+   * ====================================================================== */
+
+  private tryEgress(p: PlayerState, tab: BuildTab, item: ProductionItem, s: SimContext): boolean {
+    // `item.defId` is a publicId, and it may not even be ours — resolve it the
+    // same way everything else that reads a queue item does.
+    const entry = this.resolveQueueEntry(item);
+    if (entry === null || entry.kind !== BuildKind.Unit) return true; // drop the impossible
+
+    const fi = (p.id as number) * BUILD_TAB_COUNT + (tab as number);
+    const slot = this.primaryFactory[fi];
+    if (slot < 0) return false;
+
+    const st = this.world.store;
+    const factory = st.handleOf(slot);
+    const fEntry = this.entryForSlot(slot);
+    const yaw = st.yaw[slot];
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    const ex = fEntry?.exitX ?? 0;
+    const ez = fEntry?.exitZ ?? (st.radius[slot] + PRODUCTION.exitClearanceMetres);
+    // Rotate the local exit into world space: +Z is forward at yaw 0.
+    const exitX = st.posX[slot] + ex * cos + ez * sin;
+    const exitZ = st.posZ[slot] + ez * cos - ex * sin;
+
+    const fb = FALLBACK_UNITS[entry.key];
+    const def: UnitDef | undefined =
+      entry.defId >= 0 ? this.bindingTables?.units[entry.defId] : undefined;
+    const radius = def?.radius ?? Math.max(fb.width, fb.length) * 0.45;
+    const loco = def?.locomotor ?? fb.locomotor;
+
+    if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot)) return false;
+
+    const id = this.spawnUnit(p, entry, spot[0], spot[1], yaw);
+    if (id === NONE) return false;
+
+    // Point it at the rally flag. This is spawn-time initialisation of the
+    // order columns, exactly as ScenarioBuilder.spawnUnit does — the unit is
+    // handed to the movement layer already knowing where it is going.
+    const i = st.index(id);
+    const rx = p.rallyX.get(factory as number);
+    const rz = p.rallyZ.get(factory as number);
+    if (rx !== undefined && rz !== undefined) {
+      st.orderKind[i] = OrderKind.Move;
+      st.orderX[i] = rx;
+      st.orderZ[i] = rz;
+      st.state[i] = UnitState.Moving;
+      st.guardX[i] = rx;
+      st.guardZ[i] = rz;
+    }
+
+    p.stats.unitsBuilt++;
+    this.eva(p, EvaLine.UnitReady);
+    return true;
+  }
+
+  /**
+   * Spiral outward from the factory door for somewhere the unit fits.
+   * Deterministic ring order, so two machines produce the same column.
+   */
+  private findEgressSpot(
+    x: number, z: number, radius: number, loco: number, out: Float32Array,
+  ): boolean {
+    const world = this.world;
+    const step = CELL;
+    for (let ring = 0; ring <= PRODUCTION.egressSearchRings; ring++) {
+      const cells = ring === 0 ? 1 : ring * 8;
+      for (let c = 0; c < cells; c++) {
+        let dx = 0, dz = 0;
+        if (ring > 0) {
+          // Walk the ring perimeter in a fixed order.
+          const side = Math.floor(c / (ring * 2));
+          const t = c % (ring * 2);
+          const a = -ring + t;
+          if (side === 0) { dx = a; dz = -ring; }
+          else if (side === 1) { dx = ring; dz = a; }
+          else if (side === 2) { dx = -a; dz = ring; }
+          else { dx = -ring; dz = -a; }
+        }
+        const px = x + dx * step;
+        const pz = z + dz * step;
+        const cx = worldToCell(px);
+        const cz = worldToCell(pz);
+        if (!isInMap(cx, cz)) continue;
+        if (!world.terrain.isPassable(cx, cz, loco)) continue;
+        if (world.terrain.isOccupied(cx, cz)) continue;
+        if (this.blockedByEntity(px, pz, radius + PRODUCTION.egressClearanceMetres)) continue;
+        out[0] = px;
+        out[1] = pz;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private blockedByEntity(x: number, z: number, r: number): boolean {
+    const world = this.world;
+    const st = world.store;
+    const buf = world.queryScratchB;
+    const n = world.spatial.queryCircleFat(x, z, r, buf);
+    for (let k = 0; k < n; k++) {
+      const i = buf[k];
+      const flags = st.flags[i];
+      if ((flags & EntityFlag.PendingDestroy) !== 0) continue;
+      const kind = st.kind[i];
+      if (kind === EntityKind.Wreck || kind === EntityKind.Crate) continue;
+      if (kind === EntityKind.Prop && (flags & EntityFlag.BlocksNav) === 0) continue;
+      return true;
+    }
+    return false;
+  }
+
+  /** Spawn a produced unit. Mirrors ScenarioBuilder.spawnUnit exactly. */
+  spawnUnit(p: PlayerState, entry: BuildEntry, x: number, z: number, yaw: number): EntityId {
+    const st = this.world.store;
+    const fb = FALLBACK_UNITS[entry.key];
+    if (fb === undefined) return NONE;
+    const def: UnitDef | undefined =
+      entry.defId >= 0 ? this.bindingTables?.units[entry.defId] : undefined;
+
+    const px = clampWorld(x, 2);
+    const pz = clampWorld(z, 2);
+    const py = this.world.terrain.heightAt(px, pz);
+    const kind = def?.kind ?? fb.kind;
+
+    const id = st.alloc(kind, entry.defId, p.id, p.faction, px, py, pz, yaw);
+    if (id === NONE) return NONE;
+    const i = st.index(id);
+
+    const maxHp = def?.maxHp ?? fb.maxHp;
+    st.maxHp[i] = maxHp;
+    st.hp[i] = maxHp;
+    st.armorClass[i] = def?.armor ?? fb.armor;
+    st.sight[i] = def?.sight ?? fb.sight;
+    st.maxSpeed[i] = def?.maxSpeed ?? fb.maxSpeed;
+    st.accel[i] = def?.accel ?? fb.accel;
+    st.turnRate[i] = def?.turnRate ?? fb.turnRate;
+    st.turretTurnRate[i] = fb.turretTurnRate;
+    st.locomotor[i] = def?.locomotor ?? fb.locomotor;
+    st.radius[i] = def?.radius ?? Math.max(fb.width, fb.length) * 0.45;
+    st.crushLevel[i] = def?.crushLevel ?? fb.crushLevel;
+    st.crushableBy[i] = def?.crushableBy ?? fb.crushableBy;
+    st.cargoMax[i] = def?.cargoMax ?? fb.cargoMax;
+    st.cargo[i] = 0;
+    st.weaponIndex[i] = def !== undefined && def.weapons.length > 0 ? def.weapons[0] : -1;
+    st.state[i] = UnitState.Idle;
+    st.stance[i] = Stance.Aggressive;
+    st.spawnTick[i] = this.world.tick;
+
+    let flags = st.flags[i] | fb.flags | (def?.flags ?? 0);
+    if ((def?.maxSpeed ?? fb.maxSpeed) > 0) flags |= EntityFlag.CanMove;
+    if (def?.hasTurret ?? false) flags |= EntityFlag.HasTurret;
+    st.flags[i] = flags;
+
+    st.orderKind[i] = OrderKind.None;
+    st.orderX[i] = px;
+    st.orderZ[i] = pz;
+    st.guardX[i] = px;
+    st.guardZ[i] = pz;
+
+    this.entryOfEntity.setAt(i, entry.index);
+    if (kind < p.entityCount.length) p.entityCount[kind]++;
+
+    const ev = this.channels.events.payload('entity:spawned');
+    ev.id = id;
+    ev.kind = kind;
+    ev.defId = entry.publicId;
+    ev.player = p.id;
+    ev.x = px;
+    ev.z = pz;
+    this.channels.events.emitPooled('entity:spawned');
+    return id;
+  }
+
+  /** Put a rally flag a short walk in front of a brand new factory. */
+  private defaultRally(p: PlayerState, slot: number, entry: BuildEntry): void {
+    const st = this.world.store;
+    const id = st.handleOf(slot);
+    if (p.rallyX.has(id as number)) return;
+    const yaw = st.yaw[slot];
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    const ez = entry.exitZ + PRODUCTION.rallyForwardMetres;
+    p.rallyX.set(id as number, clampWorld(st.posX[slot] + entry.exitX * cos + ez * sin, 1));
+    p.rallyZ.set(id as number, clampWorld(st.posZ[slot] + ez * cos - entry.exitX * sin, 1));
+  }
+
+  /* ======================================================================
+   * 5h. QueueHooks
+   * ====================================================================== */
+
+  info(defId: number, isBuilding: boolean): QueueItemInfo | null {
+    return this.catalog.resolve(defId, isBuilding);
+  }
+
+  charge(player: PlayerState, amount: number): number {
+    const paid = Math.min(amount, Math.max(0, player.credits));
+    if (paid <= 0) return 0;
+    player.credits -= paid;
+    player.stats.creditsSpent += paid;
+    this.scratch[player.id as number].creditDelta -= paid;
+    return paid;
+  }
+
+  refund(player: PlayerState, amount: number): void {
+    this.grant(player, amount);
+    this.scratch[player.id as number].creditDelta += amount;
+  }
+
+  started(player: PlayerState, tab: BuildTab, item: ProductionItem): void {
+    const ev = this.channels.events.payload('production:started');
+    ev.player = player.id;
+    ev.tab = tab;
+    ev.defId = item.defId;
+    ev.isBuilding = item.isBuilding;
+    ev.cost = item.cost;
+    this.channels.events.emitPooled('production:started');
+  }
+
+  progressed(player: PlayerState, tab: BuildTab, item: ProductionItem): void {
+    const ev = this.channels.events.payload('production:progress');
+    ev.player = player.id;
+    ev.tab = tab;
+    ev.defId = item.defId;
+    ev.progress = item.progress;
+    this.channels.events.emitPooled('production:progress');
+  }
+
+  ready(player: PlayerState, tab: BuildTab, item: ProductionItem): void {
+    const ev = this.channels.events.payload('production:ready');
+    ev.player = player.id;
+    ev.tab = tab;
+    ev.defId = item.defId;
+    ev.isBuilding = item.isBuilding;
+    this.channels.events.emitPooled('production:ready');
+    this.snapshot.tabAlert[tab as number] = true;
+    // A finished vehicle gets its EVA line when it actually drives out; a
+    // finished structure gets one now, because "ready" is the whole point.
+    if (item.isBuilding) this.eva(player, EvaLine.ConstructionComplete);
+  }
+
+  cancelled(player: PlayerState, tab: BuildTab, item: ProductionItem, refunded: number): void {
+    const ev = this.channels.events.payload('production:cancelled');
+    ev.player = player.id;
+    ev.tab = tab;
+    ev.defId = item.defId;
+    ev.refund = refunded;
+    this.channels.events.emitPooled('production:cancelled');
+  }
+
+  holdChanged(player: PlayerState, tab: BuildTab, reason: HoldReason): void {
+    if (reason === HoldReason.Funds) this.evaFunds(player);
+  }
+
+  /* ======================================================================
+   * 5i. HUD SNAPSHOT
+   * ====================================================================== */
+
+  private refreshSnapshot(s: SimContext): void {
+    const world = this.world;
+    const p = world.players[world.localPlayer as number];
+    if (p === undefined) return;
+    const snap = this.snapshot;
+    const sc = this.scratch[world.localPlayer as number];
+
+    snap.credits = p.credits;
+    snap.creditsDisplay = sc.creditsDisplay;
+    snap.powerProduced = p.powerProduced;
+    snap.powerConsumed = p.powerConsumed;
+    snap.brownout = p.powerConsumed > p.powerProduced;
+    snap.hasRadar = p.hasRadar || this.hasStructure(p.id, 'radar');
+    snap.selectionCount = world.selection.count;
+    snap.selectionPrimary = world.selection.count > 0
+      ? (world.selection.ids[0] as EntityId) : NONE;
+    snap.gameTimeSec = s.time;
+
+    if (this.cameoFaction !== p.faction) this.rebuildCameos(p.faction);
+
+    for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+      const tab = t as BuildTab;
+      const list = snap.cameos[t];
+      const roster = this.catalog.roster(p.faction, tab);
+      for (let c = 0; c < list.length; c++) {
+        const cameo = list[c];
+        const entry = roster[c];
+        const head = this.queues.head(p, tab);
+        const isHead = head !== null && head.defId === entry.publicId;
+        cameo.progress = isHead ? head!.progress : 0;
+        cameo.queued = this.queues.countOf(p, tab, entry.publicId, entry.kind === BuildKind.Building);
+        cameo.ready = isHead && head!.ready;
+        cameo.onHold = isHead && head!.onHold;
+        const avail = this.availabilityOf(p.id, entry, availScratch);
+        cameo.available = avail.ok;
+        cameo.reason = avail.ok
+          ? (p.credits < entry.cost ? 'Insufficient funds' : '')
+          : avail.reason;
+      }
+    }
+  }
+
+  /** Rebuild the pooled cameo objects for a faction. Cold path. */
+  private rebuildCameos(faction: Faction): void {
+    this.cameoFaction = faction;
+    for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+      const roster = this.catalog.roster(faction, t as BuildTab);
+      const pool = this.cameoPool[t];
+      while (pool.length < roster.length) {
+        pool.push({
+          defId: -1, isBuilding: false, key: '', name: '', cost: 0,
+          progress: 0, queued: 0, ready: false, onHold: false, available: false, reason: '',
+        });
+      }
+      const list: HudCameo[] = [];
+      for (let i = 0; i < roster.length; i++) {
+        const cameo = pool[i];
+        const entry = roster[i];
+        cameo.defId = entry.publicId;
+        cameo.isBuilding = entry.kind === BuildKind.Building;
+        cameo.key = entry.key;
+        cameo.name = entry.name;
+        cameo.cost = entry.cost;
+        list.push(cameo);
+      }
+      this.snapshot.cameos[t] = list;
+    }
+  }
+
+  /** Clear the "something finished" badge on a tab. Called by the HUD. */
+  clearTabAlert(tab: BuildTab): void {
+    this.snapshot.tabAlert[tab as number] = false;
+  }
+
+  /* ======================================================================
+   * 5j. small helpers
+   * ====================================================================== */
+
+  private grant(p: PlayerState, amount: number): void {
+    if (amount <= 0) return;
+    p.credits += amount;
+  }
+
+  private emitCredits(p: PlayerState, delta: number, reason: CreditReason): void {
+    const ev = this.channels.events.payload('economy:credits');
+    ev.player = p.id;
+    ev.credits = p.credits;
+    ev.delta = delta;
+    ev.storage = p.credits;
+    ev.storageMax = p.storageMax;
+    ev.reason = reason;
+    this.channels.events.emitPooled('economy:credits');
+  }
+
+  private evaFunds(p: PlayerState): void {
+    const sc = this.scratch[p.id as number];
+    if (this.world.time - sc.lastFundsEva < PRODUCTION.evaInsufficientFundsSeconds) return;
+    sc.lastFundsEva = this.world.time;
+    this.eva(p, EvaLine.InsufficientFunds);
+  }
+
+  private eva(p: PlayerState, line: EvaLine): void {
+    this.world.audio.eva(p.id, line);
+    this.channels.events.emit('eva:line', { player: p.id, line });
+  }
+
+  /** Diagnostics for the F3 overlay and the boot log. */
+  stats(): string {
+    const p = this.world.players[this.world.localPlayer as number];
+    if (p === undefined) return 'production: no local player';
+    const parts: string[] = [];
+    for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+      const q = p.queues[t];
+      parts.push(`${TAB_NAMES[t]} ${q.items.length}/${q.factoryCount}f`);
+    }
+    return `production: ${parts.join(' ')} credits ${Math.round(p.credits)}`;
+  }
+
+  dispose(): void {
+    this.placementListeners.length = 0;
+    this.intentCount = 0;
+  }
+}
+
+/** Duck-typed terrain extension — see `stampPad`. */
+interface SurfaceStamper {
+  stampSurface(cx: number, cz: number, layer: number, weight: number): void;
+  commitSplat(): void;
+}
+
+const MISS = -2;
+
+/** Structures and defences are placed; infantry and vehicles walk out. */
+function tabIsStructural(tab: BuildTab): boolean {
+  return tab === BuildTab.Structures || tab === BuildTab.Defense;
+}
+const TAB_NAMES = ['STR', 'DEF', 'INF', 'VEH'];
+const PLACEABLE_TABS: readonly BuildTab[] = [BuildTab.Structures, BuildTab.Defense];
+const cellScratch = new Int32Array(2);
+const spot = new Float32Array(2);
+const availScratch: AvailabilityResult = { ok: false, reason: '' };
+
+/* ==========================================================================
+ * 6. MODULE SINGLETON
+ * ========================================================================== */
+
+let active: ProductionService | null = null;
+
+/** Publish the live service. production.system.ts calls this at init. */
+export function setProduction(next: ProductionService | null): void {
+  active = next;
+}
+
+/** The live service, or null before init / after dispose. */
+export function production(): ProductionService | null {
+  return active;
+}
+
+/**
+ * Build the catalog. Awaits the def-table glob, which is why init is async.
+ * Never throws: a data module that explodes degrades to fallback stats.
+ */
+export async function createCatalog(): Promise<{ catalog: ProductionCatalog; binding: DefBinding }> {
+  let binding: DefBinding;
+  try {
+    binding = await resolveDefBinding();
+  } catch (err) {
+    console.warn(`[production] def binding failed, using fallback content: ${String(err)}`);
+    binding = { tables: null, unitId: {}, buildingId: {} };
+  }
+  return { catalog: new ProductionCatalog(binding), binding };
+}
+
+/** Exposed for tests and the console. */
+export { CONTENT as PRODUCTION_CONTENT };

@@ -327,7 +327,15 @@ export class SystemRegistry {
     this.initialised = true;
   }
 
-  /** One fixed simulation step: every sim system in phase order. */
+  /**
+   * One fixed simulation step: every sim system in phase order.
+   *
+   * `beginPhase` is called per system, not once per step: without it
+   * `activePhase()` reads -1 for the whole tick and `assertWritePhase()` reports
+   * a violation for EVERY column written from EVERY system, which is why the
+   * assertion had no callers. One integer store per system per tick is beneath
+   * measurement next to the system bodies themselves.
+   */
   runSim(ctx: SimContext): void {
     this.rebuild();
     const sys = this.simSystems;
@@ -335,17 +343,31 @@ export class SystemRegistry {
     if (prof) {
       for (let i = 0; i < sys.length; i++) {
         const t0 = now();
+        beginPhase(this.simPhases[i]);
         sys[i].simTick!(ctx);
         this.profiler.record(sys[i].id, this.simPhases[i], now() - t0);
       }
     } else {
-      for (let i = 0; i < sys.length; i++) sys[i].simTick!(ctx);
+      for (let i = 0; i < sys.length; i++) {
+        beginPhase(this.simPhases[i]);
+        sys[i].simTick!(ctx);
+      }
     }
+    beginPhase(-1);
   }
 
-  /** One rendered frame: every frame system in render-phase order. */
+  /**
+   * One rendered frame: every frame system in render-phase order.
+   *
+   * The phase is pinned to -1 throughout. RenderPhase and Phase are two
+   * different numeric spaces (RenderPhase.Terrain is 10, Phase.Command is 100),
+   * so publishing a RenderPhase through `beginPhase` would make
+   * `assertWritePhase` compare apples to oranges and pass by coincidence.
+   * Nothing owned by the write table may be written from a frame system anyway.
+   */
   runFrame(ctx: RenderContext): void {
     this.rebuild();
+    beginPhase(-1);
     const sys = this.frameSystems;
     const prof = this.profiler.enabled;
     if (prof) {
