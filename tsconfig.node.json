@@ -1,0 +1,21 @@
+{
+  /* Build tooling only. Kept separate from tsconfig.json so that Node globals
+     (process, Buffer, __dirname) are NOT visible to game code — that code runs
+     in a browser, and a `process.env` that typechecks but throws at runtime is
+     exactly the kind of thing 15 parallel agents will write by accident. */
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true
+  },
+  "include": ["vite.config.ts"]
+}

@@ -1,0 +1,29 @@
+{
+  "name": "red-alert",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "RED ALERT - a browser real-time strategy game built on Three.js. All art is procedurally generated from code.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run",
+    "soak": "vitest run tests/determinism.spec.ts",
+    "shots": "node tools/shoot.mjs"
+  },
+  "dependencies": {
+    "three": "0.185.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "@types/three": "^0.185.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

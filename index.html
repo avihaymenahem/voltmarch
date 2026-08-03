@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#000000" />
+<meta name="description" content="RED ALERT - a real-time strategy game running in the browser." />
+<title>RED ALERT</title>
+
+<style>
+  /* ------------------------------------------------------------------ *
+   * Page shell. Full-bleed black, nothing scrolls, no scrollbars, no
+   * text selection, no touch panning. The canvas owns the viewport.
+   * ------------------------------------------------------------------ */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    color: #DCE4EA;
+    overscroll-behavior: none;
+  }
+
+  body {
+    /* Condensed industrial stack. No CDN, no webfont - these are the
+       narrow faces that ship with Windows/macOS/Linux, degrading to a
+       generic condensed sans. */
+    font-family: 'Rajdhani', 'Oswald', 'Arial Narrow', 'Franklin Gothic Medium',
+                 'Helvetica Neue', 'Segoe UI', system-ui, sans-serif;
+    font-size: 15px;
+    line-height: 1.35;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    -webkit-tap-highlight-color: transparent;
+    cursor: default;
+  }
+
+  ::-webkit-scrollbar { width: 0; height: 0; }
+
+  /* ------------------------------------------------------------------ *
+   * Mount points. Order here is the z-order of the whole product.
+   * ------------------------------------------------------------------ */
+  #app  { position: fixed; inset: 0; z-index: 0; background: #000; }
+  #gl   { display: block; width: 100%; height: 100%; outline: none; }
+
+  /* Roots are click-through by default; their children opt back in. */
+  #hud-root   { position: fixed; inset: 0; z-index: 10; pointer-events: none; }
+  #menu-root  { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
+  #debug-root { position: fixed; inset: 0; z-index: 30; pointer-events: none; }
+
+  /* ------------------------------------------------------------------ *
+   * Loading curtain.
+   * ------------------------------------------------------------------ */
+  #loading {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    background:
+      radial-gradient(ellipse 120% 90% at 50% 42%, #14100E 0%, #070605 55%, #000 100%);
+    opacity: 1;
+    transition: opacity 620ms cubic-bezier(.4,0,.2,1);
+    will-change: opacity;
+    overflow: hidden;
+  }
+
+  /* Faint diagonal mill-plate grain behind everything. */
+  #loading::before {
+    content: '';
+    position: absolute;
+    inset: -20%;
+    background:
+      repeating-linear-gradient(58deg,
+        rgba(255,255,255,.020) 0px,
+        rgba(255,255,255,.020) 1px,
+        transparent 1px,
+        transparent 5px);
+    pointer-events: none;
+  }
+
+  /* CRT scanlines + vignette on top. */
+  #loading::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-linear-gradient(180deg,
+        rgba(0,0,0,.34) 0px,
+        rgba(0,0,0,.34) 1px,
+        transparent 1px,
+        transparent 3px),
+      radial-gradient(ellipse 90% 75% at 50% 50%,
+        transparent 40%, rgba(0,0,0,.72) 100%);
+    pointer-events: none;
+    mix-blend-mode: multiply;
+  }
+
+  #loading.is-hidden { opacity: 0; pointer-events: none; }
+  #loading[hidden]   { display: none; }
+
+  .curtain-inner {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 26px;
+    padding: 0 24px;
+    max-width: min(1100px, 94vw);
+  }
+
+  /* --- Title treatment: industrial stencil, red on black -------------- */
+  .title {
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    gap: clamp(14px, 2.4vw, 34px);
+    font-size: clamp(40px, 8.4vw, 126px);
+    font-weight: 900;
+    letter-spacing: .045em;
+    line-height: .92;
+    text-transform: uppercase;
+    font-stretch: condensed;
+    white-space: nowrap;
+    /* The stencil: horizontal cuts through every glyph. */
+    -webkit-mask-image: repeating-linear-gradient(
+      180deg,
+      #000 0, #000 calc(50% - 4.5px),
+      transparent calc(50% - 4.5px), transparent calc(50% - 0.5px),
+      #000 calc(50% - 0.5px), #000 100%);
+    mask-image: repeating-linear-gradient(
+      180deg,
+      #000 0, #000 calc(50% - 4.5px),
+      transparent calc(50% - 4.5px), transparent calc(50% - 0.5px),
+      #000 calc(50% - 0.5px), #000 100%);
+  }
+
+  .title .w1 {
+    color: #D8281B;
+    background: linear-gradient(180deg, #FF5A47 0%, #D8281B 42%, #7E140C 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 3px 0 #2A0705) drop-shadow(0 0 26px rgba(216,40,27,.42));
+  }
+
+  .title .w2 {
+    color: transparent;
+    -webkit-text-stroke: clamp(2px, .34vw, 4px) #C0271E;
+    text-shadow: 0 0 32px rgba(192,39,30,.30);
+  }
+
+  /* --- Rules + subtitle ---------------------------------------------- */
+  .rule {
+    position: relative;
+    width: min(620px, 82vw);
+    height: 3px;
+    background: linear-gradient(90deg, transparent, #5A1C15 12%, #C0271E 50%, #5A1C15 88%, transparent);
+    overflow: hidden;
+  }
+  .rule::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -30%;
+    width: 30%; height: 100%;
+    background: linear-gradient(90deg, transparent, #FFB4A6, transparent);
+    animation: sweep 2.4s cubic-bezier(.45,0,.55,1) infinite;
+  }
+  @keyframes sweep { 0% { left: -32%; } 100% { left: 102%; } }
+
+  .subtitle {
+    margin: 0;
+    font-size: clamp(11px, 1.25vw, 15px);
+    letter-spacing: .58em;
+    text-indent: .58em;
+    text-transform: uppercase;
+    color: #8A6A62;
+    font-weight: 600;
+  }
+
+  /* Hazard chevrons - the cheapest "industrial" signal there is. */
+  .hazard {
+    width: min(620px, 82vw);
+    height: 9px;
+    background: repeating-linear-gradient(
+      -45deg,
+      #C0271E 0 10px,
+      #16110F 10px 20px);
+    opacity: .55;
+  }
+
+  /* --- Progress ------------------------------------------------------- */
+  .progress-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: min(460px, 78vw);
+  }
+
+  .progress {
+    position: relative;
+    width: 100%;
+    height: 12px;
+    background: #100C0B;
+    border: 1px solid #33241F;
+    box-shadow: inset 0 1px 0 rgba(0,0,0,.9), 0 0 0 1px rgba(255,255,255,.03);
+    overflow: hidden;
+  }
+  .progress::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(90deg,
+      transparent 0 9px, rgba(0,0,0,.85) 9px 12px);
+    z-index: 2;
+    pointer-events: none;
+  }
+  .progress-bar {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: 34%;
+    background: linear-gradient(90deg, #7E140C, #E03A2A 60%, #FF8A72);
+    box-shadow: 0 0 14px rgba(224,58,42,.65);
+    animation: crawl 1.65s cubic-bezier(.62,.06,.35,.96) infinite;
+  }
+  @keyframes crawl {
+    0%   { left: -36%; }
+    100% { left: 102%; }
+  }
+
+  .status {
+    font-size: 12px;
+    letter-spacing: .34em;
+    text-indent: .34em;
+    text-transform: uppercase;
+    color: #6E5B55;
+    min-height: 1.2em;
+    text-align: center;
+  }
+  .status .tick { color: #E03A2A; }
+
+  /* --- Error surface -------------------------------------------------- */
+  #boot-error {
+    display: none;
+    width: min(820px, 90vw);
+    max-height: 46vh;
+    overflow: auto;
+    text-align: left;
+    background: #120B0A;
+    border: 1px solid #6B211A;
+    border-left: 4px solid #E03A2A;
+    box-shadow: 0 18px 60px rgba(0,0,0,.75);
+  }
+  #boot-error h2 {
+    margin: 0;
+    padding: 10px 16px;
+    font-size: 13px;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    color: #FF9A88;
+    background: #24100D;
+    border-bottom: 1px solid #4A1712;
+  }
+  #boot-error pre {
+    margin: 0;
+    padding: 14px 16px;
+    font-family: 'Cascadia Mono', 'Consolas', 'SFMono-Regular', ui-monospace, monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #E4C9C4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  /* Error state: kill the progress crawl, show the panel. */
+  #loading[data-state='error'] .progress-wrap { display: none; }
+  #loading[data-state='error'] #boot-error    { display: block; }
+  #loading[data-state='error'] .title .w1 { animation: alarm 1.1s steps(2) infinite; }
+  @keyframes alarm { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+
+  /* Pending state: foundation modules not landed yet. Informational, not scary. */
+  #loading[data-state='pending'] .progress-bar { animation: none; left: 0; width: 100%;
+    background: linear-gradient(90deg, #2A3550, #3A86E0 60%, #8FD2FF); box-shadow: none; }
+  #loading[data-state='pending'] #boot-error { display: block; border-left-color: #3A86E0; border-color: #24405F; }
+  #loading[data-state='pending'] #boot-error h2 { color: #9BD0FF; background: #0E1826; border-bottom-color: #1D3350; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .rule::after, .progress-bar, .title .w1 { animation: none; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- Render surface -->
+  <div id="app">
+    <canvas id="gl"></canvas>
+  </div>
+
+  <!-- DOM layers owned by parallel modules -->
+  <div id="hud-root"></div>
+  <div id="menu-root"></div>
+  <div id="debug-root"></div>
+
+  <!-- Loading curtain -->
+  <div id="loading" role="status" aria-live="polite">
+    <div class="curtain-inner">
+      <h1 class="title" aria-label="Red Alert">
+        <span class="w1">RED</span><span class="w2">ALERT</span>
+      </h1>
+      <div class="rule"></div>
+      <p class="subtitle">Tactical Combat Simulation</p>
+      <div class="hazard"></div>
+
+      <div class="progress-wrap">
+        <div class="progress"><div class="progress-bar"></div></div>
+        <div class="status" id="boot-status">Initialising<span class="tick">_</span></div>
+      </div>
+
+      <section id="boot-error">
+        <h2 id="boot-error-title">Boot Failure</h2>
+        <pre id="boot-error-body"></pre>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    /* ----------------------------------------------------------------- *
+     * Pre-module shell wiring.
+     *
+     * Everything in here runs BEFORE the bundle loads, so it still works
+     * if the bundle itself fails to parse - which is exactly when you most
+     * need an error on screen instead of a black rectangle.
+     * ----------------------------------------------------------------- */
+    (function () {
+      // An RTS lives on right-click. The browser menu must never appear.
+      window.addEventListener('contextmenu', function (e) { e.preventDefault(); }, { capture: true });
+
+      // Kill browser-level gestures that would fight the camera rig.
+      window.addEventListener('dragstart', function (e) { e.preventDefault(); });
+      window.addEventListener('gesturestart', function (e) { e.preventDefault(); });
+      window.addEventListener('wheel', function (e) {
+        if (e.ctrlKey) e.preventDefault();           // pinch-zoom the page
+      }, { passive: false });
+
+      /**
+       * Paint a failure onto the curtain. Global so main.ts can reuse the
+       * exact same surface, and so an early parse error still reports.
+       * state: 'error' (red, something broke) | 'pending' (blue, expected).
+       */
+      window.__raFail = function (title, detail, state) {
+        var curtain = document.getElementById('loading');
+        if (!curtain) return;
+        curtain.hidden = false;
+        curtain.classList.remove('is-hidden');
+        curtain.setAttribute('data-state', state || 'error');
+        var t = document.getElementById('boot-error-title');
+        var b = document.getElementById('boot-error-body');
+        if (t) t.textContent = String(title || 'Boot Failure');
+        if (b) b.textContent = String(detail == null ? '' : detail);
+        var s = document.getElementById('boot-status');
+        if (s) s.textContent = state === 'pending' ? 'Awaiting modules' : 'Halted';
+      };
+
+      window.__raStatus = function (text) {
+        var s = document.getElementById('boot-status');
+        if (s) s.innerHTML = String(text).replace(/</g, '&lt;') + '<span class="tick">_</span>';
+      };
+
+      window.addEventListener('error', function (e) {
+        // Ignore resource load errors from elements; only script errors matter here.
+        if (e && e.message) {
+          window.__raFail('Boot Failure', (e.message || 'Unknown error') +
+            (e.filename ? '\n\n  at ' + e.filename + ':' + e.lineno + ':' + e.colno : ''));
+        }
+      });
+
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e && e.reason;
+        window.__raFail('Unhandled Rejection', (r && r.stack) || String(r));
+      });
+    })();
+  </script>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

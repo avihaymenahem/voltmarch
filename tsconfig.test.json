@@ -1,0 +1,16 @@
+{
+  /* Tests run in Node (vitest `environment: 'node'`), so they legitimately need
+     `process`, `node:fs`, `node:path` — the determinism grep gate is a
+     filesystem walk. Game code must NOT see those globals, which is why this is
+     a third program instead of a `types` entry in tsconfig.json.
+
+     tsconfig.json  -> src/**            (browser: vite/client only)
+     tsconfig.node.json -> vite.config.ts (build tooling)
+     tsconfig.test.json -> tests/**       (node + vitest) */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vitest/globals"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["tests/**/*.ts"]
+}
