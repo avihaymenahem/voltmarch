@@ -41,6 +41,8 @@ import { initDebug, type DebugHandle } from '../render/debug';
 
 import { pushArt, pushCamera, resolveArt } from './ArtBridge';
 import { createPlaceholderScene } from './PlaceholderScene';
+import { setGameContext } from './context';
+import { logDiscovery, registerDiscoveredSystems } from './Systems';
 
 /* -------------------------------------------------------------------------- */
 /* Contract with main.ts                                                      */
@@ -257,6 +259,14 @@ export function bootstrap(options: BootOptions): GameHandle {
     debug,
   };
 
+  // Modules reach the world through ctx(); it must exist before any init runs.
+  setGameContext(ctx);
+
+  // A module joins the frame by existing — see src/game/Systems.ts. Discovery
+  // happens after the placeholder is registered so a real terrain system, which
+  // shares its render phase, sorts deterministically behind it.
+  logDiscovery(registerDiscoveredSystems(registry));
+
   const ready = registry
     .init()
     .then(() => {
@@ -306,6 +316,7 @@ export function bootstrap(options: BootOptions): GameHandle {
     dispose(): void {
       if (disposed) return;
       disposed = true;
+      setGameContext(null);
       loop.stop();
       registry.dispose();
       debug.dispose();
