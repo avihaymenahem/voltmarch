@@ -49,8 +49,17 @@ export class MainMenuScreen implements Screen {
     /* -- brand ------------------------------------------------------------ */
     const brand = el('div', 'vm-menu-brand');
     const title = el('h1', 'vm-title');
-    title.appendChild(el('span', undefined, 'VOLT'));
-    title.appendChild(el('span', 'vm-title-accent', 'MARCH'));
+    // The supplied lockup rather than a CSS re-creation of it, so the menu, the
+    // boot curtain and the favicon are all literally the same artwork.
+    const logo = document.createElement('img');
+    logo.className = 'vm-logo';
+    // BASE_URL, not a leading slash: vite is configured with `base: './'` so the
+    // build can be served from a subpath, and an absolute path would 404 there.
+    logo.src = `${import.meta.env.BASE_URL}brand/logo-720.png`;
+    logo.alt = 'Voltmarch';
+    logo.width = 720;
+    logo.height = 333;
+    title.appendChild(logo);
     brand.appendChild(title);
     const rule = el('hr', 'vm-rule is-accent');
     brand.appendChild(rule);

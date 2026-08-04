@@ -130,42 +130,17 @@
    * the same product. VOLT reads as brushed steel, MARCH as the bolt.    */
   .title {
     margin: 0;
-    display: flex;
-    align-items: baseline;
-    gap: clamp(14px, 2.4vw, 34px);
-    font-size: clamp(40px, 8.4vw, 126px);
-    font-weight: 900;
-    letter-spacing: .045em;
-    line-height: .92;
-    text-transform: uppercase;
-    font-stretch: condensed;
-    white-space: nowrap;
-    /* The stencil: horizontal cuts through every glyph. */
-    -webkit-mask-image: repeating-linear-gradient(
-      180deg,
-      #000 0, #000 calc(50% - 4.5px),
-      transparent calc(50% - 4.5px), transparent calc(50% - 0.5px),
-      #000 calc(50% - 0.5px), #000 100%);
-    mask-image: repeating-linear-gradient(
-      180deg,
-      #000 0, #000 calc(50% - 4.5px),
-      transparent calc(50% - 4.5px), transparent calc(50% - 0.5px),
-      #000 calc(50% - 0.5px), #000 100%);
+    line-height: 0;
   }
 
-  .title .w1 {
-    color: #E8EEF4;
-    background: linear-gradient(180deg, #FFFFFF 0%, #C9D8E6 42%, #5A6B7D 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    filter: drop-shadow(0 3px 0 #080C10) drop-shadow(0 0 26px rgba(53,200,240,.28));
-  }
-
-  .title .w2 {
-    color: transparent;
-    -webkit-text-stroke: clamp(2px, .34vw, 4px) #35C8F0;
-    text-shadow: 0 0 32px rgba(53,200,240,.34);
+  /* The supplied lockup, not a CSS re-creation of it. Its cyan is already a
+     near-match for --vm-accent (#35C8F0), so the halo below just extends the
+     glow that is painted into the artwork rather than tinting it. */
+  .title img {
+    display: block;
+    width: clamp(280px, 52vw, 720px);
+    height: auto;
+    filter: drop-shadow(0 0 42px rgba(53, 200, 240, .34));
   }
 
   /* --- Rules + subtitle ---------------------------------------------- */
@@ -296,7 +271,7 @@
   /* Error state: kill the progress crawl, show the panel. */
   #loading[data-state='error'] .progress-wrap { display: none; }
   #loading[data-state='error'] #boot-error    { display: block; }
-  #loading[data-state='error'] .title .w1 { animation: alarm 1.1s steps(2) infinite; }
+  #loading[data-state='error'] .title img { animation: alarm 1.1s steps(2) infinite; }
   @keyframes alarm { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 
   /* Pending state: foundation modules not landed yet. Informational, not scary. */
@@ -306,7 +281,7 @@
   #loading[data-state='pending'] #boot-error h2 { color: #9BD0FF; background: #0E1826; border-bottom-color: #1D3350; }
 
   @media (prefers-reduced-motion: reduce) {
-    .rule::after, .progress-bar, .title .w1 { animation: none; }
+    .rule::after, .progress-bar, .title img { animation: none; }
   }
 </style>
 </head>
@@ -325,8 +300,8 @@
   <!-- Loading curtain -->
   <div id="loading" role="status" aria-live="polite">
     <div class="curtain-inner">
-      <h1 class="title" aria-label="Voltmarch">
-        <span class="w1">VOLT</span><span class="w2">MARCH</span>
+      <h1 class="title">
+        <img src="/brand/logo-720.png" alt="Voltmarch" width="720" height="333" decoding="sync" />
       </h1>
       <div class="rule"></div>
       <p class="subtitle">Tactical Combat Simulation</p>

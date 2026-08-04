@@ -141,17 +141,16 @@
 
 .vm-title {
   margin: 0;
-  font-size: clamp(40px, 6.4vw, 92px);
-  font-weight: 700;
-  line-height: 0.92;
-  letter-spacing: 0.24em;
-  text-indent: 0.24em;
-  text-transform: uppercase;
-  color: var(--vm-text);
+  line-height: 0;
 }
 
-.vm-title .vm-title-accent {
-  color: var(--vm-accent);
+/* The supplied lockup. Its cyan is a near-match for --vm-accent, so the halo
+   extends the glow already painted into the artwork instead of tinting it. */
+.vm-logo {
+  display: block;
+  width: clamp(260px, 42vw, 620px);
+  height: auto;
+  filter: drop-shadow(0 0 38px rgba(53, 200, 240, 0.32));
 }
 
 .vm-subtitle {
