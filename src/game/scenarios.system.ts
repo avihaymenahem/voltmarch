@@ -46,7 +46,6 @@ import {
 } from './Scenarios';
 
 /** The stub module Bootstrap registers before discovery runs. */
-const PLACEHOLDER_ID = 'game.placeholderScene';
 
 /* -------------------------------------------------------------------------- */
 /* Boot flags                                                                 */
@@ -85,17 +84,6 @@ export default defineSystem({
 
   async init(): Promise<void> {
     const { world, cameraRig, loop, debug, registry } = ctx();
-
-    // Bootstrap registers a gray-box stub so the very first boot of the repo is
-    // not a black screen. A real scenario supersedes it: leaving both alive puts
-    // four unowned cubes and a spinning cone in the middle of every base shot.
-    // `remove` is a no-op once the integrator drops it from Bootstrap, so this
-    // stays correct either way. `?keepPlaceholder=1` puts it back for anyone
-    // debugging the render stack with no gameplay content at all.
-    if (flag('keepPlaceholder') === null && registry.find(PLACEHOLDER_ID) !== undefined) {
-      registry.remove(PLACEHOLDER_ID);
-      console.info('[scenario] removed the gray-box placeholder scene');
-    }
 
     const name = resolveScenarioName(flag('shot'));
     const seed = seedFlag();

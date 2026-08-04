@@ -67,12 +67,6 @@ export type ToneMappingMode = 'none' | 'agx' | 'aces' | 'neutral' | 'linear';
  */
 export type RenderQualityTier = 'low' | 'medium' | 'high' | 'ultra';
 
-/**
- * @deprecated Use `RenderQualityTier`. Kept so the name a caller already
- * imported keeps resolving; it is the same type.
- */
-export type QualityTier = RenderQualityTier;
-
 /** Ordered low..ultra. The index IS `core/types.ts#QualityTier`. */
 export const RENDER_QUALITY_TIERS: readonly RenderQualityTier[] = ['low', 'medium', 'high', 'ultra'];
 
@@ -273,7 +267,7 @@ export interface RenderConfig {
   fog: FogConfig;
   post: PostConfig;
   scene: SceneExtrasConfig;
-  quality: QualityTier;
+  quality: RenderQualityTier;
 }
 
 /* ========================================================================== */

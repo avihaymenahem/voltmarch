@@ -87,13 +87,13 @@ primitives; do not reach for a plain box.
 
 ## Debugging
 
-`window.__VM` is the live handle (`__RA` is a deprecated alias). It exposes the renderer, scene,
-camera rig, post chain, `ready()`, `focusOn()`, `setUiVisible()`, `waitFrames()`, `screenshot()`,
-`stats()` and config mutators. `tools/shoot.mjs` and `tools/metrics.mjs` drive the game through it,
-so **changing that surface breaks the entire visual-critique pipeline** — update both consumers.
+`window.__VM` is the live handle. It exposes the renderer, scene, camera rig, post chain, `ready()`,
+`focusOn()`, `setUiVisible()`, `waitFrames()`, `screenshot()`, `stats()` and config mutators.
+`tools/shoot.mjs` and `tools/metrics.mjs` drive the game through it, so **changing that surface
+breaks the entire visual-critique pipeline** — update both consumers.
 
 Boot flags: `?shot=<id>` (skips the menu, freezes the sim, poses the camera), `?map=`, `?art=`,
-`?tier=`, `?seed=`, `?fog=off`, `?keepPlaceholder=1`.
+`?tier=`, `?seed=`, `?fog=off`.
 
 ## Things that have gone wrong before
 

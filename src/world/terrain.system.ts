@@ -16,14 +16,10 @@
  *  3. `setActiveTerrain` — the module-level accessor for the handful of
  *     callers (pathfinding, roads, props, VFX) that need the terrain-specific
  *     extras the port does not carry.
- *  4. Removes the placeholder scenario. `PlaceholderScene.ts` says in its own
- *     header that TerrainModule deletes its ground; the grid helper and the
- *     512 m plane would otherwise z-fight the real surface everywhere the map
- *     is near y=0.
  *
  * ORDER
  * -----
- * `order: 40` inside `Phase.Command` puts this init after the placeholder
+ * `order: 40` inside `Phase.Command` puts this init after the scenario
  * scenario (which registers first, at order 0, so it can be torn down) and
  * before every other gameplay module, which all sit at order >= 100 or in a
  * later phase. Terrain must exist before anything asks where the ground is.
@@ -94,7 +90,6 @@ export default defineSystem({
     // scenario handles its grid helper and gray boxes. Both are no-ops if
     // another module got there first.
     sceneRig.setPlaceholderGroundVisible(false);
-    registry.remove('game.placeholderScene');
 
     const ms = (typeof performance !== 'undefined' ? performance.now() : 0) - t0;
     const s = terrain.stats();

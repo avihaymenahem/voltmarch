@@ -8,7 +8,15 @@
 </p>
 
 <p align="center">
-  <a href="https://avihaymenahem.github.io/voltmarch/"><strong>▶ Play it</strong></a>
+  <a href="https://avihaymenahem.github.io/voltmarch/">
+    <img src="https://img.shields.io/badge/▶_PLAY_IN_BROWSER-avihaymenahem.github.io%2Fvoltmarch-35C8F0?style=for-the-badge&labelColor=0B1017" alt="Play in browser" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/avihaymenahem/voltmarch/actions/workflows/deploy.yml">
+    <img src="https://github.com/avihaymenahem/voltmarch/actions/workflows/deploy.yml/badge.svg" alt="Build and deploy" />
+  </a>
 </p>
 
 <p align="center">
@@ -112,9 +120,3 @@ be registered by hand.
 ## Stack
 
 Vite · TypeScript · Three.js (pinned exact). No React, no game engine, no external art pipeline.
-
-## Reference material
-
-`refs/` holds screenshots of shipped commercial RTS games used to derive the art direction. Those are
-other companies' copyrighted frames, so they are **not** committed here — see `.gitignore`. Nothing
-in the build depends on them; they are inputs to the visual-critique tooling only.

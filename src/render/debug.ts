@@ -23,10 +23,6 @@
  *
  * The handle is installed in dev AND in production builds. It is ~4 KB and it
  * is the difference between "we think it looks better" and "here is the diff".
- *
- * It was called `__RA` before the project was renamed to VOLTMARCH. `window.__RA`
- * is still assigned as a deprecated alias to the same object so anything written
- * against the old name keeps working; drop it after one release.
  */
 
 import * as THREE from 'three';
@@ -37,7 +33,7 @@ import {
   type RendererHandle,
   type RenderConfig,
   type DeepPartial,
-  type QualityTier,
+  type RenderQualityTier,
 } from './renderer';
 import type { SceneRig } from './scene';
 import type { CameraRig, CameraPose } from './camera';
@@ -104,7 +100,7 @@ export interface FrameStats {
   heapGrowthMB: number;
   resolution: string;
   pixelRatio: number;
-  quality: QualityTier;
+  quality: RenderQualityTier;
   post: string;
   counters: DebugCounters;
 }
@@ -126,7 +122,7 @@ export interface VMHandle {
 
   /* -- configuration -- */
   configure(patch: DeepPartial<RenderConfig>): ReadonlyArray<string>;
-  quality(tier: QualityTier): void;
+  quality(tier: RenderQualityTier): void;
   setResolutionScale(scale: number): void;
   setExposure(v: number): void;
   setSun(azimuthDeg: number, elevationDeg: number): void;
@@ -174,13 +170,8 @@ export interface VMHandle {
 declare global {
   interface Window {
     __VM?: VMHandle;
-    /** @deprecated Renamed to `__VM` in the VOLTMARCH rename. Removed next release. */
-    __RA?: VMHandle;
   }
 }
-
-/** @deprecated Renamed to {@link VMHandle}. Kept so external callers keep compiling. */
-export type RAHandle = VMHandle;
 
 /* ========================================================================== */
 /* Overlay DOM                                                                */
@@ -679,9 +670,6 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
   };
 
   window.__VM = api;
-  // Deprecated alias for one release: external scripts and bookmarklets written
-  // against `__RA` keep working instead of failing with a bare undefined.
-  window.__RA = api;
 
   /* ---- frame hooks ------------------------------------------------------ */
   function beginFrame(nowMs: number): number {
@@ -735,7 +723,6 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
       root.remove();
       frameListeners.length = 0;
       if (window.__VM === api) delete window.__VM;
-      if (window.__RA === api) delete window.__RA;
     },
   };
 

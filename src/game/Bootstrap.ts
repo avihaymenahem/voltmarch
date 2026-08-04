@@ -24,7 +24,6 @@ import { GameLoop, Profiler, SystemRegistry, devAsserts, now } from '../core/loo
 import { World } from '../core/world';
 import { DEFAULT_QUALITY_TIER, MAP_SIZE } from '../core/config';
 import { Faction, type QualityTier as CoreQualityTier, type RenderContext } from '../core/types';
-import { hexToInt } from '../core/math';
 
 import {
   RENDER_CONFIG,
@@ -42,7 +41,6 @@ import { createPostChain, type PostChain } from '../render/post';
 import { initDebug, type DebugHandle } from '../render/debug';
 
 import { pushArt, pushCamera, resolveArt } from './ArtBridge';
-import { createPlaceholderScene } from './PlaceholderScene';
 import { setGameContext } from './context';
 import { logDiscovery, registerDiscoveredSystems } from './Systems';
 
@@ -162,29 +160,6 @@ export function bootstrap(options: BootOptions): GameHandle {
   world.addPlayer(Faction.Allies, 'Commander', true, true);
   world.addPlayer(Faction.Soviets, 'Opponent', false, false);
 
-  /*
-   * The gray-box scaffolding is OFF by default now that `world.terrain` and
-   * `game.scenario` are real modules. It used to be registered unconditionally
-   * and removed from two other modules' init()s, which meant its ground plane,
-   * grid helper and four unowned cubes drew over the real content for however
-   * many frames the race went the wrong way. `?keepPlaceholder=1` brings it
-   * back for anyone debugging the render stack with no gameplay content at all
-   * — the same flag src/game/scenarios.system.ts documents.
-   */
-  const keepPlaceholder =
-    typeof location !== 'undefined' && new URLSearchParams(location.search).has('keepPlaceholder');
-
-  const scenario = keepPlaceholder
-    ? createPlaceholderScene({
-      sceneRig,
-      alliesColor: hexToInt(art.factions.allies.armorBase),
-      sovietsColor: hexToInt(art.factions.soviets.armorBase),
-      alliesEmissive: hexToInt(art.factions.allies.emissivePanel),
-      sovietsEmissive: hexToInt(art.factions.soviets.emissivePanel),
-      animate: !shotMode,
-    })
-    : null;
-  if (scenario !== null) registry.add(scenario);
 
   const loop = new GameLoop(world, channels, registry, { render: renderFrame }, seed);
   loop.quality = coreTier(tier);
@@ -222,7 +197,7 @@ export function bootstrap(options: BootOptions): GameHandle {
 
   // A flat sampler until `world.terrain`'s init replaces it. The rig must have
   // SOMETHING before the first frame or its focus point falls through the floor.
-  cameraRig.setGroundHeightFn(scenario !== null ? scenario.heightAt : () => 0);
+  cameraRig.setGroundHeightFn(() => 0);
 
   /* -- frame body --------------------------------------------------------- */
 
