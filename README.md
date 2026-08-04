@@ -1,96 +1,120 @@
 <p align="center">
-  <img src="public/brand/logo-360.png" alt="VOLTMARCH" width="360" />
+  <img src="public/brand/logo-360.png" alt="VOLTMARCH" width="380" />
 </p>
 
-# VOLTMARCH
+<p align="center">
+  <strong>An original real-time strategy game that runs in the browser.</strong><br>
+  Three factions · ore economy · base building · massed armour battles · fog of war
+</p>
 
-An original real-time strategy game that runs in the browser. Two factions (Allies / Soviets),
-an ore economy, base building, massed tank battles, fog of war, and a right-hand sidebar HUD.
+<p align="center">
+  <a href="https://avihaymenahem.github.io/voltmarch/"><strong>▶ Play it</strong></a>
+</p>
 
-VOLTMARCH is not a port or a clone of any existing game. It is a new title in the tradition of
-1990s and 2000s base-building RTS — the genre conventions it adopts (sidebar production, harvester
-economy, tech tiers) are the shared vocabulary of that genre. Its art direction takes its cue from
-the era's high-contrast, saturated, readable look; `docs/` cites specific reference frames so the
-renderer has a measurable target to be scored against.
+<p align="center">
+  <img src="docs/progress/01-main-menu.png" alt="VOLTMARCH main menu over a live battlefield" width="820" />
+</p>
 
-**All art is generated from code.** No downloaded models, no downloaded textures, no webfonts.
-Every unit, building, material and texture is built from Three.js geometry, custom shaders and
-procedural canvas/worker generators, so the entire look can be iterated on by editing values.
+---
 
-## Stack
+## What this is
 
-Vite · TypeScript · Three.js `0.185.1` (pinned exact). No React, no game engine.
+A full RTS built for the browser: a main menu and settings shell, skirmish setup, three playable
+factions with distinct rosters and tech trees, an AI opponent that plays a real game, harvesters and
+refineries, power grids that gate production, base placement, fog of war, superweapons, engineer
+capture, and a modern bottom-anchored HUD.
+
+VOLTMARCH is not a port or a clone. It is a new title in the tradition of late-90s and 2000s
+base-building RTS — the conventions it adopts (harvester economy, tech tiers, build queues) are the
+shared vocabulary of that genre.
+
+**All art is generated from code.** No downloaded models, no downloaded textures, no webfonts. Every
+unit, building, material and texture is built from Three.js geometry, custom shaders and procedural
+canvas generators, which means the entire look can be retuned by editing values rather than
+reopening an art tool.
 
 ## Running it
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
+npm run dev
 ```
+
+Then open <http://localhost:5173>.
 
 | script | what it does |
 | --- | --- |
-| `npm run dev` | dev server on port 5173 (strict) |
+| `npm run dev` | dev server on port 5173 |
 | `npm run build` | production bundle into `dist/` |
-| `npm run preview` | serve the built bundle on port 4317 |
-| `npm run typecheck` | `tsc --noEmit` over all three programs — a **separate lint gate**, never part of the build |
+| `npm run preview` | serve the built bundle |
+| `npm run typecheck` | `tsc --noEmit` across all three programs |
 | `npm test` | vitest unit + determinism suites |
-| `npm run soak` | 20-minute AI-vs-AI determinism soak |
-| `npm run shots` | build, serve, and capture the critic screenshot set into `shots/` |
+| `npm run shots` | capture the visual-critique screenshot set into `shots/` |
 
-`npm run build` intentionally does **not** run `tsc`. esbuild strips types, so a type error in
-one of ~15 parallel modules must never be able to stop the game from running. Type errors are
-caught by `npm run typecheck` instead.
+`npm run build` deliberately does **not** run `tsc`. esbuild strips types, so a type error must never
+be able to stop the game from running; type errors are caught by `npm run typecheck` instead.
 
-`npm run shots` additionally needs Playwright with a Chromium browser:
-
-```bash
-npm i -D playwright && npx playwright install chromium
-```
+`npm run shots` additionally needs Playwright: `npx playwright install chromium`.
 
 ## Boot flags
 
-Appended to the URL, e.g. `http://localhost:5173/?art=dusk&seed=1234`.
+Appended to the URL, e.g. `?art=dusk&seed=1234`.
 
 | flag | effect |
 | --- | --- |
-| `?shot=<id>` | freeze the sim and pose the camera for a diffable screenshot |
-| `?map=<preset>` | map preset (`ridge-basin`, `ore-delta`, `fortress-pass`) |
-| `?art=<mood>` | lighting/grade mood (`noon`, `dusk`, `night`, `overcast`, `dust`) |
-| `?tier=<tier>` | quality override (`low`, `medium`, `high`, `ultra`) |
+| `?shot=<id>` | skip the menu, freeze the sim and pose the camera for a diffable screenshot |
+| `?map=<preset>` | map preset |
+| `?art=<mood>` | lighting mood — `noon`, `dusk`, `night`, `overcast`, `dust` |
+| `?tier=<tier>` | quality override — `low`, `medium`, `high`, `ultra` |
 | `?seed=<int>` | deterministic RNG seed |
+| `?fog=off` | disable fog of war |
+
+## How the art direction is enforced
+
+The look is held to a measured target rather than to opinion.
+
+[`docs/RA3_LOOK_BIBLE.md`](docs/RA3_LOOK_BIBLE.md) specifies the visual language in falsifiable
+terms — camera pitch, light angles and colours, palette hexes, material response, prop density — and
+ends in a weighted scorecard where every criterion has an explicit pass condition.
+
+[`tools/metrics.mjs`](tools/metrics.mjs) turns the measurable half of that scorecard into numbers
+sampled straight off a rendered PNG: median luminance, mean saturation, black and highlight
+percentiles, hue distribution, edge density, aerial-perspective delta. `tools/shoot.mjs` captures a
+fixed set of scenarios at 1440p so the two can be run together on every change.
+
+This exists because the failure mode it guards against is invisible from the inside: a render drifts
+bright, flat and grey-green while everyone looking at it insists it is fine. A median luminance of
+0.53 against a target of 0.34 is not a matter of taste.
 
 ## Layout
 
-Landed (the foundation):
-
 ```
-index.html               page shell, mount points, loading curtain
-src/main.ts              entry point: boot flags -> Bootstrap, resize, error surface
-src/core/                sim spine: types, config, EntityStore/World, buses, loop, math, assets
-src/core/config.ts       ArtDirection + world scale — THE values file a critic edits
-src/render/              renderer, scene, camera, post chain, __VM debug handle
-src/game/Bootstrap.ts    the only file that wires sim + render together
-src/game/ArtBridge.ts    core/config.ts (hex strings, degrees) -> RENDER_CONFIG (ints, three enums)
-src/game/PlaceholderScene.ts  gray-box scaffolding; deleted when terrain + models land
-tests/                   foundation seam tests + the src/sim determinism grep gate
-tools/shoot.mjs          screenshot harness for the visual critique loop
-tools/metrics.mjs        numeric scorecard over the captured PNGs
-docs/                    look bible + visual DNA
-refs/                    reference screenshots of shipped RTS games, for visual scoring only
-```
-
-Planned (parallel phase — these directories do not exist yet):
-
-```
-src/data/    frozen unit/building/weapon/armor tables
-src/sim/     simulation systems (nav, combat, economy, build, ai)
-src/art/     procedural models: vehicles, infantry, buildings
-src/vfx/     particles, decals, tread tracks, emitters
-src/ui/      sidebar HUD
-src/world/   terrain generation, fog of war
+src/core/      simulation spine — types, config, EntityStore/World, event buses, fixed-step loop
+src/core/config.ts   art direction + world scale; the single values file that drives the look
+src/render/    renderer, scene rig, camera rig, post chain, RenderBridge, __VM debug handle
+src/game/      Bootstrap, GameContext, glob system discovery, scenario router
+src/shell/     main menu, skirmish setup, settings, pause, victory/defeat
+src/ui/        the in-match HUD and in-world overlay
+src/sim/       pathfinding, combat, economy, production, AI, vision, superweapons, capture
+src/art/       procedural geometry — shape primitives, greeble, unit and building factories
+src/world/     terrain, water, roads, decals, prop scatter
+src/vfx/       particles, beams, explosions, tracers, pooled scene lights
+src/audio/     fully synthesized WebAudio — announcer, barks, weapons, procedural score
+src/data/      unit/building/faction/armour tables
+tools/         screenshot harness, grade probe, brand asset generator
+docs/          look bible, visual DNA, architecture
 ```
 
-The architecture manifest names `src/config/ArtDirection.ts`; the foundation put those values in
-`src/core/config.ts` instead. `src/game/ArtBridge.ts` is the single translation point between that
-file and the render layer — nothing else may map one onto the other.
+A module joins the game by existing: drop a `*.system.ts` under `src/` that default-exports a
+`SystemModule` and [`src/game/Systems.ts`](src/game/Systems.ts) discovers it by glob. Nothing has to
+be registered by hand.
+
+## Stack
+
+Vite · TypeScript · Three.js (pinned exact). No React, no game engine, no external art pipeline.
+
+## Reference material
+
+`refs/` holds screenshots of shipped commercial RTS games used to derive the art direction. Those are
+other companies' copyrighted frames, so they are **not** committed here — see `.gitignore`. Nothing
+in the build depends on them; they are inputs to the visual-critique tooling only.
