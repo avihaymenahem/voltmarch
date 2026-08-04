@@ -73,6 +73,38 @@ building instead of clearing them.
 - Worth deciding whether clearing is silent or has a small effect (a puff, a felled tree) — RA3
   flattens vegetation visibly.
 
+## 6. Let the player see ALL objectives, not just the first two
+
+`src/ui/Objectives.ts` caps the panel at `MAX_VISIBLE_OBJECTIVES = 3`, and the overflow line
+**replaces** the third row rather than being appended — so in practice you see two objectives and a
+"+N more". There is no way to read the rest during a match.
+
+Context before changing it:
+- The cap is deliberate and I asked for it ("objective spam is noise" in the design brief). The
+  answer is probably not raising the cap but adding a way to **expand** — the panel already has a
+  collapse toggle, so a three-state affordance (collapsed / summary / full list) is the natural shape.
+- There is a real constraint behind it: the panel measures **16.3% of frame at the cap**, already
+  0.3 of a point over scorecard §38's 12–16% HUD budget. An always-expanded list would blow that,
+  which is why expand-on-demand matters more than a bigger default.
+- The pause menu already shows current objectives and has no such constraint — that may be the
+  better home for the full list, with the in-match panel staying a summary.
+
+## 7. Success popup when an objective completes
+
+Completing an objective currently gets a one-shot flash on its row inside the panel, which then
+holds at the top for a few seconds (`doneAt` in `Objectives.ts`). It is easy to miss entirely if you
+are looking anywhere else on screen — which, during a fight, you are.
+
+Wanted: a proper centre-screen success beat. Worth reusing rather than reinventing:
+- `src/shell/EndScreen.ts` already has a reward-reveal treatment for unlocks earned.
+- The HUD has an event-toast system (top-left chips with a coloured left edge) for "construction
+  complete" and "low power".
+- The audio engine has EVA and a build-complete chime; an objective completion should probably have
+  its own line so it reads as an event, not just a UI animation.
+
+Keep it short and non-blocking — it fires mid-combat and must never eat a click or hide the
+battlefield.
+
 ---
 
 ## Carried over — already known, not from this list
