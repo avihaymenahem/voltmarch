@@ -68,10 +68,11 @@ import {
 } from './Selection';
 import {
   CommandMode, FeedbackKind, OrderExecutor, createCapabilities, feedbackFor,
-  issueOrder, makeDefRoleResolver, planScatter, readCapabilities,
+  gatherDeployable, issueOrder, makeDefRoleResolver, planScatter, readCapabilities,
   resolveContextOrder, setRoleResolver,
   type OrderResolution, type SelectionCapabilities,
 } from './Commands';
+import { isDeployable } from '../sim/Deploy';
 import {
   CAMERA_KEY_IDS, COMMAND_ACTION_IDS, defaultCameraCodes, defaultCommandChords,
   type ActionChord,
@@ -106,6 +107,10 @@ const V3 = new Float32Array(3);
 const EDGE = new Float32Array(2);
 /** Own, orderable entities distilled out of the selection. */
 const ORDER_IDS = new Int32Array(MAX_SELECTION);
+/** Own construction vehicles distilled out of the selection. */
+const DEPLOY_IDS = new Int32Array(MAX_SELECTION);
+/** One-entity window, so a per-unit order never allocates a subarray. */
+const ONE_ID = new Int32Array(1);
 /** Ground anchor for the middle-button world grab. */
 const PAN_ANCHOR = new Float32Array(3);
 let panning = false;
@@ -475,6 +480,14 @@ function executeResolved(res: OrderResolution, queued: boolean): void {
   const { world, channels } = ctx();
   const player = world.localPlayer;
 
+  // Deploy never travels through the group path: each vehicle unpacks where IT
+  // stands, so there is no shared destination for Steering to preserve a
+  // formation around, and a mixed selection must leave the escort alone.
+  if (res.order === OrderKind.Deploy) {
+    issueDeploy(res.target);
+    return;
+  }
+
   if (res.isRally) {
     const s = world.store;
     const sel = world.selection;
@@ -498,6 +511,47 @@ function executeResolved(res: OrderResolution, queued: boolean): void {
   // shape — see the note at the top of Commands.ts §4.
   issueOrder(world, channels, player, res.order, ORDER_IDS, n, res.x, res.z, res.target, queued);
   feedback(res.order, res.x, res.z);
+}
+
+/**
+ * Unpack every selected construction vehicle where it stands.
+ *
+ * ONE COMMAND PER VEHICLE, each carrying that vehicle's own position. Guard is
+ * the same shape and for the same reason: there is no single point that could
+ * express "everybody, here, individually". The sim re-validates each one and
+ * answers `EvaLine.CannotDeployHere` for the ones that cannot.
+ *
+ * `only` restricts the order to a single vehicle — the double-click and the
+ * deploy-cursor right-click both name the exact MCV the player pointed at, and
+ * neither should unpack the other two sitting behind it.
+ */
+function issueDeploy(only: EntityId = NONE): number {
+  const { world, channels } = ctx();
+  const s = world.store;
+  const player = world.localPlayer;
+  const sel = world.selection;
+
+  let n: number;
+  if (only !== NONE) {
+    const i = s.index(only);
+    if (i < 0 || s.owner[i] !== (player as number) || !isDeployable(world, i)) return 0;
+    DEPLOY_IDS[0] = only as number;
+    n = 1;
+  } else {
+    n = gatherDeployable(world, sel.ids, sel.count, DEPLOY_IDS);
+  }
+  if (n === 0) return 0;
+
+  for (let k = 0; k < n; k++) {
+    const i = s.index(DEPLOY_IDS[k] as EntityId);
+    if (i < 0) continue;
+    ONE_ID[0] = DEPLOY_IDS[k];
+    const x = s.posX[i];
+    const z = s.posZ[i];
+    issueOrder(world, channels, player, OrderKind.Deploy, ONE_ID, 1, x, z, DEPLOY_IDS[k] as EntityId);
+    overlay?.spawn(FeedbackKind.Special, x, groundY(x, z), z);
+  }
+  return n;
 }
 
 /** Hotkey orders that need no target: stop, guard, scatter. */
@@ -618,6 +672,24 @@ const handlers = {
         ? pickEntity(world, projector, p.x, p.y, p.worldX, p.worldZ)
         : NONE;
       if (id === NONE) { selection.clear(); return; }
+
+      // DOUBLE-CLICKING A CONSTRUCTION VEHICLE DEPLOYS IT. This outranks
+      // select-all-of-type, and it has to: an MCV is the one unit where
+      // "select every other one on screen" is never what the gesture meant,
+      // and double-click-to-deploy is the muscle memory every C&C player
+      // arrives with. Select it first so the player can see what just took
+      // the order.
+      if (!p.shift) {
+        const i = world.store.index(id);
+        if (i >= 0 && world.store.owner[i] === (world.localPlayer as number)
+          && isDeployable(world, i)) {
+          selection.select(id, SelectMode.Replace);
+          issueDeploy(id);
+          refreshResolution();
+          return;
+        }
+      }
+
       selection.selectSameTypeOnScreen(id, projector, p.shift);
       refreshResolution();
       return;
@@ -745,6 +817,14 @@ const handlers = {
 
       case 'ord.scatter':
         issueImmediate(OrderKind.Scatter);
+        return true;
+
+      case 'ord.deploy':
+        // The classic binding. Consumed whether or not anything deployable is
+        // selected: D is not bound to anything else, and letting the keystroke
+        // fall through would hand it to the build grid, where it does nothing
+        // either but does it less predictably.
+        issueDeploy();
         return true;
 
       case 'ord.forceAttack':

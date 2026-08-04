@@ -3900,9 +3900,27 @@ export const VFX_LIGHT_DECAY = 1.28;
  */
 export const VFX_LIGHT_INTENSITY_SCALE = 5.0;
 
-/** Bible §8.9, verbatim. `range` in metres (the bible's TL x 7). */
+/**
+ * Bible §8.9, verbatim except where noted. `range` in metres (the bible's
+ * TL x 7).
+ *
+ * THE EXPLOSION ROW IS THE ONE DEVIATION, and it is deliberate. The bible's
+ * 28 cd / 49 m, through `VFX_LIGHT_INTENSITY_SCALE`, is 140 effective candela
+ * reaching 49 metres — and the combat fixture frames about 60 metres of ground,
+ * so a single tank death relit the ENTIRE visible world. Measured against an
+ * identical explosion-free frame, one 2.2 TL death lifted the median of every
+ * pixel it did not set on fire by +11.5 L and pushed 58% of the frame over a
+ * +12 L threshold. That wash is the effect doing its job (scorecard #28 exists
+ * precisely so effects light the world) but its REACH was the whole shot, which
+ * is the "the flash blocks the screen" complaint arriving by a second route.
+ *
+ * 20 cd / 40 m keeps the near-field wash the scorecard measures — that annulus
+ * is 3-6 m from the blast, where the falloff has barely started — and pulls the
+ * far field in so the corners of the frame stop flaring. Re-measure both
+ * numbers together if this is ever retuned; peak alone will not do it.
+ */
 export const VFX_LIGHTS = {
-  explosion:   { color: '#FFB05A', peak: 28, range: 49.0, riseMs:  40, holdMs:  60, fallMs: 400, flickerHz: 0,  flickerAmp: 0.00 },
+  explosion:   { color: '#FFB05A', peak: 20, range: 40.0, riseMs:  40, holdMs:  60, fallMs: 400, flickerHz: 0,  flickerAmp: 0.00 },
   muzzle:      { color: '#FFD28A', peak: 12, range: 17.5, riseMs:  10, holdMs:  10, fallMs:  70, flickerHz: 0,  flickerAmp: 0.00 },
   teslaImpact: { color: '#5A82FF', peak: 14, range: 24.5, riseMs:  30, holdMs:  40, fallMs: 130, flickerHz: 0,  flickerAmp: 0.00 },
   beam:        { color: '#6FA8FF', peak:  9, range: 42.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00 },
@@ -4058,16 +4076,105 @@ export const VFX_TILE = {
 
 /* ---- explosions (bible §8.2) -------------------------------------------- */
 
+/**
+ * ============================================================================
+ * THE DETONATION BLOOM BUDGET — read this before raising any number below.
+ * ============================================================================
+ *
+ * "The flashes when something explodes are HUGE, completely block the screen."
+ * Reported TWICE. The first pass shrank the flash disc and left every gain
+ * untouched, which is why it came back. What follows is the second pass, and
+ * the multiplier block that used to shadow this one (`GLOW` at the top of
+ * src/vfx/Explosions.ts) is now folded in here — one place for these knobs.
+ *
+ * WHAT WAS MEASURED. One 2.2 TL unit death, 47.8 m from the camera, captured
+ * at 2560x1440 through the `?shot=battle` fixture with the VFX clock frozen and
+ * differenced against the identical frame with no explosion in it:
+ *
+ *                            blown-white core        area of the WHOLE frame
+ *                            (equiv. circle, %W)     at sRGB L>245
+ *      unit death   @ 90 ms        26.9 %                 10.1 %
+ *      structure    @ 60 ms        42.3 %                 25.0 %
+ *
+ * A quarter of the frame is a featureless white plate for a building, a tenth
+ * for a tank. That is not a flash with a halo, and the user is describing it
+ * accurately.
+ *
+ * THE MECHANISM, AND WHY SIZE ALONE NEVER FIXED IT. The bloom pass haloes
+ * whatever it is handed above its 0.85 threshold. A 7.0-linear source is ~8x
+ * over that threshold, so the above-threshold region is not the sprite's bright
+ * middle — it is essentially the sprite's whole visible disc, and 8-14 of them
+ * blend ADDITIVELY on top of each other. Shrinking the quads while leaving the
+ * gain at 7.0 just makes a slightly smaller solid plate. **The area above the
+ * bloom threshold is the quantity that matters, and it is driven by gain at
+ * least as much as by size.**
+ *
+ * SO BOTH LEVERS MOVED, ROUGHLY BY HALF, WHICH IS WHAT WAS ASKED FOR. The
+ * numbers below are the bible's authored figures times the correction, baked in
+ * rather than multiplied at the call site; each one carries its bible value in
+ * the comment so nothing is lost.
+ *
+ * WHAT MUST NOT BE LOST — SCORECARD #14. "The brightest 40% of a fireball is
+ * L>245, channel spread <30." Halving a 7.0-linear source still leaves it ~4x
+ * over the tonemapper's clip point, so the white-hot core survives; it was
+ * re-measured after the change, not assumed. What shrinks is the AREA above
+ * threshold, never the peak. If you ever need to make an explosion read hotter,
+ * raise the ramp, not these gains.
+ * ============================================================================
+ */
 export const VFX_EXPLOSION = {
   /** Fireball diameter in metres per "size 1.0". Unit death is 2.2 TL. */
   unitDeathTL: 2.2,
   structureDeathTL: 5.0,
   smallTL: 1.2,
 
-  /** Flash disc: 1.8 -> 3.2 TL, peak 40 ms, gone by 140 ms, additive white. */
-  flashSize0TL: 1.8, flashSize1TL: 3.2, flashLifeMs: 140,
-  /** HDR gain of the flash core. >1.25 linear is what feeds the bloom pass. */
-  flashIntensity: 7.0,
+  /* -- the flash disc ---------------------------------------------------- */
+
+  /**
+   * Flash disc diameter in TL, start -> end. Peak 40 ms, gone by 140 ms.
+   *
+   * Bible §8.2 authors 1.8 -> 3.2 TL. 3.2 TL is 22.4 m, which at a normal RTS
+   * zoom is over a third of the frame's width — as a flat additive plate that
+   * is a bloom source the size of the shot. The first pass took it to 1.9 TL
+   * and it was still reported as screen-filling; halving again lands at 0.96 TL
+   * (6.7 m), which is a bright point ON the fireball rather than a lid over it.
+   * The start size is held near the same ratio so the disc still SNAPS open —
+   * the 40 ms onset is the whole character of the effect.
+   */
+  flashSize0TL: 0.70, flashSize1TL: 0.96, flashLifeMs: 140,
+  /**
+   * HDR gain of the flash core, in scene-linear.
+   *
+   * **This is the number the first pass missed.** 7.0 against a 0.85 bloom
+   * threshold puts the disc ~8x over it across its entire surface. 3.5 is still
+   * ~4x over — the core clips to pure white exactly as before (scorecard #14 is
+   * re-measured, not assumed) — but the skirt now falls under threshold within
+   * a fraction of the radius instead of feeding the mip chain as a solid disc.
+   */
+  flashIntensity: 3.5,
+  /**
+   * How far the flash ramp is stretched across the disc's RADIUS.
+   *
+   * The disc is emitted with `radial = 1`, so the ramp sweeps across the sprite
+   * rather than across its lifetime: a hot centre with a fast falloff instead
+   * of a uniform plate. Above 1.0 for the same reason `billowRadialSpan` is —
+   * the core tile's alpha is already fading at the quad edge, so a 1.0 span
+   * parks the ramp's transparent tail in invisible pixels and the disc reads as
+   * a flat white plate again.
+   */
+  flashRadialSpan: 1.12,
+
+  /**
+   * The SEPARATE flash a structure death gets on top of its fireball, in TL.
+   *
+   * Bible §8.2 asks for 8 TL. That is 56 metres of flat white — wider than the
+   * visible ground in the combat fixture. Same halving as the unit flash leaves
+   * 2.24 TL (15.7 m), which still reads as "something much bigger just died"
+   * next to the unit death's 0.96 TL.
+   */
+  structureFlashSize0TL: 0.84, structureFlashSize1TL: 2.24,
+  /** The structure flash runs a little longer and a little softer than the unit one. */
+  structureFlashLifeMul: 1.30, structureFlashIntensityMul: 0.80,
 
   /**
    * How far the RADIAL fireball ramp is stretched across the sprite quad.
@@ -4086,34 +4193,116 @@ export const VFX_EXPLOSION = {
    */
   billowRadialSpan: 1.18,
 
-  /** Fireball: 8-14 billows, 0.9 -> 2.6 TL, dead at 750 ms, rotating +/-35 deg/s. */
+  /* -- the fireball ------------------------------------------------------ */
+
+  /** Fireball: 8-14 billows, dead at 750 ms, rotating +/-35 deg/s. */
   billowMin: 8, billowMax: 14,
-  billowSize0TL: 0.9, billowSize1TL: 2.6, billowLifeMs: 750,
-  billowSpinDegPerSec: 35, billowIntensity: 4.2,
+  /**
+   * Diameter of ONE billow in TL, start -> end.
+   *
+   * Bible §8.2 gives 0.9 -> 2.6 TL, but 2.6 TL is its figure for the WHOLE
+   * fireball of a unit death (2.2 TL) with headroom — it was being applied to
+   * every one of the 8-14 billows individually. Work the ensemble out: the
+   * billows are born on a `billowShellTL` shell and drift ~2 m outward against
+   * drag 2.6 over their 750 ms life, so at 1.0 TL each the envelope comes out
+   * at about 2.5 TL, which is the bible's fireball plus its sparse outliers.
+   * The RADIAL ramp fractions are untouched, so scorecard #14 is unaffected —
+   * a billow is the same picture, smaller.
+   */
+  billowSize0TL: 0.34, billowSize1TL: 1.00, billowLifeMs: 750,
+  billowSpinDegPerSec: 35,
+  /**
+   * HDR gain of one billow, in scene-linear — halved from the authored 4.2.
+   *
+   * 8-14 of these blend ADDITIVELY, so the gain that matters where they overlap
+   * is several times this. At 4.2 the sum in the middle of the fireball was so
+   * far over the 0.85 bloom threshold that every billow's ENTIRE disc was above
+   * it and the ensemble read as one solid white plate — 10% of the whole frame
+   * for a single tank. At 2.1 the core still clips to white (that is what the
+   * fireball ramp's `#FFFAFF`-to-t=0.52 hold is for) while the fringes fall
+   * back under threshold and the individual billows become visible again.
+   */
+  billowIntensity: 2.1,
+  /**
+   * Exponent by which the per-billow gain is walked BACK as the fireball grows.
+   * Applied as `gain * k^-this` for `k > 1` only, where `k` is the fireball's
+   * size relative to a unit death.
+   *
+   * This is not a fudge, it is compensation for a real property of additive
+   * blending. The same 8-14 billows are spread over a fireball that is `k`
+   * times wider, so a view ray through the middle of it crosses roughly the
+   * same number of sprites but each one covers `k^2` the pixels — the fireball
+   * gets brighter per pixel as it gets bigger, on top of getting bigger. That
+   * is why the 5.0 TL structure death stayed a featureless white plate (channel
+   * spread 0.0 across its whole disc, measured) at a gain that left the 2.2 TL
+   * unit death reading correctly.
+   *
+   * 0.5 takes the structure death's k=2.27 to a 0.66 multiplier. Small
+   * explosions (cook-offs, k<1) are deliberately NOT boosted the other way:
+   * they have fewer layers to stack and pushing their gain up would walk
+   * straight back into the budget this pass exists to hold.
+   */
+  billowIntensityFalloff: 0.5,
   /** Outward speed of the billow shell, metres/sec at size 1. */
   billowSpread: 8.5,
   /**
-   * Radius of the shell the billows are born on, as a fraction of the
-   * fireball's own starting diameter.
+   * Radius in TL of the shell the billows are born on, at size 1.0.
    *
    * ADDITIVE BLENDING IS WHY THIS EXISTS. Twelve billows born within half a
-   * metre of each other are twelve 2.3-gain sprites stacked on the same pixels:
-   * they sum to ~28 linear, the tonemapper returns pure white for all of it,
-   * and the fireball renders as a featureless pale haze with no billow
-   * structure and no orange anywhere. Measured, twice. Spread them onto a real
-   * shell and each one reads as its own white-cored, orange-fringed mass, which
-   * is what "8-14 billows" is asking for in the first place.
+   * metre of each other are twelve sprites stacked on the same pixels: they sum
+   * to something the tonemapper returns pure white for, and the fireball
+   * renders as a featureless pale haze with no billow structure and no orange
+   * anywhere. Measured, twice. Spread them onto a real shell and each one reads
+   * as its own white-cored, orange-fringed mass, which is what "8-14 billows"
+   * is asking for in the first place.
+   *
+   * IT IS AN ABSOLUTE LENGTH ON PURPOSE. It used to be a fraction of
+   * `billowSize0TL`, which coupled it to the billow's own size — so shrinking
+   * the billows collapsed the shell too and re-stacked them at the origin,
+   * undoing the fix while looking like a size change. 0.50 TL preserves the
+   * 3.5 m shell the fraction produced against the bible's original 0.9 TL.
    */
-  billowShellFrac: 0.55,
+  billowShellTL: 0.50,
+
+  /* -- shockwave, plume, debris, embers ---------------------------------- */
 
   /** Shockwave: 0.4 -> 4.5 TL, starts at 30 ms, dead at 420 ms, scaleY 0.12. */
   shockSize0TL: 0.4, shockSize1TL: 4.5, shockDelayMs: 30, shockLifeMs: 420,
-  shockFlatten: 0.12, shockIntensity: 3.0,
+  shockFlatten: 0.12,
+  /**
+   * Shockwave ring gain. Halved with everything else: this is a 4.5 TL (31 m)
+   * ring lying flat on the ground, so at 3.0 linear it was a second full-width
+   * bloom source arriving 30 ms after the flash.
+   */
+  shockIntensity: 1.7,
 
-  /** Smoke plume: 14-22 puffs, 1.2 -> 4.0 TL, onset 120 ms, dead at 5.5 s. */
+  /** Smoke plume: 14-22 puffs, onset 120 ms, dead at 5.5 s. */
   puffMin: 14, puffMax: 22,
-  puffSize0TL: 1.2, puffSize1TL: 4.0, puffLifeMs: 5500, puffDelayMs: 120,
+  /**
+   * Diameter of ONE puff in TL, start -> end.
+   *
+   * Same error as the billows, and the reason `05-combat` was a white sheet
+   * even after the shading was fixed: `plumeEnvelopeTL` (the bible's figure for
+   * the whole column) was being applied to each of 14-22 puffs, giving 28-metre
+   * near-opaque smoke balls. The combat fixture frames from 48 m, where the
+   * visible ground is about 31 m tall — ONE puff covered the frame and one
+   * death emits twenty of them. With the puffs' own spread and rise, 2.0 TL
+   * each still builds a plume whose envelope is the authored 4 TL.
+   */
+  puffSize0TL: 0.27, puffSize1TL: 2.00, puffLifeMs: 5500, puffDelayMs: 120,
+  /** Bible §8.7's figure for the WHOLE plume. Documentation and the test's reference. */
+  plumeEnvelopeTL: 4.0,
   puffRise: 2.4,
+  /**
+   * Plume opacity, base -> top, replacing a flat 0.92.
+   *
+   * Bible §8.7 runs a column from 0.85 at the base to 0.15 at the top and the
+   * plume already computes that fraction — it just was not using it. Twenty
+   * stacked puffs at an effective 0.83 alpha are a solid wall: the wreck that
+   * produced the plume is not visible through its own smoke, which is not what
+   * an RA3 frame does.
+   */
+  puffAlphaBase: 0.72, puffAlphaTop: 0.20,
 
   /** Debris: 12-20 chunks, 0.05-0.14 TL, 55 deg cone, 5-9 TL/s, g 22 TL/s^2. */
   debrisMin: 12, debrisMax: 20,
@@ -4121,15 +4310,34 @@ export const VFX_EXPLOSION = {
   debrisConeDeg: 55, debrisSpeedTL: [5, 9] as const,
   debrisGravityTL: 22, debrisTumbleDegPerSec: 720, debrisLifeMs: 1600,
 
-  /** Embers: 30-60, 0.02-0.04 TL, 1.9 s, additive, flicker 18 Hz. */
+  /**
+   * Embers: 30-60, 0.02-0.04 TL, 1.9 s, additive, flicker 18 Hz.
+   *
+   * These are pinpricks, so their own area above the bloom threshold is
+   * negligible — but sixty of them at 3.4 linear is sixty little bloom seeds
+   * scattered through the frame right where the eye is already recovering from
+   * the flash. 2.4 keeps them clearly incandescent.
+   */
   emberMin: 30, emberMax: 60,
   emberSize0TL: 0.02, emberSize1TL: 0.04, emberLifeMs: 1900,
-  emberFlickerHz: 18, emberSpeedTL: [2.5, 6.5] as const, emberIntensity: 3.4,
+  emberFlickerHz: 18, emberSpeedTL: [2.5, 6.5] as const, emberIntensity: 2.4,
 
   /** Scorch decal: 1.6-2.4 TL major axis, 1.7:1 aspect, permanent. */
   scorchMinTL: 1.6, scorchMaxTL: 2.4, scorchAspect: 1.7,
 
-  /** Structure death: an 8 TL flash then 3-6 cook-offs at 250 ms intervals. */
+  /**
+   * The brief hot flash on a ground/concrete impact — even a dirt hit is a
+   * detonation. Diameters in metres at `scale = 1`, gain in scene-linear.
+   *
+   * These were literals at the call site and they were on the same 7.0-class
+   * budget as the death flash, which is wrong by a whole order of importance: a
+   * firefight lands dozens of impacts per second and each one was seeding the
+   * bloom chain. Halved with everything else.
+   */
+  impactFlashSize0M: 0.8, impactFlashSize1M: 1.5,
+  impactFlashIntensity: 1.7, impactFlashLifeMs: 110,
+
+  /** Structure death: the separate flash above, then 3-6 cook-offs at 250 ms. */
   cookOffMin: 3, cookOffMax: 6, cookOffIntervalMs: 250, cookOffTL: 1.2,
 
   /** Camera trauma pushed into CameraRig.addShake per TL of fireball. */
@@ -4236,24 +4444,50 @@ export const VFX_BEAM = {
  * is where these land. Deliberately huge — "do not shrink the muzzle flashes".
  */
 export const VFX_GUNS = {
+  /**
+   * Muzzle flashes, small / medium / heavy.
+   *
+   * The SIZES are the bible's and are staying: scorecard #29 measures a heavy
+   * flash at >= 4x a 0.30 m barrel and these shapes are the silhouette of the
+   * effect. The GAINS came down with the explosion budget (5.0/5.6/6.4 ->
+   * 2.8/3.1/3.6). A firefight fires several of these per second per unit, and
+   * against a 0.85 bloom threshold a 6.4-linear source haloes across its whole
+   * quad — twenty guns firing was a second, continuous screen-wide bloom feed
+   * underneath the explosions this pass was called in to fix.
+   */
   flash: [
-    { lenM: 1.20, widM: 0.62, lifeMs:  70, intensity: 5.0, tile: 4 },  // small: 4-point star
-    { lenM: 2.00, widM: 1.40, lifeMs:  90, intensity: 5.6, tile: 13 }, // medium: kite
-    { lenM: 3.00, widM: 1.75, lifeMs: 110, intensity: 6.4, tile: 4 },  // heavy: big star
+    { lenM: 1.20, widM: 0.62, lifeMs:  70, intensity: 2.8, tile: 4 },  // small: 4-point star
+    { lenM: 2.00, widM: 1.40, lifeMs:  90, intensity: 3.1, tile: 13 }, // medium: kite
+    { lenM: 3.00, widM: 1.75, lifeMs: 110, intensity: 3.6, tile: 4 },  // heavy: big star
   ] as const,
   /** Scale curve: 0 -> 1.0 at 15 ms -> 0.85 -> 0. */
   flashPeakMs: 15, flashSustain: 0.85,
-  /** White-hot core disc riding inside the flash, as a fraction of its length. */
-  flashCoreFrac: 0.38, flashCoreIntensity: 9.0,
+  /**
+   * White-hot core disc riding inside the flash, as a fraction of its length.
+   *
+   * 9.0 was the single hottest emissive in the game — hotter than the death
+   * flash it sits next to — for a 1 m disc that fires many times a second. 4.0
+   * still clips to white through the tonemapper; it just stops dragging a halo
+   * the size of the turret with it. It is the top of the budget the
+   * `detonation bloom budget` suite enforces, which is where it belongs: this
+   * is the hottest thing a normal frame contains.
+   */
+  flashCoreFrac: 0.38, flashCoreIntensity: 4.0,
   /** Barrel smoke ribbon: #8A8078 at alpha 0.25 for the first 30% of flight. */
   barrelSmokeAlpha: 0.25,
 
-  /** MG tracer: tapered lozenge 25-65 px x 2.5-4 px, ratio ~14:1. */
+  /**
+   * MG tracer: tapered lozenge 25-65 px x 2.5-4 px, ratio ~14:1.
+   *
+   * Gain cut with the rest of the budget (4.0 -> 2.6). A tracer is thin, so its
+   * own bloom footprint is small — but there are up to 320 of them live at once
+   * and their halos merge into a haze over the engagement.
+   */
   tracerLenPx: [25, 65] as const, tracerWidthPx: [2.5, 4.0] as const,
-  tracerHeadWidthMul: 1.35, tracerIntensity: 4.0,
+  tracerHeadWidthMul: 1.35, tracerIntensity: 2.6,
   /** Cannon tracer: 95-130 px x 7-9 px head, tapering over the last 40%. */
   cannonLenPx: [95, 130] as const, cannonWidthPx: [7, 9] as const,
-  cannonIntensity: 4.6,
+  cannonIntensity: 3.0,
   /** Travel speed in metres/sec (bible: ~14 TL/s for the main gun). */
   tracerSpeed: 190, cannonSpeed: 98,
   /** Only ~1 in 3 MG rounds is visible. */
@@ -4263,9 +4497,14 @@ export const VFX_GUNS = {
   sparkMin: 30, sparkMax: 45,
   sparkLenPx: [60, 180] as const, sparkWidthPx: 2,
   sparkFanDeg: 140, sparkLifeMs: 420, sparkSpeed: [9, 26] as const,
-  sparkGravity: 14, sparkIntensity: 3.8,
-  /** Plus a 20 px white flash disc for 60 ms. */
-  sparkFlashPx: 20, sparkFlashMs: 60,
+  sparkGravity: 14, sparkIntensity: 2.4,
+  /**
+   * Plus a small white flash disc for 60 ms — the bible's 20 px, at the gain
+   * class the rest of this pass settled on (6.0 -> 3.0). It is emitted RADIAL
+   * for the same reason the death flash is: a flat high-gain disc, however
+   * small, is a disc-shaped bloom source rather than a point one.
+   */
+  sparkFlashPx: 20, sparkFlashMs: 60, sparkFlashIntensity: 3.0,
 } as const;
 
 /* ---- trails (bible §8.6) ------------------------------------------------ */

@@ -25,6 +25,29 @@
  * Seed 0 is published as "Random": `Shell.startMatch` rolls a fresh one at
  * launch. Any other value is threaded to `GameLoop.seed` and to every scenario
  * placement, so two players who type the same number get the same battle.
+ *
+ * STARTING CONDITION
+ * ------------------
+ * The one lobby row that changes what the first two minutes of the match ARE.
+ * `Construction Vehicle` is the default and the real game: drive somewhere,
+ * deploy, build. `Pre-built Base` is the old behaviour, kept because a fast
+ * start is a legitimate way to play and because the screenshot fixtures depend
+ * on the pre-built layout existing at all.
+ *
+ * IT IS PERSISTED HERE, NOT IN `MatchSetup`. Every other row on this screen
+ * lives in `settings-store.ts#MatchSetup`, and this one belongs there too — but
+ * that file is owned by another workstream this cycle, and `normalizeSetup`
+ * drops fields it does not know about, so routing the choice through it today
+ * would silently lose it on the next load. Instead it gets its own
+ * `localStorage` key and its own two-line normaliser, both of which are a
+ * deletion away once `MatchSetup` grows a `startCondition` field: move the
+ * default into `defaultSetup()`, read `this.setup.startCondition`, and drop
+ * `readStartCondition` / `writeStartCondition` below.
+ *
+ * The choice reaches the engine two ways, deliberately: `setPlannedStart()` for
+ * the in-page rebuild, and `?start=` on the URL so it also survives the hard
+ * reload path (`Shell.hardLaunch`) and a `?skipmenu=1` boot, neither of which
+ * runs this screen.
  * ============================================================================
  */
 
@@ -59,6 +82,114 @@ import {
   aiMirrorsUnlocks, gateInstalled, isMapUnlocked, setAiMirrorsUnlocks,
 } from './progression-link';
 
+import {
+  START_CONDITION_DEFAULT, resolveStartCondition, setPlannedStart,
+  type StartCondition,
+} from '../game/Scenarios';
+
+/* --------------------------------------------------------------------------
+ * STARTING CONDITION — storage and copy
+ *
+ * See the module header for why this does not live in `MatchSetup` yet.
+ * -------------------------------------------------------------------------- */
+
+/** Its own key, separate from `voltmarch.setup.v1`. See the module header. */
+export const START_STORAGE_KEY = 'voltmarch.setup.start.v1';
+
+interface StartOption {
+  readonly value: StartCondition;
+  readonly label: string;
+  readonly note: string;
+}
+
+/**
+ * One line each, and both lines have to earn their place: a player picking
+ * between these is choosing whether the first two minutes of the match exist.
+ */
+const START_OPTIONS: readonly StartOption[] = [
+  {
+    value: 'mcv',
+    label: 'Construction Vehicle',
+    note: 'Both sides start with one construction vehicle and a small escort. '
+      + 'Drive it somewhere worth building, deploy it into your Construction Yard, '
+      + 'and grow the base from nothing.',
+  },
+  {
+    value: 'base',
+    label: 'Pre-built Base',
+    note: 'Both sides start with a finished base — yard, power, refinery, '
+      + 'factories and defences already standing. A fast start that skips the '
+      + 'opening and drops you straight into the fight.',
+  },
+];
+
+/**
+ * The smallest opening bank the MCV start is survivable on.
+ *
+ * MEASURED, not chosen. From a construction vehicle there is NO income until a
+ * refinery stands, and the cheapest path to one is a power plant plus a
+ * refinery: 300 + 2000 for the Allies and the Soviets, 350 + 2000 for the
+ * Meridian Pact, 240 + 2000 for the Reclamation. The lobby's lowest option was
+ * 2000 — under every one of those floors — so picking it handed the player a
+ * match they could not build their way out of and could only lose. There is no
+ * fallback, because the pre-built base that used to cover this is now an
+ * option rather than the only behaviour.
+ *
+ * `base` keeps the full ladder: a finished refinery and a harvester are already
+ * standing, so 2000 credits there is a hard opening, not an impossible one.
+ */
+export const MCV_MIN_CREDITS = 5000;
+
+/** The credit options offered for a given opening. */
+export function creditOptionsFor(start: StartCondition): readonly number[] {
+  if (start !== 'mcv') return CREDIT_OPTIONS;
+  const open = CREDIT_OPTIONS.filter((c) => c >= MCV_MIN_CREDITS);
+  return open.length > 0 ? open : CREDIT_OPTIONS;
+}
+
+/** Raise a bank that cannot open a match from a construction vehicle. */
+export function clampCreditsFor(start: StartCondition, credits: number): number {
+  return start === 'mcv' ? Math.max(credits, MCV_MIN_CREDITS) : credits;
+}
+
+/** Read the persisted choice. Total: any failure is the default. */
+export function readStartCondition(): StartCondition {
+  try {
+    const raw = globalThis.localStorage?.getItem(START_STORAGE_KEY) ?? null;
+    return resolveStartCondition(raw, START_CONDITION_DEFAULT);
+  } catch {
+    return START_CONDITION_DEFAULT;
+  }
+}
+
+/** Persist the choice. Storage being unavailable is not an error worth raising. */
+export function writeStartCondition(value: StartCondition): void {
+  try {
+    globalThis.localStorage?.setItem(START_STORAGE_KEY, value);
+  } catch {
+    /* Private mode, full disk, or a webview with storage off. */
+  }
+}
+
+/**
+ * Publish the choice to the engine: straight in for the in-page rebuild, and
+ * onto the URL so it survives a hard reload or a `?skipmenu=1` boot.
+ *
+ * `?ai=off` outranks `?start=` in `Scenarios.chooseStart`, which is what keeps
+ * the title-screen backdrop a finished base no matter what the lobby last said.
+ */
+export function applyStartCondition(value: StartCondition): void {
+  setPlannedStart(value);
+  try {
+    if (typeof location === 'undefined' || typeof history === 'undefined') return;
+    const q = new URLSearchParams(location.search);
+    q.set('start', value);
+    history.replaceState(null, '', `${location.pathname}?${q.toString()}`);
+  } catch {
+    /* A document with no history API is still perfectly playable. */
+  }
+}
+
 /**
  * Maps the lobby offers on a brand-new profile.
  *
@@ -84,9 +215,12 @@ export class SkirmishSetupScreen implements Screen {
   private factions: FactionOption[] = [];
   private left: HTMLElement | null = null;
   private right: HTMLElement | null = null;
+  /** The opening. Persisted separately from `MatchSetup` — see the header. */
+  private start: StartCondition;
 
   constructor(private readonly shell: Shell) {
     this.setup = { ...shell.getSetup() };
+    this.start = readStartCondition();
   }
 
   mount(host: HTMLElement): void {
@@ -114,7 +248,16 @@ export class SkirmishSetupScreen implements Screen {
     frame.foot.appendChild(button('Start Battle', {
       iconName: 'play',
       variant: 'primary',
-      onClick: () => { void this.shell.startMatch(this.setup); },
+      onClick: () => {
+        // Publish the opening BEFORE the boot: `Shell.startMatch` disposes the
+        // running engine and re-bootstraps synchronously from there, and the
+        // scenario module reads its plan during that boot.
+        applyStartCondition(this.start);
+        // Last line of defence for the MCV credit floor: a setup restored from
+        // an older profile never passed through the chooser.
+        this.setup.startingCredits = clampCreditsFor(this.start, this.setup.startingCredits);
+        void this.shell.startMatch(this.setup);
+      },
     }));
 
     host.appendChild(frame.root);
@@ -240,13 +383,47 @@ export class SkirmishSetupScreen implements Screen {
 
     /* -- rules ------------------------------------------------------------ */
     const rules = this.section(col, 'Rules');
+
+    // FIRST in the section, above credits and speed, because it is the only row
+    // here that changes what the match IS rather than how fast it runs.
+    rules.appendChild(row(
+      'Starting Condition',
+      chooser(
+        START_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
+        this.start,
+        (v) => {
+          this.start = v;
+          writeStartCondition(v);
+          // An opening bank that was legal for a pre-built base can be below
+          // the MCV floor. Raise it here rather than at launch, so the number
+          // the player is looking at is the number they will get.
+          this.setup.startingCredits = clampCreditsFor(v, this.setup.startingCredits);
+          this.renderRight();
+        },
+      ),
+    ));
+    // The explanation is a paragraph rather than a `row` note: two sentences of
+    // "what actually changes" is the difference between an option a player
+    // understands and one they leave alone forever.
+    const startNote = el(
+      'p', 'vm-body vm-row-note',
+      START_OPTIONS.find((o) => o.value === this.start)?.note ?? '',
+    );
+    startNote.style.padding = '0 18px 10px';
+    rules.appendChild(startNote);
+
+    this.setup.startingCredits = clampCreditsFor(this.start, this.setup.startingCredits);
     rules.appendChild(row(
       'Starting Credits',
       chooser(
-        CREDIT_OPTIONS.map((c) => ({ value: c, label: c.toLocaleString() })),
+        creditOptionsFor(this.start).map((c) => ({ value: c, label: c.toLocaleString() })),
         this.setup.startingCredits,
-        (v) => { this.setup.startingCredits = v; },
+        (v) => { this.setup.startingCredits = clampCreditsFor(this.start, v); },
       ),
+      this.start === 'mcv'
+        ? `From a construction vehicle there is no income until a refinery stands, so `
+          + `${MCV_MIN_CREDITS.toLocaleString()} is the smallest bank that can reach one.`
+        : undefined,
     ));
     rules.appendChild(row(
       'Game Speed',
@@ -307,7 +484,8 @@ export class SkirmishSetupScreen implements Screen {
     const m = mapById(this.setup.map);
     summary.textContent =
       `${m.name} · ${m.biome} terrain · ${DIFFICULTIES[this.setup.difficulty]} AI · ` +
-      `${SPEEDS[this.setup.speed].toFixed(1)}× speed`;
+      `${SPEEDS[this.setup.speed].toFixed(1)}× speed · ` +
+      `${this.start === 'mcv' ? 'start from a construction vehicle' : 'start with a base'}`;
     col.appendChild(summary);
   }
 

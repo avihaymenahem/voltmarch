@@ -729,15 +729,96 @@ describe('per-element sizes vs the whole-effect figures they came from', () => {
       if (quad[i * 4] > widest) widest = quad[i * 4];
       if (tint[i * 3 + 1] > maxAlpha) maxAlpha = tint[i * 3 + 1];
     }
-    // A single puff must not be the whole 4 TL plume on its own: at the combat
-    // fixture's 48 m framing one 28 m puff covers the frame.
-    expect(widest).toBeLessThan(VFX_EXPLOSION.puffSize1TL * 7 * 0.75);
+    // A single puff must not be the whole plume on its own: at the combat
+    // fixture's 48 m framing one 28 m puff covers the frame. `plumeEnvelopeTL`
+    // is the bible's figure for the WHOLE column; `puffSize1TL` is one puff,
+    // and reading the second where the first is meant is the exact mistake this
+    // test exists to catch.
+    expect(widest).toBeLessThan(VFX_EXPLOSION.plumeEnvelopeTL * 7 * 0.75);
     // And no puff may be near-opaque, or twenty of them are a wall.
     expect(maxAlpha).toBeLessThan(0.85);
 
     setLightPool(null);
     pool.dispose();
     P.dispose();
+  });
+});
+
+/*
+ * THE DETONATION BLOOM BUDGET.
+ *
+ * "The flashes when something explodes are HUGE, completely block the screen"
+ * was reported twice. The first fix halved the flash disc's SIZE and left its
+ * 7.0-linear GAIN alone, which is why it came back: against a 0.85 bloom
+ * threshold a source that far over it is above threshold across its whole
+ * visible disc, so a smaller quad is just a smaller solid white plate.
+ *
+ * These assertions are not style. Each one is a specific way that regression
+ * comes back, written down so it fails in CI instead of in a bug report.
+ */
+describe('the detonation bloom budget', () => {
+  const BLOOM_THRESHOLD = 0.85;
+
+  it('no detonation emissive is more than ~5x the bloom threshold', () => {
+    // Above roughly this the source stops being "a hot core that haloes" and
+    // becomes "a disc-shaped region the bloom pass must halo in its entirety".
+    const ceiling = BLOOM_THRESHOLD * 5;
+    const budget: ReadonlyArray<readonly [string, number]> = [
+      ['flashIntensity', VFX_EXPLOSION.flashIntensity],
+      ['billowIntensity', VFX_EXPLOSION.billowIntensity],
+      ['shockIntensity', VFX_EXPLOSION.shockIntensity],
+      ['emberIntensity', VFX_EXPLOSION.emberIntensity],
+      ['impactFlashIntensity', VFX_EXPLOSION.impactFlashIntensity],
+      ['muzzle flashCoreIntensity', VFX_GUNS.flashCoreIntensity],
+      ['sparkFlashIntensity', VFX_GUNS.sparkFlashIntensity],
+      ['sparkIntensity', VFX_GUNS.sparkIntensity],
+      ['tracerIntensity', VFX_GUNS.tracerIntensity],
+      ['cannonIntensity', VFX_GUNS.cannonIntensity],
+      ...VFX_GUNS.flash.map((f, i) => [`muzzle flash[${i}]`, f.intensity] as const),
+    ];
+    for (const [name, gain] of budget) {
+      // Still comfortably over 1.0: the core must clip to pure white through
+      // the tonemapper (scorecard #14). It is the AREA above threshold that has
+      // to stay small, never the peak.
+      expect(gain, name).toBeGreaterThan(1.25);
+      expect(gain, name).toBeLessThanOrEqual(ceiling);
+    }
+  });
+
+  it('the flash disc is a highlight ON the fireball, not a lid OVER it', () => {
+    // A flash wider than the fireball it caps is the screen-filling white plate
+    // the user reported: nothing of the explosion's structure survives under it.
+    expect(VFX_EXPLOSION.flashSize1TL).toBeLessThan(VFX_EXPLOSION.unitDeathTL * 0.6);
+    expect(VFX_EXPLOSION.flashSize0TL).toBeLessThan(VFX_EXPLOSION.flashSize1TL);
+    // The structure flash is bigger — a building dying must read as bigger than
+    // a tank dying — but still well inside the ~31 m of ground the combat
+    // fixture frames at 48 m.
+    expect(VFX_EXPLOSION.structureFlashSize1TL)
+      .toBeGreaterThan(VFX_EXPLOSION.flashSize1TL);
+    expect(VFX_EXPLOSION.structureFlashSize1TL * 7).toBeLessThan(20);
+  });
+
+  it('the billow shell is absolute, so shrinking billows cannot re-stack them', () => {
+    // It used to be a fraction of `billowSize0TL`. Any pass that shrank the
+    // billows silently collapsed the shell with them and piled 8-14 additive
+    // sprites back onto the same pixels — which is BRIGHTER, not smaller.
+    expect(VFX_EXPLOSION.billowShellTL).toBeGreaterThan(VFX_EXPLOSION.billowSize0TL);
+  });
+
+  it('one billow is a fraction of the fireball, one puff a fraction of the plume', () => {
+    expect(VFX_EXPLOSION.billowSize1TL).toBeLessThan(VFX_EXPLOSION.unitDeathTL * 0.6);
+    expect(VFX_EXPLOSION.puffSize1TL).toBeLessThan(VFX_EXPLOSION.plumeEnvelopeTL * 0.6);
+  });
+
+  it('the explosion light does not reach across a whole framing', () => {
+    // The combat fixture frames about 60 m of ground. A light whose cutoff
+    // exceeds that relights every pixel in the shot, which is the same
+    // complaint arriving by a second route.
+    expect(VFX_LIGHTS.explosion.range).toBeLessThan(45);
+    // But it must still be the biggest one-shot in the table — an explosion
+    // that does not light the world is bible §14 R6's particle-demo failure.
+    expect(VFX_LIGHTS.explosion.peak).toBeGreaterThan(VFX_LIGHTS.muzzle.peak);
+    expect(VFX_LIGHTS.explosion.range).toBeGreaterThan(VFX_LIGHTS.muzzle.range);
   });
 });
 

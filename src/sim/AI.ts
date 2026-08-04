@@ -67,7 +67,7 @@ import type { EntityStore, World } from '../core/world';
 import { PerEntityU32 } from '../core/world';
 import { Rng, cellToWorld, clamp, clampCell, dist2, distSq2, hash2i, worldToCell } from '../core/math';
 import {
-  BUILD_ROLE_NAMES, BuildCatalog, BuildRole, THREAT_CLASS_NAMES,
+  AI_DEPLOY, BUILD_ROLE_NAMES, BuildCatalog, BuildRole, THREAT_CLASS_NAMES,
   classifyThreat, difficultyProfile, openingFor, personalityProfile, pickUnit,
   prereqsMet,
 } from './AIStrategy';
@@ -137,6 +137,10 @@ export interface AiIntent {
   reserve: number;
   harvesters: number;
   refineries: number;
+  /** Construction vehicles owned and not yet unfolded. */
+  mcvs: number;
+  /** What the deploy layer is doing. Empty when it has nothing to do. */
+  deploy: string;
   /** Structures owned, by role name. */
   structures: Record<string, number>;
   /** Observed threat mix, by class name, normalised. */
@@ -202,6 +206,16 @@ export class AiBrain {
   private reserveCount = 0;
   private readonly harvesterIds = new Int32Array(64);
   private harvesterCount = 0;
+  /**
+   * Construction vehicles we own and have not unfolded yet.
+   *
+   * This is the single most important census row in the opening: a match now
+   * begins with one of these and NOTHING else (`game/Scenarios.ts` start
+   * condition `mcv`), so an AI that does not see it here is an AI that stands in
+   * a field for twenty minutes while the match looks perfectly normal.
+   */
+  private readonly mcvIds = new Int32Array(8);
+  private mcvCount = 0;
   /** Completed structures owned, indexed by BuildRole. */
   private readonly roleCount = new Int32Array(BUILD_ROLE_NAMES.length);
   /** Structures of each role still under construction. */
@@ -276,6 +290,33 @@ export class AiBrain {
   private scoutWaypointCount = 0;
   private scoutWaypoint = 0;
   private nextScoutTick = 0;
+
+  /* -- deployment ---------------------------------------------------------- */
+  /** The construction vehicle currently being driven to a site. */
+  private deployId: EntityId = NONE;
+  private deployX = -1;
+  private deployZ = -1;
+  /** Tick the LAST Deploy order went out. Rate-limits the re-issue. */
+  private deployIssuedTick = -1e9;
+  /**
+   * Tick the FIRST Deploy order for the current site went out, and never
+   * refreshed after that.
+   *
+   * Two clocks, deliberately, and the bug that forced them is worth naming: a
+   * single `deployIssuedTick` doing both jobs is bumped by every re-issue, so
+   * "has this site had its chance yet" is measured against an order sent a
+   * moment ago and the answer is always no. The AI then re-proposes the same
+   * refused site forever, at 87 orders per four thousand ticks, and never
+   * relocates once.
+   */
+  private deployArmedTick = -1e9;
+  /** Tick the current SITE was chosen. Drives the relocate-and-retry clock. */
+  private deploySiteTick = -1e9;
+  /** Sites abandoned as unreachable or unbuildable. Widens the next search. */
+  private deployAttempts = 0;
+  /** Last tick a move-to-site order went out. Rate-limits the approach. */
+  private lastDeployMoveTick = -1e9;
+  private deployGoal = '';
 
   /* -- economy ------------------------------------------------------------ */
   private wantHarvesters = 0;
@@ -435,7 +476,14 @@ export class AiBrain {
     // consume `wantHarvesters` / `powerUrgent`, and a stale power reading is
     // exactly how an AI blacks itself out.
     if (t % AI_CADENCE.economy === 1) this.economy(s, p);
-    if (t % AI_CADENCE.build === 2) this.build(s, p);
+    // Deployment runs BETWEEN economy and build, on the build clock. Economy is
+    // what discovers `expandX` (the ore field a second yard would be for), and
+    // build is what needs the yard this layer produces — so it belongs exactly
+    // here, and nowhere else.
+    if (t % AI_CADENCE.build === 2) {
+      this.deploy(s);
+      this.build(s, p);
+    }
     if (t % AI_CADENCE.squad === 3) this.squad(s);
     if (t % AI_CADENCE.scout === 4) this.scout(s);
   }
@@ -450,6 +498,7 @@ export class AiBrain {
 
     this.armyCount = 0;
     this.harvesterCount = 0;
+    this.mcvCount = 0;
     this.roleCount.fill(0);
     this.roleBuilding.fill(0);
     this.builderId = NONE;
@@ -492,7 +541,12 @@ export class AiBrain {
       }
       // An unarmed non-harvester (engineer, MCV) is not army; it must never be
       // counted toward a wave threshold or the AI attacks with a truck.
-      if ((f & EntityFlag.CanAttack) === 0) continue;
+      if ((f & EntityFlag.CanAttack) === 0) {
+        if (this.isUndeployedMcv(i, kind, f) && this.mcvCount < this.mcvIds.length) {
+          this.mcvIds[this.mcvCount++] = st.handleOf(i) as number;
+        }
+        continue;
+      }
       if (this.armyCount < AI_ROSTER_CAP) {
         this.armyIds[this.armyCount++] = st.handleOf(i) as number;
       }
@@ -501,6 +555,14 @@ export class AiBrain {
     if (structures > 0) {
       this.baseX = sumX / structures;
       this.baseZ = sumZ / structures;
+    } else if (this.mcvCount > 0) {
+      // No buildings, but a construction vehicle: THAT is the base, and every
+      // rally, retreat and defence order in the file has to resolve to it. This
+      // branch is the whole first minute of a match under the `mcv` opening —
+      // put the army first and the escort walks off toward the enemy while the
+      // one thing that matters is left behind on its own.
+      const i = st.index(this.mcvIds[0] as EntityId);
+      if (i >= 0) { this.baseX = st.posX[i]; this.baseZ = st.posZ[i]; }
     } else if (this.armyCount > 0) {
       // No buildings left: the "base" is wherever the army is, so retreat and
       // rally orders still resolve to somewhere meaningful.
@@ -527,6 +589,39 @@ export class AiBrain {
     // AI_MILITARY.pressureDecayPerSec.
     const decay = AI_MILITARY.pressureDecayPerSec * AI_CADENCE.census * SIM_DT;
     this.basePressure = Math.max(0, this.basePressure - decay);
+  }
+
+  /**
+   * Is this one of ours a construction vehicle that has not unfolded yet?
+   *
+   * Prefers the catalog, which knows `BuildRole.Mcv` exactly. Without a bound
+   * catalog — the state of every headless test — the answer comes from columns
+   * that exist regardless of content: a VEHICLE that cannot shoot, does not
+   * mine, carries no cargo and is not already deployed. In this game that set is
+   * exactly {mcv, mrdCarryall, rclCrawler}: an engineer is Infantry, a
+   * harvester carries `IsHarvester`, and a transport has a non-zero `cargoMax`.
+   */
+  private isUndeployedMcv(i: number, kind: EntityKind, flags: number): boolean {
+    if ((flags & EntityFlag.Deployed) !== 0) return false;
+    const st = this.store;
+    const entry = this.catalog.entryForUnit(st.defId[i]);
+    if (entry !== undefined) return entry.role === BuildRole.Mcv;
+    return kind === EntityKind.Vehicle
+      && (flags & EntityFlag.IsHarvester) === 0
+      && st.cargoMax[i] <= 0
+      && st.maxSpeed[i] > 0;
+  }
+
+  /**
+   * True while an undeployed construction vehicle is the AI's whole base.
+   *
+   * The build and squad layers both branch on "no Construction Yard", and
+   * before the `mcv` opening existed that condition meant exactly one thing:
+   * the yard was destroyed, the game is lost, throw everything at them. On tick
+   * one of a match it means the opposite — nothing has happened yet.
+   */
+  get mcvPending(): boolean {
+    return this.mcvCount > 0;
   }
 
   /**
@@ -810,6 +905,300 @@ export class AiBrain {
   }
 
   /* ======================================================================
+   * 2.5b DEPLOYMENT — turning a truck into a base
+   *
+   * THE LAYER THE WHOLE OPENING HANGS ON. Under `game/Scenarios.ts` start
+   * condition `mcv` — the default — an AI begins a match owning one
+   * construction vehicle, a handful of infantry, a light vehicle or two, and
+   * nothing else. No yard, no power, no refinery, no factory. Every other layer
+   * in this file is written against a base that already exists; without this
+   * one the brain has nothing to build from, `chooseBuild` finds nothing
+   * available, and the opponent simply never plays. That failure is INVISIBLE
+   * from the outside — the match runs, the frame rate is fine, the HUD is
+   * correct — right up until you notice you are unopposed.
+   *
+   * It is an ORDER layer, not a production layer: deploying is something you
+   * tell a unit you already own to do, so it goes out through
+   * `commands.issueOrder(OrderKind.Deploy, ...)`, the same struct the player's
+   * deploy button produces. The AI has no privileged path.
+   *
+   * TWO ORDERS, NOT ONE. The vehicle is driven to the chosen site with a plain
+   * Move and only unfolded once it is standing on it. That is deliberate
+   * insurance: it is correct whether `OrderKind.Deploy` means "unfold where you
+   * are" or "drive to (x,z) and unfold there", so this layer cannot be broken
+   * by the order handler settling on either reading.
+   * ====================================================================== */
+
+  /** Metres from the chosen site at which the vehicle is "there". */
+  private static readonly DEPLOY_ARRIVE_M = 5.0;
+
+  private deploy(s: SimContext): void {
+    const st = this.store;
+
+    if (this.mcvCount === 0) {
+      if (this.deployId !== NONE) this.resetDeploySite();
+      this.deployId = NONE;
+      this.deployGoal = '';
+      this.deployAttempts = 0;
+      return;
+    }
+
+    // Work with one vehicle at a time. Keep the tracked one while it lives so a
+    // half-finished approach is not restarted every census.
+    let i = this.store.index(this.deployId);
+    if (i < 0 || (st.flags[i] & ORDERABLE_REJECT) !== 0) {
+      this.deployId = NONE;
+      for (let k = 0; k < this.mcvCount; k++) {
+        const h = this.mcvIds[k] as EntityId;
+        const idx = st.index(h);
+        if (idx < 0 || (st.flags[idx] & ORDERABLE_REJECT) !== 0) continue;
+        this.deployId = h;
+        i = idx;
+        break;
+      }
+      if (this.deployId === NONE) return;
+      this.resetDeploySite();
+      this.deployAttempts = 0;
+    }
+
+    // Already unfolding. Do not touch it — a second order here cancels the very
+    // thing this layer exists to cause.
+    if (st.state[i] === UnitState.Deploying) {
+      this.deployGoal = 'construction vehicle is unfolding';
+      return;
+    }
+
+    const haveYard =
+      this.roleCount[BuildRole.Builder] + this.roleBuilding[BuildRole.Builder] > 0;
+
+    // A second yard is only worth unfolding somewhere the first one cannot
+    // reach; otherwise the vehicle is a 3000-credit insurance policy against
+    // losing the first, and it is worth more parked than spent.
+    if (haveYard && !this.wantsExpansion()) {
+      if (this.deployX >= 0) this.resetDeploySite();
+      this.deployGoal = 'construction vehicle held in reserve';
+      return;
+    }
+
+    /* -- blocked ground: relocate, do not retry ---------------------------
+     * Two different failures, on two different clocks, and conflating them is
+     * a bug either way round:
+     *
+     *   - THE GROUND REFUSED. A Deploy order has been outstanding for
+     *     `retryTicks` and there is still no yard. Re-proposing the identical
+     *     site would fail identically forever — the classic "the AI did
+     *     nothing all match".
+     *   - THE VEHICLE NEVER GOT THERE. No Deploy order has gone out at all
+     *     within `approachTicks`, so the site is unreachable. This one needs
+     *     its OWN, much longer clock: an honest drive to a site 64 m away takes
+     *     fifteen seconds, and sharing the deploy clock would re-site the
+     *     vehicle mid-approach every ten, so it would never arrive anywhere.  */
+    if (this.deployX >= 0) {
+      const armed = this.deployArmedTick > -1e8;
+      const overdue = armed
+        ? s.tick - this.deployArmedTick > AI_DEPLOY.retryTicks
+        : s.tick - this.deploySiteTick > AI_DEPLOY.approachTicks;
+      if (overdue) {
+        this.deployAttempts++;
+        this.resetDeploySite();
+      }
+    }
+
+    if (this.deployX < 0) {
+      const giveUp = this.deployAttempts >= AI_DEPLOY.maxRelocations;
+      if (giveUp || !this.chooseDeploySite(i, haveYard)) {
+        // Unfolding on mediocre ground beats never unfolding: a yard sited
+        // badly still builds an army, and a vehicle that never deploys is a
+        // player who never joined the match.
+        this.deployX = st.posX[i];
+        this.deployZ = st.posZ[i];
+        this.blocked = 'no clear construction yard site nearby — deploying where it stands';
+      } else {
+        // A site was found, so whatever the last pass complained about is no
+        // longer true. The build layer deliberately does not clear `blocked`
+        // while a vehicle is pending, so this is the only thing that can.
+        this.blocked = '';
+      }
+      this.deploySiteTick = s.tick;
+      this.deployIssuedTick = -1e9;
+      this.deployArmedTick = -1e9;
+      this.lastDeployMoveTick = -1e9;
+    }
+
+    const arrive = AiBrain.DEPLOY_ARRIVE_M * AiBrain.DEPLOY_ARRIVE_M;
+    if (distSq2(st.posX[i], st.posZ[i], this.deployX, this.deployZ) > arrive) {
+      this.deployGoal =
+        `driving to ${this.deployX.toFixed(0)},${this.deployZ.toFixed(0)} to deploy`;
+      if (s.tick - this.lastDeployMoveTick < AI_MILITARY.reissueTicks) return;
+      // Already under way: leave it alone unless the order has gone stale,
+      // which is how a vehicle wedged against a rock gets un-wedged.
+      const moving = st.state[i] === UnitState.Moving || st.state[i] === UnitState.AttackMoving;
+      if (moving && s.tick - this.lastDeployMoveTick < AI_DEPLOY.retryTicks) return;
+      if (this.issueOrder(
+        OrderKind.Move, this.one(this.deployId), 1, this.deployX, this.deployZ, NONE,
+      )) {
+        this.lastDeployMoveTick = s.tick;
+      }
+      return;
+    }
+
+    if (s.tick - this.deployIssuedTick < AI_MILITARY.reissueTicks) return;
+    this.deployGoal = 'deploying the construction yard';
+    if (this.issueOrder(
+      OrderKind.Deploy, this.one(this.deployId), 1, this.deployX, this.deployZ, NONE,
+    )) {
+      this.deployIssuedTick = s.tick;
+      if (this.deployArmedTick <= -1e8) this.deployArmedTick = s.tick;
+    }
+  }
+
+  /** Forget the current site so the next pass picks a fresh one. */
+  private resetDeploySite(): void {
+    this.deployX = -1;
+    this.deployZ = -1;
+    this.deploySiteTick = -1e9;
+    this.deployIssuedTick = -1e9;
+    this.deployArmedTick = -1e9;
+    this.lastDeployMoveTick = -1e9;
+  }
+
+  /** Is there a second ore field far enough from the yard to be worth one? */
+  private wantsExpansion(): boolean {
+    if (this.expandX < 0) return false;
+    return dist2(this.expandX, this.expandZ, this.builderX, this.builderZ)
+      > AI_DEPLOY.expansionSpacing;
+  }
+
+  /**
+   * Pick where the yard goes. Writes `deployX`/`deployZ`; false when nothing
+   * legal was found.
+   *
+   * THE ANCHOR IS ORE. A Construction Yard is only worth what its refinery can
+   * reach, and the build radius is measured from the yard — put it in an empty
+   * corner and the first refinery is out of range of every field on the map.
+   * So the site is the nearest ore, backed off by `AI_DEPLOY.oreStandoff` along
+   * the line from the field to where the vehicle is actually standing, which
+   * leaves room for the refinery AND stops the yard paving over the cells its
+   * own harvesters were going to mine.
+   *
+   * LEGALITY IS ASKED OF THE TERRAIN, NOT THE ORACLE. `ProductionOracle
+   * .placeable` is the build ghost's answer and the build ghost enforces the
+   * build radius of an existing Construction Yard — which is precisely the
+   * thing that does not exist yet. Asking it here returns false everywhere and
+   * the AI never deploys at all.
+   */
+  private chooseDeploySite(i: number, haveYard: boolean): boolean {
+    const st = this.store;
+    const w = this.world;
+    let ax = st.posX[i];
+    let az = st.posZ[i];
+
+    if (haveYard && this.expandX >= 0) {
+      ax = this.expandX;
+      az = this.expandZ;
+    }
+
+    const ocx = clampCell(worldToCell(ax));
+    const ocz = clampCell(worldToCell(az));
+    if (w.ore.findOre(ocx, ocz, AI_DEPLOY.oreSearchCells, this.oreOut)) {
+      const ox = cellToWorld(this.oreOut[0]);
+      const oz = cellToWorld(this.oreOut[1]);
+      // Back off along the line from the field toward the vehicle, so the yard
+      // ends up between the army and the ore rather than beyond it.
+      const dx = ax - ox;
+      const dz = az - oz;
+      const len = Math.sqrt(dx * dx + dz * dz);
+      if (len > 1) {
+        ax = ox + (dx / len) * AI_DEPLOY.oreStandoff;
+        az = oz + (dz / len) * AI_DEPLOY.oreStandoff;
+      } else {
+        ax = ox + AI_DEPLOY.oreStandoff;
+        az = oz;
+      }
+    }
+    // Cap the detour. A field on the far side of the map is not worth a minute
+    // of driving with no base, no income and an undefended truck in the open —
+    // pull the anchor back along the line and take the best ground within
+    // reach instead.
+    const tx = ax - st.posX[i];
+    const tz = az - st.posZ[i];
+    const trip = Math.sqrt(tx * tx + tz * tz);
+    if (trip > AI_DEPLOY.maxTravel) {
+      ax = st.posX[i] + (tx / trip) * AI_DEPLOY.maxTravel;
+      az = st.posZ[i] + (tz / trip) * AI_DEPLOY.maxTravel;
+    }
+
+    ax = clamp(ax, CELL * 2, MAP_SIZE - CELL * 2);
+    az = clamp(az, CELL * 2, MAP_SIZE - CELL * 2);
+
+    const entry = this.catalog.forRole(BuildRole.Builder, this.faction);
+    const fw = entry === undefined || entry.footprintW <= 0 ? 3 : entry.footprintW;
+    const fh = entry === undefined || entry.footprintH <= 0 ? 3 : entry.footprintH;
+
+    const cx0 = clampCell(worldToCell(ax) - ((fw / 2) | 0));
+    const cz0 = clampCell(worldToCell(az) - ((fh / 2) | 0));
+
+    if (this.deployAttempts === 0 && this.siteTakesAYard(cx0, cz0, fw, fh)) {
+      this.acceptDeploySite(cx0, cz0, fw, fh);
+      return true;
+    }
+
+    // Each relocation starts its ring scan one step further out and spins the
+    // side order, so a retry genuinely looks somewhere else rather than
+    // re-proposing the cell that just failed.
+    const first = 1 + Math.min(this.deployAttempts, AI_DEPLOY.maxRelocations);
+    const spin = this.rng.int(0, 3);
+    for (let ring = first; ring <= first + AI_DEPLOY.searchRings; ring++) {
+      for (let side = 0; side < 4; side++) {
+        const sd = (side + spin) & 3;
+        for (let t = -ring; t <= ring; t++) {
+          let ox: number;
+          let oz: number;
+          if (sd === 0) { ox = cx0 + t; oz = cz0 - ring; }
+          else if (sd === 1) { ox = cx0 + ring; oz = cz0 + t; }
+          else if (sd === 2) { ox = cx0 + t; oz = cz0 + ring; }
+          else { ox = cx0 - ring; oz = cz0 + t; }
+          if (!this.siteTakesAYard(ox, oz, fw, fh)) continue;
+          this.acceptDeploySite(ox, oz, fw, fh);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /** Footprint origin cell -> the world centre the order carries. */
+  private acceptDeploySite(ox: number, oz: number, fw: number, fh: number): void {
+    this.deployX = cellToWorld(ox) + (fw - 1) * CELL * 0.5;
+    this.deployZ = cellToWorld(oz) + (fh - 1) * CELL * 0.5;
+  }
+
+  /**
+   * Will the ground take a Construction Yard footprint here, with room to work?
+   *
+   * The gap ring is the same idea as `siteIsLegal`'s and matters more: a yard
+   * wedged flush against a cliff and a rock is a yard whose entire build radius
+   * is unusable, and there is no second yard to place from.
+   */
+  private siteTakesAYard(ox: number, oz: number, w: number, h: number): boolean {
+    if (ox < 1 || oz < 1 || ox + w > MAP_CELLS - 1 || oz + h > MAP_CELLS - 1) return false;
+    const terrain = this.world.terrain;
+    for (let z = oz; z < oz + h; z++) {
+      for (let x = ox; x < ox + w; x++) {
+        if (!terrain.isBuildable(x, z) || terrain.isOccupied(x, z)) return false;
+      }
+    }
+    const gap = AI_DEPLOY.gapCells;
+    for (let z = oz - gap; z < oz + h + gap; z++) {
+      for (let x = ox - gap; x < ox + w + gap; x++) {
+        if (x >= ox && x < ox + w && z >= oz && z < oz + h) continue;
+        if (terrain.isOccupied(x, z)) return false;
+      }
+    }
+    return true;
+  }
+
+  /* ======================================================================
    * 2.6 BUILD
    * ====================================================================== */
 
@@ -828,8 +1217,20 @@ export class AiBrain {
     if (this.pendingPlaceCount > 0 && this.placeNext()) return;
 
     if (this.builderId === NONE && this.roleCount[BuildRole.Builder] === 0) {
-      // No Construction Yard: nothing can be placed at all. Everything the AI
-      // has goes into units from whatever factories survived.
+      // No Construction Yard — but WHY not decides everything.
+      //
+      // A construction vehicle still folded up means the match has not started
+      // yet, and the deploy layer is already dealing with it. Spending the whole
+      // bank on units here (the old unconditional behaviour) would empty the
+      // opening bank into a factory that does not exist and set the posture to
+      // Crippled on tick one.
+      if (this.mcvPending) {
+        this.buildGoal = this.deployGoal === '' ? 'waiting on the construction yard' : this.deployGoal;
+        this.blocked = '';
+        return;
+      }
+      // Genuinely crippled: everything the AI has goes into units from whatever
+      // factories survived.
       this.buildUnits(s, p, true);
       return;
     }
@@ -1225,7 +1626,12 @@ export class AiBrain {
     this.regroupSquads();
 
     if (this.posture === AiPosture.Defeated) return;
-    if (this.builderId === NONE && this.roleCount[BuildRole.Builder] === 0 && this.armyCount > 0) {
+    // Same fork as the build layer, and the more dangerous of the two: without
+    // the `mcvPending` guard, an AI opening from a construction vehicle reads
+    // "no Construction Yard" on tick one and marches its entire escort across
+    // the map, leaving the only asset it owns undefended in a field.
+    if (this.builderId === NONE && this.roleCount[BuildRole.Builder] === 0
+      && this.armyCount > 0 && !this.mcvPending) {
       this.crippledOffensive(s);
       return;
     }
@@ -1721,6 +2127,11 @@ export class AiBrain {
   get strikeSize(): number { return this.strikeCount; }
   get reserveSize(): number { return this.reserveCount; }
   get harvesterSize(): number { return this.harvesterCount; }
+  /** Undeployed construction vehicles owned. */
+  get mcvSize(): number { return this.mcvCount; }
+  /** World position the deploy layer is driving to, or -1 when it is idle. */
+  get deployTargetX(): number { return this.deployX; }
+  get deployTargetZ(): number { return this.deployZ; }
   get refineryCount(): number { return this.roleCount[BuildRole.Refinery]; }
   get pressure(): number { return this.basePressure; }
   get issuedCount(): number { return this.commandsIssued; }
@@ -1759,6 +2170,8 @@ export class AiBrain {
       reserve: this.reserveCount,
       harvesters: this.harvesterCount,
       refineries: this.roleCount[BuildRole.Refinery],
+      mcvs: this.mcvCount,
+      deploy: this.deployGoal,
       structures,
       threat,
       waveThreshold: this.waveThreshold(),

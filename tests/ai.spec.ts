@@ -884,7 +884,15 @@ describe('AI integration — real scenario + real production', () => {
     world.addPlayer(Faction.Allies, 'Commander', true, true);
     world.addPlayer(Faction.Soviets, 'Opponent', false, false);
 
-    const spec = buildScenario(world, 'skirmish', 4242);
+    // START CONDITION `base`, explicitly. This block is about the seam between
+    // the AI, the production module and the scenario, and it drives exactly two
+    // systems — production and the AI. The default `mcv` opening needs a THIRD
+    // (whatever executes `OrderKind.Deploy`), so under it the brain would
+    // correctly issue a Deploy order that nothing in this test can carry out,
+    // and "the AI grew its base" would fail for a reason that is not about the
+    // AI at all. The MCV opening has its own coverage in
+    // `tests/match-start.spec.ts`.
+    const spec = buildScenario(world, 'skirmish', 4242, { start: 'base' });
     expect(spec.entityCount).toBeGreaterThan(0);
 
     const { catalog } = await createCatalog();

@@ -249,6 +249,7 @@ export const KEYBINDS: readonly KeybindDef[] = [
   { id: 'ord.stop', label: 'Stop', category: 'Orders', scope: 'command', def: chord('KeyS') },
   { id: 'ord.guard', label: 'Guard', category: 'Orders', scope: 'command', def: chord('KeyG') },
   { id: 'ord.scatter', label: 'Scatter', category: 'Orders', scope: 'command', def: chord('KeyX') },
+  { id: 'ord.deploy', label: 'Deploy', category: 'Orders', scope: 'command', def: chord('KeyD') },
   { id: 'ord.forceAttack', label: 'Force Fire', category: 'Orders', scope: 'command', def: chord('KeyF') },
   { id: 'ord.rally', label: 'Set Rally Point', category: 'Orders', scope: 'command', def: chord('KeyY') },
   { id: 'ord.stance', label: 'Cycle Stance', category: 'Orders', scope: 'command', def: chord('KeyZ') },

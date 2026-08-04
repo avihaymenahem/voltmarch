@@ -259,7 +259,11 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
   /* -- the ore chain ------------------------------------------------------ */
   fighter('harvester', BuildRole.Harvester, EntityKind.Vehicle, 1400, ['refinery'],
     Faction.Neutral, NO_ANSWER, 0),
-  fighter('mcv', BuildRole.Mcv, EntityKind.Vehicle, 2000, ['battleLab'],
+  // War factory only, mirroring `src/data/Defs.ts`. A match OPENS from one of
+  // these now, so it is the first structure in the game rather than a late-game
+  // expansion tool — gating it on the tech lab would mean an AI that lost its
+  // yard could never rebuild one.
+  fighter('mcv', BuildRole.Mcv, EntityKind.Vehicle, 2000, ['warFactory'],
     Faction.Neutral, NO_ANSWER, 0),
   fighter('engineer', BuildRole.Support, EntityKind.Infantry, 500, ['barracks'],
     Faction.Neutral, NO_ANSWER, 0),
@@ -325,7 +329,7 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
 
   fighter('mrdCollector', BuildRole.Harvester, EntityKind.Vehicle, 1000, ['mrdCistern'],
     FACTION_MERIDIAN, NO_ANSWER, 0),
-  fighter('mrdCarryall', BuildRole.Mcv, EntityKind.Vehicle, 3000, ['mrdReliquary'],
+  fighter('mrdCarryall', BuildRole.Mcv, EntityKind.Vehicle, 3000, ['mrdForgeyard'],
     FACTION_MERIDIAN, NO_ANSWER, 0),
   fighter('mrdArtificer', BuildRole.Support, EntityKind.Infantry, 500, ['mrdChapterhouse'],
     FACTION_MERIDIAN, NO_ANSWER, 0),
@@ -392,7 +396,7 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
 
   fighter('rclScrapper', BuildRole.Harvester, EntityKind.Vehicle, 1150, ['rclSorter'],
     FACTION_RECLAIM, NO_ANSWER, 0),
-  fighter('rclCrawler', BuildRole.Mcv, EntityKind.Vehicle, 3000, ['rclCrucible'],
+  fighter('rclCrawler', BuildRole.Mcv, EntityKind.Vehicle, 3000, ['rclBreakerYard'],
     FACTION_RECLAIM, NO_ANSWER, 0),
   fighter('rclTinker', BuildRole.Support, EntityKind.Infantry, 500, ['rclRookery'],
     FACTION_RECLAIM, NO_ANSWER, 0),
@@ -813,6 +817,91 @@ const OPENING_RECLAIM: readonly OpeningStep[] = [
   step('rclSorter'),
   step('rclSpotter'),
 ];
+
+/* --------------------------------------------------------------------------
+ * THE STEP BEFORE STEP ONE
+ *
+ * Every script above starts at a power plant, and that is correct — but it is
+ * only reachable once a Construction Yard exists, and a match no longer hands
+ * one out. `game/Scenarios.ts` start condition `mcv` (the default) gives each
+ * army ONE construction vehicle and an escort, and the yard is something the
+ * commander has to drive somewhere and unfold.
+ *
+ * That step is NOT in the script. A scripted step is a production request, and
+ * deploying is an ORDER issued to a unit that already exists — different verb,
+ * different layer. `AI.ts` runs it as its own layer ahead of the build layer,
+ * and the script below picks up unchanged the moment a yard is standing.
+ *
+ * What the script DOES have to survive is the gap: for the first few seconds the
+ * AI owns no structures at all, so `chooseBuild` finds nothing available and
+ * `available()` records "no Construction Yard". That is the honest state and it
+ * must not be mistaken for a stall — see `AiBrain.mcvPending`.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Everything the deploy layer is tuned by. Local to the AI rather than in
+ * `core/config.ts` because it is doctrine, not a shared engine tunable, and
+ * because `src/sim/AIStrategy.ts` is where the rest of the AI's doctrine lives.
+ */
+export const AI_DEPLOY = {
+  /**
+   * Ticks between the FIRST Deploy order for a site and writing that site off.
+   *
+   * Measured from the first order and never refreshed by a re-issue, because a
+   * clock the re-issue resets can never expire — see `AiBrain.deployArmedTick`.
+   * The vehicle is already standing on the site by this point (the drive has
+   * its own, much longer clock below), so ten seconds at 30 Hz is generous:
+   * a deploy that has not produced a yard in that time is a deploy the ground
+   * refused, and the answer is to go somewhere else.
+   */
+  retryTicks: 300,
+  /**
+   * Ticks allowed for the DRIVE to the site before the site is written off as
+   * unreachable.
+   *
+   * Separate from `retryTicks`, and it has to be: `maxTravel` is 64 m and a
+   * construction vehicle does about 4.5 m/s, so a perfectly good approach takes
+   * fifteen seconds before the first Deploy order is even issued. Sharing one
+   * clock would have the AI re-siting mid-drive, forever, and never arriving
+   * anywhere — the exact "does nothing all match" failure, arrived at from the
+   * opposite direction. 900 ticks is thirty seconds: twice the honest drive,
+   * with room for a detour around a rock.
+   */
+  approachTicks: 900,
+  /** Cells the deploy siter will search outward from its anchor. */
+  searchRings: 14,
+  /** Clear cells required on every side of the yard footprint. */
+  gapCells: 1,
+  /**
+   * Cells to look for ore around the vehicle. A yard beyond this from ore is a
+   * yard whose refinery cannot pay for itself.
+   */
+  oreSearchCells: 44,
+  /**
+   * Metres the yard is set BACK from the ore it was sited against. A refinery
+   * has to fit between the two, and a yard planted on top of the field
+   * bulldozes the cells its own harvesters were going to mine.
+   */
+  oreStandoff: 26,
+  /**
+   * Metres the vehicle will drive to reach a better site.
+   *
+   * There is a real trade here and it is not close. A construction vehicle
+   * moves at about 4.5 m/s, so every 45 m of detour is ten seconds of a match
+   * in which the AI has no base, no power, no income and nothing on the field —
+   * and it is ten seconds spent driving an undefended 3000-credit truck through
+   * open ground. Past roughly a minute of build time saved, siting closer to the
+   * ore stops paying for itself, and 64 m is where that lands.
+   */
+  maxTravel: 64,
+  /**
+   * Metres a SECOND yard must be from the first. Below this it is not an
+   * expansion, it is two yards sharing one build radius.
+   */
+  expansionSpacing: 90,
+  /** Attempts before the AI stops relocating and just deploys where it stands. */
+  maxRelocations: 6,
+} as const;
 
 /** The three per-faction key sets the personality edits below reach for. */
 interface OpeningKeys {

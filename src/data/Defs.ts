@@ -413,6 +413,26 @@ interface UnitSpec {
  * THE FOUR GROUPS ARE MIRRORED ACROSS ALL FOUR FACTIONS on purpose: one
  * mission grants "unit.raider" and every army gets its raider, so a player who
  * switches faction is never sent back to the start of the curve.
+ *
+ * WHAT THIS TABLE MAY NEVER GATE: THE OPENING
+ * -------------------------------------------
+ * A match now begins with a construction vehicle that has to be driven
+ * somewhere and deployed (`game/Scenarios.ts`, start condition `mcv`). Nothing
+ * on the path from that vehicle to a working economy may appear below, or a
+ * fresh profile opens a match it cannot play:
+ *
+ *   mcv / mrdCarryall / rclCrawler          the vehicle itself
+ *   conyard / mrdConclave / rclFoundry      what it deploys into
+ *   powerPlant / mrdSolarArray / rclFurnace
+ *   refinery / mrdCistern / rclSorter
+ *   harvester / mrdCollector / rclScrapper
+ *   barracks, warFactory and their twins    to replace a lost vehicle
+ *
+ * None of them is listed, and `tests/match-start.spec.ts` asserts that against
+ * this table rather than trusting this comment. It also asserts the escort the
+ * opening spawns is ungated, for the same reason: `ScenarioBuilder.spawnUnit`
+ * SKIPS a locked def rather than substituting one, so a gated escort would not
+ * arrive at all and nobody would see an error.
  * ========================================================================== */
 
 export const UNLOCK_TAGS: Readonly<Record<string, string>> = {
@@ -646,10 +666,15 @@ export const UNITS: readonly UnitDef[] = [
     weapons: UNARMED, hasTurret: false, crushLevel: 5, cargoMax: HARVESTER_CAPACITY,
   }),
   unit({
-    key: 'mcv', name: 'Construction Vehicle', blurb: 'Deploys into a second base.',
+    key: 'mcv', name: 'Construction Vehicle', blurb: 'Unfolds into your Construction Yard.',
     faction: Faction.Neutral, kind: EntityKind.Vehicle,
     cost: 3000, buildTime: 32, tab: BuildTab.Vehicles,
-    prereqs: ['warFactory', 'battleLab'], sortOrder: 50,
+    // WAR FACTORY ONLY. See the note above the roster: a match now OPENS from
+    // one of these, so it is the first structure in the game rather than a
+    // late-game expansion tool, and a fresh profile must be able to replace one
+    // it lost. `battleLab` carries `struct.tech` and would have gated the rebuild
+    // behind a mission on the exact profile least able to survive losing it.
+    prereqs: ['warFactory'], sortOrder: 50,
     model: 'allied_dozer',
     maxHp: 1000, armor: ArmorClass.Heavy, maxSpeed: 4.2, turnRate: 2.6 - U.mcv.l * 0.14,
     locomotor: Locomotor.Wheel, radius: hullRadius(U.mcv), sight: 22,
@@ -815,10 +840,12 @@ export const UNITS: readonly UnitDef[] = [
     flags: MRD_TURRETED,
   }),
   unit({
-    key: 'mrdCarryall', name: 'Pactworks Carryall', blurb: 'Deploys into a second Conclave.',
+    key: 'mrdCarryall', name: 'Pactworks Carryall', blurb: 'Unfolds into your Conclave.',
     faction: FACTION_MERIDIAN, kind: EntityKind.Vehicle,
     cost: 3000, buildTime: 32, tab: BuildTab.Vehicles,
-    prereqs: ['mrdForgeyard', 'mrdReliquary'], sortOrder: 50,
+    // Forgeyard only — `mrdReliquary` carries `struct.tech`. Same reasoning as
+    // the shared Construction Vehicle: this is how a match opens now.
+    prereqs: ['mrdForgeyard'], sortOrder: 50,
     model: 'meridian_carryall',
     maxHp: 950, armor: ArmorClass.Heavy, maxSpeed: 5.0, turnRate: 2.6 - U.mcv.l * 0.14,
     locomotor: Locomotor.Hover, radius: hullRadius(U.mcv), sight: 22,
@@ -977,10 +1004,12 @@ export const UNITS: readonly UnitDef[] = [
     flags: RCL_GUNNER,
   }),
   unit({
-    key: 'rclCrawler', name: 'Yardcrawler', blurb: 'Unfolds into a second Foundry.',
+    key: 'rclCrawler', name: 'Yardcrawler', blurb: 'Unfolds into your Foundry.',
     faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
     cost: 3000, buildTime: 32, tab: BuildTab.Vehicles,
-    prereqs: ['rclBreakerYard', 'rclCrucible'], sortOrder: 50,
+    // Breaker Yard only — `rclCrucible` carries `struct.tech`. Same reasoning as
+    // the shared Construction Vehicle: this is how a match opens now.
+    prereqs: ['rclBreakerYard'], sortOrder: 50,
     model: 'reclaim_crawler',
     maxHp: 900, armor: ArmorClass.Heavy, maxSpeed: 4.6, turnRate: RCL_TURN(U.mcv),
     locomotor: Locomotor.Wheel, radius: hullRadius(U.mcv), sight: 22,

@@ -250,6 +250,28 @@ for (const shot of shots) {
     await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 60_000 });
     await page.evaluate(() => window.__VM.ready());
 
+    /*
+     * `__VM.ready()` resolving is NOT the same as the game being on screen.
+     * It resolved while the boot curtain still read "COMPILING SHADERS", and
+     * `10-selection` and `12-blob-readability` were both silently captured as
+     * photographs of the loading screen — identical metrics on two different
+     * scenarios was the only tell. The harness cheerfully reported "12/12".
+     *
+     * So wait for the thing that actually matters: the curtain retracted, and
+     * the renderer drawing real content. Scenario build time grew with the
+     * content, which is why this only started biting now.
+     */
+    await page.waitForFunction(
+      () => {
+        const curtain = document.getElementById('loading');
+        if (curtain !== null && curtain.hidden !== true) return false;
+        const stats = window.__VM?.stats?.();
+        return stats !== undefined && stats.drawCalls > 8;
+      },
+      null,
+      { timeout: 180_000 },
+    );
+
     if (!report.webgl) {
       report.webgl = await page.evaluate(() => {
         const gl = window.__VM.renderer.getContext();
@@ -276,6 +298,14 @@ for (const shot of shots) {
       await page.evaluate((s) => new Promise((r) => setTimeout(r, s * 1000)), shot.advance);
     }
     await page.evaluate(() => window.__VM.waitFrames(10));
+
+    // Belt and braces: a visible curtain here means the wait above was fooled,
+    // and a curtain screenshot scored as a game frame is worse than no shot.
+    const curtainUp = await page.evaluate(() => {
+      const c = document.getElementById('loading');
+      return c !== null && c.hidden !== true;
+    });
+    if (curtainUp) throw new Error('boot curtain still visible at shutter — refusing to photograph the loading screen');
 
     await page.screenshot({ path: join(STAGE, `${shot.name}.png`), animations: 'disabled' });
     report.shots.push({ name: shot.name, caption: shot.caption, flags: shot.flags, ok: true, messages });

@@ -665,6 +665,19 @@ export const ACTIONS: readonly ActionDef[] = [
     defaultChord: chord('KeyX'),
   },
   {
+    id: 'ord.deploy',
+    label: 'Deploy',
+    description:
+      'Unpack a construction vehicle into its Construction Yard WHERE IT STANDS — drive ' +
+      'it into place first, this is not a move order. Double-clicking the vehicle does ' +
+      'the same thing, and so does right-clicking it while it is selected. A structure ' +
+      'that can fold back into a vehicle takes the same key.',
+    category: 'orders',
+    surface: 'command',
+    binding: 'rebindable',
+    defaultChord: chord('KeyD'),
+  },
+  {
     id: 'ord.forceAttack',
     label: 'Force Fire',
     description:

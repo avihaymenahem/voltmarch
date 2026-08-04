@@ -173,6 +173,25 @@ export interface BuildEntry {
   /** Local-space exit, metres, +Z forward. */
   readonly exitX: number;
   readonly exitZ: number;
+  /**
+   * Content key of a unit this structure HANDS YOU, free, the moment it
+   * finishes. '' for almost everything.
+   *
+   * This exists for exactly one thing: the refinery's harvester. Three
+   * factions' refinery blurbs have said "Ships with one" since the content
+   * layer was written and nothing implemented it, which did not matter while
+   * every match opened with a pre-built base whose harvesters the scenario
+   * placed by hand. From an MCV it is the whole economy: the first harvester
+   * is gated behind a war factory AND 1000-1400 credits, so a player (or an
+   * AI) who spends the opening bank getting there earns nothing in the
+   * meantime and can deadlock permanently one credit short. Measured: three of
+   * the four factions' AIs flatlined at 0-1600 credits with a refinery
+   * standing and no harvester, forever.
+   *
+   * Free means free — no charge, no queue slot, no build time. It is part of
+   * what the refinery costs, exactly as in every C&C.
+   */
+  readonly shipsWith: string;
 
   /* -- units ------------------------------------------------------------ */
   readonly entityKind: EntityKind;
@@ -193,6 +212,8 @@ interface ContentSpec {
   buildable?: boolean;
   producesTabs?: readonly BuildTab[];
   buildRadius?: number;
+  /** See `BuildEntry.shipsWith`. Authored on the three refineries only. */
+  shipsWith?: string;
 }
 
 const S = BuildTab.Structures;
@@ -231,6 +252,7 @@ const CONTENT: readonly ContentSpec[] = [
     key: 'refinery', name: 'Ore Refinery', blurb: 'Unloads harvesters. Ships with one.',
     kind: BuildKind.Building, faction: Faction.Neutral, tab: S,
     cost: 2000, buildTime: 24, prereqs: ['powerPlant'], sortOrder: 20,
+    shipsWith: 'harvester',
   },
   {
     key: 'barracks', name: 'Barracks', blurb: 'Trains infantry.',
@@ -427,6 +449,7 @@ const CONTENT: readonly ContentSpec[] = [
     key: 'mrdCistern', name: 'Ore Cistern', blurb: 'Unloads collectors. Ships with one.',
     kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
     cost: 2000, buildTime: 24, prereqs: ['mrdSolarArray'], sortOrder: 20,
+    shipsWith: 'mrdCollector',
   },
   {
     key: 'mrdChapterhouse', name: 'Chapterhouse', blurb: 'Trains Pact infantry.',
@@ -563,6 +586,7 @@ const CONTENT: readonly ContentSpec[] = [
     key: 'rclSorter', name: 'Ore Sorter', blurb: 'Unloads Scrapjaws. Ships with one.',
     kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
     cost: 2000, buildTime: 24, prereqs: ['rclFurnace'], sortOrder: 20,
+    shipsWith: 'rclScrapper',
   },
   {
     key: 'rclRookery', name: 'Rookery', blurb: 'Trains pickers. Ninety credits at a time.',
@@ -856,6 +880,7 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
       // Default exit: dead centre of the front (+Z) edge, one clearance out.
       exitX: def?.exitOffsetX ?? 0,
       exitZ: def?.exitOffsetZ ?? (fh * CELL * 0.5 + PRODUCTION.exitClearanceMetres),
+      shipsWith: spec.shipsWith ?? '',
       entityKind: EntityKind.Building,
     };
   }
@@ -894,6 +919,7 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
     producesTabs: EMPTY_TABS,
     exitX: 0,
     exitZ: 0,
+    shipsWith: '',
     entityKind: def?.kind ?? fb.kind,
   };
 }
@@ -1509,6 +1535,54 @@ export class ProductionService implements QueueHooks {
       this.eva(p, EvaLine.ConstructionComplete);
       this.world.vfx.play(FxKind.BuildComplete, st.posX[i], st.posY[i], st.posZ[i], 0, 1, 0, 1);
     }
+
+    if (p !== undefined && entry !== null && entry.shipsWith !== '') {
+      this.deliverBundledUnit(p, i, entry);
+    }
+  }
+
+  /**
+   * Hand over the unit a structure "ships with" — in practice, the refinery's
+   * harvester. See `BuildEntry.shipsWith` for why this exists.
+   *
+   * IT IS A GIFT, NOT A PURCHASE: no charge, no queue slot, no build time, and
+   * no factory needed. A refinery is the only building in the game that is
+   * useless on its own, and the harvester is the thing that makes the economy
+   * start at all — under the MCV opening there is no scenario builder placing
+   * one for you.
+   *
+   * DELIBERATELY NOT GATED ON "is this your first refinery". Every refinery
+   * ships one, which is both the C&C rule and the rule the blurb states. It is
+   * also self-limiting: at 2000 credits a refinery is a worse way to buy a
+   * 1000-1400 credit harvester than buying the harvester.
+   *
+   * Deterministic: `findEgressSpot` walks a fixed ring order and nothing here
+   * touches the RNG or a clock. Silently does nothing if there is nowhere to
+   * put it — a refinery walled in on all sides is the player's problem, and a
+   * harvester spawned inside a cliff would be worse.
+   */
+  private deliverBundledUnit(p: PlayerState, i: number, entry: BuildEntry): void {
+    const unit = this.catalog.byKey(entry.shipsWith);
+    if (unit === null || unit.kind !== BuildKind.Unit) return;
+
+    const st = this.world.store;
+    const yaw = st.yaw[i];
+    const cos = Math.cos(yaw);
+    const sin = Math.sin(yaw);
+    const ex = entry.exitX;
+    const ez = entry.exitZ;
+    const exitX = st.posX[i] + ex * cos + ez * sin;
+    const exitZ = st.posZ[i] + ez * cos - ex * sin;
+
+    const fb = FALLBACK_UNITS[unit.key];
+    const def: UnitDef | undefined =
+      unit.defId >= 0 ? this.bindingTables?.units[unit.defId] : undefined;
+    const radius = def?.radius ?? (fb === undefined ? 2 : Math.max(fb.width, fb.length) * 0.45);
+    const loco = def?.locomotor ?? fb?.locomotor ?? Locomotor.Wheel;
+
+    if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot)) return;
+    if (this.spawnUnit(p, unit, spot[0], spot[1], yaw) === NONE) return;
+    p.stats.unitsBuilt++;
   }
 
   /** Release nav cells and cached economy when a structure leaves the world. */

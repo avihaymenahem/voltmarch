@@ -589,3 +589,117 @@ describe('ProductionService — the whole loop', () => {
     expect(queue.items[0].ready).toBe(true);
   });
 });
+
+/* ==========================================================================
+ * A REFINERY SHIPS WITH A HARVESTER
+ *
+ * The blurb promised it in three factions' content and nothing implemented it,
+ * which cost nothing while every match opened with a pre-built base whose
+ * harvesters the scenario placed. Under the MCV opening it is the entire
+ * economy: measured before the fix, three of the four factions' AIs stood next
+ * to a finished refinery with no harvester and flatlined at 0-1600 credits for
+ * the rest of the match.
+ * ========================================================================== */
+
+/** Every harvester-bearing structure, by faction. */
+const REFINERIES: readonly [string, string, Faction][] = [
+  ['refinery', 'harvester', Faction.Allies],
+  ['refinery', 'harvester', Faction.Soviets],
+  ['mrdCistern', 'mrdCollector', Faction.Meridian],
+  ['rclSorter', 'rclScrapper', Faction.Reclaim],
+];
+
+describe('a refinery ships with a harvester', () => {
+  it('names one on every faction\'s refinery, and nothing else', () => {
+    const catalog = new ProductionCatalog(EMPTY_BINDING);
+    const bundling = catalog.entries.filter((e) => e.shipsWith !== '');
+    expect(bundling.map((e) => e.key).sort())
+      .toEqual(['mrdCistern', 'rclSorter', 'refinery']);
+    for (const e of bundling) {
+      const unit = catalog.byKey(e.shipsWith);
+      expect(unit, `${e.key} ships with "${e.shipsWith}"`).not.toBe(null);
+      expect(unit!.kind).toBe(BuildKind.Unit);
+    }
+  });
+
+  it('agrees with the blurb the player reads', () => {
+    const catalog = new ProductionCatalog(EMPTY_BINDING);
+    for (const e of catalog.entries) {
+      if (!/Ships with one/i.test(e.blurb)) continue;
+      expect(e.shipsWith, `"${e.key}" promises a unit it does not name`).not.toBe('');
+    }
+  });
+
+  for (const [refKey, harvKey, faction] of REFINERIES) {
+    it(`hands ${faction === Faction.Allies || faction === Faction.Soviets ? 'both classic armies' : harvKey} one, free, on completion`, () => {
+      const world = new World();
+      world.addPlayer(faction, 'Commander', true, true);
+      const channels = new Channels();
+      const catalog = new ProductionCatalog(EMPTY_BINDING);
+      const service = new ProductionService(world, channels, catalog);
+      const p = 0 as PlayerId;
+      const player = world.player(p);
+      player.credits = 20000;
+      player.faction = faction;
+
+      const yard = catalog.byKey(faction === Faction.Meridian ? 'mrdConclave'
+        : faction === Faction.Reclaim ? 'rclFoundry' : 'conyard')!;
+      service.spawnBuilding(player, yard, 40, 40, 1);
+      step(service, world, 1);
+
+      const before = player.credits;
+      const refinery = catalog.byKey(refKey)!;
+      // buildProgress < 1 so it goes through the real completion path, which is
+      // where the delivery hangs.
+      service.spawnBuilding(player, refinery, 50, 50, 0.5);
+      step(service, world, Math.ceil(CONSTRUCTION_RISE_SECONDS / SIM_DT) + 4);
+
+      const st = world.store;
+      let found = 0;
+      for (let a = 0; a < st.aliveCount; a++) {
+        const i = st.alive[a];
+        if (st.owner[i] !== (p as number)) continue;
+        if (st.kind[i] === EntityKind.Building) continue;
+        if (service.entryOf(st.handleOf(i))?.key === harvKey) found++;
+      }
+      expect(found, `${refKey} shipped a ${harvKey}`).toBe(1);
+      // FREE. Not charged, not queued, not built.
+      expect(player.credits).toBeCloseTo(before, 2);
+      expect(world.player(p).queues[BuildTab.Vehicles].items.length).toBe(0);
+    });
+  }
+
+  it('does not need a war factory — that is the whole point', () => {
+    const { world, service } = makeWorld();
+    const p = 0 as PlayerId;
+    const player = world.player(p);
+    place(service, world, 'conyard', 40, 40);
+    step(service, world, 1);
+    // The harvester is not buildable here: it wants a War Factory as well.
+    expect(service.availability(p, service.catalog.byKey('harvester')!.index).ok).toBe(false);
+
+    service.spawnBuilding(player, service.catalog.byKey('refinery')!, 50, 50, 0.5);
+    step(service, world, Math.ceil(CONSTRUCTION_RISE_SECONDS / SIM_DT) + 4);
+
+    const st = world.store;
+    let harvesters = 0;
+    for (let a = 0; a < st.aliveCount; a++) {
+      const i = st.alive[a];
+      if (st.kind[i] !== EntityKind.Building
+        && service.entryOf(st.handleOf(i))?.key === 'harvester') harvesters++;
+    }
+    expect(harvesters).toBe(1);
+  });
+
+  it('leaves a structure that ships with nothing alone', () => {
+    const { world, service } = makeWorld();
+    const player = world.player(0 as PlayerId);
+    place(service, world, 'conyard', 40, 40);
+    step(service, world, 1);
+    const before = world.store.aliveCount;
+    service.spawnBuilding(player, service.catalog.byKey('powerPlant')!, 50, 50, 0.5);
+    step(service, world, Math.ceil(CONSTRUCTION_RISE_SECONDS / SIM_DT) + 4);
+    // The plant, and nothing riding along with it.
+    expect(world.store.aliveCount).toBe(before + 1);
+  });
+});

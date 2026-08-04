@@ -384,12 +384,19 @@ describe('a profile with nothing unlocked', () => {
 /* ==========================================================================
  * 6. THE OPENING BASE
  *
- * A skirmish starts with a base already standing, authored in ROLE keys that
- * `keyFor` remaps per faction. Two of those roles ('battleLab', 'prismTower')
- * and two unit roles ('ifv', 'apocalypse') land on tagged defs — so before the
- * gate reached `ScenarioBuilder`, a brand-new profile started the match next to
- * a free Battle Lab and across the valley from three Tesla Coils it could not
- * build. Found by playing it.
+ * The PRE-BUILT opening (`start: 'base'`) puts a whole base on the map before
+ * the player has touched anything, authored in ROLE keys that `keyFor` remaps
+ * per faction. Two of those roles ('battleLab', 'prismTower') and two unit roles
+ * ('ifv', 'apocalypse') land on tagged defs — so before the gate reached
+ * `ScenarioBuilder`, a brand-new profile started the match next to a free Battle
+ * Lab and across the valley from three Tesla Coils it could not build. Found by
+ * playing it.
+ *
+ * `start: 'base'` is passed explicitly because it is the subject: the default
+ * opening hands out one construction vehicle and an escort, which has nothing
+ * for a gate to leak. That opening's own gate coverage — that NOTHING on the
+ * path from the vehicle to a working economy is tagged — is in
+ * `tests/match-start.spec.ts`.
  * ========================================================================== */
 
 describe('the opening base respects the gate', () => {
@@ -399,7 +406,7 @@ describe('the opening base respects the gate', () => {
     world.addPlayer(human, 'Commander', true, true);
     world.addPlayer(ai, 'Opponent', false, false);
     const defs = await resolveDefBinding();
-    buildScenario(world, 'skirmish', 4242, { map: 'temperate', defs });
+    buildScenario(world, 'skirmish', 4242, { map: 'temperate', defs, start: 'base' });
 
     const st = world.store;
     const owned: [string[], string[]] = [[], []];
@@ -481,7 +488,7 @@ describe('the harness gate', () => {
     world.addPlayer(Faction.Allies, 'Commander', true, true);
     world.addPlayer(Faction.Soviets, 'Opponent', false, false);
     const defs = await resolveDefBinding();
-    buildScenario(world, 'skirmish', 4242, { map: 'temperate', defs });
+    buildScenario(world, 'skirmish', 4242, { map: 'temperate', defs, start: 'base' });
 
     const st = world.store;
     const keys = new Set<string>();

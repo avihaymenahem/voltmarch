@@ -169,7 +169,7 @@ describe('catalogue -> engine tables', () => {
     // with no case, this fails and points at the pair.
     const handled = [
       'sel.allArmy', 'ord.attackMove', 'ord.stop', 'ord.guard', 'ord.scatter',
-      'ord.forceAttack', 'ord.rally', 'ord.stance', 'cam.home',
+      'ord.deploy', 'ord.forceAttack', 'ord.rally', 'ord.stance', 'cam.home',
     ].sort();
     expect([...COMMAND_ACTION_IDS].sort()).toEqual(handled);
   });

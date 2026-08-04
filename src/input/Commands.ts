@@ -64,6 +64,13 @@ import type { Command, DefTables, EntityId, PlayerId, UnitDef } from '../core/ty
 import type { Channels } from '../core/events';
 import type { World } from '../core/world';
 import { clampWorld, hashU32, worldToCell } from '../core/math';
+// The ONE edge from src/input/** into src/sim/**, and it buys the thing this
+// module exists for: "is this an MCV" is answered by exactly one function, so
+// the D key, the deploy cursor and the order the sim actually runs cannot
+// disagree. `isDeployable` reads `UnitDef.deploysInto` when a data module is
+// bound and a three-row fallback when none is, which is the same answer
+// `src/sim/deploy.system.ts` acts on.
+import { isDeployable } from '../sim/Deploy';
 import { CursorKind } from './Input';
 import { isEnemyOf } from './Selection';
 
@@ -221,6 +228,15 @@ export interface SelectionCapabilities {
   hasPassengers: boolean;
   /** Own factories (rally-flag owners) in the selection. */
   factoryCount: number;
+  /**
+   * Own construction vehicles in the selection.
+   *
+   * Counted rather than flagged because the Deploy order is issued PER UNIT at
+   * each vehicle's own position — a group of three MCVs is three commands, not
+   * one command with one destination, and the caller needs to know how many it
+   * is about to write.
+   */
+  deployCount: number;
 }
 
 /** Recompute `out` from the current selection. Allocation-free. */
@@ -241,6 +257,7 @@ export function readCapabilities(
   out.hasHarvester = false;
   out.hasPassengers = false;
   out.factoryCount = 0;
+  out.deployCount = 0;
 
   for (let n = 0; n < count; n++) {
     const i = s.index(ids[n] as EntityId);
@@ -258,6 +275,7 @@ export function readCapabilities(
     if (roles.canCapture(world, i)) out.canCapture = true;
     if (roles.canRepair(world, i)) out.canRepair = true;
     if (s.kind[i] === EntityKind.Infantry) out.hasPassengers = true;
+    if (isDeployable(world, i)) out.deployCount++;
   }
   return out;
 }
@@ -267,8 +285,36 @@ export function createCapabilities(): SelectionCapabilities {
   return {
     ownCount: 0, mobileCount: 0, buildingCount: 0,
     canAttack: false, canCapture: false, canRepair: false,
-    hasHarvester: false, hasPassengers: false, factoryCount: 0,
+    hasHarvester: false, hasPassengers: false, factoryCount: 0, deployCount: 0,
   };
+}
+
+/**
+ * Collect the local player's selected construction vehicles into `out`.
+ *
+ * Its own gatherer rather than a filter on `gatherOwnOrderable`, because a
+ * mixed selection is the normal case: an MCV escorted by four tanks must deploy
+ * the MCV and leave the tanks exactly where they are.
+ */
+export function gatherDeployable(
+  world: World,
+  ids: Int32Array,
+  count: number,
+  out: Int32Array,
+): number {
+  const s = world.store;
+  const local = world.localPlayer as number;
+  let n = 0;
+  for (let k = 0; k < count && n < out.length; k++) {
+    const i = s.index(ids[k] as EntityId);
+    if (i < 0 || s.owner[i] !== local) continue;
+    if ((s.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
+    // Already unpacking: a second D press must not restart the countdown.
+    if (s.state[i] === UnitState.Deploying) continue;
+    if (!isDeployable(world, i)) continue;
+    out[n++] = ids[k];
+  }
+  return n;
 }
 
 /**
@@ -380,6 +426,23 @@ export function resolveContextOrder(
   /* -- 5. something under the cursor ------------------------------------- */
   if (hoverValid) {
     const isBuilding = s.kind[hi] === EntityKind.Building;
+
+    // Your own construction vehicle, with construction vehicles selected: the
+    // pointer offers DEPLOY. This is the RA2 gesture verbatim — you hover the
+    // MCV you already have selected and the cursor turns into the deploy glyph
+    // — and it is why `CursorKind.Deploy` has existed unused since Input.ts was
+    // written. It sits above every other hover rule because an MCV parked on
+    // its own is otherwise just "a friendly unit: move to it", which is the one
+    // thing nobody ever wants to do with an MCV.
+    if (hoverOwn && !isBuilding && caps.deployCount > 0 && isDeployable(world, hi)) {
+      out.order = OrderKind.Deploy;
+      out.target = hover;
+      out.x = s.posX[hi];
+      out.z = s.posZ[hi];
+      out.cursor = CursorKind.Deploy;
+      out.valid = true;
+      return out;
+    }
 
     if (hoverEnemy) {
       // An engineer takes a structure; everyone else shoots it.
@@ -766,7 +829,18 @@ export class OrderExecutor {
         break;
 
       case OrderKind.Deploy:
-        s.state[i] = mobile ? UnitState.Moving : UnitState.Deploying;
+        // DEPLOY UNPACKS WHERE THE UNIT STANDS. It is not a move order with a
+        // building on the end — that is RA1/RA2 behaviour to the letter, and it
+        // is the only version with no failure mode (see the header of
+        // src/sim/Deploy.ts). So the order point is rewritten to the unit's own
+        // position, which also stops an in-flight move dead, and `state` is
+        // left to `sim/deploy.system.ts`: it runs 500 slots later in this same
+        // phase, validates the footprint, and either sets `UnitState.Deploying`
+        // or refuses with `EvaLine.CannotDeployHere`. Setting Deploying here
+        // would freeze any unit that cannot deploy at all, forever.
+        s.orderX[i] = s.posX[i];
+        s.orderZ[i] = s.posZ[i];
+        s.state[i] = UnitState.Idle;
         break;
 
       case OrderKind.Capture:

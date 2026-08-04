@@ -55,103 +55,26 @@ import { emitAdditive, emitLit, particles, resetEmit } from './Particles';
 const TL = 7;
 
 /* ==========================================================================
- * 0. GLOW SHAPING — "the glow on tank explosion is too big"
+ * 0. WHERE THE GLOW-SHAPING NUMBERS LIVE
  *
- * These four numbers reshape the bloom FEED without touching the bloom pass or
- * any of the authored colour. They live here rather than in config.ts because
- * config.ts is owned by the grade agent this round; the integrator should
- * fold them into VFX_EXPLOSION when that lands (exact names in the report).
+ * They used to live here, in a `GLOW` block of multipliers sitting on top of
+ * `VFX_EXPLOSION` — a temporary arrangement while config.ts was owned by
+ * another pass. Two knobs for one quantity is how the first fix at this shipped
+ * with the flash's SIZE halved and its INTENSITY untouched, and how the user
+ * came back to report the same problem a second time.
  *
- * THE DIAGNOSIS. The fireball's halo is not set by the bloom pass's radius; it
- * is set by how much SURFACE the pass is handed above its 1.05 threshold. Two
- * things were handing it far too much:
+ * They are now folded into `VFX_EXPLOSION` and `VFX_GUNS` in src/core/config.ts
+ * with the bible's authored figure recorded in each comment. **Tune there.**
+ * If a multiplier ever needs to reappear in this file, that is the signal that
+ * the config field is named wrong, not that a multiplier is needed.
  *
- *   1. The flash disc grew to 3.2 TL — 22.4 metres, which at a normal RTS zoom
- *      is over a third of the frame's width — and it was a LIFE-driven sprite,
- *      so its 7.0 HDR gain was applied FLAT across every one of those pixels.
- *      A uniform 7.0-linear white disc a third of a screen wide is not a flash
- *      with a halo, it is a bloom source the size of the shot. It is now
- *      radial (a hot core with the ramp falling across the radius, the same
- *      trick the billows already use) and smaller.
- *
- *   2. Every billow was above threshold out to ~95% of its radius. Fixed in
- *      the shader — see HALO_T0/HALO_T1 in Particles.ts.
- *
- * Scorecard #14 is untouched by all of this: nothing here reduces the gain
- * inside the white core, and #24's "gone by 3.5% of frame width" is exactly
- * what shrinking the above-threshold disc buys.
+ * The diagnosis those numbers encode, kept because it is the thing that is easy
+ * to get wrong twice: the fireball's halo is not set by the bloom pass's
+ * radius, it is set by how much SURFACE the pass is handed above its threshold.
+ * A source many times over that threshold is above it across essentially its
+ * whole visible disc, so shrinking the quad while leaving the gain alone just
+ * produces a slightly smaller solid plate. Size and gain have to move together.
  * ========================================================================== */
-const GLOW = {
-  /**
-   * Multiplier on the flash disc's FINAL diameter. 0.60 takes the bible's
-   * 3.2 TL to 1.9 TL (13.4 m), which is still wider than the fireball it caps
-   * and reads as a flash at every zoom the camera rig allows.
-   */
-  flashSizeMul: 0.60,
-  /**
-   * Multiplier on the flash disc's STARTING diameter. Kept nearer 1.0 than the
-   * end size so the disc still snaps open in the first frames — the 40 ms peak
-   * is the whole character of the effect and shrinking the onset kills it.
-   */
-  flashSize0Mul: 0.78,
-  /**
-   * How far the flash ramp is stretched across the disc's radius. Above 1.0 for
-   * the same reason `billowRadialSpan` is: the core tile's alpha is already
-   * fading at the quad edge, so a 1.0 span parks the ramp's transparent tail in
-   * invisible pixels and the disc reads as a flat white plate again.
-   */
-  flashRadialSpan: 1.12,
-  /**
-   * Multiplier on the structure death's separate 8 TL flash. Same argument at
-   * a bigger scale: 8 TL is 56 metres of flat white.
-   */
-  structureFlashMul: 0.55,
-
-  /**
-   * Multiplier on EACH BILLOW's final diameter — the second half of "the glow
-   * on a tank explosion is too big", and the more important half.
-   *
-   * `billowSize1TL` is 2.6, which is the bible's figure for the WHOLE fireball
-   * of a unit death (2.2 TL) with a little headroom. It was being applied to
-   * every one of the 8-14 billows individually. Work the ensemble out: the
-   * billows are born on a ~3 m shell and drift ~2 m outward against drag 2.6
-   * over their 750 ms life, so their centres end within about 5 m of the
-   * origin; add a 9.1 m radius each and the fireball's envelope is 28 m — a
-   * 4 TL fireball where the bible asks for 2.2 TL, at nearly double the
-   * authored area and therefore nearly double the bloom feed.
-   *
-   * 0.45 puts each billow at 1.17 TL (8.2 m) and the ensemble envelope at
-   * about 2.6 TL, which is the bible's figure plus the sparse outliers. The
-   * RADIAL ramp fractions are untouched, so scorecard #14's "brightest 40% at
-   * L>245" is unaffected — a billow is the same picture, smaller.
-   */
-  billowSizeMul: 0.45,
-
-  /**
-   * The same correction for EACH smoke-plume puff, and the reason `05-combat`
-   * was a white sheet even after the shading was fixed.
-   *
-   * `puffSize1TL` is 4.0 — the bible's figure for the plume — and it was being
-   * applied to each of 14-22 puffs, giving 28-metre near-opaque smoke balls.
-   * The combat fixture frames from 48 m, where the visible ground is about
-   * 31 m tall: ONE puff covers the frame and one death emits twenty of them.
-   * 0.50 puts a puff at 2 TL (14 m); with the puffs' own spread and rise the
-   * plume's envelope still comes out at the authored 4 TL.
-   */
-  puffSizeMul: 0.50,
-
-  /**
-   * Master opacity of the plume, replacing the flat 0.92.
-   *
-   * Bible §8.7 runs a column from 0.85 at the base to 0.15 at the top, and the
-   * plume already computes that `f` — it just was not using it. Twenty stacked
-   * puffs at an effective 0.83 alpha are a solid wall: the wreck that produced
-   * the plume is not visible through its own smoke, which is not what an RA3
-   * frame does.
-   */
-  puffAlphaBase: 0.72,
-  puffAlphaTop: 0.20,
-} as const;
 
 /* ==========================================================================
  * 1. HOST HOOKS
@@ -291,32 +214,39 @@ export function spawnExplosion(
   let e = resetEmit();
   e.x = x; e.y = y; e.z = z;
   e.lifeMs = X.flashLifeMs;
-  e.size0 = X.flashSize0TL * TL * k * GLOW.flashSize0Mul;
-  e.size1 = X.flashSize1TL * TL * k * GLOW.flashSizeMul;
+  e.size0 = X.flashSize0TL * TL * k;
+  e.size1 = X.flashSize1TL * TL * k;
   e.sizeEase = 0.4;                        // most of the growth in the first frames
   // RADIAL, not life-driven: the disc must have a white-hot centre and a fast
-  // falloff, not a uniform 7.0-gain plate. See the GLOW block above.
-  e.ramp = VFX_RAMP.flash; e.tA = 0; e.tB = GLOW.flashRadialSpan; e.radial = 1;
+  // falloff, not a uniform full-gain plate across every pixel it covers.
+  e.ramp = VFX_RAMP.flash; e.tA = 0; e.tB = X.flashRadialSpan; e.radial = 1;
   e.tile = VFX_TILE.core;
   e.i0 = X.flashIntensity; e.i1 = X.flashIntensity * 0.15;
   emitAdditive(e);
-  // Structure deaths get the bible's separate 8 TL flash on top.
+  // Structure deaths get their own, bigger flash on top of the fireball.
   if (kind === 'structure') {
     e = resetEmit();
     e.x = x; e.y = y + 1.5; e.z = z;
-    e.lifeMs = X.flashLifeMs * 1.3;
-    e.size0 = 3.0 * TL * GLOW.structureFlashMul;
-    e.size1 = 8.0 * TL * GLOW.structureFlashMul;
+    e.lifeMs = X.flashLifeMs * X.structureFlashLifeMul;
+    e.size0 = X.structureFlashSize0TL * TL;
+    e.size1 = X.structureFlashSize1TL * TL;
     e.sizeEase = 0.35;
-    e.ramp = VFX_RAMP.flash; e.tA = 0; e.tB = GLOW.flashRadialSpan; e.radial = 1;
+    e.ramp = VFX_RAMP.flash; e.tA = 0; e.tB = X.flashRadialSpan; e.radial = 1;
     e.tile = VFX_TILE.soft;
-    e.i0 = X.flashIntensity * 0.8; e.i1 = 0;
+    e.i0 = X.flashIntensity * X.structureFlashIntensityMul; e.i1 = 0;
     emitAdditive(e);
   }
 
   /* -- 2. fireball: 8–14 billows, each with a WHITE RADIAL CORE ----------- */
   const billows = rng.int(X.billowMin, X.billowMax);
   const spread = X.billowSpread * k;
+  // A bigger fireball stacks the same billow count over k^2 the pixels, so it
+  // gets brighter per pixel as well as wider. Walk the gain back so a structure
+  // death reads as a bigger fire and not as a bigger white plate. See
+  // billowIntensityFalloff — deliberately one-sided, k < 1 is left alone.
+  const billowGain = k > 1
+    ? X.billowIntensity * Math.pow(k, -X.billowIntensityFalloff)
+    : X.billowIntensity;
   for (let i = 0; i < billows; i++) {
     // Distribute on a squashed shell so the fireball reads as a mass, not a
     // ring: bias the vertical component up, because fire rises.
@@ -328,16 +258,18 @@ export function spawnExplosion(
     const v = rng.range(0.35, 1) * spread;
 
     e = resetEmit();
-    // Born on a real shell, not all at the origin — see billowShellFrac.
-    const shell = X.billowSize0TL * TL * k * X.billowShellFrac * rng.range(0.55, 1.15);
+    // Born on a real shell, not all at the origin — see billowShellTL. The
+    // shell is an ABSOLUTE length so that shrinking the billows never collapses
+    // them back onto each other.
+    const shell = X.billowShellTL * TL * k * rng.range(0.55, 1.15);
     e.x = x + sx * shell;
     e.y = y + sy * shell * 0.75 + 0.4;
     e.z = z + sz * shell;
     e.vx = sx * v; e.vy = sy * v * 0.85 + 1.2 * k; e.vz = sz * v;
     e.drag = 2.6;
     e.lifeMs = X.billowLifeMs * rng.range(0.75, 1.15);
-    e.size0 = X.billowSize0TL * TL * k * GLOW.billowSizeMul * rng.range(0.8, 1.15);
-    e.size1 = X.billowSize1TL * TL * k * GLOW.billowSizeMul * rng.range(0.85, 1.2);
+    e.size0 = X.billowSize0TL * TL * k * rng.range(0.8, 1.15);
+    e.size1 = X.billowSize1TL * TL * k * rng.range(0.85, 1.2);
     e.sizeEase = 0.55;
     // radial = 1 is the whole ballgame — see the header. The >1 span is what
     // keeps the orange fringe inside the sprite's visible alpha.
@@ -345,7 +277,7 @@ export function spawnExplosion(
     e.tile = (i & 1) === 0 ? VFX_TILE.billow : VFX_TILE.puffAlt;
     e.rot = rng.range(0, Math.PI * 2);
     e.rotVel = rng.range(-1, 1) * X.billowSpinDegPerSec * Math.PI / 180;
-    e.i0 = X.billowIntensity; e.i1 = 0.35;
+    e.i0 = billowGain; e.i1 = 0.35;
     emitAdditive(e);
   }
 
@@ -379,8 +311,8 @@ export function spawnExplosion(
     e.drag = 0.55;
     e.delayMs = X.puffDelayMs + f * 380;
     e.lifeMs = X.puffLifeMs * rng.range(0.7, 1.15);
-    e.size0 = X.puffSize0TL * TL * k * 0.45 * GLOW.puffSizeMul;
-    e.size1 = X.puffSize1TL * TL * k * GLOW.puffSizeMul * rng.range(0.8, 1.25);
+    e.size0 = X.puffSize0TL * TL * k;
+    e.size1 = X.puffSize1TL * TL * k * rng.range(0.8, 1.25);
     e.sizeEase = 0.65;
     e.ramp = VFX_RAMP.smokeDark; e.tA = 0; e.tB = 1;
     e.tile = (i % 3) === 0 ? VFX_TILE.lobe : (i & 1) === 0 ? VFX_TILE.billow : VFX_TILE.puffAlt;
@@ -390,7 +322,7 @@ export function spawnExplosion(
     // index the loop already computes. `f` also drives the delay and the birth
     // height, so the later, higher, thinner puffs are exactly the ones that
     // thin out — which is what a column does.
-    e.alpha = GLOW.puffAlphaBase + (GLOW.puffAlphaTop - GLOW.puffAlphaBase) * f;
+    e.alpha = X.puffAlphaBase + (X.puffAlphaTop - X.puffAlphaBase) * f;
     emitLit(e);
   }
 
@@ -522,13 +454,16 @@ export function spawnImpact(
   }
 
   // A brief hot flash: even a dirt hit is a detonation, and the frame is dark.
+  const X = VFX_EXPLOSION;
   const e = resetEmit();
   e.x = x; e.y = y + 0.2; e.z = z;
-  e.lifeMs = 110;
-  e.size0 = 0.8 * scale; e.size1 = 2.1 * scale; e.sizeEase = 0.45;
-  e.ramp = VFX_RAMP.fireball; e.tA = 0; e.tB = VFX_EXPLOSION.billowRadialSpan; e.radial = 1;
+  e.lifeMs = X.impactFlashLifeMs;
+  e.size0 = X.impactFlashSize0M * scale;
+  e.size1 = X.impactFlashSize1M * scale;
+  e.sizeEase = 0.45;
+  e.ramp = VFX_RAMP.fireball; e.tA = 0; e.tB = X.billowRadialSpan; e.radial = 1;
   e.tile = VFX_TILE.billow;
-  e.i0 = 3.2; e.i1 = 0.2;
+  e.i0 = X.impactFlashIntensity; e.i1 = 0.2;
   emitAdditive(e);
 
   // A handful of chips, and the light.
@@ -600,11 +535,11 @@ export function sparkBurst(
   e.lifeMs = G.sparkFlashMs;
   e.size0 = G.sparkFlashPx * mpp * 2 * scale;
   e.size1 = G.sparkFlashPx * mpp * 2.6 * scale;
-  // Radial for the same reason the explosion flash is: a flat 6.0-gain disc,
+  // Radial for the same reason the explosion flash is: a flat high-gain disc,
   // however small, is a disc-shaped bloom source rather than a point one.
-  e.ramp = VFX_RAMP.flash; e.tA = 0; e.tB = GLOW.flashRadialSpan; e.radial = 1;
+  e.ramp = VFX_RAMP.flash; e.tA = 0; e.tB = VFX_EXPLOSION.flashRadialSpan; e.radial = 1;
   e.tile = VFX_TILE.core;
-  e.i0 = 6.0; e.i1 = 0;
+  e.i0 = G.sparkFlashIntensity; e.i1 = 0;
   emitAdditive(e);
 }
 

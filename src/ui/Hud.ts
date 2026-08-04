@@ -23,6 +23,7 @@
  * PUBLIC HOOKS FOR OTHER MODULES
  * ------------------------------
  *   hud.overlay.setMarquee(x0,y0,x1,y1) / clearMarquee()   input: drag select
+ *   hud.overlay.setRallyArmed(on)                          input: rally cursor
  *   hud.sidebar.setArmed(mode) / hud.armedMode             input: repair & sell
  *   hud.waypointMode / hud.formationMove                   input: order modifiers
  *   hud.overlay.floater(x,y,z,text,color)                  anyone

@@ -5,12 +5,13 @@
  * The 2D layer drawn over the battlefield, back to front:
  *
  *   1. selection rings — FLAT ELLIPSES on the ground plane
- *   2. order markers — a pulsing double ring at the ordered point
- *   3. target lines — 1 px dashed, attacker -> target
- *   4. health bars — thin, appearing on damage, hover or selection
- *   5. veterancy chevrons and the control-group badge
- *   6. floating damage / credit numbers (pooled)
- *   7. the drag-select marquee
+ *   2. rally flags and their tethers, for selected factories
+ *   3. order markers — a pulsing double ring at the ordered point
+ *   4. target lines — 1 px dashed, attacker -> target
+ *   5. health bars — thin, appearing on damage, hover or selection
+ *   6. veterancy chevrons and the control-group badge
+ *   7. floating damage / credit numbers (pooled)
+ *   8. the drag-select marquee
  *
  * WHY ELLIPSES, NOT CIRCLES
  * -------------------------
@@ -19,6 +20,45 @@
  * the ground. So the ring is a world-space circle sampled at 20 points and
  * projected — which produces the correct ellipse for free, keeps working when
  * the camera pitches, and needs no trigonometry here at all.
+ *
+ * THE RALLY FLAG, AND WHY IT IS NOT A BILLBOARD
+ * ---------------------------------------------
+ * Same argument, one axis over. The flag's mast is a WORLD-SPACE vertical
+ * segment: both ends are projected, so the mast leans and foreshortens with the
+ * camera exactly as a real pole would, and its foot is anchored by a flat
+ * ground ellipse of the selection-ring family. Only the pennant is drawn in
+ * screen space, sized as a fraction of the projected mast and clamped in design
+ * px so it survives a full zoom-out — a pennant hangs in the air, so it is the
+ * one part that is allowed to face the camera.
+ *
+ * The tether from the structure to its flag is sampled along the ground and
+ * follows terrain height. That is what keeps it from being confused with an
+ * attack line, which is dashed, red, and drawn at chest height in a straight
+ * screen-space segment: the tether is a line PAINTED on the map, the attack
+ * line is a line drawn THROUGH the air.
+ *
+ * WHAT IS DRAWN WHEN NO RALLY POINT IS SET — NOTHING
+ * --------------------------------------------------
+ * `ProductionService.rallyPoint` answers false for a factory that has none, and
+ * the honest picture then is an empty one. Read `ProductionService.tryEgress`:
+ * with no flag it writes no order columns at all, so the unit is left standing
+ * on the egress spot it spawned on — which is under the selection ring already,
+ * a metre outside the structure's own door. A flag planted there would promise
+ * a destination where there is none. (In practice every factory production
+ * finishes gets a `defaultRally` a short walk in front of its door, so the
+ * blank case is a scenario-placed or captured structure, and there the blank is
+ * the truth.)
+ *
+ * FOG OF WAR
+ * ----------
+ * The flag position is the player's own click, so drawing it reveals nothing —
+ * this is the same rule the order marker has always followed, which the player
+ * may equally plant into shroud. What the flag must NOT do is read the map
+ * back: over an unexplored cell its foot is placed at the STRUCTURE's ground
+ * height rather than sampled from `terrain.heightAt`, and its tether
+ * interpolates instead of hugging, because the elevation of unexplored ground
+ * is information the player has not earned. It is drawn dimmed there, which
+ * says only what the minimap already says.
  *
  * WHO DRIVES IT
  * -------------
@@ -29,15 +69,19 @@
  *
  * ALLOCATION
  * ----------
- * Zero per frame: the floater and marker pools are fixed, scratch vectors are
- * fields, and the only strings built are floater labels, which are cached on
- * the pool entry at spawn.
+ * Zero per frame: the floater, marker and rally pools are fixed, scratch
+ * vectors are fields, and the only strings built are floater labels, which are
+ * cached on the pool entry at spawn. The rally pass caches its `rgba()` strings
+ * on the faction change rather than rebuilding them per flag per frame.
  * ============================================================================
  */
 
 import * as THREE from 'three';
 
-import { HUD_OVERLAY, ORDER_MARKER_POOL, ORDER_MARKER_SECONDS } from '../core/config';
+import {
+  HUD_OVERLAY, MAX_SELECTION, ORDER_MARKER_POOL, ORDER_MARKER_SECONDS,
+} from '../core/config';
+import { worldToCell } from '../core/math';
 import {
   EntityFlag,
   EntityKind,
@@ -57,6 +101,135 @@ const BAR_UNLIT = 'rgba(255,255,255,0.22)';
 const TARGET_LINE = 'rgba(255,77,61,0.55)';
 /** Points sampled around a selection ring. 20 is smooth at every zoom. */
 const RING_SEGMENTS = 20;
+
+/* --------------------------------------------------------------------------
+ * RALLY FLAGS
+ *
+ * The link buffer is a flat Float32Array rather than an array of objects so the
+ * collector can be a plain function over the World with a caller-supplied
+ * output — the same shape every query path in this engine uses, and the reason
+ * it is trivially testable with no canvas and no DOM.
+ * -------------------------------------------------------------------------- */
+
+/** Floats per rally link: factory xyz, flag xyz, then one of the RALLY_* tags. */
+export const RALLY_LINK_STRIDE = 7;
+/** This factory has no rally point. The flag slots hold the factory position. */
+export const RALLY_NONE = 0;
+/** Flag stands on explored ground; its foot height was sampled from terrain. */
+export const RALLY_EXPLORED = 1;
+/** Flag stands on ground the player has never seen. Height was NOT sampled. */
+export const RALLY_UNEXPLORED = 2;
+
+/** Metres of mast. Clears a tank; well short of a structure's roofline. */
+const RALLY_MAST_METRES = 3.4;
+/** World radius of the flat ellipse at the mast's foot. */
+const RALLY_FOOT_METRES = 0.85;
+/** Points sampled along a tether, so it creases over terrain instead of cutting it. */
+const RALLY_TETHER_SEGMENTS = 12;
+
+/** Tone slots for the cached rally colours. Indices into the ink tables. */
+const TONE_FULL = 0;
+/** A flag standing on ground the player has never explored. */
+const TONE_DIM = 1;
+/** A flag that is about to move: it steps back so the preview reads as the outcome. */
+const TONE_MUTED = 2;
+/** Master opacity of each tone. */
+const RALLY_TONES: readonly number[] = [1, 0.42, 0.62];
+
+/**
+ * Every selected structure of the local player that owns a rally flag, packed
+ * into `out` as `[fx, fy, fz, rx, ry, rz, tag]` per link. Returns the number of
+ * links written, capped by `out.length`.
+ *
+ * A factory with NO rally point is still emitted, tagged `RALLY_NONE` with its
+ * flag slots holding the structure's own position: the drawing pass needs the
+ * anchor to tether a preview from, and the caller can tell the two apart from
+ * the tag alone. Nothing here allocates, and nothing here reads or writes any
+ * state another module owns — `PlayerState.rallyX/rallyZ` is core world state,
+ * the same map `ProductionService.rallyPoint()` answers out of.
+ */
+export function collectRallyLinks(world: World, out: Float32Array): number {
+  const sel = world.selection;
+  if (sel.count === 0) return 0;
+  const p = world.players[world.localPlayer as number];
+  if (p === undefined) return 0;
+
+  const store = world.store;
+  const local = world.localPlayer;
+  const cap = Math.floor(out.length / RALLY_LINK_STRIDE);
+  let n = 0;
+
+  for (let i = 0; i < sel.count && n < cap; i++) {
+    const handle = sel.ids[i] as EntityId;
+    const idx = store.index(handle);
+    if (idx < 0) continue;
+    if ((store.owner[idx] as PlayerId) !== local) continue;
+    if (store.kind[idx] !== EntityKind.Building) continue;
+    // The SAME test `src/input/input.system.ts` applies before issuing a
+    // SetRally. If the two ever disagree the player gets a flag on a structure
+    // that will not take one, or none on a structure that would.
+    if ((store.flags[idx] & EntityFlag.IsFactory) === 0) continue;
+    if ((store.flags[idx] & EntityFlag.PendingDestroy) !== 0) continue;
+
+    const o = n * RALLY_LINK_STRIDE;
+    const fx = store.posX[idx];
+    const fy = store.posY[idx];
+    const fz = store.posZ[idx];
+    out[o] = fx;
+    out[o + 1] = fy;
+    out[o + 2] = fz;
+    n++;
+
+    const rx = p.rallyX.get(handle as number);
+    const rz = p.rallyZ.get(handle as number);
+    if (rx === undefined || rz === undefined) {
+      out[o + 3] = fx;
+      out[o + 4] = fy;
+      out[o + 5] = fz;
+      out[o + 6] = RALLY_NONE;
+      continue;
+    }
+
+    // See the fog note in the file header: an unexplored cell's elevation is
+    // not ours to sample, so the flag stands at the structure's own height.
+    const seen = world.vision.isExplored(local, worldToCell(rx), worldToCell(rz));
+    out[o + 3] = rx;
+    out[o + 4] = seen ? world.terrain.heightAt(rx, rz) : fy;
+    out[o + 5] = rz;
+    out[o + 6] = seen ? RALLY_EXPLORED : RALLY_UNEXPLORED;
+  }
+  return n;
+}
+
+/**
+ * True when a plain right-click right now would move a rally flag rather than
+ * order a unit.
+ *
+ * This mirrors case 4 of `resolveContextOrder` in `src/input/Commands.ts` —
+ * "no mobile unit selected, at least one factory selected" — rather than asking
+ * input, because the overlay has no dependency on input and must keep drawing
+ * with that module absent. When input IS present and the player arms the rally
+ * cursor explicitly, it pushes `setRallyArmed(true)` instead.
+ */
+export function rallyClickArmed(world: World): boolean {
+  const sel = world.selection;
+  if (sel.count === 0) return false;
+  const store = world.store;
+  const local = world.localPlayer;
+  let factories = 0;
+  for (let i = 0; i < sel.count; i++) {
+    const idx = store.index(sel.ids[i] as EntityId);
+    if (idx < 0) continue;
+    if ((store.owner[idx] as PlayerId) !== local) continue;
+    if (store.kind[idx] === EntityKind.Building) {
+      if ((store.flags[idx] & EntityFlag.IsFactory) !== 0) factories++;
+      continue;
+    }
+    // One selected unit that can move takes the right-click back.
+    if ((store.flags[idx] & EntityFlag.CanMove) !== 0) return false;
+  }
+  return factories > 0;
+}
 
 interface Floater {
   active: boolean;
@@ -108,10 +281,31 @@ export class Overlay {
   /** Ground rings under the selection. On by default — this IS the affordance. */
   selectionRings = true;
 
+  /** Rally flags under the selection. On by default — the whole point. */
+  rallyFlags = true;
+
   private readonly floaters: Floater[] = [];
   private readonly markers: Marker[] = [];
   private marqueeActive = false;
   private readonly marquee = { x0: 0, y0: 0, x1: 0, y1: 0 };
+
+  /* -- rally ---------------------------------------------------------- *
+   * One pool entry per selectable entity, which is the hard ceiling on how
+   * many factories can be selected at once. Never reallocated. */
+  private readonly rallyLinks = new Float32Array(MAX_SELECTION * RALLY_LINK_STRIDE);
+  /** Cached `rgba()` strings, one per tone. Rebuilt only on a faction change. */
+  private readonly inkAccent: string[] = ['', '', ''];
+  private readonly inkAccentSoft: string[] = ['', '', ''];
+  private readonly inkPennant: string[] = ['', '', ''];
+  private readonly inkShadow: string[] = ['', '', ''];
+  private readonly inkTether: string[] = ['', '', ''];
+  private readonly inkTetherDark: string[] = ['', '', ''];
+  /** Pushed by input while the rally cursor is armed. See `setRallyArmed`. */
+  private rallyArmed = false;
+  /** Last pointer position in CLIENT px, and whether it is over the window. */
+  private pointerX = 0;
+  private pointerY = 0;
+  private pointerInside = false;
 
   /** Wall-clock seconds; drives the ring pulse and the marker animation. */
   private time = 0;
@@ -120,6 +314,7 @@ export class Overlay {
   private readonly xform = new Float32Array(6);
   private readonly v3 = new THREE.Vector3();
   private readonly v3b = new THREE.Vector3();
+  private readonly v3c = new THREE.Vector3();
   private readonly v2 = new THREE.Vector2();
   private readonly v2b = new THREE.Vector2();
 
@@ -141,10 +336,72 @@ export class Overlay {
     for (let i = 0; i < ORDER_MARKER_POOL; i++) {
       this.markers.push({ active: false, x: 0, y: 0, z: 0, age: 0, kind: 'move' });
     }
+    this.rebuildRallyInk();
+
+    // The rally preview needs the cursor, and nothing pushes it to us: input
+    // owns the pointer gesture and must keep owning it. A passive window
+    // listener reads the position without touching the event, so it cannot
+    // affect a drag, a marquee or a click that is already in flight.
+    if (typeof window !== 'undefined') {
+      window.addEventListener('pointermove', this.onPointerMove, { passive: true });
+      window.addEventListener('pointerdown', this.onPointerMove, { passive: true });
+      window.addEventListener('pointerout', this.onPointerOut, { passive: true });
+      window.addEventListener('blur', this.onPointerOut);
+    }
   }
 
   setFaction(f: Faction): void {
     this.accent = accentFor(f);
+    this.rebuildRallyInk();
+  }
+
+  /**
+   * Cache every rally colour once per faction.
+   *
+   * `rgba()` builds a string and an array on every call, and the rally pass
+   * would want five of them per flag per frame. Three tones x five roles is
+   * fifteen strings for the life of a match instead.
+   */
+  private rebuildRallyInk(): void {
+    for (let t = 0; t < RALLY_TONES.length; t++) {
+      const a = RALLY_TONES[t];
+      this.inkAccent[t] = rgba(this.accent, 0.95 * a);
+      this.inkAccentSoft[t] = rgba(this.accent, 0.5 * a);
+      this.inkPennant[t] = rgba(this.accent, 0.34 * a);
+      this.inkShadow[t] = `rgba(3,6,10,${(0.62 * a).toFixed(3)})`;
+      // Quieter than anything else the overlay strokes — the tether is a hint
+      // about pairing, not a second attack line — but it still gets the dark
+      // under-pass, because a 30% hairline over lit concrete is not a subtle
+      // line, it is an invisible one. Measured on `shot=allied-base`: without
+      // the dark pass the tether could not be traced at all.
+      this.inkTether[t] = rgba(this.accent, 0.5 * a);
+      this.inkTetherDark[t] = `rgba(3,6,10,${(0.45 * a).toFixed(3)})`;
+    }
+  }
+
+  private readonly onPointerMove = (ev: PointerEvent): void => {
+    this.pointerX = ev.clientX;
+    this.pointerY = ev.clientY;
+    this.pointerInside = true;
+  };
+
+  private readonly onPointerOut = (ev: Event): void => {
+    // Only the pointer leaving the WINDOW clears the preview. `pointerout` also
+    // fires for every element boundary crossed inside the page, and treating
+    // those as a leave would strobe the ghost flag on and off across the HUD.
+    if (ev.type === 'pointerout' && (ev as PointerEvent).relatedTarget !== null) return;
+    this.pointerInside = false;
+  };
+
+  /**
+   * Pushed by `src/input` while the rally cursor is armed (`ord.rally`), so the
+   * ghost flag appears for a mixed selection too — the overlay can only infer
+   * the CONTEXTUAL rally, which is the all-structures right-click.
+   *
+   * Safe to never call: the contextual case still previews without it.
+   */
+  setRallyArmed(on: boolean): void {
+    this.rallyArmed = on;
   }
 
   resize(cssW: number, cssH: number, dpr: number, uiScale: number): void {
@@ -238,6 +495,9 @@ export class Overlay {
     ctx.clip();
 
     if (this.selectionRings) this.drawSelectionRings();
+    // Under the order markers: a fresh SetRally pulse has to land ON the flag it
+    // just planted, which is the whole acknowledgement.
+    if (this.rallyFlags) this.drawRallyFlags();
     this.drawMarkers(dt);
     this.drawTargetLines();
     this.drawBars();
@@ -340,6 +600,194 @@ export class Overlay {
       else ctx.lineTo(this.v2.x, this.v2.y);
     }
     ctx.stroke();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* rally flags                                                         */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * One flag per selected factory, each tethered to the structure it belongs
+   * to. Nothing is drawn for an unselected factory — a map permanently studded
+   * with flags is noise, and the flag exists to answer a question the player
+   * asked by clicking the building.
+   */
+  private drawRallyFlags(): void {
+    const links = this.rallyLinks;
+    const n = collectRallyLinks(this.world, links);
+    if (n === 0) return;
+
+    const ctx = this.ctx;
+    const u = this.scale / this.dpr;
+    const preview = this.rallyPreviewPoint();
+    // While a click is pending, the flags that are about to MOVE step back so
+    // the ghost reads as the outcome rather than as one more flag.
+    const tone = preview ? TONE_MUTED : TONE_FULL;
+
+    /* -- tethers, beneath everything, dark pass then accent ----------- */
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.lineWidth = pass === 0 ? Math.max(2, 2.4 * u) : Math.max(1, 1.2 * u);
+      ctx.strokeStyle = pass === 0 ? this.inkTetherDark[tone] : this.inkTether[tone];
+      for (let i = 0; i < n; i++) {
+        const o = i * RALLY_LINK_STRIDE;
+        if (preview) {
+          this.strokeGroundTether(
+            links[o], links[o + 1], links[o + 2],
+            this.v3c.x, this.v3c.y, this.v3c.z, true,
+          );
+        } else if (links[o + 6] !== RALLY_NONE) {
+          this.strokeGroundTether(
+            links[o], links[o + 1], links[o + 2],
+            links[o + 3], links[o + 4], links[o + 5],
+            links[o + 6] === RALLY_EXPLORED,
+          );
+        }
+      }
+    }
+
+    /* -- the flags themselves ----------------------------------------- */
+    for (let i = 0; i < n; i++) {
+      const o = i * RALLY_LINK_STRIDE;
+      const tag = links[o + 6];
+      if (tag === RALLY_NONE) continue;
+      this.strokeRallyFlag(
+        links[o + 3], links[o + 4], links[o + 5],
+        preview ? TONE_MUTED : tag === RALLY_UNEXPLORED ? TONE_DIM : TONE_FULL,
+      );
+    }
+
+    /* -- and the one under the cursor --------------------------------- */
+    if (preview) this.strokeRallyFlag(this.v3c.x, this.v3c.y, this.v3c.z, TONE_FULL);
+    ctx.restore();
+  }
+
+  /**
+   * Ground point under the cursor when a click would move a rally flag, left in
+   * `v3c`. False when no rally is pending, so the caller can skip the ghost.
+   */
+  private rallyPreviewPoint(): boolean {
+    if (!this.pointerInside) return false;
+    if (!this.rallyArmed && !rallyClickArmed(this.world)) return false;
+    const pf = this.playfield();
+    // The cursor over the sidebar is not aiming at the map.
+    if (this.pointerX < pf.x || this.pointerX > pf.x + pf.w) return false;
+    if (this.pointerY < pf.y || this.pointerY > pf.y + pf.h) return false;
+    return this.cameraRig.screenToGround(this.pointerX, this.pointerY, this.v3c);
+  }
+
+  /**
+   * The structure-to-flag line, sampled along the ground.
+   *
+   * `hug` false interpolates height instead of sampling terrain — see the fog
+   * note in the header; it is the unexplored-destination case.
+   */
+  private strokeGroundTether(
+    ax: number, ay: number, az: number,
+    bx: number, by: number, bz: number,
+    hug: boolean,
+  ): void {
+    const ctx = this.ctx;
+    const terrain = this.world.terrain;
+    ctx.beginPath();
+    let started = false;
+    for (let s = 0; s <= RALLY_TETHER_SEGMENTS; s++) {
+      const t = s / RALLY_TETHER_SEGMENTS;
+      const x = ax + (bx - ax) * t;
+      const z = az + (bz - az) * t;
+      const lerp = ay + (by - ay) * t;
+      // Max, not the sample alone: near the structure the ground is under the
+      // footprint slab and a pure sample would tunnel the line into it.
+      const y = (hug ? Math.max(lerp, terrain.heightAt(x, z)) : lerp) + 0.07;
+      this.v3.set(x, y, z);
+      if (!this.cameraRig.worldToScreen(this.v3, this.v2)) { started = false; continue; }
+      if (!started) { ctx.moveTo(this.v2.x, this.v2.y); started = true; }
+      else ctx.lineTo(this.v2.x, this.v2.y);
+    }
+    ctx.stroke();
+  }
+
+  /**
+   * A mast standing on the ground with a pennant at its head, plus the flat
+   * foot ellipse that plants it. `tone` indexes the cached ink tables.
+   */
+  private strokeRallyFlag(x: number, y: number, z: number, tone: number): void {
+    const ctx = this.ctx;
+    const u = this.scale / this.dpr;
+
+    // Both ends of the mast are WORLD points, so the pole foreshortens with the
+    // camera instead of standing bolt upright on screen at every pitch.
+    this.v3.set(x, y + 0.06, z);
+    if (!this.cameraRig.worldToScreen(this.v3, this.v2)) return;
+    this.v3b.set(x, y + RALLY_MAST_METRES, z);
+    if (!this.cameraRig.worldToScreen(this.v3b, this.v2b)) return;
+    const footX = this.v2.x;
+    const footY = this.v2.y;
+    const headX = this.v2b.x;
+    const headY = this.v2b.y;
+
+    // The pennant scales with the projected mast so it stays in proportion as
+    // the camera dollies, and clamps so it neither vanishes at full zoom-out
+    // nor becomes a banner across the base at full zoom-in.
+    const mast = Math.hypot(headX - footX, headY - footY);
+    const pw = Math.min(Math.max(mast * 0.44, 6 * u), 20 * u);
+    const ph = pw * 0.72;
+
+    // Foot ellipse first, under the pole. Same family as the selection ring,
+    // which is what tells the eye the flag is ON the ground.
+    ctx.lineWidth = Math.max(2, 2.6 * u);
+    ctx.strokeStyle = this.inkShadow[tone];
+    this.strokeWorldCircle(x, y, z, RALLY_FOOT_METRES);
+    ctx.lineWidth = Math.max(1, 1.2 * u);
+    ctx.strokeStyle = this.inkAccentSoft[tone];
+    this.strokeWorldCircle(x, y, z, RALLY_FOOT_METRES);
+
+    // Dark pass beneath the accent, for the same reason the selection ring has
+    // one: an accent hairline on snow or inside a fireball is a rumour.
+    ctx.lineWidth = Math.max(2, 3.2 * u);
+    ctx.strokeStyle = this.inkShadow[tone];
+    this.rallyPath(footX, footY, headX, headY, pw, ph);
+    ctx.stroke();
+
+    ctx.lineWidth = Math.max(1, 1.5 * u);
+    ctx.strokeStyle = this.inkAccent[tone];
+    this.rallyPath(footX, footY, headX, headY, pw, ph);
+    ctx.stroke();
+
+    // The pennant is the only fill in the whole marker, and it is kept under a
+    // third so the flag still reads as a line drawing.
+    ctx.beginPath();
+    this.pennantSubPath(headX, headY, pw, ph);
+    ctx.fillStyle = this.inkPennant[tone];
+    ctx.fill();
+  }
+
+  /** Mast plus pennant outline, as one path ready to stroke. */
+  private rallyPath(
+    footX: number, footY: number, headX: number, headY: number, pw: number, ph: number,
+  ): void {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.moveTo(footX, footY);
+    ctx.lineTo(headX, headY);
+    this.pennantSubPath(headX, headY, pw, ph);
+  }
+
+  /**
+   * A swallowtail pennant hanging off the mast head: out to the upper tip, back
+   * into the notch, out to the lower tip, home. Five points, no curves — the
+   * notch is what stops it reading as a play button.
+   */
+  private pennantSubPath(headX: number, headY: number, pw: number, ph: number): void {
+    const ctx = this.ctx;
+    ctx.moveTo(headX, headY);
+    ctx.lineTo(headX + pw, headY + ph * 0.3);
+    ctx.lineTo(headX + pw * 0.68, headY + ph * 0.55);
+    ctx.lineTo(headX + pw, headY + ph * 0.8);
+    ctx.lineTo(headX, headY + ph * 1.05);
+    ctx.closePath();
   }
 
   /* ------------------------------------------------------------------ */
@@ -661,6 +1109,14 @@ export class Overlay {
 
   dispose(): void {
     this.disposed = true;
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pointermove', this.onPointerMove);
+      window.removeEventListener('pointerdown', this.onPointerMove);
+      window.removeEventListener('pointerout', this.onPointerOut);
+      window.removeEventListener('blur', this.onPointerOut);
+    }
+    this.pointerInside = false;
+    this.rallyArmed = false;
     for (const f of this.floaters) f.active = false;
     for (const m of this.markers) m.active = false;
   }

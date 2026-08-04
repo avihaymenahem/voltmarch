@@ -165,6 +165,11 @@ export interface ScenarioSpec {
   readonly mood: string;
   /** True when the shot wants a frozen frame (no sim, no animation drift). */
   readonly frozen: boolean;
+  /**
+   * How this match opened. Always `'base'` for the `?shot=` fixtures — they are
+   * posed photographs of finished bases and nothing else makes sense.
+   */
+  readonly start: StartCondition;
   /** True when fog of war must be off so the whole composition is visible. */
   readonly revealMap: boolean;
   /** Deterministic sim ticks run at build time so the frame reads mid-action. */
@@ -273,6 +278,144 @@ export const SCENARIO_NAMES = [
 ] as const;
 
 export type ScenarioName = (typeof SCENARIO_NAMES)[number];
+
+/* --------------------------------------------------------------------------
+ * HOW A MATCH OPENS
+ *
+ * `skirmish` used to have exactly one opening: `buildBaseFor` twice, twenty-five
+ * structures a side, before the player had touched anything. That was inherited
+ * from the shot fixtures — every other entry in `PLANS` is a posed photograph
+ * for `tools/shoot.mjs` and needs a finished base to photograph — and it deleted
+ * the opening of an RTS: build order as a skill, where to site the yard, the
+ * economic ramp, scouting before committing.
+ *
+ * So the opening is now a CHOICE, and the default is the real game.
+ * -------------------------------------------------------------------------- */
+
+/** Which opening a skirmish uses. */
+export type StartCondition = 'mcv' | 'base';
+
+/** Every legal `?start=` value, and the lobby's two options. */
+export const START_CONDITIONS: readonly StartCondition[] = ['mcv', 'base'];
+
+/** The opening a match uses when nothing asks for anything else. */
+export const START_CONDITION_DEFAULT: StartCondition = 'mcv';
+
+/** Parse a `?start=` value. Anything unrecognised falls back, loudly. */
+export function resolveStartCondition(
+  raw: string | null | undefined,
+  fallback: StartCondition = START_CONDITION_DEFAULT,
+): StartCondition {
+  if (raw === null || raw === undefined || raw === '') return fallback;
+  const wanted = normKey(raw);
+  for (const s of START_CONDITIONS) if (normKey(s) === wanted) return s;
+  // Two spellings a human will reasonably type for each.
+  if (wanted === 'vehicle' || wanted === 'constructionvehicle' || wanted === 'truck') return 'mcv';
+  if (wanted === 'prebuilt' || wanted === 'prebuiltbase' || wanted === 'full') return 'base';
+  console.warn(
+    `[scenario] unknown ?start=${raw} — known: ${START_CONDITIONS.join(', ')}. Using ${fallback}.`,
+  );
+  return fallback;
+}
+
+/**
+ * The opening force, per faction, expressed in the ROLE vocabulary
+ * `ScenarioBuilder.keyFor` remaps: one construction vehicle plus a small escort.
+ *
+ * The counts are the faction talking. The Reclamation fields the cheapest body
+ * in the game (a 90-credit Scrap Picker, army weight 5) so it brings five and
+ * one hull; the Pact's army is fragile and screens with numbers; the Soviets
+ * bring the extra conscript their whole doctrine is built on. Every key here is
+ * UNGATED on a fresh profile — see the note on `isBuildable` in `spawnUnit`,
+ * which SKIPS a locked def rather than substituting one, so a gated escort would
+ * simply not arrive.
+ */
+export interface StartForce {
+  /** Infantry bodies, spawned from the shared 'gi' role key. */
+  readonly infantry: number;
+  /** Light vehicles, spawned from the shared 'grizzly' role key. */
+  readonly vehicles: number;
+}
+
+export const START_FORCE: Readonly<Record<number, StartForce>> = {
+  [Faction.Neutral]: { infantry: 3, vehicles: 2 },
+  [Faction.Allies]: { infantry: 3, vehicles: 2 },
+  [Faction.Soviets]: { infantry: 4, vehicles: 2 },
+  [Faction.Meridian]: { infantry: 4, vehicles: 2 },
+  [Faction.Reclaim]: { infantry: 5, vehicles: 1 },
+};
+
+/** The escort a faction opens with. Total bodies, MCV excluded. */
+export function startForceFor(faction: Faction): StartForce {
+  return START_FORCE[faction as number] ?? START_FORCE[Faction.Neutral];
+}
+
+/**
+ * Where the armies stand, and which way they look.
+ *
+ * PREFERS THE GENERATOR'S OWN SHELVES. `Terrain.startLocations()` publishes the
+ * patches it has levelled, kept dry, made buildable and PROVEN joined to the
+ * main region (`TERRAIN_START_GUARD_RADIUS`, 54 m). A match that opens with a
+ * lone construction vehicle has no margin for a bad spawn — there is no second
+ * yard to fall back on — so when the generator has reserved a shelf per army,
+ * that is where the army goes.
+ *
+ * `TERRAIN_START_POSITIONS` currently reserves ONE shelf, so the second army is
+ * still derived: the classic RA diagonal, mirrored through the shelf centre, far
+ * enough apart that neither opening is inside the other's sight radius and each
+ * turned to face the other along the threat axis.
+ */
+export interface StartSpot {
+  readonly x: number;
+  readonly z: number;
+  /** Compass facing, degrees. Points at the opposing start. */
+  readonly facingDeg: number;
+}
+
+/** Half-diagonal of the fallback layout, metres. Measured, not guessed: two
+ *  armies 96 m apart on a 512 m map are two screens apart at match dolly. */
+const START_SPREAD_X = 74;
+const START_SPREAD_Z = 62;
+
+/** Fold a compass bearing into [0, 360). */
+function wrapDeg(deg: number): number {
+  const d = deg % 360;
+  return d < 0 ? d + 360 : d;
+}
+
+export function startSpots(cx: number, cz: number, count: number): StartSpot[] {
+  const n = Math.max(1, count);
+  const pts: { x: number; z: number }[] = [];
+
+  const shelves = getTerrain()?.startLocations();
+  if (shelves !== undefined && shelves.length >= n) {
+    for (let i = 0; i < n; i++) pts.push({ x: shelves[i].x, z: shelves[i].z });
+  } else {
+    // One shelf (or none): fan the armies around it on the classic diagonal.
+    for (let i = 0; i < n; i++) {
+      const t = (i / n) * Math.PI * 2;
+      pts.push({
+        x: clampWorld(cx + Math.cos(t) * START_SPREAD_X, 4),
+        z: clampWorld(cz + Math.sin(t) * START_SPREAD_Z, 4),
+      });
+    }
+    // Slot 0 keeps the exact corner the old hard-coded plan used, so a saved
+    // seed frames the same valley it always did.
+    pts[0] = { x: clampWorld(cx - START_SPREAD_X, 4), z: clampWorld(cz + START_SPREAD_Z, 4) };
+    if (n > 1) pts[1] = { x: clampWorld(cx + START_SPREAD_X, 4), z: clampWorld(cz - START_SPREAD_Z, 4) };
+  }
+
+  const out: StartSpot[] = [];
+  for (let i = 0; i < n; i++) {
+    // Face the NEXT army round the table; with two armies that is each other.
+    const foe = pts[(i + 1) % n];
+    const dx = foe.x - pts[i].x;
+    const dz = foe.z - pts[i].z;
+    const facingDeg = dx === 0 && dz === 0 ? 0 : Math.atan2(dx, dz) / DEG2RAD;
+    out.push({ x: pts[i].x, z: pts[i].z, facingDeg });
+  }
+  return out;
+}
 
 /* ==========================================================================
  * 2. FALLBACK CONTENT TABLE
@@ -1089,6 +1232,9 @@ export class ScenarioBuilder {
   private readonly ore: OreFieldSpec[] = [];
   private shore: ShoreSpec | null = null;
   private placement: PlacementSpec | null = null;
+  /** Where the layout wants the camera, when it has an opinion. */
+  private focusX = NaN;
+  private focusZ = NaN;
   /** Occupied radii, so scatter never drops a tree inside a war factory. */
   private readonly blockedX: number[] = [];
   private readonly blockedZ: number[] = [];
@@ -1734,6 +1880,27 @@ export class ScenarioBuilder {
     return (x - s.x) * s.normalX + (z - s.z) * s.normalZ > 0;
   }
 
+  /**
+   * Point the camera at a world position the layout computed.
+   *
+   * `ScenarioPlan.focusDX/focusDZ` is a CONSTANT offset from the map centre, and
+   * that was fine while the skirmish plan also hard-coded where the bases went.
+   * It is not fine now that slot 0's opening is derived from
+   * `Terrain.startLocations()`: the constant and the army would disagree the
+   * moment the generator reserves a shelf somewhere other than the centre, and
+   * the match would open looking at empty ground. A layout that knows where it
+   * put the local player says so; everything else keeps the constant.
+   */
+  setCameraFocus(x: number, z: number): void {
+    this.focusX = x;
+    this.focusZ = z;
+  }
+
+  /** The focus the layout asked for, or null. */
+  cameraFocus(): { x: number; z: number } | null {
+    return Number.isFinite(this.focusX) ? { x: this.focusX, z: this.focusZ } : null;
+  }
+
   /** Set the local player's bank so the HUD does not read a flat 10000. */
   setCredits(player: PlayerId, credits: number): void {
     const p = this.world.player(player);
@@ -1805,7 +1972,12 @@ interface ScenarioPlan {
   focusDX?: number;
   focusDZ?: number;
   summary: string;
-  build(b: ScenarioBuilder, cx: number, cz: number): void;
+  /**
+   * `start` is only meaningful to `skirmish`. Every other plan is a posed
+   * fixture that `tools/shoot.mjs` photographs and is pre-built BY DEFINITION,
+   * so they all declare the three-parameter signature and simply never see it.
+   */
+  build(b: ScenarioBuilder, cx: number, cz: number, start: StartCondition): void;
 }
 
 /**
@@ -1841,22 +2013,108 @@ function buildBaseFor(
     : buildAlliedBase(b, cx, cz, opts);
 }
 
+/**
+ * ONE CONSTRUCTION VEHICLE AND AN ESCORT. The real opening.
+ *
+ * The MCV is placed on the start spot itself — the centre of the shelf the
+ * generator levelled — and the escort forms up between it and the enemy, which
+ * is both the correct screen and the reading a player expects when the camera
+ * lands. Nothing else is spawned: no power, no refinery, no harvester. The first
+ * harvester arrives with the first refinery, exactly as it does for a human, and
+ * the whole economic ramp has to be earned.
+ *
+ * Returns the construction vehicle, or NONE if the store was full.
+ */
+function buildMcvStartFor(b: ScenarioBuilder, owner: PlayerId, spot: StartSpot): EntityId {
+  const faction = b.world.player(owner)?.faction ?? Faction.Neutral;
+  const force = startForceFor(faction);
+  const yaw = spot.facingDeg;
+  const rad = yaw * DEG2RAD;
+  // Unit vector toward the opposing start, and its left-hand perpendicular.
+  const fx = Math.sin(rad);
+  const fz = Math.cos(rad);
+
+  const mcv = b.spawnUnit('mcv', owner, spot.x, spot.z, { yawDeg: yaw, stance: Stance.HoldFire });
+
+  // The screen: infantry ahead of the vehicle, armour ahead of the infantry, all
+  // of it between the MCV and whoever is coming.
+  if (force.infantry > 0) {
+    b.formation('gi', owner, spot.x + fx * 12, spot.z + fz * 12, force.infantry, {
+      yawDeg: yaw, spacing: 4.2, columns: Math.min(force.infantry, 3), jitter: 0.6,
+    });
+  }
+  if (force.vehicles > 0) {
+    b.formation('grizzly', owner, spot.x + fx * 21, spot.z + fz * 21, force.vehicles, {
+      yawDeg: yaw, spacing: 8.0, columns: force.vehicles, jitter: 0.5,
+    });
+  }
+  return mcv;
+}
+
+/**
+ * The three ore fields, derived from where the armies actually are.
+ *
+ * One field per army, 44 m off its start on the flank away from the fight, plus
+ * a contested patch on the midpoint. Derived rather than hard-coded because the
+ * start spots are now derived: an ore field authored as a constant offset from
+ * the map centre is an ore field on the wrong side of the map the first time the
+ * generator reserves a shelf somewhere else, and a refinery that cannot reach
+ * ore is a dead economy in a match that has no second base to fall back on.
+ */
+function addStartOre(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
+  let midX = 0;
+  let midZ = 0;
+  for (const s of spots) {
+    const rad = s.facingDeg * DEG2RAD;
+    const fx = Math.sin(rad);
+    const fz = Math.cos(rad);
+    // Perpendicular, so the patch sits beside the base rather than on the
+    // approach lane both armies are about to fight over.
+    b.addOre(s.x + fx * 18 - fz * 44, s.z + fz * 18 + fx * 44, 30);
+    midX += s.x;
+    midZ += s.z;
+  }
+  if (spots.length > 0) b.addOre(midX / spots.length, midZ / spots.length, 22);
+}
+
 const PLANS: Record<string, ScenarioPlan> = {
   skirmish: {
     map: 'temperate', distance: 58, yawDeg: 24, frozen: false, settleTicks: 0,
     // The only scenario that does not put its subject on the map centre, so it
-    // is the only one that moves the focus: a match starts looking at YOUR base.
+    // is the only one that moves the focus. Superseded by `b.setCameraFocus`
+    // below, which knows where slot 0 actually ended up; this stays as the
+    // answer for a world with no terrain module at all.
     focusDX: -74, focusDZ: 54,
-    summary: 'Allied base, Soviet base across the valley, three ore fields.',
-    build(b, cx, cz) {
-      // Two bases on the classic RA diagonal, each on its own ore field, with a
-      // contested patch in the middle. `facingDeg + 180` is the threat axis, so
-      // each base is turned to look at the other.
-      buildBaseFor(b, b.allies, cx - 74, cz + 62, { facingDeg: 310 });
-      buildBaseFor(b, b.soviets, cx + 74, cz - 62, { facingDeg: 130 });
-      b.addOre(cx - 30, cz + 86, 30);
-      b.addOre(cx + 34, cz - 86, 30);
-      b.addOre(cx, cz, 22);
+    summary: 'Two armies on the diagonal, three ore fields.',
+    build(b, cx, cz, start) {
+      // Two starts on the classic RA diagonal, each with its own ore field and a
+      // contested patch between them, each turned to face the other.
+      const spots = startSpots(cx, cz, 2);
+      const owners: PlayerId[] = [b.allies, b.soviets];
+
+      if (start === 'base') {
+        for (let i = 0; i < spots.length; i++) {
+          // `facingDeg + 180` is the threat axis: a base's defended face looks
+          // at the enemy, so the layout is turned away from where it is aimed.
+          buildBaseFor(b, owners[i], spots[i].x, spots[i].z, {
+            facingDeg: wrapDeg(spots[i].facingDeg + 180),
+          });
+        }
+      } else {
+        const mine: EntityId[] = [];
+        for (let i = 0; i < spots.length; i++) {
+          const mcv = buildMcvStartFor(b, owners[i], spots[i]);
+          if (i === 0 && mcv !== NONE) mine.push(mcv);
+        }
+        // The local player opens with their construction vehicle already on the
+        // cursor. Every RTS does this and it is the difference between "what am
+        // I looking at" and "drive here, press deploy".
+        b.select(mine);
+      }
+
+      addStartOre(b, spots);
+      // Look at YOUR opening, wherever the generator put it.
+      b.setCameraFocus(spots[0].x, spots[0].z - 8);
       b.scatter({ minX: cx - 120, minZ: cz - 120, maxX: cx + 120, maxZ: cz + 120 }, 140);
     },
   },
@@ -1984,6 +2242,68 @@ export interface ScenarioPlanSummary {
   readonly yawDeg: number;
   readonly frozen: boolean;
   readonly settleTicks: number;
+  /** The opening this boot will use. Always `'base'` on a `?shot=` fixture. */
+  readonly start: StartCondition;
+}
+
+/* --------------------------------------------------------------------------
+ * WHO GETS TO CHOOSE THE OPENING
+ *
+ * Four sources, in this order, and the order is the whole design:
+ *
+ *   1. `?ai=off`. Written by exactly one thing: `Shell.bootGame` building the
+ *      TITLE-SCREEN BACKDROP, a live match with the opponent switched off and
+ *      the camera on rails. A backdrop has to be a battlefield already
+ *      standing — slowly orbiting a lone truck on an empty map is not a title
+ *      screen — and the same reading is right for any deliberately
+ *      opponent-less boot. It is FIRST, above the explicit flag, because the
+ *      backdrop inherits the whole query string from the match the player just
+ *      quit; if `?start=mcv` outranked it, quitting an MCV match would leave
+ *      the menu orbiting an empty field until the player started another one.
+ *   2. `?start=` on the URL. The lobby writes it, `tools/` may write it, and a
+ *      human may type it. This is the persistent channel: it survives the hard
+ *      reload path (`Shell.hardLaunch`) and a `?skipmenu=1` boot, neither of
+ *      which runs the lobby screen.
+ *   3. `setPlannedStart()` — the lobby's choice pushed straight in, for a shell
+ *      that has not written the URL yet.
+ *   4. The default: `mcv`. The real game.
+ * -------------------------------------------------------------------------- */
+
+let startOverride: StartCondition | null = null;
+
+/**
+ * Tell the next boot which opening to build. Called by the skirmish lobby.
+ *
+ * Deliberately NOT cleared by `resetScenarioPlan()`: the lobby sets this once
+ * and the engine is torn down and re-bootstrapped several times around it (menu
+ * backdrop, match, rematch), so a per-boot lifetime would lose the choice on the
+ * very next thing that happens. Pass `null` to go back to the default.
+ */
+export function setPlannedStart(start: StartCondition | null): void {
+  startOverride = start;
+}
+
+/** The lobby's standing choice, or null when it has not made one. */
+export function plannedStartOverride(): StartCondition | null {
+  return startOverride;
+}
+
+/**
+ * Rules 1-4 above, with the scenario name left out of it. Both `planScenario`
+ * and `buildScenario` resolve through here so a caller that names `skirmish`
+ * explicitly gets the same answer as one that arrives through `?shot=`.
+ */
+function chooseStart(start?: string | null, ai?: string | null): StartCondition {
+  if (ai !== null && ai !== undefined && normKey(ai) === 'off') return 'base';
+  if (start !== null && start !== undefined && start !== '') return resolveStartCondition(start);
+  return startOverride ?? START_CONDITION_DEFAULT;
+}
+
+/** `chooseStart` against the live URL. Safe outside a browser. */
+function chooseStartFromLocation(): StartCondition {
+  if (typeof location === 'undefined') return startOverride ?? START_CONDITION_DEFAULT;
+  const q = new URLSearchParams(location.search);
+  return chooseStart(q.get('start'), q.get('ai'));
 }
 
 /** Resolve the boot flags into a plan without touching the world. */
@@ -1991,10 +2311,17 @@ export function planScenario(
   shot?: string | null,
   map?: string | null,
   seed?: number | null,
+  start?: string | null,
+  ai?: string | null,
 ): ScenarioPlanSummary {
   const name = resolveScenarioName(shot);
   const plan = PLANS[name] ?? PLANS[SCENARIO_DEFAULT];
   const mapKey = resolveMapName(map, plan.map);
+
+  // A posed fixture is pre-built by definition; nothing may talk it out of that.
+  const opening: StartCondition =
+    plan.frozen || name !== 'skirmish' ? 'base' : chooseStart(start, ai);
+
   return {
     name,
     map: mapKey,
@@ -2004,6 +2331,7 @@ export function planScenario(
     yawDeg: plan.yawDeg,
     frozen: plan.frozen,
     settleTicks: plan.settleTicks,
+    start: opening,
   };
 }
 
@@ -2019,15 +2347,19 @@ export function plannedScenario(): ScenarioPlanSummary {
   let shot: string | null = null;
   let map: string | null = null;
   let seed: number | null = null;
+  let start: string | null = null;
+  let ai: string | null = null;
   if (typeof location !== 'undefined') {
     const q = new URLSearchParams(location.search);
     shot = q.get('shot');
     map = q.get('map');
+    start = q.get('start');
+    ai = q.get('ai');
     const raw = q.get('seed');
     const n = raw === null ? NaN : Number(raw);
     seed = Number.isFinite(n) ? Math.trunc(n) : null;
   }
-  planned = planScenario(shot, map, seed);
+  planned = planScenario(shot, map, seed, start, ai);
   return planned;
 }
 
@@ -2080,6 +2412,12 @@ export interface BuildScenarioOptions {
   map?: string | null;
   /** Pre-resolved def binding. Omit and the caller gets the empty binding. */
   defs?: DefBinding;
+  /**
+   * Which opening to build. Omit and the boot flags decide (see
+   * `planScenario`), which outside a browser means the default, `mcv`.
+   * Only `skirmish` honours it; every `?shot=` fixture is pre-built.
+   */
+  start?: StartCondition;
 }
 
 /**
@@ -2138,8 +2476,15 @@ export function buildScenario(
   const cx = shelf.x;
   const cz = shelf.z;
 
+  // A fixture is pre-built by definition — `tools/shoot.mjs` photographs twelve
+  // finished compositions and an option must never reach them.
+  const start: StartCondition =
+    plan.frozen || resolved !== 'skirmish'
+      ? 'base'
+      : options.start ?? chooseStartFromLocation();
+
   try {
-    plan.build(builder, cx, cz);
+    plan.build(builder, cx, cz, start);
   } catch (err) {
     console.error(`[scenario] "${resolved}" failed partway through — frame will be sparse`, err);
   }
@@ -2182,8 +2527,9 @@ export function buildScenario(
 
   const harvested = builder.harvest();
   const view = visibleGround(plan.distance);
-  const focusX = cx + (plan.focusDX ?? 0);
-  const focusZ = cz + (plan.focusDZ ?? 0);
+  const wanted = builder.cameraFocus();
+  const focusX = wanted?.x ?? cx + (plan.focusDX ?? 0);
+  const focusZ = wanted?.z ?? cz + (plan.focusDZ ?? 0);
 
   active = {
     name: resolved,
@@ -2191,6 +2537,7 @@ export function buildScenario(
     map,
     mood: preset.mood,
     frozen: plan.frozen,
+    start,
     // Every fixture is a photograph of a composition; shrouding half of it
     // would be photographing the shroud.
     revealMap: true,
@@ -2208,7 +2555,9 @@ export function buildScenario(
       maxZ: focusZ + view.front,
     },
     entityCount: builder.count,
-    summary: plan.summary,
+    summary: start === 'mcv'
+      ? `${plan.summary} Each army opens with a construction vehicle and an escort.`
+      : plan.summary,
   };
   return active;
 }
