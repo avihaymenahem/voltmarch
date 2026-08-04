@@ -72,7 +72,12 @@ describe('ArtBridge — core/config.ts -> render/RENDER_CONFIG', () => {
     const noonElevation = DEFAULT_ART.sun.elevationDeg;
     const dusk = resolveArt('dusk');
     expect(dusk.sun.elevationDeg).toBe(12);
-    expect(dusk.tone.exposure).toBe(1.15);
+    // The patched value comes from MOODS, not from a literal copied into the
+    // test — a grade retune must not have to edit an assertion to stay green.
+    // What is being asserted is that the override HAPPENED and differs from
+    // the shipping look, which is the behaviour resolveArt owns.
+    expect(dusk.tone.exposure).toBe(MOODS.dusk!.tone!.exposure);
+    expect(dusk.tone.exposure).not.toBe(DEFAULT_ART.tone.exposure);
     // Untouched keys still come from the default bible.
     expect(dusk.ao.radius).toBe(DEFAULT_ART.ao.radius);
     // And the bible itself is unharmed — resolveArt deep-clones.

@@ -1,5 +1,10 @@
-# RA3 LOOK BIBLE
-### The single authoritative visual spec for our Three.js Red Alert 3 remake
+# RA3 LOOK BIBLE — VOLTMARCH
+### The single authoritative visual spec for VOLTMARCH's Three.js renderer
+
+> **On the title.** This document is named for its *reference*, not for the product. VOLTMARCH is
+> an original game; Command & Conquer: Red Alert 3 is the shipped title whose frames we measure
+> ourselves against, because "make it look good" is not a spec and "match this histogram" is.
+> Every RA3 citation below is a measurement target. None of them describe what VOLTMARCH *is*.
 **Status: AUTHORITATIVE. Where this document contradicts an analyst report, this document wins.**
 **Version 1.0 — Art Director's cut**
 

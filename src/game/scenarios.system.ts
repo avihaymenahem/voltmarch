@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/game/scenarios.system.ts
+ * VOLTMARCH — src/game/scenarios.system.ts
  * ============================================================================
  * THE SCENARIO SYSTEM — reads the boot flags, builds the fixture, poses the
  * camera, and publishes the spec every other module reads.
@@ -117,7 +117,7 @@ export default defineSystem({
     );
 
     // Frame the composition. `tools/shoot.mjs` re-poses x/z/distance afterwards
-    // through `__RA.focusOn`, but the YAW set here survives — and a yaw of
+    // through `__VM.focusOn`, but the YAW set here survives — and a yaw of
     // exactly 0 is the "flat axis-aligned table" failure the bible calls out as
     // identity property 3.
     cameraRig.setPose({

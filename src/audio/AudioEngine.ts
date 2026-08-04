@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/audio/AudioEngine.ts
+ * VOLTMARCH — src/audio/AudioEngine.ts
  * ============================================================================
  * THE MIX. Bus graph, limiter, positional playback, voice budget, ducking,
  * reverb, and the offline bake system that turns DSP recipes into AudioBuffers.

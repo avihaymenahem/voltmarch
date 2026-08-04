@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/Targeting.ts
+ * VOLTMARCH — src/sim/Targeting.ts
  * ============================================================================
  * WHO SHOOTS WHAT. Round-robin sliced acquisition over the spatial hash.
  *

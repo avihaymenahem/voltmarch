@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/Power.ts
+ * VOLTMARCH — src/sim/Power.ts
  * ============================================================================
  * THE POWER GRID. Plants supply, structures draw, and a deficit BROWNS OUT.
  *

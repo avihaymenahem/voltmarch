@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/AI.ts
+ * VOLTMARCH — src/sim/AI.ts
  * ============================================================================
  * THE SKIRMISH OPPONENT.
  *
@@ -57,7 +57,7 @@ import {
   BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, MAX_QUEUE_DEPTH, SIM_DT,
 } from '../core/config';
 import {
-  EntityFlag, EntityKind, Faction, NONE, OrderKind, Stance, UnitState,
+  EntityFlag, EntityKind, Faction, FACTION_PALETTE_KEYS, NONE, OrderKind, Stance, UnitState,
 } from '../core/types';
 import type {
   ArmorClass, EntityId, PlayerId, PlayerState, SimContext,
@@ -118,7 +118,7 @@ const ORDERABLE_REQUIRE = EntityFlag.Alive | EntityFlag.CanMove;
 const ORDERABLE_REJECT =
   EntityFlag.PendingDestroy | EntityFlag.Garrisoned | EntityFlag.UnderConstruction;
 
-/** A readable snapshot of one brain, for `__RA.hooks.ai()`. */
+/** A readable snapshot of one brain, for `__VM.hooks.ai()`. */
 export interface AiIntent {
   player: number;
   name: string;
@@ -1746,7 +1746,7 @@ export class AiBrain {
     return {
       player: this.player as number,
       name: p === undefined ? '?' : p.name,
-      faction: this.faction === Faction.Soviets ? 'soviets' : 'allies',
+      faction: FACTION_PALETTE_KEYS[this.faction as number] ?? 'allies',
       difficulty: this.diff.name,
       personality: this.pers.name,
       posture: AI_POSTURE_NAMES[this.posture],

@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/vfx/Tracers.ts
+ * VOLTMARCH — src/vfx/Tracers.ts
  * ============================================================================
  * MUZZLE FLASHES, TRACERS AND BEAD-CHAIN TRAILS. Bible §8.5 and §8.6.
  *

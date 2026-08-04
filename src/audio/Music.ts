@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/audio/Music.ts
+ * VOLTMARCH — src/audio/Music.ts
  * ============================================================================
  * PROCEDURAL INDUSTRIAL MILITARY ROCK. Generated at runtime, note by note.
  *

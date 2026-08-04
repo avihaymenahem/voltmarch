@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/vfx/Particles.ts
+ * VOLTMARCH — src/vfx/Particles.ts
  * ============================================================================
  * THE PARTICLE ENGINE: one procedural sprite atlas, one colour-ramp LUT, three
  * instanced draw calls for the entire battlefield.
@@ -390,6 +390,34 @@ const SPRITE_SAMPLE = /* glsl */ `
   if (alpha <= 0.003) discard;
 `;
 
+/**
+ * Where the HDR overshoot of a RADIAL sprite ends — scorecard #24's lever.
+ *
+ * `HALO_T0` is the ramp coordinate at which the gain starts collapsing towards
+ * 1.0 and `HALO_T1` is where it gets there. It is deliberately pinned to the
+ * fireball ramp's own white-core stop (0.52), so the two cannot drift apart:
+ * inside the core the sprite keeps every bit of its authored gain (scorecard
+ * #14 wants the brightest 40% at L>245), and outside it the sprite falls under
+ * the bloom threshold within a fifth of its radius.
+ *
+ * WHY IT CHANGED. The previous curve was `pow(1 - t, 0.6)`, which is far too
+ * lazy: at t=0.87 it still returned a gain of 1.95, and the fireball ramp's
+ * `#FF9350` there is 1.0 linear in red — so red came out at 1.95, comfortably
+ * over the 1.05 bloom threshold. Worked through every stop, the ENTIRE billow
+ * out to t≈0.96 was above threshold, which means each of the 8-14 billows fed
+ * the bloom mip chain as a solid 18-metre disc. That is the user's report that
+ * "the glow on a tank explosion is too big", and it was a shader curve, not a
+ * bloom setting: the pass was being handed a disc the size of the fireball and
+ * asked to halo it.
+ *
+ * With the smoothstep, the above-threshold region ends around t=0.68 — about
+ * 66% of the visible billow radius instead of 95%, a bit under half the area,
+ * at a much lower average overshoot. The white core is untouched; only its
+ * skirt is.
+ */
+const HALO_T0 = 0.50;
+const HALO_T1 = 0.70;
+
 const ADDITIVE_FRAG = /* glsl */ `
 precision highp float;
 
@@ -416,15 +444,36 @@ ${SPRITE_SAMPLE}
   // measured in-engine, and it is the single subtlest way to fail scorecard
   // #14 while believing the ramp is correct.
   //
-  // So on a RADIAL sprite the gain ramps down with t: full HDR at the white
-  // core, unity at the outer stop, where the authored orange keeps its
-  // saturation. Life-driven sprites (vRamp.w = 0) are untouched — the CPU
-  // already interpolates their gain across the lifetime.
-  float graded = mix(1.0, vTint.x, pow(1.0 - t, 0.6));
+  // So on a RADIAL sprite the gain ramps down with t: full HDR across the white
+  // core, unity just outside it, where the authored orange keeps its saturation
+  // AND — the part that matters for scorecard #24 — drops under the 1.05 bloom
+  // threshold, so the halo is fed by the core alone instead of by the whole
+  // billow. See HALO_T0 / HALO_T1 above for the measurement.
+  //
+  // Life-driven sprites (vRamp.w = 0) are untouched: the CPU already
+  // interpolates their gain across the lifetime.
+  float halo = 1.0 - smoothstep(${HALO_T0.toFixed(2)}, ${HALO_T1.toFixed(2)}, t);
+  float graded = mix(1.0, vTint.x, halo);
   vec3 col = ramp.rgb * mix(vTint.x, graded, vRamp.w);
   gl_FragColor = vec4(col * alpha, alpha);   // premultiplied
 }
 `;
+
+/**
+ * Ceiling, in scene-linear, on how much ONE VFX point light may add to a smoke
+ * puff — and the gain applied before that ceiling bites.
+ *
+ * THIS IS THE BUG THAT BROKE `05-combat` AND `08-naval-water`. See the block
+ * comment in LIT_FRAG; the numbers are quoted there.
+ *
+ * 0.30 is not arbitrary: bible §8.7 gives a plume's fireball-lit underside as
+ * `#926339`, whose brightest channel is 0.283 in linear. A plume may take the
+ * fire's colour; it may not become a light source in its own right. Anything
+ * that wants to be brighter than the bible's own swatch is a bug by
+ * construction, so the clamp is set at the swatch and cannot be argued with.
+ */
+const LIT_FX_GAIN = 0.35;
+const LIT_FX_MAX = 0.30;
 
 const LIT_FRAG = /* glsl */ `
 precision highp float;
@@ -471,20 +520,108 @@ ${SPRITE_SAMPLE}
   float up = dot(n, uUpView) * 0.5 + 0.5;
   vec3 hemi = mix(uHemiGround, uHemiSky, up);
 
-  vec3 col = ramp.rgb * uTintGain
-           + shade * uShadeGain
-           + hemi * 0.22
-           + uRimLit * uSunColor * pow(max(ndl, 0.0), 3.0) * uRimGain;
+  // The puff's own diffuse albedo: its ramp colour, the bible's shading pair,
+  // the sky/ground bounce and the sun rim. Pulled out as one named value for
+  // two reasons — the dynamic light below has to MULTIPLY by it (light
+  // reflects off smoke, it does not add to it), and it is the thing the
+  // ceiling below has to bound.
+  vec3 albedo = ramp.rgb * uTintGain
+              + shade * uShadeGain
+              + hemi * 0.22
+              + uRimLit * uSunColor * pow(max(ndl, 0.0), 3.0) * uRimGain;
 
-  // One dynamic VFX light, attenuated with the same 1.35 decay the pool uses.
+  /*
+   * THE CEILING — the other half of why 05-combat and 08-naval-water rendered
+   * as a white sheet.
+   *
+   * Those four terms are a SUM, and nothing bounded it. Worked through at the
+   * shipped constants, a fully sun-facing puff of the #1A1A1A wreck-smoke ramp
+   * came out at 0.45 scene-linear and a #C6C6C0 dust puff at 0.58 — against a
+   * bible that names #8A857E (0.254 linear) as the brightest a LIT smoke puff
+   * gets and #C6C6C0 (0.55) as the dust colour. So the darkest smoke in the
+   * game rendered 1.8x brighter than the palest value the bible allows it, and
+   * an explosion plume is 14-22 puffs up to 28 m across: at the 48 m camera
+   * distance the combat fixture uses, two deaths cover the frame. Ablation is
+   * unambiguous — hiding this ONE mesh turns the broken fixture into a correct
+   * frame with nothing else touched.
+   *
+   * The rule is the bible's own numbers: a puff may be as bright as the
+   * brighter of (its authored ramp colour, the lit-smoke swatch) and no
+   * brighter. Renormalising by MAGNITUDE rather than clamping each channel is
+   * what keeps a warm dust puff warm instead of pinning R, G and B to the same
+   * ceiling and turning it white — the exact failure being fixed.
+   */
+  float lim = max(max(uShadeLit.r, max(uShadeLit.g, uShadeLit.b)),
+                  max(ramp.r, max(ramp.g, ramp.b)));
+  // lim is reused as the FINAL output ceiling at the bottom of main(), so it
+  // is deliberately a mutable local rather than a const.
+  float peak = max(albedo.r, max(albedo.g, albedo.b));
+  if (peak > lim) albedo *= lim / peak;
+
+  vec3 col = albedo;
+
+  /*
+   * ONE dynamic VFX light on the plume — bible §8.7's fireball-lit #926339
+   * underside.
+   *
+   * THIS TERM USED TO WHITE OUT THE FRAME, and it is why the 05-combat and
+   * 08-naval-water fixtures rendered as a white haze. uFxColor carries the
+   * light pool's RAW CANDELA (colour times intensity), and an explosion light
+   * is peak 28 x the x5 exposure scale = 140. The old line added that straight
+   * into col behind a bare 1/d^1.35 falloff, so a smoke puff five metres from
+   * a blast received +12.9 LINEAR — forty-five times the 0.283 the bible
+   * allows a lit puff. Every sprite anywhere near a fireball or a burning
+   * wreck clipped to pure white, and the bloom pass then smeared it over the
+   * whole frame. Measured on ?shot=battle at 1280x720: hiding this ONE mesh
+   * moved frame-mean luminance by -37 L on a 112 L frame.
+   *
+   * Three things make it behave:
+   *   1. it is IRRADIANCE, so it is multiplied by the puff's own albedo and by
+   *      1/PI, not added as radiance;
+   *   2. the range window is squared, matching three's own point-light cutoff,
+   *      so the wash reaches zero AT uFxRange instead of stepping off a cliff;
+   *   3. the result is clamped by MAGNITUDE, not per channel. Clamping each
+   *      channel independently would pin red, green and blue to the same
+   *      ceiling and turn a hot orange wash white again — the exact failure
+   *      this is here to prevent — so the vector is rescaled and the hue held.
+   */
   vec3 toL = uFxPosView - vViewPos;
-  float d = max(length(toL), 0.35);
+  float d = max(length(toL), 0.5);
   if (d < uFxRange) {
-    float atten = 1.0 / pow(d, 1.35);
-    col += uFxColor * atten * max(dot(n, toL / d), 0.0) * (1.0 - d / uFxRange);
+    float w = 1.0 - d / uFxRange;
+    float atten = (w * w) / pow(d, 1.35);
+    vec3 fx = uFxColor * albedo
+            * (atten * 0.3183098862 * ${LIT_FX_GAIN.toFixed(3)})
+            * max(dot(n, toL / d), 0.0);
+    float peak = max(fx.r, max(fx.g, fx.b));
+    if (peak > ${LIT_FX_MAX.toFixed(3)}) fx *= ${LIT_FX_MAX.toFixed(3)} / peak;
+    col += fx;
+    // A puff standing in a fireball's light may reach the bible's own
+    // "fireball-lit underside" value and no further.
+    lim = max(lim, ${LIT_FX_MAX.toFixed(3)});
   }
 
   col *= vTint.x;
+
+  /*
+   * THE FINAL CEILING, and it has to be here rather than on albedo alone.
+   *
+   * vTint.x is the emitter's own intensity envelope (EmitDesc.i0/i1), and a
+   * wreck column or a damage plume ships it well above 1. Clamping the albedo
+   * and then multiplying by that envelope let a smokeDark puff — ramp #1A1A1A,
+   * the DARKEST smoke in the game — leave the shader at 0.44 scene-linear,
+   * which is 1.7x the #8A857E the bible names as the brightest a LIT puff
+   * gets. Measured on ?shot=naval: 438 of 505 live lit sprites were row 2
+   * (smokeDark) and the frame sampled (177,164,144) sRGB across a third of its
+   * area — a pale sheet made entirely of black smoke.
+   *
+   * Renormalising by MAGNITUDE keeps a warm dust puff warm; clamping per
+   * channel would pin R, G and B together and turn it white, which is the
+   * failure being fixed.
+   */
+  float outPeak = max(col.r, max(col.g, col.b));
+  if (outPeak > lim) col *= lim / outPeak;
+
   gl_FragColor = vec4(col * alpha, alpha);   // premultiplied
 }
 `;
@@ -848,6 +985,13 @@ export class SpriteLayer {
     }
 
     this.geometry.instanceCount = n;
+    // `instanceCount = 0` does NOT stop three submitting the mesh: it survives
+    // projectObject, gets sorted into the transparent list, has its program
+    // bound and issues a zero-instance draw — in BOTH the colour pass and the
+    // GTAO normal prepass. A battlefield with no live sprites is the common
+    // case, so gate on visibility as well. Cheap, and worth ~4 calls a frame
+    // across the two sprite layers plus debris.
+    this.mesh.visible = n > 0;
     if (n > 0) {
       markRange(this.aOffset, n * 3);
       markRange(this.aQuad, n * 4);
@@ -860,6 +1004,7 @@ export class SpriteLayer {
   clear(): void {
     while (this.liveCount > 0) this.kill(this.live[this.liveCount - 1]);
     this.geometry.instanceCount = 0;
+    this.mesh.visible = false;
   }
 
   dispose(): void {
@@ -1025,12 +1170,15 @@ export class DebrisLayer {
       this.mesh.setMatrixAt(k, this._m);
     }
     this.mesh.count = this.liveCount;
+    // count = 0 still costs a colour draw AND a shadow draw; see SpriteLayer.
+    this.mesh.visible = this.liveCount > 0;
     if (this.liveCount > 0) this.mesh.instanceMatrix.needsUpdate = true;
   }
 
   clear(): void {
     while (this.liveCount > 0) this.kill(this.live[this.liveCount - 1]);
     this.mesh.count = 0;
+    this.mesh.visible = false;
   }
 
   dispose(): void {

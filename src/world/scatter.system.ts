@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/world/scatter.system.ts
+ * VOLTMARCH — src/world/scatter.system.ts
  * ============================================================================
  * The registration shim for prop scatter. All of the work is in Scatter.ts and
  * PropLibrary.ts; this file exists to build one Scatter, feed it the masks the
@@ -45,7 +45,7 @@ import { activeScenario, plannedScenario } from '../game/Scenarios';
 import { getTerrain } from './Terrain';
 import { Scatter, getScatter, setActiveScatter } from './Scatter';
 
-declare const globalThis: { __raScatter?: Scatter } & typeof window;
+declare const globalThis: { __vmScatter?: Scatter } & typeof window;
 
 let scatter: Scatter | null = null;
 /** Frozen shots get a fixed wind phase so two captures are pixel-identical. */
@@ -137,7 +137,7 @@ export default defineSystem({
 
     scatter.generate();
     setActiveScatter(scatter);
-    globalThis.__raScatter = scatter;
+    globalThis.__vmScatter = scatter;
     frozenWind = flag('scatterwind') === 'off' || (spec !== null && spec.frozen);
 
     const s = scatter.stats();
@@ -195,7 +195,7 @@ export default defineSystem({
     if (scatter === null) return;
     scatter.dispose();
     if (getScatter() === scatter) setActiveScatter(null);
-    delete globalThis.__raScatter;
+    delete globalThis.__vmScatter;
     scatter = null;
   },
 });

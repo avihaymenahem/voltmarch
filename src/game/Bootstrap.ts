@@ -1,5 +1,5 @@
 /**
- * RED ALERT — Bootstrap.
+ * VOLTMARCH — Bootstrap.
  *
  * The one file that knows about every layer at once. `src/main.ts` hands it the
  * DOM and the boot flags; it returns a `GameHandle`. Everything else in the
@@ -307,7 +307,7 @@ export function bootstrap(options: BootOptions): GameHandle {
       if (disposed) return;
       if (shotMode) {
         // A shot must be reproducible: no wall clock, no drifting animation.
-        // Route through the debug api, not loop.pause(), so `__RA.paused`
+        // Route through the debug api, not loop.pause(), so `__VM.paused`
         // agrees with reality — the harness reads that flag.
         debug.api.pause();
       }
@@ -333,9 +333,15 @@ export function bootstrap(options: BootOptions): GameHandle {
     dispose(): void {
       if (disposed) return;
       disposed = true;
-      setGameContext(null);
       loop.stop();
+      // registry.dispose() BEFORE the context is torn down. A module's own
+      // dispose() legitimately reaches for ctx() — `sim/features.system.ts`
+      // does, to unregister its five siblings — and clearing the context first
+      // made every one of those throw, aborting the teardown loop and leaving
+      // the renderer, the post chain and the scene alive on the canvas that the
+      // next boot then claims.
       registry.dispose();
+      setGameContext(null);
       debug.dispose();
       post.dispose();
       cameraRig.dispose();

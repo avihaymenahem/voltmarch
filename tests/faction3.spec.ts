@@ -1,0 +1,349 @@
+/**
+ * THE MERIDIAN PACT — the third faction, end to end.
+ *
+ * Four seams, each of which was either broken or nearly broken while the
+ * faction was being built:
+ *
+ *   1. The content layer. Ids, prereqs, factions and the appended armoury.
+ *   2. The balance envelope. Not "is this fun" — that is not testable — but
+ *      "is any number here outside the range the other two armies live in",
+ *      which catches a fat finger in a stat block instantly.
+ *   3. The AI's doctrine. A Pact brain that cannot resolve its own build order
+ *      does nothing at all and looks exactly like an idle AI.
+ *   4. The art. Both factories REJECT on a band miss, so a mass list that
+ *      drifts out of R8 takes the model off the map with one console line.
+ */
+
+import { describe, it, expect } from 'vitest';
+
+import {
+  BUILDINGS, DEF_TABLES, FACTIONS, FACTION_MERIDIAN, MERIDIAN_LOOK, MERIDIAN_WEAPONS,
+  UNITS, WEAPONS,
+} from '../src/data/Defs';
+import { DEFAULT_WEAPONS } from '../src/sim/Combat';
+import { ArmorClass, BuildTab, EntityFlag, EntityKind, Faction, Locomotor } from '../src/core/types';
+import {
+  BuildCatalog, BuildRole, FACTION_MERIDIAN as AI_FACTION_MERIDIAN, openingFor,
+} from '../src/sim/AIStrategy';
+import { formatStats } from '../src/art/MassList';
+import {
+  MERIDIAN_UNIT_MASS_LISTS, MERIDIAN_UNIT_MODELS, MERIDIAN_UNIT_PALETTE, meridianUnitLibrary,
+} from '../src/art/Faction3Units';
+import {
+  MERIDIAN_PAD_PALETTE, MERIDIAN_STRUCTURE_MASS_LISTS, MERIDIAN_STRUCTURE_MODELS,
+  MERIDIAN_STRUCTURE_PALETTE, meridianBuildingLibrary,
+} from '../src/art/Faction3Buildings';
+
+const mrdUnits = UNITS.filter((u) => (u.faction as number) === (FACTION_MERIDIAN as number));
+const mrdBuildings = BUILDINGS.filter((b) => (b.faction as number) === (FACTION_MERIDIAN as number));
+
+describe('the Meridian Pact — content', () => {
+  it('claims faction slot 3 and nothing else does', () => {
+    expect(FACTION_MERIDIAN as number).toBe(3);
+    expect(AI_FACTION_MERIDIAN as number).toBe(FACTION_MERIDIAN as number);
+    for (const f of [Faction.Neutral, Faction.Allies, Faction.Soviets]) {
+      expect(f as number).not.toBe(FACTION_MERIDIAN as number);
+    }
+    const def = FACTIONS.find((f) => (f.id as number) === (FACTION_MERIDIAN as number));
+    expect(def).toBeDefined();
+    expect(def!.key).toBe('meridian');
+    expect(def!.conYardKey).toBe('mrdConclave');
+  });
+
+  it('fields a complete roster', () => {
+    const infantry = mrdUnits.filter((u) => u.kind === EntityKind.Infantry);
+    const vehicles = mrdUnits.filter((u) => u.kind === EntityKind.Vehicle);
+    expect(infantry.length).toBeGreaterThanOrEqual(3);
+    expect(vehicles.length).toBeGreaterThanOrEqual(4);
+    expect(mrdBuildings.length).toBeGreaterThanOrEqual(11);
+
+    // The build must be reachable: every structure that produces something, and
+    // the harvester / MCV / walls / two defences the brief calls for.
+    for (const key of [
+      'mrdConclave', 'mrdSolarArray', 'mrdChapterhouse', 'mrdCistern', 'mrdForgeyard',
+      'mrdOculus', 'mrdReliquary', 'mrdVault', 'mrdSlipway', 'mrdRampart',
+      'mrdGlaive', 'mrdHelios',
+    ]) {
+      expect(DEF_TABLES.buildingByKey.has(key), key).toBe(true);
+    }
+    for (const key of [
+      'mrdWayfarer', 'mrdLancer', 'mrdArtificer', 'mrdCollector', 'mrdSkiff',
+      'mrdSolarch', 'mrdZenith', 'mrdCarryall', 'mrdKestrel', 'mrdCorvette', 'mrdMonitor',
+    ]) {
+      expect(DEF_TABLES.unitByKey.has(key), key).toBe(true);
+    }
+  });
+
+  it('routes every unit through a producer that can actually build it', () => {
+    const producedBy = new Map<string, string>();
+    for (const b of mrdBuildings) {
+      for (const u of b.produces) producedBy.set(u, b.key);
+    }
+    for (const u of mrdUnits) {
+      const factory = producedBy.get(u.key);
+      expect(factory, `${u.key} is buildable by nothing`).toBeDefined();
+      // The factory must itself be a prerequisite of the unit, or the unit
+      // appears in a sidebar tab the player has no building for.
+      expect(u.prereqs, u.key).toContain(factory!);
+    }
+  });
+
+  it('appends its armoury without disturbing the sim table', () => {
+    expect(WEAPONS.length).toBe(DEFAULT_WEAPONS.length + MERIDIAN_WEAPONS.length);
+    for (let i = 0; i < DEFAULT_WEAPONS.length; i++) expect(WEAPONS[i]).toBe(DEFAULT_WEAPONS[i]);
+    for (const u of mrdUnits) {
+      for (const i of u.weapons) {
+        // Every Pact gun must be one of the APPENDED rows — a Pact unit firing
+        // a Soviet weapon index is the exact failure the prefix rule protects.
+        expect(i, u.key).toBeGreaterThanOrEqual(DEFAULT_WEAPONS.length);
+        expect(i, u.key).toBeLessThan(WEAPONS.length);
+      }
+    }
+  });
+
+  it('sets the entity flags nothing else will set for it', () => {
+    // The Pact keys have no `FALLBACK_UNITS` row, so `def.flags` is the ONLY
+    // source of IsHarvester / CanAttack / CanMove for these units.
+    const byKey = (k: string) => UNITS[DEF_TABLES.unitByKey.get(k)!];
+    expect(byKey('mrdCollector').flags & EntityFlag.IsHarvester).toBeTruthy();
+    expect(byKey('mrdCollector').cargoMax).toBeGreaterThan(0);
+    expect(byKey('mrdSolarch').flags & EntityFlag.HasTurret).toBeTruthy();
+    expect(byKey('mrdArtificer').flags & EntityFlag.CanAttack).toBeFalsy();
+    expect(byKey('mrdArtificer').canCapture).toBe(true);
+    for (const u of mrdUnits) {
+      expect(u.flags & EntityFlag.CanMove, u.key).toBeTruthy();
+      expect(u.flags & EntityFlag.ProvidesVision, u.key).toBeTruthy();
+      expect(Boolean(u.flags & EntityFlag.CanAttack), u.key).toBe(u.weapons.length > 0);
+    }
+    for (const b of mrdBuildings) {
+      expect(b.flags & EntityFlag.BlocksNav, b.key).toBeTruthy();
+      // A structure that consumes power must go dark in a brownout; one that
+      // makes it obviously must not.
+      expect(Boolean(b.flags & EntityFlag.NeedsPower), b.key).toBe(b.power < 0);
+    }
+  });
+});
+
+describe('the Meridian Pact — balance envelope', () => {
+  it('prices its army inside the range the other two armies live in', () => {
+    const others = UNITS.filter((u) => (u.faction as number) !== (FACTION_MERIDIAN as number));
+    const lo = Math.min(...others.map((u) => u.cost));
+    const hi = Math.max(...others.map((u) => u.cost));
+    for (const u of mrdUnits) {
+      expect(u.cost, u.key).toBeGreaterThanOrEqual(lo);
+      expect(u.cost, u.key).toBeLessThanOrEqual(hi);
+      expect(u.buildTime, u.key).toBeGreaterThan(0);
+      expect(u.maxHp, u.key).toBeGreaterThan(0);
+    }
+  });
+
+  it('is amphibious and cannot crush — the two halves of one trade', () => {
+    for (const u of mrdUnits) {
+      if (u.kind !== EntityKind.Vehicle) continue;
+      expect(u.locomotor, `${u.key} must skim, not roll`).toBe(Locomotor.Hover);
+      expect(u.crushLevel, `${u.key} must not crush`).toBe(0);
+    }
+  });
+
+  it('trades armour class for a deeper HP pool on the main line', () => {
+    const solarch = UNITS[DEF_TABLES.unitByKey.get('mrdSolarch')!];
+    const grizzly = UNITS[DEF_TABLES.unitByKey.get('grizzly')!];
+    const rhino = UNITS[DEF_TABLES.unitByKey.get('rhino')!];
+
+    // Light armour is the "shield" read: better against AP, far worse against
+    // autocannon and small arms. If this ever becomes Medium or Heavy the whole
+    // faction loses the counter that makes it beatable.
+    expect(solarch.armor).toBe(ArmorClass.Light);
+    expect(solarch.maxSpeed).toBeGreaterThan(grizzly.maxSpeed);
+    expect(solarch.maxSpeed).toBeGreaterThan(rhino.maxSpeed);
+    expect(solarch.cost).toBeGreaterThan(grizzly.cost);
+    expect(solarch.cost).toBeLessThan(rhino.cost);
+  });
+
+  it('buys cheaper power on a more fragile plant', () => {
+    const array = BUILDINGS[DEF_TABLES.buildingByKey.get('mrdSolarArray')!];
+    const plant = BUILDINGS[DEF_TABLES.buildingByKey.get('powerPlant')!];
+    expect(array.power).toBeGreaterThan(plant.power);
+    expect(array.cost / array.power).toBeLessThan(plant.cost / plant.power);
+    expect(array.maxHp).toBeLessThan(plant.maxHp);
+  });
+
+  it('gates its best guns on the grid it cannot defend', () => {
+    // THE SIGNATURE. The Zenith Emitter and the Helios Spire both stop working
+    // in a brownout, and the Solar Array is the softest structure in the game.
+    for (const key of ['zenithBeam', 'heliosLance']) {
+      const w = WEAPONS.find((x) => x.key === key);
+      expect(w, key).toBeDefined();
+      expect(w!.needsPower, key).toBe(true);
+    }
+    // ...and the cheap anti-infantry defence does NOT, or a power raid would
+    // leave the base with no answer to a rush at all.
+    const glaive = WEAPONS.find((x) => x.key === 'glaiveRepeater')!;
+    expect(glaive.needsPower).toBe(false);
+  });
+
+  it('trades harvester capacity for harvester speed', () => {
+    const pact = UNITS[DEF_TABLES.unitByKey.get('mrdCollector')!];
+    const shared = UNITS[DEF_TABLES.unitByKey.get('harvester')!];
+    expect(pact.cargoMax).toBeLessThan(shared.cargoMax);
+    expect(pact.maxSpeed).toBeGreaterThan(shared.maxSpeed);
+    expect(pact.cost).toBeLessThan(shared.cost);
+    expect(pact.maxHp).toBeLessThan(shared.maxHp);
+  });
+
+  it('gives the HUD a distinct accent from both existing armies', () => {
+    expect(MERIDIAN_LOOK.hudAccent).toMatch(/^#[0-9A-Fa-f]{6}$/);
+    expect(MERIDIAN_LOOK.team).not.toBe(MERIDIAN_LOOK.armorBase);
+    for (const other of ['#3A86E0', '#C0271E']) {
+      expect(MERIDIAN_LOOK.hudAccent.toUpperCase()).not.toBe(other);
+    }
+  });
+});
+
+describe('the Meridian Pact — AI doctrine', () => {
+  it('can build every step of its own opening', () => {
+    const catalog = new BuildCatalog();
+    for (const personality of [0, 1, 2, 3]) {
+      for (const step of openingFor(FACTION_MERIDIAN, personality)) {
+        const entry = catalog.get(step.key);
+        expect(entry, `${step.key} is not in the AI catalog`).toBeDefined();
+        expect(entry!.faction as number, step.key).toBe(FACTION_MERIDIAN as number);
+      }
+    }
+  });
+
+  it('opens with power, barracks, refinery — an order neither rival uses', () => {
+    const pact = openingFor(FACTION_MERIDIAN, 0).map((s) => s.key);
+    expect(pact[0]).toBe('mrdSolarArray');
+    expect(pact.indexOf('mrdChapterhouse')).toBeLessThan(pact.indexOf('mrdCistern'));
+    // The other two armies are untouched by the third faction's arrival.
+    expect(openingFor(Faction.Allies, 0)[0].key).toBe('powerPlant');
+    expect(openingFor(Faction.Soviets, 0)[0].key).toBe('powerPlant');
+    const soviets = openingFor(Faction.Soviets, 0).map((s) => s.key);
+    expect(soviets.indexOf('barracks')).toBeLessThan(soviets.indexOf('refinery'));
+  });
+
+  it('fills every role a brain asks for without borrowing another army', () => {
+    const catalog = new BuildCatalog();
+    const roles = [
+      BuildRole.Builder, BuildRole.Power, BuildRole.Refinery, BuildRole.Barracks,
+      BuildRole.WarFactory, BuildRole.Radar, BuildRole.TechLab, BuildRole.Storage,
+      BuildRole.Defense, BuildRole.AntiAir, BuildRole.Harvester, BuildRole.Armor,
+      BuildRole.Infantry, BuildRole.Siege, BuildRole.Support, BuildRole.Mcv,
+      BuildRole.Skirmisher,
+    ];
+    for (const r of roles) {
+      const e = catalog.forRole(r, FACTION_MERIDIAN);
+      expect(e, `no Meridian entry for role ${r}`).toBeDefined();
+      expect(e!.faction as number, `role ${r} fell through to ${e!.key}`)
+        .toBe(FACTION_MERIDIAN as number);
+    }
+  });
+
+  it('keeps its army out of the other two armies' + " candidate lists", () => {
+    const catalog = new BuildCatalog();
+    const out: ReturnType<BuildCatalog['forFaction']> = [];
+    for (const f of [Faction.Allies, Faction.Soviets]) {
+      for (const e of catalog.forFaction(f, out as never[])) {
+        expect(e.key.startsWith('mrd'), `${e.key} leaked into faction ${f}`).toBe(false);
+      }
+    }
+    // ...and the Pact still sees every shared Neutral entry.
+    const pact = catalog.forFaction(FACTION_MERIDIAN, out as never[]).map((e) => e.key);
+    expect(pact).toContain('mrdSolarch');
+    expect(pact).not.toContain('grizzly');
+    expect(pact).not.toContain('rhino');
+  });
+});
+
+describe('the Meridian Pact — art', () => {
+  it('builds every hull inside R8 and R12', () => {
+    for (const l of MERIDIAN_UNIT_MASS_LISTS) {
+      const m = meridianUnitLibrary.build(l, MERIDIAN_UNIT_PALETTE, 256, 0x4d52);
+      expect(m.stats.errors, formatStats(m.stats)).toEqual([]);
+      expect(m.stats.warnings, formatStats(m.stats)).toEqual([]);
+      // Perf: 200+ units at 60 fps means a hull is a few thousand triangles,
+      // not tens of thousands.
+      expect(m.stats.triangles, l.key).toBeLessThan(4000);
+    }
+  });
+
+  it('builds every structure inside its bands', () => {
+    const palettes = {
+      structure: MERIDIAN_STRUCTURE_PALETTE,
+      pad: MERIDIAN_PAD_PALETTE,
+      panelDensity: 2.4,
+      seed: 0x4d2b,
+      padSeed: 0x4d9d,
+    };
+    for (const l of MERIDIAN_STRUCTURE_MASS_LISTS) {
+      const m = meridianBuildingLibrary.build(l, palettes, 256);
+      expect(m.stats.errors, l.key).toEqual([]);
+      expect(m.stats.warnings, l.key).toEqual([]);
+      expect(m.stats.triangles, l.key).toBeLessThan(4000);
+    }
+  });
+
+  it('has a model for every content key and a content key for every model', () => {
+    for (const [contentKey, modelKey] of Object.entries(MERIDIAN_UNIT_MODELS)) {
+      expect(DEF_TABLES.unitByKey.has(contentKey), contentKey).toBe(true);
+      expect(MERIDIAN_UNIT_MASS_LISTS.some((l) => l.key === modelKey), modelKey).toBe(true);
+    }
+    for (const [contentKey, modelKey] of Object.entries(MERIDIAN_STRUCTURE_MODELS)) {
+      expect(DEF_TABLES.buildingByKey.has(contentKey), contentKey).toBe(true);
+      expect(MERIDIAN_STRUCTURE_MASS_LISTS.some((l) => l.key === modelKey), modelKey).toBe(true);
+    }
+    // Nothing in either roster is built but never drawn.
+    expect(Object.keys(MERIDIAN_UNIT_MODELS).length).toBe(MERIDIAN_UNIT_MASS_LISTS.length);
+    expect(Object.keys(MERIDIAN_STRUCTURE_MODELS).length).toBe(MERIDIAN_STRUCTURE_MASS_LISTS.length);
+    expect(mrdUnits.length).toBe(MERIDIAN_UNIT_MASS_LISTS.length);
+    expect(mrdBuildings.length).toBe(MERIDIAN_STRUCTURE_MASS_LISTS.length);
+  });
+
+  it('shares one atlas across the whole army', () => {
+    // The draw-call argument: 11 hulls cost ONE material, 12 structures cost
+    // two (architecture + ground). Anything else is a per-unit atlas.
+    expect(meridianUnitLibrary.materialCount()).toBe(1);
+    expect(meridianBuildingLibrary.materialCount()).toBe(2);
+  });
+
+  it('paints nothing the texture overhaul forbids', () => {
+    // Clean painted surfaces: large flat areas, crisp panel lines, zero
+    // speckle. `speckleRatio` is a per-pixel local-extremum count — white noise
+    // scores ~0.44 and a drawn line scores 0.
+    for (const m of meridianUnitLibrary.all()) {
+      expect(m.atlas.metrics.speckleRatio, m.key).toBeLessThan(0.010);
+    }
+    expect(MERIDIAN_UNIT_PALETTE.rivets).toBe(false);
+    expect(MERIDIAN_STRUCTURE_PALETTE.rivets).toBe(false);
+  });
+
+  it('keeps every defence and wall free of an insignia decal', () => {
+    for (const l of MERIDIAN_STRUCTURE_MASS_LISTS) {
+      if ((l.cls ?? 'structure') === 'structure') continue;
+      const m = meridianBuildingLibrary.get(l.key);
+      expect(m?.stats.insigniaCount, l.key).toBe(0);
+    }
+  });
+});
+
+describe('the Meridian Pact — the tab layout the sidebar will read', () => {
+  it('puts every buildable in a tab the player can reach', () => {
+    for (const u of mrdUnits) {
+      expect([BuildTab.Infantry, BuildTab.Vehicles], u.key).toContain(u.tab);
+    }
+    for (const b of mrdBuildings) {
+      expect([BuildTab.Structures, BuildTab.Defense], b.key).toContain(b.tab);
+    }
+    // Sort order is unique within a (faction, tab) pair, so the sidebar order
+    // is deterministic rather than dependent on array order.
+    for (const tab of [BuildTab.Structures, BuildTab.Defense]) {
+      const orders = mrdBuildings.filter((b) => b.tab === tab).map((b) => b.sortOrder);
+      expect(new Set(orders).size, `tab ${tab}`).toBe(orders.length);
+    }
+    for (const tab of [BuildTab.Infantry, BuildTab.Vehicles]) {
+      const orders = mrdUnits.filter((u) => u.tab === tab).map((u) => u.sortOrder);
+      expect(new Set(orders).size, `tab ${tab}`).toBe(orders.length);
+    }
+  });
+});

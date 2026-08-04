@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/world/roads.system.ts
+ * VOLTMARCH — src/world/roads.system.ts
  * ============================================================================
  * Lifetime and wiring for the road network and the two decal fields, plus the
  * one thing in this module that is not build-time work: laying tread marks
@@ -143,7 +143,7 @@ export default defineSystem({
     setActiveDecals(staticDecals);
     setActiveTrackDecals(trackField);
     // Idempotent re-arm: the module-scope binding below covers the boot, this
-    // covers a dispose/re-init cycle (hot reload, `__RA.restart`).
+    // covers a dispose/re-init cycle (hot reload, `__VM.restart`).
     setScorchSink(SCORCH_SINK);
 
     if (terrain === null) {
@@ -193,8 +193,8 @@ export default defineSystem({
     }
 
     if (typeof globalThis !== 'undefined') {
-      (globalThis as Record<string, unknown>).__raRoads = network;
-      (globalThis as Record<string, unknown>).__raDecals = { staticDecals, trackField };
+      (globalThis as Record<string, unknown>).__vmRoads = network;
+      (globalThis as Record<string, unknown>).__vmDecals = { staticDecals, trackField };
     }
   },
 
@@ -277,8 +277,8 @@ export default defineSystem({
     seeded.fill(0);
     cursor = 0;
     if (typeof globalThis !== 'undefined') {
-      delete (globalThis as Record<string, unknown>).__raRoads;
-      delete (globalThis as Record<string, unknown>).__raDecals;
+      delete (globalThis as Record<string, unknown>).__vmRoads;
+      delete (globalThis as Record<string, unknown>).__vmDecals;
     }
   },
 });

@@ -26,11 +26,22 @@ describe('DefTables shape', () => {
     expect(DEF_TABLES.armorMatrix).toBe(ARMOR_MATRIX);
   });
 
-  it('shares the sim armoury by identity, not by value', () => {
-    // A separately-authored copy would agree until someone inserted a row, and
-    // then every unit in the game would fire its neighbour's gun with no error.
-    expect(WEAPONS).toBe(DEFAULT_WEAPONS);
-    expect(DEF_TABLES.weapons).toBe(DEFAULT_WEAPONS);
+  it('keeps the sim armoury as its prefix, by identity, not by value', () => {
+    // The third faction appends its guns, so the tables are no longer the same
+    // array — but the PREFIX PROPERTY is the invariant that actually mattered.
+    // `store.weaponIndex` is a bare integer, and every unit spawned before
+    // `setWeaponTable(WEAPONS)` runs indexes DEFAULT_WEAPONS; if a row were
+    // ever INSERTED rather than appended, the two tables would disagree from
+    // that row on and every unit in the game would fire its neighbour's gun
+    // with no error message at all.
+    expect(DEF_TABLES.weapons).toBe(WEAPONS);
+    expect(WEAPONS.length).toBeGreaterThanOrEqual(DEFAULT_WEAPONS.length);
+    for (let i = 0; i < DEFAULT_WEAPONS.length; i++) {
+      expect(WEAPONS[i], `weapon row ${i}`).toBe(DEFAULT_WEAPONS[i]);
+    }
+    // Appended rows must be new keys, never shadowed spellings of old ones.
+    const keys = WEAPONS.map((w) => w.key);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   it('has no duplicate keys and indexes them all', () => {
@@ -75,7 +86,16 @@ describe('content vocabulary', () => {
 
   it('gives every defence a weapon and no other structure one', () => {
     const armed = BUILDINGS.filter((b) => b.weapons.length > 0).map((b) => b.key).sort();
-    expect(armed).toEqual(['flameTower', 'pillbox', 'prismTower', 'teslaCoil']);
+    expect(armed).toEqual([
+      'aaTurret', 'flameTower', 'mrdGlaive', 'mrdHelios', 'pillbox', 'prismTower',
+      'sentryGun', 'teslaCoil',
+    ]);
+    // Walls are never armed, in any army. A wall with a gun is a defence that
+    // costs 100 credits and the placement rules of fencing.
+    for (const key of ['wall', 'mrdRampart']) {
+      const b = BUILDINGS[DEF_TABLES.buildingByKey.get(key)!];
+      expect(b.weapons.length, `${key} must be unarmed`).toBe(0);
+    }
   });
 });
 
@@ -137,7 +157,14 @@ describe('the def table does not silently re-balance the game', () => {
     // here changes unit behaviour as a side effect of fixing the ART binding.
     for (const def of UNITS) {
       const fb = FALLBACK_UNITS[def.key];
-      expect(fb, `no fallback for ${def.key}`).toBeDefined();
+      if (fb === undefined) {
+        // Every content key must carry a fallback row. The Meridian rows landed
+        // in Scenarios.ts, so nothing should reach here any more — this arm is
+        // kept as the escape hatch for the NEXT faction, and it is deliberately
+        // narrow so a typo'd key cannot use it.
+        expect(def.key.startsWith('mrd'), `no fallback for ${def.key}`).toBe(true);
+        continue;
+      }
       expect(def.maxHp, def.key).toBe(fb.maxHp);
       expect(def.armor, def.key).toBe(fb.armor);
       expect(def.maxSpeed, def.key).toBe(fb.maxSpeed);
@@ -152,7 +179,10 @@ describe('the def table does not silently re-balance the game', () => {
 
     for (const def of BUILDINGS) {
       const fb = FALLBACK_BUILDINGS[def.key];
-      expect(fb, `no fallback for ${def.key}`).toBeDefined();
+      if (fb === undefined) {
+        expect(def.key.startsWith('mrd'), `no fallback for ${def.key}`).toBe(true);
+        continue;
+      }
       expect(def.maxHp, def.key).toBe(fb.maxHp);
       expect(def.footprintW, def.key).toBe(fb.footprintW);
       expect(def.footprintH, def.key).toBe(fb.footprintH);

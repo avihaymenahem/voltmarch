@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/pathing.system.ts
+ * VOLTMARCH — src/sim/pathing.system.ts
  * ============================================================================
  * The registration shim for pathfinding, steering and movement.
  *
@@ -25,7 +25,7 @@
  *  2. `setActiveNav` — the module-level accessor for the two callers that need
  *     the MoveClass-aware surface `INav` cannot express.
  *  3. Debug counters: `nav.fields`, `nav.ready`, `nav.cells`, `move.moving`.
- *  4. `__RA.hooks` is untouched; the probe lives on `globalThis.__raNav` so a
+ *  4. `__VM.hooks` is untouched; the probe lives on `globalThis.__vmNav` so a
  *     screenshot harness or a console session can inspect a field without a
  *     build flag.
  *
@@ -148,7 +148,7 @@ export default defineSystem({
 
     // `MoveClass` is a const enum and has no runtime object, so the console
     // handle publishes the NAMES and takes plain integers.
-    (globalThis as Record<string, unknown>).__raNav = {
+    (globalThis as Record<string, unknown>).__vmNav = {
       nav,
       agents,
       classNames: MOVE_CLASS_NAMES,
@@ -198,6 +198,6 @@ export default defineSystem({
     assigner = null;
     steering = null;
     movement = null;
-    delete (globalThis as Record<string, unknown>).__raNav;
+    delete (globalThis as Record<string, unknown>).__vmNav;
   },
 });

@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/game/scenarios/SovietBase.ts
+ * VOLTMARCH — src/game/scenarios/SovietBase.ts
  * ============================================================================
  * THE SOVIET BASE LAYOUT.
  *
@@ -44,6 +44,17 @@ const SOVIET_CORE: readonly StructurePlacement[] = [
 
   { key: 'oreSilo', dx: -29, dz: 3 },
   { key: 'oreSilo', dx: -29, dz: 9 },
+
+  /*
+   * THE REACTOR COLUMN. The Soviet layout is the expensive one — three Tesla
+   * Coils alone are −225 — and the whole base drew −495 against the three
+   * back-row reactors' +300. A Soviet skirmish started at −195: every Tesla
+   * Coil dark, radar offline, on the first frame. Three more reactors put it
+   * at +105. Symmetric with the silo column on −X, inside the same budget.
+   */
+  { key: 'powerPlant', dx: 29, dz: 3, secondary: true, yawDeg: -5 },
+  { key: 'powerPlant', dx: 29, dz: 9, secondary: true, yawDeg: 4 },
+  { key: 'powerPlant', dx: 29, dz: 15, secondary: true, yawDeg: -3 },
 
   // Back row — 9 m centres instead of the Allied 11, and three reactors
   // because the tesla line is expensive. The extra stacks ARE the skyline.

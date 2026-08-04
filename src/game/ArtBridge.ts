@@ -1,5 +1,5 @@
 /**
- * RED ALERT — ArtDirection -> RENDER_CONFIG bridge.
+ * VOLTMARCH — ArtDirection -> RENDER_CONFIG bridge.
  *
  * WHY THIS FILE EXISTS
  * --------------------
@@ -100,9 +100,22 @@ function toneMode(mode: string): ToneMappingMode {
  * Height fog (`fogDensity`, per-metre) does not exist in three's linear
  * `Fog(near, far)`. Convert to the distance at which the exponential term has
  * decayed to ~5% (e^-3), which is where the eye reads "fully fogged".
+ *
+ * `density <= 0` means "no fog", and it is expressed as a fog end far beyond
+ * the camera far plane rather than as a null, because `RenderConfig.fog` has no
+ * enabled flag and the render layer must never import core. `scene.ts` reads
+ * exactly this: a fog whose end sits past `camera.far` cannot tint anything, so
+ * it drops `scene.fog` to null entirely and every material in the game loses
+ * its fog chunk. That pair is what implements the bible's §1 standing ruling
+ * banning aerial perspective on daylight maps (scorecard #12).
+ *
+ * Keep the sentinel comfortably larger than any plausible `camera.far` (900 m
+ * today) or a mood that intends no fog will quietly get some.
  */
+const FOG_DISABLED_END = 4000;
+
 function fogEndFromDensity(start: number, density: number): number {
-  if (!(density > 0)) return 4000;
+  if (!(density > 0)) return FOG_DISABLED_END;
   return start + 3 / density;
 }
 

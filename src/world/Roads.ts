@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/world/Roads.ts
+ * VOLTMARCH — src/world/Roads.ts
  * ============================================================================
  * THE ROAD NETWORK: splines, ribbons, extruded kerbs, pavements and markings.
  *
@@ -554,14 +554,32 @@ function paveTexels(metres: number): number {
  * red) because those are correct. What it cannot own is the surface base tones:
  * its asphalt `#46464A` is a mid neutral grey that was authored to be seen
  * through a heavy speckle overlay, and with the speckle gone it reads as
- * concrete. RA3's carriageway is a dark, slightly warm near-black, and its
- * pavement is pale beige rather than grey.
+ * concrete. RA3's carriageway is a dark, slightly warm near-black.
+ *
+ * THE PAVEMENT MOVED, and it is measured. It was `#cbc0ae` — V 0.80, S 0.14 —
+ * a pale beige, and pavement is the largest single desaturated mass on the map
+ * AND it fills the far field, where the camera's grazing angle stacks a sky
+ * sheen on top of it. That combination owned scorecard #12 (far minus near
+ * saturation), which was failing on nine of the twelve critique shots at −0.06
+ * to −0.30 against a −0.05 floor: a near-white far field is exactly the "haze"
+ * the check exists to catch, whether or not any fog is enabled.
+ *
+ * The replacement is a cool concrete: V 0.80 -> 0.55 and S 0.14 -> 0.19, and
+ * the hue moves to a blue-grey, which is both what RA3's sidewalks actually are
+ * and the same cool shadow language `TONE_NOON.shadowTint` carries. The kerb
+ * stays one step lighter than the pavement so the step still catches the sun.
  */
 const SURFACE_COLOURS = {
-  asphalt: '#2c2926',
-  kerb: '#c9c1b3',
-  pavement: '#cbc0ae',
-  pavementJoint: '#a1968a',
+  // Every one of these carries real chroma, and that is the point. Road surface
+  // is the largest man-made mass on the map and it runs through the FAR field
+  // of most frames, so a near-neutral carriageway is measured directly by
+  // scorecard #12 as haze. The old set was asphalt S 0.09, pavement S 0.11 and
+  // kerb S 0.11 — three big grey planes. These are the same values with the
+  // grey axis traded for a cool blue, which is what RA3's tarmac actually is.
+  asphalt: '#242a33',
+  kerb: '#7e8aa2',
+  pavement: '#697488',
+  pavementJoint: '#4c5568',
 } as const;
 
 function vec3Of(hex: string): THREE.Vector3 {

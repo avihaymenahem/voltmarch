@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/art/BuildingFactory.ts
+ * VOLTMARCH — src/art/BuildingFactory.ts
  * ============================================================================
  * FACTION ARCHITECTURE. Takes a `StructureMassList`, chamfers every convex
  * edge, UV-maps every face into a greeble atlas, bakes the ambient/cavity
@@ -93,7 +93,10 @@ import {
   type SlotName,
   type UvRect,
 } from './Greeble';
-import { latheProfile, massExtents, planPolygon, MassRole, type MassDef } from './MassList';
+import {
+  emitMassShape, expandMasses, latheProfile, massExtents, planPolygon, shapeSpecFor,
+  MassRole, type MassDef,
+} from './MassList';
 import { createUnitMaterial, specForPalette, viewWeight } from './UnitFactory';
 
 declare const __DEV__: boolean;
@@ -1143,7 +1146,7 @@ export function buildStructure(
   });
 
   let phase = 0;
-  for (const m of list.masses) {
+  for (const m of expandMasses(list.masses)) {
     const target = m.target ?? 'body';
     const acc = target === 'pad' ? padAcc : target === 'turret' ? turretAcc : bodyAcc;
     const ctx = ctxFor(acc, target === 'pad' ? padAtlas : atlas);
@@ -1176,7 +1179,16 @@ export function buildStructure(
         case 'prism':
           buildPrism(ctx, m, chamfer, m.slot, capSlot);
           break;
-        default:
+        default: {
+          // The eleven Shapes.ts primitives. `shapeSpecFor` returns null only
+          // for the legacy 'box', which falls through to `buildBox` unchanged.
+          const spec = shapeSpecFor(m, chamfer);
+          if (spec !== null) {
+            emitMassShape(
+              acc, target === 'pad' ? padAtlas : atlas, m, spec, structurePaintSlot, 'paintMed',
+            );
+            break;
+          }
           buildBox(ctx, m, chamfer, (face, area) => {
             const override = m.faceSlots?.[face];
             if (override !== undefined) return override;
@@ -1186,6 +1198,7 @@ export function buildStructure(
             return m.slot;
           });
           break;
+        }
       }
     }
   }

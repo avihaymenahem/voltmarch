@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/AIStrategy.ts
+ * VOLTMARCH — src/sim/AIStrategy.ts
  * ============================================================================
  * THE AI's CONTENT MODEL AND ITS DOCTRINE. No world, no entities, no commands.
  *
@@ -158,6 +158,18 @@ export interface CatalogEntry {
 /** Shorthand for an all-zero answer vector (structures, economy). */
 const NO_ANSWER: readonly number[] = [0, 0, 0, 0, 0];
 
+/**
+ * THE MERIDIAN PACT's faction id.
+ *
+ * Declared here rather than imported from `src/data/Defs.ts` — which exports
+ * the identical constant — because the whole point of this file is that
+ * `src/sim/**` never imports `src/data/**`. Content reaches the brain through
+ * `bind()` / `bindOracle()`, and an import edge for one integer would be the
+ * first crack in that. Both constants disappear the moment
+ * `Faction.Meridian = 3` lands in `core/types.ts`.
+ */
+export const FACTION_MERIDIAN = 3 as Faction;
+
 function structure(
   key: string,
   role: BuildRole,
@@ -263,6 +275,67 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     Faction.Soviets, [0.8, 1.5, 1.5, 1.2, 0], 5),
   fighter('apocalypse', BuildRole.Siege, EntityKind.Vehicle, 1750, ['warFactory', 'battleLab'],
     Faction.Soviets, [1.0, 1.6, 1.9, 1.5, 1.2], 2),
+
+  /* -- THE MERIDIAN PACT --------------------------------------------------
+   * The Pact's tech tree is the same three tiers with different names, so the
+   * catalog shape is identical and only the answer vectors carry doctrine.
+   *
+   * Every Pact key is `FACTION_MERIDIAN`, never `Faction.Neutral`, including
+   * the ones that look shared: a Neutral entry appears in BOTH other armies'
+   * candidate lists (`forFaction` treats Neutral as universal), so a Neutral
+   * 'mrdCollector' would have the Soviets trying to order Meridian harvesters.
+   *
+   * `BuildCatalog.forRole` returns the first entry with a role that the faction
+   * can field, preferring an exact faction match over a Neutral fallback — so
+   * a Pact brain asking for `BuildRole.Power` gets the Solar Array rather than
+   * the shared Power Plant purely because this entry exists.
+   * ---------------------------------------------------------------------- */
+  structure('mrdConclave',   BuildRole.Builder,    3000, -20, B.conYard,    [],
+    FACTION_MERIDIAN),
+  structure('mrdSolarArray', BuildRole.Power,       350, 160, B.powerPlant, ['mrdConclave'],
+    FACTION_MERIDIAN),
+  structure('mrdCistern',    BuildRole.Refinery,   2000, -30, B.refinery,   ['mrdSolarArray'],
+    FACTION_MERIDIAN),
+  structure('mrdChapterhouse', BuildRole.Barracks,  500, -20, B.barracks,   ['mrdSolarArray'],
+    FACTION_MERIDIAN),
+  structure('mrdForgeyard',  BuildRole.WarFactory, 2000, -40, B.warFactory, ['mrdCistern'],
+    FACTION_MERIDIAN),
+  structure('mrdOculus',     BuildRole.Radar,      1000, -40, B.radar,      ['mrdCistern'],
+    FACTION_MERIDIAN),
+  structure('mrdReliquary',  BuildRole.TechLab,    2000, -60, B.battleLab,  ['mrdOculus'],
+    FACTION_MERIDIAN),
+  structure('mrdVault',      BuildRole.Storage,     150, -10, B.oreSilo,    ['mrdCistern'],
+    FACTION_MERIDIAN),
+
+  // The Glaive Post answers infantry and nothing else, which is exactly the
+  // threat the rest of the Pact army is worst against — so the build layer
+  // will reach for it precisely when it should.
+  structure('mrdGlaive', BuildRole.Defense, 450, -10, B.pillbox, ['mrdChapterhouse'],
+    FACTION_MERIDIAN, BuildTab.Defense, [1.7, 0.7, 0.3, 0, 0]),
+  structure('mrdHelios', BuildRole.AntiAir, 1500, -55, B.prismTower, ['mrdReliquary'],
+    FACTION_MERIDIAN, BuildTab.Defense, [1.1, 1.4, 1.3, 0, 1.4]),
+
+  fighter('mrdCollector', BuildRole.Harvester, EntityKind.Vehicle, 1000, ['mrdCistern'],
+    FACTION_MERIDIAN, NO_ANSWER, 0),
+  fighter('mrdCarryall', BuildRole.Mcv, EntityKind.Vehicle, 3000, ['mrdReliquary'],
+    FACTION_MERIDIAN, NO_ANSWER, 0),
+  fighter('mrdArtificer', BuildRole.Support, EntityKind.Infantry, 500, ['mrdChapterhouse'],
+    FACTION_MERIDIAN, NO_ANSWER, 0),
+
+  // Wayfarers are a screen, not a line: cheap, quick, and the only thing in the
+  // army that answers massed infantry at all until a Glaive Post is up.
+  fighter('mrdWayfarer', BuildRole.Infantry, EntityKind.Infantry, 175, ['mrdChapterhouse'],
+    FACTION_MERIDIAN, [1.25, 0.6, 0.2, 0.35, 0.8], 3),
+  fighter('mrdLancer', BuildRole.Skirmisher, EntityKind.Infantry, 450, ['mrdChapterhouse', 'mrdOculus'],
+    FACTION_MERIDIAN, [0.5, 1.3, 1.4, 0.9, 1.6], 2),
+  fighter('mrdSkiff', BuildRole.Skirmisher, EntityKind.Vehicle, 550, ['mrdForgeyard'],
+    FACTION_MERIDIAN, [1.2, 1.4, 0.5, 0.4, 1.2], 3),
+  fighter('mrdSolarch', BuildRole.Armor, EntityKind.Vehicle, 800, ['mrdForgeyard'],
+    FACTION_MERIDIAN, [0.7, 1.4, 1.3, 1.0, 0], 5),
+  fighter('mrdZenith', BuildRole.Siege, EntityKind.Vehicle, 1500, ['mrdForgeyard', 'mrdReliquary'],
+    FACTION_MERIDIAN, [1.3, 1.1, 1.4, 1.9, 0], 2),
+  fighter('mrdKestrel', BuildRole.Siege, EntityKind.Vehicle, 1100, ['mrdForgeyard', 'mrdOculus'],
+    FACTION_MERIDIAN, [1.0, 1.5, 1.2, 1.3, 0], 1),
 ];
 
 /**
@@ -607,30 +680,82 @@ const OPENING_SOVIETS: readonly OpeningStep[] = [
  * that shared no build order at all would read as two different games, and the
  * personalities are supposed to be a tilt, not a fork.
  */
+/**
+ * MERIDIAN. Power, then BARRACKS, then the first refinery — an order neither
+ * rival can copy, and the whole faction identity expressed as a build script.
+ *
+ * A Solar Array is 350 credits for 160 power against a Power Plant's 300 for
+ * 100. One array carries the Conclave (-20), a Chapterhouse (-20) AND a Cistern
+ * (-30) with 90 to spare, where the other two armies are 70 in the hole and
+ * must buy a second plant before the war factory. That surplus is spent here,
+ * on getting a screen of Wayfarers out before the first refinery has paid for
+ * itself — because the Pact's army is fragile and the one thing it cannot
+ * survive is an early rush arriving before anything is on the field.
+ *
+ * The second array is deliberately BEFORE the Oculus rather than after: both
+ * Pact defences and the Zenith Emitter carry `needsPower` weapons, so a brownout
+ * is not an inconvenience for this faction, it is a disarm.
+ */
+const OPENING_MERIDIAN: readonly OpeningStep[] = [
+  step('mrdSolarArray'),
+  step('mrdChapterhouse'),
+  step('mrdCistern'),
+  step('mrdForgeyard'),
+  step('mrdSolarArray'),
+  step('mrdCistern'),
+  step('mrdOculus'),
+];
+
+/** The three per-faction key sets the personality edits below reach for. */
+interface OpeningKeys {
+  barracks: string;
+  refinery: string;
+  radar: string;
+  techLab: string;
+  warFactory: string;
+  defence: string;
+}
+
+function openingKeys(faction: Faction): OpeningKeys {
+  if ((faction as number) === (FACTION_MERIDIAN as number)) {
+    return {
+      barracks: 'mrdChapterhouse', refinery: 'mrdCistern', radar: 'mrdOculus',
+      techLab: 'mrdReliquary', warFactory: 'mrdForgeyard', defence: 'mrdGlaive',
+    };
+  }
+  return {
+    barracks: 'barracks', refinery: 'refinery', radar: 'radar',
+    techLab: 'battleLab', warFactory: 'warFactory',
+    defence: faction === Faction.Soviets ? 'flameTower' : 'pillbox',
+  };
+}
+
 export function openingFor(faction: Faction, personality: number): readonly OpeningStep[] {
-  const base = faction === Faction.Soviets ? OPENING_SOVIETS : OPENING_ALLIES;
+  const base = (faction as number) === (FACTION_MERIDIAN as number)
+    ? OPENING_MERIDIAN
+    : faction === Faction.Soviets ? OPENING_SOVIETS : OPENING_ALLIES;
   const out = base.slice();
+  const k = openingKeys(faction);
   const name = AI_PERSONALITY[personality]?.name ?? 'Turtle';
 
   if (name === 'Rusher') {
     // Barracks first, and drop the greedy second refinery entirely.
-    const barracks = out.findIndex((s) => s.key === 'barracks');
+    const barracks = out.findIndex((s) => s.key === k.barracks);
     if (barracks > 0) {
       const [b] = out.splice(barracks, 1);
       out.unshift(b);
     }
-    const lastRefinery = out.map((s) => s.key).lastIndexOf('refinery');
+    const lastRefinery = out.map((s) => s.key).lastIndexOf(k.refinery);
     if (lastRefinery > 0) out.splice(lastRefinery, 1);
   } else if (name === 'Turtle') {
     // A defensive structure as soon as the barracks can support one.
-    const factory = out.findIndex((s) => s.key === 'warFactory');
-    const defence = faction === Faction.Soviets ? 'flameTower' : 'pillbox';
-    out.splice(factory < 0 ? out.length : factory, 0, step(defence, true));
+    const factory = out.findIndex((s) => s.key === k.warFactory);
+    out.splice(factory < 0 ? out.length : factory, 0, step(k.defence, true));
   } else if (name === 'Boomer') {
     // A third refinery before radar, and the tech lab in the script.
-    const radar = out.findIndex((s) => s.key === 'radar');
-    out.splice(radar < 0 ? out.length : radar, 0, step('refinery', true));
-    out.push(step('battleLab', true));
+    const radar = out.findIndex((s) => s.key === k.radar);
+    out.splice(radar < 0 ? out.length : radar, 0, step(k.refinery, true));
+    out.push(step(k.techLab, true));
   }
   return out;
 }

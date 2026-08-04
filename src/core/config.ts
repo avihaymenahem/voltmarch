@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/core/config.ts
+ * VOLTMARCH — src/core/config.ts
  * ============================================================================
  * THE ART DIRECTION BIBLE + EVERY TUNABLE NUMBER IN THE GAME.
  *
@@ -179,16 +179,33 @@ const SUN_NOON = {
   elevationDeg: 38,
   /** ~5200 K warm daylight. The single biggest driver of "what time is it". */
   color: '#FFE7C4',
-  /** Direct sun strength in the HDR buffer, pre-tonemap. */
-  intensity: 3.1,
+  /**
+   * Direct sun strength in the HDR buffer, pre-tonemap.
+   *
+   * Nudged up from 3.1, and only because the ambient fill below was cut by
+   * roughly half at the same time: a lit surface ends up close to where it was,
+   * a SHADOWED surface ends up much darker, and that widening is the whole of
+   * scorecard #6's contrast complaint. Pushing this on its own is bible risk R5
+   * and was measured doing exactly what R5 predicts — at 4.2 with the same fill
+   * cut, 18% of `01-establishing-base` clipped to paper white and the frame
+   * median luminance ran 0.515 against RA3's 0.342.
+   */
+  intensity: 3.4,
   /** Shadows are TINTED, not black — black shadows read as holes. */
   shadowColor: '#2A3550',
   /** Poisson PCF radius in shadow texels. Higher = softer, mushier contact. */
   shadowSoftness: 2.2,
   shadowBias: -0.0005,
   shadowNormalBias: 0.02,
-  /** How dark shadows go. 1.0 = fully black. */
-  shadowIntensity: 0.92,
+  /**
+   * How dark shadows go. 1.0 = fully black.
+   *
+   * Eased from 0.92. Together with the ambient fill this is what sets the
+   * bible's §13 #7 lit/shadow ratio; at 0.92 the shadow term was removing so
+   * much of the key that the ambient could not put the ratio back inside the
+   * 0.20-0.26 band without washing the lit side out too.
+   */
+  shadowIntensity: 0.80,
   /** Near cascade covers 90 m; far covers 320 m. Texel-snapped so shadows
    *  do not crawl when the camera pans. */
   cascadeNear: 90,
@@ -197,31 +214,110 @@ const SUN_NOON = {
 };
 
 const ATMOSPHERE_NOON = {
-  /** Sky-coloured ambient from above. Fills the shadow side of everything. */
-  hemiSky: '#8FB6E8',
-  hemiSkyIntensity: 0.55,
+  /**
+   * Sky-coloured ambient from above. Fills the shadow side of everything.
+   *
+   * THIS VALUE WAS THE BLUE-GREY "MOULD" CAST, and the diagnosis is worth
+   * keeping because two agents got it wrong before it was proved:
+   *
+   *   - It is NOT the GTAO denoiser. GTAO on vs off is pixel-identical.
+   *   - It is NOT the post chain. `setPostEnabled(false)` keeps the blotches.
+   *   - Setting `normalMap = null` scene-wide removes them completely.
+   *
+   * So the blotches are normal-map RESPONSE, and the amplifier is right here.
+   * The old '#8FB6E8' is linear r0.27 : g0.46 : b0.80 — a 3x blue-over-red
+   * fill. A HemisphereLight weights by `normal.y * 0.5 + 0.5`, so every texel
+   * a normal map tilts away from straight up got a dose of saturated blue that
+   * scaled with the tilt. On a surface whose height field is per-pixel noise
+   * that paints a blue mould over the whole frame.
+   *
+   * The replacement is a warm near-neutral (linear r0.66 : g0.63 : b0.56).
+   * Ambient fill now changes only the VALUE of a tilted texel, never its hue.
+   *
+   * The bible's blue shadow tint (§13 #7, lit/shadow per-channel ratio
+   * 0.20-0.26 / 0.29-0.35 / 0.46-0.56) is NOT lost: it comes from the shadow
+   * term instead — `TONE_NOON.shadowTint` is a luma-normalised '#16294A' and
+   * applies to the low end of the luminance range, i.e. to pixels that are
+   * actually in shadow, rather than to every tilted texel in the frame.
+   */
+  hemiSky: '#D6CFC0',
+  /**
+   * Held near the original 0.55, and that is the point worth recording: the
+   * blue-grey mould cast was the fill's COLOUR, not its strength.
+   *
+   * Cutting this to 0.26 alongside the recolour did make the frame contrastier
+   * and it also broke the bible outright. Measured on `03-terrain-closeup`, the
+   * shadowed grass came back at a 0.030 / 0.069 / 0.162 per-channel ratio of
+   * the lit grass, against §13 #7's required 0.20-0.26 / 0.29-0.35 /
+   * 0.46-0.56. Shadows that dark are not "contrasty", they are holes — the
+   * exact failure the bible calls out for `shadowColor` in the first place, and
+   * the reason RA3's own shadows stay fully readable.
+   *
+   * Contrast belongs to the grade (GRADE_PIVOT / GRADE_WHITE in post.ts), which
+   * can widen the histogram without emptying the shadow end of it.
+   */
+  hemiSkyIntensity: 0.60,
   /** Warm bounce from the ground. Stops undersides going dead grey. */
-  hemiGround: '#6A5A48',
-  hemiGroundIntensity: 0.35,
-  /** Procedural sky dome ramp. */
-  skyZenith: '#3E6FA8',
-  skyHorizon: '#C6D4DE',
+  hemiGround: '#7A6248',
+  hemiGroundIntensity: 0.34,
+  /**
+   * Procedural sky dome ramp. Deepened and saturated: the old pair was a
+   * near-white '#C6D4DE' horizon (S 0.13) under a muddy zenith, which is both
+   * the washed-out sky RA3 never has AND — via the env probe baked from this
+   * very dome — a grey IBL smeared over every reflective surface in the game.
+   */
+  skyZenith: '#1F5FB4',
+  skyHorizon: '#93BEE4',
   skyGround: '#6E6252',
   /** Angular size of the sun disk in degrees. */
   sunDiskDeg: 0.6,
   /** Width of the bright haze band above the horizon, in degrees. */
   hazeWidthDeg: 8,
-  /** Height fog — the depth cue that stops the map reading as a flat table. */
+  /** Height fog colour. Only reachable when `fogDensity > 0` (see below). */
   fogColor: '#B8C6D6',
-  fogDensity: 0.0075,
+  /**
+   * ZERO ON A DAYLIGHT MAP. Bible §1 standing rulings ban fog outright at noon,
+   * and scorecard #12 (far-field saturation >= near-field minus 0.05) is the
+   * automated form of that ban. Measured: with fog at 0.0075 the far field ran
+   * 0.08-0.35 LESS saturated than the near field on 10 of 12 shots, because a
+   * '#B8C6D6' haze lerped toward a near-white horizon is a desaturation ramp
+   * painted over the back half of the map.
+   *
+   * `ArtBridge.fogEndFromDensity()` maps 0 to a 4000 m fog end, i.e. no
+   * measurable extinction inside the 900 m far plane. Dusk and dust keep their
+   * fog: those are not daylight maps and #12 is judged on the noon look.
+   */
+  fogDensity: 0.0,
   /** Fog thins with altitude at this rate per metre. */
   fogHeightFalloff: 0.045,
   /** Metres before fog starts accumulating. */
-  fogStart: 60,
-  /** Blend of distant geometry toward sky colour. */
-  aerialPerspective: 0.35,
-  /** Image-based lighting strength, regenerated from the sky on art change. */
-  envIntensity: 0.85,
+  fogStart: 140,
+  /**
+   * Blend of distant geometry toward sky colour. Zero for the same reason as
+   * `fogDensity`: aerial perspective IS the desaturation #12 measures.
+   */
+  aerialPerspective: 0.0,
+  /**
+   * Image-based lighting strength, regenerated from the sky on art change.
+   * Trimmed with the hemisphere — the env probe is the other omnidirectional
+   * fill — but NOT below ~0.6, because the env probe is also where the
+   * specular highlight on every hull comes from and scorecard #6 needs those.
+   *
+   * The second reason it came down: scorecard #12. With the fog gone, the
+   * remaining far-minus-near saturation deficit is a GRAZING ANGLE effect, not
+   * a haze. The camera pitch is fixed at 52 degrees but the frustum is 36
+   * degrees tall, so the top of the frame views the ground at 34 degrees off
+   * horizontal and the bottom at 70 — and the environment specular Fresnel at
+   * 34 degrees is several times what it is at 70. Distant ground therefore gets
+   * a sheet of sky reflection laid over it: measurably brighter (q0 luma 0.571
+   * vs q3 0.447) and measurably less saturated. Every point of env intensity is
+   * a point of that sheet.
+   *
+   * It is only trimmed, not cut: the probe is also half of what lights a
+   * shadowed surface (see `hemiSkyIntensity`) and all of what puts a silhouette
+   * rim on a hull (scorecard #23).
+   */
+  envIntensity: 0.76,
 };
 
 /* ==========================================================================
@@ -233,48 +329,134 @@ const ATMOSPHERE_NOON = {
  * ========================================================================== */
 
 const TONE_NOON = {
-  /** 'agx' has the best highlight rolloff for bright emissives on dark armour. */
-  mode: 'agx',
-  /** Master exposure. The first knob to turn for "the image is muddy". */
-  exposure: 1.05,
-  contrast: 1.06,
-  saturation: 1.04,
+  /**
+   * 'aces', not 'agx'.
+   *
+   * AgX is a beautiful curve and it is the wrong curve for this game. Its
+   * entire design goal is to desaturate on the way up so that no channel ever
+   * clips — which is precisely the two things the RA3 side-by-side fails on.
+   * Measured against 14 real RA3 frames: mean HSV saturation 0.317 vs RA3's
+   * 0.527, and p99 luminance 0.61-0.89 vs RA3's 0.96, on every single shot.
+   *
+   * ACES (Narkowicz fit) keeps chroma through the mids, reaches its shoulder
+   * about 3 stops earlier, and is what the 2008-era RTS grade actually looks
+   * like. Emissives still roll off; they just roll off hot instead of pastel.
+   */
+  mode: 'aces',
+  /**
+   * Master exposure. NOT the knob for "the image is muddy" — bible risk R5 is
+   * explicitly about reaching for this one. It scales blacks, mids and
+   * highlights by the same factor, so it can only move the whole histogram;
+   * `contrast` below is what widens it.
+   */
+  exposure: 0.90,
+  /**
+   * GAMMA contrast about scene-linear 0.18 (see GRADE_PIVOT in post.ts). 1.0 is
+   * a no-op, higher steepens. Because the pivot is a gamma and not an offset,
+   * black stays black and mid-grey stays put — all of the extra range lands in
+   * the highlights, where scorecard #6 needs it.
+   */
+  contrast: 1.32,
+  /**
+   * Chroma gain. This alone can never CREATE saturation (a neutral grey has no
+   * hue to amplify) — the accent masses in §6 and §20 do that — but with ACES
+   * carrying chroma through the mids there is now something here to amplify.
+   */
+  saturation: 1.02,
   /** Shadows desaturate slightly — a filmic trick that reads as "graded". */
-  shadowSaturation: 0.88,
-  /** 3-way colour balance: cool shadows, neutral mids, warm highlights. */
-  shadowTint: '#1B2A44',
+  shadowSaturation: 0.94,
+  /**
+   * 3-way colour balance: cool shadows, neutral mids, warm highlights.
+   *
+   * `shadowTint` now carries the WHOLE of the bible's blue shadow requirement
+   * (§13 #7), because the hemisphere fill that used to smear blue over every
+   * tilted texel is gone. It is luma-normalised in GradePass, so it re-tints
+   * the dark end of the range without changing its brightness.
+   */
+  /*
+   * '#16294A' was too blue and it failed twice over. Luma-normalised it is a
+   * (0.29, 1.02, 2.85) multiplier — nearly 10x more blue than red — and the
+   * grade applies it by LUMINANCE, so it lands on everything dark, not only on
+   * things in shadow. Measured consequences:
+   *
+   *   - §13 #7 overshot in one direction and undershot in the other: the
+   *     lit/shadow ratio came back 0.167 / 0.272 / 0.531 against the required
+   *     0.20-0.26 / 0.29-0.35 / 0.46-0.56. Too blue AND too dark in red.
+   *   - Scorecard #9. A 79-degree olive leaf, darkened into the shadow band and
+   *     then multiplied by that tint, rotates past 100 degrees and lands in the
+   *     "amateur emerald" window. 4-5% of the pixels in every tree-heavy shot
+   *     were shadowed foliage that had been tinted into failing.
+   *
+   * '#203D5F' normalised to (0.32, 1.05, 2.54) — 8.1x blue over red instead of
+   * 9.9x — and it was still nowhere near enough. Measured after that change,
+   * `04-units-parade` still leaked 2.7% into the emerald window and
+   * `07-soviet-base` 3.2%, with the leaking pixels sampled at (25,53,15):
+   * source `#495018` is a 76-degree olive with R/G 0.81, and it arrived on
+   * screen with R/G 0.47 at hue 104. No albedo hue is far enough from emerald
+   * to survive a 0.32x multiplier on red — pushing the foliage source below 72
+   * degrees would turn it brown before it stopped rotating. The tint was the
+   * cause, not the palette.
+   *
+   * '#4F5667' normalises to (0.81, 1.01, 1.47): blue-over-red 1.8x. That is
+   * still an unmistakably cool shadow — the bible's blue shadow is a HUE, not
+   * an eight-fold channel imbalance — and it is what finally stops dark
+   * saturated greens rotating into the 100-120 window. It also moves §13 #7's
+   * lit/shadow ratio the way the previous note said it needed to go: the
+   * complaint there was "too dark in RED", and this returns 2.5x of it.
+   */
+  shadowTint: '#4F5667',
   midTint: '#8C8578',
-  highlightTint: '#FFEBC8',
-  /** Lift raises the black point (never crush to pure black). */
-  lift: '#0A1220',
+  highlightTint: '#FFF0D2',
+  /**
+   * Lift raises the black point. Dropped further toward zero: RA3's own p1
+   * luminance measures 0.023 and the scorecard's black-point band tops out at
+   * 0.25, so there is a great deal of room below us and none above.
+   */
+  lift: '#06090F',
   /** Gain tints the white point. */
-  gain: '#FFF4E2',
-  /** Corner darkening. Focuses the eye on the centre of the battle. */
-  vignette: 0.28,
-  vignetteSoftness: 0.55,
-  /** Film grain. Subtle — it hides banding in the fog gradient. */
-  grain: 0.018,
+  gain: '#FFF6E8',
+  /**
+   * Corner darkening. Eased from 0.28: a heavy vignette pulls the four corner
+   * boxes down and the corners are mostly far-field ground, which reads as the
+   * aerial haze scorecard #12 just banned.
+   */
+  vignette: 0.20,
+  vignetteSoftness: 0.62,
+  /** Film grain. Subtle — it hides banding in the sky gradient. */
+  grain: 0.016,
   grainSize: 1.4,
   /** Lens colour fringing at the edges. Tiny amounts read as "a real lens". */
-  chromaticAberration: 0.0012,
-  /** Post-sharpen. Recovers the crispness SMAA costs. */
-  sharpen: 0.22,
+  chromaticAberration: 0.0016,
+  /**
+   * Post-sharpen, applied in HDR before the tonemap. Raised: scorecard #34
+   * measures Sobel |grad| > 25 coverage and RA3 runs 0.66-0.79 against our
+   * 0.22-0.40. Geometry detail is other agents' work, but an unsharp mask on
+   * the detail that IS there is free contrast at the pixel level.
+   */
+  sharpen: 0.40,
   /** Edge length of the baked colour LUT (32^3 = one texture fetch). */
   lutSize: 32,
 };
 
 const BLOOM_NOON = {
   /**
-   * HDR threshold, PRE-tonemap. At 1.25 only genuine emissives bloom.
-   * Lower this and white concrete starts hazing, which is the classic
-   * "everything looks like a mobile game" failure.
+   * HDR threshold, PRE-tonemap.
+   *
+   * Eased from 1.25 to 1.05. The old value was set to protect against white
+   * concrete hazing the frame — the classic "everything looks like a mobile
+   * game" failure — but measurement showed the opposite problem: NOTHING in a
+   * noon frame ever exceeded 1.25, so the bloom pass was a no-op outside a
+   * tesla arc and scorecard #6 had no clipped pixel anywhere to find. 1.05 is
+   * still above sunlit white paint (~0.95 scene-linear at the new sun
+   * intensity) and below a specular glint, which is exactly the band we want
+   * blooming. Do not take it under 1.0.
    */
-  threshold: 1.25,
-  strength: 0.55,
+  threshold: 1.20,
+  strength: 0.42,
   radius: 0.70,
   mips: 5,
   /** Extra gain applied to pixels flagged emissive by the material. */
-  emissiveBoost: 1.6,
+  emissiveBoost: 1.35,
   /** Procedural smudge mask modulating the bloom. */
   lensDirt: 0.12,
 };
@@ -306,6 +488,28 @@ const OUTLINE_NOON = {
  * The mechanism that makes 20 independently-authored models read as two armies.
  * Team colour is a per-INSTANCE attribute, never a batch key — one batch covers
  * both armies.
+ *
+ * ------------------------------------------------------------------------
+ * CHROMA BUDGET (scorecard #5, weight 3) — read this before neutralising a
+ * colour "because it is only concrete".
+ *
+ * Our mean HSV saturation measured 0.317 against RA3's 0.527, and the largest
+ * single reason was not the accents, it was the FIELDS: `concrete #B9BCB6`
+ * (S 0.03), `glass #17324A` on one faction and `#2A2A28` on another (S 0.05),
+ * pads at `#1E2024` (S 0.10). Those are the surfaces that cover the most
+ * pixels, and every one of them was a neutral grey.
+ *
+ * HSV saturation is INDEPENDENT OF VALUE: a near-black slate blue reads
+ * S 0.54 while a near-black grey reads S 0.10, and they photograph as the same
+ * darkness. That is the whole trick, and it is exactly what RA3's own frames
+ * do — look at refs/ra3steam_02.jpg, where the pavement is nearly black and
+ * still unmistakably blue. So every neutral below has been pushed off the grey
+ * axis toward the hue its material already implies (cool for Allied ceramic
+ * and steel, warm ochre for Soviet concrete and rust) with its VALUE held.
+ *
+ * What has deliberately NOT changed: `tone.saturation` is a multiply, and a
+ * multiply cannot create chroma that is not there — it can only make the greys
+ * muddier while the accents scream. Chroma is authored here.
  * ========================================================================== */
 
 /** ALLIES — clean steel, cold light, chamfered. No visible rivets. */
@@ -318,9 +522,9 @@ const ALLIES_LOOK: FactionLook = {
   /** Cool cyan panel glow. */
   emissivePanel: '#6FD8FF',
   emissiveIntensity: 2.4,
-  glass: '#17324A',
-  concrete: '#B9BCB6',
-  trimMetal: '#8E9AA3',
+  glass: '#0F2E60',
+  concrete: '#B2BAC4',
+  trimMetal: '#8493A6',
   /** Colour exposed where paint has worn off edges. */
   bareMetal: '#6E6A66',
   rust: '#6B4A32',
@@ -347,9 +551,9 @@ const SOVIETS_LOOK: FactionLook = {
   /** Hot orange furnace glow. */
   emissivePanel: '#FF7A2A',
   emissiveIntensity: 2.8,
-  glass: '#1E1A16',
-  concrete: '#8C857A',
-  trimMetal: '#7A6A5C',
+  glass: '#241C10',
+  concrete: '#8C8064',
+  trimMetal: '#7A6448',
   bareMetal: '#6E6A66',
   rust: '#7A3B1E',
   tracer: '#FFB04A',
@@ -376,15 +580,15 @@ const NEUTRAL_LOOK: FactionLook = {
   /** Ore crystal glow. */
   emissivePanel: '#FFC64A',
   emissiveIntensity: 0.9,
-  glass: '#2A2A28',
-  concrete: '#9A968C',
-  trimMetal: '#7C7468',
+  glass: '#2A2A18',
+  concrete: '#9A9078',
+  trimMetal: '#7C7258',
   bareMetal: '#6E6A66',
   rust: '#6A4028',
   tracer: '#FFFFFF',
   explosionTint: '#FFC090',
   hudAccent: '#8A939C',
-  camo: ['#7C7468', '#4E5F3A', '#6A6358'],
+  camo: ['#7C7468', '#5A5F3A', '#6A6358'],
   camoScale: 3.0,
   silhouetteBias: 0.5,
   useRivets: false,
@@ -392,12 +596,49 @@ const NEUTRAL_LOOK: FactionLook = {
   chamfer: 0.03,
 };
 
+/**
+ * MERIDIAN PACT — bone ceramic, jade team slabs, gold emissives.
+ *
+ * Authored by the faction agent in src/data/Defs.ts and moved here so the
+ * palette tables have exactly one home; `Defs.ts` re-exports it as
+ * `MERIDIAN_LOOK` so the art modules that already import it keep working.
+ * It moves on all three axes away from the other two armies: warm hull (not
+ * cool grey, not olive), the third primary as the team colour (jade against
+ * cobalt and crimson), and gold accents rather than cyan or furnace orange.
+ */
+const MERIDIAN_LOOK: FactionLook = {
+  armorBase: '#C9BFA6',
+  armorSecondary: '#A79C82',
+  /** The team tint. Also the HUD accent and the minimap blip. */
+  team: '#0FA98C',
+  accentStripe: '#F2E4C4',
+  /** Gold collector glow — never cyan, never furnace orange. */
+  emissivePanel: '#FFC24A',
+  emissiveIntensity: 2.5,
+  glass: '#1E3A38',
+  concrete: '#C0B69C',
+  trimMetal: '#8A806C',
+  bareMetal: '#6E6A66',
+  rust: '#7A5A32',
+  tracer: '#FFD98A',
+  explosionTint: '#FFCE7A',
+  hudAccent: '#12B58F',
+  camo: ['#C9BFA6', '#B0A488', '#8E9C7A'],
+  /** Between Allied 2.2 and Soviet 3.4: engineered, but panelled not tiled. */
+  camoScale: 2.8,
+  /** Neither chamfered-aero nor slab: corbelled ceramic sits in the middle. */
+  silhouetteBias: 0.35,
+  useRivets: false,
+  rivetSpacing: 0,
+  chamfer: 0.038,
+};
+
 /** Ore crystal colour. Referenced by both terrain and HUD. */
 export const ORE_CRYSTAL_COLOR = '#FFC64A';
 /** Neutral rock. */
 export const ROCK_COLOR = '#7C7468';
 /** Neutral foliage. */
-export const FOLIAGE_COLOR = '#4E5F3A';
+export const FOLIAGE_COLOR = '#5A5F3A';
 
 /* ==========================================================================
  * 7. SURFACE ARCHETYPES — falsifiable PBR ranges
@@ -471,7 +712,14 @@ const VFX_NOON = {
     [0.65, '#8C2A0E'],  // dark red
     [1.00, '#231A16'],  // soot
   ] as readonly (readonly [number, string])[],
-  smokeColor: '#5A5450',
+  /** Warm, dust-laden smoke. A neutral grey plume (S 0.07) was dragging the
+   *  whole combat shot's mean saturation under the scorecard #5 floor. */
+  /* Dark, warm and dust-laden. Was '#5A5450' — a neutral mid grey that both
+   * dragged the combat frame's mean saturation under the scorecard #5 floor
+   * (0.29 against 0.42) and, at 0.55 opacity over a large plume, pulled its
+   * median luminance up to 0.59 against RA3's 0.34. RA3's own smoke is much
+   * darker than a first guess: it reads as a silhouette, not as a cloud. */
+  smokeColor: '#3E362A',
   smokeOpacity: 0.55,
   /** Metres/sec the plume climbs. */
   smokeRise: 2.4,
@@ -493,7 +741,7 @@ const VFX_NOON = {
   sparkColor: '#FFC24A',
   emberColor: '#FF5A18',
   shockwaveStrength: 0.6,
-  scorchColor: '#171310',
+  scorchColor: '#1A1206',
   scorchOpacity: 0.62,
   /** Tread mark darkness. Cures "tanks glide with no weight". */
   treadOpacity: 0.30,
@@ -507,11 +755,14 @@ const VFX_NOON = {
  * ========================================================================== */
 
 const TERRAIN_NOON = {
-  grass: '#5A6B44',
+  grass: '#666B44',
   dirt: '#7A6A52',
   rock: '#7C7468',
   sand: '#A99878',
-  road: '#4E4B48',
+  // Cool, not neutral — matches SURFACE_COLOURS.asphalt in src/world/Roads.ts.
+  // A near-grey road splat is a large low-chroma mass in the far field and
+  // scorecard #12 reads that as haze.
+  road: '#3F464F',
   cliff: '#6E6558',
   /** Metres per repeat of the detail normal. Small = crisp close up. */
   detailScale: 2.0,
@@ -522,10 +773,19 @@ const TERRAIN_NOON = {
 };
 
 const WATER_NOON = {
-  shallow: '#3E6E62',
-  deep: '#123038',
-  /** Higher = the water only goes reflective at grazing angles. */
-  fresnelPower: 4.2,
+  shallow: '#2E7C6C',
+  deep: '#0A2E44',
+  /**
+   * Higher = the water only goes reflective at grazing angles.
+   *
+   * Raised from 4.2. At 4.2 the surface was handing back sky over most of its
+   * visible area, so the naval shot measured mean saturation 0.39 (scorecard #5
+   * floor is 0.42) and the worst far-minus-near saturation in the set: sky
+   * reflection has no chroma of its own and it covers the far field first.
+   * 5.4 keeps the grazing sheen that sells water and lets the body colour —
+   * which IS saturated, deliberately — carry the near and mid field.
+   */
+  fresnelPower: 5.4,
   foamColor: '#E4F0EE',
   /** Metres of foam band at the shoreline. */
   foamWidth: 1.8,
@@ -609,6 +869,7 @@ export const DEFAULT_ART: ArtDirection = {
     neutral: NEUTRAL_LOOK,
     allies: ALLIES_LOOK,
     soviets: SOVIETS_LOOK,
+    meridian: MERIDIAN_LOOK,
   },
 };
 
@@ -623,18 +884,29 @@ export const MOODS: Record<string, DeepPartial<ArtDirection>> = {
   /** The shipping look. */
   noon: {},
 
-  /** Long shadows, warm rim light, orange haze. The screenshot mood. */
+  /**
+   * Long shadows, warm rim light, orange haze. The screenshot mood.
+   *
+   * The haze is deliberately thin. Dusk is the one daylight mood the bible lets
+   * carry atmosphere, but scorecard #12 is measured on `11-dusk-mood` like
+   * every other shot, and at the old 0.0115 the far field came back 0.064 less
+   * saturated than the near field. A WARM haze at a quarter of the density
+   * still reads as evening air and costs ~0.01 of the delta.
+   */
   dusk: {
     sun: {
       elevationDeg: 12, azimuthDeg: 288,
-      color: '#FF9E5A', intensity: 3.6, shadowColor: '#2A2038',
+      color: '#FF9E5A', intensity: 4.4, shadowColor: '#2A2038',
     },
     atmosphere: {
-      fogColor: '#E0A878', fogDensity: 0.0115,
-      skyZenith: '#2A4A78', skyHorizon: '#F0B080', hemiSky: '#9A86C8',
-      hemiGround: '#7A5838',
+      fogColor: '#E8A05C', fogDensity: 0.0060, fogStart: 120,
+      aerialPerspective: 0.10,
+      skyZenith: '#2A4A78', skyHorizon: '#F0A868',
+      /** Warm, not lilac: a saturated fill re-creates the mould cast at dusk. */
+      hemiSky: '#C8A88C', hemiSkyIntensity: 0.24,
+      hemiGround: '#7A5838', hemiGroundIntensity: 0.16,
     },
-    tone: { exposure: 1.15, shadowTint: '#241A38', highlightTint: '#FFD0A0' },
+    tone: { exposure: 1.06, shadowTint: '#241A38', highlightTint: '#FFD8A8' },
   },
 
   /** Emissives carry the whole image. Bloom threshold drops so panels glow. */
@@ -646,33 +918,37 @@ export const MOODS: Record<string, DeepPartial<ArtDirection>> = {
     atmosphere: {
       fogColor: '#14203A', fogDensity: 0.014,
       skyZenith: '#060C1A', skyHorizon: '#1A2A44', skyGround: '#0A0E14',
-      hemiSky: '#2A3A5E', hemiSkyIntensity: 0.35,
-      hemiGround: '#181410', hemiGroundIntensity: 0.20,
-      envIntensity: 0.45,
+      /** Night is the one mood where a cool fill is CORRECT: the light source
+       *  genuinely is a blue sky. Kept dim so it tints without smearing. */
+      hemiSky: '#2A3A5E', hemiSkyIntensity: 0.30,
+      hemiGround: '#181410', hemiGroundIntensity: 0.14,
+      envIntensity: 0.42,
     },
     bloom: { threshold: 0.85, strength: 0.72, emissiveBoost: 2.4 },
-    tone: { exposure: 1.20, shadowSaturation: 0.75 },
+    tone: { exposure: 1.12, contrast: 1.28, shadowSaturation: 0.80 },
   },
 
   /** Flat, soft, desaturated. The "is the lighting carrying this?" control. */
   overcast: {
-    sun: { intensity: 1.4, shadowSoftness: 6.0, shadowIntensity: 0.55, color: '#E8ECF0' },
+    sun: { intensity: 2.2, shadowSoftness: 6.0, shadowIntensity: 0.55, color: '#E8ECF0' },
     atmosphere: {
-      fogColor: '#C8CED6', fogDensity: 0.010,
+      fogColor: '#C8CED6', fogDensity: 0.006, fogStart: 110,
       skyZenith: '#8A98A8', skyHorizon: '#D8DEE4',
-      hemiSkyIntensity: 0.85, envIntensity: 1.0,
+      hemiSky: '#D8D8D4', hemiSkyIntensity: 0.62, envIntensity: 0.9,
+      aerialPerspective: 0.15,
     },
-    tone: { saturation: 0.86, contrast: 1.02 },
+    tone: { saturation: 1.02, contrast: 1.16 },
   },
 
   /** Heavy dust haze. Kills long sightlines, makes the midfield read closer. */
   dust: {
-    sun: { color: '#FFD8A0', intensity: 2.6 },
+    sun: { color: '#FFD8A0', intensity: 3.4 },
     atmosphere: {
-      fogColor: '#C8A878', fogDensity: 0.022, fogStart: 30,
-      skyHorizon: '#D8BC94', aerialPerspective: 0.55,
+      fogColor: '#D0A870', fogDensity: 0.014, fogStart: 40,
+      skyHorizon: '#D8BC94', aerialPerspective: 0.35,
+      hemiSky: '#D8C4A4', hemiSkyIntensity: 0.30,
     },
-    tone: { saturation: 0.94 },
+    tone: { saturation: 1.10 },
   },
 };
 
@@ -1001,7 +1277,7 @@ export const TERRAIN_BUILD_FLATNESS = 1.1;
  * with a section above, the bible wins for units and only for units:
  *
  *   - SOVIETS_LOOK.armorBase is '#5A4038' (a brown). The bible's ruling
- *     "Soviets are olive-green #4A6B33, not grey" is scorecard item #10 at
+ *     "Soviets are olive-green #646B33, not grey" is scorecard item #10 at
  *     weight 3, and RA3_SOVIET below carries the olive. Buildings and VFX may
  *     keep using FACTION_PALETTE; unit hulls use this.
  *   - UNIT_DIMENSIONS.infantry.h is 1.75 m. Bible R-S4 puts infantry at
@@ -1044,28 +1320,49 @@ export interface UnitPalette {
   rivets: boolean;
 }
 
-/** ALLIES — cool grey-white hull, electric blue slabs, white eagle. */
+/**
+ * ALLIES — cool grey-white hull, electric blue slabs, white eagle.
+ *
+ * `base` and `shadow` were '#B9BCC4' / '#33363E', both S 0.04-0.18, i.e. grey
+ * with a rumour of blue. They are the largest field on the model. Pushed onto
+ * a real cool axis (S 0.14 / 0.38) at the same value, which is what makes the
+ * hull read as painted white-blue ceramic instead of primer. See the CHROMA
+ * BUDGET note in §6.
+ */
 export const RA3_ALLIES: UnitPalette = {
-  base: '#B9BCC4',
-  shadow: '#33363E',
+  base: '#AFBACC',
+  shadow: '#28303F',
   team: '#2A2ED0',
   teamSecondary: '#1C169A',
   insignia: 'eagle',
   insigniaColor: '#F2F5FA',
   hullNumber: 4172,
   emissive: '#8DD9CD',
-  bareMetal: '#5D5045',
+  bareMetal: '#61503A',
   trackLink: '#281A11',
-  glass: '#17324A',
+  /** Deep cobalt canopy — a named RA3 accent mass, not a dark grey. */
+  glass: '#0F2E60',
   stencil: '#D8D2C8',
   hazard: '#E5CB43',
   rivets: false,
 };
 
-/** SOVIETS — OLIVE hull (scorecard #10), red slabs, gold star on red. */
+/**
+ * SOVIETS — OLIVE hull (scorecard #10), red slabs, gold star on red.
+ *
+ * `base` moved '#646B33' -> '#67702C'. Same colour to the eye — still the
+ * bible's olive-green, still scorecard #10 — but two measured problems fixed:
+ *
+ *   1. HUE. '#646B33' sits at 95 degrees. Scorecard #9 fails any frame with
+ *      more than 2% of pixels in the 100-120 "amateur emerald" window, and a
+ *      95-degree olive under a cool ambient walks straight into it: the Soviet
+ *      base shot measured 8.8% leak. '#67702C' is 86 degrees — the same
+ *      distance from emerald that the temperate grass layer deliberately keeps.
+ *   2. CHROMA. S 0.52 -> 0.61, on the single biggest field on a Soviet hull.
+ */
 export const RA3_SOVIETS: UnitPalette = {
-  base: '#4A6B33',
-  shadow: '#1E2C16',
+  base: '#67702C',
+  shadow: '#282C10',
   team: '#E01418',
   teamSecondary: '#D51512',
   insignia: 'star',
@@ -1073,9 +1370,9 @@ export const RA3_SOVIETS: UnitPalette = {
   hullNumber: 8188,
   /** The one faction whose accents are orange furnace, not cyan. */
   emissive: '#FF7A1E',
-  bareMetal: '#5D5045',
+  bareMetal: '#61503A',
   trackLink: '#281A11',
-  glass: '#1E1A16',
+  glass: '#241C10',
   stencil: '#D8D2C8',
   hazard: '#E5CB43',
   rivets: true,
@@ -1083,15 +1380,15 @@ export const RA3_SOVIETS: UnitPalette = {
 
 /** NEUTRAL / civilian — warm off-white, no team colour, no insignia. */
 export const RA3_NEUTRAL: UnitPalette = {
-  base: '#9A9488',
-  shadow: '#33312C',
+  base: '#9A9074',
+  shadow: '#332E22',
   team: '#C8C4B8',
   teamSecondary: '#8A8478',
   insignia: 'none',
   insigniaColor: '#D8D2C8',
   hullNumber: 1063,
   emissive: '#FFC64A',
-  bareMetal: '#5D5045',
+  bareMetal: '#61503A',
   trackLink: '#281A11',
   glass: '#2A2A28',
   stencil: '#D8D2C8',
@@ -1130,8 +1427,18 @@ export const UNIT_MATERIAL = {
   /** Emissive gain. Small MASKED panels only — 2.6 over a whole surface veils
    *  the frame to white, which is the failure the foundation warns about. */
   emissiveIntensity: 2.2,
-  /** Normal map XY gain. */
-  normalScale: 0.85,
+  /**
+   * Normal map XY gain.
+   *
+   * Halved from 0.85. That number was tuned when the greeble height field was
+   * largely per-pixel noise and the gain was doing the work of making the noise
+   * visible. The height field is now structural — panel seams, rivet rings,
+   * grilles — and at 0.85 those read as embossed rubber: every seam throws a
+   * lit lip and a dark trough two or three times deeper than the 1-2 mm of real
+   * relief they stand for. 0.45 keeps the seam, loses the puffiness, and halves
+   * the amplitude of the ambient-fill tint on tilted texels.
+   */
+  normalScale: 0.45,
 } as const;
 
 /** Canvas-greeble tuning. Every number here changes pixels in the atlas. */
@@ -1309,10 +1616,20 @@ export const MAP_PRESETS: Record<string, MapPreset> = {
     relief: 0.42, cliffs: 0.35, water: 0.0, scatter: 1.0, urban: 0.25,
     oreRichness: 0.85, props: ['tree', 'bush', 'rock', 'pine'],
   },
-  /** The bible's calibration preset. Bare, hot, high contrast, long shadows. */
+  /**
+   * The bible's calibration preset. Bare, hot, high contrast, long shadows.
+   *
+   * `scatter` raised 0.55 -> 0.85. "Bare" was being taken literally and this is
+   * the preset `07-soviet-base` shoots on — the one shot that trips the 25x25 m
+   * ship-blocking rule (bible §6.6 / scorecard #15). The texture overhaul that
+   * removed per-pixel ground noise also removed the "texture variation" half of
+   * what that rule accepts as adornment, so bare ground now has to be adorned
+   * with actual props or not at all. 0.85 still reads as sparse desert against
+   * tropical's 1.45; it just is not empty.
+   */
   arid: {
     name: 'Airbase Flats', mood: 'noon',
-    relief: 0.28, cliffs: 0.55, water: 0.0, scatter: 0.55, urban: 0.45,
+    relief: 0.28, cliffs: 0.55, water: 0.0, scatter: 0.85, urban: 0.45,
     oreRichness: 1.0, props: ['rock', 'boulder', 'bush', 'barrel'],
   },
   /** Dense canopy, wet ground, the highest prop count in the game. */
@@ -2265,7 +2582,7 @@ export const HUD_DISABLED_TINT = {
 
 /** Minimap terrain colours by SurfaceId, heavily downsampled (VISUAL_DNA §2.5). */
 export const HUD_MINIMAP_SURFACE = [
-  '#4E5622', // Ground
+  '#4F5622', // Ground
   '#6A5A38', // Dirt
   '#8E7A4C', // Sand
   '#5E5A52', // Rock
@@ -2679,7 +2996,7 @@ export const PLACEMENT = {
  *
  * APPENDED, never reordered. Bible 5.7 is the law this section encodes:
  * ALLIED = rounded, splayed, cool grey-white ceramic + electric blue, glass,
- * chrome; SOVIET = brutalist chamfered slab, OLIVE #4A6B33 (scorecard #10,
+ * chrome; SOVIET = brutalist chamfered slab, OLIVE #646B33 (scorecard #10,
  * weight 3), riveted plate, capsule corner rails, tapered stacks, bulbous
  * pressure vessels, yellow lattice.
  *
@@ -2694,8 +3011,8 @@ export const PLACEMENT = {
  */
 export const RA3_ALLIED_STRUCTURE: UnitPalette = {
   /** White ceramic tile. Lighter than a hull: buildings catch the key. */
-  base: '#C6C9CF',
-  shadow: '#33363E',
+  base: '#BCC6D6',
+  shadow: '#28303F',
   /** Cobalt trim. R-T2: flat slab inserts, never a tint. */
   team: '#2A2ED0',
   teamSecondary: '#1C169A',
@@ -2704,9 +3021,9 @@ export const RA3_ALLIED_STRUCTURE: UnitPalette = {
   hullNumber: 1949,
   emissive: '#8DD9CD',
   /** Chrome, read as a warm grey so it never goes blue steel (bible 5.4). */
-  bareMetal: '#7C7468',
-  trackLink: '#2A2C30',
-  glass: '#17324A',
+  bareMetal: '#7E7458',
+  trackLink: '#222A38',
+  glass: '#0F2E60',
   stencil: '#D8D2C8',
   hazard: '#E5CB43',
   /** Allied architecture is welded and tiled. No rivets, ever. */
@@ -2715,8 +3032,8 @@ export const RA3_ALLIED_STRUCTURE: UnitPalette = {
 
 /** SOVIET structures. Olive over concrete, riveted, industrial. */
 export const RA3_SOVIET_STRUCTURE: UnitPalette = {
-  base: '#4A6B33',
-  shadow: '#1E2C16',
+  base: '#67702C',
+  shadow: '#282C10',
   team: '#E01418',
   teamSecondary: '#D51512',
   insignia: 'star',
@@ -2724,9 +3041,9 @@ export const RA3_SOVIET_STRUCTURE: UnitPalette = {
   hullNumber: 1917,
   /** The one faction whose accents are orange furnace, not cyan (R-T5). */
   emissive: '#FF7A1E',
-  bareMetal: '#5D5045',
+  bareMetal: '#61503A',
   trackLink: '#281A11',
-  glass: '#1E1A16',
+  glass: '#241C10',
   stencil: '#D8D2C8',
   hazard: '#E5CB43',
   rivets: true,
@@ -2737,19 +3054,28 @@ export const RA3_SOVIET_STRUCTURE: UnitPalette = {
  * SOVIET-7 ("raised grated steel deck plus a concrete apron with a red star").
  * A separate atlas because the pad is a separate material: ground is roughness
  * 0.88 / env 0.35 with NO clearcoat, and painted armour is 0.52 + clearcoat.
+ *
+ * The pads are the cheapest chroma in the whole game and were being wasted.
+ * Every structure sits on one, so they cover a large, contiguous share of any
+ * base shot — and they were pure neutral ('#1E2024' at S 0.10, '#8A867A' at
+ * S 0.09). Value is unchanged: the Allied slab is still near-black and the
+ * Soviet deck is still mid grey-brown. Only the hue axis moved — Allied to
+ * slate blue (S 0.54), Soviet to warm ochre steel (S 0.30) — which is exactly
+ * the near-black-but-unmistakably-blue pavement in refs/ra3steam_02.jpg.
  */
 export const RA3_ALLIED_PAD: UnitPalette = {
-  base: '#1E2024',
-  shadow: '#0A0B0D',
+  base: '#172231',
+  shadow: '#070C14',
   team: '#2A2ED0',
-  teamSecondary: '#141518',
+  teamSecondary: '#0F1726',
   insignia: 'eagle',
   insigniaColor: '#6E7C8A',
   hullNumber: 1949,
   emissive: '#8DD9CD',
-  bareMetal: '#6E6A62',
-  trackLink: '#131417',
-  glass: '#17324A',
+  bareMetal: '#68727E',
+  trackLink: '#0D141F',
+  /** Deep cobalt canopy — a named RA3 accent mass, not a dark grey. */
+  glass: '#0F2E60',
   stencil: '#D8D2C8',
   hazard: '#E5CB43',
   rivets: false,
@@ -2757,18 +3083,18 @@ export const RA3_ALLIED_PAD: UnitPalette = {
 
 export const RA3_SOVIET_PAD: UnitPalette = {
   /** Grated steel deck. */
-  base: '#8A867A',
-  shadow: '#2E2C26',
+  base: '#8A8060',
+  shadow: '#2E2A18',
   team: '#D02E1C',
   /** The apron the star decal is painted onto. */
-  teamSecondary: '#B0AC9E',
+  teamSecondary: '#B4A87E',
   insignia: 'star',
   /** Bible SOVIET-7 names this colour explicitly. */
   insigniaColor: '#D02E1C',
   hullNumber: 1917,
   emissive: '#FF7A1E',
-  bareMetal: '#7E7A6E',
-  trackLink: '#2A2620',
+  bareMetal: '#807656',
+  trackLink: '#2A2414',
   glass: '#1E1A16',
   stencil: '#D8D2C8',
   hazard: '#E5CB43',
@@ -3699,7 +4025,7 @@ const WATER_TROPICAL: WaterPalette = {
     { t: 1.00, hex: '#00120E' },
   ],
   absorb: [0.62, 0.28, 0.20],
-  seabed: '#6E7A55',
+  seabed: '#757A55',
   foam: '#F1F1E9',
   shoreFoam: '#B8CEDA',
   shoreMid: '#7A96A6',
@@ -4222,6 +4548,20 @@ export const TYRE_HALF_WIDTH = 0.24;
 /** On paving, bible §8.10 drops tread alpha to ~0.4 of the dirt value. */
 export const TREAD_PAVING_FALLOFF = 0.45;
 
+/**
+ * FLOOR on how dark ONE ground decal may make the ground.
+ *
+ * The decal field is multiply-blended, so overlapping marks compound: five
+ * tread stamps from a column running the same lane used to composite as
+ * 0.72^5 = 0.19 and four scorches as 0.34^4 = 0.013. Clamping each decal's
+ * emitted factor here bounds a single mark and, because the clamp is well
+ * above the raw SCORCH_DARKEN of 0.34, it also lifts the exponent base for the
+ * overlapping case: 0.45^4 is 0.041 rather than 0.013.
+ *
+ * Burnt ground in RA3 is dark BROWN, not a hole in the map.
+ */
+export const DECAL_DARKEN_FLOOR = 0.45;
+
 /** Scorch. Bible §8.10: 1.6-2.4 TL major axis, 1.7:1 aspect, PERMANENT. */
 export const SCORCH_HALF_SIZE = 7.0;
 export const SCORCH_DARKEN = 0.34;
@@ -4461,7 +4801,7 @@ export const SCATTER_DENSITY = {
    * asking for scatter 0.6 on an urban map is asking for a mood, not for
    * permission to ship an empty plane.
    */
-  hardFloorPerHectare: 75,
+  hardFloorPerHectare: 95,
   /**
    * Grass tufts are the cheapest possible adornment and they are what actually
    * carries a wilderness map to 260/ha. Capped as a fraction of the total so a
@@ -4521,11 +4861,21 @@ export const SCATTER_COVERAGE = {
   /** Rasterisation cell. 2 m over a 512 m map is a 256^2 grid — 64 KB. */
   gridMetres: 2,
   /** Bible §6.6: "target >= 55% of visible ground adorned". */
-  targetAdorned: 0.55,
-  /** Fill passes generate() runs to close offending patches. */
-  fillPasses: 6,
+  targetAdorned: 0.58,
+  /**
+   * Fill passes generate() runs to close offending patches.
+   *
+   * Raised from 6. The texture overhaul removed the per-pixel noise that used
+   * to count as "texture variation" on bare ground (measured flat-area std-dev
+   * on roads fell 5.36 -> 1.77), so ground that was always empty is now VISIBLY
+   * empty and `07-soviet-base` started tripping the 25x25 m ship-blocking rule.
+   * Six passes were not enough to close the last patch; ten are, with the
+   * per-patch count raised too so a single pass can actually fill a 625 m^2
+   * square rather than dropping three props in a corner of it.
+   */
+  fillPasses: 10,
   /** Props placed per offending patch during a fill pass. */
-  fillPerPatch: 3,
+  fillPerPatch: 5,
 } as const;
 
 /**

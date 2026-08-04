@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/game/Scenarios.ts
+ * VOLTMARCH — src/game/Scenarios.ts
  * ============================================================================
  * THE SCENARIO ROUTER — the fixtures every screenshot photographs.
  *
@@ -73,7 +73,7 @@ import {
   DEG2RAD, Rng, clampWorld, footprintOriginCell, snapFootprintToGrid, wrapAngle,
 } from '../core/math';
 
-import { buildAlliedBase } from './scenarios/AlliedBase';
+import { buildAlliedBase, type BaseOptions } from './scenarios/AlliedBase';
 import { buildSovietBase } from './scenarios/SovietBase';
 import {
   buildBattle, buildBlob, buildEconomy, buildNaval, buildPlacement,
@@ -387,6 +387,42 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
     Locomotor.Hover, 38, TURRETED, Faction.Soviets),
   transport: unit('transport', EntityKind.Vehicle, NU.transport, 600, ArmorClass.Light, 6.0,
     Locomotor.Hover, 26, 0, Faction.Neutral),
+
+  /* -- THE MERIDIAN PACT ---------------------------------------------------
+   * Transcribed from `src/data/Defs.ts` §1, which is authoritative for every
+   * number here. Two Pact-wide rules are visible in the rows and are the whole
+   * faction: EVERY hull is `Locomotor.Hover` (Flowfield promotes a hover unit
+   * to MoveClass.Naval on its first water query, so the army is amphibious and
+   * pays no slope cost), and every hull is `crushLevel: 0` — nothing the Pact
+   * fields can drive over anything.
+   * ---------------------------------------------------------------------- */
+  mrdWayfarer: unit('mrdWayfarer', EntityKind.Infantry, U.infantry, 110, ArmorClass.Infantry, 3.8,
+    Locomotor.Foot, 26, GUNNER | EntityFlag.Crushable, Faction.Meridian, { crushableBy: 1 }),
+  mrdLancer: unit('mrdLancer', EntityKind.Infantry, U.infantry, 130, ArmorClass.Infantry, 3.2,
+    Locomotor.Foot, 26, GUNNER | EntityFlag.Crushable, Faction.Meridian, { crushableBy: 1 }),
+  mrdArtificer: unit('mrdArtificer', EntityKind.Infantry, U.infantry, 95, ArmorClass.Infantry, 3.6,
+    Locomotor.Foot, 22, EntityFlag.Crushable, Faction.Meridian, { crushableBy: 1 }),
+
+  mrdCollector: unit('mrdCollector', EntityKind.Vehicle, U.harvester, 800, ArmorClass.Light, 7.0,
+    Locomotor.Hover, 22, EntityFlag.IsHarvester, Faction.Meridian,
+    { crushableBy: 6, cargoMax: 450 }),
+  mrdSkiff: unit('mrdSkiff', EntityKind.Vehicle, U.ifv, 190, ArmorClass.Light, 9.2,
+    Locomotor.Hover, 32, TURRETED, Faction.Meridian, { crushableBy: 4, turretTurnRate: 3.4 }),
+  mrdSolarch: unit('mrdSolarch', EntityKind.Vehicle, U.lightTank, 330, ArmorClass.Light, 7.6,
+    Locomotor.Hover, 30, TURRETED, Faction.Meridian, { crushableBy: 5 }),
+  mrdZenith: unit('mrdZenith', EntityKind.Vehicle, U.prismTank, 240, ArmorClass.Light, 6.2,
+    Locomotor.Hover, 34, TURRETED, Faction.Meridian, { crushableBy: 5 }),
+  mrdCarryall: unit('mrdCarryall', EntityKind.Vehicle, U.mcv, 950, ArmorClass.Heavy, 5.0,
+    Locomotor.Hover, 22, 0, Faction.Meridian, { crushableBy: 0 }),
+  // No Air locomotor exists yet, so the gunship is authored the way the naval
+  // hulls are: hover, flyer speed, flyer sight, paper armour.
+  mrdKestrel: unit('mrdKestrel', EntityKind.Vehicle, U.ifv, 210, ArmorClass.Light, 12.0,
+    Locomotor.Hover, 36, GUNNER, Faction.Meridian, { crushableBy: 0, turnRate: 3.2 }),
+
+  mrdCorvette: unit('mrdCorvette', EntityKind.Vehicle, NU.gunboat, 380, ArmorClass.Light, 7.6,
+    Locomotor.Hover, 34, TURRETED, Faction.Meridian),
+  mrdMonitor: unit('mrdMonitor', EntityKind.Vehicle, NU.destroyer, 780, ArmorClass.Medium, 5.6,
+    Locomotor.Hover, 38, TURRETED, Faction.Meridian),
 };
 
 export interface FallbackBuilding {
@@ -471,6 +507,44 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
     EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Allies),
   subPen: building('subPen', NB.subPen, 1000, -30, 24,
     EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Soviets),
+
+  // The two finished models that had no def row: the Allied AA mount and the
+  // Soviet sentry gun. Adding them also makes the two armies' defence sets
+  // symmetric (each now fields a cheap gun, a heavy gun and a power-hungry one).
+  aaTurret: building('aaTurret', B.prismTower, 550, -30, 28,
+    EntityFlag.CanAttack | EntityFlag.HasTurret, Faction.Allies, { weaponRange: 28 }),
+  sentryGun: building('sentryGun', B.pillbox, 480, 0, 24,
+    EntityFlag.CanAttack, Faction.Soviets, { weaponRange: 20 }),
+
+  /* -- THE MERIDIAN PACT --------------------------------------------------
+   * Transcribed from `src/data/Defs.ts` §2. The Solar Array is the faction:
+   * 350 credits for 160 power on 420 hp, against 300/100/800 for a Power
+   * Plant. Cheapest power in the game on the softest structure — and both Pact
+   * defences plus its siege hull carry `needsPower` weapons, so a power raid
+   * silences the belt while the economy keeps running.
+   * --------------------------------------------------------------------- */
+  mrdConclave: building('mrdConclave', B.conYard, 1900, -20, 30,
+    EntityFlag.IsBuilder | EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Meridian),
+  mrdSolarArray: building('mrdSolarArray', B.powerPlant, 420, 160, 18, 0, Faction.Meridian),
+  mrdCistern: building('mrdCistern', B.refinery, 1150, -30, 22,
+    EntityFlag.IsRefinery, Faction.Meridian, { storage: REFINERY_STORAGE }),
+  mrdChapterhouse: building('mrdChapterhouse', B.barracks, 750, -20, 20,
+    EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Meridian),
+  mrdForgeyard: building('mrdForgeyard', B.warFactory, 1150, -40, 20,
+    EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Meridian),
+  mrdOculus: building('mrdOculus', B.radar, 650, -40, 46, EntityFlag.IsRadar, Faction.Meridian),
+  mrdVault: building('mrdVault', B.oreSilo, 450, -10, 12, 0, Faction.Meridian,
+    { storage: SILO_STORAGE }),
+  mrdSlipway: building('mrdSlipway', NB.navalYard, 950, -30, 24,
+    EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Meridian),
+  mrdReliquary: building('mrdReliquary', B.battleLab, 850, -60, 20, 0, Faction.Meridian),
+
+  mrdRampart: building('mrdRampart', B.wall, 320, 0, 0,
+    EntityFlag.NotSelectable, Faction.Meridian),
+  mrdGlaive: building('mrdGlaive', B.pillbox, 480, -10, 26,
+    EntityFlag.CanAttack, Faction.Meridian, { weaponRange: 24 }),
+  mrdHelios: building('mrdHelios', B.prismTower, 600, -55, 32,
+    EntityFlag.CanAttack | EntityFlag.HasTurret, Faction.Meridian, { weaponRange: 33 }),
 };
 
 export interface FallbackProp {
@@ -569,6 +643,20 @@ const UNIT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   submarine: ['submarine', 'sub', 'akula', 'typhoon'],
   dreadnought: ['dreadnought', 'sovietcruiser', 'battleship'],
   transport: ['transport', 'landingcraft', 'hovertransport'],
+
+  // The Meridian Pact. Its def keys are already unambiguous, so each row is
+  // the key itself plus the model name the art modules use.
+  mrdWayfarer: ['mrdwayfarer', 'wayfarer', 'meridianwayfarer'],
+  mrdLancer: ['mrdlancer', 'sunlancer', 'meridianlancer'],
+  mrdArtificer: ['mrdartificer', 'artificer', 'meridianartificer'],
+  mrdCollector: ['mrdcollector', 'suncollector', 'meridiancollector'],
+  mrdSkiff: ['mrdskiff', 'sandskiff', 'meridianskiff'],
+  mrdSolarch: ['mrdsolarch', 'solarch', 'meridiansolarch'],
+  mrdZenith: ['mrdzenith', 'zenithemitter', 'meridianzenith'],
+  mrdCarryall: ['mrdcarryall', 'pactworkscarryall', 'meridiancarryall'],
+  mrdKestrel: ['mrdkestrel', 'kestrelgunship', 'meridiankestrel'],
+  mrdCorvette: ['mrdcorvette', 'kitecorvette', 'meridiancorvette'],
+  mrdMonitor: ['mrdmonitor', 'sunmonitor', 'meridianmonitor'],
 };
 
 const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
@@ -587,6 +675,79 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   wall: ['wall', 'concretewall', 'sandbag'],
   navalYard: ['navalyard', 'shipyard', 'seaport', 'dock'],
   subPen: ['subpen', 'submarinepen', 'navalyardsoviet'],
+  aaTurret: ['aaturret', 'multigunneraa', 'aagun', 'flakcannon'],
+  sentryGun: ['sentrygun', 'sentry', 'machinegunturret'],
+
+  mrdConclave: ['mrdconclave', 'conclave', 'meridianconclave'],
+  mrdSolarArray: ['mrdsolararray', 'solararray', 'meridiansolararray'],
+  mrdCistern: ['mrdcistern', 'orecistern', 'meridiancistern'],
+  mrdChapterhouse: ['mrdchapterhouse', 'chapterhouse', 'meridianchapterhouse'],
+  mrdForgeyard: ['mrdforgeyard', 'forgeyard', 'meridianforgeyard'],
+  mrdOculus: ['mrdoculus', 'oculus', 'meridianoculus'],
+  mrdVault: ['mrdvault', 'sunvault', 'meridianvault'],
+  mrdSlipway: ['mrdslipway', 'slipway', 'meridianslipway'],
+  mrdReliquary: ['mrdreliquary', 'reliquary', 'meridianreliquary'],
+  mrdRampart: ['mrdrampart', 'rampart', 'meridianrampart'],
+  mrdGlaive: ['mrdglaive', 'glaivepost', 'meridianglaive'],
+  mrdHelios: ['mrdhelios', 'heliosspire', 'meridianhelios'],
+};
+
+/**
+ * ONE ROLE, THREE ARMIES.
+ *
+ * Indexed `[genericKey][Faction]`. Slot 0 (Neutral) is the key a scenery /
+ * Gaia owner gets, which is always the shared row where one exists.
+ *
+ * This exists so a base LAYOUT can be authored once as pure geometry. Every
+ * key that appears in `src/game/scenarios/**` has a row; anything else passes
+ * through `ScenarioBuilder.keyFor` unchanged, so props, wrecks and crates are
+ * untouched.
+ *
+ * The Meridian column is not a cosmetic relabel — the Pact's tree really is
+ * one-to-one with the shared one (Conclave for Construction Yard, Solar Array
+ * for Power Plant, Cistern for Refinery), which is why the faction can be
+ * dropped into a shared layout at all.
+ */
+const FACTION_KEY_MAP: Readonly<Record<string, readonly string[]>> = {
+  //                [ neutral,      allies,       soviets,      meridian          ]
+  /* structures */
+  conyard:          ['conyard',     'conyard',    'conyard',    'mrdConclave'],
+  powerPlant:       ['powerPlant',  'powerPlant', 'powerPlant', 'mrdSolarArray'],
+  refinery:         ['refinery',    'refinery',   'refinery',   'mrdCistern'],
+  barracks:         ['barracks',    'barracks',   'barracks',   'mrdChapterhouse'],
+  warFactory:       ['warFactory',  'warFactory', 'warFactory', 'mrdForgeyard'],
+  radar:            ['radar',       'radar',      'radar',      'mrdOculus'],
+  battleLab:        ['battleLab',   'battleLab',  'battleLab',  'mrdReliquary'],
+  oreSilo:          ['oreSilo',     'oreSilo',    'oreSilo',    'mrdVault'],
+  wall:             ['wall',        'wall',       'wall',       'mrdRampart'],
+  navalYard:        ['navalYard',   'navalYard',  'subPen',     'mrdSlipway'],
+  subPen:           ['subPen',      'navalYard',  'subPen',     'mrdSlipway'],
+  /* defences — cheap gun, heavy gun, and the one that dies in a brownout */
+  pillbox:          ['pillbox',     'pillbox',    'sentryGun',  'mrdGlaive'],
+  sentryGun:        ['sentryGun',   'pillbox',    'sentryGun',  'mrdGlaive'],
+  flameTower:       ['flameTower',  'pillbox',    'flameTower', 'mrdGlaive'],
+  prismTower:       ['prismTower',  'prismTower', 'teslaCoil',  'mrdHelios'],
+  teslaCoil:        ['teslaCoil',   'prismTower', 'teslaCoil',  'mrdHelios'],
+  aaTurret:         ['aaTurret',    'aaTurret',   'sentryGun',  'mrdGlaive'],
+  /* infantry */
+  gi:               ['gi',          'gi',         'conscript',  'mrdWayfarer'],
+  conscript:        ['conscript',   'gi',         'conscript',  'mrdWayfarer'],
+  engineer:         ['engineer',    'engineer',   'engineer',   'mrdArtificer'],
+  attackDog:        ['attackDog',   'gi',         'attackDog',  'mrdWayfarer'],
+  /* vehicles */
+  harvester:        ['harvester',   'harvester',  'harvester',  'mrdCollector'],
+  mcv:              ['mcv',         'mcv',        'mcv',        'mrdCarryall'],
+  grizzly:          ['grizzly',     'grizzly',    'rhino',      'mrdSolarch'],
+  rhino:            ['rhino',       'grizzly',    'rhino',      'mrdSolarch'],
+  ifv:              ['ifv',         'ifv',        'attackDog',  'mrdSkiff'],
+  prismTank:        ['prismTank',   'prismTank',  'apocalypse', 'mrdZenith'],
+  apocalypse:       ['apocalypse',  'prismTank',  'apocalypse', 'mrdZenith'],
+  /* naval */
+  gunboat:          ['gunboat',     'gunboat',    'submarine',  'mrdCorvette'],
+  submarine:        ['submarine',   'gunboat',    'submarine',  'mrdCorvette'],
+  destroyer:        ['destroyer',   'destroyer',  'dreadnought', 'mrdMonitor'],
+  dreadnought:      ['dreadnought', 'destroyer',  'dreadnought', 'mrdMonitor'],
+  transport:        ['transport',   'transport',  'transport',  'mrdCarryall'],
 };
 
 /** Resolved def indices for the content vocabulary. -1 means "no real def". */
@@ -767,14 +928,67 @@ export class ScenarioBuilder {
 
   /* -- players ---------------------------------------------------------- */
 
-  /** The local (Allied) player. Bootstrap seats them at index 0. */
+  /**
+   * The FIRST army slot — historically "the Allied player", and still named
+   * that because two dozen layout files say `b.allies`.
+   *
+   * Resolved by SLOT, not by faction. Searching the player table for
+   * `Faction.Allies` broke in two ways the lobby can now produce: a mirror
+   * match handed both scripted bases to the same player, and a Meridian player
+   * matched nothing at all and started with no base. Slot 0 is the local
+   * player in every seating this game produces, which is exactly what a layout
+   * means when it writes `b.allies`.
+   */
   get allies(): PlayerId {
-    return this.playerOf(Faction.Allies);
+    return this.armySlot(0);
   }
 
-  /** The opposing (Soviet) player. */
+  /** The SECOND army slot — historically "the Soviet player". */
   get soviets(): PlayerId {
-    return this.playerOf(Faction.Soviets);
+    return this.armySlot(1);
+  }
+
+  /**
+   * The i-th non-neutral player, creating one if the world is short.
+   *
+   * `world.localPlayer` is pinned to slot 0 by Bootstrap and the shell writes
+   * the lobby's faction choice onto that same slot, so slot order is player
+   * order and both are stable across a rebuild.
+   */
+  armySlot(i: number): PlayerId {
+    const w = this.world;
+    let seen = 0;
+    for (let p = 0; p < w.players.length; p++) {
+      if (w.players[p].faction === Faction.Neutral) continue;
+      if (seen === i) return w.players[p].id;
+      seen++;
+    }
+    // Only reached by a fixture that asks for more armies than the world was
+    // seeded with. Alternate the two original armies rather than inventing one.
+    return w.addPlayer(
+      i === 0 ? Faction.Allies : Faction.Soviets,
+      i === 0 ? 'Commander' : 'Opponent', false, false,
+    );
+  }
+
+  /**
+   * Translate a layout's content key into the equivalent for `owner`'s army.
+   *
+   * A base LAYOUT is geometry — where the refinery sits relative to the yard,
+   * how wide the sortie gate is — and it is authored once. The CONTENT is per
+   * army. Without this, `buildAlliedBase` for a Meridian player spawned nothing
+   * at all (every key missed `FALLBACK_BUILDINGS`' faction check) and a mirror
+   * match gave one side the other's buildings.
+   *
+   * Identity for the army the key already belongs to, so every `?shot=` fixture
+   * is byte-identical to before.
+   */
+  keyFor(owner: PlayerId, key: string): string {
+    const p = this.world.players[owner as number];
+    if (p === undefined) return key;
+    const row = FACTION_KEY_MAP[key];
+    if (row === undefined) return key;
+    return row[p.faction as number] ?? key;
   }
 
   /**
@@ -818,6 +1032,7 @@ export class ScenarioBuilder {
     z: number,
     options: SpawnUnitOptions = {},
   ): EntityId {
+    key = this.keyFor(owner, key);
     const fb = FALLBACK_UNITS[key];
     if (fb === undefined) {
       console.warn(`[scenario] unknown unit key "${key}"`);
@@ -899,6 +1114,7 @@ export class ScenarioBuilder {
     z: number,
     options: SpawnBuildingOptions = {},
   ): EntityId {
+    key = this.keyFor(owner, key);
     const fb = FALLBACK_BUILDINGS[key];
     if (fb === undefined) {
       console.warn(`[scenario] unknown building key "${key}"`);
@@ -1249,6 +1465,31 @@ interface ScenarioPlan {
  * out for a 40 m frame and shot at 62 m reads as a model village on an empty
  * table, which is scorecard failure R3.
  */
+/**
+ * Build the base an army actually deserves, in the layout language of its own
+ * faction, for whoever owns that slot.
+ *
+ * The LAYOUT is the faction's architectural character (bible §5.7: the Allied
+ * base reads as a laid-out airfield, the Soviet one as a sprawl) and the
+ * CONTENT is remapped per owner by `ScenarioBuilder.keyFor`. Splitting the two
+ * is what lets a mirror match and a third faction work at all: before this, the
+ * skirmish plan called `buildAlliedBase` and `buildSovietBase` with no owner,
+ * they each searched the player table for their faction, and a Soviet-vs-Soviet
+ * lobby handed both bases to the same player while a Meridian player got none.
+ *
+ * The Pact takes the Allied layout: corbelled ceramic is engineered and
+ * orthogonal, which is the Allied grid, not the Soviet sprawl.
+ */
+function buildBaseFor(
+  b: ScenarioBuilder, owner: PlayerId, cx: number, cz: number, options: BaseOptions,
+): EntityId {
+  const faction = b.world.player(owner).faction;
+  const opts = { ...options, owner };
+  return faction === Faction.Soviets
+    ? buildSovietBase(b, cx, cz, opts)
+    : buildAlliedBase(b, cx, cz, opts);
+}
+
 const PLANS: Record<string, ScenarioPlan> = {
   skirmish: {
     map: 'temperate', distance: 58, yawDeg: 24, frozen: false, settleTicks: 0,
@@ -1260,8 +1501,8 @@ const PLANS: Record<string, ScenarioPlan> = {
       // Two bases on the classic RA diagonal, each on its own ore field, with a
       // contested patch in the middle. `facingDeg + 180` is the threat axis, so
       // each base is turned to look at the other.
-      buildAlliedBase(b, cx - 74, cz + 62, { facingDeg: 310 });
-      buildSovietBase(b, cx + 74, cz - 62, { facingDeg: 130 });
+      buildBaseFor(b, b.allies, cx - 74, cz + 62, { facingDeg: 310 });
+      buildBaseFor(b, b.soviets, cx + 74, cz - 62, { facingDeg: 130 });
       b.addOre(cx - 30, cz + 86, 30);
       b.addOre(cx + 34, cz - 86, 30);
       b.addOre(cx, cz, 22);
@@ -1439,6 +1680,18 @@ export function plannedScenario(): ScenarioPlanSummary {
   return planned;
 }
 
+/**
+ * Drop the memo so the NEXT boot re-reads the URL.
+ *
+ * The memo is per-boot, not per-process, and the shell rebuilds a match in the
+ * same page: without this the HUD cameo theatre and the scatter density plan on
+ * a second match still read the first boot's preset while terrain, ore and
+ * props (which re-read the URL themselves) read the new one.
+ */
+export function resetScenarioPlan(): void {
+  planned = null;
+}
+
 /* -- module state ---------------------------------------------------------- */
 
 let active: ScenarioSpec | null = null;
@@ -1550,4 +1803,5 @@ export function buildScenario(
 export function clearScenario(): void {
   active = null;
   keyTable = null;
+  resetScenarioPlan();
 }

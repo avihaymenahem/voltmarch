@@ -1,40 +1,54 @@
 /**
  * ============================================================================
- * RED ALERT — src/ui/Chrome.ts
+ * src/ui/Chrome.ts — PANEL PRIMITIVES
  * ============================================================================
- * THE CHROME LANGUAGE. Everything in the HUD is built out of this file so the
- * sidebar, the command bar and the world overlay cannot drift apart.
+ * The material vocabulary of the modern HUD, in one file, so the resource
+ * strip, the minimap dock, the selection panel and the build grid cannot drift
+ * apart.
  *
- * The five laws (VISUAL_DNA §2.14), enforced here rather than remembered:
+ * THE MATERIAL, stated once
+ * -------------------------
+ *   surface   `rgba(9,13,20,.72)` + `backdrop-filter: blur(14px) saturate(1.1)`
+ *   edge      ONE 1 px hairline at `rgba(255,255,255,.10)`
+ *   corner    a 10 px notch on the diagonal, cut with `clip-path`
+ *   accent    the owning faction's `hudAccent`, and NOTHING ELSE is saturated
+ *   type      condensed sans; labels uppercase 11px at .16em tracking; every
+ *             number tabular
  *
- *  1. ARC, ARC, ARC. Four horizontal arcs stack down the sidebar and every one
- *     bows toward the sidebar's centre. `arcPath`/`lensStripPath` are the only
- *     two shapes allowed to be an interactive surface; a plain rectangle is
- *     reserved for the credits well and the cameo keys.
- *  2. EVERY EDGE IS A 3-ZONE BEVEL: 1 px specular highlight -> 5-9 px body ramp
- *     -> 1 px black terminator. `bevelGradient()` emits exactly that ramp and
- *     `--ra-bevel-*` carries it into CSS.
- *  3. THE HIGHLIGHT IS COOL VIOLET-GREY `#BBBCD0`. Never neutral white, never
- *     warm. That violet cast is the difference between gunmetal and plastic.
- *  4. WELLS ARE BLACK AND FLAT; PLATES ARE GRADIENT AND LIT. Nothing is
- *     mid-grey flat. Credits `#10111A`, cameo keys `#080808`, radar `#000000`.
- *  5. RIVETS, SEAMS, PISTONS. The ten piston domes on the right rail, the
- *     hydraulic end cap, the Soviet radiator grille. Machinery, not UI panels.
+ * There are no bevels, no rivets, no gradients and no drop shadows anywhere in
+ * `src/ui/**`. Depth is translucency plus that single hairline — that is the
+ * entire trick, and adding a second light source to fake more of it is what
+ * made the previous interface look like 2003.
  *
- * Faction recolour is a FULL MATERIAL SWAP (non-negotiable #5): `applySkin`
- * swaps ~30 custom properties, and the two skins share no colour at all. There
- * is no hue-rotate anywhere in src/ui/**.
+ * ACCENT IS READ, NEVER WRITTEN
+ * -----------------------------
+ * `accentFor()` reads `FACTION_PALETTE[key].hudAccent`. A third faction gets
+ * its accent by existing in that table, with no edit here. The semantic
+ * colours — amber for resource pressure, green for health and ready, red for
+ * alerts — are fixed, because a Soviet player must not read "low power" as
+ * "Soviet" and an Allied player must not read "under attack" as "Allied".
  *
- * RESOLUTION INDEPENDENCE. `--ra-d` is one DESIGN pixel at the current uiScale.
- * Every dimension in hud.css is `calc(N * var(--ra-d))`; hairlines stay literal
- * `1px` so a bevel edge always lands on exactly one device pixel. Nothing here
- * ever scales a bitmap.
+ * RESOLUTION INDEPENDENCE
+ * -----------------------
+ * `--vm-u` is one design unit at the current uiScale and every dimension in
+ * hud.css is a multiple of it. Hairlines stay literal `1px` so an edge always
+ * lands on exactly one device pixel.
+ *
+ * LEGACY SECTION
+ * --------------
+ * Section 9 keeps the pure helpers of the retired chrome language. They are not
+ * used by anything in the modern HUD; they survive because `tests/hud.spec.ts`
+ * and `tests/cameos.spec.ts` pin them and those files are owned elsewhere. They
+ * should be deleted together with `src/ui/Cameos.ts` and those two specs in one
+ * commit — see the note above the section.
  * ============================================================================
  */
 
 import {
+  FACTION_PALETTE,
   HUD_DESIGN_WIDTH,
   HUD_GRID,
+  HUD_INTERACTION,
   HUD_STACK,
   HUD_SKIN_ALLIES,
   HUD_SKIN_SOVIETS,
@@ -44,15 +58,648 @@ import {
   HUD_UI_SCALE_STEPS,
   type HudFactionSkin,
 } from '../core/config';
-import { Faction } from '../core/types';
+import { Faction, FACTION_PALETTE_KEYS, type FactionPaletteKey } from '../core/types';
 
 /* ==========================================================================
- * SECTION 1 — SKINS
+ * SECTION 1 — COLOUR MATH
+ * ========================================================================== */
+
+/** `#rrggbb` (or `#rgb`) -> [r,g,b] in 0..255. */
+export function hexToRgb(hex: string): [number, number, number] {
+  let h = hex.charCodeAt(0) === 35 ? hex.slice(1) : hex;
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  const n = parseInt(h, 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+export function rgbToHex(r: number, g: number, b: number): string {
+  const c = (v: number): string =>
+    Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+  return `#${c(r)}${c(g)}${c(b)}`;
+}
+
+/** Linear blend in sRGB. Fine for UI chrome; never used on albedo. */
+export function mixHex(a: string, b: string, t: number): string {
+  const [ar, ag, ab] = hexToRgb(a);
+  const [br, bg, bb] = hexToRgb(b);
+  return rgbToHex(ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t);
+}
+
+export function rgba(hex: string, alpha: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+/** `"53,200,240"` — the form a CSS custom property needs for `rgb(var(--x)/a)`. */
+export function rgbTriplet(hex: string): string {
+  const [r, g, b] = hexToRgb(hex);
+  return `${r},${g},${b}`;
+}
+
+/* ==========================================================================
+ * SECTION 2 — THE THEME
+ *
+ * One faction, one accent, derived once and pushed into custom properties.
+ * Every panel, icon, bar and border in the HUD reads them, so a faction change
+ * is one call and zero re-layout.
+ * ========================================================================== */
+
+/** Palette key for a faction. Unlike `factionKey`, Neutral keeps its own row. */
+/** The art-side name of a faction. Re-exported so `src/ui/**` has one import. */
+export type PaletteKey = FactionPaletteKey;
+
+/**
+ * `FACTION_PALETTE` is declared in `Faction` order — neutral(0), allies(1),
+ * soviets(2), meridian(3) — so the enum value indexes it directly. Resolving by
+ * INDEX rather than by a hard-coded switch is what let the Meridian Pact get a
+ * working HUD accent from a single `FactionLook` row in config.ts with no edit
+ * here, and it will do the same for a fifth army.
+ */
+const PALETTE_ORDER: readonly string[] = Object.keys(FACTION_PALETTE);
+
+export function paletteKeyFor(faction: Faction): PaletteKey {
+  const byOrder = PALETTE_ORDER[faction as number];
+  if (byOrder !== undefined) return byOrder as PaletteKey;
+  return FACTION_PALETTE_KEYS[faction as number] ?? 'neutral';
+}
+
+/**
+ * The faction's accent, straight out of the art tables. This is deliberately a
+ * READ: a third faction gets a HUD accent by adding a `FactionLook` row, not by
+ * editing `src/ui/**`. The literal is only reached if the table itself is
+ * missing a row, which would already be a content bug.
+ */
+export function accentFor(faction: Faction): string {
+  const table = FACTION_PALETTE as unknown as Record<string, { hudAccent?: string } | undefined>;
+  return table[paletteKeyFor(faction)]?.hudAccent ?? '#35C8F0';
+}
+
+/** The resolved chrome colours for one faction. */
+export interface HudTheme {
+  /** The one saturated colour in the interface. */
+  accent: string;
+  /** A lifted accent for focus rings and the "READY" edge. */
+  accentHi: string;
+  /** A sunk accent for inactive tab rules and disabled slot borders. */
+  accentLo: string;
+  /** `"r,g,b"`, for alpha compositing in CSS. */
+  accentRgb: string;
+}
+
+export function themeFor(faction: Faction): HudTheme {
+  const accent = accentFor(faction);
+  return {
+    accent,
+    // A fixed lift toward white rather than an HSL rotation: an accent that is
+    // already near-white must not blow out, and a dark one must still brighten.
+    accentHi: mixHex(accent, '#FFFFFF', 0.42),
+    accentLo: mixHex(accent, '#070A10', 0.45),
+    accentRgb: rgbTriplet(accent),
+  };
+}
+
+/**
+ * Push a theme onto the HUD root. This is the entire faction recolour: nothing
+ * in hud.css names a faction colour, only `var(--vm-accent*)`.
+ */
+export function applyTheme(root: HTMLElement, faction: Faction): HudTheme {
+  const t = themeFor(faction);
+  const s = root.style;
+  root.dataset.faction = paletteKeyFor(faction);
+  s.setProperty('--vm-accent', t.accent);
+  s.setProperty('--vm-accent-hi', t.accentHi);
+  s.setProperty('--vm-accent-lo', t.accentLo);
+  s.setProperty('--vm-accent-rgb', t.accentRgb);
+  return t;
+}
+
+/**
+ * `uiScale = clamp(floor(screenH / 720 * 4) / 4, 1, 4)`.
+ *
+ * Still quarter-quantized. The bevels are gone, but a hairline border is even
+ * less forgiving than a bevel was: at a fractional scale a 1 px edge resolves
+ * to two half-lit device pixels and the panel edge turns to fog.
+ */
+export function computeUiScale(screenH: number): number {
+  const raw = (screenH / HUD_UI_SCALE_BASE_HEIGHT) * HUD_UI_SCALE_STEPS;
+  const stepped = Math.floor(raw) / HUD_UI_SCALE_STEPS;
+  return Math.min(HUD_UI_SCALE_MAX, Math.max(HUD_UI_SCALE_MIN, stepped));
+}
+
+/* ==========================================================================
+ * SECTION 3 — DOM HELPERS
+ *
+ * No framework, no virtual DOM, no `innerHTML` with interpolated content. The
+ * HUD is a few hundred nodes built once and mutated in place; the frame loop
+ * touches `nodeValue`, `classList` and `style.setProperty` and nothing else.
+ * ========================================================================== */
+
+export function el<K extends keyof HTMLElementTagNameMap>(
+  tag: K,
+  className?: string,
+  parent?: Node,
+): HTMLElementTagNameMap[K] {
+  const node = document.createElement(tag);
+  if (className !== undefined && className !== '') node.className = className;
+  if (parent !== undefined) parent.appendChild(node);
+  return node;
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+export function svgEl<K extends keyof SVGElementTagNameMap>(
+  tag: K,
+  parent?: Node,
+): SVGElementTagNameMap[K] {
+  const node = document.createElementNS(SVG_NS, tag);
+  if (parent !== undefined) parent.appendChild(node);
+  return node;
+}
+
+/** A text node parked inside `parent`, returned so callers can poke nodeValue. */
+export function textNode(parent: Node, initial = ''): Text {
+  const t = document.createTextNode(initial);
+  parent.appendChild(t);
+  return t;
+}
+
+/** A `<span>` holding exactly one text node. The HUD's unit of readout. */
+export function label(parent: Node, className: string, initial = ''): Text {
+  return textNode(el('span', className, parent), initial);
+}
+
+/**
+ * A glass panel: the one surface primitive.
+ *
+ * `notch` picks which corners are cut. `'diag'` — top-left and bottom-right —
+ * is the house diagonal; everything in the HUD leans the same way so the panels
+ * read as one machined set rather than four unrelated widgets. `'diag-rev'`
+ * mirrors it, `'ends'` chamfers both short edges (the resource strip).
+ */
+export type NotchStyle = 'diag' | 'diag-rev' | 'ends' | 'none';
+
+export function panel(
+  parent: Node,
+  className: string,
+  notch: NotchStyle = 'diag',
+): HTMLDivElement {
+  const node = el('div', `vm-panel ${className}`, parent);
+  node.dataset.notch = notch;
+  return node;
+}
+
+/** A button that is a real `<button>`, so focus, Enter and Space are free. */
+export function button(parent: Node, className: string, ariaLabel: string): HTMLButtonElement {
+  const b = el('button', className, parent);
+  b.type = 'button';
+  b.setAttribute('aria-label', ariaLabel);
+  return b;
+}
+
+/* ==========================================================================
+ * SECTION 4 — FORMATTING
+ *
+ * Every number in the HUD is tabular. A credits readout whose digits change
+ * width is the single most obvious "this is a web page" tell left once the
+ * bevels are gone.
+ * ========================================================================== */
+
+/** Credits: plain digits, no `$`, no separator, never negative. */
+export function formatCredits(value: number): string {
+  const v = value < 0 ? 0 : value > 99999999 ? 99999999 : Math.floor(value);
+  return String(v);
+}
+
+/** Thousands-separated credits for the tooltip, where density is not at issue. */
+export function formatCost(value: number): string {
+  const v = Math.max(0, Math.floor(value));
+  return v >= 1000 ? `${Math.floor(v / 1000)},${String(v % 1000).padStart(3, '0')}` : String(v);
+}
+
+/** `MM:SS`, clamped, rounding UP so a countdown never shows 00:00 while live. */
+export function formatClock(seconds: number): string {
+  const s = Math.max(0, Math.ceil(seconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m < 10 ? '0' : ''}${m}:${r < 10 ? '0' : ''}${r}`;
+}
+
+/** The match clock, which counts UP and floors instead. */
+export function formatElapsed(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m < 10 ? '0' : ''}${m}:${r < 10 ? '0' : ''}${r}`;
+}
+
+/** One decimal, no trailing `.0`. Used by the stat row. */
+export function formatStat(value: number): string {
+  if (!Number.isFinite(value)) return '—';
+  const r = Math.round(value * 10) / 10;
+  return Number.isInteger(r) ? String(r) : r.toFixed(1);
+}
+
+/* ==========================================================================
+ * SECTION 5 — THE ROLLING COUNTER
+ *
+ * Credits tick toward their target instead of snapping. This is the oldest
+ * trick in the genre and it is worth every line: a number that rolls tells you
+ * money is MOVING, which is the one economic fact the player needs at a glance.
+ * ========================================================================== */
+
+export class RollingCounter {
+  private displayed = 0;
+  private target = 0;
+  private initialised = false;
+
+  /** Read the current displayed integer. */
+  get value(): number { return Math.round(this.displayed); }
+
+  /** Jump with no roll — match start, or a faction swap. */
+  reset(value: number): void {
+    this.displayed = value;
+    this.target = value;
+    this.initialised = true;
+  }
+
+  setTarget(value: number): void {
+    if (!this.initialised) { this.reset(value); return; }
+    this.target = value;
+  }
+
+  /**
+   * Advance one frame. Exponential toward the target with a floor, so a big
+   * windfall rolls fast and the last few credits still land promptly instead of
+   * asymptoting forever.
+   */
+  step(dt: number): boolean {
+    const delta = this.target - this.displayed;
+    if (delta === 0) return false;
+    const mag = Math.abs(delta);
+    const rate = HUD_INTERACTION.creditsTallyRate * 60;
+    const move = Math.max(HUD_INTERACTION.creditsTallyMin, mag * rate * dt);
+    if (move >= mag) { this.displayed = this.target; return true; }
+    this.displayed += Math.sign(delta) * move;
+    return true;
+  }
+}
+
+/* ==========================================================================
+ * SECTION 6 — TOOLTIP
+ *
+ * One glass chip, positioned against its anchor and flipped to stay on screen.
+ * It is the same material as everything else on purpose: a tooltip in a
+ * different material reads as a browser artefact rather than part of the HUD.
+ * ========================================================================== */
+
+export interface TooltipContent {
+  title: string;
+  /** Credits. 0 hides the row. */
+  cost: number;
+  /** Seconds. 0 hides the row. */
+  buildTimeSec: number;
+  /** Power delta. 0 hides the row. */
+  powerDelta: number;
+  blurb: string;
+  /** Shown in red. Empty when the item is available. */
+  requirement: string;
+  /** Keyboard hint, e.g. `Q`. Empty to hide. */
+  hotkey: string;
+}
+
+/** Which side of the anchor the tip prefers. It flips when it would clip. */
+export type TooltipSide = 'above' | 'left';
+
+export class Tooltip {
+  readonly root: HTMLElement;
+
+  private readonly titleNode: Text;
+  private readonly hotkeyEl: HTMLElement;
+  private readonly hotkeyNode: Text;
+  private readonly statsRow: HTMLElement;
+  private readonly costEl: HTMLElement;
+  private readonly costNode: Text;
+  private readonly timeEl: HTMLElement;
+  private readonly timeNode: Text;
+  private readonly powerEl: HTMLElement;
+  private readonly powerNode: Text;
+  private readonly blurbEl: HTMLElement;
+  private readonly blurbNode: Text;
+  private readonly reqEl: HTMLElement;
+  private readonly reqNode: Text;
+
+  private timer = 0;
+  private visible = false;
+
+  constructor(parent: HTMLElement) {
+    this.root = el('div', 'vm-tip', parent);
+    this.root.setAttribute('role', 'tooltip');
+    this.root.hidden = true;
+
+    const head = el('div', 'vm-tip-head', this.root);
+    this.titleNode = label(head, 'vm-tip-title');
+    this.hotkeyEl = el('span', 'vm-tip-key', head);
+    this.hotkeyNode = textNode(this.hotkeyEl);
+
+    this.statsRow = el('div', 'vm-tip-stats', this.root);
+    this.costEl = el('span', 'vm-tip-stat is-cost', this.statsRow);
+    this.costNode = textNode(this.costEl);
+    this.timeEl = el('span', 'vm-tip-stat', this.statsRow);
+    this.timeNode = textNode(this.timeEl);
+    this.powerEl = el('span', 'vm-tip-stat', this.statsRow);
+    this.powerNode = textNode(this.powerEl);
+
+    this.blurbEl = el('div', 'vm-tip-blurb', this.root);
+    this.blurbNode = textNode(this.blurbEl);
+
+    this.reqEl = el('div', 'vm-tip-req', this.root);
+    this.reqNode = textNode(this.reqEl);
+  }
+
+  /** Arm the hover delay. Calling it again with a new anchor restarts it. */
+  schedule(anchor: HTMLElement, content: TooltipContent, side: TooltipSide = 'above'): void {
+    this.cancel();
+    this.timer = window.setTimeout(() => {
+      this.timer = 0;
+      this.show(anchor, content, side);
+    }, HUD_INTERACTION.tooltipDelayMs);
+  }
+
+  show(anchor: HTMLElement, c: TooltipContent, side: TooltipSide = 'above'): void {
+    this.titleNode.nodeValue = c.title;
+
+    this.hotkeyNode.nodeValue = c.hotkey;
+    this.hotkeyEl.hidden = c.hotkey === '';
+
+    this.costNode.nodeValue = c.cost > 0 ? formatCost(c.cost) : '';
+    this.costEl.hidden = c.cost <= 0;
+
+    this.timeNode.nodeValue = c.buildTimeSec > 0 ? `${c.buildTimeSec.toFixed(0)}s` : '';
+    this.timeEl.hidden = c.buildTimeSec <= 0;
+
+    this.powerNode.nodeValue = c.powerDelta !== 0
+      ? `${c.powerDelta > 0 ? '+' : ''}${c.powerDelta}` : '';
+    this.powerEl.hidden = c.powerDelta === 0;
+    this.powerEl.classList.toggle('is-drain', c.powerDelta < 0);
+
+    this.blurbNode.nodeValue = c.blurb;
+    this.blurbEl.hidden = c.blurb === '';
+
+    this.reqNode.nodeValue = c.requirement;
+    this.reqEl.hidden = c.requirement === '';
+
+    // Unhide BEFORE measuring, or offsetWidth is 0 and the clamp does nothing.
+    this.root.hidden = false;
+    this.visible = true;
+    this.place(anchor, side);
+  }
+
+  private place(anchor: HTMLElement, side: TooltipSide): void {
+    const a = anchor.getBoundingClientRect();
+    const w = this.root.offsetWidth;
+    const h = this.root.offsetHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const pad = 8;
+
+    let left: number;
+    let top: number;
+
+    if (side === 'left') {
+      left = a.left - w - pad;
+      top = a.top + a.height * 0.5 - h * 0.5;
+      // Flip to the right when there is no room on the left.
+      if (left < pad) left = Math.min(vw - w - pad, a.right + pad);
+    } else {
+      left = a.left + a.width * 0.5 - w * 0.5;
+      top = a.top - h - pad;
+      // Flip below when the anchor is against the top edge.
+      if (top < pad) top = Math.min(vh - h - pad, a.bottom + pad);
+    }
+
+    this.root.style.left = `${Math.round(Math.max(pad, Math.min(vw - w - pad, left)))}px`;
+    this.root.style.top = `${Math.round(Math.max(pad, Math.min(vh - h - pad, top)))}px`;
+  }
+
+  cancel(): void {
+    if (this.timer !== 0) {
+      clearTimeout(this.timer);
+      this.timer = 0;
+    }
+  }
+
+  hide(): void {
+    this.cancel();
+    if (!this.visible) return;
+    this.visible = false;
+    this.root.hidden = true;
+  }
+
+  dispose(): void {
+    this.cancel();
+    this.root.remove();
+  }
+}
+
+/* ==========================================================================
+ * SECTION 7 — EVENT TOASTS
+ *
+ * Small glass chips in the top-left with a coloured left edge. Accent for
+ * information, amber for a warning, red for an alert. They auto-expire and they
+ * COALESCE: five structures finishing in one second is one chip that counts to
+ * five, not five chips that push the fifth off screen.
+ * ========================================================================== */
+
+export type ToastKind = 'info' | 'warn' | 'alert' | 'good';
+
+/** Seconds a chip lives before it starts fading. */
+const TOAST_LIFE: Readonly<Record<ToastKind, number>> = {
+  info: 4.0,
+  good: 4.5,
+  warn: 6.0,
+  alert: 6.5,
+};
+/** Seconds of fade-out after the life expires. */
+const TOAST_FADE = 0.4;
+/** Chips on screen at once. Oldest is retired first. */
+const TOAST_MAX = 5;
+/** Seconds within which a repeat of the same key merges into the live chip. */
+const TOAST_MERGE = 6.0;
+
+interface ToastEntry {
+  root: HTMLElement;
+  countEl: HTMLElement;
+  countNode: Text;
+  titleNode: Text;
+  detailEl: HTMLElement;
+  detailNode: Text;
+  key: string;
+  age: number;
+  life: number;
+  count: number;
+  dying: boolean;
+}
+
+export class ToastStack {
+  readonly root: HTMLElement;
+  private readonly live: ToastEntry[] = [];
+  private readonly pool: ToastEntry[] = [];
+  private readonly iconHost: (parent: HTMLElement, kind: ToastKind) => void;
+
+  constructor(parent: HTMLElement, iconHost: (parent: HTMLElement, kind: ToastKind) => void) {
+    this.root = el('div', 'vm-toasts', parent);
+    this.root.setAttribute('role', 'log');
+    this.root.setAttribute('aria-live', 'polite');
+    this.iconHost = iconHost;
+  }
+
+  /**
+   * Raise a chip. `key` is the coalescing identity — pass the event kind plus
+   * whatever makes two of them "the same thing" (usually nothing).
+   */
+  push(kind: ToastKind, key: string, title: string, detail = ''): void {
+    for (const t of this.live) {
+      if (t.key !== key || t.dying || t.age > TOAST_MERGE) continue;
+      t.count++;
+      t.age = 0;
+      t.countNode.nodeValue = `x${t.count}`;
+      t.countEl.hidden = false;
+      t.detailNode.nodeValue = detail;
+      t.detailEl.hidden = detail === '';
+      // Re-run the entry animation so a merge is visible rather than silent.
+      t.root.classList.remove('is-enter');
+      void t.root.offsetWidth;
+      t.root.classList.add('is-enter');
+      return;
+    }
+
+    while (this.live.length >= TOAST_MAX) this.retire(0);
+
+    const entry = this.pool.pop() ?? this.build();
+    entry.key = key;
+    entry.age = 0;
+    entry.life = TOAST_LIFE[kind];
+    entry.count = 1;
+    entry.dying = false;
+    entry.titleNode.nodeValue = title;
+    entry.detailNode.nodeValue = detail;
+    entry.detailEl.hidden = detail === '';
+    entry.countEl.hidden = true;
+    entry.root.className = `vm-toast is-${kind} is-enter`;
+    entry.root.style.opacity = '';
+
+    // Rebuild the leading icon: it is per-kind and the chip is pooled.
+    const slot = entry.root.firstElementChild as HTMLElement;
+    while (slot.firstChild !== null) slot.removeChild(slot.firstChild);
+    this.iconHost(slot, kind);
+
+    this.root.appendChild(entry.root);
+    this.live.push(entry);
+  }
+
+  private build(): ToastEntry {
+    const root = el('div', 'vm-toast');
+    el('span', 'vm-toast-icon', root);
+    const body = el('div', 'vm-toast-body', root);
+    const titleNode = label(body, 'vm-toast-title');
+    const detailEl = el('span', 'vm-toast-detail', body);
+    const detailNode = textNode(detailEl);
+    const countEl = el('span', 'vm-toast-count', root);
+    const countNode = textNode(countEl);
+    return {
+      root, countEl, countNode, titleNode, detailEl, detailNode,
+      key: '', age: 0, life: 0, count: 1, dying: false,
+    };
+  }
+
+  /** Age every chip. Called once per rendered frame. */
+  frame(dt: number): void {
+    for (let i = this.live.length - 1; i >= 0; i--) {
+      const t = this.live[i];
+      t.age += dt;
+      if (!t.dying && t.age >= t.life) {
+        t.dying = true;
+        t.root.classList.add('is-exit');
+      }
+      if (t.dying && t.age >= t.life + TOAST_FADE) this.retire(i);
+    }
+  }
+
+  private retire(i: number): void {
+    const t = this.live[i];
+    if (t === undefined) return;
+    this.live.splice(i, 1);
+    t.root.remove();
+    t.root.classList.remove('is-enter', 'is-exit');
+    this.pool.push(t);
+  }
+
+  clear(): void {
+    while (this.live.length > 0) this.retire(0);
+  }
+
+  dispose(): void {
+    this.clear();
+    this.pool.length = 0;
+    this.root.remove();
+  }
+}
+
+/* ==========================================================================
+ * SECTION 8 — SEMANTIC COLOURS
+ *
+ * The ONLY saturated colours in the HUD besides the accent, and each one owns
+ * exactly one meaning. They live here rather than in hud.css because the canvas
+ * layers (minimap, world overlay) need the same values and a duplicated hex is
+ * how two halves of one interface end up disagreeing about what "damaged"
+ * looks like.
+ * ========================================================================== */
+
+export const SEMANTIC = {
+  /** Health, full. */
+  ok: '#4FD97F',
+  /** Health, hurt. Also the low-power / insufficient-funds warning. */
+  warn: '#F0B429',
+  /** Health, critical. Also base-under-attack. */
+  danger: '#FF4D3D',
+  /** Veterancy. */
+  gold: '#F6C445',
+  /** Ore on the minimap, and the credit floaters. */
+  ore: '#C8A83C',
+  /** Neutral / Gaia blips. */
+  neutral: '#B9C2CC',
+  /** Text at full strength. */
+  text: '#E6EEF6',
+  /** Secondary text and inactive labels. */
+  textDim: '#8A97A6',
+  /** The panel body, matching `--vm-glass` in hud.css. */
+  glass: 'rgba(9,13,20,0.72)',
+  /** The single hairline. */
+  hairline: 'rgba(255,255,255,0.10)',
+} as const;
+
+/** Health-bar colour for a 0..1 fraction. One ramp, used by HUD and overlay. */
+export function healthColor(frac: number): string {
+  return frac > 0.6 ? SEMANTIC.ok : frac > 0.3 ? SEMANTIC.warn : SEMANTIC.danger;
+}
+
+/* ==========================================================================
+ * SECTION 9 — LEGACY (retired chrome language)
+ *
+ * NOT USED BY THE MODERN HUD. Every export below is a pure function pinned by
+ * `tests/hud.spec.ts` / `tests/cameos.spec.ts`, and by `src/ui/Cameos.ts` which
+ * those specs exercise. They are kept so the suite stays green while the test
+ * files — which this module does not own — are retired.
+ *
+ * TO REMOVE: delete this section, `src/ui/Cameos.ts`, `tests/hud.spec.ts` and
+ * `tests/cameos.spec.ts` in one commit. Nothing in `src/**` will break; the
+ * only imports are the two specs and Cameos itself (`mixHex`, `rgba`,
+ * `hexToRgb`, `skinFor`, all of which are also part of the live API above).
  * ========================================================================== */
 
 export type HudFactionKey = 'allies' | 'soviets';
 
-/** Neutral/Gaia has no HUD of its own; it borrows the Allied chrome. */
+/** Legacy two-way faction key. Prefer `paletteKeyFor`, which keeps Neutral. */
 export function factionKey(faction: Faction): HudFactionKey {
   return faction === Faction.Soviets ? 'soviets' : 'allies';
 }
@@ -61,119 +708,56 @@ export function skinFor(faction: Faction): HudFactionSkin {
   return faction === Faction.Soviets ? HUD_SKIN_SOVIETS : HUD_SKIN_ALLIES;
 }
 
-/**
- * `uiScale = clamp(floor(screenH / 720 * 4) / 4, 1, 4)`.
- *
- * Quantized to quarter steps on purpose: a continuously-scaled sidebar puts
- * bevel hairlines on fractional device pixels, and a blurred 1 px bevel is the
- * single most obvious "this is a web page" tell in the whole interface.
- */
-export function computeUiScale(screenH: number): number {
-  const raw = (screenH / HUD_UI_SCALE_BASE_HEIGHT) * HUD_UI_SCALE_STEPS;
-  const stepped = Math.floor(raw) / HUD_UI_SCALE_STEPS;
-  return Math.min(HUD_UI_SCALE_MAX, Math.max(HUD_UI_SCALE_MIN, stepped));
-}
-
-/** Sidebar width in CSS px for a given scale. Always an integer. */
+/** Legacy sidebar width in CSS px. The modern HUD is bottom-anchored. */
 export function sidebarWidthPx(uiScale: number): number {
   return Math.round(HUD_DESIGN_WIDTH * uiScale);
 }
 
-/**
- * Cameo rows that fit: `floor((designH - header - footer) / 50)`, clamped.
- *
- * Capped at 12 so the grid never dominates a 4K screen (§2.2), floored at 4 so
- * a short window still has a sidebar worth the name. Pure, so the row-count
- * arithmetic is testable without a DOM.
- */
+/** Legacy cameo row count for the retired 2-column vertical grid. */
 export function cameoRowsFor(screenH: number, uiScale: number): number {
   const designH = screenH / Math.max(0.01, uiScale);
   const usable = designH - HUD_STACK.header - HUD_STACK.footer;
-  return Math.max(HUD_GRID.minRows, Math.min(HUD_GRID.maxRows, Math.floor(usable / HUD_GRID.pitchY)));
-}
-
-/**
- * Push a skin into CSS custom properties on `root`. This is the entire faction
- * recolour: swap these and every panel, lens, glyph, blip and numeral follows.
- */
-export function applySkin(root: HTMLElement, faction: Faction): void {
-  const s = skinFor(faction);
-  const k = factionKey(faction);
-  const v = root.style;
-
-  root.dataset.faction = k;
-
-  v.setProperty('--ra-bevel-hi', s.bevelHi);
-  v.setProperty('--ra-metal-hi', s.metalHi);
-  v.setProperty('--ra-metal-mid', s.metalMid);
-  v.setProperty('--ra-metal-lo', s.metalLo);
-  v.setProperty('--ra-bevel-lo', s.bevelLo);
-
-  v.setProperty('--ra-lens-0', s.lens[0]);
-  v.setProperty('--ra-lens-1', s.lens[1]);
-  v.setProperty('--ra-lens-2', s.lens[2]);
-  v.setProperty('--ra-lens-3', s.lens[3]);
-  v.setProperty('--ra-lens-rim-hi', s.lensRimHi);
-  v.setProperty('--ra-lens-rim-lo', s.lensRimLo);
-
-  v.setProperty('--ra-glyph', s.glyph);
-  v.setProperty('--ra-glyph-hi', s.glyphHi);
-  v.setProperty('--ra-accent', s.accent);
-  v.setProperty('--ra-accent-hi', s.accentHi);
-  v.setProperty('--ra-numerals', s.numerals);
-  v.setProperty('--ra-radar-frame', s.radarFrame);
-
-  v.setProperty('--ra-well-credits', s.wellCredits);
-  v.setProperty('--ra-well-cameo', s.wellCameo);
-
-  v.setProperty('--ra-power-hi', s.powerHi);
-  v.setProperty('--ra-power-mid', s.powerMid);
-  v.setProperty('--ra-power-lo', s.powerLo);
-
-  v.setProperty('--ra-ready-fill', s.readyFill);
-  v.setProperty('--ra-ready-text', s.readyText);
-
-  v.setProperty('--ra-cmd-icon', s.commandIcon);
-  v.setProperty('--ra-cmd-icon-hi', s.commandIconHi);
-  v.setProperty('--ra-emblem', s.emblem);
-
-  // Law 2, expressed once: the canonical 3-zone body ramp every plate uses.
-  v.setProperty('--ra-bevel-ramp', bevelGradient(s, 180));
-  // Soviet chrome is brushed, not polished: a broad horizontal sheen on top of
-  // the ramp. Allied stays a clean lacquered ramp.
-  v.setProperty('--ra-brush', k === 'soviets' ? sovietBrush() : 'none');
-  // Law 5's machined hardware and law 2's specular sweep, as reusable layers.
-  v.setProperty('--ra-bolt', boltGradient(s));
-  v.setProperty('--ra-sheen', plateSheen());
-}
-
-/**
- * Law 2 as a CSS gradient string: specular hairline, 5-9 px body ramp, black
- * terminator. `angleDeg` 180 = lit from above (the only value the sidebar uses;
- * a plate lit from below reads as a hole).
- */
-export function bevelGradient(s: HudFactionSkin, angleDeg: number): string {
-  return (
-    `linear-gradient(${angleDeg}deg,` +
-    ` ${s.bevelHi} 0%, ${s.metalHi} 6%, ${s.metalMid} 34%,` +
-    ` ${s.metalLo} 78%, ${s.bevelLo} 100%)`
+  return Math.max(
+    HUD_GRID.minRows,
+    Math.min(HUD_GRID.maxRows, Math.floor(usable / HUD_GRID.pitchY)),
   );
 }
 
-/**
- * Horizontal brush sheen for the Soviet brushed-silver plates.
- *
- * THIS USED TO BE A 1 px ON / 1 px OFF ALTERNATION and it was the single worst
- * surface in the HUD: a full-contrast device-pixel stripe under an `overlay`
- * blend is per-pixel noise, and at any uiScale above 1 it beat against the
- * device grid and dithered. RA3's chrome has no micro-grain at all — its
- * interest is a BROAD specular sweep across an otherwise flat plate.
- *
- * So: six stops over a 9 DESIGN px period (it scales with the rest of the HUD
- * instead of the display), amplitude capped at 4.5%, and every transition is a
- * ramp rather than a hard step. Wavelength 4.5 design px against a 4.5%
- * amplitude gives a slope of ~1% per design px — felt, never seen.
- */
+export function arcPath(w: number, h: number, bow: number): string {
+  return (
+    `M0 ${bow} Q ${w / 2} ${-bow} ${w} ${bow}` +
+    ` L${w} ${h - bow} Q ${w / 2} ${h + bow} 0 ${h - bow} Z`
+  );
+}
+
+export function lensStripPath(w: number, h: number, taper: number, bow: number): string {
+  return (
+    `M0 0 L${w} 0 L${w - taper} ${h - bow}` +
+    ` Q ${w / 2} ${h + bow} ${taper} ${h - bow} Z`
+  );
+}
+
+export function tabPlatePath(w: number, h: number, lean: number, drop: number): string {
+  const r = 2;
+  return (
+    `M${r + lean} ${drop} L${w - r + lean} ${drop}` +
+    ` Q${w + lean} ${drop} ${w} ${drop + r}` +
+    ` L${w} ${h} L0 ${h} L0 ${drop + r}` +
+    ` Q0 ${drop} ${r + lean} ${drop} Z`
+  );
+}
+
+/** Rounded-rect path. Still used by `src/ui/Cameos.ts`. */
+export function roundRectPath(x: number, y: number, w: number, h: number, r: number): string {
+  const rr = Math.min(r, w * 0.5, h * 0.5);
+  return (
+    `M${x + rr} ${y} L${x + w - rr} ${y} Q${x + w} ${y} ${x + w} ${y + rr}` +
+    ` L${x + w} ${y + h - rr} Q${x + w} ${y + h} ${x + w - rr} ${y + h}` +
+    ` L${x + rr} ${y + h} Q${x} ${y + h} ${x} ${y + h - rr}` +
+    ` L${x} ${y + rr} Q${x} ${y} ${x + rr} ${y} Z`
+  );
+}
+
 export function sovietBrush(): string {
   return (
     'repeating-linear-gradient(90deg,' +
@@ -185,19 +769,6 @@ export function sovietBrush(): string {
   );
 }
 
-/**
- * Law 5's machined bolt head, as one crisp radial gradient.
- *
- * Hard-edged on purpose: the terminator runs `bevelLo` right out to 92% and the
- * only soft step is the 92 -> 96% fade to transparent, which is the single
- * texel of anti-aliasing the brief allows. A bolt whose rim fades over 30% of
- * its radius reads as an airbrushed blob rather than a turned steel dome.
- *
- * The specular sits at 38%/32% — upper-left, matching every other light in the
- * interface. Faction material swap comes free: the five stops are the skin's
- * own 3-zone bevel ramp, so the Soviet bolt is brass and the Allied one is
- * gunmetal without a second selector.
- */
 export function boltGradient(s: HudFactionSkin): string {
   return (
     'radial-gradient(circle at 38% 32%,' +
@@ -207,13 +778,6 @@ export function boltGradient(s: HudFactionSkin): string {
   );
 }
 
-/**
- * The broad diagonal specular sweep that turns a bevel ramp into lit metal.
- *
- * One low-frequency band at 12% peak, no repeat, no hard stop. This is the
- * whole of the "gradient" half of the chrome vocabulary; anything faster than
- * one cycle across a plate is texture, and texture is what we are removing.
- */
 export function plateSheen(): string {
   return (
     'linear-gradient(101deg,' +
@@ -225,107 +789,9 @@ export function plateSheen(): string {
   );
 }
 
-/* ==========================================================================
- * SECTION 2 — DOM HELPERS
- *
- * No framework, no virtual DOM, no innerHTML with interpolated content. The
- * HUD is ~180 nodes built once and mutated in place; the frame loop touches
- * `style.setProperty`, `nodeValue` and `classList` only, never `createElement`.
- * ========================================================================== */
-
-export function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  className?: string,
-  parent?: Node,
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag);
-  if (className) node.className = className;
-  if (parent) parent.appendChild(node);
-  return node;
-}
-
-const SVG_NS = 'http://www.w3.org/2000/svg';
-
-export function svgEl<K extends keyof SVGElementTagNameMap>(
-  tag: K,
-  parent?: Node,
-): SVGElementTagNameMap[K] {
-  const node = document.createElementNS(SVG_NS, tag);
-  if (parent) parent.appendChild(node);
-  return node;
-}
-
-/** A text node parked inside `parent`, returned so callers can poke nodeValue. */
-export function textNode(parent: Node, initial = ''): Text {
-  const t = document.createTextNode(initial);
-  parent.appendChild(t);
-  return t;
-}
-
-/* ==========================================================================
- * SECTION 3 — SHAPES (law 1: arc, arc, arc)
- * ========================================================================== */
-
-/**
- * The repair/sell arc: convex top edge, matching concave bottom, so the plate
- * bows UP toward the sidebar's centre. `bow` is the sagitta in the same units
- * as `w`/`h`.
- */
-export function arcPath(w: number, h: number, bow: number): string {
-  return (
-    `M0 ${bow} Q ${w / 2} ${-bow} ${w} ${bow}` +
-    ` L${w} ${h - bow} Q ${w / 2} ${h + bow} 0 ${h - bow} Z`
-  );
-}
-
-/**
- * The top button pair: wide at the top edge, tapering to a shallow arc at the
- * bottom. Deliberately NOT a rectangle — see §2.4.
- */
-export function lensStripPath(w: number, h: number, taper: number, bow: number): string {
-  return (
-    `M0 0 L${w} 0 L${w - taper} ${h - bow}` +
-    ` Q ${w / 2} ${h + bow} ${taper} ${h - bow} Z`
-  );
-}
-
-/**
- * A tab plate, keystoned toward the sidebar centre. `lean` is positive for
- * plates left of centre and negative for plates right of it, which is what
- * makes the four-tab strip read as a shallow arc rather than four buttons.
- */
-export function tabPlatePath(w: number, h: number, lean: number, drop: number): string {
-  const r = 2;
-  return (
-    `M${r + lean} ${drop} L${w - r + lean} ${drop}` +
-    ` Q${w + lean} ${drop} ${w} ${drop + r}` +
-    ` L${w} ${h} L0 ${h} L0 ${drop + r}` +
-    ` Q0 ${drop} ${r + lean} ${drop} Z`
-  );
-}
-
-/** Rounded-rect path for the cameo key and the tooltip well. */
-export function roundRectPath(x: number, y: number, w: number, h: number, r: number): string {
-  const rr = Math.min(r, w * 0.5, h * 0.5);
-  return (
-    `M${x + rr} ${y} L${x + w - rr} ${y} Q${x + w} ${y} ${x + w} ${y + rr}` +
-    ` L${x + w} ${y + h - rr} Q${x + w} ${y + h} ${x + w - rr} ${y + h}` +
-    ` L${x + rr} ${y + h} Q${x} ${y + h} ${x} ${y + h - rr}` +
-    ` L${x} ${y + rr} Q${x} ${y} ${x + rr} ${y} Z`
-  );
-}
-
-/* ==========================================================================
- * SECTION 4 — GLYPHS
- *
- * Vector, authored in a 32x32 box, so they stay crisp at uiScale 4. Filled
- * shapes use currentColor; stroked shapes carry their own width in design px
- * of the 32-box, which the CSS scales uniformly.
- *
- * These are the exact glyphs VISUAL_DNA names, in the order it names them.
- * Substituting a generic icon set here is a fail — the wrench, the double-
- * stroke `$` and the four tab pictograms are franchise recognition points.
- * ========================================================================== */
+/* -- the retired glyph set ------------------------------------------------
+ * Superseded by `src/ui/icons.ts`. Pinned by tests/hud.spec.ts.
+ * ------------------------------------------------------------------------ */
 
 export interface GlyphShape {
   readonly d: string;
@@ -348,9 +814,6 @@ export type GlyphName =
   | 'eagle' | 'star';
 
 export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
-  /* --- top button pair (§2.4) ------------------------------------------ */
-
-  /** Two arrows curling into each other — diplomacy. */
   diplomacy: {
     shapes: [
       { d: 'M6 20 a7 7 0 0 1 10-9 a7 7 0 0 1 10 9', stroke: 3.2, round: true },
@@ -360,7 +823,6 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /** A slider knob between two track segments. */
   options: {
     shapes: [
       { d: 'M3 14.5 h8 v3 h-8 z' },
@@ -369,9 +831,6 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /* --- repair / sell arc (§2.6) ----------------------------------------- */
-
-  /** Open-end wrench, head up, canted ~20 degrees from vertical. */
   repair: {
     rotate: -20,
     shapes: [
@@ -380,7 +839,6 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /** `$` with a DOUBLE vertical stroke — the classic sell glyph. */
   sell: {
     shapes: [
       { d: 'M13.6 1.5 h1.7 v29 h-1.7 z' },
@@ -393,9 +851,6 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /* --- tab strip (§2.7), in the mandated order -------------------------- */
-
-  /** (1) House with a pitched roof = Structures. */
   tabStructures: {
     shapes: [
       { d: 'M16 4 L30 16 L26.5 16 L26.5 28 L5.5 28 L5.5 16 L2 16 Z' },
@@ -403,14 +858,12 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /** (2) Shield = Defence. */
   tabDefence: {
     shapes: [
       { d: 'M16 2.5 L29 7.5 V16.5 C29 23.5 22.6 28.6 16 30.5 C9.4 28.6 3 23.5 3 16.5 V7.5 Z' },
     ],
   },
 
-  /** (3) Standing figure = Infantry. */
   tabInfantry: {
     shapes: [
       { d: 'M16 2.5 a3.6 3.6 0 1 1 0 7.2 a3.6 3.6 0 1 1 0-7.2' },
@@ -421,7 +874,6 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /** (4) Rounded chassis with two flanking treads = Vehicles. */
   tabVehicles: {
     shapes: [
       { d: 'M1.5 12 h5 v13 h-5 z' },
@@ -432,9 +884,6 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /* --- command bar (§2.12), soft-glow line art on black ----------------- */
-
-  /** (1) Ellipse containing one vertical bar. */
   cmdStop: {
     shapes: [
       { d: 'M16 6.5 a12.5 9.5 0 1 1 0 19 a12.5 9.5 0 1 1 0-19', stroke: 2.2 },
@@ -442,7 +891,6 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /** (2) Ellipse containing two vertical bars. */
   cmdGuardHold: {
     shapes: [
       { d: 'M16 6.5 a12.5 9.5 0 1 1 0 19 a12.5 9.5 0 1 1 0-19', stroke: 2.2 },
@@ -451,7 +899,6 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /** (3) A brace followed by a 3x3 grid of dots = formation move. */
   cmdFormation: {
     shapes: [
       { d: 'M9 5 C5.5 5 7.5 14 4 16 C7.5 18 5.5 27 9 27', stroke: 2.2, round: true },
@@ -461,7 +908,6 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /** (4) Four triangular arrows radiating outward = scatter. */
   cmdScatter: {
     shapes: [
       { d: 'M16 1.5 L21 9 L11 9 Z' },
@@ -472,14 +918,12 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /** (5) Shield = guard. */
   cmdGuard: {
     shapes: [
       { d: 'M16 3 L28 7.5 V16 C28 22.4 22.2 27 16 29 C9.8 27 4 22.4 4 16 V7.5 Z', stroke: 2.2 },
     ],
   },
 
-  /** (6) A dotted Z-path with a flag at the end node = waypoint. */
   cmdWaypoint: {
     shapes: [
       { d: 'M4 25 L13 25 L20 13 L27 13', stroke: 2.0, round: true },
@@ -490,9 +934,6 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /* --- bottom-cap emblems (§2.10) --------------------------------------- */
-
-  /** Allied silver eagle, ~28x18 design px on the chrome shelf. */
   eagle: {
     shapes: [
       { d: 'M16 8 L19 11 L24 9.5 L28.5 13 L22 14 L20 17 L16 18.5 L12 17 L10 14 L3.5 13 L8 9.5 L13 11 Z' },
@@ -501,199 +942,9 @@ export const GLYPHS: Readonly<Record<GlyphName, GlyphDef>> = {
     ],
   },
 
-  /** Soviet star, used on the radiator grille and the Soviet bottom cap. */
   star: {
     shapes: [
       { d: 'M16 2.5 L19.9 13.1 L31 13.6 L22.2 20.4 L25.3 31 L16 24.8 L6.7 31 L9.8 20.4 L1 13.6 L12.1 13.1 Z' },
     ],
   },
 };
-
-/**
- * Build an `<svg>` for a glyph. `size` is in CSS px; the glyph is authored in a
- * 32-box so it scales exactly. Filled shapes take `currentColor`, which is how
- * the tab strip flips its glyph from light-on-plate to dark-on-plate with one
- * class change instead of two icon sets.
- */
-export function makeGlyph(name: GlyphName, className = 'ra-glyph'): SVGSVGElement {
-  const def = GLYPHS[name];
-  const svg = svgEl('svg');
-  svg.setAttribute('viewBox', '0 0 32 32');
-  svg.setAttribute('class', className);
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('focusable', 'false');
-
-  const g = svgEl('g', svg);
-  if (def.rotate) g.setAttribute('transform', `rotate(${def.rotate} 16 16)`);
-
-  for (const shape of def.shapes) {
-    const p = svgEl('path', g);
-    p.setAttribute('d', shape.d);
-    if (shape.stroke !== undefined) {
-      p.setAttribute('fill', 'none');
-      p.setAttribute('stroke', 'currentColor');
-      p.setAttribute('stroke-width', String(shape.stroke));
-      if (shape.round) {
-        p.setAttribute('stroke-linecap', 'round');
-        p.setAttribute('stroke-linejoin', 'round');
-      }
-    } else {
-      p.setAttribute('fill', 'currentColor');
-    }
-  }
-  return svg;
-}
-
-/* ==========================================================================
- * SECTION 5 — COLOUR MATH
- * ========================================================================== */
-
-/** `#rrggbb` -> packed 0xRRGGBB. Accepts `#rgb`. */
-export function hexToRgb(hex: string): [number, number, number] {
-  let h = hex.charCodeAt(0) === 35 ? hex.slice(1) : hex;
-  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-  const n = parseInt(h, 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
-export function rgbToHex(r: number, g: number, b: number): string {
-  const c = (v: number): string => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
-  return `#${c(r)}${c(g)}${c(b)}`;
-}
-
-/** Linear blend in sRGB. Good enough for chrome ramps; never used on albedo. */
-export function mixHex(a: string, b: string, t: number): string {
-  const [ar, ag, ab] = hexToRgb(a);
-  const [br, bg, bb] = hexToRgb(b);
-  return rgbToHex(ar + (br - ar) * t, ag + (bg - ag) * t, ab + (bb - ab) * t);
-}
-
-export function rgba(hex: string, alpha: number): string {
-  const [r, g, b] = hexToRgb(hex);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
-/* ==========================================================================
- * SECTION 6 — FORMATTING
- *
- * Credits are tabular, 8 digits wide, no `$` and no thousands separator (§2.3).
- * Anything else and the readout stops reading as an unlit LCD.
- * ========================================================================== */
-
-export function formatCredits(value: number): string {
-  const v = value < 0 ? 0 : value > 99999999 ? 99999999 : Math.floor(value);
-  return String(v);
-}
-
-/** `MM:SS`, clamped, for the superweapon rows. */
-export function formatClock(seconds: number): string {
-  const s = Math.max(0, Math.ceil(seconds));
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return `${m < 10 ? '0' : ''}${m}:${r < 10 ? '0' : ''}${r}`;
-}
-
-/* ==========================================================================
- * SECTION 7 — TOOLTIP
- *
- * 220 ms delay, appears LEFT of the sidebar and never overlaps it, max 280
- * logical px. Panel is a black well with a 1 px chrome bevel — the same
- * material as the credits readout, because a tooltip in a different material
- * reads as a browser artefact (§2.13).
- * ========================================================================== */
-
-export interface TooltipContent {
-  title: string;
-  cost: number;
-  buildTimeSec: number;
-  powerDelta: number;
-  blurb: string;
-  /** Shown in red. Empty when the item is available. */
-  requirement: string;
-}
-
-export class Tooltip {
-  readonly root: HTMLElement;
-  private readonly titleNode: Text;
-  private readonly statsRow: HTMLElement;
-  private readonly costNode: Text;
-  private readonly timeNode: Text;
-  private readonly powerNode: Text;
-  private readonly blurbNode: Text;
-  private readonly reqEl: HTMLElement;
-  private readonly reqNode: Text;
-  private timer = 0;
-  private visible = false;
-
-  constructor(parent: HTMLElement) {
-    this.root = el('div', 'ra-tooltip', parent);
-    this.root.setAttribute('role', 'tooltip');
-    this.root.hidden = true;
-
-    const title = el('div', 'ra-tt-title', this.root);
-    this.titleNode = textNode(title);
-
-    this.statsRow = el('div', 'ra-tt-stats', this.root);
-    const cost = el('span', 'ra-tt-cost', this.statsRow);
-    this.costNode = textNode(cost);
-    const time = el('span', 'ra-tt-time', this.statsRow);
-    this.timeNode = textNode(time);
-    const power = el('span', 'ra-tt-power', this.statsRow);
-    this.powerNode = textNode(power);
-
-    const blurb = el('div', 'ra-tt-blurb', this.root);
-    this.blurbNode = textNode(blurb);
-
-    this.reqEl = el('div', 'ra-tt-req', this.root);
-    this.reqNode = textNode(this.reqEl);
-  }
-
-  /** Arm the 220 ms delay. Calling it again with a new anchor restarts it. */
-  schedule(anchor: HTMLElement, content: TooltipContent, delayMs: number): void {
-    this.cancel();
-    this.timer = window.setTimeout(() => {
-      this.timer = 0;
-      this.show(anchor, content);
-    }, delayMs);
-  }
-
-  show(anchor: HTMLElement, c: TooltipContent): void {
-    this.titleNode.nodeValue = c.title;
-    this.costNode.nodeValue = c.cost > 0 ? `${c.cost}` : '';
-    this.timeNode.nodeValue = c.buildTimeSec > 0 ? `${c.buildTimeSec.toFixed(0)}s` : '';
-    this.powerNode.nodeValue = c.powerDelta !== 0 ? `${c.powerDelta > 0 ? '+' : ''}${c.powerDelta}` : '';
-    this.blurbNode.nodeValue = c.blurb;
-    this.reqNode.nodeValue = c.requirement;
-    this.reqEl.hidden = c.requirement === '';
-
-    this.root.hidden = false;
-    this.visible = true;
-
-    // Position AFTER unhiding so offsetHeight is real. Right-anchored to the
-    // sidebar's left edge, vertically clamped into the viewport.
-    const a = anchor.getBoundingClientRect();
-    const h = this.root.offsetHeight;
-    const top = Math.max(4, Math.min(window.innerHeight - h - 4, a.top + a.height * 0.5 - h * 0.5));
-    this.root.style.top = `${Math.round(top)}px`;
-    this.root.style.right = `${Math.round(window.innerWidth - a.left + 6)}px`;
-  }
-
-  cancel(): void {
-    if (this.timer !== 0) {
-      clearTimeout(this.timer);
-      this.timer = 0;
-    }
-  }
-
-  hide(): void {
-    this.cancel();
-    if (!this.visible) return;
-    this.visible = false;
-    this.root.hidden = true;
-  }
-
-  dispose(): void {
-    this.cancel();
-    this.root.remove();
-  }
-}

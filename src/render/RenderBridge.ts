@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/render/RenderBridge.ts
+ * VOLTMARCH — src/render/RenderBridge.ts
  * ============================================================================
  * THE SIM->RENDER SEAM. Nothing the simulation owns is visible without this.
  *
@@ -63,6 +63,8 @@ import {
   EntityKind,
   ENTITY_KIND_COUNT,
   Faction,
+  FACTION_COUNT,
+  FACTION_PALETTE_KEYS,
   PART_ID_COUNT,
   PartId,
   handleGen,
@@ -188,14 +190,51 @@ const placeholders: (ModelEntry | null)[] = new Array(ENTITY_KIND_COUNT).fill(nu
 /** Bumped on every registration so bound entities re-resolve on the next frame. */
 let registryVersion = 1;
 
-/** Faction slot 0..2 are real, 3 is the "any army" wildcard. */
+/**
+ * Faction slots 0..FACTION_COUNT-1 are real armies; the last slot is the
+ * "any army" wildcard.
+ *
+ * Derived from FACTION_COUNT rather than hard-coded: when the Meridian Pact
+ * took id 3 the old literal `3` wildcard silently ALIASED it, so every Pact
+ * model registered as a wildcard and the first army to register a mesh for a
+ * given (kind, defId) won for everyone.
+ */
+const FACTION_SLOTS = FACTION_COUNT + 1;
+
 function factionSlot(faction: number): number {
-  return faction < 0 || faction > 2 ? 3 : faction;
+  return faction < 0 || faction >= FACTION_COUNT ? FACTION_COUNT : faction;
 }
 
 /** Pack (kind, faction, defId) into one integer so lookups never build a string. */
 function packKey(kind: EntityKind, faction: number, defId: number): number {
-  return (((defId + 1) * 4 + factionSlot(faction)) * 8) + kind;
+  return (((defId + 1) * FACTION_SLOTS + factionSlot(faction)) * 8) + kind;
+}
+
+/**
+ * Bounding-sphere radius below which an entity PROP stops casting a shadow.
+ *
+ * A shadow caster costs a full extra instanced draw in the shadow pass, and the
+ * profiling audit found 59 shadow draws serving 83 colour draws — the shadow
+ * map is roughly half the frame's geometry submission. The cascade is fitted to
+ * a `farExtent` of 320 m over a 2048-texel map, which is 0.16 m per texel at
+ * the far end and worse under a wide camera, so a 0.6-metre grass tuft or
+ * flower bed is casting a shadow one to three texels across: a bilinear smudge
+ * that is, at RTS camera distance, sub-pixel.
+ *
+ * 0.70 m of RADIUS (1.4 m across) is deliberately below anything that has a
+ * readable ground contact — bushes and rock clusters sit around 1.0-1.6 m and
+ * keep their shadows, as do all units and structures, which are never Props.
+ * This is the one place the rule can be applied without reaching into
+ * src/world/Scatter.ts, which owns the far larger scattered-prop population and
+ * should apply the same gate there.
+ */
+const PROP_SHADOW_MIN_RADIUS = 0.70;
+
+/** True when this prop is too small for its shadow to survive the cascade. */
+function propCastsShadow(geometry: THREE.BufferGeometry): boolean {
+  if (geometry.boundingSphere === null) geometry.computeBoundingSphere();
+  const bs = geometry.boundingSphere;
+  return bs === null || bs.radius >= PROP_SHADOW_MIN_RADIUS;
 }
 
 function buildEntry(mesh: KindMesh, kind: EntityKind, name: string): ModelEntry {
@@ -212,7 +251,8 @@ function buildEntry(mesh: KindMesh, kind: EntityKind, name: string): ModelEntry 
     offsetZ: 0,
     followsTurret: false,
     part: mesh.part ?? PartId.Root,
-    castShadow: mesh.castShadow !== false,
+    castShadow: mesh.castShadow !== false
+      && (kind !== EntityKind.Prop || propCastsShadow(mesh.geometry)),
     receiveShadow: mesh.receiveShadow !== false,
     layer,
   }];
@@ -229,7 +269,8 @@ function buildEntry(mesh: KindMesh, kind: EntityKind, name: string): ModelEntry 
         offsetZ: p.z ?? 0,
         followsTurret: p.followsTurret === true,
         part: p.part ?? PartId.Root,
-        castShadow: p.castShadow !== false,
+        castShadow: p.castShadow !== false
+          && (kind !== EntityKind.Prop || propCastsShadow(p.geometry)),
         receiveShadow: p.receiveShadow !== false,
         layer,
       });
@@ -500,15 +541,28 @@ function placeholderBuildingHeight(footprint: number): number {
 const MATRIX_SLOTS = new Int32Array([0, 1, 2, 4, 5, 6, 8, 9, 10, 12, 13, 14]);
 /** col0(x,y,z) col1(x,y,z) col2(x,y,z) translation(x,y,z). */
 const M12 = new Float32Array(12);
-/** Linear team colour per faction, indexed by `Faction`. */
-const TEAM_RGB = new Float32Array(3 * 3);
+/**
+ * Linear team colour per faction, indexed by `Faction`.
+ *
+ * SIZED BY `FACTION_COUNT`, and that is load-bearing. This was a fixed
+ * `Float32Array(3 * 3)` with a hard-coded [neutral, allies, soviets] list, so
+ * the first Meridian entity read index 9 — off the end of a typed array, which
+ * yields `undefined`, which becomes **NaN** in the instance colour attribute.
+ * A single NaN texel is enough for `UnrealBloomPass` to spread NaN across its
+ * whole mip chain, and the grade then wrote NaN to every pixel: the entire
+ * frame came back transparent. Symptom was "a Meridian skirmish renders pure
+ * black while `__VM.stats()` reports 285 draws and 1.8 M triangles".
+ *
+ * Built from `FACTION_PALETTE_KEYS` so a fifth army needs no edit here.
+ */
+const TEAM_RGB = new Float32Array(FACTION_COUNT * 3);
 const RGB3 = new Float32Array(3);
 
 function loadTeamColours(): void {
   const f = DEFAULT_ART.factions;
-  const keys = [f.neutral.team, f.allies.team, f.soviets.team];
-  for (let i = 0; i < keys.length; i++) {
-    hexToLinearRgb(keys[i], RGB3);
+  for (let i = 0; i < FACTION_COUNT; i++) {
+    const look = f[FACTION_PALETTE_KEYS[i]];
+    hexToLinearRgb(look !== undefined ? look.team : f.neutral.team, RGB3);
     TEAM_RGB[i * 3] = RGB3[0];
     TEAM_RGB[i * 3 + 1] = RGB3[1];
     TEAM_RGB[i * 3 + 2] = RGB3[2];

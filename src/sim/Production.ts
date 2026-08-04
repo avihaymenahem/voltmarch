@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/Production.ts
+ * VOLTMARCH — src/sim/Production.ts
  * ============================================================================
  * THE BUILD LOOP: TECH TREE, ROSTERS, CONSTRUCTION AND EGRESS.
  *
@@ -285,6 +285,16 @@ const CONTENT: readonly ContentSpec[] = [
     kind: BuildKind.Building, faction: Faction.Soviets, tab: D,
     cost: 1500, buildTime: 16, prereqs: ['radar'], sortOrder: 30,
   },
+  {
+    key: 'aaTurret', name: 'Multigunner AA', blurb: 'Flak battery. Reaches what tanks cannot.',
+    kind: BuildKind.Building, faction: Faction.Allies, tab: D,
+    cost: 800, buildTime: 12, prereqs: ['radar'], sortOrder: 25,
+  },
+  {
+    key: 'sentryGun', name: 'Sentry Gun', blurb: 'Cheap anti-infantry emplacement.',
+    kind: BuildKind.Building, faction: Faction.Soviets, tab: D,
+    cost: 400, buildTime: 8, prereqs: ['barracks'], sortOrder: 25,
+  },
 
   /* -- infantry ----------------------------------------------------------- */
   {
@@ -371,7 +381,155 @@ const CONTENT: readonly ContentSpec[] = [
     kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
     cost: 2000, buildTime: 24, prereqs: ['subPen', 'battleLab'], sortOrder: 80,
   },
+
+  /* ======================================================================
+   * THE MERIDIAN PACT — a self-contained tech tree.
+   *
+   * Every number is verbatim from `src/data/Defs.ts`. The Pact shares NOTHING
+   * with the Neutral pool (see SHARED_POOL_FACTIONS below): it has its own
+   * construction yard, its own power, its own refinery, its own harvester and
+   * its own MCV, and mixing the shared rows in would give a Pact player two
+   * of each in the same tab.
+   *
+   * The shape of the tree is the faction: the Solar Array is 350 credits for
+   * 160 power, so the Chapterhouse opens off ONE array where the other armies
+   * need a second plant — and the Array has 420 hp against a Power Plant's 800.
+   * ====================================================================== */
+  {
+    key: 'mrdConclave', name: 'Conclave', blurb: 'Unfolds the Pact. Builds structures.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 3000, buildTime: 40, prereqs: [], sortOrder: 0, buildable: false,
+    producesTabs: [S, D], buildRadius: BUILD_RADIUS,
+  },
+  {
+    key: 'mrdSolarArray', name: 'Solar Array', blurb: 'Generates 160 power. Made of mirrors.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 350, buildTime: 8, prereqs: ['mrdConclave'], sortOrder: 10,
+  },
+  {
+    key: 'mrdCistern', name: 'Ore Cistern', blurb: 'Unloads collectors. Ships with one.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 2000, buildTime: 24, prereqs: ['mrdSolarArray'], sortOrder: 20,
+  },
+  {
+    key: 'mrdChapterhouse', name: 'Chapterhouse', blurb: 'Trains Pact infantry.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 500, buildTime: 10, prereqs: ['mrdSolarArray'], sortOrder: 30,
+    producesTabs: [I],
+  },
+  {
+    key: 'mrdForgeyard', name: 'Forgeyard', blurb: 'Builds every Pact hull. Sets a rally point.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 2000, buildTime: 24, prereqs: ['mrdCistern'], sortOrder: 40,
+    producesTabs: [V],
+  },
+  {
+    key: 'mrdOculus', name: 'Oculus', blurb: 'Reveals the minimap. Opens tier two.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 1000, buildTime: 14, prereqs: ['mrdCistern'], sortOrder: 50,
+  },
+  {
+    key: 'mrdVault', name: 'Sun Vault', blurb: 'Stores 1500 credits of ore.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 150, buildTime: 5, prereqs: ['mrdCistern'], sortOrder: 60,
+  },
+  {
+    key: 'mrdSlipway', name: 'Slipway', blurb: 'Builds Pact warships.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 1000, buildTime: 14, prereqs: ['mrdCistern'], sortOrder: 70,
+    producesTabs: [V],
+  },
+  {
+    key: 'mrdReliquary', name: 'Reliquary', blurb: 'Unlocks the top of every tab.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 2000, buildTime: 24, prereqs: ['mrdOculus'], sortOrder: 80,
+  },
+  {
+    key: 'mrdRampart', name: 'Rampart', blurb: 'Stops vehicles. Stops nothing else.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: D,
+    cost: 100, buildTime: 2, prereqs: ['mrdChapterhouse'], sortOrder: 10,
+  },
+  {
+    key: 'mrdGlaive', name: 'Glaive Post', blurb: 'Anti-infantry repeater. Needs the grid.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: D,
+    cost: 450, buildTime: 8, prereqs: ['mrdChapterhouse'], sortOrder: 20,
+  },
+  {
+    key: 'mrdHelios', name: 'Helios Spire', blurb: 'Long beam defence. Dark in a brownout.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: D,
+    cost: 1500, buildTime: 16, prereqs: ['mrdReliquary'], sortOrder: 30,
+  },
+
+  {
+    key: 'mrdWayfarer', name: 'Wayfarer', blurb: 'Line infantry. Long eyes, thin skin.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: I,
+    cost: 175, buildTime: 5, prereqs: ['mrdChapterhouse'], sortOrder: 10,
+  },
+  {
+    key: 'mrdLancer', name: 'Sunlancer', blurb: 'Shoulder lance. Kills armour and aircraft.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: I,
+    cost: 450, buildTime: 8, prereqs: ['mrdChapterhouse', 'mrdOculus'], sortOrder: 20,
+  },
+  {
+    key: 'mrdArtificer', name: 'Artificer', blurb: 'Captures structures. Repairs them.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: I,
+    cost: 500, buildTime: 10, prereqs: ['mrdChapterhouse', 'mrdCistern'], sortOrder: 30,
+  },
+  {
+    key: 'mrdCollector', name: 'Sun Collector', blurb: 'Half the load, twice the trips.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
+    cost: 1000, buildTime: 13, prereqs: ['mrdForgeyard', 'mrdCistern'], sortOrder: 10,
+  },
+  {
+    key: 'mrdSkiff', name: 'Sandskiff', blurb: 'Fastest hull on the map. Made of foil.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
+    cost: 550, buildTime: 9, prereqs: ['mrdForgeyard'], sortOrder: 20,
+  },
+  {
+    key: 'mrdSolarch', name: 'Solarch', blurb: 'The Pact main line. Outranges, never brawls.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
+    cost: 800, buildTime: 12, prereqs: ['mrdForgeyard'], sortOrder: 30,
+  },
+  {
+    key: 'mrdZenith', name: 'Zenith Emitter', blurb: 'Siege beam. Dies in a brownout.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
+    cost: 1500, buildTime: 19, prereqs: ['mrdForgeyard', 'mrdReliquary'], sortOrder: 40,
+  },
+  {
+    key: 'mrdCarryall', name: 'Pactworks Carryall', blurb: 'Deploys into a second Conclave.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
+    cost: 3000, buildTime: 32, prereqs: ['mrdForgeyard', 'mrdReliquary'], sortOrder: 50,
+  },
+  {
+    key: 'mrdKestrel', name: 'Kestrel Gunship', blurb: 'Fast rocket pods. Nothing to shoot back with.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
+    cost: 1100, buildTime: 15, prereqs: ['mrdForgeyard', 'mrdOculus'], sortOrder: 60,
+  },
+  {
+    key: 'mrdCorvette', name: 'Kite Corvette', blurb: 'Escort hull. Shells shorelines.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
+    cost: 950, buildTime: 13, prereqs: ['mrdSlipway'], sortOrder: 70,
+  },
+  {
+    key: 'mrdMonitor', name: 'Sunmonitor', blurb: 'Pact capital ship. Forty metres of reach.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
+    cost: 1900, buildTime: 23, prereqs: ['mrdSlipway', 'mrdReliquary'], sortOrder: 80,
+  },
 ];
+
+/** Every army a player or an AI can be. Neutral is not one of them. */
+const PLAYABLE_FACTIONS: readonly Faction[] = [
+  Faction.Allies, Faction.Soviets, Faction.Meridian,
+];
+
+/**
+ * The armies that draw from the `Faction.Neutral` content pool.
+ *
+ * Neutral is not "everyone" — it is "the original two armies field the same
+ * thing". The Meridian Pact is a complete parallel tree down to its own
+ * construction yard, so it is deliberately not in this list.
+ */
+const SHARED_POOL_FACTIONS: readonly Faction[] = [Faction.Allies, Faction.Soviets];
 
 /** The Soviet naval yard is called a Sub Pen but services the same queue. */
 const NAVAL_PREREQ_ALIASES: Readonly<Record<string, string>> = {
@@ -419,13 +577,17 @@ export class ProductionCatalog {
       }
     }
 
-    // One list per (faction, tab). Neutral entries appear in BOTH armies' lists,
-    // which is the whole reason 'engineer' and 'harvester' are authored once.
-    for (const faction of [Faction.Allies, Faction.Soviets]) {
+    // One list per (faction, tab). A Neutral entry appears in the list of every
+    // army in SHARED_POOL_FACTIONS, which is the whole reason 'engineer' and
+    // 'harvester' are authored once — but NOT in the Meridian Pact's, which
+    // ships its own Conclave, Solar Array, Cistern and Sun Collector and would
+    // otherwise show two of each in the same tab.
+    for (const faction of PLAYABLE_FACTIONS) {
+      const sharesPool = SHARED_POOL_FACTIONS.includes(faction);
       for (let t = 0; t < BUILD_TAB_COUNT; t++) {
         const list = entries
           .filter((e) => e.buildable && e.tab === (t as BuildTab)
-            && (e.faction === Faction.Neutral || e.faction === faction))
+            && ((sharesPool && e.faction === Faction.Neutral) || e.faction === faction))
           .sort((a, b) => a.sortOrder - b.sortOrder || a.index - b.index);
         this.byFactionTab.set(faction * BUILD_TAB_COUNT + t, list);
       }

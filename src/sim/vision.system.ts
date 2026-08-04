@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/vision.system.ts
+ * VOLTMARCH — src/sim/vision.system.ts
  * ============================================================================
  * Owns the lifetime of the vision grid (`src/sim/Vision.ts`) and the shroud
  * overlay (`src/render/FogOfWar.ts`), and wires both into the frame.

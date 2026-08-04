@@ -1,963 +1,1139 @@
 /* ==========================================================================
- * RED ALERT — src/ui/hud.css
+ * src/ui/hud.css — THE MODERN HUD
  *
- * The Red Alert sidebar, expressed once. Read src/ui/Chrome.ts first: this file
- * only consumes the custom properties that `applySkin()` writes, so faction
- * recolour never touches a selector. There is no hue-rotate, no filter-based
- * tinting and no bitmap scaling anywhere in this file.
+ * Read src/ui/Chrome.ts first: this file is the material stated once and then
+ * applied. Nothing here invents a colour, a corner or a weight that is not in
+ * that header.
  *
- * RESOLUTION INDEPENDENCE
- * -----------------------
- *   --ra-d   one DESIGN pixel at the current uiScale (Hud.ts writes it)
- *   --ra-w   sidebar width in CSS px (= 168 * uiScale, integer)
+ * THE LAWS
+ * --------
+ *  1. ONE SURFACE. `--vm-glass` behind `backdrop-filter: blur(14px)
+ *     saturate(1.1)`. Every panel is that surface; there is no second material.
+ *  2. ONE EDGE. A single 1 px `--vm-hairline`, drawn as a masked rim so it
+ *     follows the notch instead of being clipped away by it.
+ *  3. ONE SATURATED COLOUR. `--vm-accent`, from the faction table. Amber, green
+ *     and red are reserved for resource, health and alert semantics.
+ *  4. NO BEVELS, NO RIVETS, NO GRADIENTS, NO DROP SHADOWS. Depth is
+ *     translucency plus that hairline. Nothing else.
+ *  5. EVERYTHING SCALES. `--vm-u` is one design unit, set from JS at the
+ *     current uiScale. Every dimension is a multiple of it; only hairlines are
+ *     literal `1px`, so an edge always lands on exactly one device pixel.
  *
- * Every dimension is `calc(N * var(--ra-d))` where N is the design-px number
- * straight out of VISUAL_DNA §2. Bevel hairlines stay a literal `1px` so they
- * always land on exactly one device pixel — a 1.5 px bevel is a blurred bevel,
- * and a blurred bevel is the single loudest "this is a web page" tell.
- *
- * LAYERING (bottom to top)
- *   .ra-overlay   world-space UI, full-bleed canvas, never hit-tested
- *   .ra-cmdbar    full-width black strip at the bottom
- *   .ra-sidebar   the right-hand shell
- *   .ra-tooltip   floats left of the sidebar, never overlaps it
+ * The whole interface fits in a 114 design-unit band across the bottom plus a
+ * slim strip at the top: 15.8% of the frame at 1080p and at 1440p, inside the
+ * look bible's 12-16% ceiling. `Hud.hudFrameShare()` reports the live number.
  * ========================================================================== */
 
-.ra-hud {
+/* ==========================================================================
+ * 1. TOKENS
+ * ========================================================================== */
+
+.vm-hud {
+  /* One design unit. Overwritten from Hud.resize(); this is the 720p value. */
+  --vm-u: 1px;
+
+  /* Surface */
+  --vm-glass: rgba(9, 13, 20, 0.72);
+  --vm-glass-deep: rgba(6, 9, 14, 0.86);
+  --vm-hairline: rgba(255, 255, 255, 0.10);
+  --vm-hairline-soft: rgba(255, 255, 255, 0.06);
+
+  /* Accent — replaced wholesale by Chrome.applyTheme(). */
+  --vm-accent: #35c8f0;
+  --vm-accent-hi: #9ce2f7;
+  --vm-accent-lo: #1a5f75;
+  --vm-accent-rgb: 53, 200, 240;
+
+  /* Semantics. Each owns exactly one meaning. */
+  --vm-ok: #4fd97f;
+  --vm-warn: #f0b429;
+  --vm-danger: #ff4d3d;
+  --vm-gold: #f6c445;
+
+  /* Type */
+  --vm-text: #e6eef6;
+  --vm-dim: #8a97a6;
+  --vm-faint: #5d6875;
+
+  /* Geometry */
+  --vm-notch: calc(10 * var(--vm-u));
+  /* Solved, not guessed: the build dock is the tallest thing in the band, and
+     it must hold `tabs(20) + gap(4) + padTop(3) + 2 rows(32) + rowGap(3)` plus
+     its own 12 of padding. Change either number and the second row of the build
+     grid clips. */
+  --vm-dock-h: calc(106 * var(--vm-u));
+  --vm-gap: calc(8 * var(--vm-u));
+  --vm-pad: calc(6 * var(--vm-u));
+
   position: absolute;
   inset: 0;
   pointer-events: none;
-  overflow: hidden;
-
-  /* Condensed, squarish, all-caps display face with flat terminals. A true
-     octagonal-O variable font is the spec (§2.16); until it is authored, the
-     narrowest grotesque the platform has, condensed and tracked out. */
-  --ra-font: 'Arial Narrow', 'Roboto Condensed', 'Liberation Sans Narrow',
-             'DIN Condensed', 'Haettenschweiler', 'Impact', system-ui, sans-serif;
-
-  --ra-d: 1px;
-  --ra-w: 168px;
-  /* 23, not 28 — the look bible's 16% HUD ceiling wins over decision D13.
-     See the note on HUD_COMMAND_BAR in src/core/config.ts. */
-  --ra-cmd-h: calc(23 * var(--ra-d));
-
-  font-family: var(--ra-font);
-  font-stretch: condensed;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  -webkit-font-smoothing: none;
-  color: #f7fbfe;
+  color: var(--vm-text);
+  font-family: 'Rajdhani', 'Oswald', 'Arial Narrow', 'Franklin Gothic Medium',
+               'Helvetica Neue', 'Segoe UI', system-ui, sans-serif;
+  font-size: calc(12 * var(--vm-u));
+  line-height: 1.15;
+  -webkit-font-smoothing: antialiased;
   user-select: none;
   -webkit-user-select: none;
+  z-index: 0;
 }
 
-.ra-hud * { box-sizing: border-box; }
-
-/* Hidden by the screenshot harness through #hud-root's visibility; nothing in
-   here may rely on being laid out to keep working. */
-
-/* ==========================================================================
- * 1. SIDEBAR SHELL
- * ========================================================================== */
-
-.ra-sidebar {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: var(--ra-cmd-h);
-  width: var(--ra-w);
-  pointer-events: auto;
-  display: flex;
-  flex-direction: column;
-  background: linear-gradient(90deg,
-    var(--ra-bevel-lo) 0 1px,
-    var(--ra-metal-lo) 1px calc(3 * var(--ra-d)),
-    var(--ra-metal-mid) calc(3 * var(--ra-d)) calc(6 * var(--ra-d)),
-    #14141A calc(6 * var(--ra-d)) 100%);
-  border-left: 1px solid var(--ra-bevel-hi);
-  box-shadow: inset 0 0 calc(18 * var(--ra-d)) rgba(0, 0, 0, 0.75);
-  contain: layout paint;
+/* Every number in the HUD is tabular. A readout whose digits change width is
+   the loudest remaining "this is a web page" tell. */
+.vm-num {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: 'tnum' 1, 'lnum' 1;
 }
 
-/* Law 2: the outer chrome cap with its specular hairline at y = 1.
-   Layer order everywhere a plate is metal: SHEEN (one broad diagonal sweep) over
-   BRUSH (the Soviet 9-design-px sheen, `none` for Allies) over the bevel RAMP.
-   Three low-frequency gradients, no repeat below 4.5 design px, no dither. */
-.ra-cap-top {
-  flex: 0 0 calc(4 * var(--ra-d));
-  background: var(--ra-sheen), var(--ra-brush), var(--ra-bevel-ramp);
-  background-blend-mode: normal, overlay, normal;
-  border-bottom: 1px solid var(--ra-bevel-lo);
+/* The house label: uppercase, small, widely tracked. */
+.vm-hud .vm-dock-title,
+.vm-hud .vm-tab-label,
+.vm-hud .vm-slot-ready,
+.vm-hud .vm-map-offline,
+.vm-hud .vm-toast-title,
+.vm-hud .vm-sel-sub {
+  font-size: calc(11 * var(--vm-u));
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 600;
 }
 
 /* ==========================================================================
- * 1b. MACHINED HARDWARE (§2.14 law 5)
- *
- * Bolt heads are the one piece of ornament the chrome language has, and they
- * are DRAWN, not textured: `Chrome.boltGradient()` is a five-stop radial with a
- * hard terminator at 92% and exactly one 4%-wide fade to transparent — a single
- * device pixel of anti-aliasing at every shipping scale. `--ra-bolt` carries the
- * faction material, so the Soviet bolts are brass and the Allied ones gunmetal
- * without a second rule.
+ * 2. THE WORLD OVERLAY CANVAS
  * ========================================================================== */
 
-.ra-cap-shelf::before,
-.ra-cap-shelf::after,
-.ra-radar-bezel-top::before,
-.ra-radar-bezel-top::after,
-.ra-radar-bezel-bottom::before,
-.ra-radar-bezel-bottom::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  width: calc(5 * var(--ra-d));
-  height: calc(5 * var(--ra-d));
-  margin-top: calc(-2.5 * var(--ra-d));
-  border-radius: 50%;
-  background: var(--ra-bolt);
-  pointer-events: none;
-  z-index: 1;
-}
-/* Radar block: one bolt at each corner of the bezel pair, so the field reads as
-   a panel BOLTED INTO the sidebar rather than a hole cut in it. The lower pair
-   sits right of the status LEDs, which own the left of that bezel. */
-.ra-radar-bezel-top::before    { left: calc(5 * var(--ra-d)); }
-.ra-radar-bezel-top::after     { right: calc(5 * var(--ra-d)); }
-.ra-radar-bezel-bottom::before { right: calc(15 * var(--ra-d)); }
-.ra-radar-bezel-bottom::after  { right: calc(5 * var(--ra-d)); }
-/* Bottom shelf: two bolts at the left, balancing the emblem at the right. */
-.ra-cap-shelf::before { left: calc(6 * var(--ra-d)); }
-.ra-cap-shelf::after  { left: calc(15 * var(--ra-d)); }
-
-/* ==========================================================================
- * 2. CREDITS READOUT (§2.3) — a recessed, unlit LCD well
- * ========================================================================== */
-
-.ra-credits {
-  position: relative;
-  flex: 0 0 calc(15 * var(--ra-d));
-  margin: 0 calc(11.5 * var(--ra-d));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  /* Law 4: wells are BLACK AND FLAT. No gradient. */
-  background: var(--ra-well-credits);
-  border-top: 1px solid var(--ra-bevel-hi);
-  box-shadow:
-    inset 0 calc(2 * var(--ra-d)) calc(3 * var(--ra-d)) rgba(0, 0, 0, 0.95),
-    0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
-.ra-credits-digits {
-  font-size: calc(11 * var(--ra-d));
-  line-height: 1;
-  letter-spacing: calc(1 * var(--ra-d));
-  font-variant-numeric: tabular-nums;
-  color: var(--ra-numerals);
-  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.85);
-}
-
-/* Δ flyout: rises 12 design px and fades over 600 ms. */
-.ra-credit-fly {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  text-align: center;
-  font-size: calc(9 * var(--ra-d));
-  pointer-events: none;
-  opacity: 0;
-  transform: translateY(0);
-}
-.ra-credit-fly.is-live {
-  animation: ra-fly 600ms linear forwards;
-}
-.ra-credit-fly.is-gain { color: #7ce87c; }
-.ra-credit-fly.is-loss { color: #e85858; }
-
-@keyframes ra-fly {
-  0%   { opacity: 1; transform: translateY(0); }
-  100% { opacity: 0; transform: translateY(calc(-12 * var(--ra-d))); }
-}
-
-/* ==========================================================================
- * 3. TOP BUTTON PAIR (§2.4) — one downward-pointing lens strip, split at centre
- * ========================================================================== */
-
-.ra-toppair {
-  flex: 0 0 calc(23 * var(--ra-d));
-  position: relative;
-  display: flex;
-  padding: calc(3 * var(--ra-d)) calc(4 * var(--ra-d)) 0;
-  gap: 1px;
-}
-
-.ra-lensbtn {
-  flex: 1 1 0;
-  position: relative;
-  border: 0;
-  padding: 0;
-  background: none;
-  cursor: pointer;
-  color: var(--ra-glyph);
-  pointer-events: auto;
-}
-.ra-lensbtn svg.ra-shape { display: block; width: 100%; height: 100%; }
-.ra-lensbtn .ra-glyph {
-  position: absolute;
-  left: 50%;
-  top: 46%;
-  width: calc(11 * var(--ra-d));
-  height: calc(11 * var(--ra-d));
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
-/* ==========================================================================
- * 4. RADAR / MINIMAP (§2.5)
- * ========================================================================== */
-
-.ra-radar {
-  flex: 0 0 calc(132 * var(--ra-d));
-  position: relative;
-  margin: 0 calc(13 * var(--ra-d));
-}
-
-.ra-radar-bezel-top {
-  position: relative;
-  height: calc(9 * var(--ra-d));
-  background: var(--ra-sheen), var(--ra-brush), var(--ra-bevel-ramp);
-  background-blend-mode: normal, overlay, normal;
-  border-top: 1px solid var(--ra-bevel-hi);
-}
-
-.ra-radar-field {
-  position: relative;
-  height: calc(110 * var(--ra-d));
-  /* Law 4 again. The letterbox is part of the silhouette — keep it. */
-  background: #000;
-  /* A 3-ZONE frame, not a single rule: black terminator outside, the faction
-     frame metal, black inside. All three are hairlines on exactly one device
-     pixel, which is what makes the radar read as a machined aperture. */
-  border: 1px solid var(--ra-radar-frame);
-  box-shadow:
-    0 0 0 1px var(--ra-bevel-lo),
-    inset 0 0 0 1px rgba(0, 0, 0, 0.92),
-    inset 0 0 calc(6 * var(--ra-d)) rgba(0, 0, 0, 1);
-  cursor: crosshair;
-  pointer-events: auto;
-  touch-action: none;
-}
-.ra-radar-field canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  image-rendering: pixelated;
-}
-.ra-radar-field.is-offline canvas { opacity: 0.12; }
-
-.ra-radar-offline {
-  position: absolute;
-  inset: 0;
-  display: none;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(8 * var(--ra-d));
-  color: #6a6a72;
-  letter-spacing: 0.14em;
-}
-.ra-radar-field.is-offline .ra-radar-offline { display: flex; }
-
-.ra-radar-bezel-bottom {
-  position: relative;
-  height: calc(13 * var(--ra-d));
-  display: flex;
-  align-items: center;
-  gap: calc(2 * var(--ra-d));
-  padding-left: calc(4 * var(--ra-d));
-  background: var(--ra-sheen), var(--ra-brush), var(--ra-bevel-ramp);
-  background-blend-mode: normal, overlay, normal;
-  border-bottom: 1px solid var(--ra-bevel-lo);
-}
-
-.ra-led {
-  width: calc(5 * var(--ra-d));
-  height: calc(5 * var(--ra-d));
-  border-radius: 50%;
-  background: #2a6e97;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
-}
-.ra-led.is-lit {
-  background: #7cd8ff;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55), 0 0 calc(3 * var(--ra-d)) #7cd8ff;
-}
-
-/* ==========================================================================
- * 5. REPAIR / SELL ARC (§2.6) — exactly two buttons, never three
- * ========================================================================== */
-
-.ra-arcpair {
-  flex: 0 0 calc(28 * var(--ra-d));
-  position: relative;
-  display: flex;
-  gap: 1px;
-  padding: 0 calc(21 * var(--ra-d));
-}
-
-.ra-arcbtn {
-  flex: 1 1 0;
-  position: relative;
-  border: 0;
-  padding: 0;
-  background: none;
-  cursor: pointer;
-  color: var(--ra-glyph);
-  pointer-events: auto;
-}
-.ra-arcbtn svg.ra-shape { display: block; width: 100%; height: 100%; }
-.ra-arcbtn .ra-glyph {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: calc(13 * var(--ra-d));
-  height: calc(13 * var(--ra-d));
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
-/* Armed: the lens pulses 0.8 -> 1.0 alpha at 1.2 Hz and the cursor changes. */
-.ra-arcbtn.is-armed { animation: ra-armed 833ms ease-in-out infinite alternate; }
-.ra-arcbtn.is-armed .ra-glyph { color: var(--ra-accent-hi); }
-@keyframes ra-armed {
-  from { opacity: 0.8; filter: brightness(1); }
-  to   { opacity: 1;   filter: brightness(1.35); }
-}
-
-/* ==========================================================================
- * 6. TAB STRIP (§2.7) — exactly four, butted, no gaps
- * ========================================================================== */
-
-.ra-tabs {
-  flex: 0 0 calc(31 * var(--ra-d));
-  display: flex;
-  padding: 0 calc(24 * var(--ra-d));
-}
-
-.ra-tab {
-  flex: 1 1 0;
-  position: relative;
-  border: 0;
-  padding: 0;
-  background: none;
-  cursor: pointer;
-  color: var(--ra-glyph-hi);
-  pointer-events: auto;
-}
-.ra-tab svg.ra-shape { display: block; width: 100%; height: 100%; }
-.ra-tab .ra-glyph {
-  position: absolute;
-  left: 50%;
-  top: 54%;
-  width: calc(16 * var(--ra-d));
-  height: calc(16 * var(--ra-d));
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
-/* Allied selected = PLATE INVERSION: plate goes pale cyan-white, glyph flips
-   to dark blue. Soviet selected = GLYPH RECOLOUR only, pulsing gold<->red.
-   Both are kept; they are the fastest faction tell in the sidebar. */
-.ra-hud[data-faction='allies'] .ra-tab.is-selected .ra-glyph { color: var(--ra-glyph); }
-.ra-hud[data-faction='soviets'] .ra-tab .ra-glyph { color: #a50804; }
-.ra-hud[data-faction='soviets'] .ra-tab.is-selected .ra-glyph {
-  animation: ra-sov-tab 1000ms steps(1, end) infinite;
-}
-@keyframes ra-sov-tab {
-  0%, 49%   { color: #fceb1f; }
-  50%, 100% { color: #c40b0e; }
-}
-
-/* A tab whose queue finished something gets a hairline accent underline. */
-.ra-tab.is-alert::after {
-  content: '';
-  position: absolute;
-  left: calc(4 * var(--ra-d));
-  right: calc(4 * var(--ra-d));
-  bottom: calc(2 * var(--ra-d));
-  height: calc(2 * var(--ra-d));
-  background: var(--ra-accent);
-  box-shadow: 0 0 calc(3 * var(--ra-d)) var(--ra-accent);
-}
-
-/* ==========================================================================
- * 7. BODY: power bar | cameo grid | piston rail (§2.8, §2.10)
- * ========================================================================== */
-
-.ra-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  padding-top: calc(2 * var(--ra-d));
-}
-
-/* --- vertical power bar -------------------------------------------------- */
-
-.ra-power {
-  flex: 0 0 calc(21 * var(--ra-d));
-  position: relative;
-  padding: 0 calc(4 * var(--ra-d)) 0 calc(5 * var(--ra-d));
-  pointer-events: auto;
-}
-.ra-power-well {
-  position: relative;
-  height: 100%;
-  background: #05070A;
-  border: 1px solid var(--ra-bevel-lo);
-  box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.10);
-  overflow: hidden;
-}
-
-/* Bottom-anchored tri-band: red (drawn) -> yellow (moving boundary) -> green
-   (surplus). Unlit black above the fill is headroom, not a colour. */
-.ra-power-fill {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: var(--ra-power-total, 0%);
-  background: linear-gradient(
-    to top,
-    var(--ra-power-red-lo) 0%,
-    #e16251 var(--ra-power-red, 0%),
-    #f7edb0 var(--ra-power-red, 0%),
-    #f7edb0 var(--ra-power-yellow, 0%),
-    var(--ra-power-mid) var(--ra-power-yellow, 0%),
-    var(--ra-power-hi) 100%);
-  --ra-power-red-lo: #3b1012;
-}
-
-/* 3 DESIGN px vertical pitch: 1 design px bright line + 2 dark. This hatch is
-   what makes the bar read as a segmented gauge instead of a progress bar.
-   The bright line is `1 * var(--ra-d)`, NOT a literal 1px: pinned at a device
-   pixel it thins to a hairline inside a 12 px gap at uiScale 4 and the gauge
-   stops reading as segmented at exactly the resolutions we scale up for. */
-.ra-power-hatch {
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.30) 0 calc(1 * var(--ra-d)),
-    rgba(0, 0, 0, 0.58) calc(1 * var(--ra-d)) calc(3 * var(--ra-d)));
-  pointer-events: none;
-}
-
-.ra-power.is-brownout .ra-power-fill { animation: ra-brownout 667ms ease-in-out infinite alternate; }
-@keyframes ra-brownout {
-  from { filter: brightness(0.7); }
-  to   { filter: brightness(1.5); }
-}
-
-/* --- cameo grid ---------------------------------------------------------- */
-
-.ra-grid {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: grid;
-  grid-template-columns: repeat(2, calc(60 * var(--ra-d)));
-  grid-auto-rows: calc(48 * var(--ra-d));
-  column-gap: calc(4 * var(--ra-d));
-  row-gap: calc(2 * var(--ra-d));
-  align-content: start;
-  justify-content: center;
-}
-
-/* The empty slot: a black glossy plastic key. Cross-section from §2.8:
-   1 px bevel highlight -> body -> 1 px black -> inner ramp -> flat well. */
-.ra-cameo {
-  position: relative;
-  border: 0;
-  padding: 0;
-  margin: 0;
-  background: var(--ra-well-cameo);
-  border-radius: calc(3 * var(--ra-d));
-  overflow: hidden;
-  cursor: pointer;
-  pointer-events: auto;
-  color: inherit;
-  box-shadow:
-    inset 0 0 0 1px #020002,
-    inset 1px 1px 0 1px #746f75,
-    inset 0 calc(2 * var(--ra-d)) calc(5 * var(--ra-d)) rgba(90, 88, 88, 0.35),
-    inset 0 calc(-3 * var(--ra-d)) calc(4 * var(--ra-d)) rgba(0, 0, 0, 0.9);
-  transition: box-shadow 80ms linear;
-}
-.ra-hud[data-faction='soviets'] .ra-cameo {
-  /* Same key, thicker whiter bevel: polished steel rather than black plastic. */
-  box-shadow:
-    inset 0 0 0 1px #020002,
-    inset calc(1.5 * var(--ra-d)) calc(1.5 * var(--ra-d)) 0 1px #eeeeee,
-    inset 0 calc(2 * var(--ra-d)) calc(5 * var(--ra-d)) rgba(255, 255, 254, 0.18),
-    inset 0 calc(-3 * var(--ra-d)) calc(4 * var(--ra-d)) rgba(0, 0, 0, 0.9);
-}
-.ra-cameo.is-empty { cursor: default; }
-
-/* Diagonal top-left gloss sweep on the plastic key. */
-.ra-cameo::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16) 0%, rgba(255, 255, 255, 0) 42%);
-  pointer-events: none;
-  z-index: 5;
-}
-
-.ra-cameo-art {
+.vm-hud .vm-world {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   display: block;
-}
-
-/* Disabled: remap onto a warm khaki/sepia ramp — hue 45-50, sat 0.30-0.45,
-   value +8%. Blues disappear entirely. Uniform, no wipe boundary. The NAME
-   LABEL is deliberately exempt (I13) and stays white — see .ra-cameo-name. */
-.ra-cameo.is-disabled .ra-cameo-art {
-  filter: grayscale(1) sepia(1) saturate(2.6) hue-rotate(-11deg) brightness(1.08);
-}
-
-.ra-cameo-name {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(1 * var(--ra-d));
-  z-index: 8;
-  text-align: center;
-  /* 8 px cap height (§2.16). The size is deliberately conservative because the
-     condensed face is a stack, not a shipped font: on a machine without Arial
-     Narrow the fallback is much wider, and a clipped cameo name is worse than
-     a slightly small one. `.is-long` drops another step for two-line names. */
-  font-size: calc(8 * var(--ra-d));
-  line-height: calc(8.5 * var(--ra-d));
-  color: #f7fbfe;
-  letter-spacing: 0;
-  overflow: hidden;
-  padding: 0 calc(1 * var(--ra-d));
-  /* A 1 DESIGN px HARD black outline on all sides (§2.16). It must scale with
-     uiScale like everything else: pinned at a device pixel it disappears under
-     18 px type at 1440p and the name stops reading over a light cameo. Never a
-     soft shadow — the hard outline is a franchise signature and a blur reads
-     as CSS. */
-  --ra-outline: var(--ra-d);
-  text-shadow:
-    var(--ra-outline) 0 0 #090000, calc(-1 * var(--ra-outline)) 0 0 #090000,
-    0 var(--ra-outline) 0 #090000, 0 calc(-1 * var(--ra-outline)) 0 #090000,
-    var(--ra-outline) var(--ra-outline) 0 #090000,
-    calc(-1 * var(--ra-outline)) var(--ra-outline) 0 #090000,
-    var(--ra-outline) calc(-1 * var(--ra-outline)) 0 #090000,
-    calc(-1 * var(--ra-outline)) calc(-1 * var(--ra-outline)) 0 #090000;
   pointer-events: none;
-  white-space: pre-line;
-}
-/* A word long enough to touch the cell walls in the widest fallback face. */
-.ra-cameo-name.is-long {
-  font-size: calc(6.5 * var(--ra-d));
-  line-height: calc(7 * var(--ra-d));
-}
-
-/* Radial clock wipe: 60% black sweeping clockwise from 12 o'clock. At 50%
-   progress this is exactly a half-disc, which is the check a critic runs. */
-.ra-cameo-wipe {
-  position: absolute;
-  inset: 0;
-  z-index: 6;
-  pointer-events: none;
-  display: none;
-  background: conic-gradient(from 0deg,
-    rgba(0, 0, 0, 0) 0deg,
-    rgba(0, 0, 0, 0) var(--ra-wipe, 0deg),
-    rgba(0, 0, 0, 0.6) var(--ra-wipe, 0deg),
-    rgba(0, 0, 0, 0.6) 360deg);
-}
-.ra-cameo.is-building .ra-cameo-wipe { display: block; }
-
-/* The 2 px faction-coloured arc on the wipe's leading edge. */
-.ra-cameo-hand {
-  position: absolute;
-  left: 50%;
-  bottom: 50%;
-  width: calc(2 * var(--ra-d));
-  height: 72%;
-  z-index: 7;
-  display: none;
-  transform-origin: 50% 100%;
-  transform: translateX(-50%) rotate(var(--ra-wipe, 0deg));
-  background: var(--ra-lens-1);
-  box-shadow: 0 0 calc(3 * var(--ra-d)) var(--ra-lens-0);
-  pointer-events: none;
-}
-.ra-cameo.is-building .ra-cameo-hand { display: block; }
-
-/* Bottom fill bar, 3 px inside the cell's lower bevel. */
-.ra-cameo-fill {
-  position: absolute;
-  left: calc(1 * var(--ra-d));
-  bottom: calc(1 * var(--ra-d));
-  height: calc(3 * var(--ra-d));
-  width: var(--ra-fill, 0%);
-  z-index: 9;
-  background: var(--ra-lens-1);
-  display: none;
-  pointer-events: none;
-}
-.ra-cameo.is-building .ra-cameo-fill { display: block; }
-.ra-cameo.is-hold .ra-cameo-fill { background: #6a6a6a; }
-.ra-cameo.is-hold .ra-cameo-hand { background: #6a6a6a; box-shadow: none; }
-
-/* "Ready" — the ONLY mixed-case string in the entire HUD. Keep it that way. */
-.ra-cameo-ready {
-  position: absolute;
-  left: 50%;
-  top: calc(3 * var(--ra-d));
-  z-index: 10;
-  transform: translateX(-50%);
-  display: none;
-  width: calc(36 * var(--ra-d));
-  height: calc(13 * var(--ra-d));
-  line-height: calc(13 * var(--ra-d));
-  text-align: center;
-  text-transform: none;
-  font-weight: 700;
-  font-size: calc(11 * var(--ra-d));
-  letter-spacing: 0;
-  color: var(--ra-ready-text);
-  background: color-mix(in srgb, var(--ra-ready-fill) 65%, transparent);
-  pointer-events: none;
-}
-.ra-cameo.is-ready .ra-cameo-ready { display: block; }
-
-/* Queue badge, bottom-right, shown only at >= 2. */
-.ra-cameo-badge {
-  position: absolute;
-  right: calc(1 * var(--ra-d));
-  bottom: calc(1 * var(--ra-d));
-  z-index: 11;
-  display: none;
-  min-width: calc(16 * var(--ra-d));
-  height: calc(14 * var(--ra-d));
-  line-height: calc(13 * var(--ra-d));
-  text-align: center;
-  font-size: calc(10 * var(--ra-d));
-  color: var(--ra-numerals);
-  background: rgba(0, 0, 0, 0.8);
-  border: 1px solid var(--ra-lens-1);
-  pointer-events: none;
-}
-.ra-cameo.is-queued .ra-cameo-badge { display: block; }
-.ra-cameo-badge.is-punch { animation: ra-punch 120ms ease-out; }
-@keyframes ra-punch {
-  from { transform: scale(1.25); }
-  to   { transform: scale(1); }
-}
-
-/* --- interaction states (§2.13) — the original has none ------------------ */
-
-.ra-cameo:hover:not(.is-empty) {
-  box-shadow:
-    inset 0 0 0 1px var(--ra-lens-1),
-    inset 1px 1px 0 1px #b8b8c6,
-    inset 0 calc(2 * var(--ra-d)) calc(5 * var(--ra-d)) rgba(140, 138, 138, 0.4),
-    inset 0 calc(-3 * var(--ra-d)) calc(4 * var(--ra-d)) rgba(0, 0, 0, 0.9);
-}
-.ra-cameo:hover:not(.is-empty) .ra-cameo-art { filter: brightness(1.06); }
-.ra-cameo:hover.is-disabled .ra-cameo-art {
-  filter: grayscale(1) sepia(1) saturate(2.6) hue-rotate(-11deg) brightness(1.15);
-}
-.ra-cameo:active:not(.is-empty) {
-  transform: translate(1px, 1px);
-  box-shadow:
-    inset 0 0 0 1px #020002,
-    inset -1px -1px 0 1px #8b8899,
-    inset 0 calc(3 * var(--ra-d)) calc(4 * var(--ra-d)) rgba(0, 0, 0, 0.9);
-}
-
-/* Keyboard focus must be visually distinct from hover: 2 px dashed, 8 px dash. */
-.ra-hud :focus-visible {
-  outline: calc(2 * var(--ra-d)) dashed var(--ra-accent);
-  outline-offset: calc(-2 * var(--ra-d));
-}
-.ra-hud :focus:not(:focus-visible) { outline: none; }
-
-/* --- right decorative rail: ten chrome piston domes, 50 px pitch --------- */
-
-.ra-rail {
-  flex: 0 0 calc(23 * var(--ra-d));
-  margin-left: calc(2 * var(--ra-d));
-  background-color: #050c1a;
-  /* The measured cross-section at a dome centre (§2.10):
-     #3B3A43 -> #53515D -> #6B6977 -> #8B8899 -> #AAACBE -> #BBBCD0 (peak)
-     -> #A6A5B8 -> #898795 -> #07060B. The peak is a HIGHLIGHT on a machined
-     cap, so it occupies a few percent of the dome, not half of it — a wide
-     bright core reads as a row of plastic pills instead of pistons. */
-  background-image: radial-gradient(
-    ellipse 46% 26% at 46% 40%,
-    #bbbcd0 0%, #aaacbe 9%, #8b8899 22%,
-    #6b6977 38%, #53515d 54%, #3b3a43 70%,
-    #14171f 84%, #07060b 100%);
-  background-size: 100% calc(50 * var(--ra-d));
-  background-repeat: repeat-y;
-  border-left: 1px solid var(--ra-bevel-lo);
-  box-shadow: inset 1px 0 0 rgba(0, 0, 0, 0.8);
-}
-/* Soviet swaps the domes for brass turbine fins — a material change, not a tint.
-   Fin pitch is 6 DESIGN px with a 1 design px specular crown, so the fins stay
-   fins at every uiScale instead of collapsing into a device-pixel stripe. */
-.ra-hud[data-faction='soviets'] .ra-rail {
-  background-color: #14171f;
-  background-image: repeating-linear-gradient(
-    180deg,
-    #f0e39a 0 calc(1 * var(--ra-d)),
-    #6d6720 calc(1 * var(--ra-d)) calc(4 * var(--ra-d)),
-    #422d06 calc(4 * var(--ra-d)) calc(6 * var(--ra-d)));
-  background-size: 100% calc(50 * var(--ra-d));
 }
 
 /* ==========================================================================
- * 8. BOTTOM CAP (§2.10) — chrome shelf, wide lens arc, plinth, emblem
+ * 3. THE PANEL PRIMITIVE
+ *
+ * The notch is a clip-path, which would normally eat a CSS border on the
+ * diagonal. So the hairline is a masked rim on `::before`: paint the whole
+ * clipped box in the hairline colour, then punch out everything inside a 1 px
+ * padding. The result is one continuous edge that follows the notch exactly.
  * ========================================================================== */
 
-.ra-cap-bottom {
-  flex: 0 0 calc(41 * var(--ra-d));
+.vm-hud .vm-panel {
   position: relative;
-  display: flex;
-  flex-direction: column;
+  background: var(--vm-glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  backdrop-filter: blur(14px) saturate(1.1);
+  pointer-events: auto;
+  clip-path: var(--vm-clip, none);
 }
-.ra-cap-shelf {
-  position: relative;
-  flex: 0 0 calc(7 * var(--ra-d));
-  background: var(--ra-sheen), linear-gradient(180deg, #fcfbff 0%, #d0cedf 100%);
-  border-bottom: 1px solid var(--ra-bevel-lo);
-}
-.ra-hud[data-faction='soviets'] .ra-cap-shelf {
-  background: var(--ra-sheen), linear-gradient(180deg, #f0e39a 0%, #a89344 100%);
-}
-.ra-cap-emblem {
+
+.vm-hud .vm-panel::before {
+  content: '';
   position: absolute;
-  right: calc(6 * var(--ra-d));
-  bottom: 0;
-  width: calc(28 * var(--ra-d));
-  height: calc(18 * var(--ra-d));
-  color: var(--ra-emblem);
-  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.65));
+  inset: 0;
+  padding: 1px;
+  box-sizing: border-box;
+  background: var(--vm-hairline);
+  clip-path: var(--vm-clip, none);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
   z-index: 2;
 }
-.ra-cap-lens {
-  flex: 0 0 calc(24 * var(--ra-d));
-  position: relative;
-  background: linear-gradient(180deg, var(--ra-lens-0) 0%, var(--ra-lens-2) 55%, #000066 100%);
-  border-radius: 0 0 calc(14 * var(--ra-d)) calc(14 * var(--ra-d));
-  box-shadow: inset 0 1px 0 var(--ra-lens-rim-hi), inset 0 -1px 0 var(--ra-lens-rim-lo);
+
+/* -- notch variants ------------------------------------------------------ */
+
+/* The house diagonal: top-left and bottom-right cut. Everything in the HUD
+   leans the same way, which is what makes four panels read as one set. */
+.vm-hud .vm-panel[data-notch='diag'] {
+  --vm-clip: polygon(
+    var(--vm-notch) 0,
+    100% 0,
+    100% calc(100% - var(--vm-notch)),
+    calc(100% - var(--vm-notch)) 100%,
+    0 100%,
+    0 var(--vm-notch)
+  );
 }
-.ra-hud[data-faction='soviets'] .ra-cap-lens {
-  background: var(--ra-brush), linear-gradient(180deg, #cdcadb 0%, #8a8b92 60%, #2a2620 100%);
-  background-blend-mode: overlay, normal;
+
+/* Mirrored, for a panel that sits on the opposite side of a composition. */
+.vm-hud .vm-panel[data-notch='diag-rev'] {
+  --vm-clip: polygon(
+    0 0,
+    calc(100% - var(--vm-notch)) 0,
+    100% var(--vm-notch),
+    100% 100%,
+    var(--vm-notch) 100%,
+    0 calc(100% - var(--vm-notch))
+  );
 }
-/* 1 px vertical seam bisecting the lens arc. */
-.ra-cap-lens::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: rgba(0, 0, 0, 0.55);
+
+/* Both ends chamfered — the resource strip. */
+.vm-hud .vm-panel[data-notch='ends'] {
+  --vm-clip: polygon(
+    var(--vm-notch) 0,
+    calc(100% - var(--vm-notch)) 0,
+    100% 50%,
+    calc(100% - var(--vm-notch)) 100%,
+    var(--vm-notch) 100%,
+    0 50%
+  );
 }
-.ra-cap-plinth {
-  flex: 1 1 auto;
-  background: linear-gradient(180deg, #14141a 0%, #050508 100%);
-}
-/* Soviet radiator grille: ~24 vertical bars at 4 px pitch under the cap. */
-.ra-hud[data-faction='soviets'] .ra-cap-plinth {
-  background: repeating-linear-gradient(
-    90deg,
-    #8c2322 0 calc(2 * var(--ra-d)),
-    #730805 calc(2 * var(--ra-d)) calc(4 * var(--ra-d)));
-  box-shadow: inset 0 calc(2 * var(--ra-d)) calc(3 * var(--ra-d)) rgba(0, 0, 0, 0.8);
+
+.vm-hud .vm-panel[data-notch='none'] {
+  --vm-clip: none;
 }
 
 /* ==========================================================================
- * 9. COMMAND BAR (§2.12) — full width, soft-glow line art on flat black
+ * 4. LAYOUT
  * ========================================================================== */
 
-.ra-cmdbar {
+.vm-hud .vm-bar {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.vm-hud .vm-docks {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: var(--ra-cmd-h);
-  pointer-events: auto;
-  background: #000;
-  /* world view -> bright white rule -> black field -> dark red rule */
-  border-top: calc(2 * var(--ra-d)) solid #f3f7ff;
-  border-bottom: calc(2 * var(--ra-d)) solid #400e0d;
   display: flex;
-  align-items: center;
-}
-.ra-hud[data-faction='soviets'] .ra-cmdbar { border-top-color: #aaaebd; }
-
-/* Chrome hydraulic ram / handle assembly with two rivet bosses. */
-.ra-cmd-endcap {
-  position: relative;
-  flex: 0 0 calc(48 * var(--ra-d));
-  align-self: stretch;
-  background: linear-gradient(180deg, #d8d8e4 0%, #8b8899 45%, #3b3a43 80%, #07060b 100%);
-  border-right: 1px solid #07060b;
-}
-.ra-hud[data-faction='soviets'] .ra-cmd-endcap {
-  background: linear-gradient(180deg, #f0e39a 0%, #a89344 45%, #422d06 82%, #07060b 100%);
-}
-.ra-cmd-endcap::before,
-.ra-cmd-endcap::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  width: calc(6 * var(--ra-d));
-  height: calc(6 * var(--ra-d));
-  margin-top: calc(-3 * var(--ra-d));
-  border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #e8e8f2 0%, #8b8899 55%, #14141a 100%);
-}
-.ra-cmd-endcap::before { left: calc(9 * var(--ra-d)); }
-.ra-cmd-endcap::after  { left: calc(29 * var(--ra-d)); }
-/* Soviet red pull-ring on the handle. */
-.ra-hud[data-faction='soviets'] .ra-cmd-endcap::after {
-  background: radial-gradient(circle at 35% 30%, #e85858 0%, #8c2322 55%, #2a0504 100%);
+  align-items: flex-end;
+  gap: var(--vm-gap);
+  padding: 0 calc(10 * var(--vm-u)) var(--vm-gap);
+  pointer-events: none;
 }
 
-.ra-cmd-icons {
-  position: relative;
-  flex: 1 1 auto;
-  align-self: stretch;
-}
-.ra-cmd-btn {
-  position: absolute;
-  top: 50%;
-  width: calc(20 * var(--ra-d));
-  height: calc(16 * var(--ra-d));
-  margin-top: calc(-8 * var(--ra-d));
-  border: 0;
-  padding: 0;
-  background: none;
-  cursor: pointer;
-  color: var(--ra-cmd-icon);
-  /* No plates, no separators. Soft-glow line art on black. */
-  filter: drop-shadow(0 0 calc(3 * var(--ra-d)) color-mix(in srgb, var(--ra-cmd-icon) 55%, transparent));
-  pointer-events: auto;
-}
-.ra-cmd-btn .ra-glyph { width: 100%; height: 100%; display: block; }
-.ra-cmd-btn:hover { color: var(--ra-cmd-icon-hi); }
-.ra-cmd-btn.is-active { color: var(--ra-accent); }
-
-/* ==========================================================================
- * 10. SUPERWEAPON COUNTDOWN (§2.12)
- *
- * SOLID black boxes (never translucent) inside the world view, bottom-right,
- * right-aligned with ragged left edges, 3 px clear of the sidebar.
- * ========================================================================== */
-
-.ra-superweapons {
-  position: absolute;
-  right: calc(var(--ra-w) + 3 * var(--ra-d));
-  bottom: calc(var(--ra-cmd-h) + 4 * var(--ra-d));
+.vm-hud .vm-dock {
+  height: var(--vm-dock-h);
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: calc(2 * var(--ra-d));
+  padding: var(--vm-pad);
+  gap: calc(4 * var(--vm-u));
+}
+
+.vm-hud .vm-dock-map {
+  /* Square-ish: the field inside is square, so the dock is its height plus the
+     header. Anything wider is letterbox, which is what we just removed. */
+  width: var(--vm-dock-h);
+  flex: 0 0 auto;
+}
+
+.vm-hud .vm-dock-selection {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vm-hud .vm-dock-build {
+  width: calc(300 * var(--vm-u));
+  flex: 0 0 auto;
+}
+
+.vm-hud .vm-dock-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: calc(6 * var(--vm-u));
+  color: var(--vm-dim);
+  flex: 0 0 auto;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ==========================================================================
+ * 5. THE RESOURCE STRIP (top centre)
+ * ========================================================================== */
+
+.vm-hud .vm-resources {
+  position: absolute;
+  top: calc(8 * var(--vm-u));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: calc(12 * var(--vm-u));
+  height: calc(26 * var(--vm-u));
+  padding: 0 calc(16 * var(--vm-u));
+}
+
+.vm-hud .vm-res {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: calc(5 * var(--vm-u));
+}
+
+.vm-hud .vm-res-icon {
+  width: calc(14 * var(--vm-u));
+  height: calc(14 * var(--vm-u));
+  color: var(--vm-dim);
+  flex: 0 0 auto;
+}
+
+.vm-hud .vm-res-value {
+  font-size: calc(15 * var(--vm-u));
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--vm-text);
+}
+
+.vm-hud .vm-res-credits .vm-res-icon { color: var(--vm-gold); }
+.vm-hud .vm-res-credits .vm-res-value { min-width: calc(52 * var(--vm-u)); }
+
+.vm-hud .vm-res-rule {
+  width: 1px;
+  height: calc(14 * var(--vm-u));
+  background: var(--vm-hairline);
+}
+
+/* -- the credit flyout --------------------------------------------------- */
+
+.vm-hud .vm-res-delta {
+  position: absolute;
+  left: calc(20 * var(--vm-u));
+  top: calc(-12 * var(--vm-u));
+  font-size: calc(11 * var(--vm-u));
+  font-weight: 700;
+  color: var(--vm-danger);
+  opacity: 0;
   pointer-events: none;
 }
-.ra-sw-row {
-  position: relative;
-  height: calc(18 * var(--ra-d));
-  line-height: calc(18 * var(--ra-d));
-  padding: 0 calc(6 * var(--ra-d));
-  background: #000;
-  font-size: calc(11 * var(--ra-d));
-  color: #e81b1c;
+
+.vm-hud .vm-res-delta.is-gain { color: var(--vm-ok); }
+.vm-hud .vm-res-delta.is-live { animation: vm-flyout 0.8s ease-out forwards; }
+
+@keyframes vm-flyout {
+  0%   { opacity: 0; transform: translateY(4px); }
+  18%  { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-10px); }
+}
+
+/* -- the power meter ----------------------------------------------------- */
+
+.vm-hud .vm-power {
   display: flex;
-  gap: calc(8 * var(--ra-d));
+  align-items: stretch;
+  gap: calc(1.5 * var(--vm-u));
+  height: calc(10 * var(--vm-u));
+}
+
+.vm-hud .vm-power-seg {
+  width: calc(4 * var(--vm-u));
+  background: rgba(255, 255, 255, 0.09);
+  transition: background-color 120ms linear;
+}
+
+.vm-hud .vm-power-seg.is-lit {
+  background: var(--vm-accent);
+}
+
+/* Tight: the next structure is going to hurt. */
+.vm-hud .is-tight ~ .vm-power .vm-power-seg.is-lit,
+.vm-hud .vm-power-value.is-tight { color: var(--vm-warn); }
+
+.vm-hud .vm-res-power:has(.vm-power-value.is-tight) .vm-power-seg.is-lit {
+  background: var(--vm-warn);
+}
+
+.vm-hud .vm-res-power:has(.vm-power-value.is-down) .vm-power-seg.is-lit {
+  background: var(--vm-danger);
+}
+
+.vm-hud .vm-power-value {
+  font-size: calc(12 * var(--vm-u));
+  color: var(--vm-dim);
+  min-width: calc(34 * var(--vm-u));
+}
+
+.vm-hud .vm-power-value.is-tight { color: var(--vm-warn); }
+.vm-hud .vm-power-value.is-down { color: var(--vm-danger); }
+
+.vm-hud .vm-resources.is-brownout .vm-res-power .vm-res-icon {
+  color: var(--vm-danger);
+  animation: vm-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes vm-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+.vm-hud .vm-res-clock .vm-res-value {
+  color: var(--vm-dim);
+  font-size: calc(13 * var(--vm-u));
+}
+
+/* ==========================================================================
+ * 6. THE TACTICAL MAP (bottom left)
+ * ========================================================================== */
+
+.vm-hud .vm-map-field {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  aspect-ratio: 1 / 1;
+  align-self: center;
+  background: #070a10;
+  outline: 1px solid var(--vm-hairline-soft);
+  outline-offset: 0;
+}
+
+.vm-hud .vm-map-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+.vm-hud .vm-dock-map .vm-dock-title {
+  font-size: calc(9 * var(--vm-u));
+  letter-spacing: 0.12em;
+  color: var(--vm-faint);
+}
+
+.vm-hud .vm-map-offline {
+  color: var(--vm-danger);
+  font-size: calc(9 * var(--vm-u));
+  letter-spacing: 0.12em;
+}
+
+.vm-hud .vm-dock-map.is-offline .vm-map-field {
+  filter: grayscale(0.7) brightness(0.6);
+}
+
+/* ==========================================================================
+ * 7. THE SELECTION PANEL (bottom centre)
+ * ========================================================================== */
+
+/* With nothing selected the panel goes away entirely rather than sitting there
+   as an empty glass slab: a dock that is always present but usually blank reads
+   as a layout bug, and the battlefield is worth more than the placeholder. */
+.vm-hud .vm-dock-selection { transition: opacity 140ms linear; }
+.vm-hud .vm-dock-selection.is-empty { opacity: 0; pointer-events: none; }
+.vm-hud .vm-dock-selection.is-empty::before { opacity: 0; }
+
+.vm-hud .vm-sel-head {
+  display: flex;
+  align-items: baseline;
+  gap: calc(8 * var(--vm-u));
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.vm-hud .vm-sel-id {
+  display: flex;
+  align-items: center;
+  gap: calc(5 * var(--vm-u));
+  min-width: 0;
+}
+
+.vm-hud .vm-sel-title {
+  font-size: calc(15 * var(--vm-u));
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--vm-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vm-hud .vm-sel-vet {
+  display: inline-flex;
+  gap: calc(1 * var(--vm-u));
+}
+
+.vm-hud .vm-sel-chevron {
+  width: calc(10 * var(--vm-u));
+  height: calc(10 * var(--vm-u));
+  color: var(--vm-gold);
+}
+
+.vm-hud .vm-sel-sub {
+  color: var(--vm-faint);
+  font-size: calc(10 * var(--vm-u));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1 1 auto;
+}
+
+.vm-hud .vm-sel-count {
+  margin-left: auto;
+  font-size: calc(16 * var(--vm-u));
+  font-weight: 700;
+  color: var(--vm-accent);
+  flex: 0 0 auto;
+}
+
+/* -- unit cards ---------------------------------------------------------- */
+
+.vm-hud .vm-sel-cards {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(4 * var(--vm-u));
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.vm-hud .vm-sel-cards::-webkit-scrollbar { height: 0; }
+
+.vm-hud .vm-card {
+  position: relative;
+  flex: 0 0 auto;
+  width: calc(38 * var(--vm-u));
+  height: calc(38 * var(--vm-u));
+  padding: 0;
+  border: 1px solid var(--vm-hairline);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--vm-dim);
+  cursor: pointer;
+  transition: border-color 100ms linear, background-color 100ms linear, color 100ms linear;
+}
+
+.vm-hud .vm-card:hover,
+.vm-hud .vm-card:focus-visible {
+  background: rgba(var(--vm-accent-rgb), 0.10);
+  border-color: rgba(var(--vm-accent-rgb), 0.45);
+  color: var(--vm-text);
+  outline: none;
+}
+
+.vm-hud .vm-card.is-primary {
+  border-color: var(--vm-accent);
+  color: var(--vm-accent-hi);
+  box-shadow: inset 0 0 0 1px rgba(var(--vm-accent-rgb), 0.25);
+}
+
+.vm-hud .vm-card-icon {
+  position: absolute;
+  left: 50%;
+  top: calc(48% );
+  transform: translate(-50%, -50%);
+  width: calc(22 * var(--vm-u));
+  height: calc(22 * var(--vm-u));
+}
+
+.vm-hud .vm-card-stack {
+  position: absolute;
+  right: calc(2 * var(--vm-u));
+  top: calc(1 * var(--vm-u));
+  font-size: calc(9 * var(--vm-u));
+  font-weight: 700;
+  color: var(--vm-text);
+}
+
+.vm-hud .vm-card-vet {
+  position: absolute;
+  left: calc(2 * var(--vm-u));
+  top: calc(2 * var(--vm-u));
+  width: calc(4 * var(--vm-u));
+  height: calc(4 * var(--vm-u));
+  background: var(--vm-gold);
+}
+
+.vm-hud .vm-card-vet[data-rank='2'] {
+  height: calc(9 * var(--vm-u));
+}
+
+.vm-hud .vm-card-bar {
+  position: absolute;
+  left: calc(3 * var(--vm-u));
+  right: calc(3 * var(--vm-u));
+  bottom: calc(3 * var(--vm-u));
+  height: calc(2 * var(--vm-u));
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+
+.vm-hud .vm-card-bar > i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: var(--vm-ok);
+  transition: transform 120ms linear;
+}
+
+.vm-hud .vm-card-bar > i.is-hurt { background: var(--vm-warn); }
+.vm-hud .vm-card-bar > i.is-critical { background: var(--vm-danger); }
+
+/* -- stat row + stances --------------------------------------------------- */
+
+.vm-hud .vm-sel-stats {
+  display: flex;
+  align-items: center;
+  gap: calc(10 * var(--vm-u));
+  flex: 0 0 auto;
+  height: calc(18 * var(--vm-u));
+  border-top: 1px solid var(--vm-hairline-soft);
+  padding-top: calc(3 * var(--vm-u));
+}
+
+.vm-hud .vm-stat {
+  display: flex;
+  align-items: center;
+  gap: calc(3 * var(--vm-u));
+  color: var(--vm-dim);
+}
+
+.vm-hud .vm-stat.is-blank { opacity: 0.35; }
+
+.vm-hud .vm-stat-icon {
+  width: calc(11 * var(--vm-u));
+  height: calc(11 * var(--vm-u));
+  color: var(--vm-faint);
+}
+
+.vm-hud .vm-stat-value {
+  font-size: calc(11 * var(--vm-u));
+  color: var(--vm-text);
   white-space: nowrap;
 }
-.ra-sw-time { font-variant-numeric: tabular-nums; margin-left: auto; }
-.ra-sw-row.is-ready { animation: ra-sw-flash 1000ms steps(1, end) infinite; }
-@keyframes ra-sw-flash {
-  0%, 49%   { color: #e81b1c; }
-  50%, 100% { color: #f8c820; }
+
+.vm-hud .vm-stances {
+  margin-left: auto;
+  display: flex;
+  gap: calc(2 * var(--vm-u));
 }
-/* NEW: a 1 px faction-coloured progress underline across the box width. */
-.ra-sw-row::after {
+
+.vm-hud .vm-stance {
+  width: calc(18 * var(--vm-u));
+  height: calc(15 * var(--vm-u));
+  padding: 0;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--vm-faint);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 100ms linear, border-color 100ms linear, background-color 100ms linear;
+}
+
+.vm-hud .vm-stance > svg {
+  width: calc(11 * var(--vm-u));
+  height: calc(11 * var(--vm-u));
+}
+
+.vm-hud .vm-stance:hover,
+.vm-hud .vm-stance:focus-visible {
+  color: var(--vm-text);
+  border-color: var(--vm-hairline);
+  outline: none;
+}
+
+.vm-hud .vm-stance.is-active {
+  color: var(--vm-accent-hi);
+  border-color: var(--vm-accent);
+  background: rgba(var(--vm-accent-rgb), 0.12);
+}
+
+/* ==========================================================================
+ * 8. THE BUILD PANEL (bottom right)
+ * ========================================================================== */
+
+.vm-hud .vm-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: calc(2 * var(--vm-u));
+  height: calc(20 * var(--vm-u));
+  flex: 0 0 auto;
+  border-bottom: 1px solid var(--vm-hairline-soft);
+}
+
+.vm-hud .vm-tab {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(3 * var(--vm-u));
+  padding: 0 calc(2 * var(--vm-u));
+  border: 0;
+  background: transparent;
+  color: var(--vm-faint);
+  cursor: pointer;
+  transition: color 100ms linear;
+}
+
+.vm-hud .vm-tab::after {
+  /* The active rule. 2 px of accent, and the ONLY glow in the chrome besides
+     the slot progress bar. */
   content: '';
   position: absolute;
+  left: calc(3 * var(--vm-u));
+  right: calc(3 * var(--vm-u));
+  bottom: calc(-1 * var(--vm-u));
+  height: calc(2 * var(--vm-u));
+  background: var(--vm-accent);
+  opacity: 0;
+  transition: opacity 120ms linear;
+}
+
+.vm-hud .vm-tab:hover,
+.vm-hud .vm-tab:focus-visible { color: var(--vm-text); outline: none; }
+.vm-hud .vm-tab:focus-visible { box-shadow: inset 0 0 0 1px rgba(var(--vm-accent-rgb), 0.5); }
+
+.vm-hud .vm-tab.is-active { color: var(--vm-accent-hi); }
+.vm-hud .vm-tab.is-active::after {
+  opacity: 1;
+  box-shadow: 0 0 calc(5 * var(--vm-u)) rgba(var(--vm-accent-rgb), 0.55);
+}
+
+.vm-hud .vm-tab-icon {
+  width: calc(13 * var(--vm-u));
+  height: calc(13 * var(--vm-u));
+  flex: 0 0 auto;
+}
+
+/* Only the ACTIVE tab is named. Four words never fit across a 300-unit dock at
+   a tracking wide enough to read, and four competing labels is noise anyway —
+   the icons carry recognition and the one word carries confirmation. */
+.vm-hud .vm-tab-label {
+  display: none;
+  font-size: calc(9 * var(--vm-u));
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.vm-hud .vm-tab.is-active .vm-tab-label { display: inline; }
+
+@media (max-width: 900px) {
+  .vm-hud .vm-tab.is-active .vm-tab-label { display: none; }
+}
+
+.vm-hud .vm-tab-alert {
+  position: absolute;
+  top: calc(2 * var(--vm-u));
+  right: calc(2 * var(--vm-u));
+  width: calc(4 * var(--vm-u));
+  height: calc(4 * var(--vm-u));
+  border-radius: 50%;
+  background: var(--vm-ok);
+  animation: vm-pulse 1.6s ease-in-out infinite;
+}
+
+/* -- repair / sell -------------------------------------------------------- */
+
+.vm-hud .vm-tools {
+  display: flex;
+  align-items: center;
+  gap: calc(2 * var(--vm-u));
+  padding-left: calc(4 * var(--vm-u));
+  margin-left: calc(2 * var(--vm-u));
+  border-left: 1px solid var(--vm-hairline-soft);
+  flex: 0 0 auto;
+}
+
+.vm-hud .vm-tool {
+  width: calc(18 * var(--vm-u));
+  height: calc(16 * var(--vm-u));
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--vm-faint);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 100ms linear, border-color 100ms linear, background-color 100ms linear;
+}
+
+.vm-hud .vm-tool > svg {
+  width: calc(12 * var(--vm-u));
+  height: calc(12 * var(--vm-u));
+}
+
+.vm-hud .vm-tool:hover,
+.vm-hud .vm-tool:focus-visible { color: var(--vm-text); outline: none; }
+
+.vm-hud .vm-tool.is-active {
+  color: var(--vm-accent-hi);
+  border-color: var(--vm-accent);
+  background: rgba(var(--vm-accent-rgb), 0.14);
+}
+
+/* The sell tool is destructive, so its ARMED state is red, not accent. */
+.vm-hud .vm-tool:last-child.is-active {
+  color: var(--vm-danger);
+  border-color: var(--vm-danger);
+  background: rgba(255, 77, 61, 0.14);
+}
+
+/* -- the slot grid -------------------------------------------------------- */
+
+.vm-hud .vm-grid {
+  display: grid;
+  grid-template-columns: repeat(var(--vm-grid-cols, 6), 1fr);
+  grid-auto-rows: calc(32 * var(--vm-u));
+  gap: calc(3 * var(--vm-u));
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: calc(3 * var(--vm-u));
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--vm-accent-rgb), 0.35) transparent;
+}
+
+.vm-hud .vm-grid::-webkit-scrollbar { width: calc(3 * var(--vm-u)); }
+.vm-hud .vm-grid::-webkit-scrollbar-track { background: transparent; }
+.vm-hud .vm-grid::-webkit-scrollbar-thumb { background: rgba(var(--vm-accent-rgb), 0.35); }
+
+.vm-hud .vm-slot {
+  position: relative;
+  padding: 0;
+  border: 1px solid var(--vm-hairline);
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--vm-dim);
+  cursor: pointer;
+  overflow: hidden;
+  transition: border-color 100ms linear, background-color 100ms linear, color 100ms linear;
+}
+
+.vm-hud .vm-slot:hover,
+.vm-hud .vm-slot:focus-visible {
+  background: rgba(var(--vm-accent-rgb), 0.12);
+  border-color: rgba(var(--vm-accent-rgb), 0.55);
+  color: var(--vm-text);
+  outline: none;
+}
+
+.vm-hud .vm-slot:active { background: rgba(var(--vm-accent-rgb), 0.2); }
+
+/* The icon sits ABOVE centre so the cost has its own band along the bottom.
+   Overlapping the two is the fastest way to make a 6-wide grid unreadable. */
+.vm-hud .vm-slot-icon {
+  position: absolute;
+  left: 50%;
+  top: calc(37%);
+  transform: translate(-50%, -50%);
+  width: calc(16 * var(--vm-u));
+  height: calc(16 * var(--vm-u));
+}
+
+.vm-hud .vm-slot-cost {
+  position: absolute;
   left: 0;
+  right: calc(3 * var(--vm-u));
+  bottom: calc(3 * var(--vm-u));
+  text-align: right;
+  font-size: calc(8 * var(--vm-u));
+  font-weight: 600;
+  line-height: 1;
+  color: var(--vm-dim);
+  pointer-events: none;
+}
+
+.vm-hud .vm-slot-queue {
+  position: absolute;
+  left: 0;
+  top: 0;
+  min-width: calc(11 * var(--vm-u));
+  height: calc(11 * var(--vm-u));
+  padding: 0 calc(2 * var(--vm-u));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(9 * var(--vm-u));
+  font-weight: 700;
+  color: #060a10;
+  background: var(--vm-accent);
+  pointer-events: none;
+}
+
+.vm-hud .vm-slot-ready {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(3 * var(--vm-u));
+  text-align: center;
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.18em;
+  color: var(--vm-ok);
+  pointer-events: none;
+}
+
+/* The progress bar: 2 px of accent along the bottom edge with a slight glow.
+   NOT a radial clock wipe — the wipe belonged to the painted cameo it used to
+   sit on, and it reads as damage on a flat icon. */
+.vm-hud .vm-slot-track {
+  position: absolute;
+  left: 0;
+  right: 0;
   bottom: 0;
-  height: 1px;
-  width: var(--ra-sw-progress, 0%);
-  background: var(--ra-accent);
+  height: calc(2 * var(--vm-u));
+  background: rgba(255, 255, 255, 0.07);
+  overflow: visible;
+  pointer-events: none;
+}
+
+.vm-hud .vm-slot-track > i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  transform: scaleX(0);
+  background: var(--vm-accent);
+  box-shadow: 0 0 calc(4 * var(--vm-u)) rgba(var(--vm-accent-rgb), 0.7);
+  transition: transform 100ms linear;
+}
+
+.vm-hud .vm-slot.is-building { border-color: rgba(var(--vm-accent-rgb), 0.4); }
+
+.vm-hud .vm-slot.is-ready {
+  border-color: var(--vm-ok);
+  background: rgba(79, 217, 127, 0.10);
+  color: var(--vm-text);
+}
+
+/* READY owns the bottom band once it appears; the cost has done its job. */
+.vm-hud .vm-slot.is-ready .vm-slot-cost { visibility: hidden; }
+
+.vm-hud .vm-slot.is-ready .vm-slot-track > i {
+  background: var(--vm-ok);
+  box-shadow: 0 0 calc(4 * var(--vm-u)) rgba(79, 217, 127, 0.6);
+}
+
+/* On hold — usually out of money. Amber, and the bar stops. */
+.vm-hud .vm-slot.is-held .vm-slot-queue { background: var(--vm-warn); }
+.vm-hud .vm-slot.is-held .vm-slot-track > i {
+  background: var(--vm-warn);
+  box-shadow: none;
+}
+
+/* Locked. DIMMED, never disabled: it must stay hoverable so the tooltip can
+   say what unlocks it. That sentence is the tech tree's only tutorial. */
+.vm-hud .vm-slot.is-locked {
+  opacity: 0.34;
+  border-color: var(--vm-hairline-soft);
+}
+
+.vm-hud .vm-slot.is-locked:hover,
+.vm-hud .vm-slot.is-locked:focus-visible {
+  opacity: 0.6;
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--vm-hairline);
 }
 
 /* ==========================================================================
- * 11. TOOLTIP (§2.13) — same material as the credits well
+ * 9. TOOLTIP
  * ========================================================================== */
 
-.ra-tooltip {
+.vm-hud .vm-tip {
   position: fixed;
   z-index: 40;
-  max-width: 280px;
-  padding: calc(4 * var(--ra-d)) calc(6 * var(--ra-d)) calc(5 * var(--ra-d));
-  background: #0a0a12;
-  border: 1px solid var(--ra-bevel-hi);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.10), 0 calc(2 * var(--ra-d)) calc(6 * var(--ra-d)) rgba(0, 0, 0, 0.8);
+  max-width: calc(240 * var(--vm-u));
+  padding: calc(7 * var(--vm-u)) calc(9 * var(--vm-u));
+  background: var(--vm-glass-deep);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  backdrop-filter: blur(14px) saturate(1.1);
+  border: 1px solid var(--vm-hairline);
+  border-left: calc(2 * var(--vm-u)) solid var(--vm-accent);
   pointer-events: none;
-  font-size: calc(10 * var(--ra-d));
-  line-height: 1.35;
-}
-.ra-tt-title { color: #f7fbfe; letter-spacing: 0.08em; }
-.ra-tt-stats {
   display: flex;
-  gap: calc(8 * var(--ra-d));
-  color: var(--ra-numerals);
-  font-variant-numeric: tabular-nums;
+  flex-direction: column;
+  gap: calc(4 * var(--vm-u));
 }
-.ra-tt-cost:not(:empty)::before  { content: '$'; opacity: 0.65; }
-.ra-tt-power:not(:empty)::after  { content: ' PWR'; opacity: 0.65; }
-.ra-tt-blurb {
-  color: #9aa2ae;
-  text-transform: none;
-  letter-spacing: 0;
-  margin-top: calc(2 * var(--ra-d));
+
+.vm-hud .vm-tip[hidden] { display: none; }
+
+.vm-hud .vm-tip-head {
+  display: flex;
+  align-items: baseline;
+  gap: calc(6 * var(--vm-u));
 }
-.ra-tt-req {
-  color: #e85858;
-  margin-top: calc(2 * var(--ra-d));
+
+.vm-hud .vm-tip-title {
+  font-size: calc(13 * var(--vm-u));
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--vm-text);
+}
+
+.vm-hud .vm-tip-key {
+  margin-left: auto;
+  font-size: calc(9 * var(--vm-u));
+  padding: 0 calc(3 * var(--vm-u));
+  border: 1px solid var(--vm-hairline);
+  color: var(--vm-dim);
+}
+
+.vm-hud .vm-tip-stats {
+  display: flex;
+  gap: calc(9 * var(--vm-u));
+  font-size: calc(11 * var(--vm-u));
+  color: var(--vm-dim);
+}
+
+.vm-hud .vm-tip-stat.is-cost { color: var(--vm-gold); }
+.vm-hud .vm-tip-stat.is-drain { color: var(--vm-warn); }
+
+.vm-hud .vm-tip-blurb {
+  font-size: calc(11 * var(--vm-u));
+  line-height: 1.3;
+  color: var(--vm-dim);
+}
+
+.vm-hud .vm-tip-req {
+  font-size: calc(11 * var(--vm-u));
+  font-weight: 600;
+  color: var(--vm-danger);
 }
 
 /* ==========================================================================
- * 12. WORLD OVERLAY (§2.11)
- *
- * One full-bleed canvas, never hit-tested. Selection is the health bar
- * appearing; there are NO selection circles, boxes or corner brackets.
+ * 10. EVENT TOASTS (top left)
  * ========================================================================== */
 
-.ra-overlay {
+.vm-hud .vm-toasts {
   position: absolute;
-  inset: 0;
+  left: calc(10 * var(--vm-u));
+  top: calc(10 * var(--vm-u));
+  display: flex;
+  flex-direction: column;
+  gap: calc(4 * var(--vm-u));
   pointer-events: none;
-  display: block;
+  max-width: calc(230 * var(--vm-u));
+}
+
+.vm-hud .vm-toast {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--vm-u));
+  padding: calc(4 * var(--vm-u)) calc(8 * var(--vm-u));
+  background: var(--vm-glass);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  backdrop-filter: blur(14px) saturate(1.1);
+  border: 1px solid var(--vm-hairline);
+  border-left: calc(3 * var(--vm-u)) solid var(--vm-accent);
+  color: var(--vm-text);
+}
+
+.vm-hud .vm-toast.is-warn { border-left-color: var(--vm-warn); }
+.vm-hud .vm-toast.is-alert { border-left-color: var(--vm-danger); }
+.vm-hud .vm-toast.is-good { border-left-color: var(--vm-ok); }
+
+.vm-hud .vm-toast-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  width: calc(13 * var(--vm-u));
+  height: calc(13 * var(--vm-u));
+  color: var(--vm-accent);
+}
+
+.vm-hud .vm-toast.is-warn .vm-toast-icon { color: var(--vm-warn); }
+.vm-hud .vm-toast.is-alert .vm-toast-icon { color: var(--vm-danger); }
+.vm-hud .vm-toast.is-good .vm-toast-icon { color: var(--vm-ok); }
+
+.vm-hud .vm-toast-icon > svg { width: 100%; height: 100%; }
+
+.vm-hud .vm-toast-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vm-hud .vm-toast-title {
+  font-size: calc(10 * var(--vm-u));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vm-hud .vm-toast-detail {
+  font-size: calc(10 * var(--vm-u));
+  color: var(--vm-faint);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vm-hud .vm-toast-count {
+  margin-left: auto;
+  font-size: calc(10 * var(--vm-u));
+  font-weight: 700;
+  color: var(--vm-dim);
+}
+
+.vm-hud .vm-toast.is-enter { animation: vm-toast-in 180ms ease-out; }
+.vm-hud .vm-toast.is-exit { animation: vm-toast-out 400ms ease-in forwards; }
+
+@keyframes vm-toast-in {
+  from { opacity: 0; transform: translateX(calc(-8 * var(--vm-u))); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes vm-toast-out {
+  from { opacity: 1; }
+  to   { opacity: 0; transform: translateX(calc(-8 * var(--vm-u))); }
 }
 
 /* ==========================================================================
- * 13. SHARED SVG PLATE STYLING
+ * 11. ICONS, FOCUS AND MOTION
  * ========================================================================== */
 
-.ra-hud svg.ra-shape .ra-plate-rim-hi { stroke: var(--ra-lens-rim-hi); stroke-width: 1; fill: none; }
-.ra-hud svg.ra-shape .ra-plate-rim-lo { stroke: var(--ra-lens-rim-lo); stroke-width: 1; fill: none; }
+/* The icon primitive carries NO size. Every use site states its own, because a
+   `width: 100%` default resolves against whatever flex box it lands in and
+   produces a 400 px credits glyph the first time someone drops one into a row
+   that has no explicit height. Wrappers that DO want a filled box say so
+   themselves (`.vm-toast-icon > svg`, `.vm-tool > svg`, `.vm-stance > svg`). */
+.vm-hud .vm-icon {
+  display: block;
+  overflow: visible;
+  fill: none;
+  flex: 0 0 auto;
+}
+
+/* `hidden` must beat every `display` this file sets, or a pooled element that
+   is logically hidden — a queue badge at zero, an empty stance row — keeps its
+   flex box and renders as a solid accent square. */
+.vm-hud [hidden] {
+  display: none !important;
+}
+
+.vm-hud button { font: inherit; color: inherit; }
+.vm-hud button::-moz-focus-inner { border: 0; }
+
+/* One focus treatment for the whole interface. */
+.vm-hud :focus-visible {
+  outline: calc(1 * var(--vm-u)) solid var(--vm-accent);
+  outline-offset: calc(1 * var(--vm-u));
+}
+
+/* An armed tool changes the cursor over the WORLD, which the world canvas does
+   not own — so it is set on the HUD root and inherited by the page. */
+.vm-hud[data-armed='repair'] { cursor: cell; }
+.vm-hud[data-armed='sell'] { cursor: not-allowed; }
+
+@media (prefers-reduced-motion: reduce) {
+  .vm-hud *,
+  .vm-hud *::before,
+  .vm-hud *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* A browser without backdrop-filter would show the raw 72% glass over a bright
+   battlefield, which is unreadable. Fall back to an opaque panel instead. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .vm-hud .vm-panel,
+  .vm-hud .vm-toast,
+  .vm-hud .vm-tip {
+    background: rgba(7, 10, 16, 0.94);
+  }
+}

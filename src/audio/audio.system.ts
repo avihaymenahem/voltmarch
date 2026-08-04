@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/audio/audio.system.ts
+ * VOLTMARCH — src/audio/audio.system.ts
  * ============================================================================
  * THE WIRING. Builds the engine, bakes the bank, and subscribes to the event
  * bus so the rest of the game never has to know audio exists.
@@ -675,7 +675,7 @@ function theatreFromFlags(): Theatre {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __raAudio: {
+  var __vmAudio: {
     engine: () => AudioEngine | null;
     eva: (line: string) => void;
     play: (id: string, x?: number, y?: number, z?: number) => void;
@@ -686,7 +686,7 @@ declare global {
 }
 
 if (typeof globalThis !== 'undefined') {
-  globalThis.__raAudio = {
+  globalThis.__vmAudio = {
     engine: () => engine,
     eva: (line: string) => { eva?.say(line); },
     play: (id: string, x?: number, y?: number, z?: number) => { engine?.play(id, x, y, z); },

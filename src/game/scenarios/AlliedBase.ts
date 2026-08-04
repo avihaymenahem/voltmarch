@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/game/scenarios/AlliedBase.ts
+ * VOLTMARCH — src/game/scenarios/AlliedBase.ts
  * ============================================================================
  * THE ALLIED BASE LAYOUT.
  *
@@ -76,6 +76,21 @@ const ALLIED_CORE: readonly StructurePlacement[] = [
   // Silos hard against the ore side, clear of the harvester approach lane.
   { key: 'oreSilo', dx: 29, dz: 3 },
   { key: 'oreSilo', dx: 29, dz: 9 },
+
+  /*
+   * THE POWER COLUMN, and it is not decoration.
+   *
+   * The layout below draws −280 and the two back-row plants make +200, so a
+   * skirmish used to START at −80: permanent brownout, radar offline, prism
+   * tower dark, and a "LOW POWER" toast on the first frame of every match.
+   * These two put the base at +120, which is the margin a player needs to add
+   * one more building before they have to think about power.
+   *
+   * Mirrors the silo column on the far side, inside the same x ∈ [−32, +34]
+   * frame budget the header quotes.
+   */
+  { key: 'powerPlant', dx: -31, dz: 3, secondary: true },
+  { key: 'powerPlant', dx: -31, dz: 9, secondary: true },
 
   // Back row, z ∈ [+10, +18], on 11 m centres.
   { key: 'barracks', dx: -22, dz: 14 },

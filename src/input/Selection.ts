@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/input/Selection.ts
+ * VOLTMARCH — src/input/Selection.ts
  * ============================================================================
  * WHO IS SELECTED, AND WHO IS UNDER THE CURSOR.
  *

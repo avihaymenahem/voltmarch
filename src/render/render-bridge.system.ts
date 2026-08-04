@@ -1,5 +1,5 @@
 /**
- * RED ALERT — the RenderBridge system module.
+ * VOLTMARCH — the RenderBridge system module.
  *
  * Joins the frame at `RenderPhase.Bridge` (30): after terrain and the fog-of-war
  * upload, before unit/building anim (40/50) and VFX (60). That ordering is not

@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/world/Scatter.ts
+ * VOLTMARCH — src/world/Scatter.ts
  * ============================================================================
  * PROP SCATTER. The system that decides terrain is a place instead of a plane.
  *

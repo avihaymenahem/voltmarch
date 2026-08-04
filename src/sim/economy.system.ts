@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/economy.system.ts
+ * VOLTMARCH — src/sim/economy.system.ts
  * ============================================================================
  * The registration shim for the economic loop. All of the work is in
  * Economy.ts, Harvesting.ts and Power.ts; this file builds one of each, wires
@@ -217,7 +217,7 @@ export default defineSystem({
     economy.recomputeStorage();
 
     const g = globalThis as unknown as Record<string, unknown>;
-    g.__raEconomy = { ore, economy, power, harvesters, world };
+    g.__vmEconomy = { ore, economy, power, harvesters, world };
   },
 
   simTick(s: SimContext): void {

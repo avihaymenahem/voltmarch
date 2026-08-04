@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/Projectiles.ts
+ * VOLTMARCH — src/sim/Projectiles.ts
  * ============================================================================
  * THE POOLED PROJECTILE STORE. 2048 slots, structure of arrays, allocated once.
  *

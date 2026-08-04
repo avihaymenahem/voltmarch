@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/ai.system.ts
+ * VOLTMARCH — src/sim/ai.system.ts
  * ============================================================================
  * The AI's registration surface. Three jobs and nothing else:
  *
@@ -11,7 +11,7 @@
  *      `AI.ts` would make `src/sim/**` depend on `src/game/**` forever. The
  *      binding crosses the boundary as a structural `DefLookup`.
  *   3. Publish what the AI thinks it is doing, both as numeric debug counters
- *      and as `__RA.hooks.ai()` for the console.
+ *      and as `__VM.hooks.ai()` for the console.
  *
  * WHY IT INITS AT Phase.AI WITH A LATE ORDER
  * ------------------------------------------
@@ -242,7 +242,7 @@ export default defineSystem({
     director.tick(s);
 
     // Publish intent. Counters are numeric only, so the posture is an enum
-    // index — `__RA.hooks.ai()` is the readable form.
+    // index — `__VM.hooks.ai()` is the readable form.
     const c = debug.counters;
     c.aiBrains = director.brains.length;
     c.aiCommands = director.commandsIssued;

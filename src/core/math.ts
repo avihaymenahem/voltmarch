@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/core/math.ts
+ * VOLTMARCH — src/core/math.ts
  * ============================================================================
  * Allocation-free scalar and 2D math, deterministic RNG, coherent noise, and
  * grid<->world conversion.

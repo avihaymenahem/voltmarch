@@ -1,5 +1,5 @@
 /**
- * RED ALERT — src/render/debug.ts
+ * VOLTMARCH — src/render/debug.ts
  * =============================================================================
  * Two things:
  *
@@ -9,20 +9,24 @@
  *     Text nodes are created once and only their `nodeValue` is written, at
  *     6 Hz — the overlay must never be the reason a frame is slow.
  *
- *  2. `window.__RA` — the scripting handle.
+ *  2. `window.__VM` — the scripting handle.
  *
- * WHY __RA MATTERS
+ * WHY __VM MATTERS
  * ----------------
  * Visual critics do not play the game; they drive it. Every screenshot in the
  * review loop is produced by a headless script that navigates to the page,
- * awaits `__RA.ready()`, calls `__RA.setCameraPose(...)`, `__RA.setSun(...)`,
- * `__RA.setStudio(true)`, and then `__RA.screenshot()`. If the framing is not
+ * awaits `__VM.ready()`, calls `__VM.setCameraPose(...)`, `__VM.setSun(...)`,
+ * `__VM.setStudio(true)`, and then `__VM.screenshot()`. If the framing is not
  * byte-reproducible the diffs are worthless, so every pose setter is immediate
  * (damping bypassed) by default and `screenshot()` always renders a fresh
  * frame before reading pixels.
  *
  * The handle is installed in dev AND in production builds. It is ~4 KB and it
  * is the difference between "we think it looks better" and "here is the diff".
+ *
+ * It was called `__RA` before the project was renamed to VOLTMARCH. `window.__RA`
+ * is still assigned as a deprecated alias to the same object so anything written
+ * against the old name keeps working; drop it after one release.
  */
 
 import * as THREE from 'three';
@@ -105,7 +109,7 @@ export interface FrameStats {
   counters: DebugCounters;
 }
 
-export interface RAHandle {
+export interface VMHandle {
   readonly version: string;
   readonly THREE: typeof THREE;
 
@@ -169,9 +173,14 @@ export interface RAHandle {
 
 declare global {
   interface Window {
-    __RA?: RAHandle;
+    __VM?: VMHandle;
+    /** @deprecated Renamed to `__VM` in the VOLTMARCH rename. Removed next release. */
+    __RA?: VMHandle;
   }
 }
+
+/** @deprecated Renamed to {@link VMHandle}. Kept so external callers keep compiling. */
+export type RAHandle = VMHandle;
 
 /* ========================================================================== */
 /* Overlay DOM                                                                */
@@ -194,11 +203,11 @@ function makeOverlay(): {
   sparkCtx: CanvasRenderingContext2D | null;
 } {
   const root = document.createElement('div');
-  root.id = 'ra-perf';
+  root.id = 'vm-perf';
   root.style.cssText = OVERLAY_CSS;
 
   const title = document.createElement('div');
-  title.textContent = 'RED ALERT · RENDER';
+  title.textContent = 'VOLTMARCH · RENDER';
   title.style.cssText =
     'color:#7FD8C0;font-weight:700;letter-spacing:1.6px;margin-bottom:4px;' +
     'border-bottom:1px solid #2E353C;padding-bottom:3px;';
@@ -243,7 +252,7 @@ function makeOverlay(): {
   addRow('heap', 'heap MB');
 
   const hint = document.createElement('div');
-  hint.textContent = 'F3 toggle · __RA in console';
+  hint.textContent = 'F3 toggle · __VM in console';
   hint.style.cssText = 'margin-top:5px;color:#4A545E;font-size:10px;letter-spacing:1px;';
   root.appendChild(hint);
 
@@ -270,7 +279,7 @@ export interface InitDebugOptions {
 }
 
 export interface DebugHandle {
-  readonly api: RAHandle;
+  readonly api: VMHandle;
   readonly counters: DebugCounters;
   /** Call at the very top of each rendered frame. Returns dt in seconds. */
   beginFrame(nowMs: number): number;
@@ -492,7 +501,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     return handle.canvas.toDataURL(mime, quality);
   }
 
-  async function download(filename = `redalert-${Date.now()}.png`): Promise<void> {
+  async function download(filename = `voltmarch-${Date.now()}.png`): Promise<void> {
     const url = await screenshot();
     const a = document.createElement('a');
     a.href = url;
@@ -540,7 +549,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
   /* ---- the handle ------------------------------------------------------- */
   let paused = false;
 
-  const api: RAHandle = {
+  const api: VMHandle = {
     version,
     THREE,
 
@@ -669,6 +678,9 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     dumpConfig,
   };
 
+  window.__VM = api;
+  // Deprecated alias for one release: external scripts and bookmarklets written
+  // against `__RA` keep working instead of failing with a bare undefined.
   window.__RA = api;
 
   /* ---- frame hooks ------------------------------------------------------ */
@@ -722,12 +734,13 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
       window.removeEventListener('keydown', onKeyDown);
       root.remove();
       frameListeners.length = 0;
+      if (window.__VM === api) delete window.__VM;
       if (window.__RA === api) delete window.__RA;
     },
   };
 
   console.info(
-    `%c RED ALERT %c render boot ok — window.__RA ready (F3 for perf overlay) `,
+    `%c VOLTMARCH %c render boot ok — window.__VM ready (F3 for perf overlay) `,
     'background:#C0271E;color:#fff;font-weight:700;padding:2px 4px;border-radius:2px 0 0 2px',
     'background:#1B1F24;color:#7FD8C0;padding:2px 6px;border-radius:0 2px 2px 0'
   );

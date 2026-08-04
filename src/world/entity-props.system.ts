@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/world/entity-props.system.ts
+ * VOLTMARCH — src/world/entity-props.system.ts
  * ============================================================================
  * ART FOR SCENARIO-SPAWNED PROPS, CRATES AND WRECKS.
  *

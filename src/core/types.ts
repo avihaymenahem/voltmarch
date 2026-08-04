@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/core/types.ts
+ * VOLTMARCH — src/core/types.ts
  * ============================================================================
  * THE CONTRACT LAYER.
  *
@@ -134,7 +134,7 @@ export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartia
  * ========================================================================== */
 
 /**
- * The two armies plus the neutral/Gaia side that owns ore, rocks and wrecks.
+ * The three armies plus the neutral/Gaia side that owns ore, rocks and wrecks.
  * Faction drives ART (palette, silhouette language) and DEFS (tech tree).
  * Ownership is a PlayerId — two players may share a faction.
  */
@@ -142,9 +142,14 @@ export const enum Faction {
   Neutral = 0,
   Allies = 1,
   Soviets = 2,
+  Meridian = 3,
 }
-/** Number of real (non-neutral) factions. */
-export const FACTION_COUNT = 3;
+/**
+ * Number of members in `Faction`, i.e. the length any array indexed BY a
+ * faction id must have. (Neutral occupies slot 0, so the number of playable
+ * armies is `FACTION_COUNT - 1`.)
+ */
+export const FACTION_COUNT = 4;
 
 /**
  * Diplomatic relation between two players. Computed from PlayerState.allyMask.
@@ -676,13 +681,25 @@ export interface BuildingDef extends BuildableDef {
   readonly flags: number;
 }
 
+/**
+ * The art-side name for a faction. One entry per `Faction` member; every
+ * palette table in config.ts and in src/art/** is keyed by this, so adding a
+ * faction is `Faction` + this union + a row in each table.
+ */
+export type FactionPaletteKey = 'neutral' | 'allies' | 'soviets' | 'meridian';
+
+/** `FactionPaletteKey` indexed by `Faction`, for the id -> key direction. */
+export const FACTION_PALETTE_KEYS: readonly FactionPaletteKey[] = [
+  'neutral', 'allies', 'soviets', 'meridian',
+];
+
 /** Everything the game needs to know about a side. */
 export interface FactionDef {
   readonly id: Faction;
   readonly key: string;
   readonly name: string;
   /** Key into FACTION_PALETTE in config.ts. */
-  readonly paletteKey: 'allies' | 'soviets' | 'neutral';
+  readonly paletteKey: FactionPaletteKey;
   /** Unit keys spawned at match start alongside the MCV. */
   readonly startLoadout: readonly string[];
   /** Structure the MCV becomes. */
@@ -1605,7 +1622,7 @@ export interface ArtDirection {
   shroud: ShroudLook;
   hud: HudLook;
   surfaces: Record<SurfaceArchetype, SurfaceLook>;
-  factions: Record<'neutral' | 'allies' | 'soviets', FactionLook>;
+  factions: Record<FactionPaletteKey, FactionLook>;
 }
 
 /** A dot-path into ArtDirection, e.g. 'sun.intensity'. Used for diff dispatch. */

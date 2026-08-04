@@ -1,15 +1,28 @@
 /**
- * RED ALERT — entry point.
+ * VOLTMARCH — entry point.
  *
  * This file does five things and nothing else:
- *   1. parse the boot flags out of the URL (?shot ?map ?art ?tier ?seed)
- *   2. hand them to `src/game/Bootstrap.ts`
+ *   1. parse the boot flags out of the URL (?shot ?map ?art ?tier ?seed ?skipmenu)
+ *   2. choose between the TWO boot paths those flags select
  *   3. keep the renderer sized to the viewport
  *   4. pause the sim when the tab is hidden
  *   5. make sure a failure is a readable message on screen, never a black page
  *
- * It deliberately knows almost nothing about the game. Everything real lives
- * behind Bootstrap.
+ * THE TWO BOOT PATHS
+ * ------------------
+ *   HARNESS  `?shot=<name>` — straight into the posed scenario through
+ *            `bootstrap()`, exactly as before. No shell, no menu, no stylesheet,
+ *            no state machine. `tools/shoot.mjs` and the entire visual critique
+ *            loop depend on this path being untouched, and it is: the shell
+ *            module is not even imported on it.
+ *
+ *   PRODUCT  everything else — control passes to `src/shell/Shell.ts`, which
+ *            owns the title screen, the lobby, the options, the pause menu and
+ *            the match lifecycle. `?skipmenu=1` uses this path but launches
+ *            straight into a match, which is what a developer iterating on
+ *            gameplay wants and what the old behaviour effectively was.
+ *
+ * `?map=`, `?art=`, `?tier=` and `?seed=` continue to work on both paths.
  */
 
 declare global {
@@ -18,12 +31,12 @@ declare global {
 
   interface Window {
     /** Curtain status line. Defined by the inline shell script in index.html. */
-    __raStatus?(text: string): void;
+    __vmStatus?(text: string): void;
     /** Curtain error surface. Defined by the inline shell script in index.html. */
-    __raFail?(title: string, detail: string, state?: 'error' | 'pending'): void;
-    /* `window.__RA` — the scripting/capture handle — is declared by
-       src/render/debug.ts, which owns it. Declaring it here as well would be a
-       TS2717 duplicate-property conflict. */
+    __vmFail?(title: string, detail: string, state?: 'error' | 'pending'): void;
+    /* `window.__VM` — the scripting/capture handle — is declared by
+       src/render/debug.ts, which owns it. `window.__vmShell` / `__vmSettings`
+       are declared by src/shell/Shell.ts for the same reason. */
   }
 }
 
@@ -43,6 +56,13 @@ function intFlag(name: string): number | null {
   if (v === null) return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
+}
+
+/** `?skipmenu` with no value counts as on, like every other boolean flag here. */
+function boolFlag(name: string): boolean {
+  if (!query.has(name)) return false;
+  const v = query.get(name);
+  return v === null || v === '' || v === '1' || v === 'true';
 }
 
 function mount<T extends HTMLElement>(id: string): T {
@@ -68,6 +88,11 @@ const options = {
   seed: intFlag('seed'),
 };
 
+/** The screenshot harness owns the page whenever `?shot=` is present. */
+const harnessMode = options.shot !== null;
+/** Land in a match with no title screen. */
+const skipMenu = boolFlag('skipmenu');
+
 /* -------------------------------------------------------------------------- */
 /* Curtain                                                                     */
 /* -------------------------------------------------------------------------- */
@@ -75,7 +100,7 @@ const options = {
 const curtain = document.getElementById('loading');
 
 function status(text: string): void {
-  window.__raStatus?.(text);
+  window.__vmStatus?.(text);
 }
 
 function fail(title: string, detail: unknown, state: 'error' | 'pending' = 'error'): void {
@@ -84,7 +109,7 @@ function fail(title: string, detail: unknown, state: 'error' | 'pending' = 'erro
   // 'pending' is an expected state, not a fault — keep it out of console.error so
   // it never shows up in the screenshot harness's error report.
   (state === 'pending' ? console.info : console.error)(`[RA] ${title}\n${body}`);
-  window.__raFail?.(title, body, state);
+  window.__vmFail?.(title, body, state);
 }
 
 function dismissCurtain(): void {
@@ -103,25 +128,38 @@ function nextPresentedFrame(): Promise<void> {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Game handle                                                                 */
+/* Engine handles                                                              */
 /* -------------------------------------------------------------------------- */
 
 /**
- * `src/game/Bootstrap.ts` owns the engine API. main.ts deliberately keeps only
- * the four calls it actually makes, so this file never becomes a second place
- * where that API is defined.
+ * `src/game/Bootstrap.ts` owns the engine API and `src/shell/Shell.ts` owns the
+ * product around it. main.ts deliberately keeps only the calls it actually
+ * makes, so this file never becomes a second place where either API is defined.
  */
 import { bootstrap, type GameHandle } from './game/Bootstrap';
+import type { Shell } from './shell/Shell';
 
 /* -------------------------------------------------------------------------- */
 /* Boot                                                                        */
 /* -------------------------------------------------------------------------- */
 
+/** Set only on the harness path. The shell owns its own handle otherwise. */
 let game: GameHandle | null = null;
+let shell: Shell | null = null;
 
 async function main(): Promise<void> {
-  status('Loading systems');
+  installViewportHandlers();
+  installLifecycleHandlers();
 
+  if (harnessMode) {
+    await bootHarness();
+    return;
+  }
+  await bootProduct();
+}
+
+/** `?shot=` — the pre-shell behaviour, byte for byte. */
+async function bootHarness(): Promise<void> {
   status('Building world');
   game = bootstrap(options);
 
@@ -129,11 +167,38 @@ async function main(): Promise<void> {
   await game.ready;
   game.start();
 
-  installViewportHandlers();
-  installLifecycleHandlers();
-
   await nextPresentedFrame();
   status('Ready');
+  dismissCurtain();
+}
+
+/** Everything a player ever sees. */
+async function bootProduct(): Promise<void> {
+  status('Loading front end');
+  // Imported lazily so the harness path never pays for the shell bundle, and
+  // so a fault inside the front end can never take the screenshot loop down.
+  const { Shell: ShellClass, publishShell } = await import('./shell/Shell');
+
+  const instance = new ShellClass({
+    canvas: options.canvas,
+    hudRoot: options.hudRoot,
+    menuRoot: options.menuRoot,
+    debugRoot: options.debugRoot,
+    skipMenu,
+    status,
+    onError: (title, detail) => fail(title, detail),
+    onReady: () => {
+      status('Ready');
+      dismissCurtain();
+    },
+  });
+  shell = instance;
+  publishShell(instance);
+
+  await instance.start();
+  await nextPresentedFrame();
+  // `onReady` fires on the menu path; `?skipmenu=1` lands straight in a match
+  // and never calls it, so drop the curtain here too. Both are idempotent.
   dismissCurtain();
 }
 
@@ -143,12 +208,16 @@ async function main(): Promise<void> {
 
 let resizePending = false;
 
+function currentGame(): GameHandle | null {
+  return game ?? shell?.getGame() ?? null;
+}
+
 function pushViewportSize(): void {
   resizePending = false;
   const w = Math.max(1, window.innerWidth);
   const h = Math.max(1, window.innerHeight);
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  game?.resize?.(w, h, dpr);
+  currentGame()?.resize?.(w, h, dpr);
 }
 
 function requestResize(): void {
@@ -170,9 +239,10 @@ function installViewportHandlers(): void {
 
 function installLifecycleHandlers(): void {
   // A hidden tab gets throttled rAF; without this the accumulator would try to
-  // catch up on return and burn its whole substep budget.
+  // catch up on return and burn its whole substep budget. On the product path
+  // the Shell owns this, because only it knows whether a menu is open.
   document.addEventListener('visibilitychange', () => {
-    game?.setPaused?.(document.hidden);
+    if (harnessMode) game?.setPaused?.(document.hidden);
   });
 
   // WebGL context loss is recoverable-ish, but silently dying is not acceptable.
@@ -187,7 +257,10 @@ function installLifecycleHandlers(): void {
 main().catch((err) => fail('Boot Failure', err));
 
 if (import.meta.hot) {
-  import.meta.hot.dispose(() => game?.dispose?.());
+  import.meta.hot.dispose(() => {
+    shell?.dispose();
+    game?.dispose?.();
+  });
 }
 
 export {};

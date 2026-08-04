@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/core/events.ts
+ * VOLTMARCH — src/core/events.ts
  * ============================================================================
  * THE THREE COMMUNICATION CHANNELS. Written once here; never edited by a
  * parallel agent.

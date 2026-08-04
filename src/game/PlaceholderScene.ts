@@ -1,5 +1,5 @@
 /**
- * RED ALERT — placeholder scene.
+ * VOLTMARCH — placeholder scene.
  *
  * A stub `SystemModule` that puts a readable battlefield on screen before any
  * gameplay module exists: a ground plane, a grid, and a handful of gray-box

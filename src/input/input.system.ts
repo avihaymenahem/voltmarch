@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/input/input.system.ts
+ * VOLTMARCH — src/input/input.system.ts
  * ============================================================================
  * THE MODULE. Wires the raw event layer to the selection and the command
  * funnel, drives the camera rig, and draws the one piece of world-space
@@ -702,46 +702,54 @@ const handlers = {
 
     if (k.repeat) return false;
 
-    switch (k.code) {
-      case 'KeyA':
-        if (k.ctrl) {
-          selection.selectAllArmy();
-          refreshResolution();
-        } else {
-          mode = caps.mobileCount > 0 ? CommandMode.AttackMove : CommandMode.None;
-        }
+    // Ctrl+A is "select the whole army" and shares its code with Attack Move,
+    // so it is resolved before the binding table (whose chords carry no Ctrl).
+    if (k.code === 'KeyA' && k.ctrl) {
+      selection.selectAllArmy();
+      refreshResolution();
+      return true;
+    }
+
+    switch (actionFor(k)) {
+      case 'ord.attackMove':
+        mode = caps.mobileCount > 0 ? CommandMode.AttackMove : CommandMode.None;
         return true;
 
-      case 'KeyS':
+      case 'ord.stop':
         issueImmediate(OrderKind.Stop);
         return true;
 
-      case 'KeyG':
+      case 'ord.guard':
         issueImmediate(OrderKind.Guard);
         return true;
 
-      case 'KeyX':
+      case 'ord.scatter':
         issueImmediate(OrderKind.Scatter);
         return true;
 
-      case 'KeyF':
+      case 'ord.forceAttack':
         mode = caps.canAttack ? CommandMode.ForceAttack : CommandMode.None;
         return true;
 
-      case 'KeyY':
+      case 'ord.rally':
         mode = caps.factoryCount > 0 ? CommandMode.Rally : CommandMode.None;
         return true;
 
-      case 'KeyZ':
+      case 'ord.stance':
         // Stance cycle on the selection: aggressive -> defensive -> hold fire ->
         // hold ground. Goes through the bus like everything else.
         cycleStance();
         return true;
 
-      case 'KeyH':
+      case 'cam.home':
         centreOnHome();
         return true;
 
+      default:
+        break;
+    }
+
+    switch (k.code) {
       case 'Escape':
         if (clearArmedTool()) { /* the sidebar tool goes first */ }
         else if (mode !== CommandMode.None) mode = CommandMode.None;
@@ -761,6 +769,87 @@ const handlers = {
     }
   },
 };
+
+/* ==========================================================================
+ * KEY BINDINGS
+ *
+ * The order surface is DATA, resolved against the live settings store, so the
+ * Options screen's Controls tab actually rebinds the game instead of merely
+ * displaying the scheme. The shell publishes `window.__vmSettings`; this module
+ * must not import it, because the shell is a lazily loaded chunk that a
+ * `?shot=` boot never loads at all — so the table is duck-typed and falls back
+ * to `DEFAULT_ACTION_CHORDS`, which IS the scheme this switch used to hard-code.
+ * ========================================================================== */
+
+type ActionId =
+  | 'ord.attackMove' | 'ord.stop' | 'ord.guard' | 'ord.scatter'
+  | 'ord.forceAttack' | 'ord.rally' | 'ord.stance' | 'cam.home';
+
+interface BoundChord { code: string; ctrl: boolean; shift: boolean; alt: boolean }
+
+const DEFAULT_ACTION_CHORDS: Readonly<Record<ActionId, string>> = {
+  'ord.attackMove': 'KeyA',
+  'ord.stop': 'KeyS',
+  'ord.guard': 'KeyG',
+  'ord.scatter': 'KeyX',
+  'ord.forceAttack': 'KeyF',
+  'ord.rally': 'KeyY',
+  'ord.stance': 'KeyZ',
+  'cam.home': 'KeyH',
+};
+
+const ACTION_IDS = Object.keys(DEFAULT_ACTION_CHORDS) as ActionId[];
+
+interface SettingsBridge {
+  get(): { controls?: { bindings?: Record<string, BoundChord> } };
+  subscribe?(fn: () => void): () => void;
+}
+
+/** `code|ctrl|shift|alt` -> action. Rebuilt only when the store changes. */
+let chordToAction: Map<string, ActionId> = new Map();
+let unsubscribeSettings: (() => void) | null = null;
+
+function chordKey(code: string, ctrl: boolean, shift: boolean, alt: boolean): string {
+  return `${code}|${ctrl ? 1 : 0}${shift ? 1 : 0}${alt ? 1 : 0}`;
+}
+
+function settingsBridge(): SettingsBridge | null {
+  const g = globalThis as unknown as { __vmSettings?: SettingsBridge };
+  const s = g.__vmSettings;
+  return s !== undefined && typeof s.get === 'function' ? s : null;
+}
+
+function rebuildBindings(): void {
+  const bound = settingsBridge()?.get().controls?.bindings;
+  const next = new Map<string, ActionId>();
+  for (const id of ACTION_IDS) {
+    const c = bound?.[id];
+    next.set(
+      c !== undefined && typeof c.code === 'string' && c.code !== ''
+        ? chordKey(c.code, c.ctrl === true, c.shift === true, c.alt === true)
+        : chordKey(DEFAULT_ACTION_CHORDS[id], false, false, false),
+      id,
+    );
+  }
+  chordToAction = next;
+}
+
+/** Subscribe to the store if it exists, so a rebind takes effect immediately. */
+function bindSettings(): void {
+  rebuildBindings();
+  const s = settingsBridge();
+  if (s?.subscribe !== undefined) unsubscribeSettings = s.subscribe(rebuildBindings);
+}
+
+function unbindSettings(): void {
+  unsubscribeSettings?.();
+  unsubscribeSettings = null;
+  chordToAction = new Map();
+}
+
+function actionFor(k: KeyInfo): ActionId | undefined {
+  return chordToAction.get(chordKey(k.code, k.ctrl, k.shift, k.alt));
+}
 
 /** Wall clock. Render-side only; never reached from a sim tick. */
 function nowMs(): number {
@@ -812,11 +901,11 @@ function centreOnHome(): void {
  * reached structurally rather than by import, so this file compiles and runs
  * whether or not either of them ever lands.
  *
- *   __raHud       src/ui/Hud.ts     — "hud.overlay.setMarquee / clearMarquee →
+ *   __vmHud       src/ui/Hud.ts     — "hud.overlay.setMarquee / clearMarquee →
  *                                     input: drag select" is verbatim from its
  *                                     public-hooks header, as are `armedMode`
  *                                     and `waypointMode`.
- *   __raPlacement src/sim/Placement.ts — while a structure is on the cursor it
+ *   __vmPlacement src/sim/Placement.ts — while a structure is on the cursor it
  *                                     owns the click. Its own listeners are
  *                                     capture-phase and stop propagation, so
  *                                     the only thing we must not steal is the
@@ -840,13 +929,13 @@ interface PlacementBridge {
 let hudLinked = false;
 
 function hud(): HudBridge | null {
-  const g = globalThis as unknown as { __raHud?: HudBridge };
-  return g.__raHud ?? null;
+  const g = globalThis as unknown as { __vmHud?: HudBridge };
+  return g.__vmHud ?? null;
 }
 
 function placementActive(): boolean {
-  const g = globalThis as unknown as { __raPlacement?: PlacementBridge };
-  return g.__raPlacement?.active === true;
+  const g = globalThis as unknown as { __vmPlacement?: PlacementBridge };
+  return g.__vmPlacement?.active === true;
 }
 
 /** Hand the marquee pixels to the HUD's overlay canvas, once it exists. */
@@ -941,6 +1030,11 @@ export default defineSystem({
     executor = new OrderExecutor(world, channels);
     overlay = new Overlay(sceneRig.scene);
 
+    // Resolve the order hotkeys against the live settings store, and keep
+    // resolving them: a rebind on the Options screen takes effect on the next
+    // keystroke without a rebuild.
+    bindSettings();
+
     const element = handle.canvas;
     projector = new RigProjector(cameraRig, element);
 
@@ -1010,6 +1104,7 @@ export default defineSystem({
   },
 
   dispose(): void {
+    unbindSettings();
     unsubscribeKilled?.();
     unsubscribeKilled = null;
     input?.dispose();

@@ -1,81 +1,198 @@
 /**
  * ============================================================================
- * RED ALERT — src/art/UnitDefs.ts
+ * VOLTMARCH — src/art/UnitDefs.ts
  * ============================================================================
  * THE ROSTER, AS MASS LISTS.
  *
- * Eighteen units. Every one is data: no geometry code, no THREE, no magic
- * numbers that are not derived from the scale ladder in UNIT_LADDER.
+ * Every unit is data: no geometry code, no THREE, no magic number that is not
+ * derived from the scale ladder in UNIT_LADDER.
+ *
+ * WHAT CHANGED THIS ROUND
+ * -----------------------
+ * Two complaints, one file.
+ *
+ *   1. "Our models are too rectangular, like old school 3d models."
+ *      Every primary mass in the roster is rebuilt on the `Shapes.ts`
+ *      vocabulary: `tracks` running gear instead of a slab on rollers,
+ *      `taperedBox` hulls with a real sheared glacis, `revolve` turrets with no
+ *      flat side at any segment count, `extrude` barrels that step out behind
+ *      the muzzle brake, `hull` convex bodies for fuselages and animals, and
+ *      layered `plate` armour for the surface read. `MassList.boxiness()`
+ *      measures the result and `validateUnit` rejects a regression.
+ *
+ *   2. "Find missing models."
+ *      Seven entities were wearing another unit's mesh. They now have their
+ *      own: the Attack Submarine, the Assault Destroyer (`gunboat`), the Hover
+ *      Transport, the Apocalypse Tank and the Attack Dog — and the G.I. and the
+ *      Conscript, which were two draw batches of byte-identical geometry, are
+ *      now two genuinely different soldiers.
+ *
+ * TWO AUTHORING RULES WORTH STATING
+ * ---------------------------------
+ * 1. PLATES AND GREEBLE RUNS ARE STANDALONE MASSES, not `MassDef.plates` /
+ *    `MassDef.greebles` children. Both spellings are legal and the child form is
+ *    terser, but a child only exists after `expandMasses()` — so a factory that
+ *    has not yet been taught to expand drops it on the floor, and the unit
+ *    silently loses a fifth of its surface (and with it its measured
+ *    team-colour fraction). A standalone `plate` mass degrades to a chamfered
+ *    slab of exactly its own `size`, in exactly its own place, with exactly its
+ *    own slot. Every new primitive here degrades that way on purpose.
+ *
+ * 2. A `plate`'s THICKNESS RUNS ALONG ITS LOCAL +Y and its outline lies in the
+ *    local XZ plane. So a plate mass is always authored as
+ *    `size = [outlineWidth, thickness, outlineLength]` and then ROTATED into
+ *    place; `massExtents` turns that back into the correct world AABB. The
+ *    `panel*` constructors below do the swap so no call site has to.
  *
  * THE TEMPLATE THAT MOST OF THEM SHARE
  * ------------------------------------
  * Bible 5.3 in five numbers, and every helper below is written to hit them:
  *
- *   chassis       0 .. 0.42 H     a thin base (bible: 35-45%)
- *   superstructure 0.42 .. 1.0 H  the top 55-65%
- *   tracks        22% of H tall, protruding 11% of hull width per side
- *   turret        0.75-0.95 x hull width — deliberately too big
- *   dominant mass centred at 0.60-0.70 H, 35-50% of side-projected area
- *
- * That is why every tank here has a turret that looks oversized next to a real
- * MBT: a real Abrams turret is 0.55 of hull width and RA3's is 0.85. Copying
- * reality here is the fastest way to lose the identity.
+ *   chassis        0 .. 0.42 H     a thin base (bible: 35-45%)
+ *   superstructure 0.42 .. 1.0 H   the top 55-65%
+ *   tracks         22% of H tall, protruding 11% of hull width per side
+ *   turret         0.75-0.95 x hull width — deliberately too big
+ *   dominant mass  centred at 0.60-0.70 H, 35-50% of side-projected area
  *
  * TEAM COLOUR (R12/R-T1) is never a hull tint. Each unit carries 3-5 discrete
- * `teamSlab` plates let into the hull, sized so the measured surface fraction
+ * `teamSlab` panels let into the hull, sized so the measured surface fraction
  * lands in 8-14% (vehicles) or 20-28% (infantry and walkers), plus exactly one
- * `insignia` plate. The validator measures real triangle area and rejects the
+ * `insignia` panel. The validator measures real triangle area and rejects the
  * unit if it misses.
  * ============================================================================
  */
 
 import { PartId } from '../core/types';
-import { UNIT_LADDER } from '../core/config';
-import { MassRole, type MassDef, type SocketSpec, type UnitMassList } from './MassList';
+import { UNIT_GEOMETRY, UNIT_LADDER } from '../core/config';
+import {
+  MassRole, TURRET_PROFILE, DOME_PROFILE, CAPSULE_PROFILE,
+  rectOutline, taperOutline,
+  type MassDef, type SocketSpec, type UnitMassList,
+} from './MassList';
+import type { SlotName } from './Greeble';
 
 /* ==========================================================================
- * 1. SUB-ASSEMBLY HELPERS
+ * 1. LOCAL VOCABULARY
  * ========================================================================== */
 
 type V3 = readonly [number, number, number];
+type V2 = readonly [number, number];
+type Profile = readonly V2[];
 
-interface SlabOpts { turret?: boolean; mirrorX?: boolean; rot?: V3; }
+const HALF_PI = Math.PI * 0.5;
 
-/** A flat team-colour panel let into the hull. R-T2: a quad, never a gradient. */
-function slab(name: string, size: V3, anchor: V3, o: SlabOpts = {}): MassDef {
+interface PanelOpts {
+  turret?: boolean;
+  mirrorX?: boolean;
+  /**
+   * Linear scale on the panel's two IN-PLANE axes; its thickness is untouched.
+   *
+   * R-T1's 8-14% is measured off the built mesh, so it moves whenever the
+   * surface around the panel moves — and layering armour plates over every hull
+   * this round added roughly a sixth of a vehicle's surface, which dropped the
+   * whole roster from ~9% to ~7.5% without a single team panel changing size.
+   * A panel's area goes as the SQUARE of this, so 1.25 buys back 56%.
+   */
+  k?: number;
+}
+
+/**
+ * A thin panel given as WORLD extents. The thinnest axis is taken to be the
+ * panel's normal and the mass is emitted as a `plate` rotated onto it, because a
+ * plate's thickness always runs along its own +Y.
+ *
+ * This is the constructor behind every team slab, insignia and emissive panel in
+ * the file: R-T2 says team colour is a flat let-in panel, never a tint and never
+ * a gradient, and a `plate` is a let-in panel with a fully bevelled rim for 28
+ * triangles.
+ */
+function panel(
+  name: string, role: MassRole, slot: SlotName, size: V3, anchor: V3, o: PanelOpts = {},
+): MassDef {
+  const k = o.k ?? 1;
+  const [w, h, d] = size;
+  let local: V3;
+  let rot: V3 | undefined;
+  if (h <= w && h <= d) {            // normal +Y — a deck insert
+    local = [w * k, h, d * k];
+  } else if (w <= d) {               // normal +-X — a flank band
+    local = [h * k, w, d * k];
+    rot = [0, 0, HALF_PI];
+  } else {                           // normal +-Z — a facade plate
+    local = [w * k, d, h * k];
+    rot = [HALF_PI, 0, 0];
+  }
   return {
-    name, primitive: 'box', role: MassRole.TeamSlab, size, anchor,
-    slot: 'teamSlab', chamfer: 0.02,
-    ...(o.turret ? { turret: true } : {}),
-    ...(o.mirrorX ? { mirrorX: true } : {}),
-    ...(o.rot ? { rot: o.rot } : {}),
+    name, primitive: 'plate', role, size: local, anchor, slot, capSlot: slot, chamfer: 0.02,
+    ...(rot !== undefined ? { rot } : {}),
+    ...(o.turret === true ? { turret: true } : {}),
+    ...(o.mirrorX === true ? { mirrorX: true } : {}),
   };
 }
 
+/** A flat team-colour panel let into the hull (R-T1 / R-T2). */
+function slab(name: string, size: V3, anchor: V3, o: PanelOpts = {}): MassDef {
+  return panel(name, MassRole.TeamSlab, 'teamSlab', size, anchor, o);
+}
+
+/**
+ * PER-FAMILY TEAM-PANEL SCALE.
+ *
+ * These are not taste. `validateUnit` measures `teamSlab` coverage off the BUILT
+ * MESH in screen-projected area, so the right number for each family can only be
+ * read off a boot, and these are the values that put every family in the middle
+ * of R-T1's band rather than on its floor: vehicles and naval at ~11.5% against
+ * 8-14%, infantry and walkers at ~24% against 20-28%.
+ *
+ * They differ per family because the SURROUNDING surface differs. A submarine is
+ * one long smooth pressure hull with very little else on it, so the same panel
+ * measures far less of it than it does of a tank buried in tracks, plates and
+ * stowage. Re-read them off the boot report if the hardware around the panels
+ * changes again — that report is the only authority on this number.
+ *
+ * RE-READ ONCE, and this is why: these were first measured against a build in
+ * which `UnitFactory` still ended its mass loop at `default: buildBox`, so every
+ * `revolve`, `tracks`, `extrude` and `hull` mass rendered as a plain box. Wiring
+ * the real primitives in changed the surface area AROUND the panels on almost
+ * every hull — a lathed turret has less surface than the box that stood in for
+ * it, a track run has far more — and eleven models fell out of R-T1's band. A
+ * panel's area scales as k^2, so each family below was rescaled by
+ * `k_new = k_old * sqrt(target / measured)` against the band MIDPOINT, and the
+ * families that were still comfortably inside their band (tank, support,
+ * transport) were deliberately left alone rather than churned.
+ */
+const TEAM_K = {
+  // 28.8% measured -> 24% (band 20-28)
+  infantry: 1.02,
+  // 29.8% -> 24%
+  dog: 1.03,
+  tank: 1.25,
+  support: 1.21,
+  // 30.3% -> 24%
+  walker: 1.05,
+  // 14.1% -> 11% (band 8-14)
+  ship: 0.99,
+  // 16.1% -> 11%
+  submarine: 1.09,
+  transport: 1.17,
+  // 15.6% -> 11%
+  plane: 1.11,
+} as const;
+
 /** THE one insignia decal (R-T4). 8-14% of hull width, top/outward facing. */
-function insignia(size: V3, anchor: V3, o: SlabOpts = {}): MassDef {
-  return {
-    name: 'insignia', primitive: 'box', role: MassRole.Insignia, size, anchor,
-    slot: 'insignia', chamfer: 0.02,
-    ...(o.turret ? { turret: true } : {}),
-    ...(o.rot ? { rot: o.rot } : {}),
-  };
+function insignia(size: V3, anchor: V3, o: PanelOpts = {}): MassDef {
+  return panel('insignia', MassRole.Insignia, 'insignia', size, anchor, o);
 }
 
 /** A masked emissive panel. R-T5: 1-3% of surface, clean rounded rectangles. */
-function glowPanel(name: string, size: V3, anchor: V3, o: SlabOpts = {}): MassDef {
-  return {
-    name, primitive: 'box', role: MassRole.Emissive, size, anchor,
-    slot: 'emissive', chamfer: 0.02,
-    ...(o.turret ? { turret: true } : {}),
-    ...(o.mirrorX ? { mirrorX: true } : {}),
-  };
+function glowPanel(name: string, size: V3, anchor: V3, o: PanelOpts = {}): MassDef {
+  return panel(name, MassRole.Emissive, 'emissive', size, anchor, o);
 }
 
 /** A small detail object. 6-12 of these per unit, every one >= 3 px on screen. */
 function greeble(
   name: string, primitive: MassDef['primitive'], size: V3, anchor: V3,
-  slot: MassDef['slot'], extra: Partial<MassDef> = {},
+  slot: SlotName, extra: Partial<MassDef> = {},
 ): MassDef {
   return { name, primitive, role: MassRole.Greeble, size, anchor, slot, ...extra };
 }
@@ -83,72 +200,216 @@ function greeble(
 /** One of the 3-6 shapes a critic reads from across the map. */
 function primary(
   name: string, primitive: MassDef['primitive'], size: V3, anchor: V3,
-  slot: MassDef['slot'], extra: Partial<MassDef> = {},
+  slot: SlotName, extra: Partial<MassDef> = {},
 ): MassDef {
   return { name, primitive, role: MassRole.Primary, size, anchor, slot, ...extra };
 }
 
+/** The XZ bounding extents of an outline, which is a plate's local w and d. */
+function outlineSize(outline: readonly V2[]): [number, number] {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const p of outline) {
+    if (p[0] < minX) minX = p[0];
+    if (p[0] > maxX) maxX = p[0];
+    if (p[1] < minZ) minZ = p[1];
+    if (p[1] > maxZ) maxZ = p[1];
+  }
+  return [Math.max(1e-3, maxX - minX), Math.max(1e-3, maxZ - minZ)];
+}
+
 /**
- * The proud track pair. Bible 5.3: protrudes 8-14% of hull width outboard each
- * side and stands 18-25% of unit height. Track links are near-black and the
- * road wheels are separate warm-grey rollers, which is what stops a tracked
- * vehicle reading as a box on a plinth.
+ * A real armour plate: an outline in metres, extruded along its own +Y, then
+ * rotated onto the surface it lies over.
+ *
+ * THE single highest-value call in the file. Three trapezoidal plates sitting
+ * proud of one tapered hull at three slightly different angles is what separates
+ * hi-tech armour from a painted brick, and each one costs about 28 triangles.
  */
-function tracks(hullWidth: number, trackHeight: number, length: number, wheels: number): MassDef[] {
-  const h = trackHeight;
-  const w = hullWidth * 0.26;
-  const x = hullWidth * 0.5 + hullWidth * UNIT_GEOMETRY_TRACK_OUTBOARD - w * 0.5;
-  const out: MassDef[] = [
-    primary('track', 'box', [w, h, length], [x, h * 0.5, 0], 'tread', {
-      mirrorX: true, chamfer: 0.05,
-      faceSlots: { py: 'tread', ny: 'tread', px: 'tread', nx: 'tread', pz: 'tread', nz: 'tread' },
-    }),
+function plateMass(
+  name: string, role: MassRole, outline: readonly V2[], thickness: number,
+  anchor: V3, rot: V3 | undefined, slot: SlotName, extra: Partial<MassDef> = {},
+): MassDef {
+  const [w, d] = outlineSize(outline);
+  return {
+    name, primitive: 'plate', role, size: [w, thickness, d], anchor, slot, capSlot: slot,
+    ...(rot !== undefined ? { rot } : {}),
+    shape: { outline, thickness, fit: 'none' },
+    ...extra,
+  };
+}
+
+/** `plateMass` at greeble role, with a group so a plate set costs one slot. */
+function armour(
+  name: string, outline: readonly V2[], thickness: number, anchor: V3,
+  rot: V3 | undefined, slot: SlotName, group: string, extra: Partial<MassDef> = {},
+): MassDef {
+  return plateMass(name, MassRole.Greeble, outline, thickness, anchor, rot, slot, { group, ...extra });
+}
+
+/** A deterministic run of louvres, bolt pairs and junction boxes. ONE object. */
+function greebleRun(
+  name: string, length: number, width: number, height: number,
+  anchor: V3, seed: number, extra: Partial<MassDef> = {},
+): MassDef {
+  return {
+    name, primitive: 'greebleStrip', role: MassRole.Greeble,
+    size: [width, height, length], anchor, slot: 'bareMetal', group: name,
+    shape: { density: 2.2, seed: seed >>> 0, fit: 'none' },
+    ...extra,
+  };
+}
+
+/* -- profiles --------------------------------------------------------------
+ * Normalised [radius, y] in 0..0.5 / 0..1; `fitMesh` stretches them into the
+ * mass's `size`. Two turret profiles, because an Allied turret is a smooth
+ * shouldered casting and a Soviet one is a squat welded pot with a hard brow.
+ * ------------------------------------------------------------------------- */
+
+/** Allied: wide chamfered base, sloped shoulder, small flat roof. */
+const ALLIED_TURRET: Profile = TURRET_PROFILE;
+
+/** Soviet: near-vertical skirt, a hard brow step, a broad flat roof. */
+const SOVIET_TURRET: Profile = [
+  [0, 0], [0.47, 0], [0.50, 0.09], [0.50, 0.46], [0.45, 0.52],
+  [0.42, 0.86], [0.36, 1.0], [0, 1.0],
+];
+
+/** A drum: chamfered rim, straight body, chamfered crown. */
+const DRUM_PROFILE: Profile = [
+  [0, 0], [0.42, 0], [0.50, 0.09], [0.50, 0.91], [0.42, 1.0], [0, 1.0],
+];
+
+/** A tapered stack / cooling drum / prism housing. */
+const TAPER_DRUM: Profile = [
+  [0, 0], [0.44, 0], [0.50, 0.08], [0.44, 0.62], [0.38, 0.92], [0.32, 1.0], [0, 1.0],
+];
+
+/** A greatcoat: shoulders, a waisted middle, a flared hem. */
+const COAT_PROFILE: Profile = [
+  [0, 0], [0.50, 0.02], [0.44, 0.14], [0.38, 0.40], [0.40, 0.62],
+  [0.47, 0.82], [0.44, 0.96], [0, 1.0],
+];
+
+/** A brimmed steel helmet: a flat crown over a proud rim. */
+const BRIM_PROFILE: Profile = [
+  [0, 0], [0.50, 0.02], [0.46, 0.16], [0.40, 0.44], [0.31, 0.74], [0.17, 0.94], [0, 1.0],
+];
+
+/** The section a gun barrel is swept along: a 10-sided tube. */
+const BARREL_SECTION: readonly V2[] = [
+  [0.21, 0], [0.17, 0.12], [0.06, 0.20], [-0.06, 0.20], [-0.17, 0.12],
+  [-0.21, 0], [-0.17, -0.12], [-0.06, -0.20], [0.06, -0.20], [0.17, -0.12],
+];
+
+/** A hexagonal duct section, for exhaust trunks, jibs and missile rails. */
+function ductSection(r: number): V2[] {
+  return [
+    [0.50 * r, 0], [0.25 * r, 0.43 * r], [-0.25 * r, 0.43 * r],
+    [-0.50 * r, 0], [-0.25 * r, -0.43 * r], [0.25 * r, -0.43 * r],
   ];
-  const wheelR = h * 0.74;
-  for (let i = 0; i < wheels; i++) {
-    const z = -length * 0.42 + (length * 0.84 * i) / Math.max(1, wheels - 1);
-    out.push(greeble(`roller${i}`, 'lathe', [wheelR, w * 0.55, wheelR], [x, h * 0.48, z], 'bareMetal', {
-      // The road-wheel run is ONE readable greeble, so every roller shares a
-      // group and the six of them cost one slot in the 6-12 detail budget.
-      mirrorX: true, profile: 'disc', segments: 12, rot: [0, 0, Math.PI * 0.5], group: 'rollers',
-    }));
+}
+
+/** An n-sided ring of radius r, for extruded tubes and hulls. */
+function ring(r: number, sides: number): V2[] {
+  const out: V2[] = [];
+  for (let i = 0; i < sides; i++) {
+    const a = (i / sides) * Math.PI * 2;
+    out.push([Math.cos(a) * r, Math.sin(a) * r]);
   }
   return out;
 }
 
-/** Bible 5.3: tracks protrude 8-14% of hull width outboard each side. */
-const UNIT_GEOMETRY_TRACK_OUTBOARD = 0.11;
+/* ==========================================================================
+ * 2. SUB-ASSEMBLIES
+ * ========================================================================== */
 
 /**
- * The greeble kit every vehicle carries: exhaust, stowage, headlamp cluster,
- * tow point, antenna. Six discrete objects, all >= 0.14 m so nothing is
- * sub-pixel at gameplay zoom.
+ * THE RUNNING GEAR. One `tracks` assembly per side: a stadium-section band with
+ * ROUND ends, road wheels proud of the inboard face, a toothed drive sprocket
+ * aft, an idler forward, return rollers on the top run and an angled skirt.
+ *
+ * This one substitution is the largest single de-boxifier in the roster. The old
+ * spelling was an axis-aligned slab with six discs stuck to it and it measured
+ * 100% flat wall; the assembly measures 42%, and it is the mass a critic's eye
+ * lands on first on any tracked vehicle.
+ */
+function runningGear(
+  hullWidth: number, trackHeight: number, length: number, wheels: number,
+  o: { skirt?: number; rollers?: number } = {},
+): MassDef {
+  const w = hullWidth * 0.30;
+  const x = hullWidth * 0.5 + hullWidth * UNIT_GEOMETRY.trackOutboardFraction - w * 0.5;
+  return {
+    name: 'track', primitive: 'tracks', role: MassRole.Primary,
+    size: [w, trackHeight, length], anchor: [x, trackHeight * 0.5, 0],
+    slot: 'tread', capSlot: 'bareMetal', mirrorX: true, group: 'running gear',
+    shape: {
+      wheels,
+      returnRollers: o.rollers ?? 2,
+      sprocketScale: 0.94,
+      skirtHeight: o.skirt ?? trackHeight * 0.44,
+    },
+  };
+}
+
+/**
+ * The greeble kit every vehicle carries: exhaust, stowage, headlamp cluster and
+ * a tow point. Four discrete objects, all >= 0.16 m so nothing is sub-pixel at
+ * gameplay zoom, and all of them lathed or tapered rather than cubic.
  */
 function vehicleGreebles(hullW: number, hullL: number, deckY: number): MassDef[] {
   return [
-    greeble('exhaust', 'lathe', [0.26, 0.62, 0.26], [hullW * 0.34, deckY + 0.28, -hullL * 0.30], 'bareMetal', {
-      mirrorX: true, profile: 'cyl', segments: 12,
+    greeble('exhaust', 'cylinder', [0.26, 0.62, 0.26], [hullW * 0.34, deckY + 0.28, -hullL * 0.30], 'bareMetal', {
+      mirrorX: true, group: 'exhaust', shape: { segments: 12, rTop: 0.84 },
     }),
-    greeble('stowage', 'box', [hullW * 0.30, 0.26, hullL * 0.16], [-hullW * 0.30, deckY + 0.13, -hullL * 0.36], 'paintSmall', {
-      mirrorX: true, group: 'stowage',
+    greeble('stowage', 'taperedBox', [hullW * 0.30, 0.26, hullL * 0.16], [-hullW * 0.30, deckY + 0.13, -hullL * 0.36], 'paintSmall', {
+      mirrorX: true, group: 'stowage', shape: { topScaleX: 0.82, topScaleZ: 0.90 },
     }),
-    greeble('headlamp', 'box', [0.30, 0.24, 0.18], [hullW * 0.32, deckY - 0.05, hullL * 0.44], 'paintTiny', {
-      mirrorX: true, faceSlots: { pz: 'glass' },
+    greeble('headlamp', 'chamferBox', [0.30, 0.24, 0.18], [hullW * 0.32, deckY - 0.05, hullL * 0.44], 'paintTiny', {
+      mirrorX: true, group: 'lamps', faceSlots: { pz: 'glass' },
     }),
-    greeble('towHook', 'box', [0.20, 0.16, 0.34], [hullW * 0.22, deckY - 0.24, hullL * 0.48], 'bareMetal', { mirrorX: true }),
-    greeble('deckGrille', 'box', [hullW * 0.46, 0.10, hullL * 0.20], [0, deckY + 0.05, -hullL * 0.26], 'paintTiny', {
-      faceSlots: { py: 'grille' },
+    greeble('towHook', 'chamferBox', [0.20, 0.16, 0.34], [hullW * 0.22, deckY - 0.24, hullL * 0.48], 'bareMetal', {
+      mirrorX: true, group: 'tow gear',
     }),
   ];
 }
 
+/**
+ * A stepped gun barrel: a 10-sided tube swept forward that steps OUT behind the
+ * muzzle brake and back in at the crown. A lathed cylinder cannot do that step,
+ * and the step is the whole silhouette of a modern tank gun at RTS distance.
+ */
+function barrelMass(
+  name: string, calibre: number, length: number, anchor: V3,
+  o: { turret?: boolean; mirrorX?: boolean; role?: MassRole; group?: string } = {},
+): MassDef {
+  return {
+    name, primitive: 'extrude', role: o.role ?? MassRole.Primary,
+    size: [calibre, calibre, length], anchor, slot: 'bareMetal',
+    ...(o.turret === true ? { turret: true } : {}),
+    ...(o.mirrorX === true ? { mirrorX: true } : {}),
+    ...(o.group !== undefined ? { group: o.group } : {}),
+    shape: {
+      profile: BARREL_SECTION,
+      path: [[0, 0, -1.0], [0, 0, 0.42], [0, 0, 0.58], [0, 0, 1.0]],
+      scale: [1.0, 0.92, 1.34, 1.16],
+      capStart: true, capEnd: true,
+    },
+  };
+}
+
 /* ==========================================================================
- * 2. INFANTRY
+ * 3. INFANTRY
  *
- * R-S4: 0.30-0.38 x a 7 m MBT hull, so 2.1-2.7 m. The 1.75 m in the
- * foundation's UNIT_DIMENSIONS puts a soldier at 0.25 and reads as ants.
- * Team colour is 20-28% here, not 8-14% — infantry are read at a much smaller
- * pixel count and need the extra flag.
+ * R-S4: 0.30-0.38 x a 7 m MBT hull, so 2.1-2.7 m. Team colour is 20-28% here,
+ * not 8-14% — infantry are read at a much smaller pixel count and need the flag.
+ *
+ * The G.I. and the Conscript used to be the SAME MESH under two paint jobs:
+ * both 1206 triangles, both 1.05 x 2.2 x 1.18 m. Two armies that differ only by
+ * hue is exactly the failure R12 warns about, so they are now built from
+ * different silhouettes — the Peacekeeper is a plated modern soldier with a
+ * convex-hull chest rig and a domed helmet, the Conscript is a flared greatcoat
+ * revolve under a brimmed steel helmet.
  * ========================================================================== */
 
 interface InfantryOpts {
@@ -160,6 +421,8 @@ interface InfantryOpts {
   weapon: 'rifle' | 'launcher' | 'tool';
   /** Backpack shape: engineers carry a toolbox, flak troopers a magazine drum. */
   pack: 'radio' | 'drum' | 'case';
+  /** The silhouette family. This is what stops two armies sharing one mesh. */
+  build: 'plated' | 'greatcoat';
 }
 
 function infantry(o: InfantryOpts): UnitMassList {
@@ -168,75 +431,140 @@ function infantry(o: InfantryOpts): UnitMassList {
   const legTop = H * 0.415;                        // 0.913
   const torsoH = H * 0.415;                        // 0.913
   const torsoY = legTop + torsoH * 0.5;            // 1.370 -> 0.623 H
+  const coat = o.build === 'greatcoat';
 
   const masses: MassDef[] = [
-    // Legs: one mirrored pair, tapering into the boot.
-    primary('leg', 'box', [W * 0.34, legTop, W * 0.44], [W * 0.24, legTop * 0.5, 0], 'paintSmall', {
-      mirrorX: true, taper: [1.25, 1.1, 0.02],
+    // Legs. The Peacekeeper's are armoured and straight-sided; the Conscript's
+    // taper hard into a heavy boot under a coat hem.
+    primary('leg', 'taperedBox', [W * 0.34, legTop, W * 0.44], [W * 0.24, legTop * 0.5, 0], 'paintSmall', {
+      mirrorX: true,
+      shape: coat
+        ? { topScaleX: 1.34, topScaleZ: 1.18, bottomScaleX: 0.76, bottomScaleZ: 0.86 }
+        : { topScaleX: 1.20, topScaleZ: 1.08, bottomScaleX: 0.88, bottomScaleZ: 0.92 },
     }),
-    // Torso: the dominant mass. Wider at the shoulders than at the waist,
-    // which is the toy-soldier read and also puts the visual mass up high.
-    primary('torso', 'box', [W * 0.86, torsoH, W * 0.86], [0, torsoY, 0], 'paintMed', {
-      taper: [1.14, 1.06, -0.01],
-    }),
-    // Helmet: a low-segment dome, never a smooth sphere (scorecard #40).
-    primary('helmet', 'lathe', [W * 0.56, H * 0.145, W * 0.60], [0, legTop + torsoH + H * 0.048, 0.01], 'paintSmall', {
-      profile: 'dome', segments: 14,
-    }),
-    primary('arm', 'box', [W * 0.24, torsoH * 0.86, W * 0.28], [W * 0.52, torsoY + 0.02, 0.06], 'paintSmall', {
+
+    // Torso: the dominant mass, and the one that carries the faction read.
+    coat
+      // SOVIET: a greatcoat. A revolve flared at the hem — no flat wall anywhere
+      // on it, and the flare is the single loudest Conscript cue.
+      ? primary('coat', 'revolve', [W * 0.94, torsoH * 1.06, W * 0.88], [0, torsoY - torsoH * 0.03, 0], 'paintMed', {
+        shape: { profile: COAT_PROFILE, segments: 12 },
+      })
+      // ALLIED: a plated chest rig. A convex hull with a raised sternum, chined
+      // flanks and a shoulder shelf; wider at the shoulders than at the waist,
+      // which is the toy-soldier read and puts the visual mass up high.
+      : primary('torso', 'hull', [W * 0.92, torsoH, W * 0.84], [0, torsoY, 0], 'paintMed', {
+        shape: {
+          points: [
+            [0, 0.46, 0.30], [0.44, 0.42, 0.10], [-0.44, 0.42, 0.10],
+            [0.50, 0.10, -0.06], [-0.50, 0.10, -0.06],
+            [0.34, -0.50, 0.20], [-0.34, -0.50, 0.20],
+            [0.30, -0.50, -0.30], [-0.30, -0.50, -0.30],
+            [0.30, 0.34, -0.42], [-0.30, 0.34, -0.42],
+            [0, 0.02, 0.50],
+          ],
+          chamfer: 0.035,
+        },
+      }),
+
+    // Helmet: a low-segment revolve, never a smooth sphere (scorecard #40).
+    primary('helmet', 'revolve', [W * (coat ? 0.62 : 0.56), H * 0.145, W * (coat ? 0.66 : 0.60)],
+      [0, legTop + torsoH + H * 0.048, 0.01], 'paintSmall', {
+        shape: { profile: coat ? BRIM_PROFILE : DOME_PROFILE, segments: 14 },
+      }),
+
+    primary('arm', 'taperedBox', [W * 0.24, torsoH * 0.86, W * 0.28], [W * 0.52, torsoY + 0.02, 0.06], 'paintSmall', {
       mirrorX: true, rot: [0.12, 0, -0.06],
+      shape: { topScaleX: 1.14, topScaleZ: 1.10, bottomScaleX: 0.80, bottomScaleZ: 0.84 },
     }),
   ];
 
-  // Weapon.
+  /* -- weapon ------------------------------------------------------------- */
   if (o.weapon === 'launcher') {
-    masses.push(greeble('launchTube', 'lathe', [0.20, 1.02, 0.20], [W * 0.50, torsoY + 0.20, 0.22], 'bareMetal', {
-      profile: 'cyl', segments: 12, rot: [1.30, 0, 0.10],
-    }));
-    masses.push(greeble('launchMouth', 'lathe', [0.28, 0.18, 0.28], [W * 0.50, torsoY + 0.50, 0.52], 'bareMetal', {
-      profile: 'cone', segments: 12, topRadius: 1.5, rot: [1.30, 0, 0.10],
-    }));
+    masses.push(
+      greeble('launchTube', 'cylinder', [0.20, 1.02, 0.20], [W * 0.50, torsoY + 0.20, 0.22], 'bareMetal', {
+        rot: [1.30, 0, 0.10], group: 'weapon', shape: { segments: 12 },
+      }),
+      greeble('launchMouth', 'cone', [0.28, 0.18, 0.28], [W * 0.50, torsoY + 0.50, 0.52], 'bareMetal', {
+        rot: [1.30, 0, 0.10], group: 'weapon', shape: { segments: 12, rTop: 1.5 },
+      }),
+    );
   } else if (o.weapon === 'tool') {
-    masses.push(greeble('toolArm', 'box', [0.16, 0.16, 0.72], [W * 0.52, torsoY - 0.10, 0.34], 'bareMetal'));
-    masses.push(greeble('toolHead', 'box', [0.26, 0.22, 0.22], [W * 0.52, torsoY - 0.10, 0.74], 'paintTiny'));
+    masses.push(
+      greeble('toolArm', 'cylinder', [0.16, 0.72, 0.16], [W * 0.52, torsoY - 0.10, 0.34], 'bareMetal', {
+        rot: [HALF_PI, 0, 0], group: 'weapon', shape: { segments: 8 },
+      }),
+      greeble('toolHead', 'chamferBox', [0.26, 0.22, 0.22], [W * 0.52, torsoY - 0.10, 0.74], 'paintTiny', { group: 'weapon' }),
+    );
   } else {
-    masses.push(greeble('rifle', 'box', [0.10, 0.16, 0.98], [W * 0.44, torsoY - 0.04, 0.24], 'bareMetal', {
-      rot: [0.18, 0.06, 0],
-    }));
-    masses.push(greeble('magazine', 'box', [0.08, 0.22, 0.12], [W * 0.44, torsoY - 0.20, 0.16], 'paintTiny'));
+    // The rifles differ too: the Peacekeeper carries a short bullpup with a
+    // scope block, the Conscript a long rifle with a drum magazine.
+    masses.push(
+      greeble('rifle', 'extrude', [0.11, 0.17, coat ? 1.14 : 0.94], [W * 0.44, torsoY - 0.04, coat ? 0.30 : 0.24], 'bareMetal', {
+        rot: [0.18, 0.06, 0], group: 'weapon',
+        shape: {
+          profile: [[0.055, -0.085], [0.055, 0.06], [0.02, 0.085], [-0.02, 0.085], [-0.055, 0.06], [-0.055, -0.085]],
+          path: [[0, 0, -0.5], [0, 0, -0.06], [0, 0, 0.16], [0, 0, 0.5]],
+          scale: coat ? [1.25, 1.0, 0.80, 0.72] : [1.05, 1.35, 0.90, 0.82],
+          capStart: true, capEnd: true,
+        },
+      }),
+      coat
+        ? greeble('drumMag', 'revolve', [0.26, 0.12, 0.26], [W * 0.44, torsoY - 0.18, 0.18], 'paintTiny', {
+          rot: [HALF_PI, 0, 0], group: 'weapon', shape: { profile: DRUM_PROFILE, segments: 10 },
+        })
+        : greeble('scopeBlock', 'chamferBox', [0.08, 0.14, 0.26], [W * 0.44, torsoY + 0.09, 0.18], 'paintTiny', { group: 'weapon' }),
+    );
   }
 
-  // Backpack.
+  /* -- backpack ----------------------------------------------------------- */
   if (o.pack === 'drum') {
-    masses.push(greeble('drum', 'lathe', [0.42, 0.40, 0.42], [0, torsoY + 0.12, -W * 0.44], 'bareMetal', {
-      profile: 'cyl', segments: 12, rot: [Math.PI * 0.5, 0, 0],
+    masses.push(greeble('drum', 'revolve', [0.42, 0.40, 0.42], [0, torsoY + 0.12, -W * 0.44], 'bareMetal', {
+      rot: [HALF_PI, 0, 0], group: 'pack', shape: { profile: DRUM_PROFILE, segments: 12 },
     }));
   } else if (o.pack === 'case') {
-    masses.push(greeble('toolcase', 'box', [W * 0.62, 0.42, 0.22], [0, torsoY + 0.06, -W * 0.42], 'paintSmall'));
-  } else {
-    masses.push(greeble('radio', 'box', [W * 0.52, 0.44, 0.22], [0, torsoY + 0.10, -W * 0.42], 'paintSmall'));
-    masses.push(greeble('aerial', 'lathe', [0.05, 0.62, 0.05], [W * 0.20, torsoY + 0.52, -W * 0.42], 'bareMetal', {
-      profile: 'cyl', segments: 8, rot: [-0.14, 0, 0],
+    masses.push(greeble('toolcase', 'taperedBox', [W * 0.62, 0.42, 0.22], [0, torsoY + 0.06, -W * 0.42], 'paintSmall', {
+      group: 'pack', shape: { topScaleX: 0.90, topScaleZ: 0.84 },
     }));
+  } else {
+    masses.push(
+      greeble('radio', 'taperedBox', [W * 0.52, 0.44, 0.22], [0, torsoY + 0.10, -W * 0.42], 'paintSmall', {
+        group: 'pack', shape: { topScaleX: 0.88, topScaleZ: 0.86, shear: -0.03 },
+      }),
+      greeble('aerial', 'cylinder', [0.05, 0.62, 0.05], [W * 0.20, torsoY + 0.52, -W * 0.42], 'bareMetal', {
+        rot: [-0.14, 0, 0], group: 'pack', shape: { segments: 8 },
+      }),
+    );
   }
 
   masses.push(
-    // Every variant tops out at exactly H, whatever it is carrying, so the
-    // R-S4 height ratio does not swing with the backpack.
-    greeble('helmetAerial', 'lathe', [0.05, H * 0.14, 0.05], [-W * 0.18, H - H * 0.07, -0.06], 'bareMetal', {
-      profile: 'cyl', segments: 8,
+    // Every variant tops out at exactly H, whatever it is carrying, so the R-S4
+    // height ratio does not swing with the backpack.
+    greeble('helmetAerial', 'cylinder', [0.05, H * 0.14, 0.05], [-W * 0.18, H - H * 0.07, -0.06], 'bareMetal', {
+      group: 'helmet gear', shape: { segments: 8 },
     }),
-    greeble('boot', 'box', [W * 0.40, 0.16, W * 0.62], [W * 0.24, 0.08, 0.06], 'paintTiny', { mirrorX: true }),
-    greeble('webbing', 'box', [W * 0.90, 0.12, W * 0.66], [0, torsoY - torsoH * 0.34, 0], 'paintTiny'),
-    greeble('collar', 'box', [W * 0.60, 0.11, W * 0.50], [0, legTop + torsoH - 0.03, 0], 'paintTiny'),
+    greeble('boot', 'taperedBox', [W * 0.40, 0.16, W * 0.62], [W * 0.24, 0.08, 0.06], 'paintTiny', {
+      mirrorX: true, group: 'boots', shape: { topScaleX: 1.10, topScaleZ: 0.92, shear: -0.05 },
+    }),
+    plateMass('webbing', MassRole.Greeble, taperOutline(W * 0.90, W * 0.66, 0.86), 0.12,
+      [0, torsoY - torsoH * 0.34, 0], undefined, 'paintTiny', { group: 'webbing' }),
+    greeble('collar', 'revolve', [W * 0.60, 0.11, W * 0.50], [0, legTop + torsoH - 0.03, 0], 'paintTiny', {
+      group: 'collar', shape: { profile: DRUM_PROFILE, segments: 10 },
+    }),
+    greeble('kneePad', 'taperedBox', [W * 0.28, 0.17, W * 0.30], [W * 0.24, legTop * 0.44, W * 0.11], 'paintTiny', {
+      mirrorX: true, group: 'knee pads', shape: { topScaleX: 0.84, topScaleZ: 0.72, shear: -0.03 },
+    }),
+    greeble('pouch', 'taperedBox', [W * 0.20, 0.20, 0.15], [W * 0.27, torsoY - torsoH * 0.40, W * 0.24], 'paintTiny', {
+      mirrorX: true, group: 'pouches', shape: { topScaleX: 0.88, topScaleZ: 0.78 },
+    }),
   );
 
   // Team colour: 20-28% of surface (R-T1). Chest, both shoulders, helmet band.
   masses.push(
-    slab('chestPlate', [W * 0.72, torsoH * 0.66, 0.06], [0, torsoY + 0.04, W * 0.32]),
-    slab('shoulderPad', [W * 0.34, 0.34, W * 0.44], [W * 0.44, torsoY + torsoH * 0.30, 0], { mirrorX: true }),
-    slab('helmetBand', [W * 0.58, 0.12, W * 0.62], [0, legTop + torsoH + H * 0.030, 0.01]),
-    slab('thighBand', [W * 0.42, 0.20, W * 0.50], [W * 0.24, legTop * 0.72, 0], { mirrorX: true }),
+    slab('chestPlate', [W * 0.72, torsoH * 0.66, 0.06], [0, torsoY + 0.04, W * 0.32], { k: TEAM_K.infantry }),
+    slab('shoulderPad', [W * 0.34, 0.34, W * 0.44], [W * 0.44, torsoY + torsoH * 0.30, 0], { mirrorX: true , k: TEAM_K.infantry }),
+    slab('helmetBand', [W * 0.58, 0.12, W * 0.62], [0, legTop + torsoH + H * 0.030, 0.01], { k: TEAM_K.infantry }),
+    slab('thighBand', [W * 0.42, 0.20, W * 0.50], [W * 0.24, legTop * 0.72, 0], { mirrorX: true , k: TEAM_K.infantry }),
   );
   masses.push(insignia([0.26, 0.26, 0.05], [W * 0.30, torsoY + torsoH * 0.24, W * 0.33]));
   masses.push(
@@ -262,8 +590,123 @@ function infantry(o: InfantryOpts): UnitMassList {
 }
 
 /* ==========================================================================
- * 3. THE TRACKED-TANK TEMPLATE
+ * 4. THE ATTACK DOG
+ *
+ * A quadruped, not a rifleman. This is the entity the audit ranked #4 by
+ * visibility: it drew `soviet_conscript`, so a Soviet scouting rush was three
+ * standing riflemen sprinting at 9 m/s.
+ *
+ * Class is `walker`, not `infantry`: `validateUnit` holds infantry to R-S4's
+ * 0.30-0.38 x MBT-hull height band (2.1-2.7 m), which a dog cannot satisfy
+ * without becoming a bear. See the report — `units.system.ts` must map the
+ * `attackDog` content key to `EntityKind.Infantry` explicitly rather than
+ * inferring the kind from `cls`.
  * ========================================================================== */
+
+function attackDog(): UnitMassList {
+  const H = 1.36;                 // withers to ground; the ears clear it
+  const L = 1.70;
+  const bodyY = H * 0.655;
+  const bodyH = H * 0.46;
+  const bodyL = L * 0.68;
+
+  const masses: MassDef[] = [
+    // The chest-and-flank barrel: a convex hull, deep at the shoulder and
+    // tucked at the loin, which is the whole dog read in one mass.
+    primary('body', 'hull', [0.52, bodyH, bodyL], [0, bodyY, L * 0.02], 'paintMed', {
+      shape: {
+        points: [
+          [0, 0.40, 0.50], [0.34, 0.30, 0.30], [-0.34, 0.30, 0.30],
+          [0.44, -0.04, 0.22], [-0.44, -0.04, 0.22],
+          [0.30, -0.44, 0.16], [-0.30, -0.44, 0.16],
+          [0.30, 0.34, -0.24], [-0.30, 0.34, -0.24],
+          [0.26, -0.34, -0.34], [-0.26, -0.34, -0.34],
+          [0, 0.06, -0.50],
+        ],
+        chamfer: 0.035,
+      },
+    }),
+    // The head: a wedge skull with a tapered muzzle, tipped forward and down.
+    primary('head', 'hull', [0.34, H * 0.30, L * 0.26], [0, H * 0.80, L * 0.40], 'paintMed', {
+      rot: [0.22, 0, 0],
+      shape: {
+        points: [
+          [0.28, 0.34, -0.44], [-0.28, 0.34, -0.44], [0.34, -0.10, -0.34], [-0.34, -0.10, -0.34],
+          [0.20, 0.16, 0.24], [-0.20, 0.16, 0.24], [0.22, -0.30, 0.16], [-0.22, -0.30, 0.16],
+          [0.11, -0.02, 0.50], [-0.11, -0.02, 0.50], [0, -0.24, 0.44],
+        ],
+        chamfer: 0.03,
+      },
+    }),
+    // Fore and hind legs. Tapered and angled, mirrored — four legs out of two
+    // masses, and neither has a vertical wall.
+    primary('foreleg', 'taperedBox', [0.15, H * 0.50, 0.22], [0.19, H * 0.25, L * 0.26], 'paintSmall', {
+      mirrorX: true, rot: [-0.14, 0, 0.04],
+      shape: { topScaleX: 1.40, topScaleZ: 1.55, bottomScaleX: 0.62, bottomScaleZ: 0.72 },
+    }),
+    primary('hindleg', 'taperedBox', [0.17, H * 0.52, 0.30], [0.20, H * 0.26, -L * 0.24], 'paintSmall', {
+      mirrorX: true, rot: [0.20, 0, 0.05],
+      shape: { topScaleX: 1.50, topScaleZ: 1.70, bottomScaleX: 0.58, bottomScaleZ: 0.62 },
+    }),
+  ];
+
+  masses.push(
+    greeble('muzzle', 'cone', [0.17, 0.24, 0.17], [0, H * 0.76, L * 0.56], 'paintTiny', {
+      rot: [-HALF_PI + 0.18, 0, 0], group: 'head gear', shape: { segments: 10, rTop: 0.52 },
+    }),
+    plateMass('ear', MassRole.Greeble,
+      [[0.05, -0.10], [0.03, 0.06], [0, 0.11], [-0.05, 0.02], [-0.04, -0.10]], 0.04,
+      [0.10, H * 0.98, L * 0.30], [0.30, 0.22, 0.16], 'paintSmall', { mirrorX: true, group: 'ears' }),
+    greeble('tail', 'cone', [0.09, 0.42, 0.09], [0, H * 0.72, -L * 0.44], 'paintSmall', {
+      rot: [-1.05, 0, 0], group: 'tail', shape: { segments: 8, rTop: 0.28 },
+    }),
+    greeble('paw', 'chamferBox', [0.16, 0.09, 0.22], [0.19, 0.045, L * 0.29], 'paintTiny', { mirrorX: true, group: 'paws' }),
+    greeble('pawRear', 'chamferBox', [0.17, 0.09, 0.24], [0.20, 0.045, -L * 0.29], 'paintTiny', { mirrorX: true, group: 'paws' }),
+    // The kit that makes it a MILITARY dog rather than a stray: a harness
+    // frame, saddle panniers and a hardened sensor pod.
+    armour('harness', taperOutline(0.50, bodyL * 0.60, 0.74), 0.05,
+      [0, bodyY + bodyH * 0.44, L * 0.02], undefined, 'bareMetal', 'harness'),
+    greeble('pannier', 'taperedBox', [0.09, 0.20, bodyL * 0.40], [0.25, bodyY + bodyH * 0.08, -L * 0.02], 'paintSmall', {
+      mirrorX: true, group: 'panniers', shape: { topScaleX: 0.80, topScaleZ: 0.88 },
+    }),
+    greeble('sensorPod', 'cylinder', [0.10, 0.14, 0.10], [0.10, bodyY + bodyH * 0.56, L * 0.16], 'bareMetal', {
+      rot: [0.30, 0, 0], group: 'sensor', shape: { segments: 10 },
+    }),
+  );
+
+  // Walkers take the infantry team band: 20-28%.
+  masses.push(
+    slab('collar', [0.40, 0.13, 0.30], [0, H * 0.74, L * 0.24], { k: TEAM_K.dog }),
+    slab('saddle', [0.44, 0.06, bodyL * 0.50], [0, bodyY + bodyH * 0.50, L * 0.02], { k: TEAM_K.dog }),
+    slab('flankBand', [0.05, bodyH * 0.46, bodyL * 0.42], [0.26, bodyY - bodyH * 0.06, 0], { mirrorX: true , k: TEAM_K.dog }),
+    slab('hipBand', [0.20, 0.10, 0.26], [0.20, H * 0.46, -L * 0.24], { mirrorX: true , k: TEAM_K.dog }),
+  );
+  masses.push(insignia([0.16, 0.04, 0.16], [0, bodyY + bodyH * 0.52, -L * 0.14]));
+  masses.push(
+    glowPanel('eye', [0.24, 0.10, 0.05], [0, H * 0.86, L * 0.48]),
+    glowPanel('packLamp', [0.18, 0.05, 0.20], [0, bodyY + bodyH * 0.52, -L * 0.24]),
+  );
+
+  return {
+    key: 'soviet_dog',
+    name: 'Attack Dog',
+    faction: 'soviets',
+    cls: 'walker',
+    hullLength: L,
+    masses,
+    sockets: [
+      { part: PartId.MuzzleA, pos: [0, H * 0.76, L * 0.62] },
+      { part: PartId.Emitter, pos: [0, bodyY, 0] },
+    ],
+    hullNumber: 8188,
+  };
+}
+
+/* ==========================================================================
+ * 5. THE TRACKED-TANK TEMPLATE
+ * ========================================================================== */
+
+type GunKind = 'cannon' | 'twinCannon' | 'prism' | 'flak' | 'rocketRack';
 
 interface TankOpts {
   key: string;
@@ -275,12 +718,12 @@ interface TankOpts {
   hullWidth: number;
   /** Total silhouette height including the mast. */
   height: number;
-  /** Soviet hulls use the octagonal brutalist plan; Allied hulls are chamfered boxes. */
+  /** Soviet hulls are slab-shouldered; Allied hulls are sleek and low. */
   brutalist: boolean;
-  /** Main armament. */
-  gun: 'cannon' | 'twinCannon' | 'prism' | 'flak' | 'rocketRack';
-  /** Extra turret-top mass, e.g. a Prism emitter or an AA mount. */
+  gun: GunKind;
   wheels?: number;
+  /** Tier-3 heavies get a second armour belt, more rollers and a deep skirt. */
+  heavy?: boolean;
 }
 
 function tank(o: TankOpts): UnitMassList {
@@ -296,109 +739,160 @@ function tank(o: TankOpts): UnitMassList {
   const turretY = H * 0.655;                        // -> dominantCentreY 0.655
   const turretW = W * UNIT_LADDER.turretWidthOverHull;
   const turretL = L * 0.74;
+  const turretZ = -L * 0.04;
   const deckY = trackH + hullH;
   const turretRoof = turretY + turretH * 0.5;
+  const gunY = turretY + turretH * 0.06;
 
   const masses: MassDef[] = [
-    ...tracks(W, trackH, L * 0.94, o.wheels ?? 5),
-    // Hull. The taper is the glacis: the top plate is shorter and set back, so
-    // the front reads as a sloped plate instead of a brick.
-    primary('hull', o.brutalist ? 'prism' : 'box', [W, hullH, L], [0, hullY, 0],
-      'paintLarge', o.brutalist
-        ? { plan: 'cutBox', cornerCut: 0.08, capSlot: 'paintLarge' }
-        : { taper: [0.94, 0.86, -L * 0.05] }),
-    // Turret. Deliberately oversized: 0.86 x hull width against a real MBT's
-    // 0.55, and 74% of hull length.
-    primary('turret', o.brutalist ? 'prism' : 'box', [turretW, turretH, turretL], [0, turretY, -L * 0.04],
-      'paintLarge', o.brutalist
-        ? { turret: true, plan: 'cutBox', cornerCut: 0.12, capSlot: 'paintLarge' }
-        : { turret: true, taper: [0.80, 0.78, -turretL * 0.06] }),
+    /* -- 1. running gear ------------------------------------------------- */
+    runningGear(W, trackH, L * 0.94, o.wheels ?? 5, {
+      skirt: trackH * (o.heavy === true ? 0.58 : 0.44),
+      rollers: o.heavy === true ? 3 : 2,
+    }),
+
+    /* -- 2. hull: tapered, sheared into a glacis, octagonal in plan ------ */
+    // `shear` is the important field. Sliding the top face aft turns the front
+    // wall into a real sloped glacis, which is the most recognisable line on an
+    // RA3 tank and the reason this mass measures 0% flat wall instead of 100%.
+    primary('hull', 'taperedBox', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
+      shape: o.brutalist
+        ? { topScaleX: 0.90, topScaleZ: 0.94, shear: -L * 0.045, cornerCut: W * 0.075 }
+        : { topScaleX: 0.86, topScaleZ: 0.90, shear: -L * 0.065, cornerCut: W * 0.055 },
+    }),
+
+    /* -- 3. turret: lathed, 14 facets, no flat side at all --------------- */
+    primary('turret', 'revolve', [turretW, turretH, turretL], [0, turretY, turretZ], 'paintLarge', {
+      turret: true, capSlot: 'paintLarge',
+      shape: { profile: o.brutalist ? SOVIET_TURRET : ALLIED_TURRET, segments: 14 },
+    }),
   ];
 
-  /* -- armament ---------------------------------------------------------- */
+  /* -- 4. armament -------------------------------------------------------- */
   const muzzleZ = turretL * 0.5 + L * 0.40;
-  const gunY = turretY + turretH * 0.06;
   switch (o.gun) {
     case 'twinCannon':
       masses.push(
-        primary('barrel', 'lathe', [0.30, L * 0.62, 0.30], [W * 0.16, gunY, turretL * 0.32], 'bareMetal', {
-          turret: true, mirrorX: true, profile: 'cyl', segments: 12, rot: [Math.PI * 0.5, 0, 0], topRadius: 0.92,
-        }),
-        greeble('muzzleBrake', 'lathe', [0.40, 0.34, 0.40], [W * 0.16, gunY, turretL * 0.32 + L * 0.31], 'bareMetal', {
-          turret: true, mirrorX: true, profile: 'cyl', segments: 12, rot: [Math.PI * 0.5, 0, 0],
-        }),
+        barrelMass('barrel', 0.30, L * 0.66, [W * 0.16, gunY, turretZ + turretL * 0.36], { turret: true, mirrorX: true }),
+        armour('turret.gunShield', taperOutline(turretW * 0.86, turretH * 0.66, 0.74), 0.10,
+          [0, gunY, turretZ + turretL * 0.44], [-1.42, 0, 0], 'bareMetal', 'turret armour', { turret: true }),
       );
       break;
     case 'prism':
       masses.push(
-        primary('prismHousing', 'lathe', [W * 0.44, L * 0.46, W * 0.44], [0, gunY + 0.10, turretL * 0.30], 'paintMed', {
-          turret: true, profile: 'cyl', segments: 14, rot: [Math.PI * 0.5, 0, 0], topRadius: 0.74,
+        primary('prismHousing', 'revolve', [W * 0.44, L * 0.46, W * 0.44], [0, gunY + 0.10, turretZ + turretL * 0.34], 'paintMed', {
+          turret: true, rot: [HALF_PI, 0, 0], shape: { profile: TAPER_DRUM, segments: 14 },
         }),
-        greeble('prismCrystal', 'lathe', [W * 0.30, 0.42, W * 0.30], [0, gunY + 0.10, turretL * 0.30 + L * 0.23], 'emissive', {
-          turret: true, profile: 'cone', segments: 8, topRadius: 0.25, rot: [Math.PI * 0.5, 0, 0],
+        greeble('prismCrystal', 'cone', [W * 0.30, 0.42, W * 0.30], [0, gunY + 0.10, turretZ + turretL * 0.34 + L * 0.23], 'emissive', {
+          turret: true, rot: [HALF_PI, 0, 0], group: 'turret armour', shape: { segments: 8, rTop: 0.25 },
         }),
       );
       break;
     case 'flak':
       masses.push(
-        primary('flakBarrel', 'lathe', [0.20, L * 0.50, 0.20], [W * 0.13, gunY + 0.16, turretL * 0.22], 'bareMetal', {
-          turret: true, mirrorX: true, profile: 'cyl', segments: 10, rot: [1.16, 0, 0],
+        primary('flakBarrel', 'cylinder', [0.20, L * 0.50, 0.20], [W * 0.13, gunY + 0.16, turretZ + turretL * 0.26], 'bareMetal', {
+          turret: true, mirrorX: true, rot: [1.16, 0, 0], shape: { segments: 10, rTop: 0.88 },
         }),
-        greeble('flakCradle', 'box', [W * 0.52, 0.26, turretL * 0.34], [0, gunY + 0.10, turretL * 0.16], 'paintSmall', { turret: true }),
+        greeble('flakCradle', 'taperedBox', [W * 0.52, 0.26, turretL * 0.34], [0, gunY + 0.10, turretZ + turretL * 0.20], 'paintSmall', {
+          turret: true, group: 'turret armour', shape: { topScaleX: 0.80, topScaleZ: 0.88, shear: 0.06 },
+        }),
       );
       break;
     case 'rocketRack':
       masses.push(
-        primary('rocketRack', 'box', [W * 0.78, H * 0.26, L * 0.56], [0, gunY + 0.14, turretL * 0.06], 'paintMed', {
-          turret: true, rot: [-0.30, 0, 0], faceSlots: { pz: 'grille', py: 'stripe' },
+        // A hexagonal-plan launch box on a real elevation, not an axis-aligned
+        // crate: the plan prism gives it six walls, none of them square-on.
+        primary('rocketRack', 'planPrism', [W * 0.78, H * 0.26, L * 0.56], [0, gunY + 0.14, turretZ + turretL * 0.10], 'paintMed', {
+          turret: true, rot: [-0.30, 0, 0], capSlot: 'grille',
+          shape: {
+            plan: [
+              [W * 0.39, -L * 0.28], [W * 0.39, L * 0.20], [W * 0.24, L * 0.28],
+              [-W * 0.24, L * 0.28], [-W * 0.39, L * 0.20], [-W * 0.39, -L * 0.28],
+            ],
+            topScaleX: 0.88, topScaleZ: 0.94,
+          },
         }),
-        greeble('railPair', 'box', [W * 0.16, 0.16, L * 0.58], [W * 0.26, gunY + 0.30, turretL * 0.10], 'bareMetal', {
-          turret: true, mirrorX: true, rot: [-0.30, 0, 0],
+        greeble('railPair', 'extrude', [W * 0.16, 0.16, L * 0.58], [W * 0.26, gunY + 0.30, turretZ + turretL * 0.14], 'bareMetal', {
+          turret: true, mirrorX: true, rot: [-0.30, 0, 0], group: 'turret armour',
+          shape: {
+            profile: ductSection(0.22),
+            path: [[0, 0, -L * 0.29], [0, 0, 0], [0, 0, L * 0.29]],
+            scale: [1.0, 0.94, 0.82], capStart: true, capEnd: true,
+          },
         }),
       );
       break;
     default:
-      masses.push(
-        primary('barrel', 'lathe', [0.38, L * 0.66, 0.38], [0, gunY, turretL * 0.34], 'bareMetal', {
-          turret: true, profile: 'cyl', segments: 14, rot: [Math.PI * 0.5, 0, 0], topRadius: 0.86,
-        }),
-        greeble('muzzleBrake', 'lathe', [0.52, 0.40, 0.52], [0, gunY, turretL * 0.34 + L * 0.33], 'bareMetal', {
-          turret: true, profile: 'cyl', segments: 14, rot: [Math.PI * 0.5, 0, 0],
-        }),
-      );
+      masses.push(barrelMass('barrel', 0.42, L * 0.70, [0, gunY, turretZ + turretL * 0.38], { turret: true }));
       break;
   }
 
-  /* -- greebles ---------------------------------------------------------- */
+  /* -- 5. layered armour: the hi-tech surface read ------------------------ */
+  masses.push(
+    // The glacis: a trapezoid lying back 34 degrees over the bow.
+    armour('hull.glacis', taperOutline(W * 0.92, L * 0.34, 0.72), 0.09,
+      [0, hullY + hullH * 0.30, L * 0.30], [-0.60, 0, 0], 'paintMed', 'hull armour'),
+    // Flank plates, splayed 12 degrees off the wall and standing proud of it.
+    armour('hull.flankPlate', taperOutline(L * 0.52, hullH * 1.10, 0.80), 0.07,
+      [W * 0.47, hullY + hullH * 0.06, -L * 0.04],
+      [0, HALF_PI, HALF_PI - 0.21], 'paintMed', 'hull armour', { mirrorX: true }),
+    // An engine-deck plate, dropped 4 degrees toward the stern.
+    armour('hull.deckPlate', rectOutline(W * 0.62, L * 0.30), 0.07,
+      [0, hullY + hullH * 0.52, -L * 0.28], [0.07, 0, 0], 'paintMed', 'hull armour'),
+    // Turret cheeks, splayed off the lathe so the turret is not a pure solid.
+    armour('turret.cheek', taperOutline(turretL * 0.46, turretH * 0.60, 0.74), 0.07,
+      [turretW * 0.40, turretY + turretH * 0.04, turretZ - turretL * 0.02],
+      [0, HALF_PI, HALF_PI - 0.16], 'paintMed', 'turret armour', { turret: true, mirrorX: true }),
+  );
+  if (o.gun !== 'prism' && o.gun !== 'rocketRack') {
+    // The mantlet: the plate the gun comes through, stood almost vertical.
+    masses.push(armour('turret.mantlet', taperOutline(turretW * 0.52, turretH * 0.86, 0.78), 0.11,
+      [0, gunY, turretZ + turretL * 0.40], [-1.49, 0, 0], 'bareMetal', 'turret armour', { turret: true }));
+  }
+  if (o.heavy === true) {
+    // A tier-3 belt: one more plate down each flank at a shallower angle, so
+    // the hull reads as spaced armour rather than as one thicker wall.
+    masses.push(armour('hull.beltPlate', taperOutline(L * 0.40, hullH * 0.72, 0.86), 0.08,
+      [W * 0.50, trackH + hullH * 0.16, L * 0.22],
+      [0, HALF_PI, HALF_PI - 0.34], 'paintSmall', 'hull armour', { mirrorX: true }));
+  }
+
+  /* -- 6. greebles -------------------------------------------------------- */
   masses.push(
     ...vehicleGreebles(W, L, deckY),
-    greeble('mantlet', 'box', [turretW * 0.44, turretH * 0.72, 0.30], [0, gunY, turretL * 0.48], 'bareMetal', { turret: true }),
-    // Everything above the turret roof is sized so the silhouette tops out at
-    // exactly H. An overshooting mast would push `bounds[1]` past the height the
-    // top-heavy check divides by, and every tank would fail it.
-    greeble('cupola', 'lathe', [turretW * 0.30, H * 0.09, turretW * 0.30], [-turretW * 0.22, turretRoof + H * 0.045, -turretL * 0.16], 'hatch', {
-      turret: true, profile: 'cyl', segments: 12,
-    }),
-    greeble('aaMount', 'box', [0.14, 0.13, 0.72], [turretW * 0.26, turretRoof + H * 0.040, -turretL * 0.06], 'bareMetal', {
-      turret: true, rot: [-0.10, 0.22, 0],
-    }),
-    greeble('turretBox', 'box', [turretW * 0.62, turretH * 0.34, turretL * 0.20], [0, turretY + turretH * 0.20, -turretL * 0.52], 'paintSmall', { turret: true }),
-    greeble('mast', 'lathe', [0.07, H * 0.16, 0.07], [-turretW * 0.40, H - H * 0.08, -turretL * 0.34], 'bareMetal', {
-      turret: true, profile: 'cyl', segments: 8,
-    }),
+    greebleRun('hull.spineRun', L * 0.44, 0.22, 0.15, [-W * 0.30, deckY + 0.04, -L * 0.06], 0x51 + o.hullNumber),
+    greeble('cupola', 'revolve', [turretW * 0.30, H * 0.09, turretW * 0.30],
+      [-turretW * 0.22, turretRoof + H * 0.045, turretZ - turretL * 0.16], 'hatch', {
+        turret: true, group: 'cupola', shape: { profile: DOME_PROFILE, segments: 12 },
+      }),
+    greeble('aaMount', 'cylinder', [0.14, 0.72, 0.14],
+      [turretW * 0.26, turretRoof + H * 0.040, turretZ - turretL * 0.06], 'bareMetal', {
+        turret: true, rot: [HALF_PI - 0.10, 0.22, 0], group: 'aa mount', shape: { segments: 8 },
+      }),
+    greeble('turretBox', 'taperedBox', [turretW * 0.62, turretH * 0.34, turretL * 0.20],
+      [0, turretY + turretH * 0.20, turretZ - turretL * 0.52], 'paintSmall', {
+        turret: true, group: 'turret bustle', shape: { topScaleX: 0.84, topScaleZ: 0.86, shear: -0.06 },
+      }),
+    greeble('mast', 'cylinder', [0.07, H * 0.16, 0.07],
+      [-turretW * 0.40, H - H * 0.08, turretZ - turretL * 0.34], 'bareMetal', {
+        turret: true, group: 'mast', shape: { segments: 8 },
+      }),
   );
 
-  /* -- team colour (R-T1: 8-14% of surface, flat slabs only) -------------- */
+  /* -- 7. team colour (R-T1: 8-14% of surface, flat panels only) ---------- */
   masses.push(
-    slab('turretCheek', [0.07, turretH * 0.56, turretL * 0.56], [turretW * 0.5, turretY + turretH * 0.04, -turretL * 0.04], { turret: true, mirrorX: true }),
-    slab('hullFlank', [0.07, hullH * 0.62, L * 0.50], [W * 0.49, hullY, -L * 0.06], { mirrorX: true }),
-    // Top-facing slabs are deliberately SMALL panel inserts. A turret-roof-sized
+    slab('turretCheekBand', [0.07, turretH * 0.56, turretL * 0.56],
+      [turretW * 0.5, turretY + turretH * 0.04, turretZ - turretL * 0.04], { turret: true, mirrorX: true , k: TEAM_K.tank }),
+    slab('hullFlankBand', [0.07, hullH * 0.62, L * 0.50], [W * 0.49, hullY, -L * 0.06], { mirrorX: true , k: TEAM_K.tank }),
+    // Top-facing panels are deliberately SMALL inserts. A turret-roof-sized
     // plate measures inside R-T1 and still reads as a repainted tank, because a
     // 39-degree camera weights a deck about 2.5x a flank.
-    slab('turretCap', [turretW * 0.34, 0.07, turretL * 0.30], [-turretW * 0.16, turretRoof, -turretL * 0.02], { turret: true }),
-    slab('glacisBand', [W * 0.42, 0.07, L * 0.09], [0, deckY, L * 0.40], {}),
+    slab('turretCap', [turretW * 0.34, 0.07, turretL * 0.30],
+      [-turretW * 0.16, turretRoof, turretZ - turretL * 0.02], { turret: true , k: TEAM_K.tank }),
+    slab('glacisBand', [W * 0.42, 0.07, L * 0.09], [0, deckY, L * 0.40], { k: TEAM_K.tank }),
   );
-  masses.push(insignia([turretW * 0.30, 0.06, turretW * 0.30], [turretW * 0.20, turretRoof + 0.02, turretL * 0.18], { turret: true }));
+  masses.push(insignia([turretW * 0.30, 0.06, turretW * 0.30],
+    [turretW * 0.20, turretRoof + 0.02, turretZ + turretL * 0.18], { turret: true }));
   // R-T5 wants emissive at 1-3% of surface. The atlas masks 42% of each plate,
   // so the plates are sized against that, not against their own area.
   masses.push(
@@ -407,7 +901,7 @@ function tank(o: TankOpts): UnitMassList {
   );
 
   const sockets: SocketSpec[] = [
-    { part: PartId.Turret, pos: [0, turretY, -L * 0.04] },
+    { part: PartId.Turret, pos: [0, turretY, turretZ] },
     { part: PartId.MuzzleA, pos: [o.gun === 'twinCannon' ? W * 0.16 : 0, gunY, muzzleZ], turret: true },
     { part: PartId.Exhaust, pos: [W * 0.34, deckY + 0.60, -L * 0.30] },
     { part: PartId.Antenna, pos: [-W * 0.40, H, -L * 0.30], turret: true },
@@ -422,7 +916,7 @@ function tank(o: TankOpts): UnitMassList {
     faction: o.faction,
     cls: 'vehicle',
     hullLength: L,
-    turretPivot: [0, turretY, -L * 0.04],
+    turretPivot: [0, turretY, turretZ],
     masses,
     sockets,
     hullNumber: o.hullNumber,
@@ -430,7 +924,7 @@ function tank(o: TankOpts): UnitMassList {
 }
 
 /* ==========================================================================
- * 4. TURRETLESS SUPPORT VEHICLES — harvester and dozer
+ * 6. TURRETLESS SUPPORT VEHICLES — harvester and dozer
  *
  * These have no turret, so the dominant mass is the SUPERSTRUCTURE (the ore
  * hopper / the cab-and-crane block) and it still has to sit at 0.60-0.70 H.
@@ -456,61 +950,95 @@ function support(o: SupportOpts): UnitMassList {
   const deckY = trackH + chassisH;
   const bodyH = H * 0.52;
   const bodyY = H * 0.645;
+  const cut = W * (o.brutalist ? 0.09 : 0.06);
 
   const masses: MassDef[] = [
-    ...tracks(W, trackH, L * 0.90, 6),
-    primary('chassis', 'box', [W, chassisH, L], [0, chassisY, 0], 'paintLarge', { taper: [0.96, 0.92, 0] }),
+    runningGear(W, trackH, L * 0.90, 6, { skirt: trackH * 0.36, rollers: 3 }),
+    primary('chassis', 'taperedBox', [W, chassisH, L], [0, chassisY, 0], 'paintLarge', {
+      shape: { topScaleX: 0.94, topScaleZ: 0.90, shear: -L * 0.02, cornerCut: W * 0.05 },
+    }),
     // The dominant mass: the ore hopper, or the dozer's engine-and-cab block.
-    primary(o.role === 'harvester' ? 'hopper' : 'cabBlock',
-      o.brutalist ? 'prism' : 'box',
+    // Both have a real batter — the dozer narrows toward the roof, the hopper
+    // FLARES toward it because a hopper is a funnel — so neither has a vertical
+    // wall anywhere on it.
+    primary(o.role === 'harvester' ? 'hopper' : 'cabBlock', 'taperedBox',
       [W * 0.96, bodyH, L * 0.66], [0, bodyY, -L * 0.10], 'paintLarge',
-      o.brutalist
-        ? { plan: 'cutBox', cornerCut: 0.10, capSlot: 'paintLarge' }
-        : { taper: [0.88, 0.92, -L * 0.03] }),
+      o.role === 'harvester'
+        ? { shape: { topScaleX: 1.10, topScaleZ: 1.06, bottomScaleX: 0.84, bottomScaleZ: 0.88, cornerCut: cut } }
+        : { shape: { topScaleX: 0.84, topScaleZ: 0.88, shear: -L * 0.03, cornerCut: cut } }),
   ];
 
   if (o.role === 'harvester') {
     masses.push(
-      // The scoop: the second read, and the thing that says "harvester".
-      primary('scoop', 'box', [W * 1.02, H * 0.26, L * 0.24], [0, deckY + H * 0.02, L * 0.42], 'paintMed', {
-        taper: [1.10, 1.0, L * 0.05], faceSlots: { pz: 'stripe', py: 'stripe' },
+      // The scoop: the second read, and the thing that says "harvester". A
+      // trapezoidal plan with a wide mouth and a narrow throat.
+      primary('scoop', 'planPrism', [W * 1.02, H * 0.26, L * 0.24], [0, deckY + H * 0.02, L * 0.42], 'paintMed', {
+        capSlot: 'stripe',
+        shape: {
+          plan: [
+            [W * 0.42, -L * 0.12], [W * 0.51, L * 0.12], [-W * 0.51, L * 0.12], [-W * 0.42, -L * 0.12],
+          ],
+          topScaleX: 1.06, topScaleZ: 1.02, shear: L * 0.04,
+        },
       }),
-      greeble('scoopTeeth', 'box', [W * 0.98, 0.14, 0.22], [0, deckY - H * 0.06, L * 0.53], 'bareMetal'),
-      greeble('scoopArm', 'box', [0.20, 0.22, L * 0.24], [W * 0.40, deckY + H * 0.10, L * 0.30], 'bareMetal', { mirrorX: true }),
-      greeble('hopperLid', 'box', [W * 0.70, 0.14, L * 0.44], [0, bodyY + bodyH * 0.5, -L * 0.10], 'hatch'),
-      greeble('conveyor', 'box', [W * 0.34, 0.18, L * 0.30], [0, bodyY + bodyH * 0.30, L * 0.22], 'grille', { rot: [-0.32, 0, 0] }),
+      greeble('scoopTeeth', 'greebleStrip', [0.22, 0.14, W * 0.98], [0, deckY - H * 0.06, L * 0.53], 'bareMetal', {
+        rot: [0, HALF_PI, 0], group: 'scoop teeth', shape: { density: 3.2, seed: 0x7EE7, fit: 'none' },
+      }),
+      greeble('scoopArm', 'cylinder', [0.20, L * 0.24, 0.20], [W * 0.40, deckY + H * 0.10, L * 0.30], 'bareMetal', {
+        mirrorX: true, rot: [HALF_PI, 0, 0], group: 'scoop gear', shape: { segments: 10 },
+      }),
+      armour('hopperLid', taperOutline(W * 0.70, L * 0.44, 0.86), 0.14,
+        [0, bodyY + bodyH * 0.5, -L * 0.10], undefined, 'hatch', 'hopper gear'),
+      armour('conveyor', rectOutline(W * 0.34, L * 0.30), 0.18,
+        [0, bodyY + bodyH * 0.30, L * 0.22], [-0.32, 0, 0], 'grille', 'hopper gear'),
     );
   } else {
     masses.push(
-      primary('blade', 'box', [W * 1.16, H * 0.30, L * 0.14], [0, trackH * 0.62, L * 0.52], 'paintMed', {
-        taper: [1.0, 1.0, -0.06], faceSlots: { pz: 'stripe', py: 'stripe' },
+      // The blade: a plate on a real rake, which is what a dozer blade is.
+      plateMass('blade', MassRole.Primary, taperOutline(W * 1.16, H * 0.34, 0.88), L * 0.11,
+        [0, trackH * 0.66, L * 0.52], [-1.32, 0, 0], 'paintMed', { capSlot: 'stripe' }),
+      greeble('bladeArm', 'cylinder', [0.22, L * 0.30, 0.22], [W * 0.42, trackH * 0.80, L * 0.34], 'bareMetal', {
+        mirrorX: true, rot: [HALF_PI - 0.12, 0, 0], group: 'blade gear', shape: { segments: 10 },
       }),
-      greeble('bladeArm', 'box', [0.22, 0.22, L * 0.30], [W * 0.42, trackH * 0.80, L * 0.34], 'bareMetal', { mirrorX: true }),
-      greeble('craneMast', 'lathe', [0.30, H * 0.16, 0.30], [-W * 0.26, H - H * 0.08, -L * 0.20], 'bareMetal', {
-        profile: 'cyl', segments: 10,
+      greeble('craneMast', 'cylinder', [0.30, H * 0.16, 0.30], [-W * 0.26, H - H * 0.08, -L * 0.20], 'bareMetal', {
+        group: 'crane', shape: { segments: 10 },
       }),
-      greeble('craneJib', 'box', [0.20, 0.18, L * 0.42], [-W * 0.26, H - H * 0.11, L * 0.02], 'bareMetal', { rot: [0.16, 0, 0] }),
-      greeble('cabRoof', 'box', [W * 0.62, 0.14, L * 0.34], [0, bodyY + bodyH * 0.5, -L * 0.10], 'hatch'),
+      greeble('craneJib', 'extrude', [0.22, 0.20, L * 0.42], [-W * 0.26, H - H * 0.11, L * 0.02], 'bareMetal', {
+        rot: [0.16, 0, 0], group: 'crane',
+        shape: {
+          profile: ductSection(0.26),
+          path: [[0, 0, -L * 0.21], [0, 0, 0], [0, 0, L * 0.21]],
+          scale: [1.0, 0.92, 0.72], capStart: true, capEnd: true,
+        },
+      }),
+      armour('cabRoof', taperOutline(W * 0.62, L * 0.34, 0.84), 0.14,
+        [0, bodyY + bodyH * 0.5, -L * 0.10], undefined, 'hatch', 'cab gear'),
     );
   }
 
   masses.push(
     ...vehicleGreebles(W, L, deckY),
-    greeble('cabGlass', 'box', [W * 0.52, bodyH * 0.34, 0.10], [0, bodyY + bodyH * 0.16, -L * 0.10 + L * 0.33], 'paintTiny', {
-      faceSlots: { pz: 'glass' },
-    }),
+    greebleRun('chassis.serviceRun', L * 0.40, 0.24, 0.18, [-W * 0.32, deckY + 0.04, -L * 0.16], 0x33 + o.hullNumber),
+    armour('cabGlass', taperOutline(W * 0.52, bodyH * 0.34, 0.88), 0.10,
+      [0, bodyY + bodyH * 0.16, -L * 0.10 + L * 0.33], [HALF_PI - 0.16, 0, 0], 'glass', 'glass'),
+    // The armour belt down the body flank, splayed off the batter.
+    armour('body.flankPlate', taperOutline(L * 0.46, bodyH * 0.72, 0.82), 0.08,
+      [W * 0.48, bodyY, -L * 0.10], [0, HALF_PI, HALF_PI - 0.24], 'paintMed', 'body armour', { mirrorX: true }),
   );
 
   masses.push(
-    slab('bodyFlank', [0.07, bodyH * 0.46, L * 0.46], [W * 0.47, bodyY, -L * 0.10], { mirrorX: true }),
-    slab('bodyCap', [W * 0.38, 0.07, L * 0.24], [W * 0.10, bodyY + bodyH * 0.5, -L * 0.10]),
-    slab('chassisBand', [0.07, chassisH * 0.56, L * 0.56], [W * 0.49, chassisY, 0], { mirrorX: true }),
-    slab('rearPlate', [W * 0.56, bodyH * 0.34, 0.07], [0, bodyY, -L * 0.10 - L * 0.33]),
+    slab('bodyFlank', [0.07, bodyH * 0.46, L * 0.46], [W * 0.47, bodyY, -L * 0.10], { mirrorX: true , k: TEAM_K.support }),
+    slab('bodyCap', [W * 0.38, 0.07, L * 0.24], [W * 0.10, bodyY + bodyH * 0.5, -L * 0.10], { k: TEAM_K.support }),
+    slab('chassisBand', [0.07, chassisH * 0.56, L * 0.56], [W * 0.49, chassisY, 0], { mirrorX: true , k: TEAM_K.support }),
+    slab('rearPlate', [W * 0.56, bodyH * 0.34, 0.07], [0, bodyY, -L * 0.10 - L * 0.33], { k: TEAM_K.support }),
   );
   masses.push(insignia([W * 0.26, 0.06, W * 0.26], [W * 0.22, bodyY + bodyH * 0.5 + 0.02, -L * 0.24]));
   masses.push(
-    glowPanel('beacon', [0.36, 0.26, 0.36], [-W * 0.30, bodyY + bodyH * 0.5 + 0.14, -L * 0.28]),
-    glowPanel('sideLamp', [0.06, 0.52, 1.25], [W * 0.50, deckY + 0.30, L * 0.12], { mirrorX: true }),
+    // R-T5 wants 0.5-3% and a support hull is enormous, so these are sized
+    // against the hull they sit on rather than against a tank's.
+    glowPanel('beacon', [0.52, 0.14, 0.52], [-W * 0.30, bodyY + bodyH * 0.5 + 0.14, -L * 0.28]),
+    glowPanel('sideLamp', [0.06, 0.62, L * 0.30], [W * 0.50, deckY + 0.30, L * 0.12], { mirrorX: true }),
+    glowPanel('workLamp', [W * 0.44, 0.06, L * 0.14], [0, deckY + 0.06, L * 0.16]),
   );
 
   const sockets: SocketSpec[] = [
@@ -527,10 +1055,7 @@ function support(o: SupportOpts): UnitMassList {
 }
 
 /* ==========================================================================
- * 5. THE SICKLE — a three-legged Soviet walker
- *
- * Walkers get the infantry team-colour band (20-28%) because the body is small
- * relative to the legs and 10% would vanish.
+ * 7. THE SICKLE — a three-legged Soviet walker
  * ========================================================================== */
 
 function sickle(): UnitMassList {
@@ -541,44 +1066,73 @@ function sickle(): UnitMassList {
   const legTop = bodyY - bodyH * 0.5;
 
   const masses: MassDef[] = [
-    // Three legs: two forward-splayed, one aft. Mirrored pair + a single.
-    primary('legUpper', 'box', [0.42, legTop * 0.62, 0.52], [W * 0.30, legTop * 0.70, 0.55], 'paintMed', {
-      mirrorX: true, rot: [-0.34, 0, 0.20], taper: [0.8, 0.8, 0],
+    // Three legs: two forward-splayed, one aft. A mirrored pair plus a single.
+    primary('legUpper', 'taperedBox', [0.42, legTop * 0.62, 0.52], [W * 0.30, legTop * 0.70, 0.55], 'paintMed', {
+      mirrorX: true, rot: [-0.34, 0, 0.20],
+      shape: { topScaleX: 1.24, topScaleZ: 1.30, bottomScaleX: 0.66, bottomScaleZ: 0.72 },
     }),
-    primary('legLower', 'box', [0.34, legTop * 0.58, 0.42], [W * 0.42, legTop * 0.26, 1.12], 'paintSmall', {
-      mirrorX: true, rot: [0.46, 0, 0.10], taper: [0.7, 0.7, 0],
+    primary('legLower', 'taperedBox', [0.34, legTop * 0.58, 0.42], [W * 0.42, legTop * 0.26, 1.12], 'paintSmall', {
+      mirrorX: true, rot: [0.46, 0, 0.10],
+      shape: { topScaleX: 1.32, topScaleZ: 1.24, bottomScaleX: 0.58, bottomScaleZ: 0.64 },
     }),
-    // The body: bulbous, chamfered, oversized. The dominant mass.
-    primary('body', 'prism', [W * 0.92, bodyH, W * 0.86], [0, bodyY, 0], 'paintLarge', {
-      plan: 'cutBox', cornerCut: 0.14, capSlot: 'paintLarge',
+    // The body: bulbous, chamfered, oversized. The dominant mass. A convex hull
+    // rather than an octagonal prism — the Sickle is an insect, not a bunker.
+    primary('body', 'hull', [W * 0.92, bodyH, W * 0.86], [0, bodyY, 0], 'paintLarge', {
+      shape: {
+        points: [
+          [0, 0.24, 0.50], [0.36, 0.30, 0.30], [-0.36, 0.30, 0.30],
+          [0.50, 0.02, 0.04], [-0.50, 0.02, 0.04],
+          [0.40, 0.40, -0.20], [-0.40, 0.40, -0.20],
+          [0.36, -0.42, 0.18], [-0.36, -0.42, 0.18],
+          [0.30, -0.40, -0.34], [-0.30, -0.40, -0.34],
+          [0.26, 0.18, -0.50], [-0.26, 0.18, -0.50],
+        ],
+        chamfer: 0.07,
+      },
     }),
-    primary('cockpit', 'lathe', [W * 0.44, H * 0.16, W * 0.46], [0, bodyY + bodyH * 0.42, W * 0.20], 'paintMed', {
-      profile: 'dome', segments: 14,
+    primary('cockpit', 'revolve', [W * 0.44, H * 0.16, W * 0.46], [0, bodyY + bodyH * 0.42, W * 0.20], 'paintMed', {
+      shape: { profile: DOME_PROFILE, segments: 14 },
     }),
   ];
 
   masses.push(
-    greeble('legRear', 'box', [0.42, legTop * 0.86, 0.52], [0, legTop * 0.46, -0.90], 'paintMed', {
-      rot: [0.30, 0, 0], taper: [0.8, 0.8, 0],
+    greeble('legRear', 'taperedBox', [0.42, legTop * 0.86, 0.52], [0, legTop * 0.46, -0.90], 'paintMed', {
+      rot: [0.30, 0, 0], group: 'rear leg',
+      shape: { topScaleX: 1.26, topScaleZ: 1.30, bottomScaleX: 0.64, bottomScaleZ: 0.70 },
     }),
-    greeble('footPad', 'lathe', [0.62, 0.20, 0.62], [W * 0.48, 0.10, 1.55], 'bareMetal', { mirrorX: true, profile: 'disc', segments: 10 }),
-    greeble('footRear', 'lathe', [0.62, 0.20, 0.62], [0, 0.10, -1.40], 'bareMetal', { profile: 'disc', segments: 10 }),
-    greeble('hipRing', 'lathe', [W * 0.60, 0.26, W * 0.60], [0, legTop + 0.06, 0], 'bareMetal', { profile: 'cyl', segments: 12 }),
-    greeble('gunPod', 'box', [0.34, 0.34, 1.30], [W * 0.36, bodyY - 0.06, 0.62], 'bareMetal', { mirrorX: true }),
-    greeble('ammoDrum', 'lathe', [0.52, 0.44, 0.52], [W * 0.36, bodyY + 0.24, -0.10], 'paintSmall', {
-      mirrorX: true, profile: 'cyl', segments: 12, rot: [Math.PI * 0.5, 0, 0],
+    greeble('footPad', 'revolve', [0.62, 0.20, 0.62], [W * 0.48, 0.10, 1.55], 'bareMetal', {
+      mirrorX: true, group: 'feet', shape: { profile: DRUM_PROFILE, segments: 10 },
     }),
-    greeble('exhaustStack', 'lathe', [0.24, 0.66, 0.24], [-W * 0.22, bodyY + bodyH * 0.5 + 0.30, -W * 0.24], 'bareMetal', {
-      profile: 'cyl', segments: 10,
+    greeble('footRear', 'revolve', [0.62, 0.20, 0.62], [0, 0.10, -1.40], 'bareMetal', {
+      group: 'feet', shape: { profile: DRUM_PROFILE, segments: 10 },
     }),
-    greeble('backGrille', 'box', [W * 0.50, bodyH * 0.44, 0.12], [0, bodyY, -W * 0.44], 'grille'),
+    greeble('hipRing', 'revolve', [W * 0.60, 0.26, W * 0.60], [0, legTop + 0.06, 0], 'bareMetal', {
+      group: 'hip', shape: { profile: DRUM_PROFILE, segments: 12 },
+    }),
+    greeble('gunPod', 'extrude', [0.34, 0.34, 1.30], [W * 0.36, bodyY - 0.06, 0.62], 'bareMetal', {
+      mirrorX: true, group: 'gun pods',
+      shape: {
+        profile: ductSection(0.46),
+        path: [[0, 0, -0.65], [0, 0, 0.20], [0, 0, 0.65]],
+        scale: [1.0, 0.92, 0.76], capStart: true, capEnd: true,
+      },
+    }),
+    greeble('ammoDrum', 'revolve', [0.52, 0.44, 0.52], [W * 0.36, bodyY + 0.24, -0.10], 'paintSmall', {
+      mirrorX: true, rot: [HALF_PI, 0, 0], group: 'ammo', shape: { profile: DRUM_PROFILE, segments: 12 },
+    }),
+    greeble('exhaustStack', 'cylinder', [0.24, 0.66, 0.24], [-W * 0.22, bodyY + bodyH * 0.5 + 0.30, -W * 0.24], 'bareMetal', {
+      group: 'exhaust', shape: { segments: 10, rTop: 0.82 },
+    }),
+    greebleRun('backRun', W * 0.60, 0.20, 0.16, [0, bodyY - bodyH * 0.10, -W * 0.44], 0x8188, {
+      rot: [0, HALF_PI, 0],
+    }),
   );
 
   masses.push(
-    slab('bodyBand', [0.08, bodyH * 0.62, W * 0.76], [W * 0.46, bodyY, 0], { mirrorX: true }),
-    slab('shoulderCap', [W * 0.46, 0.08, W * 0.42], [0, bodyY + bodyH * 0.5, -W * 0.06]),
-    slab('cockpitBrow', [W * 0.42, 0.20, 0.08], [0, bodyY + bodyH * 0.42, W * 0.42]),
-    slab('hipBand', [0.50, 0.26, 0.62], [W * 0.30, legTop * 0.92, 0.48], { mirrorX: true }),
+    slab('bodyBand', [0.08, bodyH * 0.62, W * 0.76], [W * 0.44, bodyY, 0], { mirrorX: true , k: TEAM_K.walker }),
+    slab('shoulderCap', [W * 0.46, 0.08, W * 0.42], [0, bodyY + bodyH * 0.5, -W * 0.06], { k: TEAM_K.walker }),
+    slab('cockpitBrow', [W * 0.42, 0.20, 0.08], [0, bodyY + bodyH * 0.42, W * 0.42], { k: TEAM_K.walker }),
+    slab('hipBand', [0.50, 0.26, 0.62], [W * 0.30, legTop * 0.92, 0.48], { mirrorX: true , k: TEAM_K.walker }),
   );
   masses.push(insignia([0.42, 0.06, 0.42], [W * 0.16, bodyY + bodyH * 0.5 + 0.02, -W * 0.18]));
   masses.push(
@@ -603,16 +1157,35 @@ function sickle(): UnitMassList {
 }
 
 /* ==========================================================================
- * 6. NAVAL
+ * 8. NAVAL
  *
- * Hulls are long, so the superstructure has to do the top-heavy work: the
- * bridge block is the dominant mass and sits at 0.65 H.
+ * The validator exempts `naval` from the top-heavy band precisely because a
+ * ship's dominant mass IS its hull, at the waterline.
+ *
+ * The hull is a `planPrism` on a real waterplane: a raked stem, a parallel
+ * midbody, a transom stern — plus TUMBLEHOME, the inward slope of the topsides.
+ * That last field is what takes a warship hull from 71% flat wall to zero.
  * ========================================================================== */
+
+/** A ship's waterplane, in metres, in the same winding as `rectOutline`. */
+function hullPlan(W: number, L: number, bowFine: number, transom: number): V2[] {
+  return [
+    [W * 0.50, -L * 0.30],
+    [W * 0.48, L * 0.06],
+    [W * bowFine, L * 0.34],
+    [0, L * 0.50],
+    [-W * bowFine, L * 0.34],
+    [-W * 0.48, L * 0.06],
+    [-W * 0.50, -L * 0.30],
+    [-W * transom, -L * 0.50],
+    [W * transom, -L * 0.50],
+  ];
+}
 
 interface ShipOpts {
   key: string; name: string; faction: UnitMassList['faction']; hullNumber: number;
   length: number; beam: number; height: number; brutalist: boolean;
-  armament: 'turret' | 'battery';
+  armament: 'turret' | 'battery' | 'escort';
 }
 
 function ship(o: ShipOpts): UnitMassList {
@@ -621,65 +1194,106 @@ function ship(o: ShipOpts): UnitMassList {
   const hullY = hullH * 0.5;
   const superH = H * 0.42;
   const superY = H * 0.655;
+  const deckTop = hullH + H * 0.10;
+  const fine = o.brutalist ? 0.34 : 0.28;
+  const transom = o.brutalist ? 0.44 : 0.36;
 
   const masses: MassDef[] = [
-    primary('hull', 'prism', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
-      plan: 'wedge', capSlot: 'paintLarge',
+    primary('hull', 'planPrism', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
+      capSlot: 'paintLarge',
+      shape: {
+        plan: hullPlan(W, L, fine, transom),
+        // Tumblehome: the topsides slope INWARD, and the forefoot draws in below
+        // the waterline. Every wall on the hull is now a canted plane.
+        topScaleX: 0.86, topScaleZ: 1.0,
+        bottomScaleX: 0.72, bottomScaleZ: 0.94,
+      },
     }),
-    primary('deck', 'box', [W * 0.94, H * 0.10, L * 0.90], [0, hullH + H * 0.05, -L * 0.02], 'paintMed', {
-      faceSlots: { py: 'paintLarge' },
+    // The weather deck: a plate on the hull's own plan, cambered 3 degrees.
+    plateMass('deck', MassRole.Primary, hullPlan(W * 0.92, L * 0.90, fine, transom), H * 0.10,
+      [0, hullH + H * 0.05, -L * 0.02], undefined, 'paintMed', { capSlot: 'paintLarge' }),
+    primary('superstructure', 'taperedBox', [W * 0.72, superH, L * 0.34], [0, superY, -L * 0.10], 'paintLarge', {
+      shape: o.brutalist
+        ? { topScaleX: 0.78, topScaleZ: 0.84, shear: -L * 0.015, cornerCut: W * 0.09 }
+        : { topScaleX: 0.70, topScaleZ: 0.78, shear: -L * 0.025, cornerCut: W * 0.06 },
     }),
-    primary('superstructure', o.brutalist ? 'prism' : 'box', [W * 0.72, superH, L * 0.34],
-      [0, superY, -L * 0.10], 'paintLarge',
-      o.brutalist ? { plan: 'cutBox', cornerCut: 0.10, capSlot: 'paintLarge' } : { taper: [0.74, 0.80, -L * 0.02] }),
     // Sized so the funnel crown IS the top of the silhouette.
-    primary('funnelMast', 'lathe', [W * 0.26, H * 0.20, W * 0.26], [0, H - H * 0.10, -L * 0.16], 'bareMetal', {
-      profile: 'cyl', segments: 12, topRadius: 0.8,
+    primary('funnelMast', 'revolve', [W * 0.26, H * 0.20, W * 0.26], [0, H - H * 0.10, -L * 0.16], 'bareMetal', {
+      shape: { profile: TAPER_DRUM, segments: 12 },
     }),
   ];
 
   if (o.armament === 'turret') {
     masses.push(
-      greeble('foreTurret', 'lathe', [W * 0.50, H * 0.20, W * 0.54], [0, hullH + H * 0.19, L * 0.28], 'paintMed', {
-        profile: 'cyl', segments: 12,
+      greeble('foreTurret', 'revolve', [W * 0.50, H * 0.20, W * 0.54], [0, hullH + H * 0.19, L * 0.28], 'paintMed', {
+        group: 'fore mount', shape: { profile: ALLIED_TURRET, segments: 12 },
       }),
-      greeble('foreBarrel', 'lathe', [0.26, L * 0.20, 0.26], [0, hullH + H * 0.21, L * 0.42], 'bareMetal', {
-        profile: 'cyl', segments: 12, rot: [Math.PI * 0.5, 0, 0],
+      barrelMass('foreBarrel', 0.26, L * 0.20, [0, hullH + H * 0.21, L * 0.42], {
+        role: MassRole.Greeble, group: 'fore mount',
+      }),
+    );
+  } else if (o.armament === 'escort') {
+    masses.push(
+      greeble('foreTurret', 'revolve', [W * 0.44, H * 0.18, W * 0.48], [0, hullH + H * 0.18, L * 0.28], 'paintMed', {
+        group: 'fore mount', shape: { profile: ALLIED_TURRET, segments: 12 },
+      }),
+      barrelMass('foreBarrel', 0.22, L * 0.22, [0, hullH + H * 0.20, L * 0.42], {
+        role: MassRole.Greeble, group: 'fore mount',
+      }),
+      greeble('ciws', 'revolve', [W * 0.28, H * 0.15, W * 0.28], [0, deckTop + H * 0.08, -L * 0.34], 'bareMetal', {
+        group: 'aft mount', shape: { profile: DOME_PROFILE, segments: 12 },
       }),
     );
   } else {
     masses.push(
-      greeble('missileCell', 'box', [W * 0.56, H * 0.16, L * 0.20], [0, hullH + H * 0.16, L * 0.26], 'grille'),
-      greeble('cellLid', 'box', [W * 0.58, 0.10, L * 0.21], [0, hullH + H * 0.24, L * 0.26], 'stripe'),
+      greeble('missileCell', 'planPrism', [W * 0.56, H * 0.16, L * 0.20], [0, hullH + H * 0.16, L * 0.26], 'grille', {
+        group: 'vls', capSlot: 'grille',
+        shape: {
+          plan: [
+            [W * 0.28, -L * 0.10], [W * 0.24, L * 0.10], [-W * 0.24, L * 0.10], [-W * 0.28, -L * 0.10],
+          ],
+          topScaleX: 0.92, topScaleZ: 0.96,
+        },
+      }),
+      armour('cellLid', taperOutline(W * 0.58, L * 0.21, 0.88), 0.10,
+        [0, hullH + H * 0.24, L * 0.26], undefined, 'stripe', 'vls'),
     );
   }
 
   masses.push(
-    greeble('bridgeGlass', 'box', [W * 0.56, superH * 0.30, 0.12], [0, superY + superH * 0.16, -L * 0.10 + L * 0.17], 'paintTiny', {
-      faceSlots: { pz: 'glass' },
+    armour('bridgeGlass', taperOutline(W * 0.56, superH * 0.30, 0.88), 0.12,
+      [0, superY + superH * 0.16, -L * 0.10 + L * 0.17], [HALF_PI - 0.20, 0, 0], 'glass', 'bridge'),
+    greeble('radarDish', 'revolve', [W * 0.26, 0.16, W * 0.26], [0, H * 0.80, -L * 0.16], 'bareMetal', {
+      rot: [-0.5, 0, 0], group: 'radar', shape: { profile: DRUM_PROFILE, segments: 12 },
     }),
-    greeble('radarDish', 'lathe', [W * 0.26, 0.16, W * 0.26], [0, H * 0.80, -L * 0.16], 'bareMetal', {
-      profile: 'disc', segments: 12, rot: [-0.5, 0, 0],
+    greeble('lifeboat', 'revolve', [0.42, 1.40, 0.42], [W * 0.40, hullH + H * 0.14, -L * 0.24], 'paintSmall', {
+      mirrorX: true, rot: [HALF_PI, 0, 0], group: 'boats', shape: { profile: CAPSULE_PROFILE, segments: 10 },
     }),
-    greeble('lifeboat', 'lathe', [0.42, 1.40, 0.42], [W * 0.40, hullH + H * 0.14, -L * 0.24], 'paintSmall', {
-      mirrorX: true, profile: 'capsule', segments: 10, rot: [Math.PI * 0.5, 0, 0],
+    greebleRun('deckRun', L * 0.70, 0.26, 0.20, [W * 0.34, deckTop + 0.06, -L * 0.02], 0x9A + o.hullNumber, { mirrorX: true }),
+    greeble('aftGun', 'cylinder', [W * 0.30, H * 0.12, L * 0.10], [0, hullH + H * 0.16, -L * 0.38], 'bareMetal', {
+      group: 'aft gun', shape: { segments: 10, rTop: 0.74 },
     }),
-    greeble('railing', 'box', [W * 0.98, 0.16, L * 0.86], [0, hullH + H * 0.14, 0], 'grille'),
-    greeble('aftGun', 'box', [W * 0.30, H * 0.12, L * 0.10], [0, hullH + H * 0.16, -L * 0.36], 'bareMetal'),
-    greeble('bowRam', 'box', [W * 0.30, hullH * 0.60, L * 0.10], [0, hullY, L * 0.50], 'bareMetal', { taper: [0.5, 0.5, 0] }),
+    // The stem: a cone, not a wedge box.
+    greeble('bowRam', 'cone', [W * 0.30, L * 0.10, hullH * 0.60], [0, hullY, L * 0.50], 'bareMetal', {
+      rot: [-HALF_PI, 0, 0], group: 'stem', shape: { segments: 10, rTop: 0.22 },
+    }),
+    // The armour belt: one long plate down each topside, raked with the
+    // tumblehome so it reads as plating rather than as a painted stripe.
+    armour('hull.belt', taperOutline(L * 0.70, hullH * 0.52, 0.78), 0.08,
+      [W * 0.44, hullH * 0.62, -L * 0.02], [0, HALF_PI, HALF_PI - 0.26], 'paintMed', 'hull armour', { mirrorX: true }),
   );
 
   masses.push(
-    slab('hullStripe', [0.08, hullH * 0.28, L * 0.70], [W * 0.48, hullH * 0.74, -L * 0.02], { mirrorX: true }),
-    slab('superBand', [0.08, superH * 0.44, L * 0.26], [W * 0.35, superY, -L * 0.10], { mirrorX: true }),
-    slab('superCap', [W * 0.34, 0.08, L * 0.18], [0, superY + superH * 0.5, -L * 0.10]),
-    slab('deckPatch', [W * 0.52, 0.08, L * 0.16], [0, hullH + H * 0.10, L * 0.10]),
+    slab('hullStripe', [0.08, hullH * 0.28, L * 0.70], [W * 0.45, hullH * 0.74, -L * 0.02], { mirrorX: true , k: TEAM_K.ship }),
+    slab('superBand', [0.08, superH * 0.44, L * 0.26], [W * 0.33, superY, -L * 0.10], { mirrorX: true , k: TEAM_K.ship }),
+    slab('superCap', [W * 0.34, 0.08, L * 0.18], [0, superY + superH * 0.5, -L * 0.10], { k: TEAM_K.ship }),
+    slab('deckPatch', [W * 0.52, 0.08, L * 0.16], [0, deckTop, L * 0.10], { k: TEAM_K.ship }),
   );
-  masses.push(insignia([W * 0.36, 0.06, W * 0.36], [0, hullH + H * 0.10, -L * 0.30]));
+  masses.push(insignia([W * 0.36, 0.06, W * 0.36], [0, deckTop, -L * 0.30]));
   masses.push(
-    glowPanel('navLight', [0.34, 0.30, 0.06], [W * 0.40, hullH + H * 0.20, L * 0.34], { mirrorX: true }),
+    glowPanel('navLight', [0.34, 0.30, 0.06], [W * 0.38, hullH + H * 0.20, L * 0.34], { mirrorX: true }),
     glowPanel('bridgeGlow', [W * 0.62, 0.26, 0.06], [0, superY + superH * 0.30, -L * 0.10 + L * 0.17]),
-    glowPanel('deckRunway', [W * 0.30, 0.05, L * 0.36], [0, hullH + H * 0.11, -L * 0.02]),
+    glowPanel('deckRunway', [W * 0.30, 0.05, L * 0.36], [0, deckTop + 0.01, -L * 0.02]),
   );
 
   return {
@@ -694,13 +1308,244 @@ function ship(o: ShipOpts): UnitMassList {
 }
 
 /* ==========================================================================
- * 7. AIRCRAFT
+ * 9. THE ATTACK SUBMARINE
+ *
+ * Audit item #1 by player visibility: it drew `soviet_dreadnought`, so every
+ * Soviet naval game put three 16.8 m surface battleships on the map and called
+ * them submarines.
+ *
+ * A submarine is the one hull in the game that is genuinely a body of
+ * revolution, and it revolves about Z rather than about Y — so it is an
+ * `extrude`: a 12-sided ring swept along the centreline and scaled per path
+ * point into a teardrop with a blunt bow and a fine stern.
+ * ========================================================================== */
+
+function submarine(): UnitMassList {
+  const L = 12.4, W = 2.9;
+  const hullR = W * 0.5;
+  const hullY = hullR * 0.90;                 // awash: the boat sits low
+  const sailH = 1.05;
+  const sailY = hullY + hullR * 0.54 + sailH * 0.5;
+
+  const masses: MassDef[] = [
+    // The pressure hull is authored as TWO swept sections rather than one.
+    // Partly because a submarine really is a forward torpedo room and an after
+    // machinery space, and partly because one 12.4 m mass would be 75% of the
+    // silhouette on its own — twice R8's ceiling for a dominant feature.
+    primary('foreHull', 'extrude', [W, W, L * 0.54], [0, hullY, L * 0.23], 'paintLarge', {
+      shape: {
+        profile: ring(hullR, 12),
+        path: [
+          [0, 0, -L * 0.27], [0, 0, -L * 0.10], [0, 0, L * 0.08],
+          [0, 0, L * 0.20], [0, 0, L * 0.27],
+        ],
+        scale: [1.0, 1.0, 0.94, 0.66, 0.26],
+        capStart: true, capEnd: true,
+      },
+    }),
+    primary('aftHull', 'extrude', [W * 0.98, W * 0.98, L * 0.50], [0, hullY, -L * 0.25], 'paintLarge', {
+      shape: {
+        profile: ring(hullR, 12),
+        path: [
+          [0, 0, -L * 0.25], [0, 0, -L * 0.14], [0, 0, L * 0.02], [0, 0, L * 0.25],
+        ],
+        scale: [0.16, 0.62, 0.94, 1.0],
+        capStart: true, capEnd: true,
+      },
+    }),
+    // The sail. Sheared hard aft and tapered in both axes: a fin, not a box.
+    primary('sail', 'taperedBox', [W * 0.44, sailH, L * 0.22], [0, sailY, L * 0.06], 'paintMed', {
+      shape: { topScaleX: 0.56, topScaleZ: 0.72, shear: -L * 0.035, cornerCut: W * 0.06 },
+    }),
+    // The casing: the walkable deck plate that runs the length of the boat.
+    plateMass('casing', MassRole.Primary, taperOutline(W * 0.64, L * 0.78, 0.34, 0.52), 0.16,
+      [0, hullY + hullR * 0.82, -L * 0.02], undefined, 'paintMed', { capSlot: 'grille' }),
+    // Cruciform stern planes, as one plate pair.
+    plateMass('sternPlane', MassRole.Primary, taperOutline(W * 1.34, L * 0.14, 0.52), 0.14,
+      [0, hullY, -L * 0.42], undefined, 'bareMetal'),
+  ];
+
+  masses.push(
+    armour('sailPlane', taperOutline(W * 0.98, L * 0.09, 0.62), 0.12,
+      [0, sailY + sailH * 0.06, L * 0.06], undefined, 'bareMetal', 'planes'),
+    armour('rudder', taperOutline(W * 0.86, L * 0.13, 0.54), 0.14,
+      [0, hullY + hullR * 0.34, -L * 0.44], [0, 0, HALF_PI], 'bareMetal', 'planes'),
+    greeble('periscope', 'cylinder', [0.13, sailH * 0.62, 0.13], [-W * 0.09, sailY + sailH * 0.62, -L * 0.01], 'bareMetal', {
+      group: 'masts', shape: { segments: 8 },
+    }),
+    greeble('snorkel', 'cylinder', [0.16, sailH * 0.44, 0.16], [W * 0.10, sailY + sailH * 0.52, -L * 0.03], 'bareMetal', {
+      group: 'masts', shape: { segments: 8, rTop: 0.72 },
+    }),
+    greeble('sonarDome', 'revolve', [W * 0.52, W * 0.42, W * 0.52], [0, hullY, L * 0.44], 'paintSmall', {
+      rot: [-HALF_PI, 0, 0], group: 'sonar', shape: { profile: DOME_PROFILE, segments: 12 },
+    }),
+    greeble('propShroud', 'cylinder', [W * 0.46, W * 0.32, W * 0.46], [0, hullY, -L * 0.49], 'bareMetal', {
+      rot: [HALF_PI, 0, 0], group: 'screw', shape: { segments: 12, rTop: 0.86 },
+    }),
+    greebleRun('torpedoHatches', L * 0.30, 0.26, 0.16, [W * 0.26, hullY + hullR * 0.44, L * 0.18], 0x51B0, { mirrorX: true }),
+    greebleRun('cleatRun', L * 0.40, 0.20, 0.14, [0, hullY + hullR * 0.90, -L * 0.24], 0x51B7),
+  );
+
+  masses.push(
+    slab('sailBand', [0.06, sailH * 0.44, L * 0.14], [W * 0.19, sailY, L * 0.06], { mirrorX: true , k: TEAM_K.submarine }),
+    slab('sailCap', [W * 0.22, 0.06, L * 0.12], [0, sailY + sailH * 0.5, L * 0.05], { k: TEAM_K.submarine }),
+    slab('casingStripe', [W * 0.24, 0.06, L * 0.44], [0, hullY + hullR * 0.90, -L * 0.06], { k: TEAM_K.submarine }),
+    slab('bowBand', [0.06, W * 0.44, L * 0.10], [W * 0.32, hullY + hullR * 0.30, L * 0.30], { mirrorX: true , k: TEAM_K.submarine }),
+  );
+  masses.push(insignia([W * 0.34, 0.05, W * 0.34], [0, sailY + sailH * 0.5 + 0.02, L * 0.02]));
+  masses.push(
+    glowPanel('sailLamp', [W * 0.38, 0.30, 0.05], [0, sailY + sailH * 0.18, L * 0.06 + L * 0.09]),
+    glowPanel('sternGlow', [W * 0.46, 0.05, W * 0.34], [0, hullY + hullR * 0.66, -L * 0.40]),
+    // A running-light strake down the casing. Under way on the surface a boat is
+    // lit along its deck line, and it is what stops a low black hull vanishing.
+    glowPanel('runningStrake', [0.05, 0.16, L * 0.40], [W * 0.26, hullY + hullR * 0.62, -L * 0.04], { mirrorX: true }),
+  );
+
+  return {
+    key: 'soviet_sub',
+    name: 'Attack Submarine',
+    faction: 'soviets',
+    cls: 'naval',
+    hullLength: L,
+    masses,
+    hullNumber: 8188,
+    sockets: [
+      { part: PartId.MuzzleA, pos: [W * 0.22, hullY, L * 0.50] },
+      { part: PartId.MuzzleB, pos: [-W * 0.22, hullY, L * 0.50] },
+      { part: PartId.Dish, pos: [-W * 0.09, sailY + sailH * 0.95, -L * 0.01] },
+      { part: PartId.Exhaust, pos: [0, hullY, -L * 0.52] },
+    ],
+  };
+}
+
+/* ==========================================================================
+ * 10. THE HOVER TRANSPORT
+ *
+ * Audit item #5: it drew a harvester, scoop and all. A hovercraft is a flat load
+ * deck on a fat inflated skirt with ducted fans aft, and the SKIRT is the read —
+ * a rounded-rectangle prism that bulges past the deck on every side.
+ * ========================================================================== */
+
+/** A rounded-rectangle plan: the skirt's inflated footprint. */
+function roundedPlan(W: number, L: number, c: number): V2[] {
+  const out: V2[] = [];
+  const rx = W * 0.5, rz = L * 0.5;
+  const ix = rx * (1 - c), iz = rz * (1 - c);
+  const corner = (cx: number, cz: number, a0: number): void => {
+    for (let i = 0; i <= 3; i++) {
+      const a = a0 + (i / 3) * HALF_PI;
+      out.push([cx + Math.cos(a) * rx * c, cz + Math.sin(a) * rz * c]);
+    }
+  };
+  corner(ix, -iz, -HALF_PI);
+  corner(ix, iz, 0);
+  corner(-ix, iz, HALF_PI);
+  corner(-ix, -iz, Math.PI);
+  return out;
+}
+
+function hoverTransport(faction: 'allies' | 'soviets', hullNumber: number): UnitMassList {
+  const L = 9.6, W = 5.0, H = 3.4;
+  const skirtH = H * 0.30;
+  const skirtY = skirtH * 0.5;
+  const deckY = skirtH + H * 0.04;
+  const bodyH = H * 0.34;
+  const bodyY = H * 0.655;
+  const soviet = faction === 'soviets';
+
+  const masses: MassDef[] = [
+    // The skirt. Bulging: widest at mid-height, drawn in at top and bottom.
+    // Painted rubber over a tread strake, not bare tread: an all-`tread` skirt
+    // of this size measured the whole unit at 49.5% bare metal against bible
+    // 5.4's 5-34%, because the skirt IS most of the hull.
+    primary('skirt', 'planPrism', [W, skirtH, L], [0, skirtY, 0], 'paintMed', {
+      capSlot: 'paintSmall',
+      shape: {
+        plan: roundedPlan(W, L, 0.34),
+        topScaleX: 0.86, topScaleZ: 0.92, bottomScaleX: 0.80, bottomScaleZ: 0.88,
+      },
+    }),
+    // The load deck: a plate, with the bow drawn in over the skirt.
+    plateMass('deck', MassRole.Primary, taperOutline(W * 0.90, L * 0.86, 0.86), 0.24,
+      [0, deckY, 0], undefined, 'paintLarge', { capSlot: 'paintMed' }),
+    // The forward cabin: the dominant mass, up at 0.655 H where it belongs.
+    primary('cabin', 'taperedBox', [W * 0.62, bodyH, L * 0.34], [0, bodyY, L * 0.16], 'paintLarge', {
+      shape: { topScaleX: 0.72, topScaleZ: 0.78, shear: -L * 0.03, cornerCut: W * 0.06 },
+    }),
+    // Twin ducted lift fans aft. Faceted cylinders, 12 segments.
+    primary('fanDuct', 'cylinder', [W * 0.34, bodyH * 0.94, W * 0.34], [W * 0.26, bodyY - bodyH * 0.04, -L * 0.30], 'bareMetal', {
+      mirrorX: true, shape: { segments: 12, rTop: 0.88 },
+    }),
+  ];
+
+  masses.push(
+    armour('fanBlade', taperOutline(W * 0.28, W * 0.07, 0.42), 0.10,
+      [W * 0.26, bodyY + bodyH * 0.40, -L * 0.30], [0, 0.60, 0.16], 'bareMetal', 'fans', { mirrorX: true }),
+    armour('bowRamp', taperOutline(W * 0.56, L * 0.20, 0.84), 0.16,
+      [0, deckY + 0.10, L * 0.46], [-0.34, 0, 0], 'stripe', 'ramp'),
+    armour('cabinGlass', taperOutline(W * 0.50, bodyH * 0.40, 0.86), 0.12,
+      [0, bodyY + bodyH * 0.14, L * 0.16 + L * 0.15], [HALF_PI - 0.24, 0, 0], 'glass', 'glass'),
+    greeble('bollard', 'cylinder', [0.20, 0.34, 0.20], [W * 0.38, deckY + 0.18, L * 0.24], 'bareMetal', {
+      mirrorX: true, group: 'deck fittings', shape: { segments: 8 },
+    }),
+    armour('rudderFin', taperOutline(bodyH * 0.86, L * 0.16, 0.58), 0.14,
+      [W * 0.44, bodyY, -L * 0.44], [0, 0, HALF_PI], 'paintMed', 'fins', { mirrorX: true }),
+    // The tread band the skirt used to be made of, kept as one readable strake.
+    armour('skirtStrake', taperOutline(L * 0.72, skirtH * 0.34, 0.86), 0.10,
+      [W * 0.47, skirtY + skirtH * 0.06, 0], [0, HALF_PI, HALF_PI - 0.10], 'tread', 'strakes', { mirrorX: true }),
+    greeble('liftIntake', 'revolve', [W * 0.22, 0.30, W * 0.22], [0, deckY + 0.20, -L * 0.06], 'grille', {
+      group: 'intakes', shape: { profile: DRUM_PROFILE, segments: 12 },
+    }),
+    greebleRun('deckRun', L * 0.50, 0.26, 0.20, [W * 0.34, deckY + 0.16, -L * 0.10], 0x40 + hullNumber, { mirrorX: true }),
+    greeble('mast', 'cylinder', [0.10, H * 0.20, 0.10], [-W * 0.22, H - H * 0.10, L * 0.06], 'bareMetal', {
+      group: 'mast', shape: { segments: 8 },
+    }),
+  );
+
+  masses.push(
+    slab('skirtBand', [0.08, skirtH * 0.40, L * 0.56], [W * 0.46, skirtY + skirtH * 0.12, 0], { mirrorX: true , k: TEAM_K.transport }),
+    slab('deckChevron', [W * 0.44, 0.07, L * 0.16], [0, deckY + 0.13, -L * 0.02], { k: TEAM_K.transport }),
+    slab('cabinBand', [0.07, bodyH * 0.42, L * 0.26], [W * 0.30, bodyY, L * 0.16], { mirrorX: true , k: TEAM_K.transport }),
+    slab('cabinCap', [W * 0.34, 0.07, L * 0.18], [0, bodyY + bodyH * 0.5, L * 0.16], { k: TEAM_K.transport }),
+  );
+  masses.push(insignia([W * 0.26, 0.05, W * 0.26], [0, deckY + 0.14, -L * 0.26]));
+  masses.push(
+    glowPanel('bowLamp', [W * 0.44, 0.26, 0.05], [0, bodyY - bodyH * 0.24, L * 0.16 + L * 0.16]),
+    glowPanel('skirtGlow', [W * 0.62, 0.24, 0.05], [0, skirtH * 0.20, -L * 0.48]),
+    // A hovercraft's lift fans are lit from underneath; this strip is what makes
+    // it read as hovering rather than as a boat sitting in a hole.
+    glowPanel('liftGlow', [W * 0.30, 0.06, L * 0.20], [0, 0.06, 0]),
+  );
+
+  return {
+    key: soviet ? 'soviet_transport' : 'allied_transport',
+    name: 'Hover Transport',
+    faction,
+    cls: 'naval',
+    hullLength: L,
+    masses,
+    hullNumber,
+    sockets: [
+      { part: PartId.DockEntry, pos: [0, deckY, L * 0.50] },
+      { part: PartId.Door, pos: [0, deckY, L * 0.46] },
+      { part: PartId.Exhaust, pos: [W * 0.26, bodyY + bodyH * 0.5, -L * 0.30] },
+    ],
+  };
+}
+
+/* ==========================================================================
+ * 11. AIRCRAFT
+ *
+ * The fuselage is a `hull` — a convex point cloud with every edge bevelled —
+ * which is the primitive that exists precisely for blended bodies. The wings are
+ * `plate`s with a trapezoidal outline, swept and given real dihedral, rather
+ * than rotated boxes. Nothing on this model has a flat side.
  * ========================================================================== */
 
 interface PlaneOpts {
   key: string; name: string; faction: UnitMassList['faction']; hullNumber: number;
   length: number; span: number; height: number;
-  /** Soviet MiG carries its engines in nacelles; the Vindicator is a blended body. */
+  /** The Soviet MiG carries its engines in nacelles; the Vindicator is blended. */
   nacelles: boolean;
 }
 
@@ -711,63 +1556,92 @@ function plane(o: PlaneOpts): UnitMassList {
   const wingY = fuseY - fuseH * 0.18;
 
   const masses: MassDef[] = [
-    // Split forward/aft rather than one long tube: a single mass would be 73%
-    // of the side silhouette, which is exactly the "3 plain boxes" half of R8.
-    primary('forwardFuselage', 'box', [S * 0.20, fuseH, L * 0.56], [0, fuseY, L * 0.16], 'paintLarge', {
-      taper: [0.70, 0.62, -L * 0.05],
+    primary('forwardFuselage', 'hull', [S * 0.20, fuseH, L * 0.56], [0, fuseY, L * 0.16], 'paintLarge', {
+      shape: {
+        // A blended forebody: chined flanks, a flat-ish belly, a raised spine.
+        points: [
+          [0, 0.10, 1.00], [0.34, 0.02, 0.52], [-0.34, 0.02, 0.52],
+          [0.50, -0.10, -0.30], [-0.50, -0.10, -0.30],
+          [0.44, 0.34, -0.34], [-0.44, 0.34, -0.34],
+          [0.34, -0.44, -0.10], [-0.34, -0.44, -0.10],
+          [0.40, 0.20, -1.00], [-0.40, 0.20, -1.00],
+          [0.40, -0.34, -1.00], [-0.40, -0.34, -1.00],
+        ],
+        chamfer: 0.05,
+      },
     }),
-    primary('aftBoom', 'box', [S * 0.16, fuseH * 0.78, L * 0.48], [0, fuseY - fuseH * 0.04, -L * 0.26], 'paintMed', {
-      taper: [0.66, 0.60, -L * 0.05],
+    primary('aftBoom', 'taperedBox', [S * 0.16, fuseH * 0.78, L * 0.48], [0, fuseY - fuseH * 0.04, -L * 0.26], 'paintMed', {
+      shape: { topScaleX: 0.66, topScaleZ: 0.60, shear: -L * 0.05, cornerCut: S * 0.02 },
     }),
-    primary('wing', 'box', [S * 0.42, H * 0.10, L * 0.32], [S * 0.26, wingY, -L * 0.06], 'paintLarge', {
-      mirrorX: true, rot: [0, -0.28, 0.10], taper: [0.7, 0.62, 0],
+    plateMass('wing', MassRole.Primary, [
+      [S * 0.21, -L * 0.16], [S * 0.21, L * 0.02],
+      [-S * 0.21, L * 0.16], [-S * 0.21, -L * 0.06],
+    ], H * 0.10, [S * 0.26, wingY, -L * 0.06], [0, -0.28, 0.10], 'paintLarge', {
+      capSlot: 'paintLarge', mirrorX: true,
     }),
-    primary('tailFin', 'box', [0.14, H * 0.30, L * 0.20], [0, H - H * 0.15, -L * 0.40], 'paintMed', {
-      taper: [0.7, 0.55, -L * 0.04],
-    }),
-    greeble('nose', 'lathe', [S * 0.18, L * 0.22, fuseH * 0.92], [0, fuseY, L * 0.56], 'paintMed', {
-      profile: 'cone', segments: 12, topRadius: 0.22, rot: [-Math.PI * 0.5, 0, 0],
+    primary('tailFin', 'taperedBox', [0.14, H * 0.30, L * 0.20], [0, H - H * 0.15, -L * 0.40], 'paintMed', {
+      shape: { topScaleX: 0.70, topScaleZ: 0.55, shear: -L * 0.04 },
     }),
   ];
 
   masses.push(
-    greeble('canopy', 'lathe', [S * 0.15, fuseH * 0.42, L * 0.24], [0, fuseY + fuseH * 0.42, L * 0.20], 'glass', {
-      profile: 'dome', segments: 12,
+    greeble('nose', 'cone', [S * 0.18, L * 0.22, fuseH * 0.92], [0, fuseY, L * 0.56], 'paintMed', {
+      rot: [-HALF_PI, 0, 0], group: 'nose', shape: { segments: 12, rTop: 0.22 },
     }),
-    greeble('tailPlane', 'box', [S * 0.18, 0.10, L * 0.14], [S * 0.11, fuseY + fuseH * 0.10, -L * 0.44], 'paintSmall', {
-      mirrorX: true, rot: [0, -0.16, 0.06],
+    greeble('canopy', 'revolve', [S * 0.15, fuseH * 0.42, L * 0.24], [0, fuseY + fuseH * 0.42, L * 0.20], 'glass', {
+      group: 'canopy', shape: { profile: DOME_PROFILE, segments: 12 },
     }),
-    greeble('intake', 'box', [S * 0.10, fuseH * 0.42, L * 0.16], [S * 0.13, fuseY - fuseH * 0.10, L * 0.06], 'grille', { mirrorX: true }),
-    greeble('gearPod', 'box', [S * 0.08, H * 0.12, L * 0.12], [S * 0.12, fuseY - fuseH * 0.5, -L * 0.02], 'paintTiny', { mirrorX: true }),
-    greeble('pylon', 'box', [0.14, H * 0.10, L * 0.10], [S * 0.24, wingY - H * 0.07, -L * 0.04], 'bareMetal', { mirrorX: true }),
-    greeble('ordnance', 'lathe', [0.26, L * 0.26, 0.26], [S * 0.24, wingY - H * 0.13, -L * 0.02], 'bareMetal', {
-      mirrorX: true, profile: 'capsule', segments: 10, rot: [Math.PI * 0.5, 0, 0],
+    armour('tailPlane', taperOutline(S * 0.18, L * 0.14, 0.52), 0.10,
+      [S * 0.11, fuseY + fuseH * 0.10, -L * 0.44], [0, -0.16, 0.06], 'paintSmall', 'tail planes', { mirrorX: true }),
+    greeble('intake', 'taperedBox', [S * 0.10, fuseH * 0.42, L * 0.16], [S * 0.13, fuseY - fuseH * 0.10, L * 0.06], 'grille', {
+      mirrorX: true, group: 'intakes', shape: { topScaleX: 0.8, topScaleZ: 0.86, shear: -0.12 },
     }),
+    greeble('gearPod', 'hull', [S * 0.08, H * 0.12, L * 0.12], [S * 0.12, fuseY - fuseH * 0.5, -L * 0.02], 'paintTiny', {
+      mirrorX: true, group: 'gear',
+      shape: {
+        points: [
+          [0.4, 0.5, 0.6], [-0.4, 0.5, 0.6], [0.4, 0.5, -0.6], [-0.4, 0.5, -0.6],
+          [0.28, -0.5, 0.34], [-0.28, -0.5, 0.34], [0.28, -0.5, -0.34], [-0.28, -0.5, -0.34],
+        ],
+        chamfer: 0.04,
+      },
+    }),
+    greeble('pylon', 'chamferBox', [0.14, H * 0.10, L * 0.10], [S * 0.24, wingY - H * 0.07, -L * 0.04], 'bareMetal', {
+      mirrorX: true, group: 'stores',
+    }),
+    greeble('ordnance', 'revolve', [0.26, L * 0.26, 0.26], [S * 0.24, wingY - H * 0.13, -L * 0.02], 'bareMetal', {
+      mirrorX: true, rot: [HALF_PI, 0, 0], group: 'stores', shape: { profile: CAPSULE_PROFILE, segments: 10 },
+    }),
+    // The chine strake: one plate down each flank at the fuselage waterline.
+    armour('fuse.chine', taperOutline(L * 0.44, 0.34, 0.42), 0.05,
+      [S * 0.09, fuseY - fuseH * 0.06, L * 0.16], [0, HALF_PI, HALF_PI + 0.10],
+      'paintMed', 'fuselage plating', { mirrorX: true }),
   );
 
   if (o.nacelles) {
     masses.push(
-      greeble('nacelle', 'lathe', [S * 0.13, L * 0.34, S * 0.13], [S * 0.17, fuseY - fuseH * 0.16, -L * 0.26], 'bareMetal', {
-        mirrorX: true, profile: 'cyl', segments: 12, rot: [Math.PI * 0.5, 0, 0],
+      greeble('nacelle', 'cylinder', [S * 0.13, L * 0.34, S * 0.13], [S * 0.17, fuseY - fuseH * 0.16, -L * 0.26], 'bareMetal', {
+        mirrorX: true, rot: [HALF_PI, 0, 0], group: 'engines', shape: { segments: 12, rTop: 0.88 },
       }),
     );
   } else {
     masses.push(
-      greeble('exhaustRing', 'lathe', [S * 0.14, 0.24, S * 0.14], [0, fuseY, -L * 0.52], 'bareMetal', {
-        profile: 'cyl', segments: 12, rot: [Math.PI * 0.5, 0, 0],
+      greeble('exhaustRing', 'cylinder', [S * 0.14, 0.24, S * 0.14], [0, fuseY, -L * 0.52], 'bareMetal', {
+        rot: [HALF_PI, 0, 0], group: 'engines', shape: { segments: 12 },
       }),
     );
   }
 
   masses.push(
-    slab('wingBand', [S * 0.22, 0.07, L * 0.11], [S * 0.28, wingY + H * 0.05, -L * 0.06], { mirrorX: true }),
-    slab('finFlash', [0.07, H * 0.18, L * 0.10], [0.06, H - H * 0.16, -L * 0.40], { mirrorX: true }),
-    slab('spine', [S * 0.08, 0.07, L * 0.24], [0, fuseY + fuseH * 0.5, -L * 0.06]),
+    slab('wingBand', [S * 0.22, 0.07, L * 0.11], [S * 0.28, wingY + H * 0.05, -L * 0.06], { mirrorX: true , k: TEAM_K.plane }),
+    slab('finFlash', [0.07, H * 0.18, L * 0.10], [0.06, H - H * 0.16, -L * 0.40], { mirrorX: true , k: TEAM_K.plane }),
+    slab('spine', [S * 0.08, 0.07, L * 0.24], [0, fuseY + fuseH * 0.5, -L * 0.06], { k: TEAM_K.plane }),
   );
-  masses.push(insignia([S * 0.13, 0.06, S * 0.13], [S * 0.28, wingY + H * 0.06, -L * 0.06]));
+  masses.push(insignia([S * 0.13, 0.05, S * 0.13], [S * 0.28, wingY + H * 0.06, -L * 0.06]));
   masses.push(
-    glowPanel('afterburner', [S * 0.13, 0.18, 0.06], [0, fuseY, -L * 0.56]),
-    glowPanel('wingTipLight', [0.10, 0.22, L * 0.20], [S * 0.44, wingY + H * 0.02, -L * 0.06], { mirrorX: true }),
+    glowPanel('afterburner', [S * 0.19, 0.26, 0.06], [0, fuseY, -L * 0.56]),
+    glowPanel('wingTipLight', [0.10, 0.14, L * 0.26], [S * 0.44, wingY + H * 0.02, -L * 0.06], { mirrorX: true }),
+    glowPanel('formationStrip', [S * 0.05, 0.05, L * 0.30], [S * 0.14, fuseY + fuseH * 0.44, L * 0.02], { mirrorX: true }),
   );
 
   return {
@@ -782,13 +1656,13 @@ function plane(o: PlaneOpts): UnitMassList {
 }
 
 /* ==========================================================================
- * 8. THE ROSTER
+ * 12. THE ROSTER
  * ========================================================================== */
 
 export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   /* -- Allies ----------------------------------------------------------- */
-  infantry({ key: 'allied_rifle', name: 'Peacekeeper', faction: 'allies', hullNumber: 4172, weapon: 'rifle', pack: 'radio' }),
-  infantry({ key: 'allied_engineer', name: 'Engineer', faction: 'allies', hullNumber: 4172, weapon: 'tool', pack: 'case' }),
+  infantry({ key: 'allied_rifle', name: 'Peacekeeper', faction: 'allies', hullNumber: 4172, weapon: 'rifle', pack: 'radio', build: 'plated' }),
+  infantry({ key: 'allied_engineer', name: 'Engineer', faction: 'allies', hullNumber: 4172, weapon: 'tool', pack: 'case', build: 'plated' }),
 
   tank({
     key: 'allied_guardian', name: 'Guardian Tank', faction: 'allies', hullNumber: 4172,
@@ -811,21 +1685,31 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
     hullLength: 9.0, hullWidth: 4.4, height: 3.80, brutalist: false, role: 'dozer',
   }),
   ship({
-    key: 'allied_destroyer', name: 'Assault Destroyer', faction: 'allies', hullNumber: 4172,
+    key: 'allied_destroyer', name: 'Aircraft Cruiser', faction: 'allies', hullNumber: 4172,
     length: 14.0, beam: 4.2, height: 4.4, brutalist: false, armament: 'turret',
   }),
+  ship({
+    key: 'allied_gunboat', name: 'Assault Destroyer', faction: 'allies', hullNumber: 4172,
+    length: 9.6, beam: 3.1, height: 3.4, brutalist: false, armament: 'escort',
+  }),
+  hoverTransport('allies', 4172),
   plane({
     key: 'allied_vindicator', name: 'Vindicator', faction: 'allies', hullNumber: 4172,
     length: 11.0, span: 12.0, height: 3.0, nacelles: false,
   }),
 
   /* -- Soviets ---------------------------------------------------------- */
-  infantry({ key: 'soviet_conscript', name: 'Conscript', faction: 'soviets', hullNumber: 8188, weapon: 'rifle', pack: 'radio' }),
-  infantry({ key: 'soviet_flak', name: 'Flak Trooper', faction: 'soviets', hullNumber: 8188, weapon: 'launcher', pack: 'drum' }),
+  infantry({ key: 'soviet_conscript', name: 'Conscript', faction: 'soviets', hullNumber: 8188, weapon: 'rifle', pack: 'radio', build: 'greatcoat' }),
+  infantry({ key: 'soviet_flak', name: 'Flak Trooper', faction: 'soviets', hullNumber: 8188, weapon: 'launcher', pack: 'drum', build: 'greatcoat' }),
+  attackDog(),
 
   tank({
     key: 'soviet_rhino', name: 'Rhino Heavy Tank', faction: 'soviets', hullNumber: 8188,
     hullLength: 7.0, hullWidth: 3.4, height: 2.60, brutalist: true, gun: 'cannon', wheels: 6,
+  }),
+  tank({
+    key: 'soviet_apocalypse', name: 'Apocalypse Tank', faction: 'soviets', hullNumber: 8188,
+    hullLength: 8.6, hullWidth: 4.1, height: 3.20, brutalist: true, gun: 'twinCannon', wheels: 7, heavy: true,
   }),
   sickle(),
   tank({
@@ -844,6 +1728,8 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
     key: 'soviet_dreadnought', name: 'Dreadnought', faction: 'soviets', hullNumber: 8188,
     length: 16.0, beam: 4.8, height: 4.8, brutalist: true, armament: 'battery',
   }),
+  submarine(),
+  hoverTransport('soviets', 8188),
   plane({
     key: 'soviet_mig', name: 'MiG Fighter', faction: 'soviets', hullNumber: 8188,
     length: 10.0, span: 10.5, height: 2.9, nacelles: true,

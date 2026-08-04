@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/world/Biomes.ts
+ * VOLTMARCH — src/world/Biomes.ts
  * ============================================================================
  * BIOME PRESETS: the palette and the landform recipe for one map style.
  *

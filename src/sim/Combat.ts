@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/Combat.ts
+ * VOLTMARCH — src/sim/Combat.ts
  * ============================================================================
  * WEAPONS: the firing cycle, turret traverse, burst patterns, recoil, and the
  * hand-off to VFX and audio on every shot.

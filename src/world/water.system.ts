@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/world/water.system.ts
+ * VOLTMARCH — src/world/water.system.ts
  * ============================================================================
  * The registration shim for the water body. All of the work is in Water.ts and
  * WaterMaterial.ts; this file builds one from the terrain, keeps its clock and
@@ -185,7 +185,7 @@ export default defineSystem({
     debug.counters.waterTris = s.triangles;
 
     // Console handle, matching the pattern the other modules use.
-    (globalThis as Record<string, unknown>).__raWater = water;
+    (globalThis as Record<string, unknown>).__vmWater = water;
   },
 
   frame(r: RenderContext): void {
@@ -227,7 +227,7 @@ export default defineSystem({
     if (water === null) return;
     water.dispose();
     if (getWater() === water) setActiveWater(null);
-    delete (globalThis as Record<string, unknown>).__raWater;
+    delete (globalThis as Record<string, unknown>).__vmWater;
     water = null;
   },
 });

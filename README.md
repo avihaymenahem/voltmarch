@@ -1,8 +1,17 @@
-# RED ALERT
+<p align="center">
+  <img src="public/brand/logo-360.png" alt="VOLTMARCH" width="360" />
+</p>
 
-A real-time strategy game in the browser — Command & Conquer: Red Alert 2 reinterpreted with
-modern rendering. Two factions (Allies / Soviets), ore economy, base building, tank battles,
-fog of war, and the iconic right-hand sidebar HUD.
+# VOLTMARCH
+
+An original real-time strategy game that runs in the browser. Two factions (Allies / Soviets),
+an ore economy, base building, massed tank battles, fog of war, and a right-hand sidebar HUD.
+
+VOLTMARCH is not a port or a clone of any existing game. It is a new title in the tradition of
+1990s and 2000s base-building RTS — the genre conventions it adopts (sidebar production, harvester
+economy, tech tiers) are the shared vocabulary of that genre. Its art direction takes its cue from
+the era's high-contrast, saturated, readable look; `docs/` cites specific reference frames so the
+renderer has a measurable target to be scored against.
 
 **All art is generated from code.** No downloaded models, no downloaded textures, no webfonts.
 Every unit, building, material and texture is built from Three.js geometry, custom shaders and
@@ -60,7 +69,7 @@ index.html               page shell, mount points, loading curtain
 src/main.ts              entry point: boot flags -> Bootstrap, resize, error surface
 src/core/                sim spine: types, config, EntityStore/World, buses, loop, math, assets
 src/core/config.ts       ArtDirection + world scale — THE values file a critic edits
-src/render/              renderer, scene, camera, post chain, __RA debug handle
+src/render/              renderer, scene, camera, post chain, __VM debug handle
 src/game/Bootstrap.ts    the only file that wires sim + render together
 src/game/ArtBridge.ts    core/config.ts (hex strings, degrees) -> RENDER_CONFIG (ints, three enums)
 src/game/PlaceholderScene.ts  gray-box scaffolding; deleted when terrain + models land
@@ -68,7 +77,7 @@ tests/                   foundation seam tests + the src/sim determinism grep ga
 tools/shoot.mjs          screenshot harness for the visual critique loop
 tools/metrics.mjs        numeric scorecard over the captured PNGs
 docs/                    look bible + visual DNA
-refs/                    real Red Alert reference imagery
+refs/                    reference screenshots of shipped RTS games, for visual scoring only
 ```
 
 Planned (parallel phase — these directories do not exist yet):

@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/render/InstanceBatcher.ts
+ * VOLTMARCH — src/render/InstanceBatcher.ts
  * ============================================================================
  * ONE INSTANCED DRAW PER MODEL PART. THE DRAW-CALL BUDGET LIVES OR DIES HERE.
  *

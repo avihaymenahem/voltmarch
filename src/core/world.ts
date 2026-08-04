@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/core/world.ts
+ * VOLTMARCH — src/core/world.ts
  * ============================================================================
  * THE ENTITY STORE, THE SPATIAL INDEX, AND THE WORLD BUNDLE.
  *

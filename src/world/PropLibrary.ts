@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/world/PropLibrary.ts
+ * VOLTMARCH — src/world/PropLibrary.ts
  * ============================================================================
  * THE PROP FACTORY. 28 procedural prop archetypes with real silhouettes, built
  * once per biome, each merged into ONE geometry so the scatter system can draw
@@ -674,16 +674,36 @@ const MANMADE = {
   crateA: '#C0913F', crateB: '#9C7330', containerA: '#B8382A', containerB: '#D07E22',
 } as const;
 
+/**
+ * THE 76-DEGREE CEILING ON EVERY GREEN.
+ *
+ * Scorecard #9 fails any frame where more than 2% of pixels land in the
+ * 100-120 degree "amateur emerald" window at S>0.25, V>0.15, and five of the
+ * twelve critique shots were failing it at 2.8-4.9%. The leak was not the leaf
+ * highlights — it was the DARK members (conifer, coniferDark, hedge, shrubDark,
+ * grassGreenBase) plus the terrain grass layer.
+ *
+ * The mechanism is the grade, not the albedo: `TONE_NOON.shadowTint` is a
+ * luma-normalised blue, so a shadowed pixel loses red faster than it loses
+ * blue, and a dark green rotates about +20 degrees toward emerald on its way to
+ * the framebuffer. Measured on `04-units-parade`: source `#383E12` at hue 84.5
+ * arrived at `23,53,17`, hue 110.
+ *
+ * So every green in this file is authored with a hue CEILING of 76 degrees —
+ * far enough below emerald that a shadowed instance still lands under 100.
+ * Saturation and value are untouched: the rotation is a pure hue move, which is
+ * why the palette still reads as the same foliage.
+ */
 const PALETTES: Record<BiomeName, PropPalette> = {
   temperate: {
-    // leafA/B/C span 1.29x in value, hue 78-79 degrees. Three masses, one tree.
-    leafA: '#6E8A30', leafB: '#5A7328', leafC: '#7D9A3A',
+    // leafA/B/C span 1.29x in value, all at the 76-degree ceiling. One tree.
+    leafA: '#7E8A30', leafB: '#697328', leafC: '#8D9A3A',
     autumnA: '#D07C1E', autumnB: '#B25A18', autumnC: '#E0A62C',
-    conifer: '#3A5018', coniferDark: '#2C3E12', frond: '#4C6A18',
-    shrub: '#48602A', shrubDark: '#3A4E20', hedge: '#35481C',
+    conifer: '#495018', coniferDark: '#383E12', frond: '#5F6A18',
+    shrub: '#59602A', shrubDark: '#484E20', hedge: '#42481C',
     trunk: '#6A5238', trunkDark: '#4C3B28',
     grassGold: '#CBBA52', grassGoldBase: '#9A8A3A',
-    grassGreen: '#79A038', grassGreenBase: '#587A28',
+    grassGreen: '#92A038', grassGreenBase: '#6F7A28',
     rock: '#8A8270', rockShade: '#6E6857', rockCap: '#A39B88',
     soil: '#9C7B52', hay: '#CBBA52',
     ...MANMADE,
@@ -691,8 +711,8 @@ const PALETTES: Record<BiomeName, PropPalette> = {
   desert: {
     leafA: '#8E8A3C', leafB: '#767230', leafC: '#A09A4A',
     autumnA: '#CC8E28', autumnB: '#AE701C', autumnC: '#DEB84C',
-    conifer: '#4A5220', coniferDark: '#3A4218', frond: '#5E7418',
-    shrub: '#7A7638', shrubDark: '#635F2C', hedge: '#5E6828',
+    conifer: '#4B5220', coniferDark: '#3C4218', frond: '#687418',
+    shrub: '#7A7638', shrubDark: '#635F2C', hedge: '#5F6828',
     trunk: '#7E6540', trunkDark: '#5A472E',
     grassGold: '#D8C662', grassGoldBase: '#A8964A',
     grassGreen: '#94983E', grassGreenBase: '#6E722C',
@@ -701,25 +721,25 @@ const PALETTES: Record<BiomeName, PropPalette> = {
     ...MANMADE,
   },
   snow: {
-    leafA: '#54682A', leafB: '#4A5A24', leafC: '#627838',
+    leafA: '#60682A', leafB: '#535A24', leafC: '#6F7838',
     autumnA: '#9A7434', autumnB: '#7E5C26', autumnC: '#AE9450',
-    conifer: '#2E4016', coniferDark: '#233210', frond: '#3A4E18',
-    shrub: '#485A28', shrubDark: '#384618', hedge: '#3A4A22',
+    conifer: '#3A4016', coniferDark: '#2D3210', frond: '#474E18',
+    shrub: '#535A28', shrubDark: '#404618', hedge: '#454A22',
     trunk: '#584434', trunkDark: '#3C2E22',
     grassGold: '#B4A870', grassGoldBase: '#8A8054',
-    grassGreen: '#68844A', grassGreenBase: '#4C6234',
+    grassGreen: '#7C844A', grassGreenBase: '#5C6234',
     rock: '#9A9A96', rockShade: '#7C7E80', rockCap: '#C6BEB6',
     soil: '#7A7066', hay: '#B4A870',
     ...MANMADE,
   },
   urban: {
-    leafA: '#6E8A30', leafB: '#5A7328', leafC: '#7D9A3A',
+    leafA: '#7E8A30', leafB: '#697328', leafC: '#8D9A3A',
     autumnA: '#D07C1E', autumnB: '#B25A18', autumnC: '#E0A62C',
-    conifer: '#33481A', coniferDark: '#28380F', frond: '#4C6A18',
-    shrub: '#48602A', shrubDark: '#3A4E20', hedge: '#35481C',
+    conifer: '#42481A', coniferDark: '#33380F', frond: '#5F6A18',
+    shrub: '#59602A', shrubDark: '#484E20', hedge: '#42481C',
     trunk: '#6A5238', trunkDark: '#4C3B28',
     grassGold: '#C0B04E', grassGoldBase: '#8E8038',
-    grassGreen: '#79A038', grassGreenBase: '#587A28',
+    grassGreen: '#92A038', grassGreenBase: '#6F7A28',
     rock: '#8A857A', rockShade: '#6C6862', rockCap: '#A29C90',
     soil: '#8A7458', hay: '#C0B04E',
     ...MANMADE,
@@ -934,7 +954,8 @@ function buildBush(m: PropMesh, rng: Rng, p: PropPalette): void {
 }
 
 function buildHedge(m: PropMesh, rng: Rng, p: PropPalette): void {
-  // Bible §6.1: "hedge foliage #2A3A16, 0.15 m leaf noise, BOX silhouette".
+  // Bible §6.1: "hedge foliage #353A16, 0.15 m leaf noise, BOX silhouette".
+  // Rotated to #353A16 — same value and chroma, hue 87 -> 77 (see PALETTES).
   // ra3steam_08 borders every planted island with exactly this.
   const len = 3.6, w = 1.15, h = 1.25;
   m.ao(0.42, 0, h).sway(SCATTER_WIND.canopyAmplitude * 0.25, 0, h).gloss(0);
@@ -1136,7 +1157,7 @@ function buildContainerStack(m: PropMesh, rng: Rng, p: PropPalette): void {
  */
 function buildBarrelGroup(m: PropMesh, rng: Rng, p: PropPalette): void {
   const r = 0.42, h = 1.05;
-  const bodies = [p.rust, '#4A6B33', p.paintRed, '#3E5A6E'];
+  const bodies = [p.rust, '#646B33', p.paintRed, '#3E5A6E'];
   rng.shuffle(bodies);
   const n = rng.int(3, 4);
   // Painted steel drum: flat saturated colour, clean rolling hoops, a lacquer

@@ -1,5 +1,5 @@
 /**
- * RED ALERT — src/render/scene.ts
+ * VOLTMARCH — src/render/scene.ts
  * =============================================================================
  * The scene, the lighting rig, the atmosphere, and the procedural environment
  * probe. Everything here is driven by RENDER_CONFIG (see renderer.ts) and
@@ -386,7 +386,7 @@ export function createScene(options: CreateSceneOptions): SceneRig {
   const cfgShadow = RENDER_CONFIG.renderer.shadows;
 
   const scene = new THREE.Scene();
-  scene.name = 'RedAlertScene';
+  scene.name = 'VoltmarchScene';
   scene.matrixWorldAutoUpdate = true;
 
   /* ---- sky ------------------------------------------------------------- */
@@ -419,12 +419,30 @@ export function createScene(options: CreateSceneOptions): SceneRig {
   envScene.add(envSky);
 
   /* ---- fog ------------------------------------------------------------- */
-  const fogColor = srgb(cfgFog.color);
-  // Aerial perspective: nudge the fog colour toward the horizon sky so the
-  // distance haze belongs to the same atmosphere as the sky above it.
-  fogColor.lerp(srgb(cfgSky.horizon), cfgFog.aerialPerspective);
-  scene.fog = new THREE.Fog(fogColor.getHex(), cfgFog.start, cfgFog.end);
-  (scene.fog as THREE.Fog).color.copy(fogColor);
+  /**
+   * A fog whose `end` is past the far plane cannot darken or desaturate
+   * anything, but it still costs a `#include <fog_fragment>` in every single
+   * material in the game. More importantly it is a trap: the noon art direction
+   * bans aerial perspective outright (bible §1 standing rulings, enforced by
+   * scorecard #12 — far-field saturation must be within 0.05 of near-field) and
+   * a live `scene.fog` object invites the next agent to "just nudge" it back.
+   *
+   * So when the art direction asks for no fog, there is NO FOG OBJECT. The
+   * threshold is the camera far plane: fog that first bites beyond what the
+   * camera can draw is not fog.
+   */
+  const fogIsMeaningful = (): boolean =>
+    cfgFog.end > cfgFog.start + 1 && cfgFog.end < RENDER_CONFIG.camera.far;
+
+  function makeFogColor(out: THREE.Color): THREE.Color {
+    // Aerial perspective: nudge the fog colour toward the horizon sky so the
+    // distance haze belongs to the same atmosphere as the sky above it.
+    return out.copy(srgb(cfgFog.color)).lerp(srgb(cfgSky.horizon), cfgFog.aerialPerspective);
+  }
+
+  const fogColor = makeFogColor(new THREE.Color());
+  scene.fog = fogIsMeaningful() ? new THREE.Fog(fogColor.getHex(), cfgFog.start, cfgFog.end) : null;
+  if (scene.fog) (scene.fog as THREE.Fog).color.copy(fogColor);
   scene.background = null; // the dome IS the background
 
   /* ---- sun ------------------------------------------------------------- */
@@ -494,7 +512,9 @@ export function createScene(options: CreateSceneOptions): SceneRig {
       roughnessMap: groundTextures.rough,
       roughness: 1.0,
       metalness: 0.0,
-      normalScale: new THREE.Vector2(0.9, 0.9),
+      // Matches UNIT_MATERIAL.normalScale: the placeholder must not be the one
+      // surface in the game with embossed-rubber relief.
+      normalScale: new THREE.Vector2(0.45, 0.45),
       dithering: true,
     });
     mat.name = 'PlaceholderGround';
@@ -583,11 +603,23 @@ export function createScene(options: CreateSceneOptions): SceneRig {
     bounce.intensity = cfgSky.hemiGroundIntensity;
     bounce.position.set(-sunDir.x * 60, -40, -sunDir.z * 60);
 
-    const f = scene.fog as THREE.Fog | null;
-    if (f) {
-      f.color.copy(srgb(cfgFog.color)).lerp(srgb(cfgSky.horizon), cfgFog.aerialPerspective);
-      f.near = cfgFog.start;
-      f.far = cfgFog.end;
+    // Fog can appear and disappear across a mood change (noon has none, dusk
+    // does), and three recompiles materials when `scene.fog` flips between an
+    // object and null — which is correct and is why this is not done per frame.
+    if (!studio) {
+      const want = fogIsMeaningful();
+      if (!want) {
+        scene.fog = null;
+      } else {
+        let f = scene.fog as THREE.Fog | null;
+        if (!f || !(f as THREE.Fog).isFog) {
+          f = new THREE.Fog(0xffffff, cfgFog.start, cfgFog.end);
+          scene.fog = f;
+        }
+        makeFogColor(f.color);
+        f.near = cfgFog.start;
+        f.far = cfgFog.end;
+      }
     }
     renderer.setClearColor(srgb(cfgSky.horizon), 1);
 

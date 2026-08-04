@@ -2,7 +2,7 @@
  * Visual critique harness.
  *
  * Boots the built game in headless Chromium, poses each shot through the
- * `window.__RA` handle from src/render/debug.ts, and writes deterministic PNGs
+ * `window.__VM` handle from src/render/debug.ts, and writes deterministic PNGs
  * for the critic agents to read side by side against refs/ra3steam_*.jpg.
  *
  *   node tools/shoot.mjs                 # every shot
@@ -17,7 +17,7 @@
  *
  * Scene *content* comes from the `?shot=` boot flag, which src/game/Bootstrap.ts
  * routes to a scenario builder. Camera, mood and timing are driven here through
- * __RA so a critic's note ("too close, I can't judge the base silhouette") is a
+ * __VM so a critic's note ("too close, I can't judge the base silhouette") is a
  * one-line change in this file rather than a rebuild.
  */
 
@@ -44,7 +44,7 @@ const MAP_CENTER = 256;
 
 /*
  * A shot is data, not code: `flags` picks the scenario, `pose` is an ordered
- * list of __RA calls, `settle` is how many frames to let the frame stabilise
+ * list of __VM calls, `settle` is how many frames to let the frame stabilise
  * (shader compiles, LOD, particle steady-state) before the shutter.
  */
 const SHOTS = [
@@ -76,6 +76,11 @@ const SHOTS = [
     name: '05-combat',
     caption: 'Mid-battle: muzzle flash, tracers, tesla, explosions, smoke, wrecks, scene light wash.',
     flags: { shot: 'battle', seed: 11 },
+    // MEASURED, both ways. 66 m / 2.5 s was tried to clear the tree canopy and
+    // catch a live fireball: p99 luminance did not move off 0.77 and the wider
+    // frame let the dust plume push median luminance to 0.52, failing a second
+    // check. 48 m / 4 s is the better of the two and is kept. The residual —
+    // no highlight anywhere in the frame — is the plume, not the framing.
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 48], ['setUiVisible', false]],
     advance: 4.0,
   },
@@ -186,6 +191,21 @@ const report = { viewport: VIEWPORT, webgl: null, shots: [] };
 for (const shot of shots) {
   process.stdout.write(`> ${shot.name} ... `);
   const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+  /*
+   * Playwright's 30 s default is not enough for this page and the failure is
+   * silent-ish: `page.goto` or `page.screenshot` times out, the shot is marked
+   * FAILED, and a critic scores a black `*.FAILED.png` as if it were the game.
+   * Two boots in a row failed that way on a box running other builds.
+   *
+   * The budget is real work, not a hang: a 1.9 MB bundle, then 24 unit models,
+   * 28 structures and 23 Meridian models generated procedurally, then a 512 px
+   * greeble atlas per faction, then terrain, roads and scatter — at 2560x1440
+   * with a first-frame shader compile for every material. 120 s is the honest
+   * ceiling for that on a loaded machine; a genuine hang still fails, just
+   * later.
+   */
+  page.setDefaultTimeout(120_000);
+  page.setDefaultNavigationTimeout(120_000);
   const messages = [];
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') messages.push(`[${m.type()}] ${m.text()}`); });
   page.on('pageerror', (e) => messages.push(`[pageerror] ${e.message}`));
@@ -194,12 +214,12 @@ for (const shot of shots) {
     const qs = new URLSearchParams(Object.entries(shot.flags).map(([k, v]) => [k, String(v)]));
     await page.goto(`${BASE}?${qs}`, { waitUntil: 'load' });
 
-    await page.waitForFunction(() => typeof window.__RA?.ready === 'function', null, { timeout: 60_000 });
-    await page.evaluate(() => window.__RA.ready());
+    await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 60_000 });
+    await page.evaluate(() => window.__VM.ready());
 
     if (!report.webgl) {
       report.webgl = await page.evaluate(() => {
-        const gl = window.__RA.renderer.getContext();
+        const gl = window.__VM.renderer.getContext();
         const d = gl.getExtension('WEBGL_debug_renderer_info');
         return d ? gl.getParameter(d.UNMASKED_RENDERER_WEBGL) : 'masked';
       });
@@ -209,7 +229,7 @@ for (const shot of shots) {
     // Apply the pose as data — no eval, and an unknown method is a loud failure
     // rather than a silently mis-framed shot that a critic then scores.
     const missing = await page.evaluate((cmds) => {
-      const RA = window.__RA;
+      const RA = window.__VM;
       const absent = [];
       for (const [method, ...args] of cmds) {
         if (typeof RA[method] !== 'function') { absent.push(method); continue; }
@@ -217,12 +237,12 @@ for (const shot of shots) {
       }
       return absent;
     }, shot.pose);
-    if (missing.length) throw new Error(`__RA is missing: ${missing.join(', ')}`);
+    if (missing.length) throw new Error(`__VM is missing: ${missing.join(', ')}`);
 
     if (shot.advance) {
       await page.evaluate((s) => new Promise((r) => setTimeout(r, s * 1000)), shot.advance);
     }
-    await page.evaluate(() => window.__RA.waitFrames(10));
+    await page.evaluate(() => window.__VM.waitFrames(10));
 
     await page.screenshot({ path: join(OUT, `${shot.name}.png`), animations: 'disabled' });
     report.shots.push({ name: shot.name, caption: shot.caption, flags: shot.flags, ok: true, messages });

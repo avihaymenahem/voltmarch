@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/audio/Weapons.ts
+ * VOLTMARCH — src/audio/Weapons.ts
  * ============================================================================
  * THE BAKED SFX BANK. Every gun, explosion, impact, engine, UI blip and
  * ambience loop in the game, expressed as DSP.

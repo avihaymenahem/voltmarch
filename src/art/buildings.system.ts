@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/art/buildings.system.ts
+ * VOLTMARCH — src/art/buildings.system.ts
  * ============================================================================
  * The plugin entry point for the building-art module.
  *
@@ -64,7 +64,7 @@ import {
   type StructureModel,
 } from './BuildingFactory';
 
-interface BuildingGlobal { __raBuildings?: unknown; }
+interface BuildingGlobal { __vmBuildings?: unknown; }
 
 /**
  * Content key -> [allied model, soviet model], for the keys whose def is
@@ -82,19 +82,25 @@ const SHARED_KEYS: Readonly<Record<string, readonly [string, string]>> = {
   oreSilo: ['allied_silo', 'soviet_silo'],
   wall: ['allied_wall', 'soviet_wall'],
   gate: ['allied_gate', 'soviet_gate'],
-  // No naval yard art in this module. Both dock keys are 3x3, so they borrow
-  // the Construction Yard's footprint rather than a 3x2 refinery that would
-  // leave a metre of bare ground down one side. Flagged in the boot report.
-  navalYard: ['allied_conyard', 'soviet_conyard'],
-  subPen: ['allied_conyard', 'soviet_conyard'],
 };
 
 /** Content keys whose def already picks a side. Registered at FACTION_ANY. */
 const FACTION_KEYS: Readonly<Record<string, string>> = {
   pillbox: 'allied_pillbox',
-  prismTower: 'allied_aa',
+  // Real slewing crystal head, not the AA mount it stood in for.
+  prismTower: 'allied_prismtower',
   teslaCoil: 'soviet_tesla',
-  flameTower: 'soviet_sentry',
+  // Turretless with four radial nozzles: `Defs.flameTower` never sets
+  // `hasTurret`, so nothing on it may slew.
+  flameTower: 'soviet_flametower',
+  // Single-faction in Defs.ts, so these are FACTION_ANY like the defences —
+  // and they now have their own art instead of borrowing a Construction Yard.
+  navalYard: 'allied_navalyard',
+  subPen: 'soviet_subpen',
+  // Freed from stand-in duty by the two rows above; these are the def rows the
+  // models agent asked for and they now exist in Defs.ts.
+  aaTurret: 'allied_aa',
+  sentryGun: 'soviet_sentry',
 };
 
 /**
@@ -306,7 +312,7 @@ export default defineSystem({
     }
 
     const g = globalThis as unknown as BuildingGlobal;
-    g.__raBuildings = buildingLibrary;
+    g.__vmBuildings = buildingLibrary;
 
     /* -- hand off to RenderBridge ------------------------------------------ */
     // One KindMesh per model, cached: handing the SAME object to two factions
@@ -423,7 +429,7 @@ export default defineSystem({
       paradeRoot = null;
     }
     const g = globalThis as unknown as BuildingGlobal;
-    delete g.__raBuildings;
+    delete g.__vmBuildings;
     buildingLibrary.dispose();
   },
 });

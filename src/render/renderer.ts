@@ -1,5 +1,5 @@
 /**
- * RED ALERT — src/render/renderer.ts
+ * VOLTMARCH — src/render/renderer.ts
  * =============================================================================
  * WebGLRenderer boot + the live render configuration object.
  *

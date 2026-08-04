@@ -1,9 +1,9 @@
 {
-  "name": "red-alert",
+  "name": "voltmarch",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "RED ALERT - a browser real-time strategy game built on Three.js. All art is procedurally generated from code.",
+  "description": "VOLTMARCH - an original real-time strategy game for the browser, built on Three.js. All art is procedurally generated from code.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

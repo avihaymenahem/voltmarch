@@ -1,5 +1,5 @@
 /**
- * RED ALERT — src/render/camera.ts
+ * VOLTMARCH — src/render/camera.ts
  * =============================================================================
  * The RTS camera rig.
  *

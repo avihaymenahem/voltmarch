@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/Placement.ts
+ * VOLTMARCH — src/sim/Placement.ts
  * ============================================================================
  * "WHERE DO YOU WANT IT?" — the structure placement flow.
  *

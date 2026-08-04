@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/Vision.ts
+ * VOLTMARCH — src/sim/Vision.ts
  * ============================================================================
  * PER-PLAYER VISION OVER THE CELL GRID. The `IVision` port's real implementation.
  *

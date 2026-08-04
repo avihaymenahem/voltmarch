@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/art/UnitFactory.ts
+ * VOLTMARCH — src/art/UnitFactory.ts
  * ============================================================================
  * THE ASSEMBLER. Takes a `UnitMassList`, chamfers every convex edge, UV-maps
  * every face into the greeble atlas, bakes the contact/cavity gradient into
@@ -46,7 +46,8 @@ import {
   GreebleFactory, greebles,
 } from './Greeble';
 import {
-  defaultChamfer, latheProfile, planPolygon, unitBounds, validateUnit,
+  defaultChamfer, emitMassShape, expandMasses, latheProfile, planPolygon, shapeSpecFor,
+  unitBounds, validateUnit,
   MassRole, type MassDef, type MassStats, type SlotAreas, type UnitMassList,
 } from './MassList';
 
@@ -626,7 +627,7 @@ export function buildUnit(list: UnitMassList, atlas: GreebleAtlas, material: THR
     bevel: (slot) => atlas.bevelUv[slot],
   });
 
-  for (const m of list.masses) {
+  for (const m of expandMasses(list.masses)) {
     const mb = m.turret ? turretMb : hullMb;
     const ctx = ctxFor(mb);
     const chamfer = Math.max(MIN_CHAMFER, defaultChamfer(m, list.faction));
@@ -651,7 +652,15 @@ export function buildUnit(list: UnitMassList, atlas: GreebleAtlas, material: THR
         case 'prism':
           buildPrism(ctx, m, chamfer, m.slot, capSlot);
           break;
-        default:
+        default: {
+          // The eleven Shapes.ts primitives. `shapeSpecFor` returns null for
+          // anything it does not own, which is only the legacy 'box', and that
+          // falls through to `buildBox` exactly as before.
+          const spec = shapeSpecFor(m, chamfer);
+          if (spec !== null) {
+            emitMassShape(mb, atlas, m, spec, paintSlotForArea, 'paintLarge');
+            break;
+          }
           buildBox(ctx, m, chamfer, (face, area) => {
             const override = m.faceSlots?.[face];
             if (override !== undefined) return override;
@@ -661,6 +670,7 @@ export function buildUnit(list: UnitMassList, atlas: GreebleAtlas, material: THR
             return m.slot;
           });
           break;
+        }
       }
     }
   }

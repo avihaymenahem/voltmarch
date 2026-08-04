@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/BuildQueue.ts
+ * VOLTMARCH — src/sim/BuildQueue.ts
  * ============================================================================
  * THE FOUR QUEUES. C&C RULES, NOT STARCRAFT RULES.
  *

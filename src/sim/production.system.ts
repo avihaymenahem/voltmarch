@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/production.system.ts
+ * VOLTMARCH — src/sim/production.system.ts
  * ============================================================================
  * Registration for the build loop.
  *
@@ -59,8 +59,8 @@ export default defineSystem({
     // Console handles. The screenshot harness and a human debugging a stuck
     // queue both want to poke this without a HUD in the way.
     const g = globalThis as unknown as Record<string, unknown>;
-    g.__raProduction = service;
-    g.__raPlacement = placement;
+    g.__vmProduction = service;
+    g.__vmPlacement = placement;
 
     counters = debug.counters;
     counters.queued = 0;
@@ -106,7 +106,7 @@ export default defineSystem({
     counters = null;
     setProduction(null);
     const g = globalThis as unknown as Record<string, unknown>;
-    delete g.__raProduction;
-    delete g.__raPlacement;
+    delete g.__vmProduction;
+    delete g.__vmPlacement;
   },
 });

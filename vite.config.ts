@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 import { fileURLToPath, URL } from 'node:url';
 
 /**
- * RED ALERT build config.
+ * VOLTMARCH build config.
  *
  * DELIBERATELY PLUGIN-FREE.
  *

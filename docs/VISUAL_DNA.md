@@ -1,4 +1,4 @@
-# VISUAL DNA — Red Alert 3D Remake
+# VISUAL DNA — VOLTMARCH
 ### The single authoritative art/audio spec. Art Director's cut.
 **Status:** LOCKED v1.0 · Supersedes the four analyst reports where they disagree (see §0.3).
 **Audience:** (a) art/engine agents who build it, (b) critics who score it against the reference screenshots.

@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/art/BuildingDefs.ts
+ * VOLTMARCH — src/art/BuildingDefs.ts
  * ============================================================================
  * EVERY STRUCTURE IN THE GAME, as declarative mass lists.
  *
@@ -41,9 +41,12 @@
  * ============================================================================
  */
 
-import { BUILDING_FOOTPRINTS, BUILDING_GEOMETRY, BUILDING_PAD, CELL } from '../core/config';
+import {
+  BUILDING_DIMENSIONS, BUILDING_FOOTPRINTS, BUILDING_GEOMETRY, BUILDING_PAD, CELL,
+  NAVAL_BUILDING_DIMENSIONS,
+} from '../core/config';
 import { PartId } from '../core/types';
-import { MassRole } from './MassList';
+import { MassRole, taperOutline } from './MassList';
 import {
   Feature,
   type StructureFaction,
@@ -55,9 +58,31 @@ import type { SlotName } from './Greeble';
 
 type M = StructureMass;
 type V3 = readonly [number, number, number];
+type V2 = readonly [number, number];
+
+const HALF_PI = Math.PI * 0.5;
 
 /* ==========================================================================
  * 1. MASS CONSTRUCTORS
+ *
+ * The first three are the original vocabulary and every existing structure
+ * still uses them for its small hardware, where a chamfered box IS the right
+ * answer. The rest are the `Shapes.ts` primitives, and they are what the BODY
+ * masses are built from now.
+ *
+ * WHY THE BODIES CHANGED. The verdict was "too rectangular, like old-school 3D
+ * models", and a structure's body is the largest flat surface a player ever
+ * sees. `box` + `taper` already canted the walls, but the Soviet `prism`/cutBox
+ * slab did not: an octagonal plan is still eight VERTICAL planes, four of them
+ * square-on to the camera, and `MassList.boxiness()` scores that ~0.80. The
+ * `planPrism` spelling below adds a BATTER — the wall leans, brutalist concrete
+ * always does — and a leaning wall is not a flat rectangle any more.
+ *
+ * Every new primitive here degrades to a chamfered box of its own `size`, in
+ * its own place, with its own slot, on a factory that has not yet been taught to
+ * build it. Nothing is authored as a `plates:`/`greebles:` CHILD, because a
+ * child that is not expanded disappears entirely and takes its surface area —
+ * and with it the measured team-colour fraction — with it.
  * ========================================================================== */
 
 function box(name: string, role: MassRole, size: V3, anchor: V3, slot: SlotName, o?: Partial<M>): M {
@@ -68,6 +93,125 @@ function cyl(name: string, role: MassRole, size: V3, anchor: V3, slot: SlotName,
 }
 function pri(name: string, role: MassRole, size: V3, anchor: V3, slot: SlotName, o?: Partial<M>): M {
   return { name, primitive: 'prism', role, size, anchor, slot, ...o };
+}
+
+/** A chamfered, tapered, optionally sheared and corner-cut block. */
+function tbox(
+  name: string, role: MassRole, size: V3, anchor: V3, slot: SlotName,
+  shape: NonNullable<M['shape']>, o?: Partial<M>,
+): M {
+  return { name, primitive: 'taperedBox', role, size, anchor, slot, shape, ...o };
+}
+
+/** An arbitrary plan extruded with a real batter. The Soviet slab, upgraded. */
+function pplan(
+  name: string, role: MassRole, size: V3, anchor: V3, slot: SlotName,
+  shape: NonNullable<M['shape']>, o?: Partial<M>,
+): M {
+  return { name, primitive: 'planPrism', role, size, anchor, slot, shape, ...o };
+}
+
+/** A revolved normalised profile, 12-16 facets. */
+function rev(
+  name: string, role: MassRole, size: V3, anchor: V3, slot: SlotName,
+  profile: readonly V2[], segments: number, o?: Partial<M>,
+): M {
+  return { name, primitive: 'revolve', role, size, anchor, slot, shape: { profile, segments }, ...o };
+}
+
+/** XZ extents of an outline: a plate's local width and length. */
+function outlineSize(outline: readonly V2[]): [number, number] {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const p of outline) {
+    if (p[0] < minX) minX = p[0];
+    if (p[0] > maxX) maxX = p[0];
+    if (p[1] < minZ) minZ = p[1];
+    if (p[1] > maxZ) maxZ = p[1];
+  }
+  return [Math.max(1e-3, maxX - minX), Math.max(1e-3, maxZ - minZ)];
+}
+
+/**
+ * A layered plate. Thickness runs along the plate's own +Y and the outline lies
+ * in its local XZ, so `size` is always `[outlineW, thickness, outlineD]` and the
+ * mass is then ROTATED into place — `massBounds` turns that back into the right
+ * world AABB. Banding strips, glazing, canopies, catwalk decks, team panels.
+ */
+function plate(
+  name: string, role: MassRole, outline: readonly V2[], thickness: number,
+  anchor: V3, rot: V3 | undefined, slot: SlotName, o?: Partial<M>,
+): M {
+  const [w, d] = outlineSize(outline);
+  return {
+    name, primitive: 'plate', role, size: [w, thickness, d], anchor, slot, capSlot: slot,
+    ...(rot !== undefined ? { rot } : {}),
+    shape: { outline, thickness, fit: 'none' },
+    ...o,
+  };
+}
+
+/**
+ * A deterministic run of louvre stacks, bolt pairs, junction boxes and pipe
+ * collars. Seeded, byte-identical between runs, and ONE readable object — every
+ * polygon carries the same `group`, so a 4 m service run costs one slot in the
+ * greeble budget rather than eleven.
+ */
+function greebleRun(
+  name: string, length: number, width: number, height: number,
+  anchor: V3, seed: number, o?: Partial<M>,
+): M {
+  return {
+    name, primitive: 'greebleStrip', role: MassRole.Greeble,
+    size: [width, height, length], anchor, slot: 'bareMetal', group: name,
+    shape: { density: 2.2, seed: seed >>> 0, fit: 'none' },
+    ...o,
+  };
+}
+
+/** A centred rectangle outline in metres. */
+function rect(w: number, d: number): V2[] {
+  const a = w * 0.5, b = d * 0.5;
+  return [[a, -b], [a, b], [-a, b], [-a, -b]];
+}
+
+/** A regular n-gon plan in metres. `phase` rotates it. */
+function ngon(rx: number, rz: number, sides: number, phase = 0): V2[] {
+  const out: V2[] = [];
+  for (let i = 0; i < sides; i++) {
+    const a = phase + (i / sides) * Math.PI * 2;
+    out.push([Math.cos(a) * rx, Math.sin(a) * rz]);
+  }
+  return out;
+}
+
+/** An octagonal plan in metres — SOVIET-1's 45-degree vertical corner cuts. */
+function cutBoxPlan(w: number, d: number, cutFraction: number): V2[] {
+  const cx = w * 0.5, cz = d * 0.5;
+  const c = Math.min(cx, cz) * Math.min(0.48, Math.max(0.03, cutFraction));
+  return [
+    [cx, -cz + c], [cx, cz - c], [cx - c, cz], [-cx + c, cz],
+    [-cx, cz - c], [-cx, -cz + c], [-cx + c, -cz], [cx - c, -cz],
+  ];
+}
+
+/** A drum: chamfered rim, straight body, chamfered crown. Normalised. */
+const DRUM: readonly V2[] = [
+  [0, 0], [0.42, 0], [0.50, 0.09], [0.50, 0.91], [0.42, 1.0], [0, 1.0],
+];
+/** A faceted dome. Normalised. */
+const DOME: readonly V2[] = [
+  [0, 0], [0.50, 0], [0.48, 0.26], [0.42, 0.52], [0.31, 0.76], [0.17, 0.93], [0, 1.0],
+];
+/** A tapered cooling drum / stack. Normalised. */
+const TAPER_DRUM: readonly V2[] = [
+  [0, 0], [0.44, 0], [0.50, 0.08], [0.44, 0.62], [0.38, 0.92], [0.32, 1.0], [0, 1.0],
+];
+/** A hexagonal duct section for extruded jibs and rails. */
+function ductSection(r: number): V2[] {
+  return [
+    [0.50 * r, 0], [0.25 * r, 0.43 * r], [-0.25 * r, 0.43 * r],
+    [-0.50 * r, 0], [-0.25 * r, -0.43 * r], [0.25 * r, -0.43 * r],
+  ];
 }
 
 /* ==========================================================================
@@ -94,10 +238,15 @@ function foundationPad(faction: StructureFaction, fw: number, fh: number, height
   const cy = BUILDING_PAD.lift - total * 0.5;
 
   const out: M[] = [
-    // A chamfered plan, not a raw box: SOVIET-7 asks for a bevelled lip and
-    // ALLIED-6 for chamfered corners, and both fall out of the prism rim.
-    pri('pad.slab', MassRole.Greeble, [w, total, d], [0, cy, 0], 'paintMed', {
-      plan: 'cutBox', cornerCut: 0.07, capSlot: soviet ? 'grille' : 'paintSmall',
+    // A chamfered octagonal plan with a slight batter, not a raw box: SOVIET-7
+    // asks for a bevelled lip and ALLIED-6 for chamfered corners, and a pad that
+    // widens toward the ground is what a poured slab actually looks like.
+    pplan('pad.slab', MassRole.Greeble, [w, total, d], [0, cy, 0], 'paintMed', {
+      plan: cutBoxPlan(w, d, 0.07),
+      topScaleX: 0.985, topScaleZ: 0.985,
+      chamferTop: Math.min(0.22, thick * 0.5), chamferBottom: 0.05,
+    }, {
+      capSlot: soviet ? 'grille' : 'paintSmall',
       target: 'pad', feature: Feature.Static, group: 'pad',
       chamfer: Math.min(0.22, thick * 0.5),
     }),
@@ -126,7 +275,14 @@ function foundationPad(faction: StructureFaction, fw: number, fh: number, height
   return out;
 }
 
-/** ALLIED-5: 3-5 horizontal banding strips of alternating depth (+/-3%). */
+/**
+ * ALLIED-5: 3-5 horizontal banding strips of alternating depth (+/-3%).
+ *
+ * Authored as LAYERED PLATES rather than as thin boxes. That is not cosmetic:
+ * a plate is a rimmed panel sitting proud of the wall it lies on, which is the
+ * hi-tech read the bible is describing, and it costs 28 triangles against a
+ * box's 44.
+ */
 function alliedBands(w: number, d: number, y0: number, y1: number): M[] {
   const n = BUILDING_GEOMETRY.alliedBandCount;
   const out: M[] = [];
@@ -136,9 +292,11 @@ function alliedBands(w: number, d: number, y0: number, y1: number): M[] {
     // The taper means the body is narrower higher up; follow it.
     const shrink = 1 - (1 - 1 / BUILDING_GEOMETRY.alliedSkirtFlare) * t;
     const proud = i % 2 === 0 ? 1 + BUILDING_GEOMETRY.alliedBandDepth : 1 - BUILDING_GEOMETRY.alliedBandDepth;
-    out.push(box(`band${i}`, MassRole.Greeble, [w * shrink * proud, 0.26, d * shrink * proud], [0, y, 0], 'paintSmall', {
-      group: 'bands', chamfer: 0.07,
-    }));
+    out.push(plate(`band${i}`, MassRole.Greeble,
+      // Chamfered in plan as well as in section, so the band follows the body's
+      // own corner radius (ALLIED-4) instead of squaring it back off.
+      cutBoxPlan(w * shrink * proud, d * shrink * proud, 0.09), 0.26,
+      [0, y, 0], undefined, 'paintSmall', { group: 'bands', chamfer: 0.07 }));
   }
   return out;
 }
@@ -148,18 +306,21 @@ function alliedCrown(baseW: number, totalH: number, roofY: number): M[] {
   const w = baseW * BUILDING_GEOMETRY.alliedCrownWidth;
   const h = totalH * BUILDING_GEOMETRY.alliedCrownHeight;
   return [
-    pri('crown', MassRole.Primary, [w, h, w], [0, roofY + h * 0.5, 0], 'paintMed', {
-      plan: 'hexagon', capSlot: 'paintSmall',
-    }),
+    pplan('crown', MassRole.Primary, [w, h, w], [0, roofY + h * 0.5, 0], 'paintMed', {
+      plan: ngon(w * 0.5, w * 0.5, 6, HALF_PI / 3),
+      // The crown leans IN toward its open mouth: six canted planes, not six
+      // vertical ones, which is what makes a hex ring read as a ring.
+      topScaleX: 0.90, topScaleZ: 0.90,
+    }, { capSlot: 'paintSmall' }),
     // The well: a darker recessed prism just inside the rim, which is what
     // makes an "open-topped" crown read from a 39-degree camera.
     // Louvres, not grille. The grille tile is #2A2C30 and an open-topped crown
     // filled with it reads from the RTS camera as a black hexagonal LID -- the
     // exact opposite of the feature. The vent tile is the base paint with deep
     // louvre shadows, so the well reads as recessed plant instead.
-    pri('crown.well', MassRole.Greeble, [w * 0.62, h * 0.30, w * 0.62], [0, roofY + h * 0.90, 0], 'vent', {
-      plan: 'hexagon', capSlot: 'vent', tint: 0.82, group: 'crown', chamfer: 0.05,
-    }),
+    pplan('crown.well', MassRole.Greeble, [w * 0.62, h * 0.30, w * 0.62], [0, roofY + h * 0.90, 0], 'vent', {
+      plan: ngon(w * 0.31, w * 0.31, 6, HALF_PI / 3), topScaleX: 1.06, topScaleZ: 1.06,
+    }, { capSlot: 'vent', tint: 0.82, group: 'crown', chamfer: 0.05 }),
   ];
 }
 
@@ -247,7 +408,8 @@ function lattice(x: number, z: number, w: number, h: number, tag: string, alongZ
 /** SOVIET-5: a railed catwalk. Three horizontal rails plus posts, per the bible. */
 function catwalk(w: number, d: number, y: number, tag: string): M[] {
   const out: M[] = [
-    box(`${tag}.deck`, MassRole.Greeble, [w, 0.18, d], [0, y, 0], 'grille', { group: tag, chamfer: 0.04 }),
+    plate(`${tag}.deck`, MassRole.Greeble, taperOutline(w, d, 0.94), 0.18, [0, y, 0], undefined, 'grille',
+      { group: tag, chamfer: 0.04 }),
   ];
   for (let r = 0; r < BUILDING_GEOMETRY.railingRails; r++) {
     const ry = y + 0.28 + r * 0.32;
@@ -361,19 +523,24 @@ function alliedShell(fw: number, fh: number, height: number, o: ShellOpts): Shel
   const team = o.team ?? 1;
   const masses: M[] = [...foundationPad('allies', fw, fh, height)];
 
+  // ALLIED-4 wants a 6-10% corner radius. A vertical corner CUT is the faceted
+  // form of a radius and it is what turns a square plan into an octagonal one
+  // from above — the single cheapest way to stop a body reading as a brick.
+  const cut = Math.min(w, d) * 0.085;
+
   if (o.paired === true) {
     // ALLIED-3: two identical modules sharing an edge. Mirror, never monolith.
     const mw = w * 0.5;
-    masses.push(box('module', MassRole.Primary, [mw - 0.18, bodyH, d], [mw * 0.5, bodyH * 0.5, 0], 'paintMed', {
-      mirrorX: true, taper: [top, top, 0],
-    }));
+    masses.push(tbox('module', MassRole.Primary, [mw - 0.18, bodyH, d], [mw * 0.5, bodyH * 0.5, 0], 'paintMed', {
+      topScaleX: top, topScaleZ: top, cornerCut: cut * 0.7,
+    }, { mirrorX: true }));
     // The shared spine that ties the pair together and hides the seam.
-    masses.push(box('spine', MassRole.Primary, [w * 0.20, bodyH * 1.12, d * 0.62], [0, bodyH * 0.56, 0], 'paintMed', {
-      taper: [top, top, 0],
+    masses.push(tbox('spine', MassRole.Primary, [w * 0.20, bodyH * 1.12, d * 0.62], [0, bodyH * 0.56, 0], 'paintMed', {
+      topScaleX: top, topScaleZ: top, cornerCut: cut * 0.5,
     }));
   } else {
-    masses.push(box('body', MassRole.Primary, [w, bodyH, d], [0, bodyH * 0.5, 0], 'paintMed', {
-      taper: [top, top, 0],
+    masses.push(tbox('body', MassRole.Primary, [w, bodyH, d], [0, bodyH * 0.5, 0], 'paintMed', {
+      topScaleX: top, topScaleZ: top, cornerCut: cut,
     }));
   }
 
@@ -390,12 +557,17 @@ function alliedShell(fw: number, fh: number, height: number, o: ShellOpts): Shel
   // #34's band for a surface the camera never sees from above anyway.
   const glassY = bodyH * 0.62;
   const gs = 1 - (1 - top) * (glassY / bodyH);
-  masses.push(box('glass.front', MassRole.Greeble, [w * gs * 0.74, bodyH * 0.20, 0.22], [0, glassY, d * gs * 0.5], 'glass', {
-    group: 'glass', chamfer: 0.06, tint: 0.92,
-  }));
-  masses.push(box('glass.flank', MassRole.Greeble, [0.22, bodyH * 0.20, d * gs * 0.66], [w * gs * 0.5, glassY, 0], 'glass', {
-    mirrorX: true, group: 'glass', chamfer: 0.06, tint: 0.92,
-  }));
+  // Raked to follow the skirt, so the glazing lies ON the wall instead of
+  // hovering a hand's width off it.
+  const rake = Math.atan2((1 - top) * Math.min(w, d) * 0.5, bodyH);
+  masses.push(plate('glass.front', MassRole.Greeble,
+    taperOutline(w * gs * 0.74, bodyH * 0.20, 0.94), 0.22,
+    [0, glassY, d * gs * 0.5], [HALF_PI - rake, 0, 0], 'glass',
+    { group: 'glass', chamfer: 0.06, tint: 0.92 }));
+  masses.push(plate('glass.flank', MassRole.Greeble,
+    taperOutline(d * gs * 0.66, bodyH * 0.20, 0.94), 0.22,
+    [w * gs * 0.5, glassY, 0], [0, HALF_PI, HALF_PI - rake], 'glass',
+    { mirrorX: true, group: 'glass', chamfer: 0.06, tint: 0.92 }));
 
   // R-T3: top-facing and outward-facing only. A roof chevron carries 2.5x the
   // screen area of the same panel on a flank at a 39-degree pitch.
@@ -439,20 +611,35 @@ function sovietShell(fw: number, fh: number, height: number, o: ShellOpts): Shel
   const team = o.team ?? 1;
   const masses: M[] = [...foundationPad('soviets', fw, fh, height)];
 
-  // SOVIET-1: a box with 45-degree chamfers on every vertical corner, reading
+  // SOVIET-1: a slab with 45-degree chamfers on every vertical corner, reading
   // as octagonal in plan. Height:width ~0.75:1.
-  masses.push(pri('slab', MassRole.Primary, [w, bodyH, d], [0, bodyH * 0.5, 0], 'paintMed', {
-    plan: 'cutBox', cornerCut: BUILDING_GEOMETRY.sovietCornerCut, capSlot: 'paintMed',
-  }));
+  //
+  // Plus a BATTER. The old spelling was a `prism` with vertical walls and it
+  // measured ~0.80 axis-aligned surface — the single worst number in the whole
+  // roster, and exactly the "old-school 3D" read the user objected to. Poured
+  // concrete of this mass never has a plumb face; leaning the wall 2% turns
+  // eight vertical planes into eight canted ones and the flat-wall share goes
+  // to zero without changing the silhouette a player recognises.
+  masses.push(pplan('slab', MassRole.Primary, [w, bodyH, d], [0, bodyH * 0.5, 0], 'paintMed', {
+    plan: cutBoxPlan(w, d, BUILDING_GEOMETRY.sovietCornerCut),
+    topScaleX: 0.965, topScaleZ: 0.965, bottomScaleX: 1.015, bottomScaleZ: 1.015,
+  }, { capSlot: 'paintMed' }));
   // A second, smaller slab stepped back on top: brutalism is stacked mass.
   //
   // Both caps are riveted plate, NOT grille. The grille tile is #2A2C30 and a
   // 12 m roof of it swallows the entire top of the silhouette at a 39-degree
   // camera -- the structures came out with flat black lids. Roofs are the most
   // visible surface an RTS building has (R-T3) and they have to carry paint.
-  masses.push(pri('slab.upper', MassRole.Primary, [w * 0.66, bodyH * 0.42, d * 0.66], [0, bodyH * 1.20, 0], 'rivetPlate', {
-    plan: 'cutBox', cornerCut: BUILDING_GEOMETRY.sovietCornerCut, capSlot: 'paintMed',
-  }));
+  masses.push(pplan('slab.upper', MassRole.Primary, [w * 0.66, bodyH * 0.42, d * 0.66], [0, bodyH * 1.20, 0], 'rivetPlate', {
+    plan: cutBoxPlan(w * 0.66, d * 0.66, BUILDING_GEOMETRY.sovietCornerCut),
+    topScaleX: 0.94, topScaleZ: 0.94, bottomScaleX: 1.03, bottomScaleZ: 1.03,
+  }, { capSlot: 'paintMed' }));
+  // A raked buttress down each long flank. Layered plates on a battered slab is
+  // the whole brutalist surface read, and each one costs 28 triangles.
+  masses.push(plate('slab.buttress', MassRole.Greeble,
+    taperOutline(d * 0.62, bodyH * 0.78, 0.72), 0.16,
+    [w * 0.46, bodyH * 0.44, 0], [0, HALF_PI, HALF_PI - 0.06], 'rivetPlate',
+    { mirrorX: true, group: 'buttresses' }));
 
   masses.push(...sovietRails(w, d, bodyH));
 
@@ -481,8 +668,27 @@ function sovietShell(fw: number, fh: number, height: number, o: ShellOpts): Shel
  * 4. STRUCTURES
  * ========================================================================== */
 
+/**
+ * Frozen dimensions for a structure key.
+ *
+ * `BUILDING_FOOTPRINTS` is the art module's own table and it is short of four
+ * keys that `src/data/Defs.ts` already ships buildings for — `navalYard`,
+ * `subPen`, `prismTower` and `flameTower`. Rather than invent numbers, fall
+ * through to the two tables the DEFS use, so the art and the sim agree on
+ * footprint and roofline by construction.
+ *
+ * FOR THE INTEGRATOR: the clean fix is one merge in `core/config.ts` —
+ * `BUILDING_FOOTPRINTS` should be `{ ...BUILDING_DIMENSIONS, ...NAVAL_BUILDING_DIMENSIONS }`
+ * with `techCentre`/`sentryGun`/`aaTurret` kept as the art-only aliases they
+ * are. That file is owned elsewhere this round, so the fallback lives here.
+ */
+const EXTRA_DIMENSIONS: Readonly<Record<string, { w: number; h: number; height: number }>> = {
+  ...BUILDING_DIMENSIONS,
+  ...NAVAL_BUILDING_DIMENSIONS,
+};
+
 function fp(key: string): { w: number; h: number; height: number } {
-  const f = BUILDING_FOOTPRINTS[key];
+  const f = BUILDING_FOOTPRINTS[key] ?? EXTRA_DIMENSIONS[key];
   if (f === undefined) throw new Error(`[buildings] no footprint for "${key}"`);
   return f;
 }
@@ -517,8 +723,18 @@ function alliedConYard(): StructureMassList {
   // corner and a jib across the roof. It also gives the structure its roofline.
   const mastTop = f.height;
   s.masses.push(
-    box('crane.mast', MassRole.Primary, [0.9, mastTop - roof, 0.9], [-s.w * 0.34, (mastTop + roof) * 0.5, -s.d * 0.30], 'bareMetal', { chamfer: 0.09 }),
-    box('crane.jib', MassRole.Primary, [0.62, 0.62, s.d * 0.94], [-s.w * 0.34, mastTop - 0.9, s.d * 0.02], 'bareMetal', { chamfer: 0.07 }),
+    tbox('crane.mast', MassRole.Primary, [0.9, mastTop - roof, 0.9], [-s.w * 0.34, (mastTop + roof) * 0.5, -s.d * 0.30], 'bareMetal', {
+      topScaleX: 0.72, topScaleZ: 0.72, bottomScaleX: 1.18, bottomScaleZ: 1.18,
+    }, { chamfer: 0.09 }),
+    {
+      name: 'crane.jib', primitive: 'extrude', role: MassRole.Primary,
+      size: [0.62, 0.62, s.d * 0.94], anchor: [-s.w * 0.34, mastTop - 0.9, s.d * 0.02], slot: 'bareMetal',
+      shape: {
+        profile: ductSection(0.62),
+        path: [[0, 0, -s.d * 0.47], [0, 0, -s.d * 0.10], [0, 0, s.d * 0.20], [0, 0, s.d * 0.47]],
+        scale: [1.0, 0.94, 0.80, 0.66], capStart: true, capEnd: true,
+      },
+    },
     box('crane.hook', MassRole.Greeble, [0.30, 1.5, 0.30], [-s.w * 0.34, mastTop - 2.4, s.d * 0.42], 'bareMetal', { group: 'crane', chamfer: 0.05 }),
     box('crane.house', MassRole.Greeble, [1.5, 1.2, 1.7], [-s.w * 0.34, roof + 0.6, -s.d * 0.30], 'hatch', { group: 'crane' }),
     // The dozer bay: a leaf that retracts into the floor when the yard works.
@@ -537,7 +753,7 @@ function alliedConYard(): StructureMassList {
 
 function alliedPower(): StructureMassList {
   const f = fp('powerPlant');
-  const s = alliedShell(f.w, f.h, f.height, { key: 'powerPlant', paired: true, team: 1.0, windowCount: 4, bodyFraction: 0.48 });
+  const s = alliedShell(f.w, f.h, f.height, { key: 'powerPlant', paired: true, team: 1.12, windowCount: 4, bodyFraction: 0.48 });
   const roof = s.roofY;
   // Twin cooling towers. ALLIED architecture is clean tech, so they are
   // waisted ceramic drums with a chrome collar, not brick chimneys.
@@ -590,7 +806,7 @@ function alliedBarracks(): StructureMassList {
 
 function alliedRefinery(): StructureMassList {
   const f = fp('refinery');
-  const s = alliedShell(f.w, f.h, f.height, { key: 'refinery', team: 1.05, windowCount: 5, bodyFraction: 0.50 });
+  const s = alliedShell(f.w, f.h, f.height, { key: 'refinery', team: 1.16, windowCount: 5, bodyFraction: 0.50 });
   const roof = s.roofY;
   s.masses.push(
     // The silo drum, and the dock canopy a harvester unloads under.
@@ -620,7 +836,7 @@ function alliedRefinery(): StructureMassList {
 
 function alliedWarFactory(): StructureMassList {
   const f = fp('warFactory');
-  const s = alliedShell(f.w, f.h, f.height, { key: 'warFactory', team: 1.0, windowCount: 4, bodyFraction: 0.58 });
+  const s = alliedShell(f.w, f.h, f.height, { key: 'warFactory', team: 1.12, windowCount: 4, bodyFraction: 0.58 });
   const roof = s.roofY;
   s.masses.push(
     // The roll-up bay: lintel, jambs and a leaf that sinks into the floor.
@@ -719,12 +935,13 @@ function alliedPillbox(): StructureMassList {
   const masses: M[] = [
     ...foundationPad('allies', f.w, f.h, h),
     // A splayed hexagonal casemate. Turretless: the embrasure IS the weapon.
-    pri('casemate', MassRole.Primary, [w, h * 0.72, w], [0, h * 0.36, 0], 'paintMed', {
-      plan: 'hexagon', capSlot: 'paintSmall', taper: [0.82, 0.82, 0],
-    }),
-    pri('cap', MassRole.Primary, [w * 0.80, h * 0.30, w * 0.80], [0, h * 0.84, 0], 'paintMed', {
-      plan: 'hexagon', capSlot: 'grille',
-    }),
+    pplan('casemate', MassRole.Primary, [w, h * 0.72, w], [0, h * 0.36, 0], 'paintMed', {
+      plan: ngon(w * 0.5, w * 0.5, 6, HALF_PI / 3),
+      topScaleX: 0.82, topScaleZ: 0.82, bottomScaleX: 1.06, bottomScaleZ: 1.06,
+    }, { capSlot: 'paintSmall' }),
+    pplan('cap', MassRole.Primary, [w * 0.80, h * 0.30, w * 0.80], [0, h * 0.84, 0], 'paintMed', {
+      plan: ngon(w * 0.40, w * 0.40, 6, HALF_PI / 3), topScaleX: 0.88, topScaleZ: 0.88,
+    }, { capSlot: 'grille' }),
     box('embrasure', MassRole.Primary, [w * 0.52, h * 0.24, 0.30], [0, h * 0.48, w * 0.42], 'grille', { chamfer: 0.04 }),
     cyl('barrel', MassRole.Greeble, [0.24, 1.5, 0.24], [0, h * 0.48, w * 0.52], 'bareMetal', {
       rot: [Math.PI * 0.5, 0, 0], group: 'gun', chamfer: 0.03, capSlot: 'grille',
@@ -736,6 +953,14 @@ function alliedPillbox(): StructureMassList {
       group: 'optics', chamfer: 0.04,
     }),
     box('vent', MassRole.Greeble, [w * 0.22, 0.20, w * 0.22], [w * 0.20, h * 0.94, -w * 0.16], 'vent', { group: 'optics' }),
+    // Three more readable objects: BUILDING_VALIDATION wants 5-26 on a defence
+    // and this casemate shipped with three.
+    plate('deflector', MassRole.Greeble, taperOutline(w * 0.62, h * 0.22, 0.72), 0.10,
+      [0, h * 0.66, w * 0.36], [HALF_PI - 0.34, 0, 0], 'bareMetal', { group: 'deflector' }),
+    greebleRun('cable.run', w * 0.52, 0.20, 0.16, [-w * 0.34, h * 0.16, -w * 0.20], 0x4B01),
+    cyl('ammo.hatch', MassRole.Greeble, [w * 0.24, 0.22, w * 0.24], [-w * 0.26, h * 0.92, w * 0.12], 'hatch', {
+      group: 'hatches', segments: 10, capSlot: 'grille',
+    }),
     teamPanel('team.cap', [w * 0.44, 0.12, w * 0.30], [0, h * 0.96, 0]),
     teamPanel('team.chevron', [0.14, h * 0.26, w * 0.34], [w * 0.40, h * 0.42, 0], { mirrorX: true }),
     ...windows(w * 0.38, h * 0.80, w * 0.40, 2, 0.26, 0.16, 'lamp'),
@@ -752,9 +977,10 @@ function alliedAaTurret(): StructureMassList {
   const ringY = h * 0.52;
   const masses: M[] = [
     ...foundationPad('allies', f.w, f.h, h),
-    pri('base', MassRole.Primary, [w, ringY * 0.86, w], [0, ringY * 0.43, 0], 'paintMed', {
-      plan: 'hexagon', capSlot: 'paintSmall', taper: [0.78, 0.78, 0],
-    }),
+    pplan('base', MassRole.Primary, [w, ringY * 0.86, w], [0, ringY * 0.43, 0], 'paintMed', {
+      plan: ngon(w * 0.5, w * 0.5, 6, HALF_PI / 3),
+      topScaleX: 0.78, topScaleZ: 0.78, bottomScaleX: 1.10, bottomScaleZ: 1.10,
+    }, { capSlot: 'paintSmall' }),
     cyl('ring', MassRole.Primary, [w * 0.62, ringY * 0.20, w * 0.62], [0, ringY * 0.93, 0], 'bareMetal', {
       capSlot: 'grille',
     }),
@@ -766,14 +992,22 @@ function alliedAaTurret(): StructureMassList {
     ...windows(w * 0.30, ringY * 0.62, w * 0.40, 2, 0.24, 0.16, 'lamp'),
 
     /* -- the slewing head, rebased onto the ring by the factory ------------ */
-    pri('head', MassRole.Primary, [w * 0.66, h * 0.26, w * 0.72], [0, ringY + h * 0.13, 0], 'paintMed', {
-      plan: 'cutBox', cornerCut: 0.14, capSlot: 'paintSmall', target: 'turret',
-    }),
+    pplan('head', MassRole.Primary, [w * 0.66, h * 0.26, w * 0.72], [0, ringY + h * 0.13, 0], 'paintMed', {
+      plan: cutBoxPlan(w * 0.66, w * 0.72, 0.14),
+      topScaleX: 0.84, topScaleZ: 0.88, shear: -w * 0.04,
+    }, { capSlot: 'paintSmall', target: 'turret' }),
     cyl('tube', MassRole.Primary, [0.30, h * 0.44, 0.30], [w * 0.16, ringY + h * 0.30, w * 0.10], 'bareMetal', {
       mirrorX: true, rot: [-1.16, 0, 0], target: 'turret', group: 'tubes', capSlot: 'grille',
     }),
     box('radar.fin', MassRole.Greeble, [w * 0.36, h * 0.16, 0.14], [0, ringY + h * 0.30, -w * 0.30], 'grille', {
       target: 'turret', group: 'fin', chamfer: 0.04,
+    }),
+    cyl('ammo.drum', MassRole.Greeble, [w * 0.26, h * 0.14, w * 0.26], [w * 0.28, ringY + h * 0.10, -w * 0.22], 'hatch', {
+      target: 'turret', group: 'ammo', segments: 12, capSlot: 'grille',
+    }),
+    greebleRun('base.run', w * 0.60, 0.22, 0.18, [-w * 0.34, ringY * 0.24, w * 0.10], 0x4A0C),
+    cyl('optic.pod', MassRole.Greeble, [0.30, h * 0.10, 0.30], [-w * 0.24, ringY + h * 0.24, w * 0.16], 'bareMetal', {
+      target: 'turret', group: 'optics', segments: 10, capSlot: 'glass',
     }),
     teamPanel('team.head', [w * 0.40, 0.12, w * 0.26], [0, ringY + h * 0.26, 0], { target: 'turret' }),
   ];
@@ -792,7 +1026,15 @@ function sovietConYard(): StructureMassList {
   s.masses.push(
     ...sovietStack(s.w * 0.30, -s.d * 0.30, s.w * 0.11, roof * 1.4, f.height, 'stackA'),
     ...catwalk(s.w * 0.72, s.d * 0.22, roof * 1.42, 'walk'),
-    box('crane.jib', MassRole.Primary, [0.7, 0.7, s.d * 0.92], [-s.w * 0.5 + 0.5, roof * 1.55 + 0.5, s.d * 0.02], 'bareMetal', { chamfer: 0.08 }),
+    {
+      name: 'crane.jib', primitive: 'extrude', role: MassRole.Primary,
+      size: [0.7, 0.7, s.d * 0.92], anchor: [-s.w * 0.5 + 0.5, roof * 1.55 + 0.5, s.d * 0.02], slot: 'bareMetal',
+      shape: {
+        profile: ductSection(0.70),
+        path: [[0, 0, -s.d * 0.46], [0, 0, -s.d * 0.08], [0, 0, s.d * 0.22], [0, 0, s.d * 0.46]],
+        scale: [1.0, 0.92, 0.78, 0.62], capStart: true, capEnd: true,
+      },
+    },
     box('crane.hook', MassRole.Greeble, [0.34, 1.7, 0.34], [-s.w * 0.5 + 0.5, roof * 1.55 - 0.6, s.d * 0.40], 'bareMetal', { group: 'crane', chamfer: 0.05 }),
     box('bay.lintel', MassRole.Greeble, [s.w * 0.40, 0.56, 0.56], [0, roof * 0.62, s.d * 0.5 + 0.08], 'stripe', { group: 'bay', chamfer: 0.06 }),
     box('bay.door', MassRole.Greeble, [s.w * 0.36, roof * 0.58, 0.34], [0, roof * 0.29, s.d * 0.5 + 0.02], 'hatch', {
@@ -822,6 +1064,10 @@ function sovietPower(): StructureMassList {
     }),
     box('furnace', MassRole.Emissive, [s.w * 0.30, roof * 0.20, 0.16], [0, roof * 0.20, s.d * 0.5 + 0.04], 'emissive', {
       group: 'furnace', feature: Feature.Window, chamfer: 0.04,
+    }),
+    greebleRun('bus.run', s.d * 0.48, 0.28, 0.22, [-s.w * 0.40, roof * 0.62, s.d * 0.06], 0x50B1),
+    cyl('switchgear', MassRole.Greeble, [s.w * 0.16, roof * 0.30, s.d * 0.16], [s.w * 0.34, roof * 0.15, -s.d * 0.34], 'grille', {
+      group: 'switchgear', segments: 12, capSlot: 'grille',
     }),
   );
   return list('soviet_power', 'Tesla Reactor', 'soviets', 'powerPlant', s.masses,
@@ -854,7 +1100,7 @@ function sovietBarracks(): StructureMassList {
 
 function sovietRefinery(): StructureMassList {
   const f = fp('refinery');
-  const s = sovietShell(f.w, f.h, f.height, { key: 'refinery', team: 0.95, windowCount: 4, bodyFraction: 0.44 });
+  const s = sovietShell(f.w, f.h, f.height, { key: 'refinery', team: 1.06, windowCount: 4, bodyFraction: 0.44 });
   const roof = s.roofY;
   s.masses.push(
     ...sovietVessel(-s.w * 0.28, -s.d * 0.10, s.w * 0.13, roof * 0.30, 'retort'),
@@ -903,7 +1149,7 @@ function sovietWarFactory(): StructureMassList {
 
 function sovietRadar(): StructureMassList {
   const f = fp('radar');
-  const s = sovietShell(f.w, f.h, f.height, { key: 'radar', team: 1.05, windowCount: 4, bodyFraction: 0.34 });
+  const s = sovietShell(f.w, f.h, f.height, { key: 'radar', team: 1.16, windowCount: 4, bodyFraction: 0.34 });
   const roof = s.roofY;
   const towerTop = f.height - 2.8;
   s.masses.push(
@@ -927,6 +1173,10 @@ function sovietRadar(): StructureMassList {
       group: 'dish', feature: Feature.Spinner, anim: 0.55, chamfer: 0.05,
     }),
     ...catwalk(s.w * 0.70, s.d * 0.20, roof * 1.30, 'walk'),
+    greebleRun('tower.run', s.d * 0.44, 0.26, 0.20, [-s.w * 0.36, roof * 0.60, s.d * 0.04], 0x50A2),
+    cyl('waveguide', MassRole.Greeble, [0.26, towerTop - roof * 1.4, 0.26], [s.w * 0.20, (towerTop + roof * 1.4) * 0.5, s.d * 0.16], 'bareMetal', {
+      group: 'waveguide', segments: 10, capSlot: 'grille',
+    }),
   );
   return list('soviet_radar', 'Radar Tower', 'soviets', 'radar', s.masses, [
     ...baseSockets(s.d, roof * 1.4, -s.w * 0.32, -s.d * 0.30),
@@ -999,6 +1249,10 @@ function sovietSentry(): StructureMassList {
     box('sight.head', MassRole.Greeble, [0.34, 0.28, 0.40], [-w * 0.16, ringY + h * 0.48, -w * 0.12], 'hatch', {
       target: 'turret', group: 'sight', chamfer: 0.04,
     }),
+    greebleRun('drum.run', w * 0.56, 0.22, 0.18, [0, ringY * 0.40, -w * 0.46], 0x50C4, { rot: [0, HALF_PI, 0] }),
+    cyl('cable.spool', MassRole.Greeble, [w * 0.24, ringY * 0.22, w * 0.24], [w * 0.42, ringY * 0.14, w * 0.24], 'bareMetal', {
+      group: 'spools', segments: 10, capSlot: 'grille',
+    }),
   ];
   return list('soviet_sentry', 'Sentry Gun', 'soviets', 'sentryGun', masses, [
     { part: PartId.MuzzleA, pos: [0, ringY + h * 0.14, w * 1.22], turret: true },
@@ -1011,9 +1265,9 @@ function sovietTeslaCoil(): StructureMassList {
   const h = f.height;
   const masses: M[] = [
     ...foundationPad('soviets', f.w, f.h, h),
-    pri('base', MassRole.Primary, [w, h * 0.22, w], [0, h * 0.11, 0], 'rivetPlate', {
-      plan: 'cutBox', cornerCut: 0.10, capSlot: 'grille',
-    }),
+    pplan('base', MassRole.Primary, [w, h * 0.22, w], [0, h * 0.11, 0], 'rivetPlate', {
+      plan: cutBoxPlan(w, w, 0.10), topScaleX: 0.88, topScaleZ: 0.88, bottomScaleX: 1.04, bottomScaleZ: 1.04,
+    }, { capSlot: 'grille' }),
     // The mast. RA3's coil is a tapered pylon, not a lattice tower.
     cyl('mast', MassRole.Primary, [w * 0.34, h * 0.56, w * 0.34], [0, h * 0.50, 0], 'rivetPlate', {
       topRadius: 0.62, capSlot: 'grille',
@@ -1030,6 +1284,10 @@ function sovietTeslaCoil(): StructureMassList {
       mirrorX: true, group: 'cables', chamfer: 0.03,
     }),
     box('capacitor', MassRole.Greeble, [w * 0.24, h * 0.16, w * 0.20], [-w * 0.34, h * 0.30, -w * 0.24], 'grille', { group: 'capacitors' }),
+    greebleRun('base.run', w * 0.62, 0.22, 0.18, [0, h * 0.26, w * 0.40], 0x50E1, { rot: [0, HALF_PI, 0] }),
+    cyl('earth.spike', MassRole.Greeble, [0.22, h * 0.18, 0.22], [-w * 0.40, h * 0.09, w * 0.30], 'bareMetal', {
+      mirrorX: true, group: 'earthing', segments: 8, capSlot: 'grille',
+    }),
     teamPanel('team.base', [w * 0.94, h * 0.05, w * 0.34], [0, h * 0.23, 0]),
     teamPanel('team.fin', [0.14, h * 0.20, w * 0.30], [w * 0.32, h * 0.14, 0], { mirrorX: true }),
     ...windows(w * 0.30, h * 0.15, w * 0.44, 2, 0.22, 0.14, 'lamp'),
@@ -1039,6 +1297,318 @@ function sovietTeslaCoil(): StructureMassList {
     { part: PartId.Emitter, pos: [0, h - w * 0.14, 0] },
   ], { cls: 'defence' });
 }
+
+/* ==========================================================================
+ * 4b. THE MISSING STRUCTURES
+ *
+ * Four buildings that `src/data/Defs.ts` has always shipped and this module has
+ * never had art for. Until now:
+ *
+ *   navalYard    drew the ALLIED CONSTRUCTION YARD — a second, identical
+ *                landmark building appearing on the shoreline
+ *   subPen       drew the SOVIET CONSTRUCTION YARD, likewise
+ *   flameTower   drew the Sentry Gun, cannon and all — and because
+ *                `Defs.flameTower` leaves `hasTurret` false, that cannon never
+ *                slewed. A flamethrower emplacement with a welded gun barrel.
+ *   prismTower   drew the Multigunner AA turret: an anti-air mount firing a
+ *                ground beam.
+ *
+ * The two defences are built to the def they actually have. The Flame Tower is
+ * authored TURRETLESS with four radial nozzles, so nothing on it needs to slew;
+ * the Prism Tower has `hasTurret: true` in the defs and gets a real rotating
+ * crystal head on `target: 'turret'`.
+ * ========================================================================== */
+
+/**
+ * ALLIED NAVAL YARD. 3x3, 7.5 m.
+ *
+ * The Allied shell plus the two things that make a shipyard read as a shipyard
+ * from the RTS camera: a flooded SLIPWAY cut into the seaward face, and a
+ * travelling PORTAL GANTRY straddling it. The gantry also gives the structure
+ * its roofline, which is why the shell body is set unusually low.
+ */
+function alliedNavalYard(): StructureMassList {
+  const f = fp('navalYard');
+  const s = alliedShell(f.w, f.h, f.height, { key: 'navalYard', team: 1.25, windowCount: 5, bodyFraction: 0.40 });
+  const roof = s.roofY;
+  const beamY = f.height - 0.45;
+  s.masses.push(
+    // The slipway: a trough let into the seaward third, with a ramp floor that
+    // runs down under the waterline.
+    plate('slip.floor', MassRole.Primary, taperOutline(s.w * 0.44, s.d * 0.44, 1.22), 0.30,
+      [0, roof * 0.16, s.d * 0.26], [-0.16, 0, 0], 'grille', { chamfer: 0.06 }),
+    tbox('slip.wall', MassRole.Primary, [s.w * 0.16, roof * 0.62, s.d * 0.44], [s.w * 0.31, roof * 0.31, s.d * 0.26], 'paintMed', {
+      topScaleX: 0.68, topScaleZ: 0.94, bottomScaleX: 1.12, bottomScaleZ: 1.0, cornerCut: 0.30,
+    }, { mirrorX: true }),
+    // The portal gantry. Two raking legs and a swept box beam across the slip.
+    tbox('gantry.leg', MassRole.Primary, [0.72, beamY - roof * 0.10, 0.72], [s.w * 0.36, (beamY + roof * 0.10) * 0.5, s.d * 0.30], 'bareMetal', {
+      topScaleX: 0.66, topScaleZ: 0.72, bottomScaleX: 1.30, bottomScaleZ: 1.24,
+    }, { mirrorX: true }),
+    {
+      name: 'gantry.beam', primitive: 'extrude', role: MassRole.Primary,
+      // Authored along +Z and turned across the slip: `size` is always the
+      // PRE-rotation extent, and `massBounds` applies the rotation.
+      size: [0.90, 0.90, s.w * 0.90], anchor: [0, beamY, s.d * 0.30], slot: 'bareMetal',
+      rot: [0, HALF_PI, 0],
+      shape: {
+        profile: ductSection(0.90),
+        path: [[0, 0, -s.w * 0.45], [0, 0, -s.w * 0.14], [0, 0, s.w * 0.14], [0, 0, s.w * 0.45]],
+        scale: [0.74, 1.0, 1.0, 0.74], capStart: true, capEnd: true,
+      },
+    },
+    // Hull cradles: a keel block run down the middle of the slip.
+    greebleRun('slip.cradle', s.d * 0.38, 0.44, 0.36, [0, roof * 0.22, s.d * 0.24], 0x4A17),
+    box('gantry.hoist', MassRole.Greeble, [1.3, 1.0, 1.3], [-s.w * 0.14, beamY - 1.0, s.d * 0.30], 'hatch', { group: 'gantry gear' }),
+    cyl('bollard', MassRole.Greeble, [0.34, 0.52, 0.34], [s.w * 0.44, roof * 0.10, s.d * 0.10], 'bareMetal', {
+      mirrorX: true, group: 'bollards', segments: 10, capSlot: 'grille',
+    }),
+    box('quay.kerb', MassRole.Greeble, [s.w * 0.94, 0.24, 0.44], [0, roof * 0.06, s.d * 0.5 - 0.30], 'stripe', {
+      group: 'quay', chamfer: 0.05,
+    }),
+    box('fitting.shed', MassRole.Greeble, [s.w * 0.24, roof * 0.44, s.d * 0.22], [-s.w * 0.34, roof * 0.22 + roof, -s.d * 0.24], 'vent', { group: 'shed' }),
+  );
+  return list('allied_navalyard', 'Naval Yard', 'allies', 'navalYard', s.masses, [
+    ...baseSockets(s.d, roof + 1.0, -s.w * 0.34, -s.d * 0.24),
+    { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.3] },
+    { part: PartId.DockEntry, pos: [0, 0.2, s.d * 0.5 + 3.2] },
+    { part: PartId.Crane, pos: [-s.w * 0.14, beamY - 1.6, s.d * 0.30] },
+  ]);
+}
+
+/**
+ * SOVIET NAVAL PEN. 3x3, 6.0 m.
+ *
+ * A submarine pen is a bunker with a hole in it: the read is the BARREL-VAULT
+ * ROOF over a water channel, and the blast doors at its mouth. The vault is an
+ * extruded half-round swept along the channel, which is the one place in this
+ * file where `extrude` is doing what it exists for.
+ */
+function sovietSubPen(): StructureMassList {
+  const f = fp('subPen');
+  const s = sovietShell(f.w, f.h, f.height, { key: 'subPen', team: 1.22, windowCount: 4, bodyFraction: 0.34 });
+  const roof = s.roofY;
+  // A half-round section, flat along the bottom: the pen vault.
+  const vault: V2[] = (() => {
+    const out: V2[] = [[s.w * 0.30, 0]];
+    for (let i = 1; i < 9; i++) {
+      const a = (i / 8) * Math.PI;
+      out.push([Math.cos(a) * s.w * 0.30, Math.sin(a) * s.w * 0.30]);
+    }
+    out.push([-s.w * 0.30, 0]);
+    return out;
+  })();
+  s.masses.push(
+    {
+      name: 'pen.vault', primitive: 'extrude', role: MassRole.Primary,
+      // The section is a half-round standing on the water line, so the mass
+      // centre is half its own rise — not the roof height.
+      size: [s.w * 0.60, s.w * 0.30, s.d * 0.62], anchor: [0, s.w * 0.15, s.d * 0.18], slot: 'rivetPlate',
+      shape: {
+        profile: vault,
+        path: [[0, 0, -s.d * 0.31], [0, 0, -s.d * 0.08], [0, 0, s.d * 0.14], [0, 0, s.d * 0.31]],
+        scale: [0.88, 1.0, 1.0, 0.96], capStart: true, capEnd: false,
+      },
+    },
+    // The channel the boats lie in, and the blast door across its mouth.
+    plate('pen.channel', MassRole.Primary, taperOutline(s.w * 0.42, s.d * 0.56, 1.10), 0.28,
+      [0, roof * 0.06, s.d * 0.20], undefined, 'grille', { chamfer: 0.06 }),
+    box('pen.door', MassRole.Greeble, [s.w * 0.50, roof * 0.62, 0.40], [0, roof * 0.31, s.d * 0.5 + 0.02], 'hatch', {
+      group: 'blast door', feature: Feature.Door, anim: roof * 0.66, chamfer: 0.06,
+    }),
+    box('pen.lintel', MassRole.Greeble, [s.w * 0.62, 0.62, 0.62], [0, roof * 0.70, s.d * 0.5 + 0.08], 'stripe', {
+      group: 'blast door', chamfer: 0.07,
+    }),
+    ...sovietStack(-s.w * 0.34, -s.d * 0.28, s.w * 0.095, roof * 1.30, f.height, 'stackA'),
+    ...catwalk(s.w * 0.66, s.d * 0.18, roof * 1.34, 'walk'),
+    ...lattice(s.w * 0.40, s.d * 0.06, 1.8, roof * 1.45, 'derrick'),
+    greebleRun('quay.run', s.d * 0.54, 0.34, 0.28, [s.w * 0.40, roof * 0.14, s.d * 0.18], 0x5B0A, { mirrorX: true }),
+    cyl('bollard', MassRole.Greeble, [0.36, 0.54, 0.36], [s.w * 0.42, roof * 0.12, -s.d * 0.06], 'bareMetal', {
+      mirrorX: true, group: 'bollards', segments: 10, capSlot: 'grille',
+    }),
+  );
+  return list('soviet_subpen', 'Naval Pen', 'soviets', 'subPen', s.masses, [
+    ...baseSockets(s.d, f.height, -s.w * 0.34, -s.d * 0.28),
+    { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.3] },
+    { part: PartId.DockEntry, pos: [0, 0.2, s.d * 0.5 + 3.2] },
+    { part: PartId.Crane, pos: [s.w * 0.40, roof * 1.40, s.d * 0.06] },
+  ]);
+}
+
+/**
+ * SOVIET FLAME TOWER. 1x1, 5.5 m. A defence, and TURRETLESS BY DESIGN.
+ *
+ * `Defs.flameTower` does not set `hasTurret`, so `EntityFlag.HasTurret` is never
+ * raised, `Combat.ts` never slews `turretYaw` and `world.ts` leaves it at spawn
+ * yaw. Giving this thing a directional gun — which is what borrowing the Sentry
+ * Gun's mesh did — produces an emplacement whose barrel points at one fixed
+ * compass bearing forever.
+ *
+ * So it has no barrel. It is a pressure vessel under a flared burner mouth with
+ * FOUR RADIAL NOZZLES, and it is correct at any yaw.
+ */
+function sovietFlameTower(): StructureMassList {
+  const f = fp('flameTower');
+  const w = f.w * CELL * 0.76;
+  const h = f.height;
+  const baseTop = h * 0.16;
+  const drumTop = h * 0.58;
+  const headTop = h * 0.80;
+  const nozzleY = h * 0.66;
+
+  const nozzle = (name: string, rotY: number, mirror: boolean): M => ({
+    name, primitive: 'extrude', role: MassRole.Greeble,
+    size: [0.30, 0.30, w * 0.52], anchor: [0, nozzleY, 0], slot: 'bareMetal',
+    rot: [-0.22, rotY, 0], group: 'nozzles',
+    ...(mirror ? { mirrorX: true } : {}),
+    shape: {
+      profile: ductSection(0.30),
+      path: [[0, 0, w * 0.16], [0, 0, w * 0.34], [0, 0, w * 0.46], [0, 0, w * 0.56]],
+      scale: [1.0, 0.86, 1.28, 1.06], capStart: true, capEnd: true,
+    },
+  });
+
+  const masses: M[] = [
+    ...foundationPad('soviets', f.w, f.h, h),
+    // A battered octagonal plinth. SOVIET-1 at defence scale.
+    pplan('base', MassRole.Primary, [w, baseTop, w], [0, baseTop * 0.5, 0], 'rivetPlate', {
+      plan: cutBoxPlan(w, w, 0.10), topScaleX: 0.88, topScaleZ: 0.88, bottomScaleX: 1.08, bottomScaleZ: 1.08,
+    }, { capSlot: 'grille' }),
+    // The fuel drum: the dominant mass and the thing that says "this burns".
+    rev('drum', MassRole.Primary, [w * 0.82, drumTop - baseTop, w * 0.82], [0, (drumTop + baseTop) * 0.5, 0],
+      'rivetPlate', DRUM, 14, { capSlot: 'grille' }),
+    // Two pressure vessels strapped to the drum (SOVIET-4).
+    rev('vessel', MassRole.Primary, [w * 0.30, h * 0.34, w * 0.30], [w * 0.44, h * 0.30, -w * 0.10],
+      'rivetPlate', CAPSULE_PROFILE, 12, { mirrorX: true, capSlot: 'grille' }),
+    // The burner head and its flared mouth. The mouth IS the roofline.
+    rev('head', MassRole.Primary, [w * 0.70, headTop - drumTop, w * 0.70], [0, (headTop + drumTop) * 0.5, 0],
+      'bareMetal', TAPER_DRUM, 14, { capSlot: 'grille' }),
+    rev('mouth', MassRole.Primary, [w * 0.66, h - headTop, w * 0.66], [0, (h + headTop) * 0.5, 0],
+      'rivetPlate', FLARE_PROFILE, 14, { capSlot: 'grille' }),
+
+    nozzle('nozzle.x', 0, true),
+    nozzle('nozzle.zF', 0, false),
+    nozzle('nozzle.zB', Math.PI, false),
+
+    cyl('collar', MassRole.Greeble, [w * 0.90, h * 0.045, w * 0.90], [0, drumTop, 0], 'bareMetal', {
+      group: 'collars', chamfer: 0.05, capSlot: 'grille',
+    }),
+    box('fuelLine', MassRole.Greeble, [0.20, h * 0.34, 0.20], [-w * 0.40, h * 0.28, w * 0.24], 'bareMetal', {
+      mirrorX: true, group: 'pipework', chamfer: 0.04,
+    }),
+    box('valve.block', MassRole.Greeble, [w * 0.26, h * 0.12, w * 0.20], [-w * 0.34, h * 0.12, -w * 0.28], 'grille', { group: 'pipework' }),
+    box('ladder', MassRole.Greeble, [0.32, h * 0.44, 0.10], [0, h * 0.34, w * 0.44], 'stripe', { group: 'ladder', chamfer: 0.03 }),
+    box('gauge', MassRole.Greeble, [w * 0.22, h * 0.09, 0.14], [w * 0.20, h * 0.44, w * 0.42], 'stencil', { group: 'gauges', chamfer: 0.04 }),
+    greebleRun('drum.strapRun', h * 0.30, 0.20, 0.16, [-w * 0.14, h * 0.40, -w * 0.44], 0x5F1A),
+
+    // A defence carries NO insignia (R-T4) and a wide 6-18% team band.
+    teamPanel('team.drum', [w * 0.86, h * 0.055, w * 0.30], [0, h * 0.44, 0]),
+    teamPanel('team.chevron', [0.14, h * 0.16, w * 0.28], [w * 0.36, h * 0.24, 0], { mirrorX: true }),
+    teamPanel('team.mouth', [w * 0.34, 0.12, w * 0.24], [0, h * 0.99, 0]),
+
+    // The pilot flame, and the sight lamps under the mouth.
+    cyl('pilot', MassRole.Emissive, [w * 0.34, h * 0.045, w * 0.34], [0, h * 0.97, 0], 'emissive', {
+      group: 'pilot', chamfer: 0.03, capSlot: 'emissive', feature: Feature.Window,
+    }),
+    ...windows(w * 0.30, h * 0.62, w * 0.40, 2, 0.22, 0.13, 'lamp'),
+  ];
+
+  return list('soviet_flametower', 'Flame Tower', 'soviets', 'flameTower', masses, [
+    { part: PartId.MuzzleA, pos: [0, nozzleY, w * 0.62] },
+    { part: PartId.MuzzleB, pos: [w * 0.62, nozzleY, 0] },
+    { part: PartId.Emitter, pos: [0, h * 0.95, 0] },
+  ], { cls: 'defence' });
+}
+
+/**
+ * ALLIED PRISM TOWER. 1x1, 8.0 m. A defence WITH a real turret.
+ *
+ * `Defs.prismTower` sets `hasTurret: true`, so unlike the Flame Tower this one
+ * genuinely slews — the crystal head is on `target: 'turret'` and the rest is
+ * the fixed pylon it stands on.
+ *
+ * The whole silhouette is one idea: a splayed hexagonal foot drawn up into a
+ * narrow faceted pylon, and a faceted crystal on top that is nearly all
+ * emissive. No barrel anywhere on it, because a prism does not have one.
+ */
+function alliedPrismTower(): StructureMassList {
+  const f = fp('prismTower');
+  const w = f.w * CELL * 0.74;
+  const h = f.height;
+  const baseTop = h * 0.17;
+  const pylonTop = h * 0.62;
+  const ringY = pylonTop;
+  const hexPhase = HALF_PI / 3;
+
+  const masses: M[] = [
+    ...foundationPad('allies', f.w, f.h, h),
+    // ALLIED-1 at defence scale: the foot flares 1.3x wider than the shoulder.
+    pplan('foot', MassRole.Primary, [w, baseTop, w], [0, baseTop * 0.5, 0], 'paintMed', {
+      plan: ngon(w * 0.5, w * 0.5, 6, hexPhase),
+      topScaleX: 0.72, topScaleZ: 0.72, bottomScaleX: 1.06, bottomScaleZ: 1.06,
+    }, { capSlot: 'paintSmall' }),
+    // The pylon: hexagonal, drawn in hard toward the collar.
+    pplan('pylon', MassRole.Primary, [w * 0.72, pylonTop - baseTop, w * 0.72], [0, (pylonTop + baseTop) * 0.5, 0], 'paintMed', {
+      plan: ngon(w * 0.36, w * 0.36, 6, hexPhase),
+      topScaleX: 0.56, topScaleZ: 0.56, bottomScaleX: 1.10, bottomScaleZ: 1.10,
+    }, { capSlot: 'paintSmall' }),
+    cyl('collar', MassRole.Primary, [w * 0.50, h * 0.045, w * 0.50], [0, ringY, 0], 'bareMetal', {
+      segments: BUILDING_GEOMETRY.railSegments, capSlot: 'grille',
+    }),
+
+    /* -- the slewing head, rebased onto the collar by the factory ---------- */
+    pplan('head', MassRole.Primary, [w * 0.60, h * 0.15, w * 0.64], [0, ringY + h * 0.085, 0], 'paintMed', {
+      plan: ngon(w * 0.30, w * 0.32, 6, hexPhase),
+      topScaleX: 0.80, topScaleZ: 0.84, shear: -w * 0.03,
+    }, { capSlot: 'paintSmall', target: 'turret' }),
+    // The crystal: a faceted, almost entirely emissive spire, and the roofline.
+    // R-T5 caps a defence at 3% emissive and an all-emissive spire measured
+    // 3.4%, so the crystal is slimmer than it wants to be. It is still the
+    // roofline; it is just no longer the whole roof.
+    rev('crystal', MassRole.Primary, [w * 0.32, h - (ringY + h * 0.16), w * 0.32], [0, (h + ringY + h * 0.16) * 0.5, 0],
+      'emissive', CRYSTAL_PROFILE, 8, { capSlot: 'emissive', target: 'turret', feature: Feature.Window }),
+
+    /* -- greebles ---------------------------------------------------------- */
+    plate('focus.vane', MassRole.Greeble, taperOutline(w * 0.30, h * 0.16, 0.34), 0.10,
+      [w * 0.26, ringY + h * 0.12, 0], [0, HALF_PI, HALF_PI - 0.30], 'bareMetal',
+      { mirrorX: true, group: 'vanes', target: 'turret' }),
+    box('capacitor', MassRole.Greeble, [w * 0.24, h * 0.13, w * 0.20], [-w * 0.32, h * 0.12, -w * 0.26], 'grille', { group: 'plant' }),
+    box('conduit', MassRole.Greeble, [0.18, h * 0.44, 0.18], [w * 0.30, h * 0.30, w * 0.22], 'bareMetal', {
+      mirrorX: true, group: 'conduits', chamfer: 0.03,
+    }),
+    cyl('conduit.head', MassRole.Greeble, [0.34, 0.26, 0.34], [w * 0.30, h * 0.53, w * 0.22], 'hatch', {
+      mirrorX: true, group: 'conduits', segments: 10, capSlot: 'grille',
+    }),
+    box('service.hatch', MassRole.Greeble, [w * 0.26, h * 0.10, 0.20], [0, h * 0.12, w * 0.34], 'hatch', { group: 'service', chamfer: 0.04 }),
+    greebleRun('pylon.run', h * 0.34, 0.22, 0.18, [-w * 0.24, h * 0.34, w * 0.20], 0x41F0),
+    box('vent', MassRole.Greeble, [w * 0.22, h * 0.08, w * 0.20], [w * 0.24, h * 0.20, -w * 0.28], 'vent', { group: 'plant' }),
+
+    teamPanel('team.foot', [w * 0.80, 0.14, w * 0.28], [0, baseTop + 0.05, 0]),
+    teamPanel('team.pylon', [0.14, h * 0.20, w * 0.24], [w * 0.28, h * 0.40, 0], { mirrorX: true }),
+    teamPanel('team.head', [w * 0.34, 0.12, w * 0.22], [0, ringY + h * 0.16, 0], { target: 'turret' }),
+    ...windows(w * 0.30, h * 0.22, w * 0.36, 2, 0.24, 0.14, 'lamp'),
+  ];
+
+  return list('allied_prismtower', 'Prism Tower', 'allies', 'prismTower', masses, [
+    { part: PartId.MuzzleA, pos: [0, h * 0.90, 0], turret: true },
+    { part: PartId.Emitter, pos: [0, h * 0.90, 0] },
+  ], { cls: 'defence', turretPivot: [0, ringY, 0] });
+}
+
+/** A burner mouth: a throat that flares open toward the sky. */
+const FLARE_PROFILE: readonly V2[] = [
+  [0, 0], [0.32, 0], [0.34, 0.16], [0.40, 0.52], [0.50, 0.86], [0.46, 1.0], [0, 1.0],
+];
+
+/** A faceted crystal spire: a waisted shaft rising to a point. */
+const CRYSTAL_PROFILE: readonly V2[] = [
+  [0, 0], [0.44, 0.06], [0.50, 0.20], [0.42, 0.52], [0.26, 0.80], [0.10, 0.94], [0, 1.0],
+];
+
+/** A capsule: hemisphere, straight body, hemisphere. Normalised. */
+const CAPSULE_PROFILE: readonly V2[] = [
+  [0, 0], [0.28, 0.06], [0.42, 0.16], [0.50, 0.30],
+  [0.50, 0.70], [0.42, 0.84], [0.28, 0.94], [0, 1.0],
+];
 
 /* -- WALLS AND GATES ------------------------------------------------------ */
 
@@ -1053,9 +1623,13 @@ function wallSegment(faction: StructureFaction): StructureMassList {
   const soviet = faction === 'soviets';
   const masses: M[] = soviet
     ? [
-      pri('wall', MassRole.Primary, [w, h * 0.86, w * 0.42], [0, h * 0.43, 0], 'rivetPlate', {
-        plan: 'cutBox', cornerCut: 0.06, capSlot: 'rivetPlate',
-      }),
+      // A battered concrete wall: the face leans back 4% over its height, which
+      // is both how a real revetment is poured and why this panel no longer
+      // measures as a flat rectangle when it is repeated eighty times.
+      pplan('wall', MassRole.Primary, [w, h * 0.86, w * 0.42], [0, h * 0.43, 0], 'rivetPlate', {
+        plan: cutBoxPlan(w, w * 0.42, 0.06),
+        topScaleX: 0.97, topScaleZ: 0.88, bottomScaleX: 1.01, bottomScaleZ: 1.08,
+      }, { capSlot: 'rivetPlate' }),
       // SOVIET-2 at wall scale: the capsule rails ARE the pilasters, and every
       // reference frame of the Kremlin wall is built out of them.
       cyl('rail', MassRole.Primary, [w * 0.22, h, w * 0.22], [w * 0.5 - w * 0.11, h * 0.5, 0], 'rivetPlate', {
@@ -1068,13 +1642,14 @@ function wallSegment(faction: StructureFaction): StructureMassList {
       teamPanel('team.band', [w * 0.30, h * 0.30, 0.12], [0, h * 0.52, w * 0.22]),
     ]
     : [
-      box('wall', MassRole.Primary, [w, h * 0.82, w * 0.36], [0, h * 0.41, 0], 'paintMed', {
-        taper: [0.86, 0.86, 0],
+      tbox('wall', MassRole.Primary, [w, h * 0.82, w * 0.36], [0, h * 0.41, 0], 'paintMed', {
+        topScaleX: 0.86, topScaleZ: 0.80, bottomScaleX: 1.02, bottomScaleZ: 1.10, cornerCut: w * 0.05,
       }),
-      box('post', MassRole.Primary, [w * 0.18, h, w * 0.44], [w * 0.5 - w * 0.09, h * 0.5, 0], 'paintMed', {
-        mirrorX: true, taper: [0.88, 0.88, 0],
-      }),
-      box('coping', MassRole.Primary, [w, h * 0.12, w * 0.44], [0, h * 0.92, 0], 'paintSmall', { chamfer: 0.045 }),
+      tbox('post', MassRole.Primary, [w * 0.18, h, w * 0.44], [w * 0.5 - w * 0.09, h * 0.5, 0], 'paintMed', {
+        topScaleX: 0.78, topScaleZ: 0.86, bottomScaleX: 1.08, bottomScaleZ: 1.04,
+      }, { mirrorX: true }),
+      plate('coping', MassRole.Primary, taperOutline(w, w * 0.44, 0.86), h * 0.12,
+        [0, h * 0.92, 0], undefined, 'paintSmall', { chamfer: 0.045 }),
       box('rail', MassRole.Greeble, [w, 0.10, 0.10], [0, h * 1.02, w * 0.16], 'bareMetal', {
         mirrorX: false, group: 'rails', chamfer: 0.02,
       }),
@@ -1101,11 +1676,17 @@ function gateSegment(faction: StructureFaction): StructureMassList {
   const soviet = faction === 'soviets';
   const masses: M[] = [
     ...foundationPad(faction, f.w, f.h, h),
-    box('tower', MassRole.Primary, [w * 0.24, h, w * 0.52], [w * 0.5 - w * 0.12, h * 0.5, 0], soviet ? 'rivetPlate' : 'paintMed', {
-      mirrorX: true, taper: soviet ? [1, 1, 0] : [0.88, 0.88, 0],
-    }),
-    box('lintel', MassRole.Primary, [w, h * 0.20, w * 0.46], [0, h * 0.90, 0], soviet ? 'rivetPlate' : 'paintMed', { chamfer: 0.06 }),
-    box('hazard', MassRole.Primary, [w * 0.76, h * 0.10, w * 0.50], [0, h * 0.78, 0], 'stripe', { chamfer: 0.04 }),
+    tbox('tower', MassRole.Primary, [w * 0.24, h, w * 0.52], [w * 0.5 - w * 0.12, h * 0.5, 0],
+      soviet ? 'rivetPlate' : 'paintMed',
+      soviet
+        ? { topScaleX: 0.92, topScaleZ: 0.94, bottomScaleX: 1.06, bottomScaleZ: 1.04, cornerCut: w * 0.04 }
+        : { topScaleX: 0.82, topScaleZ: 0.88, bottomScaleX: 1.06, bottomScaleZ: 1.02, cornerCut: w * 0.05 },
+      { mirrorX: true }),
+    tbox('lintel', MassRole.Primary, [w, h * 0.20, w * 0.46], [0, h * 0.90, 0], soviet ? 'rivetPlate' : 'paintMed', {
+      topScaleX: 0.94, topScaleZ: 0.84, cornerCut: w * 0.05,
+    }, { chamfer: 0.06 }),
+    plate('hazard', MassRole.Primary, taperOutline(w * 0.76, w * 0.50, 0.90), h * 0.10,
+      [0, h * 0.78, 0], undefined, 'stripe', { chamfer: 0.04 }),
     // Two leaves, each retracting straight down into the roadway.
     box('leaf', MassRole.Greeble, [w * 0.38, h * 0.70, 0.24], [w * 0.19, h * 0.35, 0], 'grille', {
       mirrorX: true, group: 'leaves', feature: Feature.Door, anim: h * 0.74, chamfer: 0.04,
@@ -1150,9 +1731,9 @@ function oreSilo(faction: StructureFaction): StructureMassList {
         topRadius: 0.44, capSlot: 'grille',
       })
       // ALLIED-2 at silo scale: an open-topped crown instead of a cone.
-      : pri('cap', MassRole.Primary, [w * 0.86, h * 0.24, w * 0.86], [0, h * 0.80, 0], 'paintMed', {
-        plan: 'hexagon', capSlot: 'grille',
-      }),
+      : pplan('cap', MassRole.Primary, [w * 0.86, h * 0.24, w * 0.86], [0, h * 0.80, 0], 'paintMed', {
+        plan: ngon(w * 0.43, w * 0.43, 6, HALF_PI / 3), topScaleX: 0.86, topScaleZ: 0.86,
+      }, { capSlot: 'grille' }),
     cyl('collar', MassRole.Primary, [w * 1.06, h * 0.06, w * 1.06], [0, h * 0.66, 0], 'bareMetal', {
       chamfer: 0.05, capSlot: 'grille',
     }),
@@ -1176,6 +1757,7 @@ function oreSilo(faction: StructureFaction): StructureMassList {
     box('plate', MassRole.Greeble, [w * 0.28, h * 0.12, 0.12], [w * 0.24, h * 0.24, w * 0.46], 'stencil', {
       group: 'plates', chamfer: 0.03,
     }),
+    greebleRun('drum.run', h * 0.34, 0.20, 0.16, [-w * 0.30, h * 0.40, -w * 0.38], 0x5170, { rot: [0, 0.9, 0] }),
     teamPanel('team.band', [w * 1.02, h * 0.045, w * 0.26], [0, h * 0.52, 0]),
     teamPanel('team.cap', [w * 0.30, 0.10, w * 0.18], [0, h * 0.93, 0]),
     insignia(w * 0.34, [0, h * 0.34, w * 0.50]),
@@ -1203,8 +1785,10 @@ export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   alliedRadar(),
   alliedTech(),
   oreSilo('allies'),
+  alliedNavalYard(),
   alliedPillbox(),
   alliedAaTurret(),
+  alliedPrismTower(),
   wallSegment('allies'),
   gateSegment('allies'),
 
@@ -1216,8 +1800,10 @@ export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   sovietRadar(),
   sovietTech(),
   oreSilo('soviets'),
+  sovietSubPen(),
   sovietSentry(),
   sovietTeslaCoil(),
+  sovietFlameTower(),
   wallSegment('soviets'),
   gateSegment('soviets'),
 ];

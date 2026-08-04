@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/art/Greeble.ts
+ * VOLTMARCH — src/art/Greeble.ts
  * ============================================================================
  * THE GREEBLE FACTORY. Risk R1 ("units ship as untextured grey primitives")
  * is rated FATAL and this file is the whole mitigation. It is deliberately the

@@ -19,7 +19,7 @@ import * as THREE from 'three';
 
 import {
   DECAL_GRID, DECAL_LIFT, MAP_SIZE, ROAD_CORNER_RADIUS_MAX, ROAD_CORNER_RADIUS_MIN,
-  ROAD_KERB_HEIGHT, ROAD_LANE_WIDTH, ROAD_MIN_AXIS_DEGREES, ROAD_MOVE_COST,
+  ROAD_KERB_HEIGHT, ROAD_LANE_WIDTH, ROAD_MIN_AXIS_DEGREES, ROAD_MOVE_COST, SCORCH_DARKEN,
 } from '../src/core/config';
 import { Terrain } from '../src/world/Terrain';
 import {
@@ -434,14 +434,20 @@ describe('DecalField — the pool', () => {
     f.dispose();
   });
 
-  it('multiplies rather than alpha-blends — bible §8.10', () => {
+  it('multiplies rather than alpha-blends, with a darkening floor — bible §8.10', () => {
     const f = flat();
     const m = f.mesh.material as THREE.ShaderMaterial;
     expect(m.blending).toBe(THREE.CustomBlending);
     expect(m.blendSrc).toBe(THREE.DstColorFactor);
     expect(m.blendDst).toBe(THREE.ZeroFactor);
+    // Alpha is untouched, so a decal can never punch a hole in coverage.
+    expect(m.blendSrcAlpha).toBe(THREE.ZeroFactor);
+    expect(m.blendDstAlpha).toBe(THREE.OneFactor);
     expect(m.depthWrite).toBe(false);
     expect(m.toneMapped).toBe(false);
+    // A floor, so one decal can never take the ground to black on its own, and
+    // overlapping decals compound from a much higher base.
+    expect(m.uniforms.uFloor.value).toBeGreaterThan(SCORCH_DARKEN);
     f.dispose();
   });
 

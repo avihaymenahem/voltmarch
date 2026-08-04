@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/input/Input.ts
+ * VOLTMARCH — src/input/Input.ts
  * ============================================================================
  * THE RAW EVENT LAYER. It knows about pixels, buttons and modifier keys, and
  * about nothing else in the game.

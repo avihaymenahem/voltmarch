@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/core/loop.ts
+ * VOLTMARCH — src/core/loop.ts
  * ============================================================================
  * THE FIXED-TIMESTEP SIMULATION LOOP AND THE SYSTEM REGISTRY.
  *
@@ -386,7 +386,17 @@ export class SystemRegistry {
     const ordered = this.all
       .slice()
       .sort((a, b) => (b.phase - a.phase) || (b.order - a.order) || (b.seq - a.seq));
-    for (let i = 0; i < ordered.length; i++) ordered[i].module.dispose?.();
+    // One module that throws in dispose() must not abandon the teardown of
+    // every module after it — that leaks a renderer, a scene and a set of
+    // listeners onto the canvas the NEXT boot claims, and the symptom shows up
+    // as a corrupt second match rather than as this stack trace.
+    for (let i = 0; i < ordered.length; i++) {
+      try {
+        ordered[i].module.dispose?.();
+      } catch (err) {
+        console.error(`[systems] "${ordered[i].module.id}" threw in dispose():`, err);
+      }
+    }
     this.all.length = 0;
     this.simSystems = [];
     this.frameSystems = [];

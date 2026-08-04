@@ -1,5 +1,5 @@
 /**
- * RED ALERT — src/render/post.ts
+ * VOLTMARCH — src/render/post.ts
  * =============================================================================
  * The post-processing chain.
  *
@@ -19,13 +19,21 @@
  *  2. AO darkens ambient contact. It runs before bloom so that an occluded
  *     crevice cannot bloom.
  *
- *  3. Bloom thresholds in HDR at 1.25 -> only genuine emissives bloom.
+ *  3. Bloom thresholds in HDR just above sunlit white paint, so only a genuine
+ *     specular glint or an emissive blooms.
  *
- *  4. Grade is where tonemapping actually happens: exposure -> AgX (or ACES)
- *     -> 3-way shadow/mid/highlight tint -> lift/gain -> contrast ->
- *     saturation (with separate shadow saturation) -> vignette -> sRGB encode
- *     -> film grain. Chromatic aberration and an unsharp mask are folded into
- *     the same pass so we pay for one full-screen fetch, not three.
+ *  4. Grade is where tonemapping actually happens: exposure -> ACES (or AgX)
+ *     -> 3-way shadow/mid/highlight tint -> lift/gain -> GAMMA contrast about
+ *     scene-linear 0.18 -> white point -> saturation (with separate shadow
+ *     saturation) -> highlight-to-white rolloff -> vignette -> sRGB encode ->
+ *     film grain. Chromatic aberration and an unsharp mask are folded into the
+ *     same pass so we pay for one full-screen fetch, not three.
+ *
+ *     The contrast/white-point pair is the whole of scorecard #6 ("something in
+ *     frame must reach white") and is documented at GRADE_PIVOT / GRADE_WHITE
+ *     below. Both are deliberately curve constants rather than art-bible knobs:
+ *     they define what "display white" MEANS for this game, and a mood that
+ *     wants a different histogram moves `tone.exposure` and `tone.contrast`.
  *
  *  5. SMAA runs last, on the final LDR sRGB image, which is where edge
  *     detection actually wants to be. MSAA is off in the renderer; this is the
@@ -56,6 +64,7 @@ import {
   type RendererHandle,
   type ToneMappingMode,
 } from './renderer';
+import { LAYERS } from './scene';
 
 declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -118,6 +127,35 @@ uniform float uSharpen;
 varying vec2 vUv;
 
 const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+/**
+ * Scene-linear middle grey. The contrast pivot: a pixel at exactly this value
+ * is the one value the contrast stage cannot move.
+ */
+const float GRADE_PIVOT = 0.18;
+
+/**
+ * The graded scene-linear value that IS display white.
+ *
+ * Scorecard #6 requires p99 luminance >= 0.90 sRGB — i.e. something in the
+ * frame must actually clip. Every filmic curve we can pick (AgX, ACES,
+ * Khronos-neutral) asymptotes toward 1.0 and only gets there for inputs 15-20x
+ * middle grey, which a noon RTS frame simply does not contain: the brightest
+ * thing on screen is white concrete at ~1.0 scene-linear, and AgX maps that to
+ * 0.67. Measured across all 12 shot scenarios the result was p99 0.61-0.89 with
+ * ZERO clipped pixels anywhere.
+ *
+ * So the white point is declared rather than hoped for. Anything at or above
+ * GRADE_WHITE after the contrast stage clips to paper white; the curve above
+ * still rolls off smoothly because the tonemap has already compressed it.
+ *
+ * This is a NORMALISATION, not an exposure lift: it runs after the gamma
+ * contrast has already pushed the shadows down, so the blacks it multiplies
+ * are ~0.005 and stay ~0.006. Raising tone.exposure instead would move the
+ * blacks and the mids by the same factor — bible risk R5, the exact instinct
+ * that breaks scorecard #4 and #6-low.
+ */
+const float GRADE_WHITE = 0.94;
 
 float luma(vec3 c) { return dot(c, LUMA); }
 
@@ -251,14 +289,40 @@ void main() {
   /* --- lift / gain ------------------------------------------------------- */
   col = col * uGain + uLift * (1.0 - l);
 
-  /* --- contrast around scene-linear 0.18 --------------------------------- */
-  col = (col - 0.18) * uContrast + 0.18;
+  /* --- contrast: a GAMMA pivot at scene-linear 0.18 ----------------------
+   * This used to be the affine (col - 0.18) * C + 0.18. An affine contrast
+   * translates the whole curve: to gain 0.2 at the top it also SUBTRACTS a
+   * fixed 0.2 * (C-1) everywhere, which slams a large fraction of the frame
+   * flat onto zero and shows up as a hard, plastic-looking crush.
+   *
+   * A gamma pivot pins BOTH endpoints — 0 stays 0, GRADE_PIVOT stays
+   * GRADE_PIVOT — and spends its entire budget on the slope, so the shadows
+   * roll down smoothly while the top of the range expands into the white
+   * point above. That is the "more contrast, not more brightness" the RA3
+   * side-by-side is actually asking for.
+   */
+  col = GRADE_PIVOT * pow(max(col, 0.0) / GRADE_PIVOT, vec3(uContrast));
+
+  /* --- highlight reach: declare the white point --------------------------- */
+  col /= GRADE_WHITE;
   col = max(col, 0.0);
 
   /* --- saturation (shadows desaturate further) --------------------------- */
   float sat = uSaturation * mix(1.0, uShadowSaturation, wS);
   col = mix(vec3(luma(col)), col, sat);
   col = max(col, 0.0);
+
+  /* --- blown highlights go to PAPER WHITE, not to a coloured clip ---------
+   * Without this a clipped specular clamps per channel and comes out tinted
+   * (1.0, 1.0, 0.74) — a yellow blob, not a highlight. Folding the overflow
+   * back toward white is what a real sensor does, and it is also what keeps
+   * scorecard #20 (saturation must fall as luminance rises) true at the very
+   * top of the curve now that the top of the curve exists at all.
+   */
+  {
+    float over = max(col.r, max(col.g, col.b)) - 1.0;
+    col = mix(col, vec3(1.0), clamp(over, 0.0, 1.0));
+  }
 
   /* --- vignette ---------------------------------------------------------- */
   if (uVignette > 0.0001) {
@@ -311,22 +375,22 @@ function makeGradeUniforms(): GradeUniforms {
     tDiffuse: { value: null },
     uTexel: { value: new THREE.Vector2(1 / 1920, 1 / 1080) },
     uTime: { value: 0 },
-    uExposure: { value: 1.05 },
-    uToneMode: { value: 1 },
+    uExposure: { value: 0.90 },
+    uToneMode: { value: TONE_MODE_ID.aces },
     uShadowTint: { value: new THREE.Vector3(1, 1, 1) },
     uMidTint: { value: new THREE.Vector3(1, 1, 1) },
     uHighTint: { value: new THREE.Vector3(1, 1, 1) },
     uLift: { value: new THREE.Vector3(0, 0, 0) },
     uGain: { value: new THREE.Vector3(1, 1, 1) },
-    uContrast: { value: 1.06 },
-    uSaturation: { value: 1.04 },
-    uShadowSaturation: { value: 0.88 },
-    uVignette: { value: 0.28 },
-    uVignetteSoftness: { value: 0.55 },
-    uGrain: { value: 0.018 },
+    uContrast: { value: 1.32 },
+    uSaturation: { value: 1.02 },
+    uShadowSaturation: { value: 0.94 },
+    uVignette: { value: 0.20 },
+    uVignetteSoftness: { value: 0.62 },
+    uGrain: { value: 0.016 },
     uGrainSize: { value: 1.4 },
-    uCA: { value: 0.0012 },
-    uSharpen: { value: 0.22 },
+    uCA: { value: 0.0016 },
+    uSharpen: { value: 0.40 },
   };
 }
 
@@ -476,6 +540,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
         const GTAOPass = mod.GTAOPass;
         const p = new GTAOPass(scene, camera, width(), height());
         if (GTAOPass.OUTPUT) p.output = GTAOPass.OUTPUT.Default;
+        installAoOccluderFilter(p);
         passes.ao = p as Pass;
         applyAoConfig();
         rebuild();
@@ -498,6 +563,59 @@ export function createPostChain(options: CreatePostOptions): PostChain {
         }
       }
     })();
+  }
+
+  /**
+   * KEEP NON-OCCLUDERS OUT OF THE AO NORMAL/DEPTH PREPASS.
+   *
+   * `GTAOPass` renders the whole scene a second time with a normal material to
+   * build its G-buffer, and its own filter only skips Points and Lines. Every
+   * transparent MESH therefore lands in that buffer as a solid, opaque
+   * occluder — and the ground decal field is a flat sheet of quads lying on the
+   * terrain, so GTAO reads a wall a few centimetres above the ground and
+   * occludes everything under it. That is the hard-edged pure-black polygons in
+   * `?shot=battle` and `?shot=naval`; the smoke layers add the same defect in
+   * the air. Turning AO off made both disappear entirely, which is how this was
+   * isolated: the decal SHADER was innocent (forcing its darkening floor to
+   * 0.95 changed nothing).
+   *
+   * The predicate is the honest one: an object that does not write depth in the
+   * main pass, or that is transparent, or that lives on the effects/overlay
+   * layers, is not an occluder. It is also a straight perf win — the prepass
+   * stops drawing the particle, beam and decal layers.
+   */
+  function installAoOccluderFilter(pass: unknown): void {
+    const p = pass as {
+      scene: THREE.Scene;
+      _visibilityCache?: THREE.Object3D[];
+      _overrideVisibility?: () => void;
+    };
+    const base = p._overrideVisibility;
+    if (typeof base !== 'function') return;
+
+    p._overrideVisibility = function overrideVisibility(this: typeof p): void {
+      base.call(this);
+      const cache = this._visibilityCache;
+      if (cache === undefined) return;
+      this.scene.traverse((o) => {
+        if (!o.visible || !(o as THREE.Mesh).isMesh) return;
+        if (aoOccluder(o as THREE.Mesh)) return;
+        o.visible = false;
+        cache.push(o);
+      });
+    };
+  }
+
+  function aoOccluder(mesh: THREE.Mesh): boolean {
+    if (mesh.layers.isEnabled(LAYERS.EFFECTS) || mesh.layers.isEnabled(LAYERS.OVERLAY)) return false;
+    const mat = mesh.material;
+    const list = Array.isArray(mat) ? mat : [mat];
+    for (const m of list) {
+      if (m === undefined || m === null) continue;
+      if (m.transparent === true || m.depthWrite === false) return false;
+      if (m.blending !== THREE.NormalBlending && m.blending !== THREE.NoBlending) return false;
+    }
+    return true;
   }
 
   function applyAoConfig(): void {

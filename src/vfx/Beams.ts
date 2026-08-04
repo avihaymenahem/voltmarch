@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/vfx/Beams.ts
+ * VOLTMARCH — src/vfx/Beams.ts
  * ============================================================================
  * TESLA ARCS AND ENERGY BEAMS, plus the screen-width ribbon renderer they and
  * `Tracers.ts` both draw through.
@@ -327,6 +327,14 @@ export class RibbonBatch {
   /** Publish this frame's writes. */
   end(): void {
     this.geometry.setDrawRange(0, this.quads * 6);
+    // A drawRange of 0 does NOT keep three from submitting the mesh: it is
+    // frustumCulled=false, so it goes into the transparent list, binds its
+    // program and issues an empty indexed draw — once for the colour pass and
+    // again for the GTAO normal prepass. Both ribbon batches are empty in the
+    // overwhelming majority of frames (no tesla up, nothing in flight), and
+    // the profiling audit named exactly this: "~10 VFX/UI meshes submitted
+    // every frame while rendering 0-2 triangles".
+    this.mesh.visible = this.quads > 0;
     if (this.quads === 0) return;
     const verts = this.quads * 4;
     mark(this.aPos, verts * 3);

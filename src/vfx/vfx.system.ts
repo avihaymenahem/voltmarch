@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/vfx/vfx.system.ts
+ * VOLTMARCH — src/vfx/vfx.system.ts
  * ============================================================================
  * THE VFX PLUGIN. Owns the frame, drains the PresentationQueue, drives every
  * pool, and is the single import surface the rest of the game needs.
@@ -48,7 +48,7 @@ import * as THREE from 'three';
 import { defineSystem } from '../core/loop';
 import {
   MAX_ENTITIES, VFX_EXPLOSION, VFX_GROUND, VFX_LIGHT_POOL, VFX_LIGHT_POOL_BY_TIER,
-  VFX_RAMP, VFX_RAMPS, VFX_SMOKE, VFX_TILE,
+  VFX_RAMP, VFX_RAMPS, VFX_SMOKE, VFX_TILE, WATER_LEVEL,
 } from '../core/config';
 import {
   EntityFlag, EntityKind, Faction, FxKind, NONE, PartId, RenderPhase,
@@ -97,7 +97,7 @@ const PROBE_SCALE = -12345;
 let probePending = false;
 let probeReported = false;
 
-/** Cumulative diagnostics, surfaced through `__RA.counters` and the boot log. */
+/** Cumulative diagnostics, surfaced through `__VM.counters` and the boot log. */
 let drainedTotal = 0;
 
 /**
@@ -109,7 +109,7 @@ let drainedTotal = 0;
  * has expired before the shutter opens. `timeScale = 0` freezes the pools where
  * they stand and `advance(ms)` steps them by an EXACT amount, so
  * "screenshot the fireball at its 220 ms peak" is reproducible on any machine.
- * Both default to normal play and are only ever touched through `__raVfx`.
+ * Both default to normal play and are only ever touched through `__vmVfx`.
  */
 let timeScale = 1;
 let pendingAdvanceMs = 0;
@@ -365,7 +365,14 @@ function damageScan(dtMs: number): void {
       damageTimer[i] = 0;
     }
 
-    if (kind === EntityKind.Vehicle && s.speed[i] > 0.6) {
+    // TREAD DUST IS A GROUND EFFECT. `EntityKind.Vehicle` covers every ship and
+    // every hovercraft in the game — `EntityKind` has no naval member — so
+    // without the water test a destroyer under way laid two dust puffs per
+    // interval across open sea. In `?shot=naval` that was six hulls steaming
+    // for three seconds, and the result was a near-opaque pale sheet over a
+    // third of the frame that ablation pinned on `VfxLitSmoke`. Sailing does
+    // not raise dust.
+    if (kind === EntityKind.Vehicle && s.speed[i] > 0.6 && y > WATER_LEVEL + 0.25) {
       dustTimer[i] -= charged;
       if (dustTimer[i] <= 0) {
         dustTimer[i] = VFX_GROUND.treadIntervalMs;
@@ -384,14 +391,14 @@ function damageScan(dtMs: number): void {
 /* -------------------------------------------------------------------------- */
 
 /**
- * `__raVfx` — the scripting surface for the screenshot harness and the browser
+ * `__vmVfx` — the scripting surface for the screenshot harness and the browser
  * console. VFX only exist for a fraction of a second, so there is no way to
  * critique them from a static scenario capture: the harness has to be able to
- * fire one and screenshot the next frame. Mirrors `__raUnits` from the unit-art
+ * fire one and screenshot the next frame. Mirrors `__vmUnits` from the unit-art
  * module.
  */
 interface VfxGlobal {
-  __raVfx?: {
+  __vmVfx?: {
     explode(x: number, y: number, z: number, sizeTL?: number, kind?: 'small' | 'unit' | 'structure'): void;
     tesla(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, ms?: number): void;
     beam(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, kind?: 'prism' | 'cryo' | 'designator'): void;
@@ -410,7 +417,7 @@ interface VfxGlobal {
 }
 
 function installGlobal(): void {
-  (globalThis as unknown as VfxGlobal).__raVfx = {
+  (globalThis as unknown as VfxGlobal).__vmVfx = {
     explode: (x, y, z, sizeTL = 2.2, kind = 'unit') => spawnExplosion(x, y, z, sizeTL, kind),
     tesla: (x0, y0, z0, x1, y1, z1, ms) => { beams?.spawnTesla(x0, y0, z0, x1, y1, z1, ms); },
     beam: (x0, y0, z0, x1, y1, z1, kind = 'prism') => { beams?.spawnBeam(x0, y0, z0, x1, y1, z1, kind); },
@@ -635,7 +642,7 @@ export default defineSystem({
     setLightPool(null);
     setGroundHeightFn(null);
     setShakeSink(null);
-    delete (globalThis as unknown as VfxGlobal).__raVfx;
+    delete (globalThis as unknown as VfxGlobal).__vmVfx;
     clearExplosions();
     shots?.clear();
     beams?.dispose();

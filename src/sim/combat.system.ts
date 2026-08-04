@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/combat.system.ts
+ * VOLTMARCH — src/sim/combat.system.ts
  * ============================================================================
  * THE COMBAT MODULE'S WIRING LAYER.
  *
@@ -95,7 +95,7 @@ let damage: DamageSystem | null = null;
 const CHILD_IDS = ['combat.weapons', 'combat.projectiles', 'combat.damage', 'combat.cleanup'];
 let childrenRegistered = false;
 
-/** Console/harness handle: `__raCombat.stats()`. */
+/** Console/harness handle: `__vmCombat.stats()`. */
 interface CombatProbe {
   targeting: TargetingSystem | null;
   weapons: WeaponSystem | null;
@@ -221,7 +221,7 @@ export default defineSystem({
         };
       },
     };
-    (globalThis as unknown as { __raCombat?: CombatProbe }).__raCombat = probe;
+    (globalThis as unknown as { __vmCombat?: CombatProbe }).__vmCombat = probe;
 
     console.info(
       '%c[combat]%c targeting/weapons/projectiles/damage/cleanup online — ' +
@@ -248,7 +248,7 @@ export default defineSystem({
     weapons = null;
     projectiles = null;
     damage = null;
-    delete (globalThis as unknown as { __raCombat?: CombatProbe }).__raCombat;
+    delete (globalThis as unknown as { __vmCombat?: CombatProbe }).__vmCombat;
   },
 });
 

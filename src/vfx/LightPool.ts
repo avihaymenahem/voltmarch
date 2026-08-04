@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/vfx/LightPool.ts
+ * VOLTMARCH — src/vfx/LightPool.ts
  * ============================================================================
  * SCENE-LIGHT INJECTION. Bible §8.9, and the mitigation for §14 R6.
  *

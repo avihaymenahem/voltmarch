@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/Damage.ts
+ * VOLTMARCH — src/sim/Damage.ts
  * ============================================================================
  * THE ARMOUR MATRIX, SPLASH, DEATH, AND EVERYTHING THAT OUTLIVES IT.
  *

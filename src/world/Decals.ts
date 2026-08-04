@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/world/Decals.ts
+ * VOLTMARCH — src/world/Decals.ts
  * ============================================================================
  * POOLED, TERRAIN-CONFORMING GROUND DECALS.
  *
@@ -48,7 +48,8 @@
 
 import * as THREE from 'three';
 import {
-  DECAL_ATLAS_SIZE, DECAL_GRID, DECAL_LIFT, DECAL_POOL, DECAL_SWEEP_PER_FRAME,
+  DECAL_ATLAS_SIZE, DECAL_DARKEN_FLOOR, DECAL_GRID, DECAL_LIFT, DECAL_POOL,
+  DECAL_SWEEP_PER_FRAME,
   CRATER_DARKEN, CRATER_HALF_SIZE, LIGHT_POOL_HALF_SIZE, MANHOLE_HALF_SIZE,
   MAP_SIZE, OIL_DARKEN, OIL_HALF_SIZE, SCORCH_DARKEN, SCORCH_HALF_SIZE,
   TREAD_DARKEN, TREAD_HALF_LENGTH, TREAD_HALF_WIDTH, TREAD_LIFE_SECONDS,
@@ -380,6 +381,8 @@ precision highp float;
 uniform sampler2D uAtlas;
 uniform float uTime;
 uniform float uCols;
+/** Hard floor on the darkening factor. No decal may take the ground below it. */
+uniform float uFloor;
 
 varying vec2 vUv;
 varying vec4 vParams;
@@ -403,9 +406,11 @@ void main() {
   float a = s.a * vParams.w * fade;
   // RGB is a multiply factor stored at half scale, so 0.5 decodes to 1.0.
   vec3 factor = vTint * (s.rgb * 2.0);
-  // Blend toward "leave the ground alone" by coverage. The blend func is
-  // (DST_COLOR, ZERO), so whatever we emit here multiplies the lit frame.
-  gl_FragColor = vec4(mix(vec3(1.0), factor, a), 1.0);
+  // Blend toward "leave the ground alone" by coverage, then never emit a
+  // factor below the floor. The blend func is (DST_COLOR, ZERO), so what we
+  // emit here multiplies the lit frame — and the floor is what stops a single
+  // scorch from taking a square metre of terrain to black.
+  gl_FragColor = vec4(max(mix(vec3(1.0), factor, a), vec3(uFloor)), 1.0);
 }
 `;
 
@@ -549,6 +554,7 @@ export class DecalField {
         uAtlas: { value: this.atlas },
         uTime: { value: 0 },
         uCols: { value: ATLAS_COLS },
+        uFloor: { value: DECAL_DARKEN_FLOOR },
       },
       vertexShader: DECAL_VERT,
       fragmentShader: DECAL_FRAG,
@@ -558,8 +564,20 @@ export class DecalField {
       side: THREE.FrontSide,
       toneMapped: false,
       fog: false,
-      // MULTIPLY. src is a factor, dst is the lit frame. Alpha is left alone
-      // so a decal can never punch a hole in a target that carries coverage.
+      /*
+       * MULTIPLY. src is a factor, dst is the lit frame — which is why the
+       * factor must stay a FACTOR and the blend must stay a multiply: MIN would
+       * clamp bright ground and dark ground to the same absolute value and
+       * throw away the shading underneath the mark.
+       *
+       * What bounds it is `uFloor` in the fragment shader, so a single decal
+       * can never take the ground below `DECAL_DARKEN_FLOOR` of its albedo.
+       * Overlapping decals still compound (that is what a multiply is), which
+       * is why the floor is set well above the raw SCORCH_DARKEN.
+       *
+       * Alpha is left alone so a decal can never punch a hole in a target that
+       * carries coverage.
+       */
       blending: THREE.CustomBlending,
       blendSrc: THREE.DstColorFactor,
       blendDst: THREE.ZeroFactor,

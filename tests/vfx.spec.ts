@@ -19,7 +19,7 @@ import { World } from '../src/core/world';
 import { Faction, FxKind, NONE, RenderPhase } from '../src/core/types';
 import type { SystemModule } from '../src/core/types';
 import {
-  VFX_ATLAS_COLS, VFX_ATLAS_SIZE, VFX_GUNS, VFX_LIGHTS, VFX_RAMPS,
+  VFX_ATLAS_COLS, VFX_ATLAS_SIZE, VFX_EXPLOSION, VFX_GUNS, VFX_LIGHTS, VFX_RAMPS,
   VFX_RAMP_WIDTH, VFX_TESLA, VFX_TILE, VFX_TRAIL,
 } from '../src/core/config';
 
@@ -29,7 +29,7 @@ import {
 } from '../src/vfx/Particles';
 import { BeamSystem, TeslaBolt, setBeamSystem } from '../src/vfx/Beams';
 import { TracerSystem, setTracerSystem, spawnTrail } from '../src/vfx/Tracers';
-import { setGroundHeightFn, spawnExplosion } from '../src/vfx/Explosions';
+import { setGroundHeightFn, setScorchSink, spawnExplosion } from '../src/vfx/Explosions';
 
 /* ========================================================================== */
 /* Helpers                                                                    */
@@ -639,6 +639,146 @@ describe('guns and trails', () => {
     // Bible §8.5: ~1 in 3. Wide band so the RNG cannot flake the suite.
     expect(fired).toBeGreaterThan(60);
     expect(fired).toBeLessThan(160);
+    B.dispose();
+    P.dispose();
+  });
+});
+
+/* ========================================================================== */
+/* 9. THE WHITE-OUT REGRESSIONS                                               */
+/*                                                                            */
+/* `05-combat` and `08-naval-water` rendered as a white haze over black ground */
+/* for three independent reasons, all of them a per-element figure taken from  */
+/* a whole-effect number. These lock the corrected readings in.               */
+/* ========================================================================== */
+
+describe('scorch decal sizing', () => {
+  it('hands the decal sink a SEMI-major axis, not a diameter', () => {
+    const P = makeParticles();
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+    setGroundHeightFn(() => 0);
+    setLightPool(pool);
+
+    const radii: number[] = [];
+    setScorchSink((_x, _z, radius) => { radii.push(radius); });
+    for (let i = 0; i < 40; i++) spawnExplosion(256, 1, 256, VFX_EXPLOSION.unitDeathTL, 'unit');
+    setScorchSink(null);
+
+    expect(radii.length).toBe(40);
+    // Bible §8.2: 1.6-2.4 TL across the MAJOR axis, so the semi-axis the
+    // decal field wants is half of that. Passing the diameter (the bug) put
+    // every value in 11.2-16.8 and carpeted a battlefield in black.
+    const lo = VFX_EXPLOSION.scorchMinTL * 7 * 0.5;
+    const hi = VFX_EXPLOSION.scorchMaxTL * 7 * 0.5;
+    for (const r of radii) {
+      expect(r).toBeGreaterThanOrEqual(lo - 1e-6);
+      expect(r).toBeLessThanOrEqual(hi + 1e-6);
+    }
+
+    setLightPool(null);
+    pool.dispose();
+    P.dispose();
+  });
+});
+
+describe('per-element sizes vs the whole-effect figures they came from', () => {
+  it('one fireball billow is a FRACTION of the fireball, not the whole of it', () => {
+    const P = makeParticles();
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+    setGroundHeightFn(() => 0);
+    setLightPool(pool);
+
+    spawnExplosion(256, 1, 256, VFX_EXPLOSION.unitDeathTL, 'unit');
+    P.step(760, makeCamera(), 154);   // step to the end of the billow life
+
+    // The additive layer holds flash + billows + embers; the billows are the
+    // only large sprites in it. The biggest one must still be well inside the
+    // 2.2 TL fireball it is one of 8-14 of.
+    const quad = P.additive.geometry.getAttribute('aQuad').array as Float32Array;
+    let widest = 0;
+    for (let i = 0; i < P.additive.geometry.instanceCount; i++) {
+      if (quad[i * 4] > widest) widest = quad[i * 4];
+    }
+    expect(widest).toBeGreaterThan(0);
+    expect(widest).toBeLessThan(VFX_EXPLOSION.unitDeathTL * 7);
+
+    setLightPool(null);
+    pool.dispose();
+    P.dispose();
+  });
+
+  it('one plume puff is a fraction of the plume, and the plume is translucent', () => {
+    const P = makeParticles();
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+    setGroundHeightFn(() => 0);
+    setLightPool(pool);
+
+    spawnExplosion(256, 1, 256, VFX_EXPLOSION.unitDeathTL, 'unit');
+    P.step(5400, makeCamera(), 154);
+
+    const quad = P.lit.geometry.getAttribute('aQuad').array as Float32Array;
+    const tint = P.lit.geometry.getAttribute('aTint').array as Float32Array;
+    const n = P.lit.geometry.instanceCount;
+    expect(n).toBeGreaterThan(0);
+    let widest = 0;
+    let maxAlpha = 0;
+    for (let i = 0; i < n; i++) {
+      if (quad[i * 4] > widest) widest = quad[i * 4];
+      if (tint[i * 3 + 1] > maxAlpha) maxAlpha = tint[i * 3 + 1];
+    }
+    // A single puff must not be the whole 4 TL plume on its own: at the combat
+    // fixture's 48 m framing one 28 m puff covers the frame.
+    expect(widest).toBeLessThan(VFX_EXPLOSION.puffSize1TL * 7 * 0.75);
+    // And no puff may be near-opaque, or twenty of them are a wall.
+    expect(maxAlpha).toBeLessThan(0.85);
+
+    setLightPool(null);
+    pool.dispose();
+    P.dispose();
+  });
+});
+
+describe('empty VFX meshes are not submitted', () => {
+  it('a sprite layer with nothing live hides itself, and comes back', () => {
+    const P = makeParticles();
+    const cam = makeCamera();
+
+    P.step(16, cam, 154);
+    expect(P.additive.mesh.visible).toBe(false);
+    expect(P.lit.mesh.visible).toBe(false);
+    expect(P.debris.mesh.visible).toBe(false);
+
+    const e = resetEmit();
+    e.lifeMs = 500;
+    P.additive.emit(e);
+    P.debris.spawn(0, 5, 0, 0, 0, 0, 0.3, 500, 0, 0, 0, 0);
+    P.step(16, cam, 154);
+    expect(P.additive.mesh.visible).toBe(true);
+    expect(P.debris.mesh.visible).toBe(true);
+    expect(P.lit.mesh.visible).toBe(false);
+
+    P.step(900, cam, 154);
+    expect(P.additive.mesh.visible).toBe(false);
+    expect(P.debris.mesh.visible).toBe(false);
+    P.dispose();
+  });
+
+  it('a ribbon batch that drew no quads hides itself', () => {
+    const P = makeParticles();
+    const B = new BeamSystem(P.ramps, VFX_RAMPS.length);
+
+    B.overlay.begin();
+    B.overlay.end();
+    expect(B.overlay.mesh.visible).toBe(false);
+
+    B.overlay.begin();
+    B.overlay.segment(0, 2, 0, 8, 2, 0, 4, 4, 0, 0, 1, 3, 1, 1);
+    B.overlay.end();
+    expect(B.overlay.mesh.visible).toBe(true);
+
     B.dispose();
     P.dispose();
   });

@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/sim/Harvesting.ts
+ * VOLTMARCH — src/sim/Harvesting.ts
  * ============================================================================
  * THE HARVESTER LOOP. Idle -> seek -> scoop -> haul -> dock -> unload -> repeat.
  *

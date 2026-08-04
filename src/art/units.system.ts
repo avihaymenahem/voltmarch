@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/art/units.system.ts
+ * VOLTMARCH — src/art/units.system.ts
  * ============================================================================
  * The plugin entry point for the unit-art module.
  *
@@ -44,7 +44,7 @@ import { formatStats } from './MassList';
 import { UNIT_MASS_LISTS } from './UnitDefs';
 import { unitLibrary, type UnitModel } from './UnitFactory';
 
-interface BridgeGlobal { __raUnits?: unknown; }
+interface BridgeGlobal { __vmUnits?: unknown; }
 
 /**
  * Content key -> model key. The content vocabulary is another module's, so this
@@ -57,17 +57,30 @@ const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   grizzly: 'allied_guardian',
   ifv: 'allied_ifv',
   prismTank: 'allied_prism',
-  gunboat: 'allied_destroyer',
+  gunboat: 'allied_gunboat',
   destroyer: 'allied_destroyer',
 
   conscript: 'soviet_conscript',
-  attackDog: 'soviet_conscript',
+  attackDog: 'soviet_dog',
   rhino: 'soviet_rhino',
-  apocalypse: 'soviet_rhino',
-  submarine: 'soviet_dreadnought',
+  apocalypse: 'soviet_apocalypse',
+  submarine: 'soviet_sub',
   dreadnought: 'soviet_dreadnought',
-
 };
+
+/**
+ * Content keys that are INFANTRY in the sim whatever their model class says.
+ *
+ * `bind` normally infers the entity kind from `UnitModel.cls`, and the Attack
+ * Dog is authored `cls: 'walker'` on purpose: `validateUnit` holds `'infantry'`
+ * to R-S4's 2.1-2.7 m height band, which a dog cannot meet without becoming a
+ * bear. Without this set it would register as a Vehicle and resolve against the
+ * vehicle default.
+ */
+const INFANTRY_CONTENT: ReadonlySet<string> = new Set([
+  'gi', 'engineer', 'conscript', 'attackDog',
+  'mrdWayfarer', 'mrdSunlancer', 'mrdArtificer',
+]);
 
 /**
  * Content keys whose def is faction-NEUTRAL — one `defId` serves both armies.
@@ -81,7 +94,7 @@ const SHARED_CONTENT_TO_MODEL: Readonly<Record<string, readonly [string, string]
   //           [ allied model,       soviet model      ]
   harvester:   ['allied_harvester',  'soviet_harvester'],
   mcv:         ['allied_dozer',      'soviet_dozer'],
-  transport:   ['allied_harvester',  'soviet_harvester'],
+  transport:   ['allied_transport',  'soviet_transport'],
 };
 
 /** The model each (kind, faction) falls back to when a defId is unknown. */
@@ -214,7 +227,7 @@ export default defineSystem({
 
     /* -- hand off to RenderBridge ------------------------------------------ */
     const g = globalThis as unknown as BridgeGlobal;
-    g.__raUnits = unitLibrary;
+    g.__vmUnits = unitLibrary;
 
     // One KindMesh per model, cached: handing the SAME object to two factions
     // is how the bridge knows they can share one batch.
@@ -241,11 +254,15 @@ export default defineSystem({
     // (b) exact per-def registrations, the moment a def table exists.
     const binding = await resolveDefBinding();
     let bound = 0;
-    const bind = (defId: number, modelKey: string, faction: Faction | typeof FACTION_ANY): void => {
+    const bind = (
+      defId: number, modelKey: string, faction: Faction | typeof FACTION_ANY, contentKey: string,
+    ): void => {
       const mesh = meshFor(modelKey);
       const model = unitLibrary.get(modelKey);
       if (mesh === null || model === undefined) return;
-      const kind = model.cls === 'infantry' ? EntityKind.Infantry : EntityKind.Vehicle;
+      const kind = model.cls === 'infantry' || INFANTRY_CONTENT.has(contentKey)
+        ? EntityKind.Infantry
+        : EntityKind.Vehicle;
       registerKindMesh(kind, faction, mesh, defId);
       registered++;
     };
@@ -255,15 +272,15 @@ export default defineSystem({
       if (defId === undefined || defId < 0) continue;
       // FACTION_ANY: the content key already decides the army, and registering
       // per faction here would mask the (kind, faction, -1) defaults.
-      bind(defId, modelKey, FACTION_ANY);
+      bind(defId, modelKey, FACTION_ANY, contentKey);
       bound++;
     }
     for (const [contentKey, pair] of Object.entries(SHARED_CONTENT_TO_MODEL)) {
       const defId = binding.unitId[contentKey];
       if (defId === undefined || defId < 0) continue;
-      bind(defId, pair[0], Faction.Allies);
-      bind(defId, pair[1], Faction.Soviets);
-      bind(defId, pair[0], Faction.Neutral);
+      bind(defId, pair[0], Faction.Allies, contentKey);
+      bind(defId, pair[1], Faction.Soviets, contentKey);
+      bind(defId, pair[0], Faction.Neutral, contentKey);
       bound++;
     }
     if (bound === 0) {
@@ -301,7 +318,7 @@ export default defineSystem({
       paradeRoot = null;
     }
     const g = globalThis as unknown as BridgeGlobal;
-    delete g.__raUnits;
+    delete g.__vmUnits;
     unitLibrary.dispose();
   },
 });

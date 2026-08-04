@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * RED ALERT — src/render/FogOfWar.ts
+ * VOLTMARCH — src/render/FogOfWar.ts
  * ============================================================================
  * THE SHROUD. One 128x128 R8 texture and one draped carpet — that is the whole
  * renderer.
