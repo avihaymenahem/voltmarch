@@ -93,21 +93,51 @@ export default defineSystem({
 
     const ms = (typeof performance !== 'undefined' ? performance.now() : 0) - t0;
     const s = terrain.stats();
+    const start = terrain.startReport();
+    const areas = terrain.startLocations();
     const pct = (v: number): string => `${Math.round(v * 100)}%`;
     console.info(
       `%c[terrain]%c ${terrain.biome.name} — ${terrain.triangleCount() | 0} tris in ${ms | 0} ms · ` +
         `${pct(s.passable)} passable (${pct(s.reachable)} of it reachable), ` +
-        `${pct(s.buildable)} buildable, ${pct(s.water)} water, ${s.ramps} ramp(s) carved`,
+        `${pct(s.buildable)} buildable, ${pct(s.water)} water, ${s.ramps} ramp(s) carved, ` +
+        `${s.regions} region(s), ${s.scenery} cell(s) demoted to scenery`,
       'color:#7fd', 'color:inherit',
     );
-    // A few percent is expected and wanted: pockets under
-    // TERRAIN_MIN_REGION_CELLS are decorative ledges nobody should be able to
-    // drive onto. Past 5% something real is cut off and the AI will eventually
-    // order a squad into it.
+
+    /* -- the spawn guarantee ------------------------------------------------
+     * The reported bug ("tanks spawned inside a valley and cant get out") was
+     * invisible in the line above, because the map was never cut in half — it
+     * was peppered with small pits and the army landed in one. `reachable`
+     * stayed above 99% throughout. So the guarantee gets its own line, and the
+     * number that matters is `stranded`, which must be 0.
+     * -------------------------------------------------------------------- */
+    if (start.stranded > 0) {
+      console.error(
+        `%c[terrain]%c SPAWN GUARANTEE UNMET — ${start.stranded} reserved start cell(s) are not ` +
+          'joined to the main landmass. Units placed there will not be able to leave.',
+        'color:#f66', 'color:inherit',
+      );
+    } else if (areas.length > 0) {
+      const cost = start.forcedRamps > 0 || start.filled > 0
+        ? ` (${start.startRamps} ramp(s), ${start.forcedRamps} forced corridor(s), ${start.filled} pit(s) filled)`
+        : start.startRamps > 0 ? ` (${start.startRamps} ramp(s))` : '';
+      console.info(
+        `%c[terrain]%c spawn guarantee OK — ${areas.length} start area(s) levelled and connected${cost}`,
+        'color:#7fd', 'color:inherit',
+      );
+    }
+
+    // A few percent is expected and wanted: pockets at or above
+    // TERRAIN_PRUNE_REGION_CELLS are real mesas and islands a transport may
+    // legitimately want, so they keep their passable bits. Past 5% something
+    // large is cut off and the AI will eventually order a squad into it.
     if (s.reachable < 0.95) {
       console.warn(
         `[terrain] ${pct(1 - s.reachable)} of passable ground is stranded off the main ` +
-          'landmass. Raise TERRAIN_MAX_RAMPS or lower TERRAIN_MIN_REGION_CELLS in core/config.ts.',
+          `landmass across ${s.regions} region(s). ensureMajorRegions() carves until the main ` +
+          'region holds TERRAIN_MAIN_REGION_SHARE, so getting here means it either ran out of ' +
+          `budget (TERRAIN_MAJOR_MAX_RAMPS) or gave up on ${start.majorSkipped} region(s) that ` +
+          'no dry corridor can reach — normally islands, which is the correct answer.',
       );
     }
   },

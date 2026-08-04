@@ -330,7 +330,18 @@ export class MovementIntegrator {
         nx = clamp(nx, margin, MAP_SIZE - margin);
         nz = clamp(nz, margin, MAP_SIZE - margin);
         // Wall slide: if the new cell is closed, keep whichever axis is open.
-        if (cls !== MoveClass.Air && !this.canStand(nx, nz, cls)) {
+        //
+        // Skipped entirely when the cell we are STANDING IN is already closed.
+        // That happens for real — a structure lands on a unit, terrain is
+        // regenerated under an army, a spawn lands on a cliff — and the
+        // constraint exists to keep units OUT of blocked cells, not to
+        // imprison them in one. Enforcing it from inside a blocked cell means
+        // every candidate fails, the unit can never take a step in any
+        // direction, and it is frozen for the rest of the match with no
+        // watchdog able to help it (a frozen unit is in no region at all, so
+        // the pocket rescue in Steering cannot see it either).
+        if (cls !== MoveClass.Air && !this.canStand(nx, nz, cls)
+            && this.canStand(px, pz, cls)) {
           if (this.canStand(nx, pz, cls)) {
             nz = pz;
           } else if (this.canStand(px, nz, cls)) {

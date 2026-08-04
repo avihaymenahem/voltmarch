@@ -322,6 +322,223 @@ class Expander {
 }
 
 /* ==========================================================================
+ * 4b. CONNECTIVITY — WHICH CELLS CAN ACTUALLY REACH WHICH
+ *
+ * A flow field answers "which way to the goal", but it says nothing useful
+ * when there IS no way: the integration simply never reaches the unit's cell,
+ * `sample` falls through to the raw bearing, and the unit drives into the
+ * cliff and stays there. The reported bug — "tanks spawned in a valley cannot
+ * get out" — is exactly that failure, and it is invisible because grinding
+ * against a wall looks like pathing rather than like an error.
+ *
+ * So the grid is also LABELLED: every passable cell carries the id of its
+ * connected component. Two cells are mutually reachable iff their labels
+ * match, which turns "is this order even possible?" from a search into two
+ * array reads, cheap enough to ask every tick for every unit.
+ *
+ * 4-CONNECTED, deliberately. The expander is 8-connected but refuses to cut
+ * corners (both orthogonal neighbours of a diagonal step must be open), so two
+ * areas touching only at a corner are NOT mutually reachable — labelling them
+ * 8-connected would call an impossible order possible, which is the exact
+ * class of lie this layer exists to stop.
+ * ========================================================================== */
+
+/**
+ * A stranded region at or below this many cells is a POCKET: a hole in the
+ * map, not a plateau or an island worth fighting over. For scale,
+ * `TERRAIN_MIN_REGION_CELLS` (28) is the size below which the generator's ramp
+ * carver deliberately gives up, and every stranded pocket measured on the
+ * shipping seeds came in under it — so this threshold has real headroom while
+ * staying far below anything a player would call terrain.
+ */
+export const NAV_POCKET_MAX_CELLS = 96;
+
+/**
+ * Ring radius, in cells, for every region-aware search here (retargeting an
+ * unreachable goal, lifting a trapped unit out of a pocket). 40 cells is 160 m
+ * — far enough to escape any pocket the generator can leave behind, short
+ * enough that a failed search is bounded work and a successful one never
+ * teleports a unit across the map.
+ */
+export const NAV_REGION_SEARCH_CELLS = 40;
+
+/** Labelled connected components of one passability mask. */
+class RegionGrid {
+  /** Component id per cell. 0 = impassable. */
+  readonly label = new Int32Array(MAP_CELL_COUNT);
+  /** `sizes[k]` is the cell count of component k. Index 0 is unused. */
+  readonly sizes: number[] = [0];
+  /** Id of the largest component, or 0 when nothing is passable. */
+  main = 0;
+  /** Number of distinct components. */
+  count = 0;
+  /** Total passable cells across every component. */
+  passable = 0;
+  /** Cost/occupancy version this labelling was derived from. -1 = never. */
+  version = -1;
+}
+
+/**
+ * Flood-fill scratch. Module level and shared because `labelRegions` is
+ * synchronous and non-reentrant, and because every cell is pushed at most once
+ * (the label is written on push), so the stack can never exceed one map.
+ */
+const REGION_STACK = new Int32Array(MAP_CELL_COUNT);
+/** Scratch passability mask, filled immediately before each labelling. */
+const OPEN_MASK = new Uint8Array(MAP_CELL_COUNT);
+
+/** 4-connected flood label of `open` (non-zero = passable) into `g`. */
+function labelRegions(open: Uint8Array, g: RegionGrid): void {
+  const id = g.label;
+  const sizes = g.sizes;
+  id.fill(0);
+  sizes.length = 1;
+  sizes[0] = 0;
+
+  let next = 0;
+  let passable = 0;
+
+  for (let start = 0; start < MAP_CELL_COUNT; start++) {
+    if (id[start] !== 0 || open[start] === 0) continue;
+    next++;
+    let area = 0;
+    let sp = 0;
+    REGION_STACK[sp++] = start;
+    id[start] = next;
+
+    while (sp > 0) {
+      const c = REGION_STACK[--sp];
+      area++;
+      const cx = c % MAP_CELLS;
+      const cz = (c / MAP_CELLS) | 0;
+      if (cx > 0) {
+        const n = c - 1;
+        if (id[n] === 0 && open[n] !== 0) { id[n] = next; REGION_STACK[sp++] = n; }
+      }
+      if (cx < MAP_CELLS - 1) {
+        const n = c + 1;
+        if (id[n] === 0 && open[n] !== 0) { id[n] = next; REGION_STACK[sp++] = n; }
+      }
+      if (cz > 0) {
+        const n = c - MAP_CELLS;
+        if (id[n] === 0 && open[n] !== 0) { id[n] = next; REGION_STACK[sp++] = n; }
+      }
+      if (cz < MAP_CELLS - 1) {
+        const n = c + MAP_CELLS;
+        if (id[n] === 0 && open[n] !== 0) { id[n] = next; REGION_STACK[sp++] = n; }
+      }
+    }
+    sizes[next] = area;
+    passable += area;
+  }
+
+  let main = 0;
+  for (let k = 1; k <= next; k++) if (main === 0 || sizes[k] > sizes[main]) main = k;
+  g.count = next;
+  g.main = main;
+  g.passable = passable;
+}
+
+/**
+ * Outward ring search for the nearest cell belonging to `region`. Rings are
+ * walked in exactly the order `snapToReachable` uses (+Z edge, -Z edge, then
+ * the two X edges), so two runs of one seed pick the same cell and a replay
+ * cannot desync on a rescue.
+ */
+function nearestCellInRegion(
+  g: RegionGrid, cx: number, cz: number, region: number, maxRadius: number, out: Int32Array,
+): boolean {
+  cx = clampCell(cx); cz = clampCell(cz);
+  if (region <= 0) return false;
+  if (g.label[cz * MAP_CELLS + cx] === region) { out[0] = cx; out[1] = cz; return true; }
+
+  for (let r = 1; r <= maxRadius; r++) {
+    for (let d = -r; d <= r; d++) {
+      if (regionHit(g, cx + d, cz - r, region, out)) return true;
+      if (regionHit(g, cx + d, cz + r, region, out)) return true;
+    }
+    for (let d = -r + 1; d <= r - 1; d++) {
+      if (regionHit(g, cx - r, cz + d, region, out)) return true;
+      if (regionHit(g, cx + r, cz + d, region, out)) return true;
+    }
+  }
+  return false;
+}
+
+function regionHit(
+  g: RegionGrid, cx: number, cz: number, region: number, out: Int32Array,
+): boolean {
+  if (!isInMap(cx, cz)) return false;
+  if (g.label[cz * MAP_CELLS + cx] !== region) return false;
+  out[0] = cx; out[1] = cz;
+  return true;
+}
+
+/**
+ * Connectivity of the RAW HEIGHTFIELD for one locomotor — what a unit could
+ * traverse if no structure existed.
+ *
+ * Separate from `FlowFieldCache`'s per-MoveClass labelling on purpose. The
+ * cache labels the cost grid, which carves out every building footprint, and
+ * that is the right question for a live order. It is the WRONG question at
+ * scenario build time: a courtyard temporarily sealed by its own base is not a
+ * terrain trap, and a structure the player will sell is not a permanent wall.
+ * The bug this guards against is a hole in the GROUND, so this reads the
+ * ground.
+ *
+ * Built once and then immutable: construct it before the first structure lands
+ * (`ITerrain.isPassable` reports occupied cells as closed) and it stays an
+ * honest picture of the terrain for the whole build.
+ */
+export class TerrainRegions {
+  private readonly grid = new RegionGrid();
+
+  constructor(port: ITerrain, readonly locomotor: Locomotor) {
+    for (let cz = 0; cz < MAP_CELLS; cz++) {
+      const row = cz * MAP_CELLS;
+      for (let cx = 0; cx < MAP_CELLS; cx++) {
+        OPEN_MASK[row + cx] = port.isPassable(cx, cz, locomotor) ? 1 : 0;
+      }
+    }
+    labelRegions(OPEN_MASK, this.grid);
+    this.grid.version = 0;
+  }
+
+  /** Number of distinct passable components. */
+  get regionCount(): number { return this.grid.count; }
+  /** Cells in the largest component. */
+  get mainRegionCells(): number { return this.grid.sizes[this.grid.main] ?? 0; }
+  /** Passable cells in total. */
+  get passableCells(): number { return this.grid.passable; }
+  /** Fraction of passable ground the main component holds. 1 when empty. */
+  get mainFraction(): number {
+    return this.grid.passable > 0 ? this.mainRegionCells / this.grid.passable : 1;
+  }
+
+  /** Component id at a cell; 0 when impassable or off-map. */
+  regionAt(cx: number, cz: number): number {
+    if (!isInMap(cx, cz)) return 0;
+    return this.grid.label[cz * MAP_CELLS + cx];
+  }
+
+  /** Cells in the component at a cell, 0 when impassable. */
+  regionCellsAt(cx: number, cz: number): number {
+    const r = this.regionAt(cx, cz);
+    return r > 0 ? this.grid.sizes[r] : 0;
+  }
+
+  /** True when the cell is part of the main component — i.e. can be left. */
+  isMain(cx: number, cz: number): boolean {
+    return this.grid.main > 0 && this.regionAt(cx, cz) === this.grid.main;
+  }
+
+  /** Nearest main-component cell, written into `out` as [cx,cz]. */
+  nearestMain(cx: number, cz: number, out: Int32Array, maxRadius: number): boolean {
+    return nearestCellInRegion(this.grid, cx, cz, this.grid.main, maxRadius, out);
+  }
+}
+
+/* ==========================================================================
  * 5. THE CACHE
  * ========================================================================== */
 
@@ -335,6 +552,8 @@ export interface NavStats {
   rebuilds: number;
   misses: number;
   evictions: number;
+  /** Orders whose goal was in a different region than the unit issuing them. */
+  unreachable: number;
 }
 
 /**
@@ -345,6 +564,8 @@ export class FlowFieldCache implements INav {
   private readonly fields: Field[] = [];
   private readonly expanders: Expander[] = [];
   private readonly grids: CostGrid[] = [];
+  /** Connected-component labelling of each class's cost grid. */
+  private readonly regions: RegionGrid[] = [];
 
   /** Bumped whenever any cost grid must be re-derived. */
   private costVersion = 0;
@@ -366,7 +587,7 @@ export class FlowFieldCache implements INav {
 
   readonly stats: NavStats = {
     fields: 0, ready: 0, pending: 0, refs: 0,
-    cellsThisTick: 0, rebuilds: 0, misses: 0, evictions: 0,
+    cellsThisTick: 0, rebuilds: 0, misses: 0, evictions: 0, unreachable: 0,
   };
 
   constructor(port: ITerrain) {
@@ -375,6 +596,7 @@ export class FlowFieldCache implements INav {
     for (let i = 0; i < FLOWFIELD_CACHE_SIZE; i++) this.fields.push(new Field(i));
     for (let i = 0; i < NAV_FIELD_EXPANDERS; i++) this.expanders.push(new Expander());
     for (let i = 0; i < MOVE_CLASS_COUNT; i++) this.grids.push(new CostGrid());
+    for (let i = 0; i < MOVE_CLASS_COUNT; i++) this.regions.push(new RegionGrid());
   }
 
   /** Re-point at a terrain that landed after construction. */
@@ -419,6 +641,86 @@ export class FlowFieldCache implements INav {
     if (cls === MoveClass.Air) return isInMap(cx, cz);
     if (!isInMap(cx, cz)) return false;
     return this.costGridFor(cls)[cz * MAP_CELLS + cx] < COST_BLOCKED;
+  }
+
+  /* -- connectivity ------------------------------------------------------ */
+
+  /**
+   * Connected-component labelling of a class's cost grid, rebuilt whenever the
+   * cost grid is. One flood fill over 16k cells, and only when a structure
+   * appears or dies — the same trigger that already forces a full cost rebuild
+   * and re-expands every live field, so this is noise next to the work it is
+   * riding along with.
+   */
+  private regionGridFor(cls: MoveClass): RegionGrid {
+    const cost = this.costGridFor(cls);
+    const g = this.regions[cls];
+    if (g.version === this.costVersion) return g;
+    for (let i = 0; i < MAP_CELL_COUNT; i++) OPEN_MASK[i] = cost[i] < COST_BLOCKED ? 1 : 0;
+    labelRegions(OPEN_MASK, g);
+    g.version = this.costVersion;
+    return g;
+  }
+
+  /**
+   * The id of the connected region a cell belongs to for `cls`, or 0 when the
+   * cell is impassable or off-map. Ids are arbitrary but stable for as long as
+   * the cost grid is; compare them, never store them.
+   */
+  regionOf(cx: number, cz: number, cls: MoveClass): number {
+    if (!isInMap(cx, cz)) return 0;
+    return this.regionGridFor(cls).label[cz * MAP_CELLS + cx];
+  }
+
+  /** The largest region for `cls` — the map proper. 0 when nothing is open. */
+  mainRegion(cls: MoveClass): number {
+    return this.regionGridFor(cls).main;
+  }
+
+  /** Cell count of a region id, 0 when unknown. */
+  regionSize(region: number, cls: MoveClass): number {
+    const g = this.regionGridFor(cls);
+    return region > 0 && region < g.sizes.length ? g.sizes[region] : 0;
+  }
+
+  /**
+   * True when a unit of `cls` standing at (ax,az) could, given time, reach
+   * (bx,bz). This is an exact answer, not an estimate: it is the whole reason
+   * the labelling exists.
+   */
+  isReachable(ax: number, az: number, bx: number, bz: number, cls: MoveClass): boolean {
+    if (cls === MoveClass.Air) return isInMap(ax, az) && isInMap(bx, bz);
+    const g = this.regionGridFor(cls);
+    if (!isInMap(ax, az) || !isInMap(bx, bz)) return false;
+    const a = g.label[az * MAP_CELLS + ax];
+    return a !== 0 && a === g.label[bz * MAP_CELLS + bx];
+  }
+
+  /** Nearest cell belonging to `region`, written into `out` as [cx,cz]. */
+  nearestInRegion(
+    cx: number, cz: number, region: number, cls: MoveClass, out: Int32Array,
+    maxRadius: number = NAV_REGION_SEARCH_CELLS,
+  ): boolean {
+    return nearestCellInRegion(this.regionGridFor(cls), cx, cz, region, maxRadius, out);
+  }
+
+  /**
+   * Map health for one class: how many separate pieces the navigable world is
+   * in and how much of it the main piece holds. The boot diagnostic prints
+   * this, and it is the number that would have caught the reported bug before
+   * a player did.
+   */
+  connectivity(cls: MoveClass): {
+    regions: number; passable: number; mainCells: number; mainFraction: number;
+  } {
+    const g = this.regionGridFor(cls);
+    const mainCells = g.main > 0 ? g.sizes[g.main] : 0;
+    return {
+      regions: g.count,
+      passable: g.passable,
+      mainCells,
+      mainFraction: g.passable > 0 ? mainCells / g.passable : 1,
+    };
   }
 
   /**
@@ -593,10 +895,25 @@ export class FlowFieldCache implements INav {
    * the class can actually stand on, so an order onto a cliff or into a
    * building still produces a usable field.
    *
-   * Returns a field handle, or -1 when the cache is fully pinned (in which
-   * case the caller should fall back to direct seek — see Steering.ts).
+   * `fromCx`/`fromCz` are the CELL THE UNIT IS STANDING IN, and passing them
+   * is what turns "drive at the goal and hope" into an answerable question. If
+   * the goal is in a different connected region than the unit, no amount of
+   * expansion will ever reach it: the integration field stops at the region
+   * boundary, `sample` falls back to the raw bearing, and the unit grinds into
+   * the cliff between the two — which is precisely the bug this exists to
+   * stop. When that happens the goal is pulled back to the nearest cell the
+   * unit CAN reach, which is what a player means by a move order anyway; if
+   * even that fails the request is refused with -1 so the caller can end the
+   * order cleanly instead of steering into a wall. Omit them (-1) and the
+   * check is skipped, which is right for a speculative or map-wide request.
+   *
+   * Returns a field handle, or -1 when the goal is unreachable or the cache is
+   * fully pinned (in which case the caller should fall back to direct seek —
+   * see Steering.ts).
    */
-  requestFieldClass(goalCx: number, goalCz: number, cls: MoveClass): number {
+  requestFieldClass(
+    goalCx: number, goalCz: number, cls: MoveClass, fromCx = -1, fromCz = -1,
+  ): number {
     let gx = this.bucket(goalCx);
     let gz = this.bucket(goalCz);
 
@@ -607,6 +924,24 @@ export class FlowFieldCache implements INav {
         gx = SNAP_OUT[0]; gz = SNAP_OUT[1];
       } else {
         return -1;
+      }
+    }
+
+    // --- reachability ------------------------------------------------------
+    if (cls !== MoveClass.Air && isInMap(fromCx, fromCz)) {
+      const g = this.regionGridFor(cls);
+      const from = g.label[fromCz * MAP_CELLS + fromCx];
+      const goal = g.label[gz * MAP_CELLS + gx];
+      if (from !== 0 && goal !== 0 && from !== goal) {
+        this.stats.unreachable++;
+        // Nearest cell to the ORIGINAL goal that shares the unit's region, so
+        // several units in one pocket ordered to one point still collapse onto
+        // one shared field rather than one field each.
+        if (nearestCellInRegion(g, gx, gz, from, NAV_REGION_SEARCH_CELLS, SNAP_OUT)) {
+          gx = SNAP_OUT[0]; gz = SNAP_OUT[1];
+        } else {
+          return -1;
+        }
       }
     }
 

@@ -71,16 +71,51 @@ import {
 import { Minimap, type TerrainSampler } from './Minimap';
 import { Overlay } from './Overlay';
 import {
+  SLOT_HOTKEY_CODES,
   Sidebar,
+  TAB_HOTKEY_CODES,
+  powerStateOf,
+  type AdviceKind,
   type ArmedMode,
   type BuildExtras,
   type HudSoundCue,
+  type HudTelemetry,
   type SelectionCard,
   type SelectionView,
 } from './Sidebar';
 import { iconForUnitKey, makeIcon, type IconName } from './icons';
+import { buildHotkeyBlockedBy, type StoredBindings } from '../input/ActionCatalogue';
 
 import './hud.css';
+
+/* ==========================================================================
+ * SECTION 0 — THE LIVE BINDING TABLE
+ *
+ * Read for one purpose: to find out whether a rebind has taken one of the build
+ * letters. Duck-typed off `window.__vmSettings` exactly as
+ * `src/input/input.system.ts` does, and for the same reason — the settings store
+ * is in the lazily loaded shell chunk, and a `?shot=` boot never loads the shell
+ * at all. An import would drag it in and the HUD would stop rendering the moment
+ * the shell failed.
+ *
+ * Undefined is the correct answer when the shell is absent: no rebinds exist, so
+ * every build letter is free, which is the stock scheme.
+ * ========================================================================== */
+
+interface SettingsBridge {
+  get(): { controls?: { bindings?: StoredBindings } };
+}
+
+function liveBindings(): StoredBindings | undefined {
+  const g = globalThis as unknown as { __vmSettings?: SettingsBridge };
+  const s = g.__vmSettings;
+  if (s === undefined || typeof s.get !== 'function') return undefined;
+  try {
+    return s.get().controls?.bindings;
+  } catch {
+    return undefined;
+  }
+}
 
 /* ==========================================================================
  * SECTION 1 — THE FALLBACK ROSTER
@@ -165,6 +200,14 @@ const ARMOUR_NAMES: readonly string[] = [
   'Infantry', 'Light', 'Medium', 'Heavy', 'Concrete', 'Wood',
 ];
 
+/** What counts toward the ARMY telltale. `EntityKind` has no air or naval row. */
+const MOBILE_KINDS: readonly EntityKind[] = [EntityKind.Infantry, EntityKind.Vehicle];
+
+/** Weight of a fresh one-second income sample against the running average. */
+const INCOME_SMOOTHING = 0.35;
+/** Seconds the "under attack" advice stays up after the last hit. */
+const ATTACK_ADVICE_SECONDS = 10;
+
 /** EVA line -> a toast. Anything not listed here stays audio-only. */
 const EVA_TOASTS: Readonly<Record<number, readonly [ToastKind, string]>> = {
   [EvaLine.ConstructionComplete]: ['good', 'Construction complete'],
@@ -201,12 +244,47 @@ const TOAST_ICONS: Readonly<Record<ToastKind, IconName>> = {
  * keeps `src/ui` compilable with the sim module absent.
  * ========================================================================== */
 
+interface CatalogEntrySeam {
+  readonly publicId: number;
+  readonly key: string;
+  readonly name: string;
+  readonly cost: number;
+  /** `BuildKind`: 0 building, 1 unit. Compared numerically to avoid the import. */
+  readonly kind: number;
+  readonly prereqs: readonly string[];
+}
+
+interface CatalogSeam {
+  byKey(key: string): {
+    buildTime: number;
+    power: number;
+    blurb: string;
+    prereqs?: readonly string[];
+  } | null;
+  /**
+   * Optional because it is only needed for the cold-start path below. When it
+   * is present the HUD can build a CORRECT grid — real names, real costs, real
+   * `publicId`s — before production has ticked even once.
+   */
+  roster?(faction: Faction, tab: BuildTab): readonly CatalogEntrySeam[];
+}
+
 interface ProductionSeam {
   readonly snapshot: HudSnapshot;
   setActiveTab(tab: BuildTab): void;
   clearTabAlert(tab: BuildTab): void;
   entryOf(id: EntityId): { key: string; name: string; blurb: string; buildTime: number; power: number } | null;
-  catalog: { byKey(key: string): { buildTime: number; power: number; blurb: string } | null };
+  catalog: CatalogSeam;
+}
+
+/** One cell of the locally-built grid. Sourced from the catalog when it can be. */
+interface GridRow {
+  defId: number;
+  key: string;
+  name: string;
+  cost: number;
+  isBuilding: boolean;
+  prereqs: readonly string[];
 }
 
 /** The placement controller, reached the same way `src/input` reaches it. */
@@ -266,10 +344,32 @@ export class Hud {
   /** Real def tables, when a data module published any. */
   private tables: DefTables | null = null;
 
-  /** Pooled fallback snapshot. Only used while `production` is null. */
+  /**
+   * Pooled local snapshot. Used while `production` is null, AND while a bound
+   * production service has not yet published a grid — see `snapshot()`.
+   */
   private readonly localSnapshot: HudSnapshot;
   private readonly localPool: HudCameo[][] = [[], [], [], []];
   private localTab: BuildTab = BuildTab.Structures;
+
+  /** The grid the local snapshot renders: catalog rows when reachable. */
+  private readonly gridRows: GridRow[][] = [[], [], [], []];
+  private gridFaction = -1;
+  private gridFromCatalog = false;
+  /** content key -> display name, for the "Requires X" sentence. */
+  private readonly keyNames = new Map<string, string>();
+
+  /** Pooled telemetry. Rebuilt in place; never handed out. */
+  private readonly telemetry: HudTelemetry = {
+    army: 0, structures: 0, incomePerMin: 0,
+    advice: 'All systems nominal', adviceKind: 'info',
+  };
+  /** Credits banked since the last income flush, and the smoothed rate. */
+  private incomeBucket = 0;
+  private incomeWindow = 0;
+  private incomePerSec = 0;
+  /** Sim time of the last `combat:underAttack` on something we own. */
+  private lastAttackTime = -1e9;
 
   /** Pooled selection view. Never reallocated. */
   private readonly view: SelectionView;
@@ -367,6 +467,7 @@ export class Hud {
     this.view = {
       count: 0, title: '', subtitle: '', veterancy: 0,
       cards, cardCount: 0,
+      hpFrac: 1, hpText: '',
       stance: -1, stanceEnabled: false,
       armour: '', damage: '', range: '', speed: '',
     };
@@ -375,8 +476,75 @@ export class Hud {
     this.minimap.onJumpRequest((x, z) => this.cameraRig.setFocus(x, z, false));
 
     this.subscribe();
+    window.addEventListener('keydown', this.onKeyDown);
     this.resize(true);
     this.sidebar.resetCredits(local !== undefined ? local.credits : 0);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* build hotkeys                                                       */
+  /*                                                                     */
+  /* The HUD dispatches these because nothing else does: `src/input` binds */
+  /* only order and camera keys. The LETTERS are not ours — they come from */
+  /* `src/input/ActionCatalogue.ts`, which is also what the help screen    */
+  /* renders, so the badge on a cameo and the row in Help are one array.   */
+  /*                                                                      */
+  /* The catalogue's letters dodge every stock binding, but a player may   */
+  /* rebind an order onto one of them, and then two things want the same   */
+  /* key. The rebind wins: it is the choice the player actually made, and  */
+  /* Help prints the letter struck through with the order that took it.    */
+  /* ------------------------------------------------------------------ */
+
+  private readonly onKeyDown = (ev: KeyboardEvent): void => {
+    if (this.disposed || ev.defaultPrevented || ev.repeat) return;
+    // Every binding here is a BARE key. A chord belongs to someone else —
+    // Ctrl+A is select-all-army — and swallowing one would be a real bug.
+    if (ev.ctrlKey || ev.altKey || ev.metaKey || ev.shiftKey) return;
+
+    const tab = TAB_HOTKEY_CODES.indexOf(ev.code);
+    const slot = tab >= 0 ? -1 : SLOT_HOTKEY_CODES.indexOf(ev.code);
+    // Two array scans of fourteen strings, and out. Everything below this line
+    // costs more, and the overwhelming majority of keystrokes are somebody
+    // else's — the order keys, the camera keys, the control-group digits.
+    if (tab < 0 && slot < 0) return;
+
+    if (!this.keyboardOwned()) return;
+    // A rebound order owns this letter now. Stand down here, before acting AND
+    // before `preventDefault`, so the key is left intact for the input system.
+    if (buildHotkeyBlockedBy(ev.code, liveBindings()) !== undefined) return;
+
+    if (tab >= 0) {
+      ev.preventDefault();
+      this.soundHook?.('tab');
+      this.selectTab(tab as BuildTab);
+      return;
+    }
+
+    // An empty cell leaves the keystroke alone rather than eating it, so a key
+    // that is unbound today stays available to whoever binds it tomorrow.
+    if (this.sidebar.activateSlotByIndex(slot)) ev.preventDefault();
+  };
+
+  /** True when the build grid, and not a text field or a shell screen, has the keyboard. */
+  private keyboardOwned(): boolean {
+    if (!this.root.isConnected) return false;
+
+    const active = document.activeElement as HTMLElement | null;
+    if (active !== null) {
+      const tag = active.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return false;
+      if (active.isContentEditable) return false;
+    }
+
+    // `Shell` parks its root at `pointer-events: none` whenever no screen is
+    // open and clears the inline value when one is. Rebinding a key on the
+    // Controls tab must not also queue a tank behind the menu.
+    const shell = document.querySelector('.vm-shell');
+    if (shell instanceof HTMLElement && shell.style.pointerEvents !== 'none') return false;
+
+    // `__VM.setUiVisible(false)` hides the HUD for the screenshot harness. A
+    // hidden interface does not take keys.
+    return getComputedStyle(this.root).visibility !== 'hidden';
   }
 
   /* ------------------------------------------------------------------ */
@@ -478,11 +646,15 @@ export class Hud {
     this.unsubs.push(bus.on('economy:credits', (e) => {
       if (!isLocal(e.player)) return;
       if (e.delta !== 0) this.sidebar.creditFlyout(e.delta);
+      // INCOME only. Spending is not negative income, and counting it would
+      // make the rate swing to zero every time a tank was ordered.
+      if (e.delta > 0) this.incomeBucket += e.delta;
     }));
 
     this.unsubs.push(bus.on('combat:underAttack', (e) => {
       const mine = isLocal(e.player);
       this.minimap.ping(e.x, e.z, !mine);
+      if (mine) this.lastAttackTime = this.world.time;
     }));
 
     this.unsubs.push(bus.on('entity:damaged', (e) => {
@@ -653,24 +825,138 @@ export class Hud {
 
     const snap = this.snapshot();
     this.buildSelectionView();
+    this.buildTelemetry(snap, dt);
 
     this.sidebar.setRadarOnline(snap.hasRadar);
-    this.sidebar.update(snap, this.view, dt);
+    this.sidebar.update(snap, this.view, this.telemetry, dt);
     this.minimap.frame(this.time, dt);
     this.overlay.frame(dt);
     this.toasts.frame(dt);
   }
 
   /* ------------------------------------------------------------------ */
+  /* telemetry — the numbers nobody else publishes                       */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Army size, base size, income rate and one line of advice.
+   *
+   * None of this is in `HudSnapshot`: that structure belongs to
+   * `src/sim/Production.ts` and none of these four are production's business.
+   * They are derived here, from the store and from the HUD's own event
+   * subscriptions, which is also why the HUD keeps working when production is
+   * absent.
+   */
+  private buildTelemetry(snap: HudSnapshot, dt: number): void {
+    const tele = this.telemetry;
+    const store = this.world.store;
+    const local = this.world.localPlayer;
+
+    let army = 0;
+    for (const kind of MOBILE_KINDS) {
+      const list = store.byKind[kind];
+      const count = store.byKindCount[kind];
+      for (let i = 0; i < count; i++) {
+        const e = list[i];
+        if ((store.owner[e] as PlayerId) !== local) continue;
+        if ((store.flags[e] & EntityFlag.PendingDestroy) !== 0) continue;
+        army++;
+      }
+    }
+    tele.army = army;
+
+    let structures = 0;
+    const blist = store.byKind[EntityKind.Building];
+    const bcount = store.byKindCount[EntityKind.Building];
+    for (let i = 0; i < bcount; i++) {
+      const e = blist[i];
+      if ((store.owner[e] as PlayerId) !== local) continue;
+      const f = store.flags[e];
+      if ((f & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) continue;
+      structures++;
+    }
+    tele.structures = structures;
+
+    /* -- income ---------------------------------------------------------
+     * A one-second bucket feeding an exponential average. A raw per-frame rate
+     * is unreadable (a harvester unloads in one tick and the number spikes to
+     * four figures), and a pure running total answers the wrong question. */
+    this.incomeWindow += dt;
+    if (this.incomeWindow >= 1) {
+      const rate = this.incomeBucket / this.incomeWindow;
+      this.incomePerSec += (rate - this.incomePerSec) * INCOME_SMOOTHING;
+      this.incomeBucket = 0;
+      this.incomeWindow = 0;
+    }
+    tele.incomePerMin = this.incomePerSec * 60;
+
+    /* -- the advice line ------------------------------------------------
+     * Ordered by what would kill you soonest. Exactly one sentence shows, and
+     * it names an ACTION wherever there is one to name. */
+    const power = powerStateOf(snap.powerProduced, snap.powerConsumed, snap.brownout);
+    if (this.world.time - this.lastAttackTime < ATTACK_ADVICE_SECONDS) {
+      this.setAdvice('Base under attack — check the tactical map', 'alert');
+    } else if (structures === 0) {
+      this.setAdvice('No structures. Deploy an MCV to found a base', 'alert');
+    } else if (power === 'down') {
+      this.setAdvice('Low power — every queue is running slow. Build a power plant', 'warn');
+    } else if (power === 'tight') {
+      this.setAdvice('Power is tight — the next structure will brown you out', 'warn');
+    } else if (!snap.hasRadar) {
+      this.setAdvice('No radar. Build a Radar Dome to see enemy movement', 'info');
+    } else if (tele.incomePerMin < 1 && snap.gameTimeSec > 45) {
+      this.setAdvice('No ore income — check your harvesters and refinery', 'warn');
+    } else if (army === 0) {
+      this.setAdvice('No combat units in the field', 'warn');
+    } else {
+      this.setAdvice('All systems nominal', 'info');
+    }
+  }
+
+  private setAdvice(text: string, kind: AdviceKind): void {
+    this.telemetry.advice = text;
+    this.telemetry.adviceKind = kind;
+  }
+
+  /* ------------------------------------------------------------------ */
   /* snapshot                                                            */
   /* ------------------------------------------------------------------ */
 
-  /** The live snapshot, or the fallback one refreshed in place. */
+  /**
+   * The live snapshot, or the local one refreshed in place.
+   *
+   * THE COLD-START BRANCH IS NOT COSMETIC. `ProductionService.refreshSnapshot`
+   * runs inside `simTick`, so until the simulation has ticked once, the live
+   * snapshot is its constructed initial value: zero credits, zero power, a zero
+   * clock and FOUR EMPTY CAMEO LISTS. A real match passes through that state
+   * for one frame. `tools/shoot.mjs` never leaves it — `Bootstrap.start()`
+   * pauses the loop in `?shot=` mode — which is why `shots/02-hud-full.png`
+   * showed `$0 / +0 / 00:00` over an empty build grid and looked like a broken
+   * HUD when the HUD was faithfully rendering a snapshot nobody had filled in.
+   *
+   * So a bound-but-unpublished snapshot falls through to the local one, which
+   * reads its scalars straight off `PlayerState` and its grid off the live
+   * catalog. The ids are the catalog's own `publicId`s, so a click in that
+   * window issues exactly the command the live grid would have.
+   */
   private snapshot(): HudSnapshot {
-    if (this.tryBindProduction()) return this.production!.snapshot;
+    const p = this.world.players[this.world.localPlayer as number];
+    // Unconditional, and cheap: it early-returns unless the faction or the
+    // catalog's availability changed. It also owns `keyNames`, which the
+    // tooltip's "Requires ..." sentence needs on the LIVE path too.
+    if (p !== undefined) this.ensureGridRows(p.faction);
+
+    if (this.tryBindProduction()) {
+      const live = this.production!.snapshot;
+      let published = false;
+      for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+        if (live.cameos[t] !== undefined && live.cameos[t].length > 0) { published = true; break; }
+      }
+      if (published) return live;
+      this.localTab = live.activeTab;
+    }
 
     const snap = this.localSnapshot;
-    const p = this.world.players[this.world.localPlayer as number];
     if (p === undefined) return snap;
 
     snap.credits = Math.round(p.credits);
@@ -685,19 +971,74 @@ export class Hud {
       ? this.world.selection.ids[0] : 0) as EntityId;
     snap.gameTimeSec = this.world.time;
 
-    for (let t = 0; t < BUILD_TAB_COUNT; t++) this.fillFallbackTab(p, t as BuildTab);
+    for (let t = 0; t < BUILD_TAB_COUNT; t++) this.fillLocalTab(p, t as BuildTab);
     return snap;
   }
 
-  private fillFallbackTab(p: PlayerState, tab: BuildTab): void {
+  /**
+   * Resolve the grid the local snapshot renders.
+   *
+   * The live catalog wins whenever it is reachable, because `FALLBACK_ROSTER`
+   * is an Allied/Soviet-only table with invented costs — a Meridian player got
+   * an empty grid from it, and both original armies got a tech tree that
+   * disagreed with the real one. Cold path: it runs on a faction change and on
+   * the frame the catalog first answers, and never again.
+   */
+  private ensureGridRows(faction: Faction): void {
+    const catalog = this.production?.catalog;
+    const fromCatalog = typeof catalog?.roster === 'function';
+    if (this.gridFaction === (faction as number) && this.gridFromCatalog === fromCatalog) return;
+    this.gridFaction = faction as number;
+    this.gridFromCatalog = fromCatalog;
+    this.keyNames.clear();
+
+    for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+      const out = this.gridRows[t];
+      out.length = 0;
+      if (fromCatalog) {
+        for (const e of catalog!.roster!(faction, t as BuildTab)) {
+          out.push({
+            defId: e.publicId,
+            key: e.key,
+            name: e.name,
+            cost: e.cost,
+            isBuilding: e.kind === 0,
+            prereqs: e.prereqs,
+          });
+          this.keyNames.set(e.key, e.name);
+        }
+      } else {
+        for (let i = 0; i < FALLBACK_ROSTER.length; i++) {
+          const row = FALLBACK_ROSTER[i];
+          if (row.tab !== t) continue;
+          if (row.faction !== Faction.Neutral && row.faction !== faction) continue;
+          // Without def tables the only id space in the building is this index.
+          out.push({
+            defId: i,
+            key: row.key,
+            name: row.name,
+            cost: row.cost,
+            isBuilding: row.isBuilding,
+            prereqs: row.prereqs,
+          });
+          this.keyNames.set(row.key, row.name);
+        }
+      }
+    }
+    // Names for prerequisites that are not themselves buildable this game.
+    for (const row of FALLBACK_ROSTER) {
+      if (!this.keyNames.has(row.key)) this.keyNames.set(row.key, row.name);
+    }
+  }
+
+  private fillLocalTab(p: PlayerState, tab: BuildTab): void {
     const pool = this.localPool[tab as number];
     const out = this.localSnapshot.cameos[tab as number];
+    const rows = this.gridRows[tab as number];
     out.length = 0;
-    let n = 0;
 
-    for (const row of FALLBACK_ROSTER) {
-      if (row.tab !== tab) continue;
-      if (row.faction !== Faction.Neutral && row.faction !== p.faction) continue;
+    for (let n = 0; n < rows.length; n++) {
+      const row = rows[n];
 
       let c = pool[n];
       if (c === undefined) {
@@ -707,10 +1048,8 @@ export class Hud {
         };
         pool.push(c);
       }
-      n++;
 
-      // Without def tables the only id space in the building is this index.
-      c.defId = FALLBACK_ROSTER.indexOf(row);
+      c.defId = row.defId;
       c.isBuilding = row.isBuilding;
       c.key = row.key;
       c.name = row.name;
@@ -737,8 +1076,7 @@ export class Hud {
       let reason = '';
       for (const req of row.prereqs) {
         if (this.ownsStructure(p, req)) continue;
-        const named = FALLBACK_ROSTER.find((r) => r.key === req && r.faction === p.faction);
-        reason = `Requires ${named !== undefined ? named.name : req}`;
+        reason = `Requires ${this.keyNames.get(req) ?? req}`;
         break;
       }
       c.available = reason === '';
@@ -775,12 +1113,38 @@ export class Hud {
   private extrasFor(key: string): BuildExtras {
     const entry = this.production?.catalog.byKey(key) ?? null;
     if (entry !== null) {
-      return { buildTimeSec: entry.buildTime, powerDelta: entry.power, blurb: entry.blurb };
+      return {
+        buildTimeSec: entry.buildTime,
+        powerDelta: entry.power,
+        blurb: entry.blurb,
+        prereq: this.prereqSentence(entry.prereqs),
+      };
     }
     const row = FALLBACK_ROSTER.find((r) => r.key === key && r.faction === this.faction)
       ?? FALLBACK_ROSTER.find((r) => r.key === key);
-    if (row === undefined) return { buildTimeSec: 0, powerDelta: 0, blurb: '' };
-    return { buildTimeSec: row.buildTime, powerDelta: row.power, blurb: row.blurb };
+    if (row === undefined) return { buildTimeSec: 0, powerDelta: 0, blurb: '', prereq: '' };
+    return {
+      buildTimeSec: row.buildTime,
+      powerDelta: row.power,
+      blurb: row.blurb,
+      prereq: this.prereqSentence(row.prereqs),
+    };
+  }
+
+  /**
+   * `Requires Ore Refinery + Radar Dome`, or empty for a root-tier item.
+   *
+   * Stated whether or not it is satisfied: the tech tree has no other
+   * documentation anywhere in the game, and a player reads this to plan, not
+   * only to find out why a cell is grey.
+   */
+  private prereqSentence(prereqs: readonly string[] | undefined): string {
+    if (prereqs === undefined || prereqs.length === 0) return '';
+    let out = '';
+    for (const key of prereqs) {
+      out += (out === '' ? '' : ' + ') + (this.keyNames.get(key) ?? key);
+    }
+    return `Requires ${out}`;
   }
 
   /* ------------------------------------------------------------------ */
@@ -803,6 +1167,8 @@ export class Hud {
     if (sel.count === 0) {
       view.cardCount = 0;
       view.stanceEnabled = false;
+      view.hpFrac = 1;
+      view.hpText = '';
       return;
     }
 
@@ -814,10 +1180,15 @@ export class Hud {
     let stance = -2;
     let anyMobile = false;
     let allBuildings = true;
+    let totalHp = 0;
+    let totalMaxHp = 0;
 
     for (let i = 0; i < sel.count; i++) {
       const idx = store.index(sel.ids[i] as EntityId);
       if (idx < 0) continue;
+
+      totalHp += store.hp[idx];
+      totalMaxHp += store.maxHp[idx];
 
       const kind = store.kind[idx];
       if (kind !== EntityKind.Building) allBuildings = false;
@@ -870,6 +1241,14 @@ export class Hud {
         && store.defId[idx] === store.defId[primaryIdx];
     }
     view.cardCount = n;
+
+    /* -- aggregate health ---------------------------------------------- *
+     * Absolute hit points, not an average of fractions: twelve conscripts and
+     * one Apocalypse at the same 60% are not the same army, and the number the
+     * player is deciding on is how much punishment the GROUP can still take. */
+    view.hpFrac = totalMaxHp > 0 ? Math.max(0, Math.min(1, totalHp / totalMaxHp)) : 1;
+    view.hpText = totalMaxHp > 0
+      ? `${Math.round(totalHp)} / ${Math.round(totalMaxHp)} HP` : '';
 
     /* -- headline ------------------------------------------------------ */
     if (primaryIdx >= 0) {
@@ -1029,6 +1408,7 @@ export class Hud {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    window.removeEventListener('keydown', this.onKeyDown);
     for (const off of this.unsubs) off();
     this.unsubs.length = 0;
     this.toasts.dispose();

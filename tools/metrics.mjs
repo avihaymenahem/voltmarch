@@ -189,11 +189,42 @@ async function measure(file) {
 
 const args = process.argv.slice(2);
 const mode = args[0]?.startsWith('--') ? args.shift().slice(2) : 'score';
+const requested = args.length;
 const files = args.filter((f) => existsSync(f));
+const missing = requested - files.length;
 
 if (!files.length) {
-  console.error('No readable files given.');
+  console.error(
+    `No readable files. ${requested} path(s) given.\n` +
+      'If you globbed shots/*.png, a concurrent `tools/shoot.mjs` may have cleared the directory.',
+  );
   process.exit(1);
+}
+
+/*
+ * Sample-size honesty.
+ *
+ * This tool used to score however many files it was handed and print a confident
+ * aggregate with no indication of how many images went into it. Because
+ * `shoot.mjs` clears `shots/` on entry, a concurrent capture made the caller's
+ * glob expand to a handful of files, and the score came out over 2-4 images
+ * while reading exactly like a full run. Several reported numbers were wrong
+ * because of it.
+ *
+ * A grade over a partial set is not comparable to one over the full set — the
+ * scenarios differ wildly, and `05-combat` alone swings the aggregate by points.
+ * So the sample size is now always printed, a short sample is a loud warning,
+ * and `--expect N` turns it into a hard failure for CI and scripted use.
+ */
+const expectIdx = args.findIndex((a) => a === '--expect');
+const expected = expectIdx >= 0 ? Number(args[expectIdx + 1]) : null;
+
+if (missing > 0) {
+  console.warn(`WARNING: ${missing} of ${requested} given path(s) did not exist and were skipped.`);
+}
+if (expected !== null && files.length !== expected) {
+  console.error(`FAILED: expected ${expected} image(s), scored ${files.length}. Refusing to report a partial grade.`);
+  process.exit(2);
 }
 
 const rows = [];
@@ -246,7 +277,16 @@ for (const r of rows) {
 }
 
 const score = totalWeight ? (1 - lostWeight / totalWeight) : 0;
-console.log(`\nWeighted grade score: ${(score * 100).toFixed(1)}%  (${failures.length} failing checks)`);
+console.log(
+  `\nWeighted grade score: ${(score * 100).toFixed(1)}%  ` +
+    `(${failures.length} failing checks over ${rows.length} image${rows.length === 1 ? '' : 's'})`,
+);
+if (rows.length < 12) {
+  console.warn(
+    `NOTE: scored ${rows.length} image(s), not the full 12-shot set. This number is NOT comparable\n` +
+      '      to a full-set score — scenario mix dominates the aggregate. Re-run `npm run shots` first.',
+  );
+}
 
 if (failures.some((f) => f.weight === 3)) {
   console.log('\nFATAL failures (weight 3) — these alone sink the side-by-side:');

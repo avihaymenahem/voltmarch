@@ -70,8 +70,11 @@ import type {
 } from '../core/types';
 import { PerEntityObj, type World } from '../core/world';
 import {
-  DEG2RAD, Rng, clampWorld, footprintOriginCell, snapFootprintToGrid, wrapAngle,
+  DEG2RAD, Rng, clampCell, clampWorld, footprintOriginCell, snapFootprintToGrid,
+  worldToCell, wrapAngle,
 } from '../core/math';
+import { TerrainRegions } from '../sim/Flowfield';
+import { getTerrain } from '../world/Terrain';
 
 import { buildAlliedBase, type BaseOptions } from './scenarios/AlliedBase';
 import { buildSovietBase } from './scenarios/SovietBase';
@@ -849,6 +852,61 @@ async function resolveDefBindingUncached(): Promise<DefBinding> {
 
 const scratch2 = new Float32Array(2);
 const scratchCell = new Int32Array(2);
+/** Separate scratch for the placement validator — `scratchCell` is live in
+ *  `spawnBuilding` while the validator runs. */
+const placeCell = new Int32Array(2);
+const placeOut = new Float32Array(2);
+
+/* --------------------------------------------------------------------------
+ * NOTHING SPAWNS IN A PIT IT CANNOT LEAVE
+ *
+ * A procedural generator will always eventually produce something nobody
+ * predicted. `Terrain.ensureConnectivity()` carves ramps between the pieces of
+ * the map it considers worth joining and deliberately abandons the rest — a
+ * nine-cell ledge on a distant hillside genuinely is not worth an eighty metre
+ * trench. That policy is fine. What was missing was anyone checking whether an
+ * army had been dropped into one of the scraps it abandoned, which is how
+ * "spawned tanks stuck inside the valley and cant get out" reached a real
+ * match.
+ *
+ * So every spawn in this file goes through `connectedGround`, and the result
+ * is REPORTED rather than silently applied. A relocation is not a feature that
+ * worked; it is the sound of a generator regression, and a line in the console
+ * is the difference between finding it in a boot log and finding it in a bug
+ * report.
+ * -------------------------------------------------------------------------- */
+
+/** Locomotors a scenario can actually place something with. */
+const PLACEABLE_LOCOMOTORS: readonly Locomotor[] =
+  [Locomotor.Foot, Locomotor.Track, Locomotor.Wheel, Locomotor.Hover];
+
+/**
+ * How far, in cells, the placement validator will look for connected ground.
+ * 12 cells is 48 m — the radius the scenarios themselves drop an army into, so
+ * a unit that has to be moved still lands inside its own composition rather
+ * than on the far side of the frame.
+ */
+const PLACE_SEARCH_CELLS = 12;
+
+/** Map-connectivity health, published for the boot log and the debug overlay. */
+export interface ConnectivityReport {
+  /** Distinct 4-connected passable regions for a tracked vehicle. */
+  readonly regions: number;
+  /** Passable cells in total. */
+  readonly passableCells: number;
+  /** Cells held by the largest region. */
+  readonly mainCells: number;
+  /** `mainCells / passableCells`. 1.0 means the map is one piece. */
+  readonly mainFraction: number;
+  /** Spawns the validator had to move onto connected ground. */
+  readonly relocated: number;
+  /** Furthest any single placement was moved, metres. */
+  readonly relocatedMaxMetres: number;
+  /** Entities that ended the build outside the main region. Must be 0. */
+  readonly strandedEntities: number;
+  /** One line for the console. */
+  readonly summary: string;
+}
 
 /** Options shared by every unit spawn. */
 export interface SpawnUnitOptions {
@@ -915,6 +973,12 @@ export class ScenarioBuilder {
   private readonly blockedZ: number[] = [];
   private readonly blockedR: number[] = [];
 
+  /** Terrain connectivity per locomotor, snapshotted before the first spawn. */
+  private readonly regions = new Map<number, TerrainRegions>();
+  /** Placements moved onto connected ground, and the worst distance moved. */
+  private relocated = 0;
+  private relocatedMaxMetres = 0;
+
   constructor(
     readonly world: World,
     readonly defs: DefBinding,
@@ -924,6 +988,130 @@ export class ScenarioBuilder {
     readonly preset: string,
   ) {
     this.rng = new Rng(seed);
+    this.primeConnectivity();
+  }
+
+  /* -- placement validation --------------------------------------------- */
+
+  /**
+   * Snapshot terrain connectivity BEFORE anything is placed.
+   *
+   * The timing is the whole design. `ITerrain.isPassable` reports an occupied
+   * cell as closed, so labelling lazily on first use would fold this
+   * scenario's own buildings into the answer — and a courtyard temporarily
+   * sealed by its own base is not a terrain trap, nor is a structure the
+   * player is about to sell a permanent wall. Taken here, once, before a
+   * single footprint is marked, the labelling answers exactly the question
+   * that matters: is this ground part of the map, or is it a hole?
+   *
+   * Four flood fills over 16k cells. Once per boot, well under a millisecond,
+   * and it never runs again for the life of the build.
+   */
+  private primeConnectivity(): void {
+    for (const loco of PLACEABLE_LOCOMOTORS) {
+      try {
+        this.regions.set(loco, new TerrainRegions(this.world.terrain, loco));
+      } catch (err) {
+        // A scenario never throws (law 1). Losing the snapshot costs us
+        // validation, not the frame.
+        console.warn(`[scenario] connectivity snapshot failed for locomotor ${loco}`, err);
+      }
+    }
+  }
+
+  /**
+   * The nearest point to (x,z) that `loco` can both STAND ON and LEAVE,
+   * written into `out` as [x,z]. Returns true when the point had to move.
+   *
+   * `strandedOnly` narrows the test to "passable, but cut off from the map".
+   * Structures pass it, because a naval yard's centre cell sits over water and
+   * a Track vehicle calls that impassable — shuffling it inland would break
+   * every shoreline layout in the game to fix a problem it does not have.
+   * Whether a structure may be founded on a cell at all is `sim/Placement`'s
+   * question, not this one's; the only thing asked here is whether the ground
+   * under it is joined to the rest of the world.
+   */
+  connectedGround(
+    x: number, z: number, loco: Locomotor, out: Float32Array, strandedOnly = false,
+  ): boolean {
+    out[0] = x; out[1] = z;
+    const r = this.regions.get(loco);
+    // No snapshot, or a map with nothing passable on it at all: there is no
+    // "connected" to move toward, so leave the caller's point alone.
+    if (r === undefined || r.regionCount === 0) return false;
+
+    const cx = clampCell(worldToCell(x));
+    const cz = clampCell(worldToCell(z));
+    if (r.isMain(cx, cz)) return false;
+    if (strandedOnly && r.regionAt(cx, cz) === 0) return false;
+
+    if (!r.nearestMain(cx, cz, placeCell, PLACE_SEARCH_CELLS)) {
+      console.warn(
+        `[scenario] cell ${cx},${cz} is cut off from the map for locomotor ${loco} ` +
+        `and nothing connected is within ${PLACE_SEARCH_CELLS} cells — placing anyway`,
+      );
+      return false;
+    }
+
+    out[0] = clampWorld((placeCell[0] + 0.5) * CELL, 2);
+    out[1] = clampWorld((placeCell[1] + 0.5) * CELL, 2);
+    this.relocated++;
+    const moved = Math.hypot(out[0] - x, out[1] - z);
+    if (moved > this.relocatedMaxMetres) this.relocatedMaxMetres = moved;
+    return true;
+  }
+
+  /**
+   * Audit what actually ended up on the map. This is the check that would have
+   * caught the reported bug before a player did: it walks the finished world
+   * and asks, of every entity, whether the ground it is standing on is joined
+   * to the rest of the map.
+   */
+  auditConnectivity(): ConnectivityReport {
+    const track = this.regions.get(Locomotor.Track);
+    const st = this.world.store;
+    let stranded = 0;
+
+    for (let a = 0; a < st.aliveCount; a++) {
+      const i = st.alive[a];
+      const kind = st.kind[i];
+      const isUnit = kind === EntityKind.Infantry || kind === EntityKind.Vehicle;
+      if (!isUnit && kind !== EntityKind.Building) continue;
+      // Structures are audited against the locomotor that has to REACH them.
+      const loco = isUnit ? (st.locomotor[i] as Locomotor) : Locomotor.Track;
+      const r = this.regions.get(loco);
+      if (r === undefined || r.regionCount === 0) continue;
+      const cx = clampCell(worldToCell(st.posX[i]));
+      const cz = clampCell(worldToCell(st.posZ[i]));
+      // A structure standing on ground its visitors call impassable (a naval
+      // yard over water) is a different question with a different owner.
+      if (!isUnit && r.regionAt(cx, cz) === 0) continue;
+      if (!r.isMain(cx, cz)) stranded++;
+    }
+
+    const regions = track?.regionCount ?? 0;
+    const passableCells = track?.passableCells ?? 0;
+    const mainCells = track?.mainRegionCells ?? 0;
+    const mainFraction = track?.mainFraction ?? 1;
+
+    const summary =
+      `${regions} passable region${regions === 1 ? '' : 's'} for a tracked hull; ` +
+      `the main one holds ${mainCells} of ${passableCells} cells ` +
+      `(${(mainFraction * 100).toFixed(1)}%); ` +
+      `${this.relocated} placement${this.relocated === 1 ? '' : 's'} relocated` +
+      (this.relocated > 0 ? ` (worst ${this.relocatedMaxMetres.toFixed(1)} m)` : '') +
+      `; ${stranded} entit${stranded === 1 ? 'y' : 'ies'} stranded`;
+
+    return {
+      regions,
+      passableCells,
+      mainCells,
+      mainFraction,
+      relocated: this.relocated,
+      relocatedMaxMetres: this.relocatedMaxMetres,
+      strandedEntities: stranded,
+      summary,
+    };
   }
 
   /* -- players ---------------------------------------------------------- */
@@ -1043,8 +1231,16 @@ export class ScenarioBuilder {
     const def: UnitDef | undefined =
       defId >= 0 ? this.defs.tables?.units[defId] : undefined;
 
-    const px = clampWorld(x, 2);
-    const pz = clampWorld(z, 2);
+    // Resolve the chassis before the position, because WHICH ground counts as
+    // standable is a property of the chassis: infantry climb what a tank
+    // cannot, and a hovercraft crosses water neither of them can.
+    const loco = def?.locomotor ?? fb.locomotor;
+    let px = clampWorld(x, 2);
+    let pz = clampWorld(z, 2);
+    if (this.connectedGround(px, pz, loco, placeOut)) {
+      px = placeOut[0];
+      pz = placeOut[1];
+    }
     const yaw = wrapAngle((options.yawDeg ?? 0) * DEG2RAD);
     const ground = this.world.terrain.heightAt(px, pz);
     const py = options.y ?? (options.float === true ? Math.max(WATER_LEVEL, ground) : ground);
@@ -1064,7 +1260,7 @@ export class ScenarioBuilder {
     s.accel[i] = def?.accel ?? fb.accel;
     s.turnRate[i] = def?.turnRate ?? fb.turnRate;
     s.turretTurnRate[i] = fb.turretTurnRate;
-    s.locomotor[i] = def?.locomotor ?? fb.locomotor;
+    s.locomotor[i] = loco;
     // A radius fitted to the hull box: too small and tanks interpenetrate, too
     // large and a column of Rhinos cannot use a 3-cell gap in its own wall.
     s.radius[i] = def?.radius ?? Math.max(fb.width, fb.length) * 0.45;
@@ -1128,8 +1324,18 @@ export class ScenarioBuilder {
     const fw = def?.footprintW ?? fb.footprintW;
     const fh = def?.footprintH ?? fb.footprintH;
     snapFootprintToGrid(x, z, fw, fh, scratch2);
-    const px = clampWorld(scratch2[0], fw * CELL);
-    const pz = clampWorld(scratch2[1], fh * CELL);
+    let px = clampWorld(scratch2[0], fw * CELL);
+    let pz = clampWorld(scratch2[1], fh * CELL);
+    // A refinery in a pit is a refinery no harvester can ever dock at, and a
+    // war factory in one produces an army that is born trapped. Structures are
+    // validated against the TRACKED locomotor because that is what has to
+    // reach them, and only against "passable but cut off" so a shoreline
+    // building standing over water is left exactly where the layout put it.
+    if (this.connectedGround(px, pz, Locomotor.Track, placeOut, true)) {
+      snapFootprintToGrid(placeOut[0], placeOut[1], fw, fh, scratch2);
+      px = clampWorld(scratch2[0], fw * CELL);
+      pz = clampWorld(scratch2[1], fh * CELL);
+    }
     const yaw = wrapAngle((options.yawDeg ?? 0) * DEG2RAD);
     const py = this.world.terrain.heightAt(px, pz);
     const faction = this.world.player(owner).faction;
@@ -1696,6 +1902,16 @@ export function resetScenarioPlan(): void {
 
 let active: ScenarioSpec | null = null;
 let keyTable: PerEntityObj<string> | null = null;
+let connectivity: ConnectivityReport | null = null;
+
+/**
+ * The connectivity audit for the world this boot built, or null before
+ * `buildScenario` has run. The debug overlay reads it; so does the test that
+ * asserts nothing spawned in a pit.
+ */
+export function scenarioConnectivity(): ConnectivityReport | null {
+  return connectivity;
+}
 
 /**
  * The scenario this boot built, or null before `buildScenario` has run.
@@ -1719,6 +1935,24 @@ export interface BuildScenarioOptions {
   map?: string | null;
   /** Pre-resolved def binding. Omit and the caller gets the empty binding. */
   defs?: DefBinding;
+}
+
+/**
+ * The primary start location, in world metres.
+ *
+ * `Terrain.startLocations()` is the generator's side of the spawn contract: a
+ * shelf it has levelled, kept dry, and proven joined to the main region. When
+ * no terrain exists yet — a headless test building a scenario against a stub —
+ * fall back to the map centre, which is where `TERRAIN_START_POSITIONS` puts
+ * the sole default start anyway.
+ */
+function startShelf(): { x: number; z: number } {
+  const t = getTerrain();
+  const starts = t?.startLocations();
+  if (starts !== undefined && starts.length > 0) {
+    return { x: starts[0].x, z: starts[0].z };
+  }
+  return { x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5 };
 }
 
 /**
@@ -1748,8 +1982,16 @@ export function buildScenario(
     map,
   );
 
-  const cx = MAP_SIZE * 0.5;
-  const cz = MAP_SIZE * 0.5;
+  // Where the army goes. The generator RESERVES a levelled, connected shelf per
+  // start location (`TERRAIN_START_POSITIONS`) and publishes it as
+  // `startLocations()`. Reading it here is what closes the loop: the terrain
+  // guarantees a patch of standable ground, and the scenario builds on that
+  // exact patch rather than on a constant that merely happens to coincide with
+  // it today. The fallback keeps headless callers that build a scenario without
+  // a terrain module (several unit tests) on the old centre.
+  const shelf = startShelf();
+  const cx = shelf.x;
+  const cz = shelf.z;
 
   try {
     plan.build(builder, cx, cz);
@@ -1764,6 +2006,33 @@ export function buildScenario(
     world.spatial.rebuild();
   } catch (err) {
     console.error('[scenario] spatial rebuild failed', err);
+  }
+
+  /* -- the loud check ------------------------------------------------------
+   * Three numbers, once, on every map load. The reported bug survived to a
+   * real match because the generator's own `stats().reachable` measured the
+   * FRACTION of ground the main region holds — which stayed above 99% on every
+   * affected seed, because the map was never cut in half, only peppered with
+   * pits. What nobody printed was the COUNT of separate regions, or whether
+   * anything had been spawned into one of the small ones. Those are the two
+   * numbers below, and `strandedEntities` is the one that must be zero.
+   * ---------------------------------------------------------------------- */
+  try {
+    connectivity = builder.auditConnectivity();
+    if (connectivity.strandedEntities > 0) {
+      console.error(
+        `%c[scenario]%c ${connectivity.strandedEntities} entities are standing on ground ` +
+        `that is NOT connected to the map — they cannot leave it. ${connectivity.summary}`,
+        'color:#f66', 'color:inherit',
+      );
+    } else if (connectivity.relocated > 0 || connectivity.regions > 1) {
+      console.warn(`[scenario] connectivity: ${connectivity.summary}`);
+    } else {
+      console.info(`[scenario] connectivity: ${connectivity.summary}`);
+    }
+  } catch (err) {
+    connectivity = null;
+    console.warn('[scenario] connectivity audit failed', err);
   }
 
   const harvested = builder.harvest();
@@ -1803,5 +2072,6 @@ export function buildScenario(
 export function clearScenario(): void {
   active = null;
   keyTable = null;
+  connectivity = null;
   resetScenarioPlan();
 }

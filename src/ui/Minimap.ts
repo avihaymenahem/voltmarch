@@ -59,6 +59,8 @@ const RECT_EASE = 14;
 const BLIP_ENEMY = SEMANTIC.danger;
 /** Gaia / unowned blips. */
 const BLIP_NEUTRAL = SEMANTIC.neutral;
+/** The dark plate every blip is drawn on, so none of them relies on terrain. */
+const BLIP_PLATE = 'rgba(3,6,10,0.78)';
 
 /**
  * Per-cell terrain sampler. Injected so the HUD does not hard-depend on the
@@ -254,7 +256,7 @@ export class Minimap {
     const surf: Array<[number, number, number]> = [];
     for (const hex of HUD_MINIMAP_SURFACE) surf.push(hexToRgb(mixHex(hex, '#0A0E14', 0.28)));
     const water = hexToRgb(mixHex(HUD_MINIMAP_WATER, '#0A0E14', 0.2));
-    const oreRgb = hexToRgb(SEMANTIC.ore);
+    const oreRgb = hexToRgb(mixHex(SEMANTIC.ore, '#FFFFFF', 0.22));
 
     for (let cz = 0; cz < MAP_CELLS; cz++) {
       for (let cx = 0; cx < MAP_CELLS; cx++) {
@@ -279,9 +281,15 @@ export class Minimap {
           b *= shade;
         }
 
+        // Ore is the one thing on this map allowed to be bright, and it was
+        // not bright enough: at 0.85 of a 400-unit ramp a half-mined field
+        // blended into the dirt surface it sits on, so the economy — the single
+        // most important thing a tactical map has to show — was invisible until
+        // it was untouched. The ramp now saturates at 200 and lands on a lifted
+        // gold, which makes an ore field read as a shape at 1 px per cell.
         const oreAmount = ore.oreAt(cx, cz);
         if (oreAmount > 0) {
-          const k = Math.min(1, oreAmount / 400) * 0.85;
+          const k = 0.45 + Math.min(1, oreAmount / 200) * 0.55;
           r += (oreRgb[0] - r) * k;
           g += (oreRgb[1] - g) * k;
           b += (oreRgb[2] - b) * k;
@@ -359,6 +367,11 @@ export class Minimap {
    * Blips. Units are a small square; structures get a square scaled by
    * footprint with a 1 px hole punched out of it, so a base reads as a cluster
    * of outlined pads rather than one solid blob.
+   *
+   * EVERY blip is drawn on a dark plate one pixel larger than itself. Without
+   * it, a friendly cyan unit standing on concrete and a hostile red one on a
+   * dirt road both dissolve into their background — the map only worked over
+   * dark grass, which is not where the fighting happens.
    */
   private drawBlips(): void {
     const ctx = this.ctx;
@@ -400,25 +413,37 @@ export class Minimap {
         : store.faction[e] === Faction.Neutral
           ? BLIP_NEUTRAL
           : BLIP_ENEMY;
+
+      const px = this.mapX + store.posX[e] * scale;
+      const py = this.mapY + store.posZ[e] * scale;
+
+      const s = kind === EntityKind.Building
+        ? unit * Math.max(1.5, Math.min(3.2, store.footprintW[e]))
+        : unit;
+      const h = s * 0.5;
+
+      // The plate first, then the blip. Two fills instead of one; at 20 Hz with
+      // 200 entities that is 8000 rects a second, which does not appear in a
+      // profile and buys a map that reads over concrete.
+      if (currentStyle !== BLIP_PLATE) {
+        ctx.fillStyle = BLIP_PLATE;
+        currentStyle = BLIP_PLATE;
+      }
+      ctx.fillRect(px - h - 1, py - h - 1, s + 2, s + 2);
+
       if (style !== currentStyle) {
         ctx.fillStyle = style;
         currentStyle = style;
       }
 
-      const px = this.mapX + store.posX[e] * scale;
-      const py = this.mapY + store.posZ[e] * scale;
-
       if (kind === EntityKind.Building) {
-        const s = unit * Math.max(1.5, Math.min(3.2, store.footprintW[e]));
-        const h = s * 0.5;
         const rim = Math.max(1, Math.round(s * 0.28));
         ctx.fillRect(px - h, py - h, s, rim);
         ctx.fillRect(px - h, py + h - rim, s, rim);
         ctx.fillRect(px - h, py - h, rim, s);
         ctx.fillRect(px + h - rim, py - h, rim, s);
       } else {
-        const h = unit * 0.5;
-        ctx.fillRect(px - h, py - h, unit, unit);
+        ctx.fillRect(px - h, py - h, s, s);
       }
     }
   }
@@ -442,7 +467,12 @@ export class Minimap {
     ctx.restore();
   }
 
-  /** 1 px, unfilled, accent, with a barely-there wash so it reads at a glance. */
+  /**
+   * The camera rectangle: a dark rim, then the accent rim inside it, then four
+   * corner ticks. The dark rim is not decoration — a 1 px cyan line over the
+   * bright sand surface was the one element of this map that could vanish
+   * completely, and it is the element that says where you are looking.
+   */
   private drawViewport(): void {
     if (!this.vpInit) return;
     const ctx = this.ctx;
@@ -453,12 +483,25 @@ export class Minimap {
     const h = Math.round((this.vpMaxZ - this.vpMinZ) * scale);
     if (w <= 0 || h <= 0) return;
 
-    ctx.fillStyle = rgba(this.accent, 0.07);
+    ctx.fillStyle = rgba(this.accent, 0.08);
     ctx.fillRect(x0, y0, w, h);
-    ctx.strokeStyle = this.accent;
+
     ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(0,0,0,0.65)';
     // Half-pixel offset so a 1 px stroke lands on one device pixel, not two.
+    ctx.strokeRect(x0 - 0.5, y0 - 0.5, w + 2, h + 2);
+    ctx.strokeStyle = this.accent;
     ctx.strokeRect(x0 + 0.5, y0 + 0.5, w, h);
+
+    // Corner ticks, clamped so they never meet on a tiny rectangle.
+    const t = Math.max(2, Math.min(Math.round(this.mapW * 0.045), Math.min(w, h) * 0.3));
+    ctx.lineWidth = Math.max(1, Math.round(this.mapW / 110));
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 + t); ctx.lineTo(x0, y0); ctx.lineTo(x0 + t, y0);
+    ctx.moveTo(x0 + w - t, y0); ctx.lineTo(x0 + w, y0); ctx.lineTo(x0 + w, y0 + t);
+    ctx.moveTo(x0 + w, y0 + h - t); ctx.lineTo(x0 + w, y0 + h); ctx.lineTo(x0 + w - t, y0 + h);
+    ctx.moveTo(x0 + t, y0 + h); ctx.lineTo(x0, y0 + h); ctx.lineTo(x0, y0 + h - t);
+    ctx.stroke();
   }
 
   /* ------------------------------------------------------------------ */

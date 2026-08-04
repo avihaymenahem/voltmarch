@@ -52,7 +52,7 @@ import { entityWorld } from '../render/RenderBridge';
 import { SEMANTIC, accentFor, healthColor, rgba } from './Chrome';
 
 /** Unlit remainder of a health bar. Never a second lit colour. */
-const BAR_UNLIT = 'rgba(255,255,255,0.14)';
+const BAR_UNLIT = 'rgba(255,255,255,0.22)';
 /** Dashed line from a firing unit to what it is shooting. */
 const TARGET_LINE = 'rgba(255,77,61,0.55)';
 /** Points sampled around a selection ring. 20 is smooth at every zoom. */
@@ -265,8 +265,19 @@ export class Overlay {
     const pulse = 1 + 0.04 * Math.sin(this.time * Math.PI * 1.6);
 
     if (sel.count > 0) {
-      ctx.lineWidth = Math.max(1, 1.4 * u);
-      ctx.strokeStyle = rgba(this.accent, 0.85);
+      // The dark under-stroke FIRST. A cyan hairline on snow, on a white
+      // Allied roof or inside a fireball is not a ring, it is a rumour; a
+      // wider dark pass beneath it means the ring reads on every surface the
+      // grade can produce, and costs one extra stroke per selected unit.
+      ctx.lineWidth = Math.max(2, 3.2 * u);
+      ctx.strokeStyle = 'rgba(3,6,10,0.62)';
+      for (let i = 0; i < sel.count; i++) {
+        const idx = store.index(sel.ids[i] as EntityId);
+        if (idx < 0) continue;
+        this.strokeGroundRing(idx, pulse);
+      }
+      ctx.lineWidth = Math.max(1, 1.5 * u);
+      ctx.strokeStyle = rgba(this.accent, 0.95);
       for (let i = 0; i < sel.count; i++) {
         const idx = store.index(sel.ids[i] as EntityId);
         if (idx < 0) continue;
@@ -275,8 +286,8 @@ export class Overlay {
       // A second, wider, very faint ring gives the affordance depth without a
       // glow filter — the canvas has no cheap blur and a shadowBlur here costs
       // more than every other overlay pass combined.
-      ctx.lineWidth = Math.max(1, 3 * u);
-      ctx.strokeStyle = rgba(this.accent, 0.14);
+      ctx.lineWidth = Math.max(1, 4 * u);
+      ctx.strokeStyle = rgba(this.accent, 0.16);
       for (let i = 0; i < sel.count; i++) {
         const idx = store.index(sel.ids[i] as EntityId);
         if (idx < 0) continue;
@@ -286,8 +297,17 @@ export class Overlay {
 
     // Hover: only when it is not already selected, or the two rings stack and
     // the selected ring appears to thicken for no reason.
+    ctx.lineWidth = Math.max(2, 2.6 * u);
+    ctx.strokeStyle = 'rgba(3,6,10,0.5)';
+    for (let i = 0; i < store.aliveCount; i++) {
+      const e = store.alive[i];
+      const flags = store.flags[e];
+      if ((flags & EntityFlag.Hovered) === 0) continue;
+      if ((flags & EntityFlag.Selected) !== 0) continue;
+      this.strokeGroundRing(e, 1);
+    }
     ctx.lineWidth = Math.max(1, 1.2 * u);
-    ctx.strokeStyle = 'rgba(255,255,255,0.30)';
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
     for (let i = 0; i < store.aliveCount; i++) {
       const e = store.alive[i];
       const flags = store.flags[e];
@@ -479,8 +499,13 @@ export class Overlay {
 
     const frac = store.maxHp[e] > 0 ? Math.max(0, Math.min(1, store.hp[e] / store.maxHp[e])) : 0;
 
-    ctx.fillStyle = 'rgba(4,7,11,0.72)';
-    ctx.fillRect(x - 1, y - 1, barW + 2, barH + 2);
+    // A 2 px opaque plate, not a 1 px translucent one. Over snow or a white
+    // structure the old backing let the unlit remainder of the bar wash out
+    // completely, so a full bar and an empty one looked the same — the exact
+    // reading the bar exists to give.
+    const pad = Math.max(2, Math.round(u));
+    ctx.fillStyle = SEMANTIC.worldBacking;
+    ctx.fillRect(x - pad, y - pad, barW + pad * 2, barH + pad * 2);
     ctx.fillStyle = BAR_UNLIT;
     ctx.fillRect(x, y, barW, barH);
 
@@ -517,6 +542,9 @@ export class Overlay {
       const cw = HUD_OVERLAY.chevronW * u;
       const ch = HUD_OVERLAY.chevronH * u * 0.45;
       ctx.fillStyle = SEMANTIC.gold;
+      ctx.strokeStyle = 'rgba(3,6,10,0.85)';
+      ctx.lineWidth = Math.max(1, u);
+      ctx.lineJoin = 'round';
       for (let r = 0; r < rank; r++) {
         const cx = x + barW + cw * 0.55;
         const cy = y + barH * 0.5 - r * (ch + 1);
@@ -526,6 +554,8 @@ export class Overlay {
         ctx.lineTo(cx + cw * 0.5, cy + ch * 0.5);
         ctx.lineTo(cx, cy);
         ctx.closePath();
+        // Outline first so the gold is not eaten by its own dark rim.
+        ctx.stroke();
         ctx.fill();
       }
     }
@@ -569,8 +599,12 @@ export class Overlay {
     ctx.font = `600 ${Math.round(11 * u)}px ${OVERLAY_FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.lineWidth = Math.max(1.5, u * 1.6);
-    ctx.strokeStyle = 'rgba(3,5,9,0.85)';
+    // Opaque, and wider than it looks like it needs to be. A floating damage
+    // number lands on whatever the explosion happens to be painting at that
+    // instant, which is routinely a clipped white — a translucent outline is no
+    // outline at all there.
+    ctx.lineWidth = Math.max(2, u * 2.2);
+    ctx.strokeStyle = 'rgba(3,5,9,1)';
     ctx.lineJoin = 'round';
 
     for (const f of this.floaters) {

@@ -47,12 +47,17 @@ import type { GameHandle } from '../game/Bootstrap';
 import type { QualityTier } from '../core/types';
 
 import {
-  KEYBINDS,
+  ACTIONS,
+  ACTION_CATEGORIES,
+  buildHotkeyConflicts,
+  type ActionDef,
+} from '../input/ActionCatalogue';
+
+import {
   chordLabel,
   conflictingIds,
   defaultSettings,
   isBindableCode,
-  keybindCategories,
   touched,
   type Chord,
   type PanelBlurChoice,
@@ -60,6 +65,8 @@ import {
   type Settings,
   type ShadowChoice,
 } from './settings-store';
+
+import { HelpPanel } from './Help';
 
 import {
   button,
@@ -265,6 +272,9 @@ export class SettingsScreen implements Screen {
   private tab: TabId = 'graphics';
   private body: HTMLElement | null = null;
   private host: HTMLElement | null = null;
+  /** The options frame itself, hidden while the help overlay is up. */
+  private frameRoot: HTMLElement | null = null;
+  private help: HelpPanel | null = null;
   /** Keybind id currently waiting for a chord, or null. */
   private listening: string | null = null;
   private listeningButton: HTMLButtonElement | null = null;
@@ -330,13 +340,20 @@ export class SettingsScreen implements Screen {
       },
     });
     frame.foot.appendChild(reset);
+    frame.foot.appendChild(button('All Commands', {
+      iconName: 'info',
+      onClick: () => this.openHelp(),
+    }));
     frame.foot.appendChild(el('div', 'vm-spacer'));
     frame.foot.appendChild(button('Done', { variant: 'primary', onClick: () => this.leave() }));
 
+    this.frameRoot = frame.root;
     host.appendChild(frame.root);
   }
 
   unmount(): void {
+    this.closeHelp();
+    this.frameRoot = null;
     this.host?.classList.remove('vm-page', 'is-modal');
     this.host = null;
     this.body = null;
@@ -344,6 +361,10 @@ export class SettingsScreen implements Screen {
   }
 
   onBack(): boolean {
+    if (this.help !== null) {
+      this.closeHelp();
+      return true;
+    }
     if (this.listening !== null) {
       this.stopListening();
       return true;
@@ -354,6 +375,7 @@ export class SettingsScreen implements Screen {
 
   /** While rebinding, the screen owns the whole keyboard. */
   onKeyDown(e: KeyboardEvent): boolean {
+    if (this.help !== null) return this.help.onKeyDown(e);
     if (this.listening === null) return false;
     if (e.code === 'Escape') {
       this.stopListening();
@@ -591,7 +613,21 @@ export class SettingsScreen implements Screen {
     })));
   }
 
-  /* -- controls ---------------------------------------------------------- */
+  /* -- controls ---------------------------------------------------------- *
+   * EVERY ROW HERE COMES FROM `src/input/ActionCatalogue.ts`.
+   *
+   * This used to walk `KEYBINDS` from the settings store, which meant the
+   * options screen and the engine each described the scheme in their own words.
+   * The catalogue is now the one description; the store still owns persistence
+   * and normalisation, and `tests/action-catalogue.spec.ts` asserts the two
+   * agree on ids, defaults and surfaces. Adding an action to the catalogue adds
+   * a row here with no edit to this file.
+   *
+   * A `fixed` action gets a row too, as a flat chip rather than a button. F3
+   * was previously offered as rebindable and was not — the debug layer reads the
+   * key code directly — and a rebind button that does nothing is the same class
+   * of lie as a help screen that shows the defaults.
+   * ----------------------------------------------------------------------- */
 
   private renderControls(body: HTMLElement): void {
     this.renderNavigation(body);
@@ -599,24 +635,32 @@ export class SettingsScreen implements Screen {
     const bindings = this.shell.settings.get().controls.bindings;
     const conflicts = conflictingIds(bindings);
 
-    for (const category of keybindCategories()) {
-      const section = this.section(body, category);
-      for (const def of KEYBINDS) {
-        if (def.category !== category) continue;
-        const b = el('button', 'vm-bind');
-        b.type = 'button';
-        b.textContent = chordLabel(bindings[def.id]);
-        b.dataset.bind = def.id;
-        if (conflicts.has(def.id)) b.classList.add('is-conflict');
-        focusable(b);
-        b.addEventListener('click', () => this.startListening(def.id, b));
-        setAdjust(b, () => this.startListening(def.id, b));
-        section.appendChild(row(
-          def.label,
-          b,
-          def.advisory === true ? 'Reserved — not yet read by the engine.' : undefined,
-        ));
+    for (const category of ACTION_CATEGORIES) {
+      const rows = ACTIONS.filter((a) => a.category === category.id && isKeyboardRow(a));
+      if (rows.length === 0) continue;
+      const section = this.section(body, category.label);
+      for (const def of rows) {
+        section.appendChild(
+          def.binding === 'fixed'
+            ? row(def.label, fixedChip(def), 'Fixed — the engine reads this key code directly.')
+            : row(def.label, this.bindButton(def, bindings, conflicts), noteFor(def)),
+        );
       }
+    }
+
+    // The build keyboard is FIXED, so `findConflicts` — which only compares
+    // rebindable rows against each other — cannot see a rebind landing on one of
+    // its letters. This is the screen where that damage gets done, so it is the
+    // screen that has to report it. The rebind is allowed to stand; the note
+    // says what it cost.
+    const stolen = buildHotkeyConflicts(bindings);
+    if (stolen.length > 0) {
+      const note = el('div', 'vm-conflict-note');
+      note.textContent =
+        `${stolen.length} build key${stolen.length === 1 ? '' : 's'} taken — ` +
+        `${stolen.map((s) => `${s.label} by ${s.takenBy.label}`).join(', ')}. ` +
+        'The order keeps the key; the sidebar cameo it used to build no longer answers to it.';
+      body.insertBefore(note, body.firstChild);
     }
 
     if (conflicts.size > 0) {
@@ -632,6 +676,54 @@ export class SettingsScreen implements Screen {
       'Camera and order keys are separate surfaces: sharing a key between them is intentional and is not flagged. ' +
       'During a match Escape opens the pause menu; click empty ground to clear a selection.';
     body.appendChild(help);
+  }
+
+  private bindButton(
+    def: ActionDef,
+    bindings: Record<string, Chord>,
+    conflicts: ReadonlySet<string>,
+  ): HTMLButtonElement {
+    const b = el('button', 'vm-bind');
+    b.type = 'button';
+    b.textContent = chordLabel(bindings[def.id]);
+    b.dataset.bind = def.id;
+    if (conflicts.has(def.id)) b.classList.add('is-conflict');
+    focusable(b);
+    b.addEventListener('click', () => this.startListening(def.id, b));
+    setAdjust(b, () => this.startListening(def.id, b));
+    return b;
+  }
+
+  /* -- the full reference ------------------------------------------------- *
+   * The Controls tab lists what can be REBOUND. Help lists what can be DONE,
+   * including the sixty-odd pointer and trackpad gestures that have no key at
+   * all. Opening it from here is also what makes it reachable from the title
+   * screen, since Options is, and that costs the shell no new state.
+   * ----------------------------------------------------------------------- */
+
+  private openHelp(): void {
+    const host = this.host;
+    if (host === null || this.help !== null) return;
+    this.stopListening();
+    if (this.frameRoot !== null) this.frameRoot.hidden = true;
+
+    const help = new HelpPanel({
+      settings: this.shell.settings,
+      onClose: () => this.closeHelp(),
+    });
+    this.help = help;
+    host.appendChild(help.root);
+    requestAnimationFrame(() => {
+      help.root.querySelector<HTMLElement>('[data-vm-focus]')?.focus();
+    });
+  }
+
+  private closeHelp(): void {
+    if (this.help === null) return;
+    this.help.dispose();
+    this.help.root.remove();
+    this.help = null;
+    if (this.frameRoot !== null) this.frameRoot.hidden = false;
   }
 
   /* -- camera navigation -------------------------------------------------- *
@@ -776,4 +868,34 @@ export class SettingsScreen implements Screen {
     const restored = this.body?.querySelector<HTMLElement>(`[data-bind="${id}"]`);
     restored?.focus();
   }
+}
+
+/* ==========================================================================
+ * 3. CATALOGUE ROW HELPERS
+ * ========================================================================== */
+
+/**
+ * True for an action the Controls tab should list.
+ *
+ * Pointer gestures belong on the help screen, and so do the fixed rows no
+ * single chord can express — the control-group digits are "Ctrl + 0-9", which
+ * is a sentence, not a binding.
+ */
+function isKeyboardRow(a: ActionDef): boolean {
+  if (a.binding === 'rebindable') return true;
+  return a.binding === 'fixed' && a.fixedChips === undefined && a.defaultChord !== null;
+}
+
+/** A hard-coded key, rendered in the bind language but not interactive. */
+function fixedChip(a: ActionDef): HTMLElement {
+  const node = el('span', 'vm-bind');
+  node.style.opacity = '0.62';
+  node.style.cursor = 'default';
+  node.textContent = chordLabel(a.defaultChord ?? undefined);
+  return node;
+}
+
+/** The row note, when there is something the player needs to know. */
+function noteFor(a: ActionDef): string | undefined {
+  return a.live === false ? 'Reserved — not yet read by the engine.' : undefined;
 }

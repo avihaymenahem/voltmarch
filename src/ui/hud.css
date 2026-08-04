@@ -13,8 +13,11 @@
  *     WebGL canvas through a backdrop-filter drops black frames on macOS. When
  *     it is off, `--vm-glass` gets denser and the surface is otherwise
  *     unchanged: the translucency is the look, the blur is only the polish.
- *  2. ONE EDGE. A single 1 px `--vm-hairline`, drawn as a masked rim so it
- *     follows the notch instead of being clipped away by it.
+ *  2. ONE EDGE, PLUS ONE ACCENT RULE. A single 1 px `--vm-hairline`, drawn as a
+ *     masked rim so it follows the notch instead of being clipped away by it,
+ *     and a 1 px accent rule along the top edge with a matching tick on the
+ *     notch diagonal. That rule is the whole "the panel starts HERE" signal;
+ *     without it a translucent slab over a bright battlefield has no boundary.
  *  3. ONE SATURATED COLOUR. `--vm-accent`, from the faction table. Amber, green
  *     and red are reserved for resource, health and alert semantics.
  *  4. NO BEVELS, NO RIVETS, NO GRADIENTS, NO DROP SHADOWS. Depth is
@@ -23,9 +26,21 @@
  *     current uiScale. Every dimension is a multiple of it; only hairlines are
  *     literal `1px`, so an edge always lands on exactly one device pixel.
  *
- * The whole interface fits in a 114 design-unit band across the bottom plus a
- * slim strip at the top: 15.8% of the frame at 1080p and at 1440p, inside the
- * look bible's 12-16% ceiling. `Hud.hudFrameShare()` reports the live number.
+ * WHY THE SURFACE IS DENSER THAN IT WAS
+ * ------------------------------------
+ * The grade was pushed hard — mean saturation up, highlights clipping to white
+ * — and at `.72` the docks read as a tint rather than as an interface. Measured
+ * on shots/02-hud-full.png, a white Allied structure behind the build grid
+ * composited the panel to roughly #5B6068 and `--vm-dim` label text on it came
+ * out at 2.4:1, which is unreadable by any standard. `.86` puts the same worst
+ * case at ~#1D242E and the same text at 5.6:1. The no-blur path is a matched
+ * pair and goes to `.965`, because there the panel has no blur separating the
+ * text from a moving, high-frequency battlefield at all.
+ *
+ * The whole interface still fits in a 106 design-unit band across the bottom
+ * plus a strip at the top: 15.8% of the frame at 1080p and at 1440p, inside the
+ * look bible's 12-16% ceiling. `Hud.hudFrameShare()` reports the live number,
+ * and NOTHING in this file may grow `--vm-dock-h` without re-deriving it.
  * ========================================================================== */
 
 /* ==========================================================================
@@ -38,11 +53,14 @@
 
   /* Surface. Both the glass and the blur are overridden together by the
      no-blur gate in section 12 — never change one without the other. */
-  --vm-glass: rgba(9, 13, 20, 0.72);
-  --vm-glass-deep: rgba(6, 9, 14, 0.86);
+  --vm-glass: rgba(9, 13, 20, 0.86);
+  --vm-glass-deep: rgba(6, 9, 14, 0.93);
   --vm-blur: blur(14px) saturate(1.1);
-  --vm-hairline: rgba(255, 255, 255, 0.10);
-  --vm-hairline-soft: rgba(255, 255, 255, 0.06);
+  --vm-hairline: rgba(255, 255, 255, 0.16);
+  --vm-hairline-soft: rgba(255, 255, 255, 0.10);
+  /* The inset well every control sits in. One value, so a slot, a card and a
+     stance button are demonstrably the same object at three sizes. */
+  --vm-well: rgba(255, 255, 255, 0.05);
 
   /* Accent — replaced wholesale by Chrome.applyTheme(). */
   --vm-accent: #35c8f0;
@@ -56,20 +74,22 @@
   --vm-danger: #ff4d3d;
   --vm-gold: #f6c445;
 
-  /* Type */
-  --vm-text: #e6eef6;
-  --vm-dim: #8a97a6;
-  --vm-faint: #5d6875;
+  /* Type. `--vm-dim` was lifted from #8a97a6 and `--vm-faint` from #5d6875:
+     both were tuned against the OLD .72 surface and both were the reason the
+     labels vanished. On the .86 surface these measure 7.4:1 and 4.9:1. */
+  --vm-text: #eaf2fa;
+  --vm-dim: #9dabba;
+  --vm-faint: #74818f;
 
   /* Geometry */
   --vm-notch: calc(10 * var(--vm-u));
   /* Solved, not guessed: the build dock is the tallest thing in the band, and
-     it must hold `tabs(20) + gap(4) + padTop(3) + 2 rows(32) + rowGap(3)` plus
-     its own 12 of padding. Change either number and the second row of the build
+     it must hold `tabs(22) + gap(4) + padTop(3) + 2 rows(32) + rowGap(3)` plus
+     its own 10 of padding. Change either number and the second row of the build
      grid clips. */
   --vm-dock-h: calc(106 * var(--vm-u));
   --vm-gap: calc(8 * var(--vm-u));
-  --vm-pad: calc(6 * var(--vm-u));
+  --vm-pad: calc(5 * var(--vm-u));
 
   position: absolute;
   inset: 0;
@@ -98,11 +118,33 @@
 .vm-hud .vm-slot-ready,
 .vm-hud .vm-map-offline,
 .vm-hud .vm-toast-title,
+.vm-hud .vm-res-label,
+.vm-hud .vm-status-title,
+.vm-hud .vm-legend-text,
 .vm-hud .vm-sel-sub {
   font-size: calc(11 * var(--vm-u));
   letter-spacing: 0.16em;
   text-transform: uppercase;
   font-weight: 600;
+}
+
+/* The key badge. One treatment for tabs, slots and the tooltip, because a
+   player has to learn "boxed letter = press this" exactly once. */
+.vm-hud .vm-hk {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(10 * var(--vm-u));
+  height: calc(10 * var(--vm-u));
+  padding: 0 calc(1.5 * var(--vm-u));
+  border: 1px solid var(--vm-hairline);
+  font-size: calc(8 * var(--vm-u));
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--vm-dim);
+  background: rgba(0, 0, 0, 0.35);
+  pointer-events: none;
 }
 
 /* ==========================================================================
@@ -125,6 +167,11 @@
  * diagonal. So the hairline is a masked rim on `::before`: paint the whole
  * clipped box in the hairline colour, then punch out everything inside a 1 px
  * padding. The result is one continuous edge that follows the notch exactly.
+ *
+ * `.vm-panel-edge` is a real element rather than a third pseudo because the
+ * accent treatment is TWO marks — a rule along the top edge and a tick lying on
+ * the notch diagonal — and one element cannot carry two absolutely-positioned
+ * pseudos plus the mask the rim already needs.
  * ========================================================================== */
 
 .vm-hud .vm-panel {
@@ -152,11 +199,47 @@
   z-index: 2;
 }
 
+.vm-hud .vm-panel-edge {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* The top rule: 1 px of accent along the panel's leading edge, starting past
+   the notch so it never floats over the cut corner. */
+.vm-hud .vm-panel-edge::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--vm-edge-inset, 0px);
+  right: 0;
+  height: 1px;
+  background: rgba(var(--vm-accent-rgb), 0.55);
+}
+
+/* The tick: a 1 px accent segment lying exactly on the notch diagonal. Length
+   is the notch times root two, rotated 135 degrees about its left end, which is
+   the corner where the cut begins. */
+.vm-hud .vm-panel-edge::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--vm-edge-inset, 0px);
+  width: calc(var(--vm-notch) * 1.4143);
+  height: 1px;
+  background: var(--vm-accent);
+  transform-origin: 0 50%;
+  transform: rotate(135deg);
+  opacity: 0.85;
+}
+
 /* -- notch variants ------------------------------------------------------ */
 
 /* The house diagonal: top-left and bottom-right cut. Everything in the HUD
    leans the same way, which is what makes four panels read as one set. */
 .vm-hud .vm-panel[data-notch='diag'] {
+  --vm-edge-inset: var(--vm-notch);
   --vm-clip: polygon(
     var(--vm-notch) 0,
     100% 0,
@@ -179,7 +262,8 @@
   );
 }
 
-/* Both ends chamfered — the resource strip. */
+/* Both ends chamfered — the resource strip. It has no top-left notch, so it
+   carries the rule and skips the tick. */
 .vm-hud .vm-panel[data-notch='ends'] {
   --vm-clip: polygon(
     var(--vm-notch) 0,
@@ -189,6 +273,17 @@
     var(--vm-notch) 100%,
     0 50%
   );
+}
+
+.vm-hud .vm-panel[data-notch='ends'] .vm-panel-edge::before {
+  left: var(--vm-notch);
+  right: var(--vm-notch);
+}
+
+.vm-hud .vm-panel[data-notch='ends'] .vm-panel-edge::after,
+.vm-hud .vm-panel[data-notch='diag-rev'] .vm-panel-edge::after,
+.vm-hud .vm-panel[data-notch='none'] .vm-panel-edge::after {
+  display: none;
 }
 
 .vm-hud .vm-panel[data-notch='none'] {
@@ -226,9 +321,9 @@
 }
 
 .vm-hud .vm-dock-map {
-  /* Square-ish: the field inside is square, so the dock is its height plus the
-     header. Anything wider is letterbox, which is what we just removed. */
-  width: var(--vm-dock-h);
+  /* The square field (82u at the current dock height) plus the legend rail,
+     which needs 52u to print HOSTILE without an ellipsis. */
+  width: calc(152 * var(--vm-u));
   flex: 0 0 auto;
 }
 
@@ -238,23 +333,28 @@
 }
 
 .vm-hud .vm-dock-build {
-  width: calc(300 * var(--vm-u));
+  width: calc(324 * var(--vm-u));
   flex: 0 0 auto;
 }
 
 .vm-hud .vm-dock-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: calc(6 * var(--vm-u));
   color: var(--vm-dim);
   flex: 0 0 auto;
+  height: calc(11 * var(--vm-u));
   white-space: nowrap;
   overflow: hidden;
 }
 
 /* ==========================================================================
  * 5. THE RESOURCE STRIP (top centre)
+ *
+ * Six labelled cells: CREDITS, POWER, TIME, ARMY, BASE, INCOME. Every one of
+ * them names itself, because the previous strip was a coin glyph, a bolt glyph
+ * and a clock glyph, and a new player could not tell which number was money.
  * ========================================================================== */
 
 .vm-hud .vm-resources {
@@ -264,47 +364,80 @@
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: calc(12 * var(--vm-u));
-  height: calc(26 * var(--vm-u));
-  padding: 0 calc(16 * var(--vm-u));
+  gap: calc(11 * var(--vm-u));
+  height: calc(36 * var(--vm-u));
+  padding: 0 calc(18 * var(--vm-u));
+  max-width: calc(100% - 20 * var(--vm-u));
 }
 
 .vm-hud .vm-res {
   position: relative;
   display: flex;
   align-items: center;
-  gap: calc(5 * var(--vm-u));
+  gap: calc(6 * var(--vm-u));
+}
+
+.vm-hud .vm-res-body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--vm-u));
+  min-width: 0;
+}
+
+.vm-hud .vm-res-label {
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.20em;
+  color: var(--vm-faint);
+  line-height: 1;
 }
 
 .vm-hud .vm-res-icon {
-  width: calc(14 * var(--vm-u));
-  height: calc(14 * var(--vm-u));
+  width: calc(15 * var(--vm-u));
+  height: calc(15 * var(--vm-u));
   color: var(--vm-dim);
   flex: 0 0 auto;
 }
 
 .vm-hud .vm-res-value {
-  font-size: calc(15 * var(--vm-u));
-  font-weight: 600;
-  letter-spacing: 0.03em;
+  font-size: calc(16 * var(--vm-u));
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
   color: var(--vm-text);
 }
 
 .vm-hud .vm-res-credits .vm-res-icon { color: var(--vm-gold); }
-.vm-hud .vm-res-credits .vm-res-value { min-width: calc(52 * var(--vm-u)); }
+.vm-hud .vm-res-credits .vm-res-value { min-width: calc(56 * var(--vm-u)); }
 
 .vm-hud .vm-res-rule {
   width: 1px;
-  height: calc(14 * var(--vm-u));
+  height: calc(22 * var(--vm-u));
   background: var(--vm-hairline);
+  flex: 0 0 auto;
 }
+
+/* The three telltales are smaller than the three primary readouts on purpose:
+   they answer "how am I doing", not "can I afford this". */
+.vm-hud .vm-res-tell .vm-res-icon {
+  width: calc(12 * var(--vm-u));
+  height: calc(12 * var(--vm-u));
+  color: var(--vm-faint);
+}
+
+.vm-hud .vm-res-tell .vm-res-value {
+  font-size: calc(13 * var(--vm-u));
+  font-weight: 600;
+  color: var(--vm-dim);
+}
+
+.vm-hud .vm-res-tell .vm-res-value.is-live { color: var(--vm-ok); }
 
 /* -- the credit flyout --------------------------------------------------- */
 
 .vm-hud .vm-res-delta {
   position: absolute;
-  left: calc(20 * var(--vm-u));
-  top: calc(-12 * var(--vm-u));
+  left: calc(22 * var(--vm-u));
+  top: calc(-10 * var(--vm-u));
   font-size: calc(11 * var(--vm-u));
   font-weight: 700;
   color: var(--vm-danger);
@@ -321,28 +454,33 @@
   100% { opacity: 0; transform: translateY(-10px); }
 }
 
-/* -- the power meter ----------------------------------------------------- */
+/* -- the power meter -----------------------------------------------------
+ *
+ * `+0` told the player nothing at all. The readout is now DRAW / SUPPLY with a
+ * state word beside it, because low power silently slows every queue in the
+ * base and that was completely invisible.
+ * ------------------------------------------------------------------------ */
+
+.vm-hud .vm-power-line {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--vm-u));
+}
 
 .vm-hud .vm-power {
   display: flex;
   align-items: stretch;
   gap: calc(1.5 * var(--vm-u));
-  height: calc(10 * var(--vm-u));
+  height: calc(9 * var(--vm-u));
 }
 
 .vm-hud .vm-power-seg {
   width: calc(4 * var(--vm-u));
-  background: rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.13);
   transition: background-color 120ms linear;
 }
 
-.vm-hud .vm-power-seg.is-lit {
-  background: var(--vm-accent);
-}
-
-/* Tight: the next structure is going to hurt. */
-.vm-hud .is-tight ~ .vm-power .vm-power-seg.is-lit,
-.vm-hud .vm-power-value.is-tight { color: var(--vm-warn); }
+.vm-hud .vm-power-seg.is-lit { background: var(--vm-accent); }
 
 .vm-hud .vm-res-power:has(.vm-power-value.is-tight) .vm-power-seg.is-lit {
   background: var(--vm-warn);
@@ -353,13 +491,31 @@
 }
 
 .vm-hud .vm-power-value {
-  font-size: calc(12 * var(--vm-u));
-  color: var(--vm-dim);
-  min-width: calc(34 * var(--vm-u));
+  font-size: calc(13 * var(--vm-u));
+  font-weight: 700;
+  color: var(--vm-text);
+  min-width: calc(48 * var(--vm-u));
 }
 
 .vm-hud .vm-power-value.is-tight { color: var(--vm-warn); }
 .vm-hud .vm-power-value.is-down { color: var(--vm-danger); }
+
+.vm-hud .vm-power-state {
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 700;
+  line-height: 1;
+  padding: calc(1.5 * var(--vm-u)) calc(3 * var(--vm-u));
+  border: 1px solid currentColor;
+  color: var(--vm-ok);
+}
+
+.vm-hud .vm-power-state.is-tight { color: var(--vm-warn); }
+.vm-hud .vm-power-state.is-down {
+  color: var(--vm-danger);
+  animation: vm-pulse 1.4s ease-in-out infinite;
+}
 
 .vm-hud .vm-resources.is-brownout .vm-res-power .vm-res-icon {
   color: var(--vm-danger);
@@ -371,24 +527,61 @@
   50%      { opacity: 0.35; }
 }
 
-.vm-hud .vm-res-clock .vm-res-value {
-  color: var(--vm-dim);
-  font-size: calc(13 * var(--vm-u));
+.vm-hud .vm-res-clock .vm-res-value { font-size: calc(14 * var(--vm-u)); }
+
+/* Below ~1180 css px the six cells stop fitting; the three telltales go first
+   because the HUD is still complete without them. */
+@media (max-width: 1180px) {
+  .vm-hud .vm-res-tell,
+  .vm-hud .vm-res-rule.is-tell { display: none; }
 }
 
 /* ==========================================================================
  * 6. THE TACTICAL MAP (bottom left)
  * ========================================================================== */
 
-.vm-hud .vm-map-field {
-  position: relative;
+.vm-hud .vm-map-body {
+  display: flex;
+  align-items: stretch;
+  gap: calc(5 * var(--vm-u));
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.vm-hud .vm-map-field {
+  position: relative;
+  flex: 0 0 auto;
+  height: 100%;
   aspect-ratio: 1 / 1;
-  align-self: center;
   background: #070a10;
-  outline: 1px solid var(--vm-hairline-soft);
-  outline-offset: 0;
+  outline: 1px solid var(--vm-hairline);
+}
+
+/* Frame ticks: four accent corners on the map field. They cost eight lines and
+   they are what makes the field read as an instrument rather than a hole. */
+.vm-hud .vm-map-field::before,
+.vm-hud .vm-map-field::after {
+  content: '';
+  position: absolute;
+  width: calc(7 * var(--vm-u));
+  height: calc(7 * var(--vm-u));
+  border: 0 solid var(--vm-accent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.vm-hud .vm-map-field::before {
+  left: calc(-1 * var(--vm-u));
+  top: calc(-1 * var(--vm-u));
+  border-left-width: calc(1.5 * var(--vm-u));
+  border-top-width: calc(1.5 * var(--vm-u));
+}
+
+.vm-hud .vm-map-field::after {
+  right: calc(-1 * var(--vm-u));
+  bottom: calc(-1 * var(--vm-u));
+  border-right-width: calc(1.5 * var(--vm-u));
+  border-bottom-width: calc(1.5 * var(--vm-u));
 }
 
 .vm-hud .vm-map-canvas {
@@ -400,8 +593,8 @@
 
 .vm-hud .vm-dock-map .vm-dock-title {
   font-size: calc(9 * var(--vm-u));
-  letter-spacing: 0.12em;
-  color: var(--vm-faint);
+  letter-spacing: 0.14em;
+  color: var(--vm-dim);
 }
 
 .vm-hud .vm-map-offline {
@@ -410,27 +603,108 @@
   letter-spacing: 0.12em;
 }
 
-.vm-hud .vm-dock-map.is-offline .vm-map-field {
-  filter: grayscale(0.7) brightness(0.6);
+.vm-hud .vm-dock-map.is-offline .vm-map-canvas {
+  filter: grayscale(0.75) brightness(0.5);
+}
+
+/* "NO RADAR" said what was broken and never what to do about it. */
+.vm-hud .vm-map-hint {
+  position: absolute;
+  left: calc(4 * var(--vm-u));
+  right: calc(4 * var(--vm-u));
+  top: 50%;
+  transform: translateY(-50%);
+  text-align: center;
+  font-size: calc(9 * var(--vm-u));
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  color: var(--vm-text);
+  text-shadow: 0 0 calc(3 * var(--vm-u)) rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+  z-index: 3;
+}
+
+.vm-hud .vm-map-hint > b {
+  display: block;
+  color: var(--vm-danger);
+  font-size: calc(10 * var(--vm-u));
+  letter-spacing: 0.16em;
+  margin-bottom: calc(2 * var(--vm-u));
+}
+
+/* -- the legend rail ------------------------------------------------------ */
+
+.vm-hud .vm-res-label { white-space: nowrap; }
+
+.vm-hud .vm-map-legend {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(4 * var(--vm-u));
+  border-left: 1px solid var(--vm-hairline-soft);
+  padding-left: calc(5 * var(--vm-u));
+}
+
+.vm-hud .vm-legend-row {
+  display: flex;
+  align-items: center;
+  gap: calc(4 * var(--vm-u));
+}
+
+.vm-hud .vm-legend-swatch {
+  width: calc(6 * var(--vm-u));
+  height: calc(6 * var(--vm-u));
+  flex: 0 0 auto;
+  background: var(--vm-accent);
+}
+
+.vm-hud .vm-legend-row.is-enemy .vm-legend-swatch { background: var(--vm-danger); }
+.vm-hud .vm-legend-row.is-ore .vm-legend-swatch { background: var(--vm-gold); }
+.vm-hud .vm-legend-row.is-view .vm-legend-swatch {
+  background: transparent;
+  border: 1px solid var(--vm-accent);
+}
+
+.vm-hud .vm-legend-text {
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.10em;
+  color: var(--vm-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ==========================================================================
- * 7. THE SELECTION PANEL (bottom centre)
+ * 7. THE CENTRE DOCK — SELECTION, OR STATUS
+ *
+ * It used to fade to nothing with an empty selection, which meant the widest
+ * dock in the band was blank for most of a match. It now carries a base status
+ * readout instead: army, structures, power, income, and one line of advice that
+ * changes with the actual state of the base.
  * ========================================================================== */
 
-/* With nothing selected the panel goes away entirely rather than sitting there
-   as an empty glass slab: a dock that is always present but usually blank reads
-   as a layout bug, and the battlefield is worth more than the placeholder. */
-.vm-hud .vm-dock-selection { transition: opacity 140ms linear; }
-.vm-hud .vm-dock-selection.is-empty { opacity: 0; pointer-events: none; }
-.vm-hud .vm-dock-selection.is-empty::before { opacity: 0; }
+.vm-hud .vm-sel-live,
+.vm-hud .vm-sel-idle {
+  display: flex;
+  flex-direction: column;
+  gap: calc(4 * var(--vm-u));
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.vm-hud .vm-dock-selection.is-empty .vm-sel-live { display: none; }
+.vm-hud .vm-dock-selection:not(.is-empty) .vm-sel-idle { display: none; }
 
 .vm-hud .vm-sel-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: calc(8 * var(--vm-u));
   flex: 0 0 auto;
   min-width: 0;
+  height: calc(17 * var(--vm-u));
 }
 
 .vm-hud .vm-sel-id {
@@ -462,17 +736,56 @@
 }
 
 .vm-hud .vm-sel-sub {
-  color: var(--vm-faint);
+  color: var(--vm-dim);
   font-size: calc(10 * var(--vm-u));
+  letter-spacing: 0.10em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   flex: 1 1 auto;
 }
 
-.vm-hud .vm-sel-count {
+/* Aggregate health of the whole selection — the number that decides whether to
+   retreat, and it was simply not shown. */
+.vm-hud .vm-sel-hp {
+  display: flex;
+  align-items: center;
+  gap: calc(5 * var(--vm-u));
   margin-left: auto;
-  font-size: calc(16 * var(--vm-u));
+  flex: 0 0 auto;
+}
+
+.vm-hud .vm-sel-hp-track {
+  position: relative;
+  width: calc(54 * var(--vm-u));
+  height: calc(5 * var(--vm-u));
+  background: rgba(255, 255, 255, 0.14);
+  outline: 1px solid rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.vm-hud .vm-sel-hp-track > i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: var(--vm-ok);
+  transition: transform 140ms linear;
+}
+
+.vm-hud .vm-sel-hp-track > i.is-hurt { background: var(--vm-warn); }
+.vm-hud .vm-sel-hp-track > i.is-critical { background: var(--vm-danger); }
+
+.vm-hud .vm-sel-hp-text {
+  font-size: calc(10 * var(--vm-u));
+  font-weight: 600;
+  color: var(--vm-dim);
+  min-width: calc(64 * var(--vm-u));
+  text-align: right;
+}
+
+.vm-hud .vm-sel-count {
+  font-size: calc(17 * var(--vm-u));
   font-weight: 700;
   color: var(--vm-accent);
   flex: 0 0 auto;
@@ -496,11 +809,11 @@
 .vm-hud .vm-card {
   position: relative;
   flex: 0 0 auto;
-  width: calc(38 * var(--vm-u));
-  height: calc(38 * var(--vm-u));
+  width: calc(48 * var(--vm-u));
+  height: calc(44 * var(--vm-u));
   padding: 0;
   border: 1px solid var(--vm-hairline);
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--vm-well);
   color: var(--vm-dim);
   cursor: pointer;
   transition: border-color 100ms linear, background-color 100ms linear, color 100ms linear;
@@ -508,8 +821,8 @@
 
 .vm-hud .vm-card:hover,
 .vm-hud .vm-card:focus-visible {
-  background: rgba(var(--vm-accent-rgb), 0.10);
-  border-color: rgba(var(--vm-accent-rgb), 0.45);
+  background: rgba(var(--vm-accent-rgb), 0.14);
+  border-color: rgba(var(--vm-accent-rgb), 0.55);
   color: var(--vm-text);
   outline: none;
 }
@@ -523,19 +836,42 @@
 .vm-hud .vm-card-icon {
   position: absolute;
   left: 50%;
-  top: calc(48% );
+  top: calc(40%);
   transform: translate(-50%, -50%);
   width: calc(22 * var(--vm-u));
   height: calc(22 * var(--vm-u));
 }
 
+.vm-hud .vm-card-name {
+  position: absolute;
+  left: calc(2 * var(--vm-u));
+  right: calc(2 * var(--vm-u));
+  bottom: calc(7 * var(--vm-u));
+  text-align: center;
+  font-size: calc(7.5 * var(--vm-u));
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--vm-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.vm-hud .vm-card.is-primary .vm-card-name { color: var(--vm-dim); }
+
 .vm-hud .vm-card-stack {
   position: absolute;
-  right: calc(2 * var(--vm-u));
+  right: calc(1 * var(--vm-u));
   top: calc(1 * var(--vm-u));
+  padding: 0 calc(2 * var(--vm-u));
   font-size: calc(9 * var(--vm-u));
   font-weight: 700;
-  color: var(--vm-text);
+  line-height: calc(11 * var(--vm-u));
+  color: #060a10;
+  background: var(--vm-accent);
 }
 
 .vm-hud .vm-card-vet {
@@ -547,17 +883,15 @@
   background: var(--vm-gold);
 }
 
-.vm-hud .vm-card-vet[data-rank='2'] {
-  height: calc(9 * var(--vm-u));
-}
+.vm-hud .vm-card-vet[data-rank='2'] { height: calc(9 * var(--vm-u)); }
 
 .vm-hud .vm-card-bar {
   position: absolute;
   left: calc(3 * var(--vm-u));
   right: calc(3 * var(--vm-u));
   bottom: calc(3 * var(--vm-u));
-  height: calc(2 * var(--vm-u));
-  background: rgba(255, 255, 255, 0.14);
+  height: calc(2.5 * var(--vm-u));
+  background: rgba(255, 255, 255, 0.16);
   overflow: hidden;
 }
 
@@ -578,9 +912,9 @@
 .vm-hud .vm-sel-stats {
   display: flex;
   align-items: center;
-  gap: calc(10 * var(--vm-u));
+  gap: calc(11 * var(--vm-u));
   flex: 0 0 auto;
-  height: calc(18 * var(--vm-u));
+  height: calc(19 * var(--vm-u));
   border-top: 1px solid var(--vm-hairline-soft);
   padding-top: calc(3 * var(--vm-u));
 }
@@ -588,11 +922,11 @@
 .vm-hud .vm-stat {
   display: flex;
   align-items: center;
-  gap: calc(3 * var(--vm-u));
+  gap: calc(4 * var(--vm-u));
   color: var(--vm-dim);
 }
 
-.vm-hud .vm-stat.is-blank { opacity: 0.35; }
+.vm-hud .vm-stat.is-blank { opacity: 0.4; }
 
 .vm-hud .vm-stat-icon {
   width: calc(11 * var(--vm-u));
@@ -600,8 +934,16 @@
   color: var(--vm-faint);
 }
 
+.vm-hud .vm-stat-key {
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vm-faint);
+}
+
 .vm-hud .vm-stat-value {
   font-size: calc(11 * var(--vm-u));
+  font-weight: 600;
   color: var(--vm-text);
   white-space: nowrap;
 }
@@ -609,16 +951,25 @@
 .vm-hud .vm-stances {
   margin-left: auto;
   display: flex;
+  align-items: center;
   gap: calc(2 * var(--vm-u));
 }
 
+.vm-hud .vm-stance-label {
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vm-faint);
+  margin-right: calc(3 * var(--vm-u));
+}
+
 .vm-hud .vm-stance {
-  width: calc(18 * var(--vm-u));
+  width: calc(19 * var(--vm-u));
   height: calc(15 * var(--vm-u));
   padding: 0;
   border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--vm-faint);
+  background: var(--vm-well);
+  color: var(--vm-dim);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -641,8 +992,106 @@
 .vm-hud .vm-stance.is-active {
   color: var(--vm-accent-hi);
   border-color: var(--vm-accent);
-  background: rgba(var(--vm-accent-rgb), 0.12);
+  background: rgba(var(--vm-accent-rgb), 0.16);
 }
+
+/* -- the idle status board ------------------------------------------------ */
+
+.vm-hud .vm-status-head {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--vm-u));
+  height: calc(17 * var(--vm-u));
+  flex: 0 0 auto;
+}
+
+.vm-hud .vm-status-title {
+  font-size: calc(11 * var(--vm-u));
+  color: var(--vm-dim);
+}
+
+.vm-hud .vm-status-sub {
+  font-size: calc(10 * var(--vm-u));
+  letter-spacing: 0.06em;
+  color: var(--vm-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vm-hud .vm-status-grid {
+  display: flex;
+  align-items: center;
+  gap: calc(16 * var(--vm-u));
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-wrap: wrap;
+}
+
+.vm-hud .vm-status-cell {
+  display: flex;
+  align-items: center;
+  gap: calc(5 * var(--vm-u));
+}
+
+.vm-hud .vm-status-cell > svg {
+  width: calc(13 * var(--vm-u));
+  height: calc(13 * var(--vm-u));
+  color: var(--vm-faint);
+}
+
+.vm-hud .vm-status-body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--vm-u));
+}
+
+.vm-hud .vm-status-label {
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vm-faint);
+  line-height: 1;
+}
+
+.vm-hud .vm-status-value {
+  font-size: calc(14 * var(--vm-u));
+  font-weight: 700;
+  line-height: 1;
+  color: var(--vm-text);
+}
+
+.vm-hud .vm-status-value.is-warn { color: var(--vm-warn); }
+.vm-hud .vm-status-value.is-down { color: var(--vm-danger); }
+.vm-hud .vm-status-value.is-good { color: var(--vm-ok); }
+
+/* The advice line. One sentence, and it is the state of the base, not flavour. */
+.vm-hud .vm-status-alert {
+  display: flex;
+  align-items: center;
+  gap: calc(5 * var(--vm-u));
+  flex: 0 0 auto;
+  height: calc(19 * var(--vm-u));
+  border-top: 1px solid var(--vm-hairline-soft);
+  padding-top: calc(3 * var(--vm-u));
+  font-size: calc(11 * var(--vm-u));
+  letter-spacing: 0.03em;
+  color: var(--vm-dim);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.vm-hud .vm-status-alert > svg {
+  width: calc(12 * var(--vm-u));
+  height: calc(12 * var(--vm-u));
+  flex: 0 0 auto;
+  color: var(--vm-accent);
+}
+
+.vm-hud .vm-status-alert.is-warn { color: var(--vm-warn); }
+.vm-hud .vm-status-alert.is-warn > svg { color: var(--vm-warn); }
+.vm-hud .vm-status-alert.is-alert { color: var(--vm-danger); }
+.vm-hud .vm-status-alert.is-alert > svg { color: var(--vm-danger); }
 
 /* ==========================================================================
  * 8. THE BUILD PANEL (bottom right)
@@ -652,23 +1101,28 @@
   display: flex;
   align-items: stretch;
   gap: calc(2 * var(--vm-u));
-  height: calc(20 * var(--vm-u));
+  height: calc(22 * var(--vm-u));
   flex: 0 0 auto;
   border-bottom: 1px solid var(--vm-hairline-soft);
 }
 
+/* Icon OVER label, not beside it. Side by side, a 65-unit tab had 37 units of
+   text room and "STRUCTURES" needs 50 — every one of the four words truncated
+   to "STRUCTI", which is worse than the unlabelled icons it replaced. Stacked,
+   the label gets the full tab width. */
 .vm-hud .vm-tab {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: calc(3 * var(--vm-u));
-  padding: 0 calc(2 * var(--vm-u));
+  gap: calc(1 * var(--vm-u));
+  padding: 0 calc(9 * var(--vm-u)) 0 calc(2 * var(--vm-u));
   border: 0;
   background: transparent;
-  color: var(--vm-faint);
+  color: var(--vm-dim);
   cursor: pointer;
   transition: color 100ms linear;
 }
@@ -698,32 +1152,62 @@
 }
 
 .vm-hud .vm-tab-icon {
-  width: calc(13 * var(--vm-u));
-  height: calc(13 * var(--vm-u));
+  width: calc(11 * var(--vm-u));
+  height: calc(11 * var(--vm-u));
   flex: 0 0 auto;
 }
 
-/* Only the ACTIVE tab is named. Four words never fit across a 300-unit dock at
-   a tracking wide enough to read, and four competing labels is noise anyway —
-   the icons carry recognition and the one word carries confirmation. */
+/* EVERY tab is named now. Four icons with no words is a rebus, and the one
+   thing a new player must be able to do is find where tanks come from. The
+   dock was widened to 324 units to pay for it. */
 .vm-hud .vm-tab-label {
-  display: none;
-  font-size: calc(9 * var(--vm-u));
-  letter-spacing: 0.12em;
+  max-width: 100%;
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.06em;
+  line-height: 1;
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.vm-hud .vm-tab.is-active .vm-tab-label { display: inline; }
-
-@media (max-width: 900px) {
-  .vm-hud .vm-tab.is-active .vm-tab-label { display: none; }
+/* Icon and key badge, one centred row.
+   The badge used to be absolutely parked in the tab's top-right corner. Measured
+   at 1440p that put it 28px from its own icon and 25px from the NEXT tab's — a
+   badge floating in the gutter, owned by neither. Pairing it with the icon makes
+   ownership unambiguous at a glance, which is the entire job of a key badge. */
+.vm-hud .vm-tab-top {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(2 * var(--vm-u));
+  min-width: 0;
 }
 
+.vm-hud .vm-tab .vm-hk {
+  min-width: calc(8 * var(--vm-u));
+  height: calc(8 * var(--vm-u));
+  font-size: calc(6.5 * var(--vm-u));
+  flex: 0 0 auto;
+}
+
+.vm-hud .vm-tab.is-active .vm-hk {
+  color: var(--vm-accent-hi);
+  border-color: rgba(var(--vm-accent-rgb), 0.6);
+}
+
+/* Narrow frames drop the label rather than the icon: the icon is the target,
+   the word is the confirmation. */
+@media (max-width: 1080px) {
+  .vm-hud .vm-tab-label { display: none; }
+  .vm-hud .vm-tab .vm-hk { display: none; }
+}
+
+/* Top-LEFT, and now the only thing in a corner — the key badge moved into the
+   icon row, so both corners are free and the dot keeps the one it had. */
 .vm-hud .vm-tab-alert {
   position: absolute;
   top: calc(2 * var(--vm-u));
-  right: calc(2 * var(--vm-u));
+  left: calc(2 * var(--vm-u));
   width: calc(4 * var(--vm-u));
   height: calc(4 * var(--vm-u));
   border-radius: 50%;
@@ -744,12 +1228,12 @@
 }
 
 .vm-hud .vm-tool {
-  width: calc(18 * var(--vm-u));
-  height: calc(16 * var(--vm-u));
+  width: calc(19 * var(--vm-u));
+  height: calc(17 * var(--vm-u));
   padding: 0;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--vm-faint);
+  color: var(--vm-dim);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -768,14 +1252,14 @@
 .vm-hud .vm-tool.is-active {
   color: var(--vm-accent-hi);
   border-color: var(--vm-accent);
-  background: rgba(var(--vm-accent-rgb), 0.14);
+  background: rgba(var(--vm-accent-rgb), 0.16);
 }
 
 /* The sell tool is destructive, so its ARMED state is red, not accent. */
 .vm-hud .vm-tool:last-child.is-active {
   color: var(--vm-danger);
   border-color: var(--vm-danger);
-  background: rgba(255, 77, 61, 0.14);
+  background: rgba(255, 77, 61, 0.16);
 }
 
 /* -- the slot grid -------------------------------------------------------- */
@@ -802,7 +1286,7 @@
   position: relative;
   padding: 0;
   border: 1px solid var(--vm-hairline);
-  background: rgba(255, 255, 255, 0.035);
+  background: var(--vm-well);
   color: var(--vm-dim);
   cursor: pointer;
   overflow: hidden;
@@ -811,20 +1295,20 @@
 
 .vm-hud .vm-slot:hover,
 .vm-hud .vm-slot:focus-visible {
-  background: rgba(var(--vm-accent-rgb), 0.12);
-  border-color: rgba(var(--vm-accent-rgb), 0.55);
+  background: rgba(var(--vm-accent-rgb), 0.14);
+  border-color: rgba(var(--vm-accent-rgb), 0.6);
   color: var(--vm-text);
   outline: none;
 }
 
-.vm-hud .vm-slot:active { background: rgba(var(--vm-accent-rgb), 0.2); }
+.vm-hud .vm-slot:active { background: rgba(var(--vm-accent-rgb), 0.22); }
 
 /* The icon sits ABOVE centre so the cost has its own band along the bottom.
    Overlapping the two is the fastest way to make a 6-wide grid unreadable. */
 .vm-hud .vm-slot-icon {
   position: absolute;
   left: 50%;
-  top: calc(37%);
+  top: calc(38%);
   transform: translate(-50%, -50%);
   width: calc(16 * var(--vm-u));
   height: calc(16 * var(--vm-u));
@@ -834,13 +1318,34 @@
   position: absolute;
   left: 0;
   right: calc(3 * var(--vm-u));
-  bottom: calc(3 * var(--vm-u));
+  bottom: calc(4 * var(--vm-u));
   text-align: right;
-  font-size: calc(8 * var(--vm-u));
-  font-weight: 600;
+  font-size: calc(9 * var(--vm-u));
+  font-weight: 700;
   line-height: 1;
   color: var(--vm-dim);
   pointer-events: none;
+}
+
+/* Cannot afford it right now. Amber, not the locked grey: "come back with
+   money" and "you do not have the tech" are different problems. */
+.vm-hud .vm-slot.is-poor .vm-slot-cost { color: var(--vm-warn); }
+
+/* The slot hotkey, bottom-left, opposite the cost. */
+.vm-hud .vm-slot-key {
+  position: absolute;
+  left: calc(2 * var(--vm-u));
+  bottom: calc(2.5 * var(--vm-u));
+  min-width: calc(9 * var(--vm-u));
+  height: calc(9 * var(--vm-u));
+  font-size: calc(7 * var(--vm-u));
+  border-color: var(--vm-hairline-soft);
+}
+
+.vm-hud .vm-slot:hover .vm-slot-key,
+.vm-hud .vm-slot:focus-visible .vm-slot-key {
+  color: var(--vm-accent-hi);
+  border-color: rgba(var(--vm-accent-rgb), 0.6);
 }
 
 .vm-hud .vm-slot-queue {
@@ -864,13 +1369,66 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(3 * var(--vm-u));
+  bottom: calc(4 * var(--vm-u));
   text-align: center;
   font-size: calc(8 * var(--vm-u));
   letter-spacing: 0.18em;
   color: var(--vm-ok);
   pointer-events: none;
 }
+
+/* The build countdown. It replaces the cost while a slot is producing, because
+   at that moment the price is settled and the only open question is "when". */
+.vm-hud .vm-slot-eta {
+  position: absolute;
+  right: calc(2 * var(--vm-u));
+  top: calc(1.5 * var(--vm-u));
+  display: inline-flex;
+  align-items: center;
+  gap: calc(2 * var(--vm-u));
+  font-size: calc(8.5 * var(--vm-u));
+  font-weight: 700;
+  line-height: 1;
+  color: var(--vm-accent-hi);
+  pointer-events: none;
+}
+
+.vm-hud .vm-slot-eta > svg {
+  width: calc(8 * var(--vm-u));
+  height: calc(8 * var(--vm-u));
+}
+
+/* Why a slot is dead. `is-locked` gets the padlock, a missing prerequisite gets
+   a word. Either way the tooltip carries the whole sentence.
+   It sits along the TOP edge: along the bottom it covered the cost and the
+   hotkey, and for the FUNDS case the cost is the entire point. */
+.vm-hud .vm-slot-flag {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: calc(9 * var(--vm-u));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: calc(2 * var(--vm-u));
+  font-size: calc(7 * var(--vm-u));
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--vm-text);
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.vm-hud .vm-slot-flag > svg {
+  width: calc(7 * var(--vm-u));
+  height: calc(7 * var(--vm-u));
+}
+
+.vm-hud .vm-slot-flag.is-funds { color: var(--vm-warn); }
+.vm-hud .vm-slot-flag.is-power { color: var(--vm-warn); }
+.vm-hud .vm-slot-flag.is-tech { color: var(--vm-danger); }
 
 /* The progress bar: 2 px of accent along the bottom edge with a slight glow.
    NOT a radial clock wipe — the wipe belonged to the painted cameo it used to
@@ -880,10 +1438,11 @@
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(2 * var(--vm-u));
-  background: rgba(255, 255, 255, 0.07);
+  height: calc(2.5 * var(--vm-u));
+  background: rgba(255, 255, 255, 0.10);
   overflow: visible;
   pointer-events: none;
+  z-index: 2;
 }
 
 .vm-hud .vm-slot-track > i {
@@ -897,12 +1456,16 @@
   transition: transform 100ms linear;
 }
 
-.vm-hud .vm-slot.is-building { border-color: rgba(var(--vm-accent-rgb), 0.4); }
+.vm-hud .vm-slot.is-building {
+  border-color: rgba(var(--vm-accent-rgb), 0.5);
+  background: rgba(var(--vm-accent-rgb), 0.08);
+}
 
 .vm-hud .vm-slot.is-ready {
   border-color: var(--vm-ok);
-  background: rgba(79, 217, 127, 0.10);
+  background: rgba(79, 217, 127, 0.14);
   color: var(--vm-text);
+  animation: vm-ready-tick 1.6s ease-in-out infinite;
 }
 
 /* READY owns the bottom band once it appears; the cost has done its job. */
@@ -913,6 +1476,11 @@
   box-shadow: 0 0 calc(4 * var(--vm-u)) rgba(79, 217, 127, 0.6);
 }
 
+@keyframes vm-ready-tick {
+  0%, 100% { border-color: var(--vm-ok); }
+  50%      { border-color: rgba(79, 217, 127, 0.4); }
+}
+
 /* On hold — usually out of money. Amber, and the bar stops. */
 .vm-hud .vm-slot.is-held .vm-slot-queue { background: var(--vm-warn); }
 .vm-hud .vm-slot.is-held .vm-slot-track > i {
@@ -921,16 +1489,18 @@
 }
 
 /* Locked. DIMMED, never disabled: it must stay hoverable so the tooltip can
-   say what unlocks it. That sentence is the tech tree's only tutorial. */
+   say what unlocks it. That sentence is the tech tree's only tutorial — and the
+   floor is now 0.5, not 0.34, because at 0.34 the reason banner was as
+   invisible as the thing it was explaining. */
 .vm-hud .vm-slot.is-locked {
-  opacity: 0.34;
+  opacity: 0.5;
   border-color: var(--vm-hairline-soft);
 }
 
 .vm-hud .vm-slot.is-locked:hover,
 .vm-hud .vm-slot.is-locked:focus-visible {
-  opacity: 0.6;
-  background: rgba(255, 255, 255, 0.05);
+  opacity: 0.85;
+  background: rgba(255, 255, 255, 0.07);
   border-color: var(--vm-hairline);
 }
 
@@ -941,7 +1511,7 @@
 .vm-hud .vm-tip {
   position: fixed;
   z-index: 40;
-  max-width: calc(240 * var(--vm-u));
+  max-width: calc(260 * var(--vm-u));
   padding: calc(7 * var(--vm-u)) calc(9 * var(--vm-u));
   background: var(--vm-glass-deep);
   -webkit-backdrop-filter: var(--vm-blur);
@@ -979,8 +1549,10 @@
 
 .vm-hud .vm-tip-stats {
   display: flex;
+  flex-wrap: wrap;
   gap: calc(9 * var(--vm-u));
   font-size: calc(11 * var(--vm-u));
+  font-weight: 600;
   color: var(--vm-dim);
 }
 
@@ -989,13 +1561,20 @@
 
 .vm-hud .vm-tip-blurb {
   font-size: calc(11 * var(--vm-u));
-  line-height: 1.3;
+  line-height: 1.35;
   color: var(--vm-dim);
+}
+
+.vm-hud .vm-tip-prereq {
+  font-size: calc(10 * var(--vm-u));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vm-faint);
 }
 
 .vm-hud .vm-tip-req {
   font-size: calc(11 * var(--vm-u));
-  font-weight: 600;
+  font-weight: 700;
   color: var(--vm-danger);
 }
 
@@ -1019,7 +1598,7 @@
   align-items: center;
   gap: calc(6 * var(--vm-u));
   padding: calc(4 * var(--vm-u)) calc(8 * var(--vm-u));
-  background: var(--vm-glass);
+  background: var(--vm-glass-deep);
   -webkit-backdrop-filter: var(--vm-blur);
   backdrop-filter: var(--vm-blur);
   border: 1px solid var(--vm-hairline);
@@ -1060,7 +1639,7 @@
 
 .vm-hud .vm-toast-detail {
   font-size: calc(10 * var(--vm-u));
-  color: var(--vm-faint);
+  color: var(--vm-dim);
   letter-spacing: 0.02em;
   white-space: nowrap;
   overflow: hidden;
@@ -1150,17 +1729,20 @@
  * two custom properties, so there is exactly ONE place that knows the blurred
  * and unblurred surfaces are a matched pair.
  *
- * The compensation is opacity, not colour: 0.72 -> 0.92 on the standard glass
- * and 0.86 -> 0.96 on the deep glass, same hue, same hairline, same notch. A
- * 92%-opaque dark panel over a battlefield is visually a hair denser than a
- * 72% panel that is blurring that battlefield to a flat average — which is what
- * a 14 px blur over moving terrain amounts to anyway.
+ * The compensation is opacity, not colour: 0.86 -> 0.965 on the standard glass
+ * and 0.93 -> 0.985 on the deep glass, same hue, same hairline, same notch. The
+ * gap between the pair is deliberately wider than it looks it should be: a
+ * blurred panel is compositing a LOW-FREQUENCY average of the battlefield, so
+ * the text behind it has no competing detail. An unblurred one at the same
+ * alpha is compositing hard structure edges and clipped highlights straight
+ * through the glass, and every one of those is a legibility hazard the blurred
+ * path simply does not have.
  * ========================================================================== */
 
 html.vm-no-blur .vm-hud {
   --vm-blur: none;
-  --vm-glass: rgba(9, 13, 20, 0.92);
-  --vm-glass-deep: rgba(6, 9, 14, 0.96);
+  --vm-glass: rgba(9, 13, 20, 0.965);
+  --vm-glass-deep: rgba(6, 9, 14, 0.985);
 }
 
 /* Same surface for a browser that cannot do it at all. This is the no-JS
@@ -1168,7 +1750,7 @@ html.vm-no-blur .vm-hud {
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .vm-hud {
     --vm-blur: none;
-    --vm-glass: rgba(9, 13, 20, 0.92);
-    --vm-glass-deep: rgba(6, 9, 14, 0.96);
+    --vm-glass: rgba(9, 13, 20, 0.965);
+    --vm-glass-deep: rgba(6, 9, 14, 0.985);
   }
 }

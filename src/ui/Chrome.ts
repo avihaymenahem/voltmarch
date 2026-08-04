@@ -8,12 +8,20 @@
  *
  * THE MATERIAL, stated once
  * -------------------------
- *   surface   `rgba(9,13,20,.72)` + `backdrop-filter: blur(14px) saturate(1.1)`
- *   edge      ONE 1 px hairline at `rgba(255,255,255,.10)`
+ *   surface   `rgba(9,13,20,.86)` + `backdrop-filter: blur(14px) saturate(1.1)`
+ *   edge      ONE 1 px hairline at `rgba(255,255,255,.16)`, plus a 1 px accent
+ *             rule along the panel's top edge and an accent tick at the notch
  *   corner    a 10 px notch on the diagonal, cut with `clip-path`
  *   accent    the owning faction's `hudAccent`, and NOTHING ELSE is saturated
  *   type      condensed sans; labels uppercase 11px at .16em tracking; every
  *             number tabular
+ *
+ * THE OPACITY IS NOT A TASTE CALL. The grade puts a clipping-white, heavily
+ * saturated battlefield behind these panels. At .72 the surface was a tint: a
+ * white structure under the build grid dragged the composite to ~#5B6068 and
+ * `--vm-dim` text on it measured 2.4:1, below every legibility floor there is.
+ * At .86 the same worst case composites to ~#1D242E and the same text measures
+ * 5.6:1. See section 12 of hud.css for the matched no-blur pair.
  *
  * There are no bevels, no rivets, no gradients and no drop shadows anywhere in
  * `src/ui/**`. Depth is translucency plus that single hairline — that is the
@@ -245,6 +253,12 @@ export function panel(
 ): HTMLDivElement {
   const node = el('div', `vm-panel ${className}`, parent);
   node.dataset.notch = notch;
+  // The accent edge. It is a real element rather than a third pseudo-element
+  // because the treatment is TWO marks — a 1 px rule along the top edge and a
+  // 1 px tick lying on the notch diagonal — and `::before` is already spoken
+  // for by the masked hairline rim. It is inserted FIRST so it can never be
+  // reordered by a caller appending content afterwards.
+  el('i', 'vm-panel-edge', node);
   return node;
 }
 
@@ -290,6 +304,27 @@ export function formatElapsed(seconds: number): string {
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${m < 10 ? '0' : ''}${m}:${r < 10 ? '0' : ''}${r}`;
+}
+
+/**
+ * A per-minute rate for the income telltale. Rounded to 10 credits, because a
+ * number that jitters in the ones column reads as noise rather than as a rate.
+ */
+export function formatRate(perMinute: number): string {
+  const v = Math.max(0, Math.round(perMinute / 10) * 10);
+  return `${v}`;
+}
+
+/**
+ * `M:SS` for a build countdown. Distinct from `formatClock`: a build timer that
+ * pads to `0:07` is easier to read at 8 px than `00:07`, and it never needs
+ * hours.
+ */
+export function formatCountdown(seconds: number): string {
+  const s = Math.max(0, Math.ceil(seconds));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r < 10 ? '0' : ''}${r}`;
 }
 
 /** One decimal, no trailing `.0`. Used by the stat row. */
@@ -361,6 +396,12 @@ export interface TooltipContent {
   /** Power delta. 0 hides the row. */
   powerDelta: number;
   blurb: string;
+  /**
+   * What this needs before it can be built, stated whether or not it is
+   * satisfied — "Requires Radar Dome" is the tech tree's only documentation and
+   * a player reads it BEFORE the slot unlocks, not after.
+   */
+  prereq: string;
   /** Shown in red. Empty when the item is available. */
   requirement: string;
   /** Keyboard hint, e.g. `Q`. Empty to hide. */
@@ -385,6 +426,8 @@ export class Tooltip {
   private readonly powerNode: Text;
   private readonly blurbEl: HTMLElement;
   private readonly blurbNode: Text;
+  private readonly prereqEl: HTMLElement;
+  private readonly prereqNode: Text;
   private readonly reqEl: HTMLElement;
   private readonly reqNode: Text;
 
@@ -412,6 +455,9 @@ export class Tooltip {
     this.blurbEl = el('div', 'vm-tip-blurb', this.root);
     this.blurbNode = textNode(this.blurbEl);
 
+    this.prereqEl = el('div', 'vm-tip-prereq', this.root);
+    this.prereqNode = textNode(this.prereqEl);
+
     this.reqEl = el('div', 'vm-tip-req', this.root);
     this.reqNode = textNode(this.reqEl);
   }
@@ -431,19 +477,28 @@ export class Tooltip {
     this.hotkeyNode.nodeValue = c.hotkey;
     this.hotkeyEl.hidden = c.hotkey === '';
 
-    this.costNode.nodeValue = c.cost > 0 ? formatCost(c.cost) : '';
+    // Every stat carries its unit. A bare "1,000  12  -50" is three numbers the
+    // player has to guess the meaning of, and guessing wrong about power is how
+    // a base browns out.
+    this.costNode.nodeValue = c.cost > 0 ? `${formatCost(c.cost)} CR` : '';
     this.costEl.hidden = c.cost <= 0;
 
-    this.timeNode.nodeValue = c.buildTimeSec > 0 ? `${c.buildTimeSec.toFixed(0)}s` : '';
+    this.timeNode.nodeValue = c.buildTimeSec > 0 ? `${c.buildTimeSec.toFixed(0)}s BUILD` : '';
     this.timeEl.hidden = c.buildTimeSec <= 0;
 
     this.powerNode.nodeValue = c.powerDelta !== 0
-      ? `${c.powerDelta > 0 ? '+' : ''}${c.powerDelta}` : '';
+      ? `${c.powerDelta > 0 ? '+' : ''}${c.powerDelta} PWR` : '';
     this.powerEl.hidden = c.powerDelta === 0;
     this.powerEl.classList.toggle('is-drain', c.powerDelta < 0);
 
     this.blurbNode.nodeValue = c.blurb;
     this.blurbEl.hidden = c.blurb === '';
+
+    // The prerequisite is suppressed when it is ALSO the unmet requirement, or
+    // the tip says the same sentence twice in two colours.
+    const showPrereq = c.prereq !== '' && c.prereq !== c.requirement;
+    this.prereqNode.nodeValue = showPrereq ? c.prereq : '';
+    this.prereqEl.hidden = !showPrereq;
 
     this.reqNode.nodeValue = c.requirement;
     this.reqEl.hidden = c.requirement === '';
@@ -673,9 +728,11 @@ export const SEMANTIC = {
   /** Secondary text and inactive labels. */
   textDim: '#8A97A6',
   /** The panel body, matching `--vm-glass` in hud.css. */
-  glass: 'rgba(9,13,20,0.72)',
+  glass: 'rgba(9,13,20,0.86)',
   /** The single hairline. */
-  hairline: 'rgba(255,255,255,0.10)',
+  hairline: 'rgba(255,255,255,0.16)',
+  /** Backing plate behind anything drawn over the battlefield. */
+  worldBacking: 'rgba(4,7,11,0.86)',
 } as const;
 
 /** Health-bar colour for a 0..1 fraction. One ramp, used by HUD and overlay. */

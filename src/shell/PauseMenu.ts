@@ -17,9 +17,25 @@
  * fresh one". Restarting an unwinnable position into the identical unwinnable
  * position is not a feature. A player who wants the same battle types the seed
  * into the lobby, where it is explicit.
+ *
+ * HELP IS AN OVERLAY, NOT A FIFTH SHELL STATE
+ * -------------------------------------------
+ * `Controls` mounts `HelpPanel` into this screen's own layer and HIDES the
+ * pause panel behind it. Two reasons that beats adding a `ShellState`:
+ *
+ *   - the shell's `FocusRing` skips anything with no layout box, so hiding the
+ *     pause panel takes its four buttons out of the ring for free and keyboard
+ *     navigation lands inside Help without either side enumerating the other;
+ *   - Escape then has exactly one meaning per layer — close Help, or resume —
+ *     resolved by `onBack` here rather than by a state machine transition.
+ *
+ * The sixth button on a pause menu is a real cost (see the note above about
+ * every control being one more thing to read), so Help is worth it only because
+ * "what does X do again" is the question a paused player actually has.
  * ============================================================================
  */
 
+import { HelpPanel } from './Help';
 import { DIFFICULTIES, SPEEDS, mapById } from './settings-store';
 import {
   button,
@@ -47,6 +63,10 @@ export class PauseMenuScreen implements Screen {
   private clock: HTMLElement | null = null;
   private timer = 0;
 
+  /** The pause panel itself, hidden while Help is up. */
+  private card: HTMLElement | null = null;
+  private help: HelpPanel | null = null;
+
   constructor(private readonly shell: Shell) {}
 
   mount(host: HTMLElement): void {
@@ -54,6 +74,7 @@ export class PauseMenuScreen implements Screen {
     host.classList.add('vm-pause', 'is-modal');
 
     const p = panel('vm-pause-panel');
+    this.card = p;
 
     const head = el('div', 'vm-pause-head');
     head.appendChild(el('p', 'vm-subtitle', 'Paused'));
@@ -83,6 +104,10 @@ export class PauseMenuScreen implements Screen {
       hint: 'Esc',
       onClick: () => this.shell.resume(),
     }));
+    nav.appendChild(button('Controls', {
+      iconName: 'keyboard',
+      onClick: () => this.openHelp(),
+    }));
     nav.appendChild(button('Options', {
       iconName: 'sliders',
       onClick: () => this.shell.openSettings('paused'),
@@ -111,12 +136,63 @@ export class PauseMenuScreen implements Screen {
     window.clearInterval(this.timer);
     this.timer = 0;
     this.clock = null;
+    this.closeHelp();
+    this.card = null;
     this.host?.classList.remove('vm-pause', 'is-modal');
     this.host = null;
   }
 
   onBack(): boolean {
+    if (this.help !== null) {
+      this.closeHelp();
+      return true;
+    }
     this.shell.resume();
     return true;
+  }
+
+  /** Help claims Page Up / Page Down / Home / End while it is open. */
+  onKeyDown(e: KeyboardEvent): boolean {
+    return this.help !== null && this.help.onKeyDown(e);
+  }
+
+  /* -------------------------------------------------------------------- */
+
+  private openHelp(): void {
+    const host = this.host;
+    if (host === null || this.help !== null) return;
+
+    // The pause card is hidden rather than removed: `FocusRing.refresh` drops
+    // anything with no layout box, so this is also what moves the keyboard into
+    // Help without either screen enumerating the other's controls.
+    if (this.card !== null) this.card.hidden = true;
+
+    const help = new HelpPanel({
+      settings: this.shell.settings,
+      onClose: () => this.closeHelp(),
+      // Straight to the rebind rows. Leaving the options screen returns to a
+      // fresh pause menu, so Help closes behind it rather than being restored
+      // over a screen that no longer exists.
+      onRebind: () => {
+        this.closeHelp();
+        this.shell.openSettings('paused');
+      },
+    });
+    this.help = help;
+    host.appendChild(help.root);
+    // The shell refreshes the ring on its own schedule; focusing the first
+    // control of the new layer on the next frame is what makes Help keyboard-
+    // reachable the instant it opens.
+    requestAnimationFrame(() => {
+      help.root.querySelector<HTMLElement>('[data-vm-focus]')?.focus();
+    });
+  }
+
+  private closeHelp(): void {
+    if (this.help === null) return;
+    this.help.dispose();
+    this.help.root.remove();
+    this.help = null;
+    if (this.card !== null) this.card.hidden = false;
   }
 }

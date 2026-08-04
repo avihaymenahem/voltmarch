@@ -14,8 +14,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+
+import { defaultCameraCodes } from '../src/input/ActionCatalogue';
 
 import {
   CREDIT_OPTIONS,
@@ -180,17 +180,18 @@ describe('keybinds', () => {
   });
 
   it('the shipped camera pan scheme is what the engine actually polls', () => {
-    // `input.system.ts#DEFAULT_CAMERA_KEYS` is a second copy of these four codes
-    // (it cannot import the shell — a `?shot=` boot never loads that chunk).
-    // The two drifting apart is exactly how the rows came to advertise WASD
-    // while the engine panned on arrows, so pin them together.
+    // This used to grep `input.system.ts` for a hard-coded DEFAULT_CAMERA_KEYS
+    // literal, because that file could not import the shell (a `?shot=` boot
+    // never loads that chunk) and therefore kept a second copy of these codes.
+    // The copy is gone: the engine now derives its table from
+    // `src/input/ActionCatalogue.ts`, which has no imports at all, so the
+    // agreement can be asserted on real values instead of on source text.
+    // `tests/action-catalogue.spec.ts` owns the rest of that contract.
     const b = defaultBindings();
-    const src = readFileSync(join(__dirname, '..', 'src/input/input.system.ts'), 'utf8');
-    const block = /DEFAULT_CAMERA_KEYS[\s\S]*?\{([\s\S]*?)\}/.exec(src);
-    expect(block).not.toBeNull();
+    const codes = defaultCameraCodes();
     for (const id of ['cam.panUp', 'cam.panDown', 'cam.panLeft', 'cam.panRight',
       'cam.rotateLeft', 'cam.rotateRight']) {
-      expect(block![1]).toContain(`'${id}': '${b[id].code}'`);
+      expect(codes[id], id).toBe(b[id].code);
     }
   });
 

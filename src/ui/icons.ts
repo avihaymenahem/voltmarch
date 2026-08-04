@@ -69,6 +69,8 @@ export type IconName =
   | 'tabStructures' | 'tabDefense' | 'tabInfantry' | 'tabVehicles'
   /* -- economy / readouts ----------------------------------------------- */
   | 'credits' | 'bolt' | 'clock' | 'storage'
+  /* -- status telltales -------------------------------------------------- */
+  | 'army' | 'base' | 'trend' | 'timer' | 'lock' | 'queue'
   /* -- unit stat row ---------------------------------------------------- */
   | 'armour' | 'damage' | 'range' | 'speed' | 'veterancy'
   /* -- stances ---------------------------------------------------------- */
@@ -494,6 +496,66 @@ export const ICONS: Readonly<Record<IconName, IconDef>> = {
       { d: 'M3.6 8.6h16.8v11.8H3.6z' },
       { d: 'M3.6 8.6 12 3.6l8.4 5' },
       { d: 'M7.4 20.4v-5.6h9.2v5.6' },
+    ],
+  },
+
+  /* ---------------------------------------------------------------- */
+  /* STATUS TELLTALES                                                 */
+  /*                                                                  */
+  /* Read at 10-11 px beside a two-digit number, so these are the     */
+  /* bluntest shapes in the file. `army` and `base` are deliberately   */
+  /* map-symbol abstractions rather than miniatures: a 10 px soldier   */
+  /* is a smudge, a 10 px crossed box is unmistakable.                 */
+  /* ---------------------------------------------------------------- */
+
+  /** Field army: the NATO infantry box. */
+  army: {
+    paths: [
+      { d: 'M3.2 6.8h17.6v10.4H3.2z' },
+      { d: 'M3.2 6.8 20.8 17.2M20.8 6.8 3.2 17.2' },
+    ],
+  },
+
+  /** Structures owned: a roofline cluster. */
+  base: {
+    paths: [
+      { d: 'M2.5 20.6h19' },
+      { d: 'M4 20.6v-7.2l5-3.4 5 3.4v7.2' },
+      { d: 'M15.4 20.6V11l4.6-2.8v12.4' },
+      { d: 'M7.4 20.6v-4h3.2v4' },
+    ],
+  },
+
+  /** Income rate: a rising trace with a head arrow. */
+  trend: {
+    paths: [
+      { d: 'M3 18.4 9.6 11.8l3.8 3.8L21 8.2' },
+      { d: 'M15.4 8.2H21v5.6' },
+    ],
+  },
+
+  /** Build-time countdown: an hourglass. */
+  timer: {
+    paths: [
+      { d: 'M6.6 3.4h10.8M6.6 20.6h10.8' },
+      { d: 'M8.2 3.4v3.2L12 11l-3.8 4.4v5.2' },
+      { d: 'M15.8 3.4v3.2L12 11l3.8 4.4v5.2' },
+    ],
+  },
+
+  /** Locked by the tech tree. */
+  lock: {
+    paths: [
+      { d: 'M5.4 10.6h13.2v10H5.4z' },
+      { d: 'M8.4 10.6V7.8a3.6 3.6 0 0 1 7.2 0v2.8' },
+      { d: 'M12 14v3.2' },
+    ],
+  },
+
+  /** Items waiting in a queue: stacked plates. */
+  queue: {
+    paths: [
+      { d: 'M4 5.4h16v3.2H4zM4 10.4h16v3.2H4zM4 15.4h16v3.2H4z' },
     ],
   },
 

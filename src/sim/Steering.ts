@@ -62,8 +62,66 @@ import type { SimContext } from '../core/types';
 import type { World } from '../core/world';
 import { clampCell, hash2f, isInMap, worldToCell, wrapAngle } from '../core/math';
 import { sliceForEntity } from '../core/loop';
-import { MoveClass, type FlowFieldCache } from './Flowfield';
+import {
+  MoveClass, NAV_POCKET_MAX_CELLS, NAV_REGION_SEARCH_CELLS, type FlowFieldCache,
+} from './Flowfield';
 import { moveClassAt } from './Movement';
+
+/* --------------------------------------------------------------------------
+ * THE STUCK WATCHDOG'S OWN TUNABLES
+ *
+ * `NAV_STUCK_*` in core/config already covers "the speedometer says zero" —
+ * a unit wedged against a wall or nose-to-nose with a neighbour. It cannot see
+ * the failure this module was extended for: a unit CIRCLING inside a pocket,
+ * or sliding along a cliff face, at full throttle and getting nowhere. Its
+ * speed never drops, so that counter never fires and the unit orbits its hole
+ * for the rest of the match.
+ *
+ * So progress is also measured directly, against the BEST distance the unit
+ * has ever achieved toward its current order. Best-so-far, not last-tick
+ * distance: a unit detouring around a building legitimately moves AWAY from
+ * its goal for a while, and comparing consecutive samples would call that a
+ * failure. Best-so-far only stops improving when the unit genuinely cannot
+ * make ground.
+ *
+ * The window is long (nine seconds) and the consequence is deliberately mild:
+ * this signal only ever asks `rescue()`, which then has to PROVE the unit is
+ * region-isolated before it moves anything. It can never cancel an order on
+ * its own, so a slow convoy or a congested chokepoint cannot be punished by
+ * it. That is also how the brief's "while not blocked by a transient
+ * neighbour" clause is honoured: a transient neighbour cannot change which
+ * connected region you are standing in.
+ * -------------------------------------------------------------------------- */
+
+/** Ticks between progress samples. 45 = 1.5 s at the fixed 30 Hz sim rate. */
+const NAV_PROGRESS_TICKS = 45;
+/** Metres of closing per window that still counts as making ground. */
+const NAV_PROGRESS_METRES = 1.5;
+/** Consecutive barren windows before the rescue check runs. 6 = 9 seconds. */
+const NAV_PROGRESS_STRIKES = 6;
+
+/** Scratch for the rescue ring search. Module level: `simTick` never allocates. */
+const RESCUE_CELL = new Int32Array(2);
+
+/* --------------------------------------------------------------------------
+ * RESCUE REPORTING
+ *
+ * A rescue is a bug report, not a feature. Every one of them means something
+ * put a unit somewhere it could not leave — a generator regression, a new
+ * biome, a scenario that skipped the placement helper. Silent correction is
+ * how the reported bug survived to a real match in the first place, so the
+ * first one is always logged and the rest are counted and logged sparsely,
+ * because a hundred trapped units must not become a hundred console lines
+ * inside one tick.
+ * -------------------------------------------------------------------------- */
+
+let rescueTotal = 0;
+
+/** Total pocket rescues since boot. Read by the diagnostic and by tests. */
+export function navRescueCount(): number { return rescueTotal; }
+
+/** Zero the counter. Between matches, and between test cases. */
+export function resetNavRescueCount(): void { rescueTotal = 0; }
 
 /* ==========================================================================
  * 1. PER-ENTITY NAV STATE
@@ -97,6 +155,14 @@ export class NavAgents {
   readonly stuck = new Uint8Array(MAX_ENTITIES);
   /** How many times we have shoved this unit sideways to unstick it. */
   readonly nudges = new Uint8Array(MAX_ENTITIES);
+  /**
+   * Closest this unit has come to its current order point, metres. -1 before
+   * the first sample. Only ever decreases while the order stands, which is
+   * what makes it a safe progress measure around a detour.
+   */
+  readonly bestDist = new Float32Array(MAX_ENTITIES);
+  /** Consecutive progress windows that failed to improve `bestDist`. */
+  readonly noProgress = new Uint8Array(MAX_ENTITIES);
   readonly flags = new Uint8Array(MAX_ENTITIES);
 
   /** True if this slot's state belongs to the CURRENT occupant. */
@@ -108,7 +174,14 @@ export class NavAgents {
     this.goalX[i] = 0; this.goalZ[i] = 0;
     this.slotX[i] = 0; this.slotZ[i] = 0;
     this.stuck[i] = 0; this.nudges[i] = 0;
+    this.bestDist[i] = -1; this.noProgress[i] = 0;
     this.flags[i] = 0;
+  }
+
+  /** Forget progress history. Called whenever the order point changes. */
+  restartProgress(i: number): void {
+    this.bestDist[i] = -1;
+    this.noProgress[i] = 0;
   }
 }
 
@@ -161,6 +234,10 @@ export class NavAssigner {
   public assigned = 0;
   public repaths = 0;
   public arrivals = 0;
+  /** Units lifted out of a disconnected pocket, this match. */
+  public rescues = 0;
+  /** Orders ended because nothing near the goal was reachable at all. */
+  public unreachableOrders = 0;
 
   constructor(
     private readonly world: World,
@@ -194,6 +271,7 @@ export class NavAssigner {
         if (st.navField[i] >= 0) { this.nav.release(st.navField[i]); st.navField[i] = -1; }
         ag.flags[i] &= ~(AgentFlag.HasSlot | AgentFlag.Arrived | AgentFlag.DirectPath);
         ag.stuck[i] = 0; ag.nudges[i] = 0;
+        ag.restartProgress(i);
         continue;
       }
 
@@ -207,6 +285,7 @@ export class NavAssigner {
         ag.goalX[i] = ox; ag.goalZ[i] = oz;
         ag.slotX[i] = 0; ag.slotZ[i] = 0;
         ag.stuck[i] = 0; ag.nudges[i] = 0;
+        ag.restartProgress(i);
         ag.flags[i] = (ag.flags[i] & ~(AgentFlag.Arrived | AgentFlag.DirectPath)) | AgentFlag.HasSlot;
         NEW_ORDERS[newCount++] = i;
       }
@@ -235,6 +314,38 @@ export class NavAssigner {
       // -- arrival ---------------------------------------------------------
       const arrive = st.radius[i] + NAV_ARRIVE_SLACK;
       if (d2 <= arrive * arrive) { this.finishOrder(i); continue; }
+
+      // -- trapped ---------------------------------------------------------
+      // Cheapest and most certain of the three checks below, so it runs first
+      // and it runs every tick: two array reads say whether this unit is
+      // standing in a scrap of ground that is not joined to the map. There is
+      // nothing to wait for — no amount of steering fixes a hole — so a unit
+      // in one is lifted out on the spot rather than after nine seconds of
+      // grinding.
+      if (this.rescue(i, cls, true)) continue;
+
+      // -- progress watchdog -----------------------------------------------
+      // Sampled on a per-entity slice so the whole army never checks in on the
+      // same tick. See the note at the top of the file for why this measures
+      // BEST distance rather than last distance, and why it may only ever ask
+      // for a rescue and never cancel an order.
+      const dist = Math.sqrt(d2);
+      if (sliceForEntity(s.tick, i, NAV_PROGRESS_TICKS)) {
+        const best = ag.bestDist[i];
+        if (best < 0 || dist < best - NAV_PROGRESS_METRES) {
+          ag.bestDist[i] = dist;
+          ag.noProgress[i] = 0;
+        } else if (ag.noProgress[i] < 255) {
+          ag.noProgress[i]++;
+        }
+        if (ag.noProgress[i] >= NAV_PROGRESS_STRIKES) {
+          // Nine seconds under a move order without ever getting closer. If
+          // the region test can explain that, act on it; if it cannot, this
+          // is ordinary congestion and the speed counter below owns it.
+          ag.noProgress[i] = 0;
+          if (this.rescue(i, cls, false)) continue;
+        }
+      }
 
       // -- stuck -----------------------------------------------------------
       const maxSpeed = st.maxSpeed[i];
@@ -271,8 +382,23 @@ export class NavAssigner {
       if (need) {
         const gcx = clampCell(worldToCell(ag.goalX[i]));
         const gcz = clampCell(worldToCell(ag.goalZ[i]));
-        const fid = this.nav.requestFieldClass(gcx, gcz, cls);
+        // Pass where we ARE, not just where we are going. That is what lets
+        // the cache notice a goal in another region and pull it back to the
+        // nearest cell this unit can actually reach — a move order that stops
+        // at the edge of the gorge, which is what a player expects, instead of
+        // a column parked nose-first against it.
+        const fid = this.nav.requestFieldClass(
+          gcx, gcz, cls, clampCell(worldToCell(px)), clampCell(worldToCell(pz)),
+        );
         const old = st.navField[i];
+        if (fid < 0 && old < 0) {
+          // Refused outright: nothing this unit can reach is anywhere near the
+          // order point. Park it rather than letting Steering's direct-seek
+          // fallback drive it into the obstacle for the rest of the match.
+          this.unreachableOrders++;
+          this.finishOrder(i);
+          continue;
+        }
         if (fid === old) {
           this.nav.release(fid);          // undo the ref this request added
         } else {
@@ -296,6 +422,97 @@ export class NavAssigner {
     this.assigned = assigned;
   }
 
+  /**
+   * Lift a unit out of a passable region it cannot leave, onto the nearest
+   * cell of the map proper.
+   *
+   * WHY A TELEPORT IS THE RIGHT ANSWER
+   * ----------------------------------
+   * There is no steering solution to a hole. The alternatives are to let the
+   * unit climb terrain it is not allowed to climb (which makes cliffs
+   * meaningless everywhere else), to carve the terrain at runtime (which
+   * desynchronises the heightfield from the mesh the player is looking at), or
+   * to leave an army standing in a pit for the rest of the match. A short,
+   * bounded relocation onto the nearest connected cell is the only one of the
+   * four that is both honest and recoverable, and it is bounded twice over:
+   * the unit must be in a region it demonstrably cannot leave, and the
+   * destination must be within NAV_REGION_SEARCH_CELLS.
+   *
+   * `proven` is the strict tier, run every tick: only pockets — regions at or
+   * under NAV_POCKET_MAX_CELLS — qualify, because a small stranded scrap is
+   * never anything but a generation artefact. The loose tier runs only after
+   * the progress watchdog has watched the unit fail for nine seconds, and then
+   * accepts a stranded region of any size, because by then being cut off has
+   * been demonstrated rather than assumed. An island the unit is HAPPY on
+   * never reaches either tier: both require an order whose goal lies outside
+   * the unit's own region.
+   *
+   * Fully deterministic — a ring search over a labelled grid, no RNG draw, so
+   * it cannot perturb `s.rng` and desync everything downstream.
+   */
+  private rescue(i: number, cls: MoveClass, proven: boolean): boolean {
+    if (cls === MoveClass.Air) return false;
+    const st = this.world.store;
+    const ag = this.agents;
+    const nav = this.nav;
+
+    const cx = clampCell(worldToCell(st.posX[i]));
+    const cz = clampCell(worldToCell(st.posZ[i]));
+    const mine = nav.regionOf(cx, cz, cls);
+    // Region 0 means the unit is standing on a cell the cost grid calls
+    // closed — under a building that landed on it, most often. That is a
+    // different bug with a different owner; do not paper over it here.
+    if (mine === 0) return false;
+    const main = nav.mainRegion(cls);
+    if (main === 0 || mine === main) return false;
+    if (proven && nav.regionSize(mine, cls) > NAV_POCKET_MAX_CELLS) return false;
+
+    // The order must actually lead out of here. A unit ordered to a point
+    // inside its own pocket is doing fine and must be left alone.
+    const gcx = clampCell(worldToCell(ag.goalX[i]));
+    const gcz = clampCell(worldToCell(ag.goalZ[i]));
+    if (nav.regionOf(gcx, gcz, cls) === mine) return false;
+
+    if (!nav.nearestInRegion(cx, cz, main, cls, RESCUE_CELL, NAV_REGION_SEARCH_CELLS)) return false;
+
+    const nx = (RESCUE_CELL[0] + 0.5) * CELL;
+    const nz = (RESCUE_CELL[1] + 0.5) * CELL;
+    const ny = nav.rideHeight(cls, nx, nz);
+    st.posX[i] = nx; st.posY[i] = ny; st.posZ[i] = nz;
+    // Drag the interpolation source with it. `GameLoop.stepSim` snapshots prev
+    // before any system runs, so leaving these behind would make the render
+    // SLIDE the unit through the cliff over one frame — which reads as a bug
+    // even though the fix is correct.
+    st.prevX[i] = nx; st.prevY[i] = ny; st.prevZ[i] = nz;
+    st.cellX[i] = RESCUE_CELL[0]; st.cellZ[i] = RESCUE_CELL[1];
+    st.speed[i] = 0; st.velX[i] = 0; st.velZ[i] = 0;
+    // The guard point is where a unit returns to after chasing something. If
+    // it still points into the pocket the unit will drive straight back in.
+    st.guardX[i] = nx; st.guardZ[i] = nz;
+
+    // Everything about the old order's path is now wrong.
+    if (st.navField[i] >= 0) { this.nav.release(st.navField[i]); st.navField[i] = -1; }
+    ag.stuck[i] = 0; ag.nudges[i] = 0;
+    ag.slotX[i] = 0; ag.slotZ[i] = 0;
+    ag.restartProgress(i);
+    ag.flags[i] &= ~AgentFlag.DirectPath;
+
+    this.rescues++;
+    rescueTotal++;
+    // First one always, then sparsely: a hundred trapped units must not become
+    // a hundred console lines inside one tick, and a count is what tells you
+    // whether this is one bad spawn or a whole broken map.
+    if (rescueTotal === 1 || rescueTotal % 32 === 0) {
+      console.warn(
+        `[nav] unstuck a unit from a ${nav.regionSize(mine, cls)}-cell pocket ` +
+        `at cell ${cx},${cz} -> ${RESCUE_CELL[0]},${RESCUE_CELL[1]} ` +
+        `(${rescueTotal} rescue${rescueTotal === 1 ? '' : 's'} so far — ` +
+        `something is placing units on ground they cannot leave)`,
+      );
+    }
+    return true;
+  }
+
   /** Park a unit: order satisfied, field returned, velocity killed. */
   private finishOrder(i: number): void {
     const st = this.world.store;
@@ -303,6 +520,7 @@ export class NavAssigner {
     if (st.navField[i] >= 0) { this.nav.release(st.navField[i]); st.navField[i] = -1; }
     ag.flags[i] |= AgentFlag.Arrived;
     ag.stuck[i] = 0;
+    ag.restartProgress(i);
     st.velX[i] = 0; st.velZ[i] = 0;
     // `state` is written by whichever phase owns the behaviour (see the
     // ownership table in core/loop.ts) — completing a move order is ours.

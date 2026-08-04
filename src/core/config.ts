@@ -1408,6 +1408,161 @@ export const TERRAIN_GROUND_NORMAL_CLAMP = 0.85;
 /** Max metres of height spread inside a cell for it to count as buildable. */
 export const TERRAIN_BUILD_FLATNESS = 1.1;
 
+/* --------------------------------------------------------------------------
+ * 20a. START AREAS — the reserved spawn plateaus
+ *
+ * A procedural map that drops an army into a 9-cell pit it cannot drive out of
+ * is broken, and no amount of ramp-carving economy fixes it, because the ramp
+ * carver is DESIGNED to ignore pockets that small (TERRAIN_MIN_REGION_CELLS).
+ * Real RTS generators do not leave start positions to chance: they RESERVE
+ * them. Before relief is classified, every start location is levelled to a
+ * buildable shelf of a guaranteed radius, its edge graded back into the natural
+ * landform, and the connectivity carver is then told that the minimum-region
+ * economy rule does not apply inside that radius.
+ *
+ * The numbers below are the contract:
+ *
+ *   r <= TERRAIN_START_GUARD_RADIUS   flat, dry, buildable, and joined to the
+ *                                     map's main passable region. Verified
+ *                                     inside the generator, not hoped for.
+ *   r <= TERRAIN_START_FLAT_RADIUS    levelled core (the guard radius plus one
+ *                                     cell of slack, because `cellSlope` is a
+ *                                     MAX over the cell's grid samples and so
+ *                                     reaches CELL metres past the cell).
+ *   beyond                            a graded apron at TERRAIN_START_APRON_GRADE
+ *                                     until the natural relief is close enough
+ *                                     to resume untouched.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Start locations, as fractions of MAP_SIZE on each axis.
+ *
+ * One entry today because every scenario centres on the middle of the map, but
+ * the generator is written for N of them — skirmish wants four or six, and the
+ * guarantee has to hold for each of them independently. `TerrainOptions.starts`
+ * overrides this with explicit world positions.
+ */
+export const TERRAIN_START_POSITIONS: readonly (readonly [number, number])[] = [
+  [0.5, 0.5],
+];
+/**
+ * Metres around a start location that are GUARANTEED flat, dry, buildable and
+ * connected to the main region. Scenarios drop their opening army inside 48 m,
+ * so this carries a comfortable margin over the measured spawn footprint.
+ */
+export const TERRAIN_START_GUARD_RADIUS = 54;
+/**
+ * Metres of dead-level core. Must exceed the guard radius by at least CELL:
+ * a cell's slope is the MAX over its grid samples, so the last guarded cell
+ * samples the terrain one cell further out than its own centre.
+ */
+export const TERRAIN_START_FLAT_RADIUS = 58;
+/**
+ * Metres the levelled rim wanders outward, so the shelf reads as a natural
+ * basin and not as a stamped disc. Outward only — the guarantee must never
+ * shrink. The wobble's own gradient is kept under ~0.14 (a 14 m swing over a
+ * ~300 m noise wavelength) so it cannot push the apron past ROUGH_SLOPE.
+ */
+export const TERRAIN_START_EDGE_WOBBLE = 14;
+/** Metres per feature of that rim wobble. */
+export const TERRAIN_START_WOBBLE_METRES = 300;
+/**
+ * Rise/run of the apron that ties the shelf back into the landform. Under
+ * tan(ROUGH_SLOPE) with the rim wobble's gradient added in, so the apron is
+ * always passable and never even classifies as rough.
+ */
+export const TERRAIN_START_APRON_GRADE = 0.22;
+/**
+ * Metres of residual swell left on the levelled core. A perfectly flat disc
+ * reads as a billiard table from the game camera; this is the same gentle
+ * swell the rest of the map carries, at a fraction of the amplitude, and it is
+ * small enough to stay inside TERRAIN_BUILD_FLATNESS.
+ */
+export const TERRAIN_START_SWELL = 0.30;
+/**
+ * Metres the start plateau must sit above WATER_LEVEL. A base that spawns in
+ * ankle-deep water is a base whose cells are classified as water and therefore
+ * impassable to everything that is not a hovercraft.
+ */
+export const TERRAIN_START_DRY_MARGIN = 1.2;
+/**
+ * Ramps the start-area verification pass may cut ON TOP of TERRAIN_MAX_RAMPS.
+ * The global cap exists so a pathological seed cannot melt the map; the start
+ * guarantee is not something a budget is allowed to cancel, so it gets its own.
+ */
+export const TERRAIN_START_MAX_RAMPS = 12;
+/** Verify-and-escalate rounds the generator runs on the start areas. */
+export const TERRAIN_START_ENFORCE_PASSES = 6;
+/**
+ * A passable region smaller than this, unreachable from the main landmass and
+ * outside every start guarantee, is SCENERY: it gets marked impassable so the
+ * pathfinder never offers it as a destination.
+ *
+ * This is the other half of the min-region economy rule. Leaving a 6-cell ledge
+ * stranded is fine; leaving it flagged as valid ground is not, because a
+ * "move here" order onto it can never complete and the AI will keep re-issuing
+ * it. Regions at or above this size are left alone — those are real mesas and
+ * islands that a transport or a hovercraft may legitimately reach.
+ */
+export const TERRAIN_PRUNE_REGION_CELLS = 28;
+
+/* -- 20b. MAJOR-REGION GUARANTEE -------------------------------------------
+ * The start guarantee above fixes "my army is in a pit". This fixes the other
+ * half of the same family: "a quarter of the map is a plateau nothing can
+ * drive onto".
+ *
+ * Measured over 200 biome/seed combinations, three produced a single stranded
+ * region of 1357, 2031 and 4159 cells — up to 38% of all passable ground —
+ * sitting one terrace step above the main landmass with a cliff between them.
+ * Every one of those boundaries was 100% cliff and 0% water, and the gap to
+ * the main region was under two cells. `ensureConnectivity` queues regions
+ * that big (they clear TERRAIN_MIN_REGION_CELLS comfortably) but `linkRegion`
+ * could not land a corridor inside TERRAIN_RAMP_MAX_LENGTH, so they were
+ * silently abandoned. A map like that is not a lost ledge: the AI can never
+ * reach a player who expands onto it, and ore inside it is unharvestable.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * The share of durable passable ground the main region must hold before the
+ * major-region pass stops carving.
+ *
+ * Expressed as the invariant itself rather than as a cell count, so the rule is
+ * self-limiting: it carves the biggest stranded plateau, re-measures, and stops
+ * the moment the map is healthy. A map that is already one piece costs nothing.
+ * "Durable" excludes regions below TERRAIN_PRUNE_REGION_CELLS, which are about
+ * to be demoted to scenery and so must not drag the ratio down.
+ *
+ * 0.97 sits above the 0.9 the reachability spec demands, so a seed has to
+ * regress substantially before the test notices.
+ */
+export const TERRAIN_MAIN_REGION_SHARE = 0.97;
+/**
+ * Ramps the major-region pass may cut, on top of every other budget. Small:
+ * each one is a deliberate, measured cut at the single worst split on the map,
+ * and the loop stops as soon as TERRAIN_MAIN_REGION_SHARE is met.
+ */
+export const TERRAIN_MAJOR_MAX_RAMPS = 6;
+/** Verify-and-escalate rounds for the major-region guarantee. */
+export const TERRAIN_MAJOR_ENFORCE_PASSES = 6;
+/**
+ * Corridor width for a FORCED cut, replacing TERRAIN_RAMP_HALF_WIDTH /
+ * TERRAIN_RAMP_CORE_WIDTH when the length cap is lifted.
+ *
+ * `cellSlope` is the MAXIMUM slope anywhere in a cell, so a cell is passable
+ * only if the whole 4 m of it is gentle. The ordinary corridor has a 7 m flat
+ * core feathering to nothing over the next 3.5 m, which leaves barely one clean
+ * cell down the middle — and on a measured seed (desert/802294) that meant a
+ * corridor was cut, reported as cut, and still classified as cliff end to end,
+ * so an 18%-of-the-map plateau stayed unreachable through the entire ramp
+ * budget.
+ *
+ * A forced cut is already the escalation path and already accepts being visible,
+ * so it gets a core wide enough to guarantee two clean cells. Ordinary ramps are
+ * untouched: they are the ones that shape the look of every map.
+ */
+export const TERRAIN_RAMP_FORCED_HALF_WIDTH = 12;
+export const TERRAIN_RAMP_FORCED_CORE_WIDTH = 8;
+
 /* ==========================================================================
  * 20. UNIT ART — RA3 CONFORMANCE BLOCK              (appended by src/art/**)
  *

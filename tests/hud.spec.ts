@@ -23,6 +23,13 @@ import {
 } from '../src/core/config';
 import { BUILD_TAB_COUNT, Faction } from '../src/core/types';
 import {
+  BUILD_SLOT_HOTKEYS,
+  BUILD_SLOT_HOTKEY_LABELS,
+  BUILD_TAB_HOTKEYS,
+  BUILD_TAB_HOTKEY_LABELS,
+} from '../src/input/ActionCatalogue';
+import { SLOT_HOTKEY_CODES, TAB_HOTKEY_CODES } from '../src/ui/Sidebar';
+import {
   GLYPHS,
   arcPath,
   cameoRowsFor,
@@ -392,5 +399,24 @@ describe('HUD — world overlay geometry (§2.11)', () => {
 
   it('pools floaters rather than allocating them per hit', () => {
     expect(HUD_OVERLAY.floaterPool).toBeGreaterThanOrEqual(24);
+  });
+});
+
+/* ========================================================================== */
+
+describe('HUD — the build keyboard is the catalogue, not a copy', () => {
+  it('re-exports the catalogue arrays by identity', () => {
+    // Identity, not equality. Two arrays with the same contents is exactly the
+    // state this closed: the badge the sidebar prints on a cameo and the row the
+    // help screen renders have to be the same array element, or a letter can be
+    // changed in one place and silently promised in the other.
+    expect(TAB_HOTKEY_CODES).toBe(BUILD_TAB_HOTKEYS);
+    expect(SLOT_HOTKEY_CODES).toBe(BUILD_SLOT_HOTKEYS);
+  });
+
+  it('badges as many slots as it binds', () => {
+    // The eleventh cameo carries no badge because there is no eleventh letter.
+    expect(BUILD_SLOT_HOTKEY_LABELS.length).toBe(SLOT_HOTKEY_CODES.length);
+    expect(BUILD_TAB_HOTKEY_LABELS.length).toBe(BUILD_TAB_COUNT);
   });
 });

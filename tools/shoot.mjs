@@ -23,7 +23,7 @@
 
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, readdirSync, renameSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -142,8 +142,41 @@ if (!shots.length) {
   process.exit(1);
 }
 
-rmSync(OUT, { recursive: true, force: true });
+/*
+ * Concurrency.
+ *
+ * This used to `rmSync(shots/)` on entry. With more than one agent working in
+ * the repo that is actively destructive: a second run wipes the first run's
+ * output mid-measurement, and `tools/metrics.mjs` then scores whatever survived
+ * and reports a confident grade over a partial set. That produced several wrong
+ * numbers before anyone noticed.
+ *
+ * So: take a lock, and capture into a staging directory that is swapped into
+ * place only once every shot has been taken. A reader either sees the previous
+ * complete set or the new complete set, never a half-written one.
+ */
+const LOCK = join(OUT, '.lock');
 mkdirSync(OUT, { recursive: true });
+
+if (existsSync(LOCK)) {
+  const age = Date.now() - Number(readFileSync(LOCK, 'utf8').split('\n')[1] ?? 0);
+  if (age < 30 * 60_000) {
+    console.error(
+      `Another capture is running (lock is ${Math.round(age / 1000)}s old).\n` +
+        `If that is stale, delete ${LOCK} and retry.`,
+    );
+    process.exit(3);
+  }
+  console.warn('Stale lock found (over 30 min old) — taking it over.');
+}
+writeFileSync(LOCK, `pid ${process.pid}\n${Date.now()}\n`);
+
+const STAGE = join(ROOT, '.shots-staging');
+rmSync(STAGE, { recursive: true, force: true });
+mkdirSync(STAGE, { recursive: true });
+
+const releaseLock = () => { try { rmSync(LOCK, { force: true }); } catch {} };
+process.on('exit', releaseLock);
 
 const run = (cmd, args) =>
   spawn(cmd, args, { cwd: ROOT, shell: process.platform === 'win32', stdio: 'pipe' });
@@ -244,19 +277,27 @@ for (const shot of shots) {
     }
     await page.evaluate(() => window.__VM.waitFrames(10));
 
-    await page.screenshot({ path: join(OUT, `${shot.name}.png`), animations: 'disabled' });
+    await page.screenshot({ path: join(STAGE, `${shot.name}.png`), animations: 'disabled' });
     report.shots.push({ name: shot.name, caption: shot.caption, flags: shot.flags, ok: true, messages });
     console.log(`ok${messages.length ? ` (${messages.length} console msgs)` : ''}`);
   } catch (err) {
     report.shots.push({ name: shot.name, caption: shot.caption, ok: false, error: String(err).split('\n')[0], messages });
     console.log(`FAILED - ${String(err).split('\n')[0]}`);
-    await page.screenshot({ path: join(OUT, `${shot.name}.FAILED.png`) }).catch(() => {});
+    await page.screenshot({ path: join(STAGE, `${shot.name}.FAILED.png`) }).catch(() => {});
   } finally {
     await page.close();
   }
 }
 
-writeFileSync(join(OUT, '_report.json'), JSON.stringify(report, null, 2));
+writeFileSync(join(STAGE, '_report.json'), JSON.stringify(report, null, 2));
+
+// Swap staging into place. A reader sees the previous complete set until this
+// point, then the new complete set — never a partially-captured directory.
+for (const f of readdirSync(OUT)) {
+  if (f !== '.lock') rmSync(join(OUT, f), { recursive: true, force: true });
+}
+for (const f of readdirSync(STAGE)) renameSync(join(STAGE, f), join(OUT, f));
+rmSync(STAGE, { recursive: true, force: true });
 await browser.close();
 cleanup();
 

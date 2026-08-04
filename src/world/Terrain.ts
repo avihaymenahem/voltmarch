@@ -39,6 +39,39 @@
  * this ("no ramps except explicit built ones") and the carved corridors are
  * marked as dirt track in the splat so they read as authored.
  *
+ * RESERVED START AREAS — AND WHY THE CARVER ALONE WAS NOT ENOUGH
+ * -------------------------------------------------------------
+ * The carver's economy rules (skip regions under 28 cells, give up past a
+ * 13-cell link or a 52 m ramp, stop at 30 ramps) are all defensible for a ledge
+ * on a distant hillside. They were a BUG under an army: a real match spawned
+ * tanks into a valley pocket they could never leave, and 33 of 40 biome/seed
+ * combinations put stranded pockets inside the 48 m the scenarios spawn into.
+ * Every one of those pockets was smaller than 28 cells, i.e. skipped on purpose.
+ *
+ * The fix is the one every shipped RTS map uses: start positions are RESERVED,
+ * not rolled. `levelStartAreas()` runs between the heightfield and the
+ * classification pass and levels each start location into a shelf — a dead-flat
+ * core out to `TERRAIN_START_FLAT_RADIUS` carrying only a residual swell, then
+ * an apron that clamps the natural height into a `TERRAIN_START_APRON_GRADE`
+ * cone until the landform is close enough to resume untouched. The clamp is
+ * what makes it read as a natural basin rather than a stamped disc: the apron
+ * binds at a different distance in every direction, and the rim itself wanders
+ * outward on a long-wavelength noise.
+ *
+ * Then three guarantees are enforced rather than assumed:
+ *
+ *  1. `ensureConnectivity` does not apply the minimum-region skip to any region
+ *     holding a guarded start cell, and such regions draw on their own ramp
+ *     budget so the global cap cannot cancel the guarantee.
+ *  2. `enforceStartAreas` re-labels the grid AFTER the carver and escalates on
+ *     anything still stranded inside a guard radius: a wider bounded link, then
+ *     a forced BFS-shortest corridor with the length cap lifted, then as a last
+ *     resort raising the pocket to its own rim so the trap stops existing.
+ *  3. `prunePockets` marks every remaining tiny unreachable region impassable,
+ *     OUTSIDE the start areas only. A 6-cell ledge no unit can reach is scenery;
+ *     leaving it flagged passable only produces "move here" orders that can
+ *     never complete.
+ *
  * PERFORMANCE SHAPE
  * -----------------
  * 8x8 chunks of 64 m at a 1 m grid, ~8.2k triangles each, ONE material (the
@@ -56,10 +89,16 @@ import {
   CELL, CLIFF_SLOPE, MAP_CELLS, MAP_CELL_COUNT, MAP_SIZE, ROUGH_SLOPE,
   TERRAIN_BORDER_CELLS, TERRAIN_BUILD_FLATNESS, TERRAIN_CHUNK_METRES,
   TERRAIN_GRID, TERRAIN_GROUND_NORMAL_CLAMP, TERRAIN_LAYER_TEXTURE_SIZE,
+  TERRAIN_MAIN_REGION_SHARE, TERRAIN_MAJOR_ENFORCE_PASSES, TERRAIN_MAJOR_MAX_RAMPS,
   TERRAIN_MAX_HEIGHT, TERRAIN_MAX_RAMPS, TERRAIN_MIN_REGION_CELLS,
-  TERRAIN_RAMP_CORE_WIDTH, TERRAIN_RAMP_HALF_WIDTH, TERRAIN_RAMP_MAX_GRADE,
-  TERRAIN_RAMP_MAX_LENGTH, TERRAIN_RAMP_MAX_LINK_CELLS,
-  TERRAIN_SPLAT_PER_CELL, WATER_LEVEL,
+  TERRAIN_PRUNE_REGION_CELLS, TERRAIN_RAMP_CORE_WIDTH, TERRAIN_RAMP_HALF_WIDTH,
+  TERRAIN_RAMP_FORCED_CORE_WIDTH, TERRAIN_RAMP_FORCED_HALF_WIDTH,
+  TERRAIN_RAMP_MAX_GRADE, TERRAIN_RAMP_MAX_LENGTH, TERRAIN_RAMP_MAX_LINK_CELLS,
+  TERRAIN_SPLAT_PER_CELL, TERRAIN_START_APRON_GRADE, TERRAIN_START_DRY_MARGIN,
+  TERRAIN_START_EDGE_WOBBLE, TERRAIN_START_ENFORCE_PASSES,
+  TERRAIN_START_FLAT_RADIUS, TERRAIN_START_GUARD_RADIUS,
+  TERRAIN_START_MAX_RAMPS, TERRAIN_START_POSITIONS, TERRAIN_START_SWELL,
+  TERRAIN_START_WOBBLE_METRES, WATER_LEVEL,
 } from '../core/config';
 import { Locomotor, type EntityId, type ITerrain } from '../core/types';
 import { clamp, clamp01, fbm2, isInMap, lerp, simplex2, smoothstep } from '../core/math';
@@ -122,6 +161,49 @@ export interface TerrainOptions {
   biome: BiomeName | string;
   /** Renderer capability, pushed in so this module never touches the GL context. */
   anisotropy?: number;
+  /**
+   * World-space start locations to reserve a levelled, connected shelf around.
+   * Omit and the generator uses `TERRAIN_START_POSITIONS`. Skirmish will pass
+   * its own set once there is more than one player start.
+   */
+  starts?: readonly StartPoint[];
+}
+
+/** A world position the generator must guarantee an army can spawn on. */
+export interface StartPoint {
+  readonly x: number;
+  readonly z: number;
+}
+
+/** One reserved start location and the radius its guarantee covers. */
+export interface StartArea extends StartPoint {
+  /** Metres of flat, dry, buildable, main-region-connected ground. */
+  readonly radius: number;
+  /** The elevation the shelf was levelled to, in metres. */
+  readonly height: number;
+}
+
+/** What the start-area guarantee had to do this generation. For the boot log. */
+export interface StartAreaReport {
+  /** Start locations reserved. */
+  areas: number;
+  /** Ramps the carver cut specifically to reach a start region. */
+  startRamps: number;
+  /** Forced (length-cap lifted) corridors the escalation had to cut. */
+  forcedRamps: number;
+  /** Pockets raised to their own rim because no corridor could reach them. */
+  filled: number;
+  /** Cells demoted to scenery because nothing could ever reach them. */
+  pruned: number;
+  /** Guarded cells STILL not joined to the main region. Must be 0. */
+  stranded: number;
+  /** Corridors cut to reclaim a large stranded plateau. */
+  majorRamps: number;
+  /**
+   * Large stranded regions the major pass could NOT reclaim — almost always an
+   * island, where refusing is the correct answer. Not a failure on its own.
+   */
+  majorSkipped: number;
 }
 
 export class Terrain implements ITerrain {
@@ -187,9 +269,27 @@ export class Terrain implements ITerrain {
   private biomeDef: BiomeDef;
   private rampsCarved = 0;
 
+  /** Start locations this terrain was asked to reserve, in world metres. */
+  private readonly startPoints: StartPoint[] = [];
+  /** The reserved shelves, filled in by `levelStartAreas`. */
+  private readonly startShelves: StartArea[] = [];
+  /** 1 where a cell centre sits inside some start guarantee radius. */
+  private readonly startMask = new Uint8Array(MAP_CELL_COUNT);
+  /** What the guarantee cost this generation. */
+  private readonly report: StartAreaReport = {
+    areas: 0, startRamps: 0, forcedRamps: 0, filled: 0, pruned: 0, stranded: 0,
+    majorRamps: 0, majorSkipped: 0,
+  };
+
   /** Scratch reused by the region labeller. Never escapes. */
   private readonly regionId = new Int32Array(MAP_CELL_COUNT);
   private readonly regionStack = new Int32Array(MAP_CELL_COUNT);
+  /** Scratch for the escalation BFS: step count and originating main-region cell. */
+  private readonly bfsDist = new Int32Array(MAP_CELL_COUNT);
+  private readonly bfsFrom = new Int32Array(MAP_CELL_COUNT);
+  private readonly bfsQueue = new Int32Array(MAP_CELL_COUNT);
+  /** Region ids that hold a guarded start cell but are not the main region. */
+  private readonly strandedStarts: number[] = [];
   /** Scratch for the potential field during generation. */
   private readonly potential = new Float32Array(GRID_COUNT);
   /** Scratch for the separable min/max window that measures terrace faces. */
@@ -200,6 +300,7 @@ export class Terrain implements ITerrain {
     this.scene = options.scene;
     this.seed = options.seed | 0;
     this.biomeDef = getBiome(options.biome);
+    this.setStarts(options.starts);
 
     this.splatTexA = makeSplatTexture(this.splatA, 'terrain.splatA');
     this.splatTexB = makeSplatTexture(this.splatB, 'terrain.splatB');
@@ -240,13 +341,70 @@ export class Terrain implements ITerrain {
    */
   generate(): void {
     this.rampsCarved = 0;
+    this.report.startRamps = 0;
+    this.report.forcedRamps = 0;
+    this.report.filled = 0;
+    this.report.pruned = 0;
+    this.report.stranded = 0;
+    this.report.majorRamps = 0;
+    this.report.majorSkipped = 0;
+    this.report.areas = this.startPoints.length;
+
+    this.buildStartMask();
     this.buildPotential();
     this.buildHeightfield();
+    // Before classification, so `computeDerived` sees the levelled shelf and
+    // never marks a start cell as cliff, water or unbuildable in the first
+    // place. Reserving after the fact would mean re-deriving everything twice.
+    this.levelStartAreas();
     this.computeDerived();
     this.ensureConnectivity();
     this.computeDerived();
+    // Trust nothing: measure the guarantee and escalate until it holds.
+    this.enforceStartAreas();
+    // Then the same treatment for the map as a whole. Must run BEFORE
+    // prunePockets, because pruning is the last word on passGrid and any
+    // computeDerived after it would rebuild the grid and undo it.
+    this.ensureMajorRegions();
+    this.prunePockets();
     this.buildSplat();
     this.buildMeshes();
+    this.logStartAreas();
+  }
+
+  /**
+   * Replace the start locations to reserve. Takes effect on the next
+   * `generate()`; the constructor calls it before its own generate.
+   */
+  setStarts(starts: readonly StartPoint[] | undefined): void {
+    this.startPoints.length = 0;
+    if (starts !== undefined && starts.length > 0) {
+      for (let i = 0; i < starts.length; i++) {
+        this.startPoints.push({
+          x: clamp(starts[i].x, 0, MAP_SIZE),
+          z: clamp(starts[i].z, 0, MAP_SIZE),
+        });
+      }
+    } else {
+      for (let i = 0; i < TERRAIN_START_POSITIONS.length; i++) {
+        const f = TERRAIN_START_POSITIONS[i];
+        this.startPoints.push({ x: f[0] * MAP_SIZE, z: f[1] * MAP_SIZE });
+      }
+    }
+    this.startShelves.length = 0;
+  }
+
+  /**
+   * The reserved start shelves, in world metres. Scenarios and skirmish setup
+   * read this instead of assuming the middle of the map is standable.
+   */
+  startLocations(): readonly StartArea[] {
+    return this.startShelves;
+  }
+
+  /** What the start-area guarantee cost this generation. */
+  startReport(): Readonly<StartAreaReport> {
+    return this.report;
   }
 
   /**
@@ -255,7 +413,10 @@ export class Terrain implements ITerrain {
    * that is not 1.0 after generation, something is stranded and the AI will
    * eventually walk into it.
    */
-  stats(): { passable: number; buildable: number; water: number; reachable: number; ramps: number } {
+  stats(): {
+    passable: number; buildable: number; water: number; reachable: number;
+    ramps: number; scenery: number; startsStranded: number; regions: number;
+  } {
     let pass = 0;
     let build = 0;
     let water = 0;
@@ -274,6 +435,12 @@ export class Terrain implements ITerrain {
       water: water / MAP_CELL_COUNT,
       reachable: pass > 0 ? largest / pass : 0,
       ramps: this.rampsCarved,
+      scenery: this.report.pruned,
+      startsStranded: this.report.stranded,
+      // The count nobody printed. `reachable` stayed above 99% on every map
+      // affected by the reported bug because a fraction hides a hundred small
+      // holes; the region COUNT does not.
+      regions,
     };
   }
 
@@ -390,6 +557,152 @@ export class Terrain implements ITerrain {
         }
 
         h[i] = clamp(y, 0, TERRAIN_MAX_HEIGHT);
+      }
+    }
+  }
+
+  /* ======================================================================
+   * 3b. RESERVED START AREAS
+   * ====================================================================== */
+
+  /** Mark every cell whose centre falls inside a start guarantee radius. */
+  private buildStartMask(): void {
+    this.startMask.fill(0);
+    const r = TERRAIN_START_GUARD_RADIUS;
+    const r2 = r * r;
+    for (let k = 0; k < this.startPoints.length; k++) {
+      const p = this.startPoints[k];
+      const cLo = Math.max(0, Math.floor((p.x - r) / CELL));
+      const cHi = Math.min(MAP_CELLS - 1, Math.ceil((p.x + r) / CELL));
+      const zLo = Math.max(0, Math.floor((p.z - r) / CELL));
+      const zHi = Math.min(MAP_CELLS - 1, Math.ceil((p.z + r) / CELL));
+      for (let cz = zLo; cz <= zHi; cz++) {
+        const dz = (cz + 0.5) * CELL - p.z;
+        for (let cx = cLo; cx <= cHi; cx++) {
+          const dx = (cx + 0.5) * CELL - p.x;
+          if (dx * dx + dz * dz <= r2) this.startMask[cz * MAP_CELLS + cx] = 1;
+        }
+      }
+    }
+  }
+
+  /**
+   * Level every start location into a shelf the moment the raw heightfield
+   * exists, before anything is classified.
+   *
+   * The elevation is snapped to the nearest TERRACE rather than set to the
+   * local mean, so the shelf sits on the same quantised ladder as the rest of
+   * the map and reads as one of its plateaus instead of a cut. It is then held
+   * clear of WATER_LEVEL, because a base whose cells classify as water is
+   * impassable to everything without a skirt.
+   */
+  private levelStartAreas(): void {
+    const b = this.biomeDef;
+    const h = this.height;
+    this.startShelves.length = 0;
+
+    for (let k = 0; k < this.startPoints.length; k++) {
+      const p = this.startPoints[k];
+
+      // --- which terrace does this start naturally sit on? ------------------
+      const r = TERRAIN_START_FLAT_RADIUS;
+      const r2 = r * r;
+      const gLo = Math.max(0, Math.floor((p.x - r) * INV_GRID));
+      const gHi = Math.min(GRID_N, Math.ceil((p.x + r) * INV_GRID));
+      const gzLo = Math.max(0, Math.floor((p.z - r) * INV_GRID));
+      const gzHi = Math.min(GRID_N, Math.ceil((p.z + r) * INV_GRID));
+      let sum = 0;
+      let n = 0;
+      for (let gz = gzLo; gz <= gzHi; gz++) {
+        const dz = gz * GRID - p.z;
+        const row = gz * GRID_STRIDE;
+        for (let gx = gLo; gx <= gHi; gx++) {
+          const dx = gx * GRID - p.x;
+          if (dx * dx + dz * dz > r2) continue;
+          sum += h[row + gx];
+          n++;
+        }
+      }
+      const mean = n > 0 ? sum / n : b.baseHeight;
+      const tier = clamp(Math.round((mean - b.baseHeight) / b.stepHeight), 0, b.tierCount);
+      const level = Math.max(
+        b.baseHeight + tier * b.stepHeight,
+        WATER_LEVEL + TERRAIN_START_DRY_MARGIN,
+      );
+
+      this.flattenDisc(
+        p.x, p.z, TERRAIN_START_FLAT_RADIUS, level,
+        TERRAIN_START_EDGE_WOBBLE, TERRAIN_START_SWELL,
+      );
+
+      this.startShelves.push({
+        x: p.x, z: p.z, radius: TERRAIN_START_GUARD_RADIUS, height: level,
+      });
+    }
+  }
+
+  /**
+   * Level a disc to `level` and grade the surround back into the landform.
+   *
+   * Inside the core the height IS the level (plus a residual swell, because a
+   * dead-flat disc reads as a plate from the game camera). Outside it, the
+   * natural height is CLAMPED into a cone of `TERRAIN_START_APRON_GRADE` rather
+   * than blended toward the level — and that distinction is the whole trick.
+   *
+   * A lerp toward the level scales a 6 m terrace face down but leaves it a
+   * face: at 80% blended it is still a 1.2 m step across one grid sample, i.e.
+   * a 50 degree wall the nav grid still calls a cliff. A clamp REMOVES the face
+   * outright wherever it exceeds the cone and leaves the terrain completely
+   * untouched wherever it does not, so the shelf ends at a different distance
+   * in every direction and never draws a circle on the map.
+   *
+   * The rim itself wanders outward on a long-wavelength noise. Outward only —
+   * the guarantee is a floor, never a ceiling — and at a gradient (~0.14) that
+   * cannot push the apron's effective grade past ROUGH_SLOPE.
+   */
+  private flattenDisc(
+    px: number, pz: number, coreRadius: number, level: number,
+    wobble: number, swellAmplitude: number,
+  ): void {
+    const b = this.biomeDef;
+    const h = this.height;
+    const s = this.seed;
+    const g = TERRAIN_START_APRON_GRADE;
+    const invSwell = 1 / b.swellMetres;
+    const invWobble = 1 / TERRAIN_START_WOBBLE_METRES;
+    // Past this distance the cone is wider than the map's entire relief, so the
+    // clamp provably cannot bind and there is nothing to compute.
+    const reach = coreRadius + wobble + TERRAIN_MAX_HEIGHT / g + GRID;
+
+    const gxLo = Math.max(0, Math.floor((px - reach) * INV_GRID));
+    const gxHi = Math.min(GRID_N, Math.ceil((px + reach) * INV_GRID));
+    const gzLo = Math.max(0, Math.floor((pz - reach) * INV_GRID));
+    const gzHi = Math.min(GRID_N, Math.ceil((pz + reach) * INV_GRID));
+
+    for (let gz = gzLo; gz <= gzHi; gz++) {
+      const z = gz * GRID;
+      const dz = z - pz;
+      const row = gz * GRID_STRIDE;
+      for (let gx = gxLo; gx <= gxHi; gx++) {
+        const x = gx * GRID;
+        const dx = x - px;
+        const d = Math.sqrt(dx * dx + dz * dz);
+        if (d > reach) continue;
+
+        const rim = wobble > 0
+          ? coreRadius + clamp01(fbm2(x * invWobble, z * invWobble, 2, 2.0, 0.5, s + 1723) * 0.5 + 0.5) * wobble
+          : coreRadius;
+        const base = swellAmplitude > 0
+          ? level + fbm2(x * invSwell, z * invSwell, 3, 2.0, 0.5, s + 907) * swellAmplitude
+          : level;
+
+        const i = row + gx;
+        if (d <= rim) {
+          h[i] = clamp(base, 0, TERRAIN_MAX_HEIGHT);
+          continue;
+        }
+        const a = (d - rim) * g;
+        h[i] = clamp(clamp(h[i], base - a, base + a), 0, TERRAIN_MAX_HEIGHT);
       }
     }
   }
@@ -594,43 +907,319 @@ export class Terrain implements ITerrain {
   }
 
   /**
+   * Mark, in `out`, which region ids hold at least one guarded start cell.
+   * `out[k]` is 1 for such a region and 0 otherwise; index 0 is unused.
+   */
+  private markStartRegions(regions: number, out: Uint8Array): void {
+    out.fill(0, 0, regions + 1);
+    if (this.startPoints.length === 0) return;
+    const id = this.regionId;
+    for (let i = 0; i < MAP_CELL_COUNT; i++) {
+      if (this.startMask[i] === 0) continue;
+      const r = id[i];
+      if (r !== 0) out[r] = 1;
+    }
+  }
+
+  /**
    * Guarantee that every worthwhile piece of ground is reachable from the main
-   * landmass. Runs up to four passes because carving one ramp can merge two
+   * landmass. Runs up to six passes because carving one ramp can merge two
    * regions and change which one is largest.
+   *
+   * `TERRAIN_MIN_REGION_CELLS` is the economy rule that stops the carver
+   * bulldozing an 80 m trench to reach a 9-cell ledge. It does NOT apply to a
+   * region holding start ground: there, the pocket is worth any ramp, because
+   * it is where an army is about to be standing. Those links also draw on
+   * `TERRAIN_START_MAX_RAMPS` rather than the global budget, so a map that
+   * spent all thirty ramps on its hillsides still gets its start areas joined.
    */
   private ensureConnectivity(): void {
     const sizes: number[] = [];
     const order: number[] = [];
+    const isStart = new Uint8Array(MAP_CELL_COUNT + 1);
     let carved = 0;
+    let startCarved = 0;
 
-    for (let pass = 0; pass < 6 && carved < TERRAIN_MAX_RAMPS; pass++) {
+    for (let pass = 0; pass < 6; pass++) {
+      if (carved >= TERRAIN_MAX_RAMPS && startCarved >= TERRAIN_START_MAX_RAMPS) return;
       const regions = this.labelRegions(sizes);
       if (regions <= 1) return;
 
       let main = 1;
       for (let k = 2; k <= regions; k++) if (sizes[k] > sizes[main]) main = k;
+      this.markStartRegions(regions, isStart);
 
       // Biggest stranded region first. Each carve merges regions, so spending
       // the ramp budget on the largest ones recovers the most ground per cut,
-      // and a merge often drags several small neighbours along with it.
+      // and a merge often drags several small neighbours along with it. Start
+      // regions jump the queue whatever their size.
       order.length = 0;
       for (let k = 1; k <= regions; k++) {
-        if (k !== main && sizes[k] >= TERRAIN_MIN_REGION_CELLS) order.push(k);
+        if (k === main) continue;
+        if (isStart[k] !== 0 || sizes[k] >= TERRAIN_MIN_REGION_CELLS) order.push(k);
       }
-      order.sort((a, b) => sizes[b] - sizes[a]);
+      order.sort((a, b) => {
+        if (isStart[a] !== isStart[b]) return isStart[b] - isStart[a];
+        return sizes[b] - sizes[a];
+      });
       if (order.length === 0) return;
 
       let carvedThisPass = 0;
-      for (let i = 0; i < order.length && carved < TERRAIN_MAX_RAMPS; i++) {
-        if (this.linkRegion(order[i], main)) {
-          carved++;
-          carvedThisPass++;
-          this.rampsCarved++;
-        }
+      for (let i = 0; i < order.length; i++) {
+        const k = order[i];
+        const start = isStart[k] !== 0;
+        if (start ? startCarved >= TERRAIN_START_MAX_RAMPS : carved >= TERRAIN_MAX_RAMPS) continue;
+        if (!this.linkRegion(k, main)) continue;
+        if (start) { startCarved++; this.report.startRamps++; } else carved++;
+        carvedThisPass++;
+        this.rampsCarved++;
       }
       if (carvedThisPass === 0) return;
       this.computeDerived();
     }
+  }
+
+  /**
+   * Verify the start guarantee and escalate until it holds.
+   *
+   * This is the step the module was missing. Everything above is best-effort:
+   * the carver has budgets, length caps and search windows, and every one of
+   * them can legitimately decline. So after it has run, MEASURE — flood-fill
+   * the grid the pathfinder will actually read and ask whether any guarded cell
+   * ended up outside the main region. If one did, escalate in order of damage:
+   *
+   *   1. the ordinary bounded link (cheap, and usually all that is left);
+   *   2. a BFS-shortest corridor with the length cap lifted — a long dirt track
+   *      is ugly, an army that cannot move is fatal;
+   *   3. raise the pocket to its own rim so the trap stops existing. A filled
+   *      pit is strictly better than a pit with tanks in it.
+   */
+  private enforceStartAreas(): void {
+    if (this.startPoints.length === 0) return;
+    const sizes: number[] = [];
+    const isStart = new Uint8Array(MAP_CELL_COUNT + 1);
+
+    for (let pass = 0; pass < TERRAIN_START_ENFORCE_PASSES; pass++) {
+      const regions = this.labelRegions(sizes);
+      if (regions <= 1) { this.report.stranded = 0; return; }
+
+      let main = 1;
+      for (let k = 2; k <= regions; k++) if (sizes[k] > sizes[main]) main = k;
+      this.markStartRegions(regions, isStart);
+
+      this.strandedStarts.length = 0;
+      for (let k = 1; k <= regions; k++) {
+        if (k !== main && isStart[k] !== 0) this.strandedStarts.push(k);
+      }
+      if (this.strandedStarts.length === 0) { this.report.stranded = 0; return; }
+      // Biggest first: merging the largest pocket often absorbs its neighbours.
+      this.strandedStarts.sort((a, b) => sizes[b] - sizes[a]);
+
+      let changed = false;
+      for (let i = 0; i < this.strandedStarts.length; i++) {
+        const k = this.strandedStarts[i];
+        if (this.linkRegion(k, main)) {
+          this.rampsCarved++;
+          this.report.startRamps++;
+          changed = true;
+          continue;
+        }
+        if (this.linkRegionForced(k, main)) {
+          this.rampsCarved++;
+          this.report.forcedRamps++;
+          changed = true;
+          continue;
+        }
+        if (this.fillRegion(k)) {
+          this.report.filled++;
+          changed = true;
+        }
+      }
+      if (!changed) break;
+      this.computeDerived();
+    }
+
+    // Final measurement. Anything left here is a genuine generator failure and
+    // is reported rather than papered over.
+    const regions = this.labelRegions(sizes);
+    let main = 1;
+    for (let k = 2; k <= regions; k++) if (sizes[k] > sizes[main]) main = k;
+    let stranded = 0;
+    for (let i = 0; i < MAP_CELL_COUNT; i++) {
+      if (this.startMask[i] === 0) continue;
+      const r = this.regionId[i];
+      if (r !== 0 && r !== main) stranded++;
+    }
+    this.report.stranded = stranded;
+  }
+
+  /**
+   * Reclaim large stranded regions — the other half of the connectivity bug.
+   *
+   * `enforceStartAreas` guarantees the ground an army SPAWNS on. This
+   * guarantees the ground it can later drive to. Measured across 200
+   * biome/seed combinations, three maps ended generation with a single
+   * stranded plateau holding 12%, 18% and 38% of all passable ground: big
+   * enough to clear `TERRAIN_MIN_REGION_CELLS` and therefore genuinely queued
+   * by `ensureConnectivity`, but with no corridor that fits inside
+   * `TERRAIN_RAMP_MAX_LENGTH`, so the carver gave up and nothing checked.
+   *
+   * The rule is written as the invariant rather than as a size threshold: cut
+   * the single worst split, re-measure, and stop as soon as the main region
+   * holds `TERRAIN_MAIN_REGION_SHARE` of the ground that will still be passable
+   * after pruning. A map that is already one piece does no work at all.
+   *
+   * ISLANDS ARE LEFT ALONE, and that is the point of the dry-only BFS: on the
+   * three measured maps every stranded boundary was 100% cliff and 0% water, so
+   * a land corridor is the right answer. On a naval map it is emphatically not
+   * — dropping a causeway across a lake to reach an island would destroy the
+   * map this pass exists to protect. If no dry corridor exists the region is
+   * water-separated by definition, and hovercraft and transports already reach
+   * it.
+   */
+  private ensureMajorRegions(): void {
+    const sizes: number[] = [];
+    const order: number[] = [];
+    /** Cells the main region held at the end of the previous pass. */
+    let prevMain = -1;
+    /** Consecutive passes that carved without growing the main region. */
+    let stalls = 0;
+
+    for (let pass = 0; pass < TERRAIN_MAJOR_ENFORCE_PASSES; pass++) {
+      if (this.report.majorRamps >= TERRAIN_MAJOR_MAX_RAMPS) return;
+
+      const regions = this.labelRegions(sizes);
+      if (regions <= 1) return;
+      let main = 1;
+      for (let k = 2; k <= regions; k++) if (sizes[k] > sizes[main]) main = k;
+
+      // Ground that survives `prunePockets`. Counting the doomed scraps would
+      // depress the ratio and buy ramps for cells that are about to stop
+      // existing.
+      let durable = 0;
+      for (let k = 1; k <= regions; k++) {
+        if (k === main || sizes[k] >= TERRAIN_PRUNE_REGION_CELLS) durable += sizes[k];
+      }
+      if (durable === 0) return;
+      if (sizes[main] / durable >= TERRAIN_MAIN_REGION_SHARE) return;
+
+      /* -- did the last carve actually breach? --------------------------------
+       * `carveRamp` reports whether it MODIFIED the heightfield, not whether it
+       * CONNECTED anything, and those differ: the corridor is feathered, so a
+       * cut that only grazes the cliff still returns true. Trusting it meant
+       * one measured seed (desert/802294) spent its entire ramp budget on
+       * bounded links that never breached, and never reached the escalation.
+       *
+       * So the progress test is the main region's own size. No growth means the
+       * pretty bounded ramp is not working here, and the next attempt goes
+       * straight to the forced corridor. Two stalled passes in a row means even
+       * that is not landing, and continuing would just scar the map.
+       * -------------------------------------------------------------------- */
+      const stalled = prevMain >= 0 && sizes[main] <= prevMain;
+      if (stalled && ++stalls >= 2) {
+        // Count only the regions that will still be passable after pruning —
+        // reporting every 3-cell scrap as "abandoned" would bury the one number
+        // that matters under noise.
+        let abandoned = 0;
+        for (let k = 1; k <= regions; k++) {
+          if (k !== main && sizes[k] >= TERRAIN_PRUNE_REGION_CELLS) abandoned++;
+        }
+        this.report.majorSkipped = abandoned;
+        return;
+      }
+      if (!stalled) stalls = 0;
+      prevMain = sizes[main];
+
+      // Largest survivor first: one carve at the worst split moves the ratio
+      // further than several at the margins.
+      order.length = 0;
+      for (let k = 1; k <= regions; k++) {
+        if (k !== main && sizes[k] >= TERRAIN_PRUNE_REGION_CELLS) order.push(k);
+      }
+      if (order.length === 0) return;
+      order.sort((a, b) => sizes[b] - sizes[a]);
+
+      let cut = false;
+      for (let i = 0; i < order.length; i++) {
+        const k = order[i];
+        // The bounded link is the nicer cut, so it goes first — but only while
+        // it is still earning its place. Once a pass has stalled, go straight
+        // to the true-nearest corridor with the length cap lifted, restricted
+        // to dry ground so an island is refused rather than causewayed.
+        const ok = stalled
+          ? this.linkRegionForced(k, main, true)
+          : (this.linkRegion(k, main) || this.linkRegionForced(k, main, true));
+        if (ok) {
+          this.rampsCarved++;
+          this.report.majorRamps++;
+          cut = true;
+          break;
+        }
+      }
+      if (!cut) {
+        // Nothing left that a dry corridor can reach: islands, or faces no
+        // legal grade climbs. Recorded once, at the point we stop trying, so
+        // the count is regions-abandoned and not attempts-made.
+        this.report.majorSkipped = order.length;
+        return;
+      }
+      this.computeDerived();
+    }
+  }
+
+  /**
+   * Demote every tiny unreachable region to scenery.
+   *
+   * A 6-cell ledge the carver deliberately skipped is not a bug; a 6-cell ledge
+   * still flagged PASSABLE is, because the pathfinder will happily accept it as
+   * the destination of a move order that can never complete, and the AI will
+   * re-issue that order forever. Clearing the ground bits makes it what it
+   * actually is: terrain you look at.
+   *
+   * Regions at or above `TERRAIN_PRUNE_REGION_CELLS` are left alone — those are
+   * real mesas and islands, and a hover or a transport may legitimately want
+   * them. The hover bit is never cleared for the same reason: a hovercraft that
+   * can cross the water to a ledge is not stranded on it.
+   */
+  private prunePockets(): void {
+    const sizes: number[] = [];
+    const regions = this.labelRegions(sizes);
+    if (regions <= 1) return;
+    let main = 1;
+    for (let k = 2; k <= regions; k++) if (sizes[k] > sizes[main]) main = k;
+
+    let pruned = 0;
+    for (let i = 0; i < MAP_CELL_COUNT; i++) {
+      const r = this.regionId[i];
+      if (r === 0 || r === main) continue;
+      if (sizes[r] >= TERRAIN_PRUNE_REGION_CELLS) continue;
+      // Never inside a guarantee: a hole in the base area is the bug, not the
+      // fix. If one survives to here it is reported by `enforceStartAreas`.
+      if (this.startMask[i] !== 0) continue;
+      this.passGrid[i] &= ~PASS_GROUND;
+      this.costGrid[i] = COST_BLOCKED;
+      this.buildGrid[i] = 0;
+      pruned++;
+    }
+    this.report.pruned = pruned;
+  }
+
+  /** One line at boot, but only when the guarantee actually cost something. */
+  private logStartAreas(): void {
+    const r = this.report;
+    if (r.stranded > 0) {
+      console.warn(
+        `[terrain] START GUARANTEE UNMET — ${r.stranded} guarded cell(s) still cut off ` +
+        `(seed ${this.seed}, biome ${this.biomeDef.key})`,
+      );
+      return;
+    }
+    if (r.startRamps === 0 && r.forcedRamps === 0 && r.filled === 0 && r.majorRamps === 0) return;
+    console.info(
+      `[terrain] start areas: ${r.areas} reserved, ${r.startRamps} link ramp(s), ` +
+      `${r.forcedRamps} forced corridor(s), ${r.filled} pocket(s) filled, ` +
+      `${r.majorRamps} plateau corridor(s), ${r.pruned} cell(s) demoted to scenery`,
+    );
   }
 
   /**
@@ -678,9 +1267,145 @@ export class Terrain implements ITerrain {
 
     if (bestA < 0 || bestB < 0) return false;
 
-    this.carveRamp(
+    return this.carveRamp(
       ((bestB % MAP_CELLS) + 0.5) * CELL, (((bestB / MAP_CELLS) | 0) + 0.5) * CELL,
       ((bestA % MAP_CELLS) + 0.5) * CELL, (((bestA / MAP_CELLS) | 0) + 0.5) * CELL,
+      false,
+    );
+  }
+
+  /**
+   * The escalation link: find the genuinely shortest hop between two regions
+   * anywhere on the map and cut it with the length cap lifted.
+   *
+   * `linkRegion`'s windowed scan is O(cells x range^2) and so has to stay
+   * bounded; this is a single multi-source BFS seeded from every cell of `to`,
+   * which is O(cells) and finds the true nearest pair. The start-area
+   * guarantee reaches it because "the corridor is 90 m long and shows" beats
+   * "the player's army cannot move".
+   *
+   * `dryOnly` refuses to expand through water. The major-region pass sets it so
+   * a stranded ISLAND is reported unreachable instead of being joined to the
+   * mainland by a causeway — `carveRamp` interpolates height along the corridor
+   * and would happily raise a lake bed into a land bridge, which is a far worse
+   * map than the one it set out to repair. The start guarantee leaves it off:
+   * there, a causeway is still better than an army that cannot move, and
+   * `fillRegion` is waiting behind it either way.
+   */
+  private linkRegionForced(from: number, to: number, dryOnly = false): boolean {
+    const id = this.regionId;
+    const dist = this.bfsDist;
+    const src = this.bfsFrom;
+    const q = this.bfsQueue;
+    const water = this.waterGrid;
+
+    dist.fill(-1);
+    let tail = 0;
+    for (let i = 0; i < MAP_CELL_COUNT; i++) {
+      if (id[i] !== to) continue;
+      dist[i] = 0;
+      src[i] = i;
+      q[tail++] = i;
+    }
+    if (tail === 0) return false;
+
+    let found = -1;
+    for (let head = 0; head < tail; head++) {
+      const c = q[head];
+      if (id[c] === from) { found = c; break; }
+      const cx = c % MAP_CELLS;
+      const cz = (c / MAP_CELLS) | 0;
+      const d = dist[c] + 1;
+      const from0 = src[c];
+      // Inlined four ways rather than through a helper: the helper would have
+      // to close over `c` and `d` and so be reallocated for every one of the
+      // ~16k nodes this walks.
+      let n = 0;
+      if (cx > 0) {
+        n = c - 1;
+        if (dist[n] < 0) {
+          dist[n] = d; src[n] = from0;
+          // A wet cell is marked visited but never expanded, so a dry-only
+          // search cannot route through it. Marking rather than skipping stops
+          // the frontier re-testing it from every neighbour.
+          if (!dryOnly || water[n] === 0) q[tail++] = n;
+        }
+      }
+      if (cx < MAP_CELLS - 1) {
+        n = c + 1;
+        if (dist[n] < 0) {
+          dist[n] = d; src[n] = from0;
+          if (!dryOnly || water[n] === 0) q[tail++] = n;
+        }
+      }
+      if (cz > 0) {
+        n = c - MAP_CELLS;
+        if (dist[n] < 0) {
+          dist[n] = d; src[n] = from0;
+          if (!dryOnly || water[n] === 0) q[tail++] = n;
+        }
+      }
+      if (cz < MAP_CELLS - 1) {
+        n = c + MAP_CELLS;
+        if (dist[n] < 0) {
+          dist[n] = d; src[n] = from0;
+          if (!dryOnly || water[n] === 0) q[tail++] = n;
+        }
+      }
+    }
+    if (found < 0) return false;
+
+    const anchor = src[found];
+    return this.carveRamp(
+      ((anchor % MAP_CELLS) + 0.5) * CELL, (((anchor / MAP_CELLS) | 0) + 0.5) * CELL,
+      ((found % MAP_CELLS) + 0.5) * CELL, (((found / MAP_CELLS) | 0) + 0.5) * CELL,
+      true,
+    );
+  }
+
+  /**
+   * Last resort: raise a pocket until it is no longer a pocket.
+   *
+   * Reached only when no corridor at any grade can join a stranded start region
+   * to the map — a pit whose rim is higher than the ramp budget can climb, or
+   * one hemmed in on every side. Filling it to the rim (and grading the
+   * surround with the same cone the start shelf uses, so the fill ties in
+   * rather than leaving a mesa) removes the trap entirely. Losing 20 cells of
+   * relief costs the map nothing; leaving a hole an army falls into costs the
+   * match.
+   */
+  private fillRegion(region: number): boolean {
+    const id = this.regionId;
+    let minX = MAP_CELLS;
+    let maxX = -1;
+    let minZ = MAP_CELLS;
+    let maxZ = -1;
+    let rim = -Infinity;
+    let cells = 0;
+
+    for (let i = 0; i < MAP_CELL_COUNT; i++) {
+      if (id[i] !== region) continue;
+      const cx = i % MAP_CELLS;
+      const cz = (i / MAP_CELLS) | 0;
+      cells++;
+      if (cx < minX) minX = cx;
+      if (cx > maxX) maxX = cx;
+      if (cz < minZ) minZ = cz;
+      if (cz > maxZ) maxZ = cz;
+      if (cx > 0 && id[i - 1] !== region) rim = Math.max(rim, this.cellHeight[i - 1]);
+      if (cx < MAP_CELLS - 1 && id[i + 1] !== region) rim = Math.max(rim, this.cellHeight[i + 1]);
+      if (cz > 0 && id[i - MAP_CELLS] !== region) rim = Math.max(rim, this.cellHeight[i - MAP_CELLS]);
+      if (cz < MAP_CELLS - 1 && id[i + MAP_CELLS] !== region) rim = Math.max(rim, this.cellHeight[i + MAP_CELLS]);
+    }
+    if (cells === 0 || rim === -Infinity) return false;
+
+    const cxm = (minX + maxX + 1) * 0.5 * CELL;
+    const czm = (minZ + maxZ + 1) * 0.5 * CELL;
+    const core = Math.max(CELL, Math.max(maxX - minX + 1, maxZ - minZ + 1) * 0.5 * CELL + CELL);
+    this.flattenDisc(
+      cxm, czm, core,
+      clamp(rim, WATER_LEVEL + TERRAIN_START_DRY_MARGIN, TERRAIN_MAX_HEIGHT),
+      0, TERRAIN_START_SWELL * 0.5,
     );
     return true;
   }
@@ -690,8 +1415,17 @@ export class Terrain implements ITerrain {
    * to (bx,bz) on the stranded one. The corridor is lengthened until its grade
    * is under `TERRAIN_RAMP_MAX_GRADE`, which is under ROUGH_SLOPE, so the
    * result is passable but still costs a vehicle time to climb.
+   *
+   * `force` lifts the length cap. Only the start-area guarantee sets it: the
+   * cap exists so the carver does not bulldoze the map for a ledge nobody
+   * needed, and that trade stops applying the moment the ledge is a spawn.
+   *
+   * Returns whether the heightfield was actually modified. The callers count
+   * ramps and decide whether to escalate on that answer, so "I declined" and
+   * "I cut it" must not look the same — that is how a rescue pass ends up
+   * looping six times over a pocket it never touched.
    */
-  private carveRamp(ax: number, az: number, bx: number, bz: number): void {
+  private carveRamp(ax: number, az: number, bx: number, bz: number, force: boolean): boolean {
     let dx = bx - ax;
     let dz = bz - az;
     let len = Math.sqrt(dx * dx + dz * dz);
@@ -717,8 +1451,9 @@ export class Terrain implements ITerrain {
       const l = Math.sqrt((x1 - x0) * (x1 - x0) + (z1 - z0) * (z1 - z0));
       const need = Math.abs(h1 - h0) / TERRAIN_RAMP_MAX_GRADE;
       // Too tall to bridge at a legal grade inside the length budget. Abandon
-      // rather than flatten half a plateau to get there.
-      if (need > TERRAIN_RAMP_MAX_LENGTH) return;
+      // rather than flatten half a plateau to get there — unless the far end is
+      // a start area, in which case half a plateau is the cheaper loss.
+      if (need > (force ? MAP_SIZE : TERRAIN_RAMP_MAX_LENGTH)) return false;
       if (l >= need) break;
       const extra = (need - l) * 0.5;
       x0 -= ux * extra; z0 -= uz * extra;
@@ -732,10 +1467,15 @@ export class Terrain implements ITerrain {
     const rx = x1 - x0;
     const rz = z1 - z0;
     const rl = Math.sqrt(rx * rx + rz * rz);
-    if (rl < 1e-3) return;
+    if (rl < 1e-3) return false;
     const invRl2 = 1 / (rl * rl);
+    let cut = false;
 
-    const hw = TERRAIN_RAMP_HALF_WIDTH;
+    // A forced corridor is widened so that whole CELLS land inside its flat
+    // core. `cellSlope` is the max over the cell, so a corridor narrower than
+    // the cell grid can be cut perfectly and still classify as cliff.
+    const hw = force ? TERRAIN_RAMP_FORCED_HALF_WIDTH : TERRAIN_RAMP_HALF_WIDTH;
+    const core = force ? TERRAIN_RAMP_FORCED_CORE_WIDTH : TERRAIN_RAMP_CORE_WIDTH;
     const gxLo = Math.max(0, Math.floor((Math.min(x0, x1) - hw) * INV_GRID));
     const gxHi = Math.min(GRID_N, Math.ceil((Math.max(x0, x1) + hw) * INV_GRID));
     const gzLo = Math.max(0, Math.floor((Math.min(z0, z1) - hw) * INV_GRID));
@@ -756,9 +1496,10 @@ export class Terrain implements ITerrain {
 
         // 1 inside the flat core, feathering to 0 at the corridor edge so the
         // cut ties into the plateau instead of leaving a floating shelf.
-        const w = smoothstep(hw, TERRAIN_RAMP_CORE_WIDTH, d);
+        const w = smoothstep(hw, core, d);
         const i = gz * GRID_STRIDE + gx;
         this.height[i] = clamp(lerp(this.height[i], h0 + (h1 - h0) * t, w), 0, TERRAIN_MAX_HEIGHT);
+        cut = true;
 
         // Only the flat core of the corridor reads as a worn dirt track; the
         // feathered edges keep whatever surface they had.
@@ -769,6 +1510,7 @@ export class Terrain implements ITerrain {
         }
       }
     }
+    return cut;
   }
 
   /* ======================================================================

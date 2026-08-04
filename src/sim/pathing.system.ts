@@ -24,7 +24,9 @@
  *     imports Flowfield.ts.
  *  2. `setActiveNav` — the module-level accessor for the two callers that need
  *     the MoveClass-aware surface `INav` cannot express.
- *  3. Debug counters: `nav.fields`, `nav.ready`, `nav.cells`, `move.moving`.
+ *  3. Debug counters: `nav.fields`, `nav.ready`, `nav.cells`, `move.moving`,
+ *     plus the connectivity health trio `navUnreachable`, `navRescues` and
+ *     `navUnreachableOrders` — all three must stay at 0 on a healthy map.
  *  4. `__VM.hooks` is untouched; the probe lives on `globalThis.__vmNav` so a
  *     screenshot harness or a console session can inspect a field without a
  *     build flag.
@@ -95,6 +97,17 @@ const movementSystem: SystemModule = {
       c.navReady = nav.stats.ready;
       c.navCells = nav.stats.cellsThisTick;
       c.navPending = nav.stats.pending;
+      // Orders whose goal sat in a region the unit could not reach. Steady
+      // growth here means the map is fragmenting, not that a player misclicked.
+      c.navUnreachable = nav.stats.unreachable;
+    }
+    if (assigner !== null) {
+      // Units lifted out of a pocket they could not leave. This is the
+      // reported bug's last line of defence, and a non-zero value means an
+      // earlier layer (terrain start guarantee, scenario placement) let one
+      // through — so it belongs on screen, not only in the console.
+      c.navRescues = assigner.rescues;
+      c.navUnreachableOrders = assigner.unreachableOrders;
     }
     if (steering !== null) c.moving = steering.moving;
     if (movement !== null) c.relaxPushes = movement.relaxPushes;
@@ -143,6 +156,9 @@ export default defineSystem({
     debug.counters.navReady = 0;
     debug.counters.navCells = 0;
     debug.counters.navPending = 0;
+    debug.counters.navUnreachable = 0;
+    debug.counters.navRescues = 0;
+    debug.counters.navUnreachableOrders = 0;
     debug.counters.moving = 0;
     debug.counters.relaxPushes = 0;
 

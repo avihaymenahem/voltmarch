@@ -72,6 +72,10 @@ import {
   resolveContextOrder, setRoleResolver,
   type OrderResolution, type SelectionCapabilities,
 } from './Commands';
+import {
+  CAMERA_KEY_IDS, COMMAND_ACTION_IDS, defaultCameraCodes, defaultCommandChords,
+  type ActionChord,
+} from './ActionCatalogue';
 
 /* ==========================================================================
  * 1. MODULE STATE
@@ -380,9 +384,9 @@ function updateCamera(dt: number): void {
   const cfg = RENDER_CONFIG.camera;
   const d = Math.min(dt, 0.1);
 
-  const held = (id: CameraKeyId, arrow: string): boolean =>
+  const held = (id: string, arrow: string): boolean =>
     (arrow !== '' && input!.isKeyDown(arrow)) ||
-    (cameraKeys[id] !== '' && input!.isKeyDown(cameraKeys[id]));
+    (cameraKeys[id] !== undefined && cameraKeys[id] !== '' && input!.isKeyDown(cameraKeys[id]));
 
   let mx = 0;
   let mz = 0;
@@ -716,15 +720,17 @@ const handlers = {
 
     if (k.repeat) return false;
 
-    // Ctrl+A is "select the whole army" and shares its code with Attack Move,
-    // so it is resolved before the binding table (whose chords carry no Ctrl).
-    if (k.code === 'KeyA' && k.ctrl) {
-      selection.selectAllArmy();
-      refreshResolution();
-      return true;
-    }
-
     switch (actionFor(k)) {
+      // Ctrl+A shares its CODE with Attack Move and not its CHORD, so it needs
+      // no special case: `chordKey` includes the modifiers, `KeyA|100` and
+      // `KeyA|000` are different entries, and the row is rebindable like any
+      // other. It used to be resolved ahead of the table, which quietly made
+      // the Select All Army row on the options screen do nothing.
+      case 'sel.allArmy':
+        selection.selectAllArmy();
+        refreshResolution();
+        return true;
+
       case 'ord.attackMove':
         mode = caps.mobileCount > 0 ? CommandMode.AttackMove : CommandMode.None;
         return true;
@@ -791,63 +797,37 @@ const handlers = {
  * Options screen's Controls tab actually rebinds the game instead of merely
  * displaying the scheme. The shell publishes `window.__vmSettings`; this module
  * must not import it, because the shell is a lazily loaded chunk that a
- * `?shot=` boot never loads at all — so the table is duck-typed and falls back
- * to `DEFAULT_ACTION_CHORDS`, which IS the scheme this switch used to hard-code.
+ * `?shot=` boot never loads at all — so the table is duck-typed.
+ *
+ * THE DEFAULTS ARE NOT WRITTEN HERE ANY MORE.
+ * ------------------------------------------
+ * They come from `src/input/ActionCatalogue.ts`, which is also what the options
+ * screen and the help screen render. This file used to hold its own copy of the
+ * scheme and the settings store held a second one; the moment a third consumer
+ * (help) appeared, "three lists that agree today" stopped being good enough.
+ * The catalogue has no imports and no DOM, so a `?shot=` boot still pays for
+ * nothing but a small frozen table.
  * ========================================================================== */
 
-type ActionId =
-  | 'ord.attackMove' | 'ord.stop' | 'ord.guard' | 'ord.scatter'
-  | 'ord.forceAttack' | 'ord.rally' | 'ord.stance' | 'cam.home';
-
+/** A settings-store chord as it arrives over the duck-typed bridge. */
 interface BoundChord { code: string; ctrl: boolean; shift: boolean; alt: boolean }
 
-const DEFAULT_ACTION_CHORDS: Readonly<Record<ActionId, string>> = {
-  'ord.attackMove': 'KeyA',
-  'ord.stop': 'KeyS',
-  'ord.guard': 'KeyG',
-  'ord.scatter': 'KeyX',
-  'ord.forceAttack': 'KeyF',
-  'ord.rally': 'KeyY',
-  'ord.stance': 'KeyZ',
-  'cam.home': 'KeyH',
-};
+/** `id -> chord` for every dispatched action. Frozen at module load. */
+const DEFAULT_ACTION_CHORDS: Readonly<Record<string, ActionChord>> = defaultCommandChords();
 
-const ACTION_IDS = Object.keys(DEFAULT_ACTION_CHORDS) as ActionId[];
+/** `id -> code` for every polled camera key. `''` means the player cleared it. */
+const DEFAULT_CAMERA_KEYS: Readonly<Record<string, string>> = defaultCameraCodes();
 
-/**
- * The held camera keys. Separate from `ActionId` because these are POLLED every
- * frame rather than dispatched, so they resolve to a bare `KeyboardEvent.code`
- * and modifiers are irrelevant — you do not hold Ctrl to keep panning.
- *
- * The defaults mirror `KEYBINDS` in `src/shell/settings-store.ts`; the same
- * duck-typed fallback rule applies, because a `?shot=` boot never loads the
- * shell chunk and must still have a working camera.
- */
-type CameraKeyId =
-  | 'cam.panUp' | 'cam.panDown' | 'cam.panLeft' | 'cam.panRight'
-  | 'cam.rotateLeft' | 'cam.rotateRight';
-
-const DEFAULT_CAMERA_KEYS: Readonly<Record<CameraKeyId, string>> = {
-  'cam.panUp': 'ArrowUp',
-  'cam.panDown': 'ArrowDown',
-  'cam.panLeft': 'ArrowLeft',
-  'cam.panRight': 'ArrowRight',
-  'cam.rotateLeft': 'KeyQ',
-  'cam.rotateRight': 'KeyE',
-};
-
-const CAMERA_KEY_IDS = Object.keys(DEFAULT_CAMERA_KEYS) as CameraKeyId[];
-
-/** Live `CameraKeyId` -> code. `''` means the player cleared the binding. */
-let cameraKeys: Record<CameraKeyId, string> = { ...DEFAULT_CAMERA_KEYS };
+/** Live camera-key id -> code. */
+let cameraKeys: Record<string, string> = { ...DEFAULT_CAMERA_KEYS };
 
 interface SettingsBridge {
   get(): { controls?: { bindings?: Record<string, BoundChord> } };
   subscribe?(fn: () => void): () => void;
 }
 
-/** `code|ctrl|shift|alt` -> action. Rebuilt only when the store changes. */
-let chordToAction: Map<string, ActionId> = new Map();
+/** `code|ctrl|shift|alt` -> action id. Rebuilt only when the store changes. */
+let chordToAction: Map<string, string> = new Map();
 let unsubscribeSettings: (() => void) | null = null;
 
 function chordKey(code: string, ctrl: boolean, shift: boolean, alt: boolean): string {
@@ -862,19 +842,16 @@ function settingsBridge(): SettingsBridge | null {
 
 function rebuildBindings(): void {
   const bound = settingsBridge()?.get().controls?.bindings;
-  const next = new Map<string, ActionId>();
-  for (const id of ACTION_IDS) {
+  const next = new Map<string, string>();
+  for (const id of COMMAND_ACTION_IDS) {
     const c = bound?.[id];
-    next.set(
-      c !== undefined && typeof c.code === 'string' && c.code !== ''
-        ? chordKey(c.code, c.ctrl === true, c.shift === true, c.alt === true)
-        : chordKey(DEFAULT_ACTION_CHORDS[id], false, false, false),
-      id,
-    );
+    const live = c !== undefined && typeof c.code === 'string' ? c : DEFAULT_ACTION_CHORDS[id];
+    if (live === undefined || live.code === '') continue; // deliberately unbound
+    next.set(chordKey(live.code, live.ctrl === true, live.shift === true, live.alt === true), id);
   }
   chordToAction = next;
 
-  const cam = { ...DEFAULT_CAMERA_KEYS };
+  const cam: Record<string, string> = { ...DEFAULT_CAMERA_KEYS };
   for (const id of CAMERA_KEY_IDS) {
     const c = bound?.[id];
     // An explicitly cleared row is a real choice ('' = unbound); only a MISSING
@@ -898,7 +875,7 @@ function unbindSettings(): void {
   cameraKeys = { ...DEFAULT_CAMERA_KEYS };
 }
 
-function actionFor(k: KeyInfo): ActionId | undefined {
+function actionFor(k: KeyInfo): string | undefined {
   return chordToAction.get(chordKey(k.code, k.ctrl, k.shift, k.alt));
 }
 
