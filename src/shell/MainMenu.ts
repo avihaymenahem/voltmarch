@@ -29,10 +29,31 @@ import {
   type Screen,
   type Shell,
 } from './Shell';
+import { readProgression } from './progression-link';
 
 /* ==========================================================================
  * MAIN MENU
  * ========================================================================== */
+
+/**
+ * The hint under the Missions button: "3 / 20" earned.
+ *
+ * Empty string when there is no progression handle, which collapses the hint
+ * row rather than printing "0 / 0" — the `?shot=` harness and any build with
+ * `src/progression/**` removed get a plain button, not a broken counter.
+ */
+function missionsHint(): string {
+  const p = readProgression();
+  if (p === null) return '';
+  try {
+    const rows = p.catalogue().filter((m) => m.scope === 'profile');
+    if (rows.length === 0) return '';
+    const done = rows.reduce((n, m) => n + (m.progress.complete ? 1 : 0), 0);
+    return `${done} / ${rows.length}`;
+  } catch {
+    return '';
+  }
+}
 
 export class MainMenuScreen implements Screen {
   readonly id = 'menu';
@@ -74,6 +95,17 @@ export class MainMenuScreen implements Screen {
       iconName: 'swords',
       hint: 'vs AI',
       onClick: () => this.shell.openSetup(),
+    }));
+
+    // Directly under Skirmish, because the missions board is where a player
+    // finds out that a Prism Tank exists and what it costs them to get one.
+    // Buried under Options it would be a screen most players never open, and
+    // the whole progression layer would then be an invisible restriction
+    // instead of a visible reward.
+    nav.appendChild(button('Missions', {
+      iconName: 'trophy',
+      hint: missionsHint(),
+      onClick: () => this.shell.openMissions('menu'),
     }));
 
     nav.appendChild(button('Load Game', {

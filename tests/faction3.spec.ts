@@ -89,8 +89,16 @@ describe('the Meridian Pact — content', () => {
   });
 
   it('appends its armoury without disturbing the sim table', () => {
-    expect(WEAPONS.length).toBe(DEFAULT_WEAPONS.length + MERIDIAN_WEAPONS.length);
+    // The Pact's rows occupy the slice immediately after the sim's table. A
+    // fourth faction appends AFTER them, so the length is >= rather than ==;
+    // what must not move is where the Meridian block starts.
+    expect(WEAPONS.length).toBeGreaterThanOrEqual(
+      DEFAULT_WEAPONS.length + MERIDIAN_WEAPONS.length);
     for (let i = 0; i < DEFAULT_WEAPONS.length; i++) expect(WEAPONS[i]).toBe(DEFAULT_WEAPONS[i]);
+    for (let i = 0; i < MERIDIAN_WEAPONS.length; i++) {
+      expect(WEAPONS[DEFAULT_WEAPONS.length + i], `meridian weapon ${i}`)
+        .toBe(MERIDIAN_WEAPONS[i]);
+    }
     for (const u of mrdUnits) {
       for (const i of u.weapons) {
         // Every Pact gun must be one of the APPENDED rows — a Pact unit firing

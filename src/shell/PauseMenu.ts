@@ -2,8 +2,9 @@
  * ============================================================================
  * src/shell/PauseMenu.ts — Escape, mid-match
  * ============================================================================
- * Four choices and a status line. Deliberately the smallest screen in the
- * product: a pause menu is a thing you pass through, and every extra control
+ * A status line, the current objectives, and the shortest list of choices that
+ * still covers what a paused player wants. Deliberately the smallest screen in
+ * the product: a pause menu is a thing you pass through, and every extra control
  * on it is a control the player has to read before getting back to the match.
  *
  * The sim is already stopped by the time this mounts — `Shell.pause()` calls
@@ -18,25 +19,35 @@
  * position is not a feature. A player who wants the same battle types the seed
  * into the lobby, where it is explicit.
  *
- * HELP IS AN OVERLAY, NOT A FIFTH SHELL STATE
- * -------------------------------------------
- * `Controls` mounts `HelpPanel` into this screen's own layer and HIDES the
- * pause panel behind it. Two reasons that beats adding a `ShellState`:
+ * OVERLAYS, NOT EXTRA SHELL STATES
+ * --------------------------------
+ * Both Help and Missions mount into this screen's own layer and HIDE the pause
+ * card behind them. Two reasons that beats adding a `ShellState` for each:
  *
  *   - the shell's `FocusRing` skips anything with no layout box, so hiding the
- *     pause panel takes its four buttons out of the ring for free and keyboard
- *     navigation lands inside Help without either side enumerating the other;
- *   - Escape then has exactly one meaning per layer — close Help, or resume —
- *     resolved by `onBack` here rather than by a state machine transition.
+ *     pause card takes its buttons out of the ring for free and keyboard
+ *     navigation lands inside the overlay without either side enumerating the
+ *     other;
+ *   - Escape then has exactly one meaning per layer — close the overlay, or
+ *     resume — resolved by `onBack` here rather than by a state transition.
  *
- * The sixth button on a pause menu is a real cost (see the note above about
- * every control being one more thing to read), so Help is worth it only because
- * "what does X do again" is the question a paused player actually has.
+ * Both overlays satisfy the same three-member shape (`root`, `dispose`,
+ * `onKeyDown`), so this file holds one overlay slot rather than one field per
+ * panel, and a third panel is a button and nothing else.
+ *
+ * WHY THE OBJECTIVES ARE REPEATED HERE
+ * ------------------------------------
+ * They are already on the HUD. But `Shell.pause()` HIDES the HUD, and "what was
+ * I supposed to be doing" is — with "what does this key do again" — one of the
+ * two questions a paused player actually has. Reading it costs one line each and
+ * the block is absent entirely when nothing is active.
  * ============================================================================
  */
 
 import { HelpPanel } from './Help';
+import { MissionsPanel } from './Missions';
 import { DIFFICULTIES, SPEEDS, mapById } from './settings-store';
+import { readProgression, type ActiveObjective } from '../ui/Objectives';
 import {
   button,
   el,
@@ -57,15 +68,46 @@ export function formatClock(seconds: number): string {
   return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${m}:${pad(sec)}`;
 }
 
+/** The three members this screen needs from a hosted panel. */
+interface Overlay {
+  readonly root: HTMLElement;
+  dispose(): void;
+  onKeyDown(e: KeyboardEvent): boolean;
+}
+
+/**
+ * The objectives active right now, or an empty list.
+ *
+ * Exported because the end screen wants the same read and the same total
+ * absence of assumptions about the progression module being present.
+ */
+export function currentObjectives(): readonly ActiveObjective[] {
+  const p = readProgression();
+  if (p === null) return [];
+  try {
+    return p.activeObjectives();
+  } catch {
+    return [];
+  }
+}
+
+/** `12 / 25`, or a tick word once complete. */
+export function objectiveLine(o: ActiveObjective): string {
+  if (o.progress.complete) return 'Complete';
+  if (o.progress.target <= 1) return 'Pending';
+  const value = Math.max(0, Math.min(o.progress.target, Math.floor(o.progress.value)));
+  return `${value} / ${o.progress.target}`;
+}
+
 export class PauseMenuScreen implements Screen {
   readonly id = 'paused';
   private host: HTMLElement | null = null;
   private clock: HTMLElement | null = null;
   private timer = 0;
 
-  /** The pause panel itself, hidden while Help is up. */
+  /** The pause panel itself, hidden while an overlay is up. */
   private card: HTMLElement | null = null;
-  private help: HelpPanel | null = null;
+  private overlay: Overlay | null = null;
 
   constructor(private readonly shell: Shell) {}
 
@@ -96,6 +138,9 @@ export class PauseMenuScreen implements Screen {
     stats.appendChild(el('span', undefined, `${DIFFICULTIES[setup.difficulty]} · ${SPEEDS[setup.speed].toFixed(1)}×`));
     p.appendChild(stats);
 
+    const objectives = this.buildObjectives();
+    if (objectives !== null) p.appendChild(objectives);
+
     const nav = el('nav', 'vm-pause-nav');
     nav.setAttribute('aria-label', 'Pause menu');
     nav.appendChild(button('Resume', {
@@ -103,6 +148,10 @@ export class PauseMenuScreen implements Screen {
       variant: 'primary',
       hint: 'Esc',
       onClick: () => this.shell.resume(),
+    }));
+    nav.appendChild(button('Missions', {
+      iconName: 'trophy',
+      onClick: () => this.openMissions(),
     }));
     nav.appendChild(button('Controls', {
       iconName: 'keyboard',
@@ -136,63 +185,102 @@ export class PauseMenuScreen implements Screen {
     window.clearInterval(this.timer);
     this.timer = 0;
     this.clock = null;
-    this.closeHelp();
+    this.closeOverlay();
     this.card = null;
     this.host?.classList.remove('vm-pause', 'is-modal');
     this.host = null;
   }
 
   onBack(): boolean {
-    if (this.help !== null) {
-      this.closeHelp();
+    if (this.overlay !== null) {
+      this.closeOverlay();
       return true;
     }
     this.shell.resume();
     return true;
   }
 
-  /** Help claims Page Up / Page Down / Home / End while it is open. */
+  /** An open overlay claims Page Up / Page Down / Home / End. */
   onKeyDown(e: KeyboardEvent): boolean {
-    return this.help !== null && this.help.onKeyDown(e);
+    return this.overlay !== null && this.overlay.onKeyDown(e);
   }
 
   /* -------------------------------------------------------------------- */
 
+  /**
+   * The objectives block, or null when there is nothing to show.
+   *
+   * A snapshot, not a subscription: the simulation is frozen behind this panel,
+   * so nothing can advance while it is open, and a live binding here would be a
+   * listener that exists solely to never fire.
+   */
+  private buildObjectives(): HTMLElement | null {
+    const active = currentObjectives();
+    if (active.length === 0) return null;
+
+    const wrap = el('div', 'vm-pause-obj');
+    wrap.appendChild(el('p', 'vm-subtitle', 'Objectives'));
+
+    // Same cap as the HUD panel, and for the same reason.
+    const shown = active.slice(0, 4);
+    for (const o of shown) {
+      const row = el('div', `vm-pause-obj-row${o.progress.complete ? ' is-done' : ''}`);
+      const name = el('span', 'vm-pause-obj-name', o.title);
+      name.title = o.description;
+      row.appendChild(name);
+      row.appendChild(el('span', 'vm-pause-obj-value vm-num', objectiveLine(o)));
+      wrap.appendChild(row);
+    }
+    if (active.length > shown.length) {
+      wrap.appendChild(el('div', 'vm-pause-obj-more', `+${active.length - shown.length} more`));
+    }
+    return wrap;
+  }
+
   private openHelp(): void {
-    const host = this.host;
-    if (host === null || this.help !== null) return;
-
-    // The pause card is hidden rather than removed: `FocusRing.refresh` drops
-    // anything with no layout box, so this is also what moves the keyboard into
-    // Help without either screen enumerating the other's controls.
-    if (this.card !== null) this.card.hidden = true;
-
-    const help = new HelpPanel({
+    this.openOverlay(new HelpPanel({
       settings: this.shell.settings,
-      onClose: () => this.closeHelp(),
+      onClose: () => this.closeOverlay(),
       // Straight to the rebind rows. Leaving the options screen returns to a
       // fresh pause menu, so Help closes behind it rather than being restored
       // over a screen that no longer exists.
       onRebind: () => {
-        this.closeHelp();
+        this.closeOverlay();
         this.shell.openSettings('paused');
       },
-    });
-    this.help = help;
-    host.appendChild(help.root);
+    }));
+  }
+
+  private openMissions(): void {
+    this.openOverlay(new MissionsPanel({ onClose: () => this.closeOverlay() }));
+  }
+
+  private openOverlay(next: Overlay): void {
+    const host = this.host;
+    if (host === null) return;
+    this.closeOverlay();
+
+    // The pause card is hidden rather than removed: `FocusRing.refresh` drops
+    // anything with no layout box, so this is also what moves the keyboard into
+    // the overlay without either screen enumerating the other's controls.
+    if (this.card !== null) this.card.hidden = true;
+
+    this.overlay = next;
+    host.appendChild(next.root);
     // The shell refreshes the ring on its own schedule; focusing the first
-    // control of the new layer on the next frame is what makes Help keyboard-
+    // control of the new layer on the next frame is what makes it keyboard-
     // reachable the instant it opens.
     requestAnimationFrame(() => {
-      help.root.querySelector<HTMLElement>('[data-vm-focus]')?.focus();
+      next.root.querySelector<HTMLElement>('[data-vm-focus]')?.focus();
     });
   }
 
-  private closeHelp(): void {
-    if (this.help === null) return;
-    this.help.dispose();
-    this.help.root.remove();
-    this.help = null;
+  private closeOverlay(): void {
+    const open = this.overlay;
+    if (open === null) return;
+    open.dispose();
+    open.root.remove();
+    this.overlay = null;
     if (this.card !== null) this.card.hidden = false;
   }
 }

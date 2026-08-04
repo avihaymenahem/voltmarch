@@ -88,11 +88,11 @@ describe('content vocabulary', () => {
     const armed = BUILDINGS.filter((b) => b.weapons.length > 0).map((b) => b.key).sort();
     expect(armed).toEqual([
       'aaTurret', 'flameTower', 'mrdGlaive', 'mrdHelios', 'pillbox', 'prismTower',
-      'sentryGun', 'teslaCoil',
+      'rclPylon', 'rclSpitpost', 'sentryGun', 'teslaCoil',
     ]);
     // Walls are never armed, in any army. A wall with a gun is a defence that
     // costs 100 credits and the placement rules of fencing.
-    for (const key of ['wall', 'mrdRampart']) {
+    for (const key of ['wall', 'mrdRampart', 'rclBarricade']) {
       const b = BUILDINGS[DEF_TABLES.buildingByKey.get(key)!];
       expect(b.weapons.length, `${key} must be unarmed`).toBe(0);
     }

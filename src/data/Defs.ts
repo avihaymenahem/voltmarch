@@ -75,6 +75,12 @@ import type {
   BuildingDef, DefTables, FactionDef, FactionLook, UnitDef, WeaponDef,
 } from '../core/types';
 import { DEFAULT_WEAPONS, weaponIndexOf } from '../sim/Combat';
+// The mission table is the ONLY authority on which unlock ids exist. Importing
+// it here (rather than restating the ids) is what makes a typo in UNLOCK_TAGS a
+// load-time error instead of a permanently unbuildable unit. The edge is one
+// way and cycle-free: Missions.ts imports core/types and progression/types and
+// nothing else.
+import { MISSION_UNLOCK_IDS } from './Missions';
 
 /* ==========================================================================
  * 0. THE ARMOURY
@@ -196,10 +202,101 @@ export const MERIDIAN_WEAPONS: readonly WeaponDef[] = [
 ];
 
 /**
- * The live armoury: the sim's table verbatim, then the Pact's. The prefix
- * property is ASSERTED in §5, not assumed.
+ * THE RECLAMATION ID. `Faction.Reclaim = 4` in `core/types.ts`; aliased here so
+ * the four faction constants read the same way at every use site.
  */
-export const WEAPONS: readonly WeaponDef[] = [...DEFAULT_WEAPONS, ...MERIDIAN_WEAPONS];
+export const FACTION_RECLAIM = Faction.Reclaim;
+
+/**
+ * THE RECLAMATION ARMOURY. Appended after the Pact's, never interleaved.
+ *
+ * ONE IDEA, EIGHT ROWS: **every gun the Reclamation fields is an arc**, and
+ * every arc CHAINS. `WarheadClass.Tesla` was a single Soviet defensive coil;
+ * here it is the whole army, and reading it against `ARMOR_MATRIX` is reading
+ * the faction:
+ *
+ *   Tesla   [1.60 infantry, 0.95 light, 0.85 medium, 0.90 heavy, 0.60 concrete]
+ *
+ * 1.60 against flesh with `chainCount` on top means a Reclamation line deletes
+ * massed infantry — the Soviet conscript wave and the Pact's Wayfarer screen
+ * both evaporate. 0.60 against Concrete means it cannot take a base apart: the
+ * whole army's answer to a structure is ONE siege hull (`slagMortar`) and one
+ * satchel infantryman (`slagCharge`), and if those die the Reclamation can
+ * stand in an enemy base doing almost nothing.
+ *
+ * THE SECOND HALF OF THE TRADE IS RANGE. Every arc row is 14-20 m where the
+ * equivalent Allied/Soviet/Pact gun is 22-26. `sim/Combat.ts` gives a
+ * turretless shooter a 14-degree `hullArcDeg` firing cone against a turret's
+ * 5-degree `aimToleranceDeg`, and NOTHING in this army has a turret — so a
+ * Reclamation hull has to point its whole chassis at what it wants to kill,
+ * from inside a range band where everyone else is already shooting it.
+ *
+ * DELIBERATELY NOT `needsPower`. The Soviet coil and both Pact beams stop in a
+ * brownout; these do not. The Reclamation pays for its guns in reach and in
+ * facing, not in grid — and its Arc Pylon draws 90, the heaviest single load in
+ * the game, so it browns out its OWN base instead.
+ */
+export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
+  /* 28 */ wpn('arcProd', 'Arc Prod', 26, WarheadClass.Tesla, 14, 1.05,
+    ProjectileKind.TeslaBolt, 0,
+    { chainCount: 1, turretTurnRate: 320,
+      muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
+
+  /* 29 */ wpn('slagCharge', 'Slag Charge', 74, WarheadClass.HighExplosive, 12, 2.7,
+    ProjectileKind.Shell, 38,
+    { splashRadius: 2.6, splashFalloff: 0.30, turretTurnRate: 240,
+      muzzleFx: FxKind.MuzzleFlashMedium, travelFx: FxKind.TracerCannon, impactFx: FxKind.ExplosionSmall }),
+
+  /* 30 */ wpn('spitCoil', 'Spit Coil', 30, WarheadClass.Tesla, 16, 0.95,
+    ProjectileKind.TeslaBolt, 0,
+    { chainCount: 1, turretTurnRate: 260,
+      muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
+
+  /* 31 */ wpn('grinderArc', 'Grinder Arc', 70, WarheadClass.Tesla, 18, 1.9,
+    ProjectileKind.TeslaBolt, 0,
+    { chainCount: 2, turretTurnRate: 120,
+      muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
+
+  /* 32 */ wpn('slagMortar', 'Slag Mortar', 124, WarheadClass.HighExplosive, 42, 4.3,
+    ProjectileKind.Shell, 44,
+    { minRange: 11, splashRadius: 5.8, splashFalloff: 0.22, turretTurnRate: 45,
+      requiresStop: true, canTargetInfantry: true,
+      muzzleFx: FxKind.MuzzleFlashLarge, travelFx: FxKind.RocketTrail, impactFx: FxKind.ExplosionLarge }),
+
+  /* 33 */ wpn('hornetArc', 'Hornet Arc', 44, WarheadClass.Tesla, 17, 1.5,
+    ProjectileKind.TeslaBolt, 0,
+    { chainCount: 2, turretTurnRate: 300,
+      muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
+
+  /* 34 */ wpn('scowGun', 'Scow Gun', 68, WarheadClass.HighExplosive, 32, 2.3,
+    ProjectileKind.Shell, 74,
+    { splashRadius: 3.2, splashFalloff: 0.25, turretTurnRate: 75,
+      muzzleFx: FxKind.MuzzleFlashLarge, travelFx: FxKind.TracerCannon, impactFx: FxKind.ExplosionSmall }),
+
+  /* 35 */ wpn('hulkBattery', 'Hulk Battery', 116, WarheadClass.HighExplosive, 38, 3.6,
+    ProjectileKind.Shell, 70,
+    { burstCount: 2, burstDelay: 0.30, splashRadius: 4.4, splashFalloff: 0.25,
+      turretTurnRate: 50, muzzleParts: MUZZLE_PAIR,
+      muzzleFx: FxKind.MuzzleFlashLarge, travelFx: FxKind.TracerCannon, impactFx: FxKind.ExplosionMedium }),
+
+  /* 36 */ wpn('postCoil', 'Post Coil', 34, WarheadClass.Tesla, 20, 0.85,
+    ProjectileKind.TeslaBolt, 0,
+    { chainCount: 1, turretTurnRate: 300,
+      muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
+
+  /* 37 */ wpn('pylonArc', 'Pylon Arc', 94, WarheadClass.Tesla, 28, 2.2,
+    ProjectileKind.TeslaBolt, 0,
+    { chainCount: 3, turretTurnRate: 360,
+      muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
+];
+
+/**
+ * The live armoury: the sim's table verbatim, then the Pact's, then the
+ * Reclamation's. The prefix property is ASSERTED in §5, not assumed.
+ */
+export const WEAPONS: readonly WeaponDef[] = [
+  ...DEFAULT_WEAPONS, ...MERIDIAN_WEAPONS, ...RECLAIM_WEAPONS,
+];
 
 const WEAPON_INDEX: ReadonlyMap<string, number> = (() => {
   const m = new Map<string, number>();
@@ -252,6 +349,8 @@ interface UnitSpec {
   prereqs: readonly string[];
   sortOrder: number;
   model: string;
+  /** Progression gate. See `UNLOCK_TAGS` below; omitted means day-one. */
+  unlockedBy?: string;
   maxHp: number;
   armor: ArmorClass;
   maxSpeed: number;
@@ -284,9 +383,101 @@ interface UnitSpec {
   flags?: number;
 }
 
+/* ==========================================================================
+ * THE PROGRESSION TAGS
+ *
+ * ONE TABLE, not thirty scattered fields. Every row below is a def `key` ->
+ * an id from `UNLOCKS` in `src/data/Missions.ts`; `unit()` and `building()`
+ * stamp it onto the def, `BuildEntry` carries it into the sim, and
+ * `UnlockGate.allows()` turns it into a buildable/not-buildable answer.
+ *
+ * ANYTHING NOT LISTED HERE IS AVAILABLE IN THE VERY FIRST MATCH. That is the
+ * design's central rule and the reason the table is an allow-list of gates
+ * rather than a column on every row: a forgotten entry here costs a player
+ * nothing, whereas a forgotten `unlockedBy: undefined` on an inverted default
+ * would lock a unit forever and read exactly like a balance decision.
+ *
+ * WHAT EVERY FACTION KEEPS ON A FRESH PROFILE
+ * -------------------------------------------
+ * Construction yard, power, refinery, barracks, war factory, radar, silo,
+ * wall, ONE cheap defence, line infantry, an engineer, a harvester and a main
+ * battle tank. That is a complete economy, a complete base and a complete
+ * army — `tests/progression-gate.spec.ts` asserts it per faction rather than
+ * trusting this comment.
+ *
+ * WHAT IT DOES NOT KEEP: the whole naval arm (no map forces water), the tech
+ * building and everything hanging off it, the fast-harass sidegrade, the
+ * tier-3 specialist, aircraft, and the expensive defences. Every one of those
+ * is a widening of the army, never a repair of a hole in it.
+ *
+ * THE FOUR GROUPS ARE MIRRORED ACROSS ALL FOUR FACTIONS on purpose: one
+ * mission grants "unit.raider" and every army gets its raider, so a player who
+ * switches faction is never sent back to the start of the curve.
+ * ========================================================================== */
+
+export const UNLOCK_TAGS: Readonly<Record<string, string>> = {
+  /* -- unit.raider: the fast-harass sidegrade ----------------------------- */
+  ifv: 'unit.raider',
+  attackDog: 'unit.raider',
+  mrdSkiff: 'unit.raider',
+  rclSpitter: 'unit.raider',
+
+  /* -- unit.specialist: the tier-3 answer --------------------------------- */
+  prismTank: 'unit.specialist',
+  apocalypse: 'unit.specialist',
+  mrdZenith: 'unit.specialist',
+  rclSlaghurler: 'unit.specialist',
+
+  /* -- unit.naval: escort hulls ------------------------------------------- */
+  transport: 'unit.naval',
+  gunboat: 'unit.naval',
+  submarine: 'unit.naval',
+  mrdCorvette: 'unit.naval',
+  rclScow: 'unit.naval',
+
+  /* -- unit.naval.capital ------------------------------------------------- */
+  destroyer: 'unit.naval.capital',
+  dreadnought: 'unit.naval.capital',
+  mrdMonitor: 'unit.naval.capital',
+  rclHulk: 'unit.naval.capital',
+
+  /* -- unit.air: only two armies have one --------------------------------- */
+  mrdKestrel: 'unit.air',
+  rclHornet: 'unit.air',
+
+  /* -- struct.naval ------------------------------------------------------- */
+  navalYard: 'struct.naval',
+  subPen: 'struct.naval',
+  mrdSlipway: 'struct.naval',
+  rclDrydock: 'struct.naval',
+
+  /* -- struct.tech: the one building that opens the top of every tab ------ */
+  battleLab: 'struct.tech',
+  mrdReliquary: 'struct.tech',
+  rclCrucible: 'struct.tech',
+
+  /* -- struct.defence.specialist ------------------------------------------
+   * NOT `flameTower`. The Soviet cheap defence is `sentryGun` and the flame
+   * tower is its 600-credit twin off the same prereq; gating both would leave
+   * a fresh Soviet profile with a defence tab an Allied player has and it
+   * would not. `teslaCoil` is the real Soviet specialist and is the only
+   * Soviet row in this group.                                              */
+  prismTower: 'struct.defence.specialist',
+  teslaCoil: 'struct.defence.specialist',
+  mrdHelios: 'struct.defence.specialist',
+  rclPylon: 'struct.defence.specialist',
+
+  /* -- struct.defence.aa --------------------------------------------------
+   * One def, Allied-only in the tech tree. The Pact and the Reclamation have
+   * no dedicated AA emplacement at all — their answer to the two gunships is
+   * the Sunlancer and the Arcspitter, which are units.                      */
+  aaTurret: 'struct.defence.aa',
+};
+
 function unit(s: UnitSpec): UnitDef {
   return {
     key: s.key,
+    unlockedBy: s.unlockedBy ?? UNLOCK_TAGS[s.key],
     name: s.name,
     blurb: s.blurb,
     faction: s.faction,
@@ -327,6 +518,27 @@ const MRD_MOVER = EntityFlag.CanMove | EntityFlag.ProvidesVision;
 const MRD_FOOT = MRD_MOVER | EntityFlag.Crushable;
 const MRD_GUNNER = MRD_MOVER | EntityFlag.CanAttack;
 const MRD_TURRETED = MRD_GUNNER | EntityFlag.HasTurret;
+
+/* -- the Reclamation flag kit ---------------------------------------------
+ * Note what is MISSING: there is no `RCL_TURRETED`. Not one unit in the army
+ * carries `EntityFlag.HasTurret`, and that absence is the faction's signature
+ * rather than an oversight — see the doctrine block above the roster.        */
+const RCL_MOVER = EntityFlag.CanMove | EntityFlag.ProvidesVision;
+const RCL_FOOT = RCL_MOVER | EntityFlag.Crushable;
+const RCL_GUNNER = RCL_MOVER | EntityFlag.CanAttack;
+
+/**
+ * Hull turn rate for a Reclamation chassis, rad/s.
+ *
+ * The shared derivation everywhere else is `2.6 - length * 0.14`. A turretless
+ * army has to slew its whole hull to bear, so every Reclamation hull gets a
+ * full extra radian/sec — a 6.2 m Grinder turns at 2.73 rad/s against a
+ * Grizzly's 1.73. That is the compensation, and it is deliberately not enough:
+ * one second of extra slew does not answer being outranged by six metres.
+ */
+function RCL_TURN(dim: { l: number }): number {
+  return 3.6 - dim.l * 0.14;
+}
 
 export const UNITS: readonly UnitDef[] = [
   /* -- Allied infantry --------------------------------------------------- */
@@ -654,6 +866,168 @@ export const UNITS: readonly UnitDef[] = [
     weapons: [w('monitorLance')], hasTurret: true,
     flags: MRD_TURRETED,
   }),
+
+  /* ======================================================================
+   * THE RECLAMATION
+   *
+   * THE THREE RULES THAT MAKE THE ARMY. Every number below is one of them:
+   *
+   * 1. NOTHING THE RECLAMATION FIELDS HAS A TURRET. `hasTurret: false` on all
+   *    eleven, including the ships. `sim/Combat.ts` resolves the firing cone as
+   *    `hasTurret ? aimToleranceDeg : hullArcDeg` — 5 degrees against 14 — and
+   *    a turretless shooter's `turretYaw` is pinned to its HULL yaw every tick.
+   *    So a Reclamation hull cannot shoot anything it is not pointing at, and
+   *    it cannot cover a flank while it drives. The compensation is authored
+   *    right here: `RCL_TURN` gives every hull a full radian/sec more hull turn
+   *    rate than the equivalent Allied or Soviet chassis. It buys back the
+   *    reaction time; it does not buy back the arc.
+   *
+   * 2. IT ARCS, SO IT CANNOT SIEGE. Seven of the ten guns are
+   *    `WarheadClass.Tesla` with `chainCount` 1-3 at 14-20 m. Read against
+   *    ARMOR_MATRIX that is 1.60 vs Infantry and 0.60 vs Concrete: the army
+   *    erases massed bodies and bounces off buildings. Its entire answer to a
+   *    base is the Slaghurler and the Slagger, and both are slow, soft and
+   *    stop to fire.
+   *
+   * 3. IT IS THE CHEAPEST AND THE FRAILEST. A Grinder is 600 against a
+   *    Grizzly's 700 and a Rhino's 900, builds in 9 seconds against 11 and 13,
+   *    and dies at 270 hp against 340 and 420. A Scrap Picker is 90 credits and
+   *    three seconds — the cheapest thing any army fields. The Reclamation wins
+   *    by arriving first and by arriving again; it never wins a trade.
+   * ====================================================================== */
+
+  /* -- Reclamation infantry ------------------------------------------------ */
+  unit({
+    key: 'rclPicker', name: 'Scrap Picker', blurb: 'Ninety credits. Three seconds. Bring forty.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Infantry,
+    cost: 90, buildTime: 3, tab: BuildTab.Infantry,
+    prereqs: ['rclRookery'], sortOrder: 10,
+    model: 'reclaim_picker',
+    maxHp: 85, armor: ArmorClass.Infantry, maxSpeed: 3.6, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 22,
+    weapons: [w('arcProd')], hasTurret: false, crushableBy: 1,
+    flags: RCL_FOOT | EntityFlag.CanAttack,
+  }),
+  unit({
+    key: 'rclSlagger', name: 'Slagger', blurb: 'Satchel of molten slag. The only thing that hurts a wall.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Infantry,
+    cost: 380, buildTime: 7, tab: BuildTab.Infantry,
+    prereqs: ['rclRookery'], sortOrder: 20,
+    model: 'reclaim_slagger',
+    maxHp: 115, armor: ArmorClass.Infantry, maxSpeed: 3.0, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 20,
+    weapons: [w('slagCharge')], hasTurret: false, crushableBy: 1,
+    flags: RCL_FOOT | EntityFlag.CanAttack,
+  }),
+  unit({
+    key: 'rclTinker', name: 'Tinker', blurb: 'Captures structures. Repairs them.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Infantry,
+    cost: 500, buildTime: 10, tab: BuildTab.Infantry,
+    prereqs: ['rclRookery', 'rclSorter'], sortOrder: 30,
+    model: 'reclaim_tinker',
+    maxHp: 85, armor: ArmorClass.Infantry, maxSpeed: 3.5, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 20,
+    weapons: UNARMED, hasTurret: false, crushableBy: 1, canCapture: true,
+    flags: RCL_FOOT,
+  }),
+
+  /* -- Reclamation vehicles ------------------------------------------------ */
+  unit({
+    key: 'rclScrapper', name: 'Scrapjaw', blurb: 'Ore crusher on wheels. Drives over anything soft.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
+    cost: 1150, buildTime: 14, tab: BuildTab.Vehicles,
+    prereqs: ['rclBreakerYard', 'rclSorter'], sortOrder: 10,
+    model: 'reclaim_scrapper',
+    maxHp: 850, armor: ArmorClass.Heavy, maxSpeed: 5.6, turnRate: RCL_TURN(U.harvester),
+    locomotor: Locomotor.Wheel, radius: hullRadius(U.harvester), sight: 20,
+    weapons: UNARMED, hasTurret: false, cargoMax: 600, crushLevel: 5,
+    flags: RCL_MOVER | EntityFlag.IsHarvester | EntityFlag.Crusher,
+  }),
+  unit({
+    key: 'rclSpitter', name: 'Arcspitter', blurb: 'Fast coil buggy. Sixteen metres of reach and no armour.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
+    cost: 420, buildTime: 6, tab: BuildTab.Vehicles,
+    prereqs: ['rclBreakerYard'], sortOrder: 20,
+    model: 'reclaim_spitter',
+    maxHp: 170, armor: ArmorClass.Light, maxSpeed: 8.8, turnRate: RCL_TURN(U.ifv),
+    locomotor: Locomotor.Wheel, radius: hullRadius(U.ifv), sight: 28,
+    weapons: [w('spitCoil')], hasTurret: false, crushableBy: 4,
+    flags: RCL_GUNNER,
+  }),
+  unit({
+    key: 'rclGrinder', name: 'Grinder', blurb: 'The line. Cheap, quick, blind past eighteen metres.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
+    cost: 600, buildTime: 9, tab: BuildTab.Vehicles,
+    prereqs: ['rclBreakerYard'], sortOrder: 30,
+    model: 'reclaim_grinder',
+    maxHp: 270, armor: ArmorClass.Medium, maxSpeed: 5.8, turnRate: RCL_TURN(U.lightTank),
+    locomotor: Locomotor.Wheel, radius: hullRadius(U.lightTank), sight: 26,
+    weapons: [w('grinderArc')], hasTurret: false, crushLevel: 5, crushableBy: 6,
+    flags: RCL_GUNNER | EntityFlag.Crusher,
+  }),
+  unit({
+    key: 'rclSlaghurler', name: 'Slaghurler', blurb: 'The only thing in the army that can break a base.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
+    cost: 1150, buildTime: 15, tab: BuildTab.Vehicles,
+    prereqs: ['rclBreakerYard', 'rclCrucible'], sortOrder: 40,
+    model: 'reclaim_slaghurler',
+    maxHp: 230, armor: ArmorClass.Light, maxSpeed: 4.6, turnRate: RCL_TURN(U.prismTank),
+    locomotor: Locomotor.Wheel, radius: hullRadius(U.prismTank), sight: 30,
+    weapons: [w('slagMortar')], hasTurret: false, crushableBy: 5,
+    flags: RCL_GUNNER,
+  }),
+  unit({
+    key: 'rclCrawler', name: 'Yardcrawler', blurb: 'Unfolds into a second Foundry.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
+    cost: 3000, buildTime: 32, tab: BuildTab.Vehicles,
+    prereqs: ['rclBreakerYard', 'rclCrucible'], sortOrder: 50,
+    model: 'reclaim_crawler',
+    maxHp: 900, armor: ArmorClass.Heavy, maxSpeed: 4.6, turnRate: RCL_TURN(U.mcv),
+    locomotor: Locomotor.Wheel, radius: hullRadius(U.mcv), sight: 22,
+    weapons: UNARMED, hasTurret: false, crushableBy: 0, deploysInto: 'rclFoundry',
+    flags: RCL_MOVER,
+  }),
+
+  /* -- Reclamation air -----------------------------------------------------
+   * Same treatment the Pact's Kestrel gets and for the same reason: `Locomotor`
+   * has no Air member yet, so a flyer is authored as a Hover hull with a
+   * flyer's speed, sight and paper armour. When an Air locomotor lands this is
+   * a one-line change.                                                       */
+  unit({
+    key: 'rclHornet', name: 'Swarmhornet', blurb: 'Chained arc from a lifting body. Nothing to shoot back with.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
+    cost: 900, buildTime: 12, tab: BuildTab.Vehicles,
+    prereqs: ['rclBreakerYard', 'rclSpotter'], sortOrder: 60,
+    model: 'reclaim_hornet',
+    maxHp: 180, armor: ArmorClass.Light, maxSpeed: 11.0, turnRate: 3.4,
+    locomotor: Locomotor.Hover, radius: hullRadius(U.ifv), sight: 34,
+    weapons: [w('hornetArc')], hasTurret: false, crushableBy: 0,
+    flags: RCL_GUNNER,
+  }),
+
+  /* -- Reclamation naval --------------------------------------------------- */
+  unit({
+    key: 'rclScow', name: 'Slag Scow', blurb: 'A barge with a bow gun bolted to it.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
+    cost: 850, buildTime: 12, tab: BuildTab.Vehicles,
+    prereqs: ['rclDrydock'], sortOrder: 70,
+    model: 'reclaim_scow',
+    maxHp: 340, armor: ArmorClass.Light, maxSpeed: 7.2, turnRate: RCL_TURN(NU.gunboat),
+    locomotor: Locomotor.Hover, radius: hullRadius(NU.gunboat), sight: 32,
+    weapons: [w('scowGun')], hasTurret: false,
+    flags: RCL_GUNNER,
+  }),
+  unit({
+    key: 'rclHulk', name: 'Reclaimed Hulk', blurb: 'Somebody else’s capital ship, welded back together.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
+    cost: 1800, buildTime: 22, tab: BuildTab.Vehicles,
+    prereqs: ['rclDrydock', 'rclCrucible'], sortOrder: 80,
+    model: 'reclaim_hulk',
+    maxHp: 820, armor: ArmorClass.Heavy, maxSpeed: 4.4, turnRate: RCL_TURN(NU.destroyer),
+    locomotor: Locomotor.Hover, radius: hullRadius(NU.destroyer), sight: 36,
+    weapons: [w('hulkBattery')], hasTurret: false,
+    flags: RCL_GUNNER,
+  }),
 ];
 
 /* ==========================================================================
@@ -674,6 +1048,8 @@ interface BuildingSpec {
   prereqs: readonly string[];
   sortOrder: number;
   model: string;
+  /** Progression gate. See `UNLOCK_TAGS` below; omitted means day-one. */
+  unlockedBy?: string;
   dim: { w: number; h: number; height: number };
   maxHp: number;
   power: number;
@@ -698,6 +1074,7 @@ function building(s: BuildingSpec): BuildingDef {
   const halfDepth = s.dim.h * 4 /* CELL */ * 0.5;
   return {
     key: s.key,
+    unlockedBy: s.unlockedBy ?? UNLOCK_TAGS[s.key],
     name: s.name,
     blurb: s.blurb,
     faction: s.faction,
@@ -737,6 +1114,11 @@ function building(s: BuildingSpec): BuildingDef {
 const MRD_STRUCTURE =
   EntityFlag.BlocksNav | EntityFlag.Powered | EntityFlag.Sellable | EntityFlag.ProvidesVision;
 function mrdFlags(power: number, extra = 0): number {
+  return MRD_STRUCTURE | extra | (power < 0 ? EntityFlag.NeedsPower : 0);
+}
+
+/** The same kit for the Reclamation, whose keys have no fallback owner either. */
+function rclFlags(power: number, extra = 0): number {
   return MRD_STRUCTURE | extra | (power < 0 ? EntityFlag.NeedsPower : 0);
 }
 
@@ -973,6 +1355,126 @@ export const BUILDINGS: readonly BuildingDef[] = [
     maxHp: 600, power: -55, sight: 32, weapons: [w('heliosLance')], hasTurret: true,
     flags: mrdFlags(-55, EntityFlag.CanAttack | EntityFlag.HasTurret),
   }),
+
+  /* ======================================================================
+   * THE RECLAMATION — THE BASE
+   *
+   * THE SIGNATURE: A FLAT TREE ON A WIDE GRID.
+   *
+   * The Reclamation reaches its whole army off FOUR structures — Foundry,
+   * Furnace, Ore Sorter, Breaker Yard — because its line hulls (Arcspitter,
+   * Grinder) name no radar and no tech building in their prereqs. Every other
+   * army needs six structures before its second-tier vehicle exists. That is
+   * the tempo the faction is built on and it is why its units are the cheapest
+   * and the fastest to build in the game.
+   *
+   * It is paid for on the GRID. A Scrap Furnace is 240 credits for 80 power on
+   * 950 hp: the cheapest, the toughest and by far the WEAKEST plant anyone
+   * fields (a Power Plant is 300/100/800, a Solar Array 350/160/420). Four
+   * Reclamation structures draw 40 or more and the Arc Pylon alone draws 90 —
+   * the heaviest single load in the game — so a Reclamation base is a sprawl of
+   * five or six furnaces, each of them a target, and its defensive belt is what
+   * puts it into brownout in the first place.
+   *
+   * The second price is the Pylon's placement in the tree: it is gated on the
+   * Spotter Mast, not on the Crucible, so it lands a full tech tier before a
+   * Prism Tower or a Helios Spire. An early heavy defence that browns out your
+   * own base is a real decision, which is the point.
+   * ====================================================================== */
+  building({
+    key: 'rclFoundry', name: 'Foundry', blurb: 'Unfolds the Reclamation. Builds structures.',
+    faction: FACTION_RECLAIM, cost: 3000, buildTime: 40, tab: BuildTab.Structures,
+    prereqs: [], sortOrder: 0, model: 'reclaim_foundry', dim: B.conYard,
+    maxHp: 2100, power: -20, sight: 30, buildRadius: BUILD_RADIUS,
+    producesTab: BuildTab.Structures,
+    flags: rclFlags(-20, EntityFlag.IsBuilder | EntityFlag.IsFactory | EntityFlag.PrimaryFactory),
+  }),
+  building({
+    key: 'rclFurnace', name: 'Scrap Furnace', blurb: 'Generates 80 power. Cheap, tough, and never enough.',
+    faction: FACTION_RECLAIM, cost: 240, buildTime: 7, tab: BuildTab.Structures,
+    prereqs: ['rclFoundry'], sortOrder: 10, model: 'reclaim_furnace', dim: B.powerPlant,
+    maxHp: 950, power: 80, sight: 18,
+    flags: rclFlags(80),
+  }),
+  building({
+    key: 'rclSorter', name: 'Ore Sorter', blurb: 'Unloads Scrapjaws. Ships with one.',
+    faction: FACTION_RECLAIM, cost: 2000, buildTime: 24, tab: BuildTab.Structures,
+    prereqs: ['rclFurnace'], sortOrder: 20, model: 'reclaim_sorter', dim: B.refinery,
+    maxHp: 1250, power: -30, sight: 22, storage: REFINERY_STORAGE,
+    flags: rclFlags(-30, EntityFlag.IsRefinery),
+  }),
+  building({
+    key: 'rclRookery', name: 'Rookery', blurb: 'Trains pickers. Ninety credits at a time.',
+    faction: FACTION_RECLAIM, cost: 450, buildTime: 9, tab: BuildTab.Structures,
+    prereqs: ['rclFurnace'], sortOrder: 30, model: 'reclaim_rookery', dim: B.barracks,
+    maxHp: 850, power: -20, sight: 20,
+    produces: ['rclPicker', 'rclSlagger', 'rclTinker'], producesTab: BuildTab.Infantry,
+    exitClearance: 2,
+    flags: rclFlags(-20, EntityFlag.IsFactory | EntityFlag.PrimaryFactory),
+  }),
+  building({
+    key: 'rclBreakerYard', name: 'Breaker Yard', blurb: 'Builds every Reclamation hull. Sets a rally point.',
+    faction: FACTION_RECLAIM, cost: 1900, buildTime: 22, tab: BuildTab.Structures,
+    prereqs: ['rclSorter'], sortOrder: 40, model: 'reclaim_breakeryard', dim: B.warFactory,
+    maxHp: 1250, power: -40, sight: 20,
+    produces: ['rclScrapper', 'rclSpitter', 'rclGrinder', 'rclSlaghurler', 'rclCrawler', 'rclHornet'],
+    producesTab: BuildTab.Vehicles,
+    exitClearance: 6,
+    flags: rclFlags(-40, EntityFlag.IsFactory | EntityFlag.PrimaryFactory),
+  }),
+  building({
+    key: 'rclSpotter', name: 'Spotter Mast', blurb: 'Reveals the minimap. Opens the heavy coil.',
+    faction: FACTION_RECLAIM, cost: 1000, buildTime: 14, tab: BuildTab.Structures,
+    prereqs: ['rclSorter'], sortOrder: 50, model: 'reclaim_spotter', dim: B.radar,
+    maxHp: 700, power: -40, sight: 42,
+    flags: rclFlags(-40, EntityFlag.IsRadar),
+  }),
+  building({
+    key: 'rclHeap', name: 'Slag Heap', blurb: 'Stores 1500 credits of ore.',
+    faction: FACTION_RECLAIM, cost: 150, buildTime: 5, tab: BuildTab.Structures,
+    prereqs: ['rclSorter'], sortOrder: 60, model: 'reclaim_heap', dim: B.oreSilo,
+    maxHp: 550, power: -10, sight: 12, storage: SILO_STORAGE,
+    flags: rclFlags(-10),
+  }),
+  building({
+    key: 'rclDrydock', name: 'Breaker Dock', blurb: 'Builds Reclamation hulls that float.',
+    faction: FACTION_RECLAIM, cost: 1000, buildTime: 14, tab: BuildTab.Structures,
+    prereqs: ['rclSorter'], sortOrder: 70, model: 'reclaim_drydock', dim: NB.navalYard,
+    maxHp: 1050, power: -30, sight: 24,
+    produces: ['rclScow', 'rclHulk'], producesTab: BuildTab.Vehicles,
+    exitClearance: 8,
+    flags: rclFlags(-30, EntityFlag.IsFactory | EntityFlag.PrimaryFactory),
+  }),
+  building({
+    key: 'rclCrucible', name: 'Crucible', blurb: 'Opens the siege hull, the Yardcrawler and the Hulk.',
+    faction: FACTION_RECLAIM, cost: 2000, buildTime: 24, tab: BuildTab.Structures,
+    prereqs: ['rclSpotter'], sortOrder: 80, model: 'reclaim_crucible', dim: B.battleLab,
+    maxHp: 900, power: -60, sight: 20,
+    flags: rclFlags(-60),
+  }),
+
+  /* -- Reclamation defences ------------------------------------------------ */
+  building({
+    key: 'rclBarricade', name: 'Scrap Barricade', blurb: 'Stops vehicles. Stops nothing else.',
+    faction: FACTION_RECLAIM, cost: 100, buildTime: 2, tab: BuildTab.Defense,
+    prereqs: ['rclRookery'], sortOrder: 10, model: 'reclaim_barricade', dim: B.wall,
+    maxHp: 340, power: 0, sight: 0,
+    flags: rclFlags(0, EntityFlag.NotSelectable),
+  }),
+  building({
+    key: 'rclSpitpost', name: 'Spitpost', blurb: 'Cheap chained coil. Fires through a blackout.',
+    faction: FACTION_RECLAIM, cost: 420, buildTime: 8, tab: BuildTab.Defense,
+    prereqs: ['rclRookery'], sortOrder: 20, model: 'reclaim_spitpost', dim: B.pillbox,
+    maxHp: 520, power: 0, sight: 24, weapons: [w('postCoil')],
+    flags: rclFlags(0, EntityFlag.CanAttack),
+  }),
+  building({
+    key: 'rclPylon', name: 'Arc Pylon', blurb: 'Three chained arcs. Draws ninety power to do it.',
+    faction: FACTION_RECLAIM, cost: 1450, buildTime: 16, tab: BuildTab.Defense,
+    prereqs: ['rclSpotter'], sortOrder: 30, model: 'reclaim_pylon', dim: B.prismTower,
+    maxHp: 560, power: -90, sight: 30, weapons: [w('pylonArc')], hasTurret: false,
+    flags: rclFlags(-90, EntityFlag.CanAttack),
+  }),
 ];
 
 /* ==========================================================================
@@ -1030,6 +1532,21 @@ export const FACTIONS: readonly FactionDef[] = [
     defaultBuildOrder: [
       'mrdSolarArray', 'mrdChapterhouse', 'mrdCistern', 'mrdForgeyard',
       'mrdSolarArray', 'mrdOculus', 'mrdVault', 'mrdReliquary',
+    ],
+  },
+  {
+    id: FACTION_RECLAIM, key: 'reclaim', name: 'The Reclamation',
+    paletteKey: 'reclaim',
+    // Three pickers, not two: they are 90 credits each and the faction's whole
+    // early game is "there are more of them than there should be".
+    startLoadout: ['rclPicker', 'rclPicker', 'rclPicker', 'rclGrinder'],
+    conYardKey: 'rclFoundry',
+    // Furnace, Rookery, Sorter, Breaker Yard — and then a SECOND furnace before
+    // anything else, because 80 power a plant means the grid is the thing that
+    // stops this base, not the credits.
+    defaultBuildOrder: [
+      'rclFurnace', 'rclRookery', 'rclSorter', 'rclFurnace',
+      'rclBreakerYard', 'rclSpotter', 'rclHeap', 'rclCrucible',
     ],
   },
   {
@@ -1144,13 +1661,100 @@ export default DEF_TABLES;
       if (!buildingKeys.has(k)) problems.push(`faction "${f.key}" opens with unknown "${k}"`);
     }
   }
-  // Every Pact key must belong to the Pact: a Meridian def that slipped back to
-  // Faction.Neutral would appear in BOTH original armies' sidebars.
+  /* -- the fourth faction ------------------------------------------------- */
+  if (!factionIds.has(FACTION_RECLAIM as number)) {
+    problems.push('the Reclamation has no FactionDef');
+  }
+  // No turret on anything the Reclamation fields. This is the faction's
+  // signature and it is enforced rather than remembered: one `hasTurret: true`
+  // slipping into the roster undoes the 14-degree hull-arc trade that the guns
+  // are priced against, and nothing else in the process would notice.
+  for (const u of UNITS) {
+    if ((u.faction as number) !== (FACTION_RECLAIM as number)) continue;
+    if (u.hasTurret || (u.flags & EntityFlag.HasTurret) !== 0) {
+      problems.push(`"${u.key}" has a turret; no Reclamation unit may (see §1 doctrine)`);
+    }
+  }
+
+  // Every faction-owned key must belong to its own faction: a def that slipped
+  // back to Faction.Neutral would appear in EVERY other army's sidebar.
+  const PREFIX_OWNER: readonly (readonly [string, number])[] = [
+    ['mrd', FACTION_MERIDIAN as number],
+    ['rcl', FACTION_RECLAIM as number],
+  ];
   for (const d of [...UNITS, ...BUILDINGS]) {
-    const prefixed = d.key.startsWith('mrd');
-    const owned = (d.faction as number) === (FACTION_MERIDIAN as number);
-    if (prefixed !== owned) {
-      problems.push(`"${d.key}" is ${prefixed ? '' : 'not '}Meridian-keyed but ${owned ? '' : 'not '}Meridian-owned`);
+    for (const [prefix, owner] of PREFIX_OWNER) {
+      const prefixed = d.key.startsWith(prefix);
+      const owned = (d.faction as number) === owner;
+      if (prefixed !== owned) {
+        problems.push(
+          `"${d.key}" is ${prefixed ? '' : 'not '}"${prefix}"-keyed but ` +
+          `${owned ? '' : 'not '}owned by faction ${owner}`);
+      }
+    }
+  }
+
+  /* -- the progression tags ----------------------------------------------
+   * Both directions, because both failures are silent and permanent. A tag on
+   * a key that no longer exists gates nothing and reads as a working gate; a
+   * tag naming an unlock id no mission grants makes the def permanently
+   * unbuildable and reads as a balance decision. `MISSION_UNLOCK_IDS` is
+   * derived FROM the mission table, so this cannot be satisfied by editing a
+   * constant — only by authoring a mission that actually pays the unlock out. */
+  for (const key of Object.keys(UNLOCK_TAGS)) {
+    if (!unitKeys.has(key) && !buildingKeys.has(key)) {
+      problems.push(`UNLOCK_TAGS gates unknown def "${key}"`);
+    }
+    const id = UNLOCK_TAGS[key];
+    if (!MISSION_UNLOCK_IDS.includes(id)) {
+      problems.push(`"${key}" is gated behind "${id}", which no mission grants`);
+    }
+  }
+
+  /* -- a fresh profile must still be able to play ------------------------- *
+   * The single most expensive thing this whole layer could get wrong is a
+   * curve that gates something the first match cannot be played without. Each
+   * army is checked for a full economic spine and at least one weapon, using
+   * ONLY untagged defs, and a gated def whose prereq chain is itself gated is
+   * counted as gated — so tagging a tech building can never quietly strand the
+   * three units hanging off it without this failing.                        */
+  {
+    const openBuildings = new Map<string, BuildingDef>();
+    for (const b of BUILDINGS) if (b.unlockedBy === undefined) openBuildings.set(b.key, b);
+    const reachable = (d: { prereqs: readonly string[] }): boolean =>
+      d.prereqs.every((p) => openBuildings.has(p));
+
+    for (const f of FACTIONS) {
+      if ((f.id as number) === (Faction.Neutral as number)) continue;
+      const mine = <T extends { faction: Faction; unlockedBy?: string; prereqs: readonly string[] }>(
+        list: readonly T[],
+      ): T[] => list.filter((d) =>
+        ((d.faction as number) === (f.id as number)
+          || (d.faction as number) === (Faction.Neutral as number))
+        && d.unlockedBy === undefined && reachable(d));
+
+      const units = mine(UNITS);
+      const structs = mine(BUILDINGS);
+      const has = (pred: (b: BuildingDef) => boolean): boolean => structs.some(pred);
+
+      if (!has((b) => b.power > 0)) problems.push(`"${f.key}" has no day-one power plant`);
+      if (!has((b) => b.produces.length > 0 && b.producesTab === BuildTab.Infantry)) {
+        problems.push(`"${f.key}" has no day-one infantry factory`);
+      }
+      if (!has((b) => b.produces.length > 0 && b.producesTab === BuildTab.Vehicles)) {
+        problems.push(`"${f.key}" has no day-one vehicle factory`);
+      }
+      if (!has((b) => b.tab === BuildTab.Defense && b.weapons.length > 0)) {
+        problems.push(`"${f.key}" has no day-one defensive structure`);
+      }
+      if (!units.some((u) => u.cargoMax > 0)) problems.push(`"${f.key}" has no day-one harvester`);
+      if (!units.some((u) => u.kind === EntityKind.Infantry && u.weapons.length > 0)) {
+        problems.push(`"${f.key}" has no day-one armed infantry`);
+      }
+      if (!units.some((u) => u.kind === EntityKind.Vehicle && u.weapons.length > 0)) {
+        problems.push(`"${f.key}" has no day-one armed vehicle`);
+      }
+      if (!units.some((u) => u.canCapture)) problems.push(`"${f.key}" has no day-one engineer`);
     }
   }
 

@@ -170,6 +170,14 @@ const NO_ANSWER: readonly number[] = [0, 0, 0, 0, 0];
  */
 export const FACTION_MERIDIAN = 3 as Faction;
 
+/**
+ * THE RECLAMATION's faction id. Same reasoning as the line above: declared
+ * rather than imported, so `src/sim/**` keeps its zero-import rule against
+ * `src/data/**`. `Faction.Reclaim` is 4 and `tests/faction4.spec.ts` asserts
+ * the two constants agree.
+ */
+export const FACTION_RECLAIM = 4 as Faction;
+
 function structure(
   key: string,
   role: BuildRole,
@@ -336,6 +344,79 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     FACTION_MERIDIAN, [1.3, 1.1, 1.4, 1.9, 0], 2),
   fighter('mrdKestrel', BuildRole.Siege, EntityKind.Vehicle, 1100, ['mrdForgeyard', 'mrdOculus'],
     FACTION_MERIDIAN, [1.0, 1.5, 1.2, 1.3, 0], 1),
+
+  /* -- THE RECLAMATION -----------------------------------------------------
+   * The tree is the same three tiers with different names and a much shallower
+   * prereq column, so the catalog SHAPE is identical; the doctrine is entirely
+   * in the answer vectors, and it is lopsided on purpose.
+   *
+   * Every arc unit scores 1.5-1.9 against ThreatClass.Infantry and 0.2-0.5
+   * against ThreatClass.Structure, which is exactly what ARMOR_MATRIX does to
+   * a Tesla warhead (1.60 vs Infantry, 0.60 vs Concrete). The consequence at
+   * the strategy layer is the one we want: a Reclamation brain that has seen an
+   * infantry-heavy enemy floods Grinders, and a Reclamation brain looking at a
+   * base rolls onto `rclSlaghurler` — the ONE entry in the list with a
+   * structure answer above 1.0 — because nothing else it owns can do the job.
+   *
+   * Every key is `FACTION_RECLAIM`, never `Faction.Neutral`: a Neutral entry
+   * appears in every other army's candidate list (`forFaction` treats Neutral
+   * as universal), so a Neutral 'rclScrapper' would have the Allies ordering
+   * Reclamation harvesters.
+   * ---------------------------------------------------------------------- */
+  structure('rclFoundry',     BuildRole.Builder,    3000, -20, B.conYard,    [],
+    FACTION_RECLAIM),
+  structure('rclFurnace',     BuildRole.Power,       240,  80, B.powerPlant, ['rclFoundry'],
+    FACTION_RECLAIM),
+  structure('rclSorter',      BuildRole.Refinery,   2000, -30, B.refinery,   ['rclFurnace'],
+    FACTION_RECLAIM),
+  structure('rclRookery',     BuildRole.Barracks,    450, -20, B.barracks,   ['rclFurnace'],
+    FACTION_RECLAIM),
+  structure('rclBreakerYard', BuildRole.WarFactory, 1900, -40, B.warFactory, ['rclSorter'],
+    FACTION_RECLAIM),
+  structure('rclSpotter',     BuildRole.Radar,      1000, -40, B.radar,      ['rclSorter'],
+    FACTION_RECLAIM),
+  structure('rclCrucible',    BuildRole.TechLab,    2000, -60, B.battleLab,  ['rclSpotter'],
+    FACTION_RECLAIM),
+  structure('rclHeap',        BuildRole.Storage,     150, -10, B.oreSilo,    ['rclSorter'],
+    FACTION_RECLAIM),
+
+  // The Spitpost is the cheapest static defence any army fields and it answers
+  // infantry hardest, which is what the build layer should reach for first when
+  // it is being rushed. The Arc Pylon takes the AntiAir slot and is gated on
+  // the RADAR rather than the tech lab — a tier earlier than a Prism Tower —
+  // which is why its 90-power draw has to be modelled honestly here.
+  structure('rclSpitpost', BuildRole.Defense, 420, 0, B.pillbox, ['rclRookery'],
+    FACTION_RECLAIM, BuildTab.Defense, [1.9, 0.8, 0.3, 0, 0]),
+  structure('rclPylon', BuildRole.AntiAir, 1450, -90, B.prismTower, ['rclSpotter'],
+    FACTION_RECLAIM, BuildTab.Defense, [2.0, 1.3, 1.1, 0, 1.2]),
+
+  fighter('rclScrapper', BuildRole.Harvester, EntityKind.Vehicle, 1150, ['rclSorter'],
+    FACTION_RECLAIM, NO_ANSWER, 0),
+  fighter('rclCrawler', BuildRole.Mcv, EntityKind.Vehicle, 3000, ['rclCrucible'],
+    FACTION_RECLAIM, NO_ANSWER, 0),
+  fighter('rclTinker', BuildRole.Support, EntityKind.Infantry, 500, ['rclRookery'],
+    FACTION_RECLAIM, NO_ANSWER, 0),
+
+  // Weight 5 on a 90-credit body: the Reclamation's default army really is
+  // mostly pickers, and at composition 0 an Easy brain fielding a horde of them
+  // is playing the faction correctly by accident.
+  fighter('rclPicker', BuildRole.Infantry, EntityKind.Infantry, 90, ['rclRookery'],
+    FACTION_RECLAIM, [1.5, 0.5, 0.2, 0.2, 0.6], 5),
+  // The army's only real answer to a structure on foot. Role `Infantry` rather
+  // than `Siege` deliberately: `forRole` returns the FIRST entry with a role,
+  // and a Reclamation brain asking for siege has to be handed the Slaghurler,
+  // not a man with a satchel. The anti-structure doctrine is carried by the
+  // answer vector, which is where the scorer reads it anyway.
+  fighter('rclSlagger', BuildRole.Infantry, EntityKind.Infantry, 380, ['rclRookery'],
+    FACTION_RECLAIM, [0.9, 1.0, 0.8, 1.6, 0], 1),
+  fighter('rclSpitter', BuildRole.Skirmisher, EntityKind.Vehicle, 420, ['rclBreakerYard'],
+    FACTION_RECLAIM, [1.6, 1.1, 0.4, 0.3, 1.1], 3),
+  fighter('rclGrinder', BuildRole.Armor, EntityKind.Vehicle, 600, ['rclBreakerYard'],
+    FACTION_RECLAIM, [1.7, 1.3, 1.1, 0.5, 0], 5),
+  fighter('rclSlaghurler', BuildRole.Siege, EntityKind.Vehicle, 1150, ['rclBreakerYard', 'rclCrucible'],
+    FACTION_RECLAIM, [1.1, 1.0, 0.9, 1.9, 0], 2),
+  fighter('rclHornet', BuildRole.Skirmisher, EntityKind.Vehicle, 900, ['rclBreakerYard', 'rclSpotter'],
+    FACTION_RECLAIM, [1.6, 1.4, 1.0, 0.4, 0], 1),
 ];
 
 /**
@@ -706,6 +787,33 @@ const OPENING_MERIDIAN: readonly OpeningStep[] = [
   step('mrdOculus'),
 ];
 
+/**
+ * THE RECLAMATION. Furnace, ROOKERY, Sorter, and then a SECOND FURNACE before
+ * the Breaker Yard — the only opening in the game that buys two power plants
+ * before its vehicle factory, and it has to.
+ *
+ * A Scrap Furnace is 80 power. One carries the Foundry (-20) and the Rookery
+ * (-20) with 40 spare; add the Ore Sorter (-30) and the Breaker Yard (-40) and
+ * the base is 30 in the hole on one plant and 50 to the good on two. Neither
+ * rival has to think about this before its factory; this faction always does,
+ * which is the price of a plant that costs 240 credits.
+ *
+ * What the tempo buys back is on the other side of the Breaker Yard: Grinders
+ * and Arcspitters name NO further prereq, so this script is four structures
+ * from nothing to a full line army, where the Allied script is five and the
+ * Soviet script is five. The radar step at the end is for the Arc Pylon and the
+ * Swarmhornet, not for the army.
+ */
+const OPENING_RECLAIM: readonly OpeningStep[] = [
+  step('rclFurnace'),
+  step('rclRookery'),
+  step('rclSorter'),
+  step('rclFurnace'),
+  step('rclBreakerYard'),
+  step('rclSorter'),
+  step('rclSpotter'),
+];
+
 /** The three per-faction key sets the personality edits below reach for. */
 interface OpeningKeys {
   barracks: string;
@@ -723,6 +831,12 @@ function openingKeys(faction: Faction): OpeningKeys {
       techLab: 'mrdReliquary', warFactory: 'mrdForgeyard', defence: 'mrdGlaive',
     };
   }
+  if ((faction as number) === (FACTION_RECLAIM as number)) {
+    return {
+      barracks: 'rclRookery', refinery: 'rclSorter', radar: 'rclSpotter',
+      techLab: 'rclCrucible', warFactory: 'rclBreakerYard', defence: 'rclSpitpost',
+    };
+  }
   return {
     barracks: 'barracks', refinery: 'refinery', radar: 'radar',
     techLab: 'battleLab', warFactory: 'warFactory',
@@ -730,10 +844,17 @@ function openingKeys(faction: Faction): OpeningKeys {
   };
 }
 
+function openingBase(faction: Faction): readonly OpeningStep[] {
+  switch (faction as number) {
+    case FACTION_MERIDIAN as number: return OPENING_MERIDIAN;
+    case FACTION_RECLAIM as number: return OPENING_RECLAIM;
+    case Faction.Soviets as number: return OPENING_SOVIETS;
+    default: return OPENING_ALLIES;
+  }
+}
+
 export function openingFor(faction: Faction, personality: number): readonly OpeningStep[] {
-  const base = (faction as number) === (FACTION_MERIDIAN as number)
-    ? OPENING_MERIDIAN
-    : faction === Faction.Soviets ? OPENING_SOVIETS : OPENING_ALLIES;
+  const base = openingBase(faction);
   const out = base.slice();
   const k = openingKeys(faction);
   const name = AI_PERSONALITY[personality]?.name ?? 'Turtle';

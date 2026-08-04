@@ -65,6 +65,14 @@ import {
   type DefBinding, type FallbackBuilding, type FallbackUnit,
 } from '../game/Scenarios';
 
+// The ONE edge from src/sim/** into src/progression/**, and it is deliberately
+// the narrowest one available: `UnlockGate.ts` imports nothing but its own
+// type-only module, so this pulls in no store, no localStorage and no mission
+// table. Both functions answer "yes" when no gate is installed, which is what
+// keeps the sim running with the whole progression layer absent — the state the
+// `?shot=` harness and every node test are in.
+import { isBuildable, LOCKED_REASON } from '../progression/UnlockGate';
+
 import { BuildQueues, HoldReason, type QueueHooks, type QueueItemInfo } from './BuildQueue';
 import {
   PlacementPhase, evaluatePlacement, placementReport,
@@ -138,6 +146,15 @@ export interface BuildEntry {
   readonly sortOrder: number;
   /** False for things that exist only as prereqs / MCV deploy targets. */
   readonly buildable: boolean;
+  /**
+   * Progression gate id, or '' for "available from the first match".
+   *
+   * Copied off the def, never authored in `CONTENT`: the tech tree below is
+   * the same in every save, and what changes per profile is which of its rows
+   * the player has earned. Empty string rather than `undefined` so every entry
+   * has the identical shape — `UnlockGate` treats '' and absent alike.
+   */
+  readonly unlockedBy: string;
   /** Index into DefTables.units / .buildings, or -1 when no def table exists. */
   readonly defId: number;
 
@@ -515,19 +532,155 @@ const CONTENT: readonly ContentSpec[] = [
     kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
     cost: 1900, buildTime: 23, prereqs: ['mrdSlipway', 'mrdReliquary'], sortOrder: 80,
   },
+
+  /* ======================================================================
+   * THE RECLAMATION — a self-contained tech tree, and a deliberately FLAT one.
+   *
+   * Every number is verbatim from `src/data/Defs.ts`. Like the Pact this
+   * faction draws nothing from the `Faction.Neutral` pool (see
+   * SHARED_POOL_FACTIONS below) — it has its own yard, power, refinery,
+   * harvester and MCV.
+   *
+   * READ THE PREREQ COLUMN, because it is the whole faction: `rclSpitter` and
+   * `rclGrinder` name ONLY `rclBreakerYard`. Four structures — Foundry,
+   * Furnace, Sorter, Breaker Yard — and the Reclamation's line army exists,
+   * where an Allied or Soviet player needs six before a Grizzly, and a Pact
+   * player needs five. It buys that tempo with an 80-power plant (against 100
+   * and 160) and with the softest hulls in the game.
+   * ====================================================================== */
+  {
+    key: 'rclFoundry', name: 'Foundry', blurb: 'Unfolds the Reclamation. Builds structures.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 3000, buildTime: 40, prereqs: [], sortOrder: 0, buildable: false,
+    producesTabs: [S, D], buildRadius: BUILD_RADIUS,
+  },
+  {
+    key: 'rclFurnace', name: 'Scrap Furnace', blurb: 'Generates 80 power. Cheap, tough, and never enough.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 240, buildTime: 7, prereqs: ['rclFoundry'], sortOrder: 10,
+  },
+  {
+    key: 'rclSorter', name: 'Ore Sorter', blurb: 'Unloads Scrapjaws. Ships with one.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 2000, buildTime: 24, prereqs: ['rclFurnace'], sortOrder: 20,
+  },
+  {
+    key: 'rclRookery', name: 'Rookery', blurb: 'Trains pickers. Ninety credits at a time.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 450, buildTime: 9, prereqs: ['rclFurnace'], sortOrder: 30,
+    producesTabs: [I],
+  },
+  {
+    key: 'rclBreakerYard', name: 'Breaker Yard', blurb: 'Builds every Reclamation hull. Sets a rally point.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 1900, buildTime: 22, prereqs: ['rclSorter'], sortOrder: 40,
+    producesTabs: [V],
+  },
+  {
+    key: 'rclSpotter', name: 'Spotter Mast', blurb: 'Reveals the minimap. Opens the heavy coil.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 1000, buildTime: 14, prereqs: ['rclSorter'], sortOrder: 50,
+  },
+  {
+    key: 'rclHeap', name: 'Slag Heap', blurb: 'Stores 1500 credits of ore.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 150, buildTime: 5, prereqs: ['rclSorter'], sortOrder: 60,
+  },
+  {
+    key: 'rclDrydock', name: 'Breaker Dock', blurb: 'Builds Reclamation hulls that float.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 1000, buildTime: 14, prereqs: ['rclSorter'], sortOrder: 70,
+    producesTabs: [V],
+  },
+  {
+    key: 'rclCrucible', name: 'Crucible', blurb: 'Opens the siege hull, the Yardcrawler and the Hulk.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 2000, buildTime: 24, prereqs: ['rclSpotter'], sortOrder: 80,
+  },
+  {
+    key: 'rclBarricade', name: 'Scrap Barricade', blurb: 'Stops vehicles. Stops nothing else.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: D,
+    cost: 100, buildTime: 2, prereqs: ['rclRookery'], sortOrder: 10,
+  },
+  {
+    key: 'rclSpitpost', name: 'Spitpost', blurb: 'Cheap chained coil. Fires through a blackout.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: D,
+    cost: 420, buildTime: 8, prereqs: ['rclRookery'], sortOrder: 20,
+  },
+  {
+    key: 'rclPylon', name: 'Arc Pylon', blurb: 'Three chained arcs. Draws ninety power to do it.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: D,
+    cost: 1450, buildTime: 16, prereqs: ['rclSpotter'], sortOrder: 30,
+  },
+
+  {
+    key: 'rclPicker', name: 'Scrap Picker', blurb: 'Ninety credits. Three seconds. Bring forty.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: I,
+    cost: 90, buildTime: 3, prereqs: ['rclRookery'], sortOrder: 10,
+  },
+  {
+    key: 'rclSlagger', name: 'Slagger', blurb: 'Satchel of molten slag. The only thing that hurts a wall.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: I,
+    cost: 380, buildTime: 7, prereqs: ['rclRookery'], sortOrder: 20,
+  },
+  {
+    key: 'rclTinker', name: 'Tinker', blurb: 'Captures structures. Repairs them.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: I,
+    cost: 500, buildTime: 10, prereqs: ['rclRookery', 'rclSorter'], sortOrder: 30,
+  },
+  {
+    key: 'rclScrapper', name: 'Scrapjaw', blurb: 'Ore crusher on wheels. Drives over anything soft.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
+    cost: 1150, buildTime: 14, prereqs: ['rclBreakerYard', 'rclSorter'], sortOrder: 10,
+  },
+  {
+    key: 'rclSpitter', name: 'Arcspitter', blurb: 'Fast coil buggy. Sixteen metres of reach and no armour.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
+    cost: 420, buildTime: 6, prereqs: ['rclBreakerYard'], sortOrder: 20,
+  },
+  {
+    key: 'rclGrinder', name: 'Grinder', blurb: 'The line. Cheap, quick, blind past eighteen metres.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
+    cost: 600, buildTime: 9, prereqs: ['rclBreakerYard'], sortOrder: 30,
+  },
+  {
+    key: 'rclSlaghurler', name: 'Slaghurler', blurb: 'The only thing in the army that can break a base.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
+    cost: 1150, buildTime: 15, prereqs: ['rclBreakerYard', 'rclCrucible'], sortOrder: 40,
+  },
+  {
+    key: 'rclCrawler', name: 'Yardcrawler', blurb: 'Unfolds into a second Foundry.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
+    cost: 3000, buildTime: 32, prereqs: ['rclBreakerYard', 'rclCrucible'], sortOrder: 50,
+  },
+  {
+    key: 'rclHornet', name: 'Swarmhornet', blurb: 'Chained arc from a lifting body. Nothing to shoot back with.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
+    cost: 900, buildTime: 12, prereqs: ['rclBreakerYard', 'rclSpotter'], sortOrder: 60,
+  },
+  {
+    key: 'rclScow', name: 'Slag Scow', blurb: 'A barge with a bow gun bolted to it.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
+    cost: 850, buildTime: 12, prereqs: ['rclDrydock'], sortOrder: 70,
+  },
+  {
+    key: 'rclHulk', name: 'Reclaimed Hulk', blurb: 'Somebody else’s capital ship, welded back together.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
+    cost: 1800, buildTime: 22, prereqs: ['rclDrydock', 'rclCrucible'], sortOrder: 80,
+  },
 ];
 
 /** Every army a player or an AI can be. Neutral is not one of them. */
 const PLAYABLE_FACTIONS: readonly Faction[] = [
-  Faction.Allies, Faction.Soviets, Faction.Meridian,
+  Faction.Allies, Faction.Soviets, Faction.Meridian, Faction.Reclaim,
 ];
 
 /**
  * The armies that draw from the `Faction.Neutral` content pool.
  *
  * Neutral is not "everyone" — it is "the original two armies field the same
- * thing". The Meridian Pact is a complete parallel tree down to its own
- * construction yard, so it is deliberately not in this list.
+ * thing". The Meridian Pact and the Reclamation are complete parallel trees
+ * down to their own construction yards, so neither is in this list.
  */
 const SHARED_POOL_FACTIONS: readonly Faction[] = [Faction.Allies, Faction.Soviets];
 
@@ -690,6 +843,7 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
       prereqs: spec.prereqs,
       sortOrder: spec.sortOrder,
       buildable: spec.buildable !== false,
+      unlockedBy: def?.unlockedBy ?? '',
       defId,
       publicId: defId >= 0 ? defId : index,
       footprintW: fw,
@@ -726,6 +880,7 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
     prereqs: spec.prereqs,
     sortOrder: spec.sortOrder,
     buildable: spec.buildable !== false,
+    unlockedBy: def?.unlockedBy ?? '',
     defId,
     // See BuildEntry.publicId: the offset is what keeps a unit's id from
     // colliding with the building sharing its def index.
@@ -964,6 +1119,19 @@ export class ProductionService implements QueueHooks {
     if (!entry.buildable) { result.ok = false; result.reason = 'Not buildable'; return result; }
     if (entry.faction !== Faction.Neutral && entry.faction !== p.faction) {
       result.ok = false; result.reason = 'Wrong faction'; return result;
+    }
+    // The progression gate. Third, not first: "Wrong faction" is a fact about
+    // the entry and "Locked" is a fact about the profile, and reporting the
+    // profile answer for an entry the army could never field either way would
+    // promise a Soviet player an Apocalypse the moment they unlock one.
+    //
+    // `p` is passed so the AI resolves against the SAME profile the human does
+    // (see UnlockGate.allowsFor). An opponent fielding a unit the player has
+    // never seen and cannot build reads as the game cheating, and it spoils the
+    // reveal the unlock exists to deliver. Difficulty stays where it lives: the
+    // economy handicap and composition quality in AIStrategy.
+    if (!isBuildable(entry, p)) {
+      result.ok = false; result.reason = LOCKED_REASON; return result;
     }
     for (let i = 0; i < entry.prereqs.length; i++) {
       const key = entry.prereqs[i];

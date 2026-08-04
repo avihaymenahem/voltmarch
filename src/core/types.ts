@@ -134,22 +134,30 @@ export type DeepPartial<T> = { [K in keyof T]?: T[K] extends object ? DeepPartia
  * ========================================================================== */
 
 /**
- * The three armies plus the neutral/Gaia side that owns ore, rocks and wrecks.
+ * The four armies plus the neutral/Gaia side that owns ore, rocks and wrecks.
  * Faction drives ART (palette, silhouette language) and DEFS (tech tree).
  * Ownership is a PlayerId — two players may share a faction.
+ *
+ * Members are APPEND-ONLY. The value is stored in a Uint8Array column, indexes
+ * `FACTION_PALETTE_KEYS`, `FACTION_PALETTE` (which is declared in this order),
+ * `RenderBridge.TEAM_RGB` and every `FACTION_KEY_MAP` row in
+ * `src/game/Scenarios.ts`. Inserting rather than appending re-points all five
+ * at once with no error message.
  */
 export const enum Faction {
   Neutral = 0,
   Allies = 1,
   Soviets = 2,
   Meridian = 3,
+  /** The Reclamation. Salvage frames, arc weapons, no turret on anything. */
+  Reclaim = 4,
 }
 /**
  * Number of members in `Faction`, i.e. the length any array indexed BY a
  * faction id must have. (Neutral occupies slot 0, so the number of playable
  * armies is `FACTION_COUNT - 1`.)
  */
-export const FACTION_COUNT = 4;
+export const FACTION_COUNT = 5;
 
 /**
  * Diplomatic relation between two players. Computed from PlayerState.allyMask.
@@ -617,6 +625,14 @@ export interface BuildableDef {
   readonly sortOrder: number;
   /** ModelRegistry key. */
   readonly model: string;
+  /**
+   * Progression gate. Omitted (the overwhelming majority) means "available in
+   * the very first match" — see `src/progression/UnlockGate.ts`. When present
+   * it is an id from `UNLOCKS` in `src/data/Missions.ts`, and the def is only
+   * buildable once a mission has granted that id. Inverting this default would
+   * mean one forgotten tag locks a unit forever, so the default is open.
+   */
+  readonly unlockedBy?: string;
 }
 
 export interface UnitDef extends BuildableDef {
@@ -686,11 +702,17 @@ export interface BuildingDef extends BuildableDef {
  * palette table in config.ts and in src/art/** is keyed by this, so adding a
  * faction is `Faction` + this union + a row in each table.
  */
-export type FactionPaletteKey = 'neutral' | 'allies' | 'soviets' | 'meridian';
+export type FactionPaletteKey = 'neutral' | 'allies' | 'soviets' | 'meridian' | 'reclaim';
 
-/** `FactionPaletteKey` indexed by `Faction`, for the id -> key direction. */
+/**
+ * `FactionPaletteKey` indexed by `Faction`, for the id -> key direction.
+ *
+ * ORDER IS THE ENUM'S ORDER, and `ui/Chrome.paletteKeyFor` additionally relies
+ * on `Object.keys(FACTION_PALETTE)` producing the same sequence — so a new row
+ * goes on the END of this array AND on the end of `DEFAULT_ART.factions`.
+ */
 export const FACTION_PALETTE_KEYS: readonly FactionPaletteKey[] = [
-  'neutral', 'allies', 'soviets', 'meridian',
+  'neutral', 'allies', 'soviets', 'meridian', 'reclaim',
 ];
 
 /** Everything the game needs to know about a side. */

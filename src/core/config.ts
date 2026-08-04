@@ -773,6 +773,65 @@ const MERIDIAN_LOOK: FactionLook = {
   chamfer: 0.038,
 };
 
+/**
+ * THE RECLAMATION — oxide graphite hulls, arc-violet team plate, amber hazard.
+ *
+ * The fourth army has to be separable from three that already own the obvious
+ * quadrants, and colour is the LEAST of the three axes it moves on (the other
+ * two are in `src/art/Faction4*.ts`: exposed frame-and-cladding, and no turret
+ * on anything the faction fields). Even so, every channel here is measured
+ * against the other three rather than picked:
+ *
+ *   TEAM HUE. Cobalt sits at 215 degrees, crimson at 3, jade at 168. The
+ *   largest hole left in the wheel that is not the 100-120 "amateur emerald"
+ *   window scorecard #9 fails on is 270-320. `#A32BD8` is 287 degrees: 72 from
+ *   crimson, 72 from cobalt, 119 from jade. That 72-degree MINIMUM separation
+ *   is the best any candidate hue scores, and it is the number that matters —
+ *   the nearest rival, not the average.
+ *
+ *   VALUE. The Allies are cool light, the Soviets mid olive, the Pact warm
+ *   bone. All three hulls sit at V 0.55-0.82. `armorBase` here is V 0.27: the
+ *   Reclamation is the only army that reads as a DARK silhouette, which is what
+ *   separates it in a 40-unit blob at a glance even before hue registers.
+ *
+ *   ACCENT. Cyan, furnace orange and gold are taken, so the emissive is
+ *   arc-violet — and the second accent is HAZARD AMBER, deliberately warm
+ *   against a cold hull. No other army runs a warm/cool split; it is what makes
+ *   a scrap frame read as machinery rather than as a shadow.
+ */
+const RECLAIM_LOOK: FactionLook = {
+  /** Oxide graphite. The only dark hull in the game. */
+  armorBase: '#3D3A44',
+  armorSecondary: '#524E5C',
+  /** The team tint. Also the HUD accent and the minimap blip. */
+  team: '#A32BD8',
+  /** Hazard amber, the warm half of the split. Never violet. */
+  accentStripe: '#E8B33C',
+  /** Exposed arc conduit. Not cyan, not furnace orange, not gold. */
+  emissivePanel: '#E27BFF',
+  emissiveIntensity: 2.7,
+  glass: '#2A1E34',
+  /** Poured slag. Dark, and violet rather than grey — see the CHROMA BUDGET. */
+  concrete: '#6E6878',
+  trimMetal: '#6A6270',
+  bareMetal: '#6E6A66',
+  /** Real rust: this army is welded out of other people's wrecks. */
+  rust: '#7A4A34',
+  tracer: '#E27BFF',
+  explosionTint: '#E0A8FF',
+  hudAccent: '#B93FE0',
+  camo: ['#3D3A44', '#2C2A34', '#57505F'],
+  /** Loosest in the game — cladding is cut from whatever was to hand. */
+  camoScale: 3.8,
+  /** Slab-leaning, but the read comes from open frame rather than from mass. */
+  silhouetteBias: 0.75,
+  /** Welded, not bolted. The Soviets own the rivet ring and keep it. */
+  useRivets: false,
+  rivetSpacing: 0,
+  /** Crude cut plate: the heaviest bevel in the game after the Allied 0.045. */
+  chamfer: 0.030,
+};
+
 /** Ore crystal colour. Referenced by both terrain and HUD. */
 export const ORE_CRYSTAL_COLOR = '#FFC64A';
 /** Neutral rock. */
@@ -1005,11 +1064,15 @@ export const DEFAULT_ART: ArtDirection = {
   shroud: { ...SHROUD_NOON },
   hud: { ...HUD_NOON },
   surfaces: SURFACES,
+  // DECLARATION ORDER IS `Faction` ORDER. `ui/Chrome.paletteKeyFor` resolves a
+  // faction's accent through `Object.keys(FACTION_PALETTE)[faction]`, so a row
+  // inserted rather than appended silently hands one army another's HUD.
   factions: {
     neutral: NEUTRAL_LOOK,
     allies: ALLIES_LOOK,
     soviets: SOVIETS_LOOK,
     meridian: MERIDIAN_LOOK,
+    reclaim: RECLAIM_LOOK,
   },
 };
 

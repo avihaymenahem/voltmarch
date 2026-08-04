@@ -1199,6 +1199,666 @@
 }
 
 /* ==========================================================================
+ * 11B. MISSIONS, REWARDS AND OBJECTIVES
+ *
+ * Three surfaces, one material. Nothing below declares a `backdrop-filter`:
+ * the glass and its macOS gate belong to `.vm-panel` and `.vm-chip`, and a
+ * second ungated blur over the WebGL canvas is precisely the bug section 13
+ * exists to prevent.
+ *
+ * The mission card is the only place in the front end that uses colour to carry
+ * STATE rather than emphasis — locked is drained, complete is green, in
+ * progress is accented. That is a deliberate exception: a wall of thirty cards
+ * has to be scannable at arm's length, and shape alone cannot do it.
+ * ========================================================================== */
+
+.vm-missions {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 3vh, 40px) clamp(16px, 4vw, 56px);
+}
+
+.vm-missions-panel {
+  width: min(1180px, 96vw);
+  max-height: 94vh;
+}
+
+.vm-missions-summary {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--vm-accent);
+  white-space: nowrap;
+}
+
+/* -- category rail -------------------------------------------------------- */
+
+.vm-missions-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--vm-line);
+}
+
+.vm-missions-jump {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border: 1px solid var(--vm-line);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--vm-text-dim);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
+  transition: border-color 140ms linear, color 140ms linear;
+}
+
+.vm-missions-jump:hover,
+.vm-missions-jump.is-focus {
+  border-color: var(--vm-accent-dim);
+  color: var(--vm-text);
+}
+
+.vm-missions-jump .vm-icon { flex: 0 0 auto; }
+
+.vm-missions-body { scroll-behavior: smooth; }
+
+/* -- what you already have ------------------------------------------------ */
+
+.vm-missions-earned {
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid var(--vm-line);
+}
+
+.vm-missions-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 8px;
+}
+
+.vm-missions-earned .vm-chip {
+  padding: 4px 10px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--vm-text);
+}
+
+.vm-missions-earned .vm-chip .vm-icon { color: var(--vm-accent); }
+
+/* -- sections ------------------------------------------------------------- */
+
+.vm-missions-section { padding: 18px 0 6px; }
+
+.vm-missions-cat {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 18px 4px;
+}
+
+.vm-missions-cat .vm-icon { color: var(--vm-accent-dim); }
+.vm-missions-cat .vm-h3 { margin: 0; }
+
+.vm-missions-blurb { padding: 0 18px 12px; }
+
+.vm-missions-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 42px 24px;
+  text-align: center;
+  align-items: center;
+}
+
+.vm-missions-empty .vm-body { max-width: 52em; }
+
+/* -- a chain -------------------------------------------------------------- */
+
+.vm-chain {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0 18px 16px;
+}
+
+/* -- one mission ---------------------------------------------------------- */
+
+.vm-mission {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 13px 15px 14px;
+  border: 1px solid var(--vm-line);
+  border-left: 2px solid var(--vm-line);
+  background: rgba(255, 255, 255, 0.025);
+  clip-path: polygon(
+    var(--vm-notch-sm) 0, 100% 0,
+    100% calc(100% - var(--vm-notch-sm)), calc(100% - var(--vm-notch-sm)) 100%,
+    0 100%, 0 var(--vm-notch-sm));
+}
+
+/* Depth is the chain, drawn as an indent plus a rail stub rather than as a
+   tree of connectors: a connector grid that has to survive wrapping text is a
+   week of CSS for something the indent already says. */
+.vm-mission[data-depth='1'] { margin-left: 26px; }
+.vm-mission[data-depth='2'] { margin-left: 52px; }
+.vm-mission[data-depth='3'] { margin-left: 78px; }
+
+.vm-mission[data-depth='1']::before,
+.vm-mission[data-depth='2']::before,
+.vm-mission[data-depth='3']::before {
+  content: '';
+  position: absolute;
+  left: -18px;
+  top: 22px;
+  width: 16px;
+  height: 1px;
+  background: var(--vm-line);
+}
+
+.vm-mission.is-active { border-left-color: var(--vm-accent-dim); }
+.vm-mission.is-complete { border-left-color: #4fd97f; }
+.vm-mission.is-locked { opacity: 0.62; }
+
+.vm-mission-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.vm-mission-title {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vm-text);
+}
+
+.vm-mission-diff {
+  display: inline-flex;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+
+.vm-mission-pip {
+  width: 5px;
+  height: 5px;
+  background: var(--vm-line);
+}
+
+.vm-mission-pip.is-on { background: var(--vm-accent-dim); }
+
+.vm-mission-scope,
+.vm-mission-state {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border: 1px solid var(--vm-line);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+  white-space: nowrap;
+}
+
+.vm-mission-state.is-active {
+  border-color: var(--vm-accent-dim);
+  color: var(--vm-accent);
+}
+
+.vm-mission-state.is-complete {
+  border-color: rgba(79, 217, 127, 0.5);
+  color: #4fd97f;
+}
+
+.vm-mission-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  letter-spacing: 0.03em;
+  color: var(--vm-text-dim);
+}
+
+.vm-mission-gate,
+.vm-mission-after {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+.vm-mission-gate { color: var(--vm-accent-dim); }
+
+/* -- the progress track --------------------------------------------------- */
+
+.vm-mission-track {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.vm-mission-bar {
+  position: relative;
+  flex: 1 1 auto;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.vm-mission-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  background: var(--vm-accent);
+  transition: width 320ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.vm-mission.is-complete .vm-mission-fill { background: #4fd97f; }
+.vm-mission.is-locked .vm-mission-fill { background: var(--vm-text-faint); }
+
+.vm-mission-value {
+  flex: 0 0 auto;
+  min-width: 110px;
+  text-align: right;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--vm-text-dim);
+}
+
+/* -- rewards -------------------------------------------------------------- */
+
+.vm-mission-rewards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 6px;
+}
+
+.vm-reward {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--vm-line-soft);
+  background: rgba(53, 200, 240, 0.045);
+}
+
+.vm-reward.is-earned {
+  border-color: rgba(79, 217, 127, 0.32);
+  background: rgba(79, 217, 127, 0.06);
+}
+
+.vm-reward-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  padding-top: 1px;
+  color: var(--vm-accent);
+}
+
+.vm-reward.is-earned .vm-reward-icon { color: #4fd97f; }
+
+.vm-reward-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vm-reward-kind {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+.vm-reward-name {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--vm-text);
+}
+
+.vm-reward-effect {
+  font-size: 11px;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  color: var(--vm-text-dim);
+}
+
+.vm-reward-tick {
+  margin-left: auto;
+  color: #4fd97f;
+  flex: 0 0 auto;
+}
+
+/* -- the footer status line ----------------------------------------------- */
+
+/* Four buttons and a sentence do not fit a 1000px footer at the shell's stock
+   150px minimum, and the sentence ended up painted underneath Export. The
+   footer is allowed to wrap and the buttons here are narrower — this screen is
+   the only place in the product with four footer actions. */
+.vm-missions .vm-page-foot {
+  flex-wrap: wrap;
+}
+
+.vm-missions .vm-page-foot .vm-btn {
+  min-width: 112px;
+}
+
+.vm-missions-status {
+  flex: 1 1 180px;
+  min-width: 0;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0.04em;
+  color: var(--vm-text-faint);
+}
+
+.vm-missions-status.is-bad { color: var(--vm-danger); }
+
+/* An armed destructive button. The label already carries the consequence; this
+   makes the second click impossible to make by accident. */
+.vm-btn.is-armed {
+  background: var(--vm-danger);
+  border-color: var(--vm-danger);
+  color: #10060a;
+}
+
+.vm-btn.is-armed .vm-icon,
+.vm-btn.is-armed .vm-btn-label { color: inherit; }
+
+/* ==========================================================================
+ * 11C. THE REWARD REVEAL (end screen)
+ *
+ * The one animated element in the front end that is not a fade. It earns the
+ * exception: `docs/MISSIONS_DESIGN.md` is explicit that an unlock the player
+ * does not notice is not a reward, and a card that simply exists on a screen
+ * with eleven statistics on it is an unlock the player does not notice.
+ *
+ * The stagger is `animation-delay` set per card from `EndScreen.buildReveal` —
+ * no timers, so nothing to leak if the screen is dismissed a third of a second
+ * in. It animates `opacity` and `transform` only, never a layout property.
+ * ========================================================================== */
+
+.vm-reveal {
+  padding: 18px 30px 20px;
+  border-bottom: 1px solid var(--vm-line);
+  background: linear-gradient(180deg, rgba(53, 200, 240, 0.07), rgba(53, 200, 240, 0));
+}
+
+.vm-reveal-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-bottom: 12px;
+}
+
+.vm-reveal-head .vm-icon { color: var(--vm-accent); }
+.vm-reveal-head .vm-h3 { margin: 0; color: var(--vm-accent); }
+
+.vm-reveal-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 8px;
+}
+
+.vm-reveal-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 15px;
+  border: 1px solid var(--vm-accent-dim);
+  background: rgba(53, 200, 240, 0.08);
+  clip-path: polygon(
+    var(--vm-notch-sm) 0, 100% 0,
+    100% calc(100% - var(--vm-notch-sm)), calc(100% - var(--vm-notch-sm)) 100%,
+    0 100%, 0 var(--vm-notch-sm));
+  opacity: 0;
+  animation: vm-reveal-in 520ms cubic-bezier(0.16, 0.84, 0.34, 1) both;
+}
+
+@keyframes vm-reveal-in {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.985); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.vm-reveal-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  padding-top: 2px;
+  color: var(--vm-accent);
+}
+
+.vm-reveal-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.vm-reveal-kind {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--vm-accent-dim);
+}
+
+.vm-reveal-name {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vm-text);
+}
+
+.vm-reveal-effect {
+  font-size: 12px;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  color: var(--vm-text-dim);
+}
+
+.vm-reveal-new {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 3px 8px;
+  background: var(--vm-accent);
+  color: #04121a;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+/* ==========================================================================
+ * 11D. END-SCREEN PROGRESS BLOCKS
+ * ========================================================================== */
+
+.vm-endprog {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1px;
+  background: var(--vm-line-soft);
+  border-bottom: 1px solid var(--vm-line);
+}
+
+.vm-endprog-block {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 16px 18px 18px;
+  background: rgba(9, 13, 20, 0.55);
+}
+
+.vm-endprog-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vm-endprog-title {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+.vm-endprog-note {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vm-accent-dim);
+}
+
+.vm-endprog-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--vm-text-dim);
+}
+
+.vm-endprog-row .vm-icon {
+  flex: 0 0 auto;
+  color: #4fd97f;
+}
+
+.vm-endprog-row.is-good .vm-endprog-name { color: var(--vm-text); }
+
+.vm-endprog-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-endprog-detail {
+  flex: 0 0 auto;
+  font-weight: 700;
+  color: var(--vm-text-faint);
+}
+
+.vm-endprog-row.is-good .vm-endprog-detail { color: #4fd97f; }
+
+/* A block whose detail is a sentence rather than a count stacks instead of
+   competing for the row: "14 / 25 · Raider" beside a mission title inside a
+   third of the panel ellipsised the title down to two characters. */
+.vm-endprog-block.is-stacked .vm-endprog-row {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+  padding-bottom: 3px;
+}
+
+.vm-endprog-block.is-stacked .vm-endprog-name {
+  font-weight: 600;
+  color: var(--vm-text);
+}
+
+.vm-endprog-block.is-stacked .vm-endprog-detail {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--vm-accent-dim);
+  white-space: normal;
+}
+
+/* ==========================================================================
+ * 11E. PAUSE-MENU OBJECTIVES
+ *
+ * `Shell.pause()` hides the HUD, taking the objective panel with it. This is
+ * the same information, at the same cap, in the smallest form that still
+ * answers "what was I supposed to be doing".
+ * ========================================================================== */
+
+.vm-pause-obj {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px 22px 4px;
+  border-top: 1px solid var(--vm-line-soft);
+  margin-top: 10px;
+}
+
+.vm-pause-obj .vm-subtitle { padding-bottom: 2px; }
+
+.vm-pause-obj-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--vm-text-dim);
+}
+
+.vm-pause-obj-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-pause-obj-value {
+  flex: 0 0 auto;
+  font-weight: 700;
+  color: var(--vm-text-faint);
+}
+
+.vm-pause-obj-row.is-done .vm-pause-obj-name,
+.vm-pause-obj-row.is-done .vm-pause-obj-value { color: #4fd97f; }
+
+.vm-pause-obj-more {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+@media (max-width: 860px) {
+  .vm-mission[data-depth='1'],
+  .vm-mission[data-depth='2'],
+  .vm-mission[data-depth='3'] { margin-left: 14px; }
+  .vm-mission-value { min-width: 0; }
+}
+
+/* ==========================================================================
  * 12. ACCESSIBILITY / MOTION
  * ========================================================================== */
 

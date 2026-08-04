@@ -55,6 +55,27 @@ import {
   type Shell,
 } from './Shell';
 
+import {
+  aiMirrorsUnlocks, gateInstalled, isMapUnlocked, setAiMirrorsUnlocks,
+} from './progression-link';
+
+/**
+ * Maps the lobby offers on a brand-new profile.
+ *
+ * Two, not one. A single starter map means every early match is the same match
+ * and the missions that unlock the others read as a chore; two with genuinely
+ * different shapes — a wooded valley and an open flat — means the first hour
+ * already has a decision in it. The other four are rewards, and the mission
+ * table is the authority on which (`UNLOCKS.map*`); this list only has to agree
+ * about the two that are free, which `tests/progression-gate.spec.ts` checks.
+ */
+const STARTER_MAPS: readonly string[] = ['temperate-valley', 'airbase-flats'];
+
+/** Is this map playable right now? Starters always are. */
+function mapAvailable(id: string): boolean {
+  return STARTER_MAPS.includes(id) || isMapUnlocked(id);
+}
+
 export class SkirmishSetupScreen implements Screen {
   readonly id = 'setup';
 
@@ -180,23 +201,39 @@ export class SkirmishSetupScreen implements Screen {
     col.replaceChildren();
 
     /* -- map -------------------------------------------------------------- */
+    // A stored (or imported) setup can name a map this profile has not earned.
+    // Correct it BEFORE the list is painted, so the player sees which map they
+    // are about to fight on rather than being silently moved at Launch.
+    if (!mapAvailable(this.setup.map)) this.setup.map = STARTER_MAPS[0];
+
     const maps = this.section(col, 'Battlefield');
     const list = el('div', 'vm-maplist');
     for (const m of MAPS) {
+      // A locked map is SHOWN, disabled, with the reason on it — not hidden.
+      // A list that silently grows is a list the player never learns is a
+      // reward; "Coral Shore — locked" is the advertisement for the mission
+      // that grants it.
+      const open = mapAvailable(m.id);
       const item = el('button', 'vm-mapitem');
       item.type = 'button';
       item.setAttribute('aria-pressed', this.setup.map === m.id ? 'true' : 'false');
-      item.appendChild(icon('map', 18));
+      item.appendChild(icon(open ? 'map' : 'lock', 18));
       const text = el('div', 'vm-mapitem-text');
       text.appendChild(el('div', 'vm-mapitem-name', m.name));
-      text.appendChild(el('div', 'vm-mapitem-blurb', m.blurb));
+      text.appendChild(el('div', 'vm-mapitem-blurb', open ? m.blurb : 'Locked — complete a mission to unlock.'));
       item.appendChild(text);
-      item.appendChild(el('div', 'vm-mapitem-tag', `${m.players}P`));
-      focusable(item);
-      item.addEventListener('click', () => {
-        this.setup.map = m.id;
-        this.renderRight();
-      });
+      item.appendChild(el('div', 'vm-mapitem-tag', open ? `${m.players}P` : 'LOCKED'));
+      if (open) {
+        focusable(item);
+        item.addEventListener('click', () => {
+          this.setup.map = m.id;
+          this.renderRight();
+        });
+      } else {
+        item.classList.add('is-locked');
+        item.disabled = true;
+        item.setAttribute('aria-disabled', 'true');
+      }
       list.appendChild(item);
     }
     maps.appendChild(list);
@@ -220,6 +257,21 @@ export class SkirmishSetupScreen implements Screen {
       ),
       'Scales the accumulator, never the fixed timestep.',
     ));
+
+    // Only offered when a gate is actually installed. With no progression layer
+    // (a stripped build, or the `?shot=` harness) the row would be a control
+    // that changes nothing, which is worse than no control.
+    if (gateInstalled()) {
+      rules.appendChild(row(
+        'Opponent Tech',
+        chooser(
+          [{ value: 1, label: 'Mirror Yours' }, { value: 0, label: 'Unrestricted' }],
+          aiMirrorsUnlocks() ? 1 : 0,
+          (v) => { setAiMirrorsUnlocks(v === 1); },
+        ),
+        'Mirrored, the AI fields only what you have unlocked. Unrestricted, it fields everything.',
+      ));
+    }
 
     /* -- seed ------------------------------------------------------------- */
     const seedRow = el('div', 'vm-row-control');
@@ -282,11 +334,14 @@ export class SkirmishSetupScreen implements Screen {
     const pick = <T>(arr: readonly T[]): T => arr[Math.floor(Math.random() * arr.length)];
     const player = pick(this.factions);
     const others = this.factions.filter((f) => f.key !== player.key);
+    // Randomise only over maps this profile can actually play. `STARTER_MAPS`
+    // is the floor, so the pool is never empty even on a brand-new profile.
+    const openMaps = MAPS.filter((m) => mapAvailable(m.id));
     this.setup = {
       ...d,
       playerFaction: player.key,
       aiFaction: (others.length > 0 ? pick(others).key : player.key),
-      map: pick(MAPS).id,
+      map: (openMaps.length > 0 ? pick(openMaps).id : STARTER_MAPS[0]),
       difficulty: this.setup.difficulty,
       personality: -1,
       startingCredits: this.setup.startingCredits,

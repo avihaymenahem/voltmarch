@@ -75,6 +75,9 @@ import {
 } from '../core/math';
 import { TerrainRegions } from '../sim/Flowfield';
 import { getTerrain } from '../world/Terrain';
+// Zero-cost edge: `UnlockGate.ts` imports nothing but its own type-only module,
+// and `isBuildable` answers "yes" when no gate has been installed.
+import { isBuildable } from '../progression/UnlockGate';
 
 import { buildAlliedBase, type BaseOptions } from './scenarios/AlliedBase';
 import { buildSovietBase } from './scenarios/SovietBase';
@@ -311,6 +314,18 @@ const MOVER = EntityFlag.CanMove | EntityFlag.ProvidesVision;
 const GUNNER = EntityFlag.CanAttack;
 const TURRETED = EntityFlag.CanAttack | EntityFlag.HasTurret;
 
+/**
+ * Reclamation hull turn rate, rad/s — the same derivation as
+ * `src/data/Defs.ts#RCL_TURN`, written out here because these rows must agree
+ * with the def table to the digit (see `tests/data.spec.ts`).
+ *
+ * A turretless army slews its whole chassis to bear, so it gets a full extra
+ * radian/sec over the shared `2.6 - length * 0.14`.
+ */
+function RCL_TURN(dim: { l: number }): number {
+  return 3.6 - dim.l * 0.14;
+}
+
 function unit(
   key: string,
   kind: EntityKind.Infantry | EntityKind.Vehicle,
@@ -426,6 +441,46 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
     Locomotor.Hover, 34, TURRETED, Faction.Meridian),
   mrdMonitor: unit('mrdMonitor', EntityKind.Vehicle, NU.destroyer, 780, ArmorClass.Medium, 5.6,
     Locomotor.Hover, 38, TURRETED, Faction.Meridian),
+
+  /* -- THE RECLAMATION -----------------------------------------------------
+   * Transcribed from `src/data/Defs.ts` §1, which is authoritative for every
+   * number here. Two army-wide rules are visible in the rows and they ARE the
+   * faction: not one entry carries `TURRETED` (a Reclamation gun is bolted to
+   * its hull and fires inside `COMBAT_WEAPONS.hullArcDeg`), and every ground
+   * hull is `Locomotor.Wheel` on a turn rate a full radian/sec above the
+   * shared derivation, because a turretless chassis has to slew to bear.
+   * ---------------------------------------------------------------------- */
+  rclPicker: unit('rclPicker', EntityKind.Infantry, U.infantry, 85, ArmorClass.Infantry, 3.6,
+    Locomotor.Foot, 22, GUNNER | EntityFlag.Crushable, Faction.Reclaim, { crushableBy: 1 }),
+  rclSlagger: unit('rclSlagger', EntityKind.Infantry, U.infantry, 115, ArmorClass.Infantry, 3.0,
+    Locomotor.Foot, 20, GUNNER | EntityFlag.Crushable, Faction.Reclaim, { crushableBy: 1 }),
+  rclTinker: unit('rclTinker', EntityKind.Infantry, U.infantry, 85, ArmorClass.Infantry, 3.5,
+    Locomotor.Foot, 20, EntityFlag.Crushable, Faction.Reclaim, { crushableBy: 1 }),
+
+  rclScrapper: unit('rclScrapper', EntityKind.Vehicle, U.harvester, 850, ArmorClass.Heavy, 5.6,
+    Locomotor.Wheel, 20, EntityFlag.IsHarvester | EntityFlag.Crusher, Faction.Reclaim,
+    { crushLevel: 5, cargoMax: 600, turnRate: RCL_TURN(U.harvester) }),
+  rclSpitter: unit('rclSpitter', EntityKind.Vehicle, U.ifv, 170, ArmorClass.Light, 8.8,
+    Locomotor.Wheel, 28, GUNNER, Faction.Reclaim,
+    { crushableBy: 4, turnRate: RCL_TURN(U.ifv) }),
+  rclGrinder: unit('rclGrinder', EntityKind.Vehicle, U.lightTank, 270, ArmorClass.Medium, 5.8,
+    Locomotor.Wheel, 26, GUNNER | EntityFlag.Crusher, Faction.Reclaim,
+    { crushLevel: 5, crushableBy: 6, turnRate: RCL_TURN(U.lightTank) }),
+  rclSlaghurler: unit('rclSlaghurler', EntityKind.Vehicle, U.prismTank, 230, ArmorClass.Light, 4.6,
+    Locomotor.Wheel, 30, GUNNER, Faction.Reclaim,
+    { crushableBy: 5, turnRate: RCL_TURN(U.prismTank) }),
+  rclCrawler: unit('rclCrawler', EntityKind.Vehicle, U.mcv, 900, ArmorClass.Heavy, 4.6,
+    Locomotor.Wheel, 22, 0, Faction.Reclaim,
+    { crushableBy: 0, turnRate: RCL_TURN(U.mcv) }),
+  // No Air locomotor exists yet, so the gunship is authored the way the naval
+  // hulls are: hover, flyer speed, flyer sight, paper armour.
+  rclHornet: unit('rclHornet', EntityKind.Vehicle, U.ifv, 180, ArmorClass.Light, 11.0,
+    Locomotor.Hover, 34, GUNNER, Faction.Reclaim, { crushableBy: 0, turnRate: 3.4 }),
+
+  rclScow: unit('rclScow', EntityKind.Vehicle, NU.gunboat, 340, ArmorClass.Light, 7.2,
+    Locomotor.Hover, 32, GUNNER, Faction.Reclaim, { turnRate: RCL_TURN(NU.gunboat) }),
+  rclHulk: unit('rclHulk', EntityKind.Vehicle, NU.destroyer, 820, ArmorClass.Heavy, 4.4,
+    Locomotor.Hover, 36, GUNNER, Faction.Reclaim, { turnRate: RCL_TURN(NU.destroyer) }),
 };
 
 export interface FallbackBuilding {
@@ -548,6 +603,38 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
     EntityFlag.CanAttack, Faction.Meridian, { weaponRange: 24 }),
   mrdHelios: building('mrdHelios', B.prismTower, 600, -55, 32,
     EntityFlag.CanAttack | EntityFlag.HasTurret, Faction.Meridian, { weaponRange: 33 }),
+
+  /* -- THE RECLAMATION ----------------------------------------------------
+   * Transcribed from `src/data/Defs.ts` §2. The Scrap Furnace is the faction:
+   * 240 credits for 80 power on 950 hp, against 300/100/800 for a Power Plant
+   * and 350/160/420 for a Solar Array. Cheapest and toughest plant in the game,
+   * and the weakest — a Reclamation base is five furnaces wide, and the Arc
+   * Pylon's 90-power draw is what puts it into brownout.
+   * --------------------------------------------------------------------- */
+  rclFoundry: building('rclFoundry', B.conYard, 2100, -20, 30,
+    EntityFlag.IsBuilder | EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Reclaim),
+  rclFurnace: building('rclFurnace', B.powerPlant, 950, 80, 18, 0, Faction.Reclaim),
+  rclSorter: building('rclSorter', B.refinery, 1250, -30, 22,
+    EntityFlag.IsRefinery, Faction.Reclaim, { storage: REFINERY_STORAGE }),
+  rclRookery: building('rclRookery', B.barracks, 850, -20, 20,
+    EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Reclaim),
+  rclBreakerYard: building('rclBreakerYard', B.warFactory, 1250, -40, 20,
+    EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Reclaim),
+  rclSpotter: building('rclSpotter', B.radar, 700, -40, 42, EntityFlag.IsRadar, Faction.Reclaim),
+  rclHeap: building('rclHeap', B.oreSilo, 550, -10, 12, 0, Faction.Reclaim,
+    { storage: SILO_STORAGE }),
+  rclDrydock: building('rclDrydock', NB.navalYard, 1050, -30, 24,
+    EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Reclaim),
+  rclCrucible: building('rclCrucible', B.battleLab, 900, -60, 20, 0, Faction.Reclaim),
+
+  rclBarricade: building('rclBarricade', B.wall, 340, 0, 0,
+    EntityFlag.NotSelectable, Faction.Reclaim),
+  rclSpitpost: building('rclSpitpost', B.pillbox, 520, 0, 24,
+    EntityFlag.CanAttack, Faction.Reclaim, { weaponRange: 20 }),
+  // No HasTurret, deliberately: the Arc Pylon is a fixed coil, like every other
+  // gun the Reclamation owns.
+  rclPylon: building('rclPylon', B.prismTower, 560, -90, 30,
+    EntityFlag.CanAttack, Faction.Reclaim, { weaponRange: 28 }),
 };
 
 export interface FallbackProp {
@@ -660,6 +747,20 @@ const UNIT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   mrdKestrel: ['mrdkestrel', 'kestrelgunship', 'meridiankestrel'],
   mrdCorvette: ['mrdcorvette', 'kitecorvette', 'meridiancorvette'],
   mrdMonitor: ['mrdmonitor', 'sunmonitor', 'meridianmonitor'],
+
+  // The Reclamation. Same shape as the Pact's rows: the def key, the display
+  // name, and the model key `src/art/Faction4Units.ts` registers under.
+  rclPicker: ['rclpicker', 'scrappicker', 'reclaimpicker'],
+  rclSlagger: ['rclslagger', 'slagger', 'reclaimslagger'],
+  rclTinker: ['rcltinker', 'tinker', 'reclaimtinker'],
+  rclScrapper: ['rclscrapper', 'scrapjaw', 'reclaimscrapper'],
+  rclSpitter: ['rclspitter', 'arcspitter', 'reclaimspitter'],
+  rclGrinder: ['rclgrinder', 'grinder', 'reclaimgrinder'],
+  rclSlaghurler: ['rclslaghurler', 'slaghurler', 'reclaimslaghurler'],
+  rclCrawler: ['rclcrawler', 'yardcrawler', 'reclaimcrawler'],
+  rclHornet: ['rclhornet', 'swarmhornet', 'reclaimhornet'],
+  rclScow: ['rclscow', 'slagscow', 'reclaimscow'],
+  rclHulk: ['rclhulk', 'reclaimedhulk', 'reclaimhulk'],
 };
 
 const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
@@ -693,6 +794,19 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   mrdRampart: ['mrdrampart', 'rampart', 'meridianrampart'],
   mrdGlaive: ['mrdglaive', 'glaivepost', 'meridianglaive'],
   mrdHelios: ['mrdhelios', 'heliosspire', 'meridianhelios'],
+
+  rclFoundry: ['rclfoundry', 'foundry', 'reclaimfoundry'],
+  rclFurnace: ['rclfurnace', 'scrapfurnace', 'reclaimfurnace'],
+  rclSorter: ['rclsorter', 'oresorter', 'reclaimsorter'],
+  rclRookery: ['rclrookery', 'rookery', 'reclaimrookery'],
+  rclBreakerYard: ['rclbreakeryard', 'breakeryard', 'reclaimbreakeryard'],
+  rclSpotter: ['rclspotter', 'spottermast', 'reclaimspotter'],
+  rclHeap: ['rclheap', 'slagheap', 'reclaimheap'],
+  rclDrydock: ['rcldrydock', 'breakerdock', 'reclaimdrydock'],
+  rclCrucible: ['rclcrucible', 'crucible', 'reclaimcrucible'],
+  rclBarricade: ['rclbarricade', 'scrapbarricade', 'reclaimbarricade'],
+  rclSpitpost: ['rclspitpost', 'spitpost', 'reclaimspitpost'],
+  rclPylon: ['rclpylon', 'arcpylon', 'reclaimpylon'],
 };
 
 /**
@@ -709,48 +823,55 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
  * The Meridian column is not a cosmetic relabel — the Pact's tree really is
  * one-to-one with the shared one (Conclave for Construction Yard, Solar Array
  * for Power Plant, Cistern for Refinery), which is why the faction can be
- * dropped into a shared layout at all.
+ * dropped into a shared layout at all. The Reclamation column is the same
+ * one-to-one mapping; the faction differs in what its buildings COST and what
+ * they gate, not in which roles exist.
+ *
+ * EVERY ROW MUST BE `FACTION_COUNT` LONG. `keyFor` reads `row[player.faction]`
+ * and falls back to the unmapped key on a miss, so a short row does not throw —
+ * it quietly gives a Reclamation player an Allied Grizzly, which the fallback
+ * table then refuses on its faction check and nothing spawns at all.
  */
 const FACTION_KEY_MAP: Readonly<Record<string, readonly string[]>> = {
-  //                [ neutral,      allies,       soviets,      meridian          ]
+  //                [ neutral,      allies,       soviets,      meridian,           reclaim             ]
   /* structures */
-  conyard:          ['conyard',     'conyard',    'conyard',    'mrdConclave'],
-  powerPlant:       ['powerPlant',  'powerPlant', 'powerPlant', 'mrdSolarArray'],
-  refinery:         ['refinery',    'refinery',   'refinery',   'mrdCistern'],
-  barracks:         ['barracks',    'barracks',   'barracks',   'mrdChapterhouse'],
-  warFactory:       ['warFactory',  'warFactory', 'warFactory', 'mrdForgeyard'],
-  radar:            ['radar',       'radar',      'radar',      'mrdOculus'],
-  battleLab:        ['battleLab',   'battleLab',  'battleLab',  'mrdReliquary'],
-  oreSilo:          ['oreSilo',     'oreSilo',    'oreSilo',    'mrdVault'],
-  wall:             ['wall',        'wall',       'wall',       'mrdRampart'],
-  navalYard:        ['navalYard',   'navalYard',  'subPen',     'mrdSlipway'],
-  subPen:           ['subPen',      'navalYard',  'subPen',     'mrdSlipway'],
+  conyard:          ['conyard',     'conyard',    'conyard',    'mrdConclave',      'rclFoundry'],
+  powerPlant:       ['powerPlant',  'powerPlant', 'powerPlant', 'mrdSolarArray',    'rclFurnace'],
+  refinery:         ['refinery',    'refinery',   'refinery',   'mrdCistern',       'rclSorter'],
+  barracks:         ['barracks',    'barracks',   'barracks',   'mrdChapterhouse',  'rclRookery'],
+  warFactory:       ['warFactory',  'warFactory', 'warFactory', 'mrdForgeyard',     'rclBreakerYard'],
+  radar:            ['radar',       'radar',      'radar',      'mrdOculus',        'rclSpotter'],
+  battleLab:        ['battleLab',   'battleLab',  'battleLab',  'mrdReliquary',     'rclCrucible'],
+  oreSilo:          ['oreSilo',     'oreSilo',    'oreSilo',    'mrdVault',         'rclHeap'],
+  wall:             ['wall',        'wall',       'wall',       'mrdRampart',       'rclBarricade'],
+  navalYard:        ['navalYard',   'navalYard',  'subPen',     'mrdSlipway',       'rclDrydock'],
+  subPen:           ['subPen',      'navalYard',  'subPen',     'mrdSlipway',       'rclDrydock'],
   /* defences — cheap gun, heavy gun, and the one that dies in a brownout */
-  pillbox:          ['pillbox',     'pillbox',    'sentryGun',  'mrdGlaive'],
-  sentryGun:        ['sentryGun',   'pillbox',    'sentryGun',  'mrdGlaive'],
-  flameTower:       ['flameTower',  'pillbox',    'flameTower', 'mrdGlaive'],
-  prismTower:       ['prismTower',  'prismTower', 'teslaCoil',  'mrdHelios'],
-  teslaCoil:        ['teslaCoil',   'prismTower', 'teslaCoil',  'mrdHelios'],
-  aaTurret:         ['aaTurret',    'aaTurret',   'sentryGun',  'mrdGlaive'],
+  pillbox:          ['pillbox',     'pillbox',    'sentryGun',  'mrdGlaive',        'rclSpitpost'],
+  sentryGun:        ['sentryGun',   'pillbox',    'sentryGun',  'mrdGlaive',        'rclSpitpost'],
+  flameTower:       ['flameTower',  'pillbox',    'flameTower', 'mrdGlaive',        'rclSpitpost'],
+  prismTower:       ['prismTower',  'prismTower', 'teslaCoil',  'mrdHelios',        'rclPylon'],
+  teslaCoil:        ['teslaCoil',   'prismTower', 'teslaCoil',  'mrdHelios',        'rclPylon'],
+  aaTurret:         ['aaTurret',    'aaTurret',   'sentryGun',  'mrdGlaive',        'rclSpitpost'],
   /* infantry */
-  gi:               ['gi',          'gi',         'conscript',  'mrdWayfarer'],
-  conscript:        ['conscript',   'gi',         'conscript',  'mrdWayfarer'],
-  engineer:         ['engineer',    'engineer',   'engineer',   'mrdArtificer'],
-  attackDog:        ['attackDog',   'gi',         'attackDog',  'mrdWayfarer'],
+  gi:               ['gi',          'gi',         'conscript',  'mrdWayfarer',      'rclPicker'],
+  conscript:        ['conscript',   'gi',         'conscript',  'mrdWayfarer',      'rclPicker'],
+  engineer:         ['engineer',    'engineer',   'engineer',   'mrdArtificer',     'rclTinker'],
+  attackDog:        ['attackDog',   'gi',         'attackDog',  'mrdWayfarer',      'rclPicker'],
   /* vehicles */
-  harvester:        ['harvester',   'harvester',  'harvester',  'mrdCollector'],
-  mcv:              ['mcv',         'mcv',        'mcv',        'mrdCarryall'],
-  grizzly:          ['grizzly',     'grizzly',    'rhino',      'mrdSolarch'],
-  rhino:            ['rhino',       'grizzly',    'rhino',      'mrdSolarch'],
-  ifv:              ['ifv',         'ifv',        'attackDog',  'mrdSkiff'],
-  prismTank:        ['prismTank',   'prismTank',  'apocalypse', 'mrdZenith'],
-  apocalypse:       ['apocalypse',  'prismTank',  'apocalypse', 'mrdZenith'],
+  harvester:        ['harvester',   'harvester',  'harvester',  'mrdCollector',     'rclScrapper'],
+  mcv:              ['mcv',         'mcv',        'mcv',        'mrdCarryall',      'rclCrawler'],
+  grizzly:          ['grizzly',     'grizzly',    'rhino',      'mrdSolarch',       'rclGrinder'],
+  rhino:            ['rhino',       'grizzly',    'rhino',      'mrdSolarch',       'rclGrinder'],
+  ifv:              ['ifv',         'ifv',        'attackDog',  'mrdSkiff',         'rclSpitter'],
+  prismTank:        ['prismTank',   'prismTank',  'apocalypse', 'mrdZenith',        'rclSlaghurler'],
+  apocalypse:       ['apocalypse',  'prismTank',  'apocalypse', 'mrdZenith',        'rclSlaghurler'],
   /* naval */
-  gunboat:          ['gunboat',     'gunboat',    'submarine',  'mrdCorvette'],
-  submarine:        ['submarine',   'gunboat',    'submarine',  'mrdCorvette'],
-  destroyer:        ['destroyer',   'destroyer',  'dreadnought', 'mrdMonitor'],
-  dreadnought:      ['dreadnought', 'destroyer',  'dreadnought', 'mrdMonitor'],
-  transport:        ['transport',   'transport',  'transport',  'mrdCarryall'],
+  gunboat:          ['gunboat',     'gunboat',    'submarine',  'mrdCorvette',      'rclScow'],
+  submarine:        ['submarine',   'gunboat',    'submarine',  'mrdCorvette',      'rclScow'],
+  destroyer:        ['destroyer',   'destroyer',  'dreadnought', 'mrdMonitor',      'rclHulk'],
+  dreadnought:      ['dreadnought', 'destroyer',  'dreadnought', 'mrdMonitor',      'rclHulk'],
+  transport:        ['transport',   'transport',  'transport',  'mrdCarryall',      'rclCrawler'],
 };
 
 /** Resolved def indices for the content vocabulary. -1 means "no real def". */
@@ -1231,6 +1352,13 @@ export class ScenarioBuilder {
     const def: UnitDef | undefined =
       defId >= 0 ? this.defs.tables?.units[defId] : undefined;
 
+    // Same gate as `spawnBuilding`, and for the same reason: the standing
+    // garrison in an opening base is authored in role terms, and one of the
+    // Soviet roles is 'apocalypse'. A fresh profile used to start the match
+    // looking at an Apocalypse Tank it could not build for another 500 kills.
+    // Skipped rather than substituted; `formation()` simply lands fewer hulls.
+    if (!isBuildable(def, this.world.player(owner))) return NONE;
+
     // Resolve the chassis before the position, because WHICH ground counts as
     // standable is a property of the chassis: infantry climb what a tank
     // cannot, and a hovercraft crosses water neither of them can.
@@ -1320,6 +1448,23 @@ export class ScenarioBuilder {
     const defId = this.defs.buildingId[key] ?? -1;
     const def: BuildingDef | undefined =
       defId >= 0 ? this.defs.tables?.buildings[defId] : undefined;
+
+    /* -- THE PROGRESSION GATE ---------------------------------------------
+     * A skirmish opens with a base already standing, and that base is authored
+     * in role terms ('battleLab', 'prismTower') which `keyFor` remaps per
+     * faction. Without this check the opening base HANDS OUT the structures the
+     * mission table exists to sell: a fresh profile started next to a free
+     * Battle Lab, the Soviet AI opened with three Tesla Coils the player could
+     * not build, and the reward for a 150-kill chain was already in both bases
+     * before the first shot. Verified live before it was fixed.
+     *
+     * SKIPPED, NOT SUBSTITUTED. The layout simply has a gap where the locked
+     * building would be, which is the honest reading — the base is what this
+     * commander has earned. Everything untagged is unaffected, so the
+     * construction yard, power, refinery, factories and the cheap defence are
+     * never at risk, and `isBuildable` answers "yes" to everything when no gate
+     * is installed, which is the state of the `?shot=` harness and every test.  */
+    if (!isBuildable(def, this.world.player(owner))) return NONE;
 
     const fw = def?.footprintW ?? fb.footprintW;
     const fh = def?.footprintH ?? fb.footprintH;

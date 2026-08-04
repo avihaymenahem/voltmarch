@@ -72,6 +72,8 @@ import { CreditsScreen, MainMenuScreen } from './MainMenu';
 import { SkirmishSetupScreen } from './SkirmishSetup';
 import { PauseMenuScreen } from './PauseMenu';
 import { EndScreen, type MatchResult } from './EndScreen';
+import { MissionsScreen } from './Missions';
+import * as progression from './progression-link';
 
 /* ==========================================================================
  * 1. THE STATE MACHINE
@@ -86,7 +88,9 @@ export type ShellState =
   | 'loading'
   | 'playing'
   | 'paused'
-  | 'ended';
+  | 'ended'
+  /** The missions and unlocks board. Reachable from the menu and from pause. */
+  | 'missions';
 
 /** One full-bleed layer of the front end. */
 export interface Screen {
@@ -179,6 +183,7 @@ const ICON_PATHS: Readonly<Record<string, string>> = {
   trophy: 'M7 4h10v5a5 5 0 0 1-10 0ZM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3M9.5 20h5M12 14v6',
   skull: 'M12 3c4.4 0 7.5 3 7.5 7 0 2.4-1 3.7-2 4.6V18H6.5v-3.4c-1-.9-2-2.2-2-4.6 0-4 3.1-7 7.5-7ZM9.5 11a1.4 1.4 0 1 0 0-2.8 1.4 1.4 0 0 0 0 2.8ZM14.5 11a1.4 1.4 0 1 0 0-2.8 1.4 1.4 0 0 0 0 2.8ZM9.5 18v3M14.5 18v3M12 21v-3',
   clock: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 7v5.2l3.4 2',
+  lock: 'M5.5 10.5h13V20h-13ZM8.5 10.5V7.5a3.5 3.5 0 0 1 7 0v3M12 14v2.5',
   refresh: 'M20 12a8 8 0 1 1-2.6-5.9M20 4v4.5h-4.5',
   restore: 'M4.5 12a7.5 7.5 0 1 0 2.4-5.5M4 5v4h4',
 };
@@ -528,6 +533,7 @@ export function playableFactions(): FactionOption[] {
     allies: 'Precision, mobility and beam tech. Fewer, better units.',
     soviets: 'Armour and volume. Slower, heavier, hits like a building.',
     meridian: 'Nothing the Pact fields touches the ground. Solar tech, hovering hulls.',
+    reclaim: 'Welded out of other people’s wrecks. Open frames, chained arcs, no turrets.',
   };
   // Keyed by the faction's OWN key first, then its `paletteKey`. Both resolve
   // for all three armies now that `DEFAULT_ART.factions.meridian` exists; the
@@ -689,6 +695,23 @@ export class Shell {
       this.matchStartMs = performance.now();
       this.outcomeAccum = 0;
       this.result = null;
+
+      // Open the mission board. AFTER the boot, deliberately: the world is what
+      // decides which player slot the human occupies and which faction id that
+      // slot ended up with, and a tracker told the lobby's intent instead would
+      // credit an Allied objective to a Soviet match on any scenario that seats
+      // the human anywhere but slot 0.
+      const world = this.game?.ctx.world;
+      if (world !== undefined) {
+        const local = world.localPlayer as number;
+        progression.beginMatch({
+          seed,
+          localPlayer: local,
+          faction: world.player(world.localPlayer).faction as number,
+          difficulty: this.setup.difficulty,
+        });
+      }
+
       this.setHudVisible(true);
       this.show(null, 'playing');
     } catch (err) {
@@ -722,7 +745,10 @@ export class Shell {
    */
   pause(): void {
     if (this.game === null || this.backdrop) return;
-    if (this.state !== 'playing' && this.state !== 'settings') return;
+    // `missions` joins `settings` for the same reason: it is a sub-screen the
+    // pause menu can route to, and closing it has to land back on the pause
+    // menu rather than on a blank layer over a frozen match.
+    if (this.state !== 'playing' && this.state !== 'settings' && this.state !== 'missions') return;
     this.game.setPaused(true);
     // Freeze the camera too. A pause menu you can pan the battlefield behind
     // is a pause menu that reads as a bug.
@@ -775,6 +801,16 @@ export class Shell {
       : this.buildResult(result.won);
     const full: MatchResult = { ...base, ...result };
     this.result = full;
+
+    // ORDER IS LOAD-BEARING. `endMatch` is what latches the win, completes the
+    // last objectives and pushes their rewards onto the pending queue; the end
+    // screen drains that queue exactly once, in its constructor. Constructing
+    // the screen first would show an empty reward reveal for rewards the player
+    // earned in the final second of the match, and the rewards would then be
+    // orphaned until the next launch picked them up as "unrevealed".
+    progression.endMatch({ won: full.won, durationSec: full.durationSec });
+    progression.flushProfile();
+
     this.game?.setPaused(true);
     this.setHudVisible(false);
     this.show(new EndScreen(this, full), 'ended');
@@ -785,6 +821,12 @@ export class Shell {
     if (this.busy) return;
     this.busy = true;
     try {
+      // Abandon, not end. The player gets to keep every profile mission they
+      // advanced on the way — those write through the moment they complete —
+      // but the match objectives are dropped and nothing counts as played, so
+      // quitting is never a way to farm a "play 10 matches" row.
+      progression.abandonMatch();
+      progression.flushProfile();
       await this.openMenu(false);
     } finally {
       this.busy = false;
@@ -817,6 +859,20 @@ export class Shell {
   }
 
   /**
+   * Open the missions and unlocks board.
+   *
+   * Reachable from the title screen and from the pause menu, and it renders
+   * with no progression handle at all (an empty board with the export/import
+   * footer), so the route is safe under the `?shot=` harness.
+   */
+  openMissions(returnTo: ShellState = 'menu'): void {
+    this.show(new MissionsScreen(this, () => {
+      if (returnTo === 'paused') this.pause();
+      else this.showMenu();
+    }), 'missions');
+  }
+
+  /**
    * Back out of whatever screen is open.
    *
    * Every screen that has a meaningful "back" implements `onBack` and answers
@@ -830,6 +886,7 @@ export class Shell {
       case 'setup':
       case 'credits':
       case 'settings':
+      case 'missions':
         this.showMenu();
         break;
       case 'paused':
@@ -1234,6 +1291,10 @@ export class Shell {
   private readonly onVisibility = (): void => {
     // A hidden tab must not burn a frame budget on a menu backdrop either.
     if (this.state === 'playing') this.game?.setPaused(document.hidden);
+    // Hidden is the last event a mobile browser reliably fires before it kills
+    // the page, and the profile store batches its writes. Flush here or a
+    // mission completed in the final minute of a match is simply gone.
+    if (document.hidden) progression.flushProfile();
   };
 
   private readonly onSettingsChanged = (settings: Settings, changed: readonly string[]): void => {
