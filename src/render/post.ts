@@ -41,11 +41,31 @@
  *
  * GRACEFUL DEGRADATION
  * --------------------
- * Every pass is constructed inside its own try/catch and the AO pass is loaded
- * with a dynamic import. If anything throws, that pass is recorded in
- * `chain.failures` and simply omitted from the composer; if the composer
- * itself cannot be built we fall back to `renderer.render()` with ACESFilmic
- * tonemapping restored on the renderer. The game never fails to draw.
+ * Every pass is constructed inside its own try/catch. If anything throws, that
+ * pass is recorded in `chain.failures` and simply omitted from the composer; if
+ * the composer itself cannot be built we fall back to `renderer.render()` with
+ * ACESFilmic tonemapping restored on the renderer. The game never fails to draw.
+ *
+ * THE CHAIN IS FINAL BEFORE THE FIRST PRESENTED FRAME
+ * ---------------------------------------------------
+ * The AO pass used to arrive through `await import()` and call
+ * `composer.addPass()` whenever it resolved — i.e. some indeterminate number of
+ * frames into the session, after the game was already on screen. Mutating a
+ * live composer reallocates its ping-pong targets and introduces a pass whose
+ * program has never been compiled; the frame that lands in that window can be
+ * presented black. It is a near-perfect match for "black overlays for a split
+ * second, a couple of times", because it fires once at boot and again on every
+ * Settings toggle that reorders the chain.
+ *
+ * So: AO is now a STATIC import, constructed synchronously inside
+ * `createPostChain()`. `three@0.185` ships both `GTAOPass.js` and `SSAOPass.js`,
+ * so there is nothing to feature-detect at runtime that a try/catch around the
+ * constructor does not already cover — and a missing module is now a build
+ * error rather than a silent runtime downgrade.
+ *
+ * Any reorder that DOES happen later (a Settings toggle, `setPassEnabled`) sets
+ * `chainDirty`, and the next `render()` draws one throwaway frame into the
+ * composer's own targets before presenting. See `warmUp()`.
  */
 
 import * as THREE from 'three';
@@ -54,6 +74,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import type { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 
 import {
@@ -460,6 +482,8 @@ export function createPostChain(options: CreatePostOptions): PostChain {
   let disposed = false;
   let enabled = cfg.enabled;
   let warnedDirt = false;
+  /** Set by `rebuild()`; consumed by `render()`, which warms up first. */
+  let chainDirty = false;
 
   const width = () => Math.max(2, handle.size.width);
   const height = () => Math.max(2, handle.size.height);
@@ -529,40 +553,27 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       const p = new (SMAAPass as unknown as new (w?: number, h?: number) => Pass)(width(), height());
       return p;
     });
-  }
 
-  /* ---- AO (dynamic: GTAO if the build has it, else SSAO, else none) ------ */
-  let aoReady: Promise<void> = Promise.resolve();
-  if (composer) {
-    aoReady = (async () => {
+    /* ---- AO: GTAO, else SSAO, else none — BUILT SYNCHRONOUSLY -----------
+     * This runs inside the same `if (composer)` block as every other pass, so
+     * the chain `rebuild()` below sees its final membership. Nothing is added
+     * to the composer after `createPostChain()` returns. See the file header.
+     */
+    build('ao', () => {
       try {
-        const mod: any = await import('three/examples/jsm/postprocessing/GTAOPass.js');
-        const GTAOPass = mod.GTAOPass;
         const p = new GTAOPass(scene, camera, width(), height());
-        if (GTAOPass.OUTPUT) p.output = GTAOPass.OUTPUT.Default;
+        p.output = GTAOPass.OUTPUT.Default;
         installAoOccluderFilter(p);
-        passes.ao = p as Pass;
-        applyAoConfig();
-        rebuild();
         if (DEV) console.info('[post] AO: GTAO');
-        return;
+        return p as unknown as Pass;
       } catch (errGtao) {
-        try {
-          const mod: any = await import('three/examples/jsm/postprocessing/SSAOPass.js');
-          const SSAOPass = mod.SSAOPass;
-          const p = new SSAOPass(scene, camera, width(), height());
-          if (SSAOPass.OUTPUT) p.output = SSAOPass.OUTPUT.Default;
-          passes.ao = p as Pass;
-          applyAoConfig();
-          rebuild();
-          if (DEV) console.info('[post] AO: SSAO (GTAO unavailable)');
-          return;
-        } catch (errSsao) {
-          failures.ao = String(errGtao) + ' | ' + String(errSsao);
-          console.warn('[post] no ambient-occlusion pass available; continuing without AO');
-        }
+        console.warn('[post] GTAO unavailable — falling back to SSAO', errGtao);
+        const p = new SSAOPass(scene, camera, width(), height());
+        p.output = SSAOPass.OUTPUT.Default;
+        if (DEV) console.info('[post] AO: SSAO (GTAO unavailable)');
+        return p as unknown as Pass;
       }
-    })();
+    });
   }
 
   /**
@@ -670,6 +681,37 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     // The renderer must NOT tonemap when the grade pass is doing it.
     const gradeLive = !!passes.grade && passEnabled.grade && enabled;
     handle.setToneMappingMode(gradeLive ? 'none' : RENDER_CONFIG.post.grade.mode);
+
+    // Membership or order changed: the next presented frame must not be the
+    // first one this arrangement has ever drawn. See `warmUp()`.
+    chainDirty = true;
+  }
+
+  /**
+   * Draw one complete frame into the composer's OWN targets and throw it away.
+   *
+   * Called before presenting whenever the pass list has just changed. It forces
+   * every program in the new arrangement to compile and every ping-pong target
+   * to be allocated and written, so the frame that actually reaches the screen
+   * is a finished one. Without it, the first frame after a reorder can present
+   * a target that was allocated this tick and never drawn into — black.
+   *
+   * The trick is simply to clear `renderToScreen` on the tail pass, so the
+   * chain terminates in an offscreen buffer instead of the default framebuffer.
+   */
+  function warmUp(): void {
+    if (!composer || composer.passes.length === 0) return;
+    const last = composer.passes[composer.passes.length - 1];
+    const wasScreen = last.renderToScreen;
+    last.renderToScreen = false;
+    try {
+      composer.render(1 / 60);
+    } catch (err) {
+      console.warn('[post] warm-up frame failed; presenting anyway', err);
+    } finally {
+      last.renderToScreen = wasScreen;
+      renderer.setRenderTarget(null);
+    }
   }
 
   /* ---- config -> uniforms ---------------------------------------------- */
@@ -735,10 +777,56 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     if (orderDirty) rebuild();
   }
 
-  /* ---- size ------------------------------------------------------------- */
+  /* ---- size -------------------------------------------------------------
+   * REALLOCATION IS DEFERRED AND DEDUPED.
+   *
+   * `setSize` used to rebuild every composer target and every pass target
+   * synchronously, on every call — and it is called from the renderer's resize
+   * listener, which fires on subscribe, on every ResizeObserver tick, on every
+   * DPR change and on every forced resize (a resolution-scale change, a
+   * screenshot's `setFixedSize`). On a Retina MacBook at DPR 2 a fullscreen
+   * transition or a display switch fires that burst several times in a row, and
+   * each one throws away several full-resolution half-float targets.
+   *
+   * Two changes:
+   *   1. An unchanged size is a no-op. This alone removes most of the churn —
+   *      `onResize` fires immediately on subscribe with the size we were just
+   *      constructed at, and DPR listeners re-fire with identical numbers.
+   *   2. A genuine change is recorded and applied at the TOP of the next
+   *      `render()`, never in the middle of one. A burst of resize events
+   *      inside one frame therefore costs exactly one reallocation, and there
+   *      is no window in which a frame could be presented between a target
+   *      being disposed and its replacement being drawn into: the very next
+   *      thing after `applyPendingSize()` is a full chain render that clears
+   *      and writes every target it touches.
+   */
+  let appliedW = 0;
+  let appliedH = 0;
+  let pendingW = 0;
+  let pendingH = 0;
+  let sizeDirty = false;
+
   function setSize(w: number, h: number): void {
     const pw = Math.max(2, Math.round(w));
     const ph = Math.max(2, Math.round(h));
+    if (pw === appliedW && ph === appliedH) {
+      sizeDirty = false; // a pending change was superseded by "back to current"
+      return;
+    }
+    pendingW = pw;
+    pendingH = ph;
+    sizeDirty = true;
+  }
+
+  function applyPendingSize(): void {
+    if (!sizeDirty) return;
+    sizeDirty = false;
+    const pw = pendingW;
+    const ph = pendingH;
+    if (pw === appliedW && ph === appliedH) return;
+    appliedW = pw;
+    appliedH = ph;
+
     composer?.setSize(pw, ph);
     // EffectComposer.setSize takes drawing-buffer pixels; our handle already
     // reports those, so pixelRatio must stay at 1 inside the composer.
@@ -765,6 +853,9 @@ export function createPostChain(options: CreatePostOptions): PostChain {
   rebuild();
   syncConfig();
   setSize(width(), height());
+  // Size the chain once, synchronously, so `uTexel` and every pass target are
+  // correct before anyone can read them. From here on sizing is deferred.
+  applyPendingSize();
 
   /* ---- render ----------------------------------------------------------- */
   const chain: PostChain = {
@@ -782,10 +873,21 @@ export function createPostChain(options: CreatePostOptions): PostChain {
 
     render(dt: number) {
       if (disposed) return;
+      // Drawing into a lost context presents an undefined buffer. Skipping the
+      // frame leaves the last complete one on screen until the context is back.
+      if (handle.isContextLost()) return;
+
+      // Any reallocation happens HERE — between frames, never inside one.
+      applyPendingSize();
+
       elapsed += dt;
       if (gradeUniforms) gradeUniforms.uTime.value = elapsed;
 
       if (composer && enabled && composer.passes.length > 0) {
+        if (chainDirty) {
+          chainDirty = false;
+          warmUp();
+        }
         composer.render(dt);
       } else {
         renderer.setRenderTarget(null);
@@ -849,7 +951,6 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       disposed = true;
       offResize();
       offConfig();
-      void aoReady;
       for (const id of PASS_ORDER) {
         const p: any = passes[id];
         try {

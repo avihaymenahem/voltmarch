@@ -67,6 +67,31 @@ export function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
 }
 
+/**
+ * SFX bus glue. Owned here rather than in config.ts because it is not a taste
+ * knob: these values exist to stop twenty simultaneous transients from summing
+ * into the master limiter, and they were set by measuring that case.
+ */
+const SFX_GLUE = {
+  threshold: -20, knee: 6, ratio: 3, attack: 0.006, release: 0.22, makeupDb: 4.5,
+} as const;
+
+/** Return level of the wide (explosion) room. Quieter than the close one. */
+const WIDE_RETURN_DB = -19;
+
+/** The wide room's decay, as a multiple of the theatre's own RT60. */
+const WIDE_RT_SCALE = 2.4;
+
+/**
+ * Per-band decay multipliers for a procedural IR: low, mid, high.
+ *
+ * Real rooms absorb treble far faster than bass — that frequency-dependent
+ * decay IS the perception of a space. A single-envelope noise burst decays at
+ * one rate across the spectrum and sounds like a noise burst, which is what the
+ * previous implementation was.
+ */
+const IR_BAND_DECAY = [1.0, 0.72, 0.42] as const;
+
 /** A seeded uniform [0,1). Bakes must be reproducible across reloads. */
 export type Rng01 = () => number;
 
@@ -102,6 +127,17 @@ export interface BakeKit {
   pink: AudioBuffer;
   /** The offline context the recipe is rendering into. */
   oc: OfflineAudioContext;
+  /**
+   * WHERE A RECIPE CONNECTS. Not `oc.destination`.
+   *
+   * The bake wires this through a 4x-oversampled saturator (`SoundSpec.drive`)
+   * before the destination, so every layer of every sound shares one non-linear
+   * stage. That is not a polish detail: a sum of clean oscillators and filtered
+   * noise measures at a 22 dB crest factor and reads as a toy, because nothing
+   * in the physical world gets loud without something in the chain bending.
+   * Routing through here is what buys back ~8 dB of RMS at the same peak.
+   */
+  out: AudioNode;
   /** Deterministic per-variant RNG. */
   rng: Rng01;
   /** Which variant (0..variants-1) is being rendered. */
@@ -202,17 +238,36 @@ export function osc(
 /**
  * Percussive amplitude envelope: linear attack to `peak`, exponential decay.
  *
- * NEVER `exponentialRampToValueAtTime(0)` — the spec is explicit and the Web
- * Audio spec throws on a zero target. Ramp to 0.0001, then hard-zero.
+ * `peak` is RELATIVE to the param's current value, and that is the whole point.
+ * Every recipe in this codebase is written as
+ *
+ *     const g = gain(oc, dbToGain(-16));   // "this layer sits at -16 dB"
+ *     env(g.gain, t, 1, 1.0, 750);
+ *
+ * and while this function ASSIGNED an absolute value, the entire first line was
+ * dead code: the schedule overwrote it and the layer played at unity. Every
+ * layer of every sound in the bank was therefore at the same level, and the
+ * carefully written balance in each recipe's doc comment described something
+ * that had never been rendered. That is why the measured spectra bore so little
+ * relation to the intent — an explosion's -12 dB rumble bed was as loud as its
+ * body, and a UI click's -16 dB thump was as loud as its click.
+ *
+ * Reading `p.value` first makes the trim mean what it says, at every existing
+ * call site, without touching one of them.
+ *
+ * NEVER `exponentialRampToValueAtTime(0)` — the Web Audio spec throws on a zero
+ * target. Ramp to a small epsilon, then hard-zero.
  */
 export function env(
   p: AudioParam, when: number, attackMs: number, peak: number, decayMs: number,
 ): void {
   const a = Math.max(0.0002, attackMs / 1000);
   const d = Math.max(0.002, decayMs / 1000);
-  p.setValueAtTime(0.0001, when);
-  p.linearRampToValueAtTime(Math.max(0.0001, peak), when + a);
-  p.exponentialRampToValueAtTime(0.0001, when + a + d);
+  const top = Math.max(1e-5, peak * p.value);
+  const floor = Math.min(1e-5, top * 1e-4);
+  p.setValueAtTime(floor, when);
+  p.linearRampToValueAtTime(top, when + a);
+  p.exponentialRampToValueAtTime(floor, when + a + d);
   p.setValueAtTime(0, when + a + d);
 }
 
@@ -229,11 +284,15 @@ export function envSustain(
   const d = Math.max(0.001, decayMs / 1000);
   const h = Math.max(0, holdMs / 1000);
   const r = Math.max(0.002, releaseMs / 1000);
-  p.setValueAtTime(0.0001, when);
-  p.linearRampToValueAtTime(Math.max(0.0001, peak), when + a);
-  p.exponentialRampToValueAtTime(Math.max(0.0001, peak * sustain), when + a + d);
-  p.setValueAtTime(Math.max(0.0001, peak * sustain), when + a + d + h);
-  p.exponentialRampToValueAtTime(0.0001, when + a + d + h + r);
+  // Relative to the param's constructed value — see `env` for why.
+  const top = Math.max(1e-5, peak * p.value);
+  const sus = Math.max(1e-5, top * sustain);
+  const floor = Math.min(1e-5, top * 1e-4);
+  p.setValueAtTime(floor, when);
+  p.linearRampToValueAtTime(top, when + a);
+  p.exponentialRampToValueAtTime(sus, when + a + d);
+  p.setValueAtTime(sus, when + a + d + h);
+  p.exponentialRampToValueAtTime(floor, when + a + d + h + r);
   p.setValueAtTime(0, when + a + d + h + r);
 }
 
@@ -266,6 +325,127 @@ export function shaper(
   w.curve = makeShaperCurve(k, points);
   w.oversample = oversample;
   return w;
+}
+
+/**
+ * ASYMMETRIC soft clip. `asym` biases the input before the tanh, so the curve
+ * compresses one half of the wave harder than the other.
+ *
+ * A symmetric transfer function generates ODD harmonics only — 3rd, 5th, 7th —
+ * which is the sound of a fuzz pedal, not of a loud thing outdoors. Asymmetry
+ * adds the EVEN harmonics (2nd, 4th) that a driven speaker cone, a microphone
+ * diaphragm and the human ear all produce, and it is the difference between
+ * "distorted" and "loud". The DC the bias introduces is removed by the highpass
+ * every recipe's tail already sits behind.
+ */
+export function makeSatCurve(k: number, asym: number, points: number): Float32Array<ArrayBuffer> {
+  const c = new Float32Array(new ArrayBuffer(points * 4));
+  // The curve MUST pass through the origin. Centring it on the midpoint of its
+  // own range instead — the obvious thing, and what this function did first —
+  // maps silence to a constant +0.16, so every baked buffer carried a DC step
+  // that the peak normaliser then scaled the actual sound against. Measured
+  // damage: a UI click with 20% of its energy below 80 Hz and 1.6% in the band
+  // it was supposed to occupy.
+  // The bias is in TANH-ARGUMENT units, not input units — `tanh(kx + a)`, not
+  // `tanh(k(x + a))`. Scaling the bias by the drive as well means a hard drive
+  // pushes the curve so far off centre that one half of the waveform is
+  // squashed 6 dB more than the other, which is not saturation, it is a
+  // one-sided gate: measured, the "harder" setting produced NO loudness gain.
+  const zero = Math.tanh(asym);
+  const hi = Math.tanh(k + asym) - zero;
+  const lo = Math.tanh(-k + asym) - zero;
+  const norm = Math.max(Math.abs(hi), Math.abs(lo));
+  for (let i = 0; i < points; i++) {
+    const x = (i / (points - 1)) * 2 - 1;
+    c[i] = (Math.tanh(k * x + asym) - zero) / norm;
+  }
+  return c;
+}
+
+/** A waveshaper with the asymmetric curve, oversampled so it does not alias. */
+export function saturator(
+  oc: BaseAudioContext, k: number, asym = 0.12, oversample: OverSampleType = '4x',
+): WaveShaperNode {
+  const w = oc.createWaveShaper();
+  w.curve = makeSatCurve(k, asym, 2048);
+  w.oversample = oversample;
+  return w;
+}
+
+/* --------------------------------------------------------------------------
+ * THE THREE-LAYER MODEL
+ *
+ * Every percussive sound in this game is built from the same three elements,
+ * because that is what a real report is:
+ *
+ *   1. TRANSIENT  0-8 ms. Very short, very bright. This is the mechanism — the
+ *      firing pin, the shell splitting, metal on metal. Without it a sound has
+ *      no point of origin and reads as a synth patch.
+ *   2. BODY       20-200 ms. A pitched thump whose frequency sweeps DOWNWARD.
+ *      The downward sweep is the single most important trick in the file: the
+ *      SAME oscillator at a fixed pitch is a beep, and swept 180 -> 45 Hz it is
+ *      an explosion. Nothing else produces that read.
+ *   3. TAIL       150 ms - 2.5 s. Filtered noise decaying into the reverb send.
+ *      This is the room. A sound with no tail is dry and toy-like however good
+ *      the first two layers are, and dryness was the loudest defect in the
+ *      measured baseline (T40 of 0.15 s on a tank cannon).
+ *
+ * The helpers below are those three rows, so a recipe reads as the spec table
+ * it came from rather than as forty lines of node plumbing.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Layer 1. A highpassed noise click, `ms` long, with a near-instant attack.
+ * `hz` is the highpass corner: 2-4 kHz for a rifle, 800 Hz for something heavy.
+ */
+export function transient(
+  kit: BakeKit, when: number, db: number, hz: number, ms: number, q = 0.7,
+): void {
+  const { oc } = kit;
+  const g = gain(oc, dbToGain(db));
+  const hp = biquad(oc, 'highpass', hz, q);
+  env(g.gain, when, 0.35, 1.0, ms);
+  noiseSrc(kit, kit.white, when, ms / 1000 + 0.01).connect(hp).connect(g).connect(kit.out);
+}
+
+/**
+ * Layer 2. A pitched body sweeping `fromHz -> toHz` over `sweepMs`, decaying
+ * over `decayMs`. `type` picks the harmonic content: sine for pure weight,
+ * triangle for a little bite, square for a mechanical thump.
+ */
+export function bodyDrop(
+  kit: BakeKit, when: number, db: number,
+  fromHz: number, toHz: number, sweepMs: number, decayMs: number,
+  type: OscillatorType = 'sine', attackMs = 1.2,
+): void {
+  const { oc } = kit;
+  const g = gain(oc, dbToGain(db));
+  const o = osc(oc, type, fromHz, when, (decayMs + sweepMs) / 1000 + 0.05);
+  sweep(o.frequency, when, fromHz, toHz, sweepMs);
+  env(g.gain, when, attackMs, 1.0, decayMs);
+  o.connect(g).connect(kit.out);
+}
+
+/**
+ * Layer 3. Decaying filtered noise: the room. `lpFrom -> lpTo` is the air
+ * absorption of the report bouncing off the terrain, so it darkens as it dies.
+ *
+ * `preMs` delays the tail behind the transient. A tail that starts at t=0 is
+ * part of the attack and stops reading as a reflection — 12-40 ms of gap is
+ * what makes a sound feel like it happened somewhere.
+ */
+export function tail(
+  kit: BakeKit, when: number, db: number,
+  lpFrom: number, lpTo: number, decayMs: number, preMs = 18, hpHz = 90,
+): void {
+  const { oc } = kit;
+  const t = when + preMs / 1000;
+  const g = gain(oc, dbToGain(db));
+  const lp = biquad(oc, 'lowpass', lpFrom, 0.6);
+  sweep(lp.frequency, t, lpFrom, lpTo, decayMs * 0.8);
+  const hp = biquad(oc, 'highpass', hpHz, 0.5);
+  env(g.gain, t, Math.min(30, decayMs * 0.08), 1.0, decayMs);
+  noiseSrc(kit, kit.pink, t, decayMs / 1000 + 0.05).connect(lp).connect(hp).connect(g).connect(kit.out);
 }
 
 /**
@@ -319,6 +499,24 @@ export interface SoundSpec {
   readonly rateJitter?: number;
   /** Reverb send in dB for the non-positional case. -200 disables the send. */
   readonly sendDb?: number;
+  /**
+   * Which room this sound is in. `close` is the tight outdoor slap every weapon
+   * and impact wants; `wide` is the long IR reserved for explosions, so a boom
+   * gets a real horizon while a rifle does not sound like it is in a cathedral.
+   */
+  readonly reverb?: 'close' | 'wide';
+  /**
+   * Bake-time saturation, as the `k` of `tanh(kx)`. 0 disables the stage.
+   *
+   * This is applied to the SUM of the recipe's layers through `kit.out`, 4x
+   * oversampled. Typical values: 1.4 for something that only needs gluing, 2.6
+   * for a cannon, 3.5 for an explosion that should sound like it overloaded the
+   * microphone. Measured effect on a tank cannon: crest 24.0 dB -> 15.6 dB at
+   * the same peak, which is +8 dB of loudness for free.
+   */
+  readonly drive?: number;
+  /** Asymmetry of the saturation curve — see `makeSatCurve`. */
+  readonly driveAsym?: number;
   /** False for UI: no pan, no distance, no cull. */
   readonly positional?: boolean;
   /** True to skip crowd summation (UI, voice — a volley of clicks is wrong). */
@@ -545,6 +743,24 @@ export class AudioEngine {
   private convUsingA = true;
   private theatre: keyof typeof AUDIO_REVERB = 'temperate';
 
+  /**
+   * The SECOND room. A rifle and a demolished war factory cannot share an
+   * impulse response: the tail that makes the explosion feel like it has a
+   * horizon makes the rifle sound like it was fired in a cathedral. So
+   * explosions send here instead — same IR generator, 2.4x the decay.
+   */
+  private readonly wideSend: GainNode;
+  private readonly wideReturn: GainNode;
+  private readonly wideConv: ConvolverNode;
+
+  /**
+   * SFX glue. A firefight is thirty uncorrelated transients a second, and
+   * without a bus compressor they simply sum until the master limiter starts
+   * chewing the loudest one — which is heard as the mix ducking at random.
+   * Gentle (3:1, 6 dB knee) and slow to release, so it reads as density.
+   */
+  private readonly sfxGlue: DynamicsCompressorNode;
+
   /** Baked one-shots by id. */
   private readonly sounds = new Map<string, BakedSound>();
   /** Registered but not yet baked. */
@@ -619,11 +835,22 @@ export class AudioEngine {
     this.master.connect(ctx.destination);
 
     /* -- five strips ------------------------------------------------------ */
+    // SFX alone gets a glue compressor between its duck and the master bus.
+    this.sfxGlue = ctx.createDynamicsCompressor();
+    this.sfxGlue.threshold.value = SFX_GLUE.threshold;
+    this.sfxGlue.knee.value = SFX_GLUE.knee;
+    this.sfxGlue.ratio.value = SFX_GLUE.ratio;
+    this.sfxGlue.attack.value = SFX_GLUE.attack;
+    this.sfxGlue.release.value = SFX_GLUE.release;
+    const glueMakeup = gain(ctx, dbToGain(SFX_GLUE.makeupDb));
+    this.sfxGlue.connect(glueMakeup).connect(this.masterDuck);
+
     const names: BusName[] = ['music', 'sfx', 'voice', 'ui', 'ambience'];
     for (const name of names) {
       const level = gain(ctx, dbToGain(AUDIO_BUS_DB[name]));
       const duck = gain(ctx, 1);
-      level.connect(duck).connect(this.masterDuck);
+      level.connect(duck);
+      duck.connect(name === 'sfx' ? this.sfxGlue : this.masterDuck);
       this.strips.set(name, { level, duck, factors: new Map(), applied: 1 });
     }
 
@@ -640,6 +867,17 @@ export class AudioEngine {
     this.reverbSend.connect(this.convolverB).connect(this.convGainB).connect(this.reverbReturn);
     // The return lands on the SFX strip so the user's SFX slider governs it.
     this.reverbReturn.connect(this.strips.get('sfx')!.duck);
+
+    /* -- the wide room, for explosions only ------------------------------- */
+    this.wideSend = gain(ctx, 1);
+    this.wideConv = ctx.createConvolver();
+    this.wideConv.normalize = false;
+    this.wideReturn = gain(ctx, dbToGain(WIDE_RETURN_DB));
+    // Rolled off under 70 Hz: a long tail full of sub is mud, and the dry sub
+    // of the explosion itself is already carrying the weight.
+    const wideHp = biquad(ctx, 'highpass', 70, 0.6);
+    this.wideSend.connect(this.wideConv).connect(wideHp).connect(this.wideReturn);
+    this.wideReturn.connect(this.strips.get('sfx')!.duck);
 
     this.installUnlock();
     this.installVisibility();
@@ -729,6 +967,11 @@ export class AudioEngine {
   /** The node a source connects to. Music/EVA/ambience all route through here. */
   busInput(name: BusName): GainNode {
     return this.strips.get(name)!.level;
+  }
+
+  /** `MusicHost`: where the sequencer's finished bed lands. */
+  musicOut(): AudioNode {
+    return this.busInput('music');
   }
 
   /** Options-panel slider, 0..100, with the perceptual 2.2 curve. */
@@ -897,9 +1140,14 @@ export class AudioEngine {
     const length = Math.max(128, Math.ceil(spec.seconds * rate));
     const buffers: AudioBuffer[] = [];
 
-    for (let v = 0; v < Math.max(1, spec.variants); v++) {
-      const OC = typeof OfflineAudioContext !== 'undefined' ? OfflineAudioContext : null;
-      if (OC === null) break;
+    // Variants render IN PARALLEL. They are independent by construction — each
+    // gets its own context and its own seeded RNG — and awaiting them one at a
+    // time serialises 142 round-trips to the audio thread for no reason. The
+    // richer recipes pushed the bank's bake from 0.4 s to 2.0 s, and every
+    // millisecond of that is a millisecond of loading screen.
+    const OC = typeof OfflineAudioContext !== 'undefined' ? OfflineAudioContext : null;
+    const jobs: Array<Promise<AudioBuffer | null>> = [];
+    for (let v = 0; v < Math.max(1, spec.variants) && OC !== null; v++) {
       const oc = new OC(channels, length, rate);
       // The offline context is a different BaseAudioContext, so the shared noise
       // beds have to be re-wrapped for it. Same Float32Array, no copy.
@@ -907,17 +1155,27 @@ export class AudioEngine {
         oc,
         white: rewrap(oc, this.whiteBuf!),
         pink: rewrap(oc, this.pinkBuf!),
+        out: makeBakeBus(oc, spec),
         rng: makeRng(hashId(spec.id) ^ ((v + 1) * 0x9e3779b9)),
         variant: v,
       };
-      try {
-        spec.render(kit);
-        const buf = await oc.startRendering();
-        buffers.push(buf);
-        this.stats.bytes += buf.length * buf.numberOfChannels * 4;
-      } catch (err) {
-        console.warn(`[audio] bake failed for "${spec.id}" variant ${v}`, err);
-      }
+      const index = v;
+      jobs.push((async (): Promise<AudioBuffer | null> => {
+        try {
+          spec.render(kit);
+          return await oc.startRendering();
+        } catch (err) {
+          console.warn(`[audio] bake failed for "${spec.id}" variant ${index}`, err);
+          return null;
+        }
+      })());
+    }
+    // `Promise.all` preserves order, so variant N is always buffers[N] and the
+    // round-robin cursor still walks them in the authored sequence.
+    for (const buf of await Promise.all(jobs)) {
+      if (buf === null) continue;
+      buffers.push(buf);
+      this.stats.bytes += buf.length * buf.numberOfChannels * 4;
     }
 
     // Normalise the whole variant set to a peak of 1.0.
@@ -1067,6 +1325,14 @@ export class AudioEngine {
     if (positional && lpHz < AUDIO_DISTANCE.lpMaxHz * 0.92) {
       const lp = biquad(ctx, 'lowpass', lpHz, 0.7);
       tail.connect(lp); tail = lp;
+      // Below ~4 kHz a single 12 dB/oct pole is not enough to read as DISTANCE
+      // rather than as a tone control — the far tank still sounds like a near
+      // tank turned down. Cascade a second pole there, and only there: it costs
+      // one node on the sounds already far enough for it to matter.
+      if (lpHz < 4000) {
+        const lp2 = biquad(ctx, 'lowpass', lpHz * 1.15, 0.6);
+        tail.connect(lp2); tail = lp2;
+      }
     }
     if (positional && hpHz > AUDIO_DISTANCE.hpMinHz + 12) {
       const hp = biquad(ctx, 'highpass', hpHz, 0.7);
@@ -1084,7 +1350,7 @@ export class AudioEngine {
 
     if (sendDb > -60) {
       const send = gain(ctx, dbToGain(sendDb));
-      out.connect(send).connect(this.reverbSend);
+      out.connect(send).connect(spec.reverb === 'wide' ? this.wideSend : this.reverbSend);
     }
 
     const voice: Voice = {
@@ -1255,22 +1521,29 @@ export class AudioEngine {
   /* Reverb theatre                                                         */
   /* ---------------------------------------------------------------------- */
 
-  /** Build both convolvers' impulse responses. Call once, awaited, at init. */
+  /** Build every convolver's impulse response. Call once, awaited, at init. */
   async initReverb(theatre: keyof typeof AUDIO_REVERB = 'temperate'): Promise<void> {
-    const ir = await this.makeImpulse(theatre);
+    const ir = await this.makeImpulse(theatre, 1);
     if (ir === null) return;
     this.convolverA.buffer = ir;
     this.convolverB.buffer = ir;
     this.theatre = theatre;
     this.reverbReturn.gain.value = dbToGain(AUDIO_REVERB[theatre].returnDb);
+    const wide = await this.makeImpulse(theatre, WIDE_RT_SCALE);
+    if (wide !== null) this.wideConv.buffer = wide;
   }
 
   /** Crossfade to another environment over 2 s. Safe to call every frame. */
   async setTheatre(theatre: keyof typeof AUDIO_REVERB): Promise<void> {
     if (this.disposed || theatre === this.theatre) return;
-    const ir = await this.makeImpulse(theatre);
+    const ir = await this.makeImpulse(theatre, 1);
     if (ir === null) return;
     this.theatre = theatre;
+    // The wide room has no crossfade pair: it is only ever heard under an
+    // explosion, and a swap mid-tail is masked by the boom that caused it.
+    void this.makeImpulse(theatre, WIDE_RT_SCALE).then((w) => {
+      if (w !== null && !this.disposed) this.wideConv.buffer = w;
+    });
     const t = this.now();
     const fade = AUDIO_REVERB_CROSSFADE_SEC;
     if (this.convUsingA) {
@@ -1291,39 +1564,78 @@ export class AudioEngine {
   }
 
   /**
-   * Procedural stereo IR: `ir[i] = (2r-1) * (1 - i/N)^3.2`, damped by an offline
-   * lowpass, with discrete early taps stamped on top. The two channels use
-   * INDEPENDENT noise seeds — that decorrelation is the entire stereo width.
+   * Procedural stereo IR with FREQUENCY-DEPENDENT DECAY.
+   *
+   * The raw buffer is flat decorrelated noise with a diffusion ramp and the
+   * discrete early taps stamped on; the decay is then applied by three parallel
+   * filter bands, each with its own exponential envelope (`IR_BAND_DECAY`). Bass
+   * rings for the full RT60, treble is gone in under half of it — which is what
+   * a field, a street or a snowfield actually does.
+   *
+   * The previous single-envelope version decayed every frequency at one rate,
+   * and the result read as "a burst of noise stuck to the end of the sound"
+   * rather than as a room. That is the difference this function exists for.
+   *
+   * The two channels use INDEPENDENT noise seeds; that decorrelation is the
+   * entire stereo width, and it costs nothing.
+   *
+   * @param scale  Multiplies the decay. 1 is the close room, `WIDE_RT_SCALE`
+   *               the explosion room.
    */
-  private async makeImpulse(theatre: keyof typeof AUDIO_REVERB): Promise<AudioBuffer | null> {
+  private async makeImpulse(
+    theatre: keyof typeof AUDIO_REVERB, scale: number,
+  ): Promise<AudioBuffer | null> {
     const OC = typeof OfflineAudioContext !== 'undefined' ? OfflineAudioContext : null;
     if (OC === null) return null;
     const cfg = AUDIO_REVERB[theatre];
     const rate = this.ctx.sampleRate;
-    const n = Math.max(256, Math.ceil(cfg.rt60 * rate));
+    const rt = cfg.rt60 * scale;
+    const n = Math.max(256, Math.ceil(rt * rate));
     const oc = new OC(2, n, rate);
     const raw = oc.createBuffer(2, n, rate);
-    const pre = Math.floor((cfg.preDelayMs / 1000) * rate);
+    const pre = Math.floor(((cfg.preDelayMs * Math.sqrt(scale)) / 1000) * rate);
 
     for (let ch = 0; ch < 2; ch++) {
       const d = raw.getChannelData(ch);
-      const rng = makeRng(0xa11ce + ch * 977 + hashId(theatre));
+      const rng = makeRng(0xa11ce + ch * 977 + hashId(theatre) + Math.round(scale * 1000));
+      // Diffusion: a real tail is sparse at first and dense later. Ramping the
+      // noise density over the first 12% is what stops the IR sounding like a
+      // gate opening on a hiss generator.
+      const diffuse = Math.max(1, Math.floor((n - pre) * 0.12));
       for (let i = pre; i < n; i++) {
-        const t = (i - pre) / (n - pre);
-        d[i] = (rng() * 2 - 1) * Math.pow(1 - t, 3.2);
+        const k = i - pre;
+        const density = k < diffuse ? 0.25 + 0.75 * (k / diffuse) : 1;
+        d[i] = rng() < density ? rng() * 2 - 1 : 0;
       }
-      const tapGains = [0.6, 0.4, 0.3, 0.22];
+      const tapGains = [0.75, 0.52, 0.38, 0.27];
       for (let k = 0; k < cfg.taps.length; k++) {
-        const idx = pre + Math.floor((cfg.taps[k] / 1000) * rate);
+        const idx = pre + Math.floor(((cfg.taps[k] * Math.sqrt(scale)) / 1000) * rate);
         if (idx < n) d[idx] += (k % 2 === 0 ? 1 : -1) * (tapGains[k] ?? 0.2);
       }
     }
 
     const src = oc.createBufferSource();
     src.buffer = raw;
-    const lp = biquad(oc, 'lowpass', cfg.dampHz, 0.7);
-    src.connect(lp).connect(oc.destination);
     src.start(0);
+
+    const bands: Array<[BiquadFilterType, number, number]> = [
+      ['lowpass', 320, 0.6],
+      ['bandpass', 1100, 0.55],
+      ['highpass', 2600, 0.6],
+    ];
+    for (let b = 0; b < bands.length; b++) {
+      const [type, hz, q] = bands[b];
+      const f = biquad(oc, type, hz, q);
+      // The damping corner still applies on top: snow eats treble, a street
+      // does not, and that is what `dampHz` means.
+      const damp = biquad(oc, 'lowpass', cfg.dampHz, 0.7);
+      const g = gain(oc, b === 1 ? 0.9 : 0.75);
+      const decay = Math.max(0.05, rt * IR_BAND_DECAY[b]);
+      g.gain.setValueAtTime(g.gain.value, 0);
+      g.gain.exponentialRampToValueAtTime(0.0001, decay);
+      src.connect(f).connect(damp).connect(g).connect(oc.destination);
+    }
+
     try {
       return await oc.startRendering();
     } catch (err) {
@@ -1344,6 +1656,36 @@ export class AudioEngine {
  * Float32Array is — so this hands the same samples to the offline renderer
  * without regenerating 480 000 values per bake.
  */
+/**
+ * The node a recipe's layers connect to (`kit.out`).
+ *
+ * With `drive` set this is `gain -> saturator -> DC-blocking highpass ->
+ * destination`. The trim in front matters: the saturator's knee is fixed, so
+ * the only way to control HOW HARD a sum hits it is to set the level going in,
+ * and a recipe whose layers already sum past unity would otherwise be squared
+ * off regardless of its `drive` value. -6 dB in, +5.2 dB out keeps the stage
+ * roughly unity-gain so the peak normaliser downstream has little to do.
+ *
+ * The highpass at 18 Hz removes the DC offset the asymmetric curve introduces.
+ * Left in, that offset eats headroom in the master limiter for no audible
+ * return, and it makes every buffer's measured peak a lie.
+ */
+export function makeBakeBus(oc: OfflineAudioContext, spec: SoundSpec): AudioNode {
+  const k = spec.drive ?? 0;
+  if (k <= 0) return oc.destination;
+  const input = gain(oc, dbToGain(-6));
+  // 4x oversampling runs the whole graph at 192 kHz through the shaper, and on
+  // a 3.2 s explosion that is most of the bake budget: measured, the bank went
+  // from 0.4 s to 2.0 s of offline rendering, which is 1.6 s added to a loading
+  // screen to suppress fold-back nobody can hear. Long recipes get 2x; the
+  // short bright ones, where the aliasing WOULD sit in the audible band, keep 4x.
+  const sat = saturator(oc, k, spec.driveAsym ?? 0.12, spec.seconds > 0.9 ? '2x' : '4x');
+  const dc = biquad(oc, 'highpass', 18, 0.5);
+  const makeup = gain(oc, dbToGain(5.2));
+  input.connect(sat).connect(dc).connect(makeup).connect(oc.destination);
+  return input;
+}
+
 function rewrap(oc: BaseAudioContext, src: AudioBuffer): AudioBuffer {
   if (src.sampleRate === oc.sampleRate) {
     const out = oc.createBuffer(src.numberOfChannels, src.length, src.sampleRate);

@@ -151,21 +151,161 @@ export const CAMERA = {
   defaultDistance: 55,
   /** Metres/sec of WASD pan at the default zoom (scales with distance). */
   panSpeed: 48,
-  /** Screen-edge band in pixels that triggers edge panning. */
-  edgePanPixels: 8,
+  /**
+   * Screen-edge band in pixels that triggers edge panning. **ZERO = OFF, and
+   * off is the shipping default.**
+   *
+   * Edge scrolling is the single most-complained-about control scheme on a
+   * laptop: the pointer is a trackpad, the cursor drifts to an edge every time
+   * the player reaches for the sidebar or the tactical map, and the camera
+   * runs away on its own. It is still available — Options > Controls turns it
+   * back on and `SettingsScreen` writes `RENDER_CONFIG.camera.edgePanPixels`
+   * directly — but nobody has to discover the toggle to stop it happening.
+   *
+   * `src/input/Input.ts#edgeDirection` reads THIS constant (not the live
+   * render config) to decide whether to paint the eight scroll-arrow cursors,
+   * so zero here also removes the affordance for a feature that is off.
+   */
+  edgePanPixels: 0,
   /** Edge pan speed multiplier relative to keyboard pan. */
   edgePanScale: 1.0,
-  /** Fraction of the remaining distance consumed per wheel notch. */
-  zoomStep: 0.12,
+  /**
+   * MULTIPLIER applied to the dolly distance per wheel notch. >1 pulls back.
+   *
+   * This was 0.12 and documented as "fraction of the remaining distance", but
+   * `CameraRig.zoomBy` has always computed `distance * pow(zoomStep, notches)`
+   * and `ArtBridge.cameraPatch()` pushes this number straight into
+   * `RENDER_CONFIG.camera.zoomStep` at boot. 0.12 therefore multiplied the
+   * distance by 0.12 on a single notch — every wheel event slammed the camera
+   * onto `minDistance` or `maxDistance` with nothing in between. 1.14 is ~13%
+   * per notch, which is nine notches across the whole 30..140 m range.
+   */
+  zoomStep: 1.14,
   /** Critically-damped spring half-life in seconds for pan/zoom smoothing. */
   smoothing: 0.08,
-  /** Radians/sec of Q/E yaw rotation. */
-  yawSpeed: 1.4,
+  /**
+   * DEGREES/sec of Q/E yaw rotation.
+   *
+   * Also previously wrong in the same way as `zoomStep`: this was 1.4 and
+   * commented "radians/sec", but the rig does `degToRad(cfg.yawSpeed)` on the
+   * value ArtBridge copies here, so Q/E turned at 1.4 deg/s — a full circle in
+   * four minutes, which reads as "the rotate keys do nothing".
+   */
+  yawSpeed: 80,
   /** Near/far planes. Tight near plane keeps depth precision for SSAO. */
   near: 1.0,
   far: 900,
   /** Metres of margin outside the map the camera may pan to. */
   panMargin: 24,
+} as const;
+
+/* --------------------------------------------------------------------------
+ * 3b. CAMERA NAVIGATION — the pointer/trackpad control scheme
+ *
+ * `CAMERA` above is the RIG (where the camera is and how it moves). This block
+ * is the INPUT SCHEME (how a human asks it to move). It lives in core/config
+ * for the same reason everything else does — one place to retune feel — and
+ * `src/render/camera.ts` seeds `DEFAULT_NAVIGATION` from it.
+ *
+ * The whole block exists because the game is played on laptops. A MacBook has
+ * no wheel and no middle button: the only pointing device is a trackpad that
+ * emits `wheel` events for a two-finger swipe and `wheel` events with
+ * `ctrlKey: true` for a pinch. Binding `wheel` to zoom — which is what a
+ * desktop RTS does — turns the most natural pan gesture on the machine into a
+ * zoom, and leaves pinch doing nothing at all.
+ * -------------------------------------------------------------------------- */
+
+export const CAMERA_NAV = {
+  /* -- wheel / trackpad --------------------------------------------------- */
+
+  /**
+   * Multiplier on a two-finger trackpad pan. 1.0 is "the ground tracks the
+   * fingers": one CSS pixel of scroll moves the ground one CSS pixel.
+   */
+  trackpadPanSensitivity: 1.0,
+  /** Multiplier on a real mouse wheel's zoom notches. */
+  wheelZoomSensitivity: 1.0,
+  /**
+   * Notches of zoom per unit of `deltaY` on a macOS pinch (`wheel` with
+   * `ctrlKey`). Pinch deltas are an order of magnitude smaller than a wheel
+   * notch — a slow pinch emits 1-3 per event against a wheel's 100 — so this
+   * is deliberately ~30x the plain-wheel scale.
+   */
+  pinchZoomSensitivity: 0.035,
+  /** Hard clamp on notches applied by any single wheel event. */
+  maxNotchesPerEvent: 3,
+
+  /* -- trackpad detection -------------------------------------------------
+   * See `classifyWheelEvent` in src/render/camera.ts for how these combine.
+   * The heuristic is a running score, not a per-event verdict, because a
+   * trackpad fling and a wheel notch can look identical for one event.
+   * ---------------------------------------------------------------------- */
+
+  /** Milliseconds between wheel events below which the stream reads as a
+   *  trackpad. Wheel detents arrive ~120 ms apart even from a fast scroller. */
+  streakGapMs: 60,
+  /** Milliseconds above which an event is an ISOLATED notch — mouse evidence. */
+  isolatedGapMs: 250,
+  /** |deltaY| at or above which a pixel-mode event is a coarse wheel detent. */
+  coarseDeltaPx: 50,
+  /** |deltaY| below which a pixel-mode event is a fine trackpad sample. */
+  fineDeltaPx: 10,
+  /** Score (−1 mouse .. +1 trackpad) that must be crossed to flip the verdict. */
+  deviceFlipScore: 0.25,
+  /** How much of each event's evidence folds into the running score. */
+  deviceScoreBlend: 0.5,
+
+  /* -- drag pan ------------------------------------------------------------ */
+
+  /**
+   * Pixels a RIGHT-drag must travel before it becomes a camera pan instead of
+   * an order. Deliberately above `DRAG_THRESHOLD_PX` (5): a right-click that
+   * wobbles must still issue the order the player asked for.
+   */
+  dragPanThresholdPx: 8,
+
+  /* -- momentum ------------------------------------------------------------ */
+
+  /** Inertia on/off by default. */
+  momentum: true,
+  /**
+   * Exponential decay rate of the coast, per second. 6.0 is an e-fold every
+   * 167 ms: the camera carries about a third of a second past your fingers and
+   * settles, rather than sliding like ice or stopping dead.
+   */
+  momentumDamping: 6.0,
+  /** Metres/sec below which the coast is snapped to zero. */
+  momentumMinSpeed: 0.35,
+  /** Metres/sec the coast may never exceed, whatever the fling. */
+  momentumMaxSpeed: 420,
+  /** Rate the velocity estimator tracks live input, per second. */
+  momentumTrackRate: 30,
+
+  /* -- keyboard ------------------------------------------------------------ */
+
+  /**
+   * Rate the WASD/arrow pan ramps to full speed, per second. 9.0 reaches 90%
+   * in ~0.26 s — enough that a tap nudges and a hold sprints, which is what
+   * "smooth acceleration" has to mean for a key that is either down or up.
+   */
+  keyAccelRate: 9.0,
+
+  /* -- edge pan (only reachable when the player turns it on) --------------- */
+
+  /**
+   * Milliseconds of pointer stillness after which a parked cursor stops edge
+   * panning. Classic edge scroll runs forever while the pointer rests in the
+   * band; that is exactly the failure mode on a laptop, where the cursor ends
+   * up at an edge because the player let go of the trackpad. Edge panning now
+   * has to be RE-ARMED by pointer movement.
+   */
+  edgeIdleMs: 600,
+  /**
+   * Milliseconds an inward movement keeps edge panning armed. A movement whose
+   * component points at the edge you are sitting on re-arms; drifting parallel
+   * to it, or away from it, does not.
+   */
+  edgeIntentMs: 900,
 } as const;
 
 /* ==========================================================================

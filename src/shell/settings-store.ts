@@ -38,6 +38,16 @@ export type QualityChoice = 'auto' | 'low' | 'medium' | 'high' | 'ultra';
 /** Shadow map resolution bucket. `off` is expressed by `shadows: false`. */
 export type ShadowChoice = 'low' | 'medium' | 'high' | 'ultra';
 
+/**
+ * Frosted-glass HUD/menu panels.
+ *
+ * Structurally identical to `PanelBlurMode` in `src/render/renderer.ts`, and
+ * deliberately re-declared rather than imported: this file has no engine
+ * imports (see the header), and the renderer's copy is the one the policy is
+ * written against. `Settings.ts` is the only place the two meet.
+ */
+export type PanelBlurChoice = 'auto' | 'on' | 'off';
+
 export interface GraphicsSettings {
   /** Pipeline preset. Individual toggles below are applied ON TOP of it. */
   tier: QualityChoice;
@@ -54,6 +64,12 @@ export interface GraphicsSettings {
   smaa: boolean;
   /** Film grain, vignette, chromatic aberration — the "cinematic" layer. */
   filmGrain: boolean;
+  /**
+   * Frosted-glass HUD/menu panels. `auto` disables it on macOS/iOS, where
+   * compositing a `backdrop-filter` over the WebGL canvas drops black frames.
+   * Purely a CSS gate — nothing in the render pipeline reads it.
+   */
+  panelBlur: PanelBlurChoice;
   /** Vertical field of view in degrees. 28 .. 52. */
   fov: number;
   /** Camera dolly limits in metres. */
@@ -74,7 +90,23 @@ export interface AudioSettings {
   muted: boolean;
 }
 
+/**
+ * Which pointing device the camera should assume.
+ *
+ * `auto` runs the wheel-event heuristic in `src/render/camera.ts`. The two
+ * explicit values exist because that heuristic has one genuine blind spot — a
+ * mouse wheel on macOS, where the OS applies scroll acceleration and the
+ * browser reports small deltas indistinguishable from a slow trackpad swipe —
+ * and a player stuck in the wrong mode has no working camera at all.
+ */
+export type PointerDeviceChoice = 'auto' | 'mouse' | 'trackpad';
+
 export interface GameplaySettings {
+  /**
+   * Screen-edge panning. **Off by default.** See `CAMERA.edgePanPixels` in
+   * core/config for why: on a laptop the cursor reaches an edge every time the
+   * player touches the HUD, and the camera runs away on its own.
+   */
   edgeScroll: boolean;
   /** Metres/second at the default dolly. 10 .. 120. */
   edgeScrollSpeed: number;
@@ -82,6 +114,25 @@ export interface GameplaySettings {
   panSpeed: number;
   /** 0 = wheel zooms to the screen centre, 1 = fully to the cursor. */
   zoomToCursor: number;
+
+  /* -- pointer / trackpad navigation ------------------------------------- */
+
+  pointerDevice: PointerDeviceChoice;
+  /** Multiplier on trackpad two-finger pan and drag pan. 0.25 .. 3. */
+  panSensitivity: number;
+  /** Multiplier on wheel dolly and pinch zoom. 0.25 .. 3. */
+  zoomSensitivity: number;
+  invertPanX: boolean;
+  invertPanY: boolean;
+  invertZoom: boolean;
+  /**
+   * true = a drag GRABS the world, so the ground follows the cursor.
+   * false = the camera follows the cursor instead.
+   */
+  dragPanNatural: boolean;
+  /** Pan carries inertia and settles instead of stopping dead. */
+  cameraMomentum: boolean;
+
   tooltips: boolean;
   damageNumbers: boolean;
   screenShake: number;
@@ -127,8 +178,23 @@ export interface Settings {
   controls: ControlsSettings;
 }
 
-/** Bumped only when a migration cannot be expressed as "fill in the default". */
-export const SETTINGS_VERSION = 1;
+/**
+ * Bumped only when a migration cannot be expressed as "fill in the default".
+ *
+ * v2: the camera pan rows moved from WASD to the arrow keys. A stored v1 blob
+ * has WASD written into it explicitly, so "fill in the default" cannot reach it
+ * — and leaving it would hand every existing player the A/S order collision the
+ * new defaults exist to avoid. See `migrateBindings`.
+ */
+export const SETTINGS_VERSION = 2;
+
+/** The v1 camera pan defaults, kept only so the v2 migration can recognise them. */
+const V1_PAN_DEFAULTS: Readonly<Record<string, string>> = {
+  'cam.panUp': 'KeyW',
+  'cam.panDown': 'KeyS',
+  'cam.panLeft': 'KeyA',
+  'cam.panRight': 'KeyD',
+};
 
 export const SETTINGS_STORAGE_KEY = 'voltmarch.settings.v1';
 export const SETUP_STORAGE_KEY = 'voltmarch.setup.v1';
@@ -157,11 +223,23 @@ function chord(code: string, mods?: { ctrl?: boolean; shift?: boolean; alt?: boo
 }
 
 export const KEYBINDS: readonly KeybindDef[] = [
-  /* -- camera ------------------------------------------------------------- */
-  { id: 'cam.panUp', label: 'Pan Forward', category: 'Camera', scope: 'camera', def: chord('KeyW') },
-  { id: 'cam.panDown', label: 'Pan Back', category: 'Camera', scope: 'camera', def: chord('KeyS') },
-  { id: 'cam.panLeft', label: 'Pan Left', category: 'Camera', scope: 'camera', def: chord('KeyA') },
-  { id: 'cam.panRight', label: 'Pan Right', category: 'Camera', scope: 'camera', def: chord('KeyD') },
+  /* -- camera --------------------------------------------------------------
+   * The pan rows default to the ARROW keys, not WASD.
+   *
+   * They said WASD for a long time and the engine has always panned on arrows,
+   * so the four most prominent rows on the Controls tab described a control
+   * scheme that did not exist. Two ways to end that; this is the one that does
+   * not arm a collision. `ord.attackMove` is KeyA and `ord.stop` is KeyS, and
+   * `findConflicts` deliberately does not flag camera-vs-order overlap — so
+   * defaulting pan to WASD would make every tap of A both pan the camera and
+   * arm attack-move. Arrows collide with nothing.
+   *
+   * `input.system.ts` resolves these rows live, so a player who wants WASD gets
+   * a working WASD by rebinding — and the arrow keys keep panning regardless.  */
+  { id: 'cam.panUp', label: 'Pan Forward', category: 'Camera', scope: 'camera', def: chord('ArrowUp') },
+  { id: 'cam.panDown', label: 'Pan Back', category: 'Camera', scope: 'camera', def: chord('ArrowDown') },
+  { id: 'cam.panLeft', label: 'Pan Left', category: 'Camera', scope: 'camera', def: chord('ArrowLeft') },
+  { id: 'cam.panRight', label: 'Pan Right', category: 'Camera', scope: 'camera', def: chord('ArrowRight') },
   { id: 'cam.rotateLeft', label: 'Rotate Left', category: 'Camera', scope: 'camera', def: chord('KeyQ') },
   { id: 'cam.rotateRight', label: 'Rotate Right', category: 'Camera', scope: 'camera', def: chord('KeyE') },
   { id: 'cam.home', label: 'Centre On Base', category: 'Camera', scope: 'command', def: chord('KeyH') },
@@ -322,6 +400,7 @@ export function defaultSettings(): Settings {
       postFx: true,
       smaa: true,
       filmGrain: true,
+      panelBlur: 'auto',
       fov: 36,
       minZoom: 30,
       maxZoom: 140,
@@ -337,10 +416,18 @@ export function defaultSettings(): Settings {
       muted: false,
     },
     gameplay: {
-      edgeScroll: true,
+      edgeScroll: false,
       edgeScrollSpeed: 46,
       panSpeed: 42,
       zoomToCursor: 0.75,
+      pointerDevice: 'auto',
+      panSensitivity: 1.0,
+      zoomSensitivity: 1.0,
+      invertPanX: false,
+      invertPanY: false,
+      invertZoom: false,
+      dragPanNatural: true,
+      cameraMomentum: true,
       tooltips: true,
       damageNumbers: false,
       screenShake: 1.0,
@@ -379,6 +466,8 @@ function oneOf<T extends string>(v: unknown, allowed: readonly T[], fallback: T)
 
 const QUALITY_CHOICES: readonly QualityChoice[] = ['auto', 'low', 'medium', 'high', 'ultra'];
 const SHADOW_CHOICES: readonly ShadowChoice[] = ['low', 'medium', 'high', 'ultra'];
+export const POINTER_DEVICE_CHOICES: readonly PointerDeviceChoice[] = ['auto', 'mouse', 'trackpad'];
+export const PANEL_BLUR_CHOICES: readonly PanelBlurChoice[] = ['auto', 'on', 'off'];
 
 /** Frame caps offered in the UI. 0 is "vsync / uncapped". */
 export const FPS_CAPS: readonly number[] = [0, 30, 60, 90, 120, 144, 240];
@@ -396,6 +485,31 @@ function normalizeChord(v: unknown, fallback: Chord): Chord {
   };
 }
 
+/**
+ * Version-gated binding fixes, applied in place after normalisation.
+ *
+ * v1 -> v2 moves camera pan off WASD, but ONLY where the player never touched
+ * it. A stored `KeyW` that is the untouched v1 default and a stored `KeyW` the
+ * player chose are the same bytes, so the tie is broken in the player's favour:
+ * a blob whose four pan rows are exactly the v1 set is treated as untouched;
+ * change any one of them and the whole group is left alone.
+ */
+function migrateBindings(bindings: Record<string, Chord>, version: number): void {
+  if (version >= 2 || version === 0) return;
+
+  const ids = Object.keys(V1_PAN_DEFAULTS);
+  const untouched = ids.every((id) => {
+    const c = bindings[id];
+    return c !== undefined && c.code === V1_PAN_DEFAULTS[id] && !c.ctrl && !c.shift && !c.alt;
+  });
+  if (!untouched) return;
+
+  for (const id of ids) {
+    const def = keybindDef(id);
+    if (def !== undefined) bindings[id] = { ...def.def };
+  }
+}
+
 /** Total, defensive, order-independent. See the section header. */
 export function normalizeSettings(raw: unknown): Settings {
   const d = defaultSettings();
@@ -409,6 +523,7 @@ export function normalizeSettings(raw: unknown): Settings {
 
   const bindings: Record<string, Chord> = {};
   for (const k of KEYBINDS) bindings[k.id] = normalizeChord(rawBinds[k.id], k.def);
+  migrateBindings(bindings, num(raw.version, 0, 1e6, 0));
 
   const minZoom = num(g.minZoom, 8, 260, d.graphics.minZoom);
   const maxZoom = num(g.maxZoom, 8, 400, d.graphics.maxZoom);
@@ -425,6 +540,7 @@ export function normalizeSettings(raw: unknown): Settings {
       postFx: bool(g.postFx, d.graphics.postFx),
       smaa: bool(g.smaa, d.graphics.smaa),
       filmGrain: bool(g.filmGrain, d.graphics.filmGrain),
+      panelBlur: oneOf(g.panelBlur, PANEL_BLUR_CHOICES, d.graphics.panelBlur),
       fov: num(g.fov, 24, 60, d.graphics.fov),
       minZoom: Math.min(minZoom, maxZoom - 4),
       maxZoom: Math.max(maxZoom, minZoom + 4),
@@ -444,6 +560,14 @@ export function normalizeSettings(raw: unknown): Settings {
       edgeScrollSpeed: num(p.edgeScrollSpeed, 10, 120, d.gameplay.edgeScrollSpeed),
       panSpeed: num(p.panSpeed, 10, 120, d.gameplay.panSpeed),
       zoomToCursor: num(p.zoomToCursor, 0, 1, d.gameplay.zoomToCursor),
+      pointerDevice: oneOf(p.pointerDevice, POINTER_DEVICE_CHOICES, d.gameplay.pointerDevice),
+      panSensitivity: num(p.panSensitivity, 0.25, 3, d.gameplay.panSensitivity),
+      zoomSensitivity: num(p.zoomSensitivity, 0.25, 3, d.gameplay.zoomSensitivity),
+      invertPanX: bool(p.invertPanX, d.gameplay.invertPanX),
+      invertPanY: bool(p.invertPanY, d.gameplay.invertPanY),
+      invertZoom: bool(p.invertZoom, d.gameplay.invertZoom),
+      dragPanNatural: bool(p.dragPanNatural, d.gameplay.dragPanNatural),
+      cameraMomentum: bool(p.cameraMomentum, d.gameplay.cameraMomentum),
       tooltips: bool(p.tooltips, d.gameplay.tooltips),
       damageNumbers: bool(p.damageNumbers, d.gameplay.damageNumbers),
       screenShake: num(p.screenShake, 0, 2, d.gameplay.screenShake),

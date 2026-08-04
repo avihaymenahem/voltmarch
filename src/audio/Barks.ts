@@ -329,6 +329,23 @@ export function barkClassFor(kind: EntityKind, faction: Faction, hint = ''): Bar
 /** Peak level of a normalised bark. Slightly under EVA: barks never win. */
 export const BARK_PEAK_DB = -8;
 
+/**
+ * The finished voice profile for a class: the class timbre with the bark band,
+ * drive and pre-roll stamped on top. Exported so the measurement harness renders
+ * exactly what the game plays rather than an approximation of it.
+ */
+export function barkProfileFor(cls: BarkClass): VoiceProfile {
+  const base = BARK_PROFILES[PROFILE_FOR_CLASS[cls]] ?? BARK_PROFILES.allied_infantry;
+  return {
+    ...base,
+    highpassHz: AUDIO_BARK.highpassHz,
+    lowpassHz: base.lowpassHz,
+    drive: AUDIO_BARK.drive,
+    preRollMs: AUDIO_BARK.preRollMs,
+    allowDropout: true,
+  };
+}
+
 interface Bag { pool: number[]; next: number }
 
 export interface BarkOptions {
@@ -482,15 +499,7 @@ export class BarkDirector {
 
   /** §3.3 profile, with the bark overrides applied on top of the class voice. */
   private profile(cls: BarkClass): VoiceProfile {
-    const base = BARK_PROFILES[PROFILE_FOR_CLASS[cls]] ?? BARK_PROFILES.allied_infantry;
-    return {
-      ...base,
-      highpassHz: AUDIO_BARK.highpassHz,
-      lowpassHz: base.lowpassHz,
-      drive: AUDIO_BARK.drive,
-      preRollMs: AUDIO_BARK.preRollMs,
-      allowDropout: true,
-    };
+    return barkProfileFor(cls);
   }
 
   private async fire(

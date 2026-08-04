@@ -360,8 +360,18 @@ function buildMarkerGeometry(): THREE.BufferGeometry {
 /* ==========================================================================
  * 4. CAMERA CONTROL
  *
- * Everything camera.ts used to do for itself, on keys that do not collide with
- * the gameplay hotkeys. Frame-rate independent: every term is multiplied by dt.
+ * Everything camera.ts used to do for itself. Frame-rate independent: every
+ * term is multiplied by dt.
+ *
+ * THESE ARE HELD KEYS, NOT CHORDS, so they cannot go through `actionFor` —
+ * a pan is polled every frame from `isKeyDown`, not dispatched on a keystroke.
+ * They resolve against the SAME settings store all the same (see
+ * `rebuildCameraKeys`), because the Controls tab lists all six rows as live and
+ * a rebind that does nothing is worse than no row at all.
+ *
+ * The arrow keys are a PERMANENT ALIAS on top of whatever is bound. A player
+ * who rebinds pan onto a chord they then forget, or clears the row entirely,
+ * must not end up with no way to move the camera.
  * ========================================================================== */
 
 function updateCamera(dt: number): void {
@@ -370,14 +380,18 @@ function updateCamera(dt: number): void {
   const cfg = RENDER_CONFIG.camera;
   const d = Math.min(dt, 0.1);
 
+  const held = (id: CameraKeyId, arrow: string): boolean =>
+    (arrow !== '' && input!.isKeyDown(arrow)) ||
+    (cameraKeys[id] !== '' && input!.isKeyDown(cameraKeys[id]));
+
   let mx = 0;
   let mz = 0;
-  if (input.isKeyDown('ArrowLeft')) mx -= 1;
-  if (input.isKeyDown('ArrowRight')) mx += 1;
-  if (input.isKeyDown('ArrowUp')) mz -= 1;
-  if (input.isKeyDown('ArrowDown')) mz += 1;
-  if (input.isKeyDown('KeyQ')) rig.setYaw(rig.targetYaw + cfg.yawSpeed * DEG2RAD * d);
-  if (input.isKeyDown('KeyE')) rig.setYaw(rig.targetYaw - cfg.yawSpeed * DEG2RAD * d);
+  if (held('cam.panLeft', 'ArrowLeft')) mx -= 1;
+  if (held('cam.panRight', 'ArrowRight')) mx += 1;
+  if (held('cam.panUp', 'ArrowUp')) mz -= 1;
+  if (held('cam.panDown', 'ArrowDown')) mz += 1;
+  if (held('cam.rotateLeft', '')) rig.setYaw(rig.targetYaw + cfg.yawSpeed * DEG2RAD * d);
+  if (held('cam.rotateRight', '')) rig.setYaw(rig.targetYaw - cfg.yawSpeed * DEG2RAD * d);
 
   if (mx !== 0 || mz !== 0) {
     const inv = 1 / Math.hypot(mx, mz);
@@ -800,6 +814,33 @@ const DEFAULT_ACTION_CHORDS: Readonly<Record<ActionId, string>> = {
 
 const ACTION_IDS = Object.keys(DEFAULT_ACTION_CHORDS) as ActionId[];
 
+/**
+ * The held camera keys. Separate from `ActionId` because these are POLLED every
+ * frame rather than dispatched, so they resolve to a bare `KeyboardEvent.code`
+ * and modifiers are irrelevant — you do not hold Ctrl to keep panning.
+ *
+ * The defaults mirror `KEYBINDS` in `src/shell/settings-store.ts`; the same
+ * duck-typed fallback rule applies, because a `?shot=` boot never loads the
+ * shell chunk and must still have a working camera.
+ */
+type CameraKeyId =
+  | 'cam.panUp' | 'cam.panDown' | 'cam.panLeft' | 'cam.panRight'
+  | 'cam.rotateLeft' | 'cam.rotateRight';
+
+const DEFAULT_CAMERA_KEYS: Readonly<Record<CameraKeyId, string>> = {
+  'cam.panUp': 'ArrowUp',
+  'cam.panDown': 'ArrowDown',
+  'cam.panLeft': 'ArrowLeft',
+  'cam.panRight': 'ArrowRight',
+  'cam.rotateLeft': 'KeyQ',
+  'cam.rotateRight': 'KeyE',
+};
+
+const CAMERA_KEY_IDS = Object.keys(DEFAULT_CAMERA_KEYS) as CameraKeyId[];
+
+/** Live `CameraKeyId` -> code. `''` means the player cleared the binding. */
+let cameraKeys: Record<CameraKeyId, string> = { ...DEFAULT_CAMERA_KEYS };
+
 interface SettingsBridge {
   get(): { controls?: { bindings?: Record<string, BoundChord> } };
   subscribe?(fn: () => void): () => void;
@@ -832,6 +873,15 @@ function rebuildBindings(): void {
     );
   }
   chordToAction = next;
+
+  const cam = { ...DEFAULT_CAMERA_KEYS };
+  for (const id of CAMERA_KEY_IDS) {
+    const c = bound?.[id];
+    // An explicitly cleared row is a real choice ('' = unbound); only a MISSING
+    // row falls back to the default.
+    if (c !== undefined && typeof c.code === 'string') cam[id] = c.code;
+  }
+  cameraKeys = cam;
 }
 
 /** Subscribe to the store if it exists, so a rebind takes effect immediately. */
@@ -845,6 +895,7 @@ function unbindSettings(): void {
   unsubscribeSettings?.();
   unsubscribeSettings = null;
   chordToAction = new Map();
+  cameraKeys = { ...DEFAULT_CAMERA_KEYS };
 }
 
 function actionFor(k: KeyInfo): ActionId | undefined {

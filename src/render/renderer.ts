@@ -30,6 +30,12 @@
  *   between a 4K and a 1080p monitor re-rasterises correctly. Resizes are
  *   coalesced to one per animation frame.
  *
+ * - Compositing: this file also owns the PANEL-BLUR GATE (see "Compositing
+ *   policy" below). A `backdrop-filter` over an accelerated WebGL canvas is a
+ *   known source of intermittent black frames on macOS; because this file is
+ *   the only one that creates the canvas, it is also the one that decides
+ *   whether the CSS layers above it are allowed to sample it.
+ *
  * CONFIG: `RENDER_CONFIG` below is the live, mutable source of truth for the
  * whole render layer (scene.ts / camera.ts / post.ts all read it). Values are
  * literal transcriptions of the Art Direction bible. The foundation's
@@ -516,6 +522,211 @@ export function detectQualityTier(): RenderQualityTier {
 }
 
 /* ========================================================================== */
+/* Compositing policy — the panel-blur gate                                   */
+/*                                                                            */
+/* WHY THIS LIVES IN THE RENDERER FILE                                        */
+/* ----------------------------------                                         */
+/* `hud.css` and `shell.css` paint dark-glass panels with                      */
+/* `backdrop-filter: blur(...)`. A backdrop-filter forces the compositor to    */
+/* read back everything painted behind the element — which, for this game, is  */
+/* an accelerated WebGL canvas. On macOS (Metal) that read-back is a           */
+/* long-standing source of INTERMITTENT BLACK FRAMES in both Chromium and      */
+/* WebKit: the backdrop snapshot is occasionally sampled before the canvas     */
+/* layer has been drawn into for that frame, and the filter happily blurs an   */
+/* empty (black) source. It shows up exactly as reported — a black flash for a */
+/* split second, a few times per session, never reproducible on demand.        */
+/*                                                                            */
+/* `alpha: false` on the context (see `createRenderer`) makes the canvas an    */
+/* opaque compositing layer, which is the fragile path; an alpha-enabled       */
+/* canvas is composited differently. See the ALPHA note in `createRenderer`    */
+/* for why we did NOT flip it.                                                 */
+/*                                                                            */
+/* The fix is to stop asking the compositor to do the fragile thing where it   */
+/* is known to be fragile, rather than to drop the look everywhere. The gate:  */
+/*                                                                            */
+/*   mode 'auto' (default) -> blur ON, except on Apple platforms               */
+/*   mode 'on'             -> blur ON wherever the browser supports it         */
+/*   mode 'off'            -> blur OFF always                                  */
+/*                                                                            */
+/* When the blur is off, `<html>` carries `vm-no-blur` and the two stylesheets  */
+/* swap `--vm-blur` to `none` and raise the panel opacity. The panels stay      */
+/* translucent dark glass; only the blur — the fragile part — is gone.          */
+/*                                                                            */
+/* `?blur=on|off|auto` overrides at boot, so the exact artefact can be A/B'd    */
+/* on the affected machine without shipping a build.                           */
+/* ========================================================================== */
+
+export type PanelBlurMode = 'auto' | 'on' | 'off';
+
+/** Stamped on `<html>` when the blur must not run. The stylesheets key off it. */
+export const NO_BLUR_CLASS = 'vm-no-blur';
+
+export interface CompositingProbe {
+  /** `backdrop-filter` (or the -webkit- alias) is supported at all. */
+  readonly supported: boolean;
+  /** The platform is one where blur-over-WebGL is known to drop black frames. */
+  readonly risky: boolean;
+  /** Best-effort platform string, for the boot log. */
+  readonly platform: string;
+  /** Human-readable justification, logged once. */
+  readonly reason: string;
+}
+
+/**
+ * Pure classifier — no DOM, no globals. Split out from `compositingProbe()` so
+ * the platform table is unit-testable with synthetic UA strings.
+ */
+export function classifyCompositing(
+  platform: string,
+  userAgent: string,
+  supported: boolean,
+  maxTouchPoints = 0
+): CompositingProbe {
+  if (!supported) {
+    return {
+      supported: false,
+      risky: true,
+      platform,
+      reason: 'backdrop-filter unsupported',
+    };
+  }
+  const apple =
+    /mac|iphone|ipad|ipod|ios/i.test(platform) ||
+    /Macintosh|Mac OS X|iPhone|iPad|iPod/i.test(userAgent) ||
+    // iPadOS 13+ reports itself as a Mac; touch points are the only tell.
+    (/MacIntel/i.test(platform) && maxTouchPoints > 1);
+  return {
+    supported: true,
+    risky: apple,
+    platform,
+    reason: apple
+      ? 'Apple/Metal compositing — backdrop-filter over WebGL drops black frames'
+      : 'backdrop-filter over WebGL is stable on this platform',
+  };
+}
+
+/** Resolve a mode against a probe. Pure; the single place the policy is written. */
+export function resolvePanelBlur(
+  mode: PanelBlurMode,
+  probe: Pick<CompositingProbe, 'supported' | 'risky'>
+): boolean {
+  if (!probe.supported) return false;
+  if (mode === 'off') return false;
+  if (mode === 'on') return true;
+  return !probe.risky;
+}
+
+function detectPlatformString(): string {
+  if (typeof navigator === 'undefined') return '';
+  const uaData = (navigator as unknown as { userAgentData?: { platform?: string } }).userAgentData;
+  const fromHints = typeof uaData?.platform === 'string' ? uaData.platform : '';
+  return fromHints || navigator.platform || '';
+}
+
+function detectBackdropSupport(): boolean {
+  if (typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return false;
+  try {
+    return (
+      CSS.supports('backdrop-filter', 'blur(1px)') ||
+      CSS.supports('-webkit-backdrop-filter', 'blur(1px)')
+    );
+  } catch {
+    return false;
+  }
+}
+
+let probeCache: CompositingProbe | null = null;
+
+/** Probe the host once. Pass `true` to re-run it (tests, DPR/display changes). */
+export function compositingProbe(force = false): CompositingProbe {
+  if (probeCache !== null && !force) return probeCache;
+  if (typeof navigator === 'undefined' || typeof document === 'undefined') {
+    probeCache = { supported: false, risky: true, platform: '', reason: 'no DOM' };
+    return probeCache;
+  }
+  probeCache = classifyCompositing(
+    detectPlatformString(),
+    navigator.userAgent || '',
+    detectBackdropSupport(),
+    navigator.maxTouchPoints || 0
+  );
+  return probeCache;
+}
+
+let panelBlurMode: PanelBlurMode = 'auto';
+let panelBlurActive = false;
+
+/**
+ * Apply a blur mode. Returns the EFFECTIVE state, which is not the same as the
+ * mode: `'auto'` and `'on'` still resolve to off where the browser cannot do it.
+ * Safe to call before the DOM exists (tests) — it just records the mode.
+ */
+export function setPanelBlurMode(mode: PanelBlurMode): boolean {
+  panelBlurMode = mode;
+  panelBlurActive = resolvePanelBlur(mode, compositingProbe());
+  if (typeof document !== 'undefined' && document.documentElement) {
+    const root = document.documentElement;
+    root.classList.toggle(NO_BLUR_CLASS, !panelBlurActive);
+    root.dataset.vmPanelBlur = panelBlurActive ? 'on' : 'off';
+  }
+  return panelBlurActive;
+}
+
+export function getPanelBlurMode(): PanelBlurMode {
+  return panelBlurMode;
+}
+
+/** The state actually in force right now (mode resolved against the probe). */
+export function isPanelBlurActive(): boolean {
+  return panelBlurActive;
+}
+
+function urlPanelBlurOverride(): PanelBlurMode | null {
+  if (typeof location === 'undefined' || !location.search) return null;
+  const v = new URLSearchParams(location.search).get('blur');
+  if (v === null) return null;
+  const s = v.toLowerCase();
+  if (s === '' || s === 'on' || s === '1' || s === 'true') return 'on';
+  if (s === 'off' || s === '0' || s === 'false') return 'off';
+  if (s === 'auto') return 'auto';
+  return null;
+}
+
+let urlForcedMode: PanelBlurMode | null = null;
+
+/**
+ * The mode `?blur=` claimed at boot, or null when the URL said nothing.
+ *
+ * The settings screen persists a panel-blur choice and pushes it through
+ * `setPanelBlurMode` — which would silently overwrite the URL override and take
+ * the A/B tool away exactly on the machine that needs it. `Settings.ts` checks
+ * this and stands down when the URL has spoken.
+ */
+export function panelBlurUrlOverride(): PanelBlurMode | null {
+  return urlForcedMode;
+}
+
+/**
+ * Stamp the gate onto `<html>`.
+ *
+ * Called at MODULE LOAD, not from `createRenderer()`, and deliberately so: on
+ * the product boot path the shell paints the title screen before a renderer
+ * exists, and a menu that renders blurred and then un-blurs is its own visual
+ * bug. `renderer.ts` is imported (via Bootstrap) from the entry module, so this
+ * runs before the first stylesheet is even injected.
+ */
+export function initPanelBlurPolicy(): PanelBlurMode {
+  urlForcedMode = urlPanelBlurOverride();
+  const mode = urlForcedMode ?? 'auto';
+  setPanelBlurMode(mode);
+  return mode;
+}
+
+if (typeof document !== 'undefined') {
+  initPanelBlurPolicy();
+}
+
+/* ========================================================================== */
 /* Renderer handle                                                            */
 /* ========================================================================== */
 
@@ -545,6 +756,14 @@ export interface RendererHandle {
     /** Unmasked GPU string when WEBGL_debug_renderer_info is available. */
     gpu: string;
   };
+  /**
+   * True between `webglcontextlost` and `webglcontextrestored`. Every draw path
+   * must early-out while this is set: commands issued to a lost context are
+   * dropped, and what the compositor then presents is an undefined (in
+   * practice, black) drawing buffer. Skipping the frame leaves the last good
+   * one on screen instead.
+   */
+  isContextLost(): boolean;
   /** Force a resize evaluation (also called automatically). */
   resize(force?: boolean): void;
   /** Override the layout size, e.g. the screenshot harness at a fixed res. */
@@ -597,6 +816,25 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
     options.preserveDrawingBuffer ?? (cfg.preserveDrawingBuffer || wantsShot);
   if (preserveDrawingBuffer) cfg.preserveDrawingBuffer = true;
 
+  /*
+   * ALPHA: deliberately FALSE, and re-confirmed while chasing the macOS black
+   * flashes.
+   *
+   * `alpha: true` was evaluated as a way to make the canvas composite through
+   * the ordinary translucent-layer path instead of the opaque one. It was
+   * rejected: the last pass in the post chain is SMAA, and neither SMAAPass nor
+   * UnrealBloomPass guarantees an alpha of exactly 1.0 in its output — the
+   * grade pass writes `vec4(rgb, 1.0)`, but it is not last. With `alpha: true`
+   * any pixel whose alpha came out below 1 lets the page background through,
+   * which lifts the blacks and washes the whole frame — a direct hit on
+   * scorecard #4 (crushed, contrasty shadows) for a speculative compositing
+   * gain we cannot measure from here. `alpha: false` also lets the browser skip
+   * a blend when presenting.
+   *
+   * The compositing fragility that alpha was meant to address is addressed at
+   * its source instead: the backdrop-filter gate above stops anything sampling
+   * this canvas on the platforms where sampling it is unsafe.
+   */
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: cfg.antialias,
@@ -622,6 +860,20 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
 
   // Nice default background so frame zero is never a black void.
   renderer.setClearColor(new THREE.Color(RENDER_CONFIG.sky.horizon), 1);
+
+  /*
+   * CLEAR THE DRAWING BUFFER NOW, before anything can present it.
+   *
+   * A freshly created WebGL drawing buffer is defined to be zero-filled, and
+   * with `alpha: false` that reads as opaque BLACK. Between this call and the
+   * first `composer.render()` there are several frames — module init, system
+   * registration, terrain generation, shader compilation — during which the
+   * compositor is free to put the canvas on screen. Painting the sky colour
+   * into it immediately means the worst case is a flat horizon-grey rectangle
+   * instead of a black one.
+   */
+  renderer.setRenderTarget(null);
+  renderer.clear(true, true, true);
 
   const gl = renderer.getContext();
   let gpu = 'unknown';
@@ -650,6 +902,8 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
   let fixedHeight: number | null = null;
   let resizePending = false;
   let disposed = false;
+  /** See the context-loss block below. Declared here so `doResize` can read it. */
+  let contextLost = false;
 
   function measure(): { w: number; h: number } {
     if (fixedWidth !== null && fixedHeight !== null) return { w: fixedWidth, h: fixedHeight };
@@ -687,6 +941,23 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
     renderer.setPixelRatio(effective);
     // updateStyle=false when we are driving a fixed-size offscreen render.
     renderer.setSize(w, h, fixedWidth === null);
+
+    /*
+     * Resizing the canvas REALLOCATES the drawing buffer, and a fresh drawing
+     * buffer is zero-filled — opaque black, with `alpha: false`. Between here
+     * and the next presented frame the compositor may put that buffer on
+     * screen; on a Retina MacBook a fullscreen toggle or a display change fires
+     * this path several times in a row. Painting the sky colour in immediately
+     * costs one clear and removes the window entirely.
+     */
+    if (!contextLost) {
+      try {
+        renderer.setRenderTarget(null);
+        renderer.clear(true, true, true);
+      } catch {
+        /* a context that died between the check and the call — next frame retries */
+      }
+    }
 
     for (let i = 0; i < resizeListeners.length; i++) {
       try {
@@ -732,13 +1003,32 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
     /* older Safari — window resize covers most cases */
   }
 
+  /*
+   * CONTEXT LOSS.
+   *
+   * `preventDefault()` asks the browser to restore the context, but restoration
+   * is asynchronous and can take many frames. Every draw issued in that window
+   * is silently dropped, and on some drivers the compositor presents the
+   * abandoned drawing buffer — a black rectangle where the game was. The flag
+   * below is read by `post.render()`, which skips the frame entirely so the
+   * last complete image stays on screen until the context is back.
+   */
   const onContextLost = (e: Event) => {
     e.preventDefault();
-    console.warn('[render] WebGL context lost');
+    contextLost = true;
+    console.warn('[render] WebGL context lost — suspending presentation');
   };
   const onContextRestored = () => {
+    contextLost = false;
     console.warn('[render] WebGL context restored — forcing full resize');
     doResize(true);
+    // Same reasoning as the boot clear: the restored buffer starts at zero.
+    try {
+      renderer.setRenderTarget(null);
+      renderer.clear(true, true, true);
+    } catch (err) {
+      console.warn('[render] clear after context restore failed', err);
+    }
   };
   canvas.addEventListener('webglcontextlost', onContextLost as EventListener, false);
   canvas.addEventListener('webglcontextrestored', onContextRestored, false);
@@ -771,6 +1061,10 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
     canvas,
     size,
     capabilities,
+
+    isContextLost() {
+      return contextLost;
+    },
 
     resize(force = false) {
       doResize(force);
@@ -844,10 +1138,15 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
   };
 
   if (DEV) {
+    const probe = compositingProbe();
     console.info(
       `[render] WebGL${capabilities.webgl2 ? '2' : '1'} · ${capabilities.gpu} · ` +
         `${size.width}x${size.height} @ ${size.pixelRatio.toFixed(2)}x · ` +
         `maxTex ${capabilities.maxTextureSize} · aniso ${capabilities.anisotropy}`
+    );
+    console.info(
+      `[render] panel blur: ${panelBlurActive ? 'ON' : 'OFF'} (mode ${panelBlurMode}` +
+        `, platform "${probe.platform}") — ${probe.reason}`
     );
   }
 

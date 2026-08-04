@@ -14,6 +14,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import {
   CREDIT_OPTIONS,
@@ -91,7 +93,60 @@ describe('settings — normalisation is total', () => {
     });
     expect(s.controls.bindings['ord.stop'].code).toBe('KeyK');
     expect(s.controls.bindings['gone.away']).toBeUndefined();
+    expect(s.controls.bindings['cam.panUp'].code).toBe('ArrowUp');
+  });
+
+  it('migrates an untouched v1 WASD pan scheme onto the arrows', () => {
+    const v1 = {
+      version: 1,
+      controls: {
+        bindings: {
+          'cam.panUp': { code: 'KeyW', ctrl: false, shift: false, alt: false },
+          'cam.panDown': { code: 'KeyS', ctrl: false, shift: false, alt: false },
+          'cam.panLeft': { code: 'KeyA', ctrl: false, shift: false, alt: false },
+          'cam.panRight': { code: 'KeyD', ctrl: false, shift: false, alt: false },
+        },
+      },
+    };
+    const s = normalizeSettings(v1);
+    expect(s.controls.bindings['cam.panUp'].code).toBe('ArrowUp');
+    expect(s.controls.bindings['cam.panRight'].code).toBe('ArrowRight');
+    expect(s.version).toBe(2);
+  });
+
+  it('leaves a v1 pan scheme alone once the player has touched it', () => {
+    // One row changed means the group is the player's, not the old default.
+    const s = normalizeSettings({
+      version: 1,
+      controls: {
+        bindings: {
+          'cam.panUp': { code: 'KeyW', ctrl: false, shift: false, alt: false },
+          'cam.panDown': { code: 'KeyS', ctrl: false, shift: false, alt: false },
+          'cam.panLeft': { code: 'KeyA', ctrl: false, shift: false, alt: false },
+          'cam.panRight': { code: 'KeyL', ctrl: false, shift: false, alt: false },
+        },
+      },
+    });
     expect(s.controls.bindings['cam.panUp'].code).toBe('KeyW');
+    expect(s.controls.bindings['cam.panRight'].code).toBe('KeyL');
+  });
+
+  it('does not re-run the v2 migration on an already-migrated blob', () => {
+    // A v2 player who deliberately chose WASD keeps it across every later load.
+    const chosen = {
+      version: 2,
+      controls: {
+        bindings: {
+          'cam.panUp': { code: 'KeyW', ctrl: false, shift: false, alt: false },
+          'cam.panDown': { code: 'KeyS', ctrl: false, shift: false, alt: false },
+          'cam.panLeft': { code: 'KeyA', ctrl: false, shift: false, alt: false },
+          'cam.panRight': { code: 'KeyD', ctrl: false, shift: false, alt: false },
+        },
+      },
+    };
+    const once = normalizeSettings(chosen);
+    expect(once.controls.bindings['cam.panUp'].code).toBe('KeyW');
+    expect(normalizeSettings(once).controls.bindings['cam.panUp'].code).toBe('KeyW');
   });
 
   it('refuses a binding on a key the browser owns', () => {
@@ -112,11 +167,31 @@ describe('keybinds', () => {
 
   it('does not flag a key shared between the camera and order surfaces', () => {
     const b = defaultBindings();
-    // KeyA is genuinely pan-left AND attack-move today — two different
-    // keyboard surfaces, one physical key, and that is not a bug.
-    expect(b['cam.panLeft'].code).toBe('KeyA');
+    // The SHIPPED scheme no longer overlaps — pan is on the arrows precisely so
+    // that holding a pan key cannot also arm an order (see KEYBINDS). But a
+    // player is still allowed to put pan-left back on KeyA, and when they do it
+    // must not be reported as a conflict: two keyboard surfaces, one physical
+    // key, and that is deliberate.
+    expect(b['cam.panLeft'].code).toBe('ArrowLeft');
     expect(b['ord.attackMove'].code).toBe('KeyA');
+
+    b['cam.panLeft'] = { code: 'KeyA', ctrl: false, shift: false, alt: false };
     expect(conflictingIds(b).size).toBe(0);
+  });
+
+  it('the shipped camera pan scheme is what the engine actually polls', () => {
+    // `input.system.ts#DEFAULT_CAMERA_KEYS` is a second copy of these four codes
+    // (it cannot import the shell — a `?shot=` boot never loads that chunk).
+    // The two drifting apart is exactly how the rows came to advertise WASD
+    // while the engine panned on arrows, so pin them together.
+    const b = defaultBindings();
+    const src = readFileSync(join(__dirname, '..', 'src/input/input.system.ts'), 'utf8');
+    const block = /DEFAULT_CAMERA_KEYS[\s\S]*?\{([\s\S]*?)\}/.exec(src);
+    expect(block).not.toBeNull();
+    for (const id of ['cam.panUp', 'cam.panDown', 'cam.panLeft', 'cam.panRight',
+      'cam.rotateLeft', 'cam.rotateRight']) {
+      expect(block![1]).toContain(`'${id}': '${b[id].code}'`);
+    }
   });
 
   it('flags both sides of a real conflict', () => {

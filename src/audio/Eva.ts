@@ -106,7 +106,7 @@ function stop(bpHz: number, bpQ: number, ms: number, db: number, silenceMs: numb
 
 function nasal(ms: number): Phone {
   return {
-    kind: PhoneKind.Nasal, ms, db: -3,
+    kind: PhoneKind.Nasal, ms, db: -7,
     f1: 900, f2: 1400, f3: 0, f1b: -1, f2b: -1, f3b: -1,
     bpHz: 0, bpQ: 1, silenceMs: 0, voiceBarMs: 0,
   };
@@ -266,12 +266,77 @@ export const BARK_PROFILES: Readonly<Record<string, VoiceProfile>> = {
 
 export interface Chain { input: AudioNode; output: AudioNode }
 
+/**
+ * A real communications channel is a STEEP band, not a tone control.
+ *
+ * `AUDIO_EVA.highpassHz` is 380 Hz, but a single biquad highpass is 12 dB/oct,
+ * so at the 190 Hz glottal fundamental it attenuates by only 12 dB — and the
+ * fundamental is 20 dB hotter than anything else in a voiced phone. Measured
+ * result: 57-71% of the announcer's energy sat in 80-400 Hz, i.e. in exactly
+ * the band a radio does not pass, and almost none of it in the 1-3 kHz where
+ * intelligibility and the "transmission" character both live.
+ *
+ * Three cascaded poles is 36 dB/oct, which puts the fundamental 40 dB down and
+ * leaves the harmonics that carry the words.
+ */
+const COMMS_HP_STAGES = 3;
+/** Two poles at the top: enough to sound band-limited without sounding muffled. */
+const COMMS_LP_STAGES = 2;
+
+/**
+ * Widen the top of the band to a real 3.4 kHz channel. The configured 2.9 kHz
+ * with two poles puts /s/ and /t/ 20 dB down, and a radio operator you cannot
+ * tell "structure lost" from "structure sold" is a worse radio operator than
+ * one who is slightly less band-limited.
+ */
+const COMMS_TOP = 1.15;
+
+/**
+ * Relative level of F1 / F2 / F3.
+ *
+ * Textbook formant synthesis weights these 1.0 / 0.55 / 0.22, which is roughly
+ * how a mouth radiates — but a mouth is not what is being simulated here, a
+ * radio link carrying a mouth is. The channel high-passes away everything under
+ * ~300 Hz and its AGC then lifts what survives, which lands F2 and F3 far
+ * closer to F1 than they started. With the textbook weights the announcer
+ * measured 57-68% of its energy in 80-400 Hz — a voice down a pipe, and one
+ * whose consonants were inaudible over gunfire.
+ */
+const FORMANT_LEVELS = [0.62, 0.9, 0.5] as const;
+
+/**
+ * Formant transition time. 45 ms is the measured order of a real articulator
+ * move; shorter reads as a splice, longer smears two vowels into one.
+ * Not in config.ts because it is not a mix knob — it is part of the synthesiser.
+ */
+const GLIDE_MS = 45;
+
+/**
+ * A little amplitude modulation at 62 Hz, 7% depth. Not enough to hear as a
+ * pitch, more than enough to hear as a channel — this is the artefact a
+ * companded FM link leaves on a voice, and it is most of what separates
+ * "someone on a radio" from "someone in the room".
+ */
+const VOCODE_HZ = 62;
+const VOCODE_DEPTH = 0.07;
+
 export function buildRadioChain(ac: BaseAudioContext, p: VoiceProfile): Chain {
   const input = gain(ac, 1);
 
-  const hp = biquad(ac, 'highpass', p.highpassHz, 0.71);
-  const lp = biquad(ac, 'lowpass', p.lowpassHz, 0.9);
-  const presence = biquad(ac, 'peaking', AUDIO_EVA.presenceHz, AUDIO_EVA.presenceQ, AUDIO_EVA.presenceDb);
+  // Cascaded band, slightly staggered so the corner is a knee and not a notch.
+  let head: AudioNode = input;
+  for (let i = 0; i < COMMS_HP_STAGES; i++) {
+    const hp = biquad(ac, 'highpass', p.highpassHz * (1 - i * 0.08), 0.62);
+    head.connect(hp);
+    head = hp;
+  }
+  for (let i = 0; i < COMMS_LP_STAGES; i++) {
+    const lp = biquad(ac, 'lowpass', p.lowpassHz * COMMS_TOP * (1 + i * 0.1), 0.66);
+    head.connect(lp);
+    head = lp;
+  }
+
+  const presence = biquad(ac, 'peaking', AUDIO_EVA.presenceHz, AUDIO_EVA.presenceQ, AUDIO_EVA.presenceDb + 3);
   const debox = biquad(ac, 'peaking', AUDIO_EVA.deboxHz, AUDIO_EVA.deboxQ, AUDIO_EVA.deboxDb);
   const drive = shaper(ac, p.drive, '2x', 2048);
 
@@ -282,7 +347,16 @@ export function buildRadioChain(ac: BaseAudioContext, p: VoiceProfile): Chain {
   comp.attack.value = AUDIO_EVA.compAttack;
   comp.release.value = AUDIO_EVA.compRelease;
 
-  input.connect(hp).connect(lp).connect(presence).connect(debox).connect(drive).connect(comp);
+  // The carrier artefact, in front of the drive so the shaper works on it too.
+  const vocode = gain(ac, 1 - VOCODE_DEPTH);
+  const carrier = ac.createOscillator();
+  carrier.type = 'sine';
+  carrier.frequency.value = VOCODE_HZ;
+  const depth = gain(ac, VOCODE_DEPTH);
+  carrier.connect(depth).connect(vocode.gain);
+  carrier.start(0);
+
+  head.connect(presence).connect(debox).connect(vocode).connect(drive).connect(comp);
 
   // Optional per-class resonance (chest, presence).
   let tail: AudioNode = comp;
@@ -439,9 +513,21 @@ export function renderUtterance(
   }
 
   /* -- the phones ---------------------------------------------------------- */
+  // The articulator positions the PREVIOUS phone left behind. Vowels glide out
+  // of these; see `formant` for why that matters more than the targets do.
+  let prev1 = -1, prev2 = -1, prev3 = -1;
+  const setLocus = (f1: number, f2: number, f3: number): void => {
+    prev1 = f1; prev2 = f2; prev3 = f3;
+  };
+
   let cursor = speechStart;
   for (const tok of tokens) {
-    if (tok.phone === null) { cursor += tok.gapMs / 1000; continue; }
+    if (tok.phone === null) {
+      cursor += tok.gapMs / 1000;
+      // A word gap resets the mouth to rest. A phrase pause resets it fully.
+      if (tok.gapMs >= AUDIO_EVA.commaGapMs) setLocus(-1, -1, -1);
+      continue;
+    }
     const ph = tok.phone;
     const dur = (ph.ms * p.rate) / 1000;
     const at = cursor + (ph.silenceMs * p.rate) / 1000;
@@ -454,10 +540,14 @@ export function renderUtterance(
         const seg = gain(oc, 1);
         phoneEnv(seg.gain, at, dur, dbToGain(ph.db), p);
         // Three parallel bandpasses at 1.0 / 0.55 / 0.22, bandwidth 70/110/160.
-        formant(oc, voiced, seg, ph.f1, ph.f1b, 70, 1.0, at, dur);
-        formant(oc, voiced, seg, ph.f2, ph.f2b, 110, 0.55, at, dur);
-        formant(oc, voiced, seg, ph.f3, ph.f3b, 160, 0.22, at, dur);
+        const glide = Math.min(GLIDE_MS, ph.ms * p.rate * 0.45);
+        formant(oc, voiced, seg, prev1, ph.f1, ph.f1b, 70, FORMANT_LEVELS[0], at, dur, glide);
+        formant(oc, voiced, seg, prev2, ph.f2, ph.f2b, 110, FORMANT_LEVELS[1], at, dur, glide);
+        formant(oc, voiced, seg, prev3, ph.f3, ph.f3b, 160, FORMANT_LEVELS[2], at, dur, glide);
         seg.connect(master);
+        // A diphthong leaves the mouth wherever its glide ended.
+        setLocus(ph.f1b > 0 ? ph.f1b : ph.f1, ph.f2b > 0 ? ph.f2b : ph.f2,
+          ph.f3b > 0 ? ph.f3b : ph.f3);
         break;
       }
       case PhoneKind.Nasal: {
@@ -468,6 +558,8 @@ export function renderUtterance(
         const lp = biquad(oc, 'lowpass', ph.f1, 1.0);
         const notch = biquad(oc, 'notch', ph.f2, 3.0);
         voiced.connect(lp).connect(notch).connect(seg).connect(master);
+        // A nasal murmur leaves the tongue low and central.
+        setLocus(400, 1300, 2500);
         break;
       }
       case PhoneKind.Fricative: {
@@ -476,6 +568,7 @@ export function renderUtterance(
         const bp = biquad(oc, 'bandpass', ph.bpHz, ph.bpQ);
         noiseInto(oc, at, dur + 0.03, rng).connect(bp);
         bp.connect(seg).connect(master);
+        setLocus(-1, Math.max(600, Math.min(2600, ph.bpHz * 0.42)), -1);
         if (ph.voiceBarMs > 0) {
           const vg = gain(oc, 1);
           phoneEnv(vg.gain, at, (ph.voiceBarMs * p.rate) / 1000, dbToGain(ph.db - 6), p);
@@ -491,6 +584,9 @@ export function renderUtterance(
         const bp = biquad(oc, 'bandpass', ph.bpHz, ph.bpQ);
         noiseInto(oc, at, dur + 0.02, rng).connect(bp);
         bp.connect(seg).connect(master);
+        // Locus theory: the burst band IS the place of articulation, so the
+        // following vowel's F2 sweeps out of it. /t/ from ~1500, /p/ from ~310.
+        setLocus(-1, Math.max(300, Math.min(2400, ph.bpHz * 0.42)), -1);
         if (ph.voiceBarMs > 0) {
           const vg = gain(oc, 1);
           const vAt = at + 0.004;
@@ -536,18 +632,41 @@ function setF0(
   b.frequency.linearRampToValueAtTime(targetAt(end), end);
 }
 
-/** One formant: a bandpass at `hz` (gliding to `hzB`) at a fixed bandwidth. */
+/**
+ * One formant: a bandpass that GLIDES IN from the previous phone's target,
+ * holds at `hz`, and optionally glides on to `hzB` for a diphthong.
+ *
+ * The glide-in is coarticulation, and it is the difference between a formant
+ * synthesiser that can be understood and one that cannot. Human articulators
+ * have mass: the tongue does not teleport from the /i/ position to the /A/
+ * position, it sweeps, and the ear reads that sweep as the transition between
+ * two specific sounds. Stepping the filters instantly — which is what this did
+ * — produces a sequence of correct but disconnected vowels, which is why
+ * hand-tuned formant speech so often comes out as recognisable-but-mush.
+ *
+ * For a vowel after a consonant, `hzFrom` is the consonant's LOCUS (its
+ * characteristic band, which is exactly what the phone table's `bpHz` already
+ * holds), so /t/-to-/a/ sweeps down from 1800 Hz and /b/-to-/a/ sweeps up from
+ * 750 Hz. Those two transitions are most of how a listener tells a /t/ from a
+ * /b/ at all — the burst itself is nearly the same noise.
+ */
 function formant(
   oc: BaseAudioContext, src: AudioNode, dst: AudioNode,
-  hz: number, hzB: number, bandwidthHz: number, level: number, at: number, dur: number,
+  hzFrom: number, hz: number, hzB: number,
+  bandwidthHz: number, level: number, at: number, dur: number, glideMs: number,
 ): void {
   if (hz <= 0) return;
   const q = Math.max(0.4, hz / bandwidthHz);
-  const f = biquad(oc, 'bandpass', hz, q);
-  if (hzB > 0) {
+  const glide = Math.min(glideMs / 1000, dur * 0.5);
+  const moving = hzFrom > 0 && Math.abs(hzFrom - hz) > 25;
+  const f = biquad(oc, 'bandpass', moving ? hzFrom : hz, q);
+  if (moving) {
+    f.frequency.setValueAtTime(hzFrom, at);
+    f.frequency.linearRampToValueAtTime(hz, at + glide);
+  } else {
     f.frequency.setValueAtTime(hz, at);
-    f.frequency.linearRampToValueAtTime(hzB, at + dur);
   }
+  if (hzB > 0) f.frequency.linearRampToValueAtTime(hzB, at + dur);
   const g = gain(oc, level);
   src.connect(f).connect(g).connect(dst);
 }

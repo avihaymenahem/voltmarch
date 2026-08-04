@@ -60,9 +60,10 @@
  */
 
 import {
-  CAMERA, DOUBLE_CLICK_MS, DOUBLE_CLICK_SLOP_PX, DRAG_THRESHOLD_PX,
+  DOUBLE_CLICK_MS, DOUBLE_CLICK_SLOP_PX, DRAG_THRESHOLD_PX,
   MARQUEE_FILL, MARQUEE_GLOW, MARQUEE_MIN_PX, MARQUEE_STROKE,
 } from '../core/config';
+import { RENDER_CONFIG } from '../render/renderer';
 
 /* ==========================================================================
  * 1. VOCABULARY
@@ -327,7 +328,12 @@ export class InputManager {
    */
   edgeDirection(out: Float32Array): boolean {
     if (!this.pointerInside || this.dragging) return false;
-    const band = CAMERA.edgePanPixels;
+    // RENDER_CONFIG, not core/config: `CAMERA.edgePanPixels` is the shipping
+    // DEFAULT and is 0, while the Options screen writes the LIVE value here.
+    // Reading the frozen one meant a player who turned edge scrolling back on
+    // got the panning but never the eight scroll-arrow cursors — the affordance
+    // that tells them it is on at all.
+    const band = RENDER_CONFIG.camera.edgePanPixels;
     if (band <= 0) return false;
     const r = this.element.getBoundingClientRect();
     const px = this.pointerX - r.left;

@@ -28,8 +28,30 @@
 
 import { AUDIO_BUS_DB, AUDIO_MUSIC } from '../core/config';
 import {
-  AudioEngine, biquad, dbToGain, gain, makeRng, shaper, type Rng01,
+  biquad, dbToGain, gain, makeRng, makeWhiteNoise, shaper, type Rng01,
 } from './AudioEngine';
+
+/**
+ * Everything the sequencer needs from the outside world.
+ *
+ * `AudioEngine` satisfies this structurally, and so does the tiny offline shim
+ * at the bottom of this file — which is the whole point: a track nobody can
+ * render headlessly is a track nobody can measure, and this module was written
+ * blind for exactly that reason.
+ */
+export interface MusicHost {
+  readonly ctx: BaseAudioContext;
+  /** The shared white-noise bed. Drums draw every grain from it. */
+  readonly white: AudioBuffer;
+  /** True under `?shot=`: build the graph, never start the clock. */
+  readonly muted: boolean;
+  /** False while the context is suspended — scheduling then would stack notes. */
+  readonly running: boolean;
+  /** Context time. Never `Date.now()` — a suspended context freezes this. */
+  now(): number;
+  /** Where the finished bed lands. */
+  musicOut(): AudioNode;
+}
 
 /* ==========================================================================
  * 1. THE SCORE
@@ -145,6 +167,12 @@ const STEM_LAYER: Readonly<Record<StemName, number>> = {
   siren: 4,
 };
 
+/** Stems the kick ducks. Percussion is deliberately absent. */
+const DUCKED_STEMS = new Set<StemName>(['pad', 'bass', 'guitar', 'brass', 'siren']);
+
+/** Sidechain shape: depth, hold, release. Deep and short, so it pumps. */
+const PUMP = { depthDb: -9, holdMs: 22, releaseMs: 150 } as const;
+
 interface Stem {
   /** Everything in the stem feeds this; the layer crossfade writes its gain. */
   readonly bus: GainNode;
@@ -163,6 +191,17 @@ export class MusicDirector {
   private readonly stems = new Map<StemName, Stem>();
   private readonly bus: GainNode;
   private readonly reverbIn: GainNode;
+  /**
+   * SIDECHAIN. Every pitched stem passes through here and the kick pulls it
+   * down for 150 ms on each hit.
+   *
+   * This is not an effect, it is how the genre breathes: a 16th-note bass
+   * ostinato and a four-on-the-floor kick occupy the same octave, so without
+   * ducking they mask each other into one continuous low-frequency smear and
+   * the track has no pulse at all. With it, the kick punches a hole and the
+   * bass rushes back in behind it, which is the entire groove.
+   */
+  private readonly sidechain: GainNode;
   private readonly rng: Rng01 = makeRng(0x11a5_1c00);
 
   private bassPool: ChainPool | null = null;
@@ -197,10 +236,16 @@ export class MusicDirector {
   private detuneCents = 0;
   private started = false;
 
-  constructor(private readonly engine: AudioEngine) {
-    const ctx = engine.ctx;
+  constructor(private readonly host: MusicHost) {
+    const ctx = host.ctx;
     this.bus = gain(ctx, 0);
-    this.bus.connect(engine.busInput('music'));
+    // Nothing under 30 Hz survives: it is inaudible on every speaker a browser
+    // game is played through, and it was measured taking 71% of the bed's
+    // energy budget at mid intensity. Headroom spent on nothing.
+    const sub = biquad(ctx, 'highpass', 30, 0.7);
+    this.bus.connect(sub).connect(host.musicOut());
+    this.sidechain = gain(ctx, 1);
+    this.sidechain.connect(this.bus);
     // A short send so the snare plate and the pad tail have somewhere to go.
     this.reverbIn = gain(ctx, dbToGain(-20));
     this.reverbIn.connect(this.bus);
@@ -208,7 +253,9 @@ export class MusicDirector {
     const names: StemName[] = ['pad', 'bass', 'kick', 'hat', 'snare', 'guitar', 'anvil', 'brass', 'siren'];
     for (const n of names) {
       const g = gain(ctx, 0);
-      g.connect(this.bus);
+      // Percussion bypasses the pump. A kick that ducked itself would be a kick
+      // with a hole in it, and gating the snare against it kills the backbeat.
+      g.connect(DUCKED_STEMS.has(n) ? this.sidechain : this.bus);
       this.stems.set(n, { bus: g, target: 0, active: false });
     }
   }
@@ -219,12 +266,16 @@ export class MusicDirector {
   private get stepSec(): number { return 60 / this.bpm / 4; }
   private get barSec(): number { return this.stepSec * AUDIO_MUSIC.stepsPerBar; }
 
-  start(): void {
-    if (this.started || this.engine.muted) return;
+  /**
+   * @param manual  Skip the interval timer and let the caller drive `pump()`.
+   *                The offline renderer needs this; the game never does.
+   */
+  start(manual = false): void {
+    if (this.started || this.host.muted) return;
     this.started = true;
     this.mode = 'combat';
-    const ctx = this.engine.ctx;
-    this.noise = this.engine.white;
+    const ctx = this.host.ctx;
+    this.noise = this.host.white;
 
     this.bassPool = new ChainPool(ctx, this.stems.get('bass')!.bus, 12, 'lowpass', 1600, 4);
     this.kickPool = new ChainPool(ctx, this.stems.get('kick')!.bus, 6, 'lowpass', 12000, 0.7);
@@ -234,18 +285,21 @@ export class MusicDirector {
 
     this.step = 0;
     this.lastHeatAt = -1;
-    this.nextStepTime = ctx.currentTime + 0.1;
+    this.nextStepTime = this.host.now() + 0.1;
     this.applyLayer(0, true);
 
-    this.timer = setInterval(() => this.tick(), AUDIO_MUSIC.tickMs);
+    if (!manual) this.timer = setInterval(() => this.tick(), AUDIO_MUSIC.tickMs);
   }
+
+  /** One scheduler pass. Public only so an offline render can drive the clock. */
+  pump(): void { this.tick(); }
 
   stop(fadeSec = 1.5): void {
     if (!this.started) return;
     this.started = false;
     this.mode = 'stopped';
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null; }
-    const t = this.engine.now();
+    const t = this.host.now();
     this.bus.gain.cancelScheduledValues(t);
     this.bus.gain.setValueAtTime(Math.max(0.0001, this.bus.gain.value), t);
     this.bus.gain.exponentialRampToValueAtTime(0.0001, t + fadeSec);
@@ -272,6 +326,21 @@ export class MusicDirector {
   /** Raw combat heat, 0..1. Smoothing and the layer decision live here. */
   setCombatHeat(h: number): void {
     this.heat = h < 0 ? 0 : h > 1 ? 1 : h;
+  }
+
+  /**
+   * Jump the smoothed heat and the layer straight to `h`, skipping the ramp.
+   * Offline rendering and the debug console only — in a match the ramp IS the
+   * feature, and snapping the arrangement mid-bar sounds like a bug.
+   */
+  primeHeat(h: number): void {
+    const v = h < 0 ? 0 : h > 1 ? 1 : h;
+    this.heat = v;
+    this.heatSmoothed = v;
+    const up = AUDIO_MUSIC.layerUp;
+    let want = 0;
+    for (let i = 0; i < up.length; i++) if (v >= up[i]) want = i + 1;
+    this.applyLayer(want, true);
   }
 
   /** The smoothed value, for the debug overlay. */
@@ -301,17 +370,17 @@ export class MusicDirector {
   loss(): void {
     if (!this.started) return;
     this.mode = 'loss';
-    const t0 = this.engine.now();
+    const t0 = this.host.now();
     const dur = 2.5;
     // Applied to every note scheduled from here on. The 120 ms horizon means
     // "from here on" is effectively "now".
     const start = t0;
     const iv = setInterval(() => {
-      const k = Math.min(1, (this.engine.now() - start) / dur);
+      const k = Math.min(1, (this.host.now() - start) / dur);
       this.detuneCents = -700 * k;
       if (k >= 1) clearInterval(iv);
     }, 40);
-    const t = this.engine.now();
+    const t = this.host.now();
     this.bus.gain.cancelScheduledValues(t);
     this.bus.gain.setValueAtTime(Math.max(0.0001, this.bus.gain.value), t);
     this.bus.gain.exponentialRampToValueAtTime(0.0001, t + 3);
@@ -323,13 +392,12 @@ export class MusicDirector {
   /* ---------------------------------------------------------------------- */
 
   private tick(): void {
-    const ctx = this.engine.ctx;
-    const now = ctx.currentTime;
+    const now = this.host.now();
 
     // A suspended context freezes currentTime. Scheduling against it would
     // stack an unbounded pile of notes that all detonate on the first click.
     // Idle here and re-anchor; the track starts when the player does.
-    if (ctx.state !== 'running') { this.nextStepTime = now + 0.1; return; }
+    if (!this.host.running) { this.nextStepTime = now + 0.1; return; }
 
     /* -- heat smoothing, on MEASURED time --------------------------------- */
     // Never assume the interval fired on schedule. Browsers throttle timers to
@@ -396,7 +464,7 @@ export class MusicDirector {
 
     if (L >= STEM_LAYER.bass) this.bass(when, stepInBar, root, section);
     if (L >= STEM_LAYER.kick) this.kick(when, stepInBar, L, section);
-    if (L >= STEM_LAYER.hat) this.hat(when, stepInBar, section);
+    if (L >= STEM_LAYER.hat) this.hat(when, stepInBar, section, L);
     if (L >= STEM_LAYER.snare) this.snare(when, stepInBar, barInSection, L, section);
     if (L >= STEM_LAYER.guitar) this.guitar(when, stepInBar, root, section, L);
     if (L >= STEM_LAYER.anvil) this.anvil(when, stepInBar, barInSection);
@@ -436,7 +504,7 @@ export class MusicDirector {
     for (const n of names) this.setStem(n, layer >= STEM_LAYER[n], immediate);
     // Bus level per layer, plus the L4 low shelf.
     const db = AUDIO_MUSIC.layerDb[Math.min(AUDIO_MUSIC.layerDb.length - 1, layer)];
-    const t = this.engine.now();
+    const t = this.host.now();
     // The music STRIP gain belongs to the user's slider; the layer level is ours.
     this.bus.gain.cancelScheduledValues(t);
     this.bus.gain.setTargetAtTime(dbToGain(db - AUDIO_BUS_DB.music), t, immediate ? 0.05 : this.barSec / 3);
@@ -448,7 +516,7 @@ export class MusicDirector {
     if (s === undefined || s.target === (on ? 1 : 0)) return;
     s.target = on ? 1 : 0;
     s.active = on;
-    const t = this.engine.now();
+    const t = this.host.now();
     const dur = immediate ? 0.05 : this.barSec * AUDIO_MUSIC.fadeBars;
     s.bus.gain.cancelScheduledValues(t);
     s.bus.gain.setValueAtTime(s.bus.gain.value, t);
@@ -479,8 +547,13 @@ export class MusicDirector {
 
     const chain = pool.acquire(when - 0.001, when + 0.16);
     if (chain === null) return;
-    const ctx = this.engine.ctx;
-    const f = hz(AUDIO_MUSIC.rootHz, root);
+    const ctx = this.host.ctx;
+    // The ostinato plays at E2, an octave above the notional E1 root. At E1 the
+    // fundamental is 41 Hz and carries ~60% of a sawtooth's power, so the whole
+    // riff lived under 80 Hz: measured, 62-71% of the bed's energy, inaudible
+    // on a laptop and eating the headroom the kick needs. The E1 weight is
+    // added back as one quiet sine below.
+    const f = hz(AUDIO_MUSIC.rootHz, root, 1);
     const accent = BASS_ACCENT[stepInBar];
     const peak = dbToGain(-8) * accent;
 
@@ -496,7 +569,16 @@ export class MusicDirector {
     drive.connect(chain.filter);
     this.osc('sawtooth', f, when, 0.12, drive, 1);
     this.osc('square', f, when, 0.12, drive, dbToGain(-8));
-    this.osc('sine', f * 0.5, when, 0.12, drive, dbToGain(-4));
+    // Reinforce the FUNDAMENTAL; do not add an octave under it. At an E1 root
+    // the old `f * 0.5` sine sang at 20.6 Hz, below the reproduction floor of
+    // every laptop, phone and pair of earbuds, and 4 dB louder than the note.
+    // The OCTAVE UP, not the fundamental. At an E1 root the fundamental is
+    // 41 Hz, which is already the sub band; doubling down on it put 65% of the
+    // bed's energy under 80 Hz and left the ostinato inaudible on a laptop. The
+    // saw and square below carry the fundamental on their own.
+    this.osc('sine', f, when, 0.12, drive, dbToGain(-7));
+    // One octave down, quiet: the weight, not the note.
+    this.osc('sine', f * 0.5, when, 0.12, drive, dbToGain(-13));
     // The shaper is per note; it is a single node and disconnects with the oscs.
     setTimeout(() => { try { drive.disconnect(); } catch { /* gone */ } }, 400);
   }
@@ -506,45 +588,78 @@ export class MusicDirector {
     const pool = this.kickPool;
     if (pool === null) return;
     const pattern = (layer >= 3 || section === 2) ? KICK_DOUBLE : KICK_BASE;
-    // L0 is a half-tempo kick on beat 1 only.
-    const hit = layer === 0 ? (stepInBar === 0 ? 1 : 0) : pattern[stepInBar];
+    // L0 is a half-tempo pulse on beats 1 and 3. One hit per BAR, which is what
+    // this was, is a clock ticking rather than an idle groove.
+    const hit = layer === 0 ? (stepInBar === 0 || stepInBar === 8 ? 1 : 0) : pattern[stepInBar];
     if (!hit) return;
 
-    const chain = pool.acquire(when - 0.001, when + 0.25);
+    const chain = pool.acquire(when - 0.001, when + 0.3);
     if (chain === null) return;
-    const peak = dbToGain(-6);
+    const peak = dbToGain(-5);
     chain.amp.gain.setValueAtTime(0.0001, when);
     chain.amp.gain.linearRampToValueAtTime(peak, when + 0.001);
-    chain.amp.gain.exponentialRampToValueAtTime(0.0001, when + 0.18);
-    chain.amp.gain.setValueAtTime(0, when + 0.185);
+    chain.amp.gain.exponentialRampToValueAtTime(0.0001, when + 0.22);
+    chain.amp.gain.setValueAtTime(0, when + 0.225);
 
-    const o = this.engine.ctx.createOscillator();
+    // 165 -> 48 Hz in 38 ms. The steeper and faster that sweep, the more the
+    // ear reads an IMPACT rather than a pitch: a kick that glides slowly is a
+    // tom, and one that does not glide at all is a sine beep.
+    const o = this.host.ctx.createOscillator();
     o.type = 'sine';
-    o.frequency.setValueAtTime(120, when);
-    o.frequency.exponentialRampToValueAtTime(45, when + 0.045);
+    o.frequency.setValueAtTime(165, when);
+    o.frequency.exponentialRampToValueAtTime(48, when + 0.038);
     o.detune.value = this.detuneCents;
     o.connect(chain.filter);
     o.start(when);
-    o.stop(when + 0.24);
+    o.stop(when + 0.28);
     o.onended = () => { try { o.disconnect(); } catch { /* gone */ } };
 
-    this.noiseHit(when, 0.006, 'highpass', 3000, 0.7, dbToGain(-18), chain.filter);
+    // The beater: 4 ms of hard treble, plus a 220 Hz shell knock. These are the
+    // layers that survive on a laptop speaker, where the sub above does not
+    // reproduce at all.
+    this.noiseHit(when, 0.004, 'highpass', 3500, 0.7, dbToGain(-9), chain.filter);
+    this.noiseHit(when, 0.03, 'bandpass', 220, 1.2, dbToGain(-16), chain.filter);
+
+    this.duckPump(when);
+  }
+
+  /**
+   * Schedule one sidechain dip. Written as an absolute schedule rather than
+   * `setTargetAtTime` so two kicks 246 ms apart cannot leave the pump stuck
+   * partway down: every hit restores unity before it dips.
+   */
+  private duckPump(when: number): void {
+    const g = this.sidechain.gain;
+    const d = dbToGain(PUMP.depthDb);
+    const hold = PUMP.holdMs / 1000;
+    const rel = PUMP.releaseMs / 1000;
+    g.cancelScheduledValues(when);
+    g.setValueAtTime(1, when);
+    g.linearRampToValueAtTime(d, when + 0.004);
+    g.setValueAtTime(d, when + hold);
+    g.linearRampToValueAtTime(1, when + hold + rel);
   }
 
   /** Closed hat on every off-8th, but only in sections B and C. */
-  private hat(when: number, stepInBar: number, section: number): void {
-    if (section !== 1 && section !== 2) return;
-    if (stepInBar % 4 !== 2) return;
+  private hat(when: number, stepInBar: number, section: number, layer: number): void {
+    // Off-8ths in B and C; at L3+ the hat runs everywhere, and on straight
+    // 8ths, because a peak-intensity bar with no treble motion above 2 kHz
+    // measured at 4% of its energy in the top three octaves and read as muddy.
+    const everywhere = layer >= 3;
+    if (!everywhere && section !== 1 && section !== 2) return;
+    if (everywhere ? stepInBar % 2 !== 0 : stepInBar % 4 !== 2) return;
     const pool = this.hatPool;
     if (pool === null) return;
     const chain = pool.acquire(when - 0.001, when + 0.06);
     if (chain === null) return;
-    const peak = dbToGain(-20);
+    // Accent the downbeats: an unaccented hat is a metronome.
+    const peak = dbToGain(stepInBar % 4 === 0 ? -15 : -19);
     chain.amp.gain.setValueAtTime(0.0001, when);
     chain.amp.gain.linearRampToValueAtTime(peak, when + 0.001);
-    chain.amp.gain.exponentialRampToValueAtTime(0.0001, when + 0.028);
-    chain.amp.gain.setValueAtTime(0, when + 0.03);
-    this.noiseHit(when, 0.03, 'bandpass', 9500, 2, 1, chain.filter);
+    chain.amp.gain.exponentialRampToValueAtTime(0.0001, when + 0.026);
+    chain.amp.gain.setValueAtTime(0, when + 0.028);
+    this.noiseHit(when, 0.028, 'bandpass', 9500, 2, 1, chain.filter);
+    this.noiseHit(when, 0.028, 'highpass', 6000, 0.7, dbToGain(-6), chain.filter);
   }
 
   /**
@@ -627,7 +742,7 @@ export class MusicDirector {
    * double-tracked at -0.55 / +0.55 with the right side delayed 11 ms.
    */
   private buildGuitarRig(): { input: AudioNode; amp: GainNode } {
-    const ctx = this.engine.ctx;
+    const ctx = this.host.ctx;
     const stem = this.stems.get('guitar')!;
     const drive = shaper(ctx, 12, '4x', 2048);
     const hp = biquad(ctx, 'highpass', 90, 0.7);
@@ -657,7 +772,7 @@ export class MusicDirector {
   private anvil(when: number, stepInBar: number, barInSection: number): void {
     if (stepInBar !== 8) return;
     if (barInSection !== 3 && barInSection !== 7) return;
-    const ctx = this.engine.ctx;
+    const ctx = this.host.ctx;
     const stem = this.stems.get('anvil')!;
     const pan = ctx.createStereoPanner();
     pan.pan.value = barInSection === 3 ? -0.3 : 0.3;
@@ -687,7 +802,7 @@ export class MusicDirector {
     else if (major) fire = stepInBar === 0 || stepInBar === 8;
     if (!fire) return;
 
-    const ctx = this.engine.ctx;
+    const ctx = this.host.ctx;
     const stem = this.stems.get('brass')!;
     // Chords Em / C / D / Em, one per two bars.
     const chordRoots = major ? [E, A, B, E] : [E, C, D, E];
@@ -731,7 +846,7 @@ export class MusicDirector {
    */
   private siren(when: number, stepInBar: number, barInSection: number): void {
     if (stepInBar !== 0 || barInSection % 2 !== 0) return;
-    const ctx = this.engine.ctx;
+    const ctx = this.host.ctx;
     const stem = this.stems.get('siren')!;
     const dur = this.barSec * 2;
 
@@ -772,7 +887,7 @@ export class MusicDirector {
   ): void {
     if (stepInBar !== 0 || barInSection % 2 !== 0) return;
     if (!(section === 0 || section === 3 || major)) return;
-    const ctx = this.engine.ctx;
+    const ctx = this.host.ctx;
     const stem = this.stems.get('pad')!;
     const dur = this.barSec * 2;
 
@@ -786,10 +901,14 @@ export class MusicDirector {
     amp.connect(stem.bus);
     amp.connect(this.reverbIn);
 
-    const peak = dbToGain(-20);
+    // -13 dB, and up to full in 0.9 s rather than 2.5. Two bars at 122 BPM is
+    // 3.9 s, so a 2.5 s attack meant the pad spent most of every note getting
+    // there: the idle bed measured -44.7 dB RMS against a -21.6 dB peak, i.e.
+    // inaudible, and the menu and every lull in a match were effectively silent.
+    const peak = dbToGain(-13);
     amp.gain.setValueAtTime(0.0001, when);
-    amp.gain.linearRampToValueAtTime(peak, when + 2.5);
-    amp.gain.setValueAtTime(peak, when + Math.max(2.6, dur - 0.6));
+    amp.gain.linearRampToValueAtTime(peak, when + 0.9);
+    amp.gain.setValueAtTime(peak, when + Math.max(1.0, dur - 0.6));
     amp.gain.exponentialRampToValueAtTime(0.0001, when + dur + 0.5);
     amp.gain.setValueAtTime(0, when + dur + 0.55);
 
@@ -812,7 +931,7 @@ export class MusicDirector {
     type: OscillatorType, freq: number, when: number, dur: number,
     dest: AudioNode, level: number, detune = 0,
   ): void {
-    const ctx = this.engine.ctx;
+    const ctx = this.host.ctx;
     const o = ctx.createOscillator();
     o.type = type;
     o.frequency.value = freq;
@@ -836,7 +955,7 @@ export class MusicDirector {
   ): void {
     const buf = this.noise;
     if (buf === null) return;
-    const ctx = this.engine.ctx;
+    const ctx = this.host.ctx;
     const s = ctx.createBufferSource();
     s.buffer = buf;
     s.loop = true;
@@ -850,4 +969,60 @@ export class MusicDirector {
       try { s.disconnect(); f.disconnect(); g.disconnect(); } catch { /* gone */ }
     };
   }
+}
+
+/* ==========================================================================
+ * 6. OFFLINE RENDER
+ *
+ * The track is the one part of the audio module with no natural test surface:
+ * it has no buffers to inspect and it only exists while a clock is running.
+ * This drives the real sequencer against a virtual clock inside an
+ * `OfflineAudioContext`, so `tools/audio-measure.mjs` scores the actual
+ * arrangement rather than a reimplementation of it.
+ * ========================================================================== */
+
+class OfflineMusicHost implements MusicHost {
+  readonly muted = false;
+  readonly running = true;
+  readonly white: AudioBuffer;
+  /** Virtual transport position, advanced by the render loop. */
+  clock = 0;
+
+  constructor(readonly ctx: OfflineAudioContext, private readonly dest: AudioNode) {
+    this.white = makeWhiteNoise(ctx, 2, 0x51ed_c0de);
+  }
+
+  now(): number { return this.clock; }
+  musicOut(): AudioNode { return this.dest; }
+}
+
+/**
+ * Render `seconds` of the bed at a fixed combat heat into `oc`. The caller owns
+ * `oc.startRendering()`; this only builds the graph.
+ *
+ * The heat is pushed BEFORE the first pump and the smoother is stepped forward
+ * far enough to settle, so `heat: 0.95` renders the L4 arrangement from bar one
+ * instead of eight bars of the idle layer.
+ */
+export async function renderMusicOffline(
+  oc: OfflineAudioContext, seconds: number, heat: number,
+): Promise<MusicDirector> {
+  const trim = oc.createGain();
+  // The music strip's own -9 dB trim, so the offline level matches the game's.
+  trim.gain.value = dbToGain(AUDIO_BUS_DB.music);
+  trim.connect(oc.destination);
+
+  const host = new OfflineMusicHost(oc, trim);
+  const director = new MusicDirector(host);
+  director.start(true);
+  // Jump the smoother straight to the target rather than pumping it there:
+  // pumping would also SCHEDULE thirty seconds of notes into the buffer, and
+  // what would be measured is the ramp rather than the arrangement.
+  director.primeHeat(heat);
+  const dt = AUDIO_MUSIC.tickMs / 1000;
+  while (host.clock < seconds) {
+    director.pump();
+    host.clock += dt;
+  }
+  return director;
 }

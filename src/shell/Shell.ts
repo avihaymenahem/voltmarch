@@ -627,6 +627,14 @@ export class Shell {
     document.addEventListener('visibilitychange', this.onVisibility);
     this.settings.subscribe(this.onSettingsChanged);
 
+    // Panel blur is a class on `<html>`, not an engine setting, and the title
+    // screen is painted long before a match exists. Apply THAT ONE path now —
+    // passing an explicit change list keeps every other branch of
+    // `applySettings` (which wants a live game) out of the constructor. Without
+    // this a player who turns the blur off sees it come back on every cold boot,
+    // right up until they launch a match.
+    applySettings(this.settings.get(), null, ['graphics.panelBlur']);
+
     this.rafHandle = requestAnimationFrame(this.tick);
   }
 

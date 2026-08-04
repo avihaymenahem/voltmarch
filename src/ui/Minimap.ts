@@ -520,7 +520,18 @@ export class Minimap {
       e.preventDefault();
       this.dragging = true;
       this.dragPointer = e.pointerId;
-      this.canvas.setPointerCapture(e.pointerId);
+      // Capture keeps a scrub alive once the cursor leaves the 80 px map, but it
+      // is an ENHANCEMENT, never a correctness requirement — `up` also fires on
+      // `pointercancel` and does not depend on the capture having been granted.
+      // `setPointerCapture` throws NotFoundError for a pointer the browser no
+      // longer considers active, and an uncaught throw in a pointerdown handler
+      // takes the whole app to the BOOT FAILURE screen over a dropped scrub.
+      // `Input.ts` already guards its own call for the same reason.
+      try {
+        this.canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* No capture: the drag still tracks while the pointer is over the map. */
+      }
       this.jumpTo(e.clientX, e.clientY);
     };
     const move = (ev: Event): void => {

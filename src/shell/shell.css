@@ -2,7 +2,8 @@
  * src/shell/shell.css — the front end
  *
  * THE VISUAL LAW (matches the new in-game HUD exactly)
- *   surface   dark translucent glass: rgba(9,13,20,.72) + backdrop blur 14px
+ *   surface   dark translucent glass: rgba(9,13,20,.72) + backdrop blur 14px,
+ *             the blur gated by `html.vm-no-blur` — see section 13
  *   edge      1px hairline rgba(255,255,255,.10) — never a bevel, never a
  *             gradient, never a rivet
  *   shape     notched corners cut with clip-path, one cut size for everything
@@ -27,9 +28,15 @@
   --vm-accent-glow: rgba(53, 200, 240, 0.22);
   --vm-danger: #f0553a;
 
+  /* Surface. `--vm-blur` and the glass opacities are a MATCHED PAIR — the
+     no-blur gate at the foot of this file overrides them together. Nothing in
+     this file writes a `backdrop-filter` value literally. */
   --vm-glass: rgba(9, 13, 20, 0.72);
   --vm-glass-strong: rgba(7, 10, 16, 0.9);
   --vm-glass-soft: rgba(20, 27, 38, 0.55);
+  --vm-blur: blur(14px) saturate(115%);
+  --vm-blur-chip: blur(14px);
+  --vm-blur-modal: blur(3px);
   --vm-line: rgba(255, 255, 255, 0.1);
   --vm-line-soft: rgba(255, 255, 255, 0.055);
 
@@ -83,12 +90,17 @@
   pointer-events: none;
 }
 
-/* A screen that sits over a live match dims the world behind it. */
+/* A screen that sits over a live match dims the world behind it.
+
+   This is the single largest backdrop-filter in the product — it covers the
+   whole viewport, over a live WebGL canvas — so it is also the most likely
+   thing to flash black on macOS. The gate at the foot of this file drops the
+   blur and darkens the scrim to compensate. */
 .vm-screen.is-modal {
   background: radial-gradient(ellipse 120% 100% at 50% 50%,
     rgba(4, 7, 11, 0.62) 0%, rgba(3, 5, 9, 0.86) 100%);
-  backdrop-filter: blur(3px);
-  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: var(--vm-blur-modal);
+  -webkit-backdrop-filter: var(--vm-blur-modal);
 }
 
 /* ==========================================================================
@@ -98,8 +110,8 @@
 .vm-panel {
   position: relative;
   background: var(--vm-glass);
-  backdrop-filter: blur(14px) saturate(115%);
-  -webkit-backdrop-filter: blur(14px) saturate(115%);
+  backdrop-filter: var(--vm-blur);
+  -webkit-backdrop-filter: var(--vm-blur);
   clip-path: polygon(
     var(--vm-notch) 0, 100% 0,
     100% calc(100% - var(--vm-notch)), calc(100% - var(--vm-notch)) 100%,
@@ -685,8 +697,8 @@
   gap: 7px;
   padding: 5px 11px;
   background: var(--vm-glass);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: var(--vm-blur-chip);
+  -webkit-backdrop-filter: var(--vm-blur-chip);
   border: 1px solid var(--vm-line);
   font-size: 11px;
   letter-spacing: 0.18em;
@@ -1224,5 +1236,51 @@
   }
   .vm-row-control {
     justify-content: flex-start;
+  }
+}
+
+/* ==========================================================================
+ * 13. THE NO-BLUR GATE
+ *
+ * Mirrors section 12 of `src/ui/hud.css`; read the long-form rationale there.
+ * Short version: a `backdrop-filter` over an accelerated WebGL canvas is
+ * intermittently composited from an undrawn (black) source on macOS/Metal, in
+ * both Chromium and WebKit. `src/render/renderer.ts` probes the platform at
+ * module load — before this stylesheet is even injected — and stamps
+ * `vm-no-blur` on `<html>` when the blur must not run.
+ *
+ * Only the three blur tokens and the glass opacities change. Every other part
+ * of the material — hue, hairline, notch, accent — is untouched, so the front
+ * end reads as the same product with or without the gate.
+ * ========================================================================== */
+
+html.vm-no-blur .vm-shell {
+  --vm-blur: none;
+  --vm-blur-chip: none;
+  --vm-blur-modal: none;
+  --vm-glass: rgba(9, 13, 20, 0.92);
+  --vm-glass-strong: rgba(7, 10, 16, 0.96);
+}
+
+/* The modal scrim was carrying a 3px blur as part of its separation from the
+   battlefield. Without it the scrim alone has to do that job, so it gets
+   denser — this is the one place where dropping the blur changes a colour. */
+html.vm-no-blur .vm-screen.is-modal {
+  background: radial-gradient(ellipse 120% 100% at 50% 50%,
+    rgba(4, 7, 11, 0.80) 0%, rgba(3, 5, 9, 0.94) 100%);
+}
+
+/* No-JS backstop, for a browser with no backdrop-filter at all. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .vm-shell {
+    --vm-blur: none;
+    --vm-blur-chip: none;
+    --vm-blur-modal: none;
+    --vm-glass: rgba(9, 13, 20, 0.92);
+    --vm-glass-strong: rgba(7, 10, 16, 0.96);
+  }
+  .vm-screen.is-modal {
+    background: radial-gradient(ellipse 120% 100% at 50% 50%,
+      rgba(4, 7, 11, 0.80) 0%, rgba(3, 5, 9, 0.94) 100%);
   }
 }

@@ -103,6 +103,13 @@ function coreTier(tier: RenderQualityTier): CoreQualityTier {
   return (i < 0 ? (DEFAULT_QUALITY_TIER as number) : i) as CoreQualityTier;
 }
 
+// Declared locally, as in post.ts / renderer.ts / UnitFactory.ts. The global in
+// main.ts covers `tsconfig.json` (which includes all of src/**), but NOT
+// `tsconfig.test.json`, whose `include` is tests/** — nothing there imports
+// main.ts, so the global never loads and this file failed `npm run typecheck`
+// the moment any test reached Bootstrap.ts, even through a type-only import.
+declare const __DEV__: boolean;
+
 function devBuild(): boolean {
   // __DEV__ is a vite `define`. Guard so this file is also importable from a
   // plain node context (tests) where the define never ran.

@@ -7,8 +7,12 @@
  *
  * THE LAWS
  * --------
- *  1. ONE SURFACE. `--vm-glass` behind `backdrop-filter: blur(14px)
- *     saturate(1.1)`. Every panel is that surface; there is no second material.
+ *  1. ONE SURFACE. `--vm-glass` behind `backdrop-filter: var(--vm-blur)`. Every
+ *     panel is that surface; there is no second material. The blur itself is
+ *     GATED — see section 12 and `src/render/renderer.ts` — because sampling a
+ *     WebGL canvas through a backdrop-filter drops black frames on macOS. When
+ *     it is off, `--vm-glass` gets denser and the surface is otherwise
+ *     unchanged: the translucency is the look, the blur is only the polish.
  *  2. ONE EDGE. A single 1 px `--vm-hairline`, drawn as a masked rim so it
  *     follows the notch instead of being clipped away by it.
  *  3. ONE SATURATED COLOUR. `--vm-accent`, from the faction table. Amber, green
@@ -32,9 +36,11 @@
   /* One design unit. Overwritten from Hud.resize(); this is the 720p value. */
   --vm-u: 1px;
 
-  /* Surface */
+  /* Surface. Both the glass and the blur are overridden together by the
+     no-blur gate in section 12 — never change one without the other. */
   --vm-glass: rgba(9, 13, 20, 0.72);
   --vm-glass-deep: rgba(6, 9, 14, 0.86);
+  --vm-blur: blur(14px) saturate(1.1);
   --vm-hairline: rgba(255, 255, 255, 0.10);
   --vm-hairline-soft: rgba(255, 255, 255, 0.06);
 
@@ -124,8 +130,8 @@
 .vm-hud .vm-panel {
   position: relative;
   background: var(--vm-glass);
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
-  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: var(--vm-blur);
+  backdrop-filter: var(--vm-blur);
   pointer-events: auto;
   clip-path: var(--vm-clip, none);
 }
@@ -938,8 +944,8 @@
   max-width: calc(240 * var(--vm-u));
   padding: calc(7 * var(--vm-u)) calc(9 * var(--vm-u));
   background: var(--vm-glass-deep);
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
-  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: var(--vm-blur);
+  backdrop-filter: var(--vm-blur);
   border: 1px solid var(--vm-hairline);
   border-left: calc(2 * var(--vm-u)) solid var(--vm-accent);
   pointer-events: none;
@@ -1014,8 +1020,8 @@
   gap: calc(6 * var(--vm-u));
   padding: calc(4 * var(--vm-u)) calc(8 * var(--vm-u));
   background: var(--vm-glass);
-  -webkit-backdrop-filter: blur(14px) saturate(1.1);
-  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: var(--vm-blur);
+  backdrop-filter: var(--vm-blur);
   border: 1px solid var(--vm-hairline);
   border-left: calc(3 * var(--vm-u)) solid var(--vm-accent);
   color: var(--vm-text);
@@ -1128,12 +1134,41 @@
   }
 }
 
-/* A browser without backdrop-filter would show the raw 72% glass over a bright
-   battlefield, which is unreadable. Fall back to an opaque panel instead. */
+/* ==========================================================================
+ * 12. THE NO-BLUR GATE
+ *
+ * A `backdrop-filter` asks the compositor to read back everything painted
+ * behind the element. Behind this element is an accelerated WebGL canvas, and
+ * on macOS (Metal) that read-back intermittently samples the canvas layer
+ * before it has been drawn for the frame — the filter then faithfully blurs
+ * black. The symptom is a full-panel black flash for one or two frames, a few
+ * times a session, impossible to reproduce on demand.
+ *
+ * `src/render/renderer.ts` probes the platform at module load and stamps
+ * `vm-no-blur` on `<html>` when the blur is not safe (or not supported, or
+ * switched off in Settings / by `?blur=off`). All this rule does is redefine
+ * two custom properties, so there is exactly ONE place that knows the blurred
+ * and unblurred surfaces are a matched pair.
+ *
+ * The compensation is opacity, not colour: 0.72 -> 0.92 on the standard glass
+ * and 0.86 -> 0.96 on the deep glass, same hue, same hairline, same notch. A
+ * 92%-opaque dark panel over a battlefield is visually a hair denser than a
+ * 72% panel that is blurring that battlefield to a flat average — which is what
+ * a 14 px blur over moving terrain amounts to anyway.
+ * ========================================================================== */
+
+html.vm-no-blur .vm-hud {
+  --vm-blur: none;
+  --vm-glass: rgba(9, 13, 20, 0.92);
+  --vm-glass-deep: rgba(6, 9, 14, 0.96);
+}
+
+/* Same surface for a browser that cannot do it at all. This is the no-JS
+   backstop; the probe above already covers the case when scripting is alive. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .vm-hud .vm-panel,
-  .vm-hud .vm-toast,
-  .vm-hud .vm-tip {
-    background: rgba(7, 10, 16, 0.94);
+  .vm-hud {
+    --vm-blur: none;
+    --vm-glass: rgba(9, 13, 20, 0.92);
+    --vm-glass-deep: rgba(6, 9, 14, 0.96);
   }
 }
