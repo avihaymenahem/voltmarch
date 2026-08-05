@@ -1581,10 +1581,13 @@
    a word. Either way the tooltip carries the whole sentence. It sits along the
    TOP edge: along the bottom it covered the cost, and for the FUNDS case the
    cost is the entire point. */
+/* It stops short of the hotkey badge in the top-right corner. Full width, it
+   ran LOCKED straight under the `J`, and two overlapping words in a 46-unit
+   cell is worse than either of them alone. */
 .vm-hud .vm-slot-flag {
   position: absolute;
   left: 0;
-  right: 0;
+  right: calc(11 * var(--vm-u));
   top: 0;
   height: calc(9 * var(--vm-u));
   display: flex;

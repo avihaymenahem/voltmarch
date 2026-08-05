@@ -108,6 +108,10 @@ const SWEEP_SCALES = [1.0, 0.9, 0.8, 0.7, 0.6, 0.55];
  */
 const ALL_CONFIGS = [
   { id: 'all-on', passes: {}, shadows: null },
+  // The AO resolution is live-switchable, so the before/after for the single
+  // largest change is an A/B inside ONE process, alternating, rather than two
+  // runs of two builds on a machine other agents are also using.
+  { id: 'ao-fullres', passes: {}, shadows: null, aoHalfRes: false },
   { id: 'ao-off', passes: { ao: false }, shadows: null },
   { id: 'bloom-off', passes: { bloom: false }, shadows: null },
   { id: 'smaa-off', passes: { smaa: false }, shadows: null },
@@ -349,10 +353,24 @@ const INSTRUMENT = () => {
     },
     snapshot() {
       const s = vm.stats();
-      return { draws: s.drawCalls, tris: s.triangles, programs: s.programs, res: s.resolution, post: s.post };
+      const ao = vm.post?.passes?.ao;
+      return {
+        draws: s.drawCalls,
+        tris: s.triangles,
+        programs: s.programs,
+        res: s.resolution,
+        post: s.post,
+        ao: ao ? `${ao.width}x${ao.height}` : 'none',
+      };
     },
     setPass(id, on) { vm.setPass(id, on); },
     setShadows(on) { vm.rendererHandle.setShadowsEnabled(on); },
+    /** Live-resize the AO chain. Goes through the same config path the game does. */
+    setAoHalfRes(on) { vm.configure({ post: { ao: { halfRes: on } } }); },
+    aoSize() {
+      const ao = vm.post?.passes?.ao;
+      return ao ? `${ao.width}x${ao.height}` : 'none';
+    },
   };
   return { timerQuery: !!ext };
 };
@@ -383,6 +401,7 @@ async function applyConfig(page, cfg) {
     const p = window.__vmProf;
     for (const id of ['ao', 'bloom', 'grade', 'smaa']) p.setPass(id, true);
     p.setShadows(true);
+    p.setAoHalfRes(c.aoHalfRes === undefined ? true : c.aoHalfRes);
     for (const [id, on] of Object.entries(c.passes)) p.setPass(id, on);
     if (c.shadows !== null) p.setShadows(c.shadows);
   }, cfg);
@@ -615,7 +634,7 @@ const baseGpu = gpuOf('all-on');
 const baseWall = Math.min(...report.configs['all-on'].wallBlocks);
 
 console.log('ABLATION  (min of per-block medians — contention can only push these UP)');
-console.log('  config          GPU ms   spread   wall ms      p95    saves    draws');
+console.log('  config          GPU ms   spread   wall ms      p95    saves    draws   AO size');
 for (const c of CONFIGS) {
   const r = report.configs[c.id];
   const g = Math.min(...r.gpuBlocks);
@@ -623,7 +642,8 @@ for (const c of CONFIGS) {
   const w = Math.min(...r.wallBlocks);
   console.log(
     `  ${c.id.padEnd(14)} ${fmt(g).padStart(7)} ${('±' + fmt(spread)).padStart(8)} ${fmt(w).padStart(9)} ` +
-      `${fmt(Math.min(...r.p95)).padStart(8)} ${fmt(baseGpu - g).padStart(8)} ${String(r.snap?.draws ?? '—').padStart(8)}`,
+      `${fmt(Math.min(...r.p95)).padStart(8)} ${fmt(baseGpu - g).padStart(8)} ${String(r.snap?.draws ?? '—').padStart(8)}` +
+      `   ${r.snap?.ao ?? '—'}`,
   );
 }
 
