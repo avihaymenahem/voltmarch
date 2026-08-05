@@ -21,10 +21,23 @@
  * collision-free velocities. We do not need that guarantee: units are allowed
  * to touch, the Movement pass relaxes residual overlap directly, and the RTS
  * failure mode we actually care about is *shoving*, not interpenetration. A
- * three-term weighted blend (flow + separation + avoidance) plus an explicit
- * queue brake costs ~4% of the sim budget at 200 units and produces the
- * behaviour RA3 actually shows: columns that form up and follow, not a crowd
- * that flows around each other like fluid.
+ * four-term weighted blend (flow + separation + obstacle avoidance + head-on
+ * pass) plus an explicit queue brake costs ~4% of the sim budget at 200 units
+ * and produces the behaviour RA3 actually shows: columns that form up and
+ * follow, not a crowd that flows around each other like fluid.
+ *
+ * WHAT RVO WOULD HAVE GIVEN US FOR FREE, AND WHAT IT COST TO SKIP IT
+ * ------------------------------------------------------------------
+ * Reciprocity. RVO's whole point is that both agents solve the SAME program and
+ * therefore agree on who goes where. A weighted blend has no such agreement, and
+ * the bill came due exactly where you would predict: two units meeting head-on
+ * each braked to the other's speed and neither ever leaned aside, so they
+ * decayed to a dead stop and parked there for the rest of the match
+ * (`tests/clash.spec.ts`, and the two paragraphs above STEER_QUEUE_MIN_FRAC in
+ * core/config for the measured trace). The cheap substitute for reciprocity is
+ * a rule both parties can apply from local state alone and still agree on:
+ * BOTH KEEP RIGHT, plus a floor under the brake so a stopped unit is never left
+ * without the velocity it needs to act on that rule. Neither costs a solver.
  *
  * THE ONE-TICK-STALE SPATIAL INDEX
  * --------------------------------
@@ -57,6 +70,7 @@ import {
   STEER_SEPARATION_WEIGHT, STEER_SEPARATION_RANGE_MUL, STEER_STATIC_PUSH_MUL,
   STEER_AVOID_WEIGHT, STEER_AVOID_LOOKAHEAD, STEER_AVOID_SIDE,
   STEER_QUEUE_COS, STEER_QUEUE_RANGE_MUL, STEER_QUEUE_BRAKE,
+  STEER_QUEUE_MIN_FRAC, STEER_PASS_COS, STEER_PASS_STALL_FRAC, STEER_PASS_WEIGHT,
   STEER_FLOW_WEIGHT,
 } from '../core/config';
 import { EntityFlag, EntityKind, NONE, UnitState } from '../core/types';
@@ -1115,9 +1129,12 @@ export class SteeringSolver {
         speed = maxSpeed * Math.max(NAV_MIN_APPROACH_SPEED, t);
       }
 
-      // -- 4. neighbours: separation + queueing -----------------------------
+      // -- 4. neighbours: separation + queueing + passing --------------------
       let sepX = 0, sepZ = 0;
+      let passX = 0, passZ = 0;
       let queueSpeed = Infinity;
+      // Right of travel, same convention as the obstacle sidestep in §5.
+      const rightX = dirZ, rightZ = -dirX;
       if (cls !== MoveClass.Air) {
         const range = radius * STEER_SEPARATION_RANGE_MUL + 3;
         // CAP THE SCAN, not just the accepted count. In a 200-unit blob
@@ -1170,13 +1187,38 @@ export class SteeringSolver {
 
           // Queue brake: someone slower directly ahead of me sets my speed,
           // instead of me trying to drive through them.
+          //
+          // AND the sidestep that stops that brake from deadlocking. See the
+          // measured account above STEER_QUEUE_MIN_FRAC in core/config: two
+          // units nose to nose each inherit the other's speed minus a hair, the
+          // recurrence contracts to zero, and the separation push is exactly
+          // anti-parallel to travel so nothing ever leans sideways. Both units
+          // biasing to their OWN right is the tie-break, because opposed
+          // headings have opposed right-hand vectors and therefore cannot
+          // mirror each other.
           if (jMover) {
             const fx = -dx / d, fz = -dz / d;          // me -> them
             if (fx * dirX + fz * dirZ > STEER_QUEUE_COS
-                && d < want * STEER_QUEUE_RANGE_MUL
-                && st.speed[j] < speed) {
-              const s2 = st.speed[j] + (d - want) * STEER_QUEUE_BRAKE;
-              if (s2 < queueSpeed) queueSpeed = s2;
+                && d < want * STEER_QUEUE_RANGE_MUL) {
+              // Their HEADING projected on my travel direction: +1 they are
+              // going my way, -1 they are coming at me. Read from yaw and not
+              // from velX/velZ because Steering is mid-pass — half the army
+              // still holds last tick's desired velocity and half holds this
+              // tick's, and that would make the answer depend on `alive` order.
+              const along = Math.sin(st.yaw[j]) * dirX + Math.cos(st.yaw[j]) * dirZ;
+              const oncoming = along < -STEER_PASS_COS;
+              const stalled = st.speed[j] < maxSpeed * STEER_PASS_STALL_FRAC;
+              if (oncoming || stalled) {
+                // Not a queue to join — an obstruction to get around. Lean
+                // harder the closer it is, so a distant one barely registers.
+                const near = 1 - d / (want * STEER_QUEUE_RANGE_MUL);
+                passX += rightX * near;
+                passZ += rightZ * near;
+              }
+              if (st.speed[j] < speed) {
+                const s2 = st.speed[j] + (d - want) * STEER_QUEUE_BRAKE;
+                if (s2 < queueSpeed) queueSpeed = s2;
+              }
             }
           }
         }
@@ -1208,13 +1250,25 @@ export class SteeringSolver {
       }
 
       // -- 6. blend and write ------------------------------------------------
-      let vx = dirX + sepX * STEER_SEPARATION_WEIGHT + avoidX * STEER_AVOID_WEIGHT;
-      let vz = dirZ + sepZ * STEER_SEPARATION_WEIGHT + avoidZ * STEER_AVOID_WEIGHT;
+      let vx = dirX + sepX * STEER_SEPARATION_WEIGHT + avoidX * STEER_AVOID_WEIGHT
+        + passX * STEER_PASS_WEIGHT;
+      let vz = dirZ + sepZ * STEER_SEPARATION_WEIGHT + avoidZ * STEER_AVOID_WEIGHT
+        + passZ * STEER_PASS_WEIGHT;
       const vl = Math.sqrt(vx * vx + vz * vz);
       if (vl < 1e-4) { st.velX[i] = 0; st.velZ[i] = 0; continue; }
       vx /= vl; vz /= vl;
 
-      if (queueSpeed < speed) speed = queueSpeed;
+      if (queueSpeed < speed) {
+        // The brake may slow a unit to a crawl; it may NEVER command a dead
+        // stop. A stopped unit has no velocity to steer with, so it cannot use
+        // the sidestep above to leave the jam that stopped it — which is
+        // exactly how two units ended up frozen nose to nose for the rest of
+        // the match. `Math.min` keeps arrival damping authoritative: parking on
+        // the goal is a legitimate way to reach zero, inheriting a neighbour's
+        // zero is not.
+        const floor = maxSpeed * STEER_QUEUE_MIN_FRAC;
+        speed = queueSpeed < floor ? Math.min(speed, floor) : queueSpeed;
+      }
       if (speed < 0) speed = 0;
 
       st.velX[i] = vx * speed;

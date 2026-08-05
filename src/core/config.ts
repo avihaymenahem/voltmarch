@@ -5505,6 +5505,68 @@ export const STEER_QUEUE_RANGE_MUL = 2.2;
 /** How hard the gap to the unit ahead converts into speed. m/s per metre. */
 export const STEER_QUEUE_BRAKE = 1.6;
 
+/* -- the head-on deadlock, and the two numbers that end it -----------------
+ *
+ * THE BUG, MEASURED. Order two vehicles past each other on open ground and
+ * they meet nose to nose, decay to a dead stop over about four seconds, and
+ * never move again. Reproduced in `tests/clash.spec.ts` at 12 seeds out of 12
+ * before the fix; the trace is an exponential speed decay with the gap pinned
+ * at exactly `radius(a) + radius(b)`.
+ *
+ * TWO FAULTS COMPOUND, AND NEITHER IS SUFFICIENT ON ITS OWN:
+ *
+ *   1. THE QUEUE BRAKE HAD NO FLOOR. It sets my desired speed to the speed of
+ *      whoever is in front of me, plus `(gap - contact) * STEER_QUEUE_BRAKE`.
+ *      Relaxation holds the gap a hair BELOW contact, so that term is
+ *      negative, and for two units facing each other the recurrence is
+ *      `v <- v' - eps` on both sides at once. That is a contraction with the
+ *      fixed point 0. Both stop. Forever.
+ *
+ *   2. NOTHING PRODUCED A LATERAL COMPONENT. Head-on, the separation push is
+ *      exactly anti-parallel to the travel direction, so the blend stays on
+ *      one axis and neither unit ever tries to go AROUND. Obstacle avoidance
+ *      cannot help — it probes the terrain grid, and another unit is not in it.
+ *
+ * Fixing only the floor gives two units grinding at a crawl forever; fixing
+ * only the sidestep gives two units sidestepping at zero speed, which is the
+ * same picture. Both, together, make them pass.
+ * ------------------------------------------------------------------------- */
+
+/**
+ * Floor on what the queue brake may ask for, as a fraction of max speed.
+ *
+ * A brake that can command zero is a brake that can deadlock: a stopped unit
+ * has no velocity to steer, so it cannot use the sidestep below to get out of
+ * its own jam. This floor never overrides ARRIVAL damping (which legitimately
+ * goes to NAV_MIN_APPROACH_SPEED and then parks) — only the brake.
+ */
+export const STEER_QUEUE_MIN_FRAC = 0.30;
+
+/**
+ * How anti-parallel two headings must be before the neighbour counts as
+ * ONCOMING rather than as traffic to queue behind. cos(110 degrees) ~ -0.34,
+ * so the test is `heading . myDirection < -0.34`.
+ */
+export const STEER_PASS_COS = 0.34;
+
+/**
+ * A neighbour slower than this fraction of MY max speed is standing in the
+ * way, not leading a queue. Drive around it rather than inheriting its speed.
+ */
+export const STEER_PASS_STALL_FRAC = 0.25;
+
+/**
+ * Weight of the sidestep that resolves a head-on meeting.
+ *
+ * The direction is always the steering unit's OWN right, and that is the whole
+ * trick: two units facing each other have opposite right-hand vectors, so
+ * "both keep right" is a tie-break that needs no shared state, no RNG and no
+ * id comparison — and it is the one rule that cannot mirror. (An id-parity
+ * tie-break WOULD mirror: `i` steps to its right and `j` to its left, which
+ * for opposed headings is the same world direction, and they stay locked.)
+ */
+export const STEER_PASS_WEIGHT = 1.25;
+
 /** Braking is this much stronger than acceleration. Tanks stop faster than they start. */
 export const MOVE_DECEL_MUL = 1.9;
 
