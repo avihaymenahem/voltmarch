@@ -10,7 +10,7 @@
  * clears it.
  */
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 
 import { Channels } from '../src/core/events';
@@ -19,10 +19,15 @@ import { World } from '../src/core/world';
 import { Faction, FxKind, NONE, RenderPhase } from '../src/core/types';
 import type { SystemModule } from '../src/core/types';
 import {
-  VFX_ATLAS_COLS, VFX_ATLAS_SIZE, VFX_EXPLOSION, VFX_GUNS, VFX_LIGHTS, VFX_RAMPS,
+  VFX_ATLAS_COLS, VFX_ATLAS_SIZE, VFX_EXPLOSION, VFX_GLARE, VFX_GUNS,
+  VFX_LIGHT_MERGE_CEIL, VFX_LIGHTS, VFX_RAMPS,
   VFX_RAMP_WIDTH, VFX_TESLA, VFX_TILE, VFX_TRAIL,
 } from '../src/core/config';
 
+import {
+  admitGlare, clearFlashBudget, glareAttenuatedCount, glareLoadAt, glareSpotCount,
+  stepFlashBudget,
+} from '../src/vfx/FlashBudget';
 import { LightPool, NO_LIGHT, setLightPool } from '../src/vfx/LightPool';
 import {
   ParticleSystem, buildRampTexture, buildSpriteAtlas, resetEmit, setParticleSystem,
@@ -316,7 +321,16 @@ describe('LightPool', () => {
     const pool = new LightPool();
     pool.attach(new THREE.Scene());
     // Fill the pool with weak muzzle flashes 400 m from the camera.
-    for (let i = 0; i < pool.capacity; i++) pool.spawn(400 + i, 1, 400, VFX_LIGHTS.muzzle);
+    //
+    // THE SPACING IS LOAD-BEARING. Co-located one-shots of the same envelope now
+    // MERGE (see the anti-stacking suite below), so a metre apart these twelve
+    // claims would collapse into one light and the pool would never fill —
+    // which is what this test needs to exercise eviction. `mergeRadius * 3`
+    // keeps them independent whatever the config says.
+    const apart = VFX_LIGHTS.muzzle.mergeRadius * 3;
+    for (let i = 0; i < pool.capacity; i++) {
+      pool.spawn(400 + i * apart, 1, 400, VFX_LIGHTS.muzzle);
+    }
     pool.update(16, 0, 50, 0);
     expect(pool.activeCount).toBe(pool.capacity);
 
@@ -338,6 +352,362 @@ describe('LightPool', () => {
     pool.release(h);
     for (let i = 0; i < 10; i++) pool.update(50, 0, 50, 0);
     expect(pool.alive(h)).toBe(false);
+    pool.dispose();
+  });
+});
+
+/* ========================================================================== */
+/* 4b. CO-LOCATED FLASHES MUST NOT STACK                                      */
+/*                                                                            */
+/* The fourth report of "explosions and muzzle flashes are too bright", and    */
+/* the first one aimed at the actual mechanism. Both previous fixes lowered a  */
+/* single sprite's gain, so both measured correctly on one explosion and both  */
+/* came back the moment a real firefight put twenty on the same pixels.        */
+/*                                                                            */
+/* Measured before the fix (tools/flash-stack.mjs, 1280x720, 48 m framing):   */
+/* 20 unit deaths inside a 4 m radius put 65.9% of the frame over L=0.95       */
+/* against 14.5% for one, and ablating each summing layer attributes x8.9 of   */
+/* that growth to the additive quads and x3.0 to the point-light pile.         */
+/*                                                                            */
+/* THE SHAPE OF EVERY ASSERTION HERE IS THE SAME: one effect is untouched, N   */
+/* co-located effects are BOUNDED. A test that only pinned "one flash is dim   */
+/* enough" is exactly what let this ship three times.                          */
+/* ========================================================================== */
+
+describe('the glare budget bounds co-located flashes', () => {
+  beforeEach(() => {
+    // Module-level state that outlives a match, and therefore a test. Nothing in
+    // this file calls stepFlashBudget(), so load never decays on its own.
+    clearFlashBudget();
+  });
+
+  it('charges the first effect in a locality nothing at all', () => {
+    // The property the whole design rests on: a lone explosion, and every
+    // explosion far from another one, is bit-identical to before this existed.
+    expect(admitGlare(100, 1, 100, VFX_GLARE.cost.explosion)).toBe(1);
+    clearFlashBudget();
+    expect(admitGlare(0, 0, 0, VFX_GLARE.cost.muzzle)).toBe(1);
+  });
+
+  it('bounds the TOTAL emitted glare of N co-located effects', () => {
+    const emitted = (n: number): number => {
+      clearFlashBudget();
+      let total = 0;
+      for (let i = 0; i < n; i++) {
+        total += VFX_GLARE.cost.explosion * admitGlare(256, 1, 256, VFX_GLARE.cost.explosion);
+      }
+      return total;
+    };
+
+    const one = emitted(1);
+    expect(one).toBeCloseTo(VFX_GLARE.cost.explosion, 6);
+
+    // The whole point, stated as arithmetic: twenty explosions on one spot are a
+    // small multiple of one explosion, not twenty of them.
+    expect(emitted(20) / one).toBeLessThan(4);
+
+    // Past saturation the total grows as `ceiling + floor x N` — the marginal
+    // cost of one more detonation is the FLOOR, not a whole detonation. That is
+    // the honest statement of the bound: the bulk is capped and the tail is
+    // linear at 6% slope. Pinned so that raising `floor` without thinking about
+    // the tail fails here rather than in a fifth bug report.
+    const hundred = emitted(100) / one;
+    expect(hundred).toBeLessThan(VFX_GLARE.ceiling + 100 * VFX_GLARE.floor + 1);
+    expect(hundred).toBeLessThan(0.12 * 100);
+
+    // And monotonic — more explosions must never emit LESS in total, or a squad
+    // wipe would read as quieter than a single death.
+    let prev = 0;
+    for (const n of [1, 2, 3, 5, 10, 20, 50]) {
+      const t = emitted(n);
+      expect(t).toBeGreaterThanOrEqual(prev - 1e-6);
+      prev = t;
+    }
+  });
+
+  it('is gentle for two and hard for twenty', () => {
+    // A pair of deaths together must not read as one death plus one fizzle: the
+    // exponent exists for exactly this. And by the time the locality is full the
+    // newcomer must be down at the floor, not merely trimmed.
+    clearFlashBudget();
+    admitGlare(0, 0, 0, VFX_GLARE.cost.explosion);
+    expect(admitGlare(0, 0, 0, VFX_GLARE.cost.explosion)).toBeGreaterThan(0.7);
+
+    clearFlashBudget();
+    for (let i = 0; i < 20; i++) admitGlare(0, 0, 0, VFX_GLARE.cost.explosion);
+    const twentyFirst = admitGlare(0, 0, 0, VFX_GLARE.cost.explosion);
+    expect(twentyFirst).toBeLessThan(0.2);
+    // Never zero: a hard zero deletes the fireball and then pops it back when
+    // the budget decays.
+    expect(twentyFirst).toBeGreaterThanOrEqual(VFX_GLARE.floor);
+  });
+
+  it('does not dim an effect outside the locality radius', () => {
+    clearFlashBudget();
+    for (let i = 0; i < 8; i++) admitGlare(0, 0, 0, VFX_GLARE.cost.explosion);
+    const far = VFX_GLARE.radiusM * 2 + 1;
+    expect(admitGlare(far, 0, 0, VFX_GLARE.cost.explosion)).toBe(1);
+    // Just inside, though, it is the same locality.
+    clearFlashBudget();
+    for (let i = 0; i < 8; i++) admitGlare(0, 0, 0, VFX_GLARE.cost.explosion);
+    expect(admitGlare(VFX_GLARE.radiusM * 0.9, 0, 0, VFX_GLARE.cost.explosion)).toBeLessThan(0.5);
+  });
+
+  it('gives the locality its budget back as the fire burns out', () => {
+    clearFlashBudget();
+    for (let i = 0; i < 10; i++) admitGlare(0, 0, 0, VFX_GLARE.cost.explosion);
+    expect(admitGlare(0, 0, 0, VFX_GLARE.cost.explosion)).toBeLessThan(0.3);
+    expect(glareSpotCount()).toBe(1);
+
+    // Ten half-lives is a full second and a bit — long past the fireball that
+    // spent the budget. The locality must be retired, not merely quieter.
+    for (let i = 0; i < 10; i++) stepFlashBudget(VFX_GLARE.halfLifeMs);
+    expect(glareSpotCount()).toBe(0);
+    expect(admitGlare(0, 0, 0, VFX_GLARE.cost.explosion)).toBe(1);
+  });
+
+  it('freezes with the rest of the VFX clock', () => {
+    // `__vmVfx.timeScale(0)` passes dtMs 0 to every pool. If the budget decayed
+    // on a wall clock instead, a scripted capture would not be reproducible.
+    clearFlashBudget();
+    for (let i = 0; i < 6; i++) admitGlare(0, 0, 0, VFX_GLARE.cost.explosion);
+    const before = glareLoadAt(0, 0, 0);
+    for (let i = 0; i < 30; i++) stepFlashBudget(0);
+    expect(glareLoadAt(0, 0, 0)).toBe(before);
+  });
+
+  it('a single explosion emits the authored gains, twenty emit a small multiple', () => {
+    const P = makeParticles();
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+    setGroundHeightFn(() => 0);
+    setLightPool(pool);
+
+    /** Total additive HDR gain live in the frame after `n` co-located deaths. */
+    const additiveGain = (n: number): number => {
+      P.clear();
+      pool.clear();
+      clearFlashBudget();
+      for (let i = 0; i < n; i++) {
+        // A deterministic 4 m spiral: the same "co-located in a small area" the
+        // browser probe fires, which is what a squad dying on one target is.
+        const a = i * 2.39996323;
+        const r = n === 1 ? 0 : 4 * Math.sqrt(i / n);
+        spawnExplosion(256 + Math.cos(a) * r, 1, 256 + Math.sin(a) * r, VFX_EXPLOSION.unitDeathTL, 'unit');
+      }
+      P.step(1, makeCamera(), 154);
+      const tint = P.additive.geometry.getAttribute('aTint').array as Float32Array;
+      let sum = 0;
+      for (let i = 0; i < P.additive.geometry.instanceCount; i++) sum += tint[i * 3];
+      return sum;
+    };
+
+    const one = additiveGain(1);
+    expect(one).toBeGreaterThan(0);
+
+    // The flash disc is the hottest sprite a unit death emits and it must still
+    // arrive at its authored gain: this is the half of the fix that the previous
+    // two passes got backwards by paying for the crowd out of the soloist.
+    const tint = P.additive.geometry.getAttribute('aTint').array as Float32Array;
+    let hottest = 0;
+    for (let i = 0; i < P.additive.geometry.instanceCount; i++) {
+      if (tint[i * 3] > hottest) hottest = tint[i * 3];
+    }
+    expect(hottest).toBeGreaterThan(VFX_EXPLOSION.flashIntensity * 0.98);
+
+    // Twenty deaths in the same four metres emitted 20x this sum before the fix.
+    const twenty = additiveGain(20);
+    expect(twenty / one).toBeLessThan(5);
+    // But not nothing: every death still shows, or they pop back in when the
+    // budget decays.
+    expect(twenty / one).toBeGreaterThan(1.5);
+
+    setLightPool(null);
+    pool.dispose();
+    P.dispose();
+  });
+
+  it('a suppressed detonation stops spending the additive pool as well', () => {
+    const P = makeParticles();
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+    setGroundHeightFn(() => 0);
+    setLightPool(pool);
+    clearFlashBudget();
+
+    // 20 co-located deaths at the authored 8-14 billows and 30-60 embers is
+    // ~1160 of the 1200 additive slots: the twentieth explosion was starving the
+    // rest of the battle to emit sprites nobody can see. Emitting FEWER billows
+    // when the locality is already on fire is the same fire in less paint.
+    for (let i = 0; i < 20; i++) {
+      const a = i * 2.39996323;
+      const r = 4 * Math.sqrt(i / 20);
+      spawnExplosion(256 + Math.cos(a) * r, 1, 256 + Math.sin(a) * r, VFX_EXPLOSION.unitDeathTL, 'unit');
+    }
+    P.step(1, makeCamera(), 154);
+    expect(P.additive.dropped).toBe(0);
+    expect(P.additive.pressure).toBeLessThan(0.6);
+
+    setLightPool(null);
+    pool.dispose();
+    P.dispose();
+  });
+
+  it('twenty explosions spread across the map are NOT dimmed', () => {
+    const P = makeParticles();
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+    setGroundHeightFn(() => 0);
+    setLightPool(pool);
+    clearFlashBudget();
+
+    // The common case, and the one a blunt global dimmer would have ruined:
+    // twenty deaths across a battlefield are twenty full-brightness deaths.
+    const apart = VFX_GLARE.radiusM * 3;
+    for (let i = 0; i < 20; i++) {
+      spawnExplosion(60 + (i % 5) * apart, 1, 60 + ((i / 5) | 0) * apart, VFX_EXPLOSION.unitDeathTL, 'unit');
+    }
+    P.step(1, makeCamera(), 154);
+    const tint = P.additive.geometry.getAttribute('aTint').array as Float32Array;
+    const n = P.additive.geometry.instanceCount;
+    let flashes = 0;
+    for (let i = 0; i < n; i++) {
+      if (tint[i * 3] > VFX_EXPLOSION.flashIntensity * 0.98) flashes++;
+    }
+    // One full-gain flash disc per death, none of them attenuated.
+    expect(flashes).toBe(20);
+    expect(glareAttenuatedCount()).toBe(0);
+
+    setLightPool(null);
+    pool.dispose();
+    P.dispose();
+  });
+});
+
+describe('the light pool merges co-located one-shots', () => {
+  it('twenty muzzle flashes in one place are ONE bounded light', () => {
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+
+    const single = pool.spawn(0, 2, 0, VFX_LIGHTS.muzzle);
+    expect(single).not.toBe(NO_LIGHT);
+    pool.update(VFX_LIGHTS.muzzle.riseMs, 0, 50, 0);
+    const onePeak = pool.root.children
+      .reduce((m, o) => Math.max(m, (o as THREE.PointLight).intensity), 0);
+    expect(onePeak).toBeGreaterThan(0);
+
+    pool.clear();
+    // Twenty guns firing into the same few metres — the reported case.
+    for (let i = 0; i < 20; i++) {
+      const a = i * 2.39996323;
+      const r = 3 * Math.sqrt(i / 20);
+      pool.spawn(Math.cos(a) * r, 2, Math.sin(a) * r, VFX_LIGHTS.muzzle);
+    }
+    pool.update(VFX_LIGHTS.muzzle.riseMs, 0, 50, 0);
+
+    // ONE light, not twelve, so the pool has eleven slots left for the rest of
+    // the battle — and at 2.57 ms per resident light that is also the cheaper
+    // frame, not a trade against it.
+    expect(pool.activeCount).toBe(1);
+    expect(pool.merges).toBe(19);
+    expect(pool.evictions).toBe(0);
+    expect(pool.droppedClaims).toBe(0);
+
+    let total = 0;
+    for (const o of pool.root.children) total += (o as THREE.PointLight).intensity;
+    // Bounded by the merge ceiling, where before it was 12x (pool-limited) —
+    // and still BRIGHTER than one flash, because a volley should read as more.
+    expect(total).toBeLessThanOrEqual(onePeak * VFX_LIGHT_MERGE_CEIL * 1.02);
+    expect(total).toBeGreaterThan(onePeak * 1.2);
+
+    pool.dispose();
+  });
+
+  it('does not merge lights that are far apart, or of different kinds', () => {
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+    const apart = VFX_LIGHTS.muzzle.mergeRadius * 2 + 1;
+    pool.spawn(0, 2, 0, VFX_LIGHTS.muzzle);
+    pool.spawn(apart, 2, 0, VFX_LIGHTS.muzzle);
+    pool.update(16, 0, 50, 0);
+    expect(pool.activeCount).toBe(2);
+    expect(pool.merges).toBe(0);
+
+    // Same place, different effect: an orange fireball wash and a warm impact
+    // wash are different envelopes and must stay separate lights.
+    pool.spawn(0, 2, 0, VFX_LIGHTS.explosion);
+    pool.update(16, 0, 50, 0);
+    expect(pool.activeCount).toBe(3);
+    expect(pool.merges).toBe(0);
+    pool.dispose();
+  });
+
+  it('never merges a sustained light, so a beam cannot release another beam', () => {
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+    // Exactly how Beams.ts builds its two: a spread copy with holdMs Infinity.
+    const env = { ...VFX_LIGHTS.teslaArc, holdMs: Infinity, mergeRadius: 9 };
+    const a = pool.spawn(0, 3, 0, env);
+    const b = pool.spawn(1, 3, 1, env);
+    expect(a).not.toBe(b);
+    expect(pool.merges).toBe(0);
+    pool.update(100, 0, 50, 0);
+    expect(pool.activeCount).toBe(2);
+
+    // Releasing one must leave the other burning. If they had merged, the first
+    // beam to finish would have taken the second beam's wash with it.
+    pool.release(a);
+    for (let i = 0; i < 12; i++) pool.update(60, 0, 50, 0);
+    expect(pool.alive(a)).toBe(false);
+    expect(pool.alive(b)).toBe(true);
+    pool.dispose();
+  });
+
+  it('a merged light revives one that was already fading out', () => {
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+    const m = VFX_LIGHTS.muzzle;
+    const lit = (): number => pool.root.children
+      .reduce((s, o) => s + (o as THREE.PointLight).intensity, 0);
+
+    pool.spawn(0, 2, 0, m);
+    // Walk the envelope in real steps: `update` advances at most one phase per
+    // call, so one big dt would leave this sitting at full hold and the test
+    // would pass without ever exercising the revival.
+    const step = 5;
+    for (let t = 0; t < m.riseMs + m.holdMs + m.fallMs * 0.75; t += step) {
+      pool.update(step, 0, 50, 0);
+    }
+    const fading = lit();
+    expect(fading).toBeGreaterThan(0);
+    expect(fading).toBeLessThan(m.peak * 0.5);   // genuinely on the way out
+
+    // A gun firing again beside it has to relight the ground, not wait for the
+    // fade to finish. Snapping to HOLD rather than to RISE is what avoids the
+    // momentary blackout a restarted rise would produce.
+    pool.spawn(1, 2, 1, m);
+    expect(pool.merges).toBe(1);
+    pool.update(1, 0, 50, 0);
+    expect(lit()).toBeGreaterThan(fading * 2);
+    pool.dispose();
+  });
+
+  it('a freed slot stops advertising its envelope', () => {
+    // If `free()` left `envOf` set, the next co-located claim of that kind would
+    // merge into a light that is not there — a silently dropped flash.
+    const pool = new LightPool();
+    pool.attach(new THREE.Scene());
+    const m = VFX_LIGHTS.muzzle;
+    pool.spawn(0, 2, 0, m);
+    // Three calls minimum: RISE -> HOLD, HOLD -> FALL, FALL -> free.
+    for (let i = 0; i < 6; i++) pool.update(m.riseMs + m.holdMs + m.fallMs, 0, 50, 0);
+    expect(pool.activeCount).toBe(0);
+
+    const before = pool.merges;
+    pool.spawn(0, 2, 0, m);
+    pool.update(m.riseMs, 0, 50, 0);
+    expect(pool.merges).toBe(before);
+    expect(pool.activeCount).toBe(1);
     pool.dispose();
   });
 });

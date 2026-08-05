@@ -3947,11 +3947,35 @@ export const VFX_LIGHT_INTENSITY_SCALE = 5.0;
  * far field in so the corners of the frame stop flaring. Re-measure both
  * numbers together if this is ever retuned; peak alone will not do it.
  */
+/**
+ * How far a ONE-SHOT light's claim may be merged into an existing light of the
+ * same kind, and how much brighter the merged result may get. See
+ * `LightPool.spawn`.
+ *
+ * THE MEASUREMENT. `claimSlot` took the first free slot with no notion of
+ * locality, so twelve muzzle flashes inside a squad's footprint became twelve
+ * resident PointLights at the same place and three's light loop SUMMED them.
+ * Measured at n=20 co-located unit deaths (`tools/flash-stack.mjs`), the light
+ * pile on its own took the frame area over L=0.95 from 12.4% to 62.6% — x3.0 —
+ * on top of what the additive quads were doing. It is bounded only by the pool
+ * size, which is not a brightness policy, it is an accident.
+ *
+ * Merging rather than dropping is what makes this "one bright flash" instead of
+ * "the 13th flash does not light anything": the incumbent is brightened towards
+ * a ceiling and its envelope refreshed, so a squad's ground wash is ONE wash
+ * that stays lit while they fire.
+ *
+ * It also frees slots, which the GPU pass measured at 2.57 ms per resident light
+ * per frame at 1440p — so fewer, merged lights is the same direction as
+ * `VFX_LIGHT_POOL_BY_TIER`, not a trade against it.
+ */
+export const VFX_LIGHT_MERGE_CEIL = 1.9;
+
 export const VFX_LIGHTS = {
-  explosion:   { color: '#FFB05A', peak: 20, range: 40.0, riseMs:  40, holdMs:  60, fallMs: 400, flickerHz: 0,  flickerAmp: 0.00 },
-  muzzle:      { color: '#FFD28A', peak: 12, range: 17.5, riseMs:  10, holdMs:  10, fallMs:  70, flickerHz: 0,  flickerAmp: 0.00 },
-  teslaImpact: { color: '#5A82FF', peak: 14, range: 24.5, riseMs:  30, holdMs:  40, fallMs: 130, flickerHz: 0,  flickerAmp: 0.00 },
-  beam:        { color: '#6FA8FF', peak:  9, range: 42.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00 },
+  explosion:   { color: '#FFB05A', peak: 20, range: 40.0, riseMs:  40, holdMs:  60, fallMs: 400, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 7.0 },
+  muzzle:      { color: '#FFD28A', peak: 12, range: 17.5, riseMs:  10, holdMs:  10, fallMs:  70, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 7.0 },
+  teslaImpact: { color: '#5A82FF', peak: 14, range: 24.5, riseMs:  30, holdMs:  40, fallMs: 130, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 5.0 },
+  beam:        { color: '#6FA8FF', peak:  9, range: 42.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 0 },
   /**
    * The sustained light a TESLA ARC carries while it is up.
    *
@@ -3968,10 +3992,110 @@ export const VFX_LIGHTS = {
    * The small flicker is the arc re-rolling its own path every 50 ms, carried
    * into the light so the ground wash crackles with it instead of sitting flat.
    */
-  teslaArc:    { color: '#6FA8FF', peak: 26, range: 46.0, riseMs:  50, holdMs:   0, fallMs: 200, flickerHz: 13, flickerAmp: 0.16 },
-  burning:     { color: '#FF7A28', peak:  4, range: 17.5, riseMs: 200, holdMs:   0, fallMs: 600, flickerHz: 7,  flickerAmp: 0.30 },
-  prism:       { color: '#A7F5F9', peak: 22, range: 42.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00 },
-  impact:      { color: '#FFE0A0', peak:  6, range: 12.0, riseMs:  10, holdMs:  10, fallMs:  90, flickerHz: 0,  flickerAmp: 0.00 },
+  teslaArc:    { color: '#6FA8FF', peak: 26, range: 46.0, riseMs:  50, holdMs:   0, fallMs: 200, flickerHz: 13, flickerAmp: 0.16, mergeRadius: 0 },
+  /**
+   * `mergeRadius` 9 is wider than the others on purpose: burning wrecks are a
+   * CLUSTER by nature — a destroyed formation is six hulls inside ten metres,
+   * each re-claiming a light every ~650 ms — and this row is the one that pins
+   * the whole pool if it is left alone. One flickering ember wash over the
+   * wreckage is also what the reference frames show.
+   */
+  burning:     { color: '#FF7A28', peak:  4, range: 17.5, riseMs: 200, holdMs:   0, fallMs: 600, flickerHz: 7,  flickerAmp: 0.30, mergeRadius: 9.0 },
+  prism:       { color: '#A7F5F9', peak: 22, range: 42.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 0 },
+  impact:      { color: '#FFE0A0', peak:  6, range: 12.0, riseMs:  10, holdMs:  10, fallMs:  90, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 4.0 },
+} as const;
+
+/**
+ * THE GLARE BUDGET — how much ADDITIVE light one patch of ground may emit at
+ * once. Consumed by `src/vfx/FlashBudget.ts`; read its header for the
+ * measurement and the arithmetic.
+ *
+ * WHY IT IS HERE AND NOT A DIMMER ON A SPRITE. Explosion and muzzle-flash
+ * brightness has been reported four times. Every previous pass lowered a single
+ * sprite's gain — `flashIntensity` 7.0 -> 3.5, `billowIntensity` 4.2 -> 2.1, the
+ * muzzle core 9.0 -> 4.0 — and every one of those measured correctly, because
+ * each was measured on ONE effect. The additive layer SUMS and nothing bounded
+ * the sum: measured at 1280x720 on the 48 m combat framing, 20 unit deaths
+ * inside a 4 m radius put 65.9% of the frame over L=0.95 against 14.5% for one,
+ * and ablation attributes x8.9 of that growth to the additive quads and x3.0 to
+ * the point-light pile.
+ *
+ * The first effect in a locality is charged nothing and therefore attenuated
+ * not at all, so a single explosion is unchanged. Only the crowd pays.
+ */
+export const VFX_GLARE = {
+  /**
+   * Radius in metres inside which two effects share one budget.
+   *
+   * 7.0 is a unit-death fireball's own visible radius (the billow shell plus a
+   * billow's `billowSize1TL`), which is the distance at which two detonations
+   * genuinely overlap on screen rather than merely being near each other. Wider
+   * than this and explosions that read as separate events start dimming each
+   * other; much narrower and a squad's flashes each get a private budget, which
+   * is the bug.
+   */
+  radiusM: 7.0,
+  /**
+   * Ceiling on a locality's load, in unit-death-explosion equivalents.
+   *
+   * This is the answer to "how many simultaneous explosions may a single patch
+   * of ground look like". 2.4 reads as one violent event with real depth; the
+   * 20th detonation in the same spot therefore emits about a tenth of what the
+   * first did instead of a full second copy.
+   */
+  ceiling: 2.4,
+  /**
+   * Curve shape. >1 keeps the response flat while the budget is nearly empty —
+   * two tanks dying together must not read as one death and one fizzle — and
+   * then collapses as the locality fills. At 2.0 the second unit death emits
+   * 83% and the fourth 12%.
+   */
+  exponent: 2.0,
+  /**
+   * Floor on the multiplier, and therefore the MARGINAL cost of one more
+   * detonation once a locality is saturated: 6% of what the first one cost,
+   * instead of 100%.
+   *
+   * It is not zero, so no detonation is ever emitted as literally nothing and no
+   * downstream consumer has to cope with a zero gain. It is small, because the
+   * total load past the ceiling grows as `ceiling + floor x N` — the one part of
+   * this that is linear in N rather than bounded, so it is the number that
+   * decides how the extreme tail behaves. At 0.06, twenty co-located deaths
+   * emit ~3.3 deaths' worth and a hundred emit ~8, against 20 and 100 before.
+   */
+  floor: 0.06,
+  /**
+   * Half-life of a locality's load.
+   *
+   * 750 ms is `VFX_EXPLOSION.billowLifeMs` exactly, and that is the point: the
+   * budget comes back at the rate the fire that spent it actually burns out. A
+   * shorter constant lets a sustained firefight re-blow the frame between
+   * volleys; a longer one keeps suppressing after the ground has gone dark.
+   */
+  halfLifeMs: 750,
+  /** Below this the locality is retired and its slot recycled. */
+  retireLoad: 0.02,
+  /**
+   * Cost per effect, in unit-death-explosion equivalents. An explosion's cost is
+   * additionally multiplied by k^2 (its size relative to a unit death), because
+   * the same billow count spread over a k-times-wider fireball covers k^2 the
+   * pixels — the same reason `billowIntensityFalloff` exists.
+   *
+   * The ratios are not guesses, they are the effects' additive gain x quad area,
+   * normalised: a heavy muzzle flash's star and core come to roughly a fortieth
+   * of a unit-death fireball's total emitted energy, but its energy lands on a
+   * few square metres rather than thirty-five, so what matters for blowing a
+   * pixel out is its SURFACE brightness — hence 0.50 rather than 0.02. Twenty
+   * guns firing into one locality then emit about five flashes' worth of glare
+   * instead of twenty, while a squad in sustained fire settles at ~0.6 gain
+   * (charge 8/s against a 750 ms half-life) rather than being switched off.
+   */
+  cost: {
+    explosion: 1.00,
+    muzzle: 0.50,
+    impact: 0.22,
+    spark: 0.22,
+  },
 } as const;
 
 /**

@@ -38,6 +38,7 @@
 
 import {
   VFX_EXPLOSION,
+  VFX_GLARE,
   VFX_GROUND,
   VFX_GUNS,
   VFX_LIT_PRESSURE_CUTOFF,
@@ -48,6 +49,7 @@ import {
 } from '../core/config';
 import { presentationRng } from '../core/math';
 
+import { admitGlare } from './FlashBudget';
 import { spawnLight } from './LightPool';
 import { emitAdditive, emitLit, particles, resetEmit } from './Particles';
 
@@ -210,6 +212,26 @@ export function spawnExplosion(
   const k = sizeTL / X.unitDeathTL;
   const floor = groundHeight(x, z);
 
+  /*
+   * THE GLARE BUDGET. One call for the whole detonation, applied to every
+   * ADDITIVE gain below and to nothing else.
+   *
+   * `glare` is exactly 1.0 for the first explosion in a locality, so a lone
+   * death — and every death more than `VFX_GLARE.radiusM` from another one — is
+   * identical to before this existed. It is the SECOND and twentieth detonation
+   * in the same seven metres that gets dimmed, which is the case that turned two
+   * thirds of the frame white and got this reported four times. See
+   * src/vfx/FlashBudget.ts for the measurement.
+   *
+   * The cost scales with k^2 because the same billow count spread over a
+   * k-times-wider fireball covers k^2 the pixels — the identical reasoning that
+   * `billowIntensityFalloff` encodes for a single explosion, applied across
+   * several. A structure death therefore spends the locality's whole budget,
+   * which is correct: nothing near it should out-glare it, including its own
+   * cook-offs.
+   */
+  const glare = admitGlare(x, y + 1.6 * k, z, VFX_GLARE.cost.explosion * k * k);
+
   /* -- 1. flash disc: additive pure white, peak 40 ms, gone by 140 ms ----- */
   let e = resetEmit();
   e.x = x; e.y = y; e.z = z;
@@ -221,7 +243,7 @@ export function spawnExplosion(
   // falloff, not a uniform full-gain plate across every pixel it covers.
   e.ramp = VFX_RAMP.flash; e.tA = 0; e.tB = X.flashRadialSpan; e.radial = 1;
   e.tile = VFX_TILE.core;
-  e.i0 = X.flashIntensity; e.i1 = X.flashIntensity * 0.15;
+  e.i0 = X.flashIntensity * glare; e.i1 = X.flashIntensity * 0.15 * glare;
   emitAdditive(e);
   // Structure deaths get their own, bigger flash on top of the fireball.
   if (kind === 'structure') {
@@ -233,20 +255,39 @@ export function spawnExplosion(
     e.sizeEase = 0.35;
     e.ramp = VFX_RAMP.flash; e.tA = 0; e.tB = X.flashRadialSpan; e.radial = 1;
     e.tile = VFX_TILE.soft;
-    e.i0 = X.flashIntensity * X.structureFlashIntensityMul; e.i1 = 0;
+    e.i0 = X.flashIntensity * X.structureFlashIntensityMul * glare; e.i1 = 0;
     emitAdditive(e);
   }
 
   /* -- 2. fireball: 8–14 billows, each with a WHITE RADIAL CORE ----------- */
-  const billows = rng.int(X.billowMin, X.billowMax);
+  /*
+   * The billow COUNT comes down with the glare, not only the gain, and the
+   * reason is measured rather than aesthetic.
+   *
+   * Dimming a billow bounds the SUM it contributes but not the AREA it covers,
+   * and a billow grows from 0.34 to 1.00 TL over its life. Twenty explosions'
+   * worth of 7 m sprites is the same 8 m of ground painted 220 times over — the
+   * frame's blown area kept climbing to 400 ms after the flash was gone, because
+   * even a bounded sum spread over a growing area crosses the bloom threshold
+   * across more of it. Fewer, brighter billows is the same fire in less paint.
+   *
+   * It is also where the additive pool goes: 20 co-located deaths at 58 sprites
+   * each is 1160 of the 1200 slots, so the twentieth explosion was starving
+   * everything else in the battle to emit sprites nobody can see.
+   *
+   * `rng.int` is drawn FIRST and scaled after, so an unattenuated explosion
+   * consumes exactly the same RNG sequence and emits exactly the same count as
+   * before this existed.
+   */
+  const billows = Math.max(3, Math.round(rng.int(X.billowMin, X.billowMax) * (0.35 + 0.65 * glare)));
   const spread = X.billowSpread * k;
   // A bigger fireball stacks the same billow count over k^2 the pixels, so it
   // gets brighter per pixel as well as wider. Walk the gain back so a structure
   // death reads as a bigger fire and not as a bigger white plate. See
   // billowIntensityFalloff — deliberately one-sided, k < 1 is left alone.
-  const billowGain = k > 1
+  const billowGain = (k > 1
     ? X.billowIntensity * Math.pow(k, -X.billowIntensityFalloff)
-    : X.billowIntensity;
+    : X.billowIntensity) * glare;
   for (let i = 0; i < billows; i++) {
     // Distribute on a squashed shell so the fireball reads as a mass, not a
     // ring: bias the vertical component up, because fire rises.
@@ -277,7 +318,7 @@ export function spawnExplosion(
     e.tile = (i & 1) === 0 ? VFX_TILE.billow : VFX_TILE.puffAlt;
     e.rot = rng.range(0, Math.PI * 2);
     e.rotVel = rng.range(-1, 1) * X.billowSpinDegPerSec * Math.PI / 180;
-    e.i0 = billowGain; e.i1 = 0.35;
+    e.i0 = billowGain; e.i1 = 0.35 * glare;
     emitAdditive(e);
   }
 
@@ -292,7 +333,7 @@ export function spawnExplosion(
   e.ramp = VFX_RAMP.shockwave; e.tA = 0; e.tB = 1;
   e.tile = VFX_TILE.shock;
   e.orient = 1;                            // lies in the XZ plane
-  e.i0 = X.shockIntensity; e.i1 = 0.2;
+  e.i0 = X.shockIntensity * glare; e.i1 = 0.2 * glare;
   emitAdditive(e);
 
   /* -- 4. smoke plume: 14–22 LIT puffs over 5.5 s ------------------------ */
@@ -347,7 +388,9 @@ export function spawnExplosion(
   }
 
   /* -- 6. embers: additive pinpricks flickering at 18 Hz ------------------ */
-  const embers = rng.int(X.emberMin, X.emberMax);
+  // Same argument as the billows, and the pool pressure is worse: embers are the
+  // single most numerous additive emission in the game (30-60 per detonation).
+  const embers = Math.max(6, Math.round(rng.int(X.emberMin, X.emberMax) * (0.25 + 0.75 * glare)));
   for (let i = 0; i < embers; i++) {
     const th = rng.range(0, Math.PI * 2);
     const ph = rng.range(0, Math.PI * 0.75);
@@ -365,7 +408,7 @@ export function spawnExplosion(
     e.ramp = VFX_RAMP.ember; e.tA = 0; e.tB = 1;
     e.tile = VFX_TILE.emberDot;
     e.flickerHz = X.emberFlickerHz;
-    e.i0 = X.emberIntensity; e.i1 = 0.5;
+    e.i0 = X.emberIntensity * glare; e.i1 = 0.5 * glare;
     emitAdditive(e);
   }
 
@@ -454,7 +497,10 @@ export function spawnImpact(
   }
 
   // A brief hot flash: even a dirt hit is a detonation, and the frame is dark.
+  // A firefight lands dozens of these a second into the same few metres, so it
+  // draws on the same locality budget the fireballs do.
   const X = VFX_EXPLOSION;
+  const glare = admitGlare(x, y, z, VFX_GLARE.cost.impact * scale);
   const e = resetEmit();
   e.x = x; e.y = y + 0.2; e.z = z;
   e.lifeMs = X.impactFlashLifeMs;
@@ -463,7 +509,7 @@ export function spawnImpact(
   e.sizeEase = 0.45;
   e.ramp = VFX_RAMP.fireball; e.tA = 0; e.tB = X.billowRadialSpan; e.radial = 1;
   e.tile = VFX_TILE.billow;
-  e.i0 = X.impactFlashIntensity; e.i1 = 0.2;
+  e.i0 = X.impactFlashIntensity * glare; e.i1 = 0.2 * glare;
   emitAdditive(e);
 
   // A handful of chips, and the light.
@@ -501,6 +547,9 @@ export function sparkBurst(
   const mpp = metresPerPixel();
   const n = rng.int(G.sparkMin, G.sparkMax);
   const half = (G.sparkFanDeg * 0.5) * Math.PI / 180;
+  // 30-45 streaks plus a flash disc, several times a second per gun in a
+  // brawl. Same locality budget as everything else additive.
+  const glare = admitGlare(x, y, z, VFX_GLARE.cost.spark * scale);
 
   for (let i = 0; i < n; i++) {
     // Fan around the reflected direction, biased upward.
@@ -526,7 +575,7 @@ export function sparkBurst(
     e.ramp = VFX_RAMP.spark; e.tA = 0; e.tB = 1;
     e.tile = VFX_TILE.spark;
     e.alignVel = 1;                            // the streak points where it goes
-    e.i0 = G.sparkIntensity; e.i1 = 0.3;
+    e.i0 = G.sparkIntensity * glare; e.i1 = 0.3 * glare;
     emitAdditive(e);
   }
 
@@ -539,7 +588,7 @@ export function sparkBurst(
   // however small, is a disc-shaped bloom source rather than a point one.
   e.ramp = VFX_RAMP.flash; e.tA = 0; e.tB = VFX_EXPLOSION.flashRadialSpan; e.radial = 1;
   e.tile = VFX_TILE.core;
-  e.i0 = G.sparkFlashIntensity; e.i1 = 0;
+  e.i0 = G.sparkFlashIntensity * glare; e.i1 = 0;
   emitAdditive(e);
 }
 

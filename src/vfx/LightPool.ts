@@ -36,6 +36,34 @@
  *    always beats a muzzle flash at the map edge, and a dropped light is
  *    counted rather than mourned.
  *
+ * 4. **CO-LOCATED ONE-SHOTS MERGE INSTEAD OF STACKING.** This is the fourth
+ *    thing, and it is here because its absence was a bug reported four times.
+ *    `claimSlot` took the first free slot with no notion of locality, so twenty
+ *    units firing inside a squad's footprint became twelve resident PointLights
+ *    at the same place — and three's per-fragment light loop SUMS them. Twelve
+ *    muzzle flashes at 60 effective candela each is 720 candela of ground wash
+ *    from one volley, which is the user's "they cast HUGEEEE FLASH instead of
+ *    unified one" arriving through the lighting rather than through the sprites.
+ *    Measured in isolation (`tools/flash-stack.mjs`), the light pile alone took
+ *    the frame area over L=0.95 from 12.4% to 62.6% between one and twenty
+ *    co-located unit deaths.
+ *
+ *    So a one-shot claim whose envelope declares a `mergeRadius` first looks for
+ *    a live light of the SAME envelope within that radius. If it finds one it
+ *    brightens it towards `VFX_LIGHT_MERGE_CEIL x` its peak, nudges it towards
+ *    the newcomer and refreshes its envelope, and returns that light's handle.
+ *    N flashes in one place are then ONE light that is at most 1.9x as bright as
+ *    one flash — and N-1 pool slots stay free, which the GPU pass measured at
+ *    2.57 ms per resident light per frame.
+ *
+ *    SUSTAINED sources are never merged, whatever their row says: a beam owns
+ *    its light through a handle it later `move()`s and `release()`s, and two
+ *    beams sharing one slot would have the first `release()` kill the second
+ *    beam's wash. `holdMs === Infinity` is the test, and it is checked
+ *    independently of `mergeRadius` so a spread-copied envelope
+ *    (`{ ...VFX_LIGHTS.teslaArc, holdMs: Infinity }`, which is exactly how
+ *    Beams.ts builds its two) cannot opt in by accident.
+ *
  * ENVELOPE
  * --------
  * Every light runs rise → hold → fall in milliseconds. A one-shot (explosion,
@@ -50,6 +78,7 @@ import * as THREE from 'three';
 import {
   VFX_LIGHT_DECAY,
   VFX_LIGHT_INTENSITY_SCALE,
+  VFX_LIGHT_MERGE_CEIL,
   VFX_LIGHT_POOL,
 } from '../core/config';
 import { hexToLinearRgb } from '../core/math';
@@ -97,6 +126,16 @@ export interface LightEnvelope {
   readonly flickerHz: number;
   /** Fractional amplitude of the flicker, e.g. 0.30 for ±30%. */
   readonly flickerAmp: number;
+  /**
+   * Metres inside which a NEW one-shot claim of this same envelope merges into
+   * a live one instead of taking its own slot. 0 disables merging.
+   *
+   * It is a required field, not an optional one, so that adding a row to
+   * `VFX_LIGHTS` forces a decision: an envelope that quietly defaulted to 0 is
+   * how the stacking bug comes back. Sustained sources (`holdMs = Infinity`)
+   * must use 0 — see note 4 in the header.
+   */
+  readonly mergeRadius: number;
 }
 
 /* ==========================================================================
@@ -117,6 +156,18 @@ export class LightPool {
   private readonly holdMs = new Float32Array(VFX_LIGHT_POOL);
   private readonly fallMs = new Float32Array(VFX_LIGHT_POOL);
   private readonly peak = new Float32Array(VFX_LIGHT_POOL);
+  /**
+   * The brightest SINGLE claim this slot has seen, which is what the merge
+   * ceiling is measured against.
+   *
+   * It has to be tracked separately from `peak`, and the reason is a bug this
+   * exact code shipped with for one test run: deriving the ceiling from the
+   * accumulated `peak` makes the headroom a constant `1 - 1/CEIL`, so every
+   * merge adds the same fixed amount and twenty merges are LINEAR — measured at
+   * 10x one flash, which is the stacking bug wearing a merge's clothes. Against
+   * a fixed base the series saturates as intended.
+   */
+  private readonly basePeak = new Float32Array(VFX_LIGHT_POOL);
   private readonly range = new Float32Array(VFX_LIGHT_POOL);
   private readonly flickerHz = new Float32Array(VFX_LIGHT_POOL);
   private readonly flickerAmp = new Float32Array(VFX_LIGHT_POOL);
@@ -128,6 +179,12 @@ export class LightPool {
   private readonly pz = new Float32Array(VFX_LIGHT_POOL);
   /** Priority recomputed each update; drives eviction. */
   private readonly priority = new Float32Array(VFX_LIGHT_POOL);
+  /**
+   * The envelope each live slot was spawned from, by IDENTITY. Only ever
+   * assigned from a caller-supplied frozen constant, so this is a fixed-length
+   * array of references and never allocates. `null` on a free slot.
+   */
+  private readonly envOf: (LightEnvelope | null)[] = new Array(VFX_LIGHT_POOL).fill(null);
 
   /* -- diagnostics ------------------------------------------------------- */
   /** Lights currently emitting. */
@@ -136,6 +193,11 @@ export class LightPool {
   droppedClaims = 0;
   /** Claims that stole a slot from a weaker light. */
   evictions = 0;
+  /**
+   * Claims folded into a co-located light of the same kind instead of taking a
+   * slot. High during a firefight is the fix working, not a problem.
+   */
+  merges = 0;
 
   /** Scratch for the linear colour conversion. Never allocates per spawn. */
   private readonly rgb = new Float32Array(3);
@@ -189,8 +251,15 @@ export class LightPool {
   ): LightHandle {
     const peak = env.peak * sizeMul * VFX_LIGHT_INTENSITY_SCALE;
     const range = env.range * (0.55 + 0.45 * sizeMul);
+
+    // MERGE BEFORE CLAIMING. See note 4 in the header: N co-located flashes must
+    // be one bright light, not N summed ones.
+    const merge = this.findMergeTarget(x, y, z, env);
+    if (merge >= 0) return this.reinforce(merge, x, y, z, peak, range, env);
+
     const slot = this.claimSlot(x, y, z, peak, range);
     if (slot < 0) { this.droppedClaims++; return NO_LIGHT; }
+    this.envOf[slot] = env;
 
     this.phase[slot] = PHASE_RISE;
     this.age[slot] = 0;
@@ -198,6 +267,7 @@ export class LightPool {
     this.holdMs[slot] = env.holdMs;
     this.fallMs[slot] = Math.max(1, env.fallMs);
     this.peak[slot] = peak;
+    this.basePeak[slot] = peak;
     this.range[slot] = range;
     this.flickerHz[slot] = env.flickerHz;
     this.flickerAmp[slot] = env.flickerAmp;
@@ -215,6 +285,91 @@ export class LightPool {
     l.position.set(x, y, z);
     l.intensity = 0;
 
+    return (slot & SLOT_MASK) | (this.gen[slot] << SLOT_BITS);
+  }
+
+  /**
+   * The nearest live light this claim should merge into, or -1.
+   *
+   * Identity on the envelope object is the "same kind" test. Every one-shot
+   * caller in the game passes a frozen row out of `VFX_LIGHTS`, so identity is
+   * exact and free — and it is the STRICTER answer of the two available: a
+   * spread copy is a different object, so it never merges, which is precisely
+   * the behaviour a sustained beam light needs. Colour-string comparison would
+   * have merged `teslaArc` into `beam` (both `#6FA8FF`), which are different
+   * effects with different envelopes.
+   */
+  private findMergeTarget(x: number, y: number, z: number, env: LightEnvelope): number {
+    const r = env.mergeRadius;
+    // A sustained source owns its slot through a handle. Never merge one, even
+    // if the row it was copied from declares a radius.
+    if (!(r > 0) || !Number.isFinite(env.holdMs)) return -1;
+    let best = -1;
+    let bestD2 = r * r;
+    for (let i = 0; i < this.capacity; i++) {
+      if (this.phase[i] === PHASE_FREE) continue;
+      if (this.envOf[i] !== env) continue;
+      const dx = x - this.px[i], dy = y - this.py[i], dz = z - this.pz[i];
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 <= bestD2) { bestD2 = d2; best = i; }
+    }
+    return best;
+  }
+
+  /**
+   * Fold a new claim into a live light: brighten, re-centre, refresh.
+   *
+   * The brightening SATURATES, which is the entire point. Headroom is measured
+   * against `VFX_LIGHT_MERGE_CEIL x` the brightest SINGLE claim in the group
+   * (`basePeak`, never the accumulated `peak` — see the field's comment), and the
+   * newcomer is admitted only in proportion to the headroom left, so repeated
+   * merges approach the ceiling and never pass it: at ceiling 1.9 and equal
+   * peaks the second claim lands at 1.47x, the third at 1.70x, the twentieth at
+   * 1.90x. Twenty muzzle flashes in one place are therefore under twice one
+   * flash instead of twelve times it.
+   */
+  private reinforce(
+    slot: number,
+    x: number, y: number, z: number,
+    peak: number, range: number,
+    env: LightEnvelope,
+  ): LightHandle {
+    const cur = this.peak[slot];
+    const base = peak > this.basePeak[slot] ? peak : this.basePeak[slot];
+    this.basePeak[slot] = base;
+    const ceil = base * VFX_LIGHT_MERGE_CEIL;
+    const headroom = cur >= ceil ? 0 : 1 - cur / ceil;
+    const merged = Math.min(ceil, cur + peak * headroom);
+    // Weight of the newcomer in the result, used to re-centre the wash so a
+    // spreading firefight drags its light along instead of pinning it to
+    // whichever unit happened to fire first.
+    const w = merged > 1e-4 ? (merged - cur) / merged : 0;
+    this.peak[slot] = merged;
+    if (range > this.range[slot]) this.range[slot] = range;
+    this.px[slot] += (x - this.px[slot]) * w;
+    this.py[slot] += (y - this.py[slot]) * w;
+    this.pz[slot] += (z - this.pz[slot]) * w;
+
+    // Refresh the envelope so the merged light lives as long as the newest claim
+    // would have. A light already FALLING is snapped back to HOLD rather than to
+    // RISE: RISE recomputes intensity from zero, which would make a new flash
+    // arriving mid-fade read as a momentary blackout.
+    const ph = this.phase[slot];
+    if (ph === PHASE_FALL || ph === PHASE_HOLD) {
+      this.phase[slot] = PHASE_HOLD;
+      this.age[slot] = 0;
+      this.releaseFrom[slot] = -1;
+    }
+    if (env.holdMs > this.holdMs[slot]) this.holdMs[slot] = env.holdMs;
+    if (env.fallMs > this.fallMs[slot]) this.fallMs[slot] = Math.max(1, env.fallMs);
+
+    const l = this.lights[slot];
+    l.distance = this.range[slot];
+    l.position.set(this.px[slot], this.py[slot], this.pz[slot]);
+
+    this.merges++;
+    // The incumbent's generation is deliberately NOT bumped: merging must not
+    // invalidate a handle somebody is still holding.
     return (slot & SLOT_MASK) | (this.gen[slot] << SLOT_BITS);
   }
 
@@ -298,6 +453,9 @@ export class LightPool {
     this.phase[slot] = PHASE_FREE;
     this.lights[slot].intensity = 0;
     this.priority[slot] = 0;
+    // MUST be cleared, or a dead slot keeps advertising its old envelope and the
+    // next co-located claim of that kind merges into a light that is not there.
+    this.envOf[slot] = null;
     this.gen[slot] = (this.gen[slot] + 1) & 0xff;
     if (this.gen[slot] === 0) this.gen[slot] = 1;
   }

@@ -57,6 +57,9 @@ import type { EntityId, RenderContext } from '../core/types';
 import { ctx } from '../game/context';
 import { socketWorld } from '../render/RenderBridge';
 
+import {
+  clearFlashBudget, glareAttenuatedCount, glareSpotCount, stepFlashBudget,
+} from './FlashBudget';
 import { LightPool, setLightPool } from './LightPool';
 import { ParticleSystem, resetEmit, setParticleSystem } from './Particles';
 import { BeamSystem, setBeamSystem } from './Beams';
@@ -432,6 +435,9 @@ function installGlobal(): void {
       lit: sprites?.lit.count ?? 0,
       debris: sprites?.debris.count ?? 0,
       lights: lights?.activeCount ?? 0,
+      lightMerges: lights?.merges ?? 0,
+      glareSpots: glareSpotCount(),
+      glareDimmed: glareAttenuatedCount(),
       bolts: beams?.activeBolts ?? 0,
       beams: beams?.activeBeams ?? 0,
       tracers: shots?.count ?? 0,
@@ -447,6 +453,10 @@ function installGlobal(): void {
       shots?.clear();
       lights?.clear();
       clearExplosions();
+      // Without this a scripted capture inherits the previous case's glare load
+      // and the first explosion of the run is dimmed — which would make this
+      // probe measure the fix as a regression.
+      clearFlashBudget();
     },
     timeScale: (s) => { timeScale = Math.max(0, s); },
     advance: (ms) => { pendingAdvanceMs = Math.max(0, ms); },
@@ -502,6 +512,9 @@ export default defineSystem({
     scanCursor = 0;
     drainedTotal = 0;
     probeReported = false;
+    // Module-level state, so it outlives a match. The previous match's dying
+    // base must not dim the first shot of the next one.
+    clearFlashBudget();
 
     // THE ORDERING PROBE. See the file header. Pushed here, expected in the
     // first frame(); if the loop ever clears the queue before runFrame, this
@@ -580,6 +593,17 @@ export default defineSystem({
     /* -- 3. delayed structure cook-offs ---------------------------------- */
     stepExplosions(dtMs);
 
+    /*
+     * -- 3b. decay the per-locality glare budget -------------------------
+     *
+     * AFTER the drain and the cook-offs, never before: everything emitted this
+     * frame must see the load the previous frame left, or a volley that lands
+     * across two frames gets two full budgets and the cap does nothing. It also
+     * has to run on the same `dtMs` every other pool gets, so `timeScale(0)`
+     * freezes it too and a scripted capture is reproducible.
+     */
+    stepFlashBudget(dtMs);
+
     /* -- 4. scene-light injection (bible §8.9, NON-NEGOTIABLE) ----------- */
     _camPos.setFromMatrixPosition(camera.matrixWorld);
     L.update(dtMs, _camPos.x, _camPos.y, _camPos.z);
@@ -629,6 +653,11 @@ export default defineSystem({
     c.vfxDropped = P.additive.dropped + P.lit.dropped + P.debris.dropped + T.dropped;
     c.vfxLightDrops = L.droppedClaims;
     c.vfxLightEvictions = L.evictions;
+    // The two halves of the anti-stacking fix, kept visible: a firefight with
+    // zero merges and zero dimmed emissions means one of them stopped working.
+    c.vfxLightMerges = L.merges;
+    c.vfxGlareSpots = glareSpotCount();
+    c.vfxGlareDimmed = glareAttenuatedCount();
   },
 
   dispose(): void {
@@ -644,6 +673,7 @@ export default defineSystem({
     setShakeSink(null);
     delete (globalThis as unknown as VfxGlobal).__vmVfx;
     clearExplosions();
+    clearFlashBudget();
     shots?.clear();
     beams?.dispose();
     sprites?.dispose();
@@ -687,6 +717,11 @@ export {
   spawnLight, moveLight, releaseLight, lightPool, LightPool,
   NO_LIGHT, type LightHandle, type LightEnvelope,
 } from './LightPool';
+
+export {
+  admitGlare, stepFlashBudget, clearFlashBudget, glareLoadAt,
+  glareSpotCount, glareAttenuatedCount,
+} from './FlashBudget';
 
 export {
   particles as particleSystem, emitAdditive, emitLit, resetEmit, EMIT,

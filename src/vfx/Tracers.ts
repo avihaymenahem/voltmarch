@@ -34,6 +34,7 @@
  */
 
 import {
+  VFX_GLARE,
   VFX_GUNS,
   VFX_LIGHTS,
   VFX_MAX_TRACERS,
@@ -47,6 +48,7 @@ import { presentationRng } from '../core/math';
 import { socketWorld } from '../render/RenderBridge';
 
 import type { RibbonBatch } from './Beams';
+import { admitGlare } from './FlashBudget';
 import { spawnLight } from './LightPool';
 import { emitAdditive, emitLit, resetEmit } from './Particles';
 
@@ -86,6 +88,21 @@ export function spawnMuzzleFlash(
   const cy = y + uy * len * 0.34;
   const cz = z + uz * len * 0.34;
 
+  /*
+   * THE GLARE BUDGET — the user's own diagnosis, in one line.
+   *
+   * "when multiple vehicles and troops shoot, i think but not sure that you
+   * placing multiple flash layers on top of each other, and then they cast
+   * HUGEEEE FLASH instead of unified one". They were right. The two additive
+   * quads below sum with every other gun's, so a squad firing together was N
+   * times one flash and nothing capped N.
+   *
+   * The FIRST gun in a locality gets exactly 1.0, so a single tank firing is
+   * unchanged; twenty guns inside seven metres emit about five flashes' worth
+   * between them. See src/vfx/FlashBudget.ts.
+   */
+  const glare = admitGlare(cx, cy, cz, VFX_GLARE.cost.muzzle * (0.6 + 0.4 * size) * scale);
+
   // The big shape. A small forward drift doubles as the `alignVel` direction.
   let e = resetEmit();
   e.x = cx; e.y = cy; e.z = cz;
@@ -101,7 +118,7 @@ export function spawnMuzzleFlash(
   e.ramp = VFX_RAMP.muzzle; e.tA = 0; e.tB = 1;
   e.tile = cfg.tile;
   e.alignVel = 1;
-  e.i0 = cfg.intensity; e.i1 = 0.2;
+  e.i0 = cfg.intensity * glare; e.i1 = 0.2 * glare;
   emitAdditive(e);
 
   // The white-hot core. This is the pixel that must clip to #FFFFFF.
@@ -113,7 +130,7 @@ export function spawnMuzzleFlash(
   e.sizeEase = 0.3;
   e.ramp = VFX_RAMP.flash; e.tA = 0; e.tB = 1;
   e.tile = VFX_TILE.core;
-  e.i0 = G.flashCoreIntensity; e.i1 = 0.5;
+  e.i0 = G.flashCoreIntensity * glare; e.i1 = 0.5 * glare;
   emitAdditive(e);
 
   // A thin smoke ribbon off the barrel — bible §8.5, alpha 0.25.
