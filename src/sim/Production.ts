@@ -78,6 +78,16 @@ import {
   PlacementPhase, evaluatePlacement, placementReport,
   type PlacementListener, type PlacementNotice,
 } from './Placement';
+// The last-way-out guard, shared verbatim with the outcome poll so a sell that
+// is refused and a match that will not end cannot disagree about what "this
+// player can still play" means. The edge Viability -> Deploy -> Production
+// closes a cycle back to this file; every binding in it is read inside a
+// function body, never at module scope, which is the only kind of ESM cycle
+// that is safe — and `npm test` / `npm run build` both exercise it.
+import {
+  canRebuild, makeViabilitySurvey, surveyViability,
+  type ViabilityProbes, type ViabilitySurvey,
+} from './Viability';
 
 // The placement vocabulary lives in Placement.ts so the runtime import edge
 // only ever points Production -> Placement. Re-exported here because callers
@@ -979,6 +989,8 @@ interface PlayerScratch {
   creditsDisplay: number;
   /** Sim time of the last "insufficient funds" line. */
   lastFundsEva: number;
+  /** Sim time of the last refused sell, so a held-down sell cursor cannot spam. */
+  lastSellRefusal: number;
   /** Number of available cameos last tick, to detect NEW options. */
   availableCount: number;
   /** Seconds until a blocked egress is retried. */
@@ -1030,6 +1042,9 @@ export class ProductionService implements QueueHooks {
   /** Set when a structure completes, so tech is re-derived exactly once. */
   private techDirty = true;
 
+  /** Reused by the sell guard. A sell is rare; the object is still not per-call. */
+  private readonly viability: ViabilitySurvey = makeViabilitySurvey();
+
   constructor(
     readonly world: World,
     readonly channels: Channels,
@@ -1048,6 +1063,7 @@ export class ProductionService implements QueueHooks {
         creditDelta: 0,
         creditsDisplay: 0,
         lastFundsEva: -1e9,
+        lastSellRefusal: -1e9,
         availableCount: 0,
         egressRetry: new Float32Array(BUILD_TAB_COUNT),
       });
@@ -1741,6 +1757,32 @@ export class ProductionService implements QueueHooks {
     if ((st.flags[i] & EntityFlag.Sellable) === 0) return;
 
     const entry = this.entryForSlot(i);
+
+    // THE LAST-WAY-OUT GUARD.
+    //
+    // C&C lets you sell everything and then lose, and that is defensible when
+    // losing is a thing the game actually says. Here it was not: `applySell`
+    // had no notion of "last", `Shell.pollOutcome` declares defeat only at zero
+    // living assets, and a player who sold their only Construction Yard while
+    // owning a harvester was therefore neither able to act nor able to finish.
+    // One misclick on a zero-confirmation, instantaneous, irreversible button
+    // ended the session with no message of any kind.
+    //
+    // So this refuses exactly one sell: the one that leaves the player with no
+    // structure that produces anything AND no construction vehicle to unpack
+    // into one. That is not a strategic choice being taken away — the refund
+    // buys nothing, because there is nothing left to spend it on. Every sell a
+    // player might actually want still goes through, including selling the yard
+    // while a War Factory stands and the classic sell-the-yard-you-already-have
+    // -an-MCV-for play.
+    //
+    // It is enforced HERE, in the sim, so the AI is bound by the identical rule
+    // through the identical `channels.command` path. (It never sells today; if
+    // it learns to, it cannot learn to sell itself into a coma.)
+    if (this.sellWouldStrand(p, i)) {
+      this.refuseSell(p, entry?.name ?? 'that structure');
+      return;
+    }
     // A half-built structure refunds against what it is worth so far, not what
     // it will be worth. Otherwise "place, sell, repeat" prints money.
     const worth = (entry?.cost ?? 0) * (st.buildProgress[i] >= 1 ? 1 : st.buildProgress[i]);
@@ -1765,6 +1807,77 @@ export class ProductionService implements QueueHooks {
     this.world.vfx.play(FxKind.SellPuff, st.posX[i], st.posY[i], st.posZ[i], 0, 1, 0, 1);
     st.markDead(building);
     p.stats.buildingsLost++;
+  }
+
+  /**
+   * Would selling the structure in `slot` TAKE AWAY this player's last way to
+   * build?
+   *
+   * Two surveys, and the first one matters as much as the second. A player who
+   * already cannot build — one Power Plant left standing after the yard was
+   * bombed — is not protected by refusing their sell; they are just told no for
+   * no reason, and the refund is the only thing left that is worth anything to
+   * them. So the guard fires ONLY on the transition: could build, then could
+   * not. (`tests/features.spec.ts`'s sell-survivors case is exactly that world,
+   * and it is right to keep passing.)
+   *
+   * The second survey is taken against the world MINUS the structure, which is
+   * the only version of the question worth asking — at the moment of the check
+   * the yard is obviously still standing.
+   *
+   * `isProducer` is answered from THIS service's catalog rather than the module
+   * singleton, because `setProduction()` may never have been called (headless
+   * tests, the `?shot=` harness) and the default probe would then judge every
+   * building of ours to be a non-producer and refuse every sell in the game.
+   */
+  private sellWouldStrand(p: PlayerState, slot: number): boolean {
+    const probes: ViabilityProbes = { isProducer: this.isProducerProbe };
+    surveyViability(this.world, p.id, this.viability, probes);
+    if (!canRebuild(this.viability)) return false;
+
+    const after: ViabilityProbes = {
+      ignore: this.world.store.handleOf(slot),
+      isProducer: this.isProducerProbe,
+    };
+    surveyViability(this.world, p.id, this.viability, after);
+    return !canRebuild(this.viability);
+  }
+
+  /** `Viability`'s producer test, answered from the catalog we already hold. */
+  private readonly isProducerProbe = (_world: World, slot: number): boolean => {
+    const st = this.world.store;
+    if ((st.flags[slot] & (EntityFlag.IsBuilder | EntityFlag.IsFactory)) !== 0) return true;
+    const entry = this.entryForSlot(slot);
+    return entry !== null && entry.producesTabs.length > 0;
+  };
+
+  /**
+   * Say no, and say why.
+   *
+   * There is no EVA line for this and adding one would mean editing
+   * `core/types.ts` and `ui/Hud.ts`, so the refusal goes out on the HUD's public
+   * toast api, duck-typed against `globalThis.__vmHud` exactly the way
+   * `sim/Superweapons.ts` drives its countdown rows. No HUD (headless, tests,
+   * `?shot=`) means no toast and no throw. The console line is unconditional so
+   * a bug report always has something to quote.
+   */
+  private refuseSell(p: PlayerState, name: string): void {
+    const local = (p.id as number) === (this.world.localPlayer as number);
+    if (local) {
+      hudToast()?.toast(
+        'warn', 'sell-lastbase', 'Cannot sell',
+        `${name} is your last way to build. Selling it would end the match.`,
+      );
+    }
+    const sc = this.scratch[p.id as number];
+    if (sc !== undefined) {
+      if (this.world.time - sc.lastSellRefusal < PRODUCTION_SELL_REFUSAL_LOG_SECONDS) return;
+      sc.lastSellRefusal = this.world.time;
+    }
+    console.info(
+      `[production] sell refused for player ${p.id as number}: "${name}" is their last `
+      + 'structure that can produce, and they hold no construction vehicle',
+    );
   }
 
   /* ======================================================================
@@ -2363,6 +2476,21 @@ export class ProductionService implements QueueHooks {
 interface SurfaceStamper {
   stampSurface(cx: number, cz: number, layer: number, weight: number): void;
   commitSplat(): void;
+}
+
+/** Duck-typed slice of the HUD's public toast api. See `refuseSell`. */
+interface HudToastSink {
+  toast(kind: string, key: string, title: string, detail?: string): void;
+}
+
+/** Never log the same refusal more often than this. Sim seconds. */
+const PRODUCTION_SELL_REFUSAL_LOG_SECONDS = 3;
+
+function hudToast(): HudToastSink | null {
+  const g = globalThis as unknown as Record<string, unknown>;
+  const h = g.__vmHud as Partial<HudToastSink> | undefined;
+  if (h === undefined || h === null) return null;
+  return typeof h.toast === 'function' ? (h as HudToastSink) : null;
 }
 
 const MISS = -2;
