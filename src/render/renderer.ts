@@ -508,16 +508,114 @@ export function applyQualityTier(tier: RenderQualityTier): ReadonlyArray<string>
   return changed;
 }
 
-/** Crude but useful auto-detection for first boot. */
+/**
+ * What kind of GPU are we actually running on?
+ *
+ * `'software'` — SwiftShader/llvmpipe. Anything above `low` is unusable.
+ * `'integrated'` — shares system memory with the CPU. The important case.
+ * `'discrete'` — has its own VRAM.
+ * `'unknown'` — the driver masked the string, which browsers increasingly do.
+ */
+export type GpuClass = 'software' | 'integrated' | 'discrete' | 'unknown';
+
+/**
+ * Classify the GPU from its unmasked renderer string.
+ *
+ * Order matters: "Radeon RX 6800" and "AMD Radeon(TM) Graphics" both contain
+ * "Radeon", and only the second is integrated. Discrete markers are therefore
+ * tested first, and the integrated test is what is LEFT of each vendor.
+ */
+export function classifyGpu(renderer: string): GpuClass {
+  const s = renderer.toLowerCase();
+  if (s.includes('swiftshader') || s.includes('llvmpipe') || s.includes('software')) return 'software';
+
+  // Discrete first — these names are unambiguous.
+  if (/\b(geforce|rtx|gtx|quadro|titan)\b/.test(s)) return 'discrete';
+  if (/radeon\s*(rx|pro)\b|firepro|\bw\d{4}\b/.test(s)) return 'discrete';
+  if (/\barc\b.*\b(a\d{3})\b/.test(s)) return 'discrete';
+
+  // Apple silicon shares memory but its GPU is genuinely capable; treat it as
+  // discrete-class so Macs are not needlessly downgraded.
+  if (/apple\s+m\d/.test(s)) return 'discrete';
+
+  // Everything left that names one of the big three is an iGPU. The reported
+  // string on this project's own dev machine — "AMD Radeon(TM) Graphics" with
+  // no model number — is exactly this case.
+  if (/\b(intel|uhd|hd graphics|iris)\b/.test(s)) return 'integrated';
+  if (/\bradeon\b|\bvega\b|\bamd\b/.test(s)) return 'integrated';
+  if (/\bmali\b|\badreno\b|\bpowervr\b/.test(s)) return 'integrated';
+
+  return 'unknown';
+}
+
+/**
+ * Read the GPU string without owning a renderer yet.
+ *
+ * `detectQualityTier()` runs in `Bootstrap` BEFORE `createRenderer`, so there
+ * is no context to ask. A throwaway one costs a few milliseconds once at boot
+ * and is the only way to make this decision on evidence.
+ */
+export function probeGpuRenderer(): string | null {
+  if (typeof document === 'undefined') return null;
+  let canvas: HTMLCanvasElement | null = null;
+  try {
+    canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const gl = (canvas.getContext('webgl2') ?? canvas.getContext('webgl')) as WebGLRenderingContext | null;
+    if (gl === null) return null;
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = dbg ? (gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) as string) : null;
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return typeof name === 'string' && name.length > 0 ? name : null;
+  } catch {
+    return null;
+  } finally {
+    canvas = null;
+  }
+}
+
+/**
+ * Auto-detection for first boot.
+ *
+ * THIS USED TO IGNORE THE GPU ENTIRELY. It picked a tier from CPU core count
+ * and system RAM, so a 16-core Ryzen with 32 GB and *integrated* Radeon
+ * graphics was handed `ultra` — 4096 shadow maps, 2x pixel ratio, and
+ * FULL-RESOLUTION GTAO at 16 samples. The reported symptom was the obvious one:
+ * 100% GPU and a game that barely moves.
+ *
+ * Core count is a poor proxy for GPU power in general and an actively
+ * BACKWARDS one for integrated graphics, where a strong CPU usually means a
+ * shared, weak GPU competing for the same memory bandwidth. So the GPU is now
+ * the primary signal and the CPU/RAM heuristic only refines within a class.
+ */
 export function detectQualityTier(): RenderQualityTier {
   if (typeof navigator === 'undefined') return 'high';
-  const mem = (navigator as any).deviceMemory as number | undefined;
+
+  const mem = (navigator as { deviceMemory?: number }).deviceMemory;
   const cores = navigator.hardwareConcurrency || 4;
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
   const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
   if (mobile) return 'low';
+
+  const gpu = probeGpuRenderer();
+  const klass: GpuClass = gpu === null ? 'unknown' : classifyGpu(gpu);
+
+  if (klass === 'software') return 'low';
+
+  if (klass === 'integrated') {
+    // An iGPU is fill-rate and bandwidth starved long before it runs out of
+    // triangles. `medium` is the honest ceiling: half-res AO, a 1536 shadow
+    // map, and a 0.9 resolution scale. A generous machine gets the scale back
+    // but NOT full-res AO or a 4096 shadow map, which are the two costs that
+    // actually saturate it.
+    return cores >= 8 && (mem === undefined || mem >= 8) ? 'medium' : 'low';
+  }
+
+  // Discrete, or a masked string we have to guess at. Keep the old CPU/RAM
+  // shape here, where it is a defensible proxy for "is this a modern machine".
   if (cores <= 4 || (mem !== undefined && mem <= 4)) return 'medium';
-  if (cores >= 12 && dpr <= 2 && (mem === undefined || mem >= 8)) return 'ultra';
+  if (klass === 'discrete' && cores >= 12 && dpr <= 2 && (mem === undefined || mem >= 8)) return 'ultra';
   return 'high';
 }
 
