@@ -2120,6 +2120,68 @@ function buildBaseFor(
  *
  * Returns the construction vehicle, or NONE if the store was full.
  */
+/**
+ * Metres of ground reserved around the deployer so its base can actually open.
+ *
+ * REPORTED TWICE. "You spawned me in a place i cannot build" and then, with a
+ * screenshot, "im surrounded by rocks everywhere, i cant build at all."
+ *
+ * THE CAUSE WAS NOT THE TERRAIN AND NOT THE ROTATION. `ScenarioBuilder` has a
+ * reservation list — `block()` / `isBlocked()` — and `scatter()` honours it. But
+ * only THREE things ever reserved anything: `spawnBuilding`, `spawnWreck`, and
+ * scatter against itself. `spawnUnit` and `formation` reserve NOTHING. While
+ * matches opened from a pre-built base that was invisible, because the base's
+ * own footprints reserved the ground. Opening from an MCV replaced those
+ * buildings with units, and units do not reserve — so `b.scatter(..., 140)` on
+ * the line below was free to drop nav-blocking props straight onto the one
+ * square the match cannot start without.
+ *
+ * Measured over 40 seeds x 2 armies per map preset, the share of armies whose
+ * deploy footprint was fouled by a nav-blocking prop:
+ *
+ *     arid 48%   coast 39%   snow 29%   urban 9%   tropical 9%   temperate 6%
+ *
+ * `arid` and `coast` put `rock` at index 0 of their prop list and the pick is
+ * weighted richest-first, so half their props are the 2 m nav blocker; `snow`
+ * adds `boulder` at 3.2 m. A refused deploy means no Construction Yard, which
+ * means no build radius exists at all, which means EVERY placement fails
+ * `OutOfRange` — "i cant build at all" was the literal truth, not hyperbole.
+ *
+ * THE NUMBER. A deployer's yard is 3x3 cells = 12x12 m, whose half-DIAGONAL is
+ * 8.49 m — the corner is the worst case against a circular reservation. Add the
+ * largest blocking prop `scatter` can produce: `boulder` is 3.2 m authored, and
+ * scatter spawns at `scale: rng.range(0.8, 1.35)`, so 4.32 m. That is what a
+ * prop CENTRED outside the circle can still reach inward, because `isBlocked`
+ * tests centres, not discs. 8.49 + 4.32 = 12.81, so 13.
+ *
+ * That 1.35 scale is why this is 13 and not 12. 12 was the first number here,
+ * and an empirical sweep of 480 openings across six presets found zero fouled
+ * deploy sites with it — the worst case simply never came up. The derived bound
+ * in `tests/start-clearance.spec.ts` failed it immediately. A measurement that
+ * happens to pass is not the same as a bound that cannot fail.
+ *
+ * That test also asserts the constant still covers the largest deployer
+ * footprint in the def tables, so a faction that later fields a 4x4 yard fails a
+ * test instead of quietly reintroducing an unplayable opening.
+ */
+export const START_CLEAR_RADIUS = 13;
+
+/**
+ * Reserved around each escort formation's centre.
+ *
+ * The escort is the other half of the first report — "the tanks are on top of
+ * hill ant cant reach me". A boulder dropped into the armour column does not
+ * strand it the way terrain does, but it does wedge it, and #40 (vehicles clash
+ * and stay stuck forever) is an open defect that this would feed. Sized for the
+ * widest formation `startForceFor` produces: 3 columns at 8 m spacing is 16 m
+ * across, so 8 m of half-width plus the 4.32 m scaled prop.
+ *
+ * Deliberately SMALLER than `START_CLEAR_RADIUS`: the escort needs standing room,
+ * not a building footprint. Equal or larger would mean one of the two numbers
+ * had not actually been thought about.
+ */
+export const START_ESCORT_CLEAR_RADIUS = 12.5;
+
 function buildMcvStartFor(b: ScenarioBuilder, owner: PlayerId, spot: StartSpot): EntityId {
   const faction = b.world.player(owner)?.faction ?? Faction.Neutral;
   const force = startForceFor(faction);
@@ -2131,17 +2193,26 @@ function buildMcvStartFor(b: ScenarioBuilder, owner: PlayerId, spot: StartSpot):
 
   const mcv = b.spawnUnit('mcv', owner, spot.x, spot.z, { yawDeg: yaw, stance: Stance.HoldFire });
 
+  // RESERVE THE GROUND. Units do not do this for themselves — see
+  // START_CLEAR_RADIUS — and `b.scatter()` runs after every start is built, so
+  // reserving here is what keeps 140 props off the opening. This must stay
+  // BEFORE the formations so the escort's own reservations cannot be skipped by
+  // an early return added later.
+  b.block(spot.x, spot.z, START_CLEAR_RADIUS);
+
   // The screen: infantry ahead of the vehicle, armour ahead of the infantry, all
   // of it between the MCV and whoever is coming.
   if (force.infantry > 0) {
     b.formation('gi', owner, spot.x + fx * 12, spot.z + fz * 12, force.infantry, {
       yawDeg: yaw, spacing: 4.2, columns: Math.min(force.infantry, 3), jitter: 0.6,
     });
+    b.block(spot.x + fx * 12, spot.z + fz * 12, START_ESCORT_CLEAR_RADIUS);
   }
   if (force.vehicles > 0) {
     b.formation('grizzly', owner, spot.x + fx * 21, spot.z + fz * 21, force.vehicles, {
       yawDeg: yaw, spacing: 8.0, columns: force.vehicles, jitter: 0.5,
     });
+    b.block(spot.x + fx * 21, spot.z + fz * 21, START_ESCORT_CLEAR_RADIUS);
   }
   return mcv;
 }
