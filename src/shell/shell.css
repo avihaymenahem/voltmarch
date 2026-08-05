@@ -12,10 +12,31 @@
  *   type      condensed, uppercase, wide tracking, tabular numerals
  *   icons     inline SVG on a 24 grid, 1.7px stroke, currentColor
  *
- * EVERYTHING IS SCOPED TO `.vm-shell`
- * The HUD owns `--ra-*` and `.ra-*`; this file owns `--vm-*` and `.vm-*`, so
- * the two can be mounted at once (pause menu over a live HUD) with no
- * possibility of a cascade collision.
+ * EVERY SELECTOR IN THIS FILE IS ROOTED AT `.vm-shell`. NO EXCEPTIONS.
+ * ---------------------------------------------------------------------------
+ * `Shell.ts` builds `<div class="vm-shell">` and every screen the front end
+ * ever shows lives inside it. Nothing else in the product does, so a rooted
+ * selector cannot reach anything but the menus.
+ *
+ * The paragraph that used to sit here claimed this was already true, and for a
+ * long time it was false. `--vm-*` and `.vm-*` are NOT this file's private
+ * namespace — `src/ui/hud.css` uses the same prefix for the in-match HUD, and
+ * the two stylesheets are mounted together for the whole of every match. Ten
+ * class names were shared: `.vm-panel`, `.vm-card`, `.vm-card-name`, `.vm-tab`,
+ * `.vm-tabs`, `.vm-stat`, `.vm-stat-value`, `.vm-num`, `.vm-icon`,
+ * `.vm-pause-obj`. Specificity never entered into it — for any property the
+ * shell declared and the HUD did not, the shell's rule was the ONLY rule, so it
+ * simply applied.
+ *
+ * That shipped: a bare `.vm-stat { flex-direction: column; padding: 16px 18px }`
+ * for the post-match summary board turned every selection stat chip in the HUD
+ * into three stacked rows inside a 19-unit strip and pushed the values through
+ * the bottom of the panel. The screenshot harness could not see it, because
+ * `?shot=` never loads this chunk.
+ *
+ * `tests/shell-scope.spec.ts` now fails on the first unrooted selector added
+ * here. If you need a rule to reach outside the shell, it does not belong in
+ * this file.
  *
  * NOTHING HERE ANIMATES A LAYOUT PROPERTY. Every transition is on `opacity`,
  * `transform`, `color`, `background-color` or `border-color`, so opening a
@@ -76,7 +97,7 @@
 
 /* One screen at a time. Each screen is a full-bleed layer; the shell fades
    between them by toggling `is-out`. */
-.vm-screen {
+.vm-shell .vm-screen {
   position: absolute;
   inset: 0;
   pointer-events: auto;
@@ -85,7 +106,7 @@
   transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.vm-screen.is-out {
+.vm-shell .vm-screen.is-out {
   opacity: 0;
   pointer-events: none;
 }
@@ -96,7 +117,7 @@
    whole viewport, over a live WebGL canvas — so it is also the most likely
    thing to flash black on macOS. The gate at the foot of this file drops the
    blur and darkens the scrim to compensate. */
-.vm-screen.is-modal {
+.vm-shell .vm-screen.is-modal {
   background: radial-gradient(ellipse 120% 100% at 50% 50%,
     rgba(4, 7, 11, 0.62) 0%, rgba(3, 5, 9, 0.86) 100%);
   backdrop-filter: var(--vm-blur-modal);
@@ -107,7 +128,7 @@
  * 1. PANEL — the one surface primitive
  * ========================================================================== */
 
-.vm-panel {
+.vm-shell .vm-panel {
   position: relative;
   background: var(--vm-glass);
   backdrop-filter: var(--vm-blur);
@@ -120,7 +141,7 @@
 
 /* The hairline. A ::before with the identical clip-path is the only way to get
    a 1px edge on a notched shape without a border-image or an SVG mask. */
-.vm-panel::before {
+.vm-shell .vm-panel::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -141,7 +162,7 @@
   pointer-events: none;
 }
 
-.vm-panel.is-flat {
+.vm-shell .vm-panel.is-flat {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   background: var(--vm-glass-soft);
@@ -151,21 +172,21 @@
  * 2. TYPE
  * ========================================================================== */
 
-.vm-title {
+.vm-shell .vm-title {
   margin: 0;
   line-height: 0;
 }
 
 /* The supplied lockup. Its cyan is a near-match for --vm-accent, so the halo
    extends the glow already painted into the artwork instead of tinting it. */
-.vm-logo {
+.vm-shell .vm-logo {
   display: block;
   width: clamp(260px, 42vw, 620px);
   height: auto;
   filter: drop-shadow(0 0 38px rgba(53, 200, 240, 0.32));
 }
 
-.vm-subtitle {
+.vm-shell .vm-subtitle {
   margin: 0;
   font-size: 12px;
   font-weight: 600;
@@ -175,7 +196,7 @@
   color: var(--vm-text-faint);
 }
 
-.vm-h2 {
+.vm-shell .vm-h2 {
   margin: 0;
   font-size: 14px;
   font-weight: 700;
@@ -185,7 +206,7 @@
   color: var(--vm-text-dim);
 }
 
-.vm-h3 {
+.vm-shell .vm-h3 {
   margin: 0;
   font-size: 11px;
   font-weight: 700;
@@ -195,7 +216,7 @@
   color: var(--vm-text-faint);
 }
 
-.vm-body {
+.vm-shell .vm-body {
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
@@ -203,20 +224,20 @@
   color: var(--vm-text-dim);
 }
 
-.vm-num {
+.vm-shell .vm-num {
   font-variant-numeric: tabular-nums;
   font-feature-settings: 'tnum' 1;
 }
 
 /* A 1px accent rule. Used once per panel heading, never decoratively. */
-.vm-rule {
+.vm-shell .vm-rule {
   height: 1px;
   background: var(--vm-line);
   border: 0;
   margin: 0;
 }
 
-.vm-rule.is-accent {
+.vm-shell .vm-rule.is-accent {
   background: linear-gradient(90deg, var(--vm-accent) 0 42px, var(--vm-line) 42px);
 }
 
@@ -224,7 +245,7 @@
  * 3. BUTTONS
  * ========================================================================== */
 
-.vm-btn {
+.vm-shell .vm-btn {
   position: relative;
   display: flex;
   align-items: center;
@@ -249,7 +270,7 @@
 }
 
 /* The left accent bar: 2px, scales in on hover/focus. transform only. */
-.vm-btn::after {
+.vm-shell .vm-btn::after {
   content: '';
   position: absolute;
   left: 0;
@@ -262,55 +283,55 @@
   transition: transform 140ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.vm-btn:hover,
-.vm-btn:focus-visible,
-.vm-btn.is-focus {
+.vm-shell .vm-btn:hover,
+.vm-shell .vm-btn:focus-visible,
+.vm-shell .vm-btn.is-focus {
   color: var(--vm-text);
   background: rgba(53, 200, 240, 0.09);
 }
 
-.vm-btn:hover::after,
-.vm-btn:focus-visible::after,
-.vm-btn.is-focus::after {
+.vm-shell .vm-btn:hover::after,
+.vm-shell .vm-btn:focus-visible::after,
+.vm-shell .vm-btn.is-focus::after {
   transform: scaleY(1);
 }
 
-.vm-btn:active {
+.vm-shell .vm-btn:active {
   background: rgba(53, 200, 240, 0.16);
 }
 
-.vm-btn[disabled] {
+.vm-shell .vm-btn[disabled] {
   color: var(--vm-text-faint);
   background: rgba(255, 255, 255, 0.02);
   cursor: default;
 }
 
-.vm-btn[disabled]::after {
+.vm-shell .vm-btn[disabled]::after {
   display: none;
 }
 
-.vm-btn .vm-icon {
+.vm-shell .vm-btn .vm-icon {
   flex: 0 0 auto;
   color: var(--vm-accent-dim);
   transition: color 120ms linear;
 }
 
-.vm-btn:hover .vm-icon,
-.vm-btn:focus-visible .vm-icon,
-.vm-btn.is-focus .vm-icon {
+.vm-shell .vm-btn:hover .vm-icon,
+.vm-shell .vm-btn:focus-visible .vm-icon,
+.vm-shell .vm-btn.is-focus .vm-icon {
   color: var(--vm-accent);
 }
 
-.vm-btn[disabled] .vm-icon {
+.vm-shell .vm-btn[disabled] .vm-icon {
   color: var(--vm-text-faint);
 }
 
-.vm-btn-label {
+.vm-shell .vm-btn-label {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.vm-btn-hint {
+.vm-shell .vm-btn-hint {
   flex: 0 0 auto;
   font-size: 11px;
   letter-spacing: 0.16em;
@@ -318,7 +339,7 @@
 }
 
 /* Primary: the one action the screen exists for. */
-.vm-btn.is-primary {
+.vm-shell .vm-btn.is-primary {
   background: rgba(53, 200, 240, 0.14);
   color: var(--vm-text);
   justify-content: center;
@@ -326,7 +347,7 @@
   letter-spacing: 0.26em;
 }
 
-.vm-btn.is-primary::after {
+.vm-shell .vm-btn.is-primary::after {
   width: 100%;
   height: 2px;
   top: auto;
@@ -334,32 +355,32 @@
   transform: scaleX(1);
 }
 
-.vm-btn.is-primary:hover,
-.vm-btn.is-primary:focus-visible,
-.vm-btn.is-primary.is-focus {
+.vm-shell .vm-btn.is-primary:hover,
+.vm-shell .vm-btn.is-primary:focus-visible,
+.vm-shell .vm-btn.is-primary.is-focus {
   background: rgba(53, 200, 240, 0.24);
 }
 
-.vm-btn.is-danger:hover,
-.vm-btn.is-danger:focus-visible,
-.vm-btn.is-danger.is-focus {
+.vm-shell .vm-btn.is-danger:hover,
+.vm-shell .vm-btn.is-danger:focus-visible,
+.vm-shell .vm-btn.is-danger.is-focus {
   background: rgba(240, 85, 58, 0.12);
 }
 
-.vm-btn.is-danger:hover::after,
-.vm-btn.is-danger:focus-visible::after,
-.vm-btn.is-danger.is-focus::after {
+.vm-shell .vm-btn.is-danger:hover::after,
+.vm-shell .vm-btn.is-danger:focus-visible::after,
+.vm-shell .vm-btn.is-danger.is-focus::after {
   background: var(--vm-danger);
 }
 
-.vm-btn.is-danger:hover .vm-icon,
-.vm-btn.is-danger:focus-visible .vm-icon,
-.vm-btn.is-danger.is-focus .vm-icon {
+.vm-shell .vm-btn.is-danger:hover .vm-icon,
+.vm-shell .vm-btn.is-danger:focus-visible .vm-icon,
+.vm-shell .vm-btn.is-danger.is-focus .vm-icon {
   color: var(--vm-danger);
 }
 
 /* Compact square button — back arrows, steppers. */
-.vm-btn.is-icon {
+.vm-shell .vm-btn.is-icon {
   width: 34px;
   height: 34px;
   padding: 0;
@@ -367,7 +388,7 @@
   flex: 0 0 auto;
 }
 
-.vm-btn.is-icon .vm-btn-label {
+.vm-shell .vm-btn.is-icon .vm-btn-label {
   display: none;
 }
 
@@ -375,7 +396,7 @@
  * 4. CONTROLS — rows, toggles, sliders, choosers
  * ========================================================================== */
 
-.vm-row {
+.vm-shell .vm-row {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) minmax(180px, 1.15fr);
   align-items: center;
@@ -384,15 +405,15 @@
   border-bottom: 1px solid var(--vm-line-soft);
 }
 
-.vm-row:last-child {
+.vm-shell .vm-row:last-child {
   border-bottom: 0;
 }
 
-.vm-row.is-focus {
+.vm-shell .vm-row.is-focus {
   background: rgba(53, 200, 240, 0.07);
 }
 
-.vm-row-label {
+.vm-shell .vm-row-label {
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.12em;
@@ -400,11 +421,11 @@
   color: var(--vm-text-dim);
 }
 
-.vm-row.is-focus .vm-row-label {
+.vm-shell .vm-row.is-focus .vm-row-label {
   color: var(--vm-text);
 }
 
-.vm-row-note {
+.vm-shell .vm-row-note {
   display: block;
   margin-top: 2px;
   font-size: 11px;
@@ -414,7 +435,7 @@
   color: var(--vm-text-faint);
 }
 
-.vm-row-control {
+.vm-shell .vm-row-control {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -423,7 +444,7 @@
 
 /* -- toggle ---------------------------------------------------------------- */
 
-.vm-toggle {
+.vm-shell .vm-toggle {
   position: relative;
   width: 46px;
   height: 22px;
@@ -436,7 +457,7 @@
   transition: background-color 140ms linear, border-color 140ms linear;
 }
 
-.vm-toggle::after {
+.vm-shell .vm-toggle::after {
   content: '';
   position: absolute;
   left: 3px;
@@ -447,24 +468,24 @@
   transition: transform 140ms cubic-bezier(0.4, 0, 0.2, 1), background-color 140ms linear;
 }
 
-.vm-toggle[aria-checked='true'] {
+.vm-shell .vm-toggle[aria-checked='true'] {
   background: rgba(53, 200, 240, 0.16);
   border-color: var(--vm-accent-dim);
 }
 
-.vm-toggle[aria-checked='true']::after {
+.vm-shell .vm-toggle[aria-checked='true']::after {
   transform: translateX(22px);
   background: var(--vm-accent);
 }
 
-.vm-toggle:focus-visible,
-.vm-toggle.is-focus {
+.vm-shell .vm-toggle:focus-visible,
+.vm-shell .vm-toggle.is-focus {
   border-color: var(--vm-accent);
 }
 
 /* -- slider ---------------------------------------------------------------- */
 
-.vm-slider {
+.vm-shell .vm-slider {
   flex: 1 1 auto;
   min-width: 90px;
   height: 22px;
@@ -474,7 +495,7 @@
   cursor: pointer;
 }
 
-.vm-slider input {
+.vm-shell .vm-slider input {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
@@ -485,7 +506,7 @@
   cursor: pointer;
 }
 
-.vm-slider input::-webkit-slider-thumb {
+.vm-shell .vm-slider input::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
   width: 10px;
@@ -496,7 +517,7 @@
   border-radius: 0;
 }
 
-.vm-slider input::-moz-range-thumb {
+.vm-shell .vm-slider input::-moz-range-thumb {
   width: 10px;
   height: 18px;
   background: var(--vm-accent);
@@ -505,11 +526,11 @@
   border-radius: 0;
 }
 
-.vm-slider input:focus-visible::-webkit-slider-thumb {
+.vm-shell .vm-slider input:focus-visible::-webkit-slider-thumb {
   box-shadow: 0 0 0 3px var(--vm-accent-glow);
 }
 
-.vm-value {
+.vm-shell .vm-value {
   flex: 0 0 auto;
   min-width: 54px;
   text-align: right;
@@ -522,7 +543,7 @@
 
 /* -- chooser (a horizontal cycler: ‹ VALUE › ) ----------------------------- */
 
-.vm-chooser {
+.vm-shell .vm-chooser {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -530,7 +551,7 @@
   justify-content: flex-end;
 }
 
-.vm-chooser-step {
+.vm-shell .vm-chooser-step {
   width: 26px;
   height: 26px;
   flex: 0 0 auto;
@@ -545,11 +566,11 @@
   transition: color 120ms linear;
 }
 
-.vm-chooser-step:hover {
+.vm-shell .vm-chooser-step:hover {
   color: var(--vm-accent);
 }
 
-.vm-chooser-value {
+.vm-shell .vm-chooser-value {
   flex: 1 1 auto;
   min-width: 120px;
   padding: 5px 10px;
@@ -564,21 +585,21 @@
   clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
 }
 
-.vm-row.is-focus .vm-chooser-value {
+.vm-shell .vm-row.is-focus .vm-chooser-value {
   border-color: var(--vm-accent-dim);
   color: var(--vm-text);
 }
 
 /* -- tabs ------------------------------------------------------------------ */
 
-.vm-tabs {
+.vm-shell .vm-tabs {
   display: flex;
   gap: 2px;
   padding: 0 18px;
   border-bottom: 1px solid var(--vm-line);
 }
 
-.vm-tab {
+.vm-shell .vm-tab {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -596,7 +617,7 @@
   transition: color 120ms linear;
 }
 
-.vm-tab::after {
+.vm-shell .vm-tab::after {
   content: '';
   position: absolute;
   left: 10px;
@@ -608,19 +629,19 @@
   transition: transform 140ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.vm-tab:hover {
+.vm-shell .vm-tab:hover {
   color: var(--vm-text-dim);
 }
 
-.vm-tab[aria-selected='true'] {
+.vm-shell .vm-tab[aria-selected='true'] {
   color: var(--vm-text);
 }
 
-.vm-tab[aria-selected='true']::after {
+.vm-shell .vm-tab[aria-selected='true']::after {
   transform: scaleX(1);
 }
 
-.vm-tab .vm-icon {
+.vm-shell .vm-tab .vm-icon {
   color: currentColor;
 }
 
@@ -628,14 +649,14 @@
  * 5. MAIN MENU
  * ========================================================================== */
 
-.vm-menu {
+.vm-shell .vm-menu {
   align-items: stretch;
   justify-content: flex-start;
 }
 
 /* A vertical wash on the left third so the title always has contrast, whatever
    the live 3D behind it is doing. */
-.vm-menu::before {
+.vm-shell .vm-menu::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -647,7 +668,7 @@
   pointer-events: none;
 }
 
-.vm-menu-inner {
+.vm-shell .vm-menu-inner {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -658,19 +679,19 @@
   padding: 48px clamp(28px, 4vw, 64px);
 }
 
-.vm-menu-brand {
+.vm-shell .vm-menu-brand {
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
 
-.vm-menu-nav {
+.vm-shell .vm-menu-nav {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.vm-menu-foot {
+.vm-shell .vm-menu-foot {
   position: absolute;
   left: 0;
   right: 0;
@@ -687,11 +708,11 @@
   pointer-events: none;
 }
 
-.vm-menu-foot .vm-chip {
+.vm-shell .vm-menu-foot .vm-chip {
   pointer-events: auto;
 }
 
-.vm-chip {
+.vm-shell .vm-chip {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -706,7 +727,7 @@
   clip-path: polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px);
 }
 
-.vm-chip .vm-icon {
+.vm-shell .vm-chip .vm-icon {
   color: var(--vm-accent-dim);
 }
 
@@ -714,7 +735,7 @@
  * 6. FORM SCREENS (setup, settings, end)
  * ========================================================================== */
 
-.vm-page {
+.vm-shell .vm-page {
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -722,7 +743,7 @@
   gap: 0;
 }
 
-.vm-page-panel {
+.vm-shell .vm-page-panel {
   display: flex;
   flex-direction: column;
   width: min(1120px, 96vw);
@@ -730,7 +751,7 @@
   overflow: hidden;
 }
 
-.vm-page-head {
+.vm-shell .vm-page-head {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -738,11 +759,11 @@
   border-bottom: 1px solid var(--vm-line);
 }
 
-.vm-page-head .vm-h2 {
+.vm-shell .vm-page-head .vm-h2 {
   flex: 1 1 auto;
 }
 
-.vm-page-body {
+.vm-shell .vm-page-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -751,15 +772,15 @@
   scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
 }
 
-.vm-page-body::-webkit-scrollbar {
+.vm-shell .vm-page-body::-webkit-scrollbar {
   width: 6px;
 }
 
-.vm-page-body::-webkit-scrollbar-thumb {
+.vm-shell .vm-page-body::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.16);
 }
 
-.vm-page-foot {
+.vm-shell .vm-page-foot {
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -768,60 +789,60 @@
   border-top: 1px solid var(--vm-line);
 }
 
-.vm-page-foot .vm-spacer {
+.vm-shell .vm-page-foot .vm-spacer {
   flex: 1 1 auto;
 }
 
-.vm-page-foot .vm-btn {
+.vm-shell .vm-page-foot .vm-btn {
   width: auto;
   min-width: 150px;
 }
 
-.vm-section {
+.vm-shell .vm-section {
   padding: 16px 0 6px;
 }
 
-.vm-section > .vm-h3 {
+.vm-shell .vm-section > .vm-h3 {
   padding: 0 18px 8px;
 }
 
 /* -- setup layout ---------------------------------------------------------- */
 
-.vm-setup {
+.vm-shell .vm-setup {
   display: grid;
   grid-template-columns: 1.05fr 1fr;
   gap: 0;
   align-items: stretch;
 }
 
-.vm-setup-col {
+.vm-shell .vm-setup-col {
   min-width: 0;
   padding-bottom: 10px;
 }
 
-.vm-setup-col + .vm-setup-col {
+.vm-shell .vm-setup-col + .vm-setup-col {
   border-left: 1px solid var(--vm-line);
 }
 
 @media (max-width: 900px) {
-  .vm-setup {
+  .vm-shell .vm-setup {
     grid-template-columns: 1fr;
   }
-  .vm-setup-col + .vm-setup-col {
+  .vm-shell .vm-setup-col + .vm-setup-col {
     border-left: 0;
     border-top: 1px solid var(--vm-line);
   }
 }
 
 /* Faction cards. */
-.vm-cards {
+.vm-shell .vm-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
   padding: 0 18px 12px;
 }
 
-.vm-card {
+.vm-shell .vm-card {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -837,26 +858,26 @@
   transition: border-color 140ms linear, background-color 140ms linear, color 140ms linear;
 }
 
-.vm-card:hover,
-.vm-card.is-focus {
+.vm-shell .vm-card:hover,
+.vm-shell .vm-card.is-focus {
   color: var(--vm-text);
   border-color: rgba(255, 255, 255, 0.22);
 }
 
-.vm-card[aria-pressed='true'] {
+.vm-shell .vm-card[aria-pressed='true'] {
   color: var(--vm-text);
   border-color: var(--vm-accent-dim);
   background: rgba(53, 200, 240, 0.1);
 }
 
-.vm-card-name {
+.vm-shell .vm-card-name {
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
-.vm-card-blurb {
+.vm-shell .vm-card-blurb {
   font-size: 11px;
   letter-spacing: 0.03em;
   line-height: 1.45;
@@ -865,7 +886,7 @@
 }
 
 /* The 4px faction stripe. The only place a faction colour appears in chrome. */
-.vm-card-stripe {
+.vm-shell .vm-card-stripe {
   position: absolute;
   top: 8px;
   right: 0;
@@ -875,14 +896,14 @@
 }
 
 /* Map list. */
-.vm-maplist {
+.vm-shell .vm-maplist {
   display: flex;
   flex-direction: column;
   gap: 2px;
   padding: 0 18px 12px;
 }
 
-.vm-mapitem {
+.vm-shell .vm-mapitem {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -896,36 +917,36 @@
   transition: border-color 140ms linear, background-color 140ms linear, color 140ms linear;
 }
 
-.vm-mapitem:hover,
-.vm-mapitem.is-focus {
+.vm-shell .vm-mapitem:hover,
+.vm-shell .vm-mapitem.is-focus {
   color: var(--vm-text);
   border-color: rgba(255, 255, 255, 0.16);
 }
 
-.vm-mapitem[aria-pressed='true'] {
+.vm-shell .vm-mapitem[aria-pressed='true'] {
   color: var(--vm-text);
   border-color: var(--vm-accent-dim);
   background: rgba(53, 200, 240, 0.1);
 }
 
-.vm-mapitem .vm-icon {
+.vm-shell .vm-mapitem .vm-icon {
   color: var(--vm-accent-dim);
   flex: 0 0 auto;
 }
 
-.vm-mapitem-text {
+.vm-shell .vm-mapitem-text {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.vm-mapitem-name {
+.vm-shell .vm-mapitem-name {
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.vm-mapitem-blurb {
+.vm-shell .vm-mapitem-blurb {
   font-size: 11px;
   letter-spacing: 0.02em;
   color: var(--vm-text-faint);
@@ -935,7 +956,7 @@
   text-overflow: ellipsis;
 }
 
-.vm-mapitem-tag {
+.vm-shell .vm-mapitem-tag {
   flex: 0 0 auto;
   font-size: 10px;
   letter-spacing: 0.18em;
@@ -947,7 +968,7 @@
  * 7. KEYBINDS
  * ========================================================================== */
 
-.vm-bind {
+.vm-shell .vm-bind {
   min-width: 150px;
   padding: 6px 12px;
   border: 1px solid var(--vm-line);
@@ -964,23 +985,23 @@
   transition: border-color 140ms linear, color 140ms linear, background-color 140ms linear;
 }
 
-.vm-bind:hover,
-.vm-bind.is-focus {
+.vm-shell .vm-bind:hover,
+.vm-shell .vm-bind.is-focus {
   border-color: var(--vm-accent-dim);
 }
 
-.vm-bind.is-listening {
+.vm-shell .vm-bind.is-listening {
   border-color: var(--vm-accent);
   background: rgba(53, 200, 240, 0.16);
   color: var(--vm-accent);
 }
 
-.vm-bind.is-conflict {
+.vm-shell .vm-bind.is-conflict {
   border-color: var(--vm-danger);
   color: var(--vm-danger);
 }
 
-.vm-conflict-note {
+.vm-shell .vm-conflict-note {
   padding: 10px 18px;
   font-size: 12px;
   letter-spacing: 0.08em;
@@ -991,17 +1012,17 @@
  * 8. PAUSE
  * ========================================================================== */
 
-.vm-pause {
+.vm-shell .vm-pause {
   align-items: center;
   justify-content: center;
 }
 
-.vm-pause-panel {
+.vm-shell .vm-pause-panel {
   width: min(400px, 88vw);
   padding: 0 0 12px;
 }
 
-.vm-pause-head {
+.vm-shell .vm-pause-head {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1009,14 +1030,14 @@
   border-bottom: 1px solid var(--vm-line);
 }
 
-.vm-pause-nav {
+.vm-shell .vm-pause-nav {
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 14px 12px 4px;
 }
 
-.vm-pause-stats {
+.vm-shell .vm-pause-stats {
   display: flex;
   gap: 20px;
   padding: 10px 22px 4px;
@@ -1030,16 +1051,16 @@
  * 9. END SCREEN
  * ========================================================================== */
 
-.vm-end {
+.vm-shell .vm-end {
   align-items: center;
   justify-content: center;
 }
 
-.vm-end-panel {
+.vm-shell .vm-end-panel {
   width: min(760px, 94vw);
 }
 
-.vm-end-head {
+.vm-shell .vm-end-head {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1047,7 +1068,7 @@
   border-bottom: 1px solid var(--vm-line);
 }
 
-.vm-verdict {
+.vm-shell .vm-verdict {
   margin: 0;
   font-size: clamp(34px, 5vw, 62px);
   font-weight: 700;
@@ -1057,15 +1078,15 @@
   text-transform: uppercase;
 }
 
-.vm-verdict.is-win {
+.vm-shell .vm-verdict.is-win {
   color: var(--vm-accent);
 }
 
-.vm-verdict.is-loss {
+.vm-shell .vm-verdict.is-loss {
   color: var(--vm-danger);
 }
 
-.vm-stats {
+.vm-shell .vm-stats {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 1px;
@@ -1073,7 +1094,7 @@
   border-bottom: 1px solid var(--vm-line);
 }
 
-.vm-stat {
+.vm-shell .vm-stat {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1081,7 +1102,7 @@
   background: rgba(9, 13, 20, 0.55);
 }
 
-.vm-stat-label {
+.vm-shell .vm-stat-label {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.22em;
@@ -1089,7 +1110,7 @@
   color: var(--vm-text-faint);
 }
 
-.vm-stat-value {
+.vm-shell .vm-stat-value {
   font-size: 26px;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -1097,7 +1118,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-.vm-stat.is-accent .vm-stat-value {
+.vm-shell .vm-stat.is-accent .vm-stat-value {
   color: var(--vm-accent);
 }
 
@@ -1105,14 +1126,14 @@
  * 10. LOADING
  * ========================================================================== */
 
-.vm-load {
+.vm-shell .vm-load {
   align-items: center;
   justify-content: center;
   background: radial-gradient(ellipse 120% 90% at 50% 45%,
     #0b1119 0%, #060a0f 55%, #03050a 100%);
 }
 
-.vm-load-inner {
+.vm-shell .vm-load-inner {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1120,7 +1141,7 @@
   width: min(620px, 86vw);
 }
 
-.vm-load-bar {
+.vm-shell .vm-load-bar {
   position: relative;
   width: 100%;
   height: 3px;
@@ -1128,7 +1149,7 @@
   overflow: hidden;
 }
 
-.vm-load-bar::after {
+.vm-shell .vm-load-bar::after {
   content: '';
   position: absolute;
   left: -34%;
@@ -1144,7 +1165,7 @@
   100% { transform: translateX(394%); }
 }
 
-.vm-load-status {
+.vm-shell .vm-load-status {
   font-size: 12px;
   letter-spacing: 0.34em;
   text-indent: 0.34em;
@@ -1153,7 +1174,7 @@
   min-height: 1.2em;
 }
 
-.vm-load-tip {
+.vm-shell .vm-load-tip {
   max-width: 46em;
   text-align: center;
   font-size: 13px;
@@ -1162,7 +1183,7 @@
   color: var(--vm-text-dim);
 }
 
-.vm-load-meta {
+.vm-shell .vm-load-meta {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
@@ -1173,20 +1194,20 @@
  * 11. CREDITS
  * ========================================================================== */
 
-.vm-credits {
+.vm-shell .vm-credits {
   display: flex;
   flex-direction: column;
   gap: 18px;
   padding: 22px 26px 26px;
 }
 
-.vm-credits-group {
+.vm-shell .vm-credits-group {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.vm-credits-list {
+.vm-shell .vm-credits-list {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -1212,7 +1233,7 @@
  * has to be scannable at arm's length, and shape alone cannot do it.
  * ========================================================================== */
 
-.vm-missions {
+.vm-shell .vm-missions {
   position: absolute;
   inset: 0;
   display: flex;
@@ -1221,12 +1242,12 @@
   padding: clamp(16px, 3vh, 40px) clamp(16px, 4vw, 56px);
 }
 
-.vm-missions-panel {
+.vm-shell .vm-missions-panel {
   width: min(1180px, 96vw);
   max-height: 94vh;
 }
 
-.vm-missions-summary {
+.vm-shell .vm-missions-summary {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.2em;
@@ -1237,7 +1258,7 @@
 
 /* -- category rail -------------------------------------------------------- */
 
-.vm-missions-rail {
+.vm-shell .vm-missions-rail {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -1245,7 +1266,7 @@
   border-bottom: 1px solid var(--vm-line);
 }
 
-.vm-missions-jump {
+.vm-shell .vm-missions-jump {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1263,56 +1284,56 @@
   transition: border-color 140ms linear, color 140ms linear;
 }
 
-.vm-missions-jump:hover,
-.vm-missions-jump.is-focus {
+.vm-shell .vm-missions-jump:hover,
+.vm-shell .vm-missions-jump.is-focus {
   border-color: var(--vm-accent-dim);
   color: var(--vm-text);
 }
 
-.vm-missions-jump .vm-icon { flex: 0 0 auto; }
+.vm-shell .vm-missions-jump .vm-icon { flex: 0 0 auto; }
 
-.vm-missions-body { scroll-behavior: smooth; }
+.vm-shell .vm-missions-body { scroll-behavior: smooth; }
 
 /* -- what you already have ------------------------------------------------ */
 
-.vm-missions-earned {
+.vm-shell .vm-missions-earned {
   padding: 16px 18px 14px;
   border-bottom: 1px solid var(--vm-line);
 }
 
-.vm-missions-chips {
+.vm-shell .vm-missions-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   padding-top: 8px;
 }
 
-.vm-missions-earned .vm-chip {
+.vm-shell .vm-missions-earned .vm-chip {
   padding: 4px 10px;
   font-size: 11px;
   letter-spacing: 0.1em;
   color: var(--vm-text);
 }
 
-.vm-missions-earned .vm-chip .vm-icon { color: var(--vm-accent); }
+.vm-shell .vm-missions-earned .vm-chip .vm-icon { color: var(--vm-accent); }
 
 /* -- sections ------------------------------------------------------------- */
 
-.vm-missions-section { padding: 18px 0 6px; }
+.vm-shell .vm-missions-section { padding: 18px 0 6px; }
 
-.vm-missions-cat {
+.vm-shell .vm-missions-cat {
   display: flex;
   align-items: center;
   gap: 9px;
   padding: 0 18px 4px;
 }
 
-.vm-missions-cat .vm-icon { color: var(--vm-accent-dim); }
-.vm-missions-cat .vm-h3 { margin: 0; }
+.vm-shell .vm-missions-cat .vm-icon { color: var(--vm-accent-dim); }
+.vm-shell .vm-missions-cat .vm-h3 { margin: 0; }
 
-.vm-missions-blurb { padding: 0 18px 12px; }
+.vm-shell .vm-missions-blurb { padding: 0 18px 12px; }
 
-.vm-missions-empty {
+.vm-shell .vm-missions-empty {
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -1321,11 +1342,11 @@
   align-items: center;
 }
 
-.vm-missions-empty .vm-body { max-width: 52em; }
+.vm-shell .vm-missions-empty .vm-body { max-width: 52em; }
 
 /* -- a chain -------------------------------------------------------------- */
 
-.vm-chain {
+.vm-shell .vm-chain {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1334,7 +1355,7 @@
 
 /* -- one mission ---------------------------------------------------------- */
 
-.vm-mission {
+.vm-shell .vm-mission {
   position: relative;
   display: flex;
   flex-direction: column;
@@ -1352,13 +1373,13 @@
 /* Depth is the chain, drawn as an indent plus a rail stub rather than as a
    tree of connectors: a connector grid that has to survive wrapping text is a
    week of CSS for something the indent already says. */
-.vm-mission[data-depth='1'] { margin-left: 26px; }
-.vm-mission[data-depth='2'] { margin-left: 52px; }
-.vm-mission[data-depth='3'] { margin-left: 78px; }
+.vm-shell .vm-mission[data-depth='1'] { margin-left: 26px; }
+.vm-shell .vm-mission[data-depth='2'] { margin-left: 52px; }
+.vm-shell .vm-mission[data-depth='3'] { margin-left: 78px; }
 
-.vm-mission[data-depth='1']::before,
-.vm-mission[data-depth='2']::before,
-.vm-mission[data-depth='3']::before {
+.vm-shell .vm-mission[data-depth='1']::before,
+.vm-shell .vm-mission[data-depth='2']::before,
+.vm-shell .vm-mission[data-depth='3']::before {
   content: '';
   position: absolute;
   left: -18px;
@@ -1368,18 +1389,18 @@
   background: var(--vm-line);
 }
 
-.vm-mission.is-active { border-left-color: var(--vm-accent-dim); }
-.vm-mission.is-complete { border-left-color: #4fd97f; }
-.vm-mission.is-locked { opacity: 0.62; }
+.vm-shell .vm-mission.is-active { border-left-color: var(--vm-accent-dim); }
+.vm-shell .vm-mission.is-complete { border-left-color: #4fd97f; }
+.vm-shell .vm-mission.is-locked { opacity: 0.62; }
 
-.vm-mission-head {
+.vm-shell .vm-mission-head {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
 
-.vm-mission-title {
+.vm-shell .vm-mission-title {
   margin: 0;
   flex: 1 1 auto;
   min-width: 0;
@@ -1390,22 +1411,22 @@
   color: var(--vm-text);
 }
 
-.vm-mission-diff {
+.vm-shell .vm-mission-diff {
   display: inline-flex;
   gap: 3px;
   flex: 0 0 auto;
 }
 
-.vm-mission-pip {
+.vm-shell .vm-mission-pip {
   width: 5px;
   height: 5px;
   background: var(--vm-line);
 }
 
-.vm-mission-pip.is-on { background: var(--vm-accent-dim); }
+.vm-shell .vm-mission-pip.is-on { background: var(--vm-accent-dim); }
 
-.vm-mission-scope,
-.vm-mission-state {
+.vm-shell .vm-mission-scope,
+.vm-shell .vm-mission-state {
   flex: 0 0 auto;
   padding: 2px 7px;
   border: 1px solid var(--vm-line);
@@ -1417,17 +1438,17 @@
   white-space: nowrap;
 }
 
-.vm-mission-state.is-active {
+.vm-shell .vm-mission-state.is-active {
   border-color: var(--vm-accent-dim);
   color: var(--vm-accent);
 }
 
-.vm-mission-state.is-complete {
+.vm-shell .vm-mission-state.is-complete {
   border-color: rgba(79, 217, 127, 0.5);
   color: #4fd97f;
 }
 
-.vm-mission-desc {
+.vm-shell .vm-mission-desc {
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
@@ -1435,8 +1456,8 @@
   color: var(--vm-text-dim);
 }
 
-.vm-mission-gate,
-.vm-mission-after {
+.vm-shell .vm-mission-gate,
+.vm-shell .vm-mission-after {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -1448,17 +1469,17 @@
   color: var(--vm-text-faint);
 }
 
-.vm-mission-gate { color: var(--vm-accent-dim); }
+.vm-shell .vm-mission-gate { color: var(--vm-accent-dim); }
 
 /* -- the progress track --------------------------------------------------- */
 
-.vm-mission-track {
+.vm-shell .vm-mission-track {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.vm-mission-bar {
+.vm-shell .vm-mission-bar {
   position: relative;
   flex: 1 1 auto;
   height: 4px;
@@ -1466,7 +1487,7 @@
   overflow: hidden;
 }
 
-.vm-mission-fill {
+.vm-shell .vm-mission-fill {
   position: absolute;
   left: 0;
   top: 0;
@@ -1476,10 +1497,10 @@
   transition: width 320ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.vm-mission.is-complete .vm-mission-fill { background: #4fd97f; }
-.vm-mission.is-locked .vm-mission-fill { background: var(--vm-text-faint); }
+.vm-shell .vm-mission.is-complete .vm-mission-fill { background: #4fd97f; }
+.vm-shell .vm-mission.is-locked .vm-mission-fill { background: var(--vm-text-faint); }
 
-.vm-mission-value {
+.vm-shell .vm-mission-value {
   flex: 0 0 auto;
   min-width: 110px;
   text-align: right;
@@ -1491,13 +1512,13 @@
 
 /* -- rewards -------------------------------------------------------------- */
 
-.vm-mission-rewards {
+.vm-shell .vm-mission-rewards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 6px;
 }
 
-.vm-reward {
+.vm-shell .vm-reward {
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -1506,28 +1527,28 @@
   background: rgba(53, 200, 240, 0.045);
 }
 
-.vm-reward.is-earned {
+.vm-shell .vm-reward.is-earned {
   border-color: rgba(79, 217, 127, 0.32);
   background: rgba(79, 217, 127, 0.06);
 }
 
-.vm-reward-icon {
+.vm-shell .vm-reward-icon {
   flex: 0 0 auto;
   display: inline-flex;
   padding-top: 1px;
   color: var(--vm-accent);
 }
 
-.vm-reward.is-earned .vm-reward-icon { color: #4fd97f; }
+.vm-shell .vm-reward.is-earned .vm-reward-icon { color: #4fd97f; }
 
-.vm-reward-text {
+.vm-shell .vm-reward-text {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
 }
 
-.vm-reward-kind {
+.vm-shell .vm-reward-kind {
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.24em;
@@ -1535,21 +1556,21 @@
   color: var(--vm-text-faint);
 }
 
-.vm-reward-name {
+.vm-shell .vm-reward-name {
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--vm-text);
 }
 
-.vm-reward-effect {
+.vm-shell .vm-reward-effect {
   font-size: 11px;
   line-height: 1.45;
   letter-spacing: 0.02em;
   color: var(--vm-text-dim);
 }
 
-.vm-reward-tick {
+.vm-shell .vm-reward-tick {
   margin-left: auto;
   color: #4fd97f;
   flex: 0 0 auto;
@@ -1561,15 +1582,15 @@
    150px minimum, and the sentence ended up painted underneath Export. The
    footer is allowed to wrap and the buttons here are narrower — this screen is
    the only place in the product with four footer actions. */
-.vm-missions .vm-page-foot {
+.vm-shell .vm-missions .vm-page-foot {
   flex-wrap: wrap;
 }
 
-.vm-missions .vm-page-foot .vm-btn {
+.vm-shell .vm-missions .vm-page-foot .vm-btn {
   min-width: 112px;
 }
 
-.vm-missions-status {
+.vm-shell .vm-missions-status {
   flex: 1 1 180px;
   min-width: 0;
   margin: 0;
@@ -1579,18 +1600,18 @@
   color: var(--vm-text-faint);
 }
 
-.vm-missions-status.is-bad { color: var(--vm-danger); }
+.vm-shell .vm-missions-status.is-bad { color: var(--vm-danger); }
 
 /* An armed destructive button. The label already carries the consequence; this
    makes the second click impossible to make by accident. */
-.vm-btn.is-armed {
+.vm-shell .vm-btn.is-armed {
   background: var(--vm-danger);
   border-color: var(--vm-danger);
   color: #10060a;
 }
 
-.vm-btn.is-armed .vm-icon,
-.vm-btn.is-armed .vm-btn-label { color: inherit; }
+.vm-shell .vm-btn.is-armed .vm-icon,
+.vm-shell .vm-btn.is-armed .vm-btn-label { color: inherit; }
 
 /* ==========================================================================
  * 11C. THE REWARD REVEAL (end screen)
@@ -1605,29 +1626,29 @@
  * in. It animates `opacity` and `transform` only, never a layout property.
  * ========================================================================== */
 
-.vm-reveal {
+.vm-shell .vm-reveal {
   padding: 18px 30px 20px;
   border-bottom: 1px solid var(--vm-line);
   background: linear-gradient(180deg, rgba(53, 200, 240, 0.07), rgba(53, 200, 240, 0));
 }
 
-.vm-reveal-head {
+.vm-shell .vm-reveal-head {
   display: flex;
   align-items: center;
   gap: 9px;
   padding-bottom: 12px;
 }
 
-.vm-reveal-head .vm-icon { color: var(--vm-accent); }
-.vm-reveal-head .vm-h3 { margin: 0; color: var(--vm-accent); }
+.vm-shell .vm-reveal-head .vm-icon { color: var(--vm-accent); }
+.vm-shell .vm-reveal-head .vm-h3 { margin: 0; color: var(--vm-accent); }
 
-.vm-reveal-list {
+.vm-shell .vm-reveal-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 8px;
 }
 
-.vm-reveal-card {
+.vm-shell .vm-reveal-card {
   position: relative;
   display: flex;
   align-items: flex-start;
@@ -1649,21 +1670,21 @@
   100% { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.vm-reveal-icon {
+.vm-shell .vm-reveal-icon {
   flex: 0 0 auto;
   display: inline-flex;
   padding-top: 2px;
   color: var(--vm-accent);
 }
 
-.vm-reveal-text {
+.vm-shell .vm-reveal-text {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
 }
 
-.vm-reveal-kind {
+.vm-shell .vm-reveal-kind {
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.26em;
@@ -1671,7 +1692,7 @@
   color: var(--vm-accent-dim);
 }
 
-.vm-reveal-name {
+.vm-shell .vm-reveal-name {
   font-size: 17px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -1679,14 +1700,14 @@
   color: var(--vm-text);
 }
 
-.vm-reveal-effect {
+.vm-shell .vm-reveal-effect {
   font-size: 12px;
   line-height: 1.45;
   letter-spacing: 0.02em;
   color: var(--vm-text-dim);
 }
 
-.vm-reveal-new {
+.vm-shell .vm-reveal-new {
   position: absolute;
   top: 0;
   right: 0;
@@ -1703,7 +1724,7 @@
  * 11D. END-SCREEN PROGRESS BLOCKS
  * ========================================================================== */
 
-.vm-endprog {
+.vm-shell .vm-endprog {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
   gap: 1px;
@@ -1711,7 +1732,7 @@
   border-bottom: 1px solid var(--vm-line);
 }
 
-.vm-endprog-block {
+.vm-shell .vm-endprog-block {
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -1719,14 +1740,14 @@
   background: rgba(9, 13, 20, 0.55);
 }
 
-.vm-endprog-head {
+.vm-shell .vm-endprog-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
 }
 
-.vm-endprog-title {
+.vm-shell .vm-endprog-title {
   margin: 0;
   font-size: 10px;
   font-weight: 700;
@@ -1735,7 +1756,7 @@
   color: var(--vm-text-faint);
 }
 
-.vm-endprog-note {
+.vm-shell .vm-endprog-note {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.14em;
@@ -1743,7 +1764,7 @@
   color: var(--vm-accent-dim);
 }
 
-.vm-endprog-row {
+.vm-shell .vm-endprog-row {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -1752,14 +1773,14 @@
   color: var(--vm-text-dim);
 }
 
-.vm-endprog-row .vm-icon {
+.vm-shell .vm-endprog-row .vm-icon {
   flex: 0 0 auto;
   color: #4fd97f;
 }
 
-.vm-endprog-row.is-good .vm-endprog-name { color: var(--vm-text); }
+.vm-shell .vm-endprog-row.is-good .vm-endprog-name { color: var(--vm-text); }
 
-.vm-endprog-name {
+.vm-shell .vm-endprog-name {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -1767,30 +1788,30 @@
   white-space: nowrap;
 }
 
-.vm-endprog-detail {
+.vm-shell .vm-endprog-detail {
   flex: 0 0 auto;
   font-weight: 700;
   color: var(--vm-text-faint);
 }
 
-.vm-endprog-row.is-good .vm-endprog-detail { color: #4fd97f; }
+.vm-shell .vm-endprog-row.is-good .vm-endprog-detail { color: #4fd97f; }
 
 /* A block whose detail is a sentence rather than a count stacks instead of
    competing for the row: "14 / 25 · Raider" beside a mission title inside a
    third of the panel ellipsised the title down to two characters. */
-.vm-endprog-block.is-stacked .vm-endprog-row {
+.vm-shell .vm-endprog-block.is-stacked .vm-endprog-row {
   flex-direction: column;
   align-items: stretch;
   gap: 1px;
   padding-bottom: 3px;
 }
 
-.vm-endprog-block.is-stacked .vm-endprog-name {
+.vm-shell .vm-endprog-block.is-stacked .vm-endprog-name {
   font-weight: 600;
   color: var(--vm-text);
 }
 
-.vm-endprog-block.is-stacked .vm-endprog-detail {
+.vm-shell .vm-endprog-block.is-stacked .vm-endprog-detail {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -1806,7 +1827,7 @@
  * answers "what was I supposed to be doing".
  * ========================================================================== */
 
-.vm-pause-obj {
+.vm-shell .vm-pause-obj {
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -1815,9 +1836,9 @@
   margin-top: 10px;
 }
 
-.vm-pause-obj .vm-subtitle { padding-bottom: 2px; }
+.vm-shell .vm-pause-obj .vm-subtitle { padding-bottom: 2px; }
 
-.vm-pause-obj-row {
+.vm-shell .vm-pause-obj-row {
   display: flex;
   align-items: baseline;
   gap: 12px;
@@ -1826,7 +1847,7 @@
   color: var(--vm-text-dim);
 }
 
-.vm-pause-obj-name {
+.vm-shell .vm-pause-obj-name {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -1834,16 +1855,16 @@
   white-space: nowrap;
 }
 
-.vm-pause-obj-value {
+.vm-shell .vm-pause-obj-value {
   flex: 0 0 auto;
   font-weight: 700;
   color: var(--vm-text-faint);
 }
 
-.vm-pause-obj-row.is-done .vm-pause-obj-name,
-.vm-pause-obj-row.is-done .vm-pause-obj-value { color: #4fd97f; }
+.vm-shell .vm-pause-obj-row.is-done .vm-pause-obj-name,
+.vm-shell .vm-pause-obj-row.is-done .vm-pause-obj-value { color: #4fd97f; }
 
-.vm-pause-obj-more {
+.vm-shell .vm-pause-obj-more {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.18em;
@@ -1852,17 +1873,17 @@
 }
 
 @media (max-width: 860px) {
-  .vm-mission[data-depth='1'],
-  .vm-mission[data-depth='2'],
-  .vm-mission[data-depth='3'] { margin-left: 14px; }
-  .vm-mission-value { min-width: 0; }
+  .vm-shell .vm-mission[data-depth='1'],
+  .vm-shell .vm-mission[data-depth='2'],
+  .vm-shell .vm-mission[data-depth='3'] { margin-left: 14px; }
+  .vm-shell .vm-mission-value { min-width: 0; }
 }
 
 /* ==========================================================================
  * 12. ACCESSIBILITY / MOTION
  * ========================================================================== */
 
-.vm-sr {
+.vm-shell .vm-sr {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -1886,15 +1907,15 @@
 
 /* Small viewports: the menu becomes a single centred column. */
 @media (max-width: 720px) {
-  .vm-menu-inner {
+  .vm-shell .vm-menu-inner {
     width: 100%;
     min-width: 0;
   }
-  .vm-row {
+  .vm-shell .vm-row {
     grid-template-columns: 1fr;
     gap: 6px;
   }
-  .vm-row-control {
+  .vm-shell .vm-row-control {
     justify-content: flex-start;
   }
 }
@@ -1925,7 +1946,7 @@ html.vm-no-blur .vm-shell {
 /* The modal scrim was carrying a 3px blur as part of its separation from the
    battlefield. Without it the scrim alone has to do that job, so it gets
    denser — this is the one place where dropping the blur changes a colour. */
-html.vm-no-blur .vm-screen.is-modal {
+html.vm-no-blur .vm-shell .vm-screen.is-modal {
   background: radial-gradient(ellipse 120% 100% at 50% 50%,
     rgba(4, 7, 11, 0.80) 0%, rgba(3, 5, 9, 0.94) 100%);
 }
@@ -1939,7 +1960,7 @@ html.vm-no-blur .vm-screen.is-modal {
     --vm-glass: rgba(9, 13, 20, 0.92);
     --vm-glass-strong: rgba(7, 10, 16, 0.96);
   }
-  .vm-screen.is-modal {
+  .vm-shell .vm-screen.is-modal {
     background: radial-gradient(ellipse 120% 100% at 50% 50%,
       rgba(4, 7, 11, 0.80) 0%, rgba(3, 5, 9, 0.94) 100%);
   }

@@ -348,9 +348,15 @@
  * nothing competes for the space, and it is the authoritative answer to "what
  * am I actually being asked to do". The only thing it needs is a floor under
  * how tall that can get on a short window.
+ *
+ * ROOTED AT `.vm-shell`, deliberately. This is the one rule in the in-match
+ * stylesheets that styles SHELL markup, and it used to be a bare `.vm-pause-obj`
+ * — the same unscoped shape that let `shell.css` reach into the HUD and clip the
+ * selection card. It is scoped in both directions now so neither file can
+ * surprise the other.
  * ========================================================================== */
 
-.vm-pause-obj {
+.vm-shell .vm-pause-obj {
   max-height: 34vh;
   overflow-y: auto;
   scrollbar-width: thin;
