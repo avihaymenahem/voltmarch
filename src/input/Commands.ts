@@ -1023,7 +1023,9 @@ export class OrderExecutor {
           bus.issueProductionCancel(p.player, p.tab, p.defId, p.arg);
           break;
         case CommandKind.PlaceBuilding:
-          bus.issuePlaceBuilding(p.player, p.defId, p.cx, p.cz);
+          // `arg` is the placement facing; dropping it would un-rotate a
+          // structure just because the command was parked for one tick.
+          bus.issuePlaceBuilding(p.player, p.defId, p.cx, p.cz, p.arg);
           break;
         case CommandKind.SellBuilding:
           bus.issueSell(p.player, p.target);

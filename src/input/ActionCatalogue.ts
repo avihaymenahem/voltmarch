@@ -142,10 +142,17 @@ export interface ActionChord {
  *              build grid actually has the keyboard, and it stands down the
  *              moment the live binding table claims that code — see
  *              `buildHotkeyBlockedBy` at the bottom of this file
+ *   'placement' handled by `PlacementController` in src/sim/Placement.ts, and
+ *              ONLY while a structure is on the cursor. A separate surface
+ *              because that controller owns its own window listener and
+ *              `input.system.ts` deliberately stands out of its way (it already
+ *              does exactly this for Escape) — two handlers for one key would
+ *              turn the ghost twice on every tap
  *   'global'   handled by the shell, above the match
  *   'pointer'  no keyboard involvement at all
  */
-export type ActionSurface = 'command' | 'camera' | 'hud' | 'global' | 'pointer';
+export type ActionSurface =
+  'command' | 'camera' | 'hud' | 'placement' | 'global' | 'pointer';
 
 /** How the player reaches the action. See the header. */
 export type ActionBinding = 'rebindable' | 'fixed' | 'gesture';
@@ -238,6 +245,27 @@ export const BUILD_SLOT_HOTKEYS: readonly string[] = [
   'KeyC', 'KeyR', 'KeyU', 'KeyO', 'KeyP', 'KeyN',
   'KeyJ', 'KeyK', 'KeyL', 'KeyM',
 ];
+
+/**
+ * Turning the placement ghost: anticlockwise, then clockwise.
+ *
+ * NOT letters, and that is forced rather than chosen. Read the paragraph above:
+ * all twenty-six are already spoken for between the orders, the camera, the
+ * camera rig's WASD fallback and the fourteen build letters. A rotate bound to
+ * one of them would ALSO fire that order every time the player turned a
+ * building, because placement does not suppress the order layer — only Escape
+ * is special-cased in `input.system.ts#onKeyDown`. `,` and `.` are free, they
+ * are a natural left/right pair, and `codeLabel` in settings-store already
+ * prints them as `,` and `.`.
+ *
+ * `src/sim/Placement.ts` reads these codes; they are FIXED, like the build
+ * keyboard, and for the same reason — the surface they live on only exists
+ * while a structure is on the cursor.
+ */
+export const PLACEMENT_ROTATE_HOTKEYS: readonly string[] = ['Comma', 'Period'];
+
+/** Badge text for the two rotate keys, index-aligned. */
+export const PLACEMENT_ROTATE_HOTKEY_LABELS: readonly string[] = [',', '.'];
 
 /**
  * Badge text for a bare `KeyboardEvent.code`.
@@ -764,13 +792,26 @@ export const ACTIONS: readonly ActionDef[] = [
     id: 'bld.queue',
     label: 'Start Production',
     description:
-      'Click a cameo to queue one. Click again to queue another. A structure goes onto the ' +
-      'cursor once it finishes building.',
+      'Click a cameo to queue one. Click again to queue another. A finished structure does NOT ' +
+      'jump onto the cursor — its cameo reads READY and waits, and clicking that cameo is what ' +
+      'picks it up.',
     category: 'building',
     surface: 'pointer',
     binding: 'gesture',
     defaultChord: null,
     gesture: 'Left-click a cameo',
+  },
+  {
+    id: 'bld.pickUp',
+    label: 'Pick Up A Finished Structure',
+    description:
+      'A structure that finishes building waits on its cameo, marked READY, until you ask for ' +
+      'it. Clicking that cameo puts it on the cursor. Nothing is lost by leaving it there.',
+    category: 'building',
+    surface: 'pointer',
+    binding: 'gesture',
+    defaultChord: null,
+    gesture: 'Left-click a READY cameo',
   },
   {
     id: 'bld.slotKeys',
@@ -809,6 +850,34 @@ export const ACTIONS: readonly ActionDef[] = [
     binding: 'gesture',
     defaultChord: null,
     gesture: 'Left-click the ground',
+  },
+  {
+    id: 'bld.rotateLeft',
+    label: 'Rotate Structure Left',
+    description:
+      'Turns the structure on the cursor a quarter turn anticlockwise. At 90 and 270 degrees ' +
+      'the footprint SWAPS, so a 3x2 War Factory takes 2x3 cells and the green carpet changes ' +
+      'shape with it. The chevron on the ghost points at the edge units will come out of.',
+    category: 'building',
+    surface: 'placement',
+    binding: 'fixed',
+    defaultChord: null,
+    fixedChips: [PLACEMENT_ROTATE_HOTKEY_LABELS[0]],
+    fixedCodes: [PLACEMENT_ROTATE_HOTKEYS[0]],
+  },
+  {
+    id: 'bld.rotateRight',
+    label: 'Rotate Structure Right',
+    description:
+      'Turns the structure on the cursor a quarter turn clockwise. The facing sticks for the ' +
+      'next structure you place, which is how a line of walls or defences all end up pointing ' +
+      'the same way; picking up an existing building to relocate adopts its own facing instead.',
+    category: 'building',
+    surface: 'placement',
+    binding: 'fixed',
+    defaultChord: null,
+    fixedChips: [PLACEMENT_ROTATE_HOTKEY_LABELS[1]],
+    fixedCodes: [PLACEMENT_ROTATE_HOTKEYS[1]],
   },
   {
     id: 'bld.cancelPlace',

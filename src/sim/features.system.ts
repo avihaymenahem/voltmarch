@@ -146,7 +146,8 @@ function reissue(): void {
         bus.issueProductionCancel(p.player, p.tab, p.defId, p.arg);
         break;
       case CommandKind.PlaceBuilding:
-        bus.issuePlaceBuilding(p.player, p.defId, p.cx, p.cz);
+        // `arg` carries the placement facing — see CommandBus.issuePlaceBuilding.
+        bus.issuePlaceBuilding(p.player, p.defId, p.cx, p.cz, p.arg);
         break;
       case CommandKind.SetRally:
         bus.issueSetRally(p.player, p.target, p.x, p.z);

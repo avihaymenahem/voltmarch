@@ -61,8 +61,83 @@ import type { EntityId, PlayerId } from '../core/types';
 import type { World } from '../core/world';
 import { footprintOriginCell, hexToInt, isInMap } from '../core/math';
 import type { CameraRig } from '../render/camera';
+// Pure data, no imports of its own, and already read by `src/ui/Sidebar.ts` for
+// exactly this reason: the key the engine listens for and the key the help
+// screen promises must be ONE array. This module already reaches into
+// `src/render/camera` for the ghost's ray, so the edge is not a new one.
+import { PLACEMENT_ROTATE_HOTKEYS } from '../input/ActionCatalogue';
 
 import type { BuildEntry, ProductionService } from './Production';
+
+/* ==========================================================================
+ * 0. FACING — WHICH WAY IS THE FRONT?
+ *
+ * A facing is a QUARTER TURN COUNT, 0..3, clockwise about +Y. It is not a free
+ * angle, and that is a decision rather than a shortcut:
+ *
+ *   - The occupancy grid cannot express a rotated rectangle.
+ *     `terrain.markOccupied(cx, cz, w, h)` takes a cell-aligned rectangle, and
+ *     so does `clearOccupied`, `evaluatePlacement`'s per-cell walk, the pad
+ *     stamp and the validity carpet. A structure at 37 degrees would need every
+ *     one of those to rasterise an oriented box, and the nav grid, the picker
+ *     (`Selection.ts` tests an axis-aligned half-extent) and the save file all
+ *     read the same rectangle back. Free rotation is a different feature in
+ *     five subsystems, not a bigger number here.
+ *   - 90 degrees is also the RTS convention, and it is the only rotation that
+ *     changes anything a player can act on: which edge units come out of.
+ *
+ * AT 90 AND 270 THE FOOTPRINT SWAPS. A 3x2 War Factory occupies 2x3 cells. The
+ * rule, the ghost, the occupancy stamp, the concrete pad and `store.footprintW/H`
+ * must all agree about that, or the green outline is a lie. `facedFootprintW/H`
+ * below is the ONE place the swap is decided; nothing open-codes `facing & 1`.
+ *
+ * `store.footprintW/H` always holds the WORLD-SPACE rectangle (already swapped).
+ * Every consumer in the codebase — the picker, the nav clamp, the minimap, the
+ * garrison test, the save file — reads it as an axis-aligned world AABB, and
+ * storing local extents next to a yaw would silently break all of them.
+ * ========================================================================== */
+
+/** Radians per facing step. */
+const QUARTER_TURN = Math.PI * 0.5;
+
+/** How many distinct facings there are. */
+export const FACING_COUNT = 4;
+
+/** Wrap any integer into 0..3. Negative deltas are the point. */
+export function normaliseFacing(facing: number): number {
+  return ((Math.round(facing) % FACING_COUNT) + FACING_COUNT) % FACING_COUNT;
+}
+
+/** The yaw, in radians, a facing puts a structure at. */
+export function facingYaw(facing: number): number {
+  return normaliseFacing(facing) * QUARTER_TURN;
+}
+
+/**
+ * The facing a stored yaw represents.
+ *
+ * Rounds, so a structure spawned by a scenario at some hand-authored angle
+ * still answers with the nearest quarter turn rather than with garbage. The
+ * footprint that was stamped for it is cell-aligned either way.
+ */
+export function yawToFacing(yaw: number): number {
+  return normaliseFacing(Math.round(yaw / QUARTER_TURN));
+}
+
+/** True when this facing turns a `w x h` footprint into `h x w`. */
+export function facingSwapsFootprint(facing: number): boolean {
+  return (normaliseFacing(facing) & 1) === 1;
+}
+
+/** World-space footprint width of a `w x h` structure at `facing`. */
+export function facedFootprintW(w: number, h: number, facing: number): number {
+  return facingSwapsFootprint(facing) ? h : w;
+}
+
+/** World-space footprint depth of a `w x h` structure at `facing`. */
+export function facedFootprintH(w: number, h: number, facing: number): number {
+  return facingSwapsFootprint(facing) ? w : h;
+}
 
 /* ==========================================================================
  * 1. THE RULE
@@ -97,8 +172,11 @@ export interface PlacementReport {
   reason: string;
   cx: number;
   cz: number;
+  /** WORLD-SPACE footprint. Already swapped for a 90/270 facing. */
   w: number;
   h: number;
+  /** Quarter turns the answer was computed for. */
+  facing: number;
   /** Row-major legality, `w * h` entries valid. 1 = this cell is fine. */
   readonly cells: Uint8Array;
   /** Cells that failed. */
@@ -139,7 +217,7 @@ const MAX_CELLS = PLACEMENT.maxFootprintCells * PLACEMENT.maxFootprintCells;
 export function makePlacementReport(): PlacementReport {
   return {
     ok: false, fault: PlacementFault.None, reason: '',
-    cx: 0, cz: 0, w: 0, h: 0,
+    cx: 0, cz: 0, w: 0, h: 0, facing: 0,
     cells: new Uint8Array(MAX_CELLS),
     blocked: 0, inRadius: false,
   };
@@ -149,10 +227,14 @@ export function makePlacementReport(): PlacementReport {
 export const placementReport: PlacementReport = makePlacementReport();
 
 /**
- * Can `player` found `entry` with its minimum-corner cell at (cx, cz)?
+ * Can `player` found `entry` with its minimum-corner cell at (cx, cz), turned
+ * `facing` quarter turns?
  *
  * Fills `out` and returns it. Allocation-free: one spatial rect query and a
  * walk over the player's structures, both into caller-owned buffers.
+ *
+ * `facing` defaults to 0, so every caller written before rotation existed —
+ * including the AI's, which never turns anything — keeps its old answer.
  */
 export function evaluatePlacement(
   world: World,
@@ -162,13 +244,21 @@ export function evaluatePlacement(
   cz: number,
   out: PlacementReport,
   exempt: PlacementExempt | null = null,
+  facing = 0,
 ): PlacementReport {
-  const w = Math.max(1, Math.min(PLACEMENT.maxFootprintCells, entry.footprintW));
-  const h = Math.max(1, Math.min(PLACEMENT.maxFootprintCells, entry.footprintH));
+  // THE SWAP. Everything below this line — the cell walk, the blocker
+  // rasterisation, the build-radius centre, the carpet the ghost draws from
+  // `out.w/h` — is in world space, so it has to happen exactly here and exactly
+  // once. See §0.
+  const fw = facedFootprintW(entry.footprintW, entry.footprintH, facing);
+  const fh = facedFootprintH(entry.footprintW, entry.footprintH, facing);
+  const w = Math.max(1, Math.min(PLACEMENT.maxFootprintCells, fw));
+  const h = Math.max(1, Math.min(PLACEMENT.maxFootprintCells, fh));
   out.cx = cx;
   out.cz = cz;
   out.w = w;
   out.h = h;
+  out.facing = normaliseFacing(facing);
   out.blocked = 0;
   out.fault = PlacementFault.None;
   out.cells.fill(1, 0, w * h);
@@ -310,8 +400,11 @@ export interface PlacementNotice {
   key: string;
   cx: number;
   cz: number;
+  /** WORLD-SPACE footprint, already swapped for `facing`. */
   w: number;
   h: number;
+  /** Quarter turns clockwise. 0 for everything that never rotates. */
+  facing: number;
   ok: boolean;
   reason: string;
   /** Valid only for Committed. */
@@ -337,8 +430,16 @@ export type PlacementListener = (notice: Readonly<PlacementNotice>) => void;
  * ========================================================================== */
 
 export interface RelocateSeam {
-  /** Commit: charge, uproot and re-found. Returns false when it was refused. */
-  commit(player: PlayerId, building: EntityId, cx: number, cz: number): boolean;
+  /**
+   * Commit: charge, uproot and re-found. Returns false when it was refused.
+   *
+   * `facing` is the quarter turn the ghost is showing. OMITTED means "whatever
+   * it is standing at now", which is what every caller that predates rotation
+   * meant and what the tests still ask for.
+   */
+  commit(
+    player: PlayerId, building: EntityId, cx: number, cz: number, facing?: number,
+  ): boolean;
   /** Is this structure eligible at all? Fills nothing; a bare yes/no. */
   eligible(player: PlayerId, building: EntityId): boolean;
 }
@@ -378,6 +479,22 @@ const badColor = new THREE.Color();
 const ghostTint = new THREE.Color();
 const originCell = new Int32Array(2);
 
+/**
+ * The keys that turn the ghost. FIXED, and handled by this controller's own
+ * window listener rather than by `src/input/input.system.ts`, for the same
+ * reason Escape is: while a structure is on the cursor, placement owns those
+ * keystrokes and there must be exactly one handler or a tap rotates twice.
+ *
+ * `,` and `.` are the only unclaimed pair left. Every letter on the board is
+ * spoken for — A S G X D F Y Z H are orders and cam.home, Q E are camera yaw,
+ * W A S D are the camera rig's fallback pan, and B T I V plus C R U O P N J K
+ * L M are the build keyboard (`ActionCatalogue.BUILD_*_HOTKEYS`). Squatting on
+ * one of those would have made a rotate also issue an order. Both rows are on
+ * the help screen as `bld.rotateLeft` / `bld.rotateRight`.
+ */
+const ROTATE_LEFT_CODE = PLACEMENT_ROTATE_HOTKEYS[0];
+const ROTATE_RIGHT_CODE = PLACEMENT_ROTATE_HOTKEYS[1];
+
 export class PlacementController {
   /** True while a structure is on the cursor. */
   active = false;
@@ -386,6 +503,19 @@ export class PlacementController {
   /** Origin (minimum-corner) cell the ghost is snapped to. */
   cx = 0;
   cz = 0;
+  /**
+   * Quarter turns clockwise the ghost is holding the structure at, 0..3.
+   *
+   * IT PERSISTS BETWEEN PLACEMENTS, deliberately. The gesture this exists for
+   * is laying a line of walls or a row of defences all facing the same way, and
+   * re-rotating for every one of them is the whole cost of the feature. It is
+   * never invisible: the ghost draws a chevron on the front edge whatever the
+   * footprint's shape, so a square structure carrying a facing still says so.
+   *
+   * A relocation overrides it with the structure's CURRENT facing on pickup —
+   * picking a building up must not silently spin it.
+   */
+  facing = 0;
   /** Latest validity answer. Read by the HUD for the cursor glyph. */
   readonly report: PlacementReport = makePlacementReport();
 
@@ -402,9 +532,24 @@ export class PlacementController {
 
   /**
    * When true, a structure that finishes building is picked up automatically.
-   * The HUD turns this off and drives `begin()` from the cameo click instead.
+   *
+   * IT SHIPS OFF, at the player's explicit request: "don't auto select the
+   * building for placement, just ping me when it's ready to place, I will click
+   * and place." A ghost that appears on the cursor unasked hijacks the next
+   * left-click — which is very often a selection, a marquee or an order — and
+   * the structure is then planted wherever the player happened to be pointing.
+   *
+   * Nothing is lost by leaving it off: a finished structure sits at the head of
+   * its queue indefinitely, keeps its cameo lit with READY, raises the tab
+   * alert, plays `EvaLine.ConstructionComplete` and posts a HUD chip naming it.
+   * The queue behind it is not stalled by us — that is `BuildQueue`'s rule, and
+   * it is the same rule whether the ghost is up or not. `Hud.onSlotActivate`
+   * calls `begin()` when the player clicks the cameo.
+   *
+   * Still a field, not a constant: `?shot=` fixtures and the tutorial can turn
+   * it back on, and `checkStagedPlacement` does not go through it at all.
    */
-  autoPickup = true;
+  autoPickup = false;
 
   private readonly deps: PlacementDeps;
   private readonly group: THREE.Group;
@@ -416,12 +561,18 @@ export class PlacementController {
   private readonly cellMat: THREE.MeshBasicMaterial;
   private readonly boxGeo: THREE.BoxGeometry;
   private readonly edgeGeo: THREE.EdgesGeometry;
+  /** Chevron on the front (+Z local) edge. The only thing a turn of a SQUARE
+   *  footprint changes on screen, and the front edge is where units come out. */
+  private readonly chevron: THREE.Mesh;
+  private readonly chevronMat: THREE.MeshBasicMaterial;
+  private readonly chevronGeo: THREE.BufferGeometry;
 
   /** Client-space pointer, when we own the cursor. */
   private pointerX = -1;
   private pointerY = -1;
   private ownsCursor = true;
   private listening = false;
+  private listeningKeys = false;
   private cursorX = 0;
   private cursorZ = 0;
   private dirty = true;
@@ -465,7 +616,12 @@ export class PlacementController {
   };
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
-    if (this.active && e.key === 'Escape') this.cancel();
+    if (!this.active) return;
+    if (e.key === 'Escape') { this.cancel(); return; }
+    // A modifier turns these into something else's chord; never eat those.
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.code === ROTATE_LEFT_CODE) { this.rotate(-1); e.preventDefault(); }
+    else if (e.code === ROTATE_RIGHT_CODE) { this.rotate(1); e.preventDefault(); }
   };
 
   constructor(deps: PlacementDeps) {
@@ -537,6 +693,35 @@ export class PlacementController {
     for (let i = 0; i < MAX_CELLS; i++) this.cells.setColorAt(i, okColor);
     this.group.add(this.cells);
 
+    // THE FRONT CHEVRON. A unit triangle in the XZ plane pointing +Z, which is
+    // local forward for every structure in the game (`BuildEntry.exitZ` is
+    // measured off the +Z edge). Scaled to the footprint and yawed by the
+    // facing, it is what makes rotating a 2x2 Power Plant visible at all — the
+    // hologram box is symmetric and a turn of it changes not one pixel.
+    this.chevronGeo = new THREE.BufferGeometry();
+    this.chevronGeo.setAttribute('position', new THREE.Float32BufferAttribute([
+      -0.5, 0, 0,
+      0.5, 0, 0,
+      0, 0, 1,
+    ], 3));
+    this.chevronGeo.setIndex([0, 2, 1]);
+    this.chevronMat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: PLACEMENT.facingOpacity,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -6,
+      polygonOffsetUnits: -6,
+    });
+    this.chevron = new THREE.Mesh(this.chevronGeo, this.chevronMat);
+    this.chevron.renderOrder = RENDER_ORDER.overlay + 1;
+    this.chevron.frustumCulled = false;
+    this.chevron.castShadow = false;
+    this.chevron.receiveShadow = false;
+    this.group.add(this.chevron);
+
     deps.scene.add(this.group);
 
     // The sim has the last word on a placement. Whichever way it rules, the
@@ -573,8 +758,33 @@ export class PlacementController {
     this.updateCursor();
     service.publishPlacement(
       PlacementPhase.Began, player, entry, this.cx, this.cz, this.report.ok, this.report.reason,
+      this.facing,
     );
     return true;
+  }
+
+  /**
+   * Turn the ghost by `delta` quarter turns. Negative is anticlockwise.
+   *
+   * Re-snaps and re-evaluates immediately rather than waiting for the next
+   * frame, because at 90 and 270 the footprint SWAPS: a 3x2 becomes a 2x3, the
+   * origin cell the cursor implies moves, and the validity carpet has to be a
+   * different shape in the same frame the key was pressed. Everything downstream
+   * reads `this.report`, which `evaluate` has just rewritten.
+   *
+   * Returns the new facing so a console poke can read it back.
+   */
+  rotate(delta: number): number {
+    this.facing = normaliseFacing(this.facing + delta);
+    if (!this.active || this.entry === null) return this.facing;
+    this.dirty = true;
+    this.updateCursor();
+    this.evaluate();
+    this.deps.service.publishPlacement(
+      PlacementPhase.Moved, this.deps.world.localPlayer, this.entry,
+      this.cx, this.cz, this.report.ok, this.report.reason, this.facing,
+    );
+    return this.facing;
   }
 
   /**
@@ -619,10 +829,15 @@ export class PlacementController {
     this.entry = entry;
     this.active = true;
     this.dirty = true;
+    // Adopt the structure's own facing. A sticky facing left over from the last
+    // thing the player BUILT must not silently spin a building they only meant
+    // to slide two cells left.
+    this.facing = yawToFacing(store.yaw[i]);
     this.attach();
     this.updateCursor();
     this.deps.service.publishPlacement(
       PlacementPhase.Began, player, entry, this.cx, this.cz, this.report.ok, this.report.reason,
+      this.facing,
     );
     return true;
   }
@@ -649,6 +864,7 @@ export class PlacementController {
     if (entry !== null) {
       this.deps.service.publishPlacement(
         PlacementPhase.Cancelled, this.deps.world.localPlayer, entry, this.cx, this.cz, false, '',
+        this.facing,
       );
     }
   }
@@ -664,18 +880,20 @@ export class PlacementController {
     const moving = this.relocating;
 
     this.evaluate();
+    const facing = this.facing;
     if (!this.report.ok) {
       this.deps.service.publishPlacement(
         PlacementPhase.Rejected, player, entry, this.cx, this.cz, false, this.report.reason,
+        facing,
       );
       // Still route it through the sim so EVA and the HUD hear one story. A
       // relocation stays on the cursor after a refusal rather than being
       // dropped: the player asked to move a building that is still standing,
       // and taking the ghost away would mean re-selecting it to try again.
       if (moving === NONE) {
-        this.deps.service.placeBuilding(player, entry.publicId, this.cx, this.cz);
+        this.deps.service.placeBuilding(player, entry.publicId, this.cx, this.cz, facing);
       } else {
-        relocateSeamOf()?.commit(player, moving, this.cx, this.cz);
+        relocateSeamOf()?.commit(player, moving, this.cx, this.cz, facing);
       }
       return false;
     }
@@ -683,10 +901,10 @@ export class PlacementController {
     if (moving !== NONE) {
       // The sim re-checks and charges. If it refuses on something only it can
       // see — the price went up, the garrison filled — the ghost stays up.
-      if (relocateSeamOf()?.commit(player, moving, this.cx, this.cz) !== true) return false;
+      if (relocateSeamOf()?.commit(player, moving, this.cx, this.cz, facing) !== true) return false;
     } else {
       this.commitInFlight = true;
-      this.deps.service.placeBuilding(player, entry.publicId, this.cx, this.cz);
+      this.deps.service.placeBuilding(player, entry.publicId, this.cx, this.cz, facing);
     }
     this.active = false;
     this.entry = null;
@@ -763,6 +981,9 @@ export class PlacementController {
     const staged = this.deps.service.stagedPlacement();
     if (staged === null) return;
     this.scenarioChecked = true;
+    // The fixture is a composition, not a session: photograph it at facing 0
+    // whatever the player (or an earlier shot) last left on the ghost.
+    this.facing = 0;
     if (!this.begin(staged.entry.publicId)) return;
     this.cx = staged.cx;
     this.cz = staged.cz;
@@ -777,18 +998,21 @@ export class PlacementController {
 
   /** Re-snap the origin cell from whatever the cursor currently is. */
   private updateCursor(): void {
-    if (this.entry === null) return;
+    const entry = this.entry;
+    if (entry === null) return;
     if (this.ownsCursor && this.pointerX >= 0) {
       if (this.deps.rig.screenToGround(this.pointerX, this.pointerY, groundHit)) {
         this.cursorX = groundHit.x;
         this.cursorZ = groundHit.z;
       }
     }
-    footprintOriginCell(
-      this.cursorX, this.cursorZ, this.entry.footprintW, this.entry.footprintH, originCell,
-    );
-    const ncx = Math.max(0, Math.min(MAP_CELLS - this.entry.footprintW, originCell[0]));
-    const ncz = Math.max(0, Math.min(MAP_CELLS - this.entry.footprintH, originCell[1]));
+    // WORLD-SPACE extents. Snapping a turned 3x2 against its unturned 3 would
+    // put the ghost half a cell off the grid it is about to be tested on.
+    const fw = facedFootprintW(entry.footprintW, entry.footprintH, this.facing);
+    const fh = facedFootprintH(entry.footprintW, entry.footprintH, this.facing);
+    footprintOriginCell(this.cursorX, this.cursorZ, fw, fh, originCell);
+    const ncx = Math.max(0, Math.min(MAP_CELLS - fw, originCell[0]));
+    const ncz = Math.max(0, Math.min(MAP_CELLS - fh, originCell[1]));
     if (ncx !== this.cx || ncz !== this.cz || this.dirty) {
       const moved = ncx !== this.cx || ncz !== this.cz;
       this.cx = ncx;
@@ -797,8 +1021,8 @@ export class PlacementController {
       this.evaluate();
       if (moved) {
         this.deps.service.publishPlacement(
-          PlacementPhase.Moved, this.deps.world.localPlayer, this.entry,
-          this.cx, this.cz, this.report.ok, this.report.reason,
+          PlacementPhase.Moved, this.deps.world.localPlayer, entry,
+          this.cx, this.cz, this.report.ok, this.report.reason, this.facing,
         );
       }
     }
@@ -829,20 +1053,20 @@ export class PlacementController {
     const report = this.report;
 
     if (this.relocating === NONE) {
-      evaluatePlacement(world, player, entry, this.cx, this.cz, report);
+      evaluatePlacement(world, player, entry, this.cx, this.cz, report, null, this.facing);
       return;
     }
 
     const store = world.store;
     const i = store.index(this.relocating);
     if (i < 0) {
-      evaluatePlacement(world, player, entry, this.cx, this.cz, report, this.srcCell);
+      evaluatePlacement(world, player, entry, this.cx, this.cz, report, this.srcCell, this.facing);
       return;
     }
     const saved = store.flags[i];
     store.flags[i] = saved | EntityFlag.PendingDestroy;
     try {
-      evaluatePlacement(world, player, entry, this.cx, this.cz, report, this.srcCell);
+      evaluatePlacement(world, player, entry, this.cx, this.cz, report, this.srcCell, this.facing);
     } finally {
       store.flags[i] = saved;
     }
@@ -890,6 +1114,9 @@ export class PlacementController {
     base = Math.max(base, world.terrain.heightAt(cx * CELL, cz * CELL));
     base = Math.max(base, world.terrain.heightAt((cx + w) * CELL, (cz + h) * CELL));
 
+    // `w`/`h` are already the world-space extents, so the box needs no rotation
+    // of its own — a box turned 90 degrees IS the swapped box. The chevron below
+    // is what carries the facing.
     const height = Math.max(1, entry.height);
     this.volume.scale.set(w * CELL, height, h * CELL);
     this.volume.position.set(bx, base + height * 0.5, bz);
@@ -900,16 +1127,51 @@ export class PlacementController {
     this.edges.updateMatrix();
     this.edges.matrixWorldNeedsUpdate = true;
 
+    /* -- front chevron ----------------------------------------------------- */
+    // Local +Z is forward (`BuildEntry.exitZ` is measured off that edge), so the
+    // marker is placed in LOCAL extents and then yawed — the one part of the
+    // ghost that must not use the swapped numbers.
+    const yaw = facingYaw(this.facing);
+    const dirX = Math.sin(yaw);
+    const dirZ = Math.cos(yaw);
+    const localW = Math.max(1, entry.footprintW) * CELL;
+    const localH = Math.max(1, entry.footprintH) * CELL;
+    const depth = Math.min(PLACEMENT.facingSize * CELL, localH * 0.55);
+    const span = Math.min(localW * 0.7, depth * 1.7);
+    const baseDist = localH * 0.5 - depth;
+    const mx = bx + dirX * baseDist;
+    const mz = bz + dirZ * baseDist;
+    this.chevron.position.set(
+      mx, world.terrain.heightAt(mx, mz) + PLACEMENT.facingLift, mz,
+    );
+    this.chevron.scale.set(span, 1, depth);
+    this.chevron.rotation.set(0, yaw, 0);
+    this.chevron.updateMatrix();
+    this.chevron.matrixWorldNeedsUpdate = true;
+
     const tint = this.report.ok ? okColor : badColor;
     this.volumeMat.color.copy(tint);
     this.edgeMat.color.copy(tint);
+    this.chevronMat.color.copy(tint);
 
     this.group.visible = true;
   }
 
   /* -- pointer ------------------------------------------------------------ */
 
+  /**
+   * The KEYBOARD and the POINTER are attached separately, and that separation
+   * is load-bearing.
+   *
+   * The pointer is conditional: `setCursorWorld` hands the cursor to an input
+   * module permanently and these listeners come off. The keyboard is not —
+   * Escape cancels the ghost and `,` / `.` turn it whoever is driving the
+   * cursor, including a `?shot=` fixture that froze it on an authored cell.
+   * When they were one flag, handing the cursor over silently took the rotate
+   * and cancel keys with it.
+   */
   private attach(): void {
+    this.attachKeys();
     if (!this.ownsCursor || this.listening) return;
     const canvas = this.deps.canvas;
     if (canvas === null || typeof canvas.addEventListener !== 'function') return;
@@ -918,12 +1180,24 @@ export class PlacementController {
     canvas.addEventListener('pointermove', this.onPointerMove, true);
     canvas.addEventListener('pointerdown', this.onPointerDown, true);
     canvas.addEventListener('contextmenu', this.onContextMenu, true);
-    if (typeof window !== 'undefined') window.addEventListener('keydown', this.onKeyDown);
     this.listening = true;
+  }
+
+  private attachKeys(): void {
+    if (this.listeningKeys || typeof window === 'undefined') return;
+    window.addEventListener('keydown', this.onKeyDown);
+    this.listeningKeys = true;
   }
 
   private detach(): void {
     this.detachPointer();
+    this.detachKeys();
+  }
+
+  private detachKeys(): void {
+    if (!this.listeningKeys) return;
+    if (typeof window !== 'undefined') window.removeEventListener('keydown', this.onKeyDown);
+    this.listeningKeys = false;
   }
 
   private detachPointer(): void {
@@ -934,20 +1208,21 @@ export class PlacementController {
       canvas.removeEventListener('pointerdown', this.onPointerDown, true);
       canvas.removeEventListener('contextmenu', this.onContextMenu, true);
     }
-    if (typeof window !== 'undefined') window.removeEventListener('keydown', this.onKeyDown);
     this.listening = false;
   }
 
   dispose(): void {
     this.unsubscribe();
-    this.detachPointer();
+    this.detach();
     this.group.removeFromParent();
     this.boxGeo.dispose();
     this.edgeGeo.dispose();
+    this.chevronGeo.dispose();
     this.cells.geometry.dispose();
     this.volumeMat.dispose();
     this.edgeMat.dispose();
     this.cellMat.dispose();
+    this.chevronMat.dispose();
     this.cells.dispose();
     this.entry = null;
     this.active = false;

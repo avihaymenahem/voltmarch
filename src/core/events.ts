@@ -406,12 +406,21 @@ export class CommandBus {
     c.arg = slot;
   }
 
-  /** Commit a completed structure at a grid cell. */
-  issuePlaceBuilding(player: PlayerId, defId: number, cx: number, cz: number): void {
+  /**
+   * Commit a completed structure at a grid cell.
+   *
+   * `facing` is quarter turns clockwise, 0..3, carried in `arg` — the generic
+   * small-integer slot, which PlaceBuilding otherwise leaves at zero. Defaulted
+   * so the AI, which never turns anything, is unchanged.
+   */
+  issuePlaceBuilding(
+    player: PlayerId, defId: number, cx: number, cz: number, facing = 0,
+  ): void {
     const c = this.claim(CommandKind.PlaceBuilding, player);
     if (c === null) return;
     c.defId = defId;
     c.cx = cx; c.cz = cz;
+    c.arg = facing;
   }
 
   /** Move a factory's rally flag. */

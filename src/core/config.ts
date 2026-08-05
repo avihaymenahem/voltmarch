@@ -3369,6 +3369,20 @@ export const PLACEMENT = {
   /** Largest footprint the overlay can draw, in cells per side. */
   maxFootprintCells: 6,
 
+  /**
+   * The chevron on the ghost's FRONT edge, which is the only thing that changes
+   * on screen when a square footprint is rotated. Sized in cells along the
+   * direction it points; clamped to just over half the footprint's depth so a
+   * 1x1 wall does not get a marker bigger than the wall.
+   */
+  facingSize: 0.8,
+  /** Metres the facing chevron floats above the ground. Above `cellLift`, so
+   *  it reads on top of the validity carpet rather than fighting it. */
+  facingLift: 0.22,
+  /** Alpha of the facing chevron. Higher than the carpet: it is a pointer, and
+   *  a pointer that has to be looked for is not one. */
+  facingOpacity: 0.92,
+
   /** Cell is legal. HudLook.ok. */
   validColor: '#4ADE80',
   /** Cell is illegal. HudLook.danger. */

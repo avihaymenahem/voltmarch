@@ -75,7 +75,8 @@ import { isBuildable, LOCKED_REASON } from '../progression/UnlockGate';
 
 import { BuildQueues, HoldReason, type QueueHooks, type QueueItemInfo } from './BuildQueue';
 import {
-  PlacementPhase, evaluatePlacement, placementReport,
+  PlacementPhase, evaluatePlacement, facedFootprintH, facedFootprintW, facingYaw,
+  normaliseFacing, placementReport, yawToFacing,
   type PlacementListener, type PlacementNotice,
 } from './Placement';
 // The last-way-out guard, shared verbatim with the outcome poll so a sell that
@@ -1020,7 +1021,7 @@ export class ProductionService implements QueueHooks {
   private readonly placementListeners: PlacementListener[] = [];
   private readonly notice: PlacementNotice = {
     phase: PlacementPhase.Began, player: 0 as PlayerId, defId: -1, key: '',
-    cx: 0, cz: 0, w: 0, h: 0, ok: false, reason: '', id: NONE,
+    cx: 0, cz: 0, w: 0, h: 0, facing: 0, ok: false, reason: '', id: NONE,
   };
 
   /** Cameo objects, pooled per tab so the HUD snapshot never allocates. */
@@ -1127,11 +1128,20 @@ export class ProductionService implements QueueHooks {
     this.push(IntentKind.Pause, player, tab, -1, paused ? 1 : 0, 0, 0, 0);
   }
 
-  /** Commit a ready structure at an origin cell. Validity is re-checked. */
-  placeBuilding(player: PlayerId, defId: number, cx: number, cz: number): void {
+  /**
+   * Commit a ready structure at an origin cell, turned `facing` quarter turns.
+   * Validity is re-checked at Phase.Production against the SAME facing.
+   *
+   * `facing` defaults to 0 — the AI never turns anything and its command path
+   * carries no facing, so its behaviour is byte-for-byte what it was.
+   */
+  placeBuilding(player: PlayerId, defId: number, cx: number, cz: number, facing = 0): void {
     const entry = this.catalog.resolve(defId, true);
     if (entry === null) return;
-    this.push(IntentKind.Place, player, BuildTab.Structures, entry.index, 0, cx, cz, 0);
+    this.push(
+      IntentKind.Place, player, BuildTab.Structures, entry.index,
+      normaliseFacing(facing), cx, cz, 0,
+    );
   }
 
   /** Move a factory's rally flag. Persists for the factory's whole life. */
@@ -1276,7 +1286,9 @@ export class ProductionService implements QueueHooks {
         this.cancel(cmd.player, cmd.defId, cmd.arg, tabIsStructural(cmd.tab));
         return true;
       case CommandKind.PlaceBuilding:
-        this.placeBuilding(cmd.player, cmd.defId, cmd.cx, cmd.cz);
+        // `arg` is the facing. Zero for every command the AI issues, which is
+        // exactly the behaviour it had before rotation existed.
+        this.placeBuilding(cmd.player, cmd.defId, cmd.cx, cmd.cz, cmd.arg);
         return true;
       case CommandKind.SetRally:
         this.setRally(cmd.player, cmd.target, cmd.x, cmd.z);
@@ -1667,7 +1679,9 @@ export class ProductionService implements QueueHooks {
           break;
         }
         case IntentKind.Pause: this.queues.setPaused(p, it.tab, it.arg !== 0); break;
-        case IntentKind.Place: this.applyPlace(p, it.defId, it.x, it.z); break;
+        // `arg` carries the facing for a Place; it is unused by that intent
+        // otherwise, and the struct is pooled and fixed-shape on purpose.
+        case IntentKind.Place: this.applyPlace(p, it.defId, it.x, it.z, it.arg); break;
         case IntentKind.Rally: this.applyRally(p, it.target as EntityId, it.x, it.z); break;
         case IntentKind.Primary: this.applyPrimary(p, it.target as EntityId); break;
         case IntentKind.Sell: this.applySell(p, it.target as EntityId); break;
@@ -1925,35 +1939,55 @@ export class ProductionService implements QueueHooks {
    * frame, but a tank may have parked on the site since, so the authoritative
    * answer is taken HERE, inside the sim, and it is the one that is obeyed.
    */
-  private applyPlace(p: PlayerState, index: number, cx: number, cz: number): void {
+  private applyPlace(
+    p: PlayerState, index: number, cx: number, cz: number, facing: number,
+  ): void {
     const entry = this.catalog.at(index);
     if (entry === null || entry.kind !== BuildKind.Building) return;
     const tab = this.readyTabOf(p, index);
     if (tab === -1) {
-      this.notifyPlacement(PlacementPhase.Rejected, p.id, entry, cx, cz, false, 'Not ready', NONE);
+      this.notifyPlacement(
+        PlacementPhase.Rejected, p.id, entry, cx, cz, false, 'Not ready', NONE, facing,
+      );
       return;
     }
 
-    const report = evaluatePlacement(this.world, p.id, entry, cx, cz, placementReport);
+    // Checked at the SAME facing the ghost was showing, and spawned at the same
+    // one again below. Three places have to agree about a swapped footprint —
+    // the rule, the occupancy stamp and the model's yaw — and this is where two
+    // of the three are decided.
+    const report = evaluatePlacement(this.world, p.id, entry, cx, cz, placementReport, null, facing);
     if (!report.ok) {
-      this.notifyPlacement(PlacementPhase.Rejected, p.id, entry, cx, cz, false, report.reason, NONE);
+      this.notifyPlacement(
+        PlacementPhase.Rejected, p.id, entry, cx, cz, false, report.reason, NONE, facing,
+      );
       this.eva(p, EvaLine.CannotDeployHere);
       return;
     }
 
-    const id = this.spawnBuilding(p, entry, cx, cz, 0);
+    const id = this.spawnBuilding(p, entry, cx, cz, 0, facingYaw(facing));
     if (id === NONE) {
-      this.notifyPlacement(PlacementPhase.Rejected, p.id, entry, cx, cz, false, 'World is full', NONE);
+      this.notifyPlacement(
+        PlacementPhase.Rejected, p.id, entry, cx, cz, false, 'World is full', NONE, facing,
+      );
       return;
     }
 
     this.queues.completeHead(p, tab);
-    this.notifyPlacement(PlacementPhase.Committed, p.id, entry, cx, cz, true, '', id);
+    this.notifyPlacement(PlacementPhase.Committed, p.id, entry, cx, cz, true, '', id, facing);
   }
 
   /**
    * Plant a structure. `buildProgress` 0 means it rises; 1 means it is already
    * finished (an MCV unfolding, a scenario fixture).
+   *
+   * `yaw` is the ONLY input that decides the world footprint. At a quarter or
+   * three-quarter turn the rectangle swaps — a 3x2 War Factory takes 2x3 cells —
+   * and every column and grid written below is derived from the swapped pair, so
+   * `store.footprintW/H`, `terrain.markOccupied`, the concrete pad, the picker's
+   * half-extents and the nav clamp cannot disagree with the model on screen.
+   * Callers that already had a yaw (`Relocate.arrive` re-founding a structure at
+   * the angle it left at) get the correct footprint for free.
    */
   spawnBuilding(
     p: PlayerState,
@@ -1964,8 +1998,9 @@ export class ProductionService implements QueueHooks {
     yaw = 0,
   ): EntityId {
     const st = this.world.store;
-    const fw = entry.footprintW;
-    const fh = entry.footprintH;
+    const facing = yawToFacing(yaw);
+    const fw = facedFootprintW(entry.footprintW, entry.footprintH, facing);
+    const fh = facedFootprintH(entry.footprintW, entry.footprintH, facing);
     const px = (cx + fw * 0.5) * CELL;
     const pz = (cz + fh * 0.5) * CELL;
     const py = this.world.terrain.heightAt(px, pz);
@@ -2064,8 +2099,9 @@ export class ProductionService implements QueueHooks {
 
   private notifyPlacement(
     phase: PlacementPhase, player: PlayerId, entry: BuildEntry,
-    cx: number, cz: number, ok: boolean, reason: string, id: EntityId,
+    cx: number, cz: number, ok: boolean, reason: string, id: EntityId, facing = 0,
   ): void {
+    const f = normaliseFacing(facing);
     const n = this.notice;
     n.phase = phase;
     n.player = player;
@@ -2073,8 +2109,11 @@ export class ProductionService implements QueueHooks {
     n.key = entry.key;
     n.cx = cx;
     n.cz = cz;
-    n.w = entry.footprintW;
-    n.h = entry.footprintH;
+    // WORLD-SPACE, so a listener drawing the rectangle draws the one the sim
+    // stamped rather than the catalog's unturned pair.
+    n.w = facedFootprintW(entry.footprintW, entry.footprintH, f);
+    n.h = facedFootprintH(entry.footprintW, entry.footprintH, f);
+    n.facing = f;
     n.ok = ok;
     n.reason = reason;
     n.id = id;
@@ -2084,9 +2123,9 @@ export class ProductionService implements QueueHooks {
   /** Called by PlacementController so the HUD hears began/moved/cancelled too. */
   publishPlacement(
     phase: PlacementPhase, player: PlayerId, entry: BuildEntry,
-    cx: number, cz: number, ok: boolean, reason: string,
+    cx: number, cz: number, ok: boolean, reason: string, facing = 0,
   ): void {
-    this.notifyPlacement(phase, player, entry, cx, cz, ok, reason, NONE);
+    this.notifyPlacement(phase, player, entry, cx, cz, ok, reason, NONE, facing);
   }
 
   /* ======================================================================

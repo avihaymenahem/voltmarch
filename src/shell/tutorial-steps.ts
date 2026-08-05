@@ -466,8 +466,12 @@ export const TUTORIAL_STEPS: readonly TutorialStep[] = [
       'A power plant is the cheapest thing on the list and always the first build. Everything you ' +
       'put down draws power, and the moment consumption passes production you brown out: ' +
       'construction slows to a crawl and beam and tesla defences go dark while the enemy is still ' +
-      'shooting. Put one down now.',
-    actions: ['bld.tabKeys', 'bld.slotKeys', 'bld.queue', 'bld.place', 'bld.cancelPlace'],
+      'shooting. Queue one, and when its cameo reads READY, click that cameo to pick it up and ' +
+      'click the ground to put it down.',
+    actions: [
+      'bld.tabKeys', 'bld.slotKeys', 'bld.queue', 'bld.pickUp',
+      'bld.rotateLeft', 'bld.rotateRight', 'bld.place', 'bld.cancelPlace',
+    ],
     spotlight: ['.vm-dock-build .vm-grid', '.vm-dock-build'],
     goals: [
       { label: 'Finish a power plant', fact: 'powerPlants', delta: 1 },

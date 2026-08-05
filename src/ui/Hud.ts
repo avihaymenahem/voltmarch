@@ -210,9 +210,15 @@ const INCOME_SMOOTHING = 0.35;
 /** Seconds the "under attack" advice stays up after the last hit. */
 const ATTACK_ADVICE_SECONDS = 10;
 
-/** EVA line -> a toast. Anything not listed here stays audio-only. */
+/**
+ * EVA line -> a toast. Anything not listed here stays audio-only.
+ *
+ * `ConstructionComplete` is deliberately ABSENT. It is the one line that has a
+ * specific, actionable chip of its own — see the `production:ready` handler,
+ * which names the structure and says what to do with it. Keeping the generic
+ * row as well would post two chips for one event, and the vaguer one first.
+ */
 const EVA_TOASTS: Readonly<Record<number, readonly [ToastKind, string]>> = {
-  [EvaLine.ConstructionComplete]: ['good', 'Construction complete'],
   [EvaLine.UnitReady]: ['info', 'Unit ready'],
   [EvaLine.NewConstructionOptions]: ['info', 'New construction options'],
   [EvaLine.InsufficientFunds]: ['warn', 'Insufficient funds'],
@@ -719,6 +725,8 @@ export class Hud {
       if (!isLocal(e.player)) return;
       // Only the fallback snapshot needs poking; the real service sets its own.
       if (this.production === null) this.localSnapshot.tabAlert[e.tab as number] = true;
+      if (!e.isBuilding) return;
+      this.pingStructureReady(e.tab, e.defId);
     }));
 
     this.unsubs.push(bus.on('building:completed', (e) => {
@@ -831,6 +839,32 @@ export class Hud {
     }
 
     this.channels.commands.issueProductionStart(player, tab, cameo.defId, 1);
+  }
+
+  /**
+   * THE PING. A structure finished; say so, name it, and say what to do.
+   *
+   * This chip is the whole replacement for the old behaviour, where a finished
+   * structure jumped onto the cursor by itself and swallowed the next left
+   * click. The player asked for the opposite: "just ping me when it's ready to
+   * place, I will click and place." So nothing is armed, and instead three
+   * surfaces that already existed all point at the same cameo — this chip, the
+   * READY badge and `is-ready` on the cameo itself, and the alert dot on its
+   * tab. `EvaLine.ConstructionComplete` still plays over the top of it.
+   *
+   * Keyed per structure, so two Power Plants finishing together coalesce into
+   * one chip with a x2 rather than stacking.
+   */
+  private pingStructureReady(tab: BuildTab, defId: number): void {
+    const list = this.snapshot().cameos[tab as number];
+    let name = '';
+    if (list !== undefined) {
+      for (let i = 0; i < list.length; i++) {
+        if (list[i].defId === defId) { name = list[i].name; break; }
+      }
+    }
+    if (name === '') name = 'Structure';
+    this.toast('good', `ready-place:${defId}`, `${name} ready`, 'Click its cameo to place it');
   }
 
   private onSlotCancel(tab: BuildTab, cameo: HudCameo): void {

@@ -73,7 +73,8 @@ import type { World } from '../core/world';
 import { footprintOriginCell, isInMap } from '../core/math';
 
 import {
-  PlacementPhase, evaluatePlacement, makePlacementReport,
+  PlacementPhase, evaluatePlacement, facedFootprintH, facedFootprintW, facingYaw,
+  makePlacementReport, yawToFacing,
   type PlacementExempt, type PlacementReport, type RelocateSeam,
 } from './Placement';
 import { production, type BuildEntry, type ProductionService } from './Production';
@@ -195,12 +196,17 @@ export interface RelocateReport {
   /** Minimum-corner cell the structure would be re-founded on. */
   cx: number;
   cz: number;
+  /** Quarter turns it would be re-founded at. */
+  facing: number;
   /** The catalog entry behind the structure, or null. */
   entry: BuildEntry | null;
 }
 
 export function makeRelocateReport(): RelocateReport {
-  return { ok: false, fault: RelocateFault.None, reason: '', cost: 0, cx: 0, cz: 0, entry: null };
+  return {
+    ok: false, fault: RelocateFault.None, reason: '',
+    cost: 0, cx: 0, cz: 0, facing: 0, entry: null,
+  };
 }
 
 /** Blank an existing report in place. Returns it, so it composes with `fail`. */
@@ -211,6 +217,7 @@ function makeRelocateReportInto(out: RelocateReport): RelocateReport {
   out.cost = 0;
   out.cx = 0;
   out.cz = 0;
+  out.facing = 0;
   out.entry = null;
   return out;
 }
@@ -266,6 +273,7 @@ export function subjectFault(
   out.cost = 0;
   out.cx = 0;
   out.cz = 0;
+  out.facing = 0;
   out.entry = null;
 
   const st = world.store;
@@ -348,6 +356,7 @@ export function evaluateRelocate(
   cx: number,
   cz: number,
   out: RelocateReport,
+  facing?: number,
 ): RelocateReport {
   subjectFault(world, service, player, building, out);
   // The destination is recorded even on a subject refusal, so the `Rejected`
@@ -361,6 +370,12 @@ export function evaluateRelocate(
   const i = st.index(building);
   const entry = out.entry;
 
+  // No facing given means "keep the one it is standing at". That is what every
+  // caller written before the ghost could turn meant, and it keeps a plain
+  // two-cell nudge from silently re-orienting a War Factory.
+  const f = facing === undefined ? yawToFacing(st.yaw[i]) : facing;
+  out.facing = f;
+
   footprintOriginCell(st.posX[i], st.posZ[i], st.footprintW[i], st.footprintH[i], originCell);
   exemptRect.cx = originCell[0];
   exemptRect.cz = originCell[1];
@@ -371,7 +386,7 @@ export function evaluateRelocate(
   st.flags[i] = saved | EntityFlag.PendingDestroy;
   let report: PlacementReport;
   try {
-    report = evaluatePlacement(world, player, entry, cx, cz, scratchPlacement, exemptRect);
+    report = evaluatePlacement(world, player, entry, cx, cz, scratchPlacement, exemptRect, f);
   } finally {
     st.flags[i] = saved;
   }
@@ -409,6 +424,17 @@ interface Transit {
   cz: number;
   homeCx: number;
   homeCz: number;
+  /** Quarter turns it will be re-founded at. `yaw` is this, in radians. */
+  facing: number;
+  /**
+   * The facing it was standing at when it was picked up.
+   *
+   * Separate from `facing` because they differ the moment a player turns a
+   * relocation, and going home has to undo BOTH halves of the move: `homeCx/Cz`
+   * are the cells the OLD world footprint occupied, and re-founding a turned
+   * 3x2 there at the new facing would land a 2x3 on the wrong rectangle.
+   */
+  homeFacing: number;
   yaw: number;
   /** Health as a fraction of max, carried across the move. */
   hpFrac: number;
@@ -438,7 +464,7 @@ const TRANSIT_CAPACITY = 16;
 function makeTransit(): Transit {
   return {
     leg: Leg.Empty, player: 0, entryIndex: -1,
-    cx: 0, cz: 0, homeCx: 0, homeCz: 0, yaw: 0,
+    cx: 0, cz: 0, homeCx: 0, homeCz: 0, facing: 0, homeFacing: 0, yaw: 0,
     hpFrac: 1, vetFlags: 0,
     hasRally: false, rallyX: 0, rallyZ: 0,
     primary: false, repairing: false,
@@ -477,6 +503,8 @@ export class RelocateService implements RelocateSeam {
   private readonly queuePlayer = new Int32Array(TRANSIT_CAPACITY);
   private readonly queueCx = new Int32Array(TRANSIT_CAPACITY);
   private readonly queueCz = new Int32Array(TRANSIT_CAPACITY);
+  /** Quarter turns, or -1 for "whatever it is standing at". */
+  private readonly queueFacing = new Int32Array(TRANSIT_CAPACITY);
   private queued = 0;
 
   private readonly report: RelocateReport = makeRelocateReport();
@@ -513,10 +541,14 @@ export class RelocateService implements RelocateSeam {
    * inside `tick`, which is the only place credits may be taken and entities
    * may be created. That is what keeps a replay identical.
    */
-  commit(player: PlayerId, building: EntityId, cx: number, cz: number): boolean {
+  commit(
+    player: PlayerId, building: EntityId, cx: number, cz: number, facing?: number,
+  ): boolean {
     const service = this.svc();
     if (service === null) return false;
-    const report = evaluateRelocate(this.world, service, player, building, cx, cz, this.report);
+    const report = evaluateRelocate(
+      this.world, service, player, building, cx, cz, this.report, facing,
+    );
     if (!report.ok) {
       this.refuse(player, report);
       return false;
@@ -532,6 +564,9 @@ export class RelocateService implements RelocateSeam {
     this.queuePlayer[q] = player as number;
     this.queueCx[q] = cx;
     this.queueCz[q] = cz;
+    // -1, not 0: the request is queued and re-checked a tick later, and "no
+    // facing was asked for" has to survive that as "keep the current one".
+    this.queueFacing[q] = facing === undefined ? -1 : facing;
     return true;
   }
 
@@ -611,7 +646,11 @@ export class RelocateService implements RelocateSeam {
     for (let q = 0; q < n; q++) {
       const building = this.queueBuilding[q] as EntityId;
       const player = this.queuePlayer[q] as PlayerId;
-      this.apply(service, player, building, this.queueCx[q], this.queueCz[q]);
+      const f = this.queueFacing[q];
+      this.apply(
+        service, player, building, this.queueCx[q], this.queueCz[q],
+        f < 0 ? undefined : f,
+      );
     }
   }
 
@@ -626,14 +665,15 @@ export class RelocateService implements RelocateSeam {
    * and this is the only place that can see any of it.
    */
   private apply(
-    service: ProductionService, player: PlayerId, building: EntityId, cx: number, cz: number,
+    service: ProductionService, player: PlayerId, building: EntityId,
+    cx: number, cz: number, facing?: number,
   ): void {
     const st = this.world.store;
     const i = st.index(building);
     if (i < 0) return;
 
     const report = evaluateRelocate(
-      this.world, service, player, building, cx, cz, this.report,
+      this.world, service, player, building, cx, cz, this.report, facing,
     );
     if (!report.ok || report.entry === null) {
       this.refuse(player, report);
@@ -661,7 +701,12 @@ export class RelocateService implements RelocateSeam {
     rec.entryIndex = entry.index;
     rec.cx = cx;
     rec.cz = cz;
-    rec.yaw = st.yaw[i];
+    // The facing the destination was CHECKED at, snapped to a quarter turn.
+    // Reading `st.yaw[i]` here instead would re-found a turned relocation at the
+    // angle it left with while the occupancy grid had been cleared for the new
+    // one — the ghost and the world disagreeing by 90 degrees.
+    rec.facing = report.facing;
+    rec.yaw = facingYaw(report.facing);
     rec.hpFrac = st.maxHp[i] > 0 ? Math.max(0.05, Math.min(1, st.hp[i] / st.maxHp[i])) : 1;
     rec.vetFlags = st.flags[i] & (EntityFlag.Veteran1 | EntityFlag.Veteran2);
     rec.primary = (st.flags[i] & EntityFlag.PrimaryFactory) !== 0;
@@ -685,6 +730,7 @@ export class RelocateService implements RelocateSeam {
     footprintOriginCell(x, z, fw, fh, originCell);
     rec.homeCx = originCell[0];
     rec.homeCz = originCell[1];
+    rec.homeFacing = yawToFacing(st.yaw[i]);
 
     // `UnitState.Selling` is Damage.ts's quiet-removal channel: no fireball, no
     // wreck, no "building lost", no loss on the scoreboard — and `entity:killed`
@@ -704,7 +750,7 @@ export class RelocateService implements RelocateSeam {
     // with `id` still NONE is honest: the structure is on its way, and the id
     // it will carry does not exist yet.
     service.publishPlacement(
-      PlacementPhase.Committed, player, entry, cx, cz, true, '',
+      PlacementPhase.Committed, player, entry, cx, cz, true, '', rec.facing,
     );
   }
 
@@ -751,8 +797,11 @@ export class RelocateService implements RelocateSeam {
     const goingHome = rec.blockedTicks > RELOCATE.arrivalGraceTicks;
     const cx = goingHome ? rec.homeCx : rec.cx;
     const cz = goingHome ? rec.homeCz : rec.cz;
+    // Going home undoes the turn as well as the move: `homeCx/Cz` name the
+    // rectangle the ORIGINAL orientation occupied.
+    const facing = goingHome ? rec.homeFacing : rec.facing;
 
-    if (!this.siteIsClear(p.id, entry, cx, cz, goingHome)) {
+    if (!this.siteIsClear(p.id, entry, cx, cz, goingHome, facing)) {
       rec.blockedTicks++;
       if (rec.blockedTicks === RELOCATE.arrivalGraceTicks + 1) {
         // Give up on the destination. The fee bought a move that could not
@@ -762,7 +811,7 @@ export class RelocateService implements RelocateSeam {
         this.eva(p.id, EvaLine.CannotDeployHere);
         service.publishPlacement(
           PlacementPhase.Rejected, p.id, entry, rec.cx, rec.cz,
-          false, FAULT_TEXT[RelocateFault.Destination],
+          false, FAULT_TEXT[RelocateFault.Destination], rec.facing,
         );
       }
       return;
@@ -771,7 +820,7 @@ export class RelocateService implements RelocateSeam {
     // `buildProgress` 0: it RISES, exactly as a newly placed structure does,
     // which is where the rest of the downtime comes from and which reuses the
     // whole existing construction presentation for free.
-    const id = service.spawnBuilding(p, entry, cx, cz, 0, rec.yaw);
+    const id = service.spawnBuilding(p, entry, cx, cz, 0, facingYaw(facing));
     if (id === NONE) {
       // The store is full. Keep the record and try again next tick rather than
       // deleting a building the player paid to keep.
@@ -838,14 +887,20 @@ export class RelocateService implements RelocateSeam {
    * occupancy grid for the rest of the match.
    */
   private siteIsClear(
-    player: PlayerId, entry: BuildEntry, cx: number, cz: number, home: boolean,
+    player: PlayerId, entry: BuildEntry, cx: number, cz: number, home: boolean, facing: number,
   ): boolean {
-    const report = evaluatePlacement(this.world, player, entry, cx, cz, scratchPlacement);
+    const report = evaluatePlacement(
+      this.world, player, entry, cx, cz, scratchPlacement, null, facing,
+    );
     if (report.ok) return true;
     if (!home) return false;
     const terrain = this.world.terrain;
-    for (let z = 0; z < entry.footprintH; z++) {
-      for (let x = 0; x < entry.footprintW; x++) {
+    // WORLD-SPACE extents, or the reduced going-home test walks a different
+    // rectangle than the full rule just walked.
+    const fw = facedFootprintW(entry.footprintW, entry.footprintH, facing);
+    const fh = facedFootprintH(entry.footprintW, entry.footprintH, facing);
+    for (let z = 0; z < fh; z++) {
+      for (let x = 0; x < fw; x++) {
         const gx = cx + x;
         const gz = cz + z;
         if (!isInMap(gx, gz)) return false;
@@ -924,6 +979,7 @@ export class RelocateService implements RelocateSeam {
     if (report.entry !== null) {
       this.svc()?.publishPlacement(
         PlacementPhase.Rejected, player, report.entry, report.cx, report.cz, false, report.reason,
+        report.facing,
       );
     }
   }
