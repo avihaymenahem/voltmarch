@@ -1220,6 +1220,31 @@ export class SteeringSolver {
                 if (s2 < queueSpeed) queueSpeed = s2;
               }
             }
+          } else if ((jf & EntityFlag.BlocksNav) !== 0 && st.kind[j] === EntityKind.Prop) {
+            // SOLID SCENERY, and the same deadlock as two units nose to nose.
+            //
+            // `Movement.relax` makes a `BlocksNav` prop — a rock or a boulder —
+            // physically solid, because `sim/Crush.ts` will not flatten one and
+            // a hull must not drive through it. But the separation term above is
+            // exactly ANTI-PARALLEL to travel when the rock is dead ahead, so on
+            // its own it produces a stand-off: the flow field pushes forward,
+            // the push cancels it, and the harvester sits in front of the rock
+            // until the match ends. Measured: it stopped 51 m short of its
+            // destination and stayed there.
+            //
+            // §5 cannot help — it probes the NAV GRID, and props are deliberately
+            // not in it (see the prop branch in `Movement.relax`). So reuse the
+            // sidestep this file already has for an obstruction that will not
+            // move: lean to my own right, harder the closer it is. A rock is
+            // never a queue to join, so there is no brake to inherit and no
+            // oncoming test to make.
+            const fx = -dx / d, fz = -dz / d;            // me -> it
+            if (fx * dirX + fz * dirZ > STEER_QUEUE_COS
+                && d < want * STEER_QUEUE_RANGE_MUL) {
+              const near = 1 - d / (want * STEER_QUEUE_RANGE_MUL);
+              passX += rightX * near;
+              passZ += rightZ * near;
+            }
           }
         }
       }

@@ -68,8 +68,20 @@
  *   - the surviving placement is a tombstone in the placement list, so every
  *     index the GPU buffers hold stays valid. `propCount` reports live props.
  *
- * `src/world/scatter-clear.system.ts` is the only caller: it listens to
- * `building:placed` and turns the footprint into a rectangle.
+ * There are two callers, and they ask different questions of the same index:
+ *
+ *   `src/world/scatter-clear.system.ts` listens to `building:placed` and turns
+ *   the footprint into a RECTANGLE — `clearFootprint()`, canopy-radius test.
+ *
+ *   `src/sim/Crush.ts` turns a driving hull into a DISC — `crushDisc()`,
+ *   footprint-radius test, and only the soft families. See the two methods'
+ *   own comments for why those tests are deliberately not the same one.
+ *
+ * NEITHER IS PERSISTED PER-PROP. `SaveGame` restores felled scenery by
+ * replaying the bounded list of building footprints ever poured; a match's
+ * worth of hull crush discs is unbounded and is not in the file, so vegetation
+ * a unit flattened stands again after a load. That is a known, documented gap
+ * and the conservative direction — it restores scenery, it never deletes any.
  * ============================================================================
  */
 
@@ -85,7 +97,7 @@ import { SURFACE_COUNT, SurfaceId, type BiomeName } from './Biomes';
 import { PASS_GROUND, type Terrain } from './Terrain';
 import {
   createPropMaterial, PropLibrary, PROP_DEFS, propPalette,
-  type PropDef, type PropGeometry, type PropMaterialSet, type PropPalette,
+  type PropDef, type PropFamily, type PropGeometry, type PropMaterialSet, type PropPalette,
 } from './PropLibrary';
 
 /* ==========================================================================
@@ -121,6 +133,35 @@ const PATCH_CELLS =
  * the cells around it and leaves a bald ring.
  */
 export const PROP_CLEAR_MARGIN = 1.25;
+
+/**
+ * The scatter families a vehicle hull is allowed to flatten.
+ *
+ * This is the SCATTER half of one rule the entity props already state in
+ * `Scenarios.FALLBACK_PROPS`: `tree`/`pine`/`bush` carry `EntityFlag.Crushable`
+ * and `rock`/`boulder` carry `EntityFlag.BlocksNav` instead. Instanced props
+ * have no entity, no flags and no HP to hang that on, so the equivalent signal
+ * here is `PropDef.family` — which is authored, already correct, and not a
+ * parallel notion invented for this.
+ *
+ * WHY NOT 'grass'. Grass is the density workhorse: `SCATTER_DENSITY`'s
+ * 260/ha wilderness target (bible ruling #9) is mostly grass tufts, and
+ * clearing is PERMANENT. Mowing it would carve bald trails along every ore
+ * route and every attack lane and walk the map's measured prop density
+ * downward for the rest of the match. A tank driving over long grass and
+ * leaving it standing is also simply what long grass does.
+ *
+ * WHY NOT 'rock', 'yard', 'street' or 'civic'. Boulders, shipping containers,
+ * parked cars, telegraph poles and benches are the scene's STRUCTURE. A
+ * harvester that dissolves a 3.4 m container reads as a missing collision, not
+ * as strength.
+ */
+const CRUSHABLE_FAMILIES: ReadonlySet<PropFamily> = new Set<PropFamily>(['canopy', 'shrub']);
+
+/** True if a crusher may flatten scatter props of this family. */
+export function isCrushableFamily(family: PropFamily): boolean {
+  return CRUSHABLE_FAMILIES.has(family);
+}
 
 export interface EmptyPatch {
   /** Centre of the offending square, world metres. */
@@ -1647,6 +1688,93 @@ export class Scatter {
     // The visible set did not change, but its CONTENTS did. Without this the
     // 256-byte compare in update() short-circuits and a static camera keeps
     // drawing the felled trees until the player pans.
+    if (removed > 0) this.chunkVisiblePrev.fill(255);
+    return removed;
+  }
+
+  /**
+   * Fell every CRUSHABLE-family prop whose footprint disc overlaps the disc
+   * `(x, z, radius)`. Returns the number removed.
+   *
+   * The hull-under-the-tree counterpart of `clearFootprint`, and deliberately
+   * NOT the same test:
+   *
+   *   FOOTPRINT RADIUS, NOT VISUAL RADIUS. `clearFootprint` uses the prop's
+   *   canopy (`boundRadius`), because a crown resting on a new roof reads as
+   *   broken even when the trunk cleared the wall. A driving hull is the
+   *   opposite case: felling an 11 m tree because a harvester passed 4 m from
+   *   its trunk would look like scenery evaporating at range. `PropDef.radius`
+   *   — the authored footprint, "spacing and exclusion tests" — is the disc the
+   *   hull has to actually touch.
+   *
+   *   FAMILY FILTER. Only `isCrushableFamily`; see its comment.
+   *
+   * `out`, when given, receives one `(x, y, z, radius)` quad per felled prop up
+   * to capacity, in cell-scan order — caller-supplied so the presentation layer
+   * raises dust without this allocating.
+   *
+   * COST. Identical shape to `clearFootprint`: the cells the grown disc covers,
+   * one swap per hit, nothing proportional to the map's prop count, no clock
+   * and no RNG. Safe inside `simTick`.
+   */
+  crushDisc(x: number, z: number, radius: number, out: Float32Array | null = null): number {
+    this.lastClearScanned = 0;
+    this.lastClearCount = 0;
+    if (this.placements.length === 0 || radius <= 0) return 0;
+
+    // The scan has to reach any prop whose CENTRE is outside the disc but whose
+    // own footprint overlaps it, so widen by the widest reach on the map.
+    const reach = this.maxPropReach;
+    const cx0 = clamp(Math.floor((x - radius - reach) / CELL), 0, MAP_CELLS - 1);
+    const cx1 = clamp(Math.floor((x + radius + reach) / CELL), 0, MAP_CELLS - 1);
+    const cz0 = clamp(Math.floor((z - radius - reach) / CELL), 0, MAP_CELLS - 1);
+    const cz1 = clamp(Math.floor((z + radius + reach) / CELL), 0, MAP_CELLS - 1);
+
+    const maxOut = out === null ? 0 : (out.length / 4) | 0;
+    let removed = 0;
+    let scanned = 0;
+
+    for (let gz = cz0; gz <= cz1; gz++) {
+      for (let gx = cx0; gx <= cx1; gx++) {
+        const cell = gz * MAP_CELLS + gx;
+        let prev = -1;
+        let n = this.bucketHead[cell];
+        while (n >= 0) {
+          const next = this.bucketNext[n];
+          const p = this.placements[n];
+          scanned++;
+          const def = PROP_DEFS[p.defIndex];
+          if (!p.alive || def === undefined || !isCrushableFamily(def.family)) {
+            prev = n; n = next; continue;
+          }
+          const r = def.radius * p.scale;
+          const dx = p.x - x;
+          const dz = p.z - z;
+          const want = radius + r;
+          if (dx * dx + dz * dz >= want * want) {
+            prev = n; n = next; continue;
+          }
+          // Unlink from the cell bucket, then release the GPU instance.
+          if (prev < 0) this.bucketHead[cell] = next;
+          else this.bucketNext[prev] = next;
+          this.bucketNext[n] = -1;
+          if (removed < maxOut && out !== null) {
+            out[removed * 4] = p.x; out[removed * 4 + 1] = p.y;
+            out[removed * 4 + 2] = p.z; out[removed * 4 + 3] = r;
+          }
+          this.releaseInstance(p);
+          removed++;
+          n = next;
+        }
+      }
+    }
+
+    this.lastClearScanned = scanned;
+    this.lastClearCount = removed;
+    this.clearedProps += removed;
+    // Same reason as `clearFootprint`: the visible SET did not change but its
+    // contents did, and update()'s 256-byte compare would short-circuit and
+    // keep drawing the felled trees until the player pans.
     if (removed > 0) this.chunkVisiblePrev.fill(255);
     return removed;
   }
