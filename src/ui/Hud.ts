@@ -66,6 +66,7 @@ import {
   applyTheme,
   computeUiScale,
   el,
+  formatCost,
   formatStat,
   type ToastKind,
 } from './Chrome';
@@ -288,10 +289,51 @@ interface GridRow {
   prereqs: readonly string[];
 }
 
-/** The placement controller, reached the same way `src/input` reaches it. */
+/**
+ * The placement controller, reached the same way `src/input` reaches it.
+ *
+ * `beginRelocate` is the whole of the relocation gesture as far as this file is
+ * concerned: hand it a live structure and the ordinary placement ghost picks it
+ * up. Everything after that — the hologram, the green/red carpet, the commit
+ * click, Escape to cancel — is `src/sim/Placement.ts` doing what it already did
+ * for a freshly built structure. `relocating` is the id it is currently
+ * carrying, or 0 (`NONE`), which is what lights the button up.
+ */
 interface PlacementSeam {
   readonly active: boolean;
+  readonly relocating: number;
   begin(defId: number): boolean;
+  beginRelocate(building: number): boolean;
+}
+
+/**
+ * The relocation service, duck-typed off `globalThis.__vmRelocate`.
+ *
+ * Duck-typed rather than imported for the reason at the top of this file: the
+ * HUD must not hold a hard dependency on a sim module. With `sim.relocate`
+ * absent the button is simply never offered and every other row still renders.
+ *
+ * `inspect` returns a POOLED report — read it in the same statement, never keep
+ * it. That is the sim's contract, not a convention this file invented.
+ */
+interface RelocateSeamRead {
+  inspect(player: PlayerId, building: EntityId): {
+    readonly ok: boolean;
+    readonly reason: string;
+    readonly cost: number;
+  };
+}
+
+function placementSeam(): PlacementSeam | null {
+  const g = globalThis as unknown as { __vmPlacement?: PlacementSeam };
+  const p = g.__vmPlacement;
+  return p !== undefined && typeof p.beginRelocate === 'function' ? p : null;
+}
+
+function relocateSeam(): RelocateSeamRead | null {
+  const g = globalThis as unknown as { __vmRelocate?: RelocateSeamRead };
+  const r = g.__vmRelocate;
+  return r !== undefined && typeof r.inspect === 'function' ? r : null;
 }
 
 /* ==========================================================================
@@ -429,6 +471,7 @@ export class Hud {
         setArmed: () => { /* the panel already applied the visual state */ },
         focusCard: (id) => this.focusEntity(id),
         setStance: (stance) => this.stanceSelection(stance),
+        relocate: () => this.relocateSelection(),
         sound: (cue) => this.soundHook?.(cue),
       },
     });
@@ -470,6 +513,7 @@ export class Hud {
       cards, cardCount: 0,
       hpFrac: 1, hpText: '',
       stance: -1, stanceEnabled: false,
+      relocate: { visible: false, enabled: false, cost: 0, hint: '', armed: false },
       armour: '', damage: '', range: '', speed: '',
     };
 
@@ -1170,6 +1214,7 @@ export class Hud {
       view.stanceEnabled = false;
       view.hpFrac = 1;
       view.hpText = '';
+      view.relocate.visible = false;
       return;
     }
 
@@ -1269,6 +1314,77 @@ export class Hud {
 
     view.stanceEnabled = anyMobile;
     view.stance = stance < 0 ? -1 : (stance as Stance);
+    this.fillRelocate(allBuildings);
+  }
+
+  /**
+   * The Relocate button's whole state, re-derived every frame.
+   *
+   * ONE structure only. A relocation is a placement, a placement needs a cursor
+   * and there is exactly one cursor; "move these four things" has no honest
+   * answer about where the other three go. So the row appears for a single
+   * selected structure and for nothing else — which is also the selection a
+   * player who wants to move a building will actually have.
+   *
+   * The verdict is NOT computed here. `RelocateService.inspect` is the same
+   * function the sim calls at commit, so the sentence on the button and the
+   * reason the move is refused cannot drift apart. This file's whole job is to
+   * turn that report into a label.
+   *
+   * It is re-asked every frame rather than cached on selection change, because
+   * two of its inputs move under a stationary selection: the bank (a repair
+   * drip can take you below the fee) and the garrison (a squad walking in
+   * forbids the move). `inspect` allocates nothing; its one non-constant step
+   * is a walk of the infantry list inside `Garrison.occupantCount`, and paying
+   * that for ONE selected structure is the price of the button never lying.
+   */
+  private fillRelocate(allBuildings: boolean): void {
+    const action = this.view.relocate;
+    const sel = this.world.selection;
+    const store = this.world.store;
+
+    if (!allBuildings || sel.count !== 1) { action.visible = false; return; }
+
+    const id = sel.ids[0] as EntityId;
+    const idx = store.index(id);
+    if (idx < 0 || store.owner[idx] !== (this.world.localPlayer as number)) {
+      action.visible = false;
+      return;
+    }
+
+    const seam = relocateSeam();
+    if (seam === null) { action.visible = false; return; }
+
+    const report = seam.inspect(this.world.localPlayer, id);
+    action.visible = true;
+    action.enabled = report.ok;
+    action.cost = report.cost;
+    action.armed = placementSeam()?.relocating === (id as number);
+    action.hint = report.ok
+      ? `Relocate for ${formatCost(report.cost)} credits — pick a new site`
+      : report.reason;
+  }
+
+  /**
+   * Put the selected structure on the cursor.
+   *
+   * Nothing is charged and nothing moves at this line: `beginRelocate` only
+   * raises the ghost, the building keeps standing, shooting and producing, and
+   * a cancel therefore costs nothing and CAN cost nothing. The fee is taken by
+   * the sim on the commit click, once.
+   */
+  private relocateSelection(): void {
+    const sel = this.world.selection;
+    if (sel.count !== 1) return;
+    const seam = placementSeam();
+    if (seam === null) {
+      this.soundHook?.('error');
+      return;
+    }
+    if (!seam.beginRelocate(sel.ids[0])) {
+      this.soundHook?.('error');
+      this.toast('warn', 'relocate', 'Cannot relocate', this.view.relocate.hint);
+    }
   }
 
   /** Armour / damage / range / speed for the primary entity. */
@@ -1399,11 +1515,52 @@ export class Hud {
     this.dockTop = dockRect.height > 0 ? dockRect.top : h;
   }
 
-  /** Fraction of the frame the HUD occupies. The bible §9 wants 12-16%. */
+  /**
+   * Fraction of the frame the bottom band occupies. The bible §9 wants 12-16%.
+   *
+   * WHAT THIS NUMBER IS AND IS NOT. It is the full-width band from the top of
+   * the map dock to the bottom of the frame — nothing else. It does not count
+   * the resource strip, the objectives panel, the perf overlay or the toasts,
+   * and it counts the whole width of the band even where the docks do not
+   * reach across it. It is quoted against the §9 ceiling anyway because it is
+   * the number every previous measurement in this repo used, and changing what
+   * it means would make this change incomparable with the ones before it.
+   *
+   * `hudCoverage()` is the honest one. Read both.
+   */
   hudFrameShare(): number {
     if (this.lastW <= 0 || this.lastH <= 0) return 0;
     const band = Math.max(0, this.lastH - this.dockTop);
     return (band * this.lastW) / (this.lastW * this.lastH);
+  }
+
+  /**
+   * Fraction of the frame that actually has an opaque HUD panel over it.
+   *
+   * The union of every `.vm-panel` in the interface, measured rather than
+   * modelled — so it counts the objectives panel and the resource strip, which
+   * `hudFrameShare()` does not, and it does NOT count the empty air between
+   * the three bottom docks, which `hudFrameShare()` does.
+   *
+   * Approximated as the sum of the panel rectangles. The HUD's panels do not
+   * overlap by construction (three docks in a row, a centred strip, two corner
+   * panels), so the sum IS the union unless someone parks one panel on top of
+   * another — which would be a layout bug this number would then over-report,
+   * which is the right direction to be wrong in for a budget.
+   *
+   * Cold path: it reads layout, so it must never be called from `frame()`.
+   */
+  hudCoverage(): number {
+    if (this.lastW <= 0 || this.lastH <= 0) return 0;
+    const panels = this.root.querySelectorAll('.vm-panel');
+    let area = 0;
+    for (let i = 0; i < panels.length; i++) {
+      const node = panels[i];
+      if (!(node instanceof HTMLElement) || node.hidden) continue;
+      const r = node.getBoundingClientRect();
+      area += Math.max(0, r.width) * Math.max(0, r.height);
+    }
+    return area / (this.lastW * this.lastH);
   }
 
   dispose(): void {

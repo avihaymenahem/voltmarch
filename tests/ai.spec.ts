@@ -18,7 +18,7 @@ import { describe, expect, it } from 'vitest';
 import { Channels } from '../src/core/events';
 import { World } from '../src/core/world';
 import {
-  ArmorClass, EntityFlag, EntityKind, Faction, CommandKind, OrderKind,
+  ArmorClass, EntityFlag, EntityKind, Faction, CommandKind, OrderKind, VisionLevel,
 } from '../src/core/types';
 import type {
   AvailabilityResult, Command, EntityId, IRng, IVision, PlayerId, SimContext,
@@ -566,6 +566,7 @@ describe('AiBrain — no cheating vision', () => {
     canSee: () => false,
     hasRadar: () => false,
     gridFor: () => new Uint8Array(1),
+    visibilityOf: () => VisionLevel.Hidden,
   };
 
   it('remembers nothing it cannot see', () => {

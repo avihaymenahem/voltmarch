@@ -76,7 +76,7 @@ import {
   textNode,
   type TooltipContent,
 } from './Chrome';
-import { TAB_ICONS, iconForBuildable, makeIcon, setIcon, type IconName } from './icons';
+import { iconForBuildable, makeIcon, setIcon, type IconName } from './icons';
 
 /* ==========================================================================
  * SECTION 1 — THE SHARED VOCABULARY
@@ -137,11 +137,47 @@ export interface SelectionView {
   stance: Stance | -1;
   /** False for a selection that cannot take a stance (structures). */
   stanceEnabled: boolean;
+  /** The Relocate button. Pooled and mutated in place, never replaced. */
+  relocate: RelocateAction;
   /** Stat row. An empty string blanks its chip. */
   armour: string;
   damage: string;
   range: string;
   speed: string;
+}
+
+/**
+ * The Relocate action, as the selection panel needs to render it.
+ *
+ * WHY THIS IS A SELECTION ACTION AND NOT A THIRD `ArmedMode`
+ * ---------------------------------------------------------
+ * Repair and sell are modal tools: you arm the wrench, then click any building.
+ * The click is a GESTURE, and gestures belong to `src/input/input.system.ts`,
+ * which reads `hud.armedMode` and issues the command. Relocation has no such
+ * gesture — its subject is the building you already selected, and its target is
+ * chosen by the placement ghost, which owns the cursor for the duration. Adding
+ * `'relocate'` to `ArmedMode` would hand input a mode it has no code for and
+ * would arm a wrench-like cursor that never gets clicked.
+ *
+ * So it lives on the selection panel, beside the stance buttons, where every
+ * other per-selection verb would go. `enabled` is false when the structure
+ * cannot be moved and `hint` is then the sentence explaining why — the button
+ * stays VISIBLE and greyed rather than vanishing, because a control that
+ * disappears teaches nothing and a control that explains itself teaches the
+ * rule (a Construction Yard travels by packing into an MCV; a garrison must get
+ * out first).
+ */
+export interface RelocateAction {
+  /** False hides the row entirely: nothing relocatable is selected. */
+  visible: boolean;
+  /** False greys the button. `hint` says why. */
+  enabled: boolean;
+  /** Fee in credits. Printed on the button so the price precedes the click. */
+  cost: number;
+  /** Tooltip / aria description. Never empty while `visible`. */
+  hint: string;
+  /** True while the ghost is already carrying this structure. */
+  armed: boolean;
 }
 
 /** Severity of the status board's advice line. */
@@ -178,6 +214,8 @@ export interface SidebarCallbacks {
   focusCard(id: number, additive: boolean): void;
   /** The stance buttons. */
   setStance(stance: Stance): void;
+  /** Relocate was pressed. The HUD puts the selected structure on the cursor. */
+  relocate(): void;
   sound(cue: HudSoundCue): void;
 }
 
@@ -219,6 +257,134 @@ export {
 
 const TAB_HOTKEY_LABELS: readonly string[] = BUILD_TAB_HOTKEY_LABELS;
 const SLOT_HOTKEY_LABELS: readonly string[] = BUILD_SLOT_HOTKEY_LABELS;
+
+/**
+ * The three fields a build countdown needs to remember between frames.
+ * `BuildSlot` satisfies this structurally; a test can pass a plain object.
+ */
+export interface EtaSampler {
+  /** `progress` at the previous sample, or -1 when there is none. */
+  lastProgress: number;
+  /** Milliseconds reading of that sample. */
+  lastAt: number;
+  /** Smoothed progress-per-second. 0 until two samples exist. */
+  rate: number;
+}
+
+/** How much of each new instantaneous rate reading folds into the average. */
+const ETA_SMOOTHING = 0.12;
+/** A gap longer than this means frames were dropped; the sample is unusable. */
+const ETA_MAX_SAMPLE_GAP_SEC = 2;
+/** Beyond this the number stops informing and starts looking broken. */
+const ETA_MAX_SECONDS = 600;
+/**
+ * How long progress must sit still before it counts as stalled.
+ *
+ * Not zero, and that is the important part: the HUD samples at frame rate while
+ * the sim ticks at 30 Hz, so during a perfectly healthy build most samples show
+ * no change. Treating those as zero-rate readings would halve the measured rate
+ * and make the countdown read roughly double — the very bug being fixed.
+ */
+const ETA_STALL_SEC = 1.5;
+
+/** `rate` sentinel: nothing measured yet, so fall back to the nominal time. */
+const RATE_NO_SAMPLE = 0;
+/** `rate` sentinel: measured, and the build is not moving. Show nothing. */
+const RATE_STALLED = -1;
+
+/**
+ * Seconds left on a build, derived from how fast it is ACTUALLY progressing.
+ *
+ * Returns 0 for "show nothing": not building, already ready, or moving so
+ * slowly that any figure would be a lie. A stalled build already announces
+ * itself through the ON HOLD flag and EVA — a countdown reading 9999 beside it
+ * would be noise, and one reading 5s while nothing moves is the bug this
+ * replaces.
+ *
+ * WHY MEASURED AND NOT CALCULATED
+ * -------------------------------
+ * The old formula was `buildTime * (1 - progress)`: the time a build takes at
+ * its NOMINAL rate. Three things move the real rate and it knew none of them.
+ *
+ *   - `player.buildSpeedMul` — a continuous function of the power supply ratio
+ *     (`src/sim/Power.ts`), so a brownout stretches every build.
+ *   - `factorySpeed(factoryCount)` — more factories build FASTER.
+ *   - Affordability. `src/sim/BuildQueue.ts` charges per tick and advances only
+ *     the slice it managed to pay for: "a poor player does not stop - they
+ *     crawl. A tick that can only afford 40% of its increment advances 40% of
+ *     its increment." Deliberate, and invisible to a nominal countdown.
+ *
+ * Two of the three make a build take LONGER than advertised, which is the
+ * report: the timer says 5s and it takes twice that. Mirroring the sim's rate
+ * arithmetic up here would be a second copy of a formula that drifts the first
+ * time either side changes — the same defect class `docs/SPEC_DRIFT_AUDIT.md`
+ * catalogues. Measuring the observed rate is correct for all three causes at
+ * once, and for any cause added later.
+ *
+ * The estimate assumes current conditions hold, which is what every ETA
+ * assumes. Power returning or a harvester cashing in will beat it, and early is
+ * the right direction to be wrong in.
+ */
+export function estimateBuildEta(
+  s: EtaSampler,
+  progress: number,
+  ready: boolean,
+  buildTime: number,
+  nowMs: number,
+): number {
+  if (ready || progress <= 0 || progress >= 1) {
+    s.lastProgress = -1;
+    s.rate = 0;
+    return 0;
+  }
+
+  const prev = s.lastProgress;
+  const dt = (nowMs - s.lastAt) / 1000;
+
+  if (prev < 0 || progress < prev) {
+    // A new item or a restart. `progress` going DOWN means the head of the
+    // queue changed, so any retained rate describes a different build.
+    s.lastProgress = progress;
+    s.lastAt = nowMs;
+    s.rate = RATE_NO_SAMPLE;
+  } else if (progress > prev) {
+    // Only measure across a plausible gap. A dropped frame or a tab switch
+    // produces a delta over a long interval that is not a rate.
+    if (dt > 0 && dt <= ETA_MAX_SAMPLE_GAP_SEC) {
+      const inst = (progress - prev) / dt;
+      // Heavily smoothed on purpose: production is charged per sim tick against
+      // a credit balance that jumps every time a harvester docks, so the
+      // instantaneous rate is spiky and a raw countdown would swing by seconds
+      // between frames.
+      s.rate = s.rate > 0 ? s.rate + (inst - s.rate) * ETA_SMOOTHING : inst;
+    }
+    s.lastProgress = progress;
+    s.lastAt = nowMs;
+  } else if (dt > ETA_STALL_SEC) {
+    // Progress has not moved for long enough that this is a genuine stall
+    // rather than a render frame that simply outran the 30 Hz sim tick.
+    //
+    // The distinction matters: the HUD samples at frame rate, so during a
+    // perfectly healthy build most samples show no change at all. Folding those
+    // in as zero would halve the measured rate and the countdown would read
+    // roughly double. Hence a dwell rather than an immediate decay.
+    s.rate = RATE_STALLED;
+  }
+
+  const remaining = 1 - progress;
+  if (s.rate > 1e-5) {
+    const secs = remaining / s.rate;
+    return secs > ETA_MAX_SECONDS ? 0 : Math.ceil(secs);
+  }
+  // Stalled: show nothing. ON HOLD and EVA already say so, and a countdown
+  // frozen at "5s" while nothing happens is the reported bug.
+  if (s.rate === RATE_STALLED) return 0;
+
+  // No usable sample yet. The nominal time is the best guess available, and it
+  // is right whenever nothing is throttling the build — the common case in the
+  // first frames after queueing.
+  return buildTime > 0 ? Math.ceil(buildTime * remaining) : 0;
+}
 
 /** Stance buttons, in display order. */
 const STANCES: ReadonlyArray<readonly [Stance, IconName, string]> = [
@@ -284,6 +450,15 @@ export class ResourceStrip {
   constructor(parent: HTMLElement) {
     this.root = panel(parent, 'vm-resources', 'ends');
     this.root.setAttribute('role', 'status');
+
+    /* -- the crest ------------------------------------------------------ *
+     * The reference anchors its top strip with a faction crest, and it is the
+     * one piece of the whole interface whose job is identity rather than
+     * information. It is drawn from `icons.ts` like everything else and takes
+     * its colour from `--vm-accent-hi`, so a faction swap recolours it and
+     * nothing here knows a faction exists. */
+    this.root.appendChild(makeIcon('crest', 'vm-icon vm-res-crest'));
+    el('span', 'vm-res-rule', this.root);
 
     /* -- credits ------------------------------------------------------- */
     const credits = el('div', 'vm-res vm-res-credits', this.root);
@@ -440,7 +615,25 @@ export class ResourceStrip {
 }
 
 /* ==========================================================================
- * SECTION 3 — THE CENTRE DOCK  (selection, or status)
+ * SECTION 3 — THE SELECTION CARD  (bottom centre)
+ *
+ * Laid out the way docs/refs/target-hud.png lays it out: the NAME in caps with
+ * a rule running right from it, the cameo on the left, the description on the
+ * right, and a full-width health bar along the bottom with the absolute hit
+ * points laid over it.
+ *
+ * WHAT THE BASE STATUS BOARD WAS, AND WHY IT IS GONE
+ * -------------------------------------------------
+ * With nothing selected this dock used to fill the whole 106-unit band with a
+ * board reading ARMY / STRUCTURES / POWER / INCOME / CREDITS plus one line of
+ * advice. Every one of those five numbers is already in the resource strip at
+ * the top of the frame, and the board measured ~47% empty — it was the single
+ * largest redundant area in the interface, in the widest dock of the band.
+ *
+ * All that survives is the advice, because that IS new information: it is
+ * derived in `Hud.buildTelemetry` from the world and from the HUD's own event
+ * subscriptions, and nothing else in the frame says "your power is tight" in a
+ * sentence. It is now one 13-unit line, and the dock shrinks to fit it.
  * ========================================================================== */
 
 interface CardCell {
@@ -455,11 +648,8 @@ interface CardCell {
   sig: string;
 }
 
-interface StatusCell {
-  valueEl: HTMLElement;
-  valueNode: Text;
-  last: string;
-}
+/** Shown in place of the advice when the base is nominal. */
+const IDLE_HINT = 'Select a unit or a structure to command it';
 
 class SelectionPanel {
   readonly root: HTMLElement;
@@ -481,12 +671,12 @@ class SelectionPanel {
   private readonly stanceRow: HTMLElement;
   private readonly stanceLabelNode: Text;
   private readonly stanceButtons: HTMLButtonElement[] = [];
+  private readonly relocateRow: HTMLElement;
+  private readonly relocateButton: HTMLButtonElement;
+  private readonly relocateCostNode: Text;
 
-  /** Status board: army, structures, power, income, credits. */
-  private readonly statusCells: StatusCell[] = [];
-  private readonly statusSubNode: Text;
-  private readonly alertEl: HTMLElement;
-  private readonly alertNode: Text;
+  /** The idle advisory line — all that is left of the status board. */
+  private readonly adviceNode: Text;
   private lastAdvice = '';
 
   private empty = true;
@@ -497,16 +687,21 @@ class SelectionPanel {
   private lastStance = -2;
   private lastHp = '';
   private liveCards = 0;
+  private lastRelocate = '';
 
   constructor(parent: HTMLElement, private readonly cb: SidebarCallbacks) {
     this.root = panel(parent, 'vm-dock vm-dock-selection', 'diag');
+    this.root.dataset.brackets = 'on';
     this.root.setAttribute('aria-label', 'Selection');
     this.root.classList.add('is-empty');
 
     this.live = el('div', 'vm-sel-live', this.root);
     this.idle = el('div', 'vm-sel-idle', this.root);
 
-    /* -- header -------------------------------------------------------- */
+    /* -- the name row -------------------------------------------------- *
+     * Name, veterancy, then a rule running right to the count and the verbs.
+     * The rule is the reference's one consistent header device and it is what
+     * ties this panel to the objectives panel and the build palette. */
     const head = el('div', 'vm-sel-head', this.live);
     const idBlock = el('div', 'vm-sel-id', head);
     this.titleNode = label(idBlock, 'vm-sel-title');
@@ -515,43 +710,23 @@ class SelectionPanel {
       this.chevrons.appendChild(makeIcon('veterancy', 'vm-icon vm-sel-chevron'));
     }
     this.chevrons.hidden = true;
-    this.subtitleNode = label(head, 'vm-sel-sub');
 
-    // Aggregate health. The number that decides whether to press or retreat,
-    // and the old panel simply did not have it anywhere.
-    const hp = el('div', 'vm-sel-hp', head);
-    const hpTrack = el('span', 'vm-sel-hp-track', hp);
-    this.hpBar = el('i', '', hpTrack);
-    this.hpTextNode = label(hp, 'vm-sel-hp-text vm-num', '');
+    el('i', 'vm-sel-rule', head);
 
     this.countEl = el('div', 'vm-sel-count vm-num', head);
     this.countNode = textNode(this.countEl, '0');
     this.countEl.hidden = true;
 
-    /* -- cards --------------------------------------------------------- */
-    this.cardRow = el('div', 'vm-sel-cards', this.live);
-    this.cardRow.setAttribute('role', 'listbox');
-    this.cardRow.setAttribute('aria-label', 'Selected units');
-    for (let i = 0; i < CARD_POOL; i++) this.cards.push(this.buildCard());
-
-    /* -- stats + stance ------------------------------------------------ */
-    const stats = el('div', 'vm-sel-stats', this.live);
-    const STAT_SPEC: ReadonlyArray<readonly [IconName, string, string]> = [
-      ['armour', 'Armour', 'Arm'],
-      ['damage', 'Damage per second', 'Dps'],
-      ['range', 'Weapon range', 'Rng'],
-      ['speed', 'Movement speed', 'Spd'],
-    ];
-    for (const [icon, title, key] of STAT_SPEC) {
-      const chip = el('div', 'vm-stat', stats);
-      chip.title = title;
-      chip.appendChild(makeIcon(icon, 'vm-icon vm-stat-icon'));
-      label(chip, 'vm-stat-key', key);
-      this.statValues.push(label(chip, 'vm-stat-value vm-num', '—'));
-      this.statChips.push(chip);
-    }
-
-    this.stanceRow = el('div', 'vm-stances', stats);
+    /* -- the verbs, in the head's right end ---------------------------- *
+     * Stance and Relocate are mutually exclusive in practice — the stance row
+     * is hidden for a selection that cannot move, which is exactly the
+     * selection Relocate applies to — so they share the slot and whichever is
+     * relevant is the one that is there.
+     *
+     * The classes are `vm-stances` / `vm-stance-label` / `vm-stance` on
+     * purpose: the relocate row IS the stance row's layout and needs no
+     * stylesheet of its own. */
+    this.stanceRow = el('div', 'vm-stances', head);
     this.stanceRow.setAttribute('role', 'radiogroup');
     this.stanceRow.setAttribute('aria-label', 'Stance');
     this.stanceLabelNode = label(this.stanceRow, 'vm-stance-label', 'Stance');
@@ -569,31 +744,73 @@ class SelectionPanel {
       this.stanceButtons.push(b);
     }
 
-    /* -- the idle status board ------------------------------------------ */
-    const sHead = el('div', 'vm-status-head', this.idle);
-    label(sHead, 'vm-status-title', 'Base status');
-    this.statusSubNode = label(sHead, 'vm-status-sub', 'Select a unit or a structure to command it');
+    this.relocateRow = el('div', 'vm-stances', head);
+    // "Relocate", not "Move": every other surface — the tooltip, the toast, the
+    // refusal sentences — uses that word, and a control whose label disagrees
+    // with its own tooltip is a control the player has to read twice.
+    label(this.relocateRow, 'vm-stance-label', 'Relocate');
+    this.relocateButton = button(this.relocateRow, 'vm-stance', 'Relocate structure');
+    this.relocateButton.style.width = 'auto';
+    this.relocateButton.style.gap = 'calc(3 * var(--vm-u))';
+    this.relocateButton.style.padding = '0 calc(4 * var(--vm-u))';
+    this.relocateButton.appendChild(makeIcon('deploy', 'vm-icon'));
+    this.relocateCostNode = label(this.relocateButton, 'vm-num', '0');
+    this.relocateRow.hidden = true;
+    this.relocateButton.addEventListener('pointerenter', () => this.cb.sound('hover'));
+    this.relocateButton.addEventListener('click', () => {
+      // Dimmed, never `disabled` — the same rule the locked build slot follows.
+      // A control that goes unhoverable cannot explain itself, and "why can I
+      // not move my Construction Yard" is the whole question the hint answers.
+      if (this.relocateButton.getAttribute('aria-disabled') === 'true') {
+        this.cb.sound('error');
+        return;
+      }
+      this.cb.sound('click');
+      this.cb.relocate();
+    });
 
-    const grid = el('div', 'vm-status-grid', this.idle);
-    const STATUS_SPEC: ReadonlyArray<readonly [IconName, string]> = [
-      ['army', 'Army'],
-      ['base', 'Structures'],
-      ['bolt', 'Power'],
-      ['trend', 'Income / min'],
-      ['credits', 'Credits'],
+    /* -- the body: cameo left, description right ----------------------- */
+    const body = el('div', 'vm-sel-body', this.live);
+
+    this.cardRow = el('div', 'vm-sel-cards', body);
+    this.cardRow.setAttribute('role', 'listbox');
+    this.cardRow.setAttribute('aria-label', 'Selected units');
+    for (let i = 0; i < CARD_POOL; i++) this.cards.push(this.buildCard());
+
+    const info = el('div', 'vm-sel-info', body);
+    this.subtitleNode = label(info, 'vm-sel-sub');
+
+    const stats = el('div', 'vm-sel-stats', info);
+    const STAT_SPEC: ReadonlyArray<readonly [IconName, string, string]> = [
+      ['armour', 'Armour', 'Arm'],
+      ['damage', 'Damage per second', 'Dps'],
+      ['range', 'Weapon range', 'Rng'],
+      ['speed', 'Movement speed', 'Spd'],
     ];
-    for (const [icon, name] of STATUS_SPEC) {
-      const cell = el('div', 'vm-status-cell', grid);
-      cell.appendChild(makeIcon(icon, 'vm-icon'));
-      const body = el('div', 'vm-status-body', cell);
-      label(body, 'vm-status-label', name);
-      const valueEl = el('span', 'vm-status-value vm-num', body);
-      this.statusCells.push({ valueEl, valueNode: textNode(valueEl, '0'), last: '' });
+    for (const [icon, title, key] of STAT_SPEC) {
+      const chip = el('div', 'vm-stat', stats);
+      chip.title = title;
+      chip.appendChild(makeIcon(icon, 'vm-icon vm-stat-icon'));
+      label(chip, 'vm-stat-key', key);
+      this.statValues.push(label(chip, 'vm-stat-value vm-num', '—'));
+      this.statChips.push(chip);
     }
 
-    this.alertEl = el('div', 'vm-status-alert', this.idle);
-    this.alertEl.appendChild(makeIcon('info', 'vm-icon'));
-    this.alertNode = label(this.alertEl, 'vm-status-alert-text', '');
+    /* -- the health bar ------------------------------------------------ *
+     * Full width along the bottom with the absolute hit points laid over it,
+     * exactly as the reference draws it. The old panel put a 54-unit stub and
+     * a right-aligned number in the header, where it competed with the name
+     * for the eye and lost. Absolute points, not an average of fractions:
+     * twelve conscripts and one Apocalypse at 60% are not the same army, and
+     * how much punishment the GROUP can still take is the question. */
+    const hp = el('div', 'vm-sel-hp', this.live);
+    const hpTrack = el('span', 'vm-sel-hp-track', hp);
+    this.hpBar = el('i', '', hpTrack);
+    this.hpTextNode = label(hp, 'vm-sel-hp-text vm-num', '');
+
+    /* -- the idle advisory --------------------------------------------- */
+    this.idle.appendChild(makeIcon('info', 'vm-icon'));
+    this.adviceNode = label(this.idle, 'vm-sel-advice', IDLE_HINT);
   }
 
   private buildCard(): CardCell {
@@ -627,17 +844,24 @@ class SelectionPanel {
     return cell;
   }
 
-  update(view: SelectionView, snap: HudSnapshot, tele: HudTelemetry): void {
+  update(view: SelectionView, _snap: HudSnapshot, tele: HudTelemetry): void {
     const empty = view.count === 0;
     if (empty !== this.empty) {
       this.empty = empty;
       this.root.classList.toggle('is-empty', empty);
-      this.root.setAttribute('aria-label', empty ? 'Base status' : 'Selection');
+      this.root.setAttribute('aria-label', empty ? 'Base advisory' : 'Selection');
     }
     if (empty) {
       for (let i = 0; i < this.liveCards; i++) this.cards[i].root.hidden = true;
       this.liveCards = 0;
-      this.updateStatus(snap, tele);
+      // The whole live half is display:none while empty, but the row is left in
+      // a clean state so re-selecting the same structure cannot flash a stale
+      // price for one frame.
+      if (!this.relocateRow.hidden) {
+        this.relocateRow.hidden = true;
+        this.lastRelocate = '';
+      }
+      this.updateAdvice(tele);
       return;
     }
 
@@ -651,7 +875,7 @@ class SelectionPanel {
     }
     if (view.count !== this.lastCount) {
       this.lastCount = view.count;
-      this.countNode.nodeValue = String(view.count);
+      this.countNode.nodeValue = `x${view.count}`;
       this.countEl.hidden = view.count < 2;
     }
     if (view.veterancy !== this.lastVet) {
@@ -731,35 +955,50 @@ class SelectionPanel {
       }
       this.stanceLabelNode.nodeValue = stance < 0 ? 'Stance' : name;
     }
+
+    this.updateRelocate(view.relocate);
   }
 
-  /** The idle board. Same numbers as the strip, given room to be read. */
-  private updateStatus(snap: HudSnapshot, tele: HudTelemetry): void {
-    const state = powerStateOf(snap.powerProduced, snap.powerConsumed, snap.brownout);
-    this.setStatus(0, String(tele.army), '');
-    this.setStatus(1, String(tele.structures), '');
-    this.setStatus(
-      2,
-      `${Math.max(0, Math.round(snap.powerConsumed))}/${Math.max(0, Math.round(snap.powerProduced))}`,
-      state === 'ok' ? '' : state === 'tight' ? 'is-warn' : 'is-down',
-    );
-    this.setStatus(3, formatRate(tele.incomePerMin), tele.incomePerMin > 5 ? 'is-good' : '');
-    this.setStatus(4, formatCredits(snap.credits), '');
+  /**
+   * The Relocate button.
+   *
+   * Signature-gated like every other row in this panel: a steady selection
+   * performs no DOM writes at all, which matters because this runs every frame
+   * and the price it prints is recomputed from the sim every frame.
+   */
+  private updateRelocate(action: RelocateAction): void {
+    const sig = action.visible
+      ? `${action.enabled ? 1 : 0}|${action.cost}|${action.hint}|${action.armed ? 1 : 0}`
+      : '';
+    if (sig === this.lastRelocate) return;
+    this.lastRelocate = sig;
 
-    if (tele.advice !== this.lastAdvice) {
-      this.lastAdvice = tele.advice;
-      this.alertNode.nodeValue = tele.advice;
-      this.alertEl.className = `vm-status-alert${tele.adviceKind === 'info' ? '' : ` is-${tele.adviceKind}`}`;
-    }
+    this.relocateRow.hidden = !action.visible;
+    if (!action.visible) return;
+
+    this.relocateCostNode.nodeValue = formatCredits(action.cost);
+    this.relocateButton.title = action.hint;
+    this.relocateButton.setAttribute('aria-label', action.hint);
+    this.relocateButton.setAttribute('aria-disabled', action.enabled ? 'false' : 'true');
+    this.relocateButton.classList.toggle('is-active', action.armed);
+    this.relocateButton.style.opacity = action.enabled ? '1' : '0.4';
   }
 
-  private setStatus(i: number, value: string, mod: string): void {
-    const cell = this.statusCells[i];
-    const sig = `${value}|${mod}`;
-    if (cell.last === sig) return;
-    cell.last = sig;
-    cell.valueNode.nodeValue = value;
-    cell.valueEl.className = `vm-status-value vm-num${mod === '' ? '' : ` ${mod}`}`;
+  /**
+   * The one line the status board left behind.
+   *
+   * A nominal base has nothing to report, so it gets the hint instead — a
+   * sentence that teaches the panel rather than one that says "everything is
+   * fine" in a slot the player has already learned to ignore.
+   */
+  private updateAdvice(tele: HudTelemetry): void {
+    const nominal = tele.adviceKind === 'info';
+    const text = nominal ? IDLE_HINT : tele.advice;
+    const sig = `${text}|${tele.adviceKind}`;
+    if (sig === this.lastAdvice) return;
+    this.lastAdvice = sig;
+    this.adviceNode.nodeValue = text;
+    this.idle.className = `vm-sel-idle${nominal ? '' : ` is-${tele.adviceKind}`}`;
   }
 
   private setStat(i: number, value: string): void {
@@ -776,7 +1015,14 @@ class SelectionPanel {
 }
 
 /* ==========================================================================
- * SECTION 4 — THE BUILD PANEL  (bottom right)
+ * SECTION 4 — THE BUILD PALETTE  (bottom right)
+ *
+ * The reference's tab strip RISES ABOVE the panel body: the notched tabs sit
+ * on top of the palette rather than inside it. That cannot be done from inside
+ * one clipped box, so `.vm-dock-build` is a bare container holding the strip
+ * and then `.vm-build-body`, which is the panel. Both class names are
+ * unchanged, which matters — `src/shell/tutorial-steps.ts` spotlights
+ * `.vm-dock-build` and `.vm-dock-build .vm-grid`.
  * ========================================================================== */
 
 /** Why a slot cannot be clicked right now. Drives the banner and its colour. */
@@ -830,6 +1076,34 @@ interface BuildSlot {
   key: string;
   /** Build time in seconds for `key`, resolved once per content change. */
   buildTime: number;
+
+  /* -- observed build rate, for an honest countdown -------------------------
+   * The countdown used to be `buildTime * (1 - progress)`, which is the time a
+   * build takes at its NOMINAL rate. Three things move the real rate and the
+   * formula knew about none of them:
+   *
+   *   - `player.buildSpeedMul`, a continuous function of the power supply ratio
+   *     (`src/sim/Power.ts`), so a brownout stretches every build;
+   *   - `factorySpeed(factoryCount)`, which makes builds FASTER with more
+   *     factories;
+   *   - affordability. `BuildQueue` charges per tick and advances only the
+   *     slice it managed to pay for: "a poor player does not stop - they crawl.
+   *     A tick that can only afford 40% of its increment advances 40% of its
+   *     increment." Deliberate, and invisible to a nominal countdown.
+   *
+   * Two of those three make a build take LONGER than advertised, which is the
+   * report: "the timer shows 5s but takes twice and more". Rather than mirror
+   * the sim's rate arithmetic up here — a second copy of a formula that would
+   * drift the first time either changes — the slot MEASURES how fast progress
+   * is actually moving and extrapolates. That is correct for every cause at
+   * once, including causes added later.
+   * ---------------------------------------------------------------------- */
+  /** `progress` at the previous sample, or -1 when there is no sample yet. */
+  lastProgress: number;
+  /** `performance.now()` of that sample. Render-side only; never the sim. */
+  lastAt: number;
+  /** Smoothed progress-per-second. 0 until two samples exist. */
+  rate: number;
 }
 
 class BuildPanel {
@@ -848,11 +1122,11 @@ class BuildPanel {
   private liveSlots = 0;
 
   constructor(parent: HTMLElement, private readonly cb: SidebarCallbacks, tipHost: HTMLElement) {
-    this.root = panel(parent, 'vm-dock vm-dock-build', 'diag');
+    this.root = el('div', 'vm-dock vm-dock-build', parent);
     this.root.setAttribute('aria-label', 'Construction');
     this.tooltip = new Tooltip(tipHost);
 
-    /* -- tab strip ----------------------------------------------------- */
+    /* -- tab strip, above the body ------------------------------------- */
     const strip = el('div', 'vm-tabs', this.root);
     strip.setAttribute('role', 'tablist');
     strip.setAttribute('aria-label', 'Build categories');
@@ -864,15 +1138,13 @@ class BuildPanel {
       b.setAttribute('aria-selected', t === 0 ? 'true' : 'false');
       b.tabIndex = t === 0 ? 0 : -1;
       b.title = `${TAB_LABELS[t]}  (${TAB_HOTKEY_LABELS[t]})`;
-      // Icon and key badge share one centred row. They used to be an icon in the
-      // middle and a badge absolutely parked in the tab's top-right corner,
-      // which put the badge almost exactly midway between its OWN icon and the
-      // next tab's — 28px from one, 25px from the other, measured at 1440p. It
-      // read as if `B` belonged to Defence. A key badge that names the wrong
-      // control is worse than no badge, so the two are now one unit.
-      const top = el('span', 'vm-tab-top', b);
-      top.appendChild(makeIcon(TAB_ICONS[t], 'vm-icon vm-tab-icon'));
-      label(top, 'vm-hk', TAB_HOTKEY_LABELS[t]);
+      // The word and the key badge, one line, no icon. The icon-over-label
+      // stack cost 22 design units of band height to draw a picture that the
+      // word beside it already said — and the band is the thing this redesign
+      // had to give back. The badge stays paired with the word for the reason
+      // it was paired with the icon: a badge floating in the gutter between two
+      // tabs is owned by neither.
+      label(b, 'vm-hk', TAB_HOTKEY_LABELS[t]);
       label(b, 'vm-tab-label', TAB_LABELS[t].toUpperCase());
       const alert = el('span', 'vm-tab-alert', b);
       alert.hidden = true;
@@ -908,8 +1180,12 @@ class BuildPanel {
       this.tools.push(b);
     }
 
+    /* -- the panel body, under the strip -------------------------------- */
+    const body = panel(this.root, 'vm-build-body', 'diag');
+    body.dataset.brackets = 'on';
+
     /* -- slot grid ----------------------------------------------------- */
-    this.grid = el('div', 'vm-grid', this.root);
+    this.grid = el('div', 'vm-grid', body);
     this.grid.setAttribute('role', 'grid');
     this.grid.style.setProperty('--vm-grid-cols', String(BUILD_COLUMNS));
     for (let i = 0; i < BUILD_COLUMNS * BUILD_ROWS; i++) this.slots.push(this.buildSlot(i));
@@ -930,7 +1206,11 @@ class BuildPanel {
     const queueNode = textNode(queueEl);
     queueEl.hidden = true;
 
-    const costNode = label(root, 'vm-slot-cost vm-num');
+    // The cost badge, bottom-left with its credit glyph — the reference's
+    // placement. A bare number bottom-right read as a quantity, not a price.
+    const costEl = el('span', 'vm-slot-cost vm-num', root);
+    costEl.appendChild(makeIcon('credits', 'vm-icon'));
+    const costNode = textNode(costEl);
 
     const keyEl = el('span', 'vm-hk vm-slot-key', root);
     const keyNode = textNode(keyEl, SLOT_HOTKEY_LABELS[index] ?? '');
@@ -958,6 +1238,7 @@ class BuildPanel {
       root, icon, costNode, keyEl, keyNode, queueEl, queueNode, readyEl,
       etaEl, etaNode, flagEl, flagNode, progress,
       cameo: null, sig: '', key: '', buildTime: 0,
+      lastProgress: -1, lastAt: 0, rate: 0,
     };
 
     root.addEventListener('pointerenter', () => {
@@ -1076,6 +1357,22 @@ class BuildPanel {
 
   get armedMode(): ArmedMode { return this.armed; }
 
+  /**
+   * Seconds left on this build, from the rate it is ACTUALLY moving at.
+   *
+   * Returns 0 for "show nothing" — not building, already ready, or moving so
+   * slowly that any figure would be a lie. A stalled build is already announced
+   * by the ON HOLD flag and EVA; a countdown reading 9999 next to it would be
+   * noise, and one reading 5s while nothing happens is the bug this replaces.
+   *
+   * The estimate assumes current conditions hold, which is what every ETA
+   * assumes. Power coming back or a refinery cashing in will beat it, and that
+   * is the right direction to be wrong in.
+   */
+  private estimateEta(slot: BuildSlot, c: HudCameo): number {
+    return estimateBuildEta(slot, c.progress, c.ready, slot.buildTime, performance.now());
+  }
+
   private tipFor(c: HudCameo, index: number): TooltipContent {
     const extra = this.extras?.(c.key)
       ?? { buildTimeSec: 0, powerDelta: 0, blurb: '', prereq: '' };
@@ -1141,8 +1438,7 @@ class BuildPanel {
       // the DOM at 60 Hz for sub-pixel motion; the countdown is quantized to a
       // whole second for the same reason.
       const poor = credits < c.cost;
-      const eta = slot.buildTime > 0 && c.progress > 0 && !c.ready
-        ? Math.ceil(slot.buildTime * (1 - c.progress)) : 0;
+      const eta = this.estimateEta(slot, c);
       const sig = `${c.queued}|${c.ready ? 1 : 0}|${c.onHold ? 1 : 0}|` +
         `${c.available ? 1 : 0}|${poor ? 1 : 0}|${eta}|${c.reason}|${(c.progress * 200) | 0}`;
       if (sig === slot.sig) continue;
@@ -1241,16 +1537,40 @@ export class Sidebar {
 
     /* -- bottom left: the minimap dock ---------------------------------- */
     this.mapDock = panel(docks, 'vm-dock vm-dock-map', 'diag');
+    this.mapDock.dataset.brackets = 'on';
     this.mapDock.setAttribute('aria-label', 'Tactical map');
     const mapHead = el('div', 'vm-dock-head', this.mapDock);
-    // The two labels SWAP rather than sit side by side: the head is only ~130
-    // design units wide and two tracked-out uppercase words do not fit at any
-    // size a player can read.
+    // The two labels SWAP rather than sit side by side: the head is 67 design
+    // units wide and two tracked-out uppercase words do not fit at any size a
+    // player can read. One word, not two — "TACTICAL MAP" measured 84u at the
+    // house label's tracking and clipped mid-word against the legend. The
+    // dock's `aria-label` still says what it is.
     this.titleEl = el('span', 'vm-dock-title', mapHead);
-    textNode(this.titleEl, 'TACTICAL MAP');
+    textNode(this.titleEl, 'MAP');
     this.offlineEl = el('span', 'vm-map-offline', mapHead);
     textNode(this.offlineEl, 'NO RADAR');
     this.offlineEl.hidden = true;
+
+    // The legend used to be a 52-unit rail beside the map, which is a great
+    // deal of width for four colours — width the selection card's stat row was
+    // overflowing for want of. Four swatches fit in the head; the WORDS moved
+    // onto its tooltip, where a player who does not already know what red means
+    // will look and a player who does will never have to see them again.
+    const legend = el('div', 'vm-map-legend', mapHead);
+    const LEGEND: ReadonlyArray<readonly [string, string]> = [
+      ['', 'Yours'],
+      ['is-enemy', 'Hostile'],
+      ['is-ore', 'Ore'],
+      ['is-view', 'View'],
+    ];
+    let legendTip = '';
+    for (const [mod, name] of LEGEND) {
+      const row = el('div', `vm-legend-row${mod === '' ? '' : ` ${mod}`}`, legend);
+      el('i', 'vm-legend-swatch', row);
+      label(row, 'vm-legend-text', name);
+      legendTip += `${legendTip === '' ? '' : '   '}${name}`;
+    }
+    legend.title = `Map key:  ${legendTip}`;
 
     const mapBody = el('div', 'vm-map-body', this.mapDock);
     this.minimapField = el('div', 'vm-map-field', mapBody);
@@ -1260,27 +1580,12 @@ export class Sidebar {
     // left the player staring at a grey square with no idea it was a build
     // order away from working.
     this.mapHintEl = el('div', 'vm-map-hint', this.minimapField);
-    // Short, because the field is only ~82 design units wide. The full sentence
-    // lives on the status board's advice line, which has the room for it.
+    // Short, because the field is only ~67 design units wide. The full sentence
+    // lives on the selection dock's advisory line, which has the room for it.
     const hintTitle = el('b', '', this.mapHintEl);
     textNode(hintTitle, 'RADAR OFFLINE');
     textNode(this.mapHintEl, 'Build a Radar Dome');
     this.mapHintEl.hidden = true;
-
-    // The legend. Three colours and a rectangle carry the entire map, and none
-    // of them was explained anywhere in the game.
-    const legend = el('div', 'vm-map-legend', mapBody);
-    const LEGEND: ReadonlyArray<readonly [string, string]> = [
-      ['', 'Yours'],
-      ['is-enemy', 'Hostile'],
-      ['is-ore', 'Ore'],
-      ['is-view', 'View'],
-    ];
-    for (const [mod, name] of LEGEND) {
-      const row = el('div', `vm-legend-row${mod === '' ? '' : ` ${mod}`}`, legend);
-      el('i', 'vm-legend-swatch', row);
-      label(row, 'vm-legend-text', name);
-    }
 
     /* -- bottom centre: selection / status ------------------------------ */
     this.selection = new SelectionPanel(docks, opts.callbacks);

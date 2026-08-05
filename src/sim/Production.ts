@@ -391,7 +391,13 @@ const CONTENT: readonly ContentSpec[] = [
   {
     key: 'mcv', name: 'Construction Vehicle', blurb: 'Deploys into a second base.',
     kind: BuildKind.Unit, faction: Faction.Neutral, tab: V,
-    cost: 3000, buildTime: 32, prereqs: ['warFactory', 'battleLab'], sortOrder: 50,
+    // WAR FACTORY ONLY, and this row is the one the game reads. `battleLab`
+    // carries `struct.tech`, which `UnlockGate` withholds from a fresh profile,
+    // so gating the rebuild behind it strands a new player who loses the MCV
+    // every match opens with. The same fix was written three times in
+    // `Defs.ts` (:677, :848, :1012) and never took, because `resolveEntry`
+    // reads `prereqs` from HERE unconditionally — see the note above `CONTENT`.
+    cost: 3000, buildTime: 32, prereqs: ['warFactory'], sortOrder: 50,
   },
 
   /* -- naval (shares the Vehicles tab; there are only four tabs) ---------- */
@@ -538,7 +544,8 @@ const CONTENT: readonly ContentSpec[] = [
   {
     key: 'mrdCarryall', name: 'Pactworks Carryall', blurb: 'Deploys into a second Conclave.',
     kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
-    cost: 3000, buildTime: 32, prereqs: ['mrdForgeyard', 'mrdReliquary'], sortOrder: 50,
+    // Forgeyard only — `mrdReliquary` carries `struct.tech`. See `mcv` above.
+    cost: 3000, buildTime: 32, prereqs: ['mrdForgeyard'], sortOrder: 50,
   },
   {
     key: 'mrdKestrel', name: 'Kestrel Gunship', blurb: 'Fast rocket pods. Nothing to shoot back with.',
@@ -675,7 +682,8 @@ const CONTENT: readonly ContentSpec[] = [
   {
     key: 'rclCrawler', name: 'Yardcrawler', blurb: 'Unfolds into a second Foundry.',
     kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
-    cost: 3000, buildTime: 32, prereqs: ['rclBreakerYard', 'rclCrucible'], sortOrder: 50,
+    // Breaker Yard only — `rclCrucible` carries `struct.tech`. See `mcv` above.
+    cost: 3000, buildTime: 32, prereqs: ['rclBreakerYard'], sortOrder: 50,
   },
   {
     key: 'rclHornet', name: 'Swarmhornet', blurb: 'Chained arc from a lifting body. Nothing to shoot back with.',

@@ -63,15 +63,29 @@
  * look bible's one rule forbids outright.
  *
  * Every layer is now either
- *   - a `field`: one flat colour plus two band-limited drifts whose shortest
- *     wavelength is 48 texels (1.5 m of ground, ~40 screen px at 1440p), or
+ *   - a `field`: one flat colour, two band-limited drifts whose shortest
+ *     wavelength is 48 texels (1.5 m of ground, ~40 screen px at 1440p), and
+ *     the mesoscale colour axis described in section 3B-bis, or
  *   - `slab` / `cobble`: `assets.ts`'s clean `paving` / `cobblestone`
- *     generators, which are flat faces separated by crisp drawn joints.
+ *     generators, which are flat faces separated by crisp drawn joints and get
+ *     NONE of the mesoscale treatment — mottling concrete is how you get back
+ *     to static.
  *
  * Height is written EXACTLY 0.5 on every field tile. Nothing reads it — the
  * terrain material has no normalMap, the cliff normal is analytic — but a flat
  * height field is the guarantee that no future packer can resurrect the
  * sandpaper specular from these tiles.
+ *
+ * THE PURGE LEFT A HOLE, AND 3B-bis FILLS IT
+ * ------------------------------------------
+ * Between the 4 cm texel floor and that 1.5 m drift there was nothing at all,
+ * and the macro (28-38 m), the cell jitter (4 m) and the mask warp (0.6 m) all
+ * sit above it. That empty 4 cm - 1.5 m band is exactly what the eye reads as
+ * surface material, which is why a lawn at minimum zoom looked like a painted
+ * slab. Section 3B-bis adds 0.32-1.25 m of HUE AND CHROMA variation into it,
+ * baked into the tile at generation time, with the screen-pixel floor written
+ * down as a number and re-derived from the live camera config by
+ * `tests/terrain-frequency.spec.ts`.
  *
  * BOUNDARIES, NOT BLENDS
  * ----------------------
@@ -591,6 +605,512 @@ export const FIELD_PATCH_CAP = 0.45;
  */
 export const FIELD_MIN_WAVELENGTH = NOISE_BUDGET.MIN_FEATURE_TEXELS * 2;
 
+/* --------------------------------------------------------------------------
+ * 3B-bis. THE MESOSCALE BAND — the hole the purge left behind
+ * ------------------------------------------------------------------------ */
+
+/**
+ * ============================================================================
+ * WHY THIS EXISTS, GIVEN THAT "NO NOISE" IS THE ONE RULE
+ * ============================================================================
+ * Both things are true at once:
+ *
+ *   - The purge above was right. `genGround` wrote five octaves of fbm plus a
+ *     7x fbm plus a 9x worley field at 2-4 cm per texel, while the camera
+ *     resolves ~1-4 cm per screen pixel. That is per-PIXEL noise, it aliases,
+ *     and roads looked like TV static.
+ *   - And the ground had a HOLE in it. Count what the terrain actually varies
+ *     at today: 28-38 m macro, 4 m per-cell hash, +/-0.6 m mask warp, and
+ *     nothing inside a field tile shorter than 48 texels ~ 1.5 m. Below 4 cm
+ *     is banned and above 1.5 m is covered, so the whole 4 cm - 1.5 m band is
+ *     empty — and that band is precisely what the eye reads as SURFACE
+ *     MATERIAL. Soil mottling, grass clumping, patchiness, wear. Its absence
+ *     is why a lawn at minimum zoom is a flat olive slab.
+ *
+ * So the rule is not "no variation". The rule is "nothing at or below the
+ * screen-pixel scale", and the fix is to say that in a number.
+ *
+ * ----------------------------------------------------------------------------
+ * THE FLOOR, DERIVED FROM THE ACTUAL CAMERA
+ * ----------------------------------------------------------------------------
+ * `tests/terrain-frequency.spec.ts` re-derives every line of this from the live
+ * `RENDER_CONFIG.camera`, so lowering `minDistance` or flattening the pitch
+ * clamp turns the suite red instead of quietly resurrecting the sandpaper.
+ * The numbers below are today's:
+ *
+ *   fov 36 deg vertical over 1440 px  ->  2*tan(18)/1440 = 4.5128e-4
+ *                                          metres of view plane per pixel,
+ *                                          per metre of slant range
+ *   minDistance 30 m, pitchAtMinDistance 46 deg
+ *   camera height          h = 30 * sin(46)          = 21.580 m
+ *   bottom-of-frame ray at   46 + 36/2 = 64 deg below horizontal
+ *   nearest visible ground   D = h / sin(64)         = 24.010 m   <- worst case
+ *   ground metres per screen pixel, along the SCREEN-HORIZONTAL axis (which
+ *   lies in the ground plane, so it is un-foreshortened and therefore the
+ *   FINER of the two axes):
+ *                            24.010 * 4.5128e-4      = 0.010835 m  (1.08 cm)
+ *
+ * A shallower pitch moves that D down, so the pitch clamp is load-bearing and
+ * the test asserts against it.
+ *
+ * At a floor of `MESO_MIN_SCREEN_PX` = 16 screen pixels, the shortest ground
+ * wavelength anything here may carry is 16 * 0.010835 = 0.1734 m. We declare
+ * 0.24 m, a 38% margin, and the finest component actually used is 0.32 m —
+ * about 30 screen pixels at the worst case. Nothing near a pixel.
+ * ============================================================================
+ */
+
+/**
+ * The safety floor, in SCREEN pixels at 1440p, at the closest gameplay zoom.
+ *
+ * 8 px is the defensible minimum — below it a feature is inside the SMAA
+ * kernel and inside the mip transition, which is where the original bug lived.
+ * 16 is chosen instead because the derivation has three soft spots (the
+ * viewport can be taller than 1440 on an ultrawide, `pitch` is becoming
+ * player-adjustable, and a future zoom-in would shrink `minDistance`), and a
+ * 2x margin is cheaper than re-deriving this under pressure.
+ */
+export const MESO_MIN_SCREEN_PX = 16;
+
+/**
+ * The declared ground-space floor in metres. Must be >= the value the camera
+ * derivation above produces; the test computes that value and compares.
+ */
+export const MESO_MIN_METRES = 0.24;
+
+/**
+ * A texel floor as well as a metre floor, and the tile takes whichever is
+ * COARSER.
+ *
+ * The metre floor answers "does this alias on screen". The texel floor answers
+ * a different question: "does this survive mipping and does it trip
+ * `checkNoiseBudget`". A 10-texel feature is still 5 texels at mip 1 and 2.5 at
+ * mip 2, so it fades out with distance rather than sparkling — and its steepest
+ * one-texel step is `amp * (1 - cos(2*pi/10))` = 0.19 * amp, two orders below
+ * the speckle gate at the amplitudes used here.
+ *
+ * Half of `NOISE_BUDGET.MIN_FEATURE_TEXELS`, and deliberately NOT a change to
+ * that constant: every other generator in the game keeps the 24-texel floor.
+ * This is the one place with a measured screen-pixel argument for going below
+ * it, so this is the only place that does.
+ */
+export const MESO_MIN_TEXELS = 10;
+
+/** Fine octave, in METRES of ground. Linear, so its harmonic order is 1. */
+export const MESO_FINE_METRES = 0.32;
+
+/**
+ * Wide octave, in METRES of ground. Shaped by `mesoShape` below, which is a
+ * CUBIC, so it carries energy up to 3x its fundamental: its effective shortest
+ * wavelength is 1.25 / 3 = 0.417 m.
+ *
+ * This is the trap that produced the original bug in a different costume. fbm
+ * has energy all the way to Nyquist by definition; a NONLINEARITY applied to a
+ * band-limited field does the same thing more quietly. `smoothstep` is a cubic
+ * and multiplies the bandwidth by 3, `abs()`/`max(0,x)` rectification has
+ * harmonics that never terminate at all. So: the wide octave gets a cubic and
+ * pays 3x for it, the fine octave gets nothing, and the result is applied
+ * ADDITIVELY rather than through a `lerp` — because `lerp(v, c, t)` multiplies
+ * two fields together and a product's bandwidth is the SUM of theirs.
+ */
+export const MESO_WIDE_METRES = 1.25;
+
+/** Bandwidth multiplier of `mesoShape`. A cubic polynomial: exactly 3. */
+export const MESO_WIDE_ORDER = 3;
+
+/**
+ * Clump shaper for the wide octave. `0.35*t + 0.65*t^3` on t in [-1,1]:
+ * odd (so it adds no DC), bounded by 1, and flat near zero — which is what
+ * turns a sine field into "mostly ordinary ground with occasional patches"
+ * rather than a rolling swell. Degree 3, and nothing here may raise that
+ * without raising `MESO_WIDE_METRES` to match.
+ */
+function mesoShape(t: number): number {
+  return 0.35 * t + 0.65 * t * t * t;
+}
+
+/** Relative weight of the two octaves. Sums to exactly 1, so |meso| <= 1. */
+export const MESO_FINE_WEIGHT = 0.45;
+export const MESO_WIDE_WEIGHT = 0.55;
+
+/**
+ * How far a texel may travel along the bare<->lush axis, per unit of `L.patch`.
+ * `patch` already means "how blotchy is this ground" per layer, so reusing it
+ * keeps sand and snow flat (0.22 / 0.18) and lets dirt mottle (0.38) without
+ * inventing a def field.
+ */
+export const MESO_PULL_GAIN = 2.6;
+
+/** Absolute ceiling on that pull, whatever `patch` says. */
+export const MESO_PULL_MAX = 0.95;
+
+/**
+ * THE AXIS ITSELF — and why it is a colour axis and not a brightness one.
+ *
+ * Uniform luminance jitter is the thing that reads as dirt on the lens; it is
+ * also exactly what the banned full-screen film grain was already doing. Real
+ * ground varies in HUE and CHROMA: a dense clump of grass is more saturated and
+ * slightly DARKER (the blades shadow each other), a thin patch is less
+ * saturated, slightly lighter and warmer because soil is showing through.
+ *
+ * So the axis is built as two derived endpoints and applied as a signed
+ * displacement about the layer's own colour:
+ *
+ *   lush = chroma x 1.56, luma x 0.925
+ *   bare = chroma x 0.36, luma x 1.075, warmed
+ *
+ * Those look violent written down and are not, because the field they multiply
+ * has an RMS of 0.11 and a measured peak of 0.49 — a twelve-harmonic sum with
+ * random phases is nowhere near its bound. Measured on the temperate grass tile
+ * at 256: saturation 0.817 +/- 0.037, value 0.431 +/- 0.007. That is 4.6% of
+ * chroma against 1.6% of brightness, which is the ratio the whole design is
+ * for, and `tests/terrain-frequency.spec.ts` asserts it stays above 1.5.
+ *
+ * Three properties make this safe by construction, which matters because the
+ * emerald window (scorecard #9, weight 3, automatic fail) is one bad green
+ * away:
+ *
+ *   1. Chroma scaling is `v -> L + (v - L)*k` about the texel's own luminance
+ *      with k > 0. That is monotone in v, so it CANNOT reorder the channels:
+ *      a layer authored with r >= g still has r >= g afterwards, at any k.
+ *   2. It is also luminance-NEUTRAL under the same weights `checkNoiseBudget`
+ *      uses, so the chroma half of this contributes exactly zero to the speckle
+ *      metric and zero to the tile's contrast ratio.
+ *   3. The warm tilt raises r and lowers b, which moves AWAY from hue 100-120,
+ *      and it is gated off entirely on cool surfaces (`r < b`) so that snow ice
+ *      does not turn brown.
+ */
+const MESO_LUSH_CHROMA = 1.56;
+const MESO_LUSH_LUMA = 0.925;
+const MESO_BARE_CHROMA = 0.36;
+const MESO_BARE_LUMA = 1.075;
+/** Per-channel tilt of the bare end, before luma is renormalised. */
+const MESO_WARM = [1.14, 0.93, 0.82] as const;
+
+const LUMA_R = 0.2126, LUMA_G = 0.7152, LUMA_B = 0.0722;
+
+/* -- the band-limited field ------------------------------------------------ */
+
+/**
+ * A sum of plane waves at INTEGER frequencies, same construction as
+ * `assets.ts` `budgetedNoise` and for the same three reasons: exactly periodic
+ * (so the tile is seamless), band-limited by construction (so the floor is a
+ * guarantee rather than a hope), and bounded in amplitude.
+ *
+ * It is a separate implementation rather than a parameter on `budgetedNoise`
+ * because `budgetedNoise`'s 24-texel floor is a promise made to every other
+ * generator in the game, and the correct way to take a lower floor is to bring
+ * your own screen-pixel argument — not to weaken theirs.
+ *
+ * Two differences from `budgetedNoise`, both tightening:
+ *   - `cycles` is FLOORED, not rounded, so the realised wavelength is always
+ *     >= the requested one rather than within half a texel of it;
+ *   - every harmonic is clamped so `|n| <= cycles` AFTER rounding. Rounding the
+ *     two axes independently can otherwise push a diagonal harmonic past the
+ *     base frequency by up to 0.71 cycles.
+ */
+
+/**
+ * TWELVE harmonics, STRATIFIED, over a band running down to 0.30 of the base
+ * frequency. All three of those were bought with a visible artefact.
+ *
+ *  - Five harmonics inside 0.62-1.0 of one frequency is not a noise field, it
+ *    is a moire lattice, and at the amplitude this ships at you can see the
+ *    grid: a regular diagonal cross-hatch over the whole lawn.
+ *  - Widening the band to 0.30-1.0 costs nothing, because the wavelength floor
+ *    constrains only the TOP of the band. Everything below is free.
+ *  - Twelve UNIFORMLY RANDOM directions still clump, and a clump of parallel
+ *    waves is a streak: the grass tile came out combed diagonally. Jittered
+ *    stratification (see `mesoWaveSet`) fixed it.
+ *
+ * Amplitudes are FLAT rather than rolled off, for the same reason: any
+ * roll-off puts most of the energy in the first two or three harmonics and the
+ * lattice comes straight back.
+ */
+const MESO_HARMONICS = 12;
+/** Lowest fraction of the base frequency a harmonic may take. */
+const MESO_BAND_LOW = 0.30;
+const TAU = Math.PI * 2;
+
+interface MesoWaves {
+  nx: Int32Array; ny: Int32Array; phase: Int32Array; amp: Float32Array;
+}
+
+const mesoCache = new Map<string, MesoWaves>();
+
+/**
+ * `sin(TAU * j / size)` for integer j. Every harmonic's argument here is
+ * `TAU * (nx*x + ny*y + phase) / size` with all four terms INTEGER, so the sine
+ * only ever takes `size` distinct values and a table is EXACT rather than an
+ * approximation. (Phase is quantised to whole texels to make it so, which costs
+ * nothing — the phase was an arbitrary random offset to begin with.)
+ *
+ * Worth doing because this is 24 harmonic evaluations per texel across four
+ * 256x256 layers per biome. Table plus the row recurrence in `mesoOctaveRow`
+ * took the whole mesoscale field from 51 ms per layer to 2.2 ms.
+ */
+const mesoSinTables = new Map<number, Float64Array>();
+
+function mesoSinTable(size: number): Float64Array {
+  const hit = mesoSinTables.get(size);
+  if (hit !== undefined) return hit;
+  const t = new Float64Array(size);
+  for (let j = 0; j < size; j++) t[j] = Math.sin((TAU * j) / size);
+  if (mesoSinTables.size > 8) mesoSinTables.clear();
+  mesoSinTables.set(size, t);
+  return t;
+}
+
+/** Deterministic integer hash -> [0,1). No `Math.random`, ever. */
+function mesoHash(i: number, seed: number): number {
+  let h = (Math.imul(i, 374761393) + Math.imul(seed, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) | 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * Build (or fetch) the harmonic set whose highest spatial frequency is exactly
+ * `cycles` per tile. Exported so the test can assert that bound directly rather
+ * than trusting this comment.
+ */
+export function mesoWaveSet(cycles: number, seed: number, size: number): MesoWaves {
+  const key = `${cycles}:${seed}:${size}`;
+  const hit = mesoCache.get(key);
+  if (hit !== undefined) return hit;
+
+  const nx = new Int32Array(MESO_HARMONICS), ny = new Int32Array(MESO_HARMONICS);
+  const phase = new Int32Array(MESO_HARMONICS), amp = new Float32Array(MESO_HARMONICS);
+  let norm = 0;
+  for (let k = 0; k < MESO_HARMONICS; k++) {
+    // STRATIFIED, not random, in both angle and radius.
+    //
+    // Twelve independently-random directions are not twelve evenly-spread
+    // directions — they clump, and a clump of parallel waves is a visible
+    // streak. The grass tile came out combed diagonally at this amplitude with
+    // uniform-random angles. Jittered stratification keeps every draw distinct
+    // while guaranteeing the directions actually cover the circle.
+    //
+    // The angle strata span [0, PI), not [0, 2*PI): for a real-valued field a
+    // wave at theta and one at theta+PI are the same wave with a sign flip, so
+    // spreading over the full circle wastes half the strata on duplicates.
+    const a = ((k + mesoHash(k * 5 + 1, seed)) / MESO_HARMONICS) * Math.PI;
+    // Radius strata are visited in a permuted order — 5 is coprime with 12, so
+    // `5k mod 12` hits every stratum exactly once — which stops the low
+    // frequencies all landing on neighbouring directions.
+    const rk = (k * 5) % MESO_HARMONICS;
+    // MESO_BAND_LOW..1.0 of the base frequency. Never above it.
+    const r = MESO_BAND_LOW
+      + ((rk + mesoHash(k * 5 + 2, seed)) / MESO_HARMONICS) * (1 - MESO_BAND_LOW);
+    let ix = Math.round(Math.cos(a) * cycles * r);
+    let iy = Math.round(Math.sin(a) * cycles * r);
+    if (ix === 0 && iy === 0) ix = 1;
+    // Hard clamp: independent rounding can push |n| past `cycles`.
+    const mag = Math.sqrt(ix * ix + iy * iy);
+    if (mag > cycles) {
+      const s = cycles / mag;
+      ix = Math.trunc(ix * s);
+      iy = Math.trunc(iy * s);
+      if (ix === 0 && iy === 0) ix = Math.max(1, Math.floor(cycles));
+    }
+    nx[k] = ix;
+    ny[k] = iy;
+    phase[k] = Math.floor(mesoHash(k * 5 + 3, seed) * size) % size;
+    // FLAT. With twelve harmonics any roll-off puts most of the energy in the
+    // first few and the lattice comes straight back; equal weights are what
+    // makes the sum read as mottling.
+    amp[k] = 1;
+    norm += amp[k];
+  }
+  // Normalised so the sum is bounded by exactly 1.
+  for (let k = 0; k < MESO_HARMONICS; k++) amp[k] /= norm;
+
+  const ws: MesoWaves = { nx, ny, phase, amp };
+  if (mesoCache.size > 256) mesoCache.clear();
+  mesoCache.set(key, ws);
+  return ws;
+}
+
+/**
+ * Cycles per tile for a requested ground wavelength, honouring BOTH floors.
+ * Exported: this is the number the frequency test reasons about.
+ */
+export function mesoCycles(size: number, tileMetres: number, wantMetres: number): number {
+  const texelsPerMetre = size / tileMetres;
+  const wlTexels = Math.max(MESO_MIN_TEXELS, wantMetres * texelsPerMetre);
+  return Math.max(1, Math.floor(size / wlTexels));
+}
+
+/** The realised ground wavelength of a component, after both floors. */
+export function mesoWavelengthMetres(
+  size: number, tileMetres: number, wantMetres: number,
+): number {
+  return tileMetres / mesoCycles(size, tileMetres, wantMetres);
+}
+
+/**
+ * One band-limited octave across a whole SCANLINE, into `out[0..size)`.
+ *
+ * Row-incremental on purpose. The sine index is
+ * `(nx*x + ny*y + phase) mod size` with every term an integer, so along a row
+ * it advances by exactly `nx` per texel — no multiply, no modulo, one compare.
+ * Twenty-four table reads per texel is the single most expensive thing in tile
+ * generation (it measured 51 of the 116 ms a 256x256 field layer costs, i.e.
+ * +203 ms on every biome build), and this is the version that gives that back
+ * without changing a single output value.
+ *
+ * `step` is reduced into [0, size) and `j` starts there, so `j + step < 2*size`
+ * and one conditional subtraction is a complete wrap.
+ */
+function mesoOctaveRow(
+  out: Float64Array, y: number, size: number, cycles: number, seed: number,
+): void {
+  const w = mesoWaveSet(cycles, seed, size);
+  const sin = mesoSinTable(size);
+  out.fill(0, 0, size);
+  for (let k = 0; k < MESO_HARMONICS; k++) {
+    let j = (((w.ny[k] * y + w.phase[k]) % size) + size) % size;
+    const step = ((w.nx[k] % size) + size) % size;
+    const a = w.amp[k];
+    for (let x = 0; x < size; x++) {
+      out[x] += a * sin[j];
+      j += step;
+      if (j >= size) j -= size;
+    }
+  }
+}
+
+/** Scratch rows, grown on demand. Tile generation is single-threaded. */
+let mesoRowFine = new Float64Array(0);
+let mesoRowWide = new Float64Array(0);
+
+/**
+ * The mesoscale clump field for one layer across a scanline, each value in
+ * [-1, 1]. Negative is bare / thin / dry, positive is dense / lush.
+ */
+export function mesoFieldRow(
+  out: Float64Array, y: number, size: number, tileMetres: number, seed: number,
+): void {
+  if (mesoRowFine.length < size) {
+    mesoRowFine = new Float64Array(size);
+    mesoRowWide = new Float64Array(size);
+  }
+  mesoOctaveRow(mesoRowFine, y, size, mesoCycles(size, tileMetres, MESO_FINE_METRES), seed + 131);
+  mesoOctaveRow(mesoRowWide, y, size, mesoCycles(size, tileMetres, MESO_WIDE_METRES), seed + 197);
+  for (let x = 0; x < size; x++) {
+    out[x] = MESO_FINE_WEIGHT * mesoRowFine[x] + MESO_WIDE_WEIGHT * mesoShape(mesoRowWide[x]);
+  }
+}
+
+/** Scratch for the single-texel accessor below. */
+let mesoRowOne = new Float64Array(0);
+
+/**
+ * One texel of the mesoscale field. Defined THROUGH the row version rather
+ * than beside it, so there is exactly one implementation and the two cannot
+ * drift — the row form is the one that ships and this is the one the tests
+ * read, and a second copy of the index arithmetic is how they would disagree.
+ *
+ * Exported so `tests/terrain-frequency.spec.ts` can run a real DFT over the
+ * field and assert there is no energy above the declared cutoff — the
+ * empirical half of the safety argument, as opposed to the structural half.
+ */
+export function mesoField(
+  x: number, y: number, size: number, tileMetres: number, seed: number,
+): number {
+  if (mesoRowOne.length < size) mesoRowOne = new Float64Array(size);
+  mesoFieldRow(mesoRowOne, y, size, tileMetres, seed);
+  return mesoRowOne[x];
+}
+
+/* -- the colour axis ------------------------------------------------------- */
+
+/**
+ * One end of the bare<->lush axis. `warm` is 0 or 1 and is applied BEFORE the
+ * luma renormalisation, so the tilt changes hue without changing brightness.
+ */
+function mesoEnd(
+  base: Float32Array, chroma: number, luma: number, warm: number, out: Float32Array,
+): void {
+  let r = base[0] * (1 + (MESO_WARM[0] - 1) * warm);
+  let g = base[1] * (1 + (MESO_WARM[1] - 1) * warm);
+  let b = base[2] * (1 + (MESO_WARM[2] - 1) * warm);
+
+  const l0 = base[0] * LUMA_R + base[1] * LUMA_G + base[2] * LUMA_B;
+  const l1 = r * LUMA_R + g * LUMA_G + b * LUMA_B;
+  const target = l0 * luma;
+  const k = target / Math.max(l1, 1e-5);
+  r *= k; g *= k; b *= k;
+
+  // Chroma about the (now exact) target luminance: monotone in each channel, so
+  // it cannot reorder r/g/b, and luminance-neutral under the same weights.
+  out[0] = target + (r - target) * chroma;
+  out[1] = target + (g - target) * chroma;
+  out[2] = target + (b - target) * chroma;
+}
+
+const MESO_LUSH = new Float32Array(3);
+const MESO_BARE = new Float32Array(3);
+
+/**
+ * Fraction of a layer's own `r - g` margin the hue tilt is allowed to spend.
+ *
+ * `r >= g` on every natural ground layer is the property that survives the
+ * lighting — see the header of `Biomes.ts`. The blue hemisphere fill multiplies
+ * green 1.7x harder than red and the blue-grey fog lerp then lifts blue, so a
+ * `g > r` albedo lands at hue ~104 no matter how it was authored. Chroma and
+ * luma scaling are monotone per channel and cannot break it. The WARM TILT can,
+ * and on `snow/rock` (`#6B6A60`, r over g by exactly one 8-bit step) it did:
+ * 9035 texels of 65536 came out green-dominant before this budget existed.
+ *
+ * Half, not all, because the drift and the shade/accent lerps upstream also
+ * shrink the margin slightly before the meso term ever sees it.
+ */
+const MESO_ORDER_KEEP = 0.5;
+
+/**
+ * Half the difference between the two endpoints, i.e. the displacement applied
+ * per unit of the (signed) clump field. Writes into `out`.
+ *
+ * The warm tilt is scaled down — to zero if necessary — until the axis provably
+ * cannot reorder red and green anywhere on the tile. A near-neutral grey has no
+ * hue headroom to spend and correctly gets no hue drift; grass, with six 8-bit
+ * steps between r and g, gets all of it.
+ */
+function mesoAxis(
+  base: Float32Array, shade: Float32Array, accent: Float32Array,
+  pull: number, out: Float32Array,
+): void {
+  // Warm is meaningful only where soil could plausibly show through. On a
+  // cool-hued layer (snow ice, `b > r`) it would rotate cyan to orange.
+  const coolGate = base[0] >= base[2] ? 1 : 0;
+
+  // Everything upstream of the meso term is either a uniform scale (the drift)
+  // or a lerp between these three authored tones, and both preserve `r >= g`.
+  // So the smallest of their margins bounds what the meso term may eat.
+  const margin = Math.min(base[0] - base[1], shade[0] - shade[1], accent[0] - accent[1]);
+  const budget = Math.max(0, margin) * MESO_ORDER_KEEP / Math.max(pull, 1e-4);
+
+  mesoEnd(base, MESO_LUSH_CHROMA, MESO_LUSH_LUMA, 0, MESO_LUSH);
+
+  // `|axis_r - axis_g|` is monotone in `warm`, so bisect. Once per layer, and
+  // the layer surfaces are cached, so the cost is not on any hot path.
+  let lo = 0, hi = coolGate;
+  for (let iter = 0; iter < 18; iter++) {
+    const mid = (lo + hi) * 0.5;
+    mesoEnd(base, MESO_BARE_CHROMA, MESO_BARE_LUMA, mid, MESO_BARE);
+    const skew = Math.abs((MESO_LUSH[0] - MESO_BARE[0]) - (MESO_LUSH[1] - MESO_BARE[1])) * 0.5;
+    if (skew <= budget) lo = mid; else hi = mid;
+  }
+  mesoEnd(base, MESO_BARE_CHROMA, MESO_BARE_LUMA, lo, MESO_BARE);
+
+  for (let c = 0; c < 3; c++) out[c] = (MESO_LUSH[c] - MESO_BARE[c]) * 0.5;
+}
+
+/** How far this layer travels along that axis. */
+export function mesoPull(L: SurfaceLayerDef): number {
+  return Math.min(MESO_PULL_MAX, clamp01(L.patch ?? 0.3) * MESO_PULL_GAIN);
+}
+
 /** Parse '#RRGGBB' to sRGB 0..1, which is the space `Surface.albedo` is in. */
 function hexTriple(hex: string, out: Float32Array): Float32Array {
   const v = parseInt(hex.replace('#', ''), 16) | 0;
@@ -603,6 +1123,7 @@ function hexTriple(hex: string, out: Float32Array): Float32Array {
 const FIELD_BASE = new Float32Array(3);
 const FIELD_SHADE = new Float32Array(3);
 const FIELD_ACCENT = new Float32Array(3);
+const FIELD_MESO_AXIS = new Float32Array(3);
 
 /** Field surfaces are generated here, so they need their own cache. */
 const fieldCache = new Map<string, Surface>();
@@ -610,17 +1131,21 @@ const fieldCache = new Map<string, Surface>();
 /**
  * A broad, soft, near-flat natural ground tile.
  *
- * Three band-limited layers and nothing else:
+ * FOUR band-limited layers and nothing else:
  *   - two out-of-phase value drifts at 1/5 and 1/2.2 of the tile,
  *   - one very low frequency mask that pulls toward `shade` on its low side
  *     and `accent` on its high side, giving damp/dry blotches several metres
- *     across.
+ *     across,
+ *   - and the MESOSCALE colour axis, 0.32-1.25 m, which is the band section
+ *     3B-bis exists to fill. It is a hue/chroma displacement, not a brightness
+ *     one, and it is ADDED rather than lerped so that it introduces no
+ *     frequency-mixing product with the three above.
  *
- * Every one of them goes through `budgetedNoise`, which is a sum of six plane
- * waves at integer frequencies: exactly periodic (so the tile is seamless),
- * band-limited by construction (so the wavelength floor is a guarantee and not
- * a hope), and amplitude-clamped. There is deliberately no way to ask this
- * function for contrast.
+ * The first three go through `budgetedNoise` and the fourth through
+ * `mesoFieldRow`; both are sums of plane waves at integer frequencies, so they
+ * are exactly periodic (the tile is seamless), band-limited by construction
+ * (the wavelength floor is a guarantee and not a hope), and amplitude-clamped.
+ * There is deliberately no way to ask either of them for contrast.
  */
 export function buildFieldSurface(L: SurfaceLayerDef, size: number): Surface {
   const s = createSurface(size);
@@ -636,7 +1161,14 @@ export function buildFieldSurface(L: SurfaceLayerDef, size: number): Surface {
   const wlWide = Math.max(FIELD_MIN_WAVELENGTH, size / 2.2);
   const wlPatch = Math.max(FIELD_MIN_WAVELENGTH, size / 1.6);
 
+  // Mesoscale: one constant colour direction, one signed field, one gain.
+  const pull = mesoPull(L);
+  const axis = FIELD_MESO_AXIS;
+  mesoAxis(base, shade, accent, pull, axis);
+  const mesoRow = new Float64Array(size);
+
   for (let y = 0; y < size; y++) {
+    mesoFieldRow(mesoRow, y, size, L.tileMetres, seed);
     for (let x = 0; x < size; x++) {
       const i = y * size + x;
       const drift =
@@ -651,11 +1183,16 @@ export function buildFieldSurface(L: SurfaceLayerDef, size: number): Surface {
       const toAccent = smoothstep(0.50, 0.72, m) * patch;
       const toShade = smoothstep(0.50, 0.28, m) * patch;
 
+      const meso = mesoRow[x] * pull;
+
       const o = i * 3;
       for (let c = 0; c < 3; c++) {
         let v = base[c] * (1 + drift);
         v = lerp(v, accent[c], toAccent);
         v = lerp(v, shade[c], toShade);
+        // Additive, not lerped: a lerp would multiply this field by the three
+        // above and a product's bandwidth is the SUM of its factors'.
+        v += axis[c] * meso;
         s.albedo[o + c] = clamp01(v);
       }
 

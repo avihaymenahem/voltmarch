@@ -1196,13 +1196,56 @@ export interface INav {
   nearestReachable(cx: number, cz: number, loco: Locomotor, out: Int32Array): boolean;
 }
 
-/** Fog of war. Implemented by world/fow/VisionGrid.ts. */
+/**
+ * HOW MUCH OF AN ENTITY ONE PLAYER IS ENTITLED TO.
+ *
+ * There is exactly one visibility question in this game and it has three
+ * answers, not two. Splitting it into a pair of booleans is what produced the
+ * reported bug: the renderer drew a scouted structure from memory, `canSee`
+ * answered false for the same structure, and input — asking neither — let the
+ * player right-click something the simulation then refused to shoot at.
+ *
+ * Every consumer picks its own threshold off this one ladder:
+ *
+ *   `Hidden`      not there as far as this viewer is concerned. Not drawn, not
+ *                 clickable, not targetable, no minimap blip.
+ *   `Remembered`  the silhouette every RTS keeps: a STATIC object (structure,
+ *                 prop, wreck) standing on ground this player has explored but
+ *                 cannot currently see. Drawn, clickable and orderable —
+ *                 because it is ON THE SCREEN, and something drawn that cannot
+ *                 be clicked is a worse bug than the one this replaced. NOT
+ *                 auto-acquirable, and it carries no health bar: you know it is
+ *                 there, you do not know how hurt it is.
+ *   `Live`        lit right now, or yours. Everything is permitted.
+ *
+ * The ordering is meaningful: `level >= Remembered` is "may the screen show it
+ * and may the player click it", `level === Live` is "may the simulation act on
+ * it". Test against those, never against the numbers.
+ */
+export const enum VisionLevel {
+  Hidden = 0,
+  Remembered = 1,
+  Live = 2,
+}
+
+/** Fog of war. Implemented by sim/Vision.ts. */
 export interface IVision {
   /** True if `player` can see the cell RIGHT NOW. */
   isVisibleAt(player: PlayerId, cx: number, cz: number): boolean;
   /** True if `player` has ever seen the cell. */
   isExplored(player: PlayerId, cx: number, cz: number): boolean;
-  /** Visibility of an entity to a player — the one call targeting uses. */
+  /**
+   * THE visibility predicate. Every other entity-visibility question in the
+   * codebase — what the bridge draws, what input may click, what targeting may
+   * acquire, what the minimap blips — is a threshold on this one answer, so
+   * they cannot drift apart. See `VisionLevel`.
+   */
+  visibilityOf(player: PlayerId, target: EntityId): VisionLevel;
+  /**
+   * `visibilityOf(...) === VisionLevel.Live`. The call targeting and combat
+   * make, kept as its own name because "may the simulation act on it" is asked
+   * far more often than the full ladder is.
+   */
   canSee(player: PlayerId, target: EntityId): boolean;
   /** True while the player has a powered Radar Dome (gates enemy blips). */
   hasRadar(player: PlayerId): boolean;

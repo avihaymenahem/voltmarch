@@ -54,6 +54,22 @@
  * those (loop.ts's write-ownership table). Props that would physically block a
  * tank are published through `blockers()` for whoever owns navigation, and in
  * the meantime `blocksNav` props are kept off the walkable interior of clumps.
+ *
+ * CLEARING (§3.11)
+ * ----------------
+ * A structure that lands on a copse must fell it, and it must do so without
+ * rebuilding seven thousand matrices. `clearFootprint()` is the door:
+ *
+ *   - it finds candidates through the 4 m cell index, so the scan is
+ *     proportional to LOCAL prop density, never to the map's prop count;
+ *   - it removes each hit with a swap-against-the-last-live-instance INSIDE
+ *     that instance's own 32 m chunk slice, so `chunkStart` never moves and the
+ *     cost is exactly one 16-float + 3-float copy per felled prop;
+ *   - the surviving placement is a tombstone in the placement list, so every
+ *     index the GPU buffers hold stays valid. `propCount` reports live props.
+ *
+ * `src/world/scatter-clear.system.ts` is the only caller: it listens to
+ * `building:placed` and turns the footprint into a rectangle.
  * ============================================================================
  */
 
@@ -89,6 +105,22 @@ const COVER_COUNT = COVER_N * COVER_N;
  */
 const PATCH_CELLS =
   Math.floor(SCATTER_COVERAGE.patchMetres / SCATTER_COVERAGE.gridMetres) + 1;
+
+/**
+ * Metres of hard clearance kept around a structure footprint when props are
+ * felled for it.
+ *
+ * The test is not "is the trunk inside the rectangle" — it is "does the prop's
+ * VISUAL disc (`boundRadius * scale`, which for an 11 m tree is its canopy, not
+ * its trunk) overlap the footprint grown by this margin". A tree one centimetre
+ * outside the wall whose crown sits on the roof therefore goes, which is the
+ * only reading that does not look broken.
+ *
+ * 1.25 m is deliberately under a third of a 4 m cell: enough that a wall never
+ * grazes a bush, not so much that a structure strips the ground cover out of
+ * the cells around it and leaves a bald ring.
+ */
+export const PROP_CLEAR_MARGIN = 1.25;
 
 export interface EmptyPatch {
   /** Centre of the offending square, world metres. */
@@ -148,7 +180,7 @@ interface ScatterType {
   readonly defIndex: number;
   readonly geo: PropGeometry;
   mesh: THREE.InstancedMesh | null;
-  /** Instance count, after chunk sorting. */
+  /** LIVE instance count. Decremented by `clearFootprint()`. */
   count: number;
   /** 16 floats per instance, sorted by chunk. */
   srcMatrix: Float32Array;
@@ -156,6 +188,18 @@ interface ScatterType {
   srcColor: Float32Array;
   /** Prefix offsets into srcMatrix/srcColor, one per chunk plus a terminator. */
   chunkStart: Int32Array;
+  /**
+   * Live instances in each chunk, so chunk `c` owns
+   * `[chunkStart[c], chunkStart[c] + chunkLive[c])`.
+   *
+   * This is what makes removal O(1). Shrinking a chunk by editing `chunkStart`
+   * would have to slide every later chunk down — O(all props) for one felled
+   * tree. A separate live count leaves dead instances parked in the tail of
+   * their own chunk slice where the repack loop simply never reads them.
+   */
+  chunkLive: Int32Array;
+  /** Instance index -> index into `placements`, so a swap can fix the mover. */
+  instOf: Int32Array;
   /** Instances currently uploaded. */
   drawCount: number;
 }
@@ -168,6 +212,16 @@ interface Placement {
   yaw: number; scale: number;
   tiltX: number; tiltZ: number;
   cr: number; cg: number; cb: number;
+  /** Own index in `placements`, stamped by `buildInstances()`. */
+  index: number;
+  /** Live type slot, or -1 once cleared / before the GPU build. */
+  slot: number;
+  /** Instance index inside that type's chunk-sorted arrays. */
+  inst: number;
+  /** Chunk this instance sorted into. */
+  chunk: number;
+  /** False once felled. The record stays so every stored index holds. */
+  alive: boolean;
 }
 
 /* ==========================================================================
@@ -327,6 +381,19 @@ export class Scatter {
   visibleInstances = 0;
   visibleChunks = 0;
   lastReport: CoverageReport | null = null;
+
+  /* ---- clearing bookkeeping ---------------------------------------------- */
+
+  /** Live props. `placements.length` also counts tombstones. */
+  private liveProps = 0;
+  /** Widest visual disc any live type can produce, metres. Scan reach. */
+  private maxPropReach = 0;
+  /** Props felled since `generate()`. */
+  clearedProps = 0;
+  /** Placements EXAMINED by the last `clearFootprint()`. The O() witness. */
+  lastClearScanned = 0;
+  /** Props felled by the last `clearFootprint()`. */
+  lastClearCount = 0;
 
   constructor(options: ScatterOptions) {
     this.opts = options;
@@ -490,6 +557,7 @@ export class Scatter {
       yaw: rng.next() * TAU,
       scale, tiltX, tiltZ,
       cr: JITTER_OUT[0], cg: JITTER_OUT[1], cb: JITTER_OUT[2],
+      index: -1, slot: -1, inst: -1, chunk: -1, alive: true,
     };
     this.bucketInsert(this.placements.length, x, z);
     this.placements.push(p);
@@ -689,6 +757,11 @@ export class Scatter {
     this.disposeMeshes();
     this.placements.length = 0;
     this.clumpBuckets.length = 0;
+    this.clearedProps = 0;
+    this.lastClearScanned = 0;
+    this.lastClearCount = 0;
+    this.liveProps = 0;
+    this.maxPropReach = 0;
     this.resetBuckets(SCATTER_LIMITS.maxProps);
     this.buildMasks();
 
@@ -714,7 +787,8 @@ export class Scatter {
       avail.push({
         def, defIndex: i, geo, mesh: null, count: 0,
         srcMatrix: EMPTY_F32, srcColor: EMPTY_F32,
-        chunkStart: EMPTY_I32, drawCount: 0,
+        chunkStart: EMPTY_I32, chunkLive: EMPTY_I32, instOf: EMPTY_I32,
+        drawCount: 0,
       });
       weights.push(w);
     }
@@ -1091,10 +1165,15 @@ export class Scatter {
     const perType: Placement[][] = this.types.map(() => []);
     for (let i = 0; i < this.placements.length; i++) {
       const p = this.placements[i];
+      // `trimTypes()` may have rebuilt the array, so stamp identity HERE — the
+      // GPU buffers are about to store these indices for the rest of the match.
+      p.index = i;
+      p.slot = -1; p.inst = -1; p.chunk = -1; p.alive = true;
       const slot = slotOfDef[p.defIndex];
       if (slot < 0) continue;
       perType[slot].push(p);
     }
+    this.liveProps = this.placements.length;
 
     this.chunkMinY.fill(Infinity);
     this.chunkMaxY.fill(-Infinity);
@@ -1120,11 +1199,16 @@ export class Scatter {
 
       const mat = new Float32Array(list.length * 16);
       const col = new Float32Array(list.length * 3);
+      const live = new Int32Array(CHUNK_COUNT);
+      const instOf = new Int32Array(list.length);
       for (let i = 0; i < sorted.length; i++) {
         const p = sorted[i];
         composeMatrix(p, mat, i * 16);
         col[i * 3] = p.cr; col[i * 3 + 1] = p.cg; col[i * 3 + 2] = p.cb;
         const c = chunkOf(p.x, p.z);
+        p.slot = s; p.inst = i; p.chunk = c;
+        instOf[i] = p.index;
+        live[c]++;
         this.chunkUsed[c] = 1;
         const top = p.y + type.geo.boundHeight * p.scale;
         if (p.y < this.chunkMinY[c]) this.chunkMinY[c] = p.y;
@@ -1134,6 +1218,11 @@ export class Scatter {
       type.srcMatrix = mat;
       type.srcColor = col;
       type.chunkStart = start;
+      type.chunkLive = live;
+      type.instOf = instOf;
+      const reach = type.geo.boundRadius
+        * (type.def.scaleMax ?? SCATTER_JITTER.scaleMax);
+      if (reach > this.maxPropReach) this.maxPropReach = reach;
 
       const mesh = new THREE.InstancedMesh(type.geo.geometry, this.materials.material, list.length);
       mesh.name = `prop.${type.def.key}`;
@@ -1157,8 +1246,26 @@ export class Scatter {
     for (let c = 0; c < CHUNK_COUNT; c++) {
       if (this.chunkUsed[c] === 0) { this.chunkMinY[c] = 0; this.chunkMaxY[c] = 0; }
     }
+    this.rebuildCellIndex();
     // Force a repack on the next update().
     this.chunkVisiblePrev.fill(255);
+  }
+
+  /**
+   * Re-point the 4 m cell buckets at the FINAL placement list.
+   *
+   * They were built incrementally by `place()` for the min-spacing test, but
+   * `trimTypes()` compacts the array behind them, so every index in them can be
+   * stale by the time the GPU build runs. Rebuilding here is O(props) once per
+   * `generate()` — and it is what lets `clearFootprint()` be local.
+   */
+  private rebuildCellIndex(): void {
+    this.resetBuckets(Math.max(this.placements.length, 1));
+    for (let i = 0; i < this.placements.length; i++) {
+      const p = this.placements[i];
+      if (!p.alive) continue;
+      this.bucketInsert(i, p.x, p.z);
+    }
   }
 
   /* ======================================================================
@@ -1217,10 +1324,13 @@ export class Scatter {
       const dstM = mesh.instanceMatrix.array as Float32Array;
       const dstC = (mesh.instanceColor as THREE.InstancedBufferAttribute).array as Float32Array;
       const srcM = type.srcMatrix, srcC = type.srcColor, start = type.chunkStart;
+      const liveIn = type.chunkLive;
       let w = 0;
       for (let c = 0; c < CHUNK_COUNT; c++) {
         if (this.chunkVisible[c] === 0) continue;
-        const a = start[c], b = start[c + 1];
+        // The LIVE half of the chunk's slice. Felled props were swapped into
+        // the tail, past `a + liveIn[c]`, and are simply never read again.
+        const a = start[c], b = a + liveIn[c];
         if (a === b) continue;
         // Manual copies: `subarray()` would allocate a view every chunk, and
         // this runs on a camera pan.
@@ -1320,6 +1430,7 @@ export class Scatter {
     // Stamp every prop's adornment disc.
     for (let p = 0; p < this.placements.length; p++) {
       const pl = this.placements[p];
+      if (!pl.alive) continue;
       const def = PROP_DEFS[pl.defIndex];
       if (def === undefined) continue;
       const r = def.adorn * pl.scale;
@@ -1389,7 +1500,7 @@ export class Scatter {
     return {
       adornedFraction: walkableCells === 0 ? 1 : adornedCells / walkableCells,
       walkableHectares: hectares,
-      propsPerHectare: this.placements.length / hectares,
+      propsPerHectare: this.propCount / hectares,
       emptyPatches: patches,
       passes: patches.length === 0,
     };
@@ -1410,6 +1521,7 @@ export class Scatter {
     let n = 0;
     for (let i = 0; i < this.placements.length && (n + 1) * 3 <= out.length; i++) {
       const p = this.placements[i];
+      if (!p.alive) continue;
       const def = PROP_DEFS[p.defIndex];
       if (def === undefined || !def.blocksNav) continue;
       out[n * 3] = p.x; out[n * 3 + 1] = p.z; out[n * 3 + 2] = def.radius * p.scale;
@@ -1428,10 +1540,12 @@ export class Scatter {
    */
   positions(out: Float32Array): number {
     const max = (out.length / 4) | 0;
-    const n = Math.min(this.placements.length, max);
-    for (let i = 0; i < n; i++) {
+    let n = 0;
+    for (let i = 0; i < this.placements.length && n < max; i++) {
       const p = this.placements[i];
-      out[i * 4] = p.x; out[i * 4 + 1] = p.y; out[i * 4 + 2] = p.z; out[i * 4 + 3] = p.defIndex;
+      if (!p.alive) continue;
+      out[n * 4] = p.x; out[n * 4 + 1] = p.y; out[n * 4 + 2] = p.z; out[n * 4 + 3] = p.defIndex;
+      n++;
     }
     return n;
   }
@@ -1441,12 +1555,133 @@ export class Scatter {
     let n = 0;
     for (let i = 0; i < this.placements.length; i++) {
       const p = this.placements[i];
+      if (!p.alive) continue;
       if (p.x >= minX && p.x <= maxX && p.z >= minZ && p.z <= maxZ) n++;
     }
     return n;
   }
 
-  get propCount(): number { return this.placements.length; }
+  /* ======================================================================
+   * 3.10 CLEARING — a structure fells what it lands on
+   * ====================================================================== */
+
+  /** The disc a prop actually occupies on screen: canopy, not trunk. */
+  private visualRadius(p: Placement): number {
+    const type = p.slot >= 0 ? this.types[p.slot] : undefined;
+    if (type !== undefined) return type.geo.boundRadius * p.scale;
+    const def = PROP_DEFS[p.defIndex];
+    return (def === undefined ? 1 : def.radius) * p.scale;
+  }
+
+  /**
+   * Fell every prop whose visual disc overlaps `[minX,maxX] x [minZ,maxZ]`
+   * grown by `margin`. Returns the number removed.
+   *
+   * `out`, when given, receives one `(x, y, z, radius)` quad per felled prop up
+   * to its capacity — caller-supplied so the presentation layer can raise dust
+   * without this allocating. Quads are written in removal order, which is
+   * cell-scan order and therefore deterministic.
+   *
+   * COST. The scan visits the 4 m cells the grown rectangle covers, expanded by
+   * the widest canopy on the map so an overhanging tree centred outside is
+   * still found; removal is one swap per hit. Nothing here is proportional to
+   * the map's prop count, and nothing here reads a clock or the RNG — it runs
+   * inside `simTick` by way of the `building:placed` handler.
+   */
+  clearFootprint(
+    minX: number, minZ: number, maxX: number, maxZ: number,
+    margin: number = PROP_CLEAR_MARGIN,
+    out: Float32Array | null = null,
+  ): number {
+    this.lastClearScanned = 0;
+    this.lastClearCount = 0;
+    if (this.placements.length === 0) return 0;
+
+    const x0 = minX - margin, x1 = maxX + margin;
+    const z0 = minZ - margin, z1 = maxZ + margin;
+    const reach = this.maxPropReach;
+    const cx0 = clamp(Math.floor((x0 - reach) / CELL), 0, MAP_CELLS - 1);
+    const cx1 = clamp(Math.floor((x1 + reach) / CELL), 0, MAP_CELLS - 1);
+    const cz0 = clamp(Math.floor((z0 - reach) / CELL), 0, MAP_CELLS - 1);
+    const cz1 = clamp(Math.floor((z1 + reach) / CELL), 0, MAP_CELLS - 1);
+
+    const maxOut = out === null ? 0 : (out.length / 4) | 0;
+    let removed = 0;
+    let scanned = 0;
+
+    for (let gz = cz0; gz <= cz1; gz++) {
+      for (let gx = cx0; gx <= cx1; gx++) {
+        const cell = gz * MAP_CELLS + gx;
+        let prev = -1;
+        let n = this.bucketHead[cell];
+        while (n >= 0) {
+          const next = this.bucketNext[n];
+          const p = this.placements[n];
+          scanned++;
+          // Disc vs axis-aligned rectangle: the closest point on the rectangle
+          // to the prop centre, then one squared compare.
+          const r = this.visualRadius(p);
+          const dx = p.x < x0 ? x0 - p.x : p.x > x1 ? p.x - x1 : 0;
+          const dz = p.z < z0 ? z0 - p.z : p.z > z1 ? p.z - z1 : 0;
+          if (!p.alive || dx * dx + dz * dz >= r * r) {
+            prev = n; n = next; continue;
+          }
+          // Unlink from the cell bucket, then release the GPU instance.
+          if (prev < 0) this.bucketHead[cell] = next;
+          else this.bucketNext[prev] = next;
+          this.bucketNext[n] = -1;
+          if (removed < maxOut && out !== null) {
+            out[removed * 4] = p.x; out[removed * 4 + 1] = p.y;
+            out[removed * 4 + 2] = p.z; out[removed * 4 + 3] = r;
+          }
+          this.releaseInstance(p);
+          removed++;
+          n = next;
+        }
+      }
+    }
+
+    this.lastClearScanned = scanned;
+    this.lastClearCount = removed;
+    this.clearedProps += removed;
+    // The visible set did not change, but its CONTENTS did. Without this the
+    // 256-byte compare in update() short-circuits and a static camera keeps
+    // drawing the felled trees until the player pans.
+    if (removed > 0) this.chunkVisiblePrev.fill(255);
+    return removed;
+  }
+
+  /**
+   * Retire one instance in O(1): move the last live instance of its chunk into
+   * the hole, shrink the chunk's live count, tombstone the placement.
+   */
+  private releaseInstance(p: Placement): void {
+    p.alive = false;
+    this.liveProps--;
+    const s = p.slot;
+    if (s < 0) return;
+    const type = this.types[s];
+    const c = p.chunk;
+    const base = type.chunkStart[c];
+    const last = base + type.chunkLive[c] - 1;
+    const i = p.inst;
+    if (i !== last && last >= base) {
+      const m = type.srcMatrix, col = type.srcColor;
+      const dm = i * 16, sm = last * 16;
+      for (let k = 0; k < 16; k++) m[dm + k] = m[sm + k];
+      const dc = i * 3, sc = last * 3;
+      col[dc] = col[sc]; col[dc + 1] = col[sc + 1]; col[dc + 2] = col[sc + 2];
+      const movedIndex = type.instOf[last];
+      type.instOf[i] = movedIndex;
+      const moved = this.placements[movedIndex];
+      if (moved !== undefined) moved.inst = i;
+    }
+    type.chunkLive[c]--;
+    type.count--;
+    p.slot = -1; p.inst = -1;
+  }
+
+  get propCount(): number { return this.liveProps; }
   get typeCount(): number { return this.types.length; }
   get drawCalls(): number {
     let n = 0;
@@ -1457,7 +1692,7 @@ export class Scatter {
   stats(): ScatterStats {
     const r = this.lastReport;
     return {
-      props: this.placements.length,
+      props: this.liveProps,
       types: this.types.length,
       triangles: this.library.totalTriangles,
       visibleInstances: this.visibleInstances,
@@ -1471,7 +1706,7 @@ export class Scatter {
   }
 
   /* ======================================================================
-   * 3.10 TEARDOWN
+   * 3.11 TEARDOWN
    * ====================================================================== */
 
   private disposeMeshes(): void {
@@ -1488,6 +1723,7 @@ export class Scatter {
     this.disposeMeshes();
     this.types = [];
     this.placements.length = 0;
+    this.liveProps = 0;
     this.scene.remove(this.root);
     this.materials.dispose();
     this.library.dispose();

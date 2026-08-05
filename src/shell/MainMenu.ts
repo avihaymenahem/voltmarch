@@ -11,15 +11,26 @@
  * `.vm-menu::before` wash rather than of a panel, and (b) keeping the button
  * column narrow enough that the battlefield is still the subject of the frame.
  *
- * "LOAD" IS DISABLED, NOT FAKE
- * ----------------------------
- * There is no save system in this build. The entry is present, disabled, and
- * says why. A button that opens an empty list is worse than a button that
- * tells the truth.
+ * "LOAD" IS DISABLED WHEN, AND ONLY WHEN, THERE IS NOTHING TO LOAD
+ * ----------------------------------------------------------------
+ * This entry used to be unconditionally disabled with the hint "No saves",
+ * because there was no save system at all. There is one now, and the RULE that
+ * justified the old state is the same rule that decides the new one: a button
+ * that opens an empty list is worse than a button that tells the truth. So it
+ * is enabled exactly when `saveSlots()` is non-empty, it counts them in the
+ * hint, and with no saves — or in a build with `src/save/**` removed, or under
+ * the `?shot=` harness where no save service is published — it goes back to
+ * saying "No saves" and refusing the click.
+ *
+ * The count is read ONCE, at mount. That is correct rather than lazy: the
+ * title screen is re-mounted by `Shell.showMenu()` on every route back to it,
+ * including the one out of the load screen, so a deleted last slot disables
+ * the button by the time the player can see it.
  * ============================================================================
  */
 
 import { MAPS } from './settings-store';
+import { saveSlots } from './LoadGame';
 import {
   button,
   el,
@@ -30,6 +41,7 @@ import {
   type Shell,
 } from './Shell';
 import { readProgression } from './progression-link';
+import { tutorialMenuHint, tutorialUntouched } from './Tutorial';
 
 /* ==========================================================================
  * MAIN MENU
@@ -53,6 +65,17 @@ function missionsHint(): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * The hint under Load Game.
+ *
+ * "No saves" is preserved VERBATIM for the empty case — it is the sentence the
+ * old unconditional-disable shipped, and it is still the truthful one.
+ */
+export function loadHint(count: number): string {
+  if (count <= 0) return 'No saves';
+  return count === 1 ? '1 save' : `${count} saves`;
 }
 
 export class MainMenuScreen implements Screen {
@@ -91,9 +114,24 @@ export class MainMenuScreen implements Screen {
     const nav = el('nav', 'vm-menu-nav');
     nav.setAttribute('aria-label', 'Main menu');
 
+    // FIRST, and accented until it has been opened once.
+    //
+    // A tutorial buried under Skirmish is a tutorial nobody finds, and the
+    // whole point of the item is the player who has never played an RTS. Once
+    // they have been through it the accent moves back to Skirmish, so a
+    // returning player is not shouted at by a screen they have finished with.
+    const fresh = tutorialUntouched();
+    nav.appendChild(button('Tutorial', {
+      iconName: 'info',
+      hint: tutorialMenuHint(),
+      variant: fresh ? 'primary' : 'default',
+      onClick: () => { void this.shell.startTutorial(); },
+    }));
+
     nav.appendChild(button('Skirmish', {
       iconName: 'swords',
       hint: 'vs AI',
+      variant: fresh ? 'default' : 'primary',
       onClick: () => this.shell.openSetup(),
     }));
 
@@ -108,10 +146,12 @@ export class MainMenuScreen implements Screen {
       onClick: () => this.shell.openMissions('menu'),
     }));
 
+    const saves = saveSlots().length;
     nav.appendChild(button('Load Game', {
       iconName: 'folder',
-      hint: 'No saves',
-      disabled: true,
+      hint: loadHint(saves),
+      disabled: saves === 0,
+      onClick: () => this.shell.openLoadGame(),
     }));
 
     nav.appendChild(button('Options', {

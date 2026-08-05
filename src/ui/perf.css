@@ -1,0 +1,227 @@
+/* ============================================================================
+ * src/ui/perf.css — THE PERFORMANCE OVERLAY
+ * ============================================================================
+ * Its own file, imported from `src/ui/PerfHud.ts`, exactly as
+ * `src/ui/objectives.css` is imported from `Objectives.ts`. `hud.css` and
+ * `shell.css` are shared and edited by other workflows and are not touched
+ * here.
+ *
+ * THE CORNER IS ALREADY OCCUPIED
+ * ------------------------------
+ * `hud.css` §10 puts the event toast stack at top-left, 10u/10u, 230u wide —
+ * the same corner this panel is specified for. The objective panel is top
+ * RIGHT (`hud.css` line 1710) and the completion banner is a centred card, so
+ * neither of those is in the way; the toasts are.
+ *
+ * The fix costs nothing when the overlay is off, which is the shipping default:
+ * `PerfHud` puts `vm-perf-on` on its mount only while the panel is on screen,
+ * and the one rule below moves the toast stack down to clear it. Turning the
+ * overlay off puts the toasts straight back.
+ *
+ * THE HEIGHT IS ARITHMETIC, NOT A GUESS
+ * -------------------------------------
+ * Design units, 150u wide, seven rows:
+ *
+ *   pad 4 + head 11 + gap 3 + primary 20 + gap 3 + verdict 11 + gap 3
+ *         + 7 rows (11u) + 6 row gaps (1u) + pad 4                    = 142u
+ *
+ * `perfPanelHeightUnits()` in PerfHud.ts is the same sum in TypeScript and
+ * `tests/perf-hud.spec.ts` pins the two against each other, so a row added here
+ * without being added there fails a test rather than quietly overlapping the
+ * toasts it was supposed to clear.
+ *
+ * At 1280x720 that is 150x142u = 2.31% of the frame. Well past what the look
+ * bible allows a shipping HUD element — which is why this one is a diagnostic
+ * that defaults to off and never appears in a capture.
+ * ========================================================================== */
+
+.vm-perf {
+  position: absolute;
+  top: calc(10 * var(--vm-u, 1px));
+  left: calc(10 * var(--vm-u, 1px));
+  width: calc(150 * var(--vm-u, 1px));
+  z-index: 6;
+
+  display: flex;
+  flex-direction: column;
+  gap: calc(3 * var(--vm-u, 1px));
+  padding: calc(4 * var(--vm-u, 1px));
+
+  /* Deliberately NOT `.vm-panel`: that primitive sets `pointer-events: auto`,
+     and a diagnostic that swallows a click during a fight is worse than no
+     diagnostic. PerfHud.ts also sets this inline, so a stylesheet that fails to
+     load cannot arm the bug. */
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+
+  background: rgba(6, 9, 14, 0.86);
+  border: 1px solid var(--vm-hairline, rgba(255, 255, 255, 0.16));
+  color: var(--vm-text, #eaf2fa);
+  font-family: 'Rajdhani', 'Oswald', 'Consolas', 'SF Mono', ui-monospace, monospace;
+  font-size: calc(9 * var(--vm-u, 1px));
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6);
+}
+
+.vm-perf[hidden] { display: none; }
+
+/* -- header ---------------------------------------------------------------- */
+
+.vm-perf-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: calc(11 * var(--vm-u, 1px));
+  border-bottom: 1px solid var(--vm-hairline-soft, rgba(255, 255, 255, 0.10));
+}
+
+.vm-perf-title {
+  font-size: calc(8 * var(--vm-u, 1px));
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--vm-dim, #9dabba);
+}
+
+/* -- the headline number --------------------------------------------------- *
+ * Milliseconds are the primary reading and fps is the footnote, because ms is
+ * linear and fps is a reciprocal that compresses exactly the range where the
+ * problems live: 60 -> 50 fps is 3.3 ms, 20 -> 15 fps is 16.7 ms, and the
+ * second number makes the smaller change look larger.                          */
+
+.vm-perf-primary {
+  display: flex;
+  align-items: baseline;
+  gap: calc(3 * var(--vm-u, 1px));
+  height: calc(20 * var(--vm-u, 1px));
+}
+
+.vm-perf-big {
+  font-size: calc(20 * var(--vm-u, 1px));
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--vm-text, #eaf2fa);
+}
+
+.vm-perf-unit {
+  font-size: calc(9 * var(--vm-u, 1px));
+  color: var(--vm-dim, #9dabba);
+}
+
+.vm-perf-fps {
+  margin-left: auto;
+  font-size: calc(10 * var(--vm-u, 1px));
+  color: var(--vm-faint, #74818f);
+}
+
+/* -- the verdict ----------------------------------------------------------- *
+ * The one line that answers "am I actually fine". Four states, four colours,
+ * and the green one is reachable only when a GPU timer query measured the spare
+ * time — see the header of PerfHud.ts.                                         */
+
+.vm-perf-verdict {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(1 * var(--vm-u, 1px));
+  min-height: calc(11 * var(--vm-u, 1px));
+  padding: calc(2 * var(--vm-u, 1px)) calc(3 * var(--vm-u, 1px));
+  border-left: calc(2 * var(--vm-u, 1px)) solid var(--vm-faint, #74818f);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.vm-perf-state {
+  font-size: calc(9 * var(--vm-u, 1px));
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.vm-perf-reason {
+  font-size: calc(8 * var(--vm-u, 1px));
+  color: var(--vm-faint, #74818f);
+  letter-spacing: 0.04em;
+}
+
+.vm-perf-verdict.is-ok { border-left-color: var(--vm-ok, #4fd97f); }
+.vm-perf-verdict.is-ok .vm-perf-state { color: var(--vm-ok, #4fd97f); }
+
+/* "Headroom unknown" is amber, not green. It is the most common honest answer
+   and it must not read as a pass. */
+.vm-perf-verdict.is-watch { border-left-color: var(--vm-warn, #f0b429); }
+.vm-perf-verdict.is-watch .vm-perf-state { color: var(--vm-warn, #f0b429); }
+
+.vm-perf-verdict.is-warn { border-left-color: var(--vm-warn, #f0b429); }
+.vm-perf-verdict.is-warn .vm-perf-state { color: var(--vm-warn, #f0b429); }
+
+.vm-perf-verdict.is-bad { border-left-color: var(--vm-danger, #ff4d3d); }
+.vm-perf-verdict.is-bad .vm-perf-state { color: var(--vm-danger, #ff4d3d); }
+
+/* -- rows ------------------------------------------------------------------ */
+
+.vm-perf-rows {
+  display: flex;
+  flex-direction: column;
+  gap: calc(1 * var(--vm-u, 1px));
+}
+
+.vm-perf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(6 * var(--vm-u, 1px));
+  height: calc(11 * var(--vm-u, 1px));
+}
+
+.vm-perf-k {
+  color: var(--vm-faint, #74818f);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: calc(8 * var(--vm-u, 1px));
+}
+
+.vm-perf-v {
+  color: var(--vm-text, #eaf2fa);
+  white-space: nowrap;
+}
+
+/* An over-budget number has to LOOK over budget. 130 draws is the documented
+   ceiling; the triangle line is advisory and says so by being amber, never
+   red. Row order is fixed by PerfHud.addRow: 4 is draws, 5 is tris. */
+.vm-perf.is-draws-over .vm-perf-row:nth-child(4) .vm-perf-v {
+  color: var(--vm-danger, #ff4d3d);
+  font-weight: 700;
+}
+
+.vm-perf.is-tris-over .vm-perf-row:nth-child(5) .vm-perf-v {
+  color: var(--vm-warn, #f0b429);
+}
+
+/* -- the corner it shares with the toasts ---------------------------------- *
+ * One rule, active only while the panel is up. `hud.css` is untouched.         */
+
+.vm-hud.vm-perf-on .vm-toasts {
+  top: calc((10 + 142 + 6) * var(--vm-u, 1px));
+}
+
+/* -- the other overlay in this corner -------------------------------------- *
+ * `src/render/debug.ts` mounts the developer F3 overlay at 8px/8px of the debug
+ * root, in screen pixels rather than design units. It is a different instrument
+ * for a different audience and both can legitimately be up at once, so when the
+ * F3 panel is open this one steps aside by its measured width (212px minimum
+ * plus its border and 20px of clearance).                                      */
+
+.vm-perf.is-clear-of-debug {
+  left: calc(10 * var(--vm-u, 1px) + 240px);
+}
+
+/* The panel is a diagnostic, not chrome: on a frame narrow enough that hud.css
+   hides the objective panel, it would cover the battlefield instead of
+   annotating it. */
+@media (max-width: 1000px) {
+  .vm-perf { display: none; }
+  .vm-hud.vm-perf-on .vm-toasts { top: calc(10 * var(--vm-u, 1px)); }
+}

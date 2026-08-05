@@ -19,6 +19,16 @@
  * disagree — the classic bug where the pointer promises an attack and the unit
  * walks up and stands there is structurally impossible here.
  *
+ * AND IT ANSWERS THAT QUESTION THROUGH THE FOG
+ * --------------------------------------------
+ * The hovered entity is run through `canInteractWith` (src/input/Selection.ts)
+ * before it is allowed to mean anything. An enemy the local player cannot see
+ * resolves as bare ground: cursor `Move`, order `Move`, target `NONE`. An enemy
+ * STRUCTURE on explored ground resolves normally, because the renderer is still
+ * drawing its remembered silhouette and refusing to target something visibly on
+ * screen would be the worse bug. Force-fire (ctrl / F) is the one exception and
+ * keeps working into pitch black — see the note above its branch.
+ *
  * ROLES WITHOUT A DEF TABLE
  * -------------------------
  * "Can this unit capture?" is a content question and the def tables are still
@@ -72,7 +82,7 @@ import { clampWorld, hashU32, worldToCell } from '../core/math';
 // `src/sim/deploy.system.ts` acts on.
 import { isDeployable } from '../sim/Deploy';
 import { CursorKind } from './Input';
-import { isEnemyOf } from './Selection';
+import { canInteractWith, isEnemyOf } from './Selection';
 
 /* ==========================================================================
  * 1. ROLES
@@ -361,8 +371,17 @@ export function resolveContextOrder(
     return out;
   }
 
+  // A hover the local player cannot see is NOT a hover. `pickEntity` already
+  // refuses to return one, but this resolver is the thing that decides what a
+  // click MEANS and it does not take that on trust: the AI, a test and a HUD
+  // widget can all hand it a handle that never went past the cursor. The result
+  // is the classic behaviour — the pointer over a shrouded enemy reads as bare
+  // ground and a right-click there is a move order, exactly as if nothing were
+  // standing on it.
   const hi = s.index(hover);
-  const hoverValid = hi >= 0 && (s.flags[hi] & EntityFlag.Alive) !== 0;
+  const hoverValid = hi >= 0
+    && (s.flags[hi] & EntityFlag.Alive) !== 0
+    && canInteractWith(world, local, hi);
   const hoverEnemy = hoverValid && isEnemyOf(world, local, hi);
   const hoverOwn = hoverValid && s.owner[hi] === (local as number);
   if (hoverValid) {
@@ -388,6 +407,13 @@ export function resolveContextOrder(
     out.valid = true;
     return out;
   }
+  // FORCE-FIRE IS THE DELIBERATE EXCEPTION and the reason "you cannot attack
+  // what you cannot see" is not the whole rule. It shells a POINT, not a unit:
+  // `out.x/out.z` are still the raw ground hit, so ctrl+click into pitch-black
+  // shroud is a legal, useful order and always has been. What it must not do is
+  // acquire a handle it was never allowed to see — `hoverValid` is already false
+  // there, so the order goes out with `target = NONE` and the shell lands where
+  // the player aimed instead of tracking something invisible.
   if (mode === CommandMode.ForceAttack || (mods.ctrl && caps.canAttack)) {
     out.order = OrderKind.ForceAttack;
     out.target = hoverValid ? hover : NONE;

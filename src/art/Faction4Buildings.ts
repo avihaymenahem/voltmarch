@@ -28,7 +28,13 @@
  *          is capped; everything is bridged.
  *
  *  RCL-3   ASYMMETRY. The columns and the ties mirror, because a frame that did
- *          not would fall over, and NOTHING ELSE DOES. One flank carries a slab
+ *          not would fall over, and NOTHING ELSE DOES except what is bolted
+ *          ONTO a column — the flank team plate and the conduit that runs down
+ *          it, which are part of the column rather than things standing beside
+ *          it. That exemption is exhaustive and it is enforced by
+ *          `tests/building-shape.spec.ts`, because it was not: the intake bank
+ *          and the lamp hood carried `mirrorX` for the whole life of this file
+ *          and the rule above said otherwise. One flank carries a slab
  *          of salvaged cladding and a grapple jib; the other is open frame with
  *          a fuel drum standing in it. The diagonal K-brace is on one side only.
  *          The rear tie sits lower than the front tie. A Reclamation base seen
@@ -75,7 +81,7 @@ import { MassRole, taperOutline } from './MassList';
 import {
   BuildingLibrary, Feature,
   type StructureFaction, type StructureMass, type StructureMassList,
-  type StructureModel, type StructureSocket,
+  type StructureModel, type StructurePalettes, type StructureSocket,
 } from './BuildingFactory';
 import {
   FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec as BridgeSocket,
@@ -271,7 +277,10 @@ function slagApron(fw: number, fh: number, height: number): M[] {
 
   return [
     pri('pad.slab', MassRole.Greeble, [w, total, d], [0, cy, 0], 'paintMed', {
-      plan: 'cutBox', cornerCut: 0.10, capSlot: 'paintSmall',
+      // 0.16 rather than 0.10, for the same free reason the deck's cut moved:
+      // a poured apron with a token nick out of each corner reads as a
+      // rectangle, and this army's ground is supposed to read as poured.
+      plan: 'cutBox', cornerCut: 0.16, capSlot: 'paintSmall',
       target: 'pad', feature: Feature.Static, group: 'pad',
       chamfer: Math.min(0.24, thick * 0.5),
     }),
@@ -477,8 +486,16 @@ function reclaimFrame(fw: number, fh: number, height: number, o: FrameOpts): Fra
 
   masses.push(
     // The deck. Cut corners in plan, and the one mass that touches the apron.
+    //
+    // The cut is 0.18, not the 0.10 it shipped with, and the reason is measured
+    // rather than aesthetic: `structureBoxiness` names `deck` as the flattest
+    // primary mass on every one of the eight frame-built structures, at 0.75-
+    // 0.78 axis-aligned surface. `planPolygon('cutBox', cut)` returns eight
+    // points at ANY cut, so widening it costs not one triangle and turns four
+    // 10 cm nicks into a plinth with a real bevelled corner — the difference
+    // between a slab that had its edges knocked off and one that was drawn.
     pri('deck', MassRole.Primary, [w * 0.94, deckH, d * 0.94], [0, deckH * 0.5, 0], 'paintMed', {
-      plan: 'cutBox', cornerCut: 0.10, capSlot: 'tread',
+      plan: 'cutBox', cornerCut: 0.18, capSlot: 'tread',
     }),
     // THE CLAD BODY — the dominant mass, and deliberately NARROWER than the
     // cage so the columns stand proud on all four corners with daylight
@@ -519,14 +536,22 @@ function reclaimFrame(fw: number, fh: number, height: number, o: FrameOpts): Fra
     box('flue', MassRole.Greeble, [w * 0.16, mainH * 0.44, d * 0.13], [-w * 0.12, deckH + mainH * 1.02, -d * 0.24], 'vent', {
       group: 'flue', chamfer: 0.06,
     }),
+    // RCL-3, AND IT WAS BROKEN HERE. The rule says the columns and the ties
+    // mirror "and NOTHING ELSE DOES"; the header then lists the exemption the
+    // file granted itself, which is the team plates and the conduit that sit ON
+    // the columns. The intake bank and the lamp hood were in neither category
+    // and were mirrored anyway, so eight of the twelve structures matched
+    // themselves across four masses instead of two. Single-sided is the rule as
+    // written — and it is also 704 triangles back across the roster, which is
+    // what this pass spends on the corner cuts below.
     box('intake', MassRole.Greeble, [0.34, mainH * 0.44, d * 0.34], [w * 0.36, deckH + mainH * 0.36, -d * 0.22], 'grille', {
-      mirrorX: true, group: 'intakes', chamfer: 0.05,
+      group: 'intakes', chamfer: 0.05,
     }),
     box('service', MassRole.Greeble, [w * 0.16, deckH * 0.66, 0.28], [-w * 0.22, deckH * 0.36, d * 0.42], 'stencil', {
       group: 'service', chamfer: 0.05,
     }),
     box('lamp.hood', MassRole.Greeble, [0.34, 0.22, 0.20], [w * 0.30, deckH + mainH * 0.92, d * 0.40], 'bareMetal', {
-      mirrorX: true, rot: [0.34, 0, 0], group: 'lamps', chamfer: 0.04,
+      rot: [0.34, 0, 0], group: 'lamps', chamfer: 0.04,
     }),
   );
 
@@ -1311,12 +1336,28 @@ export function buildAndRegisterReclaimStructures(
   atlasSize: number,
   buildingId: Readonly<Record<string, number>>,
 ): ReclaimStructureReport {
-  const palettes = {
+  const palettes: StructurePalettes = {
     structure: RECLAIM_STRUCTURE_PALETTE,
     pad: RECLAIM_PAD_PALETTE,
     panelDensity: PANEL_DENSITY,
     seed: SEED,
     padSeed: PAD_SEED,
+    /*
+     * TORCH-CUT PLATE, SPRAYED, NEVER BUFFED.
+     *
+     * `rivets: false` above says what the atlas draws — welded seams, not bolt
+     * rings — and until `StructureCoat` existed it also chose the material's
+     * coat, which put this army in ALLIED CERAMIC GLAZE: clearcoat 0.42 at
+     * roughness 0.26 with env 0.95, a wet mirror over #4E4956 oxide. That is
+     * the broad smeared highlight on every large flat face of a Foundry, and
+     * it is why a scrap army read as moulded plastic.
+     *
+     * `'scrap'` is the thinnest and slackest coat of the four. Its env stays
+     * at 0.72, ABOVE the Soviet 0.62, and that is the one number here chosen
+     * against the pattern: this is the darkest architecture in the game and
+     * sky fill is what keeps its frame legible against terrain.
+     */
+    coat: 'scrap',
   };
 
   const models: StructureModel[] = [];

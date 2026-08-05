@@ -33,6 +33,15 @@
  * footprint. That is where the pads in every RA3 base come from, it costs zero
  * draw calls, and it means the ghost's rectangle is a promise the world keeps.
  *
+ * RELOCATION IS THIS FLOW WITH A DIFFERENT SUBJECT
+ * ------------------------------------------------
+ * `src/sim/Relocate.ts` lets a player pick up a structure that is already
+ * standing and put it somewhere else for a fee. That is not a second placement
+ * system: it is `beginRelocate(id)` instead of `begin(defId)`, one exempt
+ * rectangle in the rule (`PlacementExempt`) and one different commit target.
+ * The hologram, the carpet, the snapping, the Escape key and the right-click
+ * cancel are all the code you are already reading.
+ *
  * CURSOR OWNERSHIP
  * ----------------
  * An input module does not exist yet, so this controller will drive itself off
@@ -47,7 +56,7 @@ import * as THREE from 'three';
 import {
   BUILD_RADIUS, CELL, MAP_CELLS, PLACEMENT, RENDER_ORDER,
 } from '../core/config';
-import { EntityFlag, EntityKind } from '../core/types';
+import { EntityFlag, EntityKind, NONE } from '../core/types';
 import type { EntityId, PlayerId } from '../core/types';
 import type { World } from '../core/world';
 import { footprintOriginCell, hexToInt, isInMap } from '../core/math';
@@ -97,6 +106,34 @@ export interface PlacementReport {
   inRadius: boolean;
 }
 
+/**
+ * A rectangle of cells the rule treats as open ground.
+ *
+ * WHAT THIS IS FOR, AND WHY IT IS NOT A HACK
+ * ------------------------------------------
+ * A relocation (`src/sim/Relocate.ts`) asks "may this structure stand HERE?"
+ * while the structure is still standing THERE, and the two footprints usually
+ * overlap — nudging a War Factory two cells left is the commonest relocation
+ * there is. Every overlapping cell is occupied by the very structure that is
+ * about to vacate it, so without an exemption the rule refuses every short move
+ * and permits only long ones, which is exactly backwards.
+ *
+ * The exemption skips BOTH the occupancy test and the terrain test, and both
+ * are correct for the same reason: a finished structure is standing on those
+ * cells right now. Its own ground cannot be too steep, too wet or too crowded
+ * for it — it is already there. Cells outside the rectangle get the full test,
+ * unchanged.
+ *
+ * `isInMap` is still enforced inside the rectangle. A cell off the map is not
+ * ground the exempt structure occupies; it is a coordinate that does not exist.
+ */
+export interface PlacementExempt {
+  cx: number;
+  cz: number;
+  w: number;
+  h: number;
+}
+
 const MAX_CELLS = PLACEMENT.maxFootprintCells * PLACEMENT.maxFootprintCells;
 
 export function makePlacementReport(): PlacementReport {
@@ -124,6 +161,7 @@ export function evaluatePlacement(
   cx: number,
   cz: number,
   out: PlacementReport,
+  exempt: PlacementExempt | null = null,
 ): PlacementReport {
   const w = Math.max(1, Math.min(PLACEMENT.maxFootprintCells, entry.footprintW));
   const h = Math.max(1, Math.min(PLACEMENT.maxFootprintCells, entry.footprintH));
@@ -138,12 +176,22 @@ export function evaluatePlacement(
   const terrain = world.terrain;
 
   /* -- terrain and existing structures ---------------------------------- */
+  const ex0 = exempt === null ? 0 : exempt.cx;
+  const ez0 = exempt === null ? 0 : exempt.cz;
+  const ex1 = exempt === null ? -1 : exempt.cx + exempt.w;
+  const ez1 = exempt === null ? -1 : exempt.cz + exempt.h;
+
   for (let z = 0; z < h; z++) {
     for (let x = 0; x < w; x++) {
       const gx = cx + x;
       const gz = cz + z;
       let fault = PlacementFault.None;
+      // Ground the exempt structure is standing on right now: on the map by
+      // definition, and neither too steep nor too crowded for a building that
+      // is already founded there. See `PlacementExempt`.
+      const isExempt = gx >= ex0 && gx < ex1 && gz >= ez0 && gz < ez1;
       if (!isInMap(gx, gz)) fault = PlacementFault.OffMap;
+      else if (isExempt) fault = PlacementFault.None;
       else if (terrain.isOccupied(gx, gz)) fault = PlacementFault.Occupied;
       else if (!terrain.isBuildable(gx, gz)) fault = PlacementFault.Terrain;
       if (fault === PlacementFault.None) continue;
@@ -242,7 +290,7 @@ export function withinBuildRadius(world: World, player: PlayerId, x: number, z: 
  * ========================================================================== */
 
 export const enum PlacementPhase {
-  /** The player picked up a finished structure. */
+  /** The player picked up a finished structure, or an existing one to relocate. */
   Began = 0,
   /** The ghost moved to a new origin cell. */
   Moved = 1,
@@ -271,6 +319,41 @@ export interface PlacementNotice {
 }
 
 export type PlacementListener = (notice: Readonly<PlacementNotice>) => void;
+
+/* ==========================================================================
+ * 2b. THE RELOCATION SEAM
+ *
+ * `src/sim/Relocate.ts` needs `evaluatePlacement` and the notice enum from this
+ * file; this file needs somewhere to hand a committed relocation. Importing
+ * each other would make the one runtime cycle in `src/sim`, and this module's
+ * whole reason for existing is that the ghost and the sim agree — a cycle is
+ * exactly the wrong shape for that.
+ *
+ * So the edge stays one-way (Relocate -> Placement) and the return path is a
+ * registered callback, the same shape as `setProduction` / `setDeploy`.
+ * `relocate.system.ts` installs it at init and clears it at dispose; with
+ * nothing installed, `beginRelocate` simply refuses and the ghost is never
+ * offered a subject it could not commit.
+ * ========================================================================== */
+
+export interface RelocateSeam {
+  /** Commit: charge, uproot and re-found. Returns false when it was refused. */
+  commit(player: PlayerId, building: EntityId, cx: number, cz: number): boolean;
+  /** Is this structure eligible at all? Fills nothing; a bare yes/no. */
+  eligible(player: PlayerId, building: EntityId): boolean;
+}
+
+let relocateSeam: RelocateSeam | null = null;
+
+/** Publish the relocation service. `relocate.system.ts` owns both calls. */
+export function setRelocateSeam(next: RelocateSeam | null): void {
+  relocateSeam = next;
+}
+
+/** The installed relocation service, or null. */
+export function relocateSeamOf(): RelocateSeam | null {
+  return relocateSeam;
+}
 
 /* ==========================================================================
  * 3. THE GHOST
@@ -305,6 +388,17 @@ export class PlacementController {
   cz = 0;
   /** Latest validity answer. Read by the HUD for the cursor glyph. */
   readonly report: PlacementReport = makePlacementReport();
+
+  /**
+   * The live structure this ghost is CARRYING, or NONE for a fresh build.
+   *
+   * A relocation is the same gesture with a different subject, so it is the
+   * same controller, the same hologram and the same validity carpet — one
+   * `EntityId` is the entire difference. See `beginRelocate`.
+   */
+  relocating: EntityId = NONE;
+  /** Origin cell the relocation subject currently stands on. */
+  private srcCell: PlacementExempt = { cx: 0, cz: 0, w: 0, h: 0 };
 
   /**
    * When true, a structure that finishes building is picked up automatically.
@@ -468,6 +562,8 @@ export class PlacementController {
     const entry = service.catalog.resolve(defId, true);
     if (entry === null) return false;
 
+    this.relocating = NONE;
+    this.srcCell.w = 0;
     this.entry = entry;
     this.active = true;
     this.dirty = true;
@@ -481,12 +577,73 @@ export class PlacementController {
     return true;
   }
 
-  /** Put it back in the queue. It stays ready. */
+  /**
+   * Pick up a structure that is ALREADY STANDING and carry it to a new site.
+   *
+   * Everything after this line is the ordinary placement flow: the same
+   * hologram, the same per-cell carpet, the same commit click, the same
+   * Escape/right-click cancel. The only differences are the subject (a live
+   * entity rather than a finished queue item), the validity rule (the
+   * structure's own cells are exempt — see `PlacementExempt`) and where the
+   * commit goes.
+   *
+   * Refuses without side effects when there is no relocation service installed,
+   * when the entity is not a structure this player may move, or when the
+   * catalog has no opinion about what the structure is — the ghost must never
+   * be holding something it cannot put down.
+   */
+  beginRelocate(building: EntityId): boolean {
+    const seam = relocateSeamOf();
+    if (seam === null) return false;
+
+    const world = this.deps.world;
+    const player = world.localPlayer;
+    const store = world.store;
+    const i = store.index(building);
+    if (i < 0 || store.kind[i] !== EntityKind.Building) return false;
+    if (!seam.eligible(player, building)) return false;
+
+    const entry = this.deps.service.entryOf(building);
+    if (entry === null || entry.footprintW <= 0 || entry.footprintH <= 0) return false;
+
+    // Where it stands now. Those cells are legal ground for it by construction.
+    footprintOriginCell(
+      store.posX[i], store.posZ[i], store.footprintW[i], store.footprintH[i], originCell,
+    );
+    this.srcCell.cx = originCell[0];
+    this.srcCell.cz = originCell[1];
+    this.srcCell.w = store.footprintW[i];
+    this.srcCell.h = store.footprintH[i];
+
+    this.relocating = building;
+    this.entry = entry;
+    this.active = true;
+    this.dirty = true;
+    this.attach();
+    this.updateCursor();
+    this.deps.service.publishPlacement(
+      PlacementPhase.Began, player, entry, this.cx, this.cz, this.report.ok, this.report.reason,
+    );
+    return true;
+  }
+
+  /**
+   * Put it down again.
+   *
+   * For a fresh build that means back in the queue, still ready. For a
+   * relocation it means NOTHING HAPPENED: the structure never left the world,
+   * no credits were taken, and the only state that existed was this ghost. That
+   * is the whole reason the subject stays standing until the commit lands —
+   * a cancel that had to undo a half-finished move is a cancel that can
+   * duplicate or destroy a building.
+   */
   cancel(): void {
     if (!this.active) return;
     const entry = this.entry;
     this.active = false;
     this.entry = null;
+    this.relocating = NONE;
+    this.srcCell.w = 0;
     this.group.visible = false;
     this.detach();
     if (entry !== null) {
@@ -504,21 +661,37 @@ export class PlacementController {
     if (!this.active || this.entry === null) return false;
     const entry = this.entry;
     const player = this.deps.world.localPlayer;
+    const moving = this.relocating;
 
     this.evaluate();
     if (!this.report.ok) {
       this.deps.service.publishPlacement(
         PlacementPhase.Rejected, player, entry, this.cx, this.cz, false, this.report.reason,
       );
-      // Still route it through the sim so EVA and the HUD hear one story.
-      this.deps.service.placeBuilding(player, entry.publicId, this.cx, this.cz);
+      // Still route it through the sim so EVA and the HUD hear one story. A
+      // relocation stays on the cursor after a refusal rather than being
+      // dropped: the player asked to move a building that is still standing,
+      // and taking the ghost away would mean re-selecting it to try again.
+      if (moving === NONE) {
+        this.deps.service.placeBuilding(player, entry.publicId, this.cx, this.cz);
+      } else {
+        relocateSeamOf()?.commit(player, moving, this.cx, this.cz);
+      }
       return false;
     }
 
-    this.commitInFlight = true;
-    this.deps.service.placeBuilding(player, entry.publicId, this.cx, this.cz);
+    if (moving !== NONE) {
+      // The sim re-checks and charges. If it refuses on something only it can
+      // see — the price went up, the garrison filled — the ghost stays up.
+      if (relocateSeamOf()?.commit(player, moving, this.cx, this.cz) !== true) return false;
+    } else {
+      this.commitInFlight = true;
+      this.deps.service.placeBuilding(player, entry.publicId, this.cx, this.cz);
+    }
     this.active = false;
     this.entry = null;
+    this.relocating = NONE;
+    this.srcCell.w = 0;
     this.group.visible = false;
     this.detach();
     return true;
@@ -542,6 +715,17 @@ export class PlacementController {
 
   frame(): void {
     if (!this.scenarioChecked) this.checkStagedPlacement();
+    // A relocation subject that is shelled while its ghost is up takes the
+    // ghost with it. Holding a hologram of a building that no longer exists
+    // would let the player "commit" a move of nothing.
+    if (this.relocating !== NONE) {
+      const store = this.deps.world.store;
+      const i = store.index(this.relocating);
+      if (i < 0 || (store.flags[i] & EntityFlag.Alive) === 0
+        || (store.flags[i] & EntityFlag.PendingDestroy) !== 0) {
+        this.cancel();
+      }
+    }
     if (!this.active) {
       if (this.autoPickup) this.checkAutoPickup();
       if (!this.active) {
@@ -620,11 +804,48 @@ export class PlacementController {
     }
   }
 
+  /**
+   * Ask the one rule.
+   *
+   * A relocation adds two masks, and both of them say the same true thing —
+   * this structure is leaving:
+   *
+   *   1. its own footprint is exempt ground (`PlacementExempt`), so a two-cell
+   *      nudge is not refused for colliding with itself;
+   *   2. it is flagged `PendingDestroy` for the duration of the call, which is
+   *      the one flag `withinBuildRadius` already skips. Without that, every
+   *      structure would project a build radius around ITSELF and could walk
+   *      across the map one hop at a time, which quietly deletes the base-creep
+   *      rule that `withinBuildRadius` exists to enforce. The new site must be
+   *      covered by the rest of the base.
+   *
+   * The flag is restored in a `finally` and nothing runs in between.
+   */
   private evaluate(): void {
-    if (this.entry === null) return;
-    evaluatePlacement(
-      this.deps.world, this.deps.world.localPlayer, this.entry, this.cx, this.cz, this.report,
-    );
+    const entry = this.entry;
+    if (entry === null) return;
+    const world = this.deps.world;
+    const player = world.localPlayer;
+    const report = this.report;
+
+    if (this.relocating === NONE) {
+      evaluatePlacement(world, player, entry, this.cx, this.cz, report);
+      return;
+    }
+
+    const store = world.store;
+    const i = store.index(this.relocating);
+    if (i < 0) {
+      evaluatePlacement(world, player, entry, this.cx, this.cz, report, this.srcCell);
+      return;
+    }
+    const saved = store.flags[i];
+    store.flags[i] = saved | EntityFlag.PendingDestroy;
+    try {
+      evaluatePlacement(world, player, entry, this.cx, this.cz, report, this.srcCell);
+    } finally {
+      store.flags[i] = saved;
+    }
   }
 
   /** Push the current footprint into the three meshes. Zero allocation. */
@@ -730,5 +951,7 @@ export class PlacementController {
     this.cells.dispose();
     this.entry = null;
     this.active = false;
+    this.relocating = NONE;
+    this.srcCell.w = 0;
   }
 }

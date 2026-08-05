@@ -23,6 +23,16 @@
  *
  * The handle is installed in dev AND in production builds. It is ~4 KB and it
  * is the difference between "we think it looks better" and "here is the diff".
+ *
+ * THE POSE MUST BE PROVEN, NOT ASSUMED
+ * ------------------------------------
+ * "Every pose setter is immediate" is only half the contract. The other half is
+ * that the pose the harness asked for is the pose the rig is actually in, and
+ * that half was free for as long as pitch was derived from the dolly and
+ * nothing else could write it. It no longer is. See the CANONICAL CAMERA POSE
+ * block below for `canonicalPitchDeg`, `comparePoseDeg` and
+ * `__VM.assertCameraPose` — all additive, because both `tools/shoot.mjs` and
+ * `tools/metrics.mjs` consume this surface and neither may be broken.
  */
 
 import * as THREE from 'three';
@@ -38,6 +48,7 @@ import {
 import type { SceneRig } from './scene';
 import type { CameraRig, CameraPose } from './camera';
 import type { PostChain, PassId } from './post';
+import { renderBridge, type RenderAudit } from './RenderBridge';
 
 /* ========================================================================== */
 /* Types                                                                      */
@@ -105,6 +116,151 @@ export interface FrameStats {
   counters: DebugCounters;
 }
 
+/* ==========================================================================
+ * CANONICAL CAMERA POSE
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * The scorecard in docs/RA3_LOOK_BIBLE.md is a 40-point weighted grade over
+ * twelve fixtures. That number only means anything if all twelve are shot from
+ * the SAME camera every run — a grade computed from a camera that moved is an
+ * art measurement contaminated by a navigation change, and the two are
+ * indistinguishable after the fact.
+ *
+ * Pitch used to be safe by construction: `CameraRig` derived it from the dolly
+ * distance and nothing else could write it. It is about to become player state.
+ * A player-chosen pitch that survives into a capture run — through persistence,
+ * through a stale rig, through anything — would move the grade silently.
+ *
+ * So the fixture pose becomes DATA that is asserted rather than assumed:
+ *
+ *   `canonicalPitchDeg(d)`  the pitch the config curve prescribes at dolly d
+ *   `comparePoseDeg(...)`   pure comparison, so the rejection path is testable
+ *   `__VM.assertCameraPose` the same comparison against the live rig
+ *
+ * ANGLES ARE IN DEGREES HERE. `CameraPose` is radians because the rig is, and
+ * every fixture in `tools/shoot.mjs` and `src/game/scenarios.system.ts` is
+ * authored in degrees. Converting at one boundary beats converting at twelve.
+ * ========================================================================== */
+
+/** A camera pose with its angles in degrees — the unit fixtures are authored in. */
+export interface CameraPoseDeg {
+  x: number;
+  z: number;
+  yawDeg: number;
+  pitchDeg: number;
+  distance: number;
+}
+
+/** How far a pose may drift before the capture is refused. */
+export interface PoseTolerance {
+  /** Degrees, applied to yaw and pitch. */
+  angleDeg: number;
+  /** Metres, applied to focus x/z and dolly distance. */
+  metres: number;
+}
+
+/**
+ * 0.05 deg is about a pixel of horizon travel at 1440p and 62 m, and it is two
+ * orders of magnitude above the rounding in a 4-decimal fixture table. Wide
+ * enough never to fire on arithmetic, tight enough that no human-chosen pitch
+ * slips through.
+ */
+export const DEFAULT_POSE_TOLERANCE: Readonly<PoseTolerance> = { angleDeg: 0.05, metres: 0.05 };
+
+/** One field of the pose that did not survive being set. */
+export interface PoseMismatch {
+  field: keyof CameraPoseDeg;
+  expected: number;
+  actual: number;
+  /** Absolute difference, in the field's own unit. */
+  delta: number;
+  tolerance: number;
+}
+
+export interface CameraPoseAssertion {
+  ok: boolean;
+  tolerance: PoseTolerance;
+  expected: Partial<CameraPoseDeg>;
+  actual: CameraPoseDeg;
+  mismatches: PoseMismatch[];
+  /** One line, ready to throw. Empty when `ok`. */
+  summary: string;
+}
+
+/**
+ * The pitch the zoom curve prescribes at a dolly distance, in degrees.
+ *
+ * This is deliberately a SECOND implementation of the interpolation in
+ * `CameraRig.applyImmediate` rather than a call into the rig: the rig's answer
+ * is whatever state it is in, and the whole point here is to have an
+ * independent statement of what the pose is supposed to be. `tests/
+ * shot-camera.spec.ts` drives a real `CameraRig` and asserts the two agree at
+ * every fixture distance, so the duplication cannot drift unnoticed.
+ */
+export function canonicalPitchDeg(distance: number): number {
+  const cfg = RENDER_CONFIG.camera;
+  const span = Math.max(1e-3, cfg.maxDistance - cfg.minDistance);
+  const t = Math.min(1, Math.max(0, (distance - cfg.minDistance) / span));
+  const s = t * t * (3 - 2 * t); // smoothstep, exactly as the rig does it
+  return cfg.pitchAtMinDistance + (cfg.pitchAtMaxDistance - cfg.pitchAtMinDistance) * s;
+}
+
+/** Shortest-arc absolute difference between two bearings in degrees. */
+function angleDeltaDeg(a: number, b: number): number {
+  let d = (a - b) % 360;
+  if (d > 180) d -= 360;
+  if (d < -180) d += 360;
+  return Math.abs(d);
+}
+
+const POSE_ANGLE_FIELDS: ReadonlyArray<keyof CameraPoseDeg> = ['yawDeg', 'pitchDeg'];
+
+/**
+ * Compare a measured pose against the pose that was asked for. Pure, so the
+ * REJECTION path can be tested without a browser — a guard nobody has watched
+ * fire is indistinguishable from no guard.
+ *
+ * Fields absent from `expected` are not checked, which is what lets the harness
+ * assert pitch and distance on a shot whose focus point it does not pin.
+ */
+export function comparePoseDeg(
+  expected: Partial<CameraPoseDeg>,
+  actual: CameraPoseDeg,
+  tolerance: Partial<PoseTolerance> = {},
+): CameraPoseAssertion {
+  const tol: PoseTolerance = {
+    angleDeg: tolerance.angleDeg ?? DEFAULT_POSE_TOLERANCE.angleDeg,
+    metres: tolerance.metres ?? DEFAULT_POSE_TOLERANCE.metres,
+  };
+
+  const mismatches: PoseMismatch[] = [];
+  for (const field of Object.keys(expected) as Array<keyof CameraPoseDeg>) {
+    const want = expected[field];
+    if (want === undefined) continue;
+    const got = actual[field];
+    const angular = POSE_ANGLE_FIELDS.includes(field);
+    const limit = angular ? tol.angleDeg : tol.metres;
+    // A NaN anywhere is a failure, not a pass: `NaN <= limit` is false, which
+    // is the answer we want, but say so explicitly so the message is readable.
+    const delta = Number.isFinite(want) && Number.isFinite(got)
+      ? (angular ? angleDeltaDeg(want, got) : Math.abs(want - got))
+      : Number.POSITIVE_INFINITY;
+    if (!(delta <= limit)) {
+      mismatches.push({ field, expected: want, actual: got, delta, tolerance: limit });
+    }
+  }
+
+  const summary = mismatches.length === 0
+    ? ''
+    : mismatches
+        .map((m) => `${m.field}: wanted ${m.expected.toFixed(4)}, rig reports ${m.actual.toFixed(4)} ` +
+          `(off by ${m.delta.toFixed(4)}, tolerance ${m.tolerance})`)
+        .join('; ');
+
+  return { ok: mismatches.length === 0, tolerance: tol, expected, actual, mismatches, summary };
+}
+
 export interface VMHandle {
   readonly version: string;
   readonly THREE: typeof THREE;
@@ -132,6 +288,24 @@ export interface VMHandle {
   getCameraPose(): CameraPose;
   focusOn(x: number, z: number, distance?: number): void;
   orbit(degrees: number): void;
+
+  /* -- camera: canonical pose (ADDITIVE — see the block comment above).
+   *    Nothing here changes an existing signature. `tools/shoot.mjs` and
+   *    `tools/metrics.mjs` both drive this handle, so the old four calls above
+   *    keep behaving exactly as they always did. -- */
+  /** The live pose with angles in degrees. */
+  getCameraPoseDeg(): CameraPoseDeg;
+  /** Pin the pitch, in degrees. Survives until a zoom input or `clearCameraPitch`. */
+  setCameraPitchDeg(deg: number): void;
+  /** Hand pitch back to the zoom curve. */
+  clearCameraPitch(): void;
+  /** The pitch the config's zoom curve prescribes at a dolly distance. */
+  canonicalPitchDeg(distance: number): number;
+  /** Measure the live rig against an intended pose. Never throws; report `ok`. */
+  assertCameraPose(
+    expected: Partial<CameraPoseDeg>,
+    tolerance?: Partial<PoseTolerance>,
+  ): CameraPoseAssertion;
 
   /* -- presentation -- */
   setSize(width: number | null, height: number | null): void;
@@ -165,6 +339,28 @@ export interface VMHandle {
   onFrame(cb: (dtMs: number) => void): () => void;
   /** Dump the current render config to the console as pasteable source. */
   dumpConfig(): string;
+
+  /* -- the invisible-entity audit (ADDITIVE — see RenderBridge §5a).
+   *    `tools/shoot.mjs` and `tools/metrics.mjs` drive this handle and neither
+   *    is touched by this addition. -- */
+  /**
+   * Which entities the local player is entitled to see did NOT reach a
+   * drawable instance slot, and why.
+   *
+   * Off by default and free when off: the bridge only runs the scan while
+   * `{ on: true }`, and the always-on half is two integer counters.
+   *
+   *   `__VM.renderAudit({ on: true })`     start capturing every frame
+   *   `__VM.renderAudit()`                 the most recent captured report
+   *   `__VM.renderAudit({ now: true })`    scan the CURRENT bridge state
+   *   `__VM.renderAudit({ failure: true })` the FIRST report that found a miss
+   *   `__VM.renderAudit({ reset: true })`  zero the running totals
+   *
+   * Returns null before the bridge exists.
+   */
+  renderAudit(
+    options?: { on?: boolean; now?: boolean; reset?: boolean; failure?: boolean },
+  ): RenderAudit | null;
 }
 
 declare global {
@@ -172,6 +368,9 @@ declare global {
     __VM?: VMHandle;
   }
 }
+
+/** Injected by vite's `define` from package.json. See `vite.config.ts`. */
+declare const __APP_VERSION__: string;
 
 /* ========================================================================== */
 /* Overlay DOM                                                                */
@@ -287,7 +486,10 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
   const post = options.post ?? null;
   const renderer = handle.renderer;
   const hooks: DebugHooks = options.hooks ?? {};
-  const version = options.version ?? '1.0.0';
+  // `typeof` is the one operator safe on an undeclared identifier, so this also
+  // works under a bare `node`/vitest run where the define never ran.
+  const version = options.version
+    ?? (typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '0.0.0-dev');
 
   const counters: DebugCounters = {
     entities: 0,
@@ -500,6 +702,23 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     a.click();
   }
 
+  /* ---- canonical pose --------------------------------------------------- */
+  // One scratch pose, reused: `getCameraPoseDeg` is called once per shot by the
+  // harness but also from the console, and the rig's own `getPose` takes an out
+  // parameter precisely so nobody has to allocate to read it.
+  const poseScratch: CameraPose = { x: 0, z: 0, yaw: 0, pitch: 0, distance: 0 };
+  const poseDeg: CameraPoseDeg = { x: 0, z: 0, yawDeg: 0, pitchDeg: 0, distance: 0 };
+
+  function readPoseDeg(): CameraPoseDeg {
+    cameraRig.getPose(poseScratch);
+    poseDeg.x = poseScratch.x;
+    poseDeg.z = poseScratch.z;
+    poseDeg.yawDeg = THREE.MathUtils.radToDeg(poseScratch.yaw);
+    poseDeg.pitchDeg = THREE.MathUtils.radToDeg(poseScratch.pitch);
+    poseDeg.distance = poseScratch.distance;
+    return poseDeg;
+  }
+
   /* ---- stats ------------------------------------------------------------ */
   function stats(): FrameStats {
     const info = renderer.info;
@@ -595,6 +814,28 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
       cameraRig.setYaw(cameraRig.yaw + THREE.MathUtils.degToRad(degrees), true);
     },
 
+    getCameraPoseDeg() {
+      return readPoseDeg();
+    },
+
+    setCameraPitchDeg(deg) {
+      cameraRig.setPose({ pitch: THREE.MathUtils.degToRad(deg), immediate: true });
+    },
+
+    clearCameraPitch() {
+      cameraRig.clearPitchOverride();
+    },
+
+    canonicalPitchDeg(distance) {
+      return canonicalPitchDeg(distance);
+    },
+
+    assertCameraPose(expected, tolerance) {
+      // Copied out of the scratch pose: the result is a record of a moment and
+      // a caller holding two of them must not find both reading the same one.
+      return comparePoseDeg(expected, { ...readPoseDeg() }, tolerance);
+    },
+
     setSize(width, height) {
       handle.setFixedSize(width, height);
       if (width && height) cameraRig.setAspect(width, height);
@@ -667,6 +908,16 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     },
 
     dumpConfig,
+
+    renderAudit(options) {
+      const b = renderBridge();
+      if (b === null) return null;
+      if (options?.reset === true) b.resetAudit();
+      if (options?.on !== undefined) b.auditEnabled = options.on;
+      if (options?.failure === true) return b.failedAudit();
+      if (options?.now === true) return b.auditNow();
+      return b.lastAudit();
+    },
   };
 
   window.__VM = api;

@@ -66,6 +66,37 @@
  * Any reorder that DOES happen later (a Settings toggle, `setPassEnabled`) sets
  * `chainDirty`, and the next `render()` draws one throwaway frame into the
  * composer's own targets before presenting. See `warmUp()`.
+ *
+ * AO RUNS AT HALF RESOLUTION, AND NOW ACTUALLY DOES
+ * -------------------------------------------------
+ * `AoConfig.halfRes` has existed since the config was written, is documented as
+ * "Render AO at half resolution and bilaterally upsample", is `true` in the
+ * art-bible defaults and in three of the four quality tiers — and until now
+ * nothing read it. The only line that mentioned it wrote to
+ * a denoise uniform named `pdRadius`, which GTAOPass does not have. So every
+ * player ran full-resolution GTAO regardless of tier.
+ *
+ * Measured on the reporter's machine (AMD Renoir iGPU, ANGLE D3D11) at a fixed
+ * 2560x1440 drawing buffer, GPU timer queries, 25 warm-up frames discarded:
+ *
+ *     whole frame, AO full-res      64.8 ms
+ *     whole frame, AO at 0.5        49.1 ms      <- -15.7 ms, 24% of the frame
+ *     whole frame, AO at 0.33       46.4 ms      <- only -2.7 ms more
+ *
+ * It stops paying below a half because what is left is not the AO: it is
+ * GTAOPass's own composite, which is two FULL-resolution RGBA16F passes (a copy
+ * of the read buffer followed by a multiply blend) and does not shrink.
+ *
+ * The G-buffer, the AO march and the Poisson denoise all move together —
+ * `GTAOPass.setSize` sizes them as a set — and the result is sampled by the
+ * blend at full resolution through a LinearFilter, so the upsample is bilinear
+ * over an already depth-and-normal-aware denoise. At this camera (30-60 m up,
+ * 46-58 degrees) the AO term is a soft contact darkening a few pixels wide;
+ * halving its resolution is not visible, and the scorecard is the arbiter.
+ *
+ * The scaling is installed by wrapping the pass's own `setSize`, not by
+ * scaling at the call site, because `EffectComposer.setSize` also calls it and
+ * a rule that only one of two callers obeys is not a rule.
  */
 
 import * as THREE from 'three';
@@ -92,6 +123,47 @@ declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 
 export type PassId = 'render' | 'ao' | 'bloom' | 'grade' | 'smaa';
+
+/**
+ * Fraction of the drawing buffer the AO chain runs at when `ao.halfRes` is on.
+ *
+ * A half, not a third. See the file header: below a half the saving collapses
+ * because what remains is GTAOPass's full-resolution composite, while the
+ * upsample error keeps growing.
+ */
+export const AO_HALF_RES_SCALE = 0.5;
+
+/**
+ * The G-buffer / march / denoise size for a given drawing buffer.
+ *
+ * Pure, and exported, so `tests/perf-budget.spec.ts` can assert the arithmetic
+ * without a GL context — a resolution rule nobody has watched produce a number
+ * is how `halfRes` came to be documented, defaulted, tier-mapped and dead.
+ */
+export function aoTargetSize(
+  width: number,
+  height: number,
+  halfRes: boolean,
+): { width: number; height: number } {
+  const s = halfRes ? AO_HALF_RES_SCALE : 1;
+  return {
+    width: Math.max(2, Math.round(width * s)),
+    height: Math.max(2, Math.round(height * s)),
+  };
+}
+
+/**
+ * Poisson-denoise kernel radius, in the AO target's OWN texels.
+ *
+ * The denoise runs at the AO resolution, so a constant texel radius would
+ * silently halve the world-space footprint of the blur the moment `halfRes`
+ * turned on — the AO would come back noisier at the cheaper setting, which is
+ * the wrong direction. Halving the radius with the resolution keeps the filter
+ * covering the same part of the image. 8 is GTAOPass's own default.
+ */
+export function aoDenoiseRadius(halfRes: boolean): number {
+  return halfRes ? 4 : 8;
+}
 
 /**
  * The canonical order. Rationale is in the file header. Nobody edits this
@@ -484,6 +556,12 @@ export function createPostChain(options: CreatePostOptions): PostChain {
   let warnedDirt = false;
   /** Set by `rebuild()`; consumed by `render()`, which warms up first. */
   let chainDirty = false;
+  /**
+   * Live mirror of `cfg.ao.halfRes`, read by the `setSize` wrapper. Kept beside
+   * the pass rather than read from config inside the wrapper so that flipping
+   * the flag is a single, observable transition in `applyAoConfig`.
+   */
+  let aoHalfRes = cfg.ao.halfRes;
 
   const width = () => Math.max(2, handle.size.width);
   const height = () => Math.max(2, handle.size.height);
@@ -560,20 +638,136 @@ export function createPostChain(options: CreatePostOptions): PostChain {
      * to the composer after `createPostChain()` returns. See the file header.
      */
     build('ao', () => {
+      const ao = aoTargetSize(width(), height(), cfg.ao.halfRes);
       try {
-        const p = new GTAOPass(scene, camera, width(), height());
+        const p = new GTAOPass(scene, camera, ao.width, ao.height);
         p.output = GTAOPass.OUTPUT.Default;
         installAoOccluderFilter(p);
-        if (DEV) console.info('[post] AO: GTAO');
+        installAoResolutionScale(p);
+        installAoInPlaceComposite(p);
+        if (DEV) console.info(`[post] AO: GTAO @ ${ao.width}x${ao.height}`);
         return p as unknown as Pass;
       } catch (errGtao) {
         console.warn('[post] GTAO unavailable — falling back to SSAO', errGtao);
-        const p = new SSAOPass(scene, camera, width(), height());
+        const p = new SSAOPass(scene, camera, ao.width, ao.height);
         p.output = SSAOPass.OUTPUT.Default;
-        if (DEV) console.info('[post] AO: SSAO (GTAO unavailable)');
+        installAoResolutionScale(p);
+        if (DEV) console.info(`[post] AO: SSAO @ ${ao.width}x${ao.height} (GTAO unavailable)`);
         return p as unknown as Pass;
       }
     });
+  }
+
+  /**
+   * Make the AO pass size ITSELF, not the drawing buffer.
+   *
+   * Wrapping the pass's own `setSize` rather than scaling at the call site is
+   * deliberate: `EffectComposer.setSize` calls it too, and it is called on
+   * every resize, every DPR change and every `resolutionScale` step the
+   * adaptive controller takes. A scaling rule that only `applyPendingSize`
+   * honours would be undone by the very next composer resize.
+   *
+   * `aoHalfRes` is read at call time, so flipping the config re-sizes on the
+   * next `applyAoConfig` without rebuilding the pass.
+   */
+  function installAoResolutionScale(pass: unknown): void {
+    const p = pass as { setSize?: (w: number, h: number) => void };
+    const base = p.setSize;
+    if (typeof base !== 'function') return;
+    const bound = base.bind(p);
+    p.setSize = (w: number, h: number): void => {
+      const s = aoTargetSize(w, h, aoHalfRes);
+      bound(s.width, s.height);
+    };
+  }
+
+  /**
+   * COMPOSITE THE AO IN PLACE, IN ONE FULL-RESOLUTION PASS INSTEAD OF TWO.
+   *
+   * `GTAOPass.OUTPUT.Default` does this:
+   *
+   *     copy   readBuffer  -> writeBuffer     (NoBlending, full res, RGBA16F)
+   *     blend  AO          -> writeBuffer     (dst*src multiply, full res)
+   *
+   * The copy exists only to SEED the destination, because the blend is
+   * `blendSrc: DstColorFactor, blendDst: ZeroFactor` — a pure multiply against
+   * whatever is already in the target. But the scene is already sitting in
+   * `readBuffer` (three's own `RenderPass` has `needsSwap = false` and renders
+   * there), so multiplying straight into `readBuffer` and declining the swap
+   * produces the identical image with the copy deleted.
+   *
+   * Measured, live match, fixed 2560x1440, GPU timer queries:
+   *
+   *     AO with the full composite        43.53 ms
+   *     AO with the composite skipped     37.52 ms      <- the two passes are 6.02 ms
+   *
+   * Half of that is the copy: one full-resolution RGBA16F read plus a
+   * full-resolution RGBA16F write, 59 MB of traffic per frame on a GPU sharing
+   * system memory with the CPU, to produce a buffer whose entire content is
+   * about to be multiplied by something else.
+   *
+   * The one case that still needs both passes is AO being the LAST pass in the
+   * chain — bloom, grade and SMAA all disabled — because then the destination
+   * is the default framebuffer, which holds nothing to multiply. That path is
+   * kept, byte for byte, rather than left as a latent black frame.
+   *
+   * Nothing here is done when the AO pass is the SSAO fallback: it has no
+   * `blendMaterial` and its composite is a different shape.
+   */
+  function installAoInPlaceComposite(pass: unknown): void {
+    const p = pass as {
+      output: number;
+      needsSwap: boolean;
+      renderToScreen: boolean;
+      blendIntensity?: number;
+      blendMaterial?: THREE.ShaderMaterial;
+      copyMaterial?: THREE.ShaderMaterial;
+      pdRenderTarget?: THREE.WebGLRenderTarget;
+      render(
+        renderer: THREE.WebGLRenderer,
+        writeBuffer: THREE.WebGLRenderTarget,
+        readBuffer: THREE.WebGLRenderTarget,
+        deltaTime: number,
+        maskActive: boolean,
+      ): void;
+      _renderPass?(
+        renderer: THREE.WebGLRenderer,
+        material: THREE.Material,
+        target: THREE.WebGLRenderTarget | null,
+        clearColor?: number,
+        clearAlpha?: number,
+      ): void;
+    };
+
+    const blend = p.blendMaterial;
+    const copy = p.copyMaterial;
+    const pd = p.pdRenderTarget;
+    const renderPass = p._renderPass;
+    if (blend === undefined || copy === undefined || pd === undefined || typeof renderPass !== 'function') {
+      return;
+    }
+
+    const baseRender = p.render.bind(p);
+    const doPass = renderPass.bind(p);
+
+    // GTAO now produces the AO texture and stops. We own the composite.
+    p.output = GTAOPass.OUTPUT.Off;
+    p.needsSwap = false;
+
+    p.render = function inPlaceComposite(renderer, writeBuffer, readBuffer, deltaTime, maskActive) {
+      baseRender(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+      blend.uniforms.intensity.value = p.blendIntensity ?? 1;
+      blend.uniforms.tDiffuse.value = pd.texture;
+      if (p.renderToScreen) {
+        // Nothing in the default framebuffer to multiply — seed it first.
+        copy.uniforms.tDiffuse.value = readBuffer.texture;
+        copy.blending = THREE.NoBlending;
+        doPass(renderer, copy, null);
+        doPass(renderer, blend, null);
+        return;
+      }
+      doPass(renderer, blend, readBuffer);
+    };
   }
 
   /**
@@ -633,6 +827,19 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     const ao = passes.ao as any;
     if (!ao) return;
     const c = cfg.ao;
+
+    // `halfRes` changes the SIZE of three render targets, so it cannot be
+    // folded in with the scalar uniforms below — it has to re-drive setSize.
+    // Detected as a transition, because re-sizing costs three reallocations.
+    if (aoHalfRes !== c.halfRes) {
+      aoHalfRes = c.halfRes;
+      if (appliedW > 0 && appliedH > 0 && typeof ao.setSize === 'function') {
+        // The wrapper installed in `installAoResolutionScale` applies the new
+        // scale; pass drawing-buffer pixels, exactly as every other caller does.
+        ao.setSize(appliedW, appliedH);
+      }
+    }
+
     // GTAOPass
     if (typeof ao.updateGtaoMaterial === 'function') {
       try {
@@ -650,7 +857,30 @@ export function createPostChain(options: CreatePostOptions): PostChain {
         /* parameter shape drift between three versions — non-fatal */
       }
       if ('blendIntensity' in ao) ao.blendIntensity = c.intensity;
-      if (ao.pdMaterial?.uniforms?.pdRadius) ao.pdMaterial.uniforms.pdRadius.value = c.halfRes ? 4 : 2;
+      /*
+       * The Poisson denoise radius.
+       *
+       * This line used to reach into the denoise material for a uniform named
+       * `pdRadius`, and GTAOPass has no uniform by that name — it is called
+       * `radius`, and the pass exposes `updatePdMaterial` to set it. The guard
+       * was `if (uniform)`, so
+       * the whole statement evaluated to nothing on every build of three this
+       * project has ever shipped and no error was ever raised. It is the same
+       * defect class as `halfRes` itself: a setting that reads as configured,
+       * has a documented meaning, and is wired to nothing.
+       *
+       * The old value was also backwards — 4 at half resolution and 2 at full,
+       * i.e. a WIDER kernel where there are FEWER texels. `aoDenoiseRadius`
+       * halves the texel radius with the resolution, which is what keeps the
+       * blur covering the same fraction of the image.
+       */
+      if (typeof ao.updatePdMaterial === 'function') {
+        try {
+          ao.updatePdMaterial({ radius: aoDenoiseRadius(c.halfRes) });
+        } catch {
+          /* parameter shape drift between three versions — non-fatal */
+        }
+      }
     }
     // SSAOPass
     if ('kernelRadius' in ao) ao.kernelRadius = c.radius * 4;

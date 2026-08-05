@@ -61,6 +61,7 @@ import {
   chordEquals,
   defaultSetup,
   mapById,
+  normalizeSetup,
   rollSeed,
   type Chord,
   type MatchSetup,
@@ -70,9 +71,21 @@ import {
 import { applySettings, SettingsScreen } from './Settings';
 import { CreditsScreen, MainMenuScreen } from './MainMenu';
 import { SkirmishSetupScreen } from './SkirmishSetup';
-import { PauseMenuScreen } from './PauseMenu';
+import { PauseMenuScreen, currentObjectives } from './PauseMenu';
 import { EndScreen, type MatchResult } from './EndScreen';
 import { MissionsScreen } from './Missions';
+import { TutorialDirector, tutorialSetup } from './Tutorial';
+import {
+  AutosaveScheduler,
+  LoadGameScreen,
+  autosaveLabel,
+  errorText,
+  saveService,
+  unwrap,
+  type AutosaveSample,
+  type SaveContext,
+  type SaveSlotMeta,
+} from './LoadGame';
 import * as progression from './progression-link';
 
 /* ==========================================================================
@@ -90,7 +103,9 @@ export type ShellState =
   | 'paused'
   | 'ended'
   /** The missions and unlocks board. Reachable from the menu and from pause. */
-  | 'missions';
+  | 'missions'
+  /** The save-slot list. Reachable from the title screen only. */
+  | 'load';
 
 /** One full-bleed layer of the front end. */
 export interface Screen {
@@ -604,6 +619,15 @@ export class Shell {
   private game: GameHandle | null = null;
   /** True while the running game is the title-screen backdrop, not a match. */
   private backdrop = false;
+  /**
+   * The beginner tutorial's director while a tutorial run is live.
+   *
+   * Owned here rather than by a screen because it outlives every screen: it is
+   * constructed before the match boots, feeds off the engine through
+   * `src/shell/tutorial.system.ts` for the whole match, and is torn down by
+   * whichever path returns the player to the title.
+   */
+  private tutorial: TutorialDirector | null = null;
 
   private setup: MatchSetup;
   private result: MatchResult | null = null;
@@ -616,6 +640,36 @@ export class Shell {
   private busy = false;
   /** Set once the cold-boot fallback has fired, so it can never loop. */
   private hardLaunched = false;
+
+  /* -- autosave ----------------------------------------------------------
+   * The POLICY is `AutosaveScheduler` (src/shell/LoadGame.ts) and it reads no
+   * clock; everything it needs arrives in `autosaveSample`, which is a REUSED
+   * object so the 2 Hz poll allocates nothing. The scheduler is driven from
+   * `tick`, on the render side, which is what keeps `Date.now()` out of
+   * `simTick` while still letting the SIM TICK COUNTER be the schedule.
+   * -------------------------------------------------------------------- */
+  private readonly autosave = new AutosaveScheduler();
+  private readonly autosaveSample: AutosaveSample = {
+    tick: 0, catchingUp: false, paused: false, canSave: false, objectivesComplete: 0,
+  };
+  private autosaveAccum = 0;
+  /** True while a save is in flight, so the poll cannot start a second one. */
+  private saving = false;
+  /** Wall milliseconds the last snapshot took, for the perf report. 0 = none. */
+  private lastSaveMs = 0;
+  /** Bytes the last snapshot occupied. 0 = none written this session. */
+  private lastSaveBytes = 0;
+  /**
+   * The seed the running match was actually built with.
+   *
+   * `startMatch` rolls one when `setup.seed` is 0, and until now that number
+   * was thrown away the moment `bootGame` had used it. A save cannot reproduce
+   * a match without it — the map, the ore fields and the scatter all come out
+   * of it — so it is retained here.
+   */
+  private activeSeed = 0;
+  private toastNode: HTMLElement | null = null;
+  private toastTimer = 0;
 
   constructor(private readonly options: ShellOptions) {
     this.settings = new SettingsStore(undefined, playableFactions().map((f) => f.key));
@@ -677,13 +731,25 @@ export class Shell {
     await this.openMenu(true);
   }
 
-  /** Tear the current match down and launch a new one. */
-  async startMatch(setup: MatchSetup): Promise<void> {
+  /**
+   * Tear the current match down and launch a new one.
+   *
+   * `persist` is the lobby's default: the configuration the player just chose
+   * becomes the one the next launch starts from. The tutorial passes false —
+   * it forces its own map, difficulty and seed, and writing those over the
+   * lobby's settings would silently reset a player's skirmish preferences as
+   * the price of opening a help screen.
+   */
+  async startMatch(setup: MatchSetup, options: { persist?: boolean } = {}): Promise<void> {
     if (this.busy || this.disposed) return;
     this.busy = true;
     try {
-      this.setup = this.settings.setSetup(setup, playableFactions().map((f) => f.key));
+      const keys = playableFactions().map((f) => f.key);
+      this.setup = options.persist === false
+        ? normalizeSetup(setup, keys)
+        : this.settings.setSetup(setup, keys);
       const seed = this.setup.seed === 0 ? rollSeed() : this.setup.seed;
+      this.activeSeed = seed;
       const map = mapById(this.setup.map);
 
       this.show(new LoadingScreen(map.name, factionByKey(this.setup.playerFaction)?.name ?? ''), 'loading');
@@ -694,6 +760,11 @@ export class Shell {
       await this.bootGame(seed, false);
       this.matchStartMs = performance.now();
       this.outcomeAccum = 0;
+      this.autosaveAccum = 0;
+      // A new match is a new schedule. The rotation cursor deliberately does
+      // NOT reset — see `AutosaveScheduler.reset` — so restarting twice does
+      // not keep overwriting the same slot.
+      this.autosave.reset(0);
       this.result = null;
 
       // Open the mission board. AFTER the boot, deliberately: the world is what
@@ -731,9 +802,80 @@ export class Shell {
     }
   }
 
-  /** Restart the current match with a fresh seed. */
+  /**
+   * Restart the current match with a fresh seed.
+   *
+   * A TUTORIAL RUN RESTARTS AS A TUTORIAL RUN. The pause menu's Restart Battle
+   * is reachable from a tutorial, and routing it through the plain path would
+   * have broken the feature twice over: `seed: 0` rolls a NEW seed, so a
+   * first-time player would get terrain the steps were not written against; and
+   * nothing would call `beginObserving` on the second boot, leaving a live
+   * director attached to a match with its card hidden and no lesson running.
+   * `startTutorial` does both correctly, and re-reads the stored progress so
+   * the restart resumes where a replay would.
+   */
   async restartMatch(): Promise<void> {
+    if (this.tutorial !== null) {
+      await this.startTutorial();
+      return;
+    }
     await this.startMatch({ ...this.setup, seed: 0 });
+  }
+
+  /**
+   * Launch the beginner tutorial: a real match with a director watching it.
+   *
+   * THREE THINGS ARE FORCED AND EACH ONE COSTS SOMETHING, so they are all
+   * stated here rather than buried in `tutorialSetup`:
+   *
+   *   - A FIXED SEED and the starter map, so the terrain a step describes is
+   *     the terrain the player has. `MapChoice.mapSeed` already pins the
+   *     landscape; `TUTORIAL_SEED` pins the sim.
+   *   - `?start=mcv`, written onto the query in `bootGame`. The tutorial's
+   *     third step is "deploy the construction vehicle", which does not exist
+   *     in a pre-built-base opening, and `?start=` on the URL is the only
+   *     channel that outranks whatever the lobby last chose.
+   *   - THE OPPONENT STAYS AWAKE, on Easy and Turtle. This is the compromise
+   *     worth knowing about: `Scenarios.chooseStart` treats `?ai=off` as an
+   *     unconditional request for a pre-built base — rule 1 of four, above
+   *     `?start=` — so a tutorial with the AI switched off would have no MCV
+   *     to deploy. The least aggressive live opponent available is therefore
+   *     what ships. See the module report for the `?ai=idle` flag that would
+   *     let this be both.
+   */
+  async startTutorial(): Promise<void> {
+    if (this.busy || this.disposed) return;
+
+    this.tutorial?.dispose();
+    const director = new TutorialDirector({
+      settings: this.settings,
+      // Both endings land in the same place: the title screen. `quitToMenu`
+      // rather than `showMenu`, because a tutorial run is a real match and
+      // abandoning it must not count as one played.
+      onEnded: () => { void this.quitToMenu(); },
+    });
+    director.publish();
+    this.tutorial = director;
+
+    await this.startMatch(tutorialSetup(this.setup), { persist: false });
+
+    // Only now does the director start believing what it sees. `bootGame`
+    // finishes by jumping the camera onto the player's base, and a director
+    // observing through that jump would credit the player with the whole
+    // camera lesson before they had touched anything.
+    if (this.state === 'playing' && this.tutorial === director) {
+      director.beginObserving();
+    } else if (this.tutorial === director) {
+      // The boot failed and `startMatch` has already taken its own recovery
+      // path. Do not leave a published director feeding nothing.
+      director.dispose();
+      this.tutorial = null;
+    }
+  }
+
+  /** True while a tutorial run is live. */
+  isTutorial(): boolean {
+    return this.tutorial !== null;
   }
 
   /**
@@ -872,6 +1014,152 @@ export class Shell {
     }), 'missions');
   }
 
+  /* ---------------------------------------------------------------------- */
+  /* Saved games                                                            */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Open the save-slot list.
+   *
+   * `MainMenu` only offers this when `saveSlots()` is non-empty, so the screen
+   * is never entered empty — but it renders an empty state anyway, because a
+   * player can delete the last slot without leaving it.
+   */
+  openLoadGame(): void {
+    this.show(new LoadGameScreen(this), 'load');
+  }
+
+  /**
+   * Everything a restore has to reproduce before the snapshot goes over it.
+   *
+   * Null when there is no live match, which is also what makes it the honest
+   * "can I save right now" test for the pause menu.
+   */
+  saveContext(): SaveContext | null {
+    if (this.game === null || this.backdrop) return null;
+    return {
+      mapId: this.setup.map,
+      playerFaction: this.setup.playerFaction,
+      aiFaction: this.setup.aiFaction,
+      difficulty: this.setup.difficulty,
+      speed: this.setup.speed,
+      seed: this.activeSeed,
+    };
+  }
+
+  /**
+   * True when a manual save would actually do something.
+   *
+   * FALSE DURING THE TUTORIAL, deliberately. A tutorial run forces its own map,
+   * seed and opening (`?start=mcv` on the URL) and is driven by a director that
+   * lives outside the world entirely; a snapshot of it would restore the
+   * battlefield without the lesson, which is a broken save rather than a
+   * missing one.
+   */
+  canSave(): boolean {
+    if (this.saveContext() === null) return false;
+    if (this.tutorial !== null) return false;
+    const svc = saveService();
+    if (svc === null) return false;
+    try {
+      return svc.canSave();
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Write a named save. Rejects — the caller SHOWS the message.
+   *
+   * `slotId` overwrites an existing slot; omit it for a fresh one. The
+   * thumbnail is requested here and only here: a manual save happens from the
+   * pause menu, where the sim is already frozen, so the GPU->CPU readback costs
+   * a player nothing. Autosave asks for no thumbnail at all — see the header of
+   * `LoadGame.ts`.
+   */
+  async saveGame(label: string, slotId?: string): Promise<SaveSlotMeta> {
+    const svc = saveService();
+    const context = this.saveContext();
+    if (svc === null) throw new Error('The save system is not available in this build.');
+    if (context === null) throw new Error('There is no match to save.');
+    if (this.tutorial !== null) throw new Error('A tutorial run cannot be saved.');
+    if (this.saving) throw new Error('A save is already in progress.');
+
+    this.saving = true;
+    const started = performance.now();
+    try {
+      // `unwrap` is what makes a refusal-by-value fail loudly. Without it a
+      // store that returns `{ok:false, reason}` instead of rejecting would have
+      // the panel print "Saved" over a save that never happened.
+      const meta = unwrap(await svc.save({
+        kind: 'manual',
+        label,
+        context,
+        slotId,
+        thumbnail: true,
+      }));
+      this.lastSaveMs = performance.now() - started;
+      this.lastSaveBytes = meta.bytes;
+      return meta;
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  /**
+   * Restore a slot: boot the match it was taken in, then replace the world.
+   *
+   * TWO PHASES, AND IT CANNOT BE ONE. Several engine modules read their
+   * configuration straight off the URL at `init()` — the terrain takes
+   * `?biome=`/`?mapseed=`, the scenario takes `?map=`/`?seed=` — so the map a
+   * save was taken on can only be reproduced by a full re-bootstrap. The
+   * snapshot then goes over the top of that world.
+   *
+   * `persist: false` on the boot is load-bearing: restoring a save from three
+   * weeks ago must not silently rewrite the lobby the player last configured.
+   *
+   * PROGRESSION IS UNTOUCHED. Unlocks and mission completion are a separate
+   * persistent profile with its own storage key, and this path writes nothing
+   * to it — `startMatch` calls `progression.beginMatch`, which BEGINS tracking
+   * a match and cannot rewind a profile.
+   */
+  async loadGame(slot: SaveSlotMeta): Promise<void> {
+    const svc = saveService();
+    if (svc === null) throw new Error('The save system is not available in this build.');
+
+    const c = slot.context;
+    await this.startMatch({
+      ...this.setup,
+      map: c.mapId,
+      playerFaction: c.playerFaction,
+      aiFaction: c.aiFaction,
+      difficulty: c.difficulty,
+      speed: c.speed,
+      seed: c.seed,
+    }, { persist: false });
+
+    if (this.state !== 'playing' || this.game === null) {
+      throw new Error('The match this save was taken in could not be started.');
+    }
+
+    unwrap(await svc.load(slot.id));
+    // Restoring moved the tick counter to wherever the snapshot was taken.
+    // Re-baselining here is what stops the very next poll from deciding an
+    // autosave is forty minutes overdue and firing one immediately.
+    this.autosave.reset(this.game.ctx.loop.tick);
+    this.autosaveAccum = 0;
+  }
+
+  /**
+   * Wall milliseconds and bytes of the most recent snapshot this session.
+   *
+   * Exposed because "the match must not stutter" is a claim that has to be
+   * checkable from the console rather than asserted in a comment.
+   */
+  saveCost(): { readonly ms: number; readonly bytes: number } {
+    return { ms: this.lastSaveMs, bytes: this.lastSaveBytes };
+  }
+
   /**
    * Back out of whatever screen is open.
    *
@@ -887,6 +1175,7 @@ export class Shell {
       case 'credits':
       case 'settings':
       case 'missions':
+      case 'load':
         this.showMenu();
         break;
       case 'paused':
@@ -919,6 +1208,13 @@ export class Shell {
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.screen?.unmount();
     this.screen = null;
+    this.tutorial?.dispose();
+    this.tutorial = null;
+    if (this.toastTimer !== 0) {
+      window.clearTimeout(this.toastTimer);
+      this.toastTimer = 0;
+    }
+    this.toastNode = null;
     this.root.remove();
     if (this.game !== null) this.disposeGame(this.game);
     this.game = null;
@@ -960,6 +1256,13 @@ export class Shell {
 
   /** Go to the title screen, booting the backdrop match if needed. */
   private async openMenu(firstBoot: boolean, keepBackdrop = false): Promise<void> {
+    // The single funnel back to the title, and therefore the single place a
+    // tutorial run ends. Done FIRST: the backdrop boot below re-runs
+    // `registry.init()`, and a director still published at that moment would
+    // be handed the title screen's own match to teach over.
+    this.tutorial?.dispose();
+    this.tutorial = null;
+
     this.setHudVisible(false);
 
     if (!keepBackdrop || this.game === null) {
@@ -1034,6 +1337,10 @@ export class Shell {
     const settings = this.settings.get();
     const query = buildMatchQuery(this.setup, settings, location.search, seed);
     if (backdrop) query.set('ai', 'off');
+    // The tutorial teaches deploying the MCV, so it cannot inherit a lobby that
+    // last asked for a pre-built base. `?start=` is the only channel that
+    // outranks `setPlannedStart` — see `chooseStart` in game/Scenarios.ts.
+    if (!backdrop && this.tutorial !== null) query.set('start', 'mcv');
     // `shot` is the screenshot harness's flag and must never appear here.
     query.delete('shot');
     query.delete('skipmenu');
@@ -1150,7 +1457,10 @@ export class Shell {
 
     if (this.backdrop && this.game !== null) this.orbitBackdrop(dt);
     if (this.screen !== null) this.pad.poll(nowMs, this.ring, () => this.back());
-    if (this.state === 'playing') this.pollOutcome(dt);
+    if (this.state === 'playing') {
+      this.pollOutcome(dt);
+      this.pollAutosave(dt);
+    }
   };
 
   /** Slow cinematic orbit around whatever the title screen is looking at. */
@@ -1200,6 +1510,123 @@ export class Shell {
   }
 
   /**
+   * Autosave, evaluated on the RENDER side at 2 Hz against the SIM TICK COUNTER.
+   *
+   * WHY 2 Hz AND NOT EVERY FRAME. `AutosaveScheduler.evaluate` is idempotent
+   * for a given tick, so the two produce the same saves; polling at 2 Hz just
+   * means the objective read (`currentObjectives`, which allocates a small
+   * array inside the progression layer) happens twice a second instead of a
+   * hundred and twenty times. The worst-case lateness this introduces is half a
+   * second on a three-minute schedule.
+   *
+   * WHY IT IS NOT A SYSTEM. A `*.system.ts` would put it inside `simTick`,
+   * where `Date.now()` is banned — and the save's own metadata needs a real
+   * timestamp. Reading the tick counter from outside the sim gets the tick-based
+   * schedule the determinism rule demands AND a legal wall clock for the index.
+   */
+  private pollAutosave(dt: number): void {
+    const game = this.game;
+    if (game === null || this.backdrop) return;
+    // A tutorial run is not a match worth restoring. See `Shell.canSave`.
+    if (this.tutorial !== null) return;
+    if (this.saving) return;
+
+    this.autosaveAccum += dt;
+    if (this.autosaveAccum < 0.5) return;
+    this.autosaveAccum = 0;
+
+    const svc = saveService();
+    if (svc === null) return;
+
+    const loop = game.ctx.loop;
+    const s = this.autosaveSample;
+    s.tick = loop.tick;
+    // `lastSteps > 1` means the loop ran catch-up steps: the machine is already
+    // behind this frame, and a snapshot on top of that is how one hitch becomes
+    // two. The scheduler defers, with a deadline.
+    s.catchingUp = loop.lastSteps > 1;
+    s.paused = loop.paused;
+    try {
+      s.canSave = svc.canSave();
+    } catch {
+      s.canSave = false;
+    }
+    s.objectivesComplete = completedObjectiveCount();
+
+    const decision = this.autosave.evaluate(s);
+    if (decision.act !== 'save') return;
+
+    const context = this.saveContext();
+    if (context === null) return;
+
+    const tick = s.tick;
+    const label = autosaveLabel(decision.trigger, loop.simTime);
+    this.saving = true;
+    const started = performance.now();
+    svc.save({
+      kind: 'auto',
+      label,
+      context,
+      slotId: decision.slotId,
+      // NO THUMBNAIL. A canvas readback mid-match is exactly the hitch this
+      // whole deferral mechanism exists to avoid — see the LoadGame.ts header.
+      thumbnail: false,
+    }).then((result) => {
+      // A refusal is a value here, not a throw — see `unwrap`. It must land in
+      // the rejection path or a store that is out of quota would toast
+      // "Autosaved" forever while writing nothing.
+      const meta = unwrap(result);
+      this.saving = false;
+      this.lastSaveMs = performance.now() - started;
+      this.lastSaveBytes = meta.bytes;
+      this.autosave.committed(tick);
+      this.toast(`Autosaved · ${formatSlotName(decision.slotId)}`, false);
+    }).catch((err: unknown) => {
+      this.saving = false;
+      // A save that fails must SAY so. Silence here is indistinguishable from
+      // a working autosave, and the player finds out at the worst moment.
+      this.autosave.failed(tick);
+      console.error('[shell] autosave failed', err);
+      this.toast(`Autosave failed — ${errorText(err)}`, true);
+    });
+  }
+
+  /**
+   * A transient line over the live match. Never interactive, never focusable,
+   * and `pointer-events: none` in CSS so it cannot eat a click during a fight.
+   */
+  private toast(text: string, bad: boolean): void {
+    if (this.disposed) return;
+    if (this.toastTimer !== 0) {
+      window.clearTimeout(this.toastTimer);
+      this.toastTimer = 0;
+    }
+    let node = this.toastNode;
+    if (node === null) {
+      node = el('div', 'vm-save-toast');
+      this.root.appendChild(node);
+      this.toastNode = node;
+    }
+    node.replaceChildren();
+    node.appendChild(icon(bad ? 'info' : 'check', 14));
+    node.appendChild(el('span', undefined, text));
+    node.classList.toggle('is-bad', bad);
+    // Two frames before the class lands, or the transition never runs — the
+    // element was created and shown in the same style recalculation.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      this.toastNode?.classList.add('is-in');
+    }));
+    this.toastTimer = window.setTimeout(() => {
+      this.toastNode?.classList.remove('is-in');
+      this.toastTimer = window.setTimeout(() => {
+        this.toastNode?.remove();
+        this.toastNode = null;
+        this.toastTimer = 0;
+      }, 260);
+    }, bad ? 6000 : 2600);
+  }
+
+  /**
    * What `endMatch` falls back to when there is no live game to read — only
    * reachable if a caller ends a match the shell never built.
    */
@@ -1238,6 +1665,22 @@ export class Shell {
       target !== null &&
       (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
 
+    /**
+     * A TEXT field, specifically — narrower than `typing`, which is true for a
+     * `<input type="range">` slider too.
+     *
+     * The ring's Left/Right handling ends in `preventDefault`, so without this
+     * the caret in the save panel's name field could not be moved and Home/End
+     * would do nothing. It is deliberately NOT widened to `typing`: the options
+     * screen's sliders ARE inputs, and they rely on the ring's adjuster for
+     * gamepad support.
+     */
+    const editingText =
+      target !== null &&
+      (target.tagName === 'TEXTAREA' ||
+        target.isContentEditable ||
+        (target.tagName === 'INPUT' && (target as HTMLInputElement).type === 'text'));
+
     if (this.screen?.onKeyDown?.(e) === true) {
       e.preventDefault();
       e.stopPropagation();
@@ -1256,15 +1699,19 @@ export class Shell {
 
     switch (e.code) {
       case 'ArrowDown':
+        if (editingText) return;
         this.ring.move(1);
         break;
       case 'ArrowUp':
+        if (editingText) return;
         this.ring.move(-1);
         break;
       case 'ArrowRight':
+        if (editingText) return;
         if (!this.ring.adjust(1)) this.ring.move(1);
         break;
       case 'ArrowLeft':
+        if (editingText) return;
         if (!this.ring.adjust(-1)) this.ring.move(-1);
         break;
       case 'Enter':
@@ -1421,6 +1868,25 @@ function findHome(game: GameHandle, player: PlayerId): { x: number; z: number } 
     fallback ??= here;
   }
   return fallback;
+}
+
+/**
+ * How many active objectives report complete.
+ *
+ * The autosave scheduler's event trigger is a RISE in this number. Total:
+ * with no progression layer it is always 0, which degrades the trigger to
+ * "never fires" and leaves the interval doing all the work.
+ */
+export function completedObjectiveCount(): number {
+  let n = 0;
+  for (const o of currentObjectives()) if (o.progress.complete) n++;
+  return n;
+}
+
+/** `auto.1` -> `Slot 2`. The toast says which slot, so rotation is visible. */
+export function formatSlotName(slotId: string): string {
+  const m = /^auto\.(\d+)$/.exec(slotId);
+  return m === null ? slotId : `Slot ${Number(m[1]) + 1}`;
 }
 
 /** The stock configuration, for a boot that never sees the lobby. */

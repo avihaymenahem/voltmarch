@@ -405,3 +405,81 @@ describe('RenderBridge — late-arriving art replaces the placeholder', () => {
     teardown(bridge);
   });
 });
+
+/* ==========================================================================
+ * FOG OF WAR IS NOT A SIMULATION FLAG
+ *
+ * The bridge used to skip anything carrying `EntityFlag.Cloaked`, and fog of
+ * war exploited that by setting the flag on whatever the local player could not
+ * see and putting it back before the next sim step. `Targeting`, `Combat` and
+ * `Selection` read the same bit, so one missed restore produced a unit that was
+ * invisible AND un-acquirable AND un-shootable AND un-clickable, permanently.
+ *
+ * Render visibility now arrives through `RenderBridge.visibility`, which is
+ * render-owned state. These tests pin both halves of that: the mask decides
+ * what is drawn, and the flag no longer does.
+ * ========================================================================== */
+describe('RenderBridge — render visibility mask', () => {
+  it('draws everything when no mask is attached', () => {
+    const { store, scene, bridge } = makeRig();
+    store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 10, 0, 10, 0);
+    store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 20, 0, 20, 0);
+    store.snapshotPrev();
+    bridge.update(1);
+    expect(bridge.visibleUnits).toBe(2);
+    teardown(bridge);
+  });
+
+  it('skips exactly the slots the mask hides, and nothing else', () => {
+    const { store, scene, bridge } = makeRig();
+    const a = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 10, 0, 10, 0);
+    store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 20, 0, 20, 0);
+    store.snapshotPrev();
+
+    const hidden = new Set<number>([store.index(a)]);
+    bridge.visibility = { isRenderHiddenAt: (i) => hidden.has(i) };
+
+    bridge.update(1);
+    expect(bridge.visibleUnits).toBe(1);
+    expect(bridge.isRendered(a)).toBe(false);
+
+    // And it is a per-frame decision, not a state change: unhide, redraw.
+    hidden.clear();
+    bridge.update(1);
+    expect(bridge.visibleUnits).toBe(2);
+    expect(bridge.isRendered(a)).toBe(true);
+    teardown(bridge);
+  });
+
+  it('no longer hides an entity for carrying EntityFlag.Cloaked', () => {
+    const { store, scene, bridge } = makeRig();
+    // Your own submarine: genuinely cloaked in the simulation, and yours to see.
+    const sub = store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 10, 0, 10, 0);
+    store.flags[store.index(sub)] |= EntityFlag.Cloaked;
+    store.snapshotPrev();
+    bridge.update(1);
+    expect(bridge.isRendered(sub)).toBe(true);
+    teardown(bridge);
+  });
+
+  it('still hides a garrisoned passenger, which IS simulation state', () => {
+    const { store, scene, bridge } = makeRig();
+    const rider = store.alloc(EntityKind.Infantry, -1, P0, Faction.Allies, 10, 0, 10, 0);
+    store.flags[store.index(rider)] |= EntityFlag.Garrisoned;
+    store.snapshotPrev();
+    bridge.update(1);
+    expect(bridge.isRendered(rider)).toBe(false);
+    teardown(bridge);
+  });
+
+  it('drops the mask on dispose so a dead fog module cannot hide anything', () => {
+    const { store, scene, bridge } = makeRig();
+    store.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 10, 0, 10, 0);
+    bridge.visibility = { isRenderHiddenAt: () => true };
+    bridge.dispose();
+    expect(bridge.visibility).toBe(null);
+    clearKindMeshes();
+    setRenderBridge(null);
+    void scene;
+  });
+});

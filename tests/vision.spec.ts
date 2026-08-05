@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 
 import { World } from '../src/core/world';
+import { devAsserts } from '../src/core/loop';
 import { EntityFlag, EntityKind, Faction } from '../src/core/types';
 import type { EntityId, PlayerId } from '../src/core/types';
 import {
@@ -228,8 +229,24 @@ describe('Vision — cloak and detectors', () => {
   });
 });
 
-describe('Vision — the borrowed render flag', () => {
-  it('hides an unseen enemy unit and restores the flag exactly', () => {
+/* ==========================================================================
+ * THE RENDER VISIBILITY MASK
+ *
+ * This block is a regression suite for a shipped bug, so it is worth saying
+ * what the bug was. Fog used to hide entities by SETTING `EntityFlag.Cloaked`
+ * on them at `RenderPhase.FowUpload` and putting the bit back at
+ * `RenderPhase.Present`. That flag is read by four modules — the render bridge,
+ * `Targeting`, `Combat` and `Selection` — so a single missed restore did not
+ * hide a unit for a frame, it made a unit invisible, un-acquirable, un-shootable
+ * and un-clickable for the rest of the match, because the restore was keyed on
+ * a SLOT INDEX with no generation check and `tickCloak` refuses to clear a bit
+ * it has no `setCloaked` reason for.
+ *
+ * The mask now lives in Vision's own array and touches no simulation column.
+ * Every test here is one sentence of that contract.
+ * ========================================================================== */
+describe('Vision — the render visibility mask', () => {
+  it('hides an unseen enemy unit and touches NO simulation flag', () => {
     const world = makeWorld();
     const v = new Vision(world);
     const enemy = spawnScout(world, P1, 300, 300, 10);
@@ -238,14 +255,31 @@ describe('Vision — the borrowed render flag', () => {
 
     const ei = world.store.index(enemy as never);
     const mi = world.store.index(mine as never);
-    const before = world.store.flags[ei];
+    const beforeE = world.store.flags[ei];
+    const beforeM = world.store.flags[mi];
 
-    expect(v.applyRenderMask(P0)).toBe(1);
-    expect(world.store.flags[ei] & EntityFlag.Cloaked).toBeTruthy();
-    expect(world.store.flags[mi] & EntityFlag.Cloaked).toBeFalsy();
+    expect(v.computeRenderMask(P0)).toBe(1);
+    expect(v.isRenderHiddenAt(ei)).toBe(true);
+    expect(v.isRenderHiddenAt(mi)).toBe(false);
+    expect(v.isRenderHidden(enemy)).toBe(true);
 
-    v.clearRenderMask();
-    expect(world.store.flags[ei]).toBe(before);
+    // The whole point: the flags column is byte-identical either side of it.
+    expect(world.store.flags[ei]).toBe(beforeE);
+    expect(world.store.flags[mi]).toBe(beforeM);
+    expect(world.store.flags[ei] & EntityFlag.Cloaked).toBeFalsy();
+  });
+
+  it('never masks an entity the local player can plainly see', () => {
+    const world = makeWorld();
+    const v = new Vision(world);
+    // A scout with a wide eye, and an enemy standing right under it.
+    spawnScout(world, P0, 200, 200, 40);
+    const enemy = spawnScout(world, P1, 208, 200, 10);
+    v.update();
+
+    v.computeRenderMask(P0);
+    expect(v.isRenderHidden(enemy)).toBe(false);
+    expect(v.canSee(P0, enemy)).toBe(true);
   });
 
   it('remembers an explored enemy STRUCTURE but not an enemy vehicle', () => {
@@ -261,25 +295,175 @@ describe('Vision — the borrowed render flag', () => {
     // Scout it, then leave.
     const spy = spawnScout(world, P0, 208, 200, 24);
     v.update();
-    expect(v.applyRenderMask(P0)).toBe(0);
-    v.clearRenderMask();
+    expect(v.computeRenderMask(P0)).toBe(0);
 
     s.markDead(spy);
     s.flushDestroyed();
     for (let n = 0; n <= VISION_REGROW_TICKS; n++) v.update();
 
-    v.applyRenderMask(P0);
-    expect(s.flags[s.index(yard)] & EntityFlag.Cloaked).toBeFalsy();
-    expect(s.flags[s.index(tank)] & EntityFlag.Cloaked).toBeTruthy();
-    v.clearRenderMask();
-    expect(s.flags[s.index(tank)] & EntityFlag.Cloaked).toBeFalsy();
+    v.computeRenderMask(P0);
+    expect(v.isRenderHidden(yard)).toBe(false);
+    expect(v.isRenderHidden(tank)).toBe(true);
+
+    // AND THE TRAP THAT COMES WITH IT: the structure is DRAWN from memory but
+    // `canSee` — what targeting asks — is false, because a silhouette you
+    // remember is not a target you can currently acquire. Anything turning a
+    // click on a drawn thing into an order has to reconcile the two itself.
+    expect(v.canSee(P0, yard)).toBe(false);
+    expect(v.isRemembered(P0, yard)).toBe(true);
   });
 
-  it('masks nothing at all while fog is disabled', () => {
+  it('restores full visibility the moment the mask is recomputed', () => {
+    const world = makeWorld();
+    const v = new Vision(world);
+    const scout = spawnScout(world, P0, 200, 200, 40);
+    const enemy = spawnScout(world, P1, 400, 400, 10);
+    v.update();
+    v.computeRenderMask(P0);
+    expect(v.isRenderHidden(enemy)).toBe(true);
+
+    // Walk the scout onto the enemy and re-stamp.
+    const si = world.store.index(scout);
+    world.store.posX[si] = 400;
+    world.store.posZ[si] = 400;
+    v.update();
+    v.computeRenderMask(P0);
+    expect(v.isRenderHidden(enemy)).toBe(false);
+  });
+
+  it('CANNOT LATCH: two masks with no clear between them still release', () => {
+    const world = makeWorld();
+    const v = new Vision(world);
+    const scout = spawnScout(world, P0, 200, 200, 40);
+    const enemy = spawnScout(world, P1, 400, 400, 10);
+    v.update();
+
+    // The old pair could not survive this: apply, apply, and the second one's
+    // bookkeeping recorded "was already hidden" for a bit the first one set.
+    v.computeRenderMask(P0);
+    v.computeRenderMask(P0);
+    v.computeRenderMask(P0);
+    expect(v.isRenderHidden(enemy)).toBe(true);
+
+    const si = world.store.index(scout);
+    world.store.posX[si] = 400;
+    world.store.posZ[si] = 400;
+    v.update();
+    v.computeRenderMask(P0);
+    expect(v.isRenderHidden(enemy)).toBe(false);
+  });
+
+  it('CANNOT LATCH: a recycled slot never inherits the mask of its predecessor', () => {
+    const world = makeWorld();
+    const s = world.store;
+    const v = new Vision(world);
+    spawnScout(world, P0, 200, 200, 40);
+    const far = spawnScout(world, P1, 900, 900, 10);
+    v.update();
+    v.computeRenderMask(P0);
+    const slot = s.index(far);
+    expect(v.isRenderHiddenAt(slot)).toBe(true);
+
+    // The masked entity dies and something friendly takes its slot, with no
+    // mask pass in between — the exact sequence that used to write a dead
+    // unit's Cloaked bit onto a live one and leave it there forever.
+    s.markDead(far);
+    s.flushDestroyed();
+    const reborn = spawnScout(world, P0, 200, 200, 10);
+    expect(s.index(reborn)).toBe(slot);
+
+    v.computeRenderMask(P0);
+    expect(v.isRenderHiddenAt(slot)).toBe(false);
+    expect(v.isRenderHidden(reborn)).toBe(false);
+    expect(s.flags[slot] & EntityFlag.Cloaked).toBeFalsy();
+  });
+
+  it('a mask that stops being recomputed hides nothing (fails open)', () => {
+    const world = makeWorld();
+    const v = new Vision(world);
+    spawnScout(world, P0, 200, 200, 12);
+    const enemy = spawnScout(world, P1, 900, 900, 10);
+    v.update();
+    v.computeRenderMask(P0);
+    expect(v.isRenderHidden(enemy)).toBe(true);
+
+    // The fog module going away must reveal, never conceal: "you can see too
+    // much for one frame" is a bug you notice, "a unit stopped existing" is not.
+    v.invalidateRenderMask();
+    expect(v.isRenderHidden(enemy)).toBe(false);
+    v.dispose();
+    expect(v.isRenderHidden(enemy)).toBe(false);
+  });
+
+  it('leaves canSee() completely unaffected, mask or no mask', () => {
+    const world = makeWorld();
+    const v = new Vision(world);
+    spawnScout(world, P0, 200, 200, 40);
+    const seen = spawnScout(world, P1, 208, 200, 10);
+    const unseen = spawnScout(world, P1, 900, 900, 10);
+    v.update();
+
+    const before = [v.canSee(P0, seen), v.canSee(P0, unseen)];
+    v.computeRenderMask(P0);
+    expect([v.canSee(P0, seen), v.canSee(P0, unseen)]).toEqual(before);
+    v.computeRenderMask(P0);
+    expect([v.canSee(P0, seen), v.canSee(P0, unseen)]).toEqual(before);
+    expect(before).toEqual([true, false]);
+  });
+
+  it('hides an undetected enemy cloak but never your own', () => {
+    const world = makeWorld();
+    const v = new Vision(world);
+    spawnScout(world, P0, 200, 200, 40);
+    const theirs = spawnScout(world, P1, 208, 200, 10);
+    const ours = spawnScout(world, P0, 212, 200, 10);
+    v.setCloaked(theirs, true, CLOAK_SUBMERGED);
+    v.setCloaked(ours, true, CLOAK_SUBMERGED);
+    v.update();
+    v.computeRenderMask(P0);
+
+    expect(v.isRenderHidden(theirs)).toBe(true);
+    // Your own submarine is yours to see. The flag borrow used to force this
+    // by clearing the bit; the mask simply never sets it.
+    expect(v.isRenderHidden(ours)).toBe(false);
+  });
+
+  it('masks nothing but real cloaks while fog is disabled', () => {
     const world = makeWorld();
     const v = new Vision(world, false);
     spawnScout(world, P1, 300, 300, 10);
-    expect(v.applyRenderMask(P0)).toBe(0);
+    expect(v.computeRenderMask(P0)).toBe(0);
+
+    const sub = spawnScout(world, P1, 320, 300, 10);
+    v.setCloaked(sub, true, CLOAK_SUBMERGED);
+    expect(v.computeRenderMask(P0)).toBe(1);
+    expect(v.isRenderHidden(sub)).toBe(true);
+  });
+
+  it('screams in dev the tick a stray Cloaked bit appears', () => {
+    const world = makeWorld();
+    const v = new Vision(world);
+    const ghost = spawnScout(world, P1, 100, 100, 10);
+    const gi = world.store.index(ghost);
+    // Exactly the corruption the old borrow produced: the flag set on an entity
+    // Vision has no cloak reason for. Nothing will ever clear it, so the only
+    // useful response is to name it immediately instead of in someone's match.
+    world.store.flags[gi] |= EntityFlag.Cloaked;
+
+    const seen: string[] = [];
+    const real = console.error;
+    console.error = (...a: unknown[]) => { seen.push(String(a[0])); };
+    devAsserts.enabled = true;
+    try {
+      v.tickCloak();
+    } finally {
+      devAsserts.enabled = false;
+      console.error = real;
+    }
+
+    expect(seen.length).toBe(1);
+    expect(seen[0]).toContain('EntityFlag.Cloaked');
+    expect(seen[0]).toContain('no cloak reason');
   });
 
   it('setEnabled(false) reveals and setEnabled(true) keeps the memory', () => {

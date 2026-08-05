@@ -562,11 +562,39 @@ const TONE_NOON = {
    */
   vignette: 0.20,
   vignetteSoftness: 0.62,
-  /** Film grain. Subtle — it hides banding in the sky gradient. */
-  grain: 0.016,
+  /**
+   * OFF. Both of these are on the bible's §1 standing ban list and on
+   * CLAUDE.md's, and they shipped anyway — see `docs/SPEC_DRIFT_AUDIT.md`
+   * finding 8. `tools/metrics.mjs` could not catch it: check #36 carries
+   * `w: 0`, and there is no grain metric at all, so the scorecard could not
+   * fail by construction.
+   *
+   * The old note here claimed the grain hid banding in the sky gradient. It
+   * was paying for that with a defect on every other pixel:
+   *
+   *   - It is SCREEN space and mid-weighted, so it lands identically on sky,
+   *     concrete, hulls and the HUD. That is video noise, not surface texture,
+   *     and it is the opposite of what the ground actually needed — a uniform
+   *     overlay FLATTENS real surface variation by adding the same energy
+   *     everywhere. Run `tools/crop-surfaces.mjs` before and after and look:
+   *     the "grain" the lawn appeared to have was entirely this pass, and the
+   *     lawn's real variation now comes from the terrain tiles instead
+   *     (`src/world/TerrainMaterial.ts` section 3B-bis).
+   *   - `floor(uTime * 24.0)` reseeds it on a 24 Hz clock, so two captures of
+   *     an otherwise frozen frame are not identical. The screenshot harness
+   *     compares frames for a living.
+   *   - CA costs two extra full-screen texture fetches per pixel in the grade
+   *     pass, on a build that is GPU-bound at 100% load.
+   *
+   * Both are read through `if (u > 0.0001)` in GradePass, so zero here removes
+   * the work as well as the look. `grainSize` is left at its value: it is inert
+   * while `grain` is 0 and it is the parameter someone would need if a dither
+   * is ever wanted — and if sky banding does reappear, the fix is a dither in
+   * the sky gradient itself, not a full-screen noise pass over the whole frame.
+   */
+  grain: 0,
   grainSize: 1.4,
-  /** Lens colour fringing at the edges. Tiny amounts read as "a real lens". */
-  chromaticAberration: 0.0016,
+  chromaticAberration: 0,
   /**
    * Post-sharpen, applied in HDR before the tonemap. Raised: scorecard #34
    * measures Sobel |grad| > 25 coverage and RA3 runs 0.66-0.79 against our
@@ -5217,6 +5245,33 @@ export const NAV_COST_RAMP = 0.92;
  */
 export const NAV_COST_WALL_HUG = 1.35;
 
+/**
+ * MINIMUM CORRIDOR WIDTH, IN CELLS, THAT A CLASS IS ALLOWED TO BE ROUTED DOWN.
+ *
+ * The cost field carves out building footprints and nothing else, so two
+ * structures a single cell apart leave what the planner reads as a perfectly
+ * legal corridor. One cell is 4 m. The widest ground hull in the game is the
+ * harvester at `hullRadius(8.6 x 4.0)` = 3.87 m of RADIUS — 7.74 m across, very
+ * nearly two cells — so that corridor is a slot the vehicle does not fit
+ * through, entered at speed, with a separation force pushing off each wall.
+ * Real RTS nav grids bake a clearance margin into the footprint for exactly
+ * this reason; this is that margin, expressed as the narrowest free span a cell
+ * may sit in and still be routable.
+ *
+ * 2 for everything with a vehicle-sized hull (Track, Wheel, and Hover — the
+ * Meridian's entire army is Hover and its collector is harvester-sized). 1 for
+ * Foot, because infantry are ~1 m across and threading a doorway is something
+ * they SHOULD do; 1 for Naval, because the narrow thing on water is a strait
+ * and closing straits changes maps; 1 for Air, which ignores the grid.
+ *
+ * Indexed by `MoveClass`. A value of 1 disables the rule for that class.
+ *
+ * Blocking narrow cells can never disconnect the map: `Flowfield.rebuildCost`
+ * restores any narrow run that is the only join between two otherwise separate
+ * regions. See its §clearance for the proof.
+ */
+export const NAV_MIN_CORRIDOR_CELLS = [1, 2, 2, 2, 1, 1] as const;
+
 /** Concurrent in-flight field expansions. Each carries ~80 KB of working state. */
 export const NAV_FIELD_EXPANDERS = 4;
 /** Smallest per-expander share of the tick budget, so nobody starves. */
@@ -5252,6 +5307,40 @@ export const NAV_STUCK_GIVEUP_RADIUS = 5.5;
 export const NAV_STUCK_MAX_NUDGES = 3;
 /** Metres of that sideways shove. */
 export const NAV_NUDGE_METRES = 2.6;
+
+/* -- the wedge watchdog ---------------------------------------------------
+ *
+ * `NAV_STUCK_*` above watches the SPEEDOMETER and the progress watchdog in
+ * Steering.ts watches DISTANCE TO GOAL. Neither of them answers the question a
+ * player actually asks — "has this thing physically moved at all in the last
+ * ten seconds?" — and that is the failure that gets reported, because it is the
+ * only one that is visible from the top of the map.
+ *
+ * So this ladder measures RAW DISPLACEMENT and nothing else, and it applies to
+ * every mover, not just harvesters. It is a safety net: if it fires often, the
+ * clearance rule above is not doing its job and THAT is the bug to fix.
+ * ------------------------------------------------------------------------- */
+
+/** Ticks between displacement samples for one unit. 60 = 2 s at 30 Hz. */
+export const NAV_WEDGE_SAMPLE_TICKS = 60;
+/** Metres of travel inside one sample window that still counts as moving. */
+export const NAV_WEDGE_METRES = 1.0;
+/** Consecutive barren windows before the ladder steps. 3 = 6 s of no movement. */
+export const NAV_WEDGE_STRIKES = 3;
+/** Rungs spent nudging before the unit is displaced outright. */
+export const NAV_WEDGE_MAX_NUDGES = 2;
+/**
+ * Metres of the wedge nudge. Larger than NAV_NUDGE_METRES on purpose: by the
+ * time this fires the ordinary nudge has already been tried and failed, so the
+ * shove has to be big enough to clear a hull (3.87 m radius at the widest).
+ */
+export const NAV_WEDGE_NUDGE_METRES = 5.0;
+/**
+ * Ring radius, in cells, for the last-resort displacement. 6 cells is 24 m —
+ * far enough to clear any single structure's footprint plus its neighbour,
+ * short enough that the unit visibly shuffles rather than teleporting.
+ */
+export const NAV_WEDGE_SEARCH_CELLS = 6;
 
 /** Formation slot spacing, as a multiple of the group's mean unit radius. */
 export const NAV_FORMATION_SPACING = 2.6;
@@ -5595,8 +5684,34 @@ export const ROAD_WAYPOINT_SPACING = 13;
  * Every light in the pool is resident in the scene for the whole match, so this
  * number is baked into `NUM_POINT_LIGHTS` in every shader. Changing it at
  * runtime would recompile the world.
+ *
+ * WHAT A RESIDENT POINT LIGHT ACTUALLY COSTS
+ * ------------------------------------------
+ * Measured, in a live match at a fixed 2560x1440 drawing buffer on the
+ * reporter's AMD Renoir iGPU, with GPU timer queries and the post chain off so
+ * the number is the scene pass alone:
+ *
+ *     4 resident point lights   29.5 ms
+ *     2 resident point lights   25.0 ms
+ *     0 resident point lights   19.2 ms
+ *
+ * **2.57 ms per light per frame at 1440p, whether or not it is emitting.**
+ * Three of the four in that capture had intensity exactly 0. The whole scene
+ * pass with every light removed is 13.9 ms and with a `MeshBasicMaterial`
+ * override it is 2.3 ms — so the frame is not geometry, not draw calls and not
+ * overdraw, it is the per-fragment light loop, and each pool slot is 15% of a
+ * 60 fps budget on this class of GPU.
+ *
+ * The residency itself is still right (see above: toggling recompiles), and
+ * §8.9's 8–12 band still governs High and Ultra, which is where the scorecard
+ * is judged. What changed is Low and Medium, the tiers the existing policy
+ * already assigns to "where the extra per-pixel light loop actually costs
+ * frames": Medium 4 -> 2 and Low 2 -> 1. One explosion still claims a light at
+ * every tier, so scorecard #28 — the ground wash around a SINGLE blast — is
+ * measuring the same thing it always did; what a Medium machine loses is the
+ * third and fourth SIMULTANEOUS wash.
  */
-export const VFX_LIGHT_POOL_BY_TIER: readonly number[] = [2, 4, 10, 12];
+export const VFX_LIGHT_POOL_BY_TIER: readonly number[] = [1, 2, 10, 12];
 
 /**
  * Two junction arms closer than this in heading are treated as ONE.

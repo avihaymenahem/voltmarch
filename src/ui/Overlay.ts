@@ -60,6 +60,28 @@
  * is information the player has not earned. It is drawn dimmed there, which
  * says only what the minimap already says.
  *
+ * The same rule binds every other pass, and each one answers it differently:
+ *
+ *   - HEALTH BARS and TARGET LINES ask `world.vision.canSee` per entity. They
+ *     are LIVE readings — this thing has 40% hp, that thing is shooting at this
+ *     one — and a live reading of something you cannot currently see is a map
+ *     hack. A remembered enemy structure is therefore drawn (the renderer keeps
+ *     its silhouette) and selectable (input allows it), but carries no bar: you
+ *     know it is there, you do not know how hurt it is.
+ *   - SELECTION AND HOVER RINGS need no test of their own. `EntityFlag.Selected`
+ *     and `EntityFlag.Hovered` are written by `src/input/Selection.ts` and by
+ *     nothing else, and that module already refuses to select or hover anything
+ *     the local player cannot see — it re-checks the whole selection every frame
+ *     in `pruneDead`. Re-deriving the fog rules here would be a second copy of
+ *     them, and two copies of a rule is one copy too many.
+ *
+ * The question is always put to the `IVision` PORT, never to `EntityFlag.Cloaked`.
+ * That bit is set viewer-independently on your OWN submerged submarine — whose
+ * bar you are entitled to see, and which used to vanish because this pass
+ * rejected the flag. `canSee` is `visibilityOf(...) === Live`, which is the
+ * threshold above the one the renderer draws at: that one line is what makes a
+ * remembered structure appear on screen and carry no bar.
+ *
  * WHO DRIVES IT
  * -------------
  * The overlay owns no input and no simulation state. Input pushes the marquee
@@ -847,10 +869,17 @@ export class Overlay {
   /* target lines                                                        */
   /* ------------------------------------------------------------------ */
 
+  /**
+   * Attacker -> target, for the selection only. The TARGET end is gated on
+   * vision: a unit of yours can go on firing at something that has just slipped
+   * back into the shroud, and a dashed line pointing straight at it would be a
+   * free tracker on a contact you have lost.
+   */
   private drawTargetLines(): void {
     const sel = this.world.selection;
     if (sel.count === 0) return;
     const store = this.world.store;
+    const local = this.world.localPlayer;
     const ctx = this.ctx;
 
     ctx.save();
@@ -864,8 +893,10 @@ export class Overlay {
       const idx = store.index(sel.ids[i] as EntityId);
       if (idx < 0) continue;
       if (store.state[idx] !== UnitState.Attacking) continue;
-      const tIdx = store.index(store.targetId[idx] as EntityId);
+      const target = store.targetId[idx] as EntityId;
+      const tIdx = store.index(target);
       if (tIdx < 0) continue;
+      if (!this.world.vision.canSee(local, target)) continue;
 
       this.v3.set(store.posX[idx], store.posY[idx] + 1.2, store.posZ[idx]);
       this.v3b.set(store.posX[tIdx], store.posY[tIdx] + 1.2, store.posZ[tIdx]);
@@ -901,7 +932,7 @@ export class Overlay {
       if (kind === EntityKind.Prop || kind === EntityKind.Crate || kind === EntityKind.Wreck) continue;
 
       const flags = store.flags[e];
-      if ((flags & (EntityFlag.PendingDestroy | EntityFlag.Cloaked | EntityFlag.Garrisoned)) !== 0) continue;
+      if ((flags & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) continue;
 
       const selected = (flags & EntityFlag.Selected) !== 0;
       const hovered = (flags & EntityFlag.Hovered) !== 0;
@@ -909,6 +940,13 @@ export class Overlay {
         && now - store.lastHitTime[e] < HUD_OVERLAY.damageBarSeconds;
       const owned = (store.owner[e] as PlayerId) === local;
       if (!selected && !hovered && !hurt && !(this.showAllyBars && owned)) continue;
+
+      // LAST, because it is the only test that leaves this file. A bar is a live
+      // reading and lives are only readable in the light: `canSee` answers true
+      // for everything of yours and your allies' — cloaked submarines included,
+      // which is why this is a vision question and not a flag test — and false
+      // for an enemy in the shroud or behind a cloak you cannot detect.
+      if (!this.world.vision.canSee(local, store.handleOf(e))) continue;
 
       this.drawOneBar(e);
     }

@@ -1,46 +1,83 @@
 /* ==========================================================================
- * src/ui/hud.css — THE MODERN HUD
+ * src/ui/hud.css — THE PANEL IS THE IDENTITY
  *
- * Read src/ui/Chrome.ts first: this file is the material stated once and then
- * applied. Nothing here invents a colour, a corner or a weight that is not in
- * that header.
+ * Rebuilt against docs/refs/target-hud.png (transcribed in
+ * docs/refs/TARGET_LOOK.md §A). Read src/ui/Chrome.ts first; this file is the
+ * material stated once and then applied.
  *
- * THE LAWS
- * --------
- *  1. ONE SURFACE. `--vm-glass` behind `backdrop-filter: var(--vm-blur)`. Every
- *     panel is that surface; there is no second material. The blur itself is
- *     GATED — see section 12 and `src/render/renderer.ts` — because sampling a
- *     WebGL canvas through a backdrop-filter drops black frames on macOS. When
- *     it is off, `--vm-glass` gets denser and the surface is otherwise
- *     unchanged: the translucency is the look, the blur is only the polish.
- *  2. ONE EDGE, PLUS ONE ACCENT RULE. A single 1 px `--vm-hairline`, drawn as a
- *     masked rim so it follows the notch instead of being clipped away by it,
- *     and a 1 px accent rule along the top edge with a matching tick on the
- *     notch diagonal. That rule is the whole "the panel starts HERE" signal;
- *     without it a translucent slab over a bright battlefield has no boundary.
- *  3. ONE SATURATED COLOUR. `--vm-accent`, from the faction table. Amber, green
- *     and red are reserved for resource, health and alert semantics.
- *  4. NO BEVELS, NO RIVETS, NO GRADIENTS, NO DROP SHADOWS. Depth is
- *     translucency plus that hairline. Nothing else.
- *  5. EVERYTHING SCALES. `--vm-u` is one design unit, set from JS at the
- *     current uiScale. Every dimension is a multiple of it; only hairlines are
- *     literal `1px`, so an edge always lands on exactly one device pixel.
+ * WHAT CHANGED, AND WHY IT IS THE WHOLE REDESIGN
+ * ---------------------------------------------
+ * The previous sheet drew ONE hairline and called the job done, then leaned on
+ * a soft multi-stop ramp everywhere a highlight was wanted. A gradient ramp
+ * standing in for a lit edge is exactly what reads as dated. The reference does
+ * the opposite: a SINGLE CRISP LIT EDGE, and the depth comes from there being
+ * TWO frames rather than from any one of them being soft.
  *
- * WHY THE SURFACE IS DENSER THAN IT WAS
- * ------------------------------------
- * The grade was pushed hard — mean saturation up, highlights clipping to white
- * — and at `.72` the docks read as a tint rather than as an interface. Measured
- * on shots/02-hud-full.png, a white Allied structure behind the build grid
- * composited the panel to roughly #5B6068 and `--vm-dim` label text on it came
- * out at 2.4:1, which is unreadable by any standard. `.86` puts the same worst
- * case at ~#1D242E and the same text at 5.6:1. The no-blur path is a matched
- * pair and goes to `.965`, because there the panel has no blur separating the
- * text from a moving, high-frequency battlefield at all.
+ * So every panel is now the same object at four sizes:
  *
- * The whole interface still fits in a 106 design-unit band across the bottom
- * plus a strip at the top: 15.8% of the frame at 1080p and at 1440p, inside the
- * look bible's 12-16% ceiling. `Hud.hudFrameShare()` reports the live number,
- * and NOTHING in this file may grow `--vm-dock-h` without re-deriving it.
+ *   1. a near-black fill with a blue cast, lifting from the centre to the edge;
+ *   2. a thin, very dark OUTER rim that separates the panel from the world;
+ *   3. a gap of plain fill;
+ *   4. a 1 px INNER BEVEL in the faction accent, bright on the top and left
+ *      edges and cooler on the bottom and right, carrying a restrained bloom;
+ *   5. corners CUT AT 45 DEGREES, never rounded — and because the bevel is a
+ *      masked rim it follows the cut, so each chamfer gets its own bright
+ *      segment for free;
+ *   6. detached corner BRACKETS on the three docks.
+ *
+ * THE BUDGET IS THE CONSTRAINT THAT DECIDED THE LAYOUT
+ * ---------------------------------------------------
+ * `Hud.hudFrameShare()` measured 15.83% of a 1280x720 frame against the look
+ * bible §9 ceiling of 12-16% for the WHOLE interface — and that figure excludes
+ * the objectives panel (a further 1.85%) and the resource strip, so the real
+ * interface was over its ceiling before this redesign started.
+ *
+ * Three things were reclaimed:
+ *
+ *   - THE BASE STATUS DOCK IS GONE. It measured ~47% empty and every one of its
+ *     five numbers already appears in the resource strip. With nothing selected
+ *     the centre dock now collapses to a single advisory line, and disappears
+ *     entirely when there is nothing to advise. That is the largest single
+ *     reclamation in the change and it costs no information.
+ *   - THE BAND IS SHORTER. `--vm-dock-h` 106u -> 88u and the docks' bottom
+ *     padding 8u -> 6u, so the band is 94u where it was 114u.
+ *   - THE MAP DOCK IS NARROWER. The 52u legend rail became four swatches in the
+ *     dock head, which hands 77u of width back to the selection card — the
+ *     width that its stat row was overflowing at 4:3 and in tall windows.
+ *
+ *       94u of 720 = 13.06%, against 114u = 15.83%.
+ *
+ * NOTHING HERE MAY GROW `--vm-dock-h` WITHOUT RE-DERIVING THAT NUMBER, and
+ * `tests/hud-layout.spec.ts` re-derives it from this file on every run.
+ *
+ * THE SHELL STYLESHEET IS NOT SANDBOXED — DEFEND AGAINST IT
+ * --------------------------------------------------------
+ * `src/shell/shell.css` declares UNSCOPED `.vm-stat`, `.vm-card`, `.vm-tabs`,
+ * `.vm-num` and `.vm-stat-value` for the menu and the post-match summary. Those
+ * class names are also HUD class names, and the shell chunk is loaded in every
+ * real match. A property this file does not STATE is therefore a property the
+ * shell silently supplies — which is how `.vm-stat` acquired
+ * `flex-direction: column` and 32 px of padding, stacking every stat chip into
+ * three rows and pushing the values through the bottom of the selection card.
+ *
+ * `?shot=` never loads the shell, so `npm run shots` could never see it.
+ *
+ * Every rule below marked "// shell guard" exists for that reason: it states a
+ * property that would otherwise be inherited from a stylesheet the HUD does not
+ * own. `tests/hud-layout.spec.ts` computes the leak set and fails if it grows.
+ *
+ * THE REMAINING LAWS
+ * ------------------
+ *  - ONE SATURATED COLOUR. `--vm-accent`, from the faction table. Amber, green
+ *    and red are reserved for resource, health and alert semantics. Nothing
+ *    here names a faction colour.
+ *  - EVERYTHING SCALES. `--vm-u` is one design unit, set from JS at the current
+ *    uiScale. Every dimension is a multiple of it; only the rims are literal
+ *    `1px`, so a lit edge always lands on exactly one device pixel.
+ *  - THE BLUR IS A TOKEN. `--vm-blur` is gated in section 12 — see
+ *    `src/render/renderer.ts` — because sampling a WebGL canvas through a
+ *    backdrop-filter drops black frames on macOS. The fill and the blur are a
+ *    matched pair; never change one without the other.
  * ========================================================================== */
 
 /* ==========================================================================
@@ -51,16 +88,34 @@
   /* One design unit. Overwritten from Hud.resize(); this is the 720p value. */
   --vm-u: 1px;
 
-  /* Surface. Both the glass and the blur are overridden together by the
-     no-blur gate in section 12 — never change one without the other. */
-  --vm-glass: rgba(9, 13, 20, 0.86);
-  --vm-glass-deep: rgba(6, 9, 14, 0.93);
-  --vm-blur: blur(14px) saturate(1.1);
-  --vm-hairline: rgba(255, 255, 255, 0.16);
-  --vm-hairline-soft: rgba(255, 255, 255, 0.10);
+  /* -- the surface ------------------------------------------------------
+   * Near-black with a blue cast. The reference is effectively opaque, not a
+   * light frosted glass, so the fill is much denser than the old .86 — but it
+   * stays translucent, because the battlefield reading faintly through the
+   * panel is what stops the interface looking pasted on. */
+  --vm-glass: rgba(8, 13, 24, 0.94);
+  --vm-glass-deep: rgba(5, 8, 16, 0.965);
+  --vm-blur: blur(12px) saturate(1.06);
+
+  /* The edge lift: the fill is darkest at the centre and rises toward the
+     frame, which is what gives a flat panel a sense of being a dished plate. */
+  --vm-fill-lift: rgba(19, 32, 58, 0.55);
+
+  /* -- the double frame -------------------------------------------------
+   * `rim` is the dark outer line that separates panel from world. `bevel-hi`
+   * and `bevel-lo` are the single lit edge: bright on top and left, cooler on
+   * bottom and right. Both are derived from the accent, so a faction swap
+   * recolours the frame and nothing here knows a faction exists. */
+  --vm-rim: rgba(2, 4, 9, 0.96);
+  --vm-bevel-hi: rgba(var(--vm-accent-rgb), 0.95);
+  --vm-bevel-lo: rgba(var(--vm-accent-rgb), 0.42);
+  --vm-bevel-glow: rgba(var(--vm-accent-rgb), 0.38);
+
+  --vm-hairline: rgba(var(--vm-accent-rgb), 0.22);
+  --vm-hairline-soft: rgba(255, 255, 255, 0.09);
   /* The inset well every control sits in. One value, so a slot, a card and a
      stance button are demonstrably the same object at three sizes. */
-  --vm-well: rgba(255, 255, 255, 0.05);
+  --vm-well: rgba(120, 175, 235, 0.07);
 
   /* Accent — replaced wholesale by Chrome.applyTheme(). */
   --vm-accent: #35c8f0;
@@ -74,22 +129,29 @@
   --vm-danger: #ff4d3d;
   --vm-gold: #f6c445;
 
-  /* Type. `--vm-dim` was lifted from #8a97a6 and `--vm-faint` from #5d6875:
-     both were tuned against the OLD .72 surface and both were the reason the
-     labels vanished. On the .86 surface these measure 7.4:1 and 4.9:1. */
+  /* Type. Measured against the .94 fill: 8.9:1 and 5.4:1. */
   --vm-text: #eaf2fa;
   --vm-dim: #9dabba;
   --vm-faint: #74818f;
 
-  /* Geometry */
-  --vm-notch: calc(10 * var(--vm-u));
-  /* Solved, not guessed: the build dock is the tallest thing in the band, and
-     it must hold `tabs(22) + gap(4) + padTop(3) + 2 rows(32) + rowGap(3)` plus
-     its own 10 of padding. Change either number and the second row of the build
-     grid clips. */
-  --vm-dock-h: calc(106 * var(--vm-u));
-  --vm-gap: calc(8 * var(--vm-u));
-  --vm-pad: calc(5 * var(--vm-u));
+  /* -- geometry ---------------------------------------------------------
+   * Two chamfers, not one. The house lean is preserved — the top-left and
+   * bottom-right cuts are the big ones — but EVERY corner is cut, which is
+   * what the reference does and what stops a panel reading as a rectangle
+   * with a corner missing. */
+  --vm-notch: calc(9 * var(--vm-u));
+  --vm-notch-sm: calc(4 * var(--vm-u));
+  /* Gap between the outer rim and the inner bevel. */
+  --vm-bevel-inset: calc(2 * var(--vm-u));
+
+  /* SOLVED, NOT GUESSED. The build dock is the tallest thing in the band:
+       pad(4) + tabs(14) + gap(3) + 2 rows(30) + rowGap(3) + pad(4) = 88
+     and the docks add 6u of bottom padding, so the band is 94u.
+     Change either number and `tests/hud-layout.spec.ts` goes red. */
+  --vm-dock-h: calc(88 * var(--vm-u));
+  --vm-dock-pad: calc(4 * var(--vm-u));
+  --vm-band-pad: calc(6 * var(--vm-u));
+  --vm-gap: calc(7 * var(--vm-u));
 
   position: absolute;
   inset: 0;
@@ -106,8 +168,9 @@
 }
 
 /* Every number in the HUD is tabular. A readout whose digits change width is
-   the loudest remaining "this is a web page" tell. */
-.vm-num {
+   the loudest remaining "this is a web page" tell.
+   Scoped, and both properties stated: shell.css declares a bare `.vm-num`.  // shell guard */
+.vm-hud .vm-num {
   font-variant-numeric: tabular-nums lining-nums;
   font-feature-settings: 'tnum' 1, 'lnum' 1;
 }
@@ -119,11 +182,10 @@
 .vm-hud .vm-map-offline,
 .vm-hud .vm-toast-title,
 .vm-hud .vm-res-label,
-.vm-hud .vm-status-title,
 .vm-hud .vm-legend-text,
 .vm-hud .vm-sel-sub {
-  font-size: calc(11 * var(--vm-u));
-  letter-spacing: 0.16em;
+  font-size: calc(10 * var(--vm-u));
+  letter-spacing: 0.18em;
   text-transform: uppercase;
   font-weight: 600;
 }
@@ -134,16 +196,16 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: calc(10 * var(--vm-u));
-  height: calc(10 * var(--vm-u));
+  min-width: calc(9 * var(--vm-u));
+  height: calc(9 * var(--vm-u));
   padding: 0 calc(1.5 * var(--vm-u));
   border: 1px solid var(--vm-hairline);
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u));
   font-weight: 700;
   line-height: 1;
   letter-spacing: 0.04em;
   color: var(--vm-dim);
-  background: rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.4);
   pointer-events: none;
 }
 
@@ -161,35 +223,46 @@
 }
 
 /* ==========================================================================
- * 3. THE PANEL PRIMITIVE
+ * 3. THE PANEL PRIMITIVE — the double frame
  *
- * The notch is a clip-path, which would normally eat a CSS border on the
- * diagonal. So the hairline is a masked rim on `::before`: paint the whole
- * clipped box in the hairline colour, then punch out everything inside a 1 px
- * padding. The result is one continuous edge that follows the notch exactly.
+ * The chamfer is a `clip-path`, which would normally eat a CSS border on the
+ * diagonal. So both frames are MASKED RIMS: paint the whole clipped box in the
+ * frame colour, then punch out everything inside a 1 px padding. The result is
+ * one continuous edge that follows every cut exactly, and it is why the
+ * chamfers get their bright segment without a single extra element.
  *
- * `.vm-panel-edge` is a real element rather than a third pseudo because the
- * accent treatment is TWO marks — a rule along the top edge and a tick lying on
- * the notch diagonal — and one element cannot carry two absolutely-positioned
- * pseudos plus the mask the rim already needs.
+ *   ::before   the dark outer rim, at inset 0
+ *   ::after    the lit inner bevel, at `--vm-bevel-inset`
+ *   .vm-panel-edge   the detached corner brackets (a real element, because a
+ *                    third pseudo does not exist and the two above are spoken
+ *                    for)
  * ========================================================================== */
 
 .vm-hud .vm-panel {
   position: relative;
-  background: var(--vm-glass);
+  /* Fill first, edge lift over it. The lift is a radial rather than a linear
+     ramp because the reference lifts toward ALL edges, not toward one of
+     them — a linear ramp would read as a light source the scene does not have. */
+  background:
+    radial-gradient(125% 155% at 50% 45%,
+      rgba(0, 0, 0, 0) 0%,
+      rgba(0, 0, 0, 0) 42%,
+      var(--vm-fill-lift) 100%),
+    var(--vm-glass);
   -webkit-backdrop-filter: var(--vm-blur);
   backdrop-filter: var(--vm-blur);
   pointer-events: auto;
   clip-path: var(--vm-clip, none);
 }
 
+/* -- 1. the dark outer rim ----------------------------------------------- */
 .vm-hud .vm-panel::before {
   content: '';
   position: absolute;
   inset: 0;
-  padding: 1px;
+  padding: calc(1.5 * var(--vm-u));
   box-sizing: border-box;
-  background: var(--vm-hairline);
+  background: var(--vm-rim);
   clip-path: var(--vm-clip, none);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -199,71 +272,132 @@
   z-index: 2;
 }
 
-.vm-hud .vm-panel-edge {
+/* -- 2. the lit inner bevel ----------------------------------------------
+ * ONE crisp 1 px edge. The gradient runs across the panel, not across the
+ * edge: it is what makes the top-left read brighter than the bottom-right,
+ * which is the whole of the "lit metal channel" impression. The bloom is a
+ * drop-shadow at ~1.5u — enough to read as emissive, far too small to read as
+ * a blur. */
+.vm-hud .vm-panel::after {
+  content: '';
   position: absolute;
-  inset: 0;
+  inset: var(--vm-bevel-inset);
+  padding: 1px;
+  box-sizing: border-box;
+  background: linear-gradient(146deg,
+    var(--vm-bevel-hi) 0%,
+    var(--vm-bevel-hi) 30%,
+    var(--vm-bevel-lo) 72%,
+    var(--vm-bevel-lo) 100%);
+  clip-path: var(--vm-clip-in, none);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  filter: drop-shadow(0 0 calc(1.5 * var(--vm-u)) var(--vm-bevel-glow));
   pointer-events: none;
   z-index: 3;
 }
 
-/* The top rule: 1 px of accent along the panel's leading edge, starting past
-   the notch so it never floats over the cut corner. */
-.vm-hud .vm-panel-edge::before {
-  content: '';
+/* -- 3. the corner brackets -----------------------------------------------
+ * Two short L-shapes that RIDE THE BEVEL at the two square corners, thickening
+ * them the way a machined plate is reinforced where it is bolted.
+ *
+ * The reference draws them detached, floating inside the frame — which was
+ * tried first and is wrong HERE, because our panels are three to four times
+ * denser than the mockup's. At 5u of inset the top-left bracket landed through
+ * the "G.I." of the selection card's own name. Riding the frame is the same
+ * read at this density and it cannot collide with content, ever.
+ *
+ * Opt-in per panel through `data-brackets`, because the resource strip's
+ * chevron ends have no square corner to reinforce. */
+.vm-hud .vm-panel-edge {
   position: absolute;
-  top: 0;
-  left: var(--vm-edge-inset, 0px);
-  right: 0;
-  height: 1px;
-  background: rgba(var(--vm-accent-rgb), 0.55);
+  inset: var(--vm-bevel-inset);
+  pointer-events: none;
+  z-index: 4;
+  display: none;
 }
 
-/* The tick: a 1 px accent segment lying exactly on the notch diagonal. Length
-   is the notch times root two, rotated 135 degrees about its left end, which is
-   the corner where the cut begins. */
+.vm-hud .vm-panel[data-brackets='on'] .vm-panel-edge { display: block; }
+
+.vm-hud .vm-panel-edge::before,
 .vm-hud .vm-panel-edge::after {
   content: '';
   position: absolute;
-  top: 0;
-  left: var(--vm-edge-inset, 0px);
-  width: calc(var(--vm-notch) * 1.4143);
-  height: 1px;
-  background: var(--vm-accent);
-  transform-origin: 0 50%;
-  transform: rotate(135deg);
-  opacity: 0.85;
+  width: calc(8 * var(--vm-u));
+  height: calc(8 * var(--vm-u));
+  border: 0 solid var(--vm-accent-hi);
+  opacity: 0.9;
 }
 
-/* -- notch variants ------------------------------------------------------ */
+.vm-hud .vm-panel-edge::before {
+  right: 0;
+  top: 0;
+  border-right-width: calc(2 * var(--vm-u));
+  border-top-width: calc(2 * var(--vm-u));
+}
 
-/* The house diagonal: top-left and bottom-right cut. Everything in the HUD
-   leans the same way, which is what makes four panels read as one set. */
+.vm-hud .vm-panel-edge::after {
+  left: 0;
+  bottom: 0;
+  border-left-width: calc(2 * var(--vm-u));
+  border-bottom-width: calc(2 * var(--vm-u));
+}
+
+/* -- chamfer variants -----------------------------------------------------
+ * `--vm-clip` is the outer silhouette; `--vm-clip-in` is the same silhouette
+ * shrunk by the bevel inset, so the inner frame is parallel to the outer one
+ * along the diagonals as well as along the straights. */
+
 .vm-hud .vm-panel[data-notch='diag'] {
-  --vm-edge-inset: var(--vm-notch);
   --vm-clip: polygon(
     var(--vm-notch) 0,
-    100% 0,
+    calc(100% - var(--vm-notch-sm)) 0,
+    100% var(--vm-notch-sm),
     100% calc(100% - var(--vm-notch)),
     calc(100% - var(--vm-notch)) 100%,
-    0 100%,
+    var(--vm-notch-sm) 100%,
+    0 calc(100% - var(--vm-notch-sm)),
     0 var(--vm-notch)
   );
-}
-
-/* Mirrored, for a panel that sits on the opposite side of a composition. */
-.vm-hud .vm-panel[data-notch='diag-rev'] {
-  --vm-clip: polygon(
-    0 0,
-    calc(100% - var(--vm-notch)) 0,
-    100% var(--vm-notch),
-    100% 100%,
-    var(--vm-notch) 100%,
-    0 calc(100% - var(--vm-notch))
+  --vm-clip-in: polygon(
+    calc(var(--vm-notch) - var(--vm-bevel-inset)) 0,
+    calc(100% - var(--vm-notch-sm) + var(--vm-bevel-inset)) 0,
+    100% calc(var(--vm-notch-sm) - var(--vm-bevel-inset)),
+    100% calc(100% - var(--vm-notch) + var(--vm-bevel-inset)),
+    calc(100% - var(--vm-notch) + var(--vm-bevel-inset)) 100%,
+    calc(var(--vm-notch-sm) - var(--vm-bevel-inset)) 100%,
+    0 calc(100% - var(--vm-notch-sm) + var(--vm-bevel-inset)),
+    0 calc(var(--vm-notch) - var(--vm-bevel-inset))
   );
 }
 
-/* Both ends chamfered — the resource strip. It has no top-left notch, so it
-   carries the rule and skips the tick. */
+/* Mirrored, for a panel on the opposite side of a composition. */
+.vm-hud .vm-panel[data-notch='diag-rev'] {
+  --vm-clip: polygon(
+    var(--vm-notch-sm) 0,
+    calc(100% - var(--vm-notch)) 0,
+    100% var(--vm-notch),
+    100% calc(100% - var(--vm-notch-sm)),
+    calc(100% - var(--vm-notch-sm)) 100%,
+    var(--vm-notch) 100%,
+    0 calc(100% - var(--vm-notch)),
+    0 var(--vm-notch-sm)
+  );
+  --vm-clip-in: polygon(
+    calc(var(--vm-notch-sm) - var(--vm-bevel-inset)) 0,
+    calc(100% - var(--vm-notch) + var(--vm-bevel-inset)) 0,
+    100% calc(var(--vm-notch) - var(--vm-bevel-inset)),
+    100% calc(100% - var(--vm-notch-sm) + var(--vm-bevel-inset)),
+    calc(100% - var(--vm-notch-sm) + var(--vm-bevel-inset)) 100%,
+    calc(var(--vm-notch) - var(--vm-bevel-inset)) 100%,
+    0 calc(100% - var(--vm-notch) + var(--vm-bevel-inset)),
+    0 calc(var(--vm-notch-sm) - var(--vm-bevel-inset))
+  );
+}
+
+/* Both short edges cut to a shallow chevron — the resource strip. */
 .vm-hud .vm-panel[data-notch='ends'] {
   --vm-clip: polygon(
     var(--vm-notch) 0,
@@ -273,21 +407,19 @@
     var(--vm-notch) 100%,
     0 50%
   );
-}
-
-.vm-hud .vm-panel[data-notch='ends'] .vm-panel-edge::before {
-  left: var(--vm-notch);
-  right: var(--vm-notch);
-}
-
-.vm-hud .vm-panel[data-notch='ends'] .vm-panel-edge::after,
-.vm-hud .vm-panel[data-notch='diag-rev'] .vm-panel-edge::after,
-.vm-hud .vm-panel[data-notch='none'] .vm-panel-edge::after {
-  display: none;
+  --vm-clip-in: polygon(
+    calc(var(--vm-notch) - var(--vm-bevel-inset)) 0,
+    calc(100% - var(--vm-notch) + var(--vm-bevel-inset)) 0,
+    100% 50%,
+    calc(100% - var(--vm-notch) + var(--vm-bevel-inset)) 100%,
+    calc(var(--vm-notch) - var(--vm-bevel-inset)) 100%,
+    0 50%
+  );
 }
 
 .vm-hud .vm-panel[data-notch='none'] {
   --vm-clip: none;
+  --vm-clip-in: none;
 }
 
 /* ==========================================================================
@@ -308,43 +440,69 @@
   display: flex;
   align-items: flex-end;
   gap: var(--vm-gap);
-  padding: 0 calc(10 * var(--vm-u)) var(--vm-gap);
+  padding: 0 calc(8 * var(--vm-u)) var(--vm-band-pad);
   pointer-events: none;
 }
 
 .vm-hud .vm-dock {
   height: var(--vm-dock-h);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  padding: var(--vm-pad);
-  gap: calc(4 * var(--vm-u));
+  padding: var(--vm-dock-pad);
+  gap: calc(3 * var(--vm-u));
 }
 
 .vm-hud .vm-dock-map {
-  /* The square field (82u at the current dock height) plus the legend rail,
-     which needs 52u to print HOSTILE without an ellipsis. */
-  width: calc(152 * var(--vm-u));
+  /* Square field plus its own padding, and nothing else: the legend rail moved
+     into the head, which handed 77u of width to the selection card. */
+  width: calc(75 * var(--vm-u));
   flex: 0 0 auto;
 }
 
+/* SIZED TO ITS CONTENT, not to the leftover width.
+ *
+ * It used to be `flex: 1 1 auto`, so an empty selection painted a 1300-px slab
+ * of glass across the middle of a 1080p frame for nothing. Capped, the band
+ * between the card and the build palette is battlefield — which is most of
+ * what `hudCoverage()` gained over `hudFrameShare()`. `margin-right: auto`
+ * keeps it beside the map rather than letting it drift to centre. */
 .vm-hud .vm-dock-selection {
-  flex: 1 1 auto;
-  min-width: 0;
+  flex: 0 1 auto;
+  min-width: calc(230 * var(--vm-u));
+  max-width: calc(470 * var(--vm-u));
+  margin-right: auto;
 }
 
+/* The build dock is NOT a panel: its tab strip rises ABOVE the panel body,
+   which is the reference's construction and cannot be done from inside one
+   clipped box. `.vm-build-body` is the panel. */
 .vm-hud .vm-dock-build {
-  width: calc(324 * var(--vm-u));
+  width: calc(300 * var(--vm-u));
   flex: 0 0 auto;
+  padding: 0;
+  gap: 0;
+  background: none;
+  pointer-events: none;
+}
+
+.vm-hud .vm-build-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--vm-dock-pad);
+  box-sizing: border-box;
 }
 
 .vm-hud .vm-dock-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: calc(6 * var(--vm-u));
+  gap: calc(5 * var(--vm-u));
   color: var(--vm-dim);
   flex: 0 0 auto;
-  height: calc(11 * var(--vm-u));
+  height: calc(10 * var(--vm-u));
   white-space: nowrap;
   overflow: hidden;
 }
@@ -352,29 +510,40 @@
 /* ==========================================================================
  * 5. THE RESOURCE STRIP (top centre)
  *
- * Six labelled cells: CREDITS, POWER, TIME, ARMY, BASE, INCOME. Every one of
- * them names itself, because the previous strip was a coin glyph, a bolt glyph
- * and a clock glyph, and a new player could not tell which number was money.
+ * The reference's top strip: crest at the far left, then `icon + large value +
+ * small-caps label` groups separated by thin vertical dividers. Ours keeps its
+ * six cells and its centred position — going full-width would cover a great
+ * deal more frame than the §38 budget has to spend, and the budget outranks the
+ * reference where the two disagree.
  * ========================================================================== */
 
 .vm-hud .vm-resources {
   position: absolute;
-  top: calc(8 * var(--vm-u));
+  top: calc(7 * var(--vm-u));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: calc(11 * var(--vm-u));
-  height: calc(36 * var(--vm-u));
-  padding: 0 calc(18 * var(--vm-u));
+  gap: calc(10 * var(--vm-u));
+  height: calc(31 * var(--vm-u));
+  padding: 0 calc(16 * var(--vm-u));
   max-width: calc(100% - 20 * var(--vm-u));
+}
+
+/* The faction crest, far left, in its own shield. */
+.vm-hud .vm-res-crest {
+  width: calc(19 * var(--vm-u));
+  height: calc(19 * var(--vm-u));
+  color: var(--vm-accent-hi);
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0 calc(2 * var(--vm-u)) var(--vm-bevel-glow));
 }
 
 .vm-hud .vm-res {
   position: relative;
   display: flex;
   align-items: center;
-  gap: calc(6 * var(--vm-u));
+  gap: calc(5 * var(--vm-u));
 }
 
 .vm-hud .vm-res-body {
@@ -385,15 +554,16 @@
 }
 
 .vm-hud .vm-res-label {
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u));
   letter-spacing: 0.20em;
   color: var(--vm-faint);
   line-height: 1;
+  white-space: nowrap;
 }
 
 .vm-hud .vm-res-icon {
-  width: calc(15 * var(--vm-u));
-  height: calc(15 * var(--vm-u));
+  width: calc(14 * var(--vm-u));
+  height: calc(14 * var(--vm-u));
   color: var(--vm-dim);
   flex: 0 0 auto;
 }
@@ -407,25 +577,29 @@
 }
 
 .vm-hud .vm-res-credits .vm-res-icon { color: var(--vm-gold); }
-.vm-hud .vm-res-credits .vm-res-value { min-width: calc(56 * var(--vm-u)); }
+.vm-hud .vm-res-credits .vm-res-value { min-width: calc(52 * var(--vm-u)); }
 
+/* The divider. A single lit hairline, not a bevelled groove. */
 .vm-hud .vm-res-rule {
   width: 1px;
-  height: calc(22 * var(--vm-u));
-  background: var(--vm-hairline);
+  height: calc(19 * var(--vm-u));
+  background: linear-gradient(180deg,
+    rgba(var(--vm-accent-rgb), 0) 0%,
+    rgba(var(--vm-accent-rgb), 0.45) 50%,
+    rgba(var(--vm-accent-rgb), 0) 100%);
   flex: 0 0 auto;
 }
 
 /* The three telltales are smaller than the three primary readouts on purpose:
    they answer "how am I doing", not "can I afford this". */
 .vm-hud .vm-res-tell .vm-res-icon {
-  width: calc(12 * var(--vm-u));
-  height: calc(12 * var(--vm-u));
+  width: calc(11 * var(--vm-u));
+  height: calc(11 * var(--vm-u));
   color: var(--vm-faint);
 }
 
 .vm-hud .vm-res-tell .vm-res-value {
-  font-size: calc(13 * var(--vm-u));
+  font-size: calc(12 * var(--vm-u));
   font-weight: 600;
   color: var(--vm-dim);
 }
@@ -436,8 +610,8 @@
 
 .vm-hud .vm-res-delta {
   position: absolute;
-  left: calc(22 * var(--vm-u));
-  top: calc(-10 * var(--vm-u));
+  left: calc(20 * var(--vm-u));
+  top: calc(-9 * var(--vm-u));
   font-size: calc(11 * var(--vm-u));
   font-weight: 700;
   color: var(--vm-danger);
@@ -456,7 +630,7 @@
 
 /* -- the power meter -----------------------------------------------------
  *
- * `+0` told the player nothing at all. The readout is now DRAW / SUPPLY with a
+ * `+0` told the player nothing at all. The readout is DRAW / SUPPLY with a
  * state word beside it, because low power silently slows every queue in the
  * base and that was completely invisible.
  * ------------------------------------------------------------------------ */
@@ -464,18 +638,18 @@
 .vm-hud .vm-power-line {
   display: flex;
   align-items: center;
-  gap: calc(6 * var(--vm-u));
+  gap: calc(5 * var(--vm-u));
 }
 
 .vm-hud .vm-power {
   display: flex;
   align-items: stretch;
   gap: calc(1.5 * var(--vm-u));
-  height: calc(9 * var(--vm-u));
+  height: calc(8 * var(--vm-u));
 }
 
 .vm-hud .vm-power-seg {
-  width: calc(4 * var(--vm-u));
+  width: calc(3.5 * var(--vm-u));
   background: rgba(255, 255, 255, 0.13);
   transition: background-color 120ms linear;
 }
@@ -491,17 +665,17 @@
 }
 
 .vm-hud .vm-power-value {
-  font-size: calc(13 * var(--vm-u));
+  font-size: calc(12 * var(--vm-u));
   font-weight: 700;
   color: var(--vm-text);
-  min-width: calc(48 * var(--vm-u));
+  min-width: calc(44 * var(--vm-u));
 }
 
 .vm-hud .vm-power-value.is-tight { color: var(--vm-warn); }
 .vm-hud .vm-power-value.is-down { color: var(--vm-danger); }
 
 .vm-hud .vm-power-state {
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u));
   letter-spacing: 0.18em;
   text-transform: uppercase;
   font-weight: 700;
@@ -538,12 +712,18 @@
 
 /* ==========================================================================
  * 6. THE TACTICAL MAP (bottom left)
+ *
+ * The reference draws the map as its ACTUAL irregular shape rather than as a
+ * rectangle, with territory as soft colour glows. That is `src/ui/Minimap.ts`'s
+ * job — it masks the bake to the land silhouette and paints an owner glow under
+ * the blips. All this section does is stop framing it like a picture: the field
+ * has no border of its own, only the four accent ticks.
  * ========================================================================== */
 
 .vm-hud .vm-map-body {
   display: flex;
   align-items: stretch;
-  gap: calc(5 * var(--vm-u));
+  justify-content: center;
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -553,8 +733,7 @@
   flex: 0 0 auto;
   height: 100%;
   aspect-ratio: 1 / 1;
-  background: #070a10;
-  outline: 1px solid var(--vm-hairline);
+  background: #05080f;
 }
 
 /* Frame ticks: four accent corners on the map field. They cost eight lines and
@@ -563,23 +742,23 @@
 .vm-hud .vm-map-field::after {
   content: '';
   position: absolute;
-  width: calc(7 * var(--vm-u));
-  height: calc(7 * var(--vm-u));
+  width: calc(6 * var(--vm-u));
+  height: calc(6 * var(--vm-u));
   border: 0 solid var(--vm-accent);
   pointer-events: none;
   z-index: 2;
 }
 
 .vm-hud .vm-map-field::before {
-  left: calc(-1 * var(--vm-u));
-  top: calc(-1 * var(--vm-u));
+  left: 0;
+  top: 0;
   border-left-width: calc(1.5 * var(--vm-u));
   border-top-width: calc(1.5 * var(--vm-u));
 }
 
 .vm-hud .vm-map-field::after {
-  right: calc(-1 * var(--vm-u));
-  bottom: calc(-1 * var(--vm-u));
+  right: 0;
+  bottom: 0;
   border-right-width: calc(1.5 * var(--vm-u));
   border-bottom-width: calc(1.5 * var(--vm-u));
 }
@@ -592,14 +771,14 @@
 }
 
 .vm-hud .vm-dock-map .vm-dock-title {
-  font-size: calc(9 * var(--vm-u));
-  letter-spacing: 0.14em;
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.16em;
   color: var(--vm-dim);
 }
 
 .vm-hud .vm-map-offline {
   color: var(--vm-danger);
-  font-size: calc(9 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u));
   letter-spacing: 0.12em;
 }
 
@@ -610,12 +789,12 @@
 /* "NO RADAR" said what was broken and never what to do about it. */
 .vm-hud .vm-map-hint {
   position: absolute;
-  left: calc(4 * var(--vm-u));
-  right: calc(4 * var(--vm-u));
+  left: calc(3 * var(--vm-u));
+  right: calc(3 * var(--vm-u));
   top: 50%;
   transform: translateY(-50%);
   text-align: center;
-  font-size: calc(9 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u));
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: 0.04em;
@@ -628,35 +807,31 @@
 .vm-hud .vm-map-hint > b {
   display: block;
   color: var(--vm-danger);
-  font-size: calc(10 * var(--vm-u));
+  font-size: calc(9 * var(--vm-u));
   letter-spacing: 0.16em;
   margin-bottom: calc(2 * var(--vm-u));
 }
 
-/* -- the legend rail ------------------------------------------------------ */
-
-.vm-hud .vm-res-label { white-space: nowrap; }
+/* -- the legend ----------------------------------------------------------
+ * It used to be a 52u rail beside the map. Four colours do not need 52u of
+ * width and the map did: the words moved into the head's `title`, the swatches
+ * stayed, and the dock lost half its width. */
 
 .vm-hud .vm-map-legend {
-  flex: 1 1 auto;
-  min-width: 0;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: calc(4 * var(--vm-u));
-  border-left: 1px solid var(--vm-hairline-soft);
-  padding-left: calc(5 * var(--vm-u));
+  align-items: center;
+  gap: calc(3 * var(--vm-u));
+  flex: 0 0 auto;
 }
 
 .vm-hud .vm-legend-row {
   display: flex;
   align-items: center;
-  gap: calc(4 * var(--vm-u));
 }
 
 .vm-hud .vm-legend-swatch {
-  width: calc(6 * var(--vm-u));
-  height: calc(6 * var(--vm-u));
+  width: calc(5 * var(--vm-u));
+  height: calc(5 * var(--vm-u));
   flex: 0 0 auto;
   background: var(--vm-accent);
 }
@@ -668,60 +843,80 @@
   border: 1px solid var(--vm-accent);
 }
 
-.vm-hud .vm-legend-text {
-  font-size: calc(8 * var(--vm-u));
-  letter-spacing: 0.10em;
-  color: var(--vm-faint);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+/* The words live on the head's tooltip now; the class is kept so nothing that
+   queries it breaks, and it is simply not rendered. */
+.vm-hud .vm-legend-text { display: none; }
 
 /* ==========================================================================
- * 7. THE CENTRE DOCK — SELECTION, OR STATUS
+ * 7. THE SELECTION CARD (bottom centre)
  *
- * It used to fade to nothing with an empty selection, which meant the widest
- * dock in the band was blank for most of a match. It now carries a base status
- * readout instead: army, structures, power, income, and one line of advice that
- * changes with the actual state of the base.
+ * The reference's card, in its order: NAME in caps under a rule, the cameo on
+ * the left, the description on the right, and a FULL-WIDTH health bar along the
+ * bottom with `2500 / 2500` laid over it.
+ *
+ * With nothing selected this dock used to become a "BASE STATUS" board whose
+ * five numbers all already appear in the resource strip, and which measured
+ * ~47% empty. It is gone. What is left is one advisory line, and it is hidden
+ * outright when the base is nominal — so most of the time the widest dock in
+ * the band is simply not there and the battlefield shows through.
  * ========================================================================== */
 
-.vm-hud .vm-sel-live,
-.vm-hud .vm-sel-idle {
+.vm-hud .vm-sel-live {
   display: flex;
   flex-direction: column;
-  gap: calc(4 * var(--vm-u));
+  gap: calc(3 * var(--vm-u));
   flex: 1 1 auto;
   min-height: 0;
+}
+
+/* Empty: the panel collapses to the advisory strip's height, or vanishes. */
+.vm-hud .vm-dock-selection.is-empty {
+  height: auto;
+  align-self: flex-end;
 }
 
 .vm-hud .vm-dock-selection.is-empty .vm-sel-live { display: none; }
 .vm-hud .vm-dock-selection:not(.is-empty) .vm-sel-idle { display: none; }
 
+/* -- the name row -------------------------------------------------------- */
+
 .vm-hud .vm-sel-head {
   display: flex;
   align-items: center;
-  gap: calc(8 * var(--vm-u));
+  gap: calc(6 * var(--vm-u));
   flex: 0 0 auto;
   min-width: 0;
-  height: calc(17 * var(--vm-u));
+  height: calc(15 * var(--vm-u));
 }
 
 .vm-hud .vm-sel-id {
   display: flex;
   align-items: center;
-  gap: calc(5 * var(--vm-u));
+  gap: calc(4 * var(--vm-u));
   min-width: 0;
+  flex: 0 0 auto;
 }
 
 .vm-hud .vm-sel-title {
-  font-size: calc(15 * var(--vm-u));
+  font-size: calc(14 * var(--vm-u));
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--vm-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The rule that runs right from the word, which is the reference's one
+   consistent header device. */
+.vm-hud .vm-sel-rule {
+  flex: 1 1 auto;
+  min-width: calc(6 * var(--vm-u));
+  height: 1px;
+  background: linear-gradient(90deg,
+    rgba(var(--vm-accent-rgb), 0.55) 0%,
+    rgba(var(--vm-accent-rgb), 0.06) 100%);
 }
 
 .vm-hud .vm-sel-vet {
@@ -730,75 +925,35 @@
 }
 
 .vm-hud .vm-sel-chevron {
-  width: calc(10 * var(--vm-u));
-  height: calc(10 * var(--vm-u));
+  width: calc(9 * var(--vm-u));
+  height: calc(9 * var(--vm-u));
   color: var(--vm-gold);
 }
 
-.vm-hud .vm-sel-sub {
-  color: var(--vm-dim);
-  font-size: calc(10 * var(--vm-u));
-  letter-spacing: 0.10em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1 1 auto;
-}
-
-/* Aggregate health of the whole selection — the number that decides whether to
-   retreat, and it was simply not shown. */
-.vm-hud .vm-sel-hp {
-  display: flex;
-  align-items: center;
-  gap: calc(5 * var(--vm-u));
-  margin-left: auto;
-  flex: 0 0 auto;
-}
-
-.vm-hud .vm-sel-hp-track {
-  position: relative;
-  width: calc(54 * var(--vm-u));
-  height: calc(5 * var(--vm-u));
-  background: rgba(255, 255, 255, 0.14);
-  outline: 1px solid rgba(0, 0, 0, 0.5);
-  overflow: hidden;
-}
-
-.vm-hud .vm-sel-hp-track > i {
-  display: block;
-  width: 100%;
-  height: 100%;
-  transform-origin: left center;
-  background: var(--vm-ok);
-  transition: transform 140ms linear;
-}
-
-.vm-hud .vm-sel-hp-track > i.is-hurt { background: var(--vm-warn); }
-.vm-hud .vm-sel-hp-track > i.is-critical { background: var(--vm-danger); }
-
-.vm-hud .vm-sel-hp-text {
-  font-size: calc(10 * var(--vm-u));
-  font-weight: 600;
-  color: var(--vm-dim);
-  min-width: calc(64 * var(--vm-u));
-  text-align: right;
-}
-
 .vm-hud .vm-sel-count {
-  font-size: calc(17 * var(--vm-u));
+  font-size: calc(14 * var(--vm-u));
   font-weight: 700;
   color: var(--vm-accent);
   flex: 0 0 auto;
 }
 
-/* -- unit cards ---------------------------------------------------------- */
+/* -- the body: cameo left, description right ------------------------------ */
+
+.vm-hud .vm-sel-body {
+  display: flex;
+  align-items: stretch;
+  gap: calc(8 * var(--vm-u));
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
 
 .vm-hud .vm-sel-cards {
   display: flex;
-  align-items: flex-start;
-  gap: calc(4 * var(--vm-u));
-  flex: 1 1 auto;
-  min-height: 0;
+  align-items: stretch;
+  gap: calc(3 * var(--vm-u));
+  flex: 0 1 auto;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
@@ -806,23 +961,30 @@
 
 .vm-hud .vm-sel-cards::-webkit-scrollbar { height: 0; }
 
+/* Every property shell.css's bare `.vm-card` sets is restated here.  // shell guard */
 .vm-hud .vm-card {
   position: relative;
+  display: block;
+  flex-direction: row;
   flex: 0 0 auto;
-  width: calc(48 * var(--vm-u));
-  height: calc(44 * var(--vm-u));
+  width: calc(40 * var(--vm-u));
+  height: 100%;
   padding: 0;
+  gap: 0;
   border: 1px solid var(--vm-hairline);
   background: var(--vm-well);
   color: var(--vm-dim);
+  font: inherit;
+  text-align: center;
   cursor: pointer;
+  clip-path: none;
   transition: border-color 100ms linear, background-color 100ms linear, color 100ms linear;
 }
 
 .vm-hud .vm-card:hover,
 .vm-hud .vm-card:focus-visible {
-  background: rgba(var(--vm-accent-rgb), 0.14);
-  border-color: rgba(var(--vm-accent-rgb), 0.55);
+  background: rgba(var(--vm-accent-rgb), 0.16);
+  border-color: rgba(var(--vm-accent-rgb), 0.6);
   color: var(--vm-text);
   outline: none;
 }
@@ -830,25 +992,25 @@
 .vm-hud .vm-card.is-primary {
   border-color: var(--vm-accent);
   color: var(--vm-accent-hi);
-  box-shadow: inset 0 0 0 1px rgba(var(--vm-accent-rgb), 0.25);
+  box-shadow: inset 0 0 0 1px rgba(var(--vm-accent-rgb), 0.3);
 }
 
 .vm-hud .vm-card-icon {
   position: absolute;
   left: 50%;
-  top: calc(40%);
+  top: 42%;
   transform: translate(-50%, -50%);
-  width: calc(22 * var(--vm-u));
-  height: calc(22 * var(--vm-u));
+  width: calc(20 * var(--vm-u));
+  height: calc(20 * var(--vm-u));
 }
 
 .vm-hud .vm-card-name {
   position: absolute;
   left: calc(2 * var(--vm-u));
   right: calc(2 * var(--vm-u));
-  bottom: calc(7 * var(--vm-u));
+  bottom: calc(5 * var(--vm-u));
   text-align: center;
-  font-size: calc(7.5 * var(--vm-u));
+  font-size: calc(7 * var(--vm-u));
   letter-spacing: 0.06em;
   text-transform: uppercase;
   font-weight: 600;
@@ -867,9 +1029,9 @@
   right: calc(1 * var(--vm-u));
   top: calc(1 * var(--vm-u));
   padding: 0 calc(2 * var(--vm-u));
-  font-size: calc(9 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u));
   font-weight: 700;
-  line-height: calc(11 * var(--vm-u));
+  line-height: calc(10 * var(--vm-u));
   color: #060a10;
   background: var(--vm-accent);
 }
@@ -878,19 +1040,19 @@
   position: absolute;
   left: calc(2 * var(--vm-u));
   top: calc(2 * var(--vm-u));
-  width: calc(4 * var(--vm-u));
-  height: calc(4 * var(--vm-u));
+  width: calc(3 * var(--vm-u));
+  height: calc(3 * var(--vm-u));
   background: var(--vm-gold);
 }
 
-.vm-hud .vm-card-vet[data-rank='2'] { height: calc(9 * var(--vm-u)); }
+.vm-hud .vm-card-vet[data-rank='2'] { height: calc(8 * var(--vm-u)); }
 
 .vm-hud .vm-card-bar {
   position: absolute;
-  left: calc(3 * var(--vm-u));
-  right: calc(3 * var(--vm-u));
-  bottom: calc(3 * var(--vm-u));
-  height: calc(2.5 * var(--vm-u));
+  left: calc(2 * var(--vm-u));
+  right: calc(2 * var(--vm-u));
+  bottom: calc(2 * var(--vm-u));
+  height: calc(2 * var(--vm-u));
   background: rgba(255, 255, 255, 0.16);
   overflow: hidden;
 }
@@ -907,56 +1069,92 @@
 .vm-hud .vm-card-bar > i.is-hurt { background: var(--vm-warn); }
 .vm-hud .vm-card-bar > i.is-critical { background: var(--vm-danger); }
 
-/* -- stat row + stances --------------------------------------------------- */
+/* -- the description side ------------------------------------------------- */
+
+.vm-hud .vm-sel-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(3 * var(--vm-u));
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vm-hud .vm-sel-sub {
+  color: var(--vm-dim);
+  font-size: calc(9 * var(--vm-u));
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 0 auto;
+}
 
 .vm-hud .vm-sel-stats {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: calc(11 * var(--vm-u));
+  gap: calc(3 * var(--vm-u)) calc(10 * var(--vm-u));
   flex: 0 0 auto;
-  height: calc(19 * var(--vm-u));
-  border-top: 1px solid var(--vm-hairline-soft);
-  padding-top: calc(3 * var(--vm-u));
+  min-width: 0;
 }
 
+/* THE CLIPPING FIX.
+ * `flex-direction`, `padding` and `background` are stated because shell.css
+ * declares a bare `.vm-stat { flex-direction: column; padding: 16px 18px; ...}`
+ * for the post-match summary board, and an unstated property is a property the
+ * shell supplies. That is what stacked the icon, the key and the value into
+ * three rows and pushed `Infantry` / `52.4 dps` through the bottom of the
+ * panel. `?shot=` never loads the shell chunk, which is why the screenshot
+ * harness never saw it.  // shell guard */
 .vm-hud .vm-stat {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: calc(4 * var(--vm-u));
+  padding: 0;
+  background: none;
   color: var(--vm-dim);
+  white-space: nowrap;
 }
 
 .vm-hud .vm-stat.is-blank { opacity: 0.4; }
 
 .vm-hud .vm-stat-icon {
-  width: calc(11 * var(--vm-u));
-  height: calc(11 * var(--vm-u));
+  width: calc(10 * var(--vm-u));
+  height: calc(10 * var(--vm-u));
   color: var(--vm-faint);
 }
 
 .vm-hud .vm-stat-key {
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u));
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--vm-faint);
 }
 
+/* `letter-spacing` and `font-variant-numeric` are stated for the same reason
+   as `.vm-stat` above.  // shell guard */
 .vm-hud .vm-stat-value {
   font-size: calc(11 * var(--vm-u));
   font-weight: 600;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums lining-nums;
   color: var(--vm-text);
   white-space: nowrap;
 }
 
+/* -- stance + relocate ---------------------------------------------------- */
+
 .vm-hud .vm-stances {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: calc(2 * var(--vm-u));
+  flex: 0 0 auto;
 }
 
 .vm-hud .vm-stance-label {
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u));
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--vm-faint);
@@ -964,8 +1162,8 @@
 }
 
 .vm-hud .vm-stance {
-  width: calc(19 * var(--vm-u));
-  height: calc(15 * var(--vm-u));
+  width: calc(17 * var(--vm-u));
+  height: calc(13 * var(--vm-u));
   padding: 0;
   border: 1px solid transparent;
   background: var(--vm-well);
@@ -978,8 +1176,8 @@
 }
 
 .vm-hud .vm-stance > svg {
-  width: calc(11 * var(--vm-u));
-  height: calc(11 * var(--vm-u));
+  width: calc(10 * var(--vm-u));
+  height: calc(10 * var(--vm-u));
 }
 
 .vm-hud .vm-stance:hover,
@@ -992,150 +1190,144 @@
 .vm-hud .vm-stance.is-active {
   color: var(--vm-accent-hi);
   border-color: var(--vm-accent);
-  background: rgba(var(--vm-accent-rgb), 0.16);
+  background: rgba(var(--vm-accent-rgb), 0.18);
 }
 
-/* -- the idle status board ------------------------------------------------ */
+/* -- the health bar: full width, number laid over it ---------------------- */
 
-.vm-hud .vm-status-head {
-  display: flex;
-  align-items: center;
-  gap: calc(8 * var(--vm-u));
-  height: calc(17 * var(--vm-u));
+.vm-hud .vm-sel-hp {
+  position: relative;
   flex: 0 0 auto;
+  height: calc(11 * var(--vm-u));
+  min-width: 0;
 }
 
-.vm-hud .vm-status-title {
-  font-size: calc(11 * var(--vm-u));
-  color: var(--vm-dim);
-}
-
-.vm-hud .vm-status-sub {
-  font-size: calc(10 * var(--vm-u));
-  letter-spacing: 0.06em;
-  color: var(--vm-faint);
-  white-space: nowrap;
+.vm-hud .vm-sel-hp-track {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.10);
+  outline: 1px solid rgba(0, 0, 0, 0.55);
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.vm-hud .vm-status-grid {
-  display: flex;
-  align-items: center;
-  gap: calc(16 * var(--vm-u));
-  flex: 1 1 auto;
-  min-height: 0;
-  flex-wrap: wrap;
+.vm-hud .vm-sel-hp-track > i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  background: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 55%),
+    var(--vm-ok);
+  transition: transform 140ms linear;
 }
 
-.vm-hud .vm-status-cell {
-  display: flex;
-  align-items: center;
-  gap: calc(5 * var(--vm-u));
+.vm-hud .vm-sel-hp-track > i.is-hurt {
+  background: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 55%),
+    var(--vm-warn);
 }
 
-.vm-hud .vm-status-cell > svg {
-  width: calc(13 * var(--vm-u));
-  height: calc(13 * var(--vm-u));
-  color: var(--vm-faint);
+.vm-hud .vm-sel-hp-track > i.is-critical {
+  background: linear-gradient(180deg,
+    rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 55%),
+    var(--vm-danger);
 }
 
-.vm-hud .vm-status-body {
-  display: flex;
-  flex-direction: column;
-  gap: calc(1 * var(--vm-u));
-}
-
-.vm-hud .vm-status-label {
-  font-size: calc(8 * var(--vm-u));
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--vm-faint);
-  line-height: 1;
-}
-
-.vm-hud .vm-status-value {
-  font-size: calc(14 * var(--vm-u));
+.vm-hud .vm-sel-hp-text {
+  position: absolute;
+  left: calc(5 * var(--vm-u));
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: calc(9 * var(--vm-u));
   font-weight: 700;
-  line-height: 1;
-  color: var(--vm-text);
+  letter-spacing: 0.06em;
+  color: #04070d;
+  text-shadow: 0 0 calc(2 * var(--vm-u)) rgba(255, 255, 255, 0.35);
+  pointer-events: none;
 }
 
-.vm-hud .vm-status-value.is-warn { color: var(--vm-warn); }
-.vm-hud .vm-status-value.is-down { color: var(--vm-danger); }
-.vm-hud .vm-status-value.is-good { color: var(--vm-ok); }
+/* -- the advisory line (what the status board became) --------------------- */
 
-/* The advice line. One sentence, and it is the state of the base, not flavour. */
-.vm-hud .vm-status-alert {
+.vm-hud .vm-sel-idle {
   display: flex;
   align-items: center;
   gap: calc(5 * var(--vm-u));
+  height: calc(13 * var(--vm-u));
   flex: 0 0 auto;
-  height: calc(19 * var(--vm-u));
-  border-top: 1px solid var(--vm-hairline-soft);
-  padding-top: calc(3 * var(--vm-u));
-  font-size: calc(11 * var(--vm-u));
+  font-size: calc(10 * var(--vm-u));
   letter-spacing: 0.03em;
   color: var(--vm-dim);
   white-space: nowrap;
   overflow: hidden;
 }
 
-.vm-hud .vm-status-alert > svg {
-  width: calc(12 * var(--vm-u));
-  height: calc(12 * var(--vm-u));
+.vm-hud .vm-sel-idle > svg {
+  width: calc(11 * var(--vm-u));
+  height: calc(11 * var(--vm-u));
   flex: 0 0 auto;
   color: var(--vm-accent);
 }
 
-.vm-hud .vm-status-alert.is-warn { color: var(--vm-warn); }
-.vm-hud .vm-status-alert.is-warn > svg { color: var(--vm-warn); }
-.vm-hud .vm-status-alert.is-alert { color: var(--vm-danger); }
-.vm-hud .vm-status-alert.is-alert > svg { color: var(--vm-danger); }
+.vm-hud .vm-sel-idle.is-warn { color: var(--vm-warn); }
+.vm-hud .vm-sel-idle.is-warn > svg { color: var(--vm-warn); }
+.vm-hud .vm-sel-idle.is-alert { color: var(--vm-danger); }
+.vm-hud .vm-sel-idle.is-alert > svg { color: var(--vm-danger); }
 
 /* ==========================================================================
- * 8. THE BUILD PANEL (bottom right)
+ * 8. THE BUILD PALETTE (bottom right)
+ *
+ * The reference's notched tabs RISE ABOVE the panel body, which is why the
+ * dock is a bare container and `.vm-build-body` is the panel. The active tab
+ * is lit and joins the body; the inactive ones sit back and darker.
  * ========================================================================== */
 
+/* `padding` and `border-bottom` are stated because shell.css declares a bare
+   `.vm-tabs` for the menu's own tab rail.  // shell guard */
 .vm-hud .vm-tabs {
   display: flex;
   align-items: stretch;
   gap: calc(2 * var(--vm-u));
-  height: calc(22 * var(--vm-u));
+  height: calc(14 * var(--vm-u));
+  padding: 0;
+  border-bottom: 0;
   flex: 0 0 auto;
-  border-bottom: 1px solid var(--vm-hairline-soft);
+  pointer-events: auto;
 }
 
-/* Icon OVER label, not beside it. Side by side, a 65-unit tab had 37 units of
-   text room and "STRUCTURES" needs 50 — every one of the four words truncated
-   to "STRUCTI", which is worse than the unlabelled icons it replaced. Stacked,
-   the label gets the full tab width. */
+/* One word per tab, on one line. The icon-over-label stack cost 22u of band
+   height for a picture that the word already says. */
 .vm-hud .vm-tab {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
   display: inline-flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: calc(1 * var(--vm-u));
-  padding: 0 calc(9 * var(--vm-u)) 0 calc(2 * var(--vm-u));
+  gap: calc(3 * var(--vm-u));
+  padding: 0 calc(4 * var(--vm-u)) 0 calc(3 * var(--vm-u));
   border: 0;
-  background: transparent;
-  color: var(--vm-dim);
+  background: rgba(6, 11, 22, 0.88);
+  color: var(--vm-faint);
   cursor: pointer;
-  transition: color 100ms linear;
+  /* The notch: the right edge leans, the top-left corner is cut. */
+  clip-path: polygon(
+    calc(4 * var(--vm-u)) 0,
+    calc(100% - 5 * var(--vm-u)) 0,
+    100% 100%,
+    0 100%
+  );
+  transition: color 100ms linear, background-color 100ms linear;
 }
 
+/* The lit top edge of a tab, which is the same single crisp edge the panels
+   use — drawn only on the active one. */
 .vm-hud .vm-tab::after {
-  /* The active rule. 2 px of accent, and the ONLY glow in the chrome besides
-     the slot progress bar. */
   content: '';
   position: absolute;
-  left: calc(3 * var(--vm-u));
-  right: calc(3 * var(--vm-u));
-  bottom: calc(-1 * var(--vm-u));
-  height: calc(2 * var(--vm-u));
+  left: calc(4 * var(--vm-u));
+  right: calc(5 * var(--vm-u));
+  top: 0;
+  height: calc(1.5 * var(--vm-u));
   background: var(--vm-accent);
   opacity: 0;
   transition: opacity 120ms linear;
@@ -1143,44 +1335,25 @@
 
 .vm-hud .vm-tab:hover,
 .vm-hud .vm-tab:focus-visible { color: var(--vm-text); outline: none; }
-.vm-hud .vm-tab:focus-visible { box-shadow: inset 0 0 0 1px rgba(var(--vm-accent-rgb), 0.5); }
 
-.vm-hud .vm-tab.is-active { color: var(--vm-accent-hi); }
+.vm-hud .vm-tab.is-active {
+  color: var(--vm-accent-hi);
+  background: rgba(16, 32, 56, 0.95);
+}
+
 .vm-hud .vm-tab.is-active::after {
   opacity: 1;
-  box-shadow: 0 0 calc(5 * var(--vm-u)) rgba(var(--vm-accent-rgb), 0.55);
+  box-shadow: 0 0 calc(4 * var(--vm-u)) rgba(var(--vm-accent-rgb), 0.7);
 }
 
-.vm-hud .vm-tab-icon {
-  width: calc(11 * var(--vm-u));
-  height: calc(11 * var(--vm-u));
-  flex: 0 0 auto;
-}
-
-/* EVERY tab is named now. Four icons with no words is a rebus, and the one
-   thing a new player must be able to do is find where tanks come from. The
-   dock was widened to 324 units to pay for it. */
 .vm-hud .vm-tab-label {
   max-width: 100%;
   font-size: calc(8 * var(--vm-u));
-  letter-spacing: 0.06em;
+  letter-spacing: 0.10em;
   line-height: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-/* Icon and key badge, one centred row.
-   The badge used to be absolutely parked in the tab's top-right corner. Measured
-   at 1440p that put it 28px from its own icon and 25px from the NEXT tab's — a
-   badge floating in the gutter, owned by neither. Pairing it with the icon makes
-   ownership unambiguous at a glance, which is the entire job of a key badge. */
-.vm-hud .vm-tab-top {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: calc(2 * var(--vm-u));
-  min-width: 0;
 }
 
 .vm-hud .vm-tab .vm-hk {
@@ -1195,21 +1368,19 @@
   border-color: rgba(var(--vm-accent-rgb), 0.6);
 }
 
-/* Narrow frames drop the label rather than the icon: the icon is the target,
-   the word is the confirmation. */
+/* Narrow frames drop the key badge rather than the word: the word is what a
+   new player reads, the badge is what a returning one already knows. */
 @media (max-width: 1080px) {
-  .vm-hud .vm-tab-label { display: none; }
   .vm-hud .vm-tab .vm-hk { display: none; }
 }
 
-/* Top-LEFT, and now the only thing in a corner — the key badge moved into the
-   icon row, so both corners are free and the dot keeps the one it had. */
+/* Top-LEFT, in the tab's own cut corner. */
 .vm-hud .vm-tab-alert {
   position: absolute;
   top: calc(2 * var(--vm-u));
-  left: calc(2 * var(--vm-u));
-  width: calc(4 * var(--vm-u));
-  height: calc(4 * var(--vm-u));
+  left: calc(6 * var(--vm-u));
+  width: calc(3.5 * var(--vm-u));
+  height: calc(3.5 * var(--vm-u));
   border-radius: 50%;
   background: var(--vm-ok);
   animation: vm-pulse 1.6s ease-in-out infinite;
@@ -1223,16 +1394,15 @@
   gap: calc(2 * var(--vm-u));
   padding-left: calc(4 * var(--vm-u));
   margin-left: calc(2 * var(--vm-u));
-  border-left: 1px solid var(--vm-hairline-soft);
   flex: 0 0 auto;
 }
 
 .vm-hud .vm-tool {
-  width: calc(19 * var(--vm-u));
-  height: calc(17 * var(--vm-u));
+  width: calc(17 * var(--vm-u));
+  height: calc(14 * var(--vm-u));
   padding: 0;
   border: 1px solid transparent;
-  background: transparent;
+  background: rgba(6, 11, 22, 0.88);
   color: var(--vm-dim);
   cursor: pointer;
   display: inline-flex;
@@ -1242,8 +1412,8 @@
 }
 
 .vm-hud .vm-tool > svg {
-  width: calc(12 * var(--vm-u));
-  height: calc(12 * var(--vm-u));
+  width: calc(11 * var(--vm-u));
+  height: calc(11 * var(--vm-u));
 }
 
 .vm-hud .vm-tool:hover,
@@ -1252,14 +1422,14 @@
 .vm-hud .vm-tool.is-active {
   color: var(--vm-accent-hi);
   border-color: var(--vm-accent);
-  background: rgba(var(--vm-accent-rgb), 0.16);
+  background: rgba(var(--vm-accent-rgb), 0.18);
 }
 
 /* The sell tool is destructive, so its ARMED state is red, not accent. */
 .vm-hud .vm-tool:last-child.is-active {
   color: var(--vm-danger);
   border-color: var(--vm-danger);
-  background: rgba(255, 77, 61, 0.16);
+  background: rgba(255, 77, 61, 0.18);
 }
 
 /* -- the slot grid -------------------------------------------------------- */
@@ -1267,13 +1437,12 @@
 .vm-hud .vm-grid {
   display: grid;
   grid-template-columns: repeat(var(--vm-grid-cols, 6), 1fr);
-  grid-auto-rows: calc(32 * var(--vm-u));
+  grid-auto-rows: calc(30 * var(--vm-u));
   gap: calc(3 * var(--vm-u));
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding-top: calc(3 * var(--vm-u));
   scrollbar-width: thin;
   scrollbar-color: rgba(var(--vm-accent-rgb), 0.35) transparent;
 }
@@ -1295,50 +1464,60 @@
 
 .vm-hud .vm-slot:hover,
 .vm-hud .vm-slot:focus-visible {
-  background: rgba(var(--vm-accent-rgb), 0.14);
-  border-color: rgba(var(--vm-accent-rgb), 0.6);
+  background: rgba(var(--vm-accent-rgb), 0.16);
+  border-color: rgba(var(--vm-accent-rgb), 0.65);
   color: var(--vm-text);
   outline: none;
 }
 
-.vm-hud .vm-slot:active { background: rgba(var(--vm-accent-rgb), 0.22); }
+.vm-hud .vm-slot:active { background: rgba(var(--vm-accent-rgb), 0.24); }
 
-/* The icon sits ABOVE centre so the cost has its own band along the bottom.
-   Overlapping the two is the fastest way to make a 6-wide grid unreadable. */
+/* The cameo sits above centre so the cost badge has its own band along the
+   bottom. Overlapping the two is the fastest way to make the grid unreadable. */
 .vm-hud .vm-slot-icon {
   position: absolute;
   left: 50%;
-  top: calc(38%);
+  top: 40%;
   transform: translate(-50%, -50%);
   width: calc(16 * var(--vm-u));
   height: calc(16 * var(--vm-u));
 }
 
+/* The cost badge, BOTTOM LEFT with its credit glyph — the reference's
+   placement. It used to be a bare number bottom-right, which read as a
+   quantity rather than a price. */
 .vm-hud .vm-slot-cost {
   position: absolute;
-  left: 0;
-  right: calc(3 * var(--vm-u));
-  bottom: calc(4 * var(--vm-u));
-  text-align: right;
-  font-size: calc(9 * var(--vm-u));
+  left: calc(2 * var(--vm-u));
+  bottom: calc(2 * var(--vm-u));
+  display: inline-flex;
+  align-items: center;
+  gap: calc(2 * var(--vm-u));
+  font-size: calc(8.5 * var(--vm-u));
   font-weight: 700;
   line-height: 1;
   color: var(--vm-dim);
   pointer-events: none;
 }
 
+.vm-hud .vm-slot-cost > svg {
+  width: calc(7 * var(--vm-u));
+  height: calc(7 * var(--vm-u));
+  color: var(--vm-gold);
+}
+
 /* Cannot afford it right now. Amber, not the locked grey: "come back with
    money" and "you do not have the tech" are different problems. */
 .vm-hud .vm-slot.is-poor .vm-slot-cost { color: var(--vm-warn); }
 
-/* The slot hotkey, bottom-left, opposite the cost. */
+/* The slot hotkey, top-right, opposite the cost. */
 .vm-hud .vm-slot-key {
   position: absolute;
-  left: calc(2 * var(--vm-u));
-  bottom: calc(2.5 * var(--vm-u));
-  min-width: calc(9 * var(--vm-u));
-  height: calc(9 * var(--vm-u));
-  font-size: calc(7 * var(--vm-u));
+  right: calc(1.5 * var(--vm-u));
+  top: calc(1.5 * var(--vm-u));
+  min-width: calc(8 * var(--vm-u));
+  height: calc(8 * var(--vm-u));
+  font-size: calc(6.5 * var(--vm-u));
   border-color: var(--vm-hairline-soft);
 }
 
@@ -1352,13 +1531,13 @@
   position: absolute;
   left: 0;
   top: 0;
-  min-width: calc(11 * var(--vm-u));
-  height: calc(11 * var(--vm-u));
+  min-width: calc(10 * var(--vm-u));
+  height: calc(10 * var(--vm-u));
   padding: 0 calc(2 * var(--vm-u));
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: calc(9 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u));
   font-weight: 700;
   color: #060a10;
   background: var(--vm-accent);
@@ -1369,9 +1548,9 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(4 * var(--vm-u));
+  bottom: calc(3 * var(--vm-u));
   text-align: center;
-  font-size: calc(8 * var(--vm-u));
+  font-size: calc(7.5 * var(--vm-u));
   letter-spacing: 0.18em;
   color: var(--vm-ok);
   pointer-events: none;
@@ -1382,11 +1561,11 @@
 .vm-hud .vm-slot-eta {
   position: absolute;
   right: calc(2 * var(--vm-u));
-  top: calc(1.5 * var(--vm-u));
+  bottom: calc(2 * var(--vm-u));
   display: inline-flex;
   align-items: center;
   gap: calc(2 * var(--vm-u));
-  font-size: calc(8.5 * var(--vm-u));
+  font-size: calc(8 * var(--vm-u));
   font-weight: 700;
   line-height: 1;
   color: var(--vm-accent-hi);
@@ -1394,14 +1573,14 @@
 }
 
 .vm-hud .vm-slot-eta > svg {
-  width: calc(8 * var(--vm-u));
-  height: calc(8 * var(--vm-u));
+  width: calc(7 * var(--vm-u));
+  height: calc(7 * var(--vm-u));
 }
 
 /* Why a slot is dead. `is-locked` gets the padlock, a missing prerequisite gets
-   a word. Either way the tooltip carries the whole sentence.
-   It sits along the TOP edge: along the bottom it covered the cost and the
-   hotkey, and for the FUNDS case the cost is the entire point. */
+   a word. Either way the tooltip carries the whole sentence. It sits along the
+   TOP edge: along the bottom it covered the cost, and for the FUNDS case the
+   cost is the entire point. */
 .vm-hud .vm-slot-flag {
   position: absolute;
   left: 0;
@@ -1412,33 +1591,33 @@
   align-items: center;
   justify-content: center;
   gap: calc(2 * var(--vm-u));
-  font-size: calc(7 * var(--vm-u));
+  font-size: calc(6.5 * var(--vm-u));
   font-weight: 700;
   letter-spacing: 0.10em;
   text-transform: uppercase;
   color: var(--vm-text);
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.6);
   pointer-events: none;
 }
 
 .vm-hud .vm-slot-flag > svg {
-  width: calc(7 * var(--vm-u));
-  height: calc(7 * var(--vm-u));
+  width: calc(6.5 * var(--vm-u));
+  height: calc(6.5 * var(--vm-u));
 }
 
 .vm-hud .vm-slot-flag.is-funds { color: var(--vm-warn); }
 .vm-hud .vm-slot-flag.is-power { color: var(--vm-warn); }
 .vm-hud .vm-slot-flag.is-tech { color: var(--vm-danger); }
 
-/* The progress bar: 2 px of accent along the bottom edge with a slight glow.
-   NOT a radial clock wipe — the wipe belonged to the painted cameo it used to
-   sit on, and it reads as damage on a flat icon. */
+/* The progress bar along the bottom edge, with a slight glow. NOT a radial
+   clock wipe — the wipe belonged to a painted cameo and reads as damage on a
+   drawn one. */
 .vm-hud .vm-slot-track {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: calc(2.5 * var(--vm-u));
+  height: calc(2 * var(--vm-u));
   background: rgba(255, 255, 255, 0.10);
   overflow: visible;
   pointer-events: none;
@@ -1456,17 +1635,26 @@
   transition: transform 100ms linear;
 }
 
+/* THE ITEM UNDER CONSTRUCTION SPANS TWO CELLS, which is the reference's one
+   piece of grid asymmetry and the only thing in the palette that says "this is
+   happening now" without being read. */
 .vm-hud .vm-slot.is-building {
-  border-color: rgba(var(--vm-accent-rgb), 0.5);
-  background: rgba(var(--vm-accent-rgb), 0.08);
+  grid-column: span 2;
+  border-color: rgba(var(--vm-accent-rgb), 0.55);
+  background: rgba(var(--vm-accent-rgb), 0.10);
 }
 
+.vm-hud .vm-slot.is-building .vm-slot-icon { left: calc(11 * var(--vm-u)); }
+
 .vm-hud .vm-slot.is-ready {
+  grid-column: span 2;
   border-color: var(--vm-ok);
-  background: rgba(79, 217, 127, 0.14);
+  background: rgba(79, 217, 127, 0.16);
   color: var(--vm-text);
   animation: vm-ready-tick 1.6s ease-in-out infinite;
 }
+
+.vm-hud .vm-slot.is-ready .vm-slot-icon { left: calc(11 * var(--vm-u)); }
 
 /* READY owns the bottom band once it appears; the cost has done its job. */
 .vm-hud .vm-slot.is-ready .vm-slot-cost { visibility: hidden; }
@@ -1489,9 +1677,7 @@
 }
 
 /* Locked. DIMMED, never disabled: it must stay hoverable so the tooltip can
-   say what unlocks it. That sentence is the tech tree's only tutorial — and the
-   floor is now 0.5, not 0.34, because at 0.34 the reason banner was as
-   invisible as the thing it was explaining. */
+   say what unlocks it. That sentence is the tech tree's only tutorial. */
 .vm-hud .vm-slot.is-locked {
   opacity: 0.5;
   border-color: var(--vm-hairline-soft);
@@ -1941,20 +2127,24 @@
  * two custom properties, so there is exactly ONE place that knows the blurred
  * and unblurred surfaces are a matched pair.
  *
- * The compensation is opacity, not colour: 0.86 -> 0.965 on the standard glass
- * and 0.93 -> 0.985 on the deep glass, same hue, same hairline, same notch. The
- * gap between the pair is deliberately wider than it looks it should be: a
- * blurred panel is compositing a LOW-FREQUENCY average of the battlefield, so
- * the text behind it has no competing detail. An unblurred one at the same
- * alpha is compositing hard structure edges and clipped highlights straight
- * through the glass, and every one of those is a legibility hazard the blurred
- * path simply does not have.
+ * The compensation is opacity, not colour: 0.94 -> 0.978 on the standard glass
+ * and 0.965 -> 0.99 on the deep glass, same hue, same frame, same chamfer. The
+ * gap between the pair is smaller than it used to be only because the reference
+ * fill is already near-opaque; the reasoning is unchanged. A blurred panel is
+ * compositing a LOW-FREQUENCY average of the battlefield, so the text over it
+ * has no competing detail. An unblurred one at the same alpha is compositing
+ * hard structure edges and clipped highlights straight through the fill, and
+ * every one of those is a legibility hazard the blurred path does not have.
+ *
+ * The edge lift goes with them: without a blur behind it the radial ramp is
+ * reading real scene detail rather than an average, so it is pulled back.
  * ========================================================================== */
 
 html.vm-no-blur .vm-hud {
   --vm-blur: none;
-  --vm-glass: rgba(9, 13, 20, 0.965);
-  --vm-glass-deep: rgba(6, 9, 14, 0.985);
+  --vm-glass: rgba(8, 13, 24, 0.978);
+  --vm-glass-deep: rgba(5, 8, 16, 0.99);
+  --vm-fill-lift: rgba(19, 32, 58, 0.42);
 }
 
 /* Same surface for a browser that cannot do it at all. This is the no-JS
@@ -1962,7 +2152,8 @@ html.vm-no-blur .vm-hud {
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .vm-hud {
     --vm-blur: none;
-    --vm-glass: rgba(9, 13, 20, 0.965);
-    --vm-glass-deep: rgba(6, 9, 14, 0.985);
+    --vm-glass: rgba(8, 13, 24, 0.978);
+    --vm-glass-deep: rgba(5, 8, 16, 0.99);
+    --vm-fill-lift: rgba(19, 32, 58, 0.42);
   }
 }

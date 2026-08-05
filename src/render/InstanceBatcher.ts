@@ -189,6 +189,26 @@ export class BatchPart {
     this.part = spec.part ?? PartId.Root;
 
     this.geometry = instanceGeometry(spec.geometry, name);
+
+    // A PART THAT DRAWS NOTHING IS INVISIBLE, NOT MISSING.
+    //
+    // Everything else in this file protects an instance's SLOT. None of it can
+    // see a model whose geometry has no triangles, or whose triangles are a
+    // millimetre across: the slot is allocated, the matrix is written, the draw
+    // call is issued, and the screen stays empty. That reads to a player as
+    // "this unit is invisible" and to every counter in the engine as "drawn",
+    // which is why it is checked once, here, at construction — where it costs
+    // nothing and where the batch can still be named.
+    const verts = this.geometry.index !== null
+      ? this.geometry.index.count
+      : (this.geometry.getAttribute('position')?.count ?? 0);
+    if (verts < 3) {
+      console.error(
+        `[render.batch] "${name}" part ${PART_NAMES[this.part] ?? this.part} has ` +
+        `${verts} vertices — it will occupy an instance slot and draw nothing.`,
+      );
+    }
+
     const bs = this.geometry.boundingSphere!;
     const anchor = Math.sqrt(
       this.offsetX * this.offsetX + this.offsetY * this.offsetY + this.offsetZ * this.offsetZ,
@@ -367,6 +387,29 @@ export class InstanceBatch {
   /** Instances the GPU is asked to draw: everything up to the high-water slot. */
   get drawCount(): number { return this.high + 1; }
   get partCount(): number { return this.parts.length; }
+  /**
+   * Instances whose transform was written THIS frame, i.e. `addBounds` calls
+   * since `beginFrame`. Must equal `liveCount` at `endFrame` — see
+   * `unwrittenSlots`.
+   */
+  get writtenCount(): number { return this.boundsCount; }
+
+  /**
+   * THE INVARIANT NOBODY WAS CHECKING.
+   *
+   * Every slot this batch has handed out must be rewritten every frame, because
+   * the culling sphere is rebuilt from ONLY the instances that were written. A
+   * live slot that misses its write is not merely stale: it is outside the
+   * sphere the renderer culls against, so the GPU may skip the entire batch —
+   * and if every write is missed the sphere collapses onto the world origin and
+   * the whole model disappears while `liveCount` still reports it present.
+   *
+   * That is the exact shape of "some enemies are invisible", so it is counted
+   * here rather than left to a reader to notice. Cost is one integer compare per
+   * batch per frame.
+   */
+  unwrittenSlots = 0;
+  private unwrittenReported = false;
 
   /** The constant elements of a column-major affine matrix: [3]=[7]=[11]=0, [15]=1. */
   private initSlotMatrix(slot: number): void {
@@ -474,6 +517,20 @@ export class InstanceBatch {
   endFrame(): void {
     const visible = this.live > 0;
     const draw = visible ? this.high + 1 : 0;
+
+    // See `unwrittenSlots`. One compare; the report is built only when it fires.
+    if (this.boundsCount !== this.live) {
+      const missed = this.live - this.boundsCount;
+      this.unwrittenSlots += missed > 0 ? missed : -missed;
+      if (!this.unwrittenReported) {
+        this.unwrittenReported = true;
+        console.error(
+          `[render.batch] "${this.name}": ${this.live} live instances but ` +
+          `${this.boundsCount} were written this frame. The culling sphere is ` +
+          'built from written instances only, so the missing ones can vanish.',
+        );
+      }
+    }
 
     let cx = 0, cy = 0, cz = 0, radius = 0;
     if (this.boundsCount > 0) {
@@ -586,6 +643,16 @@ export class InstanceBatcher {
   get instanceCount(): number {
     let n = 0;
     for (let i = 0; i < this.batches.length; i++) n += this.batches[i].liveCount;
+    return n;
+  }
+
+  /** Live batches. DIAGNOSTICS ONLY — never mutate, never hold across a match. */
+  get all(): readonly InstanceBatch[] { return this.batches; }
+
+  /** Total slots that were live but unwritten. See `InstanceBatch.unwrittenSlots`. */
+  get unwrittenSlots(): number {
+    let n = 0;
+    for (let i = 0; i < this.batches.length; i++) n += this.batches[i].unwrittenSlots;
     return n;
   }
 

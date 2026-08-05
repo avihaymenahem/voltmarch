@@ -27,61 +27,118 @@
  * call, and all of it happens at RenderPhase.Hud — strictly before Bootstrap's
  * `present()` runs the real frame.
  *
+ * RESOLUTION — MEASURED, NOT ASSUMED
+ * ----------------------------------
+ * The header used to say the fallback existed because "a def key may not
+ * resolve to a model, and until every art module lands most of them will not".
+ * `tools/cameo-audit.mjs` measured that claim against the running game and it
+ * was wrong in the worst direction: the art HAD landed — 79 of 79 def keys have
+ * a real model built at boot — and the resolution rate was **0 %**, because
+ * `provider` defaulted to `() => null` and `setModelProvider` had ZERO call
+ * sites anywhere in `src/**`. Every cameo in the game took the 2D path, and the
+ * one capability this module exists to provide was never once exercised.
+ *
+ * That is the repo's signature failure — a capability that exists and is not
+ * used — so the fix is structural, not another call site to forget. §3B is a
+ * complete content-key -> model-key table for all four armies, and
+ * `createCameoModelProvider()` reads the art libraries directly. The renderer
+ * DEFAULTS to it. `setModelProvider` survives only as a test/harness override.
+ * `tests/cameos-coverage.spec.ts` fails the day a faction is added without its
+ * mappings, which is exactly how this broke.
+ *
+ * WHY THIS FILE MAY IMPORT `src/art/**` NOW
+ * -----------------------------------------
+ * The old rule was that the HUD must not import the art modules, because "a
+ * missing sibling breaks the whole interface". The injected lookup that rule
+ * produced is what shipped 0 %. The libraries are module-level singletons that
+ * the `*.system.ts` glob already pulls into every build, so importing them here
+ * adds no bundle weight and cannot fail independently — and the resolver treats
+ * an empty library as a miss, so a library that never gets built degrades to
+ * the 2D fallback exactly as before instead of throwing.
+ *
  * FALLBACK
  * --------
- * A def key may not resolve to a model, and until every art module lands most
- * of them will not. `paintFallback` therefore draws the cameo in 2D — same
- * backdrop, same drawn horizon, same contact shadow, same three-quarter read,
- * same crisp frame — from a library of VECTOR SILHOUETTES (§6): 29 small
- * assemblies of boxes, cylinders and domes posed in a true isometric
- * projection and painted as flat faces with crisp panel lines.
- *
- * That library is the fix for the complaint this pass exists to answer. The
- * old fallback drew one grey box, one darker box and one lighter box for every
- * subject in the game, so twenty cameos were twenty identical grey tiles with
- * a stick on top. Now a Construction Yard has a crane, a refinery has a silo,
- * a tank has tracks and a barrel, and an attack dog has four legs — all at
- * 60 x 48 logical pixels, all drawn from paths, with no per-pixel noise
- * anywhere in the cell.
+ * Still here, and still correct, for the two cases that remain: a def whose
+ * model genuinely does not exist, and a frame before the art systems have run
+ * their `init()`. `paintFallback` draws the cameo in 2D — same backdrop, same
+ * contact shadow, same three-quarter read, same crisp frame — from a library of
+ * VECTOR SILHOUETTES (§6): 29 small assemblies of boxes, cylinders and domes
+ * posed in a true isometric projection and painted as flat faces with crisp
+ * panel lines. No per-pixel noise anywhere in the cell.
  * ============================================================================
  */
 
 import * as THREE from 'three';
 
-import { HUD_CAMEO, HUD_SKIN_ALLIES, HUD_SKIN_SOVIETS } from '../core/config';
-import { BuildTab, Faction } from '../core/types';
+import { FACTION_PALETTE, HUD_CAMEO } from '../core/config';
+import { hexToLinearRgb } from '../core/math';
+import { BuildTab, Faction, FACTION_PALETTE_KEYS } from '../core/types';
+import { buildingLibrary } from '../art/BuildingFactory';
+import { unitLibrary } from '../art/UnitFactory';
+import { meridianUnitLibrary } from '../art/Faction3Units';
+import { meridianBuildingLibrary } from '../art/Faction3Buildings';
+import { reclaimUnitLibrary } from '../art/Faction4Units';
+import { reclaimBuildingLibrary } from '../art/Faction4Buildings';
 import { mixHex, rgba } from './Chrome';
 
 /* ==========================================================================
- * SECTION 1 — THEATRE BACKDROPS
+ * SECTION 1 — BACKDROPS
  *
- * "Full-bleed environment backdrop matching the current theatre" (§2.8). The
- * colour here is FULLY SATURATED on purpose — the cameo grid is one of the few
- * places allowed above the frame's tone contract, exactly like the ore and the
- * muzzle flashes.
+ * Two families, and the split is deliberate.
+ *
+ * `panel` is the DEFAULT and it is what `docs/refs/target-hud.png` actually
+ * shows: the cameo cells there are not landscapes. They are the same near-black
+ * blue panel as every other surface in that interface — `#080d18` at the centre
+ * lifting toward `#0d1526` at the edges (TARGET_LOOK §A.1) — with the structure
+ * standing on it, evenly lit, under a soft contact shadow. No sky, no horizon,
+ * no sun bloom. Against a bright sky the pale concrete of a Construction Yard
+ * loses its silhouette entirely, which is the single largest legibility
+ * difference between our grid and the reference.
+ *
+ * The four THEATRE backdrops are the original's "full-bleed environment
+ * backdrop matching the current theatre" (§2.8) and are kept intact, because a
+ * mission briefing or a codex screen may still want the diorama read. They are
+ * reached by asking for them; nothing gets one by default.
  * ========================================================================== */
 
-export type Theatre = 'temperate' | 'desert' | 'snow' | 'urban';
+export type Theatre = 'panel' | 'temperate' | 'desert' | 'snow' | 'urban';
 
 interface Backdrop {
-  /** Sky, top to horizon. */
+  /** Sky, top to horizon. On a panel backdrop this is the outer field. */
   skyTop: string;
   skyBottom: string;
-  /** Ground, horizon to bottom. */
+  /** Ground, horizon to bottom. On a panel backdrop this is the inner field. */
   groundFar: string;
   groundNear: string;
   /** Warm sun bloom centre, upper left. */
   sun: string;
+  /**
+   * A panel has no horizon and no sun disc: it is one radial ramp plus the
+   * frame's own falloff. Drawing the horizon rule on it would invent a ground
+   * plane the reference does not have.
+   */
+  panel?: true;
 }
 
 const BACKDROPS: Readonly<Record<Theatre, Backdrop>> = {
+  // Centre `#0D1526` -> edge `#080D18`, i.e. TARGET_LOOK §A.1 read inward: the
+  // reference panels are lightest in the middle and sink at the rim.
+  panel:     { skyTop: '#0D1526', skyBottom: '#0B1220', groundFar: '#0A101C', groundNear: '#070B14', sun: '#1B2C48', panel: true },
   temperate: { skyTop: '#2E5C93', skyBottom: '#8CB4D6', groundFar: '#5E6418', groundNear: '#3A3F10', sun: '#FFE4A8' },
   desert:    { skyTop: '#3E6EA8', skyBottom: '#C9A46A', groundFar: '#A8874E', groundNear: '#6E5628', sun: '#FFD08C' },
   snow:      { skyTop: '#6E8CAE', skyBottom: '#E9F2F4', groundFar: '#CBDEE6', groundNear: '#8EA2AE', sun: '#FFFFFF' },
   urban:     { skyTop: '#1A2138', skyBottom: '#4A4258', groundFar: '#3E3C33', groundNear: '#232022', sun: '#FFC98A' },
 };
 
-/** Terrain/scenario biome names map onto the four backdrops we author. */
+/**
+ * Terrain/scenario biome names map onto the four THEATRE backdrops.
+ *
+ * Deliberately never returns `panel`: this function answers "which landscape",
+ * and the panel is the absence of one. The HUD does not call it — a
+ * `CameoRenderer` is born on `panel` and stays there unless something asks for
+ * a diorama, which is what keeps the reference's dark cell the default that
+ * nobody has to remember.
+ */
 export function theatreFor(name: string | null | undefined): Theatre {
   switch ((name ?? '').toLowerCase()) {
     case 'desert':
@@ -116,9 +173,13 @@ export interface CameoSubject {
 }
 
 /**
- * A model provider. The art modules own their libraries; the HUD must not
- * import them directly or a missing sibling breaks the whole interface, so the
- * lookup is injected and may legitimately return null forever.
+ * A model provider: content key + army -> a posed, primed prototype.
+ *
+ * `createCameoModelProvider()` (§3B) is the real one and the renderer's default.
+ * The type stays injectable so a test or a contact-sheet harness can substitute
+ * a stub — that is now its ONLY remaining purpose. It is no longer a hole for
+ * somebody else to fill: filling it was left undone for the entire life of this
+ * module and the result was a 0 % model-cameo rate.
  */
 export type ModelProvider = (key: string, faction: Faction) => THREE.Object3D | null;
 
@@ -192,6 +253,283 @@ export function primeCameoPrototype(root: THREE.Object3D, teamColor: THREE.Color
 }
 
 /* ==========================================================================
+ * SECTION 3B — CONTENT KEY -> MODEL KEY, FOR ALL FOUR ARMIES
+ *
+ * The two vocabularies are separate on purpose and they do not agree by
+ * construction: `src/data/Defs.ts` says `battleLab`, the art says `allied_tech`
+ * and `soviet_tech`; `oreSilo` is `allied_silo`; `powerPlant` is `allied_power`.
+ * Somewhere has to hold the join, and today that somewhere is
+ * `src/art/{units,buildings}.system.ts` — in MODULE-PRIVATE constants that the
+ * HUD cannot see. This table is the same join, readable from the UI side.
+ *
+ * WHY NOT `BuildableDef.model`, WHICH IS RIGHT THERE
+ * -------------------------------------------------
+ * Because it is wrong. `BuildableDef.model` is documented as "ModelRegistry
+ * key" and has ZERO readers in `src/**` — the render path binds through
+ * `CONTENT_TO_MODEL` instead — so nothing has ever checked it, and five unit
+ * rows have quietly rotted:
+ *
+ *     attackDog  -> 'soviet_conscript'   (the dog model is `soviet_dog`)
+ *     apocalypse -> 'soviet_rhino'       (`soviet_apocalypse` exists)
+ *     submarine  -> 'soviet_dreadnought' (`soviet_sub` exists)
+ *     gunboat    -> 'allied_destroyer'   (`allied_gunboat` exists)
+ *     transport  -> 'allied_harvester'   (`allied_transport` exists)
+ *
+ * A cameo grid built on that field would show an Attack Dog as a conscript and
+ * a Submarine as a Dreadnought — five wrong pictures, and no test anywhere
+ * would have noticed. `tests/cameos-coverage.spec.ts` cross-checks this table
+ * against the mass lists AND against the art modules' own exported maps, so the
+ * join below cannot rot the same way.
+ *
+ * A PAIR is a def one model cannot serve: `conyard` is one row in `Defs.ts`
+ * but two buildings, and which one you get is the player's army.
+ * ========================================================================== */
+
+/** `key` for a def with one model; `[allied, soviet]` for a faction-shared def. */
+type ModelBinding = string | readonly [string, string];
+
+/**
+ * Unit content key -> model key. Mirrors `CONTENT_TO_MODEL` +
+ * `SHARED_CONTENT_TO_MODEL` in `src/art/units.system.ts` for the two original
+ * armies, and `MERIDIAN_UNIT_MODELS` / `RECLAIM_UNIT_MODELS` verbatim.
+ */
+export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
+  /* -- Allies ------------------------------------------------------------ */
+  gi: 'allied_rifle',
+  grizzly: 'allied_guardian',
+  ifv: 'allied_ifv',
+  prismTank: 'allied_prism',
+  gunboat: 'allied_gunboat',
+  destroyer: 'allied_destroyer',
+
+  /* -- Soviets ----------------------------------------------------------- */
+  conscript: 'soviet_conscript',
+  attackDog: 'soviet_dog',
+  rhino: 'soviet_rhino',
+  apocalypse: 'soviet_apocalypse',
+  submarine: 'soviet_sub',
+  dreadnought: 'soviet_dreadnought',
+
+  /* -- shared between the two original armies ---------------------------- */
+  // The Engineer is one model for both, which is a content fact and not an
+  // omission: `src/art/UnitDefs.ts` builds exactly one `allied_engineer`.
+  engineer: 'allied_engineer',
+  harvester: ['allied_harvester', 'soviet_harvester'],
+  mcv: ['allied_dozer', 'soviet_dozer'],
+  transport: ['allied_transport', 'soviet_transport'],
+
+  /* -- the Meridian Pact ------------------------------------------------- */
+  mrdWayfarer: 'meridian_wayfarer',
+  mrdLancer: 'meridian_lancer',
+  mrdArtificer: 'meridian_artificer',
+  mrdCollector: 'meridian_collector',
+  mrdSkiff: 'meridian_skiff',
+  mrdSolarch: 'meridian_solarch',
+  mrdZenith: 'meridian_zenith',
+  mrdCarryall: 'meridian_carryall',
+  mrdKestrel: 'meridian_kestrel',
+  mrdCorvette: 'meridian_corvette',
+  mrdMonitor: 'meridian_monitor',
+
+  /* -- the Reclamation --------------------------------------------------- */
+  rclPicker: 'reclaim_picker',
+  rclSlagger: 'reclaim_slagger',
+  rclTinker: 'reclaim_tinker',
+  rclScrapper: 'reclaim_scrapper',
+  rclSpitter: 'reclaim_spitter',
+  rclGrinder: 'reclaim_grinder',
+  rclSlaghurler: 'reclaim_slaghurler',
+  rclCrawler: 'reclaim_crawler',
+  rclHornet: 'reclaim_hornet',
+  rclScow: 'reclaim_scow',
+  rclHulk: 'reclaim_hulk',
+};
+
+/**
+ * Building content key -> model key. Mirrors `SHARED_KEYS` + `FACTION_KEYS` in
+ * `src/art/buildings.system.ts`, and `MERIDIAN_STRUCTURE_MODELS` /
+ * `RECLAIM_STRUCTURE_MODELS` verbatim.
+ */
+export const CAMEO_BUILDING_MODELS: Readonly<Record<string, ModelBinding>> = {
+  /* -- shared between the two original armies ---------------------------- */
+  conyard: ['allied_conyard', 'soviet_conyard'],
+  powerPlant: ['allied_power', 'soviet_power'],
+  refinery: ['allied_refinery', 'soviet_refinery'],
+  barracks: ['allied_barracks', 'soviet_barracks'],
+  warFactory: ['allied_warfactory', 'soviet_warfactory'],
+  radar: ['allied_radar', 'soviet_radar'],
+  battleLab: ['allied_tech', 'soviet_tech'],
+  oreSilo: ['allied_silo', 'soviet_silo'],
+  wall: ['allied_wall', 'soviet_wall'],
+  // No `gate` row exists in `Defs.ts` today, but both models are built and the
+  // key is already bound in `buildings.system.ts`. Listed so the def that
+  // eventually lands does not arrive glyph-only.
+  gate: ['allied_gate', 'soviet_gate'],
+
+  /* -- single-army --------------------------------------------------------*/
+  navalYard: 'allied_navalyard',
+  subPen: 'soviet_subpen',
+  pillbox: 'allied_pillbox',
+  aaTurret: 'allied_aa',
+  prismTower: 'allied_prismtower',
+  teslaCoil: 'soviet_tesla',
+  flameTower: 'soviet_flametower',
+  sentryGun: 'soviet_sentry',
+
+  /* -- the Meridian Pact ------------------------------------------------- */
+  mrdConclave: 'meridian_conclave',
+  mrdSolarArray: 'meridian_solararray',
+  mrdChapterhouse: 'meridian_chapterhouse',
+  mrdCistern: 'meridian_cistern',
+  mrdForgeyard: 'meridian_forgeyard',
+  mrdOculus: 'meridian_oculus',
+  mrdReliquary: 'meridian_reliquary',
+  mrdSlipway: 'meridian_slipway',
+  mrdVault: 'meridian_vault',
+  mrdGlaive: 'meridian_glaive',
+  mrdHelios: 'meridian_helios',
+  mrdRampart: 'meridian_rampart',
+
+  /* -- the Reclamation --------------------------------------------------- */
+  rclFoundry: 'reclaim_foundry',
+  rclFurnace: 'reclaim_furnace',
+  rclSorter: 'reclaim_sorter',
+  rclRookery: 'reclaim_rookery',
+  rclBreakerYard: 'reclaim_breakeryard',
+  rclSpotter: 'reclaim_spotter',
+  rclCrucible: 'reclaim_crucible',
+  rclDrydock: 'reclaim_drydock',
+  rclHeap: 'reclaim_heap',
+  rclBarricade: 'reclaim_barricade',
+  rclSpitpost: 'reclaim_spitpost',
+  rclPylon: 'reclaim_pylon',
+};
+
+/**
+ * Which half of a pair an army takes.
+ *
+ * Only the two original armies share defs, and Neutral content (the Engineer,
+ * the Harvester, the Construction Yard) appears in BOTH their sidebars — so a
+ * Soviet player's `conyard` cameo has to be the Soviet one. Anything that is
+ * not the Soviet army reads the first slot, which keeps Neutral-owned entities
+ * (crates, civilian structures) on the Allied architecture exactly as
+ * `buildings.system.ts` registers them.
+ */
+function bindingFor(binding: ModelBinding, faction: Faction): string {
+  if (typeof binding === 'string') return binding;
+  return faction === Faction.Soviets ? binding[1] : binding[0];
+}
+
+/**
+ * The model key a def draws, or null when the content key is unknown.
+ *
+ * Pure and synchronous — no library, no GPU, no art module. This is the half of
+ * resolution that `tests/cameos-coverage.spec.ts` can assert without a canvas.
+ */
+export function cameoModelKey(key: string, faction: Faction, isBuilding: boolean): string | null {
+  const table = isBuilding ? CAMEO_BUILDING_MODELS : CAMEO_UNIT_MODELS;
+  const binding = table[key];
+  return binding === undefined ? null : bindingFor(binding, faction);
+}
+
+/**
+ * The read side of an art library. `UnitLibrary` and `BuildingLibrary` both
+ * satisfy it; declaring the shape rather than importing the classes is what
+ * lets a fifth army's library join by being passed in.
+ */
+export interface CameoModelLibrary {
+  get(key: string): { prototype(): THREE.Object3D } | undefined;
+}
+
+/** Which library owns a model key, by prefix. */
+interface LibrarySet {
+  units: CameoModelLibrary;
+  buildings: CameoModelLibrary;
+}
+
+/**
+ * Model-key prefix -> the pair of libraries that army built.
+ *
+ * The Pact and the Reclamation each keep a PRIVATE library on a private
+ * `GreebleFactory` (their own modules explain why at length), so there is no
+ * one map to ask. Prefix dispatch is the cheapest correct join and it is
+ * self-describing: `meridian_oculus` can only have come out of the Pact's
+ * structure library.
+ */
+const LIBRARIES: ReadonlyArray<readonly [string, LibrarySet]> = [
+  ['meridian_', { units: meridianUnitLibrary, buildings: meridianBuildingLibrary }],
+  ['reclaim_', { units: reclaimUnitLibrary, buildings: reclaimBuildingLibrary }],
+  ['allied_', { units: unitLibrary, buildings: buildingLibrary }],
+  ['soviet_', { units: unitLibrary, buildings: buildingLibrary }],
+];
+
+function libraryFor(modelKey: string, isBuilding: boolean): CameoModelLibrary | null {
+  for (const [prefix, set] of LIBRARIES) {
+    if (modelKey.startsWith(prefix)) return isBuilding ? set.buildings : set.units;
+  }
+  return null;
+}
+
+const TEAM_RGB = new Float32Array(3);
+
+/**
+ * LINEAR team colour for an army, matching the RenderBridge `aTeamColor`
+ * contract. A faction id past the end of the palette table resolves to Neutral
+ * rather than to `undefined` — that exact overflow is what once fed `NaN` into
+ * an instance colour attribute and blacked out the whole frame through the
+ * bloom mip chain, and a cameo writes the same channel.
+ */
+function teamColorOf(faction: Faction, out: THREE.Color): THREE.Color {
+  const i = faction as number;
+  const paletteKey = i >= 0 && i < FACTION_PALETTE_KEYS.length ? FACTION_PALETTE_KEYS[i] : 'neutral';
+  hexToLinearRgb(FACTION_PALETTE[paletteKey].team, TEAM_RGB);
+  return out.setRGB(TEAM_RGB[0], TEAM_RGB[1], TEAM_RGB[2]);
+}
+
+/**
+ * The real provider. Resolves a def key to a primed prototype through the art
+ * libraries, caching one prototype per (model, army).
+ *
+ * CACHING IS NOT AN OPTIMISATION HERE, IT IS THE CONTRACT. `prototype()` mints
+ * fresh `THREE.Mesh` objects and `primeCameoPrototype` allocates a per-vertex
+ * `aState`/`aTeamColor` shell for each. A hovered cameo re-renders at
+ * `HUD_CAMEO.hoverHz`, so an uncached provider would allocate ~84 KB of buffers
+ * thirty times a second at the exact moment the player is looking at it.
+ *
+ * A miss is a legitimate answer at two moments and only two: before the art
+ * systems have run `init()` (the libraries are empty, and every cameo bound in
+ * that window repaints when `invalidateAll()` fires), and for a def whose model
+ * genuinely does not exist. Both fall through to the 2D silhouette.
+ */
+export function createCameoModelProvider(): ModelProvider {
+  const cache = new Map<string, THREE.Object3D>();
+  const colour = new THREE.Color();
+
+  return (key: string, faction: Faction): THREE.Object3D | null => {
+    // The subject's class is not on the provider's signature, so try the
+    // structure table first and the unit table second. The two key spaces are
+    // disjoint (`refinery` is never a unit, `grizzly` is never a building), so
+    // the order cannot produce a wrong answer — only a wasted map lookup.
+    const isBuilding = CAMEO_BUILDING_MODELS[key] !== undefined;
+    const modelKey = cameoModelKey(key, faction, isBuilding);
+    if (modelKey === null) return null;
+
+    const cacheKey = `${modelKey}|${faction}`;
+    const hit = cache.get(cacheKey);
+    if (hit !== undefined) return hit;
+
+    const library = libraryFor(modelKey, isBuilding);
+    if (library === null) return null;
+    const model = library.get(modelKey);
+    if (model === undefined) return null;
+
+    const built = primeCameoPrototype(model.prototype(), teamColorOf(faction, colour));
+    cache.set(cacheKey, built);
+    return built;
+  };
+}
+
+/* ==========================================================================
  * SECTION 4 — THE RENDERER
  * ========================================================================== */
 
@@ -228,8 +566,12 @@ export class CameoRenderer {
   private readonly scratch: HTMLCanvasElement;
   private readonly scratchCtx: CanvasRenderingContext2D;
 
-  private theatre: Theatre = 'temperate';
-  private provider: ModelProvider = () => null;
+  // `panel`, not `temperate`: docs/refs/target-hud.png §A.1. See §1.
+  private theatre: Theatre = 'panel';
+  // The REAL provider by default. This field used to be `() => null` with no
+  // caller anywhere, which is how a live-model cameo grid shipped as 100 %
+  // hand-drawn 2D for the whole life of the module.
+  private provider: ModelProvider = createCameoModelProvider();
   private current: THREE.Object3D | null = null;
 
   /** Keyed by canvas, so a cell that scrolls to a new def just re-registers. */
@@ -247,6 +589,15 @@ export class CameoRenderer {
   totalRenders = 0;
   meshHits = 0;
   fallbacks = 0;
+  /**
+   * Every def key that took the 2D path, for `tools/cameo-audit.mjs`.
+   *
+   * A Set and not a counter, because the counter alone is the number that let
+   * this ship: "some cameos fall back" is a shrug, "`attackDog` and
+   * `rclPylon` fall back" is a bug report. Bounded by the roster, so it cannot
+   * grow without bound in a long match.
+   */
+  readonly fellBack = new Set<string>();
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer;
@@ -404,6 +755,12 @@ export class CameoRenderer {
       job.dirty = false;
       if (!this.jobs.has(job.canvas)) continue;
       this.render(job, time);
+      // `rendersThisFrame` was zeroed at the top of `frame()` and then never
+      // incremented, so the field the debug overlay and every harness read to
+      // answer "is the queue still draining?" was permanently 0. A drain loop
+      // written against it exits on its first iteration and reports a tab
+      // switch as costing one frame.
+      this.rendersThisFrame++;
       budget--;
     }
   }
@@ -425,14 +782,18 @@ export class CameoRenderer {
     const model = this.provider(job.subject.key, job.subject.faction);
     if (model === null) {
       this.fallbacks++;
+      this.fellBack.add(job.subject.key);
       paintFallback(ctx, w, h, job.subject, BACKDROPS[this.theatre]);
       return;
     }
     this.meshHits++;
+    this.fellBack.delete(job.subject.key);
 
     this.ensureTarget(w * HUD_CAMEO.supersample, h * HUD_CAMEO.supersample);
     const rt = this.rt;
     if (rt === null) {
+      this.fallbacks++;
+      this.fellBack.add(job.subject.key);
       paintFallback(ctx, w, h, job.subject, BACKDROPS[this.theatre]);
       return;
     }
@@ -628,7 +989,49 @@ function designPx(h: number): number {
   return Math.max(1, Math.round(h / 48));
 }
 
+/**
+ * The reference's cell: near-black blue, brightest just behind the subject,
+ * sinking to the rim. One radial ramp and one broad vertical ramp over it —
+ * TARGET_LOOK §A.1's `#0d1526` -> `#080d18`, read inward.
+ *
+ * No horizon and no sun disc, and both omissions are the point. The theatre
+ * backdrops put a bright sky behind a pale concrete structure, and at 60 x 48
+ * an Allied Construction Yard against `#8CB4D6` has no silhouette left. The
+ * reference solves it the way every modern command interface does: the subject
+ * is the only lit thing in the cell.
+ */
+function paintPanel(ctx: CanvasRenderingContext2D, w: number, h: number, b: Backdrop): void {
+  ctx.fillStyle = b.groundNear;
+  ctx.fillRect(0, 0, w, h);
+
+  // The lift behind the subject. Centred slightly above middle because the
+  // subject stands on the lower two-thirds of the cell and the glow wants to be
+  // behind its mass, not under its feet.
+  const lift = ctx.createRadialGradient(w * 0.5, h * 0.44, 0, w * 0.5, h * 0.44, w * 0.72);
+  lift.addColorStop(0, b.skyTop);
+  lift.addColorStop(0.55, b.groundFar);
+  lift.addColorStop(1, b.groundNear);
+  ctx.fillStyle = lift;
+  ctx.fillRect(0, 0, w, h);
+
+  // A single cool wash from the upper left, at the same angle as the key light.
+  // This is what stops the cell reading as flat black card; it is one broad
+  // ramp at low alpha, never a texture.
+  const wash = ctx.createLinearGradient(0, 0, w * 0.9, h);
+  wash.addColorStop(0, b.sun);
+  wash.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = wash;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalAlpha = 1;
+}
+
 function paintDiorama(ctx: CanvasRenderingContext2D, w: number, h: number, b: Backdrop): void {
+  if (b.panel === true) {
+    paintPanel(ctx, w, h, b);
+    return;
+  }
+
   const horizon = Math.round(h * HORIZON);
   const px = designPx(h);
 
@@ -681,31 +1084,62 @@ function paintDiorama(ctx: CanvasRenderingContext2D, w: number, h: number, b: Ba
 }
 
 /**
- * The crisp cell frame: a 3-zone bevel, one design pixel per zone, drawn with
- * integer-aligned `fillRect` rather than `strokeRect` so no edge lands on a
- * half pixel. Faction metal on the lit edges, black terminator all round.
+ * The crisp cell frame.
+ *
+ * TARGET_LOOK §A.1: a DOUBLE line — a thin dark outer rim, a gap, then a
+ * brighter lit inner bevel, brightest on the top and left edges and cooler on
+ * the bottom and right. "The bevel reads as a lit metal channel, not a CSS
+ * border", and the difference from what we had is that the lit edge is a single
+ * crisp line rather than a soft multi-stop ramp.
+ *
+ * Every edge is an integer-aligned `fillRect`, never `strokeRect`, so no line
+ * lands on a half pixel and doubles its width into a grey smear.
+ *
+ * The accent comes from `FACTION_PALETTE[...].hudAccent`, which is READ and
+ * never written — the same rule `ui/Chrome.accentFor()` follows. The old code
+ * picked between two hard-coded skins, so the Meridian Pact and the
+ * Reclamation both drew an Allied frame; a fifth army now gets its own by
+ * existing in the palette table.
  */
 function paintCameoFrame(ctx: CanvasRenderingContext2D, w: number, h: number, faction: Faction): void {
-  const skin = faction === Faction.Soviets ? HUD_SKIN_SOVIETS : HUD_SKIN_ALLIES;
+  const i = faction as number;
+  const paletteKey = i >= 0 && i < FACTION_PALETTE_KEYS.length ? FACTION_PALETTE_KEYS[i] : 'neutral';
+  const accent = FACTION_PALETTE[paletteKey].hudAccent;
   const t = designPx(h);
 
-  // Black terminator, all four sides.
-  ctx.fillStyle = 'rgba(4,4,8,0.92)';
+  // 1. Dark outer rim, all four sides. This is the terminator that separates
+  //    one cell from the next when the grid has no gaps.
+  ctx.fillStyle = 'rgba(3,5,10,0.94)';
   ctx.fillRect(0, 0, w, t);
   ctx.fillRect(0, h - t, w, t);
   ctx.fillRect(0, 0, t, h);
   ctx.fillRect(w - t, 0, t, h);
 
-  // Specular hairline inside the top and left edges; the light is upper-left
-  // everywhere in this interface and the cell frame is not an exception.
-  ctx.fillStyle = rgba(skin.bevelHi, 0.36);
-  ctx.fillRect(t, t, w - t * 2, t);
-  ctx.fillRect(t, t, t, h - t * 2);
+  // 2. The gap is simply not drawn: one design pixel of backdrop between the
+  //    rim and the bevel is what makes the pair read as two lines rather than
+  //    as one thick one.
 
-  // Matching shadow inside the bottom and right edges.
-  ctx.fillStyle = 'rgba(0,0,0,0.42)';
-  ctx.fillRect(t, h - t * 2, w - t * 2, t);
-  ctx.fillRect(w - t * 2, t, t, h - t * 2);
+  // 3. The lit inner bevel. Top and left carry the brightest value, bottom and
+  //    right a cooler, dimmer one — the light is upper-left everywhere in this
+  //    interface and the cell frame is not an exception.
+  const inset = t * 2;
+  ctx.fillStyle = rgba(accent, 0.85);
+  ctx.fillRect(inset, inset, w - inset * 2, t);
+  ctx.fillRect(inset, inset, t, h - inset * 2);
+
+  ctx.fillStyle = rgba(mixHex(accent, '#0A1220', 0.45), 0.85);
+  ctx.fillRect(inset, h - inset - t, w - inset * 2, t);
+  ctx.fillRect(w - inset - t, inset, t, h - inset * 2);
+
+  // 4. Corner brackets: short bright L-shapes on the two lit corners only.
+  //    §A.1 lists them as a per-panel option; on a 60 x 48 cell two is the most
+  //    that reads, and four turns the frame into a ladder.
+  const arm = Math.max(t * 3, Math.round(w * 0.14));
+  ctx.fillStyle = rgba(mixHex(accent, '#FFFFFF', 0.45), 0.95);
+  ctx.fillRect(inset, inset, arm, t);
+  ctx.fillRect(inset, inset, t, arm);
+  ctx.fillRect(w - inset - arm, h - inset - t, arm, t);
+  ctx.fillRect(w - inset - t, h - inset - arm, t, arm);
 }
 
 /* ==========================================================================

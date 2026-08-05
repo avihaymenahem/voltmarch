@@ -79,7 +79,9 @@ export type IconName =
   | 'repair' | 'sell' | 'primary' | 'cancel' | 'deploy' | 'stop' | 'scatter'
   | 'waypoint' | 'guard'
   /* -- alerts ----------------------------------------------------------- */
-  | 'alert' | 'warning' | 'info' | 'ready';
+  | 'alert' | 'warning' | 'info' | 'ready'
+  /* -- identity ---------------------------------------------------------- */
+  | 'crest';
 
 /* ==========================================================================
  * 2. THE SET
@@ -746,6 +748,27 @@ export const ICONS: Readonly<Record<IconName, IconDef>> = {
     paths: [
       { d: 'M12 3.6a8.4 8.4 0 1 1 0 16.8 8.4 8.4 0 0 1 0-16.8z' },
       { d: 'M7.8 12.2l2.9 2.9 5.5-5.8' },
+    ],
+  },
+
+  /* ---------------------------------------------------------------- */
+  /* IDENTITY — the one icon whose job is not information              */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * The army crest: a chamfered shield carrying a double chevron.
+   *
+   * It anchors the left end of the resource strip, which is where the
+   * reference puts its faction crest. Deliberately FACTION-NEUTRAL in shape —
+   * it is recoloured by `--vm-accent-hi` and nothing in `icons.ts` may know a
+   * faction exists. The shield's own corners are cut at 45 degrees, so the one
+   * ornament in the interface is drawn to the same rule as every panel in it.
+   */
+  crest: {
+    paths: [
+      { d: 'M12 2.4 20.4 5.2v5.1c0 4.9-3.5 8.4-8.4 11.3-4.9-2.9-8.4-6.4-8.4-11.3V5.2z' },
+      { d: 'M6.9 9.5 12 12.1l5.1-2.6' },
+      { d: 'M6.9 13.4 12 16l5.1-2.6' },
     ],
   },
 };

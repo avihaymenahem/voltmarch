@@ -39,7 +39,7 @@ import {
 } from './config';
 import {
   EntityFlag, EntityKind, ENTITY_KIND_COUNT, Faction, Locomotor, NONE,
-  OrderKind, Stance, UnitState, ArmorClass,
+  OrderKind, Stance, UnitState, ArmorClass, VisionLevel,
   makeHandle, handleIndex, handleGen,
 } from './types';
 import type {
@@ -1104,11 +1104,18 @@ class DirectNav implements INav {
   }
 }
 
-/** Everything visible to everyone. The map reads as fully scouted. */
+/**
+ * Everything visible to everyone. The map reads as fully scouted.
+ *
+ * `Live`, not `Remembered`: a module running without a real fog implementation
+ * must behave as if the whole board is lit, so targeting acquires normally and
+ * a test that never installs a `Vision` is not silently testing the shroud.
+ */
 class OpenVision implements IVision {
   private readonly full = new Uint8Array(MAP_CELLS * MAP_CELLS).fill(0b11);
   isVisibleAt(): boolean { return true; }
   isExplored(): boolean { return true; }
+  visibilityOf(): VisionLevel { return VisionLevel.Live; }
   canSee(): boolean { return true; }
   hasRadar(): boolean { return true; }
   gridFor(): Uint8Array { return this.full; }

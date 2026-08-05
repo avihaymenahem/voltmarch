@@ -35,7 +35,25 @@
  * you recently, wounded things, and near things — in that order of weight, with
  * structures last unless they are defences.
  *
- * WRITE OWNERSHIP: this file writes `targetId` and nothing else.
+ * THE APPROACH: WHY THE TARGETING PASS MOVES UNITS
+ * ------------------------------------------------
+ * A right-clicked attack order puts the unit in `UnitState.Attacking`, which
+ * `core/types.ts` documents as "stationary or CLOSING on targetId". Something
+ * has to do the closing, and it has to stop at a firing position rather than at
+ * the target's wall, or artillery throws its whole range advantage away.
+ *
+ * Steering cannot do it: there is no weapon range on the entity store and no
+ * standoff concept in that file. This module already resolves `weaponFor(i)`
+ * for every armed entity every tick, so the range is free here and nowhere
+ * else. So the same pattern `sim/Capture.ts` and `sim/Garrison.ts` use for
+ * "go to this entity" orders lives here for Attack/ForceAttack: refresh
+ * `orderX/orderZ` onto the target while it is out of range, park them on the
+ * unit's own position once it is inside, and let the nav layer do the driving.
+ * See §APPROACH below for the range band, the hysteresis and the give-up rules.
+ *
+ * WRITE OWNERSHIP: this file writes `targetId`, and `orderX/orderZ` for the
+ * entities holding an explicit Attack/ForceAttack order. It never writes
+ * `state` or `orderKind` — those stay with Command.
  * DETERMINISM: no wall clock, no Math.random; candidate order comes from the
  * spatial index, which is a counting sort over the dense alive list.
  * ============================================================================
@@ -48,12 +66,90 @@ import {
   ArmorClass, EntityFlag, EntityKind, OrderKind, ProjectileKind, Stance, UnitState,
 } from '../core/types';
 import type { EntityId, PlayerId, SimContext, WeaponDef } from '../core/types';
+import { PerEntityU32 } from '../core/world';
 import type { World } from '../core/world';
 import type { Channels } from '../core/events';
 import { sliceForEntity } from '../core/loop';
 import { armorMultiplier, hitRadius } from './Damage';
 import { stanceAllowsAcquire, stateAllowsCombat, weaponCanHurt } from './Combat';
 import type { WeaponSystem } from './Combat';
+
+/* ==========================================================================
+ * §APPROACH — THE TUNABLES THAT DECIDE WHERE AN ATTACK ORDER STOPS
+ *
+ * Three numbers, and each of them exists to prevent a specific, visible
+ * failure. They live here rather than in core/config because they are only
+ * meaningful next to the code that reads them, in the same way Steering.ts
+ * keeps its own watchdog windows.
+ *
+ * THE BAND, NOT A LINE. A unit that drove until it was EXACTLY at `w.range`
+ * would sit on the boundary, and every metre of drift — a neighbour shoving it,
+ * a hull rotating about its own centre, a target creeping — would flip it in
+ * and out of range. The result is an army that lurches forward and back and
+ * never settles, which is worse to look at than the bug this fixes. So there
+ * are two thresholds and the gap between them is a deadband:
+ *
+ *   STOP at   range * 0.80   coming in
+ *   RESUME at range * 0.95   going out
+ *
+ * A unit therefore has to lose 15% of its range before it will spend a metre
+ * chasing, and it never stops closer than it has to. 0.80 is chosen to keep a
+ * long gun long: a 42 m siege mortar halts 33.6 m from the wall rather than
+ * driving onto it, which is the entire point of owning a 42 m gun. It is also
+ * far enough inside `w.range` that a target drifting a couple of metres does
+ * not stop the shooting.
+ * ========================================================================== */
+
+/** Close until the target's surface is this fraction of weapon range away. */
+const APPROACH_STOP_FRAC = 0.80;
+/** Only start closing again past this fraction. Must exceed the stop fraction. */
+const APPROACH_RESUME_FRAC = 0.95;
+/**
+ * Never stop inside a minimum-range weapon's dead zone with no margin: an
+ * artillery piece parked at exactly `minRange` cannot fire the moment anything
+ * nudges it inward.
+ */
+const APPROACH_MIN_RANGE_MUL = 1.30;
+/**
+ * How far the target must move before the goal is re-published, metres. One nav
+ * cell.
+ *
+ * THIS IS THE CONSTANT THAT MAKES THE WHOLE THING COOPERATE WITH THE NAV
+ * WATCHDOGS. `NavAssigner` treats any change of `orderX/orderZ` larger than
+ * NAV_FORMATION_GOAL_EPS (0.6 m) as a NEW ORDER: it re-seats the formation
+ * slot, restarts the progress watchdog and re-arms the wedge watchdog. Writing
+ * the target's position every tick would therefore reset all three every tick,
+ * and every give-up rule in Steering — the stuck ladder, the nine-second
+ * progress window, the unreachable-order park — would be unable to ever fire.
+ * A unit ordered onto a building on an island would re-path forever.
+ *
+ * Against a STATIC target the goal is published once and then never again, so
+ * the ladder runs exactly as it does for a move order and terminates the same
+ * way. Against a moving one the goal is republished per 4 m of target travel,
+ * which is what makes a chase track, and the lag it costs is irrelevant — the
+ * stop/resume decision below reads the target's LIVE position, not the goal.
+ */
+const APPROACH_GOAL_REFRESH_METRES = 4.0;
+
+/**
+ * `approaching` values. Plain integers: the side table is a Uint32Array.
+ *
+ * THREE STATES, NOT TWO, and the third is what stops this from churning. 0 is
+ * what a never-written or recycled slot reads, so it cannot be `PARKED` — the
+ * park goal has to be PUBLISHED once on the way in, and a unit given an attack
+ * order on something already in range enters the parked state without ever
+ * having closed. Without a distinct "not decided yet" value that unit's goal
+ * would still be the raw click point on the target's footprint, and the nav
+ * layer would happily drive it into the wall.
+ *
+ * Publishing exactly once per ENTRY into parked (rather than whenever the goal
+ * and the unit have drifted apart) is also what makes a firing line stable:
+ * units shoved by their neighbours drive back to the position they stopped at
+ * instead of ratcheting forward, because the goal never follows them.
+ */
+const APPROACH_UNDECIDED = 0;
+const APPROACH_CLOSING = 1;
+const APPROACH_PARKED = 2;
 
 export interface TargetingStats {
   /** Armed entities considered this tick. */
@@ -66,19 +162,36 @@ export interface TargetingStats {
   acquired: number;
   /** Candidates rejected for having no line of sight. */
   losRejects: number;
+  /**
+   * Units driving toward an explicit attack target this tick. Reads zero in a
+   * settled firefight and non-zero while an army is crossing the map, so it is
+   * the one number that distinguishes "not shooting yet" from "not moving".
+   */
+  closing: number;
 }
 
 export class TargetingSystem {
   /** Owned scratch: the world's shared buffer is not re-entrant here. */
   private readonly candidates = new Int32Array(MAX_QUERY_RESULTS);
 
-  readonly stats: TargetingStats = { armed: 0, engaged: 0, scans: 0, acquired: 0, losRejects: 0 };
+  /**
+   * Which side of the approach deadband each unit is on. Generation-stamped,
+   * so a recycled slot starts PARKED rather than inheriting a dead unit's
+   * charge across the map. Allocated once; nothing below it allocates.
+   */
+  private readonly approaching: PerEntityU32;
+
+  readonly stats: TargetingStats = {
+    armed: 0, engaged: 0, scans: 0, acquired: 0, losRejects: 0, closing: 0,
+  };
 
   constructor(
     private readonly world: World,
     private readonly channels: Channels,
     private readonly weapons: WeaponSystem,
-  ) {}
+  ) {
+    this.approaching = new PerEntityU32(world.store, APPROACH_UNDECIDED);
+  }
 
   /* ====================================================================== */
 
@@ -90,6 +203,7 @@ export class TargetingSystem {
     this.stats.scans = 0;
     this.stats.acquired = 0;
     this.stats.losRejects = 0;
+    this.stats.closing = 0;
 
     for (let a = 0; a < n; a++) {
       const i = st.alive[a];
@@ -113,14 +227,19 @@ export class TargetingSystem {
         if (ot >= 0 && (st.flags[ot] & EntityFlag.PendingDestroy) === 0) {
           // A forced attack ignores alliance, visibility and priority. It does
           // NOT ignore the leash: an order to attack something 400 m away still
-          // has to wait for the movement layer to close the distance.
+          // has to wait for the movement layer to close the distance — which is
+          // what `approach` below asks for.
           st.targetId[i] = st.handleOf(ot) as number;
+          this.approach(i, ot, w);
           this.stats.engaged++;
           continue;
         }
         // ForceAttack on a dead thing falls through to normal acquisition,
         // which is what makes "attack that tank" keep meaning something once
-        // the tank is gone.
+        // the tank is gone. The unit stops where it stands rather than driving
+        // on to the corpse — or, for a force-fire into shroud that never had a
+        // target handle at all, rather than driving onto the impact point.
+        this.halt(i);
       }
 
       // --- validate ---------------------------------------------------------
@@ -147,6 +266,122 @@ export class TargetingSystem {
         if (st.targetId[i] !== before) this.stats.acquired++;
       }
     }
+  }
+
+  /* ======================================================================
+   * §APPROACH — CLOSING ON AN ORDERED TARGET
+   * ====================================================================== */
+
+  /**
+   * Whether this module is allowed to own `orderX/orderZ` for entity `i`.
+   *
+   * `state === Attacking` is the load-bearing test, not a formality. `orderKind`
+   * outlives the state it created — a unit can be carrying `OrderKind.Attack`
+   * while the AI, a guard behaviour or a harvester FSM has since put it into
+   * some other state that uses `orderX/orderZ` as ITS goal. Writing over that
+   * would send a harvester to a battle. Only the state an attack order actually
+   * produces is ours.
+   */
+  private managesGoal(i: number): boolean {
+    const st = this.world.store;
+    if (st.state[i] !== UnitState.Attacking) return false;
+    const f = st.flags[i];
+    if ((f & EntityFlag.CanMove) === 0) return false;
+    if ((f & EntityFlag.Garrisoned) !== 0) return false;
+    const kind = st.kind[i];
+    return kind === EntityKind.Infantry || kind === EntityKind.Vehicle;
+  }
+
+  /**
+   * Stop here. Publishes the unit's own position as its goal, once, so the nav
+   * layer parks it instead of continuing to drive at whatever the order point
+   * used to be.
+   */
+  private park(i: number): void {
+    if (this.approaching.getAt(i) === APPROACH_PARKED) return;
+    const st = this.world.store;
+    this.approaching.setAt(i, APPROACH_PARKED);
+    st.orderX[i] = st.posX[i];
+    st.orderZ[i] = st.posZ[i];
+  }
+
+  /**
+   * Drive toward `t` until it is comfortably inside weapon range, then stop.
+   *
+   * WHY THE GOAL IS THE TARGET'S CENTRE AND NOT A STANDOFF POINT
+   * -----------------------------------------------------------
+   * The obvious implementation — aim at a point `stop` metres short of the
+   * target, along the bearing — moves that point every time the unit moves. The
+   * flow-field cache buckets fields by goal CELL, so a goal that slides a metre
+   * a tick evicts and re-expands a field continuously, and `NavAssigner` reads
+   * every slide as a fresh order. Aiming at the target's centre and deciding
+   * separately when to STOP keeps the goal still, which is the same trick
+   * `sim/Capture.ts` uses to walk an engineer into a footprint it can never
+   * stand on.
+   *
+   * The stop is expressed by re-publishing the unit's own position as the goal,
+   * which `NavAssigner` immediately satisfies (`finishOrder`) and which leaves
+   * `state` at `Attacking` so the weapon stays hot.
+   *
+   * HOLD GROUND is the one stance that refuses to close at all — its documented
+   * contract in `core/types.ts` is "never move for any reason", and a player who
+   * set it on a chokepoint garrison means it. Such a unit is parked rather than
+   * skipped: skipping would leave the raw click point as its goal and the nav
+   * layer would drive it there, which is the opposite of what the stance says.
+   * HOLD FIRE deliberately does close — its contract is "move to the target but
+   * never fire unless force-fired".
+   */
+  private approach(i: number, t: number, w: WeaponDef): void {
+    const st = this.world.store;
+    if (!this.managesGoal(i)) return;
+    if (st.stance[i] === Stance.HoldGround || w.range <= 0) { this.park(i); return; }
+
+    const px = st.posX[i], pz = st.posZ[i];
+    const tx = st.posX[t], tz = st.posZ[t];
+    const dx = tx - px, dz = tz - pz;
+    // Surface distance, exactly the quantity `WeaponSystem` gates firing on —
+    // measuring to a Construction Yard's centre would leave the unit 12 m short
+    // of a range it already had.
+    const surface = Math.sqrt(dx * dx + dz * dz)
+      - hitRadius(st.footprintW[t], st.footprintH[t], st.radius[t]);
+
+    const resume = w.range * APPROACH_RESUME_FRAC;
+    let stop = w.range * APPROACH_STOP_FRAC;
+    if (w.minRange > 0) {
+      const floor = w.minRange * APPROACH_MIN_RANGE_MUL;
+      if (floor > stop) stop = Math.min(floor, resume);
+    }
+
+    // The deadband. A unit already closing keeps closing until `stop`; a unit
+    // already parked stays parked until the target has escaped past `resume`.
+    const wasClosing = this.approaching.getAt(i) === APPROACH_CLOSING;
+    if (surface <= (wasClosing ? stop : resume)) { this.park(i); return; }
+
+    this.stats.closing++;
+    this.approaching.setAt(i, APPROACH_CLOSING);
+    // Re-publish only when the target has actually gone somewhere. See
+    // APPROACH_GOAL_REFRESH_METRES: republishing every tick would re-arm every
+    // give-up watchdog in Steering every tick and no order could ever end.
+    const gx = st.orderX[i] - tx, gz = st.orderZ[i] - tz;
+    if (gx * gx + gz * gz > APPROACH_GOAL_REFRESH_METRES * APPROACH_GOAL_REFRESH_METRES) {
+      st.orderX[i] = tx;
+      st.orderZ[i] = tz;
+    }
+  }
+
+  /**
+   * The ordered target is gone (killed, or never resolved at all — a force-fire
+   * into shroud carries `target = NONE` by design). Stop where you stand and
+   * let ordinary acquisition take over.
+   *
+   * This is what keeps the change to `seeksGoal` from turning every force-fire
+   * at a point into a march onto that point: with no target handle there is no
+   * range to stand off at, so the honest answer is the pre-existing one — do
+   * not move.
+   */
+  private halt(i: number): void {
+    if (!this.managesGoal(i)) return;
+    this.park(i);
   }
 
   /* ======================================================================

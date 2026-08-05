@@ -17,10 +17,14 @@
  *
  * THREE LAYERS, EACH CACHED SEPARATELY
  * ------------------------------------
- *  1. COST FIELD — one Uint8Array per MoveClass. Terrain passability + slope +
- *     water + roads + building footprints + a "do not hug the wall" penalty
- *     ring. Rebuilt only when `ITerrain.occupancyVersion()` changes, i.e. when
- *     a building is placed, sold or destroyed.
+ *  1. COST FIELD — TWO Uint8Arrays per MoveClass. `hard` is physics: terrain
+ *     passability + slope + water + building footprints. `cost` is planning:
+ *     the same thing plus roads, the CLEARANCE rule (§4c — a slot narrower than
+ *     the hull is not a corridor) and a "do not hug the wall" penalty ring.
+ *     Movement asks `hard`, the planner asks `cost`, and they are separate
+ *     because a planning rule applied to physics imprisons units. Rebuilt only
+ *     when `ITerrain.occupancyVersion()` changes, i.e. when a building is
+ *     placed, sold or destroyed.
  *  2. INTEGRATION FIELD — Int32 cost-to-goal per cell, expanded from the goal
  *     under a per-tick budget (FLOWFIELD_BUDGET_CELLS across ALL fields), so a
  *     new order never spikes a frame.
@@ -58,8 +62,8 @@ import {
   CELL, MAP_CELLS, MAP_CELL_COUNT,
   FLOWFIELD_CACHE_SIZE, FLOWFIELD_GOAL_BUCKET, FLOWFIELD_BUDGET_CELLS,
   NAV_COST_ROAD, NAV_COST_ROUGH, NAV_COST_RAMP, NAV_COST_WALL_HUG,
-  NAV_FIELD_EXPANDERS, NAV_MIN_EXPANDER_BUDGET, NAV_SNAP_SEARCH_CELLS,
-  WATER_LEVEL,
+  NAV_FIELD_EXPANDERS, NAV_MIN_EXPANDER_BUDGET, NAV_MIN_CORRIDOR_CELLS,
+  NAV_SNAP_SEARCH_CELLS, WATER_LEVEL,
 } from '../core/config';
 import { Locomotor } from '../core/types';
 import type { INav, ITerrain } from '../core/types';
@@ -164,7 +168,28 @@ const QUEUE_CAP = MAP_CELL_COUNT + 1;
  * the work, for a much larger bug surface.
  */
 class CostGrid {
+  /**
+   * The ROUTING grid: what the planner is allowed to send a unit down. It is
+   * the physical grid plus the clearance rule (§3b) plus the wall-hug ring.
+   */
   readonly cost = new Uint8Array(MAP_CELL_COUNT);
+  /**
+   * The PHYSICAL grid: `COST_BLOCKED` only where the ground or a structure
+   * genuinely forbids the class. Never carries the clearance demotion.
+   *
+   * The split exists because the two questions are different and conflating
+   * them is how a clearance rule turns into a freeze. "Do not PLAN a route
+   * through this slot" is a planning rule and belongs in `cost`. "This unit may
+   * not occupy this cell" is a physics rule, and applying the planning rule
+   * there would imprison every unit that is already standing in a slot when the
+   * building next to it finishes — the exact failure the clearance rule exists
+   * to prevent, inflicted by the fix.
+   */
+  readonly hard = new Uint8Array(MAP_CELL_COUNT);
+  /** Cells the clearance rule demoted this build. Diagnostics. */
+  narrow = 0;
+  /** Cells it had to hand back because they were the only way through. */
+  restored = 0;
   /** Cost version this was built from. -1 = never built. */
   version = -1;
 }
@@ -539,6 +564,165 @@ export class TerrainRegions {
 }
 
 /* ==========================================================================
+ * 4c. CLEARANCE — A SLOT THE HULL DOES NOT FIT THROUGH IS NOT A CORRIDOR
+ *
+ * THE BUG THIS EXISTS FOR
+ * -----------------------
+ * The cost field carves out building footprints and nothing else. Two
+ * structures placed one cell apart therefore leave a cell the planner reads as
+ * a perfectly ordinary corridor. One cell is 4 m. The harvester — the unit the
+ * bug was reported against — has a hull RADIUS of 3.87 m, so it is 7.74 m
+ * across: it does not fit, it is sent in anyway, and it arrives at speed with a
+ * separation force pushing off each wall. That is a trap, and no amount of
+ * steering can be the answer to it, because the answer has to be "do not go in
+ * there" and steering runs after that decision has been made.
+ *
+ * WHAT COUNTS AS NARROW
+ * ---------------------
+ * The FREE SPAN THROUGH THE CELL, measured independently along X and along Z as
+ * the length of the maximal open run the cell belongs to. A cell is narrow when
+ * the SMALLER of the two is under `NAV_MIN_CORRIDOR_CELLS[cls]`.
+ *
+ * That definition, and not a distance transform, is what separates the two
+ * cases the brief is explicit about:
+ *   - a one-cell alley:  runs are (long, 1) -> min 1 -> narrow.
+ *   - a two-cell alley:  runs are (long, 2) -> min 2 -> legal.
+ * A distance-to-nearest-obstacle field cannot tell those apart — both alleys
+ * are one cell from a wall — which is why this measures span and not distance.
+ * Open ground next to a wall stays legal for the same reason: its runs are the
+ * whole room in both axes.
+ *
+ * IT CAN NEVER DISCONNECT THE MAP
+ * -------------------------------
+ * The obvious way to break a base is to close the only way out of it, so the
+ * demotion is followed by a RESTORE pass with a proof rather than a threshold.
+ * Demoted cells are labelled into their own 4-connected components. A component
+ * that touches two or more DIFFERENT surviving regions is the only join between
+ * them, so it is handed straight back. A component that touches one region or
+ * none is a stub or a sealed pocket, and stays closed.
+ *
+ * Claim: any two routable cells connected in the physical grid stay connected.
+ * Take a physical path between them and cut it into maximal runs of demoted
+ * cells. Each such run lies inside one demoted component. The cells immediately
+ * before and after the run are routable, so either they are in the same
+ * surviving region — the path survives through that region — or they are in two
+ * different ones, in which case the component touches both, is restored, and
+ * the path survives through the component itself. There is no third case. QED.
+ *
+ * Cost: three linear passes and two flood fills over 16k cells, only when a
+ * structure is placed or dies. That is the same trigger that already re-derives
+ * every cost grid and re-expands every live field.
+ * ========================================================================== */
+
+/** Maximal open run through each cell along X and along Z, in cells. */
+const RUN_X = new Int16Array(MAP_CELL_COUNT);
+const RUN_Z = new Int16Array(MAP_CELL_COUNT);
+/** 1 where the clearance rule wants the cell closed. */
+const NARROW_MASK = new Uint8Array(MAP_CELL_COUNT);
+/** The surviving-cell mask, i.e. physically open AND not narrow. */
+const ROUTE_MASK = new Uint8Array(MAP_CELL_COUNT);
+/** Components of the surviving cells, and of the demoted cells. */
+const ROUTE_REGIONS = new RegionGrid();
+const NARROW_REGIONS = new RegionGrid();
+/** Per narrow component: the first surviving region it was seen touching. */
+const TOUCHED = new Int32Array(MAP_CELL_COUNT + 1);
+/** Per narrow component: 1 once it has been seen touching a second one. */
+const BRIDGES = new Uint8Array(MAP_CELL_COUNT + 1);
+
+/** Maximal open runs along both axes, from a blocked-cell predicate mask. */
+function measureRuns(open: Uint8Array): void {
+  for (let cz = 0; cz < MAP_CELLS; cz++) {
+    const row = cz * MAP_CELLS;
+    let cx = 0;
+    while (cx < MAP_CELLS) {
+      if (open[row + cx] === 0) { RUN_X[row + cx] = 0; cx++; continue; }
+      const start = cx;
+      while (cx < MAP_CELLS && open[row + cx] !== 0) cx++;
+      const len = cx - start;
+      for (let k = start; k < cx; k++) RUN_X[row + k] = len;
+    }
+  }
+  for (let cx = 0; cx < MAP_CELLS; cx++) {
+    let cz = 0;
+    while (cz < MAP_CELLS) {
+      if (open[cz * MAP_CELLS + cx] === 0) { RUN_Z[cz * MAP_CELLS + cx] = 0; cz++; continue; }
+      const start = cz;
+      while (cz < MAP_CELLS && open[cz * MAP_CELLS + cx] !== 0) cz++;
+      for (let k = start; k < cz; k++) RUN_Z[k * MAP_CELLS + cx] = cz - start;
+    }
+  }
+}
+
+/** The surviving region id at a cell, or 0 (off-map counts as 0). */
+function routeLabelAt(cx: number, cz: number): number {
+  if (cx < 0 || cz < 0 || cx >= MAP_CELLS || cz >= MAP_CELLS) return 0;
+  return ROUTE_REGIONS.label[cz * MAP_CELLS + cx];
+}
+
+/**
+ * Close every cell whose free span is under `minCells`, then hand back the runs
+ * that turn out to be the only join between two surviving regions.
+ *
+ * `hard` is the physical grid and is never modified. `cost` is the routing grid
+ * and is where the demotion lands. Returns [demoted, restored] through the
+ * caller's `out` pair so the caller can publish both numbers — a clearance rule
+ * that is quietly closing half the map has to be visible.
+ */
+function applyClearance(
+  hard: Uint8Array, cost: Uint8Array, minCells: number, out: Int32Array,
+): void {
+  out[0] = 0; out[1] = 0;
+  if (minCells < 2) return;
+
+  for (let i = 0; i < MAP_CELL_COUNT; i++) ROUTE_MASK[i] = hard[i] < COST_BLOCKED ? 1 : 0;
+  measureRuns(ROUTE_MASK);
+
+  let demoted = 0;
+  for (let i = 0; i < MAP_CELL_COUNT; i++) {
+    if (ROUTE_MASK[i] === 0) { NARROW_MASK[i] = 0; continue; }
+    const rx = RUN_X[i], rz = RUN_Z[i];
+    const narrow = (rx < rz ? rx : rz) < minCells;
+    NARROW_MASK[i] = narrow ? 1 : 0;
+    if (narrow) { ROUTE_MASK[i] = 0; demoted++; }
+  }
+  if (demoted === 0) return;
+
+  // Components of what survives, and of what was taken away.
+  labelRegions(ROUTE_MASK, ROUTE_REGIONS);
+  labelRegions(NARROW_MASK, NARROW_REGIONS);
+
+  const ncount = NARROW_REGIONS.count;
+  for (let k = 0; k <= ncount; k++) { TOUCHED[k] = 0; BRIDGES[k] = 0; }
+
+  for (let cz = 0; cz < MAP_CELLS; cz++) {
+    const row = cz * MAP_CELLS;
+    for (let cx = 0; cx < MAP_CELLS; cx++) {
+      const i = row + cx;
+      const comp = NARROW_REGIONS.label[i];
+      if (comp === 0 || BRIDGES[comp] !== 0) continue;
+      for (let d = 0; d < FIRST_DIAG; d++) {
+        const rl = routeLabelAt(cx + NX[d], cz + NZ[d]);
+        if (rl === 0) continue;
+        if (TOUCHED[comp] === 0) TOUCHED[comp] = rl;
+        else if (TOUCHED[comp] !== rl) { BRIDGES[comp] = 1; break; }
+      }
+    }
+  }
+
+  let restored = 0;
+  for (let i = 0; i < MAP_CELL_COUNT; i++) {
+    if (NARROW_MASK[i] === 0) continue;
+    if (BRIDGES[NARROW_REGIONS.label[i]] !== 0) { restored++; continue; }
+    cost[i] = COST_BLOCKED;
+  }
+  out[0] = demoted - restored;
+  out[1] = restored;
+}
+
+/** Scratch for `applyClearance`'s two return values. */
+const CLEARANCE_OUT = new Int32Array(2);
+
+/* ==========================================================================
  * 5. THE CACHE
  * ========================================================================== */
 
@@ -554,6 +738,17 @@ export interface NavStats {
   evictions: number;
   /** Orders whose goal was in a different region than the unit issuing them. */
   unreachable: number;
+  /**
+   * Cells the clearance rule is holding closed, summed over the cost grids that
+   * are currently built. Zero on an empty map; it grows as bases do.
+   */
+  narrow: number;
+  /**
+   * Cells it had to hand back because closing them would have cut a region off.
+   * A large number here means bases are being built with only slot-width exits,
+   * which is worth knowing — it is the one shape the rule cannot help with.
+   */
+  narrowRestored: number;
 }
 
 /**
@@ -588,6 +783,7 @@ export class FlowFieldCache implements INav {
   readonly stats: NavStats = {
     fields: 0, ready: 0, pending: 0, refs: 0,
     cellsThisTick: 0, rebuilds: 0, misses: 0, evictions: 0, unreachable: 0,
+    narrow: 0, narrowRestored: 0,
   };
 
   constructor(port: ITerrain) {
@@ -630,17 +826,60 @@ export class FlowFieldCache implements INav {
     this.invalidateAll();
   }
 
+  /**
+   * The PHYSICAL grid for a class — passability with the clearance rule left
+   * out. Movement integrates against this, never against `costGridFor`. See
+   * `CostGrid.hard` for why the two must not be the same array.
+   */
+  hardGridFor(cls: MoveClass): Uint8Array {
+    this.syncOccupancy();
+    const g = this.grids[cls];
+    if (g.version !== this.costVersion) this.rebuildCost(cls, g);
+    return g.hard;
+  }
+
   /** Traversal cost of one cell, `COST_BLOCKED` when impassable. */
   costAt(cx: number, cz: number, cls: MoveClass): number {
     if (!isInMap(cx, cz)) return COST_BLOCKED;
     return this.costGridFor(cls)[cz * MAP_CELLS + cx];
   }
 
-  /** True when `cls` may occupy the cell. */
+  /**
+   * True when `cls` may be ROUTED through the cell. This is the planner's
+   * question, and it is the one that refuses a slot the hull will not fit down.
+   */
   isPassableClass(cx: number, cz: number, cls: MoveClass): boolean {
     if (cls === MoveClass.Air) return isInMap(cx, cz);
     if (!isInMap(cx, cz)) return false;
     return this.costGridFor(cls)[cz * MAP_CELLS + cx] < COST_BLOCKED;
+  }
+
+  /**
+   * True when `cls` may PHYSICALLY occupy the cell. Strictly weaker than
+   * `isPassableClass`: every routable cell is standable, and a cell the
+   * clearance rule closed is standable but not routable.
+   *
+   * Movement and the steering avoidance probe ask this one. A unit already
+   * inside a slot has to be able to drive out of it, and the wall-slide
+   * constraint has to keep letting it — enforcing the planning rule there would
+   * freeze exactly the unit the planning rule exists to protect.
+   */
+  isStandable(cx: number, cz: number, cls: MoveClass): boolean {
+    if (cls === MoveClass.Air) return isInMap(cx, cz);
+    if (!isInMap(cx, cz)) return false;
+    return this.hardGridFor(cls)[cz * MAP_CELLS + cx] < COST_BLOCKED;
+  }
+
+  /** Cells the clearance rule is currently holding closed for a class. */
+  narrowCells(cls: MoveClass): number {
+    this.costGridFor(cls);
+    return this.grids[cls].narrow;
+  }
+
+  /** Cells it handed back because they were the only way through. */
+  restoredCells(cls: MoveClass): number {
+    this.costGridFor(cls);
+    return this.grids[cls].restored;
   }
 
   /* -- connectivity ------------------------------------------------------ */
@@ -739,10 +978,14 @@ export class FlowFieldCache implements INav {
     const loco = locomotorForMoveClass(cls);
     const passBit = 1 << loco;
 
+    g.narrow = 0;
+    g.restored = 0;
+
     if (cls === MoveClass.Air) {
       // Aircraft ignore the grid. A uniform grid keeps every other code path
       // (nearestReachable, isDirectPathClear, costAt) branch-free for them.
       cost.fill(COST_UNIT);
+      g.hard.fill(COST_UNIT);
       g.version = this.costVersion;
       this.stats.rebuilds++;
       return;
@@ -779,7 +1022,7 @@ export class FlowFieldCache implements INav {
         // Structures block everything that touches the ground.
         if (ok && port.isOccupied(cx, cz)) ok = false;
 
-        if (!ok) { cost[i] = COST_BLOCKED; continue; }
+        if (!ok) { cost[i] = COST_BLOCKED; g.hard[i] = COST_BLOCKED; continue; }
 
         // --- cost ----------------------------------------------------------
         // Road first: a carriageway is the one thing that makes a cell CHEAP,
@@ -807,8 +1050,18 @@ export class FlowFieldCache implements INav {
           }
         }
         cost[i] = c;
+        g.hard[i] = c;
       }
     }
+
+    // --- clearance ----------------------------------------------------------
+    // A slot narrower than the widest hull is not a corridor, however open the
+    // footprint carve-out makes it look. See §4c — including why this cannot
+    // seal a base in. It runs BEFORE the wall-hug dilation so a cell next to a
+    // freshly closed slot gets its penalty ring like any other wall.
+    applyClearance(g.hard, cost, NAV_MIN_CORRIDOR_CELLS[cls], CLEARANCE_OUT);
+    g.narrow = CLEARANCE_OUT[0];
+    g.restored = CLEARANCE_OUT[1];
 
     // --- wall-hug penalty ---------------------------------------------------
     // A pure shortest path glues itself to every obstacle corner, so a column
@@ -1179,6 +1432,18 @@ export class FlowFieldCache implements INav {
     s.refs = refs;
     s.pending = this.pendingCount;
     s.cellsThisTick = cells;
+
+    // Only the grids that are ALREADY built. Asking `narrowCells` here instead
+    // would force a rebuild of every class the match never uses, once a tick.
+    let narrow = 0, restored = 0;
+    for (let i = 0; i < this.grids.length; i++) {
+      const g = this.grids[i];
+      if (g.version !== this.costVersion) continue;
+      narrow += g.narrow;
+      restored += g.restored;
+    }
+    s.narrow = narrow;
+    s.narrowRestored = restored;
   }
 
   /* -- sampling ---------------------------------------------------------- */

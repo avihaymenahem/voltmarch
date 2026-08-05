@@ -1615,6 +1615,27 @@ export const DEF_TABLES: DefTables = {
 export default DEF_TABLES;
 
 /* ==========================================================================
+ * 4b. WHAT IT COSTS TO MOVE A BUILDING
+ *
+ * `src/sim/Relocate.ts` owns these numbers, for the reason `Deploy.ts` gives
+ * about `DEPLOY_SECONDS`: they are the FEEL of one mechanic owned by one file,
+ * and `core/config.ts` is the art-direction surface a visual critic edits.
+ *
+ * They are re-exported HERE because a relocation fee is a price, prices are
+ * content, and every other price in the game is in this file. A designer
+ * balancing the cost of moving a War Factory against the cost of selling and
+ * rebuilding it should find both numbers by opening one module. The edge runs
+ * data -> sim, which is the direction this file already uses for
+ * `DEFAULT_WEAPONS` and the only direction that cannot cycle.
+ *
+ * `relocationFee(cost)` is the whole pricing rule: a fraction of build cost,
+ * rounded, never below the floor. `BUILDINGS[i].maxHp` is not in it — a wreck
+ * costs the same to move as a pristine building, and arrives just as wrecked.
+ * ========================================================================== */
+
+export { RELOCATE, relocationFee } from '../sim/Relocate';
+
+/* ==========================================================================
  * 5. SELF-CHECK
  *
  * Runs at import in every environment. The failure this guards against is the

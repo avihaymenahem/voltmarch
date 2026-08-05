@@ -56,7 +56,7 @@ import { MassRole } from './MassList';
 import {
   BuildingLibrary, Feature,
   type StructureFaction, type StructureMass, type StructureMassList,
-  type StructureModel, type StructureSocket,
+  type StructureModel, type StructurePalettes, type StructureSocket,
 } from './BuildingFactory';
 import {
   FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec as BridgeSocket,
@@ -976,12 +976,23 @@ export function buildAndRegisterMeridianStructures(
   atlasSize: number,
   buildingId: Readonly<Record<string, number>>,
 ): MeridianStructureReport {
-  const palettes = {
+  const palettes: StructurePalettes = {
     structure: MERIDIAN_STRUCTURE_PALETTE,
     pad: MERIDIAN_PAD_PALETTE,
     panelDensity: PANEL_DENSITY,
     seed: SEED,
     padSeed: PAD_SEED,
+    /*
+     * CUT STONE, NOT ALLIED CERAMIC.
+     *
+     * This army declares `rivets: false` because its atlas draws welded straps
+     * rather than bolt rows, and until `StructureCoat` existed that one boolean
+     * ALSO chose the coat — so the Pact shipped wearing the Allied glaze
+     * (clearcoat 0.42 at roughness 0.26, env 0.95), a wet mirror finish on
+     * masonry. `'stone'` keeps the ceremonial polish this faction wants and
+     * takes the mirror off it: half the coat, nearly double the roughness.
+     */
+    coat: 'stone',
   };
 
   const models: StructureModel[] = [];

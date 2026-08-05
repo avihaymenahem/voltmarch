@@ -306,8 +306,26 @@ describe('the MCV opening', () => {
     const world = makeWorld(Faction.Allies, Faction.Soviets);
     try {
       const spec = buildScenario(world, 'skirmish', 4242, { start: 'mcv' });
-      const spot = startSpots(256, 256, 2)[0];
-      expect(Math.hypot(spec.camera.x - spot.x, spec.camera.z - spot.z)).toBeLessThan(20);
+
+      // Against the LOCAL PLAYER'S OWN UNIT, not against `startSpots(...)[0]`.
+      // This used to pin spot 0, which encoded the very assumption that made
+      // every match open in the same corner: since `rotateStarts`, the human is
+      // not always in slot 0, and asserting the index rather than the ownership
+      // would fail for exactly the seeds the rotation exists to produce.
+      const st = world.store;
+      let mine = -1;
+      for (let i = 0; i < st.count; i++) {
+        if ((st.flags[i] & EntityFlag.Alive) === 0) continue;
+        if (st.owner[i] !== (P_HUMAN as number)) continue;
+        if (st.kind[i] !== EntityKind.Vehicle) continue;
+        mine = i;
+        break;
+      }
+      expect(mine, 'the local player must have a starting vehicle').toBeGreaterThanOrEqual(0);
+      expect(
+        Math.hypot(spec.camera.x - st.posX[mine], spec.camera.z - st.posZ[mine]),
+        'the opening camera must frame the human\'s own start, whichever spot it landed in',
+      ).toBeLessThan(20);
     } finally {
       clearScenario();
     }

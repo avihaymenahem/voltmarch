@@ -50,6 +50,8 @@ import {
   NAV_DIRECT_RANGE, NAV_DIRECT_RECHECK_TICKS, NAV_REPATH_TICKS,
   NAV_STUCK_TICKS, NAV_STUCK_SPEED_FRAC, NAV_STUCK_GIVEUP_RADIUS,
   NAV_STUCK_MAX_NUDGES, NAV_NUDGE_METRES,
+  NAV_WEDGE_SAMPLE_TICKS, NAV_WEDGE_METRES, NAV_WEDGE_STRIKES,
+  NAV_WEDGE_MAX_NUDGES, NAV_WEDGE_NUDGE_METRES, NAV_WEDGE_SEARCH_CELLS,
   NAV_FORMATION_SPACING, NAV_FORMATION_MAX_OFFSET, NAV_FORMATION_GOAL_EPS,
   NAV_FORMATION_ENGAGE_RADIUS,
   STEER_SEPARATION_WEIGHT, STEER_SEPARATION_RANGE_MUL, STEER_STATIC_PUSH_MUL,
@@ -57,7 +59,7 @@ import {
   STEER_QUEUE_COS, STEER_QUEUE_RANGE_MUL, STEER_QUEUE_BRAKE,
   STEER_FLOW_WEIGHT,
 } from '../core/config';
-import { EntityFlag, EntityKind, UnitState } from '../core/types';
+import { EntityFlag, EntityKind, NONE, UnitState } from '../core/types';
 import type { SimContext } from '../core/types';
 import type { World } from '../core/world';
 import { clampCell, hash2f, isInMap, worldToCell, wrapAngle } from '../core/math';
@@ -100,6 +102,67 @@ const NAV_PROGRESS_METRES = 1.5;
 /** Consecutive barren windows before the rescue check runs. 6 = 9 seconds. */
 const NAV_PROGRESS_STRIKES = 6;
 
+/* --------------------------------------------------------------------------
+ * THE WEDGE WATCHDOG — THE THIRD AND LAST MEASURE OF "STUCK"
+ *
+ * There are now three, and they are three because they measure three different
+ * things and each one is blind to the others' failure:
+ *
+ *   NAV_STUCK_*        the SPEEDOMETER. Fires in 0.8 s. Catches a unit grinding
+ *                      nose-first into something. Blind to a unit circling.
+ *   NAV_PROGRESS_*     DISTANCE TO GOAL, best-so-far. Fires in 9 s. Catches the
+ *                      circler. Blind to a unit that is legitimately detouring,
+ *                      by design — and it may only ever ask for a region
+ *                      rescue, so it cannot help a unit that is wedged inside
+ *                      the region it is supposed to be in.
+ *   NAV_WEDGE_*        RAW DISPLACEMENT. Fires in 6 s. Catches the one thing
+ *                      neither of the others can see: a unit that has not
+ *                      physically moved, at all, while it still holds an order,
+ *                      in a place the region test says is perfectly fine.
+ *
+ * The third is the one a player reports, because it is the only one that is
+ * visible from the top of the map: "it is just sitting there". It is also the
+ * only one whose remedy is allowed to move the unit without proving that the
+ * ground is disconnected, so it is deliberately the slowest to fire and it
+ * climbs a ladder rather than jumping to the end:
+ *
+ *   rung 0            RE-PLAN. Drop the field, clear Arrived (which is sticky
+ *                     and is how a unit ends up parked mid-haul forever) and
+ *                     ask for a fresh one. Fixes every case where the unit is
+ *                     free and the plan is stale.
+ *   rung 1..N         NUDGE. A deterministic sideways shove of the formation
+ *                     slot, big enough to clear a hull. Fixes the case where
+ *                     two units are leaning on each other in a doorway.
+ *   rung N+1          DISPLACE. Put the unit on the nearest ROUTABLE cell
+ *                     within NAV_WEDGE_SEARCH_CELLS, preferring the region its
+ *                     goal is in. Only reached after ~24 s of a unit not moving
+ *                     a single metre, which no legitimate behaviour does.
+ *   rung N+2          PARK. Nothing worked; end the order the way the older
+ *                     ladder does. This rung is what makes the whole thing
+ *                     TERMINATE — without it a unit that walks straight back
+ *                     into its own jam is displaced again every six seconds for
+ *                     the rest of the match and the counter climbs forever.
+ *
+ * WHY IT LIVES HERE AND NOT IN Movement.ts
+ * ----------------------------------------
+ * The brief asked for it "in movement", and the first two rungs are pure nav
+ * state — the field handle, the Arrived flag, the formation slot, the region
+ * labelling. A watchdog in the integrator would need all four passed to it and
+ * would then be a SECOND authority racing the escalation ladder that already
+ * lives in this class, on the same unit, in the same tick. One ladder, one
+ * owner. NavAssigner runs at Phase.PathRequest, which is before Steering and
+ * Movement, so the position it samples is the settled end-of-last-tick pose —
+ * exactly the right thing to difference.
+ *
+ * WHAT IT MUST NOT DO
+ * -------------------
+ * Displace a unit that is standing still on purpose. Three guards, all cheap:
+ * arrived units never reach it (the caller skips them, which is what excludes a
+ * harvester waiting its turn at a dock), immobilised units are skipped, and a
+ * unit with a live target is skipped so a tank that halted to shoot is never
+ * shoved out of its firing position.
+ * -------------------------------------------------------------------------- */
+
 /** Scratch for the rescue ring search. Module level: `simTick` never allocates. */
 const RESCUE_CELL = new Int32Array(2);
 
@@ -123,6 +186,50 @@ export function navRescueCount(): number { return rescueTotal; }
 /** Zero the counter. Between matches, and between test cases. */
 export function resetNavRescueCount(): void { rescueTotal = 0; }
 
+/**
+ * What the wedge watchdog has had to do, since boot.
+ *
+ * All four numbers matter and they matter as a RATIO. `detections` climbing
+ * while `displaced` stays at zero is the system working: units get stuck for a
+ * moment, a re-plan frees them. `displaced` climbing is the prevention layer —
+ * the nav clearance rule in Flowfield §4c — failing, and the watchdog papering
+ * over it. That is the number to watch after a change to base layout, unit
+ * radii or cell size.
+ */
+export interface NavWedgeCounters {
+  /** Windows in which a unit under orders had not moved. */
+  detections: number;
+  /** Rung 0: fields dropped and re-requested. */
+  repaths: number;
+  /** Rung 1..N: sideways shoves. */
+  nudges: number;
+  /** Rung N+1: units picked up and put on the nearest routable cell. */
+  displaced: number;
+  /**
+   * Past the last rung: orders ended because nothing above worked. This is the
+   * ladder terminating rather than churning, and a steady trickle of it is a
+   * crowd pressed against a goal nobody can stand on — a formation problem, not
+   * a wedge.
+   */
+  parked: number;
+}
+
+const wedgeCounters: NavWedgeCounters = {
+  detections: 0, repaths: 0, nudges: 0, displaced: 0, parked: 0,
+};
+
+/** Live wedge counters. The object is stable; read it, do not keep a copy. */
+export function navWedgeCounters(): Readonly<NavWedgeCounters> { return wedgeCounters; }
+
+/** Zero them. Between matches, and between test cases. */
+export function resetNavWedgeCounters(): void {
+  wedgeCounters.detections = 0;
+  wedgeCounters.repaths = 0;
+  wedgeCounters.nudges = 0;
+  wedgeCounters.displaced = 0;
+  wedgeCounters.parked = 0;
+}
+
 /* ==========================================================================
  * 1. PER-ENTITY NAV STATE
  * ========================================================================== */
@@ -134,6 +241,14 @@ const enum AgentFlag {
   Arrived = 1 << 1,
   /** A formation slot has been assigned for the current order. */
   HasSlot = 1 << 2,
+  /**
+   * The wedge watchdog has already picked this unit up and put it down once
+   * for the CURRENT order. One displacement per order is the whole budget:
+   * without it a unit that walks straight back into its own jam is displaced
+   * again every six seconds forever. Measured over a 6-minute AI match, the
+   * difference was 146 displacements against 11 units versus one each.
+   */
+  Displaced = 1 << 3,
 }
 
 /**
@@ -163,6 +278,18 @@ export class NavAgents {
   readonly bestDist = new Float32Array(MAX_ENTITIES);
   /** Consecutive progress windows that failed to improve `bestDist`. */
   readonly noProgress = new Uint8Array(MAX_ENTITIES);
+  /**
+   * Position at the last accepted wedge sample. Differenced against the live
+   * position every NAV_WEDGE_SAMPLE_TICKS; this is RAW displacement, with no
+   * reference to the goal, which is what makes it see a wedge the other two
+   * detectors are structurally unable to see.
+   */
+  readonly anchorX = new Float32Array(MAX_ENTITIES);
+  readonly anchorZ = new Float32Array(MAX_ENTITIES);
+  /** Consecutive sample windows in which the unit did not move. */
+  readonly frozen = new Uint8Array(MAX_ENTITIES);
+  /** How far up the unwedge ladder this unit has climbed on this order. */
+  readonly escalations = new Uint8Array(MAX_ENTITIES);
   readonly flags = new Uint8Array(MAX_ENTITIES);
 
   /** True if this slot's state belongs to the CURRENT occupant. */
@@ -175,6 +302,8 @@ export class NavAgents {
     this.slotX[i] = 0; this.slotZ[i] = 0;
     this.stuck[i] = 0; this.nudges[i] = 0;
     this.bestDist[i] = -1; this.noProgress[i] = 0;
+    this.anchorX[i] = 0; this.anchorZ[i] = 0;
+    this.frozen[i] = 0; this.escalations[i] = 0;
     this.flags[i] = 0;
   }
 
@@ -183,6 +312,48 @@ export class NavAgents {
     this.bestDist[i] = -1;
     this.noProgress[i] = 0;
   }
+
+  /**
+   * Re-anchor the wedge watchdog at (x,z) and put the unit back at the bottom
+   * of the ladder. Called on a new order, on arrival, on a rescue, and every
+   * time the unit demonstrably moved.
+   */
+  armWedge(i: number, x: number, z: number): void {
+    this.anchorX[i] = x;
+    this.anchorZ[i] = z;
+    this.frozen[i] = 0;
+    this.escalations[i] = 0;
+  }
+
+  /**
+   * Re-anchor and step the ladder DOWN by one rung instead of resetting it.
+   *
+   * This is what a good sample does, and the difference from `armWedge` is the
+   * whole reason the ladder terminates. A unit grinding along a wall at full
+   * throttle does not stand still: it creeps, and it will eventually creep the
+   * NAV_WEDGE_METRES that counts as movement. Zeroing the rung there put the
+   * unit back at the bottom every time, and the measured result was a unit in a
+   * sealed alcove taking 42 s to be displaced and cycling re-plan/nudge forever
+   * in between. A decay instead means sustained real movement walks the ladder
+   * back down over several windows, while a twitch cannot undo a climb.
+   *
+   * `finishOrder` uses it for the same reason from the other side: the older
+   * speed watchdog parks the unit, rung 0 un-parks it, and a reset there would
+   * deadlock the two against each other.
+   */
+  anchorWedge(i: number, x: number, z: number): void {
+    this.anchorX[i] = x;
+    this.anchorZ[i] = z;
+    this.frozen[i] = 0;
+    if (this.escalations[i] > 0) this.escalations[i]--;
+  }
+
+  /**
+   * The live wedge counters, reachable from a console session or a harness
+   * through `__vmNav.agents.watchdog()`. The numbers are module-level (one
+   * match, one sim) and this is simply where a debugger can find them.
+   */
+  watchdog(): Readonly<NavWedgeCounters> { return wedgeCounters; }
 }
 
 /* ==========================================================================
@@ -194,11 +365,38 @@ export class NavAgents {
  * not a bitmask on `flags`: `state` is the FSM every other module already
  * writes, and adding a parallel "is moving" bit would immediately drift out of
  * sync with it.
+ *
+ * WHY `Attacking` IS IN THIS LIST — THE BUG THAT PUT IT HERE
+ * ----------------------------------------------------------
+ * `core/types.ts` has always documented `UnitState.Attacking` as "stationary or
+ * CLOSING ON targetId", and `OrderExecutor.write()` puts a right-clicked attack
+ * order into exactly that state. This switch omitted it, so `NavAssigner` took
+ * the `!seeking` branch, RELEASED the unit's flow field, and the unit never
+ * moved. An attack order on something already in weapon range still worked —
+ * the unit fires from where it stands — so every unit test passed while the
+ * player reported, twice, "when right click attack on enemy building, my army
+ * doesnt attack!". You right-click an enemy BASE from across the map, and
+ * across the map was the one case that did nothing at all.
+ *
+ * WHAT MAINTAINS THE GOAL, AND WHY IT IS NOT THIS FILE
+ * ---------------------------------------------------
+ * Nothing here knows about weapons, so nothing here can know where to STOP.
+ * Left alone, an attacking unit paths to its target's centre, which would send
+ * a 42 m artillery piece all the way to the wall and throw its entire range
+ * advantage away — a worse bug than the one being fixed, and an invisible one.
+ *
+ * So `sim/Targeting.ts` owns the goal for an explicit Attack/ForceAttack order,
+ * the same way `sim/Capture.ts` owns it for Capture and `sim/Garrison.ts` for
+ * Enter: it refreshes `orderX/orderZ` onto the target while the target is out
+ * of weapon range, and parks the goal on the unit's own position once it is
+ * inside. That is what makes "closing on targetId" terminate at a firing
+ * position instead of at the target's footprint.
  */
 export function seeksGoal(state: number): boolean {
   switch (state) {
     case UnitState.Moving:
     case UnitState.AttackMoving:
+    case UnitState.Attacking:
     case UnitState.SeekOre:
     case UnitState.ReturnToRefinery:
     case UnitState.Fleeing:
@@ -238,6 +436,8 @@ export class NavAssigner {
   public rescues = 0;
   /** Orders ended because nothing near the goal was reachable at all. */
   public unreachableOrders = 0;
+  /** Units the wedge watchdog had to pick up and put down again, this match. */
+  public displacements = 0;
 
   constructor(
     private readonly world: World,
@@ -262,16 +462,24 @@ export class NavAssigner {
       const i = st.alive[a];
       if (!isMover(st.flags[i], st.kind[i])) continue;
       const gen = st.gen[i];
-      if (!ag.valid(i, gen)) ag.claim(i, gen);
+      if (!ag.valid(i, gen)) {
+        ag.claim(i, gen);
+        // `claim` zeroes the anchor, and (0,0) is a real map corner — a unit
+        // spawned anywhere else would read as having teleported on its first
+        // sample. Anchor it where it actually is.
+        ag.armWedge(i, st.posX[i], st.posZ[i]);
+      }
 
       const seeking = seeksGoal(st.state[i]);
       if (!seeking) {
         // Order finished or superseded by combat/economy: give the field back
         // so the LRU can reuse the slot.
         if (st.navField[i] >= 0) { this.nav.release(st.navField[i]); st.navField[i] = -1; }
-        ag.flags[i] &= ~(AgentFlag.HasSlot | AgentFlag.Arrived | AgentFlag.DirectPath);
+        ag.flags[i] &= ~(AgentFlag.HasSlot | AgentFlag.Arrived | AgentFlag.DirectPath
+          | AgentFlag.Displaced);
         ag.stuck[i] = 0; ag.nudges[i] = 0;
         ag.restartProgress(i);
+        ag.armWedge(i, st.posX[i], st.posZ[i]);
         continue;
       }
 
@@ -286,7 +494,9 @@ export class NavAssigner {
         ag.slotX[i] = 0; ag.slotZ[i] = 0;
         ag.stuck[i] = 0; ag.nudges[i] = 0;
         ag.restartProgress(i);
-        ag.flags[i] = (ag.flags[i] & ~(AgentFlag.Arrived | AgentFlag.DirectPath)) | AgentFlag.HasSlot;
+        ag.armWedge(i, st.posX[i], st.posZ[i]);
+        ag.flags[i] = (ag.flags[i] & ~(AgentFlag.Arrived | AgentFlag.DirectPath
+          | AgentFlag.Displaced)) | AgentFlag.HasSlot;
         NEW_ORDERS[newCount++] = i;
       }
       assigned++;
@@ -302,7 +512,29 @@ export class NavAssigner {
       const i = st.alive[a];
       if (!isMover(st.flags[i], st.kind[i])) continue;
       if (!seeksGoal(st.state[i])) continue;
-      if ((ag.flags[i] & AgentFlag.Arrived) !== 0) continue;
+
+      // -- parked, and not necessarily because it got there --------------
+      // `Arrived` is set by two very different things. Reaching the goal is
+      // one. The other is `finishOrder` being called from a GIVE-UP: three
+      // nudges spent, still not moving, park it. `Arrived` is sticky until the
+      // order point moves, and a harvester's FSM keeps re-publishing the same
+      // dock apron forever — so the second kind of Arrived is precisely the
+      // "stopped forever, mid-haul, with a full hopper" state that Harvesting's
+      // own header describes, and skipping it here is what made it permanent.
+      //
+      // A unit parked FAR from its target therefore gets exactly one more go:
+      // it falls through (the solver still holds it still, because that reads
+      // `Arrived` too), the watchdog below watches it not move, and rung 0
+      // clears the flag. `escalations === 0` is what makes it exactly one — by
+      // the time the ladder has parked it again the rung is spent, and it stays
+      // parked instead of cycling.
+      if ((ag.flags[i] & AgentFlag.Arrived) !== 0) {
+        if (ag.escalations[i] !== 0) continue;
+        const rx = ag.goalX[i] + ag.slotX[i] - st.posX[i];
+        const rz = ag.goalZ[i] + ag.slotZ[i] - st.posZ[i];
+        const give = NAV_STUCK_GIVEUP_RADIUS + st.radius[i];
+        if (rx * rx + rz * rz <= give * give) continue;
+      }
 
       const cls = moveClassAt(st, i);
       const tx = ag.goalX[i] + ag.slotX[i];
@@ -344,6 +576,32 @@ export class NavAssigner {
           // is ordinary congestion and the speed counter below owns it.
           ag.noProgress[i] = 0;
           if (this.rescue(i, cls, false)) continue;
+        }
+      }
+
+      // -- wedge watchdog ---------------------------------------------------
+      // Raw displacement, sliced per entity like everything else in this loop.
+      // Immobilised units and units with a live target are exempt: neither is
+      // stuck, both are standing still for a reason. Arrived units never get
+      // here at all — the `continue` at the top of the loop is what keeps a
+      // harvester queued behind another one at a dock out of this.
+      if (sliceForEntity(s.tick, i, NAV_WEDGE_SAMPLE_TICKS)
+          && (st.flags[i] & EntityFlag.Immobilized) === 0
+          && st.targetId[i] === (NONE as number)) {
+        const wdx = px - ag.anchorX[i], wdz = pz - ag.anchorZ[i];
+        if (wdx * wdx + wdz * wdz >= NAV_WEDGE_METRES * NAV_WEDGE_METRES) {
+          // Moved. Step DOWN one rung rather than resetting — see anchorWedge.
+          ag.anchorWedge(i, px, pz);
+        } else if (ag.frozen[i] < 255) {
+          ag.frozen[i]++;
+        }
+        if (ag.frozen[i] >= NAV_WEDGE_STRIKES) {
+          ag.frozen[i] = 0;
+          wedgeCounters.detections++;
+          // `unwedge` returns true only when it MOVED the unit; everything
+          // below this point in the loop would then be operating on a stale
+          // position, so the tick ends here for this entity.
+          if (this.unwedge(i, cls, px, pz, s.tick)) continue;
         }
       }
 
@@ -495,6 +753,7 @@ export class NavAssigner {
     ag.stuck[i] = 0; ag.nudges[i] = 0;
     ag.slotX[i] = 0; ag.slotZ[i] = 0;
     ag.restartProgress(i);
+    ag.armWedge(i, nx, nz);
     ag.flags[i] &= ~AgentFlag.DirectPath;
 
     this.rescues++;
@@ -513,6 +772,154 @@ export class NavAssigner {
     return true;
   }
 
+  /**
+   * One rung of the unwedge ladder. Returns true only when the unit's POSITION
+   * changed, which tells the caller the rest of this tick's bookkeeping is
+   * operating on stale numbers and must be skipped.
+   *
+   * Deterministic throughout: `hash2f` is a pure integer hash of (slot, tick)
+   * and the displacement is a ring search over a labelled grid. Neither draws
+   * from `s.rng`, so a unit coming unstuck cannot shift the RNG stream and
+   * desync everything downstream of it — the same rule `rescue` follows and for
+   * the same reason.
+   */
+  private unwedge(i: number, cls: MoveClass, px: number, pz: number, tick: number): boolean {
+    const st = this.world.store;
+    const ag = this.agents;
+    const rung = ag.escalations[i];
+    if (rung < 255) ag.escalations[i] = rung + 1;
+
+    // -- rung 0: RE-PLAN ----------------------------------------------------
+    // The cheapest and by far the most common fix. Note `Arrived` in the mask:
+    // it is sticky until the order point moves, and a harvester whose FSM keeps
+    // re-publishing the same dock apron never moves it — so a unit that nav
+    // gave up on stays given up on for the rest of the match. This is the one
+    // thing that clears it.
+    if (rung === 0) {
+      if (st.navField[i] >= 0) { this.nav.release(st.navField[i]); st.navField[i] = -1; }
+      ag.flags[i] &= ~(AgentFlag.DirectPath | AgentFlag.Arrived);
+      ag.stuck[i] = 0;
+      ag.nudges[i] = 0;
+      ag.restartProgress(i);
+      wedgeCounters.repaths++;
+      return false;
+    }
+
+    // -- rungs 1..N: NUDGE --------------------------------------------------
+    if (rung <= NAV_WEDGE_MAX_NUDGES) {
+      const ang = hash2f(i, tick) * Math.PI * 2;
+      ag.slotX[i] += Math.cos(ang) * NAV_WEDGE_NUDGE_METRES;
+      ag.slotZ[i] += Math.sin(ang) * NAV_WEDGE_NUDGE_METRES;
+      ag.flags[i] &= ~(AgentFlag.DirectPath | AgentFlag.Arrived);
+      ag.stuck[i] = 0;
+      ag.restartProgress(i);
+      wedgeCounters.nudges++;
+      return false;
+    }
+
+    // -- past the last rung: PARK -------------------------------------------
+    // The unit has been re-planned, shoved twice and physically picked up and
+    // put down, and it is STILL not moving. Measured in a 4-minute AI match,
+    // that shape is almost always a crowd pressed against the wall in front of
+    // an order point nobody can stand on — twenty infantry at full throttle,
+    // 4 m from where they were told to be, none of them able to give way. There
+    // is nothing left to try, and the honest answer is the one the older
+    // speed-based ladder already gives: park it. `finishOrder` deliberately
+    // leaves a harvester's own FSM state alone, so the economy re-plans rather
+    // than stopping.
+    //
+    // This rung is also what makes the ladder TERMINATE. Displacement used to
+    // reset the rung, so a unit that walked straight back into its own jam was
+    // displaced again every six seconds forever; the counter climbed while
+    // nothing improved.
+    if ((ag.flags[i] & AgentFlag.Displaced) !== 0) {
+      this.finishOrder(i);
+      wedgeCounters.parked++;
+      return false;
+    }
+
+    // -- rung N+1: DISPLACE -------------------------------------------------
+    if (cls === MoveClass.Air) return false;
+    const cx = clampCell(worldToCell(px));
+    const cz = clampCell(worldToCell(pz));
+    // Prefer the region the GOAL is in — putting the unit somewhere routable
+    // that still cannot reach its order would only start the ladder again.
+    const gcx = clampCell(worldToCell(ag.goalX[i]));
+    const gcz = clampCell(worldToCell(ag.goalZ[i]));
+    let want = this.nav.regionOf(gcx, gcz, cls);
+    if (want === 0) want = this.nav.mainRegion(cls);
+    if (want === 0) return false;
+    if (!this.freeCellNear(cx, cz, cls, want, RESCUE_CELL)) return false;
+
+    const nx = (RESCUE_CELL[0] + 0.5) * CELL;
+    const nz = (RESCUE_CELL[1] + 0.5) * CELL;
+    const ny = this.nav.rideHeight(cls, nx, nz);
+    st.posX[i] = nx; st.posY[i] = ny; st.posZ[i] = nz;
+    // Drag the interpolation source with it, or the renderer slides the unit
+    // THROUGH the building it was wedged against over a single frame.
+    st.prevX[i] = nx; st.prevY[i] = ny; st.prevZ[i] = nz;
+    st.cellX[i] = RESCUE_CELL[0]; st.cellZ[i] = RESCUE_CELL[1];
+    st.speed[i] = 0; st.velX[i] = 0; st.velZ[i] = 0;
+
+    if (st.navField[i] >= 0) { this.nav.release(st.navField[i]); st.navField[i] = -1; }
+    ag.stuck[i] = 0; ag.nudges[i] = 0;
+    ag.slotX[i] = 0; ag.slotZ[i] = 0;
+    ag.restartProgress(i);
+    // Re-anchor at the new spot but KEEP the rung: if this did not free the
+    // unit, the next window has to reach the park rung, not start over.
+    ag.anchorX[i] = nx; ag.anchorZ[i] = nz; ag.frozen[i] = 0;
+    ag.flags[i] = (ag.flags[i] & ~(AgentFlag.DirectPath | AgentFlag.Arrived))
+      | AgentFlag.Displaced;
+
+    this.displacements++;
+    wedgeCounters.displaced++;
+    // Loud the first time, sparse after. A displacement is a bug report: the
+    // clearance rule is supposed to make it impossible to get in there.
+    if (wedgeCounters.displaced === 1 || wedgeCounters.displaced % 16 === 0) {
+      console.warn(
+        `[nav] a unit was wedged and had to be displaced from cell ${cx},${cz} ` +
+        `-> ${RESCUE_CELL[0]},${RESCUE_CELL[1]} (kind ${st.kind[i]}, state ${st.state[i]}) ` +
+        `— ${wedgeCounters.displaced} displacement${wedgeCounters.displaced === 1 ? '' : 's'}, ` +
+        `${wedgeCounters.repaths} re-plans, ${wedgeCounters.nudges} nudges, ` +
+        `${wedgeCounters.parked} parked so far`,
+      );
+    }
+    return true;
+  }
+
+  /**
+   * Nearest cell in `region` that `cls` may be ROUTED through, starting one
+   * ring out so the answer is never the cell we are standing in.
+   *
+   * Ring order matches `snapToReachable` exactly (+Z edge, -Z edge, then the
+   * two X edges) so two runs of one seed pick the same cell and a replay cannot
+   * desync on an unwedge.
+   */
+  private freeCellNear(
+    cx: number, cz: number, cls: MoveClass, region: number, out: Int32Array,
+  ): boolean {
+    for (let r = 1; r <= NAV_WEDGE_SEARCH_CELLS; r++) {
+      for (let d = -r; d <= r; d++) {
+        if (this.cellIsFree(cx + d, cz - r, cls, region, out)) return true;
+        if (this.cellIsFree(cx + d, cz + r, cls, region, out)) return true;
+      }
+      for (let d = -r + 1; d <= r - 1; d++) {
+        if (this.cellIsFree(cx - r, cz + d, cls, region, out)) return true;
+        if (this.cellIsFree(cx + r, cz + d, cls, region, out)) return true;
+      }
+    }
+    return false;
+  }
+
+  private cellIsFree(
+    cx: number, cz: number, cls: MoveClass, region: number, out: Int32Array,
+  ): boolean {
+    if (!isInMap(cx, cz)) return false;
+    if (this.nav.regionOf(cx, cz, cls) !== region) return false;
+    out[0] = cx; out[1] = cz;
+    return true;
+  }
+
   /** Park a unit: order satisfied, field returned, velocity killed. */
   private finishOrder(i: number): void {
     const st = this.world.store;
@@ -521,12 +928,17 @@ export class NavAssigner {
     ag.flags[i] |= AgentFlag.Arrived;
     ag.stuck[i] = 0;
     ag.restartProgress(i);
+    ag.anchorWedge(i, st.posX[i], st.posZ[i]);
     st.velX[i] = 0; st.velZ[i] = 0;
     // `state` is written by whichever phase owns the behaviour (see the
     // ownership table in core/loop.ts) — completing a move order is ours.
     // `orderKind` belongs to Command and is deliberately left alone.
     // Harvester and repair states belong to Economy — arriving does not end
-    // those behaviours, it starts the next stage of them.
+    // those behaviours, it starts the next stage of them. `Attacking` is the
+    // same shape and belongs to Targeting: reaching the firing standoff is the
+    // START of the engagement, so parking must not clear it. This is also what
+    // makes a unit that the give-up ladder parked short of its target STAY
+    // parked — Targeting only re-issues the goal when the target has moved.
     const s = st.state[i];
     if (s === UnitState.Moving || s === UnitState.Fleeing || s === UnitState.AttackMoving) {
       st.state[i] = UnitState.Idle;
@@ -816,11 +1228,19 @@ export class SteeringSolver {
     this.moving = moving;
   }
 
-  /** True if the cell containing (x,z) is impassable for `cls`. */
+  /**
+   * True if the cell containing (x,z) is PHYSICALLY blocked for `cls`.
+   *
+   * The avoidance probe wants the wall, not the planning rule. A cell the nav
+   * clearance rule closed (Flowfield §4c) still has open ground in it, and
+   * treating it as an obstacle would make units veer away from perfectly solid
+   * footing — including the footing under a unit that is trying to drive OUT of
+   * one, which is the last thing that should be discouraged.
+   */
   private blocked(x: number, z: number, cls: MoveClass): boolean {
     const cx = worldToCell(x), cz = worldToCell(z);
     if (!isInMap(cx, cz)) return true;
-    return !this.nav.isPassableClass(cx, cz, cls);
+    return !this.nav.isStandable(cx, cz, cls);
   }
 }
 

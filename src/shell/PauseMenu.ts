@@ -41,11 +41,21 @@
  * I supposed to be doing" is — with "what does this key do again" — one of the
  * two questions a paused player actually has. Reading it costs one line each and
  * the block is absent entirely when nothing is active.
+ *
+ * AND IT IS THE FULL LIST
+ * -----------------------
+ * Uncapped, unlike the HUD panel. The HUD panel is capped at three rows because
+ * it shares the frame with a battle and with a 12-16% interface budget; this
+ * screen is modal, over a frozen sim, and competes with nothing. Making this the
+ * authoritative list is what lets the in-match panel stay a summary, and it is
+ * the cheaper half of "let the player see ALL objectives" — no new state, no new
+ * affordance, one deleted `slice`.
  * ============================================================================
  */
 
 import { HelpPanel } from './Help';
 import { MissionsPanel } from './Missions';
+import { SavePanel } from './LoadGame';
 import { DIFFICULTIES, SPEEDS, mapById } from './settings-store';
 import { readProgression, type ActiveObjective } from '../ui/Objectives';
 import {
@@ -149,6 +159,22 @@ export class PauseMenuScreen implements Screen {
       hint: 'Esc',
       onClick: () => this.shell.resume(),
     }));
+    // Directly under Resume, because "save and stop playing" is the second
+    // thing a paused player wants after "keep playing", and because a save
+    // entry the player has to hunt for is a save entry they never use.
+    //
+    // ABSENT, NOT DISABLED, when there is nothing to save — a build without
+    // `src/save/**`, or a tutorial run, which forces its own map and seed and
+    // would restore a battlefield without the lesson. The same reasoning the
+    // title screen applies to Load: a control that cannot do anything is worse
+    // than no control, and unlike the title screen there is no useful sentence
+    // to put under it here.
+    if (this.shell.canSave()) {
+      nav.appendChild(button('Save Game', {
+        iconName: 'folder',
+        onClick: () => this.openSave(),
+      }));
+    }
     nav.appendChild(button('Missions', {
       iconName: 'trophy',
       onClick: () => this.openMissions(),
@@ -221,18 +247,24 @@ export class PauseMenuScreen implements Screen {
     const wrap = el('div', 'vm-pause-obj');
     wrap.appendChild(el('p', 'vm-subtitle', 'Objectives'));
 
-    // Same cap as the HUD panel, and for the same reason.
-    const shown = active.slice(0, 4);
-    for (const o of shown) {
+    // EVERY objective, with no cap.
+    //
+    // This block used to truncate at four and print "+N more", which mirrored
+    // the HUD panel's cap. Mirroring it was the mistake: the HUD panel is
+    // capped because it competes with the battlefield for a 12-16% interface
+    // budget, and NONE of that is true here. The sim is frozen, the screen is
+    // modal, and "what was I supposed to be doing" is one of the two questions
+    // a paused player actually has. So this is the authoritative full list —
+    // which is what makes it safe for the in-match panel to stay a summary.
+    // `objectives.css` puts a scroll guard on the block for the pathological
+    // case of a very short window and a very long mission chain.
+    for (const o of active) {
       const row = el('div', `vm-pause-obj-row${o.progress.complete ? ' is-done' : ''}`);
       const name = el('span', 'vm-pause-obj-name', o.title);
       name.title = o.description;
       row.appendChild(name);
       row.appendChild(el('span', 'vm-pause-obj-value vm-num', objectiveLine(o)));
       wrap.appendChild(row);
-    }
-    if (active.length > shown.length) {
-      wrap.appendChild(el('div', 'vm-pause-obj-more', `+${active.length - shown.length} more`));
     }
     return wrap;
   }
@@ -253,6 +285,21 @@ export class PauseMenuScreen implements Screen {
 
   private openMissions(): void {
     this.openOverlay(new MissionsPanel({ onClose: () => this.closeOverlay() }));
+  }
+
+  /**
+   * The manual-save panel, hosted the same way Help and Missions are.
+   *
+   * It satisfies the same three-member `Overlay` shape, so this screen still
+   * holds ONE overlay slot rather than one field per panel — which is the whole
+   * reason that shape exists. Closing it lands back on the pause card with the
+   * sim still frozen, exactly as the other two do.
+   */
+  private openSave(): void {
+    this.openOverlay(new SavePanel({
+      shell: this.shell,
+      onClose: () => this.closeOverlay(),
+    }));
   }
 
   private openOverlay(next: Overlay): void {

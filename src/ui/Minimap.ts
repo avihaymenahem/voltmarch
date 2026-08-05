@@ -46,7 +46,7 @@ import {
   MAP_SIZE,
   MINIMAP_HZ,
 } from '../core/config';
-import { EntityFlag, EntityKind, Faction, type PlayerId } from '../core/types';
+import { EntityFlag, EntityKind, Faction, VisionLevel, type PlayerId } from '../core/types';
 import type { World } from '../core/world';
 import type { CameraRig } from '../render/camera';
 import { SEMANTIC, accentFor, hexToRgb, mixHex, rgba } from './Chrome';
@@ -104,6 +104,10 @@ export class Minimap {
   private readonly bakeCtx: CanvasRenderingContext2D;
   private readonly bakeImage: ImageData;
 
+  /** White radial sprite for the territory glow, plus its per-colour tints. */
+  private readonly glow: HTMLCanvasElement;
+  private readonly glowTints = new Map<string, HTMLCanvasElement>();
+
   private terrain: TerrainSampler | null = null;
   private faction: Faction;
   private accent: string;
@@ -157,7 +161,57 @@ export class Minimap {
     this.bakeCtx = bctx;
     this.bakeImage = bctx.createImageData(MAP_CELLS, MAP_CELLS);
 
+    this.glow = Minimap.buildGlowSprite();
+
     this.attachInput();
+  }
+
+  /* ------------------------------------------------------------------ *
+   * THE TERRITORY GLOW
+   *
+   * docs/refs/TARGET_LOOK.md §A.2: "territory as soft colour glows". One white
+   * radial sprite is painted at construction and then tinted once per colour
+   * into a tiny cache — three entries in practice, because there are three
+   * blip colours. Drawing is `drawImage`, so the per-frame path allocates
+   * nothing, which a `createRadialGradient` per building per redraw very much
+   * would.
+   * ------------------------------------------------------------------ */
+
+  private static buildGlowSprite(): HTMLCanvasElement {
+    const size = 64;
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const g = c.getContext('2d');
+    if (g === null) return c;
+    const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+    // Falls off fast. A linear ramp reads as a disc with a soft edge; this
+    // reads as a light, which is what the reference has.
+    grad.addColorStop(0, 'rgba(255,255,255,0.95)');
+    grad.addColorStop(0.35, 'rgba(255,255,255,0.42)');
+    grad.addColorStop(0.72, 'rgba(255,255,255,0.10)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, size, size);
+    return c;
+  }
+
+  /** The glow sprite in `colour`. Built once per colour, then reused. */
+  private tintedGlow(colour: string): HTMLCanvasElement {
+    const hit = this.glowTints.get(colour);
+    if (hit !== undefined) return hit;
+    const c = document.createElement('canvas');
+    c.width = this.glow.width;
+    c.height = this.glow.height;
+    const g = c.getContext('2d');
+    if (g !== null) {
+      g.drawImage(this.glow, 0, 0);
+      g.globalCompositeOperation = 'source-in';
+      g.fillStyle = colour;
+      g.fillRect(0, 0, c.width, c.height);
+    }
+    this.glowTints.set(colour, c);
+    return c;
   }
 
   /* ------------------------------------------------------------------ */
@@ -167,6 +221,9 @@ export class Minimap {
   setFaction(f: Faction): void {
     this.faction = f;
     this.accent = accentFor(f);
+    // The coastline in the bake is drawn in the accent, so a faction swap has
+    // to re-bake and not merely redraw.
+    this.bakeDirty = true;
     this.lastDraw = -1e9;
   }
 
@@ -255,8 +312,20 @@ export class Minimap {
     // brightly-lit sticker on top of it.
     const surf: Array<[number, number, number]> = [];
     for (const hex of HUD_MINIMAP_SURFACE) surf.push(hexToRgb(mixHex(hex, '#0A0E14', 0.28)));
-    const water = hexToRgb(mixHex(HUD_MINIMAP_WATER, '#0A0E14', 0.2));
+    // WATER IS PUSHED WAY DOWN, and that is the point.
+    //
+    // docs/refs/TARGET_LOOK.md §A.2: the reference draws the map as its ACTUAL
+    // IRREGULAR SHAPE rather than as a rectangle. Our maps are a square grid,
+    // so the only honest silhouette available is the LAND — and at 0.2 toward
+    // the panel dark the water was bright enough to be figure rather than
+    // ground, which made every map read as a rectangle whatever its coastline
+    // did. At 0.66 the land is the shape and the water is the surround.
+    const water = hexToRgb(mixHex(HUD_MINIMAP_WATER, '#0A0E14', 0.66));
     const oreRgb = hexToRgb(mixHex(SEMANTIC.ore, '#FFFFFF', 0.22));
+    // The coastline: the accent, laid on the land side of the boundary, so the
+    // silhouette is a LIT edge rather than a change of fill. Same idea as the
+    // panel bevel, four hundred times smaller.
+    const coast = hexToRgb(mixHex(this.accent, '#FFFFFF', 0.15));
 
     for (let cz = 0; cz < MAP_CELLS; cz++) {
       for (let cx = 0; cx < MAP_CELLS; cx++) {
@@ -279,6 +348,19 @@ export class Minimap {
           r *= shade;
           g *= shade;
           b *= shade;
+
+          // Four-neighbour test, clamped at the border so the frame edge is
+          // never mistaken for a shore.
+          const shore =
+            (cx > 0 && t.water(cx - 1, cz)) ||
+            (cx < MAP_CELLS - 1 && t.water(cx + 1, cz)) ||
+            (cz > 0 && t.water(cx, cz - 1)) ||
+            (cz < MAP_CELLS - 1 && t.water(cx, cz + 1));
+          if (shore) {
+            r += (coast[0] - r) * 0.55;
+            g += (coast[1] - g) * 0.55;
+            b += (coast[2] - b) * 0.55;
+          }
         }
 
         // Ore is the one thing on this map allowed to be bright, and it was
@@ -320,9 +402,66 @@ export class Minimap {
     ctx.drawImage(this.bake, 0, 0, MAP_CELLS, MAP_CELLS, this.mapX, this.mapY, this.mapW, this.mapH);
 
     this.drawShroud();
+    this.drawTerritory();
     this.drawBlips();
     this.drawPings();
     this.drawViewport();
+  }
+
+  /**
+   * Territory, as soft colour glows under the blips.
+   *
+   * The reference's minimap does not show WHERE THINGS ARE so much as WHOSE
+   * THE GROUND IS, and that is a genuinely different read: at a glance you see
+   * three coloured regions, not eighty dots. One glow per completed structure,
+   * additively composited, so a dense base blooms and a lone outpost does not.
+   *
+   * Under the same radar and shroud gate as the blips — a glow that leaked
+   * through the fog would be a map hack with a soft edge. Drawn AFTER the
+   * shroud for exactly that reason: the shroud must not be able to darken a
+   * glow the player has earned, and the gate here is what keeps one they have
+   * not off the map entirely.
+   */
+  private drawTerritory(): void {
+    const ctx = this.ctx;
+    const store = this.world.store;
+    const local = this.world.localPlayer;
+    const scale = this.mapW / MAP_SIZE;
+    const hasRadar = this.world.vision.hasRadar(local);
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.34;
+
+    const list = store.byKind[EntityKind.Building];
+    const count = store.byKindCount[EntityKind.Building];
+    for (let i = 0; i < count; i++) {
+      const e = list[i];
+      const flags = store.flags[e];
+      if ((flags & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) continue;
+
+      const ownerId = store.owner[e] as PlayerId;
+      const mine = ownerId === local || this.world.areAllied(local, ownerId);
+      if (!mine) {
+        if (!hasRadar) continue;
+        if (this.world.vision.visibilityOf(local, store.handleOf(e)) < VisionLevel.Remembered) continue;
+      }
+
+      const style = mine
+        ? this.accent
+        : store.faction[e] === Faction.Neutral
+          ? BLIP_NEUTRAL
+          : BLIP_ENEMY;
+
+      // Sized off the footprint so a Construction Yard owns more ground than a
+      // silo, with a floor so the smallest structure still reads.
+      const radius = Math.max(6, store.footprintW[e] * scale * 3.4);
+      const px = this.mapX + store.posX[e] * scale;
+      const py = this.mapY + store.posZ[e] * scale;
+      ctx.drawImage(this.tintedGlow(style), px - radius, py - radius, radius * 2, radius * 2);
+    }
+
+    ctx.restore();
   }
 
   /** Black over unexplored; a heavy multiply over explored-not-visible. */
@@ -381,8 +520,6 @@ export class Minimap {
     const unit = Math.max(2, Math.round(this.mapW / MAP_CELLS) + 1);
 
     const hasRadar = this.world.vision.hasRadar(local);
-    const grid = this.world.vision.gridFor(local);
-    const useGrid = grid.length === MAP_CELLS * MAP_CELLS;
 
     let currentStyle = '';
     for (let i = 0; i < store.aliveCount; i++) {
@@ -390,7 +527,7 @@ export class Minimap {
       const kind = store.kind[e];
       if (kind === EntityKind.Prop || kind === EntityKind.Crate || kind === EntityKind.Wreck) continue;
       const flags = store.flags[e];
-      if ((flags & (EntityFlag.PendingDestroy | EntityFlag.Cloaked | EntityFlag.Garrisoned)) !== 0) continue;
+      if ((flags & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) continue;
 
       const ownerId = store.owner[e] as PlayerId;
       const mine = ownerId === local || this.world.areAllied(local, ownerId);
@@ -399,13 +536,19 @@ export class Minimap {
         // Hostile blips are gated on radar AND on the shroud, exactly like the
         // original: a radar dome is what turns the map from your base into the
         // battlefield.
+        //
+        // THE SHROUD TEST IS THE PORT, not the raw grid. Testing the grid's
+        // EXPLORED bit here was a map hack: it blipped an enemy tank on any
+        // cell you had ever walked past, whether or not you could see it now.
+        // It read as correct only because this pass runs at `RenderPhase.Hud`
+        // (80), which used to be inside the window where the render mask had
+        // borrowed `EntityFlag.Cloaked` — so the flag test above was silently
+        // doing the real work. The mask no longer borrows that bit, so the
+        // gate has to be the real question, asked the way everything else asks
+        // it. `>= Remembered` is the same threshold the renderer draws at: a
+        // scouted structure keeps its blip, a tank that drove off does not.
         if (!hasRadar) continue;
-        if (useGrid) {
-          const cx = (store.posX[e] / (MAP_SIZE / MAP_CELLS)) | 0;
-          const cz = (store.posZ[e] / (MAP_SIZE / MAP_CELLS)) | 0;
-          if (cx < 0 || cz < 0 || cx >= MAP_CELLS || cz >= MAP_CELLS) continue;
-          if ((grid[cz * MAP_CELLS + cx] & 0b10) === 0) continue;
-        }
+        if (this.world.vision.visibilityOf(local, store.handleOf(e)) < VisionLevel.Remembered) continue;
       }
 
       const style = mine

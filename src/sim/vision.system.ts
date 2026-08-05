@@ -16,23 +16,28 @@
  *                                    instancer must see the mask in the same
  *                                    frame it was computed, never a frame late.
  *
- * THE BORROWED FLAG — READ THIS BEFORE CHANGING ANYTHING HERE
- * -----------------------------------------------------------
- * `RenderBridge` skips any entity carrying `EntityFlag.Cloaked`. That flag is
- * the only lever this module has over what gets instanced, and it lives in the
- * simulation's `flags` column — which is shared, deterministic state that must
- * NOT depend on who happens to be looking at the screen.
+ * THE FLAG THIS MODULE NO LONGER BORROWS — READ BEFORE CHANGING ANYTHING HERE
+ * ---------------------------------------------------------------------------
+ * This module used to hide entities by SETTING `EntityFlag.Cloaked` on them at
+ * `RenderPhase.FowUpload` and having a companion system at `RenderPhase.Present`
+ * (900) put every borrowed bit back before the frame ended. The reasoning was
+ * sound as far as it went — `GameLoop.onFrame` runs all fixed sim steps before
+ * any frame system, so the simulation never observed a borrowed bit — but the
+ * cost of ONE missed restore was catastrophic and permanent, because that flag
+ * is also read by `Targeting` (do not acquire), `Combat` (do not fire) and
+ * `Selection` (cannot be clicked), and `Vision.clearRenderMask` restored by slot
+ * index with no generation check. A skipped restore plus a recycled slot wrote a
+ * dead unit's bit onto a live one, and `tickCloak` will not clear a `Cloaked`
+ * bit it has no `setCloaked` reason for. The result was a unit that was
+ * invisible, unclickable and immune to fire for the rest of the match: "something
+ * came into my base, I could not see it, and my army would not shoot it."
  *
- * So the flag is BORROWED, not taken. `applyRenderMask(localPlayer)` sets it at
- * `RenderPhase.FowUpload` and records every bit it flipped; a companion system
- * registered at `RenderPhase.Present` (900) puts every one of them back before
- * the frame ends. Because `GameLoop.onFrame` runs all fixed sim steps BEFORE it
- * runs the frame systems, the simulation never observes a single borrowed bit.
- * Determinism is intact and multiplayer stays possible.
- *
- * The companion is registered programmatically rather than shipped as a second
- * `*.system.ts` file so the pair can never be separated by a glob, a file
- * rename, or an agent deleting "the one that does nothing".
+ * `Vision.computeRenderMask(viewer)` replaces it. It writes render-owned state
+ * and no simulation column whatsoever, `RenderBridge.visibility` reads it, and
+ * there is no restore step to miss — see §2.6 of Vision.ts for why a pass-id
+ * mask cannot latch. DO NOT reintroduce a flag borrow here, however careful the
+ * pairing looks; the reason this one failed is that a `try/finally` around a
+ * frame is not the failure it was protecting against.
  *
  * TURNING FOG OFF
  * ---------------
@@ -58,19 +63,18 @@
 
 import { defineSystem, everyNth } from '../core/loop';
 import { Phase, RenderPhase } from '../core/types';
-import type { PlayerId, RenderContext, SimContext, SystemModule } from '../core/types';
+import type { PlayerId, RenderContext, SimContext } from '../core/types';
 import { VISION_TICK_INTERVAL, FOG_ENABLED_DEFAULT, FOG_REVEAL_IN_SHOT_MODE } from '../core/config';
 import { ctx } from '../game/context';
 import { activeScenario } from '../game/Scenarios';
 
 import { Vision } from './Vision';
 import { FogOfWar } from '../render/FogOfWar';
+import { renderBridge } from '../render/RenderBridge';
 
 /* -------------------------------------------------------------------------- */
 /* Flag resolution                                                             */
 /* -------------------------------------------------------------------------- */
-
-const UNMASK_ID = 'sim.vision.unmask';
 
 function query(name: string): string | null {
   if (typeof location === 'undefined') return null;
@@ -143,31 +147,17 @@ function applyEnabled(): void {
 }
 
 /**
- * The other half of the borrowed flag, and its safety net.
- *
- * `frame` at `RenderPhase.Present` (900) is the normal return path: every
- * render module — bridge, anim, vfx, overlay, hud — has had its look at the
- * mask by then, and the actual `renderer.render()` happens later still, in
- * Bootstrap's `hooks.render`, off the instance data the bridge already wrote.
- *
- * `simTick` at `Phase.Command` with a hugely negative order is the safety net.
- * `SystemRegistry.runFrame` has no try/catch, so ONE unrelated module throwing
- * from a later render phase would strand the borrowed bits in the simulation.
- * Clearing again before the very first sim system of the next tick makes that
- * failure mode cost nothing. Both calls are idempotent.
+ * Publish the mask to the bridge. Cheap enough to re-check every frame, and
+ * doing it there rather than once in `init()` is deliberate: the bridge is
+ * rebuilt on a match restart, and an `init()`-time wire-up would leave the new
+ * bridge with no mask and the whole map revealed. One reference compare per
+ * frame buys immunity to every ordering question this could otherwise raise.
  */
-const unmaskSystem: SystemModule = {
-  id: UNMASK_ID,
-  renderPhase: RenderPhase.Present,
-  phase: Phase.Command,
-  order: -1_000_000,
-  frame(): void {
-    vision?.clearRenderMask();
-  },
-  simTick(): void {
-    vision?.clearRenderMask();
-  },
-};
+function publishMask(v: Vision | null): void {
+  const b = renderBridge();
+  if (b === null) return;
+  if (b.visibility !== v) b.visibility = v;
+}
 
 /* -------------------------------------------------------------------------- */
 
@@ -178,7 +168,7 @@ export default defineSystem({
   order: 0,
 
   init(): void {
-    const { world, sceneRig, registry } = ctx();
+    const { world, sceneRig } = ctx();
 
     urlOverride = fogFromUrl();
     shotMode = readShotMode();
@@ -194,8 +184,7 @@ export default defineSystem({
       heightAt: (x, z) => world.terrain.heightAt(x, z),
     });
 
-    registry.add(unmaskSystem);
-
+    publishMask(vision);
     applyEnabled();
   },
 
@@ -227,8 +216,9 @@ export default defineSystem({
   },
 
   /**
-   * Render half, at `RenderPhase.FowUpload` (20) — before the bridge instances
-   * anything and before any overlay reads a flag.
+   * Render half, at `RenderPhase.FowUpload` (20) — before `RenderPhase.Bridge`
+   * (30) instances anything, so the mask the bridge reads was computed from this
+   * frame's positions and never a frame late.
    */
   frame(r: RenderContext): void {
     const v = vision;
@@ -239,11 +229,14 @@ export default defineSystem({
 
     const { world, debug } = ctx();
     const viewer = world.localPlayer;
+    publishMask(v);
 
     if (!v.enabled) {
-      // Nothing masked, nothing drawn. Counters still reported so the F3
-      // overlay shows "fog: off" rather than stale numbers.
-      v.clearRenderMask();
+      // Fog off still runs the mask, for two reasons: a cloaked ENEMY is hidden
+      // by a cloak and not by a shroud, and — more importantly — a mask that
+      // simply stops being recomputed would leave its last pass id current and
+      // whatever it hid hidden forever. Recomputing is what makes it stateless.
+      v.computeRenderMask(viewer);
       debug.counters.fogMasked = 0;
       debug.counters.fogVisible = 0;
       debug.counters.fogExplored = 0;
@@ -260,7 +253,7 @@ export default defineSystem({
       f.snapTo(v.gridFor(viewer));
     }
 
-    v.applyRenderMask(viewer);
+    v.computeRenderMask(viewer);
     f.update(v.gridFor(viewer), v.version[viewer as number], r.dt, r.time);
 
     const st = v.stats(viewer);
@@ -271,12 +264,13 @@ export default defineSystem({
   },
 
   dispose(): void {
-    vision?.clearRenderMask();
+    // Detach BEFORE invalidating, so no frame can read a mask belonging to a
+    // module that no longer exists. Either order is safe — an invalidated mask
+    // hides nothing — but this one is safe for a reason a reader can check.
+    const b = renderBridge();
+    if (b !== null && b.visibility === vision) b.visibility = null;
     fog?.dispose();
     vision?.dispose();
-    // Guarded: `registry.dispose()` clears everything itself, and removing an
-    // id that is already gone is a documented no-op.
-    try { ctx().registry.remove(UNMASK_ID); } catch { /* context already torn down */ }
     vision = null;
     fog = null;
     latched = false;

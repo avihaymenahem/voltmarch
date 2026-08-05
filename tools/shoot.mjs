@@ -19,6 +19,35 @@
  * routes to a scenario builder. Camera, mood and timing are driven here through
  * __VM so a critic's note ("too close, I can't judge the base silhouette") is a
  * one-line change in this file rather than a rebuild.
+ *
+ * ============================================================================
+ * THE CAMERA IS PART OF THE INSTRUMENT
+ * ============================================================================
+ * The grade these images feed is a measurement of the ART. It stops being one
+ * the moment the CAMERA differs between runs, and nothing downstream can tell
+ * the two apart — a pitch that moved two degrees and a lighting change look the
+ * same in a luminance histogram.
+ *
+ * Pitch used to be safe without anyone guarding it, because `CameraRig` derived
+ * it from the dolly distance and there was no second writer. Pitch is becoming
+ * player-controlled. So every shot now DECLARES its `camera` block, the pose is
+ * asserted against the live rig immediately before the shutter, and a mismatch
+ * FAILS THE SHOT — same treatment the boot curtain gets, and for the same
+ * reason: a run that quietly photographed the wrong thing has already been
+ * shipped from this file once, and the six points it cost were attributed to an
+ * art change for two days.
+ *
+ * The declared `pitchDeg` values are the pitch each fixture ALREADY renders at,
+ * so adding the guard moved no pixels. They are the rig's zoom curve at the
+ * shot's dolly:
+ *
+ *     t   = clamp((distance - 30) / (140 - 30), 0, 1)
+ *     deg = 46 + 12 * t * t * (3 - 2t)
+ *
+ * `tests/shot-camera.spec.ts` re-derives every one of them from the live
+ * `RENDER_CONFIG` and from a real `CameraRig`, so if the camera config ever
+ * changes, the table goes red in `npm test` rather than silently moving a grade.
+ * ============================================================================
  */
 
 import { chromium } from 'playwright';
@@ -46,6 +75,13 @@ const MAP_CENTER = 256;
  * A shot is data, not code: `flags` picks the scenario, `pose` is an ordered
  * list of __VM calls, `settle` is how many frames to let the frame stabilise
  * (shader compiles, LOD, particle steady-state) before the shutter.
+ *
+ * `camera` is the CANONICAL POSE — the frame the scorecard is calibrated
+ * against. It is mandatory (see `preflight` below), it is applied after `pose`,
+ * and it is asserted against the live rig before the shutter opens. `distance`
+ * must agree with the `focusOn` step; the preflight refuses if it does not,
+ * because two numbers meaning the same thing that disagree is how the framing
+ * drifts without anybody editing the framing.
  */
 const SHOTS = [
   {
@@ -53,24 +89,32 @@ const SHOTS = [
     caption: 'Wide Allied base. The money shot — silhouette, prop density, ground adornment.',
     flags: { shot: 'allied-base', seed: 7 },
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 62], ['setUiVisible', false]],
+    camera: { distance: 62, pitchDeg: 48.4558 },
   },
   {
     name: '02-hud-full',
     caption: 'Full frame with the sidebar HUD. Direct comparison against the RA2/RA3 sidebar refs.',
     flags: { shot: 'allied-base', seed: 7 },
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 55], ['setUiVisible', true]],
+    // The only shot that re-dollies away from its scenario's declared distance
+    // (allied-base authors for 62 m), so it is also the only one whose
+    // canonical pitch differs from the one src/game/scenarios.system.ts pins.
+    camera: { distance: 55, pitchDeg: 47.5778 },
   },
   {
     name: '03-terrain-closeup',
     caption: 'Ground detail: surface frequency, scatter, roads, kerbs, crosswalks, tread marks.',
     flags: { shot: 'terrain-showcase', seed: 3 },
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 30], ['setUiVisible', false]],
+    // 30 m is the zoom floor, so this is pitchAtMinDistance exactly.
+    camera: { distance: 30, pitchDeg: 46.0 },
   },
   {
     name: '04-units-parade',
     caption: 'Unit lineup at readable range — silhouette law, bevels, team-colour slabs, greeble.',
     flags: { shot: 'unit-parade', seed: 1 },
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 38], ['setUiVisible', false]],
+    camera: { distance: 38, pitchDeg: 46.1812 },
   },
   {
     name: '05-combat',
@@ -82,6 +126,7 @@ const SHOTS = [
     // check. 48 m / 4 s is the better of the two and is kept. The residual —
     // no highlight anywhere in the frame — is the plume, not the framing.
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 48], ['setUiVisible', false]],
+    camera: { distance: 48, pitchDeg: 46.8588 },
     advance: 4.0,
   },
   {
@@ -89,6 +134,7 @@ const SHOTS = [
     caption: 'Ore field, harvester, refinery — the economic loop in motion.',
     flags: { shot: 'economy', seed: 5 },
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 42], ['setUiVisible', false]],
+    camera: { distance: 42, pitchDeg: 46.3973 },
     advance: 6.0,
   },
   {
@@ -96,12 +142,14 @@ const SHOTS = [
     caption: 'Soviet base. Olive-green + riveted plate vs Allied chrome — faction material language.',
     flags: { shot: 'soviet-base', seed: 9 },
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 62], ['setUiVisible', false]],
+    camera: { distance: 62, pitchDeg: 48.4558 },
   },
   {
     name: '08-naval-water',
     caption: 'Water as a hero element: absorption gradient, foam filigree, wakes, shoreline band.',
     flags: { shot: 'naval', seed: 13 },
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 55], ['setUiVisible', false]],
+    camera: { distance: 55, pitchDeg: 47.5778 },
     advance: 3.0,
   },
   {
@@ -109,26 +157,89 @@ const SHOTS = [
     caption: 'Building placement: the ghost, the grid, valid/invalid cells, the range ring.',
     flags: { shot: 'placement', seed: 7 },
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 36], ['setUiVisible', true]],
+    camera: { distance: 36, pitchDeg: 46.1032 },
   },
   {
     name: '10-selection',
     caption: 'Selected units: rings, health bars, move-order feedback, veterancy.',
     flags: { shot: 'selection', seed: 1 },
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 34], ['setUiVisible', true]],
+    camera: { distance: 34, pitchDeg: 46.0464 },
   },
   {
     name: '11-dusk-mood',
     caption: 'Lighting range: the same base under the dusk preset. Grade must hold, not wash out.',
     flags: { shot: 'allied-base', seed: 7, art: 'dusk' },
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 62], ['setUiVisible', false]],
+    camera: { distance: 62, pitchDeg: 48.4558 },
   },
   {
     name: '12-blob-readability',
     caption: '40+ units massed. Scorecard #.. readability under load — do units stay legible?',
     flags: { shot: 'blob', seed: 4 },
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 50], ['setUiVisible', false]],
+    camera: { distance: 50, pitchDeg: 47.0458 },
   },
 ];
+
+/*
+ * The pose tolerance, in degrees and metres.
+ *
+ * 0.05 deg is roughly a pixel of horizon travel at 1440p and 62 m, and it is
+ * three orders of magnitude above the rounding in the four-decimal table above.
+ * Wide enough never to fire on arithmetic; far too tight for any pitch a human
+ * would have chosen with a keyboard.
+ */
+const POSE_TOLERANCE = { angleDeg: 0.05, metres: 0.05 };
+
+/*
+ * PREFLIGHT — run before the build, because a table that cannot produce a valid
+ * run should cost zero minutes rather than a full capture.
+ *
+ * This is the same shape as `tools/metrics.mjs --expect N`: state the contract,
+ * check it, and refuse. The two failures this catches are (a) a shot added
+ * without a canonical camera, which would be photographed at whatever pose it
+ * inherited, and (b) a `focusOn` distance edited without its `pitchDeg`, which
+ * is how a "one-line reframing" silently changes the pitch as well.
+ */
+function preflight(list) {
+  const problems = [];
+  for (const s of list) {
+    const cam = s.camera;
+    if (cam === undefined) {
+      problems.push(`${s.name}: no \`camera\` block. Every fixture must declare its canonical pose.`);
+      continue;
+    }
+    if (!Number.isFinite(cam.distance) || !Number.isFinite(cam.pitchDeg)) {
+      problems.push(`${s.name}: camera.distance and camera.pitchDeg must both be finite numbers.`);
+      continue;
+    }
+    const focus = (s.pose ?? []).find((step) => step[0] === 'focusOn');
+    if (focus === undefined) {
+      problems.push(`${s.name}: no focusOn step, so camera.distance cannot be corroborated.`);
+      continue;
+    }
+    const posed = focus[3];
+    if (Math.abs(posed - cam.distance) > POSE_TOLERANCE.metres) {
+      problems.push(
+        `${s.name}: focusOn dollies to ${posed} m but camera.distance says ${cam.distance} m. ` +
+          'Re-derive camera.pitchDeg for the distance you actually want.',
+      );
+    }
+  }
+  return problems;
+}
+
+const preflightProblems = preflight(SHOTS);
+if (preflightProblems.length) {
+  console.error(
+    'Refusing to capture — the shot table does not declare a complete canonical camera:\n  ' +
+      preflightProblems.join('\n  ') +
+      '\n\nThe grade is only a measurement of the art if every fixture is shot from the\n' +
+      'same camera every run. See the header of this file.',
+  );
+  process.exit(4);
+}
 
 /* ------------------------------------------------------------------ */
 
@@ -219,7 +330,7 @@ const browser = await chromium.launch({
   ],
 });
 
-const report = { viewport: VIEWPORT, webgl: null, shots: [] };
+const report = { viewport: VIEWPORT, poseTolerance: POSE_TOLERANCE, webgl: null, shots: [] };
 
 for (const shot of shots) {
   process.stdout.write(`> ${shot.name} ... `);
@@ -283,6 +394,12 @@ for (const shot of shots) {
 
     // Apply the pose as data — no eval, and an unknown method is a loud failure
     // rather than a silently mis-framed shot that a critic then scores.
+    //
+    // The canonical pitch is applied LAST and as an ordinary pose step, so it
+    // inherits that same "unknown method is fatal" treatment: a build of the
+    // game without `setCameraPitchDeg` on __VM must not quietly fall back to
+    // capturing at whatever pitch the rig felt like.
+    const steps = [...shot.pose, ['setCameraPitchDeg', shot.camera.pitchDeg]];
     const missing = await page.evaluate((cmds) => {
       const RA = window.__VM;
       const absent = [];
@@ -291,7 +408,7 @@ for (const shot of shots) {
         RA[method](...args);
       }
       return absent;
-    }, shot.pose);
+    }, steps);
     if (missing.length) throw new Error(`__VM is missing: ${missing.join(', ')}`);
 
     if (shot.advance) {
@@ -307,9 +424,90 @@ for (const shot of shots) {
     });
     if (curtainUp) throw new Error('boot curtain still visible at shutter — refusing to photograph the loading screen');
 
+    /*
+     * THE POSE GUARD. Same standing as the curtain check above: a failure here
+     * fails the shot and, through the exit code at the bottom, the run.
+     *
+     * Three separate things are asserted, because they fail three ways:
+     *
+     *   1. The page published `__VM.hooks.canonicalPose()`. Absent means the
+     *      scenario system never posed the camera, so nothing pinned anything.
+     *   2. That report says `enforced`. `?shot=` is what pins the pitch; if the
+     *      flag did not reach the scenario system, a persisted or live player
+     *      pitch is free to be in the frame.
+     *   3. The rig REPORTS the pose this file asked for. Not "we called the
+     *      setter" — read it back. A setter that silently did nothing is the
+     *      failure mode an assumption cannot see.
+     *
+     * Plus a fourth: the product shell must not have booted. `?shot=` deliberately
+     * never imports src/shell/**, which is the only thing in the game that reads
+     * persisted settings out of localStorage. If `window.__vmSettings` exists on
+     * this path, that isolation is gone and player state is reaching the capture.
+     */
+    const verdict = await page.evaluate((cam) => {
+      const RA = window.__VM;
+      const hook = RA.hooks?.canonicalPose;
+      const canonical = typeof hook === 'function' ? hook() : null;
+      const shellLoaded = window.__vmSettings !== undefined;
+      if (canonical === null || canonical === undefined) {
+        return { canonical: null, shellLoaded, check: null };
+      }
+      const check = RA.assertCameraPose(
+        {
+          yawDeg: canonical.expected.yawDeg,
+          pitchDeg: cam.pitchDeg,
+          distance: cam.distance,
+        },
+        cam.tolerance,
+      );
+      return { canonical, shellLoaded, check };
+    }, { ...shot.camera, tolerance: POSE_TOLERANCE });
+
+    if (verdict.shellLoaded) {
+      throw new Error(
+        'the product shell booted on a ?shot= page — persisted player settings can reach ' +
+          'this capture. Refusing: the grade would not be comparable.',
+      );
+    }
+    if (verdict.canonical === null) {
+      throw new Error(
+        '__VM.hooks.canonicalPose() is absent — the scenario system did not pose or verify ' +
+          'the camera, so nothing guarantees this frame is the canonical one.',
+      );
+    }
+    if (!verdict.canonical.enforced) {
+      throw new Error(
+        `scenario '${verdict.canonical.scenario}' did not pin its pitch (enforced=false). ` +
+          'The ?shot= flag is what makes a boot a fixture; without it the camera carries ' +
+          'whatever pitch the player last chose.',
+      );
+    }
+    if (!verdict.canonical.ok) {
+      throw new Error(`scenario pose rejected — ${verdict.canonical.summary}`);
+    }
+    if (!verdict.check.ok) {
+      throw new Error(`camera is not at the canonical pose — ${verdict.check.summary}`);
+    }
+
     await page.screenshot({ path: join(STAGE, `${shot.name}.png`), animations: 'disabled' });
-    report.shots.push({ name: shot.name, caption: shot.caption, flags: shot.flags, ok: true, messages });
-    console.log(`ok${messages.length ? ` (${messages.length} console msgs)` : ''}`);
+    report.shots.push({
+      name: shot.name,
+      caption: shot.caption,
+      flags: shot.flags,
+      // The pose that was actually photographed, recorded so a later argument
+      // about "did the camera move?" is answered from the report, not re-run.
+      camera: {
+        declared: shot.camera,
+        measured: verdict.check.actual,
+        scenarioYawDeg: verdict.canonical.expected.yawDeg,
+      },
+      ok: true,
+      messages,
+    });
+    console.log(
+      `ok  pitch ${verdict.check.actual.pitchDeg.toFixed(2)}deg` +
+        `${messages.length ? ` (${messages.length} console msgs)` : ''}`,
+    );
   } catch (err) {
     report.shots.push({ name: shot.name, caption: shot.caption, ok: false, error: String(err).split('\n')[0], messages });
     console.log(`FAILED - ${String(err).split('\n')[0]}`);

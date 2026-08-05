@@ -398,11 +398,22 @@ export class MovementIntegrator {
 
   /* ---------------------------------------------------------------------- */
 
-  /** True when a class may occupy the cell containing (x,z). */
+  /**
+   * True when a class may PHYSICALLY occupy the cell containing (x,z).
+   *
+   * `isStandable`, not `isPassableClass`. The two differ by the nav clearance
+   * rule (Flowfield §4c), which closes corridors narrower than the widest hull
+   * so the PLANNER never routes anybody into one. Applying that same rule here
+   * would be the opposite of the intent: a unit that is already inside a slot —
+   * because it was there before the second building finished, because a
+   * scenario posed it there, because relaxation shoved it — could no longer
+   * take a step in any direction and would be frozen for the rest of the match.
+   * Physics enforces the ground and the footprints; planning enforces the fit.
+   */
   private canStand(x: number, z: number, cls: MoveClass): boolean {
     const cx = worldToCell(x), cz = worldToCell(z);
     if (!isInMap(cx, cz)) return false;
-    return this.nav.isPassableClass(cx, cz, cls);
+    return this.nav.isStandable(cx, cz, cls);
   }
 
   /**

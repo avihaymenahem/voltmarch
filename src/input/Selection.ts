@@ -27,6 +27,35 @@
  *         a group whose tanks died does not resurrect whatever recycled their
  *         slots.
  *
+ * YOU CAN CLICK EXACTLY WHAT YOU CAN SEE
+ * --------------------------------------
+ * Every query in this file passes candidates through `canInteractWith` (§6),
+ * which is one call to `IVision.visibilityOf` — THE SAME PREDICATE, AT THE SAME
+ * THRESHOLD, that `Vision.computeRenderMask` uses to decide what the render
+ * bridge draws. Not a mirror of it. The same function.
+ *
+ * Before that check existed, a shrouded enemy was fully hoverable, selectable
+ * and right-clickable while the renderer drew nothing at all: the reported
+ * "something comes on to my base, i can shoot it, but cant see it, only attack
+ * marker when i hover around his area". Measured on the pre-fix build, a
+ * right-click on a never-explored enemy structure put six units on Attack
+ * against a target that was not on screen.
+ *
+ * It is a VISION question, never `EntityFlag.Cloaked`. Two reasons, and the
+ * second is the one that bites:
+ *
+ *   1. That flag used to be BORROWED by the render mask for the width of a
+ *      frame and handed back at `RenderPhase.Present`. A DOM click arrives
+ *      BETWEEN frames, with the borrow already returned, so a gate built on the
+ *      flag was open at exactly the moment the player clicked — the cursor and
+ *      the click disagreed, which is why the bug read as intermittent.
+ *   2. The borrow could LATCH. `Selection` used to carry `EntityFlag.Cloaked`
+ *      in `SELECT_REJECT_MASK`, so one missed unmask made a unit standing in
+ *      your own base unselectable for the rest of the match.
+ *
+ * The mask no longer borrows anything (see §2.6 of sim/Vision.ts) and this file
+ * no longer reads the flag. Asking the port is stateless and cannot latch.
+ *
  * OWNERSHIP
  * ---------
  * `world.selection` (a `SelectionState` from core/world.ts) IS the storage —
@@ -46,7 +75,7 @@
 import {
   CELL, MAX_SELECTION, PICK_RADIUS, PICK_SCREEN_RADIUS_PX, PICK_WORLD_SLOP,
 } from '../core/config';
-import { EntityFlag, EntityKind, NONE } from '../core/types';
+import { EntityFlag, EntityKind, NONE, VisionLevel } from '../core/types';
 import type { EntityId, ISelection, PlayerId, SelectionState } from '../core/types';
 import type { Channels } from '../core/events';
 import type { World } from '../core/world';
@@ -73,9 +102,19 @@ export interface ScreenProjector {
  * 2. FILTERS
  * ========================================================================== */
 
-/** Nothing with any of these bits may ever enter a selection. */
+/**
+ * Nothing with any of these bits may ever enter a selection.
+ *
+ * `EntityFlag.Cloaked` is deliberately NOT here. Concealment is a per-viewer
+ * question and this bit answers it for nobody in particular: it is set by
+ * `Vision.tickCloak` for any submerged or cloaked entity — including YOUR OWN
+ * submarine, which the renderer draws for you and which you must therefore be
+ * able to select. `canInteractWith` asks the viewer-aware question instead, and
+ * answers it correctly for an enemy submarine sitting inside one of your
+ * detectors too.
+ */
 export const SELECT_REJECT_MASK =
-  EntityFlag.PendingDestroy | EntityFlag.NotSelectable | EntityFlag.Garrisoned | EntityFlag.Cloaked;
+  EntityFlag.PendingDestroy | EntityFlag.NotSelectable | EntityFlag.Garrisoned;
 
 /** True for the kinds a player can give orders to or inspect. */
 function isSelectableKind(kind: number): boolean {
@@ -111,6 +150,9 @@ const STAGING = new Int32Array(MAX_SELECTION * 4);
  *   1. world containment beats screen proximity  (you are literally on it)
  *   2. mobile units beat structures              (the C&C rule)
  *   3. smaller screen distance                   (the one you aimed at)
+ *
+ * Candidates the local player cannot see are not scored at all, so the cursor
+ * over a shrouded enemy reads as ordinary ground — see `canInteractWith`.
  */
 export function pickEntity(
   world: World,
@@ -121,6 +163,7 @@ export function pickEntity(
   groundZ: number,
 ): EntityId {
   const s = world.store;
+  const viewer = world.localPlayer;
   // 10 m of slack around the ground hit: enough to reach the origin of a 3x3
   // structure whose roof is what the cursor is actually over.
   const n = world.spatial.queryCircle(groundX, groundZ, PICK_RADIUS + 10, CANDIDATES, CANDIDATES.length);
@@ -137,6 +180,9 @@ export function pickEntity(
     if ((flags & EntityFlag.Alive) === 0) continue;
     if ((flags & SELECT_REJECT_MASK) !== 0) continue;
     if (!isSelectableKind(s.kind[i])) continue;
+    // Cheapest rejection last of the three because it is the only one that
+    // touches another module: kind and flags are one array read each.
+    if (!canInteractWith(world, viewer, i)) continue;
 
     // --- world containment ---------------------------------------------
     let contained = false;
@@ -330,6 +376,10 @@ export class Selection implements ISelection {
    * rectangle. Own mobile units take the box outright; only when there are none
    * does a structure or an enemy unit come back, and then only ONE of them —
    * a box that hands you four enemy tanks you cannot order is noise.
+   *
+   * A box dragged over shroud comes back EMPTY. Scooping up an enemy the player
+   * cannot see would announce its presence in the HUD portrait, which is the
+   * same information leak the hover cursor used to give away.
    */
   selectInRect(
     minX: number, minY: number, maxX: number, maxY: number,
@@ -352,6 +402,7 @@ export class Selection implements ISelection {
       if ((flags & SELECT_REJECT_MASK) !== 0) continue;
       const kind = s.kind[i];
       if (!isSelectableKind(kind)) continue;
+      if (s.owner[i] !== local && !canInteractWith(this.world, this.world.localPlayer, i)) continue;
 
       const lift = s.footprintW[i] > 0
         ? Math.max(s.footprintW[i], s.footprintH[i]) * CELL * 0.3
@@ -408,6 +459,9 @@ export class Selection implements ISelection {
       const i = s.alive[a];
       if (s.owner[i] !== owner || s.defId[i] !== def || s.kind[i] !== kind) continue;
       if ((s.flags[i] & SELECT_REJECT_MASK) !== 0) continue;
+      // Double-clicking one visible enemy tank must not hand you the two behind
+      // it that are still in the dark.
+      if (!canInteractWith(this.world, this.world.localPlayer, i)) continue;
       if (!projector.project(s.posX[i], s.posY[i] + s.radius[i] * 0.8, s.posZ[i], SCREEN)) continue;
       if (SCREEN[0] < left || SCREEN[0] > right || SCREEN[1] < top || SCREEN[1] > bottom) continue;
       STAGING[n++] = i;
@@ -471,6 +525,10 @@ export class Selection implements ISelection {
       if (idx < 0 || (s.flags[idx] & SELECT_REJECT_MASK) !== 0) continue;
       // Compact the group in place so a group of ghosts shrinks over time.
       g[live++] = g[i];
+      // MEMBERSHIP SURVIVES, THE RECALL DOES NOT. A member the player cannot
+      // currently see stays in the group — losing sight of something is not the
+      // same as losing it — but it does not join the selection this press.
+      if (!canInteractWith(this.world, this.world.localPlayer, idx)) continue;
       if (staged < STAGING.length) STAGING[staged++] = idx;
     }
     this.state.groupCounts[n] = live;
@@ -516,17 +574,21 @@ export class Selection implements ISelection {
   /* -- maintenance --------------------------------------------------------- */
 
   /**
-   * Drop dead handles. Cheap (<= MAX_SELECTION) and called every frame, which
-   * is what keeps the HUD portrait from showing a unit that exploded two
-   * seconds ago.
+   * Drop dead handles, and handles that have gone dark. Cheap (<= MAX_SELECTION)
+   * and called every frame, which is what keeps the HUD portrait from showing a
+   * unit that exploded two seconds ago — or an enemy scout that walked back into
+   * the shroud while you had it selected and whose live HP bar would otherwise
+   * keep reporting on it.
    */
   pruneDead(): boolean {
     const s = this.world.store;
     const ids = this.state.ids;
+    const viewer = this.world.localPlayer;
     let w = 0;
     for (let i = 0; i < this.state.count; i++) {
       const idx = s.index(ids[i] as EntityId);
       if (idx < 0 || (s.flags[idx] & EntityFlag.PendingDestroy) !== 0) continue;
+      if (!canInteractWith(this.world, viewer, idx)) continue;
       ids[w++] = ids[i];
     }
     if (w === this.state.count) {
@@ -560,7 +622,11 @@ export class Selection implements ISelection {
     const i = s.index(id);
     if (i < 0) return false;
     if ((s.flags[i] & SELECT_REJECT_MASK) !== 0) return false;
-    return isSelectableKind(s.kind[i]);
+    if (!isSelectableKind(s.kind[i])) return false;
+    // The last line of defence. `pickEntity` already filtered, but a handle can
+    // reach `select()` from a control group, from the scenario builder, or from
+    // a HUD widget, and none of those asked the fog anything.
+    return canInteractWith(this.world, this.world.localPlayer, i);
   }
 
   /**
@@ -636,4 +702,43 @@ export function isEnemyOf(world: World, viewer: PlayerId, i: number): boolean {
 /** True when `viewer` owns or is allied with the entity at slot `i`. */
 export function isFriendlyOf(world: World, viewer: PlayerId, i: number): boolean {
   return world.areAllied(viewer, world.store.owner[i] as PlayerId);
+}
+
+/* ==========================================================================
+ * 6. THE VISION GATE
+ * ========================================================================== */
+
+/**
+ * True when `viewer` may hover, select, or issue a targeted order against the
+ * entity at slot `i`. Every query in this file and the order resolver in
+ * Commands.ts route through it, so the cursor, the marquee and the command that
+ * actually goes on the wire cannot disagree about what is there.
+ *
+ * IT IS THE SAME PREDICATE THE RENDERER USES, AT THE SAME THRESHOLD. Not a
+ * mirror of it, not a re-derivation of the fog rules that happens to agree
+ * today: literally `IVision.visibilityOf`, which `Vision.computeRenderMask`
+ * also calls to decide what the bridge draws. So the rule "you can click
+ * exactly what you can see" holds by construction. This file used to carry its
+ * own copy of the static-kind + explored-but-dark logic with a comment asking
+ * the next reader to keep the two in step; two copies of a rule is one copy too
+ * many, and the drift between them is the bug this fixes.
+ *
+ * What `>= Remembered` buys, spelled out because the middle rung is the
+ * interesting one:
+ *
+ *   - own and allied units: always, cloaked submarines included;
+ *   - a live-visible enemy: its cell is lit and no cloak is defeating you;
+ *   - a REMEMBERED enemy STRUCTURE: deliberate, and not generosity but
+ *     consistency. The renderer draws static kinds on a merely explored cell,
+ *     so the Construction Yard you scouted an hour ago is ON YOUR SCREEN, and
+ *     something drawn that cannot be clicked is a worse bug than the one this
+ *     gate fixes. "Shell the building I scouted" is behaviour every C&C player
+ *     arrives expecting;
+ *   - and NOT an enemy tank on that same explored-but-dark ground. It has
+ *     moved. Letting the cursor confirm where it went is a map hack with extra
+ *     steps — the reported "only attack marker when i hover around his area".
+ */
+export function canInteractWith(world: World, viewer: PlayerId, i: number): boolean {
+  const level = world.vision.visibilityOf(viewer, world.store.handleOf(i));
+  return level >= VisionLevel.Remembered;
 }

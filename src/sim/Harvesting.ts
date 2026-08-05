@@ -777,29 +777,42 @@ export class HarvesterController {
       const f = store.flags[i];
       if ((f & EntityFlag.IsHarvester) === 0) continue;
       if ((f & (EntityFlag.PendingDestroy | EntityFlag.Immobilized)) !== 0) continue;
+
+      const state = store.state[i];
+      const hauling = state === UnitState.SeekOre || state === UnitState.ReturnToRefinery;
+
+      // WEDGED: the hull is INSIDE a structure's footprint. No flow field can
+      // extract it, because every cell it is standing in is blocked, so all
+      // THREE guards below are bypassed — including "nav holds a field for this
+      // unit". Holding a field is not the same as being helped by one: the
+      // integration never reached a blocked cell, so `sample` has no direction
+      // to give and the unit sits inside the wall at full throttle. This check
+      // used to sit BELOW the field guard, which meant the one case it was
+      // written for — a harvester overlapping the refinery it is docking at,
+      // which still has a live field — fell straight through it.
+      //
+      // Self-clearing: the moment the hull is outside the rect this stops
+      // firing and normal handling resumes.
+      if (hauling) {
+        const wedged = this.wedgedIn(i);
+        if (wedged >= 0) {
+          this.drivenThisTick++;
+          this.driveEscape(i, dt, wedged, assist);
+          continue;
+        }
+      }
+
       // The real pathfinder holds a field for this unit, so it is actively
       // being driven. Hands off — only one module integrates a position.
       if (store.navField[i] >= 0) continue;
 
-      const state = store.state[i];
-      if (state !== UnitState.SeekOre && state !== UnitState.ReturnToRefinery) {
+      if (!hauling) {
         this.driveSpeed.setAt(i, 0);
         if (!assist) {
           store.speed[i] = 0;
           store.velX[i] = 0;
           store.velZ[i] = 0;
         }
-        continue;
-      }
-      // WEDGED: the hull is overlapping a structure's footprint. No flow field
-      // can extract it, because every cell it is standing in is blocked, so
-      // both guards below are bypassed — nav is definitionally unable to help
-      // here. Self-clearing: the moment the hull is outside the rect this stops
-      // firing and normal handling resumes.
-      const wedged = this.wedgedIn(i);
-      if (wedged >= 0) {
-        this.drivenThisTick++;
-        this.driveEscape(i, dt, wedged, assist);
         continue;
       }
 

@@ -1,0 +1,354 @@
+/* ==========================================================================
+ * src/shell/tutorial.css — the coach card and the spotlight
+ * ==========================================================================
+ * ITS OWN FILE, DELIBERATELY.
+ *
+ * `src/ui/hud.css` and `src/shell/shell.css` are both shared surfaces edited by
+ * other modules, and this feature owns markup neither of them knows about. So
+ * the tutorial ships its stylesheet next to its module and imports it from
+ * TypeScript, exactly as `src/shell/Shell.ts` imports `shell.css`.
+ *
+ * SCALE
+ * -----
+ * `--vt-u` is one design unit and is written from `Tutorial.ts` using
+ * `computeUiScale` — the SAME function `src/ui/Hud.ts` uses to write `--vm-u`.
+ * That is the whole reason the card sits at the same optical size as the docks
+ * on every display instead of being a second, disagreeing scale.
+ *
+ * NO `backdrop-filter` ANYWHERE IN THIS FILE.
+ * ------------------------------------------
+ * The HUD's glass has a macOS gate around it (hud.css section 12) because an
+ * ungated blur over the WebGL canvas is a known black-frame bug on that
+ * platform. A second, ungated blur here would reintroduce exactly that, so the
+ * card is a flat deep glass with a hairline and no filter at all.
+ *
+ * THE SPOTLIGHT NEVER EATS A CLICK
+ * --------------------------------
+ * The ring is `pointer-events: none` and it is a RING, not a scrim: the
+ * battlefield behind it stays visible and stays clickable. A dimming overlay
+ * would hide the thing the step is asking the player to look at, and the look
+ * bible's clear-centre rule is not suspended because a tutorial is running.
+ * ========================================================================== */
+
+.vt-layer {
+  /* Overwritten from Tutorial.ts on every resize. This is the 720p value. */
+  --vt-u: 1px;
+
+  --vt-glass: rgba(6, 9, 14, 0.93);
+  --vt-hairline: rgba(255, 255, 255, 0.16);
+  --vt-accent: #35c8f0;
+  --vt-accent-lo: #1a5f75;
+  --vt-text: #eaf2fa;
+  --vt-dim: #9dabba;
+  --vt-faint: #74818f;
+  --vt-ok: #4fd97f;
+
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 8;
+  color: var(--vt-text);
+  font-family: 'Rajdhani', 'Oswald', 'Arial Narrow', 'Franklin Gothic Medium',
+               'Helvetica Neue', 'Segoe UI', system-ui, sans-serif;
+  font-size: calc(12 * var(--vt-u));
+  line-height: 1.15;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.vt-layer[hidden] { display: none; }
+
+/* ==========================================================================
+ * THE CARD
+ *
+ * Mid-left. Every other region of the frame is spoken for: the event toasts sit
+ * top-left, the resource strip top-centre, the objectives panel top-right and
+ * the three docks own the bottom band. The left flank between the toasts and
+ * the docks is the only place a 236u card does not cover a readout.
+ * ========================================================================== */
+
+.vt-card {
+  position: absolute;
+  left: calc(10 * var(--vt-u));
+  top: 34%;
+  width: calc(236 * var(--vt-u));
+  max-height: calc(100% - 200 * var(--vt-u));
+  display: flex;
+  flex-direction: column;
+  gap: calc(6 * var(--vt-u));
+  padding: calc(10 * var(--vt-u));
+  background: var(--vt-glass);
+  border: 1px solid var(--vt-hairline);
+  border-left: calc(3 * var(--vt-u)) solid var(--vt-accent);
+  /* The house notch, cut from the corner the accent edge does not own. */
+  clip-path: polygon(
+    0 0, 100% 0,
+    100% calc(100% - 12 * var(--vt-u)), calc(100% - 12 * var(--vt-u)) 100%,
+    0 100%
+  );
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+/* -- head ------------------------------------------------------------------ */
+
+.vt-head {
+  display: flex;
+  align-items: baseline;
+  gap: calc(8 * var(--vt-u));
+}
+
+.vt-eyebrow {
+  flex: 0 0 auto;
+  font-size: calc(10 * var(--vt-u));
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--vt-accent);
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.vt-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: calc(15 * var(--vt-u));
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vt-text);
+}
+
+/* -- progress rail --------------------------------------------------------- */
+
+.vt-rail {
+  display: flex;
+  gap: calc(2 * var(--vt-u));
+  height: calc(3 * var(--vt-u));
+}
+
+.vt-rail i {
+  flex: 1 1 0;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.vt-rail i.is-done { background: var(--vt-ok); }
+.vt-rail i.is-now  { background: var(--vt-accent); }
+
+/* -- body ------------------------------------------------------------------ */
+
+.vt-body {
+  margin: 0;
+  font-size: calc(12 * var(--vt-u));
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: var(--vt-dim);
+}
+
+/* -- key rows -------------------------------------------------------------- */
+
+.vt-keys {
+  display: flex;
+  flex-direction: column;
+  gap: calc(3 * var(--vt-u));
+  padding-top: calc(2 * var(--vt-u));
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.vt-keyrow {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--vt-u));
+}
+
+.vt-keyrow-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: calc(11 * var(--vt-u));
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vt-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vt-keyrow-caps {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: calc(3 * var(--vt-u));
+  max-width: 60%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* A key cap. Hairline, notched, tabular — the same object as `.vm-key` on the
+   help screen, restated here because that class belongs to Help.ts's own
+   injected sheet and this layer is not inside it. */
+.vt-cap {
+  display: inline-block;
+  min-width: calc(18 * var(--vt-u));
+  padding: calc(1 * var(--vt-u)) calc(5 * var(--vt-u));
+  border: 1px solid var(--vt-hairline);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--vt-text);
+  font-size: calc(10 * var(--vt-u));
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.vt-cap.is-plus {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vt-faint);
+}
+
+.vt-cap.is-gesture {
+  border: 0;
+  background: none;
+  padding: 0;
+  text-transform: none;
+  letter-spacing: 0.04em;
+  color: var(--vt-accent);
+  font-weight: 600;
+  text-align: right;
+}
+
+.vt-cap.is-unbound {
+  border-color: rgba(240, 85, 58, 0.5);
+  background: none;
+  color: #ff4d3d;
+}
+
+/* -- goals ----------------------------------------------------------------- */
+
+.vt-goals {
+  display: flex;
+  flex-direction: column;
+  gap: calc(3 * var(--vt-u));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vt-goal {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--vt-u));
+  font-size: calc(11 * var(--vt-u));
+  letter-spacing: 0.04em;
+  color: var(--vt-dim);
+}
+
+.vt-goal-box {
+  flex: 0 0 auto;
+  width: calc(9 * var(--vt-u));
+  height: calc(9 * var(--vt-u));
+  border: 1px solid var(--vt-hairline);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.vt-goal.is-done { color: var(--vt-ok); }
+.vt-goal.is-done .vt-goal-box {
+  border-color: var(--vt-ok);
+  background: var(--vt-ok);
+}
+
+/* -- foot ------------------------------------------------------------------ */
+
+.vt-foot {
+  display: flex;
+  align-items: center;
+  gap: calc(6 * var(--vt-u));
+  padding-top: calc(4 * var(--vt-u));
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.vt-btn {
+  flex: 0 0 auto;
+  padding: calc(4 * var(--vt-u)) calc(10 * var(--vt-u));
+  border: 1px solid var(--vt-hairline);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--vt-dim);
+  font: inherit;
+  font-size: calc(10 * var(--vt-u));
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 130ms linear, color 130ms linear;
+}
+
+.vt-btn:hover,
+.vt-btn:focus-visible {
+  border-color: var(--vt-accent-lo);
+  color: var(--vt-text);
+  outline: none;
+}
+
+.vt-btn.is-primary {
+  border-color: var(--vt-accent-lo);
+  background: rgba(53, 200, 240, 0.14);
+  color: var(--vt-text);
+}
+
+.vt-spacer { flex: 1 1 auto; }
+
+/* ==========================================================================
+ * THE SPOTLIGHT
+ *
+ * One absolutely positioned ring, moved with `transform` so a per-frame update
+ * never triggers layout. Hidden entirely when the step names no element, or
+ * when none of its selectors matched — a ring around nothing is worse than no
+ * ring, because it teaches the player to distrust it.
+ * ========================================================================== */
+
+.vt-spot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  border: calc(2 * var(--vt-u)) solid var(--vt-accent);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 0 calc(14 * var(--vt-u)) rgba(53, 200, 240, 0.45);
+  animation: vt-breathe 1.9s ease-in-out infinite;
+  will-change: transform;
+}
+
+.vt-spot[hidden] { display: none; }
+
+@keyframes vt-breathe {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.42; }
+}
+
+/* A player who asked for less motion gets a static ring rather than none: the
+   ring is the instruction, the pulse is only emphasis. */
+@media (prefers-reduced-motion: reduce) {
+  .vt-spot { animation: none; }
+}
+
+/* ==========================================================================
+ * NARROW / SHORT VIEWPORTS
+ *
+ * Below ~900 css px the docks already reflow and the left flank stops being
+ * free, so the card moves to the top-left under the toasts and gives up its
+ * key list rather than covering the battlefield.
+ * ========================================================================== */
+
+@media (max-width: 900px), (max-height: 620px) {
+  .vt-card {
+    top: auto;
+    bottom: calc(120 * var(--vt-u));
+    width: calc(210 * var(--vt-u));
+  }
+  .vt-keys { display: none; }
+}

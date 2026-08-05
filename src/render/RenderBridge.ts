@@ -574,11 +574,173 @@ loadTeamColours();
  * 5. THE BRIDGE
  * ========================================================================== */
 
-/** Entities hidden from the render pass entirely. */
-const HIDDEN_MASK = EntityFlag.Garrisoned | EntityFlag.Cloaked;
+/**
+ * Entities hidden from the render pass by simulation state alone.
+ *
+ * `EntityFlag.Cloaked` is deliberately NOT in here, and that is the fix to a
+ * real bug rather than an oversight. Fog of war used to hide entities by
+ * SETTING that flag on them for part of each frame and putting it back before
+ * the next sim step — but the flag is also read by `Targeting`, `Combat` and
+ * `Selection`, so one missed restore turned a render decision into a unit that
+ * could not be seen, acquired, shot or clicked for the rest of the match. Fog
+ * now answers through `RenderVisibilityMask` below, which owns render state and
+ * touches no simulation column at all.
+ *
+ * The flag still means what its name says — a genuinely cloaked or submerged
+ * unit — and the mask hides those too, with the difference that YOUR OWN
+ * submarine stays on your screen where it belongs.
+ */
+const HIDDEN_MASK = EntityFlag.Garrisoned;
+
+/**
+ * The fog module's answer to "may the local player's screen draw this?",
+ * supplied per store slot.
+ *
+ * Declared here rather than imported from the simulation so the render layer
+ * states what it needs and depends on nothing to get it: `src/sim/Vision.ts`
+ * satisfies this structurally, and a bridge with no mask attached draws
+ * everything, which is the right behaviour for a scene with no fog module in it.
+ */
+export interface RenderVisibilityMask {
+  /** True when the local view must not draw the entity in store slot `index`. */
+  isRenderHiddenAt(index: number): boolean;
+}
+
+/* --------------------------------------------------------------------------
+ * 5a. THE INVISIBLE-ENTITY AUDIT
+ *
+ * "Some enemies are invisible" was reported three times and survived one fix,
+ * because every previous attempt narrowed by READING. This converts the
+ * question to a measurement, and it is deliberately mechanical:
+ *
+ *   For every ALIVE entity the visibility mask says the local player may see,
+ *   did it actually receive an instance slot that the GPU will draw this frame?
+ *
+ * "That the GPU will draw" is the important half, and it is more than "has a
+ * slot". A slot is only drawn if the batch mesh is visible, the slot index is
+ * below `InstancedMesh.count`, the instance matrix is a real basis rather than
+ * zeros or NaN, and the instance lies inside the bounding sphere the frustum
+ * test culls against. Each of those is checked separately so the answer names a
+ * mechanism instead of a suspicion.
+ * -------------------------------------------------------------------------- */
+
+/** Why one entity the simulation believes in did not reach the screen. */
+export type RenderMissReason =
+  /** `ensureBinding` refused: the batch is at MAX_ENTITIES. */
+  | 'no-instance-slot'
+  /** Bound, but this frame's pass never wrote it. Should be impossible. */
+  | 'not-written'
+  /** `bindEntry` points outside the model table (a registry clear mid-frame). */
+  | 'stale-entry'
+  /** The model entry exists but never got a batch. */
+  | 'no-batch'
+  /** The batch says the slot it is bound to is free. */
+  | 'slot-not-owned'
+  /** `slot >= InstancedMesh.count`: the draw call never reaches it. */
+  | 'beyond-draw-count'
+  /** The batch mesh is `visible === false`. */
+  | 'mesh-hidden'
+  /** Zero basis — every triangle collapses to a point. */
+  | 'degenerate-matrix'
+  /** NaN anywhere in the 16 matrix floats, or in the team colour. */
+  | 'nan-transform'
+  /** Outside the sphere the frustum test culls the whole batch against. */
+  | 'outside-batch-bounds'
+  /** Drawn, but nowhere near where the simulation has it. */
+  | 'transform-drift'
+  /**
+   * A finished structure whose `buildProgress` is still below 1. The structure
+   * shader sinks it by its own model height and discards every fragment below
+   * the ground plane — see the note on `sunkStructures`.
+   */
+  | 'sunk-below-ground-cut';
+
+/**
+ * How far the drawn transform may sit from the simulated position before it is
+ * a miss, in metres.
+ *
+ * Interpolation legitimately puts an instance up to ONE SIM TICK of travel
+ * behind `store.posX`, which at the fastest locomotor in the game is well under
+ * a metre at 30 Hz. 8 m is an order of magnitude above that and still an order
+ * of magnitude below "drawn somewhere you will never look".
+ */
+const AUDIT_DRIFT_METRES = 8;
+
+/** One entity that the sim says is visible and the renderer will not draw. */
+export interface RenderMissRow {
+  /** Store slot index. */
+  index: number;
+  /** Store generation, so a row can be matched to a specific entity life. */
+  gen: number;
+  kind: EntityKind;
+  faction: number;
+  owner: number;
+  defId: number;
+  x: number;
+  y: number;
+  z: number;
+  reason: RenderMissReason;
+  /** The batch it belongs (or should belong) to. */
+  batch: string;
+  /** True when that batch is the hazard-striped placeholder. */
+  placeholder: boolean;
+  slot: number;
+  drawCount: number;
+  capacity: number;
+  /** Human-readable specifics for the reason. */
+  detail: string;
+}
+
+/** Per-batch state at audit time. */
+export interface RenderAuditBatch {
+  name: string;
+  kind: EntityKind;
+  placeholder: boolean;
+  live: number;
+  written: number;
+  drawCount: number;
+  capacity: number;
+  parts: number;
+  visible: boolean;
+  unwrittenSlots: number;
+}
+
+/** Running totals since the audit was switched on. */
+export interface RenderAuditTotals {
+  frames: number;
+  misses: number;
+  byReason: Record<string, number>;
+  byFaction: number[];
+  byKind: number[];
+}
+
+export interface RenderAudit {
+  /** The bridge frame counter this was taken on. */
+  frame: number;
+  alive: number;
+  /** Alive, not garrisoned, not masked by the shroud — i.e. must be drawn. */
+  eligible: number;
+  /** Of those, how many actually reached a drawable instance slot. */
+  drawn: number;
+  misses: RenderMissRow[];
+  /** True when `misses` was truncated. */
+  truncated: boolean;
+  batches: RenderAuditBatch[];
+  totals: RenderAuditTotals;
+}
+
+/** How many miss rows a single report carries before it truncates. */
+const AUDIT_MISS_LIMIT = 64;
 
 export class RenderBridge {
   readonly batcher: InstanceBatcher;
+
+  /**
+   * Set by the fog module every frame at `RenderPhase.FowUpload` (20), which
+   * runs before `RenderPhase.Bridge` (30) — so the mask this pass reads was
+   * computed from the same tick's positions, never a frame late.
+   */
+  visibility: RenderVisibilityMask | null = null;
 
   /* -- binding: entity slot -> (entry, instance slot) --------------------- */
   private readonly bindEntry = new Int32Array(MAX_ENTITIES).fill(-1);
@@ -612,6 +774,58 @@ export class RenderBridge {
   overflow = 0;
   private overflowReported = false;
 
+  /**
+   * THE ALWAYS-ON HALF OF THE INVISIBLE-ENTITY GUARD.
+   *
+   * `update()` counts the entities the visibility mask says must be drawn, and
+   * counts the ones that reached a batch. Two integer increments per entity; no
+   * allocation, no branch that a profiler would find. When the two disagree,
+   * something the player can see in the sim is missing from the screen, and the
+   * expensive explanation (`auditNow`) is built exactly once, at that moment.
+   *
+   * The deep per-instance checks (draw count, degenerate matrix, culling
+   * sphere) are NOT free, so they live behind `auditEnabled`.
+   */
+  missedDraws = 0;
+  private missReported = false;
+
+  /**
+   * THE OTHER WAY TO BE INVISIBLE, WHICH NO SLOT-LEVEL CHECK CAN SEE.
+   *
+   * `src/art/BuildingFactory.ts` draws the construction rise in the vertex
+   * shader: a structure sinks by its own model height in proportion to
+   * `1 - aState.y` — that is `buildProgress` — and the fragment shader
+   * `discard`s everything left below the ground plane. At `buildProgress === 0`
+   * the entire structure is below the cut and NOTHING is rasterised.
+   *
+   * Such an entity has a live instance slot, a correct matrix, a real draw call
+   * and sits inside the culling sphere. Every check in `inspect()` passes. It is
+   * alive, targetable, hoverable and shootable, and the player cannot see it —
+   * which is the reported bug word for word.
+   *
+   * The simulation always writes `buildProgress` and `EntityFlag.
+   * UnderConstruction` together (Scenarios.ts, Production.spawnBuilding,
+   * Production's rise loop, Relocate), and the rise loop is GATED on the flag —
+   * so a structure that loses the flag while the column is still below 1 is
+   * never advanced again and stays invisible for the rest of the match. That
+   * pairing is load-bearing and nothing was checking it. Now the renderer does,
+   * for the price of one compare on a branch it was already taking.
+   */
+  sunkStructures = 0;
+  private sunkReported = false;
+
+  /** Run the full audit every frame and keep the last report. Dev only. */
+  auditEnabled = false;
+  private audit: RenderAudit | null = null;
+  private auditFailure: RenderAudit | null = null;
+  private readonly auditTotals: RenderAuditTotals = {
+    frames: 0,
+    misses: 0,
+    byReason: {},
+    byFaction: new Array<number>(FACTION_COUNT).fill(0),
+    byKind: new Array<number>(ENTITY_KIND_COUNT).fill(0),
+  };
+
   constructor(private readonly store: EntityStore, scene: THREE.Scene) {
     this.batcher = new InstanceBatcher(scene);
   }
@@ -631,14 +845,20 @@ export class RenderBridge {
     this.visibleUnits = 0;
     this.visibleBuildings = 0;
 
+    const mask = this.visibility;
     const n = s.aliveCount;
+    let eligible = 0;
+    let drawn = 0;
     for (let a = 0; a < n; a++) {
       const i = s.alive[a];
       const flags = s.flags[i];
       if ((flags & HIDDEN_MASK) !== 0) continue;
+      if (mask !== null && mask.isRenderHiddenAt(i)) continue;
+      eligible++;
 
       const entryIndex = this.ensureBinding(i);
       if (entryIndex < 0) continue;
+      drawn++;
 
       const entry = entries[entryIndex];
       const slot = this.bindSlot[i];
@@ -731,12 +951,42 @@ export class RenderBridge {
 
       batch.addBounds(x, y, z);
 
-      if (kind === EntityKind.Building) this.visibleBuildings++;
-      else if (kind === EntityKind.Infantry || kind === EntityKind.Vehicle) this.visibleUnits++;
+      if (kind === EntityKind.Building) {
+        this.visibleBuildings++;
+        // See `sunkStructures`. One compare, on a branch already taken.
+        if (buildProgress < 1 && (flags & EntityFlag.UnderConstruction) === 0) {
+          this.sunkStructures++;
+          if (!this.sunkReported) {
+            this.sunkReported = true;
+            console.error(
+              `[render.bridge] building in slot ${i} (faction ${s.faction[i]}, def ` +
+              `${s.defId[i]}) has buildProgress ${buildProgress.toFixed(3)} but is not ` +
+              'UnderConstruction. The structure shader sinks it below its own ground ' +
+              'cut and discards every fragment: it is alive, targetable and invisible.',
+            );
+          }
+        }
+      } else if (kind === EntityKind.Infantry || kind === EntityKind.Vehicle) this.visibleUnits++;
     }
 
     this.releaseUnvisited();
     this.batcher.endFrame();
+
+    // Two integers compared once per frame. See `missedDraws`.
+    if (drawn !== eligible) {
+      this.missedDraws += eligible - drawn;
+      if (!this.missReported) {
+        this.missReported = true;
+        const report = this.auditNow();
+        console.error(
+          `[render.bridge] ${eligible - drawn} entities the local player may ` +
+          'see did not reach a draw slot this frame:',
+          report.misses,
+        );
+      }
+    }
+
+    if (this.auditEnabled) this.captureAudit();
   }
 
   /* ---------------------------------------------------------------------- */
@@ -825,13 +1075,261 @@ export class RenderBridge {
 
   /**
    * Free the instance slot of anything that was bound but not written this
-   * frame — dead, garrisoned, cloaked, or simply gone.
+   * frame — dead, garrisoned, masked by the shroud, or simply gone.
    */
   private releaseUnvisited(): void {
     for (let k = this.boundCount - 1; k >= 0; k--) {
       const i = this.boundList[k];
       if (this.visitStamp[i] !== this.frameId) this.unbind(i);
     }
+  }
+
+  /* ---------------------------------------------------------------------- */
+  /* The invisible-entity audit                                             */
+  /* ---------------------------------------------------------------------- */
+
+  /**
+   * Walk every alive entity and answer, per entity, whether the GPU will draw
+   * it — the measurement described in §5a.
+   *
+   * MUST be called immediately after `update()` for the frame you care about:
+   * it reads `visitStamp` against the current `frameId` and reads live batch
+   * state. Called mid-tick from a console it will report entities that were
+   * spawned since the last rendered frame as `not-written`, which is true but
+   * uninteresting.
+   *
+   * Allocates. That is fine — it never runs on a frame that is not already
+   * broken, unless `auditEnabled` was deliberately switched on.
+   */
+  auditNow(limit = AUDIT_MISS_LIMIT): RenderAudit {
+    const s = this.store;
+    const mask = this.visibility;
+    const misses: RenderMissRow[] = [];
+    let eligible = 0;
+    let drawn = 0;
+    let truncated = false;
+
+    for (let a = 0; a < s.aliveCount; a++) {
+      const i = s.alive[a];
+      if ((s.flags[i] & HIDDEN_MASK) !== 0) continue;
+      if (mask !== null && mask.isRenderHiddenAt(i)) continue;
+      eligible++;
+
+      const fail = this.inspect(i);
+      if (fail === null) { drawn++; continue; }
+      if (misses.length < limit) misses.push(fail);
+      else truncated = true;
+    }
+
+    const batches: RenderAuditBatch[] = [];
+    for (let e = 0; e < entries.length; e++) {
+      const entry = entries[e];
+      const b = entry.batch;
+      if (b === null) continue;
+      batches.push({
+        name: entry.name,
+        kind: entry.kind,
+        placeholder: entry.placeholder,
+        live: b.liveCount,
+        written: b.writtenCount,
+        drawCount: b.drawCount,
+        capacity: b.capacity,
+        parts: b.partCount,
+        visible: b.parts.length > 0 ? b.parts[0].mesh.visible : false,
+        unwrittenSlots: b.unwrittenSlots,
+      });
+    }
+
+    return {
+      frame: this.frameId,
+      alive: s.aliveCount,
+      eligible,
+      drawn,
+      misses,
+      truncated,
+      batches,
+      totals: this.auditTotals,
+    };
+  }
+
+  /** The most recent report captured while `auditEnabled`, or null. */
+  lastAudit(): RenderAudit | null { return this.audit; }
+
+  /**
+   * The FIRST report that found something, retained.
+   *
+   * Kept separately from `lastAudit` because the two answer different
+   * questions and conflating them cost a whole probe run: a `lastAudit` that
+   * only overwrote itself on failure reported frame 1's counters forever, so
+   * every sample line in that run was stale and the numbers looked frozen.
+   */
+  failedAudit(): RenderAudit | null { return this.auditFailure; }
+
+  /** Zero the running totals and forget both retained reports. */
+  resetAudit(): void {
+    this.audit = null;
+    this.auditFailure = null;
+    this.auditTotals.frames = 0;
+    this.auditTotals.misses = 0;
+    this.auditTotals.byReason = {};
+    this.auditTotals.byFaction.fill(0);
+    this.auditTotals.byKind.fill(0);
+    this.missedDraws = 0;
+    this.missReported = false;
+  }
+
+  private captureAudit(): void {
+    const report = this.auditNow();
+    this.auditTotals.frames++;
+    this.auditTotals.misses += report.misses.length;
+    for (let m = 0; m < report.misses.length; m++) {
+      const row = report.misses[m];
+      this.auditTotals.byReason[row.reason] = (this.auditTotals.byReason[row.reason] ?? 0) + 1;
+      if (row.faction >= 0 && row.faction < FACTION_COUNT) this.auditTotals.byFaction[row.faction]++;
+      if (row.kind >= 0 && row.kind < ENTITY_KIND_COUNT) this.auditTotals.byKind[row.kind]++;
+    }
+    this.audit = report;
+    if (report.misses.length > 0 && this.auditFailure === null) this.auditFailure = report;
+  }
+
+  /**
+   * The per-entity verdict. Returns null when the entity will be drawn, or the
+   * row explaining why it will not.
+   *
+   * The checks are ordered from "no slot at all" outward to "has a slot the GPU
+   * will skip", so the first failure is always the most fundamental one.
+   */
+  private inspect(i: number): RenderMissRow | null {
+    const s = this.store;
+    const row = (
+      reason: RenderMissReason,
+      detail: string,
+      entry: ModelEntry | null,
+      slot: number,
+    ): RenderMissRow => ({
+      index: i,
+      gen: s.gen[i],
+      kind: s.kind[i] as EntityKind,
+      faction: s.faction[i],
+      owner: s.owner[i],
+      defId: s.defId[i],
+      x: s.posX[i], y: s.posY[i], z: s.posZ[i],
+      reason,
+      batch: entry !== null ? entry.name : '(unresolved)',
+      placeholder: entry !== null && entry.placeholder,
+      slot,
+      drawCount: entry !== null && entry.batch !== null ? entry.batch.drawCount : -1,
+      capacity: entry !== null && entry.batch !== null ? entry.batch.capacity : -1,
+      detail,
+    });
+
+    const entryIndex = this.bindEntry[i];
+    if (this.bindGen[i] !== s.gen[i] || entryIndex < 0) {
+      return row('no-instance-slot', 'no binding survived this frame', null, -1);
+    }
+    if (entryIndex >= entries.length) {
+      return row('stale-entry', `bindEntry=${entryIndex} of ${entries.length}`, null, -1);
+    }
+    const entry = entries[entryIndex];
+    if (this.visitStamp[i] !== this.frameId) {
+      return row('not-written', `visitStamp=${this.visitStamp[i]} frame=${this.frameId}`, entry, -1);
+    }
+    const batch = entry.batch;
+    if (batch === null) return row('no-batch', 'model entry has no batch', entry, -1);
+
+    const slot = this.bindSlot[i];
+    if (!batch.isUsed(slot)) {
+      return row('slot-not-owned', `slot ${slot} is on the free list`, entry, slot);
+    }
+
+    // See `sunkStructures`: drawn perfectly, rasterised not at all.
+    if (s.kind[i] === EntityKind.Building
+      && s.buildProgress[i] < 1
+      && (s.flags[i] & EntityFlag.UnderConstruction) === 0) {
+      return row(
+        'sunk-below-ground-cut',
+        `buildProgress ${s.buildProgress[i].toFixed(3)} without the UnderConstruction ` +
+        'flag: the structure shader discards every fragment',
+        entry, slot,
+      );
+    }
+
+    for (let p = 0; p < batch.parts.length; p++) {
+      const part = batch.parts[p];
+      if (!part.mesh.visible) {
+        return row('mesh-hidden', `part ${p} (${part.mesh.name}) is not visible`, entry, slot);
+      }
+      if (slot >= part.mesh.count) {
+        return row(
+          'beyond-draw-count',
+          `slot ${slot} >= count ${part.mesh.count} on part ${p}`,
+          entry, slot,
+        );
+      }
+
+      const m = part.matrix;
+      const o = slot * 16;
+      let basis = 0;
+      for (let k = 0; k < 16; k++) {
+        const v = m[o + k];
+        if (Number.isNaN(v)) {
+          return row('nan-transform', `matrix[${k}] is NaN on part ${p}`, entry, slot);
+        }
+      }
+      for (let k = 0; k < 3; k++) {
+        basis += Math.abs(m[o + k]) + Math.abs(m[o + 4 + k]) + Math.abs(m[o + 8 + k]);
+      }
+      if (basis === 0) {
+        return row('degenerate-matrix', `zero basis on part ${p}`, entry, slot);
+      }
+
+      const t = part.team;
+      const to = slot * 3;
+      if (Number.isNaN(t[to]) || Number.isNaN(t[to + 1]) || Number.isNaN(t[to + 2])) {
+        return row('nan-transform', `aTeamColor is NaN on part ${p}`, entry, slot);
+      }
+
+      // Part 0 carries no anchor offset, so its translation IS the entity's
+      // drawn world position. Comparing it with the simulation catches the one
+      // failure a slot-level check cannot see: an instance that has a slot, a
+      // basis and a draw call, and is a hundred metres from where the player is
+      // shooting. Also the only check that survives a later render module
+      // rewriting the buffer, which is why the audit is safe to run at the END
+      // of a frame rather than inside the bridge pass.
+      if (p === 0) {
+        const dxs = m[o + 12] - s.posX[i];
+        const dys = m[o + 13] - s.posY[i];
+        const dzs = m[o + 14] - s.posZ[i];
+        const drift = Math.sqrt(dxs * dxs + dys * dys + dzs * dzs);
+        if (drift > AUDIT_DRIFT_METRES) {
+          return row(
+            'transform-drift',
+            `drawn at (${m[o + 12].toFixed(1)}, ${m[o + 13].toFixed(1)}, ${m[o + 14].toFixed(1)}) ` +
+            `but simulated at (${s.posX[i].toFixed(1)}, ${s.posY[i].toFixed(1)}, ${s.posZ[i].toFixed(1)}) ` +
+            `— ${drift.toFixed(1)} m apart`,
+            entry, slot,
+          );
+        }
+      }
+
+      const sphere = part.mesh.boundingSphere;
+      if (sphere !== null) {
+        const dx = m[o + 12] - sphere.center.x;
+        const dy = m[o + 13] - sphere.center.y;
+        const dz = m[o + 14] - sphere.center.z;
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (d > sphere.radius) {
+          return row(
+            'outside-batch-bounds',
+            `instance is ${(d - sphere.radius).toFixed(2)} m outside the culling ` +
+            `sphere (r=${sphere.radius.toFixed(2)}) on part ${p}`,
+            entry, slot,
+          );
+        }
+      }
+    }
+
+    return null;
   }
 
   /* ---------------------------------------------------------------------- */
@@ -944,6 +1442,7 @@ export class RenderBridge {
   get instanceCount(): number { return this.batcher.instanceCount; }
 
   dispose(): void {
+    this.visibility = null;
     while (this.boundCount > 0) this.unbind(this.boundList[this.boundCount - 1]);
     this.batcher.dispose();
   }

@@ -1,6 +1,12 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import { fileURLToPath, URL } from 'node:url';
+import { readFileSync } from 'node:fs';
+
+/** The one version number. Everything else must derive from it, never restate it. */
+const PKG_VERSION: string = JSON.parse(
+  readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8'),
+).version;
 
 /**
  * VOLTMARCH build config.
@@ -45,6 +51,12 @@ export default defineConfig(({ command }) => ({
     // Dev-only assertions (write-ownership checks, heap canary, validation
     // spam) compile out of the production bundle entirely.
     __DEV__: JSON.stringify(command === 'serve'),
+
+    // `window.__VM.version` is read by the screenshot harness and quoted in bug
+    // reports, and it was hardcoded to '1.0.0' in `debug.ts` while package.json
+    // had moved to 1.3.0 — a version string that silently stops being true is
+    // the exact defect `docs/SPEC_DRIFT_AUDIT.md` catalogues. Derived now.
+    __APP_VERSION__: JSON.stringify(PKG_VERSION),
   },
 
   esbuild: {

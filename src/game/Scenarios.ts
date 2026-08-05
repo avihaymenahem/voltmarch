@@ -70,8 +70,8 @@ import type {
 } from '../core/types';
 import { PerEntityObj, type World } from '../core/world';
 import {
-  DEG2RAD, Rng, clampCell, clampWorld, footprintOriginCell, snapFootprintToGrid,
-  worldToCell, wrapAngle,
+  DEG2RAD, Rng, clampCell, clampWorld, footprintOriginCell, hashU32,
+  snapFootprintToGrid, worldToCell, wrapAngle,
 } from '../core/math';
 import { TerrainRegions } from '../sim/Flowfield';
 import { getTerrain } from '../world/Terrain';
@@ -381,6 +381,91 @@ const START_SPREAD_Z = 62;
 function wrapDeg(deg: number): number {
   const d = deg % 360;
   return d < 0 ? d + 360 : d;
+}
+
+/**
+ * Rotate which army gets which start spot, deterministically from the seed.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * Reported: "why the game dont drop me in random locations?" Every match on a
+ * given map put the human in the identical corner, because `startSpots()`
+ * hands out terrain shelves in INDEX ORDER and the geometric fallback pins slot
+ * 0 outright. With a `mapSeed` fixed per map on top of that, two matches on the
+ * same battlefield were byte-identical.
+ *
+ * WHY IT ROTATES OWNERS AND NOT THE SPOTS
+ * ---------------------------------------
+ * The spots are load-bearing geometry: each one is positioned on the map's
+ * authored diagonal, faces the next army round the table, and has an ore field
+ * placed for it. Shuffling the COORDINATES would break that pairing. Rotating
+ * which player sits in an unchanged spot changes the match without touching a
+ * single balance assumption.
+ *
+ * WHY `hashU32(seed)` AND NOT `b.rng`
+ * -----------------------------------
+ * `ScenarioBuilder.rng` is one shared stream and every layout draws from it.
+ * Taking a single number here would advance it for everything after — ore
+ * patches, scatter, placement jitter — and silently re-roll all twelve
+ * scorecard fixtures. A pure hash consumes nothing from the stream.
+ *
+ * THE FIXTURES ARE SAFE BY CONSTRUCTION, NOT BY EXCEPTION
+ * -------------------------------------------------------
+ * `hashU32(DEFAULT_SEED) % 2 === 0`, so the canonical `?shot=` seed yields the
+ * IDENTITY arrangement and every fixture frames exactly the base it framed
+ * before. That is asserted in `tests/start-rotation.spec.ts` rather than left
+ * as a happy accident — if `DEFAULT_SEED` or the hash ever changes, the test
+ * fails instead of the grade quietly moving.
+ */
+/**
+ * OFF, and this is a deliberate hold rather than an abandoned feature.
+ *
+ * Rotating start spots shipped and the reporter's very next match was
+ * unplayable: "You spawned me in a place i cannot build, also, the tanks are on
+ * top of hill ant cant reach me."
+ *
+ * The cause is not the rotation. It is that **spot 1 has never been validated
+ * for a human**. `buildMcvStartFor` drops the MCV on the spot and its escort at
+ * fixed offsets 12 m and 21 m along the facing, and nothing checks that the
+ * spot has buildable area or that the escort lands in the SAME reachable region
+ * as the MCV it is escorting. Slot 1 was the AI's for the whole life of the
+ * project, and an AI does not file a bug when its tanks are stranded on a
+ * plateau — so the defect sat there being invisible.
+ *
+ * That is the same shape as the carried defect already on the list: "Opening
+ * base placement is terrain-dependent and can produce an unplayable match."
+ * Rotation did not create it, it made it reachable.
+ *
+ * Re-enabling is one line, and the thing that has to land first is a start-spot
+ * VALIDATOR: buildable area around the spot, ore within reach, and the escort
+ * in the same connectivity region as the MCV — with a reroll or a fallback when
+ * a spot fails. Until then a repetitive match beats an unplayable one.
+ */
+const START_ROTATION_ENABLED = false;
+
+/** True when `player` is the one sitting at this machine. */
+function isLocal(b: ScenarioBuilder, player: PlayerId): boolean {
+  return (player as number) === (b.world.localPlayer as number);
+}
+
+/**
+ * Which start slot the human ended up in after `rotateStarts`.
+ *
+ * Falls back to 0 for a spectator or an AI-vs-AI soak run, where no owner
+ * matches — the camera still has to point somewhere.
+ */
+function localSlot(b: ScenarioBuilder, owners: readonly PlayerId[]): number {
+  const at = owners.findIndex((p) => isLocal(b, p));
+  return at < 0 ? 0 : at;
+}
+
+export function rotateStarts<T>(owners: readonly T[], seed: number): T[] {
+  const n = owners.length;
+  if (n < 2 || !START_ROTATION_ENABLED) return owners.slice();
+  const offset = hashU32(seed) % n;
+  const out: T[] = new Array<T>(n);
+  for (let i = 0; i < n; i++) out[i] = owners[(i + offset) % n];
+  return out;
 }
 
 export function startSpots(cx: number, cz: number, count: number): StartSpot[] {
@@ -1250,7 +1335,17 @@ export class ScenarioBuilder {
     readonly world: World,
     readonly defs: DefBinding,
     readonly keys: PerEntityObj<string>,
-    seed: number,
+    /**
+     * The scenario seed, kept so a layout can derive a choice from it WITHOUT
+     * drawing from `rng`.
+     *
+     * That distinction is the whole reason this is exposed. Every draw from
+     * `rng` advances one shared stream, so taking a single extra number to
+     * decide something early would shift every ore patch, every scatter
+     * position and every placement jitter after it — and change all twelve
+     * scorecard fixtures. A pure hash of this consumes nothing.
+     */
+    readonly seed: number,
     /** The MAP_PRESETS entry this scenario is being built on. */
     readonly preset: string,
   ) {
@@ -2090,7 +2185,7 @@ const PLANS: Record<string, ScenarioPlan> = {
       // Two starts on the classic RA diagonal, each with its own ore field and a
       // contested patch between them, each turned to face the other.
       const spots = startSpots(cx, cz, 2);
-      const owners: PlayerId[] = [b.allies, b.soviets];
+      const owners: PlayerId[] = rotateStarts([b.allies, b.soviets], b.seed);
 
       if (start === 'base') {
         for (let i = 0; i < spots.length; i++) {
@@ -2104,7 +2199,11 @@ const PLANS: Record<string, ScenarioPlan> = {
         const mine: EntityId[] = [];
         for (let i = 0; i < spots.length; i++) {
           const mcv = buildMcvStartFor(b, owners[i], spots[i]);
-          if (i === 0 && mcv !== NONE) mine.push(mcv);
+          // BY OWNER, NOT BY SPOT INDEX. These two used to be the same thing,
+          // because slot 0 was pinned to a fixed corner and the human was
+          // always in it. `rotateStarts` broke that equivalence, and this line
+          // then handed the player the AI's construction vehicle.
+          if (mcv !== NONE && isLocal(b, owners[i])) mine.push(mcv);
         }
         // The local player opens with their construction vehicle already on the
         // cursor. Every RTS does this and it is the difference between "what am
@@ -2113,8 +2212,10 @@ const PLANS: Record<string, ScenarioPlan> = {
       }
 
       addStartOre(b, spots);
-      // Look at YOUR opening, wherever the generator put it.
-      b.setCameraFocus(spots[0].x, spots[0].z - 8);
+      // Look at YOUR opening, wherever the generator put it — which since
+      // `rotateStarts` is no longer always `spots[0]`.
+      const home = spots[localSlot(b, owners)];
+      b.setCameraFocus(home.x, home.z - 8);
       b.scatter({ minX: cx - 120, minZ: cz - 120, maxX: cx + 120, maxZ: cz + 120 }, 140);
     },
   },

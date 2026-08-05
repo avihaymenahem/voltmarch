@@ -542,6 +542,29 @@ export class SettingsScreen implements Screen {
         onChange: (v) => set({ maxZoom: v }),
       }),
     ));
+
+    /* -- diagnostics ----------------------------------------------------- *
+     * One row, and its help text is the whole reason the feature exists. A
+     * player who turns this on because the game feels heavy is owed the one
+     * sentence that stops them trusting a green 60: on a vsync-capped display
+     * the frame time is the MONITOR's number, not the game's, and only a GPU
+     * timer query can tell the two apart. The overlay says which of those it
+     * has; the row says why that matters before they open it.
+     *
+     * There is no `applySettings` branch for this. `src/ui/perf.system.ts`
+     * subscribes to the store directly — see the field comment in
+     * settings-store.ts — so the toggle takes effect on the next frame with no
+     * translation layer in between.                                          */
+
+    const diag = this.section(body, 'Diagnostics');
+    diag.appendChild(row(
+      'Performance Overlay',
+      toggle(g.perfOverlay, (v) => set({ perfOverlay: v })),
+      'Top-left readout: frame time and its p95, the sim/render CPU split, draw ' +
+      'calls against the 130 budget, and whether a 60 fps reading has real ' +
+      'headroom or is only vsync capping a saturated GPU. It will say "headroom ' +
+      'unknown" rather than guess when the browser withholds GPU timing.',
+    ));
   }
 
   /* -- audio ------------------------------------------------------------- */

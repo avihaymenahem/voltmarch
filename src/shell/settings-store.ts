@@ -70,6 +70,17 @@ export interface GraphicsSettings {
    * Purely a CSS gate — nothing in the render pipeline reads it.
    */
   panelBlur: PanelBlurChoice;
+  /**
+   * The top-left performance overlay (`src/ui/PerfHud.ts`).
+   *
+   * OFF by default and stored on `graphics` rather than `gameplay` because it
+   * is a diagnostic for the picture, not an interface preference: it sits with
+   * Resolution Scale and the post toggles, which are the other rows a player
+   * touches when the frame rate misbehaves. `src/ui/perf.system.ts` subscribes
+   * to this store rather than being pushed by `applySettings` — the HUD chunk
+   * must not depend on the shell existing.
+   */
+  perfOverlay: boolean;
   /** Vertical field of view in degrees. 28 .. 52. */
   fov: number;
   /** Camera dolly limits in metres. */
@@ -402,6 +413,7 @@ export function defaultSettings(): Settings {
       smaa: true,
       filmGrain: true,
       panelBlur: 'auto',
+      perfOverlay: false,
       fov: 36,
       minZoom: 30,
       maxZoom: 140,
@@ -542,6 +554,7 @@ export function normalizeSettings(raw: unknown): Settings {
       smaa: bool(g.smaa, d.graphics.smaa),
       filmGrain: bool(g.filmGrain, d.graphics.filmGrain),
       panelBlur: oneOf(g.panelBlur, PANEL_BLUR_CHOICES, d.graphics.panelBlur),
+      perfOverlay: bool(g.perfOverlay, d.graphics.perfOverlay),
       fov: num(g.fov, 24, 60, d.graphics.fov),
       minZoom: Math.min(minZoom, maxZoom - 4),
       maxZoom: Math.max(maxZoom, minZoom + 4),

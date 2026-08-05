@@ -32,13 +32,40 @@
  * compose 16384 bytes per player. At two players and 250 entities that is about
  * 75k byte writes at 10 Hz — under 0.1 ms, and it allocates nothing.
  *
+ * ONE VISIBILITY QUESTION WITH THREE ANSWERS — READ THIS BEFORE ADDING A FOURTH
+ * -----------------------------------------------------------------------------
+ * `visibilityOf(player, id)` (§2.6) is the ONLY place in this codebase that
+ * decides how much of an entity a player is entitled to. It returns a
+ * `VisionLevel`, and every consumer is a threshold on it:
+ *
+ *   consumer                        threshold                what it means
+ *   ------------------------------  -----------------------  -----------------
+ *   Targeting / Combat / AI         === Live                 may ACT on it
+ *   RenderBridge (via the mask)     >= Remembered            may DRAW it
+ *   input/Selection.canInteractWith >= Remembered            may CLICK it
+ *   ui/Minimap blips                >= Remembered            may BLIP it
+ *   ui/Overlay health bars          === Live                 may READ its hp
+ *
+ * This used to be two hand-written predicates — one for "may the sim act",
+ * one for "may the screen draw" — that agreed only by parallel construction,
+ * with a comment in each pointing at the other. They drifted, and the drift is
+ * the reported bug: the renderer drew a scouted Construction Yard from memory,
+ * `canSee` answered false for that same yard, and input asked NEITHER, so the
+ * player could right-click a shrouded tank that was never on screen at all.
+ * A remembered structure is still deliberately DRAWN while `canSee` is false —
+ * that part was always right — but the reconciliation is now a value on a
+ * ladder instead of a rule each caller re-derives.
+ *
+ * If you need a new visibility rule, add a rung to `VisionLevel` and teach
+ * `levelAt`. Do not write a second predicate.
+ *
  * WHAT THIS FILE DELIBERATELY DOES NOT DO
  * ---------------------------------------
- * It never touches THREE, never reads the camera, and never looks at
- * `world.localPlayer` except through `applyRenderMask()`, which is called from
- * the RENDER frame and undone again in the same frame (see the header of
- * vision.system.ts). The deterministic simulation therefore never observes a
- * viewer-dependent bit.
+ * It never touches THREE and never reads the camera. It reads
+ * `world.localPlayer` only through `computeRenderMask()`, which is called from
+ * the RENDER frame and writes nothing but this module's own array — no
+ * simulation column, no entity flag. The deterministic simulation therefore
+ * cannot observe a viewer-dependent bit even in principle.
  * ============================================================================
  */
 
@@ -48,8 +75,9 @@ import {
   FOG_DEFAULT_SIGHT, FOG_MIN_SIGHT, FOG_SIGHT_SCALE, FOG_STRUCTURE_SIGHT_BONUS,
   FOG_RADAR_DETECT_MUL, FOG_CLOAK_REVEAL_SECONDS, FOG_MAX_DETECTORS,
 } from '../core/config';
-import { EntityFlag, EntityKind } from '../core/types';
+import { EntityFlag, EntityKind, VisionLevel } from '../core/types';
 import type { EntityId, PlayerId, IVision } from '../core/types';
+import { devAsserts } from '../core/loop';
 import type { World } from '../core/world';
 import { PerEntityF32, PerEntityU32 } from '../core/world';
 import { clampCell, isInMap, worldToCell } from '../core/math';
@@ -88,7 +116,7 @@ export interface VisionStats {
   sources: number;
   /** Active cloak detectors on the last pass. */
   detectors: number;
-  /** Entities hidden from the local viewer by the last `applyRenderMask`. */
+  /** Entities hidden from the local viewer by the last `computeRenderMask`. */
   masked: number;
 }
 
@@ -135,15 +163,21 @@ export class Vision implements IVision {
   /** Bit i set = player i has a live, powered radar structure. */
   private radarMask = 0;
 
-  /* -- render mask bookkeeping --------------------------------------------- */
+  /* -- render visibility mask ---------------------------------------------- */
 
   /**
-   * Slots whose `EntityFlag.Cloaked` bit the render pass flipped, and what it
-   * was before. `clearRenderMask()` restores exactly these and nothing else, so
-   * a genuine cloak set by `simTick` survives the round trip untouched.
+   * Slot -> the pass id at which `computeRenderMask` decided the local view
+   * must NOT draw this entity. A slot is hidden iff its entry equals the
+   * CURRENT pass, so an entry written for an earlier pass — or for the entity
+   * that used to live in a recycled slot — is dead data the next compare
+   * discards. See §2.6.
    */
-  private readonly maskedIdx = new Int32Array(MAX_ENTITIES);
-  private readonly maskedWas = new Uint8Array(MAX_ENTITIES);
+  private readonly hiddenAtPass = new Int32Array(MAX_ENTITIES);
+  /**
+   * Bumped once per `computeRenderMask`. Starts at 1 so a freshly-zeroed
+   * `hiddenAtPass` reads as "draw everything" before the first pass ever runs.
+   */
+  private renderPass = 1;
   private maskedCount = 0;
 
   /* -- diagnostics ---------------------------------------------------------- */
@@ -183,25 +217,27 @@ export class Vision implements IVision {
   }
 
   /**
-   * The one call targeting uses. An entity is visible to a player when it is
-   * allied (you always see your own army), OR it stands on a lit cell and is
-   * not concealed by a cloak this player cannot detect.
+   * How much of `target` is `player` entitled to. THE predicate — see the file
+   * header. Every other visibility question here is a threshold on this.
+   */
+  visibilityOf(player: PlayerId, target: EntityId): VisionLevel {
+    const i = this.world.store.index(target);
+    if (i < 0) return VisionLevel.Hidden;
+    return this.levelAt(i, player);
+  }
+
+  /**
+   * The one call targeting, combat and the AI make. An entity is visible to a
+   * player when it is allied (you always see your own army), OR it stands on a
+   * lit cell and is not concealed by a cloak this player cannot detect.
    *
    * Deliberately NOT true for a remembered structure: a Construction Yard you
-   * scouted an hour ago must not be auto-targetable through the shroud. Use
-   * `isRemembered` for the render-side "draw the silhouette" question.
+   * scouted an hour ago must not be auto-targetable through the shroud. That
+   * one is `VisionLevel.Remembered`, and input — which may click it, because it
+   * is drawn — asks `visibilityOf` rather than this.
    */
   canSee(player: PlayerId, target: EntityId): boolean {
-    const s = this.world.store;
-    const i = s.index(target);
-    if (i < 0) return false;
-    if (!this.on) return true;
-    if (this.world.areAllied(player, s.owner[i] as PlayerId)) return true;
-    if (this.isConcealed(i, player)) return false;
-    const cx = worldToCell(s.posX[i]);
-    const cz = worldToCell(s.posZ[i]);
-    if (!isInMap(cx, cz)) return false;
-    return (this.grids[player as number][cz * MAP_CELLS + cx] & VIS_VISIBLE) !== 0;
+    return this.visibilityOf(player, target) === VisionLevel.Live;
   }
 
   hasRadar(player: PlayerId): boolean {
@@ -246,21 +282,14 @@ export class Vision implements IVision {
   }
 
   /**
-   * True when a player should still be shown a STATIC entity (structure, prop,
-   * wreck) it has scouted but cannot currently see — the "remembered
-   * silhouette". False for anything that can move: a tank you saw two minutes
-   * ago is not there any more, and drawing it would be a lie the player acts on.
+   * True when a player is being shown a STATIC entity (structure, prop, wreck)
+   * it has scouted but cannot currently see — the "remembered silhouette", and
+   * ONLY that case. False for anything that can move (a tank you saw two
+   * minutes ago is not there any more, and drawing it would be a lie the player
+   * acts on), and false for something you can see live, which is not a memory.
    */
   isRemembered(player: PlayerId, target: EntityId): boolean {
-    if (!this.on) return true;
-    const s = this.world.store;
-    const i = s.index(target);
-    if (i < 0) return false;
-    if (!isStaticKind(s.kind[i])) return false;
-    const cx = worldToCell(s.posX[i]);
-    const cz = worldToCell(s.posZ[i]);
-    if (!isInMap(cx, cz)) return false;
-    return (this.grids[player as number][cz * MAP_CELLS + cx] & VIS_EXPLORED) !== 0;
+    return this.visibilityOf(player, target) === VisionLevel.Remembered;
   }
 
   /** Cells lit / ever seen, for the F3 overlay. Fills a reused object. */
@@ -346,8 +375,9 @@ export class Vision implements IVision {
       const bits = this.cloakBits.getAt(i);
       if (bits === 0) {
         // `has` distinguishes "never registered" from "registered, now clear".
-        if ((s.flags[i] & EntityFlag.Cloaked) !== 0 && this.cloakBits.has(s.handleOf(i))) {
-          s.flags[i] &= ~EntityFlag.Cloaked;
+        if ((s.flags[i] & EntityFlag.Cloaked) !== 0) {
+          if (this.cloakBits.has(s.handleOf(i))) s.flags[i] &= ~EntityFlag.Cloaked;
+          else if (devAsserts.enabled) reportStrayCloak(i, s.kind[i], s.owner[i]);
         }
         continue;
       }
@@ -541,80 +571,138 @@ export class Vision implements IVision {
   }
 
   /* ------------------------------------------------------------------------
-   * 2.6 The render mask
+   * 2.6 The render visibility mask — RENDER-OWNED, NOT A SIMULATION FLAG
    *
-   * `RenderBridge` hides anything carrying `EntityFlag.Cloaked`. That flag is
-   * the only lever this module has over what the instancer draws, so the render
-   * frame borrows it for one phase and gives it back — see the ownership note
-   * in vision.system.ts. The pair MUST be called together, and always in the
-   * same frame.
+   * "What may the local player's screen draw" is a viewer-dependent question,
+   * and the simulation must never be able to observe the answer. So the answer
+   * lives here, in `hiddenAtPass`, and NOTHING in this section writes
+   * `store.flags`. `EntityFlag.Cloaked` means real cloaking and only that.
+   *
+   * WHY THIS CANNOT LATCH, WHICH IS THE ENTIRE POINT
+   * -----------------------------------------------
+   * The mask this replaced borrowed `EntityFlag.Cloaked`: set it at
+   * `RenderPhase.FowUpload`, put it back at `RenderPhase.Present`. Four modules
+   * read that bit — the bridge (do not draw), `Targeting` (do not acquire),
+   * `Combat` (do not fire) and `Selection` (cannot be clicked) — so ONE missed
+   * restore did not merely hide something for a frame. `clearRenderMask`
+   * restored by SLOT INDEX with no generation check, so once a restore was
+   * skipped, the next frame's restore wrote the dead unit's bit onto whatever
+   * had since been allocated into that slot — and `tickCloak` refuses to clear
+   * a `Cloaked` bit on an entity that was never handed to `setCloaked`, so it
+   * stayed set for the rest of the match. A fresh tank, permanently invisible,
+   * unclickable and immune to fire. See tests/vision.spec.ts.
+   *
+   * There is no restore here, so there is no restore to miss. A hidden entry is
+   * only hidden while it carries the CURRENT pass id; every other value in the
+   * array — an older pass, or the previous tenant of a recycled slot — reads as
+   * "draw it". The failure mode of a mask that stops being recomputed is
+   * therefore "the shroud stops hiding things", which is visible in one frame,
+   * rather than "a unit silently stops existing", which is visible in forty
+   * minutes.
    * ---------------------------------------------------------------------- */
 
   /**
-   * Force `EntityFlag.Cloaked` to mean "hidden from `viewer`" for the duration
-   * of this render frame. Records the previous value of every bit it touches.
+   * THE PREDICATE. How much of the entity in slot `i` is `viewer` entitled to.
+   * Slot-index form because both hot callers already hold an index; the handle
+   * form is `visibilityOf`.
    *
-   * Two rules, and they are the whole fog-of-war read:
-   *   - Anything that can MOVE is drawn only while its cell is lit.
-   *   - Anything STATIC (structure, prop, wreck) is drawn while its cell is
-   *     merely explored — the remembered silhouette.
-   * A friendly cloaked unit is force-UNhidden, so your own submarines are
-   * visible to you even though the sim has them flagged.
+   * The rules, in the order they are applied and for the reasons given:
+   *
+   *   1. YOUR OWN ARMY IS ALWAYS LIVE, cloaked submarines included. Checked
+   *      first so nothing below can take your own units off your screen.
+   *   2. A CLOAK YOU CANNOT DETECT HIDES EVERYTHING, whether or not fog is
+   *      running. A cloak is not a shroud: `?fog=off` exists so the screenshot
+   *      harness photographs art instead of a black rectangle, and defeating
+   *      stealth is not part of that bargain. This sits ABOVE the fog switch
+   *      deliberately — with it below, `canSee` would answer true for a
+   *      submarine the renderer refuses to draw, which is the exact
+   *      drawn-vs-actionable split this whole change exists to remove.
+   *   3. FOG OFF: everything else is live.
+   *   4. OFF THE MAP is hidden. A NaN or an out-of-bounds position must fail
+   *      closed, not index a typed array out of range.
+   *   5. A LIT CELL is live.
+   *   6. A STATIC KIND ON AN EXPLORED CELL is remembered — the silhouette.
+   *   7. Everything else is hidden.
    */
-  applyRenderMask(viewer: PlayerId): number {
-    this.clearRenderMask();
-    if (!this.on) return 0;
+  private levelAt(i: number, viewer: PlayerId): VisionLevel {
+    const s = this.world.store;
+    if (this.world.areAllied(viewer, s.owner[i] as PlayerId)) return VisionLevel.Live;
+    if (this.isConcealed(i, viewer)) return VisionLevel.Hidden;
+    if (!this.on) return VisionLevel.Live;
 
-    const world = this.world;
-    const s = world.store;
+    // A viewer index past the end of `players` has no grid. It gets the cloak
+    // rules and nothing else, rather than a black screen.
     const grid = this.grids[viewer as number];
-    if (grid === undefined) return 0;
+    if (grid === undefined) return VisionLevel.Live;
 
+    const cx = worldToCell(s.posX[i]);
+    const cz = worldToCell(s.posZ[i]);
+    if (!isInMap(cx, cz)) return VisionLevel.Hidden;
+
+    const cell = grid[cz * MAP_CELLS + cx];
+    if ((cell & VIS_VISIBLE) !== 0) return VisionLevel.Live;
+    if (isStaticKind(s.kind[i]) && (cell & VIS_EXPLORED) !== 0) return VisionLevel.Remembered;
+    return VisionLevel.Hidden;
+  }
+
+  /**
+   * Decide, for every alive entity, whether the local view may draw it. Reads
+   * simulation state and writes only this module's own array.
+   *
+   * One rule: an entity is drawn while `levelAt` is at least `Remembered`.
+   * That is the SAME call `canSee` and `Selection.canInteractWith` are built
+   * on, at a different threshold, which is what makes "drawn" and "clickable"
+   * agree by construction rather than by two comments promising they will.
+   *
+   * Returns the number of entities hidden.
+   */
+  computeRenderMask(viewer: PlayerId): number {
+    // `hiddenAtPass` is an Int32Array, so the pass id has to stay inside int32
+    // or a stored value would truncate and stop matching. Wrapping costs one
+    // compare per frame and one 16 kB clear roughly every 250 days at 100 fps.
+    if (this.renderPass >= 0x7fff_fffe) {
+      this.hiddenAtPass.fill(0);
+      this.renderPass = 0;
+    }
+    const pass = ++this.renderPass;
+    this.maskedCount = 0;
+
+    const s = this.world.store;
     const n = s.aliveCount;
     for (let a = 0; a < n; a++) {
       const i = s.alive[a];
-      const f = s.flags[i];
-      const was = (f & EntityFlag.Cloaked) !== 0;
-
-      let hidden: boolean;
-      if (world.areAllied(viewer, s.owner[i] as PlayerId)) {
-        hidden = false;
-      } else if (this.isConcealed(i, viewer)) {
-        hidden = true;
-      } else {
-        const cx = worldToCell(s.posX[i]);
-        const cz = worldToCell(s.posZ[i]);
-        if (!isInMap(cx, cz)) {
-          hidden = true;
-        } else {
-          const cell = grid[cz * MAP_CELLS + cx];
-          hidden = isStaticKind(s.kind[i])
-            ? (cell & VIS_EXPLORED) === 0
-            : (cell & VIS_VISIBLE) === 0;
-        }
-      }
-
-      if (hidden === was) continue;
-      const k = this.maskedCount++;
-      this.maskedIdx[k] = i;
-      this.maskedWas[k] = was ? 1 : 0;
-      if (hidden) s.flags[i] |= EntityFlag.Cloaked;
-      else s.flags[i] &= ~EntityFlag.Cloaked;
+      if (this.levelAt(i, viewer) !== VisionLevel.Hidden) continue;
+      this.hiddenAtPass[i] = pass;
+      this.maskedCount++;
     }
     return this.maskedCount;
   }
 
   /**
-   * Put every bit `applyRenderMask` flipped back exactly as it was, so the next
-   * simulation step sees pristine, viewer-independent flags. Idempotent.
+   * True when the local view must not draw the entity in store slot `index`.
+   * This is the hot query `RenderBridge` makes once per entity per frame, and
+   * it is a single typed-array load and compare.
+   *
+   * A slot nobody has masked since boot reads 0, and `renderPass` starts at 1,
+   * so "never masked" is correctly "draw it".
    */
-  clearRenderMask(): void {
-    const s = this.world.store;
-    for (let k = 0; k < this.maskedCount; k++) {
-      const i = this.maskedIdx[k];
-      if (this.maskedWas[k] === 1) s.flags[i] |= EntityFlag.Cloaked;
-      else s.flags[i] &= ~EntityFlag.Cloaked;
-    }
+  isRenderHiddenAt(index: number): boolean {
+    return this.hiddenAtPass[index] === this.renderPass;
+  }
+
+  /** Handle form of `isRenderHiddenAt`, for passes that hold ids. */
+  isRenderHidden(id: EntityId): boolean {
+    const i = this.world.store.index(id);
+    return i >= 0 && this.hiddenAtPass[i] === this.renderPass;
+  }
+
+  /**
+   * Invalidate the whole mask. Every entity reads as drawable until the next
+   * `computeRenderMask`. Called when the module that computes it goes away, so
+   * a dead fog module can never leave anything hidden.
+   */
+  invalidateRenderMask(): void {
+    this.renderPass++;
     this.maskedCount = 0;
   }
 
@@ -622,7 +710,7 @@ export class Vision implements IVision {
 
   /** Between matches. Grids are cleared; ports are not re-registered here. */
   reset(): void {
-    this.clearRenderMask();
+    this.invalidateRenderMask();
     for (let p = 0; p < MAX_PLAYERS; p++) {
       this.grids[p].fill(0);
       this.timers[p].fill(0);
@@ -636,7 +724,7 @@ export class Vision implements IVision {
   }
 
   dispose(): void {
-    this.clearRenderMask();
+    this.invalidateRenderMask();
   }
 }
 
@@ -650,6 +738,36 @@ export class Vision implements IVision {
  */
 function isStaticKind(kind: number): boolean {
   return kind === EntityKind.Building || kind === EntityKind.Prop || kind === EntityKind.Wreck;
+}
+
+/**
+ * THE LATCH ALARM.
+ *
+ * `EntityFlag.Cloaked` is read by four modules — the render bridge, `Targeting`,
+ * `Combat` and `Selection` — and an entity carrying it is invisible,
+ * un-acquirable, un-shootable and un-clickable all at once. Exactly one thing
+ * in this codebase is allowed to set it: `tickCloak`, from a `setCloaked`
+ * reason recorded in `cloakBits`. A bit with no such reason behind it is
+ * therefore corruption by definition, and it is silent corruption: the player
+ * finds out because something walked into their base and could not be fought.
+ *
+ * The render mask used to be that corruption's source (§2.6). It is not any
+ * more, so this fires only if some future module starts writing the flag
+ * directly — and it fires on the tick it happens, in dev builds, naming the
+ * slot, instead of forty minutes into somebody's match.
+ *
+ * Reported once per slot so a stuck bit cannot spam 30 lines a second.
+ */
+const strayCloakReported = new Set<number>();
+function reportStrayCloak(index: number, kind: number, owner: number): void {
+  if (strayCloakReported.has(index)) return;
+  strayCloakReported.add(index);
+  console.error(
+    `[vision] slot ${index} (kind=${kind} owner=${owner}) carries EntityFlag.Cloaked ` +
+    'with no cloak reason recorded. It is invisible, untargetable, unshootable and ' +
+    'unclickable, and nothing will clear it. Something is writing the flag directly — ' +
+    'render visibility belongs in Vision.computeRenderMask, not in store.flags.',
+  );
 }
 
 /** Metres of map edge, re-exported so the shroud mesh and the minimap agree. */

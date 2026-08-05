@@ -5,7 +5,17 @@ Working notes for Claude Code in this repository. Read this before changing anyt
 ## What this project is
 
 VOLTMARCH — an original browser RTS in Three.js. Three factions, ore economy, base building, AI
-opponent, fog of war. **All art is generated from code**: no downloaded models, textures or fonts.
+opponent, fog of war. **All art is generated from code**: no downloaded models and no downloaded
+textures.
+
+The one exception, added deliberately on 2026-08-05 at the user's request: the UI text face
+**Rajdhani** (OFL-1.1) is self-hosted in `public/fonts/`, Latin subset, four weights, 60 kB. The
+stack had named Rajdhani since it was written and nothing ever shipped it, so every menu and HUD in
+the game rendered in the fourth fallback — Franklin Gothic Medium — and the face the UI was designed
+around was never on screen. Geometry, textures, cameos, icons and the wordmark are still all
+generated. **If you add another downloaded asset, update this line and `README.md` in the same
+commit** — a claim that quietly stops being true is the exact defect `docs/SPEC_DRIFT_AUDIT.md`
+catalogues.
 
 ## The gates
 
@@ -13,7 +23,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npx tsc --noEmit     # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 617 passing
+npm test             # vitest, currently 1573 passing across 59 files
 npm run build        # must exit 0
 ```
 

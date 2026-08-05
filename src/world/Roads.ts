@@ -342,6 +342,24 @@ interface RoadNodeRec {
   edges: number[];
   arms: RoadArm[];
   trimRadius: number;
+  /**
+   * The junction pad, resolved once: its boundary polygon (interleaved x,z,
+   * CCW about the node) and the corner kerb runs that sit on that boundary.
+   *
+   * Computed before the meshes so the cover index can use the EXACT pad
+   * outline rather than an approximation of it — a pad is a star, and any
+   * disc that contains it also contains the corner islands.
+   */
+  padBoundary: number[];
+  /**
+   * The pad's triangulation, as index triples into `padBoundary`, plus -1 for
+   * the optional centre vertex a fan uses. Solved with the boundary so the
+   * cover index and the mesh are the same surface and not two readings of it.
+   */
+  padTris: number[];
+  /** True when `padTris` is a fan and wants a centre vertex at the node. */
+  padFan: boolean;
+  padRuns: KerbRun[];
 }
 
 interface RoadEdgeRec {
@@ -387,6 +405,22 @@ interface RoadChainRec {
   spline: number[];
   /** Final trimmed + uniformly resampled centreline. */
   pts: number[];
+  /**
+   * The ribbon, resolved once: per-sample LEFT unit normal, the two clamped
+   * half-widths, and the two edge points those produce (interleaved x,z).
+   *
+   * Computed ONCE because two consumers have to agree on it EXACTLY. The mesh
+   * builder emits the carriageway at these points; the cover index claims that
+   * ground for this chain. If the cover used anything looser — a capsule about
+   * the centreline, say — it would under-state the carriageway on the outside
+   * of a clamped bend, and a foreign pavement lying on that tarmac would never
+   * be detected. That was measured: it was 100% of the residual overlap.
+   */
+  nrm: number[];
+  wl: number[];
+  wr: number[];
+  edgeL: number[];
+  edgeR: number[];
   /** Arc length of `spline` consumed by the junction pad at each end. */
   trimA: number;
   trimB: number;
@@ -467,6 +501,20 @@ interface KerbRun {
   nrm: number[];
   /** 0 = concrete, 1 = red (corner arc), 2 = yellow dashes (crossing). */
   paint: number[];
+  /**
+   * Metres along the owning chain, per point. Zero throughout for a junction
+   * corner run, which has no arc of its own. The cover field uses it to tell a
+   * chain running over ITSELF three hundred metres later — a ring road closing
+   * on a loop does exactly that — from the same chain simply being adjacent to
+   * its own kerb, which it is at every single sample.
+   */
+  arc: number[];
+  /**
+   * Which road surface this kerb belongs to — a chain, or a junction pad. The
+   * cover field never cuts a run against its own region at the same arc,
+   * because a kerb line lies exactly ON the boundary of the thing it edges.
+   */
+  region: number;
 }
 
 /**
@@ -493,7 +541,492 @@ function orientRun(run: KerbRun): void {
     t = run.nrm[i * 2]; run.nrm[i * 2] = run.nrm[j * 2]; run.nrm[j * 2] = t;
     t = run.nrm[i * 2 + 1]; run.nrm[i * 2 + 1] = run.nrm[j * 2 + 1]; run.nrm[j * 2 + 1] = t;
     t = run.paint[i]; run.paint[i] = run.paint[j]; run.paint[j] = t;
+    t = run.arc[i]; run.arc[i] = run.arc[j]; run.arc[j] = t;
   }
+}
+
+/**
+ * How much narrower than nominal the kerb-plus-pavement cross-section is at
+ * run point `i`.
+ *
+ * The pavement is a ~3.9 m parallel curve and a junction corner arc can be
+ * tighter than that, so the whole section is scaled down rather than allowed
+ * to fold through itself. Shared by the extruder and by the cover test, which
+ * have to agree about where the pavement actually ends up.
+ */
+/**
+ * Longest kerb-run segment the cut is allowed to reason about in one piece.
+ *
+ * The cut decides per POINT, so a run only resolves an overlap as finely as it
+ * is sampled. A chain's kerb is already sampled at ROAD_SAMPLE_METRES, but a
+ * junction corner run can be two points forty metres apart — the straight leg
+ * from a ribbon mouth to the corner tangent, or the kerb run straight across a
+ * gore where no fillet fits. Left whole, such a segment is kept or dropped as
+ * one piece and a 26 m^2 slab of pavement stays lying on the tarmac.
+ */
+const CUT_SAMPLE_METRES = 1.0;
+
+/**
+ * Samples taken ACROSS the corridor at each run point, from the kerb line out
+ * to the far edge of the pavement inclusive.
+ *
+ * Five, not three. A cover primitive is a general quadrilateral or a pad
+ * outline; neither is convex, so two clear endpoints do not imply a clear
+ * middle. Five puts the gap at 0.87 m against a 6.8 m narrowest carriageway.
+ */
+const CUT_CROSS_SAMPLES = 5;
+
+/**
+ * Shortest surviving piece of kerb the cut will emit. Anything shorter is
+ * dropped rather than built.
+ *
+ * Where two chains run coincident for hundreds of metres — which A* does
+ * whenever it routes two lattice edges through the same gap — the losing road's
+ * pavement is buried under the winner's tarmac all the way along, and the cut
+ * quite correctly deletes nearly all of it. But "nearly" is decided per sample,
+ * so the handful of samples that fall in the CUT_MARGIN band survive as
+ * isolated one-quad fragments: a row of pale dashes lying across the tarmac,
+ * visible in the before/after plan and not a sidewalk by any reading. A
+ * fragment shorter than one road sample is scenery litter, so it goes.
+ *
+ * Not a threshold on AREA: the shortest legitimate pavement run in the network
+ * is a junction corner arc, which is metres long, and this must never touch it.
+ */
+const MIN_PIECE_METRES = 2.0;
+
+/**
+ * Split any segment longer than CUT_SAMPLE_METRES, interpolating the outward
+ * normal. Returns the original run untouched when nothing needs splitting,
+ * which is the common case — chain runs are already sampled finely enough.
+ */
+function densifyRun(run: KerbRun): { run: KerbRun; orig: Uint8Array } {
+  const n = run.paint.length;
+  let needed = false;
+  for (let i = 1; i < n && !needed; i++) {
+    needed = Math.hypot(run.pts[i * 2] - run.pts[i * 2 - 2], run.pts[i * 2 + 1] - run.pts[i * 2 - 1])
+      > CUT_SAMPLE_METRES;
+  }
+  if (!needed) {
+    const all = new Uint8Array(n);
+    all.fill(1);
+    return { run, orig: all };
+  }
+
+  const out: KerbRun = { pts: [], nrm: [], paint: [], arc: [], region: run.region };
+  const orig: number[] = [1];
+  out.pts.push(run.pts[0], run.pts[1]);
+  out.nrm.push(run.nrm[0], run.nrm[1]);
+  out.paint.push(run.paint[0]);
+  out.arc.push(run.arc[0]);
+  for (let i = 1; i < n; i++) {
+    const ax = run.pts[i * 2 - 2], az = run.pts[i * 2 - 1];
+    const bx = run.pts[i * 2], bz = run.pts[i * 2 + 1];
+    const anx = run.nrm[i * 2 - 2], anz = run.nrm[i * 2 - 1];
+    const bnx = run.nrm[i * 2], bnz = run.nrm[i * 2 + 1];
+    const steps = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / CUT_SAMPLE_METRES));
+    for (let k = 1; k <= steps; k++) {
+      const t = k / steps;
+      let nx = anx + (bnx - anx) * t;
+      let nz = anz + (bnz - anz) * t;
+      const nl = Math.hypot(nx, nz);
+      if (nl < 1e-5) { nx = bnx; nz = bnz; } else { nx /= nl; nz /= nl; }
+      out.pts.push(ax + (bx - ax) * t, az + (bz - az) * t);
+      out.nrm.push(nx, nz);
+      // Paint is a band, not a gradient: a new sample belongs to whichever
+      // original point it is nearer, so a red corner arc keeps its exact ends.
+      out.paint.push(t < 0.5 ? run.paint[i - 1] : run.paint[i]);
+      out.arc.push(run.arc[i - 1] + (run.arc[i] - run.arc[i - 1]) * t);
+      orig.push(k === steps ? 1 : 0);
+    }
+  }
+  return { run: out, orig: Uint8Array.from(orig) };
+}
+
+function runShrink(run: KerbRun, i: number): number {
+  const n = run.paint.length;
+  if (i <= 0 || i >= n - 1) return 1;
+  const safe = maxSafeOffset(
+    run.pts[i * 2 - 2], run.pts[i * 2 - 1], run.pts[i * 2], run.pts[i * 2 + 1],
+    run.pts[i * 2 + 2], run.pts[i * 2 + 3], 1,
+  );
+  return Math.min(1, safe / (ROAD_KERB_TOP + ROAD_PAVEMENT_WIDTH + ROAD_PAVEMENT_SKIRT));
+}
+
+/* ==========================================================================
+ * 4.5 THE CARRIAGEWAY COVER — why the pavement stops
+ *
+ * THE BUG THIS EXISTS FOR. Two road splines can share ground. It happens three
+ * ways and all three are load-bearing parts of the generator, not accidents:
+ *
+ *   1. A* routes two different lattice edges through the same gap in the
+ *      terrain, so two whole chains run coincident for hundreds of metres.
+ *   2. `mergeArms` collapses two arms that leave a junction in nearly the same
+ *      direction; the loser's chain is deliberately left UNTRIMMED and runs
+ *      under the pad (see the note on `untrimmed`).
+ *   3. When a merge takes a node below three arms the pad is dropped entirely
+ *      and every chain there runs to the node centre untrimmed.
+ *
+ * For the CARRIAGEWAY that is tolerable: it is one flat dark material over
+ * another flat dark material, and the file already accepts the overdraw. For
+ * the KERB AND PAVEMENT it is not, because they are pale, raised, and cast:
+ * you get a sidewalk with a 0.17 m kerb running diagonally across a road.
+ * That is the reported bug.
+ *
+ * The fix is the thing a real road network does — the minor road's pavement is
+ * CUT BACK where the major road runs — and this is the index that answers
+ * "what runs over here". It holds one capsule per ribbon segment and per
+ * junction arm, tagged with the region that owns it, in an 8 m uniform grid.
+ *
+ * TWO RADII, AND THE ASYMMETRY IS THE WHOLE DESIGN:
+ *
+ *   - Against ANY foreign region, a sample is cut when it is inside that
+ *     region's CARRIAGEWAY. Pavement over tarmac is wrong in both directions,
+ *     so this rule is symmetric and both roads lose their pavement over each
+ *     other's asphalt.
+ *   - Against a HIGHER-RANKED region only, a sample is also cut when it is
+ *     inside that region's full CORRIDOR (carriageway + kerb + pavement).
+ *     This is what resolves the corner square where two crossing corridors
+ *     both want the same 3.2 x 3.2 m of ground: the higher-ranked road's
+ *     pavement runs through, the lower one's stops against it. Applying the
+ *     rule symmetrically would delete BOTH and open a gap — the exact failure
+ *     mode that makes a naive cutback read as broken pavement.
+ *
+ * Junction regions never get the corridor extension. A pad is modelled as a
+ * disc plus one capsule per arm, and those capsules run to the ribbon mouth
+ * where the chain's own kerb line sits at exactly the capsule radius — so an
+ * extension there would cut every trimmed chain's pavement off at its own
+ * junction mouth. The pad's corner runs already own that ground.
+ *
+ * CORNER ISLANDS SURVIVE BY CONSTRUCTION. This pass only ever REMOVES kerb and
+ * pavement, and an island is by definition the ground a pad does not reach —
+ * no capsule covers it, so nothing there is ever cut, and nothing new is ever
+ * emitted to fill it.
+ * ========================================================================== */
+
+/** Uniform grid pitch for the cover index. Build-time only. */
+const COVER_CELL_METRES = 8;
+
+/** Kerb line to the outer edge of the pavement. */
+const CORRIDOR_EXTRA = ROAD_KERB_TOP + ROAD_PAVEMENT_WIDTH;
+
+/**
+ * How deep inside a foreign surface a sample must sit before it is cut.
+ *
+ * Not epsilon-sized on purpose. A kerb line sits exactly on its own
+ * carriageway boundary and a trimmed chain's mouth sits exactly on its
+ * junction's arm capsule, so anything smaller than the fp noise of a resampled
+ * spline would nibble legitimate pavement away at every junction mouth. At
+ * 0.25 m the cut lands inside the 0.28 m kerb top, which is hidden geometry.
+ */
+const CUT_MARGIN = 0.25;
+
+/** Rank bases. Junction pads outrank arterials, which outrank streets. */
+const RANK_STREET = 0;
+const RANK_ARTERIAL = 1e6;
+const RANK_JUNCTION = 2e6;
+
+/**
+ * How far apart along a chain two pieces of it must be before one may cut the
+ * other.
+ *
+ * A chain is adjacent to its own kerb at every single sample, and on the
+ * concave side of a bend its own pavement stays within CORRIDOR_EXTRA of its
+ * own centreline for the entire arc. So the exclusion has to be long enough
+ * that no legal bend can fold the road back to within a corridor width of
+ * itself: at ROAD_BEND_RADIUS_MIN = 15 m, 60 m of arc is nearly four radians
+ * of turn and the two ends are 25 m apart. Beyond that, two stretches of one
+ * chain that close are genuinely crossing, and the later one gives way.
+ */
+const SELF_CUT_SEPARATION = 60;
+
+/**
+ * True when (x,z) is buried by more than `margin` inside a pad, given the pad's
+ * boundary ring and the triangles actually meshed over it. `cx,cz` is the
+ * centre vertex a fan uses; triangle index -1 refers to it.
+ *
+ * INSIDE is decided against the TRIANGLES and the margin against the RING, and
+ * the split is deliberate. Point-in-polygon by crossing number would be the
+ * obvious inside test, but it disagrees with the mesh exactly where it matters:
+ * a boundary that self-intersects — three arms in one half-plane can produce
+ * one — has no well-defined interior, while the triangles are unambiguous
+ * because they are the tarmac that got drawn. The ring is still the right
+ * yardstick for the margin: it is the real kerb line, and the triangulation's
+ * internal diagonals are not edges of anything.
+ */
+function padCovers(
+  ring: readonly number[], tris: readonly number[], cx: number, cz: number,
+  x: number, z: number, margin: number,
+): boolean {
+  let inside = false;
+  for (let i = 0; i < tris.length && !inside; i += 3) {
+    const a = tris[i], b = tris[i + 1], c = tris[i + 2];
+    inside = insideTriangle(x, z,
+      a < 0 ? cx : ring[a * 2], a < 0 ? cz : ring[a * 2 + 1],
+      b < 0 ? cx : ring[b * 2], b < 0 ? cz : ring[b * 2 + 1],
+      c < 0 ? cx : ring[c * 2], c < 0 ? cz : ring[c * 2 + 1]);
+  }
+  if (!inside) return false;
+  const n = ring.length / 2;
+  const m2 = margin * margin;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    if (distSqToSegment(x, z, ring[j * 2], ring[j * 2 + 1], ring[i * 2], ring[i * 2 + 1]) <= m2) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/** Squared distance from (px,pz) to the segment (x0,z0)-(x1,z1). */
+function distSqToSegment(
+  px: number, pz: number, x0: number, z0: number, x1: number, z1: number,
+): number {
+  const dx = x1 - x0;
+  const dz = z1 - z0;
+  const l2 = dx * dx + dz * dz;
+  const t = l2 > 1e-9 ? clamp01(((px - x0) * dx + (pz - z0) * dz) / l2) : 0;
+  const cx = px - (x0 + dx * t);
+  const cz = pz - (z0 + dz * t);
+  return cx * cx + cz * cz;
+}
+
+/**
+ * Is the closed polygon `p` star-shaped about (cx,cz)? That is: does a fan of
+ * triangles from that point to every edge cover the polygon and nothing else?
+ *
+ * Equivalent to every edge winding the same way about the point. Degenerate
+ * edges — two boundary vertices at the same place, which a corner arc tangent
+ * landing on a ribbon mouth produces — carry no area and are skipped rather
+ * than failing the test.
+ */
+function isStarShaped(p: readonly number[], cx: number, cz: number): boolean {
+  const n = p.length / 2;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const ax = p[j * 2] - cx, az = p[j * 2 + 1] - cz;
+    const bx = p[i * 2] - cx, bz = p[i * 2 + 1] - cz;
+    if (Math.hypot(p[i * 2] - p[j * 2], p[i * 2 + 1] - p[j * 2 + 1]) < 1e-3) continue;
+    if (ax * bz - az * bx <= 0) return false;
+  }
+  return true;
+}
+
+/**
+ * Ear-clip a simple polygon given interleaved x,z. Returns index triples into
+ * the polygon's own vertices.
+ *
+ * `THREE.ShapeUtils.triangulateShape` is the earcut already shipping in this
+ * project's only dependency, so this is a thin adapter rather than a second
+ * implementation to keep correct. It is build-time only, and a junction pad is
+ * a few dozen vertices.
+ */
+function triangulatePolygon(p: readonly number[]): number[][] {
+  const contour: THREE.Vector2[] = [];
+  for (let i = 0; i < p.length; i += 2) contour.push(new THREE.Vector2(p[i], p[i + 1]));
+  return THREE.ShapeUtils.triangulateShape(contour, []);
+}
+
+/** Is (x,z) on or inside the triangle, for either winding? */
+function insideTriangle(
+  x: number, z: number,
+  ax: number, az: number, bx: number, bz: number, cx: number, cz: number,
+): boolean {
+  const d1 = (x - bx) * (az - bz) - (ax - bx) * (z - bz);
+  const d2 = (x - cx) * (bz - cz) - (bx - cx) * (z - cz);
+  const d3 = (x - ax) * (cz - az) - (cx - ax) * (z - az);
+  const neg = d1 < 0 || d2 < 0 || d3 < 0;
+  const pos = d1 > 0 || d2 > 0 || d3 > 0;
+  return !(neg && pos);
+}
+
+/** One road surface the cover can attribute ground to. */
+interface CoverRegion {
+  /** Higher wins a contested corner. */
+  rank: number;
+  /**
+   * Extra reach past the carriageway that this region's own pavement occupies.
+   * CORRIDOR_EXTRA for a chain, which is flanked by pavement on both sides for
+   * its whole length; ZERO for a junction pad, whose pavement is the corner
+   * arcs and whose outline ends exactly on the ribbon mouths where the
+   * neighbouring chain's own kerb line lives.
+   */
+  extra: number;
+}
+
+class CarriagewayCover {
+  /**
+   * Eight floats per quad: the four corners of one ribbon quad in PERIMETER
+   * order — left(i), left(i+1), right(i+1), right(i).
+   *
+   * Not a capsule about the centreline. The two half-widths of a ribbon quad
+   * differ, per side and per end, wherever the fold-through clamp bites, and
+   * any single-radius approximation is then wrong on one side: too wide and a
+   * chain cuts its own pavement away round every bend, too narrow and a
+   * FOREIGN pavement lying on that tarmac is never seen. The quad is what the
+   * mesh builder actually emits, so it is neither.
+   */
+  private readonly quad: number[] = [];
+  /** Owning region id per quad. */
+  private readonly own: number[] = [];
+  private readonly region: readonly CoverRegion[];
+  /** Metres along the owning chain, per quad. */
+  private readonly arc: number[] = [];
+  /** Junction pads: boundary ring, meshed triangles, fan centre, owner. */
+  private readonly poly: {
+    ring: readonly number[]; tris: readonly number[]; cx: number; cz: number; own: number;
+  }[] = [];
+  /**
+   * Cell -> primitive ids. A non-negative id is a quad; `~id` is a polygon.
+   * One list keeps the query loop branchless up to the sign test.
+   */
+  private readonly cells = new Map<number, number[]>();
+
+  constructor(region: readonly CoverRegion[]) {
+    this.region = region;
+  }
+
+  /** Add one ribbon quad, corners in perimeter order. */
+  add(
+    region: number,
+    ax: number, az: number, bx: number, bz: number,
+    cx: number, cz: number, dx: number, dz: number,
+    arc: number,
+  ): void {
+    const i = this.own.length;
+    this.own.push(region);
+    this.arc.push(arc);
+    this.quad.push(ax, az, bx, bz, cx, cz, dx, dz);
+    // Insert into every cell the primitive can possibly answer for, which is
+    // its bounding box grown by the LARGEST reach it is ever queried at.
+    const reach = this.region[region].extra;
+    this.index(i,
+      Math.floor((Math.min(ax, bx, cx, dx) - reach) / COVER_CELL_METRES),
+      Math.floor((Math.min(az, bz, cz, dz) - reach) / COVER_CELL_METRES),
+      Math.floor((Math.max(ax, bx, cx, dx) + reach) / COVER_CELL_METRES),
+      Math.floor((Math.max(az, bz, cz, dz) + reach) / COVER_CELL_METRES));
+  }
+
+  /** Add one junction pad. Arrays are taken by reference. */
+  addPad(
+    region: number, ring: readonly number[], tris: readonly number[], cx: number, cz: number,
+  ): void {
+    if (ring.length < 6 || tris.length === 0) return;
+    const i = this.poly.length;
+    this.poly.push({ ring, tris, cx, cz, own: region });
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (let k = 0; k < ring.length; k += 2) {
+      if (ring[k] < x0) x0 = ring[k];
+      if (ring[k] > x1) x1 = ring[k];
+      if (ring[k + 1] < z0) z0 = ring[k + 1];
+      if (ring[k + 1] > z1) z1 = ring[k + 1];
+    }
+    this.index(~i,
+      Math.floor(x0 / COVER_CELL_METRES), Math.floor(z0 / COVER_CELL_METRES),
+      Math.floor(x1 / COVER_CELL_METRES), Math.floor(z1 / COVER_CELL_METRES));
+  }
+
+  private index(id: number, cx0: number, cz0: number, cx1: number, cz1: number): void {
+    for (let cz = cz0; cz <= cz1; cz++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        const k = CarriagewayCover.key(cx, cz);
+        let list = this.cells.get(k);
+        if (list === undefined) { list = []; this.cells.set(k, list); }
+        list.push(id);
+      }
+    }
+  }
+
+  private static key(cx: number, cz: number): number {
+    // The map is 512 m and the pitch is 8 m, so 512 buckets per axis is a
+    // clean 2x margin either side and the key stays a small integer.
+    return ((cx + 256) & 511) * 512 + ((cz + 256) & 511);
+  }
+
+  /**
+   * True when (x,z) is buried inside a road surface that some OTHER region
+   * owns, deep enough that kerb or pavement drawn there would sit on top of
+   * another road.
+   */
+  covered(region: number, arc: number, x: number, z: number): boolean {
+    const list = this.cells.get(CarriagewayCover.key(
+      Math.floor(x / COVER_CELL_METRES), Math.floor(z / COVER_CELL_METRES),
+    ));
+    if (list === undefined) return false;
+    const mine = this.region[region].rank;
+    for (let k = 0; k < list.length; k++) {
+      const id = list[k];
+      if (id < 0) {
+        // A pad IS allowed to cut its own corner runs, and it has to be. When
+        // three arms leave a node inside one half-plane the gore between the
+        // outermost two is REFLEX, the kerb runs straight across it, and the
+        // outward normal at that run's two ends — taken from each arm's own
+        // side, because that is where the seam with the ribbon has to match —
+        // then points back INTO the pad. The pavement it lays is on the pad's
+        // own tarmac. The margin is what makes this safe: a corner run's points
+        // lie exactly ON the boundary, so they are never inside it by
+        // CUT_MARGIN, and a well-formed corner is untouched.
+        const p = this.poly[~id];
+        if (padCovers(p.ring, p.tris, p.cx, p.cz, x, z, CUT_MARGIN)) return true;
+        continue;
+      }
+      const i = id;
+      const other = this.own[i];
+      let outranked: boolean;
+      if (other === region) {
+        // The same road, somewhere else along itself — a chain that loops or
+        // doubles back over its own route.
+        //
+        // The CARRIAGEWAY half of the test needs no arc guard at all, and that
+        // is bought by the cover storing the EXACT ribbon quad: a chain's own
+        // kerb line is a corner shared by its two neighbouring quads, so it
+        // lies ON the boundary and can never read as buried by CUT_MARGIN.
+        //
+        // The CORRIDOR half does need one, and SELF_CUT_SEPARATION is not a
+        // fudge factor. On the concave side of a bend a road's own pavement
+        // stays within CORRIDOR_EXTRA of its own centreline for the entire
+        // arc, so a short separation lets this rule delete the inner pavement
+        // of every curve on the map — measured at a 6 m separation, it cost
+        // 60% of all pavement across the 32-seed set.
+        const da = this.arc[i] - arc;
+        outranked = da < -SELF_CUT_SEPARATION;
+      } else {
+        outranked = this.region[other].rank > mine;
+      }
+      // Signed distance to the quad, negative inside. Buried by CUT_MARGIN is
+      // always a cut; within the foreign corridor is a cut only when that
+      // region outranks this one, so exactly one of two crossing pavements
+      // gives way and the contested corner is never left bare.
+      const sd = this.quadSignedDistance(i, x, z);
+      if (sd < -CUT_MARGIN) return true;
+      if (outranked && sd < this.region[other].extra - CUT_MARGIN) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Distance from (x,z) to quad `i`, negative when inside it.
+   *
+   * Two triangles for the inside test rather than a convex half-plane test:
+   * the two ends of a ribbon quad can have different half-widths, so it is a
+   * general simple quadrilateral and is not always convex.
+   */
+  private quadSignedDistance(i: number, x: number, z: number): number {
+    const b = i * 8;
+    const q = this.quad;
+    const ax = q[b], az = q[b + 1];
+    const bx = q[b + 2], bz = q[b + 3];
+    const cx = q[b + 4], cz = q[b + 5];
+    const dx = q[b + 6], dz = q[b + 7];
+    let best = distSqToSegment(x, z, ax, az, bx, bz);
+    let d = distSqToSegment(x, z, bx, bz, cx, cz);
+    if (d < best) best = d;
+    d = distSqToSegment(x, z, cx, cz, dx, dz);
+    if (d < best) best = d;
+    d = distSqToSegment(x, z, dx, dz, ax, az);
+    if (d < best) best = d;
+    const inside = insideTriangle(x, z, ax, az, bx, bz, cx, cz)
+      || insideTriangle(x, z, ax, az, cx, cz, dx, dz);
+    return inside ? -Math.sqrt(best) : Math.sqrt(best);
+  }
+
 }
 
 /* ==========================================================================
@@ -974,6 +1507,13 @@ export class RoadNetwork {
    */
   private readonly untrimmed = new Set<string>();
 
+  /**
+   * Build-time index of which road surface covers which ground. Built after
+   * the trim (so it sees the ribbons that actually exist) and dropped as soon
+   * as the meshes are packed — nothing reads it at run time.
+   */
+  private cover: CarriagewayCover | null = null;
+
   /* -- routing scratch, all build-time, all reused across searches --------- */
 
   /** 1 where a road may be centred at all. */
@@ -1023,6 +1563,8 @@ export class RoadNetwork {
     this.shapeChains();
     this.solveJunctions();
     this.trimChains();
+    this.solveJunctionPads();
+    this.buildCover();
     this.buildMeshes();
     this.rasteriseMask();
     if (this.stampTerrain) this.applyToTerrain();
@@ -1048,6 +1590,7 @@ export class RoadNetwork {
         const rec: RoadNodeRec = {
           id: this.nodes.length, x: x0, z: z0,
           active: false, border: false, edges: [], arms: [], trimRadius: 0,
+          padBoundary: [], padTris: [], padFan: false, padRuns: [],
         };
         // Search out from the ideal point for ground a road can actually sit
         // on. A node that lands on a terrace face would drag its whole chain
@@ -1344,6 +1887,7 @@ export class RoadNetwork {
         const rec: RoadNodeRec = {
           id: this.nodes.length, x: px, z: pz,
           active: true, border: true, edges: [], arms: [], trimRadius: 0,
+          padBoundary: [], padTris: [], padFan: false, padRuns: [],
         };
         this.nodes.push(rec);
         return rec.id;
@@ -1492,7 +2036,8 @@ export class RoadNetwork {
       this.chains.push({
         id: this.chains.length, cls, halfWidth: roadHalfWidth(cls),
         nodeA: startNode, nodeB: node, way,
-        spline: [], pts: [], trimA: 0, trimB: 0,
+        spline: [], pts: [], nrm: [], wl: [], wr: [], edgeL: [], edgeR: [],
+        trimA: 0, trimB: 0,
         junctionA: false, junctionB: false,
       });
     };
@@ -1769,6 +2314,37 @@ export class RoadNetwork {
     const sinHalf = Math.sin(psi * 0.5);
     if (tanHalf < 1e-4 || sinHalf < 1e-4) return null;
 
+    // The bisector: from the apex, the direction the fillet's centre lies in,
+    // and from the node, the direction the GORE between these two arms lies in.
+    let bx = A.dx + B.dx, bz = A.dz + B.dz;
+    const bl = Math.hypot(bx, bz);
+    if (bl < 1e-5) return null;
+    bx /= bl; bz /= bl;
+
+    // THE APEX MUST BE IN THE GORE, and this is not a formality — it was the
+    // largest single source of the reported bug.
+    //
+    // A chain arrives at a junction on a CURVE, so the arm direction taken at
+    // the ribbon mouth is not the direction from the node. Two arms 148 apart
+    // — the through-road of a T, whose two halves bend a little — then have
+    // near-parallel kerb lines that meet a long way BEHIND the node. `psi` sees
+    // 148 degrees and asks for a fillet; `availA/availB` are both comfortably
+    // positive, because the mouths really are ahead of that apex along their
+    // own kerb lines. Every downstream number is then computed about a point on
+    // the WRONG SIDE of the junction, and the boundary it produces sweeps back
+    // across the node.
+    //
+    // That breaks the one property the pad mesh depends on — the boundary being
+    // star-shaped about the node, which is what makes the triangle fan legal.
+    // Measured before this test: 49 of 415 pad triangles across six seeds had
+    // their centroid OUTSIDE their own pad boundary, i.e. 1037 m^2 of tarmac
+    // laid outside its own kerb line, which is exactly the ground the flanking
+    // pavement was then found sitting on.
+    //
+    // Rejecting here falls back to a straight kerb run across the gore, which
+    // for a through-road at a T is what a real junction has anyway.
+    if ((cx - n.x) * bx + (cz - n.z) * bz <= 0) return null;
+
     let r = clamp((ROAD_CORNER_RADIUS_MIN + ROAD_CORNER_RADIUS_MAX) * 0.5,
       ROAD_CORNER_RADIUS_MIN, ROAD_CORNER_RADIUS_MAX);
     if (clampToAvailable) {
@@ -1798,11 +2374,6 @@ export class RoadNetwork {
     }
     r = Math.max(r, 0.4);
     const t = r / tanHalf;
-
-    let bx = A.dx + B.dx, bz = A.dz + B.dz;
-    const bl = Math.hypot(bx, bz);
-    if (bl < 1e-5) return null;
-    bx /= bl; bz /= bl;
     const dc = r / sinHalf;
 
     return {
@@ -1943,6 +2514,263 @@ export class RoadNetwork {
     }
 
     for (const c of this.chains) this.totalMetres += polylineLength(c.pts);
+    for (const c of this.chains) this.resolveChainEdges(c);
+  }
+
+  /**
+   * Resolve the ribbon of a chain: the per-sample normal, the two clamped
+   * half-widths, and the two edge points.
+   *
+   * The normal is a CENTRAL DIFFERENCE so the ribbon does not kink at a sample.
+   * A parallel curve inside a bend of radius R collapses at offset R and
+   * inverts beyond it, so each side is clamped against the local bend. The
+   * ends stay at the nominal half-width: they are the junction mouth, and the
+   * pad is built from exactly those corners.
+   */
+  private resolveChainEdges(c: RoadChainRec): void {
+    const p = c.pts;
+    const n = p.length / 2;
+    c.nrm.length = 0;
+    c.wl.length = 0;
+    c.wr.length = 0;
+    c.edgeL.length = 0;
+    c.edgeR.length = 0;
+    if (n < 2) return;
+    for (let i = 0; i < n; i++) {
+      const x = p[i * 2], z = p[i * 2 + 1];
+      const i0 = Math.max(i - 1, 0);
+      const i1 = Math.min(i + 1, n - 1);
+      let tx = p[i1 * 2] - p[i0 * 2];
+      let tz = p[i1 * 2 + 1] - p[i0 * 2 + 1];
+      const tl = Math.hypot(tx, tz) || 1;
+      tx /= tl; tz /= tl;
+      const px = -tz, pz = tx;
+      const interior = i > 0 && i < n - 1;
+      const wl = interior
+        ? Math.min(c.halfWidth,
+          maxSafeOffset(p[i * 2 - 2], p[i * 2 - 1], x, z, p[i * 2 + 2], p[i * 2 + 3], 1))
+        : c.halfWidth;
+      const wr = interior
+        ? Math.min(c.halfWidth,
+          maxSafeOffset(p[i * 2 - 2], p[i * 2 - 1], x, z, p[i * 2 + 2], p[i * 2 + 3], -1))
+        : c.halfWidth;
+      c.nrm.push(px, pz);
+      c.wl.push(wl);
+      c.wr.push(wr);
+      c.edgeL.push(x + px * wl, z + pz * wl);
+      c.edgeR.push(x - px * wr, z - pz * wr);
+    }
+  }
+
+  /* ======================================================================
+   * 6.25 THE COVER, AND CUTTING THE PAVEMENT BACK
+   * ====================================================================== */
+
+  /** Cover region id of a chain. Chains occupy the low ids. */
+  private chainRegion(id: number): number { return id; }
+
+  /** Cover region id of a junction node. */
+  private nodeRegion(id: number): number { return this.chains.length + id; }
+
+  /**
+   * Index every carriageway surface that actually got built, so the kerb and
+   * pavement builders can ask "does another road run over here".
+   *
+   * EXACTLY what got built, primitive for primitive: one entry per ribbon quad
+   * and the pad's own boundary polygon. An approximation here is not a
+   * performance trade, it is a correctness bug — see the note on
+   * `CarriagewayCover.quad`.
+   *
+   * The pad is a STAR, not a disc. A disc big enough to hold it also holds the
+   * corner islands, and an island is ground the pad deliberately does not
+   * reach: scatter plants trees there, and covering it would cut away the very
+   * pavement that wraps it.
+   */
+  private buildCover(): void {
+    const regions: CoverRegion[] = [];
+    for (let i = 0; i < this.chains.length + this.nodes.length; i++) {
+      regions.push({ rank: 0, extra: 0 });
+    }
+    for (const c of this.chains) {
+      const r = regions[this.chainRegion(c.id)];
+      r.rank = (c.cls === RoadClass.Arterial ? RANK_ARTERIAL : RANK_STREET) + c.id;
+      r.extra = CORRIDOR_EXTRA;
+    }
+    for (const n of this.nodes) regions[this.nodeRegion(n.id)].rank = RANK_JUNCTION + n.id;
+
+    const cover = new CarriagewayCover(regions);
+    for (const c of this.chains) {
+      const p = c.pts;
+      const r = this.chainRegion(c.id);
+      let along = 0;
+      for (let i = 2; i < p.length; i += 2) {
+        const step = Math.hypot(p[i] - p[i - 2], p[i + 1] - p[i - 1]);
+        const k = i / 2;
+        cover.add(r,
+          c.edgeL[k * 2 - 2], c.edgeL[k * 2 - 1], c.edgeL[k * 2], c.edgeL[k * 2 + 1],
+          c.edgeR[k * 2], c.edgeR[k * 2 + 1], c.edgeR[k * 2 - 2], c.edgeR[k * 2 - 1],
+          along + step * 0.5);
+        along += step;
+      }
+    }
+    for (const n of this.nodes) {
+      if (n.arms.length < 3) continue;
+      cover.addPad(this.nodeRegion(n.id), n.padBoundary, n.padTris, n.x, n.z);
+    }
+    this.cover = cover;
+  }
+
+  /**
+   * True when the whole cross-section of pavement at run point `i` is on
+   * ground its own road is entitled to.
+   *
+   * CUT_CROSS_SAMPLES across the corridor, not one. The pavement is a 3.5 m
+   * parallel strip, so at an oblique crossing the kerb line and the outer edge
+   * leave a foreign carriageway several metres apart — testing only the kerb
+   * line leaves a triangular tongue of sidewalk lying on the tarmac, which is
+   * the artifact this whole pass exists to remove.
+   *
+   * Tested at the FULL nominal width, not at `runShrink`'s narrowed one. The
+   * emitted pavement is never wider than nominal, so this can only ever
+   * over-cut, and over-cutting here costs nothing: the ground beyond a narrowed
+   * corner arc is inside the neighbouring road's own corridor, so its pavement
+   * covers it. Sampling at the narrowed width instead means the test and the
+   * mesh disagree wherever the cut re-samples a run, which is exactly where the
+   * seam is.
+   */
+  private runPointClear(run: KerbRun, i: number): boolean {
+    return this.samplesClear(
+      run.region, run.arc[i],
+      run.pts[i * 2], run.pts[i * 2 + 1], run.nrm[i * 2], run.nrm[i * 2 + 1],
+      1,
+    );
+  }
+
+  /**
+   * Same test at an arbitrary point and outward normal, for the bisection.
+   *
+   * A cover primitive is a quad or a pad outline, and neither is guaranteed
+   * convex, so "both ends of the cross-section are outside it" does NOT imply
+   * the middle is. The spacing has to be fine enough that no legal road can
+   * pass between two samples: at CUT_CROSS_SAMPLES = 5 the gap is 0.87 m
+   * against a narrowest carriageway of 6.8 m. `shrink` is the same narrowing
+   * `buildKerbRun` applies round a tight arc, so the samples land where the
+   * pavement will actually be and never over-cut.
+   */
+  private samplesClear(
+    region: number, arc: number, x: number, z: number, ox: number, oz: number, shrink: number,
+  ): boolean {
+    const cover = this.cover;
+    if (cover === null) return true;
+    const step = (CORRIDOR_EXTRA * shrink) / (CUT_CROSS_SAMPLES - 1);
+    for (let k = 0; k < CUT_CROSS_SAMPLES; k++) {
+      const d = step * k;
+      if (cover.covered(region, arc, x + ox * d, z + oz * d)) return false;
+    }
+    return true;
+  }
+
+  /**
+   * Append the exact point where the run crosses from clear (`ka`) into
+   * covered (`kb`), found by bisection.
+   *
+   * Splitting on whole samples instead would leave the pavement up to
+   * ROAD_SAMPLE_METRES short of the road it is stopping against — a 2 m strip
+   * of bare terrain at every crossing, which reads as broken pavement just as
+   * badly as the overlap does. Eight halvings put the seam within 8 mm.
+   */
+  private pushCutPoint(run: KerbRun, ka: number, kb: number, piece: KerbRun): void {
+    const ax = run.pts[ka * 2], az = run.pts[ka * 2 + 1];
+    const bx = run.pts[kb * 2], bz = run.pts[kb * 2 + 1];
+    const anx = run.nrm[ka * 2], anz = run.nrm[ka * 2 + 1];
+    const bnx = run.nrm[kb * 2], bnz = run.nrm[kb * 2 + 1];
+    const aArc = run.arc[ka];
+    const bArc = run.arc[kb];
+    let lo = 0;
+    let hi = 1;
+    let lnx = anx;
+    let lnz = anz;
+    for (let k = 0; k < 8; k++) {
+      const t = (lo + hi) * 0.5;
+      let nx = anx + (bnx - anx) * t;
+      let nz = anz + (bnz - anz) * t;
+      const nl = Math.hypot(nx, nz);
+      if (nl < 1e-5) { nx = anx; nz = anz; } else { nx /= nl; nz /= nl; }
+      // Full nominal width, matching `runPointClear`. The bisection has to be
+      // testing the same thing the samples either side of it were.
+      if (this.samplesClear(run.region, aArc + (bArc - aArc) * t,
+        ax + (bx - ax) * t, az + (bz - az) * t, nx, nz, 1)) {
+        lo = t; lnx = nx; lnz = nz;
+      } else {
+        hi = t;
+      }
+    }
+    const px = ax + (bx - ax) * lo;
+    const pz = az + (bz - az) * lo;
+    // A boundary that landed on the kept sample itself would only add a
+    // zero-length segment, and a zero-length segment is a degenerate quad.
+    if (Math.hypot(px - ax, pz - az) < 1e-3) return;
+    piece.pts.push(px, pz);
+    piece.nrm.push(lnx, lnz);
+    piece.paint.push(run.paint[ka]);
+    piece.arc.push(aArc + (bArc - aArc) * lo);
+  }
+
+  /**
+   * Split one kerb run into the pieces that are not buried under another road.
+   *
+   * This is the fix for TODO #4. The carriageway resolves an overlap by
+   * drawing one flat dark surface over another; the kerb and pavement cannot,
+   * because they are raised, pale and shadow-casting. So they stop.
+   */
+  private cutRun(source: KerbRun, out: KerbRun[]): void {
+    if (source.paint.length < 2) return;
+    if (this.cover === null) { out.push(source); return; }
+
+    // DENSIFY FOR THE DECISION, EMIT AT THE ORIGINAL DENSITY. The cut resolves
+    // only as finely as the run is sampled, and a junction corner run can be
+    // two points forty metres apart — kept or dropped whole, that leaves a
+    // 26 m^2 slab of pavement lying on the tarmac. But the extra samples must
+    // not reach the mesh: a chain run is already sampled at ROAD_SAMPLE_METRES,
+    // so emitting every sub-sample would DOUBLE the kerb and pavement triangle
+    // count of the whole network for no visual gain. So `orig` marks the points
+    // that were really there, and only those plus the two bisected boundaries
+    // of each surviving piece are emitted.
+    const { run, orig } = densifyRun(source);
+    const n = run.paint.length;
+    let clear = 0;
+    const keep = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      keep[i] = this.runPointClear(run, i) ? 1 : 0;
+      clear += keep[i];
+    }
+    if (clear === n) { out.push(source); return; }
+    if (clear === 0) return;
+
+    let piece: KerbRun | null = null;
+    for (let i = 0; i < n; i++) {
+      if (keep[i] === 0) {
+        if (piece !== null) {
+          this.pushCutPoint(run, i - 1, i, piece);
+          if (piece.paint.length >= 2 && polylineLength(piece.pts) >= MIN_PIECE_METRES) {
+            out.push(piece);
+          }
+          piece = null;
+        }
+        continue;
+      }
+      if (piece === null) {
+        piece = { pts: [], nrm: [], paint: [], arc: [], region: run.region };
+        if (i > 0) this.pushCutPoint(run, i, i - 1, piece);
+      }
+      if (orig[i] === 0) continue;
+      piece.pts.push(run.pts[i * 2], run.pts[i * 2 + 1]);
+      piece.nrm.push(run.nrm[i * 2], run.nrm[i * 2 + 1]);
+      piece.paint.push(run.paint[i]);
+      piece.arc.push(run.arc[i]);
+    }
+    if (piece !== null && piece.paint.length >= 2
+      && polylineLength(piece.pts) >= MIN_PIECE_METRES) out.push(piece);
   }
 
   /* ======================================================================
@@ -1962,7 +2790,14 @@ export class RoadNetwork {
 
     for (const c of this.chains) this.buildChainRibbon(c, road, runs);
     for (const n of this.nodes) if (n.arms.length >= 3) this.buildJunctionPad(n, road, runs);
-    for (const r of runs) { orientRun(r); this.buildKerbRun(r, kerb, pave); }
+    // Orient first: `cutRun` interpolates outward normals, and a run whose
+    // handedness has not been normalised carries two conventions at once.
+    const pieces: KerbRun[] = [];
+    for (const r of runs) { orientRun(r); this.cutRun(r, pieces); }
+    for (const r of pieces) this.buildKerbRun(r, kerb, pave);
+    // Nothing reads the cover after this point and it is the largest build-time
+    // allocation in the module.
+    this.cover = null;
 
     const anis = this.anisotropy;
 
@@ -2037,8 +2872,9 @@ export class RoadNetwork {
 
     const w = c.halfWidth;
     const tileInv = 1 / SURFACE_TILE_METRES.asphalt;
-    const left: KerbRun = { pts: [], nrm: [], paint: [] };
-    const right: KerbRun = { pts: [], nrm: [], paint: [] };
+    const region = this.chainRegion(c.id);
+    const left: KerbRun = { pts: [], nrm: [], paint: [], arc: [], region };
+    const right: KerbRun = { pts: [], nrm: [], paint: [], arc: [], region };
 
     const total = polylineLength(p);
     let along = 0;
@@ -2049,28 +2885,12 @@ export class RoadNetwork {
       const x = p[i * 2], z = p[i * 2 + 1];
       if (i > 0) along += Math.hypot(x - p[i * 2 - 2], z - p[i * 2 - 1]);
 
-      // Central-difference tangent so the ribbon does not kink at a sample.
-      const i0 = Math.max(i - 1, 0);
-      const i1 = Math.min(i + 1, n - 1);
-      let tx = p[i1 * 2] - p[i0 * 2];
-      let tz = p[i1 * 2 + 1] - p[i0 * 2 + 1];
-      const tl = Math.hypot(tx, tz) || 1;
-      tx /= tl; tz /= tl;
-      const px = -tz, pz = tx;
-
-      // Clamp each half-width against the local bend so the ribbon cannot fold
-      // through itself on the inside of a tight corner. A 6.8 m half-width
-      // through a 5 m bend inverts, and an inverted quad is back-facing —
-      // i.e. a hole with bare terrain showing through.
-      const wl = i > 0 && i < n - 1
-        ? Math.min(w, maxSafeOffset(p[i * 2 - 2], p[i * 2 - 1], x, z, p[i * 2 + 2], p[i * 2 + 3], 1))
-        : w;
-      const wr = i > 0 && i < n - 1
-        ? Math.min(w, maxSafeOffset(p[i * 2 - 2], p[i * 2 - 1], x, z, p[i * 2 + 2], p[i * 2 + 3], -1))
-        : w;
-
-      const lxw = x + px * wl, lzw = z + pz * wl;
-      const rxw = x - px * wr, rzw = z - pz * wr;
+      // Normal and edge points, resolved once in `resolveChainEdges` so this
+      // ribbon and the cover index cannot possibly disagree about where the
+      // carriageway is. Nothing here recomputes them.
+      const px = c.nrm[i * 2], pz = c.nrm[i * 2 + 1];
+      const lxw = c.edgeL[i * 2], lzw = c.edgeL[i * 2 + 1];
+      const rxw = c.edgeR[i * 2], rzw = c.edgeR[i * 2 + 1];
       const ly = this.surfaceY(lxw, lzw);
       const ry = this.surfaceY(rxw, rzw);
 
@@ -2089,27 +2909,38 @@ export class RoadNetwork {
       prevL = a; prevR = b;
 
       const paint = dEnd < ROAD_KERB_YELLOW_RUN ? 2 : 0;
-      left.pts.push(lxw, lzw); left.nrm.push(px, pz); left.paint.push(paint);
+      left.pts.push(lxw, lzw); left.nrm.push(px, pz); left.paint.push(paint); left.arc.push(along);
       right.pts.push(rxw, rzw); right.nrm.push(-px, -pz); right.paint.push(paint);
+      right.arc.push(along);
     }
 
     runs.push(left, right);
   }
 
   /**
-   * The junction pad: a fan from the node out to a boundary made of each
-   * arm's mouth plus a filleted corner between consecutive arms.
+   * Resolve every junction pad: its boundary polygon and its corner kerb runs.
    *
    * The boundary IS the kerb line, so the pad and the corner kerbs can never
    * disagree, and the mouth corners are the same points the ribbon already
    * emitted — the seam is watertight by construction rather than by epsilon.
+   *
+   * Split out of the mesh builder so the cover index can be handed the exact
+   * pad outline. Two consumers, one construction: if this ran twice they could
+   * drift, and a cover that disagrees with the geometry is worse than none.
    */
-  private buildJunctionPad(n: RoadNodeRec, road: MeshBuf, runs: KerbRun[]): void {
+  private solveJunctionPads(): void {
+    for (const n of this.nodes) {
+      n.padBoundary.length = 0;
+      n.padTris.length = 0;
+      n.padFan = false;
+      n.padRuns.length = 0;
+      if (n.arms.length >= 3) this.solveJunctionPad(n);
+    }
+  }
+
+  private solveJunctionPad(n: RoadNodeRec): void {
     const m = n.arms.length;
-    const boundary: number[] = [];
-    const tileInv = 1 / SURFACE_TILE_METRES.asphalt;
-    let maxW = 0;
-    for (const a of n.arms) maxW = Math.max(maxW, a.halfWidth);
+    const boundary = n.padBoundary;
 
     for (let i = 0; i < m; i++) {
       const A = n.arms[i];
@@ -2117,15 +2948,17 @@ export class RoadNetwork {
       boundary.push(A.rx, A.rz, A.lx, A.lz);
 
       const sol = this.cornerSolution(n, A, B, A.ox, A.oz, B.ox, B.oz, true);
-      const run: KerbRun = { pts: [], nrm: [], paint: [] };
+      const run: KerbRun = {
+        pts: [], nrm: [], paint: [], arc: [], region: this.nodeRegion(n.id),
+      };
       const paL = -A.dz, pbL = A.dx;
       const paR = B.dz, pbR = -B.dx;
 
-      run.pts.push(A.lx, A.lz); run.nrm.push(paL, pbL); run.paint.push(0);
+      run.pts.push(A.lx, A.lz); run.nrm.push(paL, pbL); run.paint.push(0); run.arc.push(0);
 
       if (sol !== null) {
         this.cornerRadii.push(sol.r);
-        run.pts.push(sol.taX, sol.taZ); run.nrm.push(paL, pbL); run.paint.push(1);
+        run.pts.push(sol.taX, sol.taZ); run.nrm.push(paL, pbL); run.paint.push(1); run.arc.push(0);
         boundary.push(sol.taX, sol.taZ);
 
         const a1 = Math.atan2(sol.taZ - sol.cz, sol.taX - sol.cx);
@@ -2141,37 +2974,92 @@ export class RoadNetwork {
           // Outward is toward the arc centre: the pavement wraps the corner.
           run.nrm.push((sol.cx - ax) / sol.r, (sol.cz - az) / sol.r);
           run.paint.push(1);
+          run.arc.push(0);
         }
         boundary.push(sol.tbX, sol.tbZ);
-        run.pts.push(sol.tbX, sol.tbZ); run.nrm.push(paR, pbR); run.paint.push(1);
+        run.pts.push(sol.tbX, sol.tbZ); run.nrm.push(paR, pbR); run.paint.push(1); run.arc.push(0);
       }
 
-      run.pts.push(B.rx, B.rz); run.nrm.push(paR, pbR); run.paint.push(0);
+      run.pts.push(B.rx, B.rz); run.nrm.push(paR, pbR); run.paint.push(0); run.arc.push(0);
       // Bible §6.3: the red paint runs 6-12 m ALONG the arc, which for a 4-8 m
       // radius means the arc plus a couple of metres of each tangent leg.
       this.extendRedRun(run);
-      runs.push(run);
+      n.padRuns.push(run);
     }
 
-    // Fan. The boundary is star-shaped about the node by construction.
-    const cy = this.surfaceY(n.x, n.z);
+    this.triangulatePad(n);
+  }
+
+  /**
+   * Triangulate one pad boundary. Index triples into `padBoundary`, with -1
+   * standing for a centre vertex at the node when a fan is used.
+   *
+   * A FAN FROM THE NODE IS ONLY LEGAL WHEN THE BOUNDARY IS STAR-SHAPED ABOUT
+   * IT, and this file used to assert that it always is. It is not. A chain
+   * arrives at a junction on a curve, so an arm's mouth is not radial from the
+   * node; three arms can end up inside one half-plane, leaving a reflex gore
+   * whose closing chord passes on the FAR side of the node. Fanning such a
+   * boundary lays triangles outside the pad's own kerb line — measured at 49 of
+   * 415 pad triangles over six seeds, 1037 m^2 of tarmac beyond its own kerb,
+   * which is exactly the ground the neighbouring road's pavement was then found
+   * sitting on. It is also where `mergeArms` gets its inverted faces: a fan
+   * spoke that crosses the boundary emits a backfacing triangle, i.e. a hole.
+   *
+   * So: fan when the boundary really is star-shaped — the common case, and it
+   * keeps the centre vertex that lets a wide pad follow the terrain — and ear
+   * clip when it is not.
+   */
+  private triangulatePad(n: RoadNodeRec): void {
+    const b = n.padBoundary;
+    const count = b.length / 2;
+    if (count < 3) return;
+    if (isStarShaped(b, n.x, n.z)) {
+      n.padFan = true;
+      for (let k = 1; k < count; k++) n.padTris.push(-1, k, k - 1);
+      n.padTris.push(-1, 0, count - 1);
+      return;
+    }
+    for (const t of triangulatePolygon(b)) {
+      // Winding decided per triangle from its own signed area rather than
+      // assumed: the ear clipper makes no promise about order, and the fan's
+      // (centre, later, earlier) order is negative signed area in XZ.
+      const [i, j, k] = t;
+      const s = (b[j * 2] - b[i * 2]) * (b[k * 2 + 1] - b[i * 2 + 1])
+        - (b[j * 2 + 1] - b[i * 2 + 1]) * (b[k * 2] - b[i * 2]);
+      if (s < 0) n.padTris.push(i, j, k); else n.padTris.push(i, k, j);
+    }
+  }
+
+  /** The junction pad mesh: the triangulation solved in `triangulatePad`. */
+  private buildJunctionPad(n: RoadNodeRec, road: MeshBuf, runs: KerbRun[]): void {
+    const boundary = n.padBoundary;
+    if (boundary.length < 6 || n.padTris.length === 0) return;
+    const tileInv = 1 / SURFACE_TILE_METRES.asphalt;
+    let maxW = 0;
+    for (const a of n.arms) maxW = Math.max(maxW, a.halfWidth);
+    for (const r of n.padRuns) runs.push(r);
+
     this.terrain.normalAt(n.x, n.z, this.nrmScratch);
     const nx = this.nrmScratch[0], ny = this.nrmScratch[1], nz = this.nrmScratch[2];
-    const centre = road.push(n.x, cy, n.z, nx, ny, nz, n.x * tileInv, n.z * tileInv, 0, 0, maxW, -1);
     const count = boundary.length / 2;
-    let first = -1;
-    let prev = -1;
+    const ring: number[] = [];
     for (let k = 0; k < count; k++) {
       const bx = boundary[k * 2], bz = boundary[k * 2 + 1];
-      const v = road.push(bx, this.surfaceY(bx, bz), bz, nx, ny, nz,
-        bx * tileInv, bz * tileInv, 0, 0, maxW, -1);
-      // Boundary runs CCW in atan2(z,x). `tri(centre, v, prev)` is the winding
-      // that faces +Y for that order — the other way round the whole pad is
-      // backfacing and the junction reads as a hole.
-      if (k === 0) first = v; else road.tri(centre, v, prev);
-      prev = v;
+      ring.push(road.push(bx, this.surfaceY(bx, bz), bz, nx, ny, nz,
+        bx * tileInv, bz * tileInv, 0, 0, maxW, -1));
     }
-    if (first >= 0 && prev >= 0) road.tri(centre, first, prev);
+    const centre = n.padFan
+      ? road.push(n.x, this.surfaceY(n.x, n.z), n.z, nx, ny, nz,
+        n.x * tileInv, n.z * tileInv, 0, 0, maxW, -1)
+      : -1;
+
+    const t = n.padTris;
+    for (let i = 0; i < t.length; i += 3) {
+      road.tri(
+        t[i] < 0 ? centre : ring[t[i]],
+        t[i + 1] < 0 ? centre : ring[t[i + 1]],
+        t[i + 2] < 0 ? centre : ring[t[i + 2]]);
+    }
   }
 
   /** Bleed the red corner paint a couple of metres down each tangent leg. */
@@ -2238,11 +3126,7 @@ export class RoadNetwork {
 
       // Same inversion guard as the ribbon: the pavement is a 3.9 m parallel
       // curve, and a junction corner arc can be tighter than that.
-      const safe = i > 0 && i < n - 1
-        ? maxSafeOffset(run.pts[i * 2 - 2], run.pts[i * 2 - 1], x, z,
-          run.pts[i * 2 + 2], run.pts[i * 2 + 3], 1)
-        : Number.POSITIVE_INFINITY;
-      const shrink = Math.min(1, safe / (T + PW + SK));
+      const shrink = runShrink(run, i);
       const t = T * shrink;
       const pw = PW * shrink;
       const sk = SK * shrink;
@@ -2514,6 +3398,22 @@ export class RoadNetwork {
       }
     }
     return found;
+  }
+
+  /**
+   * Every real junction — three arms or more, so it got a pad — as a centre and
+   * the radius the pad reaches down its arms.
+   *
+   * Read-only, and deliberately NOT the pad outline: the outline is a star and
+   * the ground between its points is the corner islands, which belong to
+   * whatever wants to plant something there.
+   */
+  junctionCentres(): { x: number; z: number; radius: number }[] {
+    const out: { x: number; z: number; radius: number }[] = [];
+    for (const n of this.nodes) {
+      if (n.arms.length >= 3) out.push({ x: n.x, z: n.z, radius: n.trimRadius });
+    }
+    return out;
   }
 
   stats(): RoadStats {

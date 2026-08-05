@@ -11,6 +11,31 @@
  * The selection affordance itself belongs to `src/ui/Overlay.ts` (see §3), and
  * the marquee pixels are handed to that same canvas.
  *
+ * EVERY HIT-TEST IN THIS FILE GOES THROUGH THE FOG
+ * ------------------------------------------------
+ * There are exactly four of them — the click, the double-click, the sloppy-drag
+ * click and `refreshResolution`'s hover — and all four call `pickEntity`, which
+ * refuses to return an entity the local player cannot see (`canInteractWith` in
+ * Selection.ts). The marquee goes through `selectInRect`, which filters the same
+ * way. So there is no fifth path, and adding one means adding the gate with it.
+ *
+ * WHY THAT GATE CANNOT LIVE HERE, IN THE FRAME HOOK
+ * -------------------------------------------------
+ * This module's `frame()` runs at `RenderPhase.Overlay` (70), and the render
+ * mask is computed at `RenderPhase.FowUpload` (20) — so a gate that read
+ * per-frame mask state would be correct here and nowhere else. Our handlers are
+ * DOM callbacks: a click lands BETWEEN frames. That is the whole shape of the
+ * reported bug in its original form, when the mask worked by borrowing
+ * `EntityFlag.Cloaked` and handing it back at `RenderPhase.Present` — the hover
+ * computed during the frame was masked, the hover recomputed on `pointermove`
+ * was not, and the click that followed hit-tested raw positions. The cursor and
+ * the click genuinely disagreed, which is why it read as intermittent.
+ *
+ * `Selection.canInteractWith` asks `IVision.visibilityOf` instead. That is a
+ * pure query over the vision grid with no per-frame state at all, so it gives
+ * the same answer inside a frame, between two frames, and from a DOM callback
+ * that fired while the tab was throttled.
+ *
  * WHY THIS MODULE TAKES THE CAMERA'S KEYBOARD
  * -------------------------------------------
  * `src/render/camera.ts` ships its own WASD pan, which collides head-on with

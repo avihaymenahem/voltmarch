@@ -1,0 +1,420 @@
+/* ============================================================================
+ * src/ui/objectives.css — THE PANEL'S THIRD STATE, AND THE COMPLETION BEAT
+ * ============================================================================
+ * `src/ui/hud.css` owns the objective panel's material and its two original
+ * states. It is shared and edited by other workflows, so everything added by
+ * TODO #6 and #7 lives here instead, imported from `src/ui/Objectives.ts` the
+ * way `src/shell/Shell.ts` imports `shell.css`.
+ *
+ * WHY THE OVERRIDES ARE THREE CLASSES DEEP
+ * ----------------------------------------
+ * Two stylesheets, two import sites, no guaranteed order in the bundle. Every
+ * rule here that contradicts one in hud.css is written at strictly higher
+ * specificity (`.vm-hud .vm-objectives .vm-obj-head` — three classes — against
+ * hud.css's two) so it wins whichever file the bundler emits first. Rules that
+ * only ADD to hud.css are left at the natural specificity.
+ *
+ * THE THREE STATES AND THEIR HEIGHTS
+ * ----------------------------------
+ * Design units, 158u wide, against a 1280x720 frame:
+ *
+ *   collapsed  4 pad + 13 head + 4 pad                          =  21u  0.36%
+ *   summary    ...+ 2 gap + 3 rows(15u) + 2 gaps(2u) + 4 pad    =  72u  1.23%
+ *   expanded   ...one 15u row + 2u gap per further objective
+ *              (6 objectives)                                   = 123u  2.11%
+ *
+ * `objectivesPanelHeightUnits()` in Objectives.ts is the same arithmetic in
+ * TypeScript and `tests/objectives-ux.spec.ts` pins it against those readings,
+ * so a change here that is not mirrored there fails a test rather than silently
+ * making the documented budget a lie.
+ *
+ * The summary state is UNCHANGED in height from before this file existed: the
+ * "+N" affordance moved into the header rather than costing a fourth row, which
+ * is what lets the panel show three objectives plus the overflow count in the
+ * space that previously showed two plus the overflow count.
+ *
+ * THE BANNER LAYER TOUCHES NOTHING
+ * --------------------------------
+ * `.vm-objdone-layer` is `pointer-events: none`, it contains no button, no
+ * link and no focusable node, and — deliberately — it is NOT a `.vm-panel`,
+ * because `.vm-panel` sets `pointer-events: auto` and a full-frame layer that
+ * did that would swallow every right-click in the middle of a fight. It also
+ * carries no `backdrop-filter`: the macOS blur gate in hud.css §12 governs the
+ * panels, and a second ungated blur here is exactly the bug that gate exists
+ * to prevent.
+ * ========================================================================== */
+
+/* ==========================================================================
+ * 1. THE HEADER — now a group of two buttons, not one button
+ *
+ * Nested buttons are invalid HTML, so the header element itself stopped being
+ * the control. It keeps its class (and therefore hud.css's flex layout, height,
+ * gap and colour) and hands the click targets to the two children.
+ * ========================================================================== */
+
+.vm-hud .vm-objectives .vm-obj-head {
+  cursor: default;
+  color: var(--vm-dim);
+}
+
+/* hud.css lights the whole header on hover; with two controls in it that would
+   light both when the pointer is over either. */
+.vm-hud .vm-objectives .vm-obj-head:hover {
+  color: var(--vm-dim);
+}
+
+.vm-hud .vm-obj-toggle {
+  display: flex;
+  align-items: center;
+  gap: calc(5 * var(--vm-u, 1px));
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.vm-hud .vm-obj-toggle:hover { color: var(--vm-text); }
+
+/* The "+2" / "LESS" chip. Same treatment as `.vm-hk`, the keyboard badge, on
+   purpose: a boxed, tracked, uppercase micro-label is already the house sign
+   for "this is a control", and a player should not have to learn a second. */
+.vm-hud .vm-obj-all {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(18 * var(--vm-u, 1px));
+  height: calc(11 * var(--vm-u, 1px));
+  padding: 0 calc(3 * var(--vm-u, 1px));
+  margin: 0;
+  border: 1px solid var(--vm-hairline);
+  background: rgba(0, 0, 0, 0.35);
+  font: inherit;
+  font-size: calc(8 * var(--vm-u, 1px));
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--vm-dim);
+  cursor: pointer;
+}
+
+.vm-hud .vm-obj-all:hover {
+  color: var(--vm-text);
+  border-color: var(--vm-accent);
+}
+
+.vm-hud .vm-obj-all[aria-expanded='true'] {
+  color: var(--vm-accent);
+  border-color: var(--vm-accent);
+}
+
+/* ==========================================================================
+ * 1B. THE COMPLETION TICK, WHICH WAS ON EVERY ROW
+ *
+ * A real bug found while photographing this work, and it is the reason the row
+ * flash was never going to be enough on its own: hud.css hides the tick with
+ *
+ *     line 1816   .vm-hud .vm-obj-tick { display: none; }
+ *     line 1823   .vm-hud .vm-obj-tick.is-on { display: block; }
+ *
+ * and then, seventy lines further down, states
+ *
+ *     line 1890   .vm-hud .vm-icon { display: block; }
+ *
+ * Two classes each. Equal specificity, later rule wins, so EVERY objective row
+ * carried a green tick whether or not it was complete — measured in Chromium
+ * as `getComputedStyle(tick).display === 'block'` on an objective sitting at
+ * 2 / 5. A completion mark that is always on is not a completion mark.
+ *
+ * The correct fix is one line in hud.css; that file is shared and being edited
+ * by other workflows, so it is corrected here at three classes instead, which
+ * wins regardless of which stylesheet the bundler emits first. The exact hud.css
+ * edit is written out in the handover so it can be folded in later and this
+ * override deleted.
+ * ========================================================================== */
+
+.vm-hud .vm-objectives .vm-obj-tick { display: none; }
+.vm-hud .vm-objectives .vm-obj-tick.is-on { display: block; }
+
+/* ==========================================================================
+ * 2. THE EXPANDED LIST
+ *
+ * A guard rail, not a layout: a match is authored with a handful of objectives
+ * and the row cap in TypeScript is 12, so this only ever engages on a frame
+ * short enough that twelve rows would reach the build dock.
+ * ========================================================================== */
+
+.vm-hud .vm-objectives.is-expanded .vm-obj-list {
+  max-height: 46vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--vm-hairline) transparent;
+}
+
+.vm-hud .vm-objectives.is-expanded .vm-obj-list::-webkit-scrollbar {
+  width: calc(3 * var(--vm-u, 1px));
+}
+
+.vm-hud .vm-objectives.is-expanded .vm-obj-list::-webkit-scrollbar-thumb {
+  background: var(--vm-hairline);
+}
+
+/* Rows arrive on a short stagger when the list opens, so the expansion reads as
+   one movement rather than a jump cut. Capped at six because past that the last
+   card would arrive after the eye has already finished scanning. */
+.vm-hud .vm-objectives.is-expanded .vm-obj {
+  animation: vm-obj-open 220ms cubic-bezier(0.16, 0.84, 0.34, 1) both;
+}
+
+.vm-hud .vm-objectives.is-expanded .vm-obj:nth-child(1) { animation-delay: 0ms; }
+.vm-hud .vm-objectives.is-expanded .vm-obj:nth-child(2) { animation-delay: 26ms; }
+.vm-hud .vm-objectives.is-expanded .vm-obj:nth-child(3) { animation-delay: 52ms; }
+.vm-hud .vm-objectives.is-expanded .vm-obj:nth-child(4) { animation-delay: 78ms; }
+.vm-hud .vm-objectives.is-expanded .vm-obj:nth-child(5) { animation-delay: 104ms; }
+.vm-hud .vm-objectives.is-expanded .vm-obj:nth-child(n + 6) { animation-delay: 130ms; }
+
+@keyframes vm-obj-open {
+  0%   { opacity: 0; transform: translateY(calc(-3 * var(--vm-u, 1px))); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+ * 3. THE COMPLETION BANNER
+ *
+ * Centre-column, upper third. NOT dead centre: that is where the fight the
+ * player is watching happens, and a card sitting on top of it for three seconds
+ * is a card the player resents rather than enjoys. 26% of frame height puts it
+ * clear of the top strip and clear of the selection the mouse is holding.
+ *
+ * The material is the reward-reveal card from `src/shell/EndScreen.ts` —
+ * accent-tinted plate, notched corners, a `translateY + scale` lead-in — because
+ * this is the same emotional event at smaller scale and it should read as the
+ * same object. The one substitution is the colour: the reveal is accent because
+ * an unlock belongs to your faction, and this is `--vm-ok` green because the
+ * whole HUD already spells "done" in that green, on the objective row this beat
+ * is amplifying.
+ * ========================================================================== */
+
+.vm-objdone-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  /* Stated even though `.vm-hud` already sets it: this layer covers the entire
+     frame, and if it ever mounts anywhere else the default must still be that
+     it cannot be hit. */
+  pointer-events: none;
+  font-family: 'Rajdhani', 'Oswald', 'Arial Narrow', 'Franklin Gothic Medium',
+               'Helvetica Neue', 'Segoe UI', system-ui, sans-serif;
+}
+
+.vm-objdone-slot {
+  position: absolute;
+  top: 26%;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.vm-objdone {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: calc(9 * var(--vm-u, 1px));
+  max-width: min(calc(420 * var(--vm-u, 1px)), 64vw);
+  padding: calc(9 * var(--vm-u, 1px)) calc(16 * var(--vm-u, 1px));
+  background: rgba(9, 13, 20, 0.82);
+  border: 1px solid rgba(79, 217, 127, 0.55);
+  box-shadow: inset 0 0 0 calc(1 * var(--vm-u, 1px)) rgba(79, 217, 127, 0.10);
+  clip-path: polygon(
+    calc(9 * var(--vm-u, 1px)) 0, 100% 0,
+    100% calc(100% - calc(9 * var(--vm-u, 1px))),
+    calc(100% - calc(9 * var(--vm-u, 1px))) 100%,
+    0 100%, 0 calc(9 * var(--vm-u, 1px)));
+  pointer-events: none;
+  opacity: 0;
+}
+
+.vm-objdone.is-enter {
+  animation: vm-objdone-in 340ms cubic-bezier(0.16, 0.84, 0.34, 1) both;
+}
+
+.vm-objdone.is-exit {
+  animation: vm-objdone-out 460ms cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+@keyframes vm-objdone-in {
+  0%   { opacity: 0; transform: translateY(calc(9 * var(--vm-u, 1px))) scale(0.97); }
+  55%  { opacity: 1; }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes vm-objdone-out {
+  0%   { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(calc(-6 * var(--vm-u, 1px))) scale(1.01); }
+}
+
+.vm-objdone-mark {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(26 * var(--vm-u, 1px));
+  height: calc(26 * var(--vm-u, 1px));
+  border: 1px solid rgba(79, 217, 127, 0.45);
+  background: rgba(79, 217, 127, 0.12);
+  color: var(--vm-ok, #4fd97f);
+}
+
+.vm-objdone-mark .vm-icon {
+  width: calc(16 * var(--vm-u, 1px));
+  height: calc(16 * var(--vm-u, 1px));
+}
+
+.vm-objdone-body {
+  display: flex;
+  flex-direction: column;
+  gap: calc(3 * var(--vm-u, 1px));
+  min-width: 0;
+}
+
+.vm-objdone-kicker {
+  font-size: calc(9 * var(--vm-u, 1px));
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--vm-ok, #4fd97f);
+}
+
+.vm-objdone-names {
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--vm-u, 1px));
+}
+
+.vm-objdone-name {
+  font-size: calc(15 * var(--vm-u, 1px));
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.15;
+  text-transform: uppercase;
+  color: var(--vm-text, #eaf2fa);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vm-objdone-sub {
+  font-size: calc(10 * var(--vm-u, 1px));
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  line-height: 1;
+  color: var(--vm-dim, #9dabba);
+}
+
+/* The panel is the first HUD element to go on a narrow frame (hud.css hides it
+   under 1000px); the beat goes with it, because a centre card on a frame that
+   narrow covers the battlefield rather than decorating it. */
+@media (max-width: 1000px) {
+  .vm-objdone-layer { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vm-objdone.is-enter,
+  .vm-objdone.is-exit,
+  .vm-hud .vm-objectives.is-expanded .vm-obj {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  /* The lead-in animation is what makes the card opaque, so collapsing it must
+     not leave a card that is present, laid out, and invisible. */
+  .vm-objdone.is-enter { opacity: 1; }
+}
+
+/* ==========================================================================
+ * 4. THE PAUSE MENU'S FULL LIST
+ *
+ * `src/shell/PauseMenu.ts` no longer truncates: the sim is frozen behind it,
+ * nothing competes for the space, and it is the authoritative answer to "what
+ * am I actually being asked to do". The only thing it needs is a floor under
+ * how tall that can get on a short window.
+ * ========================================================================== */
+
+.vm-pause-obj {
+  max-height: 34vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+/* ==========================================================================
+ * 5. THE INLINE DESCRIPTION
+ *
+ * The description used to exist only as `root.title` — a native tooltip. That
+ * is text you can only reach by stopping, aiming at a row, and waiting out the
+ * browser's hover delay, in the middle of a match. It is now rendered under the
+ * title.
+ *
+ * WHY IT IS CLAMPED, AND WHY THE ROW HEIGHT HAD TO CHANGE
+ * ------------------------------------------------------
+ * `hud.css` gives `.vm-obj` a FIXED `height: calc(15 * var(--vm-u))`, sized for
+ * a title row plus a progress bar and nothing else. A second line of text
+ * inside a fixed-height flex column does not grow the row, it overflows it — so
+ * the height becomes intrinsic here, with the old value kept as a `min-height`
+ * so a description-less objective still occupies exactly the space it used to.
+ *
+ * Two lines, not unlimited: scorecard 38 budgets the HUD at 12-16% of frame and
+ * this panel already measured 16.3% BEFORE this line existed. An unbounded
+ * description would let one wordy objective push the panel over on its own,
+ * which is a regression that only shows up on the one mission that has a long
+ * string. The tooltip is retained as the overflow path for exactly that case.
+ * ========================================================================== */
+
+.vm-hud .vm-objectives .vm-obj {
+  height: auto;
+  min-height: calc(15 * var(--vm-u));
+}
+
+.vm-hud .vm-objectives .vm-obj-desc {
+  /* A step below the 10u title, and dim rather than full-strength: this is
+     supporting text. If it competes with the title the row stops scanning. */
+  font-size: calc(8.5 * var(--vm-u));
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  color: var(--vm-dim);
+
+  /* EXACTLY 1u of margin and an 11u line box, because `ROW_UNITS` in
+     `Objectives.ts` adds exactly `DESC_UNITS = 12` for this element. The height
+     is stated rather than derived from `line-height` so the stylesheet and the
+     arithmetic cannot drift apart — this panel's frame cost is a budgeted
+     number that a test pins, not an emergent property of the type metrics. */
+  margin-top: calc(1 * var(--vm-u));
+  height: calc(11 * var(--vm-u));
+  line-height: calc(11 * var(--vm-u));
+
+  /* ONE line, ellipsised. Measured across all 49 authored descriptions in
+     `src/data/Missions.ts`: median 29 characters, p90 39, max 49, against
+     roughly 41 that fit on a line here. So one line carries p90 intact and
+     exactly one string clips — which the retained tooltip covers. Two lines
+     would read slightly better and cost another 11u on EVERY row of a panel
+     that is already over its budget. */
+  display: block;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Completed objectives keep the tick and the green title carrying the state;
+   the description fades back so a finished row reads as one line at a glance. */
+.vm-hud .vm-objectives .vm-obj.is-done .vm-obj-desc { color: var(--vm-faint); }

@@ -11,6 +11,77 @@
 <link rel="icon" type="image/png" sizes="64x64" href="/brand/mark-64.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="/brand/mark-180.png" />
 
+<!-- The two weights the boot curtain and menu use. `crossorigin` is required on
+     a font preload even same-origin, or the browser fetches it a second time. -->
+<link rel="preload" as="font" type="font/woff2" href="./fonts/rajdhani-400.woff2" crossorigin />
+<link rel="preload" as="font" type="font/woff2" href="./fonts/rajdhani-600.woff2" crossorigin />
+
+<style>
+  /* ------------------------------------------------------------------ *
+   * RAJDHANI, SELF-HOSTED.
+   *
+   * This stack named 'Rajdhani' from the day it was written and nothing
+   * ever shipped it. Rajdhani and Oswald are Google Fonts; neither is
+   * installed by any OS. So every menu, HUD, tooltip and objective in
+   * this game rendered in the FOURTH fallback -- Franklin Gothic Medium
+   * on Windows -- and the face the UI was designed around was never once
+   * on screen. Measured on the reporter's machine: Rajdhani MISSING,
+   * Oswald MISSING, Arial Narrow MISSING, Franklin Gothic INSTALLED.
+   *
+   * Self-hosted rather than linked from fonts.googleapis.com: a CDN link
+   * adds a third-party request to every page load, leaks player IPs to
+   * Google, and fails offline and behind a file:// path -- which the
+   * relative `base: './'` in vite.config exists to support. Rajdhani is
+   * OFL-1.1, so redistribution is exactly what the licence is for. Latin
+   * subset only, four weights, 60 kB total.
+   *
+   * `swap` and not `optional`: the shell is behind a loading curtain, so
+   * a swap costs nothing visible, whereas `optional` would let a cold
+   * cache silently fall back to Franklin Gothic again -- which is the bug
+   * this block exists to fix.
+   * ------------------------------------------------------------------ */
+  @font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('./fonts/rajdhani-400.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                   U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+                   U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('./fonts/rajdhani-500.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                   U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+                   U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('./fonts/rajdhani-600.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                   U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+                   U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: 'Rajdhani';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('./fonts/rajdhani-700.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                   U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+                   U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+</style>
+
 <style>
   /* ------------------------------------------------------------------ *
    * Page shell. Full-bleed black, nothing scrolls, no scrollbars, no
@@ -30,9 +101,12 @@
   }
 
   body {
-    /* Condensed industrial stack. No CDN, no webfont - these are the
-       narrow faces that ship with Windows/macOS/Linux, degrading to a
-       generic condensed sans. */
+    /* Condensed industrial stack. 'Rajdhani' is self-hosted above and is
+       the face this UI is designed around. Everything after it is a
+       degradation path for a failed font load, NOT a peer -- the previous
+       comment here claimed these were "the narrow faces that ship with
+       Windows/macOS/Linux", which was false of the first two entries and
+       is why the real font never rendered. */
     font-family: 'Rajdhani', 'Oswald', 'Arial Narrow', 'Franklin Gothic Medium',
                  'Helvetica Neue', 'Segoe UI', system-ui, sans-serif;
     font-size: 15px;

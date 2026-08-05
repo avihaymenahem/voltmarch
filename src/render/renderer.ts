@@ -867,6 +867,20 @@ export interface RendererHandle {
   /** Override the layout size, e.g. the screenshot harness at a fixed res. */
   setFixedSize(width: number | null, height: number | null): void;
   setResolutionScale(scale: number): void;
+  /**
+   * The scale currently in force. Read-only companion to
+   * `setResolutionScale`, so a controller can start from whatever the quality
+   * tier chose instead of assuming 1.0 and stamping over a deliberate setting.
+   */
+  readonly resolutionScale: number;
+  /**
+   * True while `setFixedSize` is driving an offscreen render — a screenshot.
+   *
+   * Exposed so dynamic resolution can stand down during a capture: the harness
+   * requires one drawing-buffer pixel per requested pixel, and a scaled capture
+   * would silently corrupt the visual scorecard.
+   */
+  readonly isFixedSize: boolean;
   setToneMappingMode(mode: ToneMappingMode): void;
   setExposure(v: number): void;
   setShadowsEnabled(v: boolean): void;
@@ -1159,6 +1173,9 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
     canvas,
     size,
     capabilities,
+
+    get resolutionScale() { return cfg.resolutionScale; },
+    get isFixedSize() { return fixedWidth !== null; },
 
     isContextLost() {
       return contextLost;

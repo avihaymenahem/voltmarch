@@ -1,0 +1,358 @@
+/* ==========================================================================
+ * src/shell/savegame.css — the load screen, the save panel, the autosave toast
+ *
+ * Scoped to `.vm-shell` and written entirely in the `--vm-*` tokens declared by
+ * `shell.css`, so this file adds no colour, no radius and no font of its own —
+ * it only arranges. That is what keeps a second stylesheet from becoming a
+ * second visual language, and it is why `shell.css` did not need editing.
+ *
+ * NOTHING HERE ANIMATES A LAYOUT PROPERTY. Same rule as `shell.css`: the save
+ * panel opens over a frozen match, but the autosave toast opens over a LIVE one
+ * at 60 fps, so its entrance is `opacity` and `transform` only.
+ * ========================================================================== */
+
+/* -- the list -------------------------------------------------------------- */
+
+.vm-shell .vm-saves-panel {
+  width: min(880px, 92vw);
+}
+
+.vm-shell .vm-saves-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.vm-shell .vm-saves-note {
+  margin: 4px 0 0;
+  color: var(--vm-text-faint);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+}
+
+.vm-shell .vm-saves-status {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--vm-text-dim);
+  font-size: 13px;
+  letter-spacing: 0.07em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-saves-status.is-bad {
+  color: var(--vm-danger);
+}
+
+.vm-shell .vm-saves-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 56px 24px;
+  color: var(--vm-text-dim);
+  text-align: center;
+}
+
+.vm-shell .vm-saves-empty p {
+  margin: 0;
+  max-width: 46ch;
+  font-size: 14px;
+  letter-spacing: 0.07em;
+}
+
+.vm-shell .vm-saves-empty-sub {
+  color: var(--vm-text-faint);
+  font-size: 12.5px;
+}
+
+/* -- one slot -------------------------------------------------------------- */
+
+.vm-shell .vm-save-row {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px;
+  background: var(--vm-glass-soft);
+  border: 1px solid var(--vm-line);
+  clip-path: polygon(
+    var(--vm-notch-sm) 0, 100% 0, 100% calc(100% - var(--vm-notch-sm)),
+    calc(100% - var(--vm-notch-sm)) 100%, 0 100%, 0 var(--vm-notch-sm)
+  );
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+
+.vm-shell .vm-save-row.is-selected {
+  border-color: var(--vm-accent-dim);
+  background: var(--vm-accent-glow);
+}
+
+/* -- the plate ------------------------------------------------------------- */
+
+.vm-shell .vm-save-thumb {
+  position: relative;
+  width: 132px;
+  /* 16:9, so a real captured frame lands without letterboxing. */
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--vm-line-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.vm-shell .vm-save-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* No frame was captured. A drawn plate rather than a grey box: it still tells
+   the player which battle and how far in, which is most of what a thumbnail
+   was for. */
+.vm-shell .vm-save-thumb.is-generated {
+  background:
+    linear-gradient(160deg, rgba(53, 200, 240, 0.16), rgba(9, 13, 20, 0.75) 68%),
+    var(--vm-glass-strong);
+}
+
+.vm-shell .vm-save-thumb-clock {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--vm-text);
+}
+
+.vm-shell .vm-save-thumb-map {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+  padding: 0 6px;
+  text-align: center;
+}
+
+.vm-shell .vm-save-kind {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 2px 7px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  background: rgba(7, 10, 16, 0.82);
+  border-right: 1px solid var(--vm-line);
+  border-bottom: 1px solid var(--vm-line);
+}
+
+.vm-shell .vm-save-kind.is-auto {
+  color: var(--vm-accent);
+}
+
+.vm-shell .vm-save-kind.is-manual {
+  color: var(--vm-text-dim);
+}
+
+/* -- the text -------------------------------------------------------------- */
+
+.vm-shell .vm-save-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.vm-shell .vm-save-name {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--vm-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-save-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.vm-shell .vm-save-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12.5px;
+  letter-spacing: 0.06em;
+  color: var(--vm-text-dim);
+}
+
+.vm-shell .vm-save-chip .vm-icon {
+  color: var(--vm-text-faint);
+  flex: none;
+}
+
+.vm-shell .vm-save-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-save-dot {
+  opacity: 0.5;
+}
+
+/* -- the actions ----------------------------------------------------------- */
+
+.vm-shell .vm-save-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vm-shell .vm-save-actions .vm-btn {
+  min-width: 108px;
+}
+
+/* Armed destructive controls read as armed. The class is set by
+   `ConfirmButton` and by the save panel's overwrite gate, and it is the only
+   visual difference between "this deletes something" and "this deletes
+   something NOW". */
+.vm-shell .vm-btn.is-armed {
+  border-color: var(--vm-danger);
+  color: var(--vm-danger);
+  background: rgba(240, 85, 58, 0.12);
+}
+
+/* -- the name field -------------------------------------------------------- */
+
+.vm-shell .vm-save-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.vm-shell .vm-save-name-label {
+  flex: none;
+  font-size: 11.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-save-name-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 9px 12px;
+  font-family: inherit;
+  font-size: 15px;
+  letter-spacing: 0.06em;
+  color: var(--vm-text);
+  background: rgba(0, 0, 0, 0.34);
+  border: 1px solid var(--vm-line);
+  transition: border-color 140ms ease;
+}
+
+.vm-shell .vm-save-name-input:focus,
+.vm-shell .vm-save-name-input.is-focus {
+  border-color: var(--vm-accent-dim);
+}
+
+/* -- the autosave toast ---------------------------------------------------- *
+ * Painted over a LIVE match, so it is `pointer-events: none` (it must never
+ * eat a right-click during a fight) and it never triggers layout on the game's
+ * frame. It exists because a silent autosave and a broken autosave look
+ * exactly the same to a player. */
+
+.vm-shell .vm-save-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 96px;
+  transform: translate(-50%, 8px);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  max-width: min(520px, 84vw);
+  pointer-events: none;
+  background: var(--vm-glass-strong);
+  border: 1px solid var(--vm-line);
+  color: var(--vm-text-dim);
+  font-size: 12.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 220ms ease, transform 220ms ease;
+  clip-path: polygon(
+    var(--vm-notch-sm) 0, 100% 0, 100% calc(100% - var(--vm-notch-sm)),
+    calc(100% - var(--vm-notch-sm)) 100%, 0 100%, 0 var(--vm-notch-sm)
+  );
+}
+
+.vm-shell .vm-save-toast.is-in {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.vm-shell .vm-save-toast .vm-icon {
+  flex: none;
+  color: var(--vm-accent);
+}
+
+/* A failed write is not a status line, it is a problem, and it is the one
+   thing here allowed to be red. */
+.vm-shell .vm-save-toast.is-bad {
+  border-color: var(--vm-danger);
+  color: var(--vm-danger);
+}
+
+.vm-shell .vm-save-toast.is-bad .vm-icon {
+  color: var(--vm-danger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vm-shell .vm-save-toast {
+    transition: opacity 220ms ease;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* -- narrow windows -------------------------------------------------------- */
+
+@media (max-width: 720px) {
+  .vm-shell .vm-save-row {
+    grid-template-columns: 96px minmax(0, 1fr);
+    grid-template-areas: 'thumb body' 'actions actions';
+  }
+
+  .vm-shell .vm-save-thumb {
+    grid-area: thumb;
+    width: 96px;
+  }
+
+  .vm-shell .vm-save-body {
+    grid-area: body;
+  }
+
+  .vm-shell .vm-save-actions {
+    grid-area: actions;
+    justify-content: flex-end;
+  }
+}

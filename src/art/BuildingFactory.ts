@@ -94,7 +94,8 @@ import {
   type UvRect,
 } from './Greeble';
 import {
-  emitMassShape, expandMasses, latheProfile, massExtents, planPolygon, shapeSpecFor,
+  emitMassShape, expandMasses, latheProfile, massAxisAlignedFraction, massExtents,
+  massFlankSurface, planPolygon, shapeSpecFor,
   MassRole, type MassDef,
 } from './MassList';
 import { createUnitMaterial, specForPalette, viewWeight } from './UnitFactory';
@@ -222,6 +223,80 @@ export function structureChamfer(m: MassDef, faction: StructureFaction): number 
 
 type V3 = readonly [number, number, number];
 
+/**
+ * THE BAKED OCCLUSION, and the reason it is here rather than in `config.ts`.
+ *
+ * `UNIT_GREEBLE.cavityVertexTint` is documented in config as "vertex-colour
+ * darkening on undersides AND MASS SEAMS". Only the first half was ever built:
+ * `tintFor` darkened a downward-facing normal and nothing else, so every one of
+ * the ~40 masses bolted onto a structure met its host with no contact shadow at
+ * all and read as a sticker rather than as hardware. The RA3 buildings in
+ * `docs/surface-refs/` have a hard dark line under every box, every ladder and
+ * every stack, and it is baked, not lit.
+ *
+ * BE HONEST ABOUT WHAT IT BOUGHT. On the twelve-structure A/B below this is
+ * worth between -0.34 and +0.82 points of body Sobel per structure — it is
+ * NEUTRAL on the metric, and it was added because the seam is visible in the
+ * crops (the Allied Power Plant's cooling towers now sit into their roof
+ * instead of floating on it) and because config.ts already said it was here.
+ * Anyone who quotes it as a Sobel win is quoting something that was measured
+ * and did not happen.
+ *
+ * Two terms, both free — they are values written into the `color` attribute
+ * that already exists, so the geometry, the draw count and the shader are
+ * untouched:
+ *
+ *   SEAM     each mass darkens toward its OWN underside over a short metric
+ *            distance, so the joint where it meets whatever it stands on is a
+ *            step in vertex colour. This is the missing half above.
+ *   UNDER    unchanged — `cavityVertexTint` on a downward face.
+ *
+ *
+ * THE THIRD TERM THAT WAS HERE, AND WHY IT IS NOT
+ * -----------------------------------------------
+ * A chamfer-rim EDGE LIGHT — every bevel facet not facing down multiplied by
+ * 1.20 — was written, shipped into a measurement, and measured, and it lost.
+ * The A/B is `tools/sobel.mjs --baseline` against a normal run over twelve
+ * structures, three per army, back to back on one machine:
+ *
+ *     allied_power       body Sobel 53.5% -> 39.3%   (-14.2 points)
+ *     allied_warfactory  body Sobel 51.2% -> 41.0%   (-10.2)
+ *     meridian_conclave  body Sobel 39.7% -> 32.0%   ( -7.7)
+ *     soviet_warfactory  body Sobel 60.2% -> 59.9%   ( -0.3)
+ *     reclaim_foundry    body Sobel 53.5% -> 54.7%   ( +1.2)
+ *
+ * The crops say why immediately: the Allied Power Plant's walls come back
+ * BRIGHTER and with their panel lines gone. Allied architecture is bone-white
+ * under a 0.42 clearcoat at env 0.95 and it already sits near the top of the
+ * range; the atlas ALSO pre-brightens the bevel patch by +22% V for exactly
+ * this purpose. Multiplying that again by 1.20 pushes the rims past white,
+ * the bloom threshold spreads the excess into a halo, and a faction whose
+ * whole read is crisp seams on flat paint loses the seams.
+ *
+ * It was a double-count of a highlight the atlas already draws, and it is the
+ * shape of mistake worth writing down: a term that helps the two dark armies a
+ * little and destroys the two light ones is not a term that needs tuning, it is
+ * a term that belonged in the texture and was already there.
+ */
+export const STRUCTURE_AO = {
+  /**
+   * Vertex tint at a mass's own footline.
+   *
+   * 0.80, not the 0.70 the first version used. The seam is a multiplicative
+   * darkening, and a Sobel gradient in a darkened region is scaled by the same
+   * factor — so contrast cost rises with depth, and on the light armies it is
+   * paid on the brightest, most panel-lined surfaces in the game. 0.80 is a
+   * visible contact shadow at half the contrast bill.
+   */
+  seamFloor: 0.80,
+  /** Fade-out distance as a fraction of the mass's own height. */
+  seamFraction: 0.34,
+  /** ... capped here, so a 12 m tower is not dark for its first four metres. */
+  seamMaxMeters: 0.85,
+  /** ... and floored here, so a 60 mm conduit still gets a visible root. */
+  seamMinMeters: 0.05,
+} as const;
+
 interface FeatureCtx {
   code: Feature;
   /** Metres this mass sinks at buildProgress 0. */
@@ -249,6 +324,10 @@ class MeshAcc {
   private mirror = 1;
   private height = 1;
   private massTint = 1;
+  /** World Y of the current mass's own underside — the seam term's origin. */
+  private footY = 0;
+  /** Metres the seam term fades over. 0 disables it. */
+  private seamDepth = 0;
   private fc: FeatureCtx = { code: Feature.Body, rise: 0, anim: 0, phase: 0 };
 
   setTransform(rot: V3 | undefined, anchor: V3, mirrorX: boolean): void {
@@ -269,6 +348,19 @@ class MeshAcc {
   setTint(height: number, massTint: number): void {
     this.height = height;
     this.massTint = massTint;
+  }
+
+  /**
+   * Arm the seam term for one mass. `footY` is the world Y of its underside
+   * AFTER any turret rebase, and `massHeight` its own Y extent — both already
+   * known to the caller, which is why neither is recomputed here.
+   */
+  setMassAo(footY: number, massHeight: number): void {
+    this.footY = footY;
+    this.seamDepth = Math.min(
+      STRUCTURE_AO.seamMaxMeters,
+      Math.max(STRUCTURE_AO.seamMinMeters, massHeight * STRUCTURE_AO.seamFraction),
+    );
   }
 
   setFeature(fc: FeatureCtx): void { this.fc = fc; }
@@ -306,7 +398,11 @@ class MeshAcc {
   private tintFor(y: number, ny: number): number {
     const ambient = lerp(0.60, 1.0, smoothstep(0, this.height * 0.55, y));
     const facing = ny < -0.4 ? UNIT_GREEBLE.cavityVertexTint : ny > 0.5 ? 1.06 : 1.0;
-    return Math.min(2, Math.max(0, ambient * facing * this.massTint));
+    // The mass-seam half of `cavityVertexTint`'s contract — see `STRUCTURE_AO`.
+    const seam = this.seamDepth > 0
+      ? lerp(STRUCTURE_AO.seamFloor, 1, smoothstep(0, this.seamDepth, y - this.footY))
+      : 1;
+    return Math.min(2, Math.max(0, ambient * facing * seam * this.massTint));
   }
 
   private push(p: V3, n: V3, u: number, v: number): number {
@@ -750,37 +846,77 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
 }
 
 /**
- * TWO MATERIAL LANGUAGES, NOT ONE MATERIAL IN TWO HUES.
+ * FOUR MATERIAL LANGUAGES, NOT TWO — AND NOT ONE BOOLEAN STANDING IN FOR ALL.
  *
  * Bible 5.7 gives the factions different CONSTRUCTION, and construction is a
- * material property before it is a colour one. `spec.plating` carries that
- * distinction all the way from the palette (`UnitPalette.rivets`) through the
- * atlas painters (seam weight, bolt rows vs welded straps, gloss) and lands
- * here, on the coat:
+ * material property before it is a colour one. This function used to select
+ * that construction from `atlas.spec.plating`, which is derived from
+ * `UnitPalette.rivets`, and for two factions that was exactly right:
  *
- *   WELDED / Allied — white ceramic tile and chrome. A thick, tight clear coat
+ *   GLAZE / Allied — white ceramic tile and chrome. A thick, tight clear coat
  *     over a light base, reflecting hard: RA3's Allied architecture looks
  *     glazed, and glaze is a clearcoat with a low roughness, not a lighter
  *     albedo. Env intensity is high because the chrome trim has to catch sky.
  *
- *   RIVETED / Soviet — field-painted olive over bolted plate. A thin, slack
+ *   FIELD / Soviet — field-painted olive over bolted plate. A thin, slack
  *     coat: still painted (it is not raw metal and must never go chalk-matte),
  *     but the highlight is broad and dull and the sky barely registers.
  *
- * RULING #3's 0.30 @ 0.38 / env 0.80 stays the CENTRE of that spread; neither
- * branch is allowed to reach zero clearcoat, which is the failure R10 names.
+ * THE BUG THAT WAS IN HERE. `rivets` means "does the atlas draw bolt rows".
+ * Both later factions answer no — the Pact builds in cut stone and the
+ * Reclamation welds and torch-cuts — so both fell down the `'welded'` branch
+ * and shipped wearing ALLIED CERAMIC GLAZE. A salvage army built out of
+ * oxide-blackened scrap was rendering with a 0.42 clearcoat at 0.26 roughness
+ * and env 0.95, which is a wet mirror finish; it is the single loudest reason
+ * a Reclamation base reads as moulded plastic rather than as welded plate, and
+ * it is visible as the broad smeared highlight across every large flat face in
+ * the Reclamation crops `tools/sobel.mjs` writes. Three of the four armies had
+ * one army's surface.
+ *
+ *   STONE / Pact — cut and polished masonry with jade inlay. Ceremonial, so
+ *     not matte, but stone scatters: the coat stays thin and its roughness
+ *     nearly doubles the Allied figure, and the sky reads on it without the
+ *     mirror.
+ *
+ *   SCRAP / Reclamation — torch-cut plate, sprayed, never buffed. The thinnest
+ *     coat of the four and the slackest, but env stays well above the Soviet
+ *     figure ON PURPOSE and that is a deliberate call rather than an average:
+ *     this is the darkest architecture in the game (#4E4956 against Allied
+ *     bone) and sky fill is the only thing keeping its silhouette legible
+ *     against terrain. Dropping env with the coat made it read as a hole.
+ *
+ * RULING #3's 0.30 @ 0.38 / env 0.80 stays the CENTRE of that spread; NO branch
+ * is allowed to reach zero clearcoat, which is the failure R10 names.
  */
-export function createStructureMaterial(atlas: GreebleAtlas, name: string): THREE.MeshPhysicalMaterial {
+export type StructureCoat = 'glaze' | 'field' | 'stone' | 'scrap';
+
+export const STRUCTURE_COATS: Readonly<Record<StructureCoat, {
+  clearcoat: number; clearcoatRoughness: number; envMapIntensity: number;
+}>> = {
+  glaze: { clearcoat: 0.42, clearcoatRoughness: 0.26, envMapIntensity: 0.95 },
+  field: { clearcoat: 0.18, clearcoatRoughness: 0.54, envMapIntensity: 0.62 },
+  stone: { clearcoat: 0.24, clearcoatRoughness: 0.46, envMapIntensity: 0.78 },
+  scrap: { clearcoat: 0.15, clearcoatRoughness: 0.60, envMapIntensity: 0.72 },
+};
+
+/**
+ * The coat a faction gets when its palette does not name one. This is the old
+ * behaviour exactly, and it is the default so that `buildings.system.ts` — which
+ * fills the shared Allied/Soviet library and is not this pass's file — keeps
+ * the surfaces it has always had without being touched.
+ */
+export function defaultCoat(atlas: GreebleAtlas): StructureCoat {
+  return atlas.spec.plating === 'welded' ? 'glaze' : 'field';
+}
+
+export function createStructureMaterial(
+  atlas: GreebleAtlas, name: string, coat?: StructureCoat,
+): THREE.MeshPhysicalMaterial {
   const mat = createUnitMaterial(atlas, name);
-  if (atlas.spec.plating === 'welded') {
-    mat.clearcoat = 0.42;
-    mat.clearcoatRoughness = 0.26;
-    mat.envMapIntensity = 0.95;
-  } else {
-    mat.clearcoat = 0.18;
-    mat.clearcoatRoughness = 0.54;
-    mat.envMapIntensity = 0.62;
-  }
+  const c = STRUCTURE_COATS[coat ?? defaultCoat(atlas)];
+  mat.clearcoat = c.clearcoat;
+  mat.clearcoatRoughness = c.clearcoatRoughness;
+  mat.envMapIntensity = c.envMapIntensity;
   applyStructureShader(mat);
   return mat;
 }
@@ -820,6 +956,8 @@ export interface StructureStats {
   edgeCoverage: number;
   /** Salt-and-pepper ratio of the atlas. Gated to ~0. */
   speckleRatio: number;
+  /** "Is this a rectangle made of rectangles?" — see `structureBoxiness`. */
+  boxiness: StructureBoxinessReport;
   /** Metres: width, height, length. */
   bounds: [number, number, number];
   /** The frozen roofline this was authored against. */
@@ -914,6 +1052,116 @@ function projectedArea(m: StructureMass): number {
   return ey * ez * shape;
 }
 
+/* --------------------------------------------------------------------------
+ * 5b. THE BOXINESS GATE, FOR ARCHITECTURE
+ *
+ * `MassList.boxiness()` has existed since the de-boxify pass and is described
+ * everywhere in this repo as the thing that "rejects any model whose silhouette
+ * is more than ~85% axis-aligned rectangle". It takes a `UnitMassList`.
+ * `validateUnit` calls it. `validateStructure` NEVER DID — so for the entire
+ * life of the building roster the gate has been documented, believed in, and
+ * inert on the half of the game that is made of the biggest flattest walls.
+ * Three structures were over the unit reject line when this was first measured.
+ *
+ * It is reimplemented here rather than imported because the unit version takes
+ * a `UnitMassList` and computes `unitBounds`/`silhouetteArea` off it, and
+ * because a structure needs two things a vehicle does not:
+ *
+ *   - THE PAD IS EXCLUDED. It is a deliberately flat axis-aligned slab that
+ *     every structure carries, it is ground rather than building, and including
+ *     it would mean the metric mostly measured the foundation.
+ *   - MIRRORED PAIRS COUNT TWICE, exactly as they do for a hull: two flat walls
+ *     are twice as boxy as one.
+ *
+ * Everything else — the sub-metrics, the weights, the bands — is deliberately
+ * the SAME arithmetic as `MassList.BOXINESS`, so a number here is comparable to
+ * a number quoted for a hull and the two halves of the game can be judged on
+ * one scale.
+ * -------------------------------------------------------------------------- */
+
+/** Where a structure is held. Wider than the unit band — see `STRUCTURE_BOXINESS`. */
+export interface StructureBoxinessReport {
+  /** Area-weighted axis-aligned flank-surface share over the primary masses. */
+  axisFraction: number;
+  /** Side-elevation silhouette fill of its own bounding rectangle. */
+  rectFill: number;
+  /** `axisFraction * 0.62 + rectFill * 0.38`. 1.0 is a plain box. */
+  score: number;
+  /** The primary mass contributing the most axis-aligned area. */
+  worst: string;
+  worstFraction: number;
+}
+
+/**
+ * The band, per structure class.
+ *
+ * A WALL PANEL IS ALLOWED TO BE A WALL. A 4 m wall segment whose whole job is to
+ * be a straight run of parapet cannot be de-boxified without stopping being a
+ * wall, and RA3's are rectangles too — so walls get a much higher ceiling and
+ * are held only against "did anyone chamfer it at all".
+ *
+ * `structure` and `defence` sit ABOVE the unit reject line (0.86) rather than
+ * at it, and the reason is honest rather than convenient: a building is a
+ * building, its dominant mass is legitimately a big volume, and the complaint
+ * this metric encodes ("a rectangle made of rectangles") starts biting later on
+ * architecture than on a tank. The warn line is where a critic starts pointing.
+ *
+ * THE COMPOSITE REJECT LINE WAS MEASURED, THEN MOVED. It started at 0.88 and a
+ * deliberately bad input — three plain axis-aligned slabs stacked into a
+ * wedding cake, `tests/building-shape.spec.ts` — scored 0.851 and passed it,
+ * because a stepped silhouette only fills ~60% of its bounding rectangle and
+ * `rectWeight` then holds the composite down however flat the walls are. Only
+ * the `axisReject` half of the OR caught it. A line that a textbook failure
+ * cannot reach is not a line, so it is 0.84: still 21 points clear of the
+ * boxiest thing in the shipped roster (meridian_forgeyard at 0.632) and 12
+ * clear of the warn, and now the wedding cake fails both halves.
+ */
+export const STRUCTURE_BOXINESS = {
+  axisWeight: 0.62,
+  rectWeight: 0.38,
+  warn: { structure: 0.72, defence: 0.76, wall: 0.94 },
+  reject: { structure: 0.84, defence: 0.86, wall: 0.99 },
+  /** The brief's own number, applied to the axis sub-metric directly. */
+  axisWarn: { structure: 0.72, defence: 0.78, wall: 0.96 },
+  axisReject: { structure: 0.85, defence: 0.88, wall: 1.01 },
+} as const;
+
+/**
+ * Measure a structure's boxiness. Pure arithmetic over the mass parameters —
+ * no mesh, no GL, no texture — so a def author gets the number back before a
+ * triangle exists, and a test can assert it with no renderer.
+ */
+export function structureBoxiness(list: StructureMassList): StructureBoxinessReport {
+  const body = list.masses.filter((m) => (m.target ?? 'body') !== 'pad');
+  let flat = 0, total = 0;
+  let worst = '(none)', worstFraction = 0, worstArea = 0;
+  for (const m of expandMasses(body)) {
+    if (m.role !== MassRole.Primary) continue;
+    const c = structureChamfer(m, list.faction);
+    const a = massFlankSurface(m, c);
+    const t = a.x + a.z + a.other;
+    if (!(t > 1e-9)) continue;
+    const mult = m.mirrorX === true ? 2 : 1;
+    const f = massAxisAlignedFraction(m, c);
+    flat += f * t * mult;
+    total += t * mult;
+    if (f * t * mult > worstArea) { worstArea = f * t * mult; worst = m.name; worstFraction = f; }
+  }
+  const axisFraction = total > 1e-9 ? flat / total : 0;
+
+  const bb = massBounds(body.length > 0 ? body : list.masses);
+  const rect = Math.max(1e-6, (bb.max[1] - bb.min[1]) * (bb.max[2] - bb.min[2]));
+  const rectFill = Math.min(1, silhouette(body, bb.min, bb.max) / rect);
+
+  return {
+    axisFraction,
+    rectFill,
+    score: axisFraction * STRUCTURE_BOXINESS.axisWeight + rectFill * STRUCTURE_BOXINESS.rectWeight,
+    worst,
+    worstFraction,
+  };
+}
+
 /**
  * THE GATE. Same philosophy as `validateUnit` — reject at build time, not in
  * review — with the bands a structure is actually held to.
@@ -931,6 +1179,21 @@ export function validateStructure(
   const warnings: string[] = [];
   const V = BUILDING_VALIDATION;
   const cls: StructureClass = list.cls ?? 'structure';
+
+  /* -- 5b: the de-boxify gate, which used to run on hulls only ------------ */
+  const box = structureBoxiness(list);
+  if (box.score > STRUCTURE_BOXINESS.reject[cls] || box.axisFraction > STRUCTURE_BOXINESS.axisReject[cls]) {
+    errors.push(
+      `boxiness ${pct(box.score)} / axis-aligned surface ${pct(box.axisFraction)} exceeds the ` +
+      `${pct(STRUCTURE_BOXINESS.reject[cls])} / ${pct(STRUCTURE_BOXINESS.axisReject[cls])} ceiling ` +
+      `for a ${cls} — "${box.worst}" is ${pct(box.worstFraction)} flat axis-aligned wall. ` +
+      `Taper it, shear it, cut its corners or lathe it; a chamfer alone will not move this.`);
+  } else if (box.score > STRUCTURE_BOXINESS.warn[cls] || box.axisFraction > STRUCTURE_BOXINESS.axisWarn[cls]) {
+    warnings.push(
+      `boxiness ${pct(box.score)} (axis ${pct(box.axisFraction)}, rect fill ${pct(box.rectFill)}) is above ` +
+      `the ${pct(STRUCTURE_BOXINESS.warn[cls])} / ${pct(STRUCTURE_BOXINESS.axisWarn[cls])} target for a ` +
+      `${cls}; "${box.worst}" is the flattest primary mass`);
+  }
 
   const primaries = list.masses.filter((m) => m.role === MassRole.Primary);
   const greebles_ = list.masses.filter((m) => m.role === MassRole.Greeble);
@@ -1092,6 +1355,7 @@ export function validateStructure(
     detailCoverage: detailFrac,
     edgeCoverage: coverage,
     speckleRatio: atlas.metrics.speckleRatio,
+    boxiness: box,
     bounds,
     targetHeight: list.height,
     surfaceArea,
@@ -1109,6 +1373,7 @@ export function formatStructureStats(s: StructureStats): string {
     `dom ${pct(s.dominantFraction)}  team ${pct(s.teamFraction)}  ` +
     `emis ${pct(s.emissiveFraction)}  detail ${pct(s.detailCoverage)}  ` +
     `sobel ${pct(s.edgeCoverage)}  speckle ${pct(s.speckleRatio)}  ` +
+    `boxy ${pct(s.boxiness.score)}/${pct(s.boxiness.axisFraction)}  ` +
     `${s.bounds.map((b) => b.toFixed(1)).join('x')} m  ${s.triangles} tris  ${s.parts} parts`
   );
 }
@@ -1165,11 +1430,21 @@ export function buildStructure(
     const massRise = target === 'turret' ? 0 : rise;
     phase = (phase + 0.37) % 1;
 
+    // The mass's own Y extent, rotation included, and the world Y of its
+    // underside. Mirroring is about X only, so both survive the mirror loop.
+    const massH = massExtents(m)[1];
+    const footY = anchor[1] - massH * 0.5;
+
     for (const mirror of m.mirrorX ? [false, true] : [false]) {
       acc.setTransform(m.rot as V3 | undefined, anchor, mirror);
       // The ambient ramp is always measured from the GROUND, so a turret piece
       // rebased onto its ring still darkens correctly toward its base.
       acc.setTint(height, m.tint ?? 1);
+      // The seam ramp is measured from THIS MASS's footline instead, which is
+      // the whole point of it: a lamp hood eight metres up needs a contact
+      // shadow where it meets the wall, and the ground ramp saturated at 55%
+      // of the building's height and stopped saying anything about it.
+      acc.setMassAo(footY, massH);
       acc.setFeature({ code: feature, rise: massRise, anim: m.anim ?? 0, phase });
 
       switch (m.primitive) {
@@ -1300,6 +1575,12 @@ export interface StructurePalettes {
   panelDensity: number;
   seed: number;
   padSeed: number;
+  /**
+   * The surface class this army's architecture is made of. Omit to keep the
+   * `rivets`-derived default — see `createStructureMaterial`, and note that
+   * omitting it is what gave two factions the wrong army's finish.
+   */
+  coat?: StructureCoat;
 }
 
 export class BuildingLibrary {
@@ -1344,7 +1625,7 @@ export class BuildingLibrary {
 
     let material = this.materials.get(structKey);
     if (material === undefined) {
-      material = createStructureMaterial(atlas, structKey);
+      material = createStructureMaterial(atlas, structKey, p.coat);
       this.materials.set(structKey, material);
     }
     let padMaterial = this.materials.get(padKey);

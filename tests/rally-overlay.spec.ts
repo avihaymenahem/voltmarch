@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest';
 import { World } from '../src/core/world';
 import { MAX_SELECTION } from '../src/core/config';
 import {
-  EntityFlag, EntityKind, Faction,
+  EntityFlag, EntityKind, Faction, VisionLevel,
   type EntityId, type IVision, type PlayerId,
 } from '../src/core/types';
 import {
@@ -74,6 +74,7 @@ const BLIND: IVision = {
   canSee: () => false,
   hasRadar: () => false,
   gridFor: () => new Uint8Array(0),
+  visibilityOf: () => VisionLevel.Hidden,
 };
 
 function buf(): Float32Array {
