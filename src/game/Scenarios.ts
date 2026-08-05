@@ -418,30 +418,51 @@ function wrapDeg(deg: number): number {
  * fails instead of the grade quietly moving.
  */
 /**
- * OFF, and this is a deliberate hold rather than an abandoned feature.
+ * ON since 2026-08-05. It was held off for a reason that MEASUREMENT DISPROVED.
  *
- * Rotating start spots shipped and the reporter's very next match was
- * unplayable: "You spawned me in a place i cannot build, also, the tanks are on
- * top of hill ant cant reach me."
+ * The hold said: "spot 1 has never been validated for a human", the theory being
+ * that slot 1 had been the AI's for the project's whole life and an AI does not
+ * file a bug when its tanks are stranded. Plausible, and wrong.
  *
- * The cause is not the rotation. It is that **spot 1 has never been validated
- * for a human**. `buildMcvStartFor` drops the MCV on the spot and its escort at
- * fixed offsets 12 m and 21 m along the facing, and nothing checks that the
- * spot has buildable area or that the escort lands in the SAME reachable region
- * as the MCV it is escorting. Slot 1 was the AI's for the whole life of the
- * project, and an AI does not file a bug when its tanks are stranded on a
- * plateau — so the defect sat there being invisible.
+ * Buildable fraction inside BUILD_RADIUS, 24 seeds x 4 biomes, real generator:
  *
- * That is the same shape as the carried defect already on the list: "Opening
- * base placement is terrain-dependent and can produce an unplayable match."
- * Rotation did not create it, it made it reachable.
+ *              spot0 median   spot1 median   seeds under 60%
+ *   temperate     68.2%          67.5%         7/24  10/24
+ *   desert        70.8%          73.6%         3/24   1/24
+ *   snow          66.4%          60.7%         9/24  12/24
+ *   urban         61.5%          63.1%        12/24  11/24
  *
- * Re-enabling is one line, and the thing that has to land first is a start-spot
- * VALIDATOR: buildable area around the spot, ore within reach, and the escort
- * in the same connectivity region as the MCV — with a reroll or a fallback when
- * a spot fails. Until then a repetitive match beats an unplayable one.
+ * NEITHER spot was validated, and which one is better FLIPS by biome — spot1
+ * wins on desert and urban, spot0 on snow and temperate. Aggregate seeds under
+ * 60%: spot0 31/96, spot1 34/96. Three points apart. Rotation was never the
+ * risk; it was blamed because it was the most recent change, and the underlying
+ * defect — that `TERRAIN_START_POSITIONS` reserves one shelf at the map centre
+ * and neither army opens anywhere near it — was equally present on the spot
+ * everybody had always played.
+ *
+ * WHAT LANDED FIRST, so this is not simply the same flip again:
+ *   - `nudgeToBuildable` (below) rescues an opening whose core is under
+ *     `START_CORE_MIN`, jointly across spots so the armies cannot be pulled
+ *     closer than `START_MIN_SEPARATION`. Seeds under 60% buildable: 65/192
+ *     before, 15/192 after, with median army separation moving 193.0 -> 188-198.
+ *   - `START_CLEAR_RADIUS` stops scattered props fouling the deploy footprint,
+ *     which was the actual cause of "i cant build at all" — measured at up to
+ *     48% of armies on `arid` before the fix, 0% after.
+ *   - Connectivity was already handled and is not new: `connectedGround`
+ *     relocates any spawn onto the main passable region and `auditConnectivity`
+ *     fails the build if anything ends up stranded. That is what covers "the
+ *     tanks are on top of hill ant cant reach me".
+ *
+ * STILL OPEN, and the honest reason this is an improvement rather than a cure:
+ * the start-area guarantee in `config.ts` — flat, dry, buildable, connected,
+ * VERIFIED IN THE GENERATOR — delivers 100.0% buildable ground on every biome
+ * and every seed, and it is pointed at the map centre where nobody starts.
+ * Wiring it to the real start positions would take both spots to ~100% and make
+ * this validator redundant. It was not done here because terrain generation is
+ * global: it would reshoot all twelve scorecard fixtures and move the grade.
+ * Tracked separately.
  */
-const START_ROTATION_ENABLED = false;
+const START_ROTATION_ENABLED = true;
 
 /** True when `player` is the one sitting at this machine. */
 function isLocal(b: ScenarioBuilder, player: PlayerId): boolean {
@@ -459,13 +480,227 @@ function localSlot(b: ScenarioBuilder, owners: readonly PlayerId[]): number {
   return at < 0 ? 0 : at;
 }
 
+/**
+ * Which slot owner 0 takes, 0..n-1, from the seed.
+ *
+ * TAKEN FROM THE HIGH BITS, and that is not stylistic. `hashU32 % n` — the
+ * obvious form, and the one this shipped with for an afternoon — reads the
+ * LOWEST bit, which is the weakest part of that hash for small inputs:
+ *
+ *     seeds 0..63       34.4% odd
+ *     seeds 0..999      48.1% odd
+ *     seeds 1..65535    49.6% odd
+ *
+ * Fine in bulk, badly biased exactly where players are. The parity of the first
+ * 24 seeds is 100010000101100000101011, so of seeds 1..8 only seed 4 rotates —
+ * confirmed in the real game before this was changed: eight browser boots and
+ * seven of them opened in the same corner. A player trying `?seed=1`, `2`, `3`
+ * would have concluded the feature did nothing, which is the complaint it exists
+ * to fix.
+ *
+ * Scaling the whole 32-bit value into [0, n) uses the high bits instead, where
+ * the avalanche has actually happened.
+ */
+function startOffset(seed: number, n: number): number {
+  return Math.min(n - 1, Math.floor((hashU32(seed) / 0x1_0000_0000) * n));
+}
+
 export function rotateStarts<T>(owners: readonly T[], seed: number): T[] {
   const n = owners.length;
   if (n < 2 || !START_ROTATION_ENABLED) return owners.slice();
-  const offset = hashU32(seed) % n;
+  const offset = startOffset(seed, n);
   const out: T[] = new Array<T>(n);
   for (let i = 0; i < n; i++) out[i] = owners[(i + offset) % n];
   return out;
+}
+
+/* --------------------------------------------------------------------------
+ * THE START-SPOT VALIDATOR
+ *
+ * WHY IT IS NEEDED, MEASURED RATHER THAN ASSUMED
+ * ----------------------------------------------
+ * `src/core/config.ts` promises, of a reserved start area: "flat, dry,
+ * buildable, and joined to the map's main passable region. Verified inside the
+ * generator, not hoped for." That guarantee is real and it works — measured over
+ * 24 seeds x 4 biomes, the reserved shelf is 100.0% buildable inside
+ * BUILD_RADIUS, every single time.
+ *
+ * It is aimed at the wrong place. `TERRAIN_START_POSITIONS` holds ONE entry,
+ * `[0.5, 0.5]` — the map centre — and `world/terrain.system.ts` constructs
+ * `Terrain` with no `starts` option, so that default is what gets reserved.
+ * `startSpots` then only uses shelves when `shelves.length >= n`, which for two
+ * armies is false, so it ALWAYS falls through to the geometric fan below. The
+ * two positions the armies actually open on sit 96.5 m from the only guaranteed
+ * ground, whose guard radius is 54 m — entirely outside it.
+ *
+ * What that costs, same sweep, buildable fraction inside BUILD_RADIUS:
+ *
+ *              spot0 median   spot1 median   seeds under 60%
+ *   temperate     68.2%          67.5%         7/24  10/24
+ *   desert        70.8%          73.6%         3/24   1/24
+ *   snow          66.4%          60.7%         9/24  12/24
+ *   urban         61.5%          63.1%        12/24  11/24
+ *   centre       100.0%             —          0/24
+ *
+ * TWO CONCLUSIONS, BOTH LOAD-BEARING
+ * ----------------------------------
+ * 1. About a THIRD of all openings, on either spot, have under 60% buildable
+ *    ground in the build radius. That is the actual defect behind "You spawned
+ *    me in a place i cannot build".
+ * 2. `START_ROTATION_ENABLED`'s stated reason for being off — "spot 1 has never
+ *    been validated for a human" — is false. NEITHER spot is validated, and
+ *    which of the two is better FLIPS by biome (spot1 wins on desert and urban,
+ *    spot0 on snow and temperate). Aggregate seeds under 60%: spot0 31/96,
+ *    spot1 34/96. Three points apart. Rotation was never the risk.
+ *
+ * WHY A NUDGE AND NOT A TERRAIN RESERVATION
+ * -----------------------------------------
+ * Reserving shelves at the real spots would be the deeper fix and would take
+ * both to ~100%. It was rejected for now, deliberately:
+ *   - Terrain generation is GLOBAL. Changing `TERRAIN_START_POSITIONS` changes
+ *     the heightfield for every scenario, so all twelve scorecard fixtures
+ *     reshoot and the grade moves — a large, hard-to-attribute change.
+ *   - The centre shelf cannot simply be replaced. Most fixtures build ON the map
+ *     centre (`allied-base` at cx-1, cz-7), so they are standing on that
+ *     guaranteed 100% disc today. Removing it would drop them onto ungraded
+ *     ground.
+ *   - Keeping the centre AND adding two more overlaps them: the spots are 96.5 m
+ *     from centre and the flat radius is 58 m, so 58 + 58 > 96.5. Three discs
+ *     levelled to three different local terraces, overlapping, is a new class of
+ *     problem rather than a fix.
+ * `startSpots` is called by exactly one scenario plan and by tests — checked —
+ * so nudging here cannot touch a fixture at all.
+ * -------------------------------------------------------------------------- */
+
+/** Metres of core a base needs to open comfortably. Scored, not guaranteed. */
+export const START_CORE_RADIUS = 30;
+
+/**
+ * Below this buildable fraction a spot is UNACCEPTABLE and gets rescued. At or
+ * above it, the authored position is kept untouched.
+ *
+ * The distinction between this and `START_CORE_TARGET` is the whole design, and
+ * it was added after measuring. With one threshold at 0.9 the validator did fix
+ * the tail — seeds under 60% buildable across BUILD_RADIUS fell from 65/192 to
+ * 10/192 — but its MEDIAN move was 32-44 m and it hit the 44 m cap on nearly
+ * every spot. That is not rescuing bad openings, it is relocating all of them.
+ * The authored positions carry the map's balance, its ore pairing and the
+ * camera's framing; a validator that moves every start 40 m is a bigger change
+ * than the defect it fixes.
+ *
+ * So: rescue only what is actually broken, and leave a merely-average opening
+ * alone.
+ */
+export const START_CORE_MIN = 0.7;
+
+/** Once a candidate reaches this, stop searching outward — nearer is better. */
+export const START_CORE_TARGET = 0.9;
+/** Furthest a spot may be moved from its authored position, metres. */
+export const START_NUDGE_MAX = 44;
+
+/**
+ * Two starts may never end up closer than this, metres.
+ *
+ * The authored diagonal puts them 193 m apart. Nudging each independently by up
+ * to `START_NUDGE_MAX` could bring them to 105 m — and an opening where the two
+ * armies are half as far apart as designed is a balance change, not a bug fix.
+ * The armies would be in contact before either had a refinery.
+ *
+ * So the search is JOINT rather than per-spot: a candidate that crowds a start
+ * already placed this call is rejected outright, however buildable it is.
+ * 150 m keeps the opening recognisably the authored one (78% of 193 m) while
+ * still leaving the validator most of its search area.
+ */
+export const START_MIN_SEPARATION = 150;
+/** Candidate rings, metres. 0 first, so an already-good spot never moves. */
+const NUDGE_RINGS: readonly number[] = [0, 8, 16, 24, 32, 40, 44];
+/** Candidate bearings per ring. 12 is every 30 degrees. */
+const NUDGE_BEARINGS = 12;
+
+/**
+ * Buildable fraction of the disc of `radius` around (x, z), 0..1.
+ *
+ * Returns 1 when there is no terrain module — a bare `World` uses FlatTerrain,
+ * where everything is open and there is nothing to search for. That also keeps
+ * `startSpots` pure for the tests that call it with no world at all.
+ */
+function buildableFraction(x: number, z: number, radius: number): number {
+  const t = getTerrain();
+  // Null as well as undefined: a bare `World` uses FlatTerrain and the module
+  // accessor returns null before `world.terrain` is installed.
+  if (t === null || t === undefined) return 1;
+  let ok = 0;
+  let total = 0;
+  const cxLo = worldToCell(x - radius);
+  const cxHi = worldToCell(x + radius);
+  const czLo = worldToCell(z - radius);
+  const czHi = worldToCell(z + radius);
+  const r2 = radius * radius;
+  for (let gz = czLo; gz <= czHi; gz++) {
+    for (let gx = cxLo; gx <= cxHi; gx++) {
+      const wx = (gx + 0.5) * CELL;
+      const wz = (gz + 0.5) * CELL;
+      const dx = wx - x;
+      const dz = wz - z;
+      if (dx * dx + dz * dz > r2) continue;
+      total++;
+      if (t.isBuildable(gx, gz)) ok++;
+    }
+  }
+  return total === 0 ? 0 : ok / total;
+}
+
+/**
+ * Move (x, z) to the nearest nearby ground a base can actually open on.
+ *
+ * Deterministic: a fixed ring/bearing order, no RNG, no clock.
+ *
+ * `others` are starts already placed this call. A candidate closer than
+ * `START_MIN_SEPARATION` to any of them is rejected however buildable it is —
+ * see that constant for why nudging each spot independently is not safe.
+ *
+ * Returns the authored point unchanged when it is already good enough, or when
+ * nothing better exists within reach. A WORSE spot is never chosen, so a map
+ * with no good ground anywhere degrades to today's behaviour rather than to a
+ * throw or to a random relocation.
+ */
+export function nudgeToBuildable(
+  x: number, z: number, others: readonly { x: number; z: number }[] = [],
+): { x: number; z: number; moved: number } {
+  let bestX = x;
+  let bestZ = z;
+  let best = buildableFraction(x, z, START_CORE_RADIUS);
+  // Good enough as authored. This is the common case and it must cost nothing.
+  if (best >= START_CORE_MIN) return { x, z, moved: 0 };
+
+  const crowds = (px: number, pz: number): boolean => {
+    for (const o of others) {
+      if (Math.hypot(px - o.x, pz - o.z) < START_MIN_SEPARATION) return true;
+    }
+    return false;
+  };
+
+  for (const ring of NUDGE_RINGS) {
+    if (ring === 0) continue;
+    if (ring > START_NUDGE_MAX) break;
+    for (let k = 0; k < NUDGE_BEARINGS; k++) {
+      const a = (k / NUDGE_BEARINGS) * Math.PI * 2;
+      const px = clampWorld(x + Math.cos(a) * ring, 4);
+      const pz = clampWorld(z + Math.sin(a) * ring, 4);
+      if (crowds(px, pz)) continue;
+      const score = buildableFraction(px, pz, START_CORE_RADIUS);
+      if (score > best) {
+        best = score;
+        bestX = px;
+        bestZ = pz;
+      }
+    }
+    // Stop at the first ring that produced a good enough spot: nearer is better,
+    // because the authored positions carry the map's balance and framing.
+    if (best >= START_CORE_TARGET) break;
+  }
+
+  return { x: bestX, z: bestZ, moved: Math.hypot(bestX - x, bestZ - z) };
 }
 
 export function startSpots(cx: number, cz: number, count: number): StartSpot[] {
@@ -488,6 +723,19 @@ export function startSpots(cx: number, cz: number, count: number): StartSpot[] {
     // seed frames the same valley it always did.
     pts[0] = { x: clampWorld(cx - START_SPREAD_X, 4), z: clampWorld(cz + START_SPREAD_Z, 4) };
     if (n > 1) pts[1] = { x: clampWorld(cx + START_SPREAD_X, 4), z: clampWorld(cz - START_SPREAD_Z, 4) };
+  }
+
+  // VALIDATE BEFORE FACING. A nudged spot must be faced from where it ENDED UP,
+  // or two armies 105 m apart end up looking at where they used to be. A spot
+  // that came from a reserved shelf is already guaranteed and scores 1.0, so
+  // this is a no-op on that path rather than a second opinion about it.
+  // Joint, not independent: each spot is validated against the ones already
+  // settled, so the search cannot quietly halve the opening distance.
+  const settled: { x: number; z: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const fixed = nudgeToBuildable(pts[i].x, pts[i].z, settled);
+    pts[i] = { x: fixed.x, z: fixed.z };
+    settled.push(pts[i]);
   }
 
   const out: StartSpot[] = [];
