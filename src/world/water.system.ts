@@ -67,6 +67,21 @@ function numberQuery(name: string, fallback: number): number {
 
 let water: Water | null = null;
 
+/**
+ * Wave phase, in seconds, used for every `?shot=` capture.
+ *
+ * Any constant would be reproducible; a non-zero one is chosen because t = 0
+ * puts every sine term in `WaterMaterial` at the same zero crossing, which
+ * reads as an unnaturally flat sea. 12.34 matches the arbitrary constant
+ * `scatter.system.ts` already uses to pin wind, so the two freeze the same way.
+ */
+const SHOT_WAVE_PHASE = 12.34;
+
+/** True when `?shot=` is present: this boot is a fixture capture, not play. */
+let shotMode = false;
+/** Whether `SHOT_WAVE_PHASE` has been seeded yet this boot. */
+let phasePinned = false;
+
 /** Reused every frame — allocating a rig per frame is 60 Vector3s a second. */
 const rig: WaterLightRig = {
   sunDir: new THREE.Vector3(0, 1, 0),
@@ -101,6 +116,10 @@ export default defineSystem({
 
   init(): void {
     const { sceneRig, handle, debug } = ctx();
+
+    shotMode = typeof location !== 'undefined'
+      && new URLSearchParams(location.search).get('shot') !== null;
+    phasePinned = false;
     const terrain = getTerrain();
 
     if (terrain === null) {
@@ -193,7 +212,33 @@ export default defineSystem({
     const { sceneRig, debug } = ctx();
 
     pushLightRig(sceneRig.sun, sceneRig.hemi, sceneRig.sunDir);
-    water.update(r.dt, rig);
+
+    /*
+     * A CAPTURE GETS A FIXED WAVE PHASE.
+     *
+     * `Water.update(dt)` does `this.time += dt` and feeds `uTime`, which drives
+     * every swell, foam and shoreline term in `WaterMaterial`. On wall-clock dt
+     * that phase is wherever the machine happened to get to, so `08-naval-water`
+     * — the one fixture where water IS the subject — photographed a different
+     * sea every run. Measured across two captures of identical code: median
+     * luminance 0.5646 vs 0.5336, saturation 0.3220 vs 0.3414.
+     *
+     * `scatter.system.ts` already pins wind for exactly this reason and says so
+     * in its own comment. Water was simply never given the same treatment.
+     *
+     * Seed the phase once, then hold it: `update(0)` still runs the rest of the
+     * per-frame work (LOD, rig, uniforms) without advancing time.
+     */
+    if (shotMode) {
+      if (!phasePinned) {
+        water.update(SHOT_WAVE_PHASE, rig);
+        phasePinned = true;
+      } else {
+        water.update(0, rig);
+      }
+    } else {
+      water.update(r.dt, rig);
+    }
 
     // Terrain canary, twice a second. Cheap enough to be unconditional and
     // the only thing standing between a biome swap and a floating lake.

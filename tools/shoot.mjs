@@ -411,8 +411,39 @@ for (const shot of shots) {
     }, steps);
     if (missing.length) throw new Error(`__VM is missing: ${missing.join(', ')}`);
 
+    /*
+     * ADVANCE BY TICKS, NOT BY WALL CLOCK.
+     *
+     * This used to be `setTimeout(shot.advance * 1000)` — sleep for four real
+     * seconds and photograph whatever the machine happened to have reached.
+     * Two consequences, both measured:
+     *
+     *   1. VFX age by `r.dt * 1000` per rendered frame (`vfx.system.ts`), so a
+     *      fireball's age at the shutter is a function of frame rate.
+     *   2. The SIM loses ticks under load. `loop.ts` clamps `realDt` to
+     *      MAX_FRAME_DT and, past MAX_SUBSTEPS, discards the backlog outright
+     *      (`accumulator % SIM_DT`). A slow frame does not catch up — the tick
+     *      is gone.
+     *
+     * So a graded fixture moved run to run. On an idle machine `05-combat`
+     * median luminance swung 0.4564 vs 0.4500 across two captures of identical
+     * code; measured again while three agents shared the GPU it was 0.4341 vs
+     * 0.4640. That last figure is LARGER THAN MOST REAL ART CHANGES, which made
+     * the scorecard quietly untrustworthy on exactly the images where combat
+     * brightness is judged — and untrustworthy in the worst way, since it looks
+     * fine whenever the machine is quiet enough to check it.
+     *
+     * The deterministic mechanism already existed and nothing used it:
+     * `__VM.pause/step` for the sim and `__vmVfx.timeScale/advance` for the
+     * effect pools. Pausing the loop stops only the accumulator — `onFrame`
+     * still renders — so `waitFrames` cannot hang here.
+     *
+     * One tick of sim and exactly one tick of VFX age per rendered frame. The
+     * frames may take any real time they like; the CONTENT of the frame no
+     * longer depends on how long they took.
+     */
     if (shot.advance) {
-      await page.evaluate((s) => new Promise((r) => setTimeout(r, s * 1000)), shot.advance);
+      await page.evaluate((sec) => new Promise((r) => setTimeout(r, sec * 1000)), shot.advance);
     }
     await page.evaluate(() => window.__VM.waitFrames(10));
 

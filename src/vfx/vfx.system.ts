@@ -459,7 +459,24 @@ function installGlobal(): void {
       clearFlashBudget();
     },
     timeScale: (s) => { timeScale = Math.max(0, s); },
-    advance: (ms) => { pendingAdvanceMs = Math.max(0, ms); },
+    /*
+     * ACCUMULATES. It used to assign, and that silently DROPPED work: a caller
+     * that issued two advances before a frame consumed the first lost the
+     * first one entirely.
+     *
+     * That is not hypothetical. `tools/shoot.mjs` steps a fixture one sim tick
+     * and one `advance(SIM_DT)` per rendered frame, and whether a given advance
+     * survived depended on how its `waitFrames(1)` happened to align with the
+     * rAF that consumed it. Measured: `08-naval-water` median luminance moved
+     * 0.5646 vs 0.5336 between two runs of identical code — WORSE than the
+     * wall-clock sleep the deterministic path replaced, because a dropped
+     * advance is a whole tick of ageing lost at random.
+     *
+     * "Advance by this much" must never lose any of it. Alignment then stops
+     * mattering: coalescing two advances into one frame ages the pools by the
+     * same total as consuming them separately.
+     */
+    advance: (ms) => { pendingAdvanceMs += Math.max(0, ms); },
   };
 }
 

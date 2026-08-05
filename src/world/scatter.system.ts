@@ -138,7 +138,14 @@ export default defineSystem({
     scatter.generate();
     setActiveScatter(scatter);
     globalThis.__vmScatter = scatter;
-    frozenWind = flag('scatterwind') === 'off' || (spec !== null && spec.frozen);
+    // `flag('shot')`, not just `spec.frozen`. The intent above — "two captures
+    // are pixel-identical" — was only ever honoured for the FROZEN fixtures,
+    // and the three that advance their sim (`battle`, `economy`, `naval`) are
+    // exactly the ones whose grade moved run to run. A fixture is a fixture
+    // whether or not its simulation is running.
+    frozenWind = flag('scatterwind') === 'off'
+      || flag('shot') !== null
+      || (spec !== null && spec.frozen);
 
     const s = scatter.stats();
     const report = scatter.lastReport;
