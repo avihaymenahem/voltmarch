@@ -761,6 +761,37 @@ const CONTENT: readonly ContentSpec[] = [
     kind: BuildKind.Unit, faction: Faction.Reclaim, tab: I,
     cost: 1500, buildTime: 20, prereqs: ['rclRookery', 'rclSpotter'], sortOrder: 90,
   },
+
+  /* -- THE REPAIR DEPOTS ----------------------------------------------------
+   * Three rows for four armies: the first is `Faction.Neutral`, which in this
+   * table means the two original armies share it — see SHARED_POOL_FACTIONS
+   * below.
+   *
+   * The pad radius, the rate and the price are NOT here. They are
+   * `REPAIR_DEPOT` in `core/config.ts`, read by `RepairSell.tickDepots`, which
+   * finds a depot by DEF ID rather than by anything authored in this table. A
+   * building whose behaviour was half-described here and half in the sim is
+   * the drift this repo keeps paying for.
+   *
+   * Gated on the vehicle factory, not the refinery: the building is worthless
+   * until you own armour, and the moment you do it is the cheapest way to keep
+   * it. `sortOrder: 75` puts it after the naval yard and before the lab.
+   * ---------------------------------------------------------------------- */
+  {
+    key: 'repairDepot', name: 'Repair Depot', blurb: 'Mends any vehicle parked on the pad.',
+    kind: BuildKind.Building, faction: Faction.Neutral, tab: S,
+    cost: 800, buildTime: 10, prereqs: ['warFactory'], sortOrder: 75,
+  },
+  {
+    key: 'mrdDepot', name: 'Solar Infirmary', blurb: 'Mends any hull standing in the light.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 800, buildTime: 10, prereqs: ['mrdForgeyard'], sortOrder: 75,
+  },
+  {
+    key: 'rclDepot', name: 'Patch Yard', blurb: 'Welds any hull that stops moving.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 800, buildTime: 10, prereqs: ['rclBreakerYard'], sortOrder: 75,
+  },
 ];
 
 /** Every army a player or an AI can be. Neutral is not one of them. */

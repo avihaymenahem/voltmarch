@@ -342,27 +342,51 @@ describe('the mass-seam term that `cavityVertexTint` always promised', () => {
 
 describe('the shape pass costs no geometry', () => {
   /**
-   * MEASURED on the roster this pass started from — `probe.txt`, 52 structures,
-   * 120478 triangles over 104 parts, at the 512 px atlas the game boots with.
-   * The game is GPU-bound at 203 draw calls against a 130 budget, so this is a
-   * ratchet: a change that improves the look and quietly adds a thousand
-   * triangles is not an improvement, and this is the assertion that says so.
+   * MEASURED. The game is GPU-bound at 203 draw calls against a 130 budget, so
+   * this is a ratchet: a change that improves the look and quietly adds a
+   * thousand triangles is not an improvement, and this is what says so.
+   *
+   * HISTORY, because the number moved and the reason has to survive it:
+   *   120478 / 104 over 52 structures — where the shape pass started (probe.txt)
+   *   119774 / 104 over 52 — where it left off, 704 back, all of it the two
+   *     masses the Reclamation was mirroring against its own RCL-3 (see
+   *     `reclaimFrame`'s `intake` and `lamp.hood`)
+   *   132122 / 112 over 56 — the four Repair Depots, one per army
+   *
+   * The depot rebase is the only one of those that RELAXED the ceiling, and it
+   * is the kind this ratchet was never meant to catch: four structures that did
+   * not exist before, at 3087 triangles and 2 parts each, every one of them
+   * inside the 4000-triangle per-structure cap. An open gantry costs more than
+   * a closed box — there is no interior to cull — and the whole point of the
+   * building is that you can see through it.
+   *
+   * But "add a structure" must not be a way to buy slack for the existing
+   * ones, which the absolute number alone would allow. So the mean below is
+   * asserted too, and it is the assertion that actually has teeth now.
    */
-  const BASELINE_TRIANGLES = 120_478;
-  const BASELINE_PARTS = 104;
+  const BASELINE_TRIANGLES = 132_122;
+  const BASELINE_PARTS = 112;
   /**
-   * And where this pass left it: 119774, i.e. 704 back. All of it is the two
-   * masses the Reclamation was mirroring against its own RCL-3 — see
-   * `reclaimFrame`'s `intake` and `lamp.hood`. Everything else in the pass
-   * (the seam and edge bake, the four coats, the widened corner cuts) is a
-   * value change on geometry that already existed.
+   * Triangles per structure: 119774/52 = 2303 before the depots, 132122/56 =
+   * 2359 after. The 2.4% is the depots being gantries, and 2400 is that with
+   * the rounding thrown away.
+   *
+   * This is here because the two totals above scale with the roster and this
+   * does not: growing the roster no longer relaxes the budget for anything
+   * already in it. A fifty-seventh structure at 4000 triangles would pass both
+   * absolutes after a rebase and fail this.
    */
-  const AFTER_TRIANGLES = 119_774;
+  const MAX_MEAN_TRIANGLES = 2400;
 
   it('holds the roster at or below its measured triangle count', () => {
     const tris = BUILT.reduce((s, b) => s + b.model.stats.triangles, 0);
     expect(tris).toBeLessThanOrEqual(BASELINE_TRIANGLES);
-    expect(tris).toBeLessThanOrEqual(AFTER_TRIANGLES);
+  });
+
+  it('does not let a growing roster buy slack for the structures already in it', () => {
+    const tris = BUILT.reduce((s, b) => s + b.model.stats.triangles, 0);
+    expect(BUILT.length, 'no structures built — this would pass vacuously').toBeGreaterThan(40);
+    expect(tris / BUILT.length).toBeLessThanOrEqual(MAX_MEAN_TRIANGLES);
   });
 
   it('holds the roster at or below its measured part (draw call) count', () => {

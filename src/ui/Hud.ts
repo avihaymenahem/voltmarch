@@ -1406,7 +1406,15 @@ export class Hud {
       totalMaxHp += store.maxHp[idx];
       // The predicate is `src/sim/Regen.ts`'s, not a second copy of it. See the
       // import note in `src/ui/Overlay.ts`.
-      if (!mending && isRegenerating(store, idx, now)) mending = true;
+      //
+      // `BeingRepaired` is the OTHER way something mends: the wrench on a
+      // structure, or a Repair Depot's pad under a vehicle. Both are paid for
+      // by the player, so both deserve the tag more than passive regen does —
+      // and without this the depot would put 100 hp a second into a tank while
+      // the panel said nothing was happening.
+      if (!mending
+        && (isRegenerating(store, idx, now)
+          || (store.flags[idx] & EntityFlag.BeingRepaired) !== 0)) mending = true;
 
       const kind = store.kind[idx];
       if (kind !== EntityKind.Building) allBuildings = false;

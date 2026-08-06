@@ -93,8 +93,21 @@ export const enum BuildRole {
    * ore silos is reporting a lie to whoever reads the probe.
    */
   Unknown = 17,
+  /**
+   * The Repair Depot. Its own role rather than `Support`, and the reason is
+   * the classifier below rather than doctrine.
+   *
+   * `roleOfBuilding`'s flag fallback ends with "2x2 and draws power" => TechLab,
+   * because until now nothing else in the game matched that description. A
+   * depot does, exactly. Folding it into Storage or Unknown would have been
+   * enough to stop the misfile, but `roleCount[TechLab] > 0` is the gate on
+   * every top-tier unit the AI can build — an army that thought a service pad
+   * was its Battle Lab would stop building the real one and quietly never
+   * field a Prism Tank for the rest of the match.
+   */
+  Repair = 18,
 }
-export const BUILD_ROLE_COUNT = 18;
+export const BUILD_ROLE_COUNT = 19;
 
 /**
  * The five things an army can be asked to kill. The composition scorer works
@@ -119,7 +132,7 @@ export const THREAT_CLASS_NAMES: readonly string[] = ['infantry', 'light', 'heav
 export const BUILD_ROLE_NAMES: readonly string[] = [
   'builder', 'power', 'refinery', 'barracks', 'warFactory', 'radar', 'techLab',
   'storage', 'defense', 'antiAir', 'harvester', 'skirmisher', 'infantry',
-  'armor', 'siege', 'support', 'mcv', 'unknown',
+  'armor', 'siege', 'support', 'mcv', 'unknown', 'repair',
 ];
 
 /* ==========================================================================
@@ -243,6 +256,15 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
   structure('radar',      BuildRole.Radar,      1000, -40, B.radar,      ['refinery']),
   structure('battleLab',  BuildRole.TechLab,    2000, -60, B.battleLab,  ['radar']),
   structure('oreSilo',    BuildRole.Storage,     150, -10, B.oreSilo,    ['refinery']),
+  // The service pad, one row per army. Three rows, not four: `repairDepot` is
+  // Faction.Neutral, which the two original armies share. Without these the
+  // catalog has no entry for the depot's defId and `roleOfBuilding` falls all
+  // the way through to its "2x2 and draws power" branch — see BuildRole.Repair.
+  structure('repairDepot', BuildRole.Repair, 800, -30, B.repairDepot, ['warFactory']),
+  structure('mrdDepot',    BuildRole.Repair, 800, -30, B.repairDepot, ['mrdForgeyard'],
+    FACTION_MERIDIAN),
+  structure('rclDepot',    BuildRole.Repair, 800, -30, B.repairDepot, ['rclBreakerYard'],
+    FACTION_RECLAIM),
 
   /* -- defence ----------------------------------------------------------- */
   // Answer vectors matter here: the build layer will not put up a flame tower

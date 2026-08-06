@@ -149,6 +149,14 @@ export const BUILDING_DIMENSIONS = {
   powerPlant:  { w: 2, h: 2, height: 9.0 },   // twin stacks
   radar:       { w: 2, h: 2, height: 12.0 },  // tallest non-defense silhouette
   battleLab:   { w: 2, h: 2, height: 8.0 },
+  // A gantry over an open pad. Low on purpose — only the Ore Silo (5.0) and
+  // the Barracks (6.4) sit under it — because the thing the player needs to
+  // see is the deck they are driving onto, and a tall shed would hide the
+  // vehicle parked under it from a fixed 38-degree camera. Not lower than
+  // this: the shells only reach `bodyFraction * height` on their own and the
+  // validator's height band is +/-12%, so an authored roofline has to leave
+  // the furniture somewhere to go.
+  repairDepot: { w: 2, h: 2, height: 6.5 },
   oreSilo:     { w: 1, h: 1, height: 5.0 },
   pillbox:     { w: 1, h: 1, height: 2.2 },
   teslaCoil:   { w: 1, h: 1, height: 9.0 },
@@ -1391,6 +1399,46 @@ export const SELL_REFUND = 0.5;
 export const REPAIR_RATE = 30;
 /** Credits per HP repaired. */
 export const REPAIR_COST_PER_HP = 0.25;
+/**
+ * THE REPAIR DEPOT — a pad you drive onto, not a button you press.
+ *
+ * The wrench above (`REPAIR_RATE`) mends STRUCTURES and is a modal tool. The
+ * depot mends VEHICLES and has no tool, no order and no UI: park inside the
+ * radius of one you own and it services you. That is the RA2 Service Depot,
+ * and it is the right shape here for a reason beyond nostalgia — every other
+ * verb in this game is a command, and a command needs a button, a hotkey, a
+ * cursor state and an AI that knows to issue it. A position is free.
+ *
+ * THE RATE IS A FRACTION OF MAX HP, NOT A FLAT HP/S. A depot services a
+ * VEHICLE, not a number of hit points: a 340 hp scout and a 1400 hp siege hull
+ * should both take about ten seconds, or the depot is a heavy-armour perk.
+ * `REPAIR_RATE` above is flat because structures are repaired by the credit
+ * and the player is choosing how much to spend, which is a different question.
+ *
+ * The price per point is deliberately NOT a second number: repairing a hit
+ * point costs `REPAIR_COST_PER_HP` wherever you do it. A Grizzly at 1 hp costs
+ * about a third of a fresh one, which is the trade the building has to offer.
+ */
+export const REPAIR_DEPOT = {
+  /**
+   * Metres from the depot centre. Its footprint is 2x2 = 8 m square, so the
+   * half-diagonal is 5.7 m and a tank parked against any face is inside 10.
+   * Generous on purpose: hunting for a pixel-perfect pad is not gameplay.
+   */
+  radius: 10.0,
+  /** Fraction of MAX hp per second. 0.10 => a full hull in ten seconds. */
+  fractionPerSec: 0.10,
+  /**
+   * Vehicles one depot services at once. A cap the player can feel is better
+   * than a depot that silently becomes a whole army's field hospital — and it
+   * bounds the per-tick work to `depots * 8` regardless of how many hulls are
+   * crowded onto the pad.
+   */
+  maxConcurrent: 8,
+  /** Seconds between service sparks on a vehicle being mended. */
+  sparkSeconds: 0.32,
+} as const;
+
 /** Metres from a Construction Yard within which you may build. */
 export const BUILD_RADIUS = 56;
 /** Seconds a structure takes to visually rise (independent of build time). */
@@ -3859,6 +3907,11 @@ export const BUILDING_FOOTPRINTS: Readonly<Record<string, { w: number; h: number
   warFactory: { w: 3, h: 2, height: 8.5 },
   radar: { w: 2, h: 2, height: 12.0 },
   techCentre: { w: 2, h: 2, height: 8.0 },
+  // MUST MATCH `BUILDING_DIMENSIONS.repairDepot` EXACTLY — same reason the
+  // `gate` row states it: `fp()` in the art reads THIS table first while the
+  // def's `dim:` reads the other one, so a disagreement gives the sim one
+  // footprint and the model another.
+  repairDepot: { w: 2, h: 2, height: 6.5 },
   oreSilo: { w: 1, h: 1, height: 5.0 },
   pillbox: { w: 1, h: 1, height: 2.2 },
   aaTurret: { w: 1, h: 1, height: 7.0 },

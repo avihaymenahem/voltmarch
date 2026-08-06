@@ -243,7 +243,18 @@ export class CaptureService {
         return CaptureOutcome.Refused;
       }
       st.hp[t] = st.maxHp[t];
-      st.flags[t] |= EntityFlag.BeingRepaired;
+      // NO `BeingRepaired` FLAG. This repair is INSTANTANEOUS — the line above
+      // is the whole of it — and nothing in the codebase ever cleared the flag
+      // for a building that was not also in `RepairSell`'s drip list, so a
+      // structure an engineer fixed carried it for the rest of the match.
+      //
+      // That was inert only because the flag had no readers outside RepairSell.
+      // It stopped being inert when the Repair Depot gave the selection panel
+      // a reason to read it: an engineer-repaired Power Plant would have shown
+      // REPAIRING at full health forever. Exactly the shape of the bug that
+      // made buildings burn forever (`EntityFlag.Burning`, Damage.ts).
+      //
+      // The spark burst below is the feedback, and it is the honest one.
       this.burst(FxKind.RepairSpark, t, 1.4);
       this.consume(i, engineer);
       this.stats.repairs++;

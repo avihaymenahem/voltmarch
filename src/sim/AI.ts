@@ -1477,6 +1477,22 @@ export class AiBrain {
       this.consider(this.catalog.forRole(BuildRole.Storage, this.faction), 1.1, 'banking overflow');
     }
 
+    /* -- the repair depot -------------------------------------------------
+     * ONE, and only once there is armour worth mending. The building has no
+     * order and no command: `RepairSell.tickDepots` services whatever is
+     * parked inside its radius, so the AI gets the whole mechanic simply by
+     * owning one near the base it already retreats damaged hulls toward.
+     *
+     * Scored off `basePressure` for the same reason defence is: a depot is
+     * only worth 800 credits to an army that is actually taking losses, and
+     * an AI that opens with one has spent a war factory's worth of tempo on
+     * a building with no output. */
+    if (this.roleCount[BuildRole.Repair] + this.roleBuilding[BuildRole.Repair] === 0
+      && this.roleCount[BuildRole.WarFactory] > 0) {
+      this.consider(this.catalog.forRole(BuildRole.Repair, this.faction),
+        (0.3 + this.basePressure * 0.7) * this.pers.defense, 'a depot to mend the armour');
+    }
+
     if (this.bestEntry !== null) {
       this.buildGoal = this.bestGoal;
       return this.bestEntry;

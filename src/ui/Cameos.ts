@@ -365,6 +365,7 @@ export const CAMEO_BUILDING_MODELS: Readonly<Record<string, ModelBinding>> = {
   radar: ['allied_radar', 'soviet_radar'],
   battleLab: ['allied_tech', 'soviet_tech'],
   oreSilo: ['allied_silo', 'soviet_silo'],
+  repairDepot: ['allied_depot', 'soviet_depot'],
   wall: ['allied_wall', 'soviet_wall'],
   // No `gate` row exists in `Defs.ts` today, but both models are built and the
   // key is already bound in `buildings.system.ts`. Listed so the def that
@@ -394,6 +395,7 @@ export const CAMEO_BUILDING_MODELS: Readonly<Record<string, ModelBinding>> = {
   mrdGlaive: 'meridian_glaive',
   mrdHelios: 'meridian_helios',
   mrdRampart: 'meridian_rampart',
+  mrdDepot: 'meridian_depot',
 
   /* -- the Reclamation --------------------------------------------------- */
   rclFoundry: 'reclaim_foundry',
@@ -408,6 +410,7 @@ export const CAMEO_BUILDING_MODELS: Readonly<Record<string, ModelBinding>> = {
   rclBarricade: 'reclaim_barricade',
   rclSpitpost: 'reclaim_spitpost',
   rclPylon: 'reclaim_pylon',
+  rclDepot: 'reclaim_depot',
 };
 
 /**

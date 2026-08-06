@@ -1590,6 +1590,49 @@ export const BUILDINGS: readonly BuildingDef[] = [
     prereqs: ['barracks'], sortOrder: 11, model: 'gate', dim: B.gate,
     maxHp: 400, power: 0, sight: 0,
   }),
+
+  /* -- the Repair Depot, one per army -------------------------------------
+   * APPENDED, not filed with each faction's own block above, for the reason
+   * the header of this array gives: `store.defId` for a Building indexes THIS
+   * array, so inserting a row renumbers every row after it. Save files carry
+   * the KEY rather than the id (`SaveGame.ts:1102` — "a raw defId here would
+   * silently corrupt"), which makes an insert survivable rather than safe, and
+   * there is no reason to spend the difference.
+   *
+   * THREE ROWS FOR FOUR ARMIES. `Faction.Neutral` on a building means "both
+   * original armies", the way `radar`, `battleLab` and `oreSilo` already do
+   * it: one def, two mass lists, and `buildings.system.ts` picks the
+   * architecture from the owner. So `repairDepot` covers Allies and Soviets.
+   *
+   * PREREQ IS THE VEHICLE FACTORY, not the refinery, and that is the whole
+   * design of the building: it is worthless until you own armour, and the
+   * moment you do it is the cheapest way to keep it. Priced at roughly two
+   * full repairs of a main battle tank, so it pays for itself in one bad
+   * engagement and never in a match you were winning anyway.
+   *
+   * NO `unlockedBy`: `UNLOCK_TAGS` has no row for these keys, so they are
+   * available from the first skirmish. A support structure gated behind
+   * mission progress would be a tutorial for a mechanic nobody had met. */
+  building({
+    key: 'repairDepot', name: 'Repair Depot', blurb: 'Mends any vehicle parked on the pad.',
+    faction: Faction.Neutral, cost: 800, buildTime: 10, tab: BuildTab.Structures,
+    prereqs: ['warFactory'], sortOrder: 75, model: 'repairDepot', dim: B.repairDepot,
+    maxHp: 800, power: -30, sight: 18,
+  }),
+  building({
+    key: 'mrdDepot', name: 'Solar Infirmary', blurb: 'Mends any hull standing in the light.',
+    faction: FACTION_MERIDIAN, cost: 800, buildTime: 10, tab: BuildTab.Structures,
+    prereqs: ['mrdForgeyard'], sortOrder: 75, model: 'meridian_depot', dim: B.repairDepot,
+    maxHp: 700, power: -30, sight: 18,
+    flags: mrdFlags(-30),
+  }),
+  building({
+    key: 'rclDepot', name: 'Patch Yard', blurb: 'Welds any hull that stops moving.',
+    faction: FACTION_RECLAIM, cost: 800, buildTime: 10, tab: BuildTab.Structures,
+    prereqs: ['rclBreakerYard'], sortOrder: 75, model: 'reclaim_depot', dim: B.repairDepot,
+    maxHp: 900, power: -30, sight: 18,
+    flags: rclFlags(-30),
+  }),
 ];
 
 /* ==========================================================================

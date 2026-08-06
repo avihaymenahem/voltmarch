@@ -706,6 +706,113 @@ function furnace(): StructureMassList {
 }
 
 /**
+ * THE PATCH YARD. A vehicle service pad, and the only structure in the roster
+ * whose job is to be LOOKED THROUGH: the hull being welded parks under it, and
+ * at the fixed 38-degree camera a shed roof would hide the exact thing the
+ * building exists to work on. That is why 6.5 m is one of the three lowest
+ * rooflines in the game — only the Ore Silo (5.0) and the Barracks (6.4) are
+ * under it — and why the body fraction here is the smallest in the file.
+ *
+ * RCL-2 gets its purest statement of anywhere in the roster. Every other
+ * structure bridges a beam over its own volume; this one bridges over open air,
+ * and the two legs carrying it are deliberately not a pair — a battered mast
+ * welded to the +X corner column and a strut leaning in on it from -X, so the
+ * portal reads as something run up on site rather than delivered flat-packed.
+ * Nothing mirrors, which is RCL-3 taken at its word rather than at its
+ * exemptions.
+ */
+function depot(): StructureMassList {
+  const f = fp('repairDepot');
+  // 0.36 is the lowest body fraction in the file and it is the brief, not
+  // taste: the clad workshop lands at 2.34 m — barely over the roof of the hull
+  // it is mending — and the 3.2 m between the top of the cage and the underside
+  // of the beam is sky.
+  //
+  // `team` is up at 1.24 because the shell's three plates are all scaled off
+  // `mainH`, and the lowest body in the file makes every one of them shorter
+  // while the mast and the beam add unpainted surface underneath them. At the
+  // shell default it measures 4.5% — half a point off R-T1's floor and two off
+  // the roster. 1.24 lands 6.4%, where the eight other frame-built ones sit.
+  const s = reclaimFrame(f.w, f.h, f.height, { bodyFraction: 0.36, team: 1.24, coil: 0.52 });
+  // The shell's deck is 22% of the body height and `roofY` IS the body height,
+  // so this is the deck's top face exactly rather than a re-guess of it.
+  const deckTop = s.roofY * 0.22;
+  const beamH = 0.58;
+  // Solved, not chosen. The beam is the roofline: its top face lands on
+  // `f.height`, which leaves the +/-12% height gate nothing to catch, and every
+  // other authored mass hangs BELOW it.
+  const beamY = f.height - beamH * 0.5;
+  const legH = f.height - beamH - deckTop;
+  // The working bay is the front lip of the deck, clear of the clad body's
+  // front face at 0.37 d. Everything the portal carries lives on this plane, so
+  // the hull drives up the apron ramp and stops under the arm.
+  const bayZ = s.d * 0.42;
+  // A rotated mass adds chord*sin(tilt) to its Y extent, so the cant comes out
+  // of the strut's LENGTH rather than out of the height budget: at this length
+  // the difference is 8 cm, which is a third of the whole tolerance on a 6.5 m
+  // structure once the beam has claimed the rest.
+  const strutTilt = 0.17;
+  const strutH = (legH - 0.46 * Math.sin(strutTilt)) / Math.cos(strutTilt);
+  s.masses.push(
+    // THE MAST. Hard-battered, and lashed to the +X front column rather than
+    // standing beside it — this army does not build a second thing where it can
+    // weld onto the first.
+    {
+      name: 'hoist.mast', primitive: 'taperedBox', role: MassRole.Primary,
+      size: [0.94, legH, 1.02], anchor: [s.w * 0.38, deckTop + legH * 0.5, bayZ],
+      slot: 'bareMetal', capSlot: 'grille', chamfer: 0.08,
+      shape: { topScaleX: 0.50, topScaleZ: 0.46, shear: -s.d * 0.02 },
+    },
+    // THE BEAM. Off the centre line in X so the free end overhangs the open
+    // flank, which is where the drum and the stowage already are.
+    {
+      name: 'hoist.beam', primitive: 'taperedBox', role: MassRole.Primary,
+      size: [s.w * 0.92, beamH, 0.70], anchor: [-s.w * 0.03, beamY, bayZ],
+      slot: 'bareMetal', capSlot: 'grille', chamfer: 0.08,
+      shape: { topScaleX: 0.97, topScaleZ: 0.56 },
+    },
+    girder('hoist.strut', [0.46, strutH, 0.52], [-s.w * 0.34, deckTop + legH * 0.5, bayZ - 0.12], {
+      rot: [0, 0, -strutTilt], group: 'hoist',
+    }),
+    // The welding carriage and the boom it drops. Its top meets the underside
+    // of the carriage exactly and it stops 2.7 m over the deck — clear of a
+    // hull's roof and no higher, because a head parked up at hook height reads
+    // as a crane and this building is not one.
+    box('hoist.carriage', MassRole.Greeble, [0.92, 0.66, 0.86], [-s.w * 0.14, beamY - 0.78, bayZ], 'hatch', {
+      group: 'hoist', chamfer: 0.06,
+    }),
+    cyl('hoist.boom', MassRole.Greeble, [0.34, legH * 0.34, 0.34],
+      [-s.w * 0.14, beamY - 1.11 - legH * 0.17, bayZ], 'bareMetal', {
+        group: 'hoist', topRadius: 0.72, capSlot: 'grille', segments: 10, chamfer: 0.05,
+      }),
+    // The gas bottles, standing on the deck on the mast side. One rack, no
+    // opposite number, and the only mass in the structure the welder touches.
+    cyl('bottle', MassRole.Greeble, [0.46, s.roofY * 0.52, 0.46], [s.w * 0.30, deckTop + s.roofY * 0.26, s.d * 0.40], 'bareMetal', {
+      group: 'bottles', topRadius: 0.88, capSlot: 'hatch', segments: 10, chamfer: 0.05,
+    }),
+    // The hardstand: tread plate laid over the front of the deck, on the plane
+    // the arm works. It is 10 cm proud of the deck and it is the whole reason
+    // the roofline is 6.5 — from the fixed camera you can see it, and the hull
+    // standing on it.
+    box('hardstand', MassRole.Greeble, [s.w * 0.62, 0.10, s.d * 0.14], [-s.w * 0.04, deckTop + 0.05, s.d * 0.44], 'tread', {
+      group: 'hardstand', chamfer: 0.03,
+    }),
+    // RCL-7 at the tip: the struck arc is a short vertical LINE on the end of
+    // the boom, sitting at 0.50 legH so it overlaps the last 20 cm of it. A lit
+    // column hanging clear in the air would be a blob with a gap above it.
+    conduit('lit.arc', [0.19, 0.46, 0.17], [-s.w * 0.14, deckTop + legH * 0.50, bayZ]),
+  );
+  return list('reclaim_depot', 'Patch Yard', 'repairDepot', s.masses, [
+    ...baseSockets(s.d, s.roofY + 0.9, -s.w * 0.12, -s.d * 0.24),
+    { part: PartId.Crane, pos: [-s.w * 0.14, beamY - 0.78, bayZ] },
+    // The torch tip, which is where a servicing effect belongs: `RepairSell.ts`
+    // works on range alone and reads no socket, so this is an anchor waiting
+    // for one rather than a wire that exists.
+    { part: PartId.Emitter, pos: [-s.w * 0.14, deckTop + legH * 0.50, bayZ] },
+  ]);
+}
+
+/**
  * THE ORE SORTER. A TROMMEL — a big faceted drum lying across the frame with a
  * feed chute at one end and a discharge spout at the other. It is the only
  * structure in the game whose dominant mass lies on its side, and that is the
@@ -1214,6 +1321,7 @@ function arcPylon(): StructureMassList {
 export const RECLAIM_STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   foundry(),
   furnace(),
+  depot(),
   sorter(),
   rookery(),
   breakerYard(),
@@ -1237,6 +1345,7 @@ export const RECLAIM_STRUCTURE_BY_KEY: ReadonlyMap<string, StructureMassList> =
 export const RECLAIM_STRUCTURE_MODELS: Readonly<Record<string, string>> = {
   rclFoundry: 'reclaim_foundry',
   rclFurnace: 'reclaim_furnace',
+  rclDepot: 'reclaim_depot',
   rclSorter: 'reclaim_sorter',
   rclRookery: 'reclaim_rookery',
   rclBreakerYard: 'reclaim_breakeryard',

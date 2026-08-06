@@ -644,6 +644,104 @@ function reliquary(): StructureMassList {
     baseSockets(s.d, s.roofY + 0.8, s.w * 0.34, -s.d * 0.32));
 }
 
+/**
+ * THE SOLAR INFIRMARY. The army mends with light, so its service pad is an
+ * OPEN GANTRY over a deck rather than the shed a depot wants to be.
+ *
+ * The frozen roofline is 6.5 m and it is deliberately low: a hull parked here
+ * has to stay visible at the fixed 38-degree camera, and a full-footprint
+ * volume at that height would sit on top of it. Two shell options follow from
+ * that, and nothing else in this function matters as much as either:
+ *
+ *   `inset` 0.72 rather than the default 0.94, which puts a 5.76 m corbelled
+ *   core on an 8 m footprint and leaves 1.1 m of open deck all the way round
+ *   it. The core is the plant; the deck is the building.
+ *
+ *   `bodyFraction` 0.34, which tops the whole shell out at 3.82 m — every
+ *   metre above that belongs to two obelisk masts standing OUTSIDE the core
+ *   with an open yoke between them, so the only thing crossing the deck is a
+ *   1.5 m boom and the emitter hung under its nose.
+ *
+ * Which makes the masts load-bearing in the validator's sense as well as the
+ * architect's: they alone carry `bounds[1]` from that 3.82 m to the 6.50 m the
+ * height gate wants, and the tolerance is +/-0.78 m.
+ *
+ * `team` 1.3 is the other measured number. The panels are the shell's, scaled
+ * per structure, and their area goes as the SQUARE of this: a small core under
+ * a lot of unpainted gantry started at 14.0% of projected surface against an
+ * R-T1 ceiling of 10%, and 1.3 lands it at 7.7%.
+ */
+function depot(): StructureMassList {
+  const f = fp('repairDepot');
+  const s = pactShell(f.w, f.h, f.height, { inset: 0.72, bodyFraction: 0.34, team: 1.3, lightCount: 4 });
+
+  // The core wall stands at 2.88 m; the masts at 3.30 with a 1.0 m base reach
+  // 3.80, which is clear of it and inside the 4.01 m half-footprint. Standing
+  // them any closer would read as buttressing the core instead of framing the
+  // deck, and any further out overhangs a neighbour's cells.
+  const mastX = 3.30, mastZ = -1.00, mastFoot = 0.06;
+  const mastH = f.height - mastFoot;
+  const yokeY = f.height - 0.78;
+  const boomY = yokeY - 0.46;
+
+  s.masses.push(
+    // PACT-5: cones. One mass, mirrored — the boxiness gate counts a mirrored
+    // pair twice, and a lathe contributes zero axis-aligned wall either way.
+    cyl('mast', MassRole.Primary, [1.00, mastH, 1.00], [mastX, mastFoot + mastH * 0.5, mastZ], 'paintMed', {
+      mirrorX: true, topRadius: 0.28, capSlot: 'grille', segments: 12,
+    }),
+    pri('yoke', MassRole.Primary, [mastX * 2 + 0.40, 0.55, 0.90], [0, yokeY, mastZ], 'paintMed', {
+      plan: 'hexagon', capSlot: 'paintSmall', chamfer: 0.08,
+    }),
+    // The boom cantilevers forward over the parking spot. A wedge, nose at +Z:
+    // it is the one mass the camera sees against the sky above a parked hull,
+    // and a constant-section beam there is the whole "generic engine" read.
+    pri('boom', MassRole.Primary, [1.50, 0.52, 4.80], [0, boomY, mastZ + 2.40], 'paintMed', {
+      plan: 'wedge', capSlot: 'stripe', chamfer: 0.07,
+    }),
+    // The emitter widens UPWARD, so the light it throws reads as aimed at the
+    // deck. `topRadius` scales the mesh but not `massExtents`, so the real top
+    // is 2.34 m across at z 2.60 — 3.77, still inside the footprint. Anything
+    // wider here passes the validator and overhangs the cell anyway.
+    cyl('emitter', MassRole.Primary, [1.80, 1.00, 1.80], [0, 4.55, 2.60], 'paintMed', {
+      topRadius: 1.30, capSlot: 'grille', segments: 12,
+    }),
+
+    /* -- the hardware a hull is actually serviced by --------------------- */
+    cyl('mast.collar', MassRole.Greeble, [1.24, 0.34, 1.24], [mastX, 1.55, mastZ], 'bareMetal', {
+      mirrorX: true, group: 'collars', chamfer: 0.05, capSlot: 'grille', segments: 10,
+    }),
+    // A canted brace off the collector crown into each mast, which is what
+    // stops the pylons reading as two poles parked beside an unrelated block.
+    box('brace', MassRole.Greeble, [2.00, 0.20, 0.22], [mastX - 1.00, s.crownTop - 0.42, mastZ], 'bareMetal', {
+      mirrorX: true, rot: [0, 0, 0.22], group: 'braces', chamfer: 0.04,
+    }),
+    box('cradle', MassRole.Greeble, [1.30, 0.26, 0.90], [1.45, 0.13, 3.30], 'tread', {
+      mirrorX: true, group: 'cradle', chamfer: 0.05,
+    }),
+    box('sill', MassRole.Greeble, [3.20, 0.22, 0.42], [0, 0.11, 2.98], 'stripe', { group: 'sill', chamfer: 0.05 }),
+    box('pump', MassRole.Greeble, [0.72, 1.05, 1.10], [-2.55, 0.53, 2.05], 'grille', { group: 'pump' }),
+    cyl('reel', MassRole.Greeble, [0.62, 0.46, 0.62], [-2.30, 1.32, 2.20], 'bareMetal', {
+      rot: [0, 0, Math.PI * 0.5], group: 'reel', chamfer: 0.04, capSlot: 'hatch', segments: 10,
+    }),
+
+    /* -- PACT-7: gold, in rings and in lines, never in blobs ------------- */
+    cyl('emitter.ring', MassRole.Emissive, [1.44, 0.22, 1.44], [0, 4.00, 2.60], 'emissive', {
+      group: 'emitterRing', feature: Feature.Window, capSlot: 'emissive', chamfer: 0.05, segments: 12,
+    }),
+    box('deck.guide', MassRole.Emissive, [0.30, 0.10, 2.60], [1.98, 0.09, 2.30], 'emissive', {
+      mirrorX: true, group: 'deckGuide', feature: Feature.Window, chamfer: 0.03,
+    }),
+  );
+
+  return list('meridian_depot', 'Solar Infirmary', 'repairDepot', s.masses, [
+    ...baseSockets(s.d, s.roofY + 0.9, -s.w * 0.28, -s.d * 0.28),
+    // The emitter mouth, so a servicing effect hangs off the thing that emits.
+    { part: PartId.Emitter, pos: [0, 3.90, 2.60] },
+    { part: PartId.DockEntry, pos: [0, 0.2, s.d * 0.5 + 1.6] },
+  ]);
+}
+
 function slipway(): StructureMassList {
   const f = fp('navalYard');
   const s = pactShell(f.w, f.h, f.height, { bodyFraction: 0.52, team: 1.0, lightCount: 5 });
@@ -870,6 +968,7 @@ export const MERIDIAN_STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   forgeyard(),
   oculus(),
   reliquary(),
+  depot(),
   slipway(),
   sunVault(),
   glavePost(),
@@ -892,6 +991,7 @@ export const MERIDIAN_STRUCTURE_MODELS: Readonly<Record<string, string>> = {
   mrdForgeyard: 'meridian_forgeyard',
   mrdOculus: 'meridian_oculus',
   mrdReliquary: 'meridian_reliquary',
+  mrdDepot: 'meridian_depot',
   mrdSlipway: 'meridian_slipway',
   mrdVault: 'meridian_vault',
   mrdGlaive: 'meridian_glaive',

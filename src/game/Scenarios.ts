@@ -1044,6 +1044,13 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
   battleLab: building('battleLab', B.battleLab, 900, -60, 20, 0, Faction.Neutral),
   oreSilo: building('oreSilo', B.oreSilo, 500, -10, 12, 0, Faction.Neutral,
     { storage: SILO_STORAGE }),
+  // Its whole behaviour is positional — `RepairSell.tickDepots` finds it by
+  // def id and mends what is parked next to it — so there is no flag to set
+  // and nothing here distinguishes it from any other support structure. The
+  // row exists because WITHOUT ONE the depot builds, charges, reaches 100%
+  // and then never places, with nothing logged: `spawnBuilding` looks this
+  // table up before it ever consults the def.
+  repairDepot: building('repairDepot', B.repairDepot, 800, -30, 18, 0, Faction.Neutral),
 
   pillbox: building('pillbox', B.pillbox, 500, 0, 26,
     EntityFlag.CanAttack, Faction.Allies, { weaponRange: 22 }),
@@ -1095,6 +1102,7 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
   mrdSlipway: building('mrdSlipway', NB.navalYard, 950, -30, 24,
     EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Meridian),
   mrdReliquary: building('mrdReliquary', B.battleLab, 850, -60, 20, 0, Faction.Meridian),
+  mrdDepot: building('mrdDepot', B.repairDepot, 700, -30, 18, 0, Faction.Meridian),
 
   mrdRampart: building('mrdRampart', B.wall, 320, 0, 0,
     EntityFlag.NotSelectable, Faction.Meridian),
@@ -1125,6 +1133,7 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
   rclDrydock: building('rclDrydock', NB.navalYard, 1050, -30, 24,
     EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Reclaim),
   rclCrucible: building('rclCrucible', B.battleLab, 900, -60, 20, 0, Faction.Reclaim),
+  rclDepot: building('rclDepot', B.repairDepot, 900, -30, 18, 0, Faction.Reclaim),
 
   rclBarricade: building('rclBarricade', B.wall, 340, 0, 0,
     EntityFlag.NotSelectable, Faction.Reclaim),
@@ -1285,6 +1294,7 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   subPen: ['subpen', 'submarinepen', 'navalyardsoviet'],
   aaTurret: ['aaturret', 'multigunneraa', 'aagun', 'flakcannon'],
   sentryGun: ['sentrygun', 'sentry', 'machinegunturret'],
+  repairDepot: ['repairdepot', 'servicedepot', 'depot', 'repairbay', 'maintenance'],
 
   mrdConclave: ['mrdconclave', 'conclave', 'meridianconclave'],
   mrdSolarArray: ['mrdsolararray', 'solararray', 'meridiansolararray'],
@@ -1298,6 +1308,7 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   mrdRampart: ['mrdrampart', 'rampart', 'meridianrampart'],
   mrdGlaive: ['mrdglaive', 'glaivepost', 'meridianglaive'],
   mrdHelios: ['mrdhelios', 'heliosspire', 'meridianhelios'],
+  mrdDepot: ['mrddepot', 'solarinfirmary', 'infirmary', 'meridiandepot'],
 
   rclFoundry: ['rclfoundry', 'foundry', 'reclaimfoundry'],
   rclFurnace: ['rclfurnace', 'scrapfurnace', 'reclaimfurnace'],
@@ -1311,6 +1322,7 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   rclBarricade: ['rclbarricade', 'scrapbarricade', 'reclaimbarricade'],
   rclSpitpost: ['rclspitpost', 'spitpost', 'reclaimspitpost'],
   rclPylon: ['rclpylon', 'arcpylon', 'reclaimpylon'],
+  rclDepot: ['rcldepot', 'patchyard', 'reclaimdepot'],
 };
 
 /**
@@ -1347,6 +1359,9 @@ const FACTION_KEY_MAP: Readonly<Record<string, readonly string[]>> = {
   radar:            ['radar',       'radar',      'radar',      'mrdOculus',        'rclSpotter'],
   battleLab:        ['battleLab',   'battleLab',  'battleLab',  'mrdReliquary',     'rclCrucible'],
   oreSilo:          ['oreSilo',     'oreSilo',    'oreSilo',    'mrdVault',         'rclHeap'],
+  // The pad. Allies and Soviets share one def (Faction.Neutral), so the first
+  // three columns are the same key and only the two new armies branch.
+  repairDepot:      ['repairDepot', 'repairDepot','repairDepot','mrdDepot',         'rclDepot'],
   wall:             ['wall',        'wall',       'wall',       'mrdRampart',       'rclBarricade'],
   navalYard:        ['navalYard',   'navalYard',  'subPen',     'mrdSlipway',       'rclDrydock'],
   subPen:           ['subPen',      'navalYard',  'subPen',     'mrdSlipway',       'rclDrydock'],

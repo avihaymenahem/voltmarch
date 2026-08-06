@@ -42,9 +42,9 @@ import {
   NONE, Stance, UnitState, WarheadClass,
 } from '../core/types';
 import type { Command, EntityId, PlayerId, SimContext } from '../core/types';
-import { CELL, REPAIR_COST_PER_HP, REPAIR_RATE } from '../core/config';
+import { CELL, REPAIR_COST_PER_HP, REPAIR_DEPOT, REPAIR_RATE } from '../core/config';
 
-import { production } from './Production';
+import { BuildKind, production } from './Production';
 import { getEconomy } from './Economy';
 
 /* ==========================================================================
@@ -57,6 +57,18 @@ import { getEconomy } from './Economy';
  * units of an army they are not playing.
  */
 const SURVIVOR_KEY: readonly string[] = ['gi', 'gi', 'conscript', 'mrdWayfarer'];
+
+/**
+ * Content keys that service vehicles. Three, not four: `repairDepot` is a
+ * `Faction.Neutral` def, which in this codebase means "both original armies"
+ * — the Allied and Soviet architectures are two MASS LISTS behind one def, the
+ * way `radar` and `battleLab` already work.
+ *
+ * Resolved to def ids once, against the live catalog. There is deliberately no
+ * fallback list: a depot is content, and a boot with no content module has no
+ * depots to find.
+ */
+const DEPOT_KEYS: readonly string[] = ['repairDepot', 'mrdDepot', 'rclDepot'];
 
 export const REPAIR = {
   /** Seconds between repair sparks on a structure being mended. */
@@ -89,7 +101,16 @@ export interface RepairStats {
   survivorsSpawned: number;
   selfDestructs: number;
   stanceChanges: number;
+  /** Vehicles a Repair Depot mended this tick. */
+  vehiclesServiced: number;
+  /** Total HP a Repair Depot has put back into vehicles since boot. */
+  depotHpRestored: number;
+  /** Depot repairs cut short because the owner could not pay. */
+  depotBrokeCancels: number;
 }
+
+/** Depots one player can have working at once before the scan gives up. */
+const MAX_DEPOTS = 24;
 
 /** A crew that owes its existence to a sold structure. Drained next tick. */
 interface PendingCrew {
@@ -109,12 +130,31 @@ export class RepairSellService {
   readonly stats: RepairStats = {
     repairing: 0, hpRestored: 0, creditsSpent: 0, brokeCancels: 0,
     survivorsSpawned: 0, selfDestructs: 0, stanceChanges: 0,
+    vehiclesServiced: 0, depotHpRestored: 0, depotBrokeCancels: 0,
   };
 
   /** 1 while a structure is drip-repairing. Generation-stamped. */
   private readonly repairing: PerEntityF32;
   /** Seconds until the next repair spark on a structure. */
   private readonly sparkTimer: PerEntityF32;
+
+  /* -- depot scratch, all fixed-size and reused every tick ---------------- */
+  /** Def ids that are Repair Depots. Null until the catalog binds. */
+  private depotDefs: Int32Array | null = null;
+  private depotDefCount = 0;
+  /** Store indices of this tick's live depots. */
+  private readonly depotIdx = new Int32Array(MAX_DEPOTS);
+  /** How many vehicles each of those depots is already servicing. */
+  private readonly depotLoad = new Int32Array(MAX_DEPOTS);
+  /**
+   * Vehicles tagged `BeingRepaired` on the previous tick.
+   *
+   * The whole reason this exists is the no-depot early-out: without it, a tick
+   * with no working pad returns before the clearing pass and any tag set the
+   * tick before is stranded. Zero here is what lets the common case — nobody
+   * owns a depot — cost one integer compare instead of a walk over the army.
+   */
+  private taggedLast = 0;
 
   private readonly crew: PendingCrew[] = [];
   private crewCount = 0;
@@ -197,6 +237,183 @@ export class RepairSellService {
   simTick(s: SimContext): void {
     this.drainCrew(s);
     this.tickRepairs(s);
+    this.tickDepots(s);
+  }
+
+  /* -- the repair depot -------------------------------------------------- *
+   * A pad, not a button. Every friendly damaged VEHICLE standing inside a
+   * depot's radius is mended, with no order issued and no state on the unit —
+   * which is why the AI gets this for free: it already retreats damaged
+   * armour toward its base, and a depot in that base services whatever
+   * arrives without the strategy layer knowing depots exist.
+   * ---------------------------------------------------------------------- */
+
+  /** True once the catalog has been consulted, whatever the answer was. */
+  get depotsResolved(): boolean { return this.depotDefs !== null; }
+
+  /**
+   * Resolve the depot def ids, once, against the bound catalog.
+   *
+   * Deliberately NOT cached while the catalog is unbound. `ProductionCatalog`
+   * answers `byKey` off fallback content before a data module lands, and every
+   * depot key would miss — caching that empty answer would mean a match booted
+   * a few ticks early has no depots for its whole life, with nothing logged.
+   */
+  private resolveDepots(): void {
+    if (this.depotDefs !== null) return;
+    const svc = production();
+    if (svc === null || !svc.catalog.bound) return;
+
+    const ids = new Int32Array(DEPOT_KEYS.length);
+    let n = 0;
+    for (const key of DEPOT_KEYS) {
+      const entry = svc.catalog.byKey(key);
+      if (entry === null || entry.kind !== BuildKind.Building) continue;
+      ids[n++] = entry.defId;
+    }
+    this.depotDefs = ids;
+    this.depotDefCount = n;
+  }
+
+  private isDepotDef(defId: number): boolean {
+    const ids = this.depotDefs;
+    if (ids === null) return false;
+    for (let k = 0; k < this.depotDefCount; k++) if (ids[k] === defId) return true;
+    return false;
+  }
+
+  private tickDepots(s: SimContext): void {
+    this.resolveDepots();
+    this.stats.vehiclesServiced = 0;
+    if (this.depotDefCount === 0) return;
+
+    const st = this.world.store;
+
+    /* -- 1. gather this tick's working depots --------------------------- */
+    const blist = st.byKind[EntityKind.Building];
+    const bn = st.byKindCount[EntityKind.Building];
+    let depots = 0;
+    for (let a = 0; a < bn && depots < MAX_DEPOTS; a++) {
+      const b = blist[a];
+      if (!this.isDepotDef(st.defId[b])) continue;
+      const f = st.flags[b];
+      if ((f & EntityFlag.Alive) === 0) continue;
+      // A half-built pad services nothing. Neither does one about to be rubble.
+      if ((f & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) continue;
+      // Nor does a dark one. The depot draws 30 power, and a building that
+      // kept working through a blackout while the tesla coils went out would
+      // be the only one in the game that did. Same test `Superweapons.ts` and
+      // `Combat.ts` apply, and the same one `Power.isDark` publishes.
+      if ((f & EntityFlag.NeedsPower) !== 0 && (f & EntityFlag.Powered) === 0) continue;
+      this.depotIdx[depots] = b;
+      this.depotLoad[depots] = 0;
+      depots++;
+    }
+    if (depots === 0) {
+      // No working pad this tick — sold, shelled, or blacked out. If anything
+      // was being serviced last tick its tag has to come OFF, and this is the
+      // path that would quietly skip doing it. Leaving the flag set here is
+      // `EntityFlag.Burning` all over again: the selection panel would read
+      // REPAIRING on a hull nothing is touching, for the rest of the match.
+      if (this.taggedLast > 0) {
+        const dead = st.byKind[EntityKind.Vehicle];
+        const deadCount = st.byKindCount[EntityKind.Vehicle];
+        for (let a = 0; a < deadCount; a++) st.flags[dead[a]] &= ~EntityFlag.BeingRepaired;
+        this.taggedLast = 0;
+      }
+      return;
+    }
+
+    /* -- 2. one pass over the vehicles ---------------------------------- *
+     * Vehicle-major rather than depot-major, and the damage test comes first:
+     * a healthy army is the common case and it costs one float compare per
+     * hull. The alternative — a spatial query per depot — would read an index
+     * rebuilt at Phase.SpatialRebuild (800) while this runs at Economy (300),
+     * so it would be answering with LAST tick's buckets. With at most a couple
+     * of dozen depots the exact test is both cheaper and correct.            */
+    const economy = getEconomy();
+    const r2 = REPAIR_DEPOT.radius * REPAIR_DEPOT.radius;
+    const vlist = st.byKind[EntityKind.Vehicle];
+    const vn = st.byKindCount[EntityKind.Vehicle];
+    let serviced = 0;
+
+    for (let a = 0; a < vn; a++) {
+      const i = vlist[a];
+      const max = st.maxHp[i];
+      if (max <= 0 || st.hp[i] >= max) {
+        // Undamaged. Drop the tag if this hull was on a pad last tick, or the
+        // selection panel would read REPAIRING at full health forever — the
+        // failure mode that made `EntityFlag.Burning` permanent.
+        if ((st.flags[i] & EntityFlag.BeingRepaired) !== 0) {
+          st.flags[i] &= ~EntityFlag.BeingRepaired;
+        }
+        continue;
+      }
+      const vf = st.flags[i];
+      if ((vf & EntityFlag.Alive) === 0 || (vf & EntityFlag.PendingDestroy) !== 0) continue;
+
+      const owner = st.owner[i];
+      const x = st.posX[i];
+      const z = st.posZ[i];
+
+      let pad = -1;
+      for (let d = 0; d < depots; d++) {
+        if (this.depotLoad[d] >= REPAIR_DEPOT.maxConcurrent) continue;
+        const b = this.depotIdx[d];
+        if (st.owner[b] !== owner) continue;
+        const dx = st.posX[b] - x;
+        const dz = st.posZ[b] - z;
+        if (dx * dx + dz * dz > r2) continue;
+        pad = d;
+        break;
+      }
+      if (pad < 0) {
+        if ((vf & EntityFlag.BeingRepaired) !== 0) st.flags[i] &= ~EntityFlag.BeingRepaired;
+        continue;
+      }
+
+      /* -- 3. mend, and charge for it ----------------------------------- */
+      const wanted = Math.min(max * REPAIR_DEPOT.fractionPerSec * s.dt, max - st.hp[i]);
+      const cost = wanted * REPAIR_COST_PER_HP;
+      let healed = wanted;
+
+      if (cost > 0) {
+        const p = owner as PlayerId;
+        const paid = economy !== null
+          ? economy.spendPartial(p, cost, CreditReason.Build)
+          : this.spendDirect(p, cost);
+        if (paid <= 0) {
+          // Broke. Same rule the wrench follows: stop, do not heal for free.
+          st.flags[i] &= ~EntityFlag.BeingRepaired;
+          this.stats.depotBrokeCancels++;
+          continue;
+        }
+        healed = wanted * (paid / cost);
+        this.stats.creditsSpent += paid;
+      }
+
+      st.hp[i] = Math.min(max, st.hp[i] + healed);
+      st.flags[i] |= EntityFlag.BeingRepaired;
+      this.stats.depotHpRestored += healed;
+      this.depotLoad[pad]++;
+      serviced++;
+
+      const t = this.sparkTimer.getAt(i) - s.dt;
+      if (t <= 0) {
+        this.sparkTimer.setAt(i, REPAIR_DEPOT.sparkSeconds);
+        this.channels.fx.push(
+          FxKind.RepairSpark,
+          st.posX[i] + (s.rng.next() - 0.5) * 2.0,
+          st.posY[i] + 1.4,
+          st.posZ[i] + (s.rng.next() - 0.5) * 2.0,
+          0, 1, 0, 0.8, st.handleOf(i), st.faction[i] as Faction,
+        );
+      } else {
+        this.sparkTimer.setAt(i, t);
+      }
+    }
+    this.stats.vehiclesServiced = serviced;
+    this.taggedLast = serviced;
   }
 
   private tickRepairs(s: SimContext): void {

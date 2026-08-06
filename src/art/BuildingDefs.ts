@@ -862,6 +862,102 @@ function alliedWarFactory(): StructureMassList {
   ]);
 }
 
+/**
+ * ALLIED REPAIR DEPOT — a vehicle service pad, not a garage.
+ *
+ * The frozen roofline is 6.5 m — only the Ore Silo (5.0) and the Barracks
+ * (6.4) sit lower — and that is a gameplay number rather than a style one: at the fixed
+ * 38-degree camera a shed tall enough to enclose a tank would hide the tank
+ * that is being serviced under it. So the silhouette is AN OPEN GANTRY OVER A
+ * LOW DECK. The shell is asked for a small body — `inset` 0.72 and
+ * `bodyFraction` 0.32 put its crown at 4.2 m — and everything above that is
+ * steel and air, which is also what keeps rule 8 satisfiable: the cross-head
+ * carries the last 2.3 m of the model on its own.
+ */
+function alliedDepot(): StructureMassList {
+  const f = fp('repairDepot');
+  const s = alliedShell(f.w, f.h, f.height, {
+    key: 'repairDepot', inset: 0.72, bodyFraction: 0.32, team: 1.10, windowCount: 3,
+  });
+  const roof = s.roofY;
+  // The portal: a cross-head at the roofline on two legs standing OUTSIDE the
+  // body, so the span between them stays open all the way to the pad.
+  const headH = 0.58;
+  const headY = f.height - headH * 0.5;
+  const legH = f.height - headH;
+  const legX = s.w * 0.58;
+  s.masses.push(
+    // Tapered in both plan axes on purpose: this is the widest mass in the
+    // model and a plain beam here would hand the boxiness gate a flat 7 m wall
+    // at eye level, which is the one place it is most visible.
+    tbox('gantry.head', MassRole.Primary, [legX * 2 + 0.5, headH, 1.15], [0, headY, -0.60], 'bareMetal', {
+      topScaleX: 0.86, topScaleZ: 0.64, cornerCut: 0.18,
+    }, { chamfer: 0.07 }),
+    cyl('gantry.leg', MassRole.Greeble, [0.44, legH, 0.44], [legX, legH * 0.5, -0.60], 'bareMetal', {
+      mirrorX: true, topRadius: 0.70, segments: 12, group: 'gantry', capSlot: 'grille',
+    }),
+    // THE SIGNATURE: a chromed hoist rail hung under the head and cantilevered
+    // forward past the body, so the arm reaches over the deck rather than
+    // roofing it. Swept hex section — an extrude scores zero axis-aligned wall.
+    {
+      name: 'hoist.rail', primitive: 'extrude', role: MassRole.Primary,
+      size: [0.54, 0.54, 6.5], anchor: [0, legH - 0.27, 0.85], slot: 'bareMetal',
+      shape: {
+        profile: ductSection(0.54),
+        path: [[0, 0, -3.25], [0, 0, -1.05], [0, 0, 1.35], [0, 0, 3.25]],
+        scale: [1.0, 0.95, 0.82, 0.66], capStart: true, capEnd: true,
+      },
+    },
+    // The trolley is parked at the FAR end of the rail, clear of the canopy
+    // below it, and each of these three hangs off the underside of the one
+    // above with no air in between — a hoist that floats reads as a bug.
+    box('hoist.trolley', MassRole.Greeble, [0.78, 0.66, 0.94], [0, legH - 0.87, 3.50], 'hatch', {
+      group: 'hoist', chamfer: 0.06,
+    }),
+    cyl('hoist.hook', MassRole.Greeble, [0.24, 1.6, 0.24], [0, legH - 2.00, 3.50], 'bareMetal', {
+      group: 'hoist', segments: 8, chamfer: 0.03, capSlot: 'grille',
+    }),
+    // A tie rod from the head down to the rail's nose. The rail cantilevers
+    // 4.2 m off a single portal and without this it reads as floating.
+    box('gantry.stay', MassRole.Greeble, [0.12, 0.12, 4.23], [0, 6.16, 1.80], 'bareMetal', {
+      rot: [0.114, 0, 0], group: 'gantry', chamfer: 0.03,
+    }),
+    // The canted service canopy, tucked into the crown's front face and
+    // stopping short of the hoist. A raked plate rather than a box: it is the
+    // Allied read (clean tech, everything angled) and a rotated plate is all
+    // rim, so it buys silhouette without buying flat wall.
+    plate('canopy', MassRole.Primary, taperOutline(s.w * 0.96, 1.9, 0.76), 0.30,
+      [0, roof * 1.44, 2.05], [-0.32, 0, 0], 'paintMed',
+      { chamfer: 0.06, capSlot: 'paintSmall' }),
+    // Only the middle of that canopy lands on the crown; its outer wings need
+    // a foot, exactly as the Barracks canopy does.
+    box('canopy.post', MassRole.Greeble, [0.20, 0.98, 0.20], [2.10, 2.57, 2.72], 'bareMetal', {
+      mirrorX: true, group: 'canopy', chamfer: 0.04,
+    }),
+    // The deck the vehicle noses onto, in tread plate, and set FORWARD of the
+    // body: a deck plate under the body would be buried in it, and the whole
+    // point of a 6.5 m roofline is that this surface stays on screen.
+    plate('deck', MassRole.Greeble, taperOutline(s.w * 1.14, 2.4, 0.88), 0.22,
+      [0, 0.13, 3.35], undefined, 'tread', { group: 'deck', chamfer: 0.04 }),
+    cyl('compressor', MassRole.Greeble, [1.05, 1.15, 1.05], [-s.w * 0.50, 0.58, -1.55], 'grille', {
+      group: 'plant', segments: 12, capSlot: 'hatch',
+    }),
+    greebleRun('hose.run', 2.6, 0.24, 0.20, [s.w * 0.50, 0.62, -0.20], 0x4D07),
+    // Work lamps on the cross-head, aimed down at the deck. R-T5's floor is
+    // 0.6% and the shell's three-window facade lands exactly on it on a body
+    // this short, so these are the margin as much as they are the lighting.
+    box('lamp', MassRole.Emissive, [0.54, 0.18, 0.40], [legX * 0.54, legH - 0.09, -0.60], 'emissive', {
+      mirrorX: true, group: 'lamps', feature: Feature.Window, chamfer: 0.04,
+    }),
+  );
+  return list('allied_depot', 'Repair Depot', 'allies', 'repairDepot', s.masses, [
+    ...baseSockets(s.d, roof + 0.9, -s.w * 0.26, -s.d * 0.22),
+    // The service point is under the hoist, not at a door: nothing is produced
+    // here, so `Crane` is the arm the repair VFX hangs off.
+    { part: PartId.Crane, pos: [0, legH - 2.80, 3.50] },
+  ]);
+}
+
 function alliedRadar(): StructureMassList {
   const f = fp('radar');
   const s = alliedShell(f.w, f.h, f.height, { key: 'radar', team: 1.1, windowCount: 4, bodyFraction: 0.42 });
@@ -1144,6 +1240,79 @@ function sovietWarFactory(): StructureMassList {
     ...baseSockets(s.d, f.height, -s.w * 0.36, -s.d * 0.26),
     { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.4] },
     { part: PartId.Crane, pos: [s.w * 0.30, roof * 1.45, s.d * 0.10] },
+  ]);
+}
+
+/**
+ * SOVIET REPAIR DEPOT — the same job as the Allied one, deliberately not the
+ * same silhouette.
+ *
+ * Where the Allies hang a chromed rail off a portal, the Pact drops a riveted
+ * lattice derrick beside the deck, cantilevers a box-girder jib off the top of
+ * it and hangs a counterweight off the tail. Same 6.5 m roofline, same open
+ * deck underneath — see `alliedDepot` for why the roofline is frozen this low —
+ * but the mass is on the ground and the working end is a hook on a chain.
+ */
+function sovietDepot(): StructureMassList {
+  const f = fp('repairDepot');
+  const s = sovietShell(f.w, f.h, f.height, {
+    key: 'repairDepot', inset: 0.72, bodyFraction: 0.32, team: 1.00, windowCount: 3,
+  });
+  const roof = s.roofY;
+  // The derrick stands off the body's left flank and the jib runs down its
+  // centre line, so nothing on the +X half of the deck is roofed over.
+  const mastX = -s.w * 0.26;
+  const jibH = 0.66;
+  const mastTop = f.height - jibH;
+  s.masses.push(
+    ...lattice(mastX, -s.d * 0.06, 2.0, mastTop, 'derrick'),
+    // The jib. A riveted box girder, swept and tapered toward the hook end, so
+    // the longest mass in the model contributes no flat wall at all.
+    {
+      name: 'jib', primitive: 'extrude', role: MassRole.Primary,
+      size: [0.68, jibH, 6.6], anchor: [mastX, mastTop + jibH * 0.5, 0.55], slot: 'rivetPlate',
+      shape: {
+        profile: ductSection(0.68),
+        path: [[0, 0, -3.30], [0, 0, -1.10], [0, 0, 1.35], [0, 0, 3.30]],
+        scale: [0.86, 1.0, 0.86, 0.62], capStart: true, capEnd: true,
+      },
+    },
+    // SOVIET-1 in miniature: the counterweight is a battered, sheared block,
+    // not a brick, and it balances the jib's reach in the silhouette too.
+    tbox('counterweight', MassRole.Primary, [1.55, 1.30, 1.35], [mastX, mastTop - 0.45, -2.30], 'rivetPlate', {
+      topScaleX: 0.78, topScaleZ: 0.72, shear: -0.22, cornerCut: 0.16,
+    }, { chamfer: 0.07 }),
+    // Block and chain, each hung flush off the underside of the piece above it.
+    cyl('hook.block', MassRole.Greeble, [0.62, 0.90, 0.62], [mastX, mastTop - 0.45, 3.45], 'bareMetal', {
+      group: 'hook', segments: 10, capSlot: 'hatch',
+    }),
+    cyl('hook.chain', MassRole.Greeble, [0.18, 1.35, 0.18], [mastX, mastTop - 1.58, 3.45], 'bareMetal', {
+      group: 'hook', segments: 8, chamfer: 0.03, capSlot: 'grille',
+    }),
+    // The winch drum, lying on its side on the machine deck. On the ROOF and
+    // not at the derrick's foot: the slab fills its own footprint down there,
+    // so a ground-level drum would be sealed inside it.
+    cyl('winch', MassRole.Greeble, [1.15, 0.85, 1.15], [-0.85, roof + 0.58, -2.35], 'grille', {
+      group: 'winch', rot: [0, 0, HALF_PI], segments: 12, capSlot: 'rivetPlate',
+    }),
+    // SOVIET-5's exposed hardware, at ground level for once: the running rails
+    // and the grating in front of the bay. Both sit FORWARD of the slab for the
+    // same reason the winch sits above it.
+    box('deck.rail', MassRole.Greeble, [0.34, 0.22, 2.5], [1.55, 0.15, 3.35], 'bareMetal', {
+      mirrorX: true, group: 'deckRails', chamfer: 0.04,
+    }),
+    plate('deck.grate', MassRole.Greeble, taperOutline(s.w * 1.10, 2.4, 0.90), 0.20,
+      [0, 0.12, 3.30], undefined, 'grille', { group: 'deck', chamfer: 0.04 }),
+    // A short flue over the welding bay. Every Pact structure carries one, and
+    // this is the cheapest place to put the family cue on a building whose own
+    // roof is only 2 m off the ground.
+    ...sovietStack(s.w * 0.34, -s.d * 0.30, s.w * 0.11, roof, f.height - 1.15, 'stackA'),
+  );
+  return list('soviet_depot', 'Repair Depot', 'soviets', 'repairDepot', s.masses, [
+    ...baseSockets(s.d, f.height - 1.15, s.w * 0.34, -s.d * 0.30),
+    // No door and nothing is produced here; `Crane` is the hook the repair VFX
+    // hangs off, exactly as on the Allied depot.
+    { part: PartId.Crane, pos: [mastX, mastTop - 2.30, 3.45] },
   ]);
 }
 
@@ -1782,6 +1951,7 @@ export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   alliedBarracks(),
   alliedRefinery(),
   alliedWarFactory(),
+  alliedDepot(),
   alliedRadar(),
   alliedTech(),
   oreSilo('allies'),
@@ -1797,6 +1967,7 @@ export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   sovietBarracks(),
   sovietRefinery(),
   sovietWarFactory(),
+  sovietDepot(),
   sovietRadar(),
   sovietTech(),
   oreSilo('soviets'),

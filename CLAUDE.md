@@ -37,9 +37,14 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npx tsc --noEmit     # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 1848 passing across 74 files
+npm test             # vitest, currently 1873 across 75 files (one known flake, see below)
 npm run build        # must exit 0
 ```
+
+**The one known flake** is `perf-hud.spec.ts` "allocates nothing per frame", which compares GC counts
+with a tolerance of 2 and occasionally reports 3 in a full run while passing every time in isolation.
+Re-run that file alone before believing it; if it fails alone, it is real. Do not widen the tolerance
+to make it quiet — the point of the assertion is that the sample path allocates nothing.
 
 `npm run build` deliberately does **not** typecheck. esbuild strips types, so a type error must never
 stop the game from running. That is what `npm run typecheck` is for. Do not "helpfully" wire tsc into
