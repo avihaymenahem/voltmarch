@@ -13,6 +13,15 @@
  * `RenderPhase.Present` is the last phase, so `ctx.dt` here is the interval
  * across a whole rendered frame — which is exactly the quantity the controller
  * steers on. Sampling earlier would measure part of a frame and read fast.
+ *
+ * IT IS ALSO THE ONLY SAFE PLACE TO APPLY THE DECISION, AND THAT IS NOT LUCK.
+ * `RenderPhase.Present` runs inside `GameLoop.renderPass`, BEFORE the host's
+ * render hook draws. So the reallocation this causes is followed by a complete
+ * frame in the same task and nothing flat can be presented — `beginFrame()`
+ * cancels the `RepaintGuard` repaint, so it is free as well as correct. Moving
+ * this system after the draw, or applying a decision from a timer or an rAF of
+ * its own, would put it straight back on the path that produced the macOS black
+ * flash. See `src/render/RepaintGuard.ts`.
  * ============================================================================
  */
 
@@ -27,6 +36,11 @@ import { AdaptiveResolution } from './AdaptiveResolution';
 let handle: RendererHandle | null = null;
 let controller: AdaptiveResolution | null = null;
 let enabled = true;
+/** Unsubscribe for the layout-box watcher below. */
+let offResize: (() => void) | null = null;
+/** Last CSS layout box seen, so a genuine window change can be told apart. */
+let lastCssW = 0;
+let lastCssH = 0;
 
 /** Adjustments made this match. Surfaced so a silent no-op is visible. */
 export let adaptiveChanges = 0;
@@ -65,6 +79,30 @@ export default defineSystem({
     controller = new AdaptiveResolution(handle.resolutionScale);
     adaptiveChanges = 0;
     adaptiveMedianMs = 0;
+
+    /*
+     * STAND DOWN WHILE THE WINDOW IS ACTUALLY CHANGING SIZE.
+     *
+     * A fullscreen toggle or a drag between displays is a burst of resizes, and
+     * every frame in that burst is expensive for reasons that have nothing to do
+     * with how heavy the scene is — buffers are being reallocated, shaders
+     * re-specialised, the compositor re-laying out. Feeding those intervals to
+     * the controller makes it cut resolution for a transient, and the cut is
+     * itself another reallocation on top of the burst.
+     *
+     * So a change to the CSS LAYOUT BOX throws the window away and restarts the
+     * cooldown. Only the layout box: the drawing-buffer size also changes on
+     * every step this controller takes, and resetting on that would mean it
+     * could never judge its own decision.
+     */
+    lastCssW = handle.size.cssWidth;
+    lastCssH = handle.size.cssHeight;
+    offResize = handle.onResize((size) => {
+      if (size.cssWidth === lastCssW && size.cssHeight === lastCssH) return;
+      lastCssW = size.cssWidth;
+      lastCssH = size.cssHeight;
+      controller?.reset(controller.current);
+    });
   },
 
   frame(rc: RenderContext): void {
@@ -84,9 +122,13 @@ export default defineSystem({
   },
 
   dispose(): void {
+    offResize?.();
+    offResize = null;
     handle = null;
     controller = null;
     adaptiveChanges = 0;
     adaptiveMedianMs = 0;
+    lastCssW = 0;
+    lastCssH = 0;
   },
 });

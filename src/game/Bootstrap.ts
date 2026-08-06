@@ -296,6 +296,27 @@ export function bootstrap(options: BootOptions): GameHandle {
     debug.endFrame();
   }
 
+  /*
+   * THE UNDRAWN-BUFFER GUARANTEE.
+   *
+   * `renderer.ts` knows when the drawing buffer has just been reallocated and is
+   * holding nothing; it does not know how to draw the game. So it borrows
+   * `present`. Anything that resizes the canvas outside a frame — `src/main.ts`
+   * debouncing a window `resize` or a DPR change into `GameHandle.resize()`, a
+   * fullscreen toggle, a display switch, a context restore — now gets a complete
+   * frame drawn into the new buffer before the browser paints, instead of the
+   * flat clear that was being presented. See `src/render/RepaintGuard.ts`.
+   *
+   * `dt` is zero: a repaint is the SAME moment redrawn at a new size, not a new
+   * moment. Anything else would let a window drag age the effect pools and would
+   * put wall-clock time into a `?shot=` capture, which is the defect
+   * `GameLoop.captureClock` exists to remove.
+   */
+  handle.setPresenter(() => {
+    if (disposed) return;
+    present(0);
+  });
+
   /* -- handle ------------------------------------------------------------- */
 
   const ctx: GameContext = {

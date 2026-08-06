@@ -30,6 +30,15 @@
  *   between a 4K and a 1080p monitor re-rasterises correctly. Resizes are
  *   coalesced to one per animation frame.
  *
+ *   TWO RULES GOVERN A RESIZE, AND BOTH ARE LOAD-BEARING. First, a resize that
+ *   does not change the drawing buffer must not touch it — assigning to
+ *   `canvas.width` reallocates even when the value is unchanged, and the product
+ *   calls `resize(true)` on every window event. Second, a reallocation must be
+ *   followed by a complete frame BEFORE the browser paints, or the compositor
+ *   presents the flat replacement buffer. That is `RepaintGuard`, and it is the
+ *   fix for the recurring macOS "black flash" report; see that file for the
+ *   measurement.
+ *
  * - Compositing: this file also owns the PANEL-BLUR GATE (see "Compositing
  *   policy" below). A `backdrop-filter` over an accelerated WebGL canvas is a
  *   known source of intermittent black frames on macOS; because this file is
@@ -46,6 +55,8 @@
  */
 
 import * as THREE from 'three';
+
+import { RepaintGuard } from './RepaintGuard';
 
 declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -841,6 +852,55 @@ export interface RenderSize {
 
 export type ResizeListener = (size: Readonly<RenderSize>) => void;
 
+/**
+ * WORK OUT THE DRAWING BUFFER FOR A LAYOUT BOX. Pure, so the arithmetic that
+ * decides whether the buffer is reallocated is testable without a GL context.
+ *
+ * `fixed` is the screenshot path: one drawing-buffer pixel per requested pixel,
+ * device pixel ratio pinned to 1 and `resolutionScale` ignored, so captures are
+ * byte-comparable across machines with different DPR.
+ */
+export function planDrawingBuffer(
+  cssWidth: number,
+  cssHeight: number,
+  devicePixelRatio: number,
+  maxPixelRatio: number,
+  resolutionScale: number,
+  fixed: boolean
+): RenderSize {
+  const w = Math.max(2, Math.round(cssWidth));
+  const h = Math.max(2, Math.round(cssHeight));
+  const dpr = fixed ? 1 : Math.min(devicePixelRatio || 1, Math.max(0.5, maxPixelRatio));
+  const effective = fixed ? 1 : Math.max(0.25, Math.min(4, dpr * resolutionScale));
+  return {
+    cssWidth: w,
+    cssHeight: h,
+    width: Math.max(2, Math.round(w * effective)),
+    height: Math.max(2, Math.round(h * effective)),
+    pixelRatio: effective,
+  };
+}
+
+/**
+ * Would applying `plan` leave the drawing buffer exactly as it already is?
+ *
+ * This is the test a FORCED resize used to skip, and skipping it is not free:
+ * `renderer.setSize` assigns to `canvas.width`, and assigning to `canvas.width`
+ * REALLOCATES the drawing buffer even when the value is unchanged. `src/main.ts`
+ * calls `GameHandle.resize()` — a forced resize — on every window `resize` event
+ * and every DPR change, so a window nudge that changed nothing still threw away
+ * the finished frame. See `RepaintGuard`.
+ */
+export function drawingBufferUnchanged(plan: RenderSize, current: Readonly<RenderSize>): boolean {
+  return (
+    plan.cssWidth === current.cssWidth &&
+    plan.cssHeight === current.cssHeight &&
+    plan.width === current.width &&
+    plan.height === current.height &&
+    plan.pixelRatio === current.pixelRatio
+  );
+}
+
 export interface RendererHandle {
   readonly renderer: THREE.WebGLRenderer;
   readonly canvas: HTMLCanvasElement;
@@ -862,6 +922,26 @@ export interface RendererHandle {
    * one on screen instead.
    */
   isContextLost(): boolean;
+  /**
+   * Register "draw one complete frame into the current buffer, right now".
+   *
+   * The renderer cannot draw the game — it owns no scene, camera or post chain
+   * — but it is the only thing that knows when the drawing buffer has just been
+   * reallocated and holds nothing. So the host lends it a painter, and every
+   * reallocation is followed by a real frame BEFORE the browser paints. Without
+   * it the compositor presents the flat replacement buffer: measured at 10 out
+   * of 10 forced resizes issued after a frame had already been drawn. See
+   * `RepaintGuard`.
+   *
+   * Pass null to unregister (teardown).
+   */
+  setPresenter(fn: (() => void) | null): void;
+  /**
+   * Repaint bookkeeping, for the perf overlay and for tests. `repaints` are the
+   * ones that cost an extra draw; `coalesced` are the ones a frame that was
+   * about to happen anyway absorbed for free.
+   */
+  readonly repaintStats: { readonly repaints: number; readonly coalesced: number };
   /** Force a resize evaluation (also called automatically). */
   resize(force?: boolean): void;
   /** Override the layout size, e.g. the screenshot harness at a fixed res. */
@@ -1016,6 +1096,19 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
   let disposed = false;
   /** See the context-loss block below. Declared here so `doResize` can read it. */
   let contextLost = false;
+  /**
+   * Whether the LAST applied size was a fixed-size (screenshot) one. Part of the
+   * "did anything actually change" test: entering or leaving fixed-size mode
+   * changes `updateStyle` and `isFixedSize` even when the pixel counts match.
+   */
+  let appliedFixed = false;
+
+  /**
+   * The undrawn-buffer guarantee. Every reallocation invalidates; every frame
+   * that is about to draw cancels. See `src/render/RepaintGuard.ts` for the
+   * measurement this exists for.
+   */
+  const repaint = new RepaintGuard();
 
   function measure(): { w: number; h: number } {
     if (fixedWidth !== null && fixedHeight !== null) return { w: fixedWidth, h: fixedHeight };
@@ -1033,42 +1126,65 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
   function doResize(force: boolean): void {
     if (disposed) return;
     const { w, h } = measure();
+    const fixed = fixedWidth !== null;
     // A fixed size means a screenshot: 1 drawing-buffer pixel per requested
     // pixel, so shots are byte-comparable across machines with different DPR.
-    const dpr =
-      fixedWidth !== null ? 1 : Math.min(window.devicePixelRatio || 1, Math.max(0.5, cfg.maxPixelRatio));
-    const effective =
-      fixedWidth !== null ? 1 : Math.max(0.25, Math.min(4, dpr * cfg.resolutionScale));
-    const pw = Math.max(2, Math.round(w * effective));
-    const ph = Math.max(2, Math.round(h * effective));
-
-    if (!force && w === size.cssWidth && h === size.cssHeight && pw === size.width && ph === size.height) return;
-
-    size.cssWidth = w;
-    size.cssHeight = h;
-    size.width = pw;
-    size.height = ph;
-    size.pixelRatio = effective;
-
-    renderer.setPixelRatio(effective);
-    // updateStyle=false when we are driving a fixed-size offscreen render.
-    renderer.setSize(w, h, fixedWidth === null);
+    const plan = planDrawingBuffer(
+      w,
+      h,
+      typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
+      cfg.maxPixelRatio,
+      cfg.resolutionScale,
+      fixed
+    );
 
     /*
-     * Resizing the canvas REALLOCATES the drawing buffer, and a fresh drawing
-     * buffer is zero-filled — opaque black, with `alpha: false`. Between here
-     * and the next presented frame the compositor may put that buffer on
-     * screen; on a Retina MacBook a fullscreen toggle or a display change fires
-     * this path several times in a row. Painting the sky colour in immediately
-     * costs one clear and removes the window entirely.
+     * DOES THIS RESIZE ACTUALLY CHANGE THE BUFFER?
+     *
+     * This test used to be skipped whenever `force` was set, and `force` is the
+     * common case: `src/main.ts` debounces every window `resize` event and every
+     * DPR change into `GameHandle.resize()`, which calls `handle.resize(true)`.
+     * `renderer.setSize` assigns to `canvas.width`, and THAT REALLOCATES THE
+     * DRAWING BUFFER even when the number is unchanged — so a window nudge that
+     * moved nothing still threw away the finished frame and presented a flat
+     * one. Forcing now means "re-evaluate and re-notify", not "reallocate".
      */
-    if (!contextLost) {
-      try {
-        renderer.setRenderTarget(null);
-        renderer.clear(true, true, true);
-      } catch {
-        /* a context that died between the check and the call — next frame retries */
+    const unchanged = drawingBufferUnchanged(plan, size) && fixed === appliedFixed;
+    if (!force && unchanged) return;
+
+    size.cssWidth = plan.cssWidth;
+    size.cssHeight = plan.cssHeight;
+    size.width = plan.width;
+    size.height = plan.height;
+    size.pixelRatio = plan.pixelRatio;
+
+    if (!unchanged) {
+      appliedFixed = fixed;
+      renderer.setPixelRatio(plan.pixelRatio);
+      // updateStyle=false when we are driving a fixed-size offscreen render.
+      renderer.setSize(plan.cssWidth, plan.cssHeight, !fixed);
+
+      /*
+       * The buffer we just got is zero-filled — opaque black, with
+       * `alpha: false`. Two things happen about that, and both are needed:
+       *
+       *   1. The sky colour is painted in now, so the worst case is a flat
+       *      horizon-grey rectangle rather than a black one. This is the safety
+       *      net for the paths where nothing can draw yet (boot, teardown, a
+       *      context that has just died).
+       *   2. The buffer is marked UNDRAWN. Unless a complete frame follows
+       *      before the browser paints, `RepaintGuard` draws one. That is the
+       *      actual fix; the clear above is only what happens if it cannot run.
+       */
+      if (!contextLost) {
+        try {
+          renderer.setRenderTarget(null);
+          renderer.clear(true, true, true);
+        } catch {
+          /* a context that died between the check and the call — next frame retries */
+        }
       }
+      repaint.invalidate();
     }
 
     for (let i = 0; i < resizeListeners.length; i++) {
@@ -1181,6 +1297,14 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
       return contextLost;
     },
 
+    setPresenter(fn) {
+      repaint.setPainter(fn);
+    },
+
+    get repaintStats() {
+      return repaint;
+    },
+
     resize(force = false) {
       doResize(force);
     },
@@ -1235,11 +1359,20 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
 
     beginFrame() {
       renderer.info.reset();
+      /*
+       * A complete frame is about to be drawn into the current buffer, so a
+       * repaint scheduled by a resize earlier in this task is redundant. This is
+       * what makes the guarantee nearly free: the adaptive-resolution controller
+       * changes scale at `RenderPhase.Present`, which is BEFORE the host draws,
+       * so its reallocation is absorbed by the frame it is already inside.
+       */
+      repaint.frameStarting();
     },
 
     dispose() {
       if (disposed) return;
       disposed = true;
+      repaint.dispose();
       unsubscribeConfig();
       ro?.disconnect();
       window.removeEventListener('resize', scheduleResize);

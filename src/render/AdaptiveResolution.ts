@@ -32,9 +32,18 @@
  *   > buffer is zero-filled — opaque black... on a Retina MacBook a fullscreen
  *   > toggle or a display change fires this path several times in a row.
  *
- * That is the black-flash bug the reporter confirmed fixed earlier today. A
- * naive controller reacting every frame would reintroduce it, and would also
- * make the image visibly pump. So:
+ * This block used to call that "the black-flash bug the reporter confirmed fixed
+ * earlier today". IT WAS NOT FIXED — it was reported again, and the fix credited
+ * here was the backdrop-filter gate, which addresses a different and also real
+ * problem. What actually presents a flat frame is a reallocation with no draw
+ * after it, and that is now prevented at the source by
+ * `src/render/RepaintGuard.ts`: this controller applies its decision at
+ * `RenderPhase.Present`, before the host draws, so the frame it resizes is
+ * redrawn in the same task and costs nothing extra.
+ *
+ * The guarantee makes a resize SAFE. It does not make one CHEAP — a reallocation
+ * still throws away every composer target — so every reason below to move slowly
+ * stands unchanged:
  *
  *   - decisions are made from a MEDIAN over a long window, never one frame;
  *   - there is a dead zone, so a frame time near target changes nothing;
