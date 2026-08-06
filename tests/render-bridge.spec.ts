@@ -240,6 +240,50 @@ describe('InstanceBatcher — slot lifecycle', () => {
     teardown(bridge);
   });
 
+  it('A RECYCLED SLOT IS STILL AFFINE — w must be 1, or the instance vanishes', () => {
+    // THE INVISIBLE-UNITS BUG, reported four times before it was found.
+    //
+    // `free()` zeroes all sixteen floats, destroying the `m[15] = 1` that only
+    // the constructor and `grow()` used to establish. `writeMatrix` cannot
+    // repair it — MATRIX_SLOTS deliberately covers only the twelve mutable
+    // elements. So a slot was correct on first use and projective (w = 0) on
+    // every reuse, which collapses the model to a sub-pixel dot at the far
+    // plane while the entity stays alive and shootable.
+    //
+    // The population that gets recycled slots is precisely "an enemy that
+    // crossed your vision boundary", which is why it read as
+    // "invisible enemies inside my base, not in fog".
+    const { store, scene, bridge } = makeRig();
+
+    const first = store.alloc(EntityKind.Infantry, -1, P0, Faction.Allies, 20, 0, 20, 0);
+    store.snapshotPrev();
+    bridge.update(1);
+
+    // Kill it: the slot goes back on the LIFO free list, blanked.
+    store.markDead(first);
+    store.flushDestroyed();
+    bridge.update(1);
+
+    // The next allocation pops that very slot straight back off the free list.
+    const second = store.alloc(EntityKind.Infantry, -1, P0, Faction.Allies, 40, 0, 40, 0);
+    store.snapshotPrev();
+    bridge.update(1);
+    expect(second).toBeGreaterThanOrEqual(0);
+
+    const mesh = meshes(scene)[0];
+    expect(mesh.count).toBe(1);
+    const a = mesh.instanceMatrix.array;
+    // The four constant elements of a column-major affine transform. w = 0 is
+    // the whole defect: it makes the vertex a direction instead of a point.
+    expect(a[3]).toBe(0);
+    expect(a[7]).toBe(0);
+    expect(a[11]).toBe(0);
+    expect(a[15], 'recycled slot lost its w=1 — the unit renders invisible').toBe(1);
+    // And it is genuinely placed, not merely affine.
+    expect(translation(mesh, 0)).toEqual([40, 0, 40]);
+    teardown(bridge);
+  });
+
   it('hides garrisoned and cloaked entities and reclaims their slots', () => {
     const { store, scene, bridge } = makeRig();
     const id = store.alloc(EntityKind.Infantry, -1, P0, Faction.Allies, 5, 0, 5, 0);

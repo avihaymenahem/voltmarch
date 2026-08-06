@@ -84,6 +84,13 @@ Appended to the URL, e.g. `?art=dusk&seed=1234`.
 | `?tier=<tier>` | quality override — `low`, `medium`, `high`, `ultra` |
 | `?seed=<int>` | deterministic RNG seed |
 | `?fog=off` | disable fog of war |
+| `?unlockall` | developer flag: treat every mission-gated unit and structure as owned |
+
+`?unlockall` (or `?unlock=all`) is read-only — it changes what the unlock gate *answers*, never what
+the profile *stores* — so it cannot grant itself anything and reloading without it restores your real
+progression. It logs a warning on boot so a session running with it is never mistaken for a normal
+one. It deliberately works in production builds too: the deployed Pages bundle is where bugs get
+reproduced, and a flag that only worked on localhost would be useless there.
 
 ## How the art direction is enforced
 

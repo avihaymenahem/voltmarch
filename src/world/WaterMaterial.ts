@@ -68,6 +68,7 @@ import {
   type WaterPalette,
 } from '../core/config';
 import { DEG2RAD, TAU, clamp, clamp01, fbm2, hexToLinearRgb, lerp, simplex2 } from '../core/math';
+import { shroudUniforms } from '../render/FogOfWar';
 
 /* ==========================================================================
  * 1. UNIFORMS
@@ -142,6 +143,13 @@ export interface WaterUniforms {
   /** x = mix (<= WATER_SSR.mixMax), y = fresnel power, z = shore falloff. */
   uSsr: { value: THREE.Vector3 };
   uReflect: { value: THREE.Vector3 };
+
+  /* The shared shroud mask. Owned by FogOfWar, held here BY REFERENCE. */
+  uFogMask: { value: THREE.Texture | null };
+  uFogTint: { value: THREE.Vector4 };
+  uFogDark: { value: THREE.Vector4 };
+  uFogParams: { value: THREE.Vector2 };
+  uFogAmount: { value: number };
 
   [key: string]: THREE.IUniform;
 }
@@ -467,6 +475,14 @@ precision highp float;
 
 uniform sampler2D uField;
 uniform sampler2D uWaves;
+
+// Shared with every other material that draws above the fog carpet.
+// See FogOfWar.ts §1b.
+uniform sampler2D uFogMask;
+uniform vec4  uFogTint;
+uniform vec4  uFogDark;
+uniform vec2  uFogParams;
+uniform float uFogAmount;
 uniform sampler2D uLace;
 uniform sampler2D uWake;
 
@@ -646,7 +662,8 @@ void main() {
   float ndl = max(dot(N, uSunDir), 0.0);
   vec3 hemi = mix(uHemiGround, uHemiSky, 0.5 + 0.5 * N.y);
   vec3 lightBody = (uGrade.x * ndl * uSunColor + uGrade.y * hemi) / uLightNorm;
-  vec3 lightFoam = (0.80 * ndl * uSunColor + 0.85 * hemi) / uLightNorm;
+  vec3 lightFoam = (${WATER_LOOK.foamSunDiffuse.toFixed(4)} * ndl * uSunColor
+                  + ${WATER_LOOK.foamFillDiffuse.toFixed(4)} * hemi) / uLightNorm;
 
   vec3 col = mix(body * lightBody, foamCol * lightFoam, foam);
 
@@ -683,6 +700,19 @@ void main() {
   vec3 spec = lobe * ndl * uSunColor * uGlint.z * (1.0 - foam * 0.85);
 
   col = (col + spec) * uGrade.z;
+
+  /* ---- the shroud, self-applied ---------------------------------------- */
+  // The fog carpet is draped on the SEABED and depth-tested, while this surface
+  // sits at WATER_LEVEL above it and writes depth in an earlier render band —
+  // so the carpet can never cover the sea. Without this block, unexplored ocean
+  // renders as bright daylight water. Same formula as applyShroudTint().
+  {
+    float vmV   = texture2D(uFogMask, vWorld.xz * uFogParams.x).r;
+    float vmRem = 1.0 - smoothstep(0.0, uFogParams.y, vmV);
+    float vmFog = 1.0 - smoothstep(uFogParams.y, 1.0, vmV);
+    float vmA   = mix(uFogTint.w * vmFog, uFogDark.w, vmRem) * uFogAmount;
+    col = mix(col, mix(uFogTint.xyz, uFogDark.xyz, vmRem), vmA);
+  }
 
   // The waterline is one texel wide in the field, so fade the last few
   // centimetres of depth rather than leaving a hard stair-stepped edge.
@@ -893,11 +923,12 @@ export function createWaterMaterial(opts: WaterMaterialOptions): WaterMaterialSe
       ),
     },
     uFoamMisc: {
-      // y is mip compensation: a filament field averages toward its mean under
-      // minification, so the far half of the frame loses its foam without a
-      // small threshold drop with distance. 0.03 restores it; 0.06 measurably
-      // over-foamed the far field.
-      value: new THREE.Vector3(WATER_FOAM.choppyBias, 0.03, WATER_WAKE.foamGain),
+      // y is the mip compensation. It was a bare 0.03 here and invisible to
+      // `probeFoam`; it is `WATER_FOAM.distanceBias` now so the probe reads the
+      // same number the shader does.
+      value: new THREE.Vector3(
+        WATER_FOAM.choppyBias, WATER_FOAM.distanceBias, WATER_WAKE.foamGain,
+      ),
     },
 
     uShoreFoam: { value: linearVec(opts.palette.shoreFoam) },
@@ -939,6 +970,15 @@ export function createWaterMaterial(opts: WaterMaterialOptions): WaterMaterialSe
       ),
     },
     uReflect: { value: linearVec(opts.palette.reflect) },
+
+    // BY REFERENCE, not copied — FogOfWar swaps the mask in when it is
+    // constructed, long after this material exists. Copies would freeze the
+    // 1x1 "fully visible" default and the sea would never be shrouded.
+    uFogMask: shroudUniforms.uFogMask,
+    uFogTint: shroudUniforms.uFogTint,
+    uFogDark: shroudUniforms.uFogDark,
+    uFogParams: shroudUniforms.uFogParams,
+    uFogAmount: shroudUniforms.uFogAmount,
   };
 
   const material = new THREE.ShaderMaterial({
@@ -1111,16 +1151,128 @@ export interface LuminanceProbe {
   samples: number[];
   /** True if `mean` is inside WATER_LOOK.luminanceBand. */
   pass: boolean;
+  /** Mean foam fraction the estimate used. 0 when `foam` is disabled. */
+  foamCoverage: number;
+}
+
+export interface LuminanceProbeOptions {
+  /**
+   * Include the foam layer. DEFAULT TRUE, and that default is the whole point —
+   * see the header of `probeOpenWaterLuminance`.
+   */
+  foam?: boolean;
+  /** Sea state. Defaults to the SHIPPING value, not a hand-picked calm one. */
+  seaState?: number;
+  /**
+   * How far into the mip-compensation ramp the sampled water sits, 0..1 —
+   * the shader's `clamp(viewDist / 90, 0, 1)`. Open water in a framed shot is
+   * mostly mid-to-far, so 0.5 is the default rather than 0.
+   */
+  distanceFrac?: number;
+}
+
+/**
+ * The crest term, EXACTLY as `swellHeight` builds it.
+ *
+ * Two crest-sharpened waves at 0.62/0.38, scaled by `(0.55 + 0.45 * seaState)`
+ * — `crestN` divides the summed height back by `uWaveA.z`, so the amplitude
+ * that survives into `crestPush` is that factor, not 1. `probeFoam` modelled
+ * this as a bare `sin`, which both dropped the 0.55+0.45s scale and gave the
+ * wrong shape: `pow(|sin|, 0.6)` has BROADER crests than a sine and therefore
+ * spends more of its period near the extremes.
+ */
+function crestPushSamples(sea: number, n: number): Float64Array {
+  const k = WATER_WAVES.swellSharpness;
+  const scale = 0.55 + 0.45 * sea;
+  const gain = WATER_FOAM.crestGain * 0.5 * (0.4 + 0.6 * sea);
+  const out = new Float64Array(n * n);
+  for (let i = 0; i < n; i++) {
+    const s1 = Math.sin((TAU * i) / n);
+    const h1 = Math.sign(s1) * Math.pow(Math.max(Math.abs(s1), 1e-4), k);
+    for (let j = 0; j < n; j++) {
+      const s2 = Math.sin((TAU * j) / n);
+      const h2 = Math.sign(s2) * Math.pow(Math.max(Math.abs(s2), 1e-4), k);
+      const crestN = clamp((h1 * 0.62 + h2 * 0.38) * scale, -1, 1);
+      out[i * n + j] = crestN * gain;
+    }
+  }
+  return out;
+}
+
+/**
+ * The distribution of the shader's `foam` value over open water, as a weighted
+ * histogram. Needed rather than a mean because the tone map is non-linear:
+ * tonemapping the average foam is NOT the average of the tonemapped pixels, and
+ * foam is close to a two-state field.
+ */
+function foamHistogram(sea: number, distanceFrac: number, bins: number):
+{ f: Float64Array; w: Float64Array; mean: number } {
+  // Faithful to the shader: base threshold, sea-state bias, AND the distance
+  // mip compensation that `probeFoam` omits entirely.
+  const thr = WATER_FOAM.thresholdLo
+    - sea * WATER_FOAM.choppyBias
+    - WATER_FOAM.distanceBias * clamp01(distanceFrac);
+  const width = WATER_FOAM.thresholdHi - WATER_FOAM.thresholdLo;
+
+  const push = crestPushSamples(sea, 24);
+  const f = new Float64Array(bins);
+  const w = new Float64Array(bins);
+  for (let b = 0; b < bins; b++) f[b] = (b + 0.5) / bins;
+
+  // lace ~ N(0.5, LACE_SIGMA), integrated over +/-4 sigma.
+  const LN = 96;
+  const lo = 0.5 - 4 * LACE_SIGMA;
+  const hi = 0.5 + 4 * LACE_SIGMA;
+  const step = (hi - lo) / LN;
+  let total = 0;
+  let mean = 0;
+  for (let i = 0; i < LN; i++) {
+    const lace = lo + step * (i + 0.5);
+    const z = (lace - 0.5) / LACE_SIGMA;
+    const pdf = Math.exp(-0.5 * z * z);
+    for (let p = 0; p < push.length; p++) {
+      const t = clamp01((lace + push[p] - thr) / width);
+      const foam = t * t * (3 - 2 * t);
+      const b = Math.min(bins - 1, Math.floor(foam * bins));
+      w[b] += pdf;
+      total += pdf;
+      mean += foam * pdf;
+    }
+  }
+  for (let b = 0; b < bins; b++) w[b] /= total;
+  return { f, w, mean: mean / total };
 }
 
 /**
  * Scorecard #25: open-water mean luminance must land in 45-115 of 255.
  *
- * Runs the fragment shader's body-colour path for flat water with no foam and
- * no glint (the "open water" the scorecard samples), through exposure and the
- * real tone map, and returns the 0-255 mean. This is the number R7 says must
- * be automated, and it is why `WATER_LOOK.outputGain` exists as a single
- * tunable rather than being smeared across five colour constants.
+ * WHY THIS FUNCTION WAS REWRITTEN — IT PASSED A FRAME THAT MEASURED 210/255.
+ * ------------------------------------------------------------------------
+ * It used to run the BODY path only: flat water, no foam, no glint. It reported
+ * 77.4 and PASS. The first rendered naval frame that actually contained water
+ * measured 209.9 over open sea, with 27% of pixels above 235. The probe was not
+ * wrong about the body — it was answering a question nobody had asked, because
+ * the body is not what you are looking at.
+ *
+ * Ablations, in a real frame:
+ *   glint 3.4 -> 0.0     209.9 -> 209.7   the glint is 0.2 of 210. Not the cause.
+ *   foam on   -> off     201.7 ->  45.0   foam is essentially all of it.
+ *
+ * So foam is modelled here now, and modelled as a DISTRIBUTION rather than a
+ * mean, because the tone map is non-linear and foam is close to a two-state
+ * field — tonemapping the average is not the average of the tonemapped.
+ *
+ * Two things make foam dominate at coverage far below 100%:
+ *   1. `lightFoam` uses a 0.80 sun coefficient against the body's
+ *      `WATER_LOOK.sunDiffuse` of 0.30 — foam is lit 2.67x harder, before its
+ *      near-white albedo and an HDR sun of ~(3.1, 2.8, 2.3).
+ *   2. The mip-compensation threshold drop (`WATER_FOAM.distanceBias`) opens
+ *      coverage up with distance, and `probeFoam` never modelled it.
+ *
+ * The glint is still excluded, and that is now a MEASURED decision rather than
+ * an assumption: at 0.2 of 210 it is below the noise of everything else here.
+ * If `WATER_GLINT.intensity` is ever raised substantially, re-measure before
+ * trusting this number again.
  */
 export function probeOpenWaterLuminance(
   palette: WaterPalette,
@@ -1128,7 +1280,11 @@ export function probeOpenWaterLuminance(
   rig: WaterLightRig,
   exposure: number,
   toneMode: 'agx' | 'aces' | 'none' = 'agx',
+  opts: LuminanceProbeOptions = {},
 ): LuminanceProbe {
+  const useFoam = opts.foam ?? true;
+  const sea = opts.seaState ?? WATER_WAVES.seaState;
+  const distFrac = opts.distanceFrac ?? 0.5;
   const ramp = resampleRamp(palette, WATER_LOOK.rampStops);
   const norm = lightNorm(rig);
   const k = WATER_LOOK.rampDepthMetres / Math.max(rampDepth, 0.25);
@@ -1144,9 +1300,31 @@ export function probeOpenWaterLuminance(
     (WATER_LOOK.sunDiffuse * ndl * rig.sunColor.z + WATER_LOOK.fillDiffuse * rig.hemiSky.z) / norm,
   ];
 
+  // The foam layer, lit its own way. `lightFoam` in the shader is
+  // `(0.80 * ndl * sun + 0.85 * hemi) / norm` — a 0.80 sun coefficient against
+  // the body's 0.30. That 2.67x is most of why foam dominates the frame at a
+  // coverage well under half.
+  const foamCol = linearVec(palette.foam);
+  const fs = WATER_LOOK.foamSunDiffuse;
+  const ff = WATER_LOOK.foamFillDiffuse;
+  const lightFoam = [
+    (fs * ndl * rig.sunColor.x + ff * rig.hemiSky.x) / norm,
+    (fs * ndl * rig.sunColor.y + ff * rig.hemiSky.y) / norm,
+    (fs * ndl * rig.sunColor.z + ff * rig.hemiSky.z) / norm,
+  ];
+  const foamLin = [
+    foamCol.x * lightFoam[0] * WATER_LOOK.outputGain * exposure,
+    foamCol.y * lightFoam[1] * WATER_LOOK.outputGain * exposure,
+    foamCol.z * lightFoam[2] * WATER_LOOK.outputGain * exposure,
+  ];
+  const hist = useFoam
+    ? foamHistogram(sea, distFrac, 16)
+    : { f: new Float64Array([0]), w: new Float64Array([1]), mean: 0 };
+
   const samples: number[] = [];
   const lin = [0, 0, 0];
   const tone = [0, 0, 0];
+  const body0 = [0, 0, 0];
   // "Open water" = past the shore band. Sample the ramp evenly from a quarter
   // depth to the bottom; the first quarter is shelf, not open water.
   const N = 9;
@@ -1171,23 +1349,40 @@ export function probeOpenWaterLuminance(
     const bed = [seabed.x, seabed.y, seabed.z];
     for (let c = 0; c < 3; c++) {
       const mixed = lerp(body[c], bed[c] * trans[c], trans[1]);
-      lin[c] = mixed * light[c] * WATER_LOOK.outputGain * exposure;
+      body0[c] = mixed * light[c] * WATER_LOOK.outputGain * exposure;
     }
-    if (toneMode === 'agx') toneAgx(lin, tone);
-    else if (toneMode === 'aces') toneAces(lin, tone);
-    else { tone[0] = lin[0]; tone[1] = lin[1]; tone[2] = lin[2]; }
-    samples.push(
-      0.2126 * linearToSrgb8(tone[0]) +
-      0.7152 * linearToSrgb8(tone[1]) +
-      0.0722 * linearToSrgb8(tone[2]),
-    );
+
+    // Tone-map EACH foam bucket and average the results, never the other way
+    // round. AgX is strongly compressive at the top, so averaging first would
+    // hide exactly the blow-out this probe exists to catch.
+    let acc = 0;
+    for (let b = 0; b < hist.f.length; b++) {
+      const wt = hist.w[b];
+      if (wt <= 0) continue;
+      const fr = hist.f[b];
+      lin[0] = lerp(body0[0], foamLin[0], fr);
+      lin[1] = lerp(body0[1], foamLin[1], fr);
+      lin[2] = lerp(body0[2], foamLin[2], fr);
+      if (toneMode === 'agx') toneAgx(lin, tone);
+      else if (toneMode === 'aces') toneAces(lin, tone);
+      else { tone[0] = lin[0]; tone[1] = lin[1]; tone[2] = lin[2]; }
+      acc += wt * (
+        0.2126 * linearToSrgb8(tone[0]) +
+        0.7152 * linearToSrgb8(tone[1]) +
+        0.0722 * linearToSrgb8(tone[2])
+      );
+    }
+    samples.push(acc);
   }
 
   let mean = 0;
   for (let i = 0; i < samples.length; i++) mean += samples[i];
   mean /= samples.length;
   const band = WATER_LOOK.luminanceBand;
-  return { mean, samples, pass: mean >= band[0] && mean <= band[1] };
+  return {
+    mean, samples, foamCoverage: hist.mean,
+    pass: mean >= band[0] && mean <= band[1],
+  };
 }
 
 function smoothstepDown(edge0: number, edge1: number, x: number): number {
@@ -1213,31 +1408,23 @@ export interface FoamProbe {
  * filaments of width `w` at spacing `s` covers about `2w/s`.
  */
 export function probeFoam(
-  seaStateCalm = 0.12, seaStateChoppy = 0.9,
+  seaStateCalm = WATER_WAVES.seaState, seaStateChoppy = 0.9, distanceFrac = 0.5,
 ): FoamProbe {
-  // The two lookups are the same gaussian field at different scales, so the
-  // weighted mix narrows by sqrt(m^2+(1-m)^2) and the shader's renormaliser
-  // multiplies that back out. Net: the sampled lace is still N(0.5, sigma).
-  const sigma = LACE_SIGMA;
-  const coverage = (sea: number): number => {
-    const thr = WATER_FOAM.thresholdLo - sea * WATER_FOAM.choppyBias;
-    const width = WATER_FOAM.thresholdHi - WATER_FOAM.thresholdLo;
-    const amp = WATER_FOAM.crestGain * 0.5 * (0.4 + 0.6 * sea);
-    // Integrate over the crest phase and over the smoothstep ramp.
-    let acc = 0;
-    const PH = 64;
-    const RAMP = 8;
-    for (let i = 0; i < PH; i++) {
-      const crest = Math.sin((TAU * i) / PH);
-      for (let r = 0; r < RAMP; r++) {
-        const level = thr + (width * (r + 0.5)) / RAMP;
-        // P(lace > level - crest*amp) for lace ~ N(0.5, sigma)
-        const z = (level - crest * amp - 0.5) / sigma;
-        acc += 0.5 * (1 - erf(z / Math.SQRT2));
-      }
-    }
-    return acc / (PH * RAMP);
-  };
+  // TWO CORRECTIONS, both of which made this report a number the shader never
+  // produced, and both of which it certified as PASS:
+  //
+  //  1. `seaStateCalm` defaulted to 0.12. The game ships `WATER_WAVES.seaState`
+  //     = 0.28. The probe was grading a sea state that does not exist in play.
+  //  2. The mip-compensation threshold drop (`WATER_FOAM.distanceBias`, up to
+  //     -0.03) was not modelled AT ALL, so this only ever described water at
+  //     the camera. Most of a framed shot is not at the camera.
+  //
+  // It also modelled the crest as a bare `sin`, dropping both the
+  // `(0.55 + 0.45 * sea)` normalisation `crestN` applies and the broader-topped
+  // shape of `pow(|sin|, 0.6)`. `foamHistogram` is now the single
+  // implementation, shared with `probeOpenWaterLuminance`, so the two cannot
+  // disagree about what the shader does.
+  const coverage = (sea: number): number => foamHistogram(sea, distanceFrac, 16).mean;
   const calm = coverage(seaStateCalm);
   const choppy = coverage(seaStateChoppy);
   // 4.4 ridge cells per tile -> spacing = tile / 4.4 metres; a 2D network

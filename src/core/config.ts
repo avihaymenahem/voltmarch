@@ -80,9 +80,38 @@ export const SPATIAL_DIM = Math.ceil(MAP_SIZE / SPATIAL_CELL);
 /** Largest number of results any single spatial query may return. */
 export const MAX_QUERY_RESULTS = 256;
 
-/** Terrain height range in metres — plateaus, not mountains. */
+/**
+ * Terrain height range in metres — plateaus, not mountains.
+ *
+ * `TERRAIN_MIN_HEIGHT` HAS NO CODE READERS and never had any. The real floor is
+ * a literal `0` inside `Terrain.buildHeightfield`. Three separate comments —
+ * here, in `SeaSpec.depth` and in `NAVAL_SEA` — asserted that this constant was
+ * the floor, and all three were describing a constant nothing consumed. It is
+ * kept as documentation of the LAND floor; do not assume changing it does
+ * anything.
+ */
 export const TERRAIN_MIN_HEIGHT = 0;
 export const TERRAIN_MAX_HEIGHT = 24;
+/**
+ * How far the SEABED may sit below y=0. Sea cells only — `Terrain.carveSea` is
+ * gated on `seaDistance > 0`, so this can never lower land.
+ *
+ * WHY THIS EXISTS. With the floor pinned at 0 and `WATER_LEVEL` at 2.0, no
+ * water anywhere in the game could exceed 2.0 m deep. `Water.fitRamp` then
+ * always clamped to `rampDepthMin` (2.6 m) against a 16.8 m design target, so
+ * the absorption gradient — the entire point of the water shader — had only
+ * ever run in its shallow fallback. Worse, at 2 m of depth `exp(-depth*absorb)`
+ * stays near 1, so the "sea" was mostly sunlit SEABED read through a nearly
+ * transparent sheet. That is what made the naval fixture a warm white glare.
+ *
+ * -6 is chosen, not arbitrary: the shadow cascade is fitted by intersecting the
+ * view frustum with the y=0 plane and then padded by a fixed 12 m
+ * (`render/scene.ts` `fitShadow`), so a bed at -6 stays inside the ortho box
+ * with margin. Around -12 the pad is exhausted and the seabed at the frustum
+ * edge would fall out of the shadow map. Do not deepen this without re-checking
+ * that pad.
+ */
+export const TERRAIN_SEA_FLOOR = -6;
 /** Water surface height. Anything below this is water. */
 export const WATER_LEVEL = 2.0;
 /** Slope (radians) above which terrain becomes a cliff: impassable, unbuildable. */
@@ -4079,9 +4108,15 @@ export const VFX_LIGHT_INTENSITY_SCALE = 5.0;
 export const VFX_LIGHT_MERGE_CEIL = 1.9;
 
 export const VFX_LIGHTS = {
-  explosion:   { color: '#FFB05A', peak: 20, range: 40.0, riseMs:  40, holdMs:  60, fallMs: 400, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 7.0 },
-  muzzle:      { color: '#FFD28A', peak: 12, range: 17.5, riseMs:  10, holdMs:  10, fallMs:  70, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 7.0 },
-  teslaImpact: { color: '#5A82FF', peak: 14, range: 24.5, riseMs:  30, holdMs:  40, fallMs: 130, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 5.0 },
+  // 20 -> 5. Removing this row entirely was the only intervention in the whole
+  // flash-stack sweep that measurably reduced blown area (23.957% -> 20.361% of
+  // frame over 0.95 at n=20), which contradicts the claim below that ~100
+  // effective candela sits under the AgX knee and injects no visible wash.
+  explosion:   { color: '#FFB05A', peak: 5, range: 40.0, riseMs:  40, holdMs:  60, fallMs: 400, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 7.0 },
+  // Cut with the rest of the table so the ordering invariant at
+  // tests/vfx.spec.ts:1190 (explosion must out-light muzzle) still holds.
+  muzzle:      { color: '#FFD28A', peak: 3, range: 17.5, riseMs:  10, holdMs:  10, fallMs:  70, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 7.0 },
+  teslaImpact: { color: '#5A82FF', peak: 3.5, range: 24.5, riseMs:  30, holdMs:  40, fallMs: 130, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 5.0 },
   beam:        { color: '#6FA8FF', peak:  9, range: 42.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 0 },
   /**
    * The sustained light a TESLA ARC carries while it is up.
@@ -4099,7 +4134,25 @@ export const VFX_LIGHTS = {
    * The small flicker is the arc re-rolling its own path every 50 ms, carried
    * into the light so the ground wash crackles with it instead of sitting flat.
    */
-  teslaArc:    { color: '#6FA8FF', peak: 26, range: 46.0, riseMs:  50, holdMs:   0, fallMs: 200, flickerHz: 13, flickerAmp: 0.16, mergeRadius: 0 },
+  /*
+   * PEAK 26 -> 6.5 AND RANGE 46 -> 30, 2026-08-06, on a user screenshot.
+   *
+   * This row was the whiteout, and every earlier pass missed it because they
+   * were all looking at the explosion FLASH. The screenshot settled it in one
+   * look: the glare is BLUE (#6FA8FF) with a soft radial falloff over roughly
+   * 40% of the frame. `VFX_LIGHTS.explosion` is orange #FFB05A, and a sprite
+   * disc has a hard edge — so it was neither.
+   *
+   * At peak 26 with a 46 m range against the 48 m framed view, ONE arc lit the
+   * entire visible battlefield, and the comment above says it is sustained for
+   * about a second rather than 100 ms. The note admitting "26 measures +30 and
+   * change" was recording the defect, not justifying it.
+   *
+   * `tools/flash-stack.mjs` never caught this because it only ever calls
+   * `V.explode()` — it has no tesla or prism case at all, so the brightest row
+   * in this table has never been measured by the instrument built to police it.
+   */
+  teslaArc:    { color: '#6FA8FF', peak: 6.5, range: 30.0, riseMs:  50, holdMs:   0, fallMs: 200, flickerHz: 13, flickerAmp: 0.16, mergeRadius: 0 },
   /**
    * `mergeRadius` 9 is wider than the others on purpose: burning wrecks are a
    * CLUSTER by nature — a destroyed formation is six hulls inside ten metres,
@@ -4108,7 +4161,10 @@ export const VFX_LIGHTS = {
    * wreckage is also what the reference frames show.
    */
   burning:     { color: '#FF7A28', peak:  4, range: 17.5, riseMs: 200, holdMs:   0, fallMs: 600, flickerHz: 7,  flickerAmp: 0.30, mergeRadius: 9.0 },
-  prism:       { color: '#A7F5F9', peak: 22, range: 42.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 0 },
+  // Cut with teslaArc and for the same reason — 22/42 is the same blue wash one
+  // notch down, and the comment above says prism "is raised for the same reason
+  // and by the same measurement", so it inherits the same correction.
+  prism:       { color: '#A7F5F9', peak: 5.5, range: 28.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 0 },
   impact:      { color: '#FFE0A0', peak:  6, range: 12.0, riseMs:  10, holdMs:  10, fallMs:  90, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 4.0 },
 } as const;
 
@@ -4400,6 +4456,26 @@ export const VFX_EXPLOSION = {
    * The start size is held near the same ratio so the disc still SNAPS open —
    * the 40 ms onset is the whole character of the effect.
    */
+  /*
+   * DO NOT TUNE THESE FOR THE "SCREEN-FILLING WHITE" REPORT. MEASURED 2026-08-06,
+   * on the fifth report of it, with `tools/flash-stack.mjs`:
+   *
+   *   flashSize1TL 0.96 -> 0.48 (disc AREA quartered), everything else equal
+   *     n=1 explosion, frame area over 0.95:  14.528%  ->  14.211%
+   *     n=1 mean:                              0.5616  ->   0.5551
+   *     n=20 area over 0.95:                  26.057%  ->  26.057%  (identical)
+   *
+   * Quartering the disc moves the blown-out area by three tenths of a point and
+   * does not move the n=20 case at all. THE FLASH DISC IS NOT WHAT WHITES OUT
+   * THE FRAME. Four previous passes tuned this family of numbers; that is why
+   * there have been five reports.
+   *
+   * The cause is still unattributed — see #60. What is known: the baseline
+   * frame already has 5.98% of pixels over 0.95 with no explosion at all, and
+   * the per-layer ablation is not yet trustworthy (hiding bright layers makes
+   * the frame BRIGHTER, which nothing has explained). Find the cause before
+   * changing anything here.
+   */
   flashSize0TL: 0.70, flashSize1TL: 0.96, flashLifeMs: 140,
   /**
    * HDR gain of the flash core, in scene-linear.
@@ -4409,6 +4485,14 @@ export const VFX_EXPLOSION = {
    * ~4x over — the core clips to pure white exactly as before (scorecard #14 is
    * re-measured, not assumed) — but the skirt now falls under threshold within
    * a fraction of the radius instead of feeding the mip chain as a solid disc.
+   *
+   * LEFT AT 3.5 BY THE FIFTH REPORT, on purpose. Two lower values were tried
+   * and both are wrong: 0.875 (a literal 75% cut) falls UNDER the 0.85 bloom
+   * threshold and the flash stops being a flash, and 1.75 drops it below
+   * `billowIntensity` 2.1 so the highlight becomes a dark spot on its own
+   * fireball — `tests/vfx.spec.ts:575` catches that one immediately, because it
+   * identifies flash discs by being the brightest thing in the frame and
+   * matched 818 sprites instead of 20.
    */
   flashIntensity: 3.5,
   /**
@@ -4431,6 +4515,9 @@ export const VFX_EXPLOSION = {
    * 2.24 TL (15.7 m), which still reads as "something much bigger just died"
    * next to the unit death's 0.96 TL.
    */
+  // ABSOLUTE, not a multiple of the unit flash — they do not inherit changes to
+  // it. Left alone by the fifth report for the reason recorded at
+  // `flashSize0TL`: the flash disc is measurably not the whiteout.
   structureFlashSize0TL: 0.84, structureFlashSize1TL: 2.24,
   /** The structure flash runs a little longer and a little softer than the unit one. */
   structureFlashLifeMul: 1.30, structureFlashIntensityMul: 0.80,
@@ -5015,6 +5102,23 @@ export const WATER_LOOK = {
   sunDiffuse: 0.30,
   /** How much the hemisphere fill modulates it. */
   fillDiffuse: 0.55,
+  /**
+   * The same two terms for FOAM, which is lit separately because it is a
+   * different material — rough, white, and sitting on top of the water.
+   *
+   * These were hard-coded 0.80 / 0.85 in the fragment shader and were the
+   * single biggest reason the naval fixture rendered at 210/255. Against the
+   * body's 0.30 sun coefficient, 0.80 lit foam 2.67x harder, and with a
+   * near-white albedo under an HDR sun of ~(3.1, 2.8, 2.3) every foam pixel
+   * blew through AgX and then bloomed over its neighbours. COVERAGE was never
+   * the problem — measured 7.2%, inside scorecard #26's 4-8% band. Brightness
+   * was, and no probe was looking at brightness.
+   *
+   * Tune these against `probeOpenWaterLuminance`, which models foam now, and
+   * re-shoot 08-naval-water. Do not raise them to make the sea "sparkle".
+   */
+  foamSunDiffuse: 0.32,
+  foamFillDiffuse: 0.50,
   /** Scorecard #25 acceptance band, mean sRGB luminance of open water, 0-255. */
   luminanceBand: [45, 115] as [number, number],
 } as const;
@@ -5096,6 +5200,18 @@ export const WATER_FOAM = {
   crestGain: 0.324,
   /** Threshold drop at seaState 1 — this is what takes 4-8% calm to 12-16% choppy. */
   choppyBias: 0.06,
+  /**
+   * Mip compensation: a filament field averages toward its mean under
+   * minification, so without a small threshold drop with distance the far half
+   * of the frame loses its foam.
+   *
+   * THIS LIVED AS A BARE 0.03 INSIDE THE UNIFORM SETUP, and `probeFoam` — the
+   * function that certifies coverage against scorecard #26 — did not model it
+   * at all. So the probe measured the near field and passed, while the shader
+   * ran a threshold up to 0.03 lower everywhere else. It is a config constant
+   * now precisely so both sides read the same number.
+   */
+  distanceBias: 0.03,
   /** Metres/second the lace drifts across the swell. */
   scrollSpeed: 0.22,
   /** Target coverage bands from scorecard #26, for the boot-time probe. */

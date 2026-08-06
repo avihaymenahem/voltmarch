@@ -34,7 +34,7 @@ import * as THREE from 'three';
 import { Terrain, setPlannedSea, plannedSea } from '../src/world/Terrain';
 import { NAVAL_SEA, planScenario } from '../src/game/Scenarios';
 import {
-  MAP_CELLS, MAP_SIZE, TERRAIN_START_FLAT_RADIUS, TERRAIN_SEA_BEACH_GRADE, WATER_LEVEL,
+  MAP_CELLS, MAP_SIZE, TERRAIN_SEA_FLOOR, TERRAIN_START_FLAT_RADIUS, TERRAIN_SEA_BEACH_GRADE, WATER_LEVEL,
   type SeaSpec,
 } from '../src/core/config';
 
@@ -78,10 +78,26 @@ describe('the naval plan declares a sea', () => {
   });
 
   it('cannot ask for water deeper than the heightfield floor allows', () => {
-    // buildHeightfield clamps to TERRAIN_MIN_HEIGHT (0) and WATER_LEVEL is 2.0,
-    // so 2.0 m is the deepest water this engine can express. A larger number
-    // here would be a tunable that silently does nothing.
-    expect(NAVAL_SEA.depth).toBeLessThanOrEqual(WATER_LEVEL);
+    // The floor for SEA cells is TERRAIN_SEA_FLOOR, not 0 — `carveSea` is gated
+    // on `seaDistance > 0`, so it can only ever deepen declared water.
+    //
+    // This assertion used to read `<= WATER_LEVEL` on the grounds that
+    // "buildHeightfield clamps to TERRAIN_MIN_HEIGHT (0)". That was wrong twice:
+    // TERRAIN_MIN_HEIGHT has no code readers, and the effective floor was a
+    // literal 0 in carveSea. The test therefore pinned a 2.0 m ceiling that
+    // kept the absorption gradient permanently in its shallow fallback.
+    expect(NAVAL_SEA.depth).toBeLessThanOrEqual(WATER_LEVEL - TERRAIN_SEA_FLOOR);
+  });
+
+  it('actually reaches the declared depth somewhere in the sea', () => {
+    // The regression that hid for the whole life of this file: a depth tunable
+    // that silently did nothing. Assert the generated bed really gets there,
+    // so a future floor change cannot quietly re-flatten the sea.
+    const t = build(NAVAL_SEA);
+    let deepest = Infinity;
+    for (let i = 0; i < t.height.length; i++) if (t.height[i] < deepest) deepest = t.height[i];
+    expect(deepest).toBeLessThan(0);
+    expect(WATER_LEVEL - deepest).toBeGreaterThan(NAVAL_SEA.depth * 0.9);
   });
 });
 

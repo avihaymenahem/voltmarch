@@ -2532,12 +2532,21 @@ function addStartOre(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
  *               pillbox and the whole scatter box are on the +sum side, so the
  *               composition was already authored correctly around a shoreline
  *               that simply never got carved.
- *   depth 2.0   The heightfield floor is TERRAIN_MIN_HEIGHT (0) and
- *               WATER_LEVEL is 2.0, so 2.0 m is the deepest water this engine
- *               can express. Asking for more is a number that does nothing.
- *               `Water.fitRamp` fits the absorption ramp to whatever depth was
- *               actually generated, which is what keeps the gradient readable
- *               in a shallow basin — see the header of `src/world/Water.ts`.
+ *   depth 8.0   WATER_LEVEL (2.0) minus TERRAIN_SEA_FLOOR (-6), i.e. the whole
+ *               range the engine can now express.
+ *
+ *               This read 2.0 until 2026-08-06, with the rationale "the
+ *               heightfield floor is TERRAIN_MIN_HEIGHT (0) and WATER_LEVEL is
+ *               2.0, so 2.0 m is the deepest water this engine can express".
+ *               The arithmetic was right and the premise was wrong twice over:
+ *               TERRAIN_MIN_HEIGHT has no code readers at all, and the actual
+ *               floor was a literal 0 in `carveSea` that only ever applied to
+ *               cells the scenario had already declared to be sea. Capping the
+ *               bed at y=0 meant `exp(-depth*absorb)` never got far from 1, so
+ *               the fixture rendered as sunlit seabed through a transparent
+ *               sheet — a warm white glare — and `Water.fitRamp` spent every
+ *               frame clamped to `rampDepthMin`. The absorption gradient this
+ *               caption promises had never once run outside its fallback.
  *   shelf 34    Metres offshore to reach full depth. `visibleGround(55)` is
  *               ~89 m wide by 55 m deep, so 34 m spends the gradient across
  *               the part of the sea that is actually in the frame instead of
@@ -2554,7 +2563,7 @@ export const NAVAL_SEA: SeaSpec = {
   normalX: -Math.SQRT1_2,
   normalZ: -Math.SQRT1_2,
   bandWidth: 7,
-  depth: 2.0,
+  depth: 8.0,
   shelfMetres: 34,
   wavinessMetres: 6,
   wavelengthMetres: 46,

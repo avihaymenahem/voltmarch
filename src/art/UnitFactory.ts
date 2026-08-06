@@ -39,6 +39,7 @@ import {
   type UnitPalette,
 } from '../core/config';
 import { clamp01, lerp, smoothstep } from '../core/math';
+import { applyShroudTint } from '../render/FogOfWar';
 import { PartId, type ModelBuild, type ModelPart, type SocketDef } from '../core/types';
 import {
   paintSlotForArea, SURFACE_BUDGET,
@@ -558,6 +559,17 @@ export function createUnitMaterial(atlas: GreebleAtlas, name: string): THREE.Mes
       throw new Error('R10: roughness/metalness scalars must stay 1.0 — the ORM map is authoritative');
     }
   }
+
+  // THE SHROUD SELF-TINT. Units draw above the fog carpet, which is now depth
+  // tested (see FogOfWar.ts §1b), so each one samples the mask at its own world
+  // XZ instead of being painted over by the ground behind it.
+  //
+  // NOTE FOR ANYONE ADDING A HOOK HERE: `applyStructureShader` ASSIGNS
+  // `mat.onBeforeCompile` over a material built by this function, so structures
+  // do NOT inherit this one — BuildingFactory calls `applyShroudTint` itself.
+  mat.onBeforeCompile = (shader) => { applyShroudTint(shader); };
+  mat.customProgramCacheKey = () => 'vm.unit.shroud.v1';
+
   return mat;
 }
 

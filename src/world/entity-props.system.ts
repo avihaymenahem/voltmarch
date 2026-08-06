@@ -58,6 +58,7 @@ import { defineSystem } from '../core/loop';
 import { EntityKind, Phase } from '../core/types';
 import { ctx } from '../game/context';
 import { FALLBACK_PROPS, PROP_DEF_ID } from '../game/Scenarios';
+import { applyShroudTint } from '../render/FogOfWar';
 import { FACTION_ANY, registerKindMesh, type KindMesh } from '../render/RenderBridge';
 import { PropLibrary, PropMesh, propPalette, type PropPalette } from './PropLibrary';
 import { isBiomeName, type BiomeName } from './Biomes';
@@ -164,6 +165,11 @@ export default defineSystem({
       metalness: 0.0,
     });
     material.name = 'EntityPropMaterial';
+    // Props and wrecks are `isStaticKind`, i.e. drawn from MEMORY inside
+    // explored territory — the same category as buildings. Without the
+    // self-tint a remembered wreck would sit at full daylight in the fog.
+    material.onBeforeCompile = (shader) => { applyShroudTint(shader); };
+    material.customProgramCacheKey = () => 'vm.entityprop.shroud.v1';
 
     ownedGeometry = buildWreck(palette);
 

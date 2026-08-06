@@ -427,6 +427,41 @@ export class InstanceBatch {
     this.used[slot] = 1;
     this.live++;
     if (slot > this.high) this.high = slot;
+
+    /*
+     * THE INVISIBLE-UNITS BUG. Reported four times before it was found.
+     *
+     * `free()` zeroes ALL SIXTEEN floats, which destroys the `m[15] = 1` that
+     * `initSlotMatrix` established. `initSlotMatrix` used to run in exactly two
+     * places — the constructor and `grow()` — so a slot was correct the first
+     * time it was used and permanently broken from its second use onward.
+     * `RenderBridge.writeMatrix` cannot repair it: `MATRIX_SLOTS` deliberately
+     * covers only the twelve mutable elements and excludes 3, 7, 11 and 15.
+     *
+     * A recycled slot therefore carried w = 0, making the instance matrix
+     * PROJECTIVE. `mvPosition = instanceMatrix * mvPosition` in three's stock
+     * `project_vertex` then turns every vertex into a direction rather than a
+     * point, the view translation drops out, and the whole model collapses to a
+     * sub-pixel dot at the far plane. The entity stays alive, targetable,
+     * hoverable and able to shoot back — invisible, and only invisible.
+     *
+     * WHY IT LOOKED LIKE "ENEMIES INSIDE MY BASE, NOT IN FOG". The units that
+     * get a RECYCLED slot are exactly the ones that crossed a vision boundary:
+     * shrouded, so the bridge released the slot; then they step into your base's
+     * vision, `alloc()` pops the LIFO free list, and they get their own poisoned
+     * slot straight back. A unit continuously visible since it spawned keeps its
+     * original slot and looks perfect. Every death poisons another slot, so it
+     * compounds over a match, and it hits infantry hardest because they churn
+     * most.
+     *
+     * Every probe missed it. `_troops-probe.mjs` reads only the twelve mutable
+     * floats, `RenderBridge.inspect` reads all sixteen but only to test for NaN,
+     * and all four instruments define "should be drawn" using the same vision
+     * mask they were checking. The `npm run shots` fixtures cannot see it at
+     * all: with `settleTicks: 0` nothing ever dies, so no slot is ever recycled.
+     */
+    this.initSlotMatrix(slot);
+
     this.markDirty(slot);
     return slot;
   }

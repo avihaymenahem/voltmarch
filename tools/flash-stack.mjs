@@ -58,10 +58,24 @@ const EXPLOSION_STEPS = [12, 28, 40, 70, 110, 180, 280, 400];
 const MUZZLE_STEPS = [6, 10, 14, 25, 45];
 
 /**
- * `--ablate` mode: n=20 explosions at their measured peak, with the two summing
- * layers switched off one at a time. This is what says whether the whiteout is
- * the additive quad pile, the point-light pile, or both — and a fix aimed at
- * only one of them would leave the other to produce a fifth bug report.
+ * `--ablate` mode: n=1 and n=20 explosions at their measured peak, with each
+ * contributing layer switched off in turn.
+ *
+ * IT USED TO KNOW ABOUT ONLY TWO LAYERS — the additive quads and the point
+ * lights — and it warned that "a fix aimed at only one of them would leave the
+ * other to produce a fifth bug report". The fifth report arrived anyway,
+ * because of two defects in this function rather than in the renderer:
+ *
+ *   1. `getObjectByName('VfxAdditive')` ALWAYS RETURNED NULL. That string is a
+ *      MATERIAL name (src/vfx/Particles.ts:1245); `getObjectByName` searches
+ *      Object3D names. So the additive arm never disabled anything, and its
+ *      "removing every additive quad costs 0.25pp" was a measurement of nothing.
+ *   2. `VfxLitSmoke` — the fireball billows, and the largest bright area in the
+ *      frame — was not in the list at all, so no arm could ever see it.
+ *
+ * Both are fixed. The mask list is now material-name driven and every case
+ * reports how many meshes it actually hid, so a silent no-op cannot pose as
+ * "that layer does not matter" again.
  */
 const ABLATE = argv.includes('--ablate');
 
@@ -192,17 +206,26 @@ try {
   console.log(`  baseline: mean ${results.baseline.mean.toFixed(4)}  p99 ${results.baseline.p99.toFixed(4)}`);
 
   if (ABLATE) {
-    // Layer masks: [additive quads, point lights].
+    // Layer masks: [label, suppressed material names, point lights on].
+    //
+    // `VfxLitSmoke` was NOT in the original list, and that omission is why four
+    // fixes missed. The additive quads and the light pool were the only two
+    // things anyone could switch off, so "it is not those" kept turning into
+    // "it must be the additive quads after all". The fireball billows are lit
+    // smoke, not additive, and nothing here could see them.
     const masks = [
-      ['all-on', true, true],
-      ['no-additive', false, true],
-      ['no-lights', true, false],
-      ['neither', false, false],
+      ['all-on', [], true],
+      ['no-additive', ['VfxAdditive'], true],
+      ['no-litsmoke', ['VfxLitSmoke'], true],
+      ['no-debris', ['VfxDebris'], true],
+      ['no-lights', [], false],
+      ['sprites-off', ['VfxAdditive', 'VfxLitSmoke', 'VfxDebris'], true],
+      ['everything-off', ['VfxAdditive', 'VfxLitSmoke', 'VfxDebris'], false],
     ];
     for (const count of [1, 20]) {
-      for (const [label, additive, lights] of masks) {
+      for (const [label, suppress, lights] of masks) {
         const url = await page.evaluate(
-          async ({ count, additive, lights }) => {
+          async ({ count, suppress, lights }) => {
             const V = window.__vmVfx;
             const RA = window.__VM;
             V.clear();
@@ -217,28 +240,44 @@ try {
             // See the note in the sweep below: the advance is consumed by a real
             // loop frame, never by screenshot()'s renderOnce.
             await RA.waitFrames(3);
-            const add = RA.scene.getObjectByName('VfxAdditive');
-            if (add) add.visible = additive;
+            // 'VfxAdditive' IS A MATERIAL NAME (src/vfx/Particles.ts:1245),
+            // not an Object3D name. `getObjectByName` only searches Object3D
+            // names, so the original `getObjectByName('VfxAdditive')` returned
+            // null on every run and THIS ARM OF THE ABLATION NEVER DISABLED
+            // ANYTHING. It reported ~0.25pp for "remove every additive quad",
+            // and at n=1 it read BRIGHTER with the layer supposedly off, which
+            // is the tell. Match on the material instead.
+            const hidden = [];
+            RA.scene.traverse((o) => {
+              const m = o.material;
+              if (!m || !o.visible) return;
+              const names = Array.isArray(m) ? m.map((x) => x.name) : [m.name];
+              if (names.some((n) => suppress.includes(n))) hidden.push(o);
+            });
+            for (const o of hidden) o.visible = false;
             const pool = RA.scene.getObjectByName('VfxLightPool');
             // `visible = false` on the GROUP drops every light from the light
             // list and recompiles — fine for a one-off measurement, and it is
             // the only way to take the light term to exactly zero.
             if (pool) pool.visible = lights;
             const shot = await RA.screenshot();
-            if (add) add.visible = true;
+            for (const o of hidden) o.visible = true;
             if (pool) pool.visible = true;
-            return shot;
+            // Report what was actually suppressed, so a silent no-op can never
+            // masquerade as "this layer does not matter" again.
+            return { shot, suppressed: hidden.length };
           },
-          { count, additive, lights },
+          { count, suppress, lights },
         );
-        const buf = Buffer.from(url.split(',')[1], 'base64');
+        const buf = Buffer.from(url.shot.split(',')[1], 'base64');
         writeFileSync(join(OUT, `ablate-${String(count).padStart(2, '0')}-${label}.png`), buf);
         const m = await measure(buf);
-        results.cases.push({ effect: 'ablate', count, label, ...m });
+        results.cases.push({ effect: 'ablate', count, label, suppressed: url.suppressed, ...m });
         console.log(
           `  ablate n=${String(count).padStart(2)} ${label.padEnd(12)}  ` +
           `mean ${m.mean.toFixed(4)}  >0.95 ${(m.fracOver95 * 100).toFixed(3)}%  ` +
-          `>0.75 ${(m.fracOver75 * 100).toFixed(3)}%`,
+          `>0.75 ${(m.fracOver75 * 100).toFixed(3)}%  ` +
+          `[meshes hidden: ${url.suppressed}]`,
         );
       }
     }

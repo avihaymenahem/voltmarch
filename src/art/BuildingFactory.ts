@@ -82,6 +82,7 @@ import {
   type UnitPalette,
 } from '../core/config';
 import { clamp01, hexToLinearRgb, lerp, smoothstep } from '../core/math';
+import { applyShroudTint } from '../render/FogOfWar';
 import { PartId, type SocketDef } from '../core/types';
 import {
   detailCoverage,
@@ -754,6 +755,14 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = buildingTime;
 
+    // THE SHROUD SELF-TINT, and specifically THE EDIT THAT PRESERVES REMEMBERED
+    // BUILDINGS. This assignment overwrites the hook `createUnitMaterial`
+    // installed, so structures would otherwise be the one thing the depth-tested
+    // carpet no longer covers — a scouted Construction Yard would render at full
+    // daylight inside the fog. Sampling here gives it FOG_EXPLORED_LEVEL, hence
+    // exactly the FOG_EXPLORED_ALPHA tint the carpet used to lay over it.
+    applyShroudTint(shader);
+
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>
         uniform float uTime;
@@ -841,7 +850,9 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
   // Two materials whose only difference is a uniform still share one compiled
   // program; three keys the cache on the source of `onBeforeCompile`, and this
   // function is shared by every structure material in the game.
-  mat.customProgramCacheKey = () => 'ra3.structure.v1';
+  // v2: the shroud self-tint changed the generated program. Without the bump
+  // three serves the cached v1 and the injection is silently a no-op.
+  mat.customProgramCacheKey = () => 'ra3.structure.v2';
   mat.needsUpdate = true;
 }
 

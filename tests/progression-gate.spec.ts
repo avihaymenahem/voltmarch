@@ -36,6 +36,7 @@ import { MAPS } from '../src/shell/settings-store';
 import {
   LOCKED_REASON, UnlockGate, isBuildable, setUnlockGate, unlockGate,
 } from '../src/progression/UnlockGate';
+import { isUnlockAll } from '../src/progression/progression.system';
 import type { ProgressionControl } from '../src/progression/types';
 import { BuildKind, ProductionCatalog, ProductionService } from '../src/sim/Production';
 import { buildScenario, resolveDefBinding, clearScenario } from '../src/game/Scenarios';
@@ -569,5 +570,53 @@ describe('the shell control seam', () => {
 
     const info: MatchStartInfo = { seed: 1, localPlayer: 0, faction: 1, difficulty: 1 };
     expect(info.seed).toBe(1);
+  });
+});
+
+/* ==========================================================================
+ * ?unlockall — THE DEVELOPER BYPASS
+ * ==========================================================================
+ * Added 2026-08-06 at the user's request: a URL flag that opens every gated
+ * unit and structure for one page load.
+ *
+ * The property that makes it safe to ship in a production bundle is that it is
+ * READ-ONLY. `UnlockGate.unrestricted` changes what `isUnlocked` ANSWERS and
+ * touches nothing else — `MissionTracker` grants rewards on its own path, so a
+ * bypassed session cannot award itself anything and a reload without the flag
+ * restores the real profile byte for byte. These tests pin both halves: the
+ * parsing, and the read-only-ness.
+ * ========================================================================== */
+
+describe('?unlockall', () => {
+  it('accepts both spellings, and nothing else', () => {
+    expect(isUnlockAll('?unlockall')).toBe(true);
+    expect(isUnlockAll('?unlockall=1')).toBe(true);
+    expect(isUnlockAll('?unlock=all')).toBe(true);
+    expect(isUnlockAll('?seed=3&unlockall&fog=off')).toBe(true);
+
+    expect(isUnlockAll('')).toBe(false);
+    expect(isUnlockAll('?seed=3')).toBe(false);
+    expect(isUnlockAll('?unlock=some')).toBe(false);
+    // Near-misses must NOT open the gate — a typo that silently unlocks
+    // everything would be indistinguishable from the bug you are chasing.
+    expect(isUnlockAll('?unlockAll')).toBe(false);
+    expect(isUnlockAll('?unlock')).toBe(false);
+  });
+
+  it('opens every gated def while it is on, and closes them again when it is off', () => {
+    const gated = { key: 'test.gated', unlockedBy: 'unit.prism' };
+    const owned: string[] = [];
+    const gate = new UnlockGate(() => owned, { unrestricted: true });
+
+    expect(gate.allows(gated)).toBe(true);
+    expect(gate.isUnlocked('unit.prism')).toBe(true);
+    // The profile it read from is still empty — the bypass answered, it did
+    // not grant. This is the assertion the whole design rests on.
+    expect(owned).toEqual([]);
+
+    gate.setUnrestricted(false);
+    expect(gate.allows(gated)).toBe(false);
+    expect(gate.isUnlocked('unit.prism')).toBe(false);
+    expect(owned).toEqual([]);
   });
 });

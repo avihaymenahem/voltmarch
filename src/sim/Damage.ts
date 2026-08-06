@@ -350,7 +350,28 @@ export class DamageSystem {
 
     // Burning is a FLAG, not a timer: it is recomputed from health every hit,
     // so a repaired unit stops burning without anyone having to remember.
+    //
+    // THE `else` USED TO BE MISSING, and the comment above described a
+    // recompute that the code never performed — it was a one-way OR, and
+    // `EntityFlag.Burning` was cleared nowhere in the codebase for a living
+    // entity (the only `&= ~Burning` is the wreck-ageing path below). So
+    // anything that once dipped under the threshold burned at BURN_DPS for the
+    // rest of the match and then died with nobody attacking it: a Power Plant
+    // in 50 s, a Construction Yard in 125 s. Repairing it to full stopped the
+    // particles, because those are health-driven, but left the flag set — so it
+    // caught fire again a couple of minutes later, which is what the user saw.
+    //
+    // The burn tick also re-entered this function 30x/s, which stamped
+    // `lastHitTime` below and therefore made `Regen`'s out-of-combat escape
+    // unreachable, and kept `entity:damaged` firing so the combat music never
+    // drained. "The building keeps burning even after the war is finished" was
+    // three symptoms of this one missing branch.
+    //
+    // The Wreck carve-out mirrors the one in `pushBurnDamage`: a wreck is
+    // spawned at maxHp 1 and deliberately flagged Burning, so a bare `else`
+    // would extinguish any wreck clipped by weak splash.
     if (frac <= BURN_HP_THRESHOLD && hp > 0) st.flags[i] |= EntityFlag.Burning;
+    else if (hp > 0 && st.kind[i] !== EntityKind.Wreck) st.flags[i] &= ~EntityFlag.Burning;
 
     const victimPlayer = st.owner[i] as PlayerId;
     const attackerIdx = st.index(attacker);

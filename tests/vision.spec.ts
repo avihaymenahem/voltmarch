@@ -504,7 +504,13 @@ describe('FogOfWar — the shroud overlay', () => {
     scene.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes++; });
     expect(meshes).toBe(1);
     expect(fog.mesh.renderOrder).toBeGreaterThan(2000);
-    expect(fog.material.depthTest).toBe(false);
+    // DEPTH ON: the carpet owns the ground plane only. With depth off it
+    // composited over units standing in FRONT of shrouded ground — 0.021 mean
+    // alpha over infantry heads, 0.060 over vehicles, worst for tall units.
+    // Everything that draws above the carpet now tints itself from the shared
+    // mask instead; see FogOfWar.ts §1b and the `applyShroudTint` coverage test
+    // below. depthWrite stays FALSE — the shroud must not occlude anything.
+    expect(fog.material.depthTest).toBe(true);
     expect(fog.material.depthWrite).toBe(false);
 
     fog.dispose();

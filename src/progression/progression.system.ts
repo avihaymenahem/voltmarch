@@ -61,6 +61,40 @@ function isShotHarness(): boolean {
   return new URLSearchParams(location.search).get('shot') !== null;
 }
 
+/**
+ * `?unlockall` — DEVELOPER FLAG. Every gated unit, structure and mission reward
+ * is treated as owned for this page load.
+ *
+ * IT IS READ-ONLY BY CONSTRUCTION, and that is the reason it is safe to ship.
+ * `UnlockGate.unrestricted` only changes what `isUnlocked` ANSWERS; it never
+ * writes to the profile, and `MissionTracker` grants rewards on its own path
+ * regardless of the gate. So a session started with this flag cannot award
+ * itself anything, and reloading without the flag restores the real profile
+ * exactly. Nothing is persisted, so nothing has to be cleaned up.
+ *
+ * WHY IT IS NOT GATED ON `import.meta.env.DEV`. It would then be dead in the
+ * one place it is actually needed: the GitHub Pages build is a production
+ * bundle, and that is where this project's bugs are reported from. A flag that
+ * only works on localhost is a flag that does not work. It is undiscoverable
+ * rather than unavailable — no UI exposes it — and it announces itself loudly
+ * in the console so a session running with it can never be mistaken for a
+ * normal one, which is the failure mode that actually matters when triaging a
+ * screenshot.
+ *
+ * If this ever needs to be genuinely unavailable in production, wrap the return
+ * in `import.meta.env.DEV &&` — but then also stop using it to reproduce
+ * deployed bugs.
+ */
+export function isUnlockAll(search?: string): boolean {
+  if (search !== undefined) {
+    const q = new URLSearchParams(search);
+    return q.has('unlockall') || q.get('unlock') === 'all';
+  }
+  if (typeof location === 'undefined') return false;
+  const q = new URLSearchParams(location.search);
+  return q.has('unlockall') || q.get('unlock') === 'all';
+}
+
 interface ProgressionGlobal {
   [PROGRESSION_GLOBAL_KEY]?: ProgressionHandle;
 }
@@ -169,6 +203,7 @@ export default defineSystem({
 
   init(): void {
     const harness = isShotHarness();
+    const unlockAll = isUnlockAll();
 
     store = new ProfileStore(harness ? memoryStorage() : browserStorage());
     tracker = new MissionTracker(MISSIONS, store);
@@ -189,8 +224,18 @@ export default defineSystem({
       // Unrestricted is equally deterministic and shows the content the shot
       // was composed around. The handle is still withheld below, so the UI's
       // absent-handle path stays exercised by a real configuration.
-      unrestricted: harness,
+      // `?unlockall` rides the same policy the harness uses. See `isUnlockAll`
+      // for why this is read-only and cannot contaminate the stored profile.
+      unrestricted: harness || unlockAll,
     });
+
+    if (unlockAll) {
+      console.warn(
+        '[progression] ?unlockall IS ACTIVE — every gated unit and structure is '
+        + 'available. Nothing is written to your profile; reload without the flag '
+        + 'to get your real progression back.',
+      );
+    }
 
     setUnlockGate(gate);
     detach = tracker.attach(ctx().channels.events);

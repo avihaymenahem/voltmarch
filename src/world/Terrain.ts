@@ -94,7 +94,7 @@ import {
   TERRAIN_PRUNE_REGION_CELLS, TERRAIN_RAMP_CORE_WIDTH, TERRAIN_RAMP_HALF_WIDTH,
   TERRAIN_RAMP_FORCED_CORE_WIDTH, TERRAIN_RAMP_FORCED_HALF_WIDTH,
   TERRAIN_RAMP_MAX_GRADE, TERRAIN_RAMP_MAX_LENGTH, TERRAIN_RAMP_MAX_LINK_CELLS,
-  TERRAIN_SEA_BEACH_GRADE, TERRAIN_SEA_START_CLEARANCE,
+  TERRAIN_SEA_BEACH_GRADE, TERRAIN_SEA_FLOOR, TERRAIN_SEA_START_CLEARANCE,
   TERRAIN_SPLAT_PER_CELL, TERRAIN_START_APRON_GRADE, TERRAIN_START_DRY_MARGIN,
   TERRAIN_START_EDGE_WOBBLE, TERRAIN_START_ENFORCE_PASSES,
   TERRAIN_START_FLAT_RADIUS, TERRAIN_START_GUARD_RADIUS,
@@ -529,7 +529,11 @@ export class Terrain implements ITerrain {
         if (d <= 0) continue;
         const ceil = this.seaCeiling(d, sea);
         const i = row + gx;
-        if (h[i] > ceil) h[i] = clamp(ceil, 0, TERRAIN_MAX_HEIGHT);
+        // TERRAIN_SEA_FLOOR, not 0. This pass is the LAST word on sea cells and
+        // is gated on `d > 0` above, so a negative floor here can only ever
+        // deepen water the scenario explicitly declared — it cannot touch land,
+        // and it cannot fight the start-area guarantee that runs before it.
+        if (h[i] > ceil) h[i] = clamp(ceil, TERRAIN_SEA_FLOOR, TERRAIN_MAX_HEIGHT);
       }
     }
   }

@@ -277,6 +277,43 @@ describe('death, wrecks and veterancy', () => {
     expect(rig.world.store.flags[wi] & EntityFlag.NotATarget).toBeTruthy();
   });
 
+  it('CLEARS Burning when healed back over the threshold — it is a flag, not a sentence', () => {
+    // The `if` that sets this flag had no `else` for the whole life of the file,
+    // while its own comment claimed "it is recomputed from health every hit, so
+    // a repaired unit stops burning without anyone having to remember".
+    //
+    // Nothing cleared it, so anything that once dipped under the threshold
+    // burned at BURN_DPS until it died, with nobody attacking it. Repairing to
+    // full stopped the PARTICLES (those are health-driven) but left the flag,
+    // so it caught fire again minutes later. That was the user's
+    // "building keeps burning even after war is finished" — and because the
+    // burn tick re-stamps lastHitTime, it also blocked Regen and kept
+    // entity:damaged firing, so the combat music never drained either.
+    const victim = spawn(rig, P1, 120, 120, { hp: 100 });
+    const i = rig.world.store.index(victim);
+    const st = rig.world.store;
+    st.maxHp[i] = 100;
+    rig.world.spatial.rebuild();
+
+    // Knock it under the burn threshold.
+    rig.channels.damage.push(victim, 0 as EntityId, 80, WarheadClass.ArmorPiercing, 120, 0, 120);
+    rig.damage.damageTick(rig.ctx());
+    expect(st.isAlive(victim)).toBe(true);
+    expect(st.flags[i] & EntityFlag.Burning, 'should be burning under the threshold').toBeTruthy();
+
+    // Repair it — the wrench is the player's escape hatch and must actually work.
+    st.hp[i] = st.maxHp[i];
+    // Any subsequent damage event re-evaluates the flag. A scratch is enough.
+    rig.channels.damage.push(victim, 0 as EntityId, 1, WarheadClass.ArmorPiercing, 120, 0, 120);
+    rig.damage.damageTick(rig.ctx());
+
+    expect(st.isAlive(victim)).toBe(true);
+    expect(
+      st.flags[i] & EntityFlag.Burning,
+      'a repaired entity must stop burning, or it burns down on its own',
+    ).toBeFalsy();
+  });
+
   it('ages the hulk out after COMBAT_DAMAGE.wreckSeconds', () => {
     const victim = spawn(rig, P1, 100, 100, { hp: 10 });
     rig.world.spatial.rebuild();

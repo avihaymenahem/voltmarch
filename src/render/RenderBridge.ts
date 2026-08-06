@@ -75,6 +75,7 @@ import { clamp01, hexToLinearRgb, lerpAngle } from '../core/math';
 import type { EntityStore } from '../core/world';
 
 import { InstanceBatcher, type BatchPartSpec, type InstanceBatch } from './InstanceBatcher';
+import { applyShroudTint } from './FogOfWar';
 import { LAYERS } from './scene';
 
 /* ==========================================================================
@@ -458,7 +459,12 @@ function makePlaceholderMaterial(): THREE.MeshStandardMaterial {
         `#include <emissivemap_fragment>
         totalEmissiveRadiance += vRaTeam * clamp(vRaState.z, 0.0, 1.0) * ${PLACEHOLDER_SELECT_EMISSIVE.toFixed(3)};`,
       );
+
+    // The placeholder is the one thing meant to be unmistakeably unfinished.
+    // Without this it would also be the one thing that ignores the shroud.
+    applyShroudTint(shader);
   };
+  mat.customProgramCacheKey = () => 'vm.placeholder.shroud.v1';
 
   return mat;
 }

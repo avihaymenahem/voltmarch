@@ -11,14 +11,32 @@
  * pixel belongs to. The post chain in `render/post.ts` is owned elsewhere and
  * carries no depth-aware slot, so instead the shroud is a mesh: a 129x129 grid
  * draped over the terrain heightfield, one draw call, 33k triangles, drawn last
- * at `RENDER_ORDER.SHROUD` with **depth testing off**.
+ * at `RENDER_ORDER.SHROUD`.
  *
- * Depth off is not a shortcut, it is the identity. RA2 and RA3 both composite
- * the shroud as a layer OVER the world, so a structure standing inside the fog
- * is swallowed by it rather than poking through a hole in the ground. Because
- * the carpet occupies the screen pixels of the ground BEHIND a tall object, and
- * fog regions are far larger than any building's screen height, the practical
- * effect is exactly that: everything inside the shroud goes dark together.
+ * THE SPLIT: THE CARPET OWNS THE GROUND, EVERYTHING ELSE TINTS ITSELF
+ * ------------------------------------------------------------------
+ * This file used to draw the carpet with `depthTest: false` and called that
+ * "not a shortcut, it is the identity" — the argument being that RA2 and RA3
+ * composite the shroud as a layer OVER the world, so a structure inside the fog
+ * is swallowed rather than poking through a hole in the ground.
+ *
+ * The goal was right; the mechanism was not. Because the carpet also occupies
+ * the screen pixels of the ground BEHIND a unit, it dimmed live units standing
+ * in FRONT of shrouded ground — measured over 3,600 frames at 0.021 mean alpha
+ * over infantry heads and 0.060 over vehicles, worst for the TALLEST units,
+ * whose heads sample furthest into the fog.
+ *
+ * So the fog is no longer a screen-space layer. It is a property of a world XZ,
+ * published as `shroudUniforms` in §1b, and anything drawing above the ground
+ * plane samples it and tints itself with the carpet's own formula. A remembered
+ * structure therefore keeps exactly the tint it had before — same numbers,
+ * different surface — while a live unit samples its own visible cell and takes
+ * no tint at all.
+ *
+ * That split is also what keeps unexplored OCEAN dark (the water surface sits
+ * above the carpet, which is draped on the seabed) and unexplored FORESTS dark
+ * (scatter props are tall and depth-writing). Both would have silently lit up
+ * had the carpet simply been switched to `depthTest: true`.
  *
  * WHY THE TEXTURE IS ONE CHANNEL
  * ------------------------------
@@ -154,6 +172,148 @@ void main() {
 `;
 
 /* ==========================================================================
+ * 1b. THE SHARED MASK — the same shroud, sampled by everything that stands up
+ * ========================================================================== */
+
+/**
+ * THE CARPET OWNS THE GROUND PLANE. ANYTHING ABOVE IT TINTS ITSELF.
+ *
+ * The carpet used to be drawn with `depthTest: false`, which made it composite
+ * over the screen pixels of any unit standing in FRONT of shrouded ground.
+ * Measured over 3,600 frames of a real match, mean shroud alpha sampled over a
+ * unit's head was 0.021 for infantry and 0.060 for vehicles — and it hit TALL
+ * units hardest, because their heads sample further into the fog.
+ *
+ * Depth-testing the carpet fixes that and breaks three other things, two of
+ * which nobody had noticed:
+ *
+ *   1. A remembered structure inside explored-but-unlit territory would pop to
+ *      full daylight instead of sitting under the shroud tint.
+ *   2. Unexplored OCEAN would render as bright daylight water — the carpet is
+ *      draped on the seabed (`heightAt` + `FOG_MESH_LIFT`) while the water
+ *      surface sits at `WATER_LEVEL`, depth-writing, in an earlier render band.
+ *   3. Tall scatter props would poke through: a forest inside the unexplored
+ *      black would stay lit.
+ *
+ * So the fog stops being a screen-space layer and becomes what it actually is:
+ * a property of a world XZ that anything drawing at that XZ can ask about.
+ * `applyShroudTint` re-runs the carpet's own alpha/colour formula per fragment,
+ * which is why a remembered building keeps EXACTLY the tint it had before —
+ * same numbers, different surface — while a live unit samples at its own cell,
+ * reads `VIS_VISIBLE`, and takes no tint at all.
+ *
+ * The warp and the dither are deliberately NOT carried over. They exist to
+ * break a 4 m texel grid across a full-screen surface and buy nothing on a 3 m
+ * silhouette.
+ */
+const SHROUD_UV_SCALE = 1 / MAP_SIZE;
+
+/** 1x1 R8 = 255, i.e. "fully visible, tint nothing". */
+function makeClearMask(): THREE.DataTexture {
+  const t = new THREE.DataTexture(
+    new Uint8Array([255]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType,
+  );
+  t.name = 'ShroudMaskDefault';
+  t.needsUpdate = true;
+  return t;
+}
+
+/**
+ * Module-scope and SHARED BY REFERENCE with every material that opts in.
+ *
+ * It has to be a live object rather than a value read at construction time:
+ * materials are built during `Phase.Command` (art.entityProps order 45,
+ * world.water order 60) while `FogOfWar` is not constructed until
+ * `Phase.Vision` (1300). The 1x1 default is what makes the wiring
+ * order-independent. Same trick as `buildingTime` in `BuildingFactory.ts`.
+ */
+export const shroudUniforms = {
+  uFogMask: { value: makeClearMask() },
+  /** rgb = explored tint, w = FOG_EXPLORED_ALPHA. */
+  uFogTint: { value: new THREE.Vector4(0, 0, 0, FOG_EXPLORED_ALPHA) },
+  /** rgb = unexplored colour, w = FOG_UNEXPLORED_ALPHA. */
+  uFogDark: { value: new THREE.Vector4(0, 0, 0, FOG_UNEXPLORED_ALPHA) },
+  /** x = 1/MAP_SIZE, y = FOG_EXPLORED_LEVEL. */
+  uFogParams: { value: new THREE.Vector2(SHROUD_UV_SCALE, FOG_EXPLORED_LEVEL) },
+  /** 0 disables the self-tint entirely — `?fog=off` and the shot harness. */
+  uFogAmount: { value: 0 },
+};
+
+const SHROUD_TINT_FRAG = /* glsl */ `
+  {
+    float vmV    = texture2D(uFogMask, vShroudUv).r;
+    float vmRem  = 1.0 - smoothstep(0.0, uFogParams.y, vmV);
+    float vmFog  = 1.0 - smoothstep(uFogParams.y, 1.0, vmV);
+    float vmA    = mix(uFogTint.w * vmFog, uFogDark.w, vmRem) * uFogAmount;
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, mix(uFogTint.xyz, uFogDark.xyz, vmRem), vmA);
+  }
+`;
+
+/** The shape `onBeforeCompile` is handed. Narrow on purpose. */
+export interface ShroudShaderHost {
+  vertexShader: string;
+  fragmentShader: string;
+  uniforms: Record<string, THREE.IUniform>;
+}
+
+/**
+ * Inject the shroud self-tint into a three-built material's program.
+ *
+ * MUST be called from inside whatever `onBeforeCompile` the material already
+ * has, never installed as one — `applyStructureShader` ASSIGNS
+ * `mat.onBeforeCompile` over a material built by `createUnitMaterial`, so a
+ * hook installed in the unit factory is silently clobbered for every structure
+ * in the game.
+ *
+ * Bump the material's `customProgramCacheKey` when adding this, or three serves
+ * the previously-compiled program and the injection is a no-op.
+ */
+export function applyShroudTint(shader: ShroudShaderHost): void {
+  // Assign the SHARED objects, not copies. Copies would freeze the mask at its
+  // 1x1 default and the whole thing would silently do nothing.
+  shader.uniforms.uFogMask = shroudUniforms.uFogMask;
+  shader.uniforms.uFogTint = shroudUniforms.uFogTint;
+  shader.uniforms.uFogDark = shroudUniforms.uFogDark;
+  shader.uniforms.uFogParams = shroudUniforms.uFogParams;
+  shader.uniforms.uFogAmount = shroudUniforms.uFogAmount;
+
+  // `transformed` is post-morph/skin local space; `instanceMatrix` then
+  // `modelMatrix` lifts it to world. Batch meshes are pinned at the origin so
+  // modelMatrix is identity for them, but routing through it keeps this helper
+  // correct for the non-instanced Scatter and Water meshes too.
+  shader.vertexShader = shader.vertexShader
+    .replace('void main() {', 'varying vec2 vShroudUv;\nvoid main() {')
+    .replace(
+      '#include <project_vertex>',
+      `#include <project_vertex>
+  {
+    vec4 vmWp = vec4(transformed, 1.0);
+    #ifdef USE_INSTANCING
+      vmWp = instanceMatrix * vmWp;
+    #endif
+    vmWp = modelMatrix * vmWp;
+    vShroudUv = vmWp.xz * ${SHROUD_UV_SCALE.toFixed(10)};
+  }`,
+    );
+
+  // Before tonemapping, which is where the carpet composites too: three forces
+  // NoToneMapping while rendering into the HalfFloat post target, so this is
+  // the same scene-linear space the carpet blends in.
+  shader.fragmentShader = shader.fragmentShader
+    .replace(
+      'void main() {',
+      `uniform sampler2D uFogMask;
+uniform vec4 uFogTint;
+uniform vec4 uFogDark;
+uniform vec2 uFogParams;
+uniform float uFogAmount;
+varying vec2 vShroudUv;
+void main() {`,
+    )
+    .replace('#include <tonemapping_fragment>', `${SHROUD_TINT_FRAG}\n  #include <tonemapping_fragment>`);
+}
+
+/* ==========================================================================
  * 2. THE OVERLAY
  * ========================================================================== */
 
@@ -213,6 +373,14 @@ export class FogOfWar {
     hexToLinearRgb(look.exploredTint, tint);
     hexToLinearRgb(look.unexploredColor, dark);
 
+    // Publish the real mask to every material that opted into the self-tint.
+    // Until this line runs they have been sampling the 1x1 "fully visible"
+    // default, which tints nothing — that is what keeps the wiring safe
+    // against the init order (materials exist long before this constructor).
+    shroudUniforms.uFogMask.value = this.texture;
+    shroudUniforms.uFogTint.value.set(tint[0], tint[1], tint[2], FOG_EXPLORED_ALPHA);
+    shroudUniforms.uFogDark.value.set(dark[0], dark[1], dark[2], FOG_UNEXPLORED_ALPHA);
+
     this.material = new THREE.ShaderMaterial({
       name: 'ShroudMaterial',
       vertexShader: SHROUD_VERT,
@@ -232,8 +400,12 @@ export class FogOfWar {
         uTime: { value: 0 },
       },
       transparent: true,
-      // The shroud is a LAYER over the world, not a decal on the ground.
-      depthTest: false,
+      // DEPTH ON. The carpet owns the GROUND PLANE only; anything standing
+      // above it tints itself from the same mask via `applyShroudTint`. With
+      // depth off this composited over units standing in FRONT of shrouded
+      // ground — measured at 0.021 mean alpha over infantry heads and 0.060
+      // over vehicles, worst for the tallest units. See §1b.
+      depthTest: true,
       depthWrite: false,
       // Culling buys nothing on a single-sided carpet and costs a class of bug
       // if the terrain sampler ever produces an inverted quad.
@@ -276,7 +448,20 @@ export class FogOfWar {
    */
   setEnabled(v: boolean): void {
     this.on = v;
-    this.mesh.visible = v && this.shown;
+    this.syncGate();
+  }
+
+  /**
+   * Carpet visibility and the shared self-tint are ONE gate.
+   *
+   * If they ever diverge you get the worst of both worlds: a hidden carpet with
+   * every building still tinted, or `?fog=off` revealing the map while the
+   * structures on it stay dark. They are driven from here and nowhere else.
+   */
+  private syncGate(): void {
+    const live = this.on && this.shown;
+    this.mesh.visible = live;
+    shroudUniforms.uFogAmount.value = live ? 1 : 0;
   }
 
   /** Texture uploads performed since boot. Diagnostics. */
@@ -346,7 +531,7 @@ export class FogOfWar {
 
     if (!this.shown) {
       this.shown = true;
-      this.mesh.visible = this.on;
+      this.syncGate();
     }
   }
 
@@ -384,7 +569,7 @@ export class FogOfWar {
     this.flush(0);
     if (!this.shown) {
       this.shown = true;
-      this.mesh.visible = this.on;
+      this.syncGate();
     }
   }
 
@@ -413,8 +598,12 @@ export class FogOfWar {
     const rgb = FogOfWar.scratchRgb;
     hexToLinearRgb(look.exploredTint, rgb);
     (u.uExploredTint.value as THREE.Vector3).set(rgb[0], rgb[1], rgb[2]);
+    // The self-tint has to move with it, or a mood change re-tints the ground
+    // and leaves every building and ship on the old palette.
+    shroudUniforms.uFogTint.value.set(rgb[0], rgb[1], rgb[2], FOG_EXPLORED_ALPHA);
     hexToLinearRgb(look.unexploredColor, rgb);
     (u.uUnexploredColor.value as THREE.Vector3).set(rgb[0], rgb[1], rgb[2]);
+    shroudUniforms.uFogDark.value.set(rgb[0], rgb[1], rgb[2], FOG_UNEXPLORED_ALPHA);
     u.uNoiseScale.value = Math.max(1, look.noiseScale);
     u.uNoiseSpeed.value = look.noiseSpeed;
   }
@@ -425,6 +614,12 @@ export class FogOfWar {
     this.scene.remove(this.mesh);
     this.geometry.dispose();
     this.material.dispose();
+    // Hand the shared uniform back its 1x1 default BEFORE disposing the real
+    // one. Six long-lived materials hold this object by reference, and leaving
+    // a disposed GPU texture bound in all of them is a use-after-free that
+    // survives the match it belonged to.
+    shroudUniforms.uFogMask.value = makeClearMask();
+    shroudUniforms.uFogAmount.value = 0;
     this.texture.dispose();
   }
 }

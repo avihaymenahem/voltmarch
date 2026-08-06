@@ -62,6 +62,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { PROP_EMISSIVE_GAIN, PROP_MATERIAL, SCATTER_WIND } from '../core/config';
 import { clamp, clamp01, Rng, TAU } from '../core/math';
 import { linearColorTriple } from '../core/assets';
+import { applyShroudTint } from '../render/FogOfWar';
 import { SurfaceId, type BiomeName } from './Biomes';
 
 /* ==========================================================================
@@ -1800,8 +1801,16 @@ export function createPropMaterial(): PropMaterialSet {
         '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, uGlossRough, vGloss);')
       .replace('#include <emissivemap_fragment>',
         '#include <emissivemap_fragment>\ntotalEmissiveRadiance += vColor.rgb * vEmit * uEmitGain;');
+
+    // Scatter instances these as TALL, depth-writing meshes standing on the
+    // terrain. Required by the depth-tested fog carpet: without it a forest
+    // inside never-explored black would stay fully lit.
+    // NB the injector reads `transformed` at <project_vertex>, i.e. AFTER the
+    // wind displacement above, so a swaying tree samples where it actually is.
+    applyShroudTint(shader);
   };
-  material.customProgramCacheKey = (): string => 'ra-prop-v2';
+  // v3: the shroud self-tint changed the generated program.
+  material.customProgramCacheKey = (): string => 'ra-prop-v3';
 
   const depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   depthMaterial.name = 'PropDepth';
