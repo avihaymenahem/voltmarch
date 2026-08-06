@@ -58,6 +58,7 @@ import {
   MAP_PRESET_DEFAULT, MAP_SIZE, NAVAL_BUILDING_DIMENSIONS, NAVAL_UNIT_DIMENSIONS,
   REFINERY_STORAGE, SCENARIO_DEFAULT, SCENARIO_SCATTER, SILO_STORAGE,
   UNIT_DIMENSIONS, ORE_CELL_MAX, WATER_LEVEL,
+  type SeaSpec,
 } from '../core/config';
 import {
   ArmorClass, EntityFlag, EntityKind, Faction, Locomotor, NONE, OrderKind,
@@ -2314,6 +2315,31 @@ interface ScenarioPlan {
   /** Camera focus offset from the map centre. Only the default boot uses it. */
   focusDX?: number;
   focusDZ?: number;
+  /**
+   * A shoreline the TERRAIN GENERATOR must carve, in world metres.
+   *
+   * Declared on the PLAN rather than inside `build` because terrain generates
+   * long before any scenario runs — `world.terrain` is Phase.Command order 40
+   * and `game.scenario` is Phase.Cleanup order 10 000. `src/world/sea.system.ts`
+   * reads it off `plannedScenario()` and hands it to `Terrain` in between.
+   *
+   * A plan that declares one must also `setShore` the same geometry inside its
+   * builder, so `ScenarioSpec.shore` and the ground agree; `buildScenario`
+   * checks and warns.
+   */
+  sea?: SeaSpec;
+  /**
+   * Where `build` is centred.
+   *
+   * 'shelf' (the default) is `Terrain.startLocations()[0]` — the levelled, dry,
+   * connected patch the generator reserves, which is what a base wants to be
+   * standing on. 'centre' pins the composition to the map centre instead, and
+   * is for layouts anchored to WORLD-space geometry: a plan that declares a
+   * `sea` positions everything relative to that shoreline, and the shelf is
+   * pushed inland precisely to get out of the sea's way, so following it would
+   * march the whole composition off the coast it was authored around.
+   */
+  anchor?: 'shelf' | 'centre';
   summary: string;
   /**
    * `start` is only meaningful to `skirmish`. Every other plan is a posed
@@ -2491,6 +2517,49 @@ function addStartOre(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
   if (spots.length > 0) b.addOre(midX / spots.length, midZ / spots.length, 22);
 }
 
+/* --------------------------------------------------------------------------
+ * THE NAVAL SHORELINE
+ *
+ * One declaration, read twice: `PLANS.naval.sea` hands it to the terrain
+ * generator before the map exists, and `buildNaval` re-states the same line
+ * through `b.setShore` so `ScenarioSpec.shore` agrees with the ground. The two
+ * are checked against each other in `buildScenario`.
+ *
+ * WHY THESE NUMBERS
+ *   origin      (cx + 4, cz + 4) with cx = cz = MAP_SIZE / 2, matching
+ *               `buildNaval`. Water is the half-plane x + z < 520: the far
+ *               three-quarters of a 34-degree yawed frame. The naval yard, the
+ *               pillbox and the whole scatter box are on the +sum side, so the
+ *               composition was already authored correctly around a shoreline
+ *               that simply never got carved.
+ *   depth 2.0   The heightfield floor is TERRAIN_MIN_HEIGHT (0) and
+ *               WATER_LEVEL is 2.0, so 2.0 m is the deepest water this engine
+ *               can express. Asking for more is a number that does nothing.
+ *               `Water.fitRamp` fits the absorption ramp to whatever depth was
+ *               actually generated, which is what keeps the gradient readable
+ *               in a shallow basin — see the header of `src/world/Water.ts`.
+ *   shelf 34    Metres offshore to reach full depth. `visibleGround(55)` is
+ *               ~89 m wide by 55 m deep, so 34 m spends the gradient across
+ *               the part of the sea that is actually in the frame instead of
+ *               hitting the floor in the first two metres.
+ *   waviness 6  The waterline wanders +/-6 m on a 46 m wavelength. A ruler
+ *               straight coast reads as a clipping plane, and the foam band
+ *               needs something to break against (which is also why
+ *               `buildNaval` scatters rocks along the line).
+ * -------------------------------------------------------------------------- */
+
+export const NAVAL_SEA: SeaSpec = {
+  x: MAP_SIZE * 0.5 + 4,
+  z: MAP_SIZE * 0.5 + 4,
+  normalX: -Math.SQRT1_2,
+  normalZ: -Math.SQRT1_2,
+  bandWidth: 7,
+  depth: 2.0,
+  shelfMetres: 34,
+  wavinessMetres: 6,
+  wavelengthMetres: 46,
+};
+
 const PLANS: Record<string, ScenarioPlan> = {
   skirmish: {
     map: 'temperate', distance: 58, yawDeg: 24, frozen: false, settleTicks: 0,
@@ -2587,6 +2656,26 @@ const PLANS: Record<string, ScenarioPlan> = {
 
   naval: {
     map: 'coast', distance: 55, yawDeg: 34, frozen: false, settleTicks: 90,
+    // THE FIX FOR "08-naval-water photographs ships on grass".
+    //
+    // `buildNaval` has always declared this same shoreline through
+    // `b.setShore`, and for the whole life of this repo nothing read it: the
+    // spec published a `ShoreSpec` that had no consumer, `map: 'coast'` never
+    // reached the terrain generator (which takes its biome from `?biome=` /
+    // TERRAIN_DEFAULT_BIOME and has no `coast` member to take), and
+    // `TERRAIN_START_POSITIONS` reserved a guaranteed-DRY 58 m shelf at the
+    // exact point the shot frames. The fleet floated at `max(WATER_LEVEL,
+    // ground)` — which `SpawnUnitOptions.float` documents as the degraded
+    // "ships parked on a field" reading — and that is what was photographed.
+    //
+    // Declaring it here is what closes the loop. Every number matches
+    // `buildNaval`'s own `setShore(cx + 4, cz + 4, -SQRT1_2, -SQRT1_2, 7)`, and
+    // `buildScenario` warns if the two ever drift apart.
+    sea: NAVAL_SEA,
+    // The composition is authored against that world-space shoreline, so it
+    // must not follow the start shelf — which the generator now pushes ~100 m
+    // inland to keep it out of the water.
+    anchor: 'centre',
     summary: 'Shoreline with a naval yard, fleets closing across open water.',
     build: buildNaval,
   },
@@ -2664,6 +2753,13 @@ export interface ScenarioPlanSummary {
   readonly settleTicks: number;
   /** The opening this boot will use. Always `'base'` on a `?shot=` fixture. */
   readonly start: StartCondition;
+  /**
+   * The shoreline the terrain generator must carve, or null for a landlocked
+   * map. Read by `src/world/sea.system.ts` before `world.terrain` inits —
+   * that ordering is the entire reason this lives on the PLAN and not on the
+   * spec. Null for every scenario but `naval`.
+   */
+  readonly sea: SeaSpec | null;
 }
 
 /* --------------------------------------------------------------------------
@@ -2752,6 +2848,10 @@ export function planScenario(
     frozen: plan.frozen,
     settleTicks: plan.settleTicks,
     start: opening,
+    // `?map=` may override which PRESET a scenario runs on, but it cannot
+    // conjure or delete a shoreline: the sea is composition, authored with the
+    // fleet positions, not a property of the biome table.
+    sea: plan.sea ?? null,
   };
 }
 
@@ -2859,6 +2959,47 @@ function startShelf(): { x: number; z: number } {
 }
 
 /**
+ * The plan told the terrain where the sea is; the builder told everyone else.
+ * They are two statements of one line and there is no mechanism forcing them
+ * to agree, so they are MEASURED against each other rather than trusted.
+ *
+ * A drift here is the exact class of defect this whole change is fixing: the
+ * fixture is captioned "water as a hero element" and the way it failed was
+ * that one half of the contract was never wired to the other. A silent
+ * half-metre of disagreement would put the naval yard in the sea, or the fleet
+ * on the beach, and the frame would still be photographed with confidence.
+ *
+ * Warns rather than throws — law 1 of this file is that a scenario never
+ * throws — but it warns at the volume of a real bug.
+ */
+function assertShoreMatchesSea(
+  name: string, sea: SeaSpec | undefined, shore: ShoreSpec | null,
+): void {
+  if (sea === undefined) return;
+  if (shore === null) {
+    console.warn(
+      `[scenario] '${name}' declares a sea on its plan but its builder never called ` +
+      'setShore. The ground is carved and ScenarioSpec.shore is null, so anything ' +
+      'reading the spec disagrees with the terrain.',
+    );
+    return;
+  }
+  // 0.5 m and ~0.6 degrees: far looser than any rounding, far tighter than a
+  // human editing one of the two by hand and forgetting the other.
+  const dPos = Math.hypot(shore.x - sea.x, shore.z - sea.z);
+  const dot = shore.normalX * sea.normalX + shore.normalZ * sea.normalZ;
+  if (dPos <= 0.5 && dot >= 0.99994) return;
+  console.warn(
+    `[scenario] '${name}': the shoreline the terrain carved and the one the builder ` +
+    `published have drifted apart — plan (${sea.x.toFixed(1)}, ${sea.z.toFixed(1)}) ` +
+    `n(${sea.normalX.toFixed(3)}, ${sea.normalZ.toFixed(3)}) vs builder ` +
+    `(${shore.x.toFixed(1)}, ${shore.z.toFixed(1)}) ` +
+    `n(${shore.normalX.toFixed(3)}, ${shore.normalZ.toFixed(3)}). ` +
+    'They are one line stated twice; fix whichever is wrong.',
+  );
+}
+
+/**
  * Build a scenario into the world and publish its spec.
  *
  * Never throws. If a layout builder fails halfway the world keeps whatever was
@@ -2892,7 +3033,13 @@ export function buildScenario(
   // exact patch rather than on a constant that merely happens to coincide with
   // it today. The fallback keeps headless callers that build a scenario without
   // a terrain module (several unit tests) on the old centre.
-  const shelf = startShelf();
+  // A plan anchored to world-space geometry (today: anything declaring a `sea`)
+  // must NOT follow the shelf — the generator deliberately pushes that shelf
+  // inland to keep it out of the water, and the composition is authored around
+  // the shoreline, not around the shelf. See `ScenarioPlan.anchor`.
+  const shelf = plan.anchor === 'centre'
+    ? { x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5 }
+    : startShelf();
   const cx = shelf.x;
   const cz = shelf.z;
 
@@ -2946,6 +3093,7 @@ export function buildScenario(
   }
 
   const harvested = builder.harvest();
+  assertShoreMatchesSea(resolved, plan.sea, harvested.shore);
   const view = visibleGround(plan.distance);
   const wanted = builder.cameraFocus();
   const focusX = wanted?.x ?? cx + (plan.focusDX ?? 0);

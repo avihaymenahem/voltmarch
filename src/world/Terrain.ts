@@ -94,11 +94,13 @@ import {
   TERRAIN_PRUNE_REGION_CELLS, TERRAIN_RAMP_CORE_WIDTH, TERRAIN_RAMP_HALF_WIDTH,
   TERRAIN_RAMP_FORCED_CORE_WIDTH, TERRAIN_RAMP_FORCED_HALF_WIDTH,
   TERRAIN_RAMP_MAX_GRADE, TERRAIN_RAMP_MAX_LENGTH, TERRAIN_RAMP_MAX_LINK_CELLS,
+  TERRAIN_SEA_BEACH_GRADE, TERRAIN_SEA_START_CLEARANCE,
   TERRAIN_SPLAT_PER_CELL, TERRAIN_START_APRON_GRADE, TERRAIN_START_DRY_MARGIN,
   TERRAIN_START_EDGE_WOBBLE, TERRAIN_START_ENFORCE_PASSES,
   TERRAIN_START_FLAT_RADIUS, TERRAIN_START_GUARD_RADIUS,
   TERRAIN_START_MAX_RAMPS, TERRAIN_START_POSITIONS, TERRAIN_START_SWELL,
   TERRAIN_START_WOBBLE_METRES, WATER_LEVEL,
+  type SeaSpec,
 } from '../core/config';
 import { Locomotor, type EntityId, type ITerrain } from '../core/types';
 import { clamp, clamp01, fbm2, isInMap, lerp, simplex2, smoothstep } from '../core/math';
@@ -167,6 +169,16 @@ export interface TerrainOptions {
    * its own set once there is more than one player start.
    */
   starts?: readonly StartPoint[];
+  /**
+   * A sea to carve, in world metres. Omit and the value published by
+   * `setPlannedSea()` is used; pass `null` to force a landlocked map.
+   *
+   * The default matters: `world/terrain.system.ts` constructs this class with
+   * no sea option at all, so the module-level channel is the only way a
+   * scenario's declared shoreline can reach the generator without that file
+   * having to know the feature exists.
+   */
+  sea?: SeaSpec | null;
 }
 
 /** A world position the generator must guarantee an army can spawn on. */
@@ -269,7 +281,14 @@ export class Terrain implements ITerrain {
   private biomeDef: BiomeDef;
   private rampsCarved = 0;
 
-  /** Start locations this terrain was asked to reserve, in world metres. */
+  /** The sea this map carries, or null for a landlocked map. */
+  private sea: SeaSpec | null = null;
+  /**
+   * The start locations as REQUESTED, before any sea pushed them inland.
+   * Kept so `setSea` can re-resolve them without the caller re-stating them.
+   */
+  private startRequest: readonly StartPoint[] | undefined = undefined;
+  /** Start locations this terrain will reserve, in world metres. */
   private readonly startPoints: StartPoint[] = [];
   /** The reserved shelves, filled in by `levelStartAreas`. */
   private readonly startShelves: StartArea[] = [];
@@ -300,6 +319,9 @@ export class Terrain implements ITerrain {
     this.scene = options.scene;
     this.seed = options.seed | 0;
     this.biomeDef = getBiome(options.biome);
+    // BEFORE setStarts: a sea moves the start points, so it has to be known
+    // before they are resolved.
+    this.sea = options.sea !== undefined ? options.sea : plannedSea();
     this.setStarts(options.starts);
 
     this.splatTexA = makeSplatTexture(this.splatA, 'terrain.splatA');
@@ -357,8 +379,13 @@ export class Terrain implements ITerrain {
     // never marks a start cell as cliff, water or unbuildable in the first
     // place. Reserving after the fact would mean re-deriving everything twice.
     this.levelStartAreas();
+    // The shelf's apron is a two-sided clamp and can raise ground. Re-assert
+    // the bed before anything is classified, or a rim wobble dries the coast.
+    // No-op on a landlocked map.
+    this.carveSea();
     this.computeDerived();
     this.ensureConnectivity();
+    this.carveSea();
     this.computeDerived();
     // Trust nothing: measure the guarantee and escalate until it holds.
     this.enforceStartAreas();
@@ -377,21 +404,134 @@ export class Terrain implements ITerrain {
    * `generate()`; the constructor calls it before its own generate.
    */
   setStarts(starts: readonly StartPoint[] | undefined): void {
+    this.startRequest = starts;
+    this.resolveStarts();
+  }
+
+  /**
+   * Turn the requested start locations into the ones that will actually be
+   * reserved, pushing any that sit on (or too near) the declared sea inland.
+   *
+   * A start area is guaranteed FLAT, DRY and BUILDABLE and is levelled to at
+   * least `WATER_LEVEL + TERRAIN_START_DRY_MARGIN`. Leave one over water and
+   * the guarantee wins — `levelStartAreas` simply fills the sea in. That is
+   * exactly what drowned `08-naval-water`: `TERRAIN_START_POSITIONS` reserves
+   * one shelf at the map centre, which is the one spot every fixture frames.
+   *
+   * Sliding along `-normal` rather than searching keeps this deterministic and
+   * keeps the shelf on the map's own diagonal, which is where the authored
+   * balance put it.
+   */
+  private resolveStarts(): void {
     this.startPoints.length = 0;
+    const raw: StartPoint[] = [];
+    const starts = this.startRequest;
     if (starts !== undefined && starts.length > 0) {
       for (let i = 0; i < starts.length; i++) {
-        this.startPoints.push({
-          x: clamp(starts[i].x, 0, MAP_SIZE),
-          z: clamp(starts[i].z, 0, MAP_SIZE),
-        });
+        raw.push({ x: clamp(starts[i].x, 0, MAP_SIZE), z: clamp(starts[i].z, 0, MAP_SIZE) });
       }
     } else {
       for (let i = 0; i < TERRAIN_START_POSITIONS.length; i++) {
         const f = TERRAIN_START_POSITIONS[i];
-        this.startPoints.push({ x: f[0] * MAP_SIZE, z: f[1] * MAP_SIZE });
+        raw.push({ x: f[0] * MAP_SIZE, z: f[1] * MAP_SIZE });
       }
     }
+
+    const sea = this.sea;
+    for (let i = 0; i < raw.length; i++) {
+      const p = raw[i];
+      if (sea === null) {
+        this.startPoints.push(p);
+        continue;
+      }
+      // How far inland the whole flat radius has to sit. `wavinessMetres` is
+      // included because the waterline wanders that far toward the land.
+      const want = -(TERRAIN_START_FLAT_RADIUS + TERRAIN_START_EDGE_WOBBLE
+        + sea.bandWidth + sea.wavinessMetres + TERRAIN_SEA_START_CLEARANCE);
+      const d = (p.x - sea.x) * sea.normalX + (p.z - sea.z) * sea.normalZ;
+      if (d <= want) {
+        this.startPoints.push(p);
+        continue;
+      }
+      const push = d - want;
+      this.startPoints.push({
+        x: clamp(p.x - sea.normalX * push, 0, MAP_SIZE),
+        z: clamp(p.z - sea.normalZ * push, 0, MAP_SIZE),
+      });
+    }
     this.startShelves.length = 0;
+  }
+
+  /**
+   * Declare (or clear) the sea and rebuild. Not a per-frame call — this is a
+   * full regeneration, same cost as `setBiome`.
+   */
+  setSea(sea: SeaSpec | null): void {
+    this.sea = sea;
+    this.resolveStarts();
+    this.rampGrid.fill(0);
+    this.generate();
+  }
+
+  /** The sea this map carries, or null when it is landlocked. */
+  get seaSpec(): SeaSpec | null {
+    return this.sea;
+  }
+
+  /**
+   * Signed metres seaward of the declared waterline, with the coastal wander
+   * already applied. Negative inland. `+Infinity` would be wrong for a
+   * landlocked map, so callers must check `seaSpec` first; this returns
+   * -Infinity there, which reads as "as far inland as it is possible to be".
+   */
+  private seaDistance(x: number, z: number, sea: SeaSpec): number {
+    const wob = sea.wavinessMetres > 0
+      ? fbm2(x / sea.wavelengthMetres, z / sea.wavelengthMetres, 3, 2.0, 0.5, this.seed + 4409)
+        * sea.wavinessMetres
+      : 0;
+    return (x - sea.x) * sea.normalX + (z - sea.z) * sea.normalZ + wob;
+  }
+
+  /**
+   * The highest the ground is allowed to be at a given distance offshore.
+   *
+   * Seaward it is the bed: WATER_LEVEL falling to `WATER_LEVEL - depth` over
+   * `shelfMetres`, smoothstepped so the absorption gradient has a real ramp to
+   * read rather than a step. Landward it is a cone rising at
+   * `TERRAIN_SEA_BEACH_GRADE`, so the coast is a beach and not a wall.
+   */
+  private seaCeiling(d: number, sea: SeaSpec): number {
+    if (d <= 0) return WATER_LEVEL - d * TERRAIN_SEA_BEACH_GRADE;
+    const t = clamp01(d / sea.shelfMetres);
+    return WATER_LEVEL - sea.depth * (t * t * (3 - 2 * t));
+  }
+
+  /**
+   * Re-assert the bed on the SEA SIDE ONLY.
+   *
+   * `buildHeightfield` already applies the full profile, so on a quiet seed
+   * this changes nothing. It exists because `levelStartAreas` runs afterwards
+   * and its apron is a two-sided clamp — it can RAISE ground that sits below
+   * the cone — so an unlucky rim wobble could still dry a strip of coast. This
+   * pass can only ever lower ground that the scenario declared to be sea, so it
+   * cannot fight any land-side guarantee.
+   */
+  private carveSea(): void {
+    const sea = this.sea;
+    if (sea === null) return;
+    const h = this.height;
+    for (let gz = 0; gz < GRID_STRIDE; gz++) {
+      const z = gz * GRID;
+      const row = gz * GRID_STRIDE;
+      for (let gx = 0; gx < GRID_STRIDE; gx++) {
+        const x = gx * GRID;
+        const d = this.seaDistance(x, z, sea);
+        if (d <= 0) continue;
+        const ceil = this.seaCeiling(d, sea);
+        const i = row + gx;
+        if (h[i] > ceil) h[i] = clamp(ceil, 0, TERRAIN_MAX_HEIGHT);
+      }
+    }
   }
 
   /**
@@ -514,6 +654,7 @@ export class Terrain implements ITerrain {
     const p = this.potential;
     const h = this.height;
     const s = this.seed;
+    const sea = this.sea;
     const invSwell = 1 / b.swellMetres;
     const tiers = b.tierCount;
     const halfGrad = 1 / (2 * GRID);
@@ -554,6 +695,15 @@ export class Terrain implements ITerrain {
         // in biomes that have water at all.
         if (b.basinDepth > 0) {
           y -= smoothstep(b.basinThreshold, 0, p[i]) * b.basinDepth;
+        }
+
+        // The declared sea. A CLAMP into the coastal cone, never a blend —
+        // see TERRAIN_SEA_BEACH_GRADE for why that distinction is the whole
+        // difference between a coast and a stamped wedge. Gated on `sea`, so a
+        // landlocked map runs the identical arithmetic it always has.
+        if (sea !== null) {
+          const ceil = this.seaCeiling(this.seaDistance(x, z, sea), sea);
+          if (y > ceil) y = ceil;
         }
 
         h[i] = clamp(y, 0, TERRAIN_MAX_HEIGHT);
@@ -2113,4 +2263,36 @@ export function getTerrain(): Terrain | null {
 /** Set by terrain.system.ts. Nothing else may call this. */
 export function setActiveTerrain(t: Terrain | null): void {
   active = t;
+}
+
+/* --------------------------------------------------------------------------
+ * THE SEA CHANNEL
+ *
+ * `world/terrain.system.ts` is a thin registration shim and constructs
+ * `Terrain` with no knowledge of scenarios. The shoreline a scenario declares
+ * has to arrive BEFORE that constructor runs, which rules out
+ * `activeScenario()` (published last, at Phase.Cleanup order 10 000) and rules
+ * out an import from `src/game/` in this file (Scenarios.ts already imports
+ * `getTerrain` from here — the cycle would be real).
+ *
+ * So the plan is pushed in from the outside, exactly the way `setActiveTerrain`
+ * is pulled out. `src/world/sea.system.ts` owns the push and runs at
+ * `Phase.Command, order: 20` — after nothing in particular, and before
+ * `world.terrain` at order 40.
+ * -------------------------------------------------------------------------- */
+
+let plannedSeaSpec: SeaSpec | null = null;
+
+/**
+ * Declare the sea the NEXT `Terrain` will be generated with. Set by
+ * `sea.system.ts` from `plannedScenario().sea`; null means landlocked, which
+ * is what every fixture but `naval` gets.
+ */
+export function setPlannedSea(sea: SeaSpec | null): void {
+  plannedSeaSpec = sea;
+}
+
+/** The sea a `Terrain` will pick up when its options do not name one. */
+export function plannedSea(): SeaSpec | null {
+  return plannedSeaSpec;
 }

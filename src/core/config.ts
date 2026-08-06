@@ -1597,6 +1597,99 @@ export const TERRAIN_START_ENFORCE_PASSES = 6;
  */
 export const TERRAIN_PRUNE_REGION_CELLS = 28;
 
+/* -- 20a2. THE DECLARED SEA ------------------------------------------------
+ * WHY THIS EXISTS, AND WHAT WAS BROKEN WITHOUT IT
+ * ----------------------------------------------
+ * `MAP_PRESETS` carries a `water` fraction per preset (`coast` 0.45), and
+ * `ScenarioSpec` carries a `ShoreSpec` that `buildNaval` fills in. Neither
+ * reached the heightfield. `world/terrain.system.ts` picks its biome from
+ * `?biome=` or `TERRAIN_DEFAULT_BIOME` and never consults the scenario at all,
+ * and `BiomeName` has no `coast` member to consult even if it did. So the
+ * naval fixture asked for a 45%-water coastal map, was handed `temperate`
+ * (basin threshold 0.11, a few scattered 2 m puddles), and — because
+ * `TERRAIN_START_POSITIONS` reserves a guaranteed-DRY 58 m shelf at exactly
+ * (0.5, 0.5) — was handed dry land at the one spot it frames. `08-naval-water`
+ * photographed ships on grass for its entire life.
+ *
+ * This is the missing half of the contract `src/game/Scenarios.ts` already
+ * documents: "The terrain/ore/shore half is DATA ... the terrain module owns
+ * it." A scenario declares a shoreline; the generator carves it.
+ *
+ * A HALF-PLANE, NOT A COASTLINE FUNCTION. One straight line with a low
+ * frequency wobble is what `ShoreSpec` has always described, it is what an RTS
+ * naval map actually is, and it keeps the whole feature to a distance test
+ * inside the existing heightfield loop. Nothing about it is a special case
+ * downstream: the sea is ordinary sub-WATER_LEVEL terrain, so `waterGrid`,
+ * the sand splat band, `Water.ts` and the minimap all pick it up for free.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * A sea a scenario asks the generator to carve, in WORLD metres.
+ *
+ * Water is the half-plane `(p - origin) . normal > 0`. This is deliberately
+ * the same geometry `ScenarioSpec.shore` publishes — the two must agree, and
+ * `buildScenario` warns when they do not — but it is delivered EARLIER, on
+ * `plannedScenario()`, because terrain generates long before any scenario has
+ * built. See `src/world/sea.system.ts` for the hand-off.
+ */
+export interface SeaSpec {
+  /** A point on the waterline. */
+  readonly x: number;
+  readonly z: number;
+  /** Unit normal pointing OUT TO SEA. */
+  readonly normalX: number;
+  readonly normalZ: number;
+  /** Metres of beach / shallow band either side of the line. */
+  readonly bandWidth: number;
+  /**
+   * Metres the bed drops below WATER_LEVEL in open water.
+   *
+   * Capped in practice by the heightfield floor: `buildHeightfield` clamps to
+   * `TERRAIN_MIN_HEIGHT` (0), so with WATER_LEVEL at 2.0 no map anywhere in
+   * this game can be deeper than 2.0 m. That is not a problem the water module
+   * needs solving — `Water.fitRamp` fits the absorption ramp to the basin that
+   * was actually generated for exactly this reason — but it is why asking for
+   * more than ~2 m here buys nothing.
+   */
+  readonly depth: number;
+  /** Metres offshore over which the bed reaches `depth`. */
+  readonly shelfMetres: number;
+  /** Metres the waterline wanders either way, so the coast is not a ruler. */
+  readonly wavinessMetres: number;
+  /** Metres per feature of that wander. */
+  readonly wavelengthMetres: number;
+}
+
+/**
+ * Rise/run of the coastal cone the land is clamped into as it approaches the
+ * waterline.
+ *
+ * Same device as `TERRAIN_START_APRON_GRADE` and chosen the same way: a CLAMP,
+ * not a blend. A lerp toward sea level scales a 6 m terrace face down but
+ * leaves it a face; a clamp deletes the face where it exceeds the cone and
+ * leaves the terrain untouched where it does not, so the coast reads as a
+ * landform meeting the sea rather than as a stamped wedge.
+ *
+ * 0.26 is under `tan(ROUGH_SLOPE)` (0.288), so the beach never even classifies
+ * as rough ground, and it bounds the cone's reach: tier-1 ground at 8.8 m stops
+ * being clamped 26 m inland, and nothing on the map is affected past
+ * (TERRAIN_MAX_HEIGHT - WATER_LEVEL) / 0.26 ~ 85 m from the waterline.
+ */
+export const TERRAIN_SEA_BEACH_GRADE = 0.26;
+
+/**
+ * Metres of dry land a reserved start shelf must keep between itself and the
+ * waterline.
+ *
+ * A start area is GUARANTEED flat, dry and buildable, and it is levelled to at
+ * least `WATER_LEVEL + TERRAIN_START_DRY_MARGIN`. Put one on top of a declared
+ * sea and the guarantee wins: the sea gets filled in. So on a map with a sea,
+ * start points slide along `-normal` until their whole flat radius is inland.
+ * `Terrain.carveSea` re-asserts the bed afterwards regardless, because the
+ * shelf's apron wobble can still reach past this margin on an unlucky seed.
+ */
+export const TERRAIN_SEA_START_CLEARANCE = 10;
+
 /* -- 20b. MAJOR-REGION GUARANTEE -------------------------------------------
  * The start guarantee above fixes "my army is in a pit". This fixes the other
  * half of the same family: "a quarter of the map is a plateau nothing can
