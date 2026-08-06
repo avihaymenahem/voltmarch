@@ -474,6 +474,17 @@ export interface LoopHooks {
   afterSimStep?(tick: number): void;
   /** Called once per rendered frame after every frame system has run. */
   render?(ctx: RenderContext): void;
+  /**
+   * The half of `render` that is NOT presentation — camera integration, aspect,
+   * shadow fitting — for a frame that runs every system but does not draw.
+   *
+   * `advanceTicks` needs one of these per tick. Presenting all of them would be
+   * a few hundred full 1440p draws for a four-second advance; skipping the host
+   * work entirely would leave camera damping and screen shake frozen while the
+   * effects that caused the shake played out, which is a different frame from
+   * the one live play produces. So: run the host work every tick, present once.
+   */
+  hostFrame?(ctx: RenderContext): void;
 }
 
 export class GameLoop {
@@ -497,6 +508,34 @@ export class GameLoop {
   wallTime = 0;
 
   paused = false;
+
+  /**
+   * THE CAPTURE CLOCK — set by Bootstrap under `?shot=`.
+   *
+   * A rendered frame normally advances `wallTime` and publishes the real
+   * elapsed `dt`, and a great deal of the PRESENTATION reads that: the vfx
+   * pools age by it, `buildings.system.ts` feeds it straight into the shared
+   * `uTime` that drives radar sweeps, bay doors, damage flicker and the
+   * selection pulse, road decals fade on it, the fog-of-war reveal eases on it,
+   * the camera damps and shakes on it.
+   *
+   * A capture cannot afford any of that. The number of rAF frames between boot
+   * and the shutter is not fixed — `ready()` polls the loading manager, the
+   * harness polls for the curtain — and neither is how long each one took. So
+   * two captures of identical code photographed two different moments of every
+   * one of those animations. Measured over the full 12-shot set on an idle
+   * machine: ZERO of twelve frames were byte-identical between two runs of the
+   * same build, and `10-selection` — a fixture with no `advance` at all and a
+   * frozen sim — moved `vividPixelFrac` by 0.0146, which is the selection pulse
+   * being photographed at a different phase.
+   *
+   * With this on, an ORGANIC frame advances the render clock by exactly zero.
+   * Time moves only when the harness asks for it, through `advanceTicks`, in
+   * whole simulation steps. The capture is then a function of the scenario, the
+   * seed and the tick count, and of nothing else.
+   */
+  captureClock = false;
+
   /** Index into GAME_SPEEDS. */
   speedIndex: number = DEFAULT_SPEED_INDEX;
   /** Steps executed in the most recent frame, for the hitch indicator. */
@@ -586,7 +625,11 @@ export class GameLoop {
     // Clamp: a tab-switch or a breakpoint must not queue 40 seconds of sim.
     if (!(realDt > 0)) realDt = 0;
     if (realDt > MAX_FRAME_DT) realDt = MAX_FRAME_DT;
-    this.wallTime += realDt;
+    // Under `?shot=` an organic frame is worth no time at all — see captureClock.
+    if (this.captureClock) realDt = 0;
+    // `wallTime` is advanced by `renderPass`, so that a frame the harness
+    // synthesises moves the render clock by exactly its own dt and an organic
+    // one moves it by the real elapsed time. One writer, one meaning.
 
     if (!this.paused) {
       // Game speed scales the ACCUMULATOR, never SIM_DT — changing dt would
@@ -614,24 +657,124 @@ export class GameLoop {
     this.alpha = this.paused ? 1 : this.accumulator / SIM_DT;
 
     // --- render ----------------------------------------------------------
+    this.renderPass(realDt, this.alpha, true);
+
+    profiler.recordFrame(now() - frameStart);
+    if ((this.frame & 63) === 0) profiler.sampleHeap();
+  }
+
+  /**
+   * ONE COMPLETE FRAME OF THE PRESENTATION: every frame system in render-phase
+   * order, then the host's per-frame work, then the presentation queue is
+   * emptied.
+   *
+   * The one and only place a frame is assembled. `onFrame` calls it with the
+   * real clock; `advanceTicks` calls it with a fixed one; `captureFrame` calls
+   * it for a screenshot. That matters because the ORDER inside it is a
+   * contract — `registry.runFrame` before the camera integrates, the fx queue
+   * drained by a frame system before it is cleared — and a second copy of that
+   * order is a second thing to keep in step.
+   *
+   * `present` false runs the host work without drawing. Allocation-free: the
+   * render context is the one the loop has always reused.
+   */
+  private renderPass(dt: number, alpha: number, present: boolean): void {
     this.frame++;
+    this.wallTime += dt;
     const rc = this.renderCtx;
-    rc.dt = realDt;
+    rc.dt = dt;
     rc.time = this.wallTime;
-    rc.alpha = this.alpha;
+    rc.alpha = alpha;
     rc.frame = this.frame;
     rc.quality = this.quality;
 
     this.registry.runFrame(rc);
-    this.hooks.render?.(rc);
+    if (present) this.hooks.render?.(rc);
+    else this.hooks.hostFrame?.(rc);
 
     // The presentation queue accumulates across every substep and is drained
     // exactly once here, so a 5-step catch-up frame does not emit five muzzle
     // flashes for one shot.
     this.channels.fx.clear();
+  }
 
-    profiler.recordFrame(now() - frameStart);
-    if ((this.frame & 63) === 0) profiler.sampleHeap();
+  /**
+   * One complete frame, on demand, outside the rAF loop. This is what
+   * `__VM.screenshot()` renders through.
+   *
+   * It used to be a bare present — camera, shadow fit, draw — with no
+   * `registry.runFrame` in it at all. That made the capture API a trap: any
+   * work queued for the next SYSTEM frame had not run when the pixels were
+   * read, so `__vmVfx.advance(ms)` followed by `screenshot()` photographed the
+   * frame BEFORE the advance. An investigation into an explosion that "was not
+   * there" cost real time to exactly this. A capture must never be one frame
+   * stale, and the fix is not to remember to call something else first.
+   *
+   * `dt` defaults to zero so a screenshot ages nothing by itself.
+   */
+  captureFrame(dt = 0): void {
+    this.renderPass(dt, this.alpha, true);
+  }
+
+  /**
+   * Advance the world by `ticks` fixed steps WITH THE PRESENTATION IN LOCKSTEP:
+   * one `stepSim()`, then one complete system frame at exactly SIM_DT, per
+   * tick. Synchronous, no rAF, no wall clock, no scheduler.
+   *
+   * WHY THIS EXISTS RATHER THAN `step(n)` + a sleep
+   * -----------------------------------------------
+   * `step(n)` runs n simulations and no frames. Everything those ticks pushed
+   * into `channels.fx` then arrives in ONE frame — a four-second battle's worth
+   * of muzzle flashes, all spawned at age zero — and the harness used to age
+   * that pile back down by sleeping in wall clock and photographing whatever
+   * the machine reached. Effects age per RENDERED FRAME, so their age at the
+   * shutter was a function of frame rate.
+   *
+   * Interleaving from the harness side does not fix it either, and this was
+   * measured: pausing the loop and issuing one `step(1)` plus one
+   * `__vmVfx.advance(SIM_DT)` per rAF made `05-combat` p99 luminance WORSE
+   * (0.0014 -> 0.0870 between runs). Total elapsed time was exact; which
+   * rendered frame consumed which advance was not, so an effect spawned by the
+   * tick between two coalesced frames was aged twice over.
+   *
+   * The only way spawn and age stay in lockstep is for the two to be the same
+   * loop, with no scheduler between them. That is this method. An effect
+   * spawned by tick T is drained by the frame belonging to tick T and has aged
+   * exactly (N - T) * SIM_DT when the last one returns — on any machine, at any
+   * frame rate, under any load.
+   */
+  advanceTicks(ticks: number): void {
+    const n = ticks | 0;
+    for (let i = 0; i < n; i++) {
+      this.stepSim();
+      // alpha 1: a fixed step lands exactly ON the tick, never between two.
+      this.renderPass(SIM_DT, 1, i === n - 1);
+    }
+  }
+
+  /**
+   * Advance the PRESENTATION by `frames` fixed steps of SIM_DT, leaving the
+   * simulation exactly where it is.
+   *
+   * This is what a `?shot=` fixture needs. Those boot PAUSED, and all of their
+   * motion comes from `settleTicks` at scenario init, which runs the ticks with
+   * `runHeadless` — no frames — so every effect all of those ticks spawned
+   * lands in ONE frame at age zero. What the fixture then wants is for that
+   * pile to play out to a chosen moment: smoke to rise, fireballs to fade,
+   * damaged hulls to keep wisping. That is presentation time, not simulation
+   * time, and the harness used to buy it by sleeping in wall clock.
+   *
+   * Advancing the SIMULATION instead was tried and rejected on the image:
+   * `05-combat` with 120 live ticks on top of its 120 settle ticks is not a
+   * battlefield, it is a white sheet — four seconds of tread dust and cook-offs
+   * from two dozen vehicles with nothing to clear it. Deterministic, and
+   * useless as a measurement of anything else in the frame. `advanceTicks`
+   * remains the right primitive for a fixture authored around it; no current
+   * one is.
+   */
+  advanceFrames(frames: number): void {
+    const n = frames | 0;
+    for (let i = 0; i < n; i++) this.renderPass(SIM_DT, this.alpha, i === n - 1);
   }
 
   /** Exactly one fixed simulation step. */

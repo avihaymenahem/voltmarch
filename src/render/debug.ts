@@ -74,12 +74,32 @@ export interface DebugCounters {
  * without importing (and therefore coupling to) any gameplay module.
  */
 export interface DebugHooks {
-  /** Render exactly one frame, synchronously. Required for screenshot(). */
+  /**
+   * Render exactly one COMPLETE frame, synchronously — every frame system, then
+   * presentation. Required for screenshot().
+   *
+   * "Complete" is load-bearing and was not always true: a host that only
+   * presented here made `screenshot()` return the frame before any work queued
+   * for the next system frame had run.
+   */
   renderFrame?: () => void;
   pause?: () => void;
   resume?: () => void;
-  /** Advance the simulation by n fixed steps while paused. */
+  /** Advance the simulation by n fixed steps while paused. No frames. */
   step?: (n: number) => void;
+  /**
+   * Advance the simulation by n fixed steps, each followed by a complete
+   * system frame at exactly the sim dt. The deterministic capture path.
+   */
+  advanceTicks?: (n: number) => void;
+  /**
+   * Advance the presentation by n complete system frames of exactly the sim dt,
+   * leaving the simulation where it is. The deterministic replacement for a
+   * wall-clock sleep.
+   */
+  advanceFrames?: (n: number) => void;
+  /** The fixed simulation rate, so a harness can check its own copy of it. */
+  simHz?: () => number;
   setTimeScale?: (scale: number) => void;
   restart?: (seed?: number) => void;
   /** Toggle HUD/menu DOM visibility for clean product shots. */
@@ -319,7 +339,28 @@ export interface VMHandle {
   /* -- time -- */
   pause(): void;
   resume(): void;
+  /** n fixed sim steps and NO frames. Fast; the presentation does not move. */
   step(n?: number): void;
+  /**
+   * n fixed sim steps with the PRESENTATION IN LOCKSTEP — each step followed by
+   * one complete system frame at exactly the sim dt.
+   *
+   * This is the only correct way to advance a capture. `step()` leaves every
+   * effect the ticks spawned piled into one frame at age zero; sleeping in wall
+   * clock and photographing the result ages them by however many frames the
+   * machine managed. Both were measured to move a graded fixture more than a
+   * real art change does. Throws if the host did not register the hook, because
+   * a capture that silently did not advance is worse than one that failed.
+   */
+  advanceTicks(n: number): void;
+  /**
+   * n complete system frames of exactly the sim dt, with the simulation left
+   * alone. What a `?shot=` fixture advances on: those boot paused, their motion
+   * comes from the scenario's `settleTicks`, and what the capture needs after
+   * that is for the effects those ticks spawned to play out to a chosen moment.
+   * Deterministic to the byte; throws if the host did not wire the hook.
+   */
+  advanceFrames(n: number): void;
   setTimeScale(scale: number): void;
   readonly paused: boolean;
 
@@ -678,8 +719,15 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     const quality = opts?.quality ?? 0.95;
 
     if (hooks.renderFrame) {
-      // Synchronous render then immediate readback — always correct, even
-      // without preserveDrawingBuffer.
+      // Synchronous COMPLETE frame — every system, then the draw — and an
+      // immediate readback. Always correct, even without preserveDrawingBuffer.
+      //
+      // The "complete" half is the whole point. The hook used to be a bare
+      // present, so a caller that queued work for the next system frame (the
+      // usual case: `__vmVfx.advance(ms)`) got the frame BEFORE its own advance
+      // and had no way to tell. `tools/flash-stack.mjs` still carries the
+      // `waitFrames(3)` it grew to work around that; it is now redundant, not
+      // load-bearing.
       hooks.renderFrame();
       return handle.canvas.toDataURL(mime, quality);
     }
@@ -875,6 +923,26 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
 
     step(n = 1) {
       hooks.step?.(n);
+    },
+
+    advanceTicks(n) {
+      if (typeof hooks.advanceTicks !== 'function') {
+        throw new Error(
+          '__VM.advanceTicks is not wired on this build — the host registered no ' +
+            'advanceTicks hook. Refusing to pretend a capture advanced.',
+        );
+      }
+      hooks.advanceTicks(n);
+    },
+
+    advanceFrames(n) {
+      if (typeof hooks.advanceFrames !== 'function') {
+        throw new Error(
+          '__VM.advanceFrames is not wired on this build — the host registered no ' +
+            'advanceFrames hook. Refusing to pretend a capture advanced.',
+        );
+      }
+      hooks.advanceFrames(n);
     },
 
     setTimeScale(scale) {

@@ -22,7 +22,7 @@
 import { Channels } from '../core/events';
 import { GameLoop, Profiler, SystemRegistry, devAsserts, now } from '../core/loop';
 import { World } from '../core/world';
-import { DEFAULT_QUALITY_TIER, MAP_SIZE } from '../core/config';
+import { DEFAULT_QUALITY_TIER, MAP_SIZE, SIM_HZ } from '../core/config';
 import { Faction, type QualityTier as CoreQualityTier, type RenderContext } from '../core/types';
 
 import {
@@ -168,8 +168,17 @@ export function bootstrap(options: BootOptions): GameHandle {
   world.addPlayer(Faction.Soviets, 'Opponent', false, false);
 
 
-  const loop = new GameLoop(world, channels, registry, { render: renderFrame }, seed);
+  const loop = new GameLoop(
+    world,
+    channels,
+    registry,
+    { render: renderFrame, hostFrame: hostFrame },
+    seed,
+  );
   loop.quality = coreTier(tier);
+  // A capture is a measurement, so it may not depend on how many frames the
+  // machine happened to render or how long they took. See GameLoop.captureClock.
+  loop.captureClock = shotMode;
 
   /* -- 7. debug ----------------------------------------------------------- */
   const debug = initDebug({
@@ -179,12 +188,32 @@ export function bootstrap(options: BootOptions): GameHandle {
     post,
     mount: options.debugRoot,
     hooks: {
-      // Guarantees screenshot() never captures a cleared buffer: it renders
-      // and reads back inside the same task.
-      renderFrame: () => renderOnce(1 / 60),
+      /*
+       * Guarantees screenshot() never captures a cleared buffer: it renders and
+       * reads back inside the same task.
+       *
+       * It used to be `renderOnce(1 / 60)` — a bare present, with no
+       * `registry.runFrame` in it. So anything queued for the next SYSTEM frame
+       * had not run when the pixels were read: `__vmVfx.advance(ms)` then
+       * `screenshot()` returned the frame BEFORE the advance, and one
+       * investigation concluded from that image that an explosion was absent.
+       * `loop.captureFrame()` runs every frame system first. dt 0, so the
+       * capture itself ages nothing.
+       */
+      renderFrame: () => loop.captureFrame(0),
       pause: () => loop.pause(),
       resume: () => loop.resume(),
       step: (n: number) => loop.runHeadless(Math.max(1, n | 0)),
+      // The deterministic advance the screenshot harness runs on: sim and
+      // presentation in lockstep, no wall clock anywhere. See
+      // GameLoop.advanceTicks.
+      advanceTicks: (n: number) => loop.advanceTicks(Math.max(0, n | 0)),
+      advanceFrames: (n: number) => loop.advanceFrames(Math.max(0, n | 0)),
+      // Published so `tools/shoot.mjs` can corroborate the tick rate it does
+      // its seconds-to-ticks arithmetic with. The harness never imports source
+      // — it drives a built bundle over HTTP — so its copy of SIM_HZ is a
+      // duplicate, and a duplicate nobody checks is a duplicate that drifts.
+      simHz: () => SIM_HZ,
       setTimeScale: (scale: number) => {
         // GAME_SPEEDS is [0.5, 1, 1.5, 2]; pick the closest index.
         const speeds = [0.5, 1.0, 1.5, 2.0];
@@ -214,6 +243,23 @@ export function bootstrap(options: BootOptions): GameHandle {
    * Everything that must happen to put one frame on screen. Called from the
    * loop's `render` hook, and directly by `hooks.renderFrame` for capture.
    */
+  /**
+   * The host's per-frame work that is not drawing: integrate the camera, keep
+   * the aspect honest, refit the shadow frustum to where the camera now is.
+   *
+   * Split out of `present` so `GameLoop.advanceTicks` can run it once per tick
+   * without paying for a full 1440p draw per tick. Camera damping and screen
+   * shake decay live in `cameraRig.update`, and a deterministic advance that
+   * skipped them would leave the camera shaking from an explosion that finished
+   * three seconds of simulated time ago.
+   */
+  function hostFrame(ctx: RenderContext): void {
+    if (disposed) return;
+    cameraRig.update(ctx.dt);
+    cameraRig.setAspect(handle.size.cssWidth, handle.size.cssHeight);
+    sceneRig.fitShadow(cameraRig.camera);
+  }
+
   function present(dt: number): void {
     if (disposed) return;
     handle.beginFrame();
@@ -226,17 +272,23 @@ export function bootstrap(options: BootOptions): GameHandle {
   /** The GameLoop's per-frame render hook. */
   function renderFrame(ctx: RenderContext): void {
     if (disposed) return;
-    const dt = debug.beginFrame(now());
-    // Prefer the loop's clamped real dt; fall back to the debug clock when the
-    // loop has not produced one yet (frame 0).
-    present(ctx.dt > 0 ? ctx.dt : dt);
+    const wallDt = debug.beginFrame(now());
+    // Prefer the loop's dt; fall back to the debug clock when the loop has not
+    // produced one yet (frame 0).
+    //
+    // NOT under `?shot=`. There the loop's dt is deliberately zero on an
+    // organic frame (GameLoop.captureClock), and falling back to the wall clock
+    // would put exactly the thing the capture clock exists to remove — real
+    // elapsed time — back into camera damping and shake decay.
+    const dt = ctx.dt > 0 ? ctx.dt : (shotMode ? 0 : wallDt);
+    present(dt);
     debug.counters.entities = world.store.aliveCount;
     debug.counters.simMs = profiler.simMs;
     debug.counters.substeps = loop.lastSteps;
     debug.endFrame();
   }
 
-  /** One synchronous frame, outside the loop. Used by the capture path. */
+  /** One synchronous present, outside the loop. Used for the boot paint. */
   function renderOnce(dt: number): void {
     if (disposed) return;
     debug.beginFrame(now());
@@ -273,8 +325,10 @@ export function bootstrap(options: BootOptions): GameHandle {
       handle.renderer.compile(sceneRig.scene, cameraRig.camera);
       sceneRig.bakeEnvironment();
       // Paint once before main.ts drops the loading curtain, so the reveal is
-      // a battlefield and not one frame of clear colour.
-      renderOnce(1 / 60);
+      // a battlefield and not one frame of clear colour. Zero dt under `?shot=`
+      // — this paint must not be the one thing that smuggles wall-clock time
+      // into a capture.
+      renderOnce(shotMode ? 0 : 1 / 60);
     })
     .catch((err: unknown) => {
       console.error('[boot] system init failed', err);

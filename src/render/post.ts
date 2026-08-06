@@ -107,7 +107,10 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
+import { SimplexNoise } from 'three/examples/jsm/math/SimplexNoise.js';
 import type { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
+
+import { Rng } from '../core/math';
 
 import {
   RENDER_CONFIG,
@@ -161,6 +164,14 @@ export function aoTargetSize(
  * the wrong direction. Halving the radius with the resolution keeps the filter
  * covering the same part of the image. 8 is GTAOPass's own default.
  */
+/**
+ * Seed for the Poisson-denoise rotation field. Any fixed value will do; what
+ * matters is that it is fixed. Declared module-private rather than in
+ * `core/config.ts` because it is not a tunable — there is nothing to tune, and
+ * changing it moves every AO crease in every fixture.
+ */
+const AO_NOISE_SEED = 0x5eed_a011;
+
 export function aoDenoiseRadius(halfRes: boolean): number {
   return halfRes ? 4 : 8;
 }
@@ -642,6 +653,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       try {
         const p = new GTAOPass(scene, camera, ao.width, ao.height);
         p.output = GTAOPass.OUTPUT.Default;
+        seedAoDenoiseNoise(p);
         installAoOccluderFilter(p);
         installAoResolutionScale(p);
         installAoInPlaceComposite(p);
@@ -656,6 +668,61 @@ export function createPostChain(options: CreatePostOptions): PostChain {
         return p as unknown as Pass;
       }
     });
+  }
+
+  /**
+   * RESEED GTAO'S POISSON-DENOISE NOISE. It ships seeded from `Math.random()`.
+   *
+   * `GTAOPass._generateNoise()` builds a 64x64 RGBA rotation texture from
+   * `new SimplexNoise()`, and `SimplexNoise`'s default RNG argument is `Math`.
+   * So every boot gets a different denoise rotation field, every boot's AO
+   * lands slightly differently in every crease, and the screenshot harness
+   * cannot produce the same image twice.
+   *
+   * It is not subtle in aggregate: with the whole post chain disabled, two
+   * boots of `?shot=allied-base` are BYTE-IDENTICAL; with it enabled, 27% of
+   * subpixels move. Individually the deltas are 1-4/255 and they sit on
+   * geometry edges, which is exactly where the eye and a Sobel edge metric both
+   * look. `src/core/math.ts` already states the rule this breaks —
+   * "`Math.random()` is BANNED ... inside every texture generator" — and the
+   * only reason this one escaped it is that the generator is in three's
+   * examples rather than in this repo.
+   *
+   * Regenerated with the project's own seeded `Rng`, using the same formula and
+   * the same 64 px size, then rebound: the constructor already copied the old
+   * texture into `pdMaterial.uniforms.tNoise`, so replacing only the field
+   * would change nothing.
+   */
+  function seedAoDenoiseNoise(pass: unknown): void {
+    const p = pass as {
+      pdNoiseTexture?: THREE.DataTexture;
+      pdMaterial?: { uniforms?: { tNoise?: { value: THREE.Texture | null } } };
+    };
+    const old = p.pdNoiseTexture;
+    if (old === undefined) return;
+
+    const size = 64;
+    const rng = new Rng(AO_NOISE_SEED);
+    const simplex = new SimplexNoise({ random: () => rng.next() });
+    const data = new Uint8Array(size * size * 4);
+    for (let i = 0; i < size; i++) {
+      for (let j = 0; j < size; j++) {
+        const o = (i * size + j) * 4;
+        data[o] = (simplex.noise(i, j) * 0.5 + 0.5) * 255;
+        data[o + 1] = (simplex.noise(i + size, j) * 0.5 + 0.5) * 255;
+        data[o + 2] = (simplex.noise(i, j + size) * 0.5 + 0.5) * 255;
+        data[o + 3] = (simplex.noise(i + size, j + size) * 0.5 + 0.5) * 255;
+      }
+    }
+    const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.needsUpdate = true;
+
+    p.pdNoiseTexture = tex;
+    const uniform = p.pdMaterial?.uniforms?.tNoise;
+    if (uniform !== undefined) uniform.value = tex;
+    old.dispose();
   }
 
   /**

@@ -113,6 +113,13 @@ let drainedTotal = 0;
  * they stand and `advance(ms)` steps them by an EXACT amount, so
  * "screenshot the fireball at its 220 ms peak" is reproducible on any machine.
  * Both default to normal play and are only ever touched through `__vmVfx`.
+ *
+ * THIS IS THE AD-HOC PROBE PATH, NOT THE FIXTURE PATH. `tools/flash-stack.mjs`
+ * uses it to hold one explosion at 220 ms and photograph it. A fixture wants
+ * the whole world advanced, not just the pools, and for that
+ * `__VM.advanceTicks(n)` runs the simulation and a complete system frame in
+ * lockstep — see `GameLoop.advanceTicks`. Ageing the pools without stepping the
+ * sim that spawns into them is exactly how the two fall out of step.
  */
 let timeScale = 1;
 let pendingAdvanceMs = 0;
@@ -558,10 +565,22 @@ export default defineSystem({
     if (P === null || L === null || B === null || T === null) return;
 
     const { channels, cameraRig, sceneRig, debug } = ctx();
-    // Real elapsed time, clamped: a 3 s tab-switch must not age every plume out
-    // in one frame, and dt=0 on the very first paint must not stall the pools.
-    // A pending harness `advance()` overrides the clock entirely.
-    let dtMs = Math.min(120, Math.max(0.5, r.dt * 1000)) * timeScale;
+    /*
+     * Real elapsed time, clamped: a 3 s tab-switch must not age every plume out
+     * in one frame, and a jittery clock must not stall the pools. A pending
+     * harness `advance()` overrides the clock entirely.
+     *
+     * A dt of EXACTLY ZERO ages nothing, and does not get the 0.5 ms floor.
+     * That floor was written for a jittery real clock; under `?shot=` the loop
+     * publishes a deliberate zero on every organic frame
+     * (`GameLoop.captureClock`), and quietly turning that into half a
+     * millisecond would put the one thing a capture cannot have — a dependence
+     * on how many frames the machine rendered — straight back into the pools.
+     * Twenty settle frames is 10 ms of ageing, which is an eighth of a muzzle
+     * flash.
+     */
+    const raw = r.dt * 1000;
+    let dtMs = raw > 0 ? Math.min(120, Math.max(0.5, raw)) * timeScale : 0;
     if (pendingAdvanceMs > 0) {
       dtMs = pendingAdvanceMs;
       pendingAdvanceMs = 0;
@@ -604,8 +623,23 @@ export default defineSystem({
       }
     }
 
-    /* -- 2. damage states, tread dust ------------------------------------ */
-    damageScan(dtMs);
+    /*
+     * -- 2. damage states, tread dust ------------------------------------
+     *
+     * SKIPPED ENTIRELY ON A ZERO-TIME FRAME, and that is not an optimisation.
+     * `damageScan` carries `scanCursor`, a round-robin cursor that advances
+     * once per FRAME rather than once per millisecond. Under `?shot=` the
+     * number of organic frames between boot and the shutter is not fixed —
+     * `ready()` polls the loading manager, the harness polls for the curtain —
+     * so running the scan on frames worth no time left the cursor at a
+     * different offset every run, and a different set of damaged hulls got
+     * their timer charged first once the capture did advance. `05-combat` was
+     * still moving median luminance by 0.0016 between two runs of one build
+     * after everything else had been pinned, and this was the remainder.
+     *
+     * A frame worth no time must have no side effects. That is the whole rule.
+     */
+    if (dtMs > 0) damageScan(dtMs);
 
     /* -- 3. delayed structure cook-offs ---------------------------------- */
     stepExplosions(dtMs);
