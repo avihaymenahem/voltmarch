@@ -1296,6 +1296,17 @@ class BuildPanel {
       footprintH: 0,
     };
     try {
+      // SIZE THE BACKING STORE TO THE CELL. `CameoRenderer.bind` renders into
+      // whatever the canvas already is, and a fresh canvas is the HTML default
+      // 300x150 — so every cameo was rendering at 2:1 and being squashed into a
+      // ~3.3:1 cell, at the wrong resolution in both directions. Match the cell
+      // and the device pixel ratio instead, capped so a 4x display does not
+      // quietly quadruple the render cost of sixty cells.
+      const dpr = Math.min(2, globalThis.devicePixelRatio || 1);
+      const cw = Math.max(16, Math.round(slot.root.clientWidth * dpr));
+      const ch = Math.max(16, Math.round(slot.root.clientHeight * dpr));
+      if (slot.cameoCanvas.width !== cw) slot.cameoCanvas.width = cw;
+      if (slot.cameoCanvas.height !== ch) slot.cameoCanvas.height = ch;
       cameos.bind(slot.cameoCanvas, subject);
       slot.cameoCanvas.hidden = false;
     } catch (err) {
