@@ -720,6 +720,27 @@ export interface RenderAudit {
   alive: number;
   /** Alive, not garrisoned, not masked by the shroud — i.e. must be drawn. */
   eligible: number;
+  /**
+   * THE POPULATION THIS AUDIT DELIBERATELY DOES NOT JUDGE, REPORTED ANYWAY.
+   *
+   * `HIDDEN_MASK` entities are skipped BEFORE `eligible` is counted, because a
+   * man inside a building is supposed to be invisible — `tests/render-visibility
+   * .spec.ts` pins that. The consequence is that an entity which keeps
+   * `EntityFlag.Garrisoned` after its host is gone is alive, immobile,
+   * un-hittable, never drawn, and CANNOT APPEAR AS A MISS however long the
+   * audit runs. A hunt for "some enemies are invisible" spent a whole probe run
+   * inside that hole without being able to see it.
+   *
+   * So the count is published. It is not a failure — a real garrison is the
+   * normal reason it is non-zero — but it is the number that turns "the audit
+   * found nothing" into "the audit found nothing AND there were N entities it
+   * was never going to look at", which are very different sentences.
+   *
+   * Per kind, because the kinds that can legally be in here are Infantry and
+   * nothing else.
+   */
+  hiddenByFlag: number;
+  hiddenByFlagByKind: number[];
   /** Of those, how many actually reached a drawable instance slot. */
   drawn: number;
   misses: RenderMissRow[];
@@ -1108,10 +1129,19 @@ export class RenderBridge {
     let eligible = 0;
     let drawn = 0;
     let truncated = false;
+    let hiddenByFlag = 0;
+    const hiddenByFlagByKind = new Array<number>(ENTITY_KIND_COUNT).fill(0);
 
     for (let a = 0; a < s.aliveCount; a++) {
       const i = s.alive[a];
-      if ((s.flags[i] & HIDDEN_MASK) !== 0) continue;
+      if ((s.flags[i] & HIDDEN_MASK) !== 0) {
+        // Skipped, as `eligible` promises — but counted, so the skip is a
+        // number in the report instead of a silent hole. See `hiddenByFlag`.
+        hiddenByFlag++;
+        const k = s.kind[i];
+        if (k >= 0 && k < ENTITY_KIND_COUNT) hiddenByFlagByKind[k]++;
+        continue;
+      }
       if (mask !== null && mask.isRenderHiddenAt(i)) continue;
       eligible++;
 
@@ -1144,6 +1174,8 @@ export class RenderBridge {
       frame: this.frameId,
       alive: s.aliveCount,
       eligible,
+      hiddenByFlag,
+      hiddenByFlagByKind,
       drawn,
       misses,
       truncated,
