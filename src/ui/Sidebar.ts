@@ -1100,6 +1100,9 @@ interface BuildSlot {
   readyEl: HTMLElement;
   etaEl: HTMLElement;
   etaNode: Text;
+  /** "how many of these do I already have" — see `vm-slot-owned`. */
+  ownedEl: HTMLElement;
+  ownedNode: Text;
   flagEl: HTMLElement;
   flagNode: Text;
   progress: HTMLElement;
@@ -1259,6 +1262,13 @@ class BuildPanel {
     const etaNode = textNode(etaEl);
     etaEl.hidden = true;
 
+    // HOW MANY YOU ALREADY OWN. Shares the bottom-right corner with the build
+    // countdown and yields to it: while something is on the line, "how long"
+    // is the live question and the inventory can wait the few seconds out.
+    const ownedEl = el('span', 'vm-slot-owned vm-num', root);
+    const ownedNode = textNode(ownedEl);
+    ownedEl.hidden = true;
+
     const flagEl = el('span', 'vm-slot-flag', root);
     flagEl.appendChild(makeIcon('lock', 'vm-icon'));
     const flagNode = textNode(flagEl);
@@ -1270,7 +1280,7 @@ class BuildPanel {
 
     const slot: BuildSlot = {
       root, icon, costNode, keyEl, keyNode, queueEl, queueNode, readyEl,
-      etaEl, etaNode, flagEl, flagNode, progress,
+      etaEl, etaNode, ownedEl, ownedNode, flagEl, flagNode, progress,
       cameo: null, sig: '', key: '', buildTime: 0,
       lastProgress: -1, lastAt: 0, rate: 0,
     };
@@ -1474,7 +1484,8 @@ class BuildPanel {
       const poor = credits < c.cost;
       const eta = this.estimateEta(slot, c);
       const sig = `${c.queued}|${c.ready ? 1 : 0}|${c.onHold ? 1 : 0}|` +
-        `${c.available ? 1 : 0}|${poor ? 1 : 0}|${eta}|${c.reason}|${(c.progress * 200) | 0}`;
+        `${c.available ? 1 : 0}|${poor ? 1 : 0}|${eta}|${c.reason}|${(c.progress * 200) | 0}` +
+        `|${c.owned}`;
       if (sig === slot.sig) continue;
       slot.sig = sig;
 
@@ -1492,6 +1503,17 @@ class BuildPanel {
         slot.etaEl.hidden = false;
       } else if (!slot.etaEl.hidden) {
         slot.etaEl.hidden = true;
+      }
+
+      // Inventory. Hidden at zero rather than showing "0": sixty cells each
+      // announcing a nought is noise, and "no badge" already reads as none.
+      // Yields the corner to the countdown while a build is running.
+      const showOwned = c.owned > 0 && eta <= 0;
+      if (showOwned) {
+        slot.ownedNode.nodeValue = c.owned > 999 ? '999+' : String(c.owned);
+        slot.ownedEl.hidden = false;
+      } else if (!slot.ownedEl.hidden) {
+        slot.ownedEl.hidden = true;
       }
 
       slot.readyEl.hidden = !c.ready;

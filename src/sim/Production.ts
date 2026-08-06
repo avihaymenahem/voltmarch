@@ -859,6 +859,9 @@ export class ProductionCatalog {
 
 const EMPTY_ROSTER: readonly BuildEntry[] = [];
 
+/** Entity kinds `countOwnedUnits` walks. Module scope: it runs every snapshot. */
+const OWNED_COUNT_KINDS: readonly EntityKind[] = [EntityKind.Infantry, EntityKind.Vehicle];
+
 /** Merge one authored spec with the fallback tables and any real def. */
 function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): BuildEntry | null {
   const isBuilding = spec.kind === BuildKind.Building;
@@ -2407,6 +2410,8 @@ export class ProductionService implements QueueHooks {
 
     if (this.cameoFaction !== p.faction) this.rebuildCameos(p.faction);
 
+    this.countOwnedUnits(world, p);
+
     for (let t = 0; t < BUILD_TAB_COUNT; t++) {
       const tab = t as BuildTab;
       const list = snap.cameos[t];
@@ -2425,6 +2430,50 @@ export class ProductionService implements QueueHooks {
         cameo.reason = avail.ok
           ? (p.credits < entry.cost ? 'Insufficient funds' : '')
           : avail.reason;
+        // Buildings: the sim already keeps an exact per-def tally, so use it
+        // rather than adding a second source of truth. Units: bucketed once per
+        // snapshot above.
+        cameo.owned = entry.kind === BuildKind.Building
+          ? (entry.publicId >= 0 && entry.publicId < p.buildingCount.length
+            ? p.buildingCount[entry.publicId] : 0)
+          : (entry.publicId >= 0 && entry.publicId < this.ownedByDef.length
+            ? this.ownedByDef[entry.publicId] : 0);
+      }
+    }
+  }
+
+  /** Scratch for `countOwnedUnits`, indexed by def id. Reused every snapshot. */
+  private readonly ownedByDef = new Int32Array(256);
+
+  /**
+   * Completed mobile units the player owns, bucketed by def id.
+   *
+   * ONE pass per snapshot rather than one per cameo — the grid is ~60 cells
+   * across four tabs, and a per-cell scan would walk the same arrays sixty
+   * times a frame.
+   *
+   * `UnderConstruction` is excluded deliberately: a unit still on the line is
+   * already shown by `queued` and the progress bar, and counting it here too
+   * would tell the player they own something that does not exist yet.
+   */
+  private countOwnedUnits(world: World, p: PlayerState): void {
+    const owned = this.ownedByDef;
+    owned.fill(0);
+    const st = world.store;
+    // MODULE CONSTANT, not an inline literal. `[a, b]` here allocates a fresh
+    // array every snapshot, which is a per-frame allocation and exactly what
+    // `tests/perf-hud.spec.ts` "allocates nothing per frame" exists to catch —
+    // it did, in CI, on the first push.
+    for (let k = 0; k < OWNED_COUNT_KINDS.length; k++) {
+      const kind = OWNED_COUNT_KINDS[k];
+      const list = st.byKind[kind];
+      const n = st.byKindCount[kind];
+      for (let j = 0; j < n; j++) {
+        const e = list[j];
+        if ((st.owner[e] as PlayerId) !== p.id) continue;
+        if ((st.flags[e] & EntityFlag.UnderConstruction) !== 0) continue;
+        const d = st.defId[e];
+        if (d >= 0 && d < owned.length) owned[d]++;
       }
     }
   }
@@ -2438,7 +2487,7 @@ export class ProductionService implements QueueHooks {
       while (pool.length < roster.length) {
         pool.push({
           defId: -1, isBuilding: false, key: '', name: '', cost: 0,
-          progress: 0, queued: 0, ready: false, onHold: false, available: false, reason: '',
+          progress: 0, queued: 0, ready: false, onHold: false, available: false, reason: '', owned: 0,
         });
       }
       const list: HudCameo[] = [];

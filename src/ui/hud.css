@@ -2247,3 +2247,38 @@ html.vm-no-blur .vm-hud {
     --vm-fill-lift: rgba(19, 32, 58, 0.42);
   }
 }
+
+/* --------------------------------------------------------------------------
+ * SLOT INVENTORY BADGE — "how many of these do I already have"
+ * --------------------------------------------------------------------------
+ * Shares the bottom-right corner with `.vm-slot-eta` and yields to it, so the
+ * two can never collide: `Sidebar` hides this whenever a countdown is running.
+ *
+ * Deliberately quieter than the cost and the countdown. Cost is a decision the
+ * player is about to make and the countdown is a live clock; the inventory is
+ * reference information that must be readable at a glance and must not compete
+ * with either. Hence the muted colour and the pill rather than accent text.
+ * ------------------------------------------------------------------------ */
+.vm-hud .vm-slot-owned {
+  position: absolute;
+  right: calc(3.5 * var(--vm-u));
+  bottom: calc(3.5 * var(--vm-u));
+  min-width: calc(11 * var(--vm-u));
+  padding: 0 calc(3 * var(--vm-u));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(8 * var(--vm-u));
+  font-weight: 700;
+  line-height: calc(11 * var(--vm-u));
+  color: var(--vm-ink);
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(var(--vm-accent-rgb), 0.35);
+  /* No border-radius. `tests/hud-layout.spec.ts` enforces "chamfers, not
+     fillets" across the whole HUD, and it caught this the first time. */
+  pointer-events: none;
+}
+
+/* A locked slot's badge must dim with the rest of the cell, or an unavailable
+   item looks live. */
+.vm-hud .vm-slot.is-locked .vm-slot-owned { opacity: 0.45; }

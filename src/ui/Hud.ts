@@ -1087,9 +1087,47 @@ export class Hud {
       ? this.world.selection.ids[0] : 0) as EntityId;
     snap.gameTimeSec = this.world.time;
 
+    this.countOwnedUnits(p);
     for (let t = 0; t < BUILD_TAB_COUNT; t++) this.fillLocalTab(p, t as BuildTab);
     return snap;
   }
+
+  /**
+   * Completed units the local player owns, bucketed by def id.
+   *
+   * ONE pass over the player's mobile entities per snapshot, not one per cameo:
+   * the grid is ~60 cells across four tabs and a per-cell scan would be sixty
+   * passes over the same arrays every frame.
+   *
+   * Buildings deliberately do NOT come through here — `PlayerState.buildingCount`
+   * is already maintained by the sim and is an O(1) lookup, so scanning for them
+   * would be both slower and a second source of truth for the same number.
+   *
+   * `UnderConstruction` is excluded on purpose: an entity still being built is
+   * already shown by `queued` and the progress bar, and counting it in both
+   * places reads as owning something that does not exist yet.
+   */
+  private countOwnedUnits(p: PlayerState): void {
+    const owned = this.ownedByDef;
+    owned.fill(0);
+    const st = this.world.store;
+    const local = p.id;
+    for (let k = 0; k < MOBILE_KINDS.length; k++) {
+      const kind = MOBILE_KINDS[k];
+      const list = st.byKind[kind];
+      const n = st.byKindCount[kind];
+      for (let j = 0; j < n; j++) {
+        const e = list[j];
+        if ((st.owner[e] as PlayerId) !== local) continue;
+        if ((st.flags[e] & EntityFlag.UnderConstruction) !== 0) continue;
+        const d = st.defId[e];
+        if (d >= 0 && d < owned.length) owned[d]++;
+      }
+    }
+  }
+
+  /** Scratch for `countOwnedUnits`. Indexed by def id, reused every frame. */
+  private readonly ownedByDef = new Int32Array(256);
 
   /**
    * Resolve the grid the local snapshot renders.
@@ -1161,6 +1199,7 @@ export class Hud {
         c = {
           defId: -1, isBuilding: false, key: '', name: '', cost: 0,
           progress: 0, queued: 0, ready: false, onHold: false, available: true, reason: '',
+          owned: 0,
         };
         pool.push(c);
       }
@@ -1197,6 +1236,12 @@ export class Hud {
       }
       c.available = reason === '';
       c.reason = reason;
+
+      // Buildings have an O(1) count the sim already keeps; units are bucketed
+      // once per snapshot by `countOwnedUnits`.
+      c.owned = c.isBuilding
+        ? (c.defId >= 0 && c.defId < p.buildingCount.length ? p.buildingCount[c.defId] : 0)
+        : (c.defId >= 0 && c.defId < this.ownedByDef.length ? this.ownedByDef[c.defId] : 0);
 
       out.push(c);
     }

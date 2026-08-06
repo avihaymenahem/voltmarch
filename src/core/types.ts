@@ -1089,6 +1089,14 @@ export interface HudCameo {
   available: boolean;
   /** Player-facing reason when !available. */
   reason: string;
+  /**
+   * How many of this def the local player ALREADY OWNS and has finished.
+   *
+   * Counts completed entities only — anything still `UnderConstruction` is
+   * already represented by `queued` and the progress bar, and counting it in
+   * both places would read as two of something the player has none of yet.
+   */
+  owned: number;
 }
 
 /** The one-way snapshot production writes and hud reads. Neither imports the other. */

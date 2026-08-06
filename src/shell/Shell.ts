@@ -138,6 +138,30 @@ export interface FactionOption {
  * screen having to enumerate its own controls.
  * ========================================================================== */
 
+/**
+ * Take the page fullscreen when a match starts. Best effort, never throws.
+ *
+ * Four ways this legitimately does nothing, all of them silent on purpose:
+ *   - the screenshot harness (`?shot=`), where a fullscreen transition would
+ *     resize the buffer mid-capture and every fixture would stop being diffable;
+ *   - vitest, where there is no `document` at all;
+ *   - a browser that refuses because the transient user activation from the
+ *     click has already been spent — which is why the caller invokes this
+ *     BEFORE its first await;
+ *   - the user is already fullscreen, or pressed Escape and does not want to be.
+ *
+ * The rejected promise MUST be swallowed. An unhandled rejection here would
+ * surface as a console error on a perfectly normal "player declined" path.
+ */
+export function goFullscreen(): void {
+  if (typeof document === 'undefined') return;
+  if (new URLSearchParams(location.search).has('shot')) return;
+  if (document.fullscreenElement !== null) return;
+  const root = document.documentElement;
+  if (typeof root.requestFullscreen !== 'function') return;
+  void root.requestFullscreen({ navigationUI: 'hide' }).catch(() => { /* declined */ });
+}
+
 const ADJUSTERS = new WeakMap<HTMLElement, (dir: number) => void>();
 
 /** Register a left/right handler for an element (slider, chooser, toggle). */
@@ -756,6 +780,10 @@ export class Shell {
   async startMatch(setup: MatchSetup, options: { persist?: boolean } = {}): Promise<void> {
     if (this.busy || this.disposed) return;
     this.busy = true;
+    // BEFORE the first await, deliberately. `requestFullscreen` needs transient
+    // user activation, and every await between the click and the call spends
+    // more of that window — `bootGame` below is seconds of shader compilation.
+    goFullscreen();
     try {
       const keys = playableFactions().map((f) => f.key);
       this.setup = options.persist === false
