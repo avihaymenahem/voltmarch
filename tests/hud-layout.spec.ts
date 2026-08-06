@@ -95,16 +95,56 @@ describe('the bottom band fits the §9 budget by construction', () => {
   const bandPad = units('--vm-band-pad');
   const dockPad = units('--vm-dock-pad');
 
-  it('the dock height is exactly what the build palette needs, and no more', () => {
-    // pad + tabs + gap + 2 rows + rowGap + pad. Every term is read out of the
-    // stylesheet, so the comment in hud.css and the stylesheet cannot drift.
-    const tabs = ruleUnits('.vm-hud .vm-tabs', 'height');
+  /*
+   * THIS USED TO DERIVE `--vm-dock-h` FROM THE BUILD PALETTE —
+   * `dockPad + tabs + dockGap + row*2 + gridGap + dockPad` — because the build
+   * palette was the tallest thing in the bottom band and therefore the thing
+   * that set its height.
+   *
+   * The palette has moved to the right rail, so that identity no longer
+   * describes anything: the band is the map and the selection card now, and the
+   * grid's row height is a property of the rail. Keeping the old sum would have
+   * meant the band growing every time a cameo cell grew, which is exactly
+   * backwards — the move existed to stop cell size and band budget being the
+   * same argument.
+   *
+   * What still has to hold is below: the band's total is unchanged and still
+   * inside the §9 budget, and the rail's own geometry is self-consistent.
+   */
+  it('the band no longer scales with the build palette', () => {
     const row = ruleUnits('.vm-hud .vm-grid', 'grid-auto-rows');
-    const gridGap = ruleUnits('.vm-hud .vm-grid', 'gap');
-    const dockGap = ruleUnits('.vm-hud .vm-dock', 'gap');
+    // The rail's cells are far taller than two of them would fit in the band.
+    // If this ever stops being true the palette has crept back into the band.
+    expect(dockH, 'the band must not be sized by the build grid any more')
+      .toBeLessThan(dockPad * 2 + row * 2);
+  });
 
-    const needed = dockPad + tabs + dockGap + row * 2 + gridGap + dockPad;
-    expect(dockH, `derived ${needed}u, stylesheet says ${dockH}u`).toBe(needed);
+  it('the right rail clears the objectives panel exactly', () => {
+    // THE NEW DRIFT RISK. The rail is positioned by a constant top offset while
+    // the objectives above it are capped by a separate constant. If those two
+    // numbers ever disagree the panels silently overlap — the objectives sit at
+    // z-index 5 and the rail at 4, so the failure looks like a build grid with
+    // its top rows cut off rather than like a layout bug.
+    const objTop = ruleUnits('.vm-hud .vm-objectives', 'top');
+    const objMax = units('--vm-obj-max-h');
+    const railTop = units('--vm-rail-top');
+    const gap = units('--vm-gap');
+    expect(railTop, `objectives end at ${objTop + objMax}u, rail starts at ${railTop}u`)
+      .toBe(objTop + objMax + gap);
+  });
+
+  it('the rail and the objectives are one strip — same width, same right edge', () => {
+    const objRight = ruleUnits('.vm-hud .vm-objectives', 'right');
+    const railRight = ruleUnits('.vm-hud .vm-dock-build', 'right');
+    expect(railRight, 'rail and objectives must share a right edge').toBe(objRight);
+    // Width is shared through `--vm-rail-w`; assert the objectives actually use
+    // the variable rather than a copy of the number.
+    const objBlock = /\.vm-hud \.vm-objectives\s*\{([^}]*)\}/.exec(HUD);
+    expect(objBlock).not.toBeNull();
+    expect(
+      (objBlock as RegExpExecArray)[1],
+      'objectives must take their width from --vm-rail-w, not a duplicated literal',
+    ).toMatch(/width:\s*var\(--vm-rail-w\)/);
   });
 
   it('records the band share at every shipping height, and caps runaway growth', () => {

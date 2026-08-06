@@ -170,6 +170,15 @@
   --vm-band-pad: calc(9 * var(--vm-u));
   --vm-gap: calc(10 * var(--vm-u));
 
+  /* THE RIGHT RAIL. `--vm-rail-top` must equal the objectives' top offset plus
+     `--vm-obj-max-h` plus one gap, or the two overlap; `tests/hud-layout.spec.ts`
+     asserts that identity so the three numbers cannot drift apart. 240u across
+     three columns leaves a ~73u cell against the old ~50u, and the cell is
+     square-ish instead of 3.26:1 — about five times the cameo area. */
+  --vm-rail-w: calc(240 * var(--vm-u));
+  --vm-obj-max-h: calc(150 * var(--vm-u));
+  --vm-rail-top: calc(170 * var(--vm-u));
+
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -500,13 +509,37 @@
 /* The build dock is NOT a panel: its tab strip rises ABOVE the panel body,
    which is the reference's construction and cannot be done from inside one
    clipped box. `.vm-build-body` is the panel. */
+/* --------------------------------------------------------------------------
+ * THE BUILD RAIL — vertical, right edge, under the objectives
+ * --------------------------------------------------------------------------
+ * This used to be the third dock in the bottom band, 332u wide and two grid
+ * rows tall. That geometry could not show a model. A slot measured 127x39 px —
+ * a 3.26:1 letterbox — and the band's height is not free to grow: it is a
+ * derived value with a hard tripwire at 18% of the frame, and it already sits
+ * at 15.83%. Widening the cells by dropping columns only makes the letterbox
+ * worse.
+ *
+ * Vertical space on the right is not competing with that budget, which is the
+ * whole reason RA2 put the build palette there. `--vm-rail-top` clears the
+ * objectives panel, which is capped to a matching height so the two read as one
+ * strip down the right edge rather than two panels that happen to be adjacent.
+ *
+ * The bottom band is now map + selection only. `--vm-dock-h` is unchanged, so
+ * the band budget the §9 tests police is untouched by this move.
+ * ------------------------------------------------------------------------ */
 .vm-hud .vm-dock-build {
-  width: calc(332 * var(--vm-u));
+  position: absolute;
+  top: var(--vm-rail-top);
+  right: calc(10 * var(--vm-u));
+  bottom: calc(var(--vm-dock-h) + var(--vm-band-pad) + var(--vm-gap));
+  width: var(--vm-rail-w);
+  height: auto;
   flex: 0 0 auto;
   padding: 0;
   gap: 0;
   background: none;
   pointer-events: none;
+  z-index: 4;
 }
 
 .vm-hud .vm-build-body {
@@ -1523,8 +1556,12 @@
 
 .vm-hud .vm-grid {
   display: grid;
-  grid-template-columns: repeat(var(--vm-grid-cols, 6), 1fr);
-  grid-auto-rows: calc(33 * var(--vm-u));
+  grid-template-columns: repeat(var(--vm-grid-cols, 3), 1fr);
+  /* 56u against the old 33u. The cell is now roughly 73x56 rather than 50x15,
+     which is what makes a model legible instead of a smear — the cameo canvas
+     sizes its backing store from the cell, so the extra area is real resolution
+     and not an upscale. */
+  grid-auto-rows: calc(56 * var(--vm-u));
   gap: calc(4 * var(--vm-u));
   flex: 1 1 auto;
   min-height: 0;
@@ -1987,7 +2024,13 @@
   position: absolute;
   top: calc(10 * var(--vm-u));
   right: calc(10 * var(--vm-u));
-  width: calc(158 * var(--vm-u));
+  /* Matches `--vm-rail-w`: the objectives and the build rail are one strip down
+     the right edge, so they share an edge and a width. Capped in height and
+     scrolling, because the build rail's top offset is a constant and a
+     ten-objective mission would otherwise grow down through it. */
+  width: var(--vm-rail-w);
+  max-height: var(--vm-obj-max-h);
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   padding: calc(9 * var(--vm-u));

@@ -248,10 +248,22 @@ export interface SidebarOptions {
   renderer?: THREE.WebGLRenderer | null;
 }
 
-/** Columns in the build grid. Six is the approved width. */
-const BUILD_COLUMNS = 6;
-/** Rows built up front. The grid scrolls internally past this. */
-const BUILD_ROWS = 4;
+/**
+ * Columns in the build grid. THREE since the palette moved to the right rail.
+ *
+ * Six was the approved width while this was a 332u-wide dock in the bottom
+ * band. In a 240u vertical rail six columns would give a 36u cell, and the
+ * cameo is the point of the cell now — three gives ~73u and a square-ish frame.
+ */
+const BUILD_COLUMNS = 3;
+/**
+ * Rows built up front. The grid scrolls internally past this.
+ *
+ * Raised with the move to a vertical rail: the rail is several hundred design
+ * units tall, so eight rows are visible where two were, and a pool of four
+ * would have meant re-allocating slots on the first scroll of every match.
+ */
+const BUILD_ROWS = 10;
 /** Cards built up front in the selection panel. */
 const CARD_POOL = 14;
 /** Segments in the power meter. */
@@ -259,6 +271,16 @@ const POWER_SEGMENTS = 14;
 
 /** Tab titles, in `BuildTab` order. */
 const TAB_LABELS: readonly string[] = ['Structures', 'Defence', 'Infantry', 'Vehicles'];
+/**
+ * What the tab STRIP shows, as opposed to what the tab IS.
+ *
+ * The full words fitted a 332u dock across the bottom. In a 240u rail four of
+ * them get about 55u each and the browser truncated them to "STR..", "DEF..",
+ * "INF..", "VE.." — an ellipsis is not a label. These are the same words at a
+ * length that fits, and `TAB_LABELS` is still what the tooltip and the
+ * `aria-label` say, so nothing that has to be read aloud got shortened.
+ */
+const TAB_SHORT: readonly string[] = ['BLD', 'DEF', 'INF', 'VEH'];
 
 /**
  * The build keyboard.
@@ -1223,7 +1245,7 @@ class BuildPanel {
       // it was paired with the icon: a badge floating in the gutter between two
       // tabs is owned by neither.
       label(b, 'vm-hk', TAB_HOTKEY_LABELS[t]);
-      label(b, 'vm-tab-label', TAB_LABELS[t].toUpperCase());
+      label(b, 'vm-tab-label', TAB_SHORT[t]);
       const alert = el('span', 'vm-tab-alert', b);
       alert.hidden = true;
       this.tabAlerts.push(alert);
@@ -1792,8 +1814,13 @@ export class Sidebar {
     this.selection = new SelectionPanel(docks, opts.callbacks);
 
     /* -- bottom right: build -------------------------------------------- */
+    // MOUNTED ON THE ROOT, NOT IN `docks`. The build palette is the right rail
+    // now, and it positions itself absolutely against the HUD root. Left inside
+    // `.vm-docks` — which is itself absolutely positioned as a thin strip along
+    // the bottom — its `top` would resolve against that strip and put the rail
+    // off the bottom of the screen. It is a peer of the docks, not one of them.
     this.build = new BuildPanel(
-      docks, opts.callbacks, this.root, opts.faction, opts.renderer ?? null,
+      this.root, opts.callbacks, this.root, opts.faction, opts.renderer ?? null,
     );
 
     applyTheme(this.root, this.faction);
