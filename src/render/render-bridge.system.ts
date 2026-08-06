@@ -17,6 +17,7 @@
 import { defineSystem } from '../core/loop';
 import { RenderPhase } from '../core/types';
 import type { RenderContext } from '../core/types';
+import { infantryLegibilityScale } from '../core/config';
 import { ctx } from '../game/context';
 
 import { RenderBridge, clearKindMeshes, setRenderBridge } from './RenderBridge';
@@ -38,7 +39,21 @@ export default defineSystem({
     const b = bridge;
     if (b === null) return;
 
-    b.update(r.alpha);
+    // THE INFANTRY LEGIBILITY FLOOR. Computed here rather than in the bridge
+    // because it needs two things the bridge has no business holding: the
+    // camera's zoom distance and field of view, and the size of the drawing
+    // buffer the renderer is actually filling — which is CSS pixels times the
+    // device ratio times whatever adaptive resolution has decided this second.
+    // That last term is why the number is read fresh every frame instead of on
+    // resize: a GPU stall drops the buffer and the floor has to answer for it.
+    const { cameraRig, handle, debug } = ctx();
+    const infantryScale = infantryLegibilityScale(
+      cameraRig.distance, cameraRig.camera.fov, handle.size.height, handle.size.cssHeight,
+    );
+    b.update(r.alpha, infantryScale);
+    // Quoted x100 so the F3 overlay can show it as a whole number; 100 means
+    // "not scaling", which is what a close camera must always read.
+    debug.counters.infScale = Math.round(infantryScale * 100);
 
     // Counters the F3 overlay reads. Nobody else computes these — the bridge is
     // the only place that knows what actually got drawn as opposed to what

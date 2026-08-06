@@ -137,6 +137,135 @@ export const UNIT_DIMENSIONS = {
   mcv:           { l: 9.00, w: 4.40, h: 3.80, turretY: 0 },
 } as const;
 
+/* ==========================================================================
+ * INFANTRY LEGIBILITY — a minimum SCREEN size, because the table above only
+ * defends a minimum WORLD size
+ *
+ * `UNIT_DIMENSIONS` says it is "the only defence against 'the infantry look
+ * like ants'", and against the art it is: nothing may author a rifleman at
+ * half a metre. It cannot defend the thing a player actually complains about,
+ * which is how many PIXELS the rifleman gets, because that is a function of
+ * the camera and the drawing buffer and neither is in this table.
+ *
+ * MEASURED, over a real fogged match, by rendering each frame twice — batches
+ * shown and batches hidden — and counting the pixels each enemy unit actually
+ * contributes above a 10/255 contrast threshold:
+ *
+ *     camera  55 m   infantry 118 px   (min 0, max 377)
+ *     camera  90 m   infantry  74 px   vs a vehicle's 2959 — 40x
+ *     camera 140 m   infantry  57 px   vs a vehicle's 1853 — 32x
+ *
+ * `min 0` at every distance: some enemy infantry contribute NO pixels that
+ * differ from the background inside their own bounding box. Three separate
+ * reports, two audits that answered the wrong question correctly, and the
+ * renderer was never at fault — the units are drawn, every frame, at a size
+ * nobody can see.
+ *
+ * THE FIX IS WHAT RA3 DOES: hold a floor on apparent size and let the model
+ * grow as the camera pulls back. It is self-limiting in the way that matters —
+ * `scaleFor` returns exactly 1 until the floor is threatened, so nothing
+ * changes at the zoom where infantry are already legible, and a change that
+ * only fires when it is needed cannot make the close-in view worse.
+ *
+ * IT IS COMPUTED AGAINST DRAWING-BUFFER PIXELS, NOT CSS PIXELS. Adaptive
+ * resolution was rendering a 1280x720 viewport at 704x396 and cutting infantry
+ * pixels by another two thirds; measuring the real buffer means that
+ * compounding is answered by the same mechanism instead of needing its own.
+ * ========================================================================== */
+export const INFANTRY_LEGIBILITY = {
+  /**
+   * Floor on a rifleman's height in CSS pixels — apparent size, the thing
+   * "I cannot see them" actually means.
+   *
+   * MEASURED through the live camera matrix at 1366x768, projecting the real
+   * `UNIT_DIMENSIONS` boxes:
+   *
+   *      camera    infantry (h x w)    Grizzly (h x w)
+   *       30 m      70.4 x 29.6         235.7 x 286.6
+   *       55 m      37.4 x 15.9         129.2 x 152.5    <- the default zoom
+   *       90 m      21.7 x  9.6          81.5 x  92.2
+   *      140 m      13.1 x  6.2          53.5 x  58.8    <- max zoom out
+   *
+   * 37 is chosen off the 55 m row deliberately: `CAMERA.defaultDistance` is
+   * 55, the model clears 37 there on its own, and so the shipping look at the
+   * zoom most play happens at is EXACTLY unchanged. Everything past that is
+   * the correction, and by 90 m it is 1.7x.
+   *
+   * WIDTH is what actually binds — 9.6 px of rifleman against 92 px of tank is
+   * a 36x area difference, and almost all of it is that a hull is 6.2 m long
+   * and a man is 0.52 m across. The floor is stated in height only because
+   * pixels-per-metre is the same on both axes (the aspect term cancels), so
+   * one number moves both; 37 px of height is 11 px of width, which is about
+   * where two riflemen abreast stop being one smudge.
+   */
+  minCssPixels: 37,
+  /**
+   * Floor on the same height in DRAWING-BUFFER pixels — sample count, which is
+   * a different failure from apparent size and needs its own number.
+   *
+   * Adaptive resolution was rendering a 1280x720 viewport at 704x396. That
+   * does not make the soldier smaller on screen, it makes him blurrier — and
+   * past a point it makes him VANISH, which is the `min 0` in the report: some
+   * enemy infantry contributed zero pixels differing from the background by
+   * more than 10/255 inside their own bounding box. Too few samples to survive
+   * the upscale and the contrast threshold.
+   *
+   * 26 rather than 37 because this is not asking the man to be big, only to be
+   * sampled. At `pixelRatio` 1 with no resolution drop it never binds — the
+   * CSS floor is always the larger of the two — so it costs nothing on a
+   * healthy machine and only speaks up when the GPU has started cutting.
+   */
+  minBufferPixels: 26,
+  /**
+   * Ceiling on the multiplier, and it is set against the roster rather than by
+   * eye: 1.75 m x 1.9 is 3.3 m, which is exactly as tall as a Harvester and
+   * still under an MCV's 3.8. A rifleman may out-top a tank — RA2 and RA3 both
+   * let him, and the eye reads size within a class rather than across one —
+   * but he may not out-top everything on the map.
+   */
+  maxScale: 1.9,
+} as const;
+
+/**
+ * How much to grow an infantry model so it clears both floors, or 1.
+ *
+ * Pure. One scalar per FRAME, applied to every infantryman — not per entity.
+ * Per-entity distance would be marginally more accurate and visibly worse:
+ * soldiers at the top of the screen would be bigger than the ones at the
+ * bottom, and the whole formation would swim as the camera panned.
+ *
+ * TWO FLOORS, AND THE LARGER WINS, because there are two distinct ways a
+ * rifleman becomes unreadable and one lever cannot answer both. See the
+ * constants above; the short version is that CSS pixels are how BIG he is and
+ * buffer pixels are how WELL SAMPLED he is, and a 4K display fixes the second
+ * without touching the first.
+ */
+export function infantryLegibilityScale(
+  cameraDistance: number,
+  fovYDegrees: number,
+  bufferHeightPx: number,
+  cssHeightPx: number,
+): number {
+  if (!(cameraDistance > 0) || !(fovYDegrees > 0)) return 1;
+  // Height in pixels of an `h`-metre object at `d` metres under a perspective
+  // camera: h * viewportH / (2 d tan(fov/2)). The aspect term cancels, so the
+  // same expression gives the width from the model's width.
+  const perMetre = 1 / (2 * cameraDistance * Math.tan((fovYDegrees * Math.PI) / 360));
+  const h = UNIT_DIMENSIONS.infantry.h;
+
+  let want = 1;
+  if (bufferHeightPx > 0) {
+    const px = h * bufferHeightPx * perMetre;
+    if (px > 0) want = Math.max(want, INFANTRY_LEGIBILITY.minBufferPixels / px);
+  }
+  if (cssHeightPx > 0) {
+    const px = h * cssHeightPx * perMetre;
+    if (px > 0) want = Math.max(want, INFANTRY_LEGIBILITY.minCssPixels / px);
+  }
+  if (!Number.isFinite(want) || want <= 1) return 1;
+  return Math.min(INFANTRY_LEGIBILITY.maxScale, want);
+}
+
 /** One building storey in metres. Every structure height is a multiple-ish. */
 export const STOREY = 3.2;
 

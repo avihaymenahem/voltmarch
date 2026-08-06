@@ -793,6 +793,14 @@ export class RenderBridge {
   private readonly lerpYaw = new Float32Array(MAX_ENTITIES);
   private readonly lerpTurretYaw = new Float32Array(MAX_ENTITIES);
   private readonly lerpBarrelPitch = new Float32Array(MAX_ENTITIES);
+  /**
+   * The uniform scale this entity was actually DRAWN at, cached for the same
+   * reason the transform above is: `socketWorld` promises "the same
+   * interpolated transform the mesh was drawn with", and an infantry model
+   * standing at 2x with its muzzle socket still computed at 1x would fire from
+   * the soldier's waist.
+   */
+  private readonly lerpScale = new Float32Array(MAX_ENTITIES);
 
   /* -- diagnostics -------------------------------------------------------- */
   visibleUnits = 0;
@@ -864,8 +872,16 @@ export class RenderBridge {
   /**
    * Interpolate and upload every visible entity. `alpha` is
    * `RenderContext.alpha`: 0 at the previous tick, 1 at the current one.
+   *
+   * `infantryScale` is a legibility floor, not an art direction — see
+   * `infantryLegibilityScale` in core/config. It arrives as an argument rather
+   * than being computed here because it needs the camera and the drawing
+   * buffer, and this class deliberately knows about neither: it has the store
+   * and a scene, and `render-bridge.system.ts` is where the frame's camera
+   * lives. 1 is "leave every model at its authored metres", which is what the
+   * screenshot harness and every test get by default.
    */
-  update(alpha: number): void {
+  update(alpha: number, infantryScale = 1): void {
     const s = this.store;
     this.frameId++;
     this.batcher.beginFrame();
@@ -921,11 +937,17 @@ export class RenderBridge {
       batch.writeTeam(slot, TEAM_RGB[fi], TEAM_RGB[fi + 1], TEAM_RGB[fi + 2]);
 
       /* -- scale ----------------------------------------------------------- */
-      // Real art is authored at true metres and never scales, with two
+      // Real art is authored at true metres and never scales, with three
       // exceptions.
       const kind = s.kind[i];
       let sx = 1, sy = 1, sz = 1;
-      if (kind === EntityKind.Prop) {
+      if (kind === EntityKind.Infantry) {
+        // THE LEGIBILITY FLOOR. Uniform, so a rifleman stays a rifleman rather
+        // than a stretched one, and exactly 1 whenever the camera is close
+        // enough that the model already clears the floor on its own. See
+        // `infantryLegibilityScale`.
+        sx = sy = sz = infantryScale;
+      } else if (kind === EntityKind.Prop) {
         // Props carry a uniform size hint in `seed`, where 0.5 means "as
         // authored" (see ScenarioBuilder.spawnProp). Clamped, because a prop
         // whose seed was left as plain per-entity randomness would otherwise
@@ -942,6 +964,12 @@ export class RenderBridge {
         sy = placeholderBuildingHeight(Math.max(fw, fh))
           * Math.max(PLACEHOLDER_MIN_RISE, buildProgress);
       }
+
+      // Only the uniform cases need recording: `socketWorld` is asked about
+      // units, and a non-uniform scale belongs to the placeholder building,
+      // which has no sockets. `sx` is the right column for every scaled kind
+      // that does.
+      this.lerpScale[i] = sx;
 
       /* -- compose ---------------------------------------------------------- */
       const hullPitch = s.hullPitch[i];
@@ -961,7 +989,19 @@ export class RenderBridge {
         composeBasis(partYaw, partPitch, partRoll, sx, sy, sz);
 
         // Anchor: rotate the part's local offset into world space.
-        const ox = spec.offsetX! * sx, oy = spec.offsetY! * sy, oz = spec.offsetZ! * sz;
+        //
+        // NOT PRE-MULTIPLIED BY THE SCALE. `composeBasis` writes the scale into
+        // the basis columns, so `M12[0] * offsetX` is already `cos(yaw) * sx *
+        // offsetX` — doing it here as well squared it, and a part one metre off
+        // the origin on a 2x model landed four metres out.
+        //
+        // Inert until now, which is exactly why it survived: every scaled model
+        // in the game was single-part with a zero offset (props, and the
+        // placeholder building, whose hazard stripes are a shader effect on one
+        // cube rather than extra parts), and the only offset parts that exist —
+        // vehicle turrets — never scale. Infantry now scale, so it stops being
+        // theoretical the first time a rifleman gains a second part.
+        const ox = spec.offsetX!, oy = spec.offsetY!, oz = spec.offsetZ!;
         let tx = x + M12[0] * ox + M12[3] * oy + M12[6] * oz;
         let ty = y + M12[1] * ox + M12[4] * oy + M12[7] * oz;
         let tz = z + M12[2] * ox + M12[5] * oy + M12[8] * oz;
@@ -1443,12 +1483,20 @@ export class RenderBridge {
 
     // Position: rotate the offset about the part's pivot, not the model origin,
     // so an elevating barrel swings its muzzle about the trunnion.
-    composeBasis(partYaw, partPitch, partRoll, 1, 1, 1);
+    //
+    // AT THE SCALE THE MESH WAS DRAWN WITH, which is the promise in this file's
+    // header. It was a hard 1 here, which is correct for everything that never
+    // scales and wrong for an infantryman standing at the legibility floor: his
+    // muzzle socket would sit at the authored 1.4 m while his shoulder was at
+    // 2.8, and the flash would come out of his waist. `pivotY` is scaled too,
+    // or the pivot the barrel swings about drifts down the model.
+    const sc = this.lerpScale[i] || 1;
+    composeBasis(partYaw, partPitch, partRoll, sc, sc, sc);
     const lx = socket.x;
     const ly = socket.y - socket.pivotY;
     const lz = socket.z;
     let wx = this.lerpX[i] + M12[0] * lx + M12[3] * ly + M12[6] * lz;
-    let wy = this.lerpY[i] + M12[1] * lx + M12[4] * ly + M12[7] * lz + socket.pivotY;
+    let wy = this.lerpY[i] + M12[1] * lx + M12[4] * ly + M12[7] * lz + socket.pivotY * sc;
     let wz = this.lerpZ[i] + M12[2] * lx + M12[5] * ly + M12[8] * lz;
 
     if (follows) {
