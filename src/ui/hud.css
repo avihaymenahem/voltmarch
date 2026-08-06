@@ -1256,6 +1256,45 @@
   background: rgba(var(--vm-accent-rgb), 0.18);
 }
 
+/* -- the commander's ability ----------------------------------------------
+ * Third occupant of the verb slot, and the only one that is ALWAYS lit rather
+ * than lit on selection: a hero's one button should be findable without
+ * hunting, so it carries the accent at rest instead of on hover. That is a
+ * deliberate exception to the panel's rule and the reason it is written here
+ * rather than borrowed from `.vm-stance.is-active`, which means "the state you
+ * are currently in" everywhere else and would be a lie on a button that fires
+ * a one-shot.
+ *
+ * `is-cooling` drops it to the ordinary well colour. There is no sweep or
+ * pulse: the number counting down IS the animation, and a second moving thing
+ * next to a moving number is noise.                                        */
+.vm-hud .vm-ability-row {
+  margin-left: calc(6 * var(--vm-u));
+}
+
+.vm-hud .vm-ability {
+  color: var(--vm-accent-hi);
+  border-color: var(--vm-accent);
+  background: rgba(var(--vm-accent-rgb), 0.18);
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vm-hud .vm-ability:hover,
+.vm-hud .vm-ability:focus-visible {
+  color: var(--vm-accent-hi);
+  border-color: var(--vm-accent-hi);
+  background: rgba(var(--vm-accent-rgb), 0.30);
+}
+
+.vm-hud .vm-ability.is-cooling {
+  color: var(--vm-dim);
+  border-color: var(--vm-hairline);
+  background: var(--vm-well);
+}
+
 /* -- the health bar: full width, number laid over it ---------------------- */
 
 .vm-hud .vm-sel-hp {
@@ -1556,12 +1595,17 @@
 
 .vm-hud .vm-grid {
   display: grid;
-  grid-template-columns: repeat(var(--vm-grid-cols, 3), 1fr);
-  /* 56u against the old 33u. The cell is now roughly 73x56 rather than 50x15,
-     which is what makes a model legible instead of a smear — the cameo canvas
-     sizes its backing store from the cell, so the extra area is real resolution
-     and not an upscale. */
-  grid-auto-rows: calc(56 * var(--vm-u));
+  grid-template-columns: repeat(var(--vm-grid-cols, 2), 1fr);
+  /* 84u, against 56u at three columns and 33u in the old bottom dock. The cell
+     is now roughly 111x84 rather than 73x56 or 50x15 — the cameo canvas sizes
+     its backing store from the cell, so every one of those steps is real
+     resolution and not an upscale. Measured live: 89x68 -> 136x102 device
+     pixels, 2.3x the area.
+
+     Why the vertical room exists: eight is the largest roster in any tab of any
+     faction, so at two columns the grid needs four rows and the rail is tall
+     enough for six. Height was the surplus; the cameo is where it goes. */
+  grid-auto-rows: calc(84 * var(--vm-u));
   gap: calc(4 * var(--vm-u));
   flex: 1 1 auto;
   min-height: 0;

@@ -54,6 +54,7 @@
 import {
   AI_BUILD, AI_CADENCE, AI_ECONOMY, AI_MEMORY, AI_MILITARY, AI_ROSTER_CAP,
   AI_SCOUT, AI_SQUAD_MAX, AI_SQUAD_MIN, AI_THREAT_CLASS_COUNT,
+  ABILITIES, AbilityId,
   BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, MAX_QUEUE_DEPTH, SIM_DT,
 } from '../core/config';
 import {
@@ -62,6 +63,7 @@ import {
 import type {
   ArmorClass, EntityId, PlayerId, PlayerState, SimContext,
 } from '../core/types';
+import { abilities } from './Abilities';
 import type { Channels, CommandBus, EventBus } from '../core/events';
 import type { EntityStore, World } from '../core/world';
 import { PerEntityU32 } from '../core/world';
@@ -167,6 +169,19 @@ const THREAT_BUCKET_METRES = MAP_SIZE / THREAT_DIM;
 
 /** Max commands the budget may bank, so a paused AI does not burst on resume. */
 const ACTION_BURST_CAP = 8;
+
+/**
+ * Hostiles that have to be standing inside a commander's ability radius before
+ * the AI spends it.
+ *
+ * THREE, not one. Every one of the four abilities is worth roughly a squad —
+ * an area burst, five seconds of invulnerability for everyone nearby, a recall
+ * of six units — and every one is on a 40-60 second cooldown. Firing at the
+ * first lone scout that wanders past is how an AI arrives at the real fight
+ * with its hero button still greyed out, which is exactly how a human loses a
+ * game with an unspent superweapon.
+ */
+const ABILITY_MIN_ENEMIES = 3;
 
 export class AiBrain {
   readonly player: PlayerId;
@@ -316,6 +331,8 @@ export class AiBrain {
   private deployAttempts = 0;
   /** Last tick a move-to-site order went out. Rate-limits the approach. */
   private lastDeployMoveTick = -1e9;
+  /** Last tick an ability order went out. One hero, so one counter suffices. */
+  private abilityIssuedTick = -1e9;
   private deployGoal = '';
 
   /* -- economy ------------------------------------------------------------ */
@@ -486,6 +503,96 @@ export class AiBrain {
     }
     if (t % AI_CADENCE.squad === 3) this.squad(s);
     if (t % AI_CADENCE.scout === 4) this.scout(s);
+    // On the squad clock, one slot later: the commander's ability is a combat
+    // decision and wants the squad layer's fresh picture of who is near what.
+    if (t % AI_CADENCE.squad === 4) this.commanderAbility(s);
+  }
+
+  /* ======================================================================
+   * 2.2b THE COMMANDER'S ABILITY
+   * ====================================================================== */
+
+  /**
+   * Fire the hero's faction ability when it is worth firing.
+   *
+   * THROUGH `channels.command`, as an ordinary `OrderKind.UseAbility` — the
+   * same command the HUD button issues. That is the project's standing rule
+   * ("the AI issues the same commands the player does") and here it also buys
+   * something concrete: every refusal — no ability, still cooling, dead this
+   * tick — is decided once, in `src/sim/Abilities.ts`, so the AI cannot fire
+   * something the player could not.
+   *
+   * The trigger is deliberately crude, because a commander ability is a
+   * once-a-minute button and a clever heuristic would be untestable:
+   *
+   *   PrismFocus / ChronoRally / SalvageCall  fire when at least
+   *     `ABILITY_MIN_ENEMIES` hostiles stand inside the radius. Offence, a
+   *     regroup under contact, and a battlefield harvest all want the same
+   *     answer to "is there a fight here".
+   *
+   *   IronWill  fires on the same condition, which is correct rather than lazy:
+   *     five seconds of invulnerability is worth nothing in an empty field and
+   *     everything the moment somebody is shooting.
+   *
+   * No cooldown bookkeeping here at all. The service already refuses a hero
+   * that is cooling, and a second copy of that clock in the AI is how the two
+   * would drift apart.
+   */
+  private commanderAbility(s: SimContext): void {
+    // The SERVICE is the oracle, not a def table of our own. It already knows
+    // which unit carries what and whether the cooldown has run, and a second
+    // copy of either fact in here is how the two would drift apart. Null on a
+    // boot with no content module, where there are no commanders anyway.
+    const svc = abilities();
+    if (svc === null) return;
+    if (s.tick - this.abilityIssuedTick < AI_MILITARY.reissueTicks) return;
+
+    const st = this.store;
+    const me = this.player as number;
+    const n = st.byKindCount[EntityKind.Infantry];
+    const list = st.byKind[EntityKind.Infantry];
+    for (let a = 0; a < n; a++) {
+      const i = list[a];
+      if (st.owner[i] !== me) continue;
+      const f = st.flags[i];
+      if ((f & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) continue;
+
+      const id = st.handleOf(i);
+      const ability = svc.abilityOf(id);
+      if (ability === AbilityId.None) continue;
+      if (!svc.isReady(id)) continue;
+
+      const spec = ABILITIES[ability];
+      if (this.hostilesWithin(st.posX[i], st.posZ[i], spec.radius) < ABILITY_MIN_ENEMIES) continue;
+
+      if (this.issueOrder(
+        OrderKind.UseAbility, this.one(id), 1, st.posX[i], st.posZ[i], NONE,
+      )) {
+        this.abilityIssuedTick = s.tick;
+      }
+      return;
+    }
+  }
+
+  /** Living hostiles inside a circle. Counts structures — a base is a target. */
+  private hostilesWithin(x: number, z: number, radius: number): number {
+    const st = this.store;
+    const buf = this.world.queryScratchB;
+    const found = this.world.spatial.queryCircleFat(x, z, radius, buf);
+    let hostile = 0;
+    for (let k = 0; k < found; k++) {
+      const e = buf[k];
+      const f = st.flags[e];
+      if ((f & EntityFlag.Alive) === 0) continue;
+      if ((f & (EntityFlag.PendingDestroy | EntityFlag.NotATarget)) !== 0) continue;
+      const kind = st.kind[e];
+      if (kind === EntityKind.Wreck || kind === EntityKind.Prop || kind === EntityKind.Crate) {
+        continue;
+      }
+      if (this.world.areAllied(this.player, st.owner[e] as PlayerId)) continue;
+      hostile++;
+    }
+    return hostile;
   }
 
   /* ======================================================================

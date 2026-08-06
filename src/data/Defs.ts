@@ -63,9 +63,9 @@
  */
 
 import {
-  ARMOR_MATRIX, BUILDING_DIMENSIONS, BUILD_RADIUS, FACTION_PALETTE, HARVESTER_CAPACITY,
-  NAVAL_BUILDING_DIMENSIONS, NAVAL_UNIT_DIMENSIONS, REFINERY_STORAGE, SILO_STORAGE,
-  UNIT_DIMENSIONS,
+  ARMOR_MATRIX, AbilityId, BUILDING_DIMENSIONS, BUILD_RADIUS, FACTION_PALETTE,
+  HARVESTER_CAPACITY, NAVAL_BUILDING_DIMENSIONS, NAVAL_UNIT_DIMENSIONS, REFINERY_STORAGE,
+  SILO_STORAGE, UNIT_DIMENSIONS,
 } from '../core/config';
 import {
   ArmorClass, BuildTab, EntityFlag, EntityKind, Faction, FxKind, Locomotor,
@@ -365,6 +365,10 @@ interface UnitSpec {
   cargoMax?: number;
   deploysInto?: string | null;
   canCapture?: boolean;
+  /** Cap on units of this def alive at once. Omitted = unlimited. */
+  maxAlive?: number;
+  /** Active faction ability. Omitted = none, which is every non-commander. */
+  ability?: AbilityId;
   /** Accel defaults to the fallback's `max(2.4, maxSpeed * 1.15)`. */
   accel?: number;
   /**
@@ -524,6 +528,9 @@ function unit(s: UnitSpec): UnitDef {
     popCost: 1,
     deploysInto: s.deploysInto ?? null,
     canCapture: s.canCapture ?? false,
+    // 0 = unlimited, which is the honest default for 40 of the 44 rows.
+    maxAlive: s.maxAlive ?? 0,
+    ability: s.ability ?? AbilityId.None,
     // Zero for the two original armies on purpose: `ScenarioBuilder.spawnUnit`
     // ORs this ON TOP of the fallback's flags, which already carry CanMove/
     // ProvidesVision/CanAttack/Crushable/IsHarvester, and a divergence between
@@ -1057,6 +1064,67 @@ export const UNITS: readonly UnitDef[] = [
     weapons: [w('hulkBattery')], hasTurret: false,
     flags: RCL_GUNNER,
   }),
+
+  /* -- THE COMMANDERS -----------------------------------------------------
+   * One hero per army, `maxAlive: 1`, rebuildable the moment the last one
+   * dies. APPENDED, never inserted: `store.defId` is an index into this array
+   * and a saved match would re-bind every unit in it to the wrong row if a
+   * commander landed in the middle. That has bitten this file twice.
+   *
+   * `sortOrder: 90` puts them last in the Infantry tab, past the engineer.
+   *
+   * NOT IN `UNLOCK_TAGS`, so a fresh profile can field one. The gate is the
+   * tech tree (a barracks AND a radar) and the price, not the campaign — a
+   * unit a player cannot build on day one is a unit most players never meet,
+   * and the whole point of a hero is that it is the thing you build first
+   * once you can.
+   * --------------------------------------------------------------------- */
+  unit({
+    key: 'fieldMarshal', name: 'Field Marshal', blurb: 'One only. Recalls your army to their side.',
+    faction: Faction.Allies, kind: EntityKind.Infantry,
+    cost: 1500, buildTime: 20, tab: BuildTab.Infantry,
+    prereqs: ['barracks', 'radar'], sortOrder: 90,
+    model: 'allied_marshal',
+    maxHp: 460, armor: ArmorClass.Infantry, maxSpeed: 3.8, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 34,
+    weapons: [w('prismBeam')], hasTurret: false, crushableBy: 1,
+    maxAlive: 1, ability: AbilityId.ChronoRally,
+  }),
+  unit({
+    key: 'commissar', name: 'War Commissar', blurb: 'One only. Makes nearby troops untouchable.',
+    faction: Faction.Soviets, kind: EntityKind.Infantry,
+    cost: 1500, buildTime: 20, tab: BuildTab.Infantry,
+    prereqs: ['barracks', 'radar'], sortOrder: 90,
+    model: 'soviet_commissar',
+    maxHp: 520, armor: ArmorClass.Infantry, maxSpeed: 3.5, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 30,
+    weapons: [w('teslaBolt')], hasTurret: false, crushableBy: 1,
+    maxAlive: 1, ability: AbilityId.IronWill,
+  }),
+  unit({
+    key: 'mrdHierarch', name: 'Hierarch', blurb: 'One only. Burns everything standing too close.',
+    faction: FACTION_MERIDIAN, kind: EntityKind.Infantry,
+    cost: 1500, buildTime: 20, tab: BuildTab.Infantry,
+    prereqs: ['mrdChapterhouse', 'mrdOculus'], sortOrder: 90,
+    model: 'meridian_hierarch',
+    maxHp: 430, armor: ArmorClass.Infantry, maxSpeed: 4.0, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 36,
+    weapons: [w('focusLance')], hasTurret: false, crushableBy: 1,
+    maxAlive: 1, ability: AbilityId.PrismFocus,
+    flags: MRD_FOOT | EntityFlag.CanAttack,
+  }),
+  unit({
+    key: 'rclBaron', name: 'Scrap Baron', blurb: 'One only. Cashes in the dead and mends the living.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Infantry,
+    cost: 1500, buildTime: 20, tab: BuildTab.Infantry,
+    prereqs: ['rclRookery', 'rclSpotter'], sortOrder: 90,
+    model: 'reclaim_baron',
+    maxHp: 470, armor: ArmorClass.Infantry, maxSpeed: 3.7, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 30,
+    weapons: [w('grinderArc')], hasTurret: false, crushableBy: 1,
+    maxAlive: 1, ability: AbilityId.SalvageCall,
+    flags: RCL_FOOT | EntityFlag.CanAttack,
+  }),
 ];
 
 /* ==========================================================================
@@ -1176,7 +1244,8 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: Faction.Neutral, cost: 500, buildTime: 10, tab: BuildTab.Structures,
     prereqs: ['powerPlant'], sortOrder: 30, model: 'barracks', dim: B.barracks,
     maxHp: 800, power: -20, sight: 20,
-    produces: ['gi', 'conscript', 'attackDog', 'engineer'], producesTab: BuildTab.Infantry,
+    produces: ['gi', 'conscript', 'attackDog', 'engineer', 'fieldMarshal', 'commissar'],
+    producesTab: BuildTab.Infantry,
     // Infantry walk out of a door, not a vehicle ramp: half a cell is enough.
     exitClearance: 2,
   }),
@@ -1317,7 +1386,8 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: FACTION_MERIDIAN, cost: 500, buildTime: 10, tab: BuildTab.Structures,
     prereqs: ['mrdSolarArray'], sortOrder: 30, model: 'meridian_chapterhouse', dim: B.barracks,
     maxHp: 750, power: -20, sight: 20,
-    produces: ['mrdWayfarer', 'mrdLancer', 'mrdArtificer'], producesTab: BuildTab.Infantry,
+    produces: ['mrdWayfarer', 'mrdLancer', 'mrdArtificer', 'mrdHierarch'],
+    producesTab: BuildTab.Infantry,
     exitClearance: 2,
     flags: mrdFlags(-20, EntityFlag.IsFactory | EntityFlag.PrimaryFactory),
   }),
@@ -1437,7 +1507,8 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: FACTION_RECLAIM, cost: 450, buildTime: 9, tab: BuildTab.Structures,
     prereqs: ['rclFurnace'], sortOrder: 30, model: 'reclaim_rookery', dim: B.barracks,
     maxHp: 850, power: -20, sight: 20,
-    produces: ['rclPicker', 'rclSlagger', 'rclTinker'], producesTab: BuildTab.Infantry,
+    produces: ['rclPicker', 'rclSlagger', 'rclTinker', 'rclBaron'],
+    producesTab: BuildTab.Infantry,
     exitClearance: 2,
     flags: rclFlags(-20, EntityFlag.IsFactory | EntityFlag.PrimaryFactory),
   }),

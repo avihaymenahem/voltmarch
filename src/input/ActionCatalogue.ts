@@ -728,6 +728,24 @@ export const ACTIONS: readonly ActionDef[] = [
     defaultChord: chord('KeyY'),
   },
   {
+    id: 'ord.ability',
+    label: 'Commander Ability',
+    description:
+      'Fires the selected commander’s faction ability, centred on wherever they are ' +
+      'standing. Each army has a different one and none of them needs a target — where ' +
+      'you walked the commander IS the aim. The same verb is a button on the selection ' +
+      'panel, which also prints the seconds left when it is cooling.',
+    category: 'orders',
+    surface: 'command',
+    binding: 'rebindable',
+    // SHIFT+F, and the shift is not a compromise. Every unmodified letter on the
+    // keyboard is already an order, a tab, a build slot or a camera pan; F is
+    // Force Fire, which is the nearest neighbour in meaning, so the ability
+    // lands one modifier away from the verb a player already associates with
+    // "do the special thing on purpose".
+    defaultChord: chord('KeyF', { shift: true }),
+  },
+  {
     id: 'ord.stance',
     label: 'Cycle Stance',
     description:

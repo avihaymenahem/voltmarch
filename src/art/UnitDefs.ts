@@ -423,6 +423,18 @@ interface InfantryOpts {
   pack: 'radio' | 'drum' | 'case';
   /** The silhouette family. This is what stops two armies sharing one mesh. */
   build: 'plated' | 'greatcoat';
+  /**
+   * A commander. Adds a back cape, an oversized left pauldron and a helmet
+   * crest — three shapes, all in the OUTLINE, because that is the only place a
+   * hero can be told from a rifleman at gameplay zoom. A recoloured texture or
+   * a bigger insignia would be invisible at the 57 px infantry occupies (task
+   * #26 is the standing measurement of exactly how little room there is).
+   *
+   * Nothing here raises the model above `H`: the crest is authored to top out
+   * at the same height as the aerial it sits beside, so R-S4's 2.1-2.7 m band
+   * is unaffected and one commander cannot quietly become a walker.
+   */
+  officer?: boolean;
 }
 
 function infantry(o: InfantryOpts): UnitMassList {
@@ -558,6 +570,32 @@ function infantry(o: InfantryOpts): UnitMassList {
       mirrorX: true, group: 'pouches', shape: { topScaleX: 0.88, topScaleZ: 0.78 },
     }),
   );
+
+  /* -- the commander's three silhouette shapes ---------------------------- */
+  if (o.officer === true) {
+    masses.push(
+      // The cape. A tapered plate from the shoulder line to mid-calf, canted a
+      // few degrees off vertical so it reads as cloth hanging rather than as a
+      // board bolted on. This is the shape that does the work at 20 px.
+      armour('cape', taperOutline(W * 1.24, W * 0.86, 1.34), 0.06,
+        [0, torsoY - torsoH * 0.16, -W * 0.52], [0.16, 0, 0],
+        'paintMed', 'cape'),
+      // One oversized pauldron, LEFT only. Asymmetry is what stops this reading
+      // as "the rifleman, but chunkier".
+      greeble('pauldron', 'taperedBox', [W * 0.46, 0.30, W * 0.54],
+        [-W * 0.46, torsoY + torsoH * 0.34, 0], 'paintSmall', {
+          rot: [0, 0, 0.16], group: 'pauldron',
+          shape: { topScaleX: 1.16, topScaleZ: 1.06, bottomScaleX: 0.72, bottomScaleZ: 0.80 },
+        }),
+      // The crest, sitting on the helmet's centreline. Its half-height is
+      // subtracted from its anchor so the top lands exactly on H.
+      greeble('crest', 'taperedBox', [0.07, H * 0.14, W * 0.40],
+        [0, H - H * 0.07, -0.02], 'bareMetal', {
+          group: 'crest',
+          shape: { topScaleX: 0.70, topScaleZ: 0.58, bottomScaleX: 1.0, bottomScaleZ: 1.0 },
+        }),
+    );
+  }
 
   // Team colour: 20-28% of surface (R-T1). Chest, both shoulders, helmet band.
   masses.push(
@@ -1663,6 +1701,7 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   /* -- Allies ----------------------------------------------------------- */
   infantry({ key: 'allied_rifle', name: 'Peacekeeper', faction: 'allies', hullNumber: 4172, weapon: 'rifle', pack: 'radio', build: 'plated' }),
   infantry({ key: 'allied_engineer', name: 'Engineer', faction: 'allies', hullNumber: 4172, weapon: 'tool', pack: 'case', build: 'plated' }),
+  infantry({ key: 'allied_marshal', name: 'Field Marshal', faction: 'allies', hullNumber: 4172, weapon: 'rifle', pack: 'radio', build: 'plated', officer: true }),
 
   tank({
     key: 'allied_guardian', name: 'Guardian Tank', faction: 'allies', hullNumber: 4172,
@@ -1701,6 +1740,7 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   /* -- Soviets ---------------------------------------------------------- */
   infantry({ key: 'soviet_conscript', name: 'Conscript', faction: 'soviets', hullNumber: 8188, weapon: 'rifle', pack: 'radio', build: 'greatcoat' }),
   infantry({ key: 'soviet_flak', name: 'Flak Trooper', faction: 'soviets', hullNumber: 8188, weapon: 'launcher', pack: 'drum', build: 'greatcoat' }),
+  infantry({ key: 'soviet_commissar', name: 'War Commissar', faction: 'soviets', hullNumber: 8188, weapon: 'rifle', pack: 'radio', build: 'greatcoat', officer: true }),
   attackDog(),
 
   tank({

@@ -44,6 +44,7 @@ import {
   EvaLine,
   Faction,
   MatchPhase,
+  OrderKind,
   Stance,
   type DefTables,
   type EntityId,
@@ -54,7 +55,11 @@ import {
   type UnitDef,
   type WeaponDef,
 } from '../core/types';
-import { MAX_SELECTION } from '../core/config';
+// `ABILITIES` is content, and content lives in core/config — so reading it here
+// is not the sim dependency the seam below exists to avoid. The HUD needs the
+// label, the hint and the full cooldown; the SERVICE owns which unit has which
+// and how much of the cooldown is left.
+import { ABILITIES, MAX_SELECTION } from '../core/config';
 import type { Channels } from '../core/events';
 import type { World } from '../core/world';
 import type { CameraRig } from '../render/camera';
@@ -81,6 +86,7 @@ import {
   Sidebar,
   TAB_HOTKEY_CODES,
   powerStateOf,
+  type AbilityAction,
   type AdviceKind,
   type ArmedMode,
   type BuildExtras,
@@ -355,6 +361,31 @@ function relocateSeam(): RelocateSeamRead | null {
   return r !== undefined && typeof r.inspect === 'function' ? r : null;
 }
 
+/**
+ * The commander-ability service, duck-typed off `globalThis.__vmAbilities`.
+ *
+ * Duck-typed rather than imported for the reason at the top of this file: the
+ * HUD must not hold a hard dependency on a sim module. With `sim.abilities`
+ * absent the row is simply never offered — which is also exactly what happens
+ * on a boot with no content module, where there are no commanders anyway.
+ *
+ * `abilityOf` returns an `AbilityId`; 0 is `None`. The numeric spelling is
+ * deliberate — importing the enum would reintroduce the dependency the seam
+ * exists to avoid, and the only thing this file does with the value is index
+ * `ABILITY_LABELS`.
+ */
+interface AbilitySeamRead {
+  abilityOf(id: EntityId): number;
+  cooldownSecondsOf(id: EntityId): number;
+  isReady(id: EntityId): boolean;
+}
+
+function abilitySeam(): AbilitySeamRead | null {
+  const g = globalThis as unknown as { __vmAbilities?: AbilitySeamRead };
+  const a = g.__vmAbilities;
+  return a !== undefined && typeof a.abilityOf === 'function' ? a : null;
+}
+
 /* ==========================================================================
  * SECTION 3 — THE HUD
  * ========================================================================== */
@@ -494,6 +525,7 @@ export class Hud {
         focusCard: (id) => this.focusEntity(id),
         setStance: (stance) => this.stanceSelection(stance),
         relocate: () => this.relocateSelection(),
+        useAbility: () => this.useSelectedAbility(),
         sound: (cue) => this.soundHook?.(cue),
       },
     });
@@ -536,6 +568,7 @@ export class Hud {
       hpFrac: 1, hpText: '', mending: false,
       stance: -1, stanceEnabled: false,
       relocate: { visible: false, enabled: false, cost: 0, hint: '', armed: false },
+      ability: { visible: false, enabled: false, label: '', hint: '', cooldown: 0, cooldownTotal: 0 },
       armour: '', damage: '', range: '', speed: '',
     };
 
@@ -1348,6 +1381,7 @@ export class Hud {
       view.hpText = '';
       view.mending = false;
       view.relocate.visible = false;
+      view.ability.visible = false;
       return;
     }
 
@@ -1454,6 +1488,7 @@ export class Hud {
     view.stanceEnabled = anyMobile;
     view.stance = stance < 0 ? -1 : (stance as Stance);
     this.fillRelocate(allBuildings);
+    this.fillAbility();
   }
 
   /**
@@ -1524,6 +1559,80 @@ export class Hud {
       this.soundHook?.('error');
       this.toast('warn', 'relocate', 'Cannot relocate', this.view.relocate.hint);
     }
+  }
+
+  /**
+   * The commander's ability row.
+   *
+   * ONE selected unit only, and it must be yours. A commander swept up in a
+   * box-select alongside twenty conscripts does not put its button on screen:
+   * with a mixed selection there is no answer to "whose cooldown is that", and
+   * a button that fires an ability the player did not know was selected is
+   * worse than no button. Click the hero, press the verb.
+   *
+   * Re-asked every frame rather than cached on selection change, because the
+   * cooldown ticks down under a stationary selection. The panel's own signature
+   * gate quantises that to whole seconds, so a steady cooldown writes DOM once
+   * a second rather than once a frame.
+   */
+  private fillAbility(): void {
+    const action = this.view.ability;
+    const sel = this.world.selection;
+
+    if (sel.count !== 1) { action.visible = false; return; }
+
+    const seam = abilitySeam();
+    if (seam === null) { action.visible = false; return; }
+
+    const id = sel.ids[0] as EntityId;
+    const idx = this.world.store.index(id);
+    if (idx < 0 || this.world.store.owner[idx] !== (this.world.localPlayer as number)) {
+      action.visible = false;
+      return;
+    }
+
+    const ability = seam.abilityOf(id);
+    // 0 is AbilityId.None, whose row exists only to keep the array a direct
+    // lookup. Anything out of range means the seam and the table disagree,
+    // which is a content bug and must not render a nameless button.
+    if (ability <= 0 || ability >= ABILITIES.length) { action.visible = false; return; }
+    const spec = ABILITIES[ability];
+
+    const cooldown = seam.cooldownSecondsOf(id);
+    action.visible = true;
+    action.label = spec.label;
+    action.hint = spec.hint;
+    action.cooldown = cooldown;
+    action.cooldownTotal = spec.cooldownSeconds;
+    action.enabled = cooldown <= 0;
+  }
+
+  /**
+   * Fire the selected commander's ability.
+   *
+   * Through `channels.commands` as an ordinary Order, exactly as a move or an
+   * attack goes — which is the whole reason `OrderKind.UseAbility` exists
+   * rather than a direct call into the service. The AI issues the same command,
+   * and #57's replay log records one thing rather than two.
+   */
+  private useSelectedAbility(): void {
+    const sel = this.world.selection;
+    if (sel.count !== 1) return;
+    const action = this.view.ability;
+    if (!action.visible) return;
+    if (!action.enabled) {
+      this.soundHook?.('error');
+      this.toast('warn', 'ability', action.label, `Ready in ${Math.ceil(action.cooldown)}s`);
+      return;
+    }
+    const store = this.world.store;
+    const idx = store.index(sel.ids[0] as EntityId);
+    if (idx < 0) return;
+    this.channels.commands.issueOrder(
+      this.world.localPlayer, OrderKind.UseAbility, sel.ids, 1,
+      store.posX[idx], store.posZ[idx],
+    );
+    this.toast('info', 'ability', action.label, action.hint);
   }
 
   /** Armour / damage / range / speed for the primary entity. */

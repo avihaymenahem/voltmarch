@@ -264,6 +264,11 @@ export const KEYBINDS: readonly KeybindDef[] = [
   { id: 'ord.forceAttack', label: 'Force Fire', category: 'Orders', scope: 'command', def: chord('KeyF') },
   { id: 'ord.rally', label: 'Set Rally Point', category: 'Orders', scope: 'command', def: chord('KeyY') },
   { id: 'ord.stance', label: 'Cycle Stance', category: 'Orders', scope: 'command', def: chord('KeyZ') },
+  // Shift+F: every unmodified letter is already taken, and F is Force Fire,
+  // which is the nearest neighbour in meaning. See `ord.ability` in
+  // `src/input/ActionCatalogue.ts`, which this row has to agree with — the
+  // catalogue owns the default and this owns whether it can be rebound.
+  { id: 'ord.ability', label: 'Commander Ability', category: 'Orders', scope: 'command', def: chord('KeyF', { shift: true }) },
 
   /* -- selection ---------------------------------------------------------- *
    * "Clear Selection" is deliberately NOT listed. The engine hard-codes it to

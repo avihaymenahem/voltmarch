@@ -151,6 +151,8 @@ export interface SelectionView {
   stanceEnabled: boolean;
   /** The Relocate button. Pooled and mutated in place, never replaced. */
   relocate: RelocateAction;
+  /** The commander's ability button. Pooled and mutated in place. */
+  ability: AbilityAction;
   /** Stat row. An empty string blanks its chip. */
   armour: string;
   damage: string;
@@ -192,6 +194,36 @@ export interface RelocateAction {
   armed: boolean;
 }
 
+/**
+ * The commander's active ability, as the selection panel needs to render it.
+ *
+ * WHY IT SITS BESIDE RELOCATE AND NOT IN THE BUILD PALETTE
+ * --------------------------------------------------------
+ * Its subject is the unit you already selected, exactly like Relocate's, and
+ * exactly unlike everything in the palette — which is a catalogue of things you
+ * do not own yet. Putting it in the palette would also have meant one slot per
+ * faction in a grid that is already the same shape for all four.
+ *
+ * `cooldown` / `cooldownTotal` are SECONDS and are only ever printed. The sim
+ * counts in integer ticks (see `src/sim/Abilities.ts`) precisely so that the
+ * float never gets anywhere near the decision; this is the presentation end of
+ * that number and nothing branches on it but the label.
+ */
+export interface AbilityAction {
+  /** False hides the row: nothing with an ability is selected. */
+  visible: boolean;
+  /** False greys the button — still cooling, or not yours. */
+  enabled: boolean;
+  /** 'Chrono Rally'. Never empty while visible. */
+  label: string;
+  /** One line saying what it does. The tooltip and the aria description. */
+  hint: string;
+  /** Seconds left, 0 when ready. */
+  cooldown: number;
+  /** The full cooldown, so the button can draw a proportion. */
+  cooldownTotal: number;
+}
+
 /** Severity of the status board's advice line. */
 export type AdviceKind = 'info' | 'warn' | 'alert';
 
@@ -228,6 +260,8 @@ export interface SidebarCallbacks {
   setStance(stance: Stance): void;
   /** Relocate was pressed. The HUD puts the selected structure on the cursor. */
   relocate(): void;
+  /** The commander's ability button was pressed. */
+  useAbility(): void;
   sound(cue: HudSoundCue): void;
 }
 
@@ -249,21 +283,30 @@ export interface SidebarOptions {
 }
 
 /**
- * Columns in the build grid. THREE since the palette moved to the right rail.
+ * Columns in the build grid. TWO, which is what RA2 itself used.
  *
- * Six was the approved width while this was a 332u-wide dock in the bottom
- * band. In a 240u vertical rail six columns would give a 36u cell, and the
- * cameo is the point of the cell now — three gives ~73u and a square-ish frame.
+ * The history is worth keeping because each step was measured. SIX was right
+ * while this was a 332u-wide dock across the bottom. THREE was right the moment
+ * it became a 240u vertical rail — six would have given a 36u cell. TWO is
+ * right now for a reason neither of those had: the LARGEST roster any faction
+ * has in any tab is EIGHT (measured off `catalog.roster` for all four armies
+ * and all four tabs), so a third column was never buying capacity — it was
+ * spending a third of the rail's width on air, and taking it out of the cameo.
+ *
+ * Two columns take the cell from ~73x56u to ~111x84u, which is 2.3x the pixel
+ * area in the cameo's backing store. That is real resolution, not an upscale:
+ * `bindCameo` sizes the canvas from the cell's own box.
  */
-const BUILD_COLUMNS = 3;
+export const BUILD_COLUMNS = 2;
 /**
  * Rows built up front. The grid scrolls internally past this.
  *
- * Raised with the move to a vertical rail: the rail is several hundred design
- * units tall, so eight rows are visible where two were, and a pool of four
- * would have meant re-allocating slots on the first scroll of every match.
+ * EIGHT is the largest roster, so 2x6 = 12 slots covers every tab of every
+ * faction with four to spare. Sized against the measurement rather than
+ * guessed: the old 10 rows existed to survive scrolling that, at these roster
+ * sizes, cannot happen.
  */
-const BUILD_ROWS = 10;
+export const BUILD_ROWS = 6;
 /** Cards built up front in the selection panel. */
 const CARD_POOL = 14;
 /** Segments in the power meter. */
@@ -724,6 +767,10 @@ class SelectionPanel {
   private readonly relocateRow: HTMLElement;
   private readonly relocateButton: HTMLButtonElement;
   private readonly relocateCostNode: Text;
+  private readonly abilityRow: HTMLElement;
+  private readonly abilityButton: HTMLButtonElement;
+  private readonly abilityLabelNode: Text;
+  private readonly abilityNameNode: Text;
 
   /** The idle advisory line — all that is left of the status board. */
   private readonly adviceNode: Text;
@@ -739,6 +786,7 @@ class SelectionPanel {
   private lastMending = false;
   private liveCards = 0;
   private lastRelocate = '';
+  private lastAbility = '';
 
   constructor(parent: HTMLElement, private readonly cb: SidebarCallbacks) {
     this.root = panel(parent, 'vm-dock vm-dock-selection', 'diag');
@@ -818,6 +866,36 @@ class SelectionPanel {
       }
       this.cb.sound('click');
       this.cb.relocate();
+    });
+
+    /* -- the commander's ability --------------------------------------- *
+     * A third occupant of the same slot. It is NOT mutually exclusive with the
+     * stance row the way Relocate is — a commander is a mobile unit and takes a
+     * stance like any other — so this row sits under it rather than instead of
+     * it, and is hidden for the 43 units out of 44 that have no ability.
+     *
+     * The label carries the ability's NAME rather than a generic "Ability",
+     * because the four are genuinely different verbs and a player switching
+     * armies has to learn which one they now have. When it is cooling the same
+     * node prints the seconds instead — one node, two states, no layout shift. */
+    this.abilityRow = el('div', 'vm-stances vm-ability-row', head);
+    this.abilityLabelNode = label(this.abilityRow, 'vm-stance-label', 'Ability');
+    this.abilityButton = button(this.abilityRow, 'vm-stance vm-ability', 'Use ability');
+    this.abilityButton.style.width = 'auto';
+    this.abilityButton.style.gap = 'calc(3 * var(--vm-u))';
+    this.abilityButton.style.padding = '0 calc(4 * var(--vm-u))';
+    this.abilityButton.appendChild(makeIcon('veterancy', 'vm-icon'));
+    this.abilityNameNode = label(this.abilityButton, '', '');
+    this.abilityRow.hidden = true;
+    this.abilityButton.addEventListener('pointerenter', () => this.cb.sound('hover'));
+    this.abilityButton.addEventListener('click', () => {
+      // Dimmed, never `disabled`, for the reason spelled out on Relocate above.
+      if (this.abilityButton.getAttribute('aria-disabled') === 'true') {
+        this.cb.sound('error');
+        return;
+      }
+      this.cb.sound('click');
+      this.cb.useAbility();
     });
 
     /* -- the body: cameo left, description right ----------------------- */
@@ -924,6 +1002,10 @@ class SelectionPanel {
         this.relocateRow.hidden = true;
         this.lastRelocate = '';
       }
+      if (!this.abilityRow.hidden) {
+        this.abilityRow.hidden = true;
+        this.lastAbility = '';
+      }
       this.updateAdvice(tele);
       return;
     }
@@ -1028,6 +1110,36 @@ class SelectionPanel {
     }
 
     this.updateRelocate(view.relocate);
+    this.updateAbility(view.ability);
+  }
+
+  /**
+   * The commander's ability button.
+   *
+   * Signature-gated like every other row here, and the signature deliberately
+   * quantises the cooldown to WHOLE SECONDS. The raw value changes every frame,
+   * so a signature carrying it would defeat the gate entirely and rewrite three
+   * DOM nodes 60 times a second for a label that only ever shows integers.
+   */
+  private updateAbility(action: AbilityAction): void {
+    const secs = Math.ceil(action.cooldown);
+    const sig = action.visible
+      ? `${action.enabled ? 1 : 0}|${action.label}|${secs}|${action.hint}`
+      : '';
+    if (sig === this.lastAbility) return;
+    this.lastAbility = sig;
+
+    this.abilityRow.hidden = !action.visible;
+    if (!action.visible) return;
+
+    const cooling = secs > 0;
+    this.abilityLabelNode.nodeValue = cooling ? 'Cooling' : 'Ability';
+    this.abilityNameNode.nodeValue = cooling ? `${secs}s` : action.label;
+    this.abilityButton.title = action.hint;
+    this.abilityButton.setAttribute('aria-label', `${action.label} — ${action.hint}`);
+    this.abilityButton.setAttribute('aria-disabled', action.enabled ? 'false' : 'true');
+    this.abilityButton.classList.toggle('is-cooling', cooling);
+    this.abilityButton.style.opacity = action.enabled ? '1' : '0.4';
   }
 
   /**

@@ -54,6 +54,7 @@ interface BridgeGlobal { __vmUnits?: unknown; }
 const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   gi: 'allied_rifle',
   engineer: 'allied_engineer',
+  fieldMarshal: 'allied_marshal',
   grizzly: 'allied_guardian',
   ifv: 'allied_ifv',
   prismTank: 'allied_prism',
@@ -61,6 +62,7 @@ const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   destroyer: 'allied_destroyer',
 
   conscript: 'soviet_conscript',
+  commissar: 'soviet_commissar',
   attackDog: 'soviet_dog',
   rhino: 'soviet_rhino',
   apocalypse: 'soviet_apocalypse',
@@ -79,6 +81,7 @@ const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
  */
 const INFANTRY_CONTENT: ReadonlySet<string> = new Set([
   'gi', 'engineer', 'conscript', 'attackDog',
+  'fieldMarshal', 'commissar',
   'mrdWayfarer', 'mrdSunlancer', 'mrdArtificer',
 ]);
 

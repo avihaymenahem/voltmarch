@@ -292,6 +292,15 @@ interface PactInfantryOpts {
   weapon: 'carbine' | 'lance' | 'tool';
   /** 'vane' collector pack | 'cells' battery stack | 'kit' artificer's case. */
   pack: 'vane' | 'cells' | 'kit';
+  /**
+   * A commander. Three added shapes, all in the outline — see the note on
+   * `InfantryOpts.officer` in `UnitDefs.ts`, which this mirrors deliberately so
+   * all four armies' heroes read as heroes by the same rule.
+   *
+   * This army's version is liturgical: a vestment rather than a cape, a
+   * mantle that continues the hexagonal plan language, and a taller cone.
+   */
+  officer?: boolean;
 }
 
 function pactInfantry(o: PactInfantryOpts): UnitMassList {
@@ -307,9 +316,16 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
     }),
     // Hexagonal torso: the Pact's plan language reaches all the way down to a
     // 2 m figure, and it is what stops the silhouette reading as a Conscript.
-    primary('torso', 'prism', [W * 0.86, torsoH, W * 0.86], [0, torsoY, 0], 'paintMed', {
-      plan: 'hexagon', capSlot: 'paintSmall',
-    }),
+    //
+    // The Hierarch's is BROADER — R-S4 holds the dominant mass to 35-50% of the
+    // silhouette, and hanging a vestment off the back adds silhouette the torso
+    // then does not own. Measured: 32.1% with the base torso, which the
+    // validator rejected outright. Widening in X and Z only leaves the 2.1-2.7 m
+    // height band untouched.
+    primary('torso', 'prism', [W * (o.officer === true ? 1.02 : 0.86), torsoH, W * (o.officer === true ? 1.00 : 0.86)],
+      [0, torsoY, 0], 'paintMed', {
+        plan: 'hexagon', capSlot: 'paintSmall',
+      }),
     // Conical helmet, not a dome. One shape, read at any distance.
     primary('helmet', 'lathe', [W * 0.58, H * 0.150, W * 0.60], [0, legTop + torsoH + H * 0.050, 0.01], 'paintSmall', {
       profile: 'cone', segments: 12, topRadius: 0.34,
@@ -364,6 +380,29 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
     greeble('belt', 'box', [W * 0.90, 0.12, W * 0.66], [0, torsoY - torsoH * 0.34, 0], 'paintTiny', { group: 'belt' }),
     greeble('gorget', 'box', [W * 0.60, 0.11, W * 0.50], [0, legTop + torsoH - 0.03, 0], 'paintTiny', { group: 'gorget' }),
   );
+
+  if (o.officer === true) {
+    masses.push(
+      // The vestment: a tall, thin hexagonal slab hung down the back. A
+      // `prism` and not a `plate` on purpose — the hexagon IS this army's plan
+      // language, and it is one of the three primitives this file's header
+      // commits to, so the vestment cannot quietly render as a box the way an
+      // unsupported primitive would.
+      greeble('vestment', 'prism', [W * 0.88, 1.00, 0.10], [0, torsoY - torsoH * 0.30, -W * 0.46], 'paintMed', {
+        plan: 'hexagon', capSlot: 'paintSmall', rot: [0.14, 0, 0], group: 'vestment',
+      }),
+      // A hexagonal shoulder mantle, LEFT only. The plan language reaches the
+      // hero the same way it reaches the tanks.
+      greeble('mantleHigh', 'prism', [W * 0.50, 0.30, W * 0.52], [-W * 0.46, torsoY + torsoH * 0.36, 0], 'paintSmall', {
+        plan: 'hexagon', capSlot: 'paintTiny', rot: [0, 0, 0.20], group: 'mantle',
+      }),
+      // The cone grows a finial. Anchored so the top lands on H, like the
+      // crest greeble it stands beside.
+      greeble('finial', 'lathe', [0.09, H * 0.15, 0.09], [0, H - H * 0.075, -0.02], 'bareMetal', {
+        profile: 'cone', segments: 8, topRadius: 0.12, group: 'crest',
+      }),
+    );
+  }
 
   // R-T1 for infantry is 20-28% of surface: chest, both mantles, helmet band,
   // thigh bands. Sizes are the proven ones from the shipped roster.
@@ -845,6 +884,7 @@ export const MERIDIAN_UNIT_MASS_LISTS: readonly UnitMassList[] = [
   pactInfantry({ key: 'meridian_wayfarer', name: 'Wayfarer', weapon: 'carbine', pack: 'vane' }),
   pactInfantry({ key: 'meridian_lancer', name: 'Sunlancer', weapon: 'lance', pack: 'cells' }),
   pactInfantry({ key: 'meridian_artificer', name: 'Artificer', weapon: 'tool', pack: 'kit' }),
+  pactInfantry({ key: 'meridian_hierarch', name: 'Hierarch', weapon: 'lance', pack: 'cells', officer: true }),
 
   pactTank({
     key: 'meridian_solarch', name: 'Solarch',
@@ -886,6 +926,7 @@ export const MERIDIAN_UNIT_MODELS: Readonly<Record<string, string>> = {
   mrdWayfarer: 'meridian_wayfarer',
   mrdLancer: 'meridian_lancer',
   mrdArtificer: 'meridian_artificer',
+  mrdHierarch: 'meridian_hierarch',
   mrdCollector: 'meridian_collector',
   mrdSkiff: 'meridian_skiff',
   mrdSolarch: 'meridian_solarch',

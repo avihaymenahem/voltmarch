@@ -206,6 +206,17 @@ export interface BuildEntry {
 
   /* -- units ------------------------------------------------------------ */
   readonly entityKind: EntityKind;
+  /**
+   * Cap on how many of this entry one player may have at once. 0 = unlimited,
+   * which is every entry except the four commanders.
+   *
+   * Copied off `UnitDef.maxAlive`, never authored in `CONTENT`, for the same
+   * reason `unlockedBy` is: the def table is the authority on content and the
+   * catalog is a view of it. On a fallback boot (no data module) it lands at 0
+   * and the cap is simply off — a headless test that spawns three commanders is
+   * doing something the sidebar cannot, and there is nothing to protect there.
+   */
+  readonly maxAlive: number;
 }
 
 /** The authored half. Everything else is derived from the fallback tables. */
@@ -722,6 +733,34 @@ const CONTENT: readonly ContentSpec[] = [
     kind: BuildKind.Building, faction: Faction.Neutral, tab: D,
     cost: 150, buildTime: 3, prereqs: ['barracks'], sortOrder: 11,
   },
+
+  /* -- THE COMMANDERS, appended for the same reason the gate is -------------
+   * One per army, `sortOrder: 90` so they sit at the bottom of the Infantry
+   * tab. The one-at-a-time rule is NOT authored here: it is `maxAlive` on the
+   * def row, copied into `BuildEntry` by `resolveEntry` and enforced in
+   * `availabilityOf`. This table has no column for it on purpose — a cap
+   * written in two places is a cap that will disagree with itself.
+   * --------------------------------------------------------------------- */
+  {
+    key: 'fieldMarshal', name: 'Field Marshal', blurb: 'One only. Recalls your army to their side.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: I,
+    cost: 1500, buildTime: 20, prereqs: ['barracks', 'radar'], sortOrder: 90,
+  },
+  {
+    key: 'commissar', name: 'War Commissar', blurb: 'One only. Makes nearby troops untouchable.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: I,
+    cost: 1500, buildTime: 20, prereqs: ['barracks', 'radar'], sortOrder: 90,
+  },
+  {
+    key: 'mrdHierarch', name: 'Hierarch', blurb: 'One only. Burns everything standing too close.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: I,
+    cost: 1500, buildTime: 20, prereqs: ['mrdChapterhouse', 'mrdOculus'], sortOrder: 90,
+  },
+  {
+    key: 'rclBaron', name: 'Scrap Baron', blurb: 'One only. Cashes in the dead and mends the living.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: I,
+    cost: 1500, buildTime: 20, prereqs: ['rclRookery', 'rclSpotter'], sortOrder: 90,
+  },
 ];
 
 /** Every army a player or an AI can be. Neutral is not one of them. */
@@ -870,8 +909,18 @@ export class ProductionCatalog {
 
 const EMPTY_ROSTER: readonly BuildEntry[] = [];
 
-/** Entity kinds `countOwnedUnits` walks. Module scope: it runs every snapshot. */
+/** Entity kinds `unitCensus` walks. Module scope: it runs every tick. */
 const OWNED_COUNT_KINDS: readonly EntityKind[] = [EntityKind.Infantry, EntityKind.Vehicle];
+
+/**
+ * Def-id slots the unit census buckets into, per player.
+ *
+ * `store.defId` is an `Int16Array` holding an index into `DefTables.units`,
+ * which has 48 rows. 256 is that with room to grow twice over, and it is what
+ * the old single-player scratch used; the array is now `MAX_PLAYERS` of these,
+ * which is 2 KB total and still zeroed with one `fill`.
+ */
+const UNIT_DEF_SLOTS = 256;
 
 /** Merge one authored spec with the fallback tables and any real def. */
 function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): BuildEntry | null {
@@ -915,6 +964,8 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
       exitZ: def?.exitOffsetZ ?? (fh * CELL * 0.5 + PRODUCTION.exitClearanceMetres),
       shipsWith: spec.shipsWith ?? '',
       entityKind: EntityKind.Building,
+      // No structure is capped. If one ever is, this reads the def field.
+      maxAlive: 0,
     };
   }
 
@@ -954,6 +1005,7 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
     exitZ: 0,
     shipsWith: '',
     entityKind: def?.kind ?? fb.kind,
+    maxAlive: def?.maxAlive ?? 0,
   };
 }
 
@@ -1224,6 +1276,27 @@ export class ProductionService implements QueueHooks {
         : 'Requires a production structure';
       return result;
     }
+    // THE HERO CAP. Last, because it is the only reason on this list that is
+    // temporary: every other refusal is "you cannot have this yet", and this
+    // one is "you already do". Reporting it ahead of a missing prereq would
+    // tell a player who has neither a barracks nor a commander the wrong thing.
+    //
+    // WHAT IS COUNTED: alive units of this def PLUS whatever is in the tab's
+    // queue. The queued half is not decoration — the alive count alone lets a
+    // player queue five commanders while the first is still on the line, and
+    // then all five walk out. `queued` includes the head that is currently
+    // building, which is exactly right.
+    if (entry.maxAlive > 0) {
+      const inHand = this.aliveOf(player, entry.defId)
+        + this.queues.countOf(p, entry.tab, entry.publicId, entry.kind === BuildKind.Building);
+      if (inHand >= entry.maxAlive) {
+        result.ok = false;
+        result.reason = entry.maxAlive === 1
+          ? `You already have a ${entry.name}`
+          : `Limit ${entry.maxAlive}`;
+        return result;
+      }
+    }
     result.ok = true;
     result.reason = '';
     return result;
@@ -1325,6 +1398,13 @@ export class ProductionService implements QueueHooks {
   tick(s: SimContext): void {
     this.tickCount++;
     const world = this.world;
+
+    // 0. Who is alive, by def. BEFORE the intents, not after: this is what
+    //    `availabilityOf` reads to enforce `maxAlive`, and an enqueue arriving
+    //    this tick must be judged against the state of the field NOW. Cleanup
+    //    ran at the end of last tick, so a commander that died is already gone
+    //    from the store and its build slot is free on this very tick.
+    this.unitCensus(world);
 
     // 1. Intent, then commands. Player intent wins ties by arriving first.
     this.drainIntents();
@@ -1737,7 +1817,18 @@ export class ProductionService implements QueueHooks {
     // the EVA line, which is what VISUAL_DNA §3 asks for ("cameo click over
     // budget OR production stalls on funds").
     if (p.credits < entry.cost) this.evaFunds(p);
-    this.queues.enqueue(p, entry.tab, entry.publicId, entry.kind === BuildKind.Building, count);
+    // Shift-click queues five. `availabilityOf` answered "you may have ONE
+    // more", not "you may have five more", so a capped entry has to clamp here
+    // as well — otherwise the single gate above passes and five commanders go
+    // onto the line behind it.
+    let n = count;
+    if (entry.maxAlive > 0) {
+      const inHand = this.aliveOf(p.id, entry.defId)
+        + this.queues.countOf(p, entry.tab, entry.publicId, entry.kind === BuildKind.Building);
+      n = Math.min(n, entry.maxAlive - inHand);
+      if (n <= 0) return;
+    }
+    this.queues.enqueue(p, entry.tab, entry.publicId, entry.kind === BuildKind.Building, n);
   }
 
   private applyRally(p: PlayerState, factory: EntityId, x: number, z: number): void {
@@ -2421,8 +2512,6 @@ export class ProductionService implements QueueHooks {
 
     if (this.cameoFaction !== p.faction) this.rebuildCameos(p.faction);
 
-    this.countOwnedUnits(world, p);
-
     for (let t = 0; t < BUILD_TAB_COUNT; t++) {
       const tab = t as BuildTab;
       const list = snap.cameos[t];
@@ -2455,29 +2544,49 @@ export class ProductionService implements QueueHooks {
         cameo.owned = entry.kind === BuildKind.Building
           ? (entry.publicId >= 0 && entry.publicId < p.buildingCount.length
             ? p.buildingCount[entry.publicId] : 0)
-          : (entry.defId >= 0 && entry.defId < this.ownedByDef.length
-            ? this.ownedByDef[entry.defId] : 0);
+          : this.aliveOf(p.id, entry.defId);
       }
     }
   }
 
-  /** Scratch for `countOwnedUnits`, indexed by def id. Reused every snapshot. */
-  private readonly ownedByDef = new Int32Array(256);
+  /**
+   * Completed mobile units, bucketed by (player, def id). PLAYER-MAJOR.
+   *
+   * This started life as a 256-entry scratch for the local player's sidebar
+   * badges. It is now also what enforces `BuildEntry.maxAlive`, and that
+   * second reader is why it had to grow a player axis: `availabilityOf` is
+   * asked the same question by the HUD, by the AI and by the dequeue check,
+   * for every player, and a count that only ever described the local one would
+   * have capped the human's commander and let all three AIs field a squad of
+   * them. Nothing would have logged an error.
+   */
+  private readonly aliveByPlayerDef = new Int32Array(MAX_PLAYERS * UNIT_DEF_SLOTS);
+
+  /** Alive, completed units of one def that one player owns. */
+  aliveOf(player: PlayerId, defId: number): number {
+    if (defId < 0 || defId >= UNIT_DEF_SLOTS) return 0;
+    const pi = player as number;
+    if (pi < 0 || pi >= MAX_PLAYERS) return 0;
+    return this.aliveByPlayerDef[pi * UNIT_DEF_SLOTS + defId];
+  }
 
   /**
-   * Completed mobile units the player owns, bucketed by def id.
+   * Recount every player's mobile units by def id. Once per tick, from `tick`,
+   * BEFORE the queues advance — so a commander that died this tick frees its
+   * slot on the same tick the player tries to rebuild.
    *
-   * ONE pass per snapshot rather than one per cameo — the grid is ~60 cells
-   * across four tabs, and a per-cell scan would walk the same arrays sixty
-   * times a frame.
+   * ONE pass over the two mobile kind lists, not one per cameo: the grid is
+   * ~60 cells across four tabs and a per-cell scan would walk the same arrays
+   * sixty times a frame.
    *
    * `UnderConstruction` is excluded deliberately: a unit still on the line is
    * already shown by `queued` and the progress bar, and counting it here too
-   * would tell the player they own something that does not exist yet.
+   * would tell the player they own something that does not exist yet. The cap
+   * adds the queued count back on separately — see `availabilityOf`.
    */
-  private countOwnedUnits(world: World, p: PlayerState): void {
-    const owned = this.ownedByDef;
-    owned.fill(0);
+  private unitCensus(world: World): void {
+    const alive = this.aliveByPlayerDef;
+    alive.fill(0);
     const st = world.store;
     // MODULE CONSTANT, not an inline literal. `[a, b]` here allocates a fresh
     // array every snapshot, which is a per-frame allocation and exactly what
@@ -2489,10 +2598,12 @@ export class ProductionService implements QueueHooks {
       const n = st.byKindCount[kind];
       for (let j = 0; j < n; j++) {
         const e = list[j];
-        if ((st.owner[e] as PlayerId) !== p.id) continue;
         if ((st.flags[e] & EntityFlag.UnderConstruction) !== 0) continue;
         const d = st.defId[e];
-        if (d >= 0 && d < owned.length) owned[d]++;
+        if (d < 0 || d >= UNIT_DEF_SLOTS) continue;
+        const pi = st.owner[e];
+        if (pi >= MAX_PLAYERS) continue;
+        alive[pi * UNIT_DEF_SLOTS + d]++;
       }
     }
   }

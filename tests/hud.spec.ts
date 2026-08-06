@@ -21,14 +21,18 @@ import {
   HUD_COMMAND_BAR,
   HUD_OVERLAY,
 } from '../src/core/config';
-import { BUILD_TAB_COUNT, Faction } from '../src/core/types';
+import { BUILD_TAB_COUNT, BuildTab, Faction } from '../src/core/types';
 import {
   BUILD_SLOT_HOTKEYS,
   BUILD_SLOT_HOTKEY_LABELS,
   BUILD_TAB_HOTKEYS,
   BUILD_TAB_HOTKEY_LABELS,
 } from '../src/input/ActionCatalogue';
-import { SLOT_HOTKEY_CODES, TAB_HOTKEY_CODES } from '../src/ui/Sidebar';
+import {
+  BUILD_COLUMNS, BUILD_ROWS, SLOT_HOTKEY_CODES, TAB_HOTKEY_CODES,
+} from '../src/ui/Sidebar';
+import { ProductionCatalog } from '../src/sim/Production';
+import { resolveDefBinding } from '../src/game/Scenarios';
 import {
   GLYPHS,
   arcPath,
@@ -418,5 +422,42 @@ describe('HUD — the build keyboard is the catalogue, not a copy', () => {
     // The eleventh cameo carries no badge because there is no eleventh letter.
     expect(BUILD_SLOT_HOTKEY_LABELS.length).toBe(SLOT_HOTKEY_CODES.length);
     expect(BUILD_TAB_HOTKEY_LABELS.length).toBe(BUILD_TAB_COUNT);
+  });
+});
+
+/* ==========================================================================
+ * THE BUILD GRID'S SHAPE IS SIZED AGAINST THE ROSTER, NOT GUESSED
+ *
+ * The palette went 6 columns -> 3 -> 2 as it moved from a bottom dock to a
+ * right rail and then traded width for cameo resolution. Every one of those
+ * steps risks the same silent failure: a grid with fewer slots than the tab has
+ * entries simply DOES NOT DRAW the overflow. No error, no scrollbar worth
+ * noticing — a unit just stops being buildable.
+ *
+ * So the pool is asserted against the real rosters rather than against a
+ * remembered number. Adding a ninth unit to any tab fails here, at the place
+ * that has to change, instead of in a match nobody is watching.
+ * ========================================================================== */
+describe('the build grid holds every faction’s largest tab', () => {
+  it('has at least as many slots as the biggest roster', async () => {
+    const catalog = new ProductionCatalog(await resolveDefBinding());
+    expect(catalog.bound, 'unbound catalog — rosters would be fallback content').toBe(true);
+
+    let worst = 0;
+    let worstWhere = '';
+    for (const faction of [Faction.Allies, Faction.Soviets, Faction.Meridian, Faction.Reclaim]) {
+      for (const tab of [BuildTab.Structures, BuildTab.Defense, BuildTab.Infantry, BuildTab.Vehicles]) {
+        const n = catalog.roster(faction, tab).length;
+        if (n > worst) { worst = n; worstWhere = `faction ${faction}, tab ${tab}`; }
+      }
+    }
+
+    expect(
+      BUILD_COLUMNS * BUILD_ROWS,
+      `${worstWhere} has ${worst} entries and the grid pools only ${BUILD_COLUMNS * BUILD_ROWS}`,
+    ).toBeGreaterThanOrEqual(worst);
+    // And the other direction: the pool must not drift into being enormous,
+    // because every slot is a DOM subtree plus a cameo canvas built at boot.
+    expect(BUILD_COLUMNS * BUILD_ROWS).toBeLessThanOrEqual(worst * 3);
   });
 });

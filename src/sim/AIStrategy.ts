@@ -268,6 +268,29 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
   fighter('engineer', BuildRole.Support, EntityKind.Infantry, 500, ['barracks'],
     Faction.Neutral, NO_ANSWER, 0),
 
+  /* -- THE COMMANDERS ------------------------------------------------------
+   * `weight: 1` — the AI wants exactly one and the cap gives it exactly one.
+   * `availabilityOf` refuses a second while the first is alive OR queued, so
+   * the AI does not need a rule of its own; a higher weight would just make it
+   * ask repeatedly and be refused repeatedly.
+   *
+   * BuildRole.Support, not Infantry: `forRole(Infantry)` returns the FIRST
+   * matching entry, and a commander answering that call would have the AI
+   * building a 1500-credit hero every time it wanted a rifleman.
+   *
+   * The answer vector is broad and unremarkable — a hero is not the answer to
+   * any particular threat class, it is a thing you have one of.
+   * --------------------------------------------------------------------- */
+  fighter('fieldMarshal', BuildRole.Support, EntityKind.Infantry, 1500, ['barracks', 'radar'],
+    Faction.Allies, [1.0, 1.0, 0.8, 0.6, 0.4], 1),
+  fighter('commissar', BuildRole.Support, EntityKind.Infantry, 1500, ['barracks', 'radar'],
+    Faction.Soviets, [1.0, 1.0, 0.8, 0.6, 0.4], 1),
+  fighter('mrdHierarch', BuildRole.Support, EntityKind.Infantry, 1500,
+    ['mrdChapterhouse', 'mrdOculus'],
+    FACTION_MERIDIAN, [1.0, 1.0, 0.8, 0.6, 0.4], 1),
+  fighter('rclBaron', BuildRole.Support, EntityKind.Infantry, 1500, ['rclRookery', 'rclSpotter'],
+    FACTION_RECLAIM, [1.0, 1.0, 0.8, 0.6, 0.4], 1),
+
   /* -- Allied army -------------------------------------------------------- */
   fighter('gi', BuildRole.Infantry, EntityKind.Infantry, 200, ['barracks'],
     Faction.Allies, [1.3, 0.7, 0.2, 0.4, 0.9], 3),

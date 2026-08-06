@@ -851,6 +851,20 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
   attackDog: unit('attackDog', EntityKind.Infantry, U.attackDog, 70, ArmorClass.Infantry, 6.2,
     Locomotor.Foot, 26, GUNNER | EntityFlag.Crushable, Faction.Soviets, { crushableBy: 1 }),
 
+  /* -- THE COMMANDERS -------------------------------------------------------
+   * One hero per army, and they need a row here for a reason that is easy to
+   * miss: `ProductionService.spawnUnit` returns NONE when
+   * `FALLBACK_UNITS[entry.key]` is undefined, BEFORE it ever looks at the def
+   * table. A commander with a perfect def row and no fallback row would build,
+   * charge the player, reach 100%, and then never come out of the barracks —
+   * silently, forever. Every number below is transcribed from
+   * `src/data/Defs.ts`; `tests/data.spec.ts` asserts the two agree.
+   * ---------------------------------------------------------------------- */
+  fieldMarshal: unit('fieldMarshal', EntityKind.Infantry, U.infantry, 460, ArmorClass.Infantry, 3.8,
+    Locomotor.Foot, 34, GUNNER | EntityFlag.Crushable, Faction.Allies, { crushableBy: 1 }),
+  commissar: unit('commissar', EntityKind.Infantry, U.infantry, 520, ArmorClass.Infantry, 3.5,
+    Locomotor.Foot, 30, GUNNER | EntityFlag.Crushable, Faction.Soviets, { crushableBy: 1 }),
+
   grizzly: unit('grizzly', EntityKind.Vehicle, U.lightTank, 340, ArmorClass.Medium, 6.6,
     Locomotor.Track, 30, TURRETED | EntityFlag.Crusher, Faction.Allies,
     { crushLevel: 3, crushableBy: 5 }),
@@ -897,6 +911,8 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
     Locomotor.Foot, 26, GUNNER | EntityFlag.Crushable, Faction.Meridian, { crushableBy: 1 }),
   mrdArtificer: unit('mrdArtificer', EntityKind.Infantry, U.infantry, 95, ArmorClass.Infantry, 3.6,
     Locomotor.Foot, 22, EntityFlag.Crushable, Faction.Meridian, { crushableBy: 1 }),
+  mrdHierarch: unit('mrdHierarch', EntityKind.Infantry, U.infantry, 430, ArmorClass.Infantry, 4.0,
+    Locomotor.Foot, 36, GUNNER | EntityFlag.Crushable, Faction.Meridian, { crushableBy: 1 }),
 
   mrdCollector: unit('mrdCollector', EntityKind.Vehicle, U.harvester, 800, ArmorClass.Light, 7.0,
     Locomotor.Hover, 22, EntityFlag.IsHarvester, Faction.Meridian,
@@ -933,6 +949,8 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
     Locomotor.Foot, 20, GUNNER | EntityFlag.Crushable, Faction.Reclaim, { crushableBy: 1 }),
   rclTinker: unit('rclTinker', EntityKind.Infantry, U.infantry, 85, ArmorClass.Infantry, 3.5,
     Locomotor.Foot, 20, EntityFlag.Crushable, Faction.Reclaim, { crushableBy: 1 }),
+  rclBaron: unit('rclBaron', EntityKind.Infantry, U.infantry, 470, ArmorClass.Infantry, 3.7,
+    Locomotor.Foot, 30, GUNNER | EntityFlag.Crushable, Faction.Reclaim, { crushableBy: 1 }),
 
   rclScrapper: unit('rclScrapper', EntityKind.Vehicle, U.harvester, 850, ArmorClass.Heavy, 5.6,
     Locomotor.Wheel, 20, EntityFlag.IsHarvester | EntityFlag.Crusher, Faction.Reclaim,
@@ -1202,6 +1220,8 @@ const UNIT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   engineer: ['engineer', 'alliedengineer', 'sovietengineer'],
   conscript: ['conscript', 'sovietinfantry', 'redguard'],
   attackDog: ['attackdog', 'dog', 'warbear', 'guarddog'],
+  fieldMarshal: ['fieldmarshal', 'marshal', 'alliedcommander'],
+  commissar: ['commissar', 'warcommissar', 'sovietcommander'],
   grizzly: ['grizzly', 'grizzlytank', 'lighttank', 'mediumtank', 'guardiantank'],
   ifv: ['ifv', 'multigunner', 'apc', 'riptide'],
   prismTank: ['prismtank', 'prism', 'athena', 'athenacannon'],
@@ -1220,6 +1240,7 @@ const UNIT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   mrdWayfarer: ['mrdwayfarer', 'wayfarer', 'meridianwayfarer'],
   mrdLancer: ['mrdlancer', 'sunlancer', 'meridianlancer'],
   mrdArtificer: ['mrdartificer', 'artificer', 'meridianartificer'],
+  mrdHierarch: ['mrdhierarch', 'hierarch', 'meridianhierarch'],
   mrdCollector: ['mrdcollector', 'suncollector', 'meridiancollector'],
   mrdSkiff: ['mrdskiff', 'sandskiff', 'meridianskiff'],
   mrdSolarch: ['mrdsolarch', 'solarch', 'meridiansolarch'],
@@ -1234,6 +1255,7 @@ const UNIT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   rclPicker: ['rclpicker', 'scrappicker', 'reclaimpicker'],
   rclSlagger: ['rclslagger', 'slagger', 'reclaimslagger'],
   rclTinker: ['rcltinker', 'tinker', 'reclaimtinker'],
+  rclBaron: ['rclbaron', 'scrapbaron', 'reclaimbaron'],
   rclScrapper: ['rclscrapper', 'scrapjaw', 'reclaimscrapper'],
   rclSpitter: ['rclspitter', 'arcspitter', 'reclaimspitter'],
   rclGrinder: ['rclgrinder', 'grinder', 'reclaimgrinder'],
@@ -1340,6 +1362,10 @@ const FACTION_KEY_MAP: Readonly<Record<string, readonly string[]>> = {
   conscript:        ['conscript',   'gi',         'conscript',  'mrdWayfarer',      'rclPicker'],
   engineer:         ['engineer',    'engineer',   'engineer',   'mrdArtificer',     'rclTinker'],
   attackDog:        ['attackDog',   'gi',         'attackDog',  'mrdWayfarer',      'rclPicker'],
+  // The hero row. A scenario that asks for 'commander' gets the asking army's
+  // own — there is no neutral commander, so the neutral column is the Allied
+  // one rather than a key that would resolve to nothing.
+  commander:        ['fieldMarshal','fieldMarshal','commissar', 'mrdHierarch',      'rclBaron'],
   /* vehicles */
   harvester:        ['harvester',   'harvester',  'harvester',  'mrdCollector',     'rclScrapper'],
   mcv:              ['mcv',         'mcv',        'mcv',        'mrdCarryall',      'rclCrawler'],

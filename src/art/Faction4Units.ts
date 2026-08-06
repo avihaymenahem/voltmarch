@@ -385,6 +385,15 @@ interface ScrapInfantryOpts {
   weapon: 'prod' | 'satchel' | 'tool';
   /** 'coil' battery coil | 'hopper' slag hopper | 'roll' tool roll. */
   pack: 'coil' | 'hopper' | 'roll';
+  /**
+   * A commander. Three added shapes, all in the outline — see the note on
+   * `InfantryOpts.officer` in `UnitDefs.ts`, which this mirrors deliberately so
+   * all four armies' heroes read as heroes by the same rule.
+   *
+   * This army's version is scrap: a hide cape hung off chains rather than a
+   * tailored one, and the crest is a salvaged blade, not a plume.
+   */
+  officer?: boolean;
 }
 
 function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
@@ -400,9 +409,16 @@ function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
     }),
     // The torso is a forward-leaning wedge: this army carries its weight on its
     // shoulders, which reads as hunched at any distance.
-    primary('torso', 'taperedBox', [W * 0.84, torsoH, W * 0.72], [0, torsoY, 0], 'paintMed', {
-      shape: { topScaleX: 1.10, topScaleZ: 0.86, shear: W * 0.10, cornerCut: 0.06 },
-    }),
+    // The Baron's wedge is BROADER, for the reason spelled out on the Hierarch's
+    // torso in Faction3Units.ts: R-S4 holds the dominant mass to 35-50% of the
+    // silhouette and a hide cape adds silhouette the torso does not own.
+    // Measured at 29.4% with the base wedge, which the validator rejected. X and
+    // Z only, so the height band is untouched.
+    primary('torso', 'taperedBox',
+      [W * (o.officer === true ? 1.04 : 0.84), torsoH, W * (o.officer === true ? 0.88 : 0.72)],
+      [0, torsoY, 0], 'paintMed', {
+        shape: { topScaleX: 1.10, topScaleZ: 0.86, shear: W * 0.10, cornerCut: 0.06 },
+      }),
     // The helmet is a plain squat drum; the READ is the visor plate hung on the
     // front of it, which is the next mass down.
     primary('helmet', 'cylinder', [W * 0.54, H * 0.115, W * 0.56], [0, legTop + torsoH + H * 0.040, -0.01], 'paintSmall', {
@@ -485,6 +501,31 @@ function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
       group: 'collar', shape: { topScaleX: 0.82, topScaleZ: 0.82 },
     }),
   );
+
+  if (o.officer === true) {
+    masses.push(
+      // The hide cape. Wider and shorter than the Allied one and canted harder,
+      // because this army's language is "hung on" rather than "tailored to".
+      greeble('cape', 'plate', [W * 0.94, 0.07, 0.96], [0, torsoY - torsoH * 0.34, -W * 0.46], 'paintMed', {
+        rot: [0.22, 0, 0.05], group: 'cape',
+        shape: { outline: taperOutline(W * 0.94, 0.96, 0.68), thickness: 0.07, bevel: 0.03 },
+      }),
+      // A SECOND pauldron on the other shoulder. On any other unit in this army
+      // that would break the asymmetry rule; on the one hero it IS the tell,
+      // and it is deliberately a different shape from the first so the pair
+      // still does not read as matched.
+      greeble('pauldronOff', 'taperedBox', [W * 0.44, 0.28, W * 0.50],
+        [-W * 0.46, torsoY + torsoH * 0.32, 0], 'paintSmall', {
+          rot: [0, 0, 0.34], group: 'pauldron',
+          shape: { topScaleX: 1.10, topScaleZ: 0.92, cornerCut: 0.08 },
+        }),
+      // A salvaged blade stood upright on the helmet. Anchored so its top lands
+      // on H exactly, like every other variant's tallest greeble.
+      greeble('crest', 'taperedBox', [0.06, H * 0.15, W * 0.34], [0, H - H * 0.075, -0.03], 'bareMetal', {
+        group: 'crest', shape: { topScaleX: 0.4, topScaleZ: 0.44, shear: 0.05 },
+      }),
+    );
+  }
 
   // R-T1 for infantry is 20-28% of surface: chest, the one pauldron face, the
   // helmet band and the thigh wraps.
@@ -1064,6 +1105,7 @@ export const RECLAIM_UNIT_MASS_LISTS: readonly UnitMassList[] = [
   scrapInfantry({ key: 'reclaim_picker', name: 'Scrap Picker', weapon: 'prod', pack: 'coil' }),
   scrapInfantry({ key: 'reclaim_slagger', name: 'Slagger', weapon: 'satchel', pack: 'hopper' }),
   scrapInfantry({ key: 'reclaim_tinker', name: 'Tinker', weapon: 'tool', pack: 'roll' }),
+  scrapInfantry({ key: 'reclaim_baron', name: 'Scrap Baron', weapon: 'prod', pack: 'coil', officer: true }),
 
   scrapHull({
     key: 'reclaim_grinder', name: 'Grinder',
@@ -1105,6 +1147,7 @@ export const RECLAIM_UNIT_MODELS: Readonly<Record<string, string>> = {
   rclPicker: 'reclaim_picker',
   rclSlagger: 'reclaim_slagger',
   rclTinker: 'reclaim_tinker',
+  rclBaron: 'reclaim_baron',
   rclScrapper: 'reclaim_scrapper',
   rclSpitter: 'reclaim_spitter',
   rclGrinder: 'reclaim_grinder',

@@ -349,6 +349,15 @@ export const enum OrderKind {
   Patrol = 13,
   /** Building only: move the rally flag. */
   SetRally = 14,
+  /**
+   * Commander only: fire the faction ability, centred on the unit itself.
+   *
+   * Carries no target — every commander ability is self-centred, so the order
+   * needs nothing but the entity it lands on. `src/sim/Abilities.ts` consumes
+   * it at Phase.Command order 9600 and clears it back to `None` the same tick,
+   * exactly as `sim/deploy.system.ts` does at 9500.
+   */
+  UseAbility = 15,
 }
 
 /** Auto-engagement policy. Set per unit from the SelectionPanel. */
@@ -665,6 +674,27 @@ export interface UnitDef extends BuildableDef {
   readonly deploysInto: string | null;
   /** Set for Engineer: can capture enemy structures. */
   readonly canCapture: boolean;
+  /**
+   * Hard cap on how many of this def one player may have ALIVE AT ONCE.
+   * 0 means unlimited, which is every unit in the game except the four
+   * commanders.
+   *
+   * "Alive" here counts what is on the field PLUS what is queued or on the
+   * production line, and that second half is the part that actually matters:
+   * a cap enforced only against living units lets a player queue five
+   * commanders while the first is still building, and then five arrive. The
+   * check lives in `ProductionService.availabilityOf` so the sidebar greys the
+   * cameo, the tooltip explains why, and the AI — which asks the same function
+   * — is bound by it too.
+   */
+  readonly maxAlive: number;
+  /**
+   * Faction ability this unit carries, or `AbilityId.None`.
+   *
+   * A number rather than an import so `core/types.ts` keeps depending on
+   * nothing; `src/sim/Abilities.ts` owns the enum and the effects.
+   */
+  readonly ability: number;
   /** Extra flags OR'd in at spawn. */
   readonly flags: number;
 }

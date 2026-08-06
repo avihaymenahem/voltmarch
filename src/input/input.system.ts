@@ -579,6 +579,42 @@ function issueDeploy(only: EntityId = NONE): number {
   return n;
 }
 
+/**
+ * Fire the faction ability of every selected commander.
+ *
+ * ONE order per unit, each carrying that unit's own position — the ability is
+ * self-centred, so the point on the command is the commander's, never the
+ * cursor's. Two commanders can never be selected at once in practice (there is
+ * one per army and a player has one army), but the loop costs nothing and is
+ * correct if that ever stops being true.
+ *
+ * No availability check here. `src/sim/Abilities.ts` refuses a unit with no
+ * ability and a cooldown that has not expired, and duplicating either test in
+ * the input layer is how the two would eventually disagree — the HUD button
+ * greys itself off the SERVICE's answer for exactly the same reason.
+ */
+function issueAbility(): number {
+  const { world, channels } = ctx();
+  const s = world.store;
+  const player = world.localPlayer;
+  const sel = world.selection;
+
+  let issued = 0;
+  for (let k = 0; k < sel.count; k++) {
+    const i = s.index(sel.ids[k] as EntityId);
+    if (i < 0 || s.owner[i] !== (player as number)) continue;
+    const kind = s.kind[i];
+    if (kind !== EntityKind.Infantry && kind !== EntityKind.Vehicle) continue;
+    ONE_ID[0] = sel.ids[k];
+    const x = s.posX[i];
+    const z = s.posZ[i];
+    issueOrder(world, channels, player, OrderKind.UseAbility, ONE_ID, 1, x, z);
+    overlay?.spawn(FeedbackKind.Special, x, groundY(x, z), z);
+    issued++;
+  }
+  return issued;
+}
+
 /** Hotkey orders that need no target: stop, guard, scatter. */
 function issueImmediate(order: OrderKind): void {
   const { world, channels } = ctx();
@@ -864,6 +900,13 @@ const handlers = {
         // Stance cycle on the selection: aggressive -> defensive -> hold fire ->
         // hold ground. Goes through the bus like everything else.
         cycleStance();
+        return true;
+
+      case 'ord.ability':
+        // Consumed whether or not a commander is selected, for the same reason
+        // Deploy is: a keystroke that falls through to the build grid does
+        // nothing there either, but does it less predictably.
+        issueAbility();
         return true;
 
       case 'cam.home':
