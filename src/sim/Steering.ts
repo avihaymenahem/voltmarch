@@ -51,9 +51,20 @@
  * A group order does NOT funnel everyone to one point. When several units of
  * one player receive the same order point on the same tick, their offsets from
  * the group centroid are frozen as formation slots. All of them still share
- * ONE flow field (aimed at the order point, so the goal bucketing keeps
- * working), and the slot only takes over inside NAV_FORMATION_ENGAGE_RADIUS of the
- * goal. That is what makes a line of tanks arrive as a line.
+ * ONE flow field — that comes from the field being requested at `goalX/goalZ`,
+ * never at the slot, and it is what keeps the goal bucketing working. The slot
+ * is what makes a line of tanks arrive as a line.
+ *
+ * ONE DEFINITION OF "WHERE THIS UNIT IS GOING"
+ * --------------------------------------------
+ * `agentTarget()` at the bottom of this file, and nothing else. Both phases
+ * call it. That is not tidiness, it is the fix for a real defect: the solver
+ * used to gate the slot on a distance threshold and the assigner did not, so
+ * for every unit more than 22 m from its order point the assigner was measuring
+ * arrival, giving up, sampling progress and probing for a direct path against
+ * `goal + slot` while the solver drove at `goal`. Two phases, one unit, two
+ * different destinations, permanently. If you ever need the target point again,
+ * call the function; do not re-derive it.
  * ============================================================================
  */
 
@@ -62,16 +73,15 @@ import {
   NAV_ARRIVE_SLACK, NAV_SLOWDOWN_RADIUS, NAV_MIN_APPROACH_SPEED,
   NAV_DIRECT_RANGE, NAV_DIRECT_RECHECK_TICKS, NAV_REPATH_TICKS,
   NAV_STUCK_TICKS, NAV_STUCK_SPEED_FRAC, NAV_STUCK_GIVEUP_RADIUS,
-  NAV_STUCK_MAX_NUDGES, NAV_NUDGE_METRES,
+  NAV_STUCK_MAX_NUDGES,
   NAV_WEDGE_SAMPLE_TICKS, NAV_WEDGE_METRES, NAV_WEDGE_STRIKES,
-  NAV_WEDGE_MAX_NUDGES, NAV_WEDGE_NUDGE_METRES, NAV_WEDGE_SEARCH_CELLS,
+  NAV_WEDGE_MAX_NUDGES, NAV_WEDGE_SEARCH_CELLS,
   NAV_FORMATION_SPACING, NAV_FORMATION_MAX_OFFSET, NAV_FORMATION_GOAL_EPS,
-  NAV_FORMATION_ENGAGE_RADIUS,
   STEER_SEPARATION_WEIGHT, STEER_SEPARATION_RANGE_MUL, STEER_STATIC_PUSH_MUL,
   STEER_AVOID_WEIGHT, STEER_AVOID_LOOKAHEAD, STEER_AVOID_SIDE,
   STEER_QUEUE_COS, STEER_QUEUE_RANGE_MUL, STEER_QUEUE_BRAKE,
   STEER_QUEUE_MIN_FRAC, STEER_PASS_COS, STEER_PASS_STALL_FRAC, STEER_PASS_WEIGHT,
-  STEER_FLOW_WEIGHT,
+  STEER_FLOW_WEIGHT, STEER_NUDGE_WEIGHT,
 } from '../core/config';
 import { EntityFlag, EntityKind, NONE, UnitState } from '../core/types';
 import type { SimContext } from '../core/types';
@@ -144,9 +154,10 @@ const NAV_PROGRESS_STRIKES = 6;
  *                     and is how a unit ends up parked mid-haul forever) and
  *                     ask for a fresh one. Fixes every case where the unit is
  *                     free and the plan is stale.
- *   rung 1..N         NUDGE. A deterministic sideways shove of the formation
- *                     slot, big enough to clear a hull. Fixes the case where
- *                     two units are leaning on each other in a doorway.
+ *   rung 1..N         NUDGE. A deterministic sideways shove — a steering term,
+ *                     see `armNudge` — strong enough to clear a hull. Fixes the
+ *                     case where two units are leaning on each other in a
+ *                     doorway.
  *   rung N+1          DISPLACE. Put the unit on the nearest ROUTABLE cell
  *                     within NAV_WEDGE_SEARCH_CELLS, preferring the region its
  *                     goal is in. Only reached after ~24 s of a unit not moving
@@ -179,6 +190,13 @@ const NAV_PROGRESS_STRIKES = 6;
 
 /** Scratch for the rescue ring search. Module level: `simTick` never allocates. */
 const RESCUE_CELL = new Int32Array(2);
+
+/**
+ * Bearings the unwedge shove tries before it settles for the hashed one. Eight
+ * across a half-plane is 22.5 degrees apart, which is finer than the 4 m cell
+ * grid the probe reads, so a ninth would ask the same cells twice.
+ */
+const NUDGE_PROBES = 8;
 
 /* --------------------------------------------------------------------------
  * RESCUE REPORTING
@@ -300,10 +318,38 @@ export class NavAgents {
    */
   readonly anchorX = new Float32Array(MAX_ENTITIES);
   readonly anchorZ = new Float32Array(MAX_ENTITIES);
+  /**
+   * The tick the current wedge window opened, so the sample can ask whether a
+   * shove was still live when it did.
+   *
+   * WHY THE LADDER NEEDS THIS TO TERMINATE. A good sample refunds a rung
+   * (`anchorWedge`), and after a shove ends the unit does not stop — it coasts,
+   * turns back, and drifts to where it was. That tail clears NAV_WEDGE_METRES
+   * on the very next window and hands the rung back, so the ladder cycles
+   * between rungs 2 and 3 for the rest of the match and never reaches the
+   * displacement rung. Measured on the sealed alcove: six detections, five
+   * shoves, zero displacements, 2.76 m of net travel in sixty seconds.
+   *
+   * A window that OPENED while we were still shoving therefore does not count
+   * as the unit moving under its own power. It still re-anchors — no unit is
+   * punished for moving — it just does not pay the rung back.
+   */
+  readonly anchorTick = new Uint32Array(MAX_ENTITIES);
   /** Consecutive sample windows in which the unit did not move. */
   readonly frozen = new Uint8Array(MAX_ENTITIES);
   /** How far up the unwedge ladder this unit has climbed on this order. */
   readonly escalations = new Uint8Array(MAX_ENTITIES);
+  /**
+   * The unwedge shove: a unit-length lateral steering direction, and the tick
+   * it stops being applied. Deliberately NOT the formation slot — see the
+   * measured account above STEER_NUDGE_WEIGHT in core/config. A tick DEADLINE
+   * rather than a countdown so nothing has to decrement it: both phases skip
+   * units for half a dozen reasons and a counter would decay at a rate that
+   * depended on which branch the unit took.
+   */
+  readonly nudgeX = new Float32Array(MAX_ENTITIES);
+  readonly nudgeZ = new Float32Array(MAX_ENTITIES);
+  readonly nudgeUntil = new Uint32Array(MAX_ENTITIES);
   readonly flags = new Uint8Array(MAX_ENTITIES);
 
   /** True if this slot's state belongs to the CURRENT occupant. */
@@ -316,9 +362,39 @@ export class NavAgents {
     this.slotX[i] = 0; this.slotZ[i] = 0;
     this.stuck[i] = 0; this.nudges[i] = 0;
     this.bestDist[i] = -1; this.noProgress[i] = 0;
-    this.anchorX[i] = 0; this.anchorZ[i] = 0;
+    this.anchorX[i] = 0; this.anchorZ[i] = 0; this.anchorTick[i] = 0;
     this.frozen[i] = 0; this.escalations[i] = 0;
+    this.clearNudge(i);
     this.flags[i] = 0;
+  }
+
+  /**
+   * Arm the unwedge shove: lean along the unit vector `(dx,dz)` for `hold`
+   * ticks. A dumb setter — `NavAssigner.shove` chooses the direction, because
+   * choosing it well needs the terrain and this table has none.
+   *
+   * DURATION is however long the detector that asked for it takes to look
+   * again, which is why callers pass their own window rather than a shared
+   * constant. A shove that expires before the next sample is a shove nobody
+   * measures; one that outlives it stacks with its own successor.
+   */
+  armNudge(i: number, dx: number, dz: number, tick: number, hold: number): void {
+    this.nudgeX[i] = dx;
+    this.nudgeZ[i] = dz;
+    this.nudgeUntil[i] = tick + hold;
+  }
+
+  /** Cancel any live shove. On a new order, a rescue, a displacement. */
+  clearNudge(i: number): void {
+    this.nudgeX[i] = 0; this.nudgeZ[i] = 0; this.nudgeUntil[i] = 0;
+  }
+
+  /**
+   * True when a shove was still live at the instant the current wedge window
+   * opened, i.e. this window's movement is movement we caused. See `anchorTick`.
+   */
+  shoveDrove(i: number): boolean {
+    return this.nudgeUntil[i] !== 0 && this.nudgeUntil[i] >= this.anchorTick[i];
   }
 
   /** Forget progress history. Called whenever the order point changes. */
@@ -335,6 +411,7 @@ export class NavAgents {
   armWedge(i: number, x: number, z: number): void {
     this.anchorX[i] = x;
     this.anchorZ[i] = z;
+    this.anchorTick[i] = 0;
     this.frozen[i] = 0;
     this.escalations[i] = 0;
   }
@@ -358,6 +435,7 @@ export class NavAgents {
   anchorWedge(i: number, x: number, z: number): void {
     this.anchorX[i] = x;
     this.anchorZ[i] = z;
+    this.anchorTick[i] = 0;
     this.frozen[i] = 0;
     if (this.escalations[i] > 0) this.escalations[i]--;
   }
@@ -440,6 +518,12 @@ const NEW_ORDERS = new Int32Array(MAX_ENTITIES);
 const GROUPED = new Uint8Array(MAX_ENTITIES);
 /** Scratch: one group's members. */
 const GROUP = new Int32Array(MAX_ENTITIES);
+/**
+ * Scratch for `agentTarget`. One buffer for both phases: every caller reads it
+ * on the next two lines and never retains it, and the two phases do not run at
+ * the same time. Module level because `simTick` never allocates.
+ */
+const TARGET = new Float32Array(2);
 
 export class NavAssigner {
   /** Units currently holding a field. Diagnostics only. */
@@ -493,6 +577,7 @@ export class NavAssigner {
           | AgentFlag.Displaced);
         ag.stuck[i] = 0; ag.nudges[i] = 0;
         ag.restartProgress(i);
+        ag.clearNudge(i);
         ag.armWedge(i, st.posX[i], st.posZ[i]);
         continue;
       }
@@ -508,6 +593,7 @@ export class NavAssigner {
         ag.slotX[i] = 0; ag.slotZ[i] = 0;
         ag.stuck[i] = 0; ag.nudges[i] = 0;
         ag.restartProgress(i);
+        ag.clearNudge(i);
         ag.armWedge(i, st.posX[i], st.posZ[i]);
         ag.flags[i] = (ag.flags[i] & ~(AgentFlag.Arrived | AgentFlag.DirectPath
           | AgentFlag.Displaced)) | AgentFlag.HasSlot;
@@ -544,15 +630,16 @@ export class NavAssigner {
       // parked instead of cycling.
       if ((ag.flags[i] & AgentFlag.Arrived) !== 0) {
         if (ag.escalations[i] !== 0) continue;
-        const rx = ag.goalX[i] + ag.slotX[i] - st.posX[i];
-        const rz = ag.goalZ[i] + ag.slotZ[i] - st.posZ[i];
+        agentTarget(ag, i, TARGET);
+        const rx = TARGET[0] - st.posX[i];
+        const rz = TARGET[1] - st.posZ[i];
         const give = NAV_STUCK_GIVEUP_RADIUS + st.radius[i];
         if (rx * rx + rz * rz <= give * give) continue;
       }
 
       const cls = moveClassAt(st, i);
-      const tx = ag.goalX[i] + ag.slotX[i];
-      const tz = ag.goalZ[i] + ag.slotZ[i];
+      agentTarget(ag, i, TARGET);
+      const tx = TARGET[0], tz = TARGET[1];
       const px = st.posX[i], pz = st.posZ[i];
       const ddx = tx - px, ddz = tz - pz;
       const d2 = ddx * ddx + ddz * ddz;
@@ -603,12 +690,22 @@ export class NavAssigner {
           && (st.flags[i] & EntityFlag.Immobilized) === 0
           && st.targetId[i] === (NONE as number)) {
         const wdx = px - ag.anchorX[i], wdz = pz - ag.anchorZ[i];
+        const shoveDrove = ag.shoveDrove(i);
         if (wdx * wdx + wdz * wdz >= NAV_WEDGE_METRES * NAV_WEDGE_METRES) {
-          // Moved. Step DOWN one rung rather than resetting — see anchorWedge.
-          ag.anchorWedge(i, px, pz);
+          if (shoveDrove) {
+            // Movement WE caused. Re-anchor — the unit is not punished for it —
+            // but do not refund the rung it just climbed. See `anchorTick` for
+            // the measured account of what happens when it is refunded.
+            ag.anchorX[i] = px; ag.anchorZ[i] = pz; ag.frozen[i] = 0;
+          } else {
+            // Moved on its own. Step DOWN one rung rather than resetting — see
+            // anchorWedge.
+            ag.anchorWedge(i, px, pz);
+          }
         } else if (ag.frozen[i] < 255) {
           ag.frozen[i]++;
         }
+        ag.anchorTick[i] = s.tick;
         if (ag.frozen[i] >= NAV_WEDGE_STRIKES) {
           ag.frozen[i] = 0;
           wedgeCounters.detections++;
@@ -620,8 +717,29 @@ export class NavAssigner {
       }
 
       // -- stuck -----------------------------------------------------------
+      // ONE LADDER, ONE OWNER. The wedge ladder above is the slow, thorough one
+      // and it owns the outcome from the moment it takes its first rung, so
+      // this faster one stands down until it comes back to earth.
+      //
+      // They used to run concurrently and it did not show, because the shove
+      // did nothing and the speed ladder's own remedy therefore never changed
+      // anything either. With a shove that works they fight: this ladder's
+      // 24-tick shove overwrites the wedge ladder's 60-tick one mid-window, and
+      // — the part that actually broke a unit — its give-up parks the order
+      // outright after three shoves, four seconds into a climb the wedge ladder
+      // needs thirty-six to finish. `finishOrder` puts a plain move order into
+      // `Idle`, `seeksGoal(Idle)` is false, and the loop above skips the unit
+      // entirely from then on: the wedge ladder never gets to finish, never
+      // reaches its displacement rung, and the unit is parked in the hole for
+      // the rest of the match. Measured: parked at t=600 where the same
+      // scenario used to be displaced out at t=1080.
+      //
+      // Termination is not lost by deferring: the wedge ladder ends in its own
+      // park rung.
       const maxSpeed = st.maxSpeed[i];
-      if (maxSpeed > 0 && st.speed[i] < maxSpeed * NAV_STUCK_SPEED_FRAC) {
+      if (ag.escalations[i] > 0) {
+        ag.stuck[i] = 0;
+      } else if (maxSpeed > 0 && st.speed[i] < maxSpeed * NAV_STUCK_SPEED_FRAC) {
         if (ag.stuck[i] < 255) ag.stuck[i]++;
       } else {
         ag.stuck[i] = 0;
@@ -636,12 +754,9 @@ export class NavAssigner {
           this.finishOrder(i);
           continue;
         }
-        // Deterministic sideways shove. `hash2f` is a pure integer hash, not a
-        // draw from `s.rng`, so nudging a stuck unit cannot change the RNG
-        // stream and desync everything downstream of it.
-        const ang = hash2f(i, s.tick) * Math.PI * 2;
-        ag.slotX[i] += Math.cos(ang) * NAV_NUDGE_METRES;
-        ag.slotZ[i] += Math.sin(ang) * NAV_NUDGE_METRES;
+        // Deterministic sideways shove, held until this same watchdog is next
+        // able to fire (NAV_STUCK_TICKS of continued stalling).
+        this.shove(i, px, pz, ddx, ddz, cls, s.tick, NAV_STUCK_TICKS);
         ag.nudges[i]++;
       }
 
@@ -692,6 +807,68 @@ export class NavAssigner {
     }
 
     this.assigned = assigned;
+  }
+
+  /**
+   * Pick a direction for the unwedge shove and arm it.
+   *
+   * THE HALF-PLANE. `(tdx,tdz)` is the bearing to the unit's target — the one
+   * bearing that has just been disproved, because the unit has spent seconds
+   * driving along it and got nowhere. Every candidate therefore lies in the
+   * OTHER half-plane: a quarter turn off at one end, dead away in the middle,
+   * the other quarter turn at the far end.
+   *
+   * The bearing to the TARGET and not the hull's yaw, though yaw looks
+   * equivalent while a unit is grinding nose-first and is what the first draft
+   * used. It is not equivalent: the moment a shove turns the hull, yaw becomes
+   * the SHOVE's direction, so the next attempt excludes the half-plane the last
+   * one chose — including, for a unit halfway out of a dead end, the way out.
+   *
+   * WHY IT PROBES INSTEAD OF DRAWING. A single hashed draw is a lottery, and
+   * the geometry that produces wedges is exactly the geometry that makes the
+   * lottery unfair: a unit sealed in a slot between two walls has one escape
+   * bearing out of a half-plane, and a shove into either wall does nothing at
+   * all — the avoidance term is already pushing that way and Movement's wall
+   * slide eats the rest. So walk NUDGE_PROBES bearings across the half-plane,
+   * starting at the hashed offset so successive attempts are not the same
+   * sweep, and take the first whose probe point is ground the hull could
+   * actually stand on. Cheap: this runs only when a ladder rung fires, which is
+   * once per unit per six seconds in the worst case and never in a healthy
+   * match.
+   *
+   * The hash keeps it honest when NOTHING probes clear — two units leaning on
+   * each other in a doorway have open ground in every direction and terrain
+   * cannot tell them apart — and the hash is `hash2f`, a pure integer hash of
+   * (slot, tick), NOT a draw from `s.rng`: a unit coming unstuck must not shift
+   * the RNG stream and desync every replay downstream of it.
+   */
+  private shove(
+    i: number, px: number, pz: number, tdx: number, tdz: number,
+    cls: MoveClass, tick: number, hold: number,
+  ): void {
+    const st = this.world.store;
+    const ag = this.agents;
+    const base = Math.atan2(tdx, tdz) + Math.PI * 0.5;
+    const h = hash2f(i, tick);
+    // One cell past the hull: far enough that the answer is about the next
+    // cell rather than about the one we are standing in.
+    const reach = st.radius[i] + CELL;
+    let fx = 0, fz = 0;
+    for (let k = 0; k < NUDGE_PROBES; k++) {
+      let t = h + k / NUDGE_PROBES;
+      if (t >= 1) t -= 1;
+      const ang = base + Math.PI * t;
+      const dx = Math.sin(ang), dz = Math.cos(ang);
+      if (k === 0) { fx = dx; fz = dz; }        // the fallback is the hashed one
+      if (cls === MoveClass.Air) break;
+      const cx = worldToCell(px + dx * reach);
+      const cz = worldToCell(pz + dz * reach);
+      if (isInMap(cx, cz) && this.nav.isStandable(cx, cz, cls)) {
+        ag.armNudge(i, dx, dz, tick, hold);
+        return;
+      }
+    }
+    ag.armNudge(i, fx, fz, tick, hold);
   }
 
   /**
@@ -767,6 +944,7 @@ export class NavAssigner {
     ag.stuck[i] = 0; ag.nudges[i] = 0;
     ag.slotX[i] = 0; ag.slotZ[i] = 0;
     ag.restartProgress(i);
+    ag.clearNudge(i);
     ag.armWedge(i, nx, nz);
     ag.flags[i] &= ~AgentFlag.DirectPath;
 
@@ -820,10 +998,14 @@ export class NavAssigner {
     }
 
     // -- rungs 1..N: NUDGE --------------------------------------------------
+    // Held for a full sample window, so the next window measures a unit that
+    // was actually being shoved for the whole of it rather than one that was
+    // shoved for a moment and then left where it was.
     if (rung <= NAV_WEDGE_MAX_NUDGES) {
-      const ang = hash2f(i, tick) * Math.PI * 2;
-      ag.slotX[i] += Math.cos(ang) * NAV_WEDGE_NUDGE_METRES;
-      ag.slotZ[i] += Math.sin(ang) * NAV_WEDGE_NUDGE_METRES;
+      agentTarget(ag, i, TARGET);
+      this.shove(
+        i, px, pz, TARGET[0] - px, TARGET[1] - pz, cls, tick, NAV_WEDGE_SAMPLE_TICKS,
+      );
       ag.flags[i] &= ~(AgentFlag.DirectPath | AgentFlag.Arrived);
       ag.stuck[i] = 0;
       ag.restartProgress(i);
@@ -879,9 +1061,10 @@ export class NavAssigner {
     ag.stuck[i] = 0; ag.nudges[i] = 0;
     ag.slotX[i] = 0; ag.slotZ[i] = 0;
     ag.restartProgress(i);
+    ag.clearNudge(i);
     // Re-anchor at the new spot but KEEP the rung: if this did not free the
     // unit, the next window has to reach the park rung, not start over.
-    ag.anchorX[i] = nx; ag.anchorZ[i] = nz; ag.frozen[i] = 0;
+    ag.anchorX[i] = nx; ag.anchorZ[i] = nz; ag.anchorTick[i] = tick; ag.frozen[i] = 0;
     ag.flags[i] = (ag.flags[i] & ~(AgentFlag.DirectPath | AgentFlag.Arrived))
       | AgentFlag.Displaced;
 
@@ -1055,10 +1238,11 @@ export class SteeringSolver {
     private readonly agents: NavAgents,
   ) {}
 
-  simTick(_s: SimContext): void {
+  simTick(s: SimContext): void {
     const w = this.world;
     const st = w.store;
     const ag = this.agents;
+    const tick = s.tick;
     let moving = 0;
 
     const n = st.aliveCount;
@@ -1086,17 +1270,18 @@ export class SteeringSolver {
       if (maxSpeed <= 0) { st.velX[i] = 0; st.velZ[i] = 0; continue; }
 
       // -- 1. where am I actually heading -----------------------------------
-      // Inside NAV_FORMATION_ENGAGE_RADIUS the unit peels off to its own slot;
-      // outside it, the whole group follows the shared field to the order
-      // point. One field, correct arrival shape.
-      const gx = ag.goalX[i], gz = ag.goalZ[i];
-      const rawDx = gx - px, rawDz = gz - pz;
-      const goalDist = Math.sqrt(rawDx * rawDx + rawDz * rawDz);
-      const engaged = goalDist < NAV_FORMATION_ENGAGE_RADIUS;
-      const tx = engaged ? gx + ag.slotX[i] : gx;
-      const tz = engaged ? gz + ag.slotZ[i] : gz;
-      const tdx = tx - px, tdz = tz - pz;
+      // `agentTarget` and nothing else. NavAssigner measures arrival, give-up
+      // and progress against the same call, and the two used to disagree — see
+      // the file header. The group still shares ONE field because the field is
+      // requested at `goalX/goalZ`; that has never had anything to do with the
+      // target point.
+      agentTarget(ag, i, TARGET);
+      const tdx = TARGET[0] - px, tdz = TARGET[1] - pz;
       const targetDist = Math.sqrt(tdx * tdx + tdz * tdz);
+
+      // A live unwedge shove. Read once: it is wanted twice, as the blend term
+      // in §6 and as the fallback direction just below.
+      const nudging = tick < ag.nudgeUntil[i];
 
       // -- 2. base direction -------------------------------------------------
       let dirX = 0, dirZ = 0;
@@ -1116,7 +1301,13 @@ export class SteeringSolver {
         dirX = tdx / targetDist;
         dirZ = tdz / targetDist;
       }
-      if (dirX === 0 && dirZ === 0) { st.velX[i] = 0; st.velZ[i] = 0; continue; }
+      if (dirX === 0 && dirZ === 0) {
+        // No direction from anywhere — standing on the goal, or stranded off
+        // the field entirely. If the ladder is shoving, that IS the direction;
+        // a unit with nowhere to go is exactly the one that needs the shove.
+        if (!nudging) { st.velX[i] = 0; st.velZ[i] = 0; continue; }
+        dirX = ag.nudgeX[i]; dirZ = ag.nudgeZ[i];
+      }
       {
         const l = Math.sqrt(dirX * dirX + dirZ * dirZ);
         dirX /= l; dirZ /= l;
@@ -1265,20 +1456,45 @@ export class SteeringSolver {
           const lz = pz - rz * (radius + STEER_AVOID_SIDE);
           const rightOpen = !this.blocked(sx, sz, cls);
           const leftOpen = !this.blocked(lx, lz, cls);
-          const side = rightOpen || !leftOpen ? 1 : -1;
-          avoidX = rx * side;
-          avoidZ = rz * side;
-          // Slow down while threading a gap — a tank at full speed clips the
-          // corner before the steering can turn it.
+          if (rightOpen || leftOpen) {
+            // Ties go right, deterministically, so two units meeting head-on
+            // pass rather than mirror each other forever.
+            const side = rightOpen ? 1 : -1;
+            avoidX = rx * side;
+            avoidZ = rz * side;
+          }
+          // NEITHER flank open and no sidestep at all. The old rule read
+          // `rightOpen || !leftOpen ? 1 : -1`, which resolves a closed-closed
+          // probe to "go right" — a full-weight 1.4 shove into a wall, chosen
+          // because the tie-break ran before anyone asked whether there was a
+          // side to take. It is not a tie: it is a dead end, and the answer to a
+          // dead end is to stop leaning and let the flow field, or the unwedge
+          // shove, decide. Measured in a two-cell alcove open only to -X: this
+          // term alone pointed -Z at weight 1.4 and out-voted a 1.9 shove aimed
+          // squarely at the exit, so the unit spent the whole ladder grinding
+          // into the side wall and had to be teleported out.
+          //
+          // Slow down regardless — a tank at full speed clips the corner before
+          // the steering can turn it, and that is true whether it is threading a
+          // gap or backing out of a hole.
           speed *= 0.72;
         }
       }
 
       // -- 6. blend and write ------------------------------------------------
+      // The unwedge shove joins here, as a fifth term, in EVERY branch and at
+      // every distance. That placement is the whole fix: while a flow field is
+      // being followed `dirX/dirZ` comes from `nav.sample()` and no amount of
+      // moving the target point can bend it, so a remedy that lives in the
+      // target point is a remedy that never runs.
       let vx = dirX + sepX * STEER_SEPARATION_WEIGHT + avoidX * STEER_AVOID_WEIGHT
         + passX * STEER_PASS_WEIGHT;
       let vz = dirZ + sepZ * STEER_SEPARATION_WEIGHT + avoidZ * STEER_AVOID_WEIGHT
         + passZ * STEER_PASS_WEIGHT;
+      if (nudging) {
+        vx += ag.nudgeX[i] * STEER_NUDGE_WEIGHT;
+        vz += ag.nudgeZ[i] * STEER_NUDGE_WEIGHT;
+      }
       const vl = Math.sqrt(vx * vx + vz * vz);
       if (vl < 1e-4) { st.velX[i] = 0; st.velZ[i] = 0; continue; }
       vx /= vl; vz /= vl;
@@ -1328,19 +1544,32 @@ export class SteeringSolver {
  * ========================================================================== */
 
 /**
- * The point a unit is actually driving at, written into `out` as [x,z].
- * Movement uses it for the final approach and the debug overlay draws it.
+ * THE point a unit is driving at, written into `out` as [x,z]. Order point plus
+ * formation slot, unconditionally, for every caller.
+ *
+ * WHY THERE IS NO DISTANCE GATE ANY MORE
+ * --------------------------------------
+ * There was one, and it was the bug. `SteeringSolver` applied the slot only
+ * inside NAV_FORMATION_ENGAGE_RADIUS; `NavAssigner` applied it always. So for
+ * every unit outside that radius the assigner was deciding arrival, giving up
+ * and probing for a direct path against a destination the solver was not
+ * driving to. The gate could also not be satisfied: NAV_FORMATION_MAX_OFFSET
+ * allowed a 30 m slot and the gate switched on at 22 m, so a unit could close
+ * to 21 m, retarget 30 m away, retreat past 22 m, retarget back, and hunt until
+ * the give-up ladder parked it — measured at 23.5 m short with a 28 m slot.
+ *
+ * Removing it costs nothing the gate was actually buying. One field per group
+ * comes from requesting the field at `goalX/goalZ`, which this function does not
+ * touch. And with a live field the solver's DIRECTION comes from `nav.sample()`
+ * regardless, so outside the arrival ramp the target point only ever fed
+ * distance maths — the same distance maths the assigner was already computing
+ * the other way.
+ *
+ * Keep this the only definition. Two copies of it is precisely how the halves
+ * drifted apart the first time.
  */
-export function agentTarget(
-  agents: NavAgents, i: number, px: number, pz: number, out: Float32Array,
-): Float32Array {
-  const gx = agents.goalX[i], gz = agents.goalZ[i];
-  const dx = gx - px, dz = gz - pz;
-  if (dx * dx + dz * dz < NAV_FORMATION_ENGAGE_RADIUS * NAV_FORMATION_ENGAGE_RADIUS) {
-    out[0] = gx + agents.slotX[i];
-    out[1] = gz + agents.slotZ[i];
-  } else {
-    out[0] = gx; out[1] = gz;
-  }
+export function agentTarget(agents: NavAgents, i: number, out: Float32Array): Float32Array {
+  out[0] = agents.goalX[i] + agents.slotX[i];
+  out[1] = agents.goalZ[i] + agents.slotZ[i];
   return out;
 }

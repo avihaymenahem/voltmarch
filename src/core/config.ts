@@ -5443,8 +5443,6 @@ export const NAV_STUCK_SPEED_FRAC = 0.16;
 export const NAV_STUCK_GIVEUP_RADIUS = 5.5;
 /** Sideways shoves before a stuck unit simply gives up and parks. */
 export const NAV_STUCK_MAX_NUDGES = 3;
-/** Metres of that sideways shove. */
-export const NAV_NUDGE_METRES = 2.6;
 
 /* -- the wedge watchdog ---------------------------------------------------
  *
@@ -5468,12 +5466,6 @@ export const NAV_WEDGE_STRIKES = 3;
 /** Rungs spent nudging before the unit is displaced outright. */
 export const NAV_WEDGE_MAX_NUDGES = 2;
 /**
- * Metres of the wedge nudge. Larger than NAV_NUDGE_METRES on purpose: by the
- * time this fires the ordinary nudge has already been tried and failed, so the
- * shove has to be big enough to clear a hull (3.87 m radius at the widest).
- */
-export const NAV_WEDGE_NUDGE_METRES = 5.0;
-/**
  * Ring radius, in cells, for the last-resort displacement. 6 cells is 24 m —
  * far enough to clear any single structure's footprint plus its neighbour,
  * short enough that the unit visibly shuffles rather than teleporting.
@@ -5486,12 +5478,35 @@ export const NAV_FORMATION_SPACING = 2.6;
 export const NAV_FORMATION_MAX_OFFSET = 30;
 /** Two order points closer than this (metres) count as the same group order. */
 export const NAV_FORMATION_GOAL_EPS = 0.6;
-/**
- * Metres from the goal at which a unit leaves the shared field and drives to
- * its own slot. Larger = the formation forms up earlier and looks more
- * deliberate; too large and units stop using the field where they still need it.
- */
-export const NAV_FORMATION_ENGAGE_RADIUS = 22;
+
+/* -- what happened to NAV_FORMATION_ENGAGE_RADIUS -------------------------
+ *
+ * There used to be a fourth number here: "metres from the goal at which a unit
+ * leaves the shared field and drives to its own slot", 22 m. It was deleted on
+ * 2026-08-06 because it never described anything.
+ *
+ * `SteeringSolver` gated its target point on it. `NavAssigner` — the arrival
+ * test, the give-up test, the progress watchdog, the direct-path probe — did
+ * not, and applied the slot unconditionally. So the two halves of nav disagreed
+ * about where each unit was going, permanently, by up to the slot offset. Worse,
+ * NAV_FORMATION_MAX_OFFSET is 30 and the radius was 22, so a legal formation
+ * slot could be FARTHER from the goal than the radius that switched it on: the
+ * unit closed to 21 m, retargeted 30 m sideways, retreated past 22 m, retargeted
+ * back, and hunted across the boundary until the give-up ladder parked it. That
+ * was measured, not reasoned: a 28 m slot left a lone vehicle oscillating
+ * between 15 m and 24 m of its order point and then parked 23.5 m short of it.
+ *
+ * The radius bought nothing even when it worked. Outside it, with a live flow
+ * field, the target point feeds only the arrival ramp (7 m) and the near-goal
+ * bearing fold-in (8 m) — both of which are inside any plausible radius — while
+ * the DIRECTION comes from `nav.sample()`, which never looked at the slot at
+ * all. One field per group is a property of how the field is requested (from
+ * `goalX/goalZ`, never the slot), not of this gate. The gate's only real effect
+ * was the disagreement it created.
+ *
+ * The target point is now `agentTarget()` in sim/Steering.ts, unconditional, and
+ * both phases call it. There is nothing left to tune.
+ * ------------------------------------------------------------------------- */
 
 /** Weight of the flow-field term in the steering blend. The baseline is 1.0. */
 export const STEER_FLOW_WEIGHT = 1.0;
@@ -5580,6 +5595,52 @@ export const STEER_PASS_STALL_FRAC = 0.25;
  * for opposed headings is the same world direction, and they stay locked.)
  */
 export const STEER_PASS_WEIGHT = 1.25;
+
+/* -- the unwedge shove, and why it is a steering term and not a goal offset -
+ *
+ * Both "shove a stuck unit sideways" remedies — the speed watchdog's nudge and
+ * rungs 1..N of the wedge ladder — used to work by ADDING METRES TO THE
+ * FORMATION SLOT. Two things were wrong with that, and the second one is fatal
+ * to the idea rather than to the implementation:
+ *
+ *   1. `SteeringSolver` only applied the slot inside NAV_FORMATION_ENGAGE_RADIUS
+ *      (see the note where that constant used to live), so the shove did
+ *      nothing at all to a unit more than 22 m from its order point. Measured
+ *      by perturbing `slotZ` by SIXTY METRES on a unit 237 m out with a live
+ *      field: the commanded yaw and velocity came back bit-identical.
+ *
+ *   2. Even with that fixed, a goal offset cannot shove anything. Moving the
+ *      target point 5 m sideways at 60 m of range turns the unit by 4.8
+ *      degrees, and at 120 m by 2.4. The shove has to clear a 7.7 m hull. An
+ *      offset applied at the far end of a long lever is not a shove, it is a
+ *      rounding error — and while a flow field is being followed the direction
+ *      comes from `nav.sample()` and ignores the target point entirely, so at
+ *      range it is not even that.
+ *
+ * So the shove is now what it always described itself as: a LATERAL STEERING
+ * TERM, blended in beside separation, avoidance and the head-on sidestep, in
+ * every branch and at every distance, held for as long as the detector that
+ * asked for it takes to look again. The slot went back to meaning only what its
+ * name says.
+ *
+ * NAV_NUDGE_METRES (2.6) and NAV_WEDGE_NUDGE_METRES (5.0) were deleted with the
+ * mechanism they parameterised. Metres are not a parameter of a steering term,
+ * and both numbers had only ever been measured against a shove that did nothing.
+ */
+
+/**
+ * Weight of the unwedge shove in the steering blend.
+ *
+ * Sized against the terms it has to beat, not picked. The blend it joins is a
+ * unit-length travel direction plus separation at 1.15 and avoidance at 1.4, and
+ * a wedged unit is by definition one where those already sum to something that
+ * is not working. 1.9 makes the shove the single largest term, so the resulting
+ * direction is dominated by it while it lasts, without erasing the flow field —
+ * a unit shoved perpendicular to a wall it is grinding on still drifts along the
+ * wall rather than straight off it, which is what walks it out of an alcove
+ * instead of pinning it in the corner.
+ */
+export const STEER_NUDGE_WEIGHT = 1.9;
 
 /** Braking is this much stronger than acceleration. Tanks stop faster than they start. */
 export const MOVE_DECEL_MUL = 1.9;
