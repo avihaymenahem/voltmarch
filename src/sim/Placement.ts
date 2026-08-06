@@ -477,6 +477,10 @@ const cellQuat = new THREE.Quaternion();
 const okColor = new THREE.Color();
 const badColor = new THREE.Color();
 const ghostTint = new THREE.Color();
+/* The facing marker's own two colours. Fixed, NOT derived from the validity
+   tint — that is the whole point of the rebuild. */
+const bandColor = new THREE.Color();
+const arrowColor = new THREE.Color();
 const originCell = new Int32Array(2);
 
 /**
@@ -495,6 +499,60 @@ const originCell = new Int32Array(2);
 const ROTATE_LEFT_CODE = PLACEMENT_ROTATE_HOTKEYS[0];
 const ROTATE_RIGHT_CODE = PLACEMENT_ROTATE_HOTKEYS[1];
 
+/* --------------------------------------------------------------------------
+ * THE FACING MARKER — MEASURED AS UNREADABLE, THEN REBUILT
+ *
+ * The player reported building rotation as one of the things they "still can't
+ * see in the deployed build". It is implemented, it is deployed, and the keys
+ * work — verified in Chromium: at facings 0..3 a 3x2 refinery's ghost, its
+ * validity carpet, `evaluatePlacement`, `terrain.markOccupied`, the committed
+ * entity's `store.yaw`/`footprintW`/`footprintH` and the finished mesh all
+ * agree. Nothing about the mechanism is broken.
+ *
+ * What was broken is that you cannot SEE it. 35 of the 41 buildings are square,
+ * so on most of them the footprint does not change and the only evidence was
+ * this marker — which was drawn in the SAME COLOUR as the validity carpet it
+ * sits on. A green triangle on a green carpet is a shade difference, and at
+ * gameplay zoom it is not a shade difference you notice. Screenshotted at 78 m
+ * on a 2x2 Power Plant, facing 0 and facing 2 were separable only by looking
+ * for which half of the carpet was slightly lighter.
+ *
+ * So it is now TWO shapes, and neither takes its colour from the validity tint:
+ *
+ *   1. a DARK BAND across the front edge of the footprint. It reads at any
+ *      zoom, from any camera yaw, and it is the part that still works when the
+ *      arrow is nearly edge-on;
+ *   2. a WHITE ARROWHEAD standing on that band, pointing out over the front
+ *      edge — the direction units leave by (`BuildEntry.exitZ`).
+ *
+ * White-on-dark rather than accent-on-carpet because the marker has to survive
+ * BOTH carpets: an accent that separates from the green is the one that
+ * disappears into the red. The dark band is what buys the white its contrast,
+ * so the pair is not decoration — remove either and the other stops reading.
+ *
+ * The constants are local rather than in `src/core/config.ts` because that file
+ * is frozen for this pass. `PLACEMENT.facingLift` and `.facingOpacity` are
+ * still honoured; these are the geometry `PLACEMENT.facingSize` did not cover.
+ * -------------------------------------------------------------------------- */
+
+/** Depth of the dark front band, as a fraction of the footprint's own depth. */
+const FACING_BAND_DEPTH = 0.3;
+/** Band width, as a fraction of the footprint's width. Inset so the panel's
+ *  own edge line still reads as the edge. */
+const FACING_BAND_WIDTH = 0.9;
+/** Arrowhead half-width and length, as fractions of the SHORTER footprint axis,
+ *  so a 3x2 and a 2x2 get an arrow of the same physical size. */
+const FACING_ARROW_HALF = 0.3;
+const FACING_ARROW_LEN = 0.52;
+/** How far the arrow's tip overshoots the front edge, in cells. A marker that
+ *  stops exactly at the edge reads as part of the footprint; one that pokes out
+ *  reads as pointing. */
+const FACING_ARROW_OVERSHOOT = 0.34;
+/** Near-black, for the band. Not pure black: the grade has no pure black in it. */
+const FACING_BAND_COLOR = '#05080E';
+/** The arrowhead. Warm white — cool white reads as a specular highlight. */
+const FACING_ARROW_COLOR = '#FFF6E2';
+
 export class PlacementController {
   /** True while a structure is on the cursor. */
   active = false;
@@ -509,8 +567,9 @@ export class PlacementController {
    * IT PERSISTS BETWEEN PLACEMENTS, deliberately. The gesture this exists for
    * is laying a line of walls or a row of defences all facing the same way, and
    * re-rotating for every one of them is the whole cost of the feature. It is
-   * never invisible: the ghost draws a chevron on the front edge whatever the
-   * footprint's shape, so a square structure carrying a facing still says so.
+   * never invisible: the ghost draws a dark band and a white arrowhead on the
+   * front edge whatever the footprint's shape, so a square structure carrying a
+   * facing still says so.
    *
    * A relocation overrides it with the structure's CURRENT facing on pickup —
    * picking a building up must not silently spin it.
@@ -561,11 +620,21 @@ export class PlacementController {
   private readonly cellMat: THREE.MeshBasicMaterial;
   private readonly boxGeo: THREE.BoxGeometry;
   private readonly edgeGeo: THREE.EdgesGeometry;
-  /** Chevron on the front (+Z local) edge. The only thing a turn of a SQUARE
-   *  footprint changes on screen, and the front edge is where units come out. */
-  private readonly chevron: THREE.Mesh;
-  private readonly chevronMat: THREE.MeshBasicMaterial;
-  private readonly chevronGeo: THREE.BufferGeometry;
+  /* THE FACING MARKER. See the block comment above `FACING_BAND_DEPTH`: on 35
+   * of the 41 buildings the footprint does not change with a turn, so this pair
+   * is the ONLY thing on screen that says which way the structure is holding.
+   * `band` is the dark strip across the front edge; `arrow` is the white head
+   * that points out over it. Both are authored in FOOTPRINT-LOCAL space and
+   * rewritten in place every frame, so a footprint change costs no allocation
+   * and the two can never disagree about where the front is. */
+  private readonly band: THREE.Mesh;
+  private readonly bandMat: THREE.MeshBasicMaterial;
+  private readonly bandGeo: THREE.BufferGeometry;
+  private readonly bandPos: Float32Array;
+  private readonly arrow: THREE.Mesh;
+  private readonly arrowMat: THREE.MeshBasicMaterial;
+  private readonly arrowGeo: THREE.BufferGeometry;
+  private readonly arrowPos: Float32Array;
 
   /** Client-space pointer, when we own the cursor. */
   private pointerX = -1;
@@ -630,6 +699,8 @@ export class PlacementController {
     okColor.setHex(hexToInt(PLACEMENT.validColor)).convertSRGBToLinear();
     badColor.setHex(hexToInt(PLACEMENT.invalidColor)).convertSRGBToLinear();
     ghostTint.setHex(hexToInt(PLACEMENT.ghostColor)).convertSRGBToLinear();
+    bandColor.setHex(hexToInt(FACING_BAND_COLOR)).convertSRGBToLinear();
+    arrowColor.setHex(hexToInt(FACING_ARROW_COLOR)).convertSRGBToLinear();
 
     this.group = new THREE.Group();
     this.group.name = 'placement-ghost';
@@ -693,21 +764,22 @@ export class PlacementController {
     for (let i = 0; i < MAX_CELLS; i++) this.cells.setColorAt(i, okColor);
     this.group.add(this.cells);
 
-    // THE FRONT CHEVRON. A unit triangle in the XZ plane pointing +Z, which is
-    // local forward for every structure in the game (`BuildEntry.exitZ` is
-    // measured off the +Z edge). Scaled to the footprint and yawed by the
-    // facing, it is what makes rotating a 2x2 Power Plant visible at all — the
-    // hologram box is symmetric and a turn of it changes not one pixel.
-    this.chevronGeo = new THREE.BufferGeometry();
-    this.chevronGeo.setAttribute('position', new THREE.Float32BufferAttribute([
-      -0.5, 0, 0,
-      0.5, 0, 0,
-      0, 0, 1,
-    ], 3));
-    this.chevronGeo.setIndex([0, 2, 1]);
-    this.chevronMat = new THREE.MeshBasicMaterial({
+    // THE FACING MARKER, part 1: the dark band across the front edge.
+    //
+    // Two triangles whose six positions are rewritten by `updateMeshes` in
+    // footprint-local space (+Z is forward for every structure in the game —
+    // `BuildEntry.exitZ` is measured off that edge). The mesh itself sits at the
+    // footprint centre and carries the yaw, so nothing here has to know about
+    // rotation and the band can never end up on a different edge than the arrow.
+    this.bandPos = new Float32Array(6 * 3);
+    this.bandGeo = new THREE.BufferGeometry();
+    this.bandGeo.setAttribute('position', new THREE.BufferAttribute(this.bandPos, 3));
+    this.bandMat = new THREE.MeshBasicMaterial({
+      color: bandColor,
       transparent: true,
-      opacity: PLACEMENT.facingOpacity,
+      // Deliberately short of opaque: the band is a mark ON the ground, and at
+      // full alpha it reads as a hole cut in it.
+      opacity: 0.74,
       depthWrite: false,
       side: THREE.DoubleSide,
       toneMapped: false,
@@ -715,12 +787,37 @@ export class PlacementController {
       polygonOffsetFactor: -6,
       polygonOffsetUnits: -6,
     });
-    this.chevron = new THREE.Mesh(this.chevronGeo, this.chevronMat);
-    this.chevron.renderOrder = RENDER_ORDER.overlay + 1;
-    this.chevron.frustumCulled = false;
-    this.chevron.castShadow = false;
-    this.chevron.receiveShadow = false;
-    this.group.add(this.chevron);
+    this.band = new THREE.Mesh(this.bandGeo, this.bandMat);
+    this.band.renderOrder = RENDER_ORDER.overlay + 1;
+    this.band.frustumCulled = false;
+    this.band.castShadow = false;
+    this.band.receiveShadow = false;
+    this.group.add(this.band);
+
+    // Part 2: the white arrowhead. A chevron rather than a plain triangle —
+    // the notched back edge is what makes it read as an arrow at a glance
+    // instead of as a wedge of the footprint.
+    this.arrowPos = new Float32Array(4 * 3);
+    this.arrowGeo = new THREE.BufferGeometry();
+    this.arrowGeo.setAttribute('position', new THREE.BufferAttribute(this.arrowPos, 3));
+    this.arrowGeo.setIndex([0, 1, 2, 0, 2, 3]);
+    this.arrowMat = new THREE.MeshBasicMaterial({
+      color: arrowColor,
+      transparent: true,
+      opacity: PLACEMENT.facingOpacity,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -8,
+      polygonOffsetUnits: -8,
+    });
+    this.arrow = new THREE.Mesh(this.arrowGeo, this.arrowMat);
+    this.arrow.renderOrder = RENDER_ORDER.overlay + 2;
+    this.arrow.frustumCulled = false;
+    this.arrow.castShadow = false;
+    this.arrow.receiveShadow = false;
+    this.group.add(this.arrow);
 
     deps.scene.add(this.group);
 
@@ -1115,8 +1212,8 @@ export class PlacementController {
     base = Math.max(base, world.terrain.heightAt((cx + w) * CELL, (cz + h) * CELL));
 
     // `w`/`h` are already the world-space extents, so the box needs no rotation
-    // of its own — a box turned 90 degrees IS the swapped box. The chevron below
-    // is what carries the facing.
+    // of its own — a box turned 90 degrees IS the swapped box. The facing
+    // marker below is what carries the rotation.
     const height = Math.max(1, entry.height);
     this.volume.scale.set(w * CELL, height, h * CELL);
     this.volume.position.set(bx, base + height * 0.5, bz);
@@ -1127,32 +1224,72 @@ export class PlacementController {
     this.edges.updateMatrix();
     this.edges.matrixWorldNeedsUpdate = true;
 
-    /* -- front chevron ----------------------------------------------------- */
-    // Local +Z is forward (`BuildEntry.exitZ` is measured off that edge), so the
-    // marker is placed in LOCAL extents and then yawed — the one part of the
-    // ghost that must not use the swapped numbers.
+    /* -- the facing marker -------------------------------------------------
+     * Local +Z is forward (`BuildEntry.exitZ` is measured off that edge), so
+     * both shapes are authored in the structure's UNSWAPPED local extents and
+     * the mesh's own yaw does the turning. Using `w`/`h` here instead would
+     * cancel the rotation out on a 3x2 and put the arrow on the wrong edge —
+     * which is exactly the double-rotation bug to avoid.
+     * --------------------------------------------------------------------- */
     const yaw = facingYaw(this.facing);
     const dirX = Math.sin(yaw);
     const dirZ = Math.cos(yaw);
     const localW = Math.max(1, entry.footprintW) * CELL;
     const localH = Math.max(1, entry.footprintH) * CELL;
-    const depth = Math.min(PLACEMENT.facingSize * CELL, localH * 0.55);
-    const span = Math.min(localW * 0.7, depth * 1.7);
-    const baseDist = localH * 0.5 - depth;
-    const mx = bx + dirX * baseDist;
-    const mz = bz + dirZ * baseDist;
-    this.chevron.position.set(
-      mx, world.terrain.heightAt(mx, mz) + PLACEMENT.facingLift, mz,
-    );
-    this.chevron.scale.set(span, 1, depth);
-    this.chevron.rotation.set(0, yaw, 0);
-    this.chevron.updateMatrix();
-    this.chevron.matrixWorldNeedsUpdate = true;
+    const halfW = localW * 0.5;
+    const halfH = localH * 0.5;
 
+    // Sit the marker on the higher of the centre and the front edge, so on a
+    // slope it floats over the ground rather than sinking into it.
+    const fx = bx + dirX * halfH;
+    const fz = bz + dirZ * halfH;
+    const markY = Math.max(world.terrain.heightAt(bx, bz), world.terrain.heightAt(fx, fz))
+      + PLACEMENT.facingLift;
+
+    // The band: a strip across the front `FACING_BAND_DEPTH` of the footprint.
+    const bandZ0 = halfH - localH * FACING_BAND_DEPTH;
+    const bandZ1 = halfH * 0.97;
+    const bandX = halfW * FACING_BAND_WIDTH;
+    const bp = this.bandPos;
+    bp[0] = -bandX; bp[1] = 0; bp[2] = bandZ0;
+    bp[3] = bandX; bp[4] = 0; bp[5] = bandZ0;
+    bp[6] = bandX; bp[7] = 0; bp[8] = bandZ1;
+    bp[9] = -bandX; bp[10] = 0; bp[11] = bandZ0;
+    bp[12] = bandX; bp[13] = 0; bp[14] = bandZ1;
+    bp[15] = -bandX; bp[16] = 0; bp[17] = bandZ1;
+    this.bandGeo.attributes.position.needsUpdate = true;
+
+    // The arrowhead, sized off the SHORTER axis so a 3x2 and a 2x2 get the same
+    // physical arrow rather than one that stretches with the footprint.
+    const short = Math.min(localW, localH);
+    const aHalf = short * FACING_ARROW_HALF;
+    const aLen = short * FACING_ARROW_LEN;
+    const tipZ = halfH + FACING_ARROW_OVERSHOOT * CELL;
+    const backZ = tipZ - aLen;
+    const notchZ = backZ + aLen * 0.38;
+    const ap = this.arrowPos;
+    ap[0] = 0; ap[1] = 0; ap[2] = tipZ;             // tip
+    ap[3] = -aHalf; ap[4] = 0; ap[5] = backZ;       // left barb
+    ap[6] = 0; ap[7] = 0; ap[8] = notchZ;           // notch
+    ap[9] = aHalf; ap[10] = 0; ap[11] = backZ;      // right barb
+    this.arrowGeo.attributes.position.needsUpdate = true;
+
+    this.band.position.set(bx, markY, bz);
+    this.band.rotation.set(0, yaw, 0);
+    this.band.updateMatrix();
+    this.band.matrixWorldNeedsUpdate = true;
+    // A hair above the band, so the white never z-fights the near-black.
+    this.arrow.position.set(bx, markY + 0.02, bz);
+    this.arrow.rotation.set(0, yaw, 0);
+    this.arrow.updateMatrix();
+    this.arrow.matrixWorldNeedsUpdate = true;
+
+    // The hologram takes the validity tint; the marker does NOT. It has to stay
+    // legible over both the green carpet and the red one, and a colour that
+    // separates from one is the colour that vanishes into the other.
     const tint = this.report.ok ? okColor : badColor;
     this.volumeMat.color.copy(tint);
     this.edgeMat.color.copy(tint);
-    this.chevronMat.color.copy(tint);
 
     this.group.visible = true;
   }
@@ -1217,12 +1354,14 @@ export class PlacementController {
     this.group.removeFromParent();
     this.boxGeo.dispose();
     this.edgeGeo.dispose();
-    this.chevronGeo.dispose();
+    this.bandGeo.dispose();
+    this.arrowGeo.dispose();
     this.cells.geometry.dispose();
     this.volumeMat.dispose();
     this.edgeMat.dispose();
     this.cellMat.dispose();
-    this.chevronMat.dispose();
+    this.bandMat.dispose();
+    this.arrowMat.dispose();
     this.cells.dispose();
     this.entry = null;
     this.active = false;

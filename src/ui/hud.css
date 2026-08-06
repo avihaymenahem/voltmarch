@@ -25,30 +25,41 @@
  *      segment for free;
  *   6. detached corner BRACKETS on the three docks.
  *
- * THE BUDGET IS THE CONSTRAINT THAT DECIDED THE LAYOUT
- * ---------------------------------------------------
- * `Hud.hudFrameShare()` measured 15.83% of a 1280x720 frame against the look
- * bible §9 ceiling of 12-16% for the WHOLE interface — and that figure excludes
- * the objectives panel (a further 1.85%) and the resource strip, so the real
- * interface was over its ceiling before this redesign started.
- *
- * Three things were reclaimed:
+ * THE SPACING, AND WHY IT IS NO LONGER A PERCENTAGE
+ * -------------------------------------------------
+ * This sheet was written under a hard instruction that the band come out
+ * SMALLER: `Hud.hudFrameShare()` measured 15.83% of a 1280x720 frame against
+ * the look bible §9/§38 ceiling of 12-16%, so the redesign spent itself getting
+ * to 94u / 13.06%. Two of the three things it did to get there were real wins
+ * and they stand:
  *
  *   - THE BASE STATUS DOCK IS GONE. It measured ~47% empty and every one of its
  *     five numbers already appears in the resource strip. With nothing selected
- *     the centre dock now collapses to a single advisory line, and disappears
- *     entirely when there is nothing to advise. That is the largest single
- *     reclamation in the change and it costs no information.
- *   - THE BAND IS SHORTER. `--vm-dock-h` 106u -> 88u and the docks' bottom
- *     padding 8u -> 6u, so the band is 94u where it was 114u.
- *   - THE MAP DOCK IS NARROWER. The 52u legend rail became four swatches in the
- *     dock head, which hands 77u of width back to the selection card — the
- *     width that its stat row was overflowing at 4:3 and in tall windows.
+ *     the centre dock collapses to a single advisory line, and disappears
+ *     entirely when there is nothing to advise. It cost no information.
+ *   - THE MAP DOCK LOST ITS LEGEND RAIL. 52u of width for four colours; the
+ *     words moved into the head's tooltip and the swatches stayed.
  *
- *       94u of 720 = 13.06%, against 114u = 15.83%.
+ * The third thing it did was squeeze out the PADDING, and that was the wrong
+ * economy. The player reported the result directly: "our HUD in game, its wayy
+ * wayy too dense, missing padding for all of the huds." 4u of dock padding, 3u
+ * internal gaps and a 30u slot row is a strip of text with no air in it.
  *
- * NOTHING HERE MAY GROW `--vm-dock-h` WITHOUT RE-DERIVING THAT NUMBER, and
- * `tests/hud-layout.spec.ts` re-derives it from this file on every run.
+ * THE BUDGET CONSTRAINT IS WITHDRAWN. §38's 12-16% is derived from the RA3
+ * reference set, and that comparison has been abandoned — "give up on it, we
+ * have changed a lot since the original refs". A number inherited from a target
+ * nobody aims at does not outrank a HUD the player can stand to look at.
+ *
+ * So the band is 114u again — but it is 114u of the SAME content the 94u
+ * version carried, with the reclaimed space spent on padding instead of on a
+ * redundant status board:
+ *
+ *       114u of 720 = 15.83%; hudCoverage() 10.54% -> 12.30%.
+ *
+ * The figure is REPORTED, not defended. `tests/hud-layout.spec.ts` still
+ * re-derives `--vm-dock-h` from the five constants it is a function of, because
+ * the arithmetic drifting silently is a different failure from the band being
+ * deliberately taller.
  *
  * THE SHELL STYLESHEET IS NOT SANDBOXED — DEFEND AGAINST IT
  * --------------------------------------------------------
@@ -145,13 +156,19 @@
   --vm-bevel-inset: calc(2 * var(--vm-u));
 
   /* SOLVED, NOT GUESSED. The build dock is the tallest thing in the band:
-       pad(4) + tabs(14) + gap(3) + 2 rows(30) + rowGap(3) + pad(4) = 88
-     and the docks add 6u of bottom padding, so the band is 94u.
-     Change either number and `tests/hud-layout.spec.ts` goes red. */
-  --vm-dock-h: calc(88 * var(--vm-u));
-  --vm-dock-pad: calc(4 * var(--vm-u));
-  --vm-band-pad: calc(6 * var(--vm-u));
-  --vm-gap: calc(7 * var(--vm-u));
+       pad(7) + tabs(16) + gap(5) + 2 rows(33) + rowGap(4) + pad(7) = 105
+     and the docks add 9u of bottom padding, so the band is 114u.
+     Change either number and `tests/hud-layout.spec.ts` goes red.
+
+     Every term here went up in the padding pass. The two that carry the most
+     of the complaint are `--vm-dock-pad` (4u -> 7u: content was sitting one
+     hairline off a lit bevel on all four sides) and the slot row (30u -> 33u,
+     gap 3u -> 4u: at 30u a cameo, a cost badge and a hotkey badge were
+     overlapping each other's clearance). */
+  --vm-dock-h: calc(105 * var(--vm-u));
+  --vm-dock-pad: calc(7 * var(--vm-u));
+  --vm-band-pad: calc(9 * var(--vm-u));
+  --vm-gap: calc(10 * var(--vm-u));
 
   position: absolute;
   inset: 0;
@@ -160,7 +177,10 @@
   font-family: 'Rajdhani', 'Oswald', 'Arial Narrow', 'Franklin Gothic Medium',
                'Helvetica Neue', 'Segoe UI', system-ui, sans-serif;
   font-size: calc(12 * var(--vm-u));
-  line-height: 1.15;
+  /* 1.15 is a display leading and every multi-line string in the HUD is body
+     copy, not a headline. Set once here so a wrapped tooltip, a map hint and a
+     toast detail all breathe the same amount. */
+  line-height: 1.35;
   -webkit-font-smoothing: antialiased;
   user-select: none;
   -webkit-user-select: none;
@@ -440,7 +460,7 @@
   display: flex;
   align-items: flex-end;
   gap: var(--vm-gap);
-  padding: 0 calc(8 * var(--vm-u)) var(--vm-band-pad);
+  padding: 0 calc(12 * var(--vm-u)) var(--vm-band-pad);
   pointer-events: none;
 }
 
@@ -450,13 +470,16 @@
   display: flex;
   flex-direction: column;
   padding: var(--vm-dock-pad);
-  gap: calc(3 * var(--vm-u));
+  gap: calc(5 * var(--vm-u));
 }
 
 .vm-hud .vm-dock-map {
   /* Square field plus its own padding, and nothing else: the legend rail moved
-     into the head, which handed 77u of width to the selection card. */
-  width: calc(75 * var(--vm-u));
+     into the head, which handed 77u of width to the selection card.
+       76u field = dock-h(105) - 2 x pad(7) - head(10) - gap(5)
+       90u dock  = 76 + 2 x pad(7)
+     The two must agree or the square field overflows the dock it sits in. */
+  width: calc(90 * var(--vm-u));
   flex: 0 0 auto;
 }
 
@@ -469,8 +492,8 @@
  * keeps it beside the map rather than letting it drift to centre. */
 .vm-hud .vm-dock-selection {
   flex: 0 1 auto;
-  min-width: calc(230 * var(--vm-u));
-  max-width: calc(470 * var(--vm-u));
+  min-width: calc(265 * var(--vm-u));
+  max-width: calc(520 * var(--vm-u));
   margin-right: auto;
 }
 
@@ -478,7 +501,7 @@
    which is the reference's construction and cannot be done from inside one
    clipped box. `.vm-build-body` is the panel. */
 .vm-hud .vm-dock-build {
-  width: calc(300 * var(--vm-u));
+  width: calc(332 * var(--vm-u));
   flex: 0 0 auto;
   padding: 0;
   gap: 0;
@@ -499,7 +522,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: calc(5 * var(--vm-u));
+  gap: calc(7 * var(--vm-u));
   color: var(--vm-dim);
   flex: 0 0 auto;
   height: calc(10 * var(--vm-u));
@@ -519,21 +542,23 @@
 
 .vm-hud .vm-resources {
   position: absolute;
-  top: calc(7 * var(--vm-u));
+  top: calc(10 * var(--vm-u));
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: calc(10 * var(--vm-u));
-  height: calc(31 * var(--vm-u));
-  padding: 0 calc(16 * var(--vm-u));
-  max-width: calc(100% - 20 * var(--vm-u));
+  /* 10u between cells and 16u of end padding put the CREDITS label a hairline
+     off the lit bevel and made six readouts read as one word. */
+  gap: calc(15 * var(--vm-u));
+  height: calc(38 * var(--vm-u));
+  padding: 0 calc(22 * var(--vm-u));
+  max-width: calc(100% - 24 * var(--vm-u));
 }
 
 /* The faction crest, far left, in its own shield. */
 .vm-hud .vm-res-crest {
-  width: calc(19 * var(--vm-u));
-  height: calc(19 * var(--vm-u));
+  width: calc(21 * var(--vm-u));
+  height: calc(21 * var(--vm-u));
   color: var(--vm-accent-hi);
   flex: 0 0 auto;
   filter: drop-shadow(0 0 calc(2 * var(--vm-u)) var(--vm-bevel-glow));
@@ -543,13 +568,13 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: calc(5 * var(--vm-u));
+  gap: calc(7 * var(--vm-u));
 }
 
 .vm-hud .vm-res-body {
   display: flex;
   flex-direction: column;
-  gap: calc(1 * var(--vm-u));
+  gap: calc(3 * var(--vm-u));
   min-width: 0;
 }
 
@@ -582,7 +607,7 @@
 /* The divider. A single lit hairline, not a bevelled groove. */
 .vm-hud .vm-res-rule {
   width: 1px;
-  height: calc(19 * var(--vm-u));
+  height: calc(23 * var(--vm-u));
   background: linear-gradient(180deg,
     rgba(var(--vm-accent-rgb), 0) 0%,
     rgba(var(--vm-accent-rgb), 0.45) 50%,
@@ -638,14 +663,14 @@
 .vm-hud .vm-power-line {
   display: flex;
   align-items: center;
-  gap: calc(5 * var(--vm-u));
+  gap: calc(7 * var(--vm-u));
 }
 
 .vm-hud .vm-power {
   display: flex;
   align-items: stretch;
   gap: calc(1.5 * var(--vm-u));
-  height: calc(8 * var(--vm-u));
+  height: calc(10 * var(--vm-u));
 }
 
 .vm-hud .vm-power-seg {
@@ -680,7 +705,7 @@
   text-transform: uppercase;
   font-weight: 700;
   line-height: 1;
-  padding: calc(1.5 * var(--vm-u)) calc(3 * var(--vm-u));
+  padding: calc(2.5 * var(--vm-u)) calc(4.5 * var(--vm-u));
   border: 1px solid currentColor;
   color: var(--vm-ok);
 }
@@ -864,7 +889,7 @@
 .vm-hud .vm-sel-live {
   display: flex;
   flex-direction: column;
-  gap: calc(3 * var(--vm-u));
+  gap: calc(6 * var(--vm-u));
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -883,16 +908,16 @@
 .vm-hud .vm-sel-head {
   display: flex;
   align-items: center;
-  gap: calc(6 * var(--vm-u));
+  gap: calc(9 * var(--vm-u));
   flex: 0 0 auto;
   min-width: 0;
-  height: calc(15 * var(--vm-u));
+  height: calc(16 * var(--vm-u));
 }
 
 .vm-hud .vm-sel-id {
   display: flex;
   align-items: center;
-  gap: calc(4 * var(--vm-u));
+  gap: calc(6 * var(--vm-u));
   min-width: 0;
   flex: 0 0 auto;
 }
@@ -942,7 +967,7 @@
 .vm-hud .vm-sel-body {
   display: flex;
   align-items: stretch;
-  gap: calc(8 * var(--vm-u));
+  gap: calc(11 * var(--vm-u));
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
@@ -951,7 +976,7 @@
 .vm-hud .vm-sel-cards {
   display: flex;
   align-items: stretch;
-  gap: calc(3 * var(--vm-u));
+  gap: calc(4 * var(--vm-u));
   flex: 0 1 auto;
   min-width: 0;
   overflow-x: auto;
@@ -967,7 +992,7 @@
   display: block;
   flex-direction: row;
   flex: 0 0 auto;
-  width: calc(40 * var(--vm-u));
+  width: calc(46 * var(--vm-u));
   height: 100%;
   padding: 0;
   gap: 0;
@@ -998,17 +1023,17 @@
 .vm-hud .vm-card-icon {
   position: absolute;
   left: 50%;
-  top: 42%;
+  top: 40%;
   transform: translate(-50%, -50%);
-  width: calc(20 * var(--vm-u));
-  height: calc(20 * var(--vm-u));
+  width: calc(23 * var(--vm-u));
+  height: calc(23 * var(--vm-u));
 }
 
 .vm-hud .vm-card-name {
   position: absolute;
-  left: calc(2 * var(--vm-u));
-  right: calc(2 * var(--vm-u));
-  bottom: calc(5 * var(--vm-u));
+  left: calc(3 * var(--vm-u));
+  right: calc(3 * var(--vm-u));
+  bottom: calc(7 * var(--vm-u));
   text-align: center;
   font-size: calc(7 * var(--vm-u));
   letter-spacing: 0.06em;
@@ -1049,9 +1074,9 @@
 
 .vm-hud .vm-card-bar {
   position: absolute;
-  left: calc(2 * var(--vm-u));
-  right: calc(2 * var(--vm-u));
-  bottom: calc(2 * var(--vm-u));
+  left: calc(3 * var(--vm-u));
+  right: calc(3 * var(--vm-u));
+  bottom: calc(3 * var(--vm-u));
   height: calc(2 * var(--vm-u));
   background: rgba(255, 255, 255, 0.16);
   overflow: hidden;
@@ -1075,7 +1100,7 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: calc(3 * var(--vm-u));
+  gap: calc(7 * var(--vm-u));
   flex: 1 1 auto;
   min-width: 0;
 }
@@ -1090,11 +1115,16 @@
   flex: 0 0 auto;
 }
 
+/* ONE ROW, and it must stay one row: the chips overflowing the bottom of this
+   panel is a bug the player has already reported once. The gutter grew 10u ->
+   15u but `flex-wrap` and the card's `max-width` are what actually hold the
+   line, and `.vm-stat`'s `white-space: nowrap` is what stops a chip splitting
+   inside itself. */
 .vm-hud .vm-sel-stats {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: calc(3 * var(--vm-u)) calc(10 * var(--vm-u));
+  gap: calc(4 * var(--vm-u)) calc(15 * var(--vm-u));
   flex: 0 0 auto;
   min-width: 0;
 }
@@ -1111,7 +1141,7 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: calc(4 * var(--vm-u));
+  gap: calc(5 * var(--vm-u));
   padding: 0;
   background: none;
   color: var(--vm-dim);
@@ -1149,7 +1179,7 @@
 .vm-hud .vm-stances {
   display: flex;
   align-items: center;
-  gap: calc(2 * var(--vm-u));
+  gap: calc(3 * var(--vm-u));
   flex: 0 0 auto;
 }
 
@@ -1158,12 +1188,12 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--vm-faint);
-  margin-right: calc(3 * var(--vm-u));
+  margin-right: calc(5 * var(--vm-u));
 }
 
 .vm-hud .vm-stance {
-  width: calc(17 * var(--vm-u));
-  height: calc(13 * var(--vm-u));
+  width: calc(20 * var(--vm-u));
+  height: calc(16 * var(--vm-u));
   padding: 0;
   border: 1px solid transparent;
   background: var(--vm-well);
@@ -1198,7 +1228,7 @@
 .vm-hud .vm-sel-hp {
   position: relative;
   flex: 0 0 auto;
-  height: calc(11 * var(--vm-u));
+  height: calc(14 * var(--vm-u));
   min-width: 0;
 }
 
@@ -1233,9 +1263,63 @@
     var(--vm-danger);
 }
 
+/* -- SELF-REPAIR ----------------------------------------------------------
+ * `sim.regen` heals idle units out of combat, and the player reported it as
+ * something they could not see. The world-space bar in `src/ui/Overlay.ts` is
+ * the general answer; this is the same fact on the panel they are already
+ * looking at once the unit is selected.
+ *
+ * The sweep is on the WRAPPER, not on `.vm-sel-hp-track > i`. The fill carries
+ * a `scaleX(frac)`, so a highlight animated inside it would be squashed to
+ * whatever the current health fraction happens to be — and would run fastest
+ * on the unit closest to death, which is exactly backwards.
+ * ------------------------------------------------------------------------ */
+
+.vm-hud .vm-sel-hp.is-regen::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(90deg,
+    rgba(79, 217, 127, 0) 0%,
+    rgba(79, 217, 127, 0.42) 50%,
+    rgba(79, 217, 127, 0) 100%);
+  background-size: 38% 100%;
+  background-repeat: no-repeat;
+  animation: vm-mend 1.7s linear infinite;
+}
+
+@keyframes vm-mend {
+  from { background-position: -38% 0; }
+  to   { background-position: 138% 0; }
+}
+
+/* The word, right-aligned over the far end of the bar where the hit-point
+   readout is not. A sweeping highlight on its own could be read as a loading
+   state; the two together cannot.
+   LIGHT text with a dark shadow, not the dark ink the hit-point readout uses:
+   this end of the bar is unlit track on a hurt unit and lit green on a nearly
+   healed one, and the tag has to survive crossing from one to the other as the
+   bar fills under it. Dark ink was measured unreadable over the unlit track. */
+.vm-hud .vm-sel-hp-mend {
+  position: absolute;
+  right: calc(7 * var(--vm-u));
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: calc(8 * var(--vm-u));
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #eefbf2;
+  text-shadow: 0 0 calc(2 * var(--vm-u)) rgba(0, 0, 0, 0.95),
+               0 1px 0 rgba(0, 0, 0, 0.8);
+  z-index: 2;
+  pointer-events: none;
+}
+
 .vm-hud .vm-sel-hp-text {
   position: absolute;
-  left: calc(5 * var(--vm-u));
+  left: calc(7 * var(--vm-u));
   top: 50%;
   transform: translateY(-50%);
   font-size: calc(9 * var(--vm-u));
@@ -1244,6 +1328,9 @@
   color: #04070d;
   text-shadow: 0 0 calc(2 * var(--vm-u)) rgba(255, 255, 255, 0.35);
   pointer-events: none;
+  /* Above the self-repair sweep, which is an `::after` on the same box and so
+     paints after every child unless one of them says otherwise. */
+  z-index: 2;
 }
 
 /* -- the advisory line (what the status board became) --------------------- */
@@ -1251,8 +1338,8 @@
 .vm-hud .vm-sel-idle {
   display: flex;
   align-items: center;
-  gap: calc(5 * var(--vm-u));
-  height: calc(13 * var(--vm-u));
+  gap: calc(7 * var(--vm-u));
+  height: calc(16 * var(--vm-u));
   flex: 0 0 auto;
   font-size: calc(10 * var(--vm-u));
   letter-spacing: 0.03em;
@@ -1286,8 +1373,8 @@
 .vm-hud .vm-tabs {
   display: flex;
   align-items: stretch;
-  gap: calc(2 * var(--vm-u));
-  height: calc(14 * var(--vm-u));
+  gap: calc(3 * var(--vm-u));
+  height: calc(16 * var(--vm-u));
   padding: 0;
   border-bottom: 0;
   flex: 0 0 auto;
@@ -1303,8 +1390,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: calc(3 * var(--vm-u));
-  padding: 0 calc(4 * var(--vm-u)) 0 calc(3 * var(--vm-u));
+  gap: calc(4 * var(--vm-u));
+  padding: 0 calc(6 * var(--vm-u)) 0 calc(5 * var(--vm-u));
   border: 0;
   background: rgba(6, 11, 22, 0.88);
   color: var(--vm-faint);
@@ -1391,15 +1478,15 @@
 .vm-hud .vm-tools {
   display: flex;
   align-items: center;
-  gap: calc(2 * var(--vm-u));
-  padding-left: calc(4 * var(--vm-u));
-  margin-left: calc(2 * var(--vm-u));
+  gap: calc(3 * var(--vm-u));
+  padding-left: calc(6 * var(--vm-u));
+  margin-left: calc(3 * var(--vm-u));
   flex: 0 0 auto;
 }
 
 .vm-hud .vm-tool {
-  width: calc(17 * var(--vm-u));
-  height: calc(14 * var(--vm-u));
+  width: calc(20 * var(--vm-u));
+  height: calc(16 * var(--vm-u));
   padding: 0;
   border: 1px solid transparent;
   background: rgba(6, 11, 22, 0.88);
@@ -1437,8 +1524,8 @@
 .vm-hud .vm-grid {
   display: grid;
   grid-template-columns: repeat(var(--vm-grid-cols, 6), 1fr);
-  grid-auto-rows: calc(30 * var(--vm-u));
-  gap: calc(3 * var(--vm-u));
+  grid-auto-rows: calc(33 * var(--vm-u));
+  gap: calc(4 * var(--vm-u));
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -1477,10 +1564,10 @@
 .vm-hud .vm-slot-icon {
   position: absolute;
   left: 50%;
-  top: 40%;
+  top: 42%;
   transform: translate(-50%, -50%);
-  width: calc(16 * var(--vm-u));
-  height: calc(16 * var(--vm-u));
+  width: calc(18 * var(--vm-u));
+  height: calc(18 * var(--vm-u));
 }
 
 /* The cost badge, BOTTOM LEFT with its credit glyph — the reference's
@@ -1488,11 +1575,11 @@
    quantity rather than a price. */
 .vm-hud .vm-slot-cost {
   position: absolute;
-  left: calc(2 * var(--vm-u));
-  bottom: calc(2 * var(--vm-u));
+  left: calc(3.5 * var(--vm-u));
+  bottom: calc(3.5 * var(--vm-u));
   display: inline-flex;
   align-items: center;
-  gap: calc(2 * var(--vm-u));
+  gap: calc(2.5 * var(--vm-u));
   font-size: calc(8.5 * var(--vm-u));
   font-weight: 700;
   line-height: 1;
@@ -1513,8 +1600,8 @@
 /* The slot hotkey, top-right, opposite the cost. */
 .vm-hud .vm-slot-key {
   position: absolute;
-  right: calc(1.5 * var(--vm-u));
-  top: calc(1.5 * var(--vm-u));
+  right: calc(3 * var(--vm-u));
+  top: calc(3 * var(--vm-u));
   min-width: calc(8 * var(--vm-u));
   height: calc(8 * var(--vm-u));
   font-size: calc(6.5 * var(--vm-u));
@@ -1548,7 +1635,7 @@
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(3 * var(--vm-u));
+  bottom: calc(4 * var(--vm-u));
   text-align: center;
   font-size: calc(7.5 * var(--vm-u));
   letter-spacing: 0.18em;
@@ -1560,11 +1647,11 @@
    at that moment the price is settled and the only open question is "when". */
 .vm-hud .vm-slot-eta {
   position: absolute;
-  right: calc(2 * var(--vm-u));
-  bottom: calc(2 * var(--vm-u));
+  right: calc(3.5 * var(--vm-u));
+  bottom: calc(3.5 * var(--vm-u));
   display: inline-flex;
   align-items: center;
-  gap: calc(2 * var(--vm-u));
+  gap: calc(2.5 * var(--vm-u));
   font-size: calc(8 * var(--vm-u));
   font-weight: 700;
   line-height: 1;
@@ -1587,9 +1674,9 @@
 .vm-hud .vm-slot-flag {
   position: absolute;
   left: 0;
-  right: calc(11 * var(--vm-u));
+  right: calc(14 * var(--vm-u));
   top: 0;
-  height: calc(9 * var(--vm-u));
+  height: calc(11 * var(--vm-u));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1647,7 +1734,7 @@
   background: rgba(var(--vm-accent-rgb), 0.10);
 }
 
-.vm-hud .vm-slot.is-building .vm-slot-icon { left: calc(11 * var(--vm-u)); }
+.vm-hud .vm-slot.is-building .vm-slot-icon { left: calc(13 * var(--vm-u)); }
 
 .vm-hud .vm-slot.is-ready {
   grid-column: span 2;
@@ -1657,7 +1744,7 @@
   animation: vm-ready-tick 1.6s ease-in-out infinite;
 }
 
-.vm-hud .vm-slot.is-ready .vm-slot-icon { left: calc(11 * var(--vm-u)); }
+.vm-hud .vm-slot.is-ready .vm-slot-icon { left: calc(13 * var(--vm-u)); }
 
 /* READY owns the bottom band once it appears; the cost has done its job. */
 .vm-hud .vm-slot.is-ready .vm-slot-cost { visibility: hidden; }
@@ -1700,8 +1787,8 @@
 .vm-hud .vm-tip {
   position: fixed;
   z-index: 40;
-  max-width: calc(260 * var(--vm-u));
-  padding: calc(7 * var(--vm-u)) calc(9 * var(--vm-u));
+  max-width: calc(280 * var(--vm-u));
+  padding: calc(10 * var(--vm-u)) calc(13 * var(--vm-u));
   background: var(--vm-glass-deep);
   -webkit-backdrop-filter: var(--vm-blur);
   backdrop-filter: var(--vm-blur);
@@ -1710,7 +1797,7 @@
   pointer-events: none;
   display: flex;
   flex-direction: column;
-  gap: calc(4 * var(--vm-u));
+  gap: calc(6 * var(--vm-u));
 }
 
 .vm-hud .vm-tip[hidden] { display: none; }
@@ -1718,7 +1805,7 @@
 .vm-hud .vm-tip-head {
   display: flex;
   align-items: baseline;
-  gap: calc(6 * var(--vm-u));
+  gap: calc(8 * var(--vm-u));
 }
 
 .vm-hud .vm-tip-title {
@@ -1731,7 +1818,7 @@
 .vm-hud .vm-tip-key {
   margin-left: auto;
   font-size: calc(9 * var(--vm-u));
-  padding: 0 calc(3 * var(--vm-u));
+  padding: calc(1 * var(--vm-u)) calc(4 * var(--vm-u));
   border: 1px solid var(--vm-hairline);
   color: var(--vm-dim);
 }
@@ -1739,7 +1826,7 @@
 .vm-hud .vm-tip-stats {
   display: flex;
   flex-wrap: wrap;
-  gap: calc(9 * var(--vm-u));
+  gap: calc(5 * var(--vm-u)) calc(12 * var(--vm-u));
   font-size: calc(11 * var(--vm-u));
   font-weight: 600;
   color: var(--vm-dim);
@@ -1777,16 +1864,16 @@
   top: calc(10 * var(--vm-u));
   display: flex;
   flex-direction: column;
-  gap: calc(4 * var(--vm-u));
+  gap: calc(6 * var(--vm-u));
   pointer-events: none;
-  max-width: calc(230 * var(--vm-u));
+  max-width: calc(250 * var(--vm-u));
 }
 
 .vm-hud .vm-toast {
   display: flex;
   align-items: center;
-  gap: calc(6 * var(--vm-u));
-  padding: calc(4 * var(--vm-u)) calc(8 * var(--vm-u));
+  gap: calc(8 * var(--vm-u));
+  padding: calc(7 * var(--vm-u)) calc(11 * var(--vm-u));
   background: var(--vm-glass-deep);
   -webkit-backdrop-filter: var(--vm-blur);
   backdrop-filter: var(--vm-blur);

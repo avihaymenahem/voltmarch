@@ -101,7 +101,7 @@
 import * as THREE from 'three';
 
 import {
-  HUD_OVERLAY, MAX_SELECTION, ORDER_MARKER_POOL, ORDER_MARKER_SECONDS,
+  CELL, HUD_OVERLAY, MAX_SELECTION, ORDER_MARKER_POOL, ORDER_MARKER_SECONDS,
 } from '../core/config';
 import { worldToCell } from '../core/math';
 import {
@@ -115,10 +115,50 @@ import {
 import type { World } from '../core/world';
 import type { CameraRig } from '../render/camera';
 import { entityWorld } from '../render/RenderBridge';
+// The self-repair predicate, imported rather than restated. `src/sim/Regen.ts`
+// is pure arithmetic over the store — no THREE, no DOM, no sim plumbing — and
+// the alternative is a second copy of the rule in the layer that DRAWS it,
+// which is how an interface starts lying about the simulation.
+import { isRegenerating } from '../sim/Regen';
 import { SEMANTIC, accentFor, healthColor, rgba } from './Chrome';
 
 /** Unlit remainder of a health bar. Never a second lit colour. */
 const BAR_UNLIT = 'rgba(255,255,255,0.22)';
+
+/* --------------------------------------------------------------------------
+ * THE PLACEMENT HINT
+ *
+ * Building rotation shipped, works, and the player reported it as one of the
+ * things they "still can't see". Half of that is the ghost's own facing marker
+ * (rebuilt in `src/sim/Placement.ts`); the other half is that NOTHING on screen
+ * ever says the keys exist. They are in `ActionCatalogue` and on the help
+ * screen, and a player mid-placement is looking at neither — they are looking
+ * at the ghost.
+ *
+ * So the caption is drawn AT the ghost, under its front edge: two key badges in
+ * the HUD's own boxed-letter treatment, the word ROTATE, and the compass letter
+ * the structure is currently holding. It is deliberately STATIC — no pulse, no
+ * fade — because `shots/09-placement.png` photographs this and a fixture that
+ * animates is a fixture that stops being byte-identical.
+ * -------------------------------------------------------------------------- */
+
+/** Design px of clearance between the ghost's lowest projected corner and the
+ *  caption, so the caption never lands on the validity carpet. */
+const HINT_GAP = 14;
+/**
+ * The two key badges.
+ *
+ * `<` and `>` rather than `,` and `.` — the SECOND legend on the same two
+ * keycaps, and the one a player can actually read. Drawn at 10 design px a
+ * comma is two pixels of ink hanging under the baseline; screenshotted at 1600
+ * x 900 it was indistinguishable from a full stop and both looked like dirt on
+ * the plate. The angle brackets are full-height glyphs, they carry the
+ * DIRECTION of the turn for free, and they are not a lie about the binding:
+ * `PlacementController.onKeyDown` matches `e.code` (`Comma` / `Period`) and
+ * rejects only ctrl/meta/alt, so Shift+, — literally `<` — rotates left.
+ */
+const HINT_KEYS = ['<', '>'] as const;
+const HINT_WORD = 'ROTATE';
 /** Dashed line from a firing unit to what it is shooting. */
 const TARGET_LINE = 'rgba(255,77,61,0.55)';
 /** Points sampled around a selection ring. 20 is smooth at every zoom. */
@@ -324,6 +364,16 @@ export class Overlay {
   private readonly inkTetherDark: string[] = ['', '', ''];
   /** Pushed by input while the rally cursor is armed. See `setRallyArmed`. */
   private rallyArmed = false;
+
+  /* -- placement hint -------------------------------------------------- *
+   * Pushed once per frame by `Hud.frame` off the `__vmPlacement` seam it
+   * already duck-types. The overlay owns no simulation state — see the
+   * header — so it holds the ghost's cell rect and nothing else. */
+  private hintActive = false;
+  private hintCx = 0;
+  private hintCz = 0;
+  private hintW = 0;
+  private hintH = 0;
   /** Last pointer position in CLIENT px, and whether it is over the window. */
   private pointerX = 0;
   private pointerY = 0;
@@ -426,6 +476,25 @@ export class Overlay {
     this.rallyArmed = on;
   }
 
+  /**
+   * The cell rectangle the placement ghost is currently standing on, in
+   * WORLD-SPACE extents (already swapped for the facing). Call with the ghost
+   * down, `clearPlacementHint` when it goes away.
+   *
+   * Safe to never call: nothing else in this file reads the flag.
+   */
+  setPlacementHint(cx: number, cz: number, w: number, h: number): void {
+    this.hintActive = w > 0 && h > 0;
+    this.hintCx = cx;
+    this.hintCz = cz;
+    this.hintW = w;
+    this.hintH = h;
+  }
+
+  clearPlacementHint(): void {
+    this.hintActive = false;
+  }
+
   resize(cssW: number, cssH: number, dpr: number, uiScale: number): void {
     this.dpr = dpr;
     this.scale = uiScale * dpr;
@@ -524,9 +593,97 @@ export class Overlay {
     this.drawTargetLines();
     this.drawBars();
     this.drawFloaters(dt);
+    this.drawPlacementHint();
     this.drawMarquee();
 
     ctx.restore();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* the placement hint                                                  */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * `[,]  ROTATE  [.]`, centred under the ghost.
+   *
+   * Anchored to the LOWEST projected footprint corner rather than to the
+   * footprint centre, because at a 39-degree camera the near corner of a 3x3
+   * is 40-odd px below the centre and a caption pinned to the centre lands
+   * inside the hologram. All four corners are projected and the maximum taken,
+   * so the anchor is correct at every camera yaw and for every footprint.
+   */
+  private drawPlacementHint(): void {
+    if (!this.hintActive) return;
+    const ctx = this.ctx;
+    const u = this.scale / this.dpr;
+    const terrain = this.world.terrain;
+
+    let cx = 0;
+    let maxY = -Infinity;
+    let seen = 0;
+    for (let k = 0; k < 4; k++) {
+      const wx = (this.hintCx + (k & 1) * this.hintW) * CELL;
+      const wz = (this.hintCz + ((k >> 1) & 1) * this.hintH) * CELL;
+      this.v3.set(wx, terrain.heightAt(wx, wz), wz);
+      if (!this.cameraRig.worldToScreen(this.v3, this.v2)) continue;
+      cx += this.v2.x;
+      if (this.v2.y > maxY) maxY = this.v2.y;
+      seen++;
+    }
+    if (seen === 0) return;
+    cx /= seen;
+
+    const keyBox = Math.round(15 * u);
+    const pad = Math.round(7 * u);
+    const gap = Math.round(6 * u);
+    const wordSize = Math.round(9.5 * u);
+    ctx.font = `700 ${wordSize}px ${OVERLAY_FONT}`;
+    // The tracking has to be added by hand: canvas has no letter-spacing, and
+    // the HUD's small caps are tracked at 0.16em everywhere else.
+    const track = wordSize * 0.16;
+    const wordW = ctx.measureText(HINT_WORD).width + track * (HINT_WORD.length - 1);
+
+    const plateW = pad * 2 + keyBox * 2 + gap * 3 + wordW;
+    const plateH = keyBox + Math.round(8 * u);
+    const x = Math.round(cx - plateW * 0.5);
+    const y = Math.round(maxY + HINT_GAP * u);
+
+    ctx.fillStyle = 'rgba(4,7,13,0.84)';
+    ctx.fillRect(x, y, plateW, plateH);
+    ctx.strokeStyle = rgba(this.accent, 0.55);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, plateW - 1, plateH - 1);
+
+    let cursor = x + pad;
+    const boxY = y + Math.round((plateH - keyBox) * 0.5);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let k = 0; k < HINT_KEYS.length; k++) {
+      // The word sits between the two badges, so the second badge is drawn
+      // after it — `,` turns left, `.` turns right, and the layout says so.
+      if (k === 1) {
+        ctx.fillStyle = SEMANTIC.text;
+        ctx.font = `700 ${wordSize}px ${OVERLAY_FONT}`;
+        ctx.textAlign = 'left';
+        let tx = cursor;
+        for (const ch of HINT_WORD) {
+          ctx.fillText(ch, tx, y + plateH * 0.54);
+          tx += ctx.measureText(ch).width + track;
+        }
+        ctx.textAlign = 'center';
+        cursor += wordW + gap;
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(cursor, boxY, keyBox, keyBox);
+      ctx.strokeStyle = rgba(this.accent, 0.7);
+      ctx.strokeRect(cursor + 0.5, boxY + 0.5, keyBox - 1, keyBox - 1);
+      ctx.fillStyle = SEMANTIC.text;
+      ctx.font = `700 ${Math.round(12 * u)}px ${OVERLAY_FONT}`;
+      ctx.fillText(HINT_KEYS[k], cursor + keyBox * 0.5, boxY + keyBox * 0.54);
+      cursor += keyBox + gap;
+    }
+    ctx.textAlign = 'start';
+    ctx.textBaseline = 'alphabetic';
   }
 
   /* ------------------------------------------------------------------ */
@@ -915,9 +1072,22 @@ export class Overlay {
   /* ------------------------------------------------------------------ */
 
   /**
-   * A bar appears when the entity is selected, hovered, or took damage in the
-   * last `damageBarSeconds`. That last case is what makes an attack legible
-   * without permanently plastering the frame with bars.
+   * A bar appears when the entity is selected, hovered, took damage in the last
+   * `damageBarSeconds`, or is SELF-REPAIRING. That third case is what makes an
+   * attack legible without permanently plastering the frame with bars; the
+   * fourth is what makes idle recovery legible at all.
+   *
+   * THE FOURTH CASE IS THE FIX FOR A REPORTED BUG, and the arithmetic is why:
+   * the damage bar lives `HUD_OVERLAY.damageBarSeconds` (4 s) past the last hit,
+   * and `REGEN_OUT_OF_COMBAT_SEC` (8 s) has to elapse BEFORE healing starts. The
+   * two windows cannot overlap. So a unit's bar was guaranteed to be off screen
+   * for the whole of its recovery unless the player happened to be holding it
+   * selected — which is exactly why "troops and vehicles heal over time" was
+   * reported as something the player could not see.
+   *
+   * Only for units the local player OWNS. An enemy's recovery is not a live
+   * reading you are entitled to just because you can see the unit, and putting
+   * a bar over every idle enemy in vision would also be a lot of bars.
    */
   private drawBars(): void {
     const store = this.world.store;
@@ -939,7 +1109,8 @@ export class Overlay {
       const hurt = store.hp[e] < store.maxHp[e]
         && now - store.lastHitTime[e] < HUD_OVERLAY.damageBarSeconds;
       const owned = (store.owner[e] as PlayerId) === local;
-      if (!selected && !hovered && !hurt && !(this.showAllyBars && owned)) continue;
+      const mending = owned && isRegenerating(store, e, now);
+      if (!selected && !hovered && !hurt && !mending && !(this.showAllyBars && owned)) continue;
 
       // LAST, because it is the only test that leaves this file. A bar is a live
       // reading and lives are only readable in the light: `canSee` answers true
@@ -948,11 +1119,11 @@ export class Overlay {
       // for an enemy in the shroud or behind a cloak you cannot detect.
       if (!this.world.vision.canSee(local, store.handleOf(e))) continue;
 
-      this.drawOneBar(e);
+      this.drawOneBar(e, mending);
     }
   }
 
-  private drawOneBar(e: number): void {
+  private drawOneBar(e: number, mending: boolean): void {
     const store = this.world.store;
     const ctx = this.ctx;
 
@@ -999,6 +1170,38 @@ export class Overlay {
     if (lit > 0) {
       ctx.fillStyle = healthColor(frac);
       ctx.fillRect(x, y, lit, barH);
+    }
+
+    /* -- self-repair --------------------------------------------------------
+     * Two marks, because one of them is not enough on its own:
+     *
+     *   - a GAIN CAP just past the lit edge, breathing. It says which way the
+     *     bar is moving, which is the thing a 2.5%/s fill cannot say by itself
+     *     over the two or three seconds a player actually looks at it;
+     *   - a GREEN CROSS to the left of the bar. The cap is invisible on a unit
+     *     that is nearly full (there is no room left to fill), and the cross is
+     *     what still reads there.
+     *
+     * The pulse runs off `this.time` — the same clock the selection ring pulse
+     * uses, which is fixed-step under `?shot=` and is why the fixtures stay
+     * byte-identical with an animation in them.
+     * -------------------------------------------------------------------- */
+    if (mending) {
+      const beat = 0.55 + 0.45 * Math.sin(this.time * 4.4);
+      if (lit < barW) {
+        const cap = Math.min(barW - lit, Math.max(2, Math.round(4 * u)));
+        ctx.fillStyle = rgba(SEMANTIC.ok, 0.22 + 0.42 * beat);
+        ctx.fillRect(x + lit, y, cap, barH);
+      }
+      const s = Math.max(5, Math.round(7 * u));
+      const arm = Math.max(1, Math.round(s * 0.34));
+      const gx = x - pad - Math.round(3 * u) - s;
+      const gy = Math.round(y + barH * 0.5 - s * 0.5);
+      ctx.fillStyle = SEMANTIC.worldBacking;
+      ctx.fillRect(gx - pad, gy - pad, s + pad * 2, s + pad * 2);
+      ctx.fillStyle = rgba(SEMANTIC.ok, 0.55 + 0.45 * beat);
+      ctx.fillRect(gx, Math.round(gy + (s - arm) * 0.5), s, arm);
+      ctx.fillRect(Math.round(gx + (s - arm) * 0.5), gy, arm, s);
     }
 
     // Control-group badge, hanging off the LEFT end below the bar.

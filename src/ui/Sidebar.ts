@@ -133,6 +133,14 @@ export interface SelectionView {
   hpFrac: number;
   /** `1240 / 1600` — absolute hit points across the selection. */
   hpText: string;
+  /**
+   * At least one selected unit is currently self-repairing (`sim.regen`).
+   *
+   * Drives the sweep on the health bar and the REPAIRING tag beside it. It is a
+   * property of the SELECTION, not of the primary: with six units selected and
+   * one of them mending, something is happening and the panel should say so.
+   */
+  mending: boolean;
   /** Current stance of the selection, or -1 when it is mixed. */
   stance: Stance | -1;
   /** False for a selection that cannot take a stance (structures). */
@@ -664,6 +672,11 @@ class SelectionPanel {
   private readonly chevrons: HTMLElement;
   private readonly hpBar: HTMLElement;
   private readonly hpTextNode: Text;
+  /** The bar's wrapper, so the self-repair sweep can be toggled on it rather
+   *  than on the inner fill — the fill carries a `scaleX`, which would squash
+   *  a sweeping highlight into whatever the current health fraction is. */
+  private readonly hpRoot: HTMLElement;
+  private readonly mendTag: HTMLElement;
   private readonly cardRow: HTMLElement;
   private readonly cards: CardCell[] = [];
   private readonly statValues: Text[] = [];
@@ -686,6 +699,7 @@ class SelectionPanel {
   private lastVet = -1;
   private lastStance = -2;
   private lastHp = '';
+  private lastMending = false;
   private liveCards = 0;
   private lastRelocate = '';
 
@@ -804,9 +818,21 @@ class SelectionPanel {
      * twelve conscripts and one Apocalypse at 60% are not the same army, and
      * how much punishment the GROUP can still take is the question. */
     const hp = el('div', 'vm-sel-hp', this.live);
+    this.hpRoot = hp;
     const hpTrack = el('span', 'vm-sel-hp-track', hp);
     this.hpBar = el('i', '', hpTrack);
     this.hpTextNode = label(hp, 'vm-sel-hp-text vm-num', '');
+    /* SELF-REPAIR, said in a word.
+     *
+     * The player reported idle healing as invisible. `src/ui/Overlay.ts` marks
+     * it on the world bar for every unit; this is the same fact on the panel the
+     * player is already looking at when they have the unit selected. The sweep
+     * animation on `.vm-sel-hp.is-regen` carries it at a glance and this tag is
+     * what makes it unambiguous — a moving highlight alone could be read as a
+     * loading state. */
+    this.mendTag = el('span', 'vm-sel-hp-mend', hp);
+    this.mendTag.textContent = 'Repairing';
+    this.mendTag.hidden = true;
 
     /* -- the idle advisory --------------------------------------------- */
     this.idle.appendChild(makeIcon('info', 'vm-icon'));
@@ -894,6 +920,14 @@ class SelectionPanel {
       const f = Math.max(0, Math.min(1, view.hpFrac));
       this.hpBar.style.transform = `scaleX(${f.toFixed(3)})`;
       this.hpBar.className = f > 0.6 ? '' : f > 0.3 ? 'is-hurt' : 'is-critical';
+    }
+    // Guarded separately from `hpText`: at 2.5%/s the hit-point STRING can go
+    // several frames without changing, and the tag has to appear on the tick
+    // the healing starts rather than on the next whole point of hp.
+    if (view.mending !== this.lastMending) {
+      this.lastMending = view.mending;
+      this.hpRoot.classList.toggle('is-regen', view.mending);
+      this.mendTag.hidden = !view.mending;
     }
 
     /* -- cards --------------------------------------------------------- */

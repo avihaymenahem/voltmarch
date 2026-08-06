@@ -6,17 +6,26 @@
  * Two things are asserted here, and they are the two things that have actually
  * gone wrong.
  *
- * 1. THE FRAME BUDGET IS A CALCULATION, NOT A HOPE.
- *    `docs/RA3_LOOK_BIBLE.md` §9 caps the whole interface at 12-16% of the
- *    frame. `Hud.hudFrameShare()` reports the live figure and it measured
- *    15.83% at 1280x720 — over the ceiling once the objectives panel's further
- *    1.85% is counted, and that panel is NOT in the figure. The redesign got
- *    the band from 114 design units to 94.
- *
- *    That number is a function of exactly five constants in `hud.css`, so this
+ * 1. THE BAND HEIGHT IS A CALCULATION, NOT A HOPE.
+ *    `--vm-dock-h` is a function of exactly five constants in `hud.css`, so this
  *    file reads them out of the stylesheet and re-derives it. A stylesheet edit
- *    that grows the band now fails here, at `npm test`, instead of at
- *    `npm run shots` three hours later.
+ *    that grows a tab strip or a slot row without moving the dock height now
+ *    fails here, at `npm test`, instead of at `npm run shots` three hours later.
+ *
+ *    WHAT IS NO LONGER ASSERTED, AND WHY. This suite used to require the band to
+ *    stay under 15.83% of the frame, because `docs/RA3_LOOK_BIBLE.md` §9/§38
+ *    caps the interface at 12-16%. That ceiling is derived from the RA3
+ *    reference set, and the reference comparison has since been abandoned by the
+ *    player — "give up on it, we have changed a lot since the original refs".
+ *    Meeting it cost the padding, and the padding is what the player then
+ *    reported: "our HUD in game, its wayy wayy too dense, missing padding for
+ *    all of the huds."
+ *
+ *    So the direction of the assertion is reversed. The frame share is RECORDED
+ *    (114u, 15.83%) with a generous ceiling that only catches an accident, and
+ *    what is DEFENDED is the spacing floor — because a future pass optimising
+ *    for the percentage would reintroduce the exact defect this one fixed, and
+ *    the percentage is the thing that would look like progress while it did so.
  *
  * 2. THE SHELL STYLESHEET IS NOT SANDBOXED.
  *    `src/shell/shell.css` declares UNSCOPED `.vm-stat`, `.vm-card`, `.vm-tabs`,
@@ -98,29 +107,75 @@ describe('the bottom band fits the §9 budget by construction', () => {
     expect(dockH, `derived ${needed}u, stylesheet says ${dockH}u`).toBe(needed);
   });
 
-  it('reports a band share under the 15.83% it started at, at every shipping height', () => {
+  it('records the band share at every shipping height, and caps runaway growth', () => {
     // `Hud.hudFrameShare()` is (frameH - dockTop) / frameH, and dockTop is the
     // top of the map dock — so the band is the dock plus the docks' own bottom
     // padding, in design units, against the frame height in design units.
     //
     // uiScale = clamp(floor(h / 720 * 4) / 4, 1, 4), from Chrome.computeUiScale.
     const band = dockH + bandPad;
-    expect(band).toBe(94);
+    expect(band).toBe(114);
 
-    const BEFORE = 0.1583;
+    // 18% is not a design target, it is a tripwire. The band is 15.83% by
+    // intent; anything approaching a fifth of the frame is an accident.
     for (const h of [720, 768, 900, 1080, 1440, 2160]) {
       const u = Math.min(4, Math.max(1, Math.floor((h / 720) * 4) / 4));
       const share = (band * u) / h;
-      expect(share, `${h}p`).toBeLessThan(BEFORE);
-      // And still inside the bible's floor: an interface that vanishes is not
-      // a win either.
+      expect(share, `${h}p`).toBeLessThan(0.18);
+      // And an interface that vanishes is not a win either.
       expect(share, `${h}p`).toBeGreaterThan(0.10);
     }
   });
 
-  it('measures 13.06% at the reference 1280x720', () => {
-    // The figure quoted in the report and in hud.css's header. 94u at u=1.
-    expect(((dockH + bandPad) * 1) / 720).toBeCloseTo(0.1306, 4);
+  it('measures 15.83% at the reference 1280x720', () => {
+    // The figure quoted in the report and in hud.css's header. 114u at u=1.
+    expect(((dockH + bandPad) * 1) / 720).toBeCloseTo(0.1583, 4);
+  });
+
+  /* ------------------------------------------------------------------------
+   * THE SPACING FLOOR — the regression guard for the reported density bug.
+   *
+   * Each of these was BELOW its floor when the player wrote "wayy wayy too
+   * dense". They are minimums rather than exact values so a later pass may
+   * still tune the look; what it may not do is quietly buy frame percentage
+   * back out of the padding again.
+   * -------------------------------------------------------------------- */
+  const FLOORS: Array<[string, number, string]> = [
+    ['--vm-dock-pad', 7, 'panel content was one hairline off the lit bevel on all four sides'],
+    ['--vm-band-pad', 9, 'the docks sat 6u off the bottom of the screen'],
+    ['--vm-gap', 10, 'the three docks were 7u apart and read as one slab'],
+  ];
+  for (const [token, floor, why] of FLOORS) {
+    it(`${token} is at least ${floor}u — ${why}`, () => {
+      expect(units(token)).toBeGreaterThanOrEqual(floor);
+    });
+  }
+
+  const RULE_FLOORS: Array<[string, string, number, string]> = [
+    ['.vm-hud .vm-dock', 'gap', 5, 'the head, the body and the footer of every dock touched'],
+    ['.vm-hud .vm-grid', 'grid-auto-rows', 33, 'a cameo, a cost badge and a hotkey badge shared 30u'],
+    ['.vm-hud .vm-grid', 'gap', 4, 'adjacent build slots were 3u apart'],
+    ['.vm-hud .vm-tabs', 'height', 16, 'the tab strip was a 14u sliver'],
+    ['.vm-hud .vm-resources', 'height', 36, 'the top strip crushed a label and a value into 31u'],
+    ['.vm-hud .vm-sel-live', 'gap', 6, 'name, body and health bar were 3u apart'],
+    ['.vm-hud .vm-sel-hp', 'height', 13, 'the health bar was an 11u strip carrying 9u text'],
+  ];
+  for (const [sel, prop, floor, why] of RULE_FLOORS) {
+    it(`${sel} ${prop} is at least ${floor}u — ${why}`, () => {
+      expect(ruleUnits(sel, prop)).toBeGreaterThanOrEqual(floor);
+    });
+  }
+
+  it('the map dock is exactly wide enough for the square field inside it', () => {
+    // The field is `aspect-ratio: 1/1; height: 100%` inside the dock body, so
+    // its side is the dock's INNER height and the dock's width has to be that
+    // plus its own padding — or a square field overflows a dock that grew
+    // taller than it grew wide. Derived here so the two cannot drift.
+    const head = ruleUnits('.vm-hud .vm-dock-head', 'height');
+    const dockGap = ruleUnits('.vm-hud .vm-dock', 'gap');
+    const field = dockH - dockPad * 2 - head - dockGap;
+    const width = ruleUnits('.vm-hud .vm-dock-map', 'width');
+    expect(width, `field is ${field}u, dock is ${width}u`).toBe(field + dockPad * 2);
   });
 
   it('caps the selection card rather than letting it fill the band', () => {

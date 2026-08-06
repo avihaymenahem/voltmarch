@@ -59,6 +59,9 @@ import type { Channels } from '../core/events';
 import type { World } from '../core/world';
 import type { CameraRig } from '../render/camera';
 import type { RendererHandle } from '../render/renderer';
+// One statement of the self-repair rule, shared with the overlay. See the note
+// on the import in `src/ui/Overlay.ts`.
+import { isRegenerating } from '../sim/Regen';
 
 import {
   SEMANTIC,
@@ -308,6 +311,15 @@ interface GridRow {
 interface PlacementSeam {
   readonly active: boolean;
   readonly relocating: number;
+  /* Read-only, and every one OPTIONAL: they are what the overlay needs to
+     caption the rotate keys under the ghost, and a controller that predates
+     them must still light the relocate button. `report.w`/`h` are the
+     WORLD-SPACE footprint, already swapped for the facing, so the caption sits
+     under a turned 3x2 as correctly as under a square one. */
+  readonly cx?: number;
+  readonly cz?: number;
+  readonly facing?: number;
+  readonly report?: { readonly w: number; readonly h: number; readonly ok: boolean };
   begin(defId: number): boolean;
   beginRelocate(building: number): boolean;
 }
@@ -517,7 +529,7 @@ export class Hud {
     this.view = {
       count: 0, title: '', subtitle: '', veterancy: 0,
       cards, cardCount: 0,
-      hpFrac: 1, hpText: '',
+      hpFrac: 1, hpText: '', mending: false,
       stance: -1, stanceEnabled: false,
       relocate: { visible: false, enabled: false, cost: 0, hint: '', armed: false },
       armour: '', damage: '', range: '', speed: '',
@@ -909,8 +921,33 @@ export class Hud {
     this.sidebar.setRadarOnline(snap.hasRadar);
     this.sidebar.update(snap, this.view, this.telemetry, dt);
     this.minimap.frame(this.time, dt);
+    this.pushPlacementHint();
     this.overlay.frame(dt);
     this.toasts.frame(dt);
+  }
+
+  /**
+   * Tell the overlay where the placement ghost is, so it can caption the rotate
+   * keys under it.
+   *
+   * The keys work and always have — verified in Chromium at all four facings on
+   * both a square and a 3x2 footprint — but nothing on screen ever said they
+   * existed. They are in `ActionCatalogue` and on the help screen, and a player
+   * mid-placement is looking at the ghost, not at either of those.
+   *
+   * Read off the same duck-typed `__vmPlacement` seam the relocate button uses,
+   * and every field is optional: a controller without a `report` (or no
+   * controller at all) simply gets no caption, which is what the HUD did before.
+   */
+  private pushPlacementHint(): void {
+    const seam = placementSeam();
+    const report = seam?.report;
+    if (seam === null || !seam.active || report === undefined
+      || seam.cx === undefined || seam.cz === undefined) {
+      this.overlay.clearPlacementHint();
+      return;
+    }
+    this.overlay.setPlacementHint(seam.cx, seam.cz, report.w, report.h);
   }
 
   /* ------------------------------------------------------------------ */
@@ -1248,6 +1285,7 @@ export class Hud {
       view.stanceEnabled = false;
       view.hpFrac = 1;
       view.hpText = '';
+      view.mending = false;
       view.relocate.visible = false;
       return;
     }
@@ -1262,6 +1300,8 @@ export class Hud {
     let allBuildings = true;
     let totalHp = 0;
     let totalMaxHp = 0;
+    let mending = false;
+    const now = this.world.time;
 
     for (let i = 0; i < sel.count; i++) {
       const idx = store.index(sel.ids[i] as EntityId);
@@ -1269,6 +1309,9 @@ export class Hud {
 
       totalHp += store.hp[idx];
       totalMaxHp += store.maxHp[idx];
+      // The predicate is `src/sim/Regen.ts`'s, not a second copy of it. See the
+      // import note in `src/ui/Overlay.ts`.
+      if (!mending && isRegenerating(store, idx, now)) mending = true;
 
       const kind = store.kind[idx];
       if (kind !== EntityKind.Building) allBuildings = false;
@@ -1329,6 +1372,7 @@ export class Hud {
     view.hpFrac = totalMaxHp > 0 ? Math.max(0, Math.min(1, totalHp / totalMaxHp)) : 1;
     view.hpText = totalMaxHp > 0
       ? `${Math.round(totalHp)} / ${Math.round(totalMaxHp)} HP` : '';
+    view.mending = mending;
 
     /* -- headline ------------------------------------------------------ */
     if (primaryIdx >= 0) {
