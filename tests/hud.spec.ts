@@ -461,3 +461,71 @@ describe('the build grid holds every faction’s largest tab', () => {
     expect(BUILD_COLUMNS * BUILD_ROWS).toBeLessThanOrEqual(worst * 3);
   });
 });
+
+/* ==========================================================================
+ * THE BRIEF HAS SOMETHING TO SAY ABOUT EVERY ENTRY
+ *
+ * `.vm-brief` prints the hovered — or, at rest, the first — entry's one-line
+ * `blurb` at the foot of the build panel, permanently. That text was already
+ * written for every def and already fed the tooltip, so nothing here is new
+ * content; what IS new is that a missing or overlong blurb is now visible for
+ * as long as the tab is open rather than for the second somebody hovers.
+ *
+ * Both failure modes are silent on screen — an empty string renders as an
+ * empty box, and an overlong one is clipped by `-webkit-line-clamp` with no
+ * ellipsis to announce it — so they are asserted here instead.
+ * ========================================================================== */
+describe('every buildable carries a brief that fits the strip', () => {
+  /**
+   * Two rendered lines at font-size 8u in a 240u rail, less 10u of padding.
+   * Rajdhani averages well under 0.5em per character for mixed-case prose, so
+   * 230u / 4u is a conservative ~57 per line. 100 is that budget with the
+   * rounding thrown away — and the longest blurb in the game today is 60, so
+   * this leaves room to write a better sentence without leaving room to write
+   * a paragraph.
+   */
+  const MAX_CHARS = 100;
+
+  it('gives every roster entry a non-empty blurb', async () => {
+    const catalog = new ProductionCatalog(await resolveDefBinding());
+    expect(catalog.bound, 'unbound catalog — this would pass vacuously').toBe(true);
+
+    const missing: string[] = [];
+    const overlong: string[] = [];
+    let checked = 0;
+
+    for (const faction of [Faction.Allies, Faction.Soviets, Faction.Meridian, Faction.Reclaim]) {
+      for (const tab of [BuildTab.Structures, BuildTab.Defense, BuildTab.Infantry, BuildTab.Vehicles]) {
+        for (const entry of catalog.roster(faction, tab)) {
+          checked++;
+          const blurb = entry.blurb.trim();
+          if (blurb === '') missing.push(`${entry.key} (${entry.name})`);
+          else if (blurb.length > MAX_CHARS) {
+            overlong.push(`${entry.key} ${blurb.length} chars`);
+          }
+        }
+      }
+    }
+
+    // Guard the guard: a roster that resolved to nothing would report zero
+    // failures and mean nothing.
+    expect(checked, 'no roster entries were examined').toBeGreaterThan(40);
+    expect(missing, 'entries whose brief would render as an empty box').toEqual([]);
+    expect(overlong, `blurbs that clip past ${MAX_CHARS} chars`).toEqual([]);
+  });
+
+  it('does not let a blurb be a restatement of the name', async () => {
+    // "Grenadier — Grenadier." costs the two rows and teaches nothing. This is
+    // the one quality bar cheap enough to enforce mechanically.
+    const catalog = new ProductionCatalog(await resolveDefBinding());
+    expect(catalog.bound).toBe(true);
+
+    for (const entry of catalog.entries) {
+      if (entry.blurb === '') continue;
+      expect(
+        entry.blurb.trim().toLowerCase().replace(/[.\s]+$/, ''),
+        `${entry.key}'s blurb only repeats its name`,
+      ).not.toBe(entry.name.trim().toLowerCase());
+    }
+  });
+});

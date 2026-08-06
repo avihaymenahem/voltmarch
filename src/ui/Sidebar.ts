@@ -1304,6 +1304,20 @@ class BuildPanel {
   private readonly tools: HTMLButtonElement[] = [];
   private readonly tooltip: Tooltip;
 
+  /* -- the brief -------------------------------------------------------- *
+   * The one-line description, permanently on screen. See `setBrief`.      */
+  private readonly briefNameNode: Text;
+  private readonly briefTextEl: HTMLElement;
+  private readonly briefTextNode: Text;
+  /** Signature of what the brief currently says. Gates every DOM write. */
+  private briefSig = '';
+  /**
+   * The entry the brief is following: the last one hovered or focused, and ''
+   * until something has been. It is deliberately NOT cleared on pointerleave —
+   * see `setBrief`.
+   */
+  private briefKey = '';
+
   private activeTab: BuildTab = BuildTab.Structures;
   private armed: ArmedMode = 'none';
   private extras: ((key: string) => BuildExtras) | null = null;
@@ -1401,6 +1415,26 @@ class BuildPanel {
     this.grid.setAttribute('role', 'grid');
     this.grid.style.setProperty('--vm-grid-cols', String(BUILD_COLUMNS));
     for (let i = 0; i < BUILD_COLUMNS * BUILD_ROWS; i++) this.slots.push(this.buildSlot(i));
+
+    /* -- the brief, along the foot of the panel -------------------------- *
+     * Every def in the game already carries a one-sentence `blurb`, and every
+     * one of them was already correct — but the ONLY way to read one was to
+     * put the pointer on a cameo and hold it still for the tooltip delay. So
+     * the text existed, was maintained, and was invisible.
+     *
+     * A strip at the foot fixes that without touching the cameo we just spent
+     * a version enlarging. It follows the pointer, follows keyboard focus, and
+     * RESTS on the first entry of the tab rather than blanking — a strip that
+     * empties itself teaches the player to stop looking at it.
+     *
+     * Its height is FIXED at two text lines whether or not the sentence needs
+     * both. A box that grows and shrinks with the sentence would resize the
+     * scrolling grid above it on every hover, which is worse than a blank
+     * half-line by a wide margin.                                           */
+    const brief = el('div', 'vm-brief', body);
+    this.briefNameNode = label(brief, 'vm-brief-name');
+    this.briefTextEl = el('span', 'vm-brief-text', brief);
+    this.briefTextNode = textNode(this.briefTextEl);
   }
 
   get slotCount(): number { return this.slots.length; }
@@ -1559,13 +1593,21 @@ class BuildPanel {
       // The turntable only spins while hovered — see `Job.hovered` in Cameos.
       this.cameos?.setHovered(cameoCanvas, true);
       this.tooltip.schedule(root, this.tipFor(slot.cameo, index), 'above');
+      // The brief answers on the FIRST frame of the hover; the tooltip is on a
+      // delay by design and that delay is the whole reason the brief exists.
+      this.briefKey = slot.cameo.key;
+      this.setBrief(slot.cameo);
     });
     root.addEventListener('pointerleave', () => {
       this.cameos?.setHovered(cameoCanvas, false);
       this.tooltip.hide();
+      // The brief is NOT released here. See `setBrief`.
     });
     root.addEventListener('focus', () => {
-      if (slot.cameo !== null) this.tooltip.show(root, this.tipFor(slot.cameo, index), 'above');
+      if (slot.cameo === null) return;
+      this.tooltip.show(root, this.tipFor(slot.cameo, index), 'above');
+      this.briefKey = slot.cameo.key;
+      this.setBrief(slot.cameo);
     });
     root.addEventListener('blur', () => this.tooltip.hide());
 
@@ -1688,6 +1730,53 @@ class BuildPanel {
    */
   private estimateEta(slot: BuildSlot, c: HudCameo): number {
     return estimateBuildEta(slot, c.progress, c.ready, slot.buildTime, performance.now());
+  }
+
+  /**
+   * Point the brief at one entry, or at nothing.
+   *
+   * WHY THE LINE STICKS AFTER THE POINTER LEAVES
+   * --------------------------------------------
+   * While you are actually hovering a cameo, the TOOLTIP is up and it says
+   * strictly more than this line does — cost, build time, power, prerequisite,
+   * hotkey. So a brief that only tracked the live hover would be redundant for
+   * the whole time it was legible and blank the instant it was not.
+   *
+   * Its real job starts when the pointer moves away: the tooltip vanishes, and
+   * the sentence you were half way through stays. Sweep the palette, then read
+   * the last thing you looked at without a card covering the rail. It resets to
+   * the tab's first entry only when the tab's contents no longer contain it,
+   * which happens for free — the lookup below simply misses.
+   *
+   * WHY A LOCKED ENTRY GETS ITS REASON INSTEAD OF ITS BLURB
+   * ------------------------------------------------------
+   * The slot banner already says the ONE WORD — LOCKED, FUNDS, POWER — and the
+   * whole sentence ("Requires Radar Dome") lived only in the tooltip. At the
+   * moment you cannot build a thing, that sentence is the single most useful
+   * line the panel can show, and the blurb describing what the thing does once
+   * you have it can wait. So the reason wins the two rows while it applies.
+   *
+   * `extras` allocates an object per call — see `Hud.entryOf` — so it is
+   * reached only when the signature actually changed, never per frame.
+   */
+  private setBrief(c: HudCameo | null): void {
+    const locked = c !== null && !c.available && c.reason !== '';
+    const sig = c === null ? '' : `${c.key}|${locked ? c.reason : ''}`;
+    if (sig === this.briefSig) return;
+    this.briefSig = sig;
+
+    if (c === null) {
+      // Blank, not hidden. The box keeps its height so an empty tab does not
+      // resize the grid above it.
+      this.briefNameNode.nodeValue = '';
+      this.briefTextNode.nodeValue = '';
+      this.briefTextEl.classList.remove('is-locked');
+      return;
+    }
+
+    this.briefNameNode.nodeValue = c.name;
+    this.briefTextNode.nodeValue = locked ? c.reason : (this.extras?.(c.key).blurb ?? '');
+    this.briefTextEl.classList.toggle('is-locked', locked);
   }
 
   private tipFor(c: HudCameo, index: number): TooltipContent {
@@ -1831,6 +1920,20 @@ class BuildPanel {
       slot.sig = '';
     }
     this.liveSlots = n;
+
+    /* -- the brief ------------------------------------------------------- *
+     * Resolved here rather than only in the hover handler so the line tracks
+     * STATE as well as the pointer: park on a locked Radar Dome, build the
+     * Power Plant it wants, and the sentence changes under your cursor. The
+     * scan is over at most a dozen live entries and compares interned keys;
+     * `setBrief`'s own signature gate means a steady frame writes no DOM.   */
+    let brief: HudCameo | null = n > 0 ? list[0] : null;
+    if (this.briefKey !== '') {
+      for (let i = 0; i < n; i++) {
+        if (list[i].key === this.briefKey) { brief = list[i]; break; }
+      }
+    }
+    this.setBrief(brief);
   }
 
   dispose(): void {

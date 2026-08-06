@@ -1619,6 +1619,63 @@
 .vm-hud .vm-grid::-webkit-scrollbar-track { background: transparent; }
 .vm-hud .vm-grid::-webkit-scrollbar-thumb { background: rgba(var(--vm-accent-rgb), 0.35); }
 
+/* --------------------------------------------------------------------------
+ * THE BRIEF — the description line, permanently on screen
+ * --------------------------------------------------------------------------
+ * Every def already carried a one-sentence `blurb` and every one of them was
+ * already written; the only way to read one was to hold the pointer still on a
+ * cameo until the tooltip's delay expired. The strip makes that text ambient.
+ *
+ * THE HEIGHT IS FIXED AND THAT IS THE POINT. 35u buys the name line plus two
+ * text lines, and the longest blurb in the game is 60 characters, which at 8u
+ * against the rail's 240u wraps to exactly two. Sizing the box to the sentence
+ * instead would re-lay-out the SCROLLING GRID above it on every hover — a far
+ * worse artefact than a blank half-line under a short one.
+ *
+ * `pointer-events: none` because the strip is a readout, not a control: it must
+ * never eat a click aimed at the slot above it, and it has nothing to hover.
+ * ------------------------------------------------------------------------ */
+.vm-hud .vm-brief {
+  flex: 0 0 auto;
+  height: calc(35 * var(--vm-u));
+  margin-top: calc(3 * var(--vm-u));
+  padding: calc(3.5 * var(--vm-u)) calc(5 * var(--vm-u));
+  box-sizing: border-box;
+  border-top: 1px solid var(--vm-hairline);
+  background: var(--vm-well);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.vm-hud .vm-brief-name {
+  display: block;
+  font-size: calc(8.5 * var(--vm-u));
+  line-height: calc(9.5 * var(--vm-u));
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vm-accent-hi);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vm-hud .vm-brief-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: calc(8 * var(--vm-u));
+  line-height: calc(9 * var(--vm-u));
+  color: var(--vm-dim);
+}
+
+/* A blocked entry spends the two rows on WHY, in the amber the cost badge
+   already uses for the same condition. The blurb describing what the thing
+   does once you own it is the less useful sentence at that moment. */
+.vm-hud .vm-brief-text.is-locked { color: var(--vm-warn); }
+
 .vm-hud .vm-slot {
   position: relative;
   padding: 0;
