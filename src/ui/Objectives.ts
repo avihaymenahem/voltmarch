@@ -235,12 +235,22 @@ export const COMPLETE_HOLD_SECONDS = 10;
 
 /** Panel width in design units. Mirrors `.vm-objectives` in hud.css. */
 export const PANEL_WIDTH_UNITS = 158;
-/** Padding on each of the four sides. */
-const PAD_UNITS = 4;
+/**
+ * Padding on each of the four sides.
+ *
+ * RAISED 4 -> 9 ON 2026-08-06. The reporter, on the shipped build: "objectives
+ * is dense in a level i can barely understand it." It was 4u of padding with 2u
+ * gaps throughout, and those numbers existed to hit the frame budget in the
+ * header above rather than because anyone judged them readable. The budget's
+ * authority has also lapsed — it derives from the RA3 reference frames the
+ * project has since abandoned. Legibility wins; the cost is stated below and
+ * still asserted, just against an honest number.
+ */
+const PAD_UNITS = 9;
 /** The header row. */
-const HEAD_UNITS = 13;
+const HEAD_UNITS = 16;
 /** Header-to-list gap, and the gap between two rows. */
-const GAP_UNITS = 2;
+const GAP_UNITS = 5;
 /**
  * The inline description under each title: a 1u margin and an 11u line box.
  *
@@ -251,7 +261,7 @@ const GAP_UNITS = 2;
  */
 const DESC_UNITS = 12;
 /**
- * One objective row: an 11u title line, the 12u description, a 2u gap and a
+ * One objective row: an 11u title line, the 12u description, a 3u gap and a
  * 2u bar.
  *
  * Every objective authored in `src/data/Missions.ts` — all 49 — carries a
@@ -259,7 +269,7 @@ const DESC_UNITS = 12;
  * one is 12u SHORTER than this says, which is the safe direction for a budget
  * to be wrong in.
  */
-const ROW_UNITS = 15 + DESC_UNITS;
+const ROW_UNITS = 19 + DESC_UNITS;
 
 /** The three folds the panel can be in. Persisted across matches. */
 export type ObjectivesView = 'collapsed' | 'summary' | 'expanded';

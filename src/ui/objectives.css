@@ -299,7 +299,7 @@
 .vm-objdone-names {
   display: flex;
   flex-direction: column;
-  gap: calc(2 * var(--vm-u, 1px));
+  gap: calc(4 * var(--vm-u, 1px));
 }
 
 .vm-objdone-name {

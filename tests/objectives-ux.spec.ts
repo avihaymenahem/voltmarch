@@ -357,14 +357,17 @@ beforeEach(() => {
  * PART 1 — THE LAYOUT BUDGET, IN CODE
  * ========================================================================== */
 
+/** One more row plus the gap that would precede it, in design units. */
+const GAP_AND_ROW_UNITS = 36;
+
 describe('frame budget arithmetic', () => {
   it('reproduces every reading quoted in the Objectives.ts header', () => {
     expect(objectivesPanelHeightUnits('summary', 0)).toBe(0);
-    expect(objectivesPanelHeightUnits('collapsed', 1)).toBe(21);
-    expect(objectivesPanelHeightUnits('summary', 1)).toBe(50);
-    expect(objectivesPanelHeightUnits('summary', 2)).toBe(79);
-    expect(objectivesPanelHeightUnits('summary', 3)).toBe(108);
-    expect(objectivesPanelHeightUnits('expanded', 6)).toBe(195);
+    expect(objectivesPanelHeightUnits('collapsed', 1)).toBe(34);
+    expect(objectivesPanelHeightUnits('summary', 1)).toBe(70);
+    expect(objectivesPanelHeightUnits('summary', 2)).toBe(106);
+    expect(objectivesPanelHeightUnits('summary', 3)).toBe(142);
+    expect(objectivesPanelHeightUnits('expanded', 6)).toBe(250);
   });
 
   it('turns those heights into the quoted frame shares', () => {
@@ -377,15 +380,21 @@ describe('frame budget arithmetic', () => {
     expect(pct(195)).toBe(3.34);
   });
 
-  it('keeps the summary state exactly as tall as it was before the fix', () => {
-    // The old panel spent one of its three row slots on the "+N more" line, so
-    // four objectives cost 72u and showed TWO of them. The chip moved into the
-    // header: same 72u, three of them. This is the whole justification for not
-    // appending the overflow line below the rows, so it is pinned.
+  it('still spends nothing on an overflow ROW — the chip lives in the header', () => {
+    // The old panel spent one of its three row slots on a "+N more" line, so
+    // four objectives showed only TWO. Moving the chip into the header bought a
+    // third visible objective for free, and NOT appending an overflow row below
+    // the list is the whole justification for that. Still true, so still pinned.
+    //
+    // This test used to assert the summary height was "exactly as tall as it was
+    // before the fix" at 108u. That framing expired on 2026-08-06 when the panel
+    // was given real padding — the reporter could "barely understand" it — so
+    // what is pinned now is the PROPERTY (an appended overflow row would cost
+    // more) rather than a height frozen from a superseded layout.
     const before = objectivesPanelHeightUnits('summary', MAX_VISIBLE_OBJECTIVES);
-    const appendedOverflowWouldBe = before + 2 + 27;
-    expect(before).toBe(108);
-    expect(appendedOverflowWouldBe).toBe(137);
+    const appendedOverflowWouldBe = before + GAP_AND_ROW_UNITS;
+    expect(before).toBe(142);
+    expect(appendedOverflowWouldBe).toBe(178);
     expect(objectivesFrameShareOf(appendedOverflowWouldBe, 1280, 720)).toBeGreaterThan(
       objectivesFrameShareOf(before, 1280, 720),
     );
@@ -544,9 +553,9 @@ describe('seeing all objectives', () => {
     headToggle(h.panel).click();
     const collapsed = h.panel.objectivesFrameShareModelled(1280, 720);
 
-    expect(Math.round(summary * 10000) / 100).toBe(1.85);
-    expect(Math.round(expanded * 10000) / 100).toBe(3.34);
-    expect(Math.round(collapsed * 10000) / 100).toBe(0.36);
+    expect(Math.round(summary * 10000) / 100).toBe(2.43);
+    expect(Math.round(expanded * 10000) / 100).toBe(4.29);
+    expect(Math.round(collapsed * 10000) / 100).toBe(0.58);
 
     // The budget claim, stated as something this file can actually own.
     //
@@ -561,7 +570,26 @@ describe('seeing all objectives', () => {
     expect(summary).toBeLessThan(expanded);
     // The default fold has to stay affordable next to a HUD in the mid teens.
     //
-    // THIS THRESHOLD WAS RAISED FROM 1.25 TO 1.90 ON 2026-08-05, DELIBERATELY.
+    // RAISED AGAIN, 1.90 -> 2.60, ON 2026-08-06. This is the second raise and it
+    // deserves more suspicion than the first, so: the reporter, on the shipped
+    // build, said "objectives is dense in a level i can barely understand it".
+    // The panel was 4u of padding with 2u gaps throughout and a row height fixed
+    // (its own comment said so) "so three rows are exactly the height the budget
+    // says they are" — the budget was setting the typography, which is backwards.
+    // Padding is now 9u, gaps 5u, rows 19u+desc, and the summary fold costs
+    // 2.43% (the expanded fold, all six, is 4.29%).
+    //
+    // The budget's AUTHORITY also lapsed between the two raises: §38's 12-16%
+    // band derives from the RA3 reference frames, and the user retired that
+    // comparison on 2026-08-05 ("we have changed a lot since the original
+    // refs"). A ceiling inherited from a target nobody aims at should not be
+    // deciding whether a player can read their objectives.
+    //
+    // It stays an assertion rather than a deletion — 2.60 leaves no room for a
+    // silent third increase, and a real one should arrive with a sentence like
+    // this attached.
+    //
+    // THE FIRST RAISE, 1.25 -> 1.90 ON 2026-08-05, DELIBERATELY.
     // The player asked for the description inline — "i hate it when we need to
     // hover to see description" — which is +12u on every row and takes the
     // summary fold from 1.23% to 1.85%. Raising a budget so your own change
@@ -576,7 +604,7 @@ describe('seeing all objectives', () => {
     // STATUS dock measures ~47% empty and duplicates five stats that already
     // appear in the top strip. Reclaiming that is worth several times what
     // this line costs.
-    expect(summary * 100).toBeLessThan(1.9);
+    expect(summary * 100).toBeLessThan(2.6);
     // Opening the list is a real cost, not a rounding difference — that is why
     // it is user-invoked and transient rather than the default.
     expect((expanded - summary) * 100).toBeGreaterThan(0.5);

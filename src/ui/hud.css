@@ -574,7 +574,7 @@
 .vm-hud .vm-res-body {
   display: flex;
   flex-direction: column;
-  gap: calc(3 * var(--vm-u));
+  gap: calc(6 * var(--vm-u));
   min-width: 0;
 }
 
@@ -669,7 +669,7 @@
 .vm-hud .vm-power {
   display: flex;
   align-items: stretch;
-  gap: calc(1.5 * var(--vm-u));
+  gap: calc(3 * var(--vm-u));
   height: calc(10 * var(--vm-u));
 }
 
@@ -705,7 +705,7 @@
   text-transform: uppercase;
   font-weight: 700;
   line-height: 1;
-  padding: calc(2.5 * var(--vm-u)) calc(4.5 * var(--vm-u));
+  padding: calc(4 * var(--vm-u)) calc(7 * var(--vm-u));
   border: 1px solid currentColor;
   color: var(--vm-ok);
 }
@@ -845,7 +845,7 @@
 .vm-hud .vm-map-legend {
   display: flex;
   align-items: center;
-  gap: calc(3 * var(--vm-u));
+  gap: calc(6 * var(--vm-u));
   flex: 0 0 auto;
 }
 
@@ -946,7 +946,7 @@
 
 .vm-hud .vm-sel-vet {
   display: inline-flex;
-  gap: calc(1 * var(--vm-u));
+  gap: calc(2.5 * var(--vm-u));
 }
 
 .vm-hud .vm-sel-chevron {
@@ -1179,7 +1179,7 @@
 .vm-hud .vm-stances {
   display: flex;
   align-items: center;
-  gap: calc(3 * var(--vm-u));
+  gap: calc(5 * var(--vm-u));
   flex: 0 0 auto;
 }
 
@@ -1373,7 +1373,7 @@
 .vm-hud .vm-tabs {
   display: flex;
   align-items: stretch;
-  gap: calc(3 * var(--vm-u));
+  gap: calc(5 * var(--vm-u));
   height: calc(16 * var(--vm-u));
   padding: 0;
   border-bottom: 0;
@@ -1478,7 +1478,7 @@
 .vm-hud .vm-tools {
   display: flex;
   align-items: center;
-  gap: calc(3 * var(--vm-u));
+  gap: calc(5 * var(--vm-u));
   padding-left: calc(6 * var(--vm-u));
   margin-left: calc(3 * var(--vm-u));
   flex: 0 0 auto;
@@ -1579,7 +1579,7 @@
   bottom: calc(3.5 * var(--vm-u));
   display: inline-flex;
   align-items: center;
-  gap: calc(2.5 * var(--vm-u));
+  gap: calc(4 * var(--vm-u));
   font-size: calc(8.5 * var(--vm-u));
   font-weight: 700;
   line-height: 1;
@@ -1651,7 +1651,7 @@
   bottom: calc(3.5 * var(--vm-u));
   display: inline-flex;
   align-items: center;
-  gap: calc(2.5 * var(--vm-u));
+  gap: calc(4 * var(--vm-u));
   font-size: calc(8 * var(--vm-u));
   font-weight: 700;
   line-height: 1;
@@ -1680,7 +1680,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: calc(2 * var(--vm-u));
+  gap: calc(3.5 * var(--vm-u));
   font-size: calc(6.5 * var(--vm-u));
   font-weight: 700;
   letter-spacing: 0.10em;
@@ -1818,7 +1818,7 @@
 .vm-hud .vm-tip-key {
   margin-left: auto;
   font-size: calc(9 * var(--vm-u));
-  padding: calc(1 * var(--vm-u)) calc(4 * var(--vm-u));
+  padding: calc(2.5 * var(--vm-u)) calc(5 * var(--vm-u));
   border: 1px solid var(--vm-hairline);
   color: var(--vm-dim);
 }
@@ -1990,8 +1990,8 @@
   width: calc(158 * var(--vm-u));
   display: flex;
   flex-direction: column;
-  padding: calc(4 * var(--vm-u));
-  gap: calc(2 * var(--vm-u));
+  padding: calc(9 * var(--vm-u));
+  gap: calc(6 * var(--vm-u));
   z-index: 5;
 }
 
@@ -2001,7 +2001,7 @@
   display: flex;
   align-items: center;
   gap: calc(5 * var(--vm-u));
-  height: calc(13 * var(--vm-u));
+  height: calc(16 * var(--vm-u));
   padding: 0;
   border: 0;
   background: none;
@@ -2047,7 +2047,7 @@
 .vm-hud .vm-obj-list {
   display: flex;
   flex-direction: column;
-  gap: calc(2 * var(--vm-u));
+  gap: calc(5 * var(--vm-u));
 }
 
 /* 15u: an 11u text line, a 2u gap and a 2u bar. Fixed rather than intrinsic so
@@ -2056,8 +2056,8 @@
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: calc(2 * var(--vm-u));
-  height: calc(15 * var(--vm-u));
+  gap: calc(3 * var(--vm-u));
+  height: calc(19 * var(--vm-u));
 }
 
 .vm-hud .vm-obj-top {
