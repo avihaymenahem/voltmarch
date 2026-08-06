@@ -35,10 +35,18 @@
  *
  * MATCH LIFECYCLE
  * ---------------
- * `match:started` / `match:ended` are declared in `GameEvents` and nothing in
- * this build emits them yet (the shell drives the end screen from its own
- * outcome poll). So the tracker takes the lifecycle from the events AND from
- * `beginMatch` / `endMatch`, and is idempotent: whichever arrives first wins.
+ * `match:started` / `match:ended` are emitted by `src/game/outcome.system.ts`,
+ * which owns the match lifecycle on the bus. The tracker ALSO takes the
+ * lifecycle from direct `beginMatch` / `endMatch` calls, because `Shell` makes
+ * them with a strictly richer payload than either event carries — the
+ * difficulty and the faction the world actually seated the human as — and
+ * because the tracker has to keep working in a build with no shell at all.
+ *
+ * The two paths are idempotent against each other, in both directions:
+ * `endMatch` returns immediately when no match is open, and the `match:started`
+ * handler defers to a match already open for that seed and player. So the
+ * shell's version wins where there is a shell, the event's version wins where
+ * there is not, and neither ever double-counts a match played.
  * ============================================================================
  */
 
@@ -289,9 +297,27 @@ export class MissionTracker {
       });
     }));
 
-    /* -- lifecycle, from the bus. See the header: nothing emits these today,
-     *    and `beginMatch`/`endMatch` are idempotent against them.            */
+    /* -- lifecycle, from the bus. See the header: `beginMatch`/`endMatch` are
+     *    the other half, and whichever describes THIS match first wins.      */
     off.push(bus.on('match:started', (p) => {
+      // ALREADY OPEN FOR THIS MATCH? DO NOTHING.
+      //
+      // `game/outcome.system.ts` emits on the frame the shell enters
+      // `'playing'`, which is AFTER `Shell.startMatch` has called `beginMatch`
+      // directly with a strictly richer payload — it knows the difficulty and
+      // the faction the world actually seated the human as. `beginMatch` is
+      // documented to abandon a live match and redraw the board, so taking the
+      // event at face value here would throw the shell's version away and
+      // replace it with a poorer one on the first frame of every match.
+      //
+      // Matched on seed AND local player rather than merely "am I in a match",
+      // so a match state left over from a route that never ended cleanly is
+      // still replaced by the one the event describes.
+      const open = this.match;
+      if (open !== null
+        && open.seed === (p.seed >>> 0)
+        && open.localPlayer === (p.localPlayer as number)) return;
+
       // The payload carries no faction — `EvMatchStarted` is seed, player count
       // and local player. Whoever launched the match told us through
       // `setLocalFaction`; if nobody did, faction-specific chains simply do not

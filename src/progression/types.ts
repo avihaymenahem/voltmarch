@@ -278,12 +278,13 @@ export function metricOf(rule: MissionRule): MissionMetric {
 /* ==========================================================================
  * 3. MATCH LIFECYCLE
  *
- * `match:started` / `match:ended` are declared in `GameEvents` but NOTHING IN
- * THE BUILD EMITS THEM TODAY — the shell drives the end screen from its own
- * outcome poll (`Shell.endMatch`). So the tracker accepts the lifecycle from
- * either direction and is idempotent about it: whichever of the two arrives
- * first wins, and the second is ignored. When a victory module starts emitting
- * the events, nothing here changes.
+ * `match:started` / `match:ended` are emitted by `src/game/outcome.system.ts`,
+ * the one module that owns the match lifecycle on the bus. The shell ALSO
+ * drives this interface directly — `Shell.startMatch` and `Shell.endMatch` call
+ * it with the difficulty and the resolved faction, neither of which the events
+ * carry. So the tracker accepts the lifecycle from either direction and is
+ * idempotent about it: whichever of the two describes the match first wins, and
+ * the second is ignored.
  * ========================================================================== */
 
 export interface MatchStartInfo {

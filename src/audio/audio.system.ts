@@ -100,6 +100,16 @@ const EXTERNAL_HEAT_HOLD_SEC = 2;
 let brownoutSince = -1;
 let fundsStalledSince = -1;
 let poweredPlants = 0;
+/**
+ * Engine time the match began, or -1 while no match is armed.
+ *
+ * SET IN EXACTLY ONE PLACE: the `match:started` handler. That event had no
+ * emitter until `src/game/outcome.system.ts` grew one, which is why this stayed
+ * at -1 for entire sessions and the opening "Battle control online" line never
+ * played once, in any match. Both this and `bootLineFired` are reported by the
+ * `audio` debug hook so the arming is observable from `__VM.hooks.audio()`
+ * rather than only audible.
+ */
 let matchStartAt = -1;
 let bootLineFired = false;
 
@@ -316,6 +326,10 @@ export default defineSystem({
       musicSteps: music?.scheduledSteps ?? -1,
       musicRunning: music?.running ?? false,
       barksBaked: barks?.bakedCount ?? 0,
+      // The per-match announcer reset, made checkable. `matchArmed` is false
+      // until `match:started` lands; `bootLine` flips 1.2 s later.
+      matchArmed: matchStartAt >= 0,
+      bootLine: bootLineFired,
     }));
   },
 

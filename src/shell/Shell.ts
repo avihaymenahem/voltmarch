@@ -722,6 +722,19 @@ export class Shell {
     return this.setup;
   }
 
+  /**
+   * The seed the RUNNING match was booted with. 0 before the first launch.
+   *
+   * NOT `getSetup().seed`, and the difference matters: the lobby stores 0 to
+   * mean "roll a fresh one", so the setup's value is a request and this one is
+   * the answer. `saveContext` already depends on that distinction — a save
+   * taken with the lobby's 0 would restore onto different terrain — and
+   * `game/outcome.system.ts` needs the same fact for `EvMatchStarted.seed`.
+   */
+  getSeed(): number {
+    return this.activeSeed;
+  }
+
   /** Boot the front end. Resolves once something is on screen. */
   async start(): Promise<void> {
     if (this.options.skipMenu === true) {

@@ -1,9 +1,36 @@
 /**
  * ============================================================================
- * src/game/outcome.system.ts — THE MATCH ACTUALLY ENDS, AND SAYS SO
+ * src/game/outcome.system.ts — THE MATCH BEGINS AND ENDS, AND SAYS SO
  * ============================================================================
- * Discovered by glob from `src/game/Systems.ts`. Two jobs, both of them holes
- * that were open in the shipped game.
+ * Discovered by glob from `src/game/Systems.ts`. Three jobs, all of them holes
+ * that were open in the shipped game. This module owns the MATCH LIFECYCLE on
+ * the bus: it is the only emitter of `'match:started'` and of `'match:ended'`,
+ * and both fire exactly once per match no matter which route the match was
+ * entered or left by.
+ *
+ * 0. THE OTHER EMITTER THAT NEVER EXISTED
+ * ---------------------------------------
+ * `'match:started'` had the same shape of hole as `'match:ended'` and THREE
+ * subscribers waiting on it: `audio.system.ts` (the per-match announcer reset),
+ * `MissionTracker` (the bus half of the progression lifecycle) and `Hud.ts`
+ * (faction theme, credit counter, toast stack). `src/progression/types.ts` even
+ * carried a comment saying nothing emitted it. The measurable casualty was the
+ * announcer: `audio.system.ts` arms its opening "Battle control online" line by
+ * setting `matchStartAt` in that handler and nowhere else, so with the event
+ * missing the flag stayed at its module-level `-1` for the whole session and
+ * the line NEVER played, in any match, ever.
+ *
+ * The emit is edge-triggered on the shell entering `'playing'` from a state
+ * that is not part of an already-running match, so every route in — lobby,
+ * restart, tutorial, a restored save — produces exactly one event, and coming
+ * back from the pause menu or the options screen produces none.
+ *
+ * It fires AFTER `Shell.startMatch` has already called
+ * `progression.beginMatch` with the richer payload it can assemble (difficulty,
+ * the resolved faction). `EvMatchStarted` carries neither, so `MissionTracker`'s
+ * bus handler defers to a match that is already open rather than restarting it
+ * — see the note there. Same principle as the end: the shell's ordering is
+ * load-bearing and the bus is additive to it.
  *
  * 1. THE EMITTER THAT NEVER EXISTED
  * ---------------------------------
@@ -116,6 +143,16 @@ export const OUTCOME = {
 interface ShellHost {
   getState(): string;
   endMatch(result: { won: boolean }): void;
+  /**
+   * The seed the running match was booted with, for `EvMatchStarted.seed`.
+   *
+   * OPTIONAL, and the probe below does not require it. Nothing else in this
+   * module needs a seed, a host that predates the accessor must still drive the
+   * outcome rules, and the two consumers of the field both degrade cleanly: the
+   * mission board falls back to the shell's own `beginMatch`, which is where the
+   * authoritative seed already comes from.
+   */
+  getSeed?(): number;
 }
 
 interface HudToastSink {
@@ -159,6 +196,8 @@ let enemyBeatenFor = 0;
 let warnAge = -1;
 /** Shell state observed on the previous frame, for edge detection. */
 let lastState = '';
+/** True once `match:started` has fired for the current match. */
+let startEmitted = false;
 /** True once `match:ended` has fired for the current match. */
 let emitted = false;
 /** True when WE called `endMatch`, so `decidedWon` is authoritative. */
@@ -173,14 +212,42 @@ function resetMatchState(): void {
   localBeatenFor = 0;
   enemyBeatenFor = 0;
   warnAge = -1;
+  startEmitted = false;
   emitted = false;
   decided = false;
   decidedWon = false;
 }
 
 /* ==========================================================================
- * 4. THE EVENT
+ * 4. THE EVENTS
  * ========================================================================== */
+
+/** Fire `match:started` exactly once per match. */
+function emitStarted(shell: ShellHost): void {
+  if (startEmitted) return;
+  startEmitted = true;
+  const { world, channels } = ctx();
+  // `getSeed` is optional on the host. 0 is a legal seed for every consumer —
+  // `MissionTracker.drawObjectives` folds it through a xorshift that guards the
+  // degenerate state — and the tracker prefers the shell's own richer
+  // `beginMatch` anyway, so a host without the accessor loses nothing.
+  const seed = (shell.getSeed?.() ?? 0) >>> 0;
+  // `playerCount` is the DENSE player list, which includes the Neutral slot a
+  // skirmish always seats — the literal length of `world.players`, so a reader
+  // can index it. Not "how many armies are fighting": that is
+  // `players.filter(p => p.faction !== Neutral)`, and inventing a second
+  // meaning for a field no subscriber reads yet would be the harder thing to
+  // undo later.
+  channels.events.emit('match:started', {
+    seed,
+    playerCount: world.players.length,
+    localPlayer: world.localPlayer,
+  });
+  console.info(
+    `[outcome] match:started emitted — seed ${seed}, `
+    + `${world.players.length} players, local p${world.localPlayer as number}`,
+  );
+}
 
 /**
  * The winner's id, best effort.
@@ -338,7 +405,7 @@ export default defineSystem({
     console.info(
       '[outcome] watching for an unwinnable match — '
       + `${OUTCOME.startGraceSeconds}s start grace, ${OUTCOME.beatenGraceSeconds}s beaten grace; `
-      + 'this module is the only emitter of "match:ended"',
+      + 'this module is the only emitter of "match:started" and "match:ended"',
     );
   },
 
@@ -347,11 +414,15 @@ export default defineSystem({
     const shell = shellHost();
     if (shell === null) return;
 
-    // The watcher runs every frame and regardless of who ended the match, so a
-    // shell that resolved the outcome on its own still produces the event.
+    // The watcher runs every frame and regardless of who started or ended the
+    // match, so a shell that resolved the outcome on its own still produces the
+    // event, and every route into `'playing'` produces exactly one start.
     const state = shell.getState();
     if (state !== lastState) {
-      if (state === 'playing' && !MID_MATCH_STATES.includes(lastState)) resetMatchState();
+      if (state === 'playing' && !MID_MATCH_STATES.includes(lastState)) {
+        resetMatchState();
+        emitStarted(shell);
+      }
       if (state === 'ended') emitEnded(decided ? decidedWon : inferLocalWon());
       lastState = state;
     }
