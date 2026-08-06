@@ -2433,11 +2433,19 @@ export class ProductionService implements QueueHooks {
         // Buildings: the sim already keeps an exact per-def tally, so use it
         // rather than adding a second source of truth. Units: bucketed once per
         // snapshot above.
+        //
+        // NOTE THE TWO DIFFERENT IDS, because getting this wrong is silent. A
+        // unit's `publicId` is `defId + UNIT_PUBLIC_ID_BASE` (4096) so it cannot
+        // collide with the building sharing its def index, while `ownedByDef` is
+        // bucketed by the RAW `store.defId`. Indexing it by `publicId` put every
+        // lookup past the end of a 256-entry array, so every unit badge read
+        // zero and only buildings ever worked. Buildings are unoffset, hence
+        // `publicId` is right on that branch and `defId` on this one.
         cameo.owned = entry.kind === BuildKind.Building
           ? (entry.publicId >= 0 && entry.publicId < p.buildingCount.length
             ? p.buildingCount[entry.publicId] : 0)
-          : (entry.publicId >= 0 && entry.publicId < this.ownedByDef.length
-            ? this.ownedByDef[entry.publicId] : 0);
+          : (entry.defId >= 0 && entry.defId < this.ownedByDef.length
+            ? this.ownedByDef[entry.defId] : 0);
       }
     }
   }

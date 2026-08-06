@@ -25,10 +25,10 @@ import {
 import { BuildQueues, HoldReason, factorySpeed } from '../src/sim/BuildQueue';
 import type { QueueHooks, QueueItemInfo } from '../src/sim/BuildQueue';
 import {
-  BuildKind, ProductionCatalog, ProductionService,
+  BuildKind, ProductionCatalog, ProductionService, UNIT_PUBLIC_ID_BASE,
 } from '../src/sim/Production';
 import { evaluatePlacement, makePlacementReport, withinBuildRadius } from '../src/sim/Placement';
-import { buildScenario, clearScenario } from '../src/game/Scenarios';
+import { buildScenario, clearScenario, resolveDefBinding } from '../src/game/Scenarios';
 
 const EMPTY_BINDING = { tables: null, unitId: {}, buildingId: {} };
 
@@ -540,6 +540,52 @@ describe('ProductionService — the whole loop', () => {
     service.cancel(p, cameo.defId);
     step(service, world, 1);
     expect(cameo.queued).toBe(2);
+  });
+
+  it('counts what the player OWNS onto the cameo — for units as well as buildings', async () => {
+    // `HudCameo.owned` drives the sidebar's inventory badge. It shipped broken
+    // for units and nobody could tell, because a wrong count renders as no
+    // badge and no badge is also what "you own none" looks like.
+    //
+    // The cause: a unit's `entry.publicId` is `defId + UNIT_PUBLIC_ID_BASE`
+    // (4096) so it cannot collide with the building sharing its def index,
+    // while the owned census is bucketed by the RAW `store.defId`. Indexing a
+    // 256-entry array by `publicId` therefore fell off the end every time and
+    // the ternary quietly took its `: 0` branch. Buildings were fine — they are
+    // unoffset — which is exactly why it looked like it worked.
+    // MUST use the REAL def binding. The default rig builds its catalog from
+    // EMPTY_BINDING, which leaves `entry.defId` at -1 for everything, so the
+    // store records -1 for every unit and no census can distinguish them. A
+    // version of this test on the default rig passes while proving nothing.
+    const world = new World();
+    world.addPlayer(Faction.Allies, 'Commander', true, true);
+    world.addPlayer(Faction.Soviets, 'Opponent', false, false);
+    const channels = new Channels();
+    const service = new ProductionService(
+      world, channels, new ProductionCatalog(await resolveDefBinding()),
+    );
+
+    const p = 0 as PlayerId;
+    world.player(p).credits = 20000;
+    place(service, world, 'conyard', 40, 40);
+    place(service, world, 'barracks', 46, 40);
+    step(service, world, 1);
+
+    const gi = service.snapshot.cameos[BuildTab.Infantry].find((c) => c.key === 'gi');
+    expect(gi, 'the infantry roster must contain a rifleman').toBeDefined();
+    expect(gi!.owned, 'nothing built yet').toBe(0);
+    // The two id spaces really are distinct, and conflating them is the bug.
+    expect(gi!.defId).toBeGreaterThanOrEqual(UNIT_PUBLIC_ID_BASE);
+
+    service.enqueue(p, gi!.defId, 2);
+    step(service, world, 900);
+
+    expect(gi!.owned, 'two riflemen were produced and must be counted').toBe(2);
+
+    // The building branch is unoffset and must keep working.
+    const barracks = service.snapshot.cameos[BuildTab.Structures]
+      .find((c) => c.key === 'barracks');
+    if (barracks !== undefined) expect(barracks.owned).toBeGreaterThan(0);
   });
 
   it('recognises a base the scenario built, not only one it built itself', () => {

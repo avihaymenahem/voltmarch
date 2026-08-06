@@ -61,6 +61,7 @@ import type { CameraRig } from '../render/camera';
 import type { RendererHandle } from '../render/renderer';
 // One statement of the self-repair rule, shared with the overlay. See the note
 // on the import in `src/ui/Overlay.ts`.
+import { UNIT_PUBLIC_ID_BASE } from '../sim/Production';
 import { isRegenerating } from '../sim/Regen';
 
 import {
@@ -1239,9 +1240,17 @@ export class Hud {
 
       // Buildings have an O(1) count the sim already keeps; units are bucketed
       // once per snapshot by `countOwnedUnits`.
+      //
+      // `c.defId` CARRIES TWO DIFFERENT ID SPACES depending on which path built
+      // this row: the catalog path stores `entry.publicId`, which for a unit is
+      // `defId + UNIT_PUBLIC_ID_BASE`, while the fallback-roster path stores a
+      // raw table index. `ownedByDef` is bucketed by the raw `store.defId`, so
+      // the offset has to come back off or the lookup lands past the end of the
+      // array and silently reads zero — which is exactly what it did.
+      const rawDef = c.defId >= UNIT_PUBLIC_ID_BASE ? c.defId - UNIT_PUBLIC_ID_BASE : c.defId;
       c.owned = c.isBuilding
         ? (c.defId >= 0 && c.defId < p.buildingCount.length ? p.buildingCount[c.defId] : 0)
-        : (c.defId >= 0 && c.defId < this.ownedByDef.length ? this.ownedByDef[c.defId] : 0);
+        : (rawDef >= 0 && rawDef < this.ownedByDef.length ? this.ownedByDef[rawDef] : 0);
 
       out.push(c);
     }
