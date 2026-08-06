@@ -75,6 +75,7 @@ import { hexToLinearRgb } from '../core/math';
 import { BuildTab, Faction, FACTION_PALETTE_KEYS } from '../core/types';
 import { buildingLibrary } from '../art/BuildingFactory';
 import { unitLibrary } from '../art/UnitFactory';
+import { shroudUniforms } from '../render/FogOfWar';
 import { meridianUnitLibrary } from '../art/Faction3Units';
 import { meridianBuildingLibrary } from '../art/Faction3Buildings';
 import { reclaimUnitLibrary } from '../art/Faction4Units';
@@ -737,6 +738,36 @@ export class CameoRenderer {
   frame(time: number, dt: number): void {
     if (this.disposed) return;
     this.rendersThisFrame = 0;
+
+    /*
+     * SUSPEND THE WORLD'S FOG OF WAR FOR THE DURATION OF THIS FRAME'S RENDERS.
+     *
+     * Cameo prototypes are the SAME materials the world draws with, and those
+     * materials now self-tint from the shroud mask (`FogOfWar` §1b). The tint is
+     * sampled at world XZ — and a cameo prototype sits at the ORIGIN, i.e. the
+     * corner of the map, which is unexplored in every normal match. So every
+     * cameo resolved to `uFogDark` at alpha 1.0 and rendered as a black
+     * silhouette.
+     *
+     * Measured: mean luminance 18/255 with the tint live, 57-80/255 with it
+     * suspended, peak 182 -> 254.
+     *
+     * Suspending here rather than at the call site is deliberate: this is a
+     * property of rendering a cameo at all, not of who asked for one, and a
+     * second caller would otherwise reintroduce the bug. Safe on ordering
+     * because the world has already drawn by the time the HUD's render phase
+     * runs, and the value is restored before returning.
+     */
+    const fogAmount = shroudUniforms.uFogAmount.value;
+    shroudUniforms.uFogAmount.value = 0;
+    try {
+      this.drainQueue(time, dt);
+    } finally {
+      shroudUniforms.uFogAmount.value = fogAmount;
+    }
+  }
+
+  private drainQueue(time: number, dt: number): void {
 
     // Hovered cameos re-arm themselves at HUD_CAMEO.hoverHz. Everything else is
     // pure cache, which is why an idle sidebar costs zero GPU.

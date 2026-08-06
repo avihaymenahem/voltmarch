@@ -54,6 +54,7 @@ import {
   type HudSnapshot,
 } from '../core/types';
 import { MAX_QUEUE_DEPTH } from '../core/config';
+import type * as THREE from 'three';
 import {
   BUILD_SLOT_HOTKEYS,
   BUILD_SLOT_HOTKEY_LABELS,
@@ -76,6 +77,9 @@ import {
   textNode,
   type TooltipContent,
 } from './Chrome';
+import {
+  CameoRenderer, createCameoModelProvider, type CameoSubject,
+} from './Cameos';
 import { iconForBuildable, makeIcon, setIcon, type IconName } from './icons';
 
 /* ==========================================================================
@@ -231,6 +235,17 @@ export interface SidebarOptions {
   parent: HTMLElement;
   faction: Faction;
   callbacks: SidebarCallbacks;
+  /**
+   * The main WebGL renderer, so build slots can show the ACTUAL MODEL instead
+   * of a flat glyph.
+   *
+   * Optional, and the flat glyph stays underneath as the fallback: a headless
+   * test, a context-lost frame, and any def whose model does not resolve all
+   * have to keep producing a usable sidebar. `CameoRenderer` renders each
+   * cameo once into a cached render target and then never again, so an idle
+   * sidebar costs zero GPU — see the header of `Cameos.ts`.
+   */
+  renderer?: THREE.WebGLRenderer | null;
 }
 
 /** Columns in the build grid. Six is the approved width. */
@@ -1100,6 +1115,8 @@ interface BuildSlot {
   readyEl: HTMLElement;
   etaEl: HTMLElement;
   etaNode: Text;
+  /** The 3D cameo surface. Hidden until a model actually binds to it. */
+  cameoCanvas: HTMLCanvasElement;
   /** "how many of these do I already have" — see `vm-slot-owned`. */
   ownedEl: HTMLElement;
   ownedNode: Text;
@@ -1158,7 +1175,31 @@ class BuildPanel {
   private extras: ((key: string) => BuildExtras) | null = null;
   private liveSlots = 0;
 
-  constructor(parent: HTMLElement, private readonly cb: SidebarCallbacks, tipHost: HTMLElement) {
+  /**
+   * Renders each slot's ACTUAL MODEL into its canvas. Null in any build with no
+   * GL context; the flat glyph underneath is the fallback and must keep working.
+   */
+  private cameos: CameoRenderer | null = null;
+  /** Whose colours the cameos wear. Kept in step by `setFaction`. */
+  private faction: Faction;
+
+  constructor(
+    parent: HTMLElement,
+    private readonly cb: SidebarCallbacks,
+    tipHost: HTMLElement,
+    faction: Faction = Faction.Allies,
+    renderer: THREE.WebGLRenderer | null = null,
+  ) {
+    this.faction = faction;
+    if (renderer !== null) {
+      try {
+        this.cameos = new CameoRenderer(renderer);
+        this.cameos.setModelProvider(createCameoModelProvider());
+      } catch (err) {
+        console.warn('[hud] cameo renderer unavailable; slots keep their glyphs', err);
+        this.cameos = null;
+      }
+    }
     this.root = el('div', 'vm-dock vm-dock-build', parent);
     this.root.setAttribute('aria-label', 'Construction');
     this.tooltip = new Tooltip(tipHost);
@@ -1230,6 +1271,80 @@ class BuildPanel {
 
   get slotCount(): number { return this.slots.length; }
 
+  /**
+   * Point a slot's canvas at the model for the content it now holds.
+   *
+   * Called only when a slot's CONTENT changes — a tab switch or a roster
+   * rebuild — never per frame. `CameoRenderer` renders a bound cameo once and
+   * then never again unless it is hovered or invalidated.
+   *
+   * The canvas is revealed only on a successful bind, so a def whose model does
+   * not resolve leaves it hidden and the flat glyph showing. That is the right
+   * answer for the placeholder and for anything the art libraries have not
+   * registered — and it is why this cannot make the sidebar worse than it was.
+   */
+  private bindCameo(slot: BuildSlot, c: HudCameo): void {
+    const cameos = this.cameos;
+    if (cameos === null) return;
+    const subject: CameoSubject = {
+      key: c.key,
+      name: c.name,
+      faction: this.faction,
+      tab: this.activeTab,
+      isBuilding: c.isBuilding,
+      footprintW: 0,
+      footprintH: 0,
+    };
+    try {
+      cameos.bind(slot.cameoCanvas, subject);
+      slot.cameoCanvas.hidden = false;
+    } catch (err) {
+      console.warn(`[hud] cameo bind failed for "${c.key}"`, err);
+      slot.cameoCanvas.hidden = true;
+    }
+  }
+
+  /**
+   * Pump the cameo render queue. Driven from the HUD's render frame.
+   *
+   * Cheap by construction: the queue is empty unless something was marked
+   * dirty, so an idle sidebar does no GPU work at all.
+   */
+  frameCameos(time: number, dt: number): void {
+    this.cameos?.frame(time, dt);
+  }
+
+  /** Re-render every bound cameo — e.g. once the art libraries finish loading. */
+  invalidateCameos(): void {
+    this.cameos?.invalidateAll();
+  }
+
+  /**
+   * Hand the cameo scene the world's environment map.
+   *
+   * NOT OPTIONAL POLISH — without it the cameos render as BLACK SILHOUETTES.
+   * Unit and structure materials are `MeshPhysicalMaterial` driven by an ORM
+   * map whose metalness runs to 0.82 on bare metal, and a metal surface with no
+   * IBL has nothing to reflect, so it resolves to near-black no matter how many
+   * direct lights the scene carries. `UnitFactory` asserts this in DEV for the
+   * world renderer — "envMapIntensity is 0, units go matte and the silhouette
+   * rim dies" — and the cameo scene is subject to exactly the same physics.
+   *
+   * Measured before the fix: mean luminance 17.5/255 with the three most common
+   * colours all within a whisker of black.
+   *
+   * Re-applied whenever the texture identity changes, because the PMREM bake
+   * finishes after the HUD mounts and a mood change re-bakes it.
+   */
+  setCameoEnvironment(env: THREE.Texture | null): void {
+    if (env === this.cameoEnv) return;
+    this.cameoEnv = env;
+    this.cameos?.setEnvironment(env);
+    this.cameos?.invalidateAll();
+  }
+
+  private cameoEnv: THREE.Texture | null = null;
+
   private buildSlot(index: number): BuildSlot {
     const root = button(this.grid, 'vm-slot', '');
     root.setAttribute('role', 'gridcell');
@@ -1238,6 +1353,14 @@ class BuildPanel {
 
     const icon = makeIcon('depot', 'vm-icon vm-slot-icon');
     root.appendChild(icon);
+
+    // THE MODEL. Sits over the glyph, and stays `hidden` until a cameo has
+    // actually been bound to it — so a slot whose model does not resolve keeps
+    // showing the glyph rather than a blank rectangle.
+    const cameoCanvas = document.createElement('canvas');
+    cameoCanvas.className = 'vm-slot-cameo';
+    cameoCanvas.hidden = true;
+    root.appendChild(cameoCanvas);
 
     const queueEl = el('span', 'vm-slot-queue vm-num', root);
     const queueNode = textNode(queueEl);
@@ -1280,7 +1403,7 @@ class BuildPanel {
 
     const slot: BuildSlot = {
       root, icon, costNode, keyEl, keyNode, queueEl, queueNode, readyEl,
-      etaEl, etaNode, ownedEl, ownedNode, flagEl, flagNode, progress,
+      etaEl, etaNode, cameoCanvas, ownedEl, ownedNode, flagEl, flagNode, progress,
       cameo: null, sig: '', key: '', buildTime: 0,
       lastProgress: -1, lastAt: 0, rate: 0,
     };
@@ -1288,9 +1411,14 @@ class BuildPanel {
     root.addEventListener('pointerenter', () => {
       if (slot.cameo === null) return;
       this.cb.sound('hover');
+      // The turntable only spins while hovered — see `Job.hovered` in Cameos.
+      this.cameos?.setHovered(cameoCanvas, true);
       this.tooltip.schedule(root, this.tipFor(slot.cameo, index), 'above');
     });
-    root.addEventListener('pointerleave', () => this.tooltip.hide());
+    root.addEventListener('pointerleave', () => {
+      this.cameos?.setHovered(cameoCanvas, false);
+      this.tooltip.hide();
+    });
     root.addEventListener('focus', () => {
       if (slot.cameo !== null) this.tooltip.show(root, this.tipFor(slot.cameo, index), 'above');
     });
@@ -1470,6 +1598,7 @@ class BuildPanel {
         );
         slot.root.tabIndex = 0;
         setIcon(slot.icon, iconForBuildable(c.key, c.name, this.activeTab, c.isBuilding));
+        this.bindCameo(slot, c);
         slot.costNode.nodeValue = String(c.cost);
         slot.buildTime = this.extras?.(c.key).buildTimeSec ?? 0;
         slot.keyNode.nodeValue = SLOT_HOTKEY_LABELS[i] ?? '';
@@ -1547,6 +1676,11 @@ class BuildPanel {
       if (slot.root.hidden) continue;
       slot.root.hidden = true;
       slot.root.tabIndex = -1;
+      // Release the cameo job with the slot. Leaving it bound would keep a
+      // render target alive for a cell nobody can see, and every tab switch
+      // would add another.
+      this.cameos?.unbind(slot.cameoCanvas);
+      slot.cameoCanvas.hidden = true;
       slot.cameo = null;
       slot.key = '';
       slot.sig = '';
@@ -1647,7 +1781,9 @@ export class Sidebar {
     this.selection = new SelectionPanel(docks, opts.callbacks);
 
     /* -- bottom right: build -------------------------------------------- */
-    this.build = new BuildPanel(docks, opts.callbacks, this.root);
+    this.build = new BuildPanel(
+      docks, opts.callbacks, this.root, opts.faction, opts.renderer ?? null,
+    );
 
     applyTheme(this.root, this.faction);
   }
@@ -1684,6 +1820,17 @@ export class Sidebar {
 
   /** Build slots the grid can show at once. Diagnostics only. */
   get slotCount(): number { return this.build.slotCount; }
+
+  /** Pump the build slots' cameo render queue. Driven from the HUD frame. */
+  frameCameos(time: number, dt: number): void { this.build.frameCameos(time, dt); }
+
+  /** Force every bound cameo to repaint — e.g. once the art libraries land. */
+  invalidateCameos(): void { this.build.invalidateCameos(); }
+
+  /** See `BuildPanel.setCameoEnvironment` — without this the cameos are black. */
+  setCameoEnvironment(env: THREE.Texture | null): void {
+    this.build.setCameoEnvironment(env);
+  }
 
   /** Fire the slot a global hotkey names. False when that cell is empty. */
   activateSlotByIndex(index: number): boolean {

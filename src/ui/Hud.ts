@@ -483,6 +483,9 @@ export class Hud {
     this.sidebar = new Sidebar({
       parent: this.root,
       faction: this.faction,
+      // Lends the main GL context so build slots can show the real model. The
+      // sidebar falls back to flat glyphs if this is absent or unusable.
+      renderer: this.handle.renderer,
       callbacks: {
         selectTab: (tab) => this.selectTab(tab),
         activate: (tab, cameo) => this.onSlotActivate(tab, cameo),
@@ -921,6 +924,10 @@ export class Hud {
 
     this.sidebar.setRadarOnline(snap.hasRadar);
     this.sidebar.update(snap, this.view, this.telemetry, dt);
+    // AFTER `update`, so a slot that just changed content has already bound its
+    // new subject and can be rendered in the same frame rather than a frame
+    // late. Costs nothing when the queue is empty, which is almost always.
+    this.sidebar.frameCameos(this.time, dt);
     this.minimap.frame(this.time, dt);
     this.pushPlacementHint();
     this.overlay.frame(dt);

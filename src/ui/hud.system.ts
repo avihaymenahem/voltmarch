@@ -111,6 +111,17 @@ export default defineSystem({
 
   frame(r: RenderContext): void {
     if (hud === null) return;
+    /*
+     * Keep the build-slot cameos on the world's environment map.
+     *
+     * Pushed from here rather than at init because the PMREM bake finishes
+     * AFTER the HUD mounts, and an art-mood change re-bakes it — so a one-shot
+     * read at boot would leave the cameos permanently unlit, which is the exact
+     * symptom: black silhouettes. `setCameoEnvironment` early-outs on an
+     * unchanged texture, so this is an identity compare per frame and nothing
+     * more.
+     */
+    hud.sidebar.setCameoEnvironment(ctx().sceneRig.environment);
     hud.frame(r.dt);
   },
 
