@@ -35,6 +35,11 @@
  *    a structure stays cleared. A tree that pops back into existence when a
  *    half-built barracks dies would be the more surprising behaviour.
  *
+ *    Permanent means ACROSS A SAVE too, and always has here: `save.system.ts`
+ *    listens to the same event and keeps the footprint ledger. What did not
+ *    survive was `src/sim/Crush.ts`'s half of the same rule; `Scatter` §3.10b
+ *    now carries both as one bit per placement and the ledger is the fallback.
+ *
  * 3. VISIBLE, BUT CHEAP. RA3 flattens vegetation on screen, so this raises
  *    `FxKind.DustPuff` through the presentation queue — an effect the VFX pool
  *    already owns, with no new recipe, no new material and no new draw call.

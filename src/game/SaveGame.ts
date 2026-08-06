@@ -46,19 +46,32 @@
  * NOT in the file — the loader rebuilds the same world and then restores the
  * mutable state on top of it. That is the single largest size saving available.
  *
- * THE TRAP THAT COMES WITH IT: `src/world/scatter-clear.system.ts` retires props
- * when a building is placed. Regenerating scatter from the seed puts every
- * felled tree back, so a loaded base grows a copse through its own War Factory.
- * Re-deriving the clear from the buildings that are STANDING is not enough
- * either — a structure that was built and later destroyed also cleared ground,
- * and RA (and that module's own header) treat clearing as permanent.
+ * THE TRAP THAT COMES WITH IT: props are retired PERMANENTLY by two different
+ * things — `src/world/scatter-clear.system.ts` when a building is placed, and
+ * `src/sim/Crush.ts` when a vehicle drives over soft scenery. Regenerating
+ * scatter from the seed puts every one of them back, so a loaded base grows a
+ * copse through its own War Factory and a trail a player mowed through a wood
+ * reappears. Re-deriving the clear from the buildings that are STANDING is not
+ * enough either — a structure that was built and later destroyed also cleared
+ * ground, and RA (and that module's own header) treat clearing as permanent.
  *
- * So the file carries the CLEARED FOOTPRINT LIST: every rectangle any building
- * has ever been placed on, as four int16 cell coordinates. It is eight bytes per
- * placement — a couple of kilobytes for a long match — and it is the only answer
- * that survives a demolished barracks. `save.system.ts` accumulates it off
- * `building:placed`; the restore replays it through the same
- * `Scatter.clearFootprint` path the live game uses.
+ * So the file carries THE FELLED-PROP MASK: one bit per generated prop
+ * placement, from `Scatter.felledMask()`. It is bounded by the map's prop
+ * ceiling at 1125 bytes however long the match runs — 523 raw on `temperate`,
+ * and measured A/B at +32 bytes on a 46 kB save with nothing felled, +100 with
+ * 56 felled, +364 after a sweep that flattened 40% of the map. It covers both
+ * clears with one mechanism and needs no ledger of events on either side. It
+ * travels with `Scatter.placementFingerprint` and is applied ONLY when the
+ * regenerated scatter reports the same one; see §3.10b in `Scatter.ts` for why,
+ * and for the measurements that ruled out persisting the crush discs instead.
+ *
+ * The CLEARED FOOTPRINT LIST — every rectangle any building has ever been
+ * placed on, four int16 cell coordinates each — is still written and is still
+ * the fallback. A save from before the mask existed carries only that; so does
+ * a save whose fingerprint no longer matches, which is what a load into a
+ * differently-generated scatter looks like. Replaying it restores the building
+ * clears and stands the crushed vegetation back up, which is the conservative
+ * direction: scenery returns, it is never felled wrongly.
  *
  * ----------------------------------------------------------------------------
  * GENERATION HANDLES — THE SILENT BUG THIS FILE IS BUILT AROUND
@@ -307,6 +320,33 @@ export interface ScatterAccess {
   ): number;
 }
 
+/**
+ * The felled-prop mask — the half of `ScatterAccess` that survives a vehicle
+ * crush as well as a building footprint. Split out and duck-typed for the same
+ * reason `SuperweaponChargeSetter` is: a host that cannot supply it (a test
+ * fake, a scatter-less world, a build where the module was cut) simply writes
+ * no mask chunk and falls back to the footprint replay, with no schema bump and
+ * no optional members threaded through the host type.
+ */
+export interface FelledPropAccess {
+  /** Placements in the generated list, tombstones included. */
+  readonly placementCount: number;
+  /** Identity of that list. A mask is only valid against a matching one. */
+  readonly placementFingerprint: number;
+  /** One bit per placement, LSB-first, 1 = felled. Returns bytes written. */
+  felledMask(out: Uint8Array): number;
+  /** Fell every set bit that is still standing. Returns the count. */
+  applyFelledMask(mask: Uint8Array): number;
+}
+
+function hasFelledMask(v: ScatterAccess): v is ScatterAccess & FelledPropAccess {
+  const p = v as Partial<FelledPropAccess>;
+  return typeof p.felledMask === 'function'
+    && typeof p.applyFelledMask === 'function'
+    && typeof p.placementCount === 'number'
+    && typeof p.placementFingerprint === 'number';
+}
+
 /** One footprint that has ever been poured, in CELLS. */
 export interface ClearedFootprint {
   cx: number; cz: number; w: number; h: number;
@@ -400,6 +440,13 @@ const CHUNK_PLAYERS = fourcc('PLYR');
 const CHUNK_FOG = fourcc('FOGX');
 const CHUNK_ORE = fourcc('OREF');
 const CHUNK_MISC = fourcc('MISC');
+/**
+ * The felled-prop mask. A LATER addition, and it needed no schema bump: the
+ * chunk stream is length-prefixed and skips ids it does not know, so a build
+ * that predates this reads a save carrying it and simply falls back to the
+ * footprint replay — which is exactly what it did before the chunk existed.
+ */
+const CHUNK_SCATTER = fourcc('SCTR');
 
 function fourcc(s: string): number {
   return (
@@ -842,6 +889,10 @@ export function captureSnapshot(
   if (host.ore !== null) {
     writeChunk(w, CHUNK_ORE, (c) => captureOre(c, host.ore as OreAccess));
   }
+  if (host.scatter !== null && hasFelledMask(host.scatter)) {
+    const chunk = captureFelledProps(host.scatter);
+    if (chunk !== null) writeChunk(w, CHUNK_SCATTER, (c) => c.bytes(chunk));
+  }
 
   writeChunk(w, CHUNK_MISC, (c) => {
     writeJson(c, captureMisc(host, world, localOf));
@@ -1124,7 +1175,7 @@ function rleEncode(src: Uint8Array): Uint8Array {
   return out.toBytes();
 }
 
-function rleDecode(src: Uint8Array, expectedBytes: number): Uint8Array {
+function rleDecode(src: Uint8Array, expectedBytes: number, what = 'fog plane'): Uint8Array {
   const out = new Uint8Array(expectedBytes);
   let o = 0;
   for (let i = 0; i + 1 < src.length; i += 2) {
@@ -1132,8 +1183,83 @@ function rleDecode(src: Uint8Array, expectedBytes: number): Uint8Array {
     const v = src[i + 1];
     for (let k = 0; k < run && o < expectedBytes; k++) out[o++] = v;
   }
-  if (o !== expectedBytes) throw new ReadError('fog plane is the wrong size');
+  if (o !== expectedBytes) throw new ReadError(`${what} is the wrong size`);
   return out;
+}
+
+/* -- felled props ---------------------------------------------------------- */
+
+/**
+ * One bit per prop placement, 1 = felled — by a building footprint, by a
+ * vehicle crush, or by both. See the file header and `Scatter.ts` §3.10b.
+ *
+ * The mask is RLE'd only when that is actually smaller. A bitmask with a felled
+ * prop every few bytes defeats a run encoder, and silently shipping 2x the
+ * bytes for the tidiness of always compressing is the wrong trade on a payload
+ * an autosave ring rewrites every few minutes. One `u32` says which it is.
+ */
+function captureFelledProps(scatter: ScatterAccess & FelledPropAccess): Uint8Array | null {
+  const count = scatter.placementCount;
+  if (count <= 0) return null;
+  const bytes = (count + 7) >> 3;
+  const raw = new Uint8Array(bytes);
+  // 0 means the mask could not be written whole. A partial mask fells the wrong
+  // props, so write no chunk at all and let the footprint replay stand in.
+  if (scatter.felledMask(raw) !== bytes) return null;
+
+  const rle = rleEncode(raw);
+  const compressed = rle.length < raw.length;
+  const body = compressed ? rle : raw;
+
+  const w = new ByteWriter(body.length + 32);
+  w.u32(count);
+  w.u32(scatter.placementFingerprint >>> 0);
+  w.u32(compressed ? 1 : 0);
+  w.u32(body.length);
+  w.bytes(body);
+  return w.toBytes();
+}
+
+interface ScatterSection {
+  placementCount: number;
+  fingerprint: number;
+  mask: Uint8Array;
+}
+
+function readScatterSection(r: ByteReader): ScatterSection {
+  const placementCount = r.u32();
+  const fingerprint = r.u32();
+  const compressed = r.u32();
+  const length = r.u32();
+  const body = r.slice(length);
+  const bytes = (placementCount + 7) >> 3;
+  const mask = compressed === 1 ? rleDecode(body, bytes, 'the felled-prop mask') : body;
+  if (mask.length < bytes) throw new ReadError('the felled-prop mask is the wrong size');
+  return { placementCount, fingerprint, mask };
+}
+
+/**
+ * Put the felled props back down. Returns true when the mask was applied, which
+ * is the caller's signal that the footprint replay is redundant — the mask is a
+ * superset of it, because a footprint clear tombstones the same placements.
+ *
+ * Every reason to refuse is a reason the mask would fell the WRONG props, so
+ * each one falls through to the replay rather than doing nothing.
+ */
+function applyFelledProps(section: ScatterSection | null, scatter: ScatterAccess | null): boolean {
+  if (section === null || scatter === null || !hasFelledMask(scatter)) return false;
+  if (section.placementCount !== scatter.placementCount
+    || section.fingerprint !== (scatter.placementFingerprint >>> 0)) {
+    console.warn(
+      `[save] this save's prop scatter (${section.placementCount} placements, ` +
+      `#${section.fingerprint.toString(16)}) is not the one this match generated ` +
+      `(${scatter.placementCount}, #${(scatter.placementFingerprint >>> 0).toString(16)}). ` +
+      'Falling back to the building-footprint replay; crushed vegetation will stand again.',
+    );
+    return false;
+  }
+  scatter.applyFelledMask(section.mask);
+  return true;
 }
 
 /* -- ore ------------------------------------------------------------------- */
@@ -1405,11 +1531,12 @@ interface Sections {
   fog: { player: number; packed: Uint8Array }[];
   ore: { cells: Int32Array; amounts: Float32Array } | null;
   misc: MiscSection | null;
+  scatter: ScatterSection | null;
 }
 
 function readSections(bytes: Uint8Array, start: number, length: number): Sections {
   const out: Sections = {
-    match: null, entities: null, players: null, fog: [], ore: null, misc: null,
+    match: null, entities: null, players: null, fog: [], ore: null, misc: null, scatter: null,
   };
   const r = new ByteReader(bytes.subarray(start, start + length));
 
@@ -1438,6 +1565,9 @@ function readSections(bytes: Uint8Array, start: number, length: number): Section
         break;
       case CHUNK_MISC:
         out.misc = JSON.parse(readJsonText(payload)) as MiscSection;
+        break;
+      case CHUNK_SCATTER:
+        out.scatter = readScatterSection(payload);
         break;
       default:
         // An unknown chunk is a chunk a later build wrote. Skipping it is the
@@ -1771,8 +1901,12 @@ function applySections(
   world.tick = match.tick;
   world.time = match.simTimeSec;
 
-  /* -- 12. selection, camera, fog, ore, scatter, superweapons ------------ */
-  const cleared = applyMisc(sections.misc, host, handleOfLocal);
+  /* -- 12. selection, camera, fog, ore, scatter, superweapons ------------ *
+   * The felled-prop mask goes down FIRST: when it applies it already covers
+   * every building footprint in the ledger, so replaying them after it would be
+   * a few dozen redundant cell scans over props that are already tombstoned. */
+  const felled = applyFelledProps(sections.scatter, host.scatter);
+  const cleared = applyMisc(sections.misc, host, handleOfLocal, !felled);
   applyFog(sections.fog, host.vision);
   applyOre(sections.ore, host.ore);
 
@@ -1877,6 +2011,7 @@ function applyMisc(
   misc: MiscSection | null,
   host: SnapshotHost,
   handleOfLocal: (local: number) => EntityId,
+  replayFootprints: boolean,
 ): readonly ClearedFootprint[] {
   if (misc === null) return [];
   const world = host.world;
@@ -1928,7 +2063,11 @@ function applyMisc(
 
   /* The scatter-clear replay. See the header: regenerating props from the seed
    * puts every felled tree back, so every footprint ever poured is replayed
-   * through the same call the live game makes. */
+   * through the same call the live game makes.
+   *
+   * The list is decoded either way — `save.system.ts` keeps accumulating it, and
+   * it stays the fallback for the next save. It is only REPLAYED when the
+   * felled-prop mask did not apply, because the mask already includes it. */
   const cleared: ClearedFootprint[] = [];
   for (let i = 0; i + 3 < misc.cleared.length; i += 4) {
     cleared.push({
@@ -1936,7 +2075,7 @@ function applyMisc(
       w: misc.cleared[i + 2], h: misc.cleared[i + 3],
     });
   }
-  if (host.scatter !== null) {
+  if (host.scatter !== null && replayFootprints) {
     for (const rect of cleared) {
       host.scatter.clearFootprint(
         rect.cx * CELL, rect.cz * CELL, (rect.cx + rect.w) * CELL, (rect.cz + rect.h) * CELL,

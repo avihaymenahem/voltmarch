@@ -66,6 +66,15 @@
  * crusher, in spatial-bucket order; both are total orders the store already
  * guarantees. Which props die is a pure function of positions, so replays and
  * `npm run soak` are unaffected.
+ *
+ * SAVES
+ * -----
+ * Crushing is permanent for the match and it SURVIVES A LOAD, but nothing here
+ * records it: this file keeps no ledger and pushes nothing extra into a save.
+ * `Scatter` §3.10b hands `SaveGame` one bit per prop placement, which is the
+ * felled state itself rather than a log of the events that produced it, so the
+ * sim path stays allocation-free and there is nothing to keep in step. Do NOT
+ * add a per-crush record here; it was measured and rejected. See that section.
  * ============================================================================
  */
 

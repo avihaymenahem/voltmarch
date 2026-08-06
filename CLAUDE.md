@@ -23,7 +23,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npx tsc --noEmit     # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 1573 passing across 59 files
+npm test             # vitest, currently 1741 passing across 68 files
 npm run build        # must exit 0
 ```
 

@@ -148,6 +148,63 @@ class FakeScatter {
   }
 }
 
+/**
+ * A scatter that ALSO carries the felled-prop mask — one bit per generated prop
+ * placement, so a trail a vehicle crushed survives a load and not only the
+ * building footprints.
+ *
+ * `FakeScatter` above deliberately stays without it. The mask surface is
+ * duck-typed exactly like `SuperweaponChargeSetter`, and a host that cannot
+ * supply one has to keep round-tripping through the footprint replay — that is
+ * the compatibility contract, so both shapes are exercised.
+ *
+ * 4178 placements is the measured count on `temperate` seed 7, so the byte
+ * assertions below are against a real map's size and not a round number.
+ */
+const MEASURED_PLACEMENTS = 4178;
+
+class FakeMaskScatter {
+  readonly calls: { minX: number; minZ: number; maxX: number; maxZ: number }[] = [];
+  private readonly bits: Uint8Array;
+
+  constructor(
+    readonly placementCount = MEASURED_PLACEMENTS,
+    public placementFingerprint = 0xa17c93d1,
+  ) {
+    this.bits = new Uint8Array((placementCount + 7) >> 3);
+  }
+
+  fell(...indices: number[]): this {
+    for (const i of indices) this.bits[i >> 3] |= 1 << (i & 7);
+    return this;
+  }
+  isFelled(i: number): boolean { return (this.bits[i >> 3] & (1 << (i & 7))) !== 0; }
+  get felledCount(): number {
+    let n = 0;
+    for (let i = 0; i < this.placementCount; i++) if (this.isFelled(i)) n++;
+    return n;
+  }
+
+  clearFootprint(minX: number, minZ: number, maxX: number, maxZ: number): number {
+    this.calls.push({ minX, minZ, maxX, maxZ });
+    return 1;
+  }
+  felledMask(out: Uint8Array): number {
+    if (out.length < this.bits.length) return 0;
+    out.set(this.bits);
+    return this.bits.length;
+  }
+  applyFelledMask(mask: Uint8Array): number {
+    let n = 0;
+    for (let i = 0; i < this.placementCount; i++) {
+      if ((mask[i >> 3] & (1 << (i & 7))) === 0 || this.isFelled(i)) continue;
+      this.fell(i);
+      n++;
+    }
+    return n;
+  }
+}
+
 class FakeSuperweapons {
   readonly charge = new Map<string, number>();
   private key(p: PlayerId, k: string): string { return `${p as number}|${k}`; }
@@ -713,6 +770,149 @@ describe('world state that is not entities', () => {
     const restored = restoreSnapshot(captured.value.bytes, makeDestination(src).host);
     expect(restored.ok).toBe(true);
     if (restored.ok) expect(restored.value.clearedFootprints.length).toBe(3);
+  });
+
+  /* ------------------------------------------------------------------ *
+   * THE FELLED-PROP MASK
+   *
+   * The reported bug: clearing is permanent for the match, but only the
+   * BUILDING footprints were in the file, so vegetation a vehicle crushed
+   * stood again after a load. `Scatter.ts` §3.10b carries the reasoning and
+   * the measurements; these tests are the format's half of the contract.
+   * ------------------------------------------------------------------ */
+
+  /** A fixture whose scatter can hand out and take back a felled-prop mask. */
+  function maskFixture(scatter: FakeMaskScatter): Fixture {
+    const f = makeFixture();
+    f.host.scatter = scatter;
+    return f;
+  }
+
+  it('THE REPORTED BUG: crushed vegetation stays crushed across a save', () => {
+    // A trail: a run of consecutive placements, the shape a hull leaves —
+    // plus the very last placement, which is the bit a byte-length off-by-one
+    // in the mask round trip would drop.
+    const src = new FakeMaskScatter().fell(11, 12, 13, 14, 1500, MEASURED_PLACEMENTS - 1);
+    const f = maskFixture(src);
+    populate(f, 4);
+
+    const captured = captureSnapshot(f.host, 'crushed');
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+
+    // The reload: the same world regenerated, every prop standing again.
+    const dstScatter = new FakeMaskScatter();
+    expect(dstScatter.felledCount).toBe(0);
+    const dst = maskFixture(dstScatter);
+    dst.host.seed = f.host.seed;
+    expect(restoreSnapshot(captured.value.bytes, dst.host).ok).toBe(true);
+
+    expect(dstScatter.felledCount).toBe(6);
+    for (const i of [11, 12, 13, 14, 1500, MEASURED_PLACEMENTS - 1]) {
+      expect(dstScatter.isFelled(i)).toBe(true);
+    }
+    expect(dstScatter.isFelled(10)).toBe(false);
+    expect(dstScatter.isFelled(15)).toBe(false);
+    // The mask already covers every building footprint, so the replay is
+    // skipped rather than re-scanning ground that is already bare.
+    expect(dstScatter.calls.length).toBe(0);
+  });
+
+  it('falls back to the footprint replay when the scatter generated differently', () => {
+    // A different faction's starting base moves `scatter.system.ts`'s exclusion
+    // discs, and every prop placed after a moved exclusion shifts. Applying the
+    // mask then would fell whichever trees happen to sit at those indices.
+    const src = new FakeMaskScatter(MEASURED_PLACEMENTS, 0x11111111).fell(11, 12, 900);
+    const f = maskFixture(src);
+    populate(f, 4);
+    f.cleared.push({ cx: 70, cz: 70, w: 2, h: 2 });
+
+    const captured = captureSnapshot(f.host, 'drifted');
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+
+    const dstScatter = new FakeMaskScatter(MEASURED_PLACEMENTS, 0x22222222);
+    const dst = maskFixture(dstScatter);
+    expect(restoreSnapshot(captured.value.bytes, dst.host).ok).toBe(true);
+
+    // Nothing felled by index, and the footprints replayed instead. Scenery
+    // comes back; it is never felled wrongly.
+    expect(dstScatter.felledCount).toBe(0);
+    expect(dstScatter.calls.length).toBe(f.cleared.length);
+  });
+
+  it('refuses a mask whose placement count no longer matches', () => {
+    const f = maskFixture(new FakeMaskScatter(MEASURED_PLACEMENTS).fell(7));
+    populate(f, 4);
+    const captured = captureSnapshot(f.host, 'resized');
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+
+    const dstScatter = new FakeMaskScatter(MEASURED_PLACEMENTS + 8);
+    const dst = maskFixture(dstScatter);
+    expect(restoreSnapshot(captured.value.bytes, dst.host).ok).toBe(true);
+    expect(dstScatter.felledCount).toBe(0);
+  });
+
+  it('a save with no mask still loads, and a mask still loads without one', () => {
+    // Both directions of the compatibility contract, and neither needed a
+    // schema bump: the chunk stream skips ids it does not know.
+    const oldStyle = makeFixture();
+    populate(oldStyle, 4);
+    oldStyle.cleared.push({ cx: 70, cz: 70, w: 2, h: 2 });
+    const oldSave = captureSnapshot(oldStyle.host, 'no-mask');
+    expect(oldSave.ok).toBe(true);
+    if (!oldSave.ok) return;
+
+    // A save from before the mask existed, read by a build that has one.
+    const newScatter = new FakeMaskScatter();
+    const intoNew = maskFixture(newScatter);
+    expect(restoreSnapshot(oldSave.value.bytes, intoNew.host).ok).toBe(true);
+    expect(newScatter.felledCount).toBe(0);
+    expect(newScatter.calls.length).toBe(oldStyle.cleared.length);
+
+    // A save carrying the mask, read into a scatter that cannot take one — the
+    // same thing an older build's skip-unknown-chunk does.
+    const withMask = maskFixture(new FakeMaskScatter().fell(3, 4, 5));
+    populate(withMask, 4);
+    withMask.cleared.push({ cx: 70, cz: 70, w: 2, h: 2 });
+    const newSave = captureSnapshot(withMask.host, 'mask');
+    expect(newSave.ok).toBe(true);
+    if (!newSave.ok) return;
+
+    const plain = makeFixture();
+    expect(restoreSnapshot(newSave.value.bytes, plain.host).ok).toBe(true);
+    expect(plain.scatter.calls.length).toBe(withMask.cleared.length);
+    expect(plain.scatter.calls.length).toBeGreaterThan(0);
+  });
+
+  it('costs a BOUNDED handful of bytes, and almost none when nothing is felled', () => {
+    const bare = makeFixture();
+    populate(bare, 30);
+    const noMask = captureSnapshot(bare.host, 'size');
+    expect(noMask.ok).toBe(true);
+    if (!noMask.ok) return;
+
+    // Nothing felled: an all-zero bitmask, run-encoded to a few dozen bytes.
+    const quiet = maskFixture(new FakeMaskScatter());
+    populate(quiet, 30);
+    const quietSave = captureSnapshot(quiet.host, 'size');
+    expect(quietSave.ok).toBe(true);
+    if (!quietSave.ok) return;
+    expect(quietSave.value.bytes.length - noMask.value.bytes.length).toBeLessThan(80);
+
+    // The RLE's worst case — a felled prop every other byte — must still be
+    // bounded by the raw mask, because the encoder is only used when it wins.
+    const worstScatter = new FakeMaskScatter();
+    for (let i = 0; i < MEASURED_PLACEMENTS; i += 9) worstScatter.fell(i);
+    const worst = maskFixture(worstScatter);
+    populate(worst, 30);
+    const worstSave = captureSnapshot(worst.host, 'size');
+    expect(worstSave.ok).toBe(true);
+    if (!worstSave.ok) return;
+    const delta = worstSave.value.bytes.length - noMask.value.bytes.length;
+    expect(delta).toBeGreaterThan(0);
+    expect(delta).toBeLessThanOrEqual(((MEASURED_PLACEMENTS + 7) >> 3) + 32);
   });
 
   it('restores a ready superweapon and leaves a partial charge conservative', () => {

@@ -77,11 +77,14 @@
  *   footprint-radius test, and only the soft families. See the two methods'
  *   own comments for why those tests are deliberately not the same one.
  *
- * NEITHER IS PERSISTED PER-PROP. `SaveGame` restores felled scenery by
- * replaying the bounded list of building footprints ever poured; a match's
- * worth of hull crush discs is unbounded and is not in the file, so vegetation
- * a unit flattened stands again after a load. That is a known, documented gap
- * and the conservative direction — it restores scenery, it never deletes any.
+ * BOTH ARE PERSISTED, AS ONE BIT PER PLACEMENT. Terrain, roads and props are
+ * regenerated from the seed, so a load puts every felled prop back unless the
+ * file says otherwise. `SaveGame` used to close only half of that — it replayed
+ * the building footprints and had nothing for the hull crush, so a trail a
+ * player mowed through a wood grew back. §3.10b is the answer: `felledMask()`
+ * hands out the placement list's own alive bits and `applyFelledMask()` puts
+ * them back, which covers BOTH clears with one bounded blob and needs no ledger
+ * of events on either side. See that section for the measurements.
  * ============================================================================
  */
 
@@ -435,6 +438,12 @@ export class Scatter {
   lastClearScanned = 0;
   /** Props felled by the last `clearFootprint()`. */
   lastClearCount = 0;
+  /**
+   * Identity of the placement list this `generate()` produced. See §3.10b —
+   * it is what makes a saved felled-prop mask safe to apply to a REGENERATED
+   * scatter, and what makes an application to the wrong one impossible.
+   */
+  private placementHash = 0;
 
   constructor(options: ScatterOptions) {
     this.opts = options;
@@ -803,6 +812,7 @@ export class Scatter {
     this.lastClearCount = 0;
     this.liveProps = 0;
     this.maxPropReach = 0;
+    this.placementHash = 0;
     this.resetBuckets(SCATTER_LIMITS.maxProps);
     this.buildMasks();
 
@@ -1215,6 +1225,10 @@ export class Scatter {
       perType[slot].push(p);
     }
     this.liveProps = this.placements.length;
+    // The list is final here — `trimTypes()` has already compacted it and every
+    // `index` above was just stamped. Hashing it once is what lets §3.10b's
+    // one-bit-per-placement mask be handed between two Scatters.
+    this.placementHash = this.computePlacementHash();
 
     this.chunkMinY.fill(Infinity);
     this.chunkMaxY.fill(-Infinity);
@@ -1807,6 +1821,134 @@ export class Scatter {
     type.chunkLive[c]--;
     type.count--;
     p.slot = -1; p.inst = -1;
+  }
+
+  /* ======================================================================
+   * 3.10b PERSISTING WHAT WAS FELLED
+   *
+   * Both clears above are PERMANENT for the match by design, and neither used
+   * to survive a save. Terrain, roads and props are regenerated from the seed,
+   * so unless the file says otherwise a load stands every felled prop back up.
+   * `SaveGame` closed half of it by replaying the list of building footprints
+   * ever poured; the hull crush in `src/sim/Crush.ts` had no equivalent, and a
+   * trail a player mowed through a wood grew back.
+   *
+   * WHY A BITMASK AND NOT A SECOND LEDGER. The obvious symmetric fix is to
+   * persist the crush discs the way the footprints are persisted. Measured, on
+   * `temperate` seed 7: six vehicles driven corner-to-corner for 27 sim-minutes
+   * produced 144 discs, and an AI-vs-AI match produced 25 in ten minutes. Small
+   * — but the count is UNBOUNDED in match length, army size and map area, every
+   * disc has to be replayed as a fresh cell scan on load, and an autosave ring
+   * writes the whole growing list every time it fires.
+   *
+   * The alive bits are the state itself, they are BOUNDED by
+   * `SCATTER_LIMITS.maxProps` at 1125 bytes no matter what the match does, they
+   * cover the footprint clear and the crush with one mechanism, and they cost
+   * nothing per event: no counter in `simTick`, no allocation on the sim path,
+   * nothing that can fall out of step with what is actually standing.
+   *
+   * That map generates 4178 placements, so the raw mask is 523 bytes. Measured
+   * A/B against a ~46 kB save, with `SaveGame` run-encoding it when that wins:
+   * +32 bytes with nothing felled, +100 with 56 felled, +364 after a sweep that
+   * flattened 1679 props — 40% of the map's scatter, which no match does.
+   *
+   * THE INDEX IS ONLY MEANINGFUL AGAINST THE LIST THAT PRODUCED IT, so the mask
+   * travels with `placementFingerprint`. `scatter.system.ts` seeds exclusion
+   * discs from the spawned base — a different faction, a different opening or a
+   * different map moves them, and every prop placed after a moved exclusion
+   * shifts. The caller compares the fingerprint first and falls back to the
+   * footprint replay on a mismatch, so the failure mode stays the conservative
+   * one this bug already had: scenery returns, it is never felled wrongly.
+   * ====================================================================== */
+
+  /** Placements in this generation, tombstones included. The mask's domain. */
+  get placementCount(): number { return this.placements.length; }
+
+  /**
+   * Identity of the generated placement list: two Scatters reporting the same
+   * number hold the same props, in the same order, at the same coordinates.
+   *
+   * Computed once per `generate()` — felling a prop tombstones it but never
+   * moves or removes the record, so this is stable for the whole match.
+   */
+  get placementFingerprint(): number { return this.placementHash; }
+
+  /** Bytes `felledMask`/`applyFelledMask` need. `(placementCount + 7) / 8`. */
+  get felledMaskBytes(): number { return (this.placements.length + 7) >> 3; }
+
+  /**
+   * Write one bit per placement, LSB-first, 1 = felled. Returns the bytes
+   * written, or 0 if `out` is too small — a partial mask would fell the wrong
+   * props, so the caller gets nothing rather than something plausible.
+   */
+  felledMask(out: Uint8Array): number {
+    const n = this.placements.length;
+    const bytes = (n + 7) >> 3;
+    if (out.length < bytes) return 0;
+    out.fill(0, 0, bytes);
+    for (let i = 0; i < n; i++) {
+      if (this.placements[i].alive) continue;
+      out[i >> 3] |= 1 << (i & 7);
+    }
+    return bytes;
+  }
+
+  /**
+   * Fell every placement whose bit is set and that is still standing. Returns
+   * the number newly felled; a prop already down is left alone, so applying a
+   * mask over a scatter that has had its base footprints cleared is idempotent.
+   *
+   * The cell index is rebuilt once at the end rather than unlinked per prop:
+   * this is a restore path, O(placements) beats O(chain) per hit at this batch
+   * size, and it cannot leave a stale bucket entry behind.
+   */
+  applyFelledMask(mask: Uint8Array): number {
+    const n = this.placements.length;
+    if (mask.length < ((n + 7) >> 3)) return 0;
+    let felled = 0;
+    for (let i = 0; i < n; i++) {
+      if ((mask[i >> 3] & (1 << (i & 7))) === 0) continue;
+      const p = this.placements[i];
+      if (!p.alive) continue;
+      this.releaseInstance(p);
+      felled++;
+    }
+    if (felled > 0) {
+      this.clearedProps += felled;
+      this.rebuildCellIndex();
+      // Same reason `clearFootprint` does it: the visible chunk SET is
+      // unchanged, so update()'s 256-byte compare would short-circuit and keep
+      // drawing props that are no longer there.
+      this.chunkVisiblePrev.fill(255);
+    }
+    return felled;
+  }
+
+  /**
+   * FNV-1a over (count, defIndex, x, z) of every placement. Positions are
+   * quantised to 1/16 m: far finer than the metre a prop is placed on, and
+   * coarse enough that it is comparing placement decisions rather than float
+   * noise. A collision costs a wrongly-accepted mask, so this is 32 bits of
+   * everything that determines the list rather than a cheap sample of it.
+   */
+  private computePlacementHash(): number {
+    let h = 0x811c9dc5;
+    const mix = (v: number): void => {
+      let x = v >>> 0;
+      for (let b = 0; b < 4; b++) {
+        h = (h ^ (x & 0xff)) >>> 0;
+        h = Math.imul(h, 0x01000193) >>> 0;
+        x >>>= 8;
+      }
+    };
+    mix(this.placements.length);
+    for (let i = 0; i < this.placements.length; i++) {
+      const p = this.placements[i];
+      mix(p.defIndex);
+      mix(Math.round(p.x * 16));
+      mix(Math.round(p.z * 16));
+    }
+    return h >>> 0;
   }
 
   get propCount(): number { return this.liveProps; }

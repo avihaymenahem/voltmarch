@@ -461,3 +461,159 @@ describe('scatter-clear.system — building:placed handling', () => {
     expect(pushes).toBe(0);
   });
 });
+
+/* ==========================================================================
+ * 6. THE FELLED-PROP MASK — clearing survives a save
+ *
+ * The reported bug: a vehicle crush is permanent for the match, a save records
+ * only the BUILDING footprints, and props are regenerated from the seed — so a
+ * trail a player mowed through a wood stood again after a load. Scatter.ts
+ * §3.10b is the fix and this is its contract. `tests/savegame.spec.ts` proves
+ * the format carries it; these tests prove the two ends line up.
+ * ========================================================================== */
+
+/** Every live prop as a comparable key, sorted. Two lists or two worlds. */
+function propKeys(scatter: Scatter): string[] {
+  const buf = new Float32Array(SCATTER_LIMITS.maxProps * 4);
+  const n = scatter.positions(buf);
+  const out: string[] = [];
+  for (let i = 0; i < n; i++) {
+    out.push(`${buf[i * 4].toFixed(3)},${buf[i * 4 + 2].toFixed(3)},${buf[i * 4 + 3]}`);
+  }
+  return out.sort();
+}
+
+/**
+ * Mow a trail with the same call a hull makes. Runs the disc along a line
+ * through the densest ground so it actually meets trees; returns the count.
+ */
+function mowTrail(scatter: Scatter, cx: number, cz: number): number {
+  let felled = 0;
+  for (let step = 0; step < 24; step++) {
+    felled += scatter.crushDisc(cx * CELL + step * 2.5, cz * CELL, 2.7);
+  }
+  return felled;
+}
+
+describe('Scatter — the felled-prop mask', () => {
+  it('fingerprints the placement list, and two identical worlds agree', () => {
+    const a = track(rig()).scatter;
+    const b = track(rig()).scatter;
+    expect(a.placementCount).toBeGreaterThan(0);
+    expect(a.placementCount).toBe(b.placementCount);
+    expect(a.placementFingerprint).not.toBe(0);
+    expect(a.placementFingerprint).toBe(b.placementFingerprint);
+  });
+
+  it('a differently generated world reports a different fingerprint', () => {
+    // The failure this is the gate against: applying a mask taken from one
+    // placement list to a different one fells whichever trees happen to sit at
+    // those indices. `scatter.system.ts` seeds exclusions from the spawned base,
+    // so a different faction or opening is exactly this case.
+    const a = track(rig()).scatter;
+    const b = track(rig(1.0, 0x5ca77f)).scatter;
+    expect(b.placementFingerprint).not.toBe(a.placementFingerprint);
+  });
+
+  it('felling does not move the fingerprint — a tombstone is not a removal', () => {
+    const { scatter } = track(rig());
+    const before = scatter.placementFingerprint;
+    const { cx, cz } = densestFootprint(scatter, 4, 4);
+    expect(scatter.clearFootprint(cx * CELL, cz * CELL, (cx + 4) * CELL, (cz + 4) * CELL))
+      .toBeGreaterThan(0);
+    expect(scatter.placementFingerprint).toBe(before);
+    expect(scatter.placementCount).toBeGreaterThan(scatter.propCount);
+  });
+
+  it('THE REPORTED BUG: a mowed trail is still gone on the regenerated world', () => {
+    const src = track(rig()).scatter;
+    const { cx, cz } = densestFootprint(src, 4, 4);
+    const crushed = mowTrail(src, cx, cz);
+    expect(crushed, 'the trail met no crushable vegetation').toBeGreaterThan(0);
+    const survivors = propKeys(src);
+
+    // The reload: the same world, generated again from the same seed. Without
+    // the mask this is where the trail grows back.
+    const dst = track(rig()).scatter;
+    expect(dst.propCount).toBe(src.propCount + crushed);
+    expect(dst.placementFingerprint).toBe(src.placementFingerprint);
+
+    const mask = new Uint8Array(src.felledMaskBytes);
+    expect(src.felledMask(mask)).toBe(mask.length);
+    expect(dst.applyFelledMask(mask)).toBe(crushed);
+
+    expect(dst.propCount).toBe(src.propCount);
+    // Not just the same COUNT — the same props.
+    expect(propKeys(dst)).toEqual(survivors);
+  });
+
+  it('carries a building footprint clear in the same bits', () => {
+    const src = track(rig()).scatter;
+    const { cx, cz } = densestFootprint(src, 5, 5);
+    const built = src.clearFootprint(cx * CELL, cz * CELL, (cx + 5) * CELL, (cz + 5) * CELL);
+    const mowed = mowTrail(src, cx + 8, cz + 8);
+    expect(built).toBeGreaterThan(0);
+    expect(mowed).toBeGreaterThan(0);
+
+    const mask = new Uint8Array(src.felledMaskBytes);
+    src.felledMask(mask);
+    const dst = track(rig()).scatter;
+    expect(dst.applyFelledMask(mask)).toBe(built + mowed);
+    expect(propKeys(dst)).toEqual(propKeys(src));
+  });
+
+  it('is idempotent, so a footprint already cleared at boot costs nothing', () => {
+    const src = track(rig()).scatter;
+    const { cx, cz } = densestFootprint(src, 5, 5);
+    const built = src.clearFootprint(cx * CELL, cz * CELL, (cx + 5) * CELL, (cz + 5) * CELL);
+    const mask = new Uint8Array(src.felledMaskBytes);
+    src.felledMask(mask);
+
+    // The destination has already had the same footprint cleared by its own
+    // `building:placed` during the boot, which is what really happens.
+    const dst = track(rig()).scatter;
+    expect(dst.clearFootprint(cx * CELL, cz * CELL, (cx + 5) * CELL, (cz + 5) * CELL)).toBe(built);
+    expect(dst.applyFelledMask(mask)).toBe(0);
+    expect(dst.applyFelledMask(mask)).toBe(0);
+    expect(propKeys(dst)).toEqual(propKeys(src));
+  });
+
+  it('leaves the cell index honest, so a later clear still finds its props', () => {
+    // `applyFelledMask` rebuilds the 4 m buckets rather than unlinking per prop.
+    // If it forgot to, the next clear would walk chains full of tombstones and —
+    // worse — a swapped instance would be reachable twice.
+    const src = track(rig()).scatter;
+    const { cx, cz } = densestFootprint(src, 5, 5);
+    mowTrail(src, cx, cz);
+    const mask = new Uint8Array(src.felledMaskBytes);
+    src.felledMask(mask);
+
+    const dst = track(rig()).scatter;
+    dst.applyFelledMask(mask);
+    const box: [number, number, number, number] =
+      [(cx + 6) * CELL, (cz + 6) * CELL, (cx + 11) * CELL, (cz + 11) * CELL];
+    const inBox = dst.countInBox(box[0], box[1], box[2], box[3]);
+    expect(dst.clearFootprint(box[0], box[1], box[2], box[3])).toBeGreaterThanOrEqual(inBox);
+    expect(dst.countInBox(box[0], box[1], box[2], box[3])).toBe(0);
+  });
+
+  it('refuses a short buffer instead of writing half a mask', () => {
+    const { scatter } = track(rig());
+    const short = new Uint8Array(scatter.felledMaskBytes - 1).fill(0xff);
+    expect(scatter.felledMask(short)).toBe(0);
+    // Untouched: a partial mask would fell the wrong props on the way back in.
+    for (const b of short) expect(b).toBe(0xff);
+    expect(scatter.applyFelledMask(short)).toBe(0);
+    expect(scatter.propCount).toBe(scatter.placementCount);
+  });
+
+  it('is BOUNDED by the map prop ceiling, whatever the match does', () => {
+    // The whole reason this is a bitmask and not a list of crush discs.
+    const { scatter } = track(rig());
+    const ceiling = (SCATTER_LIMITS.maxProps + 7) >> 3;
+    expect(scatter.felledMaskBytes).toBeLessThanOrEqual(ceiling);
+    expect(ceiling).toBeLessThanOrEqual(1125);
+    for (let lap = 0; lap < 40; lap++) mowTrail(scatter, 10 + lap * 2, 20 + lap);
+    expect(scatter.felledMaskBytes).toBeLessThanOrEqual(ceiling);
+  });
+});
