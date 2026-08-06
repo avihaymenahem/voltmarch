@@ -29,6 +29,9 @@
  * ============================================================================
  */
 
+/** Injected by vite's `define` from package.json. See `vite.config.ts`. */
+declare const __APP_VERSION__: string;
+
 import { MAPS } from './settings-store';
 import { saveSlots } from './LoadGame';
 import {
@@ -188,7 +191,14 @@ export class MainMenuScreen implements Screen {
     left.appendChild(maps);
 
     foot.appendChild(left);
-    foot.appendChild(el('span', undefined, 'Build 1.0 · WebGL2'));
+    // DERIVED, not written. This read "Build 1.0" while the product shipped
+    // 1.4.0 — the same rot as the credits line above it, on the same screen.
+    // `__APP_VERSION__` comes from package.json through vite's `define`
+    // (see `vite.config.ts`), so there is one version number and the footer
+    // cannot fall behind it again. `typeof` is the one operator safe on an
+    // undeclared identifier, for a bare vitest run where the define never ran.
+    const build = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : 'dev';
+    foot.appendChild(el('span', undefined, `Build ${build} · WebGL2`));
     host.appendChild(foot);
   }
 
@@ -228,12 +238,21 @@ export class MainMenuScreen implements Screen {
  * CREDITS
  * ========================================================================== */
 
-interface CreditGroup {
+export interface CreditGroup {
   readonly title: string;
   readonly lines: readonly string[];
 }
 
-const CREDITS: readonly CreditGroup[] = [
+/**
+ * Exported so `tests/credits-truthful.spec.ts` can check the asset claim against
+ * what is actually on disk.
+ *
+ * A credits screen is a set of assertions about the product, and one of them —
+ * "No downloaded assets, anywhere in the product" — quietly stopped being true
+ * the day the UI typeface was self-hosted. Nothing caught it, because nothing
+ * was checking. It is checked now.
+ */
+export const CREDITS: readonly CreditGroup[] = [
   {
     title: 'Engine',
     lines: [
@@ -245,12 +264,35 @@ const CREDITS: readonly CreditGroup[] = [
     ],
   },
   {
+    /*
+     * THE LAST LINE HERE USED TO READ "No downloaded assets, anywhere in the
+     * product", AND IT STOPPED BEING TRUE on 2026-08-05 when the UI text face
+     * was self-hosted. It is corrected rather than deleted: a credits screen
+     * that overstates is worse than one that states an exception, and the
+     * exception is the interesting part. `README.md` and `CLAUDE.md` both carry
+     * the same caveat — if a second downloaded asset is ever added, all three
+     * change in the same commit.
+     */
     title: 'Art',
     lines: [
       'Every mesh generated procedurally from code',
       'Every texture baked at boot in a worker',
       'Every sound synthesised at boot with WebAudio',
-      'No downloaded assets, anywhere in the product',
+      'No downloaded models, textures or audio',
+    ],
+  },
+  {
+    /*
+     * THE TWO THINGS THAT ARE NOT GENERATED. Both are shipped deliberately and
+     * both were, until now, contradicted by a credits line claiming there were
+     * none. Keep this group in step with `README.md` and `CLAUDE.md`;
+     * `tests/credits-truthful.spec.ts` checks it against `public/`.
+     */
+    title: 'Shipped Assets',
+    lines: [
+      'Rajdhani — the UI typeface, SIL Open Font License 1.1',
+      'The wordmark and app icons, from a supplied logo',
+      'Nothing else: no meshes, no world textures, no audio',
     ],
   },
   {

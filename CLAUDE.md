@@ -8,14 +8,28 @@ VOLTMARCH — an original browser RTS in Three.js. Three factions, ore economy, 
 opponent, fog of war. **All art is generated from code**: no downloaded models and no downloaded
 textures.
 
-The one exception, added deliberately on 2026-08-05 at the user's request: the UI text face
-**Rajdhani** (OFL-1.1) is self-hosted in `public/fonts/`, Latin subset, four weights, 60 kB. The
-stack had named Rajdhani since it was written and nothing ever shipped it, so every menu and HUD in
-the game rendered in the fourth fallback — Franklin Gothic Medium — and the face the UI was designed
-around was never on screen. Geometry, textures, cameos, icons and the wordmark are still all
-generated. **If you add another downloaded asset, update this line and `README.md` in the same
-commit** — a claim that quietly stops being true is the exact defect `docs/SPEC_DRIFT_AUDIT.md`
-catalogues.
+That claim is about the GAME WORLD, and it is exactly true there: every mesh, material, texture,
+cameo and in-game icon is built from Three.js geometry, custom shaders and procedural canvas
+generators. **Two shipped assets are not generated**, both deliberate, both in `public/`:
+
+1. **Rajdhani** (OFL-1.1) in `public/fonts/` — the UI text face, Latin subset, four weights, 60 kB.
+   Added 2026-08-05 at the user's request. The stack had named Rajdhani since it was written and
+   nothing ever shipped it, so every menu and HUD rendered in the fourth fallback — Franklin Gothic
+   Medium — and the face the UI was designed around was never on screen.
+2. **The brand lockup** in `public/brand/` — eight PNGs derived by `tools/brand.mjs` from a
+   `logo.png` the user supplied. `logo-full.png` is the main-menu title and the loading curtain;
+   `mark-*.png` are the favicons and app icons. See `public/brand/README.md`.
+
+This paragraph previously said "cameos, icons and the wordmark are still all generated", which was
+false on two counts the moment the brand assets landed — the wordmark on the title screen and every
+favicon are those PNGs. It said so directly under an instruction to update it in the same commit as
+any new asset, and that did not happen. `tests/credits-truthful.spec.ts` now checks the credits
+screen against what is actually in `public/`, because the reason this rotted is that nobody was
+looking, and a reviewer noticing is not a mechanism.
+
+**If you add another non-generated asset, update this list, `README.md`, and the credits screen in
+`src/shell/MainMenu.ts` in the same commit** — a claim that quietly stops being true is the exact
+defect `docs/SPEC_DRIFT_AUDIT.md` catalogues.
 
 ## The gates
 

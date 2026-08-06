@@ -36,14 +36,18 @@ VOLTMARCH is not a port or a clone. It is a new title in the tradition of late-9
 base-building RTS — the conventions it adopts (harvester economy, tech tiers, build queues) are the
 shared vocabulary of that genre.
 
-**All art is generated from code.** No downloaded models, no downloaded textures. Every unit,
-building, material, texture, cameo and icon is built from Three.js geometry, custom shaders and
-procedural canvas generators, which means the entire look can be retuned by editing values rather
-than reopening an art tool.
+**All art in the game world is generated from code.** No downloaded models, no downloaded textures,
+no downloaded audio. Every unit, building, material, texture, cameo and in-game icon is built from
+Three.js geometry, custom shaders and procedural canvas generators, which means the entire look can
+be retuned by editing values rather than reopening an art tool.
 
-The single exception is the UI text face: **Rajdhani** (OFL-1.1) is self-hosted in `public/fonts/` —
-Latin subset, four weights, 60 kB — rather than loaded from a CDN, so there is no third-party
-request and the build still runs offline and from a `file://` path.
+Two shipped assets are not generated, both deliberate:
+
+- **Rajdhani** (OFL-1.1), the UI text face, self-hosted in `public/fonts/` — Latin subset, four
+  weights, 60 kB — rather than loaded from a CDN, so there is no third-party request and the build
+  still runs offline and from a `file://` path.
+- **The brand lockup** in `public/brand/` — the wordmark on the title screen and loading curtain,
+  and the favicons and app icons, derived by `tools/brand.mjs` from a supplied `logo.png`.
 
 ## Running it
 
