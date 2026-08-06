@@ -711,6 +711,17 @@ const CONTENT: readonly ContentSpec[] = [
     kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
     cost: 1800, buildTime: 22, prereqs: ['rclDrydock', 'rclCrucible'], sortOrder: 80,
   },
+  /*
+   * APPENDED, NOT INSERTED. A building's `publicId` is its index in THIS
+   * array, so placing `gate` next to `wall` where it belongs visually
+   * renumbered every later key and collided with `pillbox`. Sort order is
+   * what places it in the grid; array position is an id.
+   */
+  {
+    key: 'gate', name: 'Gate', blurb: 'A way through your own wall. Friendlies only.',
+    kind: BuildKind.Building, faction: Faction.Neutral, tab: D,
+    cost: 150, buildTime: 3, prereqs: ['barracks'], sortOrder: 11,
+  },
 ];
 
 /** Every army a player or an AI can be. Neutral is not one of them. */

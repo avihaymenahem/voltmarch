@@ -1504,6 +1504,21 @@ export const BUILDINGS: readonly BuildingDef[] = [
     maxHp: 560, power: -90, sight: 30, weapons: [w('pylonArc')], hasTurret: false,
     flags: rclFlags(-90, EntityFlag.CanAttack),
   }),
+  building({
+    // A wall run with no way through it was a real hole in the defence tab.
+    //
+    // THE ART FOR THIS WAS FINISHED AND UNREACHABLE. `gateSegment()` builds a
+    // full model for both armies (BuildingDefs.ts:1672) and both are in
+    // STRUCTURE_MASS_LISTS; `buildings.system.ts` maps `gate` to them and
+    // `Cameos.ts` binds a cameo for it. Everything existed except this def, so
+    // `binding.buildingId['gate']` was undefined and the registration was
+    // silently skipped at `buildings.system.ts` — finished work, never once on
+    // screen.
+    key: 'gate', name: 'Gate', blurb: 'A way through your own wall. Friendlies only.',
+    faction: Faction.Neutral, cost: 150, buildTime: 3, tab: BuildTab.Defense,
+    prereqs: ['barracks'], sortOrder: 11, model: 'gate', dim: B.gate,
+    maxHp: 400, power: 0, sight: 0,
+  }),
 ];
 
 /* ==========================================================================

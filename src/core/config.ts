@@ -155,6 +155,13 @@ export const BUILDING_DIMENSIONS = {
   prismTower:  { w: 1, h: 1, height: 8.0 },
   flameTower:  { w: 1, h: 1, height: 5.5 },
   wall:        { w: 1, h: 1, height: 2.0 },
+  // MUST MATCH `BUILDING_FOOTPRINTS.gate` EXACTLY. The art resolves its
+  // footprint through `fp()`, which reads BUILDING_FOOTPRINTS first, while the
+  // def's `dim:` reads this table — so a disagreement here gives the sim one
+  // roofline and the model another. Same 1x1 cell as the wall it interrupts,
+  // because a gate that did not line up with a wall run would be unbuildable in
+  // the only place anyone wants one.
+  gate:        { w: 1, h: 1, height: 3.6 },
 } as const;
 
 /* ==========================================================================

@@ -85,25 +85,14 @@ describe('every buildable def has a cameo model binding', () => {
   it('binds no key that is not a real def — the tables must not accrete ghosts', () => {
     // The inverse rot: content is renamed or removed and its cameo entry stays.
     // Harmless at runtime, but it is how a table stops describing the game.
-    /*
-     * 'gate' IS A PENDING DEF, NOT A GHOST — and it is the reverse of the usual
-     * rot. `allied_gate` and `soviet_gate` are real mass lists, built every boot
-     * and mapped in `buildings.system.ts`, and this cameo binding is real too.
-     * What is missing is the DEF: `Defs.ts` has no `gate` key, so
-     * `binding.buildingId['gate']` is undefined and the registration is silently
-     * skipped. The art has been finished and unreachable the whole time.
-     *
-     * DELETE THIS ALLOWANCE the moment the gate def lands — that is the point of
-     * naming it here rather than filtering it out quietly.
-     */
-    const PENDING_DEFS = new Set(['gate']);
-
+    // The 'gate' allowance that stood here is GONE, because the gate def landed
+    // in the same pass. That was the whole point of naming it rather than
+    // filtering it out quietly — an allowance you can see is one you can delete.
     const unitKeys = new Set(UNITS.map((u) => u.key));
     const buildingKeys = new Set(BUILDINGS.map((b) => b.key));
-    const strayUnits = Object.keys(CAMEO_UNIT_MODELS)
-      .filter((k) => !unitKeys.has(k) && !PENDING_DEFS.has(k));
+    const strayUnits = Object.keys(CAMEO_UNIT_MODELS).filter((k) => !unitKeys.has(k));
     const strayBuildings = Object.keys(CAMEO_BUILDING_MODELS)
-      .filter((k) => !buildingKeys.has(k) && !PENDING_DEFS.has(k));
+      .filter((k) => !buildingKeys.has(k));
     expect(strayUnits, 'CAMEO_UNIT_MODELS names units that no longer exist').toEqual([]);
     expect(
       strayBuildings, 'CAMEO_BUILDING_MODELS names buildings that no longer exist',

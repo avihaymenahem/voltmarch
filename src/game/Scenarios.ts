@@ -1037,6 +1037,10 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
     EntityFlag.CanAttack, Faction.Soviets, { weaponRange: 16 }),
   wall: building('wall', B.wall, 300, 0, 0,
     EntityFlag.NotSelectable, Faction.Neutral, { armor: ArmorClass.Concrete }),
+  // Selectable, unlike the wall it sits in — you need to be able to click a
+  // gate to sell it, and a wall run you cannot reopen is worse than no wall.
+  gate: building('gate', B.gate, 400, 0, 0,
+    0, Faction.Neutral, { armor: ArmorClass.Concrete }),
 
   navalYard: building('navalYard', NB.navalYard, 1000, -30, 24,
     EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Allies),
@@ -1254,6 +1258,7 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   teslaCoil: ['teslacoil', 'tesla', 'teslatower'],
   flameTower: ['flametower', 'flameturret', 'firetower'],
   wall: ['wall', 'concretewall', 'sandbag'],
+  gate: ['gate', 'wallgate', 'barrier'],
   navalYard: ['navalyard', 'shipyard', 'seaport', 'dock'],
   subPen: ['subpen', 'submarinepen', 'navalyardsoviet'],
   aaTurret: ['aaturret', 'multigunneraa', 'aagun', 'flakcannon'],
