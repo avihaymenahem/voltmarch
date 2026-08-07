@@ -158,7 +158,12 @@ export const DEFAULT_WEAPONS: readonly WeaponDef[] = [
     { turretTurnRate: 360, needsPower: true, chainCount: 2,
       muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 
-  /* 10 */ wpn('flameJet', 'Flame Nozzle', 26, WarheadClass.HighExplosive, 15, 0.5,
+  // Range 15 -> 18. Still the shortest gun in the game by four metres, which is
+  // what "Short-ranged, brutal on infantry" should mean — but 15 put it inside
+  // the stopping distance of every attacker in the game (a unit closes to
+  // `range * 0.80`, so a 22 m rifleman parks at 17.6 and a 30 m Grizzly at 24),
+  // and a defence nothing ever enters the envelope of is a 600-credit ornament.
+  /* 10 */ wpn('flameJet', 'Flame Nozzle', 26, WarheadClass.HighExplosive, 18, 0.5,
     ProjectileKind.Flame, COMBAT_PROJECTILES.flameSpeed,
     { splashRadius: 3.2, splashFalloff: 0.45, turretTurnRate: 150,
       muzzleFx: FxKind.FlameJet, travelFx: FxKind.FlameJet, impactFx: FxKind.ExplosionSmall }),
@@ -308,6 +313,34 @@ const HULL_ARC = COMBAT_WEAPONS.hullArcDeg * DEG2RAD;
 const MAX_ELEV = COMBAT_WEAPONS.maxElevationDeg * DEG2RAD;
 const MIN_ELEV = COMBAT_WEAPONS.minElevationDeg * DEG2RAD;
 
+/**
+ * May this entity's gun bear independently of its chassis?
+ *
+ * `HasTurret` is the obvious yes. THE SECOND CASE IS EVERY ARMED STRUCTURE, and
+ * leaving it out is what made "Flame Tower doesnt seem to do anything at all"
+ * true. The turretless branch below welds `turretYaw` to `yaw` and then refuses
+ * to fire outside `HULL_ARC` — 14 degrees. For a vehicle that is a transient:
+ * Steering rotates the hull to bring the gun round. A building has no steering.
+ * Its yaw is whatever the player happened to place it at and it never changes,
+ * so the 28-degree window is permanent and an emplacement covers 7.8% of the
+ * compass forever.
+ *
+ * `src/art/BuildingDefs.ts#sovietFlameTower` diagnosed exactly this and fixed
+ * the model — it gave the tower four radial nozzles so it "is correct at any
+ * yaw". Nobody fixed the gun, so a correct-at-any-yaw model still only shot
+ * north.
+ *
+ * A structure's gun is an emplacement mount and rotates whether or not the mass
+ * list has a separately-transformed turret. Where the model DOES have one, the
+ * render already follows `turretYaw` for parts marked as turret-following, so
+ * this makes the barrel track too; where it does not, `turretYaw` is invisible
+ * and only steers the muzzle socket the FX spawn from — which is exactly what
+ * should happen.
+ */
+function canTraverse(kind: number, flags: number): boolean {
+  return (flags & EntityFlag.HasTurret) !== 0 || kind === EntityKind.Building;
+}
+
 export class WeaponSystem {
   /** Cached weapon index per entity. -2 = not yet resolved, -1 = unarmed. */
   private readonly resolved: PerEntityI16;
@@ -399,16 +432,20 @@ export class WeaponSystem {
         if (Math.abs(st.recoil[i]) < 1e-3) st.recoil[i] = 0;
       }
 
+      const traverses = canTraverse(st.kind[i], f);
       const slot = this.weaponSlotFor(i);
       const w = weaponAt(slot);
-      if (w === undefined) { if ((f & EntityFlag.HasTurret) === 0) st.turretYaw[i] = st.yaw[i]; continue; }
+      if (w === undefined) { if (!traverses) st.turretYaw[i] = st.yaw[i]; continue; }
 
       const t = st.index(st.targetId[i] as EntityId);
       if (t < 0) {
         // No target: relax the turret back to the hull. Slowly, so a turret
-        // that just lost its mark does not snap forward like a toy.
+        // that just lost its mark does not snap forward like a toy. An
+        // emplacement relaxes to its PLACED yaw by the same path — the tower
+        // settles back to facing the way it was built rather than freezing on
+        // the bearing of whatever it last killed.
         const rate = this.slewRate(i, w) * 0.5 * s.dt;
-        st.turretYaw[i] = (f & EntityFlag.HasTurret) !== 0
+        st.turretYaw[i] = traverses
           ? turnToward(st.turretYaw[i], st.yaw[i], rate)
           : st.yaw[i];
         st.barrelPitch[i] = turnToward(st.barrelPitch[i], 0, rate);
@@ -434,7 +471,7 @@ export class WeaponSystem {
    */
   private engage(s: SimContext, i: number, t: number, w: WeaponDef, slot: number): void {
     const st = this.world.store;
-    const hasTurret = (st.flags[i] & EntityFlag.HasTurret) !== 0;
+    const traverses = canTraverse(st.kind[i], st.flags[i]);
 
     this.muzzleOf(i, this.muzzle);
     this.aimPointOf(t, this.aim);
@@ -460,7 +497,7 @@ export class WeaponSystem {
 
     // --- traverse --------------------------------------------------------
     const rate = this.slewRate(i, w) * s.dt;
-    if (hasTurret) {
+    if (traverses) {
       st.turretYaw[i] = turnToward(st.turretYaw[i], aimYaw, rate);
     } else {
       // A hull-mounted weapon cannot traverse: the turret column mirrors the
@@ -494,7 +531,7 @@ export class WeaponSystem {
     if (surfaceDist > w.range) return;
     if (w.minRange > 0 && surfaceDist < w.minRange) return;
 
-    const tolerance = hasTurret ? AIM_TOL : HULL_ARC;
+    const tolerance = traverses ? AIM_TOL : HULL_ARC;
     if (Math.abs(angleDelta(st.turretYaw[i], aimYaw)) > tolerance) { this.stats.slewing++; return; }
     // Arcing weapons do not care about elevation error; direct-fire ones do.
     if (w.projectile !== ProjectileKind.Shell

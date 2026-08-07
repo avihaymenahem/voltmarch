@@ -1058,8 +1058,12 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
     EntityFlag.CanAttack | EntityFlag.HasTurret, Faction.Allies, { weaponRange: 34 }),
   teslaCoil: building('teslaCoil', B.teslaCoil, 700, -75, 30,
     EntityFlag.CanAttack, Faction.Soviets, { weaponRange: 30 }),
+  // `weaponRange` draws the coverage ring under the cursor while you hold the
+  // structure, and it is the ONLY consumer of that field — so a number that
+  // disagrees with the armoury is a lie told at the exact moment the player
+  // decides where to put the thing. 16 against `flameJet`'s 18.
   flameTower: building('flameTower', B.flameTower, 550, -20, 22,
-    EntityFlag.CanAttack, Faction.Soviets, { weaponRange: 16 }),
+    EntityFlag.CanAttack, Faction.Soviets, { weaponRange: 18 }),
   wall: building('wall', B.wall, 300, 0, 0,
     EntityFlag.NotSelectable, Faction.Neutral, { armor: ArmorClass.Concrete }),
   // Selectable, unlike the wall it sits in — you need to be able to click a

@@ -2526,9 +2526,19 @@ export const COMBAT_PROJECTILES = {
   buildingHeightMul: 1.15,
   /** Metres added to a target's hit radius so grazing shots still connect. */
   hitRadiusPad: 0.35,
-  /** Speed of a Flame projectile, m/s, and how long its tongue lives. */
+  /**
+   * Speed of a Flame projectile, m/s, and how long its tongue lives.
+   *
+   * THE PRODUCT IS A HARD REACH LIMIT and must clear `flameJet`'s range, which
+   * it did not: 26 x 0.55 = 14.3 m against a weapon that claims 18. A round
+   * fired at the edge of the envelope expired in mid-air, and the only reason
+   * anything died out there was the 3.2 m splash on expiry papering over it.
+   * 0.78 s gives 20.3 m — the range plus a margin wide enough that raising the
+   * weapon by a metre or two later does not silently reintroduce the gap.
+   * `tests/emplacement-traverse.spec.ts` asserts the inequality directly.
+   */
   flameSpeed: 26,
-  flameLifeSeconds: 0.55,
+  flameLifeSeconds: 0.78,
   /** Metres a shell may sink below terrain before the ground impact resolves. */
   groundBias: 0.15,
 } as const;
