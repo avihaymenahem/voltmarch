@@ -12,6 +12,8 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { Channels } from '../src/core/events';
 import { GameLoop, Profiler, SystemRegistry } from '../src/core/loop';
@@ -374,6 +376,19 @@ describe('LightPool', () => {
 /* enough" is exactly what let this ship three times.                          */
 /* ========================================================================== */
 
+/**
+ * The flash gain an UNATTENUATED explosion actually emits.
+ *
+ * Not `VFX_EXPLOSION.flashIntensity` on its own. `spawnExplosion` folds
+ * `outputGain` into `glare` before any emission, so the authored constant is
+ * the RATIO an emitter is written against and this is what lands in the buffer.
+ * The cases below are about the GLARE BUDGET — "an isolated death is not
+ * dimmed" — and comparing them against the raw constant made them fail the
+ * moment the whole layer was scaled, which is a false alarm about the wrong
+ * thing.
+ */
+const EMITTED_FLASH_GAIN = VFX_EXPLOSION.flashIntensity * VFX_EXPLOSION.outputGain;
+
 describe('the glare budget bounds co-located flashes', () => {
   beforeEach(() => {
     // Module-level state that outlives a match, and therefore a test. Nothing in
@@ -513,7 +528,7 @@ describe('the glare budget bounds co-located flashes', () => {
     for (let i = 0; i < P.additive.geometry.instanceCount; i++) {
       if (tint[i * 3] > hottest) hottest = tint[i * 3];
     }
-    expect(hottest).toBeGreaterThan(VFX_EXPLOSION.flashIntensity * 0.98);
+    expect(hottest).toBeGreaterThan(EMITTED_FLASH_GAIN * 0.98);
 
     // Twenty deaths in the same four metres emitted 20x this sum before the fix.
     const twenty = additiveGain(20);
@@ -572,7 +587,7 @@ describe('the glare budget bounds co-located flashes', () => {
     const n = P.additive.geometry.instanceCount;
     let flashes = 0;
     for (let i = 0; i < n; i++) {
-      if (tint[i * 3] > VFX_EXPLOSION.flashIntensity * 0.98) flashes++;
+      if (tint[i * 3] > EMITTED_FLASH_GAIN * 0.98) flashes++;
     }
     // One full-gain flash disc per death, none of them attenuated.
     expect(flashes).toBe(20);
@@ -1232,5 +1247,60 @@ describe('empty VFX meshes are not submitted', () => {
 
     B.dispose();
     P.dispose();
+  });
+});
+
+/* ========================================================================== */
+
+describe('the fifth brightness report: one gain over the whole explosion', () => {
+  /**
+   * Explosion brightness was reported FIVE times and nothing shipped. Every
+   * previous pass lowered one sprite — flashIntensity 7.0 -> 3.5,
+   * billowIntensity 4.2 -> 2.1, the muzzle core 9.0 -> 4.0 — and every one
+   * measured correctly, because each was measured on the sprite it changed.
+   *
+   * `tools/flash-stack.mjs --ablate`, with a mask that finally worked, showed
+   * the LAYER is the unit of the problem: hiding the additive quads removes 94%
+   * of a single explosion's blown-white area and 97% of a twenty-explosion
+   * pile, and `everything-off` lands exactly on baseline so nothing is
+   * unaccounted for. `outputGain` is the answer to that measurement.
+   */
+  it('reaches every emitter, because it is folded into `glare` and not into a sprite', () => {
+    // The mechanism, asserted structurally. Applying it at each `e.i0` would
+    // work today and be silently missed by the next emitter somebody adds;
+    // `glare` is the one value every emission in `spawnExplosion` already
+    // multiplies by.
+    const src = readFileSync(join(__dirname, '..', 'src/vfx/Explosions.ts'), 'utf8');
+    expect(src).toMatch(/admitGlare\([^)]*\)\s*\n?\s*\*\s*X\.outputGain/);
+  });
+
+  it('scales the LIT billows as well as the additive quads', () => {
+    // Hiding the billows does not reduce blown area — so scaling only the
+    // additive layer would look like the cheaper fix. It is not: the RATIOS are
+    // the art direction, and `flashIntensity` dropping under `billowIntensity`
+    // turns the highlight into a DARK SPOT on its own fireball. The two cases
+    // above catch that by identifying a flash disc as the brightest sprite in
+    // the frame; this states the invariant directly.
+    const emittedFlash = VFX_EXPLOSION.flashIntensity * VFX_EXPLOSION.outputGain;
+    const emittedBillow = VFX_EXPLOSION.billowIntensity * VFX_EXPLOSION.outputGain;
+    expect(emittedFlash, 'the flash must out-gain the billows it sits inside')
+      .toBeGreaterThan(emittedBillow);
+    // And the ratio must be the authored one, i.e. the gain is uniform.
+    expect(emittedFlash / emittedBillow)
+      .toBeCloseTo(VFX_EXPLOSION.flashIntensity / VFX_EXPLOSION.billowIntensity, 10);
+  });
+
+  it('keeps the flash core above the bloom threshold', () => {
+    // 0.875 — a literal 75% cut of the authored 3.5 — falls UNDER the 0.85
+    // bloom threshold and the flash stops being a flash. The 75% cut this
+    // report asked for was delivered in BLOWN AREA (5.753pp -> 1.416pp,
+    // measured), which is what the player sees, not by dividing one constant.
+    expect(VFX_EXPLOSION.flashIntensity * VFX_EXPLOSION.outputGain)
+      .toBeGreaterThan(0.85);
+  });
+
+  it('is a real cut, not a token one', () => {
+    expect(VFX_EXPLOSION.outputGain).toBeGreaterThan(0);
+    expect(VFX_EXPLOSION.outputGain).toBeLessThan(1);
   });
 });

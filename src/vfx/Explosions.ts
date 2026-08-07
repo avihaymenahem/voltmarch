@@ -230,7 +230,22 @@ export function spawnExplosion(
    * which is correct: nothing near it should out-glare it, including its own
    * cook-offs.
    */
-  const glare = admitGlare(x, y + 1.6 * k, z, VFX_GLARE.cost.explosion * k * k);
+  /*
+   * `outputGain` FOLDED IN HERE, once, so it reaches every emission below.
+   *
+   * The fifth report's ablation — the first one taken with a mask that actually
+   * worked — attributes 94% of a single explosion's blown-white area and 97% of
+   * a twenty-explosion pile to this one layer. Every previous pass tuned ONE
+   * sprite inside it, which is why each measured correctly in isolation and
+   * none of them shipped a perceptible cut.
+   *
+   * Multiplied into `glare` rather than applied at each `e.i0` because that is
+   * the one place both already meet, so no future emitter can be added and
+   * silently miss it. See `VFX_EXPLOSION.outputGain` for the number and for why
+   * it covers the LIT billows too, not just the additive quads.
+   */
+  const glare = admitGlare(x, y + 1.6 * k, z, VFX_GLARE.cost.explosion * k * k)
+    * X.outputGain;
 
   /* -- 1. flash disc: additive pure white, peak 40 ms, gone by 140 ms ----- */
   let e = resetEmit();

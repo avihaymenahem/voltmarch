@@ -4873,6 +4873,47 @@ export const VFX_EXPLOSION = {
    */
   flashIntensity: 3.5,
   /**
+   * ONE GAIN OVER THE WHOLE EXPLOSION. THE FIFTH REPORT'S ACTUAL FIX.
+   *
+   * Folded into `glare` in `Explosions.ts#spawnExplosion`, so it reaches the
+   * flash disc, the structure flash, the billows, the shockwave and the embers
+   * together and CANNOT BE MISSED BY A NEW EMITTER.
+   *
+   * WHY A SINGLE GAIN AND NOT ANOTHER SPRITE TWEAK. Explosion brightness was
+   * reported five times. Every previous pass lowered one sprite — flashIntensity
+   * 7.0 -> 3.5, billowIntensity 4.2 -> 2.1, the muzzle core 9.0 -> 4.0 — and
+   * every one measured correctly, because each was measured on the sprite it
+   * changed. The ablation that finally worked (see below) shows the layer is
+   * the unit of the problem, not any sprite in it.
+   *
+   * THE MEASUREMENT, `tools/flash-stack.mjs --ablate`, frame area over sRGB
+   * 0.95 against a 5.983% baseline:
+   *
+   *                        all-on      additive layer hidden
+   *      one explosion    +5.753pp          +0.332pp     (94% of it)
+   *      twenty           +17.400pp         +0.451pp     (97% of it)
+   *
+   * and `everything-off` lands at -0.085pp, i.e. exactly baseline, so the
+   * measurement is complete and nothing is unaccounted for.
+   *
+   * That result CONTRADICTS four passes of accumulated notes, including the
+   * claim in this file that the point lights were the largest single lever.
+   * Those notes were taken through a mask that never worked: the arms set
+   * `mesh.visible = false`, and `ParticleSystem` reassigns `mesh.visible` on
+   * every upload (Particles.ts:994, :1174) while `screenshot()` renders through
+   * the system registry. The probe now reports a `STILL DREW` column per arm
+   * and masks via `material.visible`, which nothing in the vfx system touches.
+   *
+   * WHY IT SCALES THE LIT BILLOWS TOO, even though hiding them does not help.
+   * The RATIOS are the art direction (see the note above this block), and
+   * `tests/vfx.spec.ts` identifies a flash disc as the brightest sprite in the
+   * frame. Scaling additive alone would drop `flashIntensity` under
+   * `billowIntensity` and turn the highlight into a dark spot on its own
+   * fireball — the exact failure the `flashIntensity` note records from an
+   * earlier attempt, which matched 818 sprites instead of 20.
+   */
+  outputGain: 0.40,
+  /**
    * How far the flash ramp is stretched across the disc's RADIUS.
    *
    * The disc is emitted with `radial = 1`, so the ramp sweeps across the sprite

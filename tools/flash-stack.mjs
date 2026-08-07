@@ -455,6 +455,26 @@ try {
       ['black-additive', ['VfxAdditive'], true, 'black'],
       ['black-litsmoke', ['VfxLitSmoke'], true, 'black'],
       ['black-sprites', ['VfxAdditive', 'VfxLitSmoke', 'VfxDebris'], true, 'black'],
+      /*
+       * THE DECAL ARM — the leading hypothesis for the residue that survives
+       * hiding every VFX mesh.
+       *
+       * `GroundDecals` is a separate system with its own mesh and material, so
+       * it is invisible both to a "what became visible during the burst" scan
+       * and to every VFX material-name mask. The timing fits: the arms
+       * photograph at 180 ms, by which point the flash is gone and the fireball
+       * is fading, yet the residue is at its largest.
+       *
+       * PREDICTION, recorded before the run so it cannot be rationalised after:
+       * this should measure ~0. The decal material blends DstColor x Zero
+       * (src/world/Decals.ts:582) — a MULTIPLY — so a decal can only ever
+       * darken the ground and cannot add a blown-white pixel. If it measures
+       * large, that assumption is wrong and worth knowing; if it measures zero,
+       * the hypothesis is dead and the `drew` column above is the answer.
+       */
+      ['no-decals', ['GroundDecals'], true, 'hide'],
+      ['no-decals-no-sprites', ['GroundDecals', 'VfxAdditive', 'VfxLitSmoke', 'VfxDebris'], true, 'hide'],
+      ['nothing-at-all', ['GroundDecals', 'VfxAdditive', 'VfxLitSmoke', 'VfxDebris'], false, 'hide'],
     ];
     /*
      * THE CONTROL THIS PROBE NEVER HAD, and the reason its last run could not
@@ -509,18 +529,41 @@ try {
             // entirely and leaves whatever is behind, which is the same answer
             // as hiding. Additive-blended black contributes exactly nothing and
             // still writes depth if the material already did.
+            /*
+             * `o.visible = false` IS NOT RELIABLE HERE, and this is the fourth
+             * defect this probe has had.
+             *
+             * `ParticleSystem` reassigns `mesh.visible = liveCount > 0` on every
+             * upload (src/vfx/Particles.ts:994 and :1174), exactly as
+             * `RibbonBatch.end()` does — and `RA.screenshot()` renders through
+             * the system registry (task #46), so the frame being captured is a
+             * frame that can put the layer straight back. The arc sweep below
+             * hit this and produced a confident "this layer costs nothing"
+             * twice before it was caught.
+             *
+             * `material.visible` is checked by the renderer when it builds the
+             * render list and NOTHING in the vfx system touches it. `drew`,
+             * reported per arm, is the proof: it counts how many of the meshes
+             * this arm claims to have suppressed were still being drawn at the
+             * shutter. A non-zero `drew` means the arm measured nothing.
+             */
             const restore = [];
             for (const o of hit) {
-              if (mode === 'black') {
-                const mats = Array.isArray(o.material) ? o.material : [o.material];
-                for (const mm of mats) {
-                  restore.push([mm, mm.opacity, mm.color ? mm.color.clone() : null]);
+              const mats = Array.isArray(o.material) ? o.material : [o.material];
+              for (const mm of mats) {
+                restore.push([mm, mm.visible, mm.opacity, mm.color ? mm.color.clone() : null]);
+                if (mode === 'black') {
+                  // Kept for VfxDebris, whose MeshStandardMaterial does read
+                  // both. For the two ShaderMaterials it is a no-op and the
+                  // 'hide' twin is the meaningful measurement — see the note
+                  // in the mask table above.
                   mm.opacity = 0;
                   if (mm.color) mm.color.setRGB(0, 0, 0);
+                } else {
+                  mm.visible = false;
                 }
-              } else {
-                o.visible = false;
               }
+              o.visible = false;
             }
 
             const pool = RA.scene.getObjectByName('VfxLightPool');
@@ -552,13 +595,24 @@ try {
               +c.rotation.x.toFixed(5), +c.rotation.y.toFixed(5), +c.rotation.z.toFixed(5),
             ];
 
+            // Counted BEFORE restoring: how many meshes this arm claims to
+            // have suppressed were still on screen when the shutter opened.
+            // Anything but 0 invalidates the arm.
+            const drew = hit.filter((o) => {
+              const mats = Array.isArray(o.material) ? o.material : [o.material];
+              return o.visible && mats.some((m) => m.visible);
+            }).length;
             for (const o of hit) o.visible = true;
-            for (const [mm, op, col] of restore) {
+            for (const [mm, vis, op, col] of restore) {
+              mm.visible = vis;
               mm.opacity = op;
               if (col && mm.color) mm.color.copy(col);
             }
             if (pool) pool.visible = true;
-            return { shot, pose, suppressed: hit.length, poolFound: pool !== undefined && pool !== null };
+            return {
+              shot, pose, suppressed: hit.length, drew,
+              poolFound: pool !== undefined && pool !== null,
+            };
           },
           { count, suppress, lights, mode },
         );
@@ -577,8 +631,8 @@ try {
           `mean ${m.mean.toFixed(4)}  >0.95 ${(m.fracOver95 * 100).toFixed(3)}%  ` +
           `(base ${vsBase >= 0 ? '+' : ''}${vsBase.toFixed(3)}pp)  ` +
           `>0.75 ${(m.fracOver75 * 100).toFixed(3)}%  ` +
-          `[hit ${url.suppressed} mesh, pool ${url.poolFound ? 'found' : 'MISSING'}, ` +
-          `cam ${drift.toFixed(3)} m]`,
+          `[hit ${url.suppressed}, STILL DREW ${url.drew}, ` +
+          `pool ${url.poolFound ? 'found' : 'MISSING'}, cam ${drift.toFixed(3)} m]`,
         );
       }
     }
