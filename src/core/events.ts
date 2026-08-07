@@ -290,6 +290,29 @@ export class CommandBus {
   /** Commands issued during a drain, applied next tick. */
   private readonly overflowBuffer: Command[] = [];
 
+  /**
+   * THE RECORDING TAP. One observer, called for every command as it is
+   * delivered, before the handler sees it.
+   *
+   * WHY HERE AND NOT ON `issue*`. Two later consumers PARK commands and
+   * RE-ISSUE them (`src/input/Commands.ts#reissueParked`,
+   * `src/sim/features.system.ts`), so a hook on the issue side records most
+   * kinds three times. `drain` is the one place a command passes exactly once,
+   * on the tick it actually applies — and it is shared by all four drainers, so
+   * a tap here cannot miss the ones Production and features handle in later
+   * phases.
+   *
+   * THE OBSERVER MUST COPY. `cmd` is a pooled struct and `cmd.entities` is a
+   * subarray view into `arena`, invalid the moment this drain returns. See
+   * `ReplayRecorder.record`.
+   */
+  private observer: ((cmd: Command) => void) | null = null;
+
+  /** Install or remove the recording tap. Null disables it entirely. */
+  observe(fn: ((cmd: Command) => void) | null): void {
+    this.observer = fn;
+  }
+
   /** Diagnostics: commands dropped because the ring or arena was full. */
   public droppedCommands = 0;
   /** Monotonic tick stamp written onto every command. */
@@ -482,7 +505,16 @@ export class CommandBus {
     this.draining = true;
     const n = this.count;
     try {
-      for (let i = 0; i < n; i++) fn(this.ring[i]);
+      const obs = this.observer;
+      for (let i = 0; i < n; i++) {
+        const cmd = this.ring[i];
+        // BEFORE the handler, so a command is recorded even if its handler
+        // rejects it. A replay must reproduce the rejection too — a log that
+        // silently omits refused commands diverges the moment the refusal
+        // depends on state the replay reconstructs a tick differently.
+        if (obs !== null) obs(cmd);
+        fn(cmd);
+      }
     } finally {
       this.draining = false;
       this.count = 0;
