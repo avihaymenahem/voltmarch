@@ -125,6 +125,13 @@ function park(cmd: Command): void {
 
 /** Put everything we did not consume back on the bus for Production to find. */
 function reissue(): void {
+  // Same reasoning as `Commands.ts#reissueParked`: these are the SAME actions
+  // going round again for a later phase, and a recorder tapping the drain
+  // counts each one twice without the mark.
+  ctx().channels.commands.markReissue(reissueInner);
+}
+
+function reissueInner(): void {
   const bus = ctx().channels.commands;
   for (let i = 0; i < parkCount; i++) {
     const p = PARKED[i];

@@ -235,7 +235,67 @@ describe('a divergence says where, not just that', () => {
 /* ========================================================================== */
 
 describe('the recorder captures each command exactly once', () => {
-  it('records on the DRAIN, so a parked-and-reissued command is not tripled', () => {
+  it('logs ONE entry for one action, even when a consumer parks and re-issues it', () => {
+    /*
+     * THE BUG THIS FILE ORIGINALLY SHIPPED WITH, found by playing rather than
+     * by testing. The header used to claim the drain was "where a command
+     * passes exactly once". It is not: a re-issue is a NEW command object that
+     * passes the drain again, and a live match logged one human placement THREE
+     * times — a replay would have built three power plants for one click.
+     *
+     * This is the case that was missing. It drives the real shape: issue once,
+     * drain, then re-issue the way `reissueParked` does, and drain again.
+     */
+    const ch = new Channels();
+    const rec = new ReplayRecorder(HEADER);
+    rec.attach(ch);
+
+    ch.commands.tick = 5;
+    ch.commands.issuePlaceBuilding(P0, 3, 10, 20, 90);
+    // Pass one: a consumer that cannot handle it parks it.
+    ch.commands.drain(() => {});
+    expect(rec.commandCount, 'the original must be recorded').toBe(1);
+
+    // Pass two: the consumer puts it back for a later phase.
+    ch.commands.markReissue(() => {
+      ch.commands.issuePlaceBuilding(P0, 3, 10, 20, 90);
+    });
+    ch.commands.drain(() => {});
+    expect(rec.commandCount, 'a re-issue is a continuation, not a new intent').toBe(1);
+
+    // Pass three: and again, which is what actually happened in the match.
+    ch.commands.markReissue(() => {
+      ch.commands.issuePlaceBuilding(P0, 3, 10, 20, 90);
+    });
+    ch.commands.drain(() => {});
+    expect(rec.commandCount).toBe(1);
+  });
+
+  it('still records a genuinely repeated action', () => {
+    // The other half. `markReissue` must not become a way to lose real input:
+    // a player clicking twice is two commands.
+    const ch = new Channels();
+    const rec = new ReplayRecorder(HEADER);
+    rec.attach(ch);
+    ch.commands.issuePlaceBuilding(P0, 3, 10, 20, 0);
+    ch.commands.issuePlaceBuilding(P0, 3, 11, 21, 0);
+    ch.commands.drain(() => {});
+    expect(rec.commandCount).toBe(2);
+  });
+
+  it('closes the reissue window even when the callback throws', () => {
+    // Otherwise one bad re-issue silently stops the recorder for the rest of
+    // the match, and the replay is quietly missing everything after it.
+    const ch = new Channels();
+    const rec = new ReplayRecorder(HEADER);
+    rec.attach(ch);
+    expect(() => ch.commands.markReissue(() => { throw new Error('boom'); })).toThrow();
+    ch.commands.issuePlaceBuilding(P0, 3, 1, 2, 0);
+    ch.commands.drain(() => {});
+    expect(rec.commandCount, 'recording must resume after a throw').toBe(1);
+  });
+
+  it('records on the DRAIN, so every drainer is covered', () => {
     // Two consumers park commands and re-issue them. A hook on `issue*` would
     // record most kinds three times, and the replay would then apply them three
     // times. The tap is on the drain, where a command passes once.
@@ -580,5 +640,122 @@ describe('the recorder is actually wired into the game', () => {
 
   it('refuses to verify against a different map rather than reporting nonsense', () => {
     expect(read('src/game/replay.system.ts')).toContain('boot the same seed first');
+  });
+});
+
+/* ========================================================================== */
+
+describe('every command kind the game can issue is replayable', () => {
+  /**
+   * THE FAILURE THIS PREVENTS is silent and total: a kind the player can issue
+   * but the replayer cannot re-issue makes every recording containing it wrong,
+   * and nothing anywhere says so. `ReplayPlayer.issue`'s default branch reports
+   * an unknown kind, but only if the kind reaches it — a kind nobody thought
+   * about is a kind nobody tested.
+   *
+   * So this walks the ENUM rather than a hand-written list.
+   */
+  it('has a ReplayPlayer branch for each one', () => {
+    const fs = require('node:fs') as typeof import('node:fs');
+    const path = require('node:path') as typeof import('node:path');
+    const at = (rel: string): string => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
+    const src = at('src/game/Replay.ts');
+    // Every value declared in CommandKind, read from the source of truth.
+    const types = at('src/core/types.ts');
+    const block = types.slice(
+      types.indexOf('export const enum CommandKind'),
+      types.indexOf('}', types.indexOf('export const enum CommandKind')),
+    );
+    const names = Array.from(block.matchAll(/^\s{2}(\w+)\s*=\s*\d+,/gm)).map((m) => m[1]!);
+    expect(names.length, 'the enum must have been parsed').toBeGreaterThan(5);
+    for (const name of names) {
+      if (name === 'None') continue;
+      expect(src, `ReplayPlayer cannot re-issue CommandKind.${name}`)
+        .toContain(`case CommandKind.${name}:`);
+    }
+  });
+
+  it('round-trips a relocation, the newest kind', async () => {
+    const { CommandKind: CK } = await import('../src/core/types');
+    const ch = new Channels();
+    const rec = new ReplayRecorder(HEADER);
+    rec.attach(ch);
+    ch.commands.issueRelocate(P0, 77 as EntityId, 12, 34, 90);
+    ch.commands.drain(() => {});
+    const parsed = parseReplay(rec.serialise());
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    const c = parsed.value.commands[0]!;
+    expect(c.kind).toBe(CK.Relocate);
+    expect(c.target).toBe(77);
+    expect(c.cx).toBe(12);
+    expect(c.cz).toBe(34);
+    expect(c.arg).toBe(90);
+
+    // And it must actually go back onto a bus.
+    const out = new Channels();
+    const seen: number[] = [];
+    new ReplayPlayer(parsed.value).issueFor(0, out);
+    out.commands.drain((cmd) => { seen.push(cmd.kind as number); });
+    expect(seen).toEqual([CK.Relocate]);
+  });
+});
+
+/* ========================================================================== */
+
+describe('the human and the AI now issue the same commands', () => {
+  const raw = (rel: string): string =>
+    (require('node:fs') as typeof import('node:fs'))
+      .readFileSync(require('node:path').join(__dirname, '..', rel), 'utf8');
+
+  /**
+   * Source with comments stripped.
+   *
+   * Placement.ts DOCUMENTS what it used to call — "this used to call
+   * `service.placeBuilding(...)` directly" — so a naive grep for the old
+   * behaviour finds the explanation of the fix and fails. Comments are prose;
+   * only the code is the behaviour. (Same reason `shroud-split.spec.ts` does
+   * this.)
+   */
+  const read = (rel: string): string => raw(rel)
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/.*$/gm, '$1');
+
+  /**
+   * CLAUDE.md: "The AI issues the same commands the player does, through
+   * `channels.command`." core/types.ts: "Human input and the AI issue the
+   * IDENTICAL Command struct."
+   *
+   * Both were FALSE for the two most common structural actions in the game.
+   * Building placement wrote straight into ProductionService's private intent
+   * queue, one layer below the bus, where the AI's PlaceBuilding command also
+   * lands — so the two players converged BENEATH the recording point and the
+   * human's half was invisible. Relocation had no CommandKind at all.
+   */
+  it('routes human building placement through issuePlaceBuilding', () => {
+    const src = read('src/sim/Placement.ts');
+    expect(src).toContain('issuePlaceBuilding(');
+    // And the direct call must be gone from the commit path.
+    const commit = src.slice(src.indexOf('  commit('), src.indexOf('  beginRelocate('));
+    expect(commit, 'commit() must not write to the intent queue directly')
+      .not.toMatch(/service\.placeBuilding\(/);
+  });
+
+  it('routes human relocation through issueRelocate', () => {
+    const src = read('src/sim/Placement.ts');
+    expect(src).toContain('issueRelocate(');
+    const commit = src.slice(src.indexOf('  commit('), src.length);
+    const body = commit.slice(0, commit.indexOf('\n  beginRelocate') + 1 || 4000);
+    expect(body, 'commit() must not call the seam directly to MOVE anything')
+      .not.toMatch(/seam\.commit\(|relocateSeamOf\(\)\?\.commit\(/);
+  });
+
+  it('handles Relocate in the ONE drainer, not a second one', () => {
+    // `CommandBus.drain` is destructive and resets the whole ring. A second
+    // drainer inside Phase.Command would eat every command `reissueParked` had
+    // just put back for Phase.Production — silently, with no error anywhere.
+    expect(read('src/input/Commands.ts')).toContain('case CommandKind.Relocate:');
+    expect(read('src/sim/relocate.system.ts'),
+      'sim.relocate must not drain the bus').not.toMatch(/commands\.drain\(/);
   });
 });

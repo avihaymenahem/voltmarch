@@ -313,6 +313,29 @@ export class CommandBus {
     this.observer = fn;
   }
 
+  /**
+   * True while a consumer is PUTTING PARKED COMMANDS BACK, so everything issued
+   * inside the window is stamped `reissued`.
+   *
+   * A re-issue is a genuinely new command object and passes `drain` again, so
+   * anything counting at the drain sees one player action two or three times.
+   * The recorder logged every human placement THREE times and would have
+   * replayed three power plants for one click; this is what lets it tell a
+   * continuation from an intent.
+   *
+   * A window rather than a per-call argument because the two re-issue sites are
+   * loops over a dozen `issueX` overloads, and threading a flag through every
+   * one of them is how a new overload gets added without it.
+   */
+  private reissuing = false;
+
+  /** Run `fn` with everything it issues marked as a re-issue. */
+  markReissue(fn: () => void): void {
+    const was = this.reissuing;
+    this.reissuing = true;
+    try { fn(); } finally { this.reissuing = was; }
+  }
+
   /** Diagnostics: commands dropped because the ring or arena was full. */
   public droppedCommands = 0;
   /** Monotonic tick stamp written onto every command. */
@@ -325,6 +348,7 @@ export class CommandBus {
         kind: CommandKind.None,
         player: 0 as PlayerId,
         tick: 0,
+        reissued: false,
         order: OrderKind.None,
         target: NONE,
         x: 0, z: 0,
@@ -345,6 +369,8 @@ export class CommandBus {
     c.kind = kind;
     c.player = player;
     c.tick = this.tick;
+    // Cleared per claim; `markReissue()` sets it for the one tick it applies to.
+    c.reissued = this.reissuing;
     c.order = OrderKind.None;
     c.target = NONE;
     c.x = 0; c.z = 0;
@@ -489,6 +515,23 @@ export class CommandBus {
   }
 
   /** Blow up your own unit. */
+  /**
+   * Move a standing structure to a new footprint origin cell.
+   *
+   * `arg` carries the facing in degrees, or -1 for "keep the current one" —
+   * the same encoding `RelocateService.commit` already used, so the queue
+   * behind it did not have to change.
+   */
+  issueRelocate(
+    player: PlayerId, building: EntityId, cx: number, cz: number, facing = -1,
+  ): void {
+    const c = this.claim(CommandKind.Relocate, player);
+    if (c === null) return;
+    c.target = building;
+    c.cx = cx; c.cz = cz;
+    c.arg = facing;
+  }
+
   issueSelfDestruct(player: PlayerId, target: EntityId): void {
     const c = this.claim(CommandKind.SelfDestruct, player);
     if (c === null) return;

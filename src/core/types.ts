@@ -829,6 +829,20 @@ export const enum CommandKind {
   SetPrimary = 10,
   /** Self-destruct a unit. */
   SelfDestruct = 11,
+  /**
+   * Pick up a standing structure and put it down somewhere else.
+   *
+   * APPENDED, NEVER INSERTED. This enum is encoded into replay files and every
+   * value below is load-bearing; renumbering one would make every existing
+   * recording play back a different game.
+   *
+   * It exists because relocation was the last ordinary gameplay verb reaching
+   * the simulation WITHOUT passing the bus: the HUD called
+   * `globalThis.__vmRelocate.commit(...)` directly, so the action was invisible
+   * to anything watching the command stream — a replay recorder, a spectator,
+   * a multiplayer link — while the AI's every move was visible.
+   */
+  Relocate = 12,
 }
 
 /**
@@ -841,6 +855,21 @@ export interface Command {
   player: PlayerId;
   /** The sim tick this was issued on (for replay ordering). */
   tick: number;
+  /**
+   * True when this is a consumer PUTTING A COMMAND BACK, not a player or the
+   * AI issuing a new one.
+   *
+   * Two consumers park commands they cannot handle and re-issue them for a
+   * later phase — `input/Commands.ts#reissueParked` and
+   * `sim/features.system.ts`. Each re-issue is a genuinely new command object
+   * that passes `CommandBus.drain` again, so anything counting at the drain
+   * sees ONE player action as two or three.
+   *
+   * That is not hypothetical: the replay recorder logged every human placement
+   * three times and would have replayed three power plants for one click. The
+   * flag is what lets a recorder tell a continuation from an intent.
+   */
+  reissued: boolean;
   /** For Order commands. */
   order: OrderKind;
   /** Target entity, or NONE. */

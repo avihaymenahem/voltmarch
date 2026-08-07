@@ -193,7 +193,7 @@ export class TutorialDirector implements TutorialFeed {
   private attached = false;
   /**
    * True once the shell has finished framing the camera. Feed calls before
-   * this are DISCARDED: `Shell.applyPostBoot` jumps the camera onto the
+   * this are DISCARDED: `Shell.applyCameraPostBoot` jumps the camera onto the
    * player's base six frames after the boot, and counting that jump would pay
    * for the pan lesson before the player had touched anything.
    */
@@ -304,7 +304,7 @@ export class TutorialDirector implements TutorialFeed {
   }
 
   /**
-   * The shell has finished `applyPostBoot` and the player has the camera.
+   * The shell has finished `applyCameraPostBoot` and the player has the camera.
    * Everything observed from here on is the player's doing.
    */
   beginObserving(): void {

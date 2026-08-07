@@ -994,6 +994,39 @@ export class PlacementController {
    * catalog has no opinion about what the structure is — the ghost must never
    * be holding something it cannot put down.
    */
+  /**
+   * THE HUMAN'S PLACEMENT GOES THROUGH THE BUS, like the AI's always has.
+   *
+   * This used to call `service.placeBuilding(...)` directly, which writes
+   * straight into `ProductionService`'s PRIVATE intent queue. The AI's
+   * `CommandKind.PlaceBuilding` lands in that same queue ONE LAYER DOWN, so
+   * the two players converged BELOW the command bus and the human's half was
+   * invisible to anything watching it — a replay recorder, a spectator, a
+   * multiplayer link.
+   *
+   * That also made CLAUDE.md's "the AI issues the same commands the player
+   * does" and core/types.ts's "Human input and the AI issue the IDENTICAL
+   * Command struct" false for the single most common structural action in the
+   * game. They are true now.
+   *
+   * Same arguments, same order, same handler — `ProductionService.handleCommand`
+   * calls `placeBuilding` with exactly these four values when it drains the
+   * command. The only thing that changed is that it is now written down on the
+   * way past.
+   */
+  private issuePlace(player: PlayerId, publicId: number, facing: number): void {
+    this.deps.service.channels.commands.issuePlaceBuilding(
+      player, publicId, this.cx, this.cz, facing,
+    );
+  }
+
+  /** See `issuePlace`. `-1` means "keep the structure's current facing". */
+  private issueRelocate(player: PlayerId, building: EntityId, facing: number): void {
+    this.deps.service.channels.commands.issueRelocate(
+      player, building, this.cx, this.cz, facing,
+    );
+  }
+
   beginRelocate(building: EntityId): boolean {
     const seam = relocateSeamOf();
     if (seam === null) return false;
@@ -1083,20 +1116,42 @@ export class PlacementController {
       // dropped: the player asked to move a building that is still standing,
       // and taking the ghost away would mean re-selecting it to try again.
       if (moving === NONE) {
-        this.deps.service.placeBuilding(player, entry.publicId, this.cx, this.cz, facing);
+        this.issuePlace(player, entry.publicId, facing);
       } else {
-        relocateSeamOf()?.commit(player, moving, this.cx, this.cz, facing);
+        this.issueRelocate(player, moving, facing);
       }
       return false;
     }
 
     if (moving !== NONE) {
-      // The sim re-checks and charges. If it refuses on something only it can
-      // see — the price went up, the garrison filled — the ghost stays up.
-      if (relocateSeamOf()?.commit(player, moving, this.cx, this.cz, facing) !== true) return false;
+      /*
+       * ELIGIBILITY IS CHECKED HERE; THE MOVE IS ISSUED ON THE BUS.
+       *
+       * This used to be one `seam.commit(...)` call whose boolean decided
+       * whether the ghost stayed up. Routing the ACTION through
+       * `CommandKind.Relocate` costs that synchronous answer — the command
+       * applies at the end of Phase.Command, one tick later — so the two halves
+       * are split rather than the check being dropped.
+       *
+       * `eligible()` is a pure read (it fills nothing and charges nothing) and
+       * catches the cases the ghost cannot see for itself: the structure
+       * started packing, was sold, or stopped belonging to this player. The
+       * ghost's own `this.report.ok`, already computed by `evaluate()` above,
+       * covers the target cell.
+       *
+       * WHAT IS GIVEN UP, stated rather than hidden: a refusal that only the
+       * sim can see AT COMMIT TIME — the price went up between the click and
+       * the tick — now drops the ghost and reports through the normal rejection
+       * path a tick later, instead of keeping it on the cursor. That is a
+       * one-tick window on a rare race, traded for the action being visible to
+       * a replay at all.
+       */
+      const seam = relocateSeamOf();
+      if (seam === null || !seam.eligible(player, moving)) return false;
+      this.issueRelocate(player, moving, facing);
     } else {
       this.commitInFlight = true;
-      this.deps.service.placeBuilding(player, entry.publicId, this.cx, this.cz, facing);
+      this.issuePlace(player, entry.publicId, facing);
     }
     this.active = false;
     this.entry = null;

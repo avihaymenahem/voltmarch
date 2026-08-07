@@ -1409,17 +1409,32 @@ export class Shell {
 
     this.status('Compiling shaders');
     await game.ready;
+
+    /*
+     * SIM-VISIBLE STATE LANDS BEFORE THE LOOP STARTS. This was a live
+     * determinism bug, not a theoretical one.
+     *
+     * All of `applyPostBoot` used to run after `await nextFrames(6)` — SIX
+     * RENDER FRAMES — so the tick on which the starting bank arrived depended
+     * on how long six requestAnimationFrame callbacks took: measured between
+     * roughly 3 and 18 ticks. TWO RUNS OF THE SAME SEED ON THE SAME MACHINE
+     * ALREADY DIVERGED, because the AI's first spend decision reads a bank that
+     * appeared at a different tick each time.
+     *
+     * The wait is real and stays — `game.scenario` re-asserts its authored
+     * camera pose on every frame up to frame 4, so a pose set earlier is
+     * silently overwritten. But that is the CAMERA, which is presentation and
+     * cannot affect the simulation. Splitting the two is the whole fix: the
+     * bank and the game speed are written here, at tick 0, every time.
+     */
+    this.applySimPostBoot(game, backdrop);
     game.start();
 
     this.status('Deploying');
     applySettings(this.settings.get(), game);
 
-    // `game.scenario` re-asserts its authored camera pose on every frame up to
-    // frame 4, so that a screenshot taken immediately after `ready()` is framed
-    // exactly as composed. Ours has to land AFTER that window or it is silently
-    // overwritten — which is why this waits instead of posing straight away.
     await nextFrames(6);
-    this.applyPostBoot(game, backdrop);
+    this.applyCameraPostBoot(game, backdrop);
   }
 
   /**
@@ -1451,19 +1466,36 @@ export class Shell {
   }
 
   /** Everything that can only be done once the world is fully built. */
-  private applyPostBoot(game: GameHandle, backdrop: boolean): void {
-    const { world, loop, cameraRig } = game.ctx;
+  /**
+   * Everything post-boot that the SIMULATION can see. Runs on tick 0, before
+   * the loop starts, so it lands on the same tick in every run of a seed.
+   *
+   * See the note at the call site: this used to be one function with the camera
+   * work and ran six RENDER frames late, which put the starting bank anywhere
+   * between tick 3 and tick 18.
+   */
+  private applySimPostBoot(game: GameHandle, backdrop: boolean): void {
+    const { world, loop } = game.ctx;
 
     loop.setSpeed(backdrop ? 1 : this.setup.speed);
 
     if (!backdrop) {
-      // Starting credits are applied AFTER the scenario, which sets its own
-      // bank so a posed screenshot does not read as a test fixture.
+      // Applied AFTER the scenario, which sets its own bank so a posed
+      // screenshot does not read as a test fixture — but BEFORE the first tick,
+      // which is what makes it reproducible.
       const p = world.player(world.localPlayer);
       p.credits = this.setup.startingCredits;
       const other = world.players[1];
       if (other !== undefined) other.credits = this.setup.startingCredits;
     }
+  }
+
+  /**
+   * Everything post-boot that only the CAMERA can see. Runs after the six-frame
+   * wait, which is what it needed the wait for.
+   */
+  private applyCameraPostBoot(game: GameHandle, backdrop: boolean): void {
+    const { world, cameraRig } = game.ctx;
 
     // Frame the local player's own base. The skirmish scenario points the
     // camera at the Allied corner unconditionally; if the player picked the

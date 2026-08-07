@@ -31,8 +31,15 @@
  * 1. `CommandBus.drain` IS DESTRUCTIVE and has no non-destructive read. So the
  *    recorder does not poll — `CommandBus.observe` taps the drain itself.
  * 2. TWO CONSUMERS PARK AND RE-ISSUE COMMANDS (`Commands.ts#reissueParked`,
- *    `features.system.ts`), so hooking `issue*` records most kinds THREE times.
- *    The tap is on the drain, where a command passes exactly once.
+ *    `features.system.ts`). The first version of this file put the tap on the
+ *    drain and claimed that was "where a command passes exactly once". IT IS
+ *    NOT, and a live match proved it: a re-issue is a genuinely NEW command
+ *    object that passes the drain AGAIN, so one human click was logged THREE
+ *    times and a replay would have built three power plants for it.
+ *    Both re-issue sites now run inside `CommandBus.markReissue`, which stamps
+ *    `Command.reissued`, and `record()` skips those. The tap stays on the drain
+ *    — it is still the only place all four drainers are covered — but it now
+ *    records INTENTS rather than deliveries.
  * 3. `cmd.entities` IS A SUBARRAY VIEW into a shared arena and is invalid the
  *    moment the drain returns. `record()` copies it immediately.
  * 4. `cmd.tick` IS THE ISSUE TICK, NOT THE APPLY TICK. A command issued from a
@@ -144,6 +151,11 @@ export class ReplayRecorder {
    * re-issues by apply tick, so that is what is stored.
    */
   private record(cmd: Command, applyTick: number): void {
+    // A consumer putting a parked command back for a later phase. The player
+    // action it stands for was already recorded on its first pass; logging it
+    // again replays the same click two or three times. See trap 2.
+    if (cmd.reissued) return;
+
     // `cmd.entities` is a view into the bus's shared arena and dies with this
     // drain. Copying is not an optimisation to skip.
     const entities: number[] = new Array(cmd.entityCount);
@@ -399,6 +411,9 @@ export class ReplayPlayer {
         return;
       case CommandKind.SelfDestruct:
         bus.issueSelfDestruct(player, c.target as EntityId);
+        return;
+      case CommandKind.Relocate:
+        bus.issueRelocate(player, c.target as EntityId, c.cx, c.cz, c.arg);
         return;
       default:
         // An unknown kind in a file whose formatVersion we accepted means the

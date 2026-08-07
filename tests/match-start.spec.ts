@@ -1153,3 +1153,54 @@ describe('the opening bank can actually reach a refinery', () => {
     expect(clampCreditsFor('mcv', 50000)).toBe(50000);
   });
 });
+
+/* ========================================================================== */
+
+describe('the starting bank lands on tick 0, not on a render frame', () => {
+  const read = (rel: string): string =>
+    (require('node:fs') as typeof import('node:fs'))
+      .readFileSync(require('node:path').join(__dirname, '..', rel), 'utf8');
+
+  /**
+   * A LIVE DETERMINISM BUG, and the only one found that made two runs of the
+   * same seed diverge ON THE SAME MACHINE.
+   *
+   * `applyPostBoot` wrote the starting credits AND posed the camera, and ran
+   * after `await nextFrames(6)` — six requestAnimationFrame callbacks. The tick
+   * on which the bank appeared therefore depended on how long those six frames
+   * took: measured between roughly 3 and 18. The AI's first spend decision
+   * reads that bank, so the two runs part company within a second.
+   *
+   * The wait is real and had to stay: `game.scenario` re-asserts its authored
+   * camera pose up to frame 4, so a pose set earlier is overwritten. But that
+   * is presentation. Splitting the sim-visible half out and running it before
+   * `game.start()` is the whole fix.
+   */
+  it('writes credits before the loop starts', () => {
+    const src = read('src/shell/Shell.ts');
+    const simAt = src.indexOf('this.applySimPostBoot(game, backdrop);');
+    const startAt = src.indexOf('game.start();', simAt > 0 ? simAt : 0);
+    expect(simAt, 'applySimPostBoot must be called').toBeGreaterThan(0);
+    expect(startAt, 'and it must come BEFORE game.start()').toBeGreaterThan(simAt);
+  });
+
+  it('poses the camera after the six-frame wait, which is what needed it', () => {
+    const src = read('src/shell/Shell.ts');
+    const waitAt = src.indexOf('await nextFrames(6);');
+    const camAt = src.indexOf('this.applyCameraPostBoot(game, backdrop);');
+    expect(waitAt).toBeGreaterThan(0);
+    expect(camAt, 'the camera pose must stay after the wait').toBeGreaterThan(waitAt);
+  });
+
+  it('keeps the two halves separate — no sim write may drift back into the camera pass', () => {
+    // The failure mode is not that someone re-merges the functions; it is that
+    // somebody adds a credits/tech/queue write to the camera one because that
+    // is where such things used to live.
+    const src = read('src/shell/Shell.ts');
+    const from = src.indexOf('private applyCameraPostBoot');
+    const to = src.indexOf('\n  }', from);
+    const body = src.slice(from, to);
+    expect(body, 'a sim write is back in the camera pass').not.toMatch(/\.credits\s*=/);
+    expect(body).not.toMatch(/loop\.setSpeed/);
+  });
+});

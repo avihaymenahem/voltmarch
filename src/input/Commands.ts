@@ -81,7 +81,7 @@ import { clampWorld, hashU32, worldToCell } from '../core/math';
 // bound and a three-row fallback when none is, which is the same answer
 // `src/sim/deploy.system.ts` acts on.
 import { isDeployable } from '../sim/Deploy';
-import { snapRallyClear } from '../sim/Placement';
+import { relocateSeamOf, snapRallyClear } from '../sim/Placement';
 import { CursorKind } from './Input';
 import { canInteractWith, isEnemyOf } from './Selection';
 
@@ -758,6 +758,9 @@ export class OrderExecutor {
       case CommandKind.SetRally:
         this.applyRally(cmd);
         break;
+      case CommandKind.Relocate:
+        this.applyRelocate(cmd);
+        break;
       default:
         this.park(cmd);
         break;
@@ -784,6 +787,38 @@ export class OrderExecutor {
   }
 
   /* -- application -------------------------------------------------------- */
+
+  /**
+   * Move a standing structure. The last ordinary gameplay verb that reached the
+   * simulation WITHOUT passing this bus.
+   *
+   * The HUD used to call `globalThis.__vmRelocate.commit(...)` straight from a
+   * click handler, so a relocation was invisible to anything watching the
+   * command stream — a replay recorder, a spectator, a multiplayer link — while
+   * every move the AI made was visible. `CommandKind.Relocate` closes that, and
+   * with it CLAUDE.md's "the AI issues the same commands the player does"
+   * becomes true rather than nearly true.
+   *
+   * HANDLED HERE RATHER THAN IN `sim.relocate`, and the reason is a trap worth
+   * writing down: `CommandBus.drain` is DESTRUCTIVE and resets the whole ring.
+   * A second drainer inside Phase.Command would consume every OTHER command in
+   * the same pass — every ProductionStart and PlaceBuilding that
+   * `reissueParked` had just put back for Phase.Production to collect — and
+   * they would vanish with no error anywhere. One drainer per phase; this is
+   * it.
+   *
+   * The seam is the same duck-typed one the ghost commits through, and it
+   * degrades the same way: with no relocate service installed this is a no-op
+   * rather than a throw.
+   *
+   * `arg` is the facing in degrees, or -1 for "keep the current one" — the
+   * encoding `RelocateService.commit` already used, so nothing below changed.
+   */
+  private applyRelocate(cmd: Command): void {
+    relocateSeamOf()?.commit(
+      cmd.player, cmd.target, cmd.cx, cmd.cz, cmd.arg < 0 ? undefined : cmd.arg,
+    );
+  }
 
   private applyOrder(cmd: Command): void {
     const s = this.world.store;
@@ -1020,6 +1055,13 @@ export class OrderExecutor {
 
   /** Put everything we parked back on the bus, in the order it arrived. */
   private reissueParked(): void {
+    // Wrapped so everything below is stamped `reissued`. These are the SAME
+    // player actions going round again for a later phase, not new ones, and a
+    // recorder that cannot tell the difference logs each click three times.
+    this.channels.commands.markReissue(() => { this.reissueParkedInner(); });
+  }
+
+  private reissueParkedInner(): void {
     const bus = this.channels.commands;
     for (let i = 0; i < this.parkedCount; i++) {
       const p = this.parked[i];
@@ -1049,6 +1091,12 @@ export class OrderExecutor {
           break;
         case CommandKind.SetPrimary:
           bus.issueSetPrimary(p.player, p.target);
+          break;
+        case CommandKind.Relocate:
+          // Handled directly in `onCommand`, so it should never be parked —
+          // but this switch DROPS anything it has no case for, silently, and
+          // that is how a kind disappears when somebody reorders a phase.
+          bus.issueRelocate(p.player, p.target, p.cx, p.cz, p.arg);
           break;
         case CommandKind.SelfDestruct:
           bus.issueSelfDestruct(p.player, p.target);

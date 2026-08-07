@@ -449,7 +449,7 @@ describe('tutorial — camera probe', () => {
   });
 
   /**
-   * `Shell.applyPostBoot` jumps the camera onto the player's base with an
+   * `Shell.applyCameraPostBoot` jumps the camera onto the player's base with an
    * immediate pose. Counting that as a pan would hand the player the camera
    * lesson before they had touched anything.
    */
@@ -785,7 +785,7 @@ describe('tutorial — the shell launches and tears it down correctly', () => {
 
   /**
    * Observation starts only after the boot has posed the camera. Before that,
-   * `applyPostBoot`'s jump onto the player's base would pay for the entire
+   * `applyCameraPostBoot`'s jump onto the player's base would pay for the entire
    * camera lesson before the player had touched anything.
    */
   it('starts observing after the match boot, not before', () => {

@@ -289,7 +289,7 @@ export class CameraProbe {
       const dx = x - this.prevX;
       const dz = z - this.prevZ;
       const travel = Math.sqrt(dx * dx + dz * dz);
-      // A pose set by the shell's own framing (`applyPostBoot` jumps the camera
+      // A pose set by the shell's own framing (`applyCameraPostBoot` jumps the camera
       // onto the player's base) would otherwise pay for the whole pan lesson.
       if (travel < CAM_JUMP_CLAMP) f.camPanTravel += travel;
       f.camZoomTravel += Math.abs(Math.log(d / this.prevDistance));
