@@ -2354,6 +2354,37 @@ export interface MapPreset {
   readonly props: readonly string[];
 }
 
+/**
+ * ROCK AND BOULDER ORDERING IS A DENSITY KNOB, and it is the biggest one.
+ *
+ * "reduce the number of boulders and rocks by at least 30% all around, they
+ * spawn way too much and causing other bugs."
+ *
+ * `ScenarioBuilder.scatter` picks with `floor(-log2(1 - r))`, so INDEX 0
+ * APPEARS HALF THE TIME, index 1 a quarter, index 2 an eighth, and the tail
+ * clamps onto the last entry. Ordering is therefore not cosmetic — it is the
+ * weight. Before this pass:
+ *
+ *      arid   ['rock', 'boulder', ...]   rock 50% + boulder 25%  = 75% rock
+ *      coast  ['rock', 'bush', 'tree', 'boulder']                = 56%
+ *      snow   ['pine', 'rock', 'boulder']                        = 50%
+ *
+ * THE SECOND HALF OF THE REPORT IS THE IMPORTANT ONE. `rock` is a 2 m nav
+ * blocker and `boulder` a 3.2 m one, and tests/start-clearance.spec.ts already
+ * records what that costs: measured share of armies whose deploy footprint was
+ * fouled was arid 48%, coast 39%, snow 29% — and 48% is almost exactly the 75%
+ * blocking share above, filtered through where the scatter lands. These are the
+ * three presets that lead with rock. That is not a coincidence, it is the
+ * mechanism.
+ *
+ * Reordered so nothing leads with a nav blocker. Rock+boulder share:
+ *      arid  75% -> 37.5%      coast 56% -> 25%      snow 50% -> 25%
+ * temperate and tropical already sat at 12.5% and are unchanged.
+ *
+ * The per-biome WEIGHTS in `src/world/PropLibrary.ts` came down 35% in the same
+ * pass; that governs the world scatter, this governs the base scatter, and both
+ * had to move or the cut would only show in half the props on screen.
+ */
 export const MAP_PRESETS: Record<string, MapPreset> = {
   /** The shipping biome: yellow-green grass, low plateaus, scattered woodland. */
   temperate: {
@@ -2375,7 +2406,7 @@ export const MAP_PRESETS: Record<string, MapPreset> = {
   arid: {
     name: 'Airbase Flats', mood: 'noon',
     relief: 0.28, cliffs: 0.55, water: 0.0, scatter: 0.85, urban: 0.45,
-    oreRichness: 1.0, props: ['rock', 'boulder', 'bush', 'barrel'],
+    oreRichness: 1.0, props: ['bush', 'rock', 'barrel', 'boulder'],
   },
   /** Dense canopy, wet ground, the highest prop count in the game. */
   tropical: {
@@ -2387,13 +2418,13 @@ export const MAP_PRESETS: Record<string, MapPreset> = {
   snow: {
     name: 'Frozen Sector', mood: 'overcast',
     relief: 0.50, cliffs: 0.40, water: 0.05, scatter: 0.70, urban: 0.20,
-    oreRichness: 0.90, props: ['pine', 'rock', 'boulder'],
+    oreRichness: 0.90, props: ['pine', 'bush', 'rock', 'boulder'],
   },
   /** Naval: one shoreline running through the map, land on one side. */
   coast: {
     name: 'Contested Strait', mood: 'noon',
     relief: 0.30, cliffs: 0.45, water: 0.45, scatter: 0.85, urban: 0.30,
-    oreRichness: 0.80, props: ['rock', 'bush', 'tree', 'boulder'],
+    oreRichness: 0.80, props: ['bush', 'tree', 'rock', 'boulder'],
   },
   /** Roads, kerbs, crosswalks, container stacks. The terrain-detail fixture. */
   urban: {

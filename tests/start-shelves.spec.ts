@@ -226,3 +226,54 @@ describe('the two sources of truth agree', () => {
     }
   });
 });
+
+/* ========================================================================== */
+
+describe('the armies open the authored distance apart', () => {
+  /**
+   * THE REGRESSION THIS FILE DID NOT CATCH, added the day it shipped.
+   *
+   * v1.21.0 made the generator reserve three shelves — centre plus both real
+   * starts. `startSpots` used shelves whenever `shelves.length >= n`, which had
+   * always been false for two armies and suddenly was not, so it handed out
+   * `shelves[0]` and `shelves[1]`: THE MAP CENTRE and one army's start. The
+   * opening distance halved and the user reported it the same day as "enemies
+   * base is like 10 meters from mine".
+   *
+   * Every case above passed throughout, because they all measure the GROUND at
+   * a start rather than where the starts are. Nothing asserted the distance.
+   */
+  it('puts the two armies the full diagonal apart, not half of it', async () => {
+    const { startSpots } = await import('../src/game/Scenarios');
+    const spots = startSpots(CX, CZ, 2);
+    expect(spots).toHaveLength(2);
+    const d = Math.hypot(spots[0]!.x - spots[1]!.x, spots[0]!.z - spots[1]!.z);
+    // 2 x hypot(74, 62) = 193.1 m. `nudgeToBuildable` may shift a spot a few
+    // metres on rough ground, so this is a floor rather than an equality.
+    expect(d, `armies opened ${d.toFixed(1)} m apart`).toBeGreaterThan(170);
+  });
+
+  it('does not seat an army on the map centre', () => {
+    // The centre shelf exists for the ?shot= fixtures. An army standing on it
+    // is the exact symptom of the regression.
+    const offsets = SKIRMISH_START_OFFSETS;
+    for (const o of offsets) {
+      expect(Math.hypot(o.dx, o.dz), 'a start must not be at the centre')
+        .toBeGreaterThan(50);
+    }
+  });
+
+  it('derives the spots from the table, not from the shelf list', async () => {
+    // A shelf's job is to make the ground under a KNOWN point buildable.
+    // Reading positions back out of the shelf list is what let the two sources
+    // disagree, and it is the thing that must not come back.
+    const { readFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const src = readFileSync(join(__dirname, '..', 'src/game/Scenarios.ts'), 'utf8');
+    const fn = src.slice(src.indexOf('export function startSpots'));
+    const end = fn.search(/^\}/m);
+    const body = end > 0 ? fn.slice(0, end) : fn;
+    expect(body, 'startSpots must not take positions from startLocations()')
+      .not.toMatch(/shelves\[i\]/);
+  });
+});

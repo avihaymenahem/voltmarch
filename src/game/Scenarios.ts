@@ -71,7 +71,7 @@ import type {
 } from '../core/types';
 import { PerEntityObj, type World } from '../core/world';
 import {
-  DEG2RAD, Rng, clampCell, clampWorld, footprintOriginCell, hashU32,
+  DEG2RAD, Rng, clampCell, clampWorld, footprintOriginCell, hashU32, isInMap,
   snapFootprintToGrid, worldToCell, wrapAngle,
 } from '../core/math';
 import { TerrainRegions } from '../sim/Flowfield';
@@ -733,25 +733,45 @@ export function startSpots(cx: number, cz: number, count: number): StartSpot[] {
   const n = Math.max(1, count);
   const pts: { x: number; z: number }[] = [];
 
-  const shelves = getTerrain()?.startLocations();
-  if (shelves !== undefined && shelves.length >= n) {
-    for (let i = 0; i < n; i++) pts.push({ x: shelves[i].x, z: shelves[i].z });
-  } else {
-    // One shelf (or none): fan the armies around it on the classic diagonal.
-    for (let i = 0; i < n; i++) {
+  /*
+   * SHELVES GUARANTEE THE GROUND. THEY DO NOT CHOOSE THE POSITIONS.
+   *
+   * REGRESSION FIXED HERE, introduced in v1.21.0 by me and reported the same
+   * day as "enemies base is like 10 meters from mine, thats kinda weird".
+   *
+   * Before v1.21.0 the generator reserved ONE shelf (the map centre), so
+   * `shelves.length >= n` was false for two armies and this always fell through
+   * to the fan below. v1.21.0 started reserving three — centre plus both real
+   * starts — which made the condition TRUE, and this branch then handed out
+   * `shelves[0]` and `shelves[1]`: THE MAP CENTRE and one army's start. The
+   * opening distance collapsed from 193 m to 96.6 m and one army spawned on top
+   * of the middle of the map.
+   *
+   * The branch is gone rather than reordered. `SKIRMISH_START_OFFSETS` is the
+   * one table both this and `terrain.system.ts` read, so the positions are
+   * already agreed by construction and consulting the shelf list to REDISCOVER
+   * them could only ever reintroduce a disagreement. A shelf's job is to make
+   * the ground under a known point buildable, which it does whether or not
+   * anybody reads the list back.
+   */
+  {
+    // The authored two-army diagonal comes from the one table, so slots 0 and 1
+    // land exactly on the shelves the generator reserved. A saved seed frames
+    // the same valley it always did.
+    for (let i = 0; i < Math.min(n, SKIRMISH_START_OFFSETS.length); i++) {
+      const o = SKIRMISH_START_OFFSETS[i]!;
+      pts.push({ x: clampWorld(cx + o.dx, 4), z: clampWorld(cz + o.dz, 4) });
+    }
+    // Three or more armies have no authored layout, so they fan around the
+    // centre on the same ellipse. They get no reserved shelf and fall back to
+    // `nudgeToBuildable` below, which is the pre-existing behaviour for a case
+    // no shipping map offers today.
+    for (let i = pts.length; i < n; i++) {
       const t = (i / n) * Math.PI * 2;
       pts.push({
         x: clampWorld(cx + Math.cos(t) * START_SPREAD_X, 4),
         z: clampWorld(cz + Math.sin(t) * START_SPREAD_Z, 4),
       });
-    }
-    // Slot 0 keeps the exact corner the old hard-coded plan used, so a saved
-    // seed frames the same valley it always did.
-    // From the SAME table the generator reserved its shelves at, so the
-    // fallback and the guarantee cannot describe different ground.
-    for (let i = 0; i < Math.min(n, SKIRMISH_START_OFFSETS.length); i++) {
-      const o = SKIRMISH_START_OFFSETS[i]!;
-      pts[i] = { x: clampWorld(cx + o.dx, 4), z: clampWorld(cz + o.dz, 4) };
     }
   }
 
@@ -1564,6 +1584,13 @@ const PLACEABLE_LOCOMOTORS: readonly Locomotor[] =
  * than on the far side of the frame.
  */
 const PLACE_SEARCH_CELLS = 12;
+/**
+ * Rings searched outward for clear ground when a structure's own footprint is
+ * already taken. Six cells is 24 m — wide enough to step around a neighbour in
+ * a dense base, tight enough that a relocated building is still recognisably
+ * where the layout meant it to be. Beyond that the honest answer is to skip it.
+ */
+const PLACE_CLEAR_RINGS = 6;
 
 /** Map-connectivity health, published for the boot log and the debug overlay. */
 export interface ConnectivityReport {
@@ -1749,6 +1776,66 @@ export class ScenarioBuilder {
     const moved = Math.hypot(out[0] - x, out[1] - z);
     if (moved > this.relocatedMaxMetres) this.relocatedMaxMetres = moved;
     return true;
+  }
+
+  /**
+   * True when every cell a `fw` x `fh` footprint centred on (x, z) would cover
+   * is free of another structure.
+   *
+   * `terrain.isOccupied` is the same grid `markOccupied` writes at the end of
+   * this function, so a structure placed earlier in the layout is visible to
+   * every one placed after it — which is what makes a single forward pass
+   * enough and why no two-phase reservation is needed.
+   */
+  footprintClear(x: number, z: number, fw: number, fh: number): boolean {
+    footprintOriginCell(x, z, fw, fh, scratchCell);
+    const ox = scratchCell[0];
+    const oz = scratchCell[1];
+    for (let dz = 0; dz < fh; dz++) {
+      for (let dx = 0; dx < fw; dx++) {
+        const cx = ox + dx;
+        const cz = oz + dz;
+        if (!isInMap(cx, cz)) return false;
+        if (this.world.terrain.isOccupied(cx, cz)) return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Nearest clear footprint to (x, z), searched outward a ring at a time.
+   * Writes the snapped centre into `out`; false when nothing within the limit
+   * fits.
+   *
+   * RINGS, NOT A SPIRAL SCAN, so the result is the nearest by Chebyshev
+   * distance and the tie-break is a fixed traversal order rather than whatever
+   * order the cells happen to come out in. Two runs of the same seed must place
+   * the same base.
+   */
+  findClearFootprint(
+    x: number, z: number, fw: number, fh: number, out: Float32Array,
+  ): boolean {
+    for (let ring = 1; ring <= PLACE_CLEAR_RINGS; ring++) {
+      for (let dz = -ring; dz <= ring; dz++) {
+        for (let dx = -ring; dx <= ring; dx++) {
+          // Perimeter only; the interior was covered by a smaller ring.
+          if (Math.abs(dx) !== ring && Math.abs(dz) !== ring) continue;
+          const tx = x + dx * CELL;
+          const tz = z + dz * CELL;
+          snapFootprintToGrid(tx, tz, fw, fh, scratch2);
+          const px = clampWorld(scratch2[0], fw * CELL);
+          const pz = clampWorld(scratch2[1], fh * CELL);
+          if (!this.footprintClear(px, pz, fw, fh)) continue;
+          // Still has to be somewhere an army can reach, or this trades a
+          // stacked building for a stranded one.
+          if (this.connectedGround(px, pz, Locomotor.Track, placeOut, true)) continue;
+          out[0] = px;
+          out[1] = pz;
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   /**
@@ -2049,6 +2136,43 @@ export class ScenarioBuilder {
       snapFootprintToGrid(placeOut[0], placeOut[1], fw, fh, scratch2);
       px = clampWorld(scratch2[0], fw * CELL);
       pz = clampWorld(scratch2[1], fh * CELL);
+    }
+
+    /* -- NOTHING MAY STAND ON ANOTHER STRUCTURE ----------------------------
+     * "Auto placement of pre seeded construction yielded this, placing
+     * building on top of each other", reported with a screenshot of two Soviet
+     * structures interpenetrating. Reproduced immediately once a test looked:
+     * 80 overlapping pairs across four biomes and four seeds.
+     *
+     * THERE WAS NO OCCUPANCY CHECK ANYWHERE IN THIS FUNCTION. The authored
+     * layouts avoid each other by construction — hand-placed offsets — so the
+     * absence never showed. Then `connectedGround` above relocates a structure
+     * whose cell is cut off to `nearestMain`, which knows about PASSABILITY and
+     * nothing about what is already built. Two structures stranded by the same
+     * piece of bad ground both relocate to the same nearest cell and land on
+     * top of one another.
+     *
+     * The relocation is not the whole story either: it fires only for stranded
+     * cells, while this check also catches an authored overlap, a footprint
+     * that grew, and a layout reused at a tighter spacing.
+     *
+     * REFUSING IS SAFE AND IS THE LAST RESORT. Every base layout already
+     * tolerates a missing optional structure — the progression gate above
+     * returns NONE for anything locked and the layouts simply have a gap — so a
+     * building that cannot find clear ground is a far better outcome than two
+     * in one square. The Construction Yard is placed first by every layout, so
+     * the one structure that must exist is never the one squeezed out.
+     * --------------------------------------------------------------------- */
+    if (!this.footprintClear(px, pz, fw, fh)) {
+      if (!this.findClearFootprint(px, pz, fw, fh, placeOut)) {
+        console.warn(
+          `[scenario] "${key}" found no clear ${fw}x${fh} ground near `
+          + `${px.toFixed(0)},${pz.toFixed(0)} — skipped rather than stacked`,
+        );
+        return NONE;
+      }
+      px = placeOut[0];
+      pz = placeOut[1];
     }
     const yaw = wrapAngle((options.yawDeg ?? 0) * DEG2RAD);
     const py = this.world.terrain.heightAt(px, pz);

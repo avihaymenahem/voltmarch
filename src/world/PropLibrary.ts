@@ -1599,15 +1599,34 @@ export const PROP_DEFS: readonly PropDef[] = [
     mode: 'field', clumpMin: 5, clumpMax: 16, clumpSpread: 9,
     urban: 0.10, biome: B(1.00, 0.55, 0.40, 0.45), blocksNav: false, build: buildGrassGreen },
 
-  /* --- rock ------------------------------------------------------------ */
+  /* --- rock --------------------------------------------------------------
+   * BIOME WEIGHTS CUT 35%, and the clump sizes with them.
+   *
+   * "reduce the number of boulders and rocks by at least 30% all around, they
+   * spawn way too much and causing other bugs." The weight is the per-biome
+   * share this type claims of the scatter budget, so a 35% cut here is a 35%
+   * cut in rocks on the ground — clearing the 30% bar with margin rather than
+   * landing exactly on it and needing a second pass.
+   *
+   * THE CLUMP RANGE IS THE OTHER HALF. Weight decides how often a clump is
+   * placed; `clumpMin/Max` decides how many rocks each one drops. A boulder
+   * clump of 2-6 at weight 1.0 and a clump of 2-4 at weight 0.65 differ by far
+   * more than the weight alone suggests, and it is the CLUMP that reads as "way
+   * too much" — six boulders in a twelve-metre spread is a rockfall, not
+   * scenery.
+   *
+   * `boulder` carries `blocksNav: true` at a 2.0 m radius, so this is also the
+   * "causing other bugs" half: see the deploy-fouling measurement in
+   * `MAP_PRESETS` and in tests/start-clearance.spec.ts.
+   * ---------------------------------------------------------------------- */
   { key: 'boulder', family: 'rock', radius: 2.0, height: 2.8, adorn: 5.0, spacing: 3.6,
     surfaces: SURF_SOFT | SURF_STONE, maxSlope: 0.75, mode: 'clump',
-    clumpMin: 2, clumpMax: 6, clumpSpread: 12,
-    urban: 0.15, biome: B(0.70, 1.00, 0.85, 0.30), blocksNav: true, build: buildBoulder },
+    clumpMin: 2, clumpMax: 4, clumpSpread: 12,
+    urban: 0.10, biome: B(0.46, 0.65, 0.55, 0.20), blocksNav: true, build: buildBoulder },
   { key: 'rockCluster', family: 'rock', radius: 1.7, height: 1.2, adorn: 4.2, spacing: 2.8,
     surfaces: SURF_SOFT | SURF_STONE, maxSlope: 0.85, mode: 'field',
-    clumpMin: 3, clumpMax: 9, clumpSpread: 10,
-    urban: 0.20, biome: B(0.85, 1.00, 0.90, 0.40), blocksNav: false, build: buildRockCluster },
+    clumpMin: 2, clumpMax: 6, clumpSpread: 10,
+    urban: 0.13, biome: B(0.55, 0.65, 0.59, 0.26), blocksNav: false, build: buildRockCluster },
 
   /* --- yard ------------------------------------------------------------ */
   { key: 'haystack', family: 'yard', radius: 2.4, height: 3.4, adorn: 5.0, spacing: 5.5,
