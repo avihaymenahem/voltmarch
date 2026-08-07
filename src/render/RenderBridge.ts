@@ -932,7 +932,21 @@ export class RenderBridge {
         : (flags & EntityFlag.Hovered) !== 0 ? 0.5 : 0;
 
       const batch = entry.batch!;
-      batch.writeState(slot, hpFrac, buildProgress, selected, s.seed[i]);
+      // THE FOURTH CHANNEL IS `seed` FOR EVERYTHING EXCEPT INFANTRY, where it
+      // carries the walk-cycle phase in turns.
+      //
+      // Sharing the slot rather than adding a fifth per-instance attribute is
+      // deliberate: `aState` is already allocated, already uploaded and already
+      // range-tracked on every batch in the game, and a new Float32Array plus
+      // attribute plus upload range on all of them — including the ninety-odd
+      // that will never walk — would cost more than the animation does. The two
+      // readers cannot collide: `seed` is read by the BUILDING shader (door
+      // phase, burn flicker) and the phase by the UNIT shader, and no entity is
+      // both. `src/render/unit-anim.system.ts` owns the column.
+      batch.writeState(
+        slot, hpFrac, buildProgress, selected,
+        s.kind[i] === EntityKind.Infantry ? s.animTime[i] : s.seed[i],
+      );
       const fi = s.faction[i] * 3;
       batch.writeTeam(slot, TEAM_RGB[fi], TEAM_RGB[fi + 1], TEAM_RGB[fi + 2]);
 

@@ -46,6 +46,7 @@ import * as THREE from 'three';
 
 import {
   VFX_BEAM,
+  VFX_GLARE,
   VFX_LIGHTS,
   VFX_MAX_BEAMS,
   VFX_MAX_BOLTS,
@@ -67,6 +68,7 @@ import {
   type LightEnvelope, type LightHandle,
 } from './LightPool';
 import { emitAdditive, resetEmit } from './Particles';
+import { admitGlare } from './FlashBudget';
 
 /**
  * Sustained-light envelopes, built ONCE at module load.
@@ -423,6 +425,13 @@ export class TeslaBolt {
   sizeMul = 1;
 
   light: LightHandle = NO_LIGHT;
+  /**
+   * Glare admission, `[VFX_GLARE.floor, 1]`, resolved once at spawn.
+   *
+   * Exactly 1 for the first arc in a locality, so a lone Tesla Coil is
+   * unchanged. See the block comment on `admitGlare` in the two spawners.
+   */
+  glare = 1;
   /** True once the impact starburst has fired, so it fires exactly once. */
   burst = false;
 
@@ -632,6 +641,8 @@ class Beam {
   targetId: EntityId = NONE;
   targetLift = 1.2;
   light: LightHandle = NO_LIGHT;
+  /** See `TeslaBolt.glare`. */
+  glare = 1;
 }
 
 /** Opaque handle to a live bolt or beam. */
@@ -731,6 +742,29 @@ export class BeamSystem {
       (x0 + x1) * 0.5, (y0 + y1) * 0.5 + BEAM_LIGHT_LIFT, (z0 + z1) * 0.5,
       TESLA_BEAM_LIGHT, sizeMul,
     );
+    /*
+     * ARCS ARE NOW CHARGED TO THE GLARE BUDGET, and were not before.
+     *
+     * `FlashBudget` exists because "the additive layer SUMS and nothing bounded
+     * the sum". Explosions were charged. Muzzle flashes were charged. Tracers
+     * were charged. The two brightest additive emitters in the game — a live
+     * tesla arc and a prism beam — were not, and `src/vfx/Beams.ts` did not
+     * import `admitGlare` at all.
+     *
+     * Measured by `tools/flash-stack.mjs --ablate` once its arc sweep existed:
+     * from one arc to four, the RIBBON contribution to blue-dominant frame area
+     * grew 1.20pp -> 4.59pp, a factor of 3.8, while the point-light
+     * contribution grew 1.37pp -> 1.83pp because lights merge and ribbons did
+     * not. Four coils firing at once were four full-strength beams stacked.
+     *
+     * Charged at the MIDPOINT, which is where the light goes and where the two
+     * halves of a 9 m arc actually overlap on screen. The first arc in a
+     * locality is charged nothing and attenuated not at all, so a lone Tesla
+     * Coil looks exactly as it did.
+     */
+    b.glare = admitGlare(
+      (x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5, VFX_GLARE.cost.arc,
+    );
     return (slot & H_SLOT_MASK) | (b.gen << H_SLOT_BITS) | H_KIND_TESLA;
   }
 
@@ -758,6 +792,12 @@ export class BeamSystem {
     b.light = spawnLight(
       (x0 + x1) * 0.5, (y0 + y1) * 0.5 + BEAM_LIGHT_LIFT, (z0 + z1) * 0.5,
       PRISM_BEAM_LIGHT, 1,
+    );
+    // See the note in `spawnTesla`. Prism measured the same way: ribbons
+    // 1.24pp -> 4.88pp of blue frame area from one beam to four, against
+    // 1.23pp -> 1.49pp for its light.
+    b.glare = admitGlare(
+      (x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5, VFX_GLARE.cost.beam,
     );
     return (slot & H_SLOT_MASK) | (b.gen << H_SLOT_BITS);
   }
@@ -910,7 +950,11 @@ export class BeamSystem {
     // A bolt dims over its life but never fades smoothly — it is re-rolled
     // every 50 ms, so the flicker comes from the geometry, not the alpha.
     const t = b.ageMs / b.lifeMs;
-    const alpha = t > 0.82 ? 1 - (t - 0.82) / 0.18 : 1;
+    // `b.glare` multiplies the ENVELOPE, so it scales every layer of the bolt
+    // — glow, sheath and core — by one factor. Attenuating only the glow would
+    // leave four stacked white cores, which is the failure mode the "one
+    // filament, many sheaths" note below already describes.
+    const alpha = (t > 0.82 ? 1 - (t - 0.82) / 0.18 : 1) * b.glare;
     const s = b.sizeMul;
 
     for (let k = 0; k < b.strokes; k++) {
@@ -962,6 +1006,9 @@ export class BeamSystem {
       ? 1 + cfg.breatheAmp * Math.sin(b.ageMs * 0.001 * cfg.breatheHz * Math.PI * 2)
       : 1;
     const w = env * breathe;
+    // Charged at spawn; applied here so it rides the open/close envelope
+    // instead of popping. See `spawnBeam`.
+    env *= b.glare;
 
     const ax = b.ax, ay = b.ay, az = b.az;
     const bx = b.bx, by = b.by, bz = b.bz;

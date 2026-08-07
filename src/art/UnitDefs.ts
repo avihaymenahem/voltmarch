@@ -94,6 +94,11 @@ interface PanelOpts {
    * A panel's area goes as the SQUARE of this, so 1.25 buys back 56%.
    */
   k?: number;
+  /**
+   * See `MassDef.gait`. A team panel on a moving limb has to swing WITH it —
+   * the thigh band is painted on the thigh.
+   */
+  gait?: MassDef['gait'];
 }
 
 /**
@@ -127,6 +132,7 @@ function panel(
     ...(rot !== undefined ? { rot } : {}),
     ...(o.turret === true ? { turret: true } : {}),
     ...(o.mirrorX === true ? { mirrorX: true } : {}),
+    ...(o.gait !== undefined ? { gait: o.gait } : {}),
   };
 }
 
@@ -450,6 +456,13 @@ function infantry(o: InfantryOpts): UnitMassList {
     // taper hard into a heavy boot under a coat hem.
     primary('leg', 'taperedBox', [W * 0.34, legTop, W * 0.44], [W * 0.24, legTop * 0.5, 0], 'paintSmall', {
       mirrorX: true,
+      // THE WALK CYCLE. One declaration animates both legs: the mirrored copy
+      // gets the opposite sign automatically, which is the whole reason the
+      // gait is expressed per MASS rather than per emitted vertex range.
+      // Everything else that hangs off the leg — boot, knee pad, thigh band —
+      // repeats this pivot so the limb moves as one piece. See
+      // `MassDef.gait` and `src/render/Gait.ts`.
+      gait: { limb: 'leg', pivotY: legTop },
       shape: coat
         ? { topScaleX: 1.34, topScaleZ: 1.18, bottomScaleX: 0.76, bottomScaleZ: 0.86 }
         : { topScaleX: 1.20, topScaleZ: 1.08, bottomScaleX: 0.88, bottomScaleZ: 0.92 },
@@ -487,6 +500,10 @@ function infantry(o: InfantryOpts): UnitMassList {
 
     primary('arm', 'taperedBox', [W * 0.24, torsoH * 0.86, W * 0.28], [W * 0.52, torsoY + 0.02, 0.06], 'paintSmall', {
       mirrorX: true, rot: [0.12, 0, -0.06],
+      // 'arm' inverts the sign again, so the left arm swings with the RIGHT
+      // leg. That contralateral rhythm is most of what makes a walk read as a
+      // walk; arms and legs in phase reads as a childrens' march.
+      gait: { limb: 'arm', pivotY: torsoY + torsoH * 0.30 },
       shape: { topScaleX: 1.14, topScaleZ: 1.10, bottomScaleX: 0.80, bottomScaleZ: 0.84 },
     }),
   ];
@@ -556,7 +573,8 @@ function infantry(o: InfantryOpts): UnitMassList {
       group: 'helmet gear', shape: { segments: 8 },
     }),
     greeble('boot', 'taperedBox', [W * 0.40, 0.16, W * 0.62], [W * 0.24, 0.08, 0.06], 'paintTiny', {
-      mirrorX: true, group: 'boots', shape: { topScaleX: 1.10, topScaleZ: 0.92, shear: -0.05 },
+      mirrorX: true, group: 'boots', gait: { limb: 'leg', pivotY: legTop },
+      shape: { topScaleX: 1.10, topScaleZ: 0.92, shear: -0.05 },
     }),
     plateMass('webbing', MassRole.Greeble, taperOutline(W * 0.90, W * 0.66, 0.86), 0.12,
       [0, torsoY - torsoH * 0.34, 0], undefined, 'paintTiny', { group: 'webbing' }),
@@ -564,7 +582,8 @@ function infantry(o: InfantryOpts): UnitMassList {
       group: 'collar', shape: { profile: DRUM_PROFILE, segments: 10 },
     }),
     greeble('kneePad', 'taperedBox', [W * 0.28, 0.17, W * 0.30], [W * 0.24, legTop * 0.44, W * 0.11], 'paintTiny', {
-      mirrorX: true, group: 'knee pads', shape: { topScaleX: 0.84, topScaleZ: 0.72, shear: -0.03 },
+      mirrorX: true, group: 'knee pads', gait: { limb: 'leg', pivotY: legTop },
+      shape: { topScaleX: 0.84, topScaleZ: 0.72, shear: -0.03 },
     }),
     greeble('pouch', 'taperedBox', [W * 0.20, 0.20, 0.15], [W * 0.27, torsoY - torsoH * 0.40, W * 0.24], 'paintTiny', {
       mirrorX: true, group: 'pouches', shape: { topScaleX: 0.88, topScaleZ: 0.78 },
@@ -602,7 +621,8 @@ function infantry(o: InfantryOpts): UnitMassList {
     slab('chestPlate', [W * 0.72, torsoH * 0.66, 0.06], [0, torsoY + 0.04, W * 0.32], { k: TEAM_K.infantry }),
     slab('shoulderPad', [W * 0.34, 0.34, W * 0.44], [W * 0.44, torsoY + torsoH * 0.30, 0], { mirrorX: true , k: TEAM_K.infantry }),
     slab('helmetBand', [W * 0.58, 0.12, W * 0.62], [0, legTop + torsoH + H * 0.030, 0.01], { k: TEAM_K.infantry }),
-    slab('thighBand', [W * 0.42, 0.20, W * 0.50], [W * 0.24, legTop * 0.72, 0], { mirrorX: true , k: TEAM_K.infantry }),
+    slab('thighBand', [W * 0.42, 0.20, W * 0.50], [W * 0.24, legTop * 0.72, 0],
+      { mirrorX: true, k: TEAM_K.infantry, gait: { limb: 'leg', pivotY: legTop } }),
   );
   masses.push(insignia([0.26, 0.26, 0.05], [W * 0.30, torsoY + torsoH * 0.24, W * 0.33]));
   masses.push(

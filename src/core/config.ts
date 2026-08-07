@@ -2101,6 +2101,59 @@ export const RA3_UNIT_PALETTE = {
  * R10: these are consumed ONLY through the factory in src/art/UnitFactory.ts.
  * `envMapIntensity` is never 0 — that kills the silhouette rim (scorecard #23).
  */
+/**
+ * THE INFANTRY WALK CYCLE. Read `src/render/Gait.ts` before touching these.
+ *
+ * "Troops walking animation doesnt exist at all" — and the machinery to say so
+ * had been in the engine since the foundation commit: `RenderPhase.UnitAnim`,
+ * the `animClip` / `animTime` columns, a write-ownership row assigning them to
+ * "unit-art", and a save-game column. Nothing wrote them and nothing registered
+ * at that phase.
+ *
+ * The swing is a vertex-shader rotation about a baked per-vertex pivot, because
+ * infantry are one merged instanced mesh and must stay that way — 200 units at
+ * 60 fps under 130 draw calls does not survive a joint hierarchy per soldier.
+ */
+export const UNIT_GAIT = {
+  /**
+   * Peak limb swing, radians. 0.42 rad is 24 degrees.
+   *
+   * A real walking stride swings the thigh about 30 degrees, but a rifleman is
+   * 37 px tall at the default camera and the leg is a third of that: past ~25
+   * degrees the foot leaves the ground plane by more than a pixel and the model
+   * reads as marching through the air. This is the largest value that still
+   * looks planted at `CAMERA.defaultDistance`.
+   */
+  swingRadians: 0.42,
+  /**
+   * Metres of ground covered per FULL cycle (two steps).
+   *
+   * Not a free parameter — it is what stops the feet skating. At `gi`'s 3.2 m/s
+   * this gives 1.52 cycles/s, a brisk march, and because the phase is driven by
+   * actual speed rather than by a timer a unit slowed by terrain or crowding
+   * takes visibly shorter steps instead of moonwalking.
+   */
+  strideMetres: 2.1,
+  /**
+   * Below this speed the unit is standing, m/s.
+   *
+   * Deliberately well above zero: steering jitter leaves a "stopped" unit with
+   * a few cm/s of residual velocity forever, and a soldier twitching his legs
+   * in place is worse than one standing still.
+   */
+  idleSpeed: 0.35,
+  /**
+   * Cycles per second the phase unwinds toward neutral once stopped.
+   *
+   * `sin` is zero at phase 0 and 0.5, so both are legs-together; the settle
+   * runs to whichever is nearer. Without this a unit freezes mid-stride with
+   * one leg out in front, which is the single most obviously-broken thing a
+   * walk cycle can do and is what "animation" usually looks like when someone
+   * wires the phase and forgets the exit.
+   */
+  settleRate: 2.4,
+} as const;
+
 export const UNIT_MATERIAL = {
   /** Painted hull. 60-75% of a unit's surface. */
   paintRoughness: 0.52,
@@ -4396,7 +4449,19 @@ export const VFX_LIGHTS = {
    * `V.explode()` — it has no tesla or prism case at all, so the brightest row
    * in this table has never been measured by the instrument built to police it.
    */
-  teslaArc:    { color: '#6FA8FF', peak: 6.5, range: 30.0, riseMs:  50, holdMs:   0, fallMs: 200, flickerHz: 13, flickerAmp: 0.16, mergeRadius: 0 },
+  /*
+   * RANGE 30 -> 17, sixth report. Every previous pass cut PEAK (26 -> 6.5) and
+   * left range alone, which is backwards for a complaint whose actual words are
+   * "still tooooo huge". Peak is how bright the wash is; RANGE IS HOW BIG IT
+   * IS, and 30 m against the 48 m framed view is a soft blue disc covering most
+   * of the screen no matter how gently it starts.
+   *
+   * `mergeRadius: 0` is also load-bearing here and stays: arcs do NOT merge, so
+   * four coils firing put four full washes on the frame. The stacking half of
+   * that is now answered by charging them to `VFX_GLARE` (see Beams.ts), which
+   * the light pool does not participate in.
+   */
+  teslaArc:    { color: '#6FA8FF', peak: 6.5, range: 17.0, riseMs:  50, holdMs:   0, fallMs: 200, flickerHz: 13, flickerAmp: 0.16, mergeRadius: 0 },
   /**
    * `mergeRadius` 9 is wider than the others on purpose: burning wrecks are a
    * CLUSTER by nature — a destroyed formation is six hulls inside ten metres,
@@ -4408,7 +4473,7 @@ export const VFX_LIGHTS = {
   // Cut with teslaArc and for the same reason — 22/42 is the same blue wash one
   // notch down, and the comment above says prism "is raised for the same reason
   // and by the same measurement", so it inherits the same correction.
-  prism:       { color: '#A7F5F9', peak: 5.5, range: 28.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 0 },
+  prism:       { color: '#A7F5F9', peak: 5.5, range: 16.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 0 },
   impact:      { color: '#FFE0A0', peak:  6, range: 12.0, riseMs:  10, holdMs:  10, fallMs:  90, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 4.0 },
 } as const;
 
@@ -4502,6 +4567,26 @@ export const VFX_GLARE = {
     muzzle: 0.50,
     impact: 0.22,
     spark: 0.22,
+    /**
+     * A LIVE ARC AND A LIVE BEAM, added after the sixth brightness report.
+     *
+     * `src/vfx/Beams.ts` did not import `admitGlare` at all, so the two
+     * brightest additive emitters in the game were the only ones never charged
+     * — while the comment above this table was busy explaining that "the
+     * additive layer SUMS and nothing bounded the sum".
+     *
+     * 0.85 rather than an explosion's 1.00 for a reason that runs the other
+     * way from every other row here: an arc is DIMMER per pixel than a
+     * fireball but is up for a second rather than 100 ms and covers a long thin
+     * corridor rather than a disc. Measured by `tools/flash-stack.mjs --ablate`
+     * once its arc sweep existed, four co-located arcs put 4.59pp of the frame
+     * into blue-dominant glare from the ribbons alone against 1.20pp for one —
+     * a factor of 3.8, where the point lights only managed 1.3 because they
+     * merge. 0.85 puts the fourth arc at roughly a third of the first, which is
+     * a bank of coils reading as a bank of coils rather than as a blue wall.
+     */
+    arc: 0.85,
+    beam: 0.85,
   },
 } as const;
 
@@ -4950,8 +5035,21 @@ export const VFX_TESLA = {
   branchRejoinChance: 0.30,
   branchPoints: 4,
 
-  /** Widths in px at 1440p. Core <=3 px at L>=248 is scorecard #30. */
-  coreWidthPx: 2.6, sheathWidthPx: 11.0, glowWidthPx: 46.0,
+  /**
+   * Widths in px at 1440p. Core <=3 px at L>=248 is scorecard #30.
+   *
+   * GLOW 46 -> 26, SHEATH 11 -> 9, sixth brightness report. "The Blue explosion
+   * still tooooo huge" — and it was: a 46 px soft blue halo running the entire
+   * length of a 9 m arc, over a frame 1440 px tall. The core is untouched at
+   * 2.6, because the core is what makes a bolt read as a bolt and is the one
+   * number scorecard #30 actually measures.
+   *
+   * Four passes cut the LIGHT (`VFX_LIGHTS.teslaArc` 26 -> 6.5) and none of
+   * them touched this, because until the arc sweep landed in
+   * `tools/flash-stack.mjs` nothing could tell the two apart. The measurement
+   * says the ribbons are 2.5x the light pool at four arcs.
+   */
+  coreWidthPx: 2.6, sheathWidthPx: 9.0, glowWidthPx: 26.0,
   /** Cross-section falloff exponents: near-flat core, soft glow. */
   coreFalloff: 0.35, sheathFalloff: 1.05, glowFalloff: 2.1,
   /**
@@ -4966,8 +5064,21 @@ export const VFX_TESLA = {
    * `#1326B3`-class sheath the bible asks for within 8 px of the core.
    */
   coreRampT: 0.02, sheathRampT: 0.42, glowRampT: 0.66,
-  /** HDR gain. The core must clip to pure white through the tonemapper. */
-  coreIntensity: 5.6, sheathIntensity: 2.4, glowIntensity: 3.0,
+  /**
+   * HDR gain. The core must clip to pure white through the tonemapper.
+   *
+   * GLOW 3.0 -> 1.5 AND SHEATH 2.4 -> 1.7, with the core untouched at 5.6.
+   *
+   * Narrowing the halo (46 -> 26 px, above) took a third off the blown area at
+   * four arcs and only 13% off the BLUE area, because a soft-falloff halo's
+   * bright middle survives being made narrower — the pixels that clear the
+   * threshold are the ones near the axis, and those are a function of gain, not
+   * of width. Width and gain had to come down together, which is the same
+   * lesson the DETONATION BLOOM BUDGET block records for the fireball: "the
+   * area above the bloom threshold [...] is driven by gain at least as much as
+   * by size."
+   */
+  coreIntensity: 5.6, sheathIntensity: 1.7, glowIntensity: 1.5,
   /**
    * How much of its authored SHEATH each extra jittered trunk copy draws.
    * The extra copies deliberately carry NO core: five 2.6 px white filaments
@@ -4996,9 +5107,17 @@ export const VFX_TESLA = {
 
 export const VFX_BEAM = {
   prism: {
-    corePx: 3.5, innerPx: 33, outerPx: 64,
+    /**
+     * OUTER 64 -> 34 AND INNER 33 -> 22, sixth brightness report, same
+     * measurement as `VFX_TESLA.glowWidthPx`. A 64 px halo down the full length
+     * of a beam is most of the blue the player was complaining about, and the
+     * 3.5 px core — the part that reads as a beam — is untouched.
+     */
+    corePx: 3.5, innerPx: 22, outerPx: 34,
     coreT: 0.01, innerT: 0.26, outerT: 0.62,
-    coreI: 6.0, innerI: 2.4, outerI: 0.85,
+    // inner 2.4 -> 1.5, outer 0.85 -> 0.55. Core held at 6.0: it is 3.5 px and
+    // it is the entire reason a prism beam reads as a beam.
+    coreI: 6.0, innerI: 1.5, outerI: 0.55,
     coreFall: 0.30, innerFall: 1.2, outerFall: 2.3,
     openMs: 60, closeMs: 180, defaultMs: 1500,
     /** Width breathing +/-8% at 11 Hz, taper 100% -> 88% along the beam. */

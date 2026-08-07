@@ -132,7 +132,7 @@ async function measure(buf) {
   const raw = await img.raw().toBuffer();
   const n = W * H;
   const lum = new Float32Array(n);
-  let sum = 0, over50 = 0, over75 = 0, over95 = 0, over99 = 0;
+  let sum = 0, over50 = 0, over75 = 0, over95 = 0, over99 = 0, blue = 0;
   for (let i = 0, p = 0; i < n; i++, p += 3) {
     const L = (0.2126 * raw[p] + 0.7152 * raw[p + 1] + 0.0722 * raw[p + 2]) / 255;
     lum[i] = L;
@@ -141,6 +141,18 @@ async function measure(buf) {
     if (L > 0.75) over75++;
     if (L > 0.95) over95++;
     if (L > 0.99) over99++;
+    // BLUE GLARE. Every luminance percentile above is colour-blind, and the
+    // report is not: "The Blue explosion still tooooo huge". A daylight
+    // battlefield has no blue-dominant bright pixels of its own — the ground is
+    // warm, the sky is not in frame at this pitch — so a lifted count here is
+    // an arc or a beam and nothing else. The 12/255 margin is wide enough that
+    // neutral white (which the fireball core is) never qualifies.
+    //
+    // The BASELINE frame already reads ~6.5% here, and that is correct rather
+    // than a flaw in the metric: the grade's shadow tint is a HemisphereLight
+    // sky term, so lit ground in shadow genuinely is blue-dominant. Only the
+    // DELTA against baseline is the signal.
+    if (L > 0.50 && raw[p + 2] > raw[p] + 12) blue++;
   }
   const sorted = Float32Array.from(lum).sort();
   const pct = (q) => sorted[Math.min(n - 1, Math.round(q * (n - 1)))];
@@ -154,7 +166,138 @@ async function measure(buf) {
     fracOver75: over75 / n,
     fracOver95: over95 / n,
     fracOver99: over99 / n,
+    fracBlue: blue / n,
   };
+}
+
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE ARC SWEEP — the measurement this instrument was missing.
+ *
+ * `src/core/config.ts` says so in the VFX_LIGHTS block, verbatim:
+ *
+ *     tools/flash-stack.mjs never caught this because it only ever calls
+ *     `V.explode()` — it has no tesla or prism case at all, so the brightest
+ *     row in this table has never been measured by the instrument built to
+ *     police it.
+ *
+ * `teslaArc` was cut 26 -> 6.5 and `prism` 22 -> 5.5 on a SCREENSHOT rather
+ * than on a number, because there was no number to be had. Both are still the
+ * only blue emitters in the game, and the report came back.
+ *
+ * Two arms per effect, because a light and a ribbon fail differently and the
+ * fix for one is not the fix for the other:
+ *
+ *   lights-off    the point-light wash alone, by difference
+ *   ribbons-off   the additive ribbon quads alone, by difference
+ *
+ * Reported against `fracBlue` as well as `fracOver95`: a wide soft wash and a
+ * small hot core can carry identical blown-white area and look nothing alike,
+ * and "huge" is a statement about the first one.
+ */
+async function arcSweep(page, results) {
+  const RIBBONS = ['VfxBeamOverlay', 'VfxRibbonDepth'];
+  const arms = [
+    ['all-on', [], true],
+    ['no-lights', [], false],
+    ['no-ribbons', RIBBONS, true],
+    ['everything-off', RIBBONS, false],
+  ];
+  for (const effect of ['tesla', 'prism']) {
+    for (const count of [1, 4]) {
+      for (const [label, suppress, lights] of arms) {
+        const url = await page.evaluate(
+          async ({ effect, count, suppress, lights }) => {
+            const V = window.__vmVfx;
+            const RA = window.__VM;
+            V.clear();
+            V.timeScale(0);
+            const f = RA.rig.focus;
+            for (let i = 0; i < count; i++) {
+              const a = i * 2.39996323;
+              const r = count === 1 ? 0 : 6 * Math.sqrt(i / count);
+              const x = f.x + Math.cos(a) * r;
+              const z = f.z + Math.sin(a) * r;
+              // A 9 m arc from a coil head to a target hull, which is the
+              // geometry a Tesla Coil or a Prism Tower actually produces.
+              if (effect === 'tesla') V.tesla(x, f.y + 5.5, z, x + 9, f.y + 1.4, z, 900);
+              else V.beam(x, f.y + 5.5, z, x + 9, f.y + 1.4, z, 'prism');
+            }
+            // Arcs are SUSTAINED — the config note calls a live arc "the
+            // brightest object in any RA3 frame containing one" and says it is
+            // up for about a second. 120 ms is inside the hold, so this
+            // photographs the arc at full strength rather than mid-decay.
+            V.advance(120);
+            await RA.waitFrames(3);
+
+            // SUPPRESSING A RIBBON BATCH TOOK THREE TRIES, and the first two
+            // both produced a confident "this layer costs nothing":
+            //
+            //   `mesh.visible = false`  — undone before it was measured.
+            //     `RibbonBatch.end()` assigns `mesh.visible = quads > 0` on
+            //     every upload, and `RA.screenshot()` renders through the
+            //     system registry (task #46), so the frame being captured is
+            //     the frame that puts the layer back.
+            //   `material.opacity = 0` / black  — read by nobody. These are
+            //     ShaderMaterials with a hand-written fragment stage that
+            //     samples the ramp LUT; `opacity` and `color` are inherited
+            //     properties its shader never mentions.
+            //
+            // `material.visible` is checked by the renderer when it builds the
+            // render list, and `end()` never touches it. The tell for both
+            // failures was `prism no-ribbons` reading BYTE-IDENTICAL to
+            // `all-on` while still reporting a hit — the same shape as the
+            // `VfxAdditive` defect this probe already had once.
+            const hit = [];
+            RA.scene.traverse((o) => {
+              const m = o.material;
+              if (!m) return;
+              const names = Array.isArray(m) ? m.map((x) => x.name) : [m.name];
+              if (names.some((n) => suppress.includes(n))) hit.push(o);
+            });
+            const restore = [];
+            for (const o of hit) {
+              for (const mm of (Array.isArray(o.material) ? o.material : [o.material])) {
+                restore.push([mm, mm.visible]);
+                mm.visible = false;
+              }
+            }
+            const pool = RA.scene.getObjectByName('VfxLightPool');
+            if (pool) pool.visible = lights;
+
+            const shot = await RA.screenshot();
+            // Drawn AFTER the shot: proof the arc was actually on screen. An
+            // arm that photographs an empty frame reports a clean -0.0pp and
+            // reads exactly like "this layer costs nothing".
+            const drew = hit.filter((o) => o.visible).length;
+            for (const [mm, vis] of restore) mm.visible = vis;
+            if (pool) pool.visible = true;
+            return {
+              shot, suppressed: hit.length, drew,
+              poolFound: pool !== undefined && pool !== null,
+            };
+          },
+          { effect, count, suppress, lights },
+        );
+        const buf = Buffer.from(url.shot.split(',')[1], 'base64');
+        writeFileSync(join(OUT, `arc-${effect}-${String(count).padStart(2, '0')}-${label}.png`), buf);
+        const m = await measure(buf);
+        results.cases.push({
+          effect: `arc-${effect}`, count, label,
+          suppressed: url.suppressed, poolFound: url.poolFound, ...m,
+        });
+        const vsBase = (m.fracOver95 - results.baseline.fracOver95) * 100;
+        const blueBase = (m.fracBlue - results.baseline.fracBlue) * 100;
+        console.log(
+          `  ${effect.padEnd(6)} n=${count} ${label.padEnd(15)}  ` +
+          `>0.95 ${(m.fracOver95 * 100).toFixed(3)}% (base ${vsBase >= 0 ? '+' : ''}${vsBase.toFixed(3)}pp)  ` +
+          `BLUE ${(m.fracBlue * 100).toFixed(3)}% (base ${blueBase >= 0 ? '+' : ''}${blueBase.toFixed(3)}pp)  ` +
+          `[hit ${url.suppressed}/${url.drew} mesh drawn, pool ${url.poolFound ? 'found' : 'MISSING'}]`,
+        );
+      }
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -440,6 +583,8 @@ try {
       }
     }
   }
+
+  if (ABLATE) await arcSweep(page, results);
 
   for (const effect of ['explosion', 'muzzle']) {
     const steps = effect === 'explosion' ? EXPLOSION_STEPS : MUZZLE_STEPS;

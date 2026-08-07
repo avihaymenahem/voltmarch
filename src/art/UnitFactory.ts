@@ -40,6 +40,7 @@ import {
 } from '../core/config';
 import { clamp01, lerp, smoothstep } from '../core/math';
 import { applyShroudTint } from '../render/FogOfWar';
+import { applyGait, declareGaitPhase } from '../render/Gait';
 import { PartId, type ModelBuild, type ModelPart, type SocketDef } from '../core/types';
 import {
   paintSlotForArea, SURFACE_BUDGET,
@@ -106,6 +107,14 @@ class MeshBuilder {
   private readonly uv: number[] = [];
   private readonly col: number[] = [];
   private readonly idx: number[] = [];
+  /**
+   * `(swingSign, pivotY)` per vertex — the walk cycle, baked.
+   *
+   * `(0, 0)` means "welded to the body", which is what every vertex of every
+   * vehicle in the game gets and why the attribute costs nothing anywhere it is
+   * not used. See `MassDef.gait`.
+   */
+  private readonly gait: number[] = [];
 
   /** Real triangle area per atlas slot, in square metres. */
   readonly areaBySlot = new Map<SlotName, number>();
@@ -118,6 +127,8 @@ class MeshBuilder {
   private t: V3 = [0, 0, 0];
   private mirror = 1;
   private tint: TintContext = { height: 1, massTint: 1 };
+  private gaitSign = 0;
+  private gaitPivotY = 0;
 
   setTransform(rot: V3 | undefined, anchor: V3, mirrorX: boolean): void {
     const [rx, ry, rz] = rot ?? [0, 0, 0];
@@ -135,6 +146,16 @@ class MeshBuilder {
   }
 
   setTint(ctx: TintContext): void { this.tint = ctx; }
+
+  /**
+   * Which limb the vertices emitted from here belong to, and where its joint
+   * is. Written per vertex by `push`, so it must be set BEFORE the mass emits
+   * and cleared after — `buildUnit` does both around each (mass, mirror) pair.
+   */
+  setGait(sign: number, pivotY: number): void {
+    this.gaitSign = sign;
+    this.gaitPivotY = pivotY;
+  }
 
   private xp(p: V3, out: number[]): void {
     const m = this.m;
@@ -182,6 +203,7 @@ class MeshBuilder {
     this.uv.push(u, v);
     const c = this.tintFor(this.tmpP[1], this.tmpN[1]);
     this.col.push(c, c, c);
+    this.gait.push(this.gaitSign, this.gaitPivotY);
     return i;
   }
 
@@ -240,6 +262,12 @@ class MeshBuilder {
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nrm, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
+    // Emitted ONLY when something actually swings. An attribute of zeroes on
+    // every tank in the game would cost real VRAM and buy nothing, and its
+    // absence is what `applyGait` keys off to leave the shader alone.
+    if (this.gait.some((v) => v !== 0)) {
+      g.setAttribute('aGait', new THREE.Float32BufferAttribute(this.gait, 2));
+    }
     const verts = this.pos.length / 3;
     g.setIndex(verts > 65535 ? new THREE.Uint32BufferAttribute(this.idx, 1) : new THREE.Uint16BufferAttribute(this.idx, 1));
     g.computeBoundingBox();
@@ -567,8 +595,17 @@ export function createUnitMaterial(atlas: GreebleAtlas, name: string): THREE.Mes
   // NOTE FOR ANYONE ADDING A HOOK HERE: `applyStructureShader` ASSIGNS
   // `mat.onBeforeCompile` over a material built by this function, so structures
   // do NOT inherit this one — BuildingFactory calls `applyShroudTint` itself.
-  mat.onBeforeCompile = (shader) => { applyShroudTint(shader); };
-  mat.customProgramCacheKey = () => 'vm.unit.shroud.v1';
+  // THE WALK CYCLE, then the shroud. That order is required, not stylistic:
+  // `applyGait` edits `transformed` at `<begin_vertex>` and the shroud derives
+  // its world XZ from `transformed` after `<project_vertex>`, which CONSUMES
+  // it. Injecting the gait later would edit a value nothing reads again, and it
+  // would fail silently and completely. See `src/render/Gait.ts`.
+  mat.onBeforeCompile = (shader) => {
+    declareGaitPhase(shader);
+    applyGait(shader);
+    applyShroudTint(shader);
+  };
+  mat.customProgramCacheKey = () => 'vm.unit.gait.shroud.v1';
 
   return mat;
 }
@@ -656,6 +693,15 @@ export function buildUnit(list: UnitMassList, atlas: GreebleAtlas, material: THR
       // The ambient ramp is always measured from the GROUND, so a turret piece
       // rebased onto the pivot still darkens correctly toward the tracks.
       mb.setTint({ height, massTint: m.tint ?? 1 });
+      // THE GAIT SIGN COMES FROM THE MIRROR FLAG, which is what lets one
+      // declaration on `leg` animate both legs in opposition. Arms take the
+      // opposite sign again: a walk reads as a walk because the left arm goes
+      // forward with the RIGHT leg, and a model where they swing together looks
+      // wrong in a way most people cannot name but everyone notices.
+      if (m.gait !== undefined) {
+        const side = mirror ? -1 : 1;
+        mb.setGait(m.gait.limb === 'arm' ? -side : side, m.gait.pivotY);
+      }
 
       switch (m.primitive) {
         case 'lathe':
@@ -684,6 +730,10 @@ export function buildUnit(list: UnitMassList, atlas: GreebleAtlas, material: THR
           break;
         }
       }
+      // Cleared per copy, not per mass: the mirrored half needs the opposite
+      // sign, and anything emitted after this mass is static until it says
+      // otherwise.
+      mb.setGait(0, 0);
     }
   }
 

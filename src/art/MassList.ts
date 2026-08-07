@@ -179,6 +179,34 @@ export interface MassDef {
   plates?: readonly AttachedPlate[];
   /** Sub-greeble runs attached to this mass. One run = one greeble object. */
   greebles?: readonly AttachedGreeble[];
+  /**
+   * THIS MASS SWINGS WHEN THE UNIT WALKS.
+   *
+   * Infantry are one merged instanced mesh — there is no scene graph to hang a
+   * hip joint off, and there must not be one, because 200 riflemen at 60 fps is
+   * the budget. So the swing is a vertex-shader rotation, and this is how a
+   * mass opts into it: the factory bakes `(sign, pivotY)` into a per-vertex
+   * attribute over exactly the vertices this mass emitted.
+   *
+   *   limb    'leg' swings with the gait phase, 'arm' against it — the
+   *           contralateral rhythm, which is most of what makes a walk read as
+   *           a walk rather than as a shuffle.
+   *   pivotY  model-local height of the joint. Rotation is about the X axis
+   *           through this height, so a leg pivots at the hip and an arm at the
+   *           shoulder rather than both swinging about the ground plane.
+   *
+   * A `mirrorX` mass gets OPPOSITE signs on its two copies automatically, which
+   * is the whole trick: one declaration on `leg` animates both legs correctly.
+   * Anything without this field is welded to the body, which is the right
+   * default for a torso, a helmet, a backpack and every vehicle in the game.
+   */
+  gait?: GaitSpec;
+}
+
+/** See `MassDef.gait`. */
+export interface GaitSpec {
+  readonly limb: 'leg' | 'arm';
+  readonly pivotY: number;
 }
 
 /* --------------------------------------------------------------------------
