@@ -109,6 +109,17 @@ export interface SelectionCard {
   /** `EntityId` as a plain number, so the panel can echo a click back. */
   id: number;
   icon: IconName;
+  /**
+   * Content key, for the MODEL cameo. Empty when the entity's def could not be
+   * resolved, which is the one case that still has to fall back to `icon`.
+   *
+   * `icon` is not dead weight: it is what shows before the art modules have
+   * registered, in a headless build with no GL, and for anything whose model
+   * does not resolve. The build rail has worked exactly this way since the
+   * cameo renderer landed; the selection dock simply never asked.
+   */
+  cameoKey: string;
+  isBuilding: boolean;
   name: string;
   /** 0..1. */
   hpFrac: number;
@@ -727,6 +738,8 @@ export class ResourceStrip {
 interface CardCell {
   root: HTMLButtonElement;
   icon: SVGSVGElement;
+  /** The rendered model. Hidden until a bind succeeds, revealing `icon`. */
+  cameoCanvas: HTMLCanvasElement;
   bar: HTMLElement;
   nameNode: Text;
   stackEl: HTMLElement;
@@ -775,6 +788,15 @@ class SelectionPanel {
   /** The idle advisory line — all that is left of the status board. */
   private readonly adviceNode: Text;
   private lastAdvice = '';
+
+  /**
+   * THE SHARED CAMEO RENDERER, handed over by `Sidebar` once the build panel has
+   * built it. Not a second instance: `CameoRenderer` owns a render target, a
+   * light rig and a model cache, and standing up a second one to draw the same
+   * eighteen models into smaller squares would double all of it.
+   */
+  private cameos: CameoRenderer | null = null;
+  private faction: Faction = Faction.Allies;
 
   private empty = true;
   private lastTitle = '';
@@ -963,6 +985,14 @@ class SelectionPanel {
     const icon = makeIcon('tank', 'vm-icon vm-card-icon');
     root.appendChild(icon);
 
+    // Same arrangement as a build slot: the canvas sits over the glyph and is
+    // revealed only on a successful bind, so a def with no model leaves the
+    // pictogram showing and this cannot make the dock worse than it was.
+    const cameoCanvas = document.createElement('canvas');
+    cameoCanvas.className = 'vm-card-cameo';
+    cameoCanvas.hidden = true;
+    root.appendChild(cameoCanvas);
+
     const nameNode = label(root, 'vm-card-name', '');
 
     const stackEl = el('span', 'vm-card-stack vm-num', root);
@@ -975,7 +1005,9 @@ class SelectionPanel {
     const barTrack = el('span', 'vm-card-bar', root);
     const bar = el('i', 'is-ok', barTrack);
 
-    const cell: CardCell = { root, icon, bar, nameNode, stackEl, stackNode, vetEl, id: 0, sig: '' };
+    const cell: CardCell = {
+      root, icon, cameoCanvas, bar, nameNode, stackEl, stackNode, vetEl, id: 0, sig: '',
+    };
 
     root.addEventListener('pointerenter', () => this.cb.sound('hover'));
     root.addEventListener('click', (ev) => {
@@ -983,6 +1015,62 @@ class SelectionPanel {
       this.cb.focusCard(cell.id, ev.shiftKey || ev.ctrlKey);
     });
     return cell;
+  }
+
+  /**
+   * Hand over the build panel's cameo renderer, and keep the army colours in
+   * step. Both are no-ops in a headless build, where `cameos` stays null.
+   */
+  setCameos(cameos: CameoRenderer | null): void {
+    this.cameos = cameos;
+    for (const c of this.cards) c.sig = '';
+  }
+
+  setFaction(faction: Faction): void {
+    if (this.faction === faction) return;
+    this.faction = faction;
+    // Every bound cameo is now wearing the wrong army's colours.
+    for (const c of this.cards) c.sig = '';
+  }
+
+  /**
+   * Render one card's actual model into its canvas.
+   *
+   * Called only from the signature-gated branch above, so this is once per card
+   * per CHANGE — not per frame. `CameoRenderer.bind` queues the render and the
+   * HUD's existing `frameCameos` pump drains it, which is the same path the
+   * build rail has always used.
+   */
+  private bindCardCameo(cell: CardCell, data: SelectionCard): void {
+    const cameos = this.cameos;
+    if (cameos === null || data.cameoKey === '') {
+      cell.cameoCanvas.hidden = true;
+      return;
+    }
+    try {
+      // Size the backing store to the cell and the device ratio, capped at 2 so
+      // a 4x display does not quietly quadruple the cost — the same reasoning,
+      // and the same bug, as `BuildPanel.bindCameo`, where a default 300x150
+      // canvas was being squashed into the cell at the wrong aspect.
+      const dpr = Math.min(2, globalThis.devicePixelRatio || 1);
+      const w = Math.max(16, Math.round(cell.root.clientWidth * dpr));
+      const h = Math.max(16, Math.round(cell.root.clientHeight * dpr));
+      if (w > 16 && cell.cameoCanvas.width !== w) cell.cameoCanvas.width = w;
+      if (h > 16 && cell.cameoCanvas.height !== h) cell.cameoCanvas.height = h;
+      cameos.bind(cell.cameoCanvas, {
+        key: data.cameoKey,
+        name: data.name,
+        faction: this.faction,
+        tab: data.isBuilding ? BuildTab.Structures : BuildTab.Infantry,
+        isBuilding: data.isBuilding,
+        footprintW: 0,
+        footprintH: 0,
+      });
+      cell.cameoCanvas.hidden = false;
+    } catch (err) {
+      console.warn(`[hud] selection cameo bind failed for "${data.cameoKey}"`, err);
+      cell.cameoCanvas.hidden = true;
+    }
   }
 
   update(view: SelectionView, _snap: HudSnapshot, tele: HudTelemetry): void {
@@ -1058,7 +1146,7 @@ class SelectionPanel {
 
       const pct = Math.max(0, Math.min(1, data.hpFrac));
       const sig = `${data.icon}|${data.name}|${(pct * 100) | 0}|${data.stack}|` +
-        `${data.veterancy}|${data.primary ? 1 : 0}`;
+        `${data.veterancy}|${data.primary ? 1 : 0}|${data.cameoKey}|${this.faction}`;
       if (sig === cell.sig && !cell.root.hidden) continue;
       cell.sig = sig;
 
@@ -1067,6 +1155,7 @@ class SelectionPanel {
       cell.root.setAttribute('aria-selected', data.primary ? 'true' : 'false');
       cell.root.classList.toggle('is-primary', data.primary);
       setIcon(cell.icon, data.icon);
+      this.bindCardCameo(cell, data);
       cell.nameNode.nodeValue = data.name;
 
       cell.bar.style.transform = `scaleX(${pct.toFixed(3)})`;
@@ -1330,6 +1419,12 @@ class BuildPanel {
   private cameos: CameoRenderer | null = null;
   /** Whose colours the cameos wear. Kept in step by `setFaction`. */
   private faction: Faction;
+
+  /**
+   * The one cameo renderer in the HUD, so the selection dock can draw the same
+   * models without standing up a second render target and light rig.
+   */
+  get cameoRenderer(): CameoRenderer | null { return this.cameos; }
 
   constructor(
     parent: HTMLElement,
@@ -2037,6 +2132,10 @@ export class Sidebar {
     this.build = new BuildPanel(
       this.root, opts.callbacks, this.root, opts.faction, opts.renderer ?? null,
     );
+    // AFTER the build panel, because it is the one that constructs the
+    // renderer. Null in any headless build, where both panels keep their glyphs.
+    this.selection.setCameos(this.build.cameoRenderer);
+    this.selection.setFaction(this.faction);
 
     applyTheme(this.root, this.faction);
   }
@@ -2046,6 +2145,7 @@ export class Sidebar {
   setFaction(faction: Faction): void {
     if (this.faction === faction) return;
     this.faction = faction;
+    this.selection.setFaction(faction);
     applyTheme(this.root, faction);
   }
 

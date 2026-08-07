@@ -1062,6 +1062,40 @@
   height: calc(23 * var(--vm-u));
 }
 
+/*
+ * THE SELECTION CARD'S MODEL CAMEO.
+ *
+ * "Bottom left hud still uses icons and not the models." The card drew
+ * `makeIcon('tank')` — the same glyph for a Grizzly, a Harvester and a
+ * Construction Yard — while the build rail beside it had been rendering the
+ * real meshes since `CameoRenderer` landed. It now shares that one renderer.
+ *
+ * Sits BEHIND the name, the stack count, the veterancy chevrons and the health
+ * bar, all of which are absolutely positioned with no z-index and therefore
+ * paint after it. It is only revealed on a successful bind, so the glyph
+ * underneath still covers a def with no model and any build with no GL.
+ */
+.vm-hud .vm-card-cameo {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  /* Stops short of the name row rather than sitting under it — a model behind
+     text is what makes a small cameo unreadable, and the card's whole job is to
+     be readable at a glance. */
+  bottom: calc(15 * var(--vm-u));
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: contain;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* The glyph is the fallback and must not paint through the model when both are
+   in the DOM. `hidden` handles the canvas; this handles the reverse. */
+.vm-hud .vm-card:has(.vm-card-cameo:not([hidden])) .vm-card-icon { display: none; }
+
 .vm-hud .vm-card-name {
   position: absolute;
   left: calc(3 * var(--vm-u));

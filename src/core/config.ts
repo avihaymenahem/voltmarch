@@ -3136,6 +3136,54 @@ export const HUD_GRID = {
 } as const;
 
 /** Radar panel, design px (VISUAL_DNA §2.5). */
+/**
+ * THE SELECTION-CARD PORTRAITS. See `src/ui/ModelPortrait.ts`.
+ *
+ * "Bottom left hud still uses icons and not the models." Every card drew the
+ * same `makeIcon('tank')` glyph — for a Grizzly, a Harvester and a Construction
+ * Yard alike — while the real mesh sat built and lit in the render bridge's
+ * registry.
+ *
+ * The lighting here is deliberately NOT the battlefield's. The grade is a hard
+ * sun and a deep blue fill, which is right across a 1400-pixel frame and turns
+ * a 96-pixel thumbnail into a dark smudge; a portrait rig wants a broad key and
+ * a real fill. What it does NOT get is an `AmbientLight`, which is banned
+ * project-wide and which would flatten exactly the chamfer highlights that make
+ * these silhouettes readable at thumbnail size.
+ */
+export const HUD_PORTRAIT = {
+  /**
+   * Render size in device pixels, square.
+   *
+   * 96 rather than the ~34 design px the card actually shows, because the card
+   * scales with `uiScale` up to 4x and a portrait cannot be re-rendered per
+   * resolution without giving up the render-once-per-type property. 96 covers
+   * every scale on every panel and costs 36 kB of RGBA per unit type.
+   */
+  sizePx: 96,
+  /** Narrow, so a thumbnail reads as a model rather than as a fisheye toy. */
+  fovDeg: 22,
+  /**
+   * Three-quarter view, and steeper than the game camera's 52.
+   *
+   * The battlefield pitch exists so a player can read GROUND relationships. A
+   * portrait has one job — say which unit this is — and the silhouette that
+   * does that is the front three-quarter, the same angle every RTS sidebar in
+   * the genre has used since Dune II.
+   */
+  yawDeg: 34,
+  pitchDeg: 24,
+  /** Slack around the fitted bounding sphere. 1.0 would clip the chamfers. */
+  fitMargin: 1.14,
+  skyColor: '#b9ccdd',
+  groundColor: '#3a3b44',
+  hemiIntensity: 1.5,
+  keyColor: '#fff2dd',
+  keyIntensity: 2.4,
+  fillColor: '#9fb8d8',
+  fillIntensity: 0.9,
+} as const;
+
 export const HUD_RADAR = {
   fieldW: 142,
   fieldH: 110,

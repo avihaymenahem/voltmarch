@@ -560,7 +560,10 @@ export class Hud {
 
     const cards: SelectionCard[] = [];
     for (let i = 0; i < MAX_SELECTION; i++) {
-      cards.push({ id: 0, icon: 'tank', name: '', hpFrac: 1, veterancy: 0, stack: 1, primary: false });
+      cards.push({
+        id: 0, icon: 'tank', cameoKey: '', isBuilding: false, name: '',
+        hpFrac: 1, veterancy: 0, stack: 1, primary: false,
+      });
     }
     this.view = {
       count: 0, title: '', subtitle: '', veterancy: 0,
@@ -1458,6 +1461,12 @@ export class Hud {
       const info = this.describe(idx);
       card.id = store.handleOf(idx) as number;
       card.icon = info.icon;
+      // `describe()` already resolves the content key — through the production
+      // service first and the def tables second — so the model cameo costs
+      // nothing extra to feed. It returns '' only when neither could name the
+      // entity, which is the case that keeps the glyph.
+      card.cameoKey = info.key;
+      card.isBuilding = store.kind[idx] === EntityKind.Building;
       card.name = info.name;
       card.hpFrac = this.groupHp[k];
       card.stack = this.groupCount[k];
