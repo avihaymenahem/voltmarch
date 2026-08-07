@@ -51,8 +51,9 @@ import {
   VFX_RAMP, VFX_RAMPS, VFX_SMOKE, VFX_TILE, WATER_LEVEL,
 } from '../core/config';
 import {
-  EntityFlag, EntityKind, Faction, FxKind, NONE, PartId, RenderPhase,
+  DecalKind, EntityFlag, EntityKind, Faction, FxKind, NONE, PartId, RenderPhase,
 } from '../core/types';
+import { DecalKind as WorldDecalKind, layDecal } from '../world/Decals';
 import type { EntityId, RenderContext } from '../core/types';
 import { ctx } from '../game/context';
 import { socketWorld } from '../render/RenderBridge';
@@ -77,6 +78,30 @@ import {
 let lights: LightPool | null = null;
 let sprites: ParticleSystem | null = null;
 let beams: BeamSystem | null = null;
+
+/**
+ * `core/types.ts` DecalKind -> `world/Decals.ts` DecalKind.
+ *
+ * TWO ENUMS, DIFFERENT NUMBERING, and neither file mentions the other. The sim
+ * speaks the first; the decal field speaks the second. Written out as an
+ * explicit map rather than a cast because the values collide in the worst
+ * possible way — core's `Scorch = 0` is the field's `Tread = 0`, so a straight
+ * pass-through would have laid a tyre mark where a tank exploded and a tread
+ * strip where a nuke landed, and both would have looked like "the decals are
+ * a bit odd" rather than like a bug.
+ *
+ * `TreadMark`, `FootPrint`, `Squish` and `OreStain` have no counterpart: treads
+ * are laid by `layTread` straight from Movement and the other three were never
+ * drawn. `undefined` means "drop it", which is what they were already doing.
+ */
+const DECAL_PORT_MAP: Readonly<Record<number, WorldDecalKind>> = {
+  [DecalKind.Scorch]: WorldDecalKind.Scorch,
+  [DecalKind.Crater]: WorldDecalKind.Crater,
+  // The closest thing the field owns to broken masonry: a wide soft smudge.
+  // A collapsed structure leaving nothing at all is the current behaviour and
+  // is worse than an approximation.
+  [DecalKind.Rubble]: WorldDecalKind.Dust,
+};
 let shots: TracerSystem | null = null;
 
 /** Scratch, allocated once. The frame loop must not allocate. */
@@ -530,6 +555,57 @@ export default defineSystem({
     // another module's files.
     setGroundHeightFn((x, z) => world.terrain.heightAt(x, z));
     setShakeSink((t) => cameraRig.addShake(t));
+
+    /*
+     * THE `world.vfx` PORT, WHICH NOTHING HAD EVER ASSIGNED.
+     *
+     * `World.vfx` is declared `IVfx = new NullVfx()` — a null object whose
+     * every method is an empty body — and no module replaced it. TWENTY CALL
+     * SITES across five sim modules were therefore silent no-ops for the whole
+     * life of the project:
+     *
+     *   Abilities.ts    four `shake()` calls, one scorch decal
+     *   Crates.ts       shake on pickup
+     *   Damage.ts       three scorch decals, a rubble decal, three shakes
+     *   Production.ts   BuildComplete and SellPuff
+     *   RepairSell.ts   shake when a structure is sold
+     *   Superweapons.ts the nuke's crater, its scorch, and its shake
+     *
+     * Explosions still shook the camera, which is exactly why this survived:
+     * `Explosions.ts` reaches `cameraRig.addShake` through `setShakeSink`
+     * above, so the ONE case anybody would test by playing worked, and the
+     * nuke — the single most deserving effect in the game — did nothing.
+     *
+     * THE TWO DecalKind ENUMS DO NOT AGREE, and passing the value straight
+     * through would have been worse than the no-op:
+     *
+     *   core/types.ts    Scorch=0 Crater=1 TreadMark=2 FootPrint=3 Squish=4
+     *                    OreStain=5 Rubble=6
+     *   world/Decals.ts  Tread=0  Tyre=1   Scorch=2    Crater=3    Oil=4
+     *                    Dust=5   Manhole=6 LightPool=7 Crack=8    Patch=9
+     *
+     * A nuke's Crater(1) would have laid a Tyre mark. The map below is the
+     * whole reason this adapter exists rather than a one-line assignment.
+     */
+    world.vfx = {
+      play: (kind, x, y, z, dx, dy, dz, scale) => {
+        // Straight onto the same channel the weapons write, so a sim-issued
+        // effect and a weapon-issued one take one code path and cannot drift.
+        channels.fx.push(kind, x, y, z, dx, dy, dz, scale, NONE, Faction.Neutral);
+      },
+      // Persistent attached emitters are driven by `EntityFlag.Burning` in
+      // `frame()` below, which scans the store directly — there is no handle
+      // table to hand out, and inventing one that nothing reads would be the
+      // same defect this block is fixing.
+      attach: () => -1,
+      detach: () => {},
+      decal: (kind, x, z, rot, size) => {
+        const mapped = DECAL_PORT_MAP[kind as number];
+        if (mapped !== undefined) layDecal(mapped, x, z, Math.max(0.25, size), rot);
+      },
+      shake: (amount) => { cameraRig.addShake(amount); },
+      particleCount: () => sprites?.additive.count ?? 0,
+    };
 
     damageTimer.fill(0);
     dustTimer.fill(0);

@@ -76,9 +76,11 @@ interface FakeShell {
   state: string;
   seed: number;
   ends: boolean[];
+  result: { won: boolean } | null;
   getState(): string;
   endMatch(r: { won: boolean }): void;
   getSeed(): number;
+  latestResult(): { won: boolean } | null;
 }
 
 function installShell(seed = 0x51c0de): FakeShell {
@@ -86,9 +88,14 @@ function installShell(seed = 0x51c0de): FakeShell {
     state: 'loading',
     seed,
     ends: [],
+    result: null,
     getState() { return this.state; },
-    endMatch(r) { this.ends.push(r.won); this.state = 'ended'; },
+    // Mirrors `Shell.endMatch`'s ORDER, which is what makes the fix work: the
+    // result is recorded BEFORE the state flips to 'ended', so the outcome
+    // watcher sees a populated `latestResult()` on the edge it reacts to.
+    endMatch(r) { this.ends.push(r.won); this.result = { won: r.won }; this.state = 'ended'; },
     getSeed() { return this.seed; },
+    latestResult() { return this.result; },
   };
   (globalThis as unknown as Record<string, unknown>).__vmShell = shell;
   return shell;
@@ -479,5 +486,98 @@ describe('every declared subscriber is still subscribed', () => {
     const assignments = audio.match(/^\s*matchStartAt = (?!-1)/gm) ?? [];
     expect(assignments).toHaveLength(1);
     expect(audio).toContain('battleControlOnline');
+  });
+});
+
+/* ========================================================================== */
+
+describe('match:ended honours the verdict the shell recorded', () => {
+  /**
+   * `__vmShell.endMatch({won: true})` wrote a WIN to the profile and raised the
+   * victory screen while `match:ended` carried `localWon: false` — the
+   * announcer saying "mission failed" and playing the loss sting over a
+   * victory. The cause was `outcome.system` recomputing the verdict with its
+   * own `inferLocalWon()` instead of asking what the shell had committed to.
+   *
+   * Reachable only from a caller outside this module, which is exactly what
+   * `Shell.endMatch` is public for — "so a real victory module can call it".
+   */
+  it('reports a victory when the caller declared one, against an empty world', () => {
+    const rig = makeRig();
+    // An empty world: `inferLocalWon()` sees the local player holding nothing
+    // and returns false, which is precisely the wrong answer here.
+    const ended: GameEvents['match:ended'][] = [];
+    rig.channels.events.on('match:ended', (p) => { ended.push({ ...p }); });
+
+    rig.shell.state = 'playing';
+    outcomeSystem.frame?.({ dt: 0.016 } as never);
+
+    // A victory module calling in, the way the doc comment invites.
+    rig.shell.endMatch({ won: true });
+    outcomeSystem.frame?.({ dt: 0.016 } as never);
+
+    expect(ended, 'exactly one match:ended').toHaveLength(1);
+    expect(ended[0]!.localWon, 'the caller said victory').toBe(true);
+    teardown();
+  });
+
+  it('reports a defeat when the caller declared one', () => {
+    const rig = makeRig();
+    const ended: GameEvents['match:ended'][] = [];
+    rig.channels.events.on('match:ended', (p) => { ended.push({ ...p }); });
+
+    rig.shell.state = 'playing';
+    outcomeSystem.frame?.({ dt: 0.016 } as never);
+    rig.shell.endMatch({ won: false });
+    outcomeSystem.frame?.({ dt: 0.016 } as never);
+
+    expect(ended).toHaveLength(1);
+    expect(ended[0]!.localWon).toBe(false);
+    teardown();
+  });
+
+  it('still emits for a host that predates latestResult()', () => {
+    // The accessor is optional for the same reason `getSeed` is: a host without
+    // it must still drive the outcome rules rather than silently going quiet.
+    const world = new World();
+    world.addPlayer(Faction.Allies, 'Commander', true, true);
+    world.addPlayer(Faction.Soviets, 'Opponent', false, false);
+    const channels = new Channels();
+    simTime = 0;
+    setGameContext({
+      world, channels, loop: { get simTime() { return simTime; } },
+    } as unknown as GameContext);
+    const ended: GameEvents['match:ended'][] = [];
+    channels.events.on('match:ended', (p) => { ended.push({ ...p }); });
+
+    const shell = installLegacyShell();
+    outcomeSystem.init?.();
+    shell.state = 'playing';
+    outcomeSystem.frame?.({ dt: 0.016 } as never);
+    shell.state = 'ended';
+    outcomeSystem.frame?.({ dt: 0.016 } as never);
+
+    expect(ended, 'a legacy host must still produce the event').toHaveLength(1);
+    teardown();
+  });
+
+  it('keeps the store-derived fallback for an end nobody declared', () => {
+    // The recompute is not being removed — it is being demoted to third. A
+    // shell that reaches 'ended' with no recorded result (the old poll path)
+    // must still be answered from the world.
+    const rig = makeRig();
+    const ended: GameEvents['match:ended'][] = [];
+    rig.channels.events.on('match:ended', (p) => { ended.push({ ...p }); });
+
+    rig.shell.state = 'playing';
+    outcomeSystem.frame?.({ dt: 0.016 } as never);
+    // Straight to 'ended' with `result` left null.
+    rig.shell.state = 'ended';
+    outcomeSystem.frame?.({ dt: 0.016 } as never);
+
+    expect(ended).toHaveLength(1);
+    // An empty world is a defeat by `inferLocalWon`'s own rule.
+    expect(ended[0]!.localWon).toBe(false);
+    teardown();
   });
 });

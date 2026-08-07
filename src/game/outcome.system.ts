@@ -144,6 +144,14 @@ interface ShellHost {
   getState(): string;
   endMatch(result: { won: boolean }): void;
   /**
+   * The verdict the shell actually recorded for the match that just ended.
+   *
+   * OPTIONAL for the same reason as `getSeed`: a host that predates the
+   * accessor must still drive the outcome rules. When it is present it is the
+   * AUTHORITATIVE answer for an end we did not call — see `verdictFor` below.
+   */
+  latestResult?(): { won: boolean } | null;
+  /**
    * The seed the running match was booted with, for `EvMatchStarted.seed`.
    *
    * OPTIONAL, and the probe below does not require it. Nothing else in this
@@ -300,13 +308,38 @@ function finish(shell: ShellHost, won: boolean, why: string): void {
 /**
  * Who won, for an end WE did not call.
  *
- * Recomputed live rather than cached, because the alternative is announcing
- * "mission failed" over a victory: the shell polls at the same 2 Hz we do, and a
- * cached verdict from the previous poll can predate the death of the last enemy
- * building by up to half a second. The world is frozen by the time the shell
- * reaches state `'ended'`, so this reproduces the shell's own rule — local still
- * holds something, every hostile holds nothing — against the exact same store.
+ * THREE SOURCES, IN THIS ORDER, and the order is the whole fix:
+ *
+ *  1. `decidedWon`, when this module called `finish()` itself.
+ *  2. `shell.latestResult()`, the verdict the shell RECORDED — which is what
+ *     `Shell.endMatch({won})` was given, what it wrote to the profile, and what
+ *     the end screen is showing.
+ *  3. `inferLocalWon()`, recomputed from the store.
+ *
+ * (2) did not exist, and its absence meant `__vmShell.endMatch({won: true})`
+ * wrote a WIN to the profile and raised the victory screen while `match:ended`
+ * carried `localWon: false` — the announcer saying "mission failed" and playing
+ * the loss sting over a victory. Not reachable from any shipping route today,
+ * because the outcome module's own `finish()` sets `decided` and
+ * `Shell.pollOutcome` applies the same rule (3) reproduces. But `endMatch` is
+ * public specifically "so a real victory module can call it", and every such
+ * caller would have been contradicted by the announcer.
+ *
+ * (3) STAYS, and stays last, for the reason it was written: the shell polls at
+ * the same 2 Hz we do, so a CACHED verdict can predate the death of the last
+ * enemy building by half a second. But "recompute rather than cache" and
+ * "ignore an explicit argument" were never the same thing — and
+ * `latestResult()` is not a stale cache, it is the answer the shell committed
+ * to for this match, populated inside `endMatch` before it returns.
  */
+function verdictFor(shell: ShellHost): boolean {
+  if (decided) return decidedWon;
+  const recorded = shell.latestResult?.() ?? null;
+  if (recorded !== null) return recorded.won;
+  return inferLocalWon();
+}
+
+/** The store-derived fallback. See `verdictFor`. */
 function inferLocalWon(): boolean {
   const { world } = ctx();
   const local = world.localPlayer;
@@ -423,7 +456,7 @@ export default defineSystem({
         resetMatchState();
         emitStarted(shell);
       }
-      if (state === 'ended') emitEnded(decided ? decidedWon : inferLocalWon());
+      if (state === 'ended') emitEnded(verdictFor(shell));
       lastState = state;
     }
 
