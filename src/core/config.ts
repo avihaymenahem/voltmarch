@@ -4492,7 +4492,11 @@ export const VFX_LIGHTS = {
   // Cut with the rest of the table so the ordering invariant at
   // tests/vfx.spec.ts:1190 (explosion must out-light muzzle) still holds.
   muzzle:      { color: '#FFD28A', peak: 3, range: 17.5, riseMs:  10, holdMs:  10, fallMs:  70, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 7.0 },
-  teslaImpact: { color: '#5A82FF', peak: 3.5, range: 24.5, riseMs:  30, holdMs:  40, fallMs: 130, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 5.0 },
+  // peak 3.5 -> 1.4, range 24.5 -> 13. The impact's own light was measured at
+  // 1.09pp of the 1.78pp the whole starburst contributes at four hits — the
+  // largest single piece of it. Same reasoning as `teslaArc`: peak is how
+  // bright the wash is, RANGE is how big it is, and the complaint is about size.
+  teslaImpact: { color: '#5A82FF', peak: 1.4, range: 13.0, riseMs:  30, holdMs:  40, fallMs: 130, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 5.0 },
   beam:        { color: '#6FA8FF', peak:  9, range: 42.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 0 },
   /**
    * The sustained light a TESLA ARC carries while it is up.
@@ -4540,7 +4544,11 @@ export const VFX_LIGHTS = {
    * that is now answered by charging them to `VFX_GLARE` (see Beams.ts), which
    * the light pool does not participate in.
    */
-  teslaArc:    { color: '#6FA8FF', peak: 6.5, range: 17.0, riseMs:  50, holdMs:   0, fallMs: 200, flickerHz: 13, flickerAmp: 0.16, mergeRadius: 0 },
+  // peak 6.5 -> 2.6 and range 17 -> 11, third report. The ribbons came down
+  // twice and the LIGHT is now the larger half of what is left: measured at
+  // 1.06pp of the arc's 4.50pp blue delta at four arcs, against 2.98pp for the
+  // ribbons that have since been cut again.
+  teslaArc:    { color: '#6FA8FF', peak: 2.6, range: 11.0, riseMs:  50, holdMs:   0, fallMs: 200, flickerHz: 13, flickerAmp: 0.16, mergeRadius: 0 },
   /**
    * `mergeRadius` 9 is wider than the others on purpose: burning wrecks are a
    * CLUSTER by nature — a destroyed formation is six hulls inside ten metres,
@@ -4552,7 +4560,12 @@ export const VFX_LIGHTS = {
   // Cut with teslaArc and for the same reason — 22/42 is the same blue wash one
   // notch down, and the comment above says prism "is raised for the same reason
   // and by the same measurement", so it inherits the same correction.
-  prism:       { color: '#A7F5F9', peak: 5.5, range: 16.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 0 },
+  // Cut with teslaArc and by the same measurement. The report named the Tesla
+  // Coil, but the Prism Tower measured WORSE than it (+4.13pp against +3.40pp
+  // blue at four) once the arc had been cut twice, and shipping the Allied
+  // equivalent brighter than the Soviet one the player complained about would
+  // just be the next report.
+  prism:       { color: '#A7F5F9', peak: 2.4, range: 11.0, riseMs:  60, holdMs:   0, fallMs: 180, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 0 },
   impact:      { color: '#FFE0A0', peak:  6, range: 12.0, riseMs:  10, holdMs:  10, fallMs:  90, flickerHz: 0,  flickerAmp: 0.00, mergeRadius: 4.0 },
 } as const;
 
@@ -4666,6 +4679,19 @@ export const VFX_GLARE = {
      */
     arc: 0.85,
     beam: 0.85,
+    /**
+     * The tesla IMPACT starburst, which was charged nothing at all.
+     *
+     * `Beams.teslaImpact` never called `admitGlare`, so four coils firing into
+     * one spot produced four full-strength starbursts — the same uncapped
+     * stacking that `arc` and `beam` were given a cost for in v1.17.0, missed
+     * because the probe could not reach this effect and nobody looked.
+     *
+     * 0.55 rather than the arc's 0.85: an impact is brief (180 ms against a
+     * second) and covers a disc rather than a corridor, so it deserves a
+     * smaller share of a locality's budget while still being bounded by it.
+     */
+    teslaImpact: 0.55,
   },
 } as const;
 
@@ -5169,7 +5195,7 @@ export const VFX_TESLA = {
    * `tools/flash-stack.mjs` nothing could tell the two apart. The measurement
    * says the ribbons are 2.5x the light pool at four arcs.
    */
-  coreWidthPx: 2.6, sheathWidthPx: 9.0, glowWidthPx: 26.0,
+  coreWidthPx: 2.6, sheathWidthPx: 4.0, glowWidthPx: 9.0,
   /** Cross-section falloff exponents: near-flat core, soft glow. */
   coreFalloff: 0.35, sheathFalloff: 1.05, glowFalloff: 2.1,
   /**
@@ -5198,7 +5224,7 @@ export const VFX_TESLA = {
    * area above the bloom threshold [...] is driven by gain at least as much as
    * by size."
    */
-  coreIntensity: 5.6, sheathIntensity: 1.7, glowIntensity: 1.5,
+  coreIntensity: 5.6, sheathIntensity: 0.6, glowIntensity: 0.40,
   /**
    * How much of its authored SHEATH each extra jittered trunk copy draws.
    * The extra copies deliberately carry NO core: five 2.6 px white filaments
@@ -5216,11 +5242,39 @@ export const VFX_TESLA = {
   /** Re-roll the whole path every 50 ms; total beam 0.9-1.4 s. */
   rerollMs: 50, defaultDurationMs: 1100,
 
-  /** Impact starburst: r 35-45 px ball for 180 ms + 14-20 radial spikes. */
-  burstRadiusPx: [35, 45] as const, burstLifeMs: 180, burstIntensity: 5.5,
+  /**
+   * IMPACT STARBURST — cut hard on the third report of "tesla tower flash is
+   * HUGE HUGE HUGE".
+   *
+   * WHAT IT USED TO BE, in pixels at 1440p: a ball of radius 35-45 grown to
+   * 1.25x, i.e. a disc up to 112 px ACROSS, plus 14-20 spikes of 60-140 px with
+   * four of them at DOUBLE length — 280 px, a fifth of the frame height, each.
+   * Sized in pixels rather than metres, so the whole thing claims the same
+   * share of a 720p frame as of a 1440p one and reads far larger on the smaller
+   * screen.
+   *
+   * MEASURED FIRST, and the measurement corrected the guess. The starburst was
+   * the leading hypothesis for this report and it is NOT the dominant term:
+   * `flash-stack --ablate` puts it at +1.78pp of blue frame area at four
+   * impacts against the ARC's +4.50pp. It is a fifth of the problem, not the
+   * whole of it, and both are cut here rather than only the one that was
+   * suspected.
+   *
+   *   ball radius   35-45 -> 18-24 px      intensity 5.5 -> 2.0
+   *   spike length  60-140 -> 34-78 px     long multiplier 2.0 -> 1.5
+   *
+   * `spikeIntensity` is NEW and is not a new knob — it is a magic 4.2 that was
+   * sitting inline in `Beams.teslaImpact`, the only additive gain in the whole
+   * VFX system that lived outside this table. That is the same defect shape as
+   * the water foam's hard-coded lighting: a number nobody could find when they
+   * came looking for it.
+   */
+  burstRadiusPx: [18, 24] as const, burstLifeMs: 180, burstIntensity: 2.0,
   spikeMin: 14, spikeMax: 20,
-  spikeWidthPx: [2, 4] as const, spikeLenPx: [60, 140] as const,
-  spikeLifeMs: 220, spikeLongCount: 4, spikeLongMul: 2.0,
+  spikeWidthPx: [2, 4] as const, spikeLenPx: [34, 78] as const,
+  spikeLifeMs: 220, spikeLongCount: 4, spikeLongMul: 1.5,
+  /** Additive gain of one spike. Was an inline 4.2 in Beams.teslaImpact. */
+  spikeIntensity: 1.6,
 } as const;
 
 /* ---- beams (bible §8.4) ------------------------------------------------- */
@@ -5233,11 +5287,11 @@ export const VFX_BEAM = {
      * of a beam is most of the blue the player was complaining about, and the
      * 3.5 px core — the part that reads as a beam — is untouched.
      */
-    corePx: 3.5, innerPx: 22, outerPx: 34,
+    corePx: 3.5, innerPx: 14, outerPx: 20,
     coreT: 0.01, innerT: 0.26, outerT: 0.62,
     // inner 2.4 -> 1.5, outer 0.85 -> 0.55. Core held at 6.0: it is 3.5 px and
     // it is the entire reason a prism beam reads as a beam.
-    coreI: 6.0, innerI: 1.5, outerI: 0.55,
+    coreI: 6.0, innerI: 0.85, outerI: 0.30,
     coreFall: 0.30, innerFall: 1.2, outerFall: 2.3,
     openMs: 60, closeMs: 180, defaultMs: 1500,
     /** Width breathing +/-8% at 11 Hz, taper 100% -> 88% along the beam. */

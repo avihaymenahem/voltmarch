@@ -198,13 +198,27 @@ async function measure(buf) {
  */
 async function arcSweep(page, results) {
   const RIBBONS = ['VfxBeamOverlay', 'VfxRibbonDepth'];
+  /*
+   * THE SPRITE LAYER BELONGS IN HERE TOO, and leaving it out made the first
+   * `impact` run unreadable: its `no-ribbons` arm reported `hit 2/0` — two
+   * meshes matched, ZERO of them actually drawing — because the starburst is
+   * emitted through `emitAdditive`, the PARTICLE pool, not through a ribbon
+   * batch. Its `everything-off` then sat at +0.73pp instead of on the baseline,
+   * i.e. the arm list did not account for the effect it was measuring.
+   *
+   * A control that does not reach the baseline is the tell that the mask list
+   * is incomplete. It is the same lesson as the `STILL DREW` column: an arm
+   * that suppresses nothing reads exactly like a layer that costs nothing.
+   */
+  const SPRITES = ['VfxAdditive', 'VfxLitSmoke', 'VfxDebris'];
   const arms = [
     ['all-on', [], true],
     ['no-lights', [], false],
     ['no-ribbons', RIBBONS, true],
-    ['everything-off', RIBBONS, false],
+    ['no-sprites', SPRITES, true],
+    ['everything-off', [...RIBBONS, ...SPRITES], false],
   ];
-  for (const effect of ['tesla', 'prism']) {
+  for (const effect of ['tesla', 'prism', 'impact']) {
     for (const count of [1, 4]) {
       for (const [label, suppress, lights] of arms) {
         const url = await page.evaluate(
@@ -222,13 +236,20 @@ async function arcSweep(page, results) {
               // A 9 m arc from a coil head to a target hull, which is the
               // geometry a Tesla Coil or a Prism Tower actually produces.
               if (effect === 'tesla') V.tesla(x, f.y + 5.5, z, x + 9, f.y + 1.4, z, 900);
-              else V.beam(x, f.y + 5.5, z, x + 9, f.y + 1.4, z, 'prism');
+              else if (effect === 'prism') V.beam(x, f.y + 5.5, z, x + 9, f.y + 1.4, z, 'prism');
+              // THE STARBURST ALONE. A Tesla Coil firing produces the bolt AND
+              // this, and only the bolt had ever been measured — which is why
+              // "tesla tower flash is HUGE HUGE HUGE" survived a pass that cut
+              // the arc by 59%.
+              else V.teslaImpact(x + 9, f.y + 1.4, z, 1);
             }
             // Arcs are SUSTAINED — the config note calls a live arc "the
             // brightest object in any RA3 frame containing one" and says it is
             // up for about a second. 120 ms is inside the hold, so this
             // photographs the arc at full strength rather than mid-decay.
-            V.advance(120);
+            // 120 ms sits inside a sustained arc's hold. The starburst lives
+            // 180 ms total and peaks early, so it is photographed at 60.
+            V.advance(effect === 'impact' ? 60 : 120);
             await RA.waitFrames(3);
 
             // SUPPRESSING A RIBBON BATCH TOOK THREE TRIES, and the first two

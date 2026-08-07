@@ -1036,6 +1036,19 @@ export class BeamSystem {
     const rng = presentationRng;
     const mpp = this.mppAtFocus;
 
+    /*
+     * CHARGED TO THE GLARE BUDGET, which it never was.
+     *
+     * `admitGlare` bounds how much additive light one patch of ground may emit
+     * at once, and every other emitter goes through it — explosions, muzzle
+     * flashes, tracers, and since v1.17.0 the arc and the beam. This one did
+     * not, so four coils firing into the same spot produced four full-strength
+     * starbursts. Charged at the impact point, and the FIRST one in a locality
+     * is charged nothing and attenuated not at all, so a lone Tesla Coil looks
+     * exactly as it did.
+     */
+    const glare = admitGlare(x, y, z, VFX_GLARE.cost.teslaImpact);
+
     const ballPx = rng.range(T.burstRadiusPx[0], T.burstRadiusPx[1]);
     let e = resetEmit();
     e.x = x; e.y = y; e.z = z;
@@ -1045,7 +1058,7 @@ export class BeamSystem {
     e.sizeEase = 0.45;
     e.ramp = VFX_RAMP.tesla; e.tA = 0; e.tB = 0.55; e.radial = 1;
     e.tile = VFX_TILE.core;
-    e.i0 = T.burstIntensity; e.i1 = T.burstIntensity * 0.25;
+    e.i0 = T.burstIntensity * glare; e.i1 = T.burstIntensity * 0.25 * glare;
     emitAdditive(e);
 
     const spikes = rng.int(T.spikeMin, T.spikeMax);
@@ -1067,7 +1080,10 @@ export class BeamSystem {
       e.tile = VFX_TILE.spark;
       // Radiate around the billboard plane; +PI/2 because the tile's head is up.
       e.rot = (i / spikes) * Math.PI * 2 + rng.range(-0.16, 0.16);
-      e.i0 = 4.2; e.i1 = 0.4;
+      // Was a hard-coded 4.2 — the one additive gain in the VFX system that
+      // lived outside `src/core/config.ts`, and therefore the one nobody could
+      // find when they came looking for why the starburst was so bright.
+      e.i0 = T.spikeIntensity * glare; e.i1 = T.spikeIntensity * 0.25 * glare;
       emitAdditive(e);
     }
 

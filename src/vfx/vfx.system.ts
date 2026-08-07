@@ -436,6 +436,16 @@ interface VfxGlobal {
   __vmVfx?: {
     explode(x: number, y: number, z: number, sizeTL?: number, kind?: 'small' | 'unit' | 'structure'): void;
     tesla(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, ms?: number): void;
+    /**
+     * The IMPACT starburst on its own — the ball, the spikes and their light,
+     * without the bolt.
+     *
+     * Added because `tools/flash-stack.mjs` could not reach it. Its arc sweep
+     * called `tesla()`, which is the BOLT, so the starburst had never been
+     * measured by the instrument built to police blue glare — the same gap that
+     * hid the arc itself until v1.17.0.
+     */
+    teslaImpact(x: number, y: number, z: number, sizeMul?: number): void;
     beam(x0: number, y0: number, z0: number, x1: number, y1: number, z1: number, kind?: 'prism' | 'cryo' | 'designator'): void;
     muzzle(x: number, y: number, z: number, dx: number, dy: number, dz: number, size?: 0 | 1 | 2): void;
     impact(x: number, y: number, z: number, surface?: 'dirt' | 'metal' | 'concrete' | 'water'): void;
@@ -455,6 +465,7 @@ function installGlobal(): void {
   (globalThis as unknown as VfxGlobal).__vmVfx = {
     explode: (x, y, z, sizeTL = 2.2, kind = 'unit') => spawnExplosion(x, y, z, sizeTL, kind),
     tesla: (x0, y0, z0, x1, y1, z1, ms) => { beams?.spawnTesla(x0, y0, z0, x1, y1, z1, ms); },
+    teslaImpact: (x, y, z, sizeMul = 1) => { beams?.teslaImpact(x, y, z, sizeMul); },
     beam: (x0, y0, z0, x1, y1, z1, kind = 'prism') => { beams?.spawnBeam(x0, y0, z0, x1, y1, z1, kind); },
     muzzle: (x, y, z, dx, dy, dz, size = 2) => spawnMuzzleFlash(x, y, z, dx, dy, dz, size),
     impact: (x, y, z, surface = 'metal') => spawnImpact(x, y, z, 0, -1, 0, surface, 1),

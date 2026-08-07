@@ -1304,3 +1304,72 @@ describe('the fifth brightness report: one gain over the whole explosion', () =>
     expect(VFX_EXPLOSION.outputGain).toBeLessThan(1);
   });
 });
+
+/* ========================================================================== */
+
+describe('the tesla starburst, and the gap that hid it', () => {
+  /**
+   * "tesla tower flash is HUGE HUGE HUGE, reduce its glow by at least 75%."
+   *
+   * THIRD report on the same effect. v1.17.0 cut the ARC by 59% and it came
+   * back, because a Tesla Coil firing produces TWO things and the probe could
+   * only reach one: `flash-stack --ablate` called `V.tesla()`, which is the
+   * bolt. The impact starburst — a 112 px ball plus fourteen to twenty spikes
+   * up to 280 px long — had never been measured at all.
+   *
+   * The measurement then REFUTED the hypothesis it was built to confirm: the
+   * starburst is +1.78pp of blue frame area at four hits against the arc's
+   * +4.50pp. A fifth of the problem, not the whole of it. Both were cut.
+   */
+  it('charges the starburst to the glare budget, which it never was', () => {
+    // Every other additive emitter goes through `admitGlare`. This one did not,
+    // so four coils firing into one spot produced four full-strength bursts —
+    // the exact uncapped stacking `arc` and `beam` were given a cost for.
+    const src = readFileSync(join(__dirname, '..', 'src/vfx/Beams.ts'), 'utf8');
+    const fn = src.slice(src.indexOf('teslaImpact(x: number'));
+    const body = fn.slice(0, fn.indexOf('\n  }'));
+    expect(body).toMatch(/admitGlare\(x, y, z, VFX_GLARE\.cost\.teslaImpact\)/);
+    // And it must reach BOTH emissions, not just the ball.
+    expect(body).toMatch(/T\.burstIntensity \* glare/);
+    expect(body).toMatch(/T\.spikeIntensity \* glare/);
+  });
+
+  it('has no additive gain left hiding outside the config', () => {
+    // The spike gain was a hard-coded 4.2 inline in `teslaImpact` — the one
+    // additive gain in the whole VFX system that did not live in the table
+    // where somebody looking for it would look. Same defect shape as the water
+    // foam's hard-coded lighting.
+    expect(VFX_TESLA.spikeIntensity).toBeGreaterThan(0);
+    const src = readFileSync(join(__dirname, '..', 'src/vfx/Beams.ts'), 'utf8');
+    const fn = src.slice(src.indexOf('teslaImpact(x: number'));
+    const body = fn.slice(0, fn.indexOf('\n  }'));
+    expect(body, 'a bare numeric gain is back in teslaImpact')
+      .not.toMatch(/e\.i0 = \d/);
+  });
+
+  it('keeps the core filament, which is what makes a bolt a bolt', () => {
+    // Everything around it came down hard; the 2.6 px core did not. Scorecard
+    // #30 measures "core <= 3 px at L >= 248", and a bolt whose core is dimmer
+    // than its own sheath reads as a smear rather than as lightning.
+    expect(VFX_TESLA.coreWidthPx).toBeLessThanOrEqual(3);
+    expect(VFX_TESLA.coreIntensity).toBeGreaterThan(VFX_TESLA.sheathIntensity);
+    expect(VFX_TESLA.sheathIntensity).toBeGreaterThan(VFX_TESLA.glowIntensity);
+  });
+
+  it('sizes the starburst below the ball it used to be', () => {
+    // 35-45 px radius grown 1.25x is a 112 px disc; the spikes ran to 280 px
+    // with the long multiplier. Both are quoted in PIXELS, so they claim the
+    // same share of a 720p frame as of a 1440p one and read larger on the
+    // smaller screen — which is why a capture at 1440p understated this.
+    expect(VFX_TESLA.burstRadiusPx[1]).toBeLessThanOrEqual(24);
+    expect(VFX_TESLA.spikeLenPx[1] * VFX_TESLA.spikeLongMul).toBeLessThan(140);
+  });
+
+  it('does not leave the Prism Tower brighter than the Coil that was reported', () => {
+    // The report named the Tesla Coil. Once the arc had been cut twice the
+    // Allied equivalent measured WORSE (+4.13pp against +3.40pp blue at four),
+    // and shipping that would simply be the next report.
+    expect(VFX_LIGHTS.prism.peak).toBeLessThanOrEqual(VFX_LIGHTS.teslaArc.peak + 0.5);
+    expect(VFX_LIGHTS.prism.range).toBeLessThanOrEqual(VFX_LIGHTS.teslaArc.range + 2);
+  });
+});
