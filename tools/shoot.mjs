@@ -97,7 +97,7 @@
  */
 
 import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, readdirSync, renameSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -419,11 +419,66 @@ if (noBuild) {
   });
 }
 
+/*
+ * THE LEAK, AND WHY IT WAS NOT MERELY UNTIDY.
+ *
+ * This used to be `run('npx', ['vite', 'preview', ...])` with
+ * `cleanup = () => server.kill()`. On Windows `run` goes through a shell, so
+ * the tree is cmd.exe -> npx-cli.js -> node vite.js and `kill()` reaped the
+ * first of three. The real server survived every invocation, kept port 4318
+ * bound, and the NEXT run then either died on `--strictPort` or connected to a
+ * preview of the PREVIOUS BUILD and photographed it without saying so. A
+ * scorecard captured against a stale server is a comparison of one build
+ * against itself, which reads exactly like "the change did nothing".
+ *
+ * One direct node process, a tree kill, and a refusal to run against a server
+ * we did not start.
+ */
+function killTree(child) {
+  if (!child || child.pid === undefined || child.exitCode !== null) return;
+  try {
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    } else {
+      process.kill(-child.pid, 'SIGKILL');
+    }
+  } catch { /* already gone */ }
+  try { child.kill('SIGKILL'); } catch { /* already gone */ }
+}
+
+try {
+  const probe = await fetch(BASE, { signal: AbortSignal.timeout(1500) });
+  if (probe.ok) {
+    throw new Error(
+      `something is already serving ${BASE}.\n` +
+      'That is almost certainly a leaked preview from an earlier run, serving ITS\n' +
+      'build rather than the one just compiled. Kill it and re-run:\n' +
+      (process.platform === 'win32'
+        ? `  Get-NetTCPConnection -LocalPort ${PORT} -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`
+        : `  lsof -ti :${PORT} | xargs kill -9`),
+    );
+  }
+} catch (err) {
+  if (err instanceof Error && err.message.startsWith('something is already serving')) throw err;
+  // Anything else means nothing answered, which is what we want.
+}
+
 console.log('> serving...');
-const server = run('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort']);
-const cleanup = () => { try { server.kill(); } catch {} };
+const server = spawn(
+  process.execPath,
+  [join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'),
+    'preview', '--port', String(PORT), '--strictPort'],
+  { cwd: ROOT, stdio: 'pipe', detached: process.platform !== 'win32' },
+);
+let cleanedUp = false;
+const cleanup = () => {
+  if (cleanedUp) return;
+  cleanedUp = true;
+  killTree(server);
+};
 process.on('exit', cleanup);
 process.on('SIGINT', () => { cleanup(); process.exit(1); });
+process.on('SIGTERM', () => { cleanup(); process.exit(1); });
 
 if (!(await waitForServer(BASE))) { cleanup(); throw new Error(`preview never came up on ${BASE}`); }
 
@@ -824,3 +879,11 @@ if (failed.length) {
   console.log(`failed: ${failed.map((s) => s.name).join(', ')}`);
   process.exit(1);
 }
+/*
+ * EXIT, RATHER THAN HOPING THE EVENT LOOP DRAINS. The shots are on disk and the
+ * server is dead by here, so there is nothing left worth waiting for — but a
+ * playwright handle or a piped child stdio can hold the loop open forever, and
+ * a tool that finishes its work and then hangs is indistinguishable from one
+ * that froze halfway. That ambiguity is the whole of this defect.
+ */
+process.exit(0);

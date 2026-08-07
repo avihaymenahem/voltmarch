@@ -23,7 +23,7 @@
 
 import { chromium } from 'playwright';
 import sharp from 'sharp';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -82,10 +82,44 @@ const ABLATE = argv.includes('--ablate');
 const run = (cmd, args) =>
   spawn(cmd, args, { cwd: ROOT, shell: process.platform === 'win32', stdio: 'pipe' });
 
+/**
+ * Kill a child AND everything it spawned.
+ *
+ * `child.kill()` is not enough and the difference was not academic. This tool
+ * used to start the preview with `npx vite preview` through a shell, which on
+ * Windows is cmd.exe -> npx-cli.js -> node vite.js: THREE processes, of which
+ * `server.kill()` reaped the first. The real server survived every run, kept
+ * port 4319 bound, and the next run then either died on `--strictPort` or —
+ * far worse — connected to a preview of the PREVIOUS BUILD and measured it
+ * without saying so. Every "before/after" comparison taken while a stale
+ * server was up was a comparison of one build against itself.
+ *
+ * The server is now started as a single direct node process (see below), and
+ * this is the belt to that pair of braces.
+ */
+function killTree(child) {
+  if (!child || child.pid === undefined || child.exitCode !== null) return;
+  try {
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
+    } else {
+      process.kill(-child.pid, 'SIGKILL');
+    }
+  } catch { /* already gone */ }
+  try { child.kill('SIGKILL'); } catch { /* already gone */ }
+}
+
+async function serverAlive(url, timeoutMs = 1500) {
+  try {
+    const ctl = AbortSignal.timeout(timeoutMs);
+    return (await fetch(url, { signal: ctl })).ok;
+  } catch { return false; }
+}
+
 async function waitForServer(url, timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    try { if ((await fetch(url)).ok) return true; } catch { /* not up yet */ }
+    if (await serverAlive(url)) return true;
     await new Promise((r) => setTimeout(r, 300));
   }
   return false;
@@ -137,11 +171,43 @@ await new Promise((resolve, reject) => {
   b.on('close', (c) => (c === 0 ? resolve() : reject(new Error(`build failed:\n${out.slice(-4000)}`))));
 });
 
+/*
+ * REFUSE TO RUN AGAINST A SERVER WE DID NOT START. A leaked preview from an
+ * earlier run answers on this port and serves ITS build, so the probe would
+ * quietly measure whatever was compiled last time. That is indistinguishable
+ * from "the change had no effect", which is the single most expensive wrong
+ * answer this tool can give.
+ */
+if (await serverAlive(BASE)) {
+  throw new Error(
+    `something is already serving ${BASE}.\n` +
+    'That is almost certainly a leaked preview from an earlier run, and it is\n' +
+    'serving ITS build, not the one just compiled. Kill it and re-run:\n' +
+    (process.platform === 'win32'
+      ? `  Get-NetTCPConnection -LocalPort ${PORT} -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`
+      : `  lsof -ti :${PORT} | xargs kill -9`),
+  );
+}
+
 console.log('> serving...');
-const server = run('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort']);
-const cleanup = () => { try { server.kill(); } catch { /* already gone */ } };
+// ONE process, started directly. Not `npx vite` and not through a shell: on
+// Windows that is cmd.exe -> npx-cli.js -> node vite.js, and killing the
+// parent leaves the server running. See `killTree`.
+const server = spawn(
+  process.execPath,
+  [join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'),
+    'preview', '--port', String(PORT), '--strictPort'],
+  { cwd: ROOT, stdio: 'pipe', detached: process.platform !== 'win32' },
+);
+let cleanedUp = false;
+const cleanup = () => {
+  if (cleanedUp) return;
+  cleanedUp = true;
+  killTree(server);
+};
 process.on('exit', cleanup);
 process.on('SIGINT', () => { cleanup(); process.exit(1); });
+process.on('SIGTERM', () => { cleanup(); process.exit(1); });
 if (!(await waitForServer(BASE))) { cleanup(); throw new Error(`preview never came up on ${BASE}`); }
 
 const browser = await chromium.launch({
@@ -206,6 +272,8 @@ try {
   console.log(`  baseline: mean ${results.baseline.mean.toFixed(4)}  p99 ${results.baseline.p99.toFixed(4)}`);
 
   if (ABLATE) {
+    /** Camera position of the first arm; every later arm is reported against it. */
+    let basePose = null;
     // Layer masks: [label, suppressed material names, point lights on].
     //
     // `VfxLitSmoke` was NOT in the original list, and that omission is why four
@@ -213,19 +281,55 @@ try {
     // things anyone could switch off, so "it is not those" kept turning into
     // "it must be the additive quads after all". The fireball billows are lit
     // smoke, not additive, and nothing here could see them.
+    /*
+     * [label, suppressed material names, point lights on, mode].
+     *
+     * `mode` is the third defect this probe has had, and the one that made the
+     * previous run uninterpretable: HIDING a layer answers two questions at
+     * once and cannot tell them apart. Every arm read BRIGHTER with a bright
+     * layer switched off, which is only paradoxical if you assume `visible =
+     * false` measures "how much light does this layer add". It does not — it
+     * measures that MINUS "how much brighter stuff does this layer cover up",
+     * and an alpha-blended fireball billow sitting over ground the point
+     * lights have blown out is mostly the second thing.
+     *
+     *   'hide'   the layer is not drawn at all      (emission - occlusion)
+     *   'black'  the layer is drawn, at zero gain   (occlusion alone)
+     *
+     * The difference between the two is the layer's own emission, isolated.
+     */
     const masks = [
-      ['all-on', [], true],
-      ['no-additive', ['VfxAdditive'], true],
-      ['no-litsmoke', ['VfxLitSmoke'], true],
-      ['no-debris', ['VfxDebris'], true],
-      ['no-lights', [], false],
-      ['sprites-off', ['VfxAdditive', 'VfxLitSmoke', 'VfxDebris'], true],
-      ['everything-off', ['VfxAdditive', 'VfxLitSmoke', 'VfxDebris'], false],
+      ['all-on', [], true, 'hide'],
+      ['no-additive', ['VfxAdditive'], true, 'hide'],
+      ['no-litsmoke', ['VfxLitSmoke'], true, 'hide'],
+      ['no-debris', ['VfxDebris'], true, 'hide'],
+      ['no-lights', [], false, 'hide'],
+      ['sprites-off', ['VfxAdditive', 'VfxLitSmoke', 'VfxDebris'], true, 'hide'],
+      ['everything-off', ['VfxAdditive', 'VfxLitSmoke', 'VfxDebris'], false, 'hide'],
+      // The same three layers, DRAWN but black. Compare each against its
+      // 'hide' twin: if 'black' is darker, the layer was covering something
+      // brighter than itself and the curtain is doing real work.
+      ['black-additive', ['VfxAdditive'], true, 'black'],
+      ['black-litsmoke', ['VfxLitSmoke'], true, 'black'],
+      ['black-sprites', ['VfxAdditive', 'VfxLitSmoke', 'VfxDebris'], true, 'black'],
     ];
-    for (const count of [1, 20]) {
-      for (const [label, suppress, lights] of masks) {
+    /*
+     * THE CONTROL THIS PROBE NEVER HAD, and the reason its last run could not
+     * be read. `count: 0` runs the IDENTICAL path — clear, timeScale, the
+     * spawn loop with nothing in it, advance, waitFrames, mask, screenshot —
+     * and spawns no explosion. If it reads at the baseline, the path is clean
+     * and every gap above baseline is a real explosion artefact. If it does
+     * not, the arms are measuring the harness and no tuning decision taken
+     * from them means anything.
+     *
+     * The previous run reported `everything-off` at 21.164% against a 5.983%
+     * baseline and had no way to tell those two readings apart.
+     */
+    for (const count of [0, 1, 20]) {
+      for (const [label, suppress, lights, mode] of masks) {
+        if (count === 0 && label !== 'all-on' && label !== 'everything-off') continue;
         const url = await page.evaluate(
-          async ({ count, suppress, lights }) => {
+          async ({ count, suppress, lights, mode }) => {
             const V = window.__vmVfx;
             const RA = window.__VM;
             V.clear();
@@ -247,37 +351,91 @@ try {
             // ANYTHING. It reported ~0.25pp for "remove every additive quad",
             // and at n=1 it read BRIGHTER with the layer supposedly off, which
             // is the tell. Match on the material instead.
-            const hidden = [];
+            const hit = [];
             RA.scene.traverse((o) => {
               const m = o.material;
               if (!m || !o.visible) return;
               const names = Array.isArray(m) ? m.map((x) => x.name) : [m.name];
-              if (names.some((n) => suppress.includes(n))) hidden.push(o);
+              if (names.some((n) => suppress.includes(n))) hit.push(o);
             });
-            for (const o of hidden) o.visible = false;
+
+            // 'black' keeps the draw and its depth behaviour and takes the
+            // OUTPUT to zero, which is the only way to separate a layer's own
+            // emission from the brighter thing it is standing in front of.
+            // `colorWrite = false` would not do it: that skips the colour write
+            // entirely and leaves whatever is behind, which is the same answer
+            // as hiding. Additive-blended black contributes exactly nothing and
+            // still writes depth if the material already did.
+            const restore = [];
+            for (const o of hit) {
+              if (mode === 'black') {
+                const mats = Array.isArray(o.material) ? o.material : [o.material];
+                for (const mm of mats) {
+                  restore.push([mm, mm.opacity, mm.color ? mm.color.clone() : null]);
+                  mm.opacity = 0;
+                  if (mm.color) mm.color.setRGB(0, 0, 0);
+                }
+              } else {
+                o.visible = false;
+              }
+            }
+
             const pool = RA.scene.getObjectByName('VfxLightPool');
-            // `visible = false` on the GROUP drops every light from the light
-            // list and recompiles — fine for a one-off measurement, and it is
-            // the only way to take the light term to exactly zero.
+            // A MISSING POOL IS THE DEFECT-1 SHAPE ALL OVER AGAIN: the original
+            // `getObjectByName('VfxAdditive')` returned null on every run and
+            // the arm silently measured nothing. Report it rather than `if
+            // (pool)`, so "lights make no difference" can never be a typo.
             if (pool) pool.visible = lights;
             const shot = await RA.screenshot();
-            for (const o of hidden) o.visible = true;
+
+            /*
+             * THE CAMERA POSE AT THE MOMENT OF CAPTURE.
+             *
+             * Every arm that spawns explosions sits ~15pp over baseline no
+             * matter which layers are drawn, and the n=0 control lands on the
+             * baseline exactly. A constant offset that does not care what is
+             * being rendered is not a rendering term — it is the FRAMING.
+             *
+             * `explode()` kicks the camera, and `timeScale(0)` is the reason
+             * that matters here: with the VFX clock stopped the shake impulse
+             * is applied and then never decays, so the camera is displaced for
+             * the entire arm. The probe would be photographing a different
+             * piece of a very bright parade ground and calling the difference
+             * "explosion brightness".
+             */
+            const c = RA.camera;
+            const pose = [
+              +c.position.x.toFixed(3), +c.position.y.toFixed(3), +c.position.z.toFixed(3),
+              +c.rotation.x.toFixed(5), +c.rotation.y.toFixed(5), +c.rotation.z.toFixed(5),
+            ];
+
+            for (const o of hit) o.visible = true;
+            for (const [mm, op, col] of restore) {
+              mm.opacity = op;
+              if (col && mm.color) mm.color.copy(col);
+            }
             if (pool) pool.visible = true;
-            // Report what was actually suppressed, so a silent no-op can never
-            // masquerade as "this layer does not matter" again.
-            return { shot, suppressed: hidden.length };
+            return { shot, pose, suppressed: hit.length, poolFound: pool !== undefined && pool !== null };
           },
-          { count, suppress, lights },
+          { count, suppress, lights, mode },
         );
         const buf = Buffer.from(url.shot.split(',')[1], 'base64');
         writeFileSync(join(OUT, `ablate-${String(count).padStart(2, '0')}-${label}.png`), buf);
         const m = await measure(buf);
-        results.cases.push({ effect: 'ablate', count, label, suppressed: url.suppressed, ...m });
+        results.cases.push({
+          effect: 'ablate', count, label, mode,
+          suppressed: url.suppressed, poolFound: url.poolFound, pose: url.pose, ...m,
+        });
+        if (basePose === null) basePose = url.pose;
+        const drift = Math.hypot(...url.pose.slice(0, 3).map((v, i) => v - basePose[i]));
+        const vsBase = (m.fracOver95 - results.baseline.fracOver95) * 100;
         console.log(
-          `  ablate n=${String(count).padStart(2)} ${label.padEnd(12)}  ` +
+          `  ablate n=${String(count).padStart(2)} ${label.padEnd(15)}  ` +
           `mean ${m.mean.toFixed(4)}  >0.95 ${(m.fracOver95 * 100).toFixed(3)}%  ` +
+          `(base ${vsBase >= 0 ? '+' : ''}${vsBase.toFixed(3)}pp)  ` +
           `>0.75 ${(m.fracOver75 * 100).toFixed(3)}%  ` +
-          `[meshes hidden: ${url.suppressed}]`,
+          `[hit ${url.suppressed} mesh, pool ${url.poolFound ? 'found' : 'MISSING'}, ` +
+          `cam ${drift.toFixed(3)} m]`,
         );
       }
     }
@@ -364,8 +522,8 @@ try {
     }
   }
 } finally {
-  await page.close();
-  await browser.close();
+  await page.close().catch(() => {});
+  await browser.close().catch(() => {});
   cleanup();
 }
 
@@ -392,3 +550,15 @@ for (const effect of ['explosion', 'muzzle']) {
   }
 }
 console.log(`\nwrote ${join(OUT, 'report.json')}`);
+
+/*
+ * EXIT, RATHER THAN HOPING THE EVENT LOOP DRAINS.
+ *
+ * The report is on disk and the server is dead by the time this runs, so there
+ * is nothing left worth waiting for — but a playwright browser or a piped
+ * child stdio handle can keep the loop alive indefinitely, and a probe that
+ * finishes its work and then hangs looks identical to a probe that froze
+ * halfway. It cost a run to tell those apart once already.
+ */
+cleanup();
+process.exit(0);
