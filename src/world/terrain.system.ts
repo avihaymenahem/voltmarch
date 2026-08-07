@@ -34,8 +34,9 @@
 
 import { defineSystem } from '../core/loop';
 import { Phase } from '../core/types';
-import { TERRAIN_DEFAULT_BIOME, TERRAIN_SEED } from '../core/config';
+import { MAP_SIZE, TERRAIN_DEFAULT_BIOME, TERRAIN_SEED } from '../core/config';
 import { ctx } from '../game/context';
+import { SKIRMISH_START_OFFSETS } from '../game/Scenarios';
 import { Terrain, getTerrain, setActiveTerrain } from './Terrain';
 import { BIOME_NAMES, isBiomeName, type BiomeName } from './Biomes';
 
@@ -76,6 +77,37 @@ export default defineSystem({
       seed: seedFromUrl(TERRAIN_SEED),
       biome: biomeFromUrl(),
       anisotropy: handle.renderer.capabilities.getMaxAnisotropy(),
+      /*
+       * RESERVE A SHELF WHERE THE ARMIES ACTUALLY LAND.
+       *
+       * This option existed and nothing ever passed it, so the generator fell
+       * back to `TERRAIN_START_POSITIONS` — a single entry at the map centre.
+       * `levelStartAreas()` then flattened, ramped and pocket-filled a perfect
+       * 100%-buildable disc 96.5 m from either army, against a guard radius of
+       * 54. Both armies stood on ungraded ground, measured at 60-74% buildable
+       * with about a third of openings under 60%, while config.ts promised
+       * "verified inside the generator, not hoped for".
+       *
+       * THE CENTRE STAYS, and is listed first. Every `?shot=` fixture builds on
+       * the map centre; dropping it would put twelve graded frames on ungraded
+       * ground and their structures would relocate via `connectedGround`,
+       * moving the shots more than the terrain change itself.
+       *
+       * The three discs OVERLAP — starts are 96.5 m out and
+       * TERRAIN_START_FLAT_RADIUS is 58, so 58 + 58 > 96.5 — which is why this
+       * was deferred once as an unverified risk of steps at the seams.
+       * `levelStartAreas` mutates the heightfield as it goes, so each disc sees
+       * the previous one's flattening and they self-stabilise;
+       * `tests/start-shelves.spec.ts` measures the seam directly across four
+       * biomes and three seeds rather than trusting that.
+       */
+      starts: [
+        { x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5 },
+        ...SKIRMISH_START_OFFSETS.map((o) => ({
+          x: MAP_SIZE * 0.5 + o.dx,
+          z: MAP_SIZE * 0.5 + o.dz,
+        })),
+      ],
     });
 
     setActiveTerrain(terrain);

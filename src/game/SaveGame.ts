@@ -165,6 +165,10 @@ import type {
 } from '../core/types';
 import type { EntityStore, World } from '../core/world';
 import { footprintOriginCell } from '../core/math';
+import { snapRallyClear } from '../sim/Placement';
+
+/** Rally re-snap output on load. Module scope: the loop must not allocate. */
+const loadRallySnap = new Float64Array(2);
 
 /* ==========================================================================
  * 1. VERSION AND IDENTITY
@@ -1890,6 +1894,28 @@ function applySections(
       originScratch[0], originScratch[1], store.footprintW[i], store.footprintH[i],
       store.handleOf(i),
     );
+  }
+
+  /* -- 9b. rally points, re-snapped ---------------------------------------
+   * AFTER section 9, and that ordering is the whole point: occupancy is
+   * stamped above, so a snap run during section 8's `restorePlayer` would read
+   * an empty grid and do nothing at all.
+   *
+   * A save written before rally snapping landed can carry a flag inside a
+   * footprint, and restoring it verbatim would bring the defect back for that
+   * file forever — the unit parks metres short of a flag drawn exactly where
+   * the player once clicked. The snap is a no-op for a point already clear, so
+   * this costs one grid read per rally on a modern save.
+   * --------------------------------------------------------------------- */
+  for (const p of world.players) {
+    if (p === undefined) continue;
+    for (const [key, rx] of p.rallyX) {
+      const rz = p.rallyZ.get(key);
+      if (rz === undefined) continue;
+      if (!snapRallyClear(world, rx, rz, loadRallySnap)) continue;
+      p.rallyX.set(key, loadRallySnap[0]);
+      p.rallyZ.set(key, loadRallySnap[1]);
+    }
   }
 
   /* -- 10. spatial index ------------------------------------------------- */

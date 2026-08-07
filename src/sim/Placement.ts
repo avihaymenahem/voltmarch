@@ -54,12 +54,12 @@
 import * as THREE from 'three';
 
 import {
-  BUILD_RADIUS, CELL, MAP_CELLS, PLACEMENT, RENDER_ORDER,
+  BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, PLACEMENT, RENDER_ORDER,
 } from '../core/config';
 import { EntityFlag, EntityKind, NONE } from '../core/types';
 import type { EntityId, PlayerId } from '../core/types';
 import type { World } from '../core/world';
-import { footprintOriginCell, hexToInt, isInMap } from '../core/math';
+import { clampWorld, footprintOriginCell, hexToInt, isInMap, worldToCell } from '../core/math';
 import type { CameraRig } from '../render/camera';
 // Pure data, no imports of its own, and already read by `src/ui/Sidebar.ts` for
 // exactly this reason: the key the engine listens for and the key the help
@@ -369,6 +369,101 @@ export function withinBuildRadius(world: World, player: PlayerId, x: number, z: 
     if (dx * dx + dz * dz <= radius * radius) return true;
   }
   return false;
+}
+
+/* ==========================================================================
+ * 1b. RALLY POINTS — the flag must stand where the unit will stand
+ * ========================================================================== */
+
+/** Cells searched along each axis for the way out of a footprint. */
+const RALLY_SNAP_LIMIT = 6;
+/** Metres a snapped flag is held inside the free cell, off its boundary. */
+const RALLY_SNAP_INSET = 0.6;
+
+/**
+ * Slide a rally point out of any structure footprint it landed in. Writes
+ * `[x, z]` into `out`; returns true when the point had to move.
+ *
+ * WHY. `terrain.isOccupied` is the same grid `Flowfield.rebuildCost` reads to
+ * stamp a cell blocked in both the routing and the hard grids, and
+ * `Movement.canStand` refuses to integrate a hull CENTRE into a cell the hard
+ * grid closed. Meanwhile `NavAssigner` copies `orderX/orderZ` into the goal
+ * VERBATIM and the arrival test measures against that raw point
+ * (`radius + NAV_ARRIVE_SLACK`, 3.89 m for a Grizzly). A flag further than that
+ * inside a footprint is therefore a point no hull can ever satisfy: the unit
+ * grinds, displaces, and finally parks several metres short of a flag the
+ * overlay drew exactly where the player clicked. This is the one place that
+ * lie is stopped.
+ *
+ * NEAREST EDGE, NOT NEAREST CELL CENTRE. The point slides along one axis and
+ * keeps the other, so the flag lands where the player was aiming rather than
+ * jumping to a cell centre up to 2.8 m away. That is why this is not
+ * `findEgressSpot` (a spiral, which does not preserve aim), not
+ * `Flowfield.snapToReachable` (a cell-centre ring, and it needs a move class we
+ * do not have here), and not `world.nav.nearestReachable` — `INav` has no
+ * standability query at all and the default `DirectNav` port returns its input
+ * unchanged, so a nav-based snap would be an identity function in every
+ * headless test.
+ *
+ * SCOPE: OCCUPANCY ONLY. A rally clicked onto a cliff or into water is a
+ * separate, identical-looking defect and is deliberately not touched here —
+ * testing passability without a per-factory move class would shove a Naval
+ * Yard's rally off the water.
+ *
+ * `Float64Array`, not `Float32Array`: `PlayerState.rallyX/rallyZ` are
+ * `Map<number, number>` and the save file stores them as plain numbers, so an
+ * f32 scratch would quantise a coordinate that is double precision today.
+ *
+ * Pure, allocation-free, no RNG and no clock: safe inside `simTick`, and two
+ * machines given the same click and the same occupancy grid answer the same.
+ */
+export function snapRallyClear(
+  world: World, x: number, z: number, out: Float64Array,
+): boolean {
+  // NaN GUARD FIRST. `clampWorld` compares with `<` and `>`, and both are false
+  // for NaN, so it returns NaN unchanged. This value goes on to become
+  // `orderX/orderZ` and then a nav goal, and a NaN in an instance matrix is the
+  // exact route by which this repo once got a fully black frame out of one bad
+  // index. The map centre is the only defensible fallback: it is always inside
+  // the world and always finite.
+  const px = Number.isFinite(x) ? clampWorld(x, 1) : MAP_SIZE * 0.5;
+  const pz = Number.isFinite(z) ? clampWorld(z, 1) : MAP_SIZE * 0.5;
+  out[0] = px;
+  out[1] = pz;
+
+  const t = world.terrain;
+  const cx = worldToCell(px);
+  const cz = worldToCell(pz);
+  if (!isInMap(cx, cz) || !t.isOccupied(cx, cz)) return false;
+
+  // Four axes, nearest way out wins. Ties break on this fixed order, so the
+  // answer is stable across runs and replays.
+  let best = -1;
+  let bx = px;
+  let bz = pz;
+  for (let dir = 0; dir < 4; dir++) {
+    const sx = dir === 0 ? 1 : dir === 1 ? -1 : 0;
+    const sz = dir === 2 ? 1 : dir === 3 ? -1 : 0;
+    let n = 1;
+    while (n <= RALLY_SNAP_LIMIT
+        && isInMap(cx + sx * n, cz + sz * n)
+        && t.isOccupied(cx + sx * n, cz + sz * n)) n++;
+    if (n > RALLY_SNAP_LIMIT || !isInMap(cx + sx * n, cz + sz * n)) continue;
+    const fx = cx + sx * n;
+    const fz = cz + sz * n;
+    const wx = sx === 0 ? px
+      : sx > 0 ? fx * CELL + RALLY_SNAP_INSET : (fx + 1) * CELL - RALLY_SNAP_INSET;
+    const wz = sz === 0 ? pz
+      : sz > 0 ? fz * CELL + RALLY_SNAP_INSET : (fz + 1) * CELL - RALLY_SNAP_INSET;
+    const d = Math.abs(wx - px) + Math.abs(wz - pz);   // one axis is always 0
+    if (best < 0 || d < best) { best = d; bx = wx; bz = wz; }
+  }
+  // Nested footprints with no way out inside the limit: leave the click alone
+  // rather than teleporting the flag. Never returns NaN, never returns (0,0).
+  if (best < 0) return false;
+  out[0] = clampWorld(bx, 1);
+  out[1] = clampWorld(bz, 1);
+  return true;
 }
 
 /* ==========================================================================

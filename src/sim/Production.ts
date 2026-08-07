@@ -78,6 +78,7 @@ import {
   PlacementPhase, evaluatePlacement, facedFootprintH, facedFootprintW, facingYaw,
   normaliseFacing, placementReport, yawToFacing,
   type PlacementListener, type PlacementNotice,
+  snapRallyClear,
 } from './Placement';
 // The last-way-out guard, shared verbatim with the outcome poll so a sell that
 // is refused and a match that will not end cannot disagree about what "this
@@ -1874,8 +1875,10 @@ export class ProductionService implements QueueHooks {
     const i = st.index(factory);
     if (i < 0 || st.kind[i] !== EntityKind.Building) return;
     if (st.owner[i] !== (p.id as number)) return;
-    p.rallyX.set(factory as number, clampWorld(x, 1));
-    p.rallyZ.set(factory as number, clampWorld(z, 1));
+    // `clampWorld(_, 1)` is inside `snapRallyClear`.
+    snapRallyClear(this.world, x, z, rallySnap);
+    p.rallyX.set(factory as number, rallySnap[0]);
+    p.rallyZ.set(factory as number, rallySnap[1]);
   }
 
   private applyPrimary(p: PlayerState, factory: EntityId): void {
@@ -2455,8 +2458,17 @@ export class ProductionService implements QueueHooks {
     const cos = Math.cos(yaw);
     const sin = Math.sin(yaw);
     const ez = entry.exitZ + PRODUCTION.rallyForwardMetres;
-    p.rallyX.set(id as number, clampWorld(st.posX[slot] + entry.exitX * cos + ez * sin, 1));
-    p.rallyZ.set(id as number, clampWorld(st.posZ[slot] + ez * cos - entry.exitX * sin, 1));
+    // Snapped too: the default is placed by geometry alone, so on a tight base
+    // it can land inside a NEIGHBOUR's footprint without the player ever
+    // touching it.
+    snapRallyClear(
+      this.world,
+      st.posX[slot] + entry.exitX * cos + ez * sin,
+      st.posZ[slot] + ez * cos - entry.exitX * sin,
+      rallySnap,
+    );
+    p.rallyX.set(id as number, rallySnap[0]);
+    p.rallyZ.set(id as number, rallySnap[1]);
   }
 
   /* ======================================================================
@@ -2760,6 +2772,8 @@ const PLACEABLE_TABS: readonly BuildTab[] = [BuildTab.Structures, BuildTab.Defen
 const cellScratch = new Int32Array(2);
 const spot = new Float32Array(2);
 const availScratch: AvailabilityResult = { ok: false, reason: '', capped: false };
+/** Rally snap output. Module scope so no rally write allocates. */
+const rallySnap = new Float64Array(2);
 
 /* ==========================================================================
  * 6. MODULE SINGLETON

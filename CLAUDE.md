@@ -37,14 +37,27 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npx tsc --noEmit     # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 1885 across 76 files (one known flake, see below)
+npm test             # vitest, currently 1967 across 82 files
 npm run build        # must exit 0
 ```
 
-**The one known flake** is `perf-hud.spec.ts` "allocates nothing per frame", which compares GC counts
-with a tolerance of 2 and occasionally reports 3 in a full run while passing every time in isolation.
-Re-run that file alone before believing it; if it fails alone, it is real. Do not widen the tolerance
-to make it quiet — the point of the assertion is that the sample path allocates nothing.
+**There is no known flake.** `perf-hud.spec.ts` "allocates nothing per frame" used to be one — it
+compared GC counts with a tolerance of 2 and occasionally reported 3 in a full run. It was TWO bugs
+in the test, neither of them in `PerfHud`:
+
+1. The harness allocated. Its injected clock was a closure-captured `let`, and a captured double
+   lives in a V8 context slot with no in-place mutation, so `clock += VSYNC_60` boxed a fresh
+   HeapNumber every iteration — megabytes of young-generation garbage over the million frames the
+   test drives. It is a `Float64Array(1)` now, which is raw storage and boxes nothing.
+2. The counter counted the wrong things. It took EVERY gc entry — `major` and `incremental`
+   included, which are the collector's own background schedule — and its 30 ms delivery wait was
+   inside the counting window. It now filters to `NODE_PERFORMANCE_GC_MINOR` and to entries whose
+   `startTime` falls between the two `performance.now()` marks around `run`.
+
+The assertion is `toBe(0)`, exactly, and both halves are load-bearing: restoring either one fails
+the test under `--max-semi-space-size=4`. The count tracked V8's new-space size rather than the
+code, which is why it moved with machine load. **Do not reintroduce a tolerance** — a non-zero
+`sampled` now means the sample path really did allocate.
 
 `npm run build` deliberately does **not** typecheck. esbuild strips types, so a type error must never
 stop the game from running. That is what `npm run typecheck` is for. Do not "helpfully" wire tsc into

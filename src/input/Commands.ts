@@ -81,6 +81,7 @@ import { clampWorld, hashU32, worldToCell } from '../core/math';
 // bound and a three-row fallback when none is, which is the same answer
 // `src/sim/deploy.system.ts` acts on.
 import { isDeployable } from '../sim/Deploy';
+import { snapRallyClear } from '../sim/Placement';
 import { CursorKind } from './Input';
 import { canInteractWith, isEnemyOf } from './Selection';
 
@@ -722,6 +723,9 @@ interface ParkedCommand {
   entities: Int32Array;
 }
 
+/** Rally snap output. Module-level so `applyRally` never allocates. */
+const RALLY_SNAP = new Float64Array(2);
+
 const PARK_CAPACITY = 32;
 
 /**
@@ -888,8 +892,15 @@ export class OrderExecutor {
     if (s.owner[i] !== (cmd.player as number)) return;
     const player = this.world.player(cmd.player);
     if (player === undefined) return;
-    player.rallyX.set(cmd.target as number, cmd.x);
-    player.rallyZ.set(cmd.target as number, cmd.z);
+    // Store where a unit can actually STAND. The overlay draws this map
+    // verbatim and Production copies it into orderX/orderZ AND guardX/guardZ,
+    // so a point inside a footprint is a promise the sim cannot keep:
+    // NavAssigner takes the order point as the goal unchanged, Movement will
+    // not put a hull centre in a blocked cell, and the arrival test can
+    // therefore never fire. The unit parks metres short of the flag.
+    snapRallyClear(this.world, cmd.x, cmd.z, RALLY_SNAP);
+    player.rallyX.set(cmd.target as number, RALLY_SNAP[0]);
+    player.rallyZ.set(cmd.target as number, RALLY_SNAP[1]);
   }
 
   /* -- waypoints ----------------------------------------------------------- */

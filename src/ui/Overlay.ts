@@ -210,7 +210,27 @@ const RALLY_TONES: readonly number[] = [1, 0.42, 0.62];
  * state another module owns — `PlayerState.rallyX/rallyZ` is core world state,
  * the same map `ProductionService.rallyPoint()` answers out of.
  */
-export function collectRallyLinks(world: World, out: Float32Array): number {
+/**
+ * The half of the production service this file needs: where a structure's front
+ * face and door are, in LOCAL metres/cells with +Z forward.
+ *
+ * Structural and PUSHED IN by the Hud, never imported — the overlay must keep
+ * drawing with `sim.production` absent, and with this null it does exactly what
+ * it did before: anchors at the footprint centre. `ProductionService.entryOf`
+ * already satisfies it and the Hud already calls that method, so no new seam
+ * was needed on the sim side.
+ */
+export interface FactoryExits {
+  entryOf(id: EntityId): {
+    readonly exitX: number;
+    readonly exitZ: number;
+    readonly footprintH: number;
+  } | null;
+}
+
+export function collectRallyLinks(
+  world: World, out: Float32Array, exits: FactoryExits | null = null,
+): number {
   const sel = world.selection;
   if (sel.count === 0) return 0;
   const p = world.players[world.localPlayer as number];
@@ -234,9 +254,35 @@ export function collectRallyLinks(world: World, out: Float32Array): number {
     if ((store.flags[idx] & EntityFlag.PendingDestroy) !== 0) continue;
 
     const o = n * RALLY_LINK_STRIDE;
-    const fx = store.posX[idx];
+    // ANCHOR AT THE FRONT FACE, NOT THE FOOTPRINT CENTRE. This canvas paints
+    // over the scene with no depth test, so a tether anchored at posX/posZ is
+    // drawn straight across the structure's own body — `strokeGroundTether`
+    // says as much where it clamps the sampled height: "near the structure the
+    // ground is under the footprint slab".
+    //
+    // The FACE, not the DOOR. `exitZ` is halfDepth + clearance, so a war
+    // factory's door is metres clear of the building and a short tether would
+    // float free of the thing it is supposed to pair with — and pairing is the
+    // whole feature. `footprintH` is the UNFACED local depth, the same frame
+    // exitZ is measured in, and it rides on the same entry, so this never
+    // touches `store.footprintH` (faced in one spawn path, unfaced in the
+    // other). The rotation is the SAME kernel the sim uses to place the unit
+    // that walks this line: local +Z is forward, so
+    // (ex, ez) -> (ex*cos + ez*sin, ez*cos - ex*sin).
+    //
+    // This does not promise the line never touches the structure: a flag set
+    // BEHIND it still crosses, and nothing short of a depth test fixes that.
+    const exit = exits === null ? null : exits.entryOf(handle);
     const fy = store.posY[idx];
-    const fz = store.posZ[idx];
+    let fx = store.posX[idx];
+    let fz = store.posZ[idx];
+    if (exit !== null) {
+      const cos = Math.cos(store.yaw[idx]);
+      const sin = Math.sin(store.yaw[idx]);
+      const ez = Math.min(exit.exitZ, exit.footprintH * CELL * 0.5);
+      fx += exit.exitX * cos + ez * sin;
+      fz += ez * cos - exit.exitX * sin;
+    }
     out[o] = fx;
     out[o + 1] = fy;
     out[o + 2] = fz;
@@ -425,6 +471,18 @@ export class Overlay {
   setFaction(f: Faction): void {
     this.accent = accentFor(f);
     this.rebuildRallyInk();
+  }
+
+  /** Null until the Hud binds the live service. See `FactoryExits`. */
+  private production: FactoryExits | null = null;
+
+  /**
+   * Pushed by the Hud once `sim.production` is up. Until then, and forever on a
+   * boot without that module, the tether anchors at the footprint centre
+   * exactly as it did before.
+   */
+  setProduction(p: FactoryExits | null): void {
+    this.production = p;
   }
 
   /**
@@ -793,7 +851,7 @@ export class Overlay {
    */
   private drawRallyFlags(): void {
     const links = this.rallyLinks;
-    const n = collectRallyLinks(this.world, links);
+    const n = collectRallyLinks(this.world, links, this.production);
     if (n === 0) return;
 
     const ctx = this.ctx;

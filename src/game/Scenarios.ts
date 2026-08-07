@@ -378,6 +378,31 @@ export interface StartSpot {
 const START_SPREAD_X = 74;
 const START_SPREAD_Z = 62;
 
+/**
+ * WHERE THE TWO ARMIES ACTUALLY START, as offsets from the map centre.
+ *
+ * THE ONE TABLE. It used to be two: these constants here, and
+ * `TERRAIN_START_POSITIONS` in core/config.ts, which the generator reserved a
+ * verified shelf at. Nothing kept them in step and they were never in step —
+ * config listed a single entry, `[0.5, 0.5]`, so the guarantee that a start is
+ * "flat, dry, buildable, and joined to the map's main passable region" was
+ * delivered 96.5 m away from where either army landed, against a guard radius
+ * of 54. The shelf was perfect and empty; the armies stood on whatever the
+ * heightfield happened to produce, measured at 60-74% buildable with about a
+ * third of openings under 60%.
+ *
+ * `src/world/terrain.system.ts` now reads THIS and hands it to the generator,
+ * so the reservation and the spawn are the same two points by construction and
+ * cannot drift again. `tests/start-shelves.spec.ts` asserts the shape.
+ *
+ * Slot 0 keeps the exact corner the old hard-coded plan used, so a saved seed
+ * frames the same valley it always did.
+ */
+export const SKIRMISH_START_OFFSETS: readonly { readonly dx: number; readonly dz: number }[] = [
+  { dx: -START_SPREAD_X, dz: START_SPREAD_Z },
+  { dx: START_SPREAD_X, dz: -START_SPREAD_Z },
+];
+
 /** Fold a compass bearing into [0, 360). */
 function wrapDeg(deg: number): number {
   const d = deg % 360;
@@ -722,8 +747,12 @@ export function startSpots(cx: number, cz: number, count: number): StartSpot[] {
     }
     // Slot 0 keeps the exact corner the old hard-coded plan used, so a saved
     // seed frames the same valley it always did.
-    pts[0] = { x: clampWorld(cx - START_SPREAD_X, 4), z: clampWorld(cz + START_SPREAD_Z, 4) };
-    if (n > 1) pts[1] = { x: clampWorld(cx + START_SPREAD_X, 4), z: clampWorld(cz - START_SPREAD_Z, 4) };
+    // From the SAME table the generator reserved its shelves at, so the
+    // fallback and the guarantee cannot describe different ground.
+    for (let i = 0; i < Math.min(n, SKIRMISH_START_OFFSETS.length); i++) {
+      const o = SKIRMISH_START_OFFSETS[i]!;
+      pts[i] = { x: clampWorld(cx + o.dx, 4), z: clampWorld(cz + o.dz, 4) };
+    }
   }
 
   // VALIDATE BEFORE FACING. A nudged spot must be faced from where it ENDED UP,

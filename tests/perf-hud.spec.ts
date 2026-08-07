@@ -43,7 +43,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { PerformanceObserver } from 'node:perf_hooks';
+import { PerformanceObserver, constants, performance } from 'node:perf_hooks';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 /* ==========================================================================
@@ -300,11 +300,22 @@ function makeHud(options: { visible?: boolean } = {}): {
 } {
   const mount = new StubElement('DIV');
   const source = new FakeSource();
-  let clock = 0;
+  // NOT a captured `let`. A closure-captured double lives in a V8 context
+  // slot, which is a plain tagged slot with no in-place mutation, so
+  // `clock += VSYNC_60` boxes a fresh HeapNumber every iteration — ~16 MB of
+  // young-generation garbage over the million frames the allocation test
+  // drives. That is the HARNESS allocating, not the HUD, and it is what the
+  // old tolerance of 2 was absorbing. A Float64Array element is raw storage
+  // and boxes nothing; the arithmetic is bit-identical.
+  //
+  // MEASURED, with the counter below already fixed and the whole spec run
+  // under `--max-semi-space-size=4`: restoring a boxed accessor here scores 4
+  // and fails; this Float64Array scores 0 at 16, 4 and 2 MB.
+  const clock = new Float64Array(1);
   const hud = new PerfHud({
     mount: mount as unknown as HTMLElement,
     source,
-    now: () => clock,
+    now: () => clock[0],
     visible: options.visible ?? false,
   });
   return {
@@ -313,27 +324,66 @@ function makeHud(options: { visible?: boolean } = {}): {
     source,
     step: (frames, msPerFrame) => {
       for (let i = 0; i < frames; i++) {
-        clock += msPerFrame;
+        clock[0] += msPerFrame;
         hud.frame(msPerFrame / 1000);
       }
     },
     sampleOnly: (frames) => {
       for (let i = 0; i < frames; i++) {
-        clock += VSYNC_60;
+        clock[0] += VSYNC_60;
         hud.frame(0);
       }
     },
   };
 }
 
-/** Minor GCs observed while `run` executes. Zero for a loop that allocates nothing. */
+/**
+ * A scavenge is the only GC kind an allocating loop can force. `major`,
+ * `incremental` and `weakcb` are the collector's own background schedule and
+ * say nothing about `run`.
+ */
+const GC_MINOR = constants.NODE_PERFORMANCE_GC_MINOR;
+
+/**
+ * `PerformanceEntry` does not declare `detail` — only the gc subtype carries
+ * it — so it is duck-typed off `unknown`, the way `asTimerGl` narrows a WebGL
+ * context in PerfHud.ts. -1 for anything that is not a gc entry.
+ */
+function gcEntryKind(entry: PerformanceEntry): number {
+  const detail = (entry as unknown as { detail?: unknown }).detail;
+  if (typeof detail !== 'object' || detail === null) return -1;
+  const kind = (detail as { kind?: unknown }).kind;
+  return typeof kind === 'number' ? kind : -1;
+}
+
+/**
+ * Scavenges that STARTED WHILE `run` was executing. Exactly zero for a loop
+ * that allocates nothing.
+ *
+ * The wait is for DELIVERY, not for measurement: gc entries reach the observer
+ * on a later event-loop turn and `takeRecords()` does not drain them, so the
+ * 30 ms is unavoidable — but it must not be part of the window. It used to be,
+ * and that charged the collector's own background schedule to whichever loop
+ * happened to be running. That was half the flake; the other half was the
+ * harness clock above.
+ */
 async function gcCount(run: () => void): Promise<number> {
-  let n = 0;
-  const obs = new PerformanceObserver((list) => { n += list.getEntries().length; });
+  const seen: PerformanceEntry[] = [];
+  const obs = new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) seen.push(e);
+  });
   obs.observe({ entryTypes: ['gc'] });
+  const t0 = performance.now();
   run();
+  const t1 = performance.now();
   await new Promise((resolve) => setTimeout(resolve, 30));
   obs.disconnect();
+  let n = 0;
+  for (const e of seen) {
+    if (e.startTime < t0 || e.startTime > t1) continue;
+    if (gcEntryKind(e) !== GC_MINOR) continue;
+    n++;
+  }
   return n;
 }
 
@@ -689,11 +739,15 @@ describe('the sample path', () => {
     hud.setVisible(true);
     const N = 1_000_000;
 
-    // Warm the JIT on both paths before anything is counted.
-    sampleOnly(20_000);
-
     let sink = 0;
-    const ambient = await gcCount(() => { for (let i = 0; i < N; i++) sink += i & 7; });
+    const ambientLoop = (): void => { for (let i = 0; i < N; i++) sink += i & 7; };
+
+    // Warm the JIT on both paths before anything is counted. The comment here
+    // used to claim both and warm only one.
+    sampleOnly(20_000);
+    ambientLoop();
+
+    const ambient = await gcCount(ambientLoop);
     const sampled = await gcCount(() => { sampleOnly(N); });
 
     const keep: object[] = new Array(256);
@@ -709,8 +763,13 @@ describe('the sample path', () => {
     expect(keep.length).toBe(256);
     // The control proves the collector is watching.
     expect(control).toBeGreaterThan(4);
-    // A million real frames must look like a million integer adds.
-    expect(sampled).toBeLessThanOrEqual(ambient + 2);
+    // A million real frames must look like a million integer adds — exactly.
+    // Both are zero. Neither loop allocates, and `gcCount` no longer charges
+    // the collector's background schedule to whichever loop happened to be
+    // running. DO NOT REINTRODUCE A TOLERANCE: a non-zero `sampled` now means
+    // the sample path really did allocate.
+    expect(ambient).toBe(0);
+    expect(sampled).toBe(ambient);
     expect(sampled * 4).toBeLessThan(control);
   });
 

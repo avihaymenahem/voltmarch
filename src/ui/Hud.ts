@@ -291,7 +291,15 @@ interface ProductionSeam {
   readonly snapshot: HudSnapshot;
   setActiveTab(tab: BuildTab): void;
   clearTabAlert(tab: BuildTab): void;
-  entryOf(id: EntityId): { key: string; name: string; blurb: string; buildTime: number; power: number } | null;
+  entryOf(id: EntityId): {
+    key: string; name: string; blurb: string; buildTime: number; power: number;
+    /**
+     * Local-space door and local (UNFACED) depth, metres and cells, +Z forward.
+     * The overlay anchors the rally tether off these; anchored at the footprint
+     * centre it is painted straight across the structure's own body.
+     */
+    exitX: number; exitZ: number; footprintH: number;
+  } | null;
   catalog: CatalogSeam;
 }
 
@@ -692,6 +700,9 @@ export class Hud {
     const service = this.productionMod?.production() ?? null;
     if (service === null) return false;
     this.production = service as unknown as ProductionSeam;
+    // The overlay needs the door to anchor a rally tether. Pushed rather than
+    // imported, like everything else this file hands it.
+    this.overlay.setProduction(this.production);
     // The fallback grid may have been showing; drop its pooled rows so the
     // real roster cannot be shadowed by a longer stale one.
     for (const tab of this.localSnapshot.cameos) tab.length = 0;
