@@ -1,6 +1,11 @@
 # Missions & Progression — design
 
-**Status:** agreed scope, not yet built.
+**Status:** BUILT and shipped. This line said "agreed scope, not yet built" until 2026-08-07, long
+after every file the Architecture block below proposes had landed with real consumers. Read what
+follows as the design rationale for code that exists, not as a plan.
+
+One promise in here is genuinely still unkept, and it is called out where it appears: rewards are
+granted and announced, but nothing in the game consumes an unlock. See §Rewards.
 
 ## The problem, in the user's words
 

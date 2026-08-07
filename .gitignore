@@ -17,6 +17,20 @@ shots-sobel/
 # `tools/flash-stack.mjs` output — one PNG per ablation arm per count, per tag.
 .flash-stack/
 
+# `node tools/audio-measure.mjs --wav` output — one WAV per sound family so a human
+# can judge the synthesis by ear. WRITE-ONLY: nothing in the repo ever reads them back
+# (`WAV_DIR` in that script is only ever passed to `writeFileSync`). They were tracked
+# until 2026-08-07, 5.6 MB of it, and `music.idle.wav` is in the history TWICE as two
+# distinct 1.5 MB blobs because a regenerated dump got committed a second time. That is
+# the exact failure mode the `shots-sobel/` comment above warns about.
+docs/audio/
+
+# `tools/crop-surfaces.mjs` output — the post-overhaul half of the texture
+# before/after, cropped out of `shots/`. Regenerable: `npm run shots`, then the
+# tool. Its `ours-*` counterpart stays TRACKED and must not be added here — that
+# half predates the overhaul and nothing can regenerate it.
+docs/surface-refs/after-*.png
+
 # Throwaway diagnostic probes. The convention is a leading underscore: a tool
 # written to answer one question during one investigation, kept locally until it
 # is answered and not worth a reviewer's attention. Anything durable earns a

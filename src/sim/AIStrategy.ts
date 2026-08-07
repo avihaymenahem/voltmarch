@@ -186,8 +186,13 @@ export const FACTION_MERIDIAN = 3 as Faction;
 /**
  * THE RECLAMATION's faction id. Same reasoning as the line above: declared
  * rather than imported, so `src/sim/**` keeps its zero-import rule against
- * `src/data/**`. `Faction.Reclaim` is 4 and `tests/faction4.spec.ts` asserts
+ * `src/data/**`. `Faction.Reclaim` is 4 and `tests/faction4-art.spec.ts` asserts
  * the two constants agree.
+ *
+ * That sentence named `tests/faction4.spec.ts` until 2026-08-07 — a file that has
+ * never existed. Nothing checked this constant against the enum at all, which is
+ * the whole hazard the comment was describing: two hand-kept 4s in files that are
+ * forbidden to import each other. The assertion is real now.
  */
 export const FACTION_RECLAIM = 4 as Faction;
 

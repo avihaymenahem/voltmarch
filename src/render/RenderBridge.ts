@@ -359,8 +359,9 @@ export function registerKindMesh(
  * null when nothing is registered and the entity would fall through to the
  * placeholder box.
  *
- * Exported for `src/ui/ModelPortrait.ts`, which renders the real mesh into the
- * HUD's selection cards. Deliberately returns null rather than the placeholder:
+ * Exported for `src/ui/Cameos.ts` (`CameoRenderer`), which renders the real mesh
+ * into the HUD's selection cards. The name in this comment used to be
+ * `src/ui/ModelPortrait.ts`, which no longer exists. Deliberately returns null rather than the placeholder:
  * a portrait of a grey cube is worse than the drawn glyph it would replace, so
  * the caller needs to be able to tell the difference. The bridge's own private
  * `resolve()` keeps falling through, because a MISSING unit on the battlefield

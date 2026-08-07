@@ -3,8 +3,18 @@
 **Audited:** 2026-08-05, against `main` @ `d284bd6` plus 27 files modified in the working tree.
 **Scope:** whole repo except the areas noted as excluded in §8.
 **Result:** 61 findings survived a sceptic pass; 14 candidates were killed.
-**Status of this file:** a record, not a task list. Nothing here has been fixed. No source file was
-written by this audit.
+**Status of this file:** a record of what was true on 2026-08-05, not a task list, and **no longer
+a description of HEAD.** It said "Nothing here has been fixed" until 2026-08-07; by then roughly
+half of the 61 findings had been, across releases v1.15.0–v1.25.0 — the MCV prereqs, the `world.vfx`
+port, `Crush.ts`, `match:started`, the `--expect` parse and others were spot-verified as closed.
+
+That blanket header had itself become the expensive thing: it forced every reader to re-verify all
+61 findings before trusting any one of them, which is the exact cost this document exists to avoid.
+
+Individual findings are **not** annotated with their current state, and deliberately so — an
+annotation is another claim that can rot, and this file has already demonstrated how that goes.
+Check the finding against HEAD before acting on it. Confirmed-still-live as of 2026-08-07:
+findings 2, 3, 4, 6 and 7.
 
 ---
 
@@ -876,7 +886,7 @@ example) — this is drift in one block, not a sloppy file.
 | 56 | `shell.css:76-77` — *"the shell fades between them by toggling `is-out`"* + a 180 ms transition + `.vm-screen.is-out { opacity: 0 }`. `is-out` is **never added or removed** (no literal anywhere; the four `is-${…}` construction sites are all mission/sidebar states). `.vm-panel.is-flat` likewise. | LIVE | `grep -rn "is-out" src` |
 | 57 | `__VM.stats().post` returns mangled identifiers in every built bundle. `debug.ts:525-529` maps `p.constructor.name`; `vite build` minifies class names — confirmed in `dist/assets/index-*.js`: `class Pi extends tl{`, `class zi extends zT{`. The `^_` already in that regex shows someone noticed the symptom and stripped a symbol rather than the cause. "Is SMAA on in this capture?" is unanswerable in the build that produces the artefacts. | LIVE | dist inspection |
 | 58 | `shoot.mjs:324-330` claims *"A reader sees the previous complete set until this point, then the new complete set — never a partially-captured directory"* over `for (…of readdirSync(OUT)) rmSync(…)` **then** `for (…of readdirSync(STAGE)) renameSync(…)`. Delete-all-then-move-one-at-a-time leaves a real window where `shots/*.png` globs to 0–11 files — the exact condition `metrics.mjs:196-201` tells the user to suspect. Also: `shoot.mjs:284-295` asserts loudly on an unknown `__VM` pose method *"rather than a silently mis-framed shot"*, but an unknown `?shot=` is `PLANS[name] ?? PLANS[SCENARIO_DEFAULT]` (`Scenarios.ts:2318`) — a silent fall back to `skirmish`, recorded `ok: true`. All 12 current names resolve. | LATENT | reading both files |
-| 59 | `tests/_probe.spec.ts` is **tracked** (the other four `_*.spec.ts` are untracked scratch), has **zero `expect(` calls**, routes `m.stats.errors` — the mechanism `MassList` uses to reject a silhouette, i.e. confirmed case 5's failure detector — to `console.log`, and catches throws into `console.log(key + ': THREW ')`. A present, always-green test over the exact subsystem that once shipped eleven primitives as cubes. | LIVE | `grep -c "expect(" tests/_probe.spec.ts` → 0 |
+| 59 | `tests/_probe.spec.ts` is **tracked** (the other four `_*.spec.ts` are untracked scratch), has **zero `expect(` calls**, routes `m.stats.errors` — the mechanism `MassList` uses to reject a silhouette, i.e. confirmed case 5's failure detector — to `console.log`, and catches throws into `console.log(key + ': THREW ')`. A present, always-green test over the exact subsystem that once shipped eleven primitives as cubes. | **FIXED 2026-08-07** — file deleted. It orphaned nothing: `tests/faction4-art.spec.ts` imports and asserts on the same four symbols. | `git log -- tests/_probe.spec.ts` |
 | 60 | `debug.ts:682` *"Exponential moving average, ~1 s window at 60 fps."* over `frameMsAvg += (dtMs - frameMsAvg) * 0.05` — a 20-frame time constant, ≈0.33 s. `fps` is derived from it, so the displayed fps settles 3× faster than documented (and is 3× twitchier than a reader tuning against it expects). | LIVE | one line |
 | 61 | `tests/data.spec.ts:160-165` — *"this arm is kept as the escape hatch for **the NEXT faction**, and it is deliberately narrow so a typo'd key cannot use it"* over `expect(def.key.startsWith('mrd')).toBe(true)`. The next faction landed as `rcl*`. Nothing breaks (every `rcl` def happens to carry a fallback row), but the comment and the predicate describe different policies, and faction five gets a confusing `no fallback for <key>` pointing at the wrong file. | LATENT | `sed -n '154,170p' tests/data.spec.ts` |
 

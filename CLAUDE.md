@@ -4,8 +4,8 @@ Working notes for Claude Code in this repository. Read this before changing anyt
 
 ## What this project is
 
-VOLTMARCH — an original browser RTS in Three.js. Three factions, ore economy, base building, AI
-opponent, fog of war. **All art is generated from code**: no downloaded models and no downloaded
+VOLTMARCH — an original browser RTS in Three.js. Four playable factions, ore economy, base
+building, AI opponent, fog of war. **All art is generated from code**: no downloaded models and no downloaded
 textures.
 
 That claim is about the GAME WORLD, and it is exactly true there: every mesh, material, texture,
@@ -16,9 +16,11 @@ generators. **Two shipped assets are not generated**, both deliberate, both in `
    Added 2026-08-05 at the user's request. The stack had named Rajdhani since it was written and
    nothing ever shipped it, so every menu and HUD rendered in the fourth fallback — Franklin Gothic
    Medium — and the face the UI was designed around was never on screen.
-2. **The brand lockup** in `public/brand/` — eight PNGs derived by `tools/brand.mjs` from a
-   `logo.png` the user supplied. `logo-full.png` is the main-menu title and the loading curtain;
-   `mark-*.png` are the favicons and app icons. See `public/brand/README.md`.
+2. **The brand lockup** in `public/brand/` — seven PNGs derived by `tools/brand.mjs` from a
+   `logo.png` the user supplied, which is kept as `tools/brand-source/logo-source.png`.
+   `logo-full.png` is the main-menu title and the loading curtain; `mark-*.png` are the favicons
+   and app icons. See `public/brand/README.md`. This said "eight PNGs derived by" while one of the
+   eight was the underived SOURCE, sitting in the shipped directory and being published unused.
 
 This paragraph previously said "cameos, icons and the wordmark are still all generated", which was
 false on two counts the moment the brand assets landed — the wordmark on the title screen and every
@@ -37,7 +39,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npx tsc --noEmit     # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 1967 across 82 files
+npm test             # vitest, currently 2060 across 86 files
 npm run build        # must exit 0
 ```
 

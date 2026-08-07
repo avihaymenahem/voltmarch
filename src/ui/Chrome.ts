@@ -743,15 +743,18 @@ export function healthColor(frac: number): string {
 /* ==========================================================================
  * SECTION 9 — LEGACY (retired chrome language)
  *
- * NOT USED BY THE MODERN HUD. Every export below is a pure function pinned by
- * `tests/hud.spec.ts` / `tests/cameos.spec.ts`, and by `src/ui/Cameos.ts` which
- * those specs exercise. They are kept so the suite stays green while the test
- * files — which this module does not own — are retired.
+ * DO NOT FOLLOW THE OLD INSTRUCTION THAT USED TO BE HERE. It read, verbatim:
+ * "TO REMOVE: delete this section, `src/ui/Cameos.ts`, `tests/hud.spec.ts` and
+ * `tests/cameos.spec.ts` in one commit. Nothing in `src/**` will break." That
+ * was true when it was written and became FALSE in v1.18.0, when the selection
+ * dock started drawing real model cameos: `src/ui/Sidebar.ts:80` imports
+ * `CameoRenderer` and `createCameoModelProvider` from `src/ui/Cameos.ts` and
+ * `src/ui/Hud.ts` drives it every frame. Carrying out that instruction now
+ * deletes a shipped feature.
  *
- * TO REMOVE: delete this section, `src/ui/Cameos.ts`, `tests/hud.spec.ts` and
- * `tests/cameos.spec.ts` in one commit. Nothing in `src/**` will break; the
- * only imports are the two specs and Cameos itself (`mixHex`, `rgba`,
- * `hexToRgb`, `skinFor`, all of which are also part of the live API above).
+ * What IS still dead here is narrower: `factionKey` and `skinFor` below have no
+ * `src/**` caller — only the two specs. They can go whenever those specs are
+ * rewritten; nothing else in this section can.
  * ========================================================================== */
 
 export type HudFactionKey = 'allies' | 'soviets';

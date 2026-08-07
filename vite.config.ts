@@ -41,8 +41,13 @@ export default defineConfig(({ command }) => ({
     strictPort: true,
   },
 
-  // Texture generation runs in a Web Worker (src/render/textures/TextureWorker.ts).
-  // ES module workers keep the generator registry importable from both sides.
+  // There are no Web Workers in this project. This block used to claim texture
+  // generation ran in one, citing `src/render/textures/TextureWorker.ts` — a path
+  // that has never existed; `src/render/` has no `textures/` directory and there
+  // is not a single `new Worker(` in `src/`. Texture generation is synchronous in
+  // `src/core/assets.ts`. The setting is kept and the comment corrected rather than
+  // both deleted: `format: 'es'` is the right default the day a worker does land,
+  // and a reader who trusted the old comment would go looking for a file to edit.
   worker: {
     format: 'es',
   },

@@ -1946,8 +1946,16 @@ export { RELOCATE, relocationFee } from '../sim/Relocate';
  * Everything above compiles, self-checks and binds today: `resolveDefBinding()`
  * indexes all eleven Meridian units and all twelve Meridian structures by key,
  * so `src/art/Faction3*.ts` can and does register real art against real defIds.
- * What it CANNOT yet do is get a Meridian unit onto the map, because two
- * gatekeepers upstream of the def tables are keyed on tables in other modules:
+ * ALL OF THE FOLLOWING IS DONE. This section is kept as the record of what the
+ * seam looked like before the Meridian Pact shipped, because a fifth faction
+ * would cross the same two gatekeepers — but read it as history, not as a task.
+ * Every numbered blocker below is closed, and a whole FOURTH faction (the
+ * Reclamation, `Faction.Reclaim = 4`, `FACTION_COUNT = 5`) has landed since.
+ * The enum quoted in item 1 stops at `Meridian = 3` and is no longer the enum.
+ *
+ * What it COULD NOT do at the time was get a Meridian unit onto the map,
+ * because two gatekeepers upstream of the def tables were keyed on tables in
+ * other modules:
  *
  *   1. `src/core/types.ts`
  *        export const enum Faction { Neutral = 0, Allies = 1, Soviets = 2,

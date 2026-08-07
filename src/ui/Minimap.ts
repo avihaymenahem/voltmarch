@@ -169,7 +169,7 @@ export class Minimap {
   /* ------------------------------------------------------------------ *
    * THE TERRITORY GLOW
    *
-   * docs/refs/TARGET_LOOK.md §A.2: "territory as soft colour glows". One white
+   * docs/TARGET_LOOK.md §A.2: "territory as soft colour glows". One white
    * radial sprite is painted at construction and then tinted once per colour
    * into a tiny cache — three entries in practice, because there are three
    * blip colours. Drawing is `drawImage`, so the per-frame path allocates
@@ -314,7 +314,7 @@ export class Minimap {
     for (const hex of HUD_MINIMAP_SURFACE) surf.push(hexToRgb(mixHex(hex, '#0A0E14', 0.28)));
     // WATER IS PUSHED WAY DOWN, and that is the point.
     //
-    // docs/refs/TARGET_LOOK.md §A.2: the reference draws the map as its ACTUAL
+    // docs/TARGET_LOOK.md §A.2: the reference draws the map as its ACTUAL
     // IRREGULAR SHAPE rather than as a rectangle. Our maps are a square grid,
     // so the only honest silhouette available is the LAND — and at 0.2 toward
     // the panel dark the water was bright enough to be figure rather than

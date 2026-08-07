@@ -10,6 +10,10 @@
 <link rel="icon" type="image/png" sizes="32x32" href="/brand/mark-32.png" />
 <link rel="icon" type="image/png" sizes="64x64" href="/brand/mark-64.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="/brand/mark-180.png" />
+<!-- 512 is what Android uses for add-to-home-screen. It was in public/brand/ and shipping
+     in every deploy with nothing linking it; either it gets referenced or it should not be
+     built. See public/brand/README.md. -->
+<link rel="icon" type="image/png" sizes="512x512" href="/brand/mark-512.png" />
 
 <!-- The two weights the boot curtain and menu use. `crossorigin` is required on
      a font preload even same-origin, or the browser fetches it a second time. -->

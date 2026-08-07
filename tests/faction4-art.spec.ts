@@ -17,7 +17,9 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { Faction } from '../src/core/types';
 import { BUILDINGS, DEF_TABLES, FACTION_RECLAIM } from '../src/data/Defs';
+import { FACTION_RECLAIM as AI_FACTION_RECLAIM } from '../src/sim/AIStrategy';
 import { formatStats } from '../src/art/MassList';
 import {
   RECLAIM_UNIT_MASS_LISTS, RECLAIM_UNIT_MODELS, RECLAIM_UNIT_PALETTE, reclaimUnitLibrary,
@@ -37,6 +39,23 @@ const palettes = {
   seed: 0x52_43,
   padSeed: 0x52_9d,
 };
+
+describe('the Reclamation — faction id', () => {
+  /**
+   * `src/sim/**` may not import `src/data/**`, so THREE copies of the number 4
+   * exist: the enum, the data-side constant, and the sim-side constant. The
+   * comment on the sim-side one claimed `tests/faction4.spec.ts` kept them in
+   * agreement. That file has never existed and nothing asserted this, so the
+   * one hazard the zero-import rule creates was the one thing unguarded.
+   * `faction3.spec.ts:42-43` has had exactly this pair for the Meridian Pact
+   * all along, which is how the gap was visible at all.
+   */
+  it('agrees across the enum and both hand-kept constants', () => {
+    expect(Faction.Reclaim as number).toBe(4);
+    expect(FACTION_RECLAIM as number).toBe(Faction.Reclaim as number);
+    expect(AI_FACTION_RECLAIM as number).toBe(FACTION_RECLAIM as number);
+  });
+});
 
 describe('the Reclamation — art', () => {
   it('builds every hull inside R8 and R12', () => {

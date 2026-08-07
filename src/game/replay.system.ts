@@ -16,7 +16,10 @@
  * roughly a megabyte of JSON. That is cheaper than one texture.
  *
  * `__vmReplay` is the surface: `save()` for the JSON, `download()` for a file,
- * and `play()` to verify a stream against a fresh run. Same pattern as
+ * `stats()` for the running counts, and `verify()` / `stopVerify()` to check a
+ * stream against a fresh run of the same seed. There is NO `play()` — this
+ * comment claimed one until 2026-08-07 and the interface below never had it.
+ * Playback is unbuilt: `ReplayPlayer.issueFor` has test callers only. Same as
  * `__vmVfx` and `__vmProduction`, and the same warning applies — the shot
  * harness and the probes read these handles, so changing the shape breaks them.
  */

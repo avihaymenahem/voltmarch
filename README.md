@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>An original real-time strategy game that runs in the browser.</strong><br>
-  Three factions · ore economy · base building · massed armour battles · fog of war
+  Four factions · ore economy · base building · massed armour battles · fog of war
 </p>
 
 <p align="center">
@@ -27,7 +27,7 @@
 
 ## What this is
 
-A full RTS built for the browser: a main menu and settings shell, skirmish setup, three playable
+A full RTS built for the browser: a main menu and settings shell, skirmish setup, four playable
 factions with distinct rosters and tech trees, an AI opponent that plays a real game, harvesters and
 refineries, power grids that gate production, base placement, fog of war, superweapons, engineer
 capture, and a modern bottom-anchored HUD.
@@ -66,6 +66,7 @@ Then open <http://localhost:5173>.
 | `npm run typecheck` | `tsc --noEmit` across all three programs |
 | `npm test` | vitest unit + determinism suites |
 | `npm run shots` | capture the visual-critique screenshot set into `shots/` |
+| `npm run soak` | the determinism suite alone, for when only that is in question |
 
 `npm run build` deliberately does **not** run `tsc`. esbuild strips types, so a type error must never
 be able to stop the game from running; type errors are caught by `npm run typecheck` instead.
@@ -118,7 +119,9 @@ src/render/    renderer, scene rig, camera rig, post chain, RenderBridge, __VM d
 src/game/      Bootstrap, GameContext, glob system discovery, scenario router
 src/shell/     main menu, skirmish setup, settings, pause, victory/defeat
 src/ui/        the in-match HUD and in-world overlay
+src/input/     action catalogue, key binding, selection, order issuing — every player command
 src/sim/       pathfinding, combat, economy, production, AI, vision, superweapons, capture
+src/progression/ missions, objectives, unlocks, campaign save state
 src/art/       procedural geometry — shape primitives, greeble, unit and building factories
 src/world/     terrain, water, roads, decals, prop scatter
 src/vfx/       particles, beams, explosions, tracers, pooled scene lights

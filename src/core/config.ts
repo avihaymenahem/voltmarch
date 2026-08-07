@@ -3168,7 +3168,10 @@ export const HUD_GRID = {
 
 /** Radar panel, design px (VISUAL_DNA §2.5). */
 /**
- * THE SELECTION-CARD PORTRAITS. See `src/ui/ModelPortrait.ts`.
+ * THE SELECTION-CARD PORTRAITS. See `src/ui/Cameos.ts` (`CameoRenderer`).
+ *
+ * This said `src/ui/ModelPortrait.ts`, a file that was written, found to duplicate
+ * `CameoRenderer`, and deleted in the same session — the citation outlived it.
  *
  * "Bottom left hud still uses icons and not the models." Every card drew the
  * same `makeIcon('tank')` glyph — for a Grizzly, a Harvester and a Construction
