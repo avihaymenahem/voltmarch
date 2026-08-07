@@ -2919,6 +2919,43 @@ export const AI_MILITARY = {
   reserveMin: 2,
   /** Ticks the AI regroups after a beating before it will attack again. */
   regroupTicks: 300,
+  /**
+   * WHEN THE AI IS FIRST ALLOWED TO ATTACK, and how often after that. Both are
+   * quoted at `aggression` 1.0 (Normal) and DIVIDED by the difficulty's own
+   * aggression, so the table below is what the player actually experiences:
+   *
+   *                 aggression   first push     gap between waves
+   *      Easy          0.4         5:00               2:00
+   *      Normal        0.7         2:51               1:09
+   *      Hard          1.0         2:00               0:48
+   *      Brutal        1.3         1:32               0:37
+   *
+   * "Even on eassy, enemies spawns too early and attack too harsh." Nothing
+   * gated an attack on TIME at all: the brain committed the instant
+   * `strikeCount >= waveThreshold()`, and on Easy against a Rusher personality
+   * that threshold is `AI_SQUAD_MIN * 0.6 / 1.6 = 2.25`, clamped up to the
+   * floor of 2. Two conscripts out of the barracks and the wave rolled.
+   *
+   * `aggression` was ALREADY the knob for this — `DifficultyProfile.aggression`
+   * is documented as "0..1.3, how readily it commits to an attack" — and it was
+   * read by nothing at all. Both fields existed; only the wiring was missing.
+   *
+   * SIZE IS NOT TIMING, which is why these are separate from `waveSizeMul`.
+   * A smaller wave arriving immediately is not an easier game, and lowering
+   * `waveSizeMul` further would only have made the AI attack SOONER, because
+   * that number is a divisor on the threshold the brain waits to reach.
+   */
+  firstStrikeSeconds: 120,
+  rearmSeconds: 48,
+  /**
+   * The grace period is a HEAD START, not a truce. Base pressure above this
+   * cancels it outright: an AI that lets you demolish it unopposed for five
+   * minutes because the clock said so is not "easy", it is broken, and the
+   * first thing any player does to test a new build is rush the enemy base.
+   * Defence was never gated — `defendBase` returns long before the offensive
+   * branch — but the counter-attack was.
+   */
+  gracePressureCancel: 0.5,
   /** Strike group is beaten once it has lost this fraction of its start size. */
   retreatLossFrac: 0.45,
   /** ...or once its mean HP falls below this. */
@@ -2941,7 +2978,15 @@ export const AI_MILITARY = {
   pressureDecayPerSec: 0.06,
   /** Ticks a remembered enemy structure survives without being re-sighted. */
   memoryTicks: 3600,
-  /** Wave threshold grows by this much each time a wave is wiped out. */
+  /**
+   * Wave threshold grows by this much each time a wave is wiped out.
+   *
+   * The CEILING on that growth is `AI_SQUAD_MAX * waveSizeMul`, not a flat
+   * `AI_SQUAD_MAX`: a flat cap let an Easy AI that had lost four waves mass 17
+   * units — larger than any wave a Brutal AI opens with — purely because the
+   * player kept beating it. Losing should not be how the difficulty setting
+   * gets undone.
+   */
   waveEscalation: 2,
   /** Metres ahead of the base, toward the enemy, that the strike group masses. */
   rallyOffset: 34,

@@ -77,7 +77,7 @@ async function makeService(
   return { world, service };
 }
 
-const SCRATCH: AvailabilityResult = { ok: false, reason: '' };
+const SCRATCH: AvailabilityResult = { ok: false, reason: '', capped: false };
 
 /** Why `key` is unavailable to `player`, or '' when it IS available. */
 function refusal(service: ProductionService, player: number, key: string): string {

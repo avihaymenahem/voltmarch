@@ -539,6 +539,16 @@ export interface ProductionOracle {
    * mystery. Empty string when the item IS available.
    */
   reason?(player: number, publicId: number): string;
+  /**
+   * True when the only obstacle is a per-army cap that is already met.
+   *
+   * Optional, and separate from `reason` on purpose: the AI declines a capped
+   * entry either way, but it must not REPORT the refusal. "You already have a
+   * War Commissar" is permanent, and the brain's `blocked` diagnostic keeps the
+   * first refusal of each build pass — so without this the field pins to the
+   * hero cap for the rest of the match and buries any real reason under it.
+   */
+  atCap?(player: number, publicId: number): boolean;
   /** The build ghost's own answer for a footprint ORIGIN cell. */
   placeable(player: number, publicId: number, cx: number, cz: number): boolean;
 }

@@ -779,6 +779,19 @@ export interface AvailabilityResult {
   ok: boolean;
   /** Empty when ok. Otherwise a player-facing sentence. */
   reason: string;
+  /**
+   * True when the ONLY thing standing in the way is a per-army cap that is
+   * already met — a hero limit, or `Limit N` on anything else.
+   *
+   * Every other refusal means "not yet" and describes a state that resolves;
+   * this one means "you already do" and, for a hero, never resolves at all.
+   * The AI needs to tell those apart: it reports the first refusal of a build
+   * pass as the reason it is stuck, and a permanent one pins that diagnostic
+   * for the rest of the match the moment its commander walks out of the
+   * barracks. Callers that only care whether they may build ignore this and
+   * read `ok`.
+   */
+  capped: boolean;
 }
 
 /* ==========================================================================

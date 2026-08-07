@@ -23,7 +23,18 @@ import {
 import type {
   AvailabilityResult, Command, EntityId, IRng, IVision, PlayerId, SimContext,
 } from '../src/core/types';
-import { AI_SQUAD_MIN, CELL, SIM_DT } from '../src/core/config';
+import { AI_DIFFICULTY, AI_MILITARY, AI_SQUAD_MIN, CELL, SIM_DT, SIM_HZ } from '../src/core/config';
+
+/**
+ * Ticks before a brain of this difficulty is allowed to launch its FIRST
+ * offensive. Mirrors the arithmetic in `AiBrain`'s constructor; the pacing
+ * itself is asserted in tests/ai-pacing.spec.ts, and cases here just need to
+ * get past it.
+ */
+function offensiveGateTicks(difficulty: number): number {
+  const agg = Math.max(0.1, AI_DIFFICULTY[difficulty]!.aggression);
+  return Math.round((AI_MILITARY.firstStrikeSeconds * SIM_HZ) / agg);
+}
 import { Rng } from '../src/core/math';
 
 import { AiBrain, AiDirector, AiPosture } from '../src/sim/AI';
@@ -662,11 +673,15 @@ describe('AiBrain — military layer', () => {
     expect(h.brain.intent().posture).not.toBe('attacking');
     expect(h.brain.intent().reserve).toBeGreaterThan(0);
 
-    // Now field a real army.
+    // Now field a real army. The step has to clear the OFFENSIVE GATE as well
+    // as the headcount threshold: since v1.15.x the brain also waits
+    // `AI_MILITARY.firstStrikeSeconds / aggression` before its first push (see
+    // tests/ai-pacing.spec.ts). This case is about the threshold, so it steps
+    // past the clock rather than restating it.
     for (let i = 0; i < AI_SQUAD_MIN * 4; i++) {
       spawnUnit(h.world, P_AI, Faction.Soviets, 400 + i * 4, 430, EntityFlag.CanAttack);
     }
-    h.step(240);
+    h.step(offensiveGateTicks(1) + 240);
     const after = h.brain.intent();
     expect(after.army).toBeGreaterThan(AI_SQUAD_MIN);
     expect(after.strike).toBeGreaterThan(0);
@@ -768,7 +783,7 @@ describe('AiBrain — regressions found by playing it', () => {
       spawnUnit(h.world, P_AI, Faction.Soviets, 340 + (i % 10) * 4, 420 + ((i / 10) | 0) * 4,
         EntityFlag.CanAttack);
     }
-    h.step(240);
+    h.step(offensiveGateTicks(2) + 240);
     const i = h.brain.intent();
     expect(i.army).toBeGreaterThanOrEqual(i.waveThreshold + 2);
     expect(i.strike).toBeGreaterThanOrEqual(i.waveThreshold);
@@ -901,7 +916,7 @@ describe('AI integration — real scenario + real production', () => {
 
     // The same oracle `ai.system.ts` builds, assembled by hand so this test
     // does not need `ctx()` or a GL context.
-    const avail: AvailabilityResult = { ok: false, reason: '' };
+    const avail: AvailabilityResult = { ok: false, reason: '', capped: false };
     const report = makePlacementReport();
     const oracle: ProductionOracle = {
       factsFor(key) {
@@ -918,6 +933,11 @@ describe('AI integration — real scenario + real production', () => {
         const r = service.availability(p as PlayerId, id, avail);
         return r.ok ? '' : r.reason;
       },
+      // The oracle this test hand-assembles must mirror `ai.system.ts` exactly,
+      // including this: without it the brain reports "You already have a War
+      // Commissar" as the reason it is stuck, forever, from the moment its
+      // commander walks out of the barracks.
+      atCap: (p, id) => service.availability(p as PlayerId, id, avail).capped,
       placeable: (p, id, cx, cz) => {
         const entry = catalog.resolve(id, true);
         return entry === null

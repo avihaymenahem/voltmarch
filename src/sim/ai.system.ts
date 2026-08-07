@@ -74,7 +74,7 @@ function buildOracle(): ProductionOracle | null {
 
   // Both scratch objects are reused: `available` and `placeable` are called
   // dozens of times inside one placement search.
-  const avail: AvailabilityResult = { ok: false, reason: '' };
+  const avail: AvailabilityResult = { ok: false, reason: '', capped: false };
   const report = makePlacementReport();
   const facts: Record<string, ProductionFacts | null> = {};
 
@@ -109,6 +109,10 @@ function buildOracle(): ProductionOracle | null {
     reason(player: number, publicId: number): string {
       const r = svc.availability(player as PlayerId, publicId, avail);
       return r.ok ? '' : r.reason;
+    },
+
+    atCap(player: number, publicId: number): boolean {
+      return svc.availability(player as PlayerId, publicId, avail).capped;
     },
 
     placeable(player: number, publicId: number, cx: number, cz: number): boolean {

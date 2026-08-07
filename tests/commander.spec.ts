@@ -53,7 +53,7 @@ const COMMANDERS: ReadonlyArray<readonly [string, Faction, AbilityId]> = [
   ['rclBaron', Faction.Reclaim, AbilityId.SalvageCall],
 ];
 
-const SCRATCH: AvailabilityResult = { ok: false, reason: '' };
+const SCRATCH: AvailabilityResult = { ok: false, reason: '', capped: false };
 
 let simTick = 0;
 beforeEach(() => { simTick = 0; clearScenario(); });

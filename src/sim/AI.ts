@@ -55,7 +55,7 @@ import {
   AI_BUILD, AI_CADENCE, AI_ECONOMY, AI_MEMORY, AI_MILITARY, AI_ROSTER_CAP,
   AI_SCOUT, AI_SQUAD_MAX, AI_SQUAD_MIN, AI_THREAT_CLASS_COUNT,
   ABILITIES, AbilityId,
-  BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, MAX_QUEUE_DEPTH, SIM_DT,
+  BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, MAX_QUEUE_DEPTH, SIM_DT, SIM_HZ,
 } from '../core/config';
 import {
   EntityFlag, EntityKind, Faction, FACTION_PALETTE_KEYS, NONE, OrderKind, Stance, UnitState,
@@ -294,6 +294,16 @@ export class AiBrain {
   private waveEscalation = 0;
   private strikeStartCount = 0;
   private regroupUntilTick = 0;
+  /**
+   * Earliest tick an OFFENSIVE commit is allowed. Set once from the difficulty
+   * at construction and then only ever brought forward, never pushed back.
+   * Defence ignores it entirely — `defendBase` returns above this gate.
+   */
+  private offensiveUnlockTick = 0;
+  /** Tick the last wave went out, for the `rearmTicks` gap between pushes. */
+  private lastWaveTick = -1e9;
+  /** Ticks between waves for this difficulty. Resolved once. */
+  private readonly rearmTicks: number;
   /** Last tick a gather order went out. Rate-limits the rally nudge. */
   private lastGatherTick = -1e9;
   private rallyX = MAP_SIZE * 0.5;
@@ -388,6 +398,13 @@ export class AiBrain {
     this.groupTag = new PerEntityU32(world.store, GROUP_NONE);
     this.opening = openingFor(this.faction, this.pers.index);
     this.nextScoutTick = Math.round(AI_SCOUT.firstScoutTick * this.diff.scoutDelayMul);
+    // Aggression DIVIDES both gates: a low-aggression brain waits longer for
+    // its first push and longer between pushes. `Math.max(0.1, ...)` guards a
+    // hand-authored 0 in the table from producing an Infinity gate, which would
+    // read as an AI that builds an economy and then never does anything.
+    const agg = Math.max(0.1, this.diff.aggression);
+    this.offensiveUnlockTick = Math.round((AI_MILITARY.firstStrikeSeconds * SIM_HZ) / agg);
+    this.rearmTicks = Math.round((AI_MILITARY.rearmSeconds * SIM_HZ) / agg);
     this.haveRoleFn = (role: BuildRole) => this.roleCount[role] > 0;
   }
 
@@ -1557,7 +1574,17 @@ export class AiBrain {
       const me = this.player as number;
       if (this.oracle.available(me, entry.defId)) return true;
       const why = this.oracle.reason === undefined ? '' : this.oracle.reason(me, entry.defId);
-      this.noteUnavailable(`${entry.key}: ${why === '' ? 'unavailable' : why}`);
+      // THE HERO CAP IS NOT A BLOCKAGE. `blocked` means "why the AI is stuck",
+      // and every other refusal on that list is "you cannot have this YET" —
+      // a state that resolves. "You already have a War Commissar" never
+      // resolves, so recording it pins the diagnostic for the rest of the match
+      // the moment the AI's commander walks out of the barracks and drowns any
+      // real reason underneath it. The AI still declines the entry; it just
+      // does not report having done so.
+      const capped = this.oracle.atCap !== undefined && this.oracle.atCap(me, entry.defId);
+      if (!capped) {
+        this.noteUnavailable(`${entry.key}: ${why === '' ? 'unavailable' : why}`);
+      }
       return false;
     }
     if (prereqsMet(entry, this.haveRoleFn)) return true;
@@ -1764,6 +1791,13 @@ export class AiBrain {
     // Easy takes 2.4 s. The information arrives at the same instant for both.
     const observed = s.tick - this.attackObservedTick;
     const reacting = observed >= this.diff.reactionTicks && observed < AI_MILITARY.regroupTicks;
+    // Being hit cancels the opening grace period on the spot. An AI that
+    // absorbs a five-minute rush without ever counter-attacking because a timer
+    // said so is not easy, it is inert — and rushing the enemy base is the
+    // first thing anyone does to a new build.
+    if (this.basePressure > AI_MILITARY.gracePressureCancel && s.tick < this.offensiveUnlockTick) {
+      this.offensiveUnlockTick = s.tick;
+    }
     if (reacting && this.basePressure > 0.2 && this.attackX >= 0) {
       this.defendBase(s);
       return;
@@ -1783,7 +1817,13 @@ export class AiBrain {
         // The whole wave died. Remember that this was not enough and ask for a
         // bigger one next time — the only "learning" in here, and the only kind
         // that matters.
-        this.waveEscalation = Math.min(AI_SQUAD_MAX, this.waveEscalation + AI_MILITARY.waveEscalation);
+        // Scaled by `waveSizeMul`, not flat. A flat AI_SQUAD_MAX let an Easy
+        // brain that had lost four waves mass 17 units — bigger than anything a
+        // Brutal brain opens with — purely because the player kept winning.
+        this.waveEscalation = Math.min(
+          AI_SQUAD_MAX * this.diff.waveSizeMul,
+          this.waveEscalation + AI_MILITARY.waveEscalation,
+        );
         this.posture = AiPosture.Massing;
         this.regroupUntilTick = s.tick + AI_MILITARY.regroupTicks;
         this.militaryGoal = 'wave was wiped out — massing a bigger one';
@@ -1795,18 +1835,26 @@ export class AiBrain {
     }
 
     /* -- 4. massing ------------------------------------------------------- */
+    // The two TIME gates, both scaled by `aggression`. Until this pass nothing
+    // gated an attack on the clock at all, so an Easy AI shipped its first wave
+    // the moment two units existed. Size was already tuned per difficulty; when
+    // was not, and "when" is what the player feels first.
+    const armedAt = Math.max(this.offensiveUnlockTick, this.lastWaveTick + this.rearmTicks);
     const threshold = this.waveThreshold();
-    if (this.strikeCount >= threshold) {
+    if (this.strikeCount >= threshold && s.tick >= armedAt) {
       this.pickObjective();
       this.posture = AiPosture.Attacking;
       this.strikeStartCount = this.strikeCount;
+      this.lastWaveTick = s.tick;
       this.objectiveIssuedTick = -1e9;
       this.pressAttack(s);
       return;
     }
 
     this.posture = this.openingIndex < this.opening.length ? AiPosture.Opening : AiPosture.Massing;
-    this.militaryGoal = `massing ${this.strikeCount}/${threshold}`;
+    this.militaryGoal = s.tick < armedAt
+      ? `holding — ${Math.ceil((armedAt - s.tick) / SIM_HZ)}s to the next push`
+      : `massing ${this.strikeCount}/${threshold}`;
     // Idle strikers walk to the rally point; already-there units are left alone
     // so the AI does not re-issue 40 move orders a second.
     this.gather(s, this.rallyX, this.rallyZ);

@@ -1261,7 +1261,11 @@ export class ProductionService implements QueueHooks {
    * never empty when `ok` is false.
    */
   availability(player: PlayerId, defId: number, out?: AvailabilityResult): AvailabilityResult {
-    const result = out ?? { ok: false, reason: '' };
+    const result = out ?? { ok: false, reason: '', capped: false };
+    // Reset here rather than at each write site: `out` is a reused scratch
+    // object, so a stale `true` from the previous call would otherwise leak
+    // into the answer for a completely different buildable.
+    result.capped = false;
     const entry = this.catalog.resolve(defId);
     if (entry === null) { result.ok = false; result.reason = 'Unknown'; return result; }
     return this.availabilityOf(player, entry, result);
@@ -1269,6 +1273,8 @@ export class ProductionService implements QueueHooks {
 
   /** The same question with the entry already in hand. */
   availabilityOf(player: PlayerId, entry: BuildEntry, out: AvailabilityResult): AvailabilityResult {
+    // Same reset as `availability()`: every caller passes a reused scratch.
+    out.capped = false;
     const result = out;
     const p = this.world.players[player as number];
     if (p === undefined) { result.ok = false; result.reason = 'Unknown player'; return result; }
@@ -1322,6 +1328,7 @@ export class ProductionService implements QueueHooks {
         + this.queues.countOf(p, entry.tab, entry.publicId, entry.kind === BuildKind.Building);
       if (inHand >= entry.maxAlive) {
         result.ok = false;
+        result.capped = true;
         result.reason = entry.maxAlive === 1
           ? `You already have a ${entry.name}`
           : `Limit ${entry.maxAlive}`;
@@ -1553,7 +1560,7 @@ export class ProductionService implements QueueHooks {
   /** Recompute `techMask` and announce genuinely new options. */
   private refreshTech(): void {
     const world = this.world;
-    const scratchResult: AvailabilityResult = { ok: false, reason: '' };
+    const scratchResult: AvailabilityResult = { ok: false, reason: '', capped: false };
 
     for (let pi = 0; pi < world.players.length; pi++) {
       const p = world.players[pi];
@@ -2752,7 +2759,7 @@ const TAB_NAMES = ['STR', 'DEF', 'INF', 'VEH'];
 const PLACEABLE_TABS: readonly BuildTab[] = [BuildTab.Structures, BuildTab.Defense];
 const cellScratch = new Int32Array(2);
 const spot = new Float32Array(2);
-const availScratch: AvailabilityResult = { ok: false, reason: '' };
+const availScratch: AvailabilityResult = { ok: false, reason: '', capped: false };
 
 /* ==========================================================================
  * 6. MODULE SINGLETON
