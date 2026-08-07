@@ -107,6 +107,36 @@ const OUT = join(ROOT, 'shots');
 const PORT = 4317;
 const BASE = `http://localhost:${PORT}/`;
 
+/**
+ * THE QUALITY TIER THE SCORECARD IS DEFINED AT.
+ *
+ * Captures used to run at whatever `detectQualityTier()` picked off the GPU. The
+ * twelve fixtures were byte-reproducible ON ONE MACHINE — but the tier decides
+ * the shadow-map size (1536 / 2048 / 4096) and whether AO runs at half
+ * resolution, so a grade produced on one box could not be compared with a grade
+ * produced on another. Anyone holding a CI number against a local number was
+ * comparing two different renderers.
+ *
+ * That matters more than it sounds: docs/RA3_LOOK_BIBLE.md §13 quotes tolerances
+ * in PIXELS at 1440p ("penumbra 1.2-2.5 px"), and shadow-map size moves penumbra
+ * width directly. The harness already pins the drawing buffer to 2560x1440 and
+ * asserts it; the tier is the same class of hidden input and was not pinned.
+ *
+ * WHY `medium` AND NOT `ultra`. Every scorecard number in the repo was taken at
+ * medium — it is what this machine auto-detected — so pinning here costs ZERO
+ * re-baselining and every historical grade stays comparable with every future
+ * one. `ultra` would be the choice if the scorecard were an absolute measure of
+ * the look, but it is not: the RA3 reference frames it derives from were
+ * abandoned by the user on 2026-08-05, and what survives is a REGRESSION
+ * DETECTOR. A regression detector's whole value is continuity with its own
+ * history, and re-baselining twelve fixtures to make the shadows prettier would
+ * destroy exactly that.
+ *
+ * Changing this is a deliberate act: re-run `npm run shots`, re-grade, and say
+ * in the commit that the baseline moved and by how much.
+ */
+const CAPTURE_TIER = 'medium';
+
 /** The bible quotes its pixel tolerances at 1440p. Do not change without re-deriving §13. */
 const VIEWPORT = { width: 2560, height: 1440 };
 
@@ -526,6 +556,9 @@ for (const shot of shots) {
 
   try {
     const qs = new URLSearchParams(Object.entries(shot.flags).map(([k, v]) => [k, String(v)]));
+    // Pinned, not detected. See CAPTURE_TIER. A fixture that declares its own
+    // `tier` flag wins, so a future shot can deliberately grade another tier.
+    if (!qs.has('tier')) qs.set('tier', CAPTURE_TIER);
     await page.goto(`${BASE}?${qs}`, { waitUntil: 'load' });
 
     await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 60_000 });
@@ -758,13 +791,10 @@ for (const shot of shots) {
         pixelRatio: RA.stats().pixelRatio,
         scale: RA.rendererHandle.resolutionScale,
         fixed: RA.rendererHandle.isFixedSize,
-        // Recorded because it is NOT pinned. No `?tier=` is passed, so
-        // `detectQualityTier()` picks one from the GPU, and the tier decides
-        // the shadow map size and whether AO runs at half resolution. Two
-        // machines therefore grade two different pipelines. Reproducible on one
-        // machine, which is what a regression detector needs; not comparable
-        // across machines, which is worth knowing before anyone quotes a score
-        // from a different box.
+        // PINNED via `?tier=` and asserted below, the same way the drawing
+        // buffer is. Still recorded, because the assert can only fire if the
+        // number is read, and because a report that states its own pipeline is
+        // the only kind anyone can compare across machines.
         tier: RA.stats().quality,
         post: RA.stats().post,
       };
@@ -802,6 +832,17 @@ for (const shot of shots) {
           `(resolutionScale ${verdict.buffer.scale}, pixelRatio ${verdict.buffer.pixelRatio}). ` +
           'Every pixel tolerance in docs/RA3_LOOK_BIBLE.md §13 is quoted at 1440p and an ' +
           'upscaled capture silently invalidates all of them.',
+      );
+    }
+
+    const wantTier = shot.flags.tier ?? CAPTURE_TIER;
+    if (verdict.buffer.tier !== wantTier) {
+      throw new Error(
+        `the quality tier is '${verdict.buffer.tier}', not '${wantTier}'. ` +
+          'The tier decides the shadow-map size (1536/2048/4096) and whether AO runs at half ' +
+          'resolution, so a capture at another tier is a different renderer and its grade is ' +
+          'not comparable with any other. `?tier=` was passed and did not take effect — check ' +
+          'src/render/renderer.ts#parseTier and src/game/Bootstrap.ts.',
       );
     }
 

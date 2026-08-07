@@ -805,6 +805,28 @@ from one file. See §14.
 Weight 3 = fatal, 2 = major, 1 = polish. Every check is answerable by looking at (or sampling) a
 single 2560×1440 render.
 
+### THE PIPELINE A SCORE IS DEFINED AGAINST
+
+Two hidden inputs decide what these numbers mean, and a score quoted without them is not comparable
+with any other score. Both are now PINNED BY `tools/shoot.mjs` AND ASSERTED — the harness refuses
+the run on a mismatch rather than capturing quietly at something else.
+
+| Input | Pinned to | Why it matters |
+|---|---|---|
+| Drawing buffer | **2560×1440** | Every pixel tolerance below is quoted at 1440p. An upscaled capture silently invalidates all of them. |
+| Quality tier | **`medium`** | The tier decides the shadow-map size (1536 / 2048 / 4096) and whether AO runs at half resolution. Two tiers are two renderers, and §8's "penumbra 2.0–2.5 px at 1440p" moves directly with map size. |
+
+**Why `medium` and not `ultra`.** Every historical number in this repo was taken at medium — it is
+what the development machine auto-detected — so pinning there costs zero re-baselining and keeps
+every past grade comparable with every future one. `ultra` would be the right choice if the
+scorecard were an absolute measure of the look. It is not: **the RA3 reference frames these targets
+derive from were abandoned (user decision, 2026-08-05), and what survives is a REGRESSION
+DETECTOR.** A regression detector's entire value is continuity with its own history, so trading
+that away for prettier shadows would be backwards.
+
+Changing the pin is a deliberate act: re-run `npm run shots`, re-grade, and state in the commit
+that the baseline moved and by how much.
+
 | # | Check | Pass criterion | W |
 |---|---|---|---|
 | 1 | No sky | Topmost pixel row is terrain/water/structure. Zero sky, zero horizon. | 3 |
