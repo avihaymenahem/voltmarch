@@ -986,11 +986,28 @@ export class Scatter {
       }
     }
 
-    /* -- 4. the 25x25 gate ------------------------------------------------ */
-    this.fillToTarget(avail, rng.fork());
-
-    /* -- trim to the draw-call budget ------------------------------------- */
-    this.types = this.trimTypes(avail);
+    /* -- 4. TRIM TO THE DRAW-CALL BUDGET, THEN GATE ----------------------- *
+     * These two were the other way round, and the order was wrong.
+     *
+     * `trimTypes()` deletes every placement of the lowest-ranked types. With
+     * the gate first, it deleted props the gate had just placed to close a
+     * 25x25 m patch, and nothing re-validated: `lastReport` was recomputed on
+     * the trimmed set with no pass left to fix what the trim had reopened.
+     * Scorecard #15 is weight 3 and it was being reported out of a gate whose
+     * result had since been edited. `07-soviet-base` shipped at "adornment
+     * 65%, 1 unadorned patch" that way.
+     *
+     * So the GATE IS LAST, and nothing below this line may remove a placement.
+     *
+     * The trim still ranks on post-top-up counts, exactly as it always has.
+     * Moving it ahead of the top-up as well was tried and measured worse: the
+     * structured passes' counts are a different ranking signal, a different
+     * four types survived on `04-units-parade`, and its #34 edge coverage fell
+     * 0.2960 -> 0.2569. What a type finally delivered is the honest basis for
+     * spending a draw call on it; what it was allocated is not.               */
+    const live = this.trimTypes(avail);
+    this.fillToTarget(live, rng.fork());
+    this.types = live.filter((t) => t.count > 0);
 
     /* -- 5. GPU ----------------------------------------------------------- */
     this.buildInstances();
@@ -1182,13 +1199,23 @@ export class Scatter {
    *     civic props are weighted well above their count.
    */
   private trimTypes(avail: ScatterType[]): ScatterType[] {
-    const live = avail.filter((t) => t.count > 0);
-    if (live.length <= SCATTER_LIMITS.maxTypes) return live;
+    const placed = avail.filter((t) => t.count > 0);
+    /*
+     * A type that placed NOTHING is not costing a draw call, and the passes
+     * that run after this one may yet find it a home — so it stays in the
+     * returned set whenever there is room, which is what keeps this reorder
+     * behaviour-neutral on the eight maps that never trim. It is only ever
+     * squeezed out by a type that has already earned its slot.
+     */
+    const idle = avail.filter((t) => t.count === 0);
+    if (placed.length <= SCATTER_LIMITS.maxTypes) {
+      return placed.concat(idle.slice(0, SCATTER_LIMITS.maxTypes - placed.length));
+    }
     const familyWeight = (t: ScatterType): number =>
       t.def.family === 'civic' ? 5.0 : t.def.family === 'canopy' ? 1.7 : 1.0;
     const score = (t: ScatterType): number =>
       t.count * t.def.adorn * t.def.adorn * familyWeight(t);
-    const ranked = live.slice().sort((a, b) => score(b) - score(a));
+    const ranked = placed.slice().sort((a, b) => score(b) - score(a));
     const keep = new Set(ranked.slice(0, SCATTER_LIMITS.maxTypes));
     const dropped = new Set(ranked.slice(SCATTER_LIMITS.maxTypes).map((t) => t.defIndex));
     // Compact the placements, dropping instances of trimmed types.
@@ -1197,6 +1224,23 @@ export class Scatter {
       if (!dropped.has(this.placements[i].defIndex)) kept.push(this.placements[i]);
     }
     this.placements = kept;
+    /*
+     * REBUILD THE SPACING INDEX, HERE, BECAUSE THIS IS WHERE IT BREAKS.
+     *
+     * `bucketHead`/`bucketNext` hold INDICES into `placements`, written
+     * incrementally by `place()`. Compacting the array above invalidates every
+     * one of them. `rebuildCellIndex()` already existed and already said so in
+     * its own docstring — but it was only called from `buildInstances()`, i.e.
+     * after the last `place()` of the run, so the stale window was empty and
+     * nobody could hit it.
+     *
+     * Moving the trim ahead of the top-up opened that window, and the first
+     * boot into it crashed: `tooClose` walked a bucket chain into an index past
+     * the end of the compacted array and dereferenced `undefined.x`. Owning the
+     * rebuild here rather than at the call site means the next person to move
+     * this call cannot reopen it.
+     */
+    this.rebuildCellIndex();
     console.warn(
       `[scatter] ${dropped.size} prop type(s) trimmed to hold the ${SCATTER_LIMITS.maxTypes}-type ` +
       'draw-call budget (SCATTER_LIMITS.maxTypes in core/config.ts)',
@@ -1425,9 +1469,11 @@ export class Scatter {
    *
    * A cell counts as adorned when a prop's `adorn` disc covers it, when the
    * terrain splat there is not the biome's base layer (a texture-variation
-   * event), or when a structure occupies it. Water, cliffs and impassable
-   * ground are outside the walkable domain entirely, so a lake is not a
-   * violation.
+   * event), when a structure occupies it, or when it lies inside a scenario
+   * exclusion — ground the placer is forbidden to use, and which is therefore
+   * owned by whatever excluded it. See the note at that line. Water, cliffs and
+   * impassable ground are outside the walkable domain entirely, so a lake is
+   * not a violation.
    *
    * Reported patches never overlap: a per-column block row is carried down the
    * scan, which is also what makes the fill loop converge.
@@ -1478,7 +1524,42 @@ export class Scatter {
         const cx = Math.min(MAP_CELLS - 1, (((gx + 0.5) * G) / CELL) | 0);
         const cz = Math.min(MAP_CELLS - 1, (((gz + 0.5) * G) / CELL) | 0);
         const ci = cz * MAP_CELLS + cx;
-        if (t.surface[ci] !== baseSurface || t.isOccupied(cx, cz)) this.coverAdorned[i] = 1;
+        if (t.surface[ci] !== baseSurface || t.isOccupied(cx, cz)) { this.coverAdorned[i] = 1; continue; }
+        /*
+         * GROUND THE PLACER IS FORBIDDEN TO TOUCH IS NOT UNADORNED GROUND.
+         *
+         * `07-soviet-base` failed this gate — scorecard #15, weight 3 — on one
+         * 26 m patch at (201, 245), and it was unfixable by construction:
+         * sampled at 2 m, all 196 points inside it are covered by a scenario
+         * exclusion disc, so `placeable` is 0 across the whole square and
+         * `legal()` rejects every filler at every attempt. Ten fill passes ran
+         * and placed nothing, and the warning then told the reader to raise
+         * `SCATTER_COVERAGE.fillPasses` or `MAP_PRESETS[...].scatter`, neither
+         * of which can move a number that no placement is allowed to affect.
+         *
+         * The defect was a domain mismatch, not a shortage of props. The patch
+         * scan runs over `walkable` — water, cliff and impassable ground
+         * removed, nothing else — while the fillers run over `placeable`, which
+         * also removes structure footprints and every exclusion. So the gate
+         * was asserting a property of ground the module has no authority over.
+         *
+         * Exclusions are not arbitrary: `scatter.system.ts` adds one for every
+         * building (footprint + 7 m of deploy apron), every unit, every ore
+         * field and the build ghost. That patch is the middle of a Soviet base,
+         * ringed by structures and deliberately kept clear so vehicles can get
+         * out. It is adorned by the base, the same way a cell UNDER a structure
+         * is already counted adorned one line above — this is that rule applied
+         * to the apron the same structure requires.
+         *
+         * It is deliberately NOT applied to the density denominator: `walkable`
+         * still drives `propsPerHectare`, so a base-heavy map still reports the
+         * lower figure it honestly earns. Only the gate's domain moves, and it
+         * moves onto the ground the gate can actually act on.
+         */
+        if (this.exclusions.length > 0) {
+          const wx = (gx + 0.5) * G, wz = (gz + 0.5) * G;
+          if (this.inExclusion(wx, wz, 0)) this.coverAdorned[i] = 1;
+        }
       }
     }
 
