@@ -974,10 +974,12 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
     Locomotor.Hover, 34, TURRETED, Faction.Meridian, { crushableBy: 5 }),
   mrdCarryall: unit('mrdCarryall', EntityKind.Vehicle, U.mcv, 950, ArmorClass.Heavy, 5.0,
     Locomotor.Hover, 22, 0, Faction.Meridian, { crushableBy: 0 }),
-  // No Air locomotor exists yet, so the gunship is authored the way the naval
-  // hulls are: hover, flyer speed, flyer sight, paper armour.
+  // `Locomotor.Air` exists now, and this row has to move with `src/data/Defs.ts`
+  // or `spawnUnit` gives a Kestrel a different chassis depending on whether the
+  // def table happened to be bound — the exact disagreement
+  // `tests/data.spec.ts` "does not silently re-balance the game" exists to catch.
   mrdKestrel: unit('mrdKestrel', EntityKind.Vehicle, U.ifv, 210, ArmorClass.Light, 12.0,
-    Locomotor.Hover, 36, GUNNER, Faction.Meridian, { crushableBy: 0, turnRate: 3.2 }),
+    Locomotor.Air, 36, GUNNER, Faction.Meridian, { crushableBy: 0, turnRate: 3.2 }),
 
   mrdCorvette: unit('mrdCorvette', EntityKind.Vehicle, NU.gunboat, 380, ArmorClass.Light, 7.6,
     Locomotor.Hover, 34, TURRETED, Faction.Meridian),
@@ -1016,10 +1018,9 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
   rclCrawler: unit('rclCrawler', EntityKind.Vehicle, U.mcv, 900, ArmorClass.Heavy, 4.6,
     Locomotor.Wheel, 22, 0, Faction.Reclaim,
     { crushableBy: 0, turnRate: RCL_TURN(U.mcv) }),
-  // No Air locomotor exists yet, so the gunship is authored the way the naval
-  // hulls are: hover, flyer speed, flyer sight, paper armour.
+  // `Locomotor.Air`, in lockstep with `src/data/Defs.ts`. See the Kestrel row.
   rclHornet: unit('rclHornet', EntityKind.Vehicle, U.ifv, 180, ArmorClass.Light, 11.0,
-    Locomotor.Hover, 34, GUNNER, Faction.Reclaim, { crushableBy: 0, turnRate: 3.4 }),
+    Locomotor.Air, 34, GUNNER, Faction.Reclaim, { crushableBy: 0, turnRate: 3.4 }),
 
   rclScow: unit('rclScow', EntityKind.Vehicle, NU.gunboat, 340, ArmorClass.Light, 7.2,
     Locomotor.Hover, 32, GUNNER, Faction.Reclaim, { turnRate: RCL_TURN(NU.gunboat) }),

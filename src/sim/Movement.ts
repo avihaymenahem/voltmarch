@@ -75,11 +75,12 @@ import { isRoad } from '../world/Roads';
 /* ==========================================================================
  * 1. THE MOVE-CLASS TABLE
  *
- * `Locomotor` is frozen in core/types and has no Naval or Air member, so ships
- * and aircraft both spawn as `Locomotor.Hover`. This table is the override
- * layer: whoever owns unit data calls `setMoveClass` at spawn; anything that
- * never does gets a lazy default derived from its locomotor and — for Hover —
- * from whether it is standing in water the first time it is asked.
+ * `Locomotor` has an Air member but no Naval one, so an aircraft declares
+ * itself in the entity store and a ship still spawns as `Locomotor.Hover`.
+ * This table is the override layer: whoever owns unit data calls
+ * `setMoveClass` at spawn; anything that never does gets a lazy default
+ * derived from its locomotor and — for Hover — from whether it is standing in
+ * water the first time it is asked.
  * ========================================================================== */
 
 /**
@@ -102,8 +103,13 @@ export function resetMoveClasses(): void {
 
 /**
  * Declare an entity's movement class. Call it any time after spawn; the value
- * survives until the slot is recycled. THIS is how an aircraft or a ship
- * becomes one — nothing else can tell them apart from a hovercraft.
+ * survives until the slot is recycled.
+ *
+ * Aircraft no longer need it — `Locomotor.Air` carries that through
+ * `moveClassForLocomotor`, which is the one mapping a saved game, a replay and
+ * a scenario all agree on. This override remains the only way to say NAVAL,
+ * because `Locomotor` still has no member for it, and the water heuristic in
+ * `moveClassAt` is a guess rather than a declaration.
  */
 export function setMoveClass(store: EntityStore, id: EntityId, cls: MoveClass): boolean {
   const i = store.index(id);

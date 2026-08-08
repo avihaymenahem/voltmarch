@@ -938,6 +938,18 @@ export class RenderBridge {
       this.visitStamp[i] = this.frameId;
 
       /* -- interpolate ---------------------------------------------------- */
+      // Y IS A FIRST-CLASS AXIS HERE, which is what let `Locomotor.Air` land
+      // without touching this file. `posY` goes straight into the part
+      // translation below and into `addBounds`, so an aircraft at
+      // AIR_CRUISE_ALTITUDE draws where it is simulated and its batch's culling
+      // sphere grows to contain it — there is no ground-projection anywhere in
+      // this pass and no separate altitude channel to keep in sync. The
+      // steepest per-tick move the climb integrator can produce is
+      // AIR_CRUISE_ALTITUDE * (1 - exp(-AIR_CLIMB_LAMBDA * SIM_DT)) ~= 1.2 m,
+      // comfortably inside AUDIT_DRIFT_METRES, so the frame audit stays quiet
+      // through a spawn climb. Shadows are the ordinary cascade: a unit 22 m up
+      // casts onto the ground offset along the sun vector, which is exactly the
+      // "floating above its own shadow" read a flyer wants at the fixed pitch.
       const px = s.prevX[i], py = s.prevY[i], pz = s.prevZ[i];
       const x = px + (s.posX[i] - px) * alpha;
       const y = py + (s.posY[i] - py) * alpha;

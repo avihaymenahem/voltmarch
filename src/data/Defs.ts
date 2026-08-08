@@ -121,6 +121,9 @@ function wpn(
     requiresStop: extra?.requiresStop ?? false,
     needsPower: extra?.needsPower ?? false,
     canTargetInfantry: extra?.canTargetInfantry ?? true,
+    // Same default as `sim/Combat.wpn`, and the opposite of its sibling's: a
+    // gun answers air only when its row says so. See `WeaponDef.canTargetAir`.
+    canTargetAir: extra?.canTargetAir ?? false,
     muzzleFx: extra?.muzzleFx ?? FxKind.MuzzleFlashSmall,
     travelFx: extra?.travelFx ?? FxKind.TracerBullet,
     impactFx: extra?.impactFx ?? FxKind.ImpactMetal,
@@ -146,21 +149,26 @@ const MUZZLE_PAIR: readonly PartId[] = [PartId.MuzzleA, PartId.MuzzleB];
  *   3. Nothing here is `Tesla` or `SmallArms`-heavy. The Pact answers armour
  *      and structures well and answers massed infantry poorly, which is the
  *      hole the Soviets are built to exploit.
+ *
+ * `canTargetAir` follows the same rule as the base armoury (see the header of
+ * `DEFAULT_WEAPONS`): infantry weapons, autocannon, guided rockets and the
+ * faction's AA structure elevate; tank guns, siege beams, naval shells and the
+ * emplaced repeater do not.
  */
 export const MERIDIAN_WEAPONS: readonly WeaponDef[] = [
   /* 18 */ wpn('pulseCarbine', 'Pulse Carbine', 15, WarheadClass.SmallArms, 20, 0.80,
     ProjectileKind.Bullet, 105,
-    { burstCount: 3, burstDelay: 0.08, turretTurnRate: 320,
+    { burstCount: 3, burstDelay: 0.08, turretTurnRate: 320, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactDirt }),
 
   /* 19 */ wpn('sunLance', 'Sun Lance', 58, WarheadClass.Rocket, 26, 2.4,
     ProjectileKind.Rocket, 42,
-    { splashRadius: 2.0, splashFalloff: 0.30, turretTurnRate: 260,
+    { splashRadius: 2.0, splashFalloff: 0.30, turretTurnRate: 260, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashMedium, travelFx: FxKind.RocketTrail, impactFx: FxKind.ExplosionSmall }),
 
   /* 20 */ wpn('arcRepeater', 'Arc Repeater', 19, WarheadClass.AutoCannon, 23, 0.55,
     ProjectileKind.Bullet, 155,
-    { burstCount: 4, burstDelay: 0.07, turretTurnRate: 210,
+    { burstCount: 4, burstDelay: 0.07, turretTurnRate: 210, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.Sparks }),
 
   /* 21 */ wpn('focusLance', 'Focus Lance', 60, WarheadClass.ArmorPiercing, 26, 1.6,
@@ -178,9 +186,10 @@ export const MERIDIAN_WEAPONS: readonly WeaponDef[] = [
     { burstCount: 5, burstDelay: 0.06, turretTurnRate: 260,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactDirt }),
 
+  // The Pact's `BuildRole.AntiAir` structure (`mrdHelios`) carries this one.
   /* 24 */ wpn('heliosLance', 'Helios Lance', 116, WarheadClass.Prism, 33, 2.8,
     ProjectileKind.Beam, 0,
-    { turretTurnRate: 70, needsPower: true,
+    { turretTurnRate: 70, needsPower: true, canTargetAir: true,
       muzzleFx: FxKind.None, travelFx: FxKind.PrismBeam, impactFx: FxKind.Sparks }),
 
   /* 25 */ wpn('mirrorGun', 'Mirror Battery', 70, WarheadClass.HighExplosive, 33, 2.1,
@@ -188,16 +197,19 @@ export const MERIDIAN_WEAPONS: readonly WeaponDef[] = [
     { splashRadius: 3.4, splashFalloff: 0.25, turretTurnRate: 80,
       muzzleFx: FxKind.MuzzleFlashLarge, travelFx: FxKind.TracerCannon, impactFx: FxKind.ExplosionSmall }),
 
+  // The Kestrel's own pods. Guided, and mounted on the thing that flies — so
+  // gunships can fight each other, which is what stops "own the only aircraft"
+  // from being an unanswerable position.
   /* 26 */ wpn('kestrelPod', 'Kestrel Pod', 44, WarheadClass.Rocket, 22, 1.9,
     ProjectileKind.Rocket, 48,
     { burstCount: 2, burstDelay: 0.16, splashRadius: 1.8, splashFalloff: 0.30,
-      turretTurnRate: 300, muzzleParts: MUZZLE_PAIR,
+      turretTurnRate: 300, muzzleParts: MUZZLE_PAIR, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashMedium, travelFx: FxKind.RocketTrail, impactFx: FxKind.ExplosionSmall }),
 
   /* 27 */ wpn('monitorLance', 'Monitor Lance', 110, WarheadClass.Rocket, 40, 3.8,
     ProjectileKind.Rocket, 46,
     { burstCount: 2, burstDelay: 0.32, splashRadius: 4.2, splashFalloff: 0.25,
-      turretTurnRate: 55, muzzleParts: MUZZLE_PAIR,
+      turretTurnRate: 55, muzzleParts: MUZZLE_PAIR, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashMedium, travelFx: FxKind.RocketTrail, impactFx: FxKind.ExplosionMedium }),
 ];
 
@@ -237,9 +249,13 @@ export const FACTION_RECLAIM = Faction.Reclaim;
  * the game, so it browns out its OWN base instead.
  */
 export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
+  // An arc is not a rocket and there is not one guided round in this army, so
+  // the air rule lands here as: THE SOLDIER AND THE PYLON, nothing else. The
+  // Reclamation's answer to a gunship is the same as its answer to everything —
+  // stand under it with a stick and hope.
   /* 28 */ wpn('arcProd', 'Arc Prod', 26, WarheadClass.Tesla, 14, 1.05,
     ProjectileKind.TeslaBolt, 0,
-    { chainCount: 1, turretTurnRate: 320,
+    { chainCount: 1, turretTurnRate: 320, canTargetAir: true,
       muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 
   /* 29 */ wpn('slagCharge', 'Slag Charge', 74, WarheadClass.HighExplosive, 12, 2.7,
@@ -247,9 +263,13 @@ export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
     { splashRadius: 2.6, splashFalloff: 0.30, turretTurnRate: 240,
       muzzleFx: FxKind.MuzzleFlashMedium, travelFx: FxKind.TracerCannon, impactFx: FxKind.ExplosionSmall }),
 
+  // The Spitter is the army's skirmisher and `FALLBACK_CATALOG` already scores
+  // it 1.1 against ThreatClass.Air — which was a claim about nothing until
+  // something could fly. It is the Reclamation's mobile answer, opposite the
+  // Pact's arcRepeater Skiff.
   /* 30 */ wpn('spitCoil', 'Spit Coil', 30, WarheadClass.Tesla, 16, 0.95,
     ProjectileKind.TeslaBolt, 0,
-    { chainCount: 1, turretTurnRate: 260,
+    { chainCount: 1, turretTurnRate: 260, canTargetAir: true,
       muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 
   /* 31 */ wpn('grinderArc', 'Grinder Arc', 70, WarheadClass.Tesla, 18, 1.9,
@@ -263,9 +283,11 @@ export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
       requiresStop: true, canTargetInfantry: true,
       muzzleFx: FxKind.MuzzleFlashLarge, travelFx: FxKind.RocketTrail, impactFx: FxKind.ExplosionLarge }),
 
+  // Mounted on the Swarmhornet, so it elevates for the same reason the Kestrel
+  // pods do: aircraft have to be able to answer aircraft.
   /* 33 */ wpn('hornetArc', 'Hornet Arc', 44, WarheadClass.Tesla, 17, 1.5,
     ProjectileKind.TeslaBolt, 0,
-    { chainCount: 2, turretTurnRate: 300,
+    { chainCount: 2, turretTurnRate: 300, canTargetAir: true,
       muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 
   /* 34 */ wpn('scowGun', 'Scow Gun', 68, WarheadClass.HighExplosive, 32, 2.3,
@@ -284,9 +306,10 @@ export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
     { chainCount: 1, turretTurnRate: 300,
       muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 
+  // The Reclamation's `BuildRole.AntiAir` structure (`rclPylon`) carries this.
   /* 37 */ wpn('pylonArc', 'Pylon Arc', 94, WarheadClass.Tesla, 28, 2.2,
     ProjectileKind.TeslaBolt, 0,
-    { chainCount: 3, turretTurnRate: 360,
+    { chainCount: 3, turretTurnRate: 360, canTargetAir: true,
       muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 ];
 
@@ -745,13 +768,14 @@ export const UNITS: readonly UnitDef[] = [
    *
    * THE TWO RULES THAT MAKE THE ARMY, and every number below is one of them:
    *
-   * 1. NOTHING THE PACT FIELDS TOUCHES THE GROUND. Every Meridian vehicle,
-   *    ship and flyer is `Locomotor.Hover`, which `sim/Flowfield.ts` promotes
-   *    to MoveClass.Naval the first time it queries a water cell — so the whole
+   * 1. NOTHING THE PACT FIELDS TOUCHES THE GROUND. Every Meridian vehicle and
+   *    ship is `Locomotor.Hover`, which `sim/Flowfield.ts` promotes to
+   *    MoveClass.Naval the first time it queries a water cell — so the whole
    *    army is amphibious, ignores slope cost, and can open a second front
-   *    across any lake on the map. The price is paid twice: `crushLevel: 0` on
-   *    everything (a skirt cannot crush a conscript, so the Pact never wins a
-   *    ram) and one armour class lower than the equivalent tracked hull.
+   *    across any lake on the map. The Kestrel is the one hull that goes
+   *    further and is `Locomotor.Air`. The price is paid twice: `crushLevel: 0`
+   *    on everything (a skirt cannot crush a conscript, so the Pact never wins
+   *    a ram) and one armour class lower than the equivalent tracked hull.
    *
    * 2. SHIELDS STOP SHELLS, NOT BULLETS. The main line is ArmorClass.Light
    *    with a deep HP pool instead of ArmorClass.Medium/Heavy with a shallow
@@ -861,18 +885,27 @@ export const UNITS: readonly UnitDef[] = [
   }),
 
   /* -- Meridian air --------------------------------------------------------
-   * `Locomotor` has no Air member and nothing in the sim flies yet, so the
-   * Kestrel is authored the way the naval hulls are: a Hover locomotor with a
-   * flyer's speed, sight and paper armour. When an Air locomotor lands this is
-   * a one-line change and the stats already read as a gunship.               */
+   * `Locomotor.Air` exists now, and this is the one-line change the previous
+   * note promised. The stats never moved — they already read as a gunship —
+   * but the locomotor is what makes `sim/Flowfield.ts` hand it `MoveClass.Air`
+   * (off the grid entirely), what makes `sim/Movement.ts` fly it at
+   * `AIR_CRUISE_ALTITUDE` and bank it into its turns, what puts it above
+   * `AI_BUILD.airAltitudeMetres` so the AI's anti-air doctrine finally fires,
+   * and what `sim/Combat.isAirborne` reads to decide who may shoot at it.
+   *
+   * ARMOUR STAYS `Light`. There is no seventh ArmorClass and there must not be
+   * — `ARMOR_CLASS_COUNT` is 6 and the damage matrix is 7 warheads x 6 armors.
+   * The air/ground distinction is a TARGETING gate (`canTargetAir`), not a
+   * damage row; a fourth faction indexing past a 3x3 table is what turned the
+   * whole screen black once already.                                         */
   unit({
-    key: 'mrdKestrel', name: 'Kestrel Gunship', blurb: 'Fast rocket pods. Nothing to shoot back with.',
+    key: 'mrdKestrel', name: 'Kestrel Gunship', blurb: 'Fast rocket pods. Tank guns cannot elevate.',
     faction: FACTION_MERIDIAN, kind: EntityKind.Vehicle,
     cost: 1100, buildTime: 15, tab: BuildTab.Vehicles,
     prereqs: ['mrdForgeyard', 'mrdOculus'], sortOrder: 60,
     model: 'meridian_kestrel',
     maxHp: 210, armor: ArmorClass.Light, maxSpeed: 12.0, turnRate: 3.2,
-    locomotor: Locomotor.Hover, radius: hullRadius(U.ifv), sight: 36,
+    locomotor: Locomotor.Air, radius: hullRadius(U.ifv), sight: 36,
     weapons: [w('kestrelPod')], hasTurret: false, crushableBy: 0,
     flags: MRD_GUNNER,
   }),
@@ -1025,18 +1058,17 @@ export const UNITS: readonly UnitDef[] = [
   }),
 
   /* -- Reclamation air -----------------------------------------------------
-   * Same treatment the Pact's Kestrel gets and for the same reason: `Locomotor`
-   * has no Air member yet, so a flyer is authored as a Hover hull with a
-   * flyer's speed, sight and paper armour. When an Air locomotor lands this is
-   * a one-line change.                                                       */
+   * Same treatment the Pact's Kestrel gets and for the same reason — see the
+   * note there. `Locomotor.Air`, `ArmorClass.Light`, everything else as
+   * authored.                                                                */
   unit({
-    key: 'rclHornet', name: 'Swarmhornet', blurb: 'Chained arc from a lifting body. Nothing to shoot back with.',
+    key: 'rclHornet', name: 'Swarmhornet', blurb: 'Chained arc from a lifting body. Flies over the line.',
     faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
     cost: 900, buildTime: 12, tab: BuildTab.Vehicles,
     prereqs: ['rclBreakerYard', 'rclSpotter'], sortOrder: 60,
     model: 'reclaim_hornet',
     maxHp: 180, armor: ArmorClass.Light, maxSpeed: 11.0, turnRate: 3.4,
-    locomotor: Locomotor.Hover, radius: hullRadius(U.ifv), sight: 34,
+    locomotor: Locomotor.Air, radius: hullRadius(U.ifv), sight: 34,
     weapons: [w('hornetArc')], hasTurret: false, crushableBy: 0,
     flags: RCL_GUNNER,
   }),

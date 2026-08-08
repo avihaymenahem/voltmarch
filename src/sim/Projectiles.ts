@@ -46,7 +46,7 @@ import {
 import type { EntityId, PlayerId, ProjectileId, SimContext } from '../core/types';
 import type { World } from '../core/world';
 import type { Channels } from '../core/events';
-import { segCircleHit, DEG2RAD } from '../core/math';
+import { closestPointOnSegment, segCircleHit, DEG2RAD } from '../core/math';
 import { estimatedHeight, hitRadius } from './Damage';
 
 /** Per-projectile bitfield. */
@@ -357,10 +357,33 @@ export class ProjectileSystem {
       if (t < 0 || t >= bestT) continue;
 
       // Vertical gate: a shell arcing over a pillbox must NOT clip it.
-      const hy = this.py[i] + (this.y[i] - this.py[i]) * t;
+      //
+      // Sampled as a SPAN, not as a point, and that distinction is the whole
+      // difference between anti-air working and anti-air being decoration.
+      // `t` is where the segment ENTERS the hull's XZ disc, and for a steeply
+      // climbing shot that point is systematically BELOW the hull: a flak
+      // burst at a gunship 22 m up from 16 m away crosses the disc edge four
+      // metres under it and only reaches the target's altitude at the centre,
+      // where it was aimed. Testing the entry alone therefore rejected every
+      // close-range anti-air shot in the game and made an aircraft safest
+      // directly over the battery — precisely backwards, and invisible,
+      // because the tracers all looked right.
+      //
+      // The span runs from the entry to the point of CLOSEST APPROACH, which
+      // is where the muzzle was pointed, and a hit needs only an overlap. It
+      // is a strict widening of the old test (the old sample is inside the
+      // span), so nothing that used to hit can stop hitting; and it does not
+      // weaken the case it exists for, because a shell that clears a pillbox
+      // is above it at closest approach too.
+      const dyStep = this.y[i] - this.py[i];
+      const tc = closestPointOnSegment(st.posX[j], st.posZ[j], ax, az, bx, bz, SWEEP_NEAR);
+      const hyA = this.py[i] + dyStep * t;
+      const hyB = this.py[i] + dyStep * (tc > t ? tc : t);
+      const hyLo = hyA < hyB ? hyA : hyB;
+      const hyHi = hyA < hyB ? hyB : hyA;
       const base = st.posY[j];
       const top = base + estimatedHeight(st.footprintW[j], st.radius[j], st.kind[j] as EntityKind);
-      if (hy < base - 1.0 || hy > top + 0.6) continue;
+      if (hyHi < base - 1.0 || hyLo > top + 0.6) continue;
 
       bestT = t; best = j;
     }
@@ -488,6 +511,14 @@ export class ProjectileSystem {
     this.hits = 0;
   }
 }
+
+/**
+ * Scratch for the sweep's closest-approach probe. Module level and reused so
+ * the hot collision loop stays allocation-free; `closestPointOnSegment` is
+ * synchronous and the value is consumed on the next line, so there is nothing
+ * to hold across a call.
+ */
+const SWEEP_NEAR = new Float32Array(2);
 
 /** Default homing authority in radians/second. */
 export const ROCKET_TURN_RATE = COMBAT_PROJECTILES.rocketTurnRateDeg * DEG2RAD;

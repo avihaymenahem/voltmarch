@@ -71,7 +71,7 @@ import type { World } from '../core/world';
 import type { Channels } from '../core/events';
 import { sliceForEntity } from '../core/loop';
 import { armorMultiplier, hitRadius } from './Damage';
-import { stanceAllowsAcquire, stateAllowsCombat, weaponCanHurt } from './Combat';
+import { isAirborne, stanceAllowsAcquire, stateAllowsCombat, weaponCanHurt } from './Combat';
 import type { WeaponSystem } from './Combat';
 
 /* ==========================================================================
@@ -399,7 +399,7 @@ export class TargetingSystem {
 
     const me = st.owner[i] as PlayerId;
     if (world.areAllied(me, st.owner[t] as PlayerId)) return false;
-    if (!weaponCanHurt(w, st.armorClass[t] as ArmorClass)) return false;
+    if (!weaponCanHurt(w, st.armorClass[t] as ArmorClass, isAirborne(st, t))) return false;
     if (!world.vision.canSee(me, st.handleOf(t))) return false;
 
     const dx = st.posX[t] - st.posX[i], dz = st.posZ[t] - st.posZ[i];

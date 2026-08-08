@@ -286,6 +286,20 @@ export const enum Locomotor {
   Hover = 3,
   /** Buildings, props. Never pathfinds. */
   Static = 4,
+  /**
+   * Aircraft. Ignores the nav grid entirely and holds `AIR_CRUISE_ALTITUDE`
+   * metres over the heightfield.
+   *
+   * Added late, and appended rather than inserted: `SaveGame` persists this
+   * column as a raw U8 (column 28) and `Terrain.passGrid` packs one bit per
+   * locomotor, so renumbering an existing member would silently reinterpret
+   * every saved unit and every cached passability bit. Nothing sets bit 5 of
+   * `passGrid`, which is correct — `ITerrain.isPassable(_, _, Air)` is false
+   * everywhere and no air code path asks it. `MoveClass.Air` is the vocabulary
+   * that answers passability for flyers, and `moveClassForLocomotor` is the
+   * one place the two meet.
+   */
+  Air = 5,
 }
 
 /**
@@ -608,6 +622,22 @@ export interface WeaponDef {
   readonly needsPower: boolean;
   /** Can this weapon shoot at all when the target is Infantry armour? */
   readonly canTargetInfantry: boolean;
+  /**
+   * Can this weapon engage an AIRBORNE target (`Locomotor.Air`)?
+   *
+   * The sibling of `canTargetInfantry` and enforced beside it, but the DEFAULT
+   * is the opposite: `false`. Aircraft are a separate layer, and a layer every
+   * gun in the game already answers is not one — it is a reskinned ground unit
+   * that happens to be drawn 22 m up. `sim/AI.ts` has carried a complete
+   * anti-air doctrine since before anything could fly, and it only means
+   * something if a tank column genuinely cannot look up.
+   *
+   * The tags themselves are authored in the two weapon tables (`sim/Combat.ts`
+   * and `data/Defs.ts`) under one rule: a soldier's own weapon and a dedicated
+   * AA mount can elevate; a tank cannon, an artillery piece, a flamethrower, a
+   * torpedo tube, a naval deck gun and an emplaced MG cannot.
+   */
+  readonly canTargetAir: boolean;
   readonly muzzleFx: FxKind;
   readonly travelFx: FxKind;
   readonly impactFx: FxKind;
