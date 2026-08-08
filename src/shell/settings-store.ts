@@ -62,7 +62,16 @@ export interface GraphicsSettings {
   postFx: boolean;
   /** Subpixel morphological AA. */
   smaa: boolean;
-  /** Film grain, vignette, chromatic aberration — the "cinematic" layer. */
+  /**
+   * Vignette strength — strong (0.28) when on, subtle (0.12) when off.
+   *
+   * This said "Film grain, vignette, chromatic aberration — the 'cinematic'
+   * layer", and it drove all three. Grain and chromatic aberration are on
+   * CLAUDE.md's explicit ban list and are now pinned to 0 in both arms of
+   * `Settings.ts#applySettings`; only the vignette still moves. The KEY keeps
+   * its old name so a stored profile still loads — renaming it would need a
+   * schema migration for no player-visible gain.
+   */
   filmGrain: boolean;
   /**
    * Frosted-glass HUD/menu panels. `auto` disables it on macOS/iOS, where

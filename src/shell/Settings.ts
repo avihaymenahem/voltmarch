@@ -146,8 +146,15 @@ export function applySettings(
         ao: { enabled: g.ao },
         bloom: { enabled: g.bloom },
         smaa: { enabled: g.smaa },
+        // Grain and chromatic aberration are 0 in BOTH arms, permanently. They
+        // are on CLAUDE.md's explicit ban list, and these two literals are what
+        // kept them alive: `core/config.ts` sets both to 0, and this block
+        // overrode it on every settings apply — including the `all` apply at
+        // boot — because `filmGrain` defaults to true. See the note at
+        // `render/renderer.ts#grade`. The toggle now varies vignette only,
+        // which is not banned and is the half of it worth keeping.
         grade: g.filmGrain
-          ? { grain: 0.018, vignette: 0.28, chromaticAberration: 0.0012 }
+          ? { grain: 0, vignette: 0.28, chromaticAberration: 0 }
           : { grain: 0, vignette: 0.12, chromaticAberration: 0 },
       },
     });
@@ -498,10 +505,16 @@ export class SettingsScreen implements Screen {
     ));
     post.appendChild(row('Bloom', toggle(g.bloom, (v) => set({ bloom: v }))));
     post.appendChild(row('Antialiasing (SMAA)', toggle(g.smaa, (v) => set({ smaa: v }))));
+    // Label and blurb both had to change with the grade above: this row said
+    // "Film Grain & Vignette" / "Grain, vignette and chromatic aberration", and
+    // two thirds of that is now deliberately never applied. A control that
+    // names an effect it does not produce is the defect docs/SPEC_DRIFT_AUDIT.md
+    // exists to catalogue. The stored key stays `filmGrain` — renaming it would
+    // need a settings-schema migration for no player-visible gain.
     post.appendChild(row(
-      'Film Grain & Vignette',
+      'Vignette',
       toggle(g.filmGrain, (v) => set({ filmGrain: v })),
-      'Grain, vignette and chromatic aberration.',
+      'Darkens the frame edges. Strong or subtle.',
     ));
     post.appendChild(row(
       'Panel Blur',
