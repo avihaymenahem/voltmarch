@@ -1058,6 +1058,51 @@
 
 .vm-shell .vm-end-panel {
   width: min(760px, 94vw);
+
+  /* This rule was ONLY the width above, and that was the bug. `.vm-end` sits in
+     a `.vm-screen`, which is `position: absolute; inset: 0` and does not
+     scroll — so a panel with no height limit does not overflow into a
+     scrollbar, it overflows off the bottom of the world. The reward reveal is
+     one card per reward earned and is unbounded, so a match that closed
+     several mission chains pushed the scoreboard under the bottom edge and
+     `.vm-page-foot` — Rematch, New Skirmish, Main Menu — clean off screen,
+     unreachable. Reported as "endscreen too huge, cant see it all".
+
+     Cap the panel and make it a column, so exactly one band inside it can
+     scroll. 92vh matches `.vm-page-panel`, which solved this same problem for
+     every other full-page screen. */
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Pinned: all three are fixed-size and must never be the thing that scrolls
+   away. The action row especially — it is the only exit from this screen. */
+.vm-shell .vm-end-panel > .vm-end-head,
+.vm-shell .vm-end-panel > .vm-stats,
+.vm-shell .vm-end-panel > .vm-page-foot {
+  flex: 0 0 auto;
+}
+
+/* The one band that scrolls: reward reveal + progress blocks. Deliberately the
+   same idiom and the same scrollbar treatment as `.vm-page-body`, rather than a
+   second bespoke scroller that would drift from it. */
+.vm-shell .vm-end-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.vm-shell .vm-end-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.vm-shell .vm-end-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .vm-shell .vm-end-head {

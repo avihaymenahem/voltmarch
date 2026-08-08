@@ -224,12 +224,32 @@ export class EndScreen implements Screen {
       : `${r.factionName} has no units and no structures remaining on ${r.mapName}.`));
     p.appendChild(head);
 
-    /* -- the reward reveal, above everything it was earned by -------------- */
+    /* -- the reward reveal, above everything it was earned by --------------
+     *
+     * THIS IS THE ONLY PART THAT CAN GROW WITHOUT BOUND, so it is the only
+     * part that scrolls. The reveal list is one card per reward earned, and a
+     * long match that closes several mission chains at once produces twenty or
+     * more. Reported as "endscreen too huge, cant see it all".
+     *
+     * It was worse than "too tall". Every child here was a direct child of the
+     * panel, the panel had a width and NO height limit, and `.vm-screen` is a
+     * fixed `inset: 0` flex box that does not scroll. So the overflow had
+     * nowhere to go: the scoreboard slid under the bottom edge and `vm-page-foot`
+     * — Rematch, New Skirmish, MAIN MENU — went off screen entirely, with no
+     * scrollbar to reach it. The end screen could become a room with no door.
+     *
+     * So head, scoreboard and actions are pinned, and only this middle band
+     * scrolls. `.vm-page-panel` / `.vm-page-body` already establish exactly
+     * this idiom in shell.css; this is that pattern, not a new one.
+     */
     const reveal = this.buildReveal();
-    if (reveal !== null) p.appendChild(reveal);
-
     const progress = this.buildProgress();
-    if (progress !== null) p.appendChild(progress);
+    if (reveal !== null || progress !== null) {
+      const body = el('div', 'vm-end-body');
+      if (reveal !== null) body.appendChild(reveal);
+      if (progress !== null) body.appendChild(progress);
+      p.appendChild(body);
+    }
 
     /* -- scoreboard -------------------------------------------------------- */
     const grid = el('div', 'vm-stats');
