@@ -112,6 +112,28 @@ export default defineConfig(({ command }) => ({
   test: {
     environment: 'node',
     include: ['tests/**/*.spec.ts'],
+    /*
+     * NEVER COLLECT OUT OF A GIT WORKTREE.
+     *
+     * `.claude/worktrees/` holds full second checkouts of this repo — the
+     * isolation used so parallel agents can typecheck without seeing each
+     * other's half-finished edits. Each carries a complete `tests/` directory,
+     * and with eight of them attached there were 725 phantom spec files sitting
+     * inside the project root.
+     *
+     * That is not theoretical. Two runs of an identical tree reported
+     * "100 passed (100) / 2404" and then "95 passed (95) / 2397", and the
+     * second was the true figure — the arithmetic reconciles exactly against
+     * the merge. A test count that quietly inflates is worse than a failing
+     * one: it is the number that goes into CLAUDE.md and into release notes as
+     * evidence of coverage.
+     *
+     * Vitest's default excludes do not cover this, because the extra trees are
+     * not `node_modules` and not `dist`. Excluding them explicitly is cheap and
+     * it is a MECHANISM — remembering to prune worktrees before running the
+     * suite is not one.
+     */
+    exclude: ['**/node_modules/**', '**/dist/**', '.claude/**'],
     // Determinism soak needs headroom.
     testTimeout: 120_000,
   },

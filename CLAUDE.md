@@ -39,7 +39,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npx tsc --noEmit     # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 2352 across 93 files
+npm test             # vitest, currently 2397 across 95 files
 npm run build        # must exit 0
 ```
 
@@ -85,7 +85,13 @@ the build.
 
 - **Determinism.** Inside `simTick`, `Math.random()`, `Date.now()` and `performance.now()` are
   banned — there is a test asserting this. Use `s.rng` and the tick counter.
-- **Performance.** 200+ units at 60fps, under 130 draw calls, zero allocation in the frame loop.
+- **Performance.** 200+ units at 60fps, zero allocation in the frame loop, and a draw-call budget of
+  130 — which is a TARGET, not a description. Measured on the twelve capture fixtures via
+  `renderer.info.render.calls`, the real figure is **171–263** (that count includes the three CSM
+  shadow cascades). This line read "under 130 draw calls" as a statement of fact while the counter
+  disagreed by up to 2×; `MAX_DRAW_CALLS` in `config.ts` is the aspiration and `AdaptiveResolution`'s
+  own header already records a profile at 203. Do not quote 130 as achieved, and do not spend draws
+  freely on the grounds that the budget is fictional — closing that gap is real outstanding work.
   InstancedMesh for anything repeated, pools for anything spawned, caller-supplied output arrays in
   query paths.
 - **The AI issues the same commands the player does**, through `channels.command`. It must never

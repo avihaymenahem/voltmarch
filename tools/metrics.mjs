@@ -49,7 +49,7 @@ const TARGETS = {
   p99Luminance:      { range: [0.90, 1.00], w: 3, check: 6,  label: 'p99 luminance, highlights reach (sRGB)' },
   greenHueLeak:      { range: [0.00, 0.02], w: 3, check: 9,  label: 'Fraction at hue 100-120 (amateur emerald green)' },
   farNearSatDelta:   { range: [-0.05, 1.0], w: 3, check: 12, label: 'Far minus near saturation (no fog/haze)' },
-  edgeCoverage:      { range: [0.20, 0.46], w: 2, check: 34, label: 'Sobel |grad|>25 coverage (detail density)', baselineKey: true },
+  edgeCoverage:      { range: [0.20, 0.46], w: 2, check: 34, label: 'Sobel |grad|>25 coverage (detail density)', baselineKey: true, resolutionSensitive: true },
   satLumMonotonic:   { range: [1, 1],       w: 2, check: 20, label: 'Saturation falls as luminance rises (ACES shoulder)' },
   vignetteRatio:     { range: [0.00, 2.00], w: 0, check: 37, label: 'Corner/centre luminance (informational only)' },
   chromaticAber:     { range: [0.00, 1.00], w: 0, check: 36, label: 'R/B edge misregistration (informational only)' },
@@ -245,7 +245,23 @@ if (mode === 'baseline') {
       mean: vs.reduce((a, b) => a + b, 0) / vs.length,
     };
   }
-  writeFileSync(BASELINE_PATH, JSON.stringify({ sampleCount: rows.length, files: rows.map((r) => r.file), metrics: agg }, null, 2));
+  /*
+   * RECORD THE FRAME THE MEASUREMENT WAS TAKEN IN.
+   *
+   * The shipped baseline does NOT carry this, and that omission is a live
+   * defect: `edgeCoverage` is strongly resolution-sensitive (see the block
+   * above `resolveRange`), the references are 4:3 JPEGs at roughly a third of
+   * our capture's pixel count, and the rebased band is applied to 2560x1440
+   * PNGs regardless. A stored distribution with no record of its own frame
+   * cannot be checked for that mistake by anyone who comes later.
+   */
+  const geom = rows.map((r) => [r.width, r.height]);
+  writeFileSync(BASELINE_PATH, JSON.stringify({
+    sampleCount: rows.length,
+    files: rows.map((r) => r.file),
+    imageSizes: geom,
+    metrics: agg,
+  }, null, 2));
   console.log(`RA3 baseline from ${rows.length} reference frames → docs/grade-baseline.json\n`);
   for (const k of keys) {
     console.log(`  ${k.padEnd(18)} median ${agg[k].median.toFixed(4)}   range ${agg[k].min.toFixed(4)} … ${agg[k].max.toFixed(4)}`);
@@ -255,6 +271,53 @@ if (mode === 'baseline') {
 
 /* Score mode: grade each render against the bible, and against RA3 if measured. */
 const baseline = existsSync(BASELINE_PATH) ? JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) : null;
+
+/*
+ * THE INSTRUMENT REPORTS ITS OWN UNCERTAINTY.
+ *
+ * `docs/SPEC_DRIFT_AUDIT.md` §8.3 prescribes exactly this, and #34 is why.
+ *
+ * `edgeCoverage` is a BOUNDARY DENSITY: a step edge lights ~2 pixel columns, so
+ * coverage scales with boundary-length-per-pixel, which means it moves when the
+ * capture size moves even if not one rendered pixel changes. Measured on one
+ * unmodified frame, re-encoded three ways:
+ *
+ *     2560x1440 PNG (our capture)     0.1891
+ *     1440x1080 JPEG q85              0.2396
+ *     1024x768  JPEG q75              0.2924      +55%, zero art changed
+ *
+ * The shipped `grade-baseline.json` records no geometry at all, and the
+ * references are 4:3 JPEGs at roughly a third of our pixel count. So the
+ * rebased band is derived in one frame and applied in another — the same class
+ * of error as measuring linear luminance against an sRGB target, which this
+ * file's own header already documents. The bible's §0.1 rule is "two
+ * measurement frames — never mix them".
+ *
+ * The band is deliberately NOT adjusted here. Doing that on an inference would
+ * be the very defect this warning exists to expose, and settling it needs the
+ * reference corpus (`refs/`, gitignored) to re-derive. Until then the check
+ * stays exactly as strict as it was and simply stops pretending its failure is
+ * a pure verdict on the art.
+ */
+if (baseline && !baseline.imageSizes) {
+  const affected = Object.entries(TARGETS)
+    .filter(([, t]) => t.baselineKey && t.resolutionSensitive)
+    .map(([k]) => k);
+  if (affected.length > 0) {
+    console.warn(
+      `
+! grade-baseline.json records no capture geometry, and ${affected.join(', ')} `
+      + `${affected.length === 1 ? 'is' : 'are'} resolution-sensitive.
+`
+      + `  Its band is rebased from references of unknown size onto captures of a known one,
+`
+      + `  so a failure here is NOT purely a statement about the art. Re-derive with
+`
+      + `  \`node tools/metrics.mjs --baseline refs/*\` to record the frame and settle it.
+`,
+    );
+  }
+}
 
 let totalWeight = 0, lostWeight = 0;
 const failures = [];
