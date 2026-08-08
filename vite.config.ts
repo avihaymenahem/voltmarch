@@ -41,13 +41,29 @@ export default defineConfig(({ command }) => ({
     strictPort: true,
   },
 
-  // There are no Web Workers in this project. This block used to claim texture
-  // generation ran in one, citing `src/render/textures/TextureWorker.ts` — a path
-  // that has never existed; `src/render/` has no `textures/` directory and there
-  // is not a single `new Worker(` in `src/`. Texture generation is synchronous in
-  // `src/core/assets.ts`. The setting is kept and the comment corrected rather than
-  // both deleted: `format: 'es'` is the right default the day a worker does land,
-  // and a reader who trusted the old comment would go looking for a file to edit.
+  // THE WORKER THIS SETTING WAS WAITING FOR HAS LANDED.
+  //
+  // For a long time this block claimed texture generation ran in a worker and
+  // cited `src/render/textures/TextureWorker.ts`, a path that has never existed.
+  // The comment was corrected to say so and `format: 'es'` was kept, on the
+  // grounds that it would be the right default the day a worker did land.
+  //
+  // That day is here. `src/core/workers/textureWorker.ts` is the entry, spawned
+  // from `src/core/workers/spawn.ts` — the only `new Worker(` in `src/` — and
+  // `format: 'es'` is now load-bearing rather than aspirational: the worker
+  // imports `src/core/surfaces.ts`, and a classic-format worker would inline
+  // that whole graph instead of emitting it as a module.
+  //
+  // The generation code was split out of `src/core/assets.ts` into
+  // `src/core/surfaces.ts` precisely so this chunk stays small: `surfaces.ts`
+  // imports `./math` and nothing else, so the worker bundle carries no Three.js.
+  // `tests/texture-workers.spec.ts` walks the import graph and fails if any bare
+  // dependency ever appears in it.
+  //
+  // Generation still runs synchronously on the main thread whenever a worker is
+  // unavailable, which includes every test in this repo (`test.environment` is
+  // 'node'). That path is the fallback for every worker failure, so it is not
+  // allowed to rot.
   worker: {
     format: 'es',
   },
