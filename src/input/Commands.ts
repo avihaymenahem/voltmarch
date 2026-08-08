@@ -234,6 +234,15 @@ export interface SelectionCapabilities {
   canAttack: boolean;
   canCapture: boolean;
   canRepair: boolean;
+  /**
+   * Own mobile units in the selection that FLY (`Locomotor.Air`).
+   *
+   * A count rather than a flag because the question the cursor asks is not "is
+   * anything here an aircraft" but "is EVERYTHING here an aircraft" — a gunship
+   * escorting four tanks must still be told the cliff is a bad destination,
+   * because four fifths of that selection cannot follow.
+   */
+  airCount: number;
   hasHarvester: boolean;
   /** Infantry that could board a transport. */
   hasPassengers: boolean;
@@ -265,6 +274,7 @@ export function readCapabilities(
   out.canAttack = false;
   out.canCapture = false;
   out.canRepair = false;
+  out.airCount = 0;
   out.hasHarvester = false;
   out.hasPassengers = false;
   out.factoryCount = 0;
@@ -280,7 +290,10 @@ export function readCapabilities(
       if ((f & EntityFlag.IsFactory) !== 0) out.factoryCount++;
       continue;
     }
-    if ((f & EntityFlag.CanMove) !== 0) out.mobileCount++;
+    if ((f & EntityFlag.CanMove) !== 0) {
+      out.mobileCount++;
+      if (s.locomotor[i] === Locomotor.Air) out.airCount++;
+    }
     if ((f & EntityFlag.CanAttack) !== 0) out.canAttack = true;
     if (roles.isHarvester(world, i)) out.hasHarvester = true;
     if (roles.canCapture(world, i)) out.canCapture = true;
@@ -295,7 +308,7 @@ export function readCapabilities(
 export function createCapabilities(): SelectionCapabilities {
   return {
     ownCount: 0, mobileCount: 0, buildingCount: 0,
-    canAttack: false, canCapture: false, canRepair: false,
+    canAttack: false, canCapture: false, canRepair: false, airCount: 0,
     hasHarvester: false, hasPassengers: false, factoryCount: 0, deployCount: 0,
   };
 }
@@ -551,12 +564,35 @@ export function resolveContextOrder(
   // The cursor still says "no" over a cliff or open water even though the order
   // is issued — nav walks the group as close as it can get, which is what a
   // player expects, but the pointer should not have promised a clean arrival.
-  out.cursor = passableForSelection(world, wx, wz) ? CursorKind.Move : CursorKind.NoMove;
+  out.cursor = passableForSelection(world, caps, wx, wz) ? CursorKind.Move : CursorKind.NoMove;
   return out;
 }
 
-/** True when at least one common locomotor can stand on this cell. */
-function passableForSelection(world: World, x: number, z: number): boolean {
+/**
+ * True when the SELECTION could arrive at this cell.
+ *
+ * This function was named for the selection while ignoring it entirely: it
+ * asked whether Track, Foot or Hover could stand on the cell and nothing else.
+ * That was a complete answer for as long as those were the only ways to travel.
+ * `Locomotor.Air` ended that — aircraft ignore the grid, so a flight of
+ * gunships was being shown the "no move" cursor over every cliff and every
+ * stretch of open water on the map, which is precisely where you send them.
+ *
+ * The order always issued; only the pointer lied. That makes it cosmetic in the
+ * sense that nothing was unreachable, and NOT cosmetic in the sense that the
+ * cursor is how a player learns what a unit can do.
+ *
+ * The test is "every mobile unit here flies", not "one does". A gunship
+ * escorting four tanks still deserves the warning, because the escort is what
+ * will fail to arrive.
+ */
+function passableForSelection(
+  world: World,
+  caps: SelectionCapabilities,
+  x: number,
+  z: number,
+): boolean {
+  if (caps.mobileCount > 0 && caps.airCount === caps.mobileCount) return true;
   const cx = worldToCell(x);
   const cz = worldToCell(z);
   return (

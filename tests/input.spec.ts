@@ -20,8 +20,9 @@ import {
   CommandKind, EntityFlag, EntityKind, Faction, Locomotor, NONE, OrderKind,
   Stance, UnitState,
 } from '../src/core/types';
-import type { Command, EntityId, PlayerId } from '../src/core/types';
+import type { Command, EntityId, ITerrain, PlayerId } from '../src/core/types';
 
+import { CursorKind } from '../src/input/Input';
 import {
   Selection, SelectMode, isEnemyOf, pickEntity, type ScreenProjector,
 } from '../src/input/Selection';
@@ -681,5 +682,114 @@ describe('planScatter', () => {
     }
     // Three different escape directions, not one shared angle.
     expect(first[0]).not.toBeCloseTo(first[2], 3);
+  });
+});
+
+/* ==========================================================================
+ * The move cursor, against terrain the selection cannot cross
+ *
+ * `passableForSelection` was named for the selection and ignored it: it asked
+ * whether Track, Foot or Hover could stand on the cell, full stop. That was a
+ * complete answer for as long as those were the only ways to travel.
+ * `Locomotor.Air` ended it — aircraft ignore the grid, so a flight of gunships
+ * got the "no move" cursor over every cliff and every stretch of open water,
+ * which is exactly where you send them.
+ *
+ * The order always issued, so nothing was unreachable. But the cursor is how a
+ * player learns what a unit can do, and this one was teaching the opposite.
+ * ========================================================================== */
+
+/** A terrain nothing on the ground can cross: a cliff face, or open water. */
+function refuseGround(world: World): void {
+  const base = world.terrain;
+  const stub: ITerrain = {
+    heightAt: (x, z) => base.heightAt(x, z),
+    normalAt: (x, z, out) => base.normalAt(x, z, out),
+    slopeAt: (x, z) => base.slopeAt(x, z),
+    isPassable: () => false,
+    isBuildable: (cx, cz) => base.isBuildable(cx, cz),
+    isOccupied: (cx, cz) => base.isOccupied(cx, cz),
+    markOccupied: (cx, cz, w, h, id) => base.markOccupied(cx, cz, w, h, id),
+    clearOccupied: (cx, cz, w, h) => base.clearOccupied(cx, cz, w, h),
+    occupancyVersion: () => base.occupancyVersion(),
+    isWater: (cx, cz) => base.isWater(cx, cz),
+    raycastGround: (ox, oy, oz, dx, dy, dz, out) =>
+      base.raycastGround(ox, oy, oz, dx, dy, dz, out),
+  };
+  world.terrain = stub;
+}
+
+/** Spawn an aircraft — `Locomotor.Air`, the class that ignores the grid. */
+function gunship(rig: Rig, owner: PlayerId, x: number, z: number): EntityId {
+  const s = rig.world.store;
+  const id = s.alloc(EntityKind.Vehicle, 9, owner, rig.world.player(owner).faction, x, 0, z);
+  const i = s.index(id);
+  s.flags[i] |= EntityFlag.CanMove | EntityFlag.CanAttack;
+  s.radius[i] = 1.6;
+  s.maxSpeed[i] = 12;
+  s.locomotor[i] = Locomotor.Air;
+  s.hp[i] = 210;
+  s.maxHp[i] = 210;
+  rig.world.spatial.rebuild();
+  return id;
+}
+
+describe('move cursor over impassable ground', () => {
+  it('still warns a ground selection off it', () => {
+    // The control. If this ever goes green-by-default the rest of this block
+    // proves nothing, because `refuseGround` would not be refusing anything.
+    const rig = makeRig();
+    refuseGround(rig.world);
+    rig.sel.select(tank(rig, rig.me, 100, 100), SelectMode.Replace);
+    expect(resolveAt(rig, NONE, 200, 200).cursor).toBe(CursorKind.NoMove);
+  });
+
+  it('does not warn a selection that is entirely aircraft', () => {
+    const rig = makeRig();
+    refuseGround(rig.world);
+    rig.sel.select(gunship(rig, rig.me, 100, 100), SelectMode.Replace);
+    const r = resolveAt(rig, NONE, 200, 200);
+    expect(r.cursor).toBe(CursorKind.Move);
+    // The order was always issued; it is the cursor that used to disagree.
+    expect(r.order).toBe(OrderKind.Move);
+    expect(r.valid).toBe(true);
+  });
+
+  it('warns again as soon as one grounded unit joins the flight', () => {
+    // The escort rule. A gunship leading four tanks is not an air selection —
+    // four fifths of it cannot follow, and that is the case worth warning about.
+    const rig = makeRig();
+    refuseGround(rig.world);
+    rig.sel.select(gunship(rig, rig.me, 100, 100), SelectMode.Replace);
+    rig.sel.select(tank(rig, rig.me, 102, 100), SelectMode.Add);
+    expect(resolveAt(rig, NONE, 200, 200).cursor).toBe(CursorKind.NoMove);
+  });
+
+  it('does not let a selection with nothing mobile in it read as a flight', () => {
+    // `mobileCount > 0` guards the shortcut, and this is the case it guards
+    // against: with nothing mobile selected, airCount === mobileCount === 0, and
+    // a bare equality check would read 0 === 0 as "everything here flies" and
+    // suppress the warning for a selection that cannot move at all.
+    //
+    // IsFactory is cleared deliberately. A factory turns a ground right-click
+    // into a rally-point placement (CursorKind.Rally) and returns long before
+    // the plain-ground branch, so it cannot reach the code under test.
+    const rig = makeRig();
+    refuseGround(rig.world);
+    const b = building(rig, rig.me, 100, 100);
+    const s = rig.world.store;
+    s.flags[s.index(b)] &= ~EntityFlag.IsFactory;
+    rig.sel.select(b, SelectMode.Replace);
+    expect(resolveAt(rig, NONE, 200, 200).cursor).toBe(CursorKind.NoMove);
+  });
+
+  it('reports airCount separately from mobileCount', () => {
+    const rig = makeRig();
+    rig.sel.select(gunship(rig, rig.me, 100, 100), SelectMode.Replace);
+    rig.sel.select(tank(rig, rig.me, 104, 100), SelectMode.Add);
+    const c = createCapabilities();
+    readCapabilities(rig.world, rig.world.selection.ids, rig.world.selection.count, c);
+    expect(c.mobileCount).toBe(2);
+    expect(c.airCount).toBe(1);
   });
 });
