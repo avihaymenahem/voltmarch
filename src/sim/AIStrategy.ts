@@ -335,8 +335,16 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     Faction.Soviets, [1.9, 0.1, 0.0, 0.0, 0], 1),
   fighter('rhino', BuildRole.Armor, EntityKind.Vehicle, 900, ['warFactory'],
     Faction.Soviets, [0.8, 1.5, 1.5, 1.2, 0], 5),
+  // The Air column WAS 1.2 here. It was never wrong in a way anything could
+  // notice — nothing in the game could get airborne, so the column was dead —
+  // but it is wrong now: the Apocalypse fields exactly one weapon, `twinCannon`,
+  // and a 125 mm gun does not elevate. An answer vector that promises air cover
+  // a unit cannot deliver sends the whole build layer chasing 1750-credit tanks
+  // the moment a gunship crosses the map. `tests/air-layer.spec.ts` asserts the
+  // general rule: anything scoring >= 1.0 against Air must carry a weapon whose
+  // `canTargetAir` is true.
   fighter('apocalypse', BuildRole.Siege, EntityKind.Vehicle, 1750, ['warFactory', 'battleLab'],
-    Faction.Soviets, [1.0, 1.6, 1.9, 1.5, 1.2], 2),
+    Faction.Soviets, [1.0, 1.6, 1.9, 1.5, 0], 2),
 
   /* -- THE MERIDIAN PACT --------------------------------------------------
    * The Pact's tech tree is the same three tiers with different names, so the
@@ -396,8 +404,12 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     FACTION_MERIDIAN, [0.7, 1.4, 1.3, 1.0, 0], 5),
   fighter('mrdZenith', BuildRole.Siege, EntityKind.Vehicle, 1500, ['mrdForgeyard', 'mrdReliquary'],
     FACTION_MERIDIAN, [1.3, 1.1, 1.4, 1.9, 0], 2),
+  // Air 0 -> 1.5. The Kestrel is an AIRCRAFT (`Locomotor.Air`) carrying guided
+  // pods that elevate, so it is the Pact's mobile answer to a gunship as well as
+  // its raider — and the only reason its Air column read 0 is that nothing
+  // could fly when the vector was written.
   fighter('mrdKestrel', BuildRole.Siege, EntityKind.Vehicle, 1100, ['mrdForgeyard', 'mrdOculus'],
-    FACTION_MERIDIAN, [1.0, 1.5, 1.2, 1.3, 0], 1),
+    FACTION_MERIDIAN, [1.0, 1.5, 1.2, 1.3, 1.5], 1),
 
   /* -- THE RECLAMATION -----------------------------------------------------
    * The tree is the same three tiers with different names and a much shallower
@@ -469,8 +481,10 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     FACTION_RECLAIM, [1.7, 1.3, 1.1, 0.5, 0], 5),
   fighter('rclSlaghurler', BuildRole.Siege, EntityKind.Vehicle, 1150, ['rclBreakerYard', 'rclCrucible'],
     FACTION_RECLAIM, [1.1, 1.0, 0.9, 1.9, 0], 2),
+  // Air 0 -> 1.4, for the same reason as the Kestrel: it flies, and its arc
+  // reaches up.
   fighter('rclHornet', BuildRole.Skirmisher, EntityKind.Vehicle, 900, ['rclBreakerYard', 'rclSpotter'],
-    FACTION_RECLAIM, [1.6, 1.4, 1.0, 0.4, 0], 1),
+    FACTION_RECLAIM, [1.6, 1.4, 1.0, 0.4, 1.4], 1),
 ];
 
 /**
@@ -1065,6 +1079,21 @@ export interface DifficultyProfile {
   /** Cap on static defence structures. */
   readonly maxDefense: number;
   /**
+   * Cap on ANTI-AIR structures specifically, counted separately from
+   * `maxDefense` because the anti-air branch is an interrupt that pre-empts
+   * almost everything else. Without its own ceiling an Easy brain answers its
+   * first sighted gunship with four towers before it answers anything.
+   */
+  readonly maxAntiAir: number;
+  /**
+   * Ticks between FIRST seeing an aircraft and being willing to answer it.
+   * `reactionTicks` is the base-attack latency and is not reused here: a raid
+   * arriving overhead and an aircraft crossing the map are different events
+   * with different tells, and folding them together made Easy answer air
+   * faster than it answers a tank sitting in its refinery.
+   */
+  readonly airReactionTicks: number;
+  /**
    * Harvesters this brain will field, regardless of refinery count. The size of
    * the economy IS the difficulty: everything downstream of income — units,
    * structures, defence — is paced by it, because `BuildQueue` advances only
@@ -1097,6 +1126,10 @@ export function difficultyProfile(index: number): DifficultyProfile {
     scoutDelayMul: s.scoutDelayMul,
     discipline: s.discipline,
     maxDefense: s.maxDefense,
+    maxAntiAir: s.maxAntiAir,
+    // Rounded, never floored to zero on a rung that asked for a delay: Brutal
+    // asks for 0 and gets 0, everyone else gets at least one tick.
+    airReactionTicks: s.airReactionSec <= 0 ? 0 : Math.max(1, Math.round(s.airReactionSec * SIM_HZ)),
     maxHarvesters: s.maxHarvesters,
     maxRefineries: s.maxRefineries,
     queueDepth: s.queueDepth,

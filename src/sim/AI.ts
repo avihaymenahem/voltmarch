@@ -261,6 +261,16 @@ export class AiBrain {
   private readonly threatObs = new Float32Array(AI_THREAT_CLASS_COUNT);
   /** Tick an airborne enemy was last observed. -1 = never. */
   private sawAirTick = -1;
+  /**
+   * Tick an airborne enemy was FIRST observed. -1 = never.
+   *
+   * Separate from `sawAirTick` because the reaction delay has to be measured
+   * from the sighting that started the clock, not from the most recent frame of
+   * a gunship that has been circling for a minute — otherwise a flyer that
+   * stays visible resets the timer forever and an Easy brain never reacts at
+   * all, which is the opposite of a difficulty knob.
+   */
+  private firstAirTick = -1;
 
   /** Best guess at where the enemy lives. */
   private enemyBaseX = -1;
@@ -821,7 +831,10 @@ export class AiBrain {
 
       const x = st.posX[i], z = st.posZ[i];
       const airborne = st.posY[i] - w.terrain.heightAt(x, z) > AI_BUILD.airAltitudeMetres;
-      if (airborne) this.sawAirTick = s.tick;
+      if (airborne) {
+        this.sawAirTick = s.tick;
+        if (this.firstAirTick < 0) this.firstAirTick = s.tick;
+      }
 
       const cls = classifyThreat(st.kind[i] as EntityKind, st.armorClass[i] as ArmorClass, airborne);
       // Live HP is the cheapest honest strength proxy, and it is a column the
@@ -1416,8 +1429,27 @@ export class AiBrain {
       }
     }
 
-    /* -- 2. anti-air is an interrupt once something has flown over -------- */
-    if (this.sawAirTick >= 0 && this.roleCount[BuildRole.AntiAir] < AI_BUILD.maxAntiAir) {
+    /* -- 2. anti-air is an interrupt once something has flown over --------
+     * Gated on the difficulty in both directions. `airReactionTicks` is how
+     * long this brain takes to believe what it saw; `maxAntiAir` is how much of
+     * an answer it is allowed to build. Both were flat before `Locomotor.Air`
+     * existed, which cost nothing at the time because the branch below had
+     * never once been reached — no entity in the game could get above
+     * `AI_BUILD.airAltitudeMetres`, so `sawAirTick` never left -1.
+     *
+     * `roleBuilding` counts here as well as `roleCount`. It has to: this is an
+     * interrupt that runs before the scripted opening and before every scored
+     * candidate, and counting only COMPLETED towers means an Easy brain capped
+     * at one queues its second, third and fourth while the first is still
+     * scaffolding. That is the shape of the bug the harvester caps fixed on the
+     * economy side.
+     *
+     * `AI_BUILD.maxAntiAir` is still honoured as the hard ceiling over the
+     * per-rung number, so the shared constant is a rule the game obeys and not
+     * a comment that only a test reads. */
+    const airCap = Math.min(this.diff.maxAntiAir, AI_BUILD.maxAntiAir);
+    if (this.firstAirTick >= 0 && s.tick - this.firstAirTick >= this.diff.airReactionTicks
+        && this.antiAirCount < airCap) {
       const aa = this.catalog.forRole(BuildRole.AntiAir, this.faction);
       if (aa !== undefined && this.available(aa) && this.canQueue(aa, this.spendable)) {
         this.buildGoal = 'saw an aircraft — putting up anti-air';
@@ -2329,6 +2361,20 @@ export class AiBrain {
   get objectiveXPos(): number { return this.objectiveX; }
   get objectiveZPos(): number { return this.objectiveZ; }
   get wave(): number { return this.waveThreshold(); }
+  /**
+   * Tick an enemy aircraft was first seen, and the tick one was last seen.
+   * -1 for never.
+   *
+   * Exposed because "did the AI notice the gunship" and "did it act on it" are
+   * separate failures with the same symptom — no anti-air — and the whole air
+   * layer spent its first life failing the first one invisibly.
+   */
+  get firstAirSightingTick(): number { return this.firstAirTick; }
+  get lastAirSightingTick(): number { return this.sawAirTick; }
+  /** Anti-air structures owned or under construction. */
+  get antiAirCount(): number {
+    return this.roleCount[BuildRole.AntiAir] + this.roleBuilding[BuildRole.AntiAir];
+  }
 
   /**
    * Readable snapshot. Allocates — deliberately: this is called by the console

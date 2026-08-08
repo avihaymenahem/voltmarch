@@ -44,13 +44,13 @@ import {
   COMBAT_PROJECTILES, COMBAT_WEAPONS, CELL,
 } from '../core/config';
 import {
-  ArmorClass, EntityFlag, EntityKind, Faction, FxKind, OrderKind, PartId,
-  ProjectileKind, Stance, UnitState, WarheadClass,
+  ArmorClass, EntityFlag, EntityKind, Faction, FxKind, Locomotor, OrderKind,
+  PartId, ProjectileKind, Stance, UnitState, WarheadClass,
 } from '../core/types';
 import type {
   EntityId, PlayerId, SimContext, WeaponDef,
 } from '../core/types';
-import type { World } from '../core/world';
+import type { EntityStore, World } from '../core/world';
 import type { Channels } from '../core/events';
 import { PerEntityI16, PerEntityU32 } from '../core/world';
 import {
@@ -88,6 +88,9 @@ function wpn(
     requiresStop: extra?.requiresStop ?? false,
     needsPower: extra?.needsPower ?? false,
     canTargetInfantry: extra?.canTargetInfantry ?? true,
+    // Opposite default to its sibling, and deliberately so — see WeaponDef.
+    // A gun answers air only when its row SAYS it answers air.
+    canTargetAir: extra?.canTargetAir ?? false,
     muzzleFx: extra?.muzzleFx ?? FxKind.MuzzleFlashSmall,
     travelFx: extra?.travelFx ?? FxKind.TracerBullet,
     impactFx: extra?.impactFx ?? FxKind.ImpactMetal,
@@ -105,16 +108,25 @@ const MUZZLE_PAIR: readonly PartId[] = [PartId.MuzzleA, PartId.MuzzleB];
  * Damage is per SHOT before the armour matrix. Read the pairs, not the
  * absolutes: a rifle does 18 to flesh and 1.8 to a Rhino; a Rhino's gun does 75
  * to a Rhino and 26 to a conscript. That spread IS the counter-triangle.
+ *
+ * `canTargetAir` is the second axis and it is off unless a row says otherwise.
+ * The rule, applied identically here and in `data/Defs.ts`: A SOLDIER CAN POINT
+ * HIS OWN WEAPON UP, AN AUTOCANNON TRACKS, A GUIDED ROCKET FOLLOWS, AND A
+ * PURPOSE-BUILT AA MOUNT IS WHAT IT SAYS ON THE TIN. A tank cannon, an
+ * artillery piece, a flamethrower, a torpedo tube, a naval deck gun, a
+ * siege beam and an emplaced MG in a concrete box cannot. That leaves the
+ * armoured column genuinely unable to answer a gunship, which is the whole
+ * point of having one.
  */
 export const DEFAULT_WEAPONS: readonly WeaponDef[] = [
   /* 0 */ wpn('rifle', 'M1 Carbine', 18, WarheadClass.SmallArms, 18, 0.85,
     ProjectileKind.Bullet, 95,
-    { burstCount: 3, burstDelay: 0.09, turretTurnRate: 320,
+    { burstCount: 3, burstDelay: 0.09, turretTurnRate: 320, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactDirt }),
 
   /* 1 */ wpn('conscriptRifle', 'AK Pattern', 16, WarheadClass.SmallArms, 17, 0.8,
     ProjectileKind.Bullet, 92,
-    { burstCount: 3, burstDelay: 0.08, turretTurnRate: 320,
+    { burstCount: 3, burstDelay: 0.08, turretTurnRate: 320, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactDirt }),
 
   /* 2 */ wpn('bite', 'Jaws', 55, WarheadClass.SmallArms, 3.6, 1.1,
@@ -140,7 +152,7 @@ export const DEFAULT_WEAPONS: readonly WeaponDef[] = [
 
   /* 6 */ wpn('chaingun', '25 mm Chaingun', 22, WarheadClass.AutoCannon, 22, 0.55,
     ProjectileKind.Bullet, 150,
-    { burstCount: 4, burstDelay: 0.07, turretTurnRate: 200,
+    { burstCount: 4, burstDelay: 0.07, turretTurnRate: 200, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactMetal }),
 
   /* 7 */ wpn('prismBeam', 'Prism Emitter', 92, WarheadClass.Prism, 30, 2.6,
@@ -148,14 +160,19 @@ export const DEFAULT_WEAPONS: readonly WeaponDef[] = [
     { turretTurnRate: 70, requiresStop: true,
       muzzleFx: FxKind.None, travelFx: FxKind.PrismBeam, impactFx: FxKind.Sparks }),
 
+  // The Allied and Soviet halves of `BuildRole.AntiAir`. `canTargetAir` here is
+  // not flavour: `tests/air-layer.spec.ts` asserts that every structure the AI's
+  // AntiAir slot can build carries an air-capable weapon, because an AA
+  // interrupt that queues a tower which cannot shoot up is the same nothing the
+  // whole air layer used to be.
   /* 8 */ wpn('prismTowerBeam', 'Prism Cannon', 115, WarheadClass.Prism, 34, 3.0,
     ProjectileKind.Beam, 0,
-    { turretTurnRate: 60, needsPower: true,
+    { turretTurnRate: 60, needsPower: true, canTargetAir: true,
       muzzleFx: FxKind.None, travelFx: FxKind.PrismBeam, impactFx: FxKind.Sparks }),
 
   /* 9 */ wpn('teslaBolt', 'Tesla Coil', 120, WarheadClass.Tesla, 30, 2.4,
     ProjectileKind.TeslaBolt, 0,
-    { turretTurnRate: 360, needsPower: true, chainCount: 2,
+    { turretTurnRate: 360, needsPower: true, chainCount: 2, canTargetAir: true,
       muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 
   // Range 15 -> 18. Still the shortest gun in the game by four metres, which is
@@ -187,7 +204,7 @@ export const DEFAULT_WEAPONS: readonly WeaponDef[] = [
   /* 14 */ wpn('shipMissile', 'Cruise Battery', 120, WarheadClass.Rocket, 42, 4.0,
     ProjectileKind.Rocket, 44,
     { burstCount: 2, burstDelay: 0.35, splashRadius: 4.5, splashFalloff: 0.25,
-      turretTurnRate: 50, muzzleParts: MUZZLE_PAIR,
+      turretTurnRate: 50, muzzleParts: MUZZLE_PAIR, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashMedium, travelFx: FxKind.RocketTrail, impactFx: FxKind.ExplosionMedium }),
 
   /* 15 */ wpn('torpedo', 'Torpedo Tube', 105, WarheadClass.Rocket, 30, 3.4,
@@ -197,13 +214,13 @@ export const DEFAULT_WEAPONS: readonly WeaponDef[] = [
 
   /* 16 */ wpn('rocketLauncher', 'Shoulder Rocket', 60, WarheadClass.Rocket, 24, 2.2,
     ProjectileKind.Rocket, 38,
-    { splashRadius: 2.4, splashFalloff: 0.3, turretTurnRate: 260,
+    { splashRadius: 2.4, splashFalloff: 0.3, turretTurnRate: 260, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashMedium, travelFx: FxKind.RocketTrail, impactFx: FxKind.ExplosionSmall }),
 
   /* 17 */ wpn('aaCannon', 'Flak Battery', 34, WarheadClass.AutoCannon, 26, 0.7,
     ProjectileKind.Bullet, 160,
     { burstCount: 3, burstDelay: 0.06, splashRadius: 1.2, splashFalloff: 0.4,
-      turretTurnRate: 240, muzzleFx: FxKind.MuzzleFlashMedium,
+      turretTurnRate: 240, canTargetAir: true, muzzleFx: FxKind.MuzzleFlashMedium,
       travelFx: FxKind.TracerBullet, impactFx: FxKind.Sparks }),
 ];
 
@@ -518,6 +535,14 @@ export class WeaponSystem {
     st.barrelPitch[i] = turnToward(st.barrelPitch[i], launchPitch, rate);
 
     // --- gating ----------------------------------------------------------
+    // The air veto lives HERE and not only in Targeting, because an explicit
+    // Attack / ForceAttack order writes `targetId` straight past
+    // `isValidTarget` (Targeting §"an explicit order beats everything"). Every
+    // other gate below is likewise a firing rule rather than an acquisition
+    // one, and this is the same kind of rule: a hull-mounted cannon that cannot
+    // elevate does not start being able to because somebody clicked on the
+    // gunship. The turret still tracks — only the trigger is held.
+    if (!w.canTargetAir && isAirborne(st, t)) return;
     if (st.cooldown[i] > 0) return;
     // Hold-fire units still track a target with the turret (the gating above
     // already ran) — they simply never pull the trigger unless force-fired.
@@ -776,9 +801,33 @@ export class WeaponSystem {
  * "will I shoot it" drift apart and units lock onto things they cannot hurt.
  * ========================================================================== */
 
-/** True when `w` can meaningfully hurt `armor`. */
-export function weaponCanHurt(w: WeaponDef, armor: ArmorClass): boolean {
+/**
+ * True when the entity in slot `i` is FLYING.
+ *
+ * Read off `Locomotor.Air` rather than off altitude. Altitude is what the AI
+ * uses (`AI_BUILD.airAltitudeMetres`) because the AI is answering "is there an
+ * air threat in this match", a question a single frame of a unit cresting a
+ * ridge must not be able to answer wrongly. Combat is answering "may this gun
+ * shoot that thing", which has to be stable to the metre and to the tick: a
+ * gunship must not become targetable because it happened to be climbing out of
+ * a valley. The locomotor is the declaration; the altitude is the consequence.
+ */
+export function isAirborne(store: EntityStore, i: number): boolean {
+  return store.locomotor[i] === Locomotor.Air;
+}
+
+/**
+ * True when `w` can meaningfully hurt `armor`.
+ *
+ * `airborne` defaults to false so the ground-only callers read unchanged; the
+ * air gate is a hard veto and is checked before the matrix, exactly like the
+ * infantry one, because "cannot elevate" is not a damage multiplier.
+ */
+export function weaponCanHurt(
+  w: WeaponDef, armor: ArmorClass, airborne = false,
+): boolean {
   if (armor === ArmorClass.Infantry && !w.canTargetInfantry) return false;
+  if (airborne && !w.canTargetAir) return false;
   return armorMultiplier(w.warhead, armor) > 0.02;
 }
 

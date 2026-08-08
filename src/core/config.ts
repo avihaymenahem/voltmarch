@@ -2960,12 +2960,28 @@ export const CREDITS_TICKER_SNAP = 2;
  * budget it is also spending on harvesters and squads, which reads on screen as
  * a barracks that pauses between units. That is the texture of a human who is
  * not paying attention, and it is the correct one for Easy.
+ *
+ * `maxAntiAir` and `airReactionSec` are the newest pair and they exist for the
+ * same reason. `Locomotor.Air` made the AI's anti-air doctrine reachable for
+ * the first time — `AI_BUILD.airAltitudeMetres` had never once been exceeded,
+ * so the interrupt in `chooseBuild` had never once fired — and a doctrine that
+ * switches on is a STRENGTHENING. Left alone it would have handed every rung,
+ * Easy included, a perfect, instant, four-tower answer to the first gunship it
+ * ever saw, which is exactly the flat ladder the paragraphs above are about.
+ *
+ * So the rungs differ on both halves of the response: HOW MANY towers, and HOW
+ * LONG the AI takes to believe what it saw. Twelve seconds on Easy is roughly
+ * two Kestrel passes — a beginner opponent gets hurt by the first raid and
+ * answers the second, which is how a human learns it. Brutal answers the raid
+ * that is still overhead. Note that these gate the DEDICATED AA branch only:
+ * `maxDefense` still caps total static defence above it, so a high `maxAntiAir`
+ * can never turn into a wall of towers on its own.
  */
 export const AI_SKILL = [
-  { composition: 0.15, creditFloor: 1400, techBias: 0.6, scoutDelayMul: 2.2, discipline: 0.35, maxDefense: 3,  maxHarvesters: 5, maxRefineries: 2, queueDepth: 1 },
-  { composition: 0.55, creditFloor: 600,  techBias: 1.0, scoutDelayMul: 1.0, discipline: 0.65, maxDefense: 6,  maxHarvesters: 7, maxRefineries: 3, queueDepth: 2 },
-  { composition: 0.85, creditFloor: 250,  techBias: 1.2, scoutDelayMul: 0.7, discipline: 0.85, maxDefense: 8,  maxHarvesters: 9, maxRefineries: 3, queueDepth: 2 },
-  { composition: 1.00, creditFloor: 0,    techBias: 1.4, scoutDelayMul: 0.5, discipline: 1.00, maxDefense: 10, maxHarvesters: 9, maxRefineries: 3, queueDepth: 2 },
+  { composition: 0.15, creditFloor: 1400, techBias: 0.6, scoutDelayMul: 2.2, discipline: 0.35, maxDefense: 3,  maxHarvesters: 5, maxRefineries: 2, queueDepth: 1, maxAntiAir: 1, airReactionSec: 12 },
+  { composition: 0.55, creditFloor: 600,  techBias: 1.0, scoutDelayMul: 1.0, discipline: 0.65, maxDefense: 6,  maxHarvesters: 7, maxRefineries: 3, queueDepth: 2, maxAntiAir: 2, airReactionSec: 6 },
+  { composition: 0.85, creditFloor: 250,  techBias: 1.2, scoutDelayMul: 0.7, discipline: 0.85, maxDefense: 8,  maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 3, airReactionSec: 2.5 },
+  { composition: 1.00, creditFloor: 0,    techBias: 1.4, scoutDelayMul: 0.5, discipline: 1.00, maxDefense: 10, maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 4, airReactionSec: 0 },
 ] as const;
 
 /**
@@ -3039,14 +3055,32 @@ export const AI_BUILD = {
   placementGapCells: 1,
   /** Ticks with no incoming damage before the AI considers teching up "safe". */
   techSafeTicks: 450,
-  /** Anti-air structures the AI will build once it has seen an aircraft. */
+  /**
+   * Ceiling on `AI_SKILL[].maxAntiAir`. The per-rung caps are the live numbers;
+   * this is the top of the ladder, kept so the two can never silently disagree
+   * (`tests/air-layer.spec.ts` asserts no rung exceeds it).
+   */
   maxAntiAir: 4,
   /**
    * Metres above the terrain surface at which an entity is classified as
-   * AIRBORNE. There is no `EntityKind.Air` and no `Locomotor.Fly` in the
-   * contract layer, so altitude is the only signal available — and it is the
-   * correct one: anything hovering 6 m up needs an answer this AI does not have
-   * on the ground.
+   * AIRBORNE.
+   *
+   * `Locomotor.Air` exists now, so this is no longer the only signal available
+   * — but it is still the RIGHT one HERE, and the two answer different
+   * questions. `sim/Combat.isAirborne` reads the locomotor, because "may this
+   * gun shoot that thing" must be exact. This reads ALTITUDE, because the
+   * question is "is there an air threat in this match", and the honest answer
+   * to that is what the AI can see happening in the world rather than a column
+   * it would be reaching into. Anything genuinely holding station 6 m up needs
+   * an answer the AI does not have on the ground, whatever the def table calls
+   * it.
+   *
+   * THE MARGIN IS LOAD-BEARING. `AIR_CRUISE_ALTITUDE` is 22 m, so a flyer sits
+   * 3.7x over this line and clears it about 0.2 s after it spawns. Move either
+   * number toward the other and the AI stops seeing aircraft at all — silently,
+   * because nothing else in the game reads either constant. `tests/
+   * air-layer.spec.ts` pins the relationship with a required margin rather than
+   * trusting a reviewer to notice.
    */
   airAltitudeMetres: 6.0,
 } as const;
@@ -6504,9 +6538,32 @@ export const MOVE_MIN_FX_SPEED = 0.35;
 /** Track gauge as a fraction of the unit radius (per side). */
 export const MOVE_TREAD_GAUGE_FRAC = 0.72;
 
-/** Metres an aircraft cruises above the heightfield. */
+/**
+ * Metres an aircraft cruises above the heightfield.
+ *
+ * COUPLED TO `AI_BUILD.airAltitudeMetres` (6.0), which is the height at which
+ * the AI decides it is looking at an aircraft. This must stay comfortably above
+ * it or the AI never registers an air threat, never fires its anti-air
+ * interrupt, and the whole air layer silently does nothing while looking
+ * completely correct on screen. 22 against 6 is 3.7x; `tests/air-layer.spec.ts`
+ * asserts the ratio, because there is no other consumer of either number to
+ * catch a change to one of them.
+ *
+ * It is also the reason the fixed camera still reads: at the shipped pitch a
+ * unit 22 m up sits about a third of a screen above its own shadow, which is
+ * enough to say "that is flying" and not so much that it leaves the frame its
+ * ground target is in.
+ */
 export const AIR_CRUISE_ALTITUDE = 22;
-/** Exponential approach rate for that altitude when the ground changes. */
+/**
+ * Exponential approach rate for that altitude when the ground changes.
+ *
+ * Also the SPAWN climb: a gunship is spawned at ground level by
+ * `Production.spawnUnit` (which has no business knowing about altitude) and
+ * flies itself up from there. At 1.6/s it clears `airAltitudeMetres` in about
+ * 0.2 s — six sim ticks — so there is no window in which a fresh aircraft reads
+ * as a ground unit to anything that matters.
+ */
 export const AIR_CLIMB_LAMBDA = 1.6;
 
 /* ==========================================================================

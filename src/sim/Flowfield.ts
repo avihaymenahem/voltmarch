@@ -45,10 +45,12 @@
  *
  * MOVE CLASSES vs LOCOMOTORS
  * --------------------------
- * `Locomotor` (core/types) has no Naval or Air member — hovercraft, ships and
- * aircraft all spawn as `Locomotor.Hover` today. `MoveClass` is the pathing
- * vocabulary and adds those two. `moveClassForLocomotor` is the default
- * mapping; Movement.ts owns the per-entity override (`setMoveClass`).
+ * `Locomotor` (core/types) has an Air member and no Naval one, so aircraft
+ * declare themselves in the entity store and ships still spawn as
+ * `Locomotor.Hover`. `MoveClass` is the pathing vocabulary and carries both.
+ * `moveClassForLocomotor` is the default mapping; Movement.ts owns the
+ * per-entity override (`setMoveClass`), which is what promotes a Hover hull
+ * standing in water to Naval.
  *
  * DETERMINISM
  * -----------
@@ -80,8 +82,9 @@ import { getRoads, isCarriageway, roadMoveMultiplier } from '../world/Roads';
 
 /**
  * How an entity is allowed to traverse the grid. A superset of `Locomotor`:
- * ships and aircraft share `Locomotor.Hover` in the entity store because the
- * core enum is frozen, so pathing carries its own vocabulary.
+ * ships still share `Locomotor.Hover` in the entity store (there is no Naval
+ * member), so pathing carries its own vocabulary. Air is the one class that is
+ * BOTH — `Locomotor.Air` exists and maps straight through.
  */
 export const enum MoveClass {
   /** Infantry. Climbs anything short of a cliff, ignores roads. */
@@ -110,11 +113,21 @@ export function moveClassForLocomotor(loco: number): MoveClass {
     case Locomotor.Track: return MoveClass.Track;
     case Locomotor.Wheel: return MoveClass.Wheel;
     case Locomotor.Hover: return MoveClass.Hover;
+    case Locomotor.Air: return MoveClass.Air;
     default: return MoveClass.Foot;
   }
 }
 
-/** The `Locomotor` a MoveClass reports to `ITerrain.isPassable`. */
+/**
+ * The `Locomotor` a MoveClass reports to `ITerrain.isPassable`.
+ *
+ * Air deliberately answers `Foot` and NOT `Locomotor.Air`. This is the
+ * terrain-passability question, and `passGrid` has no bit 5 — asking it about
+ * an aircraft would return "impassable everywhere". The only caller is
+ * `rebuildCost`, which returns for Air before it ever reads this, so the value
+ * is a safe default rather than a claim; keeping it `Foot` means a future
+ * caller gets a sane grid instead of a sealed map.
+ */
 export function locomotorForMoveClass(cls: MoveClass): Locomotor {
   switch (cls) {
     case MoveClass.Track: return Locomotor.Track;
