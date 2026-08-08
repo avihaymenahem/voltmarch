@@ -51,6 +51,13 @@ tools/_*
 refs/
 docs/surface-refs/ra3-*
 
+# Agent worktrees. `git worktree` checkouts created so two agents can compile and
+# test independently without seeing each other's half-finished edits as phantom
+# type errors. Each contains a FULL second copy of the tree plus its own
+# `node_modules` — hundreds of megabytes, and committing one would nest the repo
+# inside itself. Scratch, always; `.claude/launch.json` beside it stays TRACKED.
+.claude/worktrees/
+
 # vite / vitest caches
 .vite/
 node_modules/.vite/

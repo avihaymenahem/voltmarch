@@ -72,9 +72,21 @@ export default defineConfig(({ command }) => ({
     target: 'esnext',
     outDir: 'dist',
     emptyOutDir: true,
-    // On by default here: when a critic reports "the water is black", the first
-    // move is to read the actual shader line in the built bundle.
-    sourcemap: true,
+    // OFF for the deployed bundle. This was on so that when a critic reported
+    // "the water is black", the first move could be to read the actual shader
+    // line in the built bundle. That is a DEV need, and `npm run dev` serves
+    // unminified modules where it is moot; what it actually bought in `dist/`
+    // was an 11.2 MB `.map` shipped beside a 2.4 MB bundle on every Pages
+    // deploy, publishing full source for a debugging step nobody performs
+    // against production.
+    //
+    // Players never paid for it — a `.map` is only fetched when devtools is
+    // open — so this is a deploy-weight and source-exposure change, not a
+    // load-time one. Do not "restore" it expecting a frame-rate difference.
+    //
+    // To debug a built bundle, build with it on locally:
+    //   npx vite build --sourcemap
+    sourcemap: false,
     assetsInlineLimit: 4096,
     // Three plus every procedural generator is legitimately a large bundle.
     chunkSizeWarningLimit: 3000,
