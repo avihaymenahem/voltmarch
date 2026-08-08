@@ -54,6 +54,43 @@ describe('planDrawingBuffer', () => {
     expect(p.cssHeight).toBe(720);
   });
 
+  /*
+   * A DRAWING BUFFER THAT CANNOT EXIST.
+   *
+   * The clamp chain reads as total and is not. `Math.min(4, NaN)` is NaN and
+   * `Math.max(0.25, NaN)` is NaN, so one non-finite scale makes `width` and
+   * `height` NaN and the renderer is sized NaN x NaN — `stats().resolution`
+   * reads the string "NaNxNaN", which is how this was noticed.
+   *
+   * Found by fat-fingering `__VM.setResolutionScale(undefined)` on a live game,
+   * not by a real code path. `setResolutionScale` refuses non-finite input now,
+   * which is the actual fix; this pins the second wall, because this function is
+   * exported and pure and should never be ABLE to return an impossible size.
+   *
+   * CLAUDE.md records where a loose NaN ends up in this renderer: an instance
+   * colour, then the bloom mip chain, then a black frame while stats reported
+   * 285 draws.
+   */
+  it('never returns a NaN size, whatever it is handed', () => {
+    for (const bad of [NaN, Infinity, -Infinity]) {
+      const p = planDrawingBuffer(1280, 720, 1, 2, bad, false);
+      expect(Number.isFinite(p.width), `scale ${bad} -> width`).toBe(true);
+      expect(Number.isFinite(p.height), `scale ${bad} -> height`).toBe(true);
+      expect(Number.isFinite(p.pixelRatio), `scale ${bad} -> pixelRatio`).toBe(true);
+      expect(p.width).toBeGreaterThan(0);
+      expect(p.height).toBeGreaterThan(0);
+    }
+  });
+
+  it('falls back to native rather than to nothing when the scale is unusable', () => {
+    // 1.0, not 0.25: a bad argument should cost sharpness nowhere, not
+    // everywhere. Native is the honest default when the request is meaningless.
+    const p = planDrawingBuffer(1280, 720, 1, 2, NaN, false);
+    expect(p.pixelRatio).toBe(1);
+    expect(p.width).toBe(1280);
+    expect(p.height).toBe(720);
+  });
+
   it('clamps devicePixelRatio to the configured ceiling', () => {
     // A 3x phone-class DPR must not produce a 3x buffer on a 2.0 ceiling.
     expect(planDrawingBuffer(1000, 1000, 3, 2, 1, false).width).toBe(2000);

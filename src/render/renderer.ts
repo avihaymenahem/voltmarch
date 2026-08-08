@@ -895,7 +895,17 @@ export function planDrawingBuffer(
   const w = Math.max(2, Math.round(cssWidth));
   const h = Math.max(2, Math.round(cssHeight));
   const dpr = fixed ? 1 : Math.min(devicePixelRatio || 1, Math.max(0.5, maxPixelRatio));
-  const effective = fixed ? 1 : Math.max(0.25, Math.min(4, dpr * resolutionScale));
+  const raw = fixed ? 1 : Math.max(0.25, Math.min(4, dpr * resolutionScale));
+  /*
+   * The clamp above is not total: `Math.max(0.25, Math.min(4, NaN))` is NaN, and
+   * `Math.max(2, Math.round(w * NaN))` is NaN, so a single bad scale sizes the
+   * drawing buffer NaN x NaN. `setResolutionScale` now refuses non-finite input,
+   * which is the real fix; this is the second wall, because this function is
+   * exported and pure and there is no reason it should ever be ABLE to return a
+   * size that cannot exist. Falling back to 1 renders at native rather than not
+   * at all.
+   */
+  const effective = Number.isFinite(raw) ? raw : 1;
   return {
     cssWidth: w,
     cssHeight: h,
@@ -1348,6 +1358,37 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
     },
 
     setResolutionScale(scale) {
+      /*
+       * A BAD ARGUMENT HERE POISONS THE DRAWING BUFFER, NOT JUST THIS FIELD.
+       *
+       * The clamp below looks total and is not. `Math.min(2, undefined)` is NaN
+       * and `Math.max(0.25, NaN)` is NaN, so `setResolutionScale(undefined)`
+       * assigned NaN to `cfg.resolutionScale` — the equality guard cannot stop
+       * it either, because `Math.abs(NaN - x) < 1e-4` is false, so it proceeds.
+       * From there `planDrawingBuffer` computes `effective = Math.max(0.25,
+       * Math.min(4, dpr * NaN))` = NaN and returns `width`/`height` of NaN, and
+       * the renderer is sized NaN x NaN.
+       *
+       * I hit this myself while probing the live game through `__VM`: I read the
+       * wrong config path, got `undefined`, and passed it straight back in to
+       * "restore" the old value. `stats().resolution` then read "NaNxNaN" for the
+       * rest of the session. That was self-inflicted and NOT a pre-existing bug —
+       * but a public entry point on `RendererHandle` and `window.__VM` that turns
+       * a fat-fingered argument into a NaN-sized drawing buffer is worth closing
+       * regardless of who fat-fingered it.
+       *
+       * CLAUDE.md records where NaN goes in this renderer once it is loose: into
+       * an instance colour, through the bloom mip chain, and out as a black frame
+       * while stats cheerfully reported 285 draws. Refusing the value is strictly
+       * better than propagating it.
+       *
+       * `null` was already survivable by accident — it coerces to 0 and clamps to
+       * 0.25 — which is its own kind of wrong. Both are rejected now.
+       */
+      if (typeof scale !== 'number' || !Number.isFinite(scale)) {
+        if (DEV) console.warn(`[renderer] setResolutionScale(${String(scale)}) ignored — not a finite number`);
+        return;
+      }
       const s = Math.max(0.25, Math.min(2, scale));
       if (Math.abs(s - cfg.resolutionScale) < 1e-4) return;
       cfg.resolutionScale = s;
