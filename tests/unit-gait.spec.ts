@@ -86,7 +86,13 @@ const ALL_LISTS: readonly UnitMassList[] = ROSTERS.flatMap(([, l]) => l);
  * delete the line — and it asserts that nothing else is missing one, so a fifth
  * army cannot join the game with welded legs.
  */
-const NO_GAIT_YET: ReadonlySet<string> = new Set(['reclaim']);
+// EMPTY, AND IT SHOULD STAY THAT WAY. `reclaim` was listed here while its walk
+// cycle was being authored on a concurrent branch. Both branches landed in the
+// same release, this list's own "not a hiding place" case went red on the merge
+// exactly as it was designed to, and deleting the entry was the whole fix.
+//
+// All four armies walk. Anything added here is a regression wearing a note.
+const NO_GAIT_YET: ReadonlySet<string> = new Set([]);
 
 const WALKING_ROSTERS = ROSTERS.filter(([name]) => !NO_GAIT_YET.has(name));
 const ALL_INFANTRY: readonly UnitMassList[] =
@@ -296,7 +302,31 @@ describe('the gait is baked onto the right masses and no others', () => {
       // is worse than no walk at all.
       const rides = new Set(swinging(l, 'leg').map((m) => m.name));
       expect(rides.has('boot'), 'the boot rides the leg').toBe(true);
-      expect(rides.has('thighBand'), 'the thigh band is painted on the thigh').toBe(true);
+
+      /*
+       * The team panel on the thigh, WHATEVER THE ROSTER CALLS IT.
+       *
+       * This asserted the literal name `thighBand`, which is what the Allied,
+       * Soviet and Meridian rosters call it. The Reclamation calls the same
+       * mass `thighWrap` (`Faction4Units.ts`, the `slab` at the thigh), so this
+       * case failed on all four Reclamation soldiers the moment the two
+       * concurrently-authored branches were merged — a real defect, and one
+       * neither agent could see from inside its own worktree.
+       *
+       * The invariant is not "a mass called thighBand exists". It is "the panel
+       * painted on the thigh swings WITH the thigh" — a team-coloured slab left
+       * hanging in the air while the leg walks out from under it is exactly the
+       * shear this whole case is here to catch. So: match on either name, and
+       * still REQUIRE one, because every army does paint one on.
+       */
+      const THIGH_PANEL = ['thighBand', 'thighWrap'];
+      const declared = l.masses.filter((m) => THIGH_PANEL.includes(m.name));
+      expect(declared.length, `${l.key} has no thigh panel under any known name`)
+        .toBeGreaterThan(0);
+      for (const m of declared) {
+        expect(rides.has(m.name), `${m.name} is painted on the thigh and must swing with it`)
+          .toBe(true);
+      }
     });
 
     it(`${l.key} leaves the torso, the helmet and the pack welded to the body`, () => {

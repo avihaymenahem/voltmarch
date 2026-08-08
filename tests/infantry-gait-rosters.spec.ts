@@ -94,7 +94,13 @@ const ROSTERS = findRosters();
  * Nothing else belongs in here. An exemption that nobody is forced to remove is
  * how "infantry walk" came to mean "half the armies walk" in the first place.
  */
-const GAIT_PENDING: ReadonlySet<string> = new Set(['../src/art/Faction3Units.ts']);
+// EMPTY, AND IT SHOULD STAY THAT WAY. `Faction3Units.ts` was listed here while
+// the Meridian walk cycle was being authored on a concurrent branch. Both
+// branches landed in the same release, the self-deleting case below went red on
+// the merge exactly as intended, and deleting the entry was the whole fix.
+//
+// All four armies walk. Anything added here is a regression wearing a note.
+const GAIT_PENDING: ReadonlySet<string> = new Set([]);
 
 const infantryOf = (r: Roster): UnitMassList[] => r.lists.filter((l) => l.cls === 'infantry');
 

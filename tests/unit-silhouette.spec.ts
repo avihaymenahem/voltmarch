@@ -274,7 +274,15 @@ describe('the taper reaches the geometry, not just the metric', () => {
   function builtMesh(m: MassDef, faction: UnitMassList['faction']): ReturnType<typeof shapeMesh> | null {
     const spec = shapeSpecFor(m, defaultChamfer(m, faction));
     if (spec === null) return null;
-    return fitMesh(shapeMesh(spec), m.size as [number, number, number], shapeFitMode(m));
+    // Mirror `MassList#emitMassShape` exactly, including the 'none' branch:
+    // `shapeFitMode` returns 'stretch' | 'uniform' | 'none' and `fitMesh` takes
+    // only the first two, so a fit-exempt mass must NOT be handed to it. This
+    // read `fitMesh(..., shapeFitMode(m))`, copied from the integration example
+    // in MassList.ts, which had the same bug — it did not typecheck, and vitest
+    // never noticed because esbuild strips types.
+    const fit = shapeFitMode(m);
+    const built = shapeMesh(spec);
+    return fit === 'none' ? built : fitMesh(built, m.size as [number, number, number], fit);
   }
 
   /** The share of horizontal-facing built area whose normal is exactly level. */

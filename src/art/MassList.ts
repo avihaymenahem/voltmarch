@@ -972,44 +972,99 @@ export const BOXINESS = {
   axisWeight: 0.62,
   /** Weight on the silhouette rectangle fill. */
   rectWeight: 0.38,
-  /** Blended score above which a warning is printed. */
-  warn: 0.68,
-  /** Blended score above which `validateUnit` rejects the model outright. */
-  reject: 0.86,
-  /**
-   * The brief's own number — "reject a model whose silhouette is more than ~85%
-   * axis-aligned rectangle" — applied to the axis sub-metric directly, so a unit
-   * cannot pass by being a very flat rectangle that happens to score a low fill.
-   * `reject` sits well above it because the measurement is analytic and a def
-   * author has to have room to move.
+  /*
+   * THESE NUMBERS WERE A SAFETY NET STRUNG ABOVE THE CEILING.
+   *
+   * They were `warn: 0.68 / axisWarn: 0.85`, `reject: 0.86 / axisReject: 0.90`,
+   * while the boxiest unit in the entire game measured 0.564 / 0.415. The gate
+   * could not fire against anything that existed. That is why the Meridian
+   * infantry passed CI at 0.305 / 0.173 — visibly the most rectangular troops in
+   * the game, and a player reported them as exactly that — with every test green.
+   *
+   * A threshold nothing can reach does not measure quality, it certifies it.
+   *
+   * WARN and REJECT now do different jobs, deliberately:
+   *
+   *   REJECT is the catastrophe floor — "a regression to three plain boxes
+   *   cannot ship", which is what §4b promises. `axisReject` is 0.85 so it
+   *   states CLAUDE.md's rule EXACTLY ("rejects any model whose silhouette is
+   *   more than ~85% axis-aligned rectangle") rather than approximately; it used
+   *   to sit at 0.90, above the very number it was quoting.
+   *
+   *   WARN is the quality target, and it is a live CI gate rather than a console
+   *   message: `faction3.spec.ts`, `faction4-art.spec.ts` and
+   *   `unit-silhouette.spec.ts` all assert `stats.warnings` is EMPTY, so
+   *   crossing it fails the build.
+   *
+   * Both are derived from the measured roster below, not chosen. The worst unit
+   * in the game is 0.417 / 0.149, so `warn` sits ~0.08 above it on score and
+   * ~0.10 on axis — enough room to author in, little enough that a real
+   * regression trips it. Before this, a unit had to get 0.70 WORSE on the axis
+   * metric before anything noticed.
+   *
+   * If you raise these, say why in the same commit. Raising a threshold to make
+   * a red build green is how the old numbers got where they were.
    */
-  axisWarn: 0.85,
-  axisReject: 0.90,
+  /** Blended score above which a warning is printed — and CI fails. */
+  warn: 0.50,
+  /** Blended score above which `validateUnit` rejects the model outright. */
+  reject: 0.70,
+  /**
+   * The axis sub-metric, applied directly so a unit cannot pass by being a very
+   * flat rectangle that happens to score a low fill.
+   */
+  axisWarn: 0.25,
+  /** CLAUDE.md's "~85% axis-aligned rectangle", stated exactly. */
+  axisReject: 0.85,
 } as const;
 
 /**
  * Where the roster sits, measured, so the next author knows what "good" looks
  * like without running anything. Score, then the axis sub-metric:
  *
- *   allied_engineer       0.22 / 0.07
- *   infantry              0.24 / 0.07    articulated, tapered, domed helmet
- *   aircraft              0.27 / 0.00    every primary is a tapered box
- *   allied_ifv            0.45 / 0.24
- *   allied_guardian       0.46 / 0.26    tapered hull + tapered turret
- *   soviet_sickle         0.47 / 0.39
- *   allied_prism          0.48 / 0.23
- *   allied_dozer          0.52 / 0.37
- *   allied_harvester      0.53 / 0.36
- *   allied_destroyer      0.53 / 0.47
- *   soviet_dozer          0.68 / 0.63
- *   soviet_dreadnought    0.68 / 0.71
- *   soviet_harvester      0.69 / 0.62   WARN
- *   soviet_rhino          0.73 / 0.70   WARN   octagonal prism hull AND turret
- *   soviet_v4             0.79 / 0.75   WARN   prism hull, prism turret, box rack
+ * Measured across all 50 units in all four armies. Worst first:
  *
- * The three that warn are exactly the three a critic points at first, and the
- * ones that score best are the ones nobody has ever called boxy. That agreement
- * is the only real evidence that the metric measures the complaint.
+ *   allied_prism          0.417 / 0.118   <- the whole game's ceiling
+ *   allied_harvester      0.409 / 0.149   <- the whole game's worst axis
+ *   soviet_v4             0.407 / 0.132
+ *   soviet_harvester      0.406 / 0.144
+ *   soviet_apocalypse     0.390 / 0.130
+ *   allied_guardian       0.389 / 0.132
+ *   soviet_rhino          0.388 / 0.131
+ *   allied_ifv            0.388 / 0.121
+ *   allied_dozer          0.383 / 0.146
+ *   soviet_dozer          0.380 / 0.142
+ *   ------------------------------------ every other unit: axis EXACTLY 0.000
+ *   meridian_zenith       0.339 / 0.000
+ *   meridian_collector    0.310 / 0.000
+ *   reclaim_slaghurler    0.274 / 0.000
+ *   allied_vindicator     0.272 / 0.000   aircraft — every primary a tapered box
+ *   allied_destroyer      0.241 / 0.000
+ *   soviet_dreadnought    0.236 / 0.000
+ *   meridian_hierarch     0.229 / 0.000
+ *   soviet_sickle         0.223 / 0.000
+ *   allied_rifle          0.201 / 0.000
+ *   allied_engineer       0.169 / 0.000
+ *   reclaim_baron         0.162 / 0.000   the least boxy unit in the game
+ *
+ * THE PREVIOUS TABLE WAS STALE IN BOTH DIRECTIONS and had been for a long time.
+ * It listed `soviet_v4 0.79 / 0.75 WARN`, `soviet_rhino 0.73 / 0.70 WARN` and
+ * `soviet_harvester 0.69 / 0.62 WARN` — three units it said "a critic points at
+ * first" — against real values of 0.407, 0.388 and 0.406, none of which warn or
+ * ever did at the old thresholds. It also had `allied_destroyer 0.53 / 0.47`
+ * against a real 0.241 / 0.000. Every number in it was wrong, and it is the
+ * table a def author reads to learn what "good" looks like.
+ *
+ * Read the shape of the list, not just the numbers: after v1.29.0 the ONLY
+ * axis-aligned flank surface left anywhere in the game is on ten Allied/Soviet
+ * ground vehicles, at 0.118-0.149. Every infantryman, aircraft, ship, walker and
+ * both newer armies measure exactly 0.000. If you are looking for the next piece
+ * of art work, it is the top ten rows.
+ *
+ * Regenerate with `npx vite-node tools/boxscan.ts` rather than editing a number
+ * here by hand. That tool is committed precisely because the table above rotted:
+ * a list of measurements nobody can reproduce in one command is a list of
+ * measurements that will be wrong again by the next release.
  */
 
 /** Cosine of the angle a normal may stray and still count as axis-aligned. */
@@ -1568,11 +1623,24 @@ export function shapeFitMode(m: MassDef): 'stretch' | 'uniform' | 'none' {
  *
  *   const spec = shapeSpecFor(m, chamfer);
  *   if (spec !== null) {
- *     const mesh = fitMesh(shapeMesh(spec), m.size, shapeFitMode(m));
+ *     const fit = shapeFitMode(m);
+ *     const built = shapeMesh(spec);
+ *     // 'none' means DO NOT FIT — see `emitMassShape` below, which is the real
+ *     // call site this example describes.
+ *     const mesh = fit === 'none' ? built : fitMesh(built, m.size, fit);
  *     emitShape(mesh, sink);           // sink.quad / sink.tri -> MeshBuilder
  *   } else {
  *     // the existing buildBox / buildLathe / buildPrism path, untouched
  *   }
+ *
+ * That `fit === 'none'` branch is not decoration. This example used to read
+ * `fitMesh(shapeMesh(spec), m.size, shapeFitMode(m))`, which does not even
+ * COMPILE — `shapeFitMode` returns `'stretch' | 'uniform' | 'none'` and
+ * `fitMesh` takes only the first two — and which would have squashed every
+ * fit-exempt mass to its declared `size`. An agent writing a test against this
+ * block copied it faithfully and inherited both bugs; the type error survived
+ * because `npm test` and `npm run build` both strip types and only
+ * `npm run typecheck` looks.
  *
  * `slotFor` is the ONE decision the factory owns, and there is exactly one rule
  * it must not get wrong: a polygon whose `kind` is 'bevel' samples the atlas's
