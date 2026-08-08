@@ -13,8 +13,8 @@ import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { Rng } from '../src/core/math';
 import {
-  ArmorClass, EntityFlag, EntityKind, Faction, Locomotor, ProjectileKind, Stance,
-  UnitState, WarheadClass,
+  ArmorClass, EntityFlag, EntityKind, Faction, FxKind, Locomotor, ProjectileKind,
+  Stance, UnitState, WarheadClass,
 } from '../src/core/types';
 import type { EntityId, PlayerId, SimContext } from '../src/core/types';
 import {
@@ -701,5 +701,101 @@ describe('determinism', () => {
       return out;
     }
     expect(run()).toEqual(run());
+  });
+});
+
+/* ==========================================================================
+ * Death FX: the pushed size is a MULTIPLIER, not a length
+ *
+ * REGRESSION GUARD for the reported "whenever i destroy enemy buildings, the
+ * entire ground around just looks black".
+ *
+ * `channels.fx.push` takes a DIMENSIONLESS size multiplier — `events.ts` calls
+ * it "a size multiplier" and defaults it to 1 — and `vfx.system.ts` multiplies
+ * it by its own per-kind base tank length (1.2 / 2.2 / 3.4 / 5.0). `Damage` was
+ * pushing METRES instead: `buildingBlastMetres` (5.2) times a footprint clamp.
+ *
+ * For a 4x4 structure that asked for 5.0 * 8.67 = 43 tank lengths where
+ * `spawnExplosion`'s own docstring says "structure death 5.0". The scorch
+ * radius is linear in it, so a single death painted a roughly 162 x 276 m decal
+ * on a 512 m map.
+ *
+ * Nothing anywhere asserted the units. That is why it shipped, and it is the
+ * whole reason this block exists — the numbers below are deliberately wide
+ * bands, because the defect was an order of magnitude, not a tuning drift.
+ * ========================================================================== */
+
+describe('death FX size is a multiplier, not a length', () => {
+  /** The per-kind base tank lengths `vfx.system.ts` multiplies the scale by. */
+  const BASE_TL = { building: 5.0, unit: 2.2 } as const;
+
+  /**
+   * Kill `victim` and leave `channels.fx` intact for inspection.
+   *
+   * Deliberately not `rig.step()`: step() ends by clearing `channels.fx`, which
+   * is exactly the buffer under test.
+   */
+  function killLeavingFx(rig: Rig, victim: EntityId): void {
+    rig.channels.damage.push(
+      victim, 0 as EntityId, 99_999, WarheadClass.HighExplosive, 100, 0, 100,
+    );
+    const s = rig.ctx();
+    rig.damage.damageTick(s);
+    rig.damage.cleanupTick(s);
+  }
+
+  /** The tank-length size the vfx layer will actually ask `spawnExplosion` for. */
+  function requestedTL(rig: Rig, want: FxKind, baseTL: number): number {
+    const fx = rig.channels.fx;
+    for (let i = 0; i < fx.count; i++) if (fx.kind[i] === want) return baseTL * fx.scale[i];
+    throw new Error(`no fx of kind ${want} was pushed`);
+  }
+
+  it('a structure death asks for roughly the documented five tank lengths', () => {
+    const rig = makeRig();
+    const b = spawn(rig, P1, 100, 100, { kind: EntityKind.Building, hp: 100, footprint: 4 });
+    killLeavingFx(rig, b);
+    // Documented 5.0. The bug made this ~43.
+    const tl = requestedTL(rig, FxKind.ExplosionBuilding, BASE_TL.building);
+    expect(tl).toBeGreaterThan(3);
+    expect(tl).toBeLessThan(12);
+  });
+
+  it('a vehicle death asks for roughly the documented 2.2 tank lengths', () => {
+    const rig = makeRig();
+    const v = spawn(rig, P1, 100, 100, { hp: 100 });
+    killLeavingFx(rig, v);
+    // Documented 2.2. The bug made this ~4.8 — the same error, smaller.
+    const tl = requestedTL(rig, FxKind.ExplosionMedium, BASE_TL.unit);
+    expect(tl).toBeGreaterThan(1);
+    expect(tl).toBeLessThan(5);
+  });
+
+  it('scales with footprint, so a bigger building still makes a bigger bang', () => {
+    // The fix must not flatten the size ramp into a constant.
+    const small = makeRig();
+    killLeavingFx(small, spawn(small, P1, 100, 100,
+      { kind: EntityKind.Building, hp: 100, footprint: 2 }));
+    const big = makeRig();
+    killLeavingFx(big, spawn(big, P1, 100, 100,
+      { kind: EntityKind.Building, hp: 100, footprint: 6 }));
+
+    expect(requestedTL(big, FxKind.ExplosionBuilding, BASE_TL.building))
+      .toBeGreaterThan(requestedTL(small, FxKind.ExplosionBuilding, BASE_TL.building));
+  });
+
+  it('never pushes a scale big enough to be a length', () => {
+    // The tell, and the cheapest guard against the whole bug class: a
+    // multiplier is O(1). A length in this game is O(10) — `buildingBlastMetres`
+    // alone is 5.2 before the footprint clamp multiplies it. Nothing a death
+    // pushes should approach that.
+    const rig = makeRig();
+    killLeavingFx(rig, spawn(rig, P1, 100, 100,
+      { kind: EntityKind.Building, hp: 100, footprint: 6 }));
+    const fx = rig.channels.fx;
+    expect(fx.count).toBeGreaterThan(0);
+    for (let i = 0; i < fx.count; i++) {
+      expect(fx.scale[i]).toBeLessThan(COMBAT_DAMAGE.buildingBlastMetres);
+    }
   });
 });

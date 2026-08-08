@@ -625,11 +625,35 @@ export class DamageSystem {
   ): void {
     const w = this.world;
     const st = w.store;
-    const scale = COMBAT_DAMAGE.unitBlastMetres * clamp(st.radius[i] / 2.4, 0.7, 1.8);
+    /*
+     * TWO QUANTITIES, AND THEY ARE NOT INTERCHANGEABLE. One `scale` used to
+     * carry both, which is the whole of the "black ground" bug.
+     *
+     *  - `sizeMul` is DIMENSIONLESS. It is what `channels.fx.push` takes — see
+     *    `events.ts`, "a size multiplier", defaulting to 1 — and `vfx.system.ts`
+     *    multiplies it by its OWN per-kind base tank-length (1.2 / 2.2 / 3.4 /
+     *    5.0). Every other fx.push in the codebase passes a small number like
+     *    this: Superweapons pushes 6, Abilities pushes 2.2, the damage-smoke
+     *    path above pushes 1.
+     *
+     *  - `scale` is METRES. It is the fireball radius, and it is correct for
+     *    the ground decal and the camera shake below, which both want a length.
+     *
+     * Pushing METRES into the multiplier slot squared the size: `unitBlastMetres`
+     * is 2.2, so ExplosionMedium was asked for 2.2 * 2.2 * clamp tank lengths
+     * instead of 2.2 * clamp. `spawnExplosion`'s own docstring states the
+     * contract it was being handed garbage against — "Fireball diameter in tank
+     * lengths. Unit death 2.2, structure death 5.0, cook-off 1.2."
+     *
+     * A vehicle was ~2.2x too big. See `buildingDeath` for the same error at
+     * ~20x, which is the one a player reported.
+     */
+    const sizeMul = clamp(st.radius[i] / 2.4, 0.7, 1.8);
+    const scale = COMBAT_DAMAGE.unitBlastMetres * sizeMul;
 
-    this.channels.fx.push(FxKind.ExplosionMedium, x, y + 1.0, z, 0, 1, 0, scale, NONE, faction);
-    this.channels.fx.push(FxKind.Debris, x, y + 1.0, z, 0, 1, 0, scale * 0.8, NONE, faction);
-    this.channels.fx.push(FxKind.SmokePlumeLarge, x, y + 1.4, z, 0, 1, 0, scale * 0.7, NONE, faction);
+    this.channels.fx.push(FxKind.ExplosionMedium, x, y + 1.0, z, 0, 1, 0, sizeMul, NONE, faction);
+    this.channels.fx.push(FxKind.Debris, x, y + 1.0, z, 0, 1, 0, sizeMul * 0.8, NONE, faction);
+    this.channels.fx.push(FxKind.SmokePlumeLarge, x, y + 1.4, z, 0, 1, 0, sizeMul * 0.7, NONE, faction);
     w.vfx.decal(DecalKind.Scorch, x, z, st.seed[i] * 6.283185, scale * COMBAT_DAMAGE.scorchSizeMul);
     w.vfx.shake(clamp01(scale * COMBAT_DAMAGE.shakePerScale));
     w.audio.play(FxKind.ExplosionMedium, x, z, 1);
@@ -656,11 +680,39 @@ export class DamageSystem {
     const st = w.store;
     const fw = st.footprintW[i] || 2;
     const fh = st.footprintH[i] || 2;
-    const scale = COMBAT_DAMAGE.buildingBlastMetres * clamp(Math.sqrt(fw * fh) / 2.4, 0.7, 1.8);
+    /*
+     * REPORTED: "whenever i destroy enemy buildings, the entire ground around
+     * just looks black." This line was most of it. See `vehicleDeath` above for
+     * the metres-vs-multiplier split; this is the same error, an order of
+     * magnitude worse, because `buildingBlastMetres` is 5.2 rather than 2.2.
+     *
+     * For a 4x4 structure the old code pushed scale = 5.2 * 1.667 = 8.67 into a
+     * slot that means "multiply my base by this". `vfx.system.ts` then asked
+     * for 5.0 * 8.67 = 43.3 tank lengths where 5.0 was intended, so
+     * `Explosions.ts` derived k = 43.3 / 2.2 = 19.7 against an intended 2.27,
+     * and the scorch radius is LINEAR in k:
+     *
+     *     scorchR = rng(1.6, 2.4) * TL(7) * k * 0.5
+     *             = ~138 m  (intended ~16 m)
+     *
+     * `Decals.spawn` treats that as a half-extent, so one building death laid a
+     * single scorch quad roughly 162 x 276 m on a 512 m map — about a sixth of
+     * the battlefield. "The entire ground around" was literal.
+     *
+     * That is the AREA. The DEPTH came from the decal blend being a pure
+     * multiply (`DstColorFactor`/`ZeroFactor`) with a floor that bounds one
+     * mark and not the stack, so N overlapping scorches land on 0.45^N. The
+     * cook-off loops below were laying eight to fourteen of them on the same
+     * spot. Fixing the size fixes most of the overlap too; the rest is handled
+     * in `Explosions.ts`, where secondary blasts no longer leave permanent
+     * marks.
+     */
+    const sizeMul = clamp(Math.sqrt(fw * fh) / 2.4, 0.7, 1.8);
+    const scale = COMBAT_DAMAGE.buildingBlastMetres * sizeMul;
 
-    this.channels.fx.push(FxKind.ExplosionBuilding, x, y + 2.0, z, 0, 1, 0, scale, NONE, faction);
-    this.channels.fx.push(FxKind.Debris, x, y + 2.0, z, 0, 1, 0, scale, NONE, faction);
-    this.channels.fx.push(FxKind.SmokePlumeLarge, x, y + 2.4, z, 0, 1, 0, scale * 0.9, NONE, faction);
+    this.channels.fx.push(FxKind.ExplosionBuilding, x, y + 2.0, z, 0, 1, 0, sizeMul, NONE, faction);
+    this.channels.fx.push(FxKind.Debris, x, y + 2.0, z, 0, 1, 0, sizeMul, NONE, faction);
+    this.channels.fx.push(FxKind.SmokePlumeLarge, x, y + 2.4, z, 0, 1, 0, sizeMul * 0.9, NONE, faction);
     w.vfx.shake(clamp01(scale * COMBAT_DAMAGE.shakePerScale));
     w.audio.play(FxKind.ExplosionBuilding, x, z, 1);
 
@@ -675,7 +727,9 @@ export class DamageSystem {
         s.time + COMBAT_DAMAGE.cookOffInterval * (k + 1),
         FxKind.ExplosionSmall,
         x + Math.cos(a) * half, y + 1.4 + (k & 1) * 1.2, z + Math.sin(a) * half,
-        scale * COMBAT_DAMAGE.cookOffScale, faction,
+        // Dimensionless: `flushScheduledFx` hands this straight to
+        // `channels.fx.push`, so it is the multiplier, not a length.
+        sizeMul * COMBAT_DAMAGE.cookOffScale, faction,
       );
     }
 

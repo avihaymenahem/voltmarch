@@ -435,9 +435,37 @@ export function spawnExplosion(
   // product over the whole scorched circle.
   spawnLight(x, y + 1.6 * k + 1.4, z, VFX_LIGHTS.explosion, k);
 
-  /* -- 8. scorch and shake ----------------------------------------------- */
-  const scorchR = rng.range(X.scorchMinTL, X.scorchMaxTL) * TL * k * 0.5;
-  emitScorch(x, z, floor, scorchR, rng.range(0, Math.PI));
+  /* -- 8. scorch and shake -----------------------------------------------
+   *
+   * ONE DETONATION, ONE PERMANENT SCAR — and a secondary blast is not one.
+   *
+   * Scorch is permanent by design (bible §8.10: it never fades, it is evicted),
+   * and the decal field composites with a pure multiply — `DstColorFactor` /
+   * `ZeroFactor` in Decals.ts. `DECAL_DARKEN_FLOOR` clamps what ONE mark may
+   * emit, and its own comment concedes the overlap case and answers it by
+   * raising the base ("0.45^4 is 0.041 rather than 0.013"). But 0.45 is the
+   * base of an exponential, not a bound. Eight marks on one spot reach 0.0017,
+   * which is not dark brown, it is a hole in the map.
+   *
+   * A structure death used to lay eight to fourteen of them within a few metres
+   * of each other: this blast, the 3-6 internal cook-offs scheduled just below,
+   * and five more scheduled independently by `Damage.buildingDeath`. That is
+   * the "black" in the reported black ground; the ~20x oversized radius fixed
+   * in Damage.ts was the "entire ground around".
+   *
+   * So cook-offs and other small blasts light the sky and leave no scar. A
+   * cook-off belongs to a death that has already marked the ground, and a small
+   * blast that killed nothing has no business permanently scarring the map.
+   *
+   * The skipped `rng` draws shift `presentationRng`'s stream for small blasts.
+   * That is deliberate and safe: presentation RNG is explicitly not sim state —
+   * `Damage.buildingDeath` derives its cook-off offsets from the entity seed for
+   * exactly that reason — so no replay or checksum depends on it.
+   */
+  if (kind !== 'small') {
+    const scorchR = rng.range(X.scorchMinTL, X.scorchMaxTL) * TL * k * 0.5;
+    emitScorch(x, z, floor, scorchR, rng.range(0, Math.PI));
+  }
   shakeSink?.(X.shakePerTL * sizeTL);
 
   /* -- 9. structure cook-off --------------------------------------------- */
