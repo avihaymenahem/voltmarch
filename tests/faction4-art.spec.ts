@@ -20,7 +20,7 @@ import { describe, expect, it } from 'vitest';
 import { Faction } from '../src/core/types';
 import { BUILDINGS, DEF_TABLES, FACTION_RECLAIM } from '../src/data/Defs';
 import { FACTION_RECLAIM as AI_FACTION_RECLAIM } from '../src/sim/AIStrategy';
-import { formatStats } from '../src/art/MassList';
+import { MassRole, boxiness, formatStats } from '../src/art/MassList';
 import {
   RECLAIM_UNIT_MASS_LISTS, RECLAIM_UNIT_MODELS, RECLAIM_UNIT_PALETTE, reclaimUnitLibrary,
 } from '../src/art/Faction4Units';
@@ -80,6 +80,50 @@ describe('the Reclamation — art', () => {
       // Perf: a structure is a few thousand triangles and two draw calls.
       expect(m.stats.triangles, l.key).toBeLessThan(4000);
       expect(m.stats.parts, l.key).toBeLessThanOrEqual(2);
+    }
+  });
+
+  /**
+   * THE RECTANGULARITY THAT ISN'T. Pinned rather than reported, because a
+   * measurement in a commit message protects nothing.
+   *
+   * The Meridian Pact's hulls measured 0.535-0.564 score and 0.415-0.492
+   * axis-aligned before v1.28.0, against 0.149 for the boxiest Allied vehicle.
+   * The cause was the LEGACY `prism` primitive: `UnitFactory.buildPrism` emits
+   * the same plan at both wall rings — it has no taper term at all — so its
+   * walls stand dead vertical and `massFlankSurface` scores them fully
+   * axis-aligned. This roster never used it. Every Reclamation Primary mass is a
+   * `taperedBox` with a real taper and shear, a `plate`, a lathe or a convex
+   * `hull`, all four of which report ZERO axis-aligned flank surface, so the
+   * whole army measures 0.000 axis — not "low", zero, on all twelve hulls.
+   *
+   * The 80 `box` masses in the file are the team slab, insignia and glow decal
+   * helpers, which are TeamSlab/Insignia/Emissive roles. `boxiness()` only walks
+   * Primary masses, which is correct: a 6 cm let-in panel is not what makes a
+   * model read as a brick.
+   */
+  it('is not rectangular, and it is the primitives that make that true', () => {
+    for (const l of RECLAIM_UNIT_MASS_LISTS) {
+      const b = boxiness(l);
+      // Exactly zero. A single `prism` or plain `box` Primary anywhere in the
+      // roster moves this off the floor, which is the regression to catch.
+      expect(b.axisFraction, `${l.key} worst=${b.worst}@${b.worstFraction}`).toBe(0);
+      // Score is then pure silhouette fill. The heaviest is the Swarmhornet at
+      // 0.281; the boxiest Allied vehicle is 0.417 and Meridian's were 0.564.
+      expect(b.score, `${l.key} score ${b.score.toFixed(3)}`).toBeLessThan(0.32);
+    }
+  });
+
+  it('never reaches for the two primitives with no taper term', () => {
+    // The causal half of the case above, stated where an author will trip over
+    // it: `prism` cannot taper and `box` is the un-chamfered legacy fallback.
+    // Either one as a Primary is how a hull goes back to being a brick.
+    for (const l of RECLAIM_UNIT_MASS_LISTS) {
+      for (const m of l.masses) {
+        if (m.role !== MassRole.Primary) continue;
+        expect(m.primitive, `${l.key}/${m.name}`).not.toBe('prism');
+        expect(m.primitive, `${l.key}/${m.name}`).not.toBe('box');
+      }
     }
   });
 

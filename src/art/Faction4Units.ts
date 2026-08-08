@@ -172,7 +172,16 @@ const HULL_NUMBER = RECLAIM_UNIT_PALETTE.hullNumber;
 
 type V3 = readonly [number, number, number];
 
-interface SlabOpts { mirrorX?: boolean; rot?: V3; }
+interface SlabOpts {
+  mirrorX?: boolean;
+  rot?: V3;
+  /**
+   * See `MassDef.gait`. A team panel painted on a moving limb has to swing WITH
+   * it — the thigh wrap is painted on the thigh, and a wrap that stayed put
+   * while the leg swung out from under it would read as a hovering violet plate.
+   */
+  gait?: MassDef['gait'];
+}
 
 /** A flat violet panel bolted to the frame. R-T2: a quad, never a gradient. */
 function slab(name: string, size: V3, anchor: V3, o: SlabOpts = {}): MassDef {
@@ -181,6 +190,7 @@ function slab(name: string, size: V3, anchor: V3, o: SlabOpts = {}): MassDef {
     slot: 'teamSlab', chamfer: 0.02,
     ...(o.mirrorX ? { mirrorX: true } : {}),
     ...(o.rot ? { rot: o.rot } : {}),
+    ...(o.gait !== undefined ? { gait: o.gait } : {}),
   };
 }
 
@@ -376,6 +386,17 @@ function scrapGreebles(hullW: number, hullL: number, deckY: number): MassDef[] {
  * instead of a matched pair, and the coil on the pack. Below the waist is
  * deliberately identical to everyone else's, because legs at that pixel count
  * are two smudges whatever you do to them.
+ *
+ * THEY WALK. This is new, and it should not have been: v1.17.0 shipped the walk
+ * cycle and it reached `UnitDefs.ts` and stopped there, so for four versions
+ * half the game's armies slid across the ground with their legs welded shut.
+ * `grep -c gait` read 10 / 0 / 0 across the three roster files, and the reason
+ * nobody saw it is that `tests/unit-gait.spec.ts` imported `UNIT_MASS_LISTS` and
+ * nothing else — the feature was measured only where it worked. The costs are
+ * zero triangles and zero draw calls: the swing is a per-vertex `(sign, pivotY)`
+ * attribute resolved in the vertex stage, and the four masses below opt in by
+ * declaring `gait`. `tests/infantry-gait-rosters.spec.ts` now sweeps EVERY
+ * roster module rather than one of them.
  * ========================================================================== */
 
 interface ScrapInfantryOpts {
@@ -403,9 +424,40 @@ function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
   const torsoH = H * 0.415;
   const torsoY = legTop + torsoH * 0.5;            // 0.623 H — the dominant mass
 
+  /**
+   * THE TWO JOINTS. Both are SOLVED from this roster's own limb geometry rather
+   * than copied off `UnitDefs.infantry`, because a pivot that is not inside the
+   * limb it turns is a shear, not a joint.
+   *
+   *   hip       the top face of the leg mass, exactly. The leg spans 0..legTop,
+   *             so rotating about anything lower swings the top of the thigh out
+   *             of the hip socket and opens a gap under the belt.
+   *   shoulder  torsoH * 0.34 above the torso centre — 3.7 cm HIGHER inside the
+   *             arm than the Allied and Soviet shoulder (which sits at 0.30),
+   *             because this army's arm is shorter (0.84 torsoH against 0.86)
+   *             and hangs off a shrugged shoulder shelf on a forward-leaning
+   *             wedge. A high pivot on a short arm gives a tighter, faster-
+   *             looking swing at the same `uGaitSwing`, which is the scavenger's
+   *             trudge rather than the Peacekeeper's parade stride. It is still
+   *             comfortably inside the arm mass (which spans torsoY - 0.36 to
+   *             torsoY + 0.40) and above the hip, which is what the shader needs.
+   */
+  const hipY = legTop;
+  const shoulderY = torsoY + torsoH * 0.34;
+
   const masses: MassDef[] = [
     primary('leg', 'taperedBox', [W * 0.34, legTop, W * 0.44], [W * 0.24, legTop * 0.5, 0], 'paintSmall', {
-      mirrorX: true, shape: { topScaleX: 1.18, topScaleZ: 1.06, shear: 0.02 },
+      mirrorX: true,
+      // THE WALK CYCLE. v1.17.0 shipped this and it reached the Allied and
+      // Soviet rosters only — `UnitDefs.ts` had ten `gait` declarations and this
+      // file had none, so two of the game's four armies slid across the ground.
+      // ONE declaration animates both legs: `UnitFactory` gives the mirrored
+      // copy the opposite sign, which is the whole reason the gait is expressed
+      // per MASS rather than per emitted vertex range. Everything hanging off
+      // the leg below repeats this pivot so the limb swings as one piece.
+      // See `MassDef.gait` and `src/render/Gait.ts`.
+      gait: { limb: 'leg', pivotY: hipY },
+      shape: { topScaleX: 1.18, topScaleZ: 1.06, shear: 0.02 },
     }),
     // The torso is a forward-leaning wedge: this army carries its weight on its
     // shoulders, which reads as hunched at any distance.
@@ -425,7 +477,12 @@ function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
       shape: { segments: 12, rTop: 0.86, capChamfer: 0.03 },
     }),
     primary('arm', 'taperedBox', [W * 0.24, torsoH * 0.84, W * 0.28], [W * 0.50, torsoY + 0.02, 0.06], 'paintSmall', {
-      mirrorX: true, rot: [0.16, 0, -0.08], shape: { topScaleX: 0.8, topScaleZ: 0.86 },
+      mirrorX: true, rot: [0.16, 0, -0.08],
+      // 'arm' inverts the sign again, so the left arm swings with the RIGHT leg.
+      // That contralateral rhythm is most of what makes a walk read as a walk;
+      // arms and legs in phase reads as a children's march.
+      gait: { limb: 'arm', pivotY: shoulderY },
+      shape: { topScaleX: 0.8, topScaleZ: 0.86 },
     }),
   ];
 
@@ -492,7 +549,11 @@ function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
       shape: { outline: taperOutline(W * 0.40, W * 0.46, 0.70), thickness: 0.10, bevel: 0.03 },
     }),
     greeble('boot', 'taperedBox', [W * 0.40, 0.16, W * 0.60], [W * 0.24, 0.08, 0.06], 'paintTiny', {
-      mirrorX: true, group: 'boots', shape: { topScaleZ: 0.82, shear: -0.04 },
+      // The boot is the far end of the leg, so it takes the HIP pivot, not an
+      // ankle of its own: a boot rotating about its own centre would stay flat
+      // on the ground while the shin swung away from it.
+      mirrorX: true, group: 'boots', gait: { limb: 'leg', pivotY: hipY },
+      shape: { topScaleZ: 0.82, shear: -0.04 },
     }),
     greeble('belt', 'taperedBox', [W * 0.88, 0.12, W * 0.62], [0, torsoY - torsoH * 0.34, 0], 'paintTiny', {
       group: 'belt', shape: { topScaleX: 0.94 },
@@ -533,7 +594,8 @@ function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
     slab('chestPlate', [W * 0.70, torsoH * 0.62, 0.06], [0, torsoY + 0.06, W * 0.30]),
     slab('pauldronFace', [W * 0.36, 0.28, W * 0.42], [W * 0.46, torsoY + torsoH * 0.32, 0], { rot: [0, 0, -0.42] }),
     slab('helmBand', [W * 0.56, 0.12, W * 0.58], [0, legTop + torsoH + H * 0.022, -0.01]),
-    slab('thighWrap', [W * 0.40, 0.20, W * 0.48], [W * 0.24, legTop * 0.70, 0], { mirrorX: true }),
+    slab('thighWrap', [W * 0.40, 0.20, W * 0.48], [W * 0.24, legTop * 0.70, 0],
+      { mirrorX: true, gait: { limb: 'leg', pivotY: hipY } }),
   );
   masses.push(insignia([0.24, 0.24, 0.05], [-W * 0.26, torsoY + torsoH * 0.22, W * 0.31]));
   masses.push(
