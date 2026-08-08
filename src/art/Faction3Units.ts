@@ -50,15 +50,34 @@
  *
  * PRIMITIVES
  * ----------
- * Authored in the three primitives `UnitFactory.buildUnit` actually dispatches
- * on today — `box`, `lathe`, `prism`. `Shapes.ts`'s eight new primitives are
- * deliberately NOT used yet: `buildUnit`'s mass loop still ends in
- * `default: buildBox(...)`, so a `revolve` or a `tracks` mass would VALIDATE
- * against its real shape and RENDER as a plain box — strictly worse than
- * authoring the lathe outright. The moment §6.1 of the shape-language brief
- * lands in `UnitFactory.ts`, every `prism` here becomes a `planPrism` and every
- * `lathe` a `revolve` with no other change; the measured boxiness will fall
- * further, not rise.
+ * This section used to read: "authored in the three primitives
+ * `UnitFactory.buildUnit` actually dispatches on today — `box`, `lathe`,
+ * `prism`. `Shapes.ts`'s eight new primitives are deliberately NOT used yet:
+ * `buildUnit`'s mass loop still ends in `default: buildBox(...)`, so a
+ * `revolve` or a `tracks` mass would VALIDATE against its real shape and RENDER
+ * as a plain box."
+ *
+ * THAT HAS NOT BEEN TRUE SINCE THE SHAPE LIBRARY WAS WIRED UP.
+ * `UnitFactory.buildUnit`'s mass loop calls `shapeSpecFor(m, chamfer)` first and
+ * only falls through to `buildBox` when it returns null — which is now the
+ * legacy `'box'` alone. Every `Shapes.ts` primitive builds its real geometry.
+ *
+ * The note stayed, and because it stayed this file remained the only roster in
+ * the game still authored entirely in the three legacy primitives. That is not
+ * a cosmetic difference: `MassList.massFlankSurface` sends a wall into the
+ * de-boxify gate's `other` bucket only when the wall actually SLOPES, the
+ * legacy `prism` builder has no taper at all, and so the Pact's infantry
+ * measured 0.173 axis-aligned flank surface while the Allied, Soviet and
+ * Reclamation infantry all measured 0.000. A player put it as "troops are too
+ * rectangular" and they were right, about this army specifically.
+ *
+ * The infantry primaries are on the new primitives now (§4). The hover-tank,
+ * support, naval and flyer templates below are still legacy `prism` and now
+ * hold the four worst axis-aligned scores in the game — Sun Collector 0.415,
+ * Carryall 0.427, Kite Corvette 0.492, Sunmonitor 0.491, against 0.000 for
+ * every Allied, Soviet and Reclamation infantryman and 0.149 for the boxiest
+ * Allied vehicle. They are the next thing to do and the fix is the same one:
+ * `planPrism` with a real taper on `skirt`, `chassis` and `hull`.
  * ============================================================================
  */
 
@@ -303,35 +322,85 @@ interface PactInfantryOpts {
   officer?: boolean;
 }
 
+/**
+ * THE PACT HEXAGON, IN METRES, CCW from above — points at +-X, flat walls at
+ * +-Z, the same proportions as `MassList`'s built-in `HEXAGON` plan.
+ *
+ * It is restated here because `planPrism` takes its plan in real metres (the
+ * legacy `prism` takes a named plan in unit space and scales it by `size`), and
+ * `planPrism` is the only one of the two that can taper. Keeping the identical
+ * polygon is the point: the Pact's plan language does not change, only whether
+ * the walls are allowed to slope.
+ */
+function hexPlan(w: number, d: number): readonly (readonly [number, number])[] {
+  const a = w * 0.5, b = d * 0.5;
+  return [[-a * 0.5, -b], [a * 0.5, -b], [a, 0], [a * 0.5, b], [-a * 0.5, b], [-a, 0]];
+}
+
 function pactInfantry(o: PactInfantryOpts): UnitMassList {
   const H = UNIT_LADDER.infantryHeightMeters;      // 2.2 m
   const W = UNIT_LADDER.infantryWidthMeters;       // 0.78 m shoulder span
   const legTop = H * 0.415;
   const torsoH = H * 0.415;
   const torsoY = legTop + torsoH * 0.5;            // 0.623 H — the dominant mass
+  const torsoW = W * (o.officer === true ? 1.02 : 0.86);
+  const torsoD = W * (o.officer === true ? 1.00 : 0.86);
 
   const masses: MassDef[] = [
+    // The legs are the one primary that was never the problem: the legacy `box`
+    // builder DOES honour `taper`, so these walls already slope from thigh to
+    // ankle and already measure 0.000 axis-aligned. Left alone deliberately —
+    // `taperedBox` would fit the tapered mesh INSIDE `size` where `buildBox`
+    // lets the top overhang it, so migrating would quietly slim the thigh by
+    // 22% for no gain on any metric.
     primary('leg', 'box', [W * 0.34, legTop, W * 0.44], [W * 0.24, legTop * 0.5, 0], 'paintSmall', {
       mirrorX: true, taper: [1.22, 1.08, 0.02],
     }),
     // Hexagonal torso: the Pact's plan language reaches all the way down to a
     // 2 m figure, and it is what stops the silhouette reading as a Conscript.
     //
+    // A `planPrism` and NOT the legacy `prism`, and that is the whole fix for
+    // "troops are too rectangular". A hexagonal plan still has two walls square
+    // to +-Z — the chest and the back — and an untapered prism holds them
+    // vertical, so the de-boxify gate scored this mass at 0.275 axis-aligned
+    // flank surface and it was the single largest contributor on the roster.
+    // `buildPrism` cannot taper; `prismFromPlanMesh` can, and a wall that slopes
+    // is not a flat rectangle to the metric OR to the eye.
+    //
+    // The taper is also just correct: broad across the chest, drawn in at the
+    // waist, and carried a few centimetres back at the top so the figure reads
+    // upright and ceremonial rather than hunched — the Reclamation's infantry
+    // shear the other way on purpose (`Faction4Units.ts`), and at 20 px the
+    // direction of that lean is one of the few things that still reads.
+    //
     // The Hierarch's is BROADER — R-S4 holds the dominant mass to 35-50% of the
     // silhouette, and hanging a vestment off the back adds silhouette the torso
     // then does not own. Measured: 32.1% with the base torso, which the
     // validator rejected outright. Widening in X and Z only leaves the 2.1-2.7 m
     // height band untouched.
-    primary('torso', 'prism', [W * (o.officer === true ? 1.02 : 0.86), torsoH, W * (o.officer === true ? 1.00 : 0.86)],
-      [0, torsoY, 0], 'paintMed', {
-        plan: 'hexagon', capSlot: 'paintSmall',
-      }),
-    // Conical helmet, not a dome. One shape, read at any distance.
+    primary('torso', 'planPrism', [torsoW, torsoH, torsoD], [0, torsoY, 0], 'paintMed', {
+      capSlot: 'paintSmall',
+      shape: {
+        plan: hexPlan(torsoW, torsoD),
+        topScaleX: 1.00, topScaleZ: 0.94,
+        bottomScaleX: 0.78, bottomScaleZ: 0.86,
+        shear: -W * 0.05,
+      },
+    }),
+    // Conical helmet, not a dome. One shape, read at any distance. A revolve has
+    // no flat wall at any segment count, so this mass was never part of the
+    // problem and is left on the legacy `lathe` builder that already draws it.
     primary('helmet', 'lathe', [W * 0.58, H * 0.150, W * 0.60], [0, legTop + torsoH + H * 0.050, 0.01], 'paintSmall', {
       profile: 'cone', segments: 12, topRadius: 0.34,
     }),
-    primary('arm', 'box', [W * 0.24, torsoH * 0.86, W * 0.28], [W * 0.52, torsoY + 0.02, 0.06], 'paintSmall', {
+    // The other half of the fix. This was a DEAD STRAIGHT box — four vertical
+    // walls, no taper, 0.387 axis-aligned, and doubled because it is mirrored.
+    // Tapering it from the mantle down to the gauntlet costs nothing (a
+    // `taperedBox` emits FEWER triangles than the legacy chamfered box) and is
+    // what an armoured arm is shaped like.
+    primary('arm', 'taperedBox', [W * 0.24, torsoH * 0.86, W * 0.28], [W * 0.52, torsoY + 0.02, 0.06], 'paintSmall', {
       mirrorX: true, rot: [0.12, 0, -0.06],
+      shape: { topScaleX: 1.20, topScaleZ: 1.12, bottomScaleX: 0.74, bottomScaleZ: 0.82 },
     }),
   ];
 
