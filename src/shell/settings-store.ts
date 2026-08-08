@@ -53,6 +53,21 @@ export interface GraphicsSettings {
   tier: QualityChoice;
   /** Multiplies the clamped device pixel ratio. 0.5 .. 2.0. */
   resolutionScale: number;
+  /**
+   * Let the renderer drop resolution below `resolutionScale` to hold 60 fps.
+   *
+   * New, and it should have existed from the start: `setAdaptiveResolution` in
+   * `render/adaptive-res.system.ts` had ZERO callers anywhere in `src/`,
+   * `tools/` or `tests/`, so dynamic scaling was permanently on with no way to
+   * turn it off. On a GPU-bound machine it walks to its 0.55 floor within about
+   * half a minute and upscales, which is indistinguishable from broken
+   * antialiasing to anyone who does not know it is happening.
+   *
+   * Default true: it is the largest performance lever this renderer has, and
+   * for most players holding 60 fps is worth more than the sharpness. But it is
+   * a trade, and a trade the player is entitled to decline.
+   */
+  adaptiveResolution: boolean;
   shadows: boolean;
   shadowQuality: ShadowChoice;
   /** Screen-space ambient occlusion. */
@@ -419,6 +434,7 @@ export function defaultSettings(): Settings {
     graphics: {
       tier: 'auto',
       resolutionScale: 1.0,
+      adaptiveResolution: true,
       shadows: true,
       shadowQuality: 'high',
       ao: true,
@@ -560,6 +576,7 @@ export function normalizeSettings(raw: unknown): Settings {
     graphics: {
       tier: oneOf(g.tier, QUALITY_CHOICES, d.graphics.tier),
       resolutionScale: num(g.resolutionScale, 0.5, 2.0, d.graphics.resolutionScale),
+      adaptiveResolution: bool(g.adaptiveResolution, d.graphics.adaptiveResolution),
       shadows: bool(g.shadows, d.graphics.shadows),
       shadowQuality: oneOf(g.shadowQuality, SHADOW_CHOICES, d.graphics.shadowQuality),
       ao: bool(g.ao, d.graphics.ao),

@@ -151,3 +151,68 @@ describe('adaptive resolution', () => {
     expect(feed(c, SLOW, ADAPTIVE_WINDOW - 1)).toEqual([]);
   });
 });
+
+/* ==========================================================================
+ * A DELIBERATE CHOICE OUTRANKS THE BOOT-TIME CEILING
+ *
+ * `ceiling` was `readonly`, fixed in the constructor from whatever the quality
+ * tier picked at boot. That made the Resolution Scale slider unusable above the
+ * tier default: a player fighting aliasing sets 150%, the handle applies it,
+ * this controller never learns, and on the next over-budget window it commits
+ * ceiling - step. The 150% is gone in seconds and recovery is then clamped by
+ * `scale < ceiling` back to the tier value forever.
+ *
+ * Supersampling is the one real answer to aliasing this renderer already
+ * supports, and it was unreachable.
+ * ========================================================================== */
+
+describe('adaptive resolution — the ceiling can be re-armed', () => {
+  it('lets a deliberate choice raise the ceiling above the tier default', () => {
+    const c = new AdaptiveResolution(0.9);
+    expect(c.maxScale).toBe(0.9);
+
+    c.setCeiling(1.5);
+
+    expect(c.maxScale).toBe(1.5);
+    expect(c.current).toBe(1.5);
+  });
+
+  it('does not claw a raised scale straight back down', () => {
+    // The exact reported sequence: set 150%, then keep rendering slowly.
+    const c = new AdaptiveResolution(0.9);
+    c.setCeiling(1.5);
+    // It may cut under sustained load — that is its job — but it must start
+    // from the value the player chose, not from the stale tier ceiling.
+    const changes = feed(c, SLOW, ADAPTIVE_WINDOW);
+    for (const s of changes) expect(s).toBeLessThan(1.5);
+    expect(c.maxScale).toBe(1.5);
+  });
+
+  it('can recover all the way back to the raised ceiling, not the old one', () => {
+    const c = new AdaptiveResolution(0.9);
+    c.setCeiling(1.5);
+    feed(c, SLOW, ADAPTIVE_WINDOW * 6);
+    expect(c.current).toBeLessThan(1.5);
+    feed(c, FAST, ADAPTIVE_WINDOW * 60);
+    // Before the fix this could never exceed 0.9.
+    expect(c.current).toBeCloseTo(1.5, 5);
+  });
+
+  it('clears the sample window, so the old resolution cannot steer the new one', () => {
+    const c = new AdaptiveResolution(0.9);
+    feed(c, SLOW, ADAPTIVE_WINDOW - 1);
+    c.setCeiling(1.5);
+    // A full window short of a decision again: the pre-change samples are gone.
+    expect(feed(c, SLOW, ADAPTIVE_WINDOW - 1)).toEqual([]);
+  });
+
+  it('lowering the ceiling takes the current scale down with it', () => {
+    const c = new AdaptiveResolution(1.5);
+    c.setCeiling(0.75);
+    expect(c.maxScale).toBe(0.75);
+    expect(c.current).toBe(0.75);
+    // And it still may never climb back past the new, lower ceiling.
+    feed(c, FAST, ADAPTIVE_WINDOW * 60);
+    expect(c.current).toBeLessThanOrEqual(0.75);
+  });
+});

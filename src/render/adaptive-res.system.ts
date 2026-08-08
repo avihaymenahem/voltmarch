@@ -41,6 +41,13 @@ let offResize: (() => void) | null = null;
 /** Last CSS layout box seen, so a genuine window change can be told apart. */
 let lastCssW = 0;
 let lastCssH = 0;
+/**
+ * The last scale THIS controller commanded, or -1 before it has commanded one.
+ *
+ * Anything else observed on the handle came from another caller — the Settings
+ * slider or `__VM.setResolutionScale` — and is treated as a deliberate choice.
+ */
+let lastCommanded = -1;
 
 /** Adjustments made this match. Surfaced so a silent no-op is visible. */
 export let adaptiveChanges = 0;
@@ -59,7 +66,24 @@ export function setAdaptiveResolution(on: boolean): void {
   if (!on && handle !== null && controller !== null) {
     handle.setResolutionScale(controller.maxScale);
     controller.reset(controller.maxScale);
+    lastCommanded = handle.resolutionScale;
   }
+}
+
+/**
+ * The scale actually being rendered at, or `null` before the system has run.
+ *
+ * Exists because the Settings screen was telling the player a number that was
+ * not true. The slider renders `settings.graphics.resolutionScale` straight out
+ * of the persisted store, while this controller writes through
+ * `handle.setResolutionScale` and never writes back — so on a GPU-bound machine
+ * the screen said "100%" while the renderer had walked down to 55% and was
+ * upscaling. That reads as broken antialiasing and there was nothing anywhere
+ * in the UI that could tell you otherwise: `perfOverlay` is off by default and
+ * `stats().resolution` is the only other surface.
+ */
+export function adaptiveLiveScale(): number | null {
+  return handle === null ? null : handle.resolutionScale;
 }
 
 export function adaptiveResolutionEnabled(): boolean { return enabled; }
@@ -113,11 +137,35 @@ export default defineSystem({
     // `docs/SPEC_DRIFT_AUDIT.md` catalogues. Never steer during one.
     if (handle.isFixedSize) return;
 
+    /*
+     * DID SOMEONE ELSE MOVE THE SCALE?
+     *
+     * `handle.setResolutionScale` has other callers — the Settings slider, and
+     * `__VM.setResolutionScale` in the debug surface. Before this check, the
+     * controller had no idea that had happened: it kept steering from its own
+     * stale `current`, so a player who set 150% had it clawed straight back and
+     * permanently re-clamped to the boot-time tier ceiling.
+     *
+     * `lastCommanded` is the last value THIS controller asked for. Any
+     * disagreement with the live scale therefore came from outside, and an
+     * outside change is a deliberate one: adopt it as the new ceiling.
+     *
+     * Compared with a tolerance because the scale round-trips through
+     * `planDrawingBuffer` and back; an exact === would re-arm every frame.
+     */
+    const live = handle.resolutionScale;
+    if (lastCommanded >= 0 && Math.abs(live - lastCommanded) > 1e-3) {
+      controller.setCeiling(live);
+      lastCommanded = live;
+      return;
+    }
+
     const decision = controller.sample(rc.dt * 1000, rc.dt);
     adaptiveMedianMs = decision.medianMs;
     if (decision.scale === null) return;
 
     handle.setResolutionScale(decision.scale);
+    lastCommanded = handle.resolutionScale;
     adaptiveChanges++;
   },
 

@@ -41,6 +41,7 @@ import {
   setPanelBlurMode,
   type RenderQualityTier,
 } from '../render/renderer';
+import { adaptiveLiveScale, setAdaptiveResolution } from '../render/adaptive-res.system';
 import { audio } from '../audio/AudioEngine';
 import { CAMERA_NAV } from '../core/config';
 import type { GameHandle } from '../game/Bootstrap';
@@ -125,6 +126,14 @@ export function applySettings(
 
   if (game !== null && (all || touched(changed, 'graphics.tier') || touched(changed, 'graphics.resolutionScale'))) {
     game.ctx.handle.setResolutionScale(settings.graphics.resolutionScale);
+    // The adaptive controller watches the handle and treats any scale it did
+    // not itself command as a deliberate choice, re-arming its ceiling. That is
+    // what makes this slider stick above the tier default — before it, setting
+    // 150% was reverted within seconds and permanently re-clamped.
+  }
+
+  if (all || touched(changed, 'graphics.adaptiveResolution')) {
+    setAdaptiveResolution(settings.graphics.adaptiveResolution);
   }
 
   if (game !== null && want('graphics.shadows')) {
@@ -465,14 +474,38 @@ export class SettingsScreen implements Screen {
       ),
       'Sets shadows, post and resolution together.',
     ));
+    /*
+     * THE SLIDER USED TO LIE.
+     *
+     * It renders `settings.graphics.resolutionScale` straight out of the
+     * persisted store, but the adaptive controller writes through
+     * `handle.setResolutionScale` and never writes back. So on a GPU-bound
+     * machine this row said "100%" while the renderer had walked down to 55%
+     * and was upscaling — and the only surface anywhere that told the truth was
+     * `stats().resolution` behind the perf overlay, which is off by default.
+     *
+     * A player looking at "100%" and seeing a soft, stair-stepped image
+     * concludes the antialiasing is broken. That is exactly what was reported.
+     */
+    const liveScale = adaptiveLiveScale();
+    const drifted = liveScale !== null && Math.abs(liveScale - g.resolutionScale) > 0.01;
     presets.appendChild(row(
       'Resolution Scale',
       slider({
         min: 0.5, max: 2, step: 0.05, value: g.resolutionScale,
         format: (v) => `${Math.round(v * 100)}%`,
-        onChange: (v) => set({ resolutionScale: v }),
+        onChange: (v) => { set({ resolutionScale: v }); this.renderTab(); },
       }),
-      'Renders below native and upscales. The cheapest frame you will ever buy.',
+      drifted
+        ? `Renders below native and upscales. Rendering at ${Math.round((liveScale ?? 1) * 100)}% `
+          + 'right now — Adaptive Resolution lowered it to hold the frame rate.'
+        : 'Renders below native and upscales. The cheapest frame you will ever buy.',
+    ));
+    presets.appendChild(row(
+      'Adaptive Resolution',
+      toggle(g.adaptiveResolution, (v) => { set({ adaptiveResolution: v }); this.renderTab(); }),
+      'Trades sharpness for frame rate automatically, down to 55% of native. '
+      + 'Off holds the scale exactly where you set it.',
     ));
 
     const light = this.section(body, 'Lighting');

@@ -59,11 +59,28 @@
  *
  * WHAT IT WILL NOT DO
  * -------------------
- * It never exceeds the ceiling the quality tier chose, so it cannot quietly
- * undo a deliberate setting — it only ever reclaims frame time below it. It is
- * disabled outright for fixed-size offscreen renders, because the screenshot
+ * It never exceeds its CEILING — it only ever reclaims frame time below it. It
+ * is disabled outright for fixed-size offscreen renders, because the screenshot
  * harness demands one drawing-buffer pixel per requested pixel and a scaled
  * capture would silently corrupt the visual scorecard.
+ *
+ * THE CEILING IS NOT FROZEN, AND THIS BLOCK USED TO PROMISE THE OPPOSITE
+ * ---------------------------------------------------------------------
+ * It said "it never exceeds the ceiling the quality tier chose, so it cannot
+ * quietly undo a deliberate setting". The first clause was true and the second
+ * did not follow from it — in fact it was precisely backwards, because the
+ * Resolution Scale slider IS a deliberate setting and this controller quietly
+ * undid it. `ceiling` was `readonly`, captured once at boot from the tier, so a
+ * player who set 150% had it applied, then cut to tier-minus-one-step on the
+ * next over-budget window, then permanently re-clamped to the tier value by
+ * `scale < ceiling`. Supersampling — the one real answer to aliasing this
+ * renderer already supports — was unreachable, and it looked like the slider
+ * did nothing.
+ *
+ * `setCeiling` fixes that, and `adaptive-res.system.ts` calls it whenever it
+ * observes a scale on the handle that it did not itself command. So the rule is
+ * now what the old comment claimed: a deliberate choice wins, and the controller
+ * reclaims only what is below it.
  * ============================================================================
  */
 
@@ -124,9 +141,9 @@ export class AdaptiveResolution {
   private overRuns = 0;
   private underRuns = 0;
 
-  /** Current scale, and the tier's ceiling. */
+  /** Current scale, and the ceiling it may never exceed. */
   private scale: number;
-  private readonly ceiling: number;
+  private ceiling: number;
 
   constructor(startScale: number) {
     this.scale = startScale;
@@ -135,8 +152,30 @@ export class AdaptiveResolution {
 
   /** The scale the controller currently wants. */
   get current(): number { return this.scale; }
-  /** Highest scale it may ever ask for — whatever the quality tier chose. */
+  /** Highest scale it may ever ask for. */
   get maxScale(): number { return this.ceiling; }
+
+  /**
+   * Raise or lower the ceiling because someone DELIBERATELY chose a scale.
+   *
+   * This was `readonly`, set once in the constructor from whatever the quality
+   * tier picked at boot, and that made the Resolution Scale slider unusable
+   * above the tier default. A player fighting aliasing sets 150%;
+   * `handle.setResolutionScale(1.5)` applies it; this controller never learns,
+   * still believes it is at 0.9, and on the next over-budget window commits
+   * 0.9 - 0.075 = 0.825. The 1.5 is gone within seconds, and recovery is then
+   * clamped by `this.scale < this.ceiling` to 0.9 forever. Supersampling — the
+   * one genuine fix for aliasing this renderer already supports — was
+   * unreachable, and it looked like the slider was ignored.
+   *
+   * Resetting `scale` too is the point: a deliberate choice is not something to
+   * creep back from, it is the new starting position.
+   */
+  setCeiling(v: number): void {
+    this.ceiling = v;
+    this.scale = v;
+    this.reset(v);
+  }
 
   /**
    * Feed one rendered frame. Returns the new scale when it wants a change.
