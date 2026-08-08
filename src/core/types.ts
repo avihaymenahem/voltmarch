@@ -747,9 +747,20 @@ export interface BuildingDef extends BuildableDef {
   /** Local-space offset (metres, +Z forward) where produced units appear. */
   readonly exitOffsetX: number;
   readonly exitOffsetZ: number;
-  /** Local-space offset where a harvester parks to unload. */
-  readonly dockOffsetX: number;
-  readonly dockOffsetZ: number;
+  /*
+   * `dockOffsetX/Z` USED TO LIVE HERE. Deleted, not wired.
+   *
+   * It was filled for every building in `Defs.ts` and read by NOTHING in
+   * `src/` — `docs/SPEC_DRIFT_AUDIT.md` finding 40 — while `config.ts`
+   * described a fallback branch "when the def table carries no explicit
+   * dockOffset" that had never existed. No building ever overrode the default.
+   *
+   * `Harvesting.ts` now derives the unload apron from the DOCKING HULL's own
+   * radius, which is strictly better than a per-building constant: it is
+   * correct for every harvester in the game and for the next one authored,
+   * where the dead field's default was a single number that happened to suit
+   * none of them.
+   */
   /** Ore storage this structure adds to the player cap. */
   readonly storage: number;
   /** Radius in metres within which this structure permits new construction. */

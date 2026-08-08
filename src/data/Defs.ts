@@ -1192,8 +1192,6 @@ interface BuildingSpec {
   buildRadius?: number;
   /** Metres from the footprint's front edge that a produced unit appears at. */
   exitClearance?: number;
-  dockOffsetX?: number;
-  dockOffsetZ?: number;
   /** See `UnitSpec.flags`. Zero for the two original armies, authored for the Pact. */
   flags?: number;
 }
@@ -1225,8 +1223,6 @@ function building(s: BuildingSpec): BuildingDef {
     producesTab: s.producesTab ?? -1,
     exitOffsetX: 0,
     exitOffsetZ: halfDepth + (s.exitClearance ?? 4),
-    dockOffsetX: s.dockOffsetX ?? 0,
-    dockOffsetZ: s.dockOffsetZ ?? halfDepth + 4,
     storage: s.storage ?? 0,
     buildRadius: s.buildRadius ?? 0,
     // Same reasoning as UnitDef.flags: for the two original armies the fallback

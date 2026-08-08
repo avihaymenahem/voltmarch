@@ -20,14 +20,17 @@ import {
 } from '../src/core/types';
 import type { EntityId, PlayerId, SimContext } from '../src/core/types';
 import {
-  BASE_STORAGE, CELL, HARVESTER_CAPACITY, ORE_CELL_MAX, ORE_REGROW_RATE,
+  BASE_STORAGE, CELL, HARVESTER_CAPACITY, HARVESTER_DOCK_CLEARANCE,
+  ORE_CELL_MAX, ORE_REGROW_RATE,
   POWER_BLACKOUT_MUL, POWER_FULL_MUL, REFINERY_STORAGE, SIM_DT, START_CREDITS,
   STORAGE_BASE, UNLOAD_SECONDS,
 } from '../src/core/config';
 import { Rng } from '../src/core/math';
 
 import { Economy, OreField } from '../src/sim/Economy';
-import { HarvesterController, setHarvesterDrive } from '../src/sim/Harvesting';
+import {
+  HarvesterController, dockApronDistance, setHarvesterDrive,
+} from '../src/sim/Harvesting';
 import { PowerGrid } from '../src/sim/Power';
 
 const P0 = 0 as PlayerId;
@@ -728,5 +731,90 @@ describe('Harvesting — the full round trip', () => {
     rig.channels.events.on('economy:credits', (ev) => { if (ev.player === P0) reason = ev.reason; });
     rig.step(4);
     expect(reason).toBe(CreditReason.Harvest);
+  });
+});
+
+/* ==========================================================================
+ * THE UNLOAD APRON MUST BE OUTSIDE THE REFINERY
+ *
+ * Reported as "the collector is stuck within its own building", with a
+ * screenshot of a Sun Collector sunk into the side of its own refinery.
+ *
+ * It was not a steering failure. It was where the harvester was TOLD to park.
+ * The apron was `halfDepth + HARVESTER_DOCK_STANDOFF`, a constant of 3.4 whose
+ * own comment called it "half a harvester length plus a little" — half a
+ * harvester is 8.60 / 2 = 4.30 m, so the constant was 0.9 m short of the half it
+ * named. Against a 3.87 m collision radius that parked every harvester in the
+ * game with its back end inside an impassable footprint, by construction.
+ *
+ * Nothing asserted the one relationship that matters, which is why it survived
+ * from the first implementation. It is asserted here, over the real roster
+ * dimensions rather than a hand-picked pair.
+ * ========================================================================== */
+
+describe('the harvester unload apron clears the refinery footprint', () => {
+  const CELL_M = 4;
+  /** Every refinery-ish footprint in the game, in cells: [w, h]. */
+  const FOOTPRINTS: ReadonlyArray<readonly [number, number]> = [
+    [3, 2], [2, 2], [3, 3], [4, 3], [2, 3],
+  ];
+  /** Real harvester collision radii: max(w,l) * 0.45 over the authored dims. */
+  const RADII = [3.87, 2.5, 4.5, 1.8];
+
+  /** Facing directions, including the diagonals a free yaw actually produces. */
+  const FACINGS: ReadonlyArray<readonly [number, number]> = [
+    [0, 1], [1, 0], [0, -1], [-1, 0],
+    [Math.SQRT1_2, Math.SQRT1_2], [-Math.SQRT1_2, Math.SQRT1_2],
+  ];
+
+  it('parks the whole hull outside the footprint, at every facing and size', () => {
+    for (const [fw, fh] of FOOTPRINTS) {
+      const halfW = fw * CELL_M * 0.5;
+      const halfH = fh * CELL_M * 0.5;
+      for (const [fx, fz] of FACINGS) {
+        for (const r of RADII) {
+          const reach = dockApronDistance(halfW, halfH, fx, fz, r);
+          const edge = Math.abs(fx) * halfW + Math.abs(fz) * halfH;
+          const rear = reach - r;
+          expect(
+            rear,
+            `footprint ${fw}x${fh} facing (${fx.toFixed(2)},${fz.toFixed(2)}) radius ${r}: `
+            + `hull rear at ${rear.toFixed(2)} m against a footprint edge at ${edge.toFixed(2)} m`,
+          ).toBeGreaterThan(edge);
+        }
+      }
+    }
+  });
+
+  it('leaves exactly the configured daylight, not more', () => {
+    // A gap that grows with hull size would park big harvesters in a field.
+    for (const r of [1.8, 3.87, 6.0]) {
+      const reach = dockApronDistance(6, 4, 0, 1, r);
+      expect(reach - r - 4).toBeCloseTo(HARVESTER_DOCK_CLEARANCE, 9);
+    }
+  });
+
+  it('scales with the DOCKING hull, not with a constant', () => {
+    // The heart of the fix: a bigger harvester must be given a bigger apron.
+    // The old code returned the same distance for every hull in the game.
+    const small = dockApronDistance(6, 4, 0, 1, 2.0);
+    const large = dockApronDistance(6, 4, 0, 1, 5.0);
+    expect(large - small).toBeCloseTo(3.0, 9);
+  });
+
+  it('presents the WIDTH when the refinery faces along X', () => {
+    // The rotated case was five times worse than the unrotated one, because
+    // the old line always used footprintH regardless of which way the building
+    // pointed. A 3x2 refinery turned 90 degrees put the hull 2.47 m inside.
+    const facingZ = dockApronDistance(6, 4, 0, 1, 3.87);
+    const facingX = dockApronDistance(6, 4, 1, 0, 3.87);
+    expect(facingX - facingZ).toBeCloseTo(2.0, 9);  // halfW 6 vs halfH 4
+  });
+
+  it('reproduces the reported case exactly', () => {
+    // Meridian refinery 3x2, Sun Collector radius 3.87.
+    const reach = dockApronDistance(6, 4, 0, 1, 3.87);
+    expect(reach).toBeCloseTo(8.47, 2);
+    expect(reach - 3.87).toBeCloseTo(4.60, 2);   // rear edge, was 3.53 (inside 4.0)
   });
 });

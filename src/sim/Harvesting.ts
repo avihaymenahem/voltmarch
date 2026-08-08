@@ -89,7 +89,7 @@
 
 import {
   CELL, HARVEST_ARRIVE_RADIUS, HARVEST_FX_INTERVAL, HARVEST_RATE,
-  HARVESTER_DOCK_RADIUS, HARVESTER_DOCK_STANDOFF, HARVESTER_QUEUE_GAP,
+  HARVESTER_DOCK_RADIUS, HARVESTER_DOCK_CLEARANCE, HARVESTER_QUEUE_GAP,
   HARVESTER_STUCK_SECONDS, MAP_CELLS, MAX_PLAYERS, ORE_MIN_CLAIM,
   ORE_SCORING_INTERVAL, ORE_SEARCH_CELLS, ORE_VALUE, SIM_DT,
   UNDER_ATTACK_COOLDOWN, UNLOAD_SECONDS,
@@ -104,6 +104,28 @@ import {
   angleDelta, clampCell, clampWorld, dist2, moveToward, turnToward, worldToCell,
 } from '../core/math';
 import type { Economy, OreField } from './Economy';
+
+/**
+ * Metres from a refinery's CENTRE to the point a harvester parks to unload.
+ *
+ * Exported and pure so the invariant that matters can actually be asserted:
+ * `result - hullRadius > footprint edge along the facing axis`. That is the
+ * whole bug this function was extracted for — see the block at its call site.
+ *
+ * @param halfW      half the footprint's world X extent, metres
+ * @param halfH      half the footprint's world Z extent, metres
+ * @param fwdX,fwdZ  unit facing vector (sin/cos of the building's yaw)
+ * @param hullRadius the DOCKING harvester's collision radius, not a constant
+ */
+export function dockApronDistance(
+  halfW: number, halfH: number, fwdX: number, fwdZ: number, hullRadius: number,
+): number {
+  // Footprints are stored world-axis-aligned (see `touching()`), so the extent
+  // the apron has to clear is the projection of the box onto the facing axis —
+  // width when facing along X, depth when facing along Z.
+  const edge = Math.abs(fwdX) * halfW + Math.abs(fwdZ) * halfH;
+  return edge + hullRadius + HARVESTER_DOCK_CLEARANCE;
+}
 
 /** Seconds between full re-evaluations of a harvester's plan. */
 const SCORE_PERIOD = ORE_SCORING_INTERVAL * SIM_DT;
@@ -488,7 +510,49 @@ export class HarvesterController {
     const yaw = store.yaw[ri];
     const fwdX = Math.sin(yaw);
     const fwdZ = Math.cos(yaw);
-    const reach = Math.max(1, store.footprintH[ri]) * CELL * 0.5 + HARVESTER_DOCK_STANDOFF;
+
+    /*
+     * THE APRON HAS TO CLEAR THE FOOTPRINT, AND IT DID NOT.
+     *
+     * Reported as "the collector is stuck within its own building", with a
+     * screenshot of a Sun Collector sunk into the side of its refinery. That is
+     * not a steering failure — it was where the harvester was TOLD to park.
+     *
+     * The old line was `halfDepth + HARVESTER_DOCK_CLEARANCE`, a constant of 3.4
+     * whose own comment in config.ts called it "half a harvester length plus a
+     * little". Half a harvester is 8.60 / 2 = 4.30 m. The constant was 3.4 —
+     * 0.9 m SHORT of the half it claimed to be, before the "plus a little".
+     *
+     * For a refinery (2 cells deep, so halfDepth 4.0) and a Collector (radius
+     * 3.87):
+     *
+     *     reach     = 4.0 + 3.4  = 7.40 m from the refinery's centre
+     *     rear edge = 7.40 - 3.87 = 3.53 m
+     *     footprint edge          = 4.00 m
+     *
+     * The hull's back end was parked 0.47 m INSIDE the structure by
+     * construction, on a footprint the nav grid marks impassable. Every
+     * harvester in the game has done this since the system was written.
+     *
+     * Two changes. First, derive the standoff from the hull that is actually
+     * docking — `store.radius[i]` — instead of a constant that assumes one
+     * harvester size. That is what makes it correct for the Reclamation's
+     * hauler, the Pact's Collector and whatever is authored next, rather than
+     * correct for none of them.
+     *
+     * Second, take the half-extent along the FACING axis rather than always
+     * `footprintH`. Footprints are stored world-axis-aligned — `touching()`
+     * below compares world-space deltas against halfW and halfH with no
+     * rotation — so a refinery placed facing along X presented its WIDTH to the
+     * apron while this computed its depth. A rotated refinery was worse than an
+     * unrotated one, which is exactly the kind of asymmetry nobody reports as a
+     * bug because it just looks like bad luck.
+     */
+    const reach = dockApronDistance(
+      Math.max(1, store.footprintW[ri]) * CELL * 0.5,
+      Math.max(1, store.footprintH[ri]) * CELL * 0.5,
+      fwdX, fwdZ, store.radius[i],
+    );
     const out = mine ? reach : reach + HARVESTER_QUEUE_GAP;
     const tx = store.posX[ri] + fwdX * out;
     const tz = store.posZ[ri] + fwdZ * out;

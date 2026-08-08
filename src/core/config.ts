@@ -2847,11 +2847,32 @@ export const HARVEST_ARRIVE_RADIUS = 2.2;
 /** Same, for the dock point. Also larger than NAV_ARRIVE_SLACK, and for the same reason. */
 export const HARVESTER_DOCK_RADIUS = 2.6;
 /**
- * Metres the dock point sits in FRONT of a refinery's footprint edge when the
- * def table carries no explicit dockOffset. Half a harvester length plus a
- * little, so the hull overlaps the apron rather than floating off it.
+ * Metres of DAYLIGHT between a docked harvester's hull and the refinery it is
+ * unloading into. A gap, not a standoff — the hull's own radius is added by
+ * `Harvesting.ts`, so this is the only part a designer tunes.
+ *
+ * THIS REPLACES `HARVESTER_DOCK_STANDOFF = 3.4`, WHICH WAS THE STUCK-COLLECTOR
+ * BUG. That constant was described here as "half a harvester length plus a
+ * little", and half a harvester is 8.60 / 2 = 4.30 m — the value was 3.4, short
+ * of the half it named before you even reach the "plus a little". Since the
+ * apron was `halfDepth + 3.4` and a harvester's collision radius is 3.87, every
+ * harvester in the game parked with its back end ~0.5 m inside a footprint the
+ * nav grid marks impassable. Reported as "the collector is stuck within its own
+ * building".
+ *
+ * It also described a fallback "when the def table carries no explicit
+ * dockOffset". There was no such branch and no such reader: `dockOffsetX/Z` was
+ * filled for every building and consumed by nothing — `docs/SPEC_DRIFT_AUDIT.md`
+ * finding 40, confirmed still live and now deleted rather than wired, because
+ * deriving the apron from the docking hull's actual radius is strictly better
+ * than an authored constant that assumes one harvester size.
+ *
+ * 0.6 m: close enough that the hull reads as parked ON the apron rather than
+ * floating off it, clear enough that `touching()` does not fire in the normal
+ * path. Keep it well under `HARVESTER_DOCK_RADIUS` (2.6) or arrival and contact
+ * start fighting each other.
  */
-export const HARVESTER_DOCK_STANDOFF = 3.4;
+export const HARVESTER_DOCK_CLEARANCE = 0.6;
 /** Metres behind the dock a second harvester waits while the first unloads. */
 export const HARVESTER_QUEUE_GAP = 9.0;
 /**

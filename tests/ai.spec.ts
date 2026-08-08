@@ -321,8 +321,8 @@ describe('AIStrategy — the catalog', () => {
       cost: 1234, buildTime: 9, tab: 0, prereqs: [], sortOrder: 0, model: '',
       maxHp: 800, armor: ArmorClass.Concrete, footprintW: 4, footprintH: 4,
       power: 250, sight: 10, weapons: [], hasTurret: false, produces: [],
-      producesTab: -1, exitOffsetX: 0, exitOffsetZ: 0, dockOffsetX: 0,
-      dockOffsetZ: 0, storage: 0, buildRadius: 0, flags: 0,
+      producesTab: -1, exitOffsetX: 0, exitOffsetZ: 0,
+      storage: 0, buildRadius: 0, flags: 0,
     }];
     c.bind({
       tables: {
