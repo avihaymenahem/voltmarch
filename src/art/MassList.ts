@@ -1058,13 +1058,35 @@ export const BOXINESS = {
  * Read the shape of the list, not just the numbers: after v1.29.0 the ONLY
  * axis-aligned flank surface left anywhere in the game is on ten Allied/Soviet
  * ground vehicles, at 0.118-0.149. Every infantryman, aircraft, ship, walker and
- * both newer armies measure exactly 0.000. If you are looking for the next piece
- * of art work, it is the top ten rows.
+ * both newer armies measure exactly 0.000.
+ *
+ * THIS PARAGRAPH USED TO END "If you are looking for the next piece of art work,
+ * it is the top ten rows." IT IS NOT ART WORK, and that sentence sent at least
+ * one author down it before anyone measured. Those ten rows are the ten TRACKED
+ * vehicles — the only tracked vehicles in the game, because the Pact hovers and
+ * the Reclamation walks — and every one of them holds its whole axis-aligned
+ * figure in ONE mass, its `track`, at a flat share of exactly 0.420 on all ten.
+ * That 0.420 is `case 'tracks'` below. It does not read `size`, `wheels`,
+ * `skirtHeight`, `sprocketScale`, `returnRollers` or `segments`, so no field an
+ * author can write in `UnitDefs.ts` moves it by any amount.
+ *
+ * Their actual art is finished. All seventeen load-bearing `taperedBox` and
+ * `planPrism` masses across the ten were re-checked on the BUILT MESH and every
+ * one has zero dead-vertical flank, with ring separations of 5.7% to 23.6%;
+ * `tests/unit-silhouette.spec.ts` asserts it per mass. There is nothing left on
+ * them to taper.
+ *
+ * And the constant itself does not match the mesh it says it came from — 0.42
+ * modelled against 0.78-0.82 measured, over a modelled area 1.5-2.1x short.
+ * `tests/flank-model.spec.ts` runs that comparison and pins it. Fixing it is a
+ * change to `massFlankSurface` and to `trackAssemblyMesh`, not to a mass list,
+ * and it moves every number in the table above.
  *
  * Regenerate with `npx vite-node tools/boxscan.ts` rather than editing a number
  * here by hand. That tool is committed precisely because the table above rotted:
  * a list of measurements nobody can reproduce in one command is a list of
- * measurements that will be wrong again by the next release.
+ * measurements that will be wrong again by the next release. Note what it cannot
+ * tell you, though: it reports the model, and the model is what was wrong here.
  */
 
 /** Cosine of the angle a normal may stray and still count as axis-aligned. */
