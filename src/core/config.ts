@@ -2262,6 +2262,39 @@ export const UNIT_GEOMETRY = {
   /** Tracks protrude 8-14% of hull width outboard, 18-25% of unit height. */
   trackOutboardFraction: 0.11,
   trackHeightFraction: 0.22,
+
+  /**
+   * HOW THE RUNNING GEAR DIVIDES ITS X FOOTPRINT, inboard -> outboard. The four
+   * fractions sum to exactly 1, and `Shapes.trackAssemblyMesh` lays the assembly
+   * out so its built AABB is exactly the `MassDef.size` box it was given —
+   * `fitMesh` then scales X by 1.000 instead of squashing it.
+   *
+   * THIS IS THE FIX FOR A REAL DEFECT. The road wheels used to be authored
+   * INBOARD of the band ("road wheels proud of the inboard face"), which put
+   * them at worldX [1.032, 1.297] behind a band at [1.345, 1.855] on the
+   * Guardian — enclosed by the band outboard, the hull above and the far track
+   * inboard, so their visible area was ZERO on every Allied/Soviet tracked unit.
+   * VISUAL_DNA S5 and scorecard C16 (x2) both require "a 3-4 px dark band along
+   * the lower edge with 5-7 bright road-wheel dots"; the roster shipped none.
+   *
+   * So every hub — road wheels, drive sprocket, idler and return rollers — now
+   * shares one plane `trackHubProudFraction` OUTBOARD of the band's outer face,
+   * and the skirt clears that plane by `trackSkirtGapFraction`. The wheel discs
+   * are `capSlot` ('bareMetal') caps facing straight out at the camera, standing
+   * on a `slot` ('tread') band. That is the dot row, in geometry.
+   */
+  trackBandFraction: 0.750,
+  trackHubProudFraction: 0.075,
+  trackSkirtGapFraction: 0.025,
+  trackSkirtFraction: 0.150,
+  /**
+   * The band alone, as a fraction of hull width per side. A real MBT runs
+   * ~0.6 m of track on a ~3.7 m hull, i.e. 0.16, and that is what the roster
+   * measured before the layout above existed (Guardian 0.510 m on 3.2 m =
+   * 0.159). `UnitDefs.runningGear` divides by `trackBandFraction` to get the
+   * mass's full X size, so the band width survives the relayout unchanged.
+   */
+  trackBandFractionOfHull: 0.16,
 } as const;
 
 /**

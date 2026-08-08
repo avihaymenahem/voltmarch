@@ -53,6 +53,7 @@
  */
 
 import * as THREE from 'three';
+import { UNIT_GEOMETRY } from '../core/config';
 import { Rng, TAU } from '../core/math';
 
 /* ==========================================================================
@@ -1555,15 +1556,26 @@ export interface TrackAssemblyParams {
   length: number;
   /** Overall height of the running gear. */
   height: number;
-  /** Track band width along X. */
+  /**
+   * TOTAL X footprint of the assembly — band plus the proud hubs plus the
+   * skirt, not the band alone. `UNIT_GEOMETRY.trackBandFraction` and its three
+   * siblings divide it, and they sum to 1, so the built AABB comes out exactly
+   * this wide and `fitMesh` scales X by 1.
+   */
   width: number;
-  /** Road wheels between the sprockets. 4-7. */
+  /** Road wheels between the sprockets. VISUAL_DNA S5 wants 5-7 dots. */
   wheels?: number;
   /** Drive sprocket / idler radius as a fraction of height*0.5. */
   sprocketScale?: number;
   /** Small rollers carrying the return run along the top. */
   returnRollers?: number;
-  /** A skirt plate over the upper run. Set 0 to leave the gear exposed. */
+  /**
+   * A skirt plate over the upper run. Set 0 to leave the gear exposed — but
+   * note the skirt is the assembly's outboard edge, so without it the hub plane
+   * becomes the edge, the built AABB comes out `trackSkirtGapFraction +
+   * trackSkirtFraction` narrower than `width`, and `fitMesh` stretches X to
+   * make up the difference. Nothing in the roster does this.
+   */
   skirtHeight?: number;
   segments?: number;
 }
@@ -1572,17 +1584,29 @@ export interface TrackAssemblyParams {
  * PROPER TRACKED RUNNING GEAR, instead of a flat slab on the side of a hull.
  *
  * A stadium-section track band (so the ends are ROUND, which is the thing a flat
- * slab gets wrong), road wheels proud of the inboard face, a toothed drive
- * sprocket aft and an idler forward, return rollers along the top run, and an
- * optional skirt plate. Emitted centred, with the ground contact at y = -h/2, so
- * it drops straight into a `MassDef` whose anchor is the mass centre.
+ * slab gets wrong), road wheels standing PROUD OF THE BAND'S OUTBOARD FACE, a
+ * toothed drive sprocket aft and an idler forward, return rollers along the top
+ * run, and an optional skirt plate that clears the hub plane. Emitted centred,
+ * with the ground contact at y = -h/2, so it drops straight into a `MassDef`
+ * whose anchor is the mass centre.
+ *
+ * THE HUBS FACE THE CAMERA ON PURPOSE. They used to sit inboard of the band,
+ * where the band, the hull deck and the far track sealed them in and their
+ * visible area was exactly zero — see `UNIT_GEOMETRY.trackBandFraction` for the
+ * measurements and for the two spec lines (VISUAL_DNA S5, scorecard C16 x2)
+ * that a dotless track band fails. Each disc's flat face is a 'cap' polygon, so
+ * it takes the mass's `capSlot` ('bareMetal'), and it sits against a band that
+ * takes the mass's `slot` ('tread'). Bright dots, dark band, no extra draw call:
+ * the whole assembly is still one merged mesh.
  *
  *   trackAssembly({ length: 6.6, height: 0.86, width: 0.86, wheels: 5 })
  */
 export function trackAssemblyMesh(p: TrackAssemblyParams): ShapeMesh {
   const len = Math.max(0.2, p.length);
   const h = Math.max(0.08, p.height);
+  // `w` is the assembly's whole X footprint; `bw` is the band inside it.
   const w = Math.max(0.05, p.width);
+  const bw = w * UNIT_GEOMETRY.trackBandFraction;
   // Segment counts are held down hard. A track run costs ~950 triangles and
   // there are two of them on every tracked vehicle, so this single number is
   // most of a tank's budget. 6 end-facets already reads as a round track end at
@@ -1595,9 +1619,9 @@ export function trackAssemblyMesh(p: TrackAssemblyParams): ShapeMesh {
   const bandPlan = stadiumPlan(len, h, segs);
   const bandMesh = prismFromPlanMesh({
     plan: bandPlan,
-    h: w,
-    chamferTop: w * 0.16,
-    chamferBottom: w * 0.16,
+    h: bw,
+    chamferTop: bw * 0.16,
+    chamferBottom: bw * 0.16,
     kinds: bandPlan.map((): FaceKind => 'side'),
     capKind: 'side',
     group: 'band',
@@ -1609,16 +1633,22 @@ export function trackAssemblyMesh(p: TrackAssemblyParams): ShapeMesh {
   const wheels = Math.max(2, Math.round(p.wheels ?? 5));
   const sprocketR = h * 0.5 * (p.sprocketScale ?? 0.92);
   const wheelR = h * 0.40;
-  const wheelT = w * 0.52;
-  const inner = -w * 0.5 - wheelT * 0.18;
+  const wheelT = bw * 0.52;
+  const sprocketT = wheelT * 1.15;
+  // ONE HUB PLANE, outboard of the band, shared by every rotating part. A disc
+  // lathed about +Y and turned by rotationZ(90 deg) occupies x in
+  // [hub - thickness, hub], so `hub` IS the outward-facing disc face.
+  const hub = bw * 0.5 + w * UNIT_GEOMETRY.trackHubProudFraction;
 
-  // Road wheels, inboard, sitting on the ground line.
+  // Road wheels, proud of the band's outer face, sitting on the ground line.
+  // This row is VISUAL_DNA S5's "5-7 bright road-wheel dots"; it is the reason
+  // the layout fractions exist.
   const run = len - sprocketR * 2.4;
   for (let i = 0; i < wheels; i++) {
     const t = wheels === 1 ? 0.5 : i / (wheels - 1);
     const z = -run * 0.5 + run * t;
     b.merge(latheMesh({ profile: discProfile(wheelR, wheelT), segments: 6, group: 'wheel' }),
-      compose(translation(inner, -h * 0.5 + wheelR, z), rotationZ(Math.PI * 0.5)));
+      compose(translation(hub, -h * 0.5 + wheelR, z), rotationZ(Math.PI * 0.5)));
   }
 
   // Drive sprocket aft, idler forward — both larger, both toothed.
@@ -1626,19 +1656,24 @@ export function trackAssemblyMesh(p: TrackAssemblyParams): ShapeMesh {
     { z: -len * 0.5 + sprocketR, group: 'sprocket' },
     { z: len * 0.5 - sprocketR, group: 'idler' },
   ];
-  for (const hub of hubs) {
-    b.merge(latheMesh({ profile: discProfile(sprocketR, wheelT * 1.15), segments: 10, group: hub.group }),
-      compose(translation(inner, -h * 0.5 + sprocketR, hub.z), rotationZ(Math.PI * 0.5)));
+  for (const end of hubs) {
+    b.merge(latheMesh({ profile: discProfile(sprocketR, sprocketT), segments: 10, group: end.group }),
+      compose(translation(hub, -h * 0.5 + sprocketR, end.z), rotationZ(Math.PI * 0.5)));
     const teeth = 5;
+    // Centred on the sprocket's MID-plane, not on its outer face. Centring them
+    // on the face let them stand 0.45 * wheelT proud of the sprocket; that was
+    // invisible while the whole hub was buried, and would read as a mistake now
+    // that the face is the thing the camera looks at.
+    const toothX = hub - sprocketT * 0.5;
     for (let t = 0; t < teeth; t++) {
       const a = (t / teeth) * TAU;
       b.merge(
         chamferBoxMesh({ w: wheelT * 0.9, h: sprocketR * 0.22, d: sprocketR * 0.22, cornerCut: 0, group: 'tooth' }),
         compose(
           translation(
-            inner,
+            toothX,
             -h * 0.5 + sprocketR + Math.sin(a) * sprocketR * 0.94,
-            hub.z + Math.cos(a) * sprocketR * 0.94),
+            end.z + Math.cos(a) * sprocketR * 0.94),
           rotationX(-a)),
       );
     }
@@ -1650,11 +1685,16 @@ export function trackAssemblyMesh(p: TrackAssemblyParams): ShapeMesh {
     const t = rollers === 1 ? 0.5 : i / (rollers - 1);
     const z = -run * 0.34 + run * 0.68 * t;
     b.merge(latheMesh({ profile: discProfile(h * 0.16, wheelT * 0.7), segments: 6, group: 'roller' }),
-      compose(translation(inner, h * 0.5 - h * 0.20, z), rotationZ(Math.PI * 0.5)));
+      compose(translation(hub, h * 0.5 - h * 0.20, z), rotationZ(Math.PI * 0.5)));
   }
 
   // Skirt: a proud angled plate over the upper run. It is what turns exposed
-  // running gear into a finished vehicle instead of a kit model.
+  // running gear into a finished vehicle instead of a kit model. It clears the
+  // hub plane by `trackSkirtGapFraction` so the wheels never poke through it,
+  // and it only covers the TOP of the run — the lower half of every wheel stays
+  // out in the open, which is the half a top-down camera can see.
+  const skirtT = w * UNIT_GEOMETRY.trackSkirtFraction;
+  const skirtX = hub + w * UNIT_GEOMETRY.trackSkirtGapFraction + skirtT * 0.5;
   const skirtH = p.skirtHeight ?? h * 0.46;
   if (skirtH > 1e-3) {
     const sl = len * 0.92;
@@ -1663,10 +1703,10 @@ export function trackAssemblyMesh(p: TrackAssemblyParams): ShapeMesh {
         [-sl * 0.5, -skirtH * 0.5], [sl * 0.5 - skirtH * 0.35, -skirtH * 0.5],
         [sl * 0.5, skirtH * 0.5], [-sl * 0.5 + skirtH * 0.25, skirtH * 0.5],
       ],
-      thickness: w * 0.20,
+      thickness: skirtT,
       group: 'skirt',
     }), compose(
-      compose(translation(w * 0.5 + w * 0.09, h * 0.5 - skirtH * 0.52, 0), rotationY(Math.PI * 0.5)),
+      compose(translation(skirtX, h * 0.5 - skirtH * 0.52, 0), rotationY(Math.PI * 0.5)),
       rotationX(-Math.PI * 0.5)));
   }
 
