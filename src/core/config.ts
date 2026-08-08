@@ -6332,6 +6332,24 @@ export const NAV_REPATH_TICKS = 30;
 export const NAV_STUCK_TICKS = 24;
 /** Below this fraction of max speed a unit counts as not moving. */
 export const NAV_STUCK_SPEED_FRAC = 0.16;
+/**
+ * Metres of real displacement in one tick that proves a unit is NOT stuck,
+ * whatever `st.speed` says about it.
+ *
+ * The stuck watchdog used to read `st.speed` alone, and `st.speed` is a column
+ * `Harvesting.driveEscape` deliberately writes 0 to while physically moving the
+ * hull out of a building — it must, because `MovementIntegrator` integrates
+ * position FROM that column. An active rescue therefore read as a stall, the
+ * watchdog spent all its nudges, parked the unit, and the park armed the
+ * harvester backstop, which produced a 24-tick oscillation the player sees as
+ * jitter.
+ *
+ * 0.01 m/tick is 0.3 m/s — an order of magnitude below the slowest unit in the
+ * game and far above float noise, so it separates "being moved by something" from
+ * "grinding in place" without ever calling a genuinely wedged unit healthy.
+ * Extraction runs at ~0.088 m/tick, comfortably clear of it.
+ */
+export const NAV_STUCK_MOVED_EPSILON = 0.01;
 /** Stuck this close to the goal: call it arrived rather than grind. */
 export const NAV_STUCK_GIVEUP_RADIUS = 5.5;
 /** Sideways shoves before a stuck unit simply gives up and parks. */

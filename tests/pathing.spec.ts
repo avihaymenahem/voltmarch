@@ -13,7 +13,9 @@ import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { EntityFlag, EntityKind, Faction, Locomotor, UnitState } from '../src/core/types';
 import type { EntityId, PlayerId, SimContext } from '../src/core/types';
-import { CELL, SIM_DT, WATER_LEVEL } from '../src/core/config';
+import {
+  CELL, NAV_STUCK_MAX_NUDGES, NAV_STUCK_TICKS, SIM_DT, WATER_LEVEL,
+} from '../src/core/config';
 import { Rng, worldToCell } from '../src/core/math';
 import { FlowFieldCache, MoveClass } from '../src/sim/Flowfield';
 import { NavAgents, NavAssigner, SteeringSolver } from '../src/sim/Steering';
@@ -449,5 +451,106 @@ describe('naval', () => {
     rig.step(600);
     expect(st.posX[i]).toBeGreaterThan(63 * CELL);
     expect(st.posY[i]).toBeCloseTo(WATER_LEVEL, 5);
+  });
+});
+
+/* ==========================================================================
+ * THE STUCK WATCHDOG MEASURES MOTION, NOT THE REPORT OF MOTION
+ *
+ * Reported as "they also jitter when they stuck into other buildings", with a
+ * screenshot of several vehicles clipped into one structure.
+ *
+ * `st.speed` is a REPORTED column and `Harvesting.driveEscape` — the only force
+ * in the game that ejects a hull from a building footprint — deliberately writes
+ * 0 to it while physically advancing `posX/posZ`. It has to: `MovementIntegrator`
+ * integrates position FROM `st.speed`, so a truthful value would be integrated a
+ * second time on the next tick.
+ *
+ * This watchdog read that column alone, so an ACTIVE RESCUE counted as a stall.
+ * It spent all three nudges before the hull was clear, then called `finishOrder`
+ * — which sets sticky `Arrived` AND `navField = -1` AND `velX = velZ = 0` in one
+ * call, which is exactly the harvester backstop's arming predicate. The backstop
+ * jumped the hull, nav re-requested a field, the backstop disarmed, and 24 ticks
+ * later it stalled again. Measured period: exactly NAV_STUCK_TICKS, one 0.029 m
+ * lurch per cycle, with speed/velX/velZ all reading 0 throughout — so nothing
+ * animated and the hull never turned. That is the jitter.
+ * ========================================================================== */
+
+describe('the stuck watchdog measures motion, not the report of motion', () => {
+  /** What `driveEscape` does: advance the hull, then report standing still. */
+  function escapeStep(rig: Rig, i: number, metres: number): void {
+    const st = rig.world.store;
+    st.posX[i] += metres;
+    st.speed[i] = 0;
+    st.velX[i] = 0;
+    st.velZ[i] = 0;
+  }
+
+  it('does not call a unit stuck while something else is physically moving it', () => {
+    const rig = makeRig();
+    const i = spawnTank(rig, 60, 60);
+    orderTo(rig, i, 160, 60);
+
+    // Three full watchdog windows of extraction at the measured rate.
+    for (let t = 0; t < NAV_STUCK_TICKS * 3; t++) {
+      rig.step(1);
+      escapeStep(rig, i, 0.088);
+    }
+
+    expect(rig.agents.stuck[i], 'an actively rescued unit must never look stalled')
+      .toBeLessThan(NAV_STUCK_TICKS);
+    expect(rig.agents.nudges[i], 'and must not burn nudges it does not need').toBe(0);
+  });
+
+  it('still counts a unit that genuinely is not moving', () => {
+    // The control. Without this the assertion above passes against a watchdog
+    // that has simply been switched off.
+    const rig = makeRig();
+    const i = spawnTank(rig, 60, 60);
+    orderTo(rig, i, 160, 60);
+    const st = rig.world.store;
+    const px = st.posX[i], pz = st.posZ[i];
+
+    for (let t = 0; t < NAV_STUCK_TICKS * 2; t++) {
+      rig.step(1);
+      st.posX[i] = px; st.posZ[i] = pz;      // pinned: truly going nowhere
+      st.speed[i] = 0;
+    }
+
+    expect(rig.agents.nudges[i], 'a genuinely wedged unit must still be shoved')
+      .toBeGreaterThan(0);
+  });
+
+  it('does not treat float noise as movement', () => {
+    // The epsilon has to be above jitter-scale wobble or the watchdog is inert.
+    const rig = makeRig();
+    const i = spawnTank(rig, 60, 60);
+    orderTo(rig, i, 160, 60);
+    const st = rig.world.store;
+    const px = st.posX[i], pz = st.posZ[i];
+
+    for (let t = 0; t < NAV_STUCK_TICKS * 2; t++) {
+      rig.step(1);
+      st.posX[i] = px + (t % 2 === 0 ? 1e-4 : -1e-4);   // sub-millimetre wobble
+      st.posZ[i] = pz;
+      st.speed[i] = 0;
+    }
+
+    expect(rig.agents.nudges[i], 'wobble is not progress').toBeGreaterThan(0);
+  });
+
+  it('never lets a rescued unit exhaust its nudge budget mid-extraction', () => {
+    // The specific step that armed the oscillator: nudges reaching the cap is
+    // what makes the next stall call finishOrder instead of shoving again.
+    const rig = makeRig();
+    const i = spawnTank(rig, 60, 60);
+    orderTo(rig, i, 160, 60);
+
+    for (let t = 0; t < NAV_STUCK_TICKS * (NAV_STUCK_MAX_NUDGES + 2); t++) {
+      rig.step(1);
+      escapeStep(rig, i, 0.088);
+    }
+
+    expect(rig.agents.nudges[i]).toBeLessThan(NAV_STUCK_MAX_NUDGES);
   });
 });

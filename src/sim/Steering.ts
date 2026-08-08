@@ -72,7 +72,7 @@ import {
   CELL, MAX_ENTITIES, MAX_QUERY_RESULTS, SEPARATION_NEIGHBOURS,
   NAV_ARRIVE_SLACK, NAV_SLOWDOWN_RADIUS, NAV_MIN_APPROACH_SPEED,
   NAV_DIRECT_RANGE, NAV_DIRECT_RECHECK_TICKS, NAV_REPATH_TICKS,
-  NAV_STUCK_TICKS, NAV_STUCK_SPEED_FRAC, NAV_STUCK_GIVEUP_RADIUS,
+  NAV_STUCK_TICKS, NAV_STUCK_MOVED_EPSILON, NAV_STUCK_SPEED_FRAC, NAV_STUCK_GIVEUP_RADIUS,
   NAV_STUCK_MAX_NUDGES,
   NAV_WEDGE_SAMPLE_TICKS, NAV_WEDGE_METRES, NAV_WEDGE_STRIKES,
   NAV_WEDGE_MAX_NUDGES, NAV_WEDGE_SEARCH_CELLS,
@@ -300,6 +300,18 @@ export class NavAgents {
   readonly slotZ = new Float32Array(MAX_ENTITIES);
   /** Consecutive ticks spent barely moving while under a move order. */
   readonly stuck = new Uint8Array(MAX_ENTITIES);
+  /**
+   * Where the SPEED watchdog last saw this unit, so it can tell "not moving"
+   * from "moving, but not by a route that updates `st.speed`".
+   *
+   * `st.speed` is a REPORTED column, and `Harvesting.driveEscape` deliberately
+   * writes 0 to it while physically advancing `posX/posZ` — it has to, because
+   * `MovementIntegrator` integrates position FROM `st.speed`, so a truthful
+   * value there would be integrated a second time next tick. Reading the column
+   * alone therefore counts an active rescue as a stall.
+   */
+  readonly watchX = new Float32Array(MAX_ENTITIES);
+  readonly watchZ = new Float32Array(MAX_ENTITIES);
   /** How many times we have shoved this unit sideways to unstick it. */
   readonly nudges = new Uint8Array(MAX_ENTITIES);
   /**
@@ -361,6 +373,7 @@ export class NavAgents {
     this.goalX[i] = 0; this.goalZ[i] = 0;
     this.slotX[i] = 0; this.slotZ[i] = 0;
     this.stuck[i] = 0; this.nudges[i] = 0;
+    this.watchX[i] = 0; this.watchZ[i] = 0;
     this.bestDist[i] = -1; this.noProgress[i] = 0;
     this.anchorX[i] = 0; this.anchorZ[i] = 0; this.anchorTick[i] = 0;
     this.frozen[i] = 0; this.escalations[i] = 0;
@@ -737,7 +750,52 @@ export class NavAssigner {
       // Termination is not lost by deferring: the wedge ladder ends in its own
       // park rung.
       const maxSpeed = st.maxSpeed[i];
+
+      /*
+       * MEASURE MOTION, NOT THE REPORT OF MOTION.
+       *
+       * This tested `st.speed[i]` alone, and `st.speed` is a column another
+       * system deliberately falsifies. `Harvesting.driveEscape` — the ONLY
+       * force in the game that ejects a hull from a building footprint — moves
+       * the unit at ~2.6 m/s while writing `speed = velX = velZ = 0`, because
+       * `MovementIntegrator` integrates position from `st.speed` and a truthful
+       * value would be integrated a second time on the next tick.
+       *
+       * So a unit being actively rescued read as stalled, and this watchdog
+       * burned all three NAV_STUCK_MAX_NUDGES before the hull was even clear.
+       * It then called `finishOrder`, which sets the sticky `AgentFlag.Arrived`
+       * AND — in the same call — `navField = -1` and `velX = velZ = 0`. That
+       * triple is exactly the harvester backstop's arming predicate, so the
+       * backstop jumped the hull, which made nav re-request a field, which
+       * disarmed the backstop, which stalled again 24 ticks later.
+       *
+       * Measured: a period of exactly NAV_STUCK_TICKS, one 0.029 m lurch every
+       * 24 ticks forever, with `speed`, `velX` and `velZ` all reading 0 the
+       * whole time — so no animation played and the hull never turned. 1.25 Hz
+       * of visible twitch. Reported as "they also jitter when they stuck into
+       * other buildings". Over 1400 ticks the unit travelled 0.44 m and twitched
+       * 55 times; with the backstop disabled entirely it completed the same haul
+       * in 470 ticks with zero nudges.
+       *
+       * Real displacement answers the question this watchdog is actually
+       * asking, and is immune to WHO did the moving. Giving up progress
+       * detection costs nothing: the `bestDist` progress watchdog above already
+       * measures advance toward the goal directly, which is the case this one
+       * cannot see anyway — see the note at the head of this file.
+       *
+       * The shape matches the guard on the line below it: `escalations > 0`
+       * already suppresses this ladder while the wedge ladder owns the unit.
+       */
+      const mdx = st.posX[i] - ag.watchX[i];
+      const mdz = st.posZ[i] - ag.watchZ[i];
+      const movedSq = mdx * mdx + mdz * mdz;
+      ag.watchX[i] = st.posX[i];
+      ag.watchZ[i] = st.posZ[i];
+
       if (ag.escalations[i] > 0) {
+        ag.stuck[i] = 0;
+      } else if (movedSq > NAV_STUCK_MOVED_EPSILON * NAV_STUCK_MOVED_EPSILON) {
+        // It moved. Whoever moved it, it is not stuck.
         ag.stuck[i] = 0;
       } else if (maxSpeed > 0 && st.speed[i] < maxSpeed * NAV_STUCK_SPEED_FRAC) {
         if (ag.stuck[i] < 255) ag.stuck[i]++;
