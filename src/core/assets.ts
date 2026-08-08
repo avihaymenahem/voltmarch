@@ -193,6 +193,17 @@ export class TextureFactory {
       ...(options.size !== undefined ? { size: options.size } : {}),
       ...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
       onDisabled: (reason: string) => {
+        // 'disposed' is the SUCCESS path, not a failure. `settleWorkers` ends
+        // every healthy boot by disposing the pool, and dispose() routes
+        // through the same disable() that a spawn throw or a missed deadline
+        // does. Warning on it meant every clean boot printed "worker offload
+        // off — generating on the main thread" one line before the summary
+        // reported everything had in fact gone off-thread, and `tools/shoot.mjs`
+        // collects console warnings into every shot report, so the visual
+        // pipeline carried a standing false failure signal.
+        //
+        // Only a reason that is NOT the ordinary shutdown is worth a warning.
+        if (reason === 'disposed') return;
         console.warn(`[textures] worker offload off (${reason}) — generating on the main thread`);
       },
     });

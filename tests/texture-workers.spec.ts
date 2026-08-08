@@ -496,15 +496,32 @@ describe('TexturePool', () => {
   });
 
   it('resolves settle() only once the queue is empty', async () => {
+    /*
+     * ORDERING, not a synchronous flag.
+     *
+     * This test used to do `const settle = pool.settle().then(() => settled = true)`
+     * and then assert `expect(settled).toBe(false)` on the very next line. That
+     * assertion cannot fail: a `.then` callback has not run yet at that point no
+     * matter WHAT settle() returned, so `settle = () => Promise.resolve()` — a
+     * settle that ignores the queue completely — passed the whole test verbatim.
+     *
+     * Draining microtasks before asserting does not rescue it either: the fake
+     * worker replies via `queueMicrotask`, so a flush completes the job and the
+     * premise evaporates.
+     *
+     * What does discriminate is the ORDER the two promises resolve in. A settle()
+     * that waits for the queue must resolve after the job it is waiting on; one
+     * that returns an already-resolved promise wins the race instead, because
+     * the job still has to wait for the worker's reply.
+     */
     const pool = new TexturePool({ spawn: () => makeFakeWorker({ mode: 'work' }), size: 1 });
-    const job = pool.submit(requestFor('asphalt', { colour: '#2c2926' }), PBR);
+    const order: string[] = [];
+    const job = pool.submit(requestFor('asphalt', { colour: '#2c2926' }), PBR)
+      .then(() => { order.push('job'); });
     expect(pool.inFlight).toBe(1);
-    let settled = false;
-    const settle = pool.settle().then(() => { settled = true; });
-    expect(settled).toBe(false);
-    await job;
-    await settle;
-    expect(settled).toBe(true);
+    const settle = pool.settle().then(() => { order.push('settle'); });
+    await Promise.all([job, settle]);
+    expect(order).toEqual(['job', 'settle']);
     expect(pool.inFlight).toBe(0);
     pool.dispose();
   });
