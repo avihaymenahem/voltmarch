@@ -331,19 +331,29 @@ function ring(r: number, sides: number): V2[] {
 
 /**
  * THE RUNNING GEAR. One `tracks` assembly per side: a stadium-section band with
- * ROUND ends, road wheels proud of the inboard face, a toothed drive sprocket
- * aft, an idler forward, return rollers on the top run and an angled skirt.
+ * ROUND ends, road wheels standing PROUD OF THE BAND'S OUTBOARD FACE, a toothed
+ * drive sprocket aft, an idler forward, return rollers on the top run and an
+ * angled skirt.
  *
  * This one substitution is the largest single de-boxifier in the roster. The old
  * spelling was an axis-aligned slab with six discs stuck to it and it measured
  * 100% flat wall; the assembly measures 42%, and it is the mass a critic's eye
  * lands on first on any tracked vehicle.
+ *
+ * `size[0]` is the assembly's WHOLE X footprint, band + proud hubs + skirt, so
+ * it is the band fraction of hull width divided by the band's share of that
+ * footprint. Written that way, the band comes out at 0.16 * hullWidth however
+ * the layout fractions are retuned, and the outer edge still lands exactly on
+ * `trackOutboardFraction` — the anchor cancels `w`, so 2*|x| + w is 1.22 *
+ * hullWidth for any width at all. This used to read `hullWidth * 0.30`, which
+ * was 41% wider than the band it produced because the invisible inboard hub
+ * cluster was padding the AABB and `fitMesh` was squashing X by 0.5315.
  */
 function runningGear(
   hullWidth: number, trackHeight: number, length: number, wheels: number,
   o: { skirt?: number; rollers?: number } = {},
 ): MassDef {
-  const w = hullWidth * 0.30;
+  const w = hullWidth * UNIT_GEOMETRY.trackBandFractionOfHull / UNIT_GEOMETRY.trackBandFraction;
   const x = hullWidth * 0.5 + hullWidth * UNIT_GEOMETRY.trackOutboardFraction - w * 0.5;
   return {
     name: 'track', primitive: 'tracks', role: MassRole.Primary,
@@ -1729,7 +1739,10 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   }),
   tank({
     key: 'allied_ifv', name: 'Multigunner IFV', faction: 'allies', hullNumber: 4172,
-    hullLength: 5.4, hullWidth: 2.9, height: 2.45, brutalist: false, gun: 'twinCannon', wheels: 4,
+    // 5, not 4: VISUAL_DNA S5 wants 5-7 road-wheel dots and the IFV was the one
+    // unit in the roster below the floor. Its run is 4.47 m, so five 0.43 m
+    // wheels sit 1.12 m apart with room to spare.
+    hullLength: 5.4, hullWidth: 2.9, height: 2.45, brutalist: false, gun: 'twinCannon', wheels: 5,
   }),
   tank({
     key: 'allied_prism', name: 'Prism Tank', faction: 'allies', hullNumber: 4172,
