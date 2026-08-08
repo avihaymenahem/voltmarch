@@ -154,6 +154,22 @@ export default defineSystem({
      * `planDrawingBuffer` and back; an exact === would re-arm every frame.
      */
     const live = handle.resolutionScale;
+    /*
+     * `Number.isFinite` is not paranoia here. `resolutionScale` is typed
+     * `number`, but I observed it reading `null` on a live handle while probing
+     * a non-compositing page, alongside a `stats().resolution` of "NaNxNaN".
+     * Whether that is a real defect elsewhere or an artifact of a renderer that
+     * never got a valid drawing buffer, it must not become MY defect: an
+     * unguarded `setCeiling(null)` sets both `scale` and `ceiling` to null, and
+     * every subsequent decision arithmetics to NaN.
+     *
+     * CLAUDE.md records where that ends — "NaN propagating into a black frame",
+     * where one bad value reached an instance colour, bloom spread it through
+     * its mip chain, and every pixel died while stats cheerfully reported 285
+     * draws. A controller that silently does nothing is a far better failure
+     * than one that poisons the resolution.
+     */
+    if (!Number.isFinite(live)) return;
     if (lastCommanded >= 0 && Math.abs(live - lastCommanded) > 1e-3) {
       controller.setCeiling(live);
       lastCommanded = live;
