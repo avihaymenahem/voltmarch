@@ -2,7 +2,7 @@
  * ============================================================================
  * src/art/Faction3Units.ts — THE MERIDIAN PACT, AS UNIT ART
  * ============================================================================
- * The third army's eleven hulls, its unit palette, and the two calls that put
+ * The third army's twelve hulls, its unit palette, and the two calls that put
  * them on screen. Nothing here edits `MassList.ts`, `UnitFactory.ts`,
  * `Greeble.ts` or `UnitDefs.ts` — it imports all four and adds beside them.
  *
@@ -29,7 +29,7 @@
  *
  *   FURNITURE    Where an Allied hull carries stowage and an aerial and a
  *                Soviet hull carries an exhaust stack and a bolt ring, a Pact
- *                hull carries a CANTED MIRROR VANE. It is on all eleven of
+ *                hull carries a CANTED MIRROR VANE. It is on all twelve of
  *                them, it is the thing that makes the army legible at 40 m,
  *                and it is the visual half of the faction's mechanical
  *                signature (see the power argument in src/data/Defs.ts §6).
@@ -71,13 +71,32 @@
  * Reclamation infantry all measured 0.000. A player put it as "troops are too
  * rectangular" and they were right, about this army specifically.
  *
- * The infantry primaries are on the new primitives now (§4). The hover-tank,
- * support, naval and flyer templates below are still legacy `prism` and now
- * hold the four worst axis-aligned scores in the game — Sun Collector 0.415,
- * Carryall 0.427, Kite Corvette 0.492, Sunmonitor 0.491, against 0.000 for
- * every Allied, Soviet and Reclamation infantryman and 0.149 for the boxiest
- * Allied vehicle. They are the next thing to do and the fix is the same one:
- * `planPrism` with a real taper on `skirt`, `chassis` and `hull`.
+ * EVERY PRIMARY MASS IN THIS FILE IS NOW A SLOPED-WALL PRIMITIVE. The infantry
+ * went first (§4); this round finished the job on the hover-tank, support,
+ * naval and flyer templates, which had been left holding the four worst
+ * axis-aligned scores in the game. Measured, score then axis sub-metric:
+ *
+ *   meridian_collector  0.564 / 0.415  ->  0.310 / 0.000
+ *   meridian_carryall   0.548 / 0.427  ->  0.290 / 0.000
+ *   meridian_corvette   0.537 / 0.492  ->  0.233 / 0.000
+ *   meridian_monitor    0.535 / 0.491  ->  0.230 / 0.000
+ *   meridian_solarch    0.421 / 0.187  ->  0.305 / 0.000
+ *   meridian_skiff      0.421 / 0.177  ->  0.310 / 0.000
+ *   meridian_zenith     0.434 / 0.154  ->  0.339 / 0.000
+ *   meridian_kestrel    0.294 / 0.049  ->  0.264 / 0.000
+ *
+ * Every Meridian hull measures 0.000 axis-aligned flank surface, which is what
+ * the four infantry rosters already measured and what the whole gate is for.
+ * The game's worst axis figure is now `allied_harvester` at 0.149 and its worst
+ * blended score `allied_prism` at 0.417 — both a long way under where the Pact
+ * used to sit, which is what makes tightening `BOXINESS.warn` possible at all.
+ * It cost 84 TRIANGLES LESS across the twelve hulls, because a `planPrism` rim
+ * chamfer is a band and a fan rather than two quads per plan edge.
+ *
+ * The fix was `planPrism` carrying the SAME polygon the legacy `prism` was
+ * drawing (§2b restates all three at real scale) plus a real taper. No plan
+ * changed. The octagonal plenum skirt is still octagonal and still 1.22x the
+ * hull; it is a bell now instead of a drum.
  * ============================================================================
  */
 
@@ -166,7 +185,17 @@ const HULL_NUMBER = MERIDIAN_UNIT_PALETTE.hullNumber;
 
 type V3 = readonly [number, number, number];
 
-interface SlabOpts { turret?: boolean; mirrorX?: boolean; rot?: V3; }
+interface SlabOpts {
+  turret?: boolean;
+  mirrorX?: boolean;
+  rot?: V3;
+  /**
+   * See `MassDef.gait`. A jade panel painted on a thigh has to swing WITH the
+   * thigh, or the walk shears the paint off the leg. `UnitDefs.PanelOpts`
+   * carries the same field for the same reason.
+   */
+  gait?: MassDef['gait'];
+}
 
 /** A flat jade panel let into the hull. R-T2: a quad, never a gradient. */
 function slab(name: string, size: V3, anchor: V3, o: SlabOpts = {}): MassDef {
@@ -176,6 +205,7 @@ function slab(name: string, size: V3, anchor: V3, o: SlabOpts = {}): MassDef {
     ...(o.turret ? { turret: true } : {}),
     ...(o.mirrorX ? { mirrorX: true } : {}),
     ...(o.rot ? { rot: o.rot } : {}),
+    ...(o.gait !== undefined ? { gait: o.gait } : {}),
   };
 }
 
@@ -214,6 +244,59 @@ function primary(
 }
 
 /* ==========================================================================
+ * 2b. THE PACT'S THREE PLANS, IN METRES
+ *
+ * `MassList` already owns these three polygons — `HEXAGON`, `octagon(0.20)` and
+ * `WEDGE` — but it owns them in UNIT SPACE (-0.5..0.5 on both axes), because
+ * that is what the legacy `prism` builder wants: it takes a NAMED plan and
+ * multiplies it by `size` itself.
+ *
+ * `planPrism` takes its plan in real metres instead, and `planPrism` is the only
+ * one of the two that can TAPER. So the identical polygons are restated here at
+ * real scale. Keeping them identical is the whole point: the Pact's plan
+ * language does not change, only whether its walls are allowed to slope.
+ *
+ * WHY THAT MATTERS, IN ONE PARAGRAPH. `MassList.massFlankSurface` credits a wall
+ * to the de-boxify gate's `other` bucket only when the wall actually SLOPES, and
+ * `UnitFactory.buildPrism` emits the same plan at both wall rings — it has no
+ * taper term at all, so every legacy `prism` stands dead vertical. A hexagon has
+ * two walls square to +-Z and an octagon has four; held vertical, those measured
+ * as flat axis-aligned rectangle and put the Pact's hover, support, naval and
+ * flyer hulls at the four worst boxiness scores in the game.
+ * ========================================================================== */
+
+/** A CCW-from-above plan in metres — what `MassShape.plan` wants. */
+type Plan = readonly (readonly [number, number])[];
+
+/**
+ * THE PACT HEXAGON: points at +-X, flat walls at +-Z. `MassList`'s `HEXAGON`
+ * at real scale.
+ */
+function hexPlan(w: number, d: number): Plan {
+  const a = w * 0.5, b = d * 0.5;
+  return [[-a * 0.5, -b], [a * 0.5, -b], [a, 0], [a * 0.5, b], [-a * 0.5, b], [-a, 0]];
+}
+
+/**
+ * THE PLENUM OCTAGON. `MassList`'s `octagon(0.20)` at real scale — the corner
+ * cut is 20% of each half-extent, which is what `planPolygon('octagon', 0)`
+ * resolves to and therefore what every Pact skirt and chassis has always been.
+ */
+function octPlan(w: number, d: number): Plan {
+  const a = w * 0.5, b = d * 0.5, k = 0.6;   // 0.3 / 0.5
+  return [
+    [-a * k, -b], [a * k, -b], [a, -b * k], [a, b * k],
+    [a * k, b], [-a * k, b], [-a, b * k], [-a, -b * k],
+  ];
+}
+
+/** THE PROW WEDGE: full beam aft, tapering to a stem at +Z. `MassList`'s `WEDGE`. */
+function wedgePlan(w: number, d: number): Plan {
+  const a = w * 0.5, b = d * 0.5;
+  return [[-a, -b], [a, -b], [a * 0.60, b * 0.48], [0, b], [-a * 0.60, b * 0.48]];
+}
+
+/* ==========================================================================
  * 3. THE TWO SUB-ASSEMBLIES THAT MAKE THE ARMY
  * ========================================================================== */
 
@@ -230,12 +313,23 @@ function primary(
  *
  * `outboard` is the skirt half-width over the hull half-width. 1.22 puts the
  * turret/hull width ratio at 1.02/1.22 = 0.84, dead centre of R8's 0.75-0.95.
+ *
+ * THE WALLS SLOPE, and that is not decoration. `size` is unchanged, so every R8
+ * number derived from it — the outboard fraction, the turret/hull ratio, the
+ * silhouette rectangle — is exactly what it was; what changed is that the OCTAGON
+ * IS NOW A REAL BELL. The widest ring is the one at the ground, where a plenum's
+ * cushion actually escapes, and it draws in to 0.84 x 0.88 at the top, which
+ * lands the skirt's crown at 1.02 x the hull box it meets. Before this the eight
+ * walls were dead vertical (`buildPrism` has no taper term) and four of them
+ * measured as flat axis-aligned rectangle — on the tanks the skirt was the
+ * flattest primary mass at 0.56, and it is 0.000 now.
  */
 function plenumSkirt(hullWidth: number, skirtHeight: number, length: number, fans: number): MassDef[] {
   const w = hullWidth * 1.22;
   const out: MassDef[] = [
-    primary('skirt', 'prism', [w, skirtHeight, length], [0, skirtHeight * 0.5, 0], 'grille', {
-      plan: 'octagon', capSlot: 'paintSmall', chamfer: 0.06,
+    primary('skirt', 'planPrism', [w, skirtHeight, length], [0, skirtHeight * 0.5, 0], 'grille', {
+      capSlot: 'paintSmall', chamfer: 0.06,
+      shape: { plan: octPlan(w, length), topScaleX: 0.84, topScaleZ: 0.88 },
     }),
   ];
   const r = skirtHeight * 1.30;
@@ -251,7 +345,7 @@ function plenumSkirt(hullWidth: number, skirtHeight: number, length: number, fan
 }
 
 /**
- * THE MIRROR VANE — the faction cue, on all eleven hulls.
+ * THE MIRROR VANE — the faction cue, on all twelve hulls.
  *
  * A canted collector panel with a gold strip along its leading edge. Rotated on
  * two axes on purpose: a vane that lay flat would read as a hatch, and the
@@ -322,21 +416,6 @@ interface PactInfantryOpts {
   officer?: boolean;
 }
 
-/**
- * THE PACT HEXAGON, IN METRES, CCW from above — points at +-X, flat walls at
- * +-Z, the same proportions as `MassList`'s built-in `HEXAGON` plan.
- *
- * It is restated here because `planPrism` takes its plan in real metres (the
- * legacy `prism` takes a named plan in unit space and scales it by `size`), and
- * `planPrism` is the only one of the two that can taper. Keeping the identical
- * polygon is the point: the Pact's plan language does not change, only whether
- * the walls are allowed to slope.
- */
-function hexPlan(w: number, d: number): readonly (readonly [number, number])[] {
-  const a = w * 0.5, b = d * 0.5;
-  return [[-a * 0.5, -b], [a * 0.5, -b], [a, 0], [a * 0.5, b], [-a * 0.5, b], [-a, 0]];
-}
-
 function pactInfantry(o: PactInfantryOpts): UnitMassList {
   const H = UNIT_LADDER.infantryHeightMeters;      // 2.2 m
   const W = UNIT_LADDER.infantryWidthMeters;       // 0.78 m shoulder span
@@ -346,6 +425,37 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
   const torsoW = W * (o.officer === true ? 1.02 : 0.86);
   const torsoD = W * (o.officer === true ? 1.00 : 0.86);
 
+  /**
+   * THE WALK, which this army did not have.
+   *
+   * v1.17.0 shipped the infantry walk cycle and it reached the Allied and Soviet
+   * rosters only, because it was authored inside `UnitDefs.infantry()` and
+   * nothing else was looked at. `grep -c gait` returned 10 for `UnitDefs.ts` and
+   * 0 for both this file and `Faction4Units.ts`: half the game's armies slid
+   * along the ground with their legs welded shut, and `tests/unit-gait.spec.ts`
+   * could not see it because it imported `UNIT_MASS_LISTS` and inspected Allied
+   * keys only.
+   *
+   * The MECHANISM is exactly `UnitDefs`': there is only one, and a second one
+   * would be a bug farm. `MassDef.gait` bakes `(swingSign, pivotY)` into a
+   * per-vertex `aGait` attribute over the vertices this mass emits, `mirrorX`
+   * flips the sign so ONE declaration animates both limbs, 'arm' inverts it
+   * again for the contralateral rhythm, and `src/render/Gait.ts` rotates about
+   * the X axis through `pivotY` in the vertex stage. Nothing per-frame is added:
+   * `unit-anim.system.ts` already walked every `EntityKind.Infantry` including
+   * these four, wrote their phase, and had no vertices to move.
+   *
+   * The PIVOTS are the Pact's own. The shoulder sits at the mantle line rather
+   * than at `torsoH * 0.30`, which is where the Allied and Soviet arms hang
+   * from — this army wears a hard shoulder plate and the arm swings from under
+   * it, so the stroke is shorter and higher and the figure reads processional
+   * rather than jogging. The hip is `legTop` and is NOT a free choice: boot and
+   * thigh band repeat it exactly, and a limb whose parts pivot about different
+   * heights shears itself apart in motion.
+   */
+  const hip = { limb: 'leg', pivotY: legTop } as const;
+  const shoulder = { limb: 'arm', pivotY: torsoY + torsoH * 0.36 } as const;
+
   const masses: MassDef[] = [
     // The legs are the one primary that was never the problem: the legacy `box`
     // builder DOES honour `taper`, so these walls already slope from thigh to
@@ -354,7 +464,7 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
     // lets the top overhang it, so migrating would quietly slim the thigh by
     // 22% for no gain on any metric.
     primary('leg', 'box', [W * 0.34, legTop, W * 0.44], [W * 0.24, legTop * 0.5, 0], 'paintSmall', {
-      mirrorX: true, taper: [1.22, 1.08, 0.02],
+      mirrorX: true, taper: [1.22, 1.08, 0.02], gait: hip,
     }),
     // Hexagonal torso: the Pact's plan language reaches all the way down to a
     // 2 m figure, and it is what stops the silhouette reading as a Conscript.
@@ -399,7 +509,7 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
     // `taperedBox` emits FEWER triangles than the legacy chamfered box) and is
     // what an armoured arm is shaped like.
     primary('arm', 'taperedBox', [W * 0.24, torsoH * 0.86, W * 0.28], [W * 0.52, torsoY + 0.02, 0.06], 'paintSmall', {
-      mirrorX: true, rot: [0.12, 0, -0.06],
+      mirrorX: true, rot: [0.12, 0, -0.06], gait: shoulder,
       shape: { topScaleX: 1.20, topScaleZ: 1.12, bottomScaleX: 0.74, bottomScaleZ: 0.82 },
     }),
   ];
@@ -445,7 +555,12 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
     greeble('crest', 'lathe', [0.06, H * 0.13, 0.06], [-W * 0.16, H - H * 0.065, -0.05], 'bareMetal', {
       profile: 'cyl', segments: 8, group: 'crest',
     }),
-    greeble('boot', 'box', [W * 0.40, 0.16, W * 0.62], [W * 0.24, 0.08, 0.06], 'paintTiny', { mirrorX: true, group: 'boots' }),
+    // Boot and thigh band ride the SAME hip as the leg. The boot is the far end
+    // of the limb, so a boot left welded to the ground is the single most
+    // obvious way a walk cycle can look broken.
+    greeble('boot', 'box', [W * 0.40, 0.16, W * 0.62], [W * 0.24, 0.08, 0.06], 'paintTiny', {
+      mirrorX: true, group: 'boots', gait: hip,
+    }),
     greeble('belt', 'box', [W * 0.90, 0.12, W * 0.66], [0, torsoY - torsoH * 0.34, 0], 'paintTiny', { group: 'belt' }),
     greeble('gorget', 'box', [W * 0.60, 0.11, W * 0.50], [0, legTop + torsoH - 0.03, 0], 'paintTiny', { group: 'gorget' }),
   );
@@ -479,7 +594,7 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
     slab('chestPlate', [W * 0.72, torsoH * 0.66, 0.06], [0, torsoY + 0.04, W * 0.32]),
     slab('mantle', [W * 0.34, 0.34, W * 0.44], [W * 0.44, torsoY + torsoH * 0.30, 0], { mirrorX: true }),
     slab('helmBand', [W * 0.58, 0.12, W * 0.62], [0, legTop + torsoH + H * 0.030, 0.01]),
-    slab('thighBand', [W * 0.42, 0.20, W * 0.50], [W * 0.24, legTop * 0.72, 0], { mirrorX: true }),
+    slab('thighBand', [W * 0.42, 0.20, W * 0.50], [W * 0.24, legTop * 0.72, 0], { mirrorX: true, gait: hip }),
   );
   masses.push(insignia([0.26, 0.26, 0.05], [W * 0.30, torsoY + torsoH * 0.24, W * 0.33]));
   masses.push(
@@ -543,10 +658,23 @@ function pactTank(o: PactTankOpts): UnitMassList {
   const masses: MassDef[] = [
     ...plenumSkirt(W, skirtH, L * 0.94, o.fans ?? 4),
     // Hexagonal hull: a pointed prow and a pointed transom in plan, so the
-    // flanks are four angled walls rather than two flat ones. This is the mass
-    // the boxiness gate scores hardest and it has no axis-aligned wall at all.
-    primary('hull', 'prism', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
-      plan: 'hexagon', capSlot: 'paintLarge',
+    // flanks are four angled walls rather than two flat ones.
+    //
+    // That sentence used to end "and it has no axis-aligned wall at all", which
+    // was false. A hexagon has SIX walls and two of them — the cheeks either
+    // side of the prow point — are square to +-X; held vertical by a builder
+    // with no taper term, they measured as flat axis-aligned rectangle. The
+    // taper is what makes the claim true: the deck draws in and slides aft, so
+    // the prow reads as a raked glacis and no wall on the hull is a vertical
+    // plane. `shear` is held under `(1 - topScaleZ) * L / 2` on purpose — past
+    // that the sheared top ring pushes the mass's own Z bounds out and `fitMesh`
+    // squashes the whole hull back to `size`, silently shortening it.
+    primary('hull', 'planPrism', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
+      capSlot: 'paintLarge',
+      shape: {
+        plan: hexPlan(W, L),
+        topScaleX: 0.86, topScaleZ: 0.92, shear: -L * 0.035,
+      },
     }),
     // Lathed drum turret, tapering to a smaller crown. Deliberately oversized
     // at 1.02x the hull box (bible 5.3 — a real MBT is 0.55 and RA3 is not real).
@@ -678,24 +806,48 @@ function pactSupport(o: PactSupportOpts): UnitMassList {
   const deckY = skirtH + chassisH;
   const bodyH = H * 0.52;
   const bodyY = H * 0.645;
+  // The drum carries R8's dominant-mass check on both support hulls, and
+  // `silhouetteFillOf` scores a `planPrism` at 0.86 against a `prism`'s 0.90 —
+  // so migrating the primitive alone would have taken the Collector from 36.8%
+  // of the silhouette to 35.2%, a fifth of a point off the 35% floor and a
+  // rejected model on the next unrelated tweak. Four percent more barrel buys
+  // the margin back and is the right shape anyway: an ore drum is a big object.
+  const bodyL = L * 0.70;
 
   const masses: MassDef[] = [
     ...plenumSkirt(W, skirtH, L * 0.90, 5),
-    primary('chassis', 'prism', [W, chassisH, L], [0, chassisY, 0], 'paintLarge', {
-      plan: 'octagon', capSlot: 'paintLarge',
+    // The chassis draws in toward the deck, so the body above it sits on a
+    // visible shoulder rather than on a flush ledge. Eight sloped walls.
+    primary('chassis', 'planPrism', [W, chassisH, L], [0, chassisY, 0], 'paintLarge', {
+      capSlot: 'paintLarge',
+      shape: { plan: octPlan(W, L), topScaleX: 0.88, topScaleZ: 0.94 },
     }),
-    // The dominant mass: an ore drum, or the folded structure package.
-    primary(o.role === 'collector' ? 'drum' : 'package', 'prism',
-      [W * 0.96, bodyH, L * 0.66], [0, bodyY, -L * 0.10], 'paintLarge', {
-        plan: 'hexagon', capSlot: 'paintLarge',
+    // The dominant mass: an ore drum, or the folded structure package. Tapered
+    // the other way from everything below it — narrow at the waist, flaring to
+    // a full-width mouth at the lid — because that is what a hopper is, and
+    // because a hull whose every volume narrows upward reads as a wedding cake.
+    primary(o.role === 'collector' ? 'drum' : 'package', 'planPrism',
+      [W * 0.96, bodyH, bodyL], [0, bodyY, -L * 0.10], 'paintLarge', {
+        capSlot: 'paintLarge',
+        shape: {
+          plan: hexPlan(W * 0.96, bodyL),
+          bottomScaleX: 0.84, bottomScaleZ: 0.90,
+        },
       }),
   ];
 
   if (o.role === 'collector') {
     masses.push(
       // The intake throat: the second read, and the thing that says "harvester".
-      primary('throat', 'prism', [W * 1.00, H * 0.26, L * 0.24], [0, deckY + H * 0.02, L * 0.42], 'paintMed', {
-        plan: 'wedge', capSlot: 'stripe',
+      // A wedge plan has ONE axis-aligned wall — the transom across its back —
+      // and the taper tips it, so the mouth flares down and out toward the ore
+      // the way a scoop does.
+      primary('throat', 'planPrism', [W * 1.00, H * 0.26, L * 0.24], [0, deckY + H * 0.02, L * 0.42], 'paintMed', {
+        capSlot: 'stripe',
+        shape: {
+          plan: wedgePlan(W * 1.00, L * 0.24),
+          topScaleX: 0.82, topScaleZ: 0.88, shear: -L * 0.012,
+        },
       }),
       greeble('throatTeeth', 'box', [W * 0.96, 0.14, 0.22], [0, deckY - H * 0.06, L * 0.52], 'bareMetal', { group: 'teeth' }),
       greeble('throatArm', 'lathe', [0.20, L * 0.24, 0.20], [W * 0.38, deckY + H * 0.10, L * 0.30], 'bareMetal', {
@@ -710,8 +862,15 @@ function pactSupport(o: PactSupportOpts): UnitMassList {
     );
   } else {
     masses.push(
-      primary('foreRamp', 'prism', [W * 1.06, H * 0.28, L * 0.16], [0, skirtH * 0.68, L * 0.50], 'paintMed', {
-        plan: 'wedge', capSlot: 'stripe',
+      // The bow ramp. Same wedge, tapered the other way from the Collector's
+      // throat: this one is a door, so it is widest at the deck it folds down
+      // from and narrows toward the ground it lands on.
+      primary('foreRamp', 'planPrism', [W * 1.06, H * 0.28, L * 0.16], [0, skirtH * 0.68, L * 0.50], 'paintMed', {
+        capSlot: 'stripe',
+        shape: {
+          plan: wedgePlan(W * 1.06, L * 0.16),
+          bottomScaleX: 0.80, bottomScaleZ: 0.86,
+        },
       }),
       greeble('rampArm', 'lathe', [0.22, L * 0.28, 0.22], [W * 0.40, skirtH * 0.86, L * 0.34], 'bareMetal', {
         mirrorX: true, profile: 'cyl', segments: 10, rot: [Math.PI * 0.5, 0, 0], group: 'rampArms',
@@ -787,14 +946,33 @@ function pactShip(o: PactShipOpts): UnitMassList {
   const superY = H * 0.655;
 
   const masses: MassDef[] = [
-    primary('hull', 'prism', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
-      plan: 'wedge', capSlot: 'paintLarge',
+    // DEADRISE. The hull was the single flattest primary mass in the game at
+    // 0.65 axis-aligned — a wedge plan still has a transom square across its
+    // stern, and `buildPrism` held it and both quarters dead vertical, which is
+    // a barge. Drawing the bottom ring in to 0.76 x 0.94 gives roughly 25
+    // degrees of deadrise per side, so the hull falls away to a keel and every
+    // wall on it slopes. This is also the one place the Pact gets to look like
+    // a ship rather than like a hovercraft that happens to float.
+    primary('hull', 'planPrism', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
+      capSlot: 'paintLarge',
+      shape: {
+        plan: wedgePlan(W, L),
+        bottomScaleX: 0.76, bottomScaleZ: 0.94,
+      },
     }),
-    primary('deck', 'prism', [W * 0.94, H * 0.10, L * 0.90], [0, hullH + H * 0.05, -L * 0.02], 'paintMed', {
-      plan: 'octagon', capSlot: 'paintLarge',
+    // The deck rolls in at the gunwale rather than standing as a proud rim.
+    primary('deck', 'planPrism', [W * 0.94, H * 0.10, L * 0.90], [0, hullH + H * 0.05, -L * 0.02], 'paintMed', {
+      capSlot: 'paintLarge',
+      shape: { plan: octPlan(W * 0.94, L * 0.90), topScaleX: 0.93, topScaleZ: 0.97 },
     }),
-    primary('bridge', 'prism', [W * 0.72, superH, L * 0.34], [0, superY, -L * 0.10], 'paintLarge', {
-      plan: 'hexagon', capSlot: 'paintLarge',
+    // The superstructure narrows going up, which is what a warship bridge does
+    // and what stops the second-largest mass on the hull reading as a shed.
+    primary('bridge', 'planPrism', [W * 0.72, superH, L * 0.34], [0, superY, -L * 0.10], 'paintLarge', {
+      capSlot: 'paintLarge',
+      shape: {
+        plan: hexPlan(W * 0.72, L * 0.34),
+        topScaleX: 0.80, topScaleZ: 0.88, shear: -L * 0.018,
+      },
     }),
     // Sized so the mast crown IS the top of the silhouette.
     primary('mast', 'lathe', [W * 0.26, H * 0.20, W * 0.26], [0, H - H * 0.10, -L * 0.16], 'bareMetal', {
@@ -878,8 +1056,24 @@ function pactFlyer(key: string, name: string, L: number, S: number, H: number): 
   const wingY = fuseY - fuseH * 0.18;
 
   const masses: MassDef[] = [
-    primary('foreBody', 'prism', [S * 0.20, fuseH, L * 0.56], [0, fuseY, L * 0.16], 'paintLarge', {
-      plan: 'hexagon', capSlot: 'paintMed',
+    // A BLENDED LIFTING BODY, finally shaped like one. The hexagonal section is
+    // unchanged; what it does now is draw in hard toward a spine, so the fore
+    // fuselage is a broad flat underside rising to a narrow deck instead of six
+    // vertical walls. It was the Kestrel's only axis-aligned primary (0.132) and
+    // the last untapered `prism` primary in the army.
+    //
+    // The chord grew from 0.56 L to 0.60 L in the same edit, and that is not
+    // taste either: `silhouetteFillOf` scores a `planPrism` at 0.86 against a
+    // `prism`'s 0.90, which would have dropped this mass from 36.5% of the
+    // silhouette to 34.9% and tripped R8's 35% dominant-mass floor. The extra
+    // chord also closes a real gap — the fore body now meets the base of the
+    // nose cone instead of stopping a few centimetres short of it.
+    primary('foreBody', 'planPrism', [S * 0.20, fuseH, L * 0.60], [0, fuseY, L * 0.16], 'paintLarge', {
+      capSlot: 'paintMed',
+      shape: {
+        plan: hexPlan(S * 0.20, L * 0.60),
+        topScaleX: 0.72, topScaleZ: 0.92, shear: -L * 0.020,
+      },
     }),
     primary('aftBoom', 'box', [S * 0.16, fuseH * 0.78, L * 0.48], [0, fuseY - fuseH * 0.04, -L * 0.26], 'paintMed', {
       taper: [0.62, 0.58, -L * 0.06],

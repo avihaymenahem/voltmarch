@@ -40,13 +40,28 @@
  * WHY A CEILING AND NOT JUST THE SHIPPED GATE
  * -------------------------------------------
  * `BOXINESS.warn` is 0.68 and `BOXINESS.axisWarn` is 0.85. The boxiest unit in
- * the entire game measures 0.564 / 0.415. The shipped warn threshold is ~0.12
- * and ~0.44 above anything that exists, so it cannot fire, and it did not fire
+ * the entire game measures 0.417 / 0.149. The shipped warn threshold is ~0.26
+ * and ~0.70 above anything that exists, so it cannot fire, and it did not fire
  * on the Meridian infantry that prompted this work (0.305 / 0.173 — clean
  * against a 0.68 / 0.85 gate, and visibly the boxiest troops in the game).
  * A gate calibrated so far above the content that nothing can trip it is a
  * comment, not a mechanism. `BOXINESS` lives in `src/art/MassList.ts`; until
  * those constants move, the measured ceiling lives here.
+ *
+ * THE SECOND HALF OF THIS FILE MEASURES THE MESH, NOT THE METRIC
+ * --------------------------------------------------------------
+ * `boxiness()` is analytic: it reads `MassDef` fields and never builds a
+ * triangle. That is its virtue — a def author gets the number before any
+ * geometry exists — and it is also the one way this whole exercise could be
+ * fooled. Two proposed fixes for the Meridian hulls were refuted for exactly
+ * that reason: their authors moved the metric and never looked at the mesh.
+ *
+ * So `the taper reaches the geometry` below drives the real
+ * `shapeSpecFor -> shapeMesh -> fitMesh` path — the same three calls
+ * `UnitFactory.buildUnit` makes — and measures the built polygons: how much
+ * horizontal-facing area has a normal with `n.y === 0` (a dead vertical wall),
+ * and how far apart the bottom and top rings actually sit. A taper that exists
+ * only in the metric fails those.
  * ============================================================================
  */
 
@@ -54,7 +69,11 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 import { RA3_UNIT_PALETTE } from '../src/core/config';
 import { GreebleFactory } from '../src/art/Greeble';
-import { BOXINESS, boxiness, formatStats, type UnitMassList } from '../src/art/MassList';
+import {
+  BOXINESS, boxiness, defaultChamfer, expandMasses, formatStats, MassRole,
+  shapeFitMode, shapeSpecFor, type MassDef, type UnitMassList,
+} from '../src/art/MassList';
+import { fitMesh, shapeMesh } from '../src/art/Shapes';
 import { UnitLibrary } from '../src/art/UnitFactory';
 import { UNIT_MASS_LISTS } from '../src/art/UnitDefs';
 import { MERIDIAN_UNIT_MASS_LISTS } from '../src/art/Faction3Units';
@@ -167,22 +186,27 @@ describe('no soldier in any army has a straight-sided primary mass', () => {
 
 describe('the measured boxiness ceiling', () => {
   /**
-   * Measured on 2026-08-08 across all three rosters. The worst four units in
-   * the game are the Meridian support and naval hulls, whose load-bearing
-   * `prism` masses are still untapered:
+   * Measured on 2026-08-08 across all three rosters, and RE-MEASURED the same
+   * day once the Meridian hulls were tapered. The worst four units in the game
+   * used to be the Meridian support and naval hulls, whose load-bearing `prism`
+   * masses were untapered and therefore stood dead vertical:
    *
-   *   meridian_collector   0.564 / 0.415
-   *   meridian_carryall    0.548 / 0.427
-   *   meridian_corvette    0.537 / 0.492
-   *   meridian_monitor     0.535 / 0.491
+   *   meridian_collector   0.564 / 0.415  ->  0.310 / 0.000
+   *   meridian_carryall    0.548 / 0.427  ->  0.290 / 0.000
+   *   meridian_corvette    0.537 / 0.492  ->  0.233 / 0.000
+   *   meridian_monitor     0.535 / 0.491  ->  0.230 / 0.000
    *
-   * The ceilings below sit just above those, so tapering those prisms moves
-   * the numbers DOWN and nothing has to change here, while a new hull authored
-   * out of untapered boxes fails immediately instead of passing a 0.68 / 0.85
-   * gate that nothing in the game can reach.
+   * The worst figures in the game are now `allied_prism` at 0.417 blended and
+   * `allied_harvester` at 0.149 axis. The ceilings sit just above those — a
+   * new hull authored out of untapered boxes fails here immediately instead of
+   * passing a 0.68 / 0.85 gate that nothing in the game can reach.
+   *
+   * These are DELIBERATELY tight. When they are next in the way, the answer is
+   * to look at the hull, not at this number: every time one of them has moved
+   * so far it has moved down.
    */
-  const SCORE_CEILING = 0.60;
-  const AXIS_CEILING = 0.52;
+  const SCORE_CEILING = 0.45;
+  const AXIS_CEILING = 0.20;
 
   it('is tighter than the shipped gate, which no unit in the game can trip', () => {
     // The statement of the problem, as an assertion: if `BOXINESS` is ever
@@ -201,4 +225,153 @@ describe('the measured boxiness ceiling', () => {
       }
     });
   }
+});
+
+/* ========================================================================== */
+
+describe('no primary mass in the game is a legacy `prism`', () => {
+  /**
+   * THE SINGLE STRUCTURAL RULE BEHIND EVERY NUMBER ABOVE.
+   *
+   * `UnitFactory.buildPrism` emits the SAME plan at both wall rings. There is no
+   * taper term in it, there is no field on `MassDef` that could supply one, and
+   * so every wall of every legacy `prism` stands dead vertical — which is why
+   * `MassList.massFlankSurface` scores a hexagon at 0.275 and an octagon higher
+   * still. `planPrism` takes the identical polygon in metres and CAN taper.
+   *
+   * This is a rule about PRIMARY masses only, and deliberately. A greeble is a
+   * hand-sized object read as a shape rather than as a surface; the roster still
+   * uses `prism` for battery packs, ram bows and intake scoops, and should.
+   */
+  for (const [roster, lists] of ROSTERS) {
+    it(`${roster}`, () => {
+      const offenders: string[] = [];
+      for (const l of lists) {
+        for (const m of expandMasses(l.masses)) {
+          if (m.role === MassRole.Primary && m.primitive === 'prism') {
+            offenders.push(`${l.key}/${m.name}`);
+          }
+        }
+      }
+      expect(
+        offenders,
+        'a legacy `prism` cannot slope its walls at any parameter. Use `planPrism` and ' +
+        'give it the same polygon in metres plus a top/bottom scale — see ' +
+        '`hexPlan`/`octPlan`/`wedgePlan` in src/art/Faction3Units.ts.',
+      ).toEqual([]);
+    });
+  }
+});
+
+/* ========================================================================== */
+
+describe('the taper reaches the geometry, not just the metric', () => {
+  /**
+   * Build one mass the way `UnitFactory.buildUnit` builds it and measure the
+   * polygons. Returns null for the legacy `box` / `lathe` primitives, which
+   * `shapeSpecFor` does not own and which the factory still builds itself.
+   */
+  function builtMesh(m: MassDef, faction: UnitMassList['faction']): ReturnType<typeof shapeMesh> | null {
+    const spec = shapeSpecFor(m, defaultChamfer(m, faction));
+    if (spec === null) return null;
+    return fitMesh(shapeMesh(spec), m.size as [number, number, number], shapeFitMode(m));
+  }
+
+  /** The share of horizontal-facing built area whose normal is exactly level. */
+  function verticalWallShare(mesh: ReturnType<typeof shapeMesh>): number {
+    let vertical = 0, total = 0;
+    for (const p of mesh.polys) {
+      // Decks and undersides are excluded for the same reason `boxiness` excludes
+      // them: nobody has ever called a model boxy because its roof was flat.
+      if (Math.abs(p.n[1]) > 0.9) continue;
+      total += p.area;
+      if (Math.abs(p.n[1]) < 1e-4) vertical += p.area;
+    }
+    return total > 1e-9 ? vertical / total : 0;
+  }
+
+  /** XZ extents of the lowest and highest vertex rings of a built mesh. */
+  function ringExtents(mesh: ReturnType<typeof shapeMesh>): { bottom: [number, number]; top: [number, number] } {
+    const y0 = mesh.min[1], y1 = mesh.max[1];
+    const mid = (y0 + y1) * 0.5;
+    const acc = [
+      { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity },
+      { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity },
+    ];
+    for (const p of mesh.polys) {
+      for (const v of p.v) {
+        const a = acc[v[1] < mid ? 0 : 1];
+        if (v[0] < a.x0) a.x0 = v[0];
+        if (v[0] > a.x1) a.x1 = v[0];
+        if (v[2] < a.z0) a.z0 = v[2];
+        if (v[2] > a.z1) a.z1 = v[2];
+      }
+    }
+    return {
+      bottom: [acc[0].x1 - acc[0].x0, acc[0].z1 - acc[0].z0],
+      top: [acc[1].x1 - acc[1].x0, acc[1].z1 - acc[1].z0],
+    };
+  }
+
+  const meridianPrimaries = MERIDIAN_UNIT_MASS_LISTS.flatMap((l) =>
+    expandMasses(l.masses)
+      .filter((m) => m.role === MassRole.Primary && builtMesh(m, l.faction) !== null)
+      .map((m) => [l, m] as const));
+
+  it('has masses to measure, in every template the army has', () => {
+    // 29 across the twelve hulls at the time of writing — the four infantry
+    // torsos and arms, and every skirt, chassis, hull, deck, bridge, drum,
+    // throat, ramp and fore body. If a refactor sends these back down the
+    // legacy path the count collapses and every case below measures nothing.
+    expect(meridianPrimaries.length).toBeGreaterThanOrEqual(29);
+    const templates = new Set(meridianPrimaries.map(([l]) => l.cls));
+    expect([...templates].sort()).toEqual(['air', 'infantry', 'naval', 'vehicle']);
+  });
+
+  for (const [l, m] of meridianPrimaries) {
+    it(`${l.key}/${m.name} has no dead-vertical wall on the built mesh`, () => {
+      const mesh = builtMesh(m, l.faction)!;
+      expect(mesh.polys.length).toBeGreaterThan(0);
+      // `toBe(0)`, not a tolerance. `prismFromPlanMesh` tilts EVERY wall the
+      // moment any top/bottom scale or shear is non-unit, so a single square
+      // metre of level normal means the taper was dropped, not shaved.
+      expect(
+        verticalWallShare(mesh),
+        `${m.primitive} "${m.name}" still has a flat vertical wall. Give it a real ` +
+        'topScale/bottomScale/shear — the metric would not have caught this.',
+      ).toBe(0);
+    });
+  }
+
+  it('slopes the walls far enough to see, not by an epsilon', () => {
+    // The other way a taper can be fake: satisfy the metric with 0.999. A
+    // `planPrism` primary must move its plan by at least 4% of the mass's own
+    // size between the bottom ring and the top one, on at least one axis.
+    const slim: string[] = [];
+    for (const [l, m] of meridianPrimaries) {
+      if (m.primitive !== 'planPrism') continue;
+      const { bottom, top } = ringExtents(builtMesh(m, l.faction)!);
+      const dx = Math.abs(top[0] - bottom[0]) / Math.max(1e-6, m.size[0]);
+      const dz = Math.abs(top[1] - bottom[1]) / Math.max(1e-6, m.size[2]);
+      if (Math.max(dx, dz) < 0.04) {
+        slim.push(`${l.key}/${m.name} dx=${dx.toFixed(3)} dz=${dz.toFixed(3)}`);
+      }
+    }
+    expect(slim, 'these tapers are too small to read at gameplay zoom').toEqual([]);
+  });
+
+  it('leaves the mass inside its declared `size`, which every R8 band divides by', () => {
+    // `fitMesh` normalises the built mesh into `size`, so an over-large shear
+    // does not overflow the AABB — it SQUASHES the hull to fit and silently
+    // shortens it. This pins the other side of that: the built extent is
+    // `size` on every axis, so `massExtents`, `unitBounds`, `silhouetteArea`
+    // and the turret/hull ratio all keep meaning what they say.
+    for (const [l, m] of meridianPrimaries) {
+      const mesh = builtMesh(m, l.faction)!;
+      for (let a = 0; a < 3; a++) {
+        expect(mesh.max[a] - mesh.min[a], `${l.key}/${m.name} axis ${a}`)
+          .toBeCloseTo(m.size[a], 6);
+      }
+    }
+  });
 });

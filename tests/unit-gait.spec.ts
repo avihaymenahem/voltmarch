@@ -31,13 +31,71 @@
  *   - THE PHASE IS DETERMINISTIC AND BOUNDED. It feeds an instance attribute;
  *     a NaN here is the exact route by which this repo once got a fully black
  *     frame out of one bad index.
+ *
+ * WHAT THIS FILE MISSED FOR ELEVEN VERSIONS, AND WHY
+ * --------------------------------------------------
+ * v1.17.0 shipped the walk and it reached HALF THE GAME. `grep -c gait` scored
+ * `src/art/UnitDefs.ts` 10, `src/art/Faction3Units.ts` 0 and
+ * `src/art/Faction4Units.ts` 0: the Meridian Pact and the Reclamation had
+ * infantry that slid along the ground with their legs welded shut.
+ *
+ * This file could not see it. It imported `UNIT_MASS_LISTS` — the Allied and
+ * Soviet roster and nothing else — and named five Allied and Soviet keys by
+ * hand. Two whole armies were outside the set it measured, and a roster-shaped
+ * hole in a roster-shaped test is invisible from inside it.
+ *
+ * So the sweep below is DRIVEN BY THE ROSTERS, not by a key list: it takes every
+ * mass list in all four armies, filters to `cls === 'infantry'`, and holds every
+ * one of them to the same rule. A fifth army joins the invariant by existing,
+ * which is the same property `src/game/Systems.ts` gives a new system module.
  * ============================================================================
  */
 
+import { PerformanceObserver, constants, performance } from 'node:perf_hooks';
 import { describe, expect, it } from 'vitest';
 
 import { UNIT_GAIT } from '../src/core/config';
-import { RenderPhase } from '../src/core/types';
+import { EntityKind, Faction, RenderPhase, type PlayerId, type RenderContext } from '../src/core/types';
+import { MassRole, type MassDef, type UnitMassList } from '../src/art/MassList';
+import { UNIT_MASS_LISTS } from '../src/art/UnitDefs';
+import { MERIDIAN_UNIT_MASS_LISTS } from '../src/art/Faction3Units';
+import { RECLAIM_UNIT_MASS_LISTS } from '../src/art/Faction4Units';
+
+/** Every army, by the roster it ships in. Adding a fifth adds it here only. */
+const ROSTERS: readonly (readonly [string, readonly UnitMassList[]])[] = [
+  ['allied/soviet', UNIT_MASS_LISTS],
+  ['meridian', MERIDIAN_UNIT_MASS_LISTS],
+  ['reclaim', RECLAIM_UNIT_MASS_LISTS],
+];
+
+const ALL_LISTS: readonly UnitMassList[] = ROSTERS.flatMap(([, l]) => l);
+
+/**
+ * THE ROSTER WHOSE INFANTRY STILL DO NOT WALK, NAMED RATHER THAN OMITTED.
+ *
+ * `src/art/Faction4Units.ts` was being edited by a parallel agent in the same
+ * round the Meridian gait landed, so it was outside this change's file
+ * ownership and its four soldiers still slide. That is a REAL DEFECT and it is
+ * recorded here as one, because the alternative — quietly sweeping only the
+ * rosters that happen to pass — is precisely how the hole this file is fixing
+ * stayed open for eleven versions.
+ *
+ * The entry is not a licence. `the exclusion list is not a hiding place` below
+ * asserts that every roster named here genuinely has NO gait at all, so the
+ * moment the Reclamation gets its walk cycle this file goes red and says to
+ * delete the line — and it asserts that nothing else is missing one, so a fifth
+ * army cannot join the game with welded legs.
+ */
+const NO_GAIT_YET: ReadonlySet<string> = new Set(['reclaim']);
+
+const WALKING_ROSTERS = ROSTERS.filter(([name]) => !NO_GAIT_YET.has(name));
+const ALL_INFANTRY: readonly UnitMassList[] =
+  WALKING_ROSTERS.flatMap(([, l]) => l).filter((l) => l.cls === 'infantry');
+
+/** A mass that swings, and the pivot it swings about. */
+function swinging(l: UnitMassList, limb: 'leg' | 'arm'): MassDef[] {
+  return l.masses.filter((m) => m.gait?.limb === limb);
+}
 
 /* ========================================================================== */
 
@@ -155,87 +213,342 @@ describe('a stopped unit reaches exactly neutral', () => {
 /* ========================================================================== */
 
 describe('the gait is baked onto the right masses and no others', () => {
-  it('swings the legs and the arms, in opposition, on both sides', async () => {
-    const { UNIT_MASS_LISTS } = await import('../src/art/UnitDefs');
-    const gi = UNIT_MASS_LISTS.find((u) => u.key === 'allied_rifle');
-    expect(gi, 'the Peacekeeper must exist').toBeDefined();
-
-    const byName = new Map(gi!.masses.map((m) => [m.name, m]));
-    const leg = byName.get('leg');
-    const arm = byName.get('arm');
-    expect(leg?.gait?.limb).toBe('leg');
-    expect(arm?.gait?.limb).toBe('arm');
-    // Both are mirrored, which is what gives each limb its two opposed copies.
-    expect(leg?.mirrorX).toBe(true);
-    expect(arm?.mirrorX).toBe(true);
-  });
-
-  it('pivots each limb at its own joint, not at the ground', () => {
-    // A leg rotating about y=0 sweeps the whole limb through the terrain; an
-    // arm rotating about the hip detaches from the shoulder. Both look wrong in
-    // ways that are obvious in motion and invisible in a still.
-    return import('../src/art/UnitDefs').then(({ UNIT_MASS_LISTS }) => {
-      const gi = UNIT_MASS_LISTS.find((u) => u.key === 'allied_rifle')!;
-      const byName = new Map(gi.masses.map((m) => [m.name, m]));
-      const hip = byName.get('leg')!.gait!.pivotY;
-      const shoulder = byName.get('arm')!.gait!.pivotY;
-      expect(hip).toBeGreaterThan(0.5);
-      expect(shoulder).toBeGreaterThan(hip);
-    });
-  });
-
-  it('carries the boot, knee pad and thigh band on the SAME pivot as the leg', async () => {
-    const { UNIT_MASS_LISTS } = await import('../src/art/UnitDefs');
-    const gi = UNIT_MASS_LISTS.find((u) => u.key === 'allied_rifle')!;
-    const byName = new Map(gi.masses.map((m) => [m.name, m]));
-    const hip = byName.get('leg')!.gait!.pivotY;
-    for (const name of ['boot', 'kneePad', 'thighBand']) {
-      const m = byName.get(name);
-      expect(m, `${name} must exist`).toBeDefined();
-      expect(m!.gait?.limb, `${name} rides the leg`).toBe('leg');
-      // A different pivot would shear the limb apart as it swings.
-      expect(m!.gait?.pivotY, `${name} shares the hip`).toBeCloseTo(hip, 10);
+  it('measures every army that has the feature, by roster and not by key', () => {
+    // THE ASSERTION THAT WOULD HAVE CAUGHT THE ORIGINAL BUG. Ten infantry
+    // across three armies — six Allied and Soviet, four Meridian — and each
+    // roster must contribute some. This file used to name five Allied and
+    // Soviet keys by hand, and two whole rosters sat outside everything it
+    // measured.
+    expect(ALL_INFANTRY.length).toBeGreaterThanOrEqual(10);
+    for (const [roster, lists] of WALKING_ROSTERS) {
+      expect(lists.some((l) => l.cls === 'infantry'), `${roster} fields infantry`).toBe(true);
+    }
+    // The Meridian Pact specifically, by name, because it is the roster this
+    // round added and a regression there would otherwise only shrink a count.
+    for (const key of ['meridian_wayfarer', 'meridian_lancer', 'meridian_artificer',
+      'meridian_hierarch']) {
+      expect(ALL_INFANTRY.some((l) => l.key === key), key).toBe(true);
     }
   });
 
-  it('leaves the torso, the helmet and the backpack welded to the body', async () => {
-    const { UNIT_MASS_LISTS } = await import('../src/art/UnitDefs');
-    for (const key of ['allied_rifle', 'soviet_conscript']) {
-      const u = UNIT_MASS_LISTS.find((m) => m.key === key)!;
-      for (const m of u.masses) {
-        const rides = m.name === 'leg' || m.name === 'arm' || m.name === 'boot'
-          || m.name === 'kneePad' || m.name === 'thighBand';
-        if (!rides) {
-          expect(m.gait, `${key}/${m.name} must not swing`).toBeUndefined();
-        }
+  it('the exclusion list is not a hiding place', () => {
+    // Two directions, and both matter.
+    //
+    // 1. Every roster named in `NO_GAIT_YET` must genuinely have NO gait
+    //    anywhere. A stale entry — one left behind after the roster was fixed —
+    //    would silently exempt a working army from every case in this file.
+    for (const [roster, lists] of ROSTERS) {
+      if (!NO_GAIT_YET.has(roster)) continue;
+      const declared = lists.flatMap((l) => l.masses.filter((m) => m.gait !== undefined));
+      expect(
+        declared.length,
+        `${roster} has a walk cycle now — delete it from NO_GAIT_YET and let the sweep cover it`,
+      ).toBe(0);
+    }
+    // 2. Every roster NOT named there must have one on every soldier. A fifth
+    //    army cannot arrive with welded legs and pass by not being listed.
+    for (const [roster, lists] of WALKING_ROSTERS) {
+      for (const l of lists) {
+        if (l.cls !== 'infantry') continue;
+        expect(l.masses.some((m) => m.gait !== undefined), `${roster}/${l.key}`).toBe(true);
       }
     }
   });
 
-  it('covers the Soviet build too, not just the Allied one', async () => {
-    const { UNIT_MASS_LISTS } = await import('../src/art/UnitDefs');
-    // The Conscript's torso is a greatcoat revolve rather than a plated hull,
-    // so it takes a different branch of `infantry()` — and a walk cycle wired
-    // only into the branch someone happened to look at is exactly the kind of
-    // half-fix this repo keeps finding.
-    for (const key of ['soviet_conscript', 'soviet_flak', 'allied_engineer',
-      'allied_marshal', 'soviet_commissar']) {
-      const u = UNIT_MASS_LISTS.find((m) => m.key === key);
-      expect(u, `${key} must exist`).toBeDefined();
-      expect(u!.masses.some((m) => m.gait?.limb === 'leg'), `${key} must have legs that swing`)
-        .toBe(true);
-      expect(u!.masses.some((m) => m.gait?.limb === 'arm'), `${key} must have arms that swing`)
-        .toBe(true);
-    }
-  });
+  for (const l of ALL_INFANTRY) {
+    it(`${l.key} walks`, () => {
+      // Legs and arms, both mirrored. `mirrorX` is what gives each limb its two
+      // opposed copies from ONE declaration, and it is the whole reason the
+      // gait is expressed per MASS rather than per emitted vertex range.
+      const legs = swinging(l, 'leg');
+      const arms = swinging(l, 'arm');
+      expect(legs.some((m) => m.name === 'leg'), 'the leg mass swings').toBe(true);
+      expect(arms.some((m) => m.name === 'arm'), 'the arm mass swings').toBe(true);
+      for (const m of [...legs, ...arms]) {
+        expect(m.mirrorX, `${m.name} must be mirrored or only one limb moves`).toBe(true);
+      }
+    });
 
-  it('does not put a gait on anything that drives', async () => {
-    const { UNIT_MASS_LISTS } = await import('../src/art/UnitDefs');
-    for (const u of UNIT_MASS_LISTS) {
+    it(`${l.key} pivots each limb at its own joint`, () => {
+      // A leg rotating about y=0 sweeps the whole limb through the terrain; an
+      // arm rotating about the hip detaches from the shoulder. Both look wrong
+      // in ways that are obvious in motion and invisible in a still.
+      const hip = l.masses.find((m) => m.name === 'leg')!.gait!.pivotY;
+      const shoulder = l.masses.find((m) => m.name === 'arm')!.gait!.pivotY;
+      expect(hip).toBeGreaterThan(0.5);
+      expect(shoulder).toBeGreaterThan(hip);
+      // ...and below the crown, or the arm swings from the soldier's hat.
+      expect(shoulder).toBeLessThan(2.2);
+    });
+
+    it(`${l.key} keeps one limb rigid — every part of it shares a pivot`, () => {
+      // Boots, knee pads and thigh bands ride the leg; a part on a different
+      // pivot shears itself off the limb as it swings, and the boot is the far
+      // end of the lever so it is the one that shows.
+      for (const limb of ['leg', 'arm'] as const) {
+        const parts = swinging(l, limb);
+        const pivots = new Set(parts.map((m) => m.gait!.pivotY.toFixed(9)));
+        expect(pivots.size, `${limb} parts [${parts.map((m) => m.name).join(', ')}] disagree on the pivot`)
+          .toBe(1);
+      }
+      // Not just the primary: the foot must come along. Every roster hangs a
+      // boot off the leg, and a walk with the boots left standing on the ground
+      // is worse than no walk at all.
+      const rides = new Set(swinging(l, 'leg').map((m) => m.name));
+      expect(rides.has('boot'), 'the boot rides the leg').toBe(true);
+      expect(rides.has('thighBand'), 'the thigh band is painted on the thigh').toBe(true);
+    });
+
+    it(`${l.key} leaves the torso, the helmet and the pack welded to the body`, () => {
+      const TORSO = new Set(['torso', 'coat', 'helmet', 'crest', 'helmetAerial', 'finial',
+        'belt', 'gorget', 'collar', 'webbing', 'chestPlate', 'helmBand', 'helmetBand',
+        'visor', 'packLamp', 'insignia', 'vestment', 'mantle', 'mantleHigh',
+        'shoulderPad', 'pauldron', 'cape']);
+      for (const m of l.masses) {
+        if (!TORSO.has(m.name)) continue;
+        expect(m.gait, `${l.key}/${m.name} must not swing`).toBeUndefined();
+      }
+      // And a backpack is never a limb, whichever of the six shapes it is.
+      for (const m of l.masses) {
+        if (m.group !== 'pack') continue;
+        expect(m.gait, `${l.key}/${m.name} is a backpack`).toBeUndefined();
+      }
+    });
+  }
+
+  it('does not put a gait on anything that drives, in any army', () => {
+    for (const u of ALL_LISTS) {
       if (u.cls === 'infantry') continue;
       for (const m of u.masses) {
         expect(m.gait, `${u.key}/${m.name} is not a leg`).toBeUndefined();
       }
+    }
+  });
+
+  it('only ever swings a mass a soldier could swing', () => {
+    // A `gait` on a primary that is not a limb — a torso, a turret — would
+    // rotate the model's own bulk about a joint. The two limbs are the whole
+    // articulation and the whole budget.
+    for (const l of ALL_INFANTRY) {
+      for (const m of l.masses) {
+        if (m.gait === undefined) continue;
+        expect(['leg', 'arm']).toContain(m.gait.limb);
+        expect(Number.isFinite(m.gait.pivotY), `${l.key}/${m.name}`).toBe(true);
+        if (m.role === MassRole.Primary) {
+          expect(['leg', 'arm'], `${l.key}/${m.name} is a primary mass`).toContain(m.name);
+        }
+      }
+    }
+  });
+});
+
+/* ========================================================================== */
+
+describe('the declaration reaches the built mesh', () => {
+  /**
+   * The mass list is data; `aGait` is what the GPU actually reads. The two are
+   * connected by `UnitFactory`'s MeshBuilder and by exactly one line —
+   * `if (this.gait.some((v) => v !== 0))` — so a model can carry a perfectly
+   * good `MassDef.gait` and still ship with no attribute at all.
+   */
+  it('emits a signed, mirrored aGait on every Meridian soldier', async () => {
+    const { MERIDIAN_UNIT_PALETTE, meridianUnitLibrary } = await import('../src/art/Faction3Units');
+    for (const l of MERIDIAN_UNIT_MASS_LISTS) {
+      const model = meridianUnitLibrary.build(l, MERIDIAN_UNIT_PALETTE, 256, 0x4d52);
+      const attr = model.hull.getAttribute('aGait') as { array: ArrayLike<number> } | undefined;
+
+      if (l.cls !== 'infantry') {
+        // VEHICLES PAY NOTHING: no attribute, no upload, no per-vertex cost for
+        // a feature none of them use.
+        expect(attr, `${l.key} must not carry a gait attribute`).toBeUndefined();
+        continue;
+      }
+
+      expect(attr, `${l.key} declares a gait but ships no aGait attribute`).toBeDefined();
+      const a = attr!.array;
+      let pos = 0, neg = 0, welded = 0;
+      const pivots = new Set<number>();
+      for (let i = 0; i < a.length; i += 2) {
+        if (a[i] > 0) pos++; else if (a[i] < 0) neg++; else welded++;
+        expect(Number.isFinite(a[i]) && Number.isFinite(a[i + 1]), `${l.key} vertex ${i / 2}`).toBe(true);
+        if (a[i] !== 0) pivots.add(a[i + 1]);
+      }
+      // The two sides are exact mirrors, so the signed counts must match to the
+      // vertex. An imbalance means one copy of a mirrored limb lost its sign.
+      expect(pos, `${l.key} swings ${pos} vertices one way and ${neg} the other`).toBe(neg);
+      expect(pos).toBeGreaterThan(0);
+      // The overwhelming majority is welded — that is the argument for a
+      // multiply instead of a branch in the vertex stage.
+      expect(welded).toBeGreaterThan(pos + neg);
+      // Exactly two joints: one hip, one shoulder.
+      expect(pivots.size, `${l.key} pivots at ${[...pivots].join(', ')}`).toBe(2);
+    }
+  });
+});
+
+/* ==========================================================================
+ * THE PER-FRAME COST OF GIVING TWO MORE ARMIES A WALK
+ *
+ * Zero, and that is a claim worth measuring rather than asserting. The whole
+ * design exists so that it can be zero: the swing is a vertex-shader rotation
+ * over a baked attribute, so the only per-frame work is `unit-anim.system.ts`
+ * advancing one scalar per living infantryman into `EntityStore.animTime`, a
+ * pre-allocated Float32Array column. Meridian soldiers were ALREADY in that
+ * loop — they are `EntityKind.Infantry` and always have been — and the loop was
+ * already writing them a phase. What changed is that there are now vertices for
+ * the phase to move.
+ *
+ * The method is `tests/perf-hud.spec.ts`'s, including its two hard-won fixes:
+ * count only `NODE_PERFORMANCE_GC_MINOR` (major and incremental collections are
+ * the collector's own background schedule), and keep the 30 ms delivery wait
+ * OUTSIDE the measured window. The CONTROL LOOP is not optional — without it a
+ * green result could just mean the observer never saw anything.
+ *
+ * MUTATION-VERIFIED, and the shape of the result is worth writing down.
+ * Adding `SINK.push({ i, speed })` to `render.unitAnim`'s walker branch scores
+ * 89 scavenges against this test's `toBe(0)`. Adding a LOCAL object that never
+ * escapes the loop body scores 0 — V8 scalar-replaces it and no allocation ever
+ * happens. That is not a hole: this test measures heap traffic, which is what
+ * the frame budget is spent on, not source-level `new`.
+ * ========================================================================== */
+
+const GC_MINOR = constants.NODE_PERFORMANCE_GC_MINOR;
+
+function gcEntryKind(entry: PerformanceEntry): number {
+  const detail = (entry as unknown as { detail?: unknown }).detail;
+  if (typeof detail !== 'object' || detail === null) return -1;
+  const kind = (detail as { kind?: unknown }).kind;
+  return typeof kind === 'number' ? kind : -1;
+}
+
+/** Scavenges that STARTED WHILE `run` was executing. */
+async function gcCount(run: () => void): Promise<number> {
+  const seen: PerformanceEntry[] = [];
+  const obs = new PerformanceObserver((list) => {
+    for (const e of list.getEntries()) seen.push(e);
+  });
+  obs.observe({ entryTypes: ['gc'] });
+  const t0 = performance.now();
+  run();
+  const t1 = performance.now();
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  obs.disconnect();
+  let n = 0;
+  for (const e of seen) {
+    if (e.startTime < t0 || e.startTime > t1) continue;
+    if (gcEntryKind(e) !== GC_MINOR) continue;
+    n++;
+  }
+  return n;
+}
+
+describe('the walk costs nothing per frame', () => {
+  /**
+   * A real `World`, a real store, and the real module — not a transcription.
+   * The frame context is built ONCE and reused, because allocating a fresh
+   * `RenderContext` object per iteration is the harness allocating, which is
+   * exactly the mistake that made the PerfHud allocation test flake.
+   */
+  async function rig(walkers: number): Promise<{ run: (frames: number) => void; teardown: () => void }> {
+    const { World } = await import('../src/core/world');
+    const { setGameContext } = await import('../src/game/context');
+    const system = (await import('../src/render/unit-anim.system')).default;
+    const world = new World();
+    world.addPlayer(Faction.Meridian ?? (3 as Faction), 'Pact', false, true);
+
+    for (let i = 0; i < walkers; i++) {
+      const h = world.store.alloc(
+        EntityKind.Infantry, -1, 0 as PlayerId, 3 as Faction,
+        10 + (i % 16) * 2, 0, 10 + Math.floor(i / 16) * 2,
+      );
+      const idx = world.store.index(h);
+      // Half walking, half parked: both branches of `frame()` run every frame,
+      // including the `settle` path that unwinds a stopped soldier to neutral.
+      world.store.speed[idx] = i % 2 === 0 ? 3.2 : 0;
+      world.store.animTime[idx] = (i * 0.017) % 1;
+    }
+
+    const counters: Record<string, number> = {};
+    setGameContext({ world, debug: { counters } } as never);
+
+    const frame: RenderContext = {
+      dt: 1 / 60, time: 0, alpha: 0, frame: 0, quality: 0 as RenderContext['quality'],
+    };
+    return {
+      run: (frames: number) => { for (let i = 0; i < frames; i++) system.frame!(frame); },
+      teardown: () => { setGameContext(null); },
+    };
+  }
+
+  it('advances 200 soldiers for 200,000 frames without allocating', async () => {
+    // 40 million per-entity updates — an hour of a full army walking at 60 fps,
+    // and enough young-generation pressure that a single boxed double per
+    // iteration would force dozens of scavenges. The control below proves it.
+    const { run, teardown } = await rig(200);
+    try {
+      // Warm the module and let V8 settle on a shape before the window opens.
+      run(2_000);
+      const ambient = await gcCount(() => { /* nothing */ });
+      const measured = await gcCount(() => { run(200_000); });
+
+      // The control. A loop that allocates one small object per iteration MUST
+      // score above zero, or the measurement above proves nothing at all.
+      const sink: object[] = [];
+      const control = await gcCount(() => {
+        for (let i = 0; i < 1_000_000; i++) {
+          sink.push({ i });
+          if (sink.length > 64) sink.length = 0;
+        }
+      });
+
+      expect(ambient, 'the observer sees the idle machine as quiet').toBe(0);
+      expect(control, 'the method cannot see an allocation at all').toBeGreaterThan(0);
+      expect(
+        measured,
+        'render.unitAnim allocated. It writes one float per infantryman into a ' +
+        'pre-allocated store column and must not build anything — check for a ' +
+        'closure, a destructure of a fresh object, or a boxed accumulator.',
+      ).toBe(0);
+    } finally {
+      teardown();
+    }
+  });
+
+  it('counts the walkers it moved, so the loop is provably reached', async () => {
+    // A frame() that returned early would also allocate nothing. This is the
+    // other half of the claim.
+    const { World } = await import('../src/core/world');
+    const { setGameContext } = await import('../src/game/context');
+    const system = (await import('../src/render/unit-anim.system')).default;
+    const world = new World();
+    world.addPlayer(3 as Faction, 'Pact', false, true);
+    for (let i = 0; i < 10; i++) {
+      const h = world.store.alloc(EntityKind.Infantry, -1, 0 as PlayerId, 3 as Faction, i, 0, 0);
+      world.store.speed[world.store.index(h)] = i < 6 ? 3.2 : 0;
+    }
+    const counters: Record<string, number> = {};
+    setGameContext({ world, debug: { counters } } as never);
+    try {
+      const frame: RenderContext = {
+        dt: 1 / 60, time: 0, alpha: 0, frame: 0, quality: 0 as RenderContext['quality'],
+      };
+      // `byKind` holds STORE INDICES, not handles — no `index()` call here.
+      const i0 = world.store.byKind[EntityKind.Infantry][0];
+      const before = world.store.animTime[i0];
+      system.frame!(frame);
+      expect(counters.walking).toBe(6);
+      // ...and the phase it advanced is the one the shader reads: bounded,
+      // finite, and moved by exactly `speed / strideMetres * dt`.
+      const after = world.store.animTime[i0];
+      expect(after).toBeCloseTo(before + (3.2 / UNIT_GAIT.strideMetres) * (1 / 60), 6);
+      for (let a = 0; a < world.store.byKindCount[EntityKind.Infantry]; a++) {
+        const p = world.store.animTime[world.store.byKind[EntityKind.Infantry][a]];
+        expect(Number.isFinite(p)).toBe(true);
+        expect(p).toBeGreaterThanOrEqual(0);
+        expect(p).toBeLessThan(1);
+      }
+    } finally {
+      setGameContext(null);
     }
   });
 });
