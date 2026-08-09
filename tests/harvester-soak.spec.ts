@@ -238,21 +238,32 @@ describe('harvester soak on a real map', () => {
    * currently does, not as what it should do.
    *
    * The reported defect — "the ore harvesters keep stucking everywhere, getting
-   * me without funds mid game" — reproduces here, and four separate causes have
+   * me without funds mid game" — reproduces here, and five separate causes have
    * been found and fixed against this harness so far (see `Harvesting.drive`,
-   * `strandedOnBlockedGround`, `HARVESTER_DOCK_STANDDOWN` and
-   * `reachableDockPoint`). Throughput is still well short of what it should be:
-   * a harvester that never stops should complete roughly one round trip every
-   * 30-60 s, so 12 harvesters over four minutes should deliver on the order of
-   * 50 loads, and they deliver a fraction of that. AT LEAST ONE CAUSE REMAINS.
+   * `strandedOnBlockedGround`, `HARVESTER_DOCK_STANDDOWN`, `reachableDockPoint`
+   * and `HARVESTER_FORCE_DRIVE_SECONDS`). Measured across these three seeds:
    *
-   * What is asserted is therefore the floor that has actually been measured,
-   * so the next change cannot quietly make it worse while looking plausible.
-   * FROZEN is the assertion that matters and it is a real zero: before the
-   * `drive()` fix, harvesters sat at a single coordinate for 1200+ consecutive
-   * ticks with a full hopper. Nothing may do that again.
+   *              deliveries   total distance
+   *   at report          14          ~1700 m
+   *   after 4 fixes      13          ~1712 m
+   *   after 5 fixes      22          ~2902 m
+   *
+   * Throughput is still short of what it should be: a harvester that never
+   * stops completes a round trip every 30-60 s, so twelve of them over four
+   * minutes should deliver on the order of 50 loads. AT LEAST ONE CAUSE REMAINS.
+   *
+   * Note the middle row. The first four fixes are each individually correct and
+   * individually evidenced, and together they moved throughput by nothing at
+   * all — every one of them unblocked a harvester that then stalled on the next
+   * cause along. That is why this file asserts TOTALS and not "did fix N work".
+   *
+   * What is asserted is the floor that has actually been measured, so the next
+   * change cannot quietly make it worse while looking plausible. FROZEN is the
+   * assertion that matters and it is a real zero: before the `drive()` fix,
+   * harvesters sat at a single coordinate for 1200+ consecutive ticks with a
+   * full hopper. Nothing may do that again.
    */
-  const MIN_TOTAL_DELIVERIES = 10;
+  const MIN_TOTAL_DELIVERIES = 20;
   const MIN_METRES_EACH = 20;
 
   it('never freezes a harvester, and delivers no less than the measured floor', () => {

@@ -2940,6 +2940,34 @@ export const HARVESTER_DOCK_STANDDOWN = 6.0;
  * the economy.
  */
 export const HARVESTER_DOCK_FALLBACK_TRIES = 2;
+/**
+ * Seconds the backstop mover drives a harvester outright — ignoring the flow
+ * field entirely — after the FSM's progress watchdog finds it going nowhere.
+ *
+ * THE CASE: a harvester wedged on the corner of its OWN refinery's footprint,
+ * six metres from the building it just undocked from. Traced at millimetre
+ * resolution: nav held a live field, commanded `speed 1.50` (0.050 m per tick)
+ * and the hull advanced 0.003 — because the steering vector oscillated between
+ * (1.47, -0.28) and (1.41, +0.52) across the footprint's corner discontinuity,
+ * and `Movement` drives a TRACKED hull along its own FACING, not along the
+ * steering vector. So the chassis rocked between two headings, never committed
+ * to either, and covered 33 m in four minutes.
+ *
+ * Nothing in the nav stack is going to fix that from inside: a flow field has a
+ * genuine discontinuity at a blocked corner and no amount of watchdog escalation
+ * invents a gradient. The module that owns the economy owns the guarantee (see
+ * this file's header), and it owns a point-to-point mover with sidestep probing
+ * that does not consult a field at all. This is the window in which that mover
+ * takes over.
+ *
+ * 5 s at 5 m/s is 25 m — several cells clear of any corner that could have
+ * caused it. `HARVESTER_FORCE_DRIVE_TRIES` bounds it so a genuinely unreachable
+ * cell still ends in the honest answer (drop the claim, re-plan) rather than a
+ * harvester bulldozing at a wall forever.
+ */
+export const HARVESTER_FORCE_DRIVE_SECONDS = 5.0;
+/** Force-drive windows allowed per claim before the destination is abandoned. */
+export const HARVESTER_FORCE_DRIVE_TRIES = 2;
 /** Ticks between OreSparkle FX pushes from one scooping harvester. */
 export const HARVEST_FX_INTERVAL = 6;
 /**

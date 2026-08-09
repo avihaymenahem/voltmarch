@@ -102,6 +102,7 @@ import {
   CELL, HARVEST_ARRIVE_RADIUS, HARVEST_FX_INTERVAL, HARVEST_RATE,
   HARVESTER_DOCK_RADIUS, HARVESTER_DOCK_CLEARANCE, HARVESTER_QUEUE_GAP,
   HARVESTER_DOCK_FALLBACK_TRIES, HARVESTER_DOCK_STANDDOWN,
+  HARVESTER_FORCE_DRIVE_SECONDS, HARVESTER_FORCE_DRIVE_TRIES,
   HARVESTER_NAV_PARK_GRACE, HARVESTER_STUCK_SECONDS, MAP_CELLS, MAX_PLAYERS,
   NAV_ARRIVE_SLACK, ORE_MIN_CLAIM,
   ORE_SCORING_INTERVAL, ORE_SEARCH_CELLS, ORE_VALUE, SIM_DT,
@@ -236,6 +237,14 @@ export class HarvesterController {
   private readonly dockStandDown: PerEntityF32;
   /** Consecutive failed apron approaches; see HARVESTER_DOCK_FALLBACK_TRIES. */
   private readonly dockTries: PerEntityF32;
+  /**
+   * Seconds of outright backstop control remaining. While positive, `drive()`
+   * moves this hull itself and ignores the flow field. Counted down in
+   * `drive()` rather than the FSM so it is spent in the phase that spends it.
+   */
+  private readonly forceDrive: PerEntityF32;
+  /** Force-drive windows already spent on the CURRENT destination. */
+  private readonly forceTries: PerEntityF32;
 
   /** Per-REFINERY: the harvester currently holding its dock, or 0. */
   private readonly dockHolder: PerEntityU32;
@@ -273,6 +282,8 @@ export class HarvesterController {
     this.parkedFor = new PerEntityF32(store, 0);
     this.dockStandDown = new PerEntityF32(store, 0);
     this.dockTries = new PerEntityF32(store, 0);
+    this.forceDrive = new PerEntityF32(store, 0);
+    this.forceTries = new PerEntityF32(store, 0);
     this.dockHolder = new PerEntityU32(store, 0);
     this.lastUnderAttackEva.fill(-1e9);
 
@@ -402,7 +413,23 @@ export class HarvesterController {
       this.rescoreOre(i, id, time, d);
     }
     if (this.trackProgress(i, d, dt)) {
-      // Cannot reach that cell. Give the claim back and pause; the next plan
+      // "CANNOT REACH THAT CELL" IS A CONCLUSION, NOT AN OBSERVATION, and it
+      // was being drawn from evidence that only says the hull is not moving.
+      // Those are different: a harvester rocking on the corner of its own
+      // refinery's footprint is going nowhere while the cell it wants is wide
+      // open and forty metres of clear ground away. Idling there and re-planning
+      // produced the measured 4 s stall / 2 s idle cycle, thirty-seven times,
+      // covering 33 m in four minutes.
+      //
+      // So spend a force-drive window FIRST — the backstop needs no flow field
+      // and no gradient — and only conclude unreachability if that also fails.
+      if (this.forceTries.getAt(i) < HARVESTER_FORCE_DRIVE_TRIES) {
+        this.forceTries.setAt(i, this.forceTries.getAt(i) + 1);
+        this.forceDrive.setAt(i, HARVESTER_FORCE_DRIVE_SECONDS);
+        this.resetProgress(i);
+        return;
+      }
+      // Now it is a conclusion. Give the claim back and pause; the next plan
       // will most likely pick a different approach or a different patch.
       this.dropClaim(i, id);
       this.enterIdle(i, id, time, DRY_RETRY);
@@ -430,6 +457,7 @@ export class HarvesterController {
     this.dropClaim(i, id);
     this.claimIdx.setAt(i, this.cellOut[1] * MAP_CELLS + this.cellOut[0]);
     this.setDest(i, nx, nz);
+    this.resetForceBudget(i);
     this.resetProgress(i);
   }
 
@@ -465,6 +493,7 @@ export class HarvesterController {
     this.claimIdx.setAt(i, this.cellOut[1] * MAP_CELLS + this.cellOut[0]);
     this.setDest(i, (this.cellOut[0] + 0.5) * CELL, (this.cellOut[1] + 0.5) * CELL);
     store.state[i] = UnitState.SeekOre;
+    this.resetForceBudget(i);
     this.resetProgress(i);
     return true;
   }
@@ -532,6 +561,7 @@ export class HarvesterController {
     // -approach count from the PREVIOUS trip should decide this one.
     this.dockStandDown.setAt(i, 0);
     this.dockTries.setAt(i, 0);
+    this.forceTries.setAt(i, 0);
     this.resetProgress(i);
   }
 
@@ -661,6 +691,15 @@ export class HarvesterController {
       // for longer than the other one's stuck window is what turns this into a
       // real yield — and the try counter is what eventually stops it aiming at
       // an apron it has now failed to reach twice.
+      // Same reasoning as `tickSeek`: try actually driving it before deciding
+      // the approach is at fault. A hauler that cannot round its own base is
+      // not a hauler that needs a different dock.
+      if (this.forceTries.getAt(i) < HARVESTER_FORCE_DRIVE_TRIES) {
+        this.forceTries.setAt(i, this.forceTries.getAt(i) + 1);
+        this.forceDrive.setAt(i, HARVESTER_FORCE_DRIVE_SECONDS);
+        this.resetProgress(i);
+        return;
+      }
       this.releaseDock(refId, id);
       this.dockTries.setAt(i, this.dockTries.getAt(i) + 1);
       this.dockStandDown.setAt(i, time + HARVESTER_DOCK_STANDDOWN);
@@ -854,6 +893,17 @@ export class HarvesterController {
   }
 
   /**
+   * A new destination gets a new force-drive budget. Kept separate from
+   * `resetProgress` on purpose: that is called every time the watchdog re-arms,
+   * including from inside a force-drive window, and resetting the budget there
+   * would make `HARVESTER_FORCE_DRIVE_TRIES` unbounded.
+   */
+  private resetForceBudget(i: number): void {
+    this.forceTries.setAt(i, 0);
+    this.forceDrive.setAt(i, 0);
+  }
+
+  /**
    * Stuck detection: the distance to the destination has to keep setting new
    * lows. Measuring "did we move" instead would call a harvester healthy while
    * it slid endlessly along a wall.
@@ -984,6 +1034,18 @@ export class HarvesterController {
       // is not asking Movement to move. So a field is only a reason to keep
       // hands off while the unit is actually being moved by it, or while it is
       // close enough that stopping is the right answer.
+      // A force-drive window outranks every guard below it. It is only ever
+      // opened by the FSM's own progress watchdog, which has by then watched
+      // this hull fail to move for HARVESTER_STUCK_SECONDS while nav reported
+      // it under control. See HARVESTER_FORCE_DRIVE_SECONDS.
+      const forced = this.forceDrive.getAt(i);
+      if (recoverable && forced > 0) {
+        this.forceDrive.setAt(i, Math.max(0, forced - dt));
+        this.drivenThisTick++;
+        this.driveOne(i, dt, assist);
+        continue;
+      }
+
       if (store.navField[i] >= 0) {
         const moving = store.velX[i] !== 0 || store.velZ[i] !== 0;
         const gap = Math.hypot(
