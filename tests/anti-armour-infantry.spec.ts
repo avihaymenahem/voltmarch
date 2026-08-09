@@ -55,6 +55,18 @@ const ARMIES: readonly Faction[] = [
   Faction.Allies, Faction.Soviets, Faction.Meridian, Faction.Reclaim,
 ];
 
+/**
+ * `Faction` is a `const enum`, so `Faction[f]` — the reverse map — is a compile
+ * error under `isolatedModules`, which this repo sets. Writing the names out is
+ * the whole fix; they are only ever test labels.
+ */
+const ARMY_NAME: Readonly<Record<number, string>> = {
+  [Faction.Allies]: 'Allies',
+  [Faction.Soviets]: 'Soviets',
+  [Faction.Meridian]: 'Meridian',
+  [Faction.Reclaim]: 'Reclaim',
+};
+
 const armedInfantry = (f: Faction): UnitDef[] => UNITS.filter(
   (u) => u.faction === f
     && u.kind === EntityKind.Infantry
@@ -82,13 +94,13 @@ describe('§1 every army answers a main battle tank on foot', () => {
    * It is `mult > ineffectiveBelow`, and anything at or under that number is a
    * unit the player will watch stand still.
    */
-  it.each(ARMIES.map((f) => [Faction[f], f] as const))(
+  it.each(ARMIES.map((f) => [ARMY_NAME[f], f] as const))(
     '%s has infantry that will aim at a Medium hull', (_name, faction) => {
       const willAim = armedInfantry(faction).filter(
         (u) => mult(weaponOf(u)!, ArmorClass.Medium) > COMBAT_TARGETING.ineffectiveBelow);
       expect(
         willAim.map((u) => u.key),
-        `${Faction[faction]} has no non-hero infantryman scoring above ` +
+        `${ARMY_NAME[faction]} has no non-hero infantryman scoring above ` +
         `${COMBAT_TARGETING.ineffectiveBelow} against Medium armour, so COMBAT_TARGETING.ineffective ` +
         'deprioritises every tank for every soldier this army can build. That is the defect ' +
         'reported as "why don\'t normal troops shoot vehicles".',
@@ -144,7 +156,7 @@ describe('§1b who answers HEAVY armour on foot, and who deliberately does not',
   it('matches the doctrine each faction was authored with', () => {
     const actual: Record<string, boolean> = {};
     for (const f of ARMIES) {
-      actual[Faction[f]] = armedInfantry(f).some(
+      actual[ARMY_NAME[f]] = armedInfantry(f).some(
         (u) => mult(weaponOf(u)!, ArmorClass.Heavy) >= ANSWERS_HEAVY);
     }
     expect(actual).toEqual(EXPECTED);

@@ -38,6 +38,30 @@ import { buildScenario, activeScenario } from '../src/game/Scenarios';
 
 const P0 = 0 as PlayerId;
 
+/**
+ * `UnitState` is a `const enum`, so `UnitState[n]` is a compile error under
+ * `isolatedModules`. These are report labels only.
+ */
+const STATE_NAME: Readonly<Record<number, string>> = {
+  [UnitState.Idle]: 'Idle',
+  [UnitState.Moving]: 'Moving',
+  [UnitState.AttackMoving]: 'AttackMoving',
+  [UnitState.Attacking]: 'Attacking',
+  [UnitState.Guarding]: 'Guarding',
+  [UnitState.SeekOre]: 'SeekOre',
+  [UnitState.Harvesting]: 'Harvesting',
+  [UnitState.ReturnToRefinery]: 'ReturnToRefinery',
+  [UnitState.Docked]: 'Docked',
+  [UnitState.Deploying]: 'Deploying',
+  [UnitState.UnderConstruction]: 'UnderConstruction',
+  [UnitState.Capturing]: 'Capturing',
+  [UnitState.Fleeing]: 'Fleeing',
+  [UnitState.Dying]: 'Dying',
+  [UnitState.Repairing]: 'Repairing',
+  [UnitState.Selling]: 'Selling',
+};
+const stateName = (s: number): string => STATE_NAME[s] ?? `state${s}`;
+
 interface HarvReport {
   slot: number;
   owner: number;
@@ -157,7 +181,7 @@ function soak(seed: number, seconds: number): SoakResult {
       r.distance += step;
       r.distanceSinceDelivery += step;
 
-      const name = UnitState[st.state[i]] ?? String(st.state[i]);
+      const name = stateName(st.state[i]);
       r.states[name] = (r.states[name] ?? 0) + 1;
 
       // A delivery is the cargo dropping to (near) zero from a real load.
@@ -176,7 +200,7 @@ function soak(seed: number, seconds: number): SoakResult {
 
   for (const i of slots) {
     const r = reports.get(i)!;
-    r.finalState = UnitState[st.state[i]] ?? String(st.state[i]);
+    r.finalState = stateName(st.state[i]);
     r.finalX = st.posX[i];
     r.finalZ = st.posZ[i];
   }

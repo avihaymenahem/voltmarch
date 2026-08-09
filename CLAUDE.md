@@ -38,10 +38,22 @@ defect `docs/SPEC_DRIFT_AUDIT.md` catalogues.
 Every change must leave these green. Run them; do not assume.
 
 ```bash
-npx tsc --noEmit     # must exit 0 — real fixes, never `any` or @ts-ignore
+npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
 npm test             # vitest, currently 2425 across 97 files
 npm run build        # must exit 0
 ```
+
+**The first line said `npx tsc --noEmit` and that is NOT the gate.** `npm run typecheck`
+is three invocations — `tsc --noEmit`, then `-p tsconfig.node.json`, then
+`-p tsconfig.test.json` — because the root config's `include` is `src/**/*.ts` only.
+`tests/**` and `vite.config.ts` are checked by the other two, deliberately: test files
+need `process` and `node:fs`, which game code must never see.
+
+So the documented command typechecks the game and silently skips every spec file, and
+CI runs `npm run typecheck`. That gap shipped a v1.31.0 deploy that failed on five
+`TS2476` errors in two new spec files after a local run had reported success — the
+reverse map of a `const enum` (`Faction[f]`, `UnitState[n]`) is illegal under
+`isolatedModules`, and nothing local was looking. Run the npm script, not the binary.
 
 **There is no known flake.** `perf-hud.spec.ts` "allocates nothing per frame" used to be one — it
 compared GC counts with a tolerance of 2 and occasionally reported 3 in a full run. It was TWO bugs
