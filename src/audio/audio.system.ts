@@ -28,7 +28,7 @@ import * as THREE from 'three';
 
 import { defineSystem } from '../core/loop';
 import {
-  BuildTab, EntityFlag, EntityKind, Faction, FxKind, RenderPhase,
+  BuildTab, EntityFlag, EntityKind, Faction, FxKind, OrderKind, RenderPhase,
   type EntityId, type IAudio, type PlayerId, type RenderContext,
 } from '../core/types';
 import { CreditReason } from '../core/types';
@@ -200,6 +200,33 @@ function positionOf(id: EntityId, out: Float32Array): boolean {
 }
 
 const _pos = new Float32Array(3);
+
+/**
+ * Primary of the current selection — who answers an order.
+ *
+ * `EvOrderIssued` carries the order kind and its target but not the units that
+ * received it, and threading that through the command channel to make a unit
+ * say "moving out" is not worth the coupling. The last selected primary is the
+ * unit the player is looking at, which is the one an RTS barks from anyway.
+ * -1 until something is selected.
+ */
+let lastPrimary = -1;
+
+/**
+ * Order kind -> what the unit says. `Stop` and `Guard` share `deploy` because
+ * the recorded line is "holding position", which is true of both.
+ * Kinds absent here are deliberately silent: a harvest order is routine and a
+ * unit shouting about it every few seconds is the fastest way to make a player
+ * turn the voices off.
+ */
+const BARK_FOR_ORDER: Readonly<Partial<Record<OrderKind, BarkCategory>>> = {
+  [OrderKind.Move]: 'move',
+  [OrderKind.AttackMove]: 'attack',
+  [OrderKind.Attack]: 'attack',
+  [OrderKind.ForceAttack]: 'attack',
+  [OrderKind.Stop]: 'deploy',
+  [OrderKind.Guard]: 'deploy',
+};
 
 function barkFor(id: EntityId, category: BarkCategory, signature?: string): void {
   if (barks === null) return;
@@ -411,7 +438,12 @@ function subscribe(): void {
   }));
 
   unsubscribe.push(bus.on('tech:changed', (p) => {
-    if (p.player === local()) eva?.say('newConstructionOptions');
+    if (p.player !== local()) return;
+    // Unlocking a tier is the one genuinely good thing that happens outside
+    // combat, and it was silent apart from EVA. `ui.chime` exists for exactly
+    // this and had no call site.
+    engine?.ui(SFX.uiChime);
+    eva?.say('newConstructionOptions');
   }));
 
   /* -- economy ------------------------------------------------------------- */
@@ -419,6 +451,10 @@ function subscribe(): void {
     if (p.player !== local()) return;
     // Ore arriving at a full silo is wasted; that is what "Silos needed" means.
     if (p.reason === CreditReason.Waste) eva?.say('silosNeeded');
+    // A harvester unloading. `ore.dump` was recorded, baked and never played:
+    // nothing in the game dispatched it, so the one moment the economy is
+    // audible had no sound at all.
+    if (p.reason === CreditReason.Harvest && p.delta > 0) engine?.ui(SFX.oreDump);
   }));
 
   unsubscribe.push(bus.on('economy:power', (p) => {
@@ -448,6 +484,13 @@ function subscribe(): void {
       if (i >= 0 && (ctx().world.store.flags[i] & EntityFlag.IsHarvester) !== 0) {
         eva?.say('oreMinerUnderAttack');
       }
+      // Units call for help. Gated on real damage rather than any hit, because
+      // `entity:damaged` fires per shot and a firefight is hundreds of them —
+      // `BarkDirector` has its own global and per-unit cooldowns on top, which
+      // is what stops this becoming a wall of shouting.
+      // `barkFor` resolves the class and returns silently for anything that
+      // has no voice, so structures filter themselves out here.
+      if (i >= 0 && p.hpFrac < 0.7) barkFor(p.id, 'underFire');
     }
   }));
 
@@ -469,7 +512,12 @@ function subscribe(): void {
   }));
 
   unsubscribe.push(bus.on('radar:changed', (p) => {
-    if (p.player === local()) eva?.say(p.online ? 'radarOnline' : 'radarOffline');
+    if (p.player !== local()) return;
+    // `ui.ping` is the radar sound and had no call site. Only on the way UP:
+    // losing radar already has EVA plus the minimap going dark, and a cheerful
+    // ping under "Radar offline" reads as a reward for a setback.
+    if (p.online) engine?.ui(SFX.uiPing);
+    eva?.say(p.online ? 'radarOnline' : 'radarOffline');
   }));
 
   /* -- player intent: clicks and barks ------------------------------------ */
@@ -477,6 +525,7 @@ function subscribe(): void {
     if (p.count === 0) return;
     engine?.ui(SFX.uiClick);
     if (p.isBuilding) return; // structures do not talk back
+    lastPrimary = p.primary as number;
     // The signature is what makes re-selecting the same group silent for 2.5 s.
     barkSelectionFor(p.primary, `${p.count}:${p.primary as number}`);
   }));
@@ -484,6 +533,16 @@ function subscribe(): void {
   unsubscribe.push(bus.on('order:issued', (p) => {
     if (p.player !== local() || p.count === 0) return;
     engine?.ui(SFX.uiGhost);
+    // ACKNOWLEDGE THE ORDER. Six of the seven bark categories were authored,
+    // recorded in two voices and shipped, and nothing dispatched any of them —
+    // only `select` was ever wired, so units answered when clicked and went
+    // silent the moment they were told to do something.
+    //
+    // The speaker is the primary of the current selection: `EvOrderIssued`
+    // carries the order and its target but not who received it, and barking
+    // from the unit the player is looking at is what an RTS does anyway.
+    const cat = BARK_FOR_ORDER[p.order];
+    if (cat !== undefined && lastPrimary >= 0) barkFor(lastPrimary as EntityId, cat);
   }));
 
   /* -- match lifecycle ----------------------------------------------------- */
