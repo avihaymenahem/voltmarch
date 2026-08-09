@@ -310,6 +310,56 @@ describe('deploying', () => {
     expect(rig.world.player(0 as PlayerId).stats.unitsLost).toBe(0);
   });
 
+  it('lands the yard square to the grid whatever heading the MCV stopped on', () => {
+    // THE FIRST BUILDING OF A MATCH WAS THE ONLY CROOKED ONE. Deploy copied the
+    // vehicle's yaw straight into the structure, and a vehicle stops on
+    // whatever heading it was driving — so the yard the whole base is built
+    // outward from sat at an arbitrary angle across a square footprint.
+    //
+    // Nothing rejected it and no test could catch it, because placement stamps
+    // cell-aligned cells at ANY yaw: the footprint was always right and only
+    // the mesh was turned. That is why this asserts the stored yaw rather than
+    // anything about occupancy.
+    const QUARTER = Math.PI / 2;
+    for (const heading of [0.4, 1.1, 2.7, -0.9, Math.PI * 0.77]) {
+      const rig = makeRig();
+      const mcv = spawnUnit(rig, 'mcv', 40, 40);
+      const st = rig.world.store;
+      st.yaw[st.index(mcv)] = heading;
+
+      orderDeploy(rig, mcv);
+      step(rig, DEPLOY_TICKS);
+
+      const yard = findBuilding(rig, 'conyard');
+      expect(yard, `heading ${heading}`).not.toBe(NONE);
+      const yaw = st.yaw[st.index(yard)];
+      const turns = yaw / QUARTER;
+      expect(
+        Math.abs(turns - Math.round(turns)),
+        `yard yaw ${yaw} from MCV heading ${heading} is not a quarter turn`,
+      ).toBeLessThan(1e-6);
+    }
+  });
+
+  it('keeps the approach direction, quantised — it rounds rather than zeroing', () => {
+    // Snapping must not mean "always face north". A player who drives in from
+    // the east should get a yard facing east, just squarely.
+    const QUARTER = Math.PI / 2;
+    const rig = makeRig();
+    const mcv = spawnUnit(rig, 'mcv', 40, 40);
+    const st = rig.world.store;
+    // Just past the midpoint between two quarter turns, so a round lands on the
+    // FURTHER one and a truncate-to-zero would be caught.
+    st.yaw[st.index(mcv)] = QUARTER * 0.6;
+
+    orderDeploy(rig, mcv);
+    step(rig, DEPLOY_TICKS);
+
+    const yard = findBuilding(rig, 'conyard');
+    expect(yard).not.toBe(NONE);
+    expect(st.yaw[st.index(yard)]).toBeCloseTo(QUARTER, 5);
+  });
+
   it('carries ownership and faction across the transition', () => {
     const rig = makeRig();
     const mcv = spawnUnit(rig, 'mcv', 300, 300, 1);

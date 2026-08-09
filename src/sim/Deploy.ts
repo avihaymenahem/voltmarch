@@ -80,8 +80,8 @@ import type { World } from '../core/world';
 import { footprintOriginCell } from '../core/math';
 
 import {
-  PlacementFault, PlacementPhase, evaluatePlacement, makePlacementReport,
-  type PlacementReport,
+  PlacementFault, PlacementPhase, evaluatePlacement, facingYaw, makePlacementReport,
+  yawToFacing, type PlacementReport,
 } from './Placement';
 import { production, type BuildEntry, type ProductionService } from './Production';
 
@@ -505,7 +505,25 @@ export class DeployService {
       return;
     }
 
-    const yaw = st.yaw[i];
+    /*
+     * SNAP THE YAW TO A QUARTER TURN.
+     *
+     * This was `st.yaw[i]` — the MCV's heading at the instant it stopped, which
+     * is whatever direction it happened to be driving. Every other structure in
+     * the game is spawned with `facingYaw(facing)`, an exact multiple of a
+     * quarter turn, so the FIRST building of a match was the one and only
+     * structure that could sit at an arbitrary angle.
+     *
+     * The footprint was never wrong. Placement stamps cell-aligned cells at any
+     * yaw — `yawToFacing`'s own header says as much — so nothing rejected it and
+     * no test could catch it. Only the mesh was rotated, which put a yard turned
+     * some arbitrary angle across a square footprint, and every base built
+     * outward from it started crooked.
+     *
+     * Rounding rather than zeroing keeps the player's approach direction: the
+     * yard still faces roughly the way the vehicle was pointing.
+     */
+    const yaw = facingYaw(yawToFacing(st.yaw[i]));
     const faction = st.faction[i] as Faction;
     const x = st.posX[i];
     const y = st.posY[i];
