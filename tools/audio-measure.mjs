@@ -32,6 +32,7 @@
 import { chromium } from 'playwright';
 import { build } from 'esbuild';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -279,13 +280,43 @@ async function main() {
   });
   const code = bundle.outputFiles[0].text;
 
+  // SERVE `public/`, do not `setContent`.
+  //
+  // `setContent` leaves the page on about:blank, where a relative fetch has no
+  // base to resolve against — so every recorded take failed to load and the
+  // whole bank silently fell back to its synthesised recipe. The tool still
+  // printed a full table, and the numbers were plausible because they were the
+  // REAL numbers for the old bank. A measurement harness that cannot see the
+  // thing that ships is worse than no harness: it reports confidently on
+  // something nobody is listening to. Serving the directory over a real origin
+  // is the whole fix, and it costs one ephemeral port.
+  const server = createServer((req, res) => {
+    const path = decodeURIComponent((req.url ?? '/').split('?')[0]);
+    if (path === '/') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      res.end('<!doctype html><meta charset="utf-8"><title>probe</title>');
+      return;
+    }
+    const file = join(ROOT, 'public', path.replace(/^\/+/, ''));
+    // Never serve outside `public/` — this is a local tool, but a path that
+    // escapes its root is a bug wherever it appears.
+    if (!file.startsWith(join(ROOT, 'public')) || !existsSync(file)) {
+      res.writeHead(404).end();
+      return;
+    }
+    res.writeHead(200, { 'content-type': path.endsWith('.ogg') ? 'audio/ogg' : 'application/octet-stream' });
+    res.end(readFileSync(file));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const origin = `http://127.0.0.1:${server.address().port}/`;
+
   const browser = await chromium.launch({
     args: ['--autoplay-policy=no-user-gesture-required', '--mute-audio'],
   });
   const page = await browser.newPage();
   page.on('console', (m) => { if (m.type() === 'error') console.error('[page]', m.text()); });
   page.on('pageerror', (e) => console.error('[page]', e.message));
-  await page.setContent('<!doctype html><meta charset="utf-8"><title>probe</title>');
+  await page.goto(origin);
   await page.addScriptTag({ content: code });
 
   const results = [];
@@ -297,6 +328,7 @@ async function main() {
   collect(await page.evaluate((ms) => globalThis.__vmAudioProbe.music(ms), MUSIC_PICKS));
 
   await browser.close();
+  server.close();
 
   if (WAV_PICKS.length > 0 && WANT_WAV) mkdirSync(WAV_DIR, { recursive: true });
 

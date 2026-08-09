@@ -42,7 +42,7 @@ import { AudioEngine, setAudioFacade, type AudioFacade, type PanResolver } from 
 import { AmbienceRig, FX_SOUND, SFX, registerSfxBank, type Theatre } from './Weapons';
 import { EVA_LINE_ID, EvaAnnouncer, type EvaMode } from './Eva';
 import { BarkDirector, barkClassFor, type BarkCategory, type BarkClass } from './Barks';
-import { MusicDirector } from './Music';
+import { TrackMusic } from './TrackMusic';
 
 /* -------------------------------------------------------------------------- */
 /* Boot flags                                                                 */
@@ -65,7 +65,12 @@ function shotMode(): boolean {
 let engine: AudioEngine | null = null;
 let eva: EvaAnnouncer | null = null;
 let barks: BarkDirector | null = null;
-let music: MusicDirector | null = null;
+/**
+ * The recorded score. `TrackMusic` owns a `MusicDirector` internally and falls
+ * back to it if a track will not load, so this stays one variable and every
+ * call site below is unchanged.
+ */
+let music: TrackMusic | null = null;
 let ambience: AmbienceRig | null = null;
 let unsubscribe: Array<() => void> = [];
 
@@ -238,7 +243,7 @@ export default defineSystem({
     barks = new BarkDirector(engine, {
       mode: flag('barks') === 'off' ? 'off' : flag('barks') === 'reduced' ? 'reduced' : 'on',
     });
-    music = new MusicDirector(engine);
+    music = new TrackMusic(engine);
     ambience = new AmbienceRig(engine);
 
     /* -- the IAudio port --------------------------------------------------- */
@@ -325,6 +330,10 @@ export default defineSystem({
       rawHeat: music?.rawHeat ?? 0,
       musicSteps: music?.scheduledSteps ?? -1,
       musicRunning: music?.running ?? false,
+      // Which score is actually playing. Without this the overlay cannot tell
+      // the recorded tracks from the sequencer fallback, and they report the
+      // same shape of numbers — which cost real time to diagnose once.
+      musicRecorded: music?.recorded ?? false,
       barksBaked: barks?.bakedCount ?? 0,
       // The per-match announcer reset, made checkable. `matchArmed` is false
       // until `match:started` lands; `bootLine` flips 1.2 s later.

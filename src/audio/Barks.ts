@@ -28,6 +28,7 @@ import { AudioEngine, makeRng, normalizeBuffer, type Rng01 } from './AudioEngine
 import {
   BARK_PROFILES, renderUtterance, utteranceSeconds, type VoiceProfile,
 } from './Eva';
+import { SampleBank, VOICE_MANIFEST, voicePath } from './Samples';
 
 /* ==========================================================================
  * 1. VOCABULARY
@@ -354,7 +355,44 @@ export interface BarkOptions {
   onSubtitle?: (text: string, dwellSec: number) => void;
 }
 
+/**
+ * Which recorded voice a class speaks in.
+ *
+ * Two voices for twelve classes, so most of the army shares one. That is the
+ * honest limit of what CC0 supplies, and it is still a considerable
+ * improvement on twelve classes sharing one formant synthesiser.
+ */
+const VOICE_OF: Readonly<Record<BarkClass, 'm' | 'f'>> = {
+  allied_infantry: 'm', allied_infantry_f: 'f', soviet_infantry: 'm',
+  engineer: 'm', tesla_trooper: 'm',
+  allied_vehicle: 'm', soviet_vehicle: 'm',
+  allied_air: 'f', soviet_air: 'm',
+  naval: 'm', harvester: 'f', mcv: 'm',
+};
+
+/**
+ * What the recorded line actually SAYS, per category.
+ *
+ * `BARKS` still chooses a line, because it drives the bag shuffle and the
+ * cooldowns. Its `text` is now wrong for the subtitle, though: the script says
+ * "Moving out." and the recording says "Go go go". A subtitle that does not
+ * match the audio is worse than no subtitle — it is the one part of this that
+ * a player relying on captions cannot check for themselves — so the caption
+ * follows the recording.
+ */
+const VOICE_TEXT: Readonly<Record<BarkCategory, string>> = {
+  select: 'Ready.',
+  move: 'Go, go, go!',
+  attack: 'Target engaged.',
+  deploy: 'Holding position.',
+  capture: 'Objective achieved.',
+  underFire: 'Cover me!',
+  cargoFull: 'Reloading.',
+};
+
 export class BarkDirector {
+  /** Recorded unit voices. Falls back to the formant synth when unavailable. */
+  private readonly voices = new SampleBank(VOICE_MANIFEST, voicePath);
   private readonly buffers = new Map<string, AudioBuffer>();
   private readonly baking = new Set<string>();
   private readonly bags = new Map<string, Bag>();
@@ -389,7 +427,7 @@ export class BarkDirector {
     for (const c of classes) {
       const set = BARKS[c]?.select;
       if (set === undefined) continue;
-      for (const l of set) await this.ensure(c, l);
+      for (const l of set) await this.ensure(c, 'select', l);
     }
   }
 
@@ -428,7 +466,7 @@ export class BarkDirector {
     this.lastSpeaker = entity;
     if (entity >= 0) this.unitCooldown.set(entity, t);
     this.speaking = true;
-    void this.fire(cls, chosen, t, x, y, z);
+    void this.fire(cls, category, chosen, t, x, y, z);
     return true;
   }
 
@@ -471,7 +509,21 @@ export class BarkDirector {
     return `${cls}|${l.phones}`;
   }
 
-  private async ensure(cls: BarkClass, l: BarkLine): Promise<AudioBuffer | null> {
+  private async ensure(
+    cls: BarkClass, cat: BarkCategory, l: BarkLine,
+  ): Promise<AudioBuffer | null> {
+    // RECORDED VOICE FIRST. `load` is idempotent and resolves instantly after
+    // the first call, so awaiting here costs one microtask per bark and buys
+    // a real voice from the very first order rather than after a warm-up.
+    await this.voices.load(this.engine.ctx);
+    const vk = `${VOICE_OF[cls]}.${cat}`;
+    const takes = this.voices.count(vk);
+    if (takes > 0) {
+      // Same bag shuffle as the script lines, so a replay picks identically
+      // and the same unit does not repeat itself twice running.
+      return this.voices.get(vk, this.draw(`v:${vk}`, takes));
+    }
+
     const k = this.key(cls, l);
     const have = this.buffers.get(k);
     if (have !== undefined) return have;
@@ -503,10 +555,10 @@ export class BarkDirector {
   }
 
   private async fire(
-    cls: BarkClass, l: BarkLine, requestedAt: number,
+    cls: BarkClass, cat: BarkCategory, l: BarkLine, requestedAt: number,
     x?: number, y?: number, z?: number,
   ): Promise<void> {
-    const buf = await this.ensure(cls, l);
+    const buf = await this.ensure(cls, cat, l);
     // A bake that took longer than half a second is stale: the order it was
     // acknowledging has already been carried out.
     if (buf === null || this.engine.now() - requestedAt > 0.5) { this.done(); return; }
@@ -524,7 +576,8 @@ export class BarkDirector {
 
     const played = this.engine.playBuffer(buf, 'voice', 'voice', BARK_PEAK_DB, through);
     if (played === null) { this.done(); return; }
-    this.onSubtitle?.(l.text, 1.8);
+    // Caption what was actually said, not what the script would have said.
+    this.onSubtitle?.(this.voices.has(`${VOICE_OF[cls]}.${cat}`) ? VOICE_TEXT[cat] : l.text, 1.8);
     this.applyDucks();
     played.source.onended = () => {
       if (through !== null) { try { through.disconnect(); } catch { /* gone */ } }

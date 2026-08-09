@@ -47,6 +47,7 @@ import {
   AUDIO_STEAL_RAMP_MS,
   AUDIO_VOICE_CAPS,
 } from '../core/config';
+import { SampleBank, sampleInto, variantDetune } from './Samples';
 
 /* ==========================================================================
  * 1. SMALL MATH — no imports from core/math so this file stays standalone-safe
@@ -527,6 +528,21 @@ export interface SoundSpec {
    * Set false only for a bed whose absolute level is itself the point.
    */
   readonly normalize?: boolean;
+  /**
+   * Sample family in `SAMPLE_MANIFEST`. When its files are on disk and decoded,
+   * a recorded take replaces `render` for every variant of this sound.
+   *
+   * `render` STAYS REQUIRED even here, and that is the point: a 404, an offline
+   * player or a container the browser will not decode falls back to the recipe,
+   * so the failure mode is "the old bank" and never silence.
+   */
+  readonly sample?: string;
+  /**
+   * dB trim on the take before the shared saturator. The packs are internally
+   * consistent but not consistent with EACH OTHER, and since normalisation runs
+   * after the saturator a hot take comes out a different shape, not just louder.
+   */
+  readonly sampleDb?: number;
   /** Renders one variant. `kit.oc.destination` is the buffer. */
   render(kit: BakeKit): void;
 }
@@ -780,6 +796,9 @@ export class AudioEngine {
   /** Shared noise beds, generated once. */
   private whiteBuf: AudioBuffer | null = null;
   private pinkBuf: AudioBuffer | null = null;
+
+  /** Recorded CC0 takes. Empty until `loadSamples` resolves; empty is legal. */
+  readonly samples = new SampleBank();
 
   private unlocked = false;
   private disposed = false;
@@ -1099,6 +1118,11 @@ export class AudioEngine {
     if (this.pending.length === 0) return;
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
     this.ensureNoiseBeds();
+    // Decode BEFORE the first bake. Doing it concurrently would make the source
+    // of a given sound depend on which promise settled first, so a sound could
+    // come out synthesised on a fast connection and recorded on a slow one —
+    // non-determinism that no test would catch and every player would hear.
+    await this.samples.load(this.ctx);
 
     let sliceStart = t0;
     const queue = this.pending.splice(0, this.pending.length);
@@ -1146,6 +1170,11 @@ export class AudioEngine {
     // richer recipes pushed the bank's bake from 0.4 s to 2.0 s, and every
     // millisecond of that is a millisecond of loading screen.
     const OC = typeof OfflineAudioContext !== 'undefined' ? OfflineAudioContext : null;
+    // Resolved ONCE for the whole spec, never per variant: a sound must be
+    // wholly recorded or wholly synthesised. Mixing the two across variants of
+    // one id means every few shots the weapon changes character, which reads as
+    // a bug rather than as variety.
+    const takes = spec.sample !== undefined ? this.samples.count(spec.sample) : 0;
     const jobs: Array<Promise<AudioBuffer | null>> = [];
     for (let v = 0; v < Math.max(1, spec.variants) && OC !== null; v++) {
       const oc = new OC(channels, length, rate);
@@ -1162,7 +1191,12 @@ export class AudioEngine {
       const index = v;
       jobs.push((async (): Promise<AudioBuffer | null> => {
         try {
-          spec.render(kit);
+          const take = takes > 0 ? this.samples.get(spec.sample!, index) : null;
+          if (take !== null) {
+            sampleInto(kit, rewrap(oc, take), spec.sampleDb ?? 0, variantDetune(index, takes));
+          } else {
+            spec.render(kit);
+          }
           return await oc.startRendering();
         } catch (err) {
           console.warn(`[audio] bake failed for "${spec.id}" variant ${index}`, err);
@@ -1686,7 +1720,11 @@ export function makeBakeBus(oc: OfflineAudioContext, spec: SoundSpec): AudioNode
   return input;
 }
 
-function rewrap(oc: BaseAudioContext, src: AudioBuffer): AudioBuffer {
+/**
+ * Move an AudioBuffer between contexts. Exported for `tools/audio-probe.ts`,
+ * which has to reproduce `bakeOne` exactly to measure what actually ships.
+ */
+export function rewrap(oc: BaseAudioContext, src: AudioBuffer): AudioBuffer {
   if (src.sampleRate === oc.sampleRate) {
     const out = oc.createBuffer(src.numberOfChannels, src.length, src.sampleRate);
     for (let c = 0; c < src.numberOfChannels; c++) out.copyToChannel(src.getChannelData(c), c);

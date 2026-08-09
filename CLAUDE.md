@@ -10,7 +10,7 @@ textures.
 
 That claim is about the GAME WORLD, and it is exactly true there: every mesh, material, texture,
 cameo and in-game icon is built from Three.js geometry, custom shaders and procedural canvas
-generators. **Two shipped assets are not generated**, both deliberate, both in `public/`:
+generators. **Three shipped assets are not generated**, all deliberate, all in `public/`:
 
 1. **Rajdhani** (OFL-1.1) in `public/fonts/` — the UI text face, Latin subset, four weights, 60 kB.
    Added 2026-08-05 at the user's request. The stack had named Rajdhani since it was written and
@@ -21,6 +21,55 @@ generators. **Two shipped assets are not generated**, both deliberate, both in `
    `logo-full.png` is the main-menu title and the loading curtain; `mark-*.png` are the favicons
    and app icons. See `public/brand/README.md`. This said "eight PNGs derived by" while one of the
    eight was the underived SOURCE, sitting in the shipped directory and being published unused.
+3. **Recorded audio** in `public/audio/` — 182 Ogg files, 6.9 MB, added 2026-08-09 at the user's
+   request. `sfx/` covers **all 39 sound-effect families** (CC0), `voice/` gives the unit barks two
+   real voices (Kenney, CC0), and `eva/` is the announcer, **rendered speech** rather than found
+   audio. Sources: Kenney, several CC0 libraries via
+   [CC0-Public-Domain-Sounds](https://github.com/lavenderdotpet/CC0-Public-Domain-Sounds), Warfork
+   by Team Forbidden, and Piper for EVA. `music/` is a three-tier adaptive score by Kevin MacLeod,
+   **CC-BY 4.0** — the only attribution OBLIGATION in the product, and the reason `public/audio/`
+   is no longer CC0-only. See `public/audio/README.md`. Only ambience is still synthesised.
+
+   **EVA is re-renderable**: `py tools/render-eva.py <scratch-dir>` reads the line texts straight
+   out of `EVA_LINES` and writes `public/audio/eva/`. It refuses to run if it parses fewer lines
+   than the table declares — a guard added because the first version matched only single-quoted
+   strings and silently skipped `allyUnderAttack`, whose text is double-quoted for containing an
+   apostrophe. The voice model is 109 MB and gitignored; only the ~420 kB of Ogg is committed.
+
+   **The voice was chosen on its licence chain, not its sound.** `en_GB-cori-high` is LibriVox
+   (public domain) data, trained from scratch, so it avoids the research-only Blizzard/Lessac terms
+   that encumber most of Piper's English catalogue — including `hfc_female`, which every "best
+   Piper voice" guide recommends. Never cite the `rhasspy/piper-voices` repo tag: it says
+   `license: mit` while containing voices whose real terms are non-sublicensable research-only.
+
+   **This was not a bug fix.** `tools/audio-measure.mjs` scored the synthesised bank at 8–24 dB
+   crest with spectra in band, i.e. correct by every number the harness reports, and it still read
+   as a synth patch. That gap — measured-correct and audibly wrong — is the honest reason for the
+   change, and it is why the recordings go through the SAME bake: same saturation, same peak
+   normalisation, same variant set, same `BufferSource -> gain -> panner -> bus` at runtime. Only
+   the source of the buffer differs. Every sample-backed spec keeps its recipe as a fallback, so a
+   404 degrades to the old bank and never to silence.
+
+   **The measurement is a proxy; the ear is not.** An intermediate pass reverted twelve families
+   to their recipes because the takes scored worse on centroid or attack time. On hearing the
+   result the user's verdict was that the synthesised sound was the problem in every one of those
+   cases, and that is the correct authority — `tools/audio-measure.mjs` scores a spectrum, and a
+   spectrum is a proxy for "does this sound like the thing". Where the two disagree, believe the
+   ear. **Do not revert a family to its recipe on a measurement argument.**
+
+   What the harness is still the right tool for is the failures nobody can hear until too late: a
+   take longer than the buffer it bakes into (eight families would have shipped truncated), a
+   transient that never arrives, a level that clips the bus. Those checks live in
+   `tests/audio-samples.spec.ts` and should stay.
+
+   **Two things that must not be undone.** Takes are trimmed on an Ogg PAGE boundary, which lands
+   mid-waveform, so `sampleInto` fades the last 20 ms unconditionally — remove it and the whole
+   bank clicks. And `engine.light`/`engine.heavy` are looped rather than fired, so they were
+   deliberately not trimmed; cutting them puts a seam in the loop that repeats forever.
+
+   **When a listing page and a bundled licence disagree, the bundled file wins.** A gunshot pack
+   listed as CC0 on OpenGameArt shipped a `creativecommons.txt` reading CC-BY 3.0, under a
+   different author's name than the page credited. It was rejected rather than shipped mislabelled.
 
 This paragraph previously said "cameos, icons and the wordmark are still all generated", which was
 false on two counts the moment the brand assets landed — the wordmark on the title screen and every
@@ -39,7 +88,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 2425 across 97 files
+npm test             # vitest, currently 2445 across 98 files
 npm run build        # must exit 0
 ```
 

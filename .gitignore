@@ -84,3 +84,6 @@ pnpm-debug.log*
 logs/
 *.log
 .shots-staging/
+
+# Piper voice models — 109 MB, staged for tools/render-eva.py, never shipped
+tools/tts-voices/

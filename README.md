@@ -36,18 +36,29 @@ VOLTMARCH is not a port or a clone. It is a new title in the tradition of late-9
 base-building RTS — the conventions it adopts (harvester economy, tech tiers, build queues) are the
 shared vocabulary of that genre.
 
-**All art in the game world is generated from code.** No downloaded models, no downloaded textures,
-no downloaded audio. Every unit, building, material, texture, cameo and in-game icon is built from
-Three.js geometry, custom shaders and procedural canvas generators, which means the entire look can
-be retuned by editing values rather than reopening an art tool.
+**All art in the game world is generated from code.** No downloaded models, no downloaded textures.
+Every unit, building, material, texture, cameo and in-game icon is built from Three.js geometry,
+custom shaders and procedural canvas generators, which means the entire look can be retuned by
+editing values rather than reopening an art tool.
 
-Two shipped assets are not generated, both deliberate:
+Three shipped assets are not generated, all deliberate:
 
 - **Rajdhani** (OFL-1.1), the UI text face, self-hosted in `public/fonts/` — Latin subset, four
   weights, 60 kB — rather than loaded from a CDN, so there is no third-party request and the build
   still runs offline and from a `file://` path.
 - **The brand lockup** in `public/brand/` — the wordmark on the title screen and loading curtain,
   and the favicons and app icons, derived by `tools/brand.mjs` from a supplied `logo.png`.
+- **Recorded audio** in `public/audio/` — 182 files, 6.9 MB. `sfx/` covers **all 39 sound-effect
+  families** and `voice/` gives the unit barks two real voices, all CC0 from
+  [Kenney](https://kenney.nl), several CC0 libraries and Warfork by Team Forbidden. `eva/` is the
+  announcer, rendered offline with [Piper](https://github.com/OHF-Voice/piper1-gpl) and a
+  public-domain LibriVox voice, because no CC0 pack contains "Insufficient funds." `music/` is a
+  three-tier adaptive score by Kevin MacLeod, **CC-BY 4.0** — the one attribution obligation in the
+  product. Only ambience is still synthesised. A recorded take is decoded once and
+  rendered through the same offline bake as a synthesised recipe, inheriting the same saturation,
+  normalisation and variant set, and every one keeps its recipe as a fallback so a missing file
+  degrades to the synthesised bank rather than to silence. See
+  [`public/audio/README.md`](public/audio/README.md).
 
 ## Running it
 
@@ -125,7 +136,7 @@ src/progression/ missions, objectives, unlocks, campaign save state
 src/art/       procedural geometry — shape primitives, greeble, unit and building factories
 src/world/     terrain, water, roads, decals, prop scatter
 src/vfx/       particles, beams, explosions, tracers, pooled scene lights
-src/audio/     fully synthesized WebAudio — announcer, barks, weapons, procedural score
+src/audio/     WebAudio mixer, recorded SFX/voice/announcer banks, adaptive streamed score
 src/data/      unit/building/faction/armour tables
 tools/         screenshot harness, grade probe, brand asset generator
 docs/          look bible, visual DNA, architecture

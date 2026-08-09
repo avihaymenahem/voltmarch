@@ -15,9 +15,10 @@
  */
 
 import {
-  dbToGain, hashId, makeBakeBus, makePinkNoise, makeRng, makeWhiteNoise, normalizeBuffer,
+  dbToGain, hashId, makeBakeBus, makePinkNoise, makeRng, makeWhiteNoise, normalizeBuffer, rewrap,
   type BakeKit, type SoundSpec,
 } from '../src/audio/AudioEngine';
+import { SampleBank, sampleInto, variantDetune } from '../src/audio/Samples';
 import { collectSfxBank } from '../src/audio/Weapons';
 import {
   EVA_LINES, EVA_PROFILE, renderUtterance, utteranceSeconds,
@@ -77,6 +78,23 @@ function scale(buf: AudioBuffer, k: number): void {
   }
 }
 
+/**
+ * The recorded takes, decoded once for the whole run.
+ *
+ * WITHOUT THIS the probe measured only the synthesised recipes while the game
+ * played recordings, and said nothing about it — every number in the table was
+ * real, and none of them described what shipped. That is the worst failure a
+ * measurement tool has, because it is indistinguishable from working.
+ */
+const samples = new SampleBank();
+
+async function ensureSamples(): Promise<void> {
+  if (samples.ready) return;
+  // Any BaseAudioContext can decode; a one-frame offline context is the
+  // cheapest one that exists.
+  await samples.load(new OfflineAudioContext(1, 128, RATE));
+}
+
 /** Render one SoundSpec variant exactly the way AudioEngine.bakeOne would. */
 async function renderSpec(spec: SoundSpec, variant: number): Promise<AudioBuffer> {
   const channels = spec.channels ?? 1;
@@ -90,12 +108,21 @@ async function renderSpec(spec: SoundSpec, variant: number): Promise<AudioBuffer
     rng: makeRng(hashId(spec.id) ^ ((variant + 1) * 0x9e3779b9)),
     variant,
   };
-  spec.render(kit);
+  // Mirrors `bakeOne`: resolved per spec, never per variant, and falling back
+  // to the recipe when the family did not load.
+  const takes = spec.sample !== undefined ? samples.count(spec.sample) : 0;
+  const take = takes > 0 ? samples.get(spec.sample!, variant) : null;
+  if (take !== null) {
+    sampleInto(kit, rewrap(oc, take), spec.sampleDb ?? 0, variantDetune(variant, takes));
+  } else {
+    spec.render(kit);
+  }
   return await oc.startRendering();
 }
 
 /** The whole one-shot bank, at the level each sound actually hits its bus. */
 export async function probeBank(variant = 0): Promise<Rendered[]> {
+  await ensureSamples();
   const out: Rendered[] = [];
   for (const spec of collectSfxBank()) {
     const buf = await renderSpec(spec, variant);

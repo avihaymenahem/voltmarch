@@ -47,6 +47,7 @@ import {
   AudioEngine, LoopVoice, biquad, dbToGain, gain, makeRng, normalizeBuffer, rand, shaper,
   type Rng01,
 } from './AudioEngine';
+import { EVA_MANIFEST, SampleBank, evaPath } from './Samples';
 
 /* ==========================================================================
  * 1. THE PHONEME TABLE  (§3.2)
@@ -922,6 +923,13 @@ export interface EvaOptions {
 interface QueueItem { id: string; priority: number; at: number }
 
 export class EvaAnnouncer {
+  /**
+   * The rendered announcer. Falls back to the formant synth below when a line
+   * fails to load, which is why `renderUtterance` and the whole phoneme table
+   * are still here rather than deleted — an offline player gets a robot voice,
+   * not silence, and silence on "Our base is under attack" loses the match.
+   */
+  private readonly recorded = new SampleBank(EVA_MANIFEST, evaPath);
   private readonly buffers = new Map<string, AudioBuffer>();
   private readonly baking = new Set<string>();
   private readonly lastFired = new Map<string, number>();
@@ -963,6 +971,17 @@ export class EvaAnnouncer {
     if (have !== undefined) return have;
     const def = EVA_LINES[id];
     if (def === undefined) return null;
+
+    // RENDERED LINE FIRST. `load` is idempotent and returns immediately after
+    // the first call. The result is cached in the same map the synth uses, so
+    // the radio-comms chain downstream neither knows nor cares which it got.
+    await this.recorded.load(this.engine.ctx);
+    const spoken = this.recorded.get(id, 0);
+    if (spoken !== null) {
+      this.buffers.set(id, spoken);
+      return spoken;
+    }
+
     if (this.baking.has(id)) return null;
     this.baking.add(id);
     const OC = typeof OfflineAudioContext !== 'undefined' ? OfflineAudioContext : null;

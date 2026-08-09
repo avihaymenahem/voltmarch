@@ -277,22 +277,59 @@ export const CREDITS: readonly CreditGroup[] = [
     lines: [
       'Every mesh generated procedurally from code',
       'Every texture baked at boot in a worker',
-      'Every sound synthesised at boot with WebAudio',
-      'No downloaded models, textures or audio',
+      'Ambience and the adaptive music score synthesised at boot',
+      'No downloaded models or world textures',
     ],
   },
   {
     /*
-     * THE TWO THINGS THAT ARE NOT GENERATED. Both are shipped deliberately and
-     * both were, until now, contradicted by a credits line claiming there were
-     * none. Keep this group in step with `README.md` and `CLAUDE.md`;
-     * `tests/credits-truthful.spec.ts` checks it against `public/`.
+     * THE THINGS THAT ARE NOT GENERATED. All shipped deliberately, and the
+     * first two were once contradicted by a credits line claiming there were
+     * none. Keep this group in step with `README.md`, `CLAUDE.md` and
+     * `public/audio/README.md`; `tests/credits-truthful.spec.ts` checks it
+     * against what is actually in `public/`.
+     *
+     * 61 recorded takes across 20 families now cover the interface, the
+     * impacts, and every conventional weapon and explosion. The synthesised
+     * bank measured in band and still read as a synth patch; recordings carry
+     * micro-detail no oscillator recipe reproduces.
+     *
+     * The Art group above no longer says "weapons synthesised", because they
+     * are not. What IS still generated is listed there instead — and Tesla,
+     * Prism and several impacts are on that list BY MEASUREMENT, having been
+     * tried with recordings that scored worse. See `public/audio/README.md`.
      */
     title: 'Shipped Assets',
     lines: [
       'Rajdhani — the UI typeface, SIL Open Font License 1.1',
       'The wordmark and app icons, from a supplied logo',
-      'Nothing else: no meshes, no world textures, no audio',
+      'Interface, impact and unit voices by Kenney (kenney.nl) — CC0',
+      'Weapons, explosions and effects — CC0 sound libraries',
+      'Warfork by Team Forbidden — CC0',
+      'EVA rendered with Piper, LibriVox voice — public domain',
+      'Nothing else: no meshes, no world textures',
+    ],
+  },
+  {
+    /*
+     * THE ONE ATTRIBUTION OBLIGATION IN THE PRODUCT.
+     *
+     * Everything else shipped here is CC0 or public domain and is credited as a
+     * courtesy. These three are CC-BY 4.0, where the credit is a LICENCE TERM —
+     * omit it and the licence does not grant the use. The wording is what
+     * incompetech's own attribution generator emits, including the `http` URL,
+     * which is theirs and not a typo.
+     *
+     * The licensor waives the modification notice ("no need to mention if you
+     * cut and splice"), but CC-BY 4.0 3(a)(1)(B) asks for one in the general
+     * case and a courtesy is not a licence amendment, so the trim is stated.
+     */
+    title: 'Music — Kevin MacLeod (incompetech.com)',
+    lines: [
+      '"Colossus" · "Industrial Revolution" · "Clash Defiant"',
+      'Licensed under Creative Commons: By Attribution 4.0 License',
+      'http://creativecommons.org/licenses/by/4.0/',
+      'Trimmed and looped for adaptive playback',
     ],
   },
   {

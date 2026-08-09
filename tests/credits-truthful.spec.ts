@@ -63,7 +63,39 @@ describe('the credits describe the product that actually ships', () => {
     }
   });
 
-  it('names BOTH shipped assets — the typeface and the brand lockup', () => {
+  it('names the shipped audio, its author and its licence', () => {
+    const audio = publicAssets().filter((f) => f.startsWith('audio/') && /\.(ogg|mp3|wav|m4a)$/i.test(f));
+    if (audio.length === 0) return;
+
+    // CC0 asks for nothing. Crediting anyway is the point of a credits screen,
+    // and naming the LICENCE is what makes the claim checkable by a player who
+    // wants to know what they are running.
+    expect(allText, `public/audio ships ${audio.length} file(s) but no author is credited`)
+      .toMatch(/kenney/i);
+    expect(allText, 'shipped CC0 audio must have its licence named in the credits')
+      .toMatch(/CC0/i);
+
+    // The Art group must no longer claim the whole soundscape is synthesised.
+    expect(
+      /every sound synthesi[sz]ed/i.test(allText),
+      'the credits still claim EVERY sound is synthesised while shipping recorded audio',
+    ).toBe(false);
+
+    // Nor may it claim the WEAPONS are synthesised — cannon, machine gun,
+    // artillery, rockets and all three explosions are recorded. This is the
+    // second time a credits line about audio went stale inside one week, and
+    // both times the sentence was true when written.
+    const weaponSamples = audio.filter((f) => /\/(cannon|mg|artillery|rocket|explosion)\./.test(f));
+    if (weaponSamples.length > 0) {
+      expect(
+        /weapons[^.]*synthesi[sz]ed/i.test(allText),
+        `public/audio ships ${weaponSamples.length} recorded weapon take(s), so the credits `
+        + 'must not say weapons are synthesised',
+      ).toBe(false);
+    }
+  });
+
+  it('names the shipped typeface and the brand lockup', () => {
     const assets = publicAssets();
     const fonts = assets.filter((f) => /\.(woff2?|ttf|otf)$/i.test(f));
     const brand = assets.filter((f) => f.startsWith('brand/') && /\.(png|jpe?g|webp|svg)$/i.test(f));
@@ -106,13 +138,19 @@ describe('the credits describe the product that actually ships', () => {
     ).toEqual([]);
   });
 
-  it('ships no downloaded MODEL, WORLD TEXTURE or AUDIO asset, as the credits say', () => {
-    // The qualified claim, actually enforced. `fonts/` and `brand/` are the two
-    // DECLARED exceptions — named in the credits, README.md and CLAUDE.md. A
-    // bitmap appearing anywhere else in public/ is a new undeclared asset and
-    // fails here rather than silently making three documents wrong again.
+  it('ships no downloaded MODEL or WORLD TEXTURE asset, as the credits say', () => {
+    // The qualified claim, actually enforced. `fonts/`, `brand/` and `audio/`
+    // are the DECLARED exceptions — named in the credits, README.md and
+    // CLAUDE.md. Anything appearing elsewhere in public/ is a new undeclared
+    // asset and fails here rather than silently making three documents wrong.
+    //
+    // AUDIO JOINED THIS LIST on 2026-08-09 and the test title changed with it.
+    // That rename is the honest half of the change: this test asserted "no
+    // downloaded AUDIO asset" and would now be a lie by its own name. Widening
+    // `DECLARED` while leaving the title alone would have left the same species
+    // of false claim this file exists to catch, one level up.
     const BANNED = /\.(gltf|glb|fbx|obj|dae|png|jpe?g|webp|ktx2?|dds|tga|mp3|ogg|wav|m4a)$/i;
-    const DECLARED = /^(brand|fonts)\//;
+    const DECLARED = /^(brand|fonts|audio)\//;
     const offenders = publicAssets().filter((f) => BANNED.test(f) && !DECLARED.test(f));
     expect(
       offenders,

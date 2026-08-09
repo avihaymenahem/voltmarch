@@ -29,6 +29,7 @@ import {
   AudioEngine, LoopVoice, biquad, bodyDrop, dbToGain, env, envSustain, gain, noiseSrc, osc,
   rand, ringMod, shaper, sweep, tail, transient, type BakeKit, type SoundSpec,
 } from './AudioEngine';
+import { SAMPLE_MANIFEST } from './Samples';
 
 /* ==========================================================================
  * 1. THE ID VOCABULARY
@@ -1221,115 +1222,154 @@ export function collectSfxBank(): readonly SoundSpec[] {
      * real report has. Bigger sources get more of it, because bigger sources
      * overload whatever is listening to them.
      */
-    { id: SFX.cannonLight, bus: 'sfx', category: 'gunfire', db: -4, variants: 5, seconds: 1.25,
-      rateJitter: 0.065, sendDb: -18, drive: 2.6, driveAsym: 0.14,
+    /* RECORDED, from here down where `sample` is set. `drive` drops hard on
+     * every one of them: 2.6-3.0 was tuned to give a stack of clean oscillators
+     * the crest factor a real report has, and a real report already has it.
+     * Pushing a recording through that curve only eats its transient.
+     *
+     * `variants` may EXCEED the number of takes — 5 variants over 3 cannon
+     * takes is deliberate. The surplus are detuned by `variantDetune`, which
+     * keeps the repeat period long without pretending there are more takes
+     * than there are. */
+    { id: SFX.cannonLight, bus: 'sfx', category: 'gunfire', db: -4, variants: 5, seconds: 1.05,
+      rateJitter: 0.065, sendDb: -18, drive: 1.6, driveAsym: 0.14, sample: SFX.cannonLight,
       render: (k) => renderCannon(k, false) },
-    { id: SFX.cannonHeavy, bus: 'sfx', category: 'gunfire', db: -3, variants: 5, seconds: 1.6,
-      rateJitter: 0.06, sendDb: -16, drive: 2.9, driveAsym: 0.16, reverb: 'wide',
-      render: (k) => renderCannon(k, true) },
-    { id: SFX.machineGun, bus: 'sfx', category: 'gunfire', db: -7, variants: 8, seconds: 0.24,
-      rateJitter: 0.09, sendDb: -26, drive: 2.0, render: (k) => renderMg(k, false) },
-    { id: SFX.flak, bus: 'sfx', category: 'gunfire', db: -6, variants: 6, seconds: 0.3,
-      rateJitter: 0.08, sendDb: -24, drive: 2.2, render: (k) => renderMg(k, true) },
+    { id: SFX.cannonHeavy, bus: 'sfx', category: 'gunfire', db: -3, variants: 5, seconds: 1.95,
+      rateJitter: 0.06, sendDb: -16, drive: 1.7, driveAsym: 0.16, reverb: 'wide',
+      sample: SFX.cannonHeavy, render: (k) => renderCannon(k, true) },
+    { id: SFX.machineGun, bus: 'sfx', category: 'gunfire', db: -7, variants: 8, seconds: 0.55,
+      rateJitter: 0.09, sendDb: -26, drive: 1.4, sample: SFX.machineGun,
+      render: (k) => renderMg(k, false) },
+    { id: SFX.flak, bus: 'sfx', category: 'gunfire', db: -6, variants: 5, seconds: 0.86,
+      rateJitter: 0.08, sendDb: -24, drive: 1.4, sample: SFX.flak,
+      render: (k) => renderMg(k, true) },
     { id: SFX.artillery, bus: 'sfx', category: 'gunfire', db: -2, variants: 3, seconds: 2.1,
-      rateJitter: 0.05, sendDb: -12, drive: 3.0, driveAsym: 0.18, reverb: 'wide',
-      render: renderArtillery },
-    { id: SFX.rocketLaunch, bus: 'sfx', category: 'rocket', db: -8, variants: 4, seconds: 0.72,
-      rateJitter: 0.06, sendDb: -22, drive: 2.2, render: renderRocketLaunch },
-    { id: SFX.teslaCharge, bus: 'sfx', category: 'tesla', db: -8, variants: 3, seconds: 0.82,
-      rateJitter: 0.04, sendDb: -24, drive: 1.8, render: renderTeslaCharge },
-    { id: SFX.teslaDischarge, bus: 'sfx', category: 'tesla', db: -5, variants: 6, seconds: 0.8,
-      rateJitter: 0.08, sendDb: -18, drive: 2.4, driveAsym: 0.14,
+      rateJitter: 0.05, sendDb: -12, drive: 1.8, driveAsym: 0.18, reverb: 'wide',
+      sample: SFX.artillery, render: renderArtillery },
+    { id: SFX.rocketLaunch, bus: 'sfx', category: 'rocket', db: -8, variants: 4, seconds: 1.15,
+      rateJitter: 0.06, sendDb: -22, drive: 1.5, sample: SFX.rocketLaunch,
+      render: renderRocketLaunch },
+    /* Energy weapons come from a CC0 sci-fi set rather than the arena shooter:
+     * Warfork's are mixed for FPS punch and arrived with half their energy
+     * below 80 Hz, which is not what a coil or a beam sounds like. */
+    { id: SFX.teslaCharge, bus: 'sfx', category: 'tesla', db: -8, variants: 3, seconds: 1.27,
+      rateJitter: 0.04, sendDb: -24, drive: 1.3, sample: SFX.teslaCharge, render: renderTeslaCharge },
+    { id: SFX.teslaDischarge, bus: 'sfx', category: 'tesla', db: -5, variants: 5, seconds: 0.91,
+      rateJitter: 0.08, sendDb: -18, drive: 1.5, driveAsym: 0.14, sample: SFX.teslaDischarge,
       render: renderTeslaDischarge },
-    { id: SFX.prismFire, bus: 'sfx', category: 'gunfire', db: -5, variants: 4, seconds: 0.78,
-      rateJitter: 0.05, sendDb: -20, drive: 1.6, render: renderPrism },
-    { id: SFX.flameJet, bus: 'sfx', category: 'gunfire', db: -10, variants: 4, seconds: 0.85,
-      rateJitter: 0.08, sendDb: -24, drive: 2.4, render: renderFlame },
-    { id: SFX.dogBark, bus: 'sfx', category: 'misc', db: -8, variants: 4, seconds: 0.7,
-      rateJitter: 0.07, sendDb: -22, drive: 1.8, render: renderDog },
+    { id: SFX.prismFire, bus: 'sfx', category: 'gunfire', db: -5, variants: 4, seconds: 1.25,
+      rateJitter: 0.05, sendDb: -20, drive: 1.4, sample: SFX.prismFire, render: renderPrism },
+    { id: SFX.flameJet, bus: 'sfx', category: 'gunfire', db: -10, variants: 3, seconds: 1.3,
+      rateJitter: 0.08, sendDb: -24, drive: 1.5, sample: SFX.flameJet, render: renderFlame },
+    { id: SFX.dogBark, bus: 'sfx', category: 'misc', db: -8, variants: 4, seconds: 1.41,
+      rateJitter: 0.07, sendDb: -22, drive: 1.3, sample: SFX.dogBark, render: renderDog },
 
     /* -- explosions: the only sounds that send to the WIDE room -- */
-    { id: SFX.explosionSmall, bus: 'sfx', category: 'explosion', db: -12, variants: 6, seconds: 0.55,
-      rateJitter: 0.08, sendDb: -24, drive: 2.8, driveAsym: 0.15,
+    { id: SFX.explosionSmall, bus: 'sfx', category: 'explosion', db: -12, variants: 6, seconds: 1.05,
+      rateJitter: 0.08, sendDb: -24, drive: 1.6, driveAsym: 0.15, sample: SFX.explosionSmall,
       render: renderExplosionSmall },
-    { id: SFX.explosionMedium, bus: 'sfx', category: 'explosion', db: -4, variants: 4, seconds: 1.6,
-      rateJitter: 0.06, sendDb: -15, drive: 3.2, driveAsym: 0.18, reverb: 'wide',
-      render: renderExplosionMedium },
+    { id: SFX.explosionMedium, bus: 'sfx', category: 'explosion', db: -4, variants: 5, seconds: 1.6,
+      rateJitter: 0.06, sendDb: -15, drive: 1.8, driveAsym: 0.18, reverb: 'wide',
+      sample: SFX.explosionMedium, render: renderExplosionMedium },
     { id: SFX.explosionLarge, bus: 'sfx', category: 'explosion', db: -1, variants: 3, seconds: 3.2,
-      rateJitter: 0.05, sendDb: -9, drive: 3.6, driveAsym: 0.2, reverb: 'wide',
-      render: renderExplosionLarge },
+      rateJitter: 0.05, sendDb: -9, drive: 2.0, driveAsym: 0.2, reverb: 'wide',
+      sample: SFX.explosionLarge, render: renderExplosionLarge },
 
     /* -- impacts -- */
-    { id: SFX.impactArmor, bus: 'sfx', category: 'misc', db: -16, variants: 6, seconds: 0.36,
-      rateJitter: 0.1, drive: 2.2, render: renderImpactArmor },
-    { id: SFX.impactDirt, bus: 'sfx', category: 'misc', db: -20, variants: 5, seconds: 0.3,
-      rateJitter: 0.1, drive: 2.0, render: (k) => renderImpactDirt(k, false) },
-    { id: SFX.impactConcrete, bus: 'sfx', category: 'misc', db: -17, variants: 5, seconds: 0.4,
-      rateJitter: 0.09, drive: 2.2, render: renderImpactConcrete },
-    { id: SFX.impactWater, bus: 'sfx', category: 'misc', db: -16, variants: 4, seconds: 0.5,
-      rateJitter: 0.08, drive: 1.8, render: renderSplash },
-    { id: SFX.debris, bus: 'sfx', category: 'misc', db: -20, variants: 8, seconds: 0.12,
-      rateJitter: 0.14, drive: 1.6, render: renderDebrisOne },
-    { id: SFX.shellCasing, bus: 'sfx', category: 'misc', db: -22, variants: 4, seconds: 0.3,
-      rateJitter: 0.12, drive: 1.6, render: renderShellCasing },
-    { id: SFX.sparks, bus: 'sfx', category: 'misc', db: -22, variants: 4, seconds: 0.3,
-      rateJitter: 0.1, drive: 1.8, render: renderSparks },
+    /* Recorded families (Kenney, CC0) carry a gentler `drive` than the recipes
+     * they replace, for the reason spelled out on `ui()`: the saturation was
+     * there to glue synthesised layers, and a recording has nothing to glue. */
+    { id: SFX.impactArmor, bus: 'sfx', category: 'misc', db: -16, variants: 5, seconds: 0.89,
+      rateJitter: 0.1, drive: 1.4, sample: SFX.impactArmor, render: renderImpactArmor },
+    { id: SFX.impactDirt, bus: 'sfx', category: 'misc', db: -20, variants: 5, seconds: 0.64,
+      rateJitter: 0.1, drive: 1.3, sample: SFX.impactDirt,
+      render: (k) => renderImpactDirt(k, false) },
+    { id: SFX.impactConcrete, bus: 'sfx', category: 'misc', db: -17, variants: 5, seconds: 0.62,
+      rateJitter: 0.09, drive: 1.4, sample: SFX.impactConcrete, render: renderImpactConcrete },
+    { id: SFX.impactWater, bus: 'sfx', category: 'misc', db: -16, variants: 4, seconds: 1.19,
+      rateJitter: 0.08, drive: 1.3, sample: SFX.impactWater, render: renderSplash },
+    { id: SFX.debris, bus: 'sfx', category: 'misc', db: -20, variants: 8, seconds: 0.32,
+      rateJitter: 0.14, drive: 1.2, sample: SFX.debris, render: renderDebrisOne },
+    { id: SFX.shellCasing, bus: 'sfx', category: 'misc', db: -22, variants: 4, seconds: 0.79,
+      rateJitter: 0.12, drive: 1.2, sample: SFX.shellCasing, render: renderShellCasing },
+    { id: SFX.sparks, bus: 'sfx', category: 'misc', db: -22, variants: 4, seconds: 0.73,
+      rateJitter: 0.1, drive: 1.3, sample: SFX.sparks, render: renderSparks },
 
     /* -- gameplay odds -- */
-    { id: SFX.crush, bus: 'sfx', category: 'misc', db: -14, variants: 4, seconds: 0.4,
-      rateJitter: 0.1, drive: 2.4, render: renderCrush },
-    { id: SFX.infantryDeath, bus: 'sfx', category: 'misc', db: -18, variants: 5, seconds: 0.6,
-      rateJitter: 0.09, drive: 1.6, render: renderInfantryDeath },
-    { id: SFX.buildRise, bus: 'sfx', category: 'misc', db: -14, variants: 2, seconds: 1.6,
-      rateJitter: 0.04, drive: 2.0, render: renderBuildRise },
-    { id: SFX.sellPuff, bus: 'sfx', category: 'misc', db: -12, variants: 2, seconds: 1.0,
-      rateJitter: 0.05, drive: 2.2, render: renderSell },
-    { id: SFX.oreDump, bus: 'sfx', category: 'misc', db: -16, variants: 3, seconds: 1.2,
-      rateJitter: 0.05, drive: 1.8, render: renderOreDump },
+    { id: SFX.crush, bus: 'sfx', category: 'misc', db: -14, variants: 4, seconds: 0.42,
+      rateJitter: 0.1, drive: 1.4, sample: SFX.crush, render: renderCrush },
+    { id: SFX.infantryDeath, bus: 'sfx', category: 'misc', db: -18, variants: 3, seconds: 1.69,
+      rateJitter: 0.09, drive: 1.2, sample: SFX.infantryDeath, render: renderInfantryDeath },
+    { id: SFX.buildRise, bus: 'sfx', category: 'misc', db: -14, variants: 2, seconds: 2.21,
+      rateJitter: 0.04, drive: 1.4, sample: SFX.buildRise, render: renderBuildRise },
+    { id: SFX.sellPuff, bus: 'sfx', category: 'misc', db: -12, variants: 2, seconds: 1.63,
+      rateJitter: 0.05, drive: 1.4, sample: SFX.sellPuff, render: renderSell },
+    { id: SFX.oreDump, bus: 'sfx', category: 'misc', db: -16, variants: 3, seconds: 1.08,
+      rateJitter: 0.05, drive: 1.3, sample: SFX.oreDump, render: renderOreDump },
 
     /* -- engine beds (played as loops, never as one-shots) --
      * NO drive: the saturator's DC-blocking highpass rings at the buffer edges,
      * and a loop is nothing BUT buffer edges. These carry their own shaper. */
-    { id: SFX.engineLight, bus: 'sfx', category: 'engine', db: -21, variants: 1, seconds: 2.0,
-      render: (k) => renderEngine(k, false) },
-    { id: SFX.engineHeavy, bus: 'sfx', category: 'engine', db: -19, variants: 1, seconds: 2.0,
-      render: (k) => renderEngine(k, true) },
+    { id: SFX.engineLight, bus: 'sfx', category: 'engine', db: -21, variants: 1, seconds: 0.73,
+      sample: SFX.engineLight, render: (k) => renderEngine(k, false) },
+    { id: SFX.engineHeavy, bus: 'sfx', category: 'engine', db: -19, variants: 1, seconds: 3.65,
+      sample: SFX.engineHeavy, render: (k) => renderEngine(k, true) },
 
     /* -- UI: non-positional, no crowd summation -- */
-    ui(SFX.uiClick, -12, 3, 0.09, (k) => renderUiClick(k, 2400, 120, 45)),
-    ui(SFX.uiTab, -13, 3, 0.12, (k) => renderUiClick(k, 1600, 95, 60)),
-    ui(SFX.uiHover, -26, 2, 0.03, (k) => {
+    /* `seconds` on a recorded family is NOT a taste knob — the bake renders
+     * into a buffer of exactly this length and anything past it is cut. Eight
+     * of these were shorter than their longest take and would have baked in
+     * truncated (`ui.tab` at 0.12 s against a 0.618 s file). The values below
+     * clear the longest take plus room for the saturator's DC highpass to ring
+     * out, and `tests/audio-samples.spec.ts` re-derives that from the files. */
+    ui(SFX.uiClick, -12, 3, 0.14, (k) => renderUiClick(k, 2400, 120, 45)),
+    ui(SFX.uiTab, -13, 3, 0.68, (k) => renderUiClick(k, 1600, 95, 60)),
+    ui(SFX.uiHover, -26, 2, 0.05, (k) => {
       const g = gain(k.oc, dbToGain(-6));
       const bp = biquad(k.oc, 'bandpass', 3400, 3);
       env(g.gain, 0, 0.4, 1.0, 5);
       noiseSrc(k, k.white, 0, 0.012).connect(bp).connect(g).connect(k.out);
       bodyDrop(k, 0, -16, 1400, 900, 6, 14, 'sine', 0.4);
     }),
-    ui(SFX.uiChime, -10, 1, 0.8, renderChime),
-    ui(SFX.uiReady, -16, 1, 0.28, renderReadyFlash),
-    ui(SFX.uiThunk, -6, 3, 0.65, renderThunk, 2.4),
-    ui(SFX.uiGhost, -32, 3, 0.025, (k) => {
+    ui(SFX.uiChime, -10, 2, 0.8, renderChime),
+    ui(SFX.uiReady, -16, 2, 0.55, renderReadyFlash),
+    ui(SFX.uiThunk, -6, 3, 1.0, renderThunk),
+    ui(SFX.uiGhost, -32, 2, 0.18, (k) => {
       const g = gain(k.oc, dbToGain(-6));
       const bp = biquad(k.oc, 'bandpass', 2800, 4);
       env(g.gain, 0, 0.35, 1.0, 4);
       noiseSrc(k, k.white, 0, 0.01).connect(bp).connect(g).connect(k.out);
     }),
-    ui(SFX.uiError, -11, 2, 0.34, renderError),
-    ui(SFX.uiSell, -12, 2, 1.0, renderSell, 2.2),
-    ui(SFX.uiPing, -18, 1, 0.28, renderPing),
-    ui(SFX.uiTick, -20, 2, 0.06, renderTick),
+    ui(SFX.uiError, -11, 3, 0.58, renderError),
+    ui(SFX.uiSell, -12, 2, 0.42, renderSell),
+    ui(SFX.uiPing, -18, 2, 0.28, renderPing),
+    ui(SFX.uiTick, -20, 2, 0.08, renderTick),
   ];
 
   return specs;
 }
 
+/**
+ * `sample` defaults to the id, because every recorded UI family in
+ * `SAMPLE_MANIFEST` is named after the sound it replaces. Pass it explicitly
+ * only when two ids share one set of takes.
+ *
+ * `drive` drops to 1.15 for a recorded sound. The 1.5 default was tuned to glue
+ * a stack of clean synthesised layers together; a recording arrives already
+ * glued, and pushing it through the same curve just eats the transient that is
+ * the reason to prefer a recording in the first place.
+ */
 function ui(
   id: string, db: number, variants: number, seconds: number,
-  render: (k: BakeKit) => void, drive = 1.5,
+  render: (k: BakeKit) => void, drive?: number, sample: string | undefined = id,
 ): SoundSpec {
+  const recorded = sample !== undefined && sample in SAMPLE_MANIFEST;
   return {
     id, bus: 'ui', category: 'ui', db, variants, seconds,
-    positional: false, noCrowd: true, rateJitter: 0.02, drive, render,
+    positional: false, noCrowd: true, rateJitter: 0.02,
+    drive: drive ?? (recorded ? 1.15 : 1.5),
+    sample: recorded ? sample : undefined,
+    render,
   };
 }
 
