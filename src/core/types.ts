@@ -447,8 +447,23 @@ export const enum FxKind {
   UnitDeathInfantry = 31,
   Splash = 32,
   SellPuff = 33,
+  /**
+   * Three weapon kinds that had no FxKind of their own and therefore no sound.
+   *
+   * Flak and artillery both borrowed `MuzzleFlashLarge`, so an artillery piece
+   * fired the tank-cannon report — and `flak.round`, `artillery.fire` and
+   * `tesla.charge` sat baked in the audio bank, unreachable, because
+   * `FX_SOUND` is keyed on this enum and nothing pointed at them.
+   *
+   * APPEND ONLY, and keep `FX_KIND_COUNT` in step: the value is an index into
+   * parallel arrays sized by it, so inserting in the middle silently
+   * renumbers every kind after it.
+   */
+  MuzzleFlashFlak = 34,
+  MuzzleFlashArtillery = 35,
+  TeslaCharge = 36,
 }
-export const FX_KIND_COUNT = 34;
+export const FX_KIND_COUNT = 37;
 
 /** Ground-projected decals. Pooled, aged, never allocated at runtime. */
 export const enum DecalKind {

@@ -178,8 +178,18 @@ function dispatch(
   switch (kind) {
     case FxKind.MuzzleFlashSmall:
     case FxKind.MuzzleFlashMedium:
-    case FxKind.MuzzleFlashLarge: {
-      const size = (kind - FxKind.MuzzleFlashSmall) as 0 | 1 | 2;
+    case FxKind.MuzzleFlashLarge:
+    case FxKind.MuzzleFlashFlak:
+    case FxKind.MuzzleFlashArtillery: {
+      // EXPLICIT, not arithmetic. This was `kind - MuzzleFlashSmall`, which
+      // only works while the three sizes are contiguous — the two kinds added
+      // for flak and artillery sit at the end of the enum (appending is the
+      // only safe way to extend it), so the subtraction would have yielded 33
+      // and 34 and indexed off the end of the flash table.
+      const size: 0 | 1 | 2 =
+        kind === FxKind.MuzzleFlashSmall ? 0
+          : kind === FxKind.MuzzleFlashMedium || kind === FxKind.MuzzleFlashFlak ? 1
+            : 2;
       // Prefer the real barrel socket: valid from RenderPhase.Bridge onward, so
       // the flash sits on the muzzle even while the turret is slewing.
       if (source !== NONE && socketWorld(src, PartId.MuzzleA, _socket)) {

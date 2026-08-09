@@ -99,6 +99,9 @@ function buildFxTable(): readonly (string | null)[] {
   t[FxKind.MuzzleFlashSmall] = SFX.machineGun;
   t[FxKind.MuzzleFlashMedium] = SFX.cannonLight;
   t[FxKind.MuzzleFlashLarge] = SFX.cannonHeavy;
+  t[FxKind.MuzzleFlashFlak] = SFX.flak;
+  t[FxKind.MuzzleFlashArtillery] = SFX.artillery;
+  t[FxKind.TeslaCharge] = SFX.teslaCharge;
   t[FxKind.RocketTrail] = SFX.rocketLaunch;
   t[FxKind.TeslaArc] = SFX.teslaDischarge;
   t[FxKind.PrismBeam] = SFX.prismFire;

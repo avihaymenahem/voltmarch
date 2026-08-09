@@ -645,12 +645,24 @@ export function createScene(options: CreateSceneOptions): SceneRig {
   });
 
   /* ---- shadow fitting --------------------------------------------------- */
+  /**
+   * Metres the shadow ortho extent is quantised to.
+   *
+   * Small enough that zoom steps are not a visible jump in shadow softness,
+   * large enough that ordinary panning and pitching never cross one — which is
+   * the point, because a texel grid that changes size cannot be snapped to.
+   */
+  const SHADOW_EXTENT_STEP = 16;
   // Scratch — allocated once, reused forever. Nothing here allocates per frame.
   const _corners: THREE.Vector3[] = [];
   for (let i = 0; i < 5; i++) _corners.push(new THREE.Vector3());
   const _lightMatrix = new THREE.Matrix4();
+  /** Light -> world, kept before the invert so a snapped centre can be unprojected. */
+  const _lightToWorld = new THREE.Matrix4();
   const _lightPos = new THREE.Vector3();
   const _center = new THREE.Vector3();
+  const _snapped = new THREE.Vector3();
+  const _zero = new THREE.Vector3(0, 0, 0);
   const _up = new THREE.Vector3(0, 1, 0);
   const _ndc = new THREE.Vector3();
   const _rayOrigin = new THREE.Vector3();
@@ -711,11 +723,24 @@ export function createScene(options: CreateSceneOptions): SceneRig {
     // Tesla Coil 9 m) plus airborne debris.
     _corners[4].copy(_center).setY(14);
 
-    // Build the light view matrix looking from the sun toward the quad centre.
-    _lightPos.copy(_center).addScaledVector(sunDir, 250);
-    _lightMatrix.lookAt(_lightPos, _center, _up);
-    _lightMatrix.setPosition(_lightPos);
-    _lightMatrix.invert(); // world -> light
+    /*
+     * A STABLE LIGHT BASIS — rotation only, anchored at the world origin.
+     *
+     * This used to be built from `_center`, which moves with the camera every
+     * frame. That makes light space itself slide, so the light-space
+     * coordinates of a FIXED world point change continuously, and quantising a
+     * centre inside a sliding space quantises nothing. The snap below ran, and
+     * the shadow map crawled anyway.
+     *
+     * The sun direction is constant, so a basis built from it alone is
+     * constant, and a world position quantised in it lands on the same texel
+     * every frame. That is what makes the snap mean something.
+     */
+    _lightPos.copy(sunDir).multiplyScalar(250);
+    _lightMatrix.lookAt(_lightPos, _zero, _up);
+    _lightMatrix.setPosition(0, 0, 0);
+    _lightToWorld.copy(_lightMatrix);   // rotation only; needed to unsnap
+    _lightMatrix.invert();              // world -> light
 
     let minX = Infinity;
     let maxX = -Infinity;
@@ -733,26 +758,53 @@ export function createScene(options: CreateSceneOptions): SceneRig {
       if (_tmp.z > maxZ) maxZ = _tmp.z;
     }
 
-    // Square + pad the extent so rotating the camera does not change the
-    // shadow resolution (which would make edges pulse).
-    const padded = Math.max(maxX - minX, maxY - minY) * 0.5 + 12;
+    /*
+     * Square + QUANTISE the extent.
+     *
+     * Squaring already stopped a camera ROTATION from changing the shadow
+     * resolution. It did nothing about position and pitch, which change the
+     * measured extent continuously — so `texelWorld` changed every frame, and
+     * a snap onto a grid whose spacing changes every frame is not a snap.
+     *
+     * Rounding the extent up to a fixed step holds the texel grid still for
+     * every camera move inside that step, which is all of panning and most of
+     * pitching. Resolution now changes in visible increments while zooming
+     * rather than continuously, and that is the whole trade: a step you can
+     * see once beats a shimmer you see always.
+     */
+    const measured = Math.max(maxX - minX, maxY - minY) * 0.5 + 12;
+    const padded = Math.ceil(measured / SHADOW_EXTENT_STEP) * SHADOW_EXTENT_STEP;
     const texelWorld = (padded * 2) / cfgShadow.mapSize;
 
-    // Texel snap: quantise the light-space centre. THIS is what stops the
-    // crawl during pan.
+    // Texel snap, now in a basis that does not move. THIS is what stops the
+    // crawl during pan — and it only works because of the two fixes above.
     const cx = Math.round((minX + maxX) * 0.5 / texelWorld) * texelWorld;
     const cy = Math.round((minY + maxY) * 0.5 / texelWorld) * texelWorld;
+    // Depth is deliberately NOT carried into the light position. Sliding the
+    // light along its own forward axis cannot change texel alignment, but it
+    // does leave `sun.position` drifting a fraction of a millimetre per frame,
+    // which makes "is the shadow rig stable?" impossible to assert exactly.
+    // near/far below already spans the depth range with margin.
+    const cz = 0;
 
-    shadowCam.left = cx - padded;
-    shadowCam.right = cx + padded;
-    shadowCam.bottom = cy - padded;
-    shadowCam.top = cy + padded;
+    shadowCam.left = -padded;
+    shadowCam.right = padded;
+    shadowCam.bottom = -padded;
+    shadowCam.top = padded;
     shadowCam.near = 1;
     shadowCam.far = Math.max(300, 250 + (maxZ - minZ) + 60);
     shadowCam.updateProjectionMatrix();
 
-    sun.position.copy(_lightPos);
-    sun.target.position.copy(_center);
+    /*
+     * Place the LIGHT at the snapped centre rather than offsetting the ortho
+     * box around a moving light. Three.js derives the shadow view matrix from
+     * `sun.position` and `sun.target`, so an unsnapped light position would
+     * reintroduce exactly the sub-texel drift the snap just removed — the ortho
+     * bounds are therefore symmetric and all the quantisation lives here.
+     */
+    _snapped.set(cx, cy, cz).applyMatrix4(_lightToWorld);
+    sun.target.position.copy(_snapped);
+    sun.position.copy(_snapped).addScaledVector(sunDir, 250);
     sun.target.updateMatrixWorld();
     sun.updateMatrixWorld();
   }

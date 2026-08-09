@@ -256,7 +256,7 @@ export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
   /* 28 */ wpn('arcProd', 'Arc Prod', 26, WarheadClass.Tesla, 14, 1.05,
     ProjectileKind.TeslaBolt, 0,
     { chainCount: 1, turretTurnRate: 320, canTargetAir: true,
-      muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
+      muzzleFx: FxKind.TeslaCharge, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 
   /* 29 */ wpn('slagCharge', 'Slag Charge', 74, WarheadClass.HighExplosive, 12, 2.7,
     ProjectileKind.Shell, 38,
@@ -270,25 +270,25 @@ export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
   /* 30 */ wpn('spitCoil', 'Spit Coil', 30, WarheadClass.Tesla, 16, 0.95,
     ProjectileKind.TeslaBolt, 0,
     { chainCount: 1, turretTurnRate: 260, canTargetAir: true,
-      muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
+      muzzleFx: FxKind.TeslaCharge, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 
   /* 31 */ wpn('grinderArc', 'Grinder Arc', 70, WarheadClass.Tesla, 18, 1.9,
     ProjectileKind.TeslaBolt, 0,
     { chainCount: 2, turretTurnRate: 120,
-      muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
+      muzzleFx: FxKind.TeslaCharge, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 
   /* 32 */ wpn('slagMortar', 'Slag Mortar', 124, WarheadClass.HighExplosive, 42, 4.3,
     ProjectileKind.Shell, 44,
     { minRange: 11, splashRadius: 5.8, splashFalloff: 0.22, turretTurnRate: 45,
       requiresStop: true, canTargetInfantry: true,
-      muzzleFx: FxKind.MuzzleFlashLarge, travelFx: FxKind.RocketTrail, impactFx: FxKind.ExplosionLarge }),
+      muzzleFx: FxKind.MuzzleFlashArtillery, travelFx: FxKind.RocketTrail, impactFx: FxKind.ExplosionLarge }),
 
   // Mounted on the Swarmhornet, so it elevates for the same reason the Kestrel
   // pods do: aircraft have to be able to answer aircraft.
   /* 33 */ wpn('hornetArc', 'Hornet Arc', 44, WarheadClass.Tesla, 17, 1.5,
     ProjectileKind.TeslaBolt, 0,
     { chainCount: 2, turretTurnRate: 300, canTargetAir: true,
-      muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
+      muzzleFx: FxKind.TeslaCharge, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 
   /* 34 */ wpn('scowGun', 'Scow Gun', 68, WarheadClass.HighExplosive, 32, 2.3,
     ProjectileKind.Shell, 74,
@@ -304,13 +304,13 @@ export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
   /* 36 */ wpn('postCoil', 'Post Coil', 34, WarheadClass.Tesla, 20, 0.85,
     ProjectileKind.TeslaBolt, 0,
     { chainCount: 1, turretTurnRate: 300,
-      muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
+      muzzleFx: FxKind.TeslaCharge, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 
   // The Reclamation's `BuildRole.AntiAir` structure (`rclPylon`) carries this.
   /* 37 */ wpn('pylonArc', 'Pylon Arc', 94, WarheadClass.Tesla, 28, 2.2,
     ProjectileKind.TeslaBolt, 0,
     { chainCount: 3, turretTurnRate: 360, canTargetAir: true,
-      muzzleFx: FxKind.None, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
+      muzzleFx: FxKind.TeslaCharge, travelFx: FxKind.TeslaArc, impactFx: FxKind.Sparks }),
 ];
 
 /**
@@ -384,7 +384,7 @@ export const AUGMENT_WEAPONS: readonly WeaponDef[] = [
     ProjectileKind.Bullet, 100,
     { burstCount: 4, burstDelay: 0.07, splashRadius: 1.1, splashFalloff: 0.40,
       turretTurnRate: 300, canTargetAir: true,
-      muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.Sparks }),
+      muzzleFx: FxKind.MuzzleFlashFlak, travelFx: FxKind.TracerBullet, impactFx: FxKind.Sparks }),
 ];
 
 /**
