@@ -1602,9 +1602,30 @@ export const VISION_REGROW_DELAY = 2.0;
  * 17. AI TUNING
  * ========================================================================== */
 
-/** Per-difficulty: [reactionSec, apmCap, waveSizeMul, expansionAggression]. */
+/**
+ * Per-difficulty: [reactionSec, apmCap, waveSizeMul, expansionAggression].
+ *
+ * `resourceBonus` multiplies HARVESTED income only, and it is the master knob
+ * on how fast an opponent does anything: `BuildQueue` charges per tick for the
+ * slice it is about to build and advances only the slice it managed to pay for,
+ * so a brain mining 20% slower produces units and structures ~20% slower too.
+ *
+ * "Enemies are overpowered, they spawn troops faster than us, they build faster
+ * than us. even on easy mode!" They did, and this row is half the reason: Easy
+ * and Normal both sat at 1.0, so the bottom two rungs of the ladder had NO
+ * economic handicap at all. Every Easy knob elsewhere governs WHEN the AI
+ * attacks, HOW WELL it picks units, and how much static defence it puts up —
+ * none of them touched throughput. An Easy AI ran the same economy as a Brutal
+ * one and converted it into army through the same queues at the same rate.
+ *
+ * Easy is now 0.8 and NORMAL STAYS EXACTLY 1.0, deliberately: Normal is the
+ * reference rung, the one where the opponent mines at the same rate the player
+ * does, and a number like 0.95 there would buy almost nothing while making the
+ * whole table harder to reason about. Normal is toned down by fleet size in
+ * `AI_SKILL` instead. Hard and Brutal are untouched.
+ */
 export const AI_DIFFICULTY = [
-  { name: 'Easy',   reactionSec: 2.4, apmCap: 40,  waveSizeMul: 0.6, aggression: 0.4, resourceBonus: 1.0 },
+  { name: 'Easy',   reactionSec: 2.4, apmCap: 40,  waveSizeMul: 0.6, aggression: 0.4, resourceBonus: 0.8 },
   { name: 'Normal', reactionSec: 1.2, apmCap: 90,  waveSizeMul: 1.0, aggression: 0.7, resourceBonus: 1.0 },
   { name: 'Hard',   reactionSec: 0.6, apmCap: 160, waveSizeMul: 1.4, aggression: 1.0, resourceBonus: 1.15 },
   { name: 'Brutal', reactionSec: 0.3, apmCap: 260, waveSizeMul: 1.8, aggression: 1.3, resourceBonus: 1.35 },
@@ -2899,8 +2920,11 @@ export const CREDITS_TICKER_SNAP = 2;
  * have. `AI_DIFFICULTY[].resourceBonus` in section 17 is an ECONOMIC handicap
  * and is published for the economy module to honour; the brain itself never
  * writes credits and never bypasses `IVision`. What actually differs per
- * difficulty here is reaction latency, action rate, and how well the AI PICKS
- * its army — see AI_SKILL below.
+ * difficulty here is reaction latency, action rate, how well the AI PICKS its
+ * army, and HOW BIG AN ECONOMY IT RUNS — see AI_SKILL below. Nothing anywhere
+ * lets it build faster than the player per item: `buildSpeedMul` is a pure
+ * function of the power supply and `factorySpeed()` a pure function of factory
+ * count, and both players go through the same `BuildQueue`.
  * ========================================================================== */
 
 /**
@@ -2915,12 +2939,33 @@ export const CREDITS_TICKER_SNAP = 2;
  *
  * `creditFloor` is the reverse handicap — credits an Easy AI leaves sitting
  * idle instead of converting into army. A human beginner does exactly this.
+ * It is a BUFFER, not a rate: it softens the opening and then stops mattering
+ * the moment steady income clears it, which is why it was never enough on its
+ * own to answer "they build faster than us".
+ *
+ * `maxHarvesters`, `maxRefineries` and `queueDepth` are that answer. All three
+ * used to be single constants in `AI_ECONOMY`/`AI_BUILD` shared by every rung,
+ * so an Easy AI ran the identical nine-harvester, three-refinery economy as a
+ * Brutal one and kept its queues equally full. That is the whole of the
+ * report: the ladder scaled the AI's JUDGEMENT and its CLOCK, and left its
+ * THROUGHPUT flat. A beginner opponent should run a beginner's economy.
+ *
+ * Hard and Brutal keep the old values exactly — 9/3/2 — so this is a change to
+ * the bottom of the ladder only, not a nerf to the top of it.
+ *
+ * `queueDepth` does not change the build RATE (`BuildQueue.advanceTab` only
+ * ever advances `items[0]`); it changes whether there is a GAP between one unit
+ * popping and the next one starting. At depth 1 the Easy brain has to notice
+ * the empty queue on its next build tick and then win an action out of a 40 apm
+ * budget it is also spending on harvesters and squads, which reads on screen as
+ * a barracks that pauses between units. That is the texture of a human who is
+ * not paying attention, and it is the correct one for Easy.
  */
 export const AI_SKILL = [
-  { composition: 0.15, creditFloor: 1400, techBias: 0.6, scoutDelayMul: 2.2, discipline: 0.35, maxDefense: 3 },
-  { composition: 0.55, creditFloor: 600,  techBias: 1.0, scoutDelayMul: 1.0, discipline: 0.65, maxDefense: 6 },
-  { composition: 0.85, creditFloor: 250,  techBias: 1.2, scoutDelayMul: 0.7, discipline: 0.85, maxDefense: 8 },
-  { composition: 1.00, creditFloor: 0,    techBias: 1.4, scoutDelayMul: 0.5, discipline: 1.00, maxDefense: 10 },
+  { composition: 0.15, creditFloor: 1400, techBias: 0.6, scoutDelayMul: 2.2, discipline: 0.35, maxDefense: 3,  maxHarvesters: 5, maxRefineries: 2, queueDepth: 1 },
+  { composition: 0.55, creditFloor: 600,  techBias: 1.0, scoutDelayMul: 1.0, discipline: 0.65, maxDefense: 6,  maxHarvesters: 7, maxRefineries: 3, queueDepth: 2 },
+  { composition: 0.85, creditFloor: 250,  techBias: 1.2, scoutDelayMul: 0.7, discipline: 0.85, maxDefense: 8,  maxHarvesters: 9, maxRefineries: 3, queueDepth: 2 },
+  { composition: 1.00, creditFloor: 0,    techBias: 1.4, scoutDelayMul: 0.5, discipline: 1.00, maxDefense: 10, maxHarvesters: 9, maxRefineries: 3, queueDepth: 2 },
 ] as const;
 
 /**
@@ -2943,14 +2988,21 @@ export const AI_CADENCE = {
   scout: SIM_HZ * 3,
 } as const;
 
-/** Economy layer. */
+/**
+ * Economy layer.
+ *
+ * The fleet SIZE caps that used to live here — `maxHarvesters` and
+ * `maxRefineries` — are per-difficulty now and live in `AI_SKILL`. They are not
+ * duplicated here: a constant that only one of two readers honours is how the
+ * ladder ends up flat again.
+ */
 export const AI_ECONOMY = {
-  /** Harvesters the AI wants per completed refinery. */
+  /**
+   * Harvesters the AI wants per completed refinery. Doctrine, not skill — a
+   * beginner who owns two refineries still wants three trucks on each; what a
+   * beginner does NOT do is own nine trucks. That is `AI_SKILL.maxHarvesters`.
+   */
   harvestersPerRefinery: 3,
-  /** Hard cap regardless of refinery count — past this they queue at the dock. */
-  maxHarvesters: 9,
-  /** Refineries the AI will build before it stops expanding its economy. */
-  maxRefineries: 3,
   /** Cells outward that a harvester searches for ore before it is "starved". */
   oreSearchCells: 42,
   /** Cells outward the EXPANSION check searches, to find a second field. */
@@ -2967,10 +3019,14 @@ export const AI_ECONOMY = {
   siloFillFraction: 0.85,
 } as const;
 
-/** Build layer. */
+/**
+ * Build layer.
+ *
+ * `desiredQueueDepth` moved to `AI_SKILL.queueDepth` — see the note there.
+ * Deeper never built faster; it only ever hid money in the queue and closed the
+ * gap between items, which is exactly the thing that should differ by rung.
+ */
 export const AI_BUILD = {
-  /** Items the AI keeps queued per tab. Deeper just hides money in the queue. */
-  desiredQueueDepth: 2,
   /**
    * Ticks after which an unacknowledged ProductionStart is assumed lost and may
    * be re-issued. Without this the AI deadlocks forever against a production

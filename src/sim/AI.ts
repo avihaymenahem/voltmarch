@@ -1007,12 +1007,31 @@ export class AiBrain {
     /* -- how many harvesters do I want ------------------------------------ */
     const refineries = this.roleCount[BuildRole.Refinery] + this.roleBuilding[BuildRole.Refinery];
     const want = Math.min(
-      AI_ECONOMY.maxHarvesters,
+      this.diff.maxHarvesters,
       Math.round(refineries * AI_ECONOMY.harvestersPerRefinery * this.pers.economy),
     );
+
+    // Trucks already PAID FOR count against the target. Without this the demand
+    // is computed from the trucks that have finished, so the brain re-orders
+    // the same last harvester once per free queue slot and overshoots its own
+    // cap by `queueDepth - 1` every time — a Brutal brain settled on ten with a
+    // cap of nine. Harmless while the cap was a shared constant nobody read as
+    // a promise; not harmless now that it is the difficulty setting.
+    let queued = 0;
+    const harvester = this.catalog.forRole(BuildRole.Harvester, this.faction);
+    if (harvester !== undefined && harvester.defId >= 0) {
+      const q = p.queues[harvester.tab as number];
+      if (q !== undefined) {
+        for (let k = 0; k < q.items.length; k++) {
+          const it = q.items[k];
+          if (!it.isBuilding && it.defId === harvester.defId) queued++;
+        }
+      }
+    }
+
     // No point buying a harvester with nothing left to mine.
-    this.wantHarvesters =
-      this.oreStarved && this.expandX < 0 ? 0 : Math.max(0, want - this.harvesterCount);
+    this.wantHarvesters = this.oreStarved && this.expandX < 0
+      ? 0 : Math.max(0, want - this.harvesterCount - queued);
 
     /* -- power ------------------------------------------------------------ */
     // Project the demand already committed: a structure under construction
@@ -1445,7 +1464,7 @@ export class AiBrain {
     // Economy: more refineries while there is ore left and the personality
     // wants them. The expansion case (a remote field) scores the same entry
     // higher because it is also the answer to being mined out.
-    if (refineries < AI_ECONOMY.maxRefineries) {
+    if (refineries < this.diff.maxRefineries) {
       this.consider(this.catalog.forRole(BuildRole.Refinery, this.faction),
         (1.4 - refineries * 0.35) * this.pers.economy, 'growing the economy');
     }
@@ -1611,7 +1630,7 @@ export class AiBrain {
     const queued = queue === undefined ? 0 : queue.items.length;
     // A structure tab holds one at a time in practice: a second structure
     // cannot be placed until the first one is down.
-    const cap = entry.isBuilding ? 1 : AI_BUILD.desiredQueueDepth;
+    const cap = entry.isBuilding ? 1 : this.diff.queueDepth;
     return queued + this.inFlight[tab] < Math.min(cap, MAX_QUEUE_DEPTH);
   }
 

@@ -1064,6 +1064,17 @@ export interface DifficultyProfile {
   readonly discipline: number;
   /** Cap on static defence structures. */
   readonly maxDefense: number;
+  /**
+   * Harvesters this brain will field, regardless of refinery count. The size of
+   * the economy IS the difficulty: everything downstream of income — units,
+   * structures, defence — is paced by it, because `BuildQueue` advances only
+   * the slice of a build it managed to pay for on that tick.
+   */
+  readonly maxHarvesters: number;
+  /** Refineries it will build before it stops growing its economy. */
+  readonly maxRefineries: number;
+  /** Items it keeps queued per unit tab. 1 leaves an audible gap between units. */
+  readonly queueDepth: number;
 }
 
 /** Clamp an arbitrary difficulty index into the table. */
@@ -1086,6 +1097,9 @@ export function difficultyProfile(index: number): DifficultyProfile {
     scoutDelayMul: s.scoutDelayMul,
     discipline: s.discipline,
     maxDefense: s.maxDefense,
+    maxHarvesters: s.maxHarvesters,
+    maxRefineries: s.maxRefineries,
+    queueDepth: s.queueDepth,
   };
 }
 
