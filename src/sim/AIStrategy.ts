@@ -321,6 +321,15 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
   /* -- Allied army -------------------------------------------------------- */
   fighter('gi', BuildRole.Infantry, EntityKind.Infantry, 200, ['barracks'],
     Faction.Allies, [1.3, 0.7, 0.2, 0.4, 0.9], 3),
+  // THE HEAVY COLUMN IS WHY THIS ROW EXISTS. Read it against the G.I. above:
+  // 0.2 there, 1.5 here. Until the Javelin landed, the best answer the Allied
+  // INFANTRY tab offered against a Rhino was 0.2, so a composition scorer facing
+  // massed heavies had nothing to reach for and spent the whole match rolling
+  // Grizzlies. Its Infantry column is deliberately BELOW the G.I.'s: a rocket
+  // is 0.55 against flesh, and an AI that screened with these would be feeding
+  // 500-credit soldiers to conscripts.
+  fighter('javelin', BuildRole.Skirmisher, EntityKind.Infantry, 500, ['barracks', 'radar'],
+    Faction.Allies, [0.5, 1.3, 1.5, 0.9, 1.5], 2),
   fighter('grizzly', BuildRole.Armor, EntityKind.Vehicle, 700, ['warFactory'],
     Faction.Allies, [0.9, 1.4, 1.2, 1.1, 0], 4),
   fighter('ifv', BuildRole.Skirmisher, EntityKind.Vehicle, 600, ['warFactory'],
@@ -333,6 +342,13 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     Faction.Soviets, [1.2, 0.6, 0.2, 0.4, 0.7], 4),
   fighter('attackDog', BuildRole.Skirmisher, EntityKind.Infantry, 200, ['barracks'],
     Faction.Soviets, [1.9, 0.1, 0.0, 0.0, 0], 1),
+  // The Soviet mirror, and a DIFFERENT shape on purpose. `flakBurst` is an
+  // autocannon: 1.00 against Light and only 0.35 against Heavy, so this reads
+  // 1.5 / 0.7 where the Javelin reads 1.3 / 1.5. The Structure column is 0.4
+  // because 0.35 vs Concrete cannot take a base apart, and the Air column is
+  // the highest of the pair — a flak gun is an AA gun first.
+  fighter('flakTrooper', BuildRole.Skirmisher, EntityKind.Infantry, 300, ['barracks', 'radar'],
+    Faction.Soviets, [0.9, 1.5, 0.7, 0.4, 1.7], 2),
   fighter('rhino', BuildRole.Armor, EntityKind.Vehicle, 900, ['warFactory'],
     Faction.Soviets, [0.8, 1.5, 1.5, 1.2, 0], 5),
   // The Air column WAS 1.2 here. It was never wrong in a way anything could

@@ -180,6 +180,7 @@ const FALLBACK_ROSTER: readonly RosterRow[] = [
   rb('patriot', 'Patriot Missiles', 'Anti-air battery.', 1000, 9, -50, BuildTab.Defense, ['radar'], Faction.Allies),
   rb('prismtower', 'Prism Tower', 'Refracting beam tower.', 1500, 12, -75, BuildTab.Defense, ['lab'], Faction.Allies),
   ru('allied_rifle', 'Peacekeeper', 'Line infantry. Cheap, numerous, crushable.', 200, 4, BuildTab.Infantry, ['barracks'], Faction.Allies),
+  ru('allied_javelin', 'Javelin', 'Shoulder launcher. Kills armour and aircraft.', 500, 7, BuildTab.Infantry, ['barracks', 'radar'], Faction.Allies),
   ru('allied_engineer', 'Engineer', 'Captures structures and mends damage.', 500, 6, BuildTab.Infantry, ['barracks'], Faction.Allies),
   ru('allied_harvester', 'Chrono Miner', 'Mines ore. The economy is this unit.', 1400, 12, BuildTab.Vehicles, ['refinery'], Faction.Allies),
   ru('allied_guardian', 'Guardian Tank', 'Main battle tank. Fast, thin armour.', 700, 8, BuildTab.Vehicles, ['warfactory'], Faction.Allies),
@@ -200,7 +201,10 @@ const FALLBACK_ROSTER: readonly RosterRow[] = [
   rb('flak', 'Flak Cannon', 'Anti-air battery.', 1000, 9, -50, BuildTab.Defense, ['radar'], Faction.Soviets),
   rb('tesla', 'Tesla Coil', 'Needs power. Deletes infantry.', 1500, 12, -100, BuildTab.Defense, ['lab'], Faction.Soviets),
   ru('soviet_conscript', 'Conscript', 'Line infantry. Very cheap.', 100, 3, BuildTab.Infantry, ['barracks'], Faction.Soviets),
-  ru('soviet_flak', 'Flak Trooper', 'Anti-air infantry.', 300, 5, BuildTab.Infantry, ['barracks'], Faction.Soviets),
+  // Cost, gate and blurb transcribed from `flakTrooper` in `src/data/Defs.ts`.
+  // This row promised a Flak Trooper for as long as the roster has existed,
+  // while no def, no fallback and no content->model binding could produce one.
+  ru('soviet_flak', 'Flak Trooper', 'Drum-fed autocannon. Hates anything light.', 300, 6, BuildTab.Infantry, ['barracks', 'radar'], Faction.Soviets),
   ru('soviet_harvester', 'Ore Collector', 'Mines ore. The economy is this unit.', 1400, 12, BuildTab.Vehicles, ['refinery'], Faction.Soviets),
   ru('soviet_rhino', 'Rhino Heavy Tank', 'Slow, heavy, and it wins the trade.', 900, 10, BuildTab.Vehicles, ['warfactory'], Faction.Soviets),
   ru('soviet_sickle', 'Sickle', 'Legged scout. Hops over obstacles.', 700, 8, BuildTab.Vehicles, ['warfactory'], Faction.Soviets),

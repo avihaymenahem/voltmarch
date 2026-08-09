@@ -53,6 +53,7 @@ interface BridgeGlobal { __vmUnits?: unknown; }
  */
 const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   gi: 'allied_rifle',
+  javelin: 'allied_javelin',
   engineer: 'allied_engineer',
   fieldMarshal: 'allied_marshal',
   grizzly: 'allied_guardian',
@@ -62,6 +63,10 @@ const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   destroyer: 'allied_destroyer',
 
   conscript: 'soviet_conscript',
+  // `soviet_flak` was built into every match and bound to nothing until the
+  // Flak Trooper got a def row. It was not a missing model; it was a missing
+  // line in this table.
+  flakTrooper: 'soviet_flak',
   commissar: 'soviet_commissar',
   attackDog: 'soviet_dog',
   rhino: 'soviet_rhino',
@@ -81,6 +86,7 @@ const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
  */
 const INFANTRY_CONTENT: ReadonlySet<string> = new Set([
   'gi', 'engineer', 'conscript', 'attackDog',
+  'javelin', 'flakTrooper',
   'fieldMarshal', 'commissar',
   'mrdWayfarer', 'mrdSunlancer', 'mrdArtificer',
 ]);

@@ -374,6 +374,26 @@ const CONTENT: readonly ContentSpec[] = [
     kind: BuildKind.Unit, faction: Faction.Soviets, tab: I,
     cost: 300, buildTime: 6, prereqs: ['barracks'], sortOrder: 20,
   },
+  /* -- the anti-armour pair -------------------------------------------------
+   * THIS TABLE IS THE ONE THAT DECIDES WHETHER A UNIT CAN BE ORDERED. A def row
+   * in `src/data/Defs.ts` names a unit and a fallback row in `Scenarios.ts` lets
+   * it spawn, but `ProductionCatalog` is keyed on CONTENT and the def binding
+   * only supplies ids for keys that already appear here. A key missing from this
+   * list is `catalog.byKey(...) === null`, which makes `BuildCatalog.bindOracle`
+   * skip it, which leaves the AI's entry at `defId -1` — and the brain then
+   * reports "no production catalog" and stops, with a def table sitting right
+   * there fully bound. That is exactly how these two rows were first found.
+   * ---------------------------------------------------------------------- */
+  {
+    key: 'javelin', name: 'Javelin', blurb: 'Shoulder launcher. Kills armour and aircraft.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: I,
+    cost: 500, buildTime: 7, prereqs: ['barracks', 'radar'], sortOrder: 20,
+  },
+  {
+    key: 'flakTrooper', name: 'Flak Trooper', blurb: 'Drum-fed autocannon. Hates anything light.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: I,
+    cost: 300, buildTime: 6, prereqs: ['barracks', 'radar'], sortOrder: 25,
+  },
   {
     key: 'engineer', name: 'Engineer', blurb: 'Captures structures. Repairs them.',
     kind: BuildKind.Unit, faction: Faction.Neutral, tab: I,

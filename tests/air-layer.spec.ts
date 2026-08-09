@@ -358,7 +358,13 @@ describe('canTargetAir — the gate, and its default', () => {
     const can = ['rifle', 'conscriptRifle', 'chaingun', 'aaCannon', 'rocketLauncher',
       'shipMissile', 'prismTowerBeam', 'teslaBolt',
       'pulseCarbine', 'sunLance', 'arcRepeater', 'heliosLance', 'kestrelPod', 'monitorLance',
-      'arcProd', 'spitCoil', 'hornetArc', 'pylonArc'];
+      'arcProd', 'spitCoil', 'hornetArc', 'pylonArc',
+      // The man-portable flak gun. `aaCannon` above is the EMPLACED battery and
+      // is balanced as one; this is the version an infantryman can carry. Its
+      // Air answer (1.7) is the highest in the Soviet army, which is the whole
+      // reason a flak trooper is called one. The Javelin needs no row here — it
+      // fires `rocketLauncher`, already listed above.
+      'flakBurst'];
     const cannot = ['lightCannon', 'heavyCannon', 'twinCannon', 'prismBeam', 'flameJet',
       'pillboxMg', 'artillery', 'navalGun', 'torpedo', 'bite',
       'focusLance', 'zenithBeam', 'glaiveRepeater', 'mirrorGun',

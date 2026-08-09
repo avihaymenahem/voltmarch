@@ -314,11 +314,86 @@ export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
 ];
 
 /**
+ * THE ONE GUN THE ORIGINAL ARMIES NEVER HAD.
+ *
+ * Read the SmallArms row of `ARMOR_MATRIX` against the Allied and Soviet
+ * infantry rosters and the hole is unmissable:
+ *
+ *   SmallArms  [1.00 infantry, 0.55 light, 0.28 medium, 0.10 HEAVY, 0.18 concrete]
+ *
+ * Every buildable foot soldier those two armies field — G.I., Conscript,
+ * Attack Dog — fires SmallArms. At 0.10 a lone G.I. needs **80 seconds** to
+ * kill a Rhino and **153** to kill an Apocalypse, while `COMBAT_TARGETING`'s
+ * `ineffective` penalty (0.35x at or below a 0.35 multiplier) means he will not
+ * voluntarily aim at either one while any enemy infantryman stands within
+ * 2.2 m of the same bearing. The player reads that, correctly, as "my troops
+ * do not shoot vehicles".
+ *
+ * That is not the counter-triangle working. The triangle assumes each army has
+ * an infantry ANSWER to armour and two of the four do: the Pact fields the
+ * Sunlancer (`sunLance`, Rocket, 0.95 vs Heavy) and the Reclamation's basic
+ * rifleman fires `arcProd` (Tesla, 0.90 vs Heavy). The Allies and the Soviets
+ * had the square empty, so their entire infantry tier was a no-answer against
+ * the tanks both armies are otherwise built around.
+ *
+ * THE ALLIED HALF NEEDED NO NEW ROW AT ALL. `DEFAULT_WEAPONS[16]` is
+ * `rocketLauncher`, "Shoulder Rocket" — 60 damage, Rocket, 24 m, splash 2.4,
+ * `canTargetAir` — and it was wired to NOTHING. A fully authored shoulder-fired
+ * anti-tank weapon has been sitting in the sim armoury for the entire life of
+ * the project waiting for a soldier to carry it, in the same way `soviet_flak`
+ * has been sitting in `UNIT_MASS_LISTS` waiting for a def row. The Javelin fires
+ * it verbatim; adding a near-identical `javelinLauncher` beside it would have
+ * been the actual mistake.
+ *
+ * SO THIS BLOCK HOLDS EXACTLY ONE ROW, and it exists because the obvious reuse
+ * does NOT work on the Soviet side. `aaCannon` ("Flak Battery", row 17) is
+ * already assigned to `flakTrooper` by `CONTENT_WEAPON` in
+ * `src/sim/combat.system.ts` — but that table is the pre-content fallback, and
+ * `aaCannon` is balanced as an EMPLACEMENT: 34 damage x 3 rounds on a 0.82 s
+ * cycle is 124 raw dps, which on a 300-credit infantryman is 99 dps against
+ * flesh — double a Conscript's. It would not counter the line infantryman, it
+ * would delete him. `flakBurst` is the man-portable version of the same idea.
+ *
+ * TWO DIFFERENT ANSWERS, NOT ONE ROW COPIED TWICE. The Allies buy the WARHEAD;
+ * the Soviets buy VOLUME:
+ *
+ *   rocketLauncher  Rocket      [0.55, 0.95, 0.90, 0.95, 0.90]  27 dps @ 24 m
+ *   flakBurst       AutoCannon  [0.80, 1.00, 0.65, 0.35, 0.35]  32 dps @ 20 m
+ *
+ * Read the Heavy column and the asymmetry is deliberate: 0.95 against 0.35.
+ * The Javelin deletes an Apocalypse and the Flak Trooper only chips one, so
+ * the SOVIET answer to heavy armour is still heavier armour — which is that
+ * faction's whole thesis, and `tests/anti-armour-infantry.spec.ts` §1b records
+ * it as a listed asymmetry rather than letting it look like an oversight.
+ * Where the Flak Trooper wins is Light (1.00) and Medium (0.65), and both of
+ * those clear `COMBAT_TARGETING.ineffectiveBelow`, so unlike a Conscript he
+ * will actually AIM at a Grizzly.
+ *
+ * Neither replaces its army's line infantryman: both are worse than a rifle
+ * against flesh, which is the whole point of a counter.
+ *
+ * BOTH ELEVATE. `canTargetAir` is true on both, and `tests/air-layer.spec`
+ * enforces the converse (nothing may SCORE against Air without it).
+ *
+ * APPENDED, NEVER INTERLEAVED — same rule §5 asserts for the sim prefix. Every
+ * `/* NN *\/` index above stays put, so no unit silently inherits its
+ * neighbour's gun.
+ */
+export const AUGMENT_WEAPONS: readonly WeaponDef[] = [
+  /* 38 */ wpn('flakBurst', 'Flak Burst', 11, WarheadClass.AutoCannon, 20, 1.15,
+    ProjectileKind.Bullet, 100,
+    { burstCount: 4, burstDelay: 0.07, splashRadius: 1.1, splashFalloff: 0.40,
+      turretTurnRate: 300, canTargetAir: true,
+      muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.Sparks }),
+];
+
+/**
  * The live armoury: the sim's table verbatim, then the Pact's, then the
- * Reclamation's. The prefix property is ASSERTED in §5, not assumed.
+ * Reclamation's, then the two rows the original armies were missing. The
+ * prefix property is ASSERTED in §5, not assumed.
  */
 export const WEAPONS: readonly WeaponDef[] = [
-  ...DEFAULT_WEAPONS, ...MERIDIAN_WEAPONS, ...RECLAIM_WEAPONS,
+  ...DEFAULT_WEAPONS, ...MERIDIAN_WEAPONS, ...RECLAIM_WEAPONS, ...AUGMENT_WEAPONS,
 ];
 
 const WEAPON_INDEX: ReadonlyMap<string, number> = (() => {
@@ -601,6 +676,27 @@ export const UNITS: readonly UnitDef[] = [
     locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 24,
     weapons: [w('rifle')], hasTurret: false, crushableBy: 1,
   }),
+  // THE ALLIED ANSWER TO ARMOUR, ON FOOT. See `AUGMENT_WEAPONS` for why this
+  // row and its Soviet mirror exist at all. Gated on the Radar Dome for the
+  // same reason the Sunlancer is gated on the Oculus: a 500-credit hard counter
+  // to every tank in the game must not be available in the opening minute.
+  //
+  // 125 HP and 3.0 m/s is the SLOWEST, second-frailest thing either army can
+  // field, and it is OUT-RANGED by everything it is built to kill: 24 m of
+  // `rocketLauncher` against a Rhino's 26 and an Apocalypse's 28. He has to
+  // walk into the gun to use his own, and `crushableBy: 1` means the tank can
+  // decline the exchange entirely and drive over him. The warhead answers the
+  // tank; nothing here answers the escort.
+  unit({
+    key: 'javelin', name: 'Javelin', blurb: 'Shoulder launcher. Kills armour and aircraft.',
+    faction: Faction.Allies, kind: EntityKind.Infantry,
+    cost: 500, buildTime: 7, tab: BuildTab.Infantry,
+    prereqs: ['barracks', 'radar'], sortOrder: 20,
+    model: 'allied_javelin',
+    maxHp: 125, armor: ArmorClass.Infantry, maxSpeed: 3.0, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 25,
+    weapons: [w('rocketLauncher')], hasTurret: false, crushableBy: 1,
+  }),
   unit({
     key: 'engineer', name: 'Engineer', blurb: 'Captures structures. Repairs them.',
     faction: Faction.Neutral, kind: EntityKind.Infantry,
@@ -630,6 +726,29 @@ export const UNITS: readonly UnitDef[] = [
     maxHp: 70, armor: ArmorClass.Infantry, maxSpeed: 6.2, turnRate: 6.0,
     locomotor: Locomotor.Foot, radius: hullRadius(U.attackDog), sight: 26,
     weapons: [w('bite')], hasTurret: false, crushableBy: 1,
+  }),
+  // THE MODEL FOR THIS UNIT ALREADY EXISTED AND DREW NOTHING.
+  //
+  // `src/art/UnitDefs.ts` has built `soviet_flak` — "Flak Trooper", launcher in
+  // hand, magazine drum on its back — since the Soviet roster was authored. It
+  // was in `UNIT_MASS_LISTS`, so every match paid to merge its geometry and
+  // validate its silhouette, and it appeared in NEITHER `CONTENT_TO_MODEL` nor
+  // `CAMEO_UNIT_MODELS`, so nothing could ever spawn wearing it. An army with
+  // no anti-armour infantryman was shipping the art for one.
+  //
+  // Volume, not reach — the mirror of the Javelin. `flakBurst` is 1.00 against
+  // Light and 0.35 against Heavy, so a Flak squad erases IFVs and Skiffs and
+  // merely chips an Apocalypse: the Soviet answer to a heavy tank is still a
+  // heavier tank, which is the faction's whole thesis.
+  unit({
+    key: 'flakTrooper', name: 'Flak Trooper', blurb: 'Drum-fed autocannon. Hates anything light.',
+    faction: Faction.Soviets, kind: EntityKind.Infantry,
+    cost: 300, buildTime: 6, tab: BuildTab.Infantry,
+    prereqs: ['barracks', 'radar'], sortOrder: 25,
+    model: 'soviet_flak',
+    maxHp: 110, armor: ArmorClass.Infantry, maxSpeed: 3.3, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 23,
+    weapons: [w('flakBurst')], hasTurret: false, crushableBy: 1,
   }),
 
   /* -- Allied vehicles ---------------------------------------------------- */
@@ -1272,7 +1391,10 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: Faction.Neutral, cost: 500, buildTime: 10, tab: BuildTab.Structures,
     prereqs: ['powerPlant'], sortOrder: 30, model: 'barracks', dim: B.barracks,
     maxHp: 800, power: -20, sight: 20,
-    produces: ['gi', 'conscript', 'attackDog', 'engineer', 'fieldMarshal', 'commissar'],
+    // One flat list for both armies; `def.faction` does the filtering, which is
+    // why the Allied and Soviet anti-armour troopers sit side by side here.
+    produces: ['gi', 'javelin', 'conscript', 'attackDog', 'flakTrooper',
+      'engineer', 'fieldMarshal', 'commissar'],
     producesTab: BuildTab.Infantry,
     // Infantry walk out of a door, not a vehicle ramp: half a cell is enough.
     exitClearance: 2,

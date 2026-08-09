@@ -900,6 +900,27 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
   attackDog: unit('attackDog', EntityKind.Infantry, U.attackDog, 70, ArmorClass.Infantry, 6.2,
     Locomotor.Foot, 26, GUNNER | EntityFlag.Crushable, Faction.Soviets, { crushableBy: 1 }),
 
+  /* -- the anti-armour pair ------------------------------------------------
+   * Two rows carrying the same warning the commanders below do, and for the
+   * identical reason: `ProductionService.spawnUnit` reads `FALLBACK_UNITS`
+   * BEFORE the def table, so a Javelin with a flawless def row and no row here
+   * would take the player's 500 credits, run its build bar to 100%, and never
+   * walk out of the barracks. Silently. Forever.
+   *
+   * There is a second edge on the same trap, specific to these two: `unit()`
+   * in `src/data/Defs.ts` defaults `flags` to ZERO for the original armies
+   * because `spawnUnit` ORs the def's flags on top of the fallback's. A def-only
+   * unit would therefore spawn with no `CanMove` and no `CanAttack` — a soldier
+   * that stands where he was built and never fires. `GUNNER | Crushable` here
+   * is what actually arms both of them.
+   *
+   * Every number is transcribed from `src/data/Defs.ts`; `tests/data.spec.ts`
+   * asserts the two tables agree. ---------------------------------------- */
+  javelin: unit('javelin', EntityKind.Infantry, U.infantry, 125, ArmorClass.Infantry, 3.0,
+    Locomotor.Foot, 25, GUNNER | EntityFlag.Crushable, Faction.Allies, { crushableBy: 1 }),
+  flakTrooper: unit('flakTrooper', EntityKind.Infantry, U.infantry, 110, ArmorClass.Infantry, 3.3,
+    Locomotor.Foot, 23, GUNNER | EntityFlag.Crushable, Faction.Soviets, { crushableBy: 1 }),
+
   /* -- THE COMMANDERS -------------------------------------------------------
    * One hero per army, and they need a row here for a reason that is easy to
    * miss: `ProductionService.spawnUnit` returns NONE when
@@ -1283,6 +1304,11 @@ const UNIT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   engineer: ['engineer', 'alliedengineer', 'sovietengineer'],
   conscript: ['conscript', 'sovietinfantry', 'redguard'],
   attackDog: ['attackdog', 'dog', 'warbear', 'guarddog'],
+  // No bare 'flak' here on purpose: that is the Soviet AA STRUCTURE's key, and
+  // one string resolving to both a building and an infantryman is the kind of
+  // ambiguity a scenario author discovers at runtime.
+  javelin: ['javelin', 'alliedrocket', 'rocketsoldier', 'alliedlancer'],
+  flakTrooper: ['flaktrooper', 'flakinfantry', 'sovietflak', 'sovietlancer'],
   fieldMarshal: ['fieldmarshal', 'marshal', 'alliedcommander'],
   commissar: ['commissar', 'warcommissar', 'sovietcommander'],
   grizzly: ['grizzly', 'grizzlytank', 'lighttank', 'mediumtank', 'guardiantank'],
@@ -1431,6 +1457,11 @@ const FACTION_KEY_MAP: Readonly<Record<string, readonly string[]>> = {
   conscript:        ['conscript',   'gi',         'conscript',  'mrdWayfarer',      'rclPicker'],
   engineer:         ['engineer',    'engineer',   'engineer',   'mrdArtificer',     'rclTinker'],
   attackDog:        ['attackDog',   'gi',         'attackDog',  'mrdWayfarer',      'rclPicker'],
+  // The anti-armour foot slot, which all four armies now fill. The Reclamation
+  // column is `rclPicker` and not a dedicated row because its BASIC rifleman
+  // already carries a Tesla arc (0.90 vs Heavy) — that army never had the hole.
+  javelin:          ['javelin',     'javelin',    'flakTrooper','mrdLancer',        'rclPicker'],
+  flakTrooper:      ['flakTrooper', 'javelin',    'flakTrooper','mrdLancer',        'rclPicker'],
   // The hero row. A scenario that asks for 'commander' gets the asking army's
   // own — there is no neutral commander, so the neutral column is the Allied
   // one rather than a key that would resolve to nothing.

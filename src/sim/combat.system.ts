@@ -51,6 +51,9 @@ const CONTENT_WEAPON: Readonly<Record<string, string>> = {
   /* -- Allied infantry / vehicles --------------------------------------- */
   gi: 'rifle',
   rifleman: 'rifle',
+  // Row 16 of the sim armoury, "Shoulder Rocket", authored long before anything
+  // carried it. `flakTrooper` below has had its line here just as long.
+  javelin: 'rocketLauncher',
   guardian: 'lightCannon',
   grizzly: 'lightCannon',
   ifv: 'chaingun',

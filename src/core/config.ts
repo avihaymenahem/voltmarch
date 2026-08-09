@@ -2882,6 +2882,64 @@ export const HARVESTER_QUEUE_GAP = 9.0;
  * arrives.
  */
 export const HARVESTER_STUCK_SECONDS = 4.0;
+/**
+ * Seconds a harvester may sit at ZERO VELOCITY, short of its destination, while
+ * nav still holds a flow field for it, before the backstop mover takes over.
+ *
+ * THE STATE THIS EXISTS FOR IS NOT HYPOTHETICAL — it is what "the ore harvesters
+ * keep stucking everywhere, getting me without funds mid game" measured out to.
+ * `NavAssigner`'s give-up path calls `finishOrder`, which sets `AgentFlag.Arrived`
+ * and zeroes `velX/velZ` but does NOT release `navField`. `Harvesting.drive`
+ * gated its whole rescue on `navField < 0`, so the one state the rescue was
+ * written for was the one state it could never see. Soaked over 4 minutes on
+ * three seeds, 10 of 12 harvesters ended parked with a full hopper and
+ * `stats().driven` read 0 for the entire match: the backstop never ran once.
+ *
+ * THE GRACE IS WHY THIS IS A DURATION AND NOT A PREDICATE. A harvester whose
+ * field is merely NOT READY YET also reads zero velocity, for a handful of
+ * ticks. Taking over instantly would have the backstop fight nav on every
+ * re-path — it drives point-to-point with no flow field, so it would happily
+ * aim into a concave obstacle nav was about to route around. 0.6 s is ~18
+ * ticks: far longer than any field expansion, far shorter than the 4 s the
+ * FSM's own progress watchdog waits, so the rescue lands before the FSM has
+ * given up and re-scored.
+ */
+export const HARVESTER_NAV_PARK_GRACE = 0.6;
+/**
+ * Seconds a harvester that just gave up on a dock refuses to contend for it
+ * again. LONGER THAN `HARVESTER_STUCK_SECONDS` ON PURPOSE — that is the whole
+ * mechanism.
+ *
+ * Two haulers, one refinery, and the release path had no cooldown at all: A
+ * holds the dock, fails to reach the apron, `trackProgress` fires at 4 s and
+ * releases; B takes the dock and its destination jumps from the queue point to
+ * the apron — `HARVESTER_QUEUE_GAP`, 9.0 m, which is fifteen times
+ * `NAV_FORMATION_GOAL_EPS`; A re-picks the same refinery, finds B holding it and
+ * jumps 9 m the other way. Every swap drops both flow fields, re-seats both
+ * formation slots and re-arms every give-up watchdog, so NEITHER hauler ever
+ * completes a 12 m approach. Traced as a destination alternating between
+ * 189.1,339.5 and 182.2,345.3 for the entire match with a full hopper.
+ *
+ * Standing down for longer than the other hauler's own stuck window is what
+ * guarantees the window is actually usable: whoever holds the dock gets a
+ * clean run at it rather than being interrupted mid-path.
+ */
+export const HARVESTER_DOCK_STANDDOWN = 6.0;
+/**
+ * Failed apron approaches before a harvester stops aiming at the apron and
+ * aims at the refinery ITSELF, docking on contact from whichever face it can
+ * actually reach.
+ *
+ * The apron is a nicety — it exists so haulers queue tidily on one side instead
+ * of converging from all directions. A base layout can put it in a pocket:
+ * measured on the stock skirmish layout, a refinery at yaw -0.87 faces its dock
+ * INTO a cluster of three other structures. `tickReturn` already docks on
+ * `touching()` for exactly this reason ("a harvester can end up overlapping the
+ * structure ... touching counts"); this makes that the deliberate second
+ * attempt rather than an accident. Tidiness is worth two tries. It is not worth
+ * the economy.
+ */
+export const HARVESTER_DOCK_FALLBACK_TRIES = 2;
 /** Ticks between OreSparkle FX pushes from one scooping harvester. */
 export const HARVEST_FX_INTERVAL = 6;
 /**

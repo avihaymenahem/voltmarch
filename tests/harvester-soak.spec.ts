@@ -1,0 +1,260 @@
+/**
+ * HARVESTER SOAK — the economy loop on a REAL map, for minutes, with numbers.
+ *
+ * `tests/economy.spec.ts` drives the harvester FSM on a flat null terrain with
+ * no buildings and no nav module, which is the right shape for testing the FSM
+ * and is exactly why it cannot see the reported failure: "the ore harvesters
+ * keep stucking everywhere, getting me without funds mid game". A harvester
+ * does not wedge against an abstraction. It wedges against the refinery it is
+ * docking with, the war factory next to it, and the crowd of other harvesters
+ * queued behind it — none of which exist in that rig.
+ *
+ * So this file builds the real thing: `buildScenario` terrain, the scenario's
+ * own ore fields and base layout, the real `FlowFieldCache` / `NavAssigner` /
+ * `SteeringSolver` / `MovementIntegrator` stack, and the real
+ * `HarvesterController` in the same 'assist' mode `economy.system.ts` selects
+ * when nav is present. Tick order matches `core/loop.ts` phases.
+ *
+ * It reports, per harvester: distance travelled, deliveries completed, ticks
+ * spent in each FSM state, and whether it ever moved again after its last
+ * delivery. A stall shows up as delivered-count flatlining while the clock runs.
+ */
+
+import { describe, expect, it } from 'vitest';
+
+import { World } from '../src/core/world';
+import { Channels } from '../src/core/events';
+import { EntityFlag, Locomotor, UnitState } from '../src/core/types';
+import type { PlayerId, SimContext } from '../src/core/types';
+import { SIM_DT, SIM_HZ } from '../src/core/config';
+import { Rng } from '../src/core/math';
+
+import { FlowFieldCache } from '../src/sim/Flowfield';
+import { NavAgents, NavAssigner, SteeringSolver } from '../src/sim/Steering';
+import { MovementIntegrator } from '../src/sim/Movement';
+import { Economy, OreField } from '../src/sim/Economy';
+import { HarvesterController, setHarvesterDrive } from '../src/sim/Harvesting';
+import { buildScenario, activeScenario } from '../src/game/Scenarios';
+
+const P0 = 0 as PlayerId;
+
+interface HarvReport {
+  slot: number;
+  owner: number;
+  distance: number;
+  delivered: number;
+  /** Tick of the most recent cargo delivery, -1 if never. */
+  lastDeliveryTick: number;
+  /** Metres travelled after the last delivery. */
+  distanceSinceDelivery: number;
+  states: Record<string, number>;
+  finalState: string;
+  finalX: number;
+  finalZ: number;
+}
+
+interface SoakResult {
+  ticks: number;
+  harvesters: HarvReport[];
+  creditsOverTime: number[];
+  /** Harvesters that delivered at least once and then stopped delivering. */
+  stalled: HarvReport[];
+}
+
+/**
+ * Run a real skirmish economy for `seconds` and report.
+ *
+ * `start: 'base'` for the same reason `tests/ai.spec.ts` gives: the default
+ * `mcv` opening needs whatever executes `OrderKind.Deploy`, which this file
+ * does not register, so the harvesters would never get a refinery at all and
+ * the measurement would be about the wrong thing.
+ */
+function soak(seed: number, seconds: number): SoakResult {
+  const world = new World();
+  world.addPlayer(1, 'Commander', true, true);
+  world.addPlayer(2, 'Opponent', false, false);
+  const channels = new Channels();
+
+  buildScenario(world, 'skirmish', seed, { start: 'base' });
+
+  const ore = new OreField();
+  const economy = new Economy(world, channels);
+  world.ore = ore;
+
+  // The scenario's own patches, filtered exactly as `economy.system.ts` does:
+  // ore on water or on impassable cells is value the field can never pay out.
+  const spec = activeScenario()!;
+  const accept = (cx: number, cz: number): boolean =>
+    !world.terrain.isWater(cx, cz) && world.terrain.isPassable(cx, cz, Locomotor.Track);
+  for (const f of spec.ore) ore.seedField(f.x, f.z, f.radius, f.richness, accept);
+
+  const harvesters = new HarvesterController(world, channels, ore, economy);
+  // What `checkForRealMover()` picks the moment a nav module is in the registry.
+  setHarvesterDrive('assist');
+
+  const nav = new FlowFieldCache(world.terrain);
+  const agents = new NavAgents();
+  const assigner = new NavAssigner(world, nav, agents);
+  const steering = new SteeringSolver(world, nav, agents);
+  const movement = new MovementIntegrator(world, nav, channels);
+
+  const st = world.store;
+  const slots: number[] = [];
+  for (let a = 0; a < st.aliveCount; a++) {
+    const i = st.alive[a];
+    if ((st.flags[i] & EntityFlag.IsHarvester) !== 0) slots.push(i);
+  }
+
+  const reports = new Map<number, HarvReport>();
+  const lastX = new Map<number, number>();
+  const lastZ = new Map<number, number>();
+  for (const i of slots) {
+    reports.set(i, {
+      slot: i,
+      owner: st.owner[i],
+      distance: 0,
+      delivered: 0,
+      lastDeliveryTick: -1,
+      distanceSinceDelivery: 0,
+      states: {},
+      finalState: '',
+      finalX: 0,
+      finalZ: 0,
+    });
+    lastX.set(i, st.posX[i]);
+    lastZ.set(i, st.posZ[i]);
+  }
+
+  const rng = new Rng(seed ^ 0x5eed);
+  const ticks = Math.round(seconds * SIM_HZ);
+  const creditsOverTime: number[] = [];
+  const bankedBefore = new Map<number, number>();
+  for (const i of slots) bankedBefore.set(i, st.cargo[i]);
+
+  for (let tick = 1; tick <= ticks; tick++) {
+    world.tick = tick;
+    world.time = tick * SIM_DT;
+    channels.setTick(tick);
+    const s: SimContext = { dt: SIM_DT, tick, time: tick * SIM_DT, rng };
+
+    st.snapshotPrev();
+    harvesters.simTick(s);          // Phase.Economy  (300)
+    economy.tick(s.dt, s.time);
+    assigner.simTick(s);            // Phase.PathRequest (500)
+    steering.simTick(s);            // Phase.Steering (600)
+    movement.simTick(s);            // Phase.Movement (700)
+    harvesters.drive(s.dt);         // Phase.Movement, order 900 — the backstop
+    nav.update();
+    world.spatial.rebuild();        // Phase.SpatialRebuild (800)
+
+    for (const i of slots) {
+      const r = reports.get(i)!;
+      const dx = st.posX[i] - lastX.get(i)!;
+      const dz = st.posZ[i] - lastZ.get(i)!;
+      const step = Math.sqrt(dx * dx + dz * dz);
+      lastX.set(i, st.posX[i]);
+      lastZ.set(i, st.posZ[i]);
+      r.distance += step;
+      r.distanceSinceDelivery += step;
+
+      const name = UnitState[st.state[i]] ?? String(st.state[i]);
+      r.states[name] = (r.states[name] ?? 0) + 1;
+
+      // A delivery is the cargo dropping to (near) zero from a real load.
+      const before = bankedBefore.get(i)!;
+      const now = st.cargo[i];
+      if (before > 1 && now <= 0.001) {
+        r.delivered++;
+        r.lastDeliveryTick = tick;
+        r.distanceSinceDelivery = 0;
+      }
+      bankedBefore.set(i, now);
+    }
+
+    if (tick % SIM_HZ === 0) creditsOverTime.push(Math.round(world.player(P0).credits));
+  }
+
+  for (const i of slots) {
+    const r = reports.get(i)!;
+    r.finalState = UnitState[st.state[i]] ?? String(st.state[i]);
+    r.finalX = st.posX[i];
+    r.finalZ = st.posZ[i];
+  }
+
+  const all = [...reports.values()];
+  // "Stalled" = has not delivered in the last third of the run despite the run
+  // being long enough for several round trips.
+  const cutoff = ticks - Math.round(ticks / 3);
+  const stalled = all.filter((r) => r.lastDeliveryTick < cutoff);
+
+  return { ticks, harvesters: all, creditsOverTime, stalled };
+}
+
+function summarise(label: string, r: SoakResult): string {
+  const lines = [`\n=== ${label} — ${(r.ticks / SIM_HZ).toFixed(0)}s, ${r.harvesters.length} harvesters ===`];
+  for (const h of r.harvesters) {
+    const top = Object.entries(h.states).sort((a, b) => b[1] - a[1])
+      .slice(0, 3).map(([k, v]) => `${k}:${v}`).join(' ');
+    lines.push(
+      `  p${h.owner} slot${String(h.slot).padStart(3)} ` +
+      `deliv=${String(h.delivered).padStart(2)} ` +
+      `dist=${h.distance.toFixed(0).padStart(5)}m ` +
+      `lastDeliv=${String(h.lastDeliveryTick).padStart(5)} ` +
+      `sinceDeliv=${h.distanceSinceDelivery.toFixed(0).padStart(5)}m ` +
+      `final=${h.finalState}@${h.finalX.toFixed(0)},${h.finalZ.toFixed(0)}  [${top}]`);
+  }
+  lines.push(`  credits p0 @10s intervals: ${r.creditsOverTime.filter((_, i) => i % 10 === 9).join(' ')}`);
+  lines.push(`  STALLED: ${r.stalled.length}/${r.harvesters.length}`);
+  return lines.join('\n');
+}
+
+describe('harvester soak on a real map', () => {
+  /**
+   * A RATCHET, NOT A PASS MARK. Read the numbers below as what the economy
+   * currently does, not as what it should do.
+   *
+   * The reported defect — "the ore harvesters keep stucking everywhere, getting
+   * me without funds mid game" — reproduces here, and four separate causes have
+   * been found and fixed against this harness so far (see `Harvesting.drive`,
+   * `strandedOnBlockedGround`, `HARVESTER_DOCK_STANDDOWN` and
+   * `reachableDockPoint`). Throughput is still well short of what it should be:
+   * a harvester that never stops should complete roughly one round trip every
+   * 30-60 s, so 12 harvesters over four minutes should deliver on the order of
+   * 50 loads, and they deliver a fraction of that. AT LEAST ONE CAUSE REMAINS.
+   *
+   * What is asserted is therefore the floor that has actually been measured,
+   * so the next change cannot quietly make it worse while looking plausible.
+   * FROZEN is the assertion that matters and it is a real zero: before the
+   * `drive()` fix, harvesters sat at a single coordinate for 1200+ consecutive
+   * ticks with a full hopper. Nothing may do that again.
+   */
+  const MIN_TOTAL_DELIVERIES = 10;
+  const MIN_METRES_EACH = 20;
+
+  it('never freezes a harvester, and delivers no less than the measured floor', () => {
+    const out: string[] = [];
+    let deliveries = 0;
+    const frozen: string[] = [];
+
+    for (const seed of [4242, 1337, 90210]) {
+      const r = soak(seed, 240);
+      out.push(summarise(`seed ${seed}`, r));
+      for (const h of r.harvesters) {
+        deliveries += h.delivered;
+        // Four minutes at 5 m/s is 1200 m of travel available. A hull that has
+        // covered less than 20 m of it has not been "slow", it has been stopped.
+        if (h.distance < MIN_METRES_EACH) {
+          frozen.push(`seed ${seed} slot ${h.slot}: ${h.distance.toFixed(1)} m in 240 s, `
+            + `final ${h.finalState} @ ${h.finalX.toFixed(0)},${h.finalZ.toFixed(0)}`);
+        }
+      }
+    }
+
+    process.stdout.write(`${out.join('\n')}\n`);
+    expect(frozen, 'a harvester never moved — this is the hard-stall defect').toEqual([]);
+    expect(
+      deliveries,
+      `total deliveries fell below the measured floor. ${out.join('\n')}`,
+    ).toBeGreaterThanOrEqual(MIN_TOTAL_DELIVERIES);
+  }, 300_000);
+});

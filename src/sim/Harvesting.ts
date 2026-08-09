@@ -58,14 +58,25 @@
  *   'full'   — no nav module in the registry. This is the only mover, and it
  *              drives every harvester that has somewhere to be.
  *   'assist' — nav is present and owns locomotion. This mover only touches a
- *              harvester that nav has BOTH released (`navField < 0`) AND
- *              stopped asking to move (`velX == velZ == 0`, which Steering
- *              writes explicitly for anything it considers parked or arrived).
- *              That combination means one specific thing: nav gave up on this
- *              unit. Its stuck detector nudged it three times, decided it was
- *              not getting there, and set AgentFlag.Arrived — which is sticky
- *              until the goal moves. A harvester in that state is stopped
- *              forever, mid-haul, with a full hopper.
+ *              harvester nav has stopped asking to move (`velX == velZ == 0`,
+ *              which Steering writes explicitly for anything it considers
+ *              parked or arrived) while its destination is still further away
+ *              than an arrival. That means one specific thing: nav gave up on
+ *              this unit. Its stuck detector nudged it three times, decided it
+ *              was not getting there, and set AgentFlag.Arrived — which is
+ *              sticky until the goal moves. A harvester in that state is
+ *              stopped forever, mid-haul, with a full hopper.
+ *
+ *              THIS PARAGRAPH USED TO SAY "nav has BOTH released
+ *              (`navField < 0`) AND stopped asking to move", and the code
+ *              matched it. Both were wrong in the same place: `finishOrder` —
+ *              the give-up path described immediately above — does NOT release
+ *              the field. So the condition could never be true of the exact
+ *              unit this mode was written to rescue, and it never once ran.
+ *              Measured before the fix: 10 of 12 harvesters parked with full
+ *              hoppers inside four minutes and `stats().driven` was 0 for the
+ *              whole match. See the guard in `drive()` and
+ *              `tests/harvester-soak.spec.ts`.
  *   'off'    — `setHarvesterDrive(false)`. For when nav wants total ownership.
  *
  * The assist mode is not a workaround for a bug in somebody else's module; it
@@ -90,7 +101,9 @@
 import {
   CELL, HARVEST_ARRIVE_RADIUS, HARVEST_FX_INTERVAL, HARVEST_RATE,
   HARVESTER_DOCK_RADIUS, HARVESTER_DOCK_CLEARANCE, HARVESTER_QUEUE_GAP,
-  HARVESTER_STUCK_SECONDS, MAP_CELLS, MAX_PLAYERS, ORE_MIN_CLAIM,
+  HARVESTER_DOCK_FALLBACK_TRIES, HARVESTER_DOCK_STANDDOWN,
+  HARVESTER_NAV_PARK_GRACE, HARVESTER_STUCK_SECONDS, MAP_CELLS, MAX_PLAYERS,
+  NAV_ARRIVE_SLACK, ORE_MIN_CLAIM,
   ORE_SCORING_INTERVAL, ORE_SEARCH_CELLS, ORE_VALUE, SIM_DT,
   UNDER_ATTACK_COOLDOWN, UNLOAD_SECONDS,
 } from '../core/config';
@@ -137,6 +150,19 @@ const PROGRESS_EPSILON = 0.15;
 const PROBE_METRES = 4.5;
 /** Heading offsets, in radians, the mover tries when the probe is blocked. */
 const SIDESTEP = [0.52, -0.52, 1.05, -1.05, 1.57, -1.57, 2.09, -2.09];
+/**
+ * Cells of ring search for open ground when a hull is standing ON a blocked
+ * cell. 6 is three hull-lengths of a harvester and comfortably clears the
+ * widest scatter prop; past that the unit is not "stranded on a rock", it is
+ * inside something structural and `wedgedIn` owns the case.
+ */
+const UNSTRAND_SEARCH_CELLS = 6;
+/**
+ * Cell rings outside a refinery's footprint searched for a reachable dock
+ * point. Three is twelve metres of apron in every direction — past that the
+ * structure is walled in and the honest answer is that it has no dock.
+ */
+const HARVESTER_DOCK_APPROACH_RINGS = 3;
 
 export interface HarvesterStats {
   harvesters: number;
@@ -199,6 +225,17 @@ export class HarvesterController {
    * second time on the following tick, on top of our own step.
    */
   private readonly driveSpeed: PerEntityF32;
+  /**
+   * Seconds this harvester has sat at zero velocity, short of its destination,
+   * while nav still held a field for it. Reset the instant it moves, arrives or
+   * stops hauling; see the guard in `drive()` for why it is a duration and not
+   * a boolean.
+   */
+  private readonly parkedFor: PerEntityF32;
+  /** Sim time until which this harvester will not contend for its dock. */
+  private readonly dockStandDown: PerEntityF32;
+  /** Consecutive failed apron approaches; see HARVESTER_DOCK_FALLBACK_TRIES. */
+  private readonly dockTries: PerEntityF32;
 
   /** Per-REFINERY: the harvester currently holding its dock, or 0. */
   private readonly dockHolder: PerEntityU32;
@@ -213,6 +250,10 @@ export class HarvesterController {
   private drivenThisTick = 0;
 
   private readonly cellOut = new Int32Array(2);
+  /** Owned scratch for `nearestOpenCell`; never held across a call. */
+  private readonly unstrandOut = new Int32Array(2);
+  /** Owned scratch for `reachableDockPoint`; world coords, never held. */
+  private readonly dockOut = new Float32Array(2);
   private readonly unsubscribes: (() => void)[] = [];
 
   constructor(
@@ -229,6 +270,9 @@ export class HarvesterController {
     this.bestGap = new PerEntityF32(store, 1e9);
     this.stuckFor = new PerEntityF32(store, 0);
     this.driveSpeed = new PerEntityF32(store, 0);
+    this.parkedFor = new PerEntityF32(store, 0);
+    this.dockStandDown = new PerEntityF32(store, 0);
+    this.dockTries = new PerEntityF32(store, 0);
     this.dockHolder = new PerEntityU32(store, 0);
     this.lastUnderAttackEva.fill(-1e9);
 
@@ -484,6 +528,10 @@ export class HarvesterController {
     store.dockTarget[i] = store.handleOf(ri) as number;
     store.state[i] = UnitState.ReturnToRefinery;
     this.nextScore.setAt(i, time + SCORE_PERIOD);
+    // A fresh haul is a fresh approach: neither the stand-down nor the failed
+    // -approach count from the PREVIOUS trip should decide this one.
+    this.dockStandDown.setAt(i, 0);
+    this.dockTries.setAt(i, 0);
     this.resetProgress(i);
   }
 
@@ -502,7 +550,11 @@ export class HarvesterController {
     }
 
     const refId = store.handleOf(ri);
-    const mine = this.tryHoldDock(refId, id);
+    // A harvester that has just given up on this dock does NOT contend for it.
+    // Without the stand-down the release below is a livelock rather than a
+    // yield: see HARVESTER_DOCK_STANDDOWN for the measured trace.
+    const standing = time < this.dockStandDown.getAt(i);
+    const mine = !standing && this.tryHoldDock(refId, id);
 
     // The dock apron sits in front of the refinery; the queue slot sits one
     // harvester length further out along the same axis, so a waiting hauler
@@ -553,9 +605,31 @@ export class HarvesterController {
       Math.max(1, store.footprintH[ri]) * CELL * 0.5,
       fwdX, fwdZ, store.radius[i],
     );
-    const out = mine ? reach : reach + HARVESTER_QUEUE_GAP;
-    const tx = store.posX[ri] + fwdX * out;
-    const tz = store.posZ[ri] + fwdZ * out;
+    // AFTER ENOUGH FAILED APPROACHES, STOP AIMING AT THE APRON. The apron is a
+    // fixed point in front of the refinery and a base layout is free to bury it
+    // — measured on the stock skirmish map, a refinery at yaw -0.87 aims its
+    // dock into a pocket ringed by three of its owner's own structures. Aiming
+    // at the refinery BODY instead lets nav park the hull against whichever
+    // face it can reach, and the `touching(i, ri)` arrival test below then docks
+    // it. See HARVESTER_DOCK_FALLBACK_TRIES.
+    const fallback = this.dockTries.getAt(i) >= HARVESTER_DOCK_FALLBACK_TRIES;
+    let tx: number;
+    let tz: number;
+    if (mine && fallback && this.reachableDockPoint(i, ri, this.dockOut)) {
+      // NOT the refinery's centre. A footprint is impassable by definition, so
+      // a flow field can have no goal inside one and no gradient near it —
+      // aiming at the middle of the building produced a harvester ORBITING it
+      // at 12-29 m for four minutes at full throttle, which is the same defect
+      // as the buried apron wearing different clothes. `reachableDockPoint`
+      // returns open ground touching the footprint, which is both a legal nav
+      // goal and close enough for `touching()` below to dock.
+      tx = this.dockOut[0];
+      tz = this.dockOut[1];
+    } else {
+      const out = mine ? reach : reach + HARVESTER_QUEUE_GAP;
+      tx = store.posX[ri] + fwdX * out;
+      tz = store.posZ[ri] + fwdZ * out;
+    }
     this.setDest(i, tx, tz);
 
     const d = dist2(store.posX[i], store.posZ[i], tx, tz);
@@ -571,6 +645,8 @@ export class HarvesterController {
       store.speed[i] = 0;
       store.velX[i] = 0;
       store.velZ[i] = 0;
+      this.dockTries.setAt(i, 0);
+      this.dockStandDown.setAt(i, 0);
       this.resetProgress(i);
       return;
     }
@@ -578,8 +654,16 @@ export class HarvesterController {
     // Only the harvester actually holding the dock can be "stuck": one that is
     // queued is supposed to be sitting still.
     if (mine && this.trackProgress(i, d, dt)) {
-      store.dockTarget[i] = NONE as number;
+      // YIELD, DO NOT RE-CONTEND. `dockTarget` is deliberately KEPT: clearing
+      // it sent the next tick through `pickRefinery`, which picked the same
+      // refinery straight back and made the release a no-op that had already
+      // cost the other hauler its path. Releasing the hold plus standing down
+      // for longer than the other one's stuck window is what turns this into a
+      // real yield — and the try counter is what eventually stops it aiming at
+      // an apron it has now failed to reach twice.
       this.releaseDock(refId, id);
+      this.dockTries.setAt(i, this.dockTries.getAt(i) + 1);
+      this.dockStandDown.setAt(i, time + HARVESTER_DOCK_STANDDOWN);
       this.resetProgress(i);
     }
   }
@@ -857,18 +941,68 @@ export class HarvesterController {
       //
       // Self-clearing: the moment the hull is outside the rect this stops
       // firing and normal handling resumes.
-      if (hauling) {
+      // Idle is in here as well as the two hauling states. A harvester stranded
+      // on a blocked cell while Idle never becomes un-stranded on its own — it
+      // re-scores, picks a cell, publishes a destination and then cannot move
+      // toward it — so excluding Idle would leave the recovery unable to reach
+      // the state its own retry loop drops into. Docked is deliberately NOT
+      // here: that hull is parked against a refinery on purpose.
+      const recoverable = hauling || state === UnitState.Idle;
+      if (recoverable) {
         const wedged = this.wedgedIn(i);
         if (wedged >= 0) {
           this.drivenThisTick++;
           this.driveEscape(i, dt, wedged, assist);
           continue;
         }
+        // Not inside a structure, but standing on ground no field integrated
+        // into. Same dead end, different cause — see `strandedOnBlockedGround`.
+        if (this.strandedOnBlockedGround(i)) {
+          this.drivenThisTick++;
+          this.driveUnstrand(i, dt, assist);
+          continue;
+        }
       }
 
-      // The real pathfinder holds a field for this unit, so it is actively
-      // being driven. Hands off — only one module integrates a position.
-      if (store.navField[i] >= 0) continue;
+      // The real pathfinder holds a field for this unit. That USED to end the
+      // discussion — `if (store.navField[i] >= 0) continue;` — on the stated
+      // premise that holding a field means being driven by one.
+      //
+      // THE PREMISE IS FALSE IN EXACTLY THE CASE THIS MODULE EXISTS FOR, and
+      // the header of this file describes that case without the code ever
+      // testing for it. `NavAssigner`'s give-up path calls `finishOrder`: it
+      // sets `AgentFlag.Arrived`, it zeroes `velX/velZ` — and it does NOT
+      // release `navField`. So a harvester nav has abandoned reads
+      // `navField >= 0` forever, this guard skipped it forever, and the rescue
+      // two lines below could never fire. Traced: parked at 308.0,203.1 with a
+      // full hopper 15 m from its refinery, `aflags=14` (Arrived|HasSlot|
+      // Displaced), `spd=0`, unchanged for 1200 consecutive ticks, while
+      // `stats().driven` read 0 for the whole match.
+      //
+      // The honest question is "is nav MOVING it", and the honest signal is
+      // velocity: Steering writes velX/velZ to zero for precisely the units it
+      // is not asking Movement to move. So a field is only a reason to keep
+      // hands off while the unit is actually being moved by it, or while it is
+      // close enough that stopping is the right answer.
+      if (store.navField[i] >= 0) {
+        const moving = store.velX[i] !== 0 || store.velZ[i] !== 0;
+        const gap = Math.hypot(
+          this.destX.getAt(i) - store.posX[i], this.destZ.getAt(i) - store.posZ[i]);
+        if (!hauling || moving || gap <= this.arriveAt(i, NAV_ARRIVE_SLACK)) {
+          this.parkedFor.setAt(i, 0);
+          continue;
+        }
+        // Zero velocity, still far from the destination, nav holding a field it
+        // is not using. Wait out the grace so a field that is merely still
+        // expanding is not mistaken for one that has been abandoned.
+        const held = this.parkedFor.getAt(i) + dt;
+        this.parkedFor.setAt(i, held);
+        if (held < HARVESTER_NAV_PARK_GRACE) continue;
+        this.drivenThisTick++;
+        this.driveOne(i, dt, assist);
+        continue;
+      }
+      this.parkedFor.setAt(i, 0);
 
       if (!hauling) {
         this.driveSpeed.setAt(i, 0);
@@ -992,6 +1126,172 @@ export class HarvesterController {
     // Harvesters are unarmed, so nothing else writes turretYaw and a scoop that
     // "follows the turret" would otherwise stay frozen at the spawn heading.
     if ((store.flags[i] & EntityFlag.CanAttack) === 0) store.turretYaw[i] = yaw;
+  }
+
+  /**
+   * Open ground touching refinery `ri`, nearest to harvester `i`, written into
+   * `out` as world coordinates. False when the structure is completely walled
+   * in, which is a real state (a player can brick their own refinery) and the
+   * honest answer is then "no dock point", not a made-up one.
+   *
+   * Walks the cell rings just outside the footprint, nearest ring first, and
+   * takes the passable cell closest to the hull. Deterministic scan order, no
+   * allocation, no RNG. `HARVESTER_DOCK_APPROACH_RINGS` bounds the work at a
+   * few dozen cells for the largest structure in the game.
+   */
+  private reachableDockPoint(i: number, ri: number, out: Float32Array): boolean {
+    const store = this.world.store;
+    const terrain = this.world.terrain;
+    const loco = store.locomotor[i] as Locomotor;
+    const fw = Math.max(1, store.footprintW[ri]);
+    const fh = Math.max(1, store.footprintH[ri]);
+    // Same derivation `Damage.buildingDeath` uses to release the nav grid, so
+    // the rect this walks is exactly the rect the terrain marked occupied.
+    const cx0 = Math.round(store.posX[ri] / CELL - fw * 0.5);
+    const cz0 = Math.round(store.posZ[ri] / CELL - fh * 0.5);
+    const px = store.posX[i];
+    const pz = store.posZ[i];
+
+    for (let r = 1; r <= HARVESTER_DOCK_APPROACH_RINGS; r++) {
+      let bestX = 0;
+      let bestZ = 0;
+      let bestD = Infinity;
+      const x0 = cx0 - r;
+      const x1 = cx0 + fw - 1 + r;
+      const z0 = cz0 - r;
+      const z1 = cz0 + fh - 1 + r;
+      for (let gz = z0; gz <= z1; gz++) {
+        for (let gx = x0; gx <= x1; gx++) {
+          // The ring only; the interior is the footprint plus closer rings.
+          if (gx !== x0 && gx !== x1 && gz !== z0 && gz !== z1) continue;
+          if (gx < 0 || gz < 0 || gx >= MAP_CELLS || gz >= MAP_CELLS) continue;
+          if (!terrain.isPassable(gx, gz, loco)) continue;
+          const wx = (gx + 0.5) * CELL;
+          const wz = (gz + 0.5) * CELL;
+          const d = (wx - px) * (wx - px) + (wz - pz) * (wz - pz);
+          if (d < bestD) { bestD = d; bestX = wx; bestZ = wz; }
+        }
+      }
+      if (bestD < Infinity) { out[0] = bestX; out[1] = bestZ; return true; }
+    }
+    return false;
+  }
+
+  /**
+   * True when the cell under the hull is impassable for this hull.
+   *
+   * THE SAME UNRECOVERABLE CONDITION `wedgedIn` DESCRIBES, ARRIVED AT WITHOUT A
+   * BUILDING. `wedgedIn`'s own doc states the principle exactly — "every cell
+   * under the unit is blocked, so there is no gradient to follow out" — and
+   * then tests for it by scanning `byKind[Building]`, which is one of the ways
+   * that principle can be true and not the only one. A scatter rock blocks a
+   * cell just as completely as a War Factory does.
+   *
+   * Traced: a harvester parked at 308.0,203.1 with a full hopper for 900+ ticks
+   * with NO building within twenty metres. Its own cell was impassable and its
+   * eight neighbours were open, so nav sampled a flow field that had never
+   * integrated into the cell it was standing in, reported `speed = 5.0` and
+   * `vel = 3.55,3.52`, and the hull did not move one millimetre. `wedgedIn`
+   * returned -1 the whole time.
+   *
+   * How it gets there is not one bug: nav's wedge displacement picks a
+   * neighbouring cell without requiring it to be passable, crowd relaxation
+   * shoves hulls sideways, and a scatter prop can be authored under a unit.
+   * Each of those is worth its own fix; none of them is a reason for the
+   * economy to stop, which is why the recovery is here and is about the STATE
+   * rather than about any one cause.
+   */
+  private strandedOnBlockedGround(i: number): boolean {
+    const store = this.world.store;
+    return !this.cellOpen(store.posX[i], store.posZ[i], store.locomotor[i] as Locomotor);
+  }
+
+  /**
+   * Nearest passable cell to this hull, by Chebyshev ring. Written into `out`
+   * as cell coordinates; false when nothing within `UNSTRAND_SEARCH_CELLS` is
+   * open, which means the recovery has nowhere to put it and the caller should
+   * leave it alone rather than shuffle it deeper in.
+   *
+   * Ring-by-ring with a fixed scan order inside each ring, so two machines pick
+   * the same cell. No allocation, no RNG — this runs inside the sim.
+   */
+  private nearestOpenCell(i: number, out: Int32Array): boolean {
+    const store = this.world.store;
+    const terrain = this.world.terrain;
+    const loco = store.locomotor[i] as Locomotor;
+    const cx = clampCell(worldToCell(store.posX[i]));
+    const cz = clampCell(worldToCell(store.posZ[i]));
+
+    for (let r = 1; r <= UNSTRAND_SEARCH_CELLS; r++) {
+      for (let dz = -r; dz <= r; dz++) {
+        for (let dx = -r; dx <= r; dx++) {
+          // The ring only — the interior was covered by a smaller r.
+          if (dx !== -r && dx !== r && dz !== -r && dz !== r) continue;
+          const gx = cx + dx;
+          const gz = cz + dz;
+          if (gx < 0 || gz < 0 || gx >= MAP_CELLS || gz >= MAP_CELLS) continue;
+          if (!terrain.isPassable(gx, gz, loco)) continue;
+          out[0] = gx;
+          out[1] = gz;
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Walk a stranded hull to the nearest open cell centre.
+   *
+   * Straight-line and unsteered, for the reason `driveEscape` gives: this is an
+   * extraction, and spending a second turning the hull leaves it on the blocked
+   * cell for that second while nav re-parks it. It deliberately does NOT consult
+   * `cellOpen` on the way — the unit is already standing on a closed cell, so
+   * every such test would fail and the extraction could never start.
+   */
+  private driveUnstrand(i: number, dt: number, assist: boolean): void {
+    const w = this.world;
+    const store = w.store;
+    if (!this.nearestOpenCell(i, this.unstrandOut)) return;
+
+    const tx = (this.unstrandOut[0] + 0.5) * CELL;
+    const tz = (this.unstrandOut[1] + 0.5) * CELL;
+    let dx = tx - store.posX[i];
+    let dz = tz - store.posZ[i];
+    const d = Math.sqrt(dx * dx + dz * dz);
+    if (d < 1e-4) return;
+    dx /= d;
+    dz /= d;
+
+    const speed = Math.max(1.5, store.maxSpeed[i] * 0.6);
+    const step = Math.min(d, speed * dt);
+    const nx = clampWorld(store.posX[i] + dx * step, 1.5);
+    const nz = clampWorld(store.posZ[i] + dz * step, 1.5);
+
+    store.posX[i] = nx;
+    store.posZ[i] = nz;
+    store.posY[i] = w.terrain.heightAt(nx, nz);
+    store.cellX[i] = clampCell(worldToCell(nx));
+    store.cellZ[i] = clampCell(worldToCell(nz));
+    // Face the way out, or the hull reads as sliding sideways out of a rock.
+    store.yaw[i] = Math.atan2(dx, dz);
+    store.desiredYaw[i] = store.yaw[i];
+    store.treadPhase[i] += step;
+    this.driveSpeed.setAt(i, 0);
+    this.parkedFor.setAt(i, 0);
+    // The FSM has been watching a unit that could not move; do not let it
+    // re-plan the instant it can.
+    this.resetProgress(i);
+    if (assist) {
+      store.speed[i] = 0;
+      store.velX[i] = 0;
+      store.velZ[i] = 0;
+    } else {
+      store.speed[i] = speed;
+      store.velX[i] = dx * speed;
+      store.velZ[i] = dz * speed;
+    }
+    if ((store.flags[i] & EntityFlag.CanAttack) === 0) store.turretYaw[i] = store.yaw[i];
   }
 
   /**

@@ -520,13 +520,39 @@ function infantry(o: InfantryOpts): UnitMassList {
 
   /* -- weapon ------------------------------------------------------------- */
   if (o.weapon === 'launcher') {
+    // TWO LAUNCHERS, THE SAME WAY THERE ARE TWO RIFLES BELOW.
+    //
+    // This branch used to emit ONE tube for both armies while the rifle branch
+    // has always forked on `coat`, and that asymmetry was invisible only
+    // because `soviet_flak` was the sole launcher in the game. It stopped being
+    // invisible the moment a plated soldier picked one up, for a reason worth
+    // recording: the greatcoat torso projects 0.624 of silhouette area and the
+    // plated chest rig only 0.508, so the coat family runs 4-7 points clear of
+    // R8's 35% dominant-mass floor while the plated family runs 0.04-2.8 —
+    // `allied_marshal` sits at 35.04%. A 1.02 m tube projects 0.471, which is
+    // most of a plated torso, and it put `allied_javelin` at 34.75%: REJECTED.
+    //
+    // The fix is not a smaller number until the bar clears. The Soviet tube is
+    // unchanged — long, crude, carried away from the body. The Allied one is a
+    // different weapon: shorter, fatter, braced back over the shoulder so it
+    // overlaps the pauldron instead of standing proud of it. That is the
+    // silhouette difference the header of this section asks for between two
+    // armies' equivalents, and the metric follows from it rather than driving it.
     masses.push(
-      greeble('launchTube', 'cylinder', [0.20, 1.02, 0.20], [W * 0.50, torsoY + 0.20, 0.22], 'bareMetal', {
-        rot: [1.30, 0, 0.10], group: 'weapon', shape: { segments: 12 },
-      }),
-      greeble('launchMouth', 'cone', [0.28, 0.18, 0.28], [W * 0.50, torsoY + 0.50, 0.52], 'bareMetal', {
-        rot: [1.30, 0, 0.10], group: 'weapon', shape: { segments: 12, rTop: 1.5 },
-      }),
+      coat
+        ? greeble('launchTube', 'cylinder', [0.20, 1.02, 0.20], [W * 0.50, torsoY + 0.20, 0.22], 'bareMetal', {
+          rot: [1.30, 0, 0.10], group: 'weapon', shape: { segments: 12 },
+        })
+        : greeble('launchTube', 'cylinder', [0.24, 0.74, 0.24], [W * 0.46, torsoY + 0.26, 0.06], 'bareMetal', {
+          rot: [1.06, 0, 0.14], group: 'weapon', shape: { segments: 12 },
+        }),
+      coat
+        ? greeble('launchMouth', 'cone', [0.28, 0.18, 0.28], [W * 0.50, torsoY + 0.50, 0.52], 'bareMetal', {
+          rot: [1.30, 0, 0.10], group: 'weapon', shape: { segments: 12, rTop: 1.5 },
+        })
+        : greeble('launchMouth', 'cone', [0.32, 0.16, 0.32], [W * 0.46, torsoY + 0.56, 0.34], 'bareMetal', {
+          rot: [1.06, 0, 0.14], group: 'weapon', shape: { segments: 12, rTop: 1.5 },
+        }),
     );
   } else if (o.weapon === 'tool') {
     masses.push(
@@ -1730,6 +1756,12 @@ function plane(o: PlaneOpts): UnitMassList {
 export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   /* -- Allies ----------------------------------------------------------- */
   infantry({ key: 'allied_rifle', name: 'Peacekeeper', faction: 'allies', hullNumber: 4172, weapon: 'rifle', pack: 'radio', build: 'plated' }),
+  // The Allied half of the anti-armour pair. `soviet_flak` below has carried the
+  // launcher-and-drum loadout since the roster was written; this is the same two
+  // option flips on the OTHER silhouette family, so the two armies' AT troopers
+  // read as different soldiers rather than one mesh in two palettes — which is
+  // exactly the R12 failure the header above this factory describes.
+  infantry({ key: 'allied_javelin', name: 'Javelin', faction: 'allies', hullNumber: 4172, weapon: 'launcher', pack: 'drum', build: 'plated' }),
   infantry({ key: 'allied_engineer', name: 'Engineer', faction: 'allies', hullNumber: 4172, weapon: 'tool', pack: 'case', build: 'plated' }),
   infantry({ key: 'allied_marshal', name: 'Field Marshal', faction: 'allies', hullNumber: 4172, weapon: 'rifle', pack: 'radio', build: 'plated', officer: true }),
 

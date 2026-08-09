@@ -297,6 +297,7 @@ type ModelBinding = string | readonly [string, string];
 export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
   /* -- Allies ------------------------------------------------------------ */
   gi: 'allied_rifle',
+  javelin: 'allied_javelin',
   grizzly: 'allied_guardian',
   ifv: 'allied_ifv',
   prismTank: 'allied_prism',
@@ -306,6 +307,7 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
 
   /* -- Soviets ----------------------------------------------------------- */
   conscript: 'soviet_conscript',
+  flakTrooper: 'soviet_flak',
   attackDog: 'soviet_dog',
   commissar: 'soviet_commissar',
   rhino: 'soviet_rhino',
