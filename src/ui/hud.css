@@ -2496,3 +2496,59 @@ html.vm-no-blur .vm-hud {
 
 /* A locked item is dimmed as artwork too, not only as a glyph. */
 .vm-hud .vm-slot.is-locked .vm-slot-cameo { opacity: 0.4; filter: grayscale(0.7); }
+
+/* ==========================================================================
+ * THE NETWORK BANNER
+ *
+ * One line over the battlefield for anything the multiplayer link needs to say
+ * — an opponent disconnecting, a grace countdown, a desync, a refused order.
+ *
+ * IT LIVES HERE AND NOT IN shell.css, and that is not filing.
+ * `tests/shell-scope.spec.ts` requires every selector in the shell sheet to be
+ * rooted at `.vm-shell` precisely so the shell can never reach a HUD node, and
+ * this IS a HUD node — so the rule cannot live there without either breaking
+ * that gate or claiming an ancestor it does not have.
+ *
+ * ROOTED AT `#hud-root`, NOT `.vm-hud`, and the difference is load-bearing:
+ * `.vm-hud` is a div `Hud.ts` creates INSIDE the mount point, so the banner —
+ * which the shell appends to the mount point itself, and which must outlive any
+ * particular HUD instance — is its SIBLING and not its descendant.
+ * `main.ts` throws at boot if `#hud-root` is missing, so the id is as reliable
+ * an anchor as a class.
+ *
+ * `pointer-events: none` so it can never eat a click meant for the ground
+ * underneath it — this appears mid-battle, over the exact area a player is
+ * most likely to be clicking.
+ * ========================================================================== */
+
+#hud-root .vm-net-notice {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  z-index: 40;
+  max-width: min(90vw, 640px);
+  padding: 8px 18px;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-align: center;
+  color: #e8eef4;
+  background: rgba(7, 10, 16, 0.9);
+  border: 1px solid rgba(240, 85, 58, 0.5);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
+#hud-root .vm-net-notice.is-on {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #hud-root .vm-net-notice {
+    transition: opacity 220ms ease;
+    transform: translateX(-50%);
+  }
+  #hud-root .vm-net-notice.is-on { transform: translateX(-50%); }
+}

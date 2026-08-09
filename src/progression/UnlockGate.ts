@@ -209,11 +209,37 @@ export function unlockGate(): UnlockGate | null {
  * True when no gate is installed, when the def carries no `unlockedBy`, or when
  * the player owns the unlock. Never throws, never allocates.
  */
+/**
+ * When set, every gate question answers "yes" regardless of what is installed.
+ *
+ * FOR MULTIPLAYER, AND IT HAD TO BE A FLAG RATHER THAN `setUnlockGate(null)`.
+ * The gate is consulted while the world is being BUILT — `Scenarios.ts` calls
+ * `isBuildable` when spawning the starting army — and it answers from the LOCAL
+ * profile, so two players with different unlocks build different armies and
+ * diverge before either of them moves.
+ *
+ * Clearing it before the boot does not work: `progression.system`'s `init()`
+ * runs during that same boot and installs a gate built from this browser's
+ * profile, silently undoing the clear. A suppression flag is honoured no matter
+ * what is installed or when, which is the only version of this that survives
+ * the boot order.
+ */
+let suppressed = false;
+
+/** Turn gating off entirely (PvP), or back on. */
+export function suppressUnlockGate(on: boolean): void {
+  suppressed = on;
+}
+
+export function unlockGateSuppressed(): boolean {
+  return suppressed;
+}
+
 export function isBuildable(
   def: Gateable | null | undefined,
   player?: GatePlayer | null,
 ): boolean {
-  if (active === null) return true;
+  if (suppressed || active === null) return true;
   return player === undefined ? active.allows(def) : active.allowsFor(player, def);
 }
 
@@ -223,7 +249,7 @@ export function filterBuildable<T extends Gateable>(
   player?: GatePlayer | null,
   out?: T[],
 ): T[] {
-  if (active === null) {
+  if (suppressed || active === null) {
     const dst = out ?? [];
     dst.length = 0;
     for (let i = 0; i < defs.length; i++) dst.push(defs[i]);

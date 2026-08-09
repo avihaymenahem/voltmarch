@@ -1,6 +1,6 @@
 {
   "name": "voltmarch",
-  "version": "1.32.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "VOLTMARCH - an original real-time strategy game for the browser, built on Three.js. All art is procedurally generated from code.",
@@ -8,10 +8,14 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.test.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p server/tsconfig.json",
     "test": "vitest run",
+    "server": "npm --prefix server run dev",
+    "server:build": "npm --prefix server run build",
+    "server:test": "npm --prefix server run build && node --test \"server/dist/server/test/*.spec.js\"",
     "soak": "vitest run -t determinism",
-    "shots": "node tools/shoot.mjs"
+    "shots": "node tools/shoot.mjs",
+    "desync-probe": "node tools/desync-probe.mjs"
   },
   "dependencies": {
     "three": "0.185.1"

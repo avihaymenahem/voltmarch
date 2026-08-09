@@ -211,3 +211,52 @@ describe('determinism gate', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+/* -------------------------------------------------------------------------- */
+/* The markup gate.                                                           */
+/*                                                                            */
+/* THIS PROPERTY IS ALREADY TRUE AND WAS NEVER ENFORCED. There is not one     */
+/* `innerHTML` anywhere in src/**; `Shell.el()` builds nodes with             */
+/* `textContent`, and `src/ui/Chrome.ts` states the rule in a comment: "no    */
+/* framework, no virtual DOM, no innerHTML with interpolated content".        */
+/*                                                                            */
+/* A comment is not a mechanism, and the multiplayer work is exactly what     */
+/* turns this from tidiness into security: the relay forwards strings that    */
+/* another player controls — a room code echoed back, an opponent's slot, a   */
+/* server status — into this UI. The moment one of those reaches an           */
+/* `innerHTML`, a peer can run script in their opponent's page.               */
+/*                                                                            */
+/* So the rule gets a gate, in the same shape as the determinism one above,   */
+/* while it still costs nothing to add.                                       */
+/* -------------------------------------------------------------------------- */
+
+describe('markup gate', () => {
+  const BANNED: readonly [RegExp, string][] = [
+    [/\.\s*innerHTML\s*=/, 'assigns innerHTML'],
+    [/\.\s*outerHTML\s*=/, 'assigns outerHTML'],
+    [/\.\s*insertAdjacentHTML\s*\(/, 'calls insertAdjacentHTML'],
+    [/\bdocument\s*\.\s*write\s*\(/, 'calls document.write'],
+    [/\bnew\s+Function\s*\(/, 'builds a function from a string'],
+    // `eval(` only — `.eval` on some other object is not the global eval.
+    [/(^|[^.\w])eval\s*\(/, 'calls eval'],
+  ];
+
+  it('src/** never turns a string into markup or into code', () => {
+    const files = walkTs(join(process.cwd(), 'src'), []);
+    expect(files.length, 'the walker must actually find the source').toBeGreaterThan(50);
+    const offenders: string[] = [];
+    for (const f of files) {
+      const src = readFileSync(f, 'utf8');
+      for (const [rx, what] of BANNED) {
+        if (rx.test(src)) offenders.push(`${f.replace(process.cwd(), '')}: ${what}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('the gate would actually catch one', () => {
+    // A gate nobody has seen fail is a gate nobody knows works.
+    const sample = 'node.innerHTML = untrusted;';
+    expect(BANNED.some(([rx]) => rx.test(sample))).toBe(true);
+  });
+});

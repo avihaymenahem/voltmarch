@@ -548,6 +548,26 @@ export class GameLoop {
   /** The RNG every sim system draws from. Reseeded per match. */
   rng: IRng;
 
+  /**
+   * THE STEP GATE — set by a lockstep client, null in every other match.
+   *
+   * A deterministic multiplayer client may not run tick N until it holds every
+   * peer's commands for the turn N opens. The loop must therefore be able to
+   * decline to step, and only the loop can: by the time `beforeSimStep` fires
+   * the tick has already been incremented and the world has already advanced
+   * its clock.
+   *
+   * `src/net/net.system.ts` installs it in `init()` and clears it in
+   * `dispose()`, so the loop never learns what a network is — the same shape as
+   * every other seam here.
+   *
+   * ONLY `onFrame` CONSULTS IT. `advanceTicks`, `advanceFrames`, `runHeadless`
+   * and `captureFrame` step unconditionally: those are the test and capture
+   * paths, they have no wall clock and no peer, and a gate there would let a
+   * network stall change what a screenshot photographs.
+   */
+  private stepGate: (() => boolean) | null = null;
+
   /** Reused context objects — the loop must not allocate. */
   private readonly simCtx: { dt: number; tick: number; time: number; rng: IRng };
   private readonly renderCtx: {
@@ -570,6 +590,21 @@ export class GameLoop {
   seed(s: number): void {
     this.rng = new Rng(s);
     this.simCtx.rng = this.rng;
+  }
+
+  /**
+   * Install the predicate the loop asks before each fixed step, or null to
+   * remove it. See `stepGate`. Returning false stalls simulated time; it never
+   * drops or reorders a tick, which is what makes it safe for lockstep — tick N
+   * is tick N on every machine no matter when each one got there.
+   */
+  setStepGate(fn: (() => boolean) | null): void {
+    this.stepGate = fn;
+  }
+
+  /** True while the gate is refusing to advance. Drives the "waiting" indicator. */
+  get stalled(): boolean {
+    return this.stepGate !== null && !this.stepGate();
   }
 
   /** Current speed multiplier. */
@@ -639,14 +674,28 @@ export class GameLoop {
 
     // --- fixed steps -----------------------------------------------------
     let steps = 0;
+    let gated = false;
+    const gate = this.stepGate;
     while (this.accumulator >= SIM_DT && steps < MAX_SUBSTEPS) {
+      if (gate !== null && !gate()) { gated = true; break; }
       this.stepSim();
       this.accumulator -= SIM_DT;
       steps++;
     }
     this.lastSteps = steps;
 
-    if (this.accumulator >= SIM_DT) {
+    if (gated) {
+      // A NETWORK WAIT IS NOT A FRAME-TIME SPIRAL, and must not be counted as
+      // one. Left alone, the accumulator would keep filling for as long as the
+      // peer is late, and the branch below would score every stalled frame as a
+      // hitch — a perf HUD reporting hundreds of hitches for a healthy match on
+      // a slow connection, which trains everyone to ignore the counter.
+      //
+      // Clamped rather than zeroed: one step's worth of credit is kept so the
+      // frame the frame arrives on steps immediately instead of waiting out
+      // another SIM_DT.
+      if (this.accumulator > SIM_DT) this.accumulator = SIM_DT;
+    } else if (this.accumulator >= SIM_DT) {
       // Still behind after MAX_SUBSTEPS: discard the backlog rather than
       // spiral. Simulated time legitimately falls behind wall-clock here.
       this.hitchCount++;

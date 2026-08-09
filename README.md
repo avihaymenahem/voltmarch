@@ -30,7 +30,7 @@
 A full RTS built for the browser: a main menu and settings shell, skirmish setup, four playable
 factions with distinct rosters and tech trees, an AI opponent that plays a real game, harvesters and
 refineries, power grids that gate production, base placement, fog of war, superweapons, engineer
-capture, and a modern bottom-anchored HUD.
+capture, online 1v1, and a modern bottom-anchored HUD.
 
 VOLTMARCH is not a port or a clone. It is a new title in the tradition of late-90s and 2000s
 base-building RTS — the conventions it adopts (harvester economy, tech tiers, build queues) are the
@@ -74,15 +74,47 @@ Then open <http://localhost:5173>.
 | `npm run dev` | dev server on port 5173 |
 | `npm run build` | production bundle into `dist/` |
 | `npm run preview` | serve the built bundle |
-| `npm run typecheck` | `tsc --noEmit` across all three programs |
+| `npm run typecheck` | `tsc --noEmit` across all four programs (game, node, tests, relay) |
 | `npm test` | vitest unit + determinism suites |
 | `npm run shots` | capture the visual-critique screenshot set into `shots/` |
 | `npm run soak` | the determinism suite alone, for when only that is in question |
+| `npm run server` | build and run the multiplayer relay on `127.0.0.1:8787` |
+| `npm run server:test` | the relay's own suite, via `node --test` |
+| `npm run desync-probe` | compare the unspecified `Math.*` functions across browser engines |
 
 `npm run build` deliberately does **not** run `tsc`. esbuild strips types, so a type error must never
 be able to stop the game from running; type errors are caught by `npm run typecheck` instead.
 
 `npm run shots` additionally needs Playwright: `npx playwright install chromium`.
+
+## Multiplayer
+
+1v1 online, as **deterministic lockstep**: both clients run the identical simulation and the server
+relays turn frames without simulating anything. That is not an optimisation — it is what makes the
+whole thing affordable. A match costs a few hundred bytes a second, and the relay carries no game
+code at all.
+
+It was largely already built. [`src/game/Replay.ts`](src/game/Replay.ts) records the command stream
+by apply tick and re-issues it into a live bus; [`src/game/Checksum.ts`](src/game/Checksum.ts)
+fingerprints the simulation per tick with per-block divergence reporting. Those are exactly a
+lockstep client and a desync detector, written for replay and pointed at a socket here — so a PvP
+match also produces a correct replay, with no extra machinery.
+
+```bash
+npm run server          # the relay, on 127.0.0.1:8787
+npm run desync-probe    # do the unspecified Math.* functions agree across engines?
+```
+
+The relay lives in [`server/`](server/README.md) with its own `package.json` and a tsconfig whose
+include list is four files — importing `three` or `src/sim/**` is a build error rather than a
+review note. Its README carries the threat model, the limits, and the six defects an audit of it
+found. Multiplayer only appears in the menu when a relay actually answers a handshake; set
+`VITE_RELAY_URL` at build time, or `?relay=` for a one-off.
+
+**The honest limit:** in lockstep every client holds the whole world, so a modified client can
+reveal fog and script its own input. Resource, spawn and damage cheats are all closed — a client can
+only issue commands, and one that fudges its own state diverges and is named by the checksum within
+100 ms. Closing the rest means a server-authoritative simulation, which this deliberately is not.
 
 ## Boot flags
 
@@ -128,7 +160,7 @@ src/core/      simulation spine — types, config, EntityStore/World, event buse
 src/core/config.ts   art direction + world scale; the single values file that drives the look
 src/render/    renderer, scene rig, camera rig, post chain, RenderBridge, __VM debug handle
 src/game/      Bootstrap, GameContext, glob system discovery, scenario router
-src/shell/     main menu, skirmish setup, settings, pause, victory/defeat
+src/shell/     main menu, skirmish setup, multiplayer lobby, settings, pause, victory/defeat
 src/ui/        the in-match HUD and in-world overlay
 src/input/     action catalogue, key binding, selection, order issuing — every player command
 src/sim/       pathfinding, combat, economy, production, AI, vision, superweapons, capture
@@ -137,8 +169,10 @@ src/art/       procedural geometry — shape primitives, greeble, unit and build
 src/world/     terrain, water, roads, decals, prop scatter
 src/vfx/       particles, beams, explosions, tracers, pooled scene lights
 src/audio/     WebAudio mixer, recorded SFX/voice/announcer banks, adaptive streamed score
+src/net/       lockstep protocol, turn scheduling, relay merge rules, socket, session
 src/data/      unit/building/faction/armour tables
-tools/         screenshot harness, grade probe, brand asset generator
+server/        the multiplayer relay — no game code, four-file import closure
+tools/         screenshot harness, grade probe, cross-engine desync probe, brand assets
 docs/          look bible, visual DNA, architecture
 ```
 

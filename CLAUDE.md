@@ -88,15 +88,19 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 2447 across 98 files
+npm test             # vitest, currently 2516 across 100 files
 npm run build        # must exit 0
+npm run server:test  # the relay's own 31, via node --test
 ```
 
 **The first line said `npx tsc --noEmit` and that is NOT the gate.** `npm run typecheck`
-is three invocations — `tsc --noEmit`, then `-p tsconfig.node.json`, then
-`-p tsconfig.test.json` — because the root config's `include` is `src/**/*.ts` only.
-`tests/**` and `vite.config.ts` are checked by the other two, deliberately: test files
-need `process` and `node:fs`, which game code must never see.
+is now FOUR invocations — `tsc --noEmit`, then `-p tsconfig.node.json`, then
+`-p tsconfig.test.json`, then `-p server/tsconfig.json` — because the root config's
+`include` is `src/**/*.ts` only. `tests/**` and `vite.config.ts` are checked by the
+next two, deliberately: test files need `process` and `node:fs`, which game code must
+never see. The fourth is the multiplayer relay, whose own `include` is the security
+boundary described in `server/README.md` — it can see four files and importing `three`
+or `src/sim/**` is a build error rather than a review note.
 
 So the documented command typechecks the game and silently skips every spec file, and
 CI runs `npm run typecheck`. That gap shipped a v1.31.0 deploy that failed on five
@@ -142,10 +146,39 @@ the build.
   PathRequest 500, Steering 600, Movement 700, SpatialRebuild 800, Targeting 900, Weapons 1000,
   Projectiles 1100, Damage 1200, Vision 1300, Cleanup 1400.
 
+## Multiplayer is deterministic lockstep, and the server never simulates
+
+`src/net/` is the client half, `server/` is a relay that forwards turn frames and runs no
+game code. Read `server/README.md` before touching either.
+
+- **The relay stamps identity; the simulation enforces authority.** Every inbound command
+  has `player` overwritten with the slot of the socket it came from, and the sim already
+  refuses anything a slot does not own. So a spoofed slot does nothing.
+- **`validateCommand` in `src/net/protocol.ts` is ONE pure function with TWO callers**, and
+  they do different things with a rejection. The server FILTERS (before broadcast, so it is
+  consistent for everyone). A client TRIPWIRES — it ends the match rather than dropping the
+  command, because dropping it on one client and not the other is a desync with no findable
+  cause. Do not "helpfully" make the client skip a bad command.
+- **`CommandBus.harvest` is not `drain`.** Harvest skips the recording tap, because a
+  multiplayer command crosses the bus twice — once when clicked, once when its turn comes
+  up. Using `drain` for the harvest logs everything twice; that is trap 2 in
+  `src/game/Replay.ts`, rediscovered by a different route.
+- **`net.system.ts` is `Phase.Command` order 0** and that number is the whole design: it is
+  the only point at which a local command can be taken off the bus before a consumer
+  applies it. It is inert until `attachSession()`, so single player is unchanged.
+- **The step gate stalls, it never skips.** Wall-clock divergence between two machines is
+  irrelevant to lockstep — tick N is tick N whenever each one gets there. Executing a turn
+  without a peer's commands is permanent divergence.
+- **`tools/desync-probe.mjs` is the cross-engine check** and its baseline
+  (`tools/desync-reference.json`) is committed so one engine at a time, on one machine at a
+  time, still adds up to a comparison. It refuses to overwrite a divergence it found — an
+  instrument that erases its own finding is worse than none.
+
 ## Hard rules
 
 - **Determinism.** Inside `simTick`, `Math.random()`, `Date.now()` and `performance.now()` are
-  banned — there is a test asserting this. Use `s.rng` and the tick counter.
+  banned — there is a test asserting this. Use `s.rng` and the tick counter. This is not
+  hygiene any more: it is what makes multiplayer possible at all.
 - **Performance.** 200+ units at 60fps, zero allocation in the frame loop, and a draw-call budget of
   130 — which is a TARGET, not a description. Measured on the twelve capture fixtures via
   `renderer.info.render.calls`, the real figure is **171–263** (that count includes the three CSM

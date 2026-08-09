@@ -539,6 +539,43 @@ export class CommandBus {
   }
 
   /**
+   * TAKE every queued command OUT for scheduling, WITHOUT firing the observer.
+   *
+   * This is the lockstep seam. A multiplayer client cannot let a local command
+   * apply on the tick it was issued — it has to go to the relay and come back
+   * scheduled for an agreed turn — so `src/net/net.system.ts` runs at
+   * Phase.Command order 0, harvests the ring, and re-issues the completed frame
+   * for the current turn. Everything downstream then drains as it always did.
+   *
+   * WHY IT SKIPS THE OBSERVER, WHICH IS THE ENTIRE REASON THIS EXISTS.
+   * `drain` fires the recording tap, and a harvested command passes through the
+   * bus TWICE: once here, on the tick the player clicked, and once again when
+   * its turn comes up and it is re-issued. Using `drain` for the harvest would
+   * log every multiplayer command twice — trap 2 from `src/game/Replay.ts`
+   * rediscovered by a different route, and with the same symptom, three power
+   * plants for one click.
+   *
+   * Skipping the tap here means the recorder sees each command exactly once, on
+   * its EXECUTION tick, which is the tick playback can reproduce. A PvP match
+   * therefore records a correct replay with no extra machinery.
+   *
+   * `fn` MUST COPY. Same contract as `drain`: `cmd` is pooled and
+   * `cmd.entities` is a window into `arena` that dies when this returns.
+   */
+  harvest(fn: (cmd: Command) => void): void {
+    if (this.draining) return;
+    this.draining = true;
+    const n = this.count;
+    try {
+      for (let i = 0; i < n; i++) fn(this.ring[i]);
+    } finally {
+      this.draining = false;
+      this.count = 0;
+      this.arenaHead = 0;
+    }
+  }
+
+  /**
    * Deliver every queued command to `fn`, then reset the ring.
    * The `Command` passed to `fn` is POOLED — do not retain it, and do not
    * retain `cmd.entities`.

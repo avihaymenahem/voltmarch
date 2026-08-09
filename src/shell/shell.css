@@ -2010,3 +2010,300 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
       rgba(4, 7, 11, 0.80) 0%, rgba(3, 5, 9, 0.94) 100%);
   }
 }
+
+/* ==========================================================================
+ * MULTIPLAYER LOBBY
+ *
+ * Built from the same glass, notch and accent tokens as every other screen —
+ * a lobby that looks like a different product is a lobby that reads as a
+ * bolt-on. The only genuinely new element is the invite code, which is set in
+ * a monospace face at a size meant to be READ ALOUD across a room.
+ *
+ * THE 18px INSET IS REPEATED PER ELEMENT, NOT SET ON THE BODY, and that is the
+ * house convention rather than an oversight. `.vm-page-body` carries NO padding
+ * — it is the scroll container, and padding on a scroll container puts the
+ * scrollbar 18px in from the panel edge. So every child supplies its own inset:
+ * `.vm-row` does it with `padding: 9px 18px`, and these do it with a margin.
+ *
+ * This lobby shipped once with the inset missing entirely and every legend,
+ * card and button sat flush against the panel edge.
+ * ========================================================================== */
+
+.vm-shell .vm-mp-legend {
+  margin: 18px 18px 8px;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-mp-cards {
+  margin: 0 18px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.vm-shell .vm-mp-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 12px 12px 16px;
+  position: relative;
+  text-align: left;
+  font-family: inherit;
+  color: var(--vm-text-dim);
+  background: var(--vm-glass-soft);
+  border: 1px solid var(--vm-line);
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.vm-shell .vm-mp-card:hover { border-color: var(--vm-line); color: var(--vm-text); }
+
+.vm-shell .vm-mp-card.is-on {
+  color: var(--vm-text);
+  border-color: var(--vm-accent-dim);
+  background: rgba(53, 200, 240, 0.07);
+}
+
+/* The stripe is the faction's own colour and is the only thing on this screen
+   that is not a token — it comes from the art bible via `playableFactions`. */
+.vm-shell .vm-mp-card-stripe {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+}
+
+.vm-shell .vm-mp-card-name {
+  font-size: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.vm-shell .vm-mp-card-blurb {
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-mp-select {
+  padding: 8px 10px;
+  min-width: 180px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--vm-text);
+  background: rgba(0, 0, 0, 0.34);
+  border: 1px solid var(--vm-line);
+}
+
+.vm-shell .vm-mp-block {
+  margin: 0 18px 4px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.vm-shell .vm-mp-join .vm-mp-input { flex: 0 0 auto; }
+
+/* READ ALOUD, NOT SCANNED. Monospace so 8 and B are distinguishable, wide
+   tracking so it can be dictated a character at a time, and large because the
+   host is usually reading it off the screen to somebody on a call. */
+.vm-shell .vm-mp-code {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 26px;
+  letter-spacing: 0.34em;
+  padding-left: 0.34em;
+  color: var(--vm-text-faint);
+  opacity: 0;
+  transition: opacity 200ms ease, color 200ms ease;
+}
+
+.vm-shell .vm-mp-code.is-on {
+  opacity: 1;
+  color: var(--vm-accent);
+}
+
+.vm-shell .vm-mp-input {
+  width: 9em;
+  padding: 9px 12px;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-size: 18px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--vm-text);
+  background: rgba(0, 0, 0, 0.34);
+  border: 1px solid var(--vm-line);
+  transition: border-color 140ms ease;
+}
+
+.vm-shell .vm-mp-input:focus,
+.vm-shell .vm-mp-input.is-focus { border-color: var(--vm-accent-dim); }
+
+/* The final control in the body. Without this the last button sits hard against
+   the footer's top rule.
+
+   SCOPED TO `.vm-mp-block`, NOT to `.vm-page-body > .vm-btn`. The broad form was
+   written first and reaches into EVERY page screen's body — the exact class of
+   cross-screen collision `tests/shell-scope.spec.ts` was written to stop, just
+   inside the shell rather than across into the HUD. Every control in this lobby
+   is wrapped in a block so the narrow selector is sufficient. */
+.vm-shell .vm-mp-block:last-child {
+  margin-bottom: 18px;
+}
+
+.vm-shell .vm-mp-status {
+  flex: 1 1 auto;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--vm-text-dim);
+}
+
+/* -- the room browser ------------------------------------------------------
+ * A list of strangers' matches. Every string in a row is derived from a map id
+ * or a faction index — never from anything a stranger typed — so there is no
+ * escaping to think about here, by construction rather than by care.
+ * ------------------------------------------------------------------------ */
+
+.vm-shell .vm-mp-filters {
+  display: flex;
+  gap: 8px;
+  margin: 0 18px 10px;
+  flex-wrap: wrap;
+}
+
+.vm-shell .vm-mp-filters .vm-mp-select {
+  flex: 1 1 120px;
+  min-width: 0;
+}
+
+.vm-shell .vm-mp-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 18px;
+  /* Bounded so the browser cannot push the rest of the column off the panel.
+     The page body scrolls; this scrolls inside it. */
+  max-height: 40vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.vm-shell .vm-mp-rooms.is-locked {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.vm-shell .vm-mp-room {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  font-family: inherit;
+  text-align: left;
+  color: var(--vm-text-dim);
+  background: var(--vm-glass-soft);
+  border: 1px solid var(--vm-line-soft);
+  cursor: pointer;
+  transition: border-color 140ms ease, color 140ms ease, background 140ms ease;
+}
+
+.vm-shell .vm-mp-room:hover {
+  color: var(--vm-text);
+  border-color: var(--vm-accent-dim);
+  background: rgba(53, 200, 240, 0.07);
+}
+
+.vm-shell .vm-mp-room-dot {
+  flex: 0 0 auto;
+  width: 3px;
+  align-self: stretch;
+}
+
+.vm-shell .vm-mp-room-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.vm-shell .vm-mp-room-map {
+  font-size: 14px;
+  letter-spacing: 0.04em;
+}
+
+.vm-shell .vm-mp-room-side {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-mp-room-age {
+  flex: 0 0 auto;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--vm-text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.vm-shell .vm-mp-empty {
+  padding: 18px 12px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--vm-text-faint);
+  border: 1px dashed var(--vm-line);
+}
+
+.vm-shell .vm-mp-count {
+  margin: 8px 18px 0;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+/* -- segmented control (public / invite only) ----------------------------- */
+
+.vm-shell .vm-mp-seg {
+  display: flex;
+  border: 1px solid var(--vm-line);
+}
+
+.vm-shell .vm-mp-seg-btn {
+  flex: 1 1 0;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  transition: color 140ms ease, background 140ms ease;
+}
+
+.vm-shell .vm-mp-seg-btn + .vm-mp-seg-btn {
+  border-left: 1px solid var(--vm-line);
+}
+
+.vm-shell .vm-mp-seg-btn.is-on {
+  color: var(--vm-text);
+  background: rgba(53, 200, 240, 0.12);
+}
+
+.vm-shell .vm-mp-seg-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The code sits under the host button, not beside it — it is an announcement,
+   not a field. */
+.vm-shell .vm-setup-col > .vm-mp-code {
+  margin: 0 18px 12px;
+}

@@ -1,0 +1,52 @@
+{
+  /* ==========================================================================
+   * THE INCLUDE LIST IS THE SECURITY BOUNDARY.
+   *
+   * "The server runs no game code" is the decision the whole netcode design
+   * rests on, and a decision that lives only in a README is a decision somebody
+   * breaks with one convenient import. So it lives here instead: the compiler
+   * can see exactly four files, and reaching for `three`, `src/sim/**`,
+   * `src/core/config.ts` or anything else fails the build.
+   *
+   * The closure really is closed, and `tests/net-protocol.spec.ts` asserts it:
+   *   server/src/**        -> src/net/protocol.ts, src/net/TurnRelay.ts
+   *   src/net/TurnRelay.ts -> src/net/protocol.ts
+   *   src/net/protocol.ts  -> src/core/types.ts
+   *   src/core/types.ts    -> nothing at all
+   *
+   * COMMONJS, NOT ESM, and that is not laziness. `src/net/protocol.ts` imports
+   * '../core/types' without a file extension, which Node's ESM loader refuses
+   * at runtime no matter what tsc accepts at build time. Rewriting the game's
+   * import specifiers to suit the relay would be the tail wagging the dog.
+   * ======================================================================== */
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+    "types": ["node"],
+
+    "rootDir": "..",
+    "outDir": "dist",
+
+    "strict": true,
+    "noImplicitAny": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "useUnknownInCatchVariables": true,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": false,
+
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "sourceMap": true
+  },
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "../src/net/protocol.ts",
+    "../src/net/TurnRelay.ts",
+    "../src/core/types.ts"
+  ]
+}

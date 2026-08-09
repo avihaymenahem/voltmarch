@@ -49,10 +49,11 @@
  * ============================================================================
  */
 
-import { CommandKind } from '../core/types';
-import type { Command, EntityId, PlayerId } from '../core/types';
+import type { Command } from '../core/types';
 import type { Channels } from '../core/events';
 import type { World } from '../core/world';
+import { applyCommand } from '../net/applyCommand';
+import type { WireCommand } from '../net/protocol';
 import { checksum, describeDivergence, type SimChecksum } from './Checksum';
 
 /**
@@ -82,23 +83,15 @@ export interface ReplayHeader {
  *
  * A FLAT OBJECT, not the pooled struct. Every field is copied, including a
  * fresh `entities` array — see trap 3.
+ *
+ * IT IS A `WireCommand` PLUS A TICK, and that is structural rather than
+ * incidental: a replay command and a command arriving from a multiplayer peer
+ * are the same thing from two different places, and both are re-issued by the
+ * same `applyCommand`. Declaring the relationship in the type means a field
+ * added to one cannot be forgotten in the other.
  */
-export interface ReplayCommand {
+export interface ReplayCommand extends WireCommand {
   tick: number;
-  kind: number;
-  player: number;
-  order: number;
-  target: number;
-  x: number;
-  z: number;
-  defId: number;
-  tab: number;
-  cx: number;
-  cz: number;
-  stance: number;
-  queued: boolean;
-  arg: number;
-  entities: number[];
 }
 
 /** A checkpoint, so a divergence reports a TICK rather than a shrug. */
@@ -367,61 +360,23 @@ export class ReplayPlayer {
       + ` (recorded ${want.entities} entities, replay has ${got.entities})`;
   }
 
+  /**
+   * Re-issue one recorded command.
+   *
+   * The `switch` over `CommandKind` used to live here. It is now
+   * `src/net/applyCommand.ts`, shared with the multiplayer client, because
+   * re-issuing a command from a file and re-issuing one from a peer are the
+   * same operation and two copies of it would drift — a new command kind added
+   * to one and not the other produces a replay that plays a different match, or
+   * a lockstep game that desyncs only when somebody uses the new verb.
+   */
   private issue(c: ReplayCommand, channels: Channels): void {
-    const bus = channels.commands;
-    const player = c.player as PlayerId;
-    switch (c.kind) {
-      case CommandKind.Order: {
-        const ids = new Int32Array(c.entities.length);
-        for (let i = 0; i < c.entities.length; i++) ids[i] = c.entities[i]!;
-        bus.issueOrder(
-          player, c.order, ids, ids.length, c.x, c.z, c.target as EntityId, c.queued,
-        );
-        return;
-      }
-      case CommandKind.ProductionStart:
-        bus.issueProductionStart(player, c.tab, c.defId, c.arg);
-        return;
-      case CommandKind.ProductionPause:
-        bus.issueProductionPause(player, c.tab, c.arg !== 0);
-        return;
-      case CommandKind.ProductionCancel:
-        bus.issueProductionCancel(player, c.tab, c.defId, c.arg);
-        return;
-      case CommandKind.PlaceBuilding:
-        bus.issuePlaceBuilding(player, c.defId, c.cx, c.cz, c.arg);
-        return;
-      case CommandKind.SetRally:
-        bus.issueSetRally(player, c.target as EntityId, c.x, c.z);
-        return;
-      case CommandKind.SellBuilding:
-        bus.issueSell(player, c.target as EntityId);
-        return;
-      case CommandKind.RepairToggle:
-        bus.issueRepairToggle(player, c.target as EntityId);
-        return;
-      case CommandKind.SetStance: {
-        const ids = new Int32Array(c.entities.length);
-        for (let i = 0; i < c.entities.length; i++) ids[i] = c.entities[i]!;
-        bus.issueSetStance(player, ids, ids.length, c.stance);
-        return;
-      }
-      case CommandKind.SetPrimary:
-        bus.issueSetPrimary(player, c.target as EntityId);
-        return;
-      case CommandKind.SelfDestruct:
-        bus.issueSelfDestruct(player, c.target as EntityId);
-        return;
-      case CommandKind.Relocate:
-        bus.issueRelocate(player, c.target as EntityId, c.cx, c.cz, c.arg);
-        return;
-      default:
-        // An unknown kind in a file whose formatVersion we accepted means the
-        // enum gained a row without a version bump. Loud, because the replay
-        // is now wrong and silence would hide it.
-        this.firstDesync = this.firstDesync !== '' ? this.firstDesync
-          : `unknown command kind ${c.kind} at tick ${c.tick} — the format version `
-            + 'was not bumped when CommandKind changed';
-    }
+    if (applyCommand(channels.commands, c as WireCommand)) return;
+    // An unknown kind in a file whose formatVersion we accepted means the enum
+    // gained a row without a version bump. Loud, because the replay is now
+    // wrong and silence would hide it.
+    this.firstDesync = this.firstDesync !== '' ? this.firstDesync
+      : `unknown command kind ${c.kind} at tick ${c.tick} — the format version `
+        + 'was not bumped when CommandKind changed';
   }
 }

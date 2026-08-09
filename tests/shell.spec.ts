@@ -14,6 +14,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { defaultCameraCodes } from '../src/input/ActionCatalogue';
 
@@ -417,5 +419,134 @@ describe('touched', () => {
     expect(touched(changed, 'graphics.bloom')).toBe(true);
     expect(touched(changed, 'graphics.bloomier')).toBe(false);
     expect(touched(changed, 'gameplay')).toBe(false);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The page-layout gate.                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * EVERY FULL-PAGE SCREEN MUST CLAIM `.vm-page` ON ITS HOST.
+ *
+ * `.vm-screen` — the layer `Shell.show` builds for a screen — is a bare flex
+ * container with no alignment of its own. `.vm-page` is what supplies
+ * `align-items: center`, `justify-content: center` and the outer padding, and
+ * a screen that forgets it does not fail: it renders perfectly, pinned to the
+ * top-left corner of the viewport and stretched to the full height.
+ *
+ * That is exactly how the multiplayer lobby shipped, and it is a defect no
+ * amount of type checking can see — the class is a string, the layout is CSS,
+ * and the only witness is a human looking at the screen. The `?shot=` harness
+ * cannot catch it either: those fixtures never load the shell chunk, which is
+ * the same blind spot `tests/shell-scope.spec.ts` was written for.
+ *
+ * So: read the source, find every `implements Screen` that builds a `pageFrame`,
+ * and require the class. Both `add('vm-page')` and the multi-argument
+ * `add('vm-page', 'is-modal')` count — `Missions` legitimately uses the latter.
+ */
+describe('page layout gate', () => {
+  const SHELL_DIR = join(process.cwd(), 'src', 'shell');
+
+  it('every Screen that builds a pageFrame centres itself', () => {
+    const offenders: string[] = [];
+    for (const name of readdirSync(SHELL_DIR)) {
+      if (!name.endsWith('.ts')) continue;
+      const src = readFileSync(join(SHELL_DIR, name), 'utf8');
+      // Only Screens. `HelpPanel` builds a pageFrame too, but it is not a
+      // Screen — it mounts its own `.vm-help` root with its own layout.
+      if (!/implements Screen\b/.test(src)) continue;
+      // `pageFrame('` — a CALL, which always passes a string title. Matching
+      // `pageFrame(` alone also matches the DECLARATION in Shell.ts, which
+      // happens to sit in the same file as `LoadingScreen implements Screen`
+      // and made this gate report a screen that renders its own `.vm-load`
+      // layer and never touches a page frame.
+      if (!/pageFrame\('/.test(src)) continue;
+      if (/classList\.add\((?:[^)]*,\s*)?'vm-page'|classList\.add\('vm-page'/.test(src)) continue;
+      offenders.push(name);
+    }
+    expect(offenders, 'these screens will render pinned to the top-left corner').toEqual([]);
+  });
+
+  it('would actually catch one', () => {
+    // A gate nobody has seen fail is a gate nobody knows works. This is the
+    // exact shape MultiplayerSetup.ts had when the lobby rendered off-centre.
+    const broken = `class X implements Screen {\n  mount(host: HTMLElement) {\n    const f = pageFrame('X', () => {});\n  }\n}`;
+    const centred = `class X implements Screen {\n  mount(host: HTMLElement) {\n    host.classList.add('vm-page');\n    const f = pageFrame('X', () => {});\n  }\n}`;
+    const passes = (s: string): boolean =>
+      !/implements Screen\b/.test(s) || !/pageFrame\('/.test(s)
+      || /classList\.add\((?:[^)]*,\s*)?'vm-page'|classList\.add\('vm-page'/.test(s);
+    expect(passes(broken)).toBe(false);
+    expect(passes(centred)).toBe(true);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The re-enable trap.                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A BUTTON BUILT DISABLED MUST STILL WORK ONCE IT IS ENABLED.
+ *
+ * `button()` used to attach `onClick` only on the enabled branch, so a button
+ * created disabled never got a handler. Nothing noticed for the life of the
+ * function because every disabled button in the product was disabled
+ * PERMANENTLY — Load Game with no saves, and nothing else.
+ *
+ * The Multiplayer entry is the first that starts disabled and enables itself
+ * when the relay answers. It came up enabled, correctly labelled, and
+ * completely dead to the touch, and it took a browser and a confused minute to
+ * work out why. Asserted here so it cannot come back.
+ */
+describe('a button built disabled', () => {
+  /*
+   * ASSERTED FROM THE SOURCE, because this suite runs under `environment:
+   * 'node'` and there is no DOM to click — see this file's header. Adding jsdom
+   * for one assertion would be a dependency for a behaviour a five-line read
+   * can pin exactly.
+   */
+  const shellSrc = readFileSync(join(process.cwd(), 'src', 'shell', 'Shell.ts'), 'utf8');
+  const body = shellSrc.slice(
+    shellSrc.indexOf('export function button('),
+    shellSrc.indexOf('export function setButtonEnabled('),
+  );
+
+  it('gets its click handler unconditionally, not on the enabled branch', () => {
+    expect(body.length, 'button() must be findable').toBeGreaterThan(100);
+    const attach = body.indexOf("addEventListener('click'");
+    const apply = body.indexOf('setButtonEnabled(b,');
+    expect(attach, 'button() must attach onClick').toBeGreaterThan(-1);
+    expect(apply, 'button() must route its disabled state through setButtonEnabled').toBeGreaterThan(-1);
+    // Attached BEFORE the enabled state is applied, and therefore outside any
+    // branch on it. The old shape put the listener inside `else { ... }`, so a
+    // button created disabled never got one and stayed inert forever once
+    // something re-enabled it — which is exactly how the Multiplayer entry
+    // shipped: enabled, correctly labelled, and dead to the touch.
+    expect(attach).toBeLessThan(apply);
+    expect(body).not.toMatch(/else\s*\{[\s\S]*addEventListener\('click'/);
+    // And the listener checks `disabled` ITSELF rather than trusting the DOM to
+    // suppress the event. `savegame-ux.spec.ts` drives a stub that does not
+    // model the suppression, and it caught the first version of this that did.
+    expect(body).toMatch(/if\s*\(!b\.disabled\)/);
+  });
+
+  it('has one place that knows enabling also means the focus ring', () => {
+    // `focusable()` only assigns a tabindex when there is none, so flipping
+    // `disabled` by hand leaves a re-enabled button at -1: mouse-reachable and
+    // keyboard-invisible. `setButtonEnabled` is the one place that does both.
+    const setter = shellSrc.slice(shellSrc.indexOf('export function setButtonEnabled('));
+    expect(setter).toContain('removeAttribute');
+    expect(setter).toContain('tabindex');
+    expect(setter).toContain('focusable(b)');
+  });
+
+  it('is what the Multiplayer entry actually uses', () => {
+    const menu = readFileSync(join(process.cwd(), 'src', 'shell', 'MainMenu.ts'), 'utf8');
+    expect(menu).toContain('setButtonEnabled(b, ok)');
+    // COMMENTS STRIPPED FIRST. The line explaining why not to write
+    // `b.disabled = ...` contains `b.disabled = ...`, so a naive search over the
+    // whole file fails on its own documentation — which it duly did.
+    const code = menu.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+    expect(code, 'the probe must not flip `disabled` by hand').not.toMatch(/b\.disabled\s*=/);
   });
 });

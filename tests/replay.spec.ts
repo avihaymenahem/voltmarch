@@ -655,11 +655,16 @@ describe('every command kind the game can issue is replayable', () => {
    *
    * So this walks the ENUM rather than a hand-written list.
    */
-  it('has a ReplayPlayer branch for each one', () => {
+  it('has a branch for each one', () => {
     const fs = require('node:fs') as typeof import('node:fs');
     const path = require('node:path') as typeof import('node:path');
     const at = (rel: string): string => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
-    const src = at('src/game/Replay.ts');
+    // The switch used to be inside `ReplayPlayer.issue`. It now lives in
+    // `src/net/applyCommand.ts`, shared with the multiplayer client, because
+    // re-issuing a recorded command and re-issuing a received one are the same
+    // operation — see that file's header. This test follows it rather than
+    // being deleted, and it now guards BOTH paths at once.
+    const src = at('src/net/applyCommand.ts');
     // Every value declared in CommandKind, read from the source of truth.
     const types = at('src/core/types.ts');
     const block = types.slice(

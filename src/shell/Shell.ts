@@ -71,6 +71,9 @@ import {
 import { applySettings, SettingsScreen } from './Settings';
 import { CreditsScreen, MainMenuScreen } from './MainMenu';
 import { SkirmishSetupScreen } from './SkirmishSetup';
+import { MultiplayerSetup } from './MultiplayerSetup';
+import { suppressUnlockGate } from '../progression/UnlockGate';
+import type { MatchStart, Session } from '../net/Session';
 import { PauseMenuScreen, currentObjectives } from './PauseMenu';
 import { EndScreen, type MatchResult } from './EndScreen';
 import { MissionsScreen } from './Missions';
@@ -263,14 +266,47 @@ export function button(label: string, options: ButtonOptions = {}): HTMLButtonEl
   if (options.iconName !== undefined) b.appendChild(icon(options.iconName));
   b.appendChild(el('span', 'vm-btn-label', label));
   if (options.hint !== undefined) b.appendChild(el('span', 'vm-btn-hint', options.hint));
-  if (options.disabled === true) {
-    b.disabled = true;
-    b.tabIndex = -1;
-  } else {
-    focusable(b);
-    if (options.onClick !== undefined) b.addEventListener('click', options.onClick);
+  // THE HANDLER IS ATTACHED UNCONDITIONALLY, and it did not used to be.
+  //
+  // It lived on the enabled branch, so a button created disabled never got one
+  // — and stayed inert forever even after something re-enabled it. Every
+  // disabled button in the product until now was disabled PERMANENTLY (Load
+  // Game with no saves), so nothing ever noticed. The Multiplayer entry is the
+  // first that starts disabled and enables itself when the relay answers, and
+  // it came up enabled, correctly labelled, and completely dead to the touch.
+  //
+  // THE `disabled` CHECK IS INSIDE THE LISTENER, NOT AROUND IT. A real browser
+  // does not dispatch `click` on a disabled button, so the guard looks
+  // redundant — and the first version of this leaned on exactly that and broke
+  // `savegame-ux.spec.ts`, which drives a DOM stub that does not model the
+  // suppression. Depending on a subtlety a test double does not implement is
+  // depending on a subtlety; checking the flag costs nothing and is true
+  // everywhere.
+  const onClick = options.onClick;
+  if (onClick !== undefined) {
+    b.addEventListener('click', () => { if (!b.disabled) onClick(); });
   }
+  setButtonEnabled(b, options.disabled !== true);
   return b;
+}
+
+/**
+ * Enable or disable a button built by `button()`, focus ring included.
+ *
+ * `focusable()` only assigns a tabindex when the element has none, so flipping
+ * `disabled` by hand leaves a re-enabled button at `tabIndex = -1` — reachable
+ * by mouse and invisible to the keyboard. This is the one place that knows to
+ * do both.
+ */
+export function setButtonEnabled(b: HTMLButtonElement, on: boolean): void {
+  b.disabled = !on;
+  if (on) {
+    b.removeAttribute('tabindex');
+    focusable(b);
+  } else {
+    b.removeAttribute('data-vm-focus');
+    b.tabIndex = -1;
+  }
 }
 
 /** A label/control pair. Returns the row so a caller can mark it focused. */
@@ -656,6 +692,27 @@ export class Shell {
   private setup: MatchSetup;
   private result: MatchResult | null = null;
 
+  /**
+   * The live multiplayer match, or null in every single-player mode.
+   *
+   * Its presence is what switches `applySetupToWorld`, `applySimPostBoot` and
+   * `setPaused` onto their PvP behaviour — one field rather than a flag threaded
+   * through each of them, so there is exactly one thing to check and exactly one
+   * place to clear.
+   */
+  private pvp: { session: Session; info: MatchStart } | null = null;
+  /**
+   * The bank every PvP match starts on, on both clients.
+   *
+   * A CONSTANT, NOT A LOBBY ROW. Starting credits are a per-client preference,
+   * and two players who had chosen different ones started a "fair" match with
+   * different money — a divergence on tick zero that no amount of relay
+   * validation could have caught, because neither client is wrong.
+   */
+  private static readonly PVP_CREDITS = 10000;
+  private netNotice: HTMLElement | null = null;
+  private netNoticeTimer = 0;
+
   private rafHandle = 0;
   private lastFrameMs = 0;
   private outcomeAccum = 0;
@@ -766,6 +823,115 @@ export class Shell {
       return;
     }
     await this.openMenu(true);
+  }
+
+  /**
+   * Launch the match the relay has just paired.
+   *
+   * FOUR THINGS DIFFER FROM A SKIRMISH, and each one is a way two clients could
+   * otherwise end up simulating different games:
+   *
+   * 1. THE UNLOCK GATE IS REMOVED. `Scenarios.ts` consults `isBuildable` when it
+   *    spawns the starting army (lines 2048 and 2155), and the gate answers from
+   *    the LOCAL profile. A veteran and a fresh account would build different
+   *    armies on tick zero and desync before either player moved. Competitive
+   *    play should be ungated anyway, so the correct fix and the necessary one
+   *    are the same fix.
+   * 2. SEED AND MAP COME FROM THE RELAY, never from the local lobby.
+   * 3. SPEED IS PINNED TO 1x AND PAUSE IS DISABLED — see `applySimPostBoot` and
+   *    `setPaused`. Neither can desync (a tick is a tick whenever it runs) but
+   *    both are meaningless when the other player is not waiting for you.
+   * 4. LOCKSTEP IS ATTACHED ONLY AFTER THE WORLD EXISTS. The step gate reads
+   *    `loop.tick`, so there has to be a loop before the gate can be installed.
+   */
+  async startMultiplayerMatch(session: Session, info: MatchStart): Promise<void> {
+    if (this.busy || this.disposed) return;
+    const map = mapById(info.map);
+
+    this.pvp = { session, info };
+    session.attach({
+      onOver: (_reason, winnerSlot, message) => { this.endMultiplayer(winnerSlot, message); },
+      onPeerLost: (graceMs) => { this.setNetNotice(`Opponent disconnected — ${Math.round(graceMs / 1000)}s`); },
+      onNotice: (message) => { this.setNetNotice(message); },
+    });
+
+    // A skirmish setup is still what boots the world; it is the CHANNEL, not
+    // the authority. Every field the two clients must agree on is overwritten
+    // from `info` here or in `seatPvpPlayers`.
+    const setup: MatchSetup = {
+      ...this.setup,
+      map: map.id,
+      seed: info.seed,
+      speed: 1,
+      difficulty: 0,
+      personality: -1,
+    };
+
+    // SUPPRESSED, NOT CLEARED. `setUnlockGate(null)` here does nothing: the
+    // boot that follows runs `progression.system`'s init, which installs a gate
+    // built from THIS browser's profile — so a veteran and a fresh account
+    // would build different starting armies and diverge before tick 1. The
+    // suppression is a flag `isBuildable` honours regardless of what is
+    // installed, so nothing during the boot can undo it.
+    suppressUnlockGate(true);
+
+    // THE OPENING IS FORCED. `startCondition` (pre-built base vs construction
+    // vehicle) is persisted per client in its own localStorage key and is NOT
+    // part of `MatchSetup`, so two players with different settings would build
+    // two different worlds from the same seed. It is not on the wire either, so
+    // there is nothing to agree on — both clients take the MCV opening, which
+    // is the real game. Forced through `?start=`, which `chooseStart` in
+    // Scenarios.ts documents as the only channel that outranks a stored
+    // preference — the same channel the tutorial uses for the same reason.
+
+    // ARMED BEFORE THE BOOT. The step gate must exist for tick 1 — the tick
+    // that opens turn 0 — or that turn never sends its frame and both clients
+    // wait forever for one neither produced. Attaching after `startMatch`
+    // returned froze every match at around tick 7.
+    session.startLockstep(info);
+
+    await this.startMatch(setup, { persist: false });
+
+    if (this.game === null) { this.pvp = null; suppressUnlockGate(false); return; }
+  }
+
+  /**
+   * The relay says the match is over. Show it through the ordinary end screen.
+   *
+   * `winnerSlot` of -1 means nobody won — a desync, a shutdown, a timeout. That
+   * is reported as a loss for scoring purposes and the banner carries the real
+   * reason, because there is no "the match was voided" result and inventing one
+   * would mean touching every consumer of `MatchResult` for an outcome that
+   * should be vanishingly rare.
+   */
+  private endMultiplayer(winnerSlot: number, message: string): void {
+    const pvp = this.pvp;
+    this.pvp = null;
+    this.setNetNotice(message);
+    if (pvp === null || this.result !== null) return;
+    this.endMatch({ won: winnerSlot === pvp.info.slot });
+  }
+
+  /**
+   * A one-line banner over the HUD for anything the network needs to say:
+   * an opponent disconnecting, a grace countdown, a desync, a refusal.
+   *
+   * `textContent`, never markup — and the string is always one of this build's
+   * own, never one the relay supplied. See the header of `src/net/Session.ts`.
+   */
+  private setNetNotice(message: string): void {
+    let node = this.netNotice;
+    if (node === null) {
+      node = el('div', 'vm-net-notice');
+      this.options.hudRoot.appendChild(node);
+      this.netNotice = node;
+    }
+    node.textContent = message;
+    node.classList.add('is-on');
+    if (this.netNoticeTimer !== 0) clearTimeout(this.netNoticeTimer);
+    this.netNoticeTimer = setTimeout(() => {
+      this.netNotice?.classList.remove('is-on');
+    }, 6000) as unknown as number;
   }
 
   /**
@@ -932,6 +1098,18 @@ export class Shell {
     // pause menu can route to, and closing it has to land back on the pause
     // menu rather than on a blank layer over a frozen match.
     if (this.state !== 'playing' && this.state !== 'settings' && this.state !== 'missions') return;
+
+    // THE MENU OPENS; THE SIMULATION DOES NOT STOP. There is no such thing as
+    // pausing a lockstep match from one side — the other player is still
+    // playing, and their frames still have to be executed or this client falls
+    // behind and stalls the pair. So a PvP pause is a menu over a running game,
+    // and the camera stays live so the player can still see what is happening
+    // to them while they decide whether to quit.
+    if (this.pvp !== null) {
+      this.show(new PauseMenuScreen(this), 'paused');
+      return;
+    }
+
     this.game.setPaused(true);
     // Freeze the camera too. A pause menu you can pan the battlefield behind
     // is a pause menu that reads as a bug.
@@ -945,6 +1123,8 @@ export class Shell {
     if (this.state !== 'paused' || this.game === null) return;
     this.show(null, 'playing');
     this.setHudVisible(true);
+    // In PvP neither of these was ever turned off — see `pause`.
+    if (this.pvp !== null) return;
     this.game.ctx.cameraRig.setInputEnabled(true);
     this.game.setPaused(false);
   }
@@ -1002,6 +1182,13 @@ export class Shell {
   /** Drop the current match and return to the title screen. */
   async quitToMenu(): Promise<void> {
     if (this.busy) return;
+    // Tell the relay BEFORE tearing anything down. A client that simply stops
+    // answering makes its opponent sit through the full grace period staring at
+    // a countdown; leaving cleanly ends it for them at once.
+    if (this.pvp !== null) {
+      this.pvp.session.leave();
+      this.pvp = null;
+    }
     this.busy = true;
     try {
       // Abandon, not end. The player gets to keep every profile mission they
@@ -1030,6 +1217,11 @@ export class Shell {
   /** Open the skirmish lobby. */
   openSetup(): void {
     this.show(new SkirmishSetupScreen(this), 'setup');
+  }
+
+  /** Open the multiplayer lobby. Shares the `setup` state — same place in the flow. */
+  openMultiplayer(): void {
+    this.show(new MultiplayerSetup(this), 'setup');
   }
 
   /** Open the options. `returnTo` is where Back goes. */
@@ -1382,6 +1574,9 @@ export class Shell {
     // last asked for a pre-built base. `?start=` is the only channel that
     // outranks `setPlannedStart` — see `chooseStart` in game/Scenarios.ts.
     if (!backdrop && this.tutorial !== null) query.set('start', 'mcv');
+    // PvP for the same reason, and more sharply: a persisted per-client opening
+    // means two players build DIFFERENT WORLDS from the same seed.
+    if (!backdrop && this.pvp !== null) query.set('start', 'mcv');
     // `shot` is the screenshot harness's flag and must never appear here.
     query.delete('shot');
     query.delete('skipmenu');
@@ -1450,6 +1645,8 @@ export class Shell {
     const world = game.ctx.world;
     if (world.players.length < 2) return;
 
+    if (this.pvp !== null) { this.seatPvpPlayers(game); return; }
+
     const player = factionByKey(this.setup.playerFaction);
     const enemy = factionByKey(this.setup.aiFaction);
 
@@ -1465,6 +1662,48 @@ export class Shell {
     if (this.setup.personality >= 0) ai.aiPersonality = this.setup.personality;
   }
 
+  /**
+   * Seat a PvP match: same world on both clients, different local slot.
+   *
+   * THREE THINGS HERE ARE LOAD-BEARING AND ONE OF THEM IS NOT OBVIOUS.
+   *
+   * 1. FACTIONS COME FROM THE RELAY, per slot, identically on both clients.
+   *    Neither lobby's local preference is consulted — `this.setup` describes
+   *    what THIS player asked for, and the other client asked for something
+   *    else.
+   *
+   * 2. BOTH SLOTS ARE `isHuman`. That is the entire AI shutdown:
+   *    `ai.system.ts:165` skips any player where `isHuman || isLocal`, so no
+   *    brain is ever built. An AI running on both clients would issue commands
+   *    locally on each and desync on the first decision it made.
+   *
+   * 3. `localPlayer` MOVES, and it is the only asymmetry in the whole world.
+   *    Bootstrap pins it to slot 0; client B has to look through slot 1's eyes.
+   *    Nothing the checksum hashes depends on it — `hashPlayers` covers credits,
+   *    power, storage, defeat, ally mask and queues, and not `isLocal` — so the
+   *    two worlds stay identical while the two SCREENS differ.
+   */
+  private seatPvpPlayers(game: GameHandle): void {
+    const pvp = this.pvp;
+    if (pvp === null) return;
+    const world = game.ctx.world;
+
+    for (let slot = 0; slot < world.players.length && slot < 2; slot++) {
+      const p = world.players[slot];
+      const faction = pvp.info.factions[slot];
+      if (faction !== undefined) p.faction = faction as Faction;
+      p.isHuman = true;
+      p.isLocal = slot === pvp.info.slot;
+      // NO PLAYER-SUPPLIED NAMES ANYWHERE IN PVP — see the header of
+      // MultiplayerSetup.ts. A name is a string one player controls and the
+      // other player's browser renders.
+      p.name = slot === pvp.info.slot ? 'You' : 'Opponent';
+      p.aiDifficulty = 0;
+      p.aiPersonality = 0;
+    }
+    world.localPlayer = pvp.info.slot as PlayerId;
+  }
+
   /** Everything that can only be done once the world is fully built. */
   /**
    * Everything post-boot that the SIMULATION can see. Runs on tick 0, before
@@ -1477,16 +1716,29 @@ export class Shell {
   private applySimPostBoot(game: GameHandle, backdrop: boolean): void {
     const { world, loop } = game.ctx;
 
-    loop.setSpeed(backdrop ? 1 : this.setup.speed);
+    // PVP IS PINNED TO 1x. Game speed scales the ACCUMULATOR, so it cannot
+    // desync — a tick is a tick whenever it runs — but a player at 2x simply
+    // arrives at the next turn boundary sooner and waits there for the other
+    // one. It is not an advantage, it is not a bug, and it is not worth the
+    // confusion of appearing to do something.
+    loop.setSpeed(backdrop ? 1 : (this.pvp !== null ? 1 : this.setup.speed));
 
     if (!backdrop) {
       // Applied AFTER the scenario, which sets its own bank so a posed
       // screenshot does not read as a test fixture — but BEFORE the first tick,
       // which is what makes it reproducible.
-      const p = world.player(world.localPlayer);
-      p.credits = this.setup.startingCredits;
-      const other = world.players[1];
-      if (other !== undefined) other.credits = this.setup.startingCredits;
+      //
+      // PVP IGNORES THE LOCAL LOBBY AND SEEDS BY SLOT. Two things were wrong
+      // here at once. `this.setup.startingCredits` is a per-client preference,
+      // so two players who had chosen different banks started a "fair" match
+      // with different money. And the second write targeted `players[1]`
+      // unconditionally while the first targeted `localPlayer` — so on the
+      // client seated as slot 1, slot 1 was paid twice and slot 0 never at all,
+      // which is a divergence on tick zero.
+      const bank = this.pvp !== null ? Shell.PVP_CREDITS : this.setup.startingCredits;
+      for (let slot = 0; slot < world.players.length && slot < 2; slot++) {
+        world.players[slot].credits = bank;
+      }
     }
   }
 
@@ -1810,7 +2062,11 @@ export class Shell {
 
   private readonly onVisibility = (): void => {
     // A hidden tab must not burn a frame budget on a menu backdrop either.
-    if (this.state === 'playing') this.game?.setPaused(document.hidden);
+    // EXCEPT IN PVP: the opponent keeps playing whether this tab is visible or
+    // not, so pausing here would stall the pair and eventually forfeit the
+    // match for tabbing away. The browser throttles background rAF anyway,
+    // which lockstep survives — it stalls and catches up, it never skips.
+    if (this.state === 'playing' && this.pvp === null) this.game?.setPaused(document.hidden);
     // Hidden is the last event a mobile browser reliably fires before it kills
     // the page, and the profile store batches its writes. Flush here or a
     // mission completed in the final minute of a match is simply gone.

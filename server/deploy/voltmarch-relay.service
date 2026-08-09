@@ -1,0 +1,102 @@
+# ============================================================================
+# voltmarch-relay.service — systemd unit for the lockstep relay
+# ============================================================================
+# Install:
+#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin voltmarch
+#   sudo mkdir -p /opt/voltmarch-relay && sudo chown voltmarch: /opt/voltmarch-relay
+#   # copy server/dist, server/package.json, server/package-lock.json there, then:
+#   sudo -u voltmarch npm --prefix /opt/voltmarch-relay ci --omit=dev
+#   sudo cp voltmarch-relay.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now voltmarch-relay
+#
+# The relay binds 127.0.0.1 ONLY. nginx terminates TLS and is the sole route in
+# — see nginx.conf. Do not open 8787 on the firewall.
+# ============================================================================
+
+[Unit]
+Description=VOLTMARCH lockstep relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=voltmarch
+Group=voltmarch
+WorkingDirectory=/opt/voltmarch-relay
+
+# --disallow-code-generation-from-strings kills eval() and new Function()
+# process-wide. Neither `ws` nor this server needs them, so the capability is
+# simply removed rather than trusted not to be reached.
+ExecStart=/usr/bin/node --disallow-code-generation-from-strings dist/server/src/index.js
+
+Environment=NODE_ENV=production
+Environment=VM_HOST=127.0.0.1
+Environment=VM_PORT=8787
+
+# WITHOUT THIS, EVERY PER-ADDRESS LIMIT IN THE RELAY IS GLOBAL.
+#
+# nginx terminates TLS and proxies to loopback, so every socket arrives from
+# 127.0.0.1 and `remoteAddress` is the same value for the entire internet: the
+# 8-connections-per-address cap becomes a global cap of 8, and the
+# 10-joins-per-minute limit becomes 10 joins per minute for ALL players
+# combined. The counters look busy and protect nobody.
+#
+# This lists the peers whose `X-Real-IP` is believed. It must contain ONLY the
+# proxy — a forwarded header is a client-supplied string, and trusting one from
+# a direct connection lets anyone mint a fresh identity per request.
+Environment=VM_TRUSTED_PROXIES=127.0.0.1,::1,::ffff:127.0.0.1
+# Set this to the origin the game is actually served from. An empty list would
+# reject everything; a wrong one rejects your own players.
+Environment=VM_ORIGINS=https://avihaymenahem.github.io
+# Set to the deployed client version to refuse mismatched builds outright.
+# Leave unset only while testing — two builds of a deterministic simulation
+# desync on contact, and refusing the pairing is far kinder than a desync.
+#Environment=VM_REQUIRE_BUILD=1.33.0
+
+Restart=always
+RestartSec=2
+# A crash loop must not become a busy loop.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# -- sandbox ---------------------------------------------------------------
+# The relay reads no files, writes no files, and talks to nothing but its
+# socket. Everything below removes a capability it never had a use for, so a
+# remote-code-execution bug in a dependency has nowhere to go.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete
+
+# MemoryDenyWriteExecute MUST STAY OFF.
+# V8 is a JIT: it writes machine code and then executes it, which is exactly
+# what this flag forbids. Turning it on does not harden the service, it stops
+# node from starting at all. This line exists so nobody "completes" the sandbox
+# above by adding it and then spends an evening on the crash.
+MemoryDenyWriteExecute=no
+
+# -- resources -------------------------------------------------------------
+# A hard ceiling under the process, beneath the application's own caps in
+# config.ts. If those ever fail, this is what stops one relay taking the box.
+MemoryMax=512M
+TasksMax=64
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

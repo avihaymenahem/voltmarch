@@ -40,10 +40,12 @@ import {
   icon,
   pageFrame,
   playableFactions,
+  setButtonEnabled,
   type Screen,
   type Shell,
 } from './Shell';
 import { readProgression } from './progression-link';
+import { probeRelay, relayKnownReachable, unavailableReason } from './net-link';
 import { tutorialMenuHint, tutorialUntouched } from './Tutorial';
 
 /* ==========================================================================
@@ -81,9 +83,24 @@ export function loadHint(count: number): string {
   return count === 1 ? '1 save' : `${count} saves`;
 }
 
+/**
+ * The Multiplayer hint, for each of the four states it can be in.
+ *
+ * `reason` non-empty means the build has no usable relay ADDRESS — nothing a
+ * probe could change. Otherwise `known` is the probe's verdict: null while it
+ * is still in flight, then true or false.
+ */
+function hintFor(reason: string, known: boolean | null): string {
+  if (reason !== '') return reason;
+  if (known === null) return 'checking…';
+  return known ? '1v1 online' : 'match server is not answering';
+}
+
 export class MainMenuScreen implements Screen {
   readonly id = 'menu';
   private host: HTMLElement | null = null;
+  /** The Multiplayer entry, so an in-flight probe can find it — or not. */
+  private mpButton: HTMLButtonElement | null = null;
 
   constructor(private readonly shell: Shell) {}
 
@@ -137,6 +154,19 @@ export class MainMenuScreen implements Screen {
       variant: fresh ? 'default' : 'primary',
       onClick: () => this.shell.openSetup(),
     }));
+
+    // Directly under Skirmish, because the two are the same verb pointed at a
+    // different opponent.
+    //
+    // OFFERED ONLY WHEN THE RELAY ANSWERS. A configured URL is not a running
+    // server, and an entry that leads to a lobby spinning on "Connecting…" is
+    // worse than no entry — so this starts disabled, asks the relay, and enables
+    // itself only on a real `welcome`.
+    //
+    // DISABLED RATHER THAN HIDDEN, because a missing menu entry is
+    // indistinguishable from a feature that does not exist. The hint carries the
+    // reason: no server configured, wrong scheme, or simply not answering.
+    nav.appendChild(this.multiplayerButton());
 
     // Directly under Skirmish, because the missions board is where a player
     // finds out that a Prism Tank exists and what it costs them to get one.
@@ -205,12 +235,54 @@ export class MainMenuScreen implements Screen {
   unmount(): void {
     this.host?.classList.remove('vm-menu');
     this.host = null;
+    // The probe outlives the screen; its callback must not touch a dead button.
+    this.mpButton = null;
   }
 
   onBack(): boolean {
     // Nothing above the title screen. Swallow it so Escape never dead-ends in
     // a state where the shell would try to "go back" out of the product.
     return true;
+  }
+
+  /**
+   * The Multiplayer entry, which enables itself only once the relay answers.
+   *
+   * Built disabled and updated in place, because the menu is assembled
+   * synchronously and the probe is a round trip. Rebuilding the nav when it
+   * resolves would move every button under the cursor a second after the menu
+   * appeared; writing into this one does not move anything.
+   *
+   * A CACHED VERDICT SKIPS THE "CHECKING" STATE ENTIRELY. Coming back to the
+   * menu from a match should not flash a disabled button for a second — see
+   * `relayKnownReachable`.
+   */
+  private multiplayerButton(): HTMLButtonElement {
+    const reason = unavailableReason();
+    const known = reason === '' ? relayKnownReachable() : false;
+
+    const b = button('Multiplayer', {
+      iconName: 'swords',
+      hint: hintFor(reason, known),
+      disabled: known !== true,
+      onClick: () => this.shell.openMultiplayer(),
+    });
+    this.mpButton = b;
+    if (reason !== '' || known !== null) return b;
+
+    void probeRelay().then((ok) => {
+      // The screen may be gone by now — the player is faster than the network.
+      if (this.mpButton !== b) return;
+      // `setButtonEnabled`, not `b.disabled = ...`: re-enabling by hand leaves
+      // the button at `tabIndex = -1`, reachable by mouse and invisible to the
+      // keyboard.
+      setButtonEnabled(b, ok);
+      // `.vm-btn-hint` is the only mutable part; rebuilding the button would
+      // drop focus and the focus ring's record of it.
+      const hint = b.querySelector('.vm-btn-hint');
+      if (hint !== null) hint.textContent = hintFor('', ok);
+    });
+    return b;
   }
 
   /**
