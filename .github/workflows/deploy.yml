@@ -29,6 +29,14 @@ jobs:
 
       - run: npm ci
 
+      # The relay has its OWN package.json, so the root `npm ci` does not give
+      # it `ws`. `npm run typecheck`'s fourth invocation compiles server/, and
+      # without this it fails on a missing module — which is exactly what
+      # happened on the first v2.0.0 push: green locally, red in CI, because
+      # locally `server/node_modules` was already there from a manual install.
+      - name: Install relay dependencies
+        run: npm ci --prefix server
+
       # Type errors are a separate gate from the build on purpose (esbuild
       # strips types, so a type error must never stop the game running) — but
       # they should still fail CI rather than ship silently.
@@ -37,6 +45,11 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # The relay's own suite. It compiles server/ as a side effect, so it also
+      # proves the four-file import closure still holds.
+      - name: Test the relay
+        run: npm run server:test
 
       - name: Build
         run: npm run build
