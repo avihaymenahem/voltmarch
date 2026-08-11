@@ -78,6 +78,14 @@ import { isBuildable, LOCKED_REASON, unlockGate } from '../progression/UnlockGat
 // an upgrade is in-match state and must never consult the local profile.
 import { grantUpgrade, hasUpgradeKey, upgradeByKey } from './Upgrades';
 
+// The naval declaration, and the only edge from production into movement.
+// `Movement.ts` imports `./Flowfield`, `./Crush`, `./Upgrades` and the world
+// modules and never imports this file, so the edge is one-way. `setMoveClass`
+// is a plain function over a store and a handle precisely so a module like this
+// one can call it without owning a `MovementIntegrator`.
+import { setMoveClass } from './Movement';
+import { MoveClass } from './Flowfield';
+
 import { BuildQueues, HoldReason, type QueueHooks, type QueueItemInfo } from './BuildQueue';
 import {
   PlacementPhase, evaluatePlacement, facedFootprintH, facedFootprintW, facingYaw,
@@ -238,9 +246,42 @@ export interface BuildEntry {
    * what the refinery costs, exactly as in every C&C.
    */
   readonly shipsWith: string;
+  /**
+   * This structure may only be founded on the COAST — navigable water within
+   * `PRODUCTION.shoreSearchCells` of its footprint. True for the four naval
+   * yards and nothing else.
+   *
+   * It is a placement rule and not a decoration. `naval` below makes a hull
+   * launch onto water; without this, a player could put the yard that builds
+   * that hull in the middle of a continent and buy a permanently stalled
+   * production queue. The two land together or neither should.
+   */
+  readonly needsShore: boolean;
 
   /* -- units ------------------------------------------------------------ */
   readonly entityKind: EntityKind;
+  /**
+   * This hull is a SHIP: it launches onto water and it is `MoveClass.Naval` for
+   * the life of its slot.
+   *
+   * `Locomotor` has no Naval member — every ship in the game is
+   * `Locomotor.Hover`, indistinguishable in the entity store from a hovercraft
+   * — so `Movement.moveClassAt` guesses from the cell a hull is standing in the
+   * first time it is asked. That guess was ALWAYS WRONG for a produced ship,
+   * because `findEgressSpot` tested `isPassable(_, _, Hover)`, which is true on
+   * land, so a destroyer left the yard onto the beach and latched
+   * `MoveClass.Hover` there. It still sailed and still fought — Hover crosses
+   * water — so nothing looked broken; it simply never got the naval turn model,
+   * the heel, the bob or the wake, and `setMoveClass`, whose own docstring
+   * calls itself "the only way to say NAVAL", had no caller outside `tests/`.
+   *
+   * WHAT IS AND IS NOT A SHIP, and the line is `passengers`: a hull with seats
+   * (`transport`, `mrdSkiff`, `rclScow`) is the army's amphibious lift and has
+   * to be able to put infantry down on a beach, so it stays Hover. A hull with
+   * a gun and no seats is a warship. That keeps every faction's ability to move
+   * infantry over land exactly where it was.
+   */
+  readonly naval: boolean;
   /**
    * Cap on how many of this entry one player may have at once. 0 = unlimited,
    * which is every entry except the four commanders.
@@ -271,6 +312,10 @@ interface ContentSpec {
   buildRadius?: number;
   /** See `BuildEntry.shipsWith`. Authored on the three refineries only. */
   shipsWith?: string;
+  /** See `BuildEntry.needsShore`. Authored on the four naval yards only. */
+  needsShore?: boolean;
+  /** See `BuildEntry.naval`. Authored on the seven warship hulls only. */
+  naval?: boolean;
 }
 
 const S = BuildTab.Structures;
@@ -339,13 +384,13 @@ const CONTENT: readonly ContentSpec[] = [
     key: 'navalYard', name: 'Naval Yard', blurb: 'Builds Allied warships.',
     kind: BuildKind.Building, faction: Faction.Allies, tab: S,
     cost: 1000, buildTime: 14, prereqs: ['refinery'], sortOrder: 70,
-    producesTabs: [V],
+    producesTabs: [V], needsShore: true,
   },
   {
     key: 'subPen', name: 'Naval Pen', blurb: 'Builds Soviet warships.',
     kind: BuildKind.Building, faction: Faction.Soviets, tab: S,
     cost: 1000, buildTime: 14, prereqs: ['refinery'], sortOrder: 70,
-    producesTabs: [V],
+    producesTabs: [V], needsShore: true,
   },
 
   /* -- tier 3: the one tech building ------------------------------------- */
@@ -477,7 +522,11 @@ const CONTENT: readonly ContentSpec[] = [
     cost: 3000, buildTime: 32, prereqs: ['warFactory'], sortOrder: 50,
   },
 
-  /* -- naval (shares the Vehicles tab; there are only four tabs) ---------- */
+  /* -- naval (shares the Vehicles tab; there are only four tabs) ----------
+   * `naval: true` is the WARSHIP flag — see `BuildEntry.naval`. The Hover
+   * Transport deliberately does not carry it: it has seats, and an amphibious
+   * lift that cannot beach is not a lift.
+   * -------------------------------------------------------------------- */
   {
     key: 'transport', name: 'Hover Transport', blurb: 'Carries a squad across water.',
     kind: BuildKind.Unit, faction: Faction.Neutral, tab: V,
@@ -486,22 +535,22 @@ const CONTENT: readonly ContentSpec[] = [
   {
     key: 'gunboat', name: 'Assault Destroyer', blurb: 'Allied escort. Shoots at everything.',
     kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
-    cost: 1000, buildTime: 14, prereqs: ['navalYard'], sortOrder: 70,
+    cost: 1000, buildTime: 14, prereqs: ['navalYard'], sortOrder: 70, naval: true,
   },
   {
     key: 'destroyer', name: 'Aircraft Cruiser', blurb: 'Allied capital ship.',
     kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
-    cost: 1800, buildTime: 22, prereqs: ['navalYard', 'battleLab'], sortOrder: 80,
+    cost: 1800, buildTime: 22, prereqs: ['navalYard', 'battleLab'], sortOrder: 80, naval: true,
   },
   {
     key: 'submarine', name: 'Attack Submarine', blurb: 'Soviet ambush hull.',
     kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
-    cost: 1000, buildTime: 14, prereqs: ['subPen'], sortOrder: 70,
+    cost: 1000, buildTime: 14, prereqs: ['subPen'], sortOrder: 70, naval: true,
   },
   {
     key: 'dreadnought', name: 'Dreadnought', blurb: 'Soviet siege ship.',
     kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
-    cost: 2000, buildTime: 24, prereqs: ['subPen', 'battleLab'], sortOrder: 80,
+    cost: 2000, buildTime: 24, prereqs: ['subPen', 'battleLab'], sortOrder: 80, naval: true,
   },
 
   /* ======================================================================
@@ -560,7 +609,7 @@ const CONTENT: readonly ContentSpec[] = [
     key: 'mrdSlipway', name: 'Slipway', blurb: 'Builds Pact warships.',
     kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
     cost: 1000, buildTime: 14, prereqs: ['mrdCistern'], sortOrder: 70,
-    producesTabs: [V],
+    producesTabs: [V], needsShore: true,
   },
   {
     key: 'mrdReliquary', name: 'Reliquary', blurb: 'Unlocks the top of every tab.',
@@ -632,12 +681,12 @@ const CONTENT: readonly ContentSpec[] = [
   {
     key: 'mrdCorvette', name: 'Kite Corvette', blurb: 'Escort hull. Shells shorelines.',
     kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
-    cost: 950, buildTime: 13, prereqs: ['mrdSlipway'], sortOrder: 70,
+    cost: 950, buildTime: 13, prereqs: ['mrdSlipway'], sortOrder: 70, naval: true,
   },
   {
     key: 'mrdMonitor', name: 'Sunmonitor', blurb: 'Pact capital ship. Forty metres of reach.',
     kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
-    cost: 1900, buildTime: 23, prereqs: ['mrdSlipway', 'mrdReliquary'], sortOrder: 80,
+    cost: 1900, buildTime: 23, prereqs: ['mrdSlipway', 'mrdReliquary'], sortOrder: 80, naval: true,
   },
 
   /* ======================================================================
@@ -712,7 +761,7 @@ const CONTENT: readonly ContentSpec[] = [
     key: 'rclDrydock', name: 'Breaker Dock', blurb: 'Builds Reclamation hulls that float.',
     kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
     cost: 1000, buildTime: 14, prereqs: ['rclSorter'], sortOrder: 70,
-    producesTabs: [V],
+    producesTabs: [V], needsShore: true,
   },
   {
     key: 'rclCrucible', name: 'Crucible', blurb: 'Opens the siege hull, the Yardcrawler and the Hulk.',
@@ -789,7 +838,7 @@ const CONTENT: readonly ContentSpec[] = [
   {
     key: 'rclHulk', name: 'Reclaimed Hulk', blurb: 'Somebody else’s capital ship, welded back together.',
     kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
-    cost: 1800, buildTime: 22, prereqs: ['rclDrydock', 'rclCrucible'], sortOrder: 80,
+    cost: 1800, buildTime: 22, prereqs: ['rclDrydock', 'rclCrucible'], sortOrder: 80, naval: true,
   },
   /*
    * APPENDED, NOT INSERTED. A building's `publicId` is its index in THIS
@@ -1285,7 +1334,9 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
       exitX: 0,
       exitZ: 0,
       shipsWith: '',
+      needsShore: false,
       entityKind: EntityKind.None,
+      naval: false,
       // The one-at-a-time rule for an upgrade is ownership, not a cap: see
       // `availabilityOf`, which refuses a second copy because the bit is set.
       maxAlive: 0,
@@ -1329,7 +1380,10 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
       exitX: def?.exitOffsetX ?? 0,
       exitZ: def?.exitOffsetZ ?? (fh * CELL * 0.5 + PRODUCTION.exitClearanceMetres),
       shipsWith: spec.shipsWith ?? '',
+      needsShore: spec.needsShore === true,
       entityKind: EntityKind.Building,
+      // A structure never launches itself.
+      naval: false,
       // No structure is capped. If one ever is, this reads the def field.
       maxAlive: 0,
     };
@@ -1370,7 +1424,9 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
     exitX: 0,
     exitZ: 0,
     shipsWith: '',
+    needsShore: false,
     entityKind: def?.kind ?? fb.kind,
+    naval: spec.naval === true,
     maxAlive: def?.maxAlive ?? 0,
   };
 }
@@ -2137,7 +2193,7 @@ export class ProductionService implements QueueHooks {
     const radius = def?.radius ?? (fb === undefined ? 2 : Math.max(fb.width, fb.length) * 0.45);
     const loco = def?.locomotor ?? fb?.locomotor ?? Locomotor.Wheel;
 
-    if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot)) return;
+    if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot, unit.naval)) return;
     if (this.spawnUnit(p, unit, spot[0], spot[1], yaw) === NONE) return;
     p.stats.unitsBuilt++;
   }
@@ -2725,7 +2781,7 @@ export class ProductionService implements QueueHooks {
     const radius = def?.radius ?? Math.max(fb.width, fb.length) * 0.45;
     const loco = def?.locomotor ?? fb.locomotor;
 
-    if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot)) return false;
+    if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot, entry.naval)) return false;
 
     const id = this.spawnUnit(p, entry, spot[0], spot[1], yaw);
     if (id === NONE) return false;
@@ -2820,9 +2876,29 @@ export class ProductionService implements QueueHooks {
    * an aircraft shares none — `Steering` and `Movement` both skip it in their
    * separation passes, and `Movement` lifts it to `AIR_CRUISE_ALTITUDE` inside
    * a second. Ring 0 is the factory door, so an aircraft lifts off the pad.
+   *
+   * A SHIP HAS THE OPPOSITE PROBLEM AND IT WAS SILENT FOR LONGER.
+   *
+   * Every hull in the game is `Locomotor.Hover`, and `isPassable(_, _, Hover)`
+   * is TRUE ON LAND — hovercraft are amphibious and share the locomotor. So the
+   * loop below always accepted ring 0, the factory door, and every warship in
+   * the game was launched onto the BEACH. It then reached water under its own
+   * power and fought perfectly well, which is why nobody caught it; but
+   * `Movement.moveClassAt` had already latched `MoveClass.Hover` off the cell
+   * it was standing in, for the life of that slot, so it never got the naval
+   * turn model, the heel, the bob or the wake. `setMoveClass` — whose docstring
+   * calls it "the only way to say NAVAL" — had no caller outside `tests/`.
+   *
+   * So `naval` inverts the test the same way `Flowfield.rebuildCost` does for
+   * `MoveClass.Naval`: WATER, and passable to a hover skirt. It also gets its
+   * own (larger) ring budget, because the yard stands on the shore and the
+   * water may be on the far side of it — see the note on
+   * `PRODUCTION.navalEgressRings`, and note that this is a ring SCAN and not a
+   * path, so it reads straight through the yard's own occupied cells.
    */
   private findEgressSpot(
     x: number, z: number, radius: number, loco: number, out: Float32Array,
+    naval = false,
   ): boolean {
     const world = this.world;
     const step = CELL;
@@ -2834,7 +2910,8 @@ export class ProductionService implements QueueHooks {
       out[1] = z;
       return true;
     }
-    for (let ring = 0; ring <= PRODUCTION.egressSearchRings; ring++) {
+    const rings = naval ? PRODUCTION.navalEgressRings : PRODUCTION.egressSearchRings;
+    for (let ring = 0; ring <= rings; ring++) {
       const cells = ring === 0 ? 1 : ring * 8;
       for (let c = 0; c < cells; c++) {
         let dx = 0, dz = 0;
@@ -2854,6 +2931,7 @@ export class ProductionService implements QueueHooks {
         const cz = worldToCell(pz);
         if (!isInMap(cx, cz)) continue;
         if (!world.terrain.isPassable(cx, cz, loco)) continue;
+        if (naval && !world.terrain.isWater(cx, cz)) continue;
         if (world.terrain.isOccupied(cx, cz)) continue;
         if (this.blockedByEntity(px, pz, radius + PRODUCTION.egressClearanceMetres)) continue;
         out[0] = px;
@@ -2928,6 +3006,14 @@ export class ProductionService implements QueueHooks {
     st.orderZ[i] = pz;
     st.guardX[i] = px;
     st.guardZ[i] = pz;
+
+    // DECLARE, do not let it be guessed. `Movement.moveClassAt` derives a Hover
+    // hull's class from the cell it is standing in the first time it is asked,
+    // and that guess is a coin toss the moment a ship sits in a slipway with
+    // one skirt on the ramp — it latches for the life of the slot and there is
+    // no second chance to correct it. `setMoveClass` exists for exactly this,
+    // and until now nothing in `src/` called it. See `BuildEntry.naval`.
+    if (entry.naval) setMoveClass(st, id, MoveClass.Naval);
 
     this.entryOfEntity.setAt(i, entry.index);
     if (kind < p.entityCount.length) p.entityCount[kind]++;

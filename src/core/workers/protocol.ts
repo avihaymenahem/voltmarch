@@ -439,6 +439,13 @@ export function isTerrainJob(v: unknown): v is TerrainJob {
     const nz = o.sea.normalZ as number;
     if (nx * nx + nz * nz < 1e-9) return false;
     if ((o.sea.shelfMetres as number) <= 0) return false;
+    // OPTIONAL, so absent is legal and anything present must be usable.
+    // `seaCeiling` multiplies the beach cone by it: a zero or negative grade is
+    // a coast that never rises out of the water, which floods the map from the
+    // waterline inward, and a NaN is that same flood with no number to find.
+    if (o.sea.beachGrade !== undefined) {
+      if (!isFiniteNumber(o.sea.beachGrade) || o.sea.beachGrade <= 0) return false;
+    }
   }
   return true;
 }

@@ -54,9 +54,9 @@
 import * as THREE from 'three';
 
 import {
-  BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, PLACEMENT, RENDER_ORDER,
+  BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, PLACEMENT, PRODUCTION, RENDER_ORDER,
 } from '../core/config';
-import { EntityFlag, EntityKind, NONE } from '../core/types';
+import { EntityFlag, EntityKind, Locomotor, NONE } from '../core/types';
 import type { EntityId, PlayerId } from '../core/types';
 import type { World } from '../core/world';
 import { clampWorld, footprintOriginCell, hexToInt, isInMap, worldToCell } from '../core/math';
@@ -66,6 +66,10 @@ import type { CameraRig } from '../render/camera';
 // screen promises must be ONE array. This module already reaches into
 // `src/render/camera` for the ghost's ray, so the edge is not a new one.
 import { PLACEMENT_ROTATE_HOTKEYS } from '../input/ActionCatalogue';
+// The shared "does this battlefield have a sea" predicate. Its own module, and
+// a deliberately tiny one — the sidebar and the AI need the same answer this
+// rule needs, and three counts of wet cells is how a contradiction starts.
+import { mapSupportsNaval } from './NavalWater';
 
 import type { BuildEntry, ProductionService } from './Production';
 
@@ -155,6 +159,16 @@ export const enum PlacementFault {
   Blocked = 4,
   /** Nowhere near your base. */
   OutOfRange = 5,
+  /**
+   * A shore-bound structure with no shore. See `BuildEntry.needsShore`.
+   *
+   * LAST, so it never masks a fault the player can see for themselves — the
+   * report keeps the HIGHEST fault, and "there is a rock in the way" is a more
+   * useful sentence than "not on the coast" when both are true. It is also the
+   * only fault here that is about the WHOLE site rather than one cell, so it is
+   * the only one that never marks `cells`.
+   */
+  NoShore = 6,
 }
 
 const FAULT_TEXT: readonly string[] = [
@@ -164,7 +178,25 @@ const FAULT_TEXT: readonly string[] = [
   'Something is already there',
   'Clear your units off the site',
   'Too far from your base',
+  'Must be founded on the coast',
 ];
+
+/**
+ * The OTHER shore refusal, and the reason there are two.
+ *
+ * "Must be founded on the coast" is advice: move the ghost, there is a coast.
+ * On a battlefield with no sea in it there is nowhere to move to, and repeating
+ * the first sentence would send a player up and down a dry map looking for
+ * water that does not exist. A refusal that cannot be acted on has to say so —
+ * the same rule `UnlockGate.reasonFor` follows when it names the mission rather
+ * than saying "Locked", and the same one `Transport.refusalFor` follows with
+ * 'full' versus 'not a transport'.
+ *
+ * The lasting fix for this case is not a better sentence, it is not offering
+ * the cameo at all; `mapSupportsNaval` in `src/sim/NavalWater.ts` is the shared
+ * predicate that gate is meant to be built on.
+ */
+const NO_SEA_TEXT = 'No navigable water on this battlefield';
 
 export interface PlacementReport {
   ok: boolean;
@@ -337,9 +369,58 @@ export function evaluatePlacement(
   out.inRadius = withinBuildRadius(world, player, (minX + maxX) * 0.5, (minZ + maxZ) * 0.5);
   if (!out.inRadius && out.fault === PlacementFault.None) out.fault = PlacementFault.OutOfRange;
 
-  out.ok = out.blocked === 0 && out.inRadius;
-  out.reason = out.ok ? '' : FAULT_TEXT[out.fault];
+  /* -- the coast ---------------------------------------------------------- */
+  const onShore = !entry.needsShore || hasNavigableWater(terrain, cx, cz, w, h);
+  if (!onShore && out.fault === PlacementFault.None) out.fault = PlacementFault.NoShore;
+
+  out.ok = out.blocked === 0 && out.inRadius && onShore;
+  // Two sentences for one fault: see `NO_SEA_TEXT`. `mapSupportsNaval` is
+  // memoised per map, so this costs a fingerprint on the refusal path and
+  // nothing at all on the accept path.
+  out.reason = out.ok ? ''
+    : out.fault === PlacementFault.NoShore && !mapSupportsNaval(terrain) ? NO_SEA_TEXT
+      : FAULT_TEXT[out.fault];
   return out;
+}
+
+/**
+ * Is there enough open water beside a `w x h` footprint at (cx, cz) to launch a
+ * ship from it?
+ *
+ * THIS IS THE OTHER HALF OF THE NAVAL EGRESS FIX AND IT IS NOT OPTIONAL.
+ * `Production.findEgressSpot` now insists on a WATER cell for a warship. Left
+ * on its own, that turns the first Naval Yard a player founds inland into a
+ * permanently stalled production queue: paid for, built, `ready: true`, nothing
+ * ever comes out. So the rule that decides where the yard may stand and the
+ * search that launches its hulls are two statements of one fact, and
+ * `PRODUCTION.shoreSearchCells` / `navalEgressRings` are sized against each
+ * other. `tests/naval-shore.spec.ts` asserts the relation.
+ *
+ * "Navigable" is the same question `Flowfield.rebuildCost` asks when it builds
+ * the `MoveClass.Naval` cost grid — water AND passable to a hover skirt — so a
+ * flooded cell inside a cliff shadow does not count as a harbour. Restating it
+ * through the `ITerrain` port rather than reaching for `FlowFieldCache` keeps
+ * this function pure, allocation-free and callable from the ghost every frame.
+ *
+ * `shoreWaterCells` of them, not one: a two-cell puddle in a noise basin is not
+ * a harbour, and before the seas landed those puddles were the ONLY water on
+ * any shipped map. The scan is a Chebyshev box and early-outs on the count, so
+ * the worst case is (2 * 6 + 6)^2 = 324 cell reads for a 3x3 yard.
+ */
+function hasNavigableWater(
+  terrain: World['terrain'], cx: number, cz: number, w: number, h: number,
+): boolean {
+  const r = PRODUCTION.shoreSearchCells;
+  let found = 0;
+  for (let z = cz - r; z < cz + h + r; z++) {
+    for (let x = cx - r; x < cx + w + r; x++) {
+      if (!isInMap(x, z)) continue;
+      if (!terrain.isWater(x, z)) continue;
+      if (!terrain.isPassable(x, z, Locomotor.Hover)) continue;
+      if (++found >= PRODUCTION.shoreWaterCells) return true;
+    }
+  }
+  return false;
 }
 
 /**
