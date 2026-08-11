@@ -88,9 +88,21 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 2857 across 110 files
+npm test             # vitest, currently 3072 across 116 files
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
+```
+
+**The fourth typecheck invocation needs `server/node_modules`, and a root `npm install`
+does not create it.** On a fresh clone — and in EVERY `git worktree`, since worktrees do
+not copy `node_modules` — `tsc -p server/tsconfig.json` dies on
+`TS2307: Cannot find module 'ws'`. That is a missing prerequisite, not a defect in your
+change; three parallel agents each independently reported it as a failing gate. CI does
+not hit it because `.github/workflows/deploy.yml` runs `npm ci --prefix server`. Do the
+same locally before believing a red fourth invocation:
+
+```bash
+npm ci --prefix server
 ```
 
 **The first line said `npx tsc --noEmit` and that is NOT the gate.** `npm run typecheck`
@@ -288,3 +300,15 @@ Worth knowing, because each cost real time:
   systems quietly never registered. Discovery now logs every id; read that line.
 - **A shape library that drew boxes.** Both factories ended their mass loop at `default: buildBox`,
   so all eleven new primitives rendered as cubes. The abstraction existed; nothing used it.
+- **`git stash` is a SHARED ref, and it ate another worktree's work.** `refs/stash` is one ref per
+  REPOSITORY, not per worktree. With parallel agents in `git worktree`s, a bare `git stash pop`
+  takes whatever is on top — which twice meant another agent's uncommitted work landing in a tree
+  that knew nothing about it. Both were recovered, by SHA and by `git fsck --unreachable`, and only
+  because the agents noticed. **Do not use `git stash` in this repo.** Set work aside with a commit
+  on your own branch; amend or squash later.
+- **Wiki links must be absolute — `/avihaymenahem/voltmarch/wiki/<Page>`.** GitHub's wiki renderer
+  rewrites a bare `[x](Economy)` into a RELATIVE href computed as though the front page lived at
+  `/wiki`. At `/wiki/Home` that resolves to `/wiki/wiki/Economy`, which does not 404 — it silently
+  re-serves the front page, so every link on the front page looked inert rather than broken. The
+  `.md` suffix does not fix it and breaks working links; that was tested, not assumed.
+  `tests/wiki-links.spec.ts` is the gate.
