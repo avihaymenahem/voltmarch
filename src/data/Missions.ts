@@ -72,7 +72,20 @@ export const UNLOCKS = {
   unitNaval: 'unit.naval',
   /** Capital ships: Aircraft Cruiser / Dreadnought / Sunmonitor. */
   unitNavalCapital: 'unit.naval.capital',
-  /** Rotary wing. Meridian only today — the Pactworks Kestrel. */
+  /**
+   * The air arm, and ALL FOUR armies have one: Kestrel Gunship, Swarmhornet,
+   * Vindicator, MiG Fighter.
+   *
+   * This read "Meridian only today — the Pactworks Kestrel" and was paid by
+   * `mastery.meridian.2`, "win 12 skirmishes as the Meridian Pact". That was
+   * true when the Pact owned the only gunship; the moment the Reclamation,
+   * Allied and Soviet aircraft landed it meant a Reclamation player had to win
+   * a dozen games as a DIFFERENT ARMY to unlock their own. It is paid by
+   * `construction.armour.2` now, which is faction-agnostic — see the rule three
+   * paragraphs down in `UNLOCK_TAGS`: one mission grants a group and every army
+   * gets its member, so switching faction never sends a player back to the
+   * start of a curve they already paid for.
+   */
   unitAir: 'unit.air',
 
   /* -- structures --------------------------------------------------------- */
@@ -86,10 +99,29 @@ export const UNLOCKS = {
   structDefenceAA: 'struct.defence.aa',
 
   /* -- superweapons: the end of the longest chains ------------------------ *
-   * No def carries these yet — there are no superweapon structures in
-   * `Defs.ts`. The ids are authored ahead of the content on purpose: a reward
-   * the player can see and not yet use is a content gap, whereas a reward the
-   * table cannot express is a save migration.                                */
+   * FIVE IDS, SIX STRUCTURES, AND EVERY ONE OF THEM IS NOW GATED.
+   *
+   * This block used to read "No def carries these yet — there are no
+   * superweapon structures in `Defs.ts`", which stopped being true the release
+   * the six rows landed: `nuclearSilo`, `ironCurtain`, `chronosphere`,
+   * `weatherControl`, `mrdHeliograph` and `rclStormworks` shipped with no
+   * `unlockedBy`, so they were day-one buildable and all five rewards below
+   * paid into nothing.
+   *
+   * The mapping is by EFFECT, which is the grouping `src/sim/Superweapons.ts`
+   * itself uses (six rows, four effects):
+   *
+   *   superStrategic     nuclearSilo                 the warned annihilation
+   *   superSolarLance    mrdHeliograph               the same effect, Pact
+   *   superSiege         weatherControl + rclStormworks   the scattered storm
+   *   superChronosphere  chronosphere                two-click translocation
+   *   superIronCurtain   ironCurtain                 true invulnerability
+   *
+   * `superSiege` covers TWO structures because they run one effect
+   * (`SuperweaponId.LightningStorm`) for two armies, exactly as `unit.raider`
+   * covers four hulls. Its id STRING is not renamed: `struct.superweapon.siege`
+   * is written into every profile that has earned it, and a rename would orphan
+   * it. Read "siege" as the sustained bombardment it gates.                   */
   superSiege: 'struct.superweapon.siege',
   superStrategic: 'struct.superweapon.strategic',
   superChronosphere: 'struct.superweapon.chronosphere',
@@ -266,6 +298,23 @@ const COMBAT: readonly MissionDef[] = [
     rule: { on: 'veterancy', rank: 1 },
     reward: cosmeticUnlock(UNLOCKS.insigniaVeteran),
   },
+  // RANK 2 IS ELITE, AND IT IS THE TOP OF THE LADDER.
+  //
+  // This said `rank: 3` and could therefore never complete. `Damage.ts`'s
+  // promotion loop is `while (rank < 2 && kills >= VETERANCY_KILLS[rank])` and
+  // `Crates.ts` refuses to promote past 2 in the same words, so no
+  // `entity:veterancy` event has ever carried a rank above 2 — and
+  // `MissionTracker` advances only when `p.rank >= (rule.rank ?? 1)`. The
+  // config agrees: `VETERANCY_KILLS` is two entries (3 and 6 kills) and
+  // `VETERANCY_HP`/`VETERANCY_DAMAGE` are three (index 0 is the rookie), so the
+  // ladder is rookie -> veteran(1) -> elite(2) and stops.
+  //
+  // The consequence was not a stuck row: this mission is the ONLY payer of
+  // `power.emergency-repair`, so a fully implemented commander power was
+  // permanently unreachable. LOWERED rather than raising the cap, because the
+  // description already says "elite" and rank 2 IS elite — the number was the
+  // typo, not the design. `tests/content-truthful.spec.ts` §1 now bounds every
+  // veterancy rule against `VETERANCY_KILLS.length`.
   {
     id: 'combat.veteran.2',
     scope: 'profile', category: 'combat', difficulty: 3,
@@ -273,7 +322,7 @@ const COMBAT: readonly MissionDef[] = [
     description: 'Promote 15 units to elite rank.',
     target: 15,
     requires: ['combat.veteran.1'],
-    rule: { on: 'veterancy', rank: 3 },
+    rule: { on: 'veterancy', rank: 2 },
     reward: powerUnlock(UNLOCKS.powerEmergencyRepair),
   },
 ];
@@ -375,6 +424,31 @@ const CONSTRUCTION: readonly MissionDef[] = [
     target: 200,
     rule: { on: 'produce', tab: BuildTab.Vehicles },
     reward: cosmeticUnlock(UNLOCKS.decalLaurel),
+  },
+  // THE AIR ARM, AND IT IS DELIBERATELY FACTION-AGNOSTIC.
+  //
+  // `unit.air` was paid by `mastery.meridian.2` — "win 12 skirmishes as the
+  // Meridian Pact" — which was right while the Kestrel was the only aircraft in
+  // the game and wrong the moment `rclHornet`, `vindicator` and `mig` joined
+  // it. A Reclamation player had to win a dozen matches as somebody else's army
+  // to unlock their own gunship, which is the exact failure the mirroring rule
+  // in `Defs.ts#UNLOCK_TAGS` exists to prevent.
+  //
+  // It sits on the VEHICLE chain because that is where the air arm actually
+  // lives: all four aircraft are `BuildTab.Vehicles`, built by the war factory
+  // off a radar, so "the top of the vehicle line" is what the reward is. 400 is
+  // twice `construction.armour.1` and roughly half `construction.produce.2`'s
+  // 750 all-units, which puts it at the same reach as the other difficulty-3
+  // widenings without being a grind.
+  {
+    id: 'construction.armour.2',
+    scope: 'profile', category: 'construction', difficulty: 3,
+    title: 'Air Wing',
+    description: 'Build 400 vehicles.',
+    target: 400,
+    requires: ['construction.armour.1'],
+    rule: { on: 'produce', tab: BuildTab.Vehicles },
+    reward: grant(UNLOCKS.unitAir),
   },
   {
     id: 'construction.capture.1',
@@ -510,23 +584,26 @@ const MASTERY: readonly MissionDef[] = [
     rule: { on: 'win', faction: Faction.Meridian },
     reward: cosmeticUnlock(UNLOCKS.insigniaMeridian),
   },
+  // TWO STEPS, LIKE THE OTHER TWO MASTERY CHAINS.
+  //
+  // This was three: 5 wins -> insignia, 12 wins -> `unit.air`, 20 wins ->
+  // `superSolarLance`. The middle rung was the only faction-locked mission in
+  // the file paying a group every army owns a member of (see
+  // `construction.armour.2`), so it is gone and the superweapon step keeps the
+  // id `mastery.meridian.2`.
+  //
+  // KEEPING THE ID RATHER THAN DELETING IT IS THE POINT. `MissionTracker`
+  // stores progress per id and the metric is unchanged — wins as the Pact — so
+  // a player sitting on 12 keeps 12 and now reads 12/20 against the same target
+  // the Allied and Soviet superweapon steps use. Deleting `mastery.meridian.2`
+  // and renumbering `.3` down would have thrown that progress away.
   {
     id: 'mastery.meridian.2',
-    scope: 'profile', category: 'mastery', difficulty: 3, faction: Faction.Meridian,
-    title: 'Pactworks Aviation',
-    description: 'Win 12 skirmishes as the Meridian Pact.',
-    target: 12,
-    requires: ['mastery.meridian.1'],
-    rule: { on: 'win', faction: Faction.Meridian },
-    reward: grant(UNLOCKS.unitAir),
-  },
-  {
-    id: 'mastery.meridian.3',
     scope: 'profile', category: 'mastery', difficulty: 3, faction: Faction.Meridian,
     title: 'Solar Lance Programme',
     description: 'Win 20 skirmishes as the Meridian Pact.',
     target: 20,
-    requires: ['mastery.meridian.2'],
+    requires: ['mastery.meridian.1'],
     rule: { on: 'win', faction: Faction.Meridian },
     reward: grant(UNLOCKS.superSolarLance),
   },
@@ -701,6 +778,90 @@ export const MISSION_UNLOCK_IDS: readonly string[] = (() => {
   }
   return out.sort();
 })();
+
+/* ==========================================================================
+ * 4b. WHICH MISSION PAYS THIS UNLOCK
+ *
+ * WHY THIS EXISTS. A locked build slot used to say `Locked — complete a
+ * mission` — one constant, no mission name, on every padlocked cameo in the
+ * sidebar. A player hovering a Battle Lab was told to complete "a mission" and
+ * had no way to find out which one, and every piece of data needed to answer
+ * was already here: the def carries `unlockedBy: 'struct.tech'`, and exactly
+ * one mission (`economy.harvest.2`, "Strip Mine") pays that id out.
+ *
+ * WHY THE MAP LIVES HERE AND NOT IN THE GATE. `src/progression/UnlockGate.ts`
+ * imports nothing but its own type-only module, deliberately, so that
+ * `src/sim/**` can call `isBuildable` without dragging the mission table (or
+ * `localStorage`, or the profile) into the simulation bundle. That property is
+ * worth more than the convenience of a direct import, so the reverse map is
+ * built where the table already is and INJECTED into the gate by
+ * `progression.system.ts`. The gate takes it as data; it never reaches for it.
+ *
+ * ONE MISSION PER ID IS AN INVARIANT, NOT AN ASSUMPTION — the self-check below
+ * already refuses a second grant, because a reward paid twice makes one of the
+ * two missions pay nothing.
+ * ========================================================================== */
+
+/** Everything a locked tooltip needs to name the mission that opens a def. */
+export interface UnlockSource {
+  readonly unlockId: string;
+  readonly missionId: string;
+  /** `Strip Mine`. */
+  readonly title: string;
+  /** `Mine 250,000 credits of ore.` */
+  readonly description: string;
+}
+
+/** Every granted unlock id, with the one mission that pays it. Table order. */
+export const UNLOCK_SOURCES: readonly UnlockSource[] = (() => {
+  const out: UnlockSource[] = [];
+  const seen = new Set<string>();
+  for (const m of MISSIONS) {
+    for (const r of m.reward) {
+      if (r.kind !== 'unlock' || seen.has(r.unlockId)) continue;
+      seen.add(r.unlockId);
+      out.push({ unlockId: r.unlockId, missionId: m.id, title: m.title, description: m.description });
+    }
+  }
+  return out;
+})();
+
+const SOURCE_BY_UNLOCK = new Map<string, UnlockSource>(UNLOCK_SOURCES.map((s) => [s.unlockId, s]));
+
+/** The mission that pays `unlockId`, or undefined when nothing does. */
+export function unlockSource(unlockId: string): UnlockSource | undefined {
+  return SOURCE_BY_UNLOCK.get(unlockId);
+}
+
+/**
+ * `Strip Mine: mine 250,000 credits of ore` — the requirement in one line.
+ *
+ * The description's trailing full stop is dropped and its first letter lowered,
+ * so the two halves read as one sentence after whatever prefix the caller uses
+ * ("Locked — "). Returns '' when no mission grants the id, which is the honest
+ * answer for a def gated behind something nothing pays; the caller falls back
+ * to the generic line rather than printing a half-empty one.
+ */
+export function unlockRequirementText(unlockId: string): string {
+  const src = SOURCE_BY_UNLOCK.get(unlockId);
+  if (src === undefined) return '';
+  const body = src.description.replace(/\.\s*$/, '');
+  const lowered = body.length > 0 && body[0] === body[0].toUpperCase() && body[1] !== undefined
+    && body[1] === body[1].toLowerCase()
+    ? body[0].toLowerCase() + body.slice(1)
+    : body;
+  return `${src.title}: ${lowered}`;
+}
+
+/**
+ * The whole map as plain pairs, for injection into `UnlockGate`.
+ *
+ * Pairs rather than the `UnlockSource` objects because the gate only ever wants
+ * the sentence — handing it the mission records would invite it to grow a
+ * dependency on their shape.
+ */
+export const UNLOCK_REQUIREMENTS: readonly (readonly [string, string])[] =
+  UNLOCK_SOURCES.map((s) => [s.unlockId, unlockRequirementText(s.unlockId)] as const);
 
 export default MISSIONS;
 

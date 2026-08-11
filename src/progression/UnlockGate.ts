@@ -56,15 +56,38 @@ export interface UnlockGateOptions {
    * expensive kind of content bug to find.
    */
   knownUnlockIds?: Iterable<string>;
+  /**
+   * `unlockId -> the requirement in one line`, e.g.
+   * `'struct.tech' -> 'Strip Mine: mine 250,000 credits of ore'`.
+   *
+   * INJECTED, NEVER IMPORTED, and that is the point. This file imports nothing
+   * but its own type-only module so that `src/sim/**` can call `isBuildable`
+   * without dragging the mission table — or the profile store, or
+   * `localStorage` — into the simulation bundle. The reverse map is built where
+   * the missions already live (`src/data/Missions.ts#UNLOCK_REQUIREMENTS`) and
+   * handed in by `progression.system.ts`. Absent, every locked def falls back
+   * to `LOCKED_REASON` and nothing breaks.
+   */
+  unlockHints?: Iterable<readonly [string, string]>;
 }
 
-/** Tooltip text for a def the gate rejected. Never empty. */
+/**
+ * Tooltip text for a def the gate rejected when nothing better is known.
+ *
+ * THE FALLBACK, NOT THE ANSWER. This was the only thing a locked cameo ever
+ * said: a player hovered a padlocked Battle Lab, was told to "complete a
+ * mission", and had no way to find out which one — while the def carried
+ * `unlockedBy: 'struct.tech'` and exactly one mission paid that id out. See
+ * `lockedReasonFor`, and `UnlockGateOptions.unlockHints` for why the lookup
+ * arrives as data rather than as an import.
+ */
 export const LOCKED_REASON = 'Locked — complete a mission';
 
 export class UnlockGate {
   private mirrorAI: boolean;
   private unrestricted: boolean;
   private readonly known: Set<string> | null;
+  private readonly hints: Map<string, string>;
   /** Ids seen on a def that no mission grants. Reported once each. */
   private readonly warned = new Set<string>();
 
@@ -75,6 +98,7 @@ export class UnlockGate {
     this.mirrorAI = options.mirrorAI ?? true;
     this.unrestricted = options.unrestricted ?? false;
     this.known = options.knownUnlockIds === undefined ? null : new Set(options.knownUnlockIds);
+    this.hints = new Map(options.unlockHints ?? []);
   }
 
   /* -- policy ------------------------------------------------------------- */
@@ -124,10 +148,28 @@ export class UnlockGate {
     return this.allows(def);
   }
 
+  /**
+   * `Locked — Strip Mine: mine 250,000 credits of ore`, for one unlock id.
+   *
+   * Falls back to `LOCKED_REASON` when no hint table was injected or when the
+   * id is one nothing grants — a def gated behind an unpayable id is a content
+   * bug (`checkKnown` warns about it separately) and inventing a mission name
+   * for it would hide the bug behind a plausible sentence.
+   */
+  lockedReasonFor(unlockId: string): string {
+    const hint = this.hints.get(unlockId);
+    return hint === undefined || hint === '' ? LOCKED_REASON : `Locked — ${hint}`;
+  }
+
   /** Tooltip for a rejected def. Empty string when the def is available. */
   reasonFor(def: Gateable | null | undefined): string {
-    return this.allows(def) ? '' : LOCKED_REASON;
+    if (this.allows(def)) return '';
+    const id = def?.unlockedBy;
+    return id === undefined || id === '' ? LOCKED_REASON : this.lockedReasonFor(id);
   }
+
+  /** True when a hint table was injected, i.e. `reasonFor` can name a mission. */
+  get hasUnlockHints(): boolean { return this.hints.size > 0; }
 
   /* -- the filter the production catalogue calls -------------------------- */
 

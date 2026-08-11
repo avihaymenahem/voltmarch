@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * src/sim/Superweapons.ts — THE FOUR BUTTONS THAT END GAMES
+ * src/sim/Superweapons.ts — THE SIX BUTTONS THAT END GAMES
  * ============================================================================
  *
  * Everything around superweapons already shipped and pointed at nothing:
@@ -8,7 +8,13 @@
  * config, the MM:SS formatter, a cameo category, and a camera-shake comment
  * that says "nukes 1.0". This is the gameplay behind them.
  *
- * FOUR, TWO PER ARMY, GENUINELY DIFFERENT:
+ * This header opened "THE FOUR BUTTONS THAT END GAMES" and listed four, two per
+ * army, for two releases after the fifth and sixth shipped — the count was the
+ * original two armies' and nothing updated it when the Pact and the
+ * Reclamation got theirs. `SUPERWEAPON_COUNT` is 6 and always was the honest
+ * number; the paragraph below it has said so all along.
+ *
+ * FOUR EFFECTS, GENUINELY DIFFERENT:
  *
  *   nuke            (Soviet)  A single annihilating blast, announced three and
  *                             a half seconds before it lands so the target has
@@ -32,6 +38,15 @@
  * radius and its FX colour off the ROW THAT FIRED rather than off a hard-coded
  * `SUPERWEAPONS[SuperweaponId.Nuke]`. For the original four the two are the
  * same value, which is why nothing about them changed.
+ *
+ * AND SINCE v2.3 THEY ARE GATED ON A MISSION AS WELL AS ON A STRUCTURE. All six
+ * defs shipped without `unlockedBy`, so a fresh profile could build a Nuclear
+ * Missile Silo in its first match while the five `struct.superweapon.*` rewards
+ * at the end of the longest chains in `src/data/Missions.ts` paid into nothing.
+ * `UNLOCK_TAGS` in `src/data/Defs.ts` tags them, grouped by the `effect` column
+ * below — so the unlock id and `structureKeys` can never disagree about what a
+ * weapon is. Nothing in THIS file reads that; the gate is upstream, in the
+ * production catalogue.
  *
  * CHARGING is gated on a live, finished, POWERED structure, and `structureKeys`
  * names it. This used to end every chain at `battleLab` because no superweapon

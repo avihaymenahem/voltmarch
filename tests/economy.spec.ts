@@ -368,6 +368,108 @@ describe('Economy — credits, storage and overflow', () => {
     expect(rig.economy.wasted(P0)).toBe(0);
   });
 
+  /* -- THE SAME BUG, ONE LOBBY OPTION LATER -----------------------------------
+   * The test above fixed the constant against START_CREDITS, and the skirmish
+   * lobby then grew `CREDIT_OPTIONS = [2000, 5000, 10000, 20000, 50000]`.
+   * `Shell.applyPostBoot` writes the chosen number straight onto
+   * `PlayerState.credits` before tick 1, so the two big options opened 10 000
+   * and 40 000 credits ABOVE a cap pinned to START_CREDITS — and the first
+   * rescan, well under a second in, confiscated the difference and counted it
+   * as waste. Measured in the running game before the fix: a 50 000 lobby was
+   * cut to 12 000 on the first `recomputeStorage`.
+   *
+   * `STORAGE_BASE` cannot answer this on its own. Raising it to the largest
+   * lobby option would delete the storage mechanic for everybody else, so the
+   * floor is per-player and rises to whatever the match actually handed out.  */
+  it('keeps a 50,000 lobby bank, which is the largest CREDIT_OPTIONS entry', () => {
+    const rig = makeRig();
+    spawnRefinery(rig, P0, CX, CZ);
+    rig.economy.recomputeStorage();
+
+    // Exactly what the shell does with the lobby's answer.
+    rig.world.player(P0).credits = 50_000;
+    rig.economy.recomputeStorage();
+
+    expect(rig.economy.credits(P0)).toBe(50_000);
+    expect(rig.economy.wasted(P0)).toBe(0);
+    // ...and it survives every LATER rescan too, not just the first.
+    for (let k = 0; k < 8; k++) rig.economy.recomputeStorage();
+    expect(rig.economy.credits(P0)).toBe(50_000);
+    expect(rig.economy.wasted(P0)).toBe(0);
+  });
+
+  it('leaves a large bank the same storage headroom a default one gets', () => {
+    // THE OTHER HALF OF THE REPORT: "every harvested credit is annihilated
+    // until the player spends down". Stopping the confiscation is not enough —
+    // a floor set to exactly the balance pins the player at 100% of their cap,
+    // and `deposit` then throws away every load. Structures have to sit ON TOP
+    // of what the match handed you.
+    const rig = makeRig();
+    spawnRefinery(rig, P0, CX, CZ);
+    rig.economy.recomputeStorage();
+    const defaultHeadroom = rig.economy.headroom(P0);
+    expect(defaultHeadroom).toBe(REFINERY_STORAGE);
+
+    rig.world.player(P0).credits = 50_000;
+    rig.economy.recomputeStorage();
+    expect(rig.economy.headroom(P0)).toBe(defaultHeadroom);
+
+    // And ore really banks rather than evaporating.
+    expect(rig.economy.deposit(P0, 1200, CreditReason.Harvest)).toBe(1200);
+    expect(rig.economy.credits(P0)).toBe(51_200);
+  });
+
+  it('still throws away the overflow, so storage is not switched off', () => {
+    // The control for the two above. If the floor simply tracked credits, none
+    // of this would ever waste anything and silos would stop mattering.
+    const rig = makeRig();
+    spawnRefinery(rig, P0, CX, CZ);
+    rig.world.player(P0).credits = 20_000;
+    rig.economy.recomputeStorage();
+
+    const room = rig.economy.headroom(P0);
+    expect(room).toBe(REFINERY_STORAGE);
+    const banked = rig.economy.deposit(P0, room + 5000, CreditReason.Harvest);
+    expect(banked).toBe(room);
+    expect(rig.economy.wasted(P0)).toBe(5000);
+  });
+
+  it('still confiscates when a storage structure is actually lost', () => {
+    // The clamp's real job, unchanged. A floor that forgave everything would
+    // make destroying a refinery free.
+    const rig = makeRig();
+    const ref = spawnRefinery(rig, P0, CX, CZ);
+    rig.world.player(P0).credits = 20_000;
+    rig.economy.recomputeStorage();
+    expect(rig.economy.storageMax(P0)).toBe(20_000 + REFINERY_STORAGE);
+
+    rig.world.player(P0).credits = 20_000 + REFINERY_STORAGE;
+    rig.world.store.markDead(ref);
+    rig.world.store.flushDestroyed();
+    rig.economy.recomputeStorage();
+
+    expect(rig.economy.storageMax(P0)).toBe(20_000);
+    expect(rig.economy.credits(P0)).toBe(20_000);
+    expect(rig.economy.wasted(P0)).toBe(REFINERY_STORAGE);
+  });
+
+  it('keeps a bounty that lands while the player is already full', () => {
+    // `grant` is documented to ignore the cap, and before the floor existed the
+    // next rescan took it straight back — so a Scrap Baron's salvage or a
+    // cancelled build was real for a fraction of a second and then flashed red.
+    const rig = makeRig();
+    spawnRefinery(rig, P0, CX, CZ);
+    rig.economy.recomputeStorage();
+    rig.world.player(P0).credits = rig.economy.storageMax(P0);
+
+    rig.economy.grant(P0, 3000, CreditReason.Bounty);
+    const afterGrant = rig.economy.credits(P0);
+    rig.economy.recomputeStorage();
+
+    expect(rig.economy.credits(P0)).toBe(afterGrant);
+    expect(rig.economy.wasted(P0)).toBe(0);
+  });
+
   it('tracks a smoothed income rate', () => {
     const rig = makeRig();
     rig.world.player(P0).storageMax = 1e6;

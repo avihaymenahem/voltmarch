@@ -726,6 +726,47 @@ export class Economy {
   /** Per-player multiplier on HARVESTED income. 1 = no handicap. */
   private readonly resourceBonus = new Float64Array(MAX_PLAYERS);
 
+  /* -- the storage floor, and why it is per-player rather than a constant ---
+   *
+   * THE BUG THIS REPLACES. `STORAGE_BASE` resolves to `max(BASE_STORAGE,
+   * START_CREDITS)` = 10 000, and config §21 explains it as "the cap may never
+   * be lower than the money the game hands you at the start". That was exactly
+   * right while 10 000 was the only opening bank. The skirmish lobby offers
+   * `CREDIT_OPTIONS = [2000, 5000, 10000, 20000, 50000]`, and `Shell` writes
+   * the chosen number straight onto `PlayerState.credits` before tick 1 — so a
+   * 50 000 lobby opened 40 000 over a cap the player could not see, and the
+   * first `recomputeStorage` (POWER_RECOMPUTE_INTERVAL ticks in, well under a
+   * second) CONFISCATED the difference and counted it as waste. The player
+   * watched four fifths of their bank evaporate before they had built anything.
+   *
+   * `grant()` had the same hole from the other end: it is documented to ignore
+   * the cap (a bounty or a cancelled build must never lose money) and the next
+   * rescan took the excess back anyway.
+   *
+   * THE FIX IS TO ASK WHY THE CLAMP EXISTS. It exists so that losing a silo
+   * shrinks the cap — that is the whole of its job, and it is a good job. It
+   * was never meant to confiscate money the match GAVE you. Those two cases are
+   * distinguishable without any new plumbing: storage structures either shrank
+   * this scan or they did not.
+   *
+   *   `capFloor`       the base under the cap, per player. Starts at
+   *                    STORAGE_BASE and RISES to cover any balance the meter
+   *                    never gated — the opening bank, a bounty, a refund. It
+   *                    never falls, so it cannot be used to dodge the clamp.
+   *   `prevStructural` last scan's storage from structures. When it DROPS, a
+   *                    refinery or a silo died and the clamp does its work.
+   *
+   * A deposit can never push credits over the cap on its own (`deposit` wastes
+   * the overflow instead of banking it), so the only ways to sit above the cap
+   * are an unmetered write, a grant, or a cap that just got smaller — and the
+   * first two are precisely the ones this floor forgives.
+   */
+  private readonly capFloor = new Float64Array(MAX_PLAYERS);
+  /** Last scan's structural storage per player. -1 until the first scan. */
+  private readonly prevStructural = new Float64Array(MAX_PLAYERS);
+  /** Scratch for one scan's structural sums. Allocated once, never grows. */
+  private readonly structural = new Float64Array(MAX_PLAYERS);
+
   private windowTicks = 0;
   private time = 0;
 
@@ -734,6 +775,10 @@ export class Economy {
     this.lastSiloEva.fill(-1e9);
     this.lastFundsEva.fill(-1e9);
     this.resourceBonus.fill(1);
+    this.capFloor.fill(STORAGE_BASE);
+    // -1 means "never scanned", so the first `recomputeStorage` cannot read a
+    // zero as "every silo just died" and confiscate the opening bank.
+    this.prevStructural.fill(-1);
     for (let p = 0; p < world.players.length; p++) {
       this.displayArr[p] = world.players[p].credits;
     }
@@ -875,18 +920,49 @@ export class Economy {
     return banked;
   }
 
-  /** Credits back with no cap check — cancelling production must never lose money. */
+  /**
+   * Credits back with no cap check — cancelling production must never lose money.
+   *
+   * It also RAISES the storage floor to cover the new balance, which is what
+   * makes "no cap check" true for longer than one tick. Without it the money
+   * arrived, sat above `storageMax` until the next `recomputeStorage`, and was
+   * then confiscated as waste — so the refund was real for a fraction of a
+   * second and the player saw a red number they had done nothing to earn. The
+   * lift is eager rather than left to the rescan for the same reason `deposit`
+   * reads `storageMax` directly: in the gap between the two, every harvested
+   * credit would be thrown away.
+   */
   refund(player: PlayerId, amount: number, reason: CreditReason = CreditReason.Refund): void {
     if (amount <= 0) return;
     const p = this.world.players[player as number];
     if (p === undefined) return;
     p.credits += amount;
+    this.liftFloorFor(player as number, p.credits);
     this.mark(player, amount, reason);
   }
 
   /** Unconditional grant (match start, crates, cheats). Ignores the cap. */
   grant(player: PlayerId, amount: number, reason: CreditReason = CreditReason.Init): void {
     this.refund(player, amount, reason);
+  }
+
+  /**
+   * Make room for `credits` that arrived without passing a cap check.
+   *
+   * Raises `capFloor` (and the live `storageMax`) just far enough to hold the
+   * balance, never lowers either. See the field's own note for why the floor is
+   * per-player and not the `STORAGE_BASE` constant it started as.
+   */
+  private liftFloorFor(p: number, credits: number): void {
+    if (p < 0 || p >= MAX_PLAYERS) return;
+    const pl = this.world.players[p];
+    if (pl === undefined || credits <= pl.storageMax) return;
+    // Same shape as the rescan: the floor takes the whole balance and the
+    // player's structures stay as headroom above it, so a bounty that lands
+    // while you are already full does not silently cost you your silos.
+    this.capFloor[p] = credits;
+    const structural = this.prevStructural[p] > 0 ? this.prevStructural[p] : 0;
+    pl.storageMax = credits + structural;
   }
 
   /* -- storage ----------------------------------------------------------- */
@@ -911,9 +987,9 @@ export class Economy {
     const w = this.world;
     const s = w.store;
     const n = w.players.length;
-    // STORAGE_BASE, not BASE_STORAGE — see the long note in config §21. The
-    // cap may never sit below the credits the match handed the player.
-    for (let p = 0; p < n; p++) w.players[p].storageMax = STORAGE_BASE;
+
+    /* -- 1. what the standing structures contribute ----------------------- */
+    for (let p = 0; p < n; p++) this.structural[p] = 0;
 
     const list = s.byKind[EntityKind.Building];
     const count = s.byKindCount[EntityKind.Building];
@@ -926,11 +1002,41 @@ export class Economy {
       if (add <= 0) add = (f & EntityFlag.IsRefinery) !== 0 ? REFINERY_STORAGE : 0;
       if (add <= 0) continue;
       const owner = s.owner[i];
-      if (owner < n) w.players[owner].storageMax += add;
+      if (owner < n) this.structural[owner] += add;
     }
 
+    /* -- 2. the floor, then the cap, then the clamp ------------------------
+     * The order is the whole fix. A player sitting above the cap is either
+     * holding money the meter never gated (the opening bank, a bounty, a
+     * refund) or standing in the wreckage of their own silo, and the two are
+     * told apart by whether STRUCTURAL storage just went down. Only the second
+     * one is confiscated — which is the case the clamp was written for.       */
     for (let p = 0; p < n; p++) {
       const pl = w.players[p];
+      const structural = this.structural[p];
+      const prev = this.prevStructural[p];
+      this.prevStructural[p] = structural;
+
+      // Storage did not shrink, so nothing was lost: whatever is in the bank
+      // is money the player is entitled to keep, and the floor rises under it.
+      // `prev < 0` is the first scan of the match, where the bank is whatever
+      // the lobby, the scenario or the replay header wrote.
+      //
+      // THE FLOOR TAKES THE WHOLE BALANCE, NOT THE BALANCE MINUS STRUCTURES.
+      // Setting it to `credits - structural` would also stop the confiscation,
+      // and it would leave the player pinned at exactly 100% of their cap with
+      // ZERO headroom — so the bank survived and every harvested credit was
+      // still annihilated until they spent down, which is the other half of the
+      // same bug report. Refineries and silos have to sit ON TOP of what the
+      // match handed you, or a 50 000 lobby has no working storage at all.
+      // With this, a 50 000 opening behaves exactly like the default 10 000
+      // one: the bank is untouchable and your storage structures are your room.
+      if (prev < 0 || structural >= prev) {
+        if (pl.credits > this.capFloor[p] + structural) this.capFloor[p] = pl.credits;
+      }
+
+      pl.storageMax = this.capFloor[p] + structural;
+
       if (pl.credits > pl.storageMax) {
         const lost = pl.credits - pl.storageMax;
         pl.credits = pl.storageMax;

@@ -190,18 +190,59 @@ describe('the Meridian Pact — balance envelope', () => {
     expect(array.maxHp).toBeLessThan(plant.maxHp);
   });
 
-  it('gates its best guns on the grid it cannot defend', () => {
-    // THE SIGNATURE. The Zenith Emitter and the Helios Spire both stop working
-    // in a brownout, and the Solar Array is the softest structure in the game.
-    for (const key of ['zenithBeam', 'heliosLance']) {
+  it('gates its DEFENCES on the grid it cannot defend', () => {
+    // THE SIGNATURE, AND IT IS THE EMPLACEMENTS. Both Pact defences stop
+    // working in a brownout, and the Solar Array that feeds them is the softest
+    // structure in the game — which is the payoff `src/data/Defs.ts` promises
+    // for the cheapest power in the game: "four Sandskiffs behind the lines can
+    // silence a whole defensive belt without touching a single Glaive Post".
+    for (const key of ['glaiveRepeater', 'heliosLance']) {
       const w = WEAPONS.find((x) => x.key === key);
       expect(w, key).toBeDefined();
       expect(w!.needsPower, key).toBe(true);
     }
-    // ...and the cheap anti-infantry defence does NOT, or a power raid would
-    // leave the base with no answer to a rush at all.
-    const glaive = WEAPONS.find((x) => x.key === 'glaiveRepeater')!;
-    expect(glaive.needsPower).toBe(false);
+
+    // THIS TEST USED TO ASSERT THE OPPOSITE OF BOTH HALVES, and both were
+    // wrong in the same way: it pinned the DATA and the data disagreed with
+    // every sentence the player and the author could read.
+    //
+    //   `glaiveRepeater` had no `needsPower` while the Glaive Post's blurb said
+    //   "Needs the grid" and the faction's own doctrine block said both its
+    //   defences carry it. The old reason given here — "or a power raid would
+    //   leave the base with no answer to a rush at all" — is precisely the
+    //   effect the doctrine block describes as the intended payoff, so the two
+    //   could not both stand. The doctrine won: it is the more specific
+    //   statement, it is what the blurb promises, and `PowerGrid.shed` orders
+    //   by draw DESCENDING within the defence class, so a deficit takes the
+    //   Spire's 55 before it ever reaches a post's 10. Losing the cheap posts
+    //   means the grid is gone entirely, and the Conclave is never shed.
+    //
+    //   `zenithBeam` HAD `needsPower` and it did nothing at all. `Combat.ts`
+    //   also requires `EntityFlag.NeedsPower` on the entity; only structures
+    //   ever get it, and `EntityFlag.Powered` is only ever written by
+    //   `PowerGrid.recompute`, which walks `byKind[EntityKind.Building]`. A
+    //   vehicle carrying the flag would be dark forever and never fire once.
+    const zenith = WEAPONS.find((x) => x.key === 'zenithBeam')!;
+    expect(
+      zenith.needsPower,
+      'a HULL cannot brown out — see the MERIDIAN_WEAPONS header in Defs.ts. '
+      + 'If this is ever true again, Power.ts must have learned to shed vehicles.',
+    ).toBe(false);
+  });
+
+  it('keeps the Pact fighting in a blackout with everything that is not a tower', () => {
+    // The other side of the decision above, and the reason it is survivable: a
+    // darkened belt is not a disarmed army. Nothing the Pact FIELDS is on the
+    // grid, so a power raid costs the emplacements and no more.
+    const mobile = UNITS.filter(
+      (u) => (u.faction as number) === (Faction.Meridian as number) && u.weapons.length > 0,
+    );
+    expect(mobile.length, 'the Pact should field armed units at all').toBeGreaterThan(3);
+    for (const u of mobile) {
+      for (const i of u.weapons) {
+        expect(WEAPONS[i].needsPower, `${u.key} fires ${WEAPONS[i].key}`).toBe(false);
+      }
+    }
   });
 
   it('trades harvester capacity for harvester speed', () => {

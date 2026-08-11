@@ -650,10 +650,24 @@ const CONTENT: readonly ContentSpec[] = [
    *
    * READ THE PREREQ COLUMN, because it is the whole faction: `rclSpitter` and
    * `rclGrinder` name ONLY `rclBreakerYard`. Four structures — Foundry,
-   * Furnace, Sorter, Breaker Yard — and the Reclamation's line army exists,
-   * where an Allied or Soviet player needs six before a Grizzly, and a Pact
-   * player needs five. It buys that tempo with an 80-power plant (against 100
-   * and 160) and with the softest hulls in the game.
+   * Furnace, Sorter, Breaker Yard — and the Reclamation's line army exists.
+   *
+   * FOUR IS ALSO WHAT EVERYONE ELSE NEEDS, and this comment used to claim
+   * otherwise: "an Allied or Soviet player needs six before a Grizzly, and a
+   * Pact player needs five". Walk the chains and all three are the same length.
+   *
+   *   conyard   -> powerPlant     -> refinery  -> warFactory    -> grizzly
+   *   mrdConclave -> mrdSolarArray -> mrdCistern -> mrdForgeyard -> mrdSolarch
+   *   rclFoundry  -> rclFurnace    -> rclSorter  -> rclBreakerYard -> rclGrinder
+   *
+   * So the flatness is real but it is not measured in structure COUNT. What
+   * the Reclamation actually buys is: a Rookery hanging off the Furnace rather
+   * than the Sorter (infantry one building earlier than anyone else), a Breaker
+   * Yard 100 credits and 2 seconds cheaper than the rival factories, and the
+   * cheapest and fastest hulls in the game — a Grinder is 600/9 s against a
+   * Grizzly's 700/11, a Solarch's 800/12 and a Rhino's 900/13. It pays for that
+   * tempo with an 80-power plant (against 100 and 160) and the softest hulls in
+   * the game: 270 hp against 340, 330 and 420.
    * ====================================================================== */
   {
     key: 'rclFoundry', name: 'Foundry', blurb: 'Unfolds the Reclamation. Builds structures.',

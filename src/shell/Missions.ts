@@ -214,11 +214,30 @@ export function rewardCopy(r: Reward): RewardCopy {
         effect: 'Callable once charged, in any match.',
         iconName: 'power',
       };
+    /* -- THE FOURTEEN THAT NOTHING WEARS ---------------------------------
+     * This said "Worn by your army. No effect on the battle." The second
+     * sentence was true and the first was not, and the first is the one a
+     * player acts on.
+     *
+     * Fourteen cosmetic ids ship — eight insignia, six decals — and NOTHING
+     * consumes one. `profile.unlocked` records them, this screen and
+     * `ui/ObjectiveBanner.ts` name them, and that is the entire set of readers:
+     * the insignia plate on a structure is `MassRole.Insignia` in
+     * `art/BuildingDefs.ts`, chosen per FACTION from `FACTION_PALETTE`, and it
+     * has never once looked at a profile. There is no code path from
+     * `cosmetic.insignia.gold` to a pixel.
+     *
+     * So the copy says what is true. It is a record of what the player has
+     * done, which is a real thing to want and is why the ids are not being
+     * retired — retiring them would strip earned rewards off every existing
+     * profile to fix a sentence. `tests/reward-wiring.spec.ts` carries the
+     * matching GAP claim, so the day something does render one, that test
+     * fails and forces this line to be rewritten with it.                    */
     case 'cosmetic':
       return {
         kind: 'Insignia',
         name: unlockLabel(r.cosmeticId),
-        effect: 'Worn by your army. No effect on the battle.',
+        effect: 'A record on your profile. Nothing in a match reads it yet.',
         iconName: 'flag',
       };
     default:
