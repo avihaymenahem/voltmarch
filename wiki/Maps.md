@@ -46,14 +46,16 @@ Two ship open. The other four are earned — see [Campaign](/avihaymenahem/voltm
 | **Airbase Flats** | Arid | Bare, hot, long sightlines | **1.00** (richest) | none | free |
 | **Frozen Sector** | Snowbound | Highest relief, cliffs channel everything | 0.90 | negligible | Prospector — mine 25,000 ore |
 | **Industrial Grid** | Urban | Almost no relief, roads everywhere | **0.70** (poorest) | none | Groundworks — complete 50 structures |
-| **Contested Strait** | Temperate | Temperate land, coast prop mix | 0.80 | negligible | Blitz — win inside 15 minutes |
-| **Coral Shore** | Temperate | Densest prop cover in the game | 0.75 | negligible | Total Mobilisation — build 750 units |
+| **Contested Strait** | Temperate | Temperate land, coast prop mix | 0.80 | **24.3 %** | Blitz — win inside 15 minutes |
+| **Coral Shore** | Temperate | Densest prop cover in the game | 0.75 | **26.4 %** | Total Mobilisation — build 750 units |
 
 Ore richness is a multiplier on the 900-unit-per-cell ceiling, so a field on Airbase Flats holds
 roughly **43 % more ore per cell** than the same field on Industrial Grid. That difference compounds
 over a long match and it is the single biggest map-level economic variable.
 
-> **Read the water column carefully.** It says *negligible*, and it means it — see §6.
+> **Read the water column carefully.** Four of the six are landlocked and mean it. The other two
+> carry a quarter of the map in open sea, and they are the only two on which the naval arm is a
+> real option — see §6.
 
 ---
 
@@ -205,32 +207,48 @@ slowly and in single file, which is the one situation where being crushable stop
 
 ---
 
-## 6. Water — and an honest warning
+## 6. Water — two seas and four dry maps
 
 Water sits at a flat 2.0 m. Below it, ground units simply cannot go; there is no shallows, no wading,
 no depth gradient in the navigation grid. Hover units cross land and water alike. Naval hulls can
 *only* be on water. Aircraft ignore all of it.
 
-**On the shipped maps there is effectively no water.** Measured on all six, with their real seeds:
+**Two of the six maps carry a real sea. Four are landlocked.** Measured on all six, with their real
+seeds and biomes, straight off the generator:
 
-| Map | Water cells | Largest single body |
-| --- | --- | --- |
-| Temperate Valley | 0.6 % | 23 cells (~370 m²) |
-| Airbase Flats | 0.0 % | none |
-| Frozen Sector | 0.2 % | 16 cells (~260 m²) |
-| Industrial Grid | 0.0 % | none |
-| Contested Strait | 0.2 % | 10 cells (~160 m²) |
-| Coral Shore | 0.6 % | 63 cells (~1,000 m²) |
+| Map | Water cells | Largest single body | Navigable for ships |
+| --- | --- | --- | --- |
+| Temperate Valley | 0.15 % | 9 cells (~144 m²) | nothing usable |
+| Airbase Flats | 0.00 % | none | none |
+| Frozen Sector | 0.16 % | 14 cells (~224 m²) | nothing usable |
+| Industrial Grid | 0.00 % | none | none |
+| **Contested Strait** | **24.3 %** | **3,973 cells (~63,600 m²)** | **3,622 cells** |
+| **Coral Shore** | **26.4 %** | **4,319 cells (~69,100 m²)** | **3,952 cells** |
 
-The reason is structural: the shoreline generator only runs for the `naval` screenshot fixture, and
-no playable map declares a sea. Arid and Urban carve no basins at all; Temperate and Snowbound carve
-small ones. The largest lake in the game is about 1,000 m² — smaller than a base footprint.
+The four dry maps are dry because nothing declares a shoreline for them, and the biome noise alone
+only ever produces puddles — the largest is smaller than a war factory. That is the correct answer
+for those four. It used to be the answer for all six, which is what made the naval arm unreachable.
 
-**So the entire naval arm is currently unusable in a skirmish.** Naval Yards, Naval Pens, Slipways,
-Breaker Docks, and every ship that comes out of them are content you can unlock and cannot deploy.
-Contested Strait's description promises that "naval yards earn their cost here"; on the shipped
-generator they do not. Amphibious hover movement is likewise a real mechanic with almost nothing to
-be amphibious across.
+**On the two coastal maps the shoreline is authored, not accidental.** It is a single straight
+coast with a low-frequency wander, laid along the perpendicular bisector of the two openings so both
+armies are exactly the same distance from the water — 112 m on Contested Strait, 100 m on Coral
+Shore. Every start still sits on flat, dry, guaranteed-buildable ground; the sea takes the far
+quarter of the map and the land behind it stays one connected region, so nothing about the ground
+war changed.
+
+The two are deliberately not the same water. **Contested Strait** drops the full 8 m the heightfield
+can express and reads as deep blue; **Coral Shore** is a 5 m lagoon on the opposite side of the map
+and reads turquoise, because the absorption gradient is driven by depth.
+
+**What this buys you.** Naval Yards, Naval Pens, Slipways and Breaker Docks have somewhere to stand:
+178 legal 3×3 shore sites on Contested Strait, 81 on Coral Shore. The sea is one connected body on
+both — 99.8 % of every navigable cell is in the main expanse — so a fleet can cross the map without
+portaging. Amphibious hover movement finally has something to be amphibious across, and it is the
+one chassis that can contest both the sea and the shore.
+
+> **A caveat worth knowing.** Nothing forces a Naval Yard to be built on the coast. You can found
+> one in the middle of the map, and the game will let you; it just will not put your hulls anywhere
+> useful. Build it on the beach.
 
 ---
 

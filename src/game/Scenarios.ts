@@ -2456,6 +2456,15 @@ export class ScenarioBuilder {
    * The full wilderness carpet (bible §1 ruling 9: 260 props/ha) belongs to the
    * instanced scatter system — these are the ones that cast a real shadow, block
    * nav and get crushed.
+   *
+   * REJECTS WATER, which it did not have to before `MAP_SEAS` existed. Every
+   * scatter box in this file is authored as a square around the composition, and
+   * on a map with a sea part of that square is now sea: `skirmish` dresses
+   * centre +/- 120 m, whose near corner sits inside `MAP_SEAS.coast`. The
+   * instanced carpet has always tested `PASS_GROUND` (`world/Scatter.ts`), but
+   * `spawnProp` places at `heightAt` unconditionally, so an unguarded box put
+   * pines on the seabed with their crowns through the water plane. Same test,
+   * both scatters.
    */
   scatter(
     box: WorldBox,
@@ -2464,6 +2473,7 @@ export class ScenarioBuilder {
   ): number {
     const budget = Math.min(count, SCENARIO_SCATTER.maxProps);
     const spacing = SCENARIO_SCATTER.minSpacing;
+    const terrain = this.world.terrain;
     let placed = 0;
     // Bounded rejection sampling: 8 tries per prop, then give up on that one.
     // A dense base leaves genuinely no room, and looping forever is not an
@@ -2472,6 +2482,9 @@ export class ScenarioBuilder {
       for (let attempt = 0; attempt < 8; attempt++) {
         const x = this.rng.range(box.minX, box.maxX);
         const z = this.rng.range(box.minZ, box.maxZ);
+        const cx = worldToCell(x);
+        const cz = worldToCell(z);
+        if (isInMap(cx, cz) && terrain.isWater(cx, cz)) continue;
         if (this.isBlocked(x, z, spacing)) continue;
         // Weight the list richest-first: index 0 appears about half the time.
         const pick = kinds[Math.min(kinds.length - 1, Math.floor(-Math.log2(1 - this.rng.next())))];
@@ -2669,6 +2682,12 @@ interface ScenarioPlan {
    * A plan that declares one must also `setShore` the same geometry inside its
    * builder, so `ScenarioSpec.shore` and the ground agree; `buildScenario`
    * checks and warns.
+   *
+   * THIS IS THE FIXTURE CHANNEL, not the only one. A PLAYABLE map gets its sea
+   * from `MAP_SEAS`, keyed on the map preset, and `planScenario` prefers this
+   * field over that table. The `setShore` obligation above belongs to this
+   * channel alone: it exists because a fixture authors a composition against a
+   * specific waterline, and `skirmish` authors nothing against the coast.
    */
   sea?: SeaSpec;
   /**
@@ -2990,6 +3009,191 @@ export const NAVAL_SEA: SeaSpec = {
   wavelengthMetres: 46,
 };
 
+/* --------------------------------------------------------------------------
+ * THE SEAS THE PLAYABLE MAPS CARRY
+ *
+ * THE DEFECT, STATED AS IT WAS MEASURED. `NAVAL_SEA` above had exactly ONE
+ * reader — `PLANS.naval`, a `?shot=` fixture that is not a playable match — and
+ * every other route through `planScenario` resolved `plan.sea ?? null` to null.
+ * Run on the real generator at the pinned `mapSeed` and biome of all six
+ * entries in `settings-store.MAPS`:
+ *
+ *     temperate-valley  0.15% water   largest body   9 cells (144 m2)
+ *     airbase-flats     0.00% water   largest body   0 cells
+ *     frozen-sector     0.16% water   largest body  14 cells (224 m2)
+ *     industrial-grid   0.00% water   largest body   0 cells
+ *     contested-strait  0.14% water   largest body   8 cells (128 m2)
+ *     coral-shore       0.14% water   largest body  14 cells (224 m2)
+ *
+ * Those are puddles in a noise basin. `contested-strait` ships with the blurb
+ * "A shoreline through the middle. Naval yards earn their cost here" and had 23
+ * wet cells spread over ten disconnected bodies. Four naval structures, nine
+ * hulls and two unlock chains were unreachable content: nowhere to sail,
+ * nowhere to fight, nowhere to put a dock.
+ *
+ * WHY THIS IS KEYED ON THE MAP PRESET. The line this replaced said `?map=`
+ * "cannot conjure or delete a shoreline: the sea is composition, authored with
+ * the fleet positions, not a property of the biome table". True of a FIXTURE —
+ * `buildNaval` places six hulls against a specific waterline and the two must
+ * not drift. Exactly backwards for a PLAYABLE map, where the shoreline IS the
+ * map: the player picks "Contested Strait" in the lobby, the lobby writes
+ * `?map=coast`, and nothing else in the boot knows enough to say where the
+ * water goes. `plan.sea` still wins wherever it is set, so the naval fixture is
+ * untouched.
+ *
+ * WHY THE NORMAL IS DERIVED AND NOT WRITTEN DOWN
+ * ----------------------------------------------
+ * A half-plane hands the whole sea to whichever army it happens to sit nearer,
+ * and "nearer" is a projection onto the normal. There is exactly one bearing on
+ * which both openings project to the same number: the PERPENDICULAR BISECTOR of
+ * the line joining them. On any other, one player's shore is closer to their
+ * base than the other's and the naval game is decided by `rotateStarts`.
+ *
+ * So the normal is computed from `SKIRMISH_START_OFFSETS` — the one table both
+ * this and `terrain.system.ts` read — rather than restated as a pair of
+ * literals that would silently stop bisecting anything the first time the
+ * openings move. It falls out that the MAP CENTRE projects to the same number
+ * too (it is their midpoint), which is what makes `offsetMetres` below mean
+ * exactly "metres of dry land between every start and the waterline".
+ *
+ * WHY THOSE OFFSETS AND NOT CLOSER
+ * --------------------------------
+ * `TerrainFields.resolveStarts` slides a start shelf inland whenever it sits
+ * within `TERRAIN_START_FLAT_RADIUS + TERRAIN_START_EDGE_WOBBLE + bandWidth +
+ * wavinessMetres + TERRAIN_SEA_START_CLEARANCE` of the line. A pushed shelf is
+ * the one thing that would change the LAND game: `startSpots` derives both
+ * armies from `SKIRMISH_START_OFFSETS` added to shelf 0, while the generator
+ * pushes each of the three shelves by its OWN distance, so the two stop
+ * agreeing the moment any push is non-zero. Both offsets clear their budget by
+ * 14 m and 6 m respectively, and `tests/naval-maps.spec.ts` asserts the shelves
+ * did not move rather than trusting that they did not.
+ *
+ * WHAT THE CHOSEN NUMBERS MEASURE, on the shipped seed and biome of each map:
+ *
+ *                        water   navigable body   dock sites   biggest patch
+ *     contested-strait   24.3%   3622 cells       178          126
+ *     coral-shore        26.4%   3952 cells        81           25
+ *
+ * "navigable body" is the largest 4-connected run of cells the real
+ * `FlowFieldCache` will route `MoveClass.Naval` through, and it is 99.8% of all
+ * such cells on both maps — one sea, not an archipelago. "dock sites" counts
+ * buildable 3x3 footprints from which a Naval Yard's production spiral can
+ * reach that sea. The land stayed one region at 100% on both.
+ *
+ * WHY A GULF AND NOT A STRAIT. A band of water with a causeway would be a
+ * second landform primitive and a real risk to `ensureConnectivity`; a gulf
+ * both armies border delivers the same thing — open water, a shore each, a dock
+ * site each — inside the geometry the generator already has.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Unit normal of the perpendicular bisector of the two openings, derived from
+ * `SKIRMISH_START_OFFSETS` so it cannot drift away from them.
+ *
+ * `(-dz, dx)` is the perpendicular of the vector between the openings; the sign
+ * is normalised so the result points toward +x/+z and `seaOffMapCentre` can
+ * take a plain signed distance.
+ */
+const START_BISECTOR = (() => {
+  const a = SKIRMISH_START_OFFSETS[0] ?? { dx: -1, dz: 1 };
+  const b = SKIRMISH_START_OFFSETS[1] ?? { dx: 1, dz: -1 };
+  const rawX = a.dz - b.dz;
+  const rawZ = b.dx - a.dx;
+  const len = Math.hypot(rawX, rawZ);
+  // Two collinear openings have no bisector. Nothing ships that layout, but a
+  // NaN normal would divide by itself inside `seaDistance` and flood the map.
+  if (!(len > 1e-6)) return { x: Math.SQRT1_2, z: Math.SQRT1_2 };
+  return { x: rawX / len, z: rawZ / len };
+})();
+
+/** The shape of one shoreline, minus the geometry every map derives the same way. */
+interface SeaProfile {
+  /**
+   * Signed metres from the map centre to the waterline, along `START_BISECTOR`.
+   * Negative puts the sea on the -normal side. Its magnitude is exactly the dry
+   * land every start gets, which is why it is stated this way round.
+   */
+  readonly offsetMetres: number;
+  readonly depth: number;
+  readonly shelfMetres: number;
+  readonly wavinessMetres: number;
+  readonly wavelengthMetres: number;
+  readonly bandWidth: number;
+}
+
+/** Turn a profile into the world-space half-plane the generator carves. */
+function seaOffMapCentre(p: SeaProfile): SeaSpec {
+  const sign = p.offsetMetres < 0 ? -1 : 1;
+  return {
+    x: MAP_SIZE * 0.5 + START_BISECTOR.x * p.offsetMetres,
+    z: MAP_SIZE * 0.5 + START_BISECTOR.z * p.offsetMetres,
+    // Points OUT TO SEA, which is away from the map centre on whichever side
+    // the offset put the waterline.
+    normalX: START_BISECTOR.x * sign,
+    normalZ: START_BISECTOR.z * sign,
+    bandWidth: p.bandWidth,
+    depth: p.depth,
+    shelfMetres: p.shelfMetres,
+    wavinessMetres: p.wavinessMetres,
+    wavelengthMetres: p.wavelengthMetres,
+  };
+}
+
+/**
+ * Sea per MAP PRESET key, for the presets whose whole identity is the water.
+ * Absent means landlocked, which is every other preset.
+ */
+export const MAP_SEAS: Record<string, SeaSpec> = {
+  /**
+   * Contested Strait. The sea is the quarter of the map on the far side of the
+   * bisector, 112 m from every opening — 14 m clear of the 98 m shelf-push
+   * budget its own `bandWidth` and `wavinessMetres` set.
+   *
+   * `depth` is the full 8.0 m the heightfield can express (WATER_LEVEL 2.0 down
+   * to TERRAIN_SEA_FLOOR -6), so `Water.fitRamp` gets a real absorption
+   * gradient rather than the shallow fallback the fixture spent years in.
+   *
+   * 9 m of wander on a 64 m feature: bigger than the fixture's 6/46 because a
+   * shoreline this long shows its own straightness in a way a 90 m one does
+   * not, and a ruler-straight coast reads as a clipping plane.
+   */
+  coast: seaOffMapCentre({
+    offsetMetres: -112,
+    depth: 8.0,
+    // Wider than the fixture's 34: this coast is looked at from match dolly
+    // rather than from a posed 55 m frame, and the bed has 150 m of open water
+    // to fall through rather than the corner of one screen.
+    shelfMetres: 40,
+    wavinessMetres: 9,
+    wavelengthMetres: 64,
+    bandWidth: 7,
+  }),
+  /**
+   * Coral Shore. The OPPOSITE side of the same bisector, so the two naval maps
+   * are not one map twice, and deliberately SHALLOWER at 5.0 m. Depth is what
+   * drives the absorption ramp, so a 5 m lagoon reads turquoise where the
+   * strait reads deep blue — the one visual axis these two share that is not
+   * the biome. Still far above `TERRAIN_SEA_FLOOR`, so nothing is clamped.
+   *
+   * MEASURED, NOT PREFERRED: this seed's north-east coast is the rougher of the
+   * two, and dock sites move with the offset in a way `coast`'s do not — 100 m
+   * out yields 81 buildable-and-launchable footprints, 108 m yields 65, 116 m
+   * yields 28. The offset is at the near end of its legal range for that
+   * reason, and `wavinessMetres` is 5 rather than 9 to buy the 6 m of
+   * shelf-push margin that costs.
+   */
+  tropical: seaOffMapCentre({
+    offsetMetres: 100,
+    depth: 5.0,
+    // Longer shelf on shallower water: the bed has to spend its 5 m over enough
+    // distance that the beach is a beach and not a step.
+    shelfMetres: 46,
+    wavinessMetres: 5,
+    wavelengthMetres: 58,
+    bandWidth: 7,
+  }),
+};
+
 const PLANS: Record<string, ScenarioPlan> = {
   skirmish: {
     map: 'temperate', distance: 58, yawDeg: 24, frozen: false, settleTicks: 0,
@@ -3283,10 +3487,16 @@ export function planScenario(
     frozen: plan.frozen,
     settleTicks: plan.settleTicks,
     start: opening,
-    // `?map=` may override which PRESET a scenario runs on, but it cannot
-    // conjure or delete a shoreline: the sea is composition, authored with the
-    // fleet positions, not a property of the biome table.
-    sea: plan.sea ?? null,
+    // A PLAN'S OWN SEA WINS; THE MAP'S IS THE FALLBACK.
+    //
+    // `plan.sea` is a posed composition — `buildNaval` places six hulls against
+    // that exact waterline and `assertShoreMatchesSea` fails the pair if they
+    // drift — so nothing may override it, including `?map=coast`. `MAP_SEAS` is
+    // the other case: a battlefield whose identity IS its water, chosen in the
+    // lobby and delivered as `?map=`. See the block above `MAP_SEAS` for why
+    // this used to read `plan.sea ?? null` and why that left every naval
+    // structure and hull in the game unreachable.
+    sea: plan.sea ?? MAP_SEAS[mapKey] ?? null,
   };
 }
 
