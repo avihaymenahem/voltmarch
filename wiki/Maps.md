@@ -1,0 +1,357 @@
+# Maps
+
+Every VOLTMARCH battlefield is generated. There are no hand-drawn maps in the build — a map is a
+**biome** (what the ground is made of and how it folds), a **preset** (what grows on it, how rich the
+ore is, how built-up it is) and a **fixed seed** that makes the same name produce the same land every
+time. Change the seed and you get a different valley with the same character.
+
+This page covers what the ground does to your army. For what you build on it see
+[Base Building](Base-Building); for the economy that pays for it see [Economy](Economy).
+
+---
+
+## 1. The shape of a battlefield
+
+| Property | Value |
+| --- | --- |
+| Map size | 512 × 512 m |
+| Navigation grid | 128 × 128 cells of 4 m |
+| Dead border | 2 cells (8 m) on every edge — nothing may enter it |
+| Players | 2 |
+| Start separation | ~193 m on the diagonal |
+| Impassable to tracked vehicles | 26–33 % of cells (measured across all six shipped maps) |
+| Buildable ground | 62–70 % of cells |
+
+Two armies, two corners, on the classic diagonal. Each start sits on a **reserved shelf**: the
+generator levels a 58 m disc, guarantees the inner 54 m is flat, dry, buildable and joined to the
+main passable region, and then aprons the edges out at a walkable grade. You will never open a match
+in a pit you cannot leave.
+
+**Which corner you get is rolled from the match seed.** The two spots are fixed geometry — each is
+paired with its own ore field and its own approach lane — but the owners rotate, so the same map
+does not hand you the same opening every time.
+
+Around each construction vehicle the scenario reserves 13 m of ground and around each escort group
+12.5 m, so scattered rocks can never land on the square you have to deploy on.
+
+---
+
+## 2. The six battlefields
+
+Two ship open. The other four are earned — see [Campaign](Campaign).
+
+| Map | Biome | Character | Ore richness | Water | Unlocked by |
+| --- | --- | --- | --- | --- | --- |
+| **Temperate Valley** | Temperate | Low plateaus, scattered woodland | 0.85 | negligible | free |
+| **Airbase Flats** | Arid | Bare, hot, long sightlines | **1.00** (richest) | none | free |
+| **Frozen Sector** | Snowbound | Highest relief, cliffs channel everything | 0.90 | negligible | Prospector — mine 25,000 ore |
+| **Industrial Grid** | Urban | Almost no relief, roads everywhere | **0.70** (poorest) | none | Groundworks — complete 50 structures |
+| **Contested Strait** | Temperate | Temperate land, coast prop mix | 0.80 | negligible | Blitz — win inside 15 minutes |
+| **Coral Shore** | Temperate | Densest prop cover in the game | 0.75 | negligible | Total Mobilisation — build 750 units |
+
+Ore richness is a multiplier on the 900-unit-per-cell ceiling, so a field on Airbase Flats holds
+roughly **43 % more ore per cell** than the same field on Industrial Grid. That difference compounds
+over a long match and it is the single biggest map-level economic variable.
+
+> **Read the water column carefully.** It says *negligible*, and it means it — see §6.
+
+---
+
+## 3. The four biomes
+
+### Temperate — the default
+
+> Farmland that stopped being farmed. The terraces are old field boundaries cut into a shallow
+> valley, and the grass on them is the dull yellow-green of late summer rather than the emerald of a
+> postcard. Somebody's hedgerows are still standing. They will not be standing long.
+
+Three terraces, 6.0 m step, base height 2.8 m. Moderate cliff coverage. Basins are carved 3.6 m
+below the lowest tier at the bottom 11 % of the map, which is the only water the biome produces —
+puddles, not lakes.
+
+**Plays like:** the balanced case. Enough relief that flanks exist and enough open ground that armour
+can be used properly. Woodland breaks sightlines visually but blocks nothing.
+
+### Arid — Airbase Flats
+
+> Hardpan and outcrop, one hue from horizon to horizon, laid out by people who valued a flat runway
+> over a defensible position. There is no cover here and there was never meant to be any.
+
+Three terraces, 6.5 m step — the largest step in the game — on low overall relief (0.28) with the
+**highest cliff fraction of any preset** (0.55). What relief there is, is vertical. No basins at all:
+the biome is bone dry.
+
+**Plays like:** the armour map. Sightlines are long, the ore is the richest in the game, and the
+mesas that do exist are hard walls rather than slopes. Long-ranged units earn their cost. Infantry
+crossing open hardpan die to anything with splash.
+
+### Snowbound — Frozen Sector
+
+> Grey light, warm grey snow, and a terrain that has been shattered and re-frozen more than once. The
+> passes between the shelves are the only reason two armies ever meet.
+
+**Highest relief in the game** (0.50) on a short 5.5 m step — which means many terraces rather than
+tall ones — and the strongest edge bias (0.56), pushing the rocky massifs to the rim and keeping the
+centre contiguous. Small basins at the lowest 13 %.
+
+**Plays like:** the chokepoint map. It carried 221 ramp cells on the shipped seed against Airbase
+Flats' 97 — more than twice as many carved passes. Every push has to funnel, and a defence sited on
+a pass is worth three sited in the open.
+
+### Urban — Industrial Grid
+
+> A works district. Someone poured the slabs, laid the kerbs, put up the retaining walls and then
+> the front line arrived. The terrace faces here are brick with a concrete coping cap, because they
+> were never cliffs — they were somebody's engineering.
+
+Only **two** terraces at a 5.0 m step, and relief 0.14 — the flattest ground in the game. Urban
+coverage 0.95, so roads, hardstanding and paving are nearly continuous. The shipped seed carried
+**320 ramp cells**, the most of any map. No water.
+
+**Plays like:** an open field with furniture. Almost nothing is impassable for terrain reasons, so
+positioning is about your own walls and buildings rather than about the land. Poorest ore in the
+game (0.70) — Industrial Grid punishes a greedy economy and rewards getting on with the fight.
+
+---
+
+## 4. Terraces, cliffs and ramps
+
+The heightfield is **not** a smooth hill. It is a quantised set of terraces with near-vertical faces
+between them, which is why a map reads as tiers rather than as noise.
+
+**A cell is impassable when any of these is true:**
+
+| Cause | Threshold |
+| --- | --- |
+| Slope | ≥ 0.62 rad (**35.5°**) anywhere in the 4 m cell — blocks *everything*, hover included |
+| Water | cell centre below 2.0 m — blocks foot, track and wheel; hover crosses |
+| Border | within 2 cells of the map edge |
+| Occupancy | a finished structure's footprint |
+
+A 6 m step across a 1 m sample is about an 80° face, so **every terrace edge is a wall**. There is no
+"steep but climbable".
+
+**Rough ground** is slope ≥ 0.28 rad (16°). It is passable, and it costs:
+
+| Locomotor | Rough-ground path cost | Road path cost |
+| --- | --- | --- |
+| Foot | 1.25× | 0.88× |
+| Track | 1.45× | 0.78× |
+| Wheel | **2.05×** | **0.58×** |
+| Hover | 1.00× (immune) | 1.00× |
+| Naval / Air | n/a | n/a |
+
+Wheeled hulls — the Multigunner IFV, the Arcspitter, the Grinder, the Scrapjaw, the Yardcrawler —
+pay double to cross broken ground and are the units most rerouted by it. Tracked hulls barely
+notice. Hover ignores slope entirely, which is the Meridian Pact's quiet mobility advantage.
+
+> **Slope does not slow you down, it reroutes you.** Maximum speed is written once from the unit
+> definition and nothing else ever touches it. A Grizzly on a hillside travels at exactly the same
+> metres per second as one on a lawn. What changes is that the flow field steers the column around
+> the hillside — so terrain costs you *distance*, not *velocity*.
+
+### Ramps
+
+Ramps are real, carved features, not decoration. Where the generator finds a stranded region it cuts
+a corridor between it and the main map:
+
+| Property | Value |
+| --- | --- |
+| Corridor width | 14 m total, 7 m of dead-flat core |
+| Maximum grade | 0.24 rise/run — deliberately under the rough-ground threshold |
+| Maximum length | 52 m (lifted for forced connectivity corridors, which are 24 m wide) |
+| Budget | 30 per map, plus 12 for start-area rescue and 6 for the plateau guarantee |
+| Path cost | 0.92× — 8 % cheaper than flat ground, so armies prefer them |
+
+Two consequences you can plan around. First, **a ramp is a chokepoint that the map guarantees will
+be used**, because pathfinding actively prefers it. Second, ramps are painted as worn dirt track in
+the terrain splat, so you can read them off the minimap and off the ground.
+
+---
+
+## 5. Line of sight, elevation and cover
+
+Three rules, and they do not agree with each other in the way you would expect:
+
+1. **Vision ignores terrain completely.** Fog of war is a flat circle stamp. A unit at the bottom of
+   a cliff sees exactly as far as one on top of it, and a mesa hides nothing.
+2. **Direct fire does not.** Target acquisition walks the heightfield between muzzle and aim point
+   and rejects the shot if the ground rises more than 0.9 m above the sight line. A ridge between you
+   and a tank means the tank is visible and unshootable.
+3. **Arcing shells ignore rule 2.** Anything firing `Shell`-class ordnance — the Slaghurler's mortar,
+   the Kite Corvette's and Slag Scow's guns, the Slagger's satchel, naval deck guns — lobs over
+   cover. That is the entire point of them.
+
+**There is no high-ground bonus.** No range bonus, no damage bonus, no accuracy bonus. Searching the
+combat, damage and targeting code for one finds nothing. Range is measured on the ground plane, so
+altitude does not cost you reach either. A terrace is worth holding because of rule 2 and because of
+the ramp bottleneck below it — not because the game rewards elevation.
+
+**Props do not block movement.** Trees, bushes, rocks, boulders, containers and telegraph poles
+placed by the scatter system are decorative as far as navigation is concerned. The only exceptions
+are the handful of *entity* props a scenario places by hand near a base — those rocks and boulders
+are solid.
+
+**Crushing flattens scenery, not soldiers.** A vehicle with a crush level moving above 0.6 m/s fells
+trees and shrubs under the front 70 % of its hull, permanently for the match. Boulders and rocks are
+solid instead and will stop a column. **Infantry cannot be crushed** — the data is authored for it
+(every foot unit carries a crushable level, every tank carries a crush level) and the code
+deliberately does not read it. Plan around that: a wall of riflemen is not something you drive
+through.
+
+---
+
+## 6. Water — and an honest warning
+
+Water sits at a flat 2.0 m. Below it, ground units simply cannot go; there is no shallows, no wading,
+no depth gradient in the navigation grid. Hover units cross land and water alike. Naval hulls can
+*only* be on water. Aircraft ignore all of it.
+
+**On the shipped maps there is effectively no water.** Measured on all six, with their real seeds:
+
+| Map | Water cells | Largest single body |
+| --- | --- | --- |
+| Temperate Valley | 0.6 % | 23 cells (~370 m²) |
+| Airbase Flats | 0.0 % | none |
+| Frozen Sector | 0.2 % | 16 cells (~260 m²) |
+| Industrial Grid | 0.0 % | none |
+| Contested Strait | 0.2 % | 10 cells (~160 m²) |
+| Coral Shore | 0.6 % | 63 cells (~1,000 m²) |
+
+The reason is structural: the shoreline generator only runs for the `naval` screenshot fixture, and
+no playable map declares a sea. Arid and Urban carve no basins at all; Temperate and Snowbound carve
+small ones. The largest lake in the game is about 1,000 m² — smaller than a base footprint.
+
+**So the entire naval arm is currently unusable in a skirmish.** Naval Yards, Naval Pens, Slipways,
+Breaker Docks, and every ship that comes out of them are content you can unlock and cannot deploy.
+Contested Strait's description promises that "naval yards earn their cost here"; on the shipped
+generator they do not. Amphibious hover movement is likewise a real mechanic with almost nothing to
+be amphibious across.
+
+---
+
+## 7. Roads
+
+Roads generate on every map. The network is a jittered 4 × 4 lattice — blocks of roughly 100 m — plus
+one arterial running the full width of the map and one running its full depth. Edges are refused
+where the ground is wet, impassable or steeper than 0.14 rise/run, so the network bends around
+terrain rather than through it.
+
+A carriageway cell's path cost drops from 100 to 72, and then again by locomotor: **foot 63, tracked
+56, wheeled 42**. Concrete pads and paving around your own base get the same discount.
+
+> **A road is a route, not a throttle.** Nothing in the movement code reads the road mask when it
+> computes speed. A column on a road is not faster in metres per second — the flow field simply
+> prefers roads, so armies naturally take them. On Industrial Grid, where road coverage is near
+> total, this means most armies funnel down the same handful of streets, and that is worth ambushing.
+
+---
+
+## 8. Ore fields
+
+A skirmish lays out exactly **three** ore fields, derived from wherever the two starts ended up:
+
+| Field | Position | Radius |
+| --- | --- | --- |
+| Home field, one per army | 44 m to the flank *away from the approach lane*, 18 m forward of the start | 30 m |
+| Contested field | the exact midpoint between the two starts | 22 m |
+
+The home fields sit beside your base rather than on the lane both armies are about to fight over.
+That is deliberate: your opening economy is defensible and the third field is not.
+
+**Richness** is 900 ore per centre cell multiplied by the map's ore-richness figure, falling off
+towards the rim on a 1.55 exponent — so the field holds its value out to the edge and then drops
+quickly. Cells under 14 ore round down to bare ground, so the visible edge of a patch is its real
+edge.
+
+**Fields regrow.** A cell recovers 0.6 ore per second, but only once the cell between it and the
+field's centre node is at least 30 % full, and the node itself regrows three times faster. Mine the
+near edge and it comes back first; strip the field to the rim and the regrowth has a long walk out.
+A field is therefore renewable at a rate you can outpace but not exhaust, provided you leave it
+alone occasionally.
+
+Practical consequence: **the contested midpoint field is the map's tempo control.** Holding it is
+worth roughly a third of the map's total income, and it is the one patch neither player can defend
+from home.
+
+---
+
+## 9. Crates
+
+Six supply crates are kept alive on the map at all times. The first drops at 25 seconds, and a
+replacement drops every 40 seconds while the map is below six. Drive any unit within 2.6 m to open
+one.
+
+| Outcome | Chance | Effect |
+| --- | --- | --- |
+| Credits | 40 % | 300–900, rising to 2.5× that after ten minutes |
+| Free unit | 18 % | One of your faction's cheap-to-mid hulls walks out |
+| Heal | 20 % | The finder and every ally within 10 m go to full health |
+| Promotion | 14 % | The finder gains a veterancy rank |
+| Dud | 8 % | It was ammunition — 45 % of the finder's max HP, 5 m splash |
+
+Crates are the reason an early cheap scout pays for itself twice. They spawn on passable, dry,
+unoccupied ground, and after ten minutes a single credit crate is worth more than a Grizzly.
+
+---
+
+## 10. Neutral structures — what actually exists
+
+The engine has two mechanics that would make civilian buildings matter:
+
+- **Capture.** A neutral structure is taken outright by one Engineer at any health, where an *enemy*
+  structure has to be beaten below 50 % first.
+- **Garrison.** Occupying a neutral building flies your flag over it for as long as you hold it, and
+  it reverts the moment the last man leaves or dies.
+
+**No map places any neutral structures, and no civilian building exists in the roster.** Both rules
+are live, correct and currently unreachable. The neutral player in a skirmish owns rocks, wrecks and
+crates and nothing else.
+
+What you *can* garrison today is your own unarmed, non-production structures with a footprint of at
+least 2 × 2 cells — in practice the **Power Plant**, the **Battle Lab** and the **Repair Depot**, plus
+each faction's equivalents. The Ore Silo is 1 × 1 and is refused as too small; anything that builds,
+refines or carries a radar is refused as a production structure; anything with a gun is refused
+because it does not need the help.
+
+| Garrison | Value |
+| --- | --- |
+| Capacity | 5 infantry |
+| Range | occupants' own weapon range **+ 6 m** |
+| Damage | 0.9× each occupant's field damage, summed into one volley |
+| Risk | the building dies, everyone inside dies with it |
+| Side effect | an occupied structure cannot be captured by an enemy Engineer |
+
+Garrisoning your own forward power plant with five riflemen is a real defensive play. It is also the
+only version of the mechanic the shipped maps let you use.
+
+---
+
+## 11. Screenshot fixtures
+
+The `?shot=` boot flag skips the menu, freezes the simulation and poses the camera on a fixed
+composition. These are development fixtures rather than playable maps, but they are the fastest way
+to look at something specific.
+
+| Fixture | Biome | Shows |
+| --- | --- | --- |
+| `skirmish` | temperate | the real match layout (this is the default boot) |
+| `allied-base` | temperate | a finished Allied base, refinery on ore, defended face |
+| `soviet-base` | arid | a finished Soviet base and its tesla line |
+| `terrain-showcase` | urban | close ground detail — road junction, kerbs, scatter |
+| `unit-parade` | arid | two ranks of units at readable range |
+| `battle` | temperate | two columns engaging, wrecks already burning |
+| `economy` | temperate | an ore field and the full harvester loop |
+| `naval` | coast | **the only composition in the build with a real shoreline** |
+| `placement` | temperate | a build ghost over the placement grid |
+| `selection` | temperate | selection rings, health bars, order markers |
+| `blob` | temperate | 36 units against 30, the readability-under-load frame |
+
+Other useful flags: `?map=` (preset), `?biome=`, `?seed=` (scenario and simulation), `?mapseed=`
+(the landform roll), `?fog=off`, `?start=base` (open from a pre-built base instead of a construction
+vehicle), `?roads=off`.
+
+---
+
+**See also:** [Strategy](Strategy) · [Economy](Economy) · [Base Building](Base-Building) ·
+[Combat](Combat) · [How to Play](How-to-Play)
