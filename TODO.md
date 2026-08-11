@@ -343,7 +343,17 @@ in the same commit — it emits the same line into a generated config and its he
   headlessly across six seeds, because the lobby threads `MapChoice.mapSeed` into terrain and the
   probe did not. v1.21.0 and v1.23.0 both touched this area; re-check before spending time on it.
 
-Two carried-over items were dropped as stale: the visual-critic-loop script (`scratchpad/` does not
-exist and never made it into the repo), and "three fatal scorecard failures at 89.0%", which named
-three checks that no longer fail — the grade is 90.0% and every current failure is `edgeCoverage`
-against the abandoned RA3 targets.
+One carried-over item was dropped as stale: the visual-critic-loop script (`scratchpad/` does not
+exist and never made it into the repo).
+
+**The scorecard sentence that used to sit here was itself stale, and is corrected rather than
+deleted.** It read "the grade is 90.0% and every current failure is `edgeCoverage` against the
+abandoned RA3 targets". Measured at v2.3.0, and again after the material-worker change, on all
+twelve fixtures: **89.0% weighted, 15 failing checks, and three of them FATAL** — check #9,
+emerald-green, on `07-soviet-base`, `08-naval-water` and `09-placement` (0.0227 / 0.0208 / 0.0225).
+So the number was 1.0 point optimistic and the "no fatals" claim was false.
+
+This is the defect class this file exists to catalogue, committed in the file that catalogues it: a
+claim that quietly stopped being true, in the document a reader would trust to tell them what is
+broken. Requote it only from a fresh `node tools/metrics.mjs shots/*.png`, and see the note on the
+capture harness's nondeterminism before trusting a single run of it.
