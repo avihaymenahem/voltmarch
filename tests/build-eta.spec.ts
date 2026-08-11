@@ -138,3 +138,88 @@ describe('build countdown', () => {
     expect(eta).toBe(0);
   });
 });
+
+/**
+ * THE COUNTDOWN MUST NEVER RISE.
+ *
+ * Reported as "the building timer is freaking off, going back and forth in
+ * time". Every test above drives the sampler on a PERFECTLY REGULAR clock, and
+ * on a regular clock the old wall-clock version was monotonic — which is
+ * exactly why none of them caught it.
+ *
+ * The rig below is the real thing: a sim advancing progress in whole 30 Hz
+ * ticks, sampled by a HUD whose frame intervals jitter, which is every machine
+ * that has ever run this game. `estimateBuildEta` is now fed SIM time, so the
+ * interval between two progress changes is an exact multiple of the tick and
+ * the measured rate carries no frame-timer noise at all.
+ *
+ * Measured with the old wall-clock feed, over one 30 s build: 83 rises at
+ * 60 fps with 25% jitter, 85 at 60% jitter, 72 at 30 fps, 29 at 144 fps.
+ */
+describe('build countdown — stability under real frame timing', () => {
+  const SIM_DT = 1 / 30;
+
+  /** Deterministic pseudo-jitter. No RNG: this has to fail identically twice. */
+  const jitterAt = (frame: number, amount: number): number =>
+    amount === 0 ? 0 : Math.abs((Math.sin(frame * 12.9898) * 43758.5453) % 1) * amount;
+
+  function sweep(fps: number, buildSeconds: number, jitter: number): {
+    rises: number; samples: number; min: number; max: number;
+  } {
+    const s = sampler();
+    const perTick = SIM_DT / buildSeconds;
+    const frameMs = 1000 / fps;
+    let progress = 0;
+    let simSec = 0;
+    let wallMs = 0;
+    const etas: number[] = [];
+
+    const frames = Math.round(fps * buildSeconds * 0.8);
+    for (let f = 0; f < frames; f++) {
+      // The wall clock jitters; the SIM advances in whole ticks and is what we
+      // hand the estimator.
+      wallMs += frameMs * (1 + jitterAt(f, jitter) - jitter * 0.5);
+      while ((simSec + SIM_DT) * 1000 <= wallMs) { simSec += SIM_DT; progress += perTick; }
+      if (progress >= 1) break;
+      etas.push(estimateBuildEta(s, progress, false, buildSeconds, simSec * 1000));
+    }
+
+    // Ignore the settling window: the first samples legitimately move as the
+    // smoother converges off the nominal fallback.
+    const tail = etas.slice(Math.floor(etas.length * 0.25));
+    let rises = 0;
+    for (let i = 1; i < tail.length; i++) if (tail[i] > tail[i - 1]) rises++;
+    return { rises, samples: tail.length, min: Math.min(...tail), max: Math.max(...tail) };
+  }
+
+  const CASES: ReadonlyArray<readonly [string, number, number]> = [
+    ['60 fps, no jitter', 60, 0],
+    ['60 fps, 25% jitter', 60, 0.25],
+    ['60 fps, 60% jitter', 60, 0.6],
+    ['30 fps, 40% jitter', 30, 0.4],
+    ['15 fps, 40% jitter', 15, 0.4],
+    ['144 fps, 25% jitter', 144, 0.25],
+  ];
+
+  for (const [label, fps, jitter] of CASES) {
+    it(`never counts upward at ${label}`, () => {
+      const r = sweep(fps, 30, jitter);
+      expect(r.samples, 'the sweep produced samples').toBeGreaterThan(50);
+      expect(
+        r.rises,
+        `the countdown rose ${r.rises} time(s) across ${r.samples} samples `
+        + `(range ${r.min}..${r.max} s). A build countdown may fall or hold; `
+        + 'rising means the rate estimate is carrying frame-timer noise.',
+      ).toBe(0);
+    });
+  }
+
+  it('is identical at 15 fps and at 144 fps, because the sim rate is', () => {
+    // The whole point of measuring against sim time: the ETA is a property of
+    // the simulation, so it must not depend on how often anyone looked at it.
+    const slow = sweep(15, 30, 0.4);
+    const fast = sweep(144, 30, 0.25);
+    expect(slow.max).toBe(fast.max);
+    expect(slow.min).toBe(fast.min);
+  });
+});

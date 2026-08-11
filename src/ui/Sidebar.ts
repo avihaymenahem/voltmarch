@@ -364,7 +364,7 @@ const SLOT_HOTKEY_LABELS: readonly string[] = BUILD_SLOT_HOTKEY_LABELS;
 export interface EtaSampler {
   /** `progress` at the previous sample, or -1 when there is none. */
   lastProgress: number;
-  /** Milliseconds reading of that sample. */
+  /** SIM milliseconds of that sample. Never a wall clock — see the header. */
   lastAt: number;
   /** Smoothed progress-per-second. 0 until two samples exist. */
   rate: number;
@@ -379,10 +379,18 @@ const ETA_MAX_SECONDS = 600;
 /**
  * How long progress must sit still before it counts as stalled.
  *
- * Not zero, and that is the important part: the HUD samples at frame rate while
- * the sim ticks at 30 Hz, so during a perfectly healthy build most samples show
- * no change. Treating those as zero-rate readings would halve the measured rate
- * and make the countdown read roughly double — the very bug being fixed.
+ * Not zero, and that is the important part: a single sim tick can legitimately
+ * fail to advance a build — `BuildQueue` charges per tick and a tick that can
+ * afford nothing advances nothing — so an immediate verdict would flash STALLED
+ * every time a player dipped below the per-tick cost for an instant.
+ *
+ * This used to read "the HUD samples at frame rate while the sim ticks at
+ * 30 Hz, so most samples show no change". That was true of the wall clock and
+ * is no longer true of anything: `nowMs` is sim time now, so a sample with no
+ * elapsed sim time contributes `dt === 0` and is skipped by the guards, and
+ * every sample that DOES carry elapsed time also carries whatever progress that
+ * time bought. The dwell now measures a genuinely stalled build rather than the
+ * renderer outrunning the simulation.
  */
 const ETA_STALL_SEC = 1.5;
 
@@ -423,6 +431,37 @@ const RATE_STALLED = -1;
  * The estimate assumes current conditions hold, which is what every ETA
  * assumes. Power returning or a harvester cashing in will beat it, and early is
  * the right direction to be wrong in.
+ *
+ * ── `nowMs` IS SIM TIME, AND THAT IS THE WHOLE SECOND FIX ──────────────────
+ * It used to be `performance.now()`, and a countdown built on a wall clock
+ * measures a 30 Hz quantity with a 60-plus Hz ruler. The interval between two
+ * observed progress CHANGES is then quantised to frame boundaries rather than
+ * sim ticks, so the instantaneous rate carries the frame timer's jitter — and
+ * `remaining / rate` turns that jitter into seconds.
+ *
+ * Reported as "the building timer is freaking off, going back and forth in
+ * time". Measured against a simulated 30 Hz sim with realistic rAF jitter, over
+ * one 30-second build:
+ *
+ *     60 fps, no jitter     the countdown rose  0 times
+ *     60 fps, 25% jitter                       83
+ *     60 fps, 60% jitter                       85
+ *     30 fps, 40% jitter                       72
+ *     144 fps, 25% jitter                      29
+ *
+ * The no-jitter row is why this survived: on a perfectly regular clock at
+ * exactly 2 frames per tick it is monotonic, and that is the only case a
+ * synthetic test had ever driven it with. Every real machine jitters.
+ *
+ * Sim time removes the error rather than smoothing it: progress and the clock
+ * it is measured against now advance together, so the interval between changes
+ * is an exact multiple of the tick and the rate is exact. It also fixes the
+ * hidden-tab case for free — sim time is frozen while the game is paused (see
+ * `Shell.onVisibility`), so returning to the tab yields `dt === 0` and no
+ * sample, instead of one enormous bogus interval.
+ *
+ * A countdown that rises is a bug REGARDLESS of the rate being honest, which is
+ * what `tests/build-eta.spec.ts` now asserts directly.
  */
 export function estimateBuildEta(
   s: EtaSampler,
@@ -1823,8 +1862,9 @@ class BuildPanel {
    * assumes. Power coming back or a refinery cashing in will beat it, and that
    * is the right direction to be wrong in.
    */
-  private estimateEta(slot: BuildSlot, c: HudCameo): number {
-    return estimateBuildEta(slot, c.progress, c.ready, slot.buildTime, performance.now());
+  private estimateEta(slot: BuildSlot, c: HudCameo, simSec: number): number {
+    // SIM TIME, NOT `performance.now()`. See the header of `estimateBuildEta`.
+    return estimateBuildEta(slot, c.progress, c.ready, slot.buildTime, simSec * 1000);
   }
 
   /**
@@ -1940,7 +1980,7 @@ class BuildPanel {
       // the DOM at 60 Hz for sub-pixel motion; the countdown is quantized to a
       // whole second for the same reason.
       const poor = credits < c.cost;
-      const eta = this.estimateEta(slot, c);
+      const eta = this.estimateEta(slot, c, snap.gameTimeSec);
       const sig = `${c.queued}|${c.ready ? 1 : 0}|${c.onHold ? 1 : 0}|` +
         `${c.available ? 1 : 0}|${poor ? 1 : 0}|${eta}|${c.reason}|${(c.progress * 200) | 0}` +
         `|${c.owned}`;
