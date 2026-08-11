@@ -95,12 +95,19 @@ tactical point of holding one.
 - It is **never** automatically your primary factory.
 - Its rally point is discarded.
 
-**It does not change architecture.** A captured Soviet Power Plant still looks
-like a Soviet Power Plant — the model is bound once at spawn and capture does not
-re-bind it. The team-colour trim does follow the new owner, but on most
-structures that is a stripe, not the silhouette. **The minimap blip is the
-reliable tell**, and if you are trying to work out who owns a distant building,
-that is what to look at.
+**It does not change how it looks.** A captured Soviet Power Plant still looks
+like a Soviet Power Plant, in Soviet colours. Two things are going on, and
+neither of them repaints it:
+
+- The **model** is bound once at spawn, and capture does not re-bind it.
+- The **team colour** does follow the new owner as far as the render data goes,
+  but on a structure that value is only ever spent on the selection glow. Team
+  markings on a building come out of a per-faction texture baked at build time,
+  so they stay whatever they were.
+
+**The minimap blip is the reliable tell** — it turns from neutral grey to the
+holder's colour the moment the deed changes. If you are trying to work out who
+owns a distant building, that is what to look at.
 
 ---
 
