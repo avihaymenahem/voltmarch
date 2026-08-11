@@ -156,10 +156,13 @@ export function applySettings(
         ao: { enabled: g.ao },
         bloom: { enabled: g.bloom },
         smaa: { enabled: g.smaa },
-        // Read at composer CONSTRUCTION, so this only takes effect on the next
-        // chain rebuild — a multisampled framebuffer cannot be switched on a
-        // live target. `PostChain` rebuilds on a tier change; the settings row
-        // says a restart may be needed rather than pretending otherwise.
+        // Takes effect on the next frame. A sample count still cannot be
+        // changed on a live framebuffer, but the multisampled target is now the
+        // post chain's OWN — one target for the scene pass, not the composer's
+        // cloned pair — so switching it is an allocate-or-free rather than a
+        // rebuild of the whole chain. `PostChain#syncConfig` does it, and the
+        // next frame is warmed up before it is presented. This comment and the
+        // settings row both used to say a restart was needed.
         msaaSamples: g.msaa ? 4 : 0,
         // Grain and chromatic aberration are 0 in BOTH arms, permanently. They
         // are on CLAUDE.md's explicit ban list, and these two literals are what
@@ -548,8 +551,8 @@ export class SettingsScreen implements Screen {
       'Edge Antialiasing (4x MSAA)',
       toggle(g.msaa, (v) => set({ msaa: v })),
       'Fixes thin pipes and panel lines breaking into dashes. SMAA cannot — it '
-      + 'only reworks edges that were drawn. Costly on integrated graphics; '
-      + 'takes effect after a restart.',
+      + 'only reworks edges that were drawn. Costly on integrated graphics: '
+      + 'switch it on and watch your frame counter.',
     ));
     // Label and blurb both had to change with the grade above: this row said
     // "Film Grain & Vignette" / "Grain, vignette and chromatic aberration", and

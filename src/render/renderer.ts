@@ -263,7 +263,12 @@ export interface PostConfig {
   grade: GradeConfig;
   smaa: { enabled: boolean };
   /**
-   * MSAA samples on the composer's HDR target. 0 disables it.
+   * MSAA samples on the SCENE render target. 0 disables the path entirely.
+   *
+   * Read `src/render/post.ts`'s header before changing this. The name used to
+   * say "the composer's HDR target", and handing the number to the composer is
+   * precisely the bug described below — it is a dedicated target now, resolved
+   * once, and nothing downstream of the scene pass is multisampled.
    *
    * ── THE AA FLAG THAT WAS NEVER THE AA FLAG ───────────────────────────────
    * `RendererConfig.antialias` is `false` and carries the note "SMAA does the
@@ -306,17 +311,26 @@ export interface PostConfig {
    *    query. "No change" on a vsync-locked frame measures nothing at all.
    *
    * 2. `EffectComposer` CLONES ITS TARGET for the ping-pong buffer, so setting
-   *    `samples` here multisamples BOTH, and every pass in the chain — AO,
+   *    `samples` there multisamples BOTH, and every pass in the chain — AO,
    *    bloom, grade, SMAA — then writes into a multisampled RGBA16F target and
    *    forces a resolve. Five resolves a frame where the geometry needed one.
    *    Full-screen quads have no coverage to sample; multisampling them is pure
    *    bandwidth. On an iGPU sharing system memory, at 32 bytes per pixel per
    *    sample, that is the whole regression.
    *
-   * So the default is 0 and this stays OFF until it is done properly: one
-   * multisampled target for the SCENE pass, resolved once, with the post chain
-   * on single-sampled buffers. `graphics.msaa` in the settings store exposes it
-   * for anyone who wants to try it on their own hardware.
+   * ── WHAT IS BUILT NOW ────────────────────────────────────────────────────
+   * Mistake 2 is fixed: `post.ts` gives the composer a plain target and keeps
+   * ONE multisampled target of its own for the scene pass, resolved once and
+   * transferred into the composer's read buffer. Four of the five resolves are
+   * gone, provably — the file header lays out the proof and, just as
+   * importantly, what it does NOT prove.
+   *
+   * Mistake 1 has NOT been fixed, because it cannot be from here: nobody in
+   * this repo has the reporter's hardware, and the regression was never
+   * reproduced on a machine we do have. So the default stays 0 and no tier
+   * turns it on. `graphics.msaa` in the settings store is the only switch, it
+   * takes effect immediately, and the person flipping it is the only one in a
+   * position to measure the result on the machine that matters.
    */
   msaaSamples: number;
 }

@@ -16,6 +16,16 @@
  * turns `halfRes` into a render-target size is a pure exported function, and it
  * is asserted here — no GL context, no browser, no fixture.
  *
+ * MSAA is the same defect wearing different clothes and is guarded the same way.
+ * `PostConfig.msaaSamples` was handed to `new EffectComposer(renderer, rt)`,
+ * which CLONES that target for its ping-pong pair — so a setting written to
+ * antialias the geometry silently multisampled every full-screen quad in the
+ * chain and made each of them resolve. Five resolves where one was wanted; it
+ * cost a reporter 7-8 fps of ~22 and was reverted. Nothing about that was
+ * visible in the config, which read `msaaSamples: 4` either way. The sample
+ * clamp is a pure function now, and the structural claim — one multisampled
+ * target, reachable from one place — is read out of `post.ts` as text.
+ *
  * NODE ENVIRONMENT. Nothing here may touch WebGL, `document` or `window`. That
  * is also why the pass wiring is checked by reading `post.ts` as text, exactly
  * as `tests/compositing.spec.ts` does: importing it would pull in three's
@@ -26,12 +36,26 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { AO_HALF_RES_SCALE, aoDenoiseRadius, aoTargetSize } from '../src/render/post';
+import { AO_HALF_RES_SCALE, aoDenoiseRadius, aoTargetSize, msaaSampleCount } from '../src/render/post';
 import { RENDER_CONFIG } from '../src/render/renderer';
+import { defaultSettings } from '../src/shell/settings-store';
 import { VFX_LIGHT_POOL_BY_TIER, VFX_LIGHT_POOL } from '../src/core/config';
 
 const ROOT = join(__dirname, '..');
 const POST_SRC = readFileSync(join(ROOT, 'src/render/post.ts'), 'utf8');
+const RENDERER_SRC = readFileSync(join(ROOT, 'src/render/renderer.ts'), 'utf8');
+
+/**
+ * Prose must not be able to satisfy or break an assertion about code. Same
+ * helper, same reasoning, as `tests/compositing.spec.ts` — and it matters more
+ * here than anywhere, because the MSAA sections of both files are mostly
+ * comment and every string these tests look for appears in them.
+ */
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+}
+
+const POST_CODE = stripComments(POST_SRC);
 
 /** The capture resolution the art bible quotes every pixel tolerance at. */
 const NATIVE = { width: 2560, height: 1440 };
@@ -122,6 +146,140 @@ describe('post.ts wiring', () => {
     expect(ids.indexOf("'ao'")).toBeGreaterThan(ids.indexOf("'render'"));
     expect(ids.indexOf("'bloom'")).toBeGreaterThan(ids.indexOf("'ao'"));
     expect(ids.indexOf("'smaa'")).toBeGreaterThan(ids.indexOf("'grade'"));
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* MSAA — the scene pass only, resolved once                                  */
+/* -------------------------------------------------------------------------- */
+
+describe('MSAA sample count', () => {
+  it('clamps to what the driver reports', () => {
+    // WebGL2 guarantees MAX_SAMPLES >= 4. Asking for 8 where the driver caps at
+    // 4 is, on some drivers, an incomplete framebuffer rather than a clamp —
+    // i.e. a black frame, which is the one failure this whole file guards.
+    expect(msaaSampleCount(8, 4)).toBe(4);
+    expect(msaaSampleCount(16, 8)).toBe(8);
+  });
+
+  it('passes a supported request through untouched', () => {
+    expect(msaaSampleCount(4, 4)).toBe(4);
+    expect(msaaSampleCount(4, 8)).toBe(4);
+    expect(msaaSampleCount(2, 8)).toBe(2);
+  });
+
+  it('treats anything below 2 samples as off, not as 1', () => {
+    // A one-sample "multisampled" target costs a second full-size allocation, a
+    // resolve blit and a transfer copy, and returns the image a plain target
+    // already produced. 0 is the encoding the caller branches on.
+    for (const n of [1, 0, -1, -4]) expect(msaaSampleCount(n, 8)).toBe(0);
+  });
+
+  it('is off when the driver reports no multisampling at all', () => {
+    for (const cap of [0, 1, -1]) expect(msaaSampleCount(4, cap)).toBe(0);
+  });
+
+  it('never returns a fraction — samples is an integer count', () => {
+    expect(msaaSampleCount(4.9, 8)).toBe(4);
+    expect(msaaSampleCount(8, 4.5)).toBe(4);
+  });
+
+  it('survives a driver that answers with a non-number', () => {
+    // `gl.getParameter` returns null on a lost context, and NaN propagating
+    // into a render-target descriptor is exactly how this project has produced
+    // a black frame before.
+    expect(msaaSampleCount(4, Number.NaN)).toBe(0);
+    expect(msaaSampleCount(Number.NaN, 4)).toBe(0);
+    expect(msaaSampleCount(4, Number.POSITIVE_INFINITY)).toBe(0);
+  });
+});
+
+describe('MSAA multisamples the scene pass and nothing else', () => {
+  it('never hands EffectComposer a multisampled target', () => {
+    // THE BUG THIS FILE EXISTS TO PREVENT A SECOND TIME. `EffectComposer` does
+    // `this.renderTarget2 = renderTarget.clone()`, and `WebGLRenderTarget.copy`
+    // copies `samples` — so a sample count here multisamples BOTH halves of the
+    // ping-pong pair and every pass in the chain then forces a resolve of its
+    // own. Five resolves a frame where the geometry needed one; it cost a
+    // reporter 7-8 fps of ~22 and was reverted.
+    const start = POST_CODE.indexOf('new THREE.WebGLRenderTarget(');
+    const end = POST_CODE.indexOf('new EffectComposer(');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const composerTarget = POST_CODE.slice(start, end);
+    const declared = [...composerTarget.matchAll(/samples:\s*([\w.]+)/g)].map((m) => m[1]);
+    // Declared exactly once, and the value is the literal 0 — not a variable
+    // that some later edit could make non-zero without touching this test.
+    expect(declared).toEqual(['0']);
+  });
+
+  it('constructs exactly two render targets, exactly one of them multisampled', () => {
+    expect(POST_CODE.match(/new THREE\.WebGLRenderTarget\(/g)).toHaveLength(2);
+    expect(POST_CODE.match(/samples: want,/g)).toHaveLength(1);
+  });
+
+  it('lets no post pass reach the multisampled target', () => {
+    // Every downstream pass takes its destination from the composer's pair, and
+    // both halves of that pair are `samples: 0`. The one target with samples on
+    // it is reachable through the scene-pass wrapper and nowhere else, which is
+    // the whole of the "exactly one resolve" claim in post.ts's header.
+    expect(POST_CODE.match(/const target = sceneMsaa;/g)).toHaveLength(1);
+    expect(POST_CODE.match(/base\(r, writeBuffer, target, deltaTime, maskActive\)/g))
+      .toHaveLength(1);
+    expect(POST_CODE).not.toMatch(/setRenderTarget\([^)]*sceneMsaa/);
+  });
+
+  it('transfers into the composer read buffer, or to the screen when alone', () => {
+    // The degenerate chain — every pass but `render` disabled — must keep its
+    // antialiasing rather than quietly falling back to an aliased direct draw.
+    expect(POST_CODE).toMatch(
+      /r\.setRenderTarget\(toScreen \? null : readBuffer\);\s*\n\s*quad\.render\(r\);/
+    );
+  });
+
+  it('is inert with one null check when MSAA is off', () => {
+    // Off is the default and every quality tier, so this branch is the one
+    // essentially every player runs.
+    expect(POST_CODE).toMatch(/if \(target === null \|\| quad === null \|\| mat === null\)/);
+  });
+
+  it('resizes the multisampled target with the drawing buffer', () => {
+    // `composer.setSize` only knows about its own pair and its passes. Miss
+    // this and the transfer quad stretches a boot-sized image over the frame.
+    expect(POST_CODE).toContain('sceneMsaa?.setSize(pw, ph)');
+  });
+
+  it('frees it on dispose and on being switched off', () => {
+    expect(POST_CODE.match(/disposeMsaa\(\);/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(POST_CODE).toContain('function disposeMsaa()');
+  });
+
+  it('warms up a frame after a toggle, so no half-built chain is presented', () => {
+    const start = POST_CODE.indexOf('function applyMsaaConfig()');
+    const end = POST_CODE.indexOf('function seedAoDenoiseNoise');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(POST_CODE.slice(start, end)).toContain('chainDirty = true;');
+  });
+});
+
+describe('MSAA stays opt-in', () => {
+  it('defaults to off', () => {
+    expect(RENDER_CONFIG.post.msaaSamples).toBe(0);
+    expect(defaultSettings().graphics.msaa).toBe(false);
+  });
+
+  it('is set by no quality tier', () => {
+    // Tier is picked from a rough capability guess, and the cost here is
+    // dominated by memory bandwidth, which that guess does not model at all: a
+    // discrete card at `high` and an iGPU at `high` are not the same machine
+    // for this one setting.
+    const src = stripComments(RENDERER_SRC);
+    const start = src.indexOf('const RENDER_QUALITY_PRESETS');
+    const end = src.indexOf('export function applyQualityTier');
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    expect(src.slice(start, end)).not.toContain('msaaSamples');
   });
 });
 

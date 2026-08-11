@@ -78,7 +78,7 @@ export interface GraphicsSettings {
   /** Subpixel morphological AA. */
   smaa: boolean;
   /**
-   * 4x MSAA on the post chain's HDR target. OFF by default, and deliberately
+   * 4x MSAA on the post chain's SCENE target. OFF by default, and deliberately
    * not tied to the quality tier.
    *
    * SMAA above is morphological: it reworks the finished image, so it can only

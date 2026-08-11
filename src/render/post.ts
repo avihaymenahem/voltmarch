@@ -36,8 +36,86 @@
  *     wants a different histogram moves `tone.exposure` and `tone.contrast`.
  *
  *  5. SMAA runs last, on the final LDR sRGB image, which is where edge
- *     detection actually wants to be. MSAA is off in the renderer; this is the
- *     AA path.
+ *     detection actually wants to be. SMAA is the MORPHOLOGICAL AA path; the
+ *     geometric one is the optional MSAA scene target described next.
+ *
+ * MSAA: ONE MULTISAMPLED TARGET, ONE RESOLVE, AND THE CLONE TRAP THAT COST 8 FPS
+ * ------------------------------------------------------------------------------
+ * `PostConfig.msaaSamples` is off by default and no quality tier turns it on.
+ * When the `graphics.msaa` settings toggle DOES turn it on, this is the shape it
+ * takes, and the shape matters more than the feature:
+ *
+ *     RenderPass -> sceneMsaa (samples>0)  [three resolves it, once]
+ *                -> resolveQuad            [one textured full-screen copy]
+ *                -> composer readBuffer (samples 0)
+ *                -> AO -> Bloom -> Grade -> SMAA, all on plain targets
+ *
+ * ── THE TRAP ─────────────────────────────────────────────────────────────────
+ * The first attempt set `samples` on the render target handed to
+ * `new EffectComposer(renderer, rt)`. `EffectComposer`'s constructor does
+ * `this.renderTarget2 = renderTarget.clone()`, and `WebGLRenderTarget.copy`
+ * copies `samples`. So BOTH halves of the ping-pong pair were multisampled, and
+ * every pass in the chain then rendered into a multisampled RGBA16F target.
+ * `WebGLRenderer.render()` ends with `textures.updateMultisampleRenderTarget(
+ * _currentRenderTarget )`, which blits whenever `samples > 0` — so AO, bloom,
+ * grade and SMAA each forced a resolve of their own. Five resolves a frame where
+ * the geometry needed one, on full-screen quads that have no coverage to sample
+ * in the first place. At 2560x1440, RGBA16F, 4 samples, that is ~120 MB of blit
+ * traffic per frame added for nothing. It cost a reporter on an integrated
+ * Radeon 7-8 fps of ~22 and was reverted. Do not hand `EffectComposer` a
+ * multisampled target. The literal `samples: 0` below is load-bearing.
+ *
+ * ── WHAT "EXACTLY ONE RESOLVE" IS AND IS NOT CLAIMING ────────────────────────
+ * Provable by reading this file plus three@0.185.1:
+ *
+ *   - `sceneMsaa` is the ONLY render target in this file constructed with
+ *     `samples > 0`. Everything else, the composer pair included, is 0.
+ *   - `installSceneMsaaResolve` is the ONLY place that binds it, and it binds it
+ *     once per `composer.render()`.
+ *   - three resolves a multisampled target at the end of each
+ *     `WebGLRenderer.render()` that targeted it, guarded on `samples > 0`
+ *     (three.module.js: `if ( _currentRenderTarget !== null && ... )`). One
+ *     bind, one `renderer.render`, one resolve.
+ *   - The other `updateMultisampleRenderTarget` call sites in three are the
+ *     transmission pass. This project ships no transmissive material
+ *     (`core/config.ts`: "No transmission — far too expensive at RTS counts"),
+ *     so that path cannot fire.
+ *
+ * NOT claimed: that the whole thing is free. The transfer from `sceneMsaa` into
+ * the composer's read buffer is a real full-resolution RGBA16F copy — the same
+ * kind of copy `installAoInPlaceComposite` below went to some trouble to delete.
+ * A direct `gl.blitFramebuffer` from the multisample framebuffer straight into
+ * the read buffer's framebuffer would fold the transfer INTO the resolve and
+ * cost nothing extra, and it is the obvious next step. It is not shipped here
+ * because it needs `renderer.properties.get(rt).__webglFramebuffer` — private,
+ * version-fragile, and a wrong blit is a black frame — and there is no GPU in
+ * the test environment to verify it on. What is shipped is the shape that can be
+ * checked by reading it.
+ *
+ * ALSO NOT claimed: a frame-time number. The 7-8 fps regression above was
+ * measured on hardware nobody here has, and this change has not been re-measured
+ * on it. The defensible statement is structural — four of the five resolves are
+ * gone — not "it is now fast". The lesson from the first attempt is on the
+ * record in `PostConfig.msaaSamples`: a vsync-locked frame cannot measure a cost
+ * smaller than its own idle headroom, so "no change" there means nothing at all.
+ *
+ * ── WHAT WAS ACTUALLY OBSERVED ───────────────────────────────────────────────
+ * Headless Chromium, ANGLE, WebGL2 (`MAX_SAMPLES` 8), `?shot=allied-base`,
+ * `msaaSamples` flipped 0 -> 4 -> 0 live through `__VM.configure`. Every render
+ * target reachable from the post chain was walked and its `samples` read:
+ *
+ *     PostHDR                0      EffectComposer.rt2     0
+ *     UnrealBloomPass mips   0 x4   SMAAPass.edges/weights 0
+ *
+ * All of them, WHILE MSAA WAS ON. That is the clone trap, observed absent: the
+ * pair `EffectComposer` builds by cloning `PostHDR` is single-sampled, so no
+ * post pass can resolve. Draw calls went 271 -> 272, exactly the one transfer
+ * quad and nothing else. Mean frame luminance 108.60 -> 108.99 (MSAA must not
+ * move the grade) and back to 108.60 byte-for-byte when switched off again;
+ * 30.4% of subpixels moved, i.e. it is genuinely resampling edges rather than
+ * being wired to nothing. No GL error, no console error.
+ *
+ * None of that is a frame time. It is "the structure is what the comment says".
  *
  * GRACEFUL DEGRADATION
  * --------------------
@@ -108,7 +186,7 @@ import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { SSAOPass } from 'three/examples/jsm/postprocessing/SSAOPass.js';
 import { SimplexNoise } from 'three/examples/jsm/math/SimplexNoise.js';
-import type { Pass } from 'three/examples/jsm/postprocessing/Pass.js';
+import { FullScreenQuad, type Pass } from 'three/examples/jsm/postprocessing/Pass.js';
 
 import { Rng } from '../core/math';
 
@@ -181,6 +259,31 @@ export function aoDenoiseRadius(halfRes: boolean): number {
  * array without editing that comment first.
  */
 export const PASS_ORDER: readonly PassId[] = ['render', 'ao', 'bloom', 'grade', 'smaa'] as const;
+
+/**
+ * How many MSAA samples the SCENE target actually gets.
+ *
+ * Pure and exported for the same reason `aoTargetSize` is: the previous MSAA
+ * attempt was a number nobody watched a test produce, and it shipped a chain
+ * where every pass was multisampled. See the file header.
+ *
+ * Two rules, and both are about not provoking the black frame this file's
+ * try/catch exists for:
+ *
+ *  - CLAMPED TO THE DRIVER. WebGL2 guarantees `MAX_SAMPLES >= 4`; asking for 8
+ *    where the driver caps at 4 is, on some drivers, a silently-incomplete
+ *    framebuffer rather than a clamp.
+ *  - ANYTHING BELOW 2 IS OFF. A one-sample "multisampled" target is a second
+ *    full-size allocation, a resolve blit and a transfer copy in exchange for
+ *    exactly the image a plain target already produced. `0` is the honest
+ *    encoding of "no MSAA path at all", and the caller tests it as such.
+ */
+export function msaaSampleCount(requested: number, maxSamples: number): number {
+  const want = Number.isFinite(requested) ? Math.floor(requested) : 0;
+  const cap = Number.isFinite(maxSamples) ? Math.floor(maxSamples) : 0;
+  if (want < 2 || cap < 2) return 0;
+  return Math.min(want, cap);
+}
 
 const TONE_MODE_ID: Record<ToneMappingMode, number> = {
   none: 0,
@@ -499,6 +602,39 @@ function makeGradeUniforms(): GradeUniforms {
   };
 }
 
+/* ========================================================================== */
+/* MSAA transfer shader                                                       */
+/* ========================================================================== */
+
+/**
+ * The quad that moves the resolved scene out of `sceneMsaa` and into the
+ * composer's read buffer.
+ *
+ * Deliberately its own two-line shader rather than three's `CopyShader`: that
+ * one multiplies by an `opacity` uniform we would always leave at 1, and its
+ * vertex shader runs a full `projectionMatrix * modelViewMatrix` for a quad
+ * whose positions are already clip space. This is the same trick `GRADE_VERT`
+ * uses. It is one texture fetch and one write per pixel, and it should stay
+ * that way — anything else added here runs on the multisampled path only, which
+ * is exactly the configuration that cannot afford it.
+ */
+const RESOLVE_VERT = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = vec4(position.xy, 0.0, 1.0);
+}
+`;
+
+const RESOLVE_FRAG = /* glsl */ `
+precision highp float;
+uniform sampler2D tDiffuse;
+varying vec2 vUv;
+void main() {
+  gl_FragColor = texture2D(tDiffuse, vUv);
+}
+`;
+
 /** Normalise a colour so multiplying by it does not change overall luminance. */
 const _tmpVec = new THREE.Vector3();
 function lumaNormalized(hex: number, out: THREE.Vector3): THREE.Vector3 {
@@ -577,23 +713,21 @@ export function createPostChain(options: CreatePostOptions): PostChain {
   const width = () => Math.max(2, handle.size.width);
   const height = () => Math.max(2, handle.size.height);
 
+  /* ---- MSAA state (see the file header) --------------------------------- */
+  /** Driver cap on `samples`, read once at construction. 0 = no MSAA possible. */
+  let maxSamples = 0;
+  /** The one multisampled target in this file. `null` whenever MSAA is off. */
+  let sceneMsaa: THREE.WebGLRenderTarget | null = null;
+  let resolveMaterial: THREE.ShaderMaterial | null = null;
+  let resolveQuad: FullScreenQuad | null = null;
+  /** Samples currently ALLOCATED on `sceneMsaa`, not what config asked for. */
+  let msaaSamples = 0;
+
   /* ---- composer + HDR targets ------------------------------------------ */
   try {
-    /*
-     * THE ONLY GEOMETRIC ANTIALIASING IN THIS PIPELINE. See
-     * `PostConfig.msaaSamples` for the measurement and for why the renderer's
-     * `antialias: false` context flag was never the knob — the scene is drawn
-     * into this target, not into the default framebuffer.
-     *
-     * Clamped to what the driver actually reports. WebGL2 guarantees at least
-     * 4; asking for 8 on hardware that caps at 4 is a silently-invalid target
-     * on some drivers rather than a clamp, which is a black frame — the failure
-     * mode this file's try/catch exists for, and one worth not provoking.
-     */
     const gl = renderer.getContext() as WebGL2RenderingContext;
-    const maxSamples = typeof gl.getParameter === 'function' && 'MAX_SAMPLES' in gl
+    maxSamples = typeof gl.getParameter === 'function' && 'MAX_SAMPLES' in gl
       ? (gl.getParameter(gl.MAX_SAMPLES) as number) : 0;
-    const samples = Math.max(0, Math.min(cfg.msaaSamples | 0, maxSamples || 0));
 
     const rt = new THREE.WebGLRenderTarget(width(), height(), {
       type: THREE.HalfFloatType,
@@ -603,7 +737,15 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       magFilter: THREE.LinearFilter,
       depthBuffer: true,
       stencilBuffer: false,
-      samples,
+      /*
+       * NEVER NON-ZERO. `EffectComposer` CLONES this target to make the second
+       * half of its ping-pong pair, and `WebGLRenderTarget.copy` copies
+       * `samples` — so a number here multisamples every buffer the post chain
+       * ever writes into, and every pass then pays a resolve. That is the
+       * regression documented at length in the file header, and this literal is
+       * the whole of the fix. Geometric AA lives on `sceneMsaa` instead.
+       */
+      samples: 0,
     });
     rt.texture.name = 'PostHDR';
     composer = new EffectComposer(renderer, rt);
@@ -630,6 +772,9 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     build('render', () => {
       const p = new RenderPass(scene, camera);
       p.clear = true;
+      // Installed unconditionally and inert while `sceneMsaa` is null, so the
+      // settings toggle never has to re-wrap a live pass.
+      installSceneMsaaResolve(p);
       return p as unknown as Pass;
     });
 
@@ -684,6 +829,142 @@ export function createPostChain(options: CreatePostOptions): PostChain {
         return p as unknown as Pass;
       }
     });
+  }
+
+  /* ======================================================================= */
+  /* MSAA: the scene pass, and only the scene pass                           */
+  /* ======================================================================= */
+
+  /**
+   * DRAW THE SCENE INTO THE MULTISAMPLED TARGET, THEN MOVE IT ONCE.
+   *
+   * `RenderPass.render` draws into whatever it is handed as `readBuffer` (it has
+   * `needsSwap = false`, so the composer leaves the result there for the next
+   * pass to read). All this wrapper does is hand it `sceneMsaa` instead, then
+   * transfer the result to where the composer expects it.
+   *
+   * The RESOLVE is not this function's doing and is not the quad below: three
+   * blits the multisample renderbuffers into `sceneMsaa.texture` at the end of
+   * the `renderer.render()` inside `base(...)`. By the time the quad runs it is
+   * sampling an ordinary single-sampled texture. One bind, one resolve — see the
+   * file header for why that count is the entire point of the exercise.
+   *
+   * `renderToScreen` is forced off across `base` because `RenderPass` reads it
+   * to decide between `null` and its `readBuffer` argument, and the whole idea
+   * is that the scene never goes straight to the default framebuffer. The
+   * original value still decides where the TRANSFER lands, so the degenerate
+   * "render is the only enabled pass" chain keeps its antialiasing instead of
+   * silently falling back to an aliased direct draw.
+   *
+   * Inert, with a single null check, whenever MSAA is off — which is the default
+   * and every quality tier.
+   */
+  function installSceneMsaaResolve(pass: RenderPass): void {
+    const p = pass as unknown as {
+      renderToScreen: boolean;
+      render(
+        r: THREE.WebGLRenderer,
+        writeBuffer: THREE.WebGLRenderTarget,
+        readBuffer: THREE.WebGLRenderTarget,
+        deltaTime: number,
+        maskActive: boolean,
+      ): void;
+    };
+    const base = p.render.bind(p);
+
+    p.render = function msaaSceneRender(r, writeBuffer, readBuffer, deltaTime, maskActive) {
+      const target = sceneMsaa;
+      const quad = resolveQuad;
+      const mat = resolveMaterial;
+      if (target === null || quad === null || mat === null) {
+        base(r, writeBuffer, readBuffer, deltaTime, maskActive);
+        return;
+      }
+
+      const toScreen = p.renderToScreen;
+      p.renderToScreen = false;
+      try {
+        base(r, writeBuffer, target, deltaTime, maskActive);
+      } finally {
+        p.renderToScreen = toScreen;
+      }
+
+      mat.uniforms.tDiffuse.value = target.texture;
+      r.setRenderTarget(toScreen ? null : readBuffer);
+      quad.render(r);
+    };
+  }
+
+  /** Free the MSAA target and its transfer quad. Safe to call when already off. */
+  function disposeMsaa(): void {
+    sceneMsaa?.dispose();
+    sceneMsaa = null;
+    resolveQuad?.dispose();
+    resolveQuad = null;
+    resolveMaterial?.dispose();
+    resolveMaterial = null;
+  }
+
+  /**
+   * Bring `sceneMsaa` in line with `cfg.msaaSamples`.
+   *
+   * A sample count cannot be changed on a live framebuffer, so a change here is
+   * an allocate-or-free, which is why it is a TRANSITION check and not a
+   * per-frame assignment. It is safe to do synchronously — unlike the deferred
+   * resize below, nothing is disposed that the current frame is mid-way through
+   * reading, because config listeners fire from DOM event handlers rather than
+   * from inside `composer.render()`. `chainDirty` is still set, so `warmUp()`
+   * draws one full frame through the new arrangement — which is what compiles
+   * the transfer quad's program and allocates its target — ahead of the normal
+   * `composer.render()` for the tick.
+   *
+   * The settings row for this used to say "takes effect after a restart", which
+   * was true only because the samples went onto the composer's own target. They
+   * do not any more.
+   */
+  function applyMsaaConfig(): void {
+    const want = composer === null ? 0 : msaaSampleCount(cfg.msaaSamples, maxSamples);
+    if (want === msaaSamples) return;
+    msaaSamples = want;
+    disposeMsaa();
+
+    if (want > 0) {
+      const w = appliedW > 0 ? appliedW : width();
+      const h = appliedH > 0 ? appliedH : height();
+      // Same descriptor as the composer target — the transfer must not change
+      // format, type or colour space, or the grade would be reading a different
+      // number than the scene wrote.
+      sceneMsaa = new THREE.WebGLRenderTarget(w, h, {
+        type: THREE.HalfFloatType,
+        format: THREE.RGBAFormat,
+        colorSpace: THREE.NoColorSpace,
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        depthBuffer: true,
+        stencilBuffer: false,
+        samples: want,
+      });
+      sceneMsaa.texture.name = 'SceneMSAA';
+      resolveMaterial = new THREE.ShaderMaterial({
+        name: 'MsaaResolvePass',
+        uniforms: { tDiffuse: { value: null } },
+        vertexShader: RESOLVE_VERT,
+        fragmentShader: RESOLVE_FRAG,
+        depthTest: false,
+        depthWrite: false,
+        blending: THREE.NoBlending,
+      });
+      resolveQuad = new FullScreenQuad(resolveMaterial);
+    }
+
+    chainDirty = true;
+    if (DEV) {
+      console.info(
+        want > 0
+          ? `[post] MSAA: scene target at ${want}x (driver max ${maxSamples}), one resolve`
+          : '[post] MSAA: off — the scene renders straight into the composer buffer'
+      );
+    }
   }
 
   /**
@@ -1067,6 +1348,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     }
 
     applyAoConfig();
+    applyMsaaConfig();
 
     // Toggles may have flipped in config; mirror them and re-order.
     let orderDirty = false;
@@ -1144,6 +1426,10 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     // EffectComposer.setSize takes drawing-buffer pixels; our handle already
     // reports those, so pixelRatio must stay at 1 inside the composer.
     (composer as any)?.setPixelRatio?.(1);
+    // `composer.setSize` only knows about its own pair and its passes. The MSAA
+    // scene target is ours, so it resizes here or it stays at the boot size and
+    // the transfer quad stretches a stale image over the frame.
+    sceneMsaa?.setSize(pw, ph);
     for (const id of PASS_ORDER) {
       const p: any = passes[id];
       if (p && typeof p.setSize === 'function') {
@@ -1274,6 +1560,8 @@ export function createPostChain(options: CreatePostOptions): PostChain {
         delete passes[id];
       }
       try {
+        disposeMsaa();
+        msaaSamples = 0;
         (composer as any)?.renderTarget1?.dispose?.();
         (composer as any)?.renderTarget2?.dispose?.();
         (composer as any)?.dispose?.();
