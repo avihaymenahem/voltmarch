@@ -383,6 +383,10 @@ export const CAMEO_BUILDING_MODELS: Readonly<Record<string, ModelBinding>> = {
   teslaCoil: 'soviet_tesla',
   flameTower: 'soviet_flametower',
   sentryGun: 'soviet_sentry',
+  chronosphere: 'allied_chrono',
+  weatherControl: 'allied_weather',
+  nuclearSilo: 'soviet_nuke',
+  ironCurtain: 'soviet_curtain',
 
   /* -- the Meridian Pact ------------------------------------------------- */
   mrdConclave: 'meridian_conclave',
@@ -398,6 +402,7 @@ export const CAMEO_BUILDING_MODELS: Readonly<Record<string, ModelBinding>> = {
   mrdHelios: 'meridian_helios',
   mrdRampart: 'meridian_rampart',
   mrdDepot: 'meridian_depot',
+  mrdHeliograph: 'meridian_heliograph',
 
   /* -- the Reclamation --------------------------------------------------- */
   rclFoundry: 'reclaim_foundry',
@@ -413,6 +418,7 @@ export const CAMEO_BUILDING_MODELS: Readonly<Record<string, ModelBinding>> = {
   rclSpitpost: 'reclaim_spitpost',
   rclPylon: 'reclaim_pylon',
   rclDepot: 'reclaim_depot',
+  rclStormworks: 'reclaim_stormworks',
 };
 
 /**
@@ -1647,7 +1653,12 @@ const ARCHETYPE_RULES: ReadonlyArray<readonly [RegExp, CameoArchetype]> = [
   // `nuclear` as well as `nuke`: "Nuclear Missile" carries neither `nuke` nor
   // `missile silo`, and without it the franchise's most recognisable structure
   // fell through to the generic block.
-  [/chrono|nuke|nuclear|atom|missile.?silo|weather|super|iron.?curtain|vertex/, 'superweapon'],
+  // `heliograph` and `stormworks` are the Pact's and the Reclamation's
+  // superweapons. Neither shares a word with the shared vocabulary, so without
+  // them both fell all the way through to the structure default and drew a
+  // depot — the same failure the Meridian block in `icons.ts` records.
+  [/chrono|nuke|nuclear|atom|missile.?silo|weather|super|iron.?curtain|vertex|heliograph|stormworks/,
+    'superweapon'],
   [/silo|storage|ore.?dump/, 'silo'],
   [/heli.?pad|air.?pad|airfield|air.?force/, 'helipad'],
   [/wall|fence|barrier|gate/, 'wall'],

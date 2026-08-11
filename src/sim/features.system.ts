@@ -284,11 +284,38 @@ export default defineSystem({
     const g = globalThis as unknown as Record<string, unknown>;
     g.__vmFeatures = {
       superweapons, capture, garrison, crates, repairSell,
-      /** `__vmFeatures.fire('nuke', 512, 512)` from the console. */
+      /**
+       * `__vmFeatures.fire('nuke', 512, 512)` from the console.
+       *
+       * THIS IS THE DEVELOPER PATH AND IT BYPASSES THE BUS ON PURPOSE, because
+       * it is what a test and a console poke need: `fireAt` is the sim-side
+       * entry and calling it here applies the strike with no command in
+       * between. The PLAYER's path is `__vmSuperweapons.arm` below, which goes
+       * through `channels.commands` like everything else.
+       */
       fire: (key: string, x: number, z: number) =>
         superweapons?.fireAt(world.localPlayer, key, x, z) ?? 'rejected',
+      /** Put a fire order on the bus without a cursor. The scriptable path. */
+      order: (key: string, x: number, z: number) =>
+        superweapons?.issueFire(world.localPlayer, key, x, z) ?? false,
       arm: (key: string) => superweapons?.arm(world.localPlayer, key) ?? false,
       parkDropped: () => parkDropped,
+    };
+
+    /**
+     * The HUD's seam. Its own `__vm*` handle rather than a corner of
+     * `__vmFeatures`, matching `__vmAbilities` and `__vmRelocate` — `src/ui`
+     * duck-types these by name and must not have to know that superweapons
+     * happen to be registered by the same module as engineer capture.
+     *
+     * Three members, and NONE of them fires: the countdown is PUSHED to
+     * `__vmHud` by the service, and the shot goes through `channels.commands`
+     * from inside the service's own pointer handler.
+     */
+    g.__vmSuperweapons = {
+      arm: (key: string) => superweapons?.arm(world.localPlayer, key) ?? false,
+      cancelArm: () => superweapons?.cancelArm(),
+      get armedKey(): string | null { return superweapons?.armedKey ?? null; },
     };
 
     console.info(
@@ -339,5 +366,6 @@ export default defineSystem({
     parkCount = 0;
     parkArenaHead = 0;
     delete (globalThis as unknown as Record<string, unknown>).__vmFeatures;
+    delete (globalThis as unknown as Record<string, unknown>).__vmSuperweapons;
   },
 });

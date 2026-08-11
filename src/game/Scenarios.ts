@@ -1218,6 +1218,26 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
   // gun the Reclamation owns.
   rclPylon: building('rclPylon', B.prismTower, 560, -90, 30,
     EntityFlag.CanAttack, Faction.Reclaim, { weaponRange: 28 }),
+
+  /* -- the six superweapon structures -------------------------------------
+   * Their whole behaviour is `src/sim/Superweapons.ts`, which finds them by
+   * CONTENT KEY and charges a timer — so there is no flag to set and nothing
+   * here distinguishes one from any other support structure. The rows exist
+   * for the reason the Repair Depot's does, stated above it: WITHOUT ONE the
+   * structure builds, charges, reaches 100% and then never places, with
+   * nothing logged. `ProductionCatalog` drops the whole entry earlier still —
+   * `resolveEntry` warns and returns null — so the sidebar would not even
+   * offer it.
+   *
+   * -150 power is deliberate and it is the balance of the building: the
+   * service refuses to charge a structure whose `Powered` bit is clear, so a
+   * base that cannot carry the draw owns a very expensive dark shed. */
+  nuclearSilo: building('nuclearSilo', B.superweapon, 1000, -150, 20, 0, Faction.Soviets),
+  ironCurtain: building('ironCurtain', B.superweapon, 950, -150, 20, 0, Faction.Soviets),
+  chronosphere: building('chronosphere', B.superweapon, 950, -150, 20, 0, Faction.Allies),
+  weatherControl: building('weatherControl', B.superweapon, 1000, -150, 20, 0, Faction.Allies),
+  mrdHeliograph: building('mrdHeliograph', B.superweapon, 900, -150, 20, 0, Faction.Meridian),
+  rclStormworks: building('rclStormworks', B.superweapon, 1050, -150, 20, 0, Faction.Reclaim),
 };
 
 export interface FallbackProp {
@@ -1403,6 +1423,13 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   rclSpitpost: ['rclspitpost', 'spitpost', 'reclaimspitpost'],
   rclPylon: ['rclpylon', 'arcpylon', 'reclaimpylon'],
   rclDepot: ['rcldepot', 'patchyard', 'reclaimdepot'],
+
+  nuclearSilo: ['nuclearsilo', 'missilesilo', 'nuke', 'sovietsuperweapon'],
+  ironCurtain: ['ironcurtain', 'ironcurtaindevice', 'curtain'],
+  chronosphere: ['chronosphere', 'chrono', 'alliedsuperweapon'],
+  weatherControl: ['weathercontrol', 'weathercontroldevice', 'lightningstorm'],
+  mrdHeliograph: ['mrdheliograph', 'heliograph', 'meridianheliograph'],
+  rclStormworks: ['rclstormworks', 'stormworks', 'reclaimstormworks'],
 };
 
 /**

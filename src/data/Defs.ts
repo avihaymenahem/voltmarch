@@ -1783,6 +1783,84 @@ export const BUILDINGS: readonly BuildingDef[] = [
     maxHp: 900, power: -30, sight: 18,
     flags: rclFlags(-30),
   }),
+
+  /* -- THE SUPERWEAPONS ----------------------------------------------------
+   * APPENDED, for the reason the Repair Depot block above states and one more
+   * besides: `src/game/Replay.ts:165` records `defId` as a RAW ARRAY INDEX, so
+   * a row inserted anywhere above this line makes every existing recording
+   * play back a different game. Saves survive an insert (`defIndexFromTables`
+   * maps by key both ways); replays do not.
+   *
+   * WHAT THESE ARE FOR. `src/sim/Superweapons.ts` is a complete, tested
+   * implementation of six end-game buttons — charge timers, faction ownership,
+   * a warned nuke, true invulnerability, a two-click chronoshift, area denial —
+   * and until this block existed NOT ONE OF THEM WAS REACHABLE IN PLAY. The
+   * service gates each weapon on owning a finished, powered structure whose
+   * content key it names, and no such key existed. There was nothing to build,
+   * so nothing ever charged, so nothing ever fired except from the console.
+   *
+   * SIX ROWS, FOUR ARMIES. The two original armies field two apiece because
+   * that is what the service implements: the Soviets get the missile and the
+   * Curtain, the Allies get the Chronosphere and the storm. The Pact and the
+   * Reclamation are complete parallel trees that never draw from the
+   * `Faction.Neutral` pool (`SHARED_POOL_FACTIONS` in Production.ts), so each
+   * needs a row of its own — a Neutral superweapon would put a Soviet silo in
+   * an Allied sidebar and none in either new army's.
+   *
+   * THE PRICE IS THE GRID, not the credits. 2500 is a War Factory plus a Radar
+   * Dome, which is steep but reachable; -150 power is by a wide margin the
+   * heaviest single draw in the game (the Arc Pylon's -90 was the record) and
+   * it is the real cost. A base that builds one of these browns out unless it
+   * has already paid for the generation, and a raid on the power plants stops
+   * the countdown dead — `Superweapons.rescanAvailability` refuses a dark
+   * structure, and the timer PAUSES rather than resetting.
+   *
+   * Every one is gated on the army's tech building, so a superweapon is the
+   * last thing on the tree and never an opening. */
+  building({
+    key: 'nuclearSilo', name: 'Nuclear Missile Silo',
+    blurb: 'Charges a single annihilating warhead. Announced before it lands.',
+    faction: Faction.Soviets, cost: 2500, buildTime: 32, tab: BuildTab.Structures,
+    prereqs: ['battleLab'], sortOrder: 90, model: 'nuclearSilo', dim: B.superweapon,
+    maxHp: 1000, power: -150, sight: 20,
+  }),
+  building({
+    key: 'ironCurtain', name: 'Iron Curtain Device',
+    blurb: 'Makes everything in the radius untouchable for twenty seconds.',
+    faction: Faction.Soviets, cost: 2000, buildTime: 28, tab: BuildTab.Structures,
+    prereqs: ['battleLab'], sortOrder: 91, model: 'ironCurtain', dim: B.superweapon,
+    maxHp: 950, power: -150, sight: 20,
+  }),
+  building({
+    key: 'chronosphere', name: 'Chronosphere',
+    blurb: 'Lifts nine of your units out of one place and sets them down in another.',
+    faction: Faction.Allies, cost: 2000, buildTime: 28, tab: BuildTab.Structures,
+    prereqs: ['battleLab'], sortOrder: 90, model: 'chronosphere', dim: B.superweapon,
+    maxHp: 950, power: -150, sight: 20,
+  }),
+  building({
+    key: 'weatherControl', name: 'Weather Control Device',
+    blurb: 'Nine seconds of lightning. None of it lands where you thought.',
+    faction: Faction.Allies, cost: 2500, buildTime: 32, tab: BuildTab.Structures,
+    prereqs: ['battleLab'], sortOrder: 91, model: 'weatherControl', dim: B.superweapon,
+    maxHp: 1000, power: -150, sight: 20,
+  }),
+  building({
+    key: 'mrdHeliograph', name: 'Heliograph',
+    blurb: 'Turns the sky on one point. Announced before it burns.',
+    faction: FACTION_MERIDIAN, cost: 2500, buildTime: 32, tab: BuildTab.Structures,
+    prereqs: ['mrdReliquary'], sortOrder: 90, model: 'meridian_heliograph', dim: B.superweapon,
+    maxHp: 900, power: -150, sight: 20,
+    flags: mrdFlags(-150),
+  }),
+  building({
+    key: 'rclStormworks', name: 'Stormworks',
+    blurb: 'Nine seconds of loose arcs over anywhere on the map.',
+    faction: FACTION_RECLAIM, cost: 2500, buildTime: 32, tab: BuildTab.Structures,
+    prereqs: ['rclCrucible'], sortOrder: 90, model: 'reclaim_stormworks', dim: B.superweapon,
+    maxHp: 1050, power: -150, sight: 20,
+    flags: rclFlags(-150),
+  }),
 ];
 
 /* ==========================================================================

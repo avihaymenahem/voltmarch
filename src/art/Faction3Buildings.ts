@@ -956,6 +956,72 @@ function rampart(): StructureMassList {
   return list('meridian_rampart', 'Rampart', 'wall', masses, [], { cls: 'wall' });
 }
 
+/**
+ * THE HELIOGRAPH — the Pact's superweapon, and the only structure it fields on
+ * the 3x3, 13 m superweapon pad.
+ *
+ * A signalling mirror the size of a building. The army's whole armoury is
+ * sunlight redirected, so its end-game button is that argument taken to its
+ * conclusion: one obelisk, one enormous canted disc on top of it, and a lens
+ * assembly hung under the rim where the beam is gathered before it leaves.
+ *
+ * The disc is CANTED and OFF-AXIS, exactly as the Oculus's aperture is, for the
+ * same reason: a flat disc square to the ground reads as a table, and a mirror
+ * has to be seen to be aimed at something. It does NOT slew — `mrdHeliograph`
+ * carries no `hasTurret` and a superweapon that visibly tracked would promise
+ * a targeting behaviour the sim does not have.
+ */
+function heliograph(): StructureMassList {
+  const f = fp('superweapon');
+  const s = pactShell(f.w, f.h, f.height, { bodyFraction: 0.36, team: 0.94, lightCount: 6 });
+  // THE MAST IS SHORT SO THE MIRROR CAN BE BIG. A canted disc adds its own
+  // radius times the sine of the cant to `bounds[1]`, and the validator's
+  // height band is +/-12% of the frozen 13 m — a 7.4 m disc raked 24 degrees
+  // is 1.5 m of that on its own. Raising the mast instead of shrinking the
+  // mirror is what puts the silhouette through the ceiling; the Rampart's
+  // `vane` comment records the same arithmetic at wall scale.
+  const towerTop = f.height - 4.4;
+  const r = s.w * 0.33;
+  const mirrorY = towerTop + 1.9;
+  s.masses.push(
+    ...obelisk(0, 0, s.w * 0.26, s.crownTop - 0.4, towerTop, 'tower'),
+    // The mirror. A shallow revolved dish rather than a plate, so its rim
+    // catches the key light all the way round instead of on one edge.
+    { name: 'mirror', primitive: 'lathe', role: MassRole.Primary, profile: 'dome',
+      size: [r * 2, 1.9, r * 2], anchor: [0.55, mirrorY, -0.25], slot: 'paintMed',
+      rot: [-0.42, 0, 0.14], capSlot: 'paintSmall', segments: 14, tint: 0.96 },
+    cyl('mirror.rim', MassRole.Greeble, [r * 2.14, 0.30, r * 2.14], [0.55, mirrorY - 0.35, -0.25], 'bareMetal', {
+      rot: [-0.42, 0, 0.14], group: 'mirror', chamfer: 0.05, capSlot: 'grille', segments: 12,
+    }),
+    cyl('mirror.hub', MassRole.Primary, [1.5, 1.0, 1.5], [0, towerTop + 0.6, 0], 'bareMetal', {
+      capSlot: 'hatch', segments: 10, topRadius: 0.78,
+    }),
+    box('mirror.arm', MassRole.Greeble, [2.1, 0.24, 0.24], [0.35, towerTop + 1.15, -0.15], 'bareMetal', {
+      group: 'mirror', chamfer: 0.04,
+    }),
+    // The gathering lens, hung under the rim. This is where the beam is when
+    // the countdown ends, so it is the one emissive that is allowed to be big.
+    cyl('lens', MassRole.Emissive, [1.15, 1.15, 1.15], [0.55, towerTop + 0.40, -0.25], 'emissive', {
+      group: 'lens', feature: Feature.Window, capSlot: 'emissive', segments: 10, chamfer: 0.05,
+    }),
+    cyl('accumulator', MassRole.Greeble, [1.15, s.roofY * 0.58, 1.15], [-s.w * 0.32, s.roofY * 0.29, s.d * 0.26], 'bareMetal', {
+      group: 'accumulators', topRadius: 0.86, capSlot: 'hatch', segments: 8, chamfer: 0.06,
+    }),
+    box('accumulator.bus', MassRole.Greeble, [s.w * 0.40, 0.24, 0.24], [-s.w * 0.14, s.roofY + 0.38, s.d * 0.26], 'bareMetal', {
+      group: 'accumulators', chamfer: 0.05,
+    }),
+    box('shutter', MassRole.Greeble, [s.w * 0.22, 0.32, s.d * 0.16], [s.w * 0.28, s.roofY + 0.24, -s.d * 0.22], 'grille', {
+      group: 'shutters',
+    }),
+  );
+  return list('meridian_heliograph', 'Heliograph', 'superweapon', s.masses, [
+    ...baseSockets(s.d, s.roofY + 1.0, -s.w * 0.32, s.d * 0.26),
+    { part: PartId.Emitter, pos: [0.55, towerTop + 0.40, -0.25] },
+    { part: PartId.Dish, pos: [0.55, mirrorY, -0.25] },
+    { part: PartId.Antenna, pos: [0, f.height, 0] },
+  ]);
+}
+
 /* ==========================================================================
  * 6. THE ROSTER
  * ========================================================================== */
@@ -974,6 +1040,7 @@ export const MERIDIAN_STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   glavePost(),
   heliosSpire(),
   rampart(),
+  heliograph(),
 ];
 
 export const MERIDIAN_STRUCTURE_BY_KEY: ReadonlyMap<string, StructureMassList> =
@@ -997,6 +1064,7 @@ export const MERIDIAN_STRUCTURE_MODELS: Readonly<Record<string, string>> = {
   mrdGlaive: 'meridian_glaive',
   mrdHelios: 'meridian_helios',
   mrdRampart: 'meridian_rampart',
+  mrdHeliograph: 'meridian_heliograph',
 };
 
 /* ==========================================================================

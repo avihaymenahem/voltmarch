@@ -813,6 +813,63 @@ const CONTENT: readonly ContentSpec[] = [
     kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
     cost: 800, buildTime: 10, prereqs: ['rclBreakerYard'], sortOrder: 75,
   },
+
+  /* -- THE SUPERWEAPONS -----------------------------------------------------
+   * Six rows, one per entry in `SUPERWEAPONS` (src/sim/Superweapons.ts). They
+   * are the only reason any of that file is reachable: the service charges a
+   * weapon only while its owner holds a finished, powered structure whose
+   * content key it names, and until these rows existed the sidebar had no way
+   * to offer one.
+   *
+   * NOTHING ABOUT THE WEAPON IS HERE. The charge time, the radius, the effect
+   * and the targeting mode are `SUPERWEAPONS`, read by the service, which finds
+   * the structure BY CONTENT KEY rather than by anything authored in this
+   * table. Same discipline the Repair Depot block above states: a building
+   * whose behaviour was half-described here and half in the sim is the drift
+   * this repo keeps paying for.
+   *
+   * `prereqs` MUST match `src/data/Defs.ts` exactly — `resolveEntry` takes the
+   * spec's list unconditionally while every other field falls back to the def,
+   * and `tests/catalog-prereqs.spec.ts` exists because that has silently
+   * diverged before. `sortOrder` 90/91 puts them last in the Structures tab,
+   * after the lab, which is also where they sit on the tech tree.
+   * ---------------------------------------------------------------------- */
+  {
+    key: 'nuclearSilo', name: 'Nuclear Missile Silo',
+    blurb: 'Charges a single annihilating warhead. Announced before it lands.',
+    kind: BuildKind.Building, faction: Faction.Soviets, tab: S,
+    cost: 2500, buildTime: 32, prereqs: ['battleLab'], sortOrder: 90,
+  },
+  {
+    key: 'ironCurtain', name: 'Iron Curtain Device',
+    blurb: 'Makes everything in the radius untouchable for twenty seconds.',
+    kind: BuildKind.Building, faction: Faction.Soviets, tab: S,
+    cost: 2000, buildTime: 28, prereqs: ['battleLab'], sortOrder: 91,
+  },
+  {
+    key: 'chronosphere', name: 'Chronosphere',
+    blurb: 'Lifts nine of your units out of one place and sets them down in another.',
+    kind: BuildKind.Building, faction: Faction.Allies, tab: S,
+    cost: 2000, buildTime: 28, prereqs: ['battleLab'], sortOrder: 90,
+  },
+  {
+    key: 'weatherControl', name: 'Weather Control Device',
+    blurb: 'Nine seconds of lightning. None of it lands where you thought.',
+    kind: BuildKind.Building, faction: Faction.Allies, tab: S,
+    cost: 2500, buildTime: 32, prereqs: ['battleLab'], sortOrder: 91,
+  },
+  {
+    key: 'mrdHeliograph', name: 'Heliograph',
+    blurb: 'Turns the sky on one point. Announced before it burns.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 2500, buildTime: 32, prereqs: ['mrdReliquary'], sortOrder: 90,
+  },
+  {
+    key: 'rclStormworks', name: 'Stormworks',
+    blurb: 'Nine seconds of loose arcs over anywhere on the map.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 2500, buildTime: 32, prereqs: ['rclCrucible'], sortOrder: 90,
+  },
 ];
 
 /** Every army a player or an AI can be. Neutral is not one of them. */

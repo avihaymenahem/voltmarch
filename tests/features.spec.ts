@@ -603,6 +603,20 @@ describe('garrison', () => {
 /* Superweapons                                                               */
 /* ========================================================================== */
 
+/**
+ * The gating structure for each weapon. These used to be `battleLab` on every
+ * line, because when this block was written the structures did not exist and
+ * `SUPERWEAPONS[i].structureKeys` ended its fallback chain at the tech
+ * building. That fallback also meant one Battle Lab armed BOTH of its army's
+ * superweapons, which is why it is gone — see the header of Superweapons.ts.
+ */
+const GATE: Readonly<Record<string, string>> = {
+  nuke: 'nuclearSilo',
+  ironCurtain: 'ironCurtain',
+  chronosphere: 'chronosphere',
+  lightningStorm: 'weatherControl',
+};
+
 describe('superweapons', () => {
   let rig: Rig;
   beforeEach(() => { rig = makeRig(); });
@@ -613,8 +627,28 @@ describe('superweapons', () => {
     expect(rig.supers.fireAt(ALLIES, 'chronosphere', 100, 100)).toBe('rejected');
   });
 
+  it('is unavailable on a Battle Lab alone', () => {
+    // THE REGRESSION THIS FILE'S OWN FIXTURES USED TO ENCODE. Every case below
+    // built a `battleLab` and got a charged nuke out of it, because the
+    // structure chain fell back to the tech building. It does not any more:
+    // the silo is a 2500-credit, 150-power commitment of its own.
+    rig.building('battleLab', SOVIETS, 20, 20);
+    rig.supers.rescanAvailability();
+    expect(rig.supers.remainingFor(SOVIETS, 'nuke')).toBe(-1);
+    expect(rig.supers.remainingFor(SOVIETS, 'ironCurtain')).toBe(-1);
+  });
+
+  it('gates each weapon on its OWN structure, not on its army', () => {
+    // One silo arms the missile and nothing else. Two superweapons per army
+    // means two buildings, which is the whole reason each has its own def.
+    rig.building('nuclearSilo', SOVIETS, 20, 20);
+    rig.supers.rescanAvailability();
+    expect(rig.supers.remainingFor(SOVIETS, 'nuke')).toBeGreaterThanOrEqual(0);
+    expect(rig.supers.remainingFor(SOVIETS, 'ironCurtain')).toBe(-1);
+  });
+
   it('charges only while the structure stands, and pauses when it falls', () => {
-    const lab = rig.building('battleLab', ALLIES, 20, 20);
+    const gate = rig.building(GATE.lightningStorm, ALLIES, 20, 20);
     rig.supers.rescanAvailability();
     const t0 = rig.supers.remainingFor(ALLIES, 'lightningStorm');
     expect(t0).toBeGreaterThan(0);
@@ -623,28 +657,28 @@ describe('superweapons', () => {
     const t1 = rig.supers.remainingFor(ALLIES, 'lightningStorm');
     expect(t1).toBeLessThan(t0);
 
-    rig.world.store.markDead(lab);
+    rig.world.store.markDead(gate);
     rig.world.store.flushDestroyed();
     rig.supers.rescanAvailability();
     expect(rig.supers.remainingFor(ALLIES, 'lightningStorm')).toBe(-1);
     rig.step((s) => rig.supers.simTick(s), 60);
 
-    // The charge is PAUSED, not reset: rebuilding the lab resumes where it
-    // stopped rather than starting the seven-minute wait again.
-    rig.building('battleLab', ALLIES, 24, 24);
+    // The charge is PAUSED, not reset: rebuilding resumes where it stopped
+    // rather than starting the seven-minute wait again.
+    rig.building(GATE.lightningStorm, ALLIES, 24, 24);
     rig.supers.rescanAvailability();
     expect(rig.supers.remainingFor(ALLIES, 'lightningStorm')).toBeCloseTo(t1, 2);
   });
 
   it('respects faction ownership', () => {
-    rig.building('battleLab', ALLIES, 20, 20);
+    rig.building(GATE.chronosphere, ALLIES, 20, 20);
     rig.supers.rescanAvailability();
     expect(rig.supers.remainingFor(ALLIES, 'nuke')).toBe(-1);
     expect(rig.supers.remainingFor(ALLIES, 'chronosphere')).toBeGreaterThanOrEqual(0);
   });
 
   it('lands a nuke only after its warning, and shakes the camera', () => {
-    rig.building('battleLab', SOVIETS, 20, 20);
+    rig.building(GATE.nuke, SOVIETS, 20, 20);
     rig.supers.rescanAvailability();
     rig.supers.grantReady(SOVIETS, 'nuke');
     expect(rig.supers.isReady(SOVIETS, 'nuke')).toBe(true);
@@ -664,7 +698,7 @@ describe('superweapons', () => {
   });
 
   it('makes a lightning storm throw many small bolts, not one big one', () => {
-    rig.building('battleLab', ALLIES, 20, 20);
+    rig.building(GATE.lightningStorm, ALLIES, 20, 20);
     rig.supers.rescanAvailability();
     rig.supers.grantReady(ALLIES, 'lightningStorm');
     expect(rig.supers.fireAt(ALLIES, 'lightningStorm', 300, 300)).toBe('fired');
@@ -678,7 +712,7 @@ describe('superweapons', () => {
   });
 
   it('stages then fires the chronosphere, and moves the units', () => {
-    rig.building('battleLab', ALLIES, 20, 20);
+    rig.building(GATE.chronosphere, ALLIES, 20, 20);
     rig.supers.rescanAvailability();
     rig.supers.grantReady(ALLIES, 'chronosphere');
 
@@ -698,7 +732,7 @@ describe('superweapons', () => {
   });
 
   it('makes Iron Curtain units invulnerable, then restores the exact hp', () => {
-    rig.building('battleLab', SOVIETS, 20, 20);
+    rig.building(GATE.ironCurtain, SOVIETS, 20, 20);
     rig.supers.rescanAvailability();
     rig.supers.grantReady(SOVIETS, 'ironCurtain');
 
@@ -728,7 +762,7 @@ describe('superweapons', () => {
   });
 
   it('restores every protected unit on dispose', () => {
-    rig.building('battleLab', SOVIETS, 20, 20);
+    rig.building(GATE.ironCurtain, SOVIETS, 20, 20);
     rig.supers.rescanAvailability();
     rig.supers.grantReady(SOVIETS, 'ironCurtain');
     const tank = rig.unit('rhino', SOVIETS, 400, 400);

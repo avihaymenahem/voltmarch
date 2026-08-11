@@ -106,8 +106,20 @@ export const enum BuildRole {
    * field a Prism Tank for the rest of the match.
    */
   Repair = 18,
+  /**
+   * A superweapon structure. Its own role for exactly the reason `Repair` is:
+   * `roleOfBuilding`'s flag fallback ends at "draws power and is bigger than
+   * 1x1" => TechLab, and a Nuclear Silo matches that to the letter. An AI that
+   * filed one as its Battle Lab would believe the tech gate was already open
+   * and stop building the real lab.
+   *
+   * Nothing in `AI.considerBuild` asks for this role, so the AI does not build
+   * superweapons yet. The row exists so that one it CAPTURED, or one a
+   * scenario handed it, is classified honestly rather than lied about.
+   */
+  Superweapon = 19,
 }
-export const BUILD_ROLE_COUNT = 19;
+export const BUILD_ROLE_COUNT = 20;
 
 /**
  * The five things an army can be asked to kill. The composition scorer works
@@ -132,7 +144,7 @@ export const THREAT_CLASS_NAMES: readonly string[] = ['infantry', 'light', 'heav
 export const BUILD_ROLE_NAMES: readonly string[] = [
   'builder', 'power', 'refinery', 'barracks', 'warFactory', 'radar', 'techLab',
   'storage', 'defense', 'antiAir', 'harvester', 'skirmisher', 'infantry',
-  'armor', 'siege', 'support', 'mcv', 'unknown', 'repair',
+  'armor', 'siege', 'support', 'mcv', 'unknown', 'repair', 'superweapon',
 ];
 
 /* ==========================================================================
@@ -270,6 +282,25 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     FACTION_MERIDIAN),
   structure('rclDepot',    BuildRole.Repair, 800, -30, B.repairDepot, ['rclBreakerYard'],
     FACTION_RECLAIM),
+
+  /* -- the superweapons -------------------------------------------------- */
+  // Rows for classification, not for doctrine — see `BuildRole.Superweapon`.
+  // `roleOfBuilding` answers from this table when it can and falls through to
+  // an EntityFlag heuristic when it cannot, and the heuristic's last branch
+  // ("bigger than 1x1 and draws power" => TechLab) is exactly what a 3x3 silo
+  // looks like from the flags alone.
+  structure('nuclearSilo',   BuildRole.Superweapon, 2500, -150, B.superweapon,
+    ['battleLab'], Faction.Soviets),
+  structure('ironCurtain',   BuildRole.Superweapon, 2000, -150, B.superweapon,
+    ['battleLab'], Faction.Soviets),
+  structure('chronosphere',  BuildRole.Superweapon, 2000, -150, B.superweapon,
+    ['battleLab'], Faction.Allies),
+  structure('weatherControl', BuildRole.Superweapon, 2500, -150, B.superweapon,
+    ['battleLab'], Faction.Allies),
+  structure('mrdHeliograph', BuildRole.Superweapon, 2500, -150, B.superweapon,
+    ['mrdReliquary'], FACTION_MERIDIAN),
+  structure('rclStormworks', BuildRole.Superweapon, 2500, -150, B.superweapon,
+    ['rclCrucible'], FACTION_RECLAIM),
 
   /* -- defence ----------------------------------------------------------- */
   // Answer vectors matter here: the build layer will not put up a flame tower

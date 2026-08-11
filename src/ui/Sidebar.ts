@@ -53,7 +53,7 @@ import {
   type HudCameo,
   type HudSnapshot,
 } from '../core/types';
-import { MAX_QUEUE_DEPTH } from '../core/config';
+import { HUD_SUPERWEAPON, MAX_QUEUE_DEPTH } from '../core/config';
 import type * as THREE from 'three';
 import {
   BUILD_SLOT_HOTKEYS,
@@ -68,6 +68,7 @@ import {
   applyTheme,
   button,
   el,
+  formatClock,
   formatCountdown,
   formatCredits,
   formatElapsed,
@@ -235,6 +236,42 @@ export interface AbilityAction {
   cooldownTotal: number;
 }
 
+/**
+ * One superweapon countdown, as the bar needs to render it.
+ *
+ * WHY THIS IS NOT A SELECTION ACTION LIKE THE TWO ABOVE
+ * -----------------------------------------------------
+ * Relocate and the commander ability belong to a thing you have selected. A
+ * superweapon does not: it belongs to the BASE, it counts down whether or not
+ * anything is selected, and the whole point of the row is that the player can
+ * see the timer while doing something else entirely. So it gets a dock of its
+ * own beside the build rail rather than a row in the selection panel.
+ *
+ * `remaining` / `total` are SECONDS and are only ever printed. `Superweapons.ts`
+ * counts in `dt` against a per-player float and pushes this three ticks out of
+ * ten; nothing here branches on the value except `ready`.
+ */
+export interface SuperweaponRow {
+  /** Stable superweapon id — `nuke`, `chronosphere`. Also the pool identity. */
+  key: string;
+  /** 'Nuclear Missile'. Never empty. */
+  label: string;
+  /** Seconds left, 0 when ready. */
+  remaining: number;
+  /** The full charge, so the row can draw a proportion. */
+  total: number;
+  ready: boolean;
+  /** True while this weapon owns the cursor and the next click fires it. */
+  armed: boolean;
+}
+
+/** Every superweapon the local player can currently field. Pooled. */
+export interface SuperweaponView {
+  /** Live rows. Only the first `count` of `rows` are valid. */
+  count: number;
+  rows: SuperweaponRow[];
+}
+
 /** Severity of the status board's advice line. */
 export type AdviceKind = 'info' | 'warn' | 'alert';
 
@@ -273,6 +310,8 @@ export interface SidebarCallbacks {
   relocate(): void;
   /** The commander's ability button was pressed. */
   useAbility(): void;
+  /** A superweapon countdown row was clicked. `key` is `SuperweaponRow.key`. */
+  fireSuperweapon(key: string): void;
   sound(cue: HudSoundCue): void;
 }
 
@@ -2081,6 +2120,116 @@ class BuildPanel {
  * SECTION 5 — THE BOTTOM BAR
  * ========================================================================== */
 
+/* ==========================================================================
+ * SECTION 5B — THE SUPERWEAPON BAR  (right edge, above the build rail)
+ *
+ * Up to `HUD_SUPERWEAPON.maxRows` countdowns, one per superweapon the local
+ * player can field. Each row is a BUTTON: while it is charging the button is
+ * inert and prints MM:SS, and the moment it reads READY a click arms the
+ * targeting cursor.
+ *
+ * WHY IT LIVES HERE AND NOT IN THE BUILD PALETTE. The palette is a catalogue of
+ * things you do not own yet and its slots are all one shape; a countdown is a
+ * live readout on something you already built. It sits directly above the build
+ * rail — `HUD_SUPERWEAPON.sidebarClearance` is the gap — because that is the
+ * one part of the frame the player's cursor is already in.
+ *
+ * ZERO ALLOCATION, like everything else in this file: `maxRows` rows are built
+ * once at construction and every update is a signature compare, a `nodeValue`
+ * write and a class toggle. A charging weapon rewrites two text nodes once a
+ * second, because the signature quantises the countdown to whole seconds.
+ * ========================================================================== */
+
+interface SuperRow {
+  root: HTMLButtonElement;
+  labelNode: Text;
+  timeNode: Text;
+  fill: HTMLElement;
+  /** The key this row is currently bound to. '' when parked. */
+  key: string;
+  sig: string;
+}
+
+export class SuperweaponBar {
+  readonly root: HTMLElement;
+  private readonly rows: SuperRow[] = [];
+  private live = 0;
+
+  constructor(parent: HTMLElement, private readonly cb: SidebarCallbacks) {
+    this.root = panel(parent, 'vm-dock vm-dock-super', 'diag-rev');
+    this.root.setAttribute('aria-label', 'Superweapons');
+    this.root.hidden = true;
+
+    for (let i = 0; i < HUD_SUPERWEAPON.maxRows; i++) {
+      const btn = button(this.root, 'vm-super-row', 'Superweapon');
+      // The charge bar is a real element behind the text rather than a
+      // background gradient, so the fill can be transformed instead of
+      // repainted — a `background-size` animation on four rows is four style
+      // recalcs a frame for a readout that changes once a second.
+      const fill = el('i', 'vm-super-fill', btn);
+      btn.appendChild(makeIcon('superweapon', 'vm-icon vm-super-icon'));
+      const body = el('span', 'vm-super-body', btn);
+      const labelNode = label(body, 'vm-super-label', '');
+      const timeNode = label(body, 'vm-super-time vm-num', '');
+      const row: SuperRow = { root: btn, labelNode, timeNode, fill, key: '', sig: '' };
+      btn.addEventListener('click', () => {
+        if (row.key === '') return;
+        this.cb.sound('click');
+        this.cb.fireSuperweapon(row.key);
+      });
+      btn.addEventListener('pointerenter', () => this.cb.sound('hover'));
+      btn.hidden = true;
+      this.rows.push(row);
+    }
+  }
+
+  update(view: SuperweaponView): void {
+    const n = Math.min(view.count, this.rows.length);
+    if ((n === 0) !== this.root.hidden) this.root.hidden = n === 0;
+
+    for (let i = 0; i < n; i++) {
+      const row = this.rows[i];
+      const data = view.rows[i];
+      // Whole seconds, deliberately: the raw float changes every frame and a
+      // signature carrying it would defeat the gate entirely.
+      const secs = Math.ceil(Math.max(0, data.remaining));
+      const sig = `${data.key}|${data.label}|${secs}|${data.ready ? 1 : 0}|${data.armed ? 1 : 0}`;
+      if (sig === row.sig && !row.root.hidden) continue;
+      row.sig = sig;
+      row.key = data.key;
+      row.root.hidden = false;
+
+      const hint = data.ready
+        ? `${data.label} ready — click, then pick a target`
+        : `${data.label} charging — ${formatClock(secs)} remaining`;
+      row.labelNode.nodeValue = data.label;
+      row.timeNode.nodeValue = data.ready ? 'READY' : formatClock(secs);
+      row.root.title = hint;
+      row.root.setAttribute('aria-label', hint);
+      row.root.setAttribute('aria-disabled', data.ready ? 'false' : 'true');
+      row.root.classList.toggle('is-ready', data.ready);
+      row.root.classList.toggle('is-armed', data.armed);
+      // 0 while charging is a full-width bar at rest, so the fill grows toward
+      // the right as the charge completes.
+      const frac = data.total > 0 ? 1 - Math.max(0, Math.min(1, data.remaining / data.total)) : 1;
+      row.fill.style.transform = `scaleX(${frac.toFixed(3)})`;
+    }
+
+    for (let i = n; i < this.live; i++) {
+      this.rows[i].root.hidden = true;
+      this.rows[i].key = '';
+      this.rows[i].sig = '';
+    }
+    this.live = n;
+  }
+
+  dispose(): void {
+    this.root.remove();
+  }
+}
+
+/* ========================================================================== */
+
 export class Sidebar {
   readonly root: HTMLElement;
   /** The minimap's glass panel. `Minimap` draws into `minimapCanvas`. */
@@ -2091,6 +2240,7 @@ export class Sidebar {
 
   private readonly selection: SelectionPanel;
   private readonly build: BuildPanel;
+  private readonly supers: SuperweaponBar;
   private readonly titleEl: HTMLElement;
   private readonly offlineEl: HTMLElement;
   private readonly mapHintEl: HTMLElement;
@@ -2172,6 +2322,11 @@ export class Sidebar {
     this.build = new BuildPanel(
       this.root, opts.callbacks, this.root, opts.faction, opts.renderer ?? null,
     );
+
+    // MOUNTED ON THE ROOT for the same reason the build rail is: it positions
+    // itself absolutely against the HUD root, directly above the rail. Inside
+    // `.vm-docks` its `bottom` would resolve against that thin strip.
+    this.supers = new SuperweaponBar(this.root, opts.callbacks);
     // AFTER the build panel, because it is the one that constructs the
     // renderer. Null in any headless build, where both panels keep their glyphs.
     this.selection.setCameos(this.build.cameoRenderer);
@@ -2232,10 +2387,14 @@ export class Sidebar {
 
   /* -- frame ------------------------------------------------------------ */
 
-  update(snap: HudSnapshot, view: SelectionView, tele: HudTelemetry, dt: number): void {
+  update(
+    snap: HudSnapshot, view: SelectionView, tele: HudTelemetry, dt: number,
+    supers: SuperweaponView,
+  ): void {
     this.resources.update(snap, tele, dt);
     this.selection.update(view, snap, tele);
     this.build.update(snap);
+    this.supers.update(supers);
   }
 
   /** Raise the credits flyout. Driven by `economy:credits`. */
@@ -2252,6 +2411,7 @@ export class Sidebar {
     this.build.dispose();
     this.selection.dispose();
     this.resources.dispose();
+    this.supers.dispose();
     this.root.remove();
   }
 }

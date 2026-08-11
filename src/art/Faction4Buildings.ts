@@ -1314,6 +1314,60 @@ function arcPylon(): StructureMassList {
   ], { cls: 'defence' });
 }
 
+/**
+ * THE STORMWORKS — the Reclamation's superweapon, on the 3x3, 13 m pad.
+ *
+ * Every gun this army owns is a chained arc, so its end-game button is nine
+ * seconds of loose ones dropped anywhere on the map, and the building is what
+ * that looks like when it is built out of scrap: a bank of capacitor cans on
+ * the deck feeding a mast that carries the biggest arc coil in the game.
+ *
+ * RCL-5 is already satisfied by `reclaimFrame`'s own coil; this adds a SECOND,
+ * bigger one at the mast head, which is the point of the structure. RCL-3 is
+ * why nothing here mirrors: the cans are on -X, the mast is off centre, and
+ * the discharge horn is on +X alone.
+ */
+function stormworks(): StructureMassList {
+  const f = fp('superweapon');
+  const s = reclaimFrame(f.w, f.h, f.height, { bodyFraction: 0.40, team: 1.06, coil: 0.60 });
+  const mastTop = f.height - 2.2;
+  const mx = s.w * 0.08, mz = -s.d * 0.06;
+  s.masses.push(
+    // The mast. Tapered hard, because a scrap tower is wide at the bottom and
+    // whatever they had left at the top.
+    {
+      name: 'mast', primitive: 'taperedBox', role: MassRole.Primary,
+      size: [s.w * 0.30, mastTop - s.frameTop, s.d * 0.28], anchor: [mx, (mastTop + s.frameTop) * 0.5, mz],
+      slot: 'paintMed', capSlot: 'grille',
+      shape: { topScaleX: 0.34, topScaleZ: 0.40, shear: s.d * 0.05, cornerCut: 0.18 },
+    },
+    girder('mast.tie', [s.w * 0.54, 0.26, 0.26], [mx, s.frameTop + (mastTop - s.frameTop) * 0.34, mz], {
+      group: 'mastTies',
+    }),
+    // THE HEAD COIL. Twice the frame's, and the whole silhouette read.
+    ...arcCoil('head', mx, mastTop, mz, 1.55, 2.4),
+    // The capacitor bank on -X, which is what the countdown is filling.
+    cyl('can.a', MassRole.Greeble, [1.20, s.roofY * 0.62, 1.20], [-s.w * 0.34, s.roofY * 0.31, s.d * 0.24], 'bareMetal', {
+      group: 'cans', topRadius: 0.90, capSlot: 'hatch', segments: 8, chamfer: 0.06,
+    }),
+    cyl('can.b', MassRole.Greeble, [0.95, s.roofY * 0.50, 0.95], [-s.w * 0.36, s.roofY * 0.25, -s.d * 0.14], 'bareMetal', {
+      group: 'cans', topRadius: 0.90, capSlot: 'hatch', segments: 8, chamfer: 0.06,
+    }),
+    girder('can.bus', [s.w * 0.46, 0.22, 0.22], [-s.w * 0.16, s.roofY + 0.40, s.d * 0.24], { group: 'cans' }),
+    // The discharge horn, on +X only.
+    girder('horn', [0.26, 0.26, s.d * 0.40], [s.w * 0.40, s.roofY + 0.70, s.d * 0.10], {
+      rot: [0.28, 0, 0], group: 'horn',
+    }),
+    conduit('lit.riser', [0.14, (mastTop - s.frameTop) * 0.52, 0.14],
+      [mx + s.w * 0.13, s.frameTop + (mastTop - s.frameTop) * 0.30, mz + s.d * 0.12]),
+  );
+  return list('reclaim_stormworks', 'Stormworks', 'superweapon', s.masses, [
+    ...baseSockets(s.d, s.roofY + 1.0, -s.w * 0.34, s.d * 0.24),
+    { part: PartId.CoilTip, pos: [mx, mastTop + 1.3, mz] },
+    { part: PartId.Emitter, pos: [mx, mastTop + 1.2, mz] },
+  ]);
+}
+
 /* ==========================================================================
  * 6. THE ROSTER
  * ========================================================================== */
@@ -1332,6 +1386,7 @@ export const RECLAIM_STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   barricade(),
   spitpost(),
   arcPylon(),
+  stormworks(),
 ];
 
 export const RECLAIM_STRUCTURE_BY_KEY: ReadonlyMap<string, StructureMassList> =
@@ -1356,6 +1411,7 @@ export const RECLAIM_STRUCTURE_MODELS: Readonly<Record<string, string>> = {
   rclBarricade: 'reclaim_barricade',
   rclSpitpost: 'reclaim_spitpost',
   rclPylon: 'reclaim_pylon',
+  rclStormworks: 'reclaim_stormworks',
 };
 
 /* ==========================================================================

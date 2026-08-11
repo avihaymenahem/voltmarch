@@ -851,8 +851,13 @@ const STRUCTURE_RULES: ReadonlyArray<readonly [string, IconName]> = [
   ['rampart', 'wall'], ['glaive', 'turret'], ['helios', 'prism'],
 
   ['conyard', 'conyard'], ['constructionyard', 'conyard'], ['construction', 'conyard'],
-  ['nuke', 'superweapon'], ['missilesilo', 'superweapon'], ['chronosphere', 'superweapon'],
-  ['weathercontrol', 'superweapon'], ['ironcurtain', 'superweapon'], ['superweapon', 'superweapon'],
+  // THE SUPERWEAPONS, and they must all precede the `silo` and `helios` rules
+  // below: `nuclearsilo` contains `silo`, so without `nuclear` here the most
+  // recognisable structure in the game would draw an ore drum.
+  ['nuke', 'superweapon'], ['missilesilo', 'superweapon'], ['nuclear', 'superweapon'],
+  ['chronosphere', 'superweapon'], ['weathercontrol', 'superweapon'],
+  ['ironcurtain', 'superweapon'], ['heliograph', 'superweapon'],
+  ['stormworks', 'superweapon'], ['superweapon', 'superweapon'],
   ['tesla', 'tesla'], ['prism', 'prism'],
   ['flak', 'antiair'], ['patriot', 'antiair'], ['sam', 'antiair'], ['aa', 'antiair'],
   ['wall', 'wall'], ['gate', 'wall'],

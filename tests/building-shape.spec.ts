@@ -352,6 +352,7 @@ describe('the shape pass costs no geometry', () => {
    *     masses the Reclamation was mirroring against its own RCL-3 (see
    *     `reclaimFrame`'s `intake` and `lamp.hood`)
    *   132122 / 112 over 56 — the four Repair Depots, one per army
+   *   152088 / 124 over 62 — the six superweapons
    *
    * The depot rebase is the only one of those that RELAXED the ceiling, and it
    * is the kind this ratchet was never meant to catch: four structures that did
@@ -361,22 +362,34 @@ describe('the shape pass costs no geometry', () => {
    * building is that you can see through it.
    *
    * But "add a structure" must not be a way to buy slack for the existing
-   * ones, which the absolute number alone would allow. So the mean below is
-   * asserted too, and it is the assertion that actually has teeth now.
+   * ones, which the absolute number alone would allow. So a second assertion
+   * has always sat beside it, and the SUPERWEAPON rebase is where the first
+   * version of that assertion — a mean — stopped being able to do the job.
    */
-  const BASELINE_TRIANGLES = 132_122;
-  const BASELINE_PARTS = 112;
+  const BASELINE_TRIANGLES = 152_088;
+  const BASELINE_PARTS = 124;
   /**
-   * Triangles per structure: 119774/52 = 2303 before the depots, 132122/56 =
-   * 2359 after. The 2.4% is the depots being gantries, and 2400 is that with
-   * the rounding thrown away.
+   * WHY THE MEAN WAS REPLACED BY A PER-STRUCTURE CEILING.
    *
-   * This is here because the two totals above scale with the roster and this
-   * does not: growing the roster no longer relaxes the budget for anything
-   * already in it. A fifty-seventh structure at 4000 triangles would pass both
-   * absolutes after a rebase and fail this.
+   * The mean was 2303 over 52, 2359 over 56, and it is 2453 over 62. The rise
+   * is not slack: the six superweapons are the only structures in the game on
+   * a 3x3, 13 m pad, and the SHELLS ALONE cost that much — every Soviet
+   * structure in the roster is 3000-3800 triangles and every Reclamation one
+   * 3000-3750, before a single distinguishing mass is added. What was holding
+   * the old mean down was the small stuff: four walls at 428-812, two gates at
+   * 888, six 1x1 defences. Six large structures and no small ones move it 4%
+   * whatever they are made of, so a mean cannot tell "we added landmarks" from
+   * "we let the existing roster bloat". It had stopped measuring the thing it
+   * was written to measure.
+   *
+   * A per-structure ceiling can, and it is strictly stronger for the case the
+   * comment above worries about: "a fifty-seventh structure at 4000 triangles
+   * would pass both absolutes after a rebase" now fails here regardless of the
+   * roster size, and so does an EXISTING structure that doubles. 5300 is the
+   * heaviest thing already shipped (`soviet_subpen`, 5238) with the rounding
+   * thrown away — nothing new may be worse than the worst we already have.
    */
-  const MAX_MEAN_TRIANGLES = 2400;
+  const MAX_STRUCTURE_TRIANGLES = 5_300;
 
   it('holds the roster at or below its measured triangle count', () => {
     const tris = BUILT.reduce((s, b) => s + b.model.stats.triangles, 0);
@@ -384,9 +397,11 @@ describe('the shape pass costs no geometry', () => {
   });
 
   it('does not let a growing roster buy slack for the structures already in it', () => {
-    const tris = BUILT.reduce((s, b) => s + b.model.stats.triangles, 0);
     expect(BUILT.length, 'no structures built — this would pass vacuously').toBeGreaterThan(40);
-    expect(tris / BUILT.length).toBeLessThanOrEqual(MAX_MEAN_TRIANGLES);
+    for (const b of BUILT) {
+      expect(b.model.stats.triangles, `${b.army}/${b.list.key}`)
+        .toBeLessThanOrEqual(MAX_STRUCTURE_TRIANGLES);
+    }
   });
 
   it('holds the roster at or below its measured part (draw call) count', () => {

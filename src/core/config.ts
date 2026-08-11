@@ -276,8 +276,23 @@ export const BUILDING_DIMENSIONS = {
   warFactory:  { w: 3, h: 2, height: 8.5 },   // roll-up door + gantry
   barracks:    { w: 2, h: 2, height: 6.4 },
   powerPlant:  { w: 2, h: 2, height: 9.0 },   // twin stacks
-  radar:       { w: 2, h: 2, height: 12.0 },  // tallest non-defense silhouette
+  radar:       { w: 2, h: 2, height: 12.0 },  // tallest silhouette until the silo
   battleLab:   { w: 2, h: 2, height: 8.0 },
+  // THE SUPERWEAPON PAD, one shape for all six of them (Nuclear Silo, Iron
+  // Curtain, Chronosphere, Weather Control, Heliograph, Stormworks).
+  //
+  // Bigger than the Construction Yard's plan and taller than the Radar Dome
+  // deliberately: this is the only structure in the game that decides a match
+  // on its own, and an opponent has to be able to read that it exists from the
+  // far side of the map before the countdown finishes. 3x3 is also a real
+  // placement cost — the same footprint the yard needs — which is the price of
+  // the button being a base commitment rather than a purchase.
+  //
+  // Both art tables resolve this: `Faction3/4Buildings.fp()` reads
+  // BUILDING_DIMENSIONS directly and `BuildingDefs.fp()` falls through to it
+  // via `EXTRA_DIMENSIONS`, so unlike `gate` and `repairDepot` there is no
+  // second copy in `BUILDING_FOOTPRINTS` that could drift out of step.
+  superweapon: { w: 3, h: 3, height: 13.0 },
   // A gantry over an open pad. Low on purpose — only the Ore Silo (5.0) and
   // the Barracks (6.4) sit under it — because the thing the player needs to
   // see is the deck they are driving onto, and a tall shed would hide the
