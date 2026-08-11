@@ -2889,9 +2889,12 @@ export const HARVESTER_STUCK_SECONDS = 4.0;
  * THE STATE THIS EXISTS FOR IS NOT HYPOTHETICAL — it is what "the ore harvesters
  * keep stucking everywhere, getting me without funds mid game" measured out to.
  * `NavAssigner`'s give-up path calls `finishOrder`, which sets `AgentFlag.Arrived`
- * and zeroes `velX/velZ` but does NOT release `navField`. `Harvesting.drive`
- * gated its whole rescue on `navField < 0`, so the one state the rescue was
- * written for was the one state it could never see. Soaked over 4 minutes on
+ * and zeroes `velX/velZ`; the unit is nonetheless left holding a field, because
+ * the assigner re-requests one on the same tick (the park rung reports "position
+ * unchanged", so the loop does not `continue`). `Harvesting.drive` gated its
+ * whole rescue on `navField < 0`, so the one state the rescue was written for
+ * was the one state it could never see. This paragraph used to attribute that
+ * to `finishOrder` not releasing the field, which is not what it does. Soaked over 4 minutes on
  * three seeds, 10 of 12 harvesters ended parked with a full hopper and
  * `stats().driven` read 0 for the entire match: the backstop never ran once.
  *
@@ -2968,6 +2971,90 @@ export const HARVESTER_DOCK_FALLBACK_TRIES = 2;
 export const HARVESTER_FORCE_DRIVE_SECONDS = 5.0;
 /** Force-drive windows allowed per claim before the destination is abandoned. */
 export const HARVESTER_FORCE_DRIVE_TRIES = 2;
+/**
+ * Seconds in which NOTHING moved a hauling harvester — not the flow field, not
+ * the backstop mover — before its FSM concludes that nav has given up and picks
+ * a different destination.
+ *
+ * ============ THE SIGNAL THE OLD EXCLUSION SHOULD HAVE USED ================
+ * `Harvesting.tickSeek` records a measured failure: remembering an ore cell the
+ * progress watchdog gave up on and refusing to re-pick it cost 3 deliveries and
+ * took stalls from 6/12 to 9/12. The diagnosis in that note is the right one —
+ * `HARVESTER_STUCK_SECONDS` of no progress is far more often transient
+ * congestion than unreachability, so the exclusion mostly banished cells that
+ * were fine a second later — and it ends with the condition an exclusion would
+ * have to meet: "the signal has to distinguish 'cannot get there' from 'did not
+ * get there yet', and progress alone cannot."
+ *
+ * THIS is that signal, and it is not progress. It counts only the ticks in which
+ * every mover in the game declined to move this hull: nav holds a field and is
+ * commanding zero velocity (which is what `AgentFlag.Arrived` makes it do, and
+ * the wedge ladder's park rung is how a hull that never arrived gets that flag),
+ * AND `drive()` — which needs no field, no gradient and no clearance — put it
+ * down within a millimetre of where it picked it up. Congestion does not look
+ * like that: a hull queued behind another one still gets a non-zero velocity
+ * between shuffles, and one shuffle resets this to zero.
+ *
+ * Measured on seed 4242 slot 43: parked at 177,304 with `aflags` = Arrived |
+ * HasSlot | Displaced, the wedge ladder spent at rung 3, 36 m from its claimed
+ * ore cell, for 2100 consecutive ticks. The cell was unreachable — a 2 m
+ * `BlocksNav` rock at 182,298 that the PLANNER cannot see (props are
+ * deliberately not in the nav grid; see `Movement.relax`) seals a corridor one
+ * cell wide against a 3.87 m hull — and the FSM re-published the same cell
+ * every tick for the rest of the match.
+ *
+ * 8 s rather than 2: the backstop is allowed to be slow, and a hull creeping
+ * out of a jam at 12 cm/s must not be re-planned out of its own escape. Swept
+ * on the three soak seeds with everything else fixed — 6 s: 30 deliveries,
+ * 1 crawling, 7 stalled; 8 s: 33/0/4; 10 s: 34/3/5; 12 s: 30/2/6. Well under
+ * `HARVESTER_UNREACHABLE_BAN_SECONDS`, so the ban a give-up sets always
+ * outlives the give-up that set it.
+ * ========================================================================== */
+export const HARVESTER_NAV_GIVEUP_SECONDS = 8.0;
+/**
+ * Metres of RAW displacement inside that window that counts as the hull still
+ * being moved by somebody.
+ *
+ * Raw displacement against an anchor, and not per-tick displacement, because
+ * per-tick displacement cannot see this failure at all: `Movement.relax` pushes
+ * a hull out of a `BlocksNav` prop every tick, so a 5 cm backstop step lands and
+ * is undone on the next tick, forever. Sampled per tick that hull reports
+ * 1.5 m/s; sampled against an anchor six seconds old it has covered 0.0 m. Same
+ * reasoning, and the same remedy, as `NavAgents.anchorX`.
+ *
+ * 1 m over 6 s is 0.17 m/s against a 5 m/s hull — three per cent of capable.
+ */
+export const HARVESTER_NAV_GIVEUP_METRES = 1.0;
+/**
+ * Seconds a harvester refuses to re-claim ore around a cell nav gave up on.
+ *
+ * Per HARVESTER, not global: the cell is unreachable FROM WHERE THIS HULL IS
+ * STANDING, and a second harvester on the other side of the same rock may well
+ * drive straight to it. A global exclusion would be a claim about the map; this
+ * is a claim about one vehicle's afternoon.
+ */
+export const HARVESTER_UNREACHABLE_BAN_SECONDS = 30.0;
+/**
+ * Chebyshev cells around a banned cell that are banned with it.
+ *
+ * Banning one cell is worth nothing, and this is the constant that decides
+ * whether the whole exclusion helps or hurts. Ore comes in patches,
+ * `findFreeOre` ranks by distance, and the next-nearest cell to an unreachable
+ * one is its neighbour — behind the same rock, in the same sealed corridor. So
+ * the ban has to be big enough that the re-plan lands on a DIFFERENT PATCH, not
+ * one cell to the left of the thing that stopped it.
+ *
+ * Swept on the three soak seeds, everything else fixed, as deliveries/crawling/
+ * stalled: 3 cells 24/4/7, 6 cells 24/3/8, 10 cells 27/2/6, 14 cells 33/2/5,
+ * 20 cells 34/3/5, 28 cells 32/3/5. Below about ten cells it is measurably
+ * WORSE than no ban at all — which is the same result the first attempt at an
+ * exclusion got, and one of the two reasons it got it.
+ *
+ * 20 cells is 80 m. That sounds enormous for an exclusion and it is exactly the
+ * point: the claim being made is "not that patch", and it is bounded by
+ * `ORE_SEARCH_CELLS` (40) so a harvester can always still find ore beyond it.
+ */
+export const HARVESTER_UNREACHABLE_BAN_CELLS = 20;
 /** Ticks between OreSparkle FX pushes from one scooping harvester. */
 export const HARVEST_FX_INTERVAL = 6;
 /**

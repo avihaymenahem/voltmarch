@@ -163,6 +163,10 @@ export class OreField implements IOreField {
   private searchTime = 0;
   private searchCx = 0;
   private searchCz = 0;
+  /** Caller-supplied exclusion square; -1 disables it. See `findFreeOre`. */
+  private avoidCx = -1;
+  private avoidCz = -1;
+  private avoidCells = 0;
 
   constructor() {
     this.fieldOf.fill(-1);
@@ -388,13 +392,26 @@ export class OreField implements IOreField {
    * other than `claimant`. This is the call the harvester FSM makes; the plain
    * `findOre` above exists for the AI's "is there anything left over there"
    * question, which does not care who booked what.
+   *
+   * @param avoidCx,avoidCz  centre of a square of cells this caller will not
+   *   accept, or -1 for none. `avoidCells` is its Chebyshev half-width.
+   *   Per-CALL rather than per-field state: the exclusion belongs to one
+   *   harvester that has proved it cannot reach that ground, not to the map,
+   *   and the very next caller must not inherit it. See
+   *   HARVESTER_UNREACHABLE_BAN_CELLS.
    */
   findFreeOre(
     cx: number, cz: number, maxCells: number,
     claimant: EntityId, minAmount: number, time: number,
     out: Int32Array,
+    avoidCx = -1, avoidCz = -1, avoidCells = 0,
   ): boolean {
-    return this.searchRings(cx, cz, maxCells, minAmount, claimant as number, time, out);
+    this.avoidCx = avoidCx;
+    this.avoidCz = avoidCz;
+    this.avoidCells = avoidCells;
+    const ok = this.searchRings(cx, cz, maxCells, minAmount, claimant as number, time, out);
+    this.avoidCx = -1;
+    return ok;
   }
 
   /**
@@ -448,6 +465,12 @@ export class OreField implements IOreField {
     if (!isInMap(gx, gz)) return;
     const i = cellIndex(gx, gz);
     if (this.amount[i] < this.searchMin) return;
+    if (this.avoidCx >= 0) {
+      const ax = gx > this.avoidCx ? gx - this.avoidCx : this.avoidCx - gx;
+      const az = gz > this.avoidCz ? gz - this.avoidCz : this.avoidCz - gz;
+      // Chebyshev, so the exclusion is the square the ring walk itself uses.
+      if ((ax > az ? ax : az) <= this.avoidCells) return;
+    }
     if (this.searchClaimant >= 0) {
       const c = this.claimant[i];
       if (c !== 0 && c !== this.searchClaimant && this.claimUntil[i] > this.searchTime) return;
