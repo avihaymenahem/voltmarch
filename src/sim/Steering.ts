@@ -72,7 +72,7 @@ import {
   CELL, MAX_ENTITIES, MAX_QUERY_RESULTS, SEPARATION_NEIGHBOURS,
   NAV_ARRIVE_SLACK, NAV_SLOWDOWN_RADIUS, NAV_MIN_APPROACH_SPEED,
   NAV_DIRECT_RANGE, NAV_DIRECT_RECHECK_TICKS, NAV_REPATH_TICKS,
-  NAV_STUCK_TICKS, NAV_STUCK_MOVED_EPSILON, NAV_STUCK_SPEED_FRAC, NAV_STUCK_GIVEUP_RADIUS,
+  NAV_STUCK_TICKS, NAV_STUCK_MOVED_EPSILON, NAV_STUCK_GIVEUP_RADIUS,
   NAV_STUCK_MAX_NUDGES,
   NAV_WEDGE_SAMPLE_TICKS, NAV_WEDGE_METRES, NAV_WEDGE_STRIKES,
   NAV_WEDGE_MAX_NUDGES, NAV_WEDGE_SEARCH_CELLS,
@@ -749,7 +749,6 @@ export class NavAssigner {
       //
       // Termination is not lost by deferring: the wedge ladder ends in its own
       // park rung.
-      const maxSpeed = st.maxSpeed[i];
 
       /*
        * MEASURE MOTION, NOT THE REPORT OF MOTION.
@@ -792,30 +791,88 @@ export class NavAssigner {
       ag.watchX[i] = st.posX[i];
       ag.watchZ[i] = st.posZ[i];
 
+      /*
+       * DISPLACEMENT IS THE WHOLE TEST. THE SPEEDOMETER IS NOT A SECOND OPINION.
+       *
+       * This used to increment only when `st.speed` ALSO read slow, with a final
+       * `else` that reset the counter. That final branch says: "it did not move,
+       * but it says it is going full speed, therefore it is fine." It is the
+       * exact opposite of fine — it is a hull grinding nose-first into a blocked
+       * cell at max throttle, which is the one stall a player actually watches
+       * happen.
+       *
+       * Measured on seed 4242 slot 83 (`ReturnToRefinery`, full hopper): pinned
+       * at cell 78,50 from tick 800 to 2600 with `spd` reading 5.00 — exactly
+       * `maxSpeed`, so `speed < maxSpeed * 0.16` was false on every one of those
+       * 1800 ticks and `stuck` never once left 0. The ladder above never ran, no
+       * nudge was ever spent, and the hull was freed at tick 2800 only because
+       * crowd relaxation happened to shove it round the corner. 60 seconds.
+       *
+       * The comment on the block above is still right about WHY `st.speed`
+       * cannot be trusted — `Harvesting.driveEscape` deliberately falsifies it —
+       * but the conclusion was half-applied: displacement replaced the speed test
+       * as the RESET and was never made the INCREMENT. Both halves now come from
+       * the same measurement, so there is no state the two can disagree about.
+       *
+       * `NAV_STUCK_MOVED_EPSILON` is 0.01 m per tick, i.e. 0.3 m/s. Nothing that
+       * is genuinely under way is below it, and everything parked on purpose
+       * (arrived, queued at a dock) left this loop at the `Arrived` check.
+       */
       if (ag.escalations[i] > 0) {
         ag.stuck[i] = 0;
       } else if (movedSq > NAV_STUCK_MOVED_EPSILON * NAV_STUCK_MOVED_EPSILON) {
         // It moved. Whoever moved it, it is not stuck.
         ag.stuck[i] = 0;
-      } else if (maxSpeed > 0 && st.speed[i] < maxSpeed * NAV_STUCK_SPEED_FRAC) {
-        if (ag.stuck[i] < 255) ag.stuck[i]++;
-      } else {
-        ag.stuck[i] = 0;
+      } else if (ag.stuck[i] < 255) {
+        ag.stuck[i]++;
       }
       if (ag.stuck[i] >= NAV_STUCK_TICKS) {
         ag.stuck[i] = 0;
         if (d2 <= NAV_STUCK_GIVEUP_RADIUS * NAV_STUCK_GIVEUP_RADIUS
             || ag.nudges[i] >= NAV_STUCK_MAX_NUDGES) {
-          // Close enough, or we have shoved it enough times: parking here beats
-          // grinding against a wall forever, which is what every RTS that does
-          // NOT give up looks like.
-          this.finishOrder(i);
-          continue;
+          /*
+           * GIVING UP IS THIS LADDER'S RIGHT, EXCEPT ON THE OTHER LADDER'S CASE.
+           *
+           * `finishOrder` parks the order, `seeksGoal(Idle)` is false, and this
+           * whole loop then skips the unit forever — so the wedge ladder never
+           * reaches its displacement rung. The block above already explains that
+           * hazard and defers this ladder while `escalations > 0`. That guard is
+           * not enough on its own: the wedge ladder needs
+           * NAV_WEDGE_SAMPLE_TICKS * NAV_WEDGE_STRIKES = 180 ticks before it
+           * takes its FIRST rung, and this one gives up after
+           * NAV_STUCK_TICKS * NAV_STUCK_MAX_NUDGES = 72. It parks the unit
+           * during the window where `escalations` is still 0.
+           *
+           * That was invisible while the counter above could not fire for a hull
+           * grinding at full throttle. Fixing the counter exposed it, and
+           * `tests/wedge.spec.ts` caught it immediately: the unit sealed in an
+           * alcove moved 2.2 m instead of the 40 m the displacement rung gets it.
+           *
+           * So: a unit that has not physically moved since its wedge anchor IS
+           * the wedge ladder's case, and this ladder hands it over rather than
+           * ending it. Termination is not lost — the wedge ladder finishes with
+           * a park rung of its own.
+           */
+          const adx = px - ag.anchorX[i], adz = pz - ag.anchorZ[i];
+          const wedgeCase = adx * adx + adz * adz < NAV_WEDGE_METRES * NAV_WEDGE_METRES;
+          if (!wedgeCase) {
+            // Close enough, or we have shoved it enough times: parking here
+            // beats grinding against a wall forever, which is what every RTS
+            // that does NOT give up looks like.
+            this.finishOrder(i);
+            continue;
+          }
+          // Hand over, and shove no further: the nudge budget stays spent so
+          // this ladder is not still pushing underneath the one that now owns
+          // the unit. Falling through to the shove here is what the first
+          // version of this guard did, and two ladders shoving one hull in
+          // different directions is the fight the block above describes.
+        } else {
+          // Deterministic sideways shove, held until this same watchdog is next
+          // able to fire (NAV_STUCK_TICKS of continued stalling).
+          this.shove(i, px, pz, ddx, ddz, cls, s.tick, NAV_STUCK_TICKS);
+          ag.nudges[i]++;
         }
-        // Deterministic sideways shove, held until this same watchdog is next
-        // able to fire (NAV_STUCK_TICKS of continued stalling).
-        this.shove(i, px, pz, ddx, ddz, cls, s.tick, NAV_STUCK_TICKS);
-        ag.nudges[i]++;
       }
 
       // -- field -----------------------------------------------------------
@@ -1501,25 +1558,64 @@ export class SteeringSolver {
       // -- 5. obstacle avoidance --------------------------------------------
       let avoidX = 0, avoidZ = 0;
       if (cls !== MoveClass.Air && !direct) {
-        const look = radius + STEER_AVOID_LOOKAHEAD;
-        const ax = px + dirX * look, az = pz + dirZ * look;
-        if (this.blocked(ax, az, cls)) {
-          // Probe both flanks and lean toward whichever is open. Ties go right,
-          // deterministically, so two units meeting head-on pass rather than
-          // mirror each other forever.
+        /*
+         * A SWEPT PROBE, NOT A POINT SAMPLE.
+         *
+         * This tested exactly one point, at `radius + STEER_AVOID_LOOKAHEAD`
+         * metres dead ahead. For a harvester that is 3.87 + 3.2 = 7.07 m, and
+         * `CELL` is 4 — so the probe landed in the SECOND cell along and the
+         * first one, the one the hull was about to drive into, was never read.
+         * An obstacle had to be conveniently far away to be seen at all.
+         *
+         * Measured on seed 4242 slot 83, pinned at cell 78,50 wanting -Z with
+         * cell 78,49 blocked: standing at z = 200.0 exactly, the probe read
+         * z = 192.9 — cell 48, which is open — so this whole term contributed
+         * zero and the flow direction went through unopposed. The hull drove
+         * into 78,49 at full throttle for 1800 ticks. It is the same class of
+         * error as a bullet tunnelling through a wall between two frames, and
+         * it has the same fix: sweep the interval instead of sampling its end.
+         *
+         * Steps of half a cell, so no cell between the hull and the lookahead
+         * can be stepped over, and the unit's OWN cell is skipped — a hull that
+         * is already standing on blocked ground must not be told to avoid
+         * itself. `Movement.canStand` carries the same carve-out for the same
+         * reason.
+         *
+         * Four array reads instead of one, per ground unit per tick.
+         */
+        const reach = radius + STEER_AVOID_LOOKAHEAD;
+        const step = CELL * 0.5;
+        const ocx = worldToCell(px), ocz = worldToCell(pz);
+        let hit = 0;
+        for (let t = step; t <= reach; t += step) {
+          const qx = px + dirX * t, qz = pz + dirZ * t;
+          if (worldToCell(qx) === ocx && worldToCell(qz) === ocz) continue;
+          if (this.blocked(qx, qz, cls)) { hit = t; break; }
+        }
+        if (hit > 0) {
+          // Probe the flanks at the DEPTH of the obstruction, not beside the
+          // hull. "Is there open ground next to me" is not the question — the
+          // question is "can I get past it on this side", and those differ
+          // exactly when the obstruction is a wall running alongside.
           const rx = dirZ, rz = -dirX;                 // right of travel
-          const sx = px + rx * (radius + STEER_AVOID_SIDE);
-          const sz = pz + rz * (radius + STEER_AVOID_SIDE);
-          const lx = px - rx * (radius + STEER_AVOID_SIDE);
-          const lz = pz - rz * (radius + STEER_AVOID_SIDE);
+          const ahead = hit * 0.5;
+          const sx = px + rx * (radius + STEER_AVOID_SIDE) + dirX * ahead;
+          const sz = pz + rz * (radius + STEER_AVOID_SIDE) + dirZ * ahead;
+          const lx = px - rx * (radius + STEER_AVOID_SIDE) + dirX * ahead;
+          const lz = pz - rz * (radius + STEER_AVOID_SIDE) + dirZ * ahead;
           const rightOpen = !this.blocked(sx, sz, cls);
           const leftOpen = !this.blocked(lx, lz, cls);
           if (rightOpen || leftOpen) {
             // Ties go right, deterministically, so two units meeting head-on
             // pass rather than mirror each other forever.
             const side = rightOpen ? 1 : -1;
-            avoidX = rx * side;
-            avoidZ = rz * side;
+            // Lean harder the closer it is. A constant-weight sidestep either
+            // over-steers at range — swinging wide of something eight metres
+            // off — or under-steers up close, and the old point probe could not
+            // tell the two apart because it only ever saw one distance.
+            const near = 1 - (hit - step) / reach;
+            avoidX = rx * side * near;
+            avoidZ = rz * side * near;
           }
           // NEITHER flank open and no sidestep at all. The old rule read
           // `rightOpen || !leftOpen ? 1 : -1`, which resolves a closed-closed

@@ -262,6 +262,41 @@ export interface PostConfig {
   bloom: BloomConfig;
   grade: GradeConfig;
   smaa: { enabled: boolean };
+  /**
+   * MSAA samples on the composer's HDR target. 0 disables it.
+   *
+   * ── THE AA FLAG THAT WAS NEVER THE AA FLAG ───────────────────────────────
+   * `RendererConfig.antialias` is `false` and carries the note "SMAA does the
+   * AA; MSAA on a deferred-ish chain is waste". That flag is a WebGL CONTEXT
+   * attribute and it governs the DEFAULT FRAMEBUFFER. This renderer draws the
+   * scene into `WebGLRenderTarget` and composites from there, so the context
+   * flag was never going to do anything either way — the only MSAA lever this
+   * architecture has is `samples` on that target, and it was 0. The result was
+   * a renderer with no geometric antialiasing at all, and a comment explaining
+   * why that was on purpose.
+   *
+   * SMAA does not cover the gap. It is a morphological pass over the finished
+   * LDR image, so it can only smooth an edge that was RASTERISED; a 1 px pipe
+   * or panel stripe whose centre falls between two pixel centres is simply
+   * absent from the image, and no post filter recovers it. That is the reported
+   * "straight lines look like broken pixelated lines", and it is worst on this
+   * game's art precisely because "Models: boxes are a bug" pushes detail into
+   * real thin geometry rather than into textures.
+   *
+   * Measured on a 3x2 structure at 1200x900, counting strong vertical edges
+   * with no matching edge in either neighbouring row (i.e. lines that broke):
+   *
+   *     samples 0, render scale 1.0    12.5%     <- shipped
+   *     samples 4, render scale 1.0     8.2%
+   *     samples 0, render scale 1.5     9.1%
+   *     samples 0, render scale 2.0     6.4%
+   *
+   * SMAA was enabled for every one of those rows. 4x MSAA buys most of what
+   * 2x supersampling buys for a small fraction of the fill cost, because it
+   * multisamples COVERAGE and shades once — which is exactly and only the
+   * geometric-edge problem this is.
+   */
+  msaaSamples: number;
 }
 
 export interface SceneExtrasConfig {
@@ -429,6 +464,7 @@ export const RENDER_CONFIG: RenderConfig = {
       sharpen: 0.22,
     },
     smaa: { enabled: true },
+    msaaSamples: 4,
   },
 
   scene: {
@@ -514,21 +550,43 @@ export function touched(changed: ReadonlyArray<string>, prefix: string): boolean
  * used to share a bare name and be one import away from silently swapping.
  */
 const RENDER_QUALITY_PRESETS: Record<RenderQualityTier, DeepPartial<RenderConfig>> = {
+  /*
+   * `msaaSamples` per tier. It is the ONLY geometric antialiasing this pipeline
+   * has (see `PostConfig.msaaSamples`), so it is spent before AO and before
+   * shadow resolution: a thin pipe that breaks into dashes is more visible than
+   * a softer contact shadow, and the art direction leans on thin geometry.
+   *
+   * `low` keeps 0. That tier already renders at 0.75 and caps DPR at 1.0, and a
+   * multisampled half-float target is bandwidth on a machine that has none —
+   * the tier's whole premise is that it is fill-bound.
+   */
   low: {
     renderer: { resolutionScale: 0.75, maxPixelRatio: 1.0, shadows: { enabled: true, mapSize: 1024 } },
-    post: { ao: { enabled: false }, bloom: { enabled: true, radius: 0.5 }, smaa: { enabled: false } },
+    post: {
+      ao: { enabled: false }, bloom: { enabled: true, radius: 0.5 },
+      smaa: { enabled: false }, msaaSamples: 0,
+    },
   },
   medium: {
     renderer: { resolutionScale: 0.9, maxPixelRatio: 1.5, shadows: { enabled: true, mapSize: 1536 } },
-    post: { ao: { enabled: true, samples: 8, halfRes: true }, bloom: { enabled: true }, smaa: { enabled: true } },
+    post: {
+      ao: { enabled: true, samples: 8, halfRes: true }, bloom: { enabled: true },
+      smaa: { enabled: true }, msaaSamples: 4,
+    },
   },
   high: {
     renderer: { resolutionScale: 1.0, maxPixelRatio: 2.0, shadows: { enabled: true, mapSize: 2048 } },
-    post: { ao: { enabled: true, samples: 12, halfRes: true }, bloom: { enabled: true }, smaa: { enabled: true } },
+    post: {
+      ao: { enabled: true, samples: 12, halfRes: true }, bloom: { enabled: true },
+      smaa: { enabled: true }, msaaSamples: 4,
+    },
   },
   ultra: {
     renderer: { resolutionScale: 1.0, maxPixelRatio: 2.0, shadows: { enabled: true, mapSize: 4096 } },
-    post: { ao: { enabled: true, samples: 16, halfRes: false }, bloom: { enabled: true }, smaa: { enabled: true } },
+    post: {
+      ao: { enabled: true, samples: 16, halfRes: false }, bloom: { enabled: true },
+      smaa: { enabled: true }, msaaSamples: 8,
+    },
   },
 };
 

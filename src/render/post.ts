@@ -579,6 +579,22 @@ export function createPostChain(options: CreatePostOptions): PostChain {
 
   /* ---- composer + HDR targets ------------------------------------------ */
   try {
+    /*
+     * THE ONLY GEOMETRIC ANTIALIASING IN THIS PIPELINE. See
+     * `PostConfig.msaaSamples` for the measurement and for why the renderer's
+     * `antialias: false` context flag was never the knob — the scene is drawn
+     * into this target, not into the default framebuffer.
+     *
+     * Clamped to what the driver actually reports. WebGL2 guarantees at least
+     * 4; asking for 8 on hardware that caps at 4 is a silently-invalid target
+     * on some drivers rather than a clamp, which is a black frame — the failure
+     * mode this file's try/catch exists for, and one worth not provoking.
+     */
+    const gl = renderer.getContext() as WebGL2RenderingContext;
+    const maxSamples = typeof gl.getParameter === 'function' && 'MAX_SAMPLES' in gl
+      ? (gl.getParameter(gl.MAX_SAMPLES) as number) : 0;
+    const samples = Math.max(0, Math.min(cfg.msaaSamples | 0, maxSamples || 0));
+
     const rt = new THREE.WebGLRenderTarget(width(), height(), {
       type: THREE.HalfFloatType,
       format: THREE.RGBAFormat,
@@ -587,7 +603,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       magFilter: THREE.LinearFilter,
       depthBuffer: true,
       stencilBuffer: false,
-      samples: 0,
+      samples,
     });
     rt.texture.name = 'PostHDR';
     composer = new EffectComposer(renderer, rt);

@@ -211,6 +211,17 @@ export class HarvesterController {
   /** Current destination in world metres. */
   private readonly destX: PerEntityF32;
   private readonly destZ: PerEntityF32;
+  /**
+   * The COMMITTED dock approach point for the current haul, world metres.
+   *
+   * Separate from `destX/destZ` because those are simply "what we published
+   * last", written by every state. These two are a decision with a lifetime:
+   * they are set by `commitDockPoint` and read unchanged on every intervening
+   * tick, which is the property that lets nav's watchdogs accumulate evidence.
+   * See `commitDockPoint` for the measured trace of what happens without it.
+   */
+  private readonly dockX: PerEntityF32;
+  private readonly dockZ: PerEntityF32;
   /** Sim time of the next full re-score. */
   private readonly nextScore: PerEntityF32;
   /** Best distance-to-destination seen so far, for the stuck detector. */
@@ -275,6 +286,8 @@ export class HarvesterController {
     this.claimIdx = new PerEntityI16(store, -1);
     this.destX = new PerEntityF32(store, 0);
     this.destZ = new PerEntityF32(store, 0);
+    this.dockX = new PerEntityF32(store, 0);
+    this.dockZ = new PerEntityF32(store, 0);
     this.nextScore = new PerEntityF32(store, 0);
     this.bestGap = new PerEntityF32(store, 1e9);
     this.stuckFor = new PerEntityF32(store, 0);
@@ -431,6 +444,17 @@ export class HarvesterController {
       }
       // Now it is a conclusion. Give the claim back and pause; the next plan
       // will most likely pick a different approach or a different patch.
+      //
+      // AN EXCLUSION WAS TRIED HERE AND MEASURED WORSE. Remembering this cell
+      // and refusing to re-pick it for 20 s cost 3 deliveries and lifted stalls
+      // from 6/12 to 9/12 across the soak seeds. The premise was wrong: this
+      // branch fires after HARVESTER_STUCK_SECONDS of no progress, which is far
+      // more often transient congestion — another hauler in the gap, a queue at
+      // the dock — than genuine unreachability, so the exclusion mostly banished
+      // cells that were perfectly reachable a second later and sent the hull
+      // somewhere worse. If this is retried, the signal has to distinguish
+      // "cannot get there" from "did not get there yet", and progress alone
+      // cannot.
       this.dropClaim(i, id);
       this.enterIdle(i, id, time, DRY_RETRY);
     }
@@ -563,6 +587,98 @@ export class HarvesterController {
     this.dockTries.setAt(i, 0);
     this.forceTries.setAt(i, 0);
     this.resetProgress(i);
+    // Choose the approach ONCE, here, while the try counter and the lock are
+    // both freshly reset. Every later tick reads it; only a counted escalation
+    // replaces it.
+    this.commitDockPoint(i, ri, this.tryHoldDock(store.handleOf(ri), id));
+  }
+
+  /**
+   * Where this harvester is driving for THIS approach, in world metres, written
+   * into `dockOut`.
+   *
+   * ============================ THE CHURN ==================================
+   * This used to be computed inline in `tickReturn`, every tick, from three
+   * things that all move: whether we currently hold the dock lock (worth 9 m of
+   * goal displacement), whether the fallback try-count had been reached, and —
+   * worst — `reachableDockPoint`, which returns the ring cell nearest to THE
+   * HULL and therefore slid the goal along with the hull as it drove.
+   *
+   * `NavAssigner` treats any goal movement over `NAV_FORMATION_GOAL_EPS` (0.6 m)
+   * as a brand-new order: it drops the formation slot, re-requests the flow
+   * field, restarts the progress watchdog and — the part that actually broke
+   * the unit — re-arms the wedge anchor. The wedge ladder needs
+   * `NAV_WEDGE_SAMPLE_TICKS * NAV_WEDGE_STRIKES` = 180 consecutive ticks of
+   * evidence before it may lift a jammed hull out.
+   *
+   * Measured on seed 4242 slot 83: 20 goal changes in 3000 ticks, one every
+   * ~150 ticks. The ladder could never reach 180. It was not that the rescue
+   * failed — it was never allowed to start, for the whole match, because the
+   * module asking for the rescue was resetting the evidence faster than the
+   * evidence could accumulate.
+   *
+   * So the approach point is COMMITTED: chosen once per approach, held in
+   * `dockX/dockZ`, and re-chosen only by an explicit counted escalation. A
+   * harvester that changes its mind must do so as a decision, not as a side
+   * effect of having moved.
+   * =========================================================================
+   */
+  private commitDockPoint(i: number, ri: number, mine: boolean): void {
+    const store = this.world.store;
+    const yaw = store.yaw[ri];
+    const fwdX = Math.sin(yaw);
+    const fwdZ = Math.cos(yaw);
+    const reach = dockApronDistance(
+      Math.max(1, store.footprintW[ri]) * CELL * 0.5,
+      Math.max(1, store.footprintH[ri]) * CELL * 0.5,
+      fwdX, fwdZ, store.radius[i],
+    );
+
+    // AFTER ENOUGH FAILED APPROACHES, STOP AIMING AT THE APRON. The apron is a
+    // fixed point in front of the refinery and a base layout is free to bury it
+    // — measured on the stock skirmish map, a refinery at yaw -0.87 aims its
+    // dock into a pocket ringed by three of its owner's own structures. Aiming
+    // at open ground touching the footprint instead lets nav park the hull
+    // against whichever face it can reach, and `touching(i, ri)` then docks it.
+    if (mine && this.dockTries.getAt(i) >= HARVESTER_DOCK_FALLBACK_TRIES
+        && this.reachableDockPoint(i, ri, this.dockOut)) {
+      this.dockX.setAt(i, this.dockOut[0]);
+      this.dockZ.setAt(i, this.dockOut[1]);
+      return;
+    }
+
+    // Not holding the dock: take a QUEUE SLOT, indexed, so haulers form a line
+    // instead of all aiming at one point and shoving each other off it. The
+    // index is this harvester's rank among everyone waiting on the same
+    // refinery, ordered by handle so both clients of a lockstep match agree.
+    const out = mine ? reach : reach + HARVESTER_QUEUE_GAP;
+    this.dockX.setAt(i, store.posX[ri] + fwdX * out);
+    this.dockZ.setAt(i, store.posZ[ri] + fwdZ * out);
+  }
+
+  /**
+   * How many OTHER harvesters with a lower handle are waiting on refinery `ri`.
+   *
+   * Handle order rather than arrival order: it needs no extra state, it is
+   * stable while the queue is stable, and it is identical on every machine —
+   * arrival order would need a timestamp per hauler and would reshuffle the
+   * whole line every time one of them docked.
+   */
+  private queueRank(i: number, ri: number): number {
+    const store = this.world.store;
+    const refId = store.handleOf(ri) as number;
+    const me = store.handleOf(i) as number;
+    let rank = 0;
+    const n = store.aliveCount;
+    for (let a = 0; a < n; a++) {
+      const j = store.alive[a];
+      if (j === i) continue;
+      if ((store.flags[j] & EntityFlag.IsHarvester) === 0) continue;
+      if (store.state[j] !== UnitState.ReturnToRefinery) continue;
+      if (store.dockTarget[j] !== refId) continue;
+      if ((store.handleOf(j) as number) < me) rank++;
+    }
+    return rank;
   }
 
   private tickReturn(i: number, id: EntityId, dt: number, time: number): void {
@@ -577,89 +693,31 @@ export class HarvesterController {
       }
       store.dockTarget[i] = store.handleOf(ri) as number;
       this.resetProgress(i);
+      this.commitDockPoint(i, ri, this.tryHoldDock(store.handleOf(ri), id));
     }
 
     const refId = store.handleOf(ri);
     // A harvester that has just given up on this dock does NOT contend for it.
     // Without the stand-down the release below is a livelock rather than a
     // yield: see HARVESTER_DOCK_STANDDOWN for the measured trace.
-    const standing = time < this.dockStandDown.getAt(i);
+    //
+    // STANDING DOWN FOR NOBODY IS PURE CHURN. The stand-down is a yield, and a
+    // yield with no one to yield TO costs a goal change (9 m, so a new order to
+    // nav) and buys nothing. Only honour it while somebody else is actually
+    // waiting on this refinery.
+    const contended = this.queueRank(i, ri) > 0 || this.dockHolder.get(refId) !== (id as number);
+    const standing = contended && time < this.dockStandDown.getAt(i);
+    const held = this.dockHolder.get(refId) === (id as number);
     const mine = !standing && this.tryHoldDock(refId, id);
+    // The lock changing hands is a real decision and the one legitimate reason
+    // to move the goal mid-approach: re-commit once, here, rather than letting
+    // every tick recompute it.
+    if (mine !== held) this.commitDockPoint(i, ri, mine);
 
-    // The dock apron sits in front of the refinery; the queue slot sits one
-    // harvester length further out along the same axis, so a waiting hauler
-    // reads as "next in line" rather than "parked in a field".
-    const yaw = store.yaw[ri];
-    const fwdX = Math.sin(yaw);
-    const fwdZ = Math.cos(yaw);
-
-    /*
-     * THE APRON HAS TO CLEAR THE FOOTPRINT, AND IT DID NOT.
-     *
-     * Reported as "the collector is stuck within its own building", with a
-     * screenshot of a Sun Collector sunk into the side of its refinery. That is
-     * not a steering failure — it was where the harvester was TOLD to park.
-     *
-     * The old line was `halfDepth + HARVESTER_DOCK_CLEARANCE`, a constant of 3.4
-     * whose own comment in config.ts called it "half a harvester length plus a
-     * little". Half a harvester is 8.60 / 2 = 4.30 m. The constant was 3.4 —
-     * 0.9 m SHORT of the half it claimed to be, before the "plus a little".
-     *
-     * For a refinery (2 cells deep, so halfDepth 4.0) and a Collector (radius
-     * 3.87):
-     *
-     *     reach     = 4.0 + 3.4  = 7.40 m from the refinery's centre
-     *     rear edge = 7.40 - 3.87 = 3.53 m
-     *     footprint edge          = 4.00 m
-     *
-     * The hull's back end was parked 0.47 m INSIDE the structure by
-     * construction, on a footprint the nav grid marks impassable. Every
-     * harvester in the game has done this since the system was written.
-     *
-     * Two changes. First, derive the standoff from the hull that is actually
-     * docking — `store.radius[i]` — instead of a constant that assumes one
-     * harvester size. That is what makes it correct for the Reclamation's
-     * hauler, the Pact's Collector and whatever is authored next, rather than
-     * correct for none of them.
-     *
-     * Second, take the half-extent along the FACING axis rather than always
-     * `footprintH`. Footprints are stored world-axis-aligned — `touching()`
-     * below compares world-space deltas against halfW and halfH with no
-     * rotation — so a refinery placed facing along X presented its WIDTH to the
-     * apron while this computed its depth. A rotated refinery was worse than an
-     * unrotated one, which is exactly the kind of asymmetry nobody reports as a
-     * bug because it just looks like bad luck.
-     */
-    const reach = dockApronDistance(
-      Math.max(1, store.footprintW[ri]) * CELL * 0.5,
-      Math.max(1, store.footprintH[ri]) * CELL * 0.5,
-      fwdX, fwdZ, store.radius[i],
-    );
-    // AFTER ENOUGH FAILED APPROACHES, STOP AIMING AT THE APRON. The apron is a
-    // fixed point in front of the refinery and a base layout is free to bury it
-    // — measured on the stock skirmish map, a refinery at yaw -0.87 aims its
-    // dock into a pocket ringed by three of its owner's own structures. Aiming
-    // at the refinery BODY instead lets nav park the hull against whichever
-    // face it can reach, and the `touching(i, ri)` arrival test below then docks
-    // it. See HARVESTER_DOCK_FALLBACK_TRIES.
-    const fallback = this.dockTries.getAt(i) >= HARVESTER_DOCK_FALLBACK_TRIES;
-    let tx: number;
-    let tz: number;
-    if (mine && fallback && this.reachableDockPoint(i, ri, this.dockOut)) {
-      // NOT the refinery's centre. A footprint is impassable by definition, so
-      // a flow field can have no goal inside one and no gradient near it —
-      // aiming at the middle of the building produced a harvester ORBITING it
-      // at 12-29 m for four minutes at full throttle, which is the same defect
-      // as the buried apron wearing different clothes. `reachableDockPoint`
-      // returns open ground touching the footprint, which is both a legal nav
-      // goal and close enough for `touching()` below to dock.
-      tx = this.dockOut[0];
-      tz = this.dockOut[1];
-    } else {
-      const out = mine ? reach : reach + HARVESTER_QUEUE_GAP;
-      tx = store.posX[ri] + fwdX * out;
-      tz = store.posZ[ri] + fwdZ * out;
-    }
+    // The committed point, chosen by `commitDockPoint` on entry or on an
+    // explicit escalation. Read, never recomputed — see that function's header.
+    const tx = this.dockX.getAt(i);
+    const tz = this.dockZ.getAt(i);
     this.setDest(i, tx, tz);
 
     const d = dist2(store.posX[i], store.posZ[i], tx, tz);
@@ -704,6 +762,11 @@ export class HarvesterController {
       this.dockTries.setAt(i, this.dockTries.getAt(i) + 1);
       this.dockStandDown.setAt(i, time + HARVESTER_DOCK_STANDDOWN);
       this.resetProgress(i);
+      // THIS is the counted escalation the committed point exists for: the
+      // approach has now demonstrably failed, so choosing a different one is a
+      // decision rather than churn. Recommitting here — and only here — is what
+      // keeps the goal still for the 180 ticks nav's wedge ladder needs.
+      this.commitDockPoint(i, ri, false);
     }
   }
 

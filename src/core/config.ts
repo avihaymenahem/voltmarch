@@ -6416,8 +6416,19 @@ export const NAV_REPATH_TICKS = 30;
 
 /** Consecutive near-stationary ticks under a move order before we intervene. */
 export const NAV_STUCK_TICKS = 24;
-/** Below this fraction of max speed a unit counts as not moving. */
-export const NAV_STUCK_SPEED_FRAC = 0.16;
+/*
+ * `NAV_STUCK_SPEED_FRAC` USED TO LIVE HERE AND IS GONE ON PURPOSE.
+ *
+ * The stuck watchdog incremented only when `st.speed` read below this fraction
+ * of max, with a final branch that RESET the counter otherwise. That branch
+ * classified a hull grinding nose-first into a blocked cell at full throttle as
+ * healthy, because its reported speed was exactly `maxSpeed`. Measured: a full
+ * harvester pinned for 1800 consecutive ticks with the counter never leaving 0.
+ *
+ * The watchdog now measures real displacement for both the increment and the
+ * reset (see `NAV_STUCK_MOVED_EPSILON`), so there is no speed threshold left to
+ * tune. Re-adding one would re-open the same hole.
+ */
 /**
  * Metres of real displacement in one tick that proves a unit is NOT stuck,
  * whatever `st.speed` says about it.
@@ -6454,11 +6465,34 @@ export const NAV_STUCK_MAX_NUDGES = 3;
  * clearance rule above is not doing its job and THAT is the bug to fix.
  * ------------------------------------------------------------------------- */
 
-/** Ticks between displacement samples for one unit. 60 = 2 s at 30 Hz. */
-export const NAV_WEDGE_SAMPLE_TICKS = 60;
+/**
+ * Ticks between displacement samples for one unit. 40 = 1.33 s at 30 Hz, so the
+ * ladder's first rung lands at `40 * NAV_WEDGE_STRIKES` = 120 ticks, 4 s.
+ *
+ * WAS 60, AND 60 WAS TOO SLOW TO EVER FIRE. The evidence this ladder collects
+ * is reset by `armWedge` whenever the unit's order point moves, and the
+ * harvester FSM re-orders roughly every 230 ticks even after its own churn was
+ * fixed (`Harvesting.commitDockPoint`). At 60 the ladder needed 180 consecutive
+ * ticks, which left almost no margin, and before that fix it needed more than
+ * the FSM ever gave it — so the rescue that exists for "it is just sitting
+ * there" could not run on the units that sit there most.
+ *
+ * Tuned against `tests/harvester-soak.spec.ts`, total deliveries over 3 seeds:
+ *
+ *     60 -> 24        (the ladder rarely completes a window)
+ *     40 -> 26
+ *     30 -> 23        (fires on ordinary congestion and shoves units mid-detour)
+ *
+ * 30 is past the knee: at that rate a unit legitimately waiting its turn at a
+ * dock trips the ladder, and being displaced out of a queue costs more than the
+ * jam it was mistaken for. `tests/wedge.spec.ts` passes at all three; it proves
+ * the ladder WORKS, not that it fires at the right time, which is what this
+ * number decides.
+ */
+export const NAV_WEDGE_SAMPLE_TICKS = 40;
 /** Metres of travel inside one sample window that still counts as moving. */
 export const NAV_WEDGE_METRES = 1.0;
-/** Consecutive barren windows before the ladder steps. 3 = 6 s of no movement. */
+/** Consecutive barren windows before the ladder steps. 3 = 4 s of no movement. */
 export const NAV_WEDGE_STRIKES = 3;
 /** Rungs spent nudging before the unit is displaced outright. */
 export const NAV_WEDGE_MAX_NUDGES = 2;

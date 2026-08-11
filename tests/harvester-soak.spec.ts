@@ -247,10 +247,27 @@ describe('harvester soak on a real map', () => {
    *   at report          14          ~1700 m
    *   after 4 fixes      13          ~1712 m
    *   after 5 fixes      22          ~2902 m
+   *   after 8 fixes      26          ~2900 m
    *
-   * Throughput is still short of what it should be: a harvester that never
+   * The three most recent were all in NAV, not in the harvester FSM, and all
+   * three were cases of a watchdog that could not see the failure it existed
+   * for:
+   *
+   *   1. The stuck watchdog reset its own counter for a hull reporting full
+   *      speed while displacing nothing — i.e. exactly a unit grinding into a
+   *      wall. Measured: 1800 consecutive pinned ticks, counter never left 0.
+   *   2. The obstacle probe sampled ONE point at `radius + lookahead` = 7.07 m
+   *      with a 4 m cell, so it read the second cell along and never the one
+   *      the hull was about to enter.
+   *   3. The wedge ladder needed more consecutive ticks than the FSM's own
+   *      destination churn ever allowed it, so the rescue for "it is just
+   *      sitting there" could not run on the units that sit there most.
+   *
+   * Throughput is still well short of what it should be: a harvester that never
    * stops completes a round trip every 30-60 s, so twelve of them over four
-   * minutes should deliver on the order of 50 loads. AT LEAST ONE CAUSE REMAINS.
+   * minutes should deliver on the order of 50 loads, and 6 of 12 are still
+   * crawling. AT LEAST ONE CAUSE REMAINS — see MAX_CRAWLING below for where it
+   * currently looks like it lives.
    *
    * Note the middle row. The first four fixes are each individually correct and
    * individually evidenced, and together they moved throughput by nothing at
@@ -263,33 +280,72 @@ describe('harvester soak on a real map', () => {
    * harvesters sat at a single coordinate for 1200+ consecutive ticks with a
    * full hopper. Nothing may do that again.
    */
-  const MIN_TOTAL_DELIVERIES = 20;
+  const MIN_TOTAL_DELIVERIES = 25;
   const MIN_METRES_EACH = 20;
+  /**
+   * ============ THE BAR THIS CODE DOES NOT YET CLEAR ======================
+   * `MIN_METRES_EACH` is a floor against the HARD stall and nothing else: 20 m
+   * in four minutes is 0.08 m/s. Every failure this file has ever been reopened
+   * for cleared that bar comfortably while still being obviously broken on
+   * screen — 43 m in 240 s against a 5 m/s hull is under 1% of capable, and it
+   * reads as a vehicle that spends its life stuck.
+   *
+   * So the SOFT stall is counted too, at 150 m: below a healthy round trip
+   * (the good hulls manage 440-530 m) and far above the hard floor.
+   *
+   * It is a CEILING ON THE COUNT, not a per-hull assertion, because 6 of 12
+   * currently fail it and a test that fails is not a ratchet. That number is the
+   * headline outstanding defect in this system, recorded here so it cannot
+   * quietly grow: the remaining failure is concentrated in `SeekOre`, where a
+   * hull that cannot reach its claimed ore cell re-picks the same cell (ore is
+   * ranked by DISTANCE with no reachability test) and loops. An exclusion was
+   * tried and measured worse — see the note in `Harvesting.tickSeek`.
+   * ======================================================================= */
+  const MIN_METRES_HEALTHY = 150;
+  const MAX_CRAWLING = 6;
+  /** Harvesters allowed to stop delivering in the last third, across all seeds. */
+  const MAX_STALLED = 7;
 
   it('never freezes a harvester, and delivers no less than the measured floor', () => {
     const out: string[] = [];
     let deliveries = 0;
+    let stalled = 0;
     const frozen: string[] = [];
+    const crawling: string[] = [];
 
     for (const seed of [4242, 1337, 90210]) {
       const r = soak(seed, 240);
       out.push(summarise(`seed ${seed}`, r));
+      stalled += r.stalled.length;
       for (const h of r.harvesters) {
         deliveries += h.delivered;
+        const where = `seed ${seed} slot ${h.slot}: ${h.distance.toFixed(1)} m in 240 s, `
+          + `final ${h.finalState} @ ${h.finalX.toFixed(0)},${h.finalZ.toFixed(0)}`;
         // Four minutes at 5 m/s is 1200 m of travel available. A hull that has
         // covered less than 20 m of it has not been "slow", it has been stopped.
-        if (h.distance < MIN_METRES_EACH) {
-          frozen.push(`seed ${seed} slot ${h.slot}: ${h.distance.toFixed(1)} m in 240 s, `
-            + `final ${h.finalState} @ ${h.finalX.toFixed(0)},${h.finalZ.toFixed(0)}`);
-        }
+        if (h.distance < MIN_METRES_EACH) frozen.push(where);
+        else if (h.distance < MIN_METRES_HEALTHY) crawling.push(where);
       }
     }
 
     process.stdout.write(`${out.join('\n')}\n`);
     expect(frozen, 'a harvester never moved — this is the hard-stall defect').toEqual([]);
+    process.stdout.write(
+      `\n  CRAWLING (<${MIN_METRES_HEALTHY} m in 240 s): ${crawling.length}/12\n`
+      + crawling.map((c) => `    ${c}`).join('\n') + '\n');
+    expect(
+      crawling.length,
+      'more harvesters are crawling than the measured ceiling. These moved, so '
+      + 'the hard-stall floor passes, but they covered a fraction of what their '
+      + `hull can do:\n${crawling.join('\n')}`,
+    ).toBeLessThanOrEqual(MAX_CRAWLING);
     expect(
       deliveries,
       `total deliveries fell below the measured floor. ${out.join('\n')}`,
     ).toBeGreaterThanOrEqual(MIN_TOTAL_DELIVERIES);
+    expect(
+      stalled,
+      `more harvesters stopped delivering than the measured ceiling. ${out.join('\n')}`,
+    ).toBeLessThanOrEqual(MAX_STALLED);
   }, 300_000);
 });
