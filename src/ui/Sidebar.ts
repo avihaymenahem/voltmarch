@@ -1337,7 +1337,7 @@ class SelectionPanel {
  * ========================================================================== */
 
 /** Why a slot cannot be clicked right now. Drives the banner and its colour. */
-type BlockKind = '' | 'tech' | 'funds' | 'power';
+type BlockKind = '' | 'tech' | 'funds' | 'power' | 'owned';
 
 /**
  * Classify a production `reason` string into one of three banners.
@@ -1350,10 +1350,17 @@ type BlockKind = '' | 'tech' | 'funds' | 'power';
 function blockKindOf(reason: string): BlockKind {
   if (reason === '') return '';
   const r = reason.toLowerCase();
-  // TECH IS TESTED FIRST, and specifically before `power`. "Requires Power
-  // Plant" is a missing prerequisite, not a power shortage — matching on the
-  // bare word "power" labelled half the Allied structure tab POWER in amber
-  // when the player's grid was at 280 of 400 and perfectly healthy.
+  // OWNED IS TESTED BEFORE EVERYTHING, because it is the only refusal in the
+  // list that is GOOD NEWS. An installed upgrade is unbuildable for the best
+  // possible reason, and the default at the bottom of this function is
+  // 'tech' -> "Locked" — so without this line a player who had just spent 1200
+  // credits would watch the cameo they bought start reading LOCKED.
+  if (r.includes('installed')) return 'owned';
+  // TECH IS TESTED FIRST OF THE REST, and specifically before `power`.
+  // "Requires Power Plant" is a missing prerequisite, not a power shortage —
+  // matching on the bare word "power" labelled half the Allied structure tab
+  // POWER in amber when the player's grid was at 280 of 400 and perfectly
+  // healthy.
   if (r.includes('require') || r.includes('need') || r.includes('build ')) return 'tech';
   if (r.includes('fund') || r.includes('credit') || r.includes('afford')) return 'funds';
   if (r.includes('power') || r.includes('brownout')) return 'power';
@@ -1364,6 +1371,7 @@ const BLOCK_WORDS: Readonly<Record<Exclude<BlockKind, ''>, string>> = {
   tech: 'Locked',
   funds: 'Funds',
   power: 'Power',
+  owned: 'Installed',
 };
 
 interface BuildSlot {
@@ -1594,6 +1602,12 @@ class BuildPanel {
       faction: this.faction,
       tab: this.activeTab,
       isBuilding: c.isBuilding,
+      // An upgrade has no model in either binding table, so the 3D path
+      // resolves null and the painter draws the `upgrade` badge instead. That
+      // is the intended outcome, not a fallback: there is no mesh for
+      // "Composite Armour" and inventing one would be a lie about what the
+      // player is buying.
+      isUpgrade: c.isUpgrade,
       footprintW: 0,
       footprintH: 0,
     };

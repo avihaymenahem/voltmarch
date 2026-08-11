@@ -45,7 +45,7 @@ import {
 } from '../core/config';
 import {
   ArmorClass, EntityFlag, EntityKind, Faction, FxKind, Locomotor, OrderKind,
-  PartId, ProjectileKind, Stance, UnitState, WarheadClass,
+  PartId, ProjectileKind, Stance, UnitState, UpgradeLever, WarheadClass,
 } from '../core/types';
 import type {
   EntityId, PlayerId, SimContext, WeaponDef,
@@ -58,6 +58,7 @@ import {
 } from '../core/math';
 import { armorMultiplier, estimatedHeight, hitRadius, veterancyDamageMul } from './Damage';
 import { ProjectileSystem, ROCKET_TURN_RATE } from './Projectiles';
+import { upgradeMul } from './Upgrades';
 
 /* ==========================================================================
  * 1. THE WEAPON TABLE
@@ -581,7 +582,15 @@ export class WeaponSystem {
     const shooter = st.handleOf(i);
     const targetHandle = st.handleOf(t);
     const vetDamage = veterancyDamageMul(st.veterancy[i]);
-    const damage = w.damage * vetDamage;
+    // THE PURCHASED DAMAGE MULTIPLIER, read at the instant the shot leaves.
+    // Alongside veterancy rather than instead of it: veterancy is what THIS
+    // unit earned, the upgrade is what its OWNER bought, and they multiply.
+    // Reading it here rather than re-statting the unit is what makes a tank
+    // built after the purchase hit just as hard as one built before it.
+    const upgDamage = upgradeMul(
+      this.world.players[st.owner[i]], UpgradeLever.Damage, st.kind[i] as EntityKind,
+    );
+    const damage = w.damage * vetDamage * upgDamage;
 
     // Recompute the muzzle AFTER the traverse so the flash is on the barrel
     // that just moved, not on last tick's bearing.
@@ -627,7 +636,13 @@ export class WeaponSystem {
 
     // --- burst / cooldown -------------------------------------------------
     this.shotCount.setAt(i, this.shotCount.getAt(i) + 1);
-    const rof = COMBAT_WEAPONS.vetCooldownMul[Math.min(2, st.veterancy[i])];
+    // Veterancy and the purchased rate-of-fire upgrade are both cooldown
+    // MULTIPLIERS where lower is faster, so they compose by multiplying.
+    // `burstDelay` is deliberately NOT scaled: it is the interval WITHIN one
+    // trigger pull, and stretching or squeezing it would change the weapon's
+    // sound and muzzle rhythm rather than its rate of fire.
+    const rof = COMBAT_WEAPONS.vetCooldownMul[Math.min(2, st.veterancy[i])]
+      * upgradeMul(this.world.players[st.owner[i]], UpgradeLever.Cooldown, st.kind[i] as EntityKind);
     if (w.burstCount > 1) {
       let left = st.burstLeft[i];
       if (left === 0) left = w.burstCount;

@@ -39,8 +39,9 @@
 import {
   FACTORY_SPEED_BONUS, FACTORY_SPEED_CAP, MAX_PLAYERS, MAX_QUEUE_DEPTH, PRODUCTION,
 } from '../core/config';
-import { BUILD_TAB_COUNT } from '../core/types';
+import { BUILD_TAB_COUNT, UpgradeLever } from '../core/types';
 import type { BuildTab, PlayerState, ProductionItem } from '../core/types';
+import { upgradeGlobalMul } from './Upgrades';
 
 /* ==========================================================================
  * 1. HOLD STATE
@@ -359,7 +360,15 @@ export class BuildQueues {
       return;
     }
 
-    const speed = Math.max(0.05, player.buildSpeedMul) * factorySpeed(q.factoryCount);
+    // Three independent speed terms, and they are three because they mean three
+    // different things: the power supply (written every tick by `Power.ts`, so
+    // it can never be pre-multiplied into anything), the factory count, and the
+    // upgrade the player bought. The clamp stays on the POWER term alone —
+    // config's "Never zero, that is a soft lock" is about a blackout, and an
+    // upgrade multiplier is never below 1.
+    const speed = Math.max(0.05, player.buildSpeedMul)
+      * factorySpeed(q.factoryCount)
+      * upgradeGlobalMul(player, UpgradeLever.BuildSpeed);
     let dProgress = (dt * speed) / info.buildTime;
     const remaining = 1 - item.progress;
     if (dProgress > remaining) dProgress = remaining;

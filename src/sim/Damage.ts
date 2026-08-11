@@ -47,7 +47,7 @@ import {
 } from '../core/config';
 import {
   ArmorClass, DecalKind, EntityFlag, EntityKind, EvaLine, Faction, FxKind, NONE,
-  UnitState, WarheadClass,
+  UnitState, UpgradeLever, WarheadClass,
 } from '../core/types';
 import type {
   EntityId, PlayerId, SimContext,
@@ -56,6 +56,7 @@ import type { World } from '../core/world';
 import type { Channels } from '../core/events';
 import { PerEntityF32, PerEntityU32 } from '../core/world';
 import { clamp, clamp01 } from '../core/math';
+import { upgradeMul } from './Upgrades';
 
 /* ==========================================================================
  * 1. THE MATRIX
@@ -334,7 +335,18 @@ export class DamageSystem {
     // it has no HP curve yet and would die to a single stray splash.
     if ((f & EntityFlag.UnderConstruction) !== 0 && st.kind[i] === EntityKind.Building) return;
 
-    const mult = armorMultiplier(warhead, st.armorClass[i] as ArmorClass);
+    // THE PURCHASED ARMOUR MULTIPLIER, read at the instant the hit lands and
+    // taken off the VICTIM's owner — the only one of the six levers that is not
+    // the attacker's. It multiplies the armour-matrix result rather than
+    // replacing it, so a warhead a hull was already immune to stays immune and
+    // the counter-triangle is untouched.
+    //
+    // It is applied here and not at fire time on purpose: a shell in flight
+    // must land against the armour the target has WHEN IT ARRIVES, so an
+    // upgrade bought while the round is in the air protects against that round.
+    // The alternative would make the effect depend on projectile speed.
+    const mult = armorMultiplier(warhead, st.armorClass[i] as ArmorClass)
+      * upgradeMul(w.players[st.owner[i]], UpgradeLever.Armour, st.kind[i] as EntityKind);
     const dealt = amount * mult;
     if (!(dealt > 0)) return;
 
