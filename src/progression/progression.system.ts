@@ -162,7 +162,7 @@ function buildHandle(t: MissionTracker, s: ProfileStore, g: UnlockGate): Progres
      *
      * TWO ROUTES REACH THE SAME SENTENCE, and that is deliberate rather than
      * duplication. `UnlockGate.reasonFor` already answers "Locked — Strip Mine:
-     * mine 250,000 credits of ore" for anything the SIM asks about, which is
+     * mine 70,000 credits of ore" for anything the SIM asks about, which is
      * what `Production.availabilityOf` puts on `BuildEntry.reason`. This is the
      * HUD's own route, and it exists because `Sidebar.lockedSentence` composes a
      * head with a hint and can therefore also serve a caller that has no

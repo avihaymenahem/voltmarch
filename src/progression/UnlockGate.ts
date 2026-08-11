@@ -58,7 +58,7 @@ export interface UnlockGateOptions {
   knownUnlockIds?: Iterable<string>;
   /**
    * `unlockId -> the requirement in one line`, e.g.
-   * `'struct.tech' -> 'Strip Mine: mine 250,000 credits of ore'`.
+   * `'struct.tech' -> 'Strip Mine: mine 70,000 credits of ore'`.
    *
    * INJECTED, NEVER IMPORTED, and that is the point. This file imports nothing
    * but its own type-only module so that `src/sim/**` can call `isBuildable`
@@ -149,7 +149,7 @@ export class UnlockGate {
   }
 
   /**
-   * `Locked — Strip Mine: mine 250,000 credits of ore`, for one unlock id.
+   * `Locked — Strip Mine: mine 70,000 credits of ore`, for one unlock id.
    *
    * Falls back to `LOCKED_REASON` when no hint table was injected or when the
    * id is one nothing grants — a def gated behind an unpayable id is a content

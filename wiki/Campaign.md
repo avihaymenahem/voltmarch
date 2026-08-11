@@ -58,7 +58,7 @@ resets it.
 | Mission | Target | Requires | Reward |
 | --- | --- | --- | --- |
 | Prospector | mine 25,000 credits of ore | — | **Map: Frozen Sector** |
-| Strip Mine | mine 250,000 | Prospector | **Tech centre** |
+| Strip Mine | mine 70,000 | Prospector | **Tech centre** |
 | Continental Yield | mine 1,000,000 | Strip Mine | Ore Boost power *(see §6)* |
 | War Chest | hold 20,000 credits at once | — | Magnate insignia |
 | Grid Surplus | run a 300-point power surplus | — | Grid decal |
@@ -170,11 +170,20 @@ What is behind the gate, and therefore what an unlock *widens*:
 
 Two things follow from this that are easy to miss:
 
-**The tech centre is the biggest single unlock in the game.** Strip Mine — 250,000 credits of
-lifetime mined ore — opens the Battle Lab and its equivalents, and the tech building is the prereq
-for the tier-3 specialists, the Prism Tower, the capital ships and **every superweapon in the game**.
-Until you have it, four of your five sidebar tabs stop one tier short and you have no end-game at
-all. If you only chase one mission, chase this one.
+**The tech centre is the biggest single unlock in the game.** Strip Mine — 70,000 credits of
+lifetime banked ore, roughly one map's worth — opens the Battle Lab and its equivalents, and the tech
+building is the prereq for the tier-3 specialists, the Prism Tower, the capital ships and **every
+superweapon in the game**. Until you have it, four of your five sidebar tabs stop one tier short and
+you have no end-game at all. If you only chase one mission, chase this one.
+
+That target was 250,000 until v2.4.0, which was three whole maps of ore and put a mid-game building
+further out than any superweapon chain — so a new profile could not reach the late game from either
+side, because the AI mirrors your unlocks. It is one map now. Progress already banked still counts:
+the tracker keeps a raw total per mission and re-compares it, so nothing was reset.
+
+**Chains cost the sum of their rungs, not their last number.** A locked mission does not accumulate,
+so Strip Mine only starts counting once Prospector's 25,000 is done — and Fleet Admiral's "win 40"
+means 1 + 10 + 40 wins, not 40. Worth knowing before you plan a route.
 
 **The AI mirrors your unlocks.** By default the opponent resolves against the *same profile you do*,
 so unlocking the Apocalypse Tank also arms the enemy Soviets with it. This is deliberate: an AI

@@ -45,7 +45,8 @@ import {
   MISSIONS, UNLOCKS, UNLOCK_SOURCES, unlockRequirementText, unlockSource,
 } from '../src/data/Missions';
 import { ARMOR_MATRIX, VETERANCY_KILLS } from '../src/core/config';
-import { EntityFlag, EntityKind } from '../src/core/types';
+import { OreField } from '../src/sim/Economy';
+import { CreditReason, EntityFlag, EntityKind } from '../src/core/types';
 import type { BuildingDef, UnitDef } from '../src/core/types';
 import { DEFAULT_WEAPONS } from '../src/sim/Combat';
 import { LOCKED_REASON, UnlockGate } from '../src/progression/UnlockGate';
@@ -97,6 +98,71 @@ describe('every mission rule can actually be satisfied', () => {
     expect(at('src/sim/Damage.ts')).toContain('while (rank < 2');
     expect(at('src/sim/Crates.ts')).toContain('rank >= 2');
     expect(VETERANCY_KILLS.length).toBe(2);
+  });
+
+  /* -- an ore target must be payable out of ore that exists --------------------
+   * `economy.harvest.2` asked for 250,000 banked credits of harvested ore. The
+   * whole map seeds ~76,000, so it asked a player to mine out three and a third
+   * maps — and what it gates is not a superweapon but `struct.tech`, the tech
+   * centre whose own blurb is "Unlocks the top of every tab" and which is the
+   * `prereqs` entry on all six superweapon structures. A mid-game building was
+   * priced further out than every superweapon chain in the file, so a fresh
+   * profile could not reach the late-game layer AT ALL — and because the gate
+   * mirrors onto the AI, neither could the opponent.
+   *
+   * Ore regrows, so this is not a hard ceiling on one match. It is the right
+   * YARDSTICK all the same: "how many entire maps of ore is this?" is the
+   * question nobody asked of the number, and one map is the reading that makes
+   * the mission's own name true.                                              */
+  it('never asks for more ore in one chain rung than a whole map holds', () => {
+    // The real seeder over the real layout: `addStartOre` lays one R=30 field
+    // per army plus one R=22 at the centroid. No `accept` predicate, so this is
+    // the generous reading — a map with water removes cells, never adds them.
+    const field = new OreField();
+    const spots = [{ x: 140, z: 140 }, { x: 372, z: 372 }];
+    for (const s of spots) field.seedField(s.x, s.z, 30);
+    field.seedField(
+      spots.reduce((a, s) => a + s.x, 0) / spots.length,
+      spots.reduce((a, s) => a + s.z, 0) / spots.length,
+      22,
+    );
+    const mapOre = field.totalOre();
+    expect(mapOre, 'the ore seeder placed nothing').toBeGreaterThan(1000);
+
+    /* THE BOUND APPLIES TO RUNGS THAT GATE BUILDABLE CONTENT, and that set is
+     * derived from the def table rather than listed here. A long tail is
+     * allowed to span a career — `economy.harvest.3` asks for 1,000,000 and
+     * pays the Ore Boost, which is a bonus that blocks nothing. An unlock id
+     * some def carries as `unlockedBy` is a different animal: until it is paid,
+     * a tab stops one tier short, and (via `UnlockGate.mirrorAI`) it stops
+     * short for the opponent too. Nothing a player must own to SEE the rest of
+     * the game may cost more ore than the game contains. */
+    const gatesADef = (unlockId: string): boolean =>
+      ALL_DEFS.some((d) => d.unlockedBy === unlockId);
+
+    let checked = 0;
+    for (const m of MISSIONS) {
+      const rule = m.rule;
+      if (rule === undefined || rule.on !== 'earn') continue;
+      if (!(rule.reasons ?? []).includes(CreditReason.Harvest)) continue;
+      const gated = m.reward
+        .filter((r) => r.kind === 'unlock' && gatesADef(r.unlockId))
+        .map((r) => (r.kind === 'unlock' ? r.unlockId : ''));
+      if (gated.length === 0) continue;
+      checked++;
+      expect(
+        m.target,
+        `mission "${m.id}" wants ${m.target.toLocaleString()} credits of harvested ore and `
+        + `gates ${gated.join(', ')} — content that defs carry as \`unlockedBy\`. `
+        + `A whole map seeds ~${Math.round(mapOre).toLocaleString()}, so that is `
+        + `${(m.target / mapOre).toFixed(1)} entire maps mined out before the tier opens, `
+        + 'for the player AND for the AI that mirrors them. '
+        + 'See the note on `economy.harvest.2` in src/data/Missions.ts.',
+      ).toBeLessThanOrEqual(mapOre);
+    }
+    // Otherwise a refactor that renamed the rule or the reason would leave this
+    // case green while checking nothing at all.
+    expect(checked, 'no ore rung gates a def any more — has the table moved?').toBeGreaterThan(0);
   });
 });
 
@@ -537,11 +603,11 @@ describe('the locked reason', () => {
     // The exact case: hover a Battle Lab, be told to complete "a mission".
     expect(UNLOCK_TAGS.battleLab).toBe(UNLOCKS.structTech);
     expect(unlockRequirementText(UNLOCKS.structTech))
-      .toBe('Strip Mine: mine 250,000 credits of ore');
+      .toBe('Strip Mine: mine 70,000 credits of ore');
 
     const gate = new UnlockGate(() => [], { unlockHints: UNLOCK_REQUIREMENTS });
     const lab = BUILDINGS.find((b) => b.key === 'battleLab')!;
-    expect(gate.reasonFor(lab)).toBe('Locked — Strip Mine: mine 250,000 credits of ore');
+    expect(gate.reasonFor(lab)).toBe('Locked — Strip Mine: mine 70,000 credits of ore');
   });
 
   it('falls back to the generic line rather than inventing one', () => {
