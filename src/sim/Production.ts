@@ -1722,6 +1722,27 @@ export class ProductionService implements QueueHooks {
     return this.catalog.at(this.entryOfEntity.get(id));
   }
 
+  /**
+   * Credits of storage cap the structure in slot `i` contributes, or 0.
+   *
+   * `Economy.recomputeStorage` calls this once per standing structure per
+   * rescan, six times a second, so it has to be an array read in the steady
+   * state — which it is: `entryForSlot` memoises the answer (and memoises the
+   * MISSES) in a generation-stamped side table, so the string lookup happens
+   * once per entity and never again.
+   *
+   * IT ANSWERS FROM THE CATALOG, WHICH IS THE POINT. Every other route to this
+   * number is per-spawner, and there are more ways for a structure to end up
+   * standing on the map than there are spawners — a scenario placement, a
+   * completed build, an engineer capture, a save-game load. The catalog knows
+   * the answer for all of them because it is keyed on WHAT the building is, and
+   * `entryForSlot` resolves that from `defId` first and the scenario content key
+   * second. See `Economy.storageResolver`.
+   */
+  storageForSlot(i: number): number {
+    return this.entryForSlot(i)?.storage ?? 0;
+  }
+
   /** The factory a unit of `tab` would currently come out of, or NONE. */
   spawnFactory(player: PlayerId, tab: BuildTab): EntityId {
     const i = this.primaryFactory[(player as number) * BUILD_TAB_COUNT + (tab as number)];
@@ -2045,6 +2066,11 @@ export class ProductionService implements QueueHooks {
     const entry = this.entryForSlot(i);
 
     if (p !== undefined && entry !== null) {
+      // The INSTANT lift, not the bookkeeping. `Economy.recomputeStorage` owns
+      // `storageMax` and overwrites it wholesale every POWER_RECOMPUTE_INTERVAL
+      // ticks from `storageForSlot` below; this only covers the five ticks in
+      // between, during which `deposit` would otherwise throw away credits
+      // against a ceiling this building has already raised.
       p.storageMax += entry.storage;
       p.stats.buildingsBuilt++;
       if (entry.defId >= 0 && entry.defId < p.buildingCount.length) p.buildingCount[entry.defId]++;
@@ -2130,6 +2156,9 @@ export class ProductionService implements QueueHooks {
     const p = this.world.players[owner as number];
     const entry = this.entryForSlot(i);
     if (p !== undefined && entry !== null) {
+      // Mirror of the lift in `onBuildingCompleted`, and just as provisional:
+      // the next `recomputeStorage` recomputes the whole cap without this
+      // structure in it, and clamps the bank into whatever is left.
       p.storageMax = Math.max(0, p.storageMax - entry.storage);
       p.rallyX.delete(id as number);
       p.rallyZ.delete(id as number);

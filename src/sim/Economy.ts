@@ -708,6 +708,40 @@ export class Economy {
   /** Per-entity storage contribution, gen-stamped so a recycled slot reads 0. */
   private readonly storageOf: PerEntityF32;
 
+  /**
+   * "How much storage is the structure in slot `i` worth?", for every structure
+   * nobody remembered to declare through `setBuildingStorage`.
+   *
+   * THE BUG THIS EXISTS FOR. `recomputeStorage` is the AUTHORITY on
+   * `storageMax` — it overwrites the field outright every
+   * POWER_RECOMPUTE_INTERVAL ticks, which is FIVE, a sixth of a second. Both
+   * spawners nonetheless kept their own running total: `Scenarios.spawnBuilding`
+   * does `p.storageMax += def.storage` and `Production.onBuildingCompleted` does
+   * `p.storageMax += entry.storage`. Neither told this class anything, so the
+   * rescan recomputed a sum that had never heard of an Ore Silo and wrote it
+   * back over the top. A silo raised the credit ceiling for five ticks and then
+   * un-raised it, for the whole life of the building. The one structure whose
+   * entire stated purpose is the storage cap contributed nothing to it.
+   *
+   * The near-miss that hid it: `seedFromScenario` did declare storage, from a
+   * two-row `STORAGE_BY_KEY` table keyed on scenario content keys. So an ALLIED
+   * or SOVIET silo the scenario placed worked, a Meridian `mrdVault` or a
+   * Reclamation `rclHeap` did not (no row), and nothing built during the match
+   * ever worked at all — the sweep ran once, on the first tick.
+   *
+   * A RESOLVER RATHER THAN MORE CALL SITES. Chasing every spawner is how the
+   * two-row table happened in the first place, and it cannot reach the paths
+   * that create a structure without spawning it: an engineer capture (which
+   * changes only `owner`) and a save-game load (which writes columns directly).
+   * Asking per slot, per scan, catches all of them, because the question is
+   * about the building standing there and not about how it got there.
+   *
+   * Injected rather than imported: the answer lives in `ProductionService`'s
+   * catalog, and this file must not depend on production. `economy.system.ts`
+   * wires it. Null in a unit rig, where `setBuildingStorage` is the only writer.
+   */
+  private storageResolver: ((i: number) => number) | null = null;
+
   private readonly incomeAccum = new Float64Array(MAX_PLAYERS);
   private readonly incomeRateArr = new Float64Array(MAX_PLAYERS);
   private readonly spendAccum = new Float64Array(MAX_PLAYERS);
@@ -978,6 +1012,17 @@ export class Economy {
   }
 
   /**
+   * Install the per-slot storage lookup used for every structure that was never
+   * declared through `setBuildingStorage`. See the field's own note.
+   *
+   * MUST BE PURE AND ALLOCATION-FREE: it is called once per standing structure
+   * per rescan, six times a second, from inside `simTick`.
+   */
+  setStorageResolver(fn: ((i: number) => number) | null): void {
+    this.storageResolver = fn;
+  }
+
+  /**
    * Recompute every player's storage cap from their live structures, then clamp
    * credits into it. Called on the same trigger as the power rescan: a
    * destroyed refinery has to shrink the cap, or a player keeps banking into a
@@ -998,7 +1043,12 @@ export class Economy {
       const f = s.flags[i];
       if ((f & EntityFlag.PendingDestroy) !== 0) continue;
       if ((f & EntityFlag.UnderConstruction) !== 0) continue;
+      // Three answers, most specific first: an explicit declaration, then the
+      // content catalog (which is what makes a silo a silo), then the flag —
+      // which knows a refinery and nothing else, and is the reason a structure
+      // whose only job is storage read zero here for twenty-odd releases.
       let add = this.storageOf.getAt(i);
+      if (add <= 0 && this.storageResolver !== null) add = this.storageResolver(i);
       if (add <= 0) add = (f & EntityFlag.IsRefinery) !== 0 ? REFINERY_STORAGE : 0;
       if (add <= 0) continue;
       const owner = s.owner[i];
