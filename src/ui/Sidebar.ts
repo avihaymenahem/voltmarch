@@ -164,6 +164,8 @@ export interface SelectionView {
   relocate: RelocateAction;
   /** The commander's ability button. Pooled and mutated in place. */
   ability: AbilityAction;
+  /** The transport's cargo readout and Unload button. Pooled, mutated in place. */
+  cargo: CargoAction;
   /** Stat row. An empty string blanks its chip. */
   armour: string;
   damage: string;
@@ -235,6 +237,35 @@ export interface AbilityAction {
   cooldownTotal: number;
 }
 
+/**
+ * A transport's occupancy, as the selection panel needs to render it.
+ *
+ * WHY THE COUNT IS ALWAYS SHOWN AND THE BUTTON IS ONLY EVER GREYED
+ * ---------------------------------------------------------------
+ * Passengers are invisible by construction: `EntityFlag.Garrisoned` is checked
+ * by the render bridge, the minimap, the world overlay and selection, so a
+ * loaded transport looks exactly like an empty one on the field. This row is
+ * the ONLY place the player can find out whether anybody is aboard, which is
+ * why it appears for every transport rather than only for loaded ones — an
+ * empty transport reading "0 / 5" is information, and a row that is absent
+ * until it is full teaches nothing.
+ *
+ * The button follows Relocate's rule for the same reason: greyed with a hint,
+ * never hidden and never `disabled`.
+ */
+export interface CargoAction {
+  /** False hides the row: nothing with seats is selected. */
+  visible: boolean;
+  /** False greys the button — empty, or not yours. */
+  enabled: boolean;
+  /** Men aboard the primary. */
+  count: number;
+  /** Seats on the primary. Never 0 while `visible`. */
+  capacity: number;
+  /** One line for the tooltip and the aria description. Never empty. */
+  hint: string;
+}
+
 /** Severity of the status board's advice line. */
 export type AdviceKind = 'info' | 'warn' | 'alert';
 
@@ -273,6 +304,8 @@ export interface SidebarCallbacks {
   relocate(): void;
   /** The commander's ability button was pressed. */
   useAbility(): void;
+  /** The transport's Unload button was pressed. */
+  unload(): void;
   sound(cue: HudSoundCue): void;
 }
 
@@ -823,6 +856,9 @@ class SelectionPanel {
   private readonly abilityButton: HTMLButtonElement;
   private readonly abilityLabelNode: Text;
   private readonly abilityNameNode: Text;
+  private readonly cargoRow: HTMLElement;
+  private readonly cargoButton: HTMLButtonElement;
+  private readonly cargoCountNode: Text;
 
   /** The idle advisory line — all that is left of the status board. */
   private readonly adviceNode: Text;
@@ -848,6 +884,7 @@ class SelectionPanel {
   private liveCards = 0;
   private lastRelocate = '';
   private lastAbility = '';
+  private lastCargo = '';
 
   constructor(parent: HTMLElement, private readonly cb: SidebarCallbacks) {
     this.root = panel(parent, 'vm-dock vm-dock-selection', 'diag');
@@ -957,6 +994,33 @@ class SelectionPanel {
       }
       this.cb.sound('click');
       this.cb.useAbility();
+    });
+
+    /* -- the transport's cargo ----------------------------------------- *
+     * A fourth occupant of the same slot, hidden for everything without seats.
+     * The count node reads "3 / 5" and is the only place in the entire product
+     * that says whether a transport is carrying anything — its passengers are
+     * flagged `Garrisoned`, which the render bridge, the minimap, the overlay
+     * and selection all treat as "not there". */
+    this.cargoRow = el('div', 'vm-stances vm-cargo-row', head);
+    label(this.cargoRow, 'vm-stance-label', 'Cargo');
+    this.cargoButton = button(this.cargoRow, 'vm-stance vm-cargo', 'Unload passengers');
+    this.cargoButton.style.width = 'auto';
+    this.cargoButton.style.gap = 'calc(3 * var(--vm-u))';
+    this.cargoButton.style.padding = '0 calc(4 * var(--vm-u))';
+    this.cargoButton.appendChild(makeIcon('deploy', 'vm-icon'));
+    label(this.cargoButton, '', 'Unload');
+    this.cargoCountNode = label(this.cargoButton, 'vm-num', '0 / 0');
+    this.cargoRow.hidden = true;
+    this.cargoButton.addEventListener('pointerenter', () => this.cb.sound('hover'));
+    this.cargoButton.addEventListener('click', () => {
+      // Dimmed, never `disabled`, for the reason spelled out on Relocate above.
+      if (this.cargoButton.getAttribute('aria-disabled') === 'true') {
+        this.cb.sound('error');
+        return;
+      }
+      this.cb.sound('click');
+      this.cb.unload();
     });
 
     /* -- the body: cameo left, description right ----------------------- */
@@ -1133,6 +1197,10 @@ class SelectionPanel {
         this.abilityRow.hidden = true;
         this.lastAbility = '';
       }
+      if (!this.cargoRow.hidden) {
+        this.cargoRow.hidden = true;
+        this.lastCargo = '';
+      }
       this.updateAdvice(tele);
       return;
     }
@@ -1239,6 +1307,7 @@ class SelectionPanel {
 
     this.updateRelocate(view.relocate);
     this.updateAbility(view.ability);
+    this.updateCargo(view.cargo);
   }
 
   /**
@@ -1268,6 +1337,30 @@ class SelectionPanel {
     this.abilityButton.setAttribute('aria-disabled', action.enabled ? 'false' : 'true');
     this.abilityButton.classList.toggle('is-cooling', cooling);
     this.abilityButton.style.opacity = action.enabled ? '1' : '0.4';
+  }
+
+  /**
+   * The transport's cargo readout and Unload button.
+   *
+   * Signature-gated like every other row here. The count is INTEGER men, so
+   * unlike the ability cooldown there is nothing to quantise: a steady
+   * transport writes no DOM at all until somebody gets in or out.
+   */
+  private updateCargo(action: CargoAction): void {
+    const sig = action.visible
+      ? `${action.enabled ? 1 : 0}|${action.count}/${action.capacity}|${action.hint}`
+      : '';
+    if (sig === this.lastCargo) return;
+    this.lastCargo = sig;
+
+    this.cargoRow.hidden = !action.visible;
+    if (!action.visible) return;
+
+    this.cargoCountNode.nodeValue = `${action.count} / ${action.capacity}`;
+    this.cargoButton.title = action.hint;
+    this.cargoButton.setAttribute('aria-label', `Unload — ${action.hint}`);
+    this.cargoButton.setAttribute('aria-disabled', action.enabled ? 'false' : 'true');
+    this.cargoButton.style.opacity = action.enabled ? '1' : '0.4';
   }
 
   /**

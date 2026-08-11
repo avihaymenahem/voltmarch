@@ -64,6 +64,7 @@ import type {
   ArmorClass, EntityId, PlayerId, PlayerState, SimContext,
 } from '../core/types';
 import { abilities } from './Abilities';
+import { transportService } from './Transport';
 import type { Channels, CommandBus, EventBus } from '../core/events';
 import type { EntityStore, World } from '../core/world';
 import { PerEntityU32 } from '../core/world';
@@ -731,9 +732,17 @@ export class AiBrain {
    * Prefers the catalog, which knows `BuildRole.Mcv` exactly. Without a bound
    * catalog — the state of every headless test — the answer comes from columns
    * that exist regardless of content: a VEHICLE that cannot shoot, does not
-   * mine, carries no cargo and is not already deployed. In this game that set is
-   * exactly {mcv, mrdCarryall, rclCrawler}: an engineer is Infantry, a
-   * harvester carries `IsHarvester`, and a transport has a non-zero `cargoMax`.
+   * mine, carries neither ore nor infantry, and is not already deployed. In
+   * this game that set is exactly {mcv, mrdCarryall, rclCrawler} — an engineer
+   * is Infantry and a harvester carries `IsHarvester`.
+   *
+   * THE SEAT TEST IS NOT REDUNDANT. This comment used to end "and a transport
+   * has a non-zero `cargoMax`", which was never true: `cargoMax` is ORE, the
+   * Hover Transport has none of it, and the unit therefore matched every clause
+   * of the fallback. It was harmless only because transports could not carry
+   * anything, so nothing ever asked. Now that `UnitDef.passengers` is real
+   * content, an unarmed hull with seats is a transport and the AI must not send
+   * it off looking for somewhere to unfold.
    */
   private isUndeployedMcv(i: number, kind: EntityKind, flags: number): boolean {
     if ((flags & EntityFlag.Deployed) !== 0) return false;
@@ -743,6 +752,7 @@ export class AiBrain {
     return kind === EntityKind.Vehicle
       && (flags & EntityFlag.IsHarvester) === 0
       && st.cargoMax[i] <= 0
+      && (transportService()?.capacityAt(i) ?? 0) <= 0
       && st.maxSpeed[i] > 0;
   }
 

@@ -74,13 +74,16 @@ import type { Command, DefTables, EntityId, PlayerId, UnitDef } from '../core/ty
 import type { Channels } from '../core/events';
 import type { World } from '../core/world';
 import { clampWorld, hashU32, worldToCell } from '../core/math';
-// The ONE edge from src/input/** into src/sim/**, and it buys the thing this
+// The edges from src/input/** into src/sim/**, and they buy the thing this
 // module exists for: "is this an MCV" is answered by exactly one function, so
 // the D key, the deploy cursor and the order the sim actually runs cannot
 // disagree. `isDeployable` reads `UnitDef.deploysInto` when a data module is
 // bound and a three-row fallback when none is, which is the same answer
-// `src/sim/deploy.system.ts` acts on.
+// `src/sim/deploy.system.ts` acts on. `transportService()` is the same bargain
+// for "is anybody aboard": the D key, the HUD's Unload button and
+// `sim/Transport.ts` all read one occupancy table rather than three.
 import { isDeployable } from '../sim/Deploy';
+import { transportService } from '../sim/Transport';
 import { relocateSeamOf, snapRallyClear } from '../sim/Placement';
 import { CursorKind } from './Input';
 import { canInteractWith, isEnemyOf } from './Selection';
@@ -111,8 +114,9 @@ export interface RoleResolver {
  *     that is exactly true — riflemen, conscripts and flak troopers all carry
  *     a weapon index, and the engineer is the one that does not.
  *   - `EntityFlag.IsHarvester` is authoritative; the store sets it at spawn.
- *   - transports need passenger data nothing publishes yet, so the default is
- *     honest about that and answers 0. `makeDefRoleResolver` answers properly.
+ *   - seats are content, not physics: nothing in the flags or the store says
+ *     "this hull has room for five men", so the heuristic answers 0 and
+ *     `makeDefRoleResolver` reads `UnitDef.passengers`.
  */
 export const HEURISTIC_ROLES: RoleResolver = {
   canCapture(world: World, i: number): boolean {
@@ -145,22 +149,24 @@ export function roleResolver(): RoleResolver {
   return roles;
 }
 
-/** Unit keys that carry passengers. Matched as substrings, lower-cased. */
-const TRANSPORT_KEYS = ['ifv', 'apc', 'transport', 'flaktrack', 'flak_track', 'bullfrog', 'riptide'];
-
 /**
- * A resolver backed by real def tables. `canCapture` becomes the def's own
- * flag; transports are recognised by key, which is the only signal the frozen
- * `UnitDef` shape carries for passengers.
+ * A resolver backed by real def tables. `canCapture` and the seat count both
+ * become the def's own fields.
+ *
+ * The seat count USED TO BE a substring match on the unit key against
+ * `['ifv', 'apc', 'transport', 'flaktrack', 'bullfrog', 'riptide']`, awarding a
+ * flat 5 to anything that matched, because `UnitDef` carried no passenger data
+ * at all. Four of those six keys are not in this roster and never were; the two
+ * that matched were given a capacity no simulation code could read, which is
+ * how the Hover Transport came to offer an `Enter` cursor that did nothing.
+ * `UnitDef.passengers` is now real content and this reads it.
  */
 export function makeDefRoleResolver(tables: DefTables): RoleResolver {
   const units = tables.units;
   const seats = new Int8Array(units.length);
   for (let d = 0; d < units.length; d++) {
-    const key = units[d].key.toLowerCase();
-    for (let k = 0; k < TRANSPORT_KEYS.length; k++) {
-      if (key.includes(TRANSPORT_KEYS[k])) { seats[d] = 5; break; }
-    }
+    const p = units[d].passengers;
+    seats[d] = p > 127 ? 127 : p < 0 ? 0 : p | 0;
   }
   const defOf = (world: World, i: number): UnitDef | undefined => {
     if (world.store.kind[i] === EntityKind.Building) return undefined;
@@ -336,6 +342,41 @@ export function gatherDeployable(
     // Already unpacking: a second D press must not restart the countdown.
     if (s.state[i] === UnitState.Deploying) continue;
     if (!isDeployable(world, i)) continue;
+    out[n++] = ids[k];
+  }
+  return n;
+}
+
+/**
+ * Collect the local player's selected transports that have somebody aboard.
+ *
+ * The sibling of `gatherDeployable`, on the same key and for the same gesture:
+ * D means "unpack where you stand", and a loaded transport and an MCV are the
+ * two things in this game that can. A mixed selection unloads the transports
+ * and leaves the escort alone, which is why this is a gatherer and not a filter.
+ *
+ * Asks `transportService()` rather than `roleResolver().transportCapacity()`,
+ * because the question is not "does this def have seats" but "is anybody
+ * actually in there" — and the service is the only thing that knows.
+ */
+export function gatherLoadedTransports(
+  world: World,
+  ids: Int32Array,
+  count: number,
+  out: Int32Array,
+): number {
+  const svc = transportService();
+  if (svc === null) return 0;
+  const s = world.store;
+  const local = world.localPlayer as number;
+  let n = 0;
+  for (let k = 0; k < count && n < out.length; k++) {
+    const i = s.index(ids[k] as EntityId);
+    if (i < 0 || s.owner[i] !== local) continue;
+    if ((s.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
+    // Already unloading: a second D press must not re-issue every tick.
+    if ((s.orderKind[i] as OrderKind) === OrderKind.Unload) continue;
+    if (!svc.isLoadedAt(i)) continue;
     out[n++] = ids[k];
   }
   return n;
@@ -948,6 +989,22 @@ export class OrderExecutor {
       case OrderKind.Repair:
       case OrderKind.Enter:
         s.state[i] = mobile ? UnitState.Moving : UnitState.Idle;
+        break;
+
+      case OrderKind.Unload:
+        // UNLOAD HAPPENS WHERE THE HULL STANDS, exactly as Deploy does and for
+        // the identical reason: "drive there, then put them down" has to decide
+        // what to do when the destination turns out to be unreachable, and
+        // every answer to that either re-paths forever or drops a squad
+        // somewhere the player did not ask for. So the order point is rewritten
+        // to the transport's own position, which also stops an in-flight move
+        // dead. State stays Idle and `sim/Transport.ts` clears the order at
+        // Phase.Cleanup once the men are actually out — a refusal leaves it
+        // standing, so a transport still over water unloads the moment it
+        // reaches a coast.
+        s.orderX[i] = s.posX[i];
+        s.orderZ[i] = s.posZ[i];
+        s.state[i] = UnitState.Idle;
         break;
 
       default:

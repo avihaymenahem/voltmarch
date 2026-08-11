@@ -461,6 +461,8 @@ interface UnitSpec {
   crushLevel?: number;
   crushableBy?: number;
   cargoMax?: number;
+  /** Infantry seats. Omitted = not a transport. */
+  passengers?: number;
   deploysInto?: string | null;
   canCapture?: boolean;
   /** Cap on units of this def alive at once. Omitted = unlimited. */
@@ -623,6 +625,7 @@ function unit(s: UnitSpec): UnitDef {
     crushLevel: s.crushLevel ?? 0,
     crushableBy: s.crushableBy ?? 0,
     cargoMax: s.cargoMax ?? 0,
+    passengers: s.passengers ?? 0,
     popCost: 1,
     deploysInto: s.deploysInto ?? null,
     canCapture: s.canCapture ?? false,
@@ -834,6 +837,25 @@ export const UNITS: readonly UnitDef[] = [
    * Locomotor.Hover across the board: `Locomotor` has no Naval member, and
    * `sim/Flowfield.ts` promotes a Hover unit to MoveClass.Naval the first time
    * it queries a water cell. Documented at `moveClassForLocomotor`.            */
+  /* -- WHO CARRIES INFANTRY, AND WHY IT IS THESE THREE ---------------------
+   * `passengers` is set on exactly three hulls, and the split is a faction
+   * difference rather than an oversight:
+   *
+   *   transport  5   Allies + Soviets. A dedicated 900-credit unarmed hull
+   *                  whose entire blurb is this mechanic.
+   *   mrdSkiff   2   The Pact. Their tree draws from no shared pool
+   *                  (`SHARED_POOL_FACTIONS` in Production.ts is Allies and
+   *                  Soviets ONLY), so the Hover Transport does not reach them
+   *                  and sortOrder 60 is empty in both parallel naval lines.
+   *                  The Sandskiff is already amphibious; two seats make it the
+   *                  Pact's insertion hull without making a 550-credit armed
+   *                  raider strictly better than a 900-credit troop ship.
+   *   rclScow    4   The Reclamation, for the same reason. It is described in
+   *                  its own blurb as a barge.
+   *
+   * The alternative was two new defs at naval sortOrder 60 with two new models,
+   * and it would have bought a symmetry the four armies do not otherwise have.
+   */
   unit({
     key: 'transport', name: 'Hover Transport', blurb: 'Carries a squad across water.',
     faction: Faction.Neutral, kind: EntityKind.Vehicle,
@@ -841,7 +863,7 @@ export const UNITS: readonly UnitDef[] = [
     model: 'allied_harvester',
     maxHp: 600, armor: ArmorClass.Light, maxSpeed: 6.0, turnRate: 2.6 - NU.transport.l * 0.14,
     locomotor: Locomotor.Hover, radius: hullRadius(NU.transport), sight: 26,
-    weapons: UNARMED, hasTurret: false,
+    weapons: UNARMED, hasTurret: false, passengers: 5,
   }),
   unit({
     key: 'gunboat', name: 'Assault Destroyer', blurb: 'Allied escort. Shoots at everything.',
@@ -964,7 +986,7 @@ export const UNITS: readonly UnitDef[] = [
     model: 'meridian_skiff',
     maxHp: 190, armor: ArmorClass.Light, maxSpeed: 9.2, turnRate: 2.6 - U.ifv.l * 0.14,
     locomotor: Locomotor.Hover, radius: hullRadius(U.ifv), sight: 32,
-    weapons: [w('arcRepeater')], hasTurret: true, crushableBy: 4,
+    weapons: [w('arcRepeater')], hasTurret: true, crushableBy: 4, passengers: 2,
     flags: MRD_TURRETED,
   }),
   unit({
@@ -1201,7 +1223,7 @@ export const UNITS: readonly UnitDef[] = [
     model: 'reclaim_scow',
     maxHp: 340, armor: ArmorClass.Light, maxSpeed: 7.2, turnRate: RCL_TURN(NU.gunboat),
     locomotor: Locomotor.Hover, radius: hullRadius(NU.gunboat), sight: 32,
-    weapons: [w('scowGun')], hasTurret: false,
+    weapons: [w('scowGun')], hasTurret: false, passengers: 4,
     flags: RCL_GUNNER,
   }),
   unit({

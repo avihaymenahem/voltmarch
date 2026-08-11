@@ -37,6 +37,13 @@
  * PHASES. Entry runs at `Phase.Cleanup` (negative order, beside Capture) so it
  * sees final positions. The volley runs at `Phase.Weapons` so its damage lands
  * in the same `Phase.Damage` drain as everything else.
+ *
+ * THIS FILE DOES NOT OWN `OrderKind.Enter` OUTRIGHT. The order means "garrison
+ * this structure" OR "board this transport", and `sim/Transport.ts` takes the
+ * second half at `Phase.Cleanup` order -395. So the entry scan below walks PAST
+ * an order whose target is not a Building rather than clearing it. It used to
+ * clear it, which is the whole reason the Hover Transport could not carry
+ * anything; see the ownership table in `Transport.ts`'s header.
  * ============================================================================
  */
 
@@ -245,7 +252,14 @@ export class GarrisonService {
 
       const target = st.orderTarget[i] as EntityId;
       const t = st.index(target);
-      if (t < 0 || st.kind[t] !== EntityKind.Building) { this.clearOrder(i); continue; }
+      if (t < 0) { this.clearOrder(i); continue; }
+      // NOT MINE, AND NOT CLEARED. `OrderKind.Enter` means "garrison this
+      // structure" OR "board this transport", and this line used to clear the
+      // order for every target that was not a Building — which is why the Hover
+      // Transport could not carry anything for as long as it has existed.
+      // `sim/Transport.ts` runs 5 slots later and owns exactly the targets this
+      // one walks past; see the ownership table in its header.
+      if (st.kind[t] !== EntityKind.Building) continue;
 
       const byPlayer = st.owner[i] as PlayerId;
       if (this.refusalFor(target, byPlayer) !== '') { this.clearOrder(i); continue; }

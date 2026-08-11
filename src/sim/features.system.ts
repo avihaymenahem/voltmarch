@@ -3,12 +3,12 @@
  * src/sim/features.system.ts — REGISTRATION FOR THE MISSING-SERIES-FEATURES SET
  * ============================================================================
  *
- * Five gameplay verbs land here: superweapons, engineer capture, base repair,
- * map crates and infantry garrisons — plus the three orphaned commands
- * (`RepairToggle`, `SetStance`, `SelfDestruct`) that input has been issuing
- * into the void since the command bus was written.
+ * Six gameplay verbs land here: superweapons, engineer capture, base repair,
+ * map crates, infantry garrisons and troop transports — plus the three orphaned
+ * commands (`RepairToggle`, `SetStance`, `SelfDestruct`) that input has been
+ * issuing into the void since the command bus was written.
  *
- * ONE FILE, SEVEN SYSTEMS
+ * ONE FILE, EIGHT SYSTEMS
  * -----------------------
  * `src/game/Systems.ts` discovers exactly one default export per file, but
  * these features need six different sim phases (a garrison volley belongs at
@@ -37,6 +37,7 @@ import { CommandKind, OrderKind, Phase, Stance } from '../core/types';
 import type { BuildTab, Command, EntityId, PlayerId, SimContext } from '../core/types';
 import { MAX_SELECTION } from '../core/config';
 import { ctx } from '../game/context';
+import { resolveDefBinding } from '../game/Scenarios';
 
 import { CaptureService, setCaptureService } from './Capture';
 import { CrateService, setCrateService } from './Crates';
@@ -44,6 +45,7 @@ import { GarrisonService, setGarrisonService } from './Garrison';
 import { RepairSellService, setRepairSellService } from './RepairSell';
 import { SuperweaponService, setSuperweaponService } from './Superweapons';
 import type { TargetingHost } from './Superweapons';
+import { TransportService, setTransportService } from './Transport';
 
 /* ==========================================================================
  * 1. LIVE SERVICES
@@ -54,6 +56,7 @@ let capture: CaptureService | null = null;
 let garrison: GarrisonService | null = null;
 let crates: CrateService | null = null;
 let repairSell: RepairSellService | null = null;
+let transport: TransportService | null = null;
 
 /* ==========================================================================
  * 2. COMMAND PARKING
@@ -229,6 +232,21 @@ const garrisonEntrySystem = defineSystem({
   simTick(s: SimContext): void { garrison?.simTick(s); },
 });
 
+/**
+ * Five slots behind the garrison, and the gap is load-bearing.
+ *
+ * Both services scan for `OrderKind.Enter`; the garrison owns the ones whose
+ * target is a Building and walks past everything else without clearing it, so
+ * this one has to run AFTER it to pick those up. See the ownership table in
+ * `sim/Transport.ts`'s header.
+ */
+const transportSystem = defineSystem({
+  id: 'sim.features.transport',
+  phase: Phase.Cleanup,
+  order: -395,
+  simTick(s: SimContext): void { transport?.simTick(s); },
+});
+
 /* ==========================================================================
  * 4. THE DEFAULT EXPORT — command drain + ownership of every service
  * ========================================================================== */
@@ -238,7 +256,7 @@ export default defineSystem({
   phase: Phase.Production,
   order: -100,
 
-  init(): void {
+  async init(): Promise<void> {
     const { world, channels, registry, cameraRig, handle } = ctx();
 
     capture = new CaptureService(world, channels);
@@ -257,6 +275,22 @@ export default defineSystem({
 
     superweapons = new SuperweaponService(world, channels);
     setSuperweaponService(superweapons);
+
+    // The seat counts live on `UnitDef.passengers`, so this needs the def
+    // tables. Awaited rather than resolved in the background: a transport whose
+    // capacity has not landed yet reads as "not a transport", and the very
+    // first `Enter` order of the match would be refused for a reason no player
+    // could see. `deploy.system.ts` awaits the same binding for the same reason.
+    transport = new TransportService(world, channels);
+    setTransportService(transport);
+    try {
+      const binding = await resolveDefBinding();
+      if (binding.tables !== null) transport.bindDefs(binding.tables);
+    } catch {
+      // No data module: every seat count stays 0 and the verb is inert. That is
+      // the correct answer on fallback content, which has no transport row.
+    }
+    transport.attach();
 
     // Targeting mode. The listener is installed only while a weapon is armed,
     // so ordinary selection and ordering are untouched the rest of the time.
@@ -278,12 +312,13 @@ export default defineSystem({
     registry.add(garrisonFireSystem);
     registry.add(captureSystem);
     registry.add(garrisonEntrySystem);
+    registry.add(transportSystem);
 
     // Console + harness handles, matching the __vm* convention used by
     // production, economy and combat.
     const g = globalThis as unknown as Record<string, unknown>;
     g.__vmFeatures = {
-      superweapons, capture, garrison, crates, repairSell,
+      superweapons, capture, garrison, crates, repairSell, transport,
       /** `__vmFeatures.fire('nuke', 512, 512)` from the console. */
       fire: (key: string, x: number, z: number) =>
         superweapons?.fireAt(world.localPlayer, key, x, z) ?? 'rejected',
@@ -292,7 +327,8 @@ export default defineSystem({
     };
 
     console.info(
-      '[features] superweapons, engineer capture, base repair, crates and garrisons online',
+      '[features] superweapons, engineer capture, base repair, crates, garrisons '
+      + 'and transports online',
     );
   },
 
@@ -317,6 +353,7 @@ export default defineSystem({
       'sim.features.garrison.volley',
       'sim.features.capture',
       'sim.features.garrison',
+      'sim.features.transport',
     ]) registry.remove(id);
 
     superweapons?.dispose();
@@ -324,17 +361,20 @@ export default defineSystem({
     crates?.dispose();
     repairSell?.dispose();
     capture?.dispose();
+    transport?.dispose();
 
     setSuperweaponService(null);
     setGarrisonService(null);
     setCrateService(null);
     setRepairSellService(null);
     setCaptureService(null);
+    setTransportService(null);
     superweapons = null;
     garrison = null;
     crates = null;
     repairSell = null;
     capture = null;
+    transport = null;
 
     parkCount = 0;
     parkArenaHead = 0;

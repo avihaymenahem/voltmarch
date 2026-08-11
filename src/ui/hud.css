@@ -1329,6 +1329,25 @@
   background: var(--vm-well);
 }
 
+/* -- the transport's cargo row -------------------------------------------
+ *
+ * The ability row's layout, deliberately NOT its colour. Ability is the
+ * accent-lit one-shot you are hunting for on the panel; unloading is an
+ * everyday verb with the same weight as Relocate, and two accent-lit buttons
+ * in the same slot would mean neither reads as special. So this takes the
+ * ordinary stance-button treatment and earns its visibility from the count
+ * beside it, which is the part the player actually needs.                  */
+.vm-hud .vm-cargo-row {
+  margin-left: calc(6 * var(--vm-u));
+}
+
+.vm-hud .vm-cargo {
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 /* -- the health bar: full width, number laid over it ---------------------- */
 
 .vm-hud .vm-sel-hp {

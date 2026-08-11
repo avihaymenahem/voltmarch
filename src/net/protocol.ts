@@ -314,6 +314,7 @@ const ORDERS: ReadonlySet<number> = new Set<number>([
   OrderKind.ForceAttack, OrderKind.Stop, OrderKind.Guard, OrderKind.Harvest,
   OrderKind.Deploy, OrderKind.Capture, OrderKind.Repair, OrderKind.Enter,
   OrderKind.Scatter, OrderKind.Patrol, OrderKind.SetRally, OrderKind.UseAbility,
+  OrderKind.Unload,
 ]);
 
 const TABS: ReadonlySet<number> = new Set<number>([

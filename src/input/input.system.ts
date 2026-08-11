@@ -93,8 +93,8 @@ import {
 } from './Selection';
 import {
   CommandMode, FeedbackKind, OrderExecutor, createCapabilities, feedbackFor,
-  gatherDeployable, issueOrder, makeDefRoleResolver, planScatter, readCapabilities,
-  resolveContextOrder, setRoleResolver,
+  gatherDeployable, gatherLoadedTransports, issueOrder, makeDefRoleResolver, planScatter,
+  readCapabilities, resolveContextOrder, setRoleResolver,
   type OrderResolution, type SelectionCapabilities,
 } from './Commands';
 import { isDeployable } from '../sim/Deploy';
@@ -580,6 +580,36 @@ function issueDeploy(only: EntityId = NONE): number {
 }
 
 /**
+ * Put the squad down, from every selected transport that has one.
+ *
+ * Same shape as `issueDeploy` and on the same key, because it is the same
+ * gesture: D means "unpack where you stand", and the two things in this game
+ * that can are an MCV and a loaded transport. One command per hull, each
+ * carrying its own position — there is no shared destination, and a mixed
+ * selection must not drag the escort into it.
+ */
+function issueUnload(): number {
+  const { world, channels } = ctx();
+  const s = world.store;
+  const player = world.localPlayer;
+  const sel = world.selection;
+
+  const n = gatherLoadedTransports(world, sel.ids, sel.count, DEPLOY_IDS);
+  if (n === 0) return 0;
+
+  for (let k = 0; k < n; k++) {
+    const i = s.index(DEPLOY_IDS[k] as EntityId);
+    if (i < 0) continue;
+    ONE_ID[0] = DEPLOY_IDS[k];
+    const x = s.posX[i];
+    const z = s.posZ[i];
+    issueOrder(world, channels, player, OrderKind.Unload, ONE_ID, 1, x, z, DEPLOY_IDS[k] as EntityId);
+    overlay?.spawn(FeedbackKind.Special, x, groundY(x, z), z);
+  }
+  return n;
+}
+
+/**
  * Fire the faction ability of every selected commander.
  *
  * ONE order per unit, each carrying that unit's own position — the ability is
@@ -885,7 +915,15 @@ const handlers = {
         // selected: D is not bound to anything else, and letting the keystroke
         // fall through would hand it to the build grid, where it does nothing
         // either but does it less predictably.
+        //
+        // BOTH, not either. D means "unpack where you stand", and an MCV and a
+        // loaded transport are the two things that can — so a selection holding
+        // one of each does both, and each gatherer ignores what is not its own.
+        // Ordering them the other way round would make no difference: nothing
+        // in this roster is simultaneously a construction vehicle and a
+        // transport, and both gatherers re-validate against the store.
         issueDeploy();
+        issueUnload();
         return true;
 
       case 'ord.forceAttack':

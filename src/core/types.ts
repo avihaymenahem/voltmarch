@@ -372,6 +372,23 @@ export const enum OrderKind {
    * exactly as `sim/deploy.system.ts` does at 9500.
    */
   UseAbility = 15,
+  /**
+   * Transport only: put every passenger back on the ground, here.
+   *
+   * APPENDED, NEVER INSERTED, for the same reason `CommandKind` carries that
+   * warning: this enum is written into replay files and into the lockstep wire
+   * format, so renumbering a member makes every existing recording play back a
+   * different game.
+   *
+   * It is NOT `Deploy` with a transport on the end. Deploy means "convert into
+   * the structure your def names" and `sim/Deploy.ts` validates a footprint to
+   * do it; unloading validates nothing of the sort and produces no building.
+   * Overloading one order with two unrelated meanings would have put the
+   * distinction in an `if` inside `deploy.system.ts` instead of in the type,
+   * and `Deploy.ts`'s own header is explicit that the deploy verb has exactly
+   * one failure mode it is willing to own.
+   */
+  Unload = 16,
 }
 
 /** Auto-engagement policy. Set per unit from the SelectionPanel. */
@@ -713,6 +730,15 @@ export interface UnitDef extends BuildableDef {
   readonly crushableBy: number;
   /** Ore capacity. 0 for non-harvesters. */
   readonly cargoMax: number;
+  /**
+   * Infantry seats. 0 means "not a transport", which is 41 of the 44 rows.
+   *
+   * Deliberately NOT `cargoMax`, which is ore by the tonne and is read as a
+   * float fill fraction by every line of `sim/Harvesting.ts`. A harvester with
+   * 600 units of ore aboard is not a transport with 600 passengers, and one
+   * column meaning both would have made `store.cargo` mean two things at once.
+   */
+  readonly passengers: number;
   /** Population/queue cost. Always 1 in this build. */
   readonly popCost: number;
   /** Set for MCV: the building key it deploys into. */

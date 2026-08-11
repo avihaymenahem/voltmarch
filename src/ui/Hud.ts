@@ -398,6 +398,29 @@ function abilitySeam(): AbilitySeamRead | null {
   return a !== undefined && typeof a.abilityOf === 'function' ? a : null;
 }
 
+/**
+ * The transport service, duck-typed off `globalThis.__vmFeatures.transport`.
+ *
+ * Same bargain as the two seams above: no hard import of a sim module, and the
+ * row is simply never offered when `sim.features` is absent. It hangs off
+ * `__vmFeatures` rather than a handle of its own because that is where
+ * `sim/features.system.ts` already publishes its five siblings.
+ *
+ * Occupancy is a QUERY, not a subscription. `passengerCount` walks the infantry
+ * list, so this is only ever asked for the one primary entity of a selection —
+ * see the note on `fillCargo`.
+ */
+interface TransportSeamRead {
+  capacity(hull: EntityId): number;
+  passengerCount(hull: EntityId): number;
+}
+
+function transportSeam(): TransportSeamRead | null {
+  const g = globalThis as unknown as { __vmFeatures?: { transport?: TransportSeamRead } };
+  const t = g.__vmFeatures?.transport;
+  return t !== undefined && typeof t.capacity === 'function' ? t : null;
+}
+
 /* ==========================================================================
  * SECTION 3 — THE HUD
  * ========================================================================== */
@@ -538,6 +561,7 @@ export class Hud {
         setStance: (stance) => this.stanceSelection(stance),
         relocate: () => this.relocateSelection(),
         useAbility: () => this.useSelectedAbility(),
+        unload: () => this.unloadSelection(),
         sound: (cue) => this.soundHook?.(cue),
       },
     });
@@ -584,6 +608,7 @@ export class Hud {
       stance: -1, stanceEnabled: false,
       relocate: { visible: false, enabled: false, cost: 0, hint: '', armed: false },
       ability: { visible: false, enabled: false, label: '', hint: '', cooldown: 0, cooldownTotal: 0 },
+      cargo: { visible: false, enabled: false, count: 0, capacity: 0, hint: '' },
       armour: '', damage: '', range: '', speed: '',
     };
 
@@ -1400,6 +1425,7 @@ export class Hud {
       view.mending = false;
       view.relocate.visible = false;
       view.ability.visible = false;
+      view.cargo.visible = false;
       return;
     }
 
@@ -1521,6 +1547,7 @@ export class Hud {
     view.stance = stance < 0 ? -1 : (stance as Stance);
     this.fillRelocate(allBuildings);
     this.fillAbility();
+    this.fillCargo();
   }
 
   /**
@@ -1637,6 +1664,76 @@ export class Hud {
     action.cooldown = cooldown;
     action.cooldownTotal = spec.cooldownSeconds;
     action.enabled = cooldown <= 0;
+  }
+
+  /**
+   * The transport's cargo row.
+   *
+   * ONE selected transport only, and it must be yours — the same rule the
+   * ability row follows, and for a stronger reason here: the count is a
+   * property of one hull, and "4 / 5" over a selection of three transports
+   * would be a number about nothing.
+   *
+   * Re-asked every frame like the ability row, because men board and leave
+   * under a stationary selection. That costs one walk of the infantry list per
+   * frame and ONLY while a single transport is selected; the panel's signature
+   * gate then writes DOM only when the integer actually changes.
+   */
+  private fillCargo(): void {
+    const action = this.view.cargo;
+    const sel = this.world.selection;
+
+    if (sel.count !== 1) { action.visible = false; return; }
+
+    const seam = transportSeam();
+    if (seam === null) { action.visible = false; return; }
+
+    const id = sel.ids[0] as EntityId;
+    const idx = this.world.store.index(id);
+    if (idx < 0 || this.world.store.owner[idx] !== (this.world.localPlayer as number)) {
+      action.visible = false;
+      return;
+    }
+
+    const capacity = seam.capacity(id);
+    if (capacity <= 0) { action.visible = false; return; }
+
+    const count = seam.passengerCount(id);
+    action.visible = true;
+    action.capacity = capacity;
+    action.count = count;
+    action.enabled = count > 0;
+    action.hint = count > 0
+      ? `Put ${count === 1 ? 'the passenger' : `all ${count} passengers`} down around the hull`
+      : 'Nobody aboard. Right-click this hull with infantry selected to load it.';
+  }
+
+  /**
+   * Unload the selected transport.
+   *
+   * Through `channels.commands` as an ordinary Order, for the same reason
+   * `OrderKind.UseAbility` goes that way: the AI issues the identical command,
+   * the replay records one thing rather than two, and the lockstep link carries
+   * it without a special case.
+   */
+  private unloadSelection(): void {
+    const sel = this.world.selection;
+    if (sel.count !== 1) return;
+    const action = this.view.cargo;
+    if (!action.visible) return;
+    if (!action.enabled) {
+      this.soundHook?.('error');
+      this.toast('warn', 'cargo', 'Unload', 'Nobody aboard');
+      return;
+    }
+    const store = this.world.store;
+    const idx = store.index(sel.ids[0] as EntityId);
+    if (idx < 0) return;
+    this.channels.commands.issueOrder(
+      this.world.localPlayer, OrderKind.Unload, sel.ids, 1,
+      store.posX[idx], store.posZ[idx], sel.ids[0] as EntityId,
+    );
+    this.toast('info', 'cargo', 'Unload', action.hint);
   }
 
   /**
