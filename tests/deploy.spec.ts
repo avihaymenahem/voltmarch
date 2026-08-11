@@ -638,7 +638,7 @@ describe('input', () => {
 
     const res: OrderResolution = {
       order: OrderKind.None, target: NONE, x: 0, z: 0,
-      cursor: CursorKind.Default, valid: false, isRally: false,
+      cursor: CursorKind.Default, valid: false, isRally: false, garrisonRefusal: '',
     };
     resolveContextOrder(
       rig.world, mcv, 40, 40, true, { shift: false, ctrl: false, alt: false }, 0, caps, res,
@@ -657,7 +657,7 @@ describe('input', () => {
 
     const res: OrderResolution = {
       order: OrderKind.None, target: NONE, x: 0, z: 0,
-      cursor: CursorKind.Default, valid: false, isRally: false,
+      cursor: CursorKind.Default, valid: false, isRally: false, garrisonRefusal: '',
     };
     resolveContextOrder(
       rig.world, NONE, 120, 120, true, { shift: false, ctrl: false, alt: false }, 0, caps, res,
@@ -674,7 +674,7 @@ describe('input', () => {
 
     const res: OrderResolution = {
       order: OrderKind.None, target: NONE, x: 0, z: 0,
-      cursor: CursorKind.Default, valid: false, isRally: false,
+      cursor: CursorKind.Default, valid: false, isRally: false, garrisonRefusal: '',
     };
     resolveContextOrder(
       rig.world, tank, 60, 40, true, { shift: false, ctrl: false, alt: false }, 0, caps, res,

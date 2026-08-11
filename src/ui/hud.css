@@ -637,6 +637,43 @@
 .vm-hud .vm-res-credits .vm-res-icon { color: var(--vm-gold); }
 .vm-hud .vm-res-credits .vm-res-value { min-width: calc(52 * var(--vm-u)); }
 
+/* -- the storage ceiling -------------------------------------------------
+ *
+ * The power cell's construction, one readout over: a live number against the
+ * ceiling it is measured by. The strip printed CREDITS as a bare figure, so
+ * "the bank is full and every harvester run is being binned" was a thing only
+ * EVA ever said — and with the stock 10,000 bank the player STARTS at the
+ * ceiling, which makes it the first thing that goes wrong in every match.
+ *
+ * The denominator is deliberately quieter than the balance: it is a constant
+ * for minutes at a time and must not compete with the number that moves.
+ * ---------------------------------------------------------------------- */
+
+.vm-hud .vm-credit-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0;
+}
+
+.vm-hud .vm-res-cap {
+  font-size: calc(10 * var(--vm-u));
+  font-weight: 600;
+  line-height: 1;
+  color: var(--vm-faint);
+  white-space: nowrap;
+}
+
+/* NEARLY FULL is a warning: there is still headroom and a silo is four seconds
+   of build time, so the player has time to act on it. */
+.vm-hud .vm-res-credits.is-nearly-capped .vm-res-cap { color: var(--vm-warn); }
+
+/* FULL is the alarm, and it lights the BALANCE as well as the ceiling —
+   the balance is the number the eye is already on, and at this point it has
+   stopped meaning "what I have" and started meaning "what I am wasting". */
+.vm-hud .vm-res-credits.is-capped .vm-res-value,
+.vm-hud .vm-res-credits.is-capped .vm-res-cap { color: var(--vm-warn); }
+.vm-hud .vm-res-credits.is-capped .vm-res-icon { color: var(--vm-warn); }
+
 /* The divider. A single lit hairline, not a bevelled groove. */
 .vm-hud .vm-res-rule {
   width: 1px;
@@ -1348,6 +1385,68 @@
   white-space: nowrap;
 }
 
+/* -- the primary-factory toggle ------------------------------------------
+ *
+ * Cargo's treatment plus one extra state. `is-active` is the same lit
+ * affordance the stance buttons use, and it means the same thing here: THIS is
+ * the one that is currently selected. That lit state is the only place in the
+ * product that answers "which of my two War Factories do tanks come out of".
+ * ---------------------------------------------------------------------- */
+
+.vm-hud .vm-primary-row { margin-left: calc(6 * var(--vm-u)); }
+
+.vm-hud .vm-primary {
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* -- self destruct --------------------------------------------------------
+ *
+ * The one control in the interface whose whole job is to destroy something of
+ * yours, so it is the one control that does not take the neutral treatment.
+ * Danger-tinted at rest and solid danger once armed — the armed state has to be
+ * unmistakable from across the frame, because the next click is irreversible.
+ * ---------------------------------------------------------------------- */
+
+.vm-hud .vm-destruct-row { margin-left: calc(6 * var(--vm-u)); }
+
+.vm-hud .vm-destruct {
+  font-size: calc(8 * var(--vm-u));
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--vm-danger);
+  border-color: rgba(255, 77, 61, 0.5);
+}
+
+.vm-hud .vm-destruct:hover,
+.vm-hud .vm-destruct:focus-visible {
+  color: var(--vm-danger);
+  border-color: var(--vm-danger);
+  background: rgba(255, 77, 61, 0.18);
+}
+
+.vm-hud .vm-destruct.is-armed {
+  color: #12161c;
+  border-color: var(--vm-danger);
+  background: var(--vm-danger);
+  animation: vm-destruct-pulse 0.7s steps(2, jump-none) infinite;
+}
+
+/* Two steps rather than a fade: an armed irreversible control should read as a
+   warning lamp, not as a soft glow. `prefers-reduced-motion` drops it to the
+   solid fill, which is still unmistakable. */
+@keyframes vm-destruct-pulse {
+  0%   { opacity: 1; }
+  100% { opacity: 0.62; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vm-hud .vm-destruct.is-armed { animation: none; }
+}
+
 /* --------------------------------------------------------------------------
  * THE SUPERWEAPON BAR — right edge, directly above the build rail
  * --------------------------------------------------------------------------
@@ -1367,18 +1466,33 @@
  * readout that only changes once a second.
  * ------------------------------------------------------------------------ */
 
-.vm-hud .vm-dock-super {
+/* THE COLUMN, and the only thing here that is positioned. Both charge bars are
+   ordinary flow items inside it, so neither has to know how tall the other one
+   currently is — see the note in `Sidebar`'s constructor. Anchored by `bottom`
+   with `height: auto`, so the stack grows UPWARD as bars appear. */
+.vm-hud .vm-rail-stack {
   position: absolute;
   right: calc((10 + 240 + 3) * var(--vm-u));   /* rail right + rail width + clearance */
   bottom: calc(var(--vm-dock-h) + var(--vm-band-pad) + var(--vm-gap));
   width: calc(150 * var(--vm-u));
+  display: flex;
+  flex-direction: column;
+  gap: calc(3 * var(--vm-u));
+  z-index: 4;
+  /* The column is a spacer; the bars inside it take the clicks. Without this,
+     an empty stack would still eat pointer events over open ground. */
+  pointer-events: none;
+}
+
+.vm-hud .vm-dock-super {
+  position: relative;
+  width: 100%;
   height: auto;
   display: flex;
   flex-direction: column;
   gap: calc(2 * var(--vm-u));
   padding: calc(4 * var(--vm-u));
   box-sizing: border-box;
-  z-index: 4;
   pointer-events: auto;
 }
 
@@ -1470,6 +1584,40 @@
 
 .vm-hud .vm-super-row.is-armed .vm-super-time { color: #12161c; }
 .vm-hud .vm-super-row.is-armed .vm-super-fill { background: none; }
+
+/* --------------------------------------------------------------------------
+ * THE COMMANDER POWER BAR — beside the superweapons, same bottom line
+ * --------------------------------------------------------------------------
+ * Borrows `.vm-super-row` outright: same height, same fill, same three states
+ * (charging / ready / armed). That is not laziness — the two mechanisms rhyme
+ * exactly (charge on a clock, click to arm, click the ground to call) and
+ * giving them two visual languages would teach the player they are different
+ * things when they are not.
+ *
+ * The dock sits directly ABOVE the superweapon dock in the shared
+ * `.vm-rail-stack` column, so neither has to know how tall the other currently
+ * is. Standing them side by side was the first attempt and it was wrong for the
+ * common case: most matches never build a superweapon, and the powers bar then
+ * sat 150 units out over open ground with a hole beside it.
+ * ------------------------------------------------------------------------ */
+
+.vm-hud .vm-dock-powers {
+  position: relative;
+  width: 100%;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--vm-u));
+  padding: calc(4 * var(--vm-u));
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+/* A power's label is a proper name ("Emergency Repair") rather than a weapon
+   class, so it gets the room the countdown does not need — a power's charge is
+   under four minutes and never needs the H:MM the superweapon clock allows. */
+.vm-hud .vm-power-row .vm-super-label { flex: 1 1 auto; }
+.vm-hud .vm-power-row .vm-super-time { font-size: calc(8 * var(--vm-u)); }
 
 /* -- the health bar: full width, number laid over it ---------------------- */
 

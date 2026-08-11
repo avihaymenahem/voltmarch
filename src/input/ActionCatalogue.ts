@@ -699,8 +699,10 @@ export const ACTIONS: readonly ActionDef[] = [
       'Unpack a construction vehicle into its Construction Yard WHERE IT STANDS — drive ' +
       'it into place first, this is not a move order. Double-clicking the vehicle does ' +
       'the same thing, and so does right-clicking it while it is selected. A structure ' +
-      'that can fold back into a vehicle takes the same key, and so does a transport ' +
-      'with a squad aboard: the men get out around the hull.',
+      'that can fold back into a vehicle takes the same key; so does a transport with a ' +
+      'squad aboard, and so does a building with a squad inside — the men get out around ' +
+      'the hull or around the walls. All three are the same verb, and a mixed selection ' +
+      'does all three at once. The selection panel has a button for each.',
     category: 'orders',
     surface: 'command',
     binding: 'rebindable',

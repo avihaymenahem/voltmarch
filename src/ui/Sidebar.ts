@@ -103,6 +103,21 @@ export interface BuildExtras {
   blurb: string;
   /** Human sentence naming what this needs, e.g. `Requires Radar Dome`. */
   prereq: string;
+  /**
+   * WHICH MISSION UNLOCKS THIS — `Strip Mine: mine 250,000 credits of ore` —
+   * or '' when the def is not progression-gated, or when nothing can say.
+   *
+   * A player hovered a locked Battle Lab, read the gate's generic "Locked —
+   * complete a mission", and asked whether they were meant to guess. This is
+   * the sentence that answers them. It is computed in `src/ui/Hud.ts`, which is
+   * the one place that can see BOTH the def tables (for `unlockedBy`) and the
+   * progression handle (for the mission behind that id).
+   *
+   * Empty is the correct and common answer: the overwhelming majority of defs
+   * carry no `unlockedBy` at all, and a build refused for FUNDS or POWER must
+   * keep showing the funds or power sentence rather than a mission name.
+   */
+  unlockHint: string;
 }
 
 /** One card in the selection panel. Pooled — never retained by the caller. */
@@ -167,6 +182,12 @@ export interface SelectionView {
   ability: AbilityAction;
   /** The transport's cargo readout and Unload button. Pooled, mutated in place. */
   cargo: CargoAction;
+  /** The garrison's occupancy readout and Evacuate button. Pooled. */
+  garrison: GarrisonAction;
+  /** The Primary Factory toggle. Pooled and mutated in place. */
+  primary: PrimaryAction;
+  /** The Self-Destruct button and its confirm latch. Pooled. */
+  selfDestruct: SelfDestructAction;
   /** Stat row. An empty string blanks its chip. */
   armour: string;
   damage: string;
@@ -268,6 +289,147 @@ export interface CargoAction {
 }
 
 /**
+ * A garrisoned structure's occupancy, as the selection panel needs it.
+ *
+ * THE TRANSPORT'S CARGO ROW, ONE ENTITY KIND OVER, and that is the whole
+ * design. Infantry inside a building carry `EntityFlag.Garrisoned` exactly as
+ * passengers in a hull do, so they are invisible to the render bridge, the
+ * minimap, the world overlay and selection by the identical mechanism — and
+ * before this row existed there was no way at all to get them out again.
+ * `GarrisonService.evacuate` shipped with a doc comment naming "the HUD's
+ * evacuate button" and no such button was ever built.
+ *
+ * The verb goes out on `OrderKind.Unload` — the SAME order the Unload button
+ * issues, addressed to a building instead of a hull — so the two gestures are
+ * one verb all the way down to the wire, and the D key drives both.
+ *
+ * NO CAPACITY FIELD, unlike `CargoAction`. `GARRISON.capacity` lives in
+ * `src/sim/Garrison.ts`, which this file must not import (see the seam note in
+ * `Hud.ts`), and the service publishes no reader for it. A count with no
+ * denominator is honest; a denominator guessed at from a constant copied over
+ * here is the kind of quiet drift `docs/SPEC_DRIFT_AUDIT.md` catalogues.
+ */
+export interface GarrisonAction {
+  /** False hides the row: no occupied structure of yours is selected. */
+  visible: boolean;
+  /** False greys the button — nobody inside. */
+  enabled: boolean;
+  /** Men inside the primary. */
+  count: number;
+  /** One line for the tooltip and the aria description. Never empty. */
+  hint: string;
+}
+
+/**
+ * The primary-factory toggle, as the selection panel needs to render it.
+ *
+ * WHY THIS IS A BUTTON AND NOT A RIGHT-CLICK ON THE CAMEO
+ * -------------------------------------------------------
+ * `CommandKind.SetPrimary` has existed since the command enum was written,
+ * `Production.applyPrimary` implements it and `EntityFlag.PrimaryFactory` is
+ * read at every spawn — and nothing in the interface or on the keyboard ever
+ * issued it. With two War Factories the player could not choose which one their
+ * tanks came out of, which is a decision every base with a forward factory
+ * needs to make.
+ *
+ * It follows Relocate's rule rather than the stance row's: VISIBLE and greyed
+ * once this factory is already primary, because a control that disappears the
+ * moment it succeeds leaves the player unsure whether it worked. `isPrimary`
+ * drives the lit state, so the row doubles as the readout for "which one is it
+ * right now" — the question that has no other answer on screen.
+ */
+export interface PrimaryAction {
+  /** False hides the row: no owned, finished factory is selected. */
+  visible: boolean;
+  /** False greys the button — this one is already primary. */
+  enabled: boolean;
+  /** True when the selected factory is the current primary. Lights the row. */
+  isPrimary: boolean;
+  /** One line for the tooltip and the aria description. Never empty. */
+  hint: string;
+}
+
+/**
+ * The self-destruct button and its confirm latch.
+ *
+ * TWO CLICKS, AND THE SECOND ONE IS THE COMMAND. Every other verb on this panel
+ * is recoverable — a relocation can be cancelled, a stance re-set, a transport
+ * re-loaded. This one kills your own hardware and there is no undo, so the
+ * button arms on the first click, prints CONFIRM, and disarms itself after
+ * `SELF_DESTRUCT_CONFIRM_SECONDS` of being ignored. That timer is what stops a
+ * stray armed button from eating a unit three minutes later.
+ *
+ * INFANTRY AND VEHICLES ONLY. `RepairSell.selfDestruct` refuses every other
+ * entity kind outright, so offering the row on a structure would be offering a
+ * button that does nothing — a structure is disposed of with the sell tool, and
+ * that tool already exists.
+ */
+export interface SelfDestructAction {
+  /** False hides the row: nothing you own that can be scuttled is selected. */
+  visible: boolean;
+  /** How many of the selection would go up. Never 0 while `visible`. */
+  count: number;
+  /** True once the first click has landed and the next one fires. */
+  armed: boolean;
+  /** One line for the tooltip and the aria description. Never empty. */
+  hint: string;
+}
+
+/**
+ * Seconds an armed self-destruct waits for its confirming click.
+ *
+ * Long enough to read the word CONFIRM and mean it, short enough that a button
+ * armed by accident is disarmed again before the player's attention comes back
+ * to this corner of the screen.
+ */
+export const SELF_DESTRUCT_CONFIRM_SECONDS = 4;
+
+/**
+ * One commander power, as the powers bar needs to render it.
+ *
+ * THE SUPERWEAPON ROW'S TWIN, and deliberately so: both are player-level,
+ * both charge on a clock nothing but time advances, both are called by arming a
+ * cursor and clicking the ground. A player who has learned one has learned the
+ * other, which is the entire argument for giving them the same row shape and
+ * standing them in the same corner of the frame.
+ *
+ * WHERE THEY DIFFER IS WHO OWNS THE ARMING. A superweapon's cursor is installed
+ * by `src/sim/Superweapons.ts`, which owns its own pointer handler; a power has
+ * no such service, so the HUD holds `armedPower` and `src/input/input.system.ts`
+ * reads it on the ground click — exactly how `hud.armedMode` drives the repair
+ * and sell tools. Neither path lets this file fire anything: the shot is
+ * `channels.commands.issueUsePower` and nothing else.
+ *
+ * `remaining` / `total` are SECONDS and are only ever printed.
+ */
+export interface CommanderPowerRow {
+  /** Stable power key — `airstrike`, `chronoshift`. Also the pool identity. */
+  key: string;
+  /** `CommanderPowerId`. Rides on `Command.arg` when the power is called. */
+  id: number;
+  /** 'Orbital Scan'. Never empty. */
+  label: string;
+  /** One line saying what it does. The tooltip and the aria description. */
+  hint: string;
+  /** Icon for the row. Chosen per power, so five rows are five silhouettes. */
+  icon: IconName;
+  /** Seconds left, 0 when ready. */
+  remaining: number;
+  /** The full charge, so the row can draw a proportion. */
+  total: number;
+  ready: boolean;
+  /** True while this power owns the cursor and the next ground click calls it. */
+  armed: boolean;
+}
+
+/** Every commander power this profile has earned. Pooled. */
+export interface CommanderPowerView {
+  /** Live rows. Only the first `count` of `rows` are valid. */
+  count: number;
+  rows: CommanderPowerRow[];
+}
+
+/**
  * One superweapon countdown, as the bar needs to render it.
  *
  * WHY THIS IS NOT A SELECTION ACTION LIKE THE TWO ABOVE
@@ -319,6 +481,23 @@ export interface HudTelemetry {
   structures: number;
   /** Smoothed credit income, per minute. */
   incomePerMin: number;
+  /**
+   * THE CREDIT CEILING — `PlayerState.storageMax`, and everything above it is
+   * thrown away on the next harvest.
+   *
+   * Read straight off the player rather than out of `HudSnapshot`, because that
+   * structure belongs to `src/sim/Production.ts` and a storage cap is not
+   * production's business. `world.players[localPlayer]` is core state the HUD
+   * already holds a reference to, so this costs one array read a frame.
+   *
+   * The strip showed CREDITS with no denominator, so the only signal that
+   * income was being binned was EVA saying so — and with the stock 10,000 bank
+   * the player STARTS exactly at the cap, which makes this the first thing that
+   * goes wrong in every match and the last thing that was visible.
+   *
+   * 0 means "no cap known" and the readout falls back to the bare number.
+   */
+  storageMax: number;
   /** One sentence about the state of the base. Never empty. */
   advice: string;
   adviceKind: AdviceKind;
@@ -343,8 +522,16 @@ export interface SidebarCallbacks {
   useAbility(): void;
   /** The transport's Unload button was pressed. */
   unload(): void;
+  /** The garrison's Evacuate button was pressed. */
+  evacuate(): void;
+  /** The Primary Factory button was pressed. */
+  setPrimary(): void;
+  /** The Self-Destruct button was pressed. Arms first, fires on the second. */
+  selfDestruct(): void;
   /** A superweapon countdown row was clicked. `key` is `SuperweaponRow.key`. */
   fireSuperweapon(key: string): void;
+  /** A commander power row was clicked. `key` is `CommanderPowerRow.key`. */
+  usePower(key: string): void;
   sound(cue: HudSoundCue): void;
 }
 
@@ -394,6 +581,17 @@ export const BUILD_ROWS = 6;
 const CARD_POOL = 14;
 /** Segments in the power meter. */
 const POWER_SEGMENTS = 14;
+/**
+ * Fraction of the storage ceiling at which the credit readout starts warning.
+ *
+ * 90%, and it is a WARNING rather than the alarm: at nine tenths there is still
+ * a refinery-load of headroom and a silo takes four seconds to build, so the
+ * player has time to act. The full state is the separate `is-capped` class,
+ * because "you are about to waste money" and "you are wasting money right now"
+ * are different sentences and a readout with one state for both teaches
+ * neither.
+ */
+export const STORAGE_WARN_FRACTION = 0.9;
 
 /** Tab titles, in `BuildTab` order. */
 const TAB_LABELS: readonly string[] = ['Structures', 'Defence', 'Infantry', 'Vehicles'];
@@ -633,6 +831,8 @@ export class ResourceStrip {
   readonly root: HTMLElement;
 
   private readonly creditsNode: Text;
+  private readonly creditsEl: HTMLElement;
+  private readonly capNode: Text;
   private readonly deltaEl: HTMLElement;
   private readonly deltaNode: Text;
   private readonly powerEl: HTMLElement;
@@ -656,6 +856,8 @@ export class ResourceStrip {
   private lastArmy = -1;
   private lastBase = -1;
   private lastIncome = '';
+  /** `credits|cap|capped` — the storage readout's signature. */
+  private lastCap = '';
 
   constructor(parent: HTMLElement) {
     this.root = panel(parent, 'vm-resources', 'ends');
@@ -670,12 +872,22 @@ export class ResourceStrip {
     this.root.appendChild(makeIcon('crest', 'vm-icon vm-res-crest'));
     el('span', 'vm-res-rule', this.root);
 
-    /* -- credits ------------------------------------------------------- */
+    /* -- credits -------------------------------------------------------
+     * BANKED / STORED, on the power cell's model. The label said "Credits" and
+     * the value was a bare number, so the one fact a player needs in the first
+     * ninety seconds — that the bank is FULL and the harvesters are running for
+     * nothing — was not on screen anywhere. The cap rides in a second node
+     * beside the balance rather than in a tooltip, because the moment it
+     * matters is the moment nobody is hovering the strip.
+     * ------------------------------------------------------------------ */
     const credits = el('div', 'vm-res vm-res-credits', this.root);
+    this.creditsEl = credits;
     credits.appendChild(makeIcon('credits', 'vm-icon vm-res-icon'));
     const cBody = el('div', 'vm-res-body', credits);
-    label(cBody, 'vm-res-label', 'Credits');
-    this.creditsNode = label(cBody, 'vm-res-value vm-num', '0');
+    label(cBody, 'vm-res-label', 'Credits  banked / stored');
+    const cLine = el('div', 'vm-credit-line', cBody);
+    this.creditsNode = label(cLine, 'vm-res-value vm-num', '0');
+    this.capNode = label(cLine, 'vm-res-cap vm-num', '');
     this.deltaEl = el('span', 'vm-res-delta vm-num', credits);
     this.deltaNode = textNode(this.deltaEl);
     this.deltaEl.hidden = true;
@@ -764,6 +976,33 @@ export class ResourceStrip {
         this.deltaEl.hidden = true;
         this.deltaEl.classList.remove('is-live');
       }
+    }
+
+    /* -- the storage ceiling ------------------------------------------- *
+     * Gated on the CAP and the two threshold states, never on the balance:
+     * `snap.credits` moves on every harvest tick and a signature carrying it
+     * would rewrite this node sixty times a second for a denominator that
+     * changes only when a silo is built or lost.
+     *
+     * The states are measured against the TRUE balance rather than the rolling
+     * counter's animated value — the counter is a presentation device and the
+     * warning is a fact about the simulation, so a bank that has just hit the
+     * ceiling must not wait for the digits to catch up before it says so. */
+    const cap = Math.max(0, Math.round(tele.storageMax));
+    const store = storageState(snap.credits, cap);
+    const capSig = `${cap}|${store}`;
+    if (capSig !== this.lastCap) {
+      this.lastCap = capSig;
+      this.capNode.nodeValue = store === 'none' ? '' : ` / ${formatCredits(cap)}`;
+      this.creditsEl.classList.toggle('is-capped', store === 'full');
+      this.creditsEl.classList.toggle('is-nearly-capped', store === 'near');
+      this.creditsEl.title = store === 'none'
+        ? 'Credits banked'
+        : store === 'full'
+          ? `Storage FULL at ${formatCredits(cap)} — every credit mined from now `
+            + 'on is thrown away. Build an Ore Silo.'
+          : `Credits banked, against ${formatCredits(cap)} of storage. `
+            + 'Anything over the ceiling is wasted on harvest.';
     }
 
     /* -- power --------------------------------------------------------- */
@@ -898,6 +1137,15 @@ class SelectionPanel {
   private readonly cargoRow: HTMLElement;
   private readonly cargoButton: HTMLButtonElement;
   private readonly cargoCountNode: Text;
+  private readonly garrisonRow: HTMLElement;
+  private readonly garrisonButton: HTMLButtonElement;
+  private readonly garrisonCountNode: Text;
+  private readonly primaryRow: HTMLElement;
+  private readonly primaryButton: HTMLButtonElement;
+  private readonly primaryLabelNode: Text;
+  private readonly destructRow: HTMLElement;
+  private readonly destructButton: HTMLButtonElement;
+  private readonly destructLabelNode: Text;
 
   /** The idle advisory line — all that is left of the status board. */
   private readonly adviceNode: Text;
@@ -924,6 +1172,9 @@ class SelectionPanel {
   private lastRelocate = '';
   private lastAbility = '';
   private lastCargo = '';
+  private lastGarrison = '';
+  private lastPrimary = '';
+  private lastDestruct = '';
 
   constructor(parent: HTMLElement, private readonly cb: SidebarCallbacks) {
     this.root = panel(parent, 'vm-dock vm-dock-selection', 'diag');
@@ -1060,6 +1311,81 @@ class SelectionPanel {
       }
       this.cb.sound('click');
       this.cb.unload();
+    });
+
+    /* -- the garrison's occupancy -------------------------------------- *
+     * The cargo row, one entity kind over. Infantry walked into a building
+     * could never come out: `GarrisonService.evacuate` shipped with a comment
+     * naming "the HUD's evacuate button" and no caller anywhere in `src/ui` or
+     * `src/input`. Same shape as Cargo, same word on the label rail, and the
+     * same D key drives both — a garrison and a transport are one verb. */
+    this.garrisonRow = el('div', 'vm-stances vm-cargo-row', head);
+    label(this.garrisonRow, 'vm-stance-label', 'Garrison');
+    this.garrisonButton = button(this.garrisonRow, 'vm-stance vm-cargo', 'Evacuate the garrison');
+    this.garrisonButton.style.width = 'auto';
+    this.garrisonButton.style.gap = 'calc(3 * var(--vm-u))';
+    this.garrisonButton.style.padding = '0 calc(4 * var(--vm-u))';
+    this.garrisonButton.appendChild(makeIcon('deploy', 'vm-icon'));
+    label(this.garrisonButton, '', 'Evacuate');
+    this.garrisonCountNode = label(this.garrisonButton, 'vm-num', '0');
+    this.garrisonRow.hidden = true;
+    this.garrisonButton.addEventListener('pointerenter', () => this.cb.sound('hover'));
+    this.garrisonButton.addEventListener('click', () => {
+      // Dimmed, never `disabled`, for the reason spelled out on Relocate above.
+      if (this.garrisonButton.getAttribute('aria-disabled') === 'true') {
+        this.cb.sound('error');
+        return;
+      }
+      this.cb.sound('click');
+      this.cb.evacuate();
+    });
+
+    /* -- the primary factory ------------------------------------------- *
+     * `CommandKind.SetPrimary` has existed since the enum was written and
+     * nothing ever issued it. The button stays visible and lit once this
+     * factory IS the primary, because that lit state is the only readout in the
+     * product for "which of my two War Factories do tanks come out of". */
+    this.primaryRow = el('div', 'vm-stances vm-primary-row', head);
+    label(this.primaryRow, 'vm-stance-label', 'Factory');
+    this.primaryButton = button(this.primaryRow, 'vm-stance vm-primary', 'Set primary factory');
+    this.primaryButton.style.width = 'auto';
+    this.primaryButton.style.gap = 'calc(3 * var(--vm-u))';
+    this.primaryButton.style.padding = '0 calc(4 * var(--vm-u))';
+    this.primaryButton.appendChild(makeIcon('primary', 'vm-icon'));
+    this.primaryLabelNode = label(this.primaryButton, '', 'Set Primary');
+    this.primaryRow.hidden = true;
+    this.primaryButton.addEventListener('pointerenter', () => this.cb.sound('hover'));
+    this.primaryButton.addEventListener('click', () => {
+      // Dimmed, never `disabled`, for the reason spelled out on Relocate above.
+      if (this.primaryButton.getAttribute('aria-disabled') === 'true') {
+        this.cb.sound('error');
+        return;
+      }
+      this.cb.sound('click');
+      this.cb.setPrimary();
+    });
+
+    /* -- self destruct -------------------------------------------------- *
+     * The one irreversible verb on the panel, so it is the one that asks
+     * twice. The HUD owns the latch; the second click is what reaches
+     * `channels.commands`. See `SelfDestructAction`.
+     *
+     * `vm-destruct` rather than the plain stance treatment: this is the only
+     * control in the interface that destroys something of yours on purpose, and
+     * it should not look like the button next to it. */
+    this.destructRow = el('div', 'vm-stances vm-destruct-row', head);
+    label(this.destructRow, 'vm-stance-label', 'Scuttle');
+    this.destructButton = button(this.destructRow, 'vm-stance vm-destruct', 'Self-destruct');
+    this.destructButton.style.width = 'auto';
+    this.destructButton.style.gap = 'calc(3 * var(--vm-u))';
+    this.destructButton.style.padding = '0 calc(4 * var(--vm-u))';
+    this.destructButton.appendChild(makeIcon('alert', 'vm-icon'));
+    this.destructLabelNode = label(this.destructButton, '', 'Destruct');
+    this.destructRow.hidden = true;
+    this.destructButton.addEventListener('pointerenter', () => this.cb.sound('hover'));
+    this.destructButton.addEventListener('click', () => {
+      this.cb.sound('click');
+      this.cb.selfDestruct();
     });
 
     /* -- the body: cameo left, description right ----------------------- */
@@ -1240,6 +1566,18 @@ class SelectionPanel {
         this.cargoRow.hidden = true;
         this.lastCargo = '';
       }
+      if (!this.garrisonRow.hidden) {
+        this.garrisonRow.hidden = true;
+        this.lastGarrison = '';
+      }
+      if (!this.primaryRow.hidden) {
+        this.primaryRow.hidden = true;
+        this.lastPrimary = '';
+      }
+      if (!this.destructRow.hidden) {
+        this.destructRow.hidden = true;
+        this.lastDestruct = '';
+      }
       this.updateAdvice(tele);
       return;
     }
@@ -1347,6 +1685,81 @@ class SelectionPanel {
     this.updateRelocate(view.relocate);
     this.updateAbility(view.ability);
     this.updateCargo(view.cargo);
+    this.updateGarrison(view.garrison);
+    this.updatePrimary(view.primary);
+    this.updateDestruct(view.selfDestruct);
+  }
+
+  /**
+   * The garrison's occupancy readout and Evacuate button.
+   *
+   * Signature-gated like every other row here, on an INTEGER count, so a
+   * strongpoint with a steady squad in it writes no DOM at all.
+   */
+  private updateGarrison(action: GarrisonAction): void {
+    const sig = action.visible
+      ? `${action.enabled ? 1 : 0}|${action.count}|${action.hint}`
+      : '';
+    if (sig === this.lastGarrison) return;
+    this.lastGarrison = sig;
+
+    this.garrisonRow.hidden = !action.visible;
+    if (!action.visible) return;
+
+    this.garrisonCountNode.nodeValue = String(action.count);
+    this.garrisonButton.title = action.hint;
+    this.garrisonButton.setAttribute('aria-label', `Evacuate — ${action.hint}`);
+    this.garrisonButton.setAttribute('aria-disabled', action.enabled ? 'false' : 'true');
+    this.garrisonButton.style.opacity = action.enabled ? '1' : '0.4';
+  }
+
+  /**
+   * The primary-factory toggle.
+   *
+   * Two states in one node — SET PRIMARY and PRIMARY — because the second is
+   * the readout and the first is the verb, and giving them separate elements
+   * would shift the layout every time the player pressed it.
+   */
+  private updatePrimary(action: PrimaryAction): void {
+    const sig = action.visible
+      ? `${action.enabled ? 1 : 0}|${action.isPrimary ? 1 : 0}|${action.hint}`
+      : '';
+    if (sig === this.lastPrimary) return;
+    this.lastPrimary = sig;
+
+    this.primaryRow.hidden = !action.visible;
+    if (!action.visible) return;
+
+    this.primaryLabelNode.nodeValue = action.isPrimary ? 'Primary' : 'Set Primary';
+    this.primaryButton.title = action.hint;
+    this.primaryButton.setAttribute('aria-label', action.hint);
+    this.primaryButton.setAttribute('aria-pressed', action.isPrimary ? 'true' : 'false');
+    this.primaryButton.setAttribute('aria-disabled', action.enabled ? 'false' : 'true');
+    this.primaryButton.classList.toggle('is-active', action.isPrimary);
+    this.primaryButton.style.opacity = action.enabled || action.isPrimary ? '1' : '0.4';
+  }
+
+  /**
+   * The self-destruct button.
+   *
+   * NOT dimmed-when-disabled like its neighbours, because it has no disabled
+   * state: the row is either absent (nothing scuttleable selected) or live. Its
+   * two states are ARMED and not, and the armed one is the loud one.
+   */
+  private updateDestruct(action: SelfDestructAction): void {
+    const sig = action.visible
+      ? `${action.count}|${action.armed ? 1 : 0}|${action.hint}`
+      : '';
+    if (sig === this.lastDestruct) return;
+    this.lastDestruct = sig;
+
+    this.destructRow.hidden = !action.visible;
+    if (!action.visible) return;
+
+    this.destructLabelNode.nodeValue = action.armed ? 'Confirm' : 'Destruct';
+    this.destructButton.title = action.hint;
+    this.destructButton.setAttribute('aria-label', action.hint);
+    this.destructButton.classList.toggle('is-armed', action.armed);
   }
 
   /**
@@ -1497,6 +1910,33 @@ function blockKindOf(reason: string): BlockKind {
   if (r.includes('fund') || r.includes('credit') || r.includes('afford')) return 'funds';
   if (r.includes('power') || r.includes('brownout')) return 'power';
   return 'tech';
+}
+
+/**
+ * The sentence a locked slot shows, with the granting mission folded in.
+ *
+ * `reason` is whatever `src/sim/Production.ts` and `UnlockGate` produced.
+ * `hint` is `BuildExtras.unlockHint` — `Strip Mine: mine 250,000 credits of
+ * ore` — and is '' for the overwhelming majority of defs, which carry no
+ * progression tag at all.
+ *
+ * WHY THE MISSION REPLACES THE TAIL RATHER THAN BEING APPENDED. The gate's
+ * constant is `Locked — complete a mission`, and appending would produce
+ * "Locked — complete a mission — Strip Mine: ...", which says "a mission"
+ * and then names it. The em-dash tail is cut and the real answer put in its
+ * place, so the line reads `Locked — Strip Mine: mine 250,000 credits of ore`.
+ *
+ * A reason with no dash, or an unrecognised one, keeps its whole self and gains
+ * the mission after a dash. That is the same "unrecognised sentence still shows
+ * something useful" default `blockKindOf` above takes, and for the same reason:
+ * these strings are not ours and are free to be reworded.
+ */
+export function lockedSentence(reason: string, hint: string): string {
+  if (hint === '') return reason;
+  if (reason === '') return `Locked — ${hint}`;
+  const dash = reason.indexOf('—');
+  const head = dash > 0 ? reason.slice(0, dash).trimEnd() : reason;
+  return `${head} — ${hint}`;
 }
 
 const BLOCK_WORDS: Readonly<Record<Exclude<BlockKind, ''>, string>> = {
@@ -2056,13 +2496,15 @@ class BuildPanel {
     }
 
     this.briefNameNode.nodeValue = c.name;
-    this.briefTextNode.nodeValue = locked ? c.reason : (this.extras?.(c.key).blurb ?? '');
+    this.briefTextNode.nodeValue = locked
+      ? lockedSentence(c.reason, this.extras?.(c.key).unlockHint ?? '')
+      : (this.extras?.(c.key).blurb ?? '');
     this.briefTextEl.classList.toggle('is-locked', locked);
   }
 
   private tipFor(c: HudCameo, index: number): TooltipContent {
     const extra = this.extras?.(c.key)
-      ?? { buildTimeSec: 0, powerDelta: 0, blurb: '', prereq: '' };
+      ?? { buildTimeSec: 0, powerDelta: 0, blurb: '', prereq: '', unlockHint: '' };
     return {
       title: c.name,
       cost: c.cost,
@@ -2070,7 +2512,10 @@ class BuildPanel {
       powerDelta: extra.powerDelta,
       blurb: extra.blurb,
       prereq: extra.prereq,
-      requirement: c.available ? '' : c.reason,
+      // The tooltip is the LONG form and gets the mission too. A player who has
+      // stopped to hover is the one most likely to act on it, and the tooltip
+      // has the room the two-line brief does not.
+      requirement: c.available ? '' : lockedSentence(c.reason, extra.unlockHint),
       hotkey: SLOT_HOTKEY_LABELS[index] ?? '',
     };
   }
@@ -2335,6 +2780,181 @@ export class SuperweaponBar {
   }
 }
 
+/* ==========================================================================
+ * SECTION 5C — THE COMMANDER POWER BAR  (right edge, beside the superweapons)
+ *
+ * One row per power the local profile has EARNED. Each row is a button: while
+ * it is charging the button is inert and prints MM:SS, and the moment it reads
+ * READY a click arms the cursor for a ground click.
+ *
+ * WHY THIS BAR EXISTS AT ALL. All five powers were fully implemented — through
+ * the bus, through the replay, through the multiplayer relay, with their
+ * effects tested — and the ONLY way to call one was `__vmPowers.fire()` from a
+ * devtools console. Meanwhile `src/shell/Missions.ts` printed "Callable once
+ * charged, in any match" on the reward card of every mission that paid one out.
+ * That is the product lying to the player about a campaign reward, and it is
+ * the reason this file grew a second dock rather than a corner of an existing
+ * one.
+ *
+ * WHY IT IS THE SUPERWEAPON BAR'S TWIN AND NOT PART OF IT. Same row shape, same
+ * width, same bottom line, standing immediately to its left — because the two
+ * mechanisms genuinely rhyme and a player who has learned one has learned the
+ * other. They are separate DOCKS because they are separate services with
+ * separate lifetimes: a superweapon row exists while its STRUCTURE stands, a
+ * power row exists because a MISSION was completed, and one can be empty while
+ * the other is full.
+ *
+ * ZERO ALLOCATION, like everything else here: `COMMANDER_POWER_ROWS` rows are
+ * built once and every update is a signature compare, a `nodeValue` write and a
+ * class toggle. The signature quantises the countdown to whole seconds, so a
+ * charging power rewrites two text nodes once a second.
+ * ========================================================================== */
+
+/**
+ * Rows built up front in the power bar.
+ *
+ * Five, which is `COMMANDER_POWER_LIST.length` — every power in the table, not
+ * a cap on how many can be shown. It is stated as a literal rather than
+ * imported so this file keeps no edge into `src/progression/**`;
+ * `tests/commander-powers-ui.spec.ts` asserts the two agree, which is the same
+ * bargain `BUILD_ROWS` makes with the roster.
+ */
+export const COMMANDER_POWER_ROWS = 5;
+
+/**
+ * Which icon stands for which power. Indexed by `CommanderPowerId`, so slot 0
+ * is the `None` row — the same direct-lookup shape the power table itself uses,
+ * and for the same reason.
+ *
+ * Five different silhouettes rather than five copies of one glyph: the bar is
+ * read at a glance mid-fight, and a column of identical icons is a column the
+ * player has to read the WORDS of.
+ *
+ * Here rather than in `Hud.ts` because this is the presentation half and this
+ * file is the one that draws it — and because it makes the table reachable from
+ * `environment: 'node'`, where `tests/commander-powers-ui.spec.ts` asserts every
+ * power in `COMMANDER_POWERS` has an entry. A power added to the table with no
+ * icon would otherwise ship as a blank square nobody noticed.
+ */
+export const POWER_ICONS: readonly IconName[] = [
+  'superweapon',   // None — never drawn
+  'aircraft',      // Airstrike
+  'radar',         // Orbital Scan
+  'repair',        // Emergency Repair
+  'credits',       // Ore Boost
+  'prism',         // Chronoshift
+];
+
+/** How full the bank is, as the credit readout renders it. */
+export type StorageState = 'none' | 'ok' | 'near' | 'full';
+
+/**
+ * Classify a balance against its ceiling.
+ *
+ * Pure, and split out of `ResourceStrip.update` so the rule is falsifiable
+ * without a DOM: "at what point does the strip start warning" is a design
+ * decision, and a design decision buried in a render method is one nobody can
+ * check. `tests/commander-powers-ui.spec.ts` pins the boundaries.
+ *
+ * `'none'` means there is no ceiling to speak of — a cap of 0 or less, which is
+ * what a player record that has not been initialised looks like. The readout
+ * then shows the bare balance, exactly as it did before there was a cap at all.
+ */
+export function storageState(credits: number, cap: number): StorageState {
+  if (!(cap > 0)) return 'none';
+  if (credits >= cap) return 'full';
+  if (credits >= cap * STORAGE_WARN_FRACTION) return 'near';
+  return 'ok';
+}
+
+interface PowerRowCell {
+  root: HTMLButtonElement;
+  labelNode: Text;
+  timeNode: Text;
+  fill: HTMLElement;
+  iconEl: SVGSVGElement;
+  /** The key this row is currently bound to. '' when parked. */
+  key: string;
+  sig: string;
+}
+
+export class CommanderPowerBar {
+  readonly root: HTMLElement;
+  private readonly rows: PowerRowCell[] = [];
+  private live = 0;
+
+  constructor(parent: HTMLElement, private readonly cb: SidebarCallbacks) {
+    this.root = panel(parent, 'vm-dock vm-dock-powers', 'diag-rev');
+    this.root.setAttribute('aria-label', 'Commander powers');
+    this.root.hidden = true;
+
+    for (let i = 0; i < COMMANDER_POWER_ROWS; i++) {
+      const btn = button(this.root, 'vm-super-row vm-power-row', 'Commander power');
+      const fill = el('i', 'vm-super-fill', btn);
+      const iconEl = makeIcon('superweapon', 'vm-icon vm-super-icon');
+      btn.appendChild(iconEl);
+      const body = el('span', 'vm-super-body', btn);
+      const labelNode = label(body, 'vm-super-label', '');
+      const timeNode = label(body, 'vm-super-time vm-num', '');
+      const row: PowerRowCell = { root: btn, labelNode, timeNode, fill, iconEl, key: '', sig: '' };
+      btn.addEventListener('click', () => {
+        if (row.key === '') return;
+        this.cb.sound('click');
+        this.cb.usePower(row.key);
+      });
+      btn.addEventListener('pointerenter', () => this.cb.sound('hover'));
+      btn.hidden = true;
+      this.rows.push(row);
+    }
+  }
+
+  update(view: CommanderPowerView): void {
+    const n = Math.min(view.count, this.rows.length);
+    if ((n === 0) !== this.root.hidden) this.root.hidden = n === 0;
+
+    for (let i = 0; i < n; i++) {
+      const row = this.rows[i];
+      const data = view.rows[i];
+      // Whole seconds, deliberately: the raw float changes every frame and a
+      // signature carrying it would defeat the gate entirely.
+      const secs = Math.ceil(Math.max(0, data.remaining));
+      const sig = `${data.key}|${secs}|${data.ready ? 1 : 0}|${data.armed ? 1 : 0}`;
+      if (sig === row.sig && !row.root.hidden) continue;
+      const rebound = row.key !== data.key;
+      row.sig = sig;
+      row.key = data.key;
+      row.root.hidden = false;
+
+      const hint = data.ready
+        ? `${data.label} ready — click, then pick a target. ${data.hint}`
+        : `${data.label} charging — ${formatClock(secs)} remaining. ${data.hint}`;
+      if (rebound) {
+        row.labelNode.nodeValue = data.label;
+        setIcon(row.iconEl, data.icon);
+      }
+      row.timeNode.nodeValue = data.ready ? 'READY' : formatClock(secs);
+      row.root.title = hint;
+      row.root.setAttribute('aria-label', hint);
+      row.root.setAttribute('aria-disabled', data.ready ? 'false' : 'true');
+      row.root.classList.toggle('is-ready', data.ready);
+      row.root.classList.toggle('is-armed', data.armed);
+      const frac = data.total > 0 ? 1 - Math.max(0, Math.min(1, data.remaining / data.total)) : 1;
+      row.fill.style.transform = `scaleX(${frac.toFixed(3)})`;
+    }
+
+    for (let i = n; i < this.live; i++) {
+      this.rows[i].root.hidden = true;
+      this.rows[i].key = '';
+      this.rows[i].sig = '';
+    }
+    this.live = n;
+  }
+
+  dispose(): void {
+    this.root.remove();
+  }
+}
+
 /* ========================================================================== */
 
 export class Sidebar {
@@ -2348,6 +2968,7 @@ export class Sidebar {
   private readonly selection: SelectionPanel;
   private readonly build: BuildPanel;
   private readonly supers: SuperweaponBar;
+  private readonly powers: CommanderPowerBar;
   private readonly titleEl: HTMLElement;
   private readonly offlineEl: HTMLElement;
   private readonly mapHintEl: HTMLElement;
@@ -2433,7 +3054,20 @@ export class Sidebar {
     // MOUNTED ON THE ROOT for the same reason the build rail is: it positions
     // itself absolutely against the HUD root, directly above the rail. Inside
     // `.vm-docks` its `bottom` would resolve against that thin strip.
-    this.supers = new SuperweaponBar(this.root, opts.callbacks);
+    // THE TWO CHARGE BARS SHARE ONE COLUMN, and the column is what carries the
+    // absolute position. Standing them side by side was the first attempt and
+    // it was wrong for the common case: most matches never build a superweapon,
+    // so the powers bar sat 150 units out over open ground with a hole beside
+    // it. Stacking needs whichever is on top to know how tall the other one
+    // currently is — which is exactly what a flex column anchored by its BOTTOM
+    // edge works out for free. Auto height plus a fixed `bottom` grows upward.
+    //
+    // POWERS ABOVE SUPERWEAPONS. The rail is the anchor the eye returns to, and
+    // a superweapon countdown is the rarer, louder thing; it keeps the slot
+    // nearest the rail so its position never moves as powers are earned.
+    const railStack = el('div', 'vm-rail-stack', this.root);
+    this.powers = new CommanderPowerBar(railStack, opts.callbacks);
+    this.supers = new SuperweaponBar(railStack, opts.callbacks);
     // AFTER the build panel, because it is the one that constructs the
     // renderer. Null in any headless build, where both panels keep their glyphs.
     this.selection.setCameos(this.build.cameoRenderer);
@@ -2496,12 +3130,13 @@ export class Sidebar {
 
   update(
     snap: HudSnapshot, view: SelectionView, tele: HudTelemetry, dt: number,
-    supers: SuperweaponView,
+    supers: SuperweaponView, powers: CommanderPowerView,
   ): void {
     this.resources.update(snap, tele, dt);
     this.selection.update(view, snap, tele);
     this.build.update(snap);
     this.supers.update(supers);
+    this.powers.update(powers);
   }
 
   /** Raise the credits flyout. Driven by `economy:credits`. */
@@ -2519,6 +3154,7 @@ export class Sidebar {
     this.selection.dispose();
     this.resources.dispose();
     this.supers.dispose();
+    this.powers.dispose();
     this.root.remove();
   }
 }

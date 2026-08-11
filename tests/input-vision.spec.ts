@@ -130,7 +130,7 @@ function cell(x: number): number {
 const caps = createCapabilities();
 const res: OrderResolution = {
   order: OrderKind.None, target: NONE, x: 0, z: 0,
-  cursor: CursorKind.Default, valid: false, isRally: false,
+  cursor: CursorKind.Default, valid: false, isRally: false, garrisonRefusal: '',
 };
 const NO_MODS: Modifiers = { shift: false, ctrl: false, alt: false };
 

@@ -122,6 +122,18 @@ export interface ProgressionView {
   /** Rewards earned since the last call — the end screen drains this. */
   drainPending(): readonly Reward[];
   isUnlocked(unlockId: string): boolean;
+  /**
+   * The mission that pays an unlock id, so a locked build slot can NAME it.
+   *
+   * `{ missionId, title, objective }`, or null when nothing grants that id —
+   * which is itself worth surfacing, since an id no mission pays is a content
+   * defect this project has shipped more than once.
+   *
+   * The mirror of this on `src/ui/Objectives.ts#ProgressionView` is OPTIONAL,
+   * deliberately: the HUD must keep working against a handle that predates this
+   * member, and under `?shot=` there is no handle at all.
+   */
+  unlockSource(unlockId: string): { missionId: string; title: string; objective: string } | null;
   subscribe(fn: () => void): () => void;
   resetProfile(): void;
   exportProfile(): string;

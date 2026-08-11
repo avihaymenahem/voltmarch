@@ -134,7 +134,7 @@ function drainCommands(rig: Rig): Command[] {
 const caps = createCapabilities();
 const res: OrderResolution = {
   order: OrderKind.None, target: NONE, x: 0, z: 0,
-  cursor: 0, valid: false, isRally: false,
+  cursor: 0, valid: false, isRally: false, garrisonRefusal: '',
 };
 
 function resolveAt(rig: Rig, hover: EntityId, x: number, z: number, mods = {

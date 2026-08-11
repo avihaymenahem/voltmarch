@@ -44,7 +44,10 @@ import { defineSystem } from '../core/loop';
 import { Phase } from '../core/types';
 import { ctx } from '../game/context';
 
-import { MISSIONS, MISSION_UNLOCK_IDS, UNLOCK_REQUIREMENTS } from '../data/Missions';
+import {
+  MISSIONS, MISSION_UNLOCK_IDS, UNLOCK_REQUIREMENTS,
+  unlockSource as unlockSourceOf,
+} from '../data/Missions';
 import { MissionTracker } from './MissionTracker';
 import { ProfileStore, browserStorage, memoryStorage } from './profile-store';
 import { UnlockGate, setUnlockGate } from './UnlockGate';
@@ -152,6 +155,30 @@ function buildHandle(t: MissionTracker, s: ProfileStore, g: UnlockGate): Progres
 
     isUnlocked(unlockId: string): boolean {
       return g.isUnlocked(unlockId);
+    },
+
+    /**
+     * Which mission grants an unlock id, for the sidebar's locked slot.
+     *
+     * TWO ROUTES REACH THE SAME SENTENCE, and that is deliberate rather than
+     * duplication. `UnlockGate.reasonFor` already answers "Locked — Strip Mine:
+     * mine 250,000 credits of ore" for anything the SIM asks about, which is
+     * what `Production.availabilityOf` puts on `BuildEntry.reason`. This is the
+     * HUD's own route, and it exists because `Sidebar.lockedSentence` composes a
+     * head with a hint and can therefore also serve a caller that has no
+     * production entry at all — the fallback roster, and any future screen that
+     * lists content it cannot build.
+     *
+     * They converge instead of colliding: `lockedSentence` splits the reason on
+     * its em-dash and rebuilds, so a rich reason plus this hint yields the rich
+     * sentence exactly once. Declared OPTIONAL on `ProgressionView` so a build
+     * without the mission table degrades to the generic line rather than
+     * throwing — see `UnlockSource` in `src/ui/Objectives.ts`.
+     */
+    unlockSource(unlockId: string): { missionId: string; title: string; objective: string } | null {
+      const src = unlockSourceOf(unlockId);
+      if (src === undefined) return null;
+      return { missionId: src.missionId, title: src.title, objective: src.description };
     },
 
     subscribe(fn: () => void): () => void {
