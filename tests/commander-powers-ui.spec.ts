@@ -433,8 +433,8 @@ describe('locked slots — the sentence names the mission', () => {
   it('replaces the gate\'s generic tail with the real answer', () => {
     // `LOCKED_REASON` verbatim. Appending would read "complete a mission —
     // Strip Mine", which says "a mission" and then names it.
-    expect(lockedSentence('Locked — complete a mission', 'Strip Mine: mine 250,000 credits of ore'))
-      .toBe('Locked — Strip Mine: mine 250,000 credits of ore');
+    expect(lockedSentence('Locked — complete a mission', 'Strip Mine: mine 70,000 credits of ore'))
+      .toBe('Locked — Strip Mine: mine 70,000 credits of ore');
   });
 
   it('leaves the reason untouched when nothing can name a mission', () => {

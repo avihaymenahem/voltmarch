@@ -200,7 +200,7 @@ export interface CaptureRule {
 /**
  * Sum of positive `economy:credits` deltas.
  * `reasons` are `CreditReason` values; the default is `[Harvest]`, because
- * "earn 250,000 credits" means mined, not refunded.
+ * "earn 70,000 credits" means mined, not refunded.
  */
 export interface EarnRule {
   on: 'earn';

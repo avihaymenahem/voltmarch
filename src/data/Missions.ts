@@ -337,12 +337,65 @@ const ECONOMY: readonly MissionDef[] = [
     rule: { on: 'earn', reasons: [CreditReason.Harvest] },
     reward: mapUnlock(UNLOCKS.mapFrozenSector),
   },
+  // THE TECH CENTRE, AND THE NUMBER IS ONE MAP'S WORTH OF ORE.
+  //
+  // This was 250,000 and it was the single worst-priced row in the file. What it
+  // gates is not a superweapon: `struct.tech` is `battleLab`/`mrdReliquary`/
+  // `rclCrucible`, the building whose own blurb is "Unlocks the top of every
+  // tab" — every tier-3 specialist, every capital hull, every advanced defence
+  // tower, and (through `prereqs`) all six superweapon structures. A MID-game
+  // building was priced above every superweapon chain in the file, so a fresh
+  // profile could not reach the late-game layer from either side: the AI mirrors
+  // the human's unlocks, so the whole v2.3.0 superweapon tier — models, HUD
+  // countdown, firing path, AI targeting — was invisible to both.
+  //
+  // WHY 70,000. It is not picked from the air: it is ONE MAP'S WORTH OF ORE,
+  // with margin. `addStartOre` lays three fields for a 1v1 — one R=30 m per army
+  // and one R=22 m at the centroid — and running the real `OreField.seedField`
+  // over that layout totals 74,538 credits, of which a player's own uncontested
+  // field is about 30,000. `tests/content-truthful.spec.ts` §1 seeds it and
+  // holds this row to it, so the yardstick is a mechanism rather than a claim.
+  //
+  // 70,000 rather than 74,000 because the test seeds with no `accept` predicate,
+  // which is the GENEROUS reading: a real map rejects water and impassable
+  // cells, so `coast` at `water: 0.45` seeds materially less than the ceiling.
+  // A target sitting flush against the best case would be unreachable on the
+  // wettest map in the set.
+  //
+  // So "Strip Mine" now means what it says: mine out a map. At 250,000 it meant
+  // mine out THREE AND A THIRD MAPS, or eight times your own field.
+  //
+  // Measured against play rather than against the constants: `npm run soak` does
+  // not report harvest totals, but `tests/harvester-soak.spec.ts` does deliver
+  // real loads over real terrain, and across seeds 4242/1337/90210 twelve
+  // harvesters returned 36 loads in 240 s — 429-700 credits per harvester per
+  // minute, against the 1,312 that `HARVESTER_TARGET_ROUNDTRIP` implies. Three
+  // harvesters over a 25-minute match is therefore ~41,000 banked, not the
+  // ~98,000 the config's own target rate would predict, which is most of why
+  // this number read as reasonable when it was written. 250,000 was ~6-7 matches
+  // ON TOP of the 25,000 for `economy.harvest.1`, which does not carry over —
+  // `MissionTracker.advance` refuses to accumulate a locked mission, so a chain
+  // costs the sum of its rungs. 70,000 is ~2-3 matches, which is what the header
+  // of this file means by "the first four chain steps are all reachable inside a
+  // handful of matches".
+  //
+  // AND THE REAL RATE IS LOWER STILL, because this rule counts BANKED credits.
+  // `Economy.deposit` marks only `banked` with `CreditReason.Harvest` and dumps
+  // the overflow as `CreditReason.Waste`, while `p.stats.oreMined` takes the
+  // full amount — so every credit mined into a full bank advances this mission
+  // by nothing while the end screen's "Ore Harvested" still counts it. That gap
+  // is left alone here and written up rather than quietly patched.
+  //
+  // LOWERING COSTS NO PLAYER ANY PROGRESS. `MissionTracker` stores raw
+  // accumulated `value` per mission id and compares it to `def.target` on each
+  // event, so a profile sitting at 90,000/250,000 completes on its next
+  // delivered load. Nothing is reset and no id changes.
   {
     id: 'economy.harvest.2',
     scope: 'profile', category: 'economy', difficulty: 2,
     title: 'Strip Mine',
-    description: 'Mine 250,000 credits of ore.',
-    target: 250_000,
+    description: 'Mine 70,000 credits of ore.',
+    target: 70_000,
     requires: ['economy.harvest.1'],
     rule: { on: 'earn', reasons: [CreditReason.Harvest] },
     reward: grant(UNLOCKS.structTech),
@@ -808,7 +861,7 @@ export interface UnlockSource {
   readonly missionId: string;
   /** `Strip Mine`. */
   readonly title: string;
-  /** `Mine 250,000 credits of ore.` */
+  /** `Mine 70,000 credits of ore.` */
   readonly description: string;
 }
 
@@ -834,7 +887,7 @@ export function unlockSource(unlockId: string): UnlockSource | undefined {
 }
 
 /**
- * `Strip Mine: mine 250,000 credits of ore` — the requirement in one line.
+ * `Strip Mine: mine 70,000 credits of ore` — the requirement in one line.
  *
  * The description's trailing full stop is dropped and its first letter lowered,
  * so the two halves read as one sentence after whatever prefix the caller uses

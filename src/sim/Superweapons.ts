@@ -439,6 +439,37 @@ export class SuperweaponService {
     return true;
   }
 
+  /**
+   * Put a charge back to `seconds`. The SAVE entry point, and the only one.
+   *
+   * `src/game/SaveGame.ts` has carried the seconds in every file it has ever
+   * written and has had `SuperweaponChargeSetter` declared, duck-typed, waiting
+   * for this method — "the day the owning module adds it the fidelity arrives
+   * with no change here and no schema bump". This is that day. Without it a
+   * silo forty seconds from launch reloaded at three hundred, which is the same
+   * defect the ore-depletion chunk exists to prevent: a snapshot that restores
+   * a number other than the one that was there.
+   *
+   * It does NOT touch `available`, exactly as `grantReady` does not.
+   * Availability is re-derived from the standing structures by
+   * `rescanAvailability` within `AVAILABILITY_INTERVAL` ticks of the load, and
+   * writing it here would mean a save could hand a player a weapon whose silo
+   * is rubble.
+   *
+   * CLAMPED TO THIS BUILD'S OWN CHARGE, so a save from a build that priced the
+   * weapon at 600 s cannot hold a 300 s one hostage for twice as long.
+   */
+  setRemaining(player: PlayerId, key: string, seconds: number): boolean {
+    const s = this.indexOf(key);
+    if (s < 0) return false;
+    const pi = player as number;
+    if (pi < 0 || pi >= MAX_PLAYERS) return false;
+    if (!Number.isFinite(seconds)) return false;
+    this.remaining[pi * SUPERWEAPON_COUNT + s] =
+      Math.min(SUPERWEAPONS[s].chargeSeconds, Math.max(0, seconds));
+    return true;
+  }
+
   /* ======================================================================
    * 4a. QUERIES
    * ====================================================================== */

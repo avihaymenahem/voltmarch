@@ -1647,7 +1647,7 @@ export class ProductionService implements QueueHooks {
     if (!isBuildable(entry, p)) {
       // NAME THE MISSION. `reasonFor` resolves the def's `unlockedBy` through
       // the hint table `progression.system.ts` injects and answers
-      // "Locked — Strip Mine: mine 250,000 credits of ore" rather than
+      // "Locked — Strip Mine: mine 70,000 credits of ore" rather than
       // "Locked — complete a mission". A player hovered a Battle Lab, was told
       // to complete "a mission", and asked whether they were supposed to guess.
       // They were: one constant served every locked cameo in the game while the

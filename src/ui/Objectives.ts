@@ -186,7 +186,7 @@ export interface UnlockSource {
   readonly missionId: string;
   /** 'Strip Mine'. The name the missions screen shows. */
   readonly title: string;
-  /** 'Mine 250,000 credits of ore'. What the player has to actually do. */
+  /** 'Mine 70,000 credits of ore'. What the player has to actually do. */
   readonly objective: string;
 }
 

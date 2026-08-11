@@ -104,7 +104,7 @@ export interface BuildExtras {
   /** Human sentence naming what this needs, e.g. `Requires Radar Dome`. */
   prereq: string;
   /**
-   * WHICH MISSION UNLOCKS THIS — `Strip Mine: mine 250,000 credits of ore` —
+   * WHICH MISSION UNLOCKS THIS — `Strip Mine: mine 70,000 credits of ore` —
    * or '' when the def is not progression-gated, or when nothing can say.
    *
    * A player hovered a locked Battle Lab, read the gate's generic "Locked —
@@ -1916,7 +1916,7 @@ function blockKindOf(reason: string): BlockKind {
  * The sentence a locked slot shows, with the granting mission folded in.
  *
  * `reason` is whatever `src/sim/Production.ts` and `UnlockGate` produced.
- * `hint` is `BuildExtras.unlockHint` — `Strip Mine: mine 250,000 credits of
+ * `hint` is `BuildExtras.unlockHint` — `Strip Mine: mine 70,000 credits of
  * ore` — and is '' for the overwhelming majority of defs, which carry no
  * progression tag at all.
  *
@@ -1924,7 +1924,7 @@ function blockKindOf(reason: string): BlockKind {
  * constant is `Locked — complete a mission`, and appending would produce
  * "Locked — complete a mission — Strip Mine: ...", which says "a mission"
  * and then names it. The em-dash tail is cut and the real answer put in its
- * place, so the line reads `Locked — Strip Mine: mine 250,000 credits of ore`.
+ * place, so the line reads `Locked — Strip Mine: mine 70,000 credits of ore`.
  *
  * A reason with no dash, or an unrecognised one, keeps its whole self and gains
  * the mission after a dash. That is the same "unrecognised sentence still shows

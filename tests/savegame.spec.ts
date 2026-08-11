@@ -224,6 +224,49 @@ class FakeSuperweapons {
   }
 }
 
+/**
+ * The commander-power charge table, as the real service presents it: every
+ * power for every slot, in TICKS, with no notion of who has earned what.
+ */
+class FakeCommanderPowers {
+  /** `player|key` -> ticks. Seeded full, exactly as the service's ctor does. */
+  readonly charge = new Map<string, number>();
+  static readonly KEYS = ['airstrike', 'orbitalScan', 'emergencyRepair', 'oreBoost', 'chronoshift'];
+  /** Per-key full charge in ticks, so the clamp on restore is testable. */
+  static readonly FULL: Record<string, number> = {
+    airstrike: 4500, orbitalScan: 3600, emergencyRepair: 4500, oreBoost: 5400, chronoshift: 7200,
+  };
+
+  constructor(players = 2) {
+    for (let p = 0; p < players; p++) {
+      for (const k of FakeCommanderPowers.KEYS) {
+        this.charge.set(`${p}|${k}`, FakeCommanderPowers.FULL[k]);
+      }
+    }
+  }
+
+  set(p: PlayerId, key: string, ticks: number): void { this.charge.set(`${p as number}|${key}`, ticks); }
+  get(p: PlayerId, key: string): number | undefined { return this.charge.get(`${p as number}|${key}`); }
+
+  /** Whatever this "build" has, which is how the real service enumerates too. */
+  chargeStates(player: PlayerId): readonly { key: string; ticks: number }[] {
+    const out: { key: string; ticks: number }[] = [];
+    const prefix = `${player as number}|`;
+    for (const [k, ticks] of this.charge) {
+      if (!k.startsWith(prefix)) continue;
+      out.push({ key: k.slice(prefix.length), ticks });
+    }
+    return out;
+  }
+
+  setChargeTicks(player: PlayerId, key: string, ticks: number): boolean {
+    const full = FakeCommanderPowers.FULL[key];
+    if (full === undefined) return false;
+    this.charge.set(`${player as number}|${key}`, Math.min(full, Math.max(0, Math.floor(ticks))));
+    return true;
+  }
+}
+
 interface Fixture {
   world: World;
   vision: FakeVision;
@@ -231,6 +274,7 @@ interface Fixture {
   camera: FakeCamera;
   scatter: FakeScatter;
   sw: FakeSuperweapons;
+  powers: FakeCommanderPowers;
   cleared: ClearedFootprint[];
   host: SnapshotHost;
 }
@@ -246,6 +290,7 @@ function makeFixture(overrides: Partial<SnapshotHost> = {}): Fixture {
   const camera = new FakeCamera();
   const scatter = new FakeScatter();
   const sw = new FakeSuperweapons();
+  const powers = new FakeCommanderPowers(2);
   const cleared: ClearedFootprint[] = [];
 
   const host: SnapshotHost = {
@@ -263,11 +308,12 @@ function makeFixture(overrides: Partial<SnapshotHost> = {}): Fixture {
     ore,
     scatter,
     superweapons: sw,
+    commanderPowers: powers,
     clearedFootprints: cleared,
     ...overrides,
   };
 
-  return { world, vision, ore, camera, scatter, sw, cleared, host };
+  return { world, vision, ore, camera, scatter, sw, powers, cleared, host };
 }
 
 /** A fresh world built from the same scenario/seed — what a load boots into. */
@@ -957,6 +1003,73 @@ describe('world state that is not entities', () => {
 
     expect(restoreSnapshot(captured.value.bytes, dst.host).ok).toBe(true);
     expect(dst.sw.charge.get('0|ironCurtain')).toBeCloseTo(44.5, 4);
+  });
+
+  /* -- commander power charges -----------------------------------------------
+   * The same class of state as the superweapon timers above, and it was absent
+   * from the file entirely: `Shell.loadGame` boots a fresh engine before
+   * restoring, so a load ran `resetCharges()` over EVERY SLOT — the AI's
+   * included. Reloading a hard fight put the enemy brain's Emergency Repair and
+   * Airstrike back to a full 150 s, every time.                               */
+
+  it('restores every player\'s commander power charges, mid-cooldown and ready', () => {
+    const src = makeFixture();
+    populate(src, 4);
+    src.powers.set(P0, 'airstrike', 0);        // ready
+    src.powers.set(P0, 'chronoshift', 1234);   // mid-cooldown
+    src.powers.set(P1, 'emergencyRepair', 77); // the AI's, and it matters
+
+    const captured = captureSnapshot(src.host, 'powers');
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+
+    // A fresh engine seeds every charge full — that is what a load boots into.
+    const dst = makeDestination(src);
+    expect(dst.powers.get(P0, 'airstrike')).toBe(FakeCommanderPowers.FULL.airstrike);
+
+    expect(restoreSnapshot(captured.value.bytes, dst.host).ok).toBe(true);
+
+    expect(dst.powers.get(P0, 'airstrike')).toBe(0);
+    expect(dst.powers.get(P0, 'chronoshift')).toBe(1234);
+    expect(dst.powers.get(P1, 'emergencyRepair')).toBe(77);
+    // Untouched powers still restore — they were captured at full and written
+    // back at full, rather than skipped.
+    expect(dst.powers.get(P0, 'oreBoost')).toBe(FakeCommanderPowers.FULL.oreBoost);
+  });
+
+  it('leaves charges alone when the save predates the section', () => {
+    const src = makeFixture({ commanderPowers: null });
+    populate(src, 4);
+
+    const captured = captureSnapshot(src.host, 'no-powers');
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+
+    const dst = makeDestination(src);
+    dst.powers.set(P0, 'airstrike', 99);
+    expect(restoreSnapshot(captured.value.bytes, dst.host).ok).toBe(true);
+    // No section in the file, so nothing is written: the engine's own seeding
+    // stands, which is exactly what the build that wrote this file did.
+    expect(dst.powers.get(P0, 'airstrike')).toBe(99);
+  });
+
+  it('drops a power key this build does not have and clamps one it does', () => {
+    const src = makeFixture();
+    populate(src, 4);
+    // A charge longer than this build's own table allows — a save from a build
+    // that priced Chronoshift higher. It must not hold this build hostage.
+    src.powers.set(P0, 'chronoshift', FakeCommanderPowers.FULL.chronoshift * 3);
+    src.powers.set(P0, 'timeStop', 500); // a sixth power this build never had
+
+    const captured = captureSnapshot(src.host, 'unknown-power');
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+
+    const dst = makeDestination(src);
+    const restored = restoreSnapshot(captured.value.bytes, dst.host);
+    expect(restored.ok).toBe(true);
+    expect(dst.powers.get(P0, 'chronoshift')).toBe(FakeCommanderPowers.FULL.chronoshift);
+    expect(dst.powers.get(P0, 'timeStop')).toBeUndefined();
   });
 });
 

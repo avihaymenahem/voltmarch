@@ -1583,7 +1583,7 @@ export class Hud {
   }
 
   /**
-   * `Strip Mine: mine 250,000 credits of ore` for a progression-gated def, or ''.
+   * `Strip Mine: mine 70,000 credits of ore` for a progression-gated def, or ''.
    *
    * THE JOIN NOTHING WAS MAKING. `UnlockGate` refuses a def and puts one
    * constant sentence on the cameo — "Locked — complete a mission" — with no
