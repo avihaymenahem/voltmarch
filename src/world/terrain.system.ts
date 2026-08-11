@@ -34,31 +34,10 @@
 
 import { defineSystem } from '../core/loop';
 import { Phase } from '../core/types';
-import { MAP_SIZE, TERRAIN_DEFAULT_BIOME, TERRAIN_SEED } from '../core/config';
 import { ctx } from '../game/context';
-import { SKIRMISH_START_OFFSETS } from '../game/Scenarios';
+import { notePrewarmAdopted, prewarmedTerrain } from '../core/workers/world-warm';
 import { Terrain, getTerrain, setActiveTerrain } from './Terrain';
-import { BIOME_NAMES, isBiomeName, type BiomeName } from './Biomes';
-
-/** Read `?biome=desert` so a critic can A/B all four presets from the URL. */
-function biomeFromUrl(): BiomeName {
-  if (typeof location === 'undefined') return TERRAIN_DEFAULT_BIOME as BiomeName;
-  const q = new URLSearchParams(location.search).get('biome');
-  if (q !== null && isBiomeName(q)) return q;
-  if (q !== null) {
-    console.warn(`[terrain] ?biome=${q} is not one of ${BIOME_NAMES.join(', ')}`);
-  }
-  return TERRAIN_DEFAULT_BIOME as BiomeName;
-}
-
-/** Read `?mapseed=` so a bad landform roll can be reproduced or skipped. */
-function seedFromUrl(fallback: number): number {
-  if (typeof location === 'undefined') return fallback;
-  const q = new URLSearchParams(location.search).get('mapseed');
-  if (q === null) return fallback;
-  const n = Number(q);
-  return Number.isFinite(n) ? n | 0 : fallback;
-}
+import { plannedTerrainInput } from './terrain-plan';
 
 let terrain: Terrain | null = null;
 
@@ -67,48 +46,45 @@ export default defineSystem({
   phase: Phase.Command,
   order: 40,
 
-  init(): void {
+  /**
+   * ASYNC, AND THE AWAIT IS THE WHOLE POINT.
+   *
+   * `src/world/world-warm.system.ts` dispatched this map to a worker at
+   * module-discovery time, i.e. before `art.buildings` and friends spent ~2.6 s
+   * on this thread. So by the time this init runs, the fields are usually
+   * already sitting there and the await resolves in a microtask.
+   *
+   * When they are not — no `Worker`, `?terrainworkers=off`, a job that timed
+   * out, a key that does not match — `prewarmedTerrain()` resolves with `null`
+   * and `Terrain` generates on this thread exactly as it always did. The boot
+   * cannot be slower than it was by more than one job deadline, and
+   * `SystemRegistry.init` awaits each module in order, so nothing downstream
+   * sees a half-built world either way.
+   */
+  async init(): Promise<void> {
     const { world, sceneRig, cameraRig, registry, handle } = ctx();
 
+    /*
+     * THE CLOCK STARTS BEFORE THE AWAIT, DELIBERATELY.
+     *
+     * The number this line reports is "how long the boot stopped here", and
+     * time spent waiting on a worker stops the boot just as thoroughly as time
+     * spent generating. Starting it after the await would report a triumphant
+     * 40 ms for a boot that had just sat still for 600, which is the kind of
+     * measurement this repo has been burned by before.
+     */
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
 
+    const input = plannedTerrainInput();
+    const fields = await prewarmedTerrain();
+
     terrain = new Terrain({
+      ...input,
       scene: sceneRig.scene,
-      seed: seedFromUrl(TERRAIN_SEED),
-      biome: biomeFromUrl(),
       anisotropy: handle.renderer.capabilities.getMaxAnisotropy(),
-      /*
-       * RESERVE A SHELF WHERE THE ARMIES ACTUALLY LAND.
-       *
-       * This option existed and nothing ever passed it, so the generator fell
-       * back to `TERRAIN_START_POSITIONS` — a single entry at the map centre.
-       * `levelStartAreas()` then flattened, ramped and pocket-filled a perfect
-       * 100%-buildable disc 96.5 m from either army, against a guard radius of
-       * 54. Both armies stood on ungraded ground, measured at 60-74% buildable
-       * with about a third of openings under 60%, while config.ts promised
-       * "verified inside the generator, not hoped for".
-       *
-       * THE CENTRE STAYS, and is listed first. Every `?shot=` fixture builds on
-       * the map centre; dropping it would put twelve graded frames on ungraded
-       * ground and their structures would relocate via `connectedGround`,
-       * moving the shots more than the terrain change itself.
-       *
-       * The three discs OVERLAP — starts are 96.5 m out and
-       * TERRAIN_START_FLAT_RADIUS is 58, so 58 + 58 > 96.5 — which is why this
-       * was deferred once as an unverified risk of steps at the seams.
-       * `levelStartAreas` mutates the heightfield as it goes, so each disc sees
-       * the previous one's flattening and they self-stabilise;
-       * `tests/start-shelves.spec.ts` measures the seam directly across four
-       * biomes and three seeds rather than trusting that.
-       */
-      starts: [
-        { x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5 },
-        ...SKIRMISH_START_OFFSETS.map((o) => ({
-          x: MAP_SIZE * 0.5 + o.dx,
-          z: MAP_SIZE * 0.5 + o.dz,
-        })),
-      ],
+      fields,
     });
+    notePrewarmAdopted('terrain', fields !== null && fields.key === terrain.genKey);
 
     setActiveTerrain(terrain);
     world.terrain = terrain;
@@ -128,8 +104,11 @@ export default defineSystem({
     const start = terrain.startReport();
     const areas = terrain.startLocations();
     const pct = (v: number): string => `${Math.round(v * 100)}%`;
+    const source = fields !== null && fields.key === terrain.genKey
+      ? ` (adopted from a worker, ${fields.generateMs | 0} ms off-thread)`
+      : '';
     console.info(
-      `%c[terrain]%c ${terrain.biome.name} — ${terrain.triangleCount() | 0} tris in ${ms | 0} ms · ` +
+      `%c[terrain]%c ${terrain.biome.name} — ${terrain.triangleCount() | 0} tris in ${ms | 0} ms${source} · ` +
         `${pct(s.passable)} passable (${pct(s.reachable)} of it reachable), ` +
         `${pct(s.buildable)} buildable, ${pct(s.water)} water, ${s.ramps} ramp(s) carved, ` +
         `${s.regions} region(s), ${s.scenery} cell(s) demoted to scenery`,

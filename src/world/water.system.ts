@@ -43,6 +43,9 @@ import { Phase, RenderPhase, type RenderContext } from '../core/types';
 import { WATER_LOOK, WATER_WAVES } from '../core/config';
 import { RENDER_CONFIG } from '../render/renderer';
 import { ctx } from '../game/context';
+import {
+  notePrewarmAdopted, prewarmedWater, prewarmedWaterKey,
+} from '../core/workers/world-warm';
 import { getTerrain } from './Terrain';
 import { Water, getWater, setActiveWater } from './Water';
 import type { WaterLightRig } from './WaterMaterial';
@@ -114,7 +117,13 @@ export default defineSystem({
   order: 60,
   renderPhase: RenderPhase.Terrain,
 
-  init(): void {
+  /**
+   * ASYNC for the same reason `world.terrain`'s init is — see that file. The
+   * bake was dispatched to a worker the instant the terrain job came back, well
+   * before this ran, so the await is normally a microtask. A `null` means bake
+   * here, which is what this module did before the worker existed.
+   */
+  async init(): Promise<void> {
     const { sceneRig, handle, debug } = ctx();
 
     shotMode = typeof location !== 'undefined'
@@ -130,14 +139,22 @@ export default defineSystem({
       return;
     }
 
+    // Before the await: this number is how long the boot stopped here, and a
+    // wait on a worker stops it exactly as much as a bake does.
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
+
+    const fields = await prewarmedWater();
+    const fieldsKey = prewarmedWaterKey();
 
     water = new Water({
       scene: sceneRig.scene,
       bedHeight: (x, z) => terrain.heightAt(x, z),
       palette: query('water') ?? terrain.biomeKey,
       anisotropy: handle.renderer.capabilities.getMaxAnisotropy(),
+      fields,
+      fieldsKey,
     });
+    notePrewarmAdopted('water', water.fieldsAdopted);
     water.setSeaState(numberQuery('sea', WATER_WAVES.seaState));
     setActiveWater(water);
 
@@ -160,11 +177,14 @@ export default defineSystem({
       return;
     }
 
+    const source = water.fieldsAdopted && fields !== null
+      ? ` (adopted from a worker, ${fields.bakeMs | 0} ms off-thread)`
+      : '';
     console.info(
       `%c[water]%c ${water.paletteName} — ${(s.coverage * 100).toFixed(1)}% of the map, ` +
         `max ${s.maxDepth.toFixed(1)} m, ramp fitted to ${s.rampDepth.toFixed(1)} m, ` +
         `${(s.shorelineMetres | 0)} m of coastline, ` +
-        `${s.chunks} draw(s) / ${s.triangles | 0} tris in ${ms | 0} ms`,
+        `${s.chunks} draw(s) / ${s.triangles | 0} tris in ${ms | 0} ms${source}`,
       'color:#7cf', 'color:inherit',
     );
 
