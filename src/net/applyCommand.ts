@@ -136,6 +136,12 @@ export function applyCommand(bus: CommandBus, c: WireCommand): boolean {
     case CommandKind.Relocate:
       bus.issueRelocate(player, c.target as EntityId, c.cx, c.cz, c.arg);
       return true;
+    case CommandKind.UsePower:
+      // `arg` is the CommanderPowerId. Re-issued unvalidated on purpose: the
+      // simulation refuses an id it does not know, and a command a peer sent
+      // must reach the bus even when it will be refused — see the header.
+      bus.issueUsePower(player, c.arg, c.x, c.z);
+      return true;
     default:
       return false;
   }

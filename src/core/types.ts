@@ -899,6 +899,20 @@ export const enum CommandKind {
    * a multiplayer link — while the AI's every move was visible.
    */
   Relocate = 12,
+  /**
+   * Call one of the five commander powers at a point on the map.
+   *
+   * APPENDED, for the reason stated above. `arg` carries the
+   * `CommanderPowerId`, `x`/`z` the target point; there is no target entity and
+   * no entity list.
+   *
+   * It exists because a commander power is a PLAYER-level verb — no unit
+   * carries one, so there is no entity for `CommandKind.Order` to address — and
+   * because five mission rewards had been promising them since the mission
+   * table was written while nothing in the simulation could receive one. See
+   * `src/sim/CommanderPowers.ts`.
+   */
+  UsePower = 13,
 }
 
 /**

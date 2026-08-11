@@ -539,6 +539,22 @@ export class CommandBus {
   }
 
   /**
+   * Call a commander power at a point.
+   *
+   * `power` is a `CommanderPowerId` and rides in `arg`, the generic
+   * small-integer slot — the same place `PlaceBuilding` keeps its facing and
+   * `ProductionStart` its count. There is no entity list and no target: a power
+   * belongs to the PLAYER, so there is nothing to address it to, and every one
+   * of the five takes the same one point. See `src/sim/CommanderPowers.ts`.
+   */
+  issueUsePower(player: PlayerId, power: number, x: number, z: number): void {
+    const c = this.claim(CommandKind.UsePower, player);
+    if (c === null) return;
+    c.arg = power;
+    c.x = x; c.z = z;
+  }
+
+  /**
    * TAKE every queued command OUT for scheduling, WITHOUT firing the observer.
    *
    * This is the lockstep seam. A multiplayer client cannot let a local command
