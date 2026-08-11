@@ -46,27 +46,39 @@ import { Locomotor, Phase } from '../core/types';
 import type { SimContext } from '../core/types';
 import type { World } from '../core/world';
 import {
-  ORE_REGROW_INTERVAL, POWER_RECOMPUTE_INTERVAL, REFINERY_STORAGE, SILO_STORAGE,
-  SIM_DT,
+  ORE_REGROW_INTERVAL, POWER_RECOMPUTE_INTERVAL, SIM_DT,
 } from '../core/config';
 import { ctx, hasGameContext } from '../game/context';
-import { activeScenario, entityKeyOf } from '../game/Scenarios';
+import { activeScenario } from '../game/Scenarios';
 
 import { Economy, OreField, setActiveEconomy, setActiveOreField } from './Economy';
 import { HarvesterController, harvesterDriveMode, setHarvesterDrive } from './Harvesting';
 import { PowerGrid } from './Power';
+import { production } from './Production';
 
 /**
- * Storage a scenario-spawned structure contributes, by content key. The real
- * answer is `BuildingDef.storage`, which the def table will carry; until then
- * this is how a silo the scenario placed still raises the cap. `IsRefinery` is
- * handled by Economy's own default and does not need a row, but it is listed
- * so the two numbers live side by side.
+ * How much storage the structure in slot `i` is worth — `Economy`'s window onto
+ * the content catalog, which is the only table in the build that knows an Ore
+ * Silo from a Battle Lab.
+ *
+ * THIS REPLACES A TWO-ROW LOOKUP THAT DID NOT WORK. There used to be a
+ * `STORAGE_BY_KEY` here with rows for `refinery` and `oreSilo`, swept over the
+ * living entities ONCE, on the first tick a scenario existed. It failed three
+ * ways at the same time: the Meridian `mrdVault` and the Reclamation `rclHeap`
+ * had no row, nothing built DURING a match was ever swept, and every one of
+ * those misses read as a plain zero because `recomputeStorage` overwrites
+ * `storageMax` outright — so the silo's own `p.storageMax +=` survived five
+ * ticks and was then erased. Measured live before the change: an Allied base
+ * sat at a 15 000 cap, a fourth silo was built and finished, and the cap was
+ * still 15 000 twelve seconds later.
+ *
+ * Resolved lazily on every call rather than captured at init, because
+ * `production()` is null during teardown and between matches, and a captured
+ * reference to a disposed service is a worse failure than a zero.
  */
-const STORAGE_BY_KEY: Readonly<Record<string, number | undefined>> = {
-  refinery: REFINERY_STORAGE,
-  oreSilo: SILO_STORAGE,
-};
+function storageForSlot(i: number): number {
+  return production()?.storageForSlot(i) ?? 0;
+}
 
 let ore: OreField | null = null;
 let economy: Economy | null = null;
@@ -125,8 +137,13 @@ const driveModule = defineSystem({
 });
 
 /**
- * Lay the scenario's ore patches into the cell grid, and tell the ledger about
- * any storage structure the scenario placed. Runs exactly once.
+ * Lay the scenario's ore patches into the cell grid. Runs exactly once.
+ *
+ * It used to also sweep the world declaring storage structures to the ledger,
+ * which is where the silo defect lived — see `storageForSlot` above. A one-shot
+ * sweep can only ever describe the world as it was on the first tick, and the
+ * ore fields are the only thing here that is genuinely a property of that
+ * moment.
  */
 function seedFromScenario(): boolean {
   const spec = activeScenario();
@@ -150,15 +167,8 @@ function seedFromScenario(): boolean {
     if (rec !== undefined) { cells += rec.cells.length; value += rec.capacity; }
   }
 
-  // Storage structures the scenario placed. `entityKeyOf` is the published
-  // scenario->everyone content channel; a real def table replaces this whole
-  // block with `BuildingDef.storage`.
-  const store = world.store;
-  for (let a = 0; a < store.aliveCount; a++) {
-    const idx = store.alive[a];
-    const credits = STORAGE_BY_KEY[entityKeyOf(store.handleOf(idx))];
-    if (credits !== undefined) economy.setBuildingStorage(store.handleOf(idx), credits);
-  }
+  // The scenario's own structures are standing by now, and the resolver reads
+  // them straight out of the catalog, so one rescan here is the whole handover.
   economy.recomputeStorage();
 
   const s = ore.stats();
@@ -195,6 +205,9 @@ export default defineSystem({
     world.ore = ore;
     setActiveOreField(ore);
     setActiveEconomy(economy);
+    // Where the credit ceiling actually comes from. Installed before the first
+    // `recomputeStorage` below, so frame zero already shows the true cap.
+    economy.setStorageResolver(storageForSlot);
 
     seeded = false;
     movementChecked = false;
@@ -260,6 +273,7 @@ export default defineSystem({
 
   dispose(): void {
     registry?.remove('sim.economy.drive');
+    economy?.setStorageResolver(null);
     harvesters?.dispose();
     power?.dispose();
     ore?.clear();

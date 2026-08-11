@@ -20,14 +20,15 @@ import {
 } from '../src/core/types';
 import type { EntityId, PlayerId, SimContext } from '../src/core/types';
 import {
-  BASE_STORAGE, CELL, HARVESTER_CAPACITY, HARVESTER_DOCK_CLEARANCE,
-  ORE_CELL_MAX, ORE_REGROW_RATE,
-  POWER_BLACKOUT_MUL, POWER_FULL_MUL, REFINERY_STORAGE, SIM_DT, START_CREDITS,
-  STORAGE_BASE, UNLOAD_SECONDS,
+  BASE_STORAGE, CELL, CONSTRUCTION_RISE_SECONDS, HARVESTER_CAPACITY,
+  HARVESTER_DOCK_CLEARANCE, ORE_CELL_MAX, ORE_REGROW_RATE,
+  POWER_BLACKOUT_MUL, POWER_FULL_MUL, REFINERY_STORAGE, SILO_STORAGE, SIM_DT,
+  START_CREDITS, STORAGE_BASE, UNLOAD_SECONDS,
 } from '../src/core/config';
 import { Rng } from '../src/core/math';
 
 import { Economy, OreField } from '../src/sim/Economy';
+import { BuildKind, ProductionCatalog, ProductionService } from '../src/sim/Production';
 import {
   HarvesterController, dockApronDistance, setHarvesterDrive,
 } from '../src/sim/Harvesting';
@@ -468,6 +469,196 @@ describe('Economy — credits, storage and overflow', () => {
 
     expect(rig.economy.credits(P0)).toBe(afterGrant);
     expect(rig.economy.wasted(P0)).toBe(0);
+  });
+
+  /* ------------------------------------------------------------------------
+   * THE ORE SILO CONTRIBUTED NOTHING TO THE THING IT IS FOR
+   *
+   * `recomputeStorage` is the AUTHORITY on `storageMax`: it overwrites the
+   * field outright, every POWER_RECOMPUTE_INTERVAL ticks, which is FIVE. Both
+   * spawners nonetheless kept their own running total —
+   * `Scenarios.spawnBuilding` and `Production.onBuildingCompleted` each do
+   * `p.storageMax += ...` — and told this class nothing. So the rescan
+   * recomputed a sum that had never heard of a silo and wrote it over the top.
+   *
+   * The near-miss that hid it: `economy.system.ts` swept the world ONCE, on the
+   * first tick, declaring storage from a two-row table keyed on scenario content
+   * keys (`refinery`, `oreSilo`). An Allied or Soviet silo the SCENARIO placed
+   * therefore worked; a Meridian `mrdVault` or Reclamation `rclHeap` had no row,
+   * and nothing built during the match was ever swept at all.
+   *
+   * Measured in the running game before the fix — Allied base start, third silo
+   * queued, placed and finished:
+   *
+   *     at rest (2 scenario silos)          storageMax 15000
+   *     +0.1s  third silo placed            storageMax 15000
+   *     +12s   third silo standing          storageMax 15000
+   *     sold                                storageMax 15000
+   *
+   * ...and the opening base's own cap, before and after, by faction:
+   *
+   *     allies    15000 -> 15000     soviets   15000 -> 15000
+   *     meridian  12000 -> 15000     reclaim   12000 -> 15000
+   *
+   * Two of the four armies opened three thousand credits of storage short of
+   * the two silos they were looking at.
+   *
+   * The rig below wires `Economy` to `ProductionService` exactly as
+   * `economy.system.ts` does, because the whole defect was that nothing was
+   * wired.
+   * --------------------------------------------------------------------- */
+  interface StorageRig {
+    world: World;
+    channels: Channels;
+    service: ProductionService;
+    economy: Economy;
+    /** Plant a structure by content key. `progress` 0 rises, 1 is finished. */
+    plant(key: string, cx: number, cz: number, progress?: number): EntityId;
+    /** Run the production tick, which is what completes a rising structure. */
+    build(seconds: number): void;
+  }
+
+  function makeStorageRig(): StorageRig {
+    const world = new World();
+    world.addPlayer(Faction.Allies, 'A', true, true);
+    const channels = new Channels();
+    const service = new ProductionService(
+      world, channels, new ProductionCatalog({ tables: null, unitId: {}, buildingId: {} }),
+    );
+    const economy = new Economy(world, channels);
+    // THE ONE LINE `economy.system.ts` INSTALLS.
+    economy.setStorageResolver((i) => service.storageForSlot(i));
+
+    let tick = 0;
+    const rng = new Rng(11);
+    return {
+      world, channels, service, economy,
+      plant(key, cx, cz, progress = 1): EntityId {
+        const entry = service.catalog.byKey(key);
+        expect(entry, `catalog is missing "${key}"`).not.toBeNull();
+        return service.spawnBuilding(world.player(P0), entry!, cx, cz, progress);
+      },
+      build(seconds): void {
+        for (let k = 0; k < Math.round(seconds / SIM_DT); k++) {
+          tick++;
+          world.tick = tick;
+          world.time = tick * SIM_DT;
+          service.tick({ dt: SIM_DT, tick, time: world.time, rng });
+        }
+      },
+    };
+  }
+
+  /** Every structure in the catalog that claims to store credits. */
+  function storageEntries(service: ProductionService): { key: string; storage: number }[] {
+    return service.catalog.entries
+      .filter((e) => e.kind === BuildKind.Building && e.storage > 0)
+      .map((e) => ({ key: e.key, storage: e.storage }));
+  }
+
+  it('counts every structure that declares storage, for every faction', () => {
+    const probe = makeStorageRig();
+    const rows = storageEntries(probe.service);
+    // The four armies' silos, by name, so a missing faction row fails loudly
+    // rather than shrinking a list nobody reads.
+    const keys = rows.map((r) => r.key);
+    for (const silo of ['oreSilo', 'mrdVault', 'rclHeap']) {
+      expect(keys, `${silo} must declare storage`).toContain(silo);
+    }
+    expect(rows.length).toBeGreaterThanOrEqual(5);
+
+    for (const row of rows) {
+      const rig = makeStorageRig();
+      rig.economy.recomputeStorage();
+      const before = rig.economy.storageMax(P0);
+      rig.plant(row.key, 40, 40, 1);
+      rig.economy.recomputeStorage();
+      expect(rig.economy.storageMax(P0) - before, `${row.key} raises the cap`)
+        .toBe(row.storage);
+    }
+  });
+
+  it('keeps a silo built during the match across every later rescan', () => {
+    // The five-tick window is the whole point: the old code's `p.storageMax +=`
+    // in `onBuildingCompleted` passed a "does it go up" assertion and was gone
+    // by the next rescan.
+    const rig = makeStorageRig();
+    rig.economy.recomputeStorage();
+    const before = rig.economy.storageMax(P0);
+
+    const silo = rig.plant('oreSilo', 40, 40, 0);
+    expect(rig.world.store.flags[rig.world.store.index(silo)] & EntityFlag.UnderConstruction)
+      .not.toBe(0);
+    rig.economy.recomputeStorage();
+    expect(rig.economy.storageMax(P0), 'a half-built silo stores nothing').toBe(before);
+
+    rig.build(CONSTRUCTION_RISE_SECONDS + 1);
+    expect(rig.world.store.flags[rig.world.store.index(silo)] & EntityFlag.UnderConstruction)
+      .toBe(0);
+
+    for (let k = 0; k < 20; k++) {
+      rig.economy.recomputeStorage();
+      expect(rig.economy.storageMax(P0) - before, `rescan ${k}`).toBe(SILO_STORAGE);
+    }
+  });
+
+  it('gives the extra room back to a harvester, which is what the cap is for', () => {
+    const rig = makeStorageRig();
+    rig.plant('refinery', 40, 40, 1);
+    rig.economy.recomputeStorage();
+    const roomWithout = rig.economy.headroom(P0);
+
+    rig.plant('oreSilo', 48, 40, 1);
+    rig.economy.recomputeStorage();
+    expect(rig.economy.headroom(P0)).toBe(roomWithout + SILO_STORAGE);
+
+    // And the ore really banks instead of being counted as waste.
+    const banked = rig.economy.deposit(P0, roomWithout + SILO_STORAGE, CreditReason.Harvest);
+    expect(banked).toBe(roomWithout + SILO_STORAGE);
+    expect(rig.economy.wasted(P0)).toBe(0);
+  });
+
+  it('lowers the cap again when the silo is destroyed, and clamps the bank', () => {
+    const rig = makeStorageRig();
+    const silo = rig.plant('oreSilo', 40, 40, 1);
+    rig.economy.recomputeStorage();
+    const withSilo = rig.economy.storageMax(P0);
+    expect(withSilo).toBe(STORAGE_BASE + SILO_STORAGE);
+
+    // Fill the bank into the room the silo bought.
+    rig.economy.deposit(P0, SILO_STORAGE, CreditReason.Harvest);
+    expect(rig.economy.credits(P0)).toBe(withSilo);
+
+    rig.world.store.markDead(silo);
+    rig.world.store.flushDestroyed();
+    rig.economy.recomputeStorage();
+
+    expect(rig.economy.storageMax(P0)).toBe(STORAGE_BASE);
+    expect(rig.economy.credits(P0), 'the bank is clamped, not left over the cap')
+      .toBe(STORAGE_BASE);
+    expect(rig.economy.wasted(P0)).toBe(SILO_STORAGE);
+    // And it stays put: the clamp must not keep eating on every later rescan.
+    for (let k = 0; k < 5; k++) rig.economy.recomputeStorage();
+    expect(rig.economy.credits(P0)).toBe(STORAGE_BASE);
+    expect(rig.economy.wasted(P0)).toBe(SILO_STORAGE);
+  });
+
+  it('follows the building when an engineer takes it, without any spawn hook', () => {
+    // The reason the lookup is a per-slot resolver and not a call at spawn
+    // time: a capture creates no entity and runs no spawner, it only rewrites
+    // `owner` — and `Capture.ts` answers it with a bare `recomputeStorage()`.
+    const rig = makeStorageRig();
+    rig.world.addPlayer(Faction.Soviets, 'B', false, false);
+    const silo = rig.plant('oreSilo', 40, 40, 1);
+    rig.economy.recomputeStorage();
+    expect(rig.economy.storageMax(P0)).toBe(STORAGE_BASE + SILO_STORAGE);
+    expect(rig.economy.storageMax(P1)).toBe(STORAGE_BASE);
+
+    rig.world.store.owner[rig.world.store.index(silo)] = P1 as number;
+    rig.economy.recomputeStorage();
+
+    expect(rig.economy.storageMax(P0)).toBe(STORAGE_BASE);
+    expect(rig.economy.storageMax(P1)).toBe(STORAGE_BASE + SILO_STORAGE);
   });
 
   it('tracks a smoothed income rate', () => {
