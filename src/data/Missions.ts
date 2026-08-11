@@ -48,6 +48,11 @@
 import { BuildTab, CreditReason, EntityKind, Faction } from '../core/types';
 import type { MissionDef, Reward } from '../progression/types';
 import { RULE_METRIC } from '../progression/types';
+// The commander power table. Imported for the SELF-CHECK, not for the rows: a
+// `power` reward names a power by its unlock id, and until this edge existed
+// nothing anywhere compared the two strings. `progression/powers.ts` imports
+// nothing at all, so this keeps Missions.ts the leaf its header claims.
+import { COMMANDER_POWER_LIST, powerByUnlockId } from '../progression/powers';
 
 /* ==========================================================================
  * 1. THE UNLOCK IDS
@@ -97,7 +102,15 @@ export const UNLOCKS = {
   mapContestedStrait: 'map.contested-strait',
   mapCoralShore: 'map.coral-shore',
 
-  /* -- commander powers --------------------------------------------------- */
+  /* -- commander powers ----------------------------------------------------
+   * THESE FIVE ARE REAL AND THESE FIVE STRINGS ARE THE JOIN. Each one is the
+   * `unlockId` of a row in `src/progression/powers.ts`, which is what
+   * `src/sim/CommanderPowers.ts` implements and what the HUD asks about before
+   * it offers the button. `validateMissions` refuses to load a `power` reward
+   * naming an id no power carries, and refuses to load a power no mission pays
+   * — because for a long time these ids WERE only strings: granted, written to
+   * the profile, printed on the end screen as "Callable once charged, in any
+   * match", and read by nothing whatsoever.                                  */
   powerAirstrike: 'power.airstrike',
   powerOrbitalScan: 'power.orbital-scan',
   powerEmergencyRepair: 'power.emergency-repair',
@@ -139,6 +152,13 @@ const credits = (amount: number): Reward => ({ kind: 'credits', amount });
 /** A plain unlock: a unit, a structure, a superweapon. */
 const grant = (id: string): Reward[] => [unlock(id)];
 const mapUnlock = (id: string): Reward[] => [unlock(id), { kind: 'map', mapId: id.replace(/^map\./, '') }];
+/**
+ * A commander power: the `unlock` half lands on the profile, the `power` half
+ * is what the end screen prints. `id` must be the `unlockId` of a row in
+ * `src/progression/powers.ts` — the self-check at the bottom of this file
+ * enforces that in both directions, and it exists because these five rewards
+ * shipped for a long time as strings nothing read.
+ */
 const powerUnlock = (id: string): Reward[] => [unlock(id), { kind: 'power', powerId: id }];
 const cosmeticUnlock = (id: string): Reward[] => [unlock(id), { kind: 'cosmetic', cosmeticId: id }];
 
@@ -757,6 +777,27 @@ export function validateMissions(defs: readonly MissionDef[]): string[] {
       if (r.kind === 'cosmetic' && r.cosmeticId.length === 0) {
         problems.push(`mission "${m.id}" grants an empty cosmetic id`);
       }
+      /* -- a power reward has to name a power ------------------------------
+       * The defect this closes: `{ kind: 'power', powerId: 'power.airstrike' }`
+       * type-checks against any string, so five rewards named five powers that
+       * did not exist and the only symptom was a player pressing nothing.    */
+      if (r.kind === 'power') {
+        if (powerByUnlockId(r.powerId) === undefined) {
+          problems.push(
+            `mission "${m.id}" grants power "${r.powerId}", which no row in `
+            + 'src/progression/powers.ts implements — it would pay nothing',
+          );
+        }
+        // The `power` half is display; the `unlock` half is what the profile
+        // stores and what the HUD asks about. One without the other is a power
+        // the player is told about and can never call.
+        if (!m.reward.some((o) => o.kind === 'unlock' && o.unlockId === r.powerId)) {
+          problems.push(
+            `mission "${m.id}" grants power "${r.powerId}" without the matching `
+            + 'unlock — nothing would ever record that the player owns it',
+          );
+        }
+      }
     }
   }
 
@@ -798,6 +839,18 @@ export function validateMissions(defs: readonly MissionDef[]): string[] {
   for (const key of Object.keys(UNLOCKS) as (keyof typeof UNLOCKS)[]) {
     const id = UNLOCKS[key];
     if (!grantedBy.has(id)) problems.push(`unlock "${id}" (UNLOCKS.${key}) is declared but no mission grants it`);
+  }
+
+  /* -- and every implemented power is actually paid for --------------------
+   * The other direction of the same join. A power the simulation can fire but
+   * no mission awards is content nobody can reach, which looks exactly like a
+   * balance decision — the most expensive kind of content bug to find.       */
+  for (const power of COMMANDER_POWER_LIST) {
+    if (!grantedBy.has(power.unlockId)) {
+      problems.push(
+        `commander power "${power.key}" (${power.unlockId}) is implemented but no mission grants it`,
+      );
+    }
   }
 
   return problems;

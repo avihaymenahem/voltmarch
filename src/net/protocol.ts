@@ -307,6 +307,7 @@ const KINDS: ReadonlySet<number> = new Set<number>([
   CommandKind.ProductionCancel, CommandKind.PlaceBuilding, CommandKind.SetRally,
   CommandKind.SellBuilding, CommandKind.RepairToggle, CommandKind.SetStance,
   CommandKind.SetPrimary, CommandKind.SelfDestruct, CommandKind.Relocate,
+  CommandKind.UsePower,
 ]);
 
 const ORDERS: ReadonlySet<number> = new Set<number>([

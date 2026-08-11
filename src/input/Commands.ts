@@ -81,7 +81,12 @@ import { clampWorld, hashU32, worldToCell } from '../core/math';
 // bound and a three-row fallback when none is, which is the same answer
 // `src/sim/deploy.system.ts` acts on. `transportService()` is the same bargain
 // for "is anybody aboard": the D key, the HUD's Unload button and
-// `sim/Transport.ts` all read one occupancy table rather than three.
+// `sim/Transport.ts` all read one occupancy table rather than three. And
+// `commanderPowerSeamOf` is the same bargain again for "is this power charged",
+// reached from the ONE Phase.Command drain below rather than by a second
+// consumer — the `CommandKind.Relocate` precedent, whose comment in
+// `core/types.ts` records what happens when a verb skips the bus.
+import { commanderPowerSeamOf } from '../sim/CommanderPowers';
 import { isDeployable } from '../sim/Deploy';
 import { transportService } from '../sim/Transport';
 import { relocateSeamOf, snapRallyClear } from '../sim/Placement';
@@ -838,6 +843,9 @@ export class OrderExecutor {
       case CommandKind.Relocate:
         this.applyRelocate(cmd);
         break;
+      case CommandKind.UsePower:
+        this.applyPower(cmd);
+        break;
       default:
         this.park(cmd);
         break;
@@ -895,6 +903,25 @@ export class OrderExecutor {
     relocateSeamOf()?.commit(
       cmd.player, cmd.target, cmd.cx, cmd.cz, cmd.arg < 0 ? undefined : cmd.arg,
     );
+  }
+
+  /**
+   * Call a commander power. `arg` is the `CommanderPowerId`, `x`/`z` the point.
+   *
+   * HERE FOR THE SAME REASON `applyRelocate` IS: `CommandBus.drain` is
+   * destructive, so a second drainer inside Phase.Command would swallow every
+   * command `reissueParked` had just put back for Phase.Production. One drainer
+   * per phase; this is it, and the power service is reached through the same
+   * duck-typed seam, which degrades the same way — with no power system
+   * installed this is a no-op rather than a throw.
+   *
+   * The seam refuses an unknown id, a charge that has not finished and a slot
+   * that is not a player, so nothing here re-checks any of it. Ownership of the
+   * POWER is deliberately not checked anywhere in the simulation: see the
+   * determinism argument at the top of `src/sim/CommanderPowers.ts`.
+   */
+  private applyPower(cmd: Command): void {
+    commanderPowerSeamOf()?.use(cmd.player, cmd.arg, cmd.x, cmd.z);
   }
 
   private applyOrder(cmd: Command): void {

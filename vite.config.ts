@@ -136,5 +136,26 @@ export default defineConfig(({ command }) => ({
     exclude: ['**/node_modules/**', '**/dist/**', '.claude/**'],
     // Determinism soak needs headroom.
     testTimeout: 120_000,
+    /*
+     * AND SO DO THE FIXTURES THAT BUILD ONE.
+     *
+     * `hookTimeout` was never chosen — it was vitest's 10 s default sitting
+     * next to a deliberate 120 s `testTimeout`, which is the whole tell. Some
+     * `beforeAll`s here build real content: `tests/roads.spec.ts` generates a
+     * `Terrain` heightfield and a whole `RoadNetwork` on it, which takes ~3.4 s
+     * on an idle machine and comfortably over 10 s when the pool is saturated.
+     *
+     * So the budget was measuring HOW BUSY THE BOX IS, not whether the code
+     * works — the same defect CLAUDE.md writes up for the perf-hud counter that
+     * "tracked V8's new-space size rather than the code, which is why it moved
+     * with machine load". It surfaced the moment two more spec files joined the
+     * pool: roads.spec passed alone in 10.1 s and timed out in a full run, and
+     * the failure named a hook in a file nothing had touched.
+     *
+     * Matched to `testTimeout` rather than nudged: a fixture is not faster than
+     * the test it feeds, and a number picked to be "just enough" is the same
+     * bug again in a year.
+     */
+    hookTimeout: 120_000,
   },
 }));
