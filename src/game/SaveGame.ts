@@ -300,11 +300,20 @@ export interface SuperweaponAccess {
 }
 
 /**
- * The one method `SuperweaponService` does NOT have, and the only reason a
- * partially-charged superweapon restores as "still charging from full" rather
- * than "charging from where it was". Duck-typed rather than assumed, so the day
- * the owning module adds it the fidelity arrives with no change here and no
- * schema bump — the seconds are already in the file.
+ * Restore a partial charge to where it actually was.
+ *
+ * `SuperweaponService` DOES have this now, and the sentence that used to be
+ * here — "the one method it does not have… the day the owning module adds it
+ * the fidelity arrives with no change here and no schema bump" — was correct
+ * and is discharged: the seconds were always in the file, and adding
+ * `setRemaining` was the entire change.
+ *
+ * It stays DUCK-TYPED rather than becoming a required member of
+ * `SuperweaponAccess`, because the fallback below is still load-bearing: a host
+ * that cannot set a partial charge (a test fake, a build with the module cut)
+ * must degrade to "restart the charge" and never to a throw. Contrast
+ * `CommanderPowerAccess` below, which was written for this file and so requires
+ * both of its methods outright.
  */
 export interface SuperweaponChargeSetter {
   setRemaining(player: PlayerId, key: string, seconds: number): boolean;
@@ -312,6 +321,29 @@ export interface SuperweaponChargeSetter {
 
 function hasChargeSetter(v: SuperweaponAccess): v is SuperweaponAccess & SuperweaponChargeSetter {
   return typeof (v as Partial<SuperweaponChargeSetter>).setRemaining === 'function';
+}
+
+/**
+ * Commander power charges. `CommanderPowerService` implements both.
+ *
+ * WHY THIS IS A PORT AND NOT A DUCK-TYPED PROBE like the superweapon setter
+ * above: the setter was retrofitted onto a module that did not have it, so it
+ * had to be optional. Both of these were written for this interface, so the
+ * host member is nullable and the METHODS are not — a partially-implemented
+ * host would be a silent half-restore, which is the failure mode this file
+ * spends most of its length avoiding.
+ *
+ * CHARGE, NOT OWNERSHIP. Whether a player has EARNED a power is profile state
+ * and is deliberately absent from every save; see the header of
+ * `src/sim/CommanderPowers.ts`. The charge table ticks for every slot whether
+ * its owner has the power or not, so this port carries every slot and asks no
+ * questions about who may call what.
+ */
+export interface CommanderPowerAccess {
+  /** Every power's charge for one player, in ticks. 0 means ready. */
+  chargeStates(player: PlayerId): readonly { key: string; ticks: number }[];
+  /** Put one back. False when this build has no such power. */
+  setChargeTicks(player: PlayerId, key: string, ticks: number): boolean;
 }
 
 /** Camera pose. `CameraRig` implements both. */
@@ -413,6 +445,7 @@ export interface SnapshotHost {
   ore: OreAccess | null;
   scatter: ScatterAccess | null;
   superweapons: SuperweaponAccess | null;
+  commanderPowers: CommanderPowerAccess | null;
   /** Every footprint ever poured this match. See the header. */
   clearedFootprints: readonly ClearedFootprint[];
 }
@@ -656,6 +689,13 @@ interface SuperweaponSection {
   remaining: number;
 }
 
+/** One player's charge on one commander power, in TICKS. See `MiscSection`. */
+interface CommanderPowerSection {
+  player: number;
+  key: string;
+  ticks: number;
+}
+
 interface MiscSection {
   camera: { x: number; z: number; yaw: number; pitch: number; distance: number } | null;
   /** Selection, as save-local entity indices. */
@@ -664,6 +704,20 @@ interface MiscSection {
   /** Cleared footprints, flattened as cx,cz,w,h. */
   cleared: number[];
   superweapons: SuperweaponSection[];
+  /**
+   * Commander power charges, per player, in ticks.
+   *
+   * OPTIONAL, and no `SAVE_SCHEMA_VERSION` bump — exactly like
+   * `PlayerSection.upgradeKeys`. The misc chunk is JSON and this is a purely
+   * additive key, so a save written before it arrives `undefined`, `applyMisc`
+   * reads it as empty, and every power charges from full: which is precisely
+   * what that save meant, because that is what the build which wrote it did.
+   *
+   * TICKS rather than the seconds `superweapons` uses, because the underlying
+   * table IS integer ticks and a seconds round-trip would be lossy in a way
+   * nobody would notice until a charge came back one tick short. See the port.
+   */
+  commanderPowers?: CommanderPowerSection[];
 }
 
 /* ==========================================================================
@@ -1355,12 +1409,26 @@ function captureMisc(host: SnapshotHost, world: World, localOf: Int32Array): Mis
     }
   }
 
+  /* Every seated player's charge on every power. NOT filtered by ownership —
+   * see `CommanderPowerAccess`: the simulation's charge table has no idea who
+   * has earned what, and a capture that asked would be reaching for the local
+   * profile from inside the snapshot. 4 players x 5 powers is 20 small rows. */
+  const commanderPowers: CommanderPowerSection[] = [];
+  if (host.commanderPowers !== null) {
+    for (let p = 0; p < world.players.length; p++) {
+      for (const st of host.commanderPowers.chargeStates(p as PlayerId)) {
+        commanderPowers.push({ player: p, key: st.key, ticks: st.ticks });
+      }
+    }
+  }
+
   return {
     camera: host.camera === null ? null : { ...host.camera.getPose() },
     selection,
     selectionGroups,
     cleared,
     superweapons,
+    commanderPowers,
   };
 }
 
@@ -2144,6 +2212,15 @@ function applyMisc(
       // the conservative direction — it never hands a player a superweapon they
       // had not earned — and it is the only thing the module's public surface
       // permits today. The seconds are in the file either way.
+    }
+  }
+
+  /* Commander power charges. Absent in a save written before the key existed,
+   * in which case every power keeps the full charge the fresh engine seeded —
+   * which is exactly the behaviour of the build that wrote that file. */
+  if (host.commanderPowers !== null && misc.commanderPowers !== undefined) {
+    for (const st of misc.commanderPowers) {
+      host.commanderPowers.setChargeTicks(st.player as PlayerId, st.key, st.ticks);
     }
   }
 

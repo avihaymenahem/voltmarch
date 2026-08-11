@@ -233,6 +233,76 @@ describe('the charge', () => {
 });
 
 /* ==========================================================================
+ * 2b. THE SAVE PORT
+ *
+ * A save is not a match start; it is the resumption of one match. The charge is
+ * per-MATCH simulation state and belongs in the file exactly as the superweapon
+ * timers do — OWNERSHIP is per-profile and still must not be, which is why
+ * neither method below has any notion of it.
+ * ========================================================================== */
+
+describe('the save port', () => {
+  it('reports every power for a player, in ticks, and nothing about ownership', () => {
+    const rig = makeRig();
+    const states = rig.powers.chargeStates(P0);
+
+    expect(states.length).toBe(COMMANDER_POWER_LIST.length);
+    for (const p of COMMANDER_POWER_LIST) {
+      const row = states.find((s) => s.key === p.key);
+      expect(row, `"${p.key}" missing from the charge states`).toBeDefined();
+      // TICKS, not seconds, and integer: a full charge is ceil(seconds * SIM_HZ).
+      expect(row?.ticks).toBe(Math.ceil(p.chargeSeconds * SIM_HZ));
+      expect(Number.isInteger(row?.ticks)).toBe(true);
+    }
+    // Nothing on the row says whether this profile has earned the power.
+    expect(Object.keys(states[0]).sort()).toEqual(['key', 'ticks']);
+  });
+
+  it('round-trips a mid-cooldown charge exactly, without going through seconds', () => {
+    const rig = makeRig();
+    step(rig, 137);
+
+    const before = rig.powers.chargeStates(P0).map((s) => ({ ...s }));
+    const fresh = makeRig();
+    for (const s of before) expect(fresh.powers.setChargeTicks(P0, s.key, s.ticks)).toBe(true);
+
+    expect(fresh.powers.chargeStates(P0)).toEqual(before);
+  });
+
+  it('restores a ready power as ready, and the AI slot alongside the human one', () => {
+    const rig = makeRig();
+    expect(rig.powers.isReady(P0, CommanderPowerId.Airstrike)).toBe(false);
+
+    expect(rig.powers.setChargeTicks(P0, 'airstrike', 0)).toBe(true);
+    expect(rig.powers.setChargeTicks(P1, 'emergencyRepair', 60)).toBe(true);
+
+    expect(rig.powers.isReady(P0, CommanderPowerId.Airstrike)).toBe(true);
+    expect(rig.powers.isReady(P1, CommanderPowerId.EmergencyRepair)).toBe(false);
+    expect(rig.powers.chargeSecondsOf(P1, CommanderPowerId.EmergencyRepair)).toBe(60 / SIM_HZ);
+    // The write was per (player, power) and did not spill onto its neighbours.
+    expect(rig.powers.isReady(P1, CommanderPowerId.Airstrike)).toBe(false);
+  });
+
+  it('refuses a key it does not have and clamps one that is over-full', () => {
+    const rig = makeRig();
+    expect(rig.powers.setChargeTicks(P0, 'timeStop', 100)).toBe(false);
+    expect(rig.powers.setChargeTicks(P0, '', 100)).toBe(false);
+    expect(rig.powers.setChargeTicks(P0, 'none', 100), 'the None row is not a power').toBe(false);
+    expect(rig.powers.setChargeTicks(MAX_PLAYERS as PlayerId, 'airstrike', 0)).toBe(false);
+    expect(rig.powers.setChargeTicks(P0, 'airstrike', Number.NaN)).toBe(false);
+
+    // A save from a build that priced the power higher must not hold this one
+    // hostage past its own table.
+    const full = Math.ceil(COMMANDER_POWERS[CommanderPowerId.Chronoshift].chargeSeconds * SIM_HZ);
+    expect(rig.powers.setChargeTicks(P0, 'chronoshift', full * 5)).toBe(true);
+    expect(rig.powers.chargeStates(P0).find((s) => s.key === 'chronoshift')?.ticks).toBe(full);
+
+    expect(rig.powers.setChargeTicks(P0, 'chronoshift', -50)).toBe(true);
+    expect(rig.powers.isReady(P0, CommanderPowerId.Chronoshift)).toBe(true);
+  });
+});
+
+/* ==========================================================================
  * 3. THE FIVE EFFECTS
  * ========================================================================== */
 

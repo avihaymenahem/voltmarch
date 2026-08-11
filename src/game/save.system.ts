@@ -65,6 +65,7 @@ import type { World } from '../core/world';
 import { ctx } from './context';
 import { activeScenario, resolveDefBinding } from './Scenarios';
 import { getScatter } from '../world/Scatter';
+import { commanderPowers } from '../sim/CommanderPowers';
 import { superweapons } from '../sim/Superweapons';
 import {
   captureSnapshot, defIndexFromTables, readSnapshotMeta, restoreSnapshot,
@@ -228,6 +229,11 @@ function makeHost(): SnapshotHost | null {
     ore: world.ore,
     scatter: getScatter(),
     superweapons: superweapons(),
+    // Per-MATCH charge, not per-profile ownership. Which powers this player has
+    // EARNED is profile state and stays out of every save file; the countdown
+    // is simulation state and belongs in one exactly as the superweapon
+    // timers do. See the header of `src/sim/CommanderPowers.ts`.
+    commanderPowers: commanderPowers(),
     clearedFootprints: cleared,
   };
 }

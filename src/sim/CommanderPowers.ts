@@ -68,21 +68,40 @@
  * store order, and every arrival slot is computed from an integer counter.
  *
  *
- * WHAT IS NOT DONE YET, WRITTEN DOWN RATHER THAN LEFT TO BE DISCOVERED
- * --------------------------------------------------------------------
- *   1. NO HUD BUTTON. The verb, the bus, the relay, the replay and the effects
- *      are all here and `__vmPowers.fire('airstrike', x, z)` calls one from the
- *      console, but `src/ui/**` does not yet draw the five buttons or the
- *      arm-then-click that aims them. Until it does, a power is callable by a
- *      script and not by a mouse. `powersOwnedBy` in `progression/powers.ts` is
- *      the one call that screen needs.
- *   2. THE AI NEVER CALLS ONE. `src/sim/AI.ts` already issues the hero's
- *      ability as an ordinary command and would issue these the same way; it
- *      simply has no branch for them yet.
- *   3. CHARGES ARE NOT IN THE SAVE. `src/game/save.system.ts` snapshots
- *      production, economy and superweapons; a loaded game therefore starts
- *      every power charging from full. That is the safe direction to be wrong
- *      in — you never load into a free strike — but it is wrong.
+ * THE THREE GAPS THIS BLOCK USED TO LIST ARE ALL CLOSED
+ * ------------------------------------------------------
+ * It read "1. NO HUD BUTTON. 2. THE AI NEVER CALLS ONE. 3. CHARGES ARE NOT IN
+ * THE SAVE." All three were true when written and none of them is now, which is
+ * the exact shape of rot `docs/SPEC_DRIFT_AUDIT.md` catalogues — a file
+ * describing itself as unfinished long after it was finished sends the next
+ * reader off to build something that exists.
+ *
+ *   1. `CommanderPowerBar` in `src/ui/Sidebar.ts` draws the buttons and the
+ *      arm-then-click that aims them, off `powersOwnedBy` (v2.3.0).
+ *   2. `AI.callPower` issues all five through `channels.command`, gated by
+ *      `AiDifficulty.powerMask` (v2.3.0).
+ *   3. CHARGES ARE IN THE SAVE, through `chargeStates`/`setChargeTicks` below.
+ *
+ * ON (3), BECAUSE THE BOUNDARY IS THE INTERESTING PART. Two different things
+ * were being conflated:
+ *
+ *   OWNERSHIP is PROFILE state. `power.airstrike` lives in `profile.unlocked`,
+ *     `src/progression/profile-store.ts` persists it, and it must NEVER enter a
+ *     save file: a save that carried unlocks would be a way to hand a fresh
+ *     account content it had not earned, and the same file would then describe
+ *     a different game on two profiles.
+ *   CHARGE is per-MATCH SIMULATION state. It is seeded full at match start —
+ *     that is correct and unchanged — but a LOAD is not a match start. It is
+ *     the resumption of one match, and `SaveGame.ts`'s whole thesis is that a
+ *     snapshot "restores the numbers that were there".
+ *
+ * The old note called the omission "the safe direction to be wrong in — you
+ * never load into a free strike". That was only half the ledger. `Shell.loadGame`
+ * boots a fresh engine before restoring, so a load ran `resetCharges()` over
+ * EVERY SLOT, the AI's included: reloading during a hard fight put the enemy
+ * brain's Emergency Repair and Airstrike back to 150 s of charge, every time.
+ * Save-scumming a fight disarmed the opponent's entire late-game layer, which is
+ * not a safe direction to be wrong in at all.
  *
  *
  * PHASE.COMMAND, ORDER 9700
@@ -134,6 +153,21 @@ export type PowerResult =
   | 'noPlayer'
   /** It fired the transaction and there was simply nothing there to affect. */
   | 'noTargets';
+
+/**
+ * One power's charge, by content KEY.
+ *
+ * The key and not the `CommanderPowerId`, for the reason `SaveGame.ts` stores
+ * def keys rather than table indices: an index is only meaningful against the
+ * table that produced it, and a save outlives that table. `CommanderPowerId`
+ * happens to be append-only because it rides the multiplayer wire — but the
+ * save format does not get to depend on a promise another file made.
+ */
+export interface CommanderPowerCharge {
+  readonly key: string;
+  /** Ticks until callable. 0 means ready. */
+  readonly ticks: number;
+}
 
 export interface CommanderPowerStats {
   /** Calls that landed, per `CommanderPowerId`. */
@@ -213,6 +247,63 @@ export class CommanderPowerService {
   isReady(player: PlayerId, power: number): boolean {
     const slot = this.slotOf(player, power);
     return slot >= 0 && this.charge[slot] <= 0;
+  }
+
+  /* ======================================================================
+   * 2a-bis. THE SAVE PORT — charges in TICKS, which is what they are
+   *
+   * `src/game/SaveGame.ts` reads and writes the charge table through these two,
+   * structurally, the way it reaches `SuperweaponService.states/grantReady`. It
+   * never imports this module, and this module never learns that saving exists.
+   *
+   * TICKS, NOT SECONDS, and that is the whole reason `chargeSecondsOf` is not
+   * the port. The table IS integer ticks (see the field, and the determinism
+   * note in the header), so seconds are a lossy view of it: `chargeStates` ->
+   * JSON -> `setChargeTicks` in ticks is exact by construction, where a
+   * seconds round-trip has to be rounded back and the rounding rule becomes a
+   * thing to get wrong. It is also the unit the file already keeps time in —
+   * `tick` and `spawnTick` are both raw ticks.
+   * ====================================================================== */
+
+  /**
+   * Every real power's charge for one player, in ticks. Table order.
+   *
+   * `out` is caller-supplied so a capture allocates nothing it does not have
+   * to; omit it and you get a fresh array, which is what the one caller wants.
+   */
+  chargeStates(player: PlayerId, out?: CommanderPowerCharge[]): CommanderPowerCharge[] {
+    const dst = out ?? [];
+    dst.length = 0;
+    for (let k = 1; k < COMMANDER_POWERS.length; k++) {
+      const slot = this.slotOf(player, k);
+      if (slot < 0) continue;
+      dst.push({ key: COMMANDER_POWERS[k].key, ticks: Math.max(0, this.charge[slot]) });
+    }
+    return dst;
+  }
+
+  /**
+   * Put one power's charge back to `ticks`. False when the key or the player is
+   * not one this build has.
+   *
+   * An unknown key is DROPPED rather than guessed at: a save written by a build
+   * with a sixth power, loaded here, must leave the five this build has alone
+   * rather than land a stranger's countdown on one of them.
+   */
+  setChargeTicks(player: PlayerId, key: string, ticks: number): boolean {
+    if (!Number.isFinite(ticks)) return false;
+    for (let k = 1; k < COMMANDER_POWERS.length; k++) {
+      if (COMMANDER_POWERS[k].key !== key) continue;
+      const slot = this.slotOf(player, k);
+      if (slot < 0) return false;
+      // Clamped to this build's charge, not the file's: a save from a build
+      // whose Chronoshift cost 400 s must not hold this one hostage for longer
+      // than its own table says it can be.
+      const full = toTicks(COMMANDER_POWERS[k].chargeSeconds);
+      this.charge[slot] = Math.min(full, Math.max(0, Math.floor(ticks)));
+      return true;
+    }
+    return false;
   }
 
   /* ======================================================================
