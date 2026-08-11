@@ -51,11 +51,24 @@ import { SKIRMISH_START_OFFSETS, buildScenario, startSpots } from '../src/game/S
 const CX = MAP_SIZE * 0.5;
 const CZ = MAP_SIZE * 0.5;
 
-/** The world every case here inspects: a real generated map, really populated. */
+/**
+ * The world every case here inspects: a real generated map, really populated.
+ *
+ * THE CONSTRUCTOR ALREADY GENERATED. This used to call `terrain.generate()`
+ * after it. `Terrain`'s constructor ends in `adopt(fields)` or `generate()`, and
+ * nothing here passes prewarmed `fields`, so every map was built twice —
+ * heightfield, ramp carver, splat and all 64 chunk meshes, for a result the
+ * second pass could only reproduce. `generate()` documents itself as pure, and
+ * it is: measured across four biomes x two seeds x with-and-without reserved
+ * starts, a second call leaves `height`, `wallUp`, `wallTop`, `surface`,
+ * `passGrid`, `buildGrid`, `startLocations()` and `startReport()`
+ * byte-identical. So the call was cost with no effect, and dropping it changes
+ * no number this file asserts.
+ */
 function buildWorld(seed: number, biome: string): World {
   const world = new World();
   const scene = new THREE.Scene();
-  const terrain = new Terrain({
+  world.terrain = new Terrain({
     scene, seed, biome: biome as never, anisotropy: 1,
     // THE SAME SHELVES `src/world/terrain.system.ts` RESERVES. A test world
     // built without them is not the world the game generates, and the start
@@ -65,9 +78,80 @@ function buildWorld(seed: number, biome: string): World {
       ...SKIRMISH_START_OFFSETS.map((o) => ({ x: CX + o.dx, z: CZ + o.dz })),
     ],
   });
-  terrain.generate();
-  world.terrain = terrain;
   return world;
+}
+
+/* ==========================================================================
+ * ONE GENERATION PER BIOME AT THE SHARED SEED
+ *
+ * Two cases below asked different questions of the IDENTICAL four maps — the
+ * NaN sweep over the store and the "a start is buildable" check both built
+ * `buildWorld(4242, biome)` for every biome. That is four generations bought
+ * twice, on top of the doubling `buildWorld` itself used to carry, in a file
+ * that already sat near the 120 s `testTimeout` and timed out for real under
+ * concurrent load. Same shape as `trackScan()` in `tests/reachability.spec.ts`,
+ * and this mirrors it.
+ *
+ * NO CASE CAN CORRUPT ANOTHER'S WORLD, because no case is handed a world. The
+ * cache holds plain strings; each `World` is unreachable before the first
+ * assertion runs, so nothing depends on which `it()` triggered the scan.
+ *
+ * THE OTHER SEEDS ARE DELIBERATELY NOT CACHED. `buildScenario` MUTATES the
+ * world it is given, so the overlap sweep cannot share one; and the determinism
+ * cases have to generate the same seed twice for real, or they compare an object
+ * with itself and prove nothing. Both are correctness, not oversight.
+ *
+ * Computed lazily rather than in `beforeAll` for the reason `reachability.spec`
+ * records: a hook carries the same clock as a test, so moving the work there
+ * would move the timeout rather than remove it.
+ * ========================================================================== */
+
+/** The seed both read-only sweeps below run on. */
+const SHARED_SEED = 4242;
+
+interface FreshCase {
+  biome: string;
+  /** One entry per store column that came out non-finite on a live slot. */
+  nonFinite: string[];
+  /** One entry per two-army start cell a base could not be placed on. */
+  unbuildableStarts: string[];
+}
+
+let freshCases: FreshCase[] | null = null;
+
+function freshScan(): FreshCase[] {
+  if (freshCases !== null) return freshCases;
+  const out: FreshCase[] = [];
+  for (const biome of BIOME_NAMES) {
+    const world = buildWorld(SHARED_SEED, biome);
+    const s = world.store;
+    const columns: ReadonlyArray<readonly [string, Float32Array]> = [
+      ['posX', s.posX], ['posY', s.posY], ['posZ', s.posZ],
+      ['yaw', s.yaw], ['turretYaw', s.turretYaw],
+      ['hp', s.hp], ['velX', s.velX], ['velZ', s.velZ],
+      ['orderX', s.orderX], ['orderZ', s.orderZ],
+    ];
+    const nonFinite: string[] = [];
+    for (let a = 0; a < s.aliveCount; a++) {
+      const i = s.alive[a];
+      for (const [name, col] of columns) {
+        if (!Number.isFinite(col[i])) nonFinite.push(`${biome}: ${name} on slot ${i}`);
+      }
+    }
+
+    const unbuildableStarts: string[] = [];
+    for (const spot of startSpots(CX, CZ, 2)) {
+      const cx = Math.floor(spot.x / CELL);
+      const cz = Math.floor(spot.z / CELL);
+      if (!world.terrain.isBuildable(cx, cz)) {
+        unbuildableStarts.push(`${biome} start ${cx},${cz}`);
+      }
+    }
+
+    out.push({ biome, nonFinite, unbuildableStarts });
+  }
+  freshCases = out;
+  return out;
 }
 
 /** Axis-aligned footprint rectangle of a building slot, in metres. */
@@ -202,22 +286,9 @@ describe('nothing in the store is NaN', () => {
    * test. This is the one that would have caught both.
    */
   it('holds for a freshly generated world', () => {
-    for (const biome of BIOME_NAMES) {
-      const world = buildWorld(4242, biome);
-      const s = world.store;
-      const columns: ReadonlyArray<readonly [string, Float32Array]> = [
-        ['posX', s.posX], ['posY', s.posY], ['posZ', s.posZ],
-        ['yaw', s.yaw], ['turretYaw', s.turretYaw],
-        ['hp', s.hp], ['velX', s.velX], ['velZ', s.velZ],
-        ['orderX', s.orderX], ['orderZ', s.orderZ],
-      ];
-      for (let a = 0; a < s.aliveCount; a++) {
-        const i = s.alive[a];
-        for (const [name, col] of columns) {
-          expect(Number.isFinite(col[i]), `${biome}: ${name} on slot ${i}`).toBe(true);
-        }
-      }
-    }
+    const bad = freshScan().flatMap((c) => c.nonFinite);
+    expect(bad, `\n${bad.join('\n')}\n`).toEqual([]);
+    expect(freshScan().length, 'biomes measured').toBe(BIOME_NAMES.length);
   });
 
   it('holds for terrain heights across the whole map', () => {
@@ -279,14 +350,9 @@ describe('a seed produces the same world twice', () => {
 
 describe('every start is somewhere an army can actually operate', () => {
   it('is buildable and connected on every biome', () => {
-    for (const biome of BIOME_NAMES) {
-      const world = buildWorld(4242, biome);
-      for (const spot of startSpots(CX, CZ, 2)) {
-        const cx = Math.floor(spot.x / CELL);
-        const cz = Math.floor(spot.z / CELL);
-        expect(world.terrain.isBuildable(cx, cz), `${biome} start ${cx},${cz}`).toBe(true);
-      }
-    }
+    const bad = freshScan().flatMap((c) => c.unbuildableStarts);
+    expect(bad, `\n${bad.join('\n')}\n`).toEqual([]);
+    expect(freshScan().length, 'biomes measured').toBe(BIOME_NAMES.length);
   });
 });
 

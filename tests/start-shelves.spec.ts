@@ -63,14 +63,24 @@ function shelvesFor(): { x: number; z: number }[] {
   ];
 }
 
+/**
+ * THE CONSTRUCTOR ALREADY GENERATED. This used to call `t.generate()` here.
+ *
+ * `Terrain`'s constructor ends in `adopt(fields)` or `generate()`, and nothing
+ * here passes prewarmed `fields`, so every map was built twice — heightfield,
+ * ramp carver, splat and all 64 chunk meshes, for a result the second pass could
+ * only reproduce. `generate()` documents itself as pure, and it is: measured
+ * across four biomes x two seeds x with-and-without reserved starts, a second
+ * call leaves `height`, `wallUp`, `wallTop`, `surface`, `passGrid`, `buildGrid`,
+ * `startLocations()` and `startReport()` byte-identical. So the call was cost
+ * with no effect, and dropping it changes no number this file asserts.
+ */
 function build(seed: number, biome: string, starts?: { x: number; z: number }[]): Terrain {
   const scene = new THREE.Scene();
-  const t = new Terrain({
+  return new Terrain({
     scene, seed, biome: biome as never, anisotropy: 1,
     ...(starts === undefined ? {} : { starts }),
   });
-  t.generate();
-  return t;
 }
 
 /** Share of cells inside `radius` of (x,z) that a structure could be placed on. */
@@ -127,6 +137,94 @@ function maxStep(t: Terrain, x: number, z: number, radius: number): number {
   return worst;
 }
 
+/* ==========================================================================
+ * ONE GENERATION PER (BIOME, SEED), SHARED BY EVERY CASE THAT ASKS ABOUT IT
+ *
+ * Four `it()` blocks below each looped `BIOME_NAMES` x a seed list and built
+ * their own `Terrain` — 41 maps for 24 distinct ones, each generated twice by
+ * the redundant `generate()` above, so 82 generations for 24 maps' worth of
+ * questions. That is why this file sat near the 120 s `testTimeout` with no
+ * headroom, and why it timed out for real on a contended box: the budget was
+ * measuring how busy the machine is rather than whether the shelves are flat.
+ * `tests/reachability.spec.ts` had the identical shape and `trackScan()` is the
+ * fix this mirrors.
+ *
+ * The scan below generates each (biome, seed) ONCE and reads every metric any
+ * case wants off that one map. Every metric is taken for every case, even where
+ * only one case asks for it: `buildableFrac` over a 56 m disc is ~2 500 grid
+ * lookups against a generation of hundreds of milliseconds, so measuring
+ * uniformly is free and each case then filters to exactly the seeds it asserted
+ * before. Each still asserts its own subset — the scan set is their union, not
+ * a merger of the cases.
+ *
+ * NO TEST CAN CORRUPT ANOTHER'S TERRAIN, because no test is handed a terrain.
+ * The cache holds plain numbers; each `Terrain` is disposed inside the scan and
+ * is unreachable before the first assertion runs. Results therefore cannot
+ * depend on which `it()` triggered the scan or on what ran before it.
+ *
+ * Computed lazily rather than in `beforeAll` for the reason `reachability.spec`
+ * records: a hook carries the same clock as a test, so moving the work there
+ * would move the timeout rather than remove it.
+ * ========================================================================== */
+
+/** Seeds the seam check runs on. */
+const SEAM_SEEDS: readonly number[] = [1, 7, 4242];
+/** Seeds the headline buildability sweep runs on. */
+const BUILD_SEEDS: readonly number[] = [1, 7, 99, 4242, 0x51c0de, 0xbeef];
+/** The seed the centre shelf and the shelf count are checked on. */
+const CENTRE_SEED = 4242;
+/** The biome the shelf count is checked on. */
+const SHELF_BIOME = 'temperate';
+
+/**
+ * The union, derived rather than restated. A seed added to any list above joins
+ * the scan by construction — the alternative is a fourth hand-maintained list
+ * that silently stops covering one of the three.
+ */
+const SCAN_SEEDS: readonly number[] = [
+  ...new Set([...SEAM_SEEDS, ...BUILD_SEEDS, CENTRE_SEED]),
+];
+
+interface ShelfCase {
+  biome: string;
+  seed: number;
+  /** Steepest single-cell step at the midpoint to each start shelf. */
+  seam: number[];
+  /** Buildable share inside BUILD_RADIUS at each start. */
+  startFrac: number[];
+  /** Buildable share inside BUILD_RADIUS at the map centre. */
+  centreFrac: number;
+  /** Shelves the generator reported. */
+  shelves: number;
+}
+
+let shelfCases: ShelfCase[] | null = null;
+
+function shelfScan(): ShelfCase[] {
+  if (shelfCases !== null) return shelfCases;
+  const out: ShelfCase[] = [];
+  for (const biome of BIOME_NAMES) {
+    for (const seed of SCAN_SEEDS) {
+      const t = build(seed, biome, shelvesFor());
+      out.push({
+        biome,
+        seed,
+        seam: SKIRMISH_START_OFFSETS.map(
+          (o) => maxStep(t, CX + o.dx * 0.5, CZ + o.dz * 0.5, 16),
+        ),
+        startFrac: SKIRMISH_START_OFFSETS.map(
+          (o) => buildableFrac(t, CX + o.dx, CZ + o.dz, BUILD_RADIUS),
+        ),
+        centreFrac: buildableFrac(t, CX, CZ, BUILD_RADIUS),
+        shelves: t.startLocations().length,
+      });
+      t.dispose();
+    }
+  }
+  shelfCases = out;
+  return out;
+}
+
 /* ========================================================================== */
 
 describe('the discs overlap, and that was the unverified risk', () => {
@@ -143,17 +241,19 @@ describe('the discs overlap, and that was the unverified risk', () => {
     // `levelStartAreas` mutates `this.height` as it goes, so the second disc
     // levels ground the first already flattened — the self-stabilising the task
     // hoped for. This asserts it rather than hoping.
-    for (const biome of BIOME_NAMES) {
-      for (const seed of [1, 7, 4242]) {
-        const t = build(seed, biome, shelvesFor());
-        for (const o of SKIRMISH_START_OFFSETS) {
-          const mx = CX + o.dx * 0.5;
-          const mz = CZ + o.dz * 0.5;
-          const step = maxStep(t, mx, mz, 16);
-          expect(step, `${biome}/${seed} seam step at the disc overlap`).toBeLessThan(2.0);
-        }
+    let checked = 0;
+    for (const c of shelfScan()) {
+      if (!SEAM_SEEDS.includes(c.seed)) continue;
+      for (let k = 0; k < SKIRMISH_START_OFFSETS.length; k++) {
+        expect(c.seam[k]!, `${c.biome}/${c.seed} seam step at the disc overlap`)
+          .toBeLessThan(2.0);
+        checked++;
       }
     }
+    // A filter that quietly matches nothing is how a case stops asserting while
+    // still going green. Count what was measured, not just what passed.
+    expect(checked, 'seam midpoints measured')
+      .toBe(BIOME_NAMES.length * SEAM_SEEDS.length * SKIRMISH_START_OFFSETS.length);
   });
 });
 
@@ -166,15 +266,12 @@ describe('the guarantee now covers the ground armies actually land on', () => {
    */
   it('is buildable at every start, on every biome, across seeds', () => {
     const worst: { where: string; frac: number }[] = [];
-    for (const biome of BIOME_NAMES) {
-      for (const seed of [1, 7, 99, 4242, 0x51c0de, 0xbeef]) {
-        const t = build(seed, biome, shelvesFor());
-        for (const o of SKIRMISH_START_OFFSETS) {
-          const frac = buildableFrac(t, CX + o.dx, CZ + o.dz, BUILD_RADIUS);
-          worst.push({ where: `${biome}/${seed}`, frac });
-        }
-      }
+    for (const c of shelfScan()) {
+      if (!BUILD_SEEDS.includes(c.seed)) continue;
+      for (const frac of c.startFrac) worst.push({ where: `${c.biome}/${c.seed}`, frac });
     }
+    expect(worst.length, 'openings measured')
+      .toBe(BIOME_NAMES.length * BUILD_SEEDS.length * SKIRMISH_START_OFFSETS.length);
     worst.sort((a, b) => a.frac - b.frac);
     const min = worst[0]!;
     const mean = worst.reduce((s, w) => s + w.frac, 0) / worst.length;
@@ -188,19 +285,22 @@ describe('the guarantee now covers the ground armies actually land on', () => {
     // Removing it would drop twelve fixtures onto ungraded ground and their
     // buildings would relocate via connectedGround — changing the shots more
     // than the terrain change itself.
-    for (const biome of BIOME_NAMES) {
-      const t = build(4242, biome, shelvesFor());
-      expect(buildableFrac(t, CX, CZ, BUILD_RADIUS), `${biome} centre`).toBeGreaterThan(0.95);
+    let checked = 0;
+    for (const c of shelfScan()) {
+      if (c.seed !== CENTRE_SEED) continue;
+      expect(c.centreFrac, `${c.biome} centre`).toBeGreaterThan(0.95);
+      checked++;
     }
+    expect(checked, 'centres measured').toBe(BIOME_NAMES.length);
   });
 
   it('reports one shelf per requested start, so startSpots stops falling through', () => {
     // `startSpots` uses shelves only when `shelves.length >= n`. With one entry
     // and two armies that was always false, which is the whole mechanism of the
     // defect.
-    const t = build(4242, 'temperate', shelvesFor());
-    const shelves = t.startLocations();
-    expect(shelves.length).toBeGreaterThanOrEqual(3);
+    const c = shelfScan().find((k) => k.biome === SHELF_BIOME && k.seed === CENTRE_SEED);
+    expect(c, `the scan must cover ${SHELF_BIOME}/${CENTRE_SEED}`).toBeDefined();
+    expect(c!.shelves).toBeGreaterThanOrEqual(3);
   });
 });
 
