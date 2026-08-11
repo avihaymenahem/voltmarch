@@ -2065,6 +2065,21 @@ export interface SeaSpec {
    * already seaward of the coast, so a shoal can never dry a beach.
    */
   readonly shoals?: readonly SeaShoal[];
+  /**
+   * Rise/run of this coast's beach cone. Omitted means `TERRAIN_SEA_BEACH_GRADE`.
+   *
+   * A per-sea lever because "how steep is the beach" is a property of the
+   * COASTLINE, not of the engine: an archipelago whose every shore is a landing
+   * beach wants a gentler cone than a fjord. The default is the one that makes
+   * a beach buildable (see `TERRAIN_SEA_BEACH_GRADE`), so a map that says
+   * nothing gets a dockable coast.
+   *
+   * These three arrived in the same wave and compose deliberately: `islands`
+   * decides WHERE the coast is, `beachGrade` decides how it meets the water.
+   * An archipelago is the case that wants both — every one of its shores is a
+   * landing beach, and it had zero legal dock sites before the grade moved.
+   */
+  readonly beachGrade?: number;
 }
 
 /**
@@ -2077,12 +2092,82 @@ export interface SeaSpec {
  * leaves the terrain untouched where it does not, so the coast reads as a
  * landform meeting the sea rather than as a stamped wedge.
  *
- * 0.26 is under `tan(ROUGH_SLOPE)` (0.288), so the beach never even classifies
- * as rough ground, and it bounds the cone's reach: tier-1 ground at 8.8 m stops
- * being clamped 26 m inland, and nothing on the map is affected past
- * (TERRAIN_MAX_HEIGHT - WATER_LEVEL) / 0.26 ~ 85 m from the waterline.
+ * THIS WAS 0.26 AND THE BEACH WAS NEVER BUILDABLE ON, WHICH IS NOT A DETAIL —
+ * it is the difference between a coast and a wall you can sail past.
+ *
+ * The old number was justified against the wrong threshold. 0.26 is under
+ * `tan(ROUGH_SLOPE)` (0.288), so the beach never classifies as ROUGH; but
+ * `computeDerived` writes `buildGrid` at `maxSlope < ROUGH_SLOPE * 0.62`, i.e.
+ * 0.1736 rad, i.e. a grade of 0.1753. `atan(0.26)` is 0.2543 rad. So every
+ * square metre of every beach cone in the game failed the build test by 46%,
+ * and a Naval Yard could only ever be founded where natural ground happened to
+ * be flat NEAR the water rather than on the shore itself. Measured on the two
+ * shipped sea maps at their pinned seeds, only 10-23% of coastal ground was
+ * buildable and one of them offered 81 dock sites along a 400 m coastline.
+ *
+ * 0.12 is the fix, and the margin under 0.1753 is deliberate rather than "just
+ * under": `seaDistance` adds an fbm wobble of `wavinessMetres` on a
+ * `wavelengthMetres` feature and the cone's height inherits that gradient, so
+ * the realised slope on a wobbling coast runs well above `atan(grade)`.
+ *
+ * MEASURED on both shipped seas at their pinned seeds — ground within 40 m of
+ * the waterline that `isBuildable`, and the count of foundable 3x3 dock sites
+ * (`tests/naval-shore.spec.ts` runs the same sweep):
+ *
+ *     grade   contested-strait        coral-shore
+ *     0.26    16.4% buildable, 178     10.3% buildable,  81
+ *     0.16    17.6% buildable,  37     23.1% buildable,  41
+ *     0.14    35.5% buildable,  90     41.0% buildable, 149
+ *     0.12    57.4% buildable, 263     54.0% buildable, 389
+ *     0.10    72.8% buildable, 492     54.9% buildable, 431
+ *
+ * The dip at 0.16 is the honest shape of this curve and the reason "a bit
+ * gentler" was never going to work: a cone that is still too steep to build on
+ * CLAMPS ground that used to be naturally flat, so it destroys dock sites
+ * before it starts creating them. Nothing between 0.26 and ~0.14 is an
+ * improvement on doing nothing.
+ *
+ * ONE CONE WAS NOT ENOUGH, AND THE SECOND ONE IS WHY THIS IS AN IMPROVEMENT
+ * RATHER THAN A TRADE. A single gentle cone reaches
+ * `(TERRAIN_MAX_HEIGHT - WATER_LEVEL) / grade` inland — 85 m at 0.26 but 161 m
+ * at 0.12, which is a third of the map erased into one smooth ramp. So the
+ * profile is now PIECEWISE: `TERRAIN_SEA_BEACH_RUN` metres of this grade, then
+ * `TERRAIN_SEA_BLUFF_GRADE` behind it. The beach is wide and flat where a dock
+ * goes; the landform comes back immediately behind it. Measured bite of the
+ * whole profile — furthest inland cell whose height is still sitting on the
+ * cone — is 72 m and 62 m on the two maps, against 74 m and 74 m for the old
+ * single 0.26 cone. So the coast got FLATTER and the map got LESS eroded at the
+ * same time.
  */
-export const TERRAIN_SEA_BEACH_GRADE = 0.26;
+export const TERRAIN_SEA_BEACH_GRADE = 0.12;
+
+/**
+ * Metres of `TERRAIN_SEA_BEACH_GRADE` beach inland of the waterline, before the
+ * profile hands over to `TERRAIN_SEA_BLUFF_GRADE`.
+ *
+ * 40 m is three cells more than a Naval Yard footprint plus its egress spiral,
+ * so the whole "found a dock and sail out of it" transaction fits inside the
+ * flat band with room to turn. Wider buys nothing a dock needs and costs
+ * landform; narrower and the yard hangs off the back of the beach onto the
+ * bluff, which is exactly the state this replaced.
+ */
+export const TERRAIN_SEA_BEACH_RUN = 40;
+
+/**
+ * Rise/run of the cone behind the beach.
+ *
+ * Steeper than the old single cone on purpose. This is a CEILING, so a steep
+ * value clamps LESS ground, not more: past the beach the map is supposed to be
+ * the map again, and every metre the old 0.26 cone spent climbing back to
+ * `TERRAIN_MAX_HEIGHT` was a terrace face it had deleted on the way.
+ *
+ * `atan(0.45)` is 0.42 rad — above `ROUGH_SLOPE` (0.28) and well under
+ * `CLIFF_SLOPE` (0.62), so a bluff carved by this is rough ground a tank pays
+ * to cross and never an impassable wall. Total profile reach is
+ * `RUN + (TERRAIN_MAX_HEIGHT - WATER_LEVEL - RUN * BEACH) / BLUFF` ~ 78 m,
+ * against ~85 m for the single 0.26 cone it replaces.
+ */
+export const TERRAIN_SEA_BLUFF_GRADE = 0.45;
 
 /**
  * Metres of dry land a reserved start shelf must keep between itself and the
@@ -4383,7 +4468,65 @@ export const PRODUCTION = {
   egressClearanceMetres: 1.15,
   /** Seconds a finished-but-blocked unit waits before it re-tries the exit. */
   egressRetrySeconds: 0.25,
+
+  /* -- THE NAVAL PAIR. These two numbers are ONE RULE and must be read
+   * together, because between them they are the difference between a shipyard
+   * and a shipyard-shaped ornament.
+   *
+   * `shoreSearchCells` is what `evaluatePlacement` demands before it will let a
+   * Naval Yard be founded: navigable water within that many cells of the
+   * footprint. `navalEgressRings` is what `Production.findEgressSpot` is then
+   * allowed to spend looking for a launch cell. If the second is ever smaller
+   * than the first can require, a LEGAL site produces a permanently stalled
+   * queue — paid for, `ready: true`, nothing ever comes out — which is exactly
+   * the failure `Locomotor.Air` shipped for two releases.
+   *
+   * The arithmetic, worst case: water `shoreSearchCells` beyond the BACK edge
+   * of the footprint while the door is on the FRONT. That is
+   * `shoreSearchCells + maxFootprintCells + ceil(exit reach)` cells of
+   * Chebyshev distance from the door — 6 + 6 + 3 = 15. Egress is a ring scan,
+   * not a path, so it reads straight through the building's own cells.
+   * `tests/naval-shore.spec.ts` asserts the relation rather than trusting this
+   * comment.
+   * -------------------------------------------------------------------- */
+
+  /**
+   * Cells from a shore-bound structure's footprint within which navigable water
+   * must be found. 6 cells is 24 m — a dock apron, not a lake view.
+   */
+  shoreSearchCells: 6,
+  /**
+   * Distinct water cells that have to be in that halo. A two-cell puddle in a
+   * noise basin is not a harbour, and before the seas landed those puddles were
+   * the only water on any shipped map.
+   */
+  shoreWaterCells: 8,
+  /**
+   * Rings the egress spiral may spend finding open water for a HULL. Larger
+   * than `egressSearchRings` by construction — see the block above.
+   */
+  navalEgressRings: 15,
 } as const;
+
+/**
+ * Cells in the largest connected body of navigable water before a battlefield
+ * counts as one a NAVY can be fielded on. See `src/sim/NavalWater.ts`.
+ *
+ * NOT "IS THERE ANY WATER". Every biome in this game carves basins, so every
+ * map has always had some. Measured on the six shipped battlefields at their
+ * pinned seeds, largest single body:
+ *
+ *     contested-strait  3622      airbase-flats       0
+ *     coral-shore       3952      industrial-grid     0
+ *                                 temperate-valley    3
+ *                                 frozen-sector      11
+ *
+ * Two clusters four orders of magnitude apart. 300 cells — 4800 m2, a 70 m
+ * square — sits between them with a decade of margin either way, and is also
+ * the smallest lagoon on which "build a shipyard and sail out of it" is a real
+ * transaction rather than a joke.
+ */
+export const NAVAL_MIN_SEA_CELLS = 300;
 
 export const PLACEMENT = {
   /**

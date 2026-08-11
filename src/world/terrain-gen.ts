@@ -121,7 +121,8 @@ import {
   TERRAIN_RAMP_FORCED_CORE_WIDTH, TERRAIN_RAMP_FORCED_HALF_WIDTH,
   TERRAIN_RAMP_MAX_GRADE, TERRAIN_RAMP_MAX_LENGTH, TERRAIN_RAMP_MAX_LINK_CELLS,
   TERRAIN_ISLAND_MIN_CELLS,
-  TERRAIN_SEA_BEACH_GRADE, TERRAIN_SEA_FLOOR, TERRAIN_SEA_SHOAL_MIN_DEPTH,
+  TERRAIN_SEA_BEACH_GRADE, TERRAIN_SEA_BEACH_RUN, TERRAIN_SEA_BLUFF_GRADE,
+  TERRAIN_SEA_FLOOR, TERRAIN_SEA_SHOAL_MIN_DEPTH,
   TERRAIN_SEA_START_CLEARANCE,
   TERRAIN_SPLAT_PER_CELL, TERRAIN_START_APRON_GRADE, TERRAIN_START_DRY_MARGIN,
   TERRAIN_START_EDGE_WOBBLE, TERRAIN_START_ENFORCE_PASSES,
@@ -848,11 +849,28 @@ export class TerrainFields implements ITerrain {
    *
    * Seaward it is the bed: WATER_LEVEL falling to `WATER_LEVEL - depth` over
    * `shelfMetres`, smoothstepped so the absorption gradient has a real ramp to
-   * read rather than a step. Landward it is a cone rising at
-   * `TERRAIN_SEA_BEACH_GRADE`, so the coast is a beach and not a wall.
+   * read rather than a step.
+   *
+   * Landward it is TWO cones, not one, and the break is the whole point. The
+   * first `TERRAIN_SEA_BEACH_RUN` metres rise at this coast's `beachGrade`
+   * (default `TERRAIN_SEA_BEACH_GRADE`), which is gentle enough that
+   * `computeDerived` marks the beach BUILDABLE — that is what a Naval Yard
+   * stands on. Behind it the ceiling turns up to `TERRAIN_SEA_BLUFF_GRADE` and
+   * stops eating the landform: a ceiling that climbs faster clamps less. See
+   * `TERRAIN_SEA_BEACH_GRADE` for the measurements both numbers were chosen on.
+   *
+   * Continuous at the break by construction (both branches are the same
+   * value at `-d === run`), so there is no step for the normals to catch.
    */
   private seaCeiling(d: number, sea: SeaSpec): number {
-    if (d <= 0) return WATER_LEVEL - d * TERRAIN_SEA_BEACH_GRADE;
+    if (d <= 0) {
+      const inland = -d;
+      const beach = Math.min(inland, TERRAIN_SEA_BEACH_RUN);
+      const bluff = inland - beach;
+      return WATER_LEVEL
+        + beach * (sea.beachGrade ?? TERRAIN_SEA_BEACH_GRADE)
+        + bluff * TERRAIN_SEA_BLUFF_GRADE;
+    }
     const t = clamp01(d / sea.shelfMetres);
     return WATER_LEVEL - sea.depth * (t * t * (3 - 2 * t));
   }

@@ -465,6 +465,13 @@ export function isTerrainJob(v: unknown): v is TerrainJob {
     // defect — it is a map with no land on it.
     if (o.sea.islands !== undefined && !isEllipseList(o.sea.islands, [])) return false;
     if (o.sea.shoals !== undefined && !isEllipseList(o.sea.shoals, ['depth'])) return false;
+    // OPTIONAL, so absent is legal and anything present must be usable.
+    // `seaCeiling` multiplies the beach cone by it: a zero or negative grade is
+    // a coast that never rises out of the water, which floods the map from the
+    // waterline inward, and a NaN is that same flood with no number to find.
+    if (o.sea.beachGrade !== undefined) {
+      if (!isFiniteNumber(o.sea.beachGrade) || o.sea.beachGrade <= 0) return false;
+    }
   }
   return true;
 }

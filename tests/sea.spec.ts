@@ -34,7 +34,8 @@ import * as THREE from 'three';
 import { Terrain, setPlannedSea, plannedSea } from '../src/world/Terrain';
 import { NAVAL_SEA, planScenario } from '../src/game/Scenarios';
 import {
-  MAP_CELLS, MAP_SIZE, TERRAIN_SEA_FLOOR, TERRAIN_START_FLAT_RADIUS, TERRAIN_SEA_BEACH_GRADE, WATER_LEVEL,
+  MAP_CELLS, MAP_SIZE, ROUGH_SLOPE, TERRAIN_SEA_FLOOR, TERRAIN_START_FLAT_RADIUS,
+  WATER_LEVEL,
   type SeaSpec,
 } from '../src/core/config';
 
@@ -144,21 +145,48 @@ describe('the generator carves the declared sea', () => {
   });
 
   it('never cuts a beach steeper than rough ground', () => {
-    // TERRAIN_SEA_BEACH_GRADE is a CLAMP into a cone, chosen under
-    // tan(ROUGH_SLOPE) so the coast is walkable rather than a cliff the nav
-    // grid refuses. Sampled along the whole waterline, not at one point.
+    /*
+     * `TERRAIN_SEA_BEACH_GRADE` is a CLAMP into a cone, chosen under
+     * `tan(ROUGH_SLOPE)` so the coast is walkable rather than a cliff the nav
+     * grid refuses. Sampled along the whole waterline, not at one point.
+     *
+     * TWO THINGS CHANGED HERE AND BOTH ARE CORRECTIONS.
+     *
+     * The bound is now stated against `tan(ROUGH_SLOPE)` — the thing the test
+     * is named after — instead of against the grade constant plus a flat 1.0 m
+     * of slack. The realised slope of the cone is NOT the grade: `seaDistance`
+     * adds an fbm wobble of `wavinessMetres` on a `wavelengthMetres` feature
+     * and the cone's height inherits that gradient, so on this fixture the
+     * beach really does run at ~0.19 where the constant says 0.12. That is
+     * expected, it is under rough, and it is also why only ~55% of coastal
+     * ground ends up buildable rather than all of it — `tests/naval-shore.spec.ts`
+     * measures that half of the question on the real maps.
+     *
+     * And both samples now stand off by the full wander. The old version
+     * sampled AT the nominal waterline, where the true one moves by
+     * `wavinessMetres` either way — so on an unlucky bearing the "shore" sample
+     * landed on the BED, and the number it compared was the depth of the sea
+     * rather than the pitch of the beach.
+     */
     const nx = NAVAL_SEA.normalX;
     const nz = NAVAL_SEA.normalZ;
     const run = 8;
+    // Far enough inland that the wandering waterline cannot reach either point.
+    const standoff = NAVAL_SEA.wavinessMetres + 4;
     for (let s = -140; s <= 140; s += 20) {
-      const bx = NAVAL_SEA.x - nz * s;
-      const bz = NAVAL_SEA.z + nx * s;
+      const bx = NAVAL_SEA.x - nz * s - nx * standoff;
+      const bz = NAVAL_SEA.z + nx * s - nz * standoff;
       if (bx < 8 || bx > MAP_SIZE - 8 || bz < 8 || bz > MAP_SIZE - 8) continue;
       const hIn = t.heightAt(bx - nx * run, bz - nz * run);
       const hAt = t.heightAt(bx, bz);
-      // +1.0 m of slack for the coastal wander, which moves the true waterline
-      // relative to the sampled point.
-      expect(hIn - hAt, `beach at s=${s}`).toBeLessThan(run * TERRAIN_SEA_BEACH_GRADE + 1.0);
+      // Dry on both counts, or this is not measuring a beach at all.
+      expect(hAt, `shore sample at s=${s}`).toBeGreaterThan(WATER_LEVEL);
+      expect(hIn, `inland sample at s=${s}`).toBeGreaterThan(WATER_LEVEL);
+      // ONE-SIDED, deliberately. The cone is a CEILING: it can only ever lower
+      // ground, so inland terrain is free to be lower than the shore and a
+      // symmetric bound would be asserting something the generator never
+      // promised. What must never happen is a WALL.
+      expect(hIn - hAt, `beach at s=${s}`).toBeLessThan(run * Math.tan(ROUGH_SLOPE));
     }
   });
 });
