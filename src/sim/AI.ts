@@ -40,10 +40,48 @@
  *   BUILD    2 Hz  — the opening, then adaptive queueing + structure placement
  *   SQUAD    5 Hz  — group assembly, objective choice, retreat, home defence
  *   SCOUT   .3 Hz  — send something cheap, remember what it saw
+ *   LATE     2 Hz  — fire a superweapon, call a commander power
+ *
+ * THE LATE LAYER, AND THE THREE VERBS IT ALREADY KNEW
+ * ---------------------------------------------------
+ * Superweapons, commander powers and in-match upgrades all shipped complete and
+ * player-usable and the AI asked for none of them, which meant a human could
+ * build a Nuclear Silo and face no answer and no reciprocal threat. Not one of
+ * the three needed new plumbing, because each is a verb this file already says:
+ *
+ *   superweapon   `OrderKind.UseAbility` addressed to the gating STRUCTURE —
+ *                 the identical order `commanderAbility` puts on a hero, and
+ *                 `SuperweaponService.consumeOrders` reads it back one phase
+ *                 later. See `fireSuperweapon`.
+ *   power         `CommandBus.issueUsePower`, drained by the one Phase.Command
+ *                 drainer into `CommanderPowerService.use`. See `callPower`.
+ *   upgrade       `CommandBus.issueProductionStart` — an ordinary queue item on
+ *                 an ordinary tab. See `considerUpgrades`.
+ *
+ * So the rule at the top of this file is untouched: the AI still has exactly
+ * one exit, and every refusal — a charge that has not run, a silo standing in a
+ * brownout, an upgrade already installed — is still decided by the same service
+ * that refuses the human.
+ *
+ * WHAT DIFFICULTY DOES TO THEM. All three are force multipliers, so all three
+ * are on the ladder in `AI_LATE_GAME`: Easy gets none of them at all, Normal
+ * gets one superweapon, one upgrade and the two powers that do not attack, and
+ * only Brutal gets everything. The fire layer is gated on the SAME number as
+ * the build layer, so an Easy brain handed a silo by a scenario still never
+ * presses the button.
+ *
+ * WHAT THE LATE LAYER DOES NOT DO: it never reads the local profile to ask
+ * whether a power is "owned". `src/sim/CommanderPowers.ts` explains at length
+ * why the simulation must not — the profile is per-browser localStorage and a
+ * mid-match refusal on one machine is a lockstep divergence with no findable
+ * cause. Ownership is a UI question; the AI has no UI, so its answer is the
+ * difficulty mask, which is simulation state and identical everywhere.
  *
  * DETERMINISM: every brain owns a seeded `Rng` derived from the match seed and
  * its player id. No wall clock, no global RNG, no iteration over a Map keyed by
- * anything but insertion order.
+ * anything but insertion order. Nothing added for the late layer draws from the
+ * RNG at all — every choice below is a deterministic scan of remembered
+ * structures, the threat grid and the brain's own census.
  *
  * ZERO ALLOCATION: every buffer is sized at construction from the caps in
  * config.ts. The only `new` after boot is in `intent()`, which the debug probe
@@ -65,18 +103,24 @@ import type {
 } from '../core/types';
 import { abilities } from './Abilities';
 import { transportService } from './Transport';
+import { SUPERWEAPONS, SuperweaponId, superweapons } from './Superweapons';
+import type { SuperweaponDef } from './Superweapons';
+import { commanderPowers } from './CommanderPowers';
+import { hasUpgradeKey } from './Upgrades';
+import { COMMANDER_POWERS, CommanderPowerId } from '../progression/powers';
 import type { Channels, CommandBus, EventBus } from '../core/events';
 import type { EntityStore, World } from '../core/world';
 import { PerEntityU32 } from '../core/world';
 import { Rng, cellToWorld, clamp, clampCell, dist2, distSq2, hash2i, worldToCell } from '../core/math';
 import {
-  AI_DEPLOY, BUILD_ROLE_NAMES, BuildCatalog, BuildRole, THREAT_CLASS_NAMES,
+  AI_DEPLOY, AI_POWER, AI_SUPERWEAPON, AI_UPGRADE, BUILD_ROLE_NAMES, BuildCatalog,
+  BuildRole, THREAT_CLASS_NAMES, UpgradeAudience,
   classifyThreat, difficultyProfile, openingFor, personalityProfile, pickUnit,
-  prereqsMet,
+  prereqsMet, superweaponPlanFor, upgradePlanFor,
 } from './AIStrategy';
 import type {
   CatalogEntry, DefLookup, DifficultyProfile, OpeningStep, PersonalityProfile,
-  ProductionOracle,
+  ProductionOracle, UpgradePlanStep,
 } from './AIStrategy';
 
 /* ==========================================================================
@@ -144,6 +188,14 @@ export interface AiIntent {
   mcvs: number;
   /** What the deploy layer is doing. Empty when it has nothing to do. */
   deploy: string;
+  /** What the late layer is doing. Empty when it has nothing to do. */
+  lateGame: string;
+  /** Superweapon structures owned or going up. */
+  superweapons: number;
+  /** Strikes actually fired, powers actually called, upgrades actually bought. */
+  superweaponsFired: number;
+  powersCalled: number;
+  upgradesBought: number;
   /** Structures owned, by role name. */
   structures: Record<string, number>;
   /** Observed threat mix, by class name, normalised. */
@@ -183,6 +235,49 @@ const ACTION_BURST_CAP = 8;
  * game with an unspent superweapon.
  */
 const ABILITY_MIN_ENEMIES = 3;
+
+/**
+ * The one thing the late layer asks of the commander-power service.
+ *
+ * Structural, and narrow to a single method, for the reason `ProductionOracle`
+ * is: the brain stays constructible and testable with no power system in the
+ * process, and a test can hand it a two-line stub instead of a `World`.
+ */
+interface CommanderPowerReader {
+  isReady(player: PlayerId, power: number): boolean;
+}
+
+/**
+ * What one remembered enemy structure is worth to a SUPERWEAPON blast.
+ *
+ * Deliberately not `pickObjective`'s table, and the gap between them is the
+ * whole reason to own a superweapon rather than another tank. A strike group
+ * has to survive the walk in, so `pickObjective` scores static defence highest
+ * at 3.0 — clear the coil or lose the wave. A warhead does not walk. What it is
+ * worth is measured purely in what the enemy cannot replace quickly, so defence
+ * drops to the bottom of this list and the economy rises to the top: a
+ * refinery is 2000 credits and a harvester's whole route, a war factory is
+ * every hull that has not been built yet, and the Construction Yard is both.
+ *
+ * A pillbox at 0.4 still counts for something, because a cluster scored by
+ * SUM means a tight ring of defences around a refinery correctly reads as a
+ * better aim point than the same refinery standing alone.
+ */
+function strikeValue(role: BuildRole): number {
+  switch (role) {
+    case BuildRole.Refinery: return 3.0;
+    case BuildRole.WarFactory: return 2.6;
+    case BuildRole.Builder: return 2.4;
+    case BuildRole.TechLab:
+    case BuildRole.Superweapon: return 2.2;
+    case BuildRole.Barracks: return 1.8;
+    case BuildRole.Power: return 1.6;
+    case BuildRole.Radar: return 1.2;
+    case BuildRole.Defense:
+    case BuildRole.AntiAir: return 0.4;
+    default: return 0.8;
+  }
+}
 
 export class AiBrain {
   readonly player: PlayerId;
@@ -362,6 +457,64 @@ export class AiBrain {
   private oreStarved = false;
   private expandX = -1;
   private expandZ = -1;
+  /**
+   * Power surplus the economy layer last projected, with everything under
+   * construction already charged against it.
+   *
+   * Published as a field purely so the superweapon gate can read it. -150 is
+   * more than three Power Plants make between them, and a silo built into a
+   * brownout does not charge slowly — `SuperweaponService.rescanAvailability`
+   * skips any structure that needs power and has none, so it does not charge at
+   * all. Reacting to that after the fact costs 2500 credits.
+   */
+  private powerSurplus = 0;
+
+  /* -- the late game ------------------------------------------------------ */
+  /** Superweapon structure keys this faction builds, best first. Resolved once. */
+  private readonly superPlan: readonly string[];
+  /** Upgrades this faction buys, in buy order. Resolved once. */
+  private readonly upgradePlan: readonly UpgradePlanStep[];
+  /**
+   * Bit per `superPlan` index for a superweapon structure already owned OR
+   * under construction.
+   *
+   * The census cannot answer this from `roleCount` alone: every superweapon is
+   * `BuildRole.Superweapon`, so a Brutal brain allowed two would happily build
+   * a second Nuclear Silo and never touch the Iron Curtain. The mask costs one
+   * catalog lookup per superweapon building per census — of which there are
+   * never more than two.
+   */
+  private superOwnedMask = 0;
+  /** Infantry and vehicles owned. The upgrade gates are counts of these. */
+  private infantryCount = 0;
+  private vehicleCount = 0;
+  /**
+   * Tick each `upgradePlan` step was last asked for. See `upgradeSettled`.
+   *
+   * Sized to the longest plan any army has (three) with a slot to spare, so it
+   * is indexed by plan position rather than by upgrade bit — the brain only
+   * ever asks about its own faction's three.
+   */
+  private readonly upgradeAskedTick = new Int32Array(4).fill(-1e9);
+  /** Tick the fire layer last looked for a target and found nothing worth one. */
+  private superBackoffTick = -1e9;
+  /**
+   * Tick the Chronosphere's SOURCE command went out. -1e9 when nothing is
+   * staged.
+   *
+   * The Chronosphere is the one `pointPair` weapon: `consumeOrders` reads the
+   * order's TARGET as the stage flag — `NONE` for the source click, the
+   * structure's own id to commit — so the AI spends two layer ticks on it, half
+   * a second apart, exactly as a human spends two clicks.
+   */
+  private chronoStagedTick = -1e9;
+  /** What the late layer is doing. Empty when it has nothing to do. */
+  private lateGoal = '';
+  private superweaponsFired = 0;
+  private powersCalled = 0;
+  private upgradesRequested = 0;
+  /** Aim point scratch for the cluster scorer. Written, never retained. */
+  private readonly aimOut = new Float64Array(2);
 
   /* -- budget and diagnostics -------------------------------------------- */
   private budget = 0;
@@ -417,6 +570,12 @@ export class AiBrain {
     this.offensiveUnlockTick = Math.round((AI_MILITARY.firstStrikeSeconds * SIM_HZ) / agg);
     this.rearmTicks = Math.round((AI_MILITARY.rearmSeconds * SIM_HZ) / agg);
     this.haveRoleFn = (role: BuildRole) => this.roleCount[role] > 0;
+    // Both plans are pure functions of the faction, so they are resolved once
+    // here rather than per build pass. They are lists of KEYS, not entries: the
+    // catalog is re-bound underneath us when production lands, and an entry
+    // captured at construction would be the pre-binding one with defId -1.
+    this.superPlan = superweaponPlanFor(this.faction);
+    this.upgradePlan = upgradePlanFor(this.faction);
   }
 
   /** Attach the production module's rule engine. Safe to call at any time. */
@@ -534,6 +693,16 @@ export class AiBrain {
     // On the squad clock, one slot later: the commander's ability is a combat
     // decision and wants the squad layer's fresh picture of who is near what.
     if (t % AI_CADENCE.squad === 4) this.commanderAbility(s);
+    // THE LATE LAYER, on the build clock and deliberately in a far slot.
+    //
+    // 2 Hz is generous for verbs whose cooldowns are 120-420 SECONDS, and the
+    // slot is 8 rather than 5 or 6 purely to keep it off the ticks the economy
+    // (1), deploy+build (2) and squad (3) layers already run on — the whole
+    // point of the phase offsets is that no single tick does two layers' work
+    // for eight brains at once. It runs LAST of the five for the same reason
+    // `commanderAbility` runs after `squad`: firing a superweapon at the strike
+    // group's position wants this tick's census, not the last one's.
+    if (t % AI_CADENCE.build === 8) this.lateGame(s, p);
   }
 
   /* ======================================================================
@@ -591,7 +760,15 @@ export class AiBrain {
       if (!svc.isReady(id)) continue;
 
       const spec = ABILITIES[ability];
-      if (this.hostilesWithin(st.posX[i], st.posZ[i], spec.radius) < ABILITY_MIN_ENEMIES) continue;
+      // `false` — NOT vision-gated, and deliberately so. The radius here is the
+      // hero's own bubble: anything inside it is standing next to a unit of
+      // ours that provides vision, so the gate would be a no-op that cost a
+      // `canSee` call per candidate. Every REMOTE decision in this file passes
+      // `true`, because aiming across the map at something the AI has not
+      // looked at is exactly the cheat this class does not get to have.
+      if (this.hostilesWithin(st.posX[i], st.posZ[i], spec.radius, false) < ABILITY_MIN_ENEMIES) {
+        continue;
+      }
 
       if (this.issueOrder(
         OrderKind.UseAbility, this.one(id), 1, st.posX[i], st.posZ[i], NONE,
@@ -602,8 +779,18 @@ export class AiBrain {
     }
   }
 
-  /** Living hostiles inside a circle. Counts structures — a base is a target. */
-  private hostilesWithin(x: number, z: number, radius: number): number {
+  /**
+   * Living hostiles inside a circle. Counts structures — a base is a target.
+   *
+   * `visibleOnly` is THE VISION DISCIPLINE, expressed as an argument because
+   * the two callers genuinely differ. A commander ability fires on a circle
+   * centred on our own hero, where every hostile is by construction inside a
+   * friendly sight radius; a superweapon or an airstrike is aimed at a point
+   * across the map, and counting what is standing there without asking
+   * `canSee` first would be the AI knowing something it never looked at. There
+   * is no default: a caller has to say which of those it is.
+   */
+  private hostilesWithin(x: number, z: number, radius: number, visibleOnly: boolean): number {
     const st = this.store;
     const buf = this.world.queryScratchB;
     const found = this.world.spatial.queryCircleFat(x, z, radius, buf);
@@ -618,9 +805,491 @@ export class AiBrain {
         continue;
       }
       if (this.world.areAllied(this.player, st.owner[e] as PlayerId)) continue;
+      if (visibleOnly && !this.world.vision.canSee(this.player, st.handleOf(e))) continue;
       hostile++;
     }
     return hostile;
+  }
+
+  /**
+   * Our own wounded inside a circle. No vision gate — these are ours.
+   *
+   * Structures count, because Emergency Repair is the only mend in the game
+   * that reaches a building without an engineer walking to it, and a base under
+   * a siege line is the moment it exists for.
+   */
+  private damagedWithin(x: number, z: number, radius: number): number {
+    const st = this.store;
+    const buf = this.world.queryScratchB;
+    const found = this.world.spatial.queryCircleFat(x, z, radius, buf);
+    const me = this.player as number;
+    let hurt = 0;
+    for (let k = 0; k < found; k++) {
+      const e = buf[k];
+      if (st.owner[e] !== me) continue;
+      const f = st.flags[e];
+      if ((f & EntityFlag.Alive) === 0) continue;
+      if ((f & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) continue;
+      const kind = st.kind[e];
+      if (kind !== EntityKind.Infantry && kind !== EntityKind.Vehicle
+        && kind !== EntityKind.Building) continue;
+      const max = st.maxHp[e];
+      if (max <= 0 || st.hp[e] >= max * 0.9) continue;
+      hurt++;
+    }
+    return hurt;
+  }
+
+  /* ======================================================================
+   * 2.2c THE LATE GAME — superweapons and commander powers
+   *
+   * Both halves issue ordinary commands and nothing else, and both are gated on
+   * the difficulty ladder before anything else is computed, so an Easy brain
+   * pays none of the cost of either.
+   * ====================================================================== */
+
+  private lateGame(s: SimContext, p: PlayerState): void {
+    if (this.posture === AiPosture.Defeated) return;
+    // `lateGoal` is DELIBERATELY NOT CLEARED HERE. It used to be, and that made
+    // it useless: this layer does nothing on the overwhelming majority of its
+    // passes, so the probe read an empty string at every sampling point of a
+    // twenty-minute match in which the AI had in fact fired a nuke. It holds
+    // the last thing the late layer actually DID, which is the same contract
+    // `militaryGoal` and `buildGoal` keep.
+    // The superweapon first: it is the more decisive of the two and they draw
+    // on the same action budget, so on a tick where both want to fire the
+    // 2500-credit button wins over the one that only cost a clock.
+    if (this.fireSuperweapon(s)) return;
+    this.callPower(s, p);
+  }
+
+  /**
+   * Fire whichever superweapon is charged, at whatever is worth it.
+   *
+   * THROUGH THE BUS, as `OrderKind.UseAbility` addressed to the gating
+   * STRUCTURE — byte for byte the command `SuperweaponService.issueFire` builds
+   * for the human's reticle, read back by `consumeOrders` at Phase.Production.
+   * The AI does not call `fireAt`, does not touch a charge, and cannot fire
+   * something the player could not: readiness, power, ownership and faction are
+   * all answered by `isReady`, which is the same call the HUD countdown asks.
+   *
+   * It issues the order itself rather than calling `issueFire`, for one reason:
+   * `issueFire` writes straight to `channels.commands` and would therefore
+   * bypass `spend()` — the APM budget that is the difficulty ladder's honest
+   * axis and the thing `tests/ai.spec.ts` holds to 22 commands per 20 seconds
+   * on Easy. Every command this class emits is counted, including this one.
+   *
+   * THE BACK-OFF IS NOT AN OPTIMISATION. A charged weapon with nothing worth
+   * hitting would otherwise re-run its target scan twice a second for the rest
+   * of the match. Ten seconds between looks is nothing against a 300-420 second
+   * charge and turns an O(remembered²) scan into a rounding error.
+   */
+  private fireSuperweapon(s: SimContext): boolean {
+    if (this.diff.maxSuperweapons <= 0) return false;
+    const svc = superweapons();
+    if (svc === null) return false;
+    if (s.tick - this.superBackoffTick < AI_SUPERWEAPON.retargetBackoffTicks) return false;
+
+    for (let w = 0; w < SUPERWEAPONS.length; w++) {
+      const def = SUPERWEAPONS[w];
+      if (!svc.isReady(this.player, def.key)) continue;
+      const structure = svc.structureFor(this.player, def.key);
+      if (structure === NONE) continue;
+      if (this.aimSuperweapon(s, def, structure)) {
+        this.superweaponsFired++;
+        return true;
+      }
+    }
+    // Nothing was worth a strike this pass — including the case where nothing
+    // was charged at all, which is the overwhelmingly common one and the reason
+    // the back-off is set here rather than only on a failed aim.
+    this.superBackoffTick = s.tick;
+    return false;
+  }
+
+  /**
+   * Point one superweapon at something and pull the trigger. False when there
+   * is nothing worth spending it on.
+   *
+   * Dispatch is on `def.effect`, never on `def.id` — the Solar Lance runs the
+   * nuke's effect and the Arc Storm runs the storm's, and reading the id here
+   * would leave both later armies unable to fire the button they built.
+   */
+  private aimSuperweapon(s: SimContext, def: SuperweaponDef, structure: EntityId): boolean {
+    switch (def.effect) {
+      case SuperweaponId.Nuke: return this.aimAnnihilation(def, structure);
+      case SuperweaponId.LightningStorm: return this.aimStorm(def, structure);
+      case SuperweaponId.IronCurtain: return this.aimCurtain(def, structure);
+      case SuperweaponId.Chronosphere: return this.aimChrono(s, def, structure);
+      default: return false;
+    }
+  }
+
+  /**
+   * NUKE / SOLAR LANCE — one warned, annihilating blast on the densest knot of
+   * enemy VALUE the AI can remember.
+   *
+   * Aimed with `bestCluster`, which is a different priority from
+   * `pickObjective` on purpose and the difference is the whole point of owning
+   * one. A strike group has to fight through the defences to reach anything, so
+   * `pickObjective` values a tesla coil at 3.0 — the highest number on its
+   * list. A missile flies over the coil. What a 1400-damage blast is worth is
+   * measured in what the enemy cannot replace quickly: refineries, factories
+   * and the yard that rebuilds them. So `strikeValue` inverts the defence entry
+   * almost exactly, and a nuke lands on the economy.
+   */
+  private aimAnnihilation(def: SuperweaponDef, structure: EntityId): boolean {
+    if (!this.bestCluster(def.radius, this.aimOut)) return false;
+    this.lateGoal =
+      `nuclear strike at ${this.aimOut[0].toFixed(0)},${this.aimOut[1].toFixed(0)}`;
+    return this.issueOrder(
+      OrderKind.UseAbility, this.one(structure), 1, this.aimOut[0], this.aimOut[1], structure,
+    );
+  }
+
+  /**
+   * LIGHTNING STORM / ARC STORM — nine seconds of scattered Tesla bolts.
+   *
+   * MASSED ARMY FIRST, base second, and that ordering is the warhead's rather
+   * than a preference. `WarheadClass.Tesla` is the armour matrix's best answer
+   * to flesh and its worst to concrete, so twenty-one bolts into a stack of
+   * infantry and light vehicles is worth several times the same twenty-one into
+   * a refinery. The hottest bucket of the threat grid is where that stack is,
+   * and the grid is built entirely from what the AI has SEEN and decays when it
+   * stops looking — so aiming at it cannot become a cheat.
+   *
+   * The fallback to a structure cluster is not a consolation prize: a charged
+   * storm held for a field battle that never comes is a storm wasted, and nine
+   * seconds over a factory still removes a factory.
+   */
+  private aimStorm(def: SuperweaponDef, structure: EntityId): boolean {
+    let ok = this.hottestThreat(this.aimOut) >= AI_SUPERWEAPON.stormMinThreat;
+    if (ok) {
+      this.lateGoal = `storm on massed enemy at ${this.aimOut[0].toFixed(0)},${this.aimOut[1].toFixed(0)}`;
+    } else if (this.bestCluster(def.radius, this.aimOut)) {
+      ok = true;
+      this.lateGoal = `storm on the enemy base at ${this.aimOut[0].toFixed(0)},${this.aimOut[1].toFixed(0)}`;
+    }
+    if (!ok) return false;
+    return this.issueOrder(
+      OrderKind.UseAbility, this.one(structure), 1, this.aimOut[0], this.aimOut[1], structure,
+    );
+  }
+
+  /**
+   * IRON CURTAIN — twenty seconds of true invulnerability, on the strike group.
+   *
+   * The one superweapon aimed at our OWN units, which makes it the one with no
+   * vision question and the one with a genuine timing problem: it is worth
+   * nothing in an empty field and everything the instant somebody is shooting.
+   * So the trigger is contact — hostiles inside twice the curtain's radius —
+   * measured around the strike group's centre.
+   *
+   * TWICE the radius, not once. The curtain protects 13 m; a tank shoots from
+   * further away than it stands, so the fight that justifies spending it is
+   * bigger than the circle it covers. Requiring the enemy to already be inside
+   * the protection radius would mean firing it after the trade rather than
+   * before.
+   *
+   * `strikeCount` has a floor of its own because `groupCentre` falls back to the
+   * base when the group is empty — without it a dead wave would curtain an
+   * empty rally point.
+   */
+  private aimCurtain(def: SuperweaponDef, structure: EntityId): boolean {
+    if (this.strikeCount < AI_SUPERWEAPON.curtainMinEnemies) return false;
+    const cx = this.groupCentre(true);
+    const cz = this.groupCentre(false);
+    if (this.hostilesWithin(cx, cz, def.radius * 2, true) < AI_SUPERWEAPON.curtainMinEnemies) {
+      return false;
+    }
+    this.lateGoal = `iron curtain over ${this.strikeCount} in contact`;
+    return this.issueOrder(OrderKind.UseAbility, this.one(structure), 1, cx, cz, structure);
+  }
+
+  /**
+   * CHRONOSPHERE — lift the committed wave onto the objective.
+   *
+   * THE ONLY TWO-COMMAND VERB THE AI HAS. `targetMode` is `pointPair`, and
+   * `consumeOrders` reads the order's TARGET as the stage flag: `NONE` means
+   * "this is the source", the structure's own id means "commit". So the brain
+   * spends two late-layer ticks — half a second apart — exactly as a human
+   * spends two clicks, and `stagedSw` in the service holds the source in
+   * between. Nothing here alternates on its own state; the flag rides on the
+   * command, which is what makes it replayable.
+   *
+   * WHAT IT IS FOR: skipping a walk, not winning a fight. Nine tanks set down
+   * beside a refinery is a wave that arrives before the defender can answer it;
+   * nine tanks teleported into a fight they were already losing is nine tanks
+   * lost slightly sooner. So it fires only while `Attacking`, only with a real
+   * group, and only when there is `chronoMinTravel` of ground left to cover —
+   * below that the walk was nearly free and the charge is better banked.
+   *
+   * They land SHORT of the objective by `chronoDropStandoff`, backed off along
+   * the line the group was coming from. Dropping them exactly on the target
+   * spirals nine hulls into whatever is already standing there; landing beside
+   * it lets them arrive as a formation and shoot.
+   *
+   * ONE COST, WRITTEN DOWN: `applyChrono` clears every order it moves and sets
+   * the unit Idle, so the wave stands still until `pressAttack` re-issues on
+   * its own clock — at most `AI_MILITARY.reissueTicks`, a second and a half.
+   * That is cheap against the twenty seconds of walking it just saved, but it
+   * is not free and it is why this is not fired at a group already in contact.
+   */
+  private aimChrono(s: SimContext, def: SuperweaponDef, structure: EntityId): boolean {
+    if (this.posture !== AiPosture.Attacking) return false;
+    if (this.strikeCount < AI_SUPERWEAPON.chronoMinStrike) return false;
+    if (this.objectiveX < 0) return false;
+
+    const cx = this.groupCentre(true);
+    const cz = this.groupCentre(false);
+    const travel = dist2(cx, cz, this.objectiveX, this.objectiveZ);
+    if (travel < AI_SUPERWEAPON.chronoMinTravel) return false;
+
+    const staleTick = this.chronoStagedTick <= -1e8
+      || s.tick - this.chronoStagedTick > AI_SUPERWEAPON.chronoCommitTicks;
+    if (staleTick) {
+      // The SOURCE. Target `NONE` is the stage flag.
+      if (!this.issueOrder(OrderKind.UseAbility, this.one(structure), 1, cx, cz, NONE)) {
+        return false;
+      }
+      this.chronoStagedTick = s.tick;
+      this.lateGoal = 'chronosphere: marking the wave';
+      // Deliberately NOT counted as a fire and NOT returned as one — no charge
+      // has been spent yet and the layer must come back next tick to commit.
+      return false;
+    }
+
+    const back = Math.min(AI_SUPERWEAPON.chronoDropStandoff, travel * 0.5);
+    const dx = (cx - this.objectiveX) / travel;
+    const dz = (cz - this.objectiveZ) / travel;
+    const dropX = clamp(this.objectiveX + dx * back, CELL, MAP_SIZE - CELL);
+    const dropZ = clamp(this.objectiveZ + dz * back, CELL, MAP_SIZE - CELL);
+    if (!this.issueOrder(
+      OrderKind.UseAbility, this.one(structure), 1, dropX, dropZ, structure,
+    )) {
+      return false;
+    }
+    this.chronoStagedTick = -1e9;
+    this.lateGoal = `chronoshift of ${this.strikeCount} onto the objective`;
+    return true;
+  }
+
+  /**
+   * The point that puts the most enemy VALUE inside `radius`.
+   *
+   * Reads `memX/memZ/memRole` and nothing else, which is what makes it honest:
+   * that table is populated only by `observe`, only through `vision.canSee`,
+   * and is emptied by `forgetUnseen` when the AI looks and finds nothing there.
+   * A superweapon therefore lands on a base the AI has actually scouted, and an
+   * enemy who never let a scout through never gets nuked.
+   *
+   * O(remembered²) with `AI_MEMORY.structureSlots` at 96, so 9216 distance
+   * tests worst case — run only while a weapon is charged and at most once per
+   * `retargetBackoffTicks`.
+   */
+  private bestCluster(radius: number, out: Float64Array): boolean {
+    if (this.memCount === 0) return false;
+    const r2 = radius * radius;
+    const standoff = AI_SUPERWEAPON.friendlyStandoff;
+    let bestScore = 0;
+    let bestX = -1;
+    let bestZ = -1;
+
+    for (let a = 0; a < this.memCount; a++) {
+      const cx = this.memX[a];
+      const cz = this.memZ[a];
+      // A blast is an `attacker: NONE` splash record — it hits ours too. Every
+      // candidate here is a remembered ENEMY structure so this should never
+      // bind; it binds the day somebody builds inside our base, which is
+      // exactly the day nobody would be watching for it.
+      if (dist2(cx, cz, this.baseX, this.baseZ) < standoff) continue;
+      let score = 0;
+      for (let b = 0; b < this.memCount; b++) {
+        if (distSq2(cx, cz, this.memX[b], this.memZ[b]) > r2) continue;
+        score += strikeValue(this.memRole[b] as BuildRole);
+      }
+      if (score > bestScore) { bestScore = score; bestX = cx; bestZ = cz; }
+    }
+
+    if (bestX < 0) return false;
+    out[0] = bestX;
+    out[1] = bestZ;
+    return true;
+  }
+
+  /** Hottest mobile-threat bucket, and its weight. 0 when there is nothing. */
+  private hottestThreat(out: Float64Array): number {
+    let hot = -1;
+    let hotV = 0;
+    for (let c = 0; c < THREAT_CELLS; c++) {
+      if (this.threatGrid[c] > hotV) { hotV = this.threatGrid[c]; hot = c; }
+    }
+    if (hot < 0) return 0;
+    const x = ((hot % THREAT_DIM) + 0.5) * THREAT_BUCKET_METRES;
+    const z = (Math.floor(hot / THREAT_DIM) + 0.5) * THREAT_BUCKET_METRES;
+    if (dist2(x, z, this.baseX, this.baseZ) < AI_SUPERWEAPON.friendlyStandoff) return 0;
+    out[0] = x;
+    out[1] = z;
+    return hotV;
+  }
+
+  /**
+   * Call a commander power, at most one per pass.
+   *
+   * ORDER IS URGENCY, not value. Repair and the airstrike answer something that
+   * is happening now and stop being worth anything a few seconds later; the ore
+   * boost and the scan are worth the same amount whenever they are called, so
+   * they queue behind. Charges are 120-240 seconds against a 2 Hz layer, so two
+   * powers wanting the same pass is rare — but when it happens the reactive one
+   * has to win or it may as well not exist.
+   *
+   * `powerMask` is the ladder and it is checked first in every branch, so a
+   * Normal brain never even measures whether an airstrike would land.
+   */
+  private callPower(s: SimContext, p: PlayerState): boolean {
+    if (this.diff.powerMask === 0) return false;
+    const svc = commanderPowers();
+    if (svc === null) return false;
+    void s;
+    // The scan sits AHEAD of the ore boost, which looks like the wrong way
+    // round for a "most urgent first" list until you read what gates it: it
+    // fires only while the AI does not know where the enemy lives, and not
+    // knowing that stalls the entire military layer — `pickObjective` is
+    // guessing, the strike group is walking at a mirrored start position, and
+    // every wave until it is answered is thrown at a coordinate. Free money can
+    // wait a pass; being lost cannot. It is also self-limiting in a way the ore
+    // boost is not: the moment one enemy structure is remembered this branch
+    // stops firing for the rest of the match.
+    return this.tryRepair(svc)
+      || this.tryAirstrike(svc)
+      || this.tryChronoshift(svc)
+      || this.tryScan(svc)
+      || this.tryOreBoost(svc, p);
+  }
+
+  /** May this difficulty call this power, and has its charge run? */
+  private powerReady(svc: CommanderPowerReader, power: CommanderPowerId): boolean {
+    if ((this.diff.powerMask & (1 << (power as number))) === 0) return false;
+    return svc.isReady(this.player, power as number);
+  }
+
+  /**
+   * EMERGENCY REPAIR — 45% of maxHp back on up to 24 things under the marker.
+   *
+   * Aimed at `attackX/attackZ`, the point the `combat:underAttack` handler
+   * recorded, because a base under a siege line is the only moment this beats
+   * banking the charge. Gated on real damage rather than on pressure alone:
+   * pressure is a decaying memory and can still be high after the raid has
+   * been cleared, at which point there is nothing left to mend.
+   */
+  private tryRepair(svc: CommanderPowerReader): boolean {
+    const id = CommanderPowerId.EmergencyRepair;
+    if (!this.powerReady(svc, id)) return false;
+    if (this.basePressure < AI_POWER.repairMinPressure) return false;
+    if (this.attackX < 0) return false;
+    const radius = COMMANDER_POWERS[id].radius;
+    const hurt = this.damagedWithin(this.attackX, this.attackZ, radius);
+    if (hurt < AI_POWER.repairMinDamaged) return false;
+    this.lateGoal = `emergency repair on ${hurt} damaged`;
+    return this.issuePower(id, this.attackX, this.attackZ);
+  }
+
+  /**
+   * AIRSTRIKE — one bombing run, on the biggest knot of enemies the AI can see.
+   *
+   * The threat grid picks the region and `hostilesWithin(..., true)` confirms
+   * it: the grid is a decaying memory and can still be warm over ground the
+   * enemy left a minute ago, so the count is re-taken live and VISION-GATED
+   * before the charge is spent. `friendlyStandoff` inside `hottestThreat` keeps
+   * it off our own base — the strike friendly-fires, which is correct for a
+   * bombing run and is why aiming it is a decision rather than a formality.
+   */
+  private tryAirstrike(svc: CommanderPowerReader): boolean {
+    const id = CommanderPowerId.Airstrike;
+    if (!this.powerReady(svc, id)) return false;
+    if (this.hottestThreat(this.aimOut) <= 0) return false;
+    const radius = COMMANDER_POWERS[id].radius;
+    const enemies = this.hostilesWithin(this.aimOut[0], this.aimOut[1], radius, true);
+    if (enemies < AI_POWER.airstrikeMinEnemies) return false;
+    this.lateGoal = `airstrike on ${enemies} at ${this.aimOut[0].toFixed(0)},${this.aimOut[1].toFixed(0)}`;
+    return this.issuePower(id, this.aimOut[0], this.aimOut[1]);
+  }
+
+  /**
+   * CHRONOSHIFT — lift the home guard onto the objective as a second wave.
+   *
+   * This power lifts from the caster's OWN base centroid, so what it actually
+   * spends is the reserve — the units `regroupSquads` holds back precisely so
+   * the base is not empty. That makes the pressure gate the important one:
+   * stripping the home guard while something is already hitting the base trades
+   * a won attack for a lost base, which is the single worst thing an RTS AI can
+   * be caught doing.
+   */
+  private tryChronoshift(svc: CommanderPowerReader): boolean {
+    const id = CommanderPowerId.Chronoshift;
+    if (!this.powerReady(svc, id)) return false;
+    if (this.posture !== AiPosture.Attacking) return false;
+    if (this.basePressure > AI_POWER.chronoshiftMaxPressure) return false;
+    if (this.reserveCount < AI_POWER.chronoshiftMinReserve) return false;
+    if (this.objectiveX < 0) return false;
+    this.lateGoal = `chronoshifting ${this.reserveCount} of the home guard forward`;
+    return this.issuePower(id, this.objectiveX, this.objectiveZ);
+  }
+
+  /**
+   * ORE BOOST — 2500 credits, immediately.
+   *
+   * The only power with no aim; `(x, z)` is accepted and ignored by the effect,
+   * so it carries the base and the command shape stays identical to the other
+   * four. The one way to waste it is to call it into a full bank —
+   * `Economy.grant` clamps at `storageMax` — so it waits for the bank to be
+   * under half. That also means it lands when the AI has something to spend it
+   * on, which is when 2500 credits is worth the most.
+   */
+  private tryOreBoost(svc: CommanderPowerReader, p: PlayerState): boolean {
+    const id = CommanderPowerId.OreBoost;
+    if (!this.powerReady(svc, id)) return false;
+    if (p.storageMax > 0 && p.credits > p.storageMax * AI_POWER.oreBoostFillFraction) return false;
+    this.lateGoal = 'ore boost';
+    return this.issuePower(id, this.baseX, this.baseZ);
+  }
+
+  /**
+   * ORBITAL SCAN — chart a 90 m circle, permanently.
+   *
+   * ONLY WHILE THE AI IS LOST. `exploreCircle` marks cells EXPLORED and not
+   * visible, so it hands over terrain and static structures and no live units —
+   * which is exactly the gap the scouting layer is trying to close on foot. Once
+   * `memCount` is non-zero the enemy base is on the map and a second circle buys
+   * nothing, so the charge is better held.
+   *
+   * It is aimed at the mirrored start position, which is the same first guess
+   * `buildScoutRoute` makes and is right more often than any other single point
+   * on an RTS map.
+   */
+  private tryScan(svc: CommanderPowerReader): boolean {
+    const id = CommanderPowerId.OrbitalScan;
+    if (!this.powerReady(svc, id)) return false;
+    if (this.memCount > 0 || this.enemyBaseX >= 0) return false;
+    const x = clamp(MAP_SIZE - this.baseX, CELL, MAP_SIZE - CELL);
+    const z = clamp(MAP_SIZE - this.baseZ, CELL, MAP_SIZE - CELL);
+    this.lateGoal = 'orbital scan of the far start position';
+    return this.issuePower(id, x, z);
+  }
+
+  /**
+   * Put a `CommandKind.UsePower` on the bus. The AI's only route to a power,
+   * and the same one `__vmPowers.fire` and a HUD button take.
+   *
+   * Through `spend()` like everything else in this class: a power costs no
+   * credits, but it costs an ACTION, and a difficulty rung that got its powers
+   * for free would be spending an APM it does not have.
+   */
+  private issuePower(power: CommanderPowerId, x: number, z: number): boolean {
+    if (!this.spend()) return false;
+    this.commands.issueUsePower(this.player, power as number, x, z);
+    this.powersCalled++;
+    return true;
   }
 
   /* ======================================================================
@@ -634,6 +1303,9 @@ export class AiBrain {
     this.armyCount = 0;
     this.harvesterCount = 0;
     this.mcvCount = 0;
+    this.infantryCount = 0;
+    this.vehicleCount = 0;
+    this.superOwnedMask = 0;
     this.roleCount.fill(0);
     this.roleBuilding.fill(0);
     this.builderId = NONE;
@@ -647,11 +1319,26 @@ export class AiBrain {
       const i = st.alive[a];
       if (st.owner[i] !== me) continue;
       const f = st.flags[i];
-      if ((f & EntityFlag.PendingDestroy) !== 0) continue;
+      // GARRISONED IS A CENSUS REJECT, not just an order-time one.
+      //
+      // `ORDERABLE_REJECT` has carried this bit since it was written, so a man
+      // riding in a transport or holding a building is skipped by `moveGroup`
+      // and `gatherIdle` — but he was still counted into `armyCount` here, and
+      // `armyCount` is what `waveThreshold` and `regroupSquads` divide up. The
+      // result is an AI that reaches its attack threshold on bodies it
+      // physically cannot send, then masses forever waiting for a strike group
+      // that is permanently N units short. Reachable today through
+      // `GarrisonService` alone; the three passenger-carrying hulls that landed
+      // in v2.2.0 (Hover Transport, Sandskiff, Slag Scow) are a second road to
+      // the same place. Counted force must mean orderable force.
+      if ((f & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) continue;
       const kind = st.kind[i];
 
       if (kind === EntityKind.Building) {
         const role = this.roleOfBuilding(i);
+        // Before the under-construction fork, so a silo still going up already
+        // stops the AI ordering a second one on top of it.
+        if (role === BuildRole.Superweapon) this.noteSuperweapon(st.defId[i]);
         if ((f & EntityFlag.UnderConstruction) !== 0) {
           this.roleBuilding[role]++;
           continue;
@@ -667,6 +1354,15 @@ export class AiBrain {
       }
 
       if (kind !== EntityKind.Infantry && kind !== EntityKind.Vehicle) continue;
+
+      // THE UPGRADE AUDIENCE, counted before the army/harvester fork on
+      // purpose. `PlayerState.upgradeMul` is indexed by `EntityKind`, so a
+      // vehicle-scope multiplier covers harvesters and construction vehicles
+      // exactly as it covers tanks — Composite Armour really does put 18% of
+      // the damage off a 1400-credit truck. Counting only the fighting half
+      // would undersell every vehicle upgrade in the game by a third.
+      if (kind === EntityKind.Infantry) this.infantryCount++;
+      else this.vehicleCount++;
 
       if ((f & EntityFlag.IsHarvester) !== 0) {
         if (this.harvesterCount < this.harvesterIds.length) {
@@ -724,6 +1420,23 @@ export class AiBrain {
     // AI_MILITARY.pressureDecayPerSec.
     const decay = AI_MILITARY.pressureDecayPerSec * AI_CADENCE.census * SIM_DT;
     this.basePressure = Math.max(0, this.basePressure - decay);
+  }
+
+  /**
+   * Record that we own the superweapon structure this def names.
+   *
+   * Keyed by position in `superPlan` rather than by content key, because that
+   * is the axis the build layer asks along: "is the next thing on my list
+   * already standing". A structure whose key is not in this faction's plan —
+   * one captured off another army — sets no bit, which is the honest answer:
+   * the AI did not choose it and will not count it toward its own plan.
+   */
+  private noteSuperweapon(defId: number): void {
+    const entry = this.catalog.entryForBuilding(defId);
+    if (entry === undefined) return;
+    for (let k = 0; k < this.superPlan.length; k++) {
+      if (this.superPlan[k] === entry.key) { this.superOwnedMask |= 1 << k; return; }
+    }
   }
 
   /**
@@ -1067,6 +1780,7 @@ export class AiBrain {
       if (e !== undefined && e.power < 0) committed += -e.power * this.roleBuilding[r];
     }
     const surplus = p.powerProduced - p.powerConsumed - committed;
+    this.powerSurplus = surplus;
     this.powerUrgent = surplus < AI_ECONOMY.powerHeadroom;
   }
 
@@ -1571,6 +2285,17 @@ export class AiBrain {
         (0.3 + this.basePressure * 0.7) * this.pers.defense, 'a depot to mend the armour');
     }
 
+    /* -- the late game, LAST of the scored candidates ---------------------
+     * Both blocks below are deliberately the final `consider` calls in this
+     * function, and the ordering is load-bearing for a reason that has nothing
+     * to do with score. `consider` runs `available()`, which records the FIRST
+     * refusal of the pass into `unavailableReason` — the string the brain
+     * publishes as `blocked` when it queues nothing. A superweapon refused for
+     * "Requires a Battle Lab" is the least interesting thing that can be wrong
+     * with this AI, and reported first it would bury whatever actually is. */
+    this.considerSuperweapon();
+    this.considerUpgrades(s, p);
+
     if (this.bestEntry !== null) {
       this.buildGoal = this.bestGoal;
       return this.bestEntry;
@@ -1578,6 +2303,185 @@ export class AiBrain {
 
     // Nothing structural is worth building: convert credits into army.
     return this.buildUnits(s, p, false);
+  }
+
+  /**
+   * Score the next superweapon structure this army wants, if any.
+   *
+   * FOUR GATES BEFORE THE SCORE, because 2500 credits and 150 power is the most
+   * expensive single mistake the build layer can make:
+   *
+   *   DIFFICULTY  `maxSuperweapons` is 0 on Easy. That is the answer to "should
+   *               an easy AI use superweapons at all", and it is no. An Easy
+   *               brain holds a 1400-credit floor and runs two refineries; the
+   *               worst outcome available is not a beginner eating a nuke, it
+   *               is an Easy brain banking for a silo it never finishes and
+   *               building no army for two minutes while it tries.
+   *   ONE AT A TIME  by `superOwnedMask`, so a Brutal brain allowed two builds
+   *               the Iron Curtain second rather than a spare Nuclear Silo.
+   *   INCOME      THE ECONOMY MUST BE FINISHED, not merely started: the AI
+   *               wants `maxRefineries` — the number its own difficulty rung
+   *               says is a complete economy — and never fewer than
+   *               `AI_SUPERWEAPON.minRefineries`. This gate is the one that had
+   *               to be tightened after the fact. Scored on its own merits a
+   *               superweapon (1.6) beats a third refinery, because the
+   *               refinery term decays with every one already owned (0.7 at
+   *               two) — so a Brutal brain cheerfully bought two silos and
+   *               plateaued its economy one refinery below the rung it is
+   *               documented to reach, and `ai-economy-handicap.spec.ts` caught
+   *               it. A superweapon is bought OUT OF a working economy, never
+   *               INSTEAD OF one, and that is not a scoring nuance that can be
+   *               tuned — it is an ordering, so it belongs in a gate.
+   *   POWER       the surplus must survive the structure's own draw with
+   *               `AI_SUPERWEAPON.powerHeadroom` to spare. This is the gate
+   *               that actually bites: a silo in a brownout charges NOTHING —
+   *               `rescanAvailability` skips any unpowered structure — so
+   *               getting this wrong buys a dark building, not a slow one.
+   *
+   * Past all four the score is `AI_SUPERWEAPON.score * pers.tech`, which lands
+   * above ordinary army and below every producer the AI does not own yet. A
+   * Boomer reaches for it, a Rusher usually spends the credits on bodies, and
+   * neither ever skips a war factory for it.
+   */
+  private considerSuperweapon(): void {
+    if (this.diff.maxSuperweapons <= 0) return;
+    const built = this.roleCount[BuildRole.Superweapon] + this.roleBuilding[BuildRole.Superweapon];
+    if (built >= this.diff.maxSuperweapons) return;
+    const wantRefineries = Math.max(AI_SUPERWEAPON.minRefineries, this.diff.maxRefineries);
+    if (this.roleCount[BuildRole.Refinery] < wantRefineries) return;
+
+    for (let k = 0; k < this.superPlan.length; k++) {
+      if ((this.superOwnedMask & (1 << k)) !== 0) continue;
+      const entry = this.catalog.get(this.superPlan[k]);
+      if (entry === undefined) continue;
+
+      // `entry.power` is NEGATIVE for a consumer, so this adds the draw.
+      if (this.powerSurplus + entry.power < AI_SUPERWEAPON.powerHeadroom) {
+        // THE POWER COMES FIRST, and asking for it here rather than skipping is
+        // the difference between an AI that owns a superweapon and one that
+        // never does. Nothing else in the build layer will ever supply this:
+        // `powerUrgent` fires at a surplus of 40 and a working base settles
+        // comfortably above it, so the AI parks at a surplus that is fine for
+        // everything it currently owns and 150 short of the one thing it wants
+        // — forever. Watching a real Brutal match is what found this: three
+        // refineries, a Battle Lab, all three upgrades bought, and a permanent
+        // surplus of exactly 100 against a silo needing 190.
+        //
+        // A human wanting a nuke builds two power plants first. So does this.
+        // It cannot run away: the plant is scored only while a superweapon is
+        // otherwise wanted, and the wanting stops the moment the surplus clears
+        // — which one or two plants does.
+        this.consider(this.catalog.forRole(BuildRole.Power, this.faction),
+          AI_SUPERWEAPON.score * this.pers.tech, `power to run ${entry.key}`);
+        return;
+      }
+
+      this.consider(entry, AI_SUPERWEAPON.score * this.pers.tech, `superweapon: ${entry.key}`);
+      // Only ever the FIRST unbuilt entry in the plan. Offering both to the
+      // scorer would let the cheaper one win on affordability alone, which is
+      // how the Allies end up with a Chronosphere and no plan for it.
+      return;
+    }
+  }
+
+  /**
+   * Score the next in-match upgrade.
+   *
+   * THE QUESTION THIS ANSWERS IS "is an upgrade a better buy than the tank it
+   * costs the same as", and the honest answer is: it depends entirely on how
+   * many of that tank you are going to buy afterwards. Composite Armour is 1200
+   * credits for 18% off every Allied hull — 1.7 Grizzlies' worth of purchase,
+   * against a multiplier that covers the whole column and everything built
+   * after it for the rest of the match. Bought over an army of two it is a
+   * disaster; bought over a war factory that has been running for five minutes
+   * it is the best 1200 credits on the sidebar.
+   *
+   * That break-even is a FLOW and the AI cannot see the future, so the gate is
+   * a stock: am I fielding this class in quantity right now (`AI_UPGRADE`
+   * minimums), which is the cheapest honest proxy for "yes, I will keep buying
+   * these". The buy ORDER is `upgradePlanFor` — economy multipliers first,
+   * because they are the only ones that pay for themselves.
+   *
+   * `maxUpgrades` takes the front of that plan, so Normal buys the economy one
+   * and stops while Hard and Brutal work through all three.
+   *
+   * THE BANK MULTIPLE IS NOT REDUNDANT WITH `canQueue`. An upgrade is the only
+   * purchase in the game with no immediate output — nothing leaves a door and
+   * no wall goes up — so buying one at exactly its price hands the enemy a
+   * window where the AI has spent everything and fielded nothing.
+   */
+  private considerUpgrades(s: SimContext, p: PlayerState): void {
+    const allowed = Math.min(this.diff.maxUpgrades, this.upgradePlan.length);
+    if (allowed <= 0) return;
+
+    for (let k = 0; k < allowed; k++) {
+      const step = this.upgradePlan[k];
+      const entry = this.catalog.get(step.key);
+      if (entry === undefined) continue;
+      if (this.upgradeSettled(s, p, entry, k)) continue;
+      if (!this.upgradeIsEarned(step.audience)) continue;
+      if (p.credits < entry.cost * AI_UPGRADE.bankMultiple) continue;
+      // No `return` here, unlike the superweapon: the three upgrades are not
+      // alternatives, the AI wants every one it has earned and the plan order
+      // only decides which it reaches first.
+      this.consider(entry, AI_UPGRADE.score * this.pers.tech, `upgrade: ${entry.key}`);
+    }
+  }
+
+  /**
+   * Is this upgrade bought, on the line, or asked for too recently to ask
+   * again?
+   *
+   * AN UPGRADE IS A ONE-OFF AND NOTHING ELSE IN THIS FILE KNOWS THAT. Every
+   * other purchase the build layer makes produces a THING — a hull leaves a
+   * door, a structure lands — and the census counts it on the next sweep, so
+   * "do I still want one" answers itself. An upgrade produces a BIT. It appears
+   * in no census, no roster and no structure list, so without this check the
+   * scorer proposes the same 1000-credit multiplier on every build pass for the
+   * rest of the match and the third refinery behind it is never reached. That
+   * is not hypothetical: it is what this function was written for.
+   *
+   * THREE ANSWERS, WIDEST FIRST:
+   *
+   *   BOUGHT      `hasUpgradeKey` reads `PlayerState.upgradeMask`, which is the
+   *               simulation's own authority and the same bit the human's
+   *               sidebar greys the cameo on. Reading a column of our OWN
+   *               player is what this class does everywhere — `credits`,
+   *               `queues`, `powerProduced` — and is not the vision rule.
+   *   ON THE LINE `applyEnqueue` silently drops a second copy of an upgrade
+   *               already in the queue, so re-asking is not harmless: it spends
+   *               an action out of the APM budget and buys nothing.
+   *   JUST ASKED  the backoff, which covers the window between issuing the
+   *               command and the queue reflecting it, and the case where no
+   *               production module is listening at all. LONG rather than
+   *               permanent on purpose: a request issued before production
+   *               finished booting must eventually be retried, or one unlucky
+   *               tick costs the AI an upgrade for the whole match.
+   */
+  private upgradeSettled(
+    s: SimContext, p: PlayerState, entry: CatalogEntry, planIndex: number,
+  ): boolean {
+    if (hasUpgradeKey(p, entry.key)) return true;
+    if (s.tick - this.upgradeAskedTick[planIndex] < AI_UPGRADE.reaskTicks) return true;
+    const queue = p.queues[entry.tab as number];
+    if (queue === undefined) return false;
+    for (let i = 0; i < queue.items.length; i++) {
+      const it = queue.items[i];
+      if (!it.isBuilding && it.defId === entry.defId) return true;
+    }
+    return false;
+  }
+
+  /** Is the army this upgrade improves big enough to be worth the credits? */
+  private upgradeIsEarned(audience: UpgradeAudience): boolean {
+    switch (audience) {
+      case UpgradeAudience.Infantry: return this.infantryCount >= AI_UPGRADE.minInfantry;
+      case UpgradeAudience.Vehicle: return this.vehicleCount >= AI_UPGRADE.minVehicles;
+      case UpgradeAudience.Army: return this.armyCount >= AI_UPGRADE.minArmy;
+      default:
+        return this.roleCount[BuildRole.Refinery] >= AI_UPGRADE.minRefineries
+          && this.harvesterCount >= AI_UPGRADE.minHarvesters;
+    }
   }
 
   /**
@@ -1683,6 +2587,17 @@ export class AiBrain {
     this.inFlight[tab]++;
     this.inFlightTick[tab] = tick;
     this.blocked = '';
+    // An upgrade is an ordinary queue item on the wire and gets no special
+    // handling there. It needs two things recorded here that nothing else does:
+    // a counter, because an upgrade produces no entity and would otherwise be
+    // invisible to every probe; and the ask tick, because it produces no entity
+    // and would otherwise be re-proposed on every build pass forever. See
+    // `upgradeSettled`.
+    if (entry.role !== BuildRole.Upgrade) return;
+    this.upgradesRequested++;
+    for (let k = 0; k < this.upgradePlan.length && k < this.upgradeAskedTick.length; k++) {
+      if (this.upgradePlan[k].key === entry.key) { this.upgradeAskedTick[k] = tick; return; }
+    }
   }
 
   /* ----------------------------------------------------------------------
@@ -2387,6 +3302,26 @@ export class AiBrain {
   }
 
   /**
+   * The late game, in numbers nothing else can report.
+   *
+   * All three are otherwise invisible from outside: a fired superweapon leaves
+   * a crater and no record on the brain, a called power leaves nothing at all,
+   * and an installed upgrade never becomes an entity so it appears in no census
+   * and no structure list. "Did the AI build a silo" is answerable from
+   * `intent().structures.superweapon`; "did it ever press the button" is only
+   * answerable from here.
+   */
+  get superweaponFireCount(): number { return this.superweaponsFired; }
+  get commanderPowerCount(): number { return this.powersCalled; }
+  get upgradeRequestCount(): number { return this.upgradesRequested; }
+  /** Superweapon structures owned or under construction. */
+  get superweaponCount(): number {
+    return this.roleCount[BuildRole.Superweapon] + this.roleBuilding[BuildRole.Superweapon];
+  }
+  get infantrySize(): number { return this.infantryCount; }
+  get vehicleSize(): number { return this.vehicleCount; }
+
+  /**
    * Readable snapshot. Allocates — deliberately: this is called by the console
    * probe and by tests, never by the sim.
    */
@@ -2418,6 +3353,11 @@ export class AiBrain {
       refineries: this.roleCount[BuildRole.Refinery],
       mcvs: this.mcvCount,
       deploy: this.deployGoal,
+      lateGame: this.lateGoal,
+      superweapons: this.superweaponCount,
+      superweaponsFired: this.superweaponsFired,
+      powersCalled: this.powersCalled,
+      upgradesBought: this.upgradesRequested,
       structures,
       threat,
       waveThreshold: this.waveThreshold(),
