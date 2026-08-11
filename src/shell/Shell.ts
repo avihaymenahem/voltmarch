@@ -72,6 +72,12 @@ import { applySettings, SettingsScreen } from './Settings';
 import { CreditsScreen, MainMenuScreen } from './MainMenu';
 import { SkirmishSetupScreen } from './SkirmishSetup';
 import { MultiplayerSetup } from './MultiplayerSetup';
+import {
+  ReplayBar, ReplaysScreen, replayBuildWarning, replayMap, currentPlayback,
+} from './Replays';
+import type { ReplayFile } from '../game/Replay';
+import { preparePlayback } from '../game/Playback';
+import { currentReplay } from '../game/replay.system';
 import { suppressUnlockGate } from '../progression/UnlockGate';
 import type { MatchStart, Session } from '../net/Session';
 import { PauseMenuScreen, currentObjectives } from './PauseMenu';
@@ -108,7 +114,9 @@ export type ShellState =
   /** The missions and unlocks board. Reachable from the menu and from pause. */
   | 'missions'
   /** The save-slot list. Reachable from the title screen only. */
-  | 'load';
+  | 'load'
+  /** The recordings list. Reachable from the title screen only. */
+  | 'replays';
 
 /** One full-bleed layer of the front end. */
 export interface Screen {
@@ -713,6 +721,39 @@ export class Shell {
   private netNotice: HTMLElement | null = null;
   private netNoticeTimer = 0;
 
+  /* -- replays ------------------------------------------------------------
+   * `replay` is to playback what `pvp` is to multiplayer: ONE field whose
+   * presence switches `applySetupToWorld`, `applySimPostBoot`, `bootGame` and
+   * the outcome poll onto their watching behaviour, so there is exactly one
+   * thing to check and exactly one place to clear.
+   * -------------------------------------------------------------------- */
+
+  /** The recording driving the running match, or null in every ordinary game. */
+  private replay: { file: ReplayFile; bar: ReplayBar | null } | null = null;
+  /**
+   * The recording of the last match this session, kept across the teardown.
+   *
+   * Taken in `endMatch` and `quitToMenu` — the two ways a match ends — because
+   * the engine that holds the recorder is disposed moments later and the
+   * player has not been asked yet whether they want it. A snapshot, so holding
+   * it costs the arrays and nothing live.
+   */
+  private lastReplay: ReplayFile | null = null;
+  /** 5 Hz accumulator for the replay bar's repaint. */
+  private replayAccum = 0;
+  /** True once the bar has been told the recording ran out. */
+  private replayComplete = false;
+  /**
+   * The VIEWER's pause, as distinct from the shell's.
+   *
+   * Kept separately because three other things already pause the loop — the
+   * pause menu, a hidden tab, the end of the recording — and each of them
+   * un-pauses when it is done. Without a record of what the viewer asked for,
+   * opening the pause menu over a deliberately-paused replay and closing it
+   * again would start the recording playing.
+   */
+  private replayPaused = false;
+
   private rafHandle = 0;
   private lastFrameMs = 0;
   private outcomeAccum = 0;
@@ -934,6 +975,180 @@ export class Shell {
     }, 6000) as unknown as number;
   }
 
+  /* ---------------------------------------------------------------------- */
+  /* Replays                                                                */
+  /* ---------------------------------------------------------------------- */
+
+  /** Open the recordings list. */
+  openReplays(): void {
+    this.show(new ReplaysScreen(this), 'replays');
+  }
+
+  /** The recording of the last match this session, or null. */
+  latestReplay(): ReplayFile | null {
+    return this.lastReplay;
+  }
+
+  /** True while the running match is a recording being watched. */
+  isReplay(): boolean {
+    return this.replay !== null;
+  }
+
+  /**
+   * Boot the match a recording describes and let the recording drive it.
+   *
+   * SIX THINGS DIFFER FROM A SKIRMISH, and five of them are ways the world
+   * would otherwise be built differently from the one that was recorded.
+   *
+   * 1. THE UNLOCK GATE IS SUPPRESSED, for exactly the reason multiplayer
+   *    suppresses it and with exactly the same failure if it is not.
+   *    `Scenarios.ts` asks `isBuildable` while it spawns the STARTING ARMY, and
+   *    the gate answers from the LOCAL PROFILE — so a replay recorded by a
+   *    veteran and watched on a fresh account starts with different units on
+   *    the field and has already diverged before tick one. It is suppressed
+   *    rather than cleared for the reason `UnlockGate` documents: the boot
+   *    reinstalls a gate built from this browser's profile halfway through, so
+   *    clearing it beforehand does nothing.
+   * 2. EVERY BOOT FLAG COMES FROM THE HEADER, never from the local lobby: the
+   *    sim seed, the map preset, the biome, the landform roll, and the opening.
+   *    That last one is the same trap as the gate — `?start=` is a stored
+   *    per-client PREFERENCE, so a viewer who last played a pre-built-base
+   *    skirmish would watch an MCV recording start with a base.
+   * 3. THE SLOTS ARE SEATED FROM THE HEADER — factions, difficulty,
+   *    personality, and the bank each side opened on.
+   * 4. EVERY SLOT IS `isHuman`, which is the entire AI shutdown, and it is the
+   *    same one-line mechanism PvP uses. The recording ALREADY CONTAINS the
+   *    AI's commands — the brain issues them through `channels.command` like
+   *    everybody else, so the recorder taps them — and a brain running here as
+   *    well would issue a second copy of every one of them.
+   * 5. PLAYBACK IS ARMED BEFORE THE BOOT. `preparePlayback` has to be called
+   *    before `bootstrap()` for the same reason `prepareSession` does: systems
+   *    cannot be handed anything until `startMatch` returns, and by then the
+   *    loop has run.
+   * 6. And the cosmetic one: it starts at 1x, and the bar owns the speed from
+   *    there. Speed scales the ACCUMULATOR and never `SIM_DT`, so a viewer can
+   *    move it freely without changing a single thing the simulation does.
+   */
+  async startReplay(file: ReplayFile): Promise<void> {
+    if (this.busy || this.disposed) throw new Error('The shell is busy.');
+    const header = file.header;
+
+    this.clearReplay();
+    this.replay = { file, bar: null };
+    this.replayComplete = false;
+    suppressUnlockGate(true);
+    preparePlayback(file);
+
+    // A skirmish setup is still what boots the world; it is the CHANNEL, not
+    // the authority. `bootGame` overwrites every flag that matters straight
+    // from the header — see `applyReplayQuery` — and `seatReplayPlayers`
+    // overwrites the player table. What is left here is what the pause menu and
+    // the results header read to LABEL the match.
+    const names = playableFactions();
+    const keyOf = (faction: number | undefined): string | undefined =>
+      names.find((f) => (f.id as number) === faction)?.key;
+    const watched = header.players[header.localPlayer];
+    const other = header.players.find(
+      (p, i) => i !== header.localPlayer && p.faction !== (Faction.Neutral as number),
+    );
+
+    const setup: MatchSetup = {
+      ...this.setup,
+      map: replayMap(header).id,
+      seed: header.simSeed >>> 0,
+      speed: 1,
+      difficulty: other?.aiDifficulty ?? this.setup.difficulty,
+      personality: -1,
+      playerFaction: keyOf(watched?.faction) ?? this.setup.playerFaction,
+      aiFaction: keyOf(other?.faction) ?? this.setup.aiFaction,
+    };
+
+    await this.startMatch(setup, { persist: false });
+
+    if (this.state !== 'playing' || this.game === null) {
+      this.clearReplay();
+      throw new Error('The match this recording was made in could not be started.');
+    }
+
+    const bar = new ReplayBar({
+      setReplayPaused: (paused) => {
+        this.replayPaused = paused;
+        this.game?.setPaused(paused);
+      },
+      setReplaySpeed: (index) => { this.game?.ctx.loop.setSpeed(index); },
+      exitReplay: () => { void this.quitToMenu(); },
+    }, file, replayBuildWarning(file));
+    this.root.appendChild(bar.root);
+    this.replay.bar = bar;
+    this.replayAccum = 0;
+  }
+
+  /**
+   * Drop playback state and put the unlock gate back.
+   *
+   * Called on every exit from a replay AND on the way into `startReplay`, so a
+   * viewer who opens a second recording without going through the menu cannot
+   * leave the first one's player feeding the new world.
+   */
+  private clearReplay(): void {
+    const bar = this.replay?.bar ?? null;
+    bar?.dispose();
+    this.replay = null;
+    this.replayComplete = false;
+    this.replayPaused = false;
+    preparePlayback(null);
+    suppressUnlockGate(false);
+  }
+
+  /**
+   * Keep the recording of the match that is ending.
+   *
+   * The engine that owns the recorder is disposed seconds later by whatever
+   * happens next, and until then nobody has asked the player whether they want
+   * it. So it is taken unconditionally and offered on the Replays screen —
+   * which is the same reasoning `replay.system.ts` gives for recording every
+   * match in the first place: the one thing a player never has when they want a
+   * replay is foresight.
+   *
+   * NOT taken for the title backdrop (not a match) or during playback (it would
+   * replace the recording being watched with a re-recording of itself).
+   */
+  private captureReplay(): void {
+    if (this.game === null || this.backdrop || this.replay !== null) return;
+    try {
+      const file = currentReplay();
+      if (file !== null && file.commands.length + file.checks.length > 0) {
+        this.lastReplay = file;
+      }
+    } catch (err) {
+      // A build with the replay system removed, or a match torn down under us.
+      // Losing the recording is not a reason to fail the thing that was
+      // actually happening.
+      console.warn('[shell] the match recording could not be kept', err);
+    }
+  }
+
+  /**
+   * Rewrite the boot flags a recording has to reproduce.
+   *
+   * WRITTEN OVER `buildMatchQuery`'s OUTPUT rather than instead of it. That
+   * function derives map, biome and landform from a `MapChoice`, which is a
+   * lobby concept a recording does not have — it has the four flags the ENGINE
+   * modules actually parse, recorded as they were parsed. So the lobby builds
+   * a plausible query and this replaces the parts that must be exact.
+   */
+  private applyReplayQuery(query: URLSearchParams, header: ReplayFile['header']): void {
+    if (header.mapPreset !== '') query.set('map', header.mapPreset);
+    if (header.biome !== '') query.set('biome', header.biome);
+    if (header.art !== '') query.set('art', header.art);
+    query.set('mapseed', String(header.mapSeed | 0));
+    query.set('seed', String(header.simSeed >>> 0));
+    // The opening. `?start=` is the only channel that outranks the stored
+    // per-client preference — see `chooseStart` in game/Scenarios.ts — and it
+    // is outranked in turn only by `?ai=off`, which a replay boot never sets.
+    if (header.start !== '') query.set('start', header.start);
+  }
+
   /**
    * Tear the current match down and launch a new one.
    *
@@ -946,6 +1161,11 @@ export class Shell {
   async startMatch(setup: MatchSetup, options: { persist?: boolean } = {}): Promise<void> {
     if (this.busy || this.disposed) return;
     this.busy = true;
+    // The gate is suppressed by PvP and by playback, and only those two know
+    // when it should come back. Anything else launching a match is by
+    // definition an ordinary one, so this is the single place that restores it
+    // — without it, one replay left every later skirmish ungated.
+    if (this.pvp === null && this.replay === null) suppressUnlockGate(false);
     // BEFORE the first await, deliberately. `requestFullscreen` needs transient
     // user activation, and every await between the click and the call spends
     // more of that window — `bootGame` below is seconds of shader compilation.
@@ -979,8 +1199,14 @@ export class Shell {
       // slot ended up with, and a tracker told the lobby's intent instead would
       // credit an Allied objective to a Soviet match on any scenario that seats
       // the human anywhere but slot 0.
+      //
+      // NOT FOR A REPLAY. Watching a recording is not playing a match: it must
+      // not count towards "play 10 skirmishes", must not complete an objective
+      // a second time, and must not hand out a reward the player already
+      // earned when they actually played it. `beginMatch` is what starts all
+      // three, so a replay simply never opens the board.
       const world = this.game?.ctx.world;
-      if (world !== undefined) {
+      if (world !== undefined && this.replay === null) {
         const local = world.localPlayer as number;
         progression.beginMatch({
           seed,
@@ -1024,6 +1250,14 @@ export class Shell {
   async restartMatch(): Promise<void> {
     if (this.tutorial !== null) {
       await this.startTutorial();
+      return;
+    }
+    // A REPLAY RESTARTS AS A REPLAY, from the top. Routing it through the plain
+    // path would roll a fresh seed and boot an ordinary skirmish out of a
+    // button labelled "Restart Battle" on a screen that says Replay.
+    const watching = this.replay;
+    if (watching !== null) {
+      await this.startReplay(watching.file);
       return;
     }
     await this.startMatch({ ...this.setup, seed: 0 });
@@ -1126,7 +1360,9 @@ export class Shell {
     // In PvP neither of these was ever turned off — see `pause`.
     if (this.pvp !== null) return;
     this.game.ctx.cameraRig.setInputEnabled(true);
-    this.game.setPaused(false);
+    // A replay the viewer had stopped — or one that has run out — stays
+    // stopped. Closing a menu is not a request to start it.
+    this.game.setPaused(this.replay !== null && this.replayPaused);
   }
 
   togglePause(): void {
@@ -1151,6 +1387,13 @@ export class Shell {
    */
   endMatch(result: Partial<MatchResult> & { won: boolean }): void {
     if (this.state !== 'playing' && this.state !== 'paused') return;
+    // A RECORDING HAS NO RESULT. Nobody won anything by watching, and the end
+    // screen's first act is to drain the pending-reward queue — so a replay
+    // that ran to a wipe-out would hand the viewer the medals a second time.
+    // `pollOutcome` already skips playback; this is the guard for anyone else
+    // who calls the public method.
+    if (this.replay !== null) return;
+    this.captureReplay();
     const base: MatchResult = this.game === null
       ? {
         won: result.won, durationSec: 0, wallSec: 0,
@@ -1189,6 +1432,11 @@ export class Shell {
       this.pvp.session.leave();
       this.pvp = null;
     }
+    // Before the teardown, and in this order: keep the recording of the match
+    // being abandoned, then drop any recording that was driving it. The first
+    // is a no-op during playback and the second is a no-op outside it.
+    this.captureReplay();
+    this.clearReplay();
     this.busy = true;
     try {
       // Abandon, not end. The player gets to keep every profile mission they
@@ -1270,6 +1518,10 @@ export class Shell {
    */
   saveContext(): SaveContext | null {
     if (this.game === null || this.backdrop) return null;
+    // A replay is not a position to come back to — restoring one would give the
+    // player a live match seeded from somebody else's recording, with the
+    // playback that made it meaningful nowhere in the snapshot.
+    if (this.replay !== null) return null;
     return {
       mapId: this.setup.map,
       playerFaction: this.setup.playerFaction,
@@ -1409,6 +1661,7 @@ export class Shell {
       case 'settings':
       case 'missions':
       case 'load':
+      case 'replays':
         this.showMenu();
         break;
       case 'paused':
@@ -1443,6 +1696,7 @@ export class Shell {
     this.screen = null;
     this.tutorial?.dispose();
     this.tutorial = null;
+    this.clearReplay();
     if (this.toastTimer !== 0) {
       window.clearTimeout(this.toastTimer);
       this.toastTimer = 0;
@@ -1477,6 +1731,11 @@ export class Shell {
       });
     }
     this.root.style.pointerEvents = next === null ? 'none' : '';
+    // The replay strip lives on the shell root rather than in a screen, so it
+    // survives every transition and has to be told when one covers it. A pause
+    // menu over a replay must not have a second row of controls showing
+    // through it.
+    this.replay?.bar?.setVisible(next === null);
   }
 
   private setHudVisible(visible: boolean): void {
@@ -1577,6 +1836,9 @@ export class Shell {
     // PvP for the same reason, and more sharply: a persisted per-client opening
     // means two players build DIFFERENT WORLDS from the same seed.
     if (!backdrop && this.pvp !== null) query.set('start', 'mcv');
+    // Playback is the third case of the same rule and the strictest: every flag
+    // the world is built from comes off the recording, including the opening.
+    if (!backdrop && this.replay !== null) this.applyReplayQuery(query, this.replay.file.header);
     // `shot` is the screenshot harness's flag and must never appear here.
     query.delete('shot');
     query.delete('skipmenu');
@@ -1646,6 +1908,7 @@ export class Shell {
     if (world.players.length < 2) return;
 
     if (this.pvp !== null) { this.seatPvpPlayers(game); return; }
+    if (this.replay !== null) { this.seatReplayPlayers(game); return; }
 
     const player = factionByKey(this.setup.playerFaction);
     const enemy = factionByKey(this.setup.aiFaction);
@@ -1704,6 +1967,58 @@ export class Shell {
     world.localPlayer = pvp.info.slot as PlayerId;
   }
 
+  /**
+   * Seat the world from a recording's header.
+   *
+   * THREE THINGS ARE LOAD-BEARING AND THE SECOND ONE IS THE WHOLE FEATURE.
+   *
+   * 1. FACTIONS COME FROM THE HEADER, per slot. The lobby's choice is not
+   *    consulted at all: a recording is a specific match, and the sides in it
+   *    are not a preference.
+   *
+   * 2. EVERY SEATED SLOT IS `isHuman`, and that is the AI shutdown —
+   *    `ai.system.ts:165` builds no brain for a human slot. The recording
+   *    ALREADY HOLDS the AI's commands, because the brain issues them through
+   *    the same bus the player does and the recorder taps the drain. A brain
+   *    running here as well would issue a second, near-identical copy of every
+   *    decision, and the two streams would fight over the same units.
+   *
+   * 3. THE NEUTRAL SLOT IS SKIPPED. Gaia owns the rocks, the trees and the
+   *    wrecks, is created by `ScenarioBuilder.gaia` during the boot, and is
+   *    already excluded from the brain list by faction. Seating it as a human
+   *    would be a lie about the world with no effect except to make this
+   *    function's contract untrue.
+   *
+   * `localPlayer` is presentation only — the camera and which side of the fog
+   * the viewer is on. `Checksum.hashPlayers` does not hash it, which is exactly
+   * why one recording of a PvP match is watchable from either seat.
+   */
+  private seatReplayPlayers(game: GameHandle): void {
+    const file = this.replay?.file;
+    if (file === undefined) return;
+    const header = file.header;
+    const world = game.ctx.world;
+    const names = playableFactions();
+
+    const n = Math.min(world.players.length, header.players.length);
+    for (let slot = 0; slot < n; slot++) {
+      const rec = header.players[slot];
+      if (rec === undefined) continue;
+      if (rec.faction === (Faction.Neutral as number)) continue;
+      const p = world.players[slot];
+      p.faction = rec.faction as Faction;
+      p.isHuman = true;
+      p.isLocal = slot === header.localPlayer;
+      p.aiDifficulty = rec.aiDifficulty;
+      p.aiPersonality = rec.aiPersonality;
+      // NAMED BY THEIR ARMY, not "You" and "Opponent". A replay has no you.
+      p.name = names.find((f) => (f.id as number) === rec.faction)?.name ?? `Slot ${slot + 1}`;
+    }
+
+    const local = Math.max(0, Math.min(world.players.length - 1, header.localPlayer));
+    world.localPlayer = local as PlayerId;
+  }
+
   /** Everything that can only be done once the world is fully built. */
   /**
    * Everything post-boot that the SIMULATION can see. Runs on tick 0, before
@@ -1721,7 +2036,24 @@ export class Shell {
     // arrives at the next turn boundary sooner and waits there for the other
     // one. It is not an advantage, it is not a bug, and it is not worth the
     // confusion of appearing to do something.
-    loop.setSpeed(backdrop ? 1 : (this.pvp !== null ? 1 : this.setup.speed));
+    // PLAYBACK ALSO STARTS AT 1x, and for a friendlier reason: speed scales the
+    // accumulator and cannot touch the simulation, so the bar owns it from
+    // here and a viewer may move it whenever they like.
+    loop.setSpeed(backdrop || this.pvp !== null || this.replay !== null ? 1 : this.setup.speed);
+
+    // THE RECORDED OPENING BANK, PER SLOT, and it has to be here rather than in
+    // `seatReplayPlayers`: that runs before the scenario exists, and the
+    // scenario sets its own bank on the way past. This is the last write before
+    // tick 1, which is where the recorder read the number it stored.
+    if (!backdrop && this.replay !== null) {
+      const slots = this.replay.file.header.players;
+      const n = Math.min(world.players.length, slots.length);
+      for (let slot = 0; slot < n; slot++) {
+        const rec = slots[slot];
+        if (rec !== undefined) world.players[slot].credits = rec.credits;
+      }
+      return;
+    }
 
     if (!backdrop) {
       // Applied AFTER the scenario, which sets its own bank so a posed
@@ -1783,10 +2115,52 @@ export class Shell {
     if (this.backdrop && this.game !== null) this.orbitBackdrop(dt);
     if (this.screen !== null) this.pad.poll(nowMs, this.ring, () => this.back());
     if (this.state === 'playing') {
-      this.pollOutcome(dt);
-      this.pollAutosave(dt);
+      // A REPLAY IS NOT A MATCH BEING PLAYED, and neither of the two polls
+      // below is right for one. The outcome poll would call `endMatch` — which
+      // scores a result and drains the reward queue — the moment the recorded
+      // loser was wiped out; the autosave poll would write a snapshot of
+      // somebody else's game into the player's slots.
+      if (this.replay !== null) this.pollReplay(dt);
+      else {
+        this.pollOutcome(dt);
+        this.pollAutosave(dt);
+      }
     }
   };
+
+  /**
+   * Repaint the replay strip, and stop the world when the recording runs out.
+   *
+   * 5 Hz. `playbackReport()` allocates one small object, and the numbers in it
+   * move at most once per tick — polling it per frame would be sixty reads a
+   * second of a value that changes thirty times, for a strip whose smallest
+   * element is a four-pixel bar.
+   *
+   * PAUSING AT THE END IS THE HONEST BEHAVIOUR. Past the recording's last tick
+   * there is nothing left to re-issue and no checkpoint left to check, so the
+   * simulation would keep running — two AI-less armies standing still — and
+   * every frame of it would be a match that never happened being presented as
+   * one that did.
+   */
+  private pollReplay(dt: number): void {
+    const watching = this.replay;
+    const bar = watching?.bar;
+    if (watching === null || bar === undefined || bar === null) return;
+
+    this.replayAccum += dt;
+    if (this.replayAccum < 0.2) return;
+    this.replayAccum = 0;
+
+    const report = currentPlayback();
+    bar.update(report);
+
+    if (report.complete && !this.replayComplete) {
+      this.replayComplete = true;
+      this.replayPaused = true;
+      this.game?.setPaused(true);
+      bar.setPaused(true);
+    }
+  }
 
   /** Slow cinematic orbit around whatever the title screen is looking at. */
   private orbitBackdrop(dt: number): void {
@@ -2066,7 +2440,11 @@ export class Shell {
     // not, so pausing here would stall the pair and eventually forfeit the
     // match for tabbing away. The browser throttles background rAF anyway,
     // which lockstep survives — it stalls and catches up, it never skips.
-    if (this.state === 'playing' && this.pvp === null) this.game?.setPaused(document.hidden);
+    if (this.state === 'playing' && this.pvp === null) {
+      // `|| replayPaused` so returning to the tab does not restart a replay the
+      // viewer had deliberately stopped.
+      this.game?.setPaused(document.hidden || (this.replay !== null && this.replayPaused));
+    }
     // Hidden is the last event a mobile browser reliably fires before it kills
     // the page, and the profile store batches its writes. Flush here or a
     // mission completed in the final minute of a match is simply gone.

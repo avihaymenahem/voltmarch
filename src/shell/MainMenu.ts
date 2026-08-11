@@ -187,6 +187,16 @@ export class MainMenuScreen implements Screen {
       onClick: () => this.shell.openLoadGame(),
     }));
 
+    // NEVER DISABLED, unlike Load Game, and the difference is real rather than
+    // an inconsistency: the load screen can only offer what is in this
+    // browser's storage, while this one can always open a file somebody sent.
+    // The hint says whether there is also a match from this session to watch.
+    nav.appendChild(button('Replays', {
+      iconName: 'monitor',
+      hint: this.shell.latestReplay() === null ? 'Open a recording' : 'Last match ready',
+      onClick: () => this.shell.openReplays(),
+    }));
+
     nav.appendChild(button('Options', {
       iconName: 'sliders',
       onClick: () => this.shell.openSettings('menu'),

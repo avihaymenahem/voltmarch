@@ -432,6 +432,14 @@ interface ShellStub {
   openMissions(): void;
   openSettings(): void;
   openCredits(): void;
+  /**
+   * The title screen's Replays entry reads this for its hint. A stub that does
+   * not answer throws inside `mount`, which took out five Load Game cases the
+   * day the entry landed — the stub is the whole menu's contract, not just the
+   * part a describe block is about.
+   */
+  latestReplay(): unknown;
+  openReplays(): void;
 }
 
 function shellStub(over: Partial<ShellStub> = {}): Shell {
@@ -448,6 +456,8 @@ function shellStub(over: Partial<ShellStub> = {}): Shell {
     openMissions: () => { /* no-op */ },
     openSettings: () => { /* no-op */ },
     openCredits: () => { /* no-op */ },
+    latestReplay: () => null,
+    openReplays: () => { /* no-op */ },
     ...over,
   };
   return base as unknown as Shell;
