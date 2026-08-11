@@ -2,8 +2,8 @@
  * ============================================================================
  * VOLTMARCH — src/core/workers/TexturePool.ts
  * ============================================================================
- * THE CLIENT SIDE OF THE TEXTURE WORKER. A small round-robin pool with one
- * governing rule:
+ * THE CLIENT SIDE OF THE WORKER. A small round-robin pool with one governing
+ * rule:
  *
  *   THE POOL MAY NEVER BE THE REASON THE GAME FAILS TO BOOT.
  *
@@ -30,14 +30,25 @@
  * round-robin, correlation, timeout, the disable cascade — runs against a fake
  * worker in Node, and `./spawn.ts` is the only file in the project that names
  * the real one.
+ *
+ * IT IS STILL CALLED `TexturePool`, and it now serves four job kinds: textures,
+ * greeble atlases, terrain and water. The name is the one every caller and spec
+ * already imports and renaming it would be a large diff for no behaviour; what
+ * matters is that there is ONE disable cascade rather than four copies of it.
+ * Two INSTANCES exist — `src/core/assets.ts` owns the art pool (up to four
+ * workers) and `./world-warm.ts` owns a single-worker pool for the two
+ * boot-time world jobs, so a 500 ms terrain generation cannot park an atlas.
  * ============================================================================
  */
 
 import type { Channel, TextureRequest } from '../surfaces';
 import {
-  isWorkerReply, type GreebleJob, type TextureJob, type TextureLayer,
+  isWorkerReply,
+  type GreebleJob, type TerrainJob, type TextureJob, type TextureLayer, type WaterJob,
 } from './protocol';
 import type { GreebleAtlasData, GreebleSpec } from '../../art/greeble-gen';
+import type { TerrainFieldData, TerrainGenOptions } from '../../world/terrain-gen';
+import type { WaterFieldData } from '../../world/water-gen';
 
 /* ==========================================================================
  * THE WORKER SEAM
@@ -101,7 +112,8 @@ function defaultPoolSize(): number {
  *
  * The submit methods narrow it; see the resolve closures there.
  */
-type JobResult = readonly TextureLayer[] | GreebleAtlasData | null;
+type JobResult =
+  readonly TextureLayer[] | GreebleAtlasData | TerrainFieldData | WaterFieldData | null;
 
 interface Pending {
   readonly resolve: (result: JobResult) => void;
@@ -119,6 +131,29 @@ interface Pending {
  */
 function isAtlasResult(r: JobResult): r is GreebleAtlasData {
   return r !== null && typeof (r as { size?: unknown }).size === 'number';
+}
+
+/**
+ * Narrow a job result to a terrain field set.
+ *
+ * Same discipline as `isAtlasResult`, on a property nothing else in the union
+ * carries. A crossed reply id resolving a terrain request with an ATLAS would
+ * otherwise hand `Terrain.adopt` an object with no `passGrid`, and the map
+ * would come up with nothing passable — which reads as a pathfinding bug, five
+ * files away from the cause.
+ */
+function isTerrainResult(r: JobResult): r is TerrainFieldData {
+  return r !== null && (r as { height?: unknown }).height instanceof Float32Array;
+}
+
+/** Narrow a job result to a water field set. */
+function isWaterResult(r: JobResult): r is WaterFieldData {
+  return r !== null && (r as { depth?: unknown }).depth instanceof Float32Array;
+}
+
+/** Narrow a job result to packed channel layers. */
+function isLayerResult(r: JobResult): r is readonly TextureLayer[] {
+  return r !== null && typeof (r as { length?: unknown }).length === 'number';
 }
 
 /* ==========================================================================
@@ -194,8 +229,15 @@ export class TexturePool {
       // Anything else is a reply that got crossed with another job's id, and
       // the honest answer to that is `null` — generate it here — rather than
       // handing a greeble atlas to a caller expecting channel packings.
+      //
+      // POSITIVE test, not a list of exclusions. This used to read "not an
+      // atlas and not null", which was correct while those were the only two
+      // other shapes and quietly stopped being correct the moment terrain and
+      // water joined the union. `Array.isArray` cannot narrow a `readonly T[]`
+      // out of a union, so the check is on `length` — the one property the
+      // layer array has and no field set does.
       this.pending.set(id, {
-        resolve: (r) => { resolve(isAtlasResult(r) || r === null ? null : r); },
+        resolve: (r) => { resolve(isLayerResult(r) ? r : null); },
         timer,
       });
 
@@ -237,6 +279,75 @@ export class TexturePool {
       });
 
       const job: GreebleJob = { kind: 'greeble', id, spec };
+      try {
+        worker.postMessage(job);
+      } catch (err: unknown) {
+        this.disable(err instanceof Error ? err.message : String(err));
+      }
+    });
+  }
+
+  /**
+   * Queue one terrain generation.
+   *
+   * Same contract as `submit`: resolves with `null` rather than rejecting, and
+   * a `null` means "generate it on the calling thread". `world-warm.ts` is the
+   * only caller and `Terrain` re-checks the key before adopting anything, so a
+   * result that arrives late, crossed or for a different map is refused twice.
+   */
+  submitTerrain(options: TerrainGenOptions): Promise<TerrainFieldData | null> {
+    if (this.off) return Promise.resolve(null);
+    if (!this.start()) return Promise.resolve(null);
+
+    const id = this.nextId++;
+    const worker = this.workers[this.cursor];
+    this.cursor = (this.cursor + 1) % this.workers.length;
+
+    return new Promise<TerrainFieldData | null>((resolve) => {
+      const timer = setTimeout(() => {
+        this.disable(`terrain job ${id} exceeded ${this.timeoutMs} ms`);
+      }, this.timeoutMs);
+      this.pending.set(id, {
+        resolve: (r) => { resolve(isTerrainResult(r) ? r : null); },
+        timer,
+      });
+
+      const job: TerrainJob = { kind: 'terrain', id, options };
+      try {
+        worker.postMessage(job);
+      } catch (err: unknown) {
+        this.disable(err instanceof Error ? err.message : String(err));
+      }
+    });
+  }
+
+  /**
+   * Queue one water bake over a heightfield.
+   *
+   * `height` is COPIED by structured clone, not transferred — see the header of
+   * the world job block in `protocol.ts`. It is the array the live terrain is
+   * about to be built from, and transferring it would detach it.
+   */
+  submitWater(
+    key: string, height: Float32Array, level: number, seed: number,
+  ): Promise<WaterFieldData | null> {
+    if (this.off) return Promise.resolve(null);
+    if (!this.start()) return Promise.resolve(null);
+
+    const id = this.nextId++;
+    const worker = this.workers[this.cursor];
+    this.cursor = (this.cursor + 1) % this.workers.length;
+
+    return new Promise<WaterFieldData | null>((resolve) => {
+      const timer = setTimeout(() => {
+        this.disable(`water job ${id} exceeded ${this.timeoutMs} ms`);
+      }, this.timeoutMs);
+      this.pending.set(id, {
+        resolve: (r) => { resolve(isWaterResult(r) ? r : null); },
+        timer,
+      });
+
+      const job: WaterJob = { kind: 'water', id, key, height, level, seed };
       try {
         worker.postMessage(job);
       } catch (err: unknown) {
@@ -304,7 +415,9 @@ export class TexturePool {
     entry.resolve(
       data.kind === 'texture:done' ? data.layers
         : data.kind === 'greeble:done' ? data.data
-          : null,
+          : data.kind === 'terrain:done' ? data.data
+            : data.kind === 'water:done' ? data.data
+              : null,
     );
     this.drain();
   }

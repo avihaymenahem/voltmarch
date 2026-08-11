@@ -52,13 +52,18 @@
 
 import * as THREE from 'three';
 import {
-  MAP_CELLS, MAP_SIZE, WATER_FIELD, WATER_LEVEL, WATER_LOOK, WATER_MESH,
-  WATER_PALETTES, WATER_PALETTE_BY_BIOME, WATER_SEED, WATER_SHORE,
+  MAP_CELLS, MAP_SIZE, WATER_LEVEL, WATER_LOOK, WATER_MESH,
+  WATER_PALETTES, WATER_PALETTE_BY_BIOME, WATER_SEED,
   WATER_TEXTURE_SIZE, WATER_WAKE, WATER_WAVES,
   type WaterPalette,
 } from '../core/config';
-import { DEG2RAD, TAU, clamp, clamp01, fbm2 } from '../core/math';
+import { DEG2RAD, TAU, clamp01 } from '../core/math';
 import { LAYERS, RENDER_ORDER } from '../render/scene';
+import {
+  bakeWaterFields, sampleBilinear, smoothstep01,
+  FIELD_N, INV_FIELD_M, MIN_DEPTH,
+  type BedHeightFn, type WaterFieldData,
+} from './water-gen';
 import {
   createWaterMaterial, probeFoam, probeOpenWaterLuminance,
   type FoamProbe, type LuminanceProbe, type WaterLightRig, type WaterMaterialSet,
@@ -68,11 +73,13 @@ import {
  * 1. DERIVED LAYOUT
  * ========================================================================== */
 
-/** Field texels along one axis. */
-export const FIELD_N = WATER_FIELD.resolution;
-/** Metres per field texel. */
-const FIELD_M = MAP_SIZE / FIELD_N;
-const INV_FIELD_M = 1 / FIELD_M;
+/**
+ * The field layout lives in `./water-gen.ts` now, because the bake does. It is
+ * re-exported here so nothing that imports `FIELD_N` from this module had to
+ * move.
+ */
+export { FIELD_N } from './water-gen';
+export type { BedHeightFn, WaterFieldData } from './water-gen';
 
 /** Wake texels along one axis. */
 export const WAKE_N = WATER_WAKE.resolution;
@@ -84,18 +91,9 @@ export const WATER_CHUNK_N = Math.round(MAP_SIZE / WATER_MESH.chunkMetres);
 /** Quads along one chunk edge. */
 const CHUNK_QUADS = Math.round(WATER_MESH.chunkMetres / WATER_MESH.gridMetres);
 
-/** Anything at or below this depth is not water. */
-const MIN_DEPTH = 0.02;
-
 /* ==========================================================================
- * 2. THE HEIGHT SOURCE PORT
- *
- * Water only needs one thing from the terrain: bed height at a world point.
- * Taking a function instead of the Terrain class keeps this module testable
- * headless and stops it growing a dependency on the terrain's internals.
+ * 2. OPTIONS
  * ========================================================================== */
-
-export type BedHeightFn = (x: number, z: number) => number;
 
 export interface WaterOptions {
   scene: THREE.Scene;
@@ -108,6 +106,20 @@ export interface WaterOptions {
   seed?: number;
   anisotropy?: number;
   textureSize?: number;
+  /**
+   * A field set baked elsewhere — by a worker, during boot — to adopt instead
+   * of baking.
+   *
+   * `world/water.system.ts` is the only caller that passes one, and it passes
+   * `null` whenever the prewarm missed, was switched off with
+   * `?waterworkers=off`, or could not start a worker at all. A null is not an
+   * error: it means "bake it here", which is what this class did before the
+   * worker existed. The set is CHECKED against `waterGenKey` first, so fields
+   * baked over a different bed are refused rather than quietly drawn.
+   */
+  fields?: WaterFieldData | null;
+  /** The key `options.fields` must carry to be adopted. See `waterGenKey`. */
+  fieldsKey?: string;
 }
 
 export interface WaterStats {
@@ -166,12 +178,9 @@ export class Water {
   private statsCache: WaterStats;
   private time = 0;
   private disposed = false;
+  private adopted = false;
 
   /* -- scratch, never escapes -------------------------------------------- */
-  private readonly _edtF = new Float64Array(FIELD_N);
-  private readonly _edtD = new Float64Array(FIELD_N);
-  private readonly _edtV = new Int32Array(FIELD_N);
-  private readonly _edtZ = new Float64Array(FIELD_N + 1);
   private readonly _grad = new Float32Array(2);
 
   constructor(options: WaterOptions) {
@@ -219,238 +228,75 @@ export class Water {
     this.scene.add(this.root);
 
     this.statsCache = EMPTY_STATS;
-    this.rebuild();
+
+    /*
+     * ADOPT OR BAKE. A prewarmed set is only accepted when its key says it was
+     * baked over exactly this bed at exactly this level and seed; anything else
+     * falls through to a local bake, which is the path this class has always
+     * taken and the fallback for every worker failure mode.
+     */
+    const pre = options.fields ?? null;
+    this.rebuild(
+      pre !== null && options.fieldsKey !== undefined && pre.key === options.fieldsKey ? pre : null,
+    );
   }
 
   /* ======================================================================
    * 4. THE BAKE
+   *
+   * The arithmetic moved to `./water-gen.ts` when the bake moved off the main
+   * thread — see that file's header. What is left here is the part that needs a
+   * renderer: copying the baked bytes into the live arrays, pushing the field
+   * texture, fitting the material's absorption ramp and building the mesh.
    * ====================================================================== */
 
   /**
-   * Re-derive everything from the current bed. Call after the terrain
-   * regenerates (biome swap, seed re-roll) or after `setLevel`.
+   * Re-derive everything from the current bed, or adopt a set baked elsewhere.
    *
-   * Cost is ~25 ms for a 512^2 field: one heightfield resample, two exact
-   * euclidean distance transforms and one mesh build. It is a load-time
-   * operation and allocates nothing after the constructor.
+   * `fields` is the boot-time worker path: a set already baked over this exact
+   * bed, checked by key before it ever reaches here. Everything else — a biome
+   * swap, a seed re-roll, `setLevel`, a worker that never answered — passes
+   * nothing and bakes on this thread, exactly as it always did.
+   *
+   * The arrays are COPIED rather than adopted. `depth`, `shore` and
+   * `waterCells` are `readonly` fields that the VFX, audio and movement modules
+   * already hold references to; swapping the reference would leave every one of
+   * them reading a dead array.
    */
-  rebuild(): void {
-    this.sampleDepth();
-    this.buildShoreDistance();
-    this.packField();
-    this.fitRamp();
+  rebuild(fields: WaterFieldData | null = null): void {
+    const baked = fields ?? bakeWaterFields({
+      bedHeight: this.bedHeight, level: this.level, seed: this.seed,
+    });
+    this.adopted = fields !== null;
+
+    this.depth.set(baked.depth);
+    this.shore.set(baked.shore);
+    this.waterCells.set(baked.waterCells);
+    this.fieldData.set(baked.field);
+    this.fieldTexture.needsUpdate = true;
+
+    // Fit the absorption ramp to the basin that was actually generated. See the
+    // file header for why this is not the bible's literal coefficient.
+    this.materials.applyPalette(this.palette, baked.rampDepth);
+
+    this.statsCache = {
+      coverage: baked.coverage,
+      maxDepth: baked.maxDepth,
+      rampDepth: baked.rampDepth,
+      shorelineMetres: baked.shorelineMetres,
+      chunks: 0,
+      triangles: 0,
+    };
+
     this.buildMeshes();
     this.clearWakes();
   }
 
-  /** Resample the bed onto the field grid and derive the cell water mask. */
-  private sampleDepth(): void {
-    const d = this.depth;
-    const lvl = this.level;
-    for (let z = 0; z < FIELD_N; z++) {
-      const wz = (z + 0.5) * FIELD_M;
-      const row = z * FIELD_N;
-      for (let x = 0; x < FIELD_N; x++) {
-        d[row + x] = lvl - this.bedHeight((x + 0.5) * FIELD_M, wz);
-      }
-    }
-
-    // Cell mask: a cell is water if its centre is. Matches ITerrain.isWater's
-    // granularity so nav and water never disagree about a cell.
-    const cellM = MAP_SIZE / MAP_CELLS;
-    for (let cz = 0; cz < MAP_CELLS; cz++) {
-      for (let cx = 0; cx < MAP_CELLS; cx++) {
-        const wet = this.depthAt((cx + 0.5) * cellM, (cz + 0.5) * cellM) > MIN_DEPTH;
-        this.waterCells[cz * MAP_CELLS + cx] = wet ? 1 : 0;
-      }
-    }
+  /** True when the last `rebuild` adopted a worker's bake instead of doing one. */
+  get fieldsAdopted(): boolean {
+    return this.adopted;
   }
 
-  /**
-   * Signed distance to the waterline, via two exact euclidean distance
-   * transforms (Felzenszwalb & Huttenlocher, O(n) per axis).
-   *
-   * An approximate chamfer transform would be cheaper, but the shoreline band
-   * is 2 m wide on a 1 m grid: a 5-8% distance error is a visible 10-15 cm
-   * wobble in a band that scorecard #27 measures in pixels. Exact is worth
-   * 8 ms once.
-   */
-  private buildShoreDistance(): void {
-    const n = FIELD_N * FIELD_N;
-    // Deliberately FINITE, not Infinity: the parabola intersection below
-    // subtracts two of these, and Infinity - Infinity is NaN.
-    const INF = 1e12;
-    // 2 MB each and only alive during a rebuild — not worth keeping resident
-    // for the whole match to save a load-time allocation.
-    const land = new Float64Array(n);
-    const water = new Float64Array(n);
-
-    // Seed: distance-to-land is 0 on land; distance-to-water is 0 in water.
-    for (let i = 0; i < n; i++) {
-      const wet = this.depth[i] > 0;
-      land[i] = wet ? INF : 0;
-      water[i] = wet ? 0 : INF;
-    }
-    this.edt2d(land);
-    this.edt2d(water);
-
-    for (let i = 0; i < n; i++) {
-      // Offshore: distance to the nearest land texel. Inland: negated
-      // distance to the nearest water texel. The half-texel offset puts the
-      // zero crossing on the contact instead of on the first wet texel.
-      const s = this.depth[i] > 0
-        ? Math.sqrt(land[i]) - 0.5
-        : -(Math.sqrt(water[i]) - 0.5);
-      this.shore[i] = s * FIELD_M;
-    }
-  }
-
-  /** In-place squared EDT of a 2D grid of 0 / INF seeds. */
-  private edt2d(grid: Float64Array): void {
-    const f = this._edtF;
-    const d = this._edtD;
-    // Columns first.
-    for (let x = 0; x < FIELD_N; x++) {
-      for (let z = 0; z < FIELD_N; z++) f[z] = grid[z * FIELD_N + x];
-      this.edt1d(f, d);
-      for (let z = 0; z < FIELD_N; z++) grid[z * FIELD_N + x] = d[z];
-    }
-    // Then rows.
-    for (let z = 0; z < FIELD_N; z++) {
-      const row = z * FIELD_N;
-      for (let x = 0; x < FIELD_N; x++) f[x] = grid[row + x];
-      this.edt1d(f, d);
-      for (let x = 0; x < FIELD_N; x++) grid[row + x] = d[x];
-    }
-  }
-
-  /** 1D squared EDT: lower envelope of the parabolas rooted at each sample. */
-  private edt1d(f: Float64Array, d: Float64Array): void {
-    const n = FIELD_N;
-    const v = this._edtV;
-    const z = this._edtZ;
-    let k = 0;
-    v[0] = 0;
-    z[0] = -Infinity;
-    z[1] = Infinity;
-    for (let q = 1; q < n; q++) {
-      let p = v[k];
-      let s = ((f[q] + q * q) - (f[p] + p * p)) / (2 * q - 2 * p);
-      // Pop parabolas that have left the lower envelope. z[0] = -Infinity
-      // guarantees this terminates at k = 0.
-      while (s <= z[k]) {
-        k--;
-        p = v[k];
-        s = ((f[q] + q * q) - (f[p] + p * p)) / (2 * q - 2 * p);
-      }
-      k++;
-      v[k] = q;
-      z[k] = s;
-      z[k + 1] = Infinity;
-    }
-    k = 0;
-    for (let q = 0; q < n; q++) {
-      while (z[k + 1] < q) k++;
-      const p = v[k];
-      d[q] = (q - p) * (q - p) + f[p];
-    }
-  }
-
-  /**
-   * Encode depth, shore distance and the two seabed noises into the texture.
-   *
-   * The seabed noises are 18 m and 5 m features over a 512 m map — grossly
-   * oversampled at the field's 1 m grid. They are generated on coarse grids
-   * and bilinearly upsampled, which removes ~1.2 M simplex evaluations from
-   * every bake for a difference no pixel can carry.
-   */
-  private packField(): void {
-    const enc = WATER_FIELD.encodeMetres;
-    const shoreEnc = WATER_SHORE.encodeMetres;
-    const s = this.seed;
-
-    const blob = noiseGrid(128, 1 / WATER_LOOK.seabedBlobMetres, 3, s + 5);
-    const grit = noiseGrid(256, 1 / (WATER_LOOK.seabedBlobMetres * 0.28), 2, s + 17);
-
-    for (let z = 0; z < FIELD_N; z++) {
-      const row = z * FIELD_N;
-      for (let x = 0; x < FIELD_N; x++) {
-        const i = row + x;
-        const o = i * 4;
-
-        // Signed sqrt encoding: 8 bits, ~3 cm resolution in the first metre.
-        const dNorm = clamp(this.depth[i] / enc, -1, 1);
-        const sg = dNorm < 0 ? -1 : 1;
-        this.fieldData[o] = enc8(0.5 + 0.5 * sg * Math.sqrt(Math.abs(dNorm)));
-
-        this.fieldData[o + 1] = enc8(0.5 + 0.5 * clamp(this.shore[i] / shoreEnc, -1, 1));
-
-        // Seabed: large soft masses 0.8-4 TL across, plus one finer octave.
-        // Bible §7 caps the contrast at 18-25 L units, so these are deliberately
-        // low-amplitude — a high-contrast seabed reads as a swimming pool.
-        this.fieldData[o + 2] = enc8(0.5 + 0.42 * sampleGrid(blob, x, z));
-        this.fieldData[o + 3] = enc8(0.5 + 0.42 * sampleGrid(grit, x, z));
-      }
-    }
-    this.fieldTexture.needsUpdate = true;
-  }
-
-  /**
-   * Fit the absorption ramp to the basin that was actually generated, and
-   * collect the stats the boot log prints. See the file header for why.
-   */
-  private fitRamp(): void {
-    const n = FIELD_N * FIELD_N;
-    let wet = 0;
-    let maxDepth = 0;
-    // 64-bin histogram over 0..encodeMetres is enough to find a p97.
-    const BINS = 64;
-    const hist = new Uint32Array(BINS);
-    const binM = WATER_FIELD.encodeMetres / BINS;
-    for (let i = 0; i < n; i++) {
-      const d = this.depth[i];
-      if (d <= MIN_DEPTH) continue;
-      wet++;
-      if (d > maxDepth) maxDepth = d;
-      const b = (d / binM) | 0;
-      hist[b >= BINS ? BINS - 1 : b]++;
-    }
-
-    let p97 = 0;
-    if (wet > 0) {
-      const target = wet * 0.97;
-      let acc = 0;
-      for (let b = 0; b < BINS; b++) {
-        acc += hist[b];
-        if (acc >= target) { p97 = (b + 1) * binM; break; }
-      }
-    }
-
-    const rampDepth = clamp(p97, WATER_LOOK.rampDepthMin, WATER_LOOK.rampDepthMetres);
-    this.materials.applyPalette(this.palette, rampDepth);
-
-    // Shoreline length: count field texels straddling the contact. Each such
-    // texel contributes about one texel edge of coastline.
-    let contact = 0;
-    for (let z = 1; z < FIELD_N - 1; z++) {
-      const row = z * FIELD_N;
-      for (let x = 1; x < FIELD_N - 1; x++) {
-        const i = row + x;
-        if (this.depth[i] <= 0) continue;
-        if (this.depth[i - 1] <= 0 || this.depth[i + 1] <= 0 ||
-            this.depth[i - FIELD_N] <= 0 || this.depth[i + FIELD_N] <= 0) contact++;
-      }
-    }
-
-    this.statsCache = {
-      coverage: wet / n,
-      maxDepth,
-      rampDepth,
-      shorelineMetres: contact * FIELD_M,
-      chunks: 0,
-      triangles: 0,
-    };
-  }
 
   /* ======================================================================
    * 5. THE MESH
@@ -946,68 +792,6 @@ const EMPTY_STATS: WaterStats = {
   shorelineMetres: 0, chunks: 0, triangles: 0,
 };
 
-function enc8(v: number): number {
-  const c = v < 0 ? 0 : v > 1 ? 1 : v;
-  return (c * 255 + 0.5) | 0;
-}
-
-interface CoarseGrid {
-  readonly n: number;
-  readonly data: Float32Array;
-}
-
-/** fbm over the whole map on an (n+1)^2 grid, for bilinear upsampling. */
-function noiseGrid(n: number, scale: number, octaves: number, seed: number): CoarseGrid {
-  const data = new Float32Array((n + 1) * (n + 1));
-  const step = MAP_SIZE / n;
-  for (let j = 0; j <= n; j++) {
-    for (let i = 0; i <= n; i++) {
-      data[j * (n + 1) + i] = fbm2(i * step * scale, j * step * scale, octaves, 2, 0.5, seed);
-    }
-  }
-  return { n, data };
-}
-
-/** Bilinear read of a coarse grid at field-texel coordinates. */
-function sampleGrid(g: CoarseGrid, fx: number, fz: number): number {
-  const sx = (fx + 0.5) * FIELD_M * (g.n / MAP_SIZE);
-  const sz = (fz + 0.5) * FIELD_M * (g.n / MAP_SIZE);
-  let i0 = sx | 0; if (i0 > g.n - 1) i0 = g.n - 1;
-  let j0 = sz | 0; if (j0 > g.n - 1) j0 = g.n - 1;
-  const tx = sx - i0;
-  const tz = sz - j0;
-  const r0 = j0 * (g.n + 1) + i0;
-  const r1 = r0 + (g.n + 1);
-  const a = g.data[r0] + (g.data[r0 + 1] - g.data[r0]) * tx;
-  const b = g.data[r1] + (g.data[r1 + 1] - g.data[r1]) * tx;
-  return a + (b - a) * tz;
-}
-
-function smoothstep01(a: number, b: number, x: number): number {
-  const t = clamp01((x - a) / (b - a));
-  return t * t * (3 - 2 * t);
-}
-
-/**
- * Bilinear sample of a field-resolution grid at a world position. Texel
- * centres sit at (i + 0.5) metres, matching the bake and the shader's own
- * `texture2D(uField, p / MAP_SIZE)`.
- */
-function sampleBilinear(grid: Float32Array, x: number, z: number): number {
-  let fx = x * INV_FIELD_M - 0.5;
-  let fz = z * INV_FIELD_M - 0.5;
-  if (!(fx > 0)) fx = 0; else if (fx > FIELD_N - 1) fx = FIELD_N - 1;
-  if (!(fz > 0)) fz = 0; else if (fz > FIELD_N - 1) fz = FIELD_N - 1;
-  let x0 = fx | 0; if (x0 > FIELD_N - 2) x0 = FIELD_N - 2;
-  let z0 = fz | 0; if (z0 > FIELD_N - 2) z0 = FIELD_N - 2;
-  const tx = fx - x0;
-  const tz = fz - z0;
-  const r0 = z0 * FIELD_N + x0;
-  const r1 = r0 + FIELD_N;
-  const a = grid[r0] + (grid[r0 + 1] - grid[r0]) * tx;
-  const b = grid[r1] + (grid[r1 + 1] - grid[r1]) * tx;
-  return a + (b - a) * tz;
-}
 
 /** Accepts a palette key or a biome key; falls back to temperate with a warn. */
 function resolvePaletteKey(key: string | undefined): string {
