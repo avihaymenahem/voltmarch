@@ -453,7 +453,7 @@ describe('the cursor can express both verbs against a neutral structure', () => 
     const i = st.index(hover);
     return resolveContextOrder(
       rig.world, hover, st.posX[i], st.posZ[i], true, NO_MODS, CommandMode.None, caps,
-      { order: OrderKind.None, target: NONE, x: 0, z: 0, cursor: CursorKind.Default, valid: false, isRally: false },
+      { order: OrderKind.None, target: NONE, x: 0, z: 0, cursor: CursorKind.Default, valid: false, isRally: false, garrisonRefusal: '' },
     );
   }
 

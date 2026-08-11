@@ -170,6 +170,26 @@ export interface ProfileView {
   missions: readonly MissionProgress[];
 }
 
+/**
+ * WHERE AN UNLOCK COMES FROM. What the build palette needs in order to stop
+ * saying "complete a mission" and start saying WHICH.
+ *
+ * A player hovered a locked Battle Lab, read "Locked — complete a mission", and
+ * asked whether they were supposed to guess. They were: `LOCKED_REASON` in
+ * `src/progression/UnlockGate.ts` is one constant with no mission in it, and
+ * the palette printed it verbatim. The data to do better has always existed —
+ * the def carries `unlockedBy`, and exactly one mission grants each id — but
+ * nothing joined the two.
+ */
+export interface UnlockSource {
+  /** The mission's stable id. Not shown; lets a caller deep-link the screen. */
+  readonly missionId: string;
+  /** 'Strip Mine'. The name the missions screen shows. */
+  readonly title: string;
+  /** 'Mine 250,000 credits of ore'. What the player has to actually do. */
+  readonly objective: string;
+}
+
 /** What the UI reads. Never mutate what this returns. */
 export interface ProgressionView {
   profile(): ProfileView;
@@ -181,6 +201,21 @@ export interface ProgressionView {
   resetProfile(): void;
   exportProfile(): string;
   importProfile(json: string): boolean;
+  /**
+   * The mission that grants `unlockId`, or null when nothing does.
+   *
+   * OPTIONAL, and deliberately so. It is owned by `src/progression/**`, which
+   * is a different module's file; this interface is a structural RESTATEMENT of
+   * that handle (see `readProgression` below), so declaring the member required
+   * would make every existing handle fail to typecheck against it and would
+   * make `readProgression`'s probe reject a live progression layer that simply
+   * predates the lookup.
+   *
+   * Absent, the palette falls back to the generic sentence it printed before —
+   * which is the same "an absent handle is a supported configuration" rule the
+   * whole of this seam is built on.
+   */
+  unlockSource?(unlockId: string): UnlockSource | null;
 }
 
 declare global {

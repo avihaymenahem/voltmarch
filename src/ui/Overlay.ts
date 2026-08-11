@@ -101,7 +101,8 @@
 import * as THREE from 'three';
 
 import {
-  CELL, HUD_OVERLAY, MAX_SELECTION, ORDER_MARKER_POOL, ORDER_MARKER_SECONDS,
+  BUILD_RADIUS, CELL, HUD_OVERLAY, MAX_SELECTION, ORDER_MARKER_POOL,
+  ORDER_MARKER_SECONDS, PLACEMENT,
 } from '../core/config';
 import { worldToCell } from '../core/math';
 import {
@@ -163,6 +164,101 @@ const HINT_WORD = 'ROTATE';
 const TARGET_LINE = 'rgba(255,77,61,0.55)';
 /** Points sampled around a selection ring. 20 is smooth at every zoom. */
 const RING_SEGMENTS = 20;
+
+/* --------------------------------------------------------------------------
+ * THE BUILD RADIUS
+ *
+ * Reported as the single fiddliest thing in the game, and the reason is that
+ * NOTHING drew it. The only signal that you had reached too far was the ghost's
+ * carpet turning red about 62 m out, which tells you where the edge is not,
+ * one guess at a time.
+ *
+ * WHAT IS ACTUALLY DRAWN IS THE UNION OF EVERY STRUCTURE'S OWN DISC, not one
+ * circle around the base. That is what `withinBuildRadius` in
+ * `src/sim/Placement.ts` actually tests: a Construction Yard projects
+ * `BUILD_RADIUS`, every other finished structure projects the much smaller
+ * `PLACEMENT.adjacencyRadius`, and both are widened by the structure's own
+ * `radius`. Drawing one big circle would be a prettier picture of a rule the
+ * game does not have — and the lobed shape is the POINT, because it is what
+ * makes a base creep outward one structure at a time.
+ *
+ * The rule is not restated here. The two constants come from `core/config.ts`,
+ * which is where `Placement.ts` reads them from, and the flag test below is the
+ * same three-line test — so the picture and the check share their inputs. A
+ * screenshot of a ghost sitting on the boundary is the falsifiable version.
+ *
+ * ONE PATH, FILLED NONZERO. Every disc is a subpath wound the same way, so a
+ * single `fill()` paints the union with no seam and no double-darkening where
+ * two structures overlap — which is most of a real base.
+ * -------------------------------------------------------------------------- */
+
+/** Fill under the buildable region while a structure is on the cursor. */
+const BUILD_AREA_FILL = 'rgba(120, 210, 255, 0.10)';
+/** The boundary of that region. */
+const BUILD_AREA_EDGE = 'rgba(150, 225, 255, 0.42)';
+/** Structures whose discs are drawn. A base past this is not the failing case. */
+const BUILD_AREA_MAX = 64;
+
+/* --------------------------------------------------------------------------
+ * GARRISON HINTS
+ *
+ * A player reported that infantry "cannot get into buildings". The mechanic
+ * works; the eligible SET is tiny — `GarrisonService.refusalFor` rejects armed
+ * structures, anything producing, and any footprint under 2x2, which against
+ * the shipped roster leaves the Power Plant and the Battle Lab — and there was
+ * no way to tell an eligible building from the rest without clicking it and
+ * watching the squad walk to the wall.
+ *
+ * So while a squad that COULD go inside something is selected, the ones it can
+ * go inside are ringed. The set is asked of the service, never re-derived: this
+ * is the same discipline `src/input/Commands.ts` keeps for the cursor, and for
+ * the same reason — two copies of a seven-condition rule is one copy too many.
+ *
+ * REBUILT ON A THROTTLE, NOT PER FRAME. `refusalFor` ends in `occupantCount`,
+ * which walks the infantry list, and asking it of every building every frame
+ * would be O(buildings x infantry) at 60 Hz. Every cheap rejection happens
+ * BEFORE that walk, so in practice only the two or three genuinely eligible
+ * buildings pay for it — but the throttle is what makes that a bound rather
+ * than a hope.
+ * -------------------------------------------------------------------------- */
+
+/** Seconds between rebuilds of the garrisonable set. */
+const GARRISON_HINT_PERIOD = 0.25;
+/** Buildings the hint pass will mark at once. */
+const GARRISON_HINT_MAX = 32;
+/** The ring under a building a selected squad could man. */
+const GARRISON_HINT_INK = 'rgba(120, 235, 165, 0.75)';
+
+/**
+ * The garrison service, duck-typed off `globalThis.__vmFeatures.garrison`.
+ *
+ * The same seam `src/ui/Hud.ts` reaches for the Evacuate row, restated here
+ * rather than shared because these two files already restate every other seam
+ * they use and importing one from the other would make the overlay depend on
+ * the HUD's module graph for a five-line probe.
+ *
+ * READ-ONLY, and it must stay that way: this is the layer that DRAWS, and a
+ * draw pass that could change simulation state is a draw pass that changes it
+ * on one machine and not another.
+ */
+interface GarrisonHintSeam {
+  refusalFor(building: EntityId, byPlayer: PlayerId): string;
+}
+
+function garrisonHintSeam(): GarrisonHintSeam | null {
+  const g = globalThis as unknown as { __vmFeatures?: { garrison?: GarrisonHintSeam } };
+  const s = g.__vmFeatures?.garrison;
+  return s !== undefined && typeof s.refusalFor === 'function' ? s : null;
+}
+
+/**
+ * The solid-line dash pattern, allocated once.
+ *
+ * `ctx.setLineDash([])` is the obvious spelling and it allocates an array on
+ * every call, in a method that runs every frame. This file's budget is zero
+ * allocation per frame and that includes the empty ones.
+ */
+const EMPTY_DASH: number[] = [];
 
 /* --------------------------------------------------------------------------
  * RALLY FLAGS
@@ -420,6 +516,12 @@ export class Overlay {
   private hintCz = 0;
   private hintW = 0;
   private hintH = 0;
+
+  /** Buildings a selected squad could man. Rebuilt on a throttle. */
+  private readonly garrisonHints = new Int32Array(GARRISON_HINT_MAX);
+  private garrisonHintCount = 0;
+  /** Seconds until the next rebuild of the set above. */
+  private garrisonHintIn = 0;
   /** Last pointer position in CLIENT px, and whether it is over the window. */
   private pointerX = 0;
   private pointerY = 0;
@@ -642,6 +744,12 @@ export class Overlay {
     ctx.beginPath();
     ctx.rect(pf.x, pf.y, pf.w, pf.h);
     ctx.clip();
+
+    // FIRST, under everything. It is a region of GROUND, and a selection ring
+    // or a health bar drawn under a translucent wash would read as being under
+    // the terrain.
+    this.drawBuildArea();
+    this.drawGarrisonHints(dt);
 
     if (this.selectionRings) this.drawSelectionRings();
     // Under the order markers: a fresh SetRally pulse has to land ON the flag it
@@ -1064,6 +1172,171 @@ export class Overlay {
       this.strokeWorldCircle(m.x, m.y, m.z, inR);
     }
     void any;
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* the build radius                                                    */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * The region a structure may actually be founded in, while one is on the
+   * cursor.
+   *
+   * Drawn ONLY during placement, and that is a deliberate restriction rather
+   * than a performance dodge: outside placement the boundary is not a fact the
+   * player needs, and a permanent wash over half the base would be the kind of
+   * always-on decoration `docs/RA3_LOOK_BIBLE.md` costs points for. It appears
+   * the moment it becomes actionable and goes when the ghost does.
+   *
+   * See the block comment at the top of this file for why this is a UNION of
+   * per-structure discs and not one circle.
+   */
+  private drawBuildArea(): void {
+    if (!this.hintActive) return;
+    const store = this.world.store;
+    const list = store.byKind[EntityKind.Building];
+    const count = store.byKindCount[EntityKind.Building];
+    const owner = this.world.localPlayer as number;
+    const ctx = this.ctx;
+
+    ctx.beginPath();
+    let drawn = 0;
+    for (let a = 0; a < count && drawn < BUILD_AREA_MAX; a++) {
+      const i = list[a];
+      if (store.owner[i] !== owner) continue;
+      const flags = store.flags[i];
+      if ((flags & EntityFlag.Alive) === 0) continue;
+      if ((flags & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) continue;
+      // The one line that has to match `withinBuildRadius`, and it reads from
+      // the same two constants that function does.
+      const r = ((flags & EntityFlag.IsBuilder) !== 0 ? BUILD_RADIUS : PLACEMENT.adjacencyRadius)
+        + store.radius[i];
+      this.addGroundDisc(store.posX[i], store.posY[i], store.posZ[i], r);
+      drawn++;
+    }
+    if (drawn === 0) return;
+
+    // Nonzero winding, so overlapping discs are one region rather than a stack
+    // of washes. The stroke follows the same path: the internal arcs it draws
+    // are the individual structures' own reach, which is information — it is
+    // what shows a player that the far tower is what is holding the edge out.
+    ctx.fillStyle = BUILD_AREA_FILL;
+    ctx.fill('nonzero');
+    ctx.strokeStyle = BUILD_AREA_EDGE;
+    ctx.lineWidth = Math.max(1, this.scale / this.dpr);
+    ctx.stroke();
+  }
+
+  /**
+   * One world-space circle appended to the CURRENT path, wound consistently.
+   *
+   * `strokeWorldCircle`'s sibling, split off because the union fill needs the
+   * subpaths accumulated rather than stroked one at a time. Points that fail to
+   * project are skipped and the subpath is closed on what survived, which is
+   * what keeps a disc half off the bottom of the screen from drawing a chord
+   * across the frame.
+   */
+  private addGroundDisc(cx: number, cy: number, cz: number, r: number): void {
+    const ctx = this.ctx;
+    let started = false;
+    for (let s = 0; s < RING_SEGMENTS; s++) {
+      const a = (s / RING_SEGMENTS) * Math.PI * 2;
+      this.v3.set(cx + Math.cos(a) * r, cy + 0.06, cz + Math.sin(a) * r);
+      if (!this.cameraRig.worldToScreen(this.v3, this.v2)) continue;
+      if (!started) { ctx.moveTo(this.v2.x, this.v2.y); started = true; }
+      else ctx.lineTo(this.v2.x, this.v2.y);
+    }
+    if (started) ctx.closePath();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* garrison hints                                                      */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Ring every building the current selection could walk into.
+   *
+   * The set comes from `GarrisonService.refusalFor` through the same duck-typed
+   * `__vmFeatures.garrison` seam the HUD's Evacuate row uses — never from a
+   * second copy of the eligibility rule. With no features module installed the
+   * seam is null, the set stays empty, and nothing is drawn, which is the
+   * correct answer for a world that has no garrisons in it.
+   *
+   * Only for a selection that holds infantry and NO engineer, which is exactly
+   * the selection `resolveContextOrder` will answer `OrderKind.Enter` for. An
+   * engineer in the selection means a right-click captures instead, so ringing
+   * the buildings would promise a gesture the player is not about to get.
+   */
+  private drawGarrisonHints(dt: number): void {
+    this.garrisonHintIn -= dt;
+    if (this.garrisonHintIn <= 0) {
+      this.garrisonHintIn = GARRISON_HINT_PERIOD;
+      this.rebuildGarrisonHints();
+    }
+    if (this.garrisonHintCount === 0) return;
+
+    const store = this.world.store;
+    const ctx = this.ctx;
+    ctx.strokeStyle = GARRISON_HINT_INK;
+    ctx.lineWidth = Math.max(1, this.scale / this.dpr);
+    ctx.setLineDash(EMPTY_DASH);
+
+    for (let k = 0; k < this.garrisonHintCount; k++) {
+      const i = store.index(this.garrisonHints[k] as EntityId);
+      if (i < 0) continue;
+      // The footprint's own half-diagonal plus a metre, so the ring sits just
+      // outside the walls rather than cutting through the model.
+      const halfW = Math.max(store.footprintW[i], 1) * CELL * 0.5;
+      const halfH = Math.max(store.footprintH[i], 1) * CELL * 0.5;
+      const r = Math.max(halfW, halfH) + 1.0;
+      this.strokeWorldCircle(store.posX[i], store.posY[i], store.posZ[i], r);
+    }
+    ctx.setLineDash(EMPTY_DASH);
+  }
+
+  /** Re-ask the service which buildings are open to this selection. */
+  private rebuildGarrisonHints(): void {
+    this.garrisonHintCount = 0;
+
+    const seam = garrisonHintSeam();
+    if (seam === null) return;
+
+    const store = this.world.store;
+    const sel = this.world.selection;
+    const local = this.world.localPlayer;
+
+    // Does the selection contain anybody who could go inside? Infantry, and no
+    // engineer — the same pair of conditions the context resolver applies.
+    let hasInfantry = false;
+    let hasEngineer = false;
+    for (let k = 0; k < sel.count; k++) {
+      const i = store.index(sel.ids[k] as EntityId);
+      if (i < 0 || store.owner[i] !== (local as number)) continue;
+      if (store.kind[i] !== EntityKind.Infantry) continue;
+      hasInfantry = true;
+      // An unarmed foot unit is the engineer, which is `HEURISTIC_ROLES`'
+      // rule and true of this roster: every other infantryman has a weapon.
+      if ((store.flags[i] & EntityFlag.CanAttack) === 0) hasEngineer = true;
+    }
+    if (!hasInfantry || hasEngineer) return;
+
+    const list = store.byKind[EntityKind.Building];
+    const count = store.byKindCount[EntityKind.Building];
+    let n = 0;
+    for (let a = 0; a < count && n < this.garrisonHints.length; a++) {
+      const i = list[a];
+      if ((store.flags[i] & EntityFlag.Alive) === 0) continue;
+      const id = store.handleOf(i);
+      // Fog, not ownership: a neutral civilian block is a legitimate host and
+      // `refusalFor` says so, but a building the player cannot currently SEE is
+      // one they have not earned. `canSee` is the Live threshold, so a
+      // remembered silhouette is drawn by the renderer and carries no ring —
+      // the same rule the health bars follow, two passes down.
+      if (!this.world.vision.canSee(local, id)) continue;
+      if (seam.refusalFor(id, local) !== '') continue;
+      this.garrisonHints[n++] = id as number;
+    }
+    this.garrisonHintCount = n;
   }
 
   private strokeWorldCircle(cx: number, cy: number, cz: number, r: number): void {

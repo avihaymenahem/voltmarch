@@ -82,7 +82,20 @@ import {
 } from './Chrome';
 import { Minimap, type TerrainSampler } from './Minimap';
 import { Overlay } from './Overlay';
+// `src/progression/powers.ts` imports NOTHING — not the engine, not `three`,
+// not `src/sim/**` — and says so in its header, so this is a hard import for
+// the same reason `ABILITIES` above is one: it is the CONTENT half (label,
+// hint, charge, radius) and the content half is not what the seams exist to
+// keep out. The SERVICE half — how much charge is left, and whether it may be
+// called — is `commanderPowerSeam()` below and is duck-typed like the rest.
 import {
+  COMMANDER_POWERS, powersOwnedBy, type CommanderPowerDef,
+} from '../progression/powers';
+
+import {
+  COMMANDER_POWER_ROWS,
+  POWER_ICONS,
+  SELF_DESTRUCT_CONFIRM_SECONDS,
   SLOT_HOTKEY_CODES,
   Sidebar,
   TAB_HOTKEY_CODES,
@@ -91,6 +104,8 @@ import {
   type AdviceKind,
   type ArmedMode,
   type BuildExtras,
+  type CommanderPowerRow,
+  type CommanderPowerView,
   type HudSoundCue,
   type HudTelemetry,
   type SelectionCard,
@@ -98,6 +113,7 @@ import {
   type SuperweaponRow,
   type SuperweaponView,
 } from './Sidebar';
+import { readProgression } from './Objectives';
 import { iconForUnitKey, makeIcon, type IconName } from './icons';
 import { buildHotkeyBlockedBy, type StoredBindings } from '../input/ActionCatalogue';
 
@@ -451,6 +467,64 @@ function superweaponSeam(): SuperweaponSeamRead | null {
   return s !== undefined && typeof s.arm === 'function' ? s : null;
 }
 
+/**
+ * The garrison service, duck-typed off `globalThis.__vmFeatures.garrison`.
+ *
+ * Exactly the transport seam's bargain, one entity kind over, and published on
+ * the same handle by the same module (`sim/features.system.ts`). Occupancy is a
+ * QUERY here too — `occupantCount` walks the infantry list — so it is only ever
+ * asked for the one primary entity of a selection. See `fillGarrison`.
+ *
+ * The seam is READ-ONLY, and that is deliberate rather than incidental:
+ * `GarrisonService.evacuate` is right there on the same object and calling it
+ * from a DOM handler would put the men on the ground on THIS machine and on no
+ * other. The verb goes out as `OrderKind.Unload` through `channels.commands`
+ * like every other order; the seam only answers "is anybody in there".
+ */
+interface GarrisonSeamRead {
+  occupantCount(building: EntityId): number;
+}
+
+function garrisonSeam(): GarrisonSeamRead | null {
+  const g = globalThis as unknown as { __vmFeatures?: { garrison?: GarrisonSeamRead } };
+  const s = g.__vmFeatures?.garrison;
+  return s !== undefined && typeof s.occupantCount === 'function' ? s : null;
+}
+
+/**
+ * The commander-power service, duck-typed off `globalThis.__vmPowers.service`.
+ *
+ * Same rule as every seam above: `src/sim/CommanderPowers.ts` pulls in the
+ * damage channel, the spatial index and the vision port, and a `?shot=` boot
+ * that never registers the sim would take the whole HUD down with a hard
+ * import. With the service absent the bar is simply never shown.
+ *
+ * TWO MEMBERS, AND NEITHER OF THEM FIRES. `chargeSecondsOf` and `isReady` are
+ * reads; the call itself is `channels.commands.issueUsePower`, drained by the
+ * ONE Phase.Command drain in `src/input/Commands.ts`. That is the same
+ * discipline `armSuperweapon` follows and for the same reason — a HUD that
+ * called `service.use()` from a click handler would be invisible to the replay
+ * recorder and to the multiplayer link, and would ALSO race the tick, which is
+ * the bug that discipline exists to prevent.
+ *
+ * `__vmPowers.charges()` is deliberately NOT used even though it exists: it
+ * builds a fresh `Record` per call, and this is asked once per power per frame.
+ */
+interface CommanderPowerSeamRead {
+  chargeSecondsOf(player: PlayerId, power: number): number;
+  isReady(player: PlayerId, power: number): boolean;
+}
+
+function commanderPowerSeam(): CommanderPowerSeamRead | null {
+  const g = globalThis as unknown as {
+    __vmPowers?: { service?: CommanderPowerSeamRead };
+  };
+  const s = g.__vmPowers?.service;
+  return s !== undefined && typeof s.chargeSecondsOf === 'function' ? s : null;
+}
+
+/* `POWER_ICONS` lives in `./Sidebar` beside the bar that draws it. */
+
 /* ==========================================================================
  * SECTION 3 — THE HUD
  * ========================================================================== */
@@ -519,7 +593,7 @@ export class Hud {
 
   /** Pooled telemetry. Rebuilt in place; never handed out. */
   private readonly telemetry: HudTelemetry = {
-    army: 0, structures: 0, incomePerMin: 0,
+    army: 0, structures: 0, incomePerMin: 0, storageMax: 0,
     advice: 'All systems nominal', adviceKind: 'info',
   };
   /** Credits banked since the last income flush, and the smoothed rate. */
@@ -540,6 +614,40 @@ export class Hud {
    * a countdown never jumps to a different position as its neighbour arrives.
    */
   private readonly supers: SuperweaponView;
+  /**
+   * Pooled commander-power rows, in `COMMANDER_POWERS` table order.
+   *
+   * Rebuilt in place every frame from `powersOwnedBy` — which takes a
+   * caller-supplied array for exactly this reason — so the bar costs no
+   * allocation whatever the profile owns.
+   */
+  private readonly powers: CommanderPowerView;
+  /** Scratch for `powersOwnedBy`. Never handed out, never reallocated. */
+  private readonly ownedPowers: CommanderPowerDef[] = [];
+  /**
+   * The `isUnlocked` predicate, allocated ONCE.
+   *
+   * `powersOwnedBy` wants a function and this runs every frame, so the closure
+   * is built here rather than at the call site. It answers TRUE with no
+   * progression layer installed — the rule `progression-link` states and the
+   * reason a `?shot=` boot shows all five rather than none.
+   */
+  private readonly isPowerUnlocked = (unlockId: string): boolean =>
+    readProgression()?.isUnlocked(unlockId) ?? true;
+  /**
+   * The `CommanderPowerId` currently on the cursor, or 0 for none.
+   *
+   * READ BY `src/input/input.system.ts` off `__vmHud`, exactly as `armedMode`
+   * is: a power's target is a point on the ground, the ground click is a
+   * GESTURE, and gestures belong to input. Nothing in this file consumes it.
+   */
+  private armedPowerId = 0;
+  /** Sim seconds at which an armed self-destruct disarms itself. */
+  private destructArmedUntil = -1e9;
+  /** The entity the armed self-destruct was armed FOR. 0 when disarmed. */
+  private destructArmedFor = 0;
+  /** Scratch for the self-destruct sweep. Never handed out. */
+  private readonly destructIds = new Int32Array(MAX_SELECTION);
   /** Scratch for grouping the selection into cards. */
   private readonly groupKeys: number[] = [];
   private readonly groupFirst: number[] = [];
@@ -601,7 +709,11 @@ export class Hud {
         relocate: () => this.relocateSelection(),
         useAbility: () => this.useSelectedAbility(),
         unload: () => this.unloadSelection(),
+        evacuate: () => this.evacuateSelection(),
+        setPrimary: () => this.setPrimarySelection(),
+        selfDestruct: () => this.selfDestructSelection(),
         fireSuperweapon: (key) => this.armSuperweapon(key),
+        usePower: (key) => this.armPower(key),
         sound: (cue) => this.soundHook?.(cue),
       },
     });
@@ -649,6 +761,9 @@ export class Hud {
       relocate: { visible: false, enabled: false, cost: 0, hint: '', armed: false },
       ability: { visible: false, enabled: false, label: '', hint: '', cooldown: 0, cooldownTotal: 0 },
       cargo: { visible: false, enabled: false, count: 0, capacity: 0, hint: '' },
+      garrison: { visible: false, enabled: false, count: 0, hint: '' },
+      primary: { visible: false, enabled: false, isPrimary: false, hint: '' },
+      selfDestruct: { visible: false, count: 0, armed: false, hint: '' },
       armour: '', damage: '', range: '', speed: '',
     };
 
@@ -657,6 +772,15 @@ export class Hud {
       superRows.push({ key: '', label: '', remaining: 0, total: 1, ready: false, armed: false });
     }
     this.supers = { count: 0, rows: superRows };
+
+    const powerRows: CommanderPowerRow[] = [];
+    for (let i = 0; i < COMMANDER_POWER_ROWS; i++) {
+      powerRows.push({
+        key: '', id: 0, label: '', hint: '', icon: 'superweapon',
+        remaining: 0, total: 1, ready: false, armed: false,
+      });
+    }
+    this.powers = { count: 0, rows: powerRows };
 
     this.sidebar.setExtrasProvider((key) => this.extrasFor(key));
     this.minimap.onJumpRequest((x, z) => this.cameraRig.setFocus(x, z, false));
@@ -1043,6 +1167,7 @@ export class Hud {
     const snap = this.snapshot();
     this.buildSelectionView();
     this.buildTelemetry(snap, dt);
+    this.fillPowers();
 
     this.sidebar.setRadarOnline(snap.hasRadar);
     // The armed flag is the one field on a countdown that can change without
@@ -1053,7 +1178,7 @@ export class Hud {
     for (let i = 0; i < this.supers.count; i++) {
       this.supers.rows[i].armed = this.supers.rows[i].key === armed;
     }
-    this.sidebar.update(snap, this.view, this.telemetry, dt, this.supers);
+    this.sidebar.update(snap, this.view, this.telemetry, dt, this.supers, this.powers);
     // AFTER `update`, so a slot that just changed content has already bound its
     // new subject and can be rendered in the same frame rather than a frame
     // late. Costs nothing when the queue is empty, which is almost always.
@@ -1143,6 +1268,15 @@ export class Hud {
       this.incomeWindow = 0;
     }
     tele.incomePerMin = this.incomePerSec * 60;
+
+    /* -- the storage ceiling --------------------------------------------
+     * Straight off `PlayerState`. It is not in `HudSnapshot` because that
+     * structure belongs to `src/sim/Production.ts` and a credit ceiling is not
+     * production's business — the same argument that keeps army, structures and
+     * income out of it. 0 when the player is somehow absent, which the strip
+     * renders as no denominator at all rather than as a cap of zero. */
+    const me = this.world.players[local as number];
+    tele.storageMax = me !== undefined && me.storageMax > 0 ? me.storageMax : 0;
 
     /* -- the advice line ------------------------------------------------
      * Ordered by what would kill you soonest. Exactly one sentence shows, and
@@ -1423,6 +1557,7 @@ export class Hud {
 
   /** Tooltip extras: from the live catalog when there is one, else the roster. */
   private extrasFor(key: string): BuildExtras {
+    const unlockHint = this.unlockHintFor(key);
     const entry = this.production?.catalog.byKey(key) ?? null;
     if (entry !== null) {
       return {
@@ -1430,17 +1565,68 @@ export class Hud {
         powerDelta: entry.power,
         blurb: entry.blurb,
         prereq: this.prereqSentence(entry.prereqs),
+        unlockHint,
       };
     }
     const row = FALLBACK_ROSTER.find((r) => r.key === key && r.faction === this.faction)
       ?? FALLBACK_ROSTER.find((r) => r.key === key);
-    if (row === undefined) return { buildTimeSec: 0, powerDelta: 0, blurb: '', prereq: '' };
+    if (row === undefined) {
+      return { buildTimeSec: 0, powerDelta: 0, blurb: '', prereq: '', unlockHint };
+    }
     return {
       buildTimeSec: row.buildTime,
       powerDelta: row.power,
       blurb: row.blurb,
       prereq: this.prereqSentence(row.prereqs),
+      unlockHint,
     };
+  }
+
+  /**
+   * `Strip Mine: mine 250,000 credits of ore` for a progression-gated def, or ''.
+   *
+   * THE JOIN NOTHING WAS MAKING. `UnlockGate` refuses a def and puts one
+   * constant sentence on the cameo — "Locked — complete a mission" — with no
+   * mission in it, and a player who hovered a locked Battle Lab asked whether
+   * they were supposed to guess. Both halves of the answer already existed: the
+   * def carries `unlockedBy`, and exactly one mission grants each id. This is
+   * the only place in the product that can see both, because it is the only
+   * place holding the def tables AND the progression handle.
+   *
+   * TOTAL, and every failure is silent by design. No tables, no gate tag, no
+   * progression layer, or a progression layer too old to answer — all give '',
+   * and the palette then prints exactly what it printed before. A locked slot
+   * losing its mission name is a worse tooltip; a locked slot throwing is a
+   * dead HUD.
+   *
+   * Called only from `extrasFor`, which the palette reaches on a signature
+   * change rather than per frame.
+   */
+  private unlockHintFor(key: string): string {
+    const tables = this.tables;
+    if (tables === null) return '';
+
+    let unlockId: string | undefined;
+    const bi = tables.buildingByKey.get(key);
+    if (bi !== undefined) unlockId = tables.buildings[bi]?.unlockedBy;
+    if (unlockId === undefined) {
+      const ui = tables.unitByKey.get(key);
+      if (ui !== undefined) unlockId = tables.units[ui]?.unlockedBy;
+    }
+    if (unlockId === undefined || unlockId === '') return '';
+
+    const p = readProgression();
+    // Optional on the interface: see `UnlockSource` in `src/ui/Objectives.ts`
+    // for why the member is declared that way and what its absence means.
+    if (p === null || typeof p.unlockSource !== 'function') return '';
+    let src;
+    try {
+      src = p.unlockSource(unlockId);
+    } catch {
+      return '';
+    }
+    if (src === null || src === undefined) return '';
+    return src.objective === '' ? src.title : `${src.title}: ${src.objective}`;
   }
 
   /**
@@ -1607,6 +1793,9 @@ export class Hud {
     this.fillRelocate(allBuildings);
     this.fillAbility();
     this.fillCargo();
+    this.fillGarrison();
+    this.fillPrimary();
+    this.fillSelfDestruct();
   }
 
   /**
@@ -1796,6 +1985,377 @@ export class Hud {
   }
 
   /**
+   * The garrisoned structure's Evacuate row.
+   *
+   * ONE selected structure only, and it must be yours — the cargo row's rule,
+   * and the same reason: the count is a property of one building and "3 inside"
+   * over a selection of four strongpoints would be a number about nothing.
+   *
+   * Re-asked every frame like the cargo row, and it costs the same walk of the
+   * infantry list, ONLY while a single structure is selected. The row is hidden
+   * rather than greyed when the building is empty, and that is the ONE place
+   * this departs from `fillCargo`: an empty transport reading `0 / 5` is
+   * information because seats are a fixed property of the hull, whereas almost
+   * every building in the game can never be garrisoned at all, so a permanent
+   * "0 inside" on a Power Plant would be noise on every structure the player
+   * ever clicks.
+   */
+  private fillGarrison(): void {
+    const action = this.view.garrison;
+    const sel = this.world.selection;
+
+    if (sel.count !== 1) { action.visible = false; return; }
+
+    const seam = garrisonSeam();
+    if (seam === null) { action.visible = false; return; }
+
+    const id = sel.ids[0] as EntityId;
+    const store = this.world.store;
+    const idx = store.index(id);
+    if (idx < 0 || store.owner[idx] !== (this.world.localPlayer as number)) {
+      action.visible = false;
+      return;
+    }
+    if (store.kind[idx] !== EntityKind.Building) { action.visible = false; return; }
+
+    const count = seam.occupantCount(id);
+    if (count <= 0) { action.visible = false; return; }
+
+    action.visible = true;
+    action.count = count;
+    action.enabled = true;
+    action.hint = count === 1
+      ? 'Turn the occupant out onto the ground around the building'
+      : `Turn all ${count} occupants out onto the ground around the building`;
+  }
+
+  /**
+   * Empty the selected garrison.
+   *
+   * `OrderKind.Unload` ON THE BUILDING — the same order the transport's Unload
+   * button issues, addressed to a structure instead of a hull. That is not a
+   * pun: garrisoned infantry and transported infantry carry the identical
+   * `EntityFlag.Garrisoned` and are put back on the ground by the identical
+   * kind of call, so making them one order means the D key, this button, the
+   * replay log and the lockstep wire all carry one verb rather than two.
+   *
+   * `src/input/Commands.ts` resolves it at the ONE Phase.Command drain: a
+   * `Unload` landing on a Building reaches `GarrisonService.evacuate`, and on a
+   * hull it does what it always did.
+   */
+  private evacuateSelection(): void {
+    const sel = this.world.selection;
+    if (sel.count !== 1) return;
+    const action = this.view.garrison;
+    if (!action.visible) return;
+    if (!action.enabled) {
+      this.soundHook?.('error');
+      this.toast('warn', 'garrison', 'Evacuate', 'Nobody inside');
+      return;
+    }
+    const store = this.world.store;
+    const idx = store.index(sel.ids[0] as EntityId);
+    if (idx < 0) return;
+    this.channels.commands.issueOrder(
+      this.world.localPlayer, OrderKind.Unload, sel.ids, 1,
+      store.posX[idx], store.posZ[idx], sel.ids[0] as EntityId,
+    );
+    this.toast('info', 'garrison', 'Evacuate', action.hint);
+  }
+
+  /**
+   * The primary-factory row.
+   *
+   * ONE selected factory only, and it must be yours and finished. A factory
+   * still under construction has no `producesTabs` entry yet, so
+   * `Production.applyPrimary` would refuse the command — and a button that
+   * silently does nothing is worse than no button.
+   *
+   * Everything here is read straight off the EntityStore rather than through a
+   * seam, because `EntityFlag.IsFactory` and `EntityFlag.PrimaryFactory` are
+   * CORE state: they are columns in `world.store`, not something production
+   * owns, so there is nothing to duck-type and nothing to be absent.
+   */
+  private fillPrimary(): void {
+    const action = this.view.primary;
+    const sel = this.world.selection;
+
+    if (sel.count !== 1) { action.visible = false; return; }
+
+    const store = this.world.store;
+    const idx = store.index(sel.ids[0] as EntityId);
+    if (idx < 0 || store.owner[idx] !== (this.world.localPlayer as number)) {
+      action.visible = false;
+      return;
+    }
+    const flags = store.flags[idx];
+    if ((flags & EntityFlag.IsFactory) === 0) { action.visible = false; return; }
+    if ((flags & EntityFlag.UnderConstruction) !== 0) { action.visible = false; return; }
+
+    const isPrimary = (flags & EntityFlag.PrimaryFactory) !== 0;
+    action.visible = true;
+    action.isPrimary = isPrimary;
+    action.enabled = !isPrimary;
+    action.hint = isPrimary
+      ? 'This is your primary — everything of its type comes out of here'
+      : 'Make this the factory everything of its type comes out of';
+  }
+
+  /** Hand the selected factory the primary flag. Through the bus, like all of it. */
+  private setPrimarySelection(): void {
+    const sel = this.world.selection;
+    if (sel.count !== 1) return;
+    const action = this.view.primary;
+    if (!action.visible || !action.enabled) {
+      this.soundHook?.('error');
+      return;
+    }
+    this.channels.commands.issueSetPrimary(this.world.localPlayer, sel.ids[0] as EntityId);
+    this.toast('info', 'primary', 'Primary Factory', action.hint);
+  }
+
+  /**
+   * The self-destruct row.
+   *
+   * INFANTRY AND VEHICLES, and any number of them: unlike every other row on
+   * this panel this one is happy with a whole column selected, because "blow up
+   * this doomed group rather than hand the enemy the kills" is exactly the
+   * situation it exists for. `RepairSell.selfDestruct` refuses every other
+   * entity kind, so structures are filtered out here rather than offered a
+   * button that would be ignored.
+   *
+   * THE LATCH IS TIMED AND IT IS TIED TO THE SELECTION. `destructArmedFor`
+   * holds the entity the arming click was about; changing the selection drops
+   * the arm on the next frame, which is what stops "arm, click elsewhere, click
+   * again" from scuttling a group the player never meant.
+   */
+  private fillSelfDestruct(): void {
+    const action = this.view.selfDestruct;
+    const sel = this.world.selection;
+    const store = this.world.store;
+    const local = this.world.localPlayer as number;
+
+    let count = 0;
+    for (let k = 0; k < sel.count; k++) {
+      const i = store.index(sel.ids[k] as EntityId);
+      if (i < 0 || store.owner[i] !== local) continue;
+      if ((store.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
+      const kind = store.kind[i];
+      if (kind !== EntityKind.Infantry && kind !== EntityKind.Vehicle) continue;
+      count++;
+    }
+
+    if (count === 0) {
+      action.visible = false;
+      this.disarmSelfDestruct();
+      return;
+    }
+
+    // The arm is dropped when the selection moves off what it was armed for,
+    // or when its own clock runs out. Both are checked here rather than on the
+    // click, so the button cannot sit armed on screen past either.
+    const anchor = sel.count > 0 ? (sel.ids[0] as number) : 0;
+    if (this.destructArmedFor !== 0
+      && (this.destructArmedFor !== anchor || this.time > this.destructArmedUntil)) {
+      this.disarmSelfDestruct();
+    }
+
+    const armed = this.destructArmedFor !== 0;
+    action.visible = true;
+    action.count = count;
+    action.armed = armed;
+    action.hint = armed
+      ? `Click again to destroy ${count === 1 ? 'this unit' : `all ${count} units`} — there is no undo`
+      : count === 1
+        ? 'Destroy this unit. It explodes and splashes whatever is beside it.'
+        : `Destroy all ${count} selected units. They explode where they stand.`;
+  }
+
+  private disarmSelfDestruct(): void {
+    this.destructArmedFor = 0;
+    this.destructArmedUntil = -1e9;
+  }
+
+  /**
+   * Arm, then scuttle.
+   *
+   * The first click latches and the SECOND one issues, one
+   * `CommandKind.SelfDestruct` per unit, because `issueSelfDestruct` addresses
+   * exactly one target and the sim resolves each independently. The ids are
+   * copied into scratch BEFORE the loop: `issueSelfDestruct` does not touch the
+   * selection, but the sequence "read the live selection while issuing commands
+   * against it" is precisely the shape of the superweapon race, and it costs
+   * one `Int32Array` copy to make it impossible.
+   */
+  private selfDestructSelection(): void {
+    const action = this.view.selfDestruct;
+    if (!action.visible) return;
+
+    const sel = this.world.selection;
+    const anchor = sel.count > 0 ? (sel.ids[0] as number) : 0;
+
+    if (this.destructArmedFor === 0) {
+      this.destructArmedFor = anchor;
+      this.destructArmedUntil = this.time + SELF_DESTRUCT_CONFIRM_SECONDS;
+      this.toast(
+        'warn', 'destruct', 'Self-Destruct',
+        `Click again within ${SELF_DESTRUCT_CONFIRM_SECONDS}s to confirm`,
+      );
+      return;
+    }
+
+    const store = this.world.store;
+    const local = this.world.localPlayer as number;
+    let n = 0;
+    for (let k = 0; k < sel.count && n < this.destructIds.length; k++) {
+      const i = store.index(sel.ids[k] as EntityId);
+      if (i < 0 || store.owner[i] !== local) continue;
+      if ((store.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
+      const kind = store.kind[i];
+      if (kind !== EntityKind.Infantry && kind !== EntityKind.Vehicle) continue;
+      this.destructIds[n++] = sel.ids[k];
+    }
+    this.disarmSelfDestruct();
+    if (n === 0) { this.soundHook?.('error'); return; }
+
+    for (let k = 0; k < n; k++) {
+      this.channels.commands.issueSelfDestruct(
+        this.world.localPlayer, this.destructIds[k] as EntityId,
+      );
+    }
+    this.toast(
+      'alert', 'destruct', 'Self-Destruct',
+      n === 1 ? 'Unit destroyed' : `${n} units destroyed`,
+    );
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* commander powers                                                    */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Rebuild the power bar.
+   *
+   * POLLED, unlike the superweapon countdown, which the service PUSHES. There
+   * is nothing to push here: `CommanderPowerService` has no HUD hook and adding
+   * one would be a sim change to publish a number the service is already happy
+   * to be asked for. Two reads per owned power per frame is five multiplies and
+   * five comparisons, and the bar's own signature gate quantises the countdown
+   * to whole seconds, so a charging power still writes DOM once a second.
+   *
+   * OWNERSHIP IS A LOCAL QUESTION and is answered here, on the machine that
+   * owns the profile, exactly as `powersOwnedBy`'s header requires. The
+   * simulation is never asked and must never be — a sim that refused a power
+   * because THIS browser had not earned it would diverge from a peer that had.
+   */
+  private fillPowers(): void {
+    const seam = commanderPowerSeam();
+    if (seam === null) { this.powers.count = 0; return; }
+
+    const owned = powersOwnedBy(this.isPowerUnlocked, this.ownedPowers);
+    const player = this.world.localPlayer;
+    const rows = this.powers.rows;
+    const n = Math.min(owned.length, rows.length);
+
+    for (let i = 0; i < n; i++) {
+      const spec = owned[i];
+      const row = rows[i];
+      row.key = spec.key;
+      row.id = spec.id as number;
+      row.label = spec.label;
+      row.hint = spec.hint;
+      row.icon = POWER_ICONS[spec.id as number] ?? 'superweapon';
+      row.remaining = Math.max(0, seam.chargeSecondsOf(player, spec.id as number));
+      row.total = spec.chargeSeconds > 0 ? spec.chargeSeconds : 1;
+      row.ready = seam.isReady(player, spec.id as number);
+      row.armed = this.armedPowerId === (spec.id as number);
+    }
+    this.powers.count = n;
+
+    // A power that stopped being ready while it was on the cursor — the only
+    // way that happens is a `dispose` between frames — must not leave a reticle
+    // armed for something that can no longer be called.
+    if (this.armedPowerId !== 0) {
+      let stillThere = false;
+      for (let i = 0; i < n; i++) {
+        if (rows[i].id === this.armedPowerId && rows[i].ready) { stillThere = true; break; }
+      }
+      if (!stillThere) this.armedPowerId = 0;
+    }
+  }
+
+  /**
+   * A click on a power row: put the targeting cursor up.
+   *
+   * IT DOES NOT CALL THE POWER, and it deliberately has no way to. Arming sets
+   * `armedPowerId`; `src/input/input.system.ts` reads it off `__vmHud` on the
+   * next ground click and issues `CommandKind.UsePower` through
+   * `channels.commands`, which the ONE Phase.Command drain resolves. That is
+   * the discipline `armSuperweapon` follows, for the reason recorded on
+   * `CommandKind.Relocate` in `core/types.ts`, and there is a second reason
+   * here: writing sim state from a DOM event races the command it just issued.
+   */
+  private armPower(key: string): void {
+    let row: CommanderPowerRow | null = null;
+    for (let i = 0; i < this.powers.count; i++) {
+      if (this.powers.rows[i].key === key) { row = this.powers.rows[i]; break; }
+    }
+    if (row === null) return;
+
+    // Already armed: a second click on the same row is "put the cursor away",
+    // which is what a player who changed their mind reaches for first.
+    if (this.armedPowerId === row.id) {
+      this.armedPowerId = 0;
+      row.armed = false;
+      return;
+    }
+    if (!row.ready) {
+      this.soundHook?.('error');
+      this.toast('warn', `power:${key}`, row.label, `Ready in ${formatClock(row.remaining)}`);
+      return;
+    }
+    // One armed thing at a time. A superweapon reticle and a power reticle on
+    // the same cursor is two commands for one click.
+    superweaponSeam()?.cancelArm();
+    this.armedPowerId = row.id;
+    row.armed = true;
+    this.toast('info', `power:${key}`, row.label, 'Pick a target on the map');
+  }
+
+  /**
+   * The `CommanderPowerId` on the cursor, or 0. Read by `src/input` off
+   * `__vmHud`, exactly as `armedMode` is.
+   */
+  get armedPower(): number { return this.armedPowerId; }
+
+  /** Drop the armed power. Right-click and Escape both reach this from input. */
+  cancelArmedPower(): boolean {
+    if (this.armedPowerId === 0) return false;
+    this.armedPowerId = 0;
+    return true;
+  }
+
+  /**
+   * Call the armed power at a world point. Returns false when nothing was armed.
+   *
+   * THE ONLY PLACE A POWER IS CALLED, and it puts one command on the bus and
+   * writes no simulation state whatsoever. Disarms first, so a command that the
+   * sim later refuses cannot leave the cursor armed for a second attempt the
+   * player did not ask for.
+   */
+  firePowerAt(x: number, z: number): boolean {
+    const id = this.armedPowerId;
+    if (id === 0) return false;
+    this.armedPowerId = 0;
+    const spec = COMMANDER_POWERS[id];
+    this.channels.commands.issueUsePower(this.world.localPlayer, id, x, z);
+    if (spec !== undefined) {
+      this.toast('info', `power:${spec.key}`, spec.label, spec.hint);
+    }
+    return true;
+  }
+
+  /**
    * Fire the selected commander's ability.
    *
    * Through `channels.commands` as an ordinary Order, exactly as a move or an
@@ -1931,6 +2491,13 @@ export class Hud {
       this.toast('warn', `super:${key}`, row.label, 'Cannot fire right now');
       return;
     }
+    // ONE ARMED THING AT A TIME, and this is the half `armPower` cannot do for
+    // itself. A power and a superweapon are armed by different owners — the
+    // power by this file, the superweapon by `sim/Superweapons.ts`'s own
+    // pointer handler — so with both live the next ground click would be read
+    // twice: once by `applyArmedPower` in input, once by the service. The power
+    // yields, because the player's most recent gesture was this row.
+    this.armedPowerId = 0;
     row.armed = true;
     this.toast('info', `super:${key}`, row.label, 'Pick a target on the map');
   }

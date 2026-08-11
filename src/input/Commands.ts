@@ -98,7 +98,7 @@ import { relocateSeamOf, snapRallyClear } from '../sim/Placement';
 // would drift is that the pointer promises a garrison and the men walk up to
 // the wall and stand there, which is precisely the failure this module's
 // header says is "structurally impossible".
-import { garrisonService } from '../sim/Garrison';
+import { GARRISON, garrisonService } from '../sim/Garrison';
 import { CursorKind } from './Input';
 import { canInteractWith, isEnemyOf } from './Selection';
 
@@ -234,6 +234,63 @@ export interface OrderResolution {
   valid: boolean;
   /** True when the order is a rally-flag move rather than a unit order. */
   isRally: boolean;
+  /**
+   * WHY THE HOVERED BUILDING REFUSED A GARRISON, or '' when nothing refused.
+   *
+   * `GarrisonService.refusalFor` has always returned a specific sentence —
+   * `'armed'`, `'too small'`, `'production structure'`, `'full'`, `'hostile'`,
+   * `'unfinished'` — and this resolver threw it away, keeping only the boolean.
+   * The click then fell through to "anything else friendly: move to it" and the
+   * squad walked up to the wall and stood there with no explanation: exactly the
+   * failure this module's own header calls structurally impossible.
+   *
+   * It is carried rather than acted on, because the MOVE is still the right
+   * order — refusing to move is the more correct answer and the more annoying
+   * one, and that trade is already settled two branches up. What was missing is
+   * the sentence, and `src/input/input.system.ts` toasts it on the click.
+   *
+   * Set ONLY when the selection could plausibly have garrisoned (infantry, no
+   * engineer) and the hovered thing is a building. A tank hovering a Refinery
+   * gets '' — it was never trying to get in, and telling it "production
+   * structure" would be noise.
+   *
+   * The value is one of the service's own string literals, so filling this
+   * allocates nothing: it is a reference to an interned constant.
+   */
+  garrisonRefusal: string;
+}
+
+/**
+ * Human sentences for `GarrisonService.refusalFor`'s vocabulary.
+ *
+ * The service's strings are machine tokens — `'too small'` is a fine key and a
+ * poor thing to show a player who has just clicked an Ore Silo. Each one is
+ * expanded here into a sentence that names the RULE rather than the symptom, so
+ * a refused click teaches something that transfers to the next building.
+ *
+ * A token with no entry falls back to itself, which is how an unknown refusal
+ * from a newer service still says something rather than nothing.
+ */
+const GARRISON_REFUSAL_TEXT: Readonly<Record<string, string>> = {
+  'armed': 'It has its own guns. Only unarmed buildings can be manned.',
+  // The two numbers come from `GARRISON` itself rather than being spelled out,
+  // because a sentence quoting a balance constant is a sentence that goes quietly
+  // wrong the day the constant moves — and this one is the whole explanation for
+  // why an Ore Silo cannot be held.
+  'too small': `Too small to hold a squad — it needs a ${GARRISON.minFootprint}x`
+    + `${GARRISON.minFootprint} footprint or bigger.`,
+  'production structure': 'It is busy producing. Barracks, factories, refineries '
+    + 'and radar cannot be manned.',
+  'full': `Already full. A building holds ${GARRISON.capacity} men.`,
+  'hostile': 'It belongs to the enemy. Destroy it, or capture it with an engineer.',
+  'unfinished': 'Still under construction. Wait for it to finish.',
+  'not a structure': 'Infantry can only be put inside a building.',
+};
+
+/** The sentence for a refusal token. Never empty for a non-empty token. */
+export function garrisonRefusalText(token: string): string {
+  if (token === '') return '';
+  return GARRISON_REFUSAL_TEXT[token] ?? token;
 }
 
 /** Modifier state at the moment of the click. */
@@ -397,6 +454,46 @@ export function gatherLoadedTransports(
 }
 
 /**
+ * Collect the local player's selected structures that have somebody inside.
+ *
+ * The third sibling of `gatherDeployable` and `gatherLoadedTransports`, on the
+ * same key and for the same gesture. D means "unpack where you stand", and a
+ * garrisoned building is the third thing in this game that can — the men walk
+ * out around the walls exactly as a transport's squad walks out around the
+ * hull, by the same `EntityFlag.Garrisoned` mechanism.
+ *
+ * Asks `garrisonService()` rather than testing a flag on the building, for the
+ * reason the header gives for the `refusalFor` edge: occupancy has exactly one
+ * answer and the cursor must not compute a second one.
+ *
+ * Buildings have no `orderKind` worth guarding against a repeat press: the
+ * evacuation is applied SYNCHRONOUSLY inside the same drain (see the `Unload`
+ * branch in `OrderExecutor.write`), so by the time a second D arrives the
+ * occupant count is already 0 and this returns nothing.
+ */
+export function gatherOccupiedGarrisons(
+  world: World,
+  ids: Int32Array,
+  count: number,
+  out: Int32Array,
+): number {
+  const svc = garrisonService();
+  if (svc === null) return 0;
+  const s = world.store;
+  const local = world.localPlayer as number;
+  let n = 0;
+  for (let k = 0; k < count && n < out.length; k++) {
+    const i = s.index(ids[k] as EntityId);
+    if (i < 0 || s.owner[i] !== local) continue;
+    if (s.kind[i] !== EntityKind.Building) continue;
+    if ((s.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
+    if (svc.occupantCount(ids[k] as EntityId) <= 0) continue;
+    out[n++] = ids[k];
+  }
+  return n;
+}
+
+/**
  * True when slot `i` belongs to a `Faction.Neutral` player — Gaia, the owner of
  * every rock, wreck, crate and civilian structure on the map.
  *
@@ -445,6 +542,7 @@ export function resolveContextOrder(
   out.cursor = CursorKind.Default;
   out.valid = false;
   out.isRally = false;
+  out.garrisonRefusal = '';
 
   if (caps.ownCount === 0) {
     out.cursor = CursorKind.Select;
@@ -620,13 +718,25 @@ export function resolveContextOrder(
       out.valid = true;
       return out;
     }
-    if (isBuilding && caps.hasPassengers && !caps.canCapture
-      && (garrisonService()?.canGarrison(hover, local) ?? false)) {
-      out.order = OrderKind.Enter;
-      out.target = hover;
-      out.cursor = CursorKind.Enter;
-      out.valid = true;
-      return out;
+    if (isBuilding && caps.hasPassengers && !caps.canCapture) {
+      // ONE call, and the REASON is kept rather than thrown away. This asked
+      // `canGarrison` — the boolean convenience wrapper over the same
+      // function — and dropped the sentence on the floor, so a refused click
+      // fell through to Move and the player got no signal at all that a rule
+      // had been applied. `refusalFor` costs exactly what `canGarrison` cost:
+      // `canGarrison` IS this call, compared against ''.
+      const refusal = garrisonService()?.refusalFor(hover, local);
+      if (refusal === '') {
+        out.order = OrderKind.Enter;
+        out.target = hover;
+        out.cursor = CursorKind.Enter;
+        out.valid = true;
+        return out;
+      }
+      // `undefined` is "no garrison service installed", which is not a refusal
+      // and must not be reported as one — a world with no garrison system
+      // genuinely cannot garrison and the honest answer is silence.
+      if (refusal !== undefined) out.garrisonRefusal = refusal;
     }
 
     if (isBuilding && !hoverEnemy && s.hp[hi] < s.maxHp[hi] && caps.canRepair) {
@@ -1086,6 +1196,39 @@ export class OrderExecutor {
         break;
 
       case OrderKind.Unload:
+        // A BUILDING TAKING `Unload` IS A GARRISON BEING EMPTIED, and it is the
+        // same verb rather than a second one on purpose. Garrisoned infantry
+        // and transported infantry carry the identical `EntityFlag.Garrisoned`
+        // and are put back on the ground by the identical kind of call, so
+        // making them one order means the D key, the HUD's two buttons, the
+        // replay log and the lockstep wire all carry ONE verb.
+        //
+        // RESOLVED HERE for the reason `applyRelocate` and `applyPower` are:
+        // `CommandBus.drain` is destructive, so a second drainer inside
+        // Phase.Command would swallow everything `reissueParked` had just put
+        // back. One drainer per phase; this is it. `garrisonService()` is the
+        // edge this module already holds for `refusalFor`, and it degrades the
+        // same way — with the features module absent this is a no-op.
+        //
+        // The order columns are cleared rather than left standing, which is the
+        // one place this differs from the transport branch below it. A
+        // transport's `Unload` is left in place because `sim/Transport.ts`
+        // clears it at Phase.Cleanup once the men are actually out, so a hull
+        // still over water unloads the moment it reaches a coast. Nothing
+        // watches a BUILDING's order column, so an uncleared `Unload` would sit
+        // on the structure for the rest of the match.
+        if (s.kind[i] === EntityKind.Building) {
+          // Its OWN handle, never `target`: the order was written onto slot `i`
+          // and that is the building being emptied. A queued waypoint carries a
+          // target from a different order entirely.
+          garrisonService()?.evacuate(s.handleOf(i));
+          s.orderKind[i] = OrderKind.None;
+          s.orderTarget[i] = 0;
+          s.orderX[i] = s.posX[i];
+          s.orderZ[i] = s.posZ[i];
+          s.state[i] = UnitState.Idle;
+          break;
+        }
         // UNLOAD HAPPENS WHERE THE HULL STANDS, exactly as Deploy does and for
         // the identical reason: "drive there, then put them down" has to decide
         // what to do when the destination turns out to be unreachable, and

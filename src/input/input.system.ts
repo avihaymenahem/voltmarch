@@ -72,7 +72,7 @@ import { defineSystem } from '../core/loop';
 import {
   EntityFlag, EntityKind, NONE, OrderKind, Phase, RenderPhase, Stance,
 } from '../core/types';
-import type { EntityId, RenderContext } from '../core/types';
+import type { DefTables, EntityId, RenderContext } from '../core/types';
 import {
   GROUP_DOUBLE_TAP_MS, MAX_SELECTION, ORDER_ATTACK_COLOR, ORDER_MARKER_POOL,
   ORDER_MARKER_POP, ORDER_MARKER_RADIUS, ORDER_MARKER_SECONDS, ORDER_MOVE_COLOR,
@@ -93,7 +93,8 @@ import {
 } from './Selection';
 import {
   CommandMode, FeedbackKind, OrderExecutor, createCapabilities, feedbackFor,
-  gatherDeployable, gatherLoadedTransports, issueOrder, makeDefRoleResolver, planScatter,
+  gatherDeployable, gatherLoadedTransports, gatherOccupiedGarrisons,
+  garrisonRefusalText, issueOrder, makeDefRoleResolver, planScatter,
   readCapabilities, resolveContextOrder, setRoleResolver,
   type OrderResolution, type SelectionCapabilities,
 } from './Commands';
@@ -123,7 +124,7 @@ let lastGroupTime = -1e9;
 const caps: SelectionCapabilities = createCapabilities();
 const resolution: OrderResolution = {
   order: OrderKind.None, target: NONE, x: 0, z: 0,
-  cursor: CursorKind.Default, valid: false, isRally: false,
+  cursor: CursorKind.Default, valid: false, isRally: false, garrisonRefusal: '',
 };
 
 /* -- scratch, allocated once ---------------------------------------------- */
@@ -500,10 +501,60 @@ function feedback(order: OrderKind, x: number, z: number): void {
  * Execute a resolved context order against the current selection: one command
  * for the whole group, plus one order marker at the point.
  */
+/**
+ * Real def tables, once a content module has published any. Null otherwise.
+ *
+ * Bound at `init` alongside `setRoleResolver`, off the SAME `resolveDefBinding`
+ * call, because it answers the same class of question: what content says about
+ * a thing, as opposed to what its flags say. Only the display NAME is read.
+ */
+let defTables: DefTables | null = null;
+
+/**
+ * The content name of a building, or '' when there is none to be had.
+ *
+ * Total by construction — no tables, an unknown `defId`, a dead handle and a
+ * non-building all answer '', and the one caller phrases its sentence without
+ * a name in that case. A refusal toast must never be the thing that throws.
+ */
+function buildingDisplayName(id: EntityId): string {
+  if (defTables === null || id === NONE) return '';
+  const s = ctx().world.store;
+  const i = s.index(id);
+  if (i < 0 || s.kind[i] !== EntityKind.Building) return '';
+  const def = defTables.buildings[s.defId[i]];
+  return def?.name ?? '';
+}
+
 function executeResolved(res: OrderResolution, queued: boolean): void {
   if (!res.valid) return;
   const { world, channels } = ctx();
   const player = world.localPlayer;
+
+  // THE REFUSED GARRISON SPEAKS. The order below is still a Move and that is
+  // still right — refusing to move is the more correct answer and the more
+  // annoying one — but the click was aimed at a building by a squad that could
+  // have gone inside one, and a rule was applied. Before this, the squad walked
+  // to the wall and stood there and nothing anywhere said why.
+  //
+  // Keyed on `garrison`, so walking a column past a row of refineries replaces
+  // one toast rather than stacking six.
+  if (res.garrisonRefusal !== '') {
+    // `selection.hovered` rather than a field on the resolution: it is the
+    // entity `refreshResolution` just handed the resolver, set on the same
+    // line, so it is the same building by construction — and a Move's `target`
+    // is deliberately NONE, which is a promise this must not break.
+    const name = buildingDisplayName(selection?.hovered ?? NONE);
+    hud()?.toast?.(
+      // `garrison:refused`, NOT `garrison`. The toast stack COALESCES by key —
+      // it keeps the first title and counts the repeats — so sharing a key with
+      // the HUD's Evacuate confirmation made a refusal arrive under the heading
+      // "Evacuate". Same family, different event, different key.
+      'warn', 'garrison:refused',
+      name === '' ? 'Cannot be manned' : `Cannot man the ${name}`,
+      garrisonRefusalText(res.garrisonRefusal),
+    );
+  }
 
   // Deploy never travels through the group path: each vehicle unpacks where IT
   // stands, so there is no shared destination for Steering to preserve a
@@ -595,6 +646,40 @@ function issueUnload(): number {
   const sel = world.selection;
 
   const n = gatherLoadedTransports(world, sel.ids, sel.count, DEPLOY_IDS);
+  if (n === 0) return 0;
+
+  for (let k = 0; k < n; k++) {
+    const i = s.index(DEPLOY_IDS[k] as EntityId);
+    if (i < 0) continue;
+    ONE_ID[0] = DEPLOY_IDS[k];
+    const x = s.posX[i];
+    const z = s.posZ[i];
+    issueOrder(world, channels, player, OrderKind.Unload, ONE_ID, 1, x, z, DEPLOY_IDS[k] as EntityId);
+    overlay?.spawn(FeedbackKind.Special, x, groundY(x, z), z);
+  }
+  return n;
+}
+
+/**
+ * Turn out the garrison of every selected structure that has one.
+ *
+ * The third sibling on the D key, and the reason it belongs there rather than
+ * on a key of its own: D means "unpack where you stand", and a squad walking
+ * out of a strongpoint is the same event as a squad walking out of a hull —
+ * same flag, same `place` ring, same order on the wire. Binding it anywhere
+ * else would teach the player that they are two different verbs.
+ *
+ * One command per building, each carrying its own position, exactly as
+ * `issueUnload` does — and for the same reason: a mixed selection empties the
+ * strongpoints and leaves everything else alone.
+ */
+function issueEvacuate(): number {
+  const { world, channels } = ctx();
+  const s = world.store;
+  const player = world.localPlayer;
+  const sel = world.selection;
+
+  const n = gatherOccupiedGarrisons(world, sel.ids, sel.count, DEPLOY_IDS);
   if (n === 0) return 0;
 
   for (let k = 0; k < n; k++) {
@@ -722,6 +807,10 @@ const handlers = {
     const { world } = ctx();
 
     if (p.button === MouseButton.Left) {
+      // A commander power outranks everything: it is the most recently armed
+      // modal thing on the cursor, the player can see its reticle, and the
+      // click they are making is unambiguously for it.
+      if (applyArmedPower(p)) { refreshResolution(); return; }
       // An armed mode turns the left button into the order button for one click.
       if (mode !== CommandMode.None) {
         refreshResolution();
@@ -742,6 +831,7 @@ const handlers = {
     if (p.button === MouseButton.Right) {
       // Right-click cancels an armed mode or tool instead of firing it — the
       // universal "never mind", and the reason A is safe to press speculatively.
+      if (clearArmedPower()) { refreshResolution(); return; }
       if (clearArmedTool()) return;
       if (mode !== CommandMode.None) {
         mode = CommandMode.None;
@@ -916,14 +1006,15 @@ const handlers = {
         // fall through would hand it to the build grid, where it does nothing
         // either but does it less predictably.
         //
-        // BOTH, not either. D means "unpack where you stand", and an MCV and a
-        // loaded transport are the two things that can — so a selection holding
-        // one of each does both, and each gatherer ignores what is not its own.
-        // Ordering them the other way round would make no difference: nothing
-        // in this roster is simultaneously a construction vehicle and a
-        // transport, and both gatherers re-validate against the store.
+        // ALL THREE, not any one. D means "unpack where you stand", and an MCV,
+        // a loaded transport and an occupied strongpoint are the three things
+        // that can — so a selection holding one of each does all three, and
+        // each gatherer ignores what is not its own. The order between them
+        // makes no difference: nothing in this roster is simultaneously two of
+        // the three, and all three gatherers re-validate against the store.
         issueDeploy();
         issueUnload();
+        issueEvacuate();
         return true;
 
       case 'ord.forceAttack':
@@ -957,7 +1048,10 @@ const handlers = {
 
     switch (k.code) {
       case 'Escape':
-        if (clearArmedTool()) { /* the sidebar tool goes first */ }
+        // Innermost armed thing first, outward: power, then tool, then command
+        // mode, then the selection itself. One Escape undoes one thing.
+        if (clearArmedPower()) { /* the power reticle goes first */ }
+        else if (clearArmedTool()) { /* then the sidebar tool */ }
         else if (mode !== CommandMode.None) mode = CommandMode.None;
         else selection.clear();
         refreshResolution();
@@ -1134,6 +1228,34 @@ interface HudBridge {
   sidebar: { setArmed(mode: 'none' | 'repair' | 'sell'): void };
   readonly armedMode: 'none' | 'repair' | 'sell';
   waypointMode: boolean;
+  /**
+   * THE COMMANDER POWER ON THE CURSOR, or 0. The HUD's power bar arms it and
+   * this module spends it, which is the identical division of labour
+   * `armedMode` already describes: the bar owns the TOGGLE, the ground click is
+   * a GESTURE, and gestures belong to input.
+   *
+   * A superweapon needs none of this because `src/sim/Superweapons.ts` installs
+   * its own capture-phase pointer handler. A commander power has no service
+   * that could — `CommanderPowerService` is a pure charge table with no DOM in
+   * it at all — so the click has to be read where every other click is read.
+   *
+   * All three members are OPTIONAL, which is the same bargain the rest of this
+   * section makes: an older HUD, or a HUD that failed to build its power bar,
+   * leaves them undefined and every branch below falls through to what it did
+   * before. Nothing here can take input down.
+   */
+  readonly armedPower?: number;
+  firePowerAt?(x: number, z: number): boolean;
+  cancelArmedPower?(): boolean;
+  /**
+   * The toast stack, from the HUD's own public-hooks header
+   * (`hud.toast(kind,key,title,detail)` — "anyone"). Input is `anyone`: it is
+   * the module that knows a click was refused and by what rule, and the HUD is
+   * the module that owns the only surface able to say so.
+   *
+   * Optional like the three above, and for the same reason.
+   */
+  toast?(kind: 'info' | 'warn' | 'alert', key: string, title: string, detail: string): void;
 }
 
 interface PlacementBridge {
@@ -1196,6 +1318,43 @@ function clearArmedTool(): boolean {
   return true;
 }
 
+/** True while a commander power is on the cursor and wants the next click. */
+function powerArmed(): boolean {
+  const h = hud();
+  return h !== null && (h.armedPower ?? 0) !== 0 && typeof h.firePowerAt === 'function';
+}
+
+/**
+ * Spend an armed commander power at the world point under the cursor.
+ * Returns true when the click was consumed.
+ *
+ * EATS THE CLICK EVEN OFF THE MAP. A power is armed modally and the player can
+ * see the reticle; letting a click that missed the ground fall through to
+ * SELECTION would clear their army while they were mid-gesture, which is the
+ * worst possible answer. Off-map disarms and does nothing else, exactly as
+ * `applyArmedTool` eats a click that lands on the wrong kind of entity.
+ */
+function applyArmedPower(p: PointerInfo): boolean {
+  const h = hud();
+  if (h === null) return false;
+  const fire = h.firePowerAt;
+  if ((h.armedPower ?? 0) === 0 || typeof fire !== 'function') return false;
+  if (p.worldValid) {
+    fire.call(h, p.worldX, p.worldZ);
+    overlay?.spawn(FeedbackKind.Special, p.worldX, groundY(p.worldX, p.worldZ), p.worldZ);
+  } else {
+    h.cancelArmedPower?.();
+  }
+  return true;
+}
+
+/** Drop an armed commander power. Right-click and Escape both do this. */
+function clearArmedPower(): boolean {
+  const h = hud();
+  if (h === null || (h.armedPower ?? 0) === 0) return false;
+  return h.cancelArmedPower?.() ?? false;
+}
+
 /* ==========================================================================
  * 8. CURSOR CHOICE
  * ========================================================================== */
@@ -1209,6 +1368,13 @@ function chooseCursor(): CursorKind {
 
   // Edge band: show which way the camera will scroll.
   if (input.edgeDirection(EDGE)) return InputManager.panCursor(EDGE[0], EDGE[1]);
+
+  // A commander power owns the pointer above everything else it can be armed
+  // alongside. `Rally` is the reticle: it is the one cursor in the set that
+  // means "the next click names a POINT", which is exactly what a power wants,
+  // and it is never simultaneously live — a power and a rally cannot both be
+  // armed, because arming either clears the other's owner.
+  if (powerArmed()) return CursorKind.Rally;
 
   // The sidebar's repair / sell tools own the pointer while they are armed.
   const armed = hud()?.armedMode ?? 'none';
@@ -1276,6 +1442,10 @@ export default defineSystem({
       const binding = await resolveDefBinding();
       if (binding.tables !== null && binding.tables !== undefined) {
         setRoleResolver(makeDefRoleResolver(binding.tables));
+        // Kept for `buildingDisplayName`, so a refused garrison can name the
+        // building it was refused by. Without it the toast still fires and
+        // still explains the rule; it just cannot say which wall they hit.
+        defTables = binding.tables;
       }
     } catch {
       // No def module yet. HEURISTIC_ROLES is a working answer, not a stub.
