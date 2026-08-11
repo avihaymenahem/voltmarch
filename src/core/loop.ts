@@ -58,9 +58,11 @@
  *   lastHitTime/lastAttackerId  | Damage                  | combat
  *   veterancy / killCount       | Damage                  | combat
  *   state                       | Command / Economy / AI  | see note
- *   orderKind/orderTarget/order*| Command                 | foundation(Orders)
+ *                               | / Targeting             | see note 2
+ *   orderKind / orderTarget     | Command                 | foundation(Orders)
+ *   orderX / orderZ             | Command, then Targeting  | see note 2
  *   stance                      | Command                 | foundation
- *   guardX / guardZ             | Command                 | foundation
+ *   guardX / guardZ             | Command, PathRequest    | see note 3
  *   cargo                       | Economy                 | economy
  *   dockTarget                  | Economy                 | economy
  *   buildProgress               | Production              | production
@@ -73,6 +75,38 @@
  *   behaviour — Command sets Moving/Attacking, Economy sets the harvester
  *   states, Production sets UnderConstruction. Two phases never write it in the
  *   same tick because a unit is only ever in one behaviour family.
+ *
+ *   NOTE 2 — THE ORDER POINT HAS A SECOND WRITER, AND IT ALWAYS HAS HAD.
+ *   Command establishes `orderX/orderZ` at phase 100; `sim/Targeting.ts` then
+ *   MAINTAINS them at phase 900 for the two behaviours that need a goal nobody
+ *   else can compute, because both need a weapon range and nothing in the nav
+ *   layer has one:
+ *
+ *     `UnitState.Attacking` — closing on an ordered target, stopping at a
+ *       firing standoff rather than at the target's wall.
+ *     `UnitState.Guarding`  — a stance excursion: out to a target of
+ *       opportunity within `STANCE_CHASE_METRES` of the post, then back to
+ *       `guardX/guardZ`.
+ *
+ *   This row read "Command" alone for a long time while `Targeting.ts`'s own
+ *   header already documented the first half, which is a table describing less
+ *   than the code does — the defect `docs/SPEC_DRIFT_AUDIT.md` catalogues.
+ *
+ *   The ordering is what makes it safe rather than a race: 100 is strictly
+ *   before 900, so a right-click always lands first and Targeting sees the
+ *   state it produced in the SAME tick. Every state except those two belongs to
+ *   somebody else and Targeting refuses to touch it, which is why an
+ *   auto-engagement can never overwrite an order the player is still waiting
+ *   on. `orderKind` and `orderTarget` stay with Command, unqualified.
+ *
+ *   NOTE 3 — THE POST. `guardX/guardZ` is where a unit belongs when nobody is
+ *   telling it anything, and it is the return goal for every stance excursion.
+ *   Command pins it explicitly for `OrderKind.Guard`; `NavAssigner`
+ *   (Phase.PathRequest) re-takes it on exactly one edge — the tick a
+ *   goal-seeking state ends — so it follows the player's last expressed intent
+ *   and nothing else. Spawn, rally, transport unload and the pocket rescue all
+ *   seed it, and each of those is a spawn-like event rather than a per-tick
+ *   writer.
  * ============================================================================
  */
 

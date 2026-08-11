@@ -1607,8 +1607,73 @@ export const BURN_HP_THRESHOLD = 0.25;
 export const UNDER_ATTACK_COOLDOWN = 20;
 /** Seconds a unit remembers who last shot it (for retaliation). */
 export const RETALIATE_MEMORY = 4;
-/** Metres a Guard-stance unit will chase before returning. */
+/* --------------------------------------------------------------------------
+ * THE LEASH — how far a unit will leave its post to fight, and whether it
+ * comes back.
+ *
+ * `GUARD_LEASH` was declared here for a long time and READ NOWHERE, which is
+ * why `Stance.Aggressive` and `Stance.Defensive` were the same behaviour:
+ * neither of them ever moved. Measured with an enemy 34 m from a 24 m gun, a
+ * unit in either stance travelled 0.00 m in ten seconds. Both tables below are
+ * indexed by `Stance` and both are read by `sim/Targeting.ts`.
+ *
+ * WHY THE LEASH IS MEASURED FROM THE POST AND NOT FROM THE UNIT. A chase
+ * bounded by "how far have I come since I started" has to remember where it
+ * started, and it oscillates on the boundary: the unit reaches the limit, turns
+ * for home, is immediately inside the limit again, and turns back. Measuring
+ * the TARGET against a fixed post has neither problem — the unit's own motion
+ * does not feed back into the decision at all, and the post is a column the
+ * store already carries (`guardX/guardZ`).
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Metres a unit will leave its post to engage something it was not ordered to
+ * engage. An explicit Attack order is NOT leashed — the player said go.
+ */
 export const GUARD_LEASH = 18;
+
+/**
+ * Per-stance chase distance in metres, indexed by `Stance`. Zero means "never
+ * leave the post to start a fight"; the unit still fires at anything that
+ * walks into range.
+ *
+ * Only Aggressive chases. That is the entire documented difference between it
+ * and Defensive ("Chase targets of opportunity" against "Fire at anything in
+ * range, never leave position") and it had never been implemented.
+ */
+export const STANCE_CHASE_METRES: readonly number[] = [
+  /* Aggressive */ GUARD_LEASH,
+  /* Defensive  */ 0,
+  /* HoldFire   */ 0,
+  /* HoldGround */ 0,
+];
+
+/**
+ * Whether a stance walks back to its post after being displaced, indexed by
+ * `Stance`.
+ *
+ * HoldGround is the only `false`, and that is what separates it from
+ * Defensive. Both refuse to leave position to fight; only HoldGround also
+ * refuses to move to RESUME position, because its contract is "never move for
+ * any reason" and a player who set it on a chokepoint meant the whole sentence.
+ */
+export const STANCE_RETURNS: readonly boolean[] = [
+  /* Aggressive */ true,
+  /* Defensive  */ true,
+  /* HoldFire   */ true,
+  /* HoldGround */ false,
+];
+
+/**
+ * Metres a unit may be off its post before it bothers walking back.
+ *
+ * One nav cell. Smaller and a firing line would fidget forever against its own
+ * separation forces — every unit shoved a metre by its neighbour would spend
+ * the next second driving back into the shove. `NAV_ARRIVE_SLACK` (1.1 m plus
+ * the hull radius) is what ends the return, so this has to be comfortably
+ * larger than that or the trip could re-arm the moment it ended.
+ */
+export const STANCE_RETURN_SLACK = 4.0;
 
 /** Vision regrowth delay in seconds after a unit leaves a cell. */
 export const VISION_REGROW_DELAY = 2.0;

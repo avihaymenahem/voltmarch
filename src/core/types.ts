@@ -203,7 +203,17 @@ export const enum UnitState {
   AttackMoving = 2,
   /** Stationary or closing on targetId, weapon hot. */
   Attacking = 3,
-  /** Holding position, engages anything in range, returns to guard point. */
+  /**
+   * Holding a post, engaging anything in range, returning to the post
+   * afterwards. The post is `guardX/guardZ`.
+   *
+   * THIS STATE WAS INERT. Its docstring described the behaviour the whole
+   * stance system needed and nothing implemented it: `seeksGoal` omitted it, so
+   * a unit given `OrderKind.Guard` did not even drive to the point it was told
+   * to guard, and `Regen`/`AI` read it only as a synonym for `Idle`. It is now
+   * a SEEKING state whose goal (`orderX/orderZ`) is owned by `sim/Targeting.ts`
+   * — the chase goal while engaging, the post while coming home.
+   */
   Guarding = 4,
   /** Harvester: driving to an ore cell. */
   SeekOre = 5,
@@ -462,15 +472,41 @@ export const enum OrderKind {
   Unload = 16,
 }
 
-/** Auto-engagement policy. Set per unit from the SelectionPanel. */
+/**
+ * Auto-engagement policy. Set per unit from the SelectionPanel.
+ *
+ * FOUR MEMBERS, FOUR BEHAVIOURS — and for a long time that was a claim rather
+ * than a fact. `Aggressive` and `Defensive` were the same code path: nothing
+ * read `GUARD_LEASH`, nothing read `guardX/guardZ`, and `Targeting.managesGoal`
+ * only ever moved a unit that was already in `UnitState.Attacking`, so a unit
+ * with an enemy 34 m away moved 0.00 m whichever of the two it was set to.
+ *
+ * The three tables that make these four distinct now live in `core/config.ts`
+ * (`STANCE_CHASE_METRES`, `STANCE_RETURNS`, `STANCE_RETURN_SLACK`) and are read
+ * by `sim/Targeting.ts`. Adding a fifth stance means adding a row to each.
+ *
+ * NONE OF THIS APPLIES TO AN EXPLICIT ORDER. `Attack`, `ForceAttack` and
+ * `Move` are the player speaking, and the leash is about what a unit does when
+ * nobody is speaking. The single exception is `HoldGround`, which refuses to
+ * close even on an ordered target — see `Targeting.approach`.
+ */
 export const enum Stance {
-  /** Chase targets of opportunity. */
+  /**
+   * Chase targets of opportunity, out to `GUARD_LEASH` metres from the post,
+   * then come home.
+   */
   Aggressive = 0,
-  /** Fire at anything in range, never leave position. */
+  /**
+   * Fire at anything in range, never leave position to start a fight — but do
+   * walk back to position after being pushed off it.
+   */
   Defensive = 1,
   /** Move to the target but never fire unless force-fired. */
   HoldFire = 2,
-  /** Fire freely, but never move for any reason. */
+  /**
+   * Fire freely, but never move for any reason: no chase, no return, and no
+   * closing on an ordered target either.
+   */
   HoldGround = 3,
 }
 

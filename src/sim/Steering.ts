@@ -497,12 +497,27 @@ export class NavAgents {
  * of weapon range, and parks the goal on the unit's own position once it is
  * inside. That is what makes "closing on targetId" terminate at a firing
  * position instead of at the target's footprint.
+ *
+ * WHY `Guarding` IS IN THIS LIST — THE SECOND HALF OF THE SAME BUG
+ * ---------------------------------------------------------------
+ * `UnitState.Guarding` has always been documented as "holding position,
+ * engages anything in range, RETURNS TO GUARD POINT", and it was omitted here
+ * too. A unit given `OrderKind.Guard` therefore did not drive to the point it
+ * was told to guard, could not leave it to engage, and had nothing to come back
+ * from — the state existed, three scenarios spawned units into it, and no
+ * module read it for behaviour at all.
+ *
+ * Its goal is owned by `sim/Targeting.ts` for exactly the reason `Attacking`'s
+ * is: the outbound leg has to stop at a firing position, which needs a weapon
+ * range this file cannot see. The RETURN leg's goal is `guardX/guardZ`, which
+ * is why that column exists and why nothing else may write it mid-excursion.
  */
 export function seeksGoal(state: number): boolean {
   switch (state) {
     case UnitState.Moving:
     case UnitState.AttackMoving:
     case UnitState.Attacking:
+    case UnitState.Guarding:
     case UnitState.SeekOre:
     case UnitState.ReturnToRefinery:
     case UnitState.Fleeing:
@@ -584,6 +599,26 @@ export class NavAssigner {
 
       const seeking = seeksGoal(st.state[i]);
       if (!seeking) {
+        // -- the post ----------------------------------------------------
+        // THE ONE EDGE ON WHICH "WHERE THIS UNIT BELONGS" IS RE-TAKEN.
+        // `guardX/guardZ` is the point a stance walks back to, and it is only
+        // honest if it tracks the player's intent: a unit ordered across the
+        // map belongs at the far end, not at the factory it rolled out of.
+        //
+        // EDGE-TRIGGERED, and `HasSlot` is the edge. Re-taking the post every
+        // tick a unit stands idle would defeat the whole return behaviour —
+        // shove a Defensive unit off its post and the post would follow it, so
+        // it would never be displaced and never walk back. Taking it once, on
+        // the tick a goal-seeking state ends, captures exactly the moment an
+        // order finished (arrival, `Stop`, or a give-up park) and nothing else.
+        //
+        // A unit under `OrderKind.Guard` never reaches this branch while the
+        // order stands: `Guarding` is a seeking state, and `finishOrder`
+        // deliberately does not clear it on arrival.
+        if ((ag.flags[i] & AgentFlag.HasSlot) !== 0) {
+          st.guardX[i] = st.posX[i];
+          st.guardZ[i] = st.posZ[i];
+        }
         // Order finished or superseded by combat/economy: give the field back
         // so the LRU can reuse the slot.
         if (st.navField[i] >= 0) { this.nav.release(st.navField[i]); st.navField[i] = -1; }
@@ -1255,6 +1290,18 @@ export class NavAssigner {
     const s = st.state[i];
     if (s === UnitState.Moving || s === UnitState.Fleeing || s === UnitState.AttackMoving) {
       st.state[i] = UnitState.Idle;
+      // AND THE POST MOVES WITH IT, IN THIS TICK, NOT THE NEXT ONE.
+      //
+      // `guardX/guardZ` is where a stance walks back to, and this line is the
+      // moment a move order stops being in flight and becomes "this is where I
+      // want you". The `!seeking` branch in `simTick` re-takes the post on the
+      // same idea and is a phase EARLIER in the tick, so it cannot see a
+      // transition that happens down here in loop 4 — leaving it to catch this
+      // case sent a unit that had just completed a 60 m move straight back to
+      // wherever it spawned, because `Targeting` (phase 900) read the stale
+      // post before `PathRequest` (phase 500) got another turn.
+      st.guardX[i] = st.posX[i];
+      st.guardZ[i] = st.posZ[i];
     }
     this.arrivals++;
   }

@@ -155,9 +155,21 @@ function hashEntities(world: World): number {
     h = mix(h, q(s.velZ[i]));
     h = mix(h, q(s.cooldown[i]));
     h = mix(h, s.targetId[i]);
-    h = mix(h, s.state[i] | (s.orderKind[i] << 8));
+    // STANCE RIDES IN THE SPARE BYTE of the word that already carries `state`
+    // and `orderKind`, so it costs no extra `mix`. It has to be here: since
+    // v2.3.0 the stance decides whether a unit leaves its post at all, and two
+    // clients disagreeing about one unit's stance is a divergence that would
+    // otherwise stay invisible until the unit had driven somewhere the other
+    // one did not.
+    h = mix(h, s.state[i] | (s.orderKind[i] << 8) | (s.stance[i] << 16));
     h = mix(h, q(s.orderX[i]));
     h = mix(h, q(s.orderZ[i]));
+    // THE POST. `guardX/guardZ` was written by six modules and read by none,
+    // which is why it was not hashed. It is now the return goal for every
+    // stance excursion and for `OrderKind.Guard` — real simulation state that
+    // no other column derives, exactly like `upgradeMask` in the player block.
+    h = mix(h, q(s.guardX[i]));
+    h = mix(h, q(s.guardZ[i]));
     h = mix(h, q(s.cargo[i]));
     h = mix(h, q(s.buildProgress[i]));
     // SUMMED, not folded. See the header: `alive[]` order follows the free

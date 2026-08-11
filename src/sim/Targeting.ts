@@ -51,16 +51,28 @@
  * unit's own position once it is inside, and let the nav layer do the driving.
  * See §APPROACH below for the range band, the hysteresis and the give-up rules.
  *
- * WRITE OWNERSHIP: this file writes `targetId`, and `orderX/orderZ` for the
- * entities holding an explicit Attack/ForceAttack order. It never writes
- * `state` or `orderKind` — those stay with Command.
+ * THE POST, THE LEASH AND THE FOUR STANCES
+ * ----------------------------------------
+ * See §LEASH below. In one line: a unit that is not carrying out an order has a
+ * POST (`guardX/guardZ`), its stance says how far it will leave that post to
+ * fight, and this module drives the round trip. That is what makes `Aggressive`
+ * and `Defensive` different behaviours rather than two names for standing still.
+ *
+ * WRITE OWNERSHIP: this file writes `targetId`; `orderX/orderZ` for the
+ * entities holding an explicit Attack/ForceAttack order AND for the entities on
+ * a stance excursion (`UnitState.Guarding`); and `state`, but ONLY the
+ * `Idle <-> Guarding` pair and only for units carrying no order that uses those
+ * columns. It never writes `orderKind` or `orderTarget` — those stay with
+ * Command, which is what makes a player order survive an excursion.
  * DETERMINISM: no wall clock, no Math.random; candidate order comes from the
  * spatial index, which is a counting sort over the dense alive list.
  * ============================================================================
  */
 
 import {
-  COMBAT_TARGETING, MAX_QUERY_RESULTS, RETALIATE_MEMORY, TARGETING_SLICE,
+  COMBAT_TARGETING, MAX_QUERY_RESULTS, NAV_ARRIVE_SLACK, NAV_FORMATION_GOAL_EPS,
+  RETALIATE_MEMORY, STANCE_CHASE_METRES, STANCE_RETURNS, STANCE_RETURN_SLACK,
+  TARGETING_SLICE,
 } from '../core/config';
 import {
   ArmorClass, EntityFlag, EntityKind, OrderKind, ProjectileKind, Stance, UnitState,
@@ -151,6 +163,65 @@ const APPROACH_UNDECIDED = 0;
 const APPROACH_CLOSING = 1;
 const APPROACH_PARKED = 2;
 
+/* ==========================================================================
+ * §LEASH — THE POST, THE EXCURSION, AND WHERE THE RETURN GOAL LIVES
+ *
+ * THE DEFECT THIS REPLACES. `Stance` has four members with four docstrings and
+ * two of them named the same code path. Measured on a unit with a 24 m gun and
+ * an enemy 34 m away: `Aggressive` moved 0.00 m, `Defensive` moved 0.00 m,
+ * `HoldGround` moved 0.00 m. `GUARD_LEASH` was declared in config and read by
+ * nothing. `guardX/guardZ` were written by six modules — the Guard order, the
+ * scenario spawner, `EntityStore.alloc`, `Production`'s rally, `Garrison` and
+ * `Transport` on entry and exit, `Steering`'s pocket rescue — serialised into
+ * every save file, listed in the write-ownership table, and read for behaviour
+ * by nobody. `OrderKind.Guard` did not even drive the unit to the point it was
+ * told to guard.
+ *
+ * THE POST. `guardX/guardZ` is where a unit belongs when nobody is telling it
+ * anything. It is re-taken on exactly one edge — the tick a goal-seeking state
+ * ends, in `NavAssigner` — so it tracks the player's last expressed intent
+ * (arrival, `Stop`, a give-up park) and nothing else. `OrderKind.Guard` pins it
+ * explicitly and it is not re-taken while that order stands.
+ *
+ * THE EXCURSION, AND THE TRAP IT HAD TO AVOID. There is no order stack in this
+ * game: `OrderExecutor.write` overwrites `orderX/orderZ` and nothing restores
+ * them. A unit that chases and then wants to come home therefore must NOT do it
+ * by giving itself an order — that would silently destroy a queued move the
+ * player is still waiting on, and in multiplayer a sim-issued command would be
+ * stamped with the sending socket's slot by the relay, accepted on one client
+ * and rejected on the other. A genuine desync, from a "convenience".
+ *
+ * So the return goal lives in `guardX/guardZ`, a column no order consumes, and
+ * the excursion runs entirely as SIM STATE evolving from hashed columns:
+ *
+ *   - it exists only in `UnitState.Guarding`, a state no player order produces
+ *     except `OrderKind.Guard` itself;
+ *   - `Phase.Command` runs at 100 and this module at 900, so a right-click
+ *     lands, moves the unit out of `Guarding`, and is seen by the very next
+ *     line of this file in the SAME tick. The player always wins;
+ *   - `orderKind`/`orderTarget` are never touched, so the order that was in
+ *     flight is still legible afterwards.
+ *
+ * THE LEASH IS MEASURED FROM THE POST TO THE TARGET, never from the post to the
+ * unit. "How far have I come" oscillates on its own boundary — reach the limit,
+ * turn home, be inside the limit, turn back — because the unit's own motion
+ * feeds the decision. The target's distance from a fixed post does not move
+ * when the unit does, so there is nothing to oscillate.
+ *
+ * The envelope is `chase + range * APPROACH_STOP_FRAC`, not `chase`, because
+ * `approach()` stops that far SHORT of the target. A unit sent after something
+ * at the edge of the envelope therefore comes to rest at about `chase` metres
+ * from its post, which is what the number is supposed to mean.
+ * ========================================================================== */
+
+/** `excursion` values. Plain integers: the side table is a Uint32Array. */
+/** At the post (or on the way to it and arrived). The resting value. */
+const POST_HOLDING = 0;
+/** Out engaging something. `approach()` owns the goal. */
+const POST_ENGAGED = 1;
+/** Nothing left to fight: walking back to `guardX/guardZ`. */
+const POST_RETURNING = 2;
+
 export interface TargetingStats {
   /** Armed entities considered this tick. */
   armed: number;
@@ -168,6 +239,10 @@ export interface TargetingStats {
    * the one number that distinguishes "not shooting yet" from "not moving".
    */
   closing: number;
+  /** Units currently off their post chasing a target of opportunity. */
+  chasing: number;
+  /** Units currently walking back to their post. */
+  returning: number;
 }
 
 export class TargetingSystem {
@@ -181,8 +256,20 @@ export class TargetingSystem {
    */
   private readonly approaching: PerEntityU32;
 
+  /**
+   * Where each unit is in its round trip away from the post. See §LEASH.
+   *
+   * A SIDE TABLE AND NOT A STORE COLUMN, deliberately: it is recoverable from
+   * `state`, `orderX/orderZ` and `guardX/guardZ` — all of which the checksum
+   * hashes — within one tick of any divergence, so paying for a save-game
+   * column and a hash slot would buy nothing. Generation-stamped, so a recycled
+   * slot starts HOLDING rather than inheriting a dead unit's excursion.
+   */
+  private readonly excursion: PerEntityU32;
+
   readonly stats: TargetingStats = {
     armed: 0, engaged: 0, scans: 0, acquired: 0, losRejects: 0, closing: 0,
+    chasing: 0, returning: 0,
   };
 
   constructor(
@@ -191,6 +278,7 @@ export class TargetingSystem {
     private readonly weapons: WeaponSystem,
   ) {
     this.approaching = new PerEntityU32(world.store, APPROACH_UNDECIDED);
+    this.excursion = new PerEntityU32(world.store, POST_HOLDING);
   }
 
   /* ====================================================================== */
@@ -204,6 +292,8 @@ export class TargetingSystem {
     this.stats.acquired = 0;
     this.stats.losRejects = 0;
     this.stats.closing = 0;
+    this.stats.chasing = 0;
+    this.stats.returning = 0;
 
     for (let a = 0; a < n; a++) {
       const i = st.alive[a];
@@ -220,51 +310,74 @@ export class TargetingSystem {
       if (w === undefined) { st.targetId[i] = 0; continue; }
       this.stats.armed++;
 
-      // --- an explicit order beats everything -----------------------------
-      const order = st.orderKind[i] as OrderKind;
-      if (order === OrderKind.Attack || order === OrderKind.ForceAttack) {
-        const ot = st.index(st.orderTarget[i] as EntityId);
-        if (ot >= 0 && (st.flags[ot] & EntityFlag.PendingDestroy) === 0) {
-          // A forced attack ignores alliance, visibility and priority. It does
-          // NOT ignore the leash: an order to attack something 400 m away still
-          // has to wait for the movement layer to close the distance — which is
-          // what `approach` below asks for.
-          st.targetId[i] = st.handleOf(ot) as number;
-          this.approach(i, ot, w);
-          this.stats.engaged++;
-          continue;
-        }
-        // ForceAttack on a dead thing falls through to normal acquisition,
-        // which is what makes "attack that tank" keep meaning something once
-        // the tank is gone. The unit stops where it stands rather than driving
-        // on to the corpse — or, for a force-fire into shroud that never had a
-        // target handle at all, rather than driving onto the impact point.
-        this.halt(i);
-      }
+      // WHO TO SHOOT, then WHERE TO STAND. Two passes and never one: the second
+      // needs the target the first settled on, and it has to run on EVERY tick
+      // including the ones where the first returns early on its slice. A unit
+      // walking home has no target at all and still has somewhere to be.
+      this.resolveTarget(s, i, w);
+      this.holdPost(i, w);
+    }
+  }
 
-      // --- validate ---------------------------------------------------------
-      const hadTarget = st.targetId[i] !== 0;
-      const cur = st.index(st.targetId[i] as EntityId);
-      const stillGood = cur >= 0 && this.isValidTarget(i, cur, w, COMBAT_TARGETING.leashRangeMul);
-      if (!stillGood && hadTarget) st.targetId[i] = 0;
+  /**
+   * Settle `targetId` for one armed entity. Everything that was the body of the
+   * tick loop before the post behaviour was added; `return` here means the same
+   * thing `continue` meant there.
+   */
+  private resolveTarget(s: SimContext, i: number, w: WeaponDef): void {
+    const st = this.world.store;
 
-      // --- acquire ----------------------------------------------------------
-      // Slice ticks do the routine sweep. A unit that JUST lost its lock — the
-      // target died, cloaked, or drove out of the leash — scans immediately
-      // instead of waiting for its slot to come round, because standing idle
-      // for a quarter second after a kill is the most visible AI failure an RTS
-      // has. That burst is bounded by the number of targets lost this tick.
-      const sliceTick = sliceForEntity(s.tick, i, TARGETING_SLICE);
-      if (stillGood && !sliceTick) { this.stats.engaged++; continue; }
-      if (!stillGood && !sliceTick && !hadTarget) continue;
-      if (!stanceAllowsAcquire(st.stance[i] as Stance) && !stillGood) continue;
-
-      const before = st.targetId[i];
-      this.acquire(s, i, w, cur);
-      if (st.targetId[i] !== 0) {
+    // --- an explicit order beats everything -------------------------------
+    const order = st.orderKind[i] as OrderKind;
+    if (order === OrderKind.Attack || order === OrderKind.ForceAttack) {
+      const ot = st.index(st.orderTarget[i] as EntityId);
+      if (ot >= 0 && (st.flags[ot] & EntityFlag.PendingDestroy) === 0) {
+        // A forced attack ignores alliance, visibility and priority. It does
+        // NOT ignore the leash: an order to attack something 400 m away still
+        // has to wait for the movement layer to close the distance — which is
+        // what `approach` below asks for. It DOES ignore the stance leash: the
+        // player said go, and `STANCE_CHASE_METRES` is about what a unit does
+        // when nobody said anything.
+        st.targetId[i] = st.handleOf(ot) as number;
+        this.approach(i, ot, w);
         this.stats.engaged++;
-        if (st.targetId[i] !== before) this.stats.acquired++;
+        return;
       }
+      // ForceAttack on a dead thing falls through to normal acquisition,
+      // which is what makes "attack that tank" keep meaning something once
+      // the tank is gone. The unit stops where it stands rather than driving
+      // on to the corpse — or, for a force-fire into shroud that never had a
+      // target handle at all, rather than driving onto the impact point.
+      this.halt(i);
+    }
+
+    // How far this unit is willing to care about a target at all. For anything
+    // that cannot chase this is the old `w.range * mul` and nothing has moved.
+    const reach = this.reachOf(i, w);
+
+    // --- validate ---------------------------------------------------------
+    const hadTarget = st.targetId[i] !== 0;
+    const cur = st.index(st.targetId[i] as EntityId);
+    const keep = Math.max(reach, w.range * COMBAT_TARGETING.leashRangeMul);
+    const stillGood = cur >= 0 && this.isValidTarget(i, cur, w, keep);
+    if (!stillGood && hadTarget) st.targetId[i] = 0;
+
+    // --- acquire ----------------------------------------------------------
+    // Slice ticks do the routine sweep. A unit that JUST lost its lock — the
+    // target died, cloaked, or drove out of the leash — scans immediately
+    // instead of waiting for its slot to come round, because standing idle
+    // for a quarter second after a kill is the most visible AI failure an RTS
+    // has. That burst is bounded by the number of targets lost this tick.
+    const sliceTick = sliceForEntity(s.tick, i, TARGETING_SLICE);
+    if (stillGood && !sliceTick) { this.stats.engaged++; return; }
+    if (!stillGood && !sliceTick && !hadTarget) return;
+    if (!stanceAllowsAcquire(st.stance[i] as Stance) && !stillGood) return;
+
+    const before = st.targetId[i];
+    this.acquire(s, i, w, cur, Math.max(reach, w.range * COMBAT_TARGETING.acquireRangeMul));
+    if (st.targetId[i] !== 0) {
+      this.stats.engaged++;
+      if (st.targetId[i] !== before) this.stats.acquired++;
     }
   }
 
@@ -273,23 +386,44 @@ export class TargetingSystem {
    * ====================================================================== */
 
   /**
-   * Whether this module is allowed to own `orderX/orderZ` for entity `i`.
-   *
-   * `state === Attacking` is the load-bearing test, not a formality. `orderKind`
-   * outlives the state it created — a unit can be carrying `OrderKind.Attack`
-   * while the AI, a guard behaviour or a harvester FSM has since put it into
-   * some other state that uses `orderX/orderZ` as ITS goal. Writing over that
-   * would send a harvester to a battle. Only the state an attack order actually
-   * produces is ours.
+   * Whether entity `i` is a thing this module could drive at all: a mobile
+   * ground unit that is not riding inside something else. Says nothing about
+   * whether it currently WANTS driving — that is the state test in the two
+   * callers below.
    */
-  private managesGoal(i: number): boolean {
+  private canDrive(i: number): boolean {
     const st = this.world.store;
-    if (st.state[i] !== UnitState.Attacking) return false;
     const f = st.flags[i];
     if ((f & EntityFlag.CanMove) === 0) return false;
     if ((f & EntityFlag.Garrisoned) !== 0) return false;
     const kind = st.kind[i];
     return kind === EntityKind.Infantry || kind === EntityKind.Vehicle;
+  }
+
+  /**
+   * Whether this module is allowed to own `orderX/orderZ` for entity `i`.
+   *
+   * THE STATE TEST IS THE LOAD-BEARING PART, not a formality. `orderKind`
+   * outlives the state it created — a unit can be carrying `OrderKind.Attack`
+   * while the AI, a harvester FSM or a transport has since put it into some
+   * other state that uses `orderX/orderZ` as ITS goal. Writing over that would
+   * send a harvester to a battle. Only the two states this module itself
+   * produces or consumes are ours:
+   *
+   *   `Attacking` — what an explicit Attack/ForceAttack order creates;
+   *   `Guarding`  — what `OrderKind.Guard` creates, and what a stance excursion
+   *                 puts a unit into for the duration of the round trip.
+   *
+   * Every other state, including `Moving`, belongs to somebody else, which is
+   * exactly why a player order issued mid-chase cannot be overwritten: Command
+   * runs at phase 100 and this runs at 900, so the new state is already in
+   * place when this test is made.
+   */
+  private managesGoal(i: number): boolean {
+    const st = this.world.store;
+    const s = st.state[i];
+    if (s !== UnitState.Attacking && s !== UnitState.Guarding) return false;
+    return this.canDrive(i);
   }
 
   /**
@@ -303,6 +437,186 @@ export class TargetingSystem {
     this.approaching.setAt(i, APPROACH_PARKED);
     st.orderX[i] = st.posX[i];
     st.orderZ[i] = st.posZ[i];
+  }
+
+  /* ======================================================================
+   * §LEASH — THE POST, THE CHASE AND THE WAY HOME
+   *
+   * Read the block comment near the top of the file first. Everything below
+   * runs for armed mobile ground units only, costs no query, and allocates
+   * nothing.
+   * ====================================================================== */
+
+  /**
+   * How far, in metres of SURFACE distance, this unit is willing to hold or
+   * take a target of opportunity.
+   *
+   * For anything that cannot chase — a defence structure, a Defensive tank, a
+   * unit already carrying out an order — this returns 0 and both callers fall
+   * back to the multipliers they always used, so nothing about a firefight
+   * changes. For a chasing stance it is the far edge of the envelope
+   * `approach()` will actually stop in: `range * APPROACH_STOP_FRAC + chase`.
+   *
+   * WHY IT HAS TO WIDEN ACQUISITION AND NOT JUST RETENTION. The old acquire
+   * radius is `range * 1.08`, so an enemy 34 m from a 24 m gun was never
+   * NOTICED, let alone chased — which is why the original measurement showed a
+   * unit that neither moved nor held a target. A stance that can only chase
+   * things already inside its own gun range is not a chase.
+   *
+   * The cost is one wider circle query, on the 1-in-`TARGETING_SLICE` tick that
+   * unit scans, for chasing stances only.
+   */
+  private reachOf(i: number, w: WeaponDef): number {
+    if (w.range <= 0) return 0;
+    const st = this.world.store;
+    const s = st.state[i];
+    if (s !== UnitState.Idle && s !== UnitState.Guarding) return 0;
+    const chase = STANCE_CHASE_METRES[st.stance[i]] ?? 0;
+    if (chase <= 0) return 0;
+    if (!this.canDrive(i)) return 0;
+    return w.range * APPROACH_STOP_FRAC + chase;
+  }
+
+  /**
+   * Freeze the nav goal on the unit's own position — unconditionally, unlike
+   * `park`, which fires once per entry into its own state machine.
+   *
+   * Only writes when the goal is far enough away that the nav layer would
+   * actually try to drive there. Below the arrival radius `NavAssigner` already
+   * considers the order satisfied, and rewriting the goal every tick would
+   * re-arm the progress and wedge watchdogs every tick — the failure
+   * `APPROACH_GOAL_REFRESH_METRES` exists to prevent, arrived at from the other
+   * direction.
+   */
+  private pinInPlace(i: number): void {
+    const st = this.world.store;
+    const dx = st.orderX[i] - st.posX[i], dz = st.orderZ[i] - st.posZ[i];
+    const slack = st.radius[i] + NAV_ARRIVE_SLACK;
+    if (dx * dx + dz * dz <= slack * slack) return;
+    st.orderX[i] = st.posX[i];
+    st.orderZ[i] = st.posZ[i];
+    this.approaching.setAt(i, APPROACH_PARKED);
+  }
+
+  /**
+   * The excursion is over: stand down.
+   *
+   * An excursion this module started now ends and the unit goes back to being
+   * plainly idle. `Regen` and the AI's idle-army sweep both already treat
+   * `Guarding` as resting, but leaving every unit that ever fired a shot
+   * permanently in it would quietly rewrite state the rest of the codebase
+   * reads with `=== UnitState.Idle`.
+   *
+   * TWO THINGS ARE DELIBERATELY LEFT ALONE. A unit under an explicit
+   * `OrderKind.Guard` stays `Guarding`, because that is exactly what the order
+   * means. And a unit that never left — `POST_HOLDING` — is not this module's
+   * to demote: three scenarios spawn units straight into `Guarding` as their
+   * authored pose, and tick one is not the place to overwrite it.
+   *
+   * Anything still `Guarding` afterwards has its goal pinned where it stands,
+   * because `Guarding` seeks a goal and a stale one would drive it.
+   */
+  private settle(i: number, state: number, phase: number): void {
+    const st = this.world.store;
+    if (phase !== POST_HOLDING) {
+      this.excursion.setAt(i, POST_HOLDING);
+      if (state === UnitState.Guarding && st.orderKind[i] !== OrderKind.Guard) {
+        st.state[i] = UnitState.Idle;
+        return;
+      }
+    }
+    if (state === UnitState.Guarding) this.pinInPlace(i);
+  }
+
+  /**
+   * The whole stance behaviour, for one unit, for one tick.
+   *
+   * Runs after `resolveTarget`, so `targetId` is whatever this unit settled on.
+   * Four outcomes, and which one you get is the difference between the four
+   * stances:
+   *
+   *   ENGAGE  — a chasing stance with a target inside its post's envelope.
+   *             `approach()` drives it out and stops it at a firing position.
+   *   RETURN  — nothing to fight and further from the post than
+   *             `STANCE_RETURN_SLACK`. The goal is `guardX/guardZ`.
+   *   ARRIVE  — back inside the arrival radius. Drop to `Idle`, unless an
+   *             explicit `OrderKind.Guard` is pinning this post.
+   *   HOLD    — stand exactly still. HoldGround always lands here.
+   */
+  private holdPost(i: number, w: WeaponDef): void {
+    const st = this.world.store;
+    const state = st.state[i];
+
+    // A unit carrying out any other order is not on an excursion and must not
+    // be given one. This is the line that makes a player's right-click win:
+    // Command wrote `Moving` at phase 100, and it is phase 900 now.
+    if ((state !== UnitState.Idle && state !== UnitState.Guarding) || !this.canDrive(i)) {
+      if (this.excursion.getAt(i) !== POST_HOLDING) this.excursion.setAt(i, POST_HOLDING);
+      return;
+    }
+
+    const stance = st.stance[i] as Stance;
+    const chase = STANCE_CHASE_METRES[stance] ?? 0;
+    const gx = st.guardX[i], gz = st.guardZ[i];
+
+    // -- 1. is there something worth leaving the post for? ------------------
+    // Measured POST-to-TARGET. See §LEASH: measuring the unit's own excursion
+    // instead makes the decision oscillate on its own boundary.
+    if (chase > 0 && st.targetId[i] !== 0) {
+      const t = st.index(st.targetId[i] as EntityId);
+      if (t >= 0) {
+        const cap = chase + w.range * APPROACH_STOP_FRAC;
+        const tx = st.posX[t] - gx, tz = st.posZ[t] - gz;
+        if (tx * tx + tz * tz <= cap * cap) {
+          if (state !== UnitState.Guarding) st.state[i] = UnitState.Guarding;
+          this.excursion.setAt(i, POST_ENGAGED);
+          this.stats.chasing++;
+          this.approach(i, t, w);
+          return;
+        }
+      }
+    }
+
+    // -- 2. nothing to fight: where should this unit be standing? -----------
+    const dx = st.posX[i] - gx, dz = st.posZ[i] - gz;
+    const off2 = dx * dx + dz * dz;
+    const arrive = st.radius[i] + NAV_ARRIVE_SLACK;
+    const phase = this.excursion.getAt(i);
+
+    if (off2 <= arrive * arrive) {
+      this.settle(i, state, phase);
+      return;
+    }
+
+    // Hysteresis: it takes `STANCE_RETURN_SLACK` to START walking back and the
+    // arrival radius to STOP, so a firing line shoved a metre by its own
+    // separation forces does not spend the rest of the match correcting itself.
+    const returning = phase === POST_RETURNING;
+    if (STANCE_RETURNS[stance] !== true
+        || (!returning && off2 <= STANCE_RETURN_SLACK * STANCE_RETURN_SLACK)) {
+      // Close enough to call it home even though the arrival test said no, or
+      // a stance that would not walk back in any case. HoldGround lands here
+      // every time, and it is the reason `settle` pins the goal rather than
+      // merely skipping: `Guarding` is a seeking state, so a stale
+      // `orderX/orderZ` would have the nav layer drive the one stance whose
+      // whole contract is that it never moves.
+      this.settle(i, state, phase);
+      return;
+    }
+
+    // -- 3. walk back. NOT A COMMAND, NOT AN ORDER -------------------------
+    // `guardX/guardZ` into `orderX/orderZ`, and `orderKind`/`orderTarget` left
+    // exactly as they were. That is the whole answer to "there is no order
+    // stack": the return goal was never in the order columns to begin with.
+    if (state !== UnitState.Guarding) st.state[i] = UnitState.Guarding;
+    if (phase !== POST_RETURNING) this.excursion.setAt(i, POST_RETURNING);
+    this.stats.returning++;
+    this.approaching.setAt(i, APPROACH_UNDECIDED);
+    const ox = st.orderX[i] - gx, oz = st.orderZ[i] - gz;
+    if (ox * ox + oz * oz > NAV_FORMATION_GOAL_EPS * NAV_FORMATION_GOAL_EPS) {
+      st.orderX[i] = gx;
+      st.orderZ[i] = gz;
+    }
   }
 
   /**
@@ -388,8 +702,16 @@ export class TargetingSystem {
    * VALIDATION
    * ====================================================================== */
 
-  /** Everything that must remain true for `t` to stay this entity's target. */
-  private isValidTarget(i: number, t: number, w: WeaponDef, rangeMul: number): boolean {
+  /**
+   * Everything that must remain true for `t` to stay this entity's target.
+   *
+   * `maxSurface` is ABSOLUTE METRES, not a multiplier. It used to be a
+   * multiplier on `w.range`, which is fine while every reason to care about a
+   * target is proportional to how far you can shoot; it stopped being fine when
+   * a chasing stance grew a reason that is not (`STANCE_CHASE_METRES`, a flat
+   * distance from the post). Callers do the arithmetic and pass the answer.
+   */
+  private isValidTarget(i: number, t: number, w: WeaponDef, maxSurface: number): boolean {
     const world = this.world;
     const st = world.store;
     const f = st.flags[t];
@@ -405,7 +727,7 @@ export class TargetingSystem {
     const dx = st.posX[t] - st.posX[i], dz = st.posZ[t] - st.posZ[i];
     const surface = Math.sqrt(dx * dx + dz * dz)
       - hitRadius(st.footprintW[t], st.footprintH[t], st.radius[t]);
-    if (surface > w.range * rangeMul) return false;
+    if (surface > maxSurface) return false;
     // A target that has walked INSIDE an artillery piece's dead zone is no
     // longer a target for it — otherwise the gun sits pointed at its own feet.
     if (w.minRange > 0 && surface < w.minRange * 0.75) return false;
@@ -421,12 +743,14 @@ export class TargetingSystem {
    * Keeps the best AND the runner-up so a line-of-sight rejection has somewhere
    * to fall back to without a second query.
    */
-  private acquire(s: SimContext, i: number, w: WeaponDef, currentIdx: number): void {
+  private acquire(
+    s: SimContext, i: number, w: WeaponDef, currentIdx: number, maxSurface: number,
+  ): void {
     const world = this.world;
     const st = world.store;
     this.stats.scans++;
 
-    const radius = w.range * COMBAT_TARGETING.acquireRangeMul
+    const radius = maxSurface
       + hitRadius(st.footprintW[i], st.footprintH[i], st.radius[i]);
     const me = st.owner[i] as PlayerId;
     const myX = st.posX[i], myZ = st.posZ[i];
@@ -445,7 +769,7 @@ export class TargetingSystem {
     for (let c = 0; c < count; c++) {
       const t = out[c];
       if (t === i) continue;
-      if (!this.isValidTarget(i, t, w, COMBAT_TARGETING.acquireRangeMul)) continue;
+      if (!this.isValidTarget(i, t, w, maxSurface)) continue;
 
       const dx = st.posX[t] - myX, dz = st.posZ[t] - myZ;
       const dist = Math.sqrt(dx * dx + dz * dz);
