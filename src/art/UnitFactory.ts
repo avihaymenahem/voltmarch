@@ -910,6 +910,24 @@ export class UnitLibrary {
   constructor(factory: GreebleFactory = greebles) { this.factory = factory; }
 
   /**
+   * Build this library's unit atlas off the main thread, before `build` needs it.
+   *
+   * Takes the SAME arguments `build` will be called with and routes them through
+   * the SAME `specForPalette`, because the cache is keyed on the full spec hash:
+   * a prewarm that recomputes its spec even slightly differently is a prewarm
+   * that silently misses, and the only symptom is that boot is exactly as slow
+   * as it was before. See `BuildingLibrary.prewarm`.
+   *
+   * Returns how many atlases actually came back from a worker; 0 is normal on a
+   * platform with none.
+   */
+  async prewarm(
+    faction: string, palette: UnitPalette, atlasSize: number, seed: number,
+  ): Promise<number> {
+    return this.factory.prewarm([specForPalette(`${faction}.unit`, palette, atlasSize, seed)]);
+  }
+
+  /**
    * Build (or return) the model for a mass list. The atlas and the material are
    * shared across every unit that asks for the same palette key, which is the
    * whole draw-call argument.

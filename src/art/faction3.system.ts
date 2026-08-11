@@ -43,10 +43,17 @@ export default defineSystem({
     // this is the same promise the other seven callers already share.
     const binding = await resolveDefBinding();
 
-    const units = buildAndRegisterMeridianUnits(
-      atlasSizeFor(loop.quality, UNIT_GREEBLE.atlasSize), binding.unitId);
-    const structures = buildAndRegisterMeridianStructures(
-      atlasSizeFor(loop.quality, BUILDING_GREEBLE.atlasSize), binding.buildingId);
+    // BOTH AT ONCE. Each half now prewarms its own atlas on a worker before it
+    // builds anything, and those two waits are independent — the unit atlas and
+    // the structure atlas come off different specs on different private
+    // factories. Awaiting them in sequence would serialise two waits that the
+    // pool is perfectly happy to serve in parallel.
+    const [units, structures] = await Promise.all([
+      buildAndRegisterMeridianUnits(
+        atlasSizeFor(loop.quality, UNIT_GREEBLE.atlasSize), binding.unitId),
+      buildAndRegisterMeridianStructures(
+        atlasSizeFor(loop.quality, BUILDING_GREEBLE.atlasSize), binding.buildingId),
+    ]);
 
     let unitTris = 0;
     for (const m of units.models) unitTris += m.stats.triangles;

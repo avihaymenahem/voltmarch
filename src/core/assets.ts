@@ -69,6 +69,7 @@ import {
   type TextureRequest,
 } from './surfaces';
 import { TexturePool, type SpawnWorker } from './workers/TexturePool';
+import type { GreebleAtlasData, GreebleSpec } from '../art/greeble-gen';
 
 /**
  * Everything in `./surfaces.ts` is part of this module's public surface, and
@@ -207,6 +208,23 @@ export class TextureFactory {
         console.warn(`[textures] worker offload off (${reason}) — generating on the main thread`);
       },
     });
+  }
+
+  /**
+   * Hand a greeble atlas to the shared pool. Null when there is no pool, the
+   * pool has given up, or the job failed — all of which mean "generate it on
+   * the calling thread instead".
+   *
+   * A passthrough rather than exposing `pool`, because the pool's lifetime is
+   * this class's business: `settleWorkers()` disposes it, and a caller holding a
+   * direct reference would keep submitting into a corpse and silently receive
+   * nulls forever. The art layer reaches this through
+   * `workers/greeble-warm.ts`, which is the only file that knows both sides
+   * exist.
+   */
+  submitGreeble(spec: GreebleSpec): Promise<GreebleAtlasData | null> {
+    if (this.pool === null) return Promise.resolve(null);
+    return this.pool.submitGreeble(spec);
   }
 
   /**

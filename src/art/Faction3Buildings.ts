@@ -1072,10 +1072,10 @@ export interface MeridianStructureReport {
  * `RenderBridge.factionSlot()` folds any faction above 2 onto the wildcard
  * slot, and each of these defIds belongs to exactly one army anyway.
  */
-export function buildAndRegisterMeridianStructures(
+export async function buildAndRegisterMeridianStructures(
   atlasSize: number,
   buildingId: Readonly<Record<string, number>>,
-): MeridianStructureReport {
+): Promise<MeridianStructureReport> {
   const palettes: StructurePalettes = {
     structure: MERIDIAN_STRUCTURE_PALETTE,
     pad: MERIDIAN_PAD_PALETTE,
@@ -1094,6 +1094,9 @@ export function buildAndRegisterMeridianStructures(
      */
     coat: 'stone',
   };
+
+  // Atlas off-thread first — private GreebleFactory, see the note above.
+  await meridianBuildingLibrary.prewarm(MERIDIAN_STRUCTURE_MASS_LISTS, () => palettes, atlasSize);
 
   const models: StructureModel[] = [];
   const failed: string[] = [];

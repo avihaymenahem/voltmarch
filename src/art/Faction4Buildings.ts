@@ -1441,10 +1441,10 @@ export interface ReclaimStructureReport {
  * `(Building, Reclaim, -1)` default must not become the last-resort entry for
  * everybody.
  */
-export function buildAndRegisterReclaimStructures(
+export async function buildAndRegisterReclaimStructures(
   atlasSize: number,
   buildingId: Readonly<Record<string, number>>,
-): ReclaimStructureReport {
+): Promise<ReclaimStructureReport> {
   const palettes: StructurePalettes = {
     structure: RECLAIM_STRUCTURE_PALETTE,
     pad: RECLAIM_PAD_PALETTE,
@@ -1468,6 +1468,11 @@ export function buildAndRegisterReclaimStructures(
      */
     coat: 'scrap',
   };
+
+  // Atlas off-thread first — this library owns a PRIVATE GreebleFactory, so
+  // `art.buildings`' prewarm cannot reach its cache. The loop below is
+  // unchanged and still synchronous.
+  await reclaimBuildingLibrary.prewarm(RECLAIM_STRUCTURE_MASS_LISTS, () => palettes, atlasSize);
 
   const models: StructureModel[] = [];
   const failed: string[] = [];

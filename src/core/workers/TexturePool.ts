@@ -34,7 +34,10 @@
  */
 
 import type { Channel, TextureRequest } from '../surfaces';
-import { isTextureReply, type TextureJob, type TextureLayer } from './protocol';
+import {
+  isWorkerReply, type GreebleJob, type TextureJob, type TextureLayer,
+} from './protocol';
+import type { GreebleAtlasData, GreebleSpec } from '../../art/greeble-gen';
 
 /* ==========================================================================
  * THE WORKER SEAM
@@ -90,9 +93,32 @@ function defaultPoolSize(): number {
   return Math.max(1, Math.min(MAX_WORKERS, cores - 1));
 }
 
+/**
+ * What a completed job hands back. One union rather than two pending maps,
+ * because everything else about a job — the id, the deadline, the round-robin,
+ * the give-up-and-fall-back rule — is identical for both kinds, and two maps
+ * would mean two places to remember to clear a timer.
+ *
+ * The submit methods narrow it; see the resolve closures there.
+ */
+type JobResult = readonly TextureLayer[] | GreebleAtlasData | null;
+
 interface Pending {
-  readonly resolve: (layers: readonly TextureLayer[] | null) => void;
+  readonly resolve: (result: JobResult) => void;
   readonly timer: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Narrow a job result to an atlas.
+ *
+ * `!Array.isArray(r)` does NOT do this: `Array.isArray` cannot narrow a
+ * `readonly T[]` out of a union, so the negative branch keeps the layer array
+ * in and the assignment fails. Discriminating on a property an array does not
+ * have is both correct and cheaper than a structural check — arrays carry
+ * `length`, never `size`.
+ */
+function isAtlasResult(r: JobResult): r is GreebleAtlasData {
+  return r !== null && typeof (r as { size?: unknown }).size === 'number';
 }
 
 /* ==========================================================================
@@ -164,7 +190,14 @@ export class TexturePool {
         // now save. Kill the pool, not just the job.
         this.disable(`job ${id} (${request.kind}) exceeded ${this.timeoutMs} ms`);
       }, this.timeoutMs);
-      this.pending.set(id, { resolve, timer });
+      // Narrow on the way out: a texture job can only be answered by layers.
+      // Anything else is a reply that got crossed with another job's id, and
+      // the honest answer to that is `null` — generate it here — rather than
+      // handing a greeble atlas to a caller expecting channel packings.
+      this.pending.set(id, {
+        resolve: (r) => { resolve(isAtlasResult(r) || r === null ? null : r); },
+        timer,
+      });
 
       const job: TextureJob = { id, request, channels };
       try {
@@ -172,6 +205,41 @@ export class TexturePool {
       } catch (err: unknown) {
         // A request that will not structured-clone. That is a bug in the
         // request, not in the worker, but the effect is the same: fall back.
+        this.disable(err instanceof Error ? err.message : String(err));
+      }
+    });
+  }
+
+  /**
+   * Queue one greeble atlas.
+   *
+   * Same contract as `submit`: resolves with `null` rather than rejecting when
+   * the pool cannot serve it, and `null` means "build it on the calling thread
+   * instead". `GreebleFactory.prewarm` is the only caller, and it treats a null
+   * as "this one stays a main-thread build", which is exactly what used to
+   * happen for all of them.
+   */
+  submitGreeble(spec: GreebleSpec): Promise<GreebleAtlasData | null> {
+    if (this.off) return Promise.resolve(null);
+    if (!this.start()) return Promise.resolve(null);
+
+    const id = this.nextId++;
+    const worker = this.workers[this.cursor];
+    this.cursor = (this.cursor + 1) % this.workers.length;
+
+    return new Promise<GreebleAtlasData | null>((resolve) => {
+      const timer = setTimeout(() => {
+        this.disable(`greeble job ${id} (${spec.key}) exceeded ${this.timeoutMs} ms`);
+      }, this.timeoutMs);
+      this.pending.set(id, {
+        resolve: (r) => { resolve(isAtlasResult(r) ? r : null); },
+        timer,
+      });
+
+      const job: GreebleJob = { kind: 'greeble', id, spec };
+      try {
+        worker.postMessage(job);
+      } catch (err: unknown) {
         this.disable(err instanceof Error ? err.message : String(err));
       }
     });
@@ -224,7 +292,7 @@ export class TexturePool {
   }
 
   private onMessage(data: unknown): void {
-    if (!isTextureReply(data)) {
+    if (!isWorkerReply(data)) {
       this.disable('worker sent a message this build does not understand');
       return;
     }
@@ -233,7 +301,11 @@ export class TexturePool {
     if (entry === undefined) return;
     clearTimeout(entry.timer);
     this.pending.delete(data.id);
-    entry.resolve(data.kind === 'texture:done' ? data.layers : null);
+    entry.resolve(
+      data.kind === 'texture:done' ? data.layers
+        : data.kind === 'greeble:done' ? data.data
+          : null,
+    );
     this.drain();
   }
 

@@ -1266,12 +1266,17 @@ export interface MeridianBuildReport {
  * and it is also the honest description, because each of these defIds belongs
  * to exactly one army and can never be resolved for another.
  */
-export function buildAndRegisterMeridianUnits(
+export async function buildAndRegisterMeridianUnits(
   atlasSize: number,
   unitId: Readonly<Record<string, number>>,
-): MeridianBuildReport {
+): Promise<MeridianBuildReport> {
   const models: UnitModel[] = [];
   const failed: string[] = [];
+
+  // Atlas off-thread first — this library owns a PRIVATE GreebleFactory, so
+  // `art.units`' prewarm cannot reach its cache. The loop stays synchronous.
+  await meridianUnitLibrary.prewarm(
+    MERIDIAN_UNIT_MASS_LISTS[0].faction, MERIDIAN_UNIT_PALETTE, atlasSize, MERIDIAN_ATLAS_SEED);
 
   for (const list of MERIDIAN_UNIT_MASS_LISTS) {
     try {

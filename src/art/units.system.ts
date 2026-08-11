@@ -219,6 +219,20 @@ export default defineSystem({
     const size = atlasSizeFor(loop.quality);
     const t0 = Date.now();
 
+    // ATLASES FIRST, OFF-THREAD. Same argument as `art.buildings`: the two unit
+    // atlases cost ~440 ms of unbroken main-thread time (allies 217, soviets
+    // 225, from the boot log) and the loading curtain cannot animate through it.
+    // The `build` loop below is unchanged and stays synchronous — every atlas it
+    // asks for is a cache hit, so `validateUnit`'s detail-coverage and speckle
+    // gates still run against real numbers at the moment they always did.
+    //
+    // One prewarm per FACTION, matching the seeding rule the loop relies on.
+    const factions = [...new Set(UNIT_MASS_LISTS.map((l) => l.faction))];
+    const warmedCounts = await Promise.all(factions.map(
+      (f) => unitLibrary.prewarm(f, paletteFor(f), size, ATLAS_SEED[f]),
+    ));
+    const warmed = warmedCounts.reduce((a, b) => a + b, 0);
+
     const built: UnitModel[] = [];
     const failed: string[] = [];
     for (const list of UNIT_MASS_LISTS) {
@@ -304,7 +318,11 @@ export default defineSystem({
     for (const m of built) tris += m.stats.triangles;
     console.info(
       `%c[units]%c ${built.length}/${UNIT_MASS_LISTS.length} models, ${atlases} materials, ` +
-      `${tris} tris, ${registered} bridge registrations, atlas ${size}px, ${Date.now() - t0} ms`,
+      // `warmed` is printed even at 0 — see the note on the same figure in
+      // `buildings.system.ts`. A silent fallback to the main thread must not
+      // look identical to a working offload.
+      `${tris} tris, ${registered} bridge registrations, atlas ${size}px, ` +
+      `${warmed} atlas(es) off-thread, ${Date.now() - t0} ms`,
       'color:#7fd', 'color:inherit',
     );
     for (const m of built) console.info(`[units] ${formatStats(m.stats)}`);

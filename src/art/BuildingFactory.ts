@@ -91,6 +91,7 @@ import {
   GreebleFactory,
   SURFACE_BUDGET,
   type GreebleAtlas,
+  type GreebleSpec,
   type SlotName,
   type UvRect,
 } from './Greeble';
@@ -1594,6 +1595,38 @@ export interface StructurePalettes {
   coat?: StructureCoat;
 }
 
+/**
+ * The structure atlas spec for one palette.
+ *
+ * Exported and pure so `BuildingLibrary.prewarm` can ask for EXACTLY the atlas
+ * `build` will later ask for. A prewarm that computes its spec independently is
+ * a prewarm that silently misses — the cache is keyed on the full spec hash, so
+ * one different field means the worker builds an atlas nobody wants and the
+ * main thread builds the real one anyway, at full cost, with no error.
+ */
+export function structureAtlasSpec(
+  key: string, p: StructurePalettes, atlasSize: number,
+): GreebleSpec {
+  return {
+    ...specForPalette(key, p.structure, atlasSize, p.seed),
+    panelDensity: p.panelDensity,
+    rivetPitchPx: BUILDING_GREEBLE.rivetPitchPx,
+  };
+}
+
+/** The pad atlas spec. Same contract as `structureAtlasSpec`. */
+export function padAtlasSpec(
+  key: string, p: StructurePalettes, atlasSize: number,
+): GreebleSpec {
+  const padSize = Math.max(128, Math.round(
+    atlasSize * (BUILDING_GREEBLE.padAtlasSize / BUILDING_GREEBLE.atlasSize)));
+  return {
+    ...specForPalette(key, p.pad, padSize, p.padSeed),
+    panelDensity: BUILDING_GREEBLE.padPanelDensity,
+    rivetPitchPx: BUILDING_GREEBLE.padRivetPitchPx,
+  };
+}
+
 export class BuildingLibrary {
   private readonly models = new Map<string, StructureModel>();
   private readonly materials = new Map<string, THREE.MeshPhysicalMaterial>();
@@ -1601,6 +1634,36 @@ export class BuildingLibrary {
   private readonly factory: GreebleFactory;
 
   constructor(factory: GreebleFactory = greebles) { this.factory = factory; }
+
+  /**
+   * Build this library's atlases off the main thread, before `build` needs them.
+   *
+   * Call it with the same lists and palettes `build` will be called with; it
+   * derives the identical specs (see `structureAtlasSpec`) and hands them to the
+   * worker pool. Every result lands in the shared `GreebleFactory` cache, so the
+   * `build` calls that follow are cache hits and stay fully synchronous — which
+   * is what keeps the R1 gate, `validateStructure` and every `atlas.metrics`
+   * read working exactly as they did.
+   *
+   * Returns the number of atlases that actually came back from a worker. Zero is
+   * a normal answer — no workers on this platform — and means `build` will do
+   * what it always did.
+   */
+  async prewarm(
+    lists: readonly StructureMassList[],
+    palettes: (faction: StructureMassList['faction']) => StructurePalettes,
+    atlasSize: number,
+  ): Promise<number> {
+    const specs = new Map<string, GreebleSpec>();
+    for (const list of lists) {
+      const p = palettes(list.faction);
+      const structKey = `${list.faction}.structure`;
+      const padKey = `${list.faction}.pad`;
+      if (!specs.has(structKey)) specs.set(structKey, structureAtlasSpec(structKey, p, atlasSize));
+      if (!specs.has(padKey)) specs.set(padKey, padAtlasSpec(padKey, p, atlasSize));
+    }
+    return this.factory.prewarm([...specs.values()]);
+  }
 
   /**
    * Build (or return) one structure. The atlas and both materials are shared
@@ -1616,21 +1679,12 @@ export class BuildingLibrary {
 
     let atlas = this.atlases.get(structKey);
     if (atlas === undefined) {
-      atlas = this.factory.atlas({
-        ...specForPalette(structKey, p.structure, atlasSize, p.seed),
-        panelDensity: p.panelDensity,
-        rivetPitchPx: BUILDING_GREEBLE.rivetPitchPx,
-      });
+      atlas = this.factory.atlas(structureAtlasSpec(structKey, p, atlasSize));
       this.atlases.set(structKey, atlas);
     }
     let padAtlas = this.atlases.get(padKey);
     if (padAtlas === undefined) {
-      const padSize = Math.max(128, Math.round(atlasSize * (BUILDING_GREEBLE.padAtlasSize / BUILDING_GREEBLE.atlasSize)));
-      padAtlas = this.factory.atlas({
-        ...specForPalette(padKey, p.pad, padSize, p.padSeed),
-        panelDensity: BUILDING_GREEBLE.padPanelDensity,
-        rivetPitchPx: BUILDING_GREEBLE.padRivetPitchPx,
-      });
+      padAtlas = this.factory.atlas(padAtlasSpec(padKey, p, atlasSize));
       this.atlases.set(padKey, padAtlas);
     }
 

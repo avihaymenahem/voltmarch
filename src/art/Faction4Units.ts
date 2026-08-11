@@ -1292,12 +1292,19 @@ export interface ReclaimBuildReport {
  * `(kind, Reclaim, -1)` default must not become the last-resort entry for
  * everybody.
  */
-export function buildAndRegisterReclaimUnits(
+export async function buildAndRegisterReclaimUnits(
   atlasSize: number,
   unitId: Readonly<Record<string, number>>,
-): ReclaimBuildReport {
+): Promise<ReclaimBuildReport> {
   const models: UnitModel[] = [];
   const failed: string[] = [];
+
+  // Atlas off-thread before the first `build` asks for it, so the loop below
+  // is a cache hit and stays synchronous. This library owns a PRIVATE
+  // GreebleFactory (see the note at `reclaimUnitLibrary`), so it needs its own
+  // prewarm — the one in `art.units` cannot reach this cache.
+  await reclaimUnitLibrary.prewarm(
+    RECLAIM_UNIT_MASS_LISTS[0].faction, RECLAIM_UNIT_PALETTE, atlasSize, RECLAIM_ATLAS_SEED);
 
   for (const list of RECLAIM_UNIT_MASS_LISTS) {
     try {

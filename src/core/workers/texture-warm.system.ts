@@ -36,6 +36,7 @@ import { defineSystem } from '../loop';
 import { Phase } from '../types';
 import { textures } from '../assets';
 import { spawnTextureWorker } from './spawn';
+import { installGreebleWorkers } from './greeble-warm';
 
 /**
  * MODULE SCOPE ON PURPOSE — see the header. Discovery imports this file before
@@ -43,6 +44,17 @@ import { spawnTextureWorker } from './spawn';
  * pool does any good.
  */
 textures.useWorkers(spawnTextureWorker);
+
+/**
+ * And point the art layer's greeble prewarm at that same pool, in the same
+ * window and for the same reason: `art.buildings` and `art.units` build their
+ * atlases inside their own `init()`, so the generator has to be installed
+ * before ANY init runs, not inside one.
+ *
+ * It shares the pool rather than starting a second one — see the header of
+ * `greeble-warm.ts`.
+ */
+installGreebleWorkers();
 
 /**
  * Last in the queue. `Phase.Cleanup` is the highest phase in the enum and this

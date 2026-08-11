@@ -301,6 +301,24 @@ export default defineSystem({
     const size = atlasSizeFor(loop.quality);
     const t0 = Date.now();
 
+    // ATLASES FIRST, OFF-THREAD, BEFORE A SINGLE MODEL IS BUILT.
+    //
+    // The four structure/pad atlases cost ~960 ms of unbroken main-thread time
+    // (allies.structure 421, allies.pad 166, soviets.structure 310, soviets.pad
+    // 61 — from the boot log), and the loading curtain cannot animate through
+    // any of it. This hands all four to the worker pool at once, so they build
+    // in parallel on other threads while this one waits.
+    //
+    // `build` below is UNCHANGED and still fully synchronous: every atlas it
+    // asks for is now a cache hit. That is what keeps the R1 gate, the
+    // `validateStructure` speckle check and every `atlas.metrics` read working
+    // exactly as before — deferring the data would have meant unpicking all of
+    // them, and a validation that runs "later, probably" is not a validation.
+    //
+    // Zero back means no workers on this platform. `build` then generates them
+    // inline, at exactly the old cost, which is the only failure mode this has.
+    const warmed = await buildingLibrary.prewarm(STRUCTURE_MASS_LISTS, palettesFor, size);
+
     const built: StructureModel[] = [];
     const failed: string[] = [];
     for (const list of STRUCTURE_MASS_LISTS) {
@@ -388,7 +406,12 @@ export default defineSystem({
       `%c[buildings]%c ${built.length}/${STRUCTURE_MASS_LISTS.length} structures, ` +
       `${buildingLibrary.materialCount()} materials, ${tris} tris, ${parts} draw calls if every ` +
       `structure is on screen at once, ${registered} bridge registrations, atlas ${size}px, ` +
-      `${Date.now() - t0} ms`,
+      // `warmed` is printed even when it is 0, because 0 is the interesting
+      // number: it means the worker offload did not happen and this line's
+      // total is ~960 ms larger than it should be. A silent fallback that looks
+      // identical to a working one is how an optimisation quietly stops
+      // existing — the exact defect docs/SPEC_DRIFT_AUDIT.md catalogues.
+      `${warmed} atlas(es) off-thread, ${Date.now() - t0} ms`,
       'color:#fd7', 'color:inherit',
     );
     for (const m of built) console.info(`[buildings] ${formatStructureStats(m.stats)}`);
