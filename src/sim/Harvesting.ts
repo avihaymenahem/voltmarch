@@ -118,6 +118,7 @@ import {
 } from '../core/config';
 import {
   CreditReason, EntityFlag, EntityKind, EvaLine, FxKind, NONE, OrderKind, UnitState,
+  UpgradeLever,
 } from '../core/types';
 import type { EntityId, Faction, Locomotor, PlayerId, SimContext } from '../core/types';
 import { PerEntityF32, PerEntityI16, PerEntityU32, type World } from '../core/world';
@@ -126,6 +127,7 @@ import {
   angleDelta, clampCell, clampWorld, dist2, moveToward, turnToward, worldToCell,
 } from '../core/math';
 import type { Economy, OreField } from './Economy';
+import { upgradeGlobalMul } from './Upgrades';
 
 /**
  * Metres from a refinery's CENTRE to the point a harvester parks to unload.
@@ -977,7 +979,15 @@ export class HarvesterController {
     if (moved > store.cargo[i]) moved = store.cargo[i];
     if (moved > 0) {
       store.cargo[i] -= moved;
-      const credits = moved * ORE_VALUE;
+      // THE PURCHASED YIELD MULTIPLIER, read at the instant the ore is sold.
+      //
+      // On the CREDITS, not on `cargoMax` and not on the scoop rate. Scaling
+      // the hopper would change how long a harvester spends at the ore face and
+      // at the dock, which is a pathing and traffic change dressed up as an
+      // economy one; scaling the payout is exactly and only "every load is
+      // worth more", which is what the blurb promises.
+      const credits = moved * ORE_VALUE
+        * upgradeGlobalMul(this.world.players[store.owner[i]], UpgradeLever.Yield);
       this.economy.deposit(store.owner[i] as PlayerId, credits, CreditReason.Harvest);
       this.deliveredTotal += credits;
     }

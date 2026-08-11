@@ -75,8 +75,9 @@ import {
   FOG_DEFAULT_SIGHT, FOG_MIN_SIGHT, FOG_SIGHT_SCALE, FOG_STRUCTURE_SIGHT_BONUS,
   FOG_RADAR_DETECT_MUL, FOG_CLOAK_REVEAL_SECONDS, FOG_MAX_DETECTORS,
 } from '../core/config';
-import { EntityFlag, EntityKind, VisionLevel } from '../core/types';
+import { EntityFlag, EntityKind, UpgradeLever, VisionLevel } from '../core/types';
 import type { EntityId, PlayerId, IVision } from '../core/types';
+import { upgradeMul } from './Upgrades';
 import { devAsserts } from '../core/loop';
 import type { World } from '../core/world';
 import { PerEntityF32, PerEntityU32 } from '../core/world';
@@ -496,7 +497,14 @@ export class Vision implements IVision {
     if (base <= 0) return 0;
     if (base < FOG_MIN_SIGHT) base = FOG_MIN_SIGHT;
 
-    let r = base * FOG_SIGHT_SCALE;
+    // THE PURCHASED SIGHT MULTIPLIER, read at the instant the circle is sized.
+    //
+    // Applied to the SCALED radius and before the structure bonus, so an
+    // upgrade widens what the unit itself contributes and does not quietly
+    // scale a flat constant that has nothing to do with it. `FOG_MIN_SIGHT` is
+    // still enforced above on the base, so this can only ever widen.
+    let r = base * FOG_SIGHT_SCALE
+      * upgradeMul(this.world.players[s.owner[i]], UpgradeLever.Sight, kind as EntityKind);
     if (kind === EntityKind.Building) r += FOG_STRUCTURE_SIGHT_BONUS;
     return r;
   }

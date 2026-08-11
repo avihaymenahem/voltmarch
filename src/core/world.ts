@@ -39,7 +39,7 @@ import {
 } from './config';
 import {
   EntityFlag, EntityKind, ENTITY_KIND_COUNT, Faction, Locomotor, NONE,
-  OrderKind, Stance, UnitState, ArmorClass, VisionLevel,
+  OrderKind, Stance, UnitState, ArmorClass, VisionLevel, UPGRADE_MUL_SLOTS,
   makeHandle, handleIndex, handleGen,
 } from './types';
 import type {
@@ -975,6 +975,11 @@ export function createPlayerState(
     queues: BUILD_TAB_ORDER.map(makeQueue),
     techMask: new Uint8Array(256),
     hasRadar: false,
+    // Nothing bought yet, so every multiplier is exactly 1. Built here rather
+    // than by `src/sim/Upgrades.ts` so core keeps importing nothing from sim;
+    // the table that fills it lives there, the empty shape lives here.
+    upgradeMask: 0,
+    upgradeMul: new Float32Array(UPGRADE_MUL_SLOTS).fill(1),
     rallyX: new Map<number, number>(),
     rallyZ: new Map<number, number>(),
     entityCount: new Int32Array(ENTITY_KIND_COUNT),

@@ -168,6 +168,16 @@ export interface CameoSubject {
   faction: Faction;
   tab: BuildTab;
   isBuilding: boolean;
+  /**
+   * True for a purchasable in-match upgrade. Optional, and absent means false,
+   * so every existing caller and every test helper reads unchanged.
+   *
+   * It cannot be inferred from `isBuilding` — an upgrade is not a building and
+   * not a unit, and the two-valued flag has no way to say so. Without it the
+   * base-wide upgrades would resolve to `depot` and the vehicle ones to `tank`,
+   * i.e. a picture of a structure or a hull the player is not buying.
+   */
+  isUpgrade?: boolean;
   /** Footprint in cells for buildings; 0 for units. Sizes the fallback mass. */
   footprintW: number;
   footprintH: number;
@@ -1314,7 +1324,8 @@ export type CameoArchetype =
   | 'lab' | 'superweapon' | 'silo' | 'helipad' | 'wall' | 'repairbay' | 'depot'
   | 'turret' | 'aa' | 'tesla' | 'prism'
   | 'tank' | 'heavyTank' | 'artillery' | 'harvester' | 'apc' | 'mcv'
-  | 'aircraft' | 'helicopter' | 'ship' | 'rifleman' | 'rocketeer' | 'dog';
+  | 'aircraft' | 'helicopter' | 'ship' | 'rifleman' | 'rocketeer' | 'dog'
+  | 'upgrade';
 
 /**
  * PARTS ARE AUTHORED IN DRAW ORDER, back to front. No depth sort runs.
@@ -1644,6 +1655,38 @@ const SILHOUETTES: Readonly<Record<CameoArchetype, readonly Part[]>> = {
     bx(0.14, 0.72, 0.96, 0.13, 0.15, 0.18, 'dark'),
     bx(0, 1.16, 0.5, 0.26, 0.34, 0.24, 'dark'),                 // muzzle
   ],
+
+  /* --- upgrades ----------------------------------------------------------
+   * NOT A VEHICLE AND NOT A SOLDIER, and it must not be mistaken for either at
+   * 60 x 48. Every other entry in this table is a picture of a thing that will
+   * exist on the battlefield; an upgrade never becomes an entity, so drawing it
+   * as one would promise the player a unit they are not buying.
+   *
+   * So it is a BADGE: a plinth, a team-coloured chevron stack rising off it,
+   * and two struts. Chevrons because the game already spends them on veterancy,
+   * which is the same idea one layer down — "this got better" — and a player
+   * who reads one reads the other without being taught.
+   * -------------------------------------------------------------------- */
+  upgrade: [
+    pad(3.4, 3.4),
+    bx(0, 0, 0, 2.5, 2.5, 0.34, 'dark'),                        // plinth
+    bx(0, 0, 0.34, 2.1, 2.1, 0.16, 'metal'),                    // plinth cap
+    bx(-1.0, 0, 0.5, 0.22, 0.22, 1.5, 'metal'),                 // struts
+    bx(1.0, 0, 0.5, 0.22, 0.22, 1.5, 'metal'),
+    // Three chevrons, narrowing as they rise. Each is a wide bar with a pair of
+    // shoulders, which reads as an upward arrow head from the fixed iso angle
+    // without needing a triangle primitive this painter does not have.
+    bx(0, 0, 0.6, 1.7, 0.5, 0.26, 'team'),
+    bx(-0.62, 0.34, 0.6, 0.46, 0.5, 0.26, 'team'),
+    bx(0.62, 0.34, 0.6, 0.46, 0.5, 0.26, 'team'),
+    bx(0, 0, 1.06, 1.35, 0.44, 0.24, 'trim'),
+    bx(-0.5, 0.3, 1.06, 0.36, 0.44, 0.24, 'trim'),
+    bx(0.5, 0.3, 1.06, 0.36, 0.44, 0.24, 'trim'),
+    bx(0, 0, 1.48, 1.0, 0.38, 0.22, 'body'),
+    bx(-0.36, 0.26, 1.48, 0.28, 0.38, 0.22, 'body'),
+    bx(0.36, 0.26, 1.48, 0.28, 0.38, 0.22, 'body'),
+    dm(0, 0, 1.7, 0.42, 'glass'),                               // lamp
+  ],
 };
 
 /**
@@ -1708,6 +1751,14 @@ const ARCHETYPE_RULES: ReadonlyArray<readonly [RegExp, CameoArchetype]> = [
 ];
 
 export function archetypeFor(subject: CameoSubject): CameoArchetype {
+  // FIRST, AND BEFORE THE KEYWORD RULES. An upgrade's NAME is prose about what
+  // it does — "Composite Armour", "Uranium Shells", "Solar Sails" — and the
+  // rules below match on exactly that kind of prose. `/tank|grizzly|.../` would
+  // not fire, but `/rocket|bazooka|missile/` catches a hypothetical "Rocket
+  // Pods" and `/plane|jet|.../` a "Jet Intakes". Deciding this from the kind
+  // flag rather than from the words means a future upgrade can be called
+  // anything at all without silently redrawing itself as a gunship.
+  if (subject.isUpgrade === true) return 'upgrade';
   const hay = `${subject.key} ${subject.name}`.toLowerCase();
   for (const [re, arch] of ARCHETYPE_RULES) {
     if (re.test(hay)) {

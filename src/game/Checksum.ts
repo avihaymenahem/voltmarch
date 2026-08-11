@@ -179,6 +179,17 @@ function hashPlayers(world: World): number {
     h = mix(h, q(p.storageMax));
     h = mix(h, p.defeated ? 1 : 0);
     h = mix(h, p.allyMask);
+    // IN-MATCH UPGRADES. The mask only — `upgradeMul` is a pure function of it
+    // and hashing both would just be hashing the same fact twice, in floats.
+    //
+    // It has to be here, and it is the only per-player availability state that
+    // is: `techMask`, `buildingCount` and `hasRadar` are all recomputed every
+    // tick from the entities, which the entity block already covers, so a
+    // divergence in them is caught there. This one is not derived from anything
+    // the other two blocks can see. Without this line two clients could
+    // disagree about who owns Uranium Shells and the desync detector would stay
+    // silent until the damage difference had compounded into a dead tank.
+    h = mix(h, p.upgradeMask);
     // Production queues are sim state and a desync here is a classic one: two
     // runs that agree on every unit on the field but disagree about what is
     // being built diverge visibly a few seconds later.

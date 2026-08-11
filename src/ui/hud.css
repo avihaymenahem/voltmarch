@@ -2012,6 +2012,11 @@
 .vm-hud .vm-slot-flag.is-funds { color: var(--vm-warn); }
 .vm-hud .vm-slot-flag.is-power { color: var(--vm-warn); }
 .vm-hud .vm-slot-flag.is-tech { color: var(--vm-danger); }
+/* INSTALLED is the one banner that is not a complaint — a bought upgrade is
+   unbuildable because the player already owns it. Amber or red here would read
+   as a problem with something they just spent 1200 credits on, so it takes the
+   faction accent, which is the same colour the cell uses to say READY. */
+.vm-hud .vm-slot-flag.is-owned { color: var(--vm-accent-hi); }
 
 /* The progress bar along the bottom edge, with a slight glow. NOT a radial
    clock wipe — the wipe belonged to a painted cameo and reads as damage on a

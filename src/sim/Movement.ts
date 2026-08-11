@@ -61,13 +61,14 @@ import {
   MOVE_WAKE_METRES, MOVE_MIN_FX_SPEED, MOVE_TREAD_GAUGE_FRAC,
   AIR_CRUISE_ALTITUDE, AIR_CLIMB_LAMBDA, SIM_DT,
 } from '../core/config';
-import { EntityFlag, EntityKind, FxKind } from '../core/types';
+import { EntityFlag, EntityKind, FxKind, UpgradeLever } from '../core/types';
 import type { EntityId, SimContext } from '../core/types';
 import type { EntityStore, World } from '../core/world';
 import type { Channels } from '../core/events';
 import { angleDelta, clamp, isInMap, turnToward, worldToCell } from '../core/math';
 import { MoveClass, moveClassForLocomotor, type FlowFieldCache } from './Flowfield';
 import { crushPassesThrough } from './Crush';
+import { upgradeMul } from './Upgrades';
 import { getTerrain } from '../world/Terrain';
 import { layTread } from '../world/Decals';
 import { addWake, waterLevelAt } from '../world/Water';
@@ -248,7 +249,13 @@ export class MovementIntegrator {
         const vx = st.velX[i], vz = st.velZ[i];
         wantSpeed = Math.sqrt(vx * vx + vz * vz);
       }
-      const maxSpeed = st.maxSpeed[i];
+      // THE PURCHASED SPEED MULTIPLIER, read at the instant the cap is applied.
+      // `st.maxSpeed` itself is never touched: it is the unit's authored stat,
+      // it is what `SaveGame` round-trips, and it is what the AI's scout picker
+      // (`AI.ts:2234`) scores hulls on. Scaling it in place would make a loaded
+      // save re-apply the upgrade on top of itself.
+      const maxSpeed = st.maxSpeed[i]
+        * upgradeMul(w.players[st.owner[i]], UpgradeLever.Speed, kind as EntityKind);
       if (wantSpeed > maxSpeed) wantSpeed = maxSpeed;
 
       /* -- turning ------------------------------------------------------- */

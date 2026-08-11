@@ -342,6 +342,66 @@ export const enum BuildTab {
 }
 export const BUILD_TAB_COUNT = 4;
 
+/* --------------------------------------------------------------------------
+ * IN-MATCH UPGRADES — the vocabulary only. The table is `UPGRADES` in
+ * config.ts and the runtime is `src/sim/Upgrades.ts`.
+ *
+ * THREE LAYERS THAT ARE EASY TO CONFUSE, so they are named here once:
+ *
+ *   VETERANCY    per-UNIT, EARNED by kills. `EntityFlag.Veteran1/2`.
+ *   UNLOCKS      cross-MATCH meta, tied to the local profile. `UNLOCK_TAGS`.
+ *   UPGRADES     per-PLAYER, BOUGHT with credits, lasts one match. This.
+ *
+ * An upgrade never re-stats an existing entity. It moves a multiplier that the
+ * consuming system reads AT THE POINT OF USE, which is the only version that
+ * covers units built after the purchase without a second source of truth.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * What an upgrade moves. One lever per authored effect; a lever is a
+ * multiplier and never an absolute.
+ *
+ * READ THE DIRECTION OF EACH ONE — two of them are "lower is better", which is
+ * exactly the sort of thing that inverts silently under a refactor:
+ *   Damage      out-going damage         >1 is stronger
+ *   Cooldown    seconds between shots    <1 is FASTER
+ *   Armour      IN-coming damage         <1 is TOUGHER
+ *   Speed       max speed                >1 is faster
+ *   Sight       sight radius             >1 sees further
+ *   BuildSpeed  queue progress rate      >1 builds faster
+ *   Yield       credits per ore unit     >1 earns more
+ */
+export const enum UpgradeLever {
+  Damage = 0,
+  Cooldown = 1,
+  Armour = 2,
+  Speed = 3,
+  Sight = 4,
+  BuildSpeed = 5,
+  Yield = 6,
+}
+export const UPGRADE_LEVER_COUNT = 7;
+
+/** Which of a player's things an upgrade reaches. */
+export const enum UpgradeScope {
+  /** `EntityKind.Infantry` only. */
+  Infantry = 0,
+  /** `EntityKind.Vehicle` only. */
+  Vehicle = 1,
+  /** Every kind slot, including `EntityKind.None` — see UPGRADE_MUL_SLOTS. */
+  All = 2,
+}
+
+/**
+ * Length of `PlayerState.upgradeMul`: one float per (lever, EntityKind) pair.
+ *
+ * A LEVER THAT IS NOT KIND-SCOPED (BuildSpeed, Yield) is authored as
+ * `UpgradeScope.All`, which writes every slot including `EntityKind.None`, and
+ * its readers pass `EntityKind.None`. That keeps one array and one index
+ * function rather than a second set of scalar fields that could disagree.
+ */
+export const UPGRADE_MUL_SLOTS = UPGRADE_LEVER_COUNT * ENTITY_KIND_COUNT;
+
 /**
  * What the player (or AI) asked a unit to do. Produced ONLY by
  * `resolveContextOrder` so the cursor, the HUD and the AI can never disagree
@@ -1222,6 +1282,27 @@ export interface PlayerState {
   /** True while a powered Radar Dome lives. Gates enemy minimap blips. */
   hasRadar: boolean;
 
+  /**
+   * IN-MATCH UPGRADES BOUGHT SO FAR. Bit `UpgradeDef.bit` set = installed.
+   *
+   * SIM STATE, and the ONLY authority on what this player owns. It is hashed by
+   * `Checksum.hashPlayers`, saved by name in `SaveGame`, and never read from the
+   * local profile — a purchase is a thing that happened in THIS match on BOTH
+   * clients, not a fact about whose browser this is.
+   *
+   * 32 bits, and `UPGRADES` is asserted to fit by `tests/upgrades.spec.ts`.
+   */
+  upgradeMask: number;
+  /**
+   * DERIVED from `upgradeMask`, never authored and never saved.
+   *
+   * `UPGRADE_MUL_SLOTS` floats indexed by `upgradeSlot(lever, kind)`, all 1 when
+   * nothing is bought. Recomputed in exactly one place
+   * (`Upgrades.recomputeUpgradeMuls`) whenever the mask changes and on load, so
+   * the mask cannot drift out of step with the numbers the sim reads.
+   */
+  upgradeMul: Float32Array;
+
   /** Per-factory rally points, keyed by factory EntityId. */
   rallyX: Map<number, number>;
   rallyZ: Map<number, number>;
@@ -1256,6 +1337,15 @@ export interface SelectionState {
 export interface HudCameo {
   defId: number;
   isBuilding: boolean;
+  /**
+   * True for a purchasable in-match upgrade rather than a unit or a structure.
+   *
+   * `isBuilding` alone described the world when there were two kinds of thing
+   * in the grid. There are three now, so a cell that is neither has to say so:
+   * the sidebar picks a different silhouette for it and reads `owned` as a
+   * yes/no rather than a count.
+   */
+  isUpgrade: boolean;
   key: string;
   name: string;
   cost: number;

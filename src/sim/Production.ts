@@ -73,6 +73,11 @@ import {
 // `?shot=` harness and every node test are in.
 import { isBuildable, LOCKED_REASON } from '../progression/UnlockGate';
 
+// The upgrade table and its one mutator. `src/sim/Upgrades.ts` imports nothing
+// but `core/types`, so this edge adds no cycle and no progression dependency —
+// an upgrade is in-match state and must never consult the local profile.
+import { grantUpgrade, hasUpgradeKey, upgradeByKey } from './Upgrades';
+
 import { BuildQueues, HoldReason, type QueueHooks, type QueueItemInfo } from './BuildQueue';
 import {
   PlacementPhase, evaluatePlacement, facedFootprintH, facedFootprintW, facingYaw,
@@ -104,6 +109,22 @@ export type { PlacementListener, PlacementNotice };
 export const enum BuildKind {
   Building = 0,
   Unit = 1,
+  /**
+   * A purchasable in-match upgrade. Neither a unit nor a building: it occupies
+   * a queue slot, costs credits, takes build time and then VANISHES, leaving a
+   * bit set in `PlayerState.upgradeMask`.
+   *
+   * APPENDED. `BuildKind` is compared numerically in `src/ui/Hud.ts` ("0
+   * building, 1 unit") and in `tests/sell-lockout.spec.ts`, so renumbering
+   * either existing member would change what those mean with no error.
+   *
+   * Expressing it as a third `BuildKind` rather than as a parallel system is
+   * what buys the whole feature for free: cost, prerequisites, build time, the
+   * drip-payment queue, the cameo grid, the sidebar, the tech mask and
+   * `availabilityOf` all already key off `BuildEntry`, and none of them had to
+   * learn a new concept to carry one.
+   */
+  Upgrade = 2,
 }
 
 /**
@@ -113,6 +134,19 @@ export const enum BuildKind {
  * typed array (`Command.defId` is a plain object field).
  */
 export const UNIT_PUBLIC_ID_BASE = 4096;
+
+/**
+ * Added to an upgrade's `UpgradeDef.bit` to make its `publicId`.
+ *
+ * BELOW `UNIT_PUBLIC_ID_BASE`, AND THAT IS A WIRE CONSTRAINT, not taste.
+ * `WIRE_LIMITS.maxDefId` is 4095 and `validateCommand` rejects anything above
+ * it, so an upgrade id at 8192 would have been dropped by the relay and by the
+ * replay validator — silently for the player, and as a match-ending tripwire
+ * for the peer. 2048 is unambiguous in the other direction too: the def tables
+ * hold 48 units and ~50 buildings, so no real def index can reach it, and
+ * `resolve()` can therefore recognise an upgrade id on sight.
+ */
+export const UPGRADE_PUBLIC_ID_BASE = 2048;
 
 /** One buildable, fully resolved. `index` is the id every api here speaks in. */
 export interface BuildEntry {
@@ -910,6 +944,110 @@ const CONTENT: readonly ContentSpec[] = [
     kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
     cost: 2500, buildTime: 32, prereqs: ['rclCrucible'], sortOrder: 90,
   },
+
+  /* -- THE UPGRADES, appended for the same reason the gate and the commanders
+   * are: array position is an id.
+   *
+   * `sortOrder: 95` puts them at the bottom of their tab, after the commanders
+   * at 90. THE TAB IS THE GATE: an Infantry-tab row is unavailable until the
+   * player owns a structure servicing the Infantry queue, which is a barracks
+   * (or a Chapterhouse, or a Rookery) — so "bought from a structure you own"
+   * costs no code at all. Vehicles means a war factory; Structures means a
+   * construction yard.
+   *
+   * The BLURB IS THE UI. `Hud.extrasFor` reads it straight off the catalog
+   * entry and the sidebar prints it under the cameo, so this column is what the
+   * player reads before deciding — it states the actual number, and the numbers
+   * here are transcribed from `UPGRADES` in `src/sim/Upgrades.ts`.
+   * `tests/upgrades.spec.ts` asserts the two tables name the same twelve keys
+   * and agree about faction and tab, because a blurb that quietly stops
+   * matching the multiplier is the exact defect `docs/SPEC_DRIFT_AUDIT.md`
+   * catalogues.
+   *
+   * There is no `Faction.Neutral` row here on purpose — Neutral means "the two
+   * ORIGINAL armies share it" (see SHARED_POOL_FACTIONS), so a Neutral upgrade
+   * would be invisible to the Pact and the Reclamation.
+   * --------------------------------------------------------------------- */
+
+  /* -- the Allies: see first, survive, out-produce ----------------------- */
+  {
+    key: 'upgAlliedOptics', name: 'Advanced Optics',
+    blurb: 'Allied infantry see 30% further. Applies to every rifleman you own.',
+    kind: BuildKind.Upgrade, faction: Faction.Allies, tab: I,
+    cost: 800, buildTime: 20, prereqs: ['barracks', 'radar'], sortOrder: 95,
+  },
+  {
+    key: 'upgAlliedComposite', name: 'Composite Armour',
+    blurb: 'Allied vehicles take 18% less damage. Applies to every hull you own.',
+    kind: BuildKind.Upgrade, faction: Faction.Allies, tab: V,
+    cost: 1200, buildTime: 26, prereqs: ['warFactory', 'radar'], sortOrder: 95,
+  },
+  {
+    key: 'upgAlliedLogistics', name: 'Logistics Network',
+    blurb: 'Everything you build arrives 20% sooner.',
+    kind: BuildKind.Upgrade, faction: Faction.Allies, tab: S,
+    cost: 1000, buildTime: 24, prereqs: ['refinery', 'radar'], sortOrder: 95,
+  },
+
+  /* -- the Soviets: troops that will not die, guns like trucks, more ore -- */
+  {
+    key: 'upgSovietBodyArmour', name: 'Body Armour',
+    blurb: 'Soviet infantry take 20% less damage. Applies to every conscript you own.',
+    kind: BuildKind.Upgrade, faction: Faction.Soviets, tab: I,
+    cost: 800, buildTime: 20, prereqs: ['barracks', 'radar'], sortOrder: 95,
+  },
+  {
+    key: 'upgSovietUranium', name: 'Uranium Shells',
+    blurb: 'Soviet vehicles deal 25% more damage. Applies to every hull you own.',
+    kind: BuildKind.Upgrade, faction: Faction.Soviets, tab: V,
+    cost: 1200, buildTime: 26, prereqs: ['warFactory', 'battleLab'], sortOrder: 95,
+  },
+  {
+    key: 'upgSovietSlurry', name: 'Slurry Reclaimers',
+    blurb: 'Every ore load is worth 20% more credits.',
+    kind: BuildKind.Upgrade, faction: Faction.Soviets, tab: S,
+    cost: 1000, buildTime: 24, prereqs: ['refinery', 'radar'], sortOrder: 95,
+  },
+
+  /* -- the Meridian Pact: long eyes, fast hulls, beams that recharge ------ */
+  {
+    key: 'upgMrdWayfinding', name: 'Wayfinding Optics',
+    blurb: 'Pact infantry see 35% further. Applies to every Wayfarer you own.',
+    kind: BuildKind.Upgrade, faction: Faction.Meridian, tab: I,
+    cost: 800, buildTime: 20, prereqs: ['mrdChapterhouse', 'mrdOculus'], sortOrder: 95,
+  },
+  {
+    key: 'upgMrdSolarSails', name: 'Solar Sails',
+    blurb: 'Pact vehicles move 20% faster. Applies to every hull you own.',
+    kind: BuildKind.Upgrade, faction: Faction.Meridian, tab: V,
+    cost: 1200, buildTime: 26, prereqs: ['mrdForgeyard', 'mrdOculus'], sortOrder: 95,
+  },
+  {
+    key: 'upgMrdCapacitors', name: 'Capacitor Banks',
+    blurb: 'Everything you own reloads 15% faster.',
+    kind: BuildKind.Upgrade, faction: Faction.Meridian, tab: S,
+    cost: 1000, buildTime: 24, prereqs: ['mrdOculus', 'mrdReliquary'], sortOrder: 95,
+  },
+
+  /* -- the Reclamation: spray, bite, and cash in the field ---------------- */
+  {
+    key: 'upgRclSwarmDrill', name: 'Swarm Drill',
+    blurb: 'Reclamation infantry reload 18% faster. Applies to every picker you own.',
+    kind: BuildKind.Upgrade, faction: Faction.Reclaim, tab: I,
+    cost: 800, buildTime: 20, prereqs: ['rclRookery', 'rclSpotter'], sortOrder: 95,
+  },
+  {
+    key: 'upgRclOvercharge', name: 'Coil Overcharge',
+    blurb: 'Reclamation vehicles deal 20% more damage. Applies to every hull you own.',
+    kind: BuildKind.Upgrade, faction: Faction.Reclaim, tab: V,
+    cost: 1200, buildTime: 26, prereqs: ['rclBreakerYard', 'rclSpotter'], sortOrder: 95,
+  },
+  {
+    key: 'upgRclSalvage', name: 'Salvage Rigs',
+    blurb: 'Every ore load is worth 25% more credits.',
+    kind: BuildKind.Upgrade, faction: Faction.Reclaim, tab: S,
+    cost: 1000, buildTime: 24, prereqs: ['rclSorter', 'rclSpotter'], sortOrder: 95,
+  },
 ];
 
 /** Every army a player or an AI can be. Neutral is not one of them. */
@@ -950,6 +1088,8 @@ export class ProductionCatalog {
   private readonly byKeyMap = new Map<string, BuildEntry>();
   private readonly byDefIdBuilding = new Map<number, BuildEntry>();
   private readonly byDefIdUnit = new Map<number, BuildEntry>();
+  /** Upgrades by `publicId`. Their `defId` is -1, so the two maps above cannot hold them. */
+  private readonly byUpgradeId = new Map<number, BuildEntry>();
   /** True when a real DefTables was found and merged. */
   readonly bound: boolean;
 
@@ -967,6 +1107,7 @@ export class ProductionCatalog {
 
     for (const e of entries) {
       this.byKeyMap.set(e.key, e);
+      if (e.kind === BuildKind.Upgrade) { this.byUpgradeId.set(e.publicId, e); continue; }
       if (e.defId >= 0) {
         (e.kind === BuildKind.Building ? this.byDefIdBuilding : this.byDefIdUnit).set(e.defId, e);
       }
@@ -1022,6 +1163,18 @@ export class ProductionCatalog {
    */
   resolve(id: number, isBuilding?: boolean): BuildEntry | null {
     if (id < 0) return null;
+    // UPGRADES FIRST, AND UNCONDITIONALLY, because their id range is the only
+    // one in the catalog that is unambiguous on its own.
+    //
+    // The `isBuilding` hint is NOT usable here. Every command path derives it
+    // from the tab (`tabIsStructural`), and an upgrade lives in whichever tab
+    // gates it — so the base-wide upgrades, which sit in Structures, arrive
+    // with `isBuilding === true`. Honouring that hint would make them
+    // unresolvable while the infantry and vehicle ones worked, which is exactly
+    // the kind of half-working that gets shipped.
+    if (id >= UPGRADE_PUBLIC_ID_BASE && id < UNIT_PUBLIC_ID_BASE) {
+      return this.byUpgradeId.get(id) ?? null;
+    }
     if (this.bound) {
       const offset = id >= UNIT_PUBLIC_ID_BASE;
       const bare = offset ? id - UNIT_PUBLIC_ID_BASE : id;
@@ -1074,6 +1227,56 @@ const UNIT_DEF_SLOTS = 256;
 /** Merge one authored spec with the fallback tables and any real def. */
 function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): BuildEntry | null {
   const isBuilding = spec.kind === BuildKind.Building;
+
+  // AN UPGRADE HAS NO DEF AND NO FALLBACK ROW, and needs neither: it never
+  // becomes an entity, so there is no hp, footprint, armour or locomotor to
+  // borrow. Everything about it that the production layer cares about — cost,
+  // time, prereqs, tab, faction — is authored in `CONTENT` above, and
+  // everything about its EFFECT is in `UPGRADES`. This branch is first because
+  // both branches below would warn and drop the row for a missing fallback.
+  if (spec.kind === BuildKind.Upgrade) {
+    const def = upgradeByKey(spec.key);
+    if (def === null) {
+      console.warn(`[production] no UPGRADES row for "${spec.key}" — entry dropped`);
+      return null;
+    }
+    return {
+      index,
+      key: spec.key,
+      name: spec.name,
+      blurb: spec.blurb,
+      kind: BuildKind.Upgrade,
+      faction: spec.faction,
+      tab: spec.tab,
+      cost: spec.cost,
+      buildTime: spec.buildTime,
+      prereqs: spec.prereqs,
+      sortOrder: spec.sortOrder,
+      buildable: spec.buildable !== false,
+      // Never progression-gated. An upgrade is bought inside a match with
+      // credits both clients can see; hanging it off the local profile is the
+      // tick-zero desync `Scenarios.ts` already had to be rescued from.
+      unlockedBy: '',
+      // No def table has a row for it, and nothing may look one up: -1 keeps it
+      // out of `byDefIdUnit` / `byDefIdBuilding` entirely.
+      defId: -1,
+      publicId: UPGRADE_PUBLIC_ID_BASE + def.bit,
+      footprintW: 0,
+      footprintH: 0,
+      height: 0,
+      power: 0,
+      storage: 0,
+      buildRadius: 0,
+      producesTabs: EMPTY_TABS,
+      exitX: 0,
+      exitZ: 0,
+      shipsWith: '',
+      entityKind: EntityKind.None,
+      // The one-at-a-time rule for an upgrade is ownership, not a cap: see
+      // `availabilityOf`, which refuses a second copy because the bit is set.
+      maxAlive: 0,
+    };
+  }
 
   if (isBuilding) {
     const fb: FallbackBuilding | undefined = FALLBACK_BUILDINGS[spec.key];
@@ -1400,6 +1603,22 @@ export class ProductionService implements QueueHooks {
     if (!entry.buildable) { result.ok = false; result.reason = 'Not buildable'; return result; }
     if (entry.faction !== Faction.Neutral && entry.faction !== p.faction) {
       result.ok = false; result.reason = 'Wrong faction'; return result;
+    }
+    // ALREADY INSTALLED. Second, right after the faction check and before the
+    // prereqs, because unlike every reason below it this one is FINAL — the
+    // prereq that is missing may yet be built, and the upgrade you already own
+    // will never become buyable again. Reporting "Requires a Radar Dome" for an
+    // upgrade the player installed ten minutes ago would be a lie.
+    //
+    // `capped` is the right flag for it, and `AvailabilityResult` says why: it
+    // means "you already do" rather than "not yet", which is precisely the
+    // distinction the AI's stuck-reason diagnostic needs so a bought upgrade
+    // cannot pin its build report for the rest of the match.
+    if (entry.kind === BuildKind.Upgrade && hasUpgradeKey(p, entry.key)) {
+      result.ok = false;
+      result.capped = true;
+      result.reason = 'Installed';
+      return result;
     }
     // The progression gate. Third, not first: "Wrong faction" is a fact about
     // the entry and "Locked" is a fact about the profile, and reporting the
@@ -1978,6 +2197,21 @@ export class ProductionService implements QueueHooks {
     // as well — otherwise the single gate above passes and five commanders go
     // onto the line behind it.
     let n = count;
+    // AN UPGRADE IS A ONE-OFF AND `maxAlive` CANNOT SAY SO. That cap counts
+    // ALIVE ENTITIES (`aliveOf`, bucketed by `store.defId`), and an upgrade
+    // never becomes an entity and has no def id — so the clamp below reads zero
+    // in hand forever and a shift-click put FIVE Composite Armours on the line,
+    // charging 1200 credits five times for one effect. The four extras then
+    // installed into an already-set bit and vanished without a refund.
+    //
+    // The `countOf` guard is the queued half of the same question that
+    // `availabilityOf` answered for the installed half: the cameo is still
+    // clickable while the first copy is building, and two on the line is the
+    // same double charge one tick later.
+    if (entry.kind === BuildKind.Upgrade) {
+      if (this.queues.countOf(p, entry.tab, entry.publicId, false) > 0) return;
+      n = 1;
+    }
     if (entry.maxAlive > 0) {
       const inHand = this.aliveOf(p.id, entry.defId)
         + this.queues.countOf(p, entry.tab, entry.publicId, entry.kind === BuildKind.Building);
@@ -2399,6 +2633,19 @@ export class ProductionService implements QueueHooks {
     // `item.defId` is a publicId, and it may not even be ours — resolve it the
     // same way everything else that reads a queue item does.
     const entry = this.resolveQueueEntry(item);
+    // AN UPGRADE HAS NOWHERE TO DRIVE. It has finished paying and finished
+    // building, so it is installed here and the head is completed by the
+    // caller, exactly as if a tank had cleared the door.
+    //
+    // This is deliberately the SAME seam a unit leaves by, and not an earlier
+    // one: everything that has to be true before a queue item may take effect —
+    // fully paid, progress at 1, not on hold — has already been established by
+    // `BuildQueue.advanceTab` by the time anything reaches this function. A
+    // second completion path would be a second set of those conditions.
+    if (entry !== null && entry.kind === BuildKind.Upgrade) {
+      this.installUpgrade(p, entry);
+      return true;
+    }
     if (entry === null || entry.kind !== BuildKind.Unit) return true; // drop the impossible
 
     const fi = (p.id as number) * BUILD_TAB_COUNT + (tab as number);
@@ -2446,6 +2693,44 @@ export class ProductionService implements QueueHooks {
     p.stats.unitsBuilt++;
     this.eva(p, EvaLine.UnitReady);
     return true;
+  }
+
+  /**
+   * Install a finished upgrade and tell everyone who cares.
+   *
+   * THE ONE PLACE `upgradeMask` GROWS DURING A MATCH. It is reached only from
+   * `tryEgress`, which is reached only from `tick`, which is `Phase.Production`
+   * — so the write happens inside `simTick`, at a fixed point in a fixed order,
+   * on every client, off a command that crossed the bus. That is the whole PvP
+   * argument, and it is why there is no public `buy()` on this service for a
+   * HUD or an AI to reach for instead.
+   *
+   * `grantUpgrade` returning false means the bit was already set. That is not
+   * an error worth shouting about — `availabilityOf` refuses a second purchase
+   * and `applyEnqueue` re-checks it, so the only way here is a save loaded
+   * mid-queue — but it must not be double-counted, so the event stays inside
+   * the branch.
+   */
+  private installUpgrade(p: PlayerState, entry: BuildEntry): void {
+    const def = upgradeByKey(entry.key);
+    if (def === null) return;
+    if (!grantUpgrade(p, def)) return;
+
+    // Re-derive availability now rather than next tick: the cameo has to stop
+    // reading "buy me" on the same tick the credits stopped being spendable.
+    this.techDirty = true;
+
+    const ev = this.channels.events.payload('production:ready');
+    ev.player = p.id;
+    ev.tab = entry.tab;
+    ev.defId = entry.publicId;
+    ev.isBuilding = false;
+    this.channels.events.emitPooled('production:ready');
+
+    this.eva(p, EvaLine.NewConstructionOptions);
+    if ((p.id as number) === (this.world.localPlayer as number)) {
+      hudToast()?.toast('info', `upgrade-${entry.key}`, `${entry.name} installed`, entry.blurb);
+    }
   }
 
   /**
@@ -2745,10 +3030,16 @@ export class ProductionService implements QueueHooks {
         // lookup past the end of a 256-entry array, so every unit badge read
         // zero and only buildings ever worked. Buildings are unoffset, hence
         // `publicId` is right on that branch and `defId` on this one.
-        cameo.owned = entry.kind === BuildKind.Building
-          ? (entry.publicId >= 0 && entry.publicId < p.buildingCount.length
-            ? p.buildingCount[entry.publicId] : 0)
-          : this.aliveOf(p.id, entry.defId);
+        // THREE KINDS, THREE COUNTS. An upgrade owns no entities, so neither of
+        // the two counters below describes it — `buildingCount` is indexed by a
+        // def id it does not have, and `aliveOf(-1)` is 0 forever. It is a
+        // yes/no, and 1 is what makes the sidebar's `owned` badge appear.
+        cameo.owned = entry.kind === BuildKind.Upgrade
+          ? (hasUpgradeKey(p, entry.key) ? 1 : 0)
+          : entry.kind === BuildKind.Building
+            ? (entry.publicId >= 0 && entry.publicId < p.buildingCount.length
+              ? p.buildingCount[entry.publicId] : 0)
+            : this.aliveOf(p.id, entry.defId);
       }
     }
   }
@@ -2820,7 +3111,7 @@ export class ProductionService implements QueueHooks {
       const pool = this.cameoPool[t];
       while (pool.length < roster.length) {
         pool.push({
-          defId: -1, isBuilding: false, key: '', name: '', cost: 0,
+          defId: -1, isBuilding: false, isUpgrade: false, key: '', name: '', cost: 0,
           progress: 0, queued: 0, ready: false, onHold: false, available: false, reason: '', owned: 0,
         });
       }
@@ -2830,6 +3121,7 @@ export class ProductionService implements QueueHooks {
         const entry = roster[i];
         cameo.defId = entry.publicId;
         cameo.isBuilding = entry.kind === BuildKind.Building;
+        cameo.isUpgrade = entry.kind === BuildKind.Upgrade;
         cameo.key = entry.key;
         cameo.name = entry.name;
         cameo.cost = entry.cost;

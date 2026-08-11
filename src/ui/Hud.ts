@@ -1335,7 +1335,12 @@ export class Hud {
       let c = pool[n];
       if (c === undefined) {
         c = {
-          defId: -1, isBuilding: false, key: '', name: '', cost: 0,
+          // `isUpgrade` is false for every row this path can produce and stays
+          // false: this is the FALLBACK roster, used when no production catalog
+          // bound, and upgrades exist only in `Production.CONTENT`. A pooled
+          // object is reused across rows, so it is set once here rather than
+          // per row below — there is nothing that could flip it.
+          defId: -1, isBuilding: false, isUpgrade: false, key: '', name: '', cost: 0,
           progress: 0, queued: 0, ready: false, onHold: false, available: true, reason: '',
           owned: 0,
         };

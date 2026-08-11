@@ -166,9 +166,13 @@ import type {
 import type { EntityStore, World } from '../core/world';
 import { footprintOriginCell } from '../core/math';
 import { snapRallyClear } from '../sim/Placement';
+import { ownedUpgradeKeys, setUpgradesByKey } from '../sim/Upgrades';
 
 /** Rally re-snap output on load. Module scope: the loop must not allocate. */
 const loadRallySnap = new Float64Array(2);
+
+/** Shared empty list for a save written before `upgradeKeys` existed. */
+const EMPTY_UPGRADE_KEYS: readonly string[] = [];
 
 /* ==========================================================================
  * 1. VERSION AND IDENTITY
@@ -630,6 +634,20 @@ interface PlayerSection {
   /** Rally points: [factorySaveIndex, x, z] triples. */
   rally: number[];
   stats: Record<string, number>;
+  /**
+   * In-match upgrades this player has bought, BY CONTENT KEY.
+   *
+   * Keys and not the raw bitmask, for the reason `buildingCountKeys` exists: a
+   * later build that inserts a row would otherwise hand the loaded player a
+   * different upgrade than the one they paid for, silently and permanently.
+   * Keys survive any reordering of `UPGRADES`, and an unknown one is dropped.
+   *
+   * OPTIONAL, so a save written before upgrades existed still loads: it arrives
+   * `undefined`, `restorePlayer` reads it as empty, and the player has none —
+   * which is exactly true of that save. No SAVE_SCHEMA_VERSION bump: the
+   * players chunk is JSON and this is a purely additive key.
+   */
+  upgradeKeys?: string[];
 }
 
 interface SuperweaponSection {
@@ -1093,6 +1111,7 @@ function capturePlayer(
     entityCount,
     rally,
     stats: { ...p.stats } as unknown as Record<string, number>,
+    upgradeKeys: ownedUpgradeKeys(p, []),
   };
 }
 
@@ -1962,6 +1981,12 @@ function restorePlayer(
     const idx = ps.techMask[i];
     if (idx >= 0 && idx < p.techMask.length) p.techMask[idx] = ps.techMask[i + 1];
   }
+
+  /* In-match upgrades. `setUpgradesByKey` REPLACES rather than merges and
+   * rebuilds the derived multiplier table from the restored mask, so a load
+   * cannot leave a player wearing the previous match's numbers — and a save
+   * written before this key existed correctly restores to none. */
+  setUpgradesByKey(p, ps.upgradeKeys ?? EMPTY_UPGRADE_KEYS);
 
   /* Building counts drive prereqs and the victory check, so they are restored
    * by KEY wherever the save recorded one: a def table that gained a row would
