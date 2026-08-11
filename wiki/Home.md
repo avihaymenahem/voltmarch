@@ -4,7 +4,12 @@ VOLTMARCH is an original real-time strategy game that runs in a browser tab. You
 construction vehicle somewhere worth building, unfold it into a base, mine ore, spend it on an army,
 and take the other side's base apart before they take yours. Four playable factions, an ore economy,
 a power grid that gates production, fog of war, engineer capture, neutral civilian structures worth
-fighting over, superweapons, an AI opponent that plays a real game, and online 1v1.
+fighting over, superweapons, and an AI opponent that plays a real game.
+
+There is also deterministic-lockstep 1v1, with one caveat worth stating on the front page rather
+than burying: the relay is written and tested, but it is not deployed to any public server. You can
+play head-to-head today by running the relay yourself — see [Multiplayer](Multiplayer) — and not by
+clicking a button.
 
 It is not a port or a clone of anything. The conventions it uses — harvester economy, build queues,
 tech tiers, a sidebar with four tabs — are the shared vocabulary of the late-90s and 2000s
@@ -18,7 +23,8 @@ superweapon, and they play nothing like the first two or like each other.
 
 | Page | What is in it |
 | --- | --- |
-| [How to Play](How-to-Play) | Controls, the interface, your first ten minutes. |
+| [How to Play](How-to-Play) | The interface, your first ten minutes, the shape of a match. |
+| [Controls](Controls) | Every key and mouse gesture, and which of them you can rebind. |
 | [Economy](Economy) | Ore, harvesters, refineries, power, and what a brownout costs you. |
 | [Base Building](Base-Building) | Placement rules, the build radius, tech tiers, selling and repairing. |
 | [Combat](Combat) | Warheads, armour classes, range, cover, crushing, and what beats what. |
@@ -31,6 +37,7 @@ superweapon, and they play nothing like the first two or like each other.
 | [Maps](Maps) | The six battlefields and what each one rewards. |
 | [Campaign](Campaign) | Missions, unlocks, and what a fresh profile is missing. |
 | [Strategy](Strategy) | Openings, scouting, expansions, and how to lose less often. |
+| [Multiplayer](Multiplayer) | Head-to-head 1v1, and what it takes to actually run a match. |
 
 ## A note on unlocks
 
