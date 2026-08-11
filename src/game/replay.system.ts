@@ -17,11 +17,21 @@
  *
  * `__vmReplay` is the surface: `save()` for the JSON, `download()` for a file,
  * `stats()` for the running counts, and `verify()` / `stopVerify()` to check a
- * stream against a fresh run of the same seed. There is NO `play()` — this
- * comment claimed one until 2026-08-07 and the interface below never had it.
- * Playback is unbuilt: `ReplayPlayer.issueFor` has test callers only. Same as
- * `__vmVfx` and `__vmProduction`, and the same warning applies — the shot
- * harness and the probes read these handles, so changing the shape breaks them.
+ * stream against a fresh run of the same seed. PLAYBACK NOW EXISTS and is
+ * reachable from the product — `src/shell/Replays.ts` loads a file and
+ * `src/game/Playback.ts` feeds it into the world — but it is still not driven
+ * from here: this file RECORDS, and the only thing it does for playback is the
+ * one job that must happen at THIS order, comparing the checkpoints. The shot
+ * harness and the probes read this handle, so changing its shape breaks them.
+ *
+ * THE HEADER IS TAKEN IN TWO PARTS, and that is a fix rather than a wrinkle.
+ * `init()` can see the boot flags (they are on the URL) but NOT the lobby: the
+ * shell writes the chosen factions after `bootstrap()` returns and the starting
+ * bank after `await game.ready`, and the scenario — which adds the Gaia slot —
+ * has not run either. A v1 header therefore recorded Bootstrap's two
+ * placeholder players and called it the match. `ReplayRecorder.captureStart`
+ * takes the rest on the first sim tick, which is the earliest moment all of it
+ * is true and the latest moment none of it has changed.
  */
 
 import { defineSystem } from '../core/loop';
@@ -29,12 +39,19 @@ import { Phase } from '../core/types';
 import type { SimContext } from '../core/types';
 import { ctx } from './context';
 import { checksum, describeDivergence } from './Checksum';
+import { plannedScenario } from './Scenarios';
+import { playbackActive, playbackVerify } from './Playback';
 import {
   REPLAY_FORMAT_VERSION, ReplayPlayer, ReplayRecorder, parseReplay,
 } from './Replay';
 import type { ReplayFile, ReplayHeader } from './Replay';
 
 declare const __APP_VERSION__: string;
+
+/** The build string this bundle was compiled with. */
+export function buildVersion(): string {
+  return typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
+}
 
 /**
  * The seed the terrain was actually generated from.
@@ -49,6 +66,12 @@ declare const __APP_VERSION__: string;
 function terrainSeed(): number {
   const t = ctx().world.terrain as Partial<{ seed: number }>;
   return typeof t.seed === 'number' ? t.seed : 0;
+}
+
+/** One query flag, or '' outside a browser. */
+function flag(name: string): string {
+  if (typeof location === 'undefined') return '';
+  return new URLSearchParams(location.search).get(name) ?? '';
 }
 
 let recorder: ReplayRecorder | null = null;
@@ -74,21 +97,35 @@ interface ReplayGlobal {
   };
 }
 
+/**
+ * The half of the header that is knowable at `init()`: the boot flags.
+ *
+ * Everything here comes from the URL or from `plannedScenario()`, which reads
+ * the same URL and memoises it — deliberately, because those flags are what the
+ * engine modules themselves parsed, so recording anything else would record an
+ * intention rather than what ran.
+ */
 function headerFor(): ReplayHeader {
-  const { world } = ctx();
+  const plan = plannedScenario();
   return {
     formatVersion: REPLAY_FORMAT_VERSION,
-    buildVersion: typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev',
+    buildVersion: buildVersion(),
     // The seed the terrain was actually generated from, not the lobby's intent
     // — `?mapseed=` overrides the setup and a replay must reproduce what ran.
     mapSeed: terrainSeed(),
-    scenario: 'skirmish',
-    players: world.players.map((p) => ({
-      faction: p.faction as number,
-      isHuman: p.isHuman,
-      aiDifficulty: p.aiDifficulty,
-      aiPersonality: p.aiPersonality,
-    })),
+    // `?seed=` — the scenario layout and every draw of `s.rng`. NOT the same
+    // number as `mapSeed`, and its absence is what made a v1 file unplayable.
+    simSeed: plan.seed,
+    mapPreset: plan.map,
+    biome: flag('biome'),
+    art: flag('art'),
+    start: plan.start,
+    scenario: plan.name,
+    // Both filled in properly by `captureStart` on the first tick; these are
+    // only what the file would say if a recorder were serialised before the
+    // match ever ran.
+    localPlayer: 0,
+    players: [],
   };
 }
 
@@ -110,7 +147,16 @@ export default defineSystem({
     const r = recorder;
     if (r === null) return;
     const { world } = ctx();
+    // The lobby's factions, the opening bank and the full player table — none
+    // of which existed when `init()` ran. Idempotent; only the first tick is
+    // taken, and on that tick Production (200) and Economy (300) have not run.
+    r.captureStart(world);
     r.maybeCheckpoint(world);
+
+    // PLAYBACK'S CHECKPOINT COMPARE, and it has to happen HERE rather than in
+    // `playback.system.ts` — at this order and no other, because this is the
+    // point in the tick at which the number being compared was stamped.
+    if (playbackActive()) playbackVerify(world);
 
     const v = verifier;
     if (v !== null) {
@@ -129,6 +175,18 @@ export default defineSystem({
     delete (globalThis as unknown as ReplayGlobal).__vmReplay;
   },
 });
+
+/**
+ * The recording of the match running right now, or null.
+ *
+ * Exported so the shell can hand the player their own last match without a
+ * download-and-reopen round trip. A SNAPSHOT — `ReplayRecorder.build` copies
+ * both arrays — so the caller may hold it across the teardown that is about to
+ * happen, which is the entire reason it exists.
+ */
+export function currentReplay(): ReplayFile | null {
+  return recorder === null ? null : recorder.build();
+}
 
 function installGlobal(): void {
   (globalThis as unknown as ReplayGlobal).__vmReplay = {

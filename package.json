@@ -15,7 +15,8 @@
     "server:test": "npm --prefix server run build && node --test \"server/dist/server/test/*.spec.js\"",
     "soak": "vitest run -t determinism",
     "shots": "node tools/shoot.mjs",
-    "desync-probe": "node tools/desync-probe.mjs"
+    "desync-probe": "node tools/desync-probe.mjs",
+    "replay-probe": "node tools/replay-probe.mjs"
   },
   "dependencies": {
     "three": "0.185.1"

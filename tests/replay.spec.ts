@@ -56,10 +56,16 @@ const HEADER: ReplayHeader = {
   formatVersion: REPLAY_FORMAT_VERSION,
   buildVersion: 'test',
   mapSeed: 0x51c0de,
+  simSeed: 4242,
+  mapPreset: 'temperate',
+  biome: 'temperate',
+  art: 'noon',
+  start: 'mcv',
   scenario: 'skirmish',
+  localPlayer: 0,
   players: [
-    { faction: Faction.Allies, isHuman: true, aiDifficulty: 0, aiPersonality: 0 },
-    { faction: Faction.Soviets, isHuman: false, aiDifficulty: 1, aiPersonality: 0 },
+    { faction: Faction.Allies, isHuman: true, aiDifficulty: 0, aiPersonality: 0, credits: 10000 },
+    { faction: Faction.Soviets, isHuman: false, aiDifficulty: 1, aiPersonality: 0, credits: 10000 },
   ],
 };
 

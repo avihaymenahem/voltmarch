@@ -1,0 +1,260 @@
+/* ==========================================================================
+ * src/shell/replay.css — the replay screen and the in-match control strip
+ * ==========================================================================
+ * Everything is scoped under `.vm-shell` so nothing here can reach the HUD,
+ * which belongs to another module. The dock is a child of the shell root,
+ * which sets `pointer-events: none` while a match is playing — so the dock
+ * takes them back on itself, and only on itself, which is why the strip is
+ * clickable while the battlefield behind it still receives every drag.
+ * ========================================================================== */
+
+/* -- the screen ------------------------------------------------------------ */
+
+.vm-shell .vm-replays {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 760px;
+}
+
+.vm-shell .vm-replays-lede {
+  margin: 0;
+  color: var(--vm-text-dim);
+  font-size: 13.5px;
+  line-height: 1.6;
+  max-width: 64ch;
+}
+
+.vm-shell .vm-replay-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+}
+
+.vm-shell .vm-replays-note {
+  margin: 0;
+  color: var(--vm-text-faint);
+  font-size: 12.5px;
+  line-height: 1.55;
+  max-width: 64ch;
+}
+
+.vm-shell .vm-replay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.vm-shell .vm-replays-status {
+  margin: 0;
+  min-height: 1.4em;
+  color: var(--vm-text-dim);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.vm-shell .vm-replays-status.is-bad {
+  color: var(--vm-danger);
+}
+
+/* -- the dock -------------------------------------------------------------- */
+
+/*
+ * TOP CENTRE, UNDER THE RESOURCE BAR — measured, not chosen by taste.
+ *
+ * The obvious place is the bottom, and the bottom is taken: at 1280x720 the
+ * radar and the selection panel occupy x 8..470 and the build sidebar x
+ * 1030..1265, so a centred strip 860 px wide sat straight across the unit
+ * readout. The band under the resource bar is the only stretch of frame the
+ * HUD leaves empty at every aspect, and a "you are watching a recording"
+ * banner is exactly what a viewer expects to find there.
+ *
+ * THE TWO NUMBERS COME FROM `src/ui/hud.css`, which this module does not own
+ * and therefore reads rather than assumes:
+ *
+ *   - the resource bar is `top: 10u` + `height: 38u`, so it ends at 48u, and
+ *     `--vm-u` is set from the viewport HEIGHT (`computeUiScale`) — 48u is
+ *     6.7vh at every size. `max(58px, 9vh)` clears it with room to spare and
+ *     still works at the scale clamps.
+ *   - the objectives panel is 240u wide on the right, so it starts at about
+ *     81vw. A centred strip must stay under 58vw to miss it.
+ */
+.vm-shell .vm-replay-dock {
+  position: absolute;
+  left: 50%;
+  top: max(58px, 9vh);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  /* The shell root gives pointer events up while a match plays; take them back
+     here and nowhere else. */
+  pointer-events: auto;
+  /*
+   * A FIXED WIDTH, not `max-content` capped at the same number. `max-content`
+   * resolved a few pixels under what the row actually needed and every flex
+   * item then shrank to pay for it — the progress bar hit its 48 px floor and
+   * the sync readout ellipsised to "In sy…", on a viewport with 90 px of room
+   * to spare. A stated width gives the row slack, and the bar grows into it.
+   */
+  width: min(760px, 58vw);
+  z-index: 4;
+}
+
+.vm-shell .vm-replay-dock.is-hidden {
+  display: none;
+}
+
+.vm-shell .vm-replay-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 14px;
+  background: var(--vm-glass-strong);
+  border: 1px solid var(--vm-line);
+  clip-path: polygon(
+    var(--vm-notch-sm) 0, 100% 0, 100% calc(100% - var(--vm-notch-sm)),
+    calc(100% - var(--vm-notch-sm)) 100%, 0 100%, 0 var(--vm-notch-sm)
+  );
+}
+
+.vm-shell .vm-replay-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 3px 9px;
+  border: 1px solid var(--vm-accent-dim);
+  color: var(--vm-accent);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+/*
+ * `width: auto` IS THE LOAD-BEARING LINE. `.vm-btn` is `width: 100%`, because
+ * every other consumer of the kit stacks it in a menu column — so a `flex:
+ * none` button inside a ROW takes the whole row. Both buttons here measured
+ * 712 px wide, which pushed the speed control, the progress bar, the clock,
+ * the sync readout and Exit off the right-hand end of a strip that was capped
+ * at 742 px. The strip rendered, looked deliberate, and had two controls on it.
+ */
+.vm-shell .vm-replay-bar .vm-btn {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  letter-spacing: 0.14em;
+  gap: 8px;
+}
+
+.vm-shell .vm-replay-play {
+  min-width: 96px;
+}
+
+.vm-shell .vm-replay-speed {
+  flex: none;
+}
+
+.vm-shell .vm-replay-speed .vm-chooser-value {
+  min-width: 48px;
+  padding: 4px 8px;
+  text-align: center;
+}
+
+/* The bar is the one place a progress track appears, so it is defined here
+   rather than borrowed from the loading screen's — that one is indeterminate
+   and animates on its own. */
+/* THE ONE ELEMENT THAT ABSORBS THE SLACK. Everything else on the strip is a
+   number or a word and gets to keep its width; the bar is the only thing that
+   still means what it means at half the size. */
+.vm-shell .vm-replay-track {
+  flex: 1 1 60px;
+  min-width: 48px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.vm-shell .vm-replay-fill {
+  width: 100%;
+  height: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
+  background: var(--vm-accent);
+}
+
+.vm-shell .vm-replay-clock {
+  flex: none;
+  font-size: 12px;
+  color: var(--vm-text-dim);
+  white-space: nowrap;
+}
+
+/* Never shrinks. It is the verdict; a verdict rendered as "In sy…" is worse
+   than a narrower progress bar. The ellipsis below is a last resort for a
+   window narrow enough that even the media query cannot save it. */
+.vm-shell .vm-replay-sync {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-replay-sync.is-done { color: var(--vm-accent); }
+.vm-shell .vm-replay-sync.is-warn { color: var(--vm-text-dim); }
+
+/* A divergence is the one thing on this strip allowed to be red, for the same
+   reason a failed autosave is: everything else is status, this is a problem. */
+.vm-shell .vm-replay-sync.is-bad { color: var(--vm-danger); }
+
+.vm-shell .vm-replay-note {
+  display: none;
+  padding: 7px 14px;
+  background: var(--vm-glass-strong);
+  border: 1px solid var(--vm-line);
+  color: var(--vm-text-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.vm-shell .vm-replay-note.is-on { display: block; }
+
+.vm-shell .vm-replay-note.is-bad {
+  border-color: var(--vm-danger);
+  color: var(--vm-danger);
+}
+
+/* -- narrow windows -------------------------------------------------------- */
+
+@media (max-width: 860px) {
+  .vm-shell .vm-replay-dock {
+    width: 94vw;
+  }
+
+  .vm-shell .vm-replay-bar {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .vm-shell .vm-replay-track {
+    flex-basis: 100%;
+    order: 9;
+  }
+
+  .vm-shell .vm-replay-sync {
+    flex-basis: 100%;
+    order: 10;
+    text-align: center;
+    white-space: normal;
+  }
+}

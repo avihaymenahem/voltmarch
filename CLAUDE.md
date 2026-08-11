@@ -174,6 +174,42 @@ game code. Read `server/README.md` before touching either.
   time, still adds up to a comparison. It refuses to overwrite a divergence it found — an
   instrument that erases its own finding is worse than none.
 
+## Replays are the same mechanism, pointed backwards
+
+Every match records itself unconditionally (`src/game/replay.system.ts`), and since v1.32.0 the
+product can open one: **Replays** on the title screen, `src/shell/Replays.ts` for the screen and the
+in-match strip, `src/game/Playback.ts` + `playback.system.ts` for the feeding.
+
+- **A replay is a header plus a command stream, and the header is the boot.** `mapSeed` is the
+  TERRAIN roll (`?mapseed=`); `simSeed` is `?seed=`, which drives the scenario layout and every draw
+  of `s.rng`. v1 stored only the first and called it "the seed", so a v1 file could reproduce the
+  hills and nothing else. It also missed the map preset, the biome, the opening and the starting
+  bank. `REPLAY_FORMAT_VERSION` is 2 and a v1 file is REFUSED — it describes a match this build
+  cannot rebuild.
+- **The header is taken in two parts.** `init()` sees the URL but not the lobby: the shell writes
+  the chosen factions after `bootstrap()` returns and the bank after `await game.ready`, and the
+  scenario (which adds Gaia) has not run. `ReplayRecorder.captureStart` takes the rest on the first
+  sim tick — the earliest moment all of it is true and the latest moment none of it has changed.
+- **The unlock gate is the tick-zero desync, again.** `Scenarios.ts` asks `isBuildable` while
+  spawning the STARTING ARMY and it answers from the LOCAL PROFILE, so a veteran's recording watched
+  on a fresh account starts with a different army. Playback calls `suppressUnlockGate(true)`, exactly
+  as PvP does, and `Shell.startMatch` now clears it for any ordinary launch — which also closes the
+  leak where one PvP match left every later skirmish ungated.
+- **Every seated slot is `isHuman`**, which is the whole AI shutdown. The recording ALREADY holds
+  the AI's commands, because the brain issues them through the same bus a player does.
+- **`playback.system.ts` is `Phase.Command` order 1** — before the drain at 9000, or every command
+  applies one tick late forever. It harvests the bus first, which is the input lock: a viewer's slot
+  IS the recorded player's slot, so their right-click would otherwise be accepted.
+- **Its `dispose()` calls `detachPlayback`, not `endPlayback`.** `startReplay` arms the file and then
+  boots, and booting disposes the previous engine — clearing the armed file there meant the viewer
+  silently got an ordinary AI-less skirmish on the recording's seed. Same split as `net.system.ts`.
+- **`npm run replay-probe` is the proof**, and its second phase is the load-bearing one: it deletes
+  one command and requires the playback to diverge. A matching hash alone would also be produced by a
+  playback that fed the world nothing, because the AI is deterministic from the same seed.
+- **`buildVersion` warns and does not refuse.** It is a correlation, not a cause — most releases here
+  touch art the sim cannot observe — and the real question is measured every 30 ticks by the
+  checkpoint compare, which the bar puts on screen. See `Replay.buildWarning`.
+
 ## Hard rules
 
 - **Determinism.** Inside `simTick`, `Math.random()`, `Date.now()` and `performance.now()` are
