@@ -69,14 +69,20 @@
  *
  *              THIS PARAGRAPH USED TO SAY "nav has BOTH released
  *              (`navField < 0`) AND stopped asking to move", and the code
- *              matched it. Both were wrong in the same place: `finishOrder` —
- *              the give-up path described immediately above — does NOT release
- *              the field. So the condition could never be true of the exact
- *              unit this mode was written to rescue, and it never once ran.
- *              Measured before the fix: 10 of 12 harvesters parked with full
- *              hoppers inside four minutes and `stats().driven` was 0 for the
- *              whole match. See the guard in `drive()` and
- *              `tests/harvester-soak.spec.ts`.
+ *              matched it. Both were wrong in the same place: a harvester nav
+ *              has given up on still reads `navField >= 0`, so the condition
+ *              could never be true of the exact unit this mode was written to
+ *              rescue, and it never once ran. Measured before the fix: 10 of 12
+ *              harvesters parked with full hoppers inside four minutes and
+ *              `stats().driven` was 0 for the whole match. See the guard in
+ *              `drive()` and `tests/harvester-soak.spec.ts`.
+ *
+ *              The REASON it reads `>= 0` was mis-stated here as "`finishOrder`
+ *              does not release the field". It does release it; the assigner
+ *              then re-requests one on the same tick, because the park rung
+ *              reports "position unchanged" and the loop falls through to its
+ *              own field block. Re-verified on seed 4242 slot 43. The guard in
+ *              `drive()` carries the full trace.
  *   'off'    — `setHarvesterDrive(false)`. For when nav wants total ownership.
  *
  * The assist mode is not a workaround for a bug in somebody else's module; it
@@ -103,7 +109,9 @@ import {
   HARVESTER_DOCK_RADIUS, HARVESTER_DOCK_CLEARANCE, HARVESTER_QUEUE_GAP,
   HARVESTER_DOCK_FALLBACK_TRIES, HARVESTER_DOCK_STANDDOWN,
   HARVESTER_FORCE_DRIVE_SECONDS, HARVESTER_FORCE_DRIVE_TRIES,
-  HARVESTER_NAV_PARK_GRACE, HARVESTER_STUCK_SECONDS, MAP_CELLS, MAX_PLAYERS,
+  HARVESTER_NAV_GIVEUP_METRES, HARVESTER_NAV_GIVEUP_SECONDS, HARVESTER_NAV_PARK_GRACE,
+  HARVESTER_UNREACHABLE_BAN_CELLS, HARVESTER_UNREACHABLE_BAN_SECONDS,
+  HARVESTER_STUCK_SECONDS, MAP_CELLS, MAX_PLAYERS,
   NAV_ARRIVE_SLACK, ORE_MIN_CLAIM,
   ORE_SCORING_INTERVAL, ORE_SEARCH_CELLS, ORE_VALUE, SIM_DT,
   UNDER_ATTACK_COOLDOWN, UNLOAD_SECONDS,
@@ -244,6 +252,38 @@ export class HarvesterController {
    * a boolean.
    */
   private readonly parkedFor: PerEntityF32;
+  /**
+   * Where this hull was when the give-up watchdog last accepted that it had
+   * moved, and how long it has been within HARVESTER_NAV_GIVEUP_METRES of it.
+   *
+   * RAW DISPLACEMENT AGAINST AN ANCHOR, not per-tick displacement, and the
+   * distinction is the whole reason this works. `Movement.relax` pushes a hull
+   * out of a `BlocksNav` prop every tick, so a backstop step of 5 cm lands and
+   * is undone on the next tick forever: sampled per tick the hull looks like it
+   * is moving at 1.5 m/s, and over eight seconds it has covered nothing. Same
+   * shape as `NavAgents.anchorX` and chosen for the same reason.
+   */
+  private readonly pinX: PerEntityF32;
+  private readonly pinZ: PerEntityF32;
+  private readonly pinnedFor: PerEntityF32;
+  /**
+   * The ore cell nav gave up on, and the sim time the ban lapses. -1 for none.
+   *
+   * Per harvester and time-limited on purpose — see
+   * HARVESTER_UNREACHABLE_BAN_SECONDS. A generation-stamped table, so a
+   * recycled slot never inherits the dead hull's grudge.
+   */
+  private readonly banCx: PerEntityI16;
+  private readonly banCz: PerEntityI16;
+  private readonly banUntil: PerEntityF32;
+  /**
+   * The refinery handle nav gave up on approaching, and when that lapses. 0 for
+   * none. Same shape and the same reasoning as the ore ban above: an approach
+   * this hull cannot drive is not a fact about the refinery, it is a fact about
+   * this hull's position relative to it.
+   */
+  private readonly banRef: PerEntityU32;
+  private readonly banRefUntil: PerEntityF32;
   /** Sim time until which this harvester will not contend for its dock. */
   private readonly dockStandDown: PerEntityF32;
   /** Consecutive failed apron approaches; see HARVESTER_DOCK_FALLBACK_TRIES. */
@@ -293,6 +333,14 @@ export class HarvesterController {
     this.stuckFor = new PerEntityF32(store, 0);
     this.driveSpeed = new PerEntityF32(store, 0);
     this.parkedFor = new PerEntityF32(store, 0);
+    this.pinX = new PerEntityF32(store, 0);
+    this.pinZ = new PerEntityF32(store, 0);
+    this.pinnedFor = new PerEntityF32(store, 0);
+    this.banCx = new PerEntityI16(store, -1);
+    this.banCz = new PerEntityI16(store, -1);
+    this.banUntil = new PerEntityF32(store, 0);
+    this.banRef = new PerEntityU32(store, 0);
+    this.banRefUntil = new PerEntityF32(store, 0);
     this.dockStandDown = new PerEntityF32(store, 0);
     this.dockTries = new PerEntityF32(store, 0);
     this.forceDrive = new PerEntityF32(store, 0);
@@ -421,6 +469,42 @@ export class HarvesterController {
       return;
     }
 
+    // EVERYONE HAS GIVEN UP ON THIS CELL, AND THAT IS A DIFFERENT CLAIM FROM
+    // "NO PROGRESS". `trackProgress` below measures whether the hull is getting
+    // CLOSER; `trackPinned` measures whether it is moving AT ALL, and the
+    // conjunction with a spent force-drive budget is what makes it a conclusion:
+    // two five-second windows of the backstop — which needs no flow field, no
+    // gradient and no clearance — followed by eight seconds in which the hull
+    // did not cover one metre in any direction. Congestion does not look like
+    // that. A hull queued behind another one shuffles, and a metre of shuffle
+    // re-arms the anchor.
+    //
+    // Acting on it is also the only way the loop TERMINATES. Nav's wedge ladder
+    // ends in a park rung, the park sets the sticky `AgentFlag.Arrived`, and
+    // exactly one thing clears that flag: the order point moving. The order
+    // point is ours. If we keep re-publishing the same cell nobody else can.
+    //
+    // AND IT IS WHY THE EXCLUSION BELOW IS BACK. An exclusion was tried here
+    // once, keyed on `trackProgress`, and measured worse: 3 deliveries lost and
+    // stalls from 6/12 to 9/12. The diagnosis recorded at the time was right —
+    // "the signal has to distinguish 'cannot get there' from 'did not get there
+    // yet', and progress alone cannot" — and this is that signal. On it, the
+    // same exclusion is worth +7 deliveries and takes crawling hulls to 0/12.
+    // The second reason it failed was its RADIUS; see
+    // HARVESTER_UNREACHABLE_BAN_CELLS, where below ten cells is still a loss.
+    const pinned = this.trackPinned(i, dt);
+    if (pinned && this.forceTries.getAt(i) >= HARVESTER_FORCE_DRIVE_TRIES) {
+      this.banCx.setAt(i, cx);
+      this.banCz.setAt(i, cz);
+      this.banUntil.setAt(i, time + HARVESTER_UNREACHABLE_BAN_SECONDS);
+      this.dropClaim(i, id);
+      if (!this.acquireOre(i, id, time)) {
+        if (store.cargo[i] > 0) this.beginReturn(i, id, time);
+        else this.enterIdle(i, id, time, DRY_RETRY);
+      }
+      return;
+    }
+
     if (time >= this.nextScore.getAt(i)) {
       this.nextScore.setAt(i, time + SCORE_PERIOD);
       this.rescoreOre(i, id, time, d);
@@ -442,21 +526,42 @@ export class HarvesterController {
         this.resetProgress(i);
         return;
       }
-      // Now it is a conclusion. Give the claim back and pause; the next plan
-      // will most likely pick a different approach or a different patch.
-      //
-      // AN EXCLUSION WAS TRIED HERE AND MEASURED WORSE. Remembering this cell
-      // and refusing to re-pick it for 20 s cost 3 deliveries and lifted stalls
-      // from 6/12 to 9/12 across the soak seeds. The premise was wrong: this
-      // branch fires after HARVESTER_STUCK_SECONDS of no progress, which is far
-      // more often transient congestion — another hauler in the gap, a queue at
-      // the dock — than genuine unreachability, so the exclusion mostly banished
-      // cells that were perfectly reachable a second later and sent the hull
-      // somewhere worse. If this is retried, the signal has to distinguish
-      // "cannot get there" from "did not get there yet", and progress alone
-      // cannot.
-      this.dropClaim(i, id);
-      this.enterIdle(i, id, time, DRY_RETRY);
+      /* ===================================================================
+       * THE FORCE-DRIVE BUDGET IS SPENT. HAND OVER; DO NOT IDLE.
+       *
+       * This used to `dropClaim` and `enterIdle` here, and that was the whole
+       * remaining SeekOre stall — not because idling is wrong in itself, but
+       * because of what it does to the module that was about to fix the
+       * problem.
+       *
+       * `seeksGoal(Idle)` is false, so `NavAssigner` takes its `!seeking`
+       * branch, releases the field and calls `armWedge` — which ZEROES
+       * `escalations`. Two seconds later `DRY_RETRY` re-plans onto the SAME
+       * cell (ore is ranked by distance and nothing had changed), the order
+       * reads as new, and `armWedge` zeroes the ladder again. The wedge ladder
+       * needs NAV_WEDGE_SAMPLE_TICKS * NAV_WEDGE_STRIKES * 4 = 480 consecutive
+       * ticks to reach its displacement rung and 600 to reach its park rung;
+       * this cycle is ~360 ticks of SeekOre plus 60 of Idle. It could never
+       * finish. Measured across the three soak seeds: 0 park rungs reached in
+       * twelve minutes of harvesting, and 87/119/57 wedge detections that all
+       * came to nothing.
+       *
+       * It is the same defect `commitDockPoint` documents from the other side —
+       * a module resetting the evidence faster than the evidence can
+       * accumulate — reached by a different route, and the answer is the same:
+       * hold still and let the ladder run. Nav is strictly better equipped
+       * here than we are. Its rung N+1 can pick the hull up and put it on the
+       * nearest routable cell, which is the ONLY remedy that works on the case
+       * this branch actually sees (a `BlocksNav` prop sealing a one-cell
+       * corridor — the planner cannot see the prop and the backstop cannot fit
+       * past it).
+       *
+       * Termination does not depend on the ladder succeeding. It ends in a
+       * park rung, the park sets `AgentFlag.Arrived`, and the give-up check at
+       * the top of this function is what turns that into a new plan. Measured
+       * after: 2/1/1 park rungs and 2/2/1 displacements across the same seeds.
+       * =================================================================== */
+      this.resetProgress(i);
     }
   }
 
@@ -470,7 +575,14 @@ export class HarvesterController {
     const store = this.world.store;
     const cx = clampCell(worldToCell(store.posX[i]));
     const cz = clampCell(worldToCell(store.posZ[i]));
-    if (!this.ore.findFreeOre(cx, cz, ORE_SEARCH_CELLS, id, ORE_MIN_CLAIM, time, this.cellOut)) return;
+    // Ground nav gave up on, if the ban is still live; -1 disables it. Applied
+    // here as well as in `acquireOre` because a rescore is a fresh choice of
+    // destination and must not quietly reintroduce the one we just condemned.
+    const bx = this.liveBan(i, time) ? this.banCx.getAt(i) : -1;
+    if (!this.ore.findFreeOre(
+      cx, cz, ORE_SEARCH_CELLS, id, ORE_MIN_CLAIM, time, this.cellOut,
+      bx, this.banCz.getAt(i), HARVESTER_UNREACHABLE_BAN_CELLS,
+    )) return;
 
     const nx = (this.cellOut[0] + 0.5) * CELL;
     const nz = (this.cellOut[1] + 0.5) * CELL;
@@ -494,23 +606,40 @@ export class HarvesterController {
     const store = this.world.store;
     const cx = clampCell(worldToCell(store.posX[i]));
     const cz = clampCell(worldToCell(store.posZ[i]));
+    // Ground nav gave up on, if the ban is still live. -1 disables the
+    // exclusion entirely, which is what every call outside a give-up gets.
+    const bx = this.liveBan(i, time) ? this.banCx.getAt(i) : -1;
+    const bz = this.banCz.getAt(i);
+    const br = HARVESTER_UNREACHABLE_BAN_CELLS;
 
-    let found = this.ore.findFreeOre(cx, cz, ORE_SEARCH_CELLS, id, ORE_MIN_CLAIM, time, this.cellOut);
+    let found = this.ore.findFreeOre(
+      cx, cz, ORE_SEARCH_CELLS, id, ORE_MIN_CLAIM, time, this.cellOut, bx, bz, br);
     if (!found) {
-      found = this.ore.findFreeOre(cx, cz, ORE_SEARCH_CELLS, id, 1, time, this.cellOut);
+      found = this.ore.findFreeOre(
+        cx, cz, ORE_SEARCH_CELLS, id, 1, time, this.cellOut, bx, bz, br);
     }
     if (!found) {
       // Nothing within reach of where we stand — aim at the nearest field that
       // still holds anything and search again from there.
       const f = this.ore.nearestField(store.posX[i], store.posZ[i]);
-      if (f < 0) return false;
-      const rec = this.ore.field(f);
-      if (rec === undefined) return false;
-      found = this.ore.findFreeOre(
-        rec.nodeCx, rec.nodeCz, ORE_SEARCH_CELLS, id, 1, time, this.cellOut,
-      );
-      if (!found) return false;
+      if (f >= 0) {
+        const rec = this.ore.field(f);
+        if (rec !== undefined) {
+          found = this.ore.findFreeOre(
+            rec.nodeCx, rec.nodeCz, ORE_SEARCH_CELLS, id, 1, time, this.cellOut, bx, bz, br);
+        }
+      }
     }
+    if (!found && bx >= 0) {
+      // A BANNED CELL BEATS NO CELL. The exclusion is a preference — "not that
+      // ground, if there is any other" — and it must never be the reason a
+      // harvester has nothing to do. Without this the ban could strand a hull
+      // for HARVESTER_UNREACHABLE_BAN_SECONDS on a map whose only remaining ore
+      // is the patch nav could not reach, which is strictly worse than the
+      // behaviour it replaces.
+      found = this.ore.findFreeOre(cx, cz, ORE_SEARCH_CELLS, id, 1, time, this.cellOut);
+    }
+    if (!found) return false;
     if (!this.ore.claim(this.cellOut[0], this.cellOut[1], id, time)) return false;
 
     this.dropClaim(i, id);
@@ -572,7 +701,7 @@ export class HarvesterController {
   private beginReturn(i: number, id: EntityId, time: number): void {
     const store = this.world.store;
     this.dropClaim(i, id);
-    const ri = this.pickRefinery(i);
+    const ri = this.pickRefinery(i, time);
     if (ri < 0) {
       store.dockTarget[i] = NONE as number;
       this.enterIdle(i, id, time, DRY_RETRY);
@@ -587,6 +716,7 @@ export class HarvesterController {
     this.dockTries.setAt(i, 0);
     this.forceTries.setAt(i, 0);
     this.resetProgress(i);
+    this.resetPin(i);
     // Choose the approach ONCE, here, while the try counter and the lock are
     // both freshly reset. Every later tick reads it; only a counted escalation
     // replaces it.
@@ -685,7 +815,7 @@ export class HarvesterController {
     const store = this.world.store;
     let ri = store.index(store.dockTarget[i] as EntityId);
     if (ri < 0 || !this.isUsableRefinery(ri, store.owner[i])) {
-      ri = this.pickRefinery(i);
+      ri = this.pickRefinery(i, time);
       if (ri < 0) {
         store.dockTarget[i] = NONE as number;
         this.enterIdle(i, id, time, DRY_RETRY);
@@ -693,6 +823,7 @@ export class HarvesterController {
       }
       store.dockTarget[i] = store.handleOf(ri) as number;
       this.resetProgress(i);
+      this.resetPin(i);
       this.commitDockPoint(i, ri, this.tryHoldDock(store.handleOf(ri), id));
     }
 
@@ -736,6 +867,58 @@ export class HarvesterController {
       this.dockTries.setAt(i, 0);
       this.dockStandDown.setAt(i, 0);
       this.resetProgress(i);
+      return;
+    }
+
+    // THE SAME GIVE-UP THE SEEK PATH USES, and it has to live here too because
+    // the two halves fail differently. A hauler that cannot reach its dock is
+    // the worse of the pair — it is carrying a full hopper, so the credits are
+    // mined and simply never arrive. Measured on seed 1337 slot 83: 7076 of
+    // 7200 ticks in `ReturnToRefinery`, pinned at 308,203, ZERO deliveries in
+    // four minutes, with its committed dock point alternating between two
+    // refineries 27 m apart while the hull covered 74 m in total.
+    //
+    // Unlike the seek path this is checked for a QUEUED hauler as well as the
+    // one holding the lock. Standing still in a queue is legitimate, but it is
+    // legitimate at the queue point, and `trackPinned` is anchored on POSITION:
+    // a hauler that has reached its queue slot is docked or moving up within
+    // seconds, and one that has not moved a metre in eight while its own
+    // backstop was driving is not queuing, it is stuck.
+    if (this.trackPinned(i, dt) && this.forceTries.getAt(i) >= HARVESTER_FORCE_DRIVE_TRIES) {
+      // THE APRON BEFORE THE REFINERY. An unreachable dock POINT and an
+      // unreachable REFINERY are different diagnoses, and the cheap one is far
+      // more common: `HARVESTER_DOCK_FALLBACK_TRIES` already documents a stock
+      // layout that aims a refinery's apron into a pocket of its owner's own
+      // buildings. So spend that escalation first — it aims at open ground
+      // touching the footprint instead, and `touching()` then docks the hull
+      // against whichever face it can reach — and only condemn the whole
+      // structure if a hull that is already using the fallback still cannot
+      // move. Measured across all three seed sets, condemning the refinery
+      // immediately instead cost 3, 3 and 8 deliveries.
+      if (this.dockTries.getAt(i) < HARVESTER_DOCK_FALLBACK_TRIES) {
+        this.dockTries.setAt(i, HARVESTER_DOCK_FALLBACK_TRIES);
+        this.forceTries.setAt(i, 0);
+        this.resetProgress(i);
+        this.commitDockPoint(i, ri, this.tryHoldDock(refId, id));
+        return;
+      }
+      this.releaseDock(refId, id);
+      this.banRef.setAt(i, refId as number);
+      this.banRefUntil.setAt(i, time + HARVESTER_UNREACHABLE_BAN_SECONDS);
+      const alt = this.pickRefinery(i, time);
+      if (alt < 0) {
+        store.dockTarget[i] = NONE as number;
+        this.enterIdle(i, id, time, DRY_RETRY);
+        return;
+      }
+      store.dockTarget[i] = store.handleOf(alt) as number;
+      // A different refinery is a fresh approach, so it gets a fresh budget —
+      // the try counter that ran out belonged to the dock we have just left.
+      this.dockTries.setAt(i, 0);
+      this.dockStandDown.setAt(i, 0);
+      this.forceTries.setAt(i, 0);
+      this.resetProgress(i);
+      this.commitDockPoint(i, alt, this.tryHoldDock(store.handleOf(alt), id));
       return;
     }
 
@@ -818,7 +1001,7 @@ export class HarvesterController {
    * linear scan of the per-kind dense list beats a spatial query that would
    * have to sweep half the bucket grid to find one at map scale.
    */
-  private pickRefinery(i: number): number {
+  private pickRefinery(i: number, time: number): number {
     const store = this.world.store;
     const owner = store.owner[i];
     const list = store.byKind[EntityKind.Building];
@@ -830,23 +1013,35 @@ export class HarvesterController {
     let bestD = Infinity;
     let bestFree = false;
     const id = store.handleOf(i);
+    // A refinery nav gave up on approaching, if the ban is still live. Skipped
+    // on the first pass and accepted on the second: a banned refinery beats no
+    // refinery, exactly as a banned ore cell beats no ore cell, because a
+    // harvester with a full hopper and nowhere to take it is the failure this
+    // whole module exists to prevent.
+    const banned = time < this.banRefUntil.getAt(i) ? this.banRef.getAt(i) : 0;
 
-    for (let k = 0; k < count; k++) {
-      const ri = list[k];
-      if (!this.isUsableRefinery(ri, owner)) continue;
-      const dx = store.posX[ri] - px;
-      const dz = store.posZ[ri] - pz;
-      const d = dx * dx + dz * dz;
+    for (let pass = 0; pass < 2; pass++) {
+      const skip = pass === 0 ? banned : 0;
+      for (let k = 0; k < count; k++) {
+        const ri = list[k];
+        if (!this.isUsableRefinery(ri, owner)) continue;
+        if (skip !== 0 && (store.handleOf(ri) as number) === skip) continue;
+        const dx = store.posX[ri] - px;
+        const dz = store.posZ[ri] - pz;
+        const d = dx * dx + dz * dz;
 
-      // Prefer a refinery whose dock is free even if it is a little further:
-      // queueing behind a full hauler costs more than the extra drive.
-      const holder = this.dockHolder.get(store.handleOf(ri));
-      const free = holder === 0 || holder === (id as number) || !this.holderStillDocking(holder, ri);
-      if (best < 0 || (free && !bestFree) || (free === bestFree && d < bestD)) {
-        best = ri;
-        bestD = d;
-        bestFree = free;
+        // Prefer a refinery whose dock is free even if it is a little further:
+        // queueing behind a full hauler costs more than the extra drive.
+        const holder = this.dockHolder.get(store.handleOf(ri));
+        const free = holder === 0 || holder === (id as number)
+          || !this.holderStillDocking(holder, ri);
+        if (best < 0 || (free && !bestFree) || (free === bestFree && d < bestD)) {
+          best = ri;
+          bestD = d;
+          bestFree = free;
+        }
       }
+      if (best >= 0 || banned === 0) break;
     }
     return best;
   }
@@ -955,6 +1150,49 @@ export class HarvesterController {
     this.stuckFor.setAt(i, 0);
   }
 
+  /** True while this harvester still holds a live unreachable-ground ban. */
+  private liveBan(i: number, time: number): boolean {
+    return this.banCx.getAt(i) >= 0 && time < this.banUntil.getAt(i);
+  }
+
+  /**
+   * Has this hull failed to physically move for HARVESTER_NAV_GIVEUP_SECONDS?
+   *
+   * Call it EVERY tick of a goal-seeking state, whatever you intend to do with
+   * the answer — the anchor is only fresh if it is sampled continuously, and a
+   * watchdog that is only read once the caller already suspects trouble is
+   * measuring the wrong window.
+   *
+   * Deliberately NOT folded into `trackProgress`. That one resets on its own
+   * firing, every HARVESTER_STUCK_SECONDS, so a counter sharing its state could
+   * never reach a longer horizon; and the two ask different questions — see the
+   * block in `tickSeek` that consumes this.
+   */
+  private trackPinned(i: number, dt: number): boolean {
+    const store = this.world.store;
+    const dx = store.posX[i] - this.pinX.getAt(i);
+    const dz = store.posZ[i] - this.pinZ.getAt(i);
+    if (dx * dx + dz * dz >= HARVESTER_NAV_GIVEUP_METRES * HARVESTER_NAV_GIVEUP_METRES) {
+      this.resetPin(i);
+      return false;
+    }
+    const t = this.pinnedFor.getAt(i) + dt;
+    if (t < HARVESTER_NAV_GIVEUP_SECONDS) {
+      this.pinnedFor.setAt(i, t);
+      return false;
+    }
+    this.resetPin(i);
+    return true;
+  }
+
+  /** Re-anchor the give-up watchdog here, and restart its clock. */
+  private resetPin(i: number): void {
+    const store = this.world.store;
+    this.pinX.setAt(i, store.posX[i]);
+    this.pinZ.setAt(i, store.posZ[i]);
+    this.pinnedFor.setAt(i, 0);
+  }
+
   /**
    * A new destination gets a new force-drive budget. Kept separate from
    * `resetProgress` on purpose: that is called every time the watchdog re-arms,
@@ -964,6 +1202,10 @@ export class HarvesterController {
   private resetForceBudget(i: number): void {
     this.forceTries.setAt(i, 0);
     this.forceDrive.setAt(i, 0);
+    // A new destination is a new question for the give-up watchdog too: the
+    // hull may have been standing still very sensibly, right on top of the
+    // thing it was told to go to.
+    this.resetPin(i);
   }
 
   /**
@@ -1084,13 +1326,25 @@ export class HarvesterController {
       // THE PREMISE IS FALSE IN EXACTLY THE CASE THIS MODULE EXISTS FOR, and
       // the header of this file describes that case without the code ever
       // testing for it. `NavAssigner`'s give-up path calls `finishOrder`: it
-      // sets `AgentFlag.Arrived`, it zeroes `velX/velZ` — and it does NOT
-      // release `navField`. So a harvester nav has abandoned reads
-      // `navField >= 0` forever, this guard skipped it forever, and the rescue
-      // two lines below could never fire. Traced: parked at 308.0,203.1 with a
-      // full hopper 15 m from its refinery, `aflags=14` (Arrived|HasSlot|
-      // Displaced), `spd=0`, unchanged for 1200 consecutive ticks, while
-      // `stats().driven` read 0 for the whole match.
+      // sets `AgentFlag.Arrived` and zeroes `velX/velZ`, and a harvester nav
+      // has abandoned still reads `navField >= 0`, so this guard skipped it
+      // forever and the rescue two lines below could never fire. Traced:
+      // parked at 308.0,203.1 with a full hopper 15 m from its refinery,
+      // `aflags=14` (Arrived|HasSlot|Displaced), `spd=0`, unchanged for 1200
+      // consecutive ticks, while `stats().driven` read 0 for the whole match.
+      //
+      // THE ROUTE TO `navField >= 0` IS NOT THE ONE THIS USED TO CLAIM. It said
+      // `finishOrder` "does NOT release `navField`", and it does — first line of
+      // the function. What puts the field straight back is the CALLER: the
+      // wedge ladder's park rung returns false from `unwedge`, meaning "the
+      // position did not change", so `NavAssigner`'s loop does not `continue`
+      // and falls through to its own field block, which sees `navField < 0`,
+      // calls that a missing field and re-requests one on the same tick.
+      // Re-verified on seed 4242 slot 43: `aflags=14`, `escalations=3`,
+      // `navField=6`, for 2100 consecutive ticks. The conclusion below is
+      // unchanged and so is the code; only the mechanism was mis-stated. It
+      // matters because it rules out `navField < 0` as a give-up signal for the
+      // FSM — see `trackPinned`.
       //
       // The honest question is "is nav MOVING it", and the honest signal is
       // velocity: Steering writes velX/velZ to zero for precisely the units it

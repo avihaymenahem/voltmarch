@@ -248,6 +248,7 @@ describe('harvester soak on a real map', () => {
    *   after 4 fixes      13          ~1712 m
    *   after 5 fixes      22          ~2902 m
    *   after 8 fixes      26          ~2900 m
+   *   after 9 fixes      33          ~4400 m
    *
    * The three most recent were all in NAV, not in the harvester FSM, and all
    * three were cases of a watchdog that could not see the failure it existed
@@ -263,11 +264,28 @@ describe('harvester soak on a real map', () => {
    *      destination churn ever allowed it, so the rescue for "it is just
    *      sitting there" could not run on the units that sit there most.
    *
-   * Throughput is still well short of what it should be: a harvester that never
+   * The ninth was in the SEAM between the two, and it was the FSM resetting the
+   * evidence nav needed. `tickSeek` used to drop its claim and idle once its
+   * force-drive budget ran out; `seeksGoal(Idle)` is false, so `NavAssigner`
+   * released the field and called `armWedge`, which zeroes `escalations` — and
+   * two seconds later the retry re-picked the same cell and zeroed it again.
+   * The wedge ladder needs 480 consecutive ticks to reach its displacement rung
+   * and 600 to reach its park rung; the cycle was ~420. Measured across these
+   * seeds: 87/119/57 wedge detections and ZERO park rungs in twelve minutes of
+   * harvesting. The remedy that would have worked was being armed and disarmed
+   * by the module asking for it, exactly as `commitDockPoint` documents from
+   * the other side.
+   *
+   * The FSM now holds still instead, and consumes nav's give-up as a signal:
+   * eight seconds in which NOTHING moved the hull — not the field, not the
+   * backstop — is what finally distinguishes "cannot get there" from "did not
+   * get there yet". See HARVESTER_NAV_GIVEUP_SECONDS, and note that the
+   * exclusion which measured worse in an earlier attempt is back and now pays,
+   * because it is keyed on that signal instead of on progress.
+   *
+   * Throughput is still short of what it should be: a harvester that never
    * stops completes a round trip every 30-60 s, so twelve of them over four
-   * minutes should deliver on the order of 50 loads, and 6 of 12 are still
-   * crawling. AT LEAST ONE CAUSE REMAINS — see MAX_CRAWLING below for where it
-   * currently looks like it lives.
+   * minutes should deliver on the order of 50 loads and they deliver 33.
    *
    * Note the middle row. The first four fixes are each individually correct and
    * individually evidenced, and together they moved throughput by nothing at
@@ -280,10 +298,10 @@ describe('harvester soak on a real map', () => {
    * harvesters sat at a single coordinate for 1200+ consecutive ticks with a
    * full hopper. Nothing may do that again.
    */
-  const MIN_TOTAL_DELIVERIES = 25;
+  const MIN_TOTAL_DELIVERIES = 32;
   const MIN_METRES_EACH = 20;
   /**
-   * ============ THE BAR THIS CODE DOES NOT YET CLEAR ======================
+   * ============ THE BAR THIS CODE FINALLY CLEARS =========================
    * `MIN_METRES_EACH` is a floor against the HARD stall and nothing else: 20 m
    * in four minutes is 0.08 m/s. Every failure this file has ever been reopened
    * for cleared that bar comfortably while still being obviously broken on
@@ -293,18 +311,21 @@ describe('harvester soak on a real map', () => {
    * So the SOFT stall is counted too, at 150 m: below a healthy round trip
    * (the good hulls manage 440-530 m) and far above the hard floor.
    *
-   * It is a CEILING ON THE COUNT, not a per-hull assertion, because 6 of 12
-   * currently fail it and a test that fails is not a ratchet. That number is the
-   * headline outstanding defect in this system, recorded here so it cannot
-   * quietly grow: the remaining failure is concentrated in `SeekOre`, where a
-   * hull that cannot reach its claimed ore cell re-picks the same cell (ore is
-   * ranked by DISTANCE with no reachability test) and loops. An exclusion was
-   * tried and measured worse — see the note in `Harvesting.tickSeek`.
+   * This was 6, and it was described here as "the headline outstanding defect
+   * in this system". It is 1, and the measurement is 0 — no harvester on any of
+   * the three seeds now covers less than 200 m. The one hull of margin is
+   * because 150 m is a hard threshold on a continuous quantity: a hull at 149 m
+   * and a hull at 151 m are the same hull, and CI should not turn on which side
+   * of the line one of them lands.
+   *
+   * The cause was NOT the one recorded here: it was not that a hull re-picks an
+   * unreachable cell, it was that the re-pick itself disarmed nav's unwedge
+   * ladder. Both halves are fixed; see the header above.
    * ======================================================================= */
   const MIN_METRES_HEALTHY = 150;
-  const MAX_CRAWLING = 6;
+  const MAX_CRAWLING = 1;
   /** Harvesters allowed to stop delivering in the last third, across all seeds. */
-  const MAX_STALLED = 7;
+  const MAX_STALLED = 5;
 
   it('never freezes a harvester, and delivers no less than the measured floor', () => {
     const out: string[] = [];
