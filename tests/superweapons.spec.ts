@@ -306,6 +306,40 @@ describe('the countdown', () => {
     expect(rig.supers.remainingFor(ME, 'nuke')).toBeGreaterThan(0);
   });
 
+  it('takes a partial charge back from a save, clamped to this build\'s own', async () => {
+    // `SaveGame.ts` has written the seconds into every file it has ever
+    // produced and duck-typed `SuperweaponChargeSetter` waiting for this
+    // method. Without it a silo forty seconds from launch reloaded at three
+    // hundred — a snapshot restoring a number other than the one that was there.
+    const rig = await makeRig(Faction.Soviets);
+    powerUp(rig, ME);
+    rig.building('nuclearSilo', ME, 30, 30);
+    rig.step(SETTLE);
+    expect(rig.supers.remainingFor(ME, 'nuke')).toBeGreaterThan(0);
+    const full = SUPERWEAPONS[rig.supers.indexOf('nuke')].chargeSeconds;
+
+    expect(rig.supers.setRemaining(ME, 'nuke', 44.5)).toBe(true);
+    expect(rig.supers.remainingFor(ME, 'nuke')).toBeCloseTo(44.5, 4);
+
+    expect(rig.supers.setRemaining(ME, 'nuke', 0)).toBe(true);
+    expect(rig.supers.isReady(ME, 'nuke')).toBe(true);
+
+    // Over-full and under-zero are clamped; a stranger key and a bad slot are
+    // refused rather than silently landing on a neighbour.
+    expect(rig.supers.setRemaining(ME, 'nuke', 1e6)).toBe(true);
+    expect(rig.supers.remainingFor(ME, 'nuke')).toBeLessThanOrEqual(full);
+    expect(rig.supers.setRemaining(ME, 'nuke', -5)).toBe(true);
+    expect(rig.supers.isReady(ME, 'nuke')).toBe(true);
+    expect(rig.supers.setRemaining(ME, 'timeStop', 10)).toBe(false);
+    expect(rig.supers.setRemaining(ME, 'nuke', Number.NaN)).toBe(false);
+
+    // Availability is NOT written: it is re-derived from the standing
+    // structures, so a save can never hand out a weapon whose silo is rubble.
+    expect(rig.supers.remainingFor(THEM, 'nuke')).toBe(-1);
+    expect(rig.supers.setRemaining(THEM, 'nuke', 0)).toBe(true);
+    expect(rig.supers.remainingFor(THEM, 'nuke'), 'a save granted availability').toBe(-1);
+  });
+
   it('is pushed to the HUD by key, and retired when the structure falls', async () => {
     // `Superweapons.pushHud` duck-types `globalThis.__vmHud`. The HUD's own
     // `setSuperweapon` / `clearSuperweapon` are the countdown's only route to
