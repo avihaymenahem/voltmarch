@@ -1942,6 +1942,229 @@ function oreSilo(faction: StructureFaction): StructureMassList {
 }
 
 /* ==========================================================================
+ * 4b. THE SUPERWEAPONS
+ *
+ * Four structures on one 3x3, 13 m pad (`BUILDING_DIMENSIONS.superweapon`) —
+ * the biggest plan and the tallest roofline in the game, because an opponent
+ * has to be able to read that one of these exists from across the map before
+ * the countdown finishes. `src/sim/Superweapons.ts` has charged, warned and
+ * fired all four of these since it was written; until now none of them had a
+ * building to charge FROM.
+ *
+ * Each one says what it does from the silhouette alone, which is the whole
+ * design brief: a launch tube with the blast doors open, two emitters facing
+ * each other across a gap, a sphere hung in a gantry, a mast throwing arcs.
+ * ========================================================================== */
+
+/**
+ * THE CHRONOSPHERE. Two raking pylons carrying a glass sphere in the gap
+ * between them — the one Allied structure whose readable volume is not a
+ * module but a void with something floating in it.
+ */
+function alliedChronosphere(): StructureMassList {
+  const f = fp('superweapon');
+  const s = alliedShell(f.w, f.h, f.height, {
+    key: 'superweapon', paired: true, team: 1.14, windowCount: 6, bodyFraction: 0.34,
+  });
+  const roof = s.roofY;
+  const coreY = roof + (f.height - roof) * 0.60;
+  const r = s.w * 0.20;
+  s.masses.push(
+    // The pylons. Raked in — a splayed pair reads as a cradle rather than as
+    // two chimneys, and the taper is what carries the eye up to the sphere.
+    tbox('pylon', MassRole.Primary, [1.9, f.height - roof, 2.2], [s.w * 0.31, (f.height + roof) * 0.5, 0], 'paintMed', {
+      topScaleX: 0.46, topScaleZ: 0.58, bottomScaleX: 1.22, bottomScaleZ: 1.16, cornerCut: 0.18,
+    }, { mirrorX: true, chamfer: 0.09 }),
+    // The sphere: two domes back to back. There is no sphere primitive and
+    // there should not be — the pair reads better anyway, because the seam
+    // gives the equator a hard specular line under the fixed camera.
+    { name: 'core.hi', primitive: 'lathe', role: MassRole.Primary, profile: 'dome',
+      size: [r * 2, r * 1.05, r * 2], anchor: [0, coreY, 0], slot: 'glass',
+      capSlot: 'paintSmall', tint: 0.94 },
+    { name: 'core.lo', primitive: 'lathe', role: MassRole.Primary, profile: 'dome',
+      size: [r * 2, r * 1.05, r * 2], anchor: [0, coreY, 0], slot: 'glass',
+      rot: [Math.PI, 0, 0], capSlot: 'paintSmall', tint: 0.94 },
+    cyl('core.band', MassRole.Greeble, [r * 2.16, 0.26, r * 2.16], [0, coreY, 0], 'bareMetal', {
+      group: 'core', chamfer: 0.05, capSlot: 'grille', segments: 12,
+    }),
+    cyl('core.lamp', MassRole.Emissive, [r * 0.90, r * 0.90, r * 0.90], [0, coreY, 0], 'emissive', {
+      group: 'core', feature: Feature.Window, capSlot: 'emissive', segments: 10,
+    }),
+    // The feed: a conduit up each pylon into the sphere's collar.
+    box('feed', MassRole.Greeble, [s.w * 0.24, 0.30, 0.30], [s.w * 0.16, coreY, 0], 'bareMetal', {
+      mirrorX: true, group: 'feeds', chamfer: 0.05,
+    }),
+    cyl('capacitor', MassRole.Greeble, [1.10, roof * 0.62, 1.10], [-s.w * 0.30, roof * 0.31, s.d * 0.26], 'bareMetal', {
+      group: 'capacitors', topRadius: 0.88, capSlot: 'hatch', segments: 10, chamfer: 0.06,
+    }),
+    box('bus.hood', MassRole.Greeble, [s.w * 0.20, 0.30, s.d * 0.16], [-s.w * 0.12, roof + 0.22, s.d * 0.28], 'vent', { group: 'bus' }),
+  );
+  return list('allied_chrono', 'Chronosphere', 'allies', 'superweapon', s.masses, [
+    ...baseSockets(s.d, roof + 1.0, -s.w * 0.30, -s.d * 0.30),
+    { part: PartId.Emitter, pos: [0, coreY, 0] },
+    { part: PartId.Antenna, pos: [0, f.height, 0] },
+  ]);
+}
+
+/**
+ * THE WEATHER CONTROL DEVICE. A stepped mast under a wide collector saucer,
+ * with the discharge horns standing off the rim. Reads as a thing pointed AT
+ * the sky, which is the one cue that separates it from the Radar Dome.
+ */
+function alliedWeatherControl(): StructureMassList {
+  const f = fp('superweapon');
+  const s = alliedShell(f.w, f.h, f.height, {
+    key: 'superweapon', paired: true, team: 1.14, windowCount: 6, bodyFraction: 0.36,
+  });
+  const roof = s.roofY;
+  const mastTop = f.height - 2.3;
+  s.masses.push(
+    cyl('mast', MassRole.Primary, [s.w * 0.30, mastTop - roof, s.w * 0.30], [0, (mastTop + roof) * 0.5, 0], 'paintMed', {
+      topRadius: 0.62, capSlot: 'paintSmall', segments: 14,
+    }),
+    // The saucer. Inverted, because it is collecting rather than transmitting.
+    { name: 'saucer', primitive: 'lathe', role: MassRole.Primary, profile: 'dome',
+      size: [s.w * 0.72, 2.0, s.w * 0.72], anchor: [0, mastTop + 1.0, 0], slot: 'paintMed',
+      rot: [Math.PI, 0, 0], capSlot: 'grille' },
+    cyl('saucer.rim', MassRole.Greeble, [s.w * 0.78, 0.34, s.w * 0.78], [0, mastTop + 0.1, 0], 'bareMetal', {
+      group: 'saucer', chamfer: 0.05, capSlot: 'grille', segments: 12,
+    }),
+    // The discharge spike down the axis of the dish, and its lit tip.
+    cyl('spike', MassRole.Primary, [0.62, 3.2, 0.62], [0, f.height - 1.2, 0], 'bareMetal', {
+      topRadius: 0.24, capSlot: 'grille', segments: 10,
+    }),
+    box('spike.tip', MassRole.Emissive, [0.44, 0.60, 0.44], [0, f.height + 0.25, 0], 'emissive', {
+      group: 'spike', feature: Feature.Window, chamfer: 0.05,
+    }),
+    // Three horns standing off the rim. Authored as one greeble group so the
+    // whole ring costs one object in the clutter budget.
+    box('horn', MassRole.Greeble, [0.28, 1.5, 0.28], [s.w * 0.34, mastTop + 0.9, 0], 'bareMetal', {
+      mirrorX: true, group: 'horns', chamfer: 0.04,
+    }),
+    box('horn.rear', MassRole.Greeble, [0.28, 1.5, 0.28], [0, mastTop + 0.9, -s.d * 0.34], 'bareMetal', {
+      group: 'horns', chamfer: 0.04,
+    }),
+    cyl('coolant', MassRole.Greeble, [1.05, roof * 0.66, 1.05], [-s.w * 0.32, roof * 0.33, s.d * 0.24], 'bareMetal', {
+      group: 'coolant', topRadius: 0.88, capSlot: 'hatch', segments: 10, chamfer: 0.06,
+    }),
+    box('plant.hood', MassRole.Greeble, [s.w * 0.20, 0.32, s.d * 0.16], [s.w * 0.14, roof + 0.24, s.d * 0.26], 'vent', { group: 'plant' }),
+  );
+  return list('allied_weather', 'Weather Control Device', 'allies', 'superweapon', s.masses, [
+    ...baseSockets(s.d, roof + 1.0, -s.w * 0.32, -s.d * 0.30),
+    { part: PartId.Dish, pos: [0, mastTop + 1.0, 0] },
+    { part: PartId.Antenna, pos: [0, f.height + 0.5, 0] },
+  ]);
+}
+
+/**
+ * THE NUCLEAR MISSILE SILO. A battered concrete slab with the launch tube let
+ * INTO it rather than standing on it, blast doors thrown back on the deck, and
+ * the warhead nose showing at the lip. Nothing else in the game is a hole.
+ */
+function sovietNuclearSilo(): StructureMassList {
+  const f = fp('superweapon');
+  const s = sovietShell(f.w, f.h, f.height, {
+    key: 'superweapon', team: 1.0, windowCount: 5, bodyFraction: 0.36,
+  });
+  const roof = s.roofY;
+  const tubeTop = f.height - 3.0;
+  const tx = s.w * 0.06, tz = -s.d * 0.04;
+  s.masses.push(
+    // The tube. Wide, short and dead vertical on purpose: a launch tube is the
+    // one thing on a battlefield that IS a cylinder, and the batter lives in
+    // the slab underneath it.
+    cyl('tube', MassRole.Primary, [s.w * 0.44, tubeTop - roof * 0.9, s.w * 0.44], [tx, (tubeTop + roof * 0.9) * 0.5, tz], 'rivetPlate', {
+      topRadius: 0.94, capSlot: 'grille', segments: 12,
+    }),
+    cyl('tube.collar', MassRole.Greeble, [s.w * 0.52, 0.42, s.w * 0.52], [tx, tubeTop - 0.2, tz], 'bareMetal', {
+      group: 'tube', chamfer: 0.06, capSlot: 'grille', segments: 10,
+    }),
+    // The warhead, sitting proud of the lip.
+    { name: 'warhead', primitive: 'lathe', role: MassRole.Primary, profile: 'dome',
+      size: [s.w * 0.30, 2.6, s.w * 0.30], anchor: [tx, tubeTop + 1.3, tz], slot: 'paintMed',
+      capSlot: 'grille' },
+    box('warhead.band', MassRole.Emissive, [s.w * 0.26, 0.22, s.w * 0.26], [tx, tubeTop + 0.55, tz], 'emissive', {
+      group: 'warhead', feature: Feature.Window, chamfer: 0.04,
+    }),
+    // The blast doors, thrown back flat on the deck. `Feature.Door` drops them
+    // when the silo works, which is the same animation a War Factory's roller
+    // uses and costs nothing extra.
+    box('door', MassRole.Greeble, [s.w * 0.30, 0.34, s.d * 0.46], [s.w * 0.36, roof * 0.92, tz], 'tread', {
+      mirrorX: true, group: 'doors', feature: Feature.Door, anim: 0.7, chamfer: 0.05,
+    }),
+    ...sovietVessel(-s.w * 0.30, s.d * 0.24, s.w * 0.13, roof * 1.10, 'coolant'),
+    ...sovietStack(s.w * 0.34, -s.d * 0.28, s.w * 0.075, roof * 1.05, f.height - 3.6, 'stackA'),
+    // NO SECOND LATTICE AND NO CATWALK. `sovietShell` already puts a lattice
+    // mast up the -X flank, and `lattice()` emits five masses per bay — a
+    // second one plus a railed catwalk was 700 triangles of scaffolding on the
+    // biggest footprint in the game, for hardware the camera reads as noise at
+    // this scale. The tube is the silhouette; the scaffolding is not.
+  );
+  return list('soviet_nuke', 'Nuclear Missile Silo', 'soviets', 'superweapon', s.masses, [
+    ...baseSockets(s.d, f.height - 3.6, s.w * 0.34, -s.d * 0.28),
+    { part: PartId.Emitter, pos: [tx, tubeTop + 1.3, tz] },
+    { part: PartId.Antenna, pos: [tx, f.height, tz] },
+  ]);
+}
+
+/**
+ * THE IRON CURTAIN DEVICE. Two emitter drums on cantilevered arms facing each
+ * other across a lit gap. The gap IS the building: it is the only structure in
+ * the game whose most important feature is empty space, and the arms exist to
+ * hold that space open at a height the camera can see into.
+ */
+function sovietIronCurtain(): StructureMassList {
+  const f = fp('superweapon');
+  const s = sovietShell(f.w, f.h, f.height, {
+    key: 'superweapon', team: 1.0, windowCount: 5, bodyFraction: 0.34,
+  });
+  const roof = s.roofY;
+  const gapY = f.height - 3.4;
+  const arm = s.w * 0.30;
+  s.masses.push(
+    // The two arms, raked in so the emitters overhang the deck.
+    tbox('arm', MassRole.Primary, [1.7, gapY - roof * 0.9, 2.0], [s.w * 0.34, (gapY + roof * 0.9) * 0.5, 0], 'rivetPlate', {
+      topScaleX: 0.52, topScaleZ: 0.64, bottomScaleX: 1.18, bottomScaleZ: 1.12, cornerCut: 0.16, shear: -s.w * 0.06,
+    }, { mirrorX: true, chamfer: 0.08 }),
+    // The emitter heads, pointed at each other.
+    cyl('emitter', MassRole.Primary, [2.3, 2.0, 2.3], [arm, gapY, 0], 'bareMetal', {
+      rot: [0, 0, Math.PI * 0.5], mirrorX: true, topRadius: 0.58, capSlot: 'grille', segments: 10,
+    }),
+    // THE GAP. Everything above is here to frame it.
+    cyl('gap', MassRole.Emissive, [1.05, arm * 1.55, 1.05], [0, gapY, 0], 'emissive', {
+      rot: [0, 0, Math.PI * 0.5], feature: Feature.Window, capSlot: 'emissive', segments: 10, chamfer: 0.05,
+    }),
+    // The discharge mast standing between the arms. It is what carries the
+    // structure to its frozen 13 m roofline — the SOVIET-3 stack normally does
+    // that job and this building has no stack (see below) — and it is also the
+    // reason the pair of coils reads as one machine rather than two towers.
+    cyl('spire', MassRole.Primary, [1.0, f.height - gapY, 1.0], [0, (f.height + gapY) * 0.5, -s.d * 0.04], 'bareMetal', {
+      topRadius: 0.34, capSlot: 'grille', segments: 10,
+    }),
+    box('spire.tip', MassRole.Emissive, [0.36, 0.44, 0.36], [0, f.height - 0.18, -s.d * 0.04], 'emissive', {
+      group: 'spireTip', feature: Feature.Window, chamfer: 0.04,
+    }),
+    box('arm.tie', MassRole.Greeble, [s.w * 0.60, 0.30, 0.34], [0, gapY - 2.1, -s.d * 0.10], 'bareMetal', {
+      group: 'ties', chamfer: 0.05,
+    }),
+    // Two chargers and NO STACK, which is the one place this structure departs
+    // from SOVIET-3. Nothing is burned here — the Curtain is a capacitor bank
+    // discharged through two coils — and a smoking chimney on it would be the
+    // faction language overruling what the building actually does.
+    ...sovietVessel(-s.w * 0.28, s.d * 0.26, s.w * 0.14, roof * 1.08, 'charger'),
+    ...sovietVessel(-s.w * 0.10, -s.d * 0.34, s.w * 0.11, roof * 1.04, 'chargerB'),
+    // See the Nuclear Silo: `sovietShell` already carries a lattice mast, and
+    // a second one is 400 triangles of scaffolding behind the arms.
+    greebleRun('bus.run', s.d * 0.46, 0.24, 0.20, [-s.w * 0.40, roof * 0.52, s.d * 0.06], 0x4943),
+  );
+  return list('soviet_curtain', 'Iron Curtain Device', 'soviets', 'superweapon', s.masses, [
+    ...baseSockets(s.d, roof * 1.30, -s.w * 0.10, -s.d * 0.34),
+    { part: PartId.Emitter, pos: [0, gapY, 0] },
+    { part: PartId.CoilTip, pos: [0, f.height, -s.d * 0.04] },
+  ]);
+}
+
+/* ==========================================================================
  * 5. THE ROSTER
  * ========================================================================== */
 
@@ -1959,6 +2182,8 @@ export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   alliedPillbox(),
   alliedAaTurret(),
   alliedPrismTower(),
+  alliedChronosphere(),
+  alliedWeatherControl(),
   wallSegment('allies'),
   gateSegment('allies'),
 
@@ -1975,6 +2200,8 @@ export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   sovietSentry(),
   sovietTeslaCoil(),
   sovietFlameTower(),
+  sovietNuclearSilo(),
+  sovietIronCurtain(),
   wallSegment('soviets'),
   gateSegment('soviets'),
 ];

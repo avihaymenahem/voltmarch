@@ -59,7 +59,7 @@ import {
 // is not the sim dependency the seam below exists to avoid. The HUD needs the
 // label, the hint and the full cooldown; the SERVICE owns which unit has which
 // and how much of the cooldown is left.
-import { ABILITIES, MAX_SELECTION } from '../core/config';
+import { ABILITIES, HUD_SUPERWEAPON, MAX_SELECTION } from '../core/config';
 import type { Channels } from '../core/events';
 import type { World } from '../core/world';
 import type { CameraRig } from '../render/camera';
@@ -75,6 +75,7 @@ import {
   applyTheme,
   computeUiScale,
   el,
+  formatClock,
   formatCost,
   formatStat,
   type ToastKind,
@@ -94,6 +95,8 @@ import {
   type HudTelemetry,
   type SelectionCard,
   type SelectionView,
+  type SuperweaponRow,
+  type SuperweaponView,
 } from './Sidebar';
 import { iconForUnitKey, makeIcon, type IconName } from './icons';
 import { buildHotkeyBlockedBy, type StoredBindings } from '../input/ActionCatalogue';
@@ -421,6 +424,33 @@ function transportSeam(): TransportSeamRead | null {
   return t !== undefined && typeof t.capacity === 'function' ? t : null;
 }
 
+/**
+ * The superweapon service, duck-typed off `globalThis.__vmSuperweapons`.
+ *
+ * Same rule as the two seams above, and here it matters more than anywhere
+ * else: `src/sim/Superweapons.ts` pulls in the production catalog, the spatial
+ * index and the damage channel, and a `?shot=` boot that never registers the
+ * sim would take the whole HUD down with a hard import.
+ *
+ * THE TRAFFIC RUNS BOTH WAYS AND ONLY ONE OF THEM IS THIS SEAM. The COUNTDOWN
+ * is pushed AT us — the service calls `setSuperweapon` / `clearSuperweapon` on
+ * `globalThis.__vmHud`, so the HUD needs no polling and no reference at all to
+ * read a timer. This seam is only the click: `arm` puts the targeting cursor
+ * up, and the shot itself then goes through `channels.commands` from inside the
+ * service. The HUD never fires anything.
+ */
+interface SuperweaponSeamRead {
+  arm(key: string): boolean;
+  cancelArm(): void;
+  readonly armedKey: string | null;
+}
+
+function superweaponSeam(): SuperweaponSeamRead | null {
+  const g = globalThis as unknown as { __vmSuperweapons?: SuperweaponSeamRead };
+  const s = g.__vmSuperweapons;
+  return s !== undefined && typeof s.arm === 'function' ? s : null;
+}
+
 /* ==========================================================================
  * SECTION 3 — THE HUD
  * ========================================================================== */
@@ -501,6 +531,15 @@ export class Hud {
 
   /** Pooled selection view. Never reallocated. */
   private readonly view: SelectionView;
+  /**
+   * Pooled superweapon countdowns, in the order the service pushed them.
+   *
+   * `rows` is allocated once at `HUD_SUPERWEAPON.maxRows` and never grows;
+   * `superCount` is how many of them are live. `setSuperweapon` finds a row by
+   * key or claims the next free one, so the list is stable frame to frame and
+   * a countdown never jumps to a different position as its neighbour arrives.
+   */
+  private readonly supers: SuperweaponView;
   /** Scratch for grouping the selection into cards. */
   private readonly groupKeys: number[] = [];
   private readonly groupFirst: number[] = [];
@@ -562,6 +601,7 @@ export class Hud {
         relocate: () => this.relocateSelection(),
         useAbility: () => this.useSelectedAbility(),
         unload: () => this.unloadSelection(),
+        fireSuperweapon: (key) => this.armSuperweapon(key),
         sound: (cue) => this.soundHook?.(cue),
       },
     });
@@ -611,6 +651,12 @@ export class Hud {
       cargo: { visible: false, enabled: false, count: 0, capacity: 0, hint: '' },
       armour: '', damage: '', range: '', speed: '',
     };
+
+    const superRows: SuperweaponRow[] = [];
+    for (let i = 0; i < HUD_SUPERWEAPON.maxRows; i++) {
+      superRows.push({ key: '', label: '', remaining: 0, total: 1, ready: false, armed: false });
+    }
+    this.supers = { count: 0, rows: superRows };
 
     this.sidebar.setExtrasProvider((key) => this.extrasFor(key));
     this.minimap.onJumpRequest((x, z) => this.cameraRig.setFocus(x, z, false));
@@ -999,7 +1045,15 @@ export class Hud {
     this.buildTelemetry(snap, dt);
 
     this.sidebar.setRadarOnline(snap.hasRadar);
-    this.sidebar.update(snap, this.view, this.telemetry, dt);
+    // The armed flag is the one field on a countdown that can change without
+    // the service pushing — Escape, a right-click and a fired shot all cancel
+    // from inside `Superweapons`. Re-read it here so the highlight cannot
+    // outlive the reticle.
+    const armed = superweaponSeam()?.armedKey ?? null;
+    for (let i = 0; i < this.supers.count; i++) {
+      this.supers.rows[i].armed = this.supers.rows[i].key === armed;
+    }
+    this.sidebar.update(snap, this.view, this.telemetry, dt, this.supers);
     // AFTER `update`, so a slot that just changed content has already bound its
     // new subject and can be rendered in the same frame rather than a frame
     // late. Costs nothing when the queue is empty, which is almost always.
@@ -1762,6 +1816,118 @@ export class Hud {
       store.posX[idx], store.posZ[idx],
     );
     this.toast('info', 'ability', action.label, action.hint);
+  }
+
+  /* ------------------------------------------------------------------ */
+  /* superweapons                                                        */
+  /* ------------------------------------------------------------------ */
+
+  /**
+   * Publish or refresh one superweapon countdown.
+   *
+   * PUSHED, NOT POLLED, and that is the whole reason the HUD needs no import of
+   * the sim to show a timer: `Superweapons.pushHud` calls this on
+   * `globalThis.__vmHud` three ticks out of ten for every weapon the local
+   * player can field, and calls `clearSuperweapon` for every one it cannot.
+   * With no sim registered nothing ever calls either and the dock stays empty,
+   * which is the correct headless answer.
+   *
+   * Rows are claimed by KEY and never re-sorted. A weapon that arrives second
+   * takes the second slot and keeps it, so a countdown cannot slide sideways
+   * under the cursor when its neighbour's structure is destroyed.
+   */
+  setSuperweapon(id: string, label: string, remaining: number, total: number): void {
+    if (id === '') return;
+    const rows = this.supers.rows;
+    let slot = -1;
+    for (let i = 0; i < this.supers.count; i++) {
+      if (rows[i].key === id) { slot = i; break; }
+    }
+    if (slot < 0) {
+      if (this.supers.count >= rows.length) return;
+      slot = this.supers.count++;
+    }
+    const row = rows[slot];
+    row.key = id;
+    row.label = label;
+    row.remaining = Math.max(0, remaining);
+    row.total = total > 0 ? total : 1;
+    row.ready = row.remaining <= 0;
+    // Re-read every push rather than caching on the click: `cancelArm` can
+    // happen from Escape, from a right-click and from the service itself, and
+    // none of those three come back through this file.
+    row.armed = superweaponSeam()?.armedKey === id;
+  }
+
+  /** Retire a countdown — the structure is gone, or was never built. */
+  clearSuperweapon(id: string): void {
+    const rows = this.supers.rows;
+    for (let i = 0; i < this.supers.count; i++) {
+      if (rows[i].key !== id) continue;
+      const last = --this.supers.count;
+      // Compact by shifting, not by swapping with the tail: the order is what
+      // keeps a live row under the cursor it was under last frame.
+      for (let k = i; k < last; k++) {
+        const a = rows[k];
+        const b = rows[k + 1];
+        a.key = b.key; a.label = b.label; a.remaining = b.remaining;
+        a.total = b.total; a.ready = b.ready; a.armed = b.armed;
+      }
+      rows[last].key = '';
+      rows[last].label = '';
+      rows[last].ready = false;
+      rows[last].armed = false;
+      // The armed weapon just vanished from under the cursor. Put the cursor
+      // back rather than leaving a reticle for a silo that no longer exists.
+      const seam = superweaponSeam();
+      if (seam !== null && seam.armedKey === id) seam.cancelArm();
+      return;
+    }
+  }
+
+  /**
+   * A click on a countdown row: put the targeting cursor up.
+   *
+   * IT DOES NOT FIRE, and it deliberately has no way to. Arming installs the
+   * service's own pointer listener; the click on the ground that follows issues
+   * `OrderKind.UseAbility` on the silo through `channels.commands`, and the
+   * simulation resolves it at Phase.Production. That is the same discipline
+   * `useSelectedAbility` above follows and for the same reason — see the
+   * comment on `CommandKind.Relocate` in `core/types.ts`. A HUD that called
+   * `fireAt` directly would be invisible to the replay recorder and to the
+   * multiplayer link, which is exactly the bug that comment exists to record.
+   */
+  private armSuperweapon(key: string): void {
+    let row: SuperweaponRow | null = null;
+    for (let i = 0; i < this.supers.count; i++) {
+      if (this.supers.rows[i].key === key) { row = this.supers.rows[i]; break; }
+    }
+    if (row === null) return;
+
+    const seam = superweaponSeam();
+    if (seam === null) {
+      this.soundHook?.('error');
+      return;
+    }
+    // Already armed: a second click on the same row is "put the cursor away",
+    // which is what a player who changed their mind reaches for first.
+    if (seam.armedKey === key) {
+      seam.cancelArm();
+      row.armed = false;
+      return;
+    }
+    if (!row.ready) {
+      this.soundHook?.('error');
+      this.toast('warn', `super:${key}`, row.label, `Ready in ${formatClock(row.remaining)}`);
+      return;
+    }
+    if (!seam.arm(key)) {
+      this.soundHook?.('error');
+      this.toast('warn', `super:${key}`, row.label, 'Cannot fire right now');
+      return;
+    }
+    row.armed = true;
+    this.toast('info', `super:${key}`, row.label, 'Pick a target on the map');
   }
 
   /** Armour / damage / range / speed for the primary entity. */

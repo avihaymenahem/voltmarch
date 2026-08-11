@@ -102,6 +102,14 @@ const FACTION_KEYS: Readonly<Record<string, string>> = {
   // models agent asked for and they now exist in Defs.ts.
   aaTurret: 'allied_aa',
   sentryGun: 'soviet_sentry',
+  // The superweapons. Single-faction defs, so FACTION_ANY like the defences.
+  // Without these four lines the structures build and place and then draw
+  // their army's barracks — the `DEFAULT_KEY` failure this file's own header
+  // describes, which is silent and looks like a content bug in Defs.ts.
+  chronosphere: 'allied_chrono',
+  weatherControl: 'allied_weather',
+  nuclearSilo: 'soviet_nuke',
+  ironCurtain: 'soviet_curtain',
 };
 
 /**

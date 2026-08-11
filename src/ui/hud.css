@@ -1348,6 +1348,129 @@
   white-space: nowrap;
 }
 
+/* --------------------------------------------------------------------------
+ * THE SUPERWEAPON BAR — right edge, directly above the build rail
+ * --------------------------------------------------------------------------
+ * `HUD_SUPERWEAPON` in core/config.ts owns the four numbers this block spends:
+ * rowH 18, rowGap 2, sidebarClearance 3 and maxRows 4. They are restated here
+ * as literals because CSS cannot read a TS constant — `tests/hud.spec.ts`
+ * asserts the identity, so the two cannot drift.
+ *
+ * WHY IT SITS BESIDE THE RAIL AND NOT IN THE BOTTOM BAND. The band is a
+ * derived height with a hard tripwire at 18% of the frame and it is already at
+ * 15.83% (see `--vm-dock-h`); four more rows would not fit and could not be
+ * made to. Vertical space beside the right rail is not competing with that
+ * budget, which is the same argument that moved the build palette there.
+ *
+ * THE FILL IS A TRANSFORMED ELEMENT, not a background gradient: a
+ * `background-size` animation on four rows is four style recalcs a frame for a
+ * readout that only changes once a second.
+ * ------------------------------------------------------------------------ */
+
+.vm-hud .vm-dock-super {
+  position: absolute;
+  right: calc((10 + 240 + 3) * var(--vm-u));   /* rail right + rail width + clearance */
+  bottom: calc(var(--vm-dock-h) + var(--vm-band-pad) + var(--vm-gap));
+  width: calc(150 * var(--vm-u));
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  gap: calc(2 * var(--vm-u));
+  padding: calc(4 * var(--vm-u));
+  box-sizing: border-box;
+  z-index: 4;
+  pointer-events: auto;
+}
+
+.vm-hud .vm-super-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: calc(5 * var(--vm-u));
+  height: calc(18 * var(--vm-u));
+  padding: 0 calc(5 * var(--vm-u));
+  overflow: hidden;
+  font: inherit;
+  color: var(--vm-dim);
+  text-align: left;
+  background: var(--vm-well);
+  border: 1px solid var(--vm-hairline);
+  cursor: default;
+}
+
+/* The charge fill. Anchored left, scaled from 0 to 1 as the timer empties. */
+.vm-hud .vm-super-fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+  background: rgba(var(--vm-accent-rgb), 0.16);
+  pointer-events: none;
+}
+
+.vm-hud .vm-super-icon {
+  position: relative;
+  width: calc(11 * var(--vm-u));
+  height: calc(11 * var(--vm-u));
+  flex: 0 0 auto;
+}
+
+.vm-hud .vm-super-body {
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: calc(4 * var(--vm-u));
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vm-hud .vm-super-label {
+  overflow: hidden;
+  font-size: calc(7.5 * var(--vm-u));
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-hud .vm-super-time {
+  flex: 0 0 auto;
+  font-size: calc(8.5 * var(--vm-u));
+  color: var(--vm-text);
+}
+
+/* READY is the only state that is clickable, so it is the only one that is
+   lit. A charging row deliberately does NOT pulse: the number counting down is
+   the animation, exactly as `.vm-ability.is-cooling` argues. */
+.vm-hud .vm-super-row.is-ready {
+  color: var(--vm-accent-hi);
+  border-color: var(--vm-accent);
+  background: rgba(var(--vm-accent-rgb), 0.18);
+  cursor: pointer;
+}
+
+.vm-hud .vm-super-row.is-ready .vm-super-time { color: var(--vm-accent-hi); }
+.vm-hud .vm-super-row.is-ready .vm-super-fill { background: rgba(var(--vm-accent-rgb), 0.10); }
+
+.vm-hud .vm-super-row.is-ready:hover,
+.vm-hud .vm-super-row.is-ready:focus-visible {
+  border-color: var(--vm-accent-hi);
+  background: rgba(var(--vm-accent-rgb), 0.30);
+}
+
+/* ARMED: the cursor is carrying this weapon and the next ground click fires
+   it. Gold rather than accent, because the accent already means "ready" and a
+   player mid-gesture needs the two states to be distinguishable at a glance. */
+.vm-hud .vm-super-row.is-armed {
+  color: #12161c;
+  border-color: var(--vm-gold);
+  background: var(--vm-gold);
+}
+
+.vm-hud .vm-super-row.is-armed .vm-super-time { color: #12161c; }
+.vm-hud .vm-super-row.is-armed .vm-super-fill { background: none; }
+
 /* -- the health bar: full width, number laid over it ---------------------- */
 
 .vm-hud .vm-sel-hp {
