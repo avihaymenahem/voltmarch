@@ -37,7 +37,7 @@
  */
 
 import { AUDIO_MUSIC } from '../core/config';
-import type { AudioEngine } from './AudioEngine';
+import { dbToGain, type AudioEngine } from './AudioEngine';
 import { MusicDirector } from './Music';
 
 /** Track per intensity band, in ascending order. */
@@ -206,7 +206,13 @@ export class TrackMusic {
       const g = this.streams[i].gain.gain;
       // Equal power: the incoming track rises as cos, the outgoing falls as
       // sin of the same angle, so their squares sum to one throughout.
-      const target = i === band ? 1 : 0;
+      //
+      // The active band ramps to its TRIM, not to 1. A hardcoded 1 assumes the
+      // three files are level-matched, and they are three independently
+      // mastered pieces that differ by 10.7 dB — see `AUDIO_MUSIC.trackTrimDb`
+      // for the measurements and for why the trim lives in config rather than
+      // being baked into the CC-BY audio.
+      const target = i === band ? dbToGain(AUDIO_MUSIC.trackTrimDb[i] ?? 0) : 0;
       g.cancelScheduledValues(t);
       g.setValueAtTime(g.value, t);
       g.setTargetAtTime(target, t, Math.max(0.01, fade / 3));
