@@ -100,10 +100,13 @@ resets it.
 | Career Officer | finish 100 skirmishes | — | Star decal |
 
 > **There is no Reclamation mastery chain.** The Reclamation is fully playable from the first launch
-> and has no faction-specific missions, no insignia and no superweapon. It also means the
-> **Swarmhornet** — the Reclamation's only aircraft — is unlocked by *Pactworks Aviation*, which asks
-> for twelve wins **as the Meridian Pact**. Both gunships share one unlock id. If you want to fly as
-> the Reclamation, you have to go and win a dozen games as somebody else first.
+> and has no faction-specific missions and no insignia. (It does have a superweapon — the Stormworks
+> — which is gated on its tech building like everyone else's.)
+>
+> **The oddest gate in the table:** *Pactworks Aviation* asks for twelve wins **as the Meridian
+> Pact**, and it unlocks the air arm of **all four armies**. The Vindicator, the MiG, the Kestrel and
+> the Swarmhornet share one unlock id. If you want to fly as the Allies, the Soviets or the
+> Reclamation, you have to go and win a dozen games as somebody else first.
 
 ---
 
@@ -157,7 +160,7 @@ What is behind the gate, and therefore what an unlock *widens*:
 | --- | --- |
 | Raider unit | Multigunner IFV · Attack Dog · Sandskiff · Arcspitter |
 | Tier-3 specialist | Prism Tank · Apocalypse Tank · Zenith Emitter · Slaghurler |
-| Aircraft | Kestrel Gunship · Swarmhornet |
+| Aircraft | Vindicator · MiG Fighter · Kestrel Gunship · Swarmhornet — **all four behind one Meridian mission** |
 | Tech centre | Battle Lab · Reliquary · Crucible |
 | Specialist defence | Prism Tower · Tesla Coil · Helios Spire · Arc Pylon |
 | Anti-air emplacement | Multigunner AA *(Allied only — no other faction has a dedicated AA structure)* |
@@ -168,9 +171,10 @@ What is behind the gate, and therefore what an unlock *widens*:
 Two things follow from this that are easy to miss:
 
 **The tech centre is the biggest single unlock in the game.** Strip Mine — 250,000 credits of
-lifetime mined ore — opens the Battle Lab and its equivalents, and the Battle Lab is the prereq
-for the tier-3 specialists, the Prism Tower, the capital ships and (in the simulation) every
-superweapon. Until you have it, four of your five sidebar tabs stop one tier short.
+lifetime mined ore — opens the Battle Lab and its equivalents, and the tech building is the prereq
+for the tier-3 specialists, the Prism Tower, the capital ships and **every superweapon in the game**.
+Until you have it, four of your five sidebar tabs stop one tier short and you have no end-game at
+all. If you only chase one mission, chase this one.
 
 **The AI mirrors your unlocks.** By default the opponent resolves against the *same profile you do*,
 so unlocking the Apocalypse Tank also arms the enemy Soviets with it. This is deliberate: an AI
@@ -197,50 +201,72 @@ fully wired and works.
 
 ## 6. What the rewards actually do — the honest table
 
-Not every reward in the table above is connected to something. Here is the state of each class.
+Most of the reward table is connected to something real. Three classes have a gap between what the
+reward says and what happens, and one mission cannot be finished at all. Here is the state of each,
+honestly.
 
 | Reward class | Count | Works? |
 | --- | --- | --- |
 | Unit unlocks | 5 | **Yes.** The sidebar opens up. |
 | Structure unlocks | 3 | **Yes.** |
 | Map unlocks | 4 | **Yes.** The lobby unlocks the map. |
+| Commander powers | 5 | **Implemented, but there is no button** — see below. |
+| Superweapon unlocks | 5 | **Gate nothing.** The superweapons themselves are real; these five ids are not what opens them. |
 | Objective credits | 13 | **No.** Nothing pays them (§3). |
-| Commander powers | 5 | **No consumer exists.** |
-| Superweapons | 5 | **No structure exists.** |
 | Cosmetics | 14 | **Display only.** |
 
 ### Commander powers
 
-*Airstrike, Orbital Scan, Emergency Repair, Ore Boost, Chronoshift.* These five are awarded, stored
-on your profile and listed on the Missions screen. Nothing reads them. There is no power bar, no
-hotkey, no button and no effect.
+*Airstrike, Orbital Scan, Emergency Repair, Ore Boost, Chronoshift.* These are **real, implemented
+and distinct from the four hero abilities**. They belong to the player rather than to a unit, they
+charge from the start of every match, they work with every commander dead, and they land on a point
+you name anywhere on the map.
 
-Do not confuse them with the **commander abilities**, which are real and which you get for free by
-building your faction's hero. Those are on the HUD, have a hotkey and a cooldown ring, and work:
-
-| Commander | Ability | Radius | Cooldown | Effect |
+| Power | Earned by | Charge | Radius | Effect |
 | --- | --- | --- | --- | --- |
-| Field Marshal (Allies) | Chrono Rally | 34 m | 50 s | Teleports up to 6 nearby friendlies to the commander |
-| War Commissar (Soviets) | Iron Will | 16 m | 60 s | 5 seconds of true invulnerability for friendlies in radius |
-| Hierarch (Meridian) | Prism Focus | 18 m | 45 s | 210 damage to every enemy in radius |
-| Scrap Baron (Reclamation) | Salvage Call | 22 m | 40 s | Consumes up to 8 wrecks for 120 credits each; heals friendlies 30 % |
+| **Orbital Scan** | Demolition Crew — raze 25 structures | 2:00 | 90 m | Permanently charts a wide circle of the map |
+| **Airstrike** | Armour Column — kill 250 vehicles | 2:30 | 20 m | 260 High Explosive on the marker. Friendly-fires. |
+| **Emergency Repair** | Old Guard — **unobtainable, see below** | 2:30 | 24 m | Restores 45 % of max HP to up to 24 units **and structures** |
+| **Ore Boost** | Continental Yield — mine 1,000,000 ore | 3:00 | — | 2,500 credits, immediately |
+| **Chronoshift** | Hostile Takeover — capture 10 structures | 4:00 | 30 m | Lifts up to 8 units from within 40 m of your base centroid to the marker |
 
-The commanders are **not** in the unlock table. They are capped at one alive, cost 1,500, and need a
-barracks and a radar — which means you can field one in your first match. That is deliberate: the
-point of a hero is that it is the thing you build as soon as you can.
+The charge is spent whether or not the power catches anything.
+
+> **The honest caveat: there is no button for these yet.** The verb, the command bus, the
+> multiplayer relay, the replay recorder and all five effects are implemented and tested — a power
+> fired in a PvP match or a replay resolves identically on every machine — but nothing in the
+> interface draws the five buttons or the arm-then-click that aims them. Today they are reachable
+> only from the browser console (`__vmPowers.fire('airstrike', x, z)`). Charges are also not written
+> into a save, so a loaded game starts every power charging from full.
+
+Do not confuse them with the **four commander abilities**, which are on the HUD, have a hotkey and a
+cooldown ring, and work. Those come free with your faction's 1,500-credit hero and are not in the
+unlock table at all — see [Units and Verbs](Units-and-Verbs#the-four-commander-abilities).
 
 ### Superweapons
 
-Five superweapon unlocks are authored, and **no superweapon structure exists in the roster.** The
-unlock ids were written ahead of the content on purpose.
+**Six superweapons are buildable and fully wired** — a structure, a countdown row on the HUD, an
+arming click and a targeting cursor. See [Units and Verbs](Units-and-Verbs#superweapons) for the
+effects and [Base Building](Base-Building#superweapons) for siting them.
 
-Separately, the simulation *does* implement four superweapons — Nuclear Missile (Soviet, 7 min
-charge), Iron Curtain (Soviet, 5 min), Chronosphere (Allied, 5 min) and Lightning Storm (Allied,
-6 min 40) — and they charge off a live, powered **Battle Lab** as a fallback for the structures that
-do not exist. But there is no countdown row on the HUD, no arming button and no hotkey. In the
-shipped build they are only reachable from the browser console. They are also Allied/Soviet only: the
-Pact's Reliquary and the Reclamation's Crucible do not satisfy the gate, so those two factions have
-no superweapon at all even in the simulation.
+| Weapon | Army | Structure | Cost | Charge |
+| --- | --- | --- | --- | --- |
+| Nuclear Missile | Soviets | Nuclear Missile Silo | 2,500 | 7:00 |
+| Iron Curtain | Soviets | Iron Curtain Device | 2,000 | 5:00 |
+| Chronosphere | Allies | Chronosphere | 2,000 | 5:00 |
+| Lightning Storm | Allies | Weather Control Device | 2,500 | 6:40 |
+| Solar Lance | Meridian Pact | Heliograph | 2,500 | 7:00 |
+| Arc Storm | The Reclamation | Stormworks | 2,500 | 6:40 |
+
+**But the five superweapon rewards in the mission table are not what unlocks them.** Every
+superweapon structure is gated on its army's **tech building** — Battle Lab, Reliquary or Crucible —
+and on nothing else. The tech building *is* a campaign unlock (*Strip Mine*, 250,000 mined ore), so a
+fresh profile genuinely has no superweapons; but the moment you have the tech building you can build
+all of your faction's, whether or not you have finished *Total War*, *Continental Engineering* or the
+20-win mastery chains that claim to award them.
+
+So those five rewards are correct about the direction of travel and wrong about the mechanism. Earn
+*Strip Mine* and the end-game is open.
 
 ### Cosmetics
 
@@ -252,8 +278,8 @@ Nothing renders them — no unit, structure or HUD element reads a cosmetic id.
 *Old Guard* asks you to promote 15 units to **elite rank**, and its rule requires veterancy rank 3.
 Veterancy in this game caps at **rank 2** — rookie, veteran, elite, at 3 and 6 kills. The mission's
 counter can therefore never advance, and *Emergency Repair* — its reward — is permanently
-unobtainable. It would have done nothing anyway (see above), so nothing playable is behind it, but
-the mission will sit at 0/15 forever.
+unobtainable. Since no power has a button yet this costs you nothing you could have used, but the
+mission will sit at 0/15 forever.
 
 ---
 
@@ -278,7 +304,7 @@ not commit its first attack until the five-minute mark — see [Strategy](Strate
 
 ---
 
-**Factions:** [Allied Forces](Allied-Forces) · [Soviet Union](Soviet-Union) · [Meridian Pact](Meridian-Pact) · [The Reclamation](The-Reclamation)
+**Factions:** [Allied Forces](Faction-Allies) · [Soviet Union](Faction-Soviets) · [Meridian Pact](Faction-Meridian-Pact) · [The Reclamation](Faction-Reclamation)
 
 **See also:** [Strategy](Strategy) · [Maps](Maps) · [Units and Verbs](Units-and-Verbs) ·
-[How to Play](How-to-Play) · [Base Building](Base-Building)
+[How to Play](How-to-Play) · [Controls](Controls) · [Base Building](Base-Building)

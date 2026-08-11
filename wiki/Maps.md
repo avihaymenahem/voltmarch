@@ -192,12 +192,16 @@ placed by the scatter system are decorative as far as navigation is concerned. T
 are the handful of *entity* props a scenario places by hand near a base — those rocks and boulders
 are solid.
 
-**Crushing flattens scenery, not soldiers.** A vehicle with a crush level moving above 0.6 m/s fells
-trees and shrubs under the front 70 % of its hull, permanently for the match. Boulders and rocks are
-solid instead and will stop a column. **Infantry cannot be crushed** — the data is authored for it
-(every foot unit carries a crushable level, every tank carries a crush level) and the code
-deliberately does not read it. Plan around that: a wall of riflemen is not something you drive
-through.
+**Crushing flattens scenery — and soldiers.** A vehicle with a crush level moving above 0.6 m/s
+fells trees and shrubs under the front 70 % of its hull, permanently for the match, and kills any
+enemy infantryman it drives over. Boulders and rocks are solid instead and will stop a column. Six
+hulls crush: the Grizzly, the Rhino, the Apocalypse, the Ore Harvester, the Grinder and the
+Scrapjaw. The whole Meridian Pact hovers and crushes nothing. See
+[Units and Verbs](Units-and-Verbs#crushing-infantry) for the full rule.
+
+The map consequence is that **broken ground is infantry country**. Wheeled and tracked hulls reroute
+around rough cells; a squad on a terrace shelf or in a rock field is somewhere a tank has to arrive
+slowly and in single file, which is the one situation where being crushable stops mattering.
 
 ---
 
@@ -295,24 +299,57 @@ unoccupied ground, and after ten minutes a single credit crate is worth more tha
 
 ---
 
-## 10. Neutral structures — what actually exists
+## 10. The civilian hamlets
 
-The engine has two mechanics that would make civilian buildings matter:
+Two mirrored settlements of three neutral buildings sit on the **perpendicular bisector of the lane
+between the two openings** — the only line on the map where a point is equally far from both armies,
+whatever the generator did to the start shelves. Each hamlet is 62 m off the midpoint, which puts it
+about 115 m from each start: outside anybody's build radius, outside the sight of anything standing
+in a base, and clear of the contested ore patch on the midpoint itself.
 
-- **Capture.** A neutral structure is taken outright by one Engineer at any health, where an *enemy*
-  structure has to be beaten below 50 % first.
-- **Garrison.** Occupying a neutral building flies your flag over it for as long as you hold it, and
-  it reverts the moment the last man leaves or dies.
+**Two of them, and you cannot hold both.** One hamlet would be a race the army whose ore field
+happens to lie that way simply wins. Two is a decision.
 
-**No map places any neutral structures, and no civilian building exists in the roster.** Both rules
-are live, correct and currently unreachable. The neutral player in a skirmish owns rocks, wrecks and
-crates and nothing else.
+Each hamlet is a derrick on the crossroads with the two garrisonable blocks flanking it about 23 m
+out — close enough that a squad holding the derrick sits inside the other two buildings' field of
+fire.
 
-What you *can* garrison today is your own unarmed, non-production structures with a footprint of at
-least 2 × 2 cells — in practice the **Power Plant**, the **Battle Lab** and the **Repair Depot**, plus
-each faction's equivalents. The Ore Silo is 1 × 1 and is refused as too small; anything that builds,
-refines or carries a radar is refused as a production structure; anything with a gun is refused
-because it does not need the help.
+| Structure | Footprint | HP | What it is for |
+| --- | --- | --- | --- |
+| **Oil Derrick** | 2 × 2 (8 × 8 m) | 900 | Pays its holder **15 credits per second** |
+| **Civilian Hospital** | 3 × 2 (12 × 8 m) | 1,100 | The widest garrison on the map |
+| **Apartment Block** | 2 × 3 (8 × 12 m) | 800 | The tallest — a held block reads from across the map |
+
+Nobody can build these. They exist only on the map, owned by the neutral player, and there are
+exactly six of them per match.
+
+### Taking one
+
+**With an Engineer.** A neutral structure is captured **outright, at any health** — no softening,
+one 500-credit engineer and a walk. (An *enemy* structure has to be beaten below 50 % health first,
+or the engineer is spent knocking 25 % off it.)
+
+**With infantry.** Walk five men in and the building flies your colours for as long as you hold it.
+It reverts the instant the last man leaves or dies. An occupied structure also cannot be captured by
+an enemy engineer, so a garrison is how you stop somebody walking an engineer into your derrick.
+
+### What a derrick is worth
+
+15 credits a second, paid once a second off the tick counter, for as long as you hold the deed. Over
+a ten-minute match that is 9,000 credits — roughly one harvester's output, without the 1,400-credit
+harvester, the War Factory, the escort or the micromanagement. What it costs instead is holding
+ground in the middle of the map.
+
+The income is a **drip, not a lump on capture**. Walking one rifleman in and out does not pay you
+anything; only the holder at each interval is paid.
+
+### Garrisoning generally
+
+You can also garrison your own unarmed, non-production structures with a footprint of at least
+2 × 2 cells — the **Power Plant**, the **Battle Lab** and the **Repair Depot**, plus each faction's
+equivalents. The Ore Silo is 1 × 1 and is refused as too small; anything that builds, refines or
+carries a radar is refused as a production structure; anything with a gun is refused because it does
+not need the help.
 
 | Garrison | Value |
 | --- | --- |
@@ -321,9 +358,6 @@ because it does not need the help.
 | Damage | 0.9× each occupant's field damage, summed into one volley |
 | Risk | the building dies, everyone inside dies with it |
 | Side effect | an occupied structure cannot be captured by an enemy Engineer |
-
-Garrisoning your own forward power plant with five riflemen is a real defensive play. It is also the
-only version of the mechanic the shipped maps let you use.
 
 ---
 
@@ -353,5 +387,8 @@ vehicle), `?roads=off`.
 
 ---
 
+**Factions:** [Allied Forces](Faction-Allies) · [Soviet Union](Faction-Soviets) · [Meridian Pact](Faction-Meridian-Pact) · [The Reclamation](Faction-Reclamation)
+
 **See also:** [Strategy](Strategy) · [Economy](Economy) · [Base Building](Base-Building) ·
-[Combat](Combat) · [How to Play](How-to-Play)
+[Combat](Combat) · [Units and Verbs](Units-and-Verbs) · [Controls](Controls) ·
+[How to Play](How-to-Play)

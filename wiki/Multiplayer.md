@@ -97,8 +97,14 @@ index — never from anything another person typed. You are *You*; the other pla
 | Starting credits | Forced to **10,000** on both clients |
 | Game speed | Forced to **1×** |
 | Opening | Forced to the **construction vehicle** start |
-| Unlocks | **Suppressed entirely.** Both players can build everything. |
+| Unlocks | **Suppressed entirely.** Both players can build everything, including aircraft, superweapons and the naval arm. |
 | Pause | Does not exist. The pause menu opens over a still-running simulation. |
+
+Because gating is lifted, a PvP match is the only place you will see the whole roster without having
+ground the mission table out — including the six superweapons, all four aircraft and every commander
+power. Every one of those goes through the same command bus as a right-click, so they resolve
+identically on both machines and record correctly into a replay. (The five commander powers still
+have no button; they are console-only on both ends.)
 
 Unlock suppression is not a convenience, it is a correctness requirement: the gate is consulted while
 the world is being built, and it answers from the *local* profile. Two players with different mission
@@ -234,4 +240,5 @@ running every turn. What is missing is not correctness. It is deployment.
 
 ---
 
-**See also:** [Strategy](Strategy) · [Maps](Maps) · [How to Play](How-to-Play) · [Home](Home)
+**See also:** [Strategy](Strategy) · [Maps](Maps) · [How to Play](How-to-Play) ·
+[Controls](Controls) · [Units and Verbs](Units-and-Verbs) · [Home](Home)

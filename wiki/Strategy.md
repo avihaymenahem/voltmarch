@@ -86,6 +86,11 @@ have a second harvester on order (1,400 cr, 16 s).
 At 90 seconds a clean opening has: a yard, two plants, a refinery, a barracks, a war factory, a
 radar, one or two harvesters, and roughly 4,000–5,000 credits of headroom.
 
+**Add one engineer.** The moment the barracks and refinery are both up, a 500-credit engineer walking
+to the nearer civilian hamlet buys you an Oil Derrick — captured outright, at full health, no
+softening — and 15 credits a second for the rest of the match. On a two-minute walk it has paid for
+itself before your second harvester finishes. See §9.
+
 ### The same opening, per faction
 
 **Meridian Pact.** Solar Array → **Chapterhouse** → Ore Cistern → Forgeyard → Solar Array → Oculus.
@@ -135,6 +140,11 @@ immediately and comes home.
 | Storage | 10,000 base (a 1,000 floor raised so the opening bank is never over cap); +2,000 per refinery; +1,500 per silo |
 | Ore regrowth | 0.6/s per cell, spreading outward from the field's centre |
 
+**A held Oil Derrick is a free harvester.** 15 credits a second, paid every second, for one
+500-credit engineer and the ground to keep it on. That is roughly what one harvester earns, without
+the 1,400-credit hull, the War Factory prerequisite or the round trip. There are two derricks on the
+map. See §9.
+
 **Every refinery ships with a free harvester.** A second refinery is therefore 2,000 credits for
 2,000 storage *and* a 1,400-credit vehicle — a 3,400-credit package for 2,000. That is the single
 best purchase in the game and it is why every AI opening buys two.
@@ -178,8 +188,11 @@ What to look for, in order:
 1. Which corner the enemy took — start slots rotate with the seed, so do not assume.
 2. Whether the **midpoint ore field** is contested yet. It is roughly a third of the map's income and
    neither player can defend it from home.
-3. The count of enemy refineries. Two means they are teching; one means they are massing.
-4. Static defence. The AI's own target scoring values enemy defences *above everything else*, and so
+3. **Which hamlet they went for.** There are two, 62 m either side of that midpoint. If their
+   engineer is walking to one, the other is free — and if both derricks are theirs, you are losing
+   30 credits a second you are not paying for.
+4. The count of enemy refineries. Two means they are teching; one means they are massing.
+5. Static defence. The AI's own target scoring values enemy defences *above everything else*, and so
    should yours — see §7.
 
 The AI scouts you on a timer: first sweep at about 8 seconds scaled by difficulty (Easy ~18 s,
@@ -261,8 +274,10 @@ These are single-unit, no-veterancy figures against a stationary target in range
 | Prism Tank | 1,200 | 260 Light | 30 | 39 | 34 | 34 | 32 | 28 |
 | Zenith Emitter | 1,500 | 240 Light | 33 | 36 | 31 | 31 | 29 | 26 |
 | Slaghurler | 1,150 | 230 Light | **42** | 26 | 23 | 19 | 14 | **29** |
-| Kestrel Gunship | 1,100 | 210 Light | 22 | 24 | 41 | 38 | 41 | 38 |
-| Swarmhornet | 900 | 180 Light | 17 | 47 | 28 | 25 | 26 | 18 |
+| Swarmhornet *(air)* | 900 | 180 Light | 17 | 47 | 28 | 25 | 26 | 18 |
+| MiG Fighter *(air)* | 1,000 | 190 Light | 21 | 76 | **95** | 62 | 33 | 33 |
+| Kestrel Gunship *(air)* | 1,100 | 210 Light | 22 | 24 | 41 | 38 | 41 | 38 |
+| Vindicator *(air)* | 1,200 | 240 Light | 23 | 26 | 46 | 43 | **46** | **43** |
 
 Add to that: **Tesla weapons chain.** Each arc jumps up to 9 m from its last victim, retaining 60 %
 of the damage per link. A Grinder chains twice and a Scrap Picker once, so the table above understates
@@ -281,7 +296,7 @@ Add also: **splash.** The Slaghurler's mortar is 5.8 m, the Slagger's satchel 2.
 | Solarch vs Grizzly | **Solarch wins** narrowly and outranges by 2 m. |
 | IFV vs Solarch | **Not close.** 2.9 s to 6.9 s. Autocannon at 1.00 against light armour deletes the entire Pact line. |
 | Grinder vs Grizzly | **Grizzly wins** 1v1 and gets six metres of free fire first. At equal credits it is a coin flip, and the Grinder chains. |
-| Javelins vs Rhinos | **Javelins win on credits by a wide margin** — four Javelins (2,000 cr) kill a Rhino in 4.1 s. The counter-play the game clearly intends (drive over them) does not exist: see §11. |
+| Javelins vs Rhinos | **Javelins win on credits by a wide margin** — four Javelins (2,000 cr) kill a Rhino in 4.1 s. The counter-play is to drive over them: a Rhino crushes any infantryman it lines up on, which is why a Javelin screen needs its own screen. |
 
 ### The three holes worth exploiting
 
@@ -299,25 +314,51 @@ Add also: **splash.** The Slaghurler's mortar is 5.8 m, the Slagger's satchel 2.
 
 ### Aircraft
 
-Only the Meridian Pact and the Reclamation have aircraft, and only after twelve wins as the Pact.
-Aircraft ignore terrain, water, cliffs and buildings entirely and cruise at 22 m.
+**All four armies have one**, unlocked together by a single Meridian mission (see
+[Campaign](Campaign)). Every aircraft is Light armour — the air/ground split is a targeting rule, not
+a seventh armour class. Aircraft ignore terrain, water, cliffs, buildings and each other entirely,
+cruise at 22 m, never land, never rearm and travel in a straight line to wherever you send them.
+
+| Aircraft | Army | Cost | HP | Speed | Warhead | What it is for |
+| --- | --- | --- | --- | --- | --- | --- |
+| Swarmhornet | Reclamation | 900 | 180 | 11.0 | Tesla, chains ×2 | Deleting infantry from above |
+| **MiG Fighter** | Soviets | 1,000 | 190 | **13.5** | Autocannon | **Air superiority.** 1.00 against Light, and every aircraft is Light |
+| Kestrel Gunship | Meridian | 1,100 | 210 | 12.0 | Rocket | The generalist raider |
+| **Vindicator** | Allies | 1,200 | 240 | 11.5 | Rocket | **Opening a base.** 0.90 against Concrete, 0.95 against Heavy |
+
+Every one is gated on the **vehicle factory plus a radar** — one tier below the tech building, the
+same shape for all four armies — and on the *unit.air* unlock, which is one mission for everybody.
+
+The two Allied and Soviet rows are deliberately different questions. A MiG at 95 DPS against Light beats any other
+aircraft in the game and does 33 against a Rhino or a wall — it is an interceptor and nothing else. A
+Vindicator does 43 to a structure and 46 to heavy armour and will lose a dogfight to the MiG. Buy the
+one that answers what you scouted.
+
+**Range is measured on the ground plane**, so cruising altitude costs an aircraft nothing and costs
+the gun shooting at it nothing either.
 
 **A weapon can only shoot up if its row says so.** Tank cannons, artillery, flamethrowers, torpedoes,
 naval deck guns, siege beams and the emplaced MG in a pillbox cannot. What can:
 
 | Answer | Range | Notes |
 | --- | --- | --- |
-| Rifles / Carbines (G.I., Conscript, Wayfarer) | 17–20 | Free, but weak |
-| Multigunner IFV, Sandskiff | 22 / 23 | Autocannon at 0.95 against light-armoured aircraft |
-| Flak Trooper | 20 | 300 cr, 32 DPS against light |
-| Javelin, Sunlancer | 24 / 26 | 0.95 rocket multiplier |
-| Scrap Picker, Arcspitter, Swarmhornet | 14–17 | Reclamation's only answers, all short |
-| **Multigunner AA** | 26 | The only dedicated AA structure — **Allied only** |
-| Tesla Coil, Prism Tower, Helios Spire, Arc Pylon | 28–34 | All double as AA |
-| Kestrel Gunship | 22 | Air-to-air, which is why owning the only aircraft is not unanswerable |
+| Rifles / carbines (G.I., Conscript, Wayfarer) | 17–20 | Free, and weak — but every army has them from minute one |
+| Scrap Picker, Arcspitter | 14 / 16 | The Reclamation's ground answers, both very short |
+| Flak Trooper | 20 | 300 cr, 32 DPS against Light |
+| Multigunner IFV, Sandskiff | 22 / 23 | Autocannon at 0.95 against an aircraft's Light armour |
+| Javelin, Sunlancer | 24 / 26 | 0.95 rocket multiplier, and they hit tanks too |
+| **Multigunner AA** | 26 | The only dedicated AA structure in the game — **Allied only** |
+| Arc Pylon | 28 | Chains three ways, and fires through a blackout |
+| Tesla Coil, Helios Spire, Prism Tower | 30–34 | All double as AA, all stop in a brownout |
+| Every aircraft | 17–23 | Air answers air — which is why owning the only gunship is not a win condition |
 
-Note the asymmetry: the Pact and the Reclamation have **no dedicated AA emplacement at all**. Their
-answer to a gunship is the Sunlancer and the Arcspitter, which are units and have to be somewhere.
+The asymmetry that matters: **the Pact and the Reclamation have no dedicated AA emplacement at all.**
+Their static answer is the Helios Spire and the Arc Pylon, which are tier-3 defences; their real
+answer is the Sunlancer and the Arcspitter, which are units and have to be somewhere. If you are
+flying against either of them, go around the towers.
+
+Against the Allies and the Soviets, assume a Multigunner AA or a Tesla Coil is covering anything
+worth bombing.
 
 ---
 
@@ -326,30 +367,43 @@ answer to a gunship is the Sunlancer and the Arcspitter, which are units and hav
 The honest general rule is a **2:1 line-to-answer ratio**, with the answer chosen from what you
 scouted. Concretely:
 
-**[Allied Forces](Allied-Forces).** Grizzlies are the line. The Multigunner IFV is, on the numbers, the better tank
+**[Allied Forces](Faction-Allies).** Grizzlies are the line. The Multigunner IFV is, on the numbers, the better tank
 against everything except heavy armour — cheaper, faster, longer-sighted and nearly twice the damage.
 Mix them roughly evenly and use Grizzlies as the anti-Rhino element. Javelins behind the armour, not
 in front: they have 24 m of range against a Rhino's 26 and have to walk into the gun. Prism Tanks
-must stop to fire and die to anything that reaches them — keep them behind the line at 30 m.
+must stop to fire and die to anything that reaches them — keep them behind the line at 30 m, and
+remember the Prism Tank is the one Allied hull that does **not** crush infantry. The Vindicator is
+your base-opener; the Hover Transport is how a squad of Javelins gets across a map without walking.
 
-**[Soviet Union](Soviet-Union).** Rhinos win fights and lose exchange rates. Conscripts are the best anti-infantry
+**[Soviet Union](Faction-Soviets).** Rhinos win fights and lose exchange rates. Conscripts are the best anti-infantry
 value in the game at 0.50 DPS per credit — screen with them and let the Rhinos shoot armour.
 Flak Troopers are the light-armour answer, not the heavy one: 1.00 against light and 0.35 against
 heavy. The Soviet answer to heavy armour is heavier armour. The Apocalypse is poor per credit (0.027
-DPS per credit against medium) and good where concentration matters — 800 HP, 28 m, and it cannot be
-crushed by anything.
+DPS per credit against medium) and good where concentration matters — 800 HP, 28 m, uncrushable, and
+a crush level of 6, which is the highest in the game. The MiG is the answer to anybody else's air and
+nothing else: 33 DPS against a Rhino is not a tank. Soviet armour is also the best crushing armour in
+the game — a Rhino column driving through a Conscript screen is a real Soviet play.
 
-**[Meridian Pact](Meridian-Pact).** A Pact line wins a standoff and loses a brawl: every Pact gun outranges its
+**[Meridian Pact](Faction-Meridian-Pact).** A Pact line wins a standoff and loses a brawl: every Pact gun outranges its
 opposite number by 1–3 m and under-damages it. Fight at maximum range, retreat rather than trade, and
 screen with Wayfarers, because massed infantry is what the army is worst against. Everything hovers,
 so slope costs you nothing and you can take routes tracked armies will not. Never let an IFV or a
 conscript wave reach the line.
 
-**[The Reclamation](The-Reclamation).** Nothing you field has a turret, so every hull must point its chassis at what it
+The Pact pays for hovering twice: nothing it fields can crush, so it never wins a ram and never
+clears an infantry screen by driving through it. Its transport is the Sandskiff — two seats on a
+550-credit armed raider, which is a different tool from a 900-credit troop ship: use it to put two
+Sunlancers somewhere nobody expects them, not to move an army.
+
+**[The Reclamation](Faction-Reclamation).** Nothing you field has a turret, so every hull must point its chassis at what it
 wants to kill, inside a range band where everyone else is already shooting. The compensation is a full
 extra radian per second of hull turn and the cheapest units in the game. Play it as swarm-and-replace:
 Pickers and Grinders in numbers, arcs chaining through the enemy line, Slaghurlers held back at 42 m
 for anything made of concrete. Never fight at 24 m — close or leave.
+
+Two hulls crush — the Grinder and the Scrapjaw, both at level 5 — which is the army's cheapest answer
+to a mass of infantry after its arcs. The Slag Scow carries four, so a Reclamation landing is four
+Slaggers arriving at a wall that nothing else in the army can hurt.
 
 **Numbers that scale.** Veterancy is worth more than it looks. Three kills gives rank 1 (×1.15
 damage, ×1.10 HP, ×0.9 cooldown); six gives rank 2 (×1.35 damage, ×1.25 HP, ×0.8 cooldown). An elite
@@ -401,14 +455,24 @@ it services you at 10 % of max HP per second, up to eight at once, at the same 0
 at 1 HP costs about 85 credits to repair against 700 to replace, and takes ten seconds. It is the
 cheapest structure in the game per credit saved, and most players never build one.
 
-**Stances** matter more than they look. *Aggressive* chases; *Defensive* fires but never moves;
-*Hold Ground* fires freely and never moves for any reason; *Hold Fire* moves and never shoots. Put
-your defensive line on Hold Ground so it does not chase a raider out of position, and put engineers
-and harvester escorts on Hold Fire so they do not wander.
+**Two of the four stances actually differ.** *Hold Fire* tracks a target and never pulls the
+trigger; *Hold Ground* fires freely and never repositions for a target. *Aggressive* and *Defensive*
+behave identically in this build — nothing chases a target of opportunity. So: put your defensive
+line on **Hold Ground** so it does not walk off a wall to close on a raider, and put engineers,
+harvester escorts and loaded transports on **Hold Fire** so they do not start fights they are not
+there for.
 
 **Relocating beats rebuilding.** Moving a structure costs 35 % of its build cost (minimum 50) plus
 four seconds in transit and two to rise. Selling and rebuilding costs 50 % *and* the full build time
-*and* a queue slot. A badly sited War Factory costs 700 to fix, not 1,000 plus 24 seconds.
+*and* a queue slot. A badly sited War Factory costs 700 to fix, not 1,000 plus 24 seconds. A
+superweapon part-way through a charge cannot be relocated at all; a fully charged one can.
+
+**Defend against crushing.** Six hulls flatten infantry — Grizzly, Rhino, Apocalypse, Ore Harvester,
+Grinder, Scrapjaw. A Javelin or Sunlancer screen standing in the open in front of an armour column is
+free kills for the column, and the counter is geometry rather than more infantry: put them behind a
+wall run, on rough ground, inside a garrison, or 4 m off the lane the tanks are pathing down. The
+pathfinder aims at the attacker's order point, not at your men, so being a metre off the line is
+often enough.
 
 ---
 
@@ -419,8 +483,8 @@ starts, and neither player can cover it from home. Denying it is worth more than
 
 **Engineers are the best value attack in the game — conditionally.**
 
-- A **neutral** structure is captured outright at any health. (There are none on the shipped maps —
-  see [Maps](Maps).)
+- A **neutral** structure — the six civilian buildings in the two hamlets — is captured outright at
+  any health, by one engineer, with no softening at all.
 - An **enemy** structure is captured only at or below **50 % health**. Above it, the engineer is spent
   and knocks 25 % of max HP off instead.
 - So a full-health Construction Yard costs exactly three engineers: 100 % → 75 % → 50 % → captured.
@@ -440,7 +504,19 @@ field cost more than they will ever cost you.
 
 **Push into a brownout.** Nothing in this game punishes a wide push more cheaply than killing power.
 Each Soviet or Allied plant is 800 HP, a Solar Array is 420, and every high-end defence goes dark
-before anything else does.
+before anything else does. Once superweapons are on the map this gets sharper still: a silo draws
+−150, so the power plants keeping it lit are the countdown, and killing them **pauses** the charge.
+
+**Drive over the screen.** A tank column that lines up on an enemy infantry line kills it for free —
+no ammunition, no cooldown, no exposure. It has to actually line up: right-click the ground *behind*
+the target, not on him, because the pathfinder aims at your click. The kill radius is about 2.2 m for
+a Grizzly.
+
+**Land a squad where the wall is not.** All three transports are Hover, so they cross anything. The
+Hover Transport carries five, the Slag Scow four, the Sandskiff two. The two things worth putting in
+one are engineers (a hamlet, or an enemy structure your tanks already softened past 50 %) and the
+anti-structure infantry the Reclamation and the Allies otherwise cannot get into a base — a Slagger
+does 27 DPS to concrete for 380 credits, the best rate in the game, and cannot walk there alive.
 
 ---
 
@@ -460,13 +536,66 @@ before anything else does.
 - **Roads route, they do not accelerate.** A carriageway is up to 2.4× cheaper to path over for a
   wheeled hull, which means armies funnel down them without being told to. On Industrial Grid that is
   most of the map, and it is the single best place to be waiting.
+- **The two civilian hamlets are the only neutral ground worth fighting for.** They sit on the
+  perpendicular bisector of the lane between the two openings, 62 m either side of the midpoint —
+  about 115 m from each start, equidistant by construction. Each is an Oil Derrick flanked by two
+  garrisonable blocks.
+- **A derrick is 15 credits a second, forever, for as long as you hold it.** Over ten minutes that is
+  9,000 credits — roughly a free harvester with no War Factory, no 1,400-credit hull and no escort.
+  One 500-credit engineer takes one outright at any health.
+- **You cannot hold both hamlets, and neither can they.** That is the point of there being two. The
+  correct opening play is usually one engineer to the nearer derrick as soon as a barracks and a
+  refinery are up, with three or four bodies garrisoning the block beside it — a garrisoned building
+  fires with the sum of its occupants' weapons at +6 m range, and an occupied structure cannot be
+  captured out from under you.
 - **Do not build a Naval Yard.** No playable map carves a sea. Measured across all six shipped maps,
   water covers 0.0–0.6 % of cells and the largest body in the game is about 1,000 m². The entire
-  naval branch — two unlock chains, five structures and eight hulls — has nowhere to float.
+  naval branch — two unlock chains, five structures and eight hulls — has nowhere to float. Note that
+  this does *not* make transports useless: all three carriers are Hover and they work perfectly well
+  on land, where they are a way to move five men fast rather than a way to cross a sea.
 
 ---
 
-## 10. The opponent you are actually playing
+## 10. The end game
+
+Once your tech building is up — Battle Lab, Reliquary or Crucible — two things change.
+
+**Superweapons.** One or two per army, 2,000–2,500 credits, and the real price is **−150 power**, the
+heaviest single draw in the game. Charge times run 5:00 to 7:00 and the countdown only advances while
+you own the structure **finished and powered**. Losing it *pauses* the charge rather than resetting
+it, so a rebuild resumes where you stopped.
+
+| Weapon | Army | Charge | Radius | What it changes |
+| --- | --- | --- | --- | --- |
+| Nuclear Missile | Soviets | 7:00 | 26 m | 1,400 HE. Announced 3.5 s early, and the marker is visible to **both** sides |
+| Solar Lance | Meridian | 7:00 | 24 m | The same, slightly tighter |
+| Lightning Storm | Allies | 6:40 | 16 m | 9 s of Tesla bolts, ~190 each. Devastating on infantry (1.60), poor on a base (0.60) |
+| Arc Storm | Reclamation | 6:40 | 17 m | The same |
+| Iron Curtain | Soviets | 5:00 | 13 m | **20 seconds of true invulnerability** for everything friendly in the radius |
+| Chronosphere | Allies | 5:00 | 11 m | Nine units from anywhere to anywhere, two clicks |
+
+The two that decide games are not the damage ones. **Iron Curtain plus an Apocalypse column walks
+through a defensive belt that would otherwise stop it**, and a **Chronosphere puts nine units inside
+a base with no approach at all**. Plan the push around the timer rather than firing it when it
+happens to be ready.
+
+Because a nuke announces itself 3.5 seconds early *to the target*, it is not an army-killer against
+anyone paying attention — it is a structure-killer and an area-denial threat. Aim it at things that
+cannot move.
+
+**Commander powers** — Airstrike, Orbital Scan, Emergency Repair, Ore Boost, Chronoshift — are
+earned from the mission table, charge from the start of every match and need no structure at all.
+They are fully implemented, and **there is no button for them yet**: today they are console-only. Do
+not plan around them (see [Campaign](Campaign#commander-powers)).
+
+**Commander abilities** are the ones you can actually press, and they are free with your faction's
+1,500-credit hero. Iron Will (5 s of invulnerability, 60 s cooldown) is a small Iron Curtain you can
+have in the first five minutes, and Chrono Rally pulls six units to the Field Marshal — which is a
+retreat button, an ambush button, and the cheapest teleport in the game.
+
+---
+
+## 11. The opponent you are actually playing
 
 The AI issues the same commands you do, through the same command bus. It cannot see through fog, it
 cannot reach into entity state and it plays by the same production rules — the sidebar's own
@@ -506,10 +635,14 @@ Behaviours worth knowing:
   repeatedly makes the next push bigger.**
 - With no Construction Yard it goes all-in with everything, immediately.
 - It **mirrors your unlocks**. Anything you have earned, it can build.
+- **It does not build superweapons and it never calls a commander power.** The brain classifies a
+  captured or scenario-given silo honestly but has no branch that asks for one, and it has no branch
+  for the five powers either. Both of those are yours alone in a skirmish.
+- **It does not use transports and it does not garrison.** Its infantry walk.
 
 ---
 
-## 11. Mistakes new players make
+## 12. Mistakes new players make
 
 1. **Not deploying the construction vehicle first.** Nothing exists until the yard does — no build
    radius, no power, no income.
@@ -527,33 +660,40 @@ Behaviours worth knowing:
    HP in credits and ten seconds.
 8. **Ignoring the midpoint ore field.**
 9. **Selling instead of relocating.** 35 % beats 50 % plus the rebuild time.
-10. **Expecting objective credits to arrive.** They do not. See [Campaign](Campaign).
+10. **Never sending an engineer to a derrick.** 500 credits, one walk, 15 credits a second for the
+    rest of the match. It is the cheapest income in the game and most players never take one.
+11. **Standing a Javelin screen in front of an armour column.** Infantry are crushable now. Put them
+    behind a wall, on rough ground, or off the lane.
+12. **Building a superweapon without buying the generation first.** −150 power browns out a base that
+    was comfortable, which turns your defences off and stops the countdown you just paid for.
+13. **Expecting objective credits to arrive.** They do not. See [Campaign](Campaign).
 
 ### Things that look like tools and are not
 
 Be aware of these before you build a plan around one:
 
-- **Transports do not carry anything.** The Hover Transport exists, is unlockable, and has zero cargo
-  capacity. Right-clicking a transport with infantry selected issues an Enter order which the garrison
-  system refuses because a transport is not a structure. There is no load, no unload, no passenger.
-- **Infantry cannot be crushed.** Every foot unit is authored as crushable and every tank has a crush
-  level; the code deliberately does not read them. Vehicles flatten trees and shrubs, permanently,
-  and drive around boulders. A wall of riflemen is a wall.
-- **Superweapons are not reachable.** Four are implemented in the simulation — Nuclear Missile, Iron
-  Curtain, Chronosphere, Lightning Storm — and none of them has a button, a hotkey or a countdown on
-  the HUD. They also gate on the Battle Lab specifically, so the Meridian Pact and the Reclamation
-  have none at all.
-- **Commander *powers* do nothing; commander *abilities* work.** The five power rewards from the
-  mission table have no consumer. The four hero abilities — Chrono Rally, Iron Will, Prism Focus,
-  Salvage Call — are on the HUD, have a hotkey and a cooldown ring, and are excellent. Build your
-  commander: 1,500 credits, one at a time, needs only a barracks and a radar.
+- **Naval is unusable.** No playable map carves a sea; measured water coverage across all six shipped
+  maps is 0.0–0.6 % of cells, largest body about 1,000 m². Two unlock chains, five structures and
+  eight hulls have nowhere to float. Transports are the exception and only because they are Hover and
+  work on land.
+- **Commander *powers* have no button.** All five are implemented, tested, and reachable only from
+  the browser console. The four hero *abilities* are on the HUD and work — build your commander.
+- **The Prism Tank does not crush**, despite carrying a crush level of 2. It is missing the flag the
+  crush resolver actually reads. Every other Allied and Soviet tank crushes; this one does not.
+- **Vehicles cannot ram vehicles.** Fifteen hulls carry a crushable-by number and nothing reads it.
+  Only infantry are crushable.
+- **Aggressive and Defensive stance are the same thing.** Nothing chases a target of opportunity in
+  this build. Hold Fire and Hold Ground are the two that do something.
 - **Roads are not a speed bonus.** They change routing, not velocity.
 - **There is no high-ground advantage.** Terrain blocks direct fire; it does not buff it.
-- **Naval is unusable.** See §9.
+- **Objective credits are never paid.** See [Campaign](Campaign).
+- **Cosmetic rewards render nothing.** Fourteen insignia and decals exist as text on a screen.
+- **Passengers do not shoot.** A loaded transport fires with its own gun and nothing else. A
+  *garrison* volleys with everyone inside; a transport is a delivery.
 
 ---
 
-**Factions:** [Allied Forces](Allied-Forces) · [Soviet Union](Soviet-Union) · [Meridian Pact](Meridian-Pact) · [The Reclamation](The-Reclamation)
+**Factions:** [Allied Forces](Faction-Allies) · [Soviet Union](Faction-Soviets) · [Meridian Pact](Faction-Meridian-Pact) · [The Reclamation](Faction-Reclamation)
 
 **See also:** [Maps](Maps) · [Campaign](Campaign) · [Combat](Combat) · [Economy](Economy) ·
 [Base Building](Base-Building) · [Units and Verbs](Units-and-Verbs) · [Multiplayer](Multiplayer)
