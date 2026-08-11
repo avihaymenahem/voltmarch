@@ -6520,6 +6520,25 @@ export const OIL_DARKEN = 0.55;
 /** Manhole covers, 0.7 m across. */
 export const MANHOLE_HALF_SIZE = 0.42;
 /**
+ * The mark a track leaves where it flattened somebody (`src/sim/Crush.ts`).
+ *
+ * DARKER THAN A TREAD, LIGHTER THAN A SCORCH, and only just: 0.54 against
+ * TREAD_DARKEN 0.72 and SCORCH_DARKEN 0.34. Ground that has been pressed into
+ * is not ground that has been burnt, and `DECAL_DARKEN_FLOOR` is 0.45 — a
+ * darker tint here would clamp at the floor across the whole mark and take the
+ * cleat rhythm with it, which is the only thing that says "a track did this".
+ *
+ * SIZED OFF THE TRACK, NOT OFF THE MAN. `CRUSH.stainFrac` takes it from the
+ * crusher's hull disc, so an Apocalypse leaves a wider print than a Grizzly;
+ * this is the FLOOR under that, and it is what a track is wide. The tile's
+ * pressed strip covers 0.54 of the patch across and 0.88 along, so a half-size
+ * of 0.85 draws a mark ~0.9 m across and ~1.5 m long — one track, one body.
+ */
+export const SQUISH_HALF_SIZE = 0.85;
+export const SQUISH_DARKEN = 0.54;
+/** Seconds a crush mark takes to fade. Long, but not permanent like scorch. */
+export const SQUISH_LIFE_SECONDS = 90;
+/**
  * Street-lamp light pool: bible §6.3 wants a 6-8 m ellipse at alpha 0.25 even
  * in daylight. It is the one decal that BRIGHTENS, which the multiply pipeline
  * expresses as a tint above 1.0 (valid because the main pass is HDR).

@@ -123,11 +123,20 @@
  * with no findable cause. Scatter is a PLAYER verb; it is already on a hotkey
  * (`input.system.ts:880`) and that is where it belongs.
  *
- * THE STAIN. `DecalKind.Squish` is authored for exactly this and
- * `vfx.system.ts`'s `DECAL_PORT_MAP` deliberately drops it — the field enum has
- * no counterpart and inventing one is a look change that has to be argued
- * through `npm run shots` and `docs/RA3_LOOK_BIBLE.md`, not smuggled in behind
- * a sim rule. Nothing here pushes a decal that is known to be swallowed.
+ * THE STAIN, WHICH IS NOW REAL. This paragraph used to record `DecalKind.Squish`
+ * as deliberately unmapped: the field enum had no counterpart, so `vfx.system.ts`
+ * dropped the kind and nothing here pushed a decal that was known to be
+ * swallowed. That was the right call for a mark nobody had drawn, and the wrong
+ * end state — a tank drove over a man, the counter moved, the crunch played, and
+ * the ground was untouched. `world/Decals.ts` owns atlas tile 10 now (a pressed
+ * strip carrying the same cleat rhythm as the tread marks, oriented to the
+ * CRUSHER's heading), the port maps it, and `runDown` stamps it. It goes through
+ * `world.vfx`, which is a RENDER port and a null object in a headless sim, so it
+ * costs the simulation nothing and cannot perturb a replay.
+ *
+ * ONLY INFANTRY. `squish()` below is the PROP path — a felled tree gets splinters
+ * and a puff, and pressing a track print into the ground where a hedge was is a
+ * claim about what happened that is not true.
  *
  * PHASE
  * -----
@@ -160,12 +169,12 @@
  */
 
 import {
-  ArmorClass, EntityFlag, EntityKind, Faction, FxKind, NONE, WarheadClass,
+  ArmorClass, DecalKind, EntityFlag, EntityKind, Faction, FxKind, NONE, WarheadClass,
 } from '../core/types';
 import type { PlayerId, SimContext } from '../core/types';
 import type { World } from '../core/world';
 import type { Channels } from '../core/events';
-import { MAX_QUERY_RESULTS } from '../core/config';
+import { MAX_QUERY_RESULTS, SQUISH_HALF_SIZE } from '../core/config';
 import { getScatter } from '../world/Scatter';
 import { armorMultiplier } from './Damage';
 
@@ -240,6 +249,18 @@ export const CRUSH = {
    * chest hit.
    */
   squishY: 0.35,
+  /**
+   * Half-size of the ground mark, as a fraction of the CRUSHER's collision disc.
+   *
+   * The crusher's, not the victim's: the print is made by the track, so an
+   * Apocalypse leaves a wider one than a Grizzly and a rifleman's 0.23 m
+   * footprint has nothing to do with it. A Grizzly's disc is 2.79 m
+   * (`hullRadius` = max(l,w) * 0.45), so 0.34 of it is a 1.9 m square patch —
+   * inside which the tile draws a strip ~1.0 m across and ~1.7 m long. Compare
+   * the tread stamp it lands between: `TREAD_HALF_WIDTH` 0.42 is a 0.84 m strip.
+   * `SQUISH_HALF_SIZE` floors it so a light hull still prints a track's width.
+   */
+  stainFrac: 0.34,
 } as const;
 
 /* ==========================================================================
@@ -507,6 +528,16 @@ export class CrushResolver {
       FxKind.CrushSquish,
       st.posX[j], st.posY[j] + CRUSH.squishY, st.posZ[j],
       0, 1, 0, 1, st.handleOf(j), st.faction[j] as Faction,
+    );
+
+    // THE MARK. `world.vfx` is the RENDER port — a null object in every headless
+    // sim test — so this is free of the simulation and cannot move a replay. The
+    // yaw is the CRUSHER's, so the print lands square with the tread strips its
+    // own tracks are laying either side of it; the size is the crusher's hull,
+    // for the reason in `CRUSH.stainFrac`.
+    this.world.vfx.decal(
+      DecalKind.Squish, st.posX[j], st.posZ[j],
+      st.yaw[i], Math.max(SQUISH_HALF_SIZE, st.radius[i] * CRUSH.stainFrac),
     );
     this.crushedUnits++;
   }

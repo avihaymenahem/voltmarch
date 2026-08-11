@@ -141,9 +141,13 @@
  * constructor does not already cover — and a missing module is now a build
  * error rather than a silent runtime downgrade.
  *
- * Any reorder that DOES happen later (a Settings toggle, `setPassEnabled`) sets
- * `chainDirty`, and the next `render()` draws one throwaway frame into the
- * composer's own targets before presenting. See `warmUp()`.
+ * The chain is warmed ONCE at construction, with the loading curtain still up
+ * and the game loop not yet running, so every post program is compiled before
+ * the first presented frame rather than during it. Any reorder that DOES happen
+ * later (a Settings toggle, `setPassEnabled`) sets `chainDirty`, and the next
+ * `render()` draws one throwaway frame into the composer's own targets before
+ * presenting. See `warmUp()` — including why the first version of it presented
+ * that throwaway frame instead of hiding it.
  *
  * AO RUNS AT HALF RESOLUTION, AND NOW ACTUALLY DOES
  * -------------------------------------------------
@@ -1284,26 +1288,45 @@ export function createPostChain(options: CreatePostOptions): PostChain {
   /**
    * Draw one complete frame into the composer's OWN targets and throw it away.
    *
-   * Called before presenting whenever the pass list has just changed. It forces
-   * every program in the new arrangement to compile and every ping-pong target
-   * to be allocated and written, so the frame that actually reaches the screen
-   * is a finished one. Without it, the first frame after a reorder can present
-   * a target that was allocated this tick and never drawn into — black.
+   * Called at construction, and again before presenting whenever the pass list
+   * changes. It forces every program in the arrangement to compile and every
+   * ping-pong target to be allocated and written, so the frame that actually
+   * reaches the screen is a finished one. Without it, the first frame after a
+   * reorder can present a target that was allocated this tick and never drawn
+   * into — black.
    *
-   * The trick is simply to clear `renderToScreen` on the tail pass, so the
-   * chain terminates in an offscreen buffer instead of the default framebuffer.
+   * IT SET THE WRONG FLAG, AND SO IT WAS NEVER OFFSCREEN AT ALL.
+   * ------------------------------------------------------------
+   * The original cleared `renderToScreen` on the TAIL PASS. That flag does not
+   * survive contact with `EffectComposer.render()`, whose loop opens with
+   *
+   *     pass.renderToScreen = ( this.renderToScreen && this.isLastEnabledPass( i ) );
+   *
+   * — every pass, every frame, unconditionally. So the value written here was
+   * overwritten before the pass it belonged to ever ran, `this.renderToScreen`
+   * was `true` (set at construction, never touched since), and the "throwaway"
+   * frame went straight to the DEFAULT FRAMEBUFFER. Two consequences, both the
+   * opposite of the intent: the tail pass blitted a frame nobody asked for onto
+   * the canvas, and the offscreen target the comment promised was "allocated
+   * and written" was the one thing the chain skipped writing.
+   *
+   * `rebuild()`'s `p.renderToScreen` writes are overwritten by the same line and
+   * are therefore decorative; they are harmless and left alone. THIS one was
+   * load-bearing, so it moves up to the composer-level flag, which is the only
+   * one that loop reads.
    */
   function warmUp(): void {
     if (!composer || composer.passes.length === 0) return;
-    const last = composer.passes[composer.passes.length - 1];
-    const wasScreen = last.renderToScreen;
-    last.renderToScreen = false;
+    // A lost context makes every draw below a no-op that still costs the frame.
+    if (handle.isContextLost()) return;
+    const wasScreen = composer.renderToScreen;
+    composer.renderToScreen = false;
     try {
       composer.render(1 / 60);
     } catch (err) {
       console.warn('[post] warm-up frame failed; presenting anyway', err);
     } finally {
-      last.renderToScreen = wasScreen;
+      composer.renderToScreen = wasScreen;
       renderer.setRenderTarget(null);
     }
   }
@@ -1455,6 +1478,27 @@ export function createPostChain(options: CreatePostOptions): PostChain {
   // Size the chain once, synchronously, so `uTexel` and every pass target are
   // correct before anyone can read them. From here on sizing is deferred.
   applyPendingSize();
+
+  /*
+   * COMPILE HERE, WHERE NOBODY IS LOOKING.
+   *
+   * `warmUp()` was only ever reachable from `render()`, i.e. from INSIDE the
+   * first frame the player sees — so the hitch it exists to prevent was being
+   * paid at exactly the moment it was supposed to be hidden, and paid twice
+   * over, because that first frame then rendered the whole chain again.
+   * `createPostChain()` runs during `bootstrap()` with the loading curtain up
+   * and the game loop not yet started, which is the last quiet moment there is.
+   *
+   * It compiles the POST programs — bloom's mip chain, the grade quad, SMAA's
+   * three passes, AO, the copy shader — against whatever the scene holds at
+   * boot, which is nearly nothing. World materials are not this function's
+   * business and still compile on their own first draw.
+   *
+   * `chainDirty` is cleared because `rebuild()` above set it and the debt is
+   * now paid; the first `render()` should find a warm chain and just present.
+   */
+  chainDirty = false;
+  warmUp();
 
   /* ---- render ----------------------------------------------------------- */
   const chain: PostChain = {

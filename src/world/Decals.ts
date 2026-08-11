@@ -4,7 +4,8 @@
  * ============================================================================
  * POOLED, TERRAIN-CONFORMING GROUND DECALS.
  *
- * Tread marks, scorch, craters, oil, manholes and lamp pools. Bible §8.10 puts
+ * Tread marks, scorch, craters, oil, manholes, lamp pools and the print a track
+ * leaves where it flattened somebody. Bible §8.10 puts
  * tread marks at the top of the "ground FX" list and it is right to: a tracked
  * unit that crosses a field and leaves nothing behind reads as a sprite gliding
  * over a photograph. Tread marks are the cheapest thing in the whole renderer
@@ -52,6 +53,7 @@ import {
   DECAL_SWEEP_PER_FRAME,
   CRATER_DARKEN, CRATER_HALF_SIZE, LIGHT_POOL_HALF_SIZE, MANHOLE_HALF_SIZE,
   MAP_SIZE, OIL_DARKEN, OIL_HALF_SIZE, SCORCH_DARKEN, SCORCH_HALF_SIZE,
+  SQUISH_DARKEN, SQUISH_HALF_SIZE, SQUISH_LIFE_SECONDS,
   TREAD_DARKEN, TREAD_HALF_LENGTH, TREAD_HALF_WIDTH, TREAD_LIFE_SECONDS,
   TREAD_PAVING_FALLOFF, TYRE_DARKEN, TYRE_HALF_WIDTH,
 } from '../core/config';
@@ -87,9 +89,19 @@ export const enum DecalKind {
   Crack = 8,
   /** Resurfacing patch: a blotch +/-12% luminance. Road wear. */
   Patch = 9,
+  /**
+   * The mark a track leaves where it flattened somebody. Laid by `src/sim/Crush.ts`
+   * through `world.vfx.decal`, oriented to the CRUSHER's heading.
+   *
+   * The verb shipped before the mark did: `unitsCrushed` moved, `FxKind.CrushSquish`
+   * fired, `SFX.crush` played, and the ground was untouched — `core/types.ts` has
+   * had a `DecalKind.Squish` since it was written and this enum had no counterpart,
+   * so `vfx.system.ts` dropped every one of them on the floor.
+   */
+  Squish = 10,
 }
 
-/** Atlas tiles per row/column. 4x4 = 16 slots, 10 used. */
+/** Atlas tiles per row/column. 4x4 = 16 slots, 11 used. */
 const ATLAS_COLS = 4;
 const ATLAS_TILE = DECAL_ATLAS_SIZE / ATLAS_COLS;
 
@@ -120,11 +132,16 @@ const KIND_TINT: readonly (readonly [number, number, number])[] = [
   // when you look for it; a patch is a barely-there change of tone.
   [0.66, 0.66, 0.68],                                          // Crack
   [0.94, 0.94, 0.95],                                          // Patch
+  // Squish — pressed earth, a touch warm. NOT a red one: the only hues on this
+  // ground are the ones already in the dirt, and `tools/metrics.mjs` scores hue
+  // leakage. A crush mark is a dark stain, not a puddle.
+  [SQUISH_DARKEN, SQUISH_DARKEN * 0.90, SQUISH_DARKEN * 0.86], // Squish
 ];
 
 /** Default lifetime in seconds. 0 = permanent. */
 const KIND_LIFE: readonly number[] = [
   TREAD_LIFE_SECONDS, TREAD_LIFE_SECONDS * 0.8, 0, 0, 0, 14, 0, 0, 0, 0,
+  SQUISH_LIFE_SECONDS,
 ];
 
 /* ==========================================================================
@@ -147,9 +164,10 @@ const KIND_LIFE: readonly number[] = [
  *
  * Every one of those is gone. What is left is:
  *
- *   - CRISP GEOMETRY  — cleat bars, tyre ribs, manhole ticks, ejecta rays,
- *                       drawn as exact functions and smoothed over a fraction
- *                       of their own period so they cannot alias;
+ *   - CRISP GEOMETRY  — cleat bars, tyre ribs, manhole ticks, ejecta rays, the
+ *                       drag streaks off a crush print, drawn as exact functions
+ *                       and smoothed over a fraction of their own period so they
+ *                       cannot alias;
  *   - SOFT FALLOFF    — the radial windows that make a mark a mark;
  *   - OUTLINE WARP    — two octaves of fbm applied to the RADIUS, so a burn or
  *                       a slick has an irregular silhouette while its interior
@@ -335,6 +353,46 @@ function buildDecalAtlas(): THREE.DataTexture {
         const warp = fbm2(u * 2.0, v * 2.0, 2, 2, 0.5, 229) * 0.32;
         const a = clamp01(1 - smoothstep(0.42, 0.92, clamp01(r + warp))) * 0.85 * margin;
         put(DecalKind.Patch, lx, ly, 0.5, 0.5, 0.5, a);
+      }
+
+      /* -- 10: SQUISH ---------------------------------------------------- */
+      {
+        // WHAT THIS TILE HAS TO SAY: a track went over this spot, and what was
+        // under it is now part of the ground. Every term is a drawn shape —
+        // there is no noise field anywhere in here, and the one fbm call warps
+        // the OUTLINE RADIUS exactly as Scorch and Oil do, two octaves at 2.1,
+        // which puts the finest wobble around 30 texels. The interior is smooth
+        // and the detail is geometry.
+        //
+        // The tile is authored with +v as the DIRECTION OF TRAVEL, and
+        // `Crush.runDown` passes the crusher's yaw, so the mark lands aligned
+        // with the tracks that made it and reads as one event with the tread
+        // strips either side of it rather than as a blob dropped on the floor.
+        const warp = fbm2(u * 2.1, v * 2.1, 2, 2, 0.5, 1777) * 0.24;
+        // Longer than it is wide: a track presses a strip, not a disc.
+        const rr = clamp01(Math.hypot(sx / 0.54, sy / 0.88) + warp);
+        const pressed = 1 - smoothstep(0.52, 1.0, rr);
+        // THE CLEAT RHYTHM, lifted term-for-term from the Tread tile (period 9,
+        // phase advanced 0.18 across the strip, a fifth of a period of edge
+        // smoothing so a square wave cannot moire at distance). Sharing it is
+        // the point: the mark carries the same shoe pattern as the strips that
+        // lead into it.
+        const phase = (v * 9 + Math.abs(sx) * 0.18) % 1;
+        const cleat = 0.70 + 0.30
+          * (smoothstep(0.0, 0.10, phase) - smoothstep(0.48, 0.58, phase));
+        // Two drag streaks flicking off the far end, in the travel direction.
+        // Crisp tapered lines at ±0.30, ~0.08 of a tile wide — a handful of
+        // pixels at gameplay zoom, which is a streak; any finer would be grit.
+        const dStreak = Math.min(Math.abs(sx - 0.30), Math.abs(sx + 0.30));
+        const streak = (1 - smoothstep(0.028, 0.105, dStreak))
+          * smoothstep(0.40, 0.60, sy) * (1 - smoothstep(0.62, 0.99, sy));
+        const a = clamp01(pressed * cleat * 0.95 + streak * 0.45) * margin;
+        // The centre is where the weight went: darker there, with a faint
+        // brighter fringe of soil pushed out to the edge of the print.
+        const core = 1 - smoothstep(0.0, 0.46, rr);
+        const fringe = Math.exp(-((rr - 0.88) * (rr - 0.88)) / 0.010) * 0.34;
+        const f = 0.5 - core * 0.12 + fringe * 0.18;
+        put(DecalKind.Squish, lx, ly, f, f * 0.99, f * 0.97, a);
       }
     }
   }

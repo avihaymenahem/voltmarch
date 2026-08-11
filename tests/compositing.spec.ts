@@ -17,6 +17,9 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+
 import {
   NO_BLUR_CLASS,
   classifyCompositing,
@@ -251,12 +254,95 @@ describe('post chain construction', () => {
     expect(POST_TS).toMatch(/chainDirty = false;\s*\n\s*warmUp\(\);/);
   });
 
+  it('warms up at construction, not inside the first presented frame', () => {
+    // The whole point is that the compile happens where nobody is looking. A
+    // warmUp() reachable only from render() pays the hitch during the first
+    // visible frame — the exact moment it exists to protect — and then renders
+    // the chain a second time on top of it.
+    expect(POST_TS).toMatch(/applyPendingSize\(\);\s*\n\s*chainDirty = false;\s*\n\s*warmUp\(\);/);
+  });
+
   it('renders the warm-up frame offscreen — it must never reach the screen', () => {
-    expect(POST_TS).toMatch(/last\.renderToScreen = false;/);
+    // COMPOSER-LEVEL, and that is the entire finding. See the behavioural case
+    // below for why the tail pass's own flag cannot do this job.
+    expect(POST_TS).toMatch(/composer\.renderToScreen = false;/);
+    expect(POST_TS).toMatch(/composer\.renderToScreen = wasScreen;/);
+    // The old version set `last.renderToScreen = false` and was a no-op.
+    expect(POST_TS).not.toMatch(/last\.renderToScreen = false;/);
   });
 
   it('skips the frame entirely while the GL context is lost', () => {
     expect(POST_TS).toMatch(/handle\.isContextLost\(\)/);
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* The behaviour the source-text case above is a proxy for                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * THE TEST THAT WOULD HAVE CAUGHT IT.
+ *
+ * `warmUp()` cleared `renderToScreen` on the tail pass and called
+ * `composer.render()`. Three's render loop opens each iteration with
+ *
+ *     pass.renderToScreen = ( this.renderToScreen && this.isLastEnabledPass( i ) );
+ *
+ * so the flag written outside the call is dead before the pass runs, and the
+ * "offscreen" warm-up frame went to the default framebuffer like any other.
+ * Nothing in the repo drove the real composer, so four source-text assertions
+ * all passed against code that did the opposite of what they described.
+ *
+ * This drives the ACTUAL `EffectComposer` — no GL context: its constructor and
+ * its render loop are plain JavaScript over stub passes, and the two objects it
+ * asks the renderer for are `getPixelRatio` and the render-target getter/setter.
+ */
+describe('EffectComposer decides renderToScreen per pass, per frame', () => {
+  interface Recorder { renderToScreen: boolean; enabled: boolean; needsSwap: boolean; seen: boolean[];
+    render(): void }
+
+  function makeRig() {
+    const renderer = {
+      getPixelRatio: () => 1,
+      getRenderTarget: () => null,
+      setRenderTarget: () => {},
+    } as unknown as THREE.WebGLRenderer;
+    const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(4, 4));
+    const passes: Recorder[] = [];
+    for (let i = 0; i < 3; i++) {
+      const p: Recorder = {
+        renderToScreen: false,
+        enabled: true,
+        needsSwap: false,
+        seen: [],
+        render(this: Recorder) { this.seen.push(this.renderToScreen); },
+      };
+      passes.push(p);
+      composer.passes.push(p as unknown as (typeof composer.passes)[number]);
+    }
+    return { composer, passes };
+  }
+
+  it('overwrites a per-pass flag set from outside — which is why the old fix was a no-op', () => {
+    const { composer, passes } = makeRig();
+    const tail = passes[passes.length - 1];
+    tail.renderToScreen = false; // exactly what warmUp() used to do
+    composer.render(1 / 60);
+    // Overwritten by the loop, from `composer.renderToScreen`, which is true.
+    expect(tail.seen).toEqual([true]);
+  });
+
+  it('honours the composer-level flag, which is what warmUp() sets now', () => {
+    const { composer, passes } = makeRig();
+    composer.renderToScreen = false;
+    composer.render(1 / 60);
+    for (const p of passes) expect(p.seen).toEqual([false]);
+  });
+
+  it('only ever puts the LAST enabled pass on screen', () => {
+    const { composer, passes } = makeRig();
+    composer.render(1 / 60);
+    expect(passes.map((p) => p.seen[0])).toEqual([false, false, true]);
   });
 });
 

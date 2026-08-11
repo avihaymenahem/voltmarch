@@ -35,12 +35,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
-import { EntityFlag, EntityKind, Faction, FxKind, UnitState } from '../src/core/types';
+import { DecalKind, EntityFlag, EntityKind, Faction, FxKind, UnitState } from '../src/core/types';
 import type { EntityId, PlayerId, SimContext } from '../src/core/types';
-import { CELL, SIM_DT } from '../src/core/config';
+import { CELL, SIM_DT, SQUISH_HALF_SIZE } from '../src/core/config';
 import { Rng } from '../src/core/math';
 import { FlowFieldCache, MoveClass, moveClassForLocomotor } from '../src/sim/Flowfield';
 import { NavAgents, NavAssigner, SteeringSolver } from '../src/sim/Steering';
@@ -525,6 +527,59 @@ describe('the death goes through the damage channel', () => {
     expect(CRUSH.minSquishRadius,
       'the prop floor no longer excludes a rifleman; the direct push can go')
       .toBeGreaterThan(0.234);
+  });
+
+  it('leaves a mark on the ground, aligned with the track that made it', () => {
+    /*
+     * THE STAIN THAT NEVER DREW. `core/types.ts` has carried a `DecalKind.Squish`
+     * since it was written; `world/Decals.ts` had no counterpart tile, so
+     * `vfx.system.ts`'s `DECAL_PORT_MAP` dropped the kind and `Crush.ts` — quite
+     * correctly, at the time — refused to push a decal it knew was swallowed.
+     * The end state was a verb that killed a man, moved a counter, played a
+     * sample and left the ground untouched.
+     *
+     * `world.vfx` is the RENDER port, a null object in this rig, so recording it
+     * is the only way to see the call at all — and the fact that it IS the null
+     * object here is also the reason this cannot perturb the sim.
+     */
+    const rig = makeRig();
+    const decals: { kind: number; x: number; z: number; rot: number; size: number }[] = [];
+    rig.world.vfx = {
+      ...rig.world.vfx,
+      decal: (kind, x, z, rot, size) => { decals.push({ kind, x, z, rot, size }); },
+    };
+
+    const tank = spawn(rig, 'grizzly', rig.red, C(40), C(50));
+    const man = spawn(rig, 'conscript', rig.blue, C(50), C(50));
+    rig.world.spatial.rebuild();
+    const st = rig.world.store;
+    const manX = st.posX[man];
+    const manZ = st.posZ[man];
+
+    drive(rig, tank, C(62), C(50));
+    expect(alive(rig, man)).toBe(false);
+
+    const squishes = decals.filter((d) => d.kind === (DecalKind.Squish as number));
+    expect(squishes.length, 'no ground mark for a crushed man').toBe(1);
+    const s = squishes[0];
+
+    // Where he was, not where the tank ended up.
+    expect(Math.hypot(s.x - manX, s.z - manZ)).toBeLessThan(1.5);
+    // Sized off the TRACK. A Grizzly's disc is max(6.2, 3.1) * 0.45 = 2.79 m.
+    expect(s.size).toBeCloseTo(2.79 * CRUSH.stainFrac, 2);
+    expect(s.size).toBeGreaterThanOrEqual(SQUISH_HALF_SIZE);
+    // Oriented to the CRUSHER's heading, so the print lands square with the
+    // tread strips its own tracks are laying either side of it. Driving +X is
+    // yaw = PI/2 under the engine's "yaw 0 faces +Z" convention.
+    expect(Math.abs(s.rot - Math.PI / 2)).toBeLessThan(0.35);
+  });
+
+  it('does not mark the ground for a felled prop — that is splinters, not a print', () => {
+    // `squish()` is the PROP path and stays FX-only. A track print pressed where
+    // a hedge was is a claim about what happened that is not true.
+    const crush = readFileSync(join(__dirname, '../src/sim/Crush.ts'), 'utf8');
+    const propPath = crush.slice(crush.indexOf('private squish('));
+    expect(propPath).not.toMatch(/vfx\.decal/);
   });
 
   it('never crushes a garrisoned man', () => {
