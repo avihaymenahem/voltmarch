@@ -51,7 +51,7 @@ resets it.
 | Demolition Crew | destroy 25 structures | — | Orbital Scan power *(see §6)* |
 | Scorched Earth | destroy 100 structures | Demolition Crew | Warhead decal |
 | Blooded | promote 20 units to veteran | — | Veteran insignia |
-| Old Guard | promote 15 units to elite | Blooded | Emergency Repair power *(**unreachable — see §6**)* |
+| Old Guard | promote 15 units to elite | Blooded | Emergency Repair power |
 
 ### Economy
 
@@ -72,6 +72,7 @@ resets it.
 | Production Line | train or build 100 units | — | Chevron decal |
 | Total Mobilisation | train or build 750 units | Production Line | **Map: Coral Shore** |
 | Motor Pool | build 200 vehicles | — | Laurel decal |
+| Air Wing | build 400 vehicles | Motor Pool | **Aircraft — all four armies** |
 | Hostile Takeover | capture 10 enemy structures | — | Chronoshift power *(see §6)* |
 
 ### Tactics
@@ -95,18 +96,20 @@ resets it.
 | Soviet Command | win 5 as the Soviet Union | — | Soviet insignia |
 | Iron Curtain Programme | win 20 as the Soviet Union | Soviet Command | Iron Curtain superweapon *(see §6)* |
 | Pact Command | win 5 as the Meridian Pact | — | Meridian insignia |
-| Pactworks Aviation | win 12 as the Meridian Pact | Pact Command | **Aircraft — both of them** |
-| Solar Lance Programme | win 20 as the Meridian Pact | Pactworks Aviation | Solar Lance superweapon *(see §6)* |
+| Solar Lance Programme | win 20 as the Meridian Pact | Pact Command | Solar Lance superweapon *(see §6)* |
 | Career Officer | finish 100 skirmishes | — | Star decal |
 
 > **There is no Reclamation mastery chain.** The Reclamation is fully playable from the first launch
 > and has no faction-specific missions and no insignia. (It does have a superweapon — the Stormworks
 > — which is gated on its tech building like everyone else's.)
 >
-> **The oddest gate in the table:** *Pactworks Aviation* asks for twelve wins **as the Meridian
-> Pact**, and it unlocks the air arm of **all four armies**. The Vindicator, the MiG, the Kestrel and
-> the Swarmhornet share one unlock id. If you want to fly as the Allies, the Soviets or the
-> Reclamation, you have to go and win a dozen games as somebody else first.
+> **The air arm used to live here, and it was the oddest gate in the table.** All four aircraft share
+> one unlock id, and it was paid by a mission asking for twelve wins **as the Meridian Pact** — so a
+> Reclamation player had to go and win a dozen games as somebody else's army to earn their own
+> gunship. It now sits on the vehicle chain instead, as **Air Wing** (build 400 vehicles), which is
+> where the air arm actually lives: all four aircraft are built by the War Factory off a Radar Dome.
+> The Meridian chain is two steps like the other two, and a player who had banked wins against the
+> old middle rung kept them — the superweapon step reuses the same mission id and the same metric.
 
 ---
 
@@ -160,7 +163,7 @@ What is behind the gate, and therefore what an unlock *widens*:
 | --- | --- |
 | Raider unit | Multigunner IFV · Attack Dog · Sandskiff · Arcspitter |
 | Tier-3 specialist | Prism Tank · Apocalypse Tank · Zenith Emitter · Slaghurler |
-| Aircraft | Vindicator · MiG Fighter · Kestrel Gunship · Swarmhornet — **all four behind one Meridian mission** |
+| Aircraft | Vindicator · MiG Fighter · Kestrel Gunship · Swarmhornet — all four behind **Air Wing**, on the vehicle chain |
 | Tech centre | Battle Lab · Reliquary · Crucible |
 | Specialist defence | Prism Tower · Tesla Coil · Helios Spire · Arc Pylon |
 | Anti-air emplacement | Multigunner AA *(Allied only — no other faction has a dedicated AA structure)* |
@@ -235,7 +238,7 @@ you name anywhere on the map.
 | --- | --- | --- | --- | --- |
 | **Orbital Scan** | Demolition Crew — raze 25 structures | 2:00 | 90 m | Permanently charts a wide circle of the map |
 | **Airstrike** | Armour Column — kill 250 vehicles | 2:30 | 20 m | 260 High Explosive on the marker. Friendly-fires. |
-| **Emergency Repair** | Old Guard — **unobtainable, see below** | 2:30 | 24 m | Restores 45 % of max HP to up to 24 units **and structures** |
+| **Emergency Repair** | Old Guard — promote 15 units to elite | 2:30 | 24 m | Restores 45 % of max HP to up to 24 units **and structures** |
 | **Ore Boost** | Continental Yield — mine 1,000,000 ore | 3:00 | — | 2,500 credits, immediately |
 | **Chronoshift** | Hostile Takeover — capture 10 structures | 4:00 | 30 m | Lifts up to 8 units from within 40 m of your base centroid to the marker |
 
@@ -282,13 +285,13 @@ So those five rewards are correct about the direction of travel and wrong about 
 Fourteen insignia and decals. Awarding one shows a banner and adds a line to the Missions screen.
 Nothing renders them — no unit, structure or HUD element reads a cosmetic id.
 
-### Old Guard cannot be completed
+### Old Guard used to be impossible
 
-*Old Guard* asks you to promote 15 units to **elite rank**, and its rule requires veterancy rank 3.
-Veterancy in this game caps at **rank 2** — rookie, veteran, elite, at 3 and 6 kills. The mission's
-counter can therefore never advance, and *Emergency Repair* — its reward — is permanently
-unobtainable. Since no power has a button yet this costs you nothing you could have used, but the
-mission will sit at 0/15 forever.
+*Old Guard* asks you to promote 15 units to **elite rank**. Its rule used to require veterancy rank
+3, and veterancy in this game caps at **rank 2** — rookie, veteran, elite, at 3 and 6 kills. The
+counter could therefore never advance, and *Emergency Repair*, its reward, was permanently
+unobtainable. The rule now asks for rank 2, so the mission completes normally and the power is
+reachable like any other.
 
 ---
 
