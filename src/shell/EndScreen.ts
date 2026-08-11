@@ -72,6 +72,14 @@ export interface MatchResult {
   stats: PlayerStats;
   credits: number;
   factionName: string;
+  /**
+   * EVERY hostile army, joined with ` · `. One name in a duel.
+   *
+   * It was `world.players[1]?.name`, which is the second seat and not "the
+   * opponent" — in a four-way that chip named one of three and silently dropped
+   * the others. `Shell.buildResult` now filters the table by hostility, so this
+   * is the answer to "who was I fighting" rather than "who was seated next".
+   */
   opponentName: string;
   mapName: string;
   difficulty: number;
@@ -209,6 +217,10 @@ export class EndScreen implements Screen {
     const oppChip = el('div', 'vm-chip');
     oppChip.appendChild(icon('cpu', 14));
     oppChip.appendChild(el('span', undefined, `${r.opponentName} · ${DIFFICULTIES[r.difficulty] ?? '—'}`));
+    // The chip is one line in a flex meta row, and three army names is more than
+    // that line has. The full list goes on the tooltip so nothing is lost if the
+    // text is clipped; the names themselves stay visible for the common case.
+    oppChip.title = `Opponents: ${r.opponentName}`;
     badge.appendChild(oppChip);
 
     const speedChip = el('div', 'vm-chip');

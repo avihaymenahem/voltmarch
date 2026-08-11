@@ -740,6 +740,47 @@ export function healthColor(frac: number): string {
   return frac > 0.6 ? SEMANTIC.ok : frac > 0.3 ? SEMANTIC.warn : SEMANTIC.danger;
 }
 
+/* --------------------------------------------------------------------------
+ * HOSTILE ARMIES
+ *
+ * Every hostile was ONE red, and the comment on it said so on purpose:
+ * "Semantic, never faction-swapped — the red ones are shooting at me has to be
+ * true whichever army you picked." That is right, and in a four-way free-for-all
+ * it is also not enough: three opponents in one shade is a tactical map that
+ * cannot answer "whose tanks are those".
+ *
+ * SO RED KEEPS INDEX 0 AND THE RULE KEEPS ITS TEETH. In a duel there is exactly
+ * one hostile, it is index 0, and it is the same `SEMANTIC.danger` it has always
+ * been — the minimap of every 1v1 and every `?shot=` fixture is untouched. Only
+ * a third army makes the palette do anything.
+ *
+ * THE COLOURS ARE NOT THE FACTION ACCENTS, deliberately. Two armies may pick the
+ * same side (mirror matches are legal), so an accent is not a unique key for an
+ * army; a SEAT is. These four are picked to hold apart from each other, from the
+ * four faction accents, from `SEMANTIC.ore` and from `SEMANTIC.neutral` at blip
+ * size over both dark grass and pale concrete.
+ * -------------------------------------------------------------------------- */
+
+export const HOSTILE_COLORS: readonly string[] = [
+  SEMANTIC.danger, // red — the only one a duel ever uses
+  '#FF8A2B', // orange
+  '#C77DFF', // violet
+  '#2BD9C4', // teal
+];
+
+/**
+ * The blip colour for the n-th hostile army, counted in seat order.
+ *
+ * Wraps rather than clamping: `MAX_PLAYERS` is 8 and this table has four, so an
+ * eight-way would repeat a colour instead of returning `undefined` — which in a
+ * canvas `fillStyle` is a silently ignored assignment that paints the blip in
+ * whatever the previous one was.
+ */
+export function hostileColor(index: number): string {
+  const n = HOSTILE_COLORS.length;
+  return HOSTILE_COLORS[((index % n) + n) % n];
+}
+
 /* ==========================================================================
  * SECTION 9 — LEGACY (retired chrome language)
  *

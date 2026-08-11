@@ -25,14 +25,17 @@ import {
   KEYBINDS,
   MANAGED_FLAGS,
   MAPS,
+  MAX_ARMIES,
   PERSONALITIES,
   SETTINGS_STORAGE_KEY,
   SETUP_STORAGE_KEY,
   SPEEDS,
   SettingsStore,
+  armyCount,
   buildMatchQuery,
   chordEquals,
   chordLabel,
+  cloneSetup,
   codeLabel,
   conflictingIds,
   defaultBindings,
@@ -48,6 +51,7 @@ import {
   normalizeSetup,
   rollSeed,
   touched,
+  withArmyCount,
   type Chord,
   type StorageLike,
 } from '../src/shell/settings-store';
@@ -286,6 +290,160 @@ describe('match setup', () => {
     expect(rollSeed(() => 0)).toBe(1);
     expect(rollSeed(() => 0.5)).toBeGreaterThan(0);
     expect(Number.isInteger(rollSeed(() => 0.25))).toBe(true);
+  });
+});
+
+/* ==========================================================================
+ * FOUR ARMIES
+ *
+ * `MatchSetup` carried one opponent and every `MAPS` entry declared `players: 2`
+ * with nothing reading the field, so the product could only ever set up a duel.
+ * These are the falsifiable half of the fix: the shape, the migration, the map
+ * ceiling, and the mirror that keeps a `voltmarch.setup.v1` blob written by an
+ * older build loading unchanged.
+ * ========================================================================== */
+
+describe('free-for-all setup', () => {
+  const ROSTER = ['allies', 'soviets', 'meridian', 'reclaim'];
+
+  it('defaults to a 1v1 — a four-way is a choice, never a surprise', () => {
+    const d = defaultSetup();
+    expect(armyCount(d)).toBe(2);
+    expect(d.opponents).toHaveLength(1);
+    expect(d.opponents[0].faction).toBe(d.aiFaction);
+  });
+
+  it('migrates a stored setup that predates the army list', () => {
+    // Exactly what an older build wrote: no `opponents` key at all.
+    const legacy = {
+      playerFaction: 'meridian', aiFaction: 'reclaim', map: MAPS[0].id,
+      difficulty: 2, personality: 1, startingCredits: 5000, speed: 1, seed: 42,
+    };
+    const s = normalizeSetup(legacy, ROSTER);
+    expect(armyCount(s)).toBe(2);
+    expect(s.opponents).toEqual([{ faction: 'reclaim', difficulty: 2, personality: 1 }]);
+    // …and every singular field it used to carry still says what it said.
+    expect(s.playerFaction).toBe('meridian');
+    expect(s.aiFaction).toBe('reclaim');
+    expect(s.difficulty).toBe(2);
+    expect(s.personality).toBe(1);
+    expect(s.seed).toBe(42);
+  });
+
+  it('round-trips a four-way through storage', () => {
+    const four = withArmyCount(
+      { ...defaultSetup(), map: 'airbase-flats' }, 4, ROSTER,
+    );
+    expect(armyCount(four)).toBe(4);
+    const back = normalizeSetup(JSON.parse(JSON.stringify(four)), ROSTER);
+    expect(back.opponents).toEqual(four.opponents);
+  });
+
+  it('keeps the singular fields mirroring opponent one', () => {
+    const s = normalizeSetup({
+      playerFaction: 'allies', aiFaction: 'meridian', difficulty: 3, personality: 2,
+      map: 'airbase-flats',
+      opponents: [
+        { faction: 'IGNORED', difficulty: 99, personality: 99 },
+        { faction: 'reclaim', difficulty: 0, personality: -1 },
+      ],
+    }, ROSTER);
+    // Entry 0 is rebuilt from the singular fields, not read from the array —
+    // they are the half an older build and a save row can reach.
+    expect(s.opponents[0]).toEqual({ faction: 'meridian', difficulty: 3, personality: 2 });
+    expect(s.opponents[1]).toEqual({ faction: 'reclaim', difficulty: 0, personality: -1 });
+  });
+
+  it('clamps the army list to what the battlefield can seat', () => {
+    const twoPlayerMap = MAPS.find((m) => m.players === 2);
+    expect(twoPlayerMap).toBeDefined();
+    const s = normalizeSetup({
+      map: twoPlayerMap!.id,
+      opponents: [
+        { faction: 'soviets', difficulty: 1, personality: -1 },
+        { faction: 'meridian', difficulty: 1, personality: -1 },
+        { faction: 'reclaim', difficulty: 1, personality: -1 },
+      ],
+    }, ROSTER);
+    expect(armyCount(s)).toBe(2);
+  });
+
+  it('reads MapChoice.players instead of declaring it and ignoring it', () => {
+    // The regression this guards: every entry said 2, nothing read it, and the
+    // lobby could not have offered a four-way if it had wanted to.
+    expect(MAPS.some((m) => m.players >= 4)).toBe(true);
+    expect(MAX_ARMIES).toBe(Math.max(...MAPS.map((m) => m.players)));
+    for (const m of MAPS) expect(m.players).toBeGreaterThanOrEqual(2);
+  });
+
+  it('offers at least one four-army battlefield on a fresh profile', () => {
+    // `SkirmishSetup.STARTER_MAPS` — a four-way gated behind a mission would be
+    // a feature no new player can reach.
+    const starters = ['temperate-valley', 'airbase-flats'];
+    const open = MAPS.filter((m) => starters.includes(m.id));
+    expect(open.length).toBe(2);
+    expect(open.some((m) => m.players >= 4)).toBe(true);
+  });
+
+  it('grows into unclaimed factions and shrinks from the end', () => {
+    const base = { ...defaultSetup(), playerFaction: 'allies', map: 'airbase-flats' };
+    const four = withArmyCount(base, 4, ROSTER);
+    const sides = [four.playerFaction, ...four.opponents.map((o) => o.faction)];
+    expect(new Set(sides).size).toBe(4);
+    // Down and back up returns the same table, so flicking the row is not
+    // destructive.
+    const two = withArmyCount(four, 2, ROSTER);
+    expect(two.opponents).toEqual(four.opponents.slice(0, 1));
+    expect(withArmyCount(two, 4, ROSTER).opponents).toEqual(four.opponents);
+  });
+
+  it('never returns an empty army list', () => {
+    expect(withArmyCount(defaultSetup(), 1, ROSTER).opponents.length).toBe(1);
+    expect(withArmyCount(defaultSetup(), -5, ROSTER).opponents.length).toBe(1);
+    expect(normalizeSetup({ opponents: [] }, ROSTER).opponents.length).toBe(1);
+  });
+
+  it('clones the army list rather than sharing it', () => {
+    const a = withArmyCount(defaultSetup(), 3, ROSTER);
+    const b = cloneSetup(a);
+    b.opponents[1].difficulty = 3;
+    expect(a.opponents[1].difficulty).not.toBe(3);
+  });
+});
+
+/* ========================================================================== */
+
+describe('boot flags with more than one AI', () => {
+  const settings = defaultSettings();
+  const ROSTER = ['allies', 'soviets', 'meridian', 'reclaim'];
+
+  it('writes ?ai= when the whole table agrees', () => {
+    const four = withArmyCount({ ...defaultSetup(), map: 'airbase-flats' }, 4, ROSTER);
+    expect(buildMatchQuery(four, settings, '').get('ai'))
+      .toBe(DIFFICULTIES[four.difficulty].toLowerCase());
+  });
+
+  /*
+   * `sim/ai.system.ts#init` applies `?ai=` to EVERY non-human player — one
+   * value, no slot — and it runs after the shell has written each army's own
+   * difficulty onto its own PlayerState. So writing the flag for a mixed table
+   * would flatten a Brutal and two Easies into three Brutals.
+   */
+  it('omits ?ai= when the armies were given different difficulties', () => {
+    const four = withArmyCount({ ...defaultSetup(), map: 'airbase-flats' }, 4, ROSTER);
+    four.opponents[1].difficulty = 0;
+    four.opponents[2].difficulty = 3;
+    expect(buildMatchQuery(four, settings, '').has('ai')).toBe(false);
+    // And a 1v1 can never reach that branch, so its query is unchanged.
+    expect(buildMatchQuery(defaultSetup(), settings, '').get('ai')).toBe('normal');
+  });
+
+  it('omits ?aip= when the armies were given different personalities', () => {
+    const four = withArmyCount({ ...defaultSetup(), map: 'airbase-flats' }, 4, ROSTER);
+    four.personality = 0;
+    four.opponents[0].personality = 0;
+    four.opponents[1].personality = 2;
+    expect(buildMatchQuery(four, settings, '').has('aip')).toBe(false);
   });
 });
 
