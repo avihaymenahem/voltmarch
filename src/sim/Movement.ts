@@ -67,6 +67,7 @@ import type { EntityStore, World } from '../core/world';
 import type { Channels } from '../core/events';
 import { angleDelta, clamp, isInMap, turnToward, worldToCell } from '../core/math';
 import { MoveClass, moveClassForLocomotor, type FlowFieldCache } from './Flowfield';
+import { crushPassesThrough } from './Crush';
 import { getTerrain } from '../world/Terrain';
 import { layTread } from '../world/Decals';
 import { addWake, waterLevelAt } from '../world/Water';
@@ -630,6 +631,20 @@ export class MovementIntegrator {
           const jc = moveClassAt(st, j);
           if (jc === MoveClass.Air) continue;
           if ((jc === MoveClass.Naval) !== (cls === MoveClass.Naval)) continue;
+
+          // A ROLLING HULL DOES NOT BOUNCE OFF A MAN IT IS ENTITLED TO CRUSH.
+          //
+          // The mirror image of the prop branch above: that one makes a rock
+          // solid because `sim/Crush.ts` will not flatten it, and this one
+          // makes a rifleman permeable because `sim/Crush.ts` will. Without it
+          // the crush rule is correct and unreachable — this constraint holds
+          // a Grizzly and a rifleman 3.02 m apart while the crush test needs
+          // 2.19 m, and a measured probe put the closest approach at 2.83 m
+          // with the man untouched on the far side.
+          //
+          // Symmetric and speed-gated inside `crushPassesThrough`, so a PARKED
+          // tank keeps its collision and still shoves infantry out of its hull.
+          if (crushPassesThrough(w, i, j)) continue;
 
           const dx = px - st.posX[j];
           const dz = pz - st.posZ[j];

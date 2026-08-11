@@ -2,8 +2,8 @@
  * ============================================================================
  * VOLTMARCH — src/sim/crush.system.ts
  * ============================================================================
- * The registration shim for crushing. All the work is in `Crush.ts`, and its
- * header carries the reasoning.
+ * The registration shim for crushing — scenery AND infantry. All the work is in
+ * `Crush.ts`, and its header carries the reasoning.
  *
  * `Phase.Movement` with a late order, matching `Crates.ts` — the game's other
  * drive-over mechanic — so the test reads THIS tick's integrated positions and
@@ -39,6 +39,10 @@ export default defineSystem({
     resolver = new CrushResolver(world, channels);
     debugHandle = debug;
     debug.setCounter('propsCrushed', 0);
+    // Kept apart from `propsCrushed` deliberately: scenery and casualties are
+    // not the same number, and one overlay line reading 4000 because a
+    // harvester drove through a wood would hide the four men under a Rhino.
+    debug.setCounter('unitsCrushed', 0);
   },
 
   simTick(s: SimContext): void {
@@ -48,6 +52,7 @@ export default defineSystem({
     // running total, not 30 identical writes a second.
     if (resolver.lastCrushed > 0) {
       debugHandle?.setCounter('propsCrushed', resolver.crushedProps + resolver.crushedScatter);
+      debugHandle?.setCounter('unitsCrushed', resolver.crushedUnits);
     }
   },
 

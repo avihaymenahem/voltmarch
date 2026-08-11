@@ -2,7 +2,7 @@
  * ============================================================================
  * VOLTMARCH — src/sim/Crush.ts
  * ============================================================================
- * HEAVY VEHICLES FLATTEN SOFT SCENERY.
+ * HEAVY VEHICLES FLATTEN SOFT SCENERY, AND THE MEN STANDING IN FRONT OF THEM.
  *
  * THE HOLE THIS FILLS
  * -------------------
@@ -38,6 +38,12 @@
  *    two"), so crushing only the 2% that happen to be entities would mean two
  *    visually identical trees behaving differently.
  *
+ * 3. INFANTRY (`EntityKind.Infantry`). The genre's most recognisable verb, and
+ *    the one this file shipped without — the victim test read
+ *    `if (st.kind[j] !== EntityKind.Prop) continue` and nothing else, so a
+ *    tank flattened trees and drove harmlessly through men. THE INFANTRY RULE
+ *    below is the whole of it.
+ *
  * WHAT DOES NOT
  * -------------
  * Rock. `FALLBACK_PROPS` gives `rock` (r 2.0) and `boulder` (r 3.2)
@@ -45,11 +51,83 @@
  * and are instead made solid by `Movement.relax`. A boulder dissolving under a
  * harvester would read as a missing collision, not as strength.
  *
- * Infantry. `crushableBy: 1` is authored on every foot unit and `crushLevel:
- * 3..6` on every tank, so extending the victim test past `EntityKind.Prop` is
- * a one-line change — deliberately NOT taken here. Crushing infantry is a
- * balance change that touches target selection, veterancy and the AI, and it
- * belongs to its own decision with its own tests, not to a scenery bug fix.
+ * VEHICLES. Fifteen hulls carry a `crushableBy` of 4..6 and it is read by
+ * nothing, here or anywhere. That is not an oversight in this file: NOT ONE
+ * VEHICLE IN THE ROSTER CARRIES `EntityFlag.Crushable` — the flag whose own
+ * docstring is "dies instantly under a Crusher with a higher crushLevel" —
+ * and every foot unit does. The roster therefore already says who the victims
+ * are, and a ram that deletes a 420 HP Rhino because an Apocalypse touched it
+ * is a balance decision with no authored intent behind it. The `crushableBy`
+ * numbers on hulls describe a ram rule that does not exist; they are reported,
+ * not implemented. See `docs/SPEC_DRIFT_AUDIT.md` §10.
+ *
+ * THE INFANTRY RULE, IN FOUR PARTS
+ * --------------------------------
+ * 1. WHO. A live `EntityFlag.Crusher` with `crushLevel > 0`, moving at or
+ *    above `CRUSH.minSpeed`, flattens a live `EntityKind.Infantry` carrying
+ *    `EntityFlag.Crushable` whose `crushableBy` is non-zero and no greater
+ *    than that level. `crushesUnit` in §2 is the ONE function that says so;
+ *    nothing re-derives it. A Grizzly (3) flattens every rifleman in the game
+ *    (1); an Apocalypse (`crushableBy: 0`) is flattened by nothing, because 0
+ *    means UNCRUSHABLE for a unit. That is the exact opposite of what 0 means
+ *    for a prop — see `CRUSH.propDefaultLevel`, and do not merge the two.
+ *
+ * 2. NEVER YOUR OWN. `w.areAllied` gates it, matching how DIRECT harm behaves
+ *    everywhere else in the sim: `Targeting.ts:401` will not acquire an ally,
+ *    `Projectiles.ts:352` will not detonate on one, `Combat.ts:741` skips
+ *    them. The one place friendly fire is real is SPLASH, and there it is
+ *    halved rather than waived (`Damage.applySplash`) — a blast cannot pick
+ *    its victims and a driver can. There is no half of an instant death to
+ *    apply, so the rule is the direct-harm one.
+ *
+ * 3. IT IS A KILL, NOT A DELETION. The prop path above uses `store.markDead`,
+ *    which is right for a tree and wrong for a man: it skips the armour
+ *    matrix, the `entity:damaged` event, the kill credit and the veterancy
+ *    promotion, all of which live inside `Damage.applyOne`. So a crushed
+ *    soldier is pushed onto `channels.damage` exactly as a bullet would be —
+ *    same queue, same drain, same `Damage.onDeath` giving him the body, the
+ *    puff and `EvaLine.UnitLost`, same `unitsLost`/`unitsKilled` accounting.
+ *    `Phase.Movement` is upstream of `Phase.Damage`, so it lands on the SAME
+ *    tick and nothing observes a man who is half crushed.
+ *
+ *    The amount is `hp` divided BACK through the armour multiplier, so the
+ *    matrix row is a formality and the kill is exact rather than an overkill
+ *    number: `audio.system.ts` drives combat-music intensity off the damage
+ *    actually dealt, and a 10x "make sure" figure would spike it.
+ *
+ * 4. THE HULL HAS TO GET THERE. Two systems used to stop it, and a measured
+ *    probe put a Grizzly's closest approach to a standing rifleman at 2.83 m
+ *    against the 2.19 m its own hull disc needs — so the rule above would
+ *    have been correct and unreachable. `Steering` leaned the tank around him
+ *    and inherited his walking pace as a queue brake; `Movement.relax` then
+ *    held the two discs 3.02 m apart as a hard constraint. Both now call
+ *    `crushPassesThrough` and skip the pair. A hull does not steer around,
+ *    brake for, or bounce off a man it is entitled to drive over — and that
+ *    carve-out is gated on the same `minSpeed` as the kill, so a PARKED tank
+ *    still shoves infantry aside rather than letting them stand inside it.
+ *
+ * WHAT IS DELIBERATELY NOT HERE
+ * -----------------------------
+ * AUTO-SCATTER. `OrderKind.Scatter` and `planScatter` exist, and having the
+ * victim dodge was considered and rejected on two counts. The first is that
+ * there is no order stack: `OrderExecutor.write` overwrites `orderX`/`orderZ`
+ * and nothing restores them, so a sim-issued dodge silently cancels whatever
+ * the player told that squad to do — a crush would become a movement bug with
+ * no visible cause. The second kills the idea outright in multiplayer:
+ * `net.system.ts` harvests the command ring at `Phase.Command` ORDER 0 of the
+ * NEXT tick and ships whatever it finds to the relay, and the relay rewrites
+ * `player` to the slot of the socket that sent it. A dodge the sim generated
+ * for player 1 would therefore arrive stamped player 0 from one client and
+ * player 1 from the other, and `OrderExecutor` drops a command whose owner does
+ * not match — applied on one machine, dropped on the other, which is a desync
+ * with no findable cause. Scatter is a PLAYER verb; it is already on a hotkey
+ * (`input.system.ts:880`) and that is where it belongs.
+ *
+ * THE STAIN. `DecalKind.Squish` is authored for exactly this and
+ * `vfx.system.ts`'s `DECAL_PORT_MAP` deliberately drops it — the field enum has
+ * no counterpart and inventing one is a look change that has to be argued
+ * through `npm run shots` and `docs/RA3_LOOK_BIBLE.md`, not smuggled in behind
+ * a sim rule. Nothing here pushes a decal that is known to be swallowed.
  *
  * PHASE
  * -----
@@ -65,7 +143,10 @@
  * No clock and no RNG. Victims are visited in `byKind[Vehicle]` order and, per
  * crusher, in spatial-bucket order; both are total orders the store already
  * guarantees. Which props die is a pure function of positions, so replays and
- * `npm run soak` are unaffected.
+ * `npm run soak` are unaffected. The infantry half adds no state and no random
+ * draw either: the damage record it queues is a pure function of the victim's
+ * `hp` and armour class, and it enters the same queue in the same order every
+ * run.
  *
  * SAVES
  * -----
@@ -78,12 +159,15 @@
  * ============================================================================
  */
 
-import { EntityFlag, EntityKind, Faction, FxKind, NONE } from '../core/types';
-import type { SimContext } from '../core/types';
+import {
+  ArmorClass, EntityFlag, EntityKind, Faction, FxKind, NONE, WarheadClass,
+} from '../core/types';
+import type { PlayerId, SimContext } from '../core/types';
 import type { World } from '../core/world';
 import type { Channels } from '../core/events';
 import { MAX_QUERY_RESULTS } from '../core/config';
 import { getScatter } from '../world/Scatter';
+import { armorMultiplier } from './Damage';
 
 /* ==========================================================================
  * 1. TUNING
@@ -132,10 +216,116 @@ export const CRUSH = {
   reportCapacity: 8,
   /** Below this radius a felled prop is not worth a separate squish. */
   minSquishRadius: 0.5,
+  /**
+   * The row of the armour matrix a crushed man is resolved through.
+   *
+   * `SmallArms` for its Infantry column, which is 1.00, because that is the
+   * only column this rule can reach — `EntityFlag.Crushable` is authored on
+   * foot units and on props and on nothing else. The amount is divided BACK
+   * through the multiplier at the call site, so the row is a formality and
+   * cannot change the outcome. It still selects the `entity:damaged` warhead
+   * and it is not `Tesla`, which is the one row `Damage.pushImpactFx` treats
+   * specially.
+   *
+   * If a `setArmorMatrix` table ever put a ZERO in [SmallArms][Infantry] a
+   * tank track would stop being lethal. `tests/crush-infantry.spec.ts` pins
+   * the kill, which is the only mechanism that would catch it.
+   */
+  warhead: WarheadClass.SmallArms,
+  /**
+   * Height above the victim's origin at which the crunch is spawned.
+   *
+   * `Damage.estimatedHeight` puts a rifleman at 2.2 m and the FX belongs at
+   * ground level, under the tracks — this is a body being flattened, not a
+   * chest hit.
+   */
+  squishY: 0.35,
 } as const;
 
 /* ==========================================================================
- * 2. THE RESOLVER
+ * 2. THE PAIR RULE
+ *
+ * ONE PREDICATE, THREE READERS. The kill below, the collision carve-out in
+ * `Movement.relax` and the steering carve-out in `SteeringSolver` all have to
+ * agree about who may drive over whom, and the cost of them disagreeing is not
+ * a wrong number — it is a rule that is correct and unreachable, which is
+ * exactly what a measured probe found before these two functions existed (part
+ * 4 of THE INFANTRY RULE). So the answer is computed here and nowhere else.
+ * ========================================================================== */
+
+/**
+ * May the hull in slot `i` drive over the unit in slot `j`?
+ *
+ * Deliberately does NOT test speed or distance: this is the ENTITLEMENT, and
+ * the two carve-outs need it before contact. `crushPassesThrough` adds the
+ * speed gate; `CrushResolver.crushUnder` adds the distance one.
+ */
+export function crushesUnit(w: World, i: number, j: number): boolean {
+  if (i === j) return false;
+  const st = w.store;
+
+  /* -- the hull ------------------------------------------------------------
+   * `EntityKind.Vehicle` first, mirroring `CrushResolver.simTick`, which walks
+   * `byKind[Vehicle]` and therefore could never visit any other crusher. Said
+   * out loud here so this predicate cannot answer yes about a pair the
+   * resolver would never look at — the two carve-outs believe it.            */
+  if (st.kind[i] !== EntityKind.Vehicle) return false;
+  const f = st.flags[i];
+  if ((f & EntityFlag.Alive) === 0) return false;
+  if ((f & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) return false;
+  if ((f & EntityFlag.Crusher) === 0) return false;
+  const level = st.crushLevel[i];
+  if (level === 0) return false;
+
+  /* -- the man ------------------------------------------------------------
+   * `EntityKind.Infantry` and not merely the flag. Widening this to whatever
+   * happens to carry `Crushable` is how a future roster edit would quietly
+   * start deleting vehicles; see WHAT DOES NOT in the header.               */
+  if (st.kind[j] !== EntityKind.Infantry) return false;
+  const jf = st.flags[j];
+  if ((jf & EntityFlag.Alive) === 0) return false;
+  if ((jf & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) return false;
+  if ((jf & EntityFlag.Crushable) === 0) return false;
+
+  // 0 IS UNCRUSHABLE FOR A UNIT — the documented meaning of the column, and
+  // what keeps an Apocalypse (`crushableBy: 0`) safe from everything. It means
+  // the opposite for a prop, whose column no spawn path writes at all; that
+  // asymmetry is `CRUSH.propDefaultLevel` and it must not leak into here.
+  const need = st.crushableBy[j];
+  if (need === 0 || need > level) return false;
+
+  // Direct harm never touches an ally. See part 2 of the header.
+  return !w.areAllied(st.owner[i] as PlayerId, st.owner[j] as PlayerId);
+}
+
+/**
+ * Must this pair be allowed to occupy the same ground this tick?
+ *
+ * Symmetric, because both `Movement.relax` and `SteeringSolver` evaluate a
+ * pair once from each side and a one-sided answer would let the victim slide
+ * out from under a hull that is not allowed to slide away from him.
+ *
+ * Gated on the crusher actually ROLLING, and on the same threshold as the
+ * kill: a parked tank is not entitled to anything, so it keeps its collision
+ * and shoves infantry aside instead of letting them stand inside its hull.
+ */
+export function crushPassesThrough(w: World, a: number, b: number): boolean {
+  const st = w.store;
+  // FAST OUT, and it earns its place: this runs inside `Movement.relax`'s
+  // neighbour loop (12 candidates x 2 iterations per mover) and inside the
+  // steering scan, so it is asked about roughly ten thousand pairs a tick and
+  // says no to almost all of them. `crushesUnit` requires a Vehicle on one side
+  // and Infantry on the other, so two hulls — or two men — cannot be a crush
+  // pair, and that is two typed-array reads instead of twenty.
+  const aVehicle = st.kind[a] === EntityKind.Vehicle;
+  if (aVehicle === (st.kind[b] === EntityKind.Vehicle)) return false;
+
+  if (aVehicle) return st.speed[a] >= CRUSH.minSpeed && crushesUnit(w, a, b);
+  return st.speed[b] >= CRUSH.minSpeed && crushesUnit(w, b, a);
+}
+
+/* ==========================================================================
+ * 3. THE RESOLVER
  * ========================================================================== */
 
 export class CrushResolver {
@@ -143,6 +333,14 @@ export class CrushResolver {
   public crushedProps = 0;
   /** Scatter instances flattened this match. */
   public crushedScatter = 0;
+  /**
+   * Infantry run down this match.
+   *
+   * Counted where the damage record is QUEUED, not where the man dies, so it
+   * is the number of crushes this file caused and not the number of deaths
+   * `Damage` resolved — those differ by anything that was already dying.
+   */
+  public crushedUnits = 0;
   /** Victims on the last tick, for the debug overlay and the tests. */
   public lastCrushed = 0;
 
@@ -186,15 +384,34 @@ export class CrushResolver {
     if (hull <= 0) return 0;
     let victims = 0;
 
-    /* -- 1. entity props ------------------------------------------------- */
-    // `queryCircleFat` accepts a candidate when the discs touch, which is the
-    // test we want; the exact compare below is still done here so a future
-    // change to the broadphase cannot quietly widen the kill.
+    /* -- 1. entity props and infantry -------------------------------------
+     * ONE query, two victim kinds. `queryCircleFat` accepts a candidate when
+     * the discs touch, which is the test we want; the exact compare below is
+     * still done per branch so a future change to the broadphase cannot
+     * quietly widen the kill. `maxPerTick` is shared on purpose — it bounds
+     * the WORK a single hull does in a tick, and a hull inside a copse and a
+     * hull inside a squad are the same worst case.                          */
     const found = w.spatial.queryCircleFat(px, pz, hull, this.scratch);
     for (let k = 0; k < found && victims < CRUSH.maxPerTick; k++) {
       const j = this.scratch[k];
       if (j === i) continue;
-      if (st.kind[j] !== EntityKind.Prop) continue;
+      const jk = st.kind[j];
+
+      if (jk === EntityKind.Infantry) {
+        // The whole entitlement — kinds, flags, levels, allegiance — lives in
+        // ONE place, because `Steering` and `Movement.relax` have to agree
+        // with it or the hull never arrives. See §2.
+        if (!crushesUnit(w, i, j)) continue;
+        const dx = st.posX[j] - px;
+        const dz = st.posZ[j] - pz;
+        const want = hull + st.radius[j];
+        if (dx * dx + dz * dz >= want * want) continue;
+        this.runDown(i, j);
+        victims++;
+        continue;
+      }
+
+      if (jk !== EntityKind.Prop) continue;
       const jf = st.flags[j];
       if ((jf & EntityFlag.Alive) === 0) continue;
       if ((jf & EntityFlag.PendingDestroy) !== 0) continue;
@@ -249,6 +466,52 @@ export class CrushResolver {
   }
 
   /**
+   * One man, under the tracks.
+   *
+   * NOT `store.markDead`. A tree is deleted; a soldier is KILLED, and every
+   * consequence of a kill — the armour matrix, `entity:damaged`, kill credit,
+   * the veterancy promotion, `unitsLost`/`unitsKilled`, the body and the puff
+   * from `Damage.infantryDeath`, `EvaLine.UnitLost` — lives behind
+   * `channels.damage`. Pushing onto that queue is how every weapon in the game
+   * kills something and it is how this does too; only the source of the record
+   * differs. `Phase.Movement` is upstream of `Phase.Damage`, so it resolves on
+   * this tick.
+   *
+   * THE AMOUNT IS EXACT. `hp` divided back through the multiplier the matrix
+   * will apply, plus one, so the outcome does not depend on which warhead row
+   * was chosen and the figure that reaches `entity:damaged` is the damage a
+   * crush really did. `audio.system.ts` sizes its combat-intensity heuristic
+   * off that number — an overkill "make sure" value would read as a firefight.
+   */
+  private runDown(i: number, j: number): void {
+    const st = this.world.store;
+    const mult = armorMultiplier(CRUSH.warhead, st.armorClass[j] as ArmorClass);
+    // Zero only if a `setArmorMatrix` table waived this row entirely; see
+    // `CRUSH.warhead`. Leaving the man standing is the safe failure, and
+    // `tests/crush-infantry.spec.ts` is what stops it happening unnoticed.
+    if (mult <= 0) return;
+
+    this.channels.damage.push(
+      st.handleOf(j), st.handleOf(i), st.hp[j] / mult + 1, CRUSH.warhead,
+      st.posX[j], st.posY[j], st.posZ[j], 0, 0,
+    );
+
+    // The crunch, and the sound: `audio/Weapons.ts` maps `FxKind.CrushSquish`
+    // to `SFX.crush`, which is backed by `public/audio/sfx/crush.squish.*.ogg`.
+    // Pushed directly rather than through `squish()` because that gate is a
+    // PROP gate — a rifleman's collision disc is 0.23 m, well under
+    // `minSquishRadius`, and a man is a man-sized crunch whatever his
+    // footprint says. His OWN faction, matching `Damage.infantryDeath`: the FX
+    // channel keys palette off it and this is his death, not the driver's.
+    this.channels.fx.push(
+      FxKind.CrushSquish,
+      st.posX[j], st.posY[j] + CRUSH.squishY, st.posZ[j],
+      0, 1, 0, 1, st.handleOf(j), st.faction[j] as Faction,
+    );
+    this.crushedUnits++;
+  }
+
+  /**
    * The crunch. Skipped for anything too small to hear.
    *
    * `Faction.Neutral` because that is whose prop it was — the FX channel keys
@@ -266,6 +529,7 @@ export class CrushResolver {
   reset(): void {
     this.crushedProps = 0;
     this.crushedScatter = 0;
+    this.crushedUnits = 0;
     this.lastCrushed = 0;
   }
 }
