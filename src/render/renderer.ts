@@ -286,15 +286,37 @@ export interface PostConfig {
    * Measured on a 3x2 structure at 1200x900, counting strong vertical edges
    * with no matching edge in either neighbouring row (i.e. lines that broke):
    *
-   *     samples 0, render scale 1.0    12.5%     <- shipped
+   *     samples 0, render scale 1.0    12.5%
    *     samples 4, render scale 1.0     8.2%
    *     samples 0, render scale 1.5     9.1%
    *     samples 0, render scale 2.0     6.4%
    *
-   * SMAA was enabled for every one of those rows. 4x MSAA buys most of what
-   * 2x supersampling buys for a small fraction of the fill cost, because it
-   * multisamples COVERAGE and shades once — which is exactly and only the
-   * geometric-edge problem this is.
+   * SMAA was enabled for every one of those rows.
+   *
+   * ── AND WHY IT DEFAULTS TO 0 ANYWAY ──────────────────────────────────────
+   * This shipped at 4 and cost a reporter on integrated Radeon graphics 7-8 fps
+   * of ~22 at the `high` tier — a third of their frame rate. Two mistakes, both
+   * mine, both worth naming because they are easy to repeat:
+   *
+   * 1. I MEASURED A VSYNC-LOCKED FRAME. The test machine sat at exactly
+   *    16.66 ms before and after, and I read that as "MSAA is free". A frame
+   *    pinned to the refresh interval cannot show an added cost until that cost
+   *    exceeds the idle headroom — there was ~14 ms of it, in a 653x595 pane.
+   *    The correct instrument is a frame already over budget, or a GPU timer
+   *    query. "No change" on a vsync-locked frame measures nothing at all.
+   *
+   * 2. `EffectComposer` CLONES ITS TARGET for the ping-pong buffer, so setting
+   *    `samples` here multisamples BOTH, and every pass in the chain — AO,
+   *    bloom, grade, SMAA — then writes into a multisampled RGBA16F target and
+   *    forces a resolve. Five resolves a frame where the geometry needed one.
+   *    Full-screen quads have no coverage to sample; multisampling them is pure
+   *    bandwidth. On an iGPU sharing system memory, at 32 bytes per pixel per
+   *    sample, that is the whole regression.
+   *
+   * So the default is 0 and this stays OFF until it is done properly: one
+   * multisampled target for the SCENE pass, resolved once, with the post chain
+   * on single-sampled buffers. `graphics.msaa` in the settings store exposes it
+   * for anyone who wants to try it on their own hardware.
    */
   msaaSamples: number;
 }
@@ -464,7 +486,7 @@ export const RENDER_CONFIG: RenderConfig = {
       sharpen: 0.22,
     },
     smaa: { enabled: true },
-    msaaSamples: 4,
+    msaaSamples: 0,
   },
 
   scene: {
@@ -551,42 +573,32 @@ export function touched(changed: ReadonlyArray<string>, prefix: string): boolean
  */
 const RENDER_QUALITY_PRESETS: Record<RenderQualityTier, DeepPartial<RenderConfig>> = {
   /*
-   * `msaaSamples` per tier. It is the ONLY geometric antialiasing this pipeline
-   * has (see `PostConfig.msaaSamples`), so it is spent before AO and before
-   * shadow resolution: a thin pipe that breaks into dashes is more visible than
-   * a softer contact shadow, and the art direction leans on thin geometry.
+   * NO TIER TURNS `msaaSamples` ON. See `PostConfig.msaaSamples` for the
+   * measured regression — 7-8 fps of ~22 on integrated graphics — and for the
+   * two measurement errors that let it ship. A tier is exactly the wrong place
+   * to spend that budget by default, because tier is picked from a rough
+   * capability guess and the cost here is dominated by MEMORY BANDWIDTH, which
+   * that guess does not model at all: a discrete card at `high` and an iGPU at
+   * `high` are not remotely the same machine for this one setting.
    *
-   * `low` keeps 0. That tier already renders at 0.75 and caps DPR at 1.0, and a
-   * multisampled half-float target is bandwidth on a machine that has none —
-   * the tier's whole premise is that it is fill-bound.
+   * It is a settings toggle instead (`graphics.msaa`), off by default, so the
+   * cost is opted into by someone who can see their own frame counter.
    */
   low: {
     renderer: { resolutionScale: 0.75, maxPixelRatio: 1.0, shadows: { enabled: true, mapSize: 1024 } },
-    post: {
-      ao: { enabled: false }, bloom: { enabled: true, radius: 0.5 },
-      smaa: { enabled: false }, msaaSamples: 0,
-    },
+    post: { ao: { enabled: false }, bloom: { enabled: true, radius: 0.5 }, smaa: { enabled: false } },
   },
   medium: {
     renderer: { resolutionScale: 0.9, maxPixelRatio: 1.5, shadows: { enabled: true, mapSize: 1536 } },
-    post: {
-      ao: { enabled: true, samples: 8, halfRes: true }, bloom: { enabled: true },
-      smaa: { enabled: true }, msaaSamples: 4,
-    },
+    post: { ao: { enabled: true, samples: 8, halfRes: true }, bloom: { enabled: true }, smaa: { enabled: true } },
   },
   high: {
     renderer: { resolutionScale: 1.0, maxPixelRatio: 2.0, shadows: { enabled: true, mapSize: 2048 } },
-    post: {
-      ao: { enabled: true, samples: 12, halfRes: true }, bloom: { enabled: true },
-      smaa: { enabled: true }, msaaSamples: 4,
-    },
+    post: { ao: { enabled: true, samples: 12, halfRes: true }, bloom: { enabled: true }, smaa: { enabled: true } },
   },
   ultra: {
     renderer: { resolutionScale: 1.0, maxPixelRatio: 2.0, shadows: { enabled: true, mapSize: 4096 } },
-    post: {
-      ao: { enabled: true, samples: 16, halfRes: false }, bloom: { enabled: true },
-      smaa: { enabled: true }, msaaSamples: 8,
-    },
+    post: { ao: { enabled: true, samples: 16, halfRes: false }, bloom: { enabled: true }, smaa: { enabled: true } },
   },
 };
 

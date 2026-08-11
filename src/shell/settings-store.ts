@@ -78,6 +78,25 @@ export interface GraphicsSettings {
   /** Subpixel morphological AA. */
   smaa: boolean;
   /**
+   * 4x MSAA on the post chain's HDR target. OFF by default, and deliberately
+   * not tied to the quality tier.
+   *
+   * SMAA above is morphological: it reworks the finished image, so it can only
+   * smooth an edge that was RASTERISED. A 1 px pipe or panel stripe whose
+   * centre falls between pixel centres is absent from the image entirely, and
+   * that is what makes thin greeble read as broken dashed lines. MSAA is the
+   * only thing in this pipeline that can fix it, because it is the only thing
+   * that samples COVERAGE.
+   *
+   * It is off because it is expensive in a way tier selection cannot predict.
+   * The cost is memory bandwidth, and an integrated GPU sharing system memory
+   * pays several times what a discrete card pays for the identical setting —
+   * measured, this cost one reporter 7-8 fps of ~22 at `high`. Anyone whose
+   * machine can afford it can switch it on and watch their own frame counter,
+   * which is a better judge than a capability guess made at boot.
+   */
+  msaa: boolean;
+  /**
    * Vignette strength — strong (0.28) when on, subtle (0.12) when off.
    *
    * This said "Film grain, vignette, chromatic aberration — the 'cinematic'
@@ -441,6 +460,7 @@ export function defaultSettings(): Settings {
       bloom: true,
       postFx: true,
       smaa: true,
+      msaa: false,
       filmGrain: true,
       panelBlur: 'auto',
       perfOverlay: false,
@@ -583,6 +603,7 @@ export function normalizeSettings(raw: unknown): Settings {
       bloom: bool(g.bloom, d.graphics.bloom),
       postFx: bool(g.postFx, d.graphics.postFx),
       smaa: bool(g.smaa, d.graphics.smaa),
+      msaa: bool(g.msaa, d.graphics.msaa),
       filmGrain: bool(g.filmGrain, d.graphics.filmGrain),
       panelBlur: oneOf(g.panelBlur, PANEL_BLUR_CHOICES, d.graphics.panelBlur),
       perfOverlay: bool(g.perfOverlay, d.graphics.perfOverlay),

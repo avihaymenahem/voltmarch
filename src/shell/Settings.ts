@@ -148,6 +148,7 @@ export function applySettings(
 
   if (all || touched(changed, 'graphics.tier') || touched(changed, 'graphics.ao') ||
       touched(changed, 'graphics.bloom') || touched(changed, 'graphics.smaa') ||
+      touched(changed, 'graphics.msaa') ||
       touched(changed, 'graphics.filmGrain')) {
     const g = settings.graphics;
     configureRender({
@@ -155,6 +156,11 @@ export function applySettings(
         ao: { enabled: g.ao },
         bloom: { enabled: g.bloom },
         smaa: { enabled: g.smaa },
+        // Read at composer CONSTRUCTION, so this only takes effect on the next
+        // chain rebuild — a multisampled framebuffer cannot be switched on a
+        // live target. `PostChain` rebuilds on a tier change; the settings row
+        // says a restart may be needed rather than pretending otherwise.
+        msaaSamples: g.msaa ? 4 : 0,
         // Grain and chromatic aberration are 0 in BOTH arms, permanently. They
         // are on CLAUDE.md's explicit ban list, and these two literals are what
         // kept them alive: `core/config.ts` sets both to 0, and this block
@@ -538,6 +544,13 @@ export class SettingsScreen implements Screen {
     ));
     post.appendChild(row('Bloom', toggle(g.bloom, (v) => set({ bloom: v }))));
     post.appendChild(row('Antialiasing (SMAA)', toggle(g.smaa, (v) => set({ smaa: v }))));
+    post.appendChild(row(
+      'Edge Antialiasing (4x MSAA)',
+      toggle(g.msaa, (v) => set({ msaa: v })),
+      'Fixes thin pipes and panel lines breaking into dashes. SMAA cannot — it '
+      + 'only reworks edges that were drawn. Costly on integrated graphics; '
+      + 'takes effect after a restart.',
+    ));
     // Label and blurb both had to change with the grade above: this row said
     // "Film Grain & Vignette" / "Grain, vignette and chromatic aberration", and
     // two thirds of that is now deliberately never applied. A control that
