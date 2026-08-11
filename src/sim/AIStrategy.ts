@@ -10,8 +10,8 @@
  * can be unit-tested with no World, no Channels and no GL context, and it means
  * a balance change is a data edit rather than a control-flow edit.
  *
- * THREE THINGS LIVE HERE
- * ----------------------
+ * FOUR THINGS LIVE HERE
+ * ---------------------
  * 1. THE CATALOG. The AI needs cost, tab, prereqs, power and footprint for
  *    everything it might build. When `src/data/**` publishes a real `DefTables`
  *    those numbers come from there and the AI plays the real game. Until then
@@ -32,6 +32,21 @@
  *    builds nine light tanks into massed infantry is losing to its own
  *    decisions, not to a handicap we bolted on.
  *
+ * 4. THE LATE GAME (section 3b). Which superweapon an army builds and what it
+ *    aims at, when a commander power is worth its charge, and whether a 1200-
+ *    credit multiplier beats the 1200 credits of tank it competes with. All
+ *    three shipped in v2.2.0 fully player-usable and the AI simply never asked;
+ *    what was missing was never plumbing, it was an opinion, and this is it.
+ *
+ * TWO IMPORTS THAT LOOK LIKE LAYERING VIOLATIONS AND ARE NOT. `./Upgrades` and
+ * `../progression/powers` are both LEAF DATA TABLES — neither imports the
+ * engine, the world or the entity store, and `sim/CommanderPowers.ts` already
+ * reaches for the second one. Taking the twelve upgrade rows and the five power
+ * ids from the tables that define them is the alternative to a fourth
+ * hand-maintained copy of both lists, which is the exact defect
+ * `docs/SPEC_DRIFT_AUDIT.md` catalogues. The rule this file actually keeps —
+ * `src/sim/**` never imports `src/data/**` — is untouched.
+ *
  * DETERMINISM: nothing in this file reads a clock or a global RNG. `pickUnit`
  * takes the `IRng` the sim step handed us.
  * ============================================================================
@@ -41,8 +56,10 @@ import {
   AI_SKILL, AI_THREAT_CLASS_COUNT, BUILDING_DIMENSIONS, SIM_HZ,
   AI_DIFFICULTY, AI_PERSONALITY,
 } from '../core/config';
-import { BuildTab, EntityKind, Faction } from '../core/types';
+import { BuildTab, EntityKind, Faction, UpgradeLever, UpgradeScope } from '../core/types';
 import type { ArmorClass, DefTables, UnitDef, BuildingDef } from '../core/types';
+import { CommanderPowerId } from '../progression/powers';
+import { UPGRADES } from './Upgrades';
 
 /* ==========================================================================
  * 1. VOCABULARY
@@ -113,13 +130,26 @@ export const enum BuildRole {
    * filed one as its Battle Lab would believe the tech gate was already open
    * and stop building the real lab.
    *
-   * Nothing in `AI.considerBuild` asks for this role, so the AI does not build
-   * superweapons yet. The row exists so that one it CAPTURED, or one a
-   * scenario handed it, is classified honestly rather than lied about.
+   * That paragraph used to end "Nothing in `AI.considerBuild` asks for this
+   * role, so the AI does not build superweapons yet." It does now — see
+   * `superweaponPlanFor` below and `AiBrain.lateGame` — and the classification
+   * job is still the reason the role has to be its own bucket.
    */
   Superweapon = 19,
+  /**
+   * A purchasable in-match upgrade. NOT A STRUCTURE AND NOT A UNIT, which is
+   * why it cannot borrow either of the buckets above.
+   *
+   * `roleCount` is indexed by this enum and is fed from `roleOfBuilding`, so an
+   * upgrade never lands in it — an upgrade never becomes an entity at all. The
+   * role exists so the build layer can ASK for one (`upgradePlanFor`) using the
+   * same `CatalogEntry` machinery every other purchase goes through, and so
+   * `buildUnits` can tell an upgrade apart from a tank when it walks
+   * `catalog.all` looking for something to shoot with.
+   */
+  Upgrade = 20,
 }
-export const BUILD_ROLE_COUNT = 20;
+export const BUILD_ROLE_COUNT = 21;
 
 /**
  * The five things an army can be asked to kill. The composition scorer works
@@ -145,6 +175,7 @@ export const BUILD_ROLE_NAMES: readonly string[] = [
   'builder', 'power', 'refinery', 'barracks', 'warFactory', 'radar', 'techLab',
   'storage', 'defense', 'antiAir', 'harvester', 'skirmisher', 'infantry',
   'armor', 'siege', 'support', 'mcv', 'unknown', 'repair', 'superweapon',
+  'upgrade',
 ];
 
 /* ==========================================================================
@@ -249,6 +280,36 @@ function fighter(
   };
 }
 
+/**
+ * One purchasable upgrade, as the AI's build layer sees it.
+ *
+ * `isBuilding: false` and `weight: 0`, which together are the whole reason this
+ * is a third factory rather than a call to `fighter()`. `weight` 0 keeps it out
+ * of `buildUnits`' candidate list — an upgrade is not something you attack with
+ * and must never win the composition roll — and `isBuilding` false keeps it out
+ * of the placement path, because a finished upgrade emits `production:ready`
+ * with `isBuilding: false` and there is nowhere to put it.
+ *
+ * The tab is NOT derived from the scope here even though `UPGRADE_SCOPE_TAB`
+ * derives exactly that: the tab is what GATES the purchase (an Infantry-tab row
+ * needs a barracks servicing that queue), so it is a fact about the buy and
+ * belongs on the row a human can read next to the cost.
+ */
+function upgrade(
+  key: string,
+  faction: Faction,
+  tab: BuildTab,
+  cost: number,
+  buildTimeSec: number,
+  prereqs: readonly string[],
+): CatalogEntry {
+  return {
+    key, defId: -1, isBuilding: false, tab, cost, buildTimeSec,
+    power: 0, footprintW: 0, footprintH: 0,
+    prereqs, role: BuildRole.Upgrade, faction, answers: NO_ANSWER, weight: 0,
+  };
+}
+
 const B = BUILDING_DIMENSIONS;
 
 /**
@@ -301,6 +362,55 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     ['mrdReliquary'], FACTION_MERIDIAN),
   structure('rclStormworks', BuildRole.Superweapon, 2500, -150, B.superweapon,
     ['rclCrucible'], FACTION_RECLAIM),
+
+  /* -- THE TWELVE UPGRADES --------------------------------------------------
+   * THESE ROWS ARE WHY THE AI CAN BUY AN UPGRADE AT ALL. `bindOracle` walks
+   * THIS array and asks `factsFor(e.key)` about each entry — a key that is not
+   * here is a key the AI never asks about, never resolves a `publicId` for, and
+   * therefore can never name in a `ProductionStart`. Twelve upgrades shipped in
+   * v2.2.0, a human with Composite Armour took 18% less damage for the rest of
+   * the match, and the opponent had no way to express the purchase.
+   *
+   * Cost, build time, tab and prereqs are transcribed from the `CONTENT` rows in
+   * `src/sim/Production.ts`, which is also what the oracle overwrites them with
+   * the moment production is in the process. They are authored honestly anyway,
+   * for the same reason every other fallback row is: the headless tests run
+   * against exactly these numbers, and a fallback that lied would calibrate the
+   * doctrine below against a game nobody plays.
+   *
+   * THE PREREQS ARE THE REAL GATE AND THEY ARE NOT CHEAP. Every one of the
+   * twelve names a radar-tier structure, so no upgrade is reachable before the
+   * AI has finished its scripted opening — which is the correct shape. An AI
+   * that opened on Composite Armour would have spent a war factory on a
+   * multiplier over an army of zero.
+   * ---------------------------------------------------------------------- */
+  upgrade('upgAlliedOptics',    Faction.Allies,   BuildTab.Infantry,    800, 20,
+    ['barracks', 'radar']),
+  upgrade('upgAlliedComposite', Faction.Allies,   BuildTab.Vehicles,   1200, 26,
+    ['warFactory', 'radar']),
+  upgrade('upgAlliedLogistics', Faction.Allies,   BuildTab.Structures, 1000, 24,
+    ['refinery', 'radar']),
+
+  upgrade('upgSovietBodyArmour', Faction.Soviets, BuildTab.Infantry,    800, 20,
+    ['barracks', 'radar']),
+  upgrade('upgSovietUranium',    Faction.Soviets, BuildTab.Vehicles,   1200, 26,
+    ['warFactory', 'battleLab']),
+  upgrade('upgSovietSlurry',     Faction.Soviets, BuildTab.Structures, 1000, 24,
+    ['refinery', 'radar']),
+
+  upgrade('upgMrdWayfinding', FACTION_MERIDIAN, BuildTab.Infantry,    800, 20,
+    ['mrdChapterhouse', 'mrdOculus']),
+  upgrade('upgMrdSolarSails', FACTION_MERIDIAN, BuildTab.Vehicles,   1200, 26,
+    ['mrdForgeyard', 'mrdOculus']),
+  upgrade('upgMrdCapacitors', FACTION_MERIDIAN, BuildTab.Structures, 1000, 24,
+    ['mrdOculus', 'mrdReliquary']),
+
+  upgrade('upgRclSwarmDrill', FACTION_RECLAIM, BuildTab.Infantry,    800, 20,
+    ['rclRookery', 'rclSpotter']),
+  upgrade('upgRclOvercharge', FACTION_RECLAIM, BuildTab.Vehicles,   1200, 26,
+    ['rclBreakerYard', 'rclSpotter']),
+  upgrade('upgRclSalvage',    FACTION_RECLAIM, BuildTab.Structures, 1000, 24,
+    ['rclSorter', 'rclSpotter']),
 
   /* -- defence ----------------------------------------------------------- */
   // Answer vectors matter here: the build layer will not put up a flame tower
@@ -1064,6 +1174,349 @@ export const AI_DEPLOY = {
   maxRelocations: 6,
 } as const;
 
+/* ==========================================================================
+ * 3b. THE LATE GAME — superweapons, commander powers, upgrades
+ *
+ * Everything in this block is DOCTRINE ONLY: which button is worth pressing,
+ * when, and at what. No world, no entities, no commands — `AI.ts` holds all
+ * three of those, exactly as it does for the opening and the composition
+ * scorer.
+ *
+ * WHY THE AI WAS DEAF TO ALL THREE. Each of these shipped complete and
+ * player-usable, and each reaches the simulation through a verb the brain
+ * ALREADY knows how to say:
+ *
+ *   superweapon      `OrderKind.UseAbility` on the gating structure — the same
+ *                    order `commanderAbility` has issued since it was written.
+ *   commander power  `CommandKind.UsePower`.
+ *   upgrade          `CommandKind.ProductionStart`, an ordinary queue item.
+ *
+ * So none of this is new plumbing. What was missing was an OPINION: which
+ * superweapon is worth 2500 credits and 150 power, what a nuke is worth aiming
+ * at, and whether a 1200-credit multiplier beats the 1200 credits of tank it
+ * costs. That opinion is below.
+ *
+ * THE DIFFICULTY LADDER IS PART OF THE OPINION, NOT A BOLT-ON. `AI_LATE_GAME`
+ * is indexed by difficulty and it is the first knob every rule here consults,
+ * because all three of these systems are FORCE MULTIPLIERS and handing them to
+ * an Easy brain would undo the whole ladder in one release. The config header
+ * for `AI_DIFFICULTY` is a record of that exact complaint being made about the
+ * economy — "even on easy mode" — and a nuke landing on a beginner's base is
+ * a louder version of it. Easy therefore gets NONE OF THIS: no superweapon, no
+ * power, no upgrade. That is not laziness, it is the answer to "should an easy
+ * AI use superweapons at all".
+ * ========================================================================== */
+
+/**
+ * What an upgrade IMPROVES, from the buyer's point of view.
+ *
+ * Derived from `UpgradeScope` + `UpgradeLever` rather than authored, so a
+ * thirteenth upgrade added to `src/sim/Upgrades.ts` is classified rather than
+ * silently ignored. The distinction `UpgradeScope` does not draw, and that the
+ * build layer needs, is between the two kinds of `UpgradeScope.All`: a Yield or
+ * BuildSpeed multiplier is an ECONOMY purchase whose payback is measured in
+ * income, and a Cooldown multiplier over the same scope is an ARMY purchase
+ * whose payback is measured in units that own it. The Meridian Pact is the
+ * faction where that matters — its `All`-scope row is Capacitor Banks.
+ */
+export const enum UpgradeAudience {
+  /** Gated on how much infantry is on the field. */
+  Infantry = 0,
+  /** Gated on how many hulls are on the field. */
+  Vehicle = 1,
+  /** Gated on the whole army — an `All`-scope combat lever. */
+  Army = 2,
+  /** Gated on the economy — Yield and BuildSpeed. */
+  Economy = 3,
+}
+
+export interface UpgradePlanStep {
+  /** Content key. Must resolve in the catalog before the AI can name it. */
+  readonly key: string;
+  readonly audience: UpgradeAudience;
+}
+
+function audienceOf(scope: UpgradeScope, lever: UpgradeLever): UpgradeAudience {
+  if (scope === UpgradeScope.Infantry) return UpgradeAudience.Infantry;
+  if (scope === UpgradeScope.Vehicle) return UpgradeAudience.Vehicle;
+  return lever === UpgradeLever.Yield || lever === UpgradeLever.BuildSpeed
+    ? UpgradeAudience.Economy : UpgradeAudience.Army;
+}
+
+/** Buy order within an army, cheapest-payback first. See `UPGRADE_PLAN`. */
+const AUDIENCE_ORDER: readonly UpgradeAudience[] = [
+  UpgradeAudience.Economy, UpgradeAudience.Army,
+  UpgradeAudience.Vehicle, UpgradeAudience.Infantry,
+];
+
+/**
+ * The three upgrades each army buys, IN THE ORDER IT BUYS THEM.
+ *
+ * ECONOMY FIRST, and this is the one ordering decision here with an arithmetic
+ * answer rather than a taste one. A Yield or BuildSpeed multiplier is the only
+ * lever of the three that pays for ITSELF: 1000 credits for +20-25% on an
+ * income stream repays inside a couple of minutes at the AI's own harvester
+ * counts and then keeps paying, and every later purchase — including the other
+ * two upgrades — arrives sooner because of it. Combat multipliers never do
+ * that; they convert credits into army quality and stop.
+ *
+ * ARMY-WIDE NEXT, then VEHICLE, then INFANTRY, which is a value-density
+ * ordering: a multiplier is worth the credits standing under it, and a hull
+ * costs three to six times a body. Composite Armour at 1200 covers ~1.7
+ * Grizzlies' worth of purchase and improves every hull the AI will ever build;
+ * Advanced Optics at 800 covers four G.I.s.
+ *
+ * THE BREAK-EVEN IS A FLOW, NOT A STOCK, and `AI.ts` gates on the stock anyway.
+ * The honest sum is not "what is my army worth now" — an armour multiplier over
+ * eight conscripts is plainly not worth 800 credits — it is "how many more of
+ * these will I buy before the match ends", because the multiplier covers all of
+ * them and the tank it competes with covers one. That number is unknowable, so
+ * the build layer uses the cheapest available proxy for "I am committed to
+ * fielding this class": am I fielding it in quantity right now. See
+ * `AI_UPGRADE` for the thresholds.
+ */
+const UPGRADE_PLAN: ReadonlyMap<number, readonly UpgradePlanStep[]> = (() => {
+  const byFaction = new Map<number, UpgradePlanStep[]>();
+  for (const audience of AUDIENCE_ORDER) {
+    for (const u of UPGRADES) {
+      if (audienceOf(u.scope, u.lever) !== audience) continue;
+      const f = u.faction as number;
+      let list = byFaction.get(f);
+      if (list === undefined) { list = []; byFaction.set(f, list); }
+      list.push({ key: u.key, audience });
+    }
+  }
+  return byFaction;
+})();
+
+/** The upgrades this faction buys, in buy order. Empty for `Faction.Neutral`. */
+export function upgradePlanFor(faction: Faction): readonly UpgradePlanStep[] {
+  return UPGRADE_PLAN.get(faction as number) ?? EMPTY_PLAN;
+}
+
+const EMPTY_PLAN: readonly UpgradePlanStep[] = [];
+
+/**
+ * Thresholds the build layer checks before an upgrade is worth its cost.
+ *
+ * Every number here is a "am I committed to this class" proxy, not a break-even
+ * — see `UPGRADE_PLAN`. They are deliberately reachable: a Normal brain running
+ * three refineries clears the economy gate well before its radar is up, which
+ * is the point. What they stop is the pathological buy — a multiplier over an
+ * army of two, purchased instead of the barracks that would have made it eight.
+ */
+export const AI_UPGRADE = {
+  /** Infantry on the field before an infantry-scope multiplier is worth 800. */
+  minInfantry: 8,
+  /** Hulls on the field before a vehicle-scope multiplier is worth 1200. */
+  minVehicles: 6,
+  /** Army before an `All`-scope COMBAT multiplier is worth 1000. */
+  minArmy: 10,
+  /** Refineries and trucks before an income multiplier repays 1000 credits. */
+  minRefineries: 2,
+  minHarvesters: 4,
+  /**
+   * Base score for an upgrade in `chooseBuild`.
+   *
+   * Sits between "reinforcing the base" (0.4 + pressure) and "need a war
+   * factory" (1.8), and BELOW "expanding to a new ore field" (2.2) — an upgrade
+   * must never outrank a producer the AI does not own yet or a field it is
+   * about to be cut off from. Multiplied by `pers.tech`, so a Boomer (1.3)
+   * reaches for upgrades and a Rusher (0.6) mostly puts the credits into bodies,
+   * which is what those two personalities are for.
+   */
+  score: 1.45,
+  /**
+   * Cost multiple of the bank the AI insists on holding before it buys one.
+   *
+   * An upgrade is the one purchase in the game with NO immediate output — no
+   * hull leaves a door, no wall goes up — so buying one at exactly its price
+   * hands the enemy a window in which the AI has spent everything and fielded
+   * nothing. Requiring 1.6x means there is still an army's worth of change in
+   * the bank when the multiplier lands.
+   */
+  bankMultiple: 1.6,
+  /**
+   * Ticks before the AI will ask for the same upgrade a second time.
+   *
+   * A minute. This is a BACKSTOP, not the mechanism — `upgradeSettled` answers
+   * from `PlayerState.upgradeMask` and from the live queue first, and in a
+   * normal match neither ever lets a second request through. What this covers
+   * is the gap where the command has been issued and the queue does not show it
+   * yet, and the case where nothing is listening at all. It is not permanent
+   * because a request issued before the production module finished booting has
+   * to be retried, or one unlucky tick costs the AI an upgrade for the match.
+   */
+  reaskTicks: 1800,
+} as const;
+
+/**
+ * Which superweapon each army builds, and IN WHICH ORDER.
+ *
+ * This exists because `BuildCatalog.forRole` returns the FIRST entry with a
+ * matching role, and for the Allies that is the Chronosphere purely because of
+ * where it sits in `FALLBACK_CATALOG`. A Chronosphere is worth exactly as much
+ * as the plan you have for nine teleported tanks; a Weather Control Device is
+ * worth a base to anyone who can click. So the offensive weapon is named first
+ * in every army that has one, which is the same judgement a human makes with
+ * 2500 credits and one build slot.
+ *
+ * The Pact and the Reclamation field one each, so their order is trivial and
+ * the list is still exhaustive rather than falling through to `forRole`.
+ */
+const SUPERWEAPON_PLAN: ReadonlyMap<number, readonly string[]> = new Map<number, readonly string[]>([
+  [Faction.Soviets as number, ['nuclearSilo', 'ironCurtain']],
+  [Faction.Allies as number, ['weatherControl', 'chronosphere']],
+  [FACTION_MERIDIAN as number, ['mrdHeliograph']],
+  [FACTION_RECLAIM as number, ['rclStormworks']],
+]);
+
+const EMPTY_KEYS: readonly string[] = [];
+
+/** Superweapon structure keys this faction builds, best first. */
+export function superweaponPlanFor(faction: Faction): readonly string[] {
+  return SUPERWEAPON_PLAN.get(faction as number) ?? EMPTY_KEYS;
+}
+
+/**
+ * What the AI insists on before it spends 2500 credits and 150 power on a
+ * building that shoots nothing for the next seven minutes.
+ *
+ * THE POWER GATE IS THE LOAD-BEARING ONE. `SuperweaponService.rescanAvailability`
+ * skips any structure that `NeedsPower` and is not `Powered`, so a silo built
+ * into a brownout does not charge SLOWLY — it does not charge at all, and the
+ * AI would have paid a war factory and a half for a dark building. -150 is more
+ * than three Power Plants produce between them, so this has to be checked
+ * against a projected surplus rather than the current one.
+ */
+export const AI_SUPERWEAPON = {
+  /** Refineries required, so 2500 credits is not the whole economy. */
+  minRefineries: 2,
+  /** Power surplus required ON TOP of the structure's own draw. */
+  powerHeadroom: 40,
+  /**
+   * Score in `chooseBuild`. Above ordinary army, below every producer the AI
+   * does not own yet and below an expansion refinery — a superweapon is a
+   * luxury bought out of a working economy, never instead of one. Multiplied by
+   * `pers.tech`.
+   */
+  score: 1.6,
+  /**
+   * Ticks the fire layer waits after failing to find a target worth a strike.
+   *
+   * Without it a charged weapon re-runs its cluster scan every layer tick for
+   * the rest of the match. Ten seconds is far shorter than any charge and far
+   * longer than the scan is worth repeating.
+   */
+  retargetBackoffTicks: 300,
+  /**
+   * Metres from the AI's OWN base centre inside which no blast is allowed.
+   *
+   * A nuke and a lightning storm are `attacker: NONE` splash records — they hit
+   * whatever is standing there, ours included. Every target below is derived
+   * from remembered ENEMY structures or an observed threat, so this should
+   * never bind; it binds the day an enemy builds inside the AI's base, which is
+   * exactly the day nobody would be looking.
+   */
+  friendlyStandoff: 56,
+  /** Hostiles inside the curtain radius before 20 s of invulnerability is worth it. */
+  curtainMinEnemies: 4,
+  /** Threat-grid weight a bucket needs before a lightning storm is aimed at it. */
+  stormMinThreat: 3.0,
+  /** Strikers required before a chronoshift into the objective is worth staging. */
+  chronoMinStrike: 5,
+  /** Metres the group must still have to walk for a chronoshift to save anything. */
+  chronoMinTravel: 90,
+  /** Ticks between the Chronosphere's source command and its destination command. */
+  chronoCommitTicks: 60,
+  /**
+   * Metres SHORT of the objective that a chronoshifted wave is set down.
+   *
+   * `applyChrono` spirals arrivals outward from the destination at 3.2 m a
+   * slot, so a drop exactly on target puts the first rank inside whatever is
+   * already standing there. Landing beside it instead lets nine hulls arrive as
+   * a formation facing the right way, which is the difference between a
+   * teleport that opens a fight and one that starts a shoving match.
+   */
+  chronoDropStandoff: 16,
+} as const;
+
+/**
+ * When the AI calls each commander power.
+ *
+ * These are the cheapest of the three systems to use badly, because they cost
+ * nothing but a clock — so every rule below is a MINIMUM EFFECT test rather
+ * than a cost test. A power spent on two scouts is a power not available for
+ * the push four minutes later, and that is the only currency it has.
+ */
+export const AI_POWER = {
+  /** Hostiles under the marker before a bombing run is worth its charge. */
+  airstrikeMinEnemies: 4,
+  /** Damaged friendlies near the fighting before Emergency Repair is called. */
+  repairMinDamaged: 4,
+  /** Base pressure below which the AI is not in enough trouble to repair. */
+  repairMinPressure: 0.6,
+  /**
+   * Fraction of the storage cap below which an Ore Boost is not wasted.
+   *
+   * 2500 credits paid into a bank already near `storageMax` is 2500 credits
+   * poured on the floor — `Economy.grant` clamps at the cap. Half full is early
+   * enough that the whole grant lands and late enough that the AI has somewhere
+   * to spend it.
+   */
+  oreBoostFillFraction: 0.5,
+  /** Units in the home reserve before a Chronoshift reinforcement is worth it. */
+  chronoshiftMinReserve: 4,
+  /** Base pressure above which the AI will not strip its home guard. */
+  chronoshiftMaxPressure: 0.4,
+} as const;
+
+/**
+ * Per-difficulty caps on all three late-game systems.
+ *
+ * `powers` is a BITMASK over `CommanderPowerId`, which is why the ids are
+ * imported here — the alternative was five booleans per rung, and the whole
+ * point of one table is that the ladder can be read down a column.
+ *
+ * THE LADDER, AND WHY IT IS SHAPED LIKE THIS:
+ *
+ *   Easy    Nothing. Every system here is a force multiplier and the bottom
+ *           rung is where the ladder is supposed to be gentlest. An Easy brain
+ *           also cannot afford any of it honestly — `creditFloor` is 1400 and
+ *           `maxRefineries` is 2 — so letting it try would produce the worst
+ *           outcome available: an AI that banks for a silo it never finishes
+ *           and stops building an army in the meantime.
+ *   Normal  ONE superweapon and ONE upgrade — the economy one, which is the
+ *           purchase that pays for itself. Powers are the two that do not
+ *           attack: Ore Boost and Emergency Repair. Normal is the reference
+ *           rung and it should FEEL the late game without leading with it.
+ *   Hard    The full upgrade set, and the two powers that project force. A
+ *           Hard brain runs three refineries and nine trucks; it can pay.
+ *   Brutal  Everything, and a second superweapon structure — which for the two
+ *           original armies means the offensive weapon AND the support one.
+ */
+const AI_LATE_GAME = [
+  { superweapons: 0, upgrades: 0, powers: 0 },
+  {
+    superweapons: 1,
+    upgrades: 1,
+    powers: (1 << CommanderPowerId.OreBoost) | (1 << CommanderPowerId.EmergencyRepair),
+  },
+  {
+    superweapons: 1,
+    upgrades: 3,
+    powers: (1 << CommanderPowerId.OreBoost) | (1 << CommanderPowerId.EmergencyRepair)
+      | (1 << CommanderPowerId.Airstrike) | (1 << CommanderPowerId.OrbitalScan),
+  },
+  {
+    superweapons: 2,
+    upgrades: 3,
+    powers: (1 << CommanderPowerId.OreBoost) | (1 << CommanderPowerId.EmergencyRepair)
+      | (1 << CommanderPowerId.Airstrike) | (1 << CommanderPowerId.OrbitalScan)
+      | (1 << CommanderPowerId.Chronoshift),
+  },
+] as const;
+
 /** The three per-faction key sets the personality edits below reach for. */
 interface OpeningKeys {
   barracks: string;
@@ -1191,6 +1644,28 @@ export interface DifficultyProfile {
   readonly maxRefineries: number;
   /** Items it keeps queued per unit tab. 1 leaves an audible gap between units. */
   readonly queueDepth: number;
+  /**
+   * Superweapon STRUCTURES this brain will own. 0 means it never builds one and
+   * — because the fire layer is gated on the same number — never fires one it
+   * was handed either.
+   */
+  readonly maxSuperweapons: number;
+  /** In-match upgrades it will buy, taken from the front of `upgradePlanFor`. */
+  readonly maxUpgrades: number;
+  /**
+   * Bitmask over `CommanderPowerId` of the powers this brain will call.
+   *
+   * A MASK RATHER THAN A COUNT, because which powers a rung gets is the point:
+   * Normal is allowed the two that do not attack and Hard is allowed the two
+   * that do, and a count could not express that. 0 is a brain that never calls
+   * one.
+   *
+   * Named `powerMask` and not, say, `powerSightMask`: `tests/ai.spec.ts` asserts
+   * that no `DifficultyProfile` key matches /vision|sight|reveal|fog/, because a
+   * difficulty knob with one of those words in it would be the ladder buying
+   * information rather than skill. Nothing here does.
+   */
+  readonly powerMask: number;
 }
 
 /** Clamp an arbitrary difficulty index into the table. */
@@ -1198,6 +1673,9 @@ export function difficultyProfile(index: number): DifficultyProfile {
   const i = index < 0 ? 0 : index >= AI_DIFFICULTY.length ? AI_DIFFICULTY.length - 1 : index | 0;
   const d = AI_DIFFICULTY[i];
   const s = AI_SKILL[i];
+  // Indexed by the SAME clamped `i`, so the late-game ladder can never point at
+  // a different rung from the one the rest of the profile came from.
+  const late = AI_LATE_GAME[i];
   return {
     index: i,
     name: d.name,
@@ -1220,6 +1698,9 @@ export function difficultyProfile(index: number): DifficultyProfile {
     maxHarvesters: s.maxHarvesters,
     maxRefineries: s.maxRefineries,
     queueDepth: s.queueDepth,
+    maxSuperweapons: late.superweapons,
+    maxUpgrades: late.upgrades,
+    powerMask: late.powers,
   };
 }
 

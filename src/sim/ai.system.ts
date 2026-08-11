@@ -263,6 +263,15 @@ export default defineSystem({
       c.aiMemory = b0.memorySize;
       c.aiObjectiveX = Math.round(b0.objectiveXPos);
       c.aiObjectiveZ = Math.round(b0.objectiveZPos);
+      // The late game. Published because none of it is visible any other way:
+      // a superweapon strike leaves a crater and no counter, a commander power
+      // leaves nothing at all, and an upgrade never becomes an entity — so
+      // "the AI never used any of this" and "the AI used it and it did not
+      // help" look identical from outside without these four.
+      c.aiSuperweapons = b0.superweaponCount;
+      c.aiSuperweaponsFired = b0.superweaponFireCount;
+      c.aiPowersCalled = b0.commanderPowerCount;
+      c.aiUpgrades = b0.upgradeRequestCount;
     }
   },
 
