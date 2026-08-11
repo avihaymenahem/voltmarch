@@ -97,7 +97,21 @@ function mainRegion(sizes: number[]): number {
  * region. These are the pockets an army can be dropped into and never leave.
  */
 function strandedSpawnCells(t: Terrain, loco: Locomotor): { stranded: number; total: number; worst: number } {
-  const { label, sizes } = labelRegions(t, loco);
+  return strandedFrom(t, loco, labelRegions(t, loco));
+}
+
+/**
+ * The counting half of `strandedSpawnCells`, split out so a caller that has
+ * ALREADY labelled the grid does not label it a second time.
+ *
+ * This split is the whole reason this file stopped timing out. See the note on
+ * `trackScan` below.
+ */
+function strandedFrom(
+  t: Terrain,
+  loco: Locomotor,
+  { label, sizes }: { label: Int32Array; sizes: number[] },
+): { stranded: number; total: number; worst: number } {
   const main = mainRegion(sizes);
   const c = (MAP_SIZE * 0.5) / CELL;
   const r = SPAWN_RADIUS_M / CELL;
@@ -156,47 +170,88 @@ const WIDE_CASES: readonly (readonly [string, number])[] = [
   ['desert', 445592],
 ];
 
+/**
+ * ONE GENERATION AND ONE LABELLING PER (BIOME, SEED), SHARED BY BOTH TRACKED
+ * TESTS.
+ *
+ * The two tests below ask different questions of the IDENTICAL 4x10 grid of
+ * terrains, both for `Locomotor.Track`. Each used to call `build()` itself and
+ * then label the grid itself — so every one of the forty maps was generated
+ * twice and flood-filled twice, for two numbers that fall out of a single pass.
+ *
+ * That doubling is why this file ran ~120 s against a 120 s `testTimeout` with
+ * no headroom at all, and it timed out for real once the suite grew. The budget
+ * was measuring how busy the machine was rather than whether the terrain is
+ * connected — the same defect CLAUDE.md records for the perf-hud GC counter
+ * that "tracked V8's new-space size rather than the code".
+ *
+ * Computed lazily rather than in `beforeAll` on purpose: a hook carries the
+ * same clock as a test, so moving the work there would have moved the timeout
+ * rather than removed it. The scan is what got cheaper.
+ *
+ * `dispose()` still happens exactly once per terrain, inside the scan.
+ */
+interface TrackCase {
+  biome: string;
+  seed: number;
+  stranded: number;
+  total: number;
+  worst: number;
+  /** Fraction of passable ground held by the largest region. */
+  frac: number;
+}
+
+let trackCases: TrackCase[] | null = null;
+
+function trackScan(): TrackCase[] {
+  if (trackCases !== null) return trackCases;
+  const out: TrackCase[] = [];
+  for (const biome of BIOME_NAMES) {
+    for (const seed of SEEDS) {
+      const t = build(seed, biome);
+      // Tracked is the strictest common case: it cannot cross water or cliff
+      // and it is what the reported bug was about (tanks).
+      const labelled = labelRegions(t, Locomotor.Track);
+      const r = strandedFrom(t, Locomotor.Track, labelled);
+      const { sizes } = labelled;
+      const main = mainRegion(sizes);
+      let total = 0;
+      for (let k = 1; k < sizes.length; k++) total += sizes[k];
+      t.dispose();
+      out.push({
+        biome, seed,
+        stranded: r.stranded, total: r.total, worst: r.worst,
+        frac: total > 0 ? sizes[main] / total : 1,
+      });
+    }
+  }
+  trackCases = out;
+  return out;
+}
+
 describe('terrain reachability', () => {
   it('leaves no passable pocket inside the spawn area cut off from the map', () => {
     const failures: string[] = [];
-
-    for (const biome of BIOME_NAMES) {
-      for (const seed of SEEDS) {
-        const t = build(seed, biome);
-        // Tracked is the strictest common case: it cannot cross water or cliff
-        // and it is what the reported bug was about (tanks).
-        const r = strandedSpawnCells(t, Locomotor.Track);
-        t.dispose();
-        if (r.stranded > 0) {
-          failures.push(
-            `${biome}/seed=${seed}: ${r.stranded}/${r.total} spawn-area cells stranded ` +
-              `(largest stranded pocket ${r.worst} cells)`,
-          );
-        }
+    for (const c of trackScan()) {
+      if (c.stranded > 0) {
+        failures.push(
+          `${c.biome}/seed=${c.seed}: ${c.stranded}/${c.total} spawn-area cells stranded ` +
+            `(largest stranded pocket ${c.worst} cells)`,
+        );
       }
     }
-
     expect(failures, `\n${failures.join('\n')}\n`).toEqual([]);
   });
 
   it('keeps the overwhelming majority of passable ground mutually reachable', () => {
     const bad: string[] = [];
-
-    for (const biome of BIOME_NAMES) {
-      for (const seed of SEEDS) {
-        const t = build(seed, biome);
-        const { sizes } = labelRegions(t, Locomotor.Track);
-        const main = mainRegion(sizes);
-        let total = 0;
-        for (let k = 1; k < sizes.length; k++) total += sizes[k];
-        const frac = total > 0 ? sizes[main] / total : 1;
-        t.dispose();
-        // A few tiny ledges are acceptable; a map cut into competing halves is
-        // not, because the AI on the far side can never reach the player.
-        if (frac < 0.9) bad.push(`${biome}/seed=${seed}: main region holds ${(frac * 100).toFixed(1)}% of passable ground`);
+    for (const c of trackScan()) {
+      // A few tiny ledges are acceptable; a map cut into competing halves is
+      // not, because the AI on the far side can never reach the player.
+      if (c.frac < 0.9) {
+        bad.push(`${c.biome}/seed=${c.seed}: main region holds ${(c.frac * 100).toFixed(1)}% of passable ground`);
       }
     }
-
     expect(bad, `\n${bad.join('\n')}\n`).toEqual([]);
   });
 
