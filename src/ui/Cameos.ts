@@ -304,6 +304,7 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
   fieldMarshal: 'allied_marshal',
   gunboat: 'allied_gunboat',
   destroyer: 'allied_destroyer',
+  vindicator: 'allied_vindicator',
 
   /* -- Soviets ----------------------------------------------------------- */
   conscript: 'soviet_conscript',
@@ -314,6 +315,7 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
   apocalypse: 'soviet_apocalypse',
   submarine: 'soviet_sub',
   dreadnought: 'soviet_dreadnought',
+  mig: 'soviet_mig',
 
   /* -- shared between the two original armies ---------------------------- */
   // The Engineer is one model for both, which is a content fact and not an

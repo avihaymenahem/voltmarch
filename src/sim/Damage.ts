@@ -46,7 +46,7 @@ import {
   CELL, WATER_LEVEL,
 } from '../core/config';
 import {
-  ArmorClass, DecalKind, EntityFlag, EntityKind, EvaLine, Faction, FxKind, NONE,
+  ArmorClass, DecalKind, EntityFlag, EntityKind, EvaLine, Faction, FxKind, Locomotor, NONE,
   UnitState, WarheadClass,
 } from '../core/types';
 import type {
@@ -658,15 +658,38 @@ export class DamageSystem {
     w.vfx.shake(clamp01(scale * COMBAT_DAMAGE.shakePerScale));
     w.audio.play(FxKind.ExplosionMedium, x, z, 1);
 
+    /*
+     * WHAT IS LEFT BEHIND LANDS. THE FIREBALL DOES NOT.
+     *
+     * The three pushes above are correct at `y`: an aircraft shot down at
+     * `AIR_CRUISE_ALTITUDE` explodes 22 m up, which is where it was. Everything
+     * from here on is DEBRIS, and debris obeys gravity — so an airborne victim
+     * resolves its splash and its hulk against the surface under it, not
+     * against the altitude it died at.
+     *
+     * Reachable since the day `Locomotor.Air` shipped, by the Kestrel and the
+     * Hornet, and nothing was looking: `spawnWreck` took `y` straight through,
+     * so a downed gunship left a burning hulk hanging in mid-air for the full
+     * `wreckSeconds`, and one lost over a lake put a splash column 22 m above
+     * the water. `Locomotor.Air`, not an altitude threshold, for the same
+     * reason `Combat.isAirborne` reads the declaration: a tank cresting a ridge
+     * must never fall down this branch.
+     */
+    const airborne = st.locomotor[i] === Locomotor.Air;
+    const restY = airborne ? w.terrain.heightAt(x, z) : y;
+
     // A hover craft or a ship dies at sea: it sinks, it does not leave a hulk
     // sitting on the waves. Ask the terrain, not the height — WATER_LEVEL is a
-    // constant and the flat null-object terrain sits below it everywhere.
+    // constant and the flat null-object terrain sits below it everywhere. An
+    // aircraft downed over water is the same event with a longer fall.
     const cx = Math.floor(x / CELL), cz = Math.floor(z / CELL);
     if (w.terrain.isWater(cx, cz)) {
-      this.channels.fx.push(FxKind.Splash, x, Math.max(y, WATER_LEVEL), z, 0, 1, 0, scale, NONE, faction);
+      this.channels.fx.push(
+        FxKind.Splash, x, Math.max(restY, WATER_LEVEL), z, 0, 1, 0, scale, NONE, faction,
+      );
       return;
     }
-    this.spawnWreck(s, i, x, y, z);
+    this.spawnWreck(s, i, x, restY, z);
   }
 
   /**

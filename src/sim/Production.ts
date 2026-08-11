@@ -813,6 +813,46 @@ const CONTENT: readonly ContentSpec[] = [
     kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
     cost: 800, buildTime: 10, prereqs: ['rclBreakerYard'], sortOrder: 75,
   },
+
+  /* -- THE ALLIED AND SOVIET AIR ARMS ---------------------------------------
+   * `ProductionCatalog` is keyed on THIS table, not on the def table: a unit
+   * with a def row, a fallback row, a model binding and an AI catalog entry
+   * and no spec here is not in any roster, has no cameo, and cannot be
+   * ordered. The def table only supplies the numbers for a key that already
+   * appears below (`resolveEntry` reads `binding.unitId[spec.key]`).
+   *
+   * No new PRODUCER. Both are `tab: V`, so the War Factory — whose
+   * `producesTabs` is `[V]` — services them, exactly as the Forgeyard services
+   * the Kestrel and the Breaker Yard the Hornet. An airfield structure would
+   * be a second building per army for no mechanical difference, and this game
+   * has no rearm cycle for one to host.
+   *
+   * `radar` is the second prereq and it is not a stand-in: its own alias row
+   * in `game/Scenarios.ts` has read `['radar', 'radardome', 'airfield']` since
+   * before anything could fly.
+   *
+   * `sortOrder: 45` seats them between the tier-3 tank (40) and the MCV (50),
+   * so the Vehicles tab runs economy, line armour, raider, specialist,
+   * aircraft, MCV, transport, navy — ascending by role rather than by the
+   * order rows happened to be written.
+   *
+   * APPENDED rather than filed in the Allied and Soviet blocks above: on an
+   * UNBOUND boot (no data module) `resolveEntry` falls back to `publicId =
+   * index`, so inserting a row here would renumber every entry after it. The
+   * sidebar reads `sortOrder`, never array order, so nothing is lost by
+   * putting them last.
+   * ---------------------------------------------------------------------- */
+  {
+    key: 'vindicator', name: 'Vindicator',
+    blurb: 'Strike aircraft. Kills armour from a place tanks cannot reach.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
+    cost: 1200, buildTime: 16, prereqs: ['warFactory', 'radar'], sortOrder: 45,
+  },
+  {
+    key: 'mig', name: 'MiG Fighter', blurb: 'Interceptor. Owns the sky and nothing under it.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
+    cost: 1000, buildTime: 14, prereqs: ['warFactory', 'radar'], sortOrder: 45,
+  },
 ];
 
 /** Every army a player or an AI can be. Neutral is not one of them. */
@@ -2354,12 +2394,49 @@ export class ProductionService implements QueueHooks {
   /**
    * Spiral outward from the factory door for somewhere the unit fits.
    * Deterministic ring order, so two machines produce the same column.
+   *
+   * AIRCRAFT DO NOT SEARCH, AND THE REASON IS A BUG THIS LINE USED TO CAUSE.
+   *
+   * `Terrain.passGrid` packs ONE BIT PER LOCOMOTOR and nothing has ever set
+   * bit 5. `core/types.ts` says so at `Locomotor.Air` and calls it correct —
+   * "`ITerrain.isPassable(_, _, Air)` is false everywhere and NO AIR CODE PATH
+   * ASKS IT". This function was the one that did, and the whole clause was
+   * false because of it.
+   *
+   * The symptom is invisible in every direction a reviewer would look. The
+   * queue charges the player, runs to `progress: 1`, sets `ready: true` — and
+   * then this returns false forever, `egressRetry` re-arms every
+   * `egressRetrySeconds`, and the aircraft never comes out. No error, no
+   * warning, no refund, a permanently occupied factory queue. Measured on a
+   * live match: 1200 credits taken, `ready` at tick 1377, still sitting there
+   * at tick 1802 with the tab blocked behind it.
+   *
+   * It was NOT introduced by the Vindicator and the MiG. The Kestrel and the
+   * Hornet have been unbuildable by exactly this route since `Locomotor.Air`
+   * shipped, in both of the factions that were supposed to have an air arm —
+   * which is why `tests/air-layer.spec.ts` could assert an end-to-end air layer
+   * and be right about every link except the one that hands a player a plane.
+   *
+   * So the air branch asks the question the rest of the air layer asks.
+   * `Flowfield.isPassableClass` answers `isInMap(cx, cz)` for `MoveClass.Air`
+   * and nothing else; the ground checks below are all about SHARING SPACE, and
+   * an aircraft shares none — `Steering` and `Movement` both skip it in their
+   * separation passes, and `Movement` lifts it to `AIR_CRUISE_ALTITUDE` inside
+   * a second. Ring 0 is the factory door, so an aircraft lifts off the pad.
    */
   private findEgressSpot(
     x: number, z: number, radius: number, loco: number, out: Float32Array,
   ): boolean {
     const world = this.world;
     const step = CELL;
+    if (loco === (Locomotor.Air as number)) {
+      const cx = worldToCell(x);
+      const cz = worldToCell(z);
+      if (!isInMap(cx, cz)) return false;
+      out[0] = x;
+      out[1] = z;
+      return true;
+    }
     for (let ring = 0; ring <= PRODUCTION.egressSearchRings; ring++) {
       const cells = ring === 0 ? 1 : ring * 8;
       for (let c = 0; c < cells; c++) {

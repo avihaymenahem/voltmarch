@@ -1679,8 +1679,25 @@ function plane(o: PlaneOpts): UnitMassList {
   ];
 
   masses.push(
-    greeble('nose', 'cone', [S * 0.18, L * 0.22, fuseH * 0.92], [0, fuseY, L * 0.56], 'paintMed', {
-      rot: [-HALF_PI, 0, 0], group: 'nose', shape: { segments: 12, rTop: 0.22 },
+    // THE NOSE WAS ON BACKWARDS AND FLOATING, and nothing could have noticed:
+    // these two models were built and validated on every boot and DRAWN BY
+    // NOTHING until the Vindicator and the MiG got def rows, so this is the
+    // first time anyone has seen the result.
+    //
+    // Two separate errors in one line. `coneProfile` is radius 0.5 at local
+    // y=0 tapering to `0.5 * rTop` at y=1, so the WIDE end is -Y and the tip is
+    // +Y; `rot: [-HALF_PI, 0, 0]` maps local +Y onto world -Z, which pointed the
+    // tip at the tail and presented the blunt 0.5-radius base to the airflow.
+    // And at `z = L * 0.56` with a height of `L * 0.22` the cone spanned
+    // 0.45L..0.67L while the fuselage hull ends at 0.44L — so it hung in front
+    // of the aircraft with a visible gap, which is exactly what the first
+    // screenshot of a flying Vindicator showed.
+    //
+    // `+HALF_PI` points the tip forward. `z = L * 0.42` over `L * 0.20` spans
+    // 0.32L..0.52L, which buries the base inside the hull's forward taper
+    // (still full-width at 0.31L) and carries the radome past the tip.
+    greeble('nose', 'cone', [S * 0.18, L * 0.20, fuseH * 0.92], [0, fuseY, L * 0.42], 'paintMed', {
+      rot: [HALF_PI, 0, 0], group: 'nose', shape: { segments: 12, rTop: 0.22 },
     }),
     greeble('canopy', 'revolve', [S * 0.15, fuseH * 0.42, L * 0.24], [0, fuseY + fuseH * 0.42, L * 0.20], 'glass', {
       group: 'canopy', shape: { profile: DOME_PROFILE, segments: 12 },

@@ -501,6 +501,46 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
   // reaches up.
   fighter('rclHornet', BuildRole.Skirmisher, EntityKind.Vehicle, 900, ['rclBreakerYard', 'rclSpotter'],
     FACTION_RECLAIM, [1.6, 1.4, 1.0, 0.4, 1.4], 1),
+
+  /* -- THE ALLIED AND SOVIET AIR ARMS ---------------------------------------
+   * Without these two rows the brain does not know the aircraft EXIST. The
+   * catalog is what `chooseUnit` scores over, `ROLE_BY_KEY` and
+   * `DOCTRINE_BY_KEY` are both derived from this array, and `bind()` only
+   * touches keys already in it — so a def row with no entry here is a unit a
+   * human can build and an AI never will, in a match the AI is supposed to be
+   * playing by the same rules.
+   *
+   * APPENDED, not filed into the Allied and Soviet blocks above, and the reason
+   * is `forRole`: it returns the FIRST entry with a matching role that the
+   * faction can field. `prismTank` must stay the Allied `Siege` answer and
+   * `attackDog` the Soviet `Skirmisher`, so a new row of either role has to
+   * land after them. Appending is the only placement that changes no existing
+   * role resolution.
+   *
+   * THE TWO ANSWER VECTORS ARE THE ONE PLACE THE ASYMMETRY IS WRITTEN DOWN
+   * FOR THE BRAIN. `air-layer.spec` §6 enforces the floor — nothing may score
+   * >= 1.0 against Air without a gun whose `canTargetAir` is true — and both
+   * of these clear it honestly. Above that floor:
+   *
+   *   Vindicator  Rocket warhead: 0.90 vs Concrete and 0.95 vs Heavy, so
+   *               Structure 1.4 and Heavy 1.5. Air 1.2 — it CAN elevate, but
+   *               a 2.58 s missile cycle will not catch a MiG.
+   *   MiG         AutoCannon: 1.00 vs Light, and every aircraft in the game is
+   *               Light. Air 1.9 is the highest figure in the table, ahead of
+   *               the Flak Trooper's 1.7, which is correct — a Soviet brain
+   *               that sees a gunship should reach for the interceptor first.
+   *               0.35 vs Heavy AND Concrete is why Structure is 0.3: this
+   *               must never look like an answer to a base.
+   *
+   * Weight 1 on both, matching the Kestrel and the Hornet. Aircraft are an
+   * accent on an army, not the bulk of one, and a weight that said otherwise
+   * would have an AI spending its whole bank on things a single Flak Trooper
+   * answers.
+   * ---------------------------------------------------------------------- */
+  fighter('vindicator', BuildRole.Siege, EntityKind.Vehicle, 1200, ['warFactory', 'radar'],
+    Faction.Allies, [0.6, 1.3, 1.5, 1.4, 1.2], 1),
+  fighter('mig', BuildRole.Skirmisher, EntityKind.Vehicle, 1000, ['warFactory', 'radar'],
+    Faction.Soviets, [1.2, 1.6, 0.7, 0.3, 1.9], 1),
 ];
 
 /**

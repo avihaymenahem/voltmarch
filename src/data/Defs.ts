@@ -388,12 +388,82 @@ export const AUGMENT_WEAPONS: readonly WeaponDef[] = [
 ];
 
 /**
+ * THE TWO GUNS THAT FLY.
+ *
+ * The Pact and the Reclamation each carry ONE bespoke air weapon — `kestrelPod`
+ * and `hornetArc` — for a reason stated in both rows: aircraft have to be able
+ * to answer aircraft, or "own the only gunship" is a win condition. The Allies
+ * and the Soviets had the aircraft MODELS (`allied_vindicator`, `soviet_mig`,
+ * built and silhouette-validated on every boot) and no gun to hang on them.
+ *
+ * WHY NOT REUSE, WHICH IS THIS FILE'S OWN STATED PREFERENCE
+ * ---------------------------------------------------------
+ * `AUGMENT_WEAPONS` above argues — correctly — that a near-identical
+ * `javelinLauncher` beside `rocketLauncher` would have been the mistake. The
+ * same test applied here fails on BOTH candidates, and it fails on the number
+ * that matters rather than on flavour:
+ *
+ *     rocketLauncher  60 @ 2.2 s cycle  =  27 raw dps   (a 500-cr infantryman)
+ *     aaCannon        34x3 @ 0.82 s     = 124 raw dps   (a static EMPLACEMENT)
+ *     kestrelPod      44x2 @ 2.06 s     =  43 raw dps   (an 1100-cr aircraft)
+ *
+ * A 1200-credit Vindicator firing the Javelin's shoulder rocket would be the
+ * worst credit-for-damage unit either army fields; a 1000-credit MiG firing the
+ * flak battery would out-damage every tank in the game from a chassis nothing
+ * on the ground is allowed to shoot at. Neither is a balance the reuse buys —
+ * so the rows are authored, and the shape of each one is the doctrine.
+ *
+ * THE ASYMMETRY IS THE WARHEAD, AND IT READS STRAIGHT OFF `ARMOR_MATRIX`
+ * ---------------------------------------------------------------------
+ * EVERY aircraft in this game is `ArmorClass.Light` — that is enforced by
+ * `tests/air-layer.spec.ts` and is deliberate, because the air/ground split is
+ * a TARGETING gate (`canTargetAir`) and never a seventh armour row. So the
+ * Light column IS the anti-aircraft column:
+ *
+ *     Rocket      [0.55 inf, 0.95 LIGHT, 0.90 med, 0.95 heavy, 0.90 concrete]
+ *     AutoCannon  [0.80 inf, 1.00 LIGHT, 0.65 med, 0.35 heavy, 0.35 concrete]
+ *
+ * The Vindicator carries the Rocket row: it hurts armour and bases and can
+ * defend itself. The MiG carries the AutoCannon row: 1.00 against Light makes
+ * it the best air-superiority unit in the game and 0.35 against Heavy and
+ * Concrete means it cannot substitute for a tank or take a base apart. An
+ * Allied player buys a strike aircraft; a Soviet player buys an interceptor.
+ *
+ * BOTH ELEVATE, and that is not symmetry for its own sake — `air-layer.spec`
+ * §6 asserts that every authored aircraft can fight the others.
+ *
+ * APPENDED, NEVER INTERLEAVED, same rule as every block above: rows 0..38 keep
+ * their indices, so no unit silently inherits its neighbour's gun.
+ */
+export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
+  // Wing-pylon AGMs. `plane()` in `src/art/UnitDefs.ts` builds MuzzleA/MuzzleB
+  // under the wings at exactly the pylon the `ordnance` capsules hang from, so
+  // MUZZLE_PAIR here is a real socket pair and not a guess.
+  /* 39 */ wpn('vindicatorMissile', 'Vindicator AGM', 62, WarheadClass.Rocket, 23, 2.4,
+    ProjectileKind.Rocket, 52,
+    { burstCount: 2, burstDelay: 0.18, splashRadius: 2.2, splashFalloff: 0.28,
+      turretTurnRate: 280, muzzleParts: MUZZLE_PAIR, canTargetAir: true,
+      muzzleFx: FxKind.MuzzleFlashMedium, travelFx: FxKind.RocketTrail, impactFx: FxKind.ExplosionSmall }),
+
+  // 24x3 on a 0.76 s cycle is 95 raw dps — under the IFV's chaingun (116) and
+  // well under the emplaced flak battery (124), which is the intended order:
+  // the thing that cannot be shot back at by two thirds of the army does not
+  // also get the biggest gun.
+  /* 40 */ wpn('migCannon', 'MiG Autocannon', 24, WarheadClass.AutoCannon, 21, 0.62,
+    ProjectileKind.Bullet, 170,
+    { burstCount: 3, burstDelay: 0.07, splashRadius: 0.9, splashFalloff: 0.45,
+      turretTurnRate: 340, muzzleParts: MUZZLE_PAIR, canTargetAir: true,
+      muzzleFx: FxKind.MuzzleFlashFlak, travelFx: FxKind.TracerBullet, impactFx: FxKind.Sparks }),
+];
+
+/**
  * The live armoury: the sim's table verbatim, then the Pact's, then the
- * Reclamation's, then the two rows the original armies were missing. The
- * prefix property is ASSERTED in §5, not assumed.
+ * Reclamation's, then the two rows the original armies were missing, then the
+ * two that fly. The prefix property is ASSERTED in §5, not assumed.
  */
 export const WEAPONS: readonly WeaponDef[] = [
   ...DEFAULT_WEAPONS, ...MERIDIAN_WEAPONS, ...RECLAIM_WEAPONS, ...AUGMENT_WEAPONS,
+  ...AIRCRAFT_WEAPONS,
 ];
 
 const WEAPON_INDEX: ReadonlyMap<string, number> = (() => {
@@ -563,9 +633,17 @@ export const UNLOCK_TAGS: Readonly<Record<string, string>> = {
   mrdMonitor: 'unit.naval.capital',
   rclHulk: 'unit.naval.capital',
 
-  /* -- unit.air: only two armies have one --------------------------------- */
+  /* -- unit.air: all four armies now have one -----------------------------
+   * This read "only two armies have one" and named two keys, which made the
+   * air tier the ONE group in this table that was not mirrored across the
+   * roster — against the rule five paragraphs up, where the mirroring is the
+   * stated reason a player who switches faction is never sent back to the
+   * start of the curve. `allied_vindicator` and `soviet_mig` were built,
+   * measured and silhouette-validated on every boot and bound to nothing.  */
   mrdKestrel: 'unit.air',
   rclHornet: 'unit.air',
+  vindicator: 'unit.air',
+  mig: 'unit.air',
 
   /* -- struct.naval ------------------------------------------------------- */
   navalYard: 'struct.naval',
@@ -591,7 +669,7 @@ export const UNLOCK_TAGS: Readonly<Record<string, string>> = {
 
   /* -- struct.defence.aa --------------------------------------------------
    * One def, Allied-only in the tech tree. The Pact and the Reclamation have
-   * no dedicated AA emplacement at all — their answer to the two gunships is
+   * no dedicated AA emplacement at all — their answer to the four aircraft is
    * the Sunlancer and the Arcspitter, which are units.                      */
   aaTurret: 'struct.defence.aa',
 };
@@ -1275,6 +1353,104 @@ export const UNITS: readonly UnitDef[] = [
     weapons: [w('grinderArc')], hasTurret: false, crushableBy: 1,
     maxAlive: 1, ability: AbilityId.SalvageCall,
     flags: RCL_FOOT | EntityFlag.CanAttack,
+  }),
+
+  /* -- THE ALLIED AND SOVIET AIR ARMS -------------------------------------
+   * APPENDED, NEVER INSERTED, for the reason the commanders above carry and
+   * `Replay.ts` states in one line: `store.defId` is a RAW INDEX into this
+   * array and `Replay` records it as one, so a row landing in the middle
+   * re-binds every command in every existing recording to different content.
+   * (Saves are safe — `SaveGame.defIndexFromTables` maps by KEY both ways —
+   * replays are not.) These are the last two rows and they must stay last.
+   *
+   * THE SAME DEFECT AS `soviet_flak`, AT THE SAME PLACE IN THE PIPELINE.
+   * `src/art/UnitDefs.ts` has built `allied_vindicator` and `soviet_mig` since
+   * the roster was authored. Both are in `UNIT_MASS_LISTS`, so every match has
+   * paid to merge their geometry and validate their silhouette — the boot log
+   * prints `[units] soviet_mig masses 4+8 dom 35.1%@46.7% ... 1568 tris` on
+   * every single boot — and neither appeared in `CONTENT_TO_MODEL`, in
+   * `PRODUCTION_CONTENT`, in `FALLBACK_UNITS`, or here. Art with no def row is
+   * art nothing can spawn.
+   *
+   * WHAT AN AIRCRAFT DOES THAT A TANK DOES NOT, decided here and implemented
+   * entirely by machinery that already existed. All four claims are asserted
+   * in `tests/air-layer.spec.ts` §7 rather than left to this comment:
+   *
+   *   IT NEVER LANDS. There is no airfield, no rearm and no fuel in this game,
+   *   and adding one would be a new subsystem rather than a def row.
+   *   `sim/Movement.ts` holds `MoveClass.Air` at `ground + AIR_CRUISE_ALTITUDE`
+   *   every tick with an exponential approach, so an idle aircraft LOITERS at
+   *   22 m over whatever it is standing above and a hangar would have nothing
+   *   to do. The consequence to know: an aircraft with no order is a 22 m-high
+   *   target that cannot be shot by two thirds of the army, so it is safe and
+   *   it is also doing nothing. That is the whole cost of owning one.
+   *
+   *   IT SHARES NO SPACE. `Steering.ts` skips `MoveClass.Air` in both the
+   *   neighbour sweep and the separation pass, so aircraft fly through each
+   *   other and through ground units, and a stack of four over one target is
+   *   legal. `Flowfield.ts` answers `isPassableClass` true for every in-map
+   *   cell, so there is no pathing, no queueing and no traffic — an aircraft
+   *   goes where it is sent in a straight line and arrives.
+   *
+   *   MOST GUNS CANNOT TOUCH IT. `canTargetAir` defaults FALSE
+   *   (`sim/Combat.weaponCanHurt` vetoes before the armour matrix is even
+   *   consulted, and an explicit attack ORDER does not bypass it). What can
+   *   answer these two: the Allied `aaTurret` and `prismTower`, the Soviet
+   *   `teslaCoil`, the `javelin` and `flakTrooper` on foot, every rifle, the
+   *   IFV's chaingun, the Dreadnought — and the other three factions' aircraft.
+   *   Both armies therefore already own several answers before this row exists;
+   *   what they did not own was a way to POSE the question.
+   *
+   *   KILLED OVER WATER IT SINKS, AND IT SINKS FROM ALTITUDE.
+   *   `Damage.vehicleDeath` asks `terrain.isWater(cell)` — the terrain, never
+   *   the height — so a hull lost over a lake makes a splash and leaves no
+   *   wreck, exactly as a Corvette does. Over land it leaves the standard
+   *   burning hulk. Both used to happen at the ALTITUDE OF DEATH, which put a
+   *   22 m splash column in mid-air and a burning wreck floating over the
+   *   battlefield for its full 40 s; `Damage.ts` now drops both to the surface
+   *   for an airborne victim. That bug was reachable by the Kestrel and the
+   *   Hornet from the day `Locomotor.Air` shipped and nothing was looking.
+   *
+   * BALANCED AGAINST THE TWO THAT ALREADY FLEW, which is the whole brief.
+   * Read the four as one band, cheapest to dearest:
+   *
+   *     rclHornet     900   180 hp  11.0 m/s  sight 34   arc, chains
+   *     mig          1000   190 hp  13.5 m/s  sight 32   autocannon
+   *     mrdKestrel   1100   210 hp  12.0 m/s  sight 36   guided pods
+   *     vindicator   1200   240 hp  11.5 m/s  sight 38   guided AGM
+   *
+   * Same prereq SHAPE as the other two — war factory plus radar, one tier
+   * below the tech building — so no army reaches its air arm at a different
+   * point on the curve. `radar`'s own alias list in `game/Scenarios.ts`
+   * already reads `['radar', 'radardome', 'airfield']`, which is the tech tree
+   * agreeing with this in advance.
+   * --------------------------------------------------------------------- */
+  unit({
+    key: 'vindicator', name: 'Vindicator', blurb: 'Strike aircraft. Kills armour from a place tanks cannot reach.',
+    faction: Faction.Allies, kind: EntityKind.Vehicle,
+    cost: 1200, buildTime: 16, tab: BuildTab.Vehicles,
+    prereqs: ['warFactory', 'radar'], sortOrder: 45,
+    model: 'allied_vindicator',
+    // The heaviest and slowest of the four, and the only one with a splash
+    // warhead that hurts Concrete (Rocket, 0.90) — an Allied player buys this
+    // to open a base, not to win a dogfight.
+    maxHp: 240, armor: ArmorClass.Light, maxSpeed: 11.5, turnRate: 2.9,
+    locomotor: Locomotor.Air, radius: hullRadius(U.ifv), sight: 38,
+    weapons: [w('vindicatorMissile')], hasTurret: false, crushableBy: 0,
+  }),
+  unit({
+    key: 'mig', name: 'MiG Fighter', blurb: 'Interceptor. Owns the sky and nothing under it.',
+    faction: Faction.Soviets, kind: EntityKind.Vehicle,
+    cost: 1000, buildTime: 14, tab: BuildTab.Vehicles,
+    prereqs: ['warFactory', 'radar'], sortOrder: 45,
+    model: 'soviet_mig',
+    // Fastest thing on the map and the thinnest-skinned aircraft after the
+    // Hornet. 1.00 AutoCannon vs Light is 1.00 against every aircraft in the
+    // game (they are all Light, and `air-layer.spec` keeps them that way), and
+    // 0.35 vs Heavy and Concrete is why it is not also a tank or a siege unit.
+    maxHp: 190, armor: ArmorClass.Light, maxSpeed: 13.5, turnRate: 3.6,
+    locomotor: Locomotor.Air, radius: hullRadius(U.ifv), sight: 32,
+    weapons: [w('migCannon')], hasTurret: false, crushableBy: 0,
   }),
 ];
 

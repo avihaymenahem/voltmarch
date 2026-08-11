@@ -967,6 +967,33 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
   transport: unit('transport', EntityKind.Vehicle, NU.transport, 600, ArmorClass.Light, 6.0,
     Locomotor.Hover, 26, 0, Faction.Neutral),
 
+  /* -- THE ALLIED AND SOVIET AIR ARMS --------------------------------------
+   * Two rows carrying the same warning as the commanders and the anti-armour
+   * pair above, and it bites HARDER here than anywhere else in this table:
+   * `ProductionService.spawnUnit` reads `FALLBACK_UNITS` BEFORE the def table
+   * and returns NONE when the row is missing, so a Vindicator with a flawless
+   * def row and no row here would take 1200 credits, run its bar to 100%, and
+   * never leave the factory. Silently. Forever.
+   *
+   * And the second edge, which is the one specific to these two:
+   * `src/data/Defs.ts#unit()` defaults `flags` to ZERO for the original armies
+   * because `spawnUnit` ORs the def's flags on top of the fallback's — so
+   * without `GUNNER` here an aircraft would spawn with no CanMove and no
+   * CanAttack. `MovementIntegrator` skips anything without CanMove, and the
+   * climb to `AIR_CRUISE_ALTITUDE` lives inside that integrator: the unit
+   * would sit on the runway at ground level, unarmed, and every gun in the
+   * game would be allowed to shoot it because `weaponCanHurt` reads the
+   * locomotor rather than the height. A def-only aircraft is not a plane that
+   * cannot move; it is a tank with 240 hp and no gun.
+   *
+   * `Locomotor.Air`, in lockstep with `src/data/Defs.ts` — see the Kestrel row
+   * above. Every number is transcribed from there and `tests/data.spec.ts`
+   * asserts the two tables agree.                                          */
+  vindicator: unit('vindicator', EntityKind.Vehicle, U.ifv, 240, ArmorClass.Light, 11.5,
+    Locomotor.Air, 38, GUNNER, Faction.Allies, { crushableBy: 0, turnRate: 2.9 }),
+  mig: unit('mig', EntityKind.Vehicle, U.ifv, 190, ArmorClass.Light, 13.5,
+    Locomotor.Air, 32, GUNNER, Faction.Soviets, { crushableBy: 0, turnRate: 3.6 }),
+
   /* -- THE MERIDIAN PACT ---------------------------------------------------
    * Transcribed from `src/data/Defs.ts` §1, which is authoritative for every
    * number here. Two Pact-wide rules are visible in the rows and are the whole
@@ -1323,6 +1350,15 @@ const UNIT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   submarine: ['submarine', 'sub', 'akula', 'typhoon'],
   dreadnought: ['dreadnought', 'sovietcruiser', 'battleship'],
   transport: ['transport', 'landingcraft', 'hovertransport'],
+  // The air arms. WITHOUT A ROW HERE THE DEF DOES NOT EXIST as far as any
+  // consumer is concerned: `resolveDefBinding` returns `bindAliases(unitByKey,
+  // UNIT_ALIASES)`, which iterates the keys of THIS table — so an unlisted def
+  // resolves to `undefined`, `resolveEntry` falls back to defId -1, and
+  // `units.system.ts` skips the model registration. The unit would still build
+  // and still fly; it would just wear the per-faction default hull, which is a
+  // Grizzly. No bare 'mig' -> anything else: the key IS 'mig'.
+  vindicator: ['vindicator', 'alliedvindicator', 'alliedbomber', 'harrier'],
+  mig: ['mig', 'sovietmig', 'migfighter', 'sovietfighter'],
 
   // The Meridian Pact. Its def keys are already unambiguous, so each row is
   // the key itself plus the model name the art modules use.

@@ -61,6 +61,12 @@ const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   prismTank: 'allied_prism',
   gunboat: 'allied_gunboat',
   destroyer: 'allied_destroyer',
+  // `allied_vindicator` and `soviet_mig` are the SECOND and THIRD models this
+  // table has been the missing half of. Both have been in `UNIT_MASS_LISTS`
+  // since the roster was authored — merged, silhouette-validated and printed in
+  // the boot scorecard on every single boot — with no def row and no line here.
+  // See `flakTrooper` below: same defect, same fix, three files apart.
+  vindicator: 'allied_vindicator',
 
   conscript: 'soviet_conscript',
   // `soviet_flak` was built into every match and bound to nothing until the
@@ -73,6 +79,7 @@ const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   apocalypse: 'soviet_apocalypse',
   submarine: 'soviet_sub',
   dreadnought: 'soviet_dreadnought',
+  mig: 'soviet_mig',
 };
 
 /**

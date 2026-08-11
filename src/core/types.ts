@@ -298,6 +298,17 @@ export const enum Locomotor {
    * everywhere and no air code path asks it. `MoveClass.Air` is the vocabulary
    * that answers passability for flyers, and `moveClassForLocomotor` is the
    * one place the two meet.
+   *
+   * "NO AIR CODE PATH ASKS IT" WAS NOT TRUE, and the exception cost every
+   * aircraft in the game its ability to leave a factory.
+   * `Production.findEgressSpot` asked exactly this, got `false` for every cell
+   * on the map, and returned no spot — so a finished aircraft sat at
+   * `ready: true` with the player already charged, forever, silently. It is
+   * fixed at that call site (see the block above it) rather than by lighting
+   * bit 5, because a passability BIT for a class that ignores passability is a
+   * lie that the next reader would have to disprove all over again. The clause
+   * above is true again; it is load-bearing, and it is the kind of claim that
+   * has to be re-checked whenever a new caller passes a locomotor to the grid.
    */
   Air = 5,
 }
