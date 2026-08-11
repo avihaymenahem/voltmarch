@@ -147,10 +147,25 @@ const MUZZLE_PAIR: readonly PartId[] = [PartId.MuzzleA, PartId.MuzzleB];
  *
  *   1. Pact guns out-RANGE their opposite number by 1-3 m and under-DAMAGE it,
  *      so a Pact line wins a standoff and loses a brawl.
- *   2. The two best guns in the list (`zenithBeam`, `heliosLance`) carry
- *      `needsPower`. That is the faction's whole risk profile: the Solar Array
- *      is cheap, generous and made of glass, and when the grid browns out the
- *      Pact's teeth stop while its economy keeps running.
+ *   2. THE PACT'S EMPLACEMENTS CARRY `needsPower`, AND ONLY ITS EMPLACEMENTS
+ *      CAN. `glaiveRepeater` and `heliosLance` both have it, so both Pact
+ *      defences go dark together and four Sandskiffs behind the lines silence a
+ *      whole belt without touching either tower. That is the faction's risk
+ *      profile: the Solar Array is cheap, generous and made of glass.
+ *
+ *      `zenithBeam` USED TO CARRY IT TOO AND IT DID NOTHING. `Combat.ts` gates
+ *      on the weapon's `needsPower` AND `EntityFlag.NeedsPower` on the ENTITY,
+ *      and that flag is only ever set on structures — `Scenarios.building()`
+ *      and `mrdFlags`/`rclFlags` below derive it from a negative power draw and
+ *      nothing derives it for a hull. `EntityFlag.Powered` is worse: only
+ *      `PowerGrid.recompute` sets it and that loop walks
+ *      `byKind[EntityKind.Building]` and nothing else, so a vehicle carrying
+ *      `NeedsPower` would be unpowered forever and its gun would never fire
+ *      once. A brownout-able VEHICLE is a `Power.ts` feature, not a data flag;
+ *      until somebody builds it, the honest table says the Zenith's beam is not
+ *      on the grid. See the Zenith Emitter's own row for the blurb that made
+ *      the same false promise. `glaiveRepeater` went the other way — the Glaive
+ *      Post is a structure, so its claim was made TRUE rather than withdrawn.
  *   3. Nothing here is `Tesla` or `SmallArms`-heavy. The Pact answers armour
  *      and structures well and answers massed infantry poorly, which is the
  *      hole the Soviets are built to exploit.
@@ -171,7 +186,26 @@ export const MERIDIAN_WEAPONS: readonly WeaponDef[] = [
     { splashRadius: 2.0, splashFalloff: 0.30, turretTurnRate: 260, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashMedium, travelFx: FxKind.RocketTrail, impactFx: FxKind.ExplosionSmall }),
 
-  /* 20 */ wpn('arcRepeater', 'Arc Repeater', 19, WarheadClass.AutoCannon, 23, 0.55,
+  // 19 -> 13 DAMAGE, AND IT IS THE SANDSKIFF'S HALF OF THE IFV REBALANCE.
+  //
+  // At 19 x 4 on a 0.76 s cycle this was 100 raw dps on a 550-credit raider,
+  // and the pair of burst-4 autocannons — this and the IFV's — were the two
+  // best units in the game per credit. Both were scaled like EMPLACEMENTS: the
+  // Sandskiff out-damaged the 1000-credit MiG and killed a 700-credit Grizzly
+  // in 5.23 s while the Grizzly needed 6.10 s to kill it.
+  //
+  // 13 x 4 / 0.76 s = 68.4 raw. Against Medium (AutoCannon 0.65) that is 44.5
+  // dps, so a Grizzly now dies in 7.65 s and wins the duel by 25%. The row is
+  // retuned IN PLACE rather than appended because this file owns it outright
+  // and editing a value changes no index; see `ifvChaingun` below for why the
+  // IFV's half could not be done the same way.
+  //
+  // The two are still each other's opposite number and the IFV still edges it:
+  // 190 hp / 65.5 = 2.90 s against 220 hp / 68.4 = 3.22 s. The Skiff buys speed
+  // (9.2 vs 8.4), a metre of reach, two seats and a hover skirt; the IFV buys
+  // 30 hp and the duel. That relationship is the reason this row moved at all —
+  // cutting the IFV alone would have left the Allied raider strictly dominated.
+  /* 20 */ wpn('arcRepeater', 'Arc Repeater', 13, WarheadClass.AutoCannon, 23, 0.55,
     ProjectileKind.Bullet, 155,
     { burstCount: 4, burstDelay: 0.07, turretTurnRate: 210, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.Sparks }),
@@ -181,14 +215,30 @@ export const MERIDIAN_WEAPONS: readonly WeaponDef[] = [
     { splashRadius: 1.4, splashFalloff: 0.30, turretTurnRate: 110,
       muzzleFx: FxKind.MuzzleFlashMedium, travelFx: FxKind.TracerCannon, impactFx: FxKind.ImpactMetal }),
 
+  // NO `needsPower`. It is mounted on a HULL, and a hull can never carry
+  // `EntityFlag.NeedsPower` — see rule 2 in this block's header. The flag was
+  // authored here and read by nothing; the Zenith's blurb promised a brownout
+  // weakness the simulation had no way to apply. Deleted rather than faked.
   /* 22 */ wpn('zenithBeam', 'Zenith Emitter', 94, WarheadClass.Prism, 33, 2.9,
     ProjectileKind.Beam, 0,
-    { turretTurnRate: 65, requiresStop: true, needsPower: true,
+    { turretTurnRate: 65, requiresStop: true,
       muzzleFx: FxKind.None, travelFx: FxKind.PrismBeam, impactFx: FxKind.Sparks }),
 
+  // `needsPower: true`, ADDED, and this one really bites: the Glaive Post is a
+  // structure drawing -10, so `mrdFlags` stamps `EntityFlag.NeedsPower` on it
+  // and `PowerGrid.shed` can darken it. Its blurb has said "Needs the grid"
+  // since it was written and the weapon did not, which made the claim
+  // decoration — the post kept firing through a total blackout while the Helios
+  // Spire beside it went dark. Now both Pact defences fall together, which is
+  // what the faction's own doctrine block above says they do.
+  //
+  // It sheds LAST among Pact defences, not first: `PowerGrid.shed` orders by
+  // draw descending within a class, so a deficit takes the Spire's 55 before
+  // this one's 10. A player losing their cheap anti-infantry post while the
+  // heavy beam still runs would read as a bug.
   /* 23 */ wpn('glaiveRepeater', 'Glaive Repeater', 21, WarheadClass.SmallArms, 24, 0.45,
     ProjectileKind.Bullet, 118,
-    { burstCount: 5, burstDelay: 0.06, turretTurnRate: 260,
+    { burstCount: 5, burstDelay: 0.06, turretTurnRate: 260, needsPower: true,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactDirt }),
 
   // The Pact's `BuildRole.AntiAir` structure (`mrdHelios`) carries this one.
@@ -227,10 +277,17 @@ export const FACTION_RECLAIM = Faction.Reclaim;
 /**
  * THE RECLAMATION ARMOURY. Appended after the Pact's, never interleaved.
  *
- * ONE IDEA, EIGHT ROWS: **every gun the Reclamation fields is an arc**, and
- * every arc CHAINS. `WarheadClass.Tesla` was a single Soviet defensive coil;
- * here it is the whole army, and reading it against `ARMOR_MATRIX` is reading
- * the faction:
+ * ONE IDEA, TEN ROWS, SIX OF THEM ARCS: **every gun the Reclamation points at a
+ * UNIT is an arc**, and every arc CHAINS. The other four (`slagCharge`,
+ * `slagMortar`, `scowGun`, `hulkBattery`) are HighExplosive, and they are the
+ * whole of the army's answer to a building — which is the second rule below,
+ * stated from the other side.
+ *
+ * This block read "EIGHT ROWS: every gun the Reclamation fields is an arc" and
+ * contradicted itself two paragraphs later by naming `slagMortar` and
+ * `slagCharge` as the HE exceptions. `WarheadClass.Tesla` was a single Soviet
+ * defensive coil; here it is the army's signature, and reading it against
+ * `ARMOR_MATRIX` is reading the faction:
  *
  *   Tesla   [1.60 infantry, 0.95 light, 0.85 medium, 0.90 heavy, 0.60 concrete]
  *
@@ -241,12 +298,17 @@ export const FACTION_RECLAIM = Faction.Reclaim;
  * satchel infantryman (`slagCharge`), and if those die the Reclamation can
  * stand in an enemy base doing almost nothing.
  *
- * THE SECOND HALF OF THE TRADE IS RANGE. Every arc row is 14-20 m where the
- * equivalent Allied/Soviet/Pact gun is 22-26. `sim/Combat.ts` gives a
- * turretless shooter a 14-degree `hullArcDeg` firing cone against a turret's
- * 5-degree `aimToleranceDeg`, and NOTHING in this army has a turret — so a
- * Reclamation hull has to point its whole chassis at what it wants to kill,
- * from inside a range band where everyone else is already shooting it.
+ * THE SECOND HALF OF THE TRADE IS RANGE. Every arc a UNIT carries is 14-20 m
+ * where the equivalent Allied/Soviet/Pact gun is 22-26: `arcProd` 14,
+ * `spitCoil` 16, `hornetArc` 17, `grinderArc` 18. The two EMPLACED arcs are
+ * longer and still the shortest emplacements in the game — `postCoil` 20 and
+ * `pylonArc` 28, against a Tesla Coil's 30, a Helios Spire's 33 and a Prism
+ * Tower's 34. (This said "every arc row is 14-20 m", which the Arc Pylon's 28
+ * has never been.) `sim/Combat.ts` gives a turretless shooter a 14-degree
+ * `hullArcDeg` firing cone against a turret's 5-degree `aimToleranceDeg`, and
+ * NOTHING in this army has a turret — so a Reclamation hull has to point its
+ * whole chassis at what it wants to kill, from inside a range band where
+ * everyone else is already shooting it.
  *
  * DELIBERATELY NOT `needsPower`. The Soviet coil and both Pact beams stop in a
  * brownout; these do not. The Reclamation pays for its guns in reach and in
@@ -450,10 +512,15 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
       turretTurnRate: 280, muzzleParts: MUZZLE_PAIR, canTargetAir: true,
       muzzleFx: FxKind.MuzzleFlashMedium, travelFx: FxKind.RocketTrail, impactFx: FxKind.ExplosionSmall }),
 
-  // 24x3 on a 0.76 s cycle is 95 raw dps — under the IFV's chaingun (116) and
-  // well under the emplaced flak battery (124), which is the intended order:
-  // the thing that cannot be shot back at by two thirds of the army does not
-  // also get the biggest gun.
+  // 24x3 on a 0.76 s cycle is 95 raw dps, under the emplaced flak battery's
+  // 124: the thing that cannot be shot back at by two thirds of the army does
+  // not also get the biggest gun.
+  //
+  // This line used to read "under the IFV's chaingun (116)" and offered that as
+  // the intended order, which was the whole bug written down as a design. A
+  // 600-credit wheeled raider out-damaging a 1000-credit aircraft is not an
+  // order, it is an inversion; `ifvChaingun` below is 65 raw dps now and this
+  // row is the ceiling for a mobile burst weapon again.
   /* 40 */ wpn('migCannon', 'MiG Autocannon', 24, WarheadClass.AutoCannon, 21, 0.62,
     ProjectileKind.Bullet, 170,
     { burstCount: 3, burstDelay: 0.07, splashRadius: 0.9, splashFalloff: 0.45,
@@ -462,13 +529,84 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
 ];
 
 /**
+ * THE GUN THAT HAD TO BE RE-AUTHORED RATHER THAN RETUNED.
+ *
+ * `DEFAULT_WEAPONS[6]` — `chaingun`, "25 mm Chaingun" — was the single most
+ * over-scaled row in the game, and the Multigunner IFV that carried it was the
+ * best unit in the game per credit by a wide margin. 22 damage x 4 rounds with
+ * a 0.07 s burst delay and a 0.55 s cooldown is a **0.76 s cycle for 88 damage,
+ * 115.8 raw dps**, on a 600-credit hull. Read against `ARMOR_MATRIX`:
+ *
+ *     AutoCannon  [0.80 inf, 1.00 LIGHT, 0.65 med, 0.35 heavy, 0.35 concrete]
+ *
+ * the 0.65 and 0.35 columns were doing exactly the job the counter-triangle
+ * asks of them, and the raw number was three times a tank gun's — so the
+ * multipliers never bit. Measured against the shipped tables:
+ *
+ *   - dps per 1000 credits, best in the whole roster among VEHICLES against
+ *     Light (193), Medium (125), Heavy (68) AND Concrete (68). One unit, top of
+ *     four of the six armour columns.
+ *   - it beat a Grizzly 1v1 in **4.52 s** while the Grizzly needed **7.06 s** —
+ *     a 600-credit raider deleting a 700-credit main battle tank, faster,
+ *     longer-sighted (32 against 30) and 100 credits cheaper.
+ *   - it beat the Sandskiff, the MiG and the Solarch too. Only the Rhino won.
+ *
+ * WHY A NEW ROW AND NOT AN EDIT. `chaingun` lives in `src/sim/Combat.ts`, which
+ * this file borrows verbatim as its prefix (§5 asserts it element-by-element)
+ * and does not own. Appending is the mechanism this file already documents for
+ * exactly this case — `flakBurst` exists because `aaCannon` was "balanced as an
+ * EMPLACEMENT" and could not be reused on an infantryman. `chaingun` is
+ * balanced as nothing: it out-damaged the 800-credit emplaced flak battery's
+ * cousin and the 1000-credit MiG from a chassis a third the price.
+ *
+ * THE NEW NUMBERS, DERIVED AND NOT GUESSED. The binding constraint is the
+ * Grizzly duel. The Grizzly's `lightCannon` does 55 x 0.85 (AP vs Light) every
+ * 1.5 s = 31.2 dps, so it needs 220 / 31.2 = **7.06 s** to kill an IFV. For the
+ * tank to win, the IFV must need longer than that on 340 hp of Medium armour:
+ *
+ *     raw x 0.65 < 340 / 7.06   ->   raw < 74.1
+ *
+ * 11 x 5 rounds at 0.06 s over a 0.60 s cooldown is a **0.84 s cycle, 65.5 raw
+ * dps** — 13% inside that bound, so a promotion does not flip it. The five-round
+ * burst is deliberate: half the damage per round of the old four, which is what
+ * a 25 mm chaingun should feel like, and it keeps the weapon's texture while
+ * removing its ability to open armour.
+ *
+ * WHAT THAT BUYS, ALL FOUR COMPLAINTS ANSWERED:
+ *
+ *     vs Grizzly   7.99 s against the tank's 7.06 s   the TANK wins
+ *     vs Light     65.5 dps, still the anti-air and anti-raider gun it is for
+ *     vs Medium    42.6 dps  ->  5th per credit, behind the Sandskiff
+ *     vs Heavy     22.9 dps  ->  nowhere near the top; a Rhino takes 18 s
+ *     vs Concrete  22.9 dps  ->  behind the Slagger, which IS the wall-breaker
+ *
+ * It keeps `canTargetAir`, its 22 m reach and its 200 deg/s turret, because
+ * none of those was the problem: the IFV is still the Allied answer to a
+ * gunship and still the fastest thing with a turret that army fields.
+ *
+ * `chaingun` itself stays in the sim armoury and stays reachable — `CONTENT_WEAPON`
+ * in `src/sim/combat.system.ts` still resolves it for `ifv` and `sickle` on the
+ * pre-content fallback path. It is now one of the two DEFAULT_WEAPONS rows no
+ * shipped def fires; see §5's orphan note and `tests/content-truthful.spec.ts`.
+ *
+ * APPENDED, NEVER INTERLEAVED. Rows 0..40 keep their indices.
+ */
+export const REBALANCE_WEAPONS: readonly WeaponDef[] = [
+  /* 41 */ wpn('ifvChaingun', '25 mm Multigunner', 11, WarheadClass.AutoCannon, 22, 0.60,
+    ProjectileKind.Bullet, 150,
+    { burstCount: 5, burstDelay: 0.06, turretTurnRate: 200, canTargetAir: true,
+      muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactMetal }),
+];
+
+/**
  * The live armoury: the sim's table verbatim, then the Pact's, then the
  * Reclamation's, then the two rows the original armies were missing, then the
- * two that fly. The prefix property is ASSERTED in §5, not assumed.
+ * two that fly, then the rebalance row. The prefix property is ASSERTED in §5,
+ * not assumed.
  */
 export const WEAPONS: readonly WeaponDef[] = [
   ...DEFAULT_WEAPONS, ...MERIDIAN_WEAPONS, ...RECLAIM_WEAPONS, ...AUGMENT_WEAPONS,
-  ...AIRCRAFT_WEAPONS,
+  ...AIRCRAFT_WEAPONS, ...REBALANCE_WEAPONS,
 ];
 
 const WEAPON_INDEX: ReadonlyMap<string, number> = (() => {
@@ -533,7 +671,36 @@ interface UnitSpec {
   sight: number;
   weapons: readonly number[];
   hasTurret: boolean;
+  /**
+   * How heavy this hull is when it drives over something. LIVE, and read by
+   * `sim/Crush.ts#crushesUnit` — but ONLY together with `EntityFlag.Crusher`,
+   * which is the gate. A `crushLevel` without that flag is inert, which is what
+   * the Prism Tank's 2 was until it got one.
+   */
   crushLevel?: number;
+  /**
+   * How heavy a crusher has to be to flatten this. LIVE FOR INFANTRY, INERT FOR
+   * EVERY VEHICLE, and the difference is not in this column.
+   *
+   * `Crush.ts` tests `EntityFlag.Crushable` BEFORE it reads this number. Every
+   * foot unit in the game carries that flag with `crushableBy: 1`, so a Grizzly
+   * (3) flattens riflemen and the column does real work. NOT ONE VEHICLE
+   * CARRIES IT — so the 4/5/6 on fifteen hulls below describes a
+   * vehicle-ramming rule that has never existed, and `Crush.ts`'s own header
+   * says so in as many words ("they are reported, not implemented").
+   *
+   * LEFT AS AUTHORED RATHER THAN ZEROED, for one reason: every one of these
+   * numbers is duplicated in `Scenarios.FALLBACK_UNITS` and
+   * `tests/data.spec.ts` asserts the two tables agree field for field, so
+   * zeroing them is a thirty-row change across a file this module does not own.
+   * The honest alternative — writing 0, which for a UNIT means UNCRUSHABLE and
+   * is the true statement — is the right end state and is recorded as such.
+   * What is NOT acceptable is the silent version: `tests/content-truthful.spec.ts`
+   * §3 pins "no vehicle carries `EntityFlag.Crushable`", so the day one does,
+   * the ram rule has to be designed and priced rather than switched on by a
+   * flag edit. An Apocalypse deleting a 420 hp Rhino on contact is a balance
+   * decision, and nobody has made it.
+   */
   crushableBy?: number;
   cargoMax?: number;
   /** Infantry seats. Omitted = not a transport. */
@@ -646,7 +813,13 @@ export const UNLOCK_TAGS: Readonly<Record<string, string>> = {
    * roster — against the rule five paragraphs up, where the mirroring is the
    * stated reason a player who switches faction is never sent back to the
    * start of the curve. `allied_vindicator` and `soviet_mig` were built,
-   * measured and silhouette-validated on every boot and bound to nothing.  */
+   * measured and silhouette-validated on every boot and bound to nothing.
+   *
+   * The keys were mirrored; the MISSION was not. `unit.air` was paid by
+   * "win 12 skirmishes as the Meridian Pact", so all four of these sat behind
+   * one army's mastery chain and a Reclamation player had to win a dozen games
+   * as somebody else to fly their own gunship. It is paid by
+   * `construction.armour.2` now — build 400 vehicles, any army.             */
   mrdKestrel: 'unit.air',
   rclHornet: 'unit.air',
   vindicator: 'unit.air',
@@ -675,10 +848,50 @@ export const UNLOCK_TAGS: Readonly<Record<string, string>> = {
   rclPylon: 'struct.defence.specialist',
 
   /* -- struct.defence.aa --------------------------------------------------
-   * One def, Allied-only in the tech tree. The Pact and the Reclamation have
-   * no dedicated AA emplacement at all — their answer to the four aircraft is
-   * the Sunlancer and the Arcspitter, which are units.                      */
+   * ONE DEF, AND "DEDICATED" IS THE LOAD-BEARING WORD. `aaTurret` is the only
+   * emplacement in the game built for nothing but aircraft, and it is Allied.
+   *
+   * This used to say the Pact and the Reclamation "have no dedicated AA
+   * emplacement at all", which read as "those two armies cannot shoot up from
+   * a structure" and is false in both directions. Every army's
+   * `struct.defence.specialist` tower elevates — `prismTowerBeam`, `teslaBolt`,
+   * `heliosLance` and `pylonArc` all carry `canTargetAir`, and the Pact's and
+   * the Reclamation's rows say so in the armoury above ("The Pact's
+   * `BuildRole.AntiAir` structure (`mrdHelios`) carries this one"). It also
+   * left out that the SOVIETS have no dedicated AA turret either; their answer
+   * is the Tesla Coil, exactly as the Pact's is the Helios Spire and the
+   * Reclamation's is the Arc Pylon.
+   *
+   * So the real asymmetry is PRICE and TIER, not capability: 800 credits off a
+   * radar for the Allies against 1450-1500 off a tech building for everyone
+   * else. On foot every army also has an answer — Javelin, Flak Trooper,
+   * Sunlancer, Scrap Picker — and all four now field a gunship of their own. */
   aaTurret: 'struct.defence.aa',
+
+  /* -- the superweapons ----------------------------------------------------
+   * SIX STRUCTURES, FIVE IDS, GROUPED BY THE EFFECT THEY FIRE.
+   *
+   * These six shipped with no `unlockedBy` at all, so the end of the five
+   * longest chains in the mission table paid into nothing and a fresh profile
+   * could build a Nuclear Missile Silo in its first match. The grouping is the
+   * one `src/sim/Superweapons.ts` already uses — six rows, four effects — so a
+   * `structureKeys` entry and an unlock id never disagree about what a weapon
+   * IS. See the block on `UNLOCKS.superSiege` in `src/data/Missions.ts` for the
+   * table, and note that `superSiege` deliberately covers the two armies that
+   * share `SuperweaponId.LightningStorm`, the same way `unit.raider` covers
+   * four hulls.
+   *
+   * NOTHING HERE ENDANGERS THE OPENING. A superweapon is gated on its army's
+   * tech building, costs 2500 and draws -150 — the heaviest load in the game —
+   * so it was never on the path from a construction vehicle to an economy, and
+   * `tests/progression-gate.spec.ts` §5 re-derives that per faction rather
+   * than trusting this note.                                                 */
+  nuclearSilo: 'struct.superweapon.strategic',
+  mrdHeliograph: 'struct.superweapon.solarlance',
+  weatherControl: 'struct.superweapon.siege',
+  rclStormworks: 'struct.superweapon.siege',
+  chronosphere: 'struct.superweapon.chronosphere',
+  ironCurtain: 'struct.superweapon.ironcurtain',
 };
 
 function unit(s: UnitSpec): UnitDef {
@@ -847,6 +1060,12 @@ export const UNITS: readonly UnitDef[] = [
     locomotor: Locomotor.Track, radius: hullRadius(U.lightTank), sight: 30,
     weapons: [w('lightCannon')], hasTurret: true, crushLevel: 3, crushableBy: 5,
   }),
+  // `ifvChaingun`, NOT `chaingun`. See `REBALANCE_WEAPONS` for the derivation:
+  // the old gun made this 600-credit raider the best unit in the game per
+  // credit and let it kill a Grizzly 1v1 in 4.52 s. Every other number on the
+  // row is unchanged — hp, armour, speed and sight are all duplicated in
+  // `Scenarios.FALLBACK_UNITS` and asserted equal by `tests/data.spec.ts`, and
+  // the gun was the thing that was wrong anyway.
   unit({
     key: 'ifv', name: 'Multigunner IFV', blurb: 'Fast wheeled gun platform.',
     faction: Faction.Allies, kind: EntityKind.Vehicle,
@@ -855,8 +1074,32 @@ export const UNITS: readonly UnitDef[] = [
     model: 'allied_ifv',
     maxHp: 220, armor: ArmorClass.Light, maxSpeed: 8.4, turnRate: 2.6 - U.ifv.l * 0.14,
     locomotor: Locomotor.Wheel, radius: hullRadius(U.ifv), sight: 32,
-    weapons: [w('chaingun')], hasTurret: true, crushableBy: 4,
+    weapons: [w('ifvChaingun')], hasTurret: true, crushableBy: 4,
   }),
+  // `EntityFlag.Crusher`, ADDED, and it is the missing half of a number that
+  // was authored TWICE. `crushLevel: 2` is on this row and on the Prism Tank's
+  // row in `Scenarios.FALLBACK_UNITS`, and `Crush.ts` tests the FLAG before it
+  // reads the level — so the column was dead and the Grizzly on the line above
+  // carried both. Two independent tables agreeing on 2 is authored intent, not
+  // a stray value.
+  //
+  // A TRACKED hull flattens men; that is the whole rule. Level 2 clears every
+  // foot unit's `crushableBy: 1` and nothing else in the game is crushable, so
+  // this is exactly "the Prism Tank can drive over infantry" and is not a step
+  // toward ramming vehicles. It is deliberately BELOW the Grizzly's 3, which is
+  // what the original author's 2 was saying.
+  //
+  // The two hulls that fill this slot for the other new armies still do not
+  // crush, and both have a reason: `mrdZenith` is a hover skirt (Pact doctrine
+  // rule 1 — `crushLevel: 0` on everything, the Pact never wins a ram) and
+  // `rclSlaghurler` is wheeled and carries no level at all. The Apocalypse
+  // does, because it is a heavy tank rather than an artillery piece.
+  //
+  // Adding the flag HERE and not in `Scenarios.ts` is deliberate and complete:
+  // both spawn paths merge `flags = store | fallback.flags | def.flags`
+  // (`Production.ts:2527`/`2866`, `Scenarios.ts:2201`/`2341`), and
+  // `tests/data.spec.ts` compares the crush COLUMNS, not the flag word — so the
+  // two tables still agree on every field it checks.
   unit({
     key: 'prismTank', name: 'Prism Tank', blurb: 'Beam artillery. Fragile.',
     faction: Faction.Allies, kind: EntityKind.Vehicle,
@@ -866,6 +1109,7 @@ export const UNITS: readonly UnitDef[] = [
     maxHp: 260, armor: ArmorClass.Light, maxSpeed: 6.0, turnRate: 2.6 - U.prismTank.l * 0.14,
     locomotor: Locomotor.Track, radius: hullRadius(U.prismTank), sight: 34,
     weapons: [w('prismBeam')], hasTurret: true, crushLevel: 2, crushableBy: 5,
+    flags: EntityFlag.Crusher,
   }),
 
   /* -- Soviet vehicles ---------------------------------------------------- */
@@ -1083,8 +1327,16 @@ export const UNITS: readonly UnitDef[] = [
     weapons: [w('focusLance')], hasTurret: true, crushableBy: 5,
     flags: MRD_TURRETED,
   }),
+  // BLURB CORRECTED. It said "Dies in a brownout", which was never true and
+  // could not be made true: `Combat.ts` needs `EntityFlag.NeedsPower` on the
+  // ENTITY as well as `needsPower` on the weapon, and only structures ever get
+  // that flag — see rule 2 in the `MERIDIAN_WEAPONS` header. The Pact's two
+  // DEFENCES really do go dark (the Helios Spire always did; the Glaive Post
+  // does now), so the faction still has the risk profile its doctrine claims.
+  // This hull's real weakness is the one its stats already state: 240 hp of
+  // Light armour and a beam that stops to fire.
   unit({
-    key: 'mrdZenith', name: 'Zenith Emitter', blurb: 'Siege beam. Dies in a brownout.',
+    key: 'mrdZenith', name: 'Zenith Emitter', blurb: 'Siege beam. Stops to fire, and dies to anything that reaches it.',
     faction: FACTION_MERIDIAN, kind: EntityKind.Vehicle,
     cost: 1500, buildTime: 19, tab: BuildTab.Vehicles,
     prereqs: ['mrdForgeyard', 'mrdReliquary'], sortOrder: 40,
@@ -1346,6 +1598,16 @@ export const UNITS: readonly UnitDef[] = [
     weapons: [w('prismBeam')], hasTurret: false, crushableBy: 1,
     maxAlive: 1, ability: AbilityId.ChronoRally,
   }),
+  // HE FIRES `teslaBolt`, WHICH CARRIES `needsPower`, AND IT DOES NOT APPLY.
+  // Kept, and correctly: row 9 is the TESLA COIL's gun, the coil is a structure
+  // drawing -75, and "Melts armour. Dies in a brownout." is the truest blurb in
+  // the defence tab. The flag simply cannot reach a man — `Combat.ts` also
+  // requires `EntityFlag.NeedsPower` on the entity and infantry never carry it
+  // — so the Commissar fires through a blackout and always has. Noted rather
+  // than "fixed": stripping `needsPower` to tidy the sharing would silently
+  // switch the Tesla Coil on during a brownout, which is a real defence going
+  // from a decision to a freebie. The Zenith Emitter was the opposite case (its
+  // weapon had no other carrier) and that flag is gone.
   unit({
     key: 'commissar', name: 'War Commissar', blurb: 'One only. Makes nearby troops untouchable.',
     faction: Faction.Soviets, kind: EntityKind.Infantry,
@@ -1458,9 +1720,17 @@ export const UNITS: readonly UnitDef[] = [
     cost: 1200, buildTime: 16, tab: BuildTab.Vehicles,
     prereqs: ['warFactory', 'radar'], sortOrder: 45,
     model: 'allied_vindicator',
-    // The heaviest and slowest of the four, and the only one with a splash
-    // warhead that hurts Concrete (Rocket, 0.90) — an Allied player buys this
-    // to open a base, not to win a dogfight.
+    // The heaviest and slowest of the four, and the hardest-hitting of the two
+    // that carry a splash warhead which hurts Concrete — an Allied player buys
+    // this to open a base, not to win a dogfight.
+    //
+    // "the ONLY one" was wrong: `kestrelPod` is Rocket too, same 0.90 against
+    // Concrete, and it also splashes. The difference is weight of fire, not the
+    // warhead row — 62 x 2 over a 2.58 s cycle with a 2.2 m burst against the
+    // Kestrel's 44 x 2 over 2.06 s at 1.8 m, so the Vindicator lands 55.8
+    // damage a shot against 35.2 and reaches a metre wider. The MiG (AutoCannon
+    // 0.35) and the Swarmhornet (Tesla 0.60, no splash) are the two that really
+    // cannot open a base.
     maxHp: 240, armor: ArmorClass.Light, maxSpeed: 11.5, turnRate: 2.9,
     locomotor: Locomotor.Air, radius: hullRadius(U.ifv), sight: 38,
     weapons: [w('vindicatorMissile')], hasTurret: false, crushableBy: 0,
@@ -2019,7 +2289,15 @@ export const BUILDINGS: readonly BuildingDef[] = [
    * structure, and the timer PAUSES rather than resetting.
    *
    * Every one is gated on the army's tech building, so a superweapon is the
-   * last thing on the tree and never an opening. */
+   * last thing on the tree and never an opening.
+   *
+   * AND EVERY ONE IS GATED ON A MISSION TOO, which it was not when this block
+   * landed. All six shipped with no `unlockedBy`, so they were buildable in a
+   * player's first match while the five `struct.superweapon.*` ids at the end
+   * of the longest chains in `src/data/Missions.ts` paid into nothing. The tags
+   * are in `UNLOCK_TAGS` above, grouped by the EFFECT each structure fires so
+   * that an unlock id and a `SUPERWEAPONS[].structureKeys` entry can never
+   * disagree about what a weapon is. */
   building({
     key: 'nuclearSilo', name: 'Nuclear Missile Silo',
     blurb: 'Charges a single annihilating warhead. Announced before it lands.',
@@ -2304,6 +2582,45 @@ export { RELOCATE, relocationFee } from '../sim/Relocate';
   for (const d of DEFAULT_WEAPONS) {
     if (weaponIndexOf(d.key) !== (WEAPON_INDEX.get(d.key) ?? -1)) {
       problems.push(`weapon "${d.key}" resolves to a different index here than in the sim`);
+    }
+  }
+
+  /* -- the rows nothing fires -------------------------------------------- *
+   * TWO, BOTH IN `DEFAULT_WEAPONS`, BOTH DELIBERATE, AND THE LIST IS CLOSED.
+   *
+   *   12  artillery    "V4 Launcher" — 130 HE at 48 m with a 6.5 m burst and a
+   *                    12 m minimum. A fully authored Soviet siege gun with no
+   *                    Soviet siege unit to carry it: the roster's answer to a
+   *                    base is the Apocalypse and the air arm. Giving it a hull
+   *                    means a def row, a `FALLBACK_UNITS` row, a model, a
+   *                    cameo and a balance pass, which is content work rather
+   *                    than a data fix.
+   *   6   chaingun     the IFV's old gun, replaced by `ifvChaingun` — see
+   *                    `REBALANCE_WEAPONS`. This file cannot edit a row it
+   *                    borrows verbatim from `src/sim/Combat.ts`, so the
+   *                    corrected weapon had to be appended and row 6 fell out
+   *                    of the roster.
+   *
+   * NEITHER IS UNREACHABLE. `CONTENT_WEAPON` in `src/sim/combat.system.ts`
+   * still names both — `v4` for the first, `ifv` and `sickle` for the second —
+   * and that map is the pre-content path a unit resolves on before the def
+   * tables bind. So they are rows the fallback armoury still serves and the
+   * shipped roster does not, which is a different thing from dead data.
+   *
+   * The count is asserted, not the membership, because the membership is
+   * pinned with its reasons in `tests/content-truthful.spec.ts` §4 — where a
+   * NEW orphan fails loudly instead of joining a list nobody re-reads.       */
+  {
+    const fired = new Set<number>();
+    for (const u of UNITS) for (const i of u.weapons) fired.add(i);
+    for (const b of BUILDINGS) for (const i of b.weapons) fired.add(i);
+    const orphans: string[] = [];
+    for (let i = 0; i < WEAPONS.length; i++) if (!fired.has(i)) orphans.push(`${i}:${WEAPONS[i].key}`);
+    if (orphans.length > 2) {
+      problems.push(
+        `${orphans.length} weapon rows are fired by no def (${orphans.join(', ')}) — only `
+        + '"artillery" and "chaingun" are allowed to be, and both are documented above',
+      );
     }
   }
 

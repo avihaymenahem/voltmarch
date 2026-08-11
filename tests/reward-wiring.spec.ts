@@ -138,23 +138,58 @@ function claimFor(r: Reward): Claim | null {
         };
       }
 
+      /* -- THE GAP THAT CLOSED, AND THIS IS THE MECHANISM WORKING ----------
+       * These five were declared a gap because "no superweapon STRUCTURE
+       * exists in Defs.ts". Six of them do now — they landed in the release
+       * before this one — and they landed WITHOUT `unlockedBy`, so they were
+       * day-one buildable and these five rewards paid into nothing. That is a
+       * gap that closed on one side and stayed open on the other, which is the
+       * exact shape this file's third test is written to catch: the claim had
+       * to be re-declared, and re-declaring it is what forced the tags.       */
       if (SUPERWEAPON_UNLOCK_IDS.includes(id)) {
         return {
-          gap: 'no superweapon STRUCTURE exists in Defs.ts, so nothing can be gated behind '
-            + 'these ids. Declared ahead of the content on purpose; see the comment on '
-            + 'UNLOCKS.superSiege in src/data/Missions.ts.',
-          stillMissing: () => !DECLARED_ON_DEFS.has(id) && !TAGGED.has(id),
+          consumer: 'src/data/Defs.ts#UNLOCK_TAGS -> progression/UnlockGate#allows',
+          // Same proof as any other def gate. `superSiege` covers TWO
+          // structures (weatherControl, rclStormworks) because they fire one
+          // effect for two armies, so this asks the question the right way
+          // round: is the id declared on at least one def, and is it in the
+          // tag table.
+          resolves: () => TAGGED.has(id) && DECLARED_ON_DEFS.has(id),
         };
       }
 
+      /* -- THE FOURTEEN COSMETICS, NOW DECLARED FOR WHAT THEY ARE ----------
+       * This used to claim `rewardCopy` as a CONSUMER on the grounds that the
+       * copy said "No effect on the battle", so display was the whole
+       * contract. That was half right. The copy also said the insignia was
+       * "Worn by your army", which nothing has ever made true: the insignia
+       * plate on a structure is `MassRole.Insignia`, chosen per FACTION out of
+       * `FACTION_PALETTE`, and there is no path from `cosmetic.insignia.gold`
+       * to a pixel. A screen that names a reward is not a consumer of it — by
+       * that standard the five commander powers were "wired" too, and this
+       * file exists because they were not.
+       *
+       * So it is a gap, with the honest reason, and `stillMissing` will fail
+       * the day anything outside the two mission screens reads a cosmetic id.  */
       if (id.startsWith('cosmetic.')) {
         return {
-          consumer: 'src/shell/Missions.ts#rewardCopy — display only, and it says so',
-          // The honest consumer of a cosmetic is the screen that names it. The
-          // reward copy promises "No effect on the battle", so display IS the
-          // whole contract — unlike a power, which promised to be callable.
-          resolves: () => rewardCopySource.includes("case 'cosmetic':")
-            && rewardCopySource.includes('No effect on the battle'),
+          gap: 'NOTHING WEARS THESE. Fourteen ids ship (eight insignia, six decals) and the '
+            + 'only readers are src/shell/Missions.ts#rewardCopy and src/ui/ObjectiveBanner.ts, '
+            + 'both of which merely NAME the reward. They are kept rather than retired because '
+            + 'retiring an id strips it off every profile that earned it; the copy now says '
+            + '"A record on your profile. Nothing in a match reads it yet." rather than '
+            + '"Worn by your army".',
+          stillMissing: () => {
+            // The screens that name it are allowed. Anything in the art, render
+            // or sim layers reading a cosmetic id would be a real consumer.
+            for (const rel of ['src/art/BuildingDefs.ts', 'src/art/UnitDefs.ts',
+              'src/render/render-bridge.system.ts', 'src/progression/UnlockGate.ts']) {
+              if (/cosmetic\./.test(code(rel))) return false;
+            }
+            // ...and the copy must still be telling the truth about it.
+            return rewardCopySource.includes("case 'cosmetic':")
+              && rewardCopySource.includes('Nothing in a match reads it yet');
+          },
         };
       }
 
@@ -176,10 +211,13 @@ function claimFor(r: Reward): Claim | null {
         resolves: () => lobbySource.includes('isMapUnlocked(') && MAP_CATALOGUE.has(r.mapId),
       };
 
+    // The typed twin of the `cosmetic.*` unlock above, and the same gap. See
+    // there for why it is one.
     case 'cosmetic':
       return {
-        consumer: 'src/shell/Missions.ts#rewardCopy — display only, and it says so',
-        resolves: () => rewardCopySource.includes('No effect on the battle'),
+        gap: 'display only — the reward is named on the missions screen and nothing else '
+          + 'in the product reads it. See the cosmetic branch of the `unlock` case.',
+        stillMissing: () => rewardCopySource.includes('Nothing in a match reads it yet'),
       };
 
     case 'credits':

@@ -44,7 +44,7 @@ import { defineSystem } from '../core/loop';
 import { Phase } from '../core/types';
 import { ctx } from '../game/context';
 
-import { MISSIONS, MISSION_UNLOCK_IDS } from '../data/Missions';
+import { MISSIONS, MISSION_UNLOCK_IDS, UNLOCK_REQUIREMENTS } from '../data/Missions';
 import { MissionTracker } from './MissionTracker';
 import { ProfileStore, browserStorage, memoryStorage } from './profile-store';
 import { UnlockGate, setUnlockGate } from './UnlockGate';
@@ -209,6 +209,15 @@ export default defineSystem({
     tracker = new MissionTracker(MISSIONS, store);
     gate = new UnlockGate(() => store?.get().unlocked ?? EMPTY, {
       knownUnlockIds: MISSION_UNLOCK_IDS,
+      // WHICH MISSION, NOT "a mission". This is the ONE call site that knows
+      // both halves — the mission table and the gate — so it is where the join
+      // is made. `UnlockGate` must keep importing nothing but its own types
+      // (see the note on `UnlockGateOptions.unlockHints`): the sim calls
+      // `isBuildable` from inside `ProductionCatalog`, and an import of
+      // `data/Missions` there would pull the whole progression layer into the
+      // simulation bundle. Handing the map in as data costs one line and keeps
+      // that boundary exactly where it was.
+      unlockHints: UNLOCK_REQUIREMENTS,
       // UNRESTRICTED UNDER THE HARNESS, and this is not the same statement as
       // the memory store above.
       //

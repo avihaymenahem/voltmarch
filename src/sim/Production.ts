@@ -71,7 +71,7 @@ import {
 // table. Both functions answer "yes" when no gate is installed, which is what
 // keeps the sim running with the whole progression layer absent — the state the
 // `?shot=` harness and every node test are in.
-import { isBuildable, LOCKED_REASON } from '../progression/UnlockGate';
+import { isBuildable, LOCKED_REASON, unlockGate } from '../progression/UnlockGate';
 
 // The upgrade table and its one mutator. `src/sim/Upgrades.ts` imports nothing
 // but `core/types`, so this edge adds no cycle and no progression dependency —
@@ -650,10 +650,24 @@ const CONTENT: readonly ContentSpec[] = [
    *
    * READ THE PREREQ COLUMN, because it is the whole faction: `rclSpitter` and
    * `rclGrinder` name ONLY `rclBreakerYard`. Four structures — Foundry,
-   * Furnace, Sorter, Breaker Yard — and the Reclamation's line army exists,
-   * where an Allied or Soviet player needs six before a Grizzly, and a Pact
-   * player needs five. It buys that tempo with an 80-power plant (against 100
-   * and 160) and with the softest hulls in the game.
+   * Furnace, Sorter, Breaker Yard — and the Reclamation's line army exists.
+   *
+   * FOUR IS ALSO WHAT EVERYONE ELSE NEEDS, and this comment used to claim
+   * otherwise: "an Allied or Soviet player needs six before a Grizzly, and a
+   * Pact player needs five". Walk the chains and all three are the same length.
+   *
+   *   conyard   -> powerPlant     -> refinery  -> warFactory    -> grizzly
+   *   mrdConclave -> mrdSolarArray -> mrdCistern -> mrdForgeyard -> mrdSolarch
+   *   rclFoundry  -> rclFurnace    -> rclSorter  -> rclBreakerYard -> rclGrinder
+   *
+   * So the flatness is real but it is not measured in structure COUNT. What
+   * the Reclamation actually buys is: a Rookery hanging off the Furnace rather
+   * than the Sorter (infantry one building earlier than anyone else), a Breaker
+   * Yard 100 credits and 2 seconds cheaper than the rival factories, and the
+   * cheapest and fastest hulls in the game — a Grinder is 600/9 s against a
+   * Grizzly's 700/11, a Solarch's 800/12 and a Rhino's 900/13. It pays for that
+   * tempo with an 80-power plant (against 100 and 160) and the softest hulls in
+   * the game: 270 hp against 340, 330 and 420.
    * ====================================================================== */
   {
     key: 'rclFoundry', name: 'Foundry', blurb: 'Unfolds the Reclamation. Builds structures.',
@@ -1631,7 +1645,19 @@ export class ProductionService implements QueueHooks {
     // reveal the unlock exists to deliver. Difficulty stays where it lives: the
     // economy handicap and composition quality in AIStrategy.
     if (!isBuildable(entry, p)) {
-      result.ok = false; result.reason = LOCKED_REASON; return result;
+      // NAME THE MISSION. `reasonFor` resolves the def's `unlockedBy` through
+      // the hint table `progression.system.ts` injects and answers
+      // "Locked — Strip Mine: mine 250,000 credits of ore" rather than
+      // "Locked — complete a mission". A player hovered a Battle Lab, was told
+      // to complete "a mission", and asked whether they were supposed to guess.
+      // They were: one constant served every locked cameo in the game while the
+      // def already carried the tag and the mission already carried the grant.
+      //
+      // `LOCKED_REASON` stays as the fallback for a gate with no hints — a
+      // headless test and the `?shot=` harness both run in that state.
+      result.ok = false;
+      result.reason = unlockGate()?.reasonFor(entry) || LOCKED_REASON;
+      return result;
     }
     for (let i = 0; i < entry.prereqs.length; i++) {
       const key = entry.prereqs[i];

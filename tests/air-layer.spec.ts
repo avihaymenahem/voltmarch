@@ -393,7 +393,13 @@ describe('canTargetAir — the gate, and its default', () => {
       // The Allied and Soviet air arms. Both elevate, for the reason the
       // Kestrel's pods and the Hornet's arc do: aircraft must be able to answer
       // aircraft, or owning the only one is a win condition.
-      'vindicatorMissile', 'migCannon'];
+      'vindicatorMissile', 'migCannon',
+      // The Multigunner IFV's replacement gun. It elevates for the same reason
+      // `chaingun` (still row 6, still listed above) did: an autocannon on a
+      // turret is the textbook mobile AA mount, and the IFV is the Allied
+      // army's only one that moves. See `REBALANCE_WEAPONS` in Defs.ts — the
+      // rebalance cut its damage, never its ability to shoot up.
+      'ifvChaingun'];
     const cannot = ['lightCannon', 'heavyCannon', 'twinCannon', 'prismBeam', 'flameJet',
       'pillboxMg', 'artillery', 'navalGun', 'torpedo', 'bite',
       'focusLance', 'zenithBeam', 'glaiveRepeater', 'mirrorGun',
