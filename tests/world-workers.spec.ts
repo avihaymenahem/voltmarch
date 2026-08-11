@@ -51,11 +51,16 @@ import {
   type WaterFieldData,
 } from '../src/world/water-gen';
 import {
-  isTerrainJob, isTerrainReply, isTextureJob, isWaterJob, isWaterReply,
-  replyTransfers, runJob, runTerrainJob, runWaterJob,
+  isTerrainJob, isTerrainReply, isTerrainTexJob, isTerrainTexReply, isTextureJob,
+  isWaterJob, isWaterReply, isWaterTexJob, isWaterTexReply, isWorkerReply,
+  replyTransfers, runJob, runTerrainJob, runTerrainTexJob, runWaterJob, runWaterTexJob,
   type TerrainJob, type WaterJob,
 } from '../src/core/workers/protocol';
 import { TexturePool, type WorkerLike } from '../src/core/workers/TexturePool';
+import { BIOMES } from '../src/world/Biomes';
+import { WATER_PALETTES } from '../src/core/config';
+import { createTerrainMaterials } from '../src/world/TerrainMaterial';
+import { createWaterMaterial } from '../src/world/WaterMaterial';
 
 /* -------------------------------------------------------------------------- */
 /* Fixtures                                                                    */
@@ -832,12 +837,18 @@ describe('the world generators stay out of the renderer', () => {
 
   it('has a worker import graph with no THREE, no render/, no game/', () => {
     const files = walk(join(SRC, 'core', 'workers', 'textureWorker.ts'));
-    // The two generators must actually be in there, or this test is checking a
+    // The four generators must actually be in there, or this test is checking a
     // graph that no longer contains the thing it is guarding.
-    expect(files.some((f) => f.endsWith(`world${'\\'}terrain-gen.ts`) || f.endsWith('world/terrain-gen.ts')))
-      .toBe(true);
-    expect(files.some((f) => f.endsWith(`world${'\\'}water-gen.ts`) || f.endsWith('world/water-gen.ts')))
-      .toBe(true);
+    const has = (name: string): boolean => files.some(
+      (f) => f.endsWith(`world${'\\'}${name}`) || f.endsWith(`world/${name}`),
+    );
+    expect(has('terrain-gen.ts')).toBe(true);
+    expect(has('water-gen.ts')).toBe(true);
+    // The two TILE generators. `terrain-texture-gen.ts` is the one at real risk:
+    // everything it needs is re-exported from `core/assets.ts`, which carries
+    // THREE, and the module it was split out of imported it from exactly there.
+    expect(has('terrain-texture-gen.ts')).toBe(true);
+    expect(has('water-texture-gen.ts')).toBe(true);
   });
 
   it('keeps the plan module — which does import game/ — out of that graph', () => {
@@ -870,5 +881,273 @@ describe('field set shape', () => {
     expect(water.depth.length).toBe(FIELD_TEXELS);
     expect(water.field.length).toBe(FIELD_BYTES);
     expect(water.waterCells.length).toBe(MAP_CELL_COUNT);
+  });
+});
+
+/* ==========================================================================
+ * 8. THE TILES — the second thing that moved off the main thread
+ *
+ * Sections 1-7 are about the FIELDS: the heightfield, the nav grids, the chunk
+ * vertices and the water bake. This section is about the TEXTURES the two
+ * materials sample, which moved for the same reason and carry a different risk.
+ *
+ * THE RISK IS NOT THAT THE GENERATOR DISAGREES WITH ITSELF. There is one
+ * implementation of every tile and both threads call it, so comparing
+ * `generateTerrainTextures` against `buildLayerArrayBytes` would be comparing a
+ * function to itself and would pass on any wiring whatsoever.
+ *
+ * The risk is the WIRING: a seed salt applied on one side and not the other, a
+ * warp buffer wrapped at the macro tile's dimensions, a set adopted for the
+ * wrong biome, or an adoption path that silently never fires and leaves the
+ * boot exactly as slow as it was. So the test builds a real material BOTH WAYS
+ * and compares the bytes the shader would actually sample — and asserts that
+ * adoption HAPPENED, because a byte-identical result is also what a prewarm
+ * that was quietly ignored would produce. That is the `replay-probe` lesson in
+ * a different costume.
+ * ========================================================================== */
+
+describe('terrain tiles: adopting a prewarm changes no pixel', () => {
+  const SIZE = 64;   // Small enough to keep the suite fast; the wiring is size-agnostic.
+
+  for (const biome of ['temperate', 'desert'] as const) {
+    it(`is byte-identical with and without a prewarm — ${biome}`, () => {
+      const seed = 4242;
+      const def = BIOMES[biome];
+
+      // The worker's path, through the real job body and the real guards.
+      const reply = runTerrainTexJob({ kind: 'terrainTex', id: 1, biome, size: SIZE, seed });
+      expect(reply.kind).toBe('terrainTex:done');
+      if (reply.kind !== 'terrainTex:done') return;
+      expect(isTerrainTexReply(reply)).toBe(true);
+
+      const adopted = createTerrainMaterials({
+        biome: def, layerTextureSize: SIZE, seed, textures: reply.data,
+      });
+      const inline = createTerrainMaterials({
+        biome: def, layerTextureSize: SIZE, seed, textures: null,
+      });
+
+      // THE PREMISE, STATED OUT LOUD. Without this the comparison below passes
+      // for a prewarm that was thrown away.
+      expect(adopted.texturesAdopted).toBe(true);
+      expect(inline.texturesAdopted).toBe(false);
+
+      const layersOf = (m: typeof adopted): Uint8Array =>
+        (m.uniforms.uLayers.value as { image: { data: Uint8Array } }).image.data;
+      const imageOf = (t: unknown): Uint8Array =>
+        (t as { image: { data: Uint8Array } }).image.data;
+
+      expect(bytesOf(layersOf(adopted)).equals(bytesOf(layersOf(inline)))).toBe(true);
+      expect(bytesOf(imageOf(adopted.uniforms.uWarp.value))
+        .equals(bytesOf(imageOf(inline.uniforms.uWarp.value)))).toBe(true);
+      expect(bytesOf(imageOf(adopted.uniforms.uMacro.value))
+        .equals(bytesOf(imageOf(inline.uniforms.uMacro.value)))).toBe(true);
+
+      adopted.dispose();
+      inline.dispose();
+    });
+  }
+
+  it('refuses a set generated for a different biome', () => {
+    const seed = 11;
+    const reply = runTerrainTexJob({
+      kind: 'terrainTex', id: 1, biome: 'desert', size: SIZE, seed,
+    });
+    if (reply.kind !== 'terrainTex:done') throw new Error('generation failed');
+
+    // Same seed, same size, WRONG biome. Adopting this would tint the whole map
+    // for a biome the heightfield was not generated against — and it would look
+    // deliberate rather than broken, which is what makes it worth a test.
+    const m = createTerrainMaterials({
+      biome: BIOMES.temperate, layerTextureSize: SIZE, seed, textures: reply.data,
+    });
+    expect(m.texturesAdopted).toBe(false);
+    m.dispose();
+  });
+
+  it('refuses a set generated at a different size', () => {
+    const reply = runTerrainTexJob({
+      kind: 'terrainTex', id: 1, biome: 'temperate', size: SIZE, seed: 5,
+    });
+    if (reply.kind !== 'terrainTex:done') throw new Error('generation failed');
+    // A size mismatch is the one that does not throw on its own: the array
+    // texture would be declared at 128 over a buffer holding 64, and the upload
+    // reads past the end of the allocation.
+    const m = createTerrainMaterials({
+      biome: BIOMES.temperate, layerTextureSize: SIZE * 2, seed: 5, textures: reply.data,
+    });
+    expect(m.texturesAdopted).toBe(false);
+    m.dispose();
+  });
+
+  it('does not let a prewarm leak into a later biome swap', () => {
+    // `applyBiome` is called again on every `?biome=` change from the console.
+    // The prewarmed bytes describe the FIRST biome only; reusing them on the
+    // second would leave the ground painted for the map you just left.
+    const seed = 77;
+    const reply = runTerrainTexJob({
+      kind: 'terrainTex', id: 1, biome: 'temperate', size: SIZE, seed,
+    });
+    if (reply.kind !== 'terrainTex:done') throw new Error('generation failed');
+
+    const swapped = createTerrainMaterials({
+      biome: BIOMES.temperate, layerTextureSize: SIZE, seed, textures: reply.data,
+    });
+    swapped.applyBiome(BIOMES.desert);
+
+    const fresh = createTerrainMaterials({
+      biome: BIOMES.desert, layerTextureSize: SIZE, seed, textures: null,
+    });
+
+    const layersOf = (m: typeof fresh): Uint8Array =>
+      (m.uniforms.uLayers.value as { image: { data: Uint8Array } }).image.data;
+    expect(bytesOf(layersOf(swapped)).equals(bytesOf(layersOf(fresh)))).toBe(true);
+
+    swapped.dispose();
+    fresh.dispose();
+  });
+});
+
+describe('water tiles: adopting a prewarm changes no pixel', () => {
+  const SIZE = 128;
+
+  it('is byte-identical with and without a prewarm', () => {
+    const seed = 0x5ea1ce;
+    const reply = runWaterTexJob({ kind: 'waterTex', id: 1, size: SIZE, seed });
+    expect(reply.kind).toBe('waterTex:done');
+    if (reply.kind !== 'waterTex:done') return;
+    expect(isWaterTexReply(reply)).toBe(true);
+
+    const palette = WATER_PALETTES.temperate;
+    const adopted = createWaterMaterial({
+      palette, rampDepth: 4, seed, textureSize: SIZE, textures: reply.data,
+    });
+    const inline = createWaterMaterial({
+      palette, rampDepth: 4, seed, textureSize: SIZE, textures: null,
+    });
+
+    expect(adopted.texturesAdopted).toBe(true);
+    expect(inline.texturesAdopted).toBe(false);
+
+    expect(bytesOf(adopted.waveTexture.image.data as Uint8Array)
+      .equals(bytesOf(inline.waveTexture.image.data as Uint8Array))).toBe(true);
+    expect(bytesOf(adopted.laceTexture.image.data as Uint8Array)
+      .equals(bytesOf(inline.laceTexture.image.data as Uint8Array))).toBe(true);
+
+    adopted.dispose();
+    inline.dispose();
+  });
+
+  it('refuses a set generated at a different seed or size', () => {
+    const reply = runWaterTexJob({ kind: 'waterTex', id: 1, size: SIZE, seed: 1 });
+    if (reply.kind !== 'waterTex:done') throw new Error('generation failed');
+    const palette = WATER_PALETTES.temperate;
+
+    const wrongSeed = createWaterMaterial({
+      palette, rampDepth: 4, seed: 2, textureSize: SIZE, textures: reply.data,
+    });
+    expect(wrongSeed.texturesAdopted).toBe(false);
+    wrongSeed.dispose();
+
+    const wrongSize = createWaterMaterial({
+      palette, rampDepth: 4, seed: 1, textureSize: SIZE * 2, textures: reply.data,
+    });
+    expect(wrongSize.texturesAdopted).toBe(false);
+    wrongSize.dispose();
+  });
+
+  it('is not invalidated by the palette, which never enters the tiles', () => {
+    // Colour reaches the water through uniforms only, which is what lets a
+    // `?water=arctic` override keep the prewarm. If a tile ever starts reading
+    // the palette, `waterTextureKey` has to grow a term and this test is the
+    // one that should fail.
+    const seed = 3;
+    const reply = runWaterTexJob({ kind: 'waterTex', id: 1, size: SIZE, seed });
+    if (reply.kind !== 'waterTex:done') throw new Error('generation failed');
+    const m = createWaterMaterial({
+      palette: WATER_PALETTES.arctic, rampDepth: 4, seed, textureSize: SIZE,
+      textures: reply.data,
+    });
+    expect(m.texturesAdopted).toBe(true);
+    m.dispose();
+  });
+});
+
+describe('the tile guards refuse what would otherwise be drawn', () => {
+  it('rejects a job naming a biome this build does not have', () => {
+    // Unchecked, this indexes `BIOMES` to `undefined` and the generator reads
+    // `.layers` off it — a TypeError inside the worker, which reaches the pool
+    // as `onerror` and disables the offload for the whole boot.
+    expect(isTerrainTexJob({ kind: 'terrainTex', id: 1, biome: 'atlantis', size: 64, seed: 1 }))
+      .toBe(false);
+    expect(isTerrainTexJob({ kind: 'terrainTex', id: 1, biome: 'temperate', size: 64, seed: 1 }))
+      .toBe(true);
+  });
+
+  it('rejects a size that would be an allocation rather than a texture', () => {
+    for (const size of [0, -8, 1.5, 60_000, Number.NaN]) {
+      expect(isTerrainTexJob({ kind: 'terrainTex', id: 1, biome: 'temperate', size, seed: 1 }))
+        .toBe(false);
+      expect(isWaterTexJob({ kind: 'waterTex', id: 1, size, seed: 1 })).toBe(false);
+    }
+  });
+
+  it('rejects a reply whose buffers do not match the size it declares', () => {
+    const reply = runTerrainTexJob({
+      kind: 'terrainTex', id: 1, biome: 'temperate', size: 64, seed: 1,
+    });
+    if (reply.kind !== 'terrainTex:done') throw new Error('generation failed');
+    expect(isTerrainTexReply(reply)).toBe(true);
+
+    // One byte short. This is the corruption that does not throw: it is a GPU
+    // upload reading past the end of an allocation, which this repo has already
+    // seen render as a completely dead frame while the counters looked healthy.
+    const short = {
+      ...reply,
+      data: { ...reply.data, layers: reply.data.layers.slice(0, reply.data.layers.length - 1) },
+    };
+    expect(isTerrainTexReply(short)).toBe(false);
+
+    // And a size that disagrees with buffers which are themselves intact.
+    expect(isTerrainTexReply({ ...reply, data: { ...reply.data, layerSize: 128 } })).toBe(false);
+  });
+
+  it('rejects a water reply with a truncated lace', () => {
+    const reply = runWaterTexJob({ kind: 'waterTex', id: 1, size: 64, seed: 1 });
+    if (reply.kind !== 'waterTex:done') throw new Error('generation failed');
+    expect(isWaterTexReply(reply)).toBe(true);
+    const short = {
+      ...reply,
+      data: { ...reply.data, lace: reply.data.lace.slice(0, 16) },
+    };
+    expect(isWaterTexReply(short)).toBe(false);
+  });
+
+  it('hands every tile buffer to the transfer list', () => {
+    // A buffer left off the list is structured-CLONED instead, which is the
+    // main-thread copy the worker exists to avoid — and it is invisible, because
+    // the result is correct either way.
+    const t = runTerrainTexJob({ kind: 'terrainTex', id: 1, biome: 'temperate', size: 64, seed: 1 });
+    if (t.kind !== 'terrainTex:done') throw new Error('generation failed');
+    const tBufs = replyTransfers(t);
+    expect(tBufs).toContain(t.data.layers.buffer);
+    expect(tBufs).toContain(t.data.warp.buffer);
+    expect(tBufs).toContain(t.data.macro.buffer);
+    expect(new Set(tBufs).size).toBe(tBufs.length);   // no buffer twice: DataCloneError
+
+    const w = runWaterTexJob({ kind: 'waterTex', id: 1, size: 64, seed: 1 });
+    if (w.kind !== 'waterTex:done') throw new Error('generation failed');
+    const wBufs = replyTransfers(w);
+    expect(wBufs).toContain(w.data.waves.buffer);
+    expect(wBufs).toContain(w.data.lace.buffer);
+  });
+
+  it('survives the round trip through structuredClone and runJob', () => {
+    // The wire is structured clone, so the job the worker actually sees is a
+    // COPY. A field that does not clone would be `undefined` on the far side.
+    const job = { kind: 'terrainTex' as const, id: 9, biome: 'temperate', size: 64, seed: 3 };
+    const reply = runJob(structuredClone(job));
+    expect(reply.kind).toBe('terrainTex:done');
+    expect(isWorkerReply(structuredClone(reply))).toBe(true);
   });
 });

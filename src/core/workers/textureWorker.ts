@@ -22,17 +22,19 @@
  * `tests/texture-workers.spec.ts` and `tests/world-workers.spec.ts` walk this
  * graph and fail on a stray import.
  *
- * FOUR JOB KINDS
- * --------------
+ * SIX JOB KINDS
+ * -------------
  * Textures (one generator run, N channel packings), greeble atlases (one run,
  * four packings plus the float fields the R1 gate re-measures), terrain (the
- * heightfield, the nav grids, the splat and 64 chunks of vertices) and water
- * (the depth/shore fields and the packed field texture). They are separate
- * shapes on one wire; `runJob` dispatches.
+ * heightfield, the nav grids, the splat and 64 chunks of vertices), water (the
+ * depth/shore fields and the packed field texture), terrain TILES (six layer
+ * albedos plus the warp and macro supports) and water TILES (the wave-slope map
+ * and the foam lace). They are separate shapes on one wire; `runJob`
+ * dispatches.
  *
  * They do NOT all share one pool. Textures and greeble do — there are only ever
- * a handful of workers and both kinds land at boot, competing for them. The two
- * world jobs get their own single worker, because a 500 ms terrain generation
+ * a handful of workers and both kinds land at boot, competing for them. The
+ * four world jobs get their own small pool, because a 500 ms terrain generation
  * dropped into the atlas round robin would either sit behind the atlases or
  * park one of the four for the whole boot. See `world-warm.ts`.
  *
@@ -46,7 +48,8 @@
  */
 
 import {
-  isGreebleJob, isTerrainJob, isTextureJob, isWaterJob, replyTransfers, runJob,
+  isGreebleJob, isTerrainJob, isTerrainTexJob, isTextureJob, isWaterJob,
+  isWaterTexJob, replyTransfers, runJob,
 } from './protocol';
 
 /**
@@ -62,7 +65,8 @@ declare const self: DedicatedWorkerGlobalScope;
 
 self.onmessage = (event: MessageEvent): void => {
   const job: unknown = event.data;
-  if (!isTextureJob(job) && !isGreebleJob(job) && !isTerrainJob(job) && !isWaterJob(job)) {
+  if (!isTextureJob(job) && !isGreebleJob(job) && !isTerrainJob(job) && !isWaterJob(job)
+    && !isTerrainTexJob(job) && !isWaterTexJob(job)) {
     // Not our message shape. Say so rather than throwing: an unhandled throw
     // in a worker fires `onerror` on the main thread, and the pool reads that
     // as "the worker is broken" and disables itself for the rest of the boot.

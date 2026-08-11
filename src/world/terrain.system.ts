@@ -35,7 +35,10 @@
 import { defineSystem } from '../core/loop';
 import { Phase } from '../core/types';
 import { ctx } from '../game/context';
-import { notePrewarmAdopted, prewarmedTerrain } from '../core/workers/world-warm';
+import {
+  notePrewarmAdopted, prewarmedTerrain, prewarmedTerrainTextureKey,
+  prewarmedTerrainTextures,
+} from '../core/workers/world-warm';
 import { Terrain, getTerrain, setActiveTerrain } from './Terrain';
 import { plannedTerrainInput } from './terrain-plan';
 
@@ -76,15 +79,29 @@ export default defineSystem({
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
 
     const input = plannedTerrainInput();
-    const fields = await prewarmedTerrain();
+    /*
+     * ONE WAIT, NOT TWO. The fields and the tiles were dispatched at the same
+     * moment onto a two-worker pool, so awaiting them in sequence would report
+     * the same wall clock while reading as though one queued behind the other.
+     * `Promise.all` resolves when the slower of the two lands, which is exactly
+     * how long the boot stopped here.
+     */
+    const [fields, layerTextures] = await Promise.all([
+      prewarmedTerrain(), prewarmedTerrainTextures(),
+    ]);
 
     terrain = new Terrain({
       ...input,
       scene: sceneRig.scene,
       anisotropy: handle.renderer.capabilities.getMaxAnisotropy(),
       fields,
+      textures: layerTextures,
     });
     notePrewarmAdopted('terrain', fields !== null && fields.key === terrain.genKey);
+    notePrewarmAdopted(
+      'terrainTex',
+      layerTextures !== null && layerTextures.key === prewarmedTerrainTextureKey(),
+    );
 
     setActiveTerrain(terrain);
     world.terrain = terrain;

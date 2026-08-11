@@ -44,12 +44,18 @@
  * ============================================================================
  */
 
-import { WATER_LEVEL, WATER_SEED } from '../config';
+import {
+  TERRAIN_LAYER_TEXTURE_SIZE, WATER_LEVEL, WATER_SEED, WATER_TEXTURE_SIZE,
+} from '../config';
 import { TexturePool } from './TexturePool';
 import { spawnTextureWorker } from './spawn';
 import { plannedTerrainInput } from '../../world/terrain-plan';
 import { terrainGenKey, type TerrainFieldData } from '../../world/terrain-gen';
 import { waterGenKey, type WaterFieldData } from '../../world/water-gen';
+import {
+  terrainTextureKey, type TerrainTextureData,
+} from '../../world/terrain-texture-gen';
+import { waterTextureKey, type WaterTextureData } from '../../world/water-texture-gen';
 
 /* -------------------------------------------------------------------------- */
 
@@ -70,6 +76,8 @@ let pool: TexturePool | null = null;
 
 let terrainPromise: Promise<TerrainFieldData | null> | null = null;
 let waterPromise: Promise<WaterFieldData | null> | null = null;
+let terrainTexPromise: Promise<TerrainTextureData | null> | null = null;
+let waterTexPromise: Promise<WaterTextureData | null> | null = null;
 
 /** What actually happened, for the one line the system prints at init. */
 const report = {
@@ -79,8 +87,12 @@ const report = {
   /** Milliseconds the worker itself spent, as measured inside the worker. */
   terrainMs: 0,
   waterMs: 0,
+  terrainTexMs: 0,
+  waterTexMs: 0,
   terrainAdopted: false,
   waterAdopted: false,
+  terrainTexAdopted: false,
+  waterTexAdopted: false,
   reason: '',
 };
 
@@ -111,9 +123,38 @@ export function installWorldWorkers(): void {
     return;
   }
 
+  /*
+   * TWO WORKERS, NOT ONE, AND THE ARITHMETIC IS THE WHOLE ARGUMENT.
+   *
+   * This was a single worker while there were only two jobs and they were
+   * strictly sequential — the water bake needs the terrain's finished
+   * heightfield, so a second worker would have had nothing to do. The two TILE
+   * jobs broke that: they read no heightfield at all, so they are ready to run
+   * at the same instant the terrain job is.
+   *
+   * Measured on `08-naval-water`, the four jobs are roughly terrain 560 ms,
+   * terrain tiles 420, water tiles 260, water bake 75. On one worker that is
+   * ~1315 ms of strictly serial work; on two the longest chain is ~820, against
+   * the ~2.6 s the art systems spend on the MAIN thread before `world.terrain`'s
+   * init runs at all. Either fits, which is exactly why this is capped at two
+   * rather than raised further — the art pool already takes up to four workers
+   * for its atlases, and a world pool that grew to match would be competing
+   * with the work it exists to hide behind.
+   *
+   * Capped by hardware as well as by the constant: on a two-core machine a
+   * second world worker is a second thread contending for the same core, and
+   * `defaultPoolSize`'s "leave a core for the thread that is trying to boot a
+   * game" applies here for the same reason.
+   */
+  const cores = typeof navigator !== 'undefined'
+    && typeof navigator.hardwareConcurrency === 'number'
+    ? navigator.hardwareConcurrency
+    : 4;
+  const size = Math.max(1, Math.min(2, cores - 2));
+
   pool = new TexturePool({
     spawn: spawnTextureWorker,
-    size: 1,
+    size,
     timeoutMs: 20_000,
     onDisabled: (reason) => {
       report.reason = reason;
@@ -127,6 +168,39 @@ export function installWorldWorkers(): void {
     if (data !== null) report.terrainMs = data.generateMs;
     return data;
   });
+
+  /*
+   * THE TILE JOBS ARE SUBMITTED HERE, not chained onto anything.
+   *
+   * `TexturePool` hands jobs out round robin, so with two workers the terrain
+   * generation and the terrain tiles start together on separate threads and the
+   * water tiles queue behind whichever finishes first. The water BAKE still
+   * chains off the terrain reply below, because it genuinely cannot start
+   * earlier.
+   *
+   * `?terrainworkers=off` has already returned above and takes these with it,
+   * which is the honest behaviour: that flag means "do the world on the main
+   * thread" and a boot that offloaded the tiles but not the heightfield would
+   * measure neither path.
+   */
+  terrainTexPromise = pool.submitTerrainTextures(
+    input.biome, TERRAIN_LAYER_TEXTURE_SIZE, input.seed,
+  ).then((data) => {
+    if (data !== null) report.terrainTexMs = data.generateMs;
+    return data;
+  });
+
+  /*
+   * The water TILES do not depend on the bed, so unlike the bake they are
+   * dispatched immediately — but they DO follow `?waterworkers=off`, so that
+   * the flag still means "no water offload of any kind" rather than half of one.
+   */
+  waterTexPromise = report.waterOff
+    ? Promise.resolve(null)
+    : pool.submitWaterTextures(WATER_TEXTURE_SIZE, WATER_SEED).then((data) => {
+      if (data !== null) report.waterTexMs = data.generateMs;
+      return data;
+    });
 
   waterPromise = terrainPromise.then((terrain) => {
     // No terrain means no bed. Not an error — the terrain will be generated on
@@ -176,10 +250,44 @@ export function prewarmedWaterKey(): string {
   return waterGenKey(terrainGenKey(plannedTerrainInput()), WATER_LEVEL, WATER_SEED);
 }
 
+/**
+ * The prewarmed terrain TILES, or null. Awaited by `world.terrain`'s init
+ * alongside the fields.
+ *
+ * Awaiting both is one wait, not two: they were dispatched together and
+ * `Promise.all` resolves when the slower lands, which is the honest figure for
+ * "how long the boot stopped here".
+ */
+export function prewarmedTerrainTextures(): Promise<TerrainTextureData | null> {
+  if (terrainTexPromise === null) return Promise.resolve(null);
+  return terrainTexPromise;
+}
+
+/** The prewarmed water TILES, or null. Awaited by `world.water`'s init. */
+export function prewarmedWaterTextures(): Promise<WaterTextureData | null> {
+  if (waterTexPromise === null) return Promise.resolve(null);
+  return waterTexPromise;
+}
+
+/** The key a prewarmed terrain tile set must carry to be adopted. */
+export function prewarmedTerrainTextureKey(): string {
+  const input = plannedTerrainInput();
+  return terrainTextureKey(input.biome, TERRAIN_LAYER_TEXTURE_SIZE, input.seed);
+}
+
+/** The key a prewarmed water tile set must carry to be adopted. */
+export function prewarmedWaterTextureKey(): string {
+  return waterTextureKey(WATER_TEXTURE_SIZE, WATER_SEED);
+}
+
 /** Record that a caller actually used a prewarmed set. For the boot log only. */
-export function notePrewarmAdopted(which: 'terrain' | 'water', adopted: boolean): void {
+export function notePrewarmAdopted(
+  which: 'terrain' | 'water' | 'terrainTex' | 'waterTex', adopted: boolean,
+): void {
   if (which === 'terrain') report.terrainAdopted = adopted;
-  else report.waterAdopted = adopted;
+  else if (which === 'water') report.waterAdopted = adopted;
+  else if (which === 'terrainTex') report.terrainTexAdopted = adopted;
+  else report.waterTexAdopted = adopted;
 }
 
 /**

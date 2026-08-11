@@ -31,24 +31,28 @@
  * worker in Node, and `./spawn.ts` is the only file in the project that names
  * the real one.
  *
- * IT IS STILL CALLED `TexturePool`, and it now serves four job kinds: textures,
- * greeble atlases, terrain and water. The name is the one every caller and spec
- * already imports and renaming it would be a large diff for no behaviour; what
- * matters is that there is ONE disable cascade rather than four copies of it.
- * Two INSTANCES exist — `src/core/assets.ts` owns the art pool (up to four
- * workers) and `./world-warm.ts` owns a single-worker pool for the two
- * boot-time world jobs, so a 500 ms terrain generation cannot park an atlas.
+ * IT IS STILL CALLED `TexturePool`, and it now serves six job kinds: textures,
+ * greeble atlases, terrain and water fields, and the terrain and water TILES.
+ * The name is the one every caller and spec already imports and renaming it
+ * would be a large diff for no behaviour; what matters is that there is ONE
+ * disable cascade rather than six copies of it. Two INSTANCES exist —
+ * `src/core/assets.ts` owns the art pool (up to four workers) and
+ * `./world-warm.ts` owns a small pool for the four boot-time world jobs, so a
+ * 500 ms terrain generation cannot park an atlas.
  * ============================================================================
  */
 
 import type { Channel, TextureRequest } from '../surfaces';
 import {
   isWorkerReply,
-  type GreebleJob, type TerrainJob, type TextureJob, type TextureLayer, type WaterJob,
+  type GreebleJob, type TerrainJob, type TerrainTexJob, type TextureJob,
+  type TextureLayer, type WaterJob, type WaterTexJob,
 } from './protocol';
 import type { GreebleAtlasData, GreebleSpec } from '../../art/greeble-gen';
 import type { TerrainFieldData, TerrainGenOptions } from '../../world/terrain-gen';
 import type { WaterFieldData } from '../../world/water-gen';
+import type { TerrainTextureData } from '../../world/terrain-texture-gen';
+import type { WaterTextureData } from '../../world/water-texture-gen';
 
 /* ==========================================================================
  * THE WORKER SEAM
@@ -113,7 +117,8 @@ function defaultPoolSize(): number {
  * The submit methods narrow it; see the resolve closures there.
  */
 type JobResult =
-  readonly TextureLayer[] | GreebleAtlasData | TerrainFieldData | WaterFieldData | null;
+  readonly TextureLayer[] | GreebleAtlasData | TerrainFieldData | WaterFieldData
+  | TerrainTextureData | WaterTextureData | null;
 
 interface Pending {
   readonly resolve: (result: JobResult) => void;
@@ -154,6 +159,26 @@ function isWaterResult(r: JobResult): r is WaterFieldData {
 /** Narrow a job result to packed channel layers. */
 function isLayerResult(r: JobResult): r is readonly TextureLayer[] {
   return r !== null && typeof (r as { length?: unknown }).length === 'number';
+}
+
+/**
+ * Narrow a job result to a terrain texture set.
+ *
+ * Same discipline as the four above, on a property nothing else in the union
+ * carries. `layers` is a `Uint8Array` here and an ARRAY on a texture reply, so
+ * the `instanceof` is doing real work rather than decorating a truthiness test
+ * — `isLayerResult` would happily claim a `Uint8Array` too, which is why every
+ * one of these is a positive test on a distinct property rather than a chain of
+ * exclusions. That distinction is what stopped being true the last time a job
+ * kind was added.
+ */
+function isTerrainTexResult(r: JobResult): r is TerrainTextureData {
+  return r !== null && (r as { layers?: unknown }).layers instanceof Uint8Array;
+}
+
+/** Narrow a job result to a water texture set. */
+function isWaterTexResult(r: JobResult): r is WaterTextureData {
+  return r !== null && (r as { waves?: unknown }).waves instanceof Uint8Array;
 }
 
 /* ==========================================================================
@@ -357,6 +382,72 @@ export class TexturePool {
   }
 
   /**
+   * Queue one terrain TILE set — the six layer albedos plus the warp and macro
+   * supports.
+   *
+   * Independent of `submitTerrain` and dispatched alongside it rather than
+   * after: these tiles are a function of `(biome, size, seed)` and read no
+   * heightfield, so chaining them behind a generation would cost ~420 ms of
+   * boot for nothing. Same contract as every other submit — resolves with
+   * `null` rather than rejecting, and a `null` means "build them on the calling
+   * thread", which is what `createTerrainMaterials` does when its key misses.
+   */
+  submitTerrainTextures(
+    biome: string, size: number, seed: number,
+  ): Promise<TerrainTextureData | null> {
+    if (this.off) return Promise.resolve(null);
+    if (!this.start()) return Promise.resolve(null);
+
+    const id = this.nextId++;
+    const worker = this.workers[this.cursor];
+    this.cursor = (this.cursor + 1) % this.workers.length;
+
+    return new Promise<TerrainTextureData | null>((resolve) => {
+      const timer = setTimeout(() => {
+        this.disable(`terrain texture job ${id} (${biome}) exceeded ${this.timeoutMs} ms`);
+      }, this.timeoutMs);
+      this.pending.set(id, {
+        resolve: (r) => { resolve(isTerrainTexResult(r) ? r : null); },
+        timer,
+      });
+
+      const job: TerrainTexJob = { kind: 'terrainTex', id, biome, size, seed };
+      try {
+        worker.postMessage(job);
+      } catch (err: unknown) {
+        this.disable(err instanceof Error ? err.message : String(err));
+      }
+    });
+  }
+
+  /** Queue one water TILE set — the wave-slope map and the foam lace. */
+  submitWaterTextures(size: number, seed: number): Promise<WaterTextureData | null> {
+    if (this.off) return Promise.resolve(null);
+    if (!this.start()) return Promise.resolve(null);
+
+    const id = this.nextId++;
+    const worker = this.workers[this.cursor];
+    this.cursor = (this.cursor + 1) % this.workers.length;
+
+    return new Promise<WaterTextureData | null>((resolve) => {
+      const timer = setTimeout(() => {
+        this.disable(`water texture job ${id} exceeded ${this.timeoutMs} ms`);
+      }, this.timeoutMs);
+      this.pending.set(id, {
+        resolve: (r) => { resolve(isWaterTexResult(r) ? r : null); },
+        timer,
+      });
+
+      const job: WaterTexJob = { kind: 'waterTex', id, size, seed };
+      try {
+        worker.postMessage(job);
+      } catch (err: unknown) {
+        this.disable(err instanceof Error ? err.message : String(err));
+      }
+    });
+  }
+
+  /**
    * Resolves once nothing is in flight. Boot awaits this before dropping the
    * loading curtain, so no placeholder pixels are ever on screen.
    *
@@ -417,7 +508,9 @@ export class TexturePool {
         : data.kind === 'greeble:done' ? data.data
           : data.kind === 'terrain:done' ? data.data
             : data.kind === 'water:done' ? data.data
-              : null,
+              : data.kind === 'terrainTex:done' ? data.data
+                : data.kind === 'waterTex:done' ? data.data
+                  : null,
     );
     this.drain();
   }
