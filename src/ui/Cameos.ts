@@ -421,6 +421,18 @@ export const CAMEO_BUILDING_MODELS: Readonly<Record<string, ModelBinding>> = {
   rclPylon: 'reclaim_pylon',
   rclDepot: 'reclaim_depot',
   rclStormworks: 'reclaim_stormworks',
+
+  /* -- the civilian block ------------------------------------------------ *
+   * One model each, not a pair, and that is what `bindingFor` needs to
+   * resolve them for all four armies — `tests/cameos-coverage.spec.ts` walks
+   * every army for a `Faction.Neutral`-owned def, and a two-slot binding only
+   * answers for Allies and Soviets. Nobody BUILDS these (no `CONTENT` row, so
+   * no sidebar slot), but the selection card renders the same model, and a
+   * captured Oil Derrick showing a painted glyph would be the one structure
+   * on the map whose portrait disagreed with the thing on the ground.        */
+  civOilDerrick: 'civ_derrick',
+  civHospital: 'civ_hospital',
+  civApartments: 'civ_apartments',
 };
 
 /**
@@ -479,6 +491,13 @@ const LIBRARIES: ReadonlyArray<readonly [string, LibrarySet]> = [
   ['reclaim_', { units: reclaimUnitLibrary, buildings: reclaimBuildingLibrary }],
   ['allied_', { units: unitLibrary, buildings: buildingLibrary }],
   ['soviet_', { units: unitLibrary, buildings: buildingLibrary }],
+  // The civilian block is built by the shared `buildingLibrary` off the ALLIED
+  // atlas (see `src/art/BuildingDefs.ts` §4b), so it dispatches to the same
+  // pair. It needs its own prefix rather than an `allied_` name because a
+  // captured derrick is not an Allied building and naming it one would put
+  // that claim in `STRUCTURE_FACTIONS`, in the boot report and in every
+  // subsequent reader.
+  ['civ_', { units: unitLibrary, buildings: buildingLibrary }],
 ];
 
 function libraryFor(modelKey: string, isBuilding: boolean): CameoModelLibrary | null {

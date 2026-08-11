@@ -75,6 +75,11 @@ import type {
   BuildingDef, DefTables, FactionDef, FactionLook, UnitDef, WeaponDef,
 } from '../core/types';
 import { DEFAULT_WEAPONS, weaponIndexOf } from '../sim/Combat';
+// The neutral map furniture's footprints, shared verbatim with the fallback
+// table in `src/game/Scenarios.ts` and the mass lists in
+// `src/art/BuildingDefs.ts`. One constant, three readers — see that file's
+// header for why the art half matters as much as the sim half.
+import { CIVILIAN_DIMENSIONS as CIV } from './Civilians';
 // The mission table is the ONLY authority on which unlock ids exist. Importing
 // it here (rather than restating the ids) is what makes a typo in UNLOCK_TAGS a
 // load-time error instead of a permanently unbuildable unit. The edge is one
@@ -2058,6 +2063,58 @@ export const BUILDINGS: readonly BuildingDef[] = [
     prereqs: ['rclCrucible'], sortOrder: 90, model: 'reclaim_stormworks', dim: B.superweapon,
     maxHp: 1050, power: -150, sight: 20,
     flags: rclFlags(-150),
+  }),
+
+  /* -- THE CIVILIAN BLOCK, and nobody builds it --------------------------
+   * APPENDED, like every block above it, because `store.defId` for a Building
+   * indexes THIS array and `src/game/Replay.ts` records `defId` as a RAW
+   * ARRAY INDEX. Inserting a row here makes every existing recording play
+   * back a different game.
+   *
+   * WHY THESE EXIST. `src/sim/Capture.ts` rule 1 is "a NEUTRAL structure (oil
+   * derricks, hospitals, civilian blocks) is captured outright, at any
+   * health", and `src/sim/Garrison.ts` says in its own header that the
+   * eligible set is its own army's unarmed structures "plus any neutral-owned
+   * structure the moment one exists". Both mechanics were finished and
+   * neither had a single object on the map to act on. These are those
+   * objects; `src/data/Civilians.ts` carries the footprints, which the art
+   * and the fallback table read from the same constant.
+   *
+   * EVERY FIELD BELOW IS LOAD-BEARING FOR `GarrisonService.refusalFor`, which
+   * refuses in this order: not a structure, unfinished, ARMED (`weapons`
+   * non-empty or `EntityFlag.CanAttack`), TOO SMALL (either footprint axis
+   * under `GARRISON.minFootprint` = 2), PRODUCTION STRUCTURE
+   * (`IsBuilder|IsFactory|IsRefinery|IsRadar`), hostile, full. So: no
+   * weapons, both axes >= 2 cells, and no role flag. The rule is satisfied
+   * rather than relaxed — see `src/game/Scenarios.ts#civilian()` for the flag
+   * set, which is the half of it this table cannot express.
+   *
+   * NOT IN `src/sim/Production.ts#CONTENT`, and that is the enforcement of
+   * "no player may build one": `ProductionCatalog` is keyed on CONTENT, every
+   * build tab is a view of the catalog, and a key with no CONTENT row cannot
+   * be queued, cannot be placed and never draws a sidebar slot.
+   *
+   * `cost` IS NOT A PRICE, it is a valuation — nothing sells these (the
+   * fallback rows clear `EntityFlag.Sellable`) and nothing buys them. It is
+   * here because `tab`/`cost`/`buildTime` are required by the shape and a
+   * zero would read as "worthless" to the next person balancing a bounty.  */
+  building({
+    key: 'civOilDerrick', name: 'Oil Derrick', blurb: 'Pays its owner while it is held.',
+    faction: Faction.Neutral, cost: 1000, buildTime: 20, tab: BuildTab.Structures,
+    prereqs: [], sortOrder: 900, model: 'civ_derrick', dim: CIV.civOilDerrick,
+    maxHp: 900, power: 0, sight: 14,
+  }),
+  building({
+    key: 'civHospital', name: 'Civilian Hospital', blurb: 'Holds five men and a wide field of fire.',
+    faction: Faction.Neutral, cost: 800, buildTime: 20, tab: BuildTab.Structures,
+    prereqs: [], sortOrder: 901, model: 'civ_hospital', dim: CIV.civHospital,
+    maxHp: 1100, power: 0, sight: 20,
+  }),
+  building({
+    key: 'civApartments', name: 'Apartment Block', blurb: 'A strongpoint that already exists.',
+    faction: Faction.Neutral, cost: 600, buildTime: 20, tab: BuildTab.Structures,
+    prereqs: [], sortOrder: 902, model: 'civ_apartments', dim: CIV.civApartments,
+    maxHp: 800, power: 0, sight: 16,
   }),
 ];
 

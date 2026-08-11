@@ -88,7 +88,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 2770 across 108 files
+npm test             # vitest, currently 2807 across 109 files
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```

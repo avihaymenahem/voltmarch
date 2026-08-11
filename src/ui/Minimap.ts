@@ -57,7 +57,26 @@ const REBAKE_SECONDS = 2.0;
 const RECT_EASE = 14;
 /** Hostile blips. Semantic, never faction-swapped. */
 const BLIP_ENEMY = SEMANTIC.danger;
-/** Gaia / unowned blips. */
+/**
+ * Gaia / unowned blips.
+ *
+ * THIS WAS UNREACHABLE FOR EVERY BUILDING ON THE MAP until the civilian block
+ * landed, and the reason is worth keeping: both blip passes chose their style
+ * with `mine = ownerId === local || areAllied(local, ownerId)` and **Gaia is
+ * allied to everyone in both directions** (`ScenarioBuilder.gaia` wires the
+ * masks that way on purpose, so no targeting scan ever considers a tree an
+ * enemy). So a neutral structure was already drawn in the local player's own
+ * accent, and capturing one changed nothing on the map. `BLIP_NEUTRAL` existed,
+ * was documented as "Gaia / unowned", and never once appeared.
+ *
+ * Both passes now let NEUTRALITY WIN OVER ALLIED-NESS for the colour, and only
+ * for the colour: the visibility gate is untouched, because a civilian block is
+ * map furniture and hiding it behind a radar dome would be a different and
+ * worse rule. So a derrick is grey until somebody takes it and their accent the
+ * moment they do — which is the only ownership tell a captured civilian
+ * structure has, since structure team slabs are baked per-faction into the
+ * greeble atlas and do not repaint (see `src/art/BuildingDefs.ts` §4b).
+ */
 const BLIP_NEUTRAL = SEMANTIC.neutral;
 /** The dark plate every blip is drawn on, so none of them relies on terrain. */
 const BLIP_PLATE = 'rgba(3,6,10,0.78)';
@@ -447,10 +466,12 @@ export class Minimap {
         if (this.world.vision.visibilityOf(local, store.handleOf(e)) < VisionLevel.Remembered) continue;
       }
 
-      const style = mine
-        ? this.accent
-        : store.faction[e] === Faction.Neutral
-          ? BLIP_NEUTRAL
+      // NEUTRALITY BEATS ALLIED-NESS, and `mine` is left alone above because
+      // it is the VISIBILITY gate. See `BLIP_NEUTRAL`.
+      const style = store.faction[e] === Faction.Neutral
+        ? BLIP_NEUTRAL
+        : mine
+          ? this.accent
           : BLIP_ENEMY;
 
       // Sized off the footprint so a Construction Yard owns more ground than a
@@ -551,10 +572,12 @@ export class Minimap {
         if (this.world.vision.visibilityOf(local, store.handleOf(e)) < VisionLevel.Remembered) continue;
       }
 
-      const style = mine
-        ? this.accent
-        : store.faction[e] === Faction.Neutral
-          ? BLIP_NEUTRAL
+      // NEUTRALITY BEATS ALLIED-NESS, and `mine` is left alone above because
+      // it is the VISIBILITY gate. See `BLIP_NEUTRAL`.
+      const style = store.faction[e] === Faction.Neutral
+        ? BLIP_NEUTRAL
+        : mine
+          ? this.accent
           : BLIP_ENEMY;
 
       const px = this.mapX + store.posX[e] * scale;

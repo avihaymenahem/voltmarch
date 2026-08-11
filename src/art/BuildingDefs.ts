@@ -46,6 +46,7 @@ import {
   NAVAL_BUILDING_DIMENSIONS,
 } from '../core/config';
 import { PartId } from '../core/types';
+import { CIVILIAN_DIMENSIONS } from '../data/Civilians';
 import { MassRole, taperOutline } from './MassList';
 import {
   Feature,
@@ -685,6 +686,12 @@ function sovietShell(fw: number, fh: number, height: number, o: ShellOpts): Shel
 const EXTRA_DIMENSIONS: Readonly<Record<string, { w: number; h: number; height: number }>> = {
   ...BUILDING_DIMENSIONS,
   ...NAVAL_BUILDING_DIMENSIONS,
+  // The neutral map furniture. Read from `src/data/Civilians.ts` rather than
+  // re-typed here, because the def rows and the fallback table read the same
+  // constant: a mass list built on a footprint the def does not share is a
+  // building whose pad is the wrong size for its own occupancy rectangle, and
+  // NOTHING in the suite compares those two numbers.
+  ...CIVILIAN_DIMENSIONS,
 };
 
 function fp(key: string): { w: number; h: number; height: number } {
@@ -2006,6 +2013,99 @@ function alliedChronosphere(): StructureMassList {
   ]);
 }
 
+/* ==========================================================================
+ * 4b. THE CIVILIAN BLOCK
+ *
+ * Three neutral structures, so `src/sim/Capture.ts` and `src/sim/Garrison.ts`
+ * have something on the map to act on. See `src/data/Civilians.ts`.
+ *
+ * WHY THEY WEAR ALLIED ARCHITECTURE, and it is a cost decision rather than a
+ * fiction. `StructureFaction` is `'allies' | 'soviets'` and each one costs TWO
+ * generated atlases plus a material; `src/art/buildings.system.ts` already made
+ * this call in prose — "Neutral structures borrow Allied architecture. A third
+ * atlas for civilian paint would cost 4 textures and a material for buildings
+ * nobody fights over" — and these are the first buildings that make the
+ * sentence about something real. Glazed bands and a light ceramic skirt read
+ * perfectly well as a modern hospital or an apartment tower; what makes them
+ * civilian rather than military is the SILHOUETTE each one adds on top of the
+ * shell, which is the half that costs nothing.
+ *
+ * THE TEAM PANELS STAY, AND THEY DO NOT REPAINT ON CAPTURE. Both halves of
+ * that were checked on screen rather than assumed, because the obvious
+ * assumption is wrong: `applyStructureShader` reads the per-instance
+ * `aTeamColor` for the SELECTION PULSE ONLY, and a structure's `teamSlab`
+ * texels come out of the greeble atlas, which is generated once per
+ * `StructureFaction`. Two derricks photographed side by side — one Gaia, one
+ * just taken by the Allies — are the same colour. R-T1 still requires 4-10% of
+ * the surface to be team slab and `validateStructure` still enforces it, so the
+ * panels are not optional; they are simply not the ownership tell.
+ *
+ * What IS the tell, each one watched happen in a running match: the minimap
+ * blip goes from neutral grey to the holder's accent (`src/ui/Minimap.ts` —
+ * which needed a fix of its own, because Gaia is allied to everyone and the
+ * blip was already drawing in your colour), the structure starts feeding its
+ * new owner's vision, `Capture.captureBuilding` fires a `BuildComplete` burst
+ * and a spark plume on the spot, and — for the derrick — the credits start
+ * arriving. Repainting the slabs would mean multiplying `aTeamColor` into the
+ * teamSlab texels for all 59 structures in the roster: a grade-wide change to
+ * `BuildingFactory`, and not one the civilian block gets to decide.
+ * ========================================================================== */
+
+/**
+ * OIL DERRICK. The one that pays, so it has to be the one you can see.
+ *
+ * A short pumphouse under a heavily raked lattice mast: the mast is 63% of the
+ * silhouette and is a four-sided plan tapering to under a third of its base, so
+ * this is the least axis-aligned thing in the roster by construction rather
+ * than by decoration. The walking beam and its counterweight are what say
+ * "pump" rather than "radio tower" at RTS distance.
+ */
+function civDerrick(): StructureMassList {
+  const f = fp('civOilDerrick');
+  const s = alliedShell(f.w, f.h, f.height, {
+    key: 'civOilDerrick', team: 1.30, windowCount: 3, bodyFraction: 0.30,
+  });
+  const roof = s.roofY;
+  const mastH = f.height - roof - 0.6;
+  s.masses.push(
+    // THE MAST IS A CORE PLUS AN OPEN FRAME, and the split is the whole read.
+    //
+    // It was one solid tapered prism at 72% of the footprint and it
+    // photographed as a MONUMENT: a white pyramid with a cap, which is a fine
+    // silhouette and the wrong noun. A derrick is a thing you can see through.
+    // So the tapered mass is now a slender core at 34%, and the volume the
+    // player actually reads is two `lattice()` frames standing off it —
+    // X-braced bays that are 90% air.
+    pplan('mast', MassRole.Primary, [s.w * 0.34, mastH, s.d * 0.34], [0, roof + mastH * 0.5, -s.d * 0.06], 'bareMetal', {
+      plan: ngon(s.w * 0.17, s.d * 0.17, 4, HALF_PI * 0.5),
+      topScaleX: 0.34, topScaleZ: 0.34, bottomScaleX: 1.10, bottomScaleZ: 1.10,
+    }, { capSlot: 'grille' }),
+    ...lattice(0, -s.d * 0.26, s.w * 0.62, mastH * 0.94, 'rig.front').map(
+      (m) => ({ ...m, anchor: [m.anchor[0], m.anchor[1] + roof, m.anchor[2]] as V3 })),
+    ...lattice(0, s.d * 0.16, s.w * 0.62, mastH * 0.94, 'rig.back').map(
+      (m) => ({ ...m, anchor: [m.anchor[0], m.anchor[1] + roof, m.anchor[2]] as V3 })),
+    cyl('crownblock', MassRole.Greeble, [1.1, 0.55, 1.1], [0, f.height - 0.3, -s.d * 0.06], 'bareMetal', {
+      group: 'crownblock', chamfer: 0.05, capSlot: 'hatch',
+    }),
+    // The walking beam, canted the way a beam pump rests when it is down.
+    box('beam', MassRole.Greeble, [0.42, 0.36, s.d * 0.70], [s.w * 0.30, roof * 0.92, s.d * 0.12], 'bareMetal', {
+      rot: [0.22, 0, 0], group: 'pump', chamfer: 0.05,
+    }),
+    cyl('beam.weight', MassRole.Greeble, [1.0, 0.42, 1.0], [s.w * 0.30, roof * 0.72, -s.d * 0.22], 'hatch', {
+      rot: [0, 0, HALF_PI], group: 'pump', chamfer: 0.05, capSlot: 'stencil',
+    }),
+    // The tank the thing fills. A lathe, so it never reads as a crate.
+    rev('tank', MassRole.Primary, [s.w * 0.34, roof * 1.05, s.w * 0.34], [-s.w * 0.30, roof * 0.52, s.d * 0.24], 'paintMed',
+      DRUM, BUILDING_GEOMETRY.cylSegments, { capSlot: 'paintSmall', group: 'tank' }),
+    box('tank.pipe', MassRole.Greeble, [s.w * 0.30, 0.24, 0.24], [-s.w * 0.14, roof * 0.66, s.d * 0.24], 'bareMetal', {
+      group: 'plumbing', chamfer: 0.05,
+    }),
+  );
+  return list('civ_derrick', 'Oil Derrick', 'allies', 'civOilDerrick', s.masses, [
+    { part: PartId.Stack, pos: [0, f.height, -s.d * 0.06] },
+  ]);
+}
+
 /**
  * THE WEATHER CONTROL DEVICE. A stepped mast under a wide collector saucer,
  * with the discharge horns standing off the rim. Reads as a thing pointed AT
@@ -2108,6 +2208,56 @@ function sovietNuclearSilo(): StructureMassList {
 }
 
 /**
+ * CIVILIAN HOSPITAL. The widest of the three, and the one a squad wants.
+ *
+ * Paired, because ALLIED-3's two mirrored modules sharing a spine is exactly
+ * how a real hospital wing reads. What makes it a hospital and not a barracks
+ * is the ambulance canopy across the whole front and the rooftop helipad —
+ * both of them horizontal surfaces, which a 39-degree camera weights at 0.63
+ * of their area against 0.25 for a flank.
+ */
+function civHospital(): StructureMassList {
+  const f = fp('civHospital');
+  const s = alliedShell(f.w, f.h, f.height, {
+    key: 'civHospital', paired: true, team: 1.05, windowCount: 7, bodyFraction: 0.60,
+  });
+  const roof = s.roofY;
+  s.masses.push(
+    // The ambulance canopy: a raked slab on two posts over the whole entrance.
+    // Sized and anchored so the canopy's raked far edge lands INSIDE the
+    // structure's own cells: `validateStructure` warns on a body that
+    // overhangs its footprint, and a 3x2 hospital that spills into the next
+    // cell is a hospital an adjacent structure can interpenetrate.
+    plate('portico', MassRole.Primary, taperOutline(s.w * 0.72, s.d * 0.28, 0.86), 0.36,
+      [0, roof * 0.80, s.d * 0.36], [-0.14, 0, 0], 'paintMed', { chamfer: 0.07 }),
+    box('portico.post', MassRole.Greeble, [0.26, roof * 0.78, 0.26], [s.w * 0.28, roof * 0.46, s.d * 0.46], 'bareMetal', {
+      mirrorX: true, group: 'portico', chamfer: 0.05,
+    }),
+    box('doors', MassRole.Greeble, [s.w * 0.22, roof * 0.46, 0.28], [0, roof * 0.23, s.d * 0.5 + 0.02], 'glass', {
+      group: 'doors', feature: Feature.Door, anim: roof * 0.50, chamfer: 0.05, tint: 0.93,
+    }),
+    // The helipad. A disc, its rim, and the lamp ring that makes it read at night.
+    cyl('helipad', MassRole.Greeble, [s.d * 0.66, 0.22, s.d * 0.66], [-s.w * 0.10, roof + 0.14, -s.d * 0.14], 'stripe', {
+      group: 'helipad', chamfer: 0.05, capSlot: 'stripe',
+    }),
+    cyl('helipad.rim', MassRole.Emissive, [s.d * 0.70, 0.10, s.d * 0.70], [-s.w * 0.10, roof + 0.06, -s.d * 0.14], 'emissive', {
+      group: 'helipad', feature: Feature.Window, chamfer: 0.03, capSlot: 'emissive',
+    }),
+    // The plant room, which is what gives the roofline its second step.
+    tbox('plantroom', MassRole.Primary, [s.w * 0.24, f.height - roof - 0.4, s.d * 0.30], [s.w * 0.32, (f.height + roof) * 0.5 - 0.2, s.d * 0.16], 'paintMed', {
+      topScaleX: 0.84, topScaleZ: 0.84, cornerCut: 0.30,
+    }, { capSlot: 'grille' }),
+    box('plantroom.duct', MassRole.Greeble, [s.w * 0.16, 0.6, s.d * 0.18], [s.w * 0.32, f.height - 0.1, s.d * 0.16], 'vent', {
+      group: 'ducts',
+    }),
+  );
+  return list('civ_hospital', 'Civilian Hospital', 'allies', 'civHospital', s.masses, [
+    { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.4] },
+    { part: PartId.Stack, pos: [s.w * 0.32, f.height, s.d * 0.16] },
+  ]);
+}
+
+/**
  * THE IRON CURTAIN DEVICE. Two emitter drums on cantilevered arms facing each
  * other across a lit gap. The gap IS the building: it is the only structure in
  * the game whose most important feature is empty space, and the arms exist to
@@ -2164,6 +2314,52 @@ function sovietIronCurtain(): StructureMassList {
   ]);
 }
 
+/**
+ * APARTMENT BLOCK. The tallest thing on the map that nobody built.
+ *
+ * Two towers on a shared spine at 15 m, which is where the height comes from:
+ * this is the only civilian structure a player can see over their own base
+ * from, so holding one is worth the walk. Balcony decks up both flanks are
+ * layered plates — 28 triangles each against a box's 44 — and they are what
+ * makes a residential tower read as residential rather than as a silo.
+ */
+function civApartments(): StructureMassList {
+  const f = fp('civApartments');
+  const s = alliedShell(f.w, f.h, f.height, {
+    key: 'civApartments', paired: true, team: 1.02, windowCount: 8, bodyFraction: 0.62,
+  });
+  const roof = s.roofY;
+  s.masses.push(
+    // Balcony decks. Two courses up each flank, following the skirt's rake.
+    // A balcony projects, but not past the block's own cells — the deck is
+    // 1.1 m of it, so the anchor has to leave that much room inside `w/2` or
+    // `validateStructure` reports a body overhanging its footprint.
+    plate('balcony.lo', MassRole.Greeble, taperOutline(s.d * 0.62, 1.10, 0.90), 0.20,
+      [s.w * 0.42, roof * 0.36, 0], [0, HALF_PI, 0], 'stripe',
+      { mirrorX: true, group: 'balconies', chamfer: 0.05 }),
+    plate('balcony.hi', MassRole.Greeble, taperOutline(s.d * 0.56, 1.00, 0.90), 0.20,
+      [s.w * 0.38, roof * 0.68, 0], [0, HALF_PI, 0], 'stripe',
+      { mirrorX: true, group: 'balconies', chamfer: 0.05 }),
+    // The stair core: the step in the roofline, and the one mass that reaches
+    // the frozen 15 m.
+    tbox('stairhead', MassRole.Primary, [s.w * 0.30, f.height - roof - 0.5, s.d * 0.26], [-s.w * 0.26, (f.height + roof) * 0.5 - 0.25, -s.d * 0.12], 'paintMed', {
+      topScaleX: 0.88, topScaleZ: 0.88, cornerCut: 0.26,
+    }, { capSlot: 'paintSmall' }),
+    // The roof tank every block of flats in the world has on it.
+    rev('watertank', MassRole.Greeble, [s.w * 0.30, 1.5, s.w * 0.30], [s.w * 0.24, roof + 1.35, s.d * 0.14], 'bareMetal',
+      TAPER_DRUM, BUILDING_GEOMETRY.cylSegments, { group: 'watertank', capSlot: 'grille' }),
+    box('watertank.leg', MassRole.Greeble, [0.18, 0.66, 0.18], [s.w * 0.36, roof + 0.33, s.d * 0.14], 'bareMetal', {
+      mirrorX: true, group: 'watertank', chamfer: 0.03,
+    }),
+    box('lobby', MassRole.Greeble, [s.w * 0.30, roof * 0.22, 0.34], [0, roof * 0.11, s.d * 0.5 + 0.04], 'glass', {
+      group: 'lobby', feature: Feature.Door, anim: roof * 0.24, chamfer: 0.05, tint: 0.93,
+    }),
+  );
+  return list('civ_apartments', 'Apartment Block', 'allies', 'civApartments', s.masses, [
+    { part: PartId.Door, pos: [0, 0.2, s.d * 0.5 + 0.4] },
+  ]);
+}
+
 /* ==========================================================================
  * 5. THE ROSTER
  * ========================================================================== */
@@ -2204,6 +2400,14 @@ export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   sovietIronCurtain(),
   wallSegment('soviets'),
   gateSegment('soviets'),
+
+  // The neutral map furniture. Declared `'allies'` because that is the atlas
+  // they sample, NOT because they belong to that army — `buildings.system.ts`
+  // registers all three at FACTION_ANY so a captured one keeps its own
+  // architecture and only its team panels change colour.
+  civDerrick(),
+  civHospital(),
+  civApartments(),
 ];
 
 export const STRUCTURE_BY_KEY: ReadonlyMap<string, StructureMassList> =

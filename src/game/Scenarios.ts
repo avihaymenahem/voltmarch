@@ -79,6 +79,11 @@ import { getTerrain } from '../world/Terrain';
 // Zero-cost edge: `UnlockGate.ts` imports nothing but its own type-only module,
 // and `isBuildable` answers "yes" when no gate has been installed.
 import { isBuildable } from '../progression/UnlockGate';
+// The neutral map furniture's footprints, shared verbatim with the def rows in
+// `src/data/Defs.ts` and the mass lists in `src/art/BuildingDefs.ts`. A
+// STATIC import of a leaf module with no imports of its own — it is not part
+// of the `../data/**` glob's job below, which is looking for a `DefTables`.
+import { CIVILIAN_DIMENSIONS as CIV, CIVILIAN_KEYS } from '../data/Civilians';
 
 import { buildAlliedBase, type BaseOptions } from './scenarios/AlliedBase';
 import { buildSovietBase } from './scenarios/SovietBase';
@@ -1127,6 +1132,31 @@ function building(
   };
 }
 
+/**
+ * A NEUTRAL CIVILIAN STRUCTURE, and the two flags that separate it from an
+ * army's own.
+ *
+ * NOT `Sellable`. Everything else in this table carries it through `STRUCTURE`,
+ * and for a structure a player PAID for that is right. A captured Oil Derrick
+ * is different: `Production.applySell` values a sale at `entry?.cost ?? 0`, and
+ * these keys deliberately have no `CONTENT` row, so the sell button would
+ * demolish the most valuable thing on the map for a refund of exactly zero. One
+ * misclick, no confirmation, no message — the same shape as the last-way-out
+ * bug `applySell` already guards against. So the deed changes hands and nothing
+ * else; you take a derrick, you do not liquidate it.
+ *
+ * NO ROLE FLAG. `IsBuilder|IsFactory|IsRefinery|IsRadar` is what
+ * `GarrisonService.refusalFor` calls a 'production structure' and refuses, so
+ * a civilian block must carry none of them. That is why this composes the
+ * flag set explicitly instead of taking an `extra` on `building()`.
+ */
+function civilian(
+  key: string, dim: { w: number; h: number; height: number }, maxHp: number, sight: number,
+): FallbackBuilding {
+  const b = building(key, dim, maxHp, 0, sight, 0, Faction.Neutral);
+  return { ...b, flags: b.flags & ~EntityFlag.Sellable };
+}
+
 /** Every structure a scenario may ask for. */
 export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
   conyard: building('conyard', B.conYard, 2000, -20, 30,
@@ -1265,6 +1295,15 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
   weatherControl: building('weatherControl', B.superweapon, 1000, -150, 20, 0, Faction.Allies),
   mrdHeliograph: building('mrdHeliograph', B.superweapon, 900, -150, 20, 0, Faction.Meridian),
   rclStormworks: building('rclStormworks', B.superweapon, 1050, -150, 20, 0, Faction.Reclaim),
+  /* -- THE CIVILIAN BLOCK --------------------------------------------------
+   * Transcribed from `src/data/Defs.ts` §2, with the dimensions taken from the
+   * SAME constant the def rows read (`src/data/Civilians.ts`) rather than
+   * re-typed — `tests/data.spec.ts` checks the numbers agree and this is the
+   * spelling that cannot make it fail.
+   * --------------------------------------------------------------------- */
+  civOilDerrick: civilian('civOilDerrick', CIV.civOilDerrick, 900, 14),
+  civHospital: civilian('civHospital', CIV.civHospital, 1100, 20),
+  civApartments: civilian('civApartments', CIV.civApartments, 800, 16),
 };
 
 export interface FallbackProp {
@@ -1466,6 +1505,12 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   weatherControl: ['weathercontrol', 'weathercontroldevice', 'lightningstorm'],
   mrdHeliograph: ['mrdheliograph', 'heliograph', 'meridianheliograph'],
   rclStormworks: ['rclstormworks', 'stormworks', 'reclaimstormworks'],
+  // The neutral map furniture. `tests/data.spec.ts` fails on any
+  // FALLBACK_BUILDINGS key that does not bind to a def through this table, so
+  // these three rows are what turn the def rows into spawnable content.
+  civOilDerrick: ['civoilderrick', 'oilderrick', 'derrick'],
+  civHospital: ['civhospital', 'hospital', 'civilianhospital'],
+  civApartments: ['civapartments', 'apartments', 'apartmentblock', 'civilianblock'],
 };
 
 /**
@@ -2816,6 +2861,84 @@ function addStartOre(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
 }
 
 /* --------------------------------------------------------------------------
+ * THE CIVILIAN HAMLETS
+ *
+ * Metres off the midpoint of the lane between the two openings, along its
+ * PERPENDICULAR BISECTOR. That line is the only locus on the map where a point
+ * is exactly as far from one army as from the other, so a hamlet placed on it
+ * is a symmetric proposition however the generator nudged the starts — which
+ * is the whole reason the geometry is derived here rather than authored as a
+ * constant offset from the map centre. (`addStartOre` above learned the same
+ * lesson: an ore field authored as a constant is an ore field on the wrong
+ * side of the map the first time a shelf moves.)
+ *
+ * 62 m, and the number is bounded on three sides:
+ *   - `addStartOre` puts the contested patch ON the midpoint at radius 22, so
+ *     anything inside ~30 m would stand a building in ore a harvester is
+ *     actively mining.
+ *   - The openings are ~193 m apart, so a hamlet on the bisector at 62 m is
+ *     ~115 m from each start: outside `START_CLEAR_RADIUS`, outside a base's
+ *     build radius, and outside the sight of anything standing in either one.
+ *   - The map is 512 m and the midpoint is near its centre, so 62 m either way
+ *     is comfortably on the map whatever `nudgeToBuildable` did.
+ *
+ * TWO OF THEM, mirrored. One hamlet on one flank is a race that the army whose
+ * ore field happens to lie that way simply wins; two is a decision — you cannot
+ * hold both and neither can they.
+ * -------------------------------------------------------------------------- */
+export const CIVILIAN_HAMLET_OFFSET = 62;
+
+/**
+ * Drop the neutral structures both finished mechanics have had nothing to
+ * point at. Deterministic from the seed: every position below is pure
+ * arithmetic over `spots`, which are themselves derived from the seed, and not
+ * one draw of `b.rng` happens here.
+ *
+ * OWNED BY GAIA, which is what makes them work at all. `b.gaia` is the
+ * `Faction.Neutral` player allied to everyone, so `CaptureService` sees a
+ * neutral owner and captures outright at any health (rule 1), `GarrisonService`
+ * sees one and lets any army walk in, and `restoreOwner` has a neutral
+ * caretaker to hand the building back to when the last man leaves.
+ */
+function addCivilians(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
+  if (spots.length < 2) return;
+  const first = spots[0]!;
+  const second = spots[1]!;
+  const mx = (first.x + second.x) * 0.5;
+  const mz = (first.z + second.z) * 0.5;
+  const dx = second.x - first.x;
+  const dz = second.z - first.z;
+  const len = Math.hypot(dx, dz) || 1;
+  // `v` runs down the lane between the two openings; `u` is its left normal.
+  const vx = dx / len, vz = dz / len;
+  const ux = -vz, uz = vx;
+
+  const owner = b.gaia;
+  for (const side of [1, -1]) {
+    const hx = mx + ux * side * CIVILIAN_HAMLET_OFFSET;
+    const hz = mz + uz * side * CIVILIAN_HAMLET_OFFSET;
+    // Every building in a hamlet faces the lane, so the settlement reads as
+    // one place rather than three objects that happen to be near each other.
+    const face = Math.atan2(-ux * side, -uz * side) / DEG2RAD;
+    const put = (key: string, du: number, dv: number, turn: number): void => {
+      b.spawnBuilding(
+        key, owner,
+        hx + ux * side * du + vx * dv,
+        hz + uz * side * du + vz * dv,
+        { yawDeg: wrapDeg(face + turn) },
+      );
+    };
+    // The derrick on the crossroads itself and the two garrisonable blocks
+    // flanking it, ~23 m out — far enough that a 3x2 hospital and a 2x3 block
+    // cannot contest each other's cells, close enough that one squad holding
+    // the derrick is inside the other two's field of fire.
+    put(CIVILIAN_KEYS[0]!, 0, 0, 0);
+    put(CIVILIAN_KEYS[1]!, -17, 15, 90);
+    put(CIVILIAN_KEYS[2]!, 17, -15, -90);
+  }
+}
+
+/* --------------------------------------------------------------------------
  * THE NAVAL SHORELINE
  *
  * One declaration, read twice: `PLANS.naval.sea` hands it to the terrain
@@ -2907,6 +3030,11 @@ const PLANS: Record<string, ScenarioPlan> = {
       }
 
       addStartOre(b, spots);
+      // BEFORE `b.scatter` below, because `spawnBuilding` reserves the ground
+      // it lands on and `scatter` honours the reservation list. After it, the
+      // hamlets would be built into whatever 140 props had already been
+      // dropped on them — the same failure `START_CLEAR_RADIUS` documents.
+      addCivilians(b, spots);
       // Look at YOUR opening, wherever the generator put it — which since
       // `rotateStarts` is no longer always `spots[0]`.
       const home = spots[localSlot(b, owners)];

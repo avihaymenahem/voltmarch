@@ -110,6 +110,29 @@ const FACTION_KEYS: Readonly<Record<string, string>> = {
   weatherControl: 'allied_weather',
   nuclearSilo: 'soviet_nuke',
   ironCurtain: 'soviet_curtain',
+
+  // THE CIVILIAN BLOCK, and FACTION_ANY is the load-bearing part.
+  //
+  // These are the only structures in the game that legitimately change owner
+  // mid-match without changing what they are: an engineer takes a derrick, a
+  // squad garrisons a hospital and hands it back on the way out. `resolve()`
+  // is keyed on (kind, FACTION, defId), so a `SHARED_KEYS`-shaped registration
+  // would REDRAW a captured hospital as its new owner's architecture the
+  // instant `store.faction` changed — a civilian block that becomes an Allied
+  // one and then a Soviet one as the deed passes. FACTION_ANY is what makes
+  // the model a property of the building rather than of whoever holds it.
+  //
+  // It also means the model does not repaint at all on capture, which is
+  // correct here and is NOT a limitation of this registration: structure team
+  // slabs come out of the per-faction greeble atlas and never read
+  // `aTeamColor`. Three ownership tells were checked in a running match and
+  // survive: the minimap blip turns from neutral grey to the holder's accent
+  // (`src/ui/Minimap.ts`), the structure starts feeding its new owner's
+  // vision, and `Capture.captureBuilding` fires a `BuildComplete` burst on the
+  // spot. See `src/art/BuildingDefs.ts` §4b.
+  civOilDerrick: 'civ_derrick',
+  civHospital: 'civ_hospital',
+  civApartments: 'civ_apartments',
 };
 
 /**

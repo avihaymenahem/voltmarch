@@ -30,7 +30,14 @@
 A full RTS built for the browser: a main menu and settings shell, skirmish setup, four playable
 factions with distinct rosters and tech trees, an AI opponent that plays a real game, harvesters and
 refineries, power grids that gate production, base placement, fog of war, superweapons, engineer
-capture, online 1v1, and a modern bottom-anchored HUD.
+capture, neutral civilian structures worth fighting over, online 1v1, and a modern bottom-anchored
+HUD.
+
+The civilian block is the thing engineer capture and infantry garrisons point AT: two mirrored
+hamlets sit on the perpendicular bisector between the two openings — equidistant from both armies —
+each with an Oil Derrick that pays its holder every second, a hospital and an apartment block that
+five riflemen can turn into a firing position. Nobody builds them; you take them, or you clear them
+out.
 
 VOLTMARCH is not a port or a clone. It is a new title in the tradition of late-90s and 2000s
 base-building RTS — the conventions it adopts (harvester economy, tech tiers, build queues) are the

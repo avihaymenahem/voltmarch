@@ -13,6 +13,23 @@
  *      hospitals, civilian blocks) is captured outright, at any health. That is
  *      what makes tech buildings worth walking to.
  *
+ *      THOSE THREE NAMES WERE ASPIRATIONAL FOR THE WHOLE LIFE OF THIS FILE.
+ *      Nothing in the roster was owned by a neutral player, so rule 1 had no
+ *      reachable subject and the only capture the game could actually perform
+ *      was rule 2's. They are real now — `src/data/Civilians.ts`, placed by
+ *      `Scenarios.addCivilians` — and the derrick pays its holder every second
+ *      through `src/sim/civilian.system.ts`, which is the reason to spend the
+ *      500-credit engineer and the walk.
+ *
+ *      Two things had to change outside this file for the rule to fire.
+ *      `src/input/Commands.ts` §5b, because a neutral structure is neither
+ *      `hoverOwn` nor `hoverEnemy` and the resolver had no branch that could
+ *      emit `OrderKind.Capture` against one. And that branch has to sit ABOVE
+ *      the Repair branch: `RoleResolver.canRepair` is `canCapture`, so an
+ *      engineer over a DAMAGED derrick would otherwise arrive carrying Repair,
+ *      which `isFriendlyTarget` (below) correctly refuses to treat as friendly
+ *      and which therefore does nothing at all.
+ *
  *   2. An ENEMY structure is captured only at or below `CAPTURE.captureHpFrac`.
  *      Above it, the engineer is spent "softening" the target: it knocks
  *      `CAPTURE.softenFrac` of max HP off and dies in the attempt. This is the

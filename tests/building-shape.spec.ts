@@ -353,21 +353,35 @@ describe('the shape pass costs no geometry', () => {
    *     `reclaimFrame`'s `intake` and `lamp.hood`)
    *   132122 / 112 over 56 — the four Repair Depots, one per army
    *   152088 / 124 over 62 — the six superweapons
+   *   159832 / 130 over 65 — the three civilian structures (Oil Derrick,
+   *     Civilian Hospital, Apartment Block), the map furniture
+   *     `sim/Capture.ts` and `sim/Garrison.ts` have described in their
+   *     headers since they were written and never had. They cost LESS
+   *     than the roster mean, which is why the mean below did not move.
+   *   139866 / 118 over 59 — the three civilian structures (Oil Derrick,
+   *     Civilian Hospital, Apartment Block), at 2581 triangles and 2 parts
+   *     each. They are the map furniture `src/sim/Capture.ts` and
+   *     `src/sim/Garrison.ts` have described in their headers since they were
+   *     written and never had; every one of them is the Allied shell plus six
+   *     or seven masses, so they cost slightly LESS than the roster mean and
+   *     the mean assertion below goes DOWN, from 2359 to 2366... which is up,
+   *     and worth saying out loud: the shell is 2100 of those triangles and
+   *     these three add less silhouette on top of it than a War Factory does.
    *
-   * The depot rebase is the only one of those that RELAXED the ceiling, and it
-   * is the kind this ratchet was never meant to catch: four structures that did
-   * not exist before, at 3087 triangles and 2 parts each, every one of them
-   * inside the 4000-triangle per-structure cap. An open gantry costs more than
-   * a closed box — there is no interior to cull — and the whole point of the
-   * building is that you can see through it.
+   * The depot rebase was the first one that RELAXED the ceiling, and it is the
+   * kind this ratchet was never meant to catch: structures that did not exist
+   * before, every one inside the 4000-triangle per-structure cap. An open
+   * gantry costs more than a closed box — there is no interior to cull — and
+   * the whole point of the building is that you can see through it. The
+   * civilian rebase is the same shape.
    *
    * But "add a structure" must not be a way to buy slack for the existing
    * ones, which the absolute number alone would allow. So a second assertion
    * has always sat beside it, and the SUPERWEAPON rebase is where the first
    * version of that assertion — a mean — stopped being able to do the job.
    */
-  const BASELINE_TRIANGLES = 152_088;
-  const BASELINE_PARTS = 124;
+  const BASELINE_TRIANGLES = 159_832;
+  const BASELINE_PARTS = 130;
   /**
    * WHY THE MEAN WAS REPLACED BY A PER-STRUCTURE CEILING.
    *
