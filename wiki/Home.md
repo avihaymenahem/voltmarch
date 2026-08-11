@@ -8,7 +8,7 @@ fighting over, superweapons, and an AI opponent that plays a real game.
 
 There is also deterministic-lockstep 1v1, with one caveat worth stating on the front page rather
 than burying: the relay is written and tested, but it is not deployed to any public server. You can
-play head-to-head today by running the relay yourself — see [Multiplayer](Multiplayer) — and not by
+play head-to-head today by running the relay yourself — see [Multiplayer](/avihaymenahem/voltmarch/wiki/Multiplayer) — and not by
 clicking a button.
 
 It is not a port or a clone of anything. The conventions it uses — harvester economy, build queues,
@@ -23,21 +23,21 @@ superweapon, and they play nothing like the first two or like each other.
 
 | Page | What is in it |
 | --- | --- |
-| [How to Play](How-to-Play) | The interface, your first ten minutes, the shape of a match. |
-| [Controls](Controls) | Every key and mouse gesture, and which of them you can rebind. |
-| [Economy](Economy) | Ore, harvesters, refineries, power, and what a brownout costs you. |
-| [Base Building](Base-Building) | Placement rules, the build radius, tech tiers, selling and repairing. |
-| [Combat](Combat) | Warheads, armour classes, range, cover, crushing, and what beats what. |
-| [Units and Verbs](Units-and-Verbs) | Every order you can give, stances, garrisons, transports, capture. |
-| [Factions](Factions) | All four compared, with a recommendation for your first match. |
-| [Allied Forces](Faction-Allies) | Precision, mobility and beam tech. Fewer, better units. |
-| [Soviet Union](Faction-Soviets) | Armour and volume. Slower, heavier, hits like a building. |
-| [Meridian Pact](Faction-Meridian-Pact) | Nothing the Pact fields touches the ground. |
-| [The Reclamation](Faction-Reclamation) | Welded out of other people's wrecks. No turrets, anywhere. |
-| [Maps](Maps) | The six battlefields and what each one rewards. |
-| [Campaign](Campaign) | Missions, unlocks, and what a fresh profile is missing. |
-| [Strategy](Strategy) | Openings, scouting, expansions, and how to lose less often. |
-| [Multiplayer](Multiplayer) | Head-to-head 1v1, and what it takes to actually run a match. |
+| [How to Play](/avihaymenahem/voltmarch/wiki/How-to-Play) | The interface, your first ten minutes, the shape of a match. |
+| [Controls](/avihaymenahem/voltmarch/wiki/Controls) | Every key and mouse gesture, and which of them you can rebind. |
+| [Economy](/avihaymenahem/voltmarch/wiki/Economy) | Ore, harvesters, refineries, power, and what a brownout costs you. |
+| [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building) | Placement rules, the build radius, tech tiers, selling and repairing. |
+| [Combat](/avihaymenahem/voltmarch/wiki/Combat) | Warheads, armour classes, range, cover, crushing, and what beats what. |
+| [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs) | Every order you can give, stances, garrisons, transports, capture. |
+| [Factions](/avihaymenahem/voltmarch/wiki/Factions) | All four compared, with a recommendation for your first match. |
+| [Allied Forces](/avihaymenahem/voltmarch/wiki/Faction-Allies) | Precision, mobility and beam tech. Fewer, better units. |
+| [Soviet Union](/avihaymenahem/voltmarch/wiki/Faction-Soviets) | Armour and volume. Slower, heavier, hits like a building. |
+| [Meridian Pact](/avihaymenahem/voltmarch/wiki/Faction-Meridian-Pact) | Nothing the Pact fields touches the ground. |
+| [The Reclamation](/avihaymenahem/voltmarch/wiki/Faction-Reclamation) | Welded out of other people's wrecks. No turrets, anywhere. |
+| [Maps](/avihaymenahem/voltmarch/wiki/Maps) | The six battlefields and what each one rewards. |
+| [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) | Missions, unlocks, and what a fresh profile is missing. |
+| [Strategy](/avihaymenahem/voltmarch/wiki/Strategy) | Openings, scouting, expansions, and how to lose less often. |
+| [Multiplayer](/avihaymenahem/voltmarch/wiki/Multiplayer) | Head-to-head 1v1, and what it takes to actually run a match. |
 
 ## A note on unlocks
 
@@ -48,6 +48,6 @@ tank. What is held back is the *widening*: the naval arm, the tech building and 
 off it, the fast-harass raider, the tier-3 specialist, aircraft, and the expensive defences.
 Missions pay those out, and the four unlock groups are mirrored across all four armies — one
 mission grants "the raider" and every faction gets its raider — so switching sides never sends you
-back to the start of the curve. See [Campaign](Campaign).
+back to the start of the curve. See [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
 
 Faction pages below mark anything gated with **(locked)**.

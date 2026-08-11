@@ -4,7 +4,7 @@ Everything below is derived from the game's actual numbers — the weapon table,
 the build costs and the AI's own doctrine tables — not from RTS folklore. Where a claim is arithmetic
 it is stated as arithmetic. Where it is a judgement call it says so.
 
-New here? Read [How to Play](How-to-Play) and [Controls](Controls) first. This page assumes you know
+New here? Read [How to Play](/avihaymenahem/voltmarch/wiki/How-to-Play) and [Controls](/avihaymenahem/voltmarch/wiki/Controls) first. This page assumes you know
 which button builds a tank.
 
 ---
@@ -315,7 +315,7 @@ Add also: **splash.** The Slaghurler's mortar is 5.8 m, the Slagger's satchel 2.
 ### Aircraft
 
 **All four armies have one**, unlocked together by a single Meridian mission (see
-[Campaign](Campaign)). Every aircraft is Light armour — the air/ground split is a targeting rule, not
+[Campaign](/avihaymenahem/voltmarch/wiki/Campaign)). Every aircraft is Light armour — the air/ground split is a targeting rule, not
 a seventh armour class. Aircraft ignore terrain, water, cliffs, buildings and each other entirely,
 cruise at 22 m, never land, never rearm and travel in a straight line to wherever you send them.
 
@@ -367,7 +367,7 @@ worth bombing.
 The honest general rule is a **2:1 line-to-answer ratio**, with the answer chosen from what you
 scouted. Concretely:
 
-**[Allied Forces](Faction-Allies).** Grizzlies are the line. The Multigunner IFV is, on the numbers, the better tank
+**[Allied Forces](/avihaymenahem/voltmarch/wiki/Faction-Allies).** Grizzlies are the line. The Multigunner IFV is, on the numbers, the better tank
 against everything except heavy armour — cheaper, faster, longer-sighted and nearly twice the damage.
 Mix them roughly evenly and use Grizzlies as the anti-Rhino element. Javelins behind the armour, not
 in front: they have 24 m of range against a Rhino's 26 and have to walk into the gun. Prism Tanks
@@ -375,7 +375,7 @@ must stop to fire and die to anything that reaches them — keep them behind the
 remember the Prism Tank is the one Allied hull that does **not** crush infantry. The Vindicator is
 your base-opener; the Hover Transport is how a squad of Javelins gets across a map without walking.
 
-**[Soviet Union](Faction-Soviets).** Rhinos win fights and lose exchange rates. Conscripts are the best anti-infantry
+**[Soviet Union](/avihaymenahem/voltmarch/wiki/Faction-Soviets).** Rhinos win fights and lose exchange rates. Conscripts are the best anti-infantry
 value in the game at 0.50 DPS per credit — screen with them and let the Rhinos shoot armour.
 Flak Troopers are the light-armour answer, not the heavy one: 1.00 against light and 0.35 against
 heavy. The Soviet answer to heavy armour is heavier armour. The Apocalypse is poor per credit (0.027
@@ -384,7 +384,7 @@ a crush level of 6, which is the highest in the game. The MiG is the answer to a
 nothing else: 33 DPS against a Rhino is not a tank. Soviet armour is also the best crushing armour in
 the game — a Rhino column driving through a Conscript screen is a real Soviet play.
 
-**[Meridian Pact](Faction-Meridian-Pact).** A Pact line wins a standoff and loses a brawl: every Pact gun outranges its
+**[Meridian Pact](/avihaymenahem/voltmarch/wiki/Faction-Meridian-Pact).** A Pact line wins a standoff and loses a brawl: every Pact gun outranges its
 opposite number by 1–3 m and under-damages it. Fight at maximum range, retreat rather than trade, and
 screen with Wayfarers, because massed infantry is what the army is worst against. Everything hovers,
 so slope costs you nothing and you can take routes tracked armies will not. Never let an IFV or a
@@ -395,7 +395,7 @@ clears an infantry screen by driving through it. Its transport is the Sandskiff 
 550-credit armed raider, which is a different tool from a 900-credit troop ship: use it to put two
 Sunlancers somewhere nobody expects them, not to move an army.
 
-**[The Reclamation](Faction-Reclamation).** Nothing you field has a turret, so every hull must point its chassis at what it
+**[The Reclamation](/avihaymenahem/voltmarch/wiki/Faction-Reclamation).** Nothing you field has a turret, so every hull must point its chassis at what it
 wants to kill, inside a range band where everyone else is already shooting. The compensation is a full
 extra radian per second of hull turn and the cheapest units in the game. Play it as swarm-and-replace:
 Pickers and Grinders in numbers, arcs chaining through the enemy line, Slaghurlers held back at 42 m
@@ -586,7 +586,7 @@ cannot move.
 **Commander powers** — Airstrike, Orbital Scan, Emergency Repair, Ore Boost, Chronoshift — are
 earned from the mission table, charge from the start of every match and need no structure at all.
 They are fully implemented, and **there is no button for them yet**: today they are console-only. Do
-not plan around them (see [Campaign](Campaign#commander-powers)).
+not plan around them (see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign#commander-powers)).
 
 **Commander abilities** are the ones you can actually press, and they are free with your faction's
 1,500-credit hero. Iron Will (5 s of invulnerability, 60 s cooldown) is a small Iron Curtain you can
@@ -666,7 +666,7 @@ Behaviours worth knowing:
     behind a wall, on rough ground, or off the lane.
 12. **Building a superweapon without buying the generation first.** −150 power browns out a base that
     was comfortable, which turns your defences off and stops the countdown you just paid for.
-13. **Expecting objective credits to arrive.** They do not. See [Campaign](Campaign).
+13. **Expecting objective credits to arrive.** They do not. See [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
 
 ### Things that look like tools and are not
 
@@ -686,14 +686,14 @@ Be aware of these before you build a plan around one:
   this build. Hold Fire and Hold Ground are the two that do something.
 - **Roads are not a speed bonus.** They change routing, not velocity.
 - **There is no high-ground advantage.** Terrain blocks direct fire; it does not buff it.
-- **Objective credits are never paid.** See [Campaign](Campaign).
+- **Objective credits are never paid.** See [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
 - **Cosmetic rewards render nothing.** Fourteen insignia and decals exist as text on a screen.
 - **Passengers do not shoot.** A loaded transport fires with its own gun and nothing else. A
   *garrison* volleys with everyone inside; a transport is a delivery.
 
 ---
 
-**Factions:** [Allied Forces](Faction-Allies) · [Soviet Union](Faction-Soviets) · [Meridian Pact](Faction-Meridian-Pact) · [The Reclamation](Faction-Reclamation)
+**Factions:** [Allied Forces](/avihaymenahem/voltmarch/wiki/Faction-Allies) · [Soviet Union](/avihaymenahem/voltmarch/wiki/Faction-Soviets) · [Meridian Pact](/avihaymenahem/voltmarch/wiki/Faction-Meridian-Pact) · [The Reclamation](/avihaymenahem/voltmarch/wiki/Faction-Reclamation)
 
-**See also:** [Maps](Maps) · [Campaign](Campaign) · [Combat](Combat) · [Economy](Economy) ·
-[Base Building](Base-Building) · [Units and Verbs](Units-and-Verbs) · [Multiplayer](Multiplayer)
+**See also:** [Maps](/avihaymenahem/voltmarch/wiki/Maps) · [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) · [Combat](/avihaymenahem/voltmarch/wiki/Combat) · [Economy](/avihaymenahem/voltmarch/wiki/Economy) ·
+[Base Building](/avihaymenahem/voltmarch/wiki/Base-Building) · [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs) · [Multiplayer](/avihaymenahem/voltmarch/wiki/Multiplayer)

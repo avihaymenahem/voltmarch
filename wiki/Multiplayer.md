@@ -240,5 +240,5 @@ running every turn. What is missing is not correctness. It is deployment.
 
 ---
 
-**See also:** [Strategy](Strategy) · [Maps](Maps) · [How to Play](How-to-Play) ·
-[Controls](Controls) · [Units and Verbs](Units-and-Verbs) · [Home](Home)
+**See also:** [Strategy](/avihaymenahem/voltmarch/wiki/Strategy) · [Maps](/avihaymenahem/voltmarch/wiki/Maps) · [How to Play](/avihaymenahem/voltmarch/wiki/How-to-Play) ·
+[Controls](/avihaymenahem/voltmarch/wiki/Controls) · [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs) · [Home](/avihaymenahem/voltmarch/wiki/Home)

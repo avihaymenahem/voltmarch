@@ -4,9 +4,9 @@ Everything about how a shot becomes a kill: the armour matrix, weapon ranges and
 cooldowns, how units pick targets, stances, veterancy, fog of war, and what a
 corpse leaves behind.
 
-If you have not built a base yet, start with [How to Play](How-to-Play) and
-[Base Building](Base-Building). For which unit to build against which army, see
-[Strategy](Strategy).
+If you have not built a base yet, start with [How to Play](/avihaymenahem/voltmarch/wiki/How-to-Play) and
+[Base Building](/avihaymenahem/voltmarch/wiki/Base-Building). For which unit to build against which army, see
+[Strategy](/avihaymenahem/voltmarch/wiki/Strategy).
 
 ---
 
@@ -370,7 +370,7 @@ it back above the threshold.
 **Vehicles** leave a burning hulk for **26 seconds** — actively on fire for the
 first 10, smoking for the rest. A hulk is scenery: it blocks nothing, cannot be
 targeted and cannot be selected. It can be cashed in by the Reclamation's
-[Salvage Call](Units-and-Verbs#the-four-commander-abilities).
+[Salvage Call](/avihaymenahem/voltmarch/wiki/Units-and-Verbs#the-four-commander-abilities).
 
 **Anything killed over water sinks.** Splash, no wreck. An aircraft shot down
 over a lake makes its splash at the waterline, not at cruising altitude.
@@ -392,7 +392,7 @@ are true:
    count as working.
 
 That is roughly 40 seconds from a sliver to full. Structures do not self-repair;
-see [Repair and sell](Units-and-Verbs#repair-and-sell).
+see [Repair and sell](/avihaymenahem/voltmarch/wiki/Units-and-Verbs#repair-and-sell).
 
 ---
 
@@ -415,6 +415,6 @@ see [Repair and sell](Units-and-Verbs#repair-and-sell).
 
 ---
 
-**See also:** [Units and Verbs](Units-and-Verbs) ·
-[Controls](Controls) · [Economy](Economy) · [Strategy](Strategy) ·
-[Home](Home)
+**See also:** [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs) ·
+[Controls](/avihaymenahem/voltmarch/wiki/Controls) · [Economy](/avihaymenahem/voltmarch/wiki/Economy) · [Strategy](/avihaymenahem/voltmarch/wiki/Strategy) ·
+[Home](/avihaymenahem/voltmarch/wiki/Home)

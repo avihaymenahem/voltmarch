@@ -6,7 +6,7 @@ ore is, how built-up it is) and a **fixed seed** that makes the same name produc
 time. Change the seed and you get a different valley with the same character.
 
 This page covers what the ground does to your army. For what you build on it see
-[Base Building](Base-Building); for the economy that pays for it see [Economy](Economy).
+[Base Building](/avihaymenahem/voltmarch/wiki/Base-Building); for the economy that pays for it see [Economy](/avihaymenahem/voltmarch/wiki/Economy).
 
 ---
 
@@ -38,7 +38,7 @@ Around each construction vehicle the scenario reserves 13 m of ground and around
 
 ## 2. The six battlefields
 
-Two ship open. The other four are earned — see [Campaign](Campaign).
+Two ship open. The other four are earned — see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
 
 | Map | Biome | Character | Ore richness | Water | Unlocked by |
 | --- | --- | --- | --- | --- | --- |
@@ -197,7 +197,7 @@ fells trees and shrubs under the front 70 % of its hull, permanently for the mat
 enemy infantryman it drives over. Boulders and rocks are solid instead and will stop a column. Six
 hulls crush: the Grizzly, the Rhino, the Apocalypse, the Ore Harvester, the Grinder and the
 Scrapjaw. The whole Meridian Pact hovers and crushes nothing. See
-[Units and Verbs](Units-and-Verbs#crushing-infantry) for the full rule.
+[Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs#crushing-infantry) for the full rule.
 
 The map consequence is that **broken ground is infantry country**. Wheeled and tracked hulls reroute
 around rough cells; a squad on a terrace shelf or in a rock field is somewhere a tank has to arrive
@@ -387,8 +387,8 @@ vehicle), `?roads=off`.
 
 ---
 
-**Factions:** [Allied Forces](Faction-Allies) · [Soviet Union](Faction-Soviets) · [Meridian Pact](Faction-Meridian-Pact) · [The Reclamation](Faction-Reclamation)
+**Factions:** [Allied Forces](/avihaymenahem/voltmarch/wiki/Faction-Allies) · [Soviet Union](/avihaymenahem/voltmarch/wiki/Faction-Soviets) · [Meridian Pact](/avihaymenahem/voltmarch/wiki/Faction-Meridian-Pact) · [The Reclamation](/avihaymenahem/voltmarch/wiki/Faction-Reclamation)
 
-**See also:** [Strategy](Strategy) · [Economy](Economy) · [Base Building](Base-Building) ·
-[Combat](Combat) · [Units and Verbs](Units-and-Verbs) · [Controls](Controls) ·
-[How to Play](How-to-Play)
+**See also:** [Strategy](/avihaymenahem/voltmarch/wiki/Strategy) · [Economy](/avihaymenahem/voltmarch/wiki/Economy) · [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building) ·
+[Combat](/avihaymenahem/voltmarch/wiki/Combat) · [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs) · [Controls](/avihaymenahem/voltmarch/wiki/Controls) ·
+[How to Play](/avihaymenahem/voltmarch/wiki/How-to-Play)

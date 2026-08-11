@@ -185,7 +185,7 @@ players get everything.
 
 ## 5. Maps
 
-Four of the six battlefields are earned. See [Maps](Maps) for what each one plays like.
+Four of the six battlefields are earned. See [Maps](/avihaymenahem/voltmarch/wiki/Maps) for what each one plays like.
 
 | Map | Earned by |
 | --- | --- |
@@ -241,13 +241,13 @@ The charge is spent whether or not the power catches anything.
 
 Do not confuse them with the **four commander abilities**, which are on the HUD, have a hotkey and a
 cooldown ring, and work. Those come free with your faction's 1,500-credit hero and are not in the
-unlock table at all — see [Units and Verbs](Units-and-Verbs#the-four-commander-abilities).
+unlock table at all — see [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs#the-four-commander-abilities).
 
 ### Superweapons
 
 **Six superweapons are buildable and fully wired** — a structure, a countdown row on the HUD, an
-arming click and a targeting cursor. See [Units and Verbs](Units-and-Verbs#superweapons) for the
-effects and [Base Building](Base-Building#superweapons) for siting them.
+arming click and a targeting cursor. See [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs#superweapons) for the
+effects and [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building#superweapons) for siting them.
 
 | Weapon | Army | Structure | Cost | Charge |
 | --- | --- | --- | --- | --- |
@@ -300,11 +300,11 @@ If you want the roster open quickly, the cheap end of the table is:
    behind it.
 
 *Blitz* (win inside 15 minutes) is much easier than it sounds against an Easy opponent, which does
-not commit its first attack until the five-minute mark — see [Strategy](Strategy).
+not commit its first attack until the five-minute mark — see [Strategy](/avihaymenahem/voltmarch/wiki/Strategy).
 
 ---
 
-**Factions:** [Allied Forces](Faction-Allies) · [Soviet Union](Faction-Soviets) · [Meridian Pact](Faction-Meridian-Pact) · [The Reclamation](Faction-Reclamation)
+**Factions:** [Allied Forces](/avihaymenahem/voltmarch/wiki/Faction-Allies) · [Soviet Union](/avihaymenahem/voltmarch/wiki/Faction-Soviets) · [Meridian Pact](/avihaymenahem/voltmarch/wiki/Faction-Meridian-Pact) · [The Reclamation](/avihaymenahem/voltmarch/wiki/Faction-Reclamation)
 
-**See also:** [Strategy](Strategy) · [Maps](Maps) · [Units and Verbs](Units-and-Verbs) ·
-[How to Play](How-to-Play) · [Controls](Controls) · [Base Building](Base-Building)
+**See also:** [Strategy](/avihaymenahem/voltmarch/wiki/Strategy) · [Maps](/avihaymenahem/voltmarch/wiki/Maps) · [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs) ·
+[How to Play](/avihaymenahem/voltmarch/wiki/How-to-Play) · [Controls](/avihaymenahem/voltmarch/wiki/Controls) · [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building)

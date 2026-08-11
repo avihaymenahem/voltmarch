@@ -4,7 +4,7 @@ Your first fifteen minutes. This page covers starting a match, reading the scree
 and the shape a match takes from the opening to the end of it.
 
 If you have played Command & Conquer, most of this will be familiar and you can skim to
-[Controls](Controls). If you have never played a real-time strategy game, read it in order.
+[Controls](/avihaymenahem/voltmarch/wiki/Controls). If you have never played a real-time strategy game, read it in order.
 
 ---
 
@@ -85,7 +85,7 @@ minute, rounded to the nearest ten, green when it is actually running). Below th
 are hidden to keep the strip from crowding the battlefield.
 
 There is no storage readout on the strip. If you want to know how close you are to your credit
-cap, watch for the **Silos needed** toast — see [Economy](Economy).
+cap, watch for the **Silos needed** toast — see [Economy](/avihaymenahem/voltmarch/wiki/Economy).
 
 ### The build rail (right)
 
@@ -111,7 +111,7 @@ rail swaps the blurb for the actual reason in amber, e.g. *"Requires Ore Refiner
 At the right end of the tab strip are the only two tool buttons in the game: a **wrench**
 (*"Repair structure — click a damaged building"*) and a **dollar sign** (*"Sell structure — click
 a building to refund it"*). Arming either changes the cursor. Armed sell is red, because it is
-destructive. Both are covered in [Base Building](Base-Building).
+destructive. Both are covered in [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building).
 
 ### The tactical map (bottom left)
 
@@ -141,10 +141,10 @@ cards, four armour/damage/range/speed chips, and a health bar with the absolute 
 over it. On the right of the head row you get, depending on what is selected:
 
 - **Stance** — four buttons, covered below
-- **Relocate** — for exactly one owned structure; see [Base Building](Base-Building)
+- **Relocate** — for exactly one owned structure; see [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building)
 - **Ability** — for exactly one commander; prints the ability name when ready and a countdown
   in seconds while cooling
-- **Cargo / Unload** — for a transport; see [Units and Verbs](Units-and-Verbs)
+- **Cargo / Unload** — for a transport; see [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs)
 
 ### Objectives (top right) and toasts (top left)
 
@@ -306,8 +306,8 @@ gets the better ending.
 
 ## Where to go next
 
-- [Controls](Controls) — every binding, and which of them you can change
-- [Economy](Economy) — ore, harvesters, credits, storage, income
-- [Base Building](Base-Building) — placement, power, the tech tree, repair, sell, relocate
-- [Combat](Combat) — armour, damage, veterancy, crushing, garrisons
-- [Units and Verbs](Units-and-Verbs) — transports, capture, aircraft, commander abilities
+- [Controls](/avihaymenahem/voltmarch/wiki/Controls) — every binding, and which of them you can change
+- [Economy](/avihaymenahem/voltmarch/wiki/Economy) — ore, harvesters, credits, storage, income
+- [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building) — placement, power, the tech tree, repair, sell, relocate
+- [Combat](/avihaymenahem/voltmarch/wiki/Combat) — armour, damage, veterancy, crushing, garrisons
+- [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs) — transports, capture, aircraft, commander abilities

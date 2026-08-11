@@ -148,7 +148,7 @@ satchel. Extremely rewarding once it clicks. Not a first faction.
 
 ## Full roster pages
 
-- [Allied Forces](Faction-Allies)
-- [Soviet Union](Faction-Soviets)
-- [Meridian Pact](Faction-Meridian-Pact)
-- [The Reclamation](Faction-Reclamation)
+- [Allied Forces](/avihaymenahem/voltmarch/wiki/Faction-Allies)
+- [Soviet Union](/avihaymenahem/voltmarch/wiki/Faction-Soviets)
+- [Meridian Pact](/avihaymenahem/voltmarch/wiki/Faction-Meridian-Pact)
+- [The Reclamation](/avihaymenahem/voltmarch/wiki/Faction-Reclamation)

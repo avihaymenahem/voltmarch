@@ -511,8 +511,8 @@ because it lifts up to nine of your units out of one place and sets them down in
 Radii, for aiming: Nuclear Missile 26 m, Solar Lance 24 m, Arc Storm 17 m, Lightning Storm 16 m,
 Iron Curtain 13 m, Chronosphere 11 m. The nuke and the Solar Lance are announced before they land.
 
-For what each one actually does to what it hits, see [Combat](Combat).
+For what each one actually does to what it hits, see [Combat](/avihaymenahem/voltmarch/wiki/Combat).
 
 ---
 
-See also: [How to Play](How-to-Play) · [Economy](Economy) · [Controls](Controls) · [Units and Verbs](Units-and-Verbs)
+See also: [How to Play](/avihaymenahem/voltmarch/wiki/How-to-Play) · [Economy](/avihaymenahem/voltmarch/wiki/Economy) · [Controls](/avihaymenahem/voltmarch/wiki/Controls) · [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs)

@@ -5,7 +5,7 @@ refinery. Everything you build is paid for out of that one number.
 
 Power is a second, separate system that does not cost credits to run — it costs credits to
 *build*, and running short of it makes everything slower. It is covered at the end of this page and
-in more depth in [Base Building](Base-Building).
+in more depth in [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building).
 
 ---
 
@@ -222,7 +222,7 @@ draws 20 power and nothing supplies any, so your first Power Plant — nominally
 about 32. That is not a bug; it is the game telling you what to build first.
 
 A brownout also **darkens structures** — defences first. That half is in
-[Base Building](Base-Building).
+[Base Building](/avihaymenahem/voltmarch/wiki/Base-Building).
 
 ---
 
@@ -242,4 +242,4 @@ A Brutal AI mines faster. It does not conjure credits.
 
 ---
 
-See also: [How to Play](How-to-Play) · [Base Building](Base-Building) · [Units and Verbs](Units-and-Verbs)
+See also: [How to Play](/avihaymenahem/voltmarch/wiki/How-to-Play) · [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building) · [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs)

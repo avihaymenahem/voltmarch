@@ -1,8 +1,8 @@
 # Units and Verbs
 
 Every special thing a unit or a structure can do, what it is for, and how to do
-it. For damage, armour and targeting see [Combat](Combat); for the full key list
-see [Controls](Controls).
+it. For damage, armour and targeting see [Combat](/avihaymenahem/voltmarch/wiki/Combat); for the full key list
+see [Controls](/avihaymenahem/voltmarch/wiki/Controls).
 
 ---
 
@@ -38,7 +38,7 @@ ore → plain ground.
 ### What a fresh profile cannot do yet
 
 Some of the verbs below are behind campaign unlocks, and on a brand-new profile
-they simply are not in the sidebar. See [Campaign](Campaign) for which mission
+they simply are not in the sidebar. See [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) for which mission
 pays out what.
 
 | Locked at the start | What it takes away |
@@ -240,7 +240,7 @@ vehicle over 1.6 seconds. This is how a yard moves — it is refused by
 
 Right-click ore with a harvester selected, or right-click your own refinery to
 send it home early. Harvesters find their own ore and their own dock if you
-leave them alone; see [Economy](Economy) for the field mechanics.
+leave them alone; see [Economy](/avihaymenahem/voltmarch/wiki/Economy) for the field mechanics.
 
 | Harvester | Army | Load | Cost | Speed |
 |---|---|---|---|---|
@@ -425,7 +425,7 @@ air-superiority unit in the game and useless against a tank line or a wall.
 - **It shares no space.** Aircraft fly through each other and through ground
   units, ignore the navigation grid entirely, and travel in a straight line. No
   pathing, no queueing, no traffic.
-- **Most guns cannot touch it.** See [Combat §2](Combat#which-guns-can-shoot-up).
+- **Most guns cannot touch it.** See [Combat §2](/avihaymenahem/voltmarch/wiki/Combat#which-guns-can-shoot-up).
   Only the Allies have a dedicated AA emplacement (Multigunner AA); the Pact and
   the Reclamation answer aircraft with units — the Sunlancer and the Arcspitter.
 - **Killed over water it sinks**, from altitude, leaving a splash at the
@@ -565,7 +565,7 @@ because it is the whole design:
 | How many | 4, one per army | 5, shared across every army |
 
 Powers charge from the start of every match and work with every hero dead. Each
-one is paid out by exactly one mission — see [Campaign](Campaign).
+one is paid out by exactly one mission — see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
 
 | Power | Charge | Radius | Effect |
 |---|---|---|---|
@@ -607,6 +607,6 @@ so a loaded game starts every power charging from full.
 
 ---
 
-**See also:** [Combat](Combat) · [Controls](Controls) ·
-[Base Building](Base-Building) · [Economy](Economy) · [Campaign](Campaign) ·
-[Strategy](Strategy) · [Home](Home)
+**See also:** [Combat](/avihaymenahem/voltmarch/wiki/Combat) · [Controls](/avihaymenahem/voltmarch/wiki/Controls) ·
+[Base Building](/avihaymenahem/voltmarch/wiki/Base-Building) · [Economy](/avihaymenahem/voltmarch/wiki/Economy) · [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) ·
+[Strategy](/avihaymenahem/voltmarch/wiki/Strategy) · [Home](/avihaymenahem/voltmarch/wiki/Home)

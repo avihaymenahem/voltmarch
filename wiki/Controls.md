@@ -84,7 +84,7 @@ Notes that matter:
 | `S` | Stop | Rebindable |
 | `G` | Guard | Rebindable |
 | `X` | Scatter | Rebindable |
-| `D` | Deploy / unload / evacuate a garrison | Rebindable |
+| `D` | Deploy / unload | Rebindable |
 | `F` | Force fire (arms the cursor) | Rebindable |
 | `Y` | Set rally point (arms the cursor) | Rebindable |
 | `Shift` + `F` | Commander ability | Rebindable |
@@ -102,11 +102,9 @@ What each of the letters actually does:
   under artillery.
 - **D — Deploy.** Unpacks a construction vehicle into its Construction Yard **where it stands**.
   It is not a move order — drive it into place first. A structure that folds back into a vehicle
-  takes the same key; so does a transport with a squad aboard, and so does a **building with a
-  squad inside** — the men get out around the hull or around the walls. All three are the same
-  verb, and a mixed selection does all three at once. Double-clicking a construction vehicle does
-  the same thing, and so does right-clicking it while it is selected. Each of the three also has
-  a button on the selection panel: **Unload**, **Evacuate**, and the deploy icon.
+  takes the same key, and so does a transport with a squad aboard: the men get out around the
+  hull. Double-clicking a construction vehicle does the same thing, and so does right-clicking it
+  while it is selected.
 - **F — Force fire.** Arms the cursor to fire on the next click, whatever is there — ground,
   wreckage or your own hardware. It works into unexplored shroud, which nothing else does.
 - **Y — Set rally point.** Arms the cursor to move the rally flag of every selected factory.
@@ -231,8 +229,8 @@ Stated plainly so you do not go hunting:
   (airstrike, orbital scan, emergency repair, ore boost, chronoshift) are fully implemented in the
   simulation and have no button. They are callable from the browser console only. This is a known
   gap, not a secret. The per-unit **faction ability** on `Shift+F` is a different thing and does
-  work — see [Units and Verbs](Units-and-Verbs).
+  work — see [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs).
 
 ---
 
-See also: [How to Play](How-to-Play) · [Base Building](Base-Building) · [Economy](Economy)
+See also: [How to Play](/avihaymenahem/voltmarch/wiki/How-to-Play) · [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building) · [Economy](/avihaymenahem/voltmarch/wiki/Economy)
