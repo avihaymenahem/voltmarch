@@ -90,13 +90,20 @@ let beams: BeamSystem | null = null;
  * strip where a nuke landed, and both would have looked like "the decals are
  * a bit odd" rather than like a bug.
  *
- * `TreadMark`, `FootPrint`, `Squish` and `OreStain` have no counterpart: treads
- * are laid by `layTread` straight from Movement and the other three were never
- * drawn. `undefined` means "drop it", which is what they were already doing.
+ * `TreadMark`, `FootPrint` and `OreStain` have no counterpart: treads are laid by
+ * `layTread` straight from Movement and the other two were never drawn.
+ * `undefined` means "drop it", which is what they were already doing.
+ *
+ * `Squish` USED TO BE ON THAT LIST and no longer is. Infantry crushing shipped —
+ * `unitsCrushed` moves, `FxKind.CrushSquish` fires, `SFX.crush` plays — so the
+ * game grew a verb that flattens a man under a track and left the ground
+ * untouched, because the field enum had no tile and this map dropped the kind
+ * silently. `world/Decals.ts` now owns atlas tile 10 and the mapping is real.
  */
 const DECAL_PORT_MAP: Readonly<Record<number, WorldDecalKind>> = {
   [DecalKind.Scorch]: WorldDecalKind.Scorch,
   [DecalKind.Crater]: WorldDecalKind.Crater,
+  [DecalKind.Squish]: WorldDecalKind.Squish,
   // The closest thing the field owns to broken masonry: a wide soft smudge.
   // A collapsed structure leaving nothing at all is the current behaviour and
   // is worse than an approximation.
@@ -604,6 +611,7 @@ export default defineSystem({
      *                    OreStain=5 Rubble=6
      *   world/Decals.ts  Tread=0  Tyre=1   Scorch=2    Crater=3    Oil=4
      *                    Dust=5   Manhole=6 LightPool=7 Crack=8    Patch=9
+     *                    Squish=10
      *
      * A nuke's Crater(1) would have laid a Tyre mark. The map below is the
      * whole reason this adapter exists rather than a one-line assignment.

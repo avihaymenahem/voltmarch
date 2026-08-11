@@ -20,6 +20,7 @@ import * as THREE from 'three';
 import {
   DECAL_GRID, DECAL_LIFT, MAP_SIZE, ROAD_CORNER_RADIUS_MAX, ROAD_CORNER_RADIUS_MIN,
   ROAD_KERB_HEIGHT, ROAD_LANE_WIDTH, ROAD_MIN_AXIS_DEGREES, ROAD_MOVE_COST, SCORCH_DARKEN,
+  SQUISH_DARKEN, SQUISH_LIFE_SECONDS, TREAD_DARKEN,
 } from '../src/core/config';
 import { Terrain } from '../src/world/Terrain';
 import {
@@ -470,6 +471,144 @@ describe('DecalField — the pool', () => {
     layDecal(DecalKind.Scorch, 1, 1, 2);
     expect(f.liveCount).toBe(1);
     setActiveDecals(null);
+    f.dispose();
+  });
+});
+
+/* ==========================================================================
+ * THE ATLAS ITSELF — every kind must have ink
+ *
+ * A decal kind wired perfectly end to end still draws nothing if its atlas tile
+ * is empty, and `spawn()` will happily stamp it, count it live, and report it
+ * in `stats()` the whole time. The alpha channel of the tile IS the coverage
+ * the fragment shader multiplies by, so a tile of zeroes is a guaranteed
+ * `discard` and there is no other symptom.
+ * ========================================================================== */
+
+describe('the procedural decal atlas has a drawn tile for every kind', () => {
+  /** The atlas bytes, straight off the material the mesh renders with. */
+  function atlas(): { data: Uint8Array; size: number; tile: number } {
+    const f = new DecalField({ scene: new THREE.Scene(), capacity: 1 });
+    const m = f.mesh.material as THREE.ShaderMaterial;
+    const tex = m.uniforms.uAtlas.value as THREE.DataTexture;
+    const data = (tex.image as { data: Uint8Array }).data;
+    // Copy before disposing: the texture owns the buffer.
+    const out = { data: data.slice(), size: tex.image.width, tile: DECAL_LAYOUT.atlasTile };
+    f.dispose();
+    return out;
+  }
+
+  /** Mean coverage (alpha) and peak darkening over one tile. */
+  function measure(kind: DecalKind): { coverage: number; inked: number; darkest: number } {
+    const { data, size, tile } = atlas();
+    const cols = DECAL_LAYOUT.atlasCols;
+    const ox = (kind % cols) * tile;
+    const oy = Math.floor(kind / cols) * tile;
+    let sum = 0;
+    let inked = 0;
+    let darkest = 1;
+    for (let y = 0; y < tile; y++) {
+      for (let x = 0; x < tile; x++) {
+        const o = ((oy + y) * size + ox + x) * 4;
+        const a = data[o + 3] / 255;
+        sum += a;
+        if (a > 0.02) inked++;
+        // RGB is a multiply factor at half scale: 0.5 decodes to 1.0.
+        if (a > 0.5) darkest = Math.min(darkest, (data[o] / 255) * 2);
+      }
+    }
+    return { coverage: sum / (tile * tile), inked, darkest };
+  }
+
+  const KINDS: ReadonlyArray<readonly [string, DecalKind]> = [
+    ['Tread', DecalKind.Tread], ['Tyre', DecalKind.Tyre], ['Scorch', DecalKind.Scorch],
+    ['Crater', DecalKind.Crater], ['Oil', DecalKind.Oil], ['Dust', DecalKind.Dust],
+    ['Manhole', DecalKind.Manhole], ['LightPool', DecalKind.LightPool],
+    ['Crack', DecalKind.Crack], ['Patch', DecalKind.Patch], ['Squish', DecalKind.Squish],
+  ];
+
+  for (const [name, kind] of KINDS) {
+    it(`${name} covers a real fraction of its tile`, () => {
+      const m = measure(kind);
+      // A crack is the thinnest thing in here and still inks ~3% of the tile.
+      expect(m.coverage, `${name} tile is blank`).toBeGreaterThan(0.01);
+      expect(m.inked).toBeGreaterThan(200);
+    });
+  }
+
+  it('Squish is a pressed strip: longer than it is wide, and it presses DOWN', () => {
+    const { data, size, tile } = atlas();
+    const cols = DECAL_LAYOUT.atlasCols;
+    const ox = (DecalKind.Squish % cols) * tile;
+    const oy = Math.floor(DecalKind.Squish / cols) * tile;
+    // Widest inked run across (row through the middle) vs longest inked run
+    // along (column through the middle). A track presses a strip, not a disc.
+    let across = 0;
+    let along = 0;
+    const mid = tile >> 1;
+    for (let x = 0; x < tile; x++) {
+      if (data[((oy + mid) * size + ox + x) * 4 + 3] > 6) across++;
+    }
+    for (let y = 0; y < tile; y++) {
+      if (data[((oy + y) * size + ox + mid) * 4 + 3] > 6) along++;
+    }
+    expect(across).toBeGreaterThan(20);
+    expect(along).toBeGreaterThan(across);
+  });
+
+  it('Squish carries the tread cleat rhythm, which is what says a TRACK did it', () => {
+    const { data, size, tile } = atlas();
+    const cols = DECAL_LAYOUT.atlasCols;
+    const ox = (DecalKind.Squish % cols) * tile;
+    const oy = Math.floor(DecalKind.Squish / cols) * tile;
+    // Walk the centre column, HIGH-PASS it, and count sign changes. A plain
+    // threshold cannot do this job: the bars ride on the blob's own radial
+    // falloff, so "above 150" is true across the whole middle of the mark and
+    // false at both ends whatever the cleats do. Subtracting a one-period
+    // moving average (the bars run at period 9 over 128 texels, so 15) leaves
+    // the modulation and nothing else — a smooth blob residual never crosses.
+    const mid = ox + (tile >> 1);
+    const col: number[] = [];
+    for (let y = 0; y < tile; y++) col.push(data[((oy + y) * size + mid) * 4 + 3]);
+    const W = 15;
+    let crossings = 0;
+    let prev = 0;
+    for (let y = W; y < tile - W; y++) {
+      if (col[y] < 8) { prev = 0; continue; }
+      let mean = 0;
+      for (let k = y - (W >> 1); k <= y + (W >> 1); k++) mean += col[k];
+      mean /= W;
+      const residual = col[y] - mean;
+      if (Math.abs(residual) < 4) continue;
+      const sign = residual > 0 ? 1 : -1;
+      if (prev !== 0 && sign !== prev) crossings++;
+      prev = sign;
+    }
+    expect(crossings, 'no cleat modulation — the mark reads as a smudge').toBeGreaterThan(6);
+  });
+
+  it('Squish darkens the ground without hitting the floor everywhere', () => {
+    const f = new DecalField({ scene: new THREE.Scene(), capacity: 2 });
+    const m = f.mesh.material as THREE.ShaderMaterial;
+    // The multiply tint is per-vertex and uploaded linear; the shader emits
+    // `tint * (atlasRGB * 2)` clamped up to uFloor. Pin the tint's own value so
+    // a future edit cannot quietly take the mark to the floor across the board,
+    // which would flatten the cleat rhythm the previous case just measured.
+    f.spawn(DecalKind.Squish, 10, 10, 1, 1, 0);
+    const tint = f.mesh.geometry.getAttribute('aTint');
+    expect(tint.getX(0)).toBeCloseTo(SQUISH_DARKEN, 5);
+    expect(tint.getX(0)).toBeGreaterThan(m.uniforms.uFloor.value);
+    expect(tint.getX(0)).toBeLessThan(TREAD_DARKEN);
+    f.dispose();
+  });
+
+  it('Squish fades — a battlefield does not tile over with permanent prints', () => {
+    const f = new DecalField({ scene: new THREE.Scene(), capacity: 2 });
+    f.spawn(DecalKind.Squish, 5, 5, 1, 1, 0);
+    expect(f.liveCount).toBe(1);
+    // Well past SQUISH_LIFE_SECONDS, sweeping the whole pool each time.
+    for (let i = 0; i < 8; i++) f.frame(SQUISH_LIFE_SECONDS / 4);
+    expect(f.liveCount).toBe(0);
     f.dispose();
   });
 });

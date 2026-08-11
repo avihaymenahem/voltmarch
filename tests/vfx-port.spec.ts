@@ -94,18 +94,37 @@ describe('the two DecalKind enums do not agree', () => {
     expect(VFX_SYSTEM).toMatch(/DECAL_PORT_MAP\[kind as number\]/);
   });
 
-  it('maps the three kinds the sim actually emits', () => {
+  it('maps the four kinds the sim actually emits', () => {
     // grep of `src/sim/**`: Scorch (Abilities, Damage x3, Superweapons),
-    // Crater (Superweapons), Rubble (Damage).
-    for (const k of ['DecalKind.Scorch]', 'DecalKind.Crater]', 'DecalKind.Rubble]']) {
+    // Crater (Superweapons, CommanderPowers), Rubble (Damage), Squish (Crush).
+    for (const k of [
+      'DecalKind.Scorch]', 'DecalKind.Crater]', 'DecalKind.Rubble]', 'DecalKind.Squish]',
+    ]) {
       expect(VFX_SYSTEM, `${k} must be mapped`).toContain(k);
     }
   });
 
+  it('lands Squish on the field tile that was authored for it', () => {
+    /*
+     * THE KIND THAT WAS DROPPED AFTER THE VERB SHIPPED. Infantry crushing landed
+     * with `unitsCrushed`, `FxKind.CrushSquish` and a real `SFX.crush` sample —
+     * and no mark, because the field enum stopped at `Patch = 9` and an
+     * unmapped kind is silently a no-op by design. The field owns tile 10 now.
+     *
+     * Asserting the NUMBER as well as the mapping, because "the value IS the
+     * atlas tile index" in `world/Decals.ts` — a renumber here is a wrong tile,
+     * not a compile error.
+     */
+    expect(WorldDecalKind.Squish as number).toBe(10);
+    expect(DecalKind.Squish as number).toBe(4);
+    expect(VFX_SYSTEM).toMatch(/\[DecalKind\.Squish\]:\s*WorldDecalKind\.Squish/);
+  });
+
   it('drops the kinds the field does not own, rather than guessing', () => {
-    // TreadMark is laid by `layTread` from Movement; FootPrint, Squish and
-    // OreStain were never drawn. Mapping them to something plausible would
-    // invent art nobody asked for.
+    // TreadMark is laid by `layTread` from Movement; FootPrint and OreStain were
+    // never drawn. Mapping them to something plausible would invent art nobody
+    // asked for — which is a different thing from Squish, where the verb exists,
+    // fires, and had nothing to show for itself.
     expect(VFX_SYSTEM).not.toContain('DecalKind.TreadMark]');
     expect(VFX_SYSTEM).not.toContain('DecalKind.FootPrint]');
     expect(VFX_SYSTEM).not.toContain('DecalKind.OreStain]');
@@ -139,6 +158,7 @@ describe('the call sites this unblocks', () => {
     // If someone "fixes" a dead call by deleting it, the port goes quiet again
     // and nothing notices. Pin the ones that were reported.
     const files: ReadonlyArray<readonly [string, RegExp]> = [
+      ['src/sim/Crush.ts', /vfx\.decal\(\s*\n?\s*DecalKind\.Squish/],
       ['src/sim/Superweapons.ts', /vfx\.decal\(DecalKind\.Crater/],
       ['src/sim/Superweapons.ts', /vfx\.shake\(SUPERWEAPON_FX\.nukeShake\)/],
       ['src/sim/Damage.ts', /vfx\.decal\(DecalKind\.Rubble/],
