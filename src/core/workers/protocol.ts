@@ -400,6 +400,27 @@ function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
+/**
+ * An array of ellipse primitives — `SeaSpec.islands` or `SeaSpec.shoals`.
+ *
+ * BOTH RADII MUST BE POSITIVE, and that is the check that matters rather than
+ * the finiteness one: `ellipseDistance` divides by each radius twice, so a zero
+ * gives an Infinity that propagates through `min` into the heightfield as NaN
+ * — the exact "NaN into a black frame" failure CLAUDE.md records, arriving over
+ * a message port where nothing is looking.
+ */
+function isEllipseList(v: unknown, extra: readonly string[]): boolean {
+  if (!Array.isArray(v)) return false;
+  for (const e of v as unknown[]) {
+    if (!isRecord(e)) return false;
+    if (!isFiniteNumber(e.x) || !isFiniteNumber(e.z)) return false;
+    if (!isFiniteNumber(e.radiusX) || !isFiniteNumber(e.radiusZ)) return false;
+    if ((e.radiusX as number) <= 0 || (e.radiusZ as number) <= 0) return false;
+    for (const k of extra) if (!isFiniteNumber(e[k])) return false;
+  }
+  return true;
+}
+
 /** A `Uint8Array` of exactly `n` bytes. */
 function isBytes(v: unknown, n: number): boolean {
   return v instanceof Uint8Array && v.length === n;
@@ -439,6 +460,11 @@ export function isTerrainJob(v: unknown): v is TerrainJob {
     const nz = o.sea.normalZ as number;
     if (nx * nx + nz * nz < 1e-9) return false;
     if ((o.sea.shelfMetres as number) <= 0) return false;
+    // Optional, and absent on every half-plane sea. Present means the land is
+    // these ellipses and nothing else, so a malformed entry is not a cosmetic
+    // defect — it is a map with no land on it.
+    if (o.sea.islands !== undefined && !isEllipseList(o.sea.islands, [])) return false;
+    if (o.sea.shoals !== undefined && !isEllipseList(o.sea.shoals, ['depth'])) return false;
   }
   return true;
 }

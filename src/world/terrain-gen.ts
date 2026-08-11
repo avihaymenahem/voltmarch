@@ -120,13 +120,15 @@ import {
   TERRAIN_PRUNE_REGION_CELLS, TERRAIN_RAMP_CORE_WIDTH, TERRAIN_RAMP_HALF_WIDTH,
   TERRAIN_RAMP_FORCED_CORE_WIDTH, TERRAIN_RAMP_FORCED_HALF_WIDTH,
   TERRAIN_RAMP_MAX_GRADE, TERRAIN_RAMP_MAX_LENGTH, TERRAIN_RAMP_MAX_LINK_CELLS,
-  TERRAIN_SEA_BEACH_GRADE, TERRAIN_SEA_FLOOR, TERRAIN_SEA_START_CLEARANCE,
+  TERRAIN_ISLAND_MIN_CELLS,
+  TERRAIN_SEA_BEACH_GRADE, TERRAIN_SEA_FLOOR, TERRAIN_SEA_SHOAL_MIN_DEPTH,
+  TERRAIN_SEA_START_CLEARANCE,
   TERRAIN_SPLAT_PER_CELL, TERRAIN_START_APRON_GRADE, TERRAIN_START_DRY_MARGIN,
   TERRAIN_START_EDGE_WOBBLE, TERRAIN_START_ENFORCE_PASSES,
   TERRAIN_START_FLAT_RADIUS, TERRAIN_START_GUARD_RADIUS,
   TERRAIN_START_MAX_RAMPS, TERRAIN_START_POSITIONS, TERRAIN_START_SWELL,
   TERRAIN_START_WOBBLE_METRES, WATER_LEVEL,
-  type SeaSpec,
+  type SeaIsland, type SeaShoal, type SeaSpec,
 } from '../core/config';
 import { Locomotor, type EntityId, type ITerrain } from '../core/types';
 import { clamp, clamp01, fbm2, isInMap, lerp, simplex2, smoothstep } from '../core/math';
@@ -165,6 +167,87 @@ const SPLAT_METRES = MAP_SIZE / SPLAT_N;
 const SAMPLES_PER_CELL = Math.round(CELL / GRID);
 /** Face-normal Y below which a triangle is a cliff, not ground. */
 export const CLIFF_NY = Math.cos(CLIFF_SLOPE);
+
+/* ==========================================================================
+ * 1b. THE ELLIPSE DISTANCE, WHICH IS THE WHOLE OF THE ISLAND GEOMETRY
+ * ========================================================================== */
+
+/**
+ * Signed metres from `(x, z)` to the boundary of an axis-aligned ellipse.
+ * Negative inside, positive outside. EXACT for a circle, first-order for an
+ * ellipse.
+ *
+ * WHY NOT THE EXACT ELLIPSE DISTANCE. It has no closed form — every accurate
+ * implementation is a Newton iteration, which is both slower per sample (this
+ * runs 263 k times per island per generation) and a determinism liability,
+ * since an iteration count that depends on a convergence test can differ under
+ * a different rounding.
+ *
+ * WHAT THIS IS INSTEAD. `q` is the normalised radius: 1 exactly on the
+ * boundary, whatever the eccentricity. Dividing `q - 1` by the magnitude of its
+ * own gradient converts that dimensionless excess into metres — the standard
+ * first-order (Sampson) distance. For `radiusX === radiusZ` it reduces
+ * ALGEBRAICALLY to `|p - c| - r`, i.e. it is not an approximation at all for
+ * the circle case, and at the eccentricities an island is authored at (well
+ * under 2:1) the error is a fraction of a metre against a coastline that
+ * deliberately wanders by 8.
+ *
+ * The error direction is also the safe one: it under-reports distance near the
+ * flat side of an ellipse, so a start-shelf budget checked against it is
+ * conservative rather than optimistic.
+ *
+ * Only `+ - * /` and `Math.sqrt`, all of which ECMA-262 pins exactly. See the
+ * note above `SeaIsland` for why that matters.
+ */
+function ellipseDistance(
+  x: number, z: number, cx: number, cz: number, rx: number, rz: number,
+): number {
+  const dx = x - cx;
+  const dz = z - cz;
+  const a = dx / rx;
+  const b = dz / rz;
+  const q = Math.sqrt(a * a + b * b);
+  // Dead centre: the gradient is undefined and the answer is the inscribed
+  // radius. Reached by `resolveStarts`, which asks about the island's own
+  // centre on every archipelago.
+  if (q < 1e-9) return -(rx < rz ? rx : rz);
+  const gx = a / rx;
+  const gz = b / rz;
+  return ((q - 1) * q) / Math.sqrt(gx * gx + gz * gz);
+}
+
+/**
+ * Signed metres to the nearest island coast, negative on land.
+ *
+ * The union of solids is the MINIMUM of their signed distances — that identity
+ * is the entire reason an archipelago needs no code of its own downstream.
+ */
+function islandDistance(x: number, z: number, islands: readonly SeaIsland[]): number {
+  let best = Infinity;
+  for (let i = 0; i < islands.length; i++) {
+    const isl = islands[i];
+    const d = ellipseDistance(x, z, isl.x, isl.z, isl.radiusX, isl.radiusZ);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+/** True when this spec carves an archipelago rather than a coast. */
+function hasIslands(sea: SeaSpec | null): sea is SeaSpec & { islands: readonly SeaIsland[] } {
+  return sea !== null && sea.islands !== undefined && sea.islands.length > 0;
+}
+
+/** True when this spec raises any shallows. */
+function hasShoals(sea: SeaSpec | null): sea is SeaSpec & { shoals: readonly SeaShoal[] } {
+  return sea !== null && sea.shoals !== undefined && sea.shoals.length > 0;
+}
+
+/**
+ * Scratch for `seaGradient`. Module-level and reused: `resolveStarts` is not a
+ * hot path, but this file's rule is that no query path allocates, and a
+ * two-element output array per start is exactly the shape that rule exists for.
+ */
+const SEA_DIR = new Float64Array(2);
 
 /**
  * Passability bitmask, one bit per `Locomotor`. Exposed raw as
@@ -605,6 +688,14 @@ export class TerrainFields implements ITerrain {
    * Sliding along `-normal` rather than searching keeps this deterministic and
    * keeps the shelf on the map's own diagonal, which is where the authored
    * balance put it.
+   *
+   * ON AN ARCHIPELAGO the same rule reads the same field and gets a different
+   * answer for free: the signed distance is to the nearest island coast and the
+   * slide is along that island's inward radial, so a start pushes toward its own
+   * centre. A start authored AT the centre is already maximally inland and the
+   * push is zero, which is the layout the archipelago actually ships — the check
+   * still runs, because an island too small for the guarantee must move the
+   * shelf rather than silently drown it.
    */
   private resolveStarts(): void {
     this.startPoints.length = 0;
@@ -632,15 +723,22 @@ export class TerrainFields implements ITerrain {
       // included because the waterline wanders that far toward the land.
       const want = -(TERRAIN_START_FLAT_RADIUS + TERRAIN_START_EDGE_WOBBLE
         + sea.bandWidth + sea.wavinessMetres + TERRAIN_SEA_START_CLEARANCE);
-      const d = (p.x - sea.x) * sea.normalX + (p.z - sea.z) * sea.normalZ;
+      // The RAW field, without the coastal wander — `wavinessMetres` is already
+      // in the budget above, which is the same trade stated once instead of
+      // sampled twice.
+      const islands = sea.islands;
+      const d = islands !== undefined && islands.length > 0
+        ? islandDistance(p.x, p.z, islands)
+        : (p.x - sea.x) * sea.normalX + (p.z - sea.z) * sea.normalZ;
       if (d <= want) {
         this.startPoints.push(p);
         continue;
       }
       const push = d - want;
+      this.seaGradient(p.x, p.z, sea, SEA_DIR);
       this.startPoints.push({
-        x: clamp(p.x - sea.normalX * push, 0, MAP_SIZE),
-        z: clamp(p.z - sea.normalZ * push, 0, MAP_SIZE),
+        x: clamp(p.x - SEA_DIR[0] * push, 0, MAP_SIZE),
+        z: clamp(p.z - SEA_DIR[1] * push, 0, MAP_SIZE),
       });
     }
     this.startShelves.length = 0;
@@ -663,6 +761,32 @@ export class TerrainFields implements ITerrain {
   }
 
   /**
+   * True when this map's land is a set of islands rather than one continent.
+   *
+   * Read by exactly the two passes that would otherwise "repair" an archipelago
+   * into a continent. Both are inert on every map that does not declare
+   * islands, which is every map shipped today.
+   */
+  private get archipelago(): boolean {
+    return hasIslands(this.sea);
+  }
+
+  /**
+   * True when a start's own region is a legitimate ISLAND rather than a pit.
+   *
+   * The start guarantee is "joined to the main region" everywhere else, and it
+   * has to be — a shelf outside it is a trap. On an island map that same test
+   * indicts three correct starts out of four, and the escalation behind it is
+   * not a warning: `enforceStartAreas` reaches `linkRegionForced` with `dryOnly`
+   * OFF, which BFSes through water and raises a causeway, and behind that
+   * `fillRegion`, which would flatten a whole island to its rim. So the test is
+   * widened rather than the escalation weakened.
+   */
+  private islandStartSatisfied(regionCells: number): boolean {
+    return this.archipelago && regionCells >= TERRAIN_ISLAND_MIN_CELLS;
+  }
+
+  /**
    * Signed metres seaward of the declared waterline, with the coastal wander
    * already applied. Negative inland. `+Infinity` would be wrong for a
    * landlocked map, so callers must check `seaSpec` first; this returns
@@ -673,7 +797,50 @@ export class TerrainFields implements ITerrain {
       ? fbm2(x / sea.wavelengthMetres, z / sea.wavelengthMetres, 3, 2.0, 0.5, this.seed + 4409)
         * sea.wavinessMetres
       : 0;
+    // The islands REPLACE the half-plane rather than clipping it — see the note
+    // on `SeaSpec.islands`. The same wander is added to either, which is what
+    // keeps an island's coast from reading as an ellipse stencil for exactly the
+    // reason a straight one read as a clipping plane.
+    const islands = sea.islands;
+    if (islands !== undefined && islands.length > 0) {
+      return islandDistance(x, z, islands) + wob;
+    }
     return (x - sea.x) * sea.normalX + (z - sea.z) * sea.normalZ + wob;
+  }
+
+  /**
+   * Seaward unit direction at a point, written into `out` as [x, z].
+   *
+   * The gradient of `seaDistance`, which for a half-plane IS the normal — the
+   * existing arithmetic, not a generalisation of it — and for an archipelago is
+   * the outward radial of whichever island is nearest. `resolveStarts` slides a
+   * shelf along the negative of this, so an island start moves toward its own
+   * centre instead of along a normal that means nothing to it.
+   *
+   * Falls back to the declared normal when the point is dead centre of an
+   * island, where the gradient does not exist. A start there is already as far
+   * inland as that island can put it, so the push it feeds is zero anyway.
+   */
+  private seaGradient(x: number, z: number, sea: SeaSpec, out: Float64Array): void {
+    out[0] = sea.normalX;
+    out[1] = sea.normalZ;
+    const islands = sea.islands;
+    if (islands === undefined || islands.length === 0) return;
+
+    let best = Infinity;
+    let hit: SeaIsland | null = null;
+    for (let i = 0; i < islands.length; i++) {
+      const isl = islands[i];
+      const d = ellipseDistance(x, z, isl.x, isl.z, isl.radiusX, isl.radiusZ);
+      if (d < best) { best = d; hit = isl; }
+    }
+    if (hit === null) return;
+    const gx = (x - hit.x) / (hit.radiusX * hit.radiusX);
+    const gz = (z - hit.z) / (hit.radiusZ * hit.radiusZ);
+    const len = Math.sqrt(gx * gx + gz * gz);
+    if (!(len > 1e-9)) return;
+    out[0] = gx / len;
+    out[1] = gz / len;
   }
 
   /**
@@ -688,6 +855,43 @@ export class TerrainFields implements ITerrain {
     if (d <= 0) return WATER_LEVEL - d * TERRAIN_SEA_BEACH_GRADE;
     const t = clamp01(d / sea.shelfMetres);
     return WATER_LEVEL - sea.depth * (t * t * (3 - 2 * t));
+  }
+
+  /**
+   * `seaCeiling` with the shoals applied. THE ONLY ceiling any caller uses, so
+   * `buildHeightfield` and `carveSea` cannot disagree about where the bed is.
+   *
+   * They did, in the first draft of this, and the failure is worth recording:
+   * `carveSea` runs after `levelStartAreas` and only ever LOWERS a declared sea
+   * cell, so a shoal raised by `buildHeightfield` and unknown to `carveSea` was
+   * cut straight back out. The reef existed for exactly one pass.
+   *
+   * A shoal LERPS the bed toward its own bar depth and is then clamped under
+   * WATER_LEVEL, so it raises and never deepens, and never dries. Gated on
+   * `d > 0` because on the land side the ceiling is the beach cone: lifting
+   * that would be lowering a hillside into the sea.
+   */
+  private seaCeilingAt(x: number, z: number, d: number, sea: SeaSpec): number {
+    const base = this.seaCeiling(d, sea);
+    const shoals = sea.shoals;
+    if (d <= 0 || shoals === undefined || shoals.length === 0) return base;
+
+    let top = base;
+    for (let i = 0; i < shoals.length; i++) {
+      const s = shoals[i];
+      const a = (x - s.x) / s.radiusX;
+      const b = (z - s.z) / s.radiusZ;
+      const q = Math.sqrt(a * a + b * b);
+      if (q >= 1) continue;
+      // Smoothstepped from the rim inward, so a bar tapers into the deep water
+      // rather than standing on a lip the absorption ramp would read as a step.
+      const t = 1 - q;
+      const f = t * t * (3 - 2 * t);
+      const lifted = base + (WATER_LEVEL - s.depth - base) * f;
+      if (lifted > top) top = lifted;
+    }
+    const cap = WATER_LEVEL - TERRAIN_SEA_SHOAL_MIN_DEPTH;
+    return top > cap ? cap : top;
   }
 
   /**
@@ -711,7 +915,7 @@ export class TerrainFields implements ITerrain {
         const x = gx * GRID;
         const d = this.seaDistance(x, z, sea);
         if (d <= 0) continue;
-        const ceil = this.seaCeiling(d, sea);
+        const ceil = this.seaCeilingAt(x, z, d, sea);
         const i = row + gx;
         // TERRAIN_SEA_FLOOR, not 0. This pass is the LAST word on sea cells and
         // is gated on `d > 0` above, so a negative floor here can only ever
@@ -890,7 +1094,7 @@ export class TerrainFields implements ITerrain {
         // difference between a coast and a stamped wedge. Gated on `sea`, so a
         // landlocked map runs the identical arithmetic it always has.
         if (sea !== null) {
-          const ceil = this.seaCeiling(this.seaDistance(x, z, sea), sea);
+          const ceil = this.seaCeilingAt(x, z, this.seaDistance(x, z, sea), sea);
           if (y > ceil) y = ceil;
         }
 
@@ -1347,7 +1551,11 @@ export class TerrainFields implements ITerrain {
 
       this.strandedStarts.length = 0;
       for (let k = 1; k <= regions; k++) {
-        if (k !== main && isStart[k] !== 0) this.strandedStarts.push(k);
+        if (k === main || isStart[k] === 0) continue;
+        // An island start is not stranded, it is an island. Escalating here is
+        // what would causeway the sea shut. See `islandStartSatisfied`.
+        if (this.islandStartSatisfied(sizes[k])) continue;
+        this.strandedStarts.push(k);
       }
       if (this.strandedStarts.length === 0) { this.report.stranded = 0; return; }
       // Biggest first: merging the largest pocket often absorbs its neighbours.
@@ -1386,7 +1594,9 @@ export class TerrainFields implements ITerrain {
     for (let i = 0; i < MAP_CELL_COUNT; i++) {
       if (this.startMask[i] === 0) continue;
       const r = this.regionId[i];
-      if (r !== 0 && r !== main) stranded++;
+      if (r === 0 || r === main) continue;
+      if (this.islandStartSatisfied(sizes[r])) continue;
+      stranded++;
     }
     this.report.stranded = stranded;
   }
@@ -1484,7 +1694,13 @@ export class TerrainFields implements ITerrain {
         // it is still earning its place. Once a pass has stalled, go straight
         // to the true-nearest corridor with the length cap lifted, restricted
         // to dry ground so an island is refused rather than causewayed.
-        const ok = stalled
+        // `linkRegion` is the only causeway risk that can SURVIVE generation:
+        // it does not test water, and this pass runs after the last `carveSea`,
+        // so a corridor it raises across a strait is never cut back out.
+        // Everywhere else the ordering saves us. On an archipelago the bounded
+        // link is therefore skipped outright and only the dry-only BFS is
+        // offered, which refuses an island by construction.
+        const ok = stalled || this.archipelago
           ? this.linkRegionForced(k, main, true)
           : (this.linkRegion(k, main) || this.linkRegionForced(k, main, true));
         if (ok) {
@@ -2296,6 +2512,20 @@ export function terrainGenKey(options: TerrainGenOptions): string {
       sea.x, sea.z, sea.normalX, sea.normalZ, sea.depth, sea.shelfMetres,
       sea.bandWidth, sea.wavinessMetres, sea.wavelengthMetres,
     ],
+    /*
+     * APPENDED AS SEPARATE KEYS, and `undefined` when absent so `JSON.stringify`
+     * DROPS them. Two islands' worth of numbers spliced into the `sea` array
+     * would have been tidier to read and would have changed the key of every
+     * map that has no islands, which is all of them — and a changed key is a
+     * prewarm miss, i.e. a boot that silently regenerates the terrain on the
+     * main thread. Same reason `starts` is its own key.
+     */
+    islands: hasIslands(sea)
+      ? sea.islands.map((i) => [i.x, i.z, i.radiusX, i.radiusZ])
+      : undefined,
+    shoals: hasShoals(sea)
+      ? sea.shoals.map((s) => [s.x, s.z, s.radiusX, s.radiusZ, s.depth])
+      : undefined,
   });
 }
 

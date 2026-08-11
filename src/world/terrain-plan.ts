@@ -25,8 +25,8 @@
  * ============================================================================
  */
 
-import { MAP_SIZE, TERRAIN_DEFAULT_BIOME, TERRAIN_SEED } from '../core/config';
-import { SKIRMISH_START_OFFSETS, plannedScenario } from '../game/Scenarios';
+import { TERRAIN_DEFAULT_BIOME, TERRAIN_SEED } from '../core/config';
+import { plannedScenario, plannedStartPoints } from '../game/Scenarios';
 import { BIOME_NAMES, isBiomeName, type BiomeName } from './Biomes';
 import type { TerrainGenOptions } from './terrain-gen';
 
@@ -83,19 +83,23 @@ let cached: TerrainGenOptions | null = null;
  * same `plannedScenario().sea`, so the two agree by construction; and if they
  * ever stopped agreeing, `terrainGenKey` would miss and the map would generate
  * on the main thread rather than come out wrong.
+ *
+ * THE START LIST IS NO LONGER BUILT HERE. It used to spread
+ * `SKIRMISH_START_OFFSETS` inline, which was right while that table held
+ * exactly the two armies a skirmish seats and became wrong the moment it held
+ * four: appending two entries would have reserved two EXTRA levelled shelves on
+ * every map in the game, changing the heightfield of both naval presets, all
+ * twelve `?shot=` fixtures and every landlocked seed — for a mode nothing has
+ * selected. `Scenarios.plannedStartPoints()` takes the army count and the sea
+ * and answers both cases, including the archipelago, where the map centre must
+ * NOT be reserved because it is open water.
  */
 export function plannedTerrainInput(): TerrainGenOptions {
   if (cached !== null) return cached;
   cached = {
     seed: seedFromUrl(TERRAIN_SEED),
     biome: biomeFromUrl(),
-    starts: [
-      { x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5 },
-      ...SKIRMISH_START_OFFSETS.map((o) => ({
-        x: MAP_SIZE * 0.5 + o.dx,
-        z: MAP_SIZE * 0.5 + o.dz,
-      })),
-    ],
+    starts: plannedStartPoints(),
     sea: plannedScenario().sea,
   };
   return cached;

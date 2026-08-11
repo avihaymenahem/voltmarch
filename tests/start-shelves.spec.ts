@@ -50,17 +50,31 @@ import {
   BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE,
   TERRAIN_START_FLAT_RADIUS, TERRAIN_START_GUARD_RADIUS,
 } from '../src/core/config';
-import { SKIRMISH_START_OFFSETS } from '../src/game/Scenarios';
+import {
+  SKIRMISH_ARMIES_DEFAULT, SKIRMISH_ARMIES_MAX, SKIRMISH_START_OFFSETS, startPointsFor,
+} from '../src/game/Scenarios';
 
 const CX = MAP_SIZE * 0.5;
 const CZ = MAP_SIZE * 0.5;
 
-/** The three shelves the generator is now asked to reserve. */
+/**
+ * The offsets a DEFAULT skirmish actually seats.
+ *
+ * `SKIRMISH_START_OFFSETS` holds four since v2.5.0 — it is the four-army
+ * layout — and a two-army match takes the first two of them, which are the same
+ * two literals this file was written against. Slicing here rather than reading
+ * the whole table is the point: a two-army map must be unchanged by the
+ * existence of slots 2 and 3, and a test that silently measured four starts on
+ * a map with two reserved shelves would have found that out the hard way.
+ */
+const SEATED = SKIRMISH_START_OFFSETS.slice(0, SKIRMISH_ARMIES_DEFAULT);
+
+/**
+ * The three shelves the generator is now asked to reserve — taken from the ONE
+ * derivation `src/world/terrain-plan.ts` uses, not restated.
+ */
 function shelvesFor(): { x: number; z: number }[] {
-  return [
-    { x: CX, z: CZ },
-    ...SKIRMISH_START_OFFSETS.map((o) => ({ x: CX + o.dx, z: CZ + o.dz })),
-  ];
+  return startPointsFor(SKIRMISH_ARMIES_DEFAULT, null).map((p) => ({ x: p.x, z: p.z }));
 }
 
 /**
@@ -209,10 +223,10 @@ function shelfScan(): ShelfCase[] {
       out.push({
         biome,
         seed,
-        seam: SKIRMISH_START_OFFSETS.map(
+        seam: SEATED.map(
           (o) => maxStep(t, CX + o.dx * 0.5, CZ + o.dz * 0.5, 16),
         ),
-        startFrac: SKIRMISH_START_OFFSETS.map(
+        startFrac: SEATED.map(
           (o) => buildableFrac(t, CX + o.dx, CZ + o.dz, BUILD_RADIUS),
         ),
         centreFrac: buildableFrac(t, CX, CZ, BUILD_RADIUS),
@@ -244,7 +258,7 @@ describe('the discs overlap, and that was the unverified risk', () => {
     let checked = 0;
     for (const c of shelfScan()) {
       if (!SEAM_SEEDS.includes(c.seed)) continue;
-      for (let k = 0; k < SKIRMISH_START_OFFSETS.length; k++) {
+      for (let k = 0; k < SEATED.length; k++) {
         expect(c.seam[k]!, `${c.biome}/${c.seed} seam step at the disc overlap`)
           .toBeLessThan(2.0);
         checked++;
@@ -253,7 +267,7 @@ describe('the discs overlap, and that was the unverified risk', () => {
     // A filter that quietly matches nothing is how a case stops asserting while
     // still going green. Count what was measured, not just what passed.
     expect(checked, 'seam midpoints measured')
-      .toBe(BIOME_NAMES.length * SEAM_SEEDS.length * SKIRMISH_START_OFFSETS.length);
+      .toBe(BIOME_NAMES.length * SEAM_SEEDS.length * SEATED.length);
   });
 });
 
@@ -271,7 +285,7 @@ describe('the guarantee now covers the ground armies actually land on', () => {
       for (const frac of c.startFrac) worst.push({ where: `${c.biome}/${c.seed}`, frac });
     }
     expect(worst.length, 'openings measured')
-      .toBe(BIOME_NAMES.length * BUILD_SEEDS.length * SKIRMISH_START_OFFSETS.length);
+      .toBe(BIOME_NAMES.length * BUILD_SEEDS.length * SEATED.length);
     worst.sort((a, b) => a.frac - b.frac);
     const min = worst[0]!;
     const mean = worst.reduce((s, w) => s + w.frac, 0) / worst.length;
@@ -311,10 +325,46 @@ describe('the two sources of truth agree', () => {
     // They used to be `START_SPREAD_X`/`START_SPREAD_Z` in Scenarios.ts AND
     // `TERRAIN_START_POSITIONS` in config.ts — two places that had to match and
     // did not, which is exactly how the shelf ended up 96.5 m from the army.
-    expect(SKIRMISH_START_OFFSETS.length).toBe(2);
-    const [a, b] = SKIRMISH_START_OFFSETS;
+    //
+    // This read `.toBe(2)` until the table became the FOUR-army layout. The
+    // assertion that mattered was never the length: it is that slots 0 and 1 are
+    // an antipodal pair through the map centre, because `START_BISECTOR` — and
+    // therefore the shoreline normal of both naval maps — is their perpendicular
+    // bisector. Adding slots 2 and 3 must not move that, and `SEATED` proves the
+    // two-army map still takes exactly those two.
+    expect(SKIRMISH_START_OFFSETS.length).toBe(SKIRMISH_ARMIES_MAX);
+    expect(SEATED.length).toBe(2);
+    const [a, b] = SEATED;
     expect(a!.dx).toBeCloseTo(-b!.dx, 10);
     expect(a!.dz).toBeCloseTo(-b!.dz, 10);
+  });
+
+  it('completes a rectangle, so all four openings come out of one shape', () => {
+    // Slots 2 and 3 are the other diagonal of the same rectangle rather than a
+    // fan on a new ellipse: every one of the four is `hypot(74, 62)` from the
+    // centre, so no seat is nearer the middle than another.
+    const r = SKIRMISH_START_OFFSETS.map((o) => Math.hypot(o.dx, o.dz));
+    for (const d of r) expect(d).toBeCloseTo(r[0]!, 9);
+    // ...and the four are distinct corners, not duplicates.
+    const seen = new Set(SKIRMISH_START_OFFSETS.map((o) => `${o.dx},${o.dz}`));
+    expect(seen.size).toBe(SKIRMISH_ARMIES_MAX);
+  });
+
+  it('reserves the map centre plus one shelf per SEATED army, never per table entry', () => {
+    // THE REGRESSION THE FOUR-ENTRY TABLE WOULD HAVE SHIPPED.
+    // `terrain-plan.plannedTerrainInput` spreads the start list into
+    // `TerrainGenOptions.starts`, and every extra entry is another levelled,
+    // ramped, pocket-filled disc — i.e. a different heightfield for every map in
+    // the game. A two-army boot must ask for exactly three points.
+    expect(startPointsFor(2, null)).toEqual([
+      { x: CX, z: CZ },
+      { x: CX + SEATED[0]!.dx, z: CZ + SEATED[0]!.dz },
+      { x: CX + SEATED[1]!.dx, z: CZ + SEATED[1]!.dz },
+    ]);
+    expect(startPointsFor(4, null)).toHaveLength(5);
+    // Out-of-range counts fold into the layouts that exist rather than throwing.
+    expect(startPointsFor(1, null)).toHaveLength(3);
+    expect(startPointsFor(9, null)).toHaveLength(5);
   });
 
   it('keeps both starts inside the map with a guard radius to spare', () => {
