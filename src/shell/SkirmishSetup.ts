@@ -3,7 +3,8 @@
  * src/shell/SkirmishSetup.ts — the pre-match lobby
  * ============================================================================
  * Everything the player decides before a match exists, in one screen with no
- * sub-pages: side, opponent, battlefield, difficulty, bank, speed, seed.
+ * sub-pages: side, how many armies, each opponent, battlefield, bank, speed,
+ * seed.
  *
  * THE FACTION LIST IS READ AT RUNTIME
  * -----------------------------------
@@ -11,14 +12,31 @@
  * third faction being authored in parallel appears here the moment it is
  * published — no edit to this file, no hard-coded pair.
  *
- * WHY THE OPPONENT CANNOT MIRROR YOU
- * ----------------------------------
- * `ScenarioBuilder` resolves the Allied and Soviet bases by SEARCHING the
- * player table for a faction (`b.allies` / `b.soviets`). Two players on the
- * same side means both scripted bases resolve to one of them and the other
- * starts the match with nothing. Until the scenario builder takes an explicit
- * owner, the lobby simply does not offer the illegal choice — which is also
- * why picking a side re-points the opponent instead of showing an error.
+ * ARMIES, AND WHY THE SIDES ROW IS FIRST
+ * --------------------------------------
+ * This screen offered exactly one opponent for the project's whole life, and
+ * the reason was upstream of it: `MatchSetup` carried a singular `aiFaction`
+ * and `Bootstrap.ts` seated exactly two players. Both are now plural, so the
+ * lobby leads with HOW MANY sides there are and then repeats the opponent block
+ * once per AI army. The row is only drawn when the chosen battlefield offers
+ * more than one answer — `MapChoice.players` is a real ceiling now — and it
+ * sits above the opponent blocks because it decides how many of them exist.
+ *
+ * There is no team or alliance control, and that is not an omission: a
+ * free-for-all is what `PlayerState.allyMask` already defaults to (allied with
+ * yourself and nobody else), so "everyone hostile to everyone" needs no code and
+ * no row. Teams would.
+ *
+ * MIRROR MATCHES ARE LEGAL
+ * ------------------------
+ * They were not, and this header used to explain why: `ScenarioBuilder` resolved
+ * its two scripted bases by SEARCHING the player table for a faction, so two
+ * players on the same side meant one of them started with nothing. That was
+ * fixed — the bases resolve by SLOT and remap their content to the owner's army
+ * — and the row's own note has said "Mirror matches are allowed" ever since,
+ * two paragraphs under a header saying they cannot be. One caveat survives and
+ * it is in `normalizeSetup`, not here: the FIRST opponent is still re-pointed
+ * when it equals the player's side. See the report.
  *
  * SEED
  * ----
@@ -55,11 +73,15 @@ import {
   CREDIT_OPTIONS,
   DIFFICULTIES,
   MAPS,
+  MAX_ARMIES,
   PERSONALITIES,
   SPEEDS,
+  armyCount,
+  cloneSetup,
   defaultSetup,
   mapById,
   rollSeed,
+  withArmyCount,
   type MatchSetup,
 } from './settings-store';
 
@@ -219,7 +241,11 @@ export class SkirmishSetupScreen implements Screen {
   private start: StartCondition;
 
   constructor(private readonly shell: Shell) {
-    this.setup = { ...shell.getSetup() };
+    // `cloneSetup`, not a spread. `opponents` is an array, and a shallow copy
+    // would have this screen editing the shell's live setup in place — so
+    // backing out of the lobby without pressing Start Battle would still have
+    // changed the match.
+    this.setup = cloneSetup(shell.getSetup());
     this.start = readStartCondition();
   }
 
@@ -288,6 +314,7 @@ export class SkirmishSetupScreen implements Screen {
   private renderLeft(): void {
     const col = this.left;
     if (col === null) return;
+    this.reconcile();
     col.replaceChildren();
 
     /* -- your side -------------------------------------------------------- */
@@ -302,53 +329,143 @@ export class SkirmishSetupScreen implements Screen {
     }
     you.appendChild(cards);
 
-    /* -- opponent --------------------------------------------------------- */
-    const enemy = this.section(col, 'Opponent');
-    // Mirror matches ARE offered: `ScenarioBuilder` resolves its two scripted
-    // bases by player SLOT and remaps each one's content to the owner's army,
-    // so Soviets-vs-Soviets builds two Soviet bases rather than handing both to
-    // whoever happened to hold `Faction.Soviets` first.
-    enemy.appendChild(row(
-      'Enemy Faction',
-      chooser(
-        this.factions.map((f) => ({ value: f.key, label: f.name })),
-        this.setup.aiFaction,
-        (v) => { this.setup.aiFaction = v; },
-      ),
-      'Mirror matches are allowed.',
-    ));
-    enemy.appendChild(row(
-      'Difficulty',
-      chooser(
-        DIFFICULTIES.map((d, i) => ({ value: i, label: d })),
-        this.setup.difficulty,
-        (v) => { this.setup.difficulty = v; },
-      ),
-      'Drives reaction time, actions per minute and wave size.',
-    ));
-    enemy.appendChild(row(
-      'Personality',
-      chooser(
-        [{ value: -1, label: 'Adaptive' }, ...PERSONALITIES.map((p, i) => ({ value: i, label: p }))],
-        this.setup.personality,
-        (v) => { this.setup.personality = v; },
-      ),
-      'Biases the AI\'s strategy scoring, not its rules.',
-    ));
+    /* -- armies ----------------------------------------------------------- */
+    // How many sides are on the field, before who they are. Only offered when
+    // the chosen battlefield has more than one answer — a row whose only value
+    // is the value it already has is a control that does nothing.
+    const seats = this.seatOptions();
+    if (seats.length > 1) {
+      const armies = this.section(col, 'Armies');
+      armies.appendChild(row(
+        'Sides',
+        chooser(
+          seats.map((n) => ({ value: n, label: n === 2 ? '1 v 1' : `${n}-Way Free-For-All` })),
+          armyCount(this.setup),
+          (v) => {
+            this.setup = withArmyCount(this.setup, v, this.factions.map((f) => f.key));
+            this.renderLeft();
+            this.renderRight();
+          },
+        ),
+        'Everyone is hostile to everyone. The last army standing wins.',
+      ));
+    }
+
+    /* -- opponents -------------------------------------------------------- */
+    // ONE BLOCK PER OPPONENT, not one opponent section. Mirror matches ARE
+    // offered: `ScenarioBuilder` resolves its scripted bases by player SLOT and
+    // remaps each one's content to the owner's army, so Soviets-vs-Soviets
+    // builds two Soviet bases rather than handing both to whoever happened to
+    // hold `Faction.Soviets` first.
+    const many = this.setup.opponents.length > 1;
+    for (let i = 0; i < this.setup.opponents.length; i++) {
+      const spec = this.setup.opponents[i];
+      const enemy = this.section(col, many ? `Opponent ${i + 1}` : 'Opponent');
+      enemy.appendChild(row(
+        'Enemy Faction',
+        chooser(
+          this.factions.map((f) => ({ value: f.key, label: f.name })),
+          spec.faction,
+          (v) => { spec.faction = v; this.mirrorFirst(); },
+        ),
+        i === 0 ? 'Mirror matches are allowed.' : undefined,
+      ));
+      enemy.appendChild(row(
+        'Difficulty',
+        chooser(
+          DIFFICULTIES.map((d, n) => ({ value: n, label: d })),
+          spec.difficulty,
+          (v) => { spec.difficulty = v; this.mirrorFirst(); },
+        ),
+        i === 0 ? 'Drives reaction time, actions per minute and wave size.' : undefined,
+      ));
+      enemy.appendChild(row(
+        'Personality',
+        chooser(
+          [{ value: -1, label: 'Adaptive' }, ...PERSONALITIES.map((p, n) => ({ value: n, label: p }))],
+          spec.personality,
+          (v) => { spec.personality = v; this.mirrorFirst(); },
+        ),
+        i === 0 ? 'Biases the AI\'s strategy scoring, not its rules.' : undefined,
+      ));
+    }
+  }
+
+  /**
+   * Copy opponent 1's settings onto `MatchSetup`'s singular mirror fields.
+   *
+   * REQUIRED AFTER EVERY OPPONENT EDIT, and the direction is not arbitrary:
+   * `normalizeSetup` rebuilds `opponents[0]` FROM `aiFaction` / `difficulty` /
+   * `personality`, because those are the half a stored blob from an older build,
+   * a save-index row and a hand-written literal can all reach. So a lobby that
+   * only wrote the array would have every change to the first opponent silently
+   * reverted the moment the setup was normalised — which is on the way into
+   * `startMatch`, i.e. always. Cheap enough to run on all three rows rather than
+   * only the first, and then there is no index to get wrong.
+   */
+  private mirrorFirst(): void {
+    const first = this.setup.opponents[0];
+    if (first === undefined) return;
+    this.setup.aiFaction = first.faction;
+    this.setup.difficulty = first.difficulty;
+    this.setup.personality = first.personality;
+  }
+
+  /**
+   * Army counts the chosen battlefield offers, always including 2.
+   *
+   * `MapChoice.players` is the ceiling and it is now READ rather than declared
+   * and ignored — see the field's own note for why three of the six maps stop
+   * at two. Counts step by one, so a map rated for four also offers three: a
+   * three-way is a genuinely different game from a four-way (two-on-one is the
+   * natural shape) and there is no layout reason to forbid it.
+   */
+  private seatOptions(): number[] {
+    const max = Math.min(MAX_ARMIES, mapById(this.setup.map).players);
+    const out: number[] = [];
+    for (let n = 2; n <= max; n++) out.push(n);
+    return out;
+  }
+
+  /**
+   * Make the setup legal before it is painted, not at launch.
+   *
+   * Two corrections, one rule: THE NUMBER ON SCREEN IS THE NUMBER THE PLAYER
+   * WILL GET. A stored (or imported) setup can name a map this profile has not
+   * earned, and it can hold a four-way on a battlefield with two authored
+   * starts. `normalizeSetup` would clamp the second anyway at launch, which is
+   * exactly the silent move the locked-map correction and the MCV credit floor
+   * already exist to avoid.
+   *
+   * Idempotent, and called from the top of BOTH columns' render: they run
+   * `renderLeft` then `renderRight`, so correcting only in the second one would
+   * paint a Sides row the map cannot honour and then quietly disagree with it.
+   *
+   * Returns true when it actually moved something, so a click handler in one
+   * column knows whether the other column needs repainting.
+   */
+  private reconcile(): boolean {
+    let moved = false;
+    if (!mapAvailable(this.setup.map)) {
+      this.setup.map = STARTER_MAPS[0];
+      moved = true;
+    }
+    const max = Math.min(MAX_ARMIES, mapById(this.setup.map).players);
+    if (armyCount(this.setup) > max) {
+      this.setup = withArmyCount(this.setup, max, this.factions.map((f) => f.key));
+      moved = true;
+    }
+    return moved;
   }
 
   /** Battlefield and match rules. */
   private renderRight(): void {
     const col = this.right;
     if (col === null) return;
+    this.reconcile();
     col.replaceChildren();
 
     /* -- map -------------------------------------------------------------- */
-    // A stored (or imported) setup can name a map this profile has not earned.
-    // Correct it BEFORE the list is painted, so the player sees which map they
-    // are about to fight on rather than being silently moved at Launch.
-    if (!mapAvailable(this.setup.map)) this.setup.map = STARTER_MAPS[0];
-
     const maps = this.section(col, 'Battlefield');
     const list = el('div', 'vm-maplist');
     for (const m of MAPS) {
@@ -365,11 +482,18 @@ export class SkirmishSetupScreen implements Screen {
       text.appendChild(el('div', 'vm-mapitem-name', m.name));
       text.appendChild(el('div', 'vm-mapitem-blurb', open ? m.blurb : 'Locked — complete a mission to unlock.'));
       item.appendChild(text);
+      // `2P` / `4P` is the map's SEAT CEILING, and it is now the truth: the
+      // lobby's Sides row is bounded by it and `normalizeSetup` clamps to it.
+      // Every entry used to say 2P because every entry declared 2 and nothing
+      // read the field.
       item.appendChild(el('div', 'vm-mapitem-tag', open ? `${m.players}P` : 'LOCKED'));
       if (open) {
         focusable(item);
         item.addEventListener('click', () => {
           this.setup.map = m.id;
+          // The Sides row lives in the OTHER column, and picking a two-army map
+          // out of a four-way has to move it. Repaint both.
+          if (this.reconcile()) this.renderLeft();
           this.renderRight();
         });
       } else {
@@ -482,8 +606,15 @@ export class SkirmishSetupScreen implements Screen {
     const summary = el('p', 'vm-body');
     summary.style.padding = '10px 18px 4px';
     const m = mapById(this.setup.map);
+    const n = armyCount(this.setup);
+    // The difficulties are listed once when the table agrees and joined with a
+    // slash when it does not — "Normal AI" over a Brutal and two Easies would
+    // be the summary lying about the match it is summarising.
+    const diffs = [...new Set(this.setup.opponents.map((o) => DIFFICULTIES[o.difficulty]))];
     summary.textContent =
-      `${m.name} · ${m.biome} terrain · ${DIFFICULTIES[this.setup.difficulty]} AI · ` +
+      `${m.name} · ${m.biome} terrain · ` +
+      `${n === 2 ? '1 v 1' : `${n}-way free-for-all`} · ` +
+      `${diffs.join(' / ')} AI · ` +
       `${SPEEDS[this.setup.speed].toFixed(1)}× speed · ` +
       `${this.start === 'mcv' ? 'start from a construction vehicle' : 'start with a base'}`;
     col.appendChild(summary);
@@ -515,17 +646,30 @@ export class SkirmishSetupScreen implements Screen {
     // Randomise only over maps this profile can actually play. `STARTER_MAPS`
     // is the floor, so the pool is never empty even on a brand-new profile.
     const openMaps = MAPS.filter((m) => mapAvailable(m.id));
-    this.setup = {
+    const map = openMaps.length > 0 ? pick(openMaps) : mapById(STARTER_MAPS[0]);
+    // THE ARMY COUNT IS KEPT, NOT ROLLED. Randomise is for "surprise me with a
+    // battle", and a player who set up a four-way and pressed it expects three
+    // new opponents, not a duel. It is clamped to the map that was just rolled,
+    // which `reconcile` would do anyway on the repaint.
+    const seats = Math.min(armyCount(this.setup), MAX_ARMIES, map.players);
+    const difficulty = this.setup.opponents[0]?.difficulty ?? this.setup.difficulty;
+    // ONE roll, written to both halves of the mirror. Rolling twice would leave
+    // `aiFaction` and `opponents[0].faction` naming different sides, and
+    // `normalizeSetup` resolves that disagreement in favour of the singular
+    // field — so the army the screen painted is not the one that would launch.
+    const foe = (others.length > 0 ? pick(others).key : player.key);
+    this.setup = withArmyCount({
       ...d,
       playerFaction: player.key,
-      aiFaction: (others.length > 0 ? pick(others).key : player.key),
-      map: (openMaps.length > 0 ? pick(openMaps).id : STARTER_MAPS[0]),
-      difficulty: this.setup.difficulty,
+      aiFaction: foe,
+      map: map.id,
+      difficulty,
       personality: -1,
       startingCredits: this.setup.startingCredits,
       speed: this.setup.speed,
       seed: rollSeed(),
-    };
+      opponents: [{ faction: foe, difficulty, personality: -1 }],
+    }, seats, this.factions.map((f) => f.key));
     this.renderLeft();
     this.renderRight();
   }

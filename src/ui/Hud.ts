@@ -666,6 +666,8 @@ export class Hud {
   private readonly unsubs: Array<() => void> = [];
   private disposed = false;
   private time = 0;
+  /** `world.players.length` the map key was last built for. -1 = never. */
+  private armyRosterSize = -1;
   /** Sim seconds of the last brownout toast, so it cannot spam. */
   private lastBrownoutToast = -1e9;
   private brownout = false;
@@ -1045,6 +1047,33 @@ export class Hud {
     this.sidebar.setFaction(faction);
     this.minimap.setFaction(faction);
     this.overlay.setFaction(faction);
+    // The map key names the OTHER armies in their own blip colours, and the
+    // local accent is one of the things those are held apart from — so a
+    // faction swap invalidates it just as it invalidates the terrain bake.
+    this.armyRosterSize = -1;
+  }
+
+  /**
+   * Keep the map key in step with the player table.
+   *
+   * GATED ON THE TABLE'S LENGTH, not on a timer and not on an event. It changes
+   * exactly twice in a session — when the shell seats the armies during the boot
+   * (before this HUD's first frame) and when a save restore replaces the whole
+   * table — and both are covered by one integer compare per frame, which is what
+   * the zero-allocation rule for the frame loop leaves room for. `setArmies`
+   * compares its argument as well, so a redundant call is free.
+   *
+   * A DUEL PASSES AN EMPTY LIST, which is the legend's "render the row you
+   * always did" case: one swatch in `--vm-danger`, captioned "Hostile". Naming
+   * the single opponent would be a gratuitous change to every existing match for
+   * information the player already has.
+   */
+  private refreshArmyLegend(): void {
+    const size = this.world.players.length;
+    if (size === this.armyRosterSize) return;
+    this.armyRosterSize = size;
+    const hostiles = this.minimap.hostileArmies();
+    this.sidebar.setArmies(hostiles.length > 1 ? hostiles : []);
   }
 
   setSoundHook(fn: ((cue: HudSoundCue) => void) | null): void {
@@ -1163,6 +1192,7 @@ export class Hud {
     this.time += dt;
 
     this.resize(false);
+    this.refreshArmyLegend();
 
     const snap = this.snapshot();
     this.buildSelectionView();

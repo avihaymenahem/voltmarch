@@ -664,19 +664,35 @@ export interface MapChoice {
   /** Advisory `?art=` mood. */
   readonly mood: string;
   readonly blurb: string;
-  /** Players the layout is authored for. Always 2 in this build. */
+  /**
+   * The MOST armies this battlefield can seat, 2 or 4.
+   *
+   * It said "always 2 in this build" and it was true: every entry declared 2,
+   * `MatchSetup` carried one opponent, and nothing anywhere read the field. It
+   * is now the number the lobby offers and the number `normalizeSetup` clamps
+   * the army list to, so a map that says 2 CANNOT be launched as a four-way.
+   *
+   * WHY THESE THREE AND NOT ALL SIX. Two armies open on the authored diagonal
+   * (`SKIRMISH_START_OFFSETS`); three or more fan around the map centre on the
+   * same ellipse, with no reserved terrain shelf. That fan is fine on ground
+   * with no strong axis to it and wrong on ground that has one — `frozen-sector`
+   * is cliffs that channel every push into one lane, and both water maps put a
+   * shoreline through the middle, which is a two-sided shape by construction. So
+   * the open maps take four and the authored-for-two maps keep their number,
+   * rather than every map claiming a layout it does not have.
+   */
   readonly players: number;
 }
 
 export const MAPS: readonly MapChoice[] = [
   {
     id: 'temperate-valley', name: 'Temperate Valley', biome: 'temperate', preset: 'temperate',
-    mapSeed: 0x7e44a1, mood: 'noon', players: 2,
+    mapSeed: 0x7e44a1, mood: 'noon', players: 4,
     blurb: 'Low plateaus, scattered woodland, three ore fields on the diagonal.',
   },
   {
     id: 'airbase-flats', name: 'Airbase Flats', biome: 'desert', preset: 'arid',
-    mapSeed: 0x3ba9f1, mood: 'noon', players: 2,
+    mapSeed: 0x3ba9f1, mood: 'noon', players: 4,
     blurb: 'Bare, hot and open. Long sightlines, nowhere to hide armour.',
   },
   {
@@ -686,7 +702,7 @@ export const MAPS: readonly MapChoice[] = [
   },
   {
     id: 'industrial-grid', name: 'Industrial Grid', biome: 'urban', preset: 'urban',
-    mapSeed: 0x1d0c17, mood: 'dusk', players: 2,
+    mapSeed: 0x1d0c17, mood: 'dusk', players: 4,
     blurb: 'Roads, kerbs and container stacks. Almost no relief, all cover.',
   },
   {
@@ -706,6 +722,17 @@ export function mapById(id: string): MapChoice {
   return MAPS[0];
 }
 
+/**
+ * The most armies any battlefield in the roster offers.
+ *
+ * DERIVED, not declared. `MAX_PLAYERS` in core/config is 8 and every
+ * `MAX_PLAYERS`-sized array in the sim is already that wide, so the engine is
+ * not what caps a skirmish — the map list is. Reading the cap back off `MAPS`
+ * means adding a six-army map is one line in one table and the lobby, the
+ * clamps and the tests all follow.
+ */
+export const MAX_ARMIES: number = MAPS.reduce((n, m) => Math.max(n, m.players), 2);
+
 /** AI difficulty names, mirroring core/config AI_DIFFICULTY order. */
 export const DIFFICULTIES: readonly string[] = ['Easy', 'Normal', 'Hard', 'Brutal'];
 /** AI personality names, mirroring core/config AI_PERSONALITY order. */
@@ -715,22 +742,101 @@ export const SPEEDS: readonly number[] = [0.5, 1.0, 1.5, 2.0];
 /** Starting bank options. */
 export const CREDIT_OPTIONS: readonly number[] = [2000, 5000, 10000, 20000, 50000];
 
-export interface MatchSetup {
-  /** FactionDef.key of the human player. */
-  playerFaction: string;
-  /** FactionDef.key of the opponent. Never equal to `playerFaction`. */
-  aiFaction: string;
-  /** MapChoice.id. */
-  map: string;
+/**
+ * One AI army. There are one, two or three of these in a match.
+ *
+ * A SEPARATE SHAPE RATHER THAN THREE PARALLEL ARRAYS, because the three fields
+ * only mean anything together: an army is a side, a difficulty and a
+ * personality, and a lobby that could get them out of step by one index would
+ * hand the player a Brutal Turtle they configured as an Easy Rusher.
+ */
+export interface OpponentSetup {
+  /** FactionDef.key. */
+  faction: string;
   /** Index into DIFFICULTIES. */
   difficulty: number;
   /** Index into PERSONALITIES, or -1 for "let the AI choose". */
+  personality: number;
+}
+
+/**
+ * The lobby's output.
+ *
+ * `opponents` IS THE TRUTH; `aiFaction`, `difficulty` and `personality` ARE A
+ * MIRROR OF `opponents[0]`, maintained by `normalizeSetup` and by nothing else.
+ *
+ * That redundancy is deliberate and is the whole backward-compatibility story.
+ * Six things outside this file read the singular fields and none of them has any
+ * business growing an array: the save index context (`save.system.ts`
+ * `ServiceContext`, which is written into every slot and must stay key-stable),
+ * the load screen's slot rows, the end screen's opponent chip, `?ai=` / `?aip=`
+ * on the boot URL, and two tests. Keeping the pair in step costs four lines here
+ * and means a `voltmarch.setup.v1` blob written by any older build still loads,
+ * still round-trips, and still describes the same match — while a blob written
+ * by THIS build carries the full army list in a field an older build ignores.
+ */
+export interface MatchSetup {
+  /** FactionDef.key of the human player. */
+  playerFaction: string;
+  /** MIRROR of `opponents[0].faction`. See the interface note. */
+  aiFaction: string;
+  /** MapChoice.id. */
+  map: string;
+  /** MIRROR of `opponents[0].difficulty`. */
+  difficulty: number;
+  /** MIRROR of `opponents[0].personality`. */
   personality: number;
   startingCredits: number;
   /** Index into SPEEDS. */
   speed: number;
   /** Sim RNG seed. 0 means "roll a fresh one at launch". */
   seed: number;
+  /**
+   * Every AI army, in seat order. Length 1 for a 1v1, 3 for a four-way.
+   *
+   * Never empty: a skirmish with no opponent is a sandbox, which is a different
+   * feature with a different screen. Clamped to `mapById(map).players - 1`, so
+   * the army list and the battlefield can never disagree.
+   */
+  opponents: OpponentSetup[];
+}
+
+/** Armies on the field, the human included. Always `opponents.length + 1`. */
+export function armyCount(setup: MatchSetup): number {
+  return setup.opponents.length + 1;
+}
+
+/**
+ * The army list with the mirror re-asserted on entry 0.
+ *
+ * READ THROUGH THIS, NEVER STRAIGHT OFF `opponents`, anywhere the setup may not
+ * have come from `normalizeSetup`. The singular `aiFaction` / `difficulty` /
+ * `personality` fields are documented as a mirror of `opponents[0]`, and
+ * `normalizeSetup` is what maintains that — but `{ ...defaultSetup(),
+ * personality: 1 }` is a perfectly reasonable thing for a caller (or a test) to
+ * write, and it moves one half of the pair. When they disagree the SINGULAR
+ * fields win, because they are the half an older build, a save row and a
+ * hand-written literal can all reach.
+ */
+export function effectiveOpponents(setup: MatchSetup): OpponentSetup[] {
+  const list = setup.opponents.length > 0
+    ? setup.opponents
+    : [{ faction: setup.aiFaction, difficulty: setup.difficulty, personality: setup.personality }];
+  return list.map((o, i) => (i === 0
+    ? { faction: setup.aiFaction, difficulty: setup.difficulty, personality: setup.personality }
+    : { ...o }));
+}
+
+/**
+ * A deep-enough copy: `opponents` and its entries are fresh objects.
+ *
+ * `{ ...setup }` is a trap here and was a real one — `Shell` and
+ * `SkirmishSetupScreen` both spread the stored setup into a working copy, and a
+ * shallow spread leaves both copies pointing at ONE opponents array, so editing
+ * the lobby's copy edited the persisted one before Start Battle was pressed.
+ */
+export function cloneSetup(setup: MatchSetup): MatchSetup {
+  return { ...setup, opponents: setup.opponents.map((o) => ({ ...o })) };
 }
 
 export function defaultSetup(): MatchSetup {
@@ -743,6 +849,49 @@ export function defaultSetup(): MatchSetup {
     startingCredits: 10000,
     speed: 1,
     seed: 0,
+    opponents: [{ faction: 'soviets', difficulty: 1, personality: -1 }],
+  };
+}
+
+/**
+ * Grow or shrink the army list to `count` TOTAL armies, keeping what is there.
+ *
+ * Growing fills from the factions nobody has taken yet, so the natural
+ * four-way is four different sides — which is also what keeps every army a
+ * different colour in the 3D world, since `RenderBridge` keys the team tint off
+ * `Faction` and not off the player slot. Shrinking drops from the end, so
+ * flicking 4 -> 2 -> 4 gets the same third and fourth army back.
+ */
+export function withArmyCount(
+  setup: MatchSetup, count: number, factionKeys: readonly string[],
+): MatchSetup {
+  const next = cloneSetup(setup);
+  const want = Math.max(1, Math.round(count) - 1);
+  const keys = factionKeys.length > 0 ? factionKeys : [setup.playerFaction, setup.aiFaction];
+  while (next.opponents.length > want) next.opponents.pop();
+  while (next.opponents.length < want) {
+    const taken = new Set<string>([next.playerFaction, ...next.opponents.map((o) => o.faction)]);
+    const free = keys.find((k) => !taken.has(k)) ?? keys[next.opponents.length % keys.length];
+    next.opponents.push({
+      faction: free,
+      // Inherit the difficulty the player already chose rather than resetting
+      // to Normal: somebody who set Brutal meant it for the whole table.
+      difficulty: next.opponents[0]?.difficulty ?? setup.difficulty,
+      personality: -1,
+    });
+  }
+  return next;
+}
+
+/** One opponent entry, clamped. Falls back to `d` field by field. */
+function normalizeOpponent(
+  raw: unknown, keys: readonly string[], d: OpponentSetup,
+): OpponentSetup {
+  const r = isRecord(raw) ? raw : {};
+  return {
+    faction: typeof r.faction === 'string' && keys.includes(r.faction) ? r.faction : d.faction,
+    difficulty: Math.round(num(r.difficulty, 0, DIFFICULTIES.length - 1, d.difficulty)),
+    personality: Math.round(num(r.personality, -1, PERSONALITIES.length - 1, d.personality)),
   };
 }
 
@@ -765,15 +914,44 @@ export function normalizeSetup(raw: unknown, factionKeys: readonly string[]): Ma
   if (ai === player) ai = keys.find((k) => k !== player) ?? ai;
   if (ai === player) player = keys[0];
 
+  const map = mapById(typeof r.map === 'string' ? r.map : d.map);
+  const difficulty = Math.round(num(r.difficulty, 0, DIFFICULTIES.length - 1, d.difficulty));
+  const personality = Math.round(num(r.personality, -1, PERSONALITIES.length - 1, d.personality));
+
+  /*
+   * THE ARMY LIST, IN THREE STEPS, AND THE FIRST ONE IS THE MIGRATION.
+   *
+   * A stored blob from any build before this one has no `opponents` at all, so
+   * the singular fields ARE the list — one opponent, exactly the match that was
+   * saved. A blob from this build has both, and the array wins for entries 1 and
+   * up while entry 0 is re-derived from the singular fields, which the anti-
+   * mirror rule above has already had its say on. Anything else lets the two
+   * representations disagree and makes "which one is real" a question.
+   */
+  const rawList = Array.isArray(r.opponents) ? r.opponents : [];
+  const opponents: OpponentSetup[] = [{ faction: ai, difficulty, personality }];
+  // A map's seat count is a hard ceiling, not a preference: a stored four-way on
+  // a battlefield with two authored starts must come back as the two-army match
+  // the ground can actually hold.
+  const maxOpponents = Math.max(1, Math.min(MAX_ARMIES, map.players) - 1);
+  for (let i = 1; i < rawList.length && opponents.length < maxOpponents; i++) {
+    opponents.push(normalizeOpponent(rawList[i], keys, {
+      faction: keys[i % keys.length],
+      difficulty,
+      personality: -1,
+    }));
+  }
+
   return {
     playerFaction: player,
     aiFaction: ai,
-    map: mapById(typeof r.map === 'string' ? r.map : d.map).id,
-    difficulty: Math.round(num(r.difficulty, 0, DIFFICULTIES.length - 1, d.difficulty)),
-    personality: Math.round(num(r.personality, -1, PERSONALITIES.length - 1, d.personality)),
+    map: map.id,
+    difficulty,
+    personality,
     startingCredits: Math.round(num(r.startingCredits, 0, 200000, d.startingCredits)),
     speed: Math.round(num(r.speed, 0, SPEEDS.length - 1, d.speed)),
     seed: Math.round(num(r.seed, 0, 0xffffffff, d.seed)),
+    opponents,
   };
 }
 
@@ -794,11 +972,28 @@ export const MANAGED_FLAGS: readonly string[] = [
   'map', 'biome', 'mapseed', 'seed', 'ai', 'aip', 'art', 'tier',
 ];
 
+/** The value every entry shares, or null when they differ. */
+function unanimous<T>(items: readonly T[], read: (item: T) => number): number | null {
+  if (items.length === 0) return null;
+  const first = read(items[0]);
+  for (let i = 1; i < items.length; i++) if (read(items[i]) !== first) return null;
+  return first;
+}
+
 /**
  * Merge a match setup into an existing query string.
  *
  * `shot` is deliberately never written: `?shot=` is the screenshot harness's
  * contract and a menu-launched match must never look like a posed fixture.
+ *
+ * `ai` AND `aip` ARE ONLY WRITTEN WHEN THE WHOLE TABLE AGREES, which is always
+ * true of a 1v1 and is why the query for one is byte-identical to before. They
+ * have to be, because `sim/ai.system.ts#init` applies them to EVERY non-human
+ * player — one value, no slot — and it runs after `Shell.applySetupToWorld` has
+ * already written each army's own difficulty onto its own `PlayerState`. So a
+ * four-way with a Brutal and two Easies would come out three Brutals. Omitting
+ * the flag leaves `wantDiff` at -1, which is the documented "keep what is
+ * there", and what is there is per-army and correct.
  */
 export function buildMatchQuery(
   setup: MatchSetup,
@@ -815,8 +1010,12 @@ export function buildMatchQuery(
   q.set('mapseed', String(map.mapSeed | 0));
   q.set('seed', String((seedOverride ?? setup.seed) >>> 0));
   q.set('art', map.mood);
-  q.set('ai', DIFFICULTIES[setup.difficulty]?.toLowerCase() ?? 'normal');
-  if (setup.personality >= 0) q.set('aip', PERSONALITIES[setup.personality].toLowerCase());
+
+  const armies = effectiveOpponents(setup);
+  const diff = unanimous(armies, (o) => o.difficulty);
+  if (diff !== null) q.set('ai', DIFFICULTIES[diff]?.toLowerCase() ?? 'normal');
+  const pers = unanimous(armies, (o) => o.personality);
+  if (pers !== null && pers >= 0) q.set('aip', PERSONALITIES[pers].toLowerCase());
   if (settings.graphics.tier !== 'auto') q.set('tier', settings.graphics.tier);
   return q;
 }

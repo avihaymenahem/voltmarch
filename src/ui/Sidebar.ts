@@ -469,6 +469,20 @@ export interface SuperweaponView {
 export type AdviceKind = 'info' | 'warn' | 'alert';
 
 /**
+ * One opposing army in the map legend.
+ *
+ * `color` is whatever `Minimap` is actually painting that army's blips in, and
+ * it is passed rather than recomputed on purpose — a legend that derives its own
+ * colours is a legend that can disagree with the map it is a key for.
+ */
+export interface ArmyLegendEntry {
+  /** The blip colour, from `Chrome.hostileColor`. */
+  readonly color: string;
+  /** Short caption, e.g. `Soviet AI 2`. */
+  readonly label: string;
+}
+
+/**
  * The base-wide numbers. They are not in `HudSnapshot` because that structure
  * is owned by `src/sim/Production.ts`, and none of this is production's
  * business — the HUD derives all four from the world and its own event
@@ -2972,6 +2986,9 @@ export class Sidebar {
   private readonly titleEl: HTMLElement;
   private readonly offlineEl: HTMLElement;
   private readonly mapHintEl: HTMLElement;
+  private readonly legendEl: HTMLElement;
+  /** Hostile armies, in the minimap's seat order. Empty = the default row. */
+  private hostiles: readonly ArmyLegendEntry[] = [];
   private faction: Faction;
   private radarOnline = true;
 
@@ -3007,21 +3024,13 @@ export class Sidebar {
     // overflowing for want of. Four swatches fit in the head; the WORDS moved
     // onto its tooltip, where a player who does not already know what red means
     // will look and a player who does will never have to see them again.
-    const legend = el('div', 'vm-map-legend', mapHead);
-    const LEGEND: ReadonlyArray<readonly [string, string]> = [
-      ['', 'Yours'],
-      ['is-enemy', 'Hostile'],
-      ['is-ore', 'Ore'],
-      ['is-view', 'View'],
-    ];
-    let legendTip = '';
-    for (const [mod, name] of LEGEND) {
-      const row = el('div', `vm-legend-row${mod === '' ? '' : ` ${mod}`}`, legend);
-      el('i', 'vm-legend-swatch', row);
-      label(row, 'vm-legend-text', name);
-      legendTip += `${legendTip === '' ? '' : '   '}${name}`;
-    }
-    legend.title = `Map key:  ${legendTip}`;
+    //
+    // IT IS REBUILT RATHER THAN AUTHORED NOW, because in a free-for-all the one
+    // "Hostile" swatch becomes one per opposing ARMY and each of them has to
+    // carry that army's own colour and name. `setArmies` is the only writer;
+    // the default it renders with is byte-for-byte the old four rows.
+    this.legendEl = el('div', 'vm-map-legend', mapHead);
+    this.renderLegend();
 
     const mapBody = el('div', 'vm-map-body', this.mapDock);
     this.minimapField = el('div', 'vm-map-field', mapBody);
@@ -3087,6 +3096,63 @@ export class Sidebar {
 
   setExtrasProvider(fn: (key: string) => BuildExtras): void {
     this.build.setExtrasProvider(fn);
+  }
+
+  /**
+   * Name and colour the opposing armies in the map legend.
+   *
+   * Hand it an empty list for a duel and the legend renders exactly the four
+   * rows it always did — a hostile swatch in `--vm-danger`, captioned "Hostile".
+   * Hand it three and the map key names all three, which is the difference
+   * between four colours on the radar and four colours nobody can identify.
+   *
+   * CHEAP TO CALL WITH THE SAME THING TWICE: it compares first and returns
+   * without touching the DOM, so the caller does not need its own dirty flag.
+   */
+  setArmies(hostiles: readonly ArmyLegendEntry[]): void {
+    if (hostiles.length === this.hostiles.length) {
+      let same = true;
+      for (let i = 0; i < hostiles.length; i++) {
+        const a = hostiles[i];
+        const b = this.hostiles[i];
+        if (a.color !== b.color || a.label !== b.label) { same = false; break; }
+      }
+      if (same) return;
+    }
+    this.hostiles = hostiles.map((h) => ({ ...h }));
+    this.renderLegend();
+  }
+
+  /**
+   * Repaint the map key.
+   *
+   * The three fixed rows are Yours, Ore and View; the hostile rows sit between
+   * the first and the second, which is where the single one always was. A
+   * custom colour is an INLINE style rather than a class, because there is no
+   * fixed set of them to write CSS for — `Chrome.hostileColor` owns the table
+   * and the seat index is what picks a row out of it.
+   */
+  private renderLegend(): void {
+    const legend = this.legendEl;
+    legend.replaceChildren();
+
+    const rows: Array<{ mod: string; name: string; color?: string }> = [{ mod: '', name: 'Yours' }];
+    if (this.hostiles.length === 0) {
+      rows.push({ mod: 'is-enemy', name: 'Hostile' });
+    } else {
+      for (const h of this.hostiles) rows.push({ mod: 'is-enemy', name: h.label, color: h.color });
+    }
+    rows.push({ mod: 'is-ore', name: 'Ore' }, { mod: 'is-view', name: 'View' });
+
+    let tip = '';
+    for (const r of rows) {
+      const row = el('div', `vm-legend-row${r.mod === '' ? '' : ` ${r.mod}`}`, legend);
+      const swatch = el('i', 'vm-legend-swatch', row);
+      if (r.color !== undefined) swatch.style.background = r.color;
+      label(row, 'vm-legend-text', r.name);
+      tip += `${tip === '' ? '' : '   '}${r.name}`;
+    }
+    legend.title = `Map key:  ${tip}`;
   }
 
   /** Radar dome online? Drives the map dock's offline state and its hint. */

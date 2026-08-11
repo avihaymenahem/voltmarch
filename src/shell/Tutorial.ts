@@ -658,6 +658,11 @@ export function tutorialSetup(base: Readonly<MatchSetup>): MatchSetup {
     startingCredits: 10000,
     speed: 1,
     seed: TUTORIAL_SEED,
+    // ONE OPPONENT, EXPLICITLY. The lesson is written against a single enemy
+    // base and a single threat axis, and `...base` would otherwise carry a
+    // four-way lobby into it — three Easy Turtles is not the tutorial, and the
+    // steps that say "the enemy" would have three answers.
+    opponents: [{ faction: base.aiFaction, difficulty: 0, personality: 0 }],
   };
 }
 

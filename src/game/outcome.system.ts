@@ -260,23 +260,37 @@ function emitStarted(shell: ShellHost): void {
 /**
  * The winner's id, best effort.
  *
- * `EvMatchEnded.winner` has no "nobody" value, so a defeat reports the first
- * hostile player still holding assets and falls back to the local player when
- * even that is not true (a mutual wipe). `localWon` is the field every current
- * subscriber actually reads; this one is for a scoreboard that does not exist
- * yet, and guessing wrong on it is not worth an enum change to core/types.ts.
+ * `EvMatchEnded.winner` has no "nobody" value, so a defeat has to name someone.
+ * `localWon` is the field every current subscriber actually reads; this one is
+ * for a scoreboard that does not exist yet.
+ *
+ * IT USED TO RETURN THE FIRST HOSTILE STILL HOLDING ASSETS, which is exactly
+ * right in a duel — there is only one — and wrong in a free-for-all, where it
+ * names whoever happens to be seated earliest rather than whoever is winning.
+ * With three opponents alive that is a coin toss dressed as an answer.
+ *
+ * So it now prefers a hostile that is not merely alive but still ABLE TO PLAY
+ * (`!isBeaten` — has production or something that can build), and falls back to
+ * "alive at all" and then to the local player, which covers a mutual wipe. Two
+ * passes rather than a score, because "who was ahead" is a question this module
+ * cannot answer without economy history it does not keep, and a made-up ranking
+ * would be worse than an honest one-bit distinction.
  */
 function winnerOf(localWon: boolean): PlayerId {
   const { world } = ctx();
   const local = world.localPlayer;
   if (localWon) return local;
+
+  let alive: PlayerId | null = null;
   for (const p of world.players) {
     if (p.faction === Faction.Neutral) continue;
     if (world.areAllied(local, p.id)) continue;
     surveyViability(world, p.id, enemySurvey);
-    if (hasAssets(enemySurvey)) return p.id;
+    if (!hasAssets(enemySurvey)) continue;
+    if (!isBeaten(enemySurvey)) return p.id;
+    if (alive === null) alive = p.id;
   }
-  return local;
+  return alive ?? local;
 }
 
 /** Fire `match:ended` exactly once per match. */

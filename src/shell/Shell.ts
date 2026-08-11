@@ -59,12 +59,15 @@ import {
   SettingsStore,
   buildMatchQuery,
   chordEquals,
+  cloneSetup,
   defaultSetup,
+  effectiveOpponents,
   mapById,
   normalizeSetup,
   rollSeed,
   type Chord,
   type MatchSetup,
+  type OpponentSetup,
   type Settings,
 } from './settings-store';
 
@@ -795,7 +798,9 @@ export class Shell {
 
   constructor(private readonly options: ShellOptions) {
     this.settings = new SettingsStore(undefined, playableFactions().map((f) => f.key));
-    this.setup = { ...this.settings.setup() };
+    // `cloneSetup`, not a spread: `MatchSetup.opponents` is an array, and a
+    // shallow copy would leave the shell and the store editing one of them.
+    this.setup = cloneSetup(this.settings.setup());
 
     this.root = el('div', 'vm-shell');
     this.host = el('div', 'vm-shell-host');
@@ -906,6 +911,11 @@ export class Shell {
       speed: 1,
       difficulty: 0,
       personality: -1,
+      // ONE ENTRY, AND IT IS NOT AN OPPONENT — the relay pairs two HUMANS and
+      // `seatPvpPlayers` overwrites both slots from `info`. It is stated here so
+      // a four-way skirmish left in the lobby cannot leak an army count into a
+      // PvP boot, where the two clients would then disagree about the table.
+      opponents: [{ faction: this.setup.aiFaction, difficulty: 0, personality: -1 }],
     };
 
     // SUPPRESSED, NOT CLEARED. `setUnlockGate(null)` here does nothing: the
@@ -1048,19 +1058,30 @@ export class Shell {
     const keyOf = (faction: number | undefined): string | undefined =>
       names.find((f) => (f.id as number) === faction)?.key;
     const watched = header.players[header.localPlayer];
-    const other = header.players.find(
-      (p, i) => i !== header.localPlayer && p.faction !== (Faction.Neutral as number),
-    );
+    // EVERY other army, not just the first. The setup is only a label here —
+    // `seatReplayPlayers` overwrites the table from the header regardless — but
+    // the pause menu, the results header and `armyCount` all read it, and a
+    // four-way recording described as a duel is a lie on three screens.
+    const others: OpponentSetup[] = header.players
+      .map((p, i) => ({ p, i }))
+      .filter(({ p, i }) => i !== header.localPlayer && p.faction !== (Faction.Neutral as number))
+      .map(({ p }) => ({
+        faction: keyOf(p.faction) ?? this.setup.aiFaction,
+        difficulty: p.aiDifficulty,
+        personality: -1,
+      }));
+    const other = others[0];
 
     const setup: MatchSetup = {
       ...this.setup,
       map: replayMap(header).id,
       seed: header.simSeed >>> 0,
       speed: 1,
-      difficulty: other?.aiDifficulty ?? this.setup.difficulty,
+      difficulty: other?.difficulty ?? this.setup.difficulty,
       personality: -1,
       playerFaction: keyOf(watched?.faction) ?? this.setup.playerFaction,
-      aiFaction: keyOf(other?.faction) ?? this.setup.aiFaction,
+      aiFaction: other?.faction ?? this.setup.aiFaction,
+      opponents: others.length > 0 ? others : cloneSetup(this.setup).opponents,
     };
 
     await this.startMatch(setup, { persist: false });
@@ -1185,6 +1206,7 @@ export class Shell {
       await nextFrames(2);
 
       await this.bootGame(seed, false);
+      this.verifyArmies();
       this.matchStartMs = performance.now();
       this.outcomeAccum = 0;
       this.autosaveAccum = 0;
@@ -1233,6 +1255,39 @@ export class Shell {
     } finally {
       this.busy = false;
     }
+  }
+
+  /**
+   * Did every army the lobby seated actually get something to play with?
+   *
+   * A TRIPWIRE, NOT A FIX, and it exists because the failure it catches is
+   * silent and fatal. This shell seats the armies; `src/game/Scenarios.ts` gives
+   * them their opening (a base, or a construction vehicle and an escort). Those
+   * are two halves of one contract with nothing forcing them to agree, and if
+   * the scenario builds fewer openings than there are armies, the extras start
+   * with NOTHING — which the outcome rules read as "already beaten", so the
+   * match ends in an unearned victory about eighteen seconds in, with no error
+   * anywhere and a player who has no idea why.
+   *
+   * It warns rather than refusing for the same reason the scenario module never
+   * throws: a playable-but-wrong match is something a bug report can describe,
+   * and a dead menu is not.
+   */
+  private verifyArmies(): void {
+    const game = this.game;
+    if (game === null) return;
+    const world = game.ctx.world;
+    const alive = countLivingAssets(game);
+    const empty = world.players.filter(
+      (p) => p.faction !== Faction.Neutral && (alive.get(p.id as number) ?? 0) === 0,
+    );
+    if (empty.length === 0) return;
+    console.error(
+      `[shell] ${empty.length} seated army/armies opened with no units and no buildings — `
+      + empty.map((p) => `p${p.id as number} "${p.name}"`).join(', ')
+      + '. The scenario built fewer openings than the lobby seated armies; the match will '
+      + 'resolve as soon as the beaten grace expires. See Shell.verifyArmies.',
+    );
   }
 
   /**
@@ -1621,6 +1676,14 @@ export class Shell {
       difficulty: c.difficulty,
       speed: c.speed,
       seed: c.seed,
+      // BOOT AS A DUEL WHATEVER THE LOBBY LAST HELD. `SaveContext` names one
+      // opponent — it is the save INDEX row, key-stable, and growing it would
+      // invalidate every slot already on disk — and it does not need to name
+      // more: `restoreSnapshot` calls `world.reset()` and re-seats the whole
+      // player table from the blob, so a four-way save comes back as a
+      // four-way. Carrying the current lobby's army list into this boot would
+      // only build bases the very next step deletes.
+      opponents: [{ faction: c.aiFaction, difficulty: c.difficulty, personality: -1 }],
     }, { persist: false });
 
     if (this.state !== 'playing' || this.game === null) {
@@ -1897,11 +1960,27 @@ export class Shell {
   /**
    * Push the lobby's choices into the freshly-built world.
    *
-   * `ScenarioBuilder` now resolves its two scripted bases by SLOT rather than
-   * by faction, and remaps each base's content to the owner's army, so writing
-   * the chosen factions onto players 0 and 1 is the whole of the lobby — and a
+   * `ScenarioBuilder` resolves its scripted bases by SLOT rather than by
+   * faction, and remaps each base's content to the owner's army, so writing the
+   * chosen factions onto the player table is the whole of the lobby — and a
    * mirror match is legal, which is why the AI's faction is no longer refused
    * when it matches the human's.
+   *
+   * THIS IS WHERE ARMIES THREE AND FOUR COME FROM, AND IT IS THE ONLY PLACE.
+   * `Bootstrap.ts` seats exactly two players — one local human, one opponent —
+   * and always has; that pair, not `MAX_PLAYERS` (8) and not any array in the
+   * sim, is what capped this game at a duel. Everything downstream of the
+   * player table was already N-safe: `AiDirector.rebuild` builds one brain per
+   * non-human player, `ScenarioBuilder.armySlot(i)` walks the table by index,
+   * `world.allyMask` defaults to self-only (so a free-for-all is the DEFAULT
+   * diplomacy and needs no code at all), and both outcome polls already loop
+   * every hostile. So the fix is to seat the armies the lobby asked for, here,
+   * in the one synchronous window between `bootstrap()` returning and the
+   * scenario module reading the table.
+   *
+   * `addPlayer` is the only mutation, and it only ever ADDS: `startMatch`
+   * disposes the engine and re-bootstraps, so every boot begins at exactly two
+   * seats. There is no path that has to remove one.
    */
   private applySetupToWorld(game: GameHandle, backdrop: boolean): void {
     const world = game.ctx.world;
@@ -1911,18 +1990,52 @@ export class Shell {
     if (this.replay !== null) { this.seatReplayPlayers(game); return; }
 
     const player = factionByKey(this.setup.playerFaction);
-    const enemy = factionByKey(this.setup.aiFaction);
-
     const human = world.players[0];
-    const ai = world.players[1];
-
     if (player !== undefined) human.faction = player.id;
-    if (enemy !== undefined) ai.faction = enemy.id;
-
     human.name = backdrop ? 'Observer' : 'Commander';
-    ai.name = `${enemy?.name ?? 'Opponent'} AI`;
-    ai.aiDifficulty = this.setup.difficulty;
-    if (this.setup.personality >= 0) ai.aiPersonality = this.setup.personality;
+
+    /*
+     * THE BACKDROP IS ALWAYS A DUEL. The title screen orbits a live match, and
+     * it runs with `?ai=off` so nothing in it is playing — four idle bases
+     * behind the menu buys nothing and costs the boot a second of shader work
+     * on a screen the player is trying to get past.
+     */
+    // Through `effectiveOpponents`, not straight off the field: `loadGame`,
+    // `startTutorial` and the PvP path all hand `startMatch` a hand-built
+    // literal, and the singular mirror fields are the half those write.
+    const armies = effectiveOpponents(this.setup);
+    const wanted = backdrop ? 1 : armies.length;
+
+    for (let i = 0; i < wanted; i++) {
+      const spec = armies[i] ?? armies[0];
+      const enemy = factionByKey(spec.faction);
+      const slot = i + 1;
+      // Slot 1 already exists (Bootstrap seeded it); 2 and up are new. Seating
+      // by index rather than pushing blindly keeps this idempotent, which
+      // matters because a failed boot can re-enter it on the retry path.
+      const id = slot < world.players.length
+        ? world.players[slot].id
+        : world.addPlayer(enemy?.id ?? Faction.Soviets, 'Opponent', false, false);
+      const p = world.player(id);
+      if (enemy !== undefined) p.faction = enemy.id;
+      // NUMBERED WHEN THERE IS MORE THAN ONE. "Soviet AI" is the right label for
+      // the only opponent and an ambiguous one for three, and this name is what
+      // the minimap legend, the end screen and the console all read back.
+      p.name = wanted > 1
+        ? `${enemy?.name ?? 'Opponent'} AI ${i + 1}`
+        : `${enemy?.name ?? 'Opponent'} AI`;
+      p.isHuman = false;
+      p.isLocal = false;
+      p.aiDifficulty = spec.difficulty;
+      if (spec.personality >= 0) p.aiPersonality = spec.personality;
+    }
+
+    if (wanted > 1) {
+      console.info(
+        `[shell] seated ${wanted + 1} armies: `
+        + world.players.map((p) => `p${p.id as number} ${p.name}`).join(', '),
+      );
+    }
   }
 
   /**
@@ -1951,7 +2064,16 @@ export class Shell {
     if (pvp === null) return;
     const world = game.ctx.world;
 
-    for (let slot = 0; slot < world.players.length && slot < 2; slot++) {
+    // BOUNDED BY THE RELAY'S OWN SLOT LIST, not by a literal 2. `MatchStart`
+    // carries one faction per seated slot and `Session` refuses a frame with
+    // fewer than two, so this is the same two slots it has always been for
+    // every match the lobby can currently pair — stated as "the slots the relay
+    // named" so the number lives in one place instead of two. Nothing else in
+    // `src/net/**` is touched by four-army support: the wire already permits 8
+    // (`WIRE_LIMITS.maxPlayers`), `validateCommand` is unchanged, and the client
+    // still TRIPWIRES rather than filters.
+    const seats = Math.min(world.players.length, pvp.info.factions.length);
+    for (let slot = 0; slot < seats; slot++) {
       const p = world.players[slot];
       const faction = pvp.info.factions[slot];
       if (faction !== undefined) p.faction = faction as Faction;
@@ -1970,7 +2092,7 @@ export class Shell {
   /**
    * Seat the world from a recording's header.
    *
-   * THREE THINGS ARE LOAD-BEARING AND THE SECOND ONE IS THE WHOLE FEATURE.
+   * FOUR THINGS ARE LOAD-BEARING AND THE SECOND ONE IS THE WHOLE FEATURE.
    *
    * 1. FACTIONS COME FROM THE HEADER, per slot. The lobby's choice is not
    *    consulted at all: a recording is a specific match, and the sides in it
@@ -1989,6 +2111,16 @@ export class Shell {
    *    would be a lie about the world with no effect except to make this
    *    function's contract untrue.
    *
+   * 4. THE WORLD IS GROWN TO FIT THE RECORDING. `Bootstrap` seats two, and a
+   *    four-way recording has four armies plus Gaia — so without this the third
+   *    and fourth armies would not exist, the playback would feed their commands
+   *    to nobody, and the checkpoint compare would diverge on the first tick
+   *    either of them did anything. Only the LEADING non-Neutral run is seated,
+   *    for the reason in (3): Gaia is the last entry in every recorded table
+   *    because the scenario creates it during the boot, and it is that getter's
+   *    creation path that wires the mutual ally masks. Seating a Neutral slot
+   *    here would make it find one already there and wire nothing.
+   *
    * `localPlayer` is presentation only — the camera and which side of the fog
    * the viewer is on. `Checksum.hashPlayers` does not hash it, which is exactly
    * why one recording of a PvP match is watchable from either seat.
@@ -1999,6 +2131,13 @@ export class Shell {
     const header = file.header;
     const world = game.ctx.world;
     const names = playableFactions();
+
+    // Point 4 in the header: grow to the recording, stopping at Gaia.
+    while (world.players.length < header.players.length) {
+      const rec = header.players[world.players.length];
+      if (rec === undefined || rec.faction === (Faction.Neutral as number)) break;
+      world.addPlayer(rec.faction as Faction, 'Opponent', false, false);
+    }
 
     const n = Math.min(world.players.length, header.players.length);
     for (let slot = 0; slot < n; slot++) {
@@ -2067,9 +2206,19 @@ export class Shell {
       // unconditionally while the first targeted `localPlayer` — so on the
       // client seated as slot 1, slot 1 was paid twice and slot 0 never at all,
       // which is a divergence on tick zero.
+      //
+      // EVERY ARMY, NOT THE FIRST TWO. The `slot < 2` this replaces was the
+      // last place a third army would have silently opened on whatever the
+      // scenario happened to leave it — which in an MCV start is nothing, so
+      // armies three and four would have been unable to place their first
+      // building. Gaia is skipped by faction rather than by index: it is
+      // created by the scenario and lands at the END of the table, so an index
+      // bound would have been a second thing to keep in step.
       const bank = this.pvp !== null ? Shell.PVP_CREDITS : this.setup.startingCredits;
-      for (let slot = 0; slot < world.players.length && slot < 2; slot++) {
-        world.players[slot].credits = bank;
+      for (let slot = 0; slot < world.players.length; slot++) {
+        const p = world.players[slot];
+        if (p.faction === Faction.Neutral) continue;
+        p.credits = bank;
       }
     }
   }
@@ -2346,7 +2495,15 @@ export class Shell {
       stats: { ...p.stats },
       credits: Math.round(p.credits),
       factionName: factionByKey(this.setup.playerFaction)?.name ?? p.name,
-      opponentName: world.players[1]?.name ?? 'Opponent',
+      // EVERY hostile army, not `players[1]`. In a four-way the end screen's
+      // one opponent chip was naming whoever happened to be seated second and
+      // silently omitting the other two. Neutral is skipped (Gaia is in this
+      // table) and so is anyone allied to the local player, so the chip reads
+      // "who was I fighting" rather than "who else was on the map".
+      opponentName: world.players
+        .filter((o) => o.faction !== Faction.Neutral && !world.areAllied(world.localPlayer, o.id))
+        .map((o) => o.name)
+        .join(' · ') || 'Opponent',
       mapName: mapById(this.setup.map).name,
       difficulty: this.setup.difficulty,
       speed: GAME_SPEEDS[this.setup.speed] ?? 1,

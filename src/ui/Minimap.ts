@@ -10,7 +10,8 @@
  *   1. terrain, one pixel per world cell, downsampled            (baked)
  *   2. ore, blended into the same bake                           (baked)
  *   3. shroud: black over unexplored, a heavy multiply over explored-not-seen
- *   4. blips — faction-accent for yours, red for hostiles, grey for neutral
+ *   4. blips — faction-accent for yours, one colour per hostile ARMY, grey for
+ *      neutral
  *   5. attack pings, a short expanding ring
  *   6. the camera viewport rectangle: 1 px, unfilled, accent
  *
@@ -29,9 +30,16 @@
  * COLOUR
  * ------
  * The accent comes from the faction table via `accentFor`, so the third faction
- * gets a correct map with no edit here. Red for hostiles and grey for neutral
- * are semantic and never swap — "the red ones are shooting at me" has to be
- * true whichever army you picked.
+ * gets a correct map with no edit here. Grey for neutral is semantic and never
+ * swaps.
+ *
+ * HOSTILES ARE COLOURED BY SEAT, NOT BY FACTION, and index 0 is still the same
+ * red it always was. This line used to say red was the one hostile colour and
+ * never swapped — right for a duel, and unreadable the moment there are three
+ * opponents, because "whose tanks are those" has no answer. `Chrome.hostileColor`
+ * owns the table and explains why the colours are not the faction accents (two
+ * armies may pick the same side, so an accent is not a unique key for an army).
+ * `restyle` builds the per-player lookup once per redraw; the blip loops read it.
  * ============================================================================
  */
 
@@ -49,7 +57,8 @@ import {
 import { EntityFlag, EntityKind, Faction, VisionLevel, type PlayerId } from '../core/types';
 import type { World } from '../core/world';
 import type { CameraRig } from '../render/camera';
-import { SEMANTIC, accentFor, hexToRgb, mixHex, rgba } from './Chrome';
+import { SEMANTIC, accentFor, hexToRgb, hostileColor, mixHex, rgba } from './Chrome';
+import type { ArmyLegendEntry } from './Sidebar';
 
 /** Seconds between forced terrain re-bakes while ore is live. */
 const REBAKE_SECONDS = 2.0;
@@ -130,6 +139,20 @@ export class Minimap {
   private terrain: TerrainSampler | null = null;
   private faction: Faction;
   private accent: string;
+
+  /**
+   * Blip colour per `PlayerId`, rebuilt once per redraw.
+   *
+   * A LOOKUP AND NOT A BRANCH, because the alternative is asking "which hostile
+   * is this, counting from the left" inside the blip loop, which is O(players)
+   * per entity per redraw. This is O(players) per REDRAW — at most eight
+   * iterations twenty times a second — and the loop below then costs one array
+   * read, which is what it cost when the answer was a two-way branch.
+   *
+   * Length grows with the table; `MAX_PLAYERS` is 8 and a skirmish seats at
+   * most five (four armies plus Gaia).
+   */
+  private readonly blipStyle: string[] = [];
 
   private bakeDirty = true;
   private lastBake = -1e9;
@@ -420,11 +443,79 @@ export class Minimap {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this.bake, 0, 0, MAP_CELLS, MAP_CELLS, this.mapX, this.mapY, this.mapW, this.mapH);
 
+    this.restyle();
     this.drawShroud();
     this.drawTerritory();
     this.drawBlips();
     this.drawPings();
     this.drawViewport();
+  }
+
+  /**
+   * One colour per player, for this redraw.
+   *
+   * THE ORDER OF THE THREE TESTS IS THE WHOLE RULE, and two of them predate
+   * four-army support:
+   *
+   *   1. NEUTRALITY BEATS ALLIED-NESS. Gaia is allied to everyone in both
+   *      directions on purpose (`ScenarioBuilder.gaia`), so without this a
+   *      civilian block would be painted in the player's own accent and
+   *      capturing one would change nothing on the map. See `BLIP_NEUTRAL`.
+   *   2. ALLIED-NESS BEATS SEAT. Yours and a future ally's read as one force,
+   *      because that is what they are to the player reading the map.
+   *   3. EVERYONE ELSE GETS THEIR SEAT'S COLOUR, counted in player order among
+   *      the hostiles. In a duel that is one hostile at index 0, which is
+   *      `SEMANTIC.danger` — the exact red this has always drawn.
+   *
+   * Note that the DEFEATED are not special-cased. A wiped army has no entities
+   * to blip, so its colour simply stops appearing, which is the readable answer
+   * without a second piece of state to keep in step.
+   */
+  private restyle(): void {
+    const world = this.world;
+    const local = world.localPlayer;
+    const players = world.players;
+    this.blipStyle.length = players.length;
+    let hostiles = 0;
+    for (let i = 0; i < players.length; i++) {
+      const p = players[i];
+      if (p.faction === Faction.Neutral) {
+        this.blipStyle[i] = BLIP_NEUTRAL;
+      } else if (world.areAllied(local, p.id)) {
+        this.blipStyle[i] = this.accent;
+      } else {
+        this.blipStyle[i] = hostileColor(hostiles++);
+      }
+    }
+  }
+
+  /** The blip colour for an owner, with a defined fallback for a stale id. */
+  private styleOf(owner: PlayerId): string {
+    return this.blipStyle[owner as number] ?? BLIP_ENEMY;
+  }
+
+  /**
+   * The opposing armies, in the seat order their blips are coloured by.
+   *
+   * PUBLISHED FROM HERE SO THE LEGEND CANNOT DISAGREE WITH THE MAP. The Sidebar
+   * draws the key; it must not be allowed to work out the colours a second time,
+   * because the rule ("neutral, then allied, then seat index") lives in
+   * `restyle` and two copies of it would eventually be one copy and one bug.
+   *
+   * ALLOCATES, so it is not a frame-loop call — `Hud` refreshes it only when the
+   * player table changes size, which is boot, a save restore, and nothing else.
+   */
+  hostileArmies(): ArmyLegendEntry[] {
+    this.restyle();
+    const world = this.world;
+    const out: ArmyLegendEntry[] = [];
+    for (let i = 0; i < world.players.length; i++) {
+      const p = world.players[i];
+      if (p.faction === Faction.Neutral) continue;
+      if (world.areAllied(world.localPlayer, p.id)) continue;
+      out.push({ color: this.blipStyle[i] ?? BLIP_ENEMY, label: p.name });
+    }
+    return out;
   }
 
   /**
@@ -466,13 +557,9 @@ export class Minimap {
         if (this.world.vision.visibilityOf(local, store.handleOf(e)) < VisionLevel.Remembered) continue;
       }
 
-      // NEUTRALITY BEATS ALLIED-NESS, and `mine` is left alone above because
-      // it is the VISIBILITY gate. See `BLIP_NEUTRAL`.
-      const style = store.faction[e] === Faction.Neutral
-        ? BLIP_NEUTRAL
-        : mine
-          ? this.accent
-          : BLIP_ENEMY;
+      // `mine` is left alone above because it is the VISIBILITY gate; the
+      // COLOUR is the seat's, from `restyle`.
+      const style = this.styleOf(ownerId);
 
       // Sized off the footprint so a Construction Yard owns more ground than a
       // silo, with a floor so the smallest structure still reads.
@@ -572,13 +659,9 @@ export class Minimap {
         if (this.world.vision.visibilityOf(local, store.handleOf(e)) < VisionLevel.Remembered) continue;
       }
 
-      // NEUTRALITY BEATS ALLIED-NESS, and `mine` is left alone above because
-      // it is the VISIBILITY gate. See `BLIP_NEUTRAL`.
-      const style = store.faction[e] === Faction.Neutral
-        ? BLIP_NEUTRAL
-        : mine
-          ? this.accent
-          : BLIP_ENEMY;
+      // `mine` is left alone above because it is the VISIBILITY gate; the
+      // COLOUR is the seat's, from `restyle`.
+      const style = this.styleOf(ownerId);
 
       const px = this.mapX + store.posX[e] * scale;
       const py = this.mapY + store.posZ[e] * scale;
