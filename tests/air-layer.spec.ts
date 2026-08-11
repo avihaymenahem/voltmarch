@@ -29,10 +29,12 @@ import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { Rng } from '../src/core/math';
 import {
-  ARMOR_CLASS_COUNT, ArmorClass, CommandKind, EntityFlag, EntityKind, Faction,
-  Locomotor, OrderKind, Stance, UnitState,
+  ARMOR_CLASS_COUNT, ArmorClass, BuildTab, CommandKind, EntityFlag, EntityKind, Faction,
+  FxKind, Locomotor, OrderKind, Stance, UnitState, WarheadClass,
 } from '../src/core/types';
-import type { Command, EntityId, IRng, PlayerId, SimContext, WeaponDef } from '../src/core/types';
+import type {
+  Command, EntityId, IRng, ITerrain, PlayerId, SimContext, WeaponDef,
+} from '../src/core/types';
 import {
   AI_BUILD, AI_DIFFICULTY, AI_SKILL, AIR_CLIMB_LAMBDA, AIR_CRUISE_ALTITUDE,
   ARMOR_MATRIX, CELL, SIM_DT, SIM_HZ,
@@ -53,12 +55,34 @@ import { BuildCatalog, BuildRole, difficultyProfile } from '../src/sim/AIStrateg
 import type { CatalogEntry, DefLookup } from '../src/sim/AIStrategy';
 
 import { DEF_TABLES, UNITS, BUILDINGS, WEAPONS } from '../src/data/Defs';
+// §7 crosses the four tables an aircraft has to appear in at once. That is the
+// whole point of it: each of them fails silently on its own.
+import { FALLBACK_UNITS, resolveDefBinding } from '../src/game/Scenarios';
+import {
+  PRODUCTION_CONTENT, ProductionCatalog, ProductionService,
+} from '../src/sim/Production';
+import { cameoModelKey } from '../src/ui/Cameos';
 
 const P0 = 0 as PlayerId;
 const P1 = 1 as PlayerId;
 
-/** The two authored aircraft. There are exactly these and no more. */
-const AIRCRAFT_KEYS = ['mrdKestrel', 'rclHornet'] as const;
+/**
+ * The authored aircraft. There are exactly these and no more.
+ *
+ * It was TWO for the whole life of the air layer, and the missing pair is the
+ * subject of §7: `allied_vindicator` and `soviet_mig` were built, merged and
+ * silhouette-validated on every boot with no `UnitDef` behind either of them,
+ * so two of the four armies could be flown at and could not fly.
+ */
+const AIRCRAFT_KEYS = ['mrdKestrel', 'rclHornet', 'vindicator', 'mig'] as const;
+
+/** One per army, so a per-faction assertion cannot pass by testing one twice. */
+const AIRCRAFT_BY_FACTION: readonly (readonly [Faction, string])[] = [
+  [Faction.Allies, 'vindicator'],
+  [Faction.Soviets, 'mig'],
+  [Faction.Meridian, 'mrdKestrel'],
+  [Faction.Reclaim, 'rclHornet'],
+];
 
 function unitDef(key: string) {
   const d = UNITS.find((u) => u.key === key);
@@ -361,10 +385,15 @@ describe('canTargetAir — the gate, and its default', () => {
       'arcProd', 'spitCoil', 'hornetArc', 'pylonArc',
       // The man-portable flak gun. `aaCannon` above is the EMPLACED battery and
       // is balanced as one; this is the version an infantryman can carry. Its
-      // Air answer (1.7) is the highest in the Soviet army, which is the whole
-      // reason a flak trooper is called one. The Javelin needs no row here — it
-      // fires `rocketLauncher`, already listed above.
-      'flakBurst'];
+      // Air answer (1.7) WAS the highest in the Soviet army — `migCannon` below
+      // is 1.9 now — which is still the whole reason a flak trooper is called
+      // one. The Javelin needs no row here: it fires `rocketLauncher`, already
+      // listed above.
+      'flakBurst',
+      // The Allied and Soviet air arms. Both elevate, for the reason the
+      // Kestrel's pods and the Hornet's arc do: aircraft must be able to answer
+      // aircraft, or owning the only one is a win condition.
+      'vindicatorMissile', 'migCannon'];
     const cannot = ['lightCannon', 'heavyCannon', 'twinCannon', 'prismBeam', 'flameJet',
       'pillboxMg', 'artillery', 'navalGun', 'torpedo', 'bite',
       'focusLance', 'zenithBeam', 'glaiveRepeater', 'mirrorGun',
@@ -765,5 +794,490 @@ describe('every air claim in the content has something behind it', () => {
       expect(WEAPONS[i], `weapon row ${i}`).toBe(DEFAULT_WEAPONS[i]);
     }
     expect(DEF_TABLES.weapons).toBe(WEAPONS);
+  });
+});
+
+/* ==========================================================================
+ * 7. THE OTHER TWO ARMIES, AND THE EDGES AN AIRCRAFT HAS THAT A TANK DOES NOT
+ *
+ * `Locomotor.Air` shipped with TWO producers, both in factions added after the
+ * game did — so for the whole life of the air layer the Allies and the Soviets
+ * could be flown at and could not fly. It was not a missing feature: it was a
+ * missing content row, in exactly the shape of prior case `soviet_flak`.
+ * `allied_vindicator` and `soviet_mig` were in `UNIT_MASS_LISTS`, so every
+ * match paid to merge their geometry and validate their silhouette, and the
+ * boot log printed a scorecard line for each of them, every boot, forever.
+ *
+ * The rest of this section is the part that is NOT a def row. An aircraft has
+ * four edges a ground unit does not, every one of them already implemented by
+ * something generic, and every one of them documented in the roster header in
+ * `src/data/Defs.ts`. These are the assertions that keep that documentation
+ * true — a header nobody checks is the defect `docs/SPEC_DRIFT_AUDIT.md` is a
+ * catalogue of.
+ * ========================================================================== */
+
+describe('all four armies field exactly one aircraft', () => {
+  it('gives each faction its own, and none of them Neutral', () => {
+    // Neutral would put the same aircraft in every other army's sidebar, which
+    // is the failure the Pact and Reclamation catalog blocks both warn about.
+    for (const [faction, key] of AIRCRAFT_BY_FACTION) {
+      expect(unitDef(key).faction, key).toBe(faction);
+    }
+    const flying = UNITS.filter((u) => u.locomotor === Locomotor.Air).map((u) => u.key);
+    expect(flying.sort()).toEqual([...AIRCRAFT_KEYS].sort());
+  });
+
+  it('prices them as ONE band, so no army pays a different rate to fly', () => {
+    // The brief for the two new rows was "comparable", and comparable has to
+    // mean a number. Cheapest to dearest the four are 900/1000/1100/1200 and
+    // 180/190/210/240 hp; a 2x spread in either would mean one faction's air
+    // tier is a different decision from another's.
+    const costs = AIRCRAFT_KEYS.map((k) => unitDef(k).cost);
+    const hps = AIRCRAFT_KEYS.map((k) => unitDef(k).maxHp);
+    expect(Math.max(...costs) / Math.min(...costs)).toBeLessThanOrEqual(1.5);
+    expect(Math.max(...hps) / Math.min(...hps)).toBeLessThanOrEqual(1.5);
+    // And every one of them is the thinnest-skinned thing its army can build
+    // for the money — an aircraft is bought for where it stands, never for how
+    // much it survives.
+    for (const key of AIRCRAFT_KEYS) {
+      const d = unitDef(key);
+      expect(d.armor, key).toBe(ArmorClass.Light);
+      expect(d.maxHp, key).toBeLessThan(300);
+    }
+  });
+
+  it('reaches its air tier at the same depth in every tech tree', () => {
+    // War factory plus radar, one tier under the tech building, in all four.
+    // A faction whose aircraft sat behind the lab would field it a full tier
+    // later than everyone else for no stated reason.
+    const factories = new Set([
+      'warFactory', 'mrdForgeyard', 'rclBreakerYard',
+    ]);
+    const radars = new Set(['radar', 'mrdOculus', 'rclSpotter']);
+    const techs = new Set(['battleLab', 'mrdReliquary', 'rclCrucible']);
+    for (const key of AIRCRAFT_KEYS) {
+      const p = unitDef(key).prereqs;
+      expect(p.length, key).toBe(2);
+      expect(p.some((k) => factories.has(k)), `${key} has no vehicle factory prereq`).toBe(true);
+      expect(p.some((k) => radars.has(k)), `${key} has no radar prereq`).toBe(true);
+      expect(p.some((k) => techs.has(k)), `${key} is gated on a tech building`).toBe(false);
+    }
+  });
+
+  it('gates all four behind the same unlock, or none of them', () => {
+    // `UNLOCK_TAGS` mirrors its groups across the four armies on purpose, and
+    // `unit.air` named two keys while four aircraft existed in doctrine. A
+    // player who switches faction must not be sent back down the curve.
+    for (const key of AIRCRAFT_KEYS) {
+      expect(unitDef(key).unlockedBy, key).toBe('unit.air');
+    }
+  });
+
+  it('gives every aircraft a model binding a spawn can actually resolve', () => {
+    // The def row is half of it. `RenderBridge` resolves art by (kind, faction,
+    // defId) and `units.system.ts` registers that mapping from its own private
+    // table — the exact line that was missing for `soviet_flak`. Checked from
+    // the UI's mirror of the same join, which is the only copy a test can see.
+    for (const [faction, key] of AIRCRAFT_BY_FACTION) {
+      expect(cameoModelKey(key, faction, false), key).not.toBeNull();
+    }
+    expect(cameoModelKey('vindicator', Faction.Allies, false)).toBe('allied_vindicator');
+    expect(cameoModelKey('mig', Faction.Soviets, false)).toBe('soviet_mig');
+  });
+
+  it('makes each one buildable and each one known to the AI', () => {
+    // Four tables have to agree before an aircraft exists: the def row, the
+    // production spec, the fallback row and the AI catalog. Three of the four
+    // fail SILENTLY when they disagree — a missing production spec is a unit
+    // with no cameo, a missing fallback row is a build bar that reaches 100%
+    // and delivers nothing, and a missing catalog entry is a unit the human
+    // can build and the AI never will.
+    const catalog = new BuildCatalog();
+    for (const [faction, key] of AIRCRAFT_BY_FACTION) {
+      const spec = PRODUCTION_CONTENT.find((c) => c.key === key);
+      expect(spec, `${key} has no production spec`).toBeDefined();
+      expect(spec!.faction, key).toBe(faction);
+      expect(FALLBACK_UNITS[key], `${key} has no fallback row`).toBeDefined();
+      const entry = catalog.get(key);
+      expect(entry, `${key} is not in the AI catalog`).toBeDefined();
+      expect(entry!.answers[4], `${key} scores nothing against air`).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps the def table and the fallback table agreeing to the digit', () => {
+    // `ProductionService.spawnUnit` reads the FALLBACK first and the def
+    // second, so a disagreement gives one unit two different chassis depending
+    // on whether the data module happened to bind.
+    for (const key of AIRCRAFT_KEYS) {
+      const def = unitDef(key);
+      const fb = FALLBACK_UNITS[key];
+      expect(fb, key).toBeDefined();
+      expect(fb!.locomotor, `${key} locomotor`).toBe(def.locomotor);
+      expect(fb!.maxHp, `${key} hp`).toBe(def.maxHp);
+      expect(fb!.maxSpeed, `${key} speed`).toBe(def.maxSpeed);
+      expect(fb!.turnRate, `${key} turn`).toBeCloseTo(def.turnRate, 6);
+      expect(fb!.sight, `${key} sight`).toBe(def.sight);
+      expect(fb!.armor, `${key} armour`).toBe(def.armor);
+      // The flag trap: `Defs.unit()` leaves `flags` at 0 for the two original
+      // armies because `spawnUnit` ORs the def's on top of the fallback's. So
+      // for an Allied or Soviet aircraft the fallback is the ONLY owner of
+      // CanMove — and without CanMove the climb never runs, because the climb
+      // lives inside `MovementIntegrator`. The unit would sit on the runway.
+      expect(fb!.flags & EntityFlag.CanMove, `${key} cannot move`).not.toBe(0);
+      expect(fb!.flags & EntityFlag.CanAttack, `${key} cannot shoot`).not.toBe(0);
+    }
+  });
+});
+
+/* --------------------------------------------------------------------------
+ * THE FACTORY DOOR. Found by RUNNING the game, not by reading it.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Terrain that answers `isPassable` the way the SHIPPED one does.
+ *
+ * `World`'s null-object `FlatTerrain` answers `isPassable(cx, cz)` with a
+ * two-argument signature that ignores the locomotor entirely and returns true.
+ * `world/Terrain.ts` answers `(this.passGrid[i] & (1 << loco)) !== 0` — and
+ * nothing has ever set bit 5, so the real map says NO to `Locomotor.Air` in
+ * every cell of every match.
+ *
+ * That gap is the reason the bug below survived: every headless test in this
+ * repo runs on the flat null object, which cannot express "this class has no
+ * bit". This double can, and it is the minimum needed to reproduce.
+ */
+function airBlindTerrain(base: ITerrain): ITerrain {
+  return {
+    heightAt: (x, z) => base.heightAt(x, z),
+    normalAt: (x, z, out) => base.normalAt(x, z, out),
+    slopeAt: (x, z) => base.slopeAt(x, z),
+    // The whole point: bit 5 of `passGrid` is unset, so Air is impassable
+    // everywhere, exactly as on a real map.
+    isPassable: (cx, cz, loco) => loco !== Locomotor.Air && base.isPassable(cx, cz, loco),
+    isBuildable: (cx, cz) => base.isBuildable(cx, cz),
+    isOccupied: (cx, cz) => base.isOccupied(cx, cz),
+    markOccupied: (cx, cz, w, h, id) => { base.markOccupied(cx, cz, w, h, id); },
+    clearOccupied: (cx, cz, w, h) => { base.clearOccupied(cx, cz, w, h); },
+    occupancyVersion: () => base.occupancyVersion(),
+    isWater: (cx, cz) => base.isWater(cx, cz),
+    raycastGround: (ox, oy, oz, dx, dy, dz, out) =>
+      base.raycastGround(ox, oy, oz, dx, dy, dz, out),
+  };
+}
+
+describe('an aircraft can actually leave the factory', () => {
+  it('egresses onto a map whose passability grid has no bit for Air', async () => {
+    /*
+     * THE BUG, IN ONE SENTENCE: `Production.findEgressSpot` asked
+     * `terrain.isPassable(cx, cz, Locomotor.Air)`, which is false in every cell
+     * of every real map, so it never found a spot and no aircraft ever came out
+     * of a factory — in ANY faction, since the day `Locomotor.Air` shipped.
+     *
+     * What it looked like from the player's side, measured on a live match
+     * before the fix: 1200 credits charged, the build bar at 100%, `ready:
+     * true` at tick 1377 — and the same item still sitting in the queue at tick
+     * 1802, with the Vehicles tab blocked behind it. No error, no warning, no
+     * refund. `egressRetry` re-armed every `egressRetrySeconds` forever.
+     *
+     * Everything ELSE in the air layer worked, which is why the file above
+     * could assert an end-to-end feature and be right about every link except
+     * the one that hands a player a plane. The gap between "the simulation
+     * flies aircraft correctly" and "a player can obtain one" is exactly one
+     * function, and only running the game crosses it.
+     */
+    const world = new World();
+    world.terrain = airBlindTerrain(world.terrain);
+    world.addPlayer(Faction.Allies, 'Commander', true, true);
+    const channels = new Channels();
+    const binding = await resolveDefBinding();
+    const catalog = new ProductionCatalog(binding);
+    const service = new ProductionService(world, channels, catalog);
+    const p = 0 as PlayerId;
+    world.player(p).credits = 100_000;
+
+    // The Vindicator's whole tech tree, planted by hand: a yard, power, the
+    // factory that services the Vehicles tab, and the radar it is gated on.
+    const st = world.store;
+    const plant = (key: string, x: number, z: number, extraFlags: number): void => {
+      const e = catalog.byKey(key)!;
+      const h = st.alloc(EntityKind.Building, e.defId, p, Faction.Allies, x, 0, z, 0);
+      const i = st.index(h);
+      st.flags[i] |= extraFlags | EntityFlag.BlocksNav;
+      st.footprintW[i] = e.footprintW;
+      st.footprintH[i] = e.footprintH;
+      st.hp[i] = 1000; st.maxHp[i] = 1000;
+      st.powerDraw[i] = e.power;
+      st.buildProgress[i] = 1;
+    };
+    plant('conyard', 160, 200, EntityFlag.IsBuilder | EntityFlag.IsFactory);
+    plant('powerPlant', 180, 200, 0);
+    plant('warFactory', 200, 200, EntityFlag.IsFactory);
+    plant('radar', 220, 200, EntityFlag.IsRadar);
+    world.player(p).powerProduced = 500;
+
+    const rng = new Rng(17);
+    let tick = 0;
+    const run = (n: number): void => {
+      for (let k = 0; k < n; k++) {
+        tick++;
+        world.tick = tick;
+        world.time = tick * SIM_DT;
+        service.tick({ dt: SIM_DT, tick, time: world.time, rng });
+        world.spatial.rebuild();
+      }
+    };
+    run(2);
+
+    const vind = catalog.byKey('vindicator')!;
+    // Asserted before the order, so "no aircraft came out" cannot secretly mean
+    // "the sidebar would have greyed the cameo anyway".
+    expect(service.availability(p, vind.publicId).ok, 'not buildable in this rig').toBe(true);
+    service.enqueue(p, vind.publicId);
+    // Twice the build time, so "still queued" cannot mean "still building".
+    run(Math.ceil(vind.buildTime / SIM_DT) * 2 + 60);
+
+    let built = 0;
+    for (let a = 0; a < st.aliveCount; a++) {
+      const i = st.alive[a];
+      if (st.kind[i] === EntityKind.Vehicle && st.defId[i] === vind.defId) built++;
+    }
+    const queued = world.player(p).queues[BuildTab.Vehicles].items.length;
+    expect(built, 'the aircraft never left the factory').toBe(1);
+    expect(queued, 'the queue is still holding a finished aircraft').toBe(0);
+  });
+
+  it('still refuses to hand a GROUND unit a spot the grid closed', () => {
+    // The fix is a branch on `Locomotor.Air`, so the ground path has to be
+    // shown intact — otherwise "it egresses now" could mean "the egress rule
+    // stopped being a rule", which would put tanks inside cliffs.
+    const world = new World();
+    const base = world.terrain;
+    world.terrain = {
+      ...airBlindTerrain(base),
+      isPassable: () => false,          // nowhere at all is passable
+    };
+    world.addPlayer(Faction.Allies, 'Commander', true, true);
+    const channels = new Channels();
+    const catalog = new ProductionCatalog({ tables: null, unitId: {}, buildingId: {} });
+    const service = new ProductionService(world, channels, catalog);
+    const p = 0 as PlayerId;
+    world.player(p).credits = 100_000;
+
+    const st = world.store;
+    const wf = catalog.byKey('warFactory')!;
+    const h = st.alloc(EntityKind.Building, wf.defId, p, Faction.Allies, 200, 0, 200, 0);
+    const bi = st.index(h);
+    st.flags[bi] |= EntityFlag.IsFactory | EntityFlag.BlocksNav;
+    st.footprintW[bi] = wf.footprintW;
+    st.footprintH[bi] = wf.footprintH;
+    st.hp[bi] = 1000; st.maxHp[bi] = 1000;
+    st.buildProgress[bi] = 1;
+
+    const rng = new Rng(19);
+    let tick = 0;
+    const run = (n: number): void => {
+      for (let k = 0; k < n; k++) {
+        tick++;
+        world.tick = tick;
+        world.time = tick * SIM_DT;
+        service.tick({ dt: SIM_DT, tick, time: world.time, rng });
+        world.spatial.rebuild();
+      }
+    };
+    run(2);
+
+    const grizzly = catalog.byKey('grizzly')!;
+    service.enqueue(p, grizzly.publicId);
+    run(Math.ceil(grizzly.buildTime / SIM_DT) * 2 + 60);
+
+    let built = 0;
+    for (let a = 0; a < st.aliveCount; a++) {
+      const i = st.alive[a];
+      if (st.kind[i] === EntityKind.Vehicle) built++;
+    }
+    expect(built, 'a tank egressed onto ground the grid closed').toBe(0);
+  });
+});
+
+describe('an aircraft with nothing to do', () => {
+  it('loiters at cruise altitude and never lands, because there is nowhere to', () => {
+    // THE DESIGN DECISION, ASSERTED. This game has no airfield, no rearm and
+    // no fuel; `Movement` holds `MoveClass.Air` at `ground + AIR_CRUISE_ALTITUDE`
+    // unconditionally, every tick, order or no order. So an idle aircraft holds
+    // station — it does not return to a pad, and a pad would have nothing to do.
+    // The cost of that is real and is the point: an idle aircraft is a thing
+    // two thirds of the army cannot shoot which is also achieving nothing.
+    const rig = makeFlightRig();
+    const i = spawnMover(rig, 180, 180, Locomotor.Air);
+    rig.step(SIM_HZ * 4);
+    const st = rig.world.store;
+
+    let lowest = Infinity;
+    for (let k = 0; k < SIM_HZ * 30; k++) {
+      rig.step(1);
+      const ground = rig.world.terrain.heightAt(st.posX[i], st.posZ[i]);
+      lowest = Math.min(lowest, st.posY[i] - ground);
+    }
+    expect(lowest).toBeCloseTo(AIR_CRUISE_ALTITUDE, 1);
+    // Holding station, not orbiting: nothing here makes it drift off its spot.
+    expect(st.speed[i]).toBe(0);
+    expect(st.posX[i]).toBeCloseTo(180, 4);
+    expect(st.posZ[i]).toBeCloseTo(180, 4);
+  });
+
+  it('shares no space — two of them stack, two tanks do not', () => {
+    // `Steering` and `Movement` both skip `MoveClass.Air` in the separation
+    // pass ("aircraft share no space"). The consequence a player sees is that
+    // four gunships over one target is legal and there is no air traffic; the
+    // consequence a test can see is that co-located aircraft stay co-located.
+    // 0.4 m apart, not zero: `relax` skips an EXACT overlap (`d2 < 1e-9` has no
+    // push direction), so a zero-distance pair would prove nothing about either
+    // class. Both radii are 2, so 0.4 is deep inside the 4 m they each want.
+    const START = 0.4;
+    const air = makeFlightRig();
+    const a0 = spawnMover(air, 200, 200, Locomotor.Air);
+    const a1 = spawnMover(air, 200 + START, 200, Locomotor.Air);
+    air.step(SIM_HZ * 2);
+    const ast = air.world.store;
+    const airGap = Math.hypot(ast.posX[a0] - ast.posX[a1], ast.posZ[a0] - ast.posZ[a1]);
+
+    const ground = makeFlightRig();
+    const g0 = spawnMover(ground, 200, 200, Locomotor.Track);
+    const g1 = spawnMover(ground, 200 + START, 200, Locomotor.Track);
+    ground.step(SIM_HZ * 2);
+    const gst = ground.world.store;
+    const groundGap = Math.hypot(gst.posX[g0] - gst.posX[g1], gst.posZ[g0] - gst.posZ[g1]);
+
+    expect(airGap, 'the relaxation pass pushed two aircraft apart').toBeCloseTo(START, 4);
+    expect(groundGap, 'two tanks in one spot must be separated').toBeGreaterThan(START * 3);
+  });
+});
+
+/* --------------------------------------------------------------------------
+ * Death. The fireball belongs at the altitude it happened; everything that
+ * OUTLIVES the fireball is debris, and debris falls.
+ * ------------------------------------------------------------------------ */
+
+/** Terrain double: a flat slab at `height`, wet or dry on demand. */
+function slabTerrain(base: ITerrain, height: number, water: boolean): ITerrain {
+  return {
+    heightAt: () => height,
+    normalAt: (x, z, out) => base.normalAt(x, z, out),
+    slopeAt: (x, z) => base.slopeAt(x, z),
+    isPassable: (cx, cz, loco) => base.isPassable(cx, cz, loco),
+    isBuildable: (cx, cz) => base.isBuildable(cx, cz),
+    isOccupied: (cx, cz) => base.isOccupied(cx, cz),
+    markOccupied: (cx, cz, w, h, id) => { base.markOccupied(cx, cz, w, h, id); },
+    clearOccupied: (cx, cz, w, h) => { base.clearOccupied(cx, cz, w, h); },
+    occupancyVersion: () => base.occupancyVersion(),
+    isWater: () => water,
+    raycastGround: (ox, oy, oz, dx, dy, dz, out) =>
+      base.raycastGround(ox, oy, oz, dx, dy, dz, out),
+  };
+}
+
+const GROUND_Y = 7;
+
+/** Kill one airborne vehicle over `water`, and hand back what it left behind. */
+function killAloft(water: boolean): {
+  wreckY: number | null;
+  splashY: number | null;
+  fireballY: number | null;
+} {
+  setArmorMatrix(ARMOR_MATRIX);
+  const world = new World();
+  world.terrain = slabTerrain(world.terrain, GROUND_Y, water);
+  const channels = new Channels();
+  world.addPlayer(Faction.Allies, 'A', true, true);
+  const damage = new DamageSystem(world, channels);
+
+  const st = world.store;
+  const h = st.alloc(
+    EntityKind.Vehicle, -1, P0, Faction.Allies,
+    300, GROUND_Y + AIR_CRUISE_ALTITUDE, 300, 0,
+  );
+  const i = st.index(h);
+  st.maxHp[i] = 100; st.hp[i] = 100;
+  st.armorClass[i] = ArmorClass.Light;
+  st.radius[i] = 2;
+  st.locomotor[i] = Locomotor.Air;
+  st.flags[i] |= EntityFlag.CanMove;
+
+  const s: SimContext = { dt: SIM_DT, tick: 1, time: SIM_DT, rng: new Rng(3) };
+  world.tick = 1;
+  st.snapshotPrev();
+  channels.damage.push(h, h, 500, WarheadClass.AutoCannon, 300, GROUND_Y, 300);
+  damage.damageTick(s);
+  damage.cleanupTick(s);
+
+  let splashY: number | null = null;
+  let fireballY: number | null = null;
+  for (let k = 0; k < channels.fx.count; k++) {
+    if (channels.fx.kind[k] === (FxKind.Splash as number)) splashY = channels.fx.y[k];
+    if (channels.fx.kind[k] === (FxKind.ExplosionMedium as number)) fireballY = channels.fx.y[k];
+  }
+
+  let wreckY: number | null = null;
+  const n = st.byKindCount[EntityKind.Wreck];
+  if (n > 0) wreckY = st.posY[st.byKind[EntityKind.Wreck][0]];
+
+  return { wreckY, splashY, fireballY };
+}
+
+describe('an aircraft that dies at altitude', () => {
+  it('drops its hulk to the ground instead of hanging it in the sky', () => {
+    // The bug this replaces was reachable by the Kestrel and the Hornet from
+    // the day `Locomotor.Air` shipped: `Damage.spawnWreck` took the victim's
+    // `posY` straight through, so a downed gunship left a BURNING HULK sitting
+    // at 22 m for the full `wreckSeconds` and nothing was looking at it.
+    const { wreckY, fireballY } = killAloft(false);
+    expect(wreckY, 'an aircraft over dry land must leave a hulk').not.toBeNull();
+    expect(wreckY!).toBeCloseTo(GROUND_Y, 4);
+    // And the fireball stays where the aircraft was. The two are different
+    // events and collapsing them either way looks wrong: an explosion on the
+    // deck under an intact-looking plane, or a wreck in the air.
+    expect(fireballY, 'no fireball at all').not.toBeNull();
+    expect(fireballY!).toBeGreaterThan(GROUND_Y + AIR_CRUISE_ALTITUDE * 0.9);
+  });
+
+  it('sinks over water, and splashes at the surface rather than at altitude', () => {
+    // Same rule the Corvette and the Slag Scow already follow — `vehicleDeath`
+    // asks `terrain.isWater(cell)`, never the height — with the one difference
+    // that an aircraft's fall is 22 m longer. No hulk on the waves.
+    const { wreckY, splashY } = killAloft(true);
+    expect(wreckY, 'a hulk floating on the sea').toBeNull();
+    expect(splashY, 'no splash').not.toBeNull();
+    expect(splashY!).toBeLessThan(GROUND_Y + AIR_CRUISE_ALTITUDE * 0.5);
+  });
+
+  it('leaves a ground vehicle exactly where it was, so the fix is scoped', () => {
+    // The branch reads `Locomotor.Air`, not an altitude threshold, for the
+    // reason `Combat.isAirborne` does: a tank cresting a ridge must never fall
+    // down it. Proven by driving the same rig with a Track locomotor.
+    setArmorMatrix(ARMOR_MATRIX);
+    const world = new World();
+    world.terrain = slabTerrain(world.terrain, GROUND_Y, false);
+    const channels = new Channels();
+    world.addPlayer(Faction.Allies, 'A', true, true);
+    const damage = new DamageSystem(world, channels);
+    const st = world.store;
+    // Deliberately parked ABOVE its own ground height — a hull on a bridge, a
+    // hull the terrain moved under. The wreck must land where the hull was.
+    const h = st.alloc(EntityKind.Vehicle, -1, P0, Faction.Allies, 300, GROUND_Y + 3, 300, 0);
+    const i = st.index(h);
+    st.maxHp[i] = 100; st.hp[i] = 100;
+    st.armorClass[i] = ArmorClass.Medium;
+    st.radius[i] = 2;
+    st.locomotor[i] = Locomotor.Track;
+
+    const s: SimContext = { dt: SIM_DT, tick: 1, time: SIM_DT, rng: new Rng(5) };
+    world.tick = 1;
+    st.snapshotPrev();
+    channels.damage.push(h, h, 500, WarheadClass.AutoCannon, 300, GROUND_Y + 3, 300);
+    damage.damageTick(s);
+    damage.cleanupTick(s);
+
+    expect(st.byKindCount[EntityKind.Wreck]).toBe(1);
+    expect(st.posY[st.byKind[EntityKind.Wreck][0]]).toBeCloseTo(GROUND_Y + 3, 4);
   });
 });

@@ -291,12 +291,19 @@ describe('§4 art that is built but never drawn', () => {
    * advertised a Flak Trooper the game could not build. It was never a missing
    * model; it was a missing line in two tables.
    *
-   * These four are the ones still in that state. The list is EXPLICIT so it can
+   * These two are the ones still in that state. The list is EXPLICIT so it can
    * only shrink on purpose: a new orphan fails here instead of quietly costing
-   * geometry forever.
+   * geometry forever — and it shrinking is what this assertion is FOR, so the
+   * two aircraft coming off it is the test working rather than the test being
+   * edited around.
+   *
+   * `allied_vindicator` and `soviet_mig` used to head this list, annotated
+   * "aircraft, no def rows yet". They have def rows now (`vindicator` and
+   * `mig` in `src/data/Defs.ts`, appended last), production specs, fallback
+   * rows, model bindings and AI catalog entries. See `tests/air-layer.spec.ts`
+   * §7, which asserts all four tables agree rather than trusting this note.
    */
   const KNOWN_ORPHANS: readonly string[] = [
-    'allied_vindicator', 'soviet_mig',   // aircraft, no def rows yet
     'soviet_sickle', 'soviet_v4',        // in the HUD's fallback roster, nowhere else
   ];
 
