@@ -36,7 +36,9 @@ import * as THREE from 'three';
 import { TERRAIN_CHUNK_METRES, TERRAIN_LAYER_TEXTURE_SIZE, type SeaSpec } from '../core/config';
 import { LAYERS, RENDER_ORDER } from '../render/scene';
 import type { BiomeDef } from './Biomes';
-import { createTerrainMaterials, type TerrainMaterialSet } from './TerrainMaterial';
+import {
+  createTerrainMaterials, type TerrainMaterialSet, type TerrainTextureData,
+} from './TerrainMaterial';
 import {
   CHUNK_QUADS, SPLAT_N, TerrainFields, buildTerrainChunks, terrainGenKey,
   type TerrainFieldData, type TerrainGenOptions,
@@ -83,6 +85,16 @@ export interface TerrainOptions extends TerrainGenOptions {
    * refused rather than quietly drawn.
    */
   fields?: TerrainFieldData | null;
+  /**
+   * The layer, warp and macro TILES, generated elsewhere. Passed straight
+   * through to `createTerrainMaterials`, which checks its own key.
+   *
+   * Separate from `fields` and deliberately so: the fields are a generation of
+   * THIS MAP — seed, biome, starts and shoreline — while the tiles depend only
+   * on `(biome, layerTextureSize, seed)`. That is why the texture job can be
+   * dispatched alongside the terrain job instead of behind it.
+   */
+  textures?: TerrainTextureData | null;
 }
 
 /**
@@ -120,6 +132,7 @@ export class Terrain extends TerrainFields {
       biome: this.biomeDef,
       layerTextureSize: TERRAIN_LAYER_TEXTURE_SIZE,
       seed: this.seed,
+      textures: options.textures ?? null,
     });
     this.materials.setSplat(this.splatTexA, this.splatTexB);
     if (options.anisotropy !== undefined) this.materials.setAnisotropy(options.anisotropy);

@@ -69,6 +69,10 @@ import {
 } from '../core/config';
 import { DEG2RAD, TAU, clamp, clamp01, fbm2, hexToLinearRgb, lerp, simplex2 } from '../core/math';
 import { shroudUniforms } from '../render/FogOfWar';
+import {
+  LACE_SIGMA, buildFoamLace, buildWaveSlopes, probit, waterTextureKey,
+  type WaterTextureData,
+} from './water-texture-gen';
 
 /* ==========================================================================
  * 1. UNIFORMS
@@ -155,237 +159,26 @@ export interface WaterUniforms {
 }
 
 /* ==========================================================================
- * 2. PROCEDURAL TEXTURES
+ * 2. PROCEDURAL TEXTURES — GENERATED ELSEWHERE
  *
- * Both canvases must TILE. Simplex fbm does not, so every sample goes through
- * `tileNoise`, the standard four-corner torus blend: sample the same noise at
- * four offsets of one tile and bilinearly blend by position. It is exactly
- * periodic. Its one artifact — reduced variance toward the tile centre — is
- * erased for the lace by the gaussian remap below, and is invisible in a
- * slope map.
+ * The two tiles this material samples, `water.waveSlopes` and `water.foamLace`,
+ * are built by `./water-texture-gen.ts` and re-exported here unchanged.
+ *
+ * THEY MOVED BECAUSE THEY WERE THE BOOT. Measured on `08-naval-water`,
+ * `createWaterMaterial` was 230-270 ms of main-thread time and these two
+ * functions were essentially all of it. They are pure functions of
+ * `(size, seed)` — no uniform, no palette, no light rig — so they are exactly
+ * the shape a worker can run, and `src/core/workers/world-warm.ts` now does.
+ *
+ * THE RE-EXPORT IS NOT TIDINESS. `tests/water.spec.ts` imports `buildFoamLace`,
+ * `buildWaveSlopes` and `LACE_SIGMA` from THIS module, and scorecard #26's
+ * filament measurement is built on them. Keeping the names here means the split
+ * is invisible to every caller, so the guards did not have to be rewritten to
+ * accommodate a refactor — which is how a guard quietly stops guarding.
  * ========================================================================== */
 
-/** Exactly-periodic 2D fbm over a `period`-unit torus. */
-function tileNoise(
-  x: number, y: number, period: number, octaves: number, seed: number,
-): number {
-  const u = x / period;
-  const v = y / period;
-  const iu = 1 - u;
-  const iv = 1 - v;
-  return (
-    fbm2(x, y, octaves, 2, 0.5, seed) * iu * iv +
-    fbm2(x - period, y, octaves, 2, 0.5, seed) * u * iv +
-    fbm2(x, y - period, octaves, 2, 0.5, seed) * iu * v +
-    fbm2(x - period, y - period, octaves, 2, 0.5, seed) * u * v
-  );
-}
-
-/** Periodic single-octave simplex, for the domain warp. */
-function tileWarp(x: number, y: number, period: number, seed: number): number {
-  const u = x / period;
-  const v = y / period;
-  const iu = 1 - u;
-  const iv = 1 - v;
-  return (
-    simplex2(x, y, seed) * iu * iv +
-    simplex2(x - period, y, seed) * u * iv +
-    simplex2(x, y - period, seed) * iu * v +
-    simplex2(x - period, y - period, seed) * u * v
-  );
-}
-
-/**
- * Inverse normal CDF (Acklam's rational approximation, |error| < 1.15e-9).
- * Used to push the ridge field onto a gaussian so that "what threshold gives
- * 6% coverage" has an answer instead of a guess.
- */
-function probit(p: number): number {
-  const a = [-3.969683028665376e1, 2.209460984245205e2, -2.759285104469687e2,
-    1.383577518672690e2, -3.066479806614716e1, 2.506628277459239];
-  const b = [-5.447609879822406e1, 1.615858368580409e2, -1.556989798598866e2,
-    6.680131188771972e1, -1.328068155288572e1];
-  const c = [-7.784894002430293e-3, -3.223964580411365e-1, -2.400758277161838,
-    -2.549732539343734, 4.374664141464968, 2.938163982698783];
-  const d = [7.784695709041462e-3, 3.224671290700398e-1, 2.445134137142996,
-    3.754408661907416];
-  const pl = 0.02425;
-  if (p <= 0) return -6;
-  if (p >= 1) return 6;
-  let q: number;
-  let r: number;
-  if (p < pl) {
-    q = Math.sqrt(-2 * Math.log(p));
-    return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
-  }
-  if (p > 1 - pl) {
-    q = Math.sqrt(-2 * Math.log(1 - p));
-    return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) /
-      ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1);
-  }
-  q = p - 0.5;
-  r = q * q;
-  return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q /
-    (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
-}
-
-/** Standard deviation the lace field is remapped onto. */
-export const LACE_SIGMA = 0.15;
-
-/**
- * The foam lace: a domain-warped ridge network, monotonically remapped to
- * N(0.5, LACE_SIGMA) clipped to [0,1].
- *
- * Ridges (`1 - |fbm|` squared) give the torn-lace topology the bible asks
- * for; a plain fbm thresholded high gives round blobs, which is the exact
- * scorecard #26 failure. The remap is a rank transform, so it moves no level
- * set — the filament network is bit-for-bit what the ridge produced, only the
- * value attached to each contour changes.
- */
-export function buildFoamLace(size: number, seed: number): Uint8Array {
-  const raw = new Float32Array(size * size);
-  // ~4.4 ridge cells across the tile: at WATER_FOAM.laceTileMetres this puts
-  // the filament spacing near 2.7 m, which is what makes a 6% coverage land
-  // at 2-3 px wide on a 2560x1440 frame.
-  const freq = 4.4;
-  const warpFreq = 2.0;
-  const warpAmp = 0.16;
-
-  // The warp is two octaves of feature at warpFreq=2 over the whole tile, so
-  // it is smooth to a scale of ~1/4 tile. Evaluating it per texel at 512^2
-  // costs 8 simplex calls a texel for a field that a 64^2 grid resolves
-  // exactly. Precompute and bilinearly upsample: 1/64th of the work, no
-  // measurable difference in the output.
-  const WN = 64;
-  const warpX = new Float32Array((WN + 1) * (WN + 1));
-  const warpY = new Float32Array((WN + 1) * (WN + 1));
-  for (let j = 0; j <= WN; j++) {
-    for (let i = 0; i <= WN; i++) {
-      const u = (i / WN) * warpFreq;
-      const v = (j / WN) * warpFreq;
-      warpX[j * (WN + 1) + i] = tileWarp(u, v, warpFreq, seed + 11) * warpAmp;
-      warpY[j * (WN + 1) + i] = tileWarp(u, v, warpFreq, seed + 29) * warpAmp;
-    }
-  }
-
-  for (let y = 0; y < size; y++) {
-    const gy = (y / size) * WN;
-    const j0 = gy | 0;
-    const fy = gy - j0;
-    const r0 = j0 * (WN + 1);
-    const r1 = r0 + (WN + 1);
-    for (let x = 0; x < size; x++) {
-      const gx = (x / size) * WN;
-      const i0 = gx | 0;
-      const fx = gx - i0;
-      // Domain warp first — an unwarped ridge network reads as a regular mesh.
-      const wx = lerp(lerp(warpX[r0 + i0], warpX[r0 + i0 + 1], fx),
-        lerp(warpX[r1 + i0], warpX[r1 + i0 + 1], fx), fy);
-      const wy = lerp(lerp(warpY[r0 + i0], warpY[r0 + i0 + 1], fx),
-        lerp(warpY[r1 + i0], warpY[r1 + i0 + 1], fx), fy);
-      const px = (x / size + wx) * freq;
-      const py = (y / size + wy) * freq;
-      // Ridge: 1 - |fbm|, squared to sharpen the crest into a filament.
-      // Three octaves: the filament WIDTH comes from the base frequency, so a
-      // fourth octave only adds wiggle the gaussian remap flattens out anyway.
-      const n = tileNoise(px, py, freq, 3, seed);
-      const r = 1 - Math.abs(n);
-      raw[y * size + x] = r * r;
-    }
-  }
-
-  return gaussianRemap(raw, size, LACE_SIGMA);
-}
-
-/** Rank-transform `raw` onto N(0.5, sigma) clipped to [0,1], as 8-bit. */
-function gaussianRemap(raw: Float32Array, size: number, sigma: number): Uint8Array {
-  const n = size * size;
-  // 4096-bin histogram is plenty: the output is 8-bit anyway.
-  const BINS = 4096;
-  let lo = Infinity;
-  let hi = -Infinity;
-  for (let i = 0; i < n; i++) {
-    if (raw[i] < lo) lo = raw[i];
-    if (raw[i] > hi) hi = raw[i];
-  }
-  const span = hi - lo > 1e-9 ? hi - lo : 1;
-  const hist = new Uint32Array(BINS);
-  for (let i = 0; i < n; i++) {
-    const b = ((raw[i] - lo) / span) * (BINS - 1);
-    hist[b < 0 ? 0 : b > BINS - 1 ? BINS - 1 : b | 0]++;
-  }
-  // Cumulative -> the value each bin maps to.
-  const map = new Uint8Array(BINS);
-  let acc = 0;
-  for (let b = 0; b < BINS; b++) {
-    // Mid-rank so the extremes are not pinned to the clamp.
-    const cdf = (acc + hist[b] * 0.5) / n;
-    acc += hist[b];
-    const g = 0.5 + sigma * probit(cdf);
-    map[b] = Math.round(clamp01(g) * 255);
-  }
-  const out = new Uint8Array(n);
-  for (let i = 0; i < n; i++) {
-    const b = ((raw[i] - lo) / span) * (BINS - 1);
-    out[i] = map[b < 0 ? 0 : b > BINS - 1 ? BINS - 1 : b | 0];
-  }
-  return out;
-}
-
-/**
- * The wave slope map. RG carry band B (the visible crinkle), BA carry band C
- * (the 2-4 px micro-detail that stops the specular reading as plastic).
- *
- * Slopes, not normals: the water plane's tangent frame is the world XZ plane,
- * so d(height)/dx and d(height)/dz go straight into the fragment normal with
- * no TBN matrix and no per-vertex tangent attribute.
- */
-export function buildWaveSlopes(size: number, seed: number): Uint8Array {
-  const out = new Uint8Array(size * size * 4);
-  const midFreq = 7.0;   // ~7 crests per tile -> ~1.1 m features at an 8 m tile
-  const hiFreq = 26.0;   // ~4x finer; band C
-  const h1 = new Float32Array(size * size);
-  const h2 = new Float32Array(size * size);
-
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const u = x / size;
-      const v = y / size;
-      const i = y * size + x;
-      h1[i] = tileNoise(u * midFreq, v * midFreq, midFreq, 3, seed + 3);
-      h2[i] = tileNoise(u * hiFreq, v * hiFreq, hiFreq, 2, seed + 7);
-    }
-  }
-
-  // Central differences with wraparound — the map tiles, so the derivative
-  // must tile too or a seam appears exactly where the normal is steepest.
-  const scale1 = 2.6;
-  const scale2 = 1.9;
-  for (let y = 0; y < size; y++) {
-    const yp = (y + 1) % size;
-    const ym = (y + size - 1) % size;
-    for (let x = 0; x < size; x++) {
-      const xp = (x + 1) % size;
-      const xm = (x + size - 1) % size;
-      const i = y * size + x;
-      const gx1 = (h1[y * size + xp] - h1[y * size + xm]) * 0.5 * scale1;
-      const gy1 = (h1[yp * size + x] - h1[ym * size + x]) * 0.5 * scale1;
-      const gx2 = (h2[y * size + xp] - h2[y * size + xm]) * 0.5 * scale2;
-      const gy2 = (h2[yp * size + x] - h2[ym * size + x]) * 0.5 * scale2;
-      const o = i * 4;
-      out[o] = enc8(gx1);
-      out[o + 1] = enc8(gy1);
-      out[o + 2] = enc8(gx2);
-      out[o + 3] = enc8(gy2);
-    }
-  }
-  return out;
-}
-
-function enc8(v: number): number {
-  return Math.round(clamp01(v * 0.5 + 0.5) * 255);
-}
+export { LACE_SIGMA, buildFoamLace, buildWaveSlopes };
+export type { WaterTextureData };
 
 /* ==========================================================================
  * 3. SHADER
@@ -736,6 +529,16 @@ export interface WaterMaterialOptions {
   seed?: number;
   textureSize?: number;
   anisotropy?: number;
+  /**
+   * Tiles generated somewhere else — normally by the boot-time worker in
+   * `src/core/workers/world-warm.ts`.
+   *
+   * ADOPTED ONLY ON AN EXACT KEY MATCH, and a miss is not an error: it falls
+   * through to generating them right here, which is what this function did
+   * before the worker existed and is the fallback for every way the worker can
+   * fail. `null` and a stale key take the same path.
+   */
+  textures?: WaterTextureData | null;
 }
 
 export interface WaterLightRig {
@@ -753,6 +556,11 @@ export interface WaterMaterialSet {
   /** Textures this set owns and will dispose. */
   readonly waveTexture: THREE.DataTexture;
   readonly laceTexture: THREE.DataTexture;
+  /**
+   * True when both tiles came from `options.textures` rather than being built
+   * here. For the boot log only — nothing branches on it.
+   */
+  readonly texturesAdopted: boolean;
   /** Swap palette without a shader recompile. */
   applyPalette(palette: WaterPalette, rampDepth: number): void;
   /** Push the scene's sun/hemisphere in. Called once per frame. */
@@ -833,8 +641,31 @@ export function createWaterMaterial(opts: WaterMaterialOptions): WaterMaterialSe
   // measures.
   const waveSize = Math.max(64, size >> 1);
 
+  /*
+   * ADOPT OR GENERATE — and the key comparison is what makes that safe.
+   *
+   * A prewarmed set is accepted only when it was generated from exactly this
+   * size and seed. `waterTextureKey` is the ONE definition of that identity and
+   * both sides call it, so a mismatch cannot be papered over by two agreeing
+   * comments. Anything else — no worker, `?watertexworkers=off`, a job that
+   * timed out, a `?water=` palette on a build whose tiles were baked for a
+   * different `WATER_TEXTURE_SIZE` — falls through to the two calls below,
+   * which is the path this function has always taken.
+   *
+   * The bytes are used AS-IS, with no copy: `DataTexture` keeps the reference
+   * and the worker's buffer was transferred, so it is ours to own.
+   */
+  const pre = opts.textures ?? null;
+  const adopted = pre !== null
+    && pre.key === waterTextureKey(size, seed)
+    && pre.waveSize === waveSize
+    && pre.laceSize === size
+    && pre.waves.length === waveSize * waveSize * 4
+    && pre.lace.length === size * size;
+
   const waveTexture = new THREE.DataTexture(
-    buildWaveSlopes(waveSize, seed), waveSize, waveSize,
+    adopted && pre !== null ? pre.waves : buildWaveSlopes(waveSize, seed),
+    waveSize, waveSize,
     THREE.RGBAFormat, THREE.UnsignedByteType,
   );
   waveTexture.name = 'water.waveSlopes';
@@ -846,7 +677,8 @@ export function createWaterMaterial(opts: WaterMaterialOptions): WaterMaterialSe
   waveTexture.needsUpdate = true;
 
   const laceTexture = new THREE.DataTexture(
-    buildFoamLace(size, seed + 101), size, size, THREE.RedFormat, THREE.UnsignedByteType,
+    adopted && pre !== null ? pre.lace : buildFoamLace(size, seed + 101),
+    size, size, THREE.RedFormat, THREE.UnsignedByteType,
   );
   laceTexture.name = 'water.foamLace';
   laceTexture.wrapS = THREE.RepeatWrapping;
@@ -1007,6 +839,7 @@ export function createWaterMaterial(opts: WaterMaterialOptions): WaterMaterialSe
     uniforms,
     waveTexture,
     laceTexture,
+    texturesAdopted: adopted,
 
     applyPalette(palette: WaterPalette, rampDepth: number): void {
       const stops = resampleRamp(palette, WATER_LOOK.rampStops);

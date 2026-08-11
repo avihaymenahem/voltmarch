@@ -67,6 +67,7 @@ import {
 import {
   createWaterMaterial, probeFoam, probeOpenWaterLuminance,
   type FoamProbe, type LuminanceProbe, type WaterLightRig, type WaterMaterialSet,
+  type WaterTextureData,
 } from './WaterMaterial';
 
 /* ==========================================================================
@@ -120,6 +121,16 @@ export interface WaterOptions {
   fields?: WaterFieldData | null;
   /** The key `options.fields` must carry to be adopted. See `waterGenKey`. */
   fieldsKey?: string;
+  /**
+   * The wave-slope and foam-lace TILES, generated elsewhere. Passed straight
+   * through to `createWaterMaterial`, which checks its own key.
+   *
+   * Separate from `fields` and deliberately so: the fields are a bake over THIS
+   * MAP'S BED and are useless without it, while these two tiles depend on
+   * nothing but `(textureSize, seed)`. That is why the texture job does not
+   * wait for the terrain and the field bake does.
+   */
+  textures?: WaterTextureData | null;
 }
 
 export interface WaterStats {
@@ -218,6 +229,7 @@ export class Water {
       seed: this.seed,
       textureSize: options.textureSize ?? WATER_TEXTURE_SIZE,
       anisotropy: options.anisotropy,
+      textures: options.textures ?? null,
     });
     this.materials.setField(this.fieldTexture);
     this.materials.setWake(this.wakeTexture);
@@ -295,6 +307,19 @@ export class Water {
   /** True when the last `rebuild` adopted a worker's bake instead of doing one. */
   get fieldsAdopted(): boolean {
     return this.adopted;
+  }
+
+  /**
+   * True when the wave and lace tiles came from a worker.
+   *
+   * Separate from `fieldsAdopted` because the two can genuinely disagree: the
+   * tiles depend only on `(size, seed)` while the fields depend on the bed, so
+   * a `rebuild()` after a biome swap re-bakes the fields on this thread and
+   * leaves the tiles exactly where they were. Reporting one number for both
+   * would make the boot log lie in that case.
+   */
+  get texturesAdopted(): boolean {
+    return this.materials.texturesAdopted;
   }
 
 

@@ -44,7 +44,7 @@ import { WATER_LOOK, WATER_WAVES } from '../core/config';
 import { RENDER_CONFIG } from '../render/renderer';
 import { ctx } from '../game/context';
 import {
-  notePrewarmAdopted, prewarmedWater, prewarmedWaterKey,
+  notePrewarmAdopted, prewarmedWater, prewarmedWaterKey, prewarmedWaterTextures,
 } from '../core/workers/world-warm';
 import { getTerrain } from './Terrain';
 import { Water, getWater, setActiveWater } from './Water';
@@ -143,7 +143,12 @@ export default defineSystem({
     // wait on a worker stops it exactly as much as a bake does.
     const t0 = typeof performance !== 'undefined' ? performance.now() : 0;
 
-    const fields = await prewarmedWater();
+    // One wait for both, as in `world.terrain`'s init: the tiles were
+    // dispatched at install time and the bake was chained onto the terrain
+    // reply, so whichever is slower is how long the boot actually stopped here.
+    const [fields, textures] = await Promise.all([
+      prewarmedWater(), prewarmedWaterTextures(),
+    ]);
     const fieldsKey = prewarmedWaterKey();
 
     water = new Water({
@@ -153,8 +158,10 @@ export default defineSystem({
       anisotropy: handle.renderer.capabilities.getMaxAnisotropy(),
       fields,
       fieldsKey,
+      textures,
     });
     notePrewarmAdopted('water', water.fieldsAdopted);
+    notePrewarmAdopted('waterTex', water.texturesAdopted);
     water.setSeaState(numberQuery('sea', WATER_WAVES.seaState));
     setActiveWater(water);
 

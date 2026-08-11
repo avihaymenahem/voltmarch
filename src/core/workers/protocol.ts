@@ -46,6 +46,14 @@ import {
   FIELD_BYTES, FIELD_TEXELS, bakeWaterFields, waterFieldTransfers,
   type WaterFieldData,
 } from '../../world/water-gen';
+import {
+  MACRO_N, WARP_N, generateTerrainTextures, terrainTextureTransfers,
+  type TerrainTextureData,
+} from '../../world/terrain-texture-gen';
+import {
+  generateWaterTextures, waterTextureTransfers, type WaterTextureData,
+} from '../../world/water-texture-gen';
+import { BIOMES, SURFACE_COUNT, isBiomeName } from '../../world/Biomes';
 
 /* ==========================================================================
  * MESSAGES
@@ -196,10 +204,88 @@ export interface WaterJobFailed {
 
 export type WaterReply = WaterJobDone | WaterJobFailed;
 
+/* ==========================================================================
+ * WORLD TEXTURE JOBS — the fifth and sixth kinds
+ *
+ * The TILES the terrain and water materials sample, as opposed to the FIELDS
+ * the two world jobs above produce. They are a separate pair rather than an
+ * extra channel on the terrain and water jobs, and the reason is scheduling
+ * rather than tidiness:
+ *
+ *   a terrain FIELD set is a generation of this map — seed, biome, start
+ *   layout, shoreline — and a water FIELD set is a bake over the heightfield
+ *   that generation produced, so water cannot start until terrain finishes.
+ *
+ *   a terrain TEXTURE set depends on `(biome, layerTextureSize, seed)` and a
+ *   water TEXTURE set on `(textureSize, seed)`. Neither reads a heightfield,
+ *   so neither has to wait for anything.
+ *
+ * Folding them into the existing jobs would have chained ~420 ms of tile
+ * generation behind a ~560 ms heightfield for no reason, and chained the water
+ * tiles behind both. As separate kinds they are dispatched at the same instant
+ * and the pool spreads them over two workers. See `world-warm.ts`.
+ *
+ * THE BIOME CROSSES AS A KEY, NOT A RECORD. `BiomeDef` is a large nested object
+ * and structured-cloning it per job would be pointless when both sides already
+ * have `BIOMES` compiled in — `Biomes.ts` imports nothing at all, so the worker
+ * carries it for free. The job names a biome and `runTerrainTexJob` looks it
+ * up, which also means an unknown name is refused by the guard rather than
+ * producing a set of undefined layers.
+ * ========================================================================== */
+
+export interface TerrainTexJob {
+  readonly kind: 'terrainTex';
+  readonly id: number;
+  /** A key into `BIOMES`. Validated before use. */
+  readonly biome: string;
+  /** Edge length of each layer albedo. */
+  readonly size: number;
+  /** Drives the warp and macro tiles; the layers take their own per-layer seeds. */
+  readonly seed: number;
+}
+
+export interface TerrainTexJobDone {
+  readonly kind: 'terrainTex:done';
+  readonly id: number;
+  readonly data: TerrainTextureData;
+}
+
+export interface TerrainTexJobFailed {
+  readonly kind: 'terrainTex:failed';
+  readonly id: number;
+  readonly reason: string;
+}
+
+export type TerrainTexReply = TerrainTexJobDone | TerrainTexJobFailed;
+
+export interface WaterTexJob {
+  readonly kind: 'waterTex';
+  readonly id: number;
+  /** Edge length of the lace tile; the slope map is half this. */
+  readonly size: number;
+  readonly seed: number;
+}
+
+export interface WaterTexJobDone {
+  readonly kind: 'waterTex:done';
+  readonly id: number;
+  readonly data: WaterTextureData;
+}
+
+export interface WaterTexJobFailed {
+  readonly kind: 'waterTex:failed';
+  readonly id: number;
+  readonly reason: string;
+}
+
+export type WaterTexReply = WaterTexJobDone | WaterTexJobFailed;
+
 /** Everything the worker may be sent. */
-export type WorkerJob = TextureJob | GreebleJob | TerrainJob | WaterJob;
+export type WorkerJob =
+  TextureJob | GreebleJob | TerrainJob | WaterJob | TerrainTexJob | WaterTexJob;
 /** Everything the worker may send back. */
-export type WorkerReply = TextureReply | GreebleReply | TerrainReply | WaterReply;
+export type WorkerReply =
+  TextureReply | GreebleReply | TerrainReply | WaterReply | TerrainTexReply | WaterTexReply;
 
 /* ==========================================================================
  * VALIDATION
@@ -451,9 +537,93 @@ export function isWaterReply(v: unknown): v is WaterReply {
   return (d.rampDepth as number) > 0;
 }
 
+/* -- world texture guards -------------------------------------------------
+ *
+ * `size` is checked hard on both jobs, because it decides the allocation. A
+ * terrain set at the declared 256 is 1.5 MB of layers; the same job with a
+ * malformed `size` of 60000 is an out-of-memory kill of the worker, which the
+ * pool reads as "the worker is broken" and which costs the whole boot its
+ * offload. 2048 is well past anything the art uses (256 and 512) and far short
+ * of anything dangerous. Powers of two are not required by the generators, but
+ * a non-integer size would produce a buffer length the reply guard then
+ * rejects, so it is refused here where the error is still legible.
+ * ---------------------------------------------------------------------- */
+
+function isSaneTextureSize(v: unknown): v is number {
+  return typeof v === 'number' && Number.isInteger(v) && v >= 4 && v <= 2048;
+}
+
+/** True when `v` is a well-formed terrain texture job. */
+export function isTerrainTexJob(v: unknown): v is TerrainTexJob {
+  if (!isRecord(v)) return false;
+  if (v.kind !== 'terrainTex') return false;
+  if (typeof v.id !== 'number') return false;
+  // An unknown biome would index `BIOMES` to `undefined` and the generator
+  // would read `.layers` off it — a TypeError inside the worker, which is a
+  // reply the pool never gets rather than a job it can fall back from.
+  if (typeof v.biome !== 'string' || !isBiomeName(v.biome)) return false;
+  if (!isSaneTextureSize(v.size)) return false;
+  return isFiniteNumber(v.seed);
+}
+
+/** True when `v` is a well-formed water texture job. */
+export function isWaterTexJob(v: unknown): v is WaterTexJob {
+  if (!isRecord(v)) return false;
+  if (v.kind !== 'waterTex') return false;
+  if (typeof v.id !== 'number') return false;
+  if (!isSaneTextureSize(v.size)) return false;
+  return isFiniteNumber(v.seed);
+}
+
+/**
+ * True when `v` is a well-formed terrain texture reply.
+ *
+ * Every LENGTH is checked against the dimensions the reply itself declares,
+ * because these three buffers go straight into `DataArrayTexture` and
+ * `DataTexture` with dimensions this code asserts rather than derives. A
+ * `layers` buffer one byte short is not an exception — it is a GPU upload
+ * reading past the end of an allocation, and this repo already has the story
+ * about what a bad texture upload looks like: every pixel dead while the
+ * counters cheerfully report a full frame.
+ */
+export function isTerrainTexReply(v: unknown): v is TerrainTexReply {
+  if (!isRecord(v)) return false;
+  if (typeof v.id !== 'number') return false;
+  if (v.kind === 'terrainTex:failed') return typeof v.reason === 'string';
+  if (v.kind !== 'terrainTex:done') return false;
+  const d = v.data;
+  if (!isRecord(d)) return false;
+  if (typeof d.key !== 'string') return false;
+  if (!isFiniteNumber(d.generateMs)) return false;
+  if (!isSaneTextureSize(d.layerSize)) return false;
+  const size = d.layerSize;
+  if (!isBytes(d.layers, size * size * 4 * SURFACE_COUNT)) return false;
+  if (!isBytes(d.warp, WARP_N * WARP_N * 4)) return false;
+  return isBytes(d.macro, MACRO_N * MACRO_N * 4);
+}
+
+/** True when `v` is a well-formed water texture reply. */
+export function isWaterTexReply(v: unknown): v is WaterTexReply {
+  if (!isRecord(v)) return false;
+  if (typeof v.id !== 'number') return false;
+  if (v.kind === 'waterTex:failed') return typeof v.reason === 'string';
+  if (v.kind !== 'waterTex:done') return false;
+  const d = v.data;
+  if (!isRecord(d)) return false;
+  if (typeof d.key !== 'string') return false;
+  if (!isFiniteNumber(d.generateMs)) return false;
+  if (!isSaneTextureSize(d.waveSize) || !isSaneTextureSize(d.laceSize)) return false;
+  const w = d.waveSize;
+  const l = d.laceSize;
+  // RGBA for the slope map, single-channel R8 for the lace.
+  if (!isBytes(d.waves, w * w * 4)) return false;
+  return isBytes(d.lace, l * l);
+}
+
 /** Any reply shape this build understands. */
 export function isWorkerReply(v: unknown): v is WorkerReply {
-  return isTextureReply(v) || isGreebleReply(v) || isTerrainReply(v) || isWaterReply(v);
+  return isTextureReply(v) || isGreebleReply(v) || isTerrainReply(v) || isWaterReply(v)
+    || isTerrainTexReply(v) || isWaterTexReply(v);
 }
 
 /**
@@ -466,6 +636,8 @@ export function replyTransfers(reply: WorkerReply): ArrayBuffer[] {
   if (reply.kind === 'greeble:done') return greebleTransfers(reply.data);
   if (reply.kind === 'terrain:done') return terrainFieldTransfers(reply.data);
   if (reply.kind === 'water:done') return waterFieldTransfers(reply.data);
+  if (reply.kind === 'terrainTex:done') return terrainTextureTransfers(reply.data);
+  if (reply.kind === 'waterTex:done') return waterTextureTransfers(reply.data);
   if (reply.kind !== 'texture:done') return [];
   const out: ArrayBuffer[] = [];
   for (const layer of reply.layers) {
@@ -598,5 +770,52 @@ export function runJob(job: WorkerJob): WorkerReply {
   if (isGreebleJob(job)) return runGreebleJob(job);
   if (isTerrainJob(job)) return runTerrainJob(job);
   if (isWaterJob(job)) return runWaterJob(job);
+  if (isTerrainTexJob(job)) return runTerrainTexJob(job);
+  if (isWaterTexJob(job)) return runWaterTexJob(job);
   return runTextureJob(job);
+}
+
+/**
+ * Generate one terrain texture set. Same contract as every job above: pure,
+ * synchronous, identical to what the main thread would have produced, and it
+ * NEVER THROWS.
+ *
+ * `isTerrainTexJob` has already established that `job.biome` is a real biome
+ * name, so the lookup cannot miss. There is only one implementation —
+ * `createTerrainMaterials` calls `generateTerrainTextures`'s three constituent
+ * functions when it has no prewarm — so "the worker's ground is the ground" is
+ * a property of the code rather than of two copies staying in step.
+ */
+export function runTerrainTexJob(job: TerrainTexJob): TerrainTexReply {
+  try {
+    const biome = BIOMES[job.biome as keyof typeof BIOMES];
+    return {
+      kind: 'terrainTex:done',
+      id: job.id,
+      data: generateTerrainTextures(biome, job.size, job.seed),
+    };
+  } catch (err: unknown) {
+    return {
+      kind: 'terrainTex:failed',
+      id: job.id,
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/** Generate one water texture set. Same contract. */
+export function runWaterTexJob(job: WaterTexJob): WaterTexReply {
+  try {
+    return {
+      kind: 'waterTex:done',
+      id: job.id,
+      data: generateWaterTextures(job.size, job.seed),
+    };
+  } catch (err: unknown) {
+    return {
+      kind: 'waterTex:failed',
+      id: job.id,
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
 }

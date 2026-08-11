@@ -58,6 +58,21 @@ export default defineSystem({
     disposeWorldWorkers();
     if (r.terrainOff && r.waterOff) return;
 
+    /*
+     * ORDER MATTERS HERE, and not for readability.
+     *
+     * `tools/boot-profile.mjs` scrapes this line with
+     * `/\[world\][^\n]*?terrain (\d+) ms[^\n]*?water (\d+) ms/`, so the FIELD
+     * figures have to come first and in that sequence or the profiler silently
+     * reports the tile numbers as the generation numbers. The tile entries are
+     * worded `terrain tiles N ms` / `water tiles N ms` precisely so neither can
+     * satisfy that pattern — `terrain (\d+)` will not match `terrain tiles`.
+     *
+     * Two numbers per subsystem rather than a sum, because they answer
+     * different questions: the field figure is what a heightfield change moves,
+     * the tile figure is what a biome or palette change moves, and adding them
+     * would hide either one regressing behind the other improving.
+     */
     const parts: string[] = [];
     parts.push(r.terrainAdopted
       ? `terrain ${r.terrainMs | 0} ms off-thread`
@@ -65,6 +80,12 @@ export default defineSystem({
     parts.push(r.waterAdopted
       ? `water ${r.waterMs | 0} ms off-thread`
       : `water on the main thread${r.waterOff ? ' (?waterworkers=off)' : ''}`);
+    parts.push(r.terrainTexAdopted
+      ? `terrain tiles ${r.terrainTexMs | 0} ms off-thread`
+      : 'terrain tiles on the main thread');
+    parts.push(r.waterTexAdopted
+      ? `water tiles ${r.waterTexMs | 0} ms off-thread`
+      : `water tiles on the main thread${r.waterOff ? ' (?waterworkers=off)' : ''}`);
 
     console.info(
       `%c[world]%c ${parts.join(', ')}`
