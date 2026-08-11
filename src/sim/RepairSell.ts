@@ -39,7 +39,7 @@ import type { World } from '../core/world';
 import { PerEntityF32 } from '../core/world';
 import {
   CommandKind, CreditReason, EntityFlag, EntityKind, Faction, FxKind,
-  NONE, Stance, UnitState, WarheadClass,
+  NONE, OrderKind, Stance, UnitState, WarheadClass,
 } from '../core/types';
 import type { Command, EntityId, PlayerId, SimContext } from '../core/types';
 import { CELL, REPAIR_COST_PER_HP, REPAIR_DEPOT, REPAIR_RATE } from '../core/config';
@@ -498,6 +498,59 @@ export class RepairSellService {
    * The one write to `store.stance[]` after spawn. `Combat.ts` (HoldFire) and
    * `Targeting.ts` (`stanceAllowsAcquire`) already read it correctly; they were
    * simply never given anything but Aggressive to read.
+   *
+   * SETTING A STANCE ALSO SETS THE POST, FOR ALL FOUR OF THEM.
+   *
+   * The line here used to stamp `guardX/guardZ` for `Defensive` and
+   * `HoldGround` only, under a comment saying those two "both mean here is
+   * where you belong" and that this is what points "the leash Steering already
+   * implements" at a spot the player chose. Every clause of that was wrong.
+   * There was no leash when it was written — `GUARD_LEASH` was read nowhere and
+   * `guardX/guardZ` were written by six modules and consumed by none, which is
+   * the defect v2.3.0's §LEASH section exists to record. It is `sim/Targeting.ts`
+   * and not `Steering` that reads the post. And the two stances it named are not
+   * the two that need it.
+   *
+   * Read `Targeting.holdPost` for who actually consumes the post, and the answer
+   * is nearly the opposite of the old pair:
+   *
+   *   Aggressive  the post anchors BOTH halves of the excursion — the chase
+   *               envelope is measured post-to-target, and the walk home ends
+   *               at the post. It reads it hardest and was not stamped.
+   *   Defensive   `STANCE_CHASE_METRES` 0, `STANCE_RETURNS` true: it never
+   *               leaves, but it does walk back. Reads the post. Stamped.
+   *   HoldFire    identical to Defensive for movement — 0 and true — and
+   *               differs only in never pulling the trigger. Reads the post
+   *               exactly as much as Defensive does, and was not stamped.
+   *   HoldGround  `STANCE_RETURNS` false, so every branch of `holdPost` ends in
+   *               `settle()` and the unit stands still whatever the post says.
+   *               It is the ONE stance whose behaviour the post cannot change,
+   *               and it was stamped.
+   *
+   * So the old pair covered one stance that ignores the post and missed two
+   * that obey it. The fix is not a better pair, because there isn't one: the
+   * post is a property of the UNIT, not of the stance, and clicking a stance
+   * button is the player pointing at where the selection is standing right now.
+   * Stamping unconditionally is also what stops the gesture meaning two
+   * different things — before this, switching a displaced unit to Defensive
+   * settled it where it stood while switching it to Aggressive sent it walking
+   * back to a post it may have left minutes ago.
+   *
+   * HoldGround keeps the stamp for the same reason: it is inert while the
+   * stance stands, and it is the post the unit inherits the moment the player
+   * switches it to something that moves.
+   *
+   * THE ONE EXCEPTION IS AN EXPLICIT GUARD ORDER. `OrderKind.Guard` is the
+   * player having already named the post, by name, at a point of their
+   * choosing — and a unit is usually still DRIVING there when the order is
+   * young. Overwriting it with the unit's current position cancels the order in
+   * everything but the `orderKind` column: `holdPost` finds itself already at
+   * its post, `settle()` pins the goal where it stands, and the guard point the
+   * player clicked is gone with nothing logged. `Steering` refuses to re-take
+   * the post under the same condition and says so; this now matches it. Stance
+   * and orders are orthogonal (see the `Stance` docstring: "NONE OF THIS
+   * APPLIES TO AN EXPLICIT ORDER"), so a stance click must not quietly consume
+   * one.
    */
   applyStance(player: PlayerId, ids: Int32Array, count: number, stance: Stance): number {
     const st = this.world.store;
@@ -509,10 +562,7 @@ export class RepairSellService {
       if (st.owner[i] !== (player as number)) continue;
       if (st.stance[i] === (stance as number)) continue;
       st.stance[i] = stance;
-      // Defensive and HoldGround both mean "here is where you belong". Stamping
-      // the guard point at the moment the stance is set is what makes the leash
-      // Steering already implements point at somewhere the player chose.
-      if (stance === Stance.Defensive || stance === Stance.HoldGround) {
+      if (st.orderKind[i] !== OrderKind.Guard) {
         st.guardX[i] = st.posX[i];
         st.guardZ[i] = st.posZ[i];
       }

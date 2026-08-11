@@ -396,6 +396,84 @@ describe('stances', () => {
     expect(st.guardX[i]).toBe(123);
     expect(st.guardZ[i]).toBe(77);
   });
+
+  /* ------------------------------------------------------------------------
+   * THE POST BELONGS TO THE UNIT, NOT TO TWO OF THE FOUR STANCES.
+   *
+   * `applyStance` used to stamp `guardX/guardZ` for `Defensive` and
+   * `HoldGround` only. Cross-referenced against `Targeting.holdPost`, which is
+   * the only consumer, that pair is close to backwards: HoldGround is the one
+   * stance whose behaviour the post cannot affect (`STANCE_RETURNS` is false,
+   * so every branch ends in `settle()`), while Aggressive measures its whole
+   * chase envelope from the post AND walks back to it, and HoldFire is
+   * Defensive with the trigger disabled — same 0 chase, same true return.
+   *
+   * So the same gesture meant two different things: switching a displaced unit
+   * to Defensive settled it where it stood, switching it to Aggressive sent it
+   * walking back to a post it might have left minutes ago.
+   * --------------------------------------------------------------------- */
+  const ALL_STANCES: readonly Stance[] = [
+    Stance.Aggressive, Stance.Defensive, Stance.HoldFire, Stance.HoldGround,
+  ];
+
+  function setStance(r: Rig, u: EntityId, stance: Stance): boolean {
+    const cmd = makeCommand(CommandKind.SetStance, ALLIES);
+    cmd.stance = stance;
+    cmd.entities = new Int32Array([u as number]);
+    cmd.entityCount = 1;
+    return r.repair.handleCommand(cmd);
+  }
+
+  it('stamps the guard point for every stance, not just two of them', () => {
+    for (const stance of ALL_STANCES) {
+      const r = makeRig();
+      // Spawn under a DIFFERENT stance so the `stance[i] === stance` early-out
+      // never swallows the case under test.
+      const u = r.unit('gi', ALLIES, 40, 44);
+      const st = r.world.store;
+      const i = st.index(u);
+      if (st.stance[i] === (stance as number)) {
+        setStance(r, u, stance === Stance.Aggressive ? Stance.HoldFire : Stance.Aggressive);
+      }
+      // A stale post, of the kind a nav pocket rescue or a neighbour's
+      // separation force leaves behind.
+      st.guardX[i] = 5;
+      st.guardZ[i] = 5;
+      st.posX[i] = 211;
+      st.posZ[i] = 133;
+
+      expect(setStance(r, u, stance), `stance ${stance} should apply`).toBe(true);
+      expect(st.guardX[i], `stance ${stance} must take its post from the unit`).toBe(211);
+      expect(st.guardZ[i], `stance ${stance} must take its post from the unit`).toBe(133);
+    }
+  });
+
+  it('never moves the point an explicit Guard order named', () => {
+    // `OrderKind.Guard` is the player having already chosen the post — and the
+    // unit is usually still DRIVING to it. Stamping its current position there
+    // cancels the order in everything but the `orderKind` column, silently.
+    // `Steering` refuses to re-take the post under the same condition.
+    for (const stance of ALL_STANCES) {
+      const r = makeRig();
+      const u = r.unit('gi', ALLIES, 40, 44);
+      const st = r.world.store;
+      const i = st.index(u);
+      if (st.stance[i] === (stance as number)) {
+        setStance(r, u, stance === Stance.Aggressive ? Stance.HoldFire : Stance.Aggressive);
+      }
+      st.orderKind[i] = OrderKind.Guard;
+      st.orderX[i] = 90; st.orderZ[i] = 60;
+      st.guardX[i] = 90; st.guardZ[i] = 60;
+      st.state[i] = UnitState.Guarding;
+      // Halfway there.
+      st.posX[i] = 65; st.posZ[i] = 52;
+
+      expect(setStance(r, u, stance)).toBe(true);
+      expect(st.stance[i], 'the stance still changed').toBe(stance as number);
+      expect(st.guardX[i], `stance ${stance} must not eat a Guard order`).toBe(90);
+      expect(st.guardZ[i], `stance ${stance} must not eat a Guard order`).toBe(60);
+    }
+  });
 });
 
 describe('self destruct', () => {
