@@ -92,6 +92,7 @@ import {
   MoveClass, NAV_POCKET_MAX_CELLS, NAV_REGION_SEARCH_CELLS, type FlowFieldCache,
 } from './Flowfield';
 import { moveClassAt } from './Movement';
+import { crushPassesThrough } from './Crush';
 
 /* --------------------------------------------------------------------------
  * THE STUCK WATCHDOG'S OWN TUNABLES
@@ -1463,6 +1464,16 @@ export class SteeringSolver {
             // Aircraft, ships and ground units share no space.
             if (jc === MoveClass.Air) continue;
             if ((jc === MoveClass.Naval) !== (cls === MoveClass.Naval)) continue;
+            // A HULL DOES NOT LEAN AROUND, OR BRAKE FOR, A MAN IT IS ENTITLED
+            // TO DRIVE OVER. `sim/Crush.ts` owns that entitlement; this is the
+            // half of it that lets the hull ARRIVE. Skipping the whole
+            // neighbour here waives three things at once, and all three have to
+            // go: the separation push (which steers the tank off his line), the
+            // queue brake (which would hand a 6.6 m/s tank a rifleman's 3.2 m/s
+            // as its speed), and the passing lean. It is symmetric, so he does
+            // not sidestep out from under a hull that cannot sidestep around
+            // him — an auto-dodge is a PLAYER verb and it is on a hotkey.
+            if (crushPassesThrough(w, i, j)) continue;
           } else if (st.footprintW[j] > 0) {
             // Structures are already carved out of the cost field; pushing off
             // them here as well would make units bounce along walls.
