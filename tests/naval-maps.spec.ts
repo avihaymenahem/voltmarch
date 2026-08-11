@@ -46,7 +46,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as THREE from 'three';
 import { Terrain, setActiveTerrain, PASS_HOVER, PASS_TRACK } from '../src/world/Terrain';
-import { MAP_SEAS, SKIRMISH_START_OFFSETS, planScenario } from '../src/game/Scenarios';
+import {
+  MAP_SEAS, SKIRMISH_ARMIES_DEFAULT, SKIRMISH_START_OFFSETS, planScenario, startPointsFor,
+} from '../src/game/Scenarios';
 import { FlowFieldCache, MoveClass } from '../src/sim/Flowfield';
 import {
   CELL, MAP_CELLS, MAP_SIZE, PRODUCTION,
@@ -77,12 +79,17 @@ const LANDLOCKED = [
 
 const TOTAL_CELLS = MAP_CELLS * MAP_CELLS;
 
-/** Exactly what `terrain-plan.plannedTerrainInput` hands the generator. */
+/**
+ * Exactly what `terrain-plan.plannedTerrainInput` hands the generator.
+ *
+ * It USED to spread `SKIRMISH_START_OFFSETS` inline, and that stopped being
+ * "exactly what" the moment the table became the four-army layout — the real
+ * plan slices to the army count, so a restatement that did not would have
+ * silently measured these maps against two extra levelled shelves. Taken from
+ * the shipped derivation now, with the count the lobby actually seats.
+ */
 function requestedStarts(): { x: number; z: number }[] {
-  return [
-    { x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5 },
-    ...SKIRMISH_START_OFFSETS.map((o) => ({ x: MAP_SIZE * 0.5 + o.dx, z: MAP_SIZE * 0.5 + o.dz })),
-  ];
+  return startPointsFor(SKIRMISH_ARMIES_DEFAULT, null).map((p) => ({ x: p.x, z: p.z }));
 }
 
 function build(preset: string, biome: string, mapSeed: number): Terrain {
@@ -221,6 +228,49 @@ describe('the sea reaches the maps that are named after it', () => {
     expect(planScenario('skirmish', 'coast').sea).toEqual(MAP_SEAS.coast);
     expect(planScenario('skirmish', 'tropical').sea).toEqual(MAP_SEAS.tropical);
     expect(planScenario('skirmish', 'temperate').sea).toBeNull();
+  });
+
+  it('takes its normal from the FIRST TWO openings and nowhere else', () => {
+    /*
+     * THE COUPLING THAT SURVIVED THE TABLE GROWING TO FOUR.
+     *
+     * `MAP_SEAS`' normal is the perpendicular bisector of the two openings —
+     * the one bearing on which both armies project to the same distance from
+     * the water, so the naval game is not decided by `rotateStarts`. It is
+     * DERIVED from `SKIRMISH_START_OFFSETS` rather than written down, which is
+     * what makes it drift-proof and what makes it vulnerable to a table that
+     * gains entries: a bisector "of all four" is not a bisector of any pair.
+     *
+     * `START_BISECTOR` reads `[0]` and `[1]` by index, so it is already the
+     * bisector of the first two. This pins the RESULT to digits, computed the
+     * long way from the two seated offsets, so the derivation cannot quietly
+     * start averaging four of them.
+     */
+    const [a, b] = SKIRMISH_START_OFFSETS.slice(0, SKIRMISH_ARMIES_DEFAULT);
+    const rawX = a!.dz - b!.dz;
+    const rawZ = b!.dx - a!.dx;
+    const len = Math.hypot(rawX, rawZ);
+    const nx = rawX / len;
+    const nz = rawZ / len;
+    // The measured values, restated as literals as well as derived: if BOTH the
+    // table and the derivation moved together, the derived form would still
+    // agree with itself and only these numbers would notice.
+    expect(nx).toBeCloseTo(0.6422198626104074, 12);
+    expect(nz).toBeCloseTo(0.7665204811801637, 12);
+    // `coast` is on the -normal side, `tropical` on the +normal side.
+    expect(MAP_SEAS.coast.normalX).toBeCloseTo(-nx, 12);
+    expect(MAP_SEAS.coast.normalZ).toBeCloseTo(-nz, 12);
+    expect(MAP_SEAS.tropical.normalX).toBeCloseTo(nx, 12);
+    expect(MAP_SEAS.tropical.normalZ).toBeCloseTo(nz, 12);
+    // Both waterlines really are equidistant from both seated openings, which
+    // is the property the bisector exists to deliver.
+    for (const sea of [MAP_SEAS.coast, MAP_SEAS.tropical]) {
+      const d = [a!, b!].map(
+        (o) => (MAP_SIZE * 0.5 + o.dx - sea.x) * sea.normalX
+          + (MAP_SIZE * 0.5 + o.dz - sea.z) * sea.normalZ,
+      );
+      expect(d[0]!).toBeCloseTo(d[1]!, 9);
+    }
   });
 
   it('never overrides a fixture that authored its own shoreline', () => {

@@ -57,8 +57,9 @@ import {
   BUILDING_DIMENSIONS, BUILD_RADIUS, CELL, HARVESTER_CAPACITY, MAP_PRESETS,
   MAP_PRESET_DEFAULT, MAP_SIZE, NAVAL_BUILDING_DIMENSIONS, NAVAL_UNIT_DIMENSIONS,
   REFINERY_STORAGE, SCENARIO_DEFAULT, SCENARIO_SCATTER, SILO_STORAGE,
+  TERRAIN_ISLAND_MIN_CELLS,
   UNIT_DIMENSIONS, ORE_CELL_MAX, WATER_LEVEL,
-  type SeaSpec,
+  type SeaIsland, type SeaSpec,
 } from '../core/config';
 import {
   ArmorClass, EntityFlag, EntityKind, Faction, Locomotor, NONE, OrderKind,
@@ -402,11 +403,81 @@ const START_SPREAD_Z = 62;
  *
  * Slot 0 keeps the exact corner the old hard-coded plan used, so a saved seed
  * frames the same valley it always did.
+ *
+ * FOUR ENTRIES SINCE v2.5.0, AND SLOTS 0-1 ARE UNTOUCHED. The table is the
+ * FOUR-army layout — the corners of a 148 x 124 m rectangle on the map's own
+ * diagonal — and a two-army match takes the first two of them, which are
+ * exactly the two literals that were here before. Slots 2 and 3 complete the
+ * rectangle rather than fanning on a new ellipse, so all six pairwise distances
+ * come out of one shape and the map reads as one battlefield at either count.
+ *
+ * EVERY CONSUMER MUST SLICE TO THE ARMY COUNT, and that is the whole risk this
+ * change carried. `terrain-plan.plannedTerrainInput` spreads this table into
+ * `TerrainGenOptions.starts`, so simply appending two entries would have made
+ * the generator level two EXTRA shelves on every map in the game — a different
+ * heightfield for `contested-strait`, `coral-shore`, all twelve `?shot=`
+ * fixtures and every landlocked seed, for a four-player mode nothing has
+ * selected yet. `startPointsFor()` below is the one derivation both the
+ * generator plan and the spawn now go through, and it takes the count.
+ *
+ * `START_BISECTOR` reads `[0]` and `[1]` BY INDEX and always did. That is now
+ * load-bearing rather than incidental: the naval maps' shoreline normal is the
+ * perpendicular bisector of the TWO-ARMY opening, and it must not rotate
+ * because a four-army layout exists. `tests/naval-maps.spec.ts` pins the
+ * resulting normal to digits.
  */
 export const SKIRMISH_START_OFFSETS: readonly { readonly dx: number; readonly dz: number }[] = [
   { dx: -START_SPREAD_X, dz: START_SPREAD_Z },
   { dx: START_SPREAD_X, dz: -START_SPREAD_Z },
+  { dx: START_SPREAD_X, dz: START_SPREAD_Z },
+  { dx: -START_SPREAD_X, dz: -START_SPREAD_Z },
 ];
+
+/** Armies a skirmish seats when nothing says otherwise. */
+export const SKIRMISH_ARMIES_DEFAULT = 2;
+/** Armies a skirmish can seat at most — `SKIRMISH_START_OFFSETS.length`. */
+export const SKIRMISH_ARMIES_MAX = SKIRMISH_START_OFFSETS.length;
+
+/** Fold any requested army count into what this game can actually lay out. */
+export function clampArmies(n: number | null | undefined): number {
+  if (n === null || n === undefined || !Number.isFinite(n)) return SKIRMISH_ARMIES_DEFAULT;
+  return Math.max(SKIRMISH_ARMIES_DEFAULT, Math.min(SKIRMISH_ARMIES_MAX, Math.trunc(n)));
+}
+
+/**
+ * The start locations the TERRAIN GENERATOR must reserve a shelf at, for a map
+ * with `armies` players and this sea.
+ *
+ * ONE DERIVATION, TWO CALLERS, and that is the same rule `terrain-plan.ts`
+ * already states about itself: the prewarm and the eventual `new Terrain(...)`
+ * must agree or the prewarmed fields are for a different map, silently.
+ *
+ * THE MAP CENTRE IS FIRST, AND ONLY ON A CONTINENT. Every `?shot=` fixture
+ * builds on (256, 256) and needs it graded. On an ARCHIPELAGO the centre is
+ * open water — the shoals — and reserving a guaranteed-DRY 58 m shelf there
+ * would raise a fifth island in the middle of the lagoon, which is the exact
+ * mechanism that drowned `08-naval-water` in reverse. So an archipelago
+ * reserves one shelf per island and nothing else.
+ *
+ * ISLAND CENTRES COME FROM THE SEA ITSELF rather than from a parallel table.
+ * There is no second list to drift: if an island moves, the start on it moves.
+ */
+export function startPointsFor(
+  armies: number, sea: SeaSpec | null,
+): readonly { readonly x: number; readonly z: number }[] {
+  const n = clampArmies(armies);
+  const islands = sea?.islands;
+  if (islands !== undefined && islands.length > 0) {
+    return islands.slice(0, n).map((i) => ({ x: i.x, z: i.z }));
+  }
+  return [
+    { x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5 },
+    ...SKIRMISH_START_OFFSETS.slice(0, n).map((o) => ({
+      x: MAP_SIZE * 0.5 + o.dx,
+      z: MAP_SIZE * 0.5 + o.dz,
+    })),
+  ];
+}
 
 /** Fold a compass bearing into [0, 360). */
 function wrapDeg(deg: number): number {
@@ -734,9 +805,41 @@ export function nudgeToBuildable(
   return { x: bestX, z: bestZ, moved: Math.hypot(bestX - x, bestZ - z) };
 }
 
-export function startSpots(cx: number, cz: number, count: number): StartSpot[] {
-  const n = Math.max(1, count);
+export function startSpots(
+  cx: number, cz: number, count: number, sea: SeaSpec | null = null,
+): StartSpot[] {
+  const islands = sea?.islands;
+  /*
+   * AN ISLAND MAP CANNOT SEAT MORE ARMIES THAN IT HAS ISLANDS, and the clamp is
+   * here rather than at the caller because this is the only place that knows
+   * both numbers. Falling through to the offset table for the surplus would put
+   * a base in the sea; fanning it round the centre would put it on the shoals.
+   */
+  const n = islands !== undefined && islands.length > 0
+    ? Math.max(1, Math.min(count, islands.length))
+    : Math.max(1, count);
   const pts: { x: number; z: number }[] = [];
+
+  /*
+   * AN ARCHIPELAGO'S START TABLE IS ITS ISLAND LIST.
+   *
+   * Offsets from a centre are the right primitive for a continent, where the
+   * layout is free geometry and the ground is negotiable. On an island map the
+   * ground is the layout: there are exactly four places a base can stand and
+   * they are the four ellipses the generator carved. Deriving the spots from
+   * anything else — a scaled ellipse, a second table — reintroduces the
+   * disagreement `SKIRMISH_START_OFFSETS`' own header is about, except that the
+   * failure mode here is a construction yard in the sea rather than an
+   * unlevelled one on land.
+   *
+   * `cx`/`cz` are ignored on this path on purpose: island centres are absolute
+   * world positions and there is no shelf to hang them off.
+   */
+  if (islands !== undefined && islands.length > 0) {
+    for (let i = 0; i < n; i++) {
+      pts.push({ x: clampWorld(islands[i].x, 4), z: clampWorld(islands[i].z, 4) });
+    }
+  }
 
   /*
    * SHELVES GUARANTEE THE GROUND. THEY DO NOT CHOOSE THE POSITIONS.
@@ -760,14 +863,15 @@ export function startSpots(cx: number, cz: number, count: number): StartSpot[] {
    * anybody reads the list back.
    */
   {
-    // The authored two-army diagonal comes from the one table, so slots 0 and 1
-    // land exactly on the shelves the generator reserved. A saved seed frames
-    // the same valley it always did.
-    for (let i = 0; i < Math.min(n, SKIRMISH_START_OFFSETS.length); i++) {
+    // The authored diagonal comes from the one table, so every slot up to
+    // `SKIRMISH_ARMIES_MAX` lands exactly on a shelf the generator reserved. A
+    // saved seed frames the same valley it always did: slots 0 and 1 are the
+    // same two literals the two-entry table held.
+    for (let i = pts.length; i < Math.min(n, SKIRMISH_START_OFFSETS.length); i++) {
       const o = SKIRMISH_START_OFFSETS[i]!;
       pts.push({ x: clampWorld(cx + o.dx, 4), z: clampWorld(cz + o.dz, 4) });
     }
-    // Three or more armies have no authored layout, so they fan around the
+    // FIVE or more armies have no authored layout, so they fan around the
     // centre on the same ellipse. They get no reserved shelf and fall back to
     // `nudgeToBuildable` below, which is the pre-existing behaviour for a case
     // no shipping map offers today.
@@ -1843,9 +1947,28 @@ export class ScenarioBuilder {
     readonly seed: number,
     /** The MAP_PRESETS entry this scenario is being built on. */
     readonly preset: string,
+    /**
+     * Armies this match seats. `startSpots(cx, cz, b.armies, b.sea)` is the one
+     * call every layout makes; nothing here counts `world.players` instead,
+     * because that list is seeded by whoever booted the engine and a test that
+     * happens to add a third player must not silently become a three-base map.
+     */
+    readonly armies: number = SKIRMISH_ARMIES_DEFAULT,
+    /**
+     * The sea the terrain was ACTUALLY carved with — `plan.sea` when a fixture
+     * authored one, `MAP_SEAS[preset]` otherwise. Layouts read it to ask the
+     * only question they ever have about the water: is this an archipelago, and
+     * if so where are its islands.
+     */
+    readonly sea: SeaSpec | null = null,
   ) {
     this.rng = new Rng(seed);
     this.primeConnectivity();
+  }
+
+  /** True when this map's land is islands. Layouts branch on it; nothing else. */
+  get archipelago(): boolean {
+    return this.sea?.islands !== undefined && this.sea.islands.length > 0;
   }
 
   /* -- placement validation --------------------------------------------- */
@@ -1888,6 +2011,27 @@ export class ScenarioBuilder {
    * question, not this one's; the only thing asked here is whether the ground
    * under it is joined to the rest of the world.
    */
+  /**
+   * "This cell is part of a world, not a hole in one."
+   *
+   * On every continent that is `isMain` and nothing else. On an ARCHIPELAGO it
+   * is `isMain` OR any island-sized region, because three of the four islands
+   * are not the main one and never can be — and the two callers below read the
+   * answer as "relocate this building" and "this entity is stranded, log an
+   * error". Without the widening, a four-island map relocates three bases
+   * toward island 0 (or, once `PLACE_SEARCH_CELLS` runs out, keeps them and
+   * reports every unit on them as trapped).
+   *
+   * `TERRAIN_ISLAND_MIN_CELLS` is the same threshold the GENERATOR uses for the
+   * same judgement — see `TerrainFields.islandStartSatisfied` — so the scenario
+   * and the terrain cannot disagree about what an island is.
+   */
+  private standable(r: TerrainRegions, cx: number, cz: number): boolean {
+    if (r.isMain(cx, cz)) return true;
+    if (!this.archipelago) return false;
+    return r.regionCellsAt(cx, cz) >= TERRAIN_ISLAND_MIN_CELLS;
+  }
+
   connectedGround(
     x: number, z: number, loco: Locomotor, out: Float32Array, strandedOnly = false,
   ): boolean {
@@ -1899,7 +2043,7 @@ export class ScenarioBuilder {
 
     const cx = clampCell(worldToCell(x));
     const cz = clampCell(worldToCell(z));
-    if (r.isMain(cx, cz)) return false;
+    if (this.standable(r, cx, cz)) return false;
     if (strandedOnly && r.regionAt(cx, cz) === 0) return false;
 
     if (!r.nearestMain(cx, cz, placeCell, PLACE_SEARCH_CELLS)) {
@@ -2003,7 +2147,7 @@ export class ScenarioBuilder {
       // A structure standing on ground its visitors call impassable (a naval
       // yard over water) is a different question with a different owner.
       if (!isUnit && r.regionAt(cx, cz) === 0) continue;
-      if (!r.isMain(cx, cz)) stranded++;
+      if (!this.standable(r, cx, cz)) stranded++;
     }
 
     const regions = track?.regionCount ?? 0;
@@ -2863,7 +3007,9 @@ function buildMcvStartFor(b: ScenarioBuilder, owner: PlayerId, spot: StartSpot):
  * generator reserves a shelf somewhere else, and a refinery that cannot reach
  * ore is a dead economy in a match that has no second base to fall back on.
  */
-function addStartOre(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
+function addStartOre(
+  b: ScenarioBuilder, spots: readonly StartSpot[], sea: SeaSpec | null = null,
+): void {
   let midX = 0;
   let midZ = 0;
   for (const s of spots) {
@@ -2876,7 +3022,37 @@ function addStartOre(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
     midX += s.x;
     midZ += s.z;
   }
-  if (spots.length > 0) b.addOre(midX / spots.length, midZ / spots.length, 22);
+  if (spots.length === 0) return;
+
+  /* -- THE CONTESTED PATCH, AND WHERE IT CAN GO ---------------------------
+   * On a continent it goes on the centroid of the openings: the one point
+   * every army is equally far from, which is what makes it worth fighting for.
+   *
+   * ON AN ARCHIPELAGO THE CENTROID IS OPEN WATER — it is the map centre, which
+   * is the shoal bank — and ore is a ground resource: `OreField` seeds cells,
+   * harvesters are Track hulls, and a patch out there is a patch nobody can
+   * ever mine. It would also be the second contested-middle feature on a map
+   * that already has one, and the shoals are the better version of it because
+   * they are terrain rather than a resource that runs out.
+   *
+   * So each island gets a SECOND patch on its inward face instead. Two per
+   * army, symmetric, all of it minable, and the expansion still points toward
+   * the sea lane the fight is actually about.
+   * --------------------------------------------------------------------- */
+  const islands = sea?.islands;
+  if (islands !== undefined && islands.length > 0) {
+    for (let i = 0; i < spots.length; i++) {
+      const s = spots[i];
+      const toX = MAP_SIZE * 0.5 - s.x;
+      const toZ = MAP_SIZE * 0.5 - s.z;
+      const len = Math.hypot(toX, toZ) || 1;
+      // 52 m inward: outside the base's own build radius, well inside the
+      // island's 98 m short axis with the beach cone to spare.
+      b.addOre(s.x + (toX / len) * 52, s.z + (toZ / len) * 52, 22);
+    }
+    return;
+  }
+  b.addOre(midX / spots.length, midZ / spots.length, 22);
 }
 
 /* --------------------------------------------------------------------------
@@ -2920,7 +3096,20 @@ export const CIVILIAN_HAMLET_OFFSET = 62;
  * caretaker to hand the building back to when the last man leaves.
  */
 function addCivilians(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
-  if (spots.length < 2) return;
+  /*
+   * TWO OPENINGS EXACTLY, and that is a statement about the composition rather
+   * than a limitation of the code. Everything below is derived from the LANE
+   * between two armies — the midpoint, its perpendicular bisector, "you cannot
+   * hold both and neither can they". With four openings there is no single
+   * lane: the bisector of spots 0 and 1 passes within 37 m of spots 2 and 3, so
+   * the same arithmetic drops a capturable derrick inside somebody's build
+   * radius. On an archipelago it drops it in the sea.
+   *
+   * A four-army hamlet layout is a real composition and it is not authored yet.
+   * A skipped one is a map with less neutral furniture; a wrong one is a free
+   * derrick for whoever spawned nearest it.
+   */
+  if (spots.length !== 2 || b.archipelago) return;
   const first = spots[0]!;
   const second = spots[1]!;
   const mx = (first.x + second.x) * 0.5;
@@ -3194,6 +3383,125 @@ export const MAP_SEAS: Record<string, SeaSpec> = {
   }),
 };
 
+/* --------------------------------------------------------------------------
+ * THE ARCHIPELAGO — FOUR ARMIES, FOUR ISLANDS, ONE SEA
+ *
+ * NOT REGISTERED IN `MAP_SEAS`, deliberately: that record is keyed on MAP
+ * PRESET and a preset is a lobby entry with a name, a blurb, a pinned
+ * `mapSeed` and a biome. This is the CAPABILITY — the geometry, proven against
+ * the real generator — and the preset that selects it is a separate step with a
+ * separate owner. `tests/archipelago.spec.ts` builds it directly, which is the
+ * same route `NAVAL_SEA` had for its whole life before `MAP_SEAS` existed.
+ *
+ * WHY THE ISLANDS ARE THIS BIG, WHICH IS THE ONLY REAL DESIGN CONSTRAINT HERE
+ * --------------------------------------------------------------------------
+ * A start shelf is a levelled disc of `TERRAIN_START_FLAT_RADIUS` (58 m) whose
+ * rim wanders `TERRAIN_START_EDGE_WOBBLE` (14 m) further out, and
+ * `TerrainFields.resolveStarts` will slide it inland unless it clears the
+ * waterline by `bandWidth + wavinessMetres + TERRAIN_SEA_START_CLEARANCE` on
+ * top of that. With this profile that is 58 + 14 + 6 + 8 + 10 = 96 m of dry
+ * ground required in EVERY direction from the start — an inscribed circle, not
+ * an area. So an island that holds a real base cannot be smaller than ~96 m
+ * across its short axis whatever shape it is, and four of them cost
+ * 4 * pi * 98^2 = 120 700 m^2 of a 262 144 m^2 map.
+ *
+ * THAT IS THE CEILING ON HOW WET THIS MAP CAN BE: about 54% water, and it is
+ * set by the start guarantee rather than by taste. Making it wetter means
+ * shrinking `TERRAIN_START_FLAT_RADIUS`, which is a global promise eleven other
+ * things depend on, or seating fewer armies. The measured figure is in
+ * `tests/archipelago.spec.ts` and it is the honest number, not a target.
+ *
+ * WHY THE CHANNELS ARE 72-80 m WIDE AND NOT NARROWER
+ * --------------------------------------------------
+ * `TERRAIN_RAMP_MAX_LINK_CELLS` is 13, and `linkRegion` — the bounded corridor
+ * carver — does not test water. `ensureMajorRegions` runs AFTER the last
+ * `carveSea`, so a corridor raised there is never cut back out: a strait under
+ * 13 cells (52 m) could be quietly causewayed and the archipelago would ship as
+ * a continent. The generator now refuses that link outright on an island map,
+ * but the geometry is chosen so it would not have found one anyway — 18 cells
+ * of channel, 14 at the worst of the 8 m coastal wander, both sides. Two
+ * independent reasons for the same invariant, which is what you want for one
+ * that fails silently.
+ *
+ * WHY THE SHOALS ARE IN THE MIDDLE
+ * --------------------------------
+ * Four islands round a rim leaves a 190 m lagoon nobody has a reason to enter.
+ * The central bank is 0.7 m deep against 7 m of open water, which through
+ * `Water.fitRamp`'s absorption gradient is a different colour rather than a
+ * different mesh — no reflection, no second material, nothing
+ * `docs/RA3_LOOK_BIBLE.md` bans. The two channel bars do the same job for the
+ * north and south straits, so the two east-west lanes stay the fast water and
+ * the two north-south ones are shallow, exposed and slow. Navigable
+ * throughout: `TERRAIN_SEA_SHOAL_MIN_DEPTH` keeps every bar under the surface.
+ * -------------------------------------------------------------------------- */
+
+/** Metres from the map centre to each island centre, per axis. */
+const ARCHIPELAGO_OFFSET_X = 138;
+const ARCHIPELAGO_OFFSET_Z = 134;
+/**
+ * Island semi-axis, metres. Must exceed the shelf-push budget of
+ * `ARCHIPELAGO_SEA` (96 m) or `resolveStarts` slides the start off centre and
+ * `startSpots` — which reads the island centre — stops agreeing with it.
+ * `tests/archipelago.spec.ts` asserts the margin rather than trusting it.
+ */
+const ARCHIPELAGO_RADIUS = 98;
+
+/** The four islands, at the corners of a rectangle on the map's own diagonal. */
+const ARCHIPELAGO_ISLANDS: readonly SeaIsland[] = [
+  { dx: -ARCHIPELAGO_OFFSET_X, dz: ARCHIPELAGO_OFFSET_Z },
+  { dx: ARCHIPELAGO_OFFSET_X, dz: -ARCHIPELAGO_OFFSET_Z },
+  { dx: ARCHIPELAGO_OFFSET_X, dz: ARCHIPELAGO_OFFSET_Z },
+  { dx: -ARCHIPELAGO_OFFSET_X, dz: -ARCHIPELAGO_OFFSET_Z },
+].map((o) => ({
+  x: MAP_SIZE * 0.5 + o.dx,
+  z: MAP_SIZE * 0.5 + o.dz,
+  radiusX: ARCHIPELAGO_RADIUS,
+  radiusZ: ARCHIPELAGO_RADIUS,
+}));
+
+/**
+ * A four-island sea, ready for a preset to name.
+ *
+ * `x`/`z` and the normal carry no geometry here — `islands` being non-empty is
+ * what tells the generator to ignore the half-plane — but they are required
+ * fields that `isTerrainJob` validates, so they are filled with the map centre
+ * and `START_BISECTOR`: the axis the shoal chain straddles, and the honest
+ * answer if anything ever publishes this as a nominal `ShoreSpec`.
+ */
+export const ARCHIPELAGO_SEA: SeaSpec = {
+  x: MAP_SIZE * 0.5,
+  z: MAP_SIZE * 0.5,
+  normalX: START_BISECTOR.x,
+  normalZ: START_BISECTOR.z,
+  bandWidth: 6,
+  // 7.0 leaves the bed at -5.0, a metre clear of TERRAIN_SEA_FLOOR, so nothing
+  // is clamped and the shoals have a deep floor to stand out against.
+  depth: 7.0,
+  // Half the narrowest channel (72 m), so mid-strait is the deepest water and
+  // the bed is still ramping at both coasts rather than sitting on the floor.
+  shelfMetres: 36,
+  // Eight metres of wander on a 54 m feature. An island coast shows its own
+  // curvature the way a straight one showed its straightness, and this is what
+  // stops four ellipses reading as four stencils.
+  wavinessMetres: 8,
+  wavelengthMetres: 54,
+  islands: ARCHIPELAGO_ISLANDS,
+  shoals: [
+    // The bank. Fits inside the 94 m radius of open water the four islands
+    // leave around the map centre.
+    { x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5, radiusX: 88, radiusZ: 84, depth: 0.7 },
+    // The two channel bars, in the north and south straits.
+    {
+      x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5 - ARCHIPELAGO_OFFSET_Z,
+      radiusX: 44, radiusZ: 28, depth: 1.1,
+    },
+    {
+      x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5 + ARCHIPELAGO_OFFSET_Z,
+      radiusX: 44, radiusZ: 28, depth: 1.1,
+    },
+  ],
+};
+
 const PLANS: Record<string, ScenarioPlan> = {
   skirmish: {
     map: 'temperate', distance: 58, yawDeg: 24, frozen: false, settleTicks: 0,
@@ -3204,10 +3512,19 @@ const PLANS: Record<string, ScenarioPlan> = {
     focusDX: -74, focusDZ: 54,
     summary: 'Two armies on the diagonal, three ore fields.',
     build(b, cx, cz, start) {
-      // Two starts on the classic RA diagonal, each with its own ore field and a
-      // contested patch between them, each turned to face the other.
-      const spots = startSpots(cx, cz, 2);
-      const owners: PlayerId[] = rotateStarts([b.allies, b.soviets], b.seed);
+      // Starts on the classic RA diagonal, each with its own ore field and a
+      // contested patch between them, each turned to face the next round the
+      // table. `b.armies` is 2 unless a lobby said otherwise, so this is the
+      // same two spots and the same two owners it has always been.
+      const spots = startSpots(cx, cz, b.armies, b.sea);
+      const owners: PlayerId[] = rotateStarts(
+        // `armySlot` creates a player when the world is short, so a four-army
+        // map seats four whatever the boot handed us. It alternates the two
+        // original factions past slot 1, which is the right default for a mode
+        // with no faction picker yet.
+        spots.map((_, i) => b.armySlot(i)),
+        b.seed,
+      );
 
       if (start === 'base') {
         for (let i = 0; i < spots.length; i++) {
@@ -3233,7 +3550,7 @@ const PLANS: Record<string, ScenarioPlan> = {
         b.select(mine);
       }
 
-      addStartOre(b, spots);
+      addStartOre(b, spots, b.sea);
       // BEFORE `b.scatter` below, because `spawnBuilding` reserves the ground
       // it lands on and `scatter` honours the reservation list. After it, the
       // hamlets would be built into whatever 140 props had already been
@@ -3399,6 +3716,16 @@ export interface ScenarioPlanSummary {
    * spec. Null for every scenario but `naval`.
    */
   readonly sea: SeaSpec | null;
+  /**
+   * Armies this boot seats, 2..`SKIRMISH_ARMIES_MAX`.
+   *
+   * On the PLAN and not on the spec for exactly the reason `sea` is: the
+   * generator reserves one levelled shelf per army and it does that at
+   * Phase.Command order 40, while `game.scenario` — which knows the world's
+   * actual player list — runs at Phase.Cleanup order 10 000. A count read off
+   * the world would be six phases too late to shape the ground it stands on.
+   */
+  readonly armies: number;
 }
 
 /* --------------------------------------------------------------------------
@@ -3441,6 +3768,46 @@ export function setPlannedStart(start: StartCondition | null): void {
 /** The lobby's standing choice, or null when it has not made one. */
 export function plannedStartOverride(): StartCondition | null {
   return startOverride;
+}
+
+let armiesOverride: number | null = null;
+
+/**
+ * Tell the next boot how many armies to seat. Called by the skirmish lobby.
+ *
+ * SAME LIFETIME AS `setPlannedStart`, for the same reason and not by analogy:
+ * the engine is torn down and re-bootstrapped several times around one lobby
+ * choice (menu backdrop, match, rematch), so a per-boot lifetime would lose it
+ * on the very next thing that happens. `resetScenarioPlan()` deliberately does
+ * not clear it.
+ *
+ * THIS IS THE CHANNEL THE TERRAIN READS, which is why it is a module-level
+ * override and not a `buildScenario` option. `terrain-plan.plannedTerrainInput`
+ * has to know the count LONG before any scenario builds — it runs at
+ * module-discovery time to prewarm the generator — and `plannedScenario()` is
+ * the only thing available that early. A count delivered any later would
+ * reserve two shelves for a four-army match.
+ */
+export function setPlannedArmies(n: number | null): void {
+  armiesOverride = n === null ? null : clampArmies(n);
+}
+
+/** The lobby's standing army count, or null when it has not chosen one. */
+export function plannedArmyOverride(): number | null {
+  return armiesOverride;
+}
+
+/**
+ * The start points the generator must reserve for THIS boot.
+ *
+ * `src/world/terrain-plan.ts` calls exactly this and does no derivation of its
+ * own. It used to spread `SKIRMISH_START_OFFSETS` itself, which was correct
+ * while that table had exactly two entries and became a silent two-extra-shelf
+ * regression on every map the moment it had four.
+ */
+export function plannedStartPoints(): readonly { readonly x: number; readonly z: number }[] {
+  const plan = plannedScenario();
+  return startPointsFor(plan.armies, plan.sea);
 }
 
 /**
@@ -3497,6 +3864,9 @@ export function planScenario(
     // this used to read `plan.sea ?? null` and why that left every naval
     // structure and hull in the game unreachable.
     sea: plan.sea ?? MAP_SEAS[mapKey] ?? null,
+    // A posed fixture composes a fixed number of bases; only `skirmish` is a
+    // match, so only `skirmish` may be seated by the lobby.
+    armies: name === 'skirmish' ? clampArmies(armiesOverride) : SKIRMISH_ARMIES_DEFAULT,
   };
 }
 
@@ -3583,6 +3953,11 @@ export interface BuildScenarioOptions {
    * Only `skirmish` honours it; every `?shot=` fixture is pre-built.
    */
   start?: StartCondition;
+  /**
+   * Armies to seat, 2..`SKIRMISH_ARMIES_MAX`. Omit and the plan decides, which
+   * outside a lobby means `SKIRMISH_ARMIES_DEFAULT`.
+   */
+  armies?: number;
 }
 
 /**
@@ -3662,6 +4037,24 @@ export function buildScenario(
   const map = resolveMapName(options.map, plan.map ?? MAP_PRESET_DEFAULT);
   const preset = MAP_PRESETS[map] ?? MAP_PRESETS[MAP_PRESET_DEFAULT];
 
+  /* -- WHICH SEA THE LAYOUTS SEE -----------------------------------------
+   * THE GENERATOR'S OWN ANSWER FIRST. `Terrain.seaSpec` is not a restatement
+   * of the plan — it is the spec the heightfield was actually carved from, so
+   * a layout that asks "where are the islands" gets the islands that exist
+   * rather than the ones something intended. Every other route in this file
+   * has been bitten by exactly that gap: `MAP_PRESETS.coast.water` was read by
+   * nothing, `ScenarioSpec.shore` was published to nobody.
+   *
+   * The plan and the preset table are the fallback, for a headless caller that
+   * builds a scenario against a stub terrain. `assertShoreMatchesSea` below
+   * still checks `plan.sea` alone — the `setShore` obligation belongs to that
+   * channel and only to it.
+   * -------------------------------------------------------------------- */
+  const sea = getTerrain()?.seaSpec ?? plan.sea ?? MAP_SEAS[map] ?? null;
+  const armies = resolved === 'skirmish'
+    ? clampArmies(options.armies ?? plannedArmyOverride())
+    : SKIRMISH_ARMIES_DEFAULT;
+
   keyTable = new PerEntityObj<string>(world.store);
   const builder = new ScenarioBuilder(
     world,
@@ -3669,6 +4062,8 @@ export function buildScenario(
     keyTable,
     seed,
     map,
+    armies,
+    sea,
   );
 
   // Where the army goes. The generator RESERVES a levelled, connected shelf per
@@ -3682,7 +4077,13 @@ export function buildScenario(
   // must NOT follow the shelf — the generator deliberately pushes that shelf
   // inland to keep it out of the water, and the composition is authored around
   // the shoreline, not around the shelf. See `ScenarioPlan.anchor`.
-  const shelf = plan.anchor === 'centre'
+  // AN ARCHIPELAGO IS ANCHORED TO THE CENTRE FOR THE SAME REASON A FIXTURE
+  // WITH A SEA IS. `startShelf()` is `startLocations()[0]`, which on a
+  // continent is the map centre (the generator reserves it first) and on an
+  // island map is ISLAND ZERO — 193 m off centre. Every skirmish layout treats
+  // (cx, cz) as the middle of the world: the scatter box, the ore centroid and
+  // the camera fallback are all offsets from it.
+  const shelf = plan.anchor === 'centre' || builder.archipelago
     ? { x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5 }
     : startShelf();
   const cx = shelf.x;

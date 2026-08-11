@@ -1935,7 +1935,77 @@ export const TERRAIN_PRUNE_REGION_CELLS = 28;
  * inside the existing heightfield loop. Nothing about it is a special case
  * downstream: the sea is ordinary sub-WATER_LEVEL terrain, so `waterGrid`,
  * the sand splat band, `Water.ts` and the minimap all pick it up for free.
+ *
+ * ...AND THAT IS STRUCTURALLY INCAPABLE OF AN ARCHIPELAGO, which is what
+ * `SeaIsland` below is for. A half-plane has exactly one land region and one
+ * water region, so no amount of tuning makes it four islands: the shape is the
+ * limit, not the numbers.
+ *
+ * THE GENERALISATION IS A SIGNED DISTANCE FIELD, AND THE HALF-PLANE IS ITS
+ * FIRST PRIMITIVE. Every `seaDistance` in the generator answers one question —
+ * "signed metres seaward of the nearest coast" — and a half-plane answers it
+ * with `(p - origin) . normal`. An ellipse answers it with its own signed
+ * distance. LAND IS THE UNION of whatever primitives are declared, and the
+ * signed distance of a union is the MINIMUM of its members', so an archipelago
+ * is `min` over four ellipses and needs no second code path: the beach cone,
+ * the shelf ramp, the coastal wander, the splat band and `waterGrid` all read
+ * the same number they always did.
+ *
+ * IT STAYS PLAIN SERIALISABLE DATA, which is a hard constraint rather than a
+ * preference — `src/world/terrain-gen.ts` runs inside a Web Worker and this
+ * struct crosses by `structuredClone`. So the primitives are numbers in arrays,
+ * never callbacks, and `isTerrainJob` in `core/workers/protocol.ts` validates
+ * every one of them on the way in.
+ *
+ * AXIS-ALIGNED ELLIPSES, DELIBERATELY. A rotation would need `Math.cos` /
+ * `Math.sin` in the heightfield loop, and neither is exactly specified by
+ * ECMA-262 — two engines may disagree in the last bit. Terrain is generated
+ * independently on both machines of a lockstep match, so a 1-ULP difference in
+ * a coastline is a desync. `Math.sqrt` IS correctly rounded and is all the
+ * ellipse distance below needs.
  * ------------------------------------------------------------------------ */
+
+/**
+ * One island: an axis-aligned ellipse of LAND, in world metres.
+ *
+ * `radiusX`/`radiusZ` are semi-axes, so the inscribed circle of an island is
+ * `min(radiusX, radiusZ)` — and that minimum, not the area, is what has to
+ * clear the start-shelf budget in `TerrainFields.resolveStarts`. An island
+ * whose short axis is under
+ * `TERRAIN_START_FLAT_RADIUS + TERRAIN_START_EDGE_WOBBLE + bandWidth +
+ * wavinessMetres + TERRAIN_SEA_START_CLEARANCE` cannot hold a base without the
+ * levelled shelf spilling into the sea, whatever its long axis is.
+ */
+export interface SeaIsland {
+  /** Centre, world metres. */
+  readonly x: number;
+  readonly z: number;
+  /** Semi-axis along X, metres. Must be > 0. */
+  readonly radiusX: number;
+  /** Semi-axis along Z, metres. Must be > 0. */
+  readonly radiusZ: number;
+}
+
+/**
+ * A shoal: an axis-aligned ellipse of SHALLOWS. Raises the bed toward the
+ * surface without ever breaking it.
+ *
+ * Not a fifth island and not decoration. `Water.fitRamp` fits the absorption
+ * gradient to the basin that was actually generated, so a 0.7 m bar inside a
+ * 7 m sea is a different COLOUR, not a different mesh — the one place this
+ * engine can express a reef without a second material or a reflection (which
+ * `docs/RA3_LOOK_BIBLE.md` bans outright). It is navigable throughout: a cell
+ * is water at `height < WATER_LEVEL` and a shoal is clamped to stay under it by
+ * `TERRAIN_SEA_SHOAL_MIN_DEPTH`.
+ */
+export interface SeaShoal {
+  readonly x: number;
+  readonly z: number;
+  readonly radiusX: number;
+  readonly radiusZ: number;
+  /** Metres of water left over the bar at its shallowest point. */
+  readonly depth: number;
+}
 
 /**
  * A sea a scenario asks the generator to carve, in WORLD metres.
@@ -1945,6 +2015,14 @@ export const TERRAIN_PRUNE_REGION_CELLS = 28;
  * `buildScenario` warns when they do not — but it is delivered EARLIER, on
  * `plannedScenario()`, because terrain generates long before any scenario has
  * built. See `src/world/sea.system.ts` for the hand-off.
+ *
+ * ...UNLESS `islands` IS NON-EMPTY, and that is the one discriminator in this
+ * struct. An archipelago's land is EXACTLY the union of its islands and the
+ * half-plane is not applied at all — `x`, `z` and the normal stay required
+ * (they are what `isTerrainJob` validates and what an archipelago publishes as
+ * its nominal `ShoreSpec` axis) but they no longer carve anything. The
+ * alternative was a `kind` tag that could disagree with the array beside it;
+ * "the list of islands is the list of islands" cannot.
  */
 export interface SeaSpec {
   /** A point on the waterline. */
@@ -1972,6 +2050,21 @@ export interface SeaSpec {
   readonly wavinessMetres: number;
   /** Metres per feature of that wander. */
   readonly wavelengthMetres: number;
+  /**
+   * Land masses, when this sea is an ARCHIPELAGO rather than a coast.
+   *
+   * Absent or empty is the half-plane every shipped sea uses today, and the
+   * generator runs the identical arithmetic it always has for it. Non-empty
+   * REPLACES the half-plane: land is the union of these ellipses and nothing
+   * else, so the map has one land region per island and the water between them
+   * is one connected sea.
+   */
+  readonly islands?: readonly SeaIsland[];
+  /**
+   * Shallows raised out of the bed. Applied only where the water field is
+   * already seaward of the coast, so a shoal can never dry a beach.
+   */
+  readonly shoals?: readonly SeaShoal[];
 }
 
 /**
@@ -2003,6 +2096,37 @@ export const TERRAIN_SEA_BEACH_GRADE = 0.26;
  * shelf's apron wobble can still reach past this margin on an unlucky seed.
  */
 export const TERRAIN_SEA_START_CLEARANCE = 10;
+
+/**
+ * Metres of water a shoal must leave over itself.
+ *
+ * A shoal that dries is a fifth island: it splits the sea, it grows a beach
+ * cone, `waterGrid` clears there and the nav grid stops routing a hull across
+ * something the eye reads as shallows. So the lift is CLAMPED rather than
+ * trusted to the authored `depth`, and this is the clamp. 0.35 m sits under
+ * WATER_LEVEL by enough that no coastal wander can lift a bar out.
+ */
+export const TERRAIN_SEA_SHOAL_MIN_DEPTH = 0.35;
+
+/**
+ * Passable cells a start's own region must hold on an ARCHIPELAGO before the
+ * generator stops calling it stranded.
+ *
+ * On every other map the start guarantee is "joined to the MAIN region", and
+ * that is right: a shelf outside it is a pit. On an island map it is exactly
+ * wrong — three of four starts are water-separated BY DESIGN, and
+ * `enforceStartAreas` would answer a correct map by BFS-ing a corridor through
+ * the sea and raising a causeway across it (`linkRegionForced` leaves `dryOnly`
+ * off there deliberately, because for a pit a causeway beats an immobile army).
+ *
+ * DERIVED FROM THE GUARANTEE ITSELF rather than picked: it is the cell count of
+ * the guarded disc, so the rule reads "an island start is satisfied when its
+ * region is at least as large as the guarantee that was made about it". A
+ * genuine pit is orders of magnitude smaller and still escalates.
+ */
+export const TERRAIN_ISLAND_MIN_CELLS = Math.ceil(
+  Math.PI * (TERRAIN_START_GUARD_RADIUS / CELL) * (TERRAIN_START_GUARD_RADIUS / CELL),
+);
 
 /* -- 20b. MAJOR-REGION GUARANTEE -------------------------------------------
  * The start guarantee above fixes "my army is in a pit". This fixes the other
