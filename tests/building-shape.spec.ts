@@ -352,24 +352,37 @@ describe('the shape pass costs no geometry', () => {
    *     masses the Reclamation was mirroring against its own RCL-3 (see
    *     `reclaimFrame`'s `intake` and `lamp.hood`)
    *   132122 / 112 over 56 — the four Repair Depots, one per army
+   *   139866 / 118 over 59 — the three civilian structures (Oil Derrick,
+   *     Civilian Hospital, Apartment Block), at 2581 triangles and 2 parts
+   *     each. They are the map furniture `src/sim/Capture.ts` and
+   *     `src/sim/Garrison.ts` have described in their headers since they were
+   *     written and never had; every one of them is the Allied shell plus six
+   *     or seven masses, so they cost slightly LESS than the roster mean and
+   *     the mean assertion below goes DOWN, from 2359 to 2366... which is up,
+   *     and worth saying out loud: the shell is 2100 of those triangles and
+   *     these three add less silhouette on top of it than a War Factory does.
    *
-   * The depot rebase is the only one of those that RELAXED the ceiling, and it
-   * is the kind this ratchet was never meant to catch: four structures that did
-   * not exist before, at 3087 triangles and 2 parts each, every one of them
-   * inside the 4000-triangle per-structure cap. An open gantry costs more than
-   * a closed box — there is no interior to cull — and the whole point of the
-   * building is that you can see through it.
+   * The depot rebase was the first one that RELAXED the ceiling, and it is the
+   * kind this ratchet was never meant to catch: structures that did not exist
+   * before, every one inside the 4000-triangle per-structure cap. An open
+   * gantry costs more than a closed box — there is no interior to cull — and
+   * the whole point of the building is that you can see through it. The
+   * civilian rebase is the same shape.
    *
    * But "add a structure" must not be a way to buy slack for the existing
    * ones, which the absolute number alone would allow. So the mean below is
-   * asserted too, and it is the assertion that actually has teeth now.
+   * asserted too, and it is the assertion that actually has teeth now. It has
+   * NOT moved across either rebase, which is the whole point of it.
    */
-  const BASELINE_TRIANGLES = 132_122;
-  const BASELINE_PARTS = 112;
+  const BASELINE_TRIANGLES = 139_866;
+  const BASELINE_PARTS = 118;
   /**
    * Triangles per structure: 119774/52 = 2303 before the depots, 132122/56 =
-   * 2359 after. The 2.4% is the depots being gantries, and 2400 is that with
-   * the rounding thrown away.
+   * 2359 after, 139866/59 = 2370 after the civilian block. The 2.4% is the
+   * depots being gantries, and 2400 is that with the rounding thrown away.
+   * THIS NUMBER HAS NOT MOVED SINCE IT WAS SET, across two roster additions,
+   * which is the only evidence that the two absolutes above are rebases
+   * rather than a budget quietly being spent.
    *
    * This is here because the two totals above scale with the roster and this
    * does not: growing the roster no longer relaxes the budget for anything

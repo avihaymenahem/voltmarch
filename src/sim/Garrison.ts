@@ -28,11 +28,21 @@
  * `weaponIndex` untouched (it is spawn-owned) and keeps five men in a building
  * from costing five target scans.
  *
- * CONTENT NOTE. There are no civilian buildings in the roster yet, so the
- * eligible set today is "your own unarmed, non-production structures" —
- * Power Plant, Ore Silo, Battle Lab — plus any neutral-owned structure the
- * moment one exists. See the report for the def rows that would open this up
- * properly.
+ * CONTENT. This note used to read "there are no civilian buildings in the
+ * roster yet ... plus any neutral-owned structure the moment one exists". They
+ * exist: `src/data/Civilians.ts` declares an Oil Derrick, a Civilian Hospital
+ * and an Apartment Block, every one of them sized and flagged to satisfy
+ * `refusalFor` below rather than to be excused by it — both footprint axes at
+ * or above `GARRISON.minFootprint`, no weapon, and none of
+ * `IsBuilder|IsFactory|IsRefinery|IsRadar`. `Scenarios.addCivilians` puts two
+ * mirrored hamlets of them on the perpendicular bisector between the two
+ * openings, so the strongpoints are equidistant from both armies.
+ *
+ * The eligible set is therefore those, plus what it always was: your own
+ * unarmed non-production structures (Power Plant, Ore Silo, Battle Lab).
+ * `src/input/Commands.ts` §5b is what makes a right-click able to say so — a
+ * neutral structure is neither `hoverOwn` nor `hoverEnemy`, so before that
+ * branch existed no click could produce `OrderKind.Enter` against one at all.
  *
  * PHASES. Entry runs at `Phase.Cleanup` (negative order, beside Capture) so it
  * sees final positions. The volley runs at `Phase.Weapons` so its damage lands

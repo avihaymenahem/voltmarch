@@ -68,7 +68,8 @@ import {
   ARRIVE_RADIUS, CELL, MAX_SELECTION, MAX_ENTITIES, MAX_WAYPOINTS,
 } from '../core/config';
 import {
-  BuildTab, CommandKind, EntityFlag, EntityKind, Locomotor, NONE, OrderKind, Stance, UnitState,
+  BuildTab, CommandKind, EntityFlag, EntityKind, Faction, Locomotor, NONE, OrderKind, Stance,
+  UnitState,
 } from '../core/types';
 import type { Command, DefTables, EntityId, PlayerId, UnitDef } from '../core/types';
 import type { Channels } from '../core/events';
@@ -82,6 +83,14 @@ import { clampWorld, hashU32, worldToCell } from '../core/math';
 // `src/sim/deploy.system.ts` acts on.
 import { isDeployable } from '../sim/Deploy';
 import { relocateSeamOf, snapRallyClear } from '../sim/Placement';
+// The same shape as the `isDeployable` edge above, and bought for the same
+// reason: "may this squad walk into that building" has exactly one answer,
+// `GarrisonService.refusalFor`, and the cursor must not compute a second one.
+// A copy of those seven conditions here is a copy that drifts — and the way it
+// would drift is that the pointer promises a garrison and the men walk up to
+// the wall and stand there, which is precisely the failure this module's
+// header says is "structurally impossible".
+import { garrisonService } from '../sim/Garrison';
 import { CursorKind } from './Input';
 import { canInteractWith, isEnemyOf } from './Selection';
 
@@ -342,6 +351,21 @@ export function gatherDeployable(
 }
 
 /**
+ * True when slot `i` belongs to a `Faction.Neutral` player — Gaia, the owner of
+ * every rock, wreck, crate and civilian structure on the map.
+ *
+ * NOT "has no owner": a neutral structure has a real `PlayerId` and a real
+ * entry in `world.players`, and that is exactly why `isEnemyOf` says false for
+ * it (Gaia is allied to everyone in both directions). The distinction the
+ * resolver needs is "allied because we are on the same side" versus "allied
+ * because it is scenery", and only the faction can tell them apart.
+ */
+function isNeutralOwned(world: World, i: number): boolean {
+  const p = world.players[world.store.owner[i]];
+  return p !== undefined && p.faction === Faction.Neutral;
+}
+
+/**
  * THE context-order rule set. Both the cursor and the issued command come from
  * here, so they can never disagree.
  *
@@ -509,6 +533,49 @@ export function resolveContextOrder(
     }
 
     if (hoverOwn && !isBuilding && roles.transportCapacity(world, hi) > 0 && caps.hasPassengers) {
+      out.order = OrderKind.Enter;
+      out.target = hover;
+      out.cursor = CursorKind.Enter;
+      out.valid = true;
+      return out;
+    }
+
+    /* -- 5b. the civilian block -------------------------------------------
+     * A NEUTRAL STRUCTURE IS NEITHER `hoverOwn` NOR `hoverEnemy`, and that one
+     * fact is why both of these mechanics were unreachable from the mouse.
+     * Gaia (`ScenarioBuilder.gaia`) is allied to every player in both
+     * directions, so `isEnemyOf` answers false for an oil derrick and the
+     * resolver fell straight through every branch above to "anything else
+     * friendly: move to it". `CaptureService` has captured neutral structures
+     * outright since it was written (its rule 1, named for "oil derricks,
+     * hospitals, civilian blocks") and `GarrisonService` has accepted a
+     * neutral owner since ITS first line — and no click could ever produce
+     * either order, because no click could produce the order KIND.
+     *
+     * ENGINEER FIRST. An engineer takes the deed permanently; infantry only
+     * borrow it for as long as they stand inside. With both in the selection
+     * the permanent answer is the one the player meant, which is also the RA2
+     * priority.
+     *
+     * ORDER MATTERS AGAINST REPAIR, below. `RoleResolver.canRepair` is
+     * `canCapture` in both implementations, so an engineer hovering a DAMAGED
+     * neutral derrick would otherwise resolve as Repair — and `Capture.resolve`
+     * treats a neutral target as never friendly, so the engineer would arrive
+     * carrying an order the sim does not implement for that target.
+     *
+     * The garrison branch asks the SERVICE rather than re-deriving
+     * eligibility, and answers Move when no service is installed. That is not
+     * a stub: a world with no garrison system genuinely cannot garrison, and
+     * the honest cursor for it is the one the player already gets.            */
+    if (isBuilding && !hoverEnemy && !hoverOwn && caps.canCapture && isNeutralOwned(world, hi)) {
+      out.order = OrderKind.Capture;
+      out.target = hover;
+      out.cursor = CursorKind.Capture;
+      out.valid = true;
+      return out;
+    }
+    if (isBuilding && caps.hasPassengers && !caps.canCapture
+      && (garrisonService()?.canGarrison(hover, local) ?? false)) {
       out.order = OrderKind.Enter;
       out.target = hover;
       out.cursor = CursorKind.Enter;
