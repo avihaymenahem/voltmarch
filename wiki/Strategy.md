@@ -548,11 +548,14 @@ does 27 DPS to concrete for 380 credits, the best rate in the game, and cannot w
   refinery are up, with three or four bodies garrisoning the block beside it — a garrisoned building
   fires with the sum of its occupants' weapons at +6 m range, and an occupied structure cannot be
   captured out from under you.
-- **Do not build a Naval Yard.** No playable map carves a sea. Measured across all six shipped maps,
-  water covers 0.0–0.6 % of cells and the largest body in the game is about 1,000 m². The entire
-  naval branch — two unlock chains, five structures and eight hulls — has nowhere to float. Note that
-  this does *not* make transports useless: all three carriers are Hover and they work perfectly well
-  on land, where they are a way to move five men fast rather than a way to cross a sea.
+- **Build a Naval Yard on two maps and nowhere else.** Contested Strait and Coral Shore each carry a
+  quarter of the map in open sea — 24.3 % and 26.4 % of cells, one connected body of roughly 63,000
+  and 69,000 m². On those two the naval branch is a real option and a fleet can cross the map. On
+  the other four, water covers 0.0–0.16 % in puddles smaller than a war factory and the whole branch
+  is dead weight. Nothing stops you founding a yard on a landlocked map; it will simply produce hulls
+  with nowhere to go. Note that transports are useful everywhere regardless: all three carriers are
+  Hover and work perfectly well on land, where they are a way to move five men fast rather than a way
+  to cross a sea.
 
 ---
 
@@ -672,10 +675,10 @@ Behaviours worth knowing:
 
 Be aware of these before you build a plan around one:
 
-- **Naval is unusable.** No playable map carves a sea; measured water coverage across all six shipped
-  maps is 0.0–0.6 % of cells, largest body about 1,000 m². Two unlock chains, five structures and
-  eight hulls have nowhere to float. Transports are the exception and only because they are Hover and
-  work on land.
+- **Naval is map-dependent, not unusable.** Contested Strait and Coral Shore carve a real sea (24.3 %
+  and 26.4 % of cells, one connected body each); the other four shipped maps carry 0.0–0.16 % in
+  puddles. Pick a coastal map or leave the branch alone. Transports are the exception and are worth
+  building anywhere, because they are Hover and work on land.
 - **Commander *powers* have no button.** All five are implemented, tested, and reachable only from
   the browser console. The four hero *abilities* are on the HUD and work — build your commander.
 - **The Prism Tank does not crush**, despite carrying a crush level of 2. It is missing the flag the
