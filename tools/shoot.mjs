@@ -40,15 +40,31 @@
  * 0.0146 — larger than most real art changes, and invisible whenever the
  * machine was quiet enough to check.
  *
- * THE KNOWN RESIDUAL, stated so nobody re-derives it: `02-hud-full` is
- * bistable, and `09-placement` / `10-selection` occasionally are. The whole
- * difference is 141 pixels on ONE ROW (y = 71, x 885..1093), by at most 2/255 —
- * the antialiased bottom edge of the HUD power meter, whose height is a
- * fractional `calc()` that lands on either side of a subpixel boundary
- * depending on when the DOM last relaid out. It is DOM layout rounding, not the
- * game's render: every graded metric is identical to four decimals across it,
- * and nothing outside that row moves. Fixing it means chasing `--vm-u` through
- * `hud.css`, which is worth doing only if the HUD ever needs to be graded.
+ * THE KNOWN RESIDUAL, re-measured over 11 runs (6 idle, 5 under 14 saturated
+ * CPU threads) rather than remembered: all THREE fixtures that show the HUD —
+ * `02-hud-full`, `09-placement`, `10-selection` — vary, and each has at least
+ * three states. The whole difference is one row, y = 91, over a contiguous span
+ * inside x 744..1141, by at most 2/255. Nothing else in any of the twelve
+ * moves.
+ *
+ * WHAT IT IS NOT: layout. Four boots of `09-placement` report the resource
+ * panel and every one of its ~60 descendants at IDENTICAL geometry to four
+ * decimals, so the earlier note here — "a fractional `calc()` that lands on
+ * either side of a subpixel boundary", quoted at a row and a span that are both
+ * wrong now — described a mechanism that is not the one running.
+ *
+ * WHAT IT IS: y = 91 is the bottom edge of `.vm-panel::after`, the lit inner
+ * bevel, which is a `linear-gradient(146deg, ...)` behind a `drop-shadow`
+ * filter inside a parent carrying `backdrop-filter: blur(12px)`. Chromium
+ * decides how to rasterise that stack ONCE PER PAGE: four screenshots of one
+ * page are byte-identical every time, and two pages of the same build disagree.
+ * So it is a compositor decision taken at load, it is not fixable from here,
+ * and a retry cannot converge on a value — a fresh page is a fresh roll.
+ * Removing the bevel's `filter` does not stop it; the `backdrop-filter` parent
+ * is the remaining suspect and the fix would be a HUD change, not a harness
+ * change.
+ *
+ * That row is the floor. Any diff outside it is real.
  *
  * If you change anything here, prove it the same way:
  *
@@ -60,6 +76,25 @@
  * A diff outside that one row means the harness has stopped being an
  * instrument, and it will not announce itself: it still produces twelve
  * confident images.
+ *
+ * ============================================================================
+ * THE THREE THINGS THAT MADE IT PRODUCE A CONFIDENT WRONG IMAGE
+ * ============================================================================
+ * None of them is a race inside the game, and none of them was visible in the
+ * output. Each now fails the shot instead, and a failed shot is retried in a
+ * fresh page up to `MAX_ATTEMPTS` before the run goes red.
+ *
+ *   1. IT PHOTOGRAPHED SERVERS IT DID NOT START. The fixed port plus a 1500 ms
+ *      `fetch` probe is a TOCTOU test, and a busy machine makes the probe time
+ *      out against a live neighbour. See the block above the spawn — this is
+ *      the one that was actually reported, and it reproduces exactly.
+ *   2. IT READ THE GL BACKEND ONCE AND ASSUMED IT FOR THE OTHER ELEVEN. Every
+ *      fixture gets its own context and `--enable-unsafe-swiftshader` makes the
+ *      software fallback silent; a SwiftShader frame differs from the hardware
+ *      one in 76.5% of its pixels.
+ *   3. IT IGNORED `webglcontextlost`. The renderer warns, suspends and then
+ *      re-resizes on restore; the harness recorded the warning in `messages`
+ *      and photographed the page anyway.
  *
  * Scene *content* comes from the `?shot=` boot flag, which src/game/Bootstrap.ts
  * routes to a scenario builder. Camera, mood and timing are driven here through
@@ -98,14 +133,23 @@
 
 import { chromium } from 'playwright';
 import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:net';
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, readdirSync, renameSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'shots');
-const PORT = 4317;
-const BASE = `http://localhost:${PORT}/`;
+
+/**
+ * Where the preview is ASKED to listen, and nothing more.
+ *
+ * The origin the browser is pointed at is read back from our own vite's stdout
+ * — see `previewOrigin` and the block above the spawn. A port number written
+ * down here and then assumed is how this harness photographed another
+ * checkout's build.
+ */
+const PORT_HINT = 4317;
 
 /**
  * THE QUALITY TIER THE SCORECARD IS DEFINED AT.
@@ -432,6 +476,99 @@ async function waitForServer(url, timeoutMs = 60_000) {
   return false;
 }
 
+/** The colour vite writes its banner in, which would otherwise split the URL. */
+const ANSI = /\[[0-9;]*m/g;
+
+/**
+ * The origin OUR preview is listening on, taken from OUR child's own stdout.
+ *
+ * This is the whole of the identity guarantee. vite prints
+ * `➜  Local:   http://127.0.0.1:4317/` once it has BOUND, so the number that
+ * comes back is one this process watched its own child take, rather than one
+ * written down in a constant and hoped for. The banner is colourised and vite
+ * bolds the port digits inside the URL, so stripping ANSI first is load-bearing
+ * rather than tidy.
+ *
+ * A child that exits without announcing one REJECTS, deliberately: the two ways
+ * that happens are a broken install and a port collision, and both used to end
+ * with the harness quietly capturing from whatever else answered. The caller
+ * treats a rejection as "try the next rung of the ladder", never as "carry on".
+ */
+function previewOrigin(child, timeoutMs = 60_000) {
+  return new Promise((resolve, reject) => {
+    let out = '';
+    const finish = (settle, value) => {
+      clearTimeout(timer);
+      child.stdout.off('data', onOut);
+      child.stderr.off('data', onOut);
+      child.off('exit', onExit);
+      settle(value);
+    };
+    const onOut = (chunk) => {
+      out += String(chunk).replace(ANSI, '');
+      const m = /https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)\//.exec(out);
+      if (m !== null) finish(resolve, `http://127.0.0.1:${m[1]}/`);
+    };
+    const onExit = (code) => finish(reject, new Error(
+      `the preview server exited (${code}) before it announced a port. Output:\n${out.slice(-2000)}`,
+    ));
+    const timer = setTimeout(() => finish(reject, new Error(
+      `the preview server never announced a port within ${timeoutMs} ms. Output:\n${out.slice(-2000)}`,
+    )), timeoutMs);
+    child.stdout.on('data', onOut);
+    child.stderr.on('data', onOut);
+    child.on('exit', onExit);
+  });
+}
+
+/** A port nothing is listening on right now, chosen by the OS. */
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = createServer();
+    probe.on('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+/**
+ * Prove the origin is serving the `dist/` ON THIS DISK, by comparing the bytes.
+ *
+ * Reading the port off our own child is necessary and STILL not sufficient on
+ * Windows, where a wildcard bind (`0.0.0.0`) and a specific one (`127.0.0.1`)
+ * can hold the same port number at once and the OS routes by longest match. Two
+ * processes can therefore both be "listening on 4317" and both be right, and
+ * which one answers is not something this file gets to assume.
+ *
+ * `dist/index.html` names its own hashed chunks, so it is a fingerprint of the
+ * build for free — no nonce to inject, no server to modify. Identical bytes
+ * mean the reply came from a `dist/` that is byte-for-byte the one just built,
+ * which is the only property the grade actually needs.
+ */
+async function assertOurBuild(base) {
+  const wanted = readFileSync(join(ROOT, 'dist', 'index.html'));
+  let served;
+  try {
+    const res = await fetch(base, { signal: AbortSignal.timeout(30_000) });
+    served = Buffer.from(await res.arrayBuffer());
+  } catch (err) {
+    throw new Error(`could not read ${base} back to check whose build it serves: ${err}`);
+  }
+  if (!served.equals(wanted)) {
+    throw new Error(
+      `${base} is not serving this checkout's dist/.\n` +
+        `Its index.html is ${served.length} bytes where ours is ${wanted.length}; the hashed ` +
+        'chunk names it points at belong to somebody else\'s build.\n' +
+        'That is another worktree\'s preview holding the port. Kill it and re-run:\n' +
+        (process.platform === 'win32'
+          ? `  Get-NetTCPConnection -LocalPort ${PORT_HINT} -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`
+          : `  lsof -ti :${PORT_HINT} | xargs kill -9`),
+    );
+  }
+}
+
 if (noBuild) {
   if (!existsSync(join(ROOT, 'dist', 'index.html'))) {
     console.error('--no-build was given but dist/index.html does not exist. Build once first.');
@@ -450,19 +587,53 @@ if (noBuild) {
 }
 
 /*
- * THE LEAK, AND WHY IT WAS NOT MERELY UNTIDY.
- *
+ * ============================================================================
+ * THE SERVER HAS TO BE OURS, AND "THE PROBE SAW NOTHING" IS NOT PROOF THAT IT IS
+ * ============================================================================
  * This used to be `run('npx', ['vite', 'preview', ...])` with
  * `cleanup = () => server.kill()`. On Windows `run` goes through a shell, so
  * the tree is cmd.exe -> npx-cli.js -> node vite.js and `kill()` reaped the
- * first of three. The real server survived every invocation, kept port 4318
+ * first of three. The real server survived every invocation, kept the port
  * bound, and the NEXT run then either died on `--strictPort` or connected to a
  * preview of the PREVIOUS BUILD and photographed it without saying so. A
  * scorecard captured against a stale server is a comparison of one build
  * against itself, which reads exactly like "the change did nothing".
  *
- * One direct node process, a tree kill, and a refusal to run against a server
- * we did not start.
+ * The answer then was a direct node process, a tree kill, and a `fetch` probe
+ * that refused to start when something already answered on the fixed port 4317.
+ * THE PROBE IS A TIME-OF-CHECK/TIME-OF-USE TEST AND IT NEVER CLOSED THE HOLE:
+ *
+ *   1. it aborted after 1500 ms, and on a machine with a saturated CPU a
+ *      localhost fetch takes longer than that all by itself. A probe that timed
+ *      out landed in the `catch`, whose comment read "anything else means
+ *      nothing answered, which is what we want" — so a LIVE foreign server was
+ *      read as an empty port;
+ *   2. `--strictPort` then made OUR vite exit immediately, and nothing looked
+ *      at that exit code;
+ *   3. `waitForServer` only ever asked whether SOMETHING answers. The foreign
+ *      server does. Twelve fixtures were then photographed out of another
+ *      checkout's `dist/`, at full confidence, with nothing in the report to
+ *      say so.
+ *
+ * A TCP port is machine-wide and every `git worktree` in this repo runs this
+ * same tool, so "another checkout" is the normal case here rather than a
+ * hypothesis. MEASURED, by holding 4317 with a server whose first response is
+ * delayed past the probe's 1500 ms and whose `dist/` is one constant different:
+ * the harness printed `ok` and `1/1 captured`, and `12-blob-readability` came
+ * back differing from the reference in 12.4% of its pixels at max delta 255,
+ * with a console-message count that did not match either. That is the whole of
+ * the reported "the shot harness is nondeterministic" — a neighbour's build,
+ * not a race inside the game.
+ *
+ * So the port is no longer asserted, it is READ BACK from our own child's
+ * stdout (`previewOrigin`); the bytes served at that origin are compared with
+ * the `dist/index.html` on this disk (`assertOurBuild`), because on Windows a
+ * wildcard bind and a specific one can hold the same port number at once; and
+ * the child is checked for liveness before every shot. The harness now cannot
+ * photograph a server it did not start, and — because the ladder below steps
+ * off a busy 4317 onto a port the OS says is free — two worktrees can capture
+ * at once instead of one of them silently capturing the other's work.
+ * ============================================================================
  */
 function killTree(child) {
   if (!child || child.pid === undefined || child.exitCode !== null) return;
@@ -476,30 +647,10 @@ function killTree(child) {
   try { child.kill('SIGKILL'); } catch { /* already gone */ }
 }
 
-try {
-  const probe = await fetch(BASE, { signal: AbortSignal.timeout(1500) });
-  if (probe.ok) {
-    throw new Error(
-      `something is already serving ${BASE}.\n` +
-      'That is almost certainly a leaked preview from an earlier run, serving ITS\n' +
-      'build rather than the one just compiled. Kill it and re-run:\n' +
-      (process.platform === 'win32'
-        ? `  Get-NetTCPConnection -LocalPort ${PORT} -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`
-        : `  lsof -ti :${PORT} | xargs kill -9`),
-    );
-  }
-} catch (err) {
-  if (err instanceof Error && err.message.startsWith('something is already serving')) throw err;
-  // Anything else means nothing answered, which is what we want.
-}
-
 console.log('> serving...');
-const server = spawn(
-  process.execPath,
-  [join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'),
-    'preview', '--port', String(PORT), '--strictPort'],
-  { cwd: ROOT, stdio: 'pipe', detached: process.platform !== 'win32' },
-);
+
+let server = null;
+let BASE = null;
 let cleanedUp = false;
 const cleanup = () => {
   if (cleanedUp) return;
@@ -510,7 +661,61 @@ process.on('exit', cleanup);
 process.on('SIGINT', () => { cleanup(); process.exit(1); });
 process.on('SIGTERM', () => { cleanup(); process.exit(1); });
 
-if (!(await waitForServer(BASE))) { cleanup(); throw new Error(`preview never came up on ${BASE}`); }
+/*
+ * THE PORT LADDER, AND WHY THERE IS ONE AT ALL.
+ *
+ * `vite.config.ts` sets `preview.strictPort: true`, so a busy port is a refusal
+ * rather than a hop to the next one — and the CLI cannot talk it out of that.
+ * A refusal is the right default (silently moving would hide a leaked server
+ * from the person who left it running), and it is the WRONG behaviour for a
+ * repo whose normal state is several worktrees sharing one machine and one port
+ * number.
+ *
+ * So: 4317 first, because a single-agent run should keep the address a human
+ * already knows, and then up to three ports the OS says are free. Every rung
+ * ends with a port THIS process watched vite bind and announce, so moving off
+ * 4317 gives up nothing — the identity of the server is established by
+ * `previewOrigin` and `assertOurBuild`, never by the number.
+ */
+{
+  const problems = [];
+  const ladder = 4;
+  for (let attempt = 0; attempt < ladder && server === null; attempt++) {
+    const port = attempt === 0 ? PORT_HINT : await freePort();
+    const child = spawn(
+      process.execPath,
+      [join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'),
+        'preview', '--port', String(port), '--host', '127.0.0.1'],
+      { cwd: ROOT, stdio: 'pipe', detached: process.platform !== 'win32' },
+    );
+    try {
+      BASE = await previewOrigin(child);
+      server = child;
+    } catch (err) {
+      killTree(child);
+      // vite's own reason, which is on a later line than its banner.
+      const why = /^Error: .*/m.exec(err.message);
+      problems.push(`port ${port}: ${why !== null ? why[0] : err.message.split('\n')[0]}`);
+    }
+  }
+  if (server === null) {
+    cleanup();
+    throw new Error(`no preview of our own would start:\n  ${problems.join('\n  ')}`);
+  }
+  if (problems.length) console.log(`  (${problems.join('; ')})`);
+}
+
+if (!(await waitForServer(BASE))) {
+  cleanup();
+  throw new Error(`the preview announced ${BASE} and then never answered it`);
+}
+try {
+  await assertOurBuild(BASE);
+} catch (err) {
+  cleanup();
+  throw err;
+}
+console.log(`> serving ${BASE} (pid ${server.pid}, dist/ verified)`);
 
 // Real GPU first. Headless Chromium will hand back a black canvas rather than
 // fail loudly if no backend is available, which would silently poison every
@@ -528,12 +733,34 @@ const report = {
   viewport: VIEWPORT,
   poseTolerance: POSE_TOLERANCE,
   built: !noBuild,
+  /** The origin OUR preview announced. Recorded so "whose build was that?" is answerable. */
+  origin: BASE,
   webgl: null,
   shots: [],
 };
 
-for (const shot of shots) {
-  process.stdout.write(`> ${shot.name} ... `);
+/**
+ * ATTEMPTS, AND WHY A RETRY HERE IS NOT A TOLERANCE.
+ *
+ * Nothing below loosens a comparison. Every check a shot can fail is a
+ * BOOLEAN about the page — the curtain is up, the buffer is the wrong size,
+ * the tier did not take, the pose is not canonical, the GL backend is not the
+ * one the run started on, the context was lost — and each of them means this
+ * page cannot produce the fixture, not that the fixture moved a little. A
+ * fresh page is the only repair for any of them, and a run that ends with
+ * eleven good frames and one loading screen is worse than one that ends red.
+ *
+ * Three, because the failures worth retrying are one-off events (a GPU process
+ * that died, a boot that hit the 120 s ceiling under load) and a fourth attempt
+ * on a genuinely broken build is four minutes of nothing.
+ */
+const MAX_ATTEMPTS = 3;
+
+/**
+ * One page, one fixture, one shutter. Returns the report entry; `ok` false
+ * means the caller should try again in a fresh page.
+ */
+async function captureShot(shot, attempt) {
   const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1 });
   /*
    * Playwright's 30 s default is not enough for this page and the failure is
@@ -608,13 +835,35 @@ for (const shot of shots) {
       content: '*,*::before,*::after{transition:none!important;animation:none!important;}',
     });
 
-    if (!report.webgl) {
-      report.webgl = await page.evaluate(() => {
-        const gl = window.__VM.renderer.getContext();
-        const d = gl.getExtension('WEBGL_debug_renderer_info');
-        return d ? gl.getParameter(d.UNMASKED_RENDERER_WEBGL) : 'masked';
-      });
-      console.log(`\n  webgl: ${report.webgl}\n  ${shot.name} ... `);
+    /*
+     * THE BACKEND, EVERY SHOT — NOT ONCE PER RUN.
+     *
+     * This used to be read on the first page and assumed for the other eleven,
+     * and the assumption is not safe: every fixture gets its own GL context,
+     * Chromium hands the next one to SwiftShader once the GPU process has
+     * crashed enough times, and `--enable-unsafe-swiftshader` is in the launch
+     * args above so that fallback is silent rather than fatal.
+     *
+     * It is not a small difference. Measured on `12-blob-readability`, the same
+     * build captured through ANGLE/D3D11 and through SwiftShader differs in
+     * 76.5% of its pixels at max delta 255. Eleven frames off one renderer and
+     * one off another is not a grade of anything, and nothing downstream can
+     * tell that from an art change.
+     */
+    const webgl = await page.evaluate(() => {
+      const gl = window.__VM.renderer.getContext();
+      const d = gl.getExtension('WEBGL_debug_renderer_info');
+      return d ? gl.getParameter(d.UNMASKED_RENDERER_WEBGL) : 'masked';
+    });
+    if (report.webgl === null) {
+      report.webgl = webgl;
+      console.log(`\n  webgl: ${webgl}\n  ${shot.name} ... `);
+    } else if (webgl !== report.webgl) {
+      throw new Error(
+        `the GL backend changed mid-run — this page is on '${webgl}' where the run started on ` +
+          `'${report.webgl}'. A software raster of this scene differs from the hardware one in ` +
+          '76% of its pixels, so the frame would not be comparable with the other eleven.',
+      );
     }
 
     // Apply the pose as data — no eval, and an unknown method is a loud failure
@@ -811,8 +1060,30 @@ for (const shot of shots) {
         world: Array.from(RA.camera.matrixWorld.elements),
         projection: Array.from(RA.camera.projectionMatrix.elements),
       };
+      /*
+       * WHAT WAS IN THE FRAME, as five integers the renderer counted itself.
+       *
+       * A cheap content fingerprint, and the point of it is arguments about
+       * PNGs. "Twelve confident images" is exactly what this harness produces
+       * when it has photographed the wrong thing, and a diff between two
+       * captures cannot say whether the scene differed or the raster did.
+       * These can: a frame short a prop family or a faction's models moves
+       * `drawCalls` and `triangles`, and a page that loaded a different bundle
+       * moves `programs`. The capture that made this necessary came off a
+       * neighbour's build whose scatter budget trimmed 19 prop types where ours
+       * trims 1 — a difference `drawCalls` states outright and a PNG diff can
+       * only hint at.
+       */
+      const s = RA.stats();
+      const frame = {
+        drawCalls: s.drawCalls,
+        triangles: s.triangles,
+        programs: s.programs,
+        geometries: s.geometries,
+        textures: s.textures,
+      };
       if (canonical === null || canonical === undefined) {
-        return { canonical: null, shellLoaded, buffer, matrices, check: null };
+        return { canonical: null, shellLoaded, buffer, matrices, frame, check: null };
       }
       const check = RA.assertCameraPose(
         {
@@ -822,7 +1093,7 @@ for (const shot of shots) {
         },
         cam.tolerance,
       );
-      return { canonical, shellLoaded, buffer, matrices, check };
+      return { canonical, shellLoaded, buffer, matrices, frame, check };
     }, { ...shot.camera, tolerance: POSE_TOLERANCE });
 
     const wantBuffer = `${VIEWPORT.width}x${VIEWPORT.height}`;
@@ -872,8 +1143,34 @@ for (const shot of shots) {
       throw new Error(`camera is not at the canonical pose — ${verdict.check.summary}`);
     }
 
+    /*
+     * A LOST CONTEXT IS A DIFFERENT FRAME, EVEN AFTER IT COMES BACK.
+     *
+     * `src/render/renderer.ts` suspends presentation between `webglcontextlost`
+     * and `webglcontextrestored` and warns on both, and `onContextRestored`
+     * forces a full resize and clears the buffer. Every one of those is a
+     * change to the thing being photographed, and the restore path has never
+     * been asserted to land the drawing buffer back on the harness's fixed
+     * size. So the honest verdict for a page that lost its context is "this
+     * page cannot produce the fixture" — which is what a retry is for.
+     */
+    const lost = messages.find((m) => m.includes('WebGL context lost'));
+    if (lost !== undefined) {
+      throw new Error(`the WebGL context was lost while this fixture was booting — ${lost}`);
+    }
+
     await page.screenshot({ path: join(STAGE, `${shot.name}.png`), animations: 'disabled' });
-    report.shots.push({
+    // A wreck left by an earlier attempt must not survive a later success:
+    // `node tools/metrics.mjs shots/*.png` globs, and a loading screen scored
+    // beside the fixture it was replaced by is the exact confusion the retry
+    // exists to prevent.
+    rmSync(join(STAGE, `${shot.name}.FAILED.png`), { force: true });
+    console.log(
+      `ok  pitch ${verdict.check.actual.pitchDeg.toFixed(2)}deg` +
+        `${attempt > 1 ? ` (attempt ${attempt})` : ''}` +
+        `${messages.length ? ` (${messages.length} console msgs)` : ''}`,
+    );
+    return {
       name: shot.name,
       caption: shot.caption,
       flags: shot.flags,
@@ -886,20 +1183,57 @@ for (const shot of shots) {
       },
       buffer: verdict.buffer,
       matrices: verdict.matrices,
+      frame: verdict.frame,
+      webgl,
+      attempts: attempt,
       ok: true,
       messages,
-    });
-    console.log(
-      `ok  pitch ${verdict.check.actual.pitchDeg.toFixed(2)}deg` +
-        `${messages.length ? ` (${messages.length} console msgs)` : ''}`,
-    );
+    };
   } catch (err) {
-    report.shots.push({ name: shot.name, caption: shot.caption, ok: false, error: String(err).split('\n')[0], messages });
     console.log(`FAILED - ${String(err).split('\n')[0]}`);
+    // Only the LAST attempt's wreckage is worth keeping, and it is written with
+    // the `.FAILED.` infix so `node tools/metrics.mjs shots/*.png` scores it as
+    // a name nobody recognises rather than as the fixture.
     await page.screenshot({ path: join(STAGE, `${shot.name}.FAILED.png`) }).catch(() => {});
+    return {
+      name: shot.name,
+      caption: shot.caption,
+      attempts: attempt,
+      ok: false,
+      error: String(err).split('\n')[0],
+      messages,
+    };
   } finally {
     await page.close();
   }
+}
+
+for (const shot of shots) {
+  let entry = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    /*
+     * OUR SERVER, STILL ALIVE, BEFORE EVERY SINGLE PAGE.
+     *
+     * `previewOrigin` proves the origin was ours at the moment it was read.
+     * This proves it has not since died and left the port to whatever picks it
+     * up next — the whole failure this run exists to make impossible, moved
+     * from the start of the run to the start of each shot.
+     */
+    if (server.exitCode !== null) {
+      throw new Error(
+        `the preview server exited (${server.exitCode}) part-way through the run. Every shot ` +
+          `after that point would have been photographed from whatever else answers ${BASE}.`,
+      );
+    }
+    process.stdout.write(
+      attempt === 1
+        ? `> ${shot.name} ... `
+        : `> ${shot.name} (retry ${attempt}/${MAX_ATTEMPTS}) ... `,
+    );
+    entry = await captureShot(shot, attempt);
+    if (entry.ok) break;
+  }
+  report.shots.push(entry);
 }
 
 writeFileSync(join(STAGE, '_report.json'), JSON.stringify(report, null, 2));

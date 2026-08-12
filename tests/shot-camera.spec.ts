@@ -374,4 +374,56 @@ describe('tools/shoot.mjs', () => {
     expect(source).toContain("'setCameraPitchDeg'");
     expect(source).toContain('__VM is missing');
   });
+
+  /* ------------------------------------------------------------------------
+   * THE FOUR THINGS THE HARNESS MAY NOT ASSUME ABOUT ITS OWN RUN
+   *
+   * These are STRUCTURAL guards, and the file says so rather than pretending
+   * otherwise: `tools/shoot.mjs` is a script whose module scope captures twelve
+   * screenshots, so a spec cannot import it and drive it. The behaviour behind
+   * each one was verified by running the harness against a deliberately hostile
+   * server (a foreign `dist/` on the fixed port, answering the first request
+   * after 2.2 s so the old 1500 ms probe timed out): before, it printed `ok` and
+   * `1/1 captured` over a frame differing from the reference in 12.4% of its
+   * pixels; after, it steps to a free port, verifies the bytes, and captures the
+   * right build.
+   *
+   * What these assertions are for is the NEXT edit — "the port ladder is
+   * over-engineering, 4317 was fine" is a one-line change that puts the whole
+   * defect back, and it should go red rather than be caught in review.
+   * --------------------------------------------------------------------- */
+
+  it('takes the origin from its own child, never from a port number', () => {
+    // The old code asserted a constant and then trusted whatever answered it.
+    expect(source).toContain('function previewOrigin(');
+    expect(source).toContain('await previewOrigin(');
+    // The one thing that must never come back: a probe whose timeout is read as
+    // "the port is free".
+    expect(source).not.toContain('something is already serving');
+  });
+
+  it('checks the served index.html against the dist/ on this disk', () => {
+    expect(source).toContain('function assertOurBuild(');
+    expect(source).toContain('await assertOurBuild(');
+    expect(source).toMatch(/is not serving this checkout's dist\//);
+  });
+
+  it('refuses to keep shooting once its own server has exited', () => {
+    expect(source).toMatch(/server\.exitCode !== null/);
+    expect(source).toMatch(/the preview server exited \(\$\{server\.exitCode\}\)/);
+  });
+
+  it('reads the GL backend every shot and refuses a mid-run change', () => {
+    // `if (!report.webgl)` — read once, assumed eleven times — is the bug.
+    expect(source).not.toMatch(/if \(!report\.webgl\)/);
+    expect(source).toContain('the GL backend changed mid-run');
+    expect(source).toContain('WebGL context lost');
+  });
+
+  it('retries a failed shot in a fresh page instead of scoring it', () => {
+    expect(source).toContain('MAX_ATTEMPTS');
+    expect(source).toMatch(/if \(entry\.ok\) break;/);
+    // A retry must never turn a red run green by itself.
+    expect(source).toMatch(/if \(failed\.length\) \{[\s\S]*process\.exit\(1\)/);
+  });
 });

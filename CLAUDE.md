@@ -120,7 +120,17 @@ CI runs `npm run typecheck`. That gap shipped a v1.31.0 deploy that failed on fi
 reverse map of a `const enum` (`Faction[f]`, `UnitState[n]`) is illegal under
 `isolatedModules`, and nothing local was looking. Run the npm script, not the binary.
 
-**There is no known flake.** `perf-hud.spec.ts` "allocates nothing per frame" used to be one — it
+**`npm test` has no known flake.** That sentence used to read "There is no known flake", full stop,
+and it was quoted as covering the whole project — including `npm run shots`, which is the only
+mechanism enforcing `docs/RA3_LOOK_BIBLE.md`. It never covered it, and the visual pipeline had
+three defects that each produce a confident wrong image. See **The look is measured, not judged**
+below and the header of `tools/shoot.mjs`; the short version is that the harness could photograph
+ANOTHER WORKTREE'S BUILD and report `12/12 captured`, which is what "the shot harness is
+nondeterministic" turned out to be. The residual after the fix is bounded and characterised: nine
+of twelve fixtures are byte-identical run to run, and three vary on exactly one row by at most
+2/255.
+
+The one flake `npm test` ever had was `perf-hud.spec.ts` "allocates nothing per frame" — it
 compared GC counts with a tolerance of 2 and occasionally reported 3 in a full run. It was TWO bugs
 in the test, neither of them in `PerfHud`:
 
@@ -262,6 +272,45 @@ darker than it is. This bit me once already.
 Things that are explicitly banned because they read as "generic engine" and lose points: fog on
 daylight maps, chromatic aberration, film grain, depth of field, motion blur, and reflective water.
 If a change would add one of those, it is wrong even if it looks fine in isolation.
+
+### What the harness guarantees, and the one thing it does not
+
+Two captures of one build are BYTE-IDENTICAL for the nine fixtures that do not show the HUD —
+measured over 6 idle runs, 5 runs under 14 saturated CPU threads, and 6 runs after the fix below.
+"The pixels did not change" is therefore a real statement about those nine, and any diff in them is
+a real change.
+
+The three HUD fixtures — `02-hud-full`, `09-placement`, `10-selection` — each have at least three
+states, and the entire difference is **one row, y = 91, at most 2/255**, inside x 744..1141. That is
+the bottom edge of `.vm-panel::after` (the lit inner bevel: a `linear-gradient` behind a
+`drop-shadow`, inside a parent carrying `backdrop-filter`), and it is a Chromium rasterisation
+decision taken ONCE PER PAGE — four screenshots of one page are byte-identical, two pages of one
+build disagree. Layout is not involved: four boots report the panel and all ~60 of its descendants
+at identical geometry to four decimals. It cannot be fixed from the harness and a retry cannot
+converge on a value. **Do not add a pixel tolerance to `tools/metrics.mjs` to paper over it** — a
+tolerance there hides exactly the regressions the harness exists to catch.
+
+**The harness used to photograph other people's builds, and said `12/12 captured`.** It served the
+bundle on a fixed port 4317 and guarded it with a `fetch` probe that aborts after 1500 ms — a
+time-of-check/time-of-use test that a busy machine defeats on its own. When the probe timed out
+against a LIVE neighbour, its own `vite preview --strictPort` died on the bound port, nothing looked
+at that exit, and `waitForServer` was satisfied by the neighbour. A TCP port is machine-wide and
+every `git worktree` here runs the same tool, so the neighbour is normally a different build — and
+possibly a half-written one, because its owner is rebuilding it. Reproduced deliberately:
+`12-blob-readability` came back differing from the reference in **12.4% of its pixels at max delta
+255**, with a console-message count that did not match, and the harness printed `ok`.
+
+Two more silent assumptions went with it: the GL backend was read on the first page and assumed for
+the other eleven (Chromium falls back to SwiftShader after a GPU-process crash, and that frame
+differs from the hardware one in **76.5%** of its pixels), and `webglcontextlost` was recorded in the
+report and then photographed anyway.
+
+All three now fail the shot, and a failed shot is retried in a fresh page before the run goes red.
+The origin comes from our own child's stdout, the port walks to a free one when 4317 is taken (so two
+worktrees can capture at once), and the served `index.html` is byte-compared against the `dist/` on
+this disk. `_report.json` now carries `origin`, a per-shot `webgl`, `attempts`, and a `frame` block
+of draw calls / triangles / programs / geometries / textures — a content fingerprint, so "was that
+the same scene?" is answerable without re-running anything.
 
 ## Textures: structure, never noise
 
