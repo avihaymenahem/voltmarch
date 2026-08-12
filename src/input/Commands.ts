@@ -1207,7 +1207,11 @@ export class OrderExecutor {
       // the check that makes a forged command inert.
       if (s.owner[i] !== (cmd.player as number)) continue;
 
-      if (cmd.queued && cmd.order !== OrderKind.Stop && s.orderKind[i] !== OrderKind.None) {
+      // A STANDING `Stop` IS NOT A STANDING ORDER. It is how a parked harvester
+      // is recorded (see `write`), and queueing a waypoint behind it would put
+      // a shift-click on a stopped miner into a queue nothing will ever drain.
+      if (cmd.queued && cmd.order !== OrderKind.Stop
+        && s.orderKind[i] !== OrderKind.None && s.orderKind[i] !== OrderKind.Stop) {
         this.pushWaypoint(i, cmd.order, cmd.x, cmd.z, cmd.target);
         continue;
       }
@@ -1221,6 +1225,57 @@ export class OrderExecutor {
   private write(i: number, order: OrderKind, x: number, z: number, target: EntityId): void {
     const s = this.world.store;
     const mobile = (s.flags[i] & EntityFlag.CanMove) !== 0;
+    const armed = (s.flags[i] & EntityFlag.CanAttack) !== 0;
+    const harvester = (s.flags[i] & EntityFlag.IsHarvester) !== 0;
+
+    /* ====================================================================
+     * ORDERS A UNIT CANNOT PUT DOWN AGAIN.
+     *
+     * `resolveContextOrder` reads the SELECTION, not the unit: `canAttack` is
+     * true if ANY member is armed (line 460) and `hasHarvester` is true if any
+     * member mines, and §4 then issues ONE command for the whole group. So a
+     * drag box over your own base — or Ctrl+A, which takes every harvester,
+     * `Selection.selectAllArmy` filtering only on `isMobileKind` — turns one
+     * right-click on an enemy into an Attack order for the miners too.
+     *
+     * The Harvest case below already guards the mirror image of this ("a tank
+     * told to go to the ore should go to the ore") and explains why it must:
+     * a state nothing downstream will clear is a unit removed from the game.
+     * These two are that same defect, reached from the other side, and they
+     * are worse because the states really are terminal:
+     *
+     *   ATTACKING. `Targeting` returns at its first filter for anything
+     *   without `CanAttack` (Targeting.ts:302), so `resolveTarget`, `holdPost`
+     *   and `settle` never run. `Steering.finishOrder` demotes only
+     *   Moving/Fleeing/AttackMoving, so the arrival park leaves the state
+     *   standing. `Harvesting`'s default branch re-plans only under
+     *   `OrderKind.Harvest`, and its backstop mover gates on `state`. Nothing
+     *   in the game clears it. The harvester drives to the enemy and stays
+     *   there — which is the report already quoted in sim/Harvesting.ts:109,
+     *   "sometimes they just suicide and going to enemy camp", reached by a
+     *   route nobody had connected to it.
+     *
+     *   GUARDING. Same dead end, minus the driving: `settle` is the only
+     *   function that demotes it and it sits below the same `CanAttack`
+     *   return. The miner stops where it stands with no HUD cue, and the
+     *   economy quietly halts.
+     *
+     * A HARVESTER IGNORES BOTH OUTRIGHT rather than being rewritten to Move,
+     * and that is the genre-correct answer as well as the safe one: ordering a
+     * mixed group to attack means the soldiers attack and the miners keep
+     * mining. Returning before the column writes below is what makes it a true
+     * no-op — the unit keeps the order it already had.
+     *
+     * Any OTHER unarmed mobile unit (an empty transport, a swimmer that has
+     * not been given a gun) is rewritten to Move instead, matching the Harvest
+     * case's reasoning exactly: it should still go where it was pointed, it
+     * simply must not sit in a combat state it can never leave.
+     * ==================================================================== */
+    if (!armed && (order === OrderKind.Attack || order === OrderKind.ForceAttack)) {
+      if (harvester || !mobile) return;
+      order = OrderKind.Move;
+    }
+    if (harvester && order === OrderKind.Guard) return;
 
     s.orderKind[i] = order;
     s.orderTarget[i] = target as number;
@@ -1246,7 +1301,19 @@ export class OrderExecutor {
       case OrderKind.Stop:
         // Park it exactly where it stands: an arrival-based mover then has
         // nothing left to do, whatever module owns the movement.
-        s.orderKind[i] = OrderKind.None;
+        //
+        // A HARVESTER KEEPS THE `Stop` IN THE COLUMN, and that is the whole of
+        // its park. `UnitState.Idle` is overloaded — for every other unit it
+        // means "the player parked me", and for the harvester FSM it means "I
+        // have no work", which is the state it routes to `decide()`. So Stop
+        // did nothing at all to a miner: it went back on the ore within a
+        // second. `None` cannot carry the distinction either, because half a
+        // dozen systems write exactly `None`+`Idle` for their own reasons —
+        // `Transport.place` putting a passenger back on the ground (a harvester
+        // rides now), `Garrison.recover`, Chronoshift — and a marker that
+        // cannot tell those from a Stop would freeze a miner on unload.
+        // `Stop` has ONE writer, which is this line.
+        s.orderKind[i] = harvester ? OrderKind.Stop : OrderKind.None;
         s.orderTarget[i] = 0;
         s.orderX[i] = s.posX[i];
         s.orderZ[i] = s.posZ[i];
@@ -1289,11 +1356,32 @@ export class OrderExecutor {
         // and rewriting `orderKind` to match is what keeps the column legible
         // to everything downstream that reads it — including this executor's
         // own `queued` test, which asks whether an order is still standing.
-        if ((s.flags[i] & EntityFlag.IsHarvester) === 0) {
+        if (!harvester) {
           s.orderKind[i] = mobile ? OrderKind.Move : OrderKind.None;
           s.state[i] = mobile ? UnitState.Moving : UnitState.Idle;
           break;
         }
+        /* A HARVEST ORDER CARRYING A TARGET MEANS "GO UNLOAD", NOT "GO MINE".
+         *
+         * `resolveContextOrder` produces exactly two Harvest orders (§5 and §6
+         * above): a right-click on ORE, which carries a point, and a right-click
+         * on your own REFINERY, which carries that refinery as `target`. Forcing
+         * `SeekOre` here is what made the second one a no-op — the state was
+         * gone before sim/Harvesting.ts ever ran, and `orderTarget` is read by
+         * nobody on this path (its only readers anywhere are Capture, Garrison,
+         * Superweapons, Targeting and Transport). The click was acknowledged
+         * with a cursor and an order marker and then did nothing at all, which
+         * is the literal report this fixes.
+         *
+         * The decision is LEFT TO THE SIM rather than resolved here, because
+         * sim/Harvesting.ts already owns every part of it: which refineries are
+         * usable and allied, the per-dock lock, the approach point and the
+         * queue. `takeNewOrder` reads `orderTarget` and answers on this same
+         * tick — it runs at Phase.Economy, later in the tick than this executor
+         * at Phase.Command order 9000. Leaving `state` alone is also what stops
+         * the click ejecting a harvester that is already Docked and unloading.
+         */
+        if (target !== NONE) break;
         s.state[i] = UnitState.SeekOre;
         break;
 

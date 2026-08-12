@@ -551,9 +551,12 @@ export class MovementIntegrator {
    * Push overlapping units apart, and push them out of solid scenery.
    * Steering's separation term handles the approach; this is the hard
    * constraint that stops two tanks ending a tick inside each other after a
-   * head-on meeting, and the only thing that makes a `BlocksNav` prop solid at
-   * all (see the prop branch below for why it lives here and not in the nav
-   * grid).
+   * head-on meeting.
+   *
+   * It used to be the one thing that made a `BlocksNav` prop solid, which is
+   * why it took `EntityKind.Prop` at all. Rocks and boulders are ordinary
+   * scenery now — see `FALLBACK_PROPS` — so nothing here special-cases a prop
+   * and the `CanMove` test skips every one of them.
    *
    * Position-based and applied in `alive` order, so it is order-dependent but
    * fully deterministic. Each unit moves only ITSELF by half the overlap; the
@@ -602,37 +605,25 @@ export class MovementIntegrator {
           if ((jf & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) continue;
           const jk = st.kind[j];
 
-          // Solid scenery. A `BlocksNav` prop — `rock` (r 2.0) and `boulder`
-          // (r 3.2) in `FALLBACK_PROPS` — is the half of the crush rule that
-          // says no: it carries no `Crushable` flag, `sim/Crush.ts` therefore
-          // leaves it standing, and a hull must not drive through it.
-          //
-          // A PHYSICAL constraint, deliberately NOT a nav-grid one. Nothing
-          // ever taught the planner about these props (`ScenarioBuilder.block`
-          // only reserves the spot against other SPAWNS; `markOccupied` is
-          // called for buildings and nothing else), and teaching it now would
-          // be the dangerous fix: a boulder that closes cells can sever an ore
-          // route and kill an economy silently. Handled here instead, the flow
-          // field still routes straight over the cell and the hull simply
-          // slides around a 3 m disc that is smaller than the 4 m cell it sits
-          // in — so no route can ever become unreachable.
-          if (jk === EntityKind.Prop) {
-            if ((jf & EntityFlag.BlocksNav) === 0) continue;
-            const pdx = px - st.posX[j];
-            const pdz = pz - st.posZ[j];
-            const pwant = ri + st.radius[j];
-            const pd2 = pdx * pdx + pdz * pdz;
-            if (pd2 >= pwant * pwant || pd2 < 1e-9) continue;
-            const pd = Math.sqrt(pd2);
-            // The FULL overlap, not half: a prop has no visit of its own on
-            // which to move the other half, so halving would leave the hull
-            // permanently sunk into the rock.
-            const poverlap = (pwant - pd) * RELAX_DAMPING;
-            dxSum += (pdx / pd) * poverlap;
-            dzSum += (pdz / pd) * poverlap;
-            continue;
-          }
-
+          /* NO PROP IS SOLID ANY MORE, and the branch that made one solid is
+           * gone rather than disabled.
+           *
+           * It used to give `rock` and `boulder` a hard, full-overlap push, and
+           * argued that keeping the constraint PHYSICAL rather than putting it
+           * in the nav grid was the safe choice — "the flow field still routes
+           * straight over the cell and the hull simply slides around a 3 m disc
+           * that is smaller than the 4 m cell it sits in, so no route can ever
+           * become unreachable". The opposite was already measured and recorded
+           * in `config.ts` under HARVESTER_NAV_GIVEUP_SECONDS: a 2 m rock the
+           * planner could not see sealed a one-cell corridor against a 3.87 m
+           * hull and parked it for 2100 consecutive ticks. An obstacle that
+           * stops a unit but is invisible to the thing choosing the route is
+           * the worst of both designs, and it is what "they blocking in a weird
+           * ways" describes.
+           *
+           * Props now fall through to the `CanMove` test below like any other
+           * non-mover. `Steering`'s separation term still pushes hulls off them
+           * softly, so they read as scenery rather than as holes. */
           if ((jf & EntityFlag.CanMove) === 0) continue;
           if (jk !== EntityKind.Infantry && jk !== EntityKind.Vehicle) continue;
           const jc = moveClassAt(st, j);

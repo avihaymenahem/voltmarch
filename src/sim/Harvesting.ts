@@ -446,11 +446,16 @@ export class HarvesterController {
    * moved, and how long it has been within HARVESTER_NAV_GIVEUP_METRES of it.
    *
    * RAW DISPLACEMENT AGAINST AN ANCHOR, not per-tick displacement, and the
-   * distinction is the whole reason this works. `Movement.relax` pushes a hull
-   * out of a `BlocksNav` prop every tick, so a backstop step of 5 cm lands and
-   * is undone on the next tick forever: sampled per tick the hull looks like it
-   * is moving at 1.5 m/s, and over eight seconds it has covered nothing. Same
-   * shape as `NavAgents.anchorX` and chosen for the same reason.
+   * distinction is the whole reason this works. A hull can be moved every tick
+   * and pushed back every tick: sampled per tick it looks like it is doing
+   * 1.5 m/s, and over eight seconds it has covered nothing. Same shape as
+   * `NavAgents.anchorX` and chosen for the same reason.
+   *
+   * The original producer was `Movement.relax` shoving a hull out of a
+   * `BlocksNav` prop — rocks are not solid any more and that branch is deleted,
+   * so do not go looking for it. See HARVESTER_NAV_GIVEUP_METRES in config.ts
+   * for the case that still produces this, and keep the two in step: this
+   * paragraph and that one are the same claim written twice.
    */
   private readonly pinX: PerEntityF32;
   private readonly pinZ: PerEntityF32;
@@ -636,6 +641,31 @@ export class HarvesterController {
           break;
         case UnitState.Idle:
           st.idle++;
+          /* A PLAYER STOP IS NOT "I HAVE NO WORK", AND `Idle` MEANS BOTH.
+           *
+           * That overload is why Stop did nothing to a harvester: the executor
+           * writes `orderKind = None, state = Idle` (Commands.ts's Stop case),
+           * this branch read the state as "idle, find something", and
+           * `decide()` put it straight back on the ore — inside one second,
+           * because `tickHarvest` never refreshes `nextScore` so the throttle
+           * has already lapsed. There was no gesture in the game that parked a
+           * harvester; Guard appeared to, but only by freezing it in a state
+           * nothing could clear, which is a defect rather than a feature and is
+           * refused at the executor now.
+           *
+           * The marker is `OrderKind.Stop` LEFT STANDING IN THE COLUMN, which
+           * the executor now does for harvesters only. `None` was tried first
+           * and is wrong: `Transport.place` (a harvester rides now),
+           * `Garrison.recover`, Chronoshift and `EntityStore.alloc` all produce
+           * `None` + `Idle` for their own reasons, so a miner would freeze the
+           * moment it stepped off a transport, or roll out of a war factory
+           * already parked. `Stop` has exactly one writer.
+           *
+           * It survives a save, because `orderKind` is a real column — a parked
+           * harvester is still parked when the game is loaded, which is what a
+           * player who parked it would expect.
+           */
+          if (store.orderKind[i] === OrderKind.Stop) break;
           this.decide(i, id, s.time, false);
           break;
         default:
@@ -880,10 +910,43 @@ export class HarvesterController {
     const dz = oz - this.destZ.getAt(i);
     if (dx * dx + dz * dz <= NEW_ORDER_EPS * NEW_ORDER_EPS) return false;
 
-    // Somebody else wrote the columns. A Harvest order carries EITHER a point on
-    // ore ("work that patch") OR a refinery target and a point nobody set ("go
-    // unload"); the ore under the point is what tells them apart, and it does so
-    // without this module having to know which branch of `Commands.ts` ran.
+    /* ====================================================================
+     * "GO UNLOAD" — A HARVEST ORDER CARRYING A REFINERY.
+     *
+     * A Harvest order is two orders wearing one kind: a point on ore ("work
+     * that patch") and a right-click on your own refinery ("bank what you are
+     * carrying"). This used to be told apart by the ORE UNDER THE POINT, on the
+     * reasoning that the unload order "carries a target and a point nobody
+     * set". That premise was false — `resolveContextOrder` writes `out.x/out.z`
+     * for any valid hover before it picks a branch, so the point is the
+     * refinery's own centre — but the ore test happened to reject it anyway,
+     * for the wrong reason, and the whole order fell on the floor. Read the
+     * TARGET, which is the field that actually distinguishes them.
+     * ==================================================================== */
+    const tgt = store.orderTarget[i];
+    if (tgt !== 0) {
+      const ri = store.index(tgt as EntityId);
+      if (ri >= 0 && this.isUsableRefinery(ri, store.owner[i])) {
+        // Already at a dock with the hopper emptying: this order IS what is
+        // happening, and yanking the hull off mid-unload is what the executor
+        // used to do. Consume the point so the edge does not re-fire.
+        if (store.state[i] === UnitState.Docked) { this.consumeOrder(i, ox, oz); return false; }
+        // An empty hopper has nothing to deliver. Walking it to a refinery to
+        // do nothing would be obedient and useless; leave it on the job.
+        if (store.cargo[i] <= 0) { this.consumeOrder(i, ox, oz); return false; }
+        // The REFINERY THE PLAYER CLICKED, not the one `pickRefinery` would
+        // choose. That function ranks by free dock then distance and reads no
+        // order column, so without passing it here "unload at THAT one" — the
+        // whole reason to click a specific refinery — could never be honoured.
+        this.consumeOrder(i, ox, oz);
+        this.beginReturn(i, id, time, ri);
+        return true;
+      }
+    }
+
+    // Otherwise the point is the order. Ore under it is still the test, because
+    // a Harvest order with a dead or hostile target must not be read as a
+    // mining order for the cell that target happens to stand on.
     const cx = clampCell(worldToCell(ox));
     const cz = clampCell(worldToCell(oz));
     if (this.ore.oreAt(cx, cz) <= 0) return false;
@@ -895,11 +958,58 @@ export class HarvesterController {
     // `tickSeek` republishes that cell over the player's point on the next line.
     this.dropClaim(i, id);
     this.resetForceBudget(i);
+    this.consumeOrder(i, ox, oz);
+
+    /* DELIVER FIRST IF THE HOPPER IS FULL.
+     *
+     * `decide()` owns the "full first, ore second" rule (see its cargo test),
+     * and this path does not go through it — it called `acquireOre` directly,
+     * which has no cargo test at all. So a full hull took an ore claim, crossed
+     * the map, and `tickHarvest` turned it round on arrival without scooping a
+     * single unit because there was no space. Measured: 300/300 standing 21.9 m
+     * from its own refinery, redirected to a patch 200 m away, load not banked
+     * for 45.2 s against the ~3 s the delivery already under way would have
+     * taken.
+     *
+     * The redirect is NOT discarded — `anchorOnField` above has already
+     * recorded the patch, and it survives the round trip, so the next acquire
+     * after unloading is leashed to the patch the player pointed at. Obeying
+     * the click and banking the load first are not in conflict.
+     */
+    if (store.cargo[i] >= store.cargoMax[i] - 0.001) {
+      this.beginReturn(i, id, time);
+      return true;
+    }
     if (!this.acquireOre(i, id, time)) {
       if (store.cargo[i] > 0) this.beginReturn(i, id, time);
       else this.enterIdle(i, id, time, DRY_RETRY);
     }
     return true;
+  }
+
+  /**
+   * Record an order point as HANDLED, so the edge at the top of
+   * `takeNewOrder` fires exactly once for it.
+   *
+   * WITHOUT THIS THE HANDLER LIVELOCKS. That edge is a diff of the order
+   * columns against `destX/destZ`, and only `setDest` writes those — so any
+   * outcome that does not publish a destination leaves the diff standing and
+   * re-runs the whole path on the next tick, forever. `beginReturn` is exactly
+   * such an outcome: it chooses a dock but publishes nothing (`tickReturn`
+   * does that, on a tick this function's own `return true` skips).
+   *
+   * Measured before: a part-loaded hull redirected onto a patch whose cells
+   * were all claimed by other harvesters sat in ReturnToRefinery with
+   * `delivered = 0` for as long as the claims held — 19 s with two real
+   * harvesters on a single-node field. Worse, `anchorOnField` resets
+   * `leashDryAt` every time it runs, so the HARVESTER_LEASH_PATIENCE escape
+   * could never mature and no dry notice ever reached the player. The AI is
+   * bound identically, because it issues the same order through the same
+   * columns.
+   */
+  private consumeOrder(i: number, ox: number, oz: number): void {
+    this.destX.setAt(i, ox);
+    this.destZ.setAt(i, oz);
   }
 
   /**
@@ -1343,10 +1453,21 @@ export class HarvesterController {
 
   /* -- hauling ----------------------------------------------------------- */
 
-  private beginReturn(i: number, id: EntityId, time: number): void {
+  /**
+   * Haul the load home.
+   *
+   * `preferRi` is a refinery the PLAYER named, by right-clicking it. It is
+   * honoured over `pickRefinery`'s answer whenever it is still a usable dock —
+   * that function ranks by free dock then by distance and reads no order
+   * column, so it cannot express "that one". Re-validated rather than trusted,
+   * because a refinery can die between the click and this call.
+   */
+  private beginReturn(i: number, id: EntityId, time: number, preferRi = -1): void {
     const store = this.world.store;
     this.dropClaim(i, id);
-    const ri = this.pickRefinery(i, time);
+    const ri = preferRi >= 0 && this.isUsableRefinery(preferRi, store.owner[i])
+      ? preferRi
+      : this.pickRefinery(i, time);
     if (ri < 0) {
       store.dockTarget[i] = NONE as number;
       this.enterIdle(i, id, time, DRY_RETRY);

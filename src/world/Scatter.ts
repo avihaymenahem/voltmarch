@@ -142,10 +142,18 @@ export const PROP_CLEAR_MARGIN = 1.25;
  *
  * This is the SCATTER half of one rule the entity props already state in
  * `Scenarios.FALLBACK_PROPS`: `tree`/`pine`/`bush` carry `EntityFlag.Crushable`
- * and `rock`/`boulder` carry `EntityFlag.BlocksNav` instead. Instanced props
+ * and `rock`/`boulder` carry NEITHER that nor anything else. Instanced props
  * have no entity, no flags and no HP to hang that on, so the equivalent signal
  * here is `PropDef.family` — which is authored, already correct, and not a
  * parallel notion invented for this.
+ *
+ * The premise moved and the conclusion did not. Rock used to be excluded here
+ * because it carried `EntityFlag.BlocksNav` instead — it was solid, so it could
+ * not also be soft. It is neither now, and the exclusion still stands on its
+ * own footing: this set decides what a hull MOWS, and a boulder that dissolves
+ * under a tank reads as a missing collision rather than as strength. Adding
+ * 'rock' here would permanently clear the instanced rock carpet, which is a
+ * content change and not a physics one.
  *
  * WHY NOT 'grass'. Grass is the density workhorse: `SCATTER_DENSITY`'s
  * 260/ha wilderness target (bible ruling #9) is mostly grass tufts, and

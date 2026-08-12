@@ -57,6 +57,11 @@ import type { Channels } from '../core/events';
 import { PerEntityF32, PerEntityU32 } from '../core/world';
 import { clamp, clamp01 } from '../core/math';
 import { upgradeMul } from './Upgrades';
+// The nav cache, reached through its module accessor rather than injected: this
+// file has one use for it (handing a corpse's flow field back) and must degrade
+// to a no-op in a world with no pathing module, which `getNav()` returning null
+// gives for free.
+import { getNav } from './Flowfield';
 
 /* ==========================================================================
  * 1. THE MATRIX
@@ -533,8 +538,48 @@ export class DamageSystem {
       this.deathProcessed.setAt(i, stamp);
       this.onDeath(s, i);
     }
-    st.flushDestroyed();
+    st.flushDestroyed(this.releaseNavField);
   }
+
+  /**
+   * Hand a corpse's flow field back to the cache before its slot is recycled.
+   *
+   * THE LEAK THIS CLOSES IS THE ONE A PLAYER FEELS LAST. `FlowFieldCache` has
+   * `FLOWFIELD_CACHE_SIZE` = 24 slots and a slot is only reusable at `refs`
+   * zero; `refs` is decremented in exactly one function, `release`, whose every
+   * caller sits inside `NavAssigner` behind an `isMover` test that refuses
+   * `PendingDestroy`. So a unit that died IN TRANSIT — under a move order, an
+   * attack-move, a flee, or a harvester en route — took its ref to the grave.
+   * The generation bump below then erases `navField`, and the ref becomes
+   * unreachable for the rest of the match. Nothing inside a match ever gives
+   * one back; only `reset()` between matches does.
+   *
+   * The result is a countdown from 24 that only ticks down. Early on nothing
+   * looks wrong. Later, a click sometimes does nothing while another works —
+   * because a pinned field is still HIT-able, so a goal in a bucket some
+   * earlier order already cached still resolves while one 20 m away returns
+   * -1. At zero free slots every new goal fails, `NavAssigner` calls
+   * `finishOrder`, and the order dies on the tick it was issued.
+   *
+   * WHY HERE AND NOT ONLY IN `NavAssigner`. Both are needed and they catch
+   * different things. A unit killed at Phase.Damage (1200) is flushed at
+   * Phase.Cleanup (1400) in the SAME tick, and `NavAssigner` ran back at
+   * Phase.PathRequest (500) — before the kill. There is no later pass in which
+   * the assigner could see the corpse, so the assigner's guard cannot catch an
+   * ordinary combat death. This hook can, because `onFree` is called with the
+   * slot index BEFORE the generation is bumped, which is exactly what that
+   * parameter was documented for.
+   *
+   * An arrow property rather than a method reference so the callback is
+   * allocated once, at construction, and not per tick.
+   */
+  private readonly releaseNavField = (i: number): void => {
+    const st = this.world.store;
+    const held = st.navField[i];
+    if (held < 0) return;
+    getNav()?.release(held);
+    st.navField[i] = -1;
+  };
 
   /** Everything one corpse produces. */
   private onDeath(s: SimContext, i: number): void {

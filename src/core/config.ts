@@ -3381,10 +3381,17 @@ export const HARVESTER_FORCE_DRIVE_TRIES = 2;
  * Measured on seed 4242 slot 43: parked at 177,304 with `aflags` = Arrived |
  * HasSlot | Displaced, the wedge ladder spent at rung 3, 36 m from its claimed
  * ore cell, for 2100 consecutive ticks. The cell was unreachable — a 2 m
- * `BlocksNav` rock at 182,298 that the PLANNER cannot see (props are
- * deliberately not in the nav grid; see `Movement.relax`) seals a corridor one
- * cell wide against a 3.87 m hull — and the FSM re-published the same cell
+ * `BlocksNav` rock at 182,298 that the PLANNER could not see sealed a corridor
+ * one cell wide against a 3.87 m hull — and the FSM re-published the same cell
  * every tick for the rest of the match.
+ *
+ * THAT EXACT CAUSE IS HISTORICAL NOW. Props carry no `BlocksNav`, the relax
+ * branch that made them solid is deleted, and this trace is kept because it is
+ * the measurement the constant was sized from — not because a rock can still do
+ * it. What the watchdog catches TODAY is the same shape from the causes that
+ * remain: ground the planner routes over which the hull cannot traverse —
+ * a building footprint corner, a cliff lip, a pruned region — where
+ * `driveOne`'s slide zeroes speed on both axes and the hull covers nothing.
  *
  * 8 s rather than 2: the backstop is allowed to be slow, and a hull creeping
  * out of a jam at 12 cm/s must not be re-planned out of its own escape. Swept
@@ -3399,11 +3406,18 @@ export const HARVESTER_NAV_GIVEUP_SECONDS = 8.0;
  * being moved by somebody.
  *
  * Raw displacement against an anchor, and not per-tick displacement, because
- * per-tick displacement cannot see this failure at all: `Movement.relax` pushes
- * a hull out of a `BlocksNav` prop every tick, so a 5 cm backstop step lands and
- * is undone on the next tick, forever. Sampled per tick that hull reports
- * 1.5 m/s; sampled against an anchor six seconds old it has covered 0.0 m. Same
- * reasoning, and the same remedy, as `NavAgents.anchorX`.
+ * per-tick displacement cannot see this class of failure at all: a hull can be
+ * moved every tick and be undone every tick, so sampled per tick it reports
+ * 1.5 m/s while over six seconds it has covered 0.0 m. Same reasoning, and the
+ * same remedy, as `NavAgents.anchorX`.
+ *
+ * THE ORIGINAL PRODUCER OF THAT PATTERN IS GONE. It was `Movement.relax`
+ * pushing a hull out of a `BlocksNav` prop every tick, and props are not solid
+ * any more — relax skips everything without `CanMove`, so no building or prop
+ * enters it. The anchor design is kept because the pattern is not unique to
+ * rocks: the surviving measured case is in this same file above, a hull that
+ * advanced 0.003 m against a commanded 0.050 and covered 33 m in four minutes,
+ * which a per-tick test would read as healthy.
  *
  * 1 m over 6 s is 0.17 m/s against a 5 m/s hull — three per cent of capable.
  */

@@ -46,10 +46,24 @@
  *
  * WHAT DOES NOT
  * -------------
- * Rock. `FALLBACK_PROPS` gives `rock` (r 2.0) and `boulder` (r 3.2)
- * `EntityFlag.BlocksNav` and NOT `Crushable`, so they fail the flag test here
- * and are instead made solid by `Movement.relax`. A boulder dissolving under a
- * harvester would read as a missing collision, not as strength.
+ * Rock. `FALLBACK_PROPS` gives `rock` (r 2.0) and `boulder` (r 3.2) NEITHER
+ * `Crushable` nor `BlocksNav`, so they fail the flag test here and nothing else
+ * makes them solid either — a hull drives over the spot.
+ *
+ * THE SECOND HALF OF THAT USED TO READ "are instead made solid by
+ * `Movement.relax`", and that is the claim that changed: the relax branch is
+ * deleted. It made a rock solid to the PHYSICS while leaving it invisible to
+ * the PLANNER, and `config.ts` measured what that costs under
+ * HARVESTER_NAV_GIVEUP_SECONDS — a 2 m rock sealing a one-cell corridor and
+ * parking a hull for 2100 ticks on a route the flow field thought was open.
+ *
+ * The reason they are still not `Crushable` is unchanged and is the sentence
+ * that always mattered: a boulder dissolving under a harvester would read as a
+ * missing collision, not as strength. It is now joined by a mechanical reason —
+ * entity and scatter props share geometry, `CRUSHABLE_FAMILIES` excludes the
+ * rock family, and `spawnProp` writes no `crushableBy`, so a crushable boulder
+ * would die to the lightest crusher in the game beside an identical instanced
+ * one that survives.
  *
  * VEHICLES. Fifteen hulls carry a `crushableBy` of 4..6 and it is read by
  * nothing, here or anywhere. That is not an oversight in this file: NOT ONE

@@ -78,11 +78,21 @@ function deployerTable(): Map<number, Deployer> {
   return out;
 }
 
-/** Largest prop radius the scenario scatter can produce, at max scale. */
+/**
+ * Largest prop radius the scenario scatter can produce, at max scale.
+ *
+ * EVERY PROP, not just the blocking ones. This filtered on
+ * `EntityFlag.BlocksNav`, and once `rock` and `boulder` gave that flag up NO
+ * prop carried it — so this returned 0 and both drift guards below passed
+ * VACUOUSLY, which is worse than failing. The reservation this derives has
+ * never read the flag anyway: `ScenarioBuilder.scatter` keeps every prop off
+ * the opening, blocking or not, and a tree parked in the deploy square is just
+ * as unwelcome as a boulder. The number is unchanged — boulder's 3.2 is still
+ * the widest — which is the point: the guard keeps its margin and stops lying.
+ */
 function maxPropRadius(): number {
   let r = 0;
   for (const p of Object.values(FALLBACK_PROPS)) {
-    if ((p.flags & EntityFlag.BlocksNav) === 0) continue;
     if (p.radius > r) r = p.radius;
   }
   // `ScenarioBuilder.scatter` spawns with `scale: rng.range(0.8, 1.35)`.
@@ -142,9 +152,18 @@ describe('every army can deploy where it spawns', () => {
           const blockers: number[] = [];
           for (let a = 0; a < st.aliveCount; a++) {
             const i = st.alive[a];
+            // EVERY PROP. This asked for `EntityFlag.BlocksNav`, and no prop
+            // carries it since rock and boulder gave it up — so `blockers` came
+            // back empty, `failures` was unconditionally `[]`, and the whole
+            // 576-start sweep passed without testing anything. It is the
+            // regression guard for "im surrounded by rocks everywhere, i cant
+            // build at all", and it would have become a 300-second no-op.
+            //
+            // The runtime reservation never read the flag either — `scatter`
+            // honours the reserved discs for every prop it places — so pointing
+            // this at all props tests what the code actually promises.
             if (st.kind[i] === EntityKind.Vehicle && deployers.has(st.defId[i])) subjects.push(i);
-            else if (st.kind[i] === EntityKind.Prop
-              && (st.flags[i] & EntityFlag.BlocksNav) !== 0) blockers.push(i);
+            else if (st.kind[i] === EntityKind.Prop) blockers.push(i);
           }
 
           expect(subjects.length, `${map}/${seed} spawned no deployer at all`).toBe(2);

@@ -12,13 +12,27 @@
  *
  *   SOFT YIELDS — a `Crusher` flattens `Crushable` props it drives over, and
  *                 obeys the `crushableBy` threshold while doing it.
- *   HARD DOES NOT — a `BlocksNav` rock is not crushable and is not drivable
- *                 through either.
+ *   ROCK IS NEITHER — `rock` and `boulder` are not crushable AND not solid.
  *
- * The load-bearing one is `an ore route with a boulder on it still works`.
- * Making scenery solid is exactly the change that can strand a harvester and
- * kill an economy silently, so the constraint is physical and never touches the
- * nav grid; that test is what says so.
+ * THAT SECOND HALF USED TO READ "HARD DOES NOT", and it is the rule that
+ * changed. Rocks carried `EntityFlag.BlocksNav`, which made them solid in
+ * `Movement.relax` alone — a physical constraint the PLANNER could not see, so
+ * a rock stopped hulls while never appearing on any route it computed.
+ * `config.ts` had already measured the consequence under
+ * HARVESTER_NAV_GIVEUP_SECONDS: a 2 m rock sealing a one-cell corridor against
+ * a 3.87 m hull, parked for 2100 consecutive ticks. Reported as "our logic is
+ * screwed up, and they blocking in a weird ways", and the flag was removed.
+ * `lets the hull pass through` is the inverted assertion; the tripwire beside
+ * it refuses BOTH flags on every prop in the table, because `Crushable` is the
+ * wrong repair — entity and scatter props share geometry and the rock FAMILY is
+ * excluded from `CRUSHABLE_FAMILIES`, so a crushable entity rock would dissolve
+ * beside an identical instanced one that does not.
+ *
+ * The load-bearing one is still `does not break an ore route with a boulder
+ * sitting on it`, and it passes on both sides of the change — which is the
+ * point of keeping it. A rock must never be why a harvester cannot reach ore.
+ * `leaves the nav grid alone` is the other guard worth keeping: it is what
+ * stands between a future "fix" and a prop that closes cells.
  *
  * Everything is headless — typed arrays and the `ITerrain` port, no GL.
  * ============================================================================
@@ -235,7 +249,7 @@ describe('a crusher flattens what it drives over', () => {
  * 2. HARD SCENERY DOES NOT
  * ========================================================================== */
 
-describe('a BlocksNav rock is neither crushed nor driven through', () => {
+describe('a rock is neither crushed nor solid', () => {
   it('survives a harvester at full speed', () => {
     const rig = makeRig();
     const h = spawnHarvester(rig, C(40), C(50));
@@ -247,7 +261,22 @@ describe('a BlocksNav rock is neither crushed nor driven through', () => {
     expect(alive(rig, boulder)).toBe(true);
   });
 
-  it('keeps the hull out of its disc', () => {
+  /**
+   * INVERTED, DELIBERATELY. This asserted the opposite — that `Movement.relax`
+   * held the hull out of the boulder's disc — and it was the single test that
+   * had to change when rocks stopped blocking.
+   *
+   * Reported as "our logic is screwed up, and they blocking in a weird ways".
+   * The old constraint was physical only, and the planner could not see it, so
+   * a rock stopped hulls while never appearing on any route: `config.ts` under
+   * HARVESTER_NAV_GIVEUP_SECONDS records a 2 m rock sealing a one-cell corridor
+   * and parking a hull for 2100 consecutive ticks. Keeping the assertion would
+   * have pinned that behaviour in place.
+   *
+   * So the claim now is that NO prop is solid, which is the invariant the next
+   * person needs — re-adding the flag to any prop fails here.
+   */
+  it('lets the hull pass through — no prop is solid', () => {
     const rig = makeRig();
     const st = rig.world.store;
     const h = spawnHarvester(rig, C(40), C(50));
@@ -262,20 +291,34 @@ describe('a BlocksNav rock is neither crushed nor driven through', () => {
       if (d < worst) worst = d;
     }
 
-    // Before the change the measured closest approach was 1.81 m — the hull
-    // centre 1.8 m from the centre of a 3.2 m boulder, i.e. straight through
-    // it. The relaxation constraint has to keep the discs apart, allowing for
-    // the damping that makes the push a spring rather than a wall.
-    const want = st.radius[h] + st.radius[boulder];
-    expect(worst).toBeGreaterThan(want * 0.75);
+    // Measured 1.68 m against a hull radius of 2.2 — the centre is inside its
+    // own radius of the boulder's centre, so it drove over the spot rather than
+    // being held off it. Steering's separation still nudges it, which is why
+    // this is not zero.
+    expect(worst, 'a hard constraint has come back').toBeLessThan(st.radius[h]);
+  });
+
+  it('carries neither BlocksNav nor Crushable, for rock and boulder alike', () => {
+    // The rule in one place. `Crushable` is refused as well as `BlocksNav`:
+    // entity props and scatter props share geometry, and `CRUSHABLE_FAMILIES`
+    // excludes the rock family — so a crushable entity rock would dissolve
+    // beside an identical instanced one that does not.
+    for (const key of ['rock', 'boulder'] as const) {
+      const fb = FALLBACK_PROPS[key];
+      expect(fb.flags & EntityFlag.BlocksNav, `${key} must not block nav`).toBe(0);
+      expect(fb.flags & EntityFlag.Crushable, `${key} must not be crushable`).toBe(0);
+    }
+    // And nothing else in the table has quietly picked the flag up.
+    for (const [key, fb] of Object.entries(FALLBACK_PROPS)) {
+      if (fb.kind !== EntityKind.Prop) continue;
+      expect(fb.flags & EntityFlag.BlocksNav, `${key} must not block nav`).toBe(0);
+    }
   });
 
   /**
-   * THE ONE THAT MATTERS. Solid scenery is exactly the change that can strand
-   * a harvester, and a harvester that cannot reach ore is a dead economy. The
-   * constraint is deliberately physical and never writes the nav grid, so the
-   * flow field still routes straight over the boulder's cell and the hull
-   * simply slides around a disc smaller than the cell it sits in.
+   * THE ONE THAT MATTERS, and it passed before this change as well as after —
+   * which is the point. A rock must never be the reason a harvester cannot
+   * reach ore, whether it is solid or not.
    */
   it('does not break an ore route with a boulder sitting on it', () => {
     const rig = makeRig();

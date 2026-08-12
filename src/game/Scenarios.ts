@@ -1501,8 +1501,43 @@ export const FALLBACK_PROPS: Readonly<Record<string, FallbackProp>> = {
   tree: { key: 'tree', kind: EntityKind.Prop, radius: 1.6, height: 7.0, maxHp: 120, flags: PROP_BASE | EntityFlag.Crushable },
   pine: { key: 'pine', kind: EntityKind.Prop, radius: 1.3, height: 9.5, maxHp: 120, flags: PROP_BASE | EntityFlag.Crushable },
   bush: { key: 'bush', kind: EntityKind.Prop, radius: 0.9, height: 1.2, maxHp: 40, flags: PROP_BASE | EntityFlag.Crushable },
-  rock: { key: 'rock', kind: EntityKind.Prop, radius: 2.0, height: 2.6, maxHp: 400, flags: PROP_BASE | EntityFlag.BlocksNav },
-  boulder: { key: 'boulder', kind: EntityKind.Prop, radius: 3.2, height: 4.4, maxHp: 800, flags: PROP_BASE | EntityFlag.BlocksNav },
+  /* ROCK AND BOULDER CARRY NO `BlocksNav`, AND NO `Crushable` EITHER.
+   *
+   * They were the only two entries in this table that blocked, against a
+   * docstring that says "mostly crushable". Reported as: "our logic is screwed
+   * up, and they blocking in a weird ways, make them same as any other prop".
+   *
+   * The mechanism deserved the complaint. A `BlocksNav` prop was solid ONLY in
+   * `Movement.relax` — a physical push, deliberately outside the nav grid —
+   * and the argument for that split, written at the relax site, was that "the
+   * flow field still routes straight over the cell and the hull simply slides
+   * around a 3 m disc that is smaller than the 4 m cell it sits in, so no route
+   * can ever become unreachable". `config.ts` had ALREADY measured that claim
+   * false: a 2 m rock at 182,298 that the planner cannot see sealed a one-cell
+   * corridor against a 3.87 m hull, and seed 4242 slot 43 sat parked for 2100
+   * consecutive ticks. A whole tier of harvester watchdogs exists to paper over
+   * exactly that. Two claims in one tree, one of them measured — the measured
+   * one wins, and the flag goes.
+   *
+   * NOT `Crushable`, which is the other half of "same as any other prop" and is
+   * the wrong half. Entity props and scatter props are drawn from the SAME
+   * geometry by design, and `Scatter.CRUSHABLE_FAMILIES` is `canopy` and
+   * `shrub` — rock is excluded there by name. Making the ENTITY crushable would
+   * put two identical boulders ten metres apart, one of which dissolves under a
+   * tank; making the FAMILY crushable would mow the ~7000-prop instanced rock
+   * carpet permanently. `spawnProp` also writes no `crushableBy`, so a boulder
+   * would fall through to `CRUSH.propDefaultLevel` = 1 and die under the
+   * lightest crusher in the game. And the Meridian Pact carries `crushLevel: 0`
+   * on every hull by doctrine, so crushable rocks would hand exactly one army
+   * no way to clear one.
+   *
+   * They still take damage and can be shot away. They still push hulls aside
+   * softly — `Steering`'s separation term skips a non-mover only when it has a
+   * footprint, and a prop's is 0 — so a hull does not park inside a boulder;
+   * it simply is no longer HELD OUT of one by a hard constraint the pathfinder
+   * never knew about. */
+  rock: { key: 'rock', kind: EntityKind.Prop, radius: 2.0, height: 2.6, maxHp: 400, flags: PROP_BASE },
+  boulder: { key: 'boulder', kind: EntityKind.Prop, radius: 3.2, height: 4.4, maxHp: 800, flags: PROP_BASE },
   barrel: { key: 'barrel', kind: EntityKind.Prop, radius: 0.6, height: 1.1, maxHp: 30, flags: PROP_BASE | EntityFlag.Crushable },
   crate: { key: 'crate', kind: EntityKind.Crate, radius: 1.0, height: 1.0, maxHp: 20, flags: PROP_BASE },
   wreck: { key: 'wreck', kind: EntityKind.Wreck, radius: 2.4, height: 1.8, maxHp: 1, flags: PROP_BASE },
@@ -2699,7 +2734,12 @@ export class ScenarioBuilder {
     // without another side array. 0.5 is "as authored".
     if (options.scale !== undefined) s.seed[i] = Math.min(0.999, options.scale * 0.5);
 
-    if ((fb.flags & EntityFlag.BlocksNav) !== 0) this.block(px, pz, fb.radius);
+    // No prop reserves a spot any more — `rock` and `boulder` were the only two
+    // that ever satisfied this and they carry no `BlocksNav` now, so the test
+    // was a dead conditional that read as live. `scatter()` already reserves
+    // `SCENARIO_SCATTER.minSpacing` (3.2 m) concentrically at the same point,
+    // which equals boulder's radius and exceeds rock's, so scatter-placed props
+    // re-lay identically and no RNG draw moves.
     this.finish(id, i, key, owner, fb.kind, false);
     return id;
   }
@@ -2762,7 +2802,9 @@ export class ScenarioBuilder {
    * structure, on another prop, or outside the map.
    *
    * The full wilderness carpet (bible §1 ruling 9: 260 props/ha) belongs to the
-   * instanced scatter system — these are the ones that cast a real shadow, block
+   * instanced scatter system — these are the ones that cast a real shadow and
+   * can be shot away. NONE of them blocks navigation any more; `rock` and
+   * `boulder` were the last two that did. What they still do is cast a shadow,
    * nav and get crushed.
    *
    * REJECTS WATER, which it did not have to before `MAP_SEAS` existed. Every

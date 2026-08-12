@@ -364,9 +364,26 @@ export function buildPlacement(b: ScenarioBuilder, cx: number, cz: number): void
   b.setPlacement('warFactory', cellScratch[0], cellScratch[1]);
   const spec = b.currentPlacement();
 
-  // The rock the ghost's south-east corner has to dodge.
-  b.spawnProp('boulder', ghostX + 8, ghostZ + 6, { scale: 1.3 });
-  b.spawnProp('rock', ghostX + 5, ghostZ + 10, { scale: 1.1 });
+  /* THE OBSTACLE THE GHOST'S SOUTH-EAST CORNER HAS TO DODGE.
+   *
+   * A PILLBOX, and it used to be a boulder. Rocks and boulders carry no
+   * `EntityFlag.BlocksNav` since they stopped being nav barriers, and
+   * `Placement` skips every prop now — so the boulder that was placed here
+   * expressly to turn those cells red stopped turning anything red, and this
+   * fixture quietly photographed an all-green ghost. That is the shot's whole
+   * subject: it exists to capture the valid/invalid cell colouring, and without
+   * an invalid cell it captures half of it.
+   *
+   * A building is the right replacement rather than a bigger rock, because a
+   * building is what genuinely refuses a site — `markOccupied` writes the
+   * occupancy grid, which is the mechanism the ghost actually reads.
+   *
+   * The rocks stay, one cell further out. They are still scenery worth having
+   * in frame, and keeping them here is a standing reminder that they are NOT
+   * what makes the corner red. */
+  b.spawnBuilding('pillbox', owner, ghostX + 8, ghostZ + 6, { yawDeg: 24 });
+  b.spawnProp('boulder', ghostX + 13, ghostZ + 11, { scale: 1.3 });
+  b.spawnProp('rock', ghostX + 5, ghostZ + 13, { scale: 1.1 });
 
   // A structure sitting ready in the queue is what puts the HUD into the state
   // this shot exists to photograph.

@@ -451,6 +451,46 @@ roster was unusable against three of your four opponents.
   anything amphibious exists: a destroyer drove straight through the Pact's entire hover army with
   no separation and no hard relaxation. Silent interpenetration, not a collision.
 
+## Three rules that came out of one afternoon of bug reports
+
+Reported as *"Ore harvester just keep ignoring my commands!!"*, *"lets remove boulders and rocks as
+barriers, our logic is screwed up"* and *"trying to command my army to move to a certain point after
+a long game, and nothing, they just not respond"*. Eight defects, three rules.
+
+- **A FLOW-FIELD REF MUST COME BACK ON EVERY EXIT PATH.** `FLOWFIELD_CACHE_SIZE` is **24**, a slot is
+  reusable only at `refs` zero, and `release` is the only decrement. Every caller of it lives inside
+  `NavAssigner`, behind an `isMover` test that refuses `PendingDestroy` and `Garrisoned` — so dying
+  in transit, garrisoning and boarding a transport each leaked a slot **permanently**, and
+  `flushDestroyed`'s generation bump then erased `navField` so the ref became unreachable. At 24
+  leaked slots `requestFieldClass` returns -1, `NavAssigner` calls `finishOrder`, and **every move
+  order is cancelled on the tick it is issued, in silence, with the marker still on the ground**. An
+  IDLE selection is the worst case — idle units hold no field, so the whole group parks at once.
+  Fixed in TWO places and both are needed: the assigner's non-mover branch (garrison, boarding) and
+  `Damage.cleanupTick`'s `onFree` hook (deaths — a kill at Phase.Damage is flushed at Phase.Cleanup
+  in the same tick, *after* the assigner ran at PathRequest, so the assigner can never see one).
+  `tests/navfield-leak.spec.ts` fails on round 24 without it. `INav`'s own contract already said
+  "You MUST call `release` when the order ends"; dying is an order ending.
+- **NO PROP CARRIES `EntityFlag.BlocksNav`, and none may.** `rock` and `boulder` were the last two.
+  A `BlocksNav` prop was solid in `Movement.relax` ONLY — a physical constraint the PLANNER could not
+  see — and `config.ts` had already measured what that costs: a 2 m rock sealing a one-cell corridor
+  and parking a hull for 2100 ticks on a route the flow field thought was open. They are not
+  `Crushable` either: entity and scatter props share geometry, `CRUSHABLE_FAMILIES` excludes the rock
+  family, and the Meridian Pact carries `crushLevel: 0` on every hull by doctrine, so crushable rocks
+  would give exactly one army no way to clear one. `tests/crush.spec.ts` pins both flags off.
+  **`PropLibrary`'s own `blocksNav` boolean is a different field** — a scatter placement heuristic,
+  test-only otherwise — and stays as it is.
+- **A HARVESTER IGNORES ATTACK AND GUARD, AND `Stop` PARKS IT.** `write` in `input/Commands.ts`
+  refuses both outright, because both states are terminal for an unarmed unit (`Targeting` returns at
+  its `CanAttack` filter, so `settle` never runs; `finishOrder` demotes only
+  Moving/Fleeing/AttackMoving). Ctrl+A plus one right-click on an enemy used to send every miner into
+  the enemy base for good — the second route to the "they just suicide and going to enemy camp"
+  report already quoted in `sim/Harvesting.ts`. Stop leaves **`OrderKind.Stop` standing in the
+  column**, which is the park marker: `UnitState.Idle` means "player parked me" for every other unit
+  and "I have no work" to this FSM. `None` cannot carry it — `Transport.place`, `Garrison.recover`,
+  Chronoshift and `EntityStore.alloc` all write `None`+`Idle`, so a miner would freeze on unload.
+  And `guardX/guardZ` is a harvester's ORE ANCHOR: `Steering` has two stamp sites that skip
+  harvesters, `RepairSell.applyStance` was a third that did not.
+
 ## Hard rules
 
 - **Determinism.** Inside `simTick`, `Math.random()`, `Date.now()` and `performance.now()` are

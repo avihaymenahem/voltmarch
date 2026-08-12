@@ -562,7 +562,18 @@ export class RepairSellService {
       if (st.owner[i] !== (player as number)) continue;
       if (st.stance[i] === (stance as number)) continue;
       st.stance[i] = stance;
-      if (st.orderKind[i] !== OrderKind.Guard) {
+      // AND NOT A HARVESTER, WHOSE GUARD POST IS NOT A POST. `guardX/guardZ` is
+      // the ore ANCHOR for a harvester (§ANCHOR in sim/Harvesting.ts) — the
+      // centre of the leash disc that decides which patch it works. A mining
+      // harvester carries `orderKind = Harvest`, stamped every tick by
+      // `setDest`, so the Guard test above lets it straight through and a
+      // stance click on any selection containing a miner silently moved its
+      // patch to wherever the hull happened to be standing — the refinery
+      // apron, as often as not. Both of `Steering`'s guard-post stamp sites
+      // already skip harvesters and say why; this was the third one, and it
+      // was missed because stance is not an order.
+      if (st.orderKind[i] !== OrderKind.Guard
+        && (st.flags[i] & EntityFlag.IsHarvester) === 0) {
         st.guardX[i] = st.posX[i];
         st.guardZ[i] = st.posZ[i];
       }

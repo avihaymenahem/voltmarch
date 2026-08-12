@@ -343,8 +343,14 @@ export function evaluatePlacement(
     const kind = store.kind[i];
     // Wrecks and crates get crushed by the foundation; a building already
     // showed up as an occupied cell.
+    //
+    // AND EVERY PROP, not just the non-blocking ones. This used to refuse a
+    // site holding a rock or a boulder, which was the only reason one could not
+    // end up under a roof — trees, bushes and barrels were already skipped and
+    // already stand through finished buildings. Rocks join that class rather
+    // than opening a new one, and `spawnBuilding` fells what it lands on.
     if (kind === EntityKind.Wreck || kind === EntityKind.Crate) continue;
-    if (kind === EntityKind.Prop && (flags & EntityFlag.BlocksNav) === 0) continue;
+    if (kind === EntityKind.Prop) continue;
     if (kind === EntityKind.Building) continue;
 
     const r = store.radius[i];

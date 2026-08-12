@@ -588,7 +588,41 @@ export class NavAssigner {
     const n = st.aliveCount;
     for (let a = 0; a < n; a++) {
       const i = st.alive[a];
-      if (!isMover(st.flags[i], st.kind[i])) continue;
+      if (!isMover(st.flags[i], st.kind[i])) {
+        /* IT STOPPED BEING A MOVER WHILE HOLDING A FIELD. GIVE THE FIELD BACK.
+         *
+         * `release` has six call sites and every one of them is below this
+         * line, so anything that fails `isMover` while holding a ref leaked it
+         * PERMANENTLY — `refs` is never decremented again, the slot can never
+         * be evicted (`if (f.refs > 0) continue` in the victim scan), and
+         * `FLOWFIELD_CACHE_SIZE` is 24.
+         *
+         * What that looks like to a player is the whole reason this exists.
+         * Once all 24 slots are pinned, `requestFieldClass` returns -1, and
+         * `NavAssigner`'s no-field branch calls `finishOrder` — which sets
+         * `Arrived`, zeroes velocity and puts `Moving` back to `Idle`. The
+         * order is issued and cancelled inside ONE TICK, silently, with the
+         * order marker still on the ground. Reported as "trying to command my
+         * army to move to a certain point after a long game, and nothing, they
+         * just not respond", and an IDLE selection is the worst case because
+         * idle units hold no field, so `old < 0` holds for every one of them
+         * and the entire group parks at once.
+         *
+         * `isMover` refuses `PendingDestroy` and `Garrisoned`, so the paths in
+         * are: a unit garrisoning a building, a unit boarding a transport, and
+         * a death marked before Phase.PathRequest. None of them needs to be a
+         * death, which is why this is not sufficient on its own — a unit killed
+         * at Phase.Damage is flushed at Phase.Cleanup in the SAME tick and
+         * never gets another pass here. `Damage.cleanupTick` closes that half
+         * through `flushDestroyed`'s `onFree` hook.
+         *
+         * `INav`'s own contract in core/types.ts already said this: "You MUST
+         * call `release` when the order ends." Dying and being loaded into a
+         * transport are both an order ending. */
+        const held = st.navField[i];
+        if (held >= 0) { this.nav.release(held); st.navField[i] = -1; }
+        continue;
+      }
       const gen = st.gen[i];
       if (!ag.valid(i, gen)) {
         ag.claim(i, gen);
@@ -1610,32 +1644,20 @@ export class SteeringSolver {
                 if (s2 < queueSpeed) queueSpeed = s2;
               }
             }
-          } else if ((jf & EntityFlag.BlocksNav) !== 0 && st.kind[j] === EntityKind.Prop) {
-            // SOLID SCENERY, and the same deadlock as two units nose to nose.
-            //
-            // `Movement.relax` makes a `BlocksNav` prop — a rock or a boulder —
-            // physically solid, because `sim/Crush.ts` will not flatten one and
-            // a hull must not drive through it. But the separation term above is
-            // exactly ANTI-PARALLEL to travel when the rock is dead ahead, so on
-            // its own it produces a stand-off: the flow field pushes forward,
-            // the push cancels it, and the harvester sits in front of the rock
-            // until the match ends. Measured: it stopped 51 m short of its
-            // destination and stayed there.
-            //
-            // §5 cannot help — it probes the NAV GRID, and props are deliberately
-            // not in it (see the prop branch in `Movement.relax`). So reuse the
-            // sidestep this file already has for an obstruction that will not
-            // move: lean to my own right, harder the closer it is. A rock is
-            // never a queue to join, so there is no brake to inherit and no
-            // oncoming test to make.
-            const fx = -dx / d, fz = -dz / d;            // me -> it
-            if (fx * dirX + fz * dirZ > STEER_QUEUE_COS
-                && d < want * STEER_QUEUE_RANGE_MUL) {
-              const near = 1 - d / (want * STEER_QUEUE_RANGE_MUL);
-              passX += rightX * near;
-              passZ += rightZ * near;
-            }
           }
+          /* THE ROCK SIDESTEP IS GONE WITH THE THING IT COMPENSATED FOR.
+           *
+           * There was a branch here for `BlocksNav` props, and it existed
+           * because `Movement.relax` made a rock physically solid while the
+           * planner could not see it: the separation push is exactly
+           * anti-parallel to travel when the rock is dead ahead, so a hull
+           * stood off and never arrived (measured at 51 m short). §5 could not
+           * help, because §5 probes the nav grid and props were never in it.
+           *
+           * Rocks are ordinary scenery now, so the stand-off it fixed cannot
+           * occur — nothing holds a hull off a boulder in the first place.
+           * Restoring this branch without restoring the hard constraint would
+           * make hulls swerve around obstacles that no longer stop them. */
         }
       }
 

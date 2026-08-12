@@ -3594,8 +3594,13 @@ export class ProductionService implements QueueHooks {
       const flags = st.flags[i];
       if ((flags & EntityFlag.PendingDestroy) !== 0) continue;
       const kind = st.kind[i];
+      // No prop blocks an egress spot any more: rock and boulder were the only
+      // two that ever did, and they are ordinary scenery now. Strictly more
+      // cells are accepted, so `findEgressSpot` can only get more reliable —
+      // and a unit with nowhere to egress is the silent queue stall documented
+      // at the top of this file.
       if (kind === EntityKind.Wreck || kind === EntityKind.Crate) continue;
-      if (kind === EntityKind.Prop && (flags & EntityFlag.BlocksNav) === 0) continue;
+      if (kind === EntityKind.Prop) continue;
       return true;
     }
     return false;
