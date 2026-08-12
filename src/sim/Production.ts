@@ -85,6 +85,12 @@ import { grantUpgrade, hasUpgradeKey, upgradeByKey } from './Upgrades';
 // one can call it without owning a `MovementIntegrator`.
 import { setMoveClass } from './Movement';
 import { MoveClass } from './Flowfield';
+// THE ONE PREDICATE for "does this battlefield have a sea", shared with
+// `sim/Placement.ts` (which refuses an inland yard) and `sim/AI.ts` (which
+// skips a naval opening). A second definition here is how the build menu ends
+// up offering a shipyard for a sea the pathfinder will not route through — see
+// the header of `NavalWater.ts`, where two copies already had to be reconciled.
+import { mapSupportsNaval } from './NavalWater';
 
 import { BuildQueues, HoldReason, type QueueHooks, type QueueItemInfo } from './BuildQueue';
 import {
@@ -1153,6 +1159,8 @@ export class ProductionCatalog {
   private readonly byDefIdUnit = new Map<number, BuildEntry>();
   /** Upgrades by `publicId`. Their `defId` is -1, so the two maps above cannot hold them. */
   private readonly byUpgradeId = new Map<number, BuildEntry>();
+  /** 1 where the entry needs a sea to exist. Indexed by `BuildEntry.index`. */
+  private readonly seaBound: Uint8Array;
   /** True when a real DefTables was found and merged. */
   readonly bound: boolean;
 
@@ -1191,6 +1199,28 @@ export class ProductionCatalog {
         this.byFactionTab.set(faction * BUILD_TAB_COUNT + t, list);
       }
     }
+
+    this.seaBound = computeSeaBound(entries, this.byKeyMap);
+  }
+
+  /**
+   * Does this entry need the battlefield to have a sea in it?
+   *
+   * True for the four naval yards (`needsShore`), the seven warship hulls
+   * (`naval`), and — the part that is not obvious — anything whose PREREQ CHAIN
+   * runs through a yard. `transport` and `rclScow` are amphibious lifts, not
+   * warships, so neither carries `naval`; both are gated on a dock that cannot
+   * be founded without water, so both are just as unreachable. Asking the flags
+   * alone would have left two permanently dead cameos in the Vehicles tab and
+   * made the fix look half-done.
+   *
+   * `mrdSkiff` is the case that proves the closure is doing real work rather
+   * than matching on a name: it is a Pact hull with seats gated on
+   * `mrdForgeyard`, a LAND structure, so it stays available on a dry map.
+   */
+  requiresSea(entry: BuildEntry): boolean {
+    return entry.index >= 0 && entry.index < this.seaBound.length
+      && this.seaBound[entry.index] === 1;
   }
 
   /** Catalog entry by its index. Null for an out-of-range id. */
@@ -1273,6 +1303,70 @@ export class ProductionCatalog {
 }
 
 const EMPTY_ROSTER: readonly BuildEntry[] = [];
+
+/**
+ * Mark every entry that cannot exist on a battlefield with no navigable water.
+ *
+ * SEEDS are the two authored flags — `needsShore` (the yard may only be founded
+ * on a coast) and `naval` (the hull launches onto water). Then a FIXPOINT over
+ * `prereqs`: an entry whose prerequisite is already marked is marked too,
+ * repeated until nothing changes. Prereq chains here are two deep at most, so
+ * this converges in a couple of passes; the loop is written as a fixpoint
+ * anyway because a content edit that deepens a chain must not silently stop
+ * propagating.
+ *
+ * `NAVAL_PREREQ_ALIASES` is honoured for the same reason `availabilityOf`
+ * honours it: a Sub Pen SATISFIES a `navalYard` prereq. That makes the test an
+ * AND over the satisfiers, not an OR — a prereq is unreachable only when EVERY
+ * structure that would satisfy it is unreachable. Today both spellings of the
+ * yard are naval so the two readings agree, which is exactly the kind of
+ * coincidence `NavalWater.ts`'s own header warns about: it cannot be caught by
+ * testing the content you have. Written as the rule rather than as the
+ * coincidence. A prereq key that resolves to nothing at all contributes
+ * nothing.
+ *
+ * Runs ONCE, in the catalog constructor. The result is a property of the
+ * CONTENT table, not of any map — which map is being played is a separate
+ * question asked per snapshot. Nothing here reorders, inserts into or removes
+ * from any def array: `entries` is read, and the output is a parallel bitmap
+ * indexed by `BuildEntry.index`.
+ */
+function computeSeaBound(
+  entries: readonly BuildEntry[],
+  byKey: ReadonlyMap<string, BuildEntry>,
+): Uint8Array {
+  const marked = new Uint8Array(entries.length);
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    if (e.needsShore || e.naval) marked[e.index] = 1;
+  }
+
+  for (let pass = 0; pass < entries.length; pass++) {
+    let changed = false;
+    for (let i = 0; i < entries.length; i++) {
+      const e = entries[i];
+      if (marked[e.index] === 1) continue;
+      for (let k = 0; k < e.prereqs.length; k++) {
+        const key = e.prereqs[k];
+        const direct = byKey.get(key);
+        const alias = byKey.get(NAVAL_PREREQ_ALIASES[key] ?? '');
+        // Every structure that would satisfy this prereq, and whether they are
+        // ALL out of reach. One land-buildable satisfier is enough to keep the
+        // dependant available.
+        let satisfiers = 0;
+        let unreachable = 0;
+        if (direct !== undefined) { satisfiers++; unreachable += marked[direct.index]; }
+        if (alias !== undefined) { satisfiers++; unreachable += marked[alias.index]; }
+        if (satisfiers === 0 || unreachable !== satisfiers) continue;
+        marked[e.index] = 1;
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) break;
+  }
+  return marked;
+}
 
 /** Entity kinds `unitCensus` walks. Module scope: it runs every tick. */
 const OWNED_COUNT_KINDS: readonly EntityKind[] = [EntityKind.Infantry, EntityKind.Vehicle];
@@ -1515,6 +1609,18 @@ export class ProductionService implements QueueHooks {
   /** Cameo objects, pooled per tab so the HUD snapshot never allocates. */
   private readonly cameoPool: HudCameo[][] = [[], [], [], []];
   private cameoFaction: Faction = Faction.Neutral;
+  /**
+   * The entry behind each published cameo, per tab, in the SAME ORDER.
+   *
+   * `refreshSnapshot` used to walk `catalog.roster()` and index it with the
+   * cameo's position, which was only correct while the published list was the
+   * whole roster. It is not any more — see `rebuildCameos` — so the two are
+   * built together and read together, and the coupling is a field instead of an
+   * assumption.
+   */
+  private readonly cameoEntries: BuildEntry[][] = [[], [], [], []];
+  /** The naval verdict the published cameo lists were built for. */
+  private cameoNaval = false;
 
   /**
    * The real def tables, when a data module published some. Spawn paths read
@@ -3140,15 +3246,29 @@ export class ProductionService implements QueueHooks {
       ? (world.selection.ids[0] as EntityId) : NONE;
     snap.gameTimeSec = s.time;
 
-    if (this.cameoFaction !== p.faction) this.rebuildCameos(p.faction);
+    // ONCE PER SNAPSHOT, not once per cameo. With a live pathfinder this is two
+    // array reads (`navigableSeaCells`); without one it is a memoised flood
+    // behind a 64-probe fingerprint. Either is nothing at 30 Hz, and neither is
+    // something to pay ~60 times over for a grid of cameos that all get the
+    // same answer.
+    //
+    // Re-asked every tick rather than latched at match start because the map
+    // can change under a live service: `Terrain.setSea` and `Terrain.setBiome`
+    // regenerate the heightfield IN PLACE, same object, different battlefield.
+    // `surveyNavalWater`'s fingerprint exists for exactly that hazard, and a
+    // gate that cached the verdict once would reintroduce it one layer up.
+    const navalOk = mapSupportsNaval(world.terrain);
+    if (this.cameoFaction !== p.faction || this.cameoNaval !== navalOk) {
+      this.rebuildCameos(p.faction, navalOk);
+    }
 
     for (let t = 0; t < BUILD_TAB_COUNT; t++) {
       const tab = t as BuildTab;
       const list = snap.cameos[t];
-      const roster = this.catalog.roster(p.faction, tab);
+      const behind = this.cameoEntries[t];
       for (let c = 0; c < list.length; c++) {
         const cameo = list[c];
-        const entry = roster[c];
+        const entry = behind[c];
         const head = this.queues.head(p, tab);
         const isHead = head !== null && head.defId === entry.publicId;
         cameo.progress = isHead ? head!.progress : 0;
@@ -3244,9 +3364,41 @@ export class ProductionService implements QueueHooks {
     }
   }
 
-  /** Rebuild the pooled cameo objects for a faction. Cold path. */
-  private rebuildCameos(faction: Faction): void {
+  /**
+   * Rebuild the pooled cameo objects for a faction. Cold path.
+   *
+   * `navalOk` is `mapSupportsNaval()` for the battlefield being played. When it
+   * is false, every entry the catalog marks `requiresSea` is LEFT OUT of the
+   * published list — the player asked for naval content not to be SHOWN on a
+   * map with no water, and a greyed cameo reading "Requires Naval Yard" for a
+   * yard that can never be founded is the thing they were complaining about.
+   * Hiding is also the only honest answer: `evaluatePlacement` already refuses
+   * the yard outright (`PlacementFault.NoShore`), so the cameo was advertising
+   * something the sim would never accept.
+   *
+   * TWO PROPERTIES THIS GATE HAS THAT THE UNLOCK GATE DOES NOT, and they are
+   * the reason it is safe to apply here and to every player alike:
+   *
+   *   1. IT IS DERIVED FROM THE MAP, which every client in a match shares, so
+   *      it is deterministic and PvP-safe. This is NOT the progression unlock
+   *      gate, which answers from the LOCAL PROFILE and caused the tick-zero
+   *      desync `Scenarios.ts` had to be rescued from — it asks `isBuildable`
+   *      while spawning the STARTING ARMY, which is why PvP and replay playback
+   *      both call `suppressUnlockGate(true)`. Two players on one map always
+   *      get the same answer from `mapSupportsNaval`; two players with
+   *      different unlock profiles do not. Do not conflate the two axes, and do
+   *      not "fix" this one by routing it through `suppressUnlockGate`.
+   *   2. IT IS A FILTER ON AVAILABILITY, never a change to a def array.
+   *      `catalog.entries`, `catalog.roster()` and both def tables are
+   *      untouched and keep their order and their length. That is load-bearing:
+   *      replays store `defId` as a RAW ARRAY INDEX (`src/game/Replay.ts`) and
+   *      saves are key-stable, so reordering, inserting or removing would
+   *      silently repoint every recorded command. What changes here is which
+   *      entries get a cameo published this match.
+   */
+  private rebuildCameos(faction: Faction, navalOk: boolean): void {
     this.cameoFaction = faction;
+    this.cameoNaval = navalOk;
     for (let t = 0; t < BUILD_TAB_COUNT; t++) {
       const roster = this.catalog.roster(faction, t as BuildTab);
       const pool = this.cameoPool[t];
@@ -3257,9 +3409,15 @@ export class ProductionService implements QueueHooks {
         });
       }
       const list: HudCameo[] = [];
+      const behind = this.cameoEntries[t];
+      behind.length = 0;
       for (let i = 0; i < roster.length; i++) {
-        const cameo = pool[i];
         const entry = roster[i];
+        if (!navalOk && this.catalog.requiresSea(entry)) continue;
+        // Pooled by PUBLISHED position, not by roster position: the list is
+        // shorter than the roster on a dry map, and indexing the pool by `i`
+        // would leave holes in the middle of it.
+        const cameo = pool[list.length];
         cameo.defId = entry.publicId;
         cameo.isBuilding = entry.kind === BuildKind.Building;
         cameo.isUpgrade = entry.kind === BuildKind.Upgrade;
@@ -3267,6 +3425,7 @@ export class ProductionService implements QueueHooks {
         cameo.name = entry.name;
         cameo.cost = entry.cost;
         list.push(cameo);
+        behind.push(entry);
       }
       this.snapshot.cameos[t] = list;
     }
