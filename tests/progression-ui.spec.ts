@@ -307,7 +307,6 @@ describe('rewardCopy', () => {
       { kind: 'unlock', unlockId: 'prism-tank' },
       { kind: 'credits', amount: 2000 },
       { kind: 'map', mapId: 'canyon' },
-      { kind: 'power', powerId: 'chrono-sphere' },
       { kind: 'cosmetic', cosmeticId: 'ace-insignia' },
     ] as const;
     for (const r of cases) {

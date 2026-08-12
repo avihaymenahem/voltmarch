@@ -48,11 +48,11 @@
 import { BuildTab, CreditReason, EntityKind, Faction } from '../core/types';
 import type { MissionDef, Reward } from '../progression/types';
 import { RULE_METRIC } from '../progression/types';
-// The commander power table. Imported for the SELF-CHECK, not for the rows: a
-// `power` reward names a power by its unlock id, and until this edge existed
-// nothing anywhere compared the two strings. `progression/powers.ts` imports
-// nothing at all, so this keeps Missions.ts the leaf its header claims.
-import { COMMANDER_POWER_LIST, powerByUnlockId } from '../progression/powers';
+// NO EDGE TO `progression/powers.ts` ANY MORE, and its absence is the change.
+// This file used to import the power table for a self-check, because a `power`
+// reward named a power by its unlock id and nothing else compared the two
+// strings. A commander power is bought in the match now, from a Command Post,
+// so the mission table has nothing to say about one.
 
 /* ==========================================================================
  * 1. THE UNLOCK IDS
@@ -134,20 +134,58 @@ export const UNLOCKS = {
   mapContestedStrait: 'map.contested-strait',
   mapCoralShore: 'map.coral-shore',
 
-  /* -- commander powers ----------------------------------------------------
-   * THESE FIVE ARE REAL AND THESE FIVE STRINGS ARE THE JOIN. Each one is the
-   * `unlockId` of a row in `src/progression/powers.ts`, which is what
-   * `src/sim/CommanderPowers.ts` implements and what the HUD asks about before
-   * it offers the button. `validateMissions` refuses to load a `power` reward
-   * naming an id no power carries, and refuses to load a power no mission pays
-   * — because for a long time these ids WERE only strings: granted, written to
-   * the profile, printed on the end screen as "Callable once charged, in any
-   * match", and read by nothing whatsoever.                                  */
-  powerAirstrike: 'power.airstrike',
-  powerOrbitalScan: 'power.orbital-scan',
-  powerEmergencyRepair: 'power.emergency-repair',
-  powerOreBoost: 'power.ore-boost',
-  powerChronoshift: 'power.chronoshift',
+  /* -- the two new def groups ----------------------------------------------
+   * THESE REPLACED THE FIVE COMMANDER POWERS, which stopped being a mission
+   * reward in v2.6.0: a power is bought inside the match now, from a Command
+   * Post, so `power.airstrike` and its four siblings were deleted from this
+   * table along with the `power` reward variant that carried them.
+   *
+   * That left five missions — Armour Column, Demolition Crew, Old Guard,
+   * Continental Yield and Hostile Takeover — with nothing to pay, and
+   * `validateMissions` refuses a mission that pays nothing. It could not be
+   * fixed by reassignment: every id in this table is already granted by exactly
+   * one mission and the validator enforces it in both directions. So five new
+   * payloads had to exist, and every one of them had to be GENUINELY CONSUMED —
+   * the defect the powers themselves were an example of ("granted, written to
+   * the profile, printed on the end screen, and read by nothing whatsoever") is
+   * not one to repeat while fixing it.
+   *
+   * Two are new `UNLOCK_TAGS` groups over content that was ungated, is mirrored
+   * one-per-army, and is nowhere near the opening path. Three are new
+   * battlefields (below). Cosmetics were NOT an option: all fourteen are
+   * already paid, and nothing in the game renders one — `tests/reward-wiring.spec.ts`
+   * asserts that gap explicitly, so paying a sixth into it would have been the
+   * same bug with a different noun.
+   *
+   * unit.commander — `fieldMarshal` / `commissar` / `mrdHierarch` / `rclBaron`.
+   *   Four defs, one per army, `maxAlive: 1`, 1500 credits off a barracks and a
+   *   radar. `src/data/Defs.ts` used to argue these should stay ungated because
+   *   "a unit a player cannot build on day one is a unit most players never
+   *   meet"; that argument is answered by WHICH mission pays it. Old Guard is
+   *   "promote 15 units to elite rank", which nobody completes without meeting
+   *   the game properly first, and the hero is the officer those veterans get.
+   *
+   * struct.support — `repairDepot` / `mrdDepot` / `rclDepot`.
+   *   Three defs for four armies, the Neutral shape. Gated behind Demolition
+   *   Crew, the EASIEST of the five (raze 25 enemy structures — a couple of
+   *   matches), because the depot's own note asked for exactly that: "a support
+   *   structure gated behind mission progress would be a tutorial for a
+   *   mechanic nobody had met". At difficulty 1 the player has met it. Nothing
+   *   about repair becomes impossible meanwhile — the repair toggle and the
+   *   engineer are both day-one — so this gates convenience, not capability. */
+  unitCommander: 'unit.commander',
+  structSupport: 'struct.support',
+
+  /* -- three more battlefields, for the three remaining orphans ------------
+   * A map unlock is read by `mapAvailable` in `src/shell/SkirmishSetup.ts`,
+   * which is a live consumer with a visible effect, and "a new battlefield" is
+   * a reward an RTS player actually wants. Each reuses an existing
+   * `MAP_PRESET` at a player count or a light the roster did not offer — see
+   * the block above these three rows in `src/shell/settings-store.ts` for why
+   * inventing presets would have been the wrong kind of work in this release. */
+  mapSaltpanReach: 'map.saltpan-reach',
+  mapFoundryLine: 'map.foundry-line',
+  mapGlacierShelf: 'map.glacier-shelf',
 
   /* -- cosmetics ---------------------------------------------------------- */
   insigniaBronze: 'cosmetic.insignia.bronze',
@@ -184,14 +222,6 @@ const credits = (amount: number): Reward => ({ kind: 'credits', amount });
 /** A plain unlock: a unit, a structure, a superweapon. */
 const grant = (id: string): Reward[] => [unlock(id)];
 const mapUnlock = (id: string): Reward[] => [unlock(id), { kind: 'map', mapId: id.replace(/^map\./, '') }];
-/**
- * A commander power: the `unlock` half lands on the profile, the `power` half
- * is what the end screen prints. `id` must be the `unlockId` of a row in
- * `src/progression/powers.ts` — the self-check at the bottom of this file
- * enforces that in both directions, and it exists because these five rewards
- * shipped for a long time as strings nothing read.
- */
-const powerUnlock = (id: string): Reward[] => [unlock(id), { kind: 'power', powerId: id }];
 const cosmeticUnlock = (id: string): Reward[] => [unlock(id), { kind: 'cosmetic', cosmeticId: id }];
 
 const VEHICLES: readonly EntityKind[] = [EntityKind.Vehicle];
@@ -264,7 +294,7 @@ const COMBAT: readonly MissionDef[] = [
     target: 250,
     requires: ['combat.armour.1'],
     rule: { on: 'kill', kinds: VEHICLES },
-    reward: powerUnlock(UNLOCKS.powerAirstrike),
+    reward: mapUnlock(UNLOCKS.mapSaltpanReach),
   },
 
   /* -- demolition ---------------------------------------------------------- */
@@ -275,7 +305,7 @@ const COMBAT: readonly MissionDef[] = [
     description: 'Destroy 25 enemy structures.',
     target: 25,
     rule: { on: 'kill', kinds: STRUCTURES },
-    reward: powerUnlock(UNLOCKS.powerOrbitalScan),
+    reward: grant(UNLOCKS.structSupport),
   },
   {
     id: 'combat.razed.2',
@@ -323,7 +353,7 @@ const COMBAT: readonly MissionDef[] = [
     target: 15,
     requires: ['combat.veteran.1'],
     rule: { on: 'veterancy', rank: 2 },
-    reward: powerUnlock(UNLOCKS.powerEmergencyRepair),
+    reward: grant(UNLOCKS.unitCommander),
   },
 ];
 
@@ -431,7 +461,7 @@ const ECONOMY: readonly MissionDef[] = [
     target: 1_000_000,
     requires: ['economy.harvest.2'],
     rule: { on: 'earn', reasons: [CreditReason.Harvest] },
-    reward: powerUnlock(UNLOCKS.powerOreBoost),
+    reward: mapUnlock(UNLOCKS.mapGlacierShelf),
   },
   {
     id: 'economy.bank.1',
@@ -533,7 +563,7 @@ const CONSTRUCTION: readonly MissionDef[] = [
     description: 'Capture 10 enemy structures with engineers.',
     target: 10,
     rule: { on: 'capture' },
-    reward: powerUnlock(UNLOCKS.powerChronoshift),
+    reward: mapUnlock(UNLOCKS.mapFoundryLine),
   },
 ];
 
@@ -1014,27 +1044,6 @@ export function validateMissions(defs: readonly MissionDef[]): string[] {
       if (r.kind === 'cosmetic' && r.cosmeticId.length === 0) {
         problems.push(`mission "${m.id}" grants an empty cosmetic id`);
       }
-      /* -- a power reward has to name a power ------------------------------
-       * The defect this closes: `{ kind: 'power', powerId: 'power.airstrike' }`
-       * type-checks against any string, so five rewards named five powers that
-       * did not exist and the only symptom was a player pressing nothing.    */
-      if (r.kind === 'power') {
-        if (powerByUnlockId(r.powerId) === undefined) {
-          problems.push(
-            `mission "${m.id}" grants power "${r.powerId}", which no row in `
-            + 'src/progression/powers.ts implements — it would pay nothing',
-          );
-        }
-        // The `power` half is display; the `unlock` half is what the profile
-        // stores and what the HUD asks about. One without the other is a power
-        // the player is told about and can never call.
-        if (!m.reward.some((o) => o.kind === 'unlock' && o.unlockId === r.powerId)) {
-          problems.push(
-            `mission "${m.id}" grants power "${r.powerId}" without the matching `
-            + 'unlock — nothing would ever record that the player owns it',
-          );
-        }
-      }
     }
   }
 
@@ -1076,18 +1085,6 @@ export function validateMissions(defs: readonly MissionDef[]): string[] {
   for (const key of Object.keys(UNLOCKS) as (keyof typeof UNLOCKS)[]) {
     const id = UNLOCKS[key];
     if (!grantedBy.has(id)) problems.push(`unlock "${id}" (UNLOCKS.${key}) is declared but no mission grants it`);
-  }
-
-  /* -- and every implemented power is actually paid for --------------------
-   * The other direction of the same join. A power the simulation can fire but
-   * no mission awards is content nobody can reach, which looks exactly like a
-   * balance decision — the most expensive kind of content bug to find.       */
-  for (const power of COMMANDER_POWER_LIST) {
-    if (!grantedBy.has(power.unlockId)) {
-      problems.push(
-        `commander power "${power.key}" (${power.unlockId}) is implemented but no mission grants it`,
-      );
-    }
   }
 
   return problems;

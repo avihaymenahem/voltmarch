@@ -79,6 +79,7 @@ const SHARED_KEYS: Readonly<Record<string, readonly [string, string]>> = {
   warFactory: ['allied_warfactory', 'soviet_warfactory'],
   radar: ['allied_radar', 'soviet_radar'],
   battleLab: ['allied_tech', 'soviet_tech'],
+  commandPost: ['allied_commandpost', 'soviet_commandpost'],
   oreSilo: ['allied_silo', 'soviet_silo'],
   repairDepot: ['allied_depot', 'soviet_depot'],
   wall: ['allied_wall', 'soviet_wall'],

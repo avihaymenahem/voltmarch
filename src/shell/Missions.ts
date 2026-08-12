@@ -207,19 +207,6 @@ export function rewardCopy(r: Reward): RewardCopy {
         effect: 'Selectable in the skirmish lobby.',
         iconName: 'map',
       };
-    case 'power':
-      return {
-        kind: 'Commander Power',
-        name: unlockLabel(r.powerId),
-        // NAMES THE CONTROL, and it can now — for a long time this sentence
-        // read "Callable once charged, in any match" while the ONLY way to call
-        // one of the five was `__vmPowers.fire()` from a devtools console.
-        // There was no button anywhere. The powers bar (`CommanderPowerBar` in
-        // `src/ui/Sidebar.ts`) is what makes the promise true, and saying where
-        // it lives is what stops a player earning one and never finding it.
-        effect: 'Callable once charged, from the powers bar in any match.',
-        iconName: 'power',
-      };
     /* -- THE FOURTEEN THAT NOTHING WEARS ---------------------------------
      * This said "Worn by your army. No effect on the battle." The second
      * sentence was true and the first was not, and the first is the one a

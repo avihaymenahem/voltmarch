@@ -61,6 +61,9 @@ import {
   BUILD_TAB_HOTKEYS,
   BUILD_TAB_HOTKEY_LABELS,
 } from '../input/ActionCatalogue';
+// The power table, for the cameo glyph. `src/progression/powers.ts` imports
+// nothing, so the shell chunk and a node test both keep loading this file.
+import { powerByContentKey } from '../progression/powers';
 
 import {
   RollingCounter,
@@ -603,12 +606,21 @@ export const BUILD_COLUMNS = 2;
 /**
  * Rows built up front. The grid scrolls internally past this.
  *
- * EIGHT is the largest roster, so 2x6 = 12 slots covers every tab of every
- * faction with four to spare. Sized against the measurement rather than
- * guessed: the old 10 rows existed to survive scrolling that, at these roster
- * sizes, cannot happen.
+ * SEVEN, and it is a measurement rather than a guess — `tests/hud.spec.ts` reads
+ * the real rosters and fails here if any tab of any faction outgrows the pool,
+ * because a grid with fewer slots than its tab has entries simply DOES NOT DRAW
+ * the overflow: no error, no scrollbar worth noticing, a structure that quietly
+ * stops being buildable.
+ *
+ * It was 6 (=12 slots) against a largest roster of eight, "with four to spare".
+ * The Command Post spent one of them and the SOVIET Structures tab is the one
+ * that ran out: it holds thirteen entries, because the two original armies each
+ * carry the whole Neutral pool plus their own naval yard and defences. 2x7 = 14
+ * covers it with one to spare. A row costs a DOM subtree and a cameo canvas at
+ * boot and nothing per frame — `refreshSnapshot` only ever touches the slots
+ * that are live.
  */
-export const BUILD_ROWS = 6;
+export const BUILD_ROWS = 7;
 /** Cards built up front in the selection panel. */
 const CARD_POOL = 14;
 /** Segments in the power meter. */
@@ -626,7 +638,7 @@ const POWER_SEGMENTS = 14;
 export const STORAGE_WARN_FRACTION = 0.9;
 
 /** Tab titles, in `BuildTab` order. */
-const TAB_LABELS: readonly string[] = ['Structures', 'Defence', 'Infantry', 'Vehicles'];
+const TAB_LABELS: readonly string[] = ['Structures', 'Defence', 'Infantry', 'Vehicles', 'Powers'];
 /**
  * What the tab STRIP shows, as opposed to what the tab IS.
  *
@@ -636,7 +648,27 @@ const TAB_LABELS: readonly string[] = ['Structures', 'Defence', 'Infantry', 'Veh
  * length that fits, and `TAB_LABELS` is still what the tooltip and the
  * `aria-label` say, so nothing that has to be read aloud got shortened.
  */
-const TAB_SHORT: readonly string[] = ['BLD', 'DEF', 'INF', 'VEH'];
+const TAB_SHORT: readonly string[] = ['BLD', 'DEF', 'INF', 'VEH', 'PWR'];
+
+/**
+ * The glyph a build cell draws.
+ *
+ * A COMMANDER POWER IS NAMED FOR ITS EFFECT, and `iconForBuildable` matches on
+ * exactly that kind of prose — the same hazard `Cameos.archetypeFor` calls out
+ * for upgrades. "Airstrike" would land on the aircraft rule by luck and "Ore
+ * Boost" on the ore rule, but "Chronoshift" and "Orbital Scan" match nothing and
+ * would fall through to the tab default. So a power is looked up in the table
+ * that already decides this once, for the powers BAR — one set of five
+ * silhouettes, so the cameo the player buys and the button it becomes are the
+ * same picture.
+ */
+function iconForCameo(c: HudCameo, tab: BuildTab): IconName {
+  if (c.isPower) {
+    const power = powerByContentKey(c.key);
+    if (power !== undefined) return POWER_ICONS[power.id as number] ?? 'superweapon';
+  }
+  return iconForBuildable(c.key, c.name, tab, c.isBuilding);
+}
 
 /**
  * The build keyboard.
@@ -2061,6 +2093,16 @@ class BuildPanel {
   private briefKey = '';
 
   private activeTab: BuildTab = BuildTab.Structures;
+  /**
+   * Which tabs are on screen, in `BuildTab` order.
+   *
+   * Mirrors `HudSnapshot.tabVisible`, kept as a field because three things ask
+   * it — the strip's `hidden` flags, the arrow-key walk, and the guard that
+   * pulls `activeTab` off a tab that has just gone away. Seeded to the four
+   * that are always there so the constructor can read it before any snapshot
+   * has arrived.
+   */
+  private readonly tabVisible: boolean[] = [true, true, true, true, false];
   private armed: ArmedMode = 'none';
   private extras: ((key: string) => BuildExtras) | null = null;
   private liveSlots = 0;
@@ -2111,14 +2153,24 @@ class BuildPanel {
       b.setAttribute('role', 'tab');
       b.setAttribute('aria-selected', t === 0 ? 'true' : 'false');
       b.tabIndex = t === 0 ? 0 : -1;
-      b.title = `${TAB_LABELS[t]}  (${TAB_HOTKEY_LABELS[t]})`;
+      // BUILT ONCE, HIDDEN UNTIL EARNED. `CommanderPowerBar` is the precedent
+      // and the reason: build the whole pool up front, park what is not wanted,
+      // and let `update` flip `hidden`. Creating the button lazily would mean a
+      // DOM insertion in the middle of a frame the first time a Command Post
+      // finished, and `this.tabs` is indexed by `BuildTab` everywhere below.
+      b.hidden = !this.tabVisible[t];
+      const key = TAB_HOTKEY_LABELS[t] ?? '';
+      b.title = key === '' ? TAB_LABELS[t] : `${TAB_LABELS[t]}  (${key})`;
       // The word and the key badge, one line, no icon. The icon-over-label
       // stack cost 22 design units of band height to draw a picture that the
       // word beside it already said — and the band is the thing this redesign
       // had to give back. The badge stays paired with the word for the reason
       // it was paired with the icon: a badge floating in the gutter between two
       // tabs is owned by neither.
-      label(b, 'vm-hk', TAB_HOTKEY_LABELS[t]);
+      // The Powers tab has no letter (see `BUILD_TAB_HOTKEYS`), and an empty
+      // badge would still draw its border and its padding — so it gets no
+      // element at all rather than a hidden one.
+      if (key !== '') label(b, 'vm-hk', key);
       label(b, 'vm-tab-label', TAB_SHORT[t]);
       const alert = el('span', 'vm-tab-alert', b);
       alert.hidden = true;
@@ -2202,6 +2254,28 @@ class BuildPanel {
   private bindCameo(slot: BuildSlot, c: HudCameo): void {
     const cameos = this.cameos;
     if (cameos === null) return;
+    /*
+     * A COMMANDER POWER DRAWS ITS FLAT GLYPH AND NOTHING ELSE, and this early
+     * return is the whole of that decision.
+     *
+     * There is no mesh for "Airstrike", so the 3D path resolves null and the
+     * fallback painter draws the `upgrade` badge — a plinth, a cap and three
+     * chevrons. That is right for an upgrade and wrong for these: the Powers
+     * tab is FIVE entries and the badge is the same picture five times, so the
+     * grid reads as a column the player has to read the words of. Measured in a
+     * running match: five identical blue plinths, distinguishable only by price.
+     *
+     * `POWER_ICONS` already solves exactly this problem one panel over, for the
+     * powers BAR — an aircraft, a dish, a wrench, a coin and a prism — and
+     * `iconForCameo` above puts the same five under these cells. Leaving the
+     * canvas unbound is what lets them through, and it means the cameo a player
+     * buys and the button it becomes are the same silhouette.
+     */
+    if (c.isPower) {
+      cameos.unbind(slot.cameoCanvas);
+      slot.cameoCanvas.hidden = true;
+      return;
+    }
     const subject: CameoSubject = {
       key: c.key,
       name: c.name,
@@ -2387,12 +2461,30 @@ class BuildPanel {
 
   /* -- keyboard -------------------------------------------------------- */
 
+  /**
+   * The next VISIBLE tab from `from`, walking by `step` and wrapping.
+   *
+   * Every arrow-key move goes through this rather than through `% BUILD_TAB_COUNT`
+   * arithmetic, because a hidden tab is still a `<button>` in `this.tabs` and
+   * plain modulo would happily focus one — a focus ring on nothing, and a
+   * `selectTab` the HUD would refuse. Returns `from` when nothing else is
+   * visible, which cannot happen (four tabs are permanent) but is the answer
+   * that does not loop forever if it ever did.
+   */
+  private nextVisibleTab(from: number, step: number): number {
+    for (let i = 1; i <= BUILD_TAB_COUNT; i++) {
+      const t = (from + step * i + BUILD_TAB_COUNT * i) % BUILD_TAB_COUNT;
+      if (this.tabVisible[t]) return t;
+    }
+    return from;
+  }
+
   private onTabKey(ev: KeyboardEvent, index: number): void {
     let next = -1;
-    if (ev.key === 'ArrowRight') next = (index + 1) % BUILD_TAB_COUNT;
-    else if (ev.key === 'ArrowLeft') next = (index + BUILD_TAB_COUNT - 1) % BUILD_TAB_COUNT;
+    if (ev.key === 'ArrowRight') next = this.nextVisibleTab(index, 1);
+    else if (ev.key === 'ArrowLeft') next = this.nextVisibleTab(index, -1);
     else if (ev.key === 'Home') next = 0;
-    else if (ev.key === 'End') next = BUILD_TAB_COUNT - 1;
+    else if (ev.key === 'End') next = this.nextVisibleTab(0, -1);
     else if (ev.key === 'ArrowDown') {
       if (this.liveSlots > 0) { ev.preventDefault(); this.slots[0].root.focus(); }
       return;
@@ -2590,6 +2682,22 @@ class BuildPanel {
   }
 
   update(snap: HudSnapshot): void {
+    /* -- tab visibility ------------------------------------------------ *
+     * Before the active-tab compare, because a tab that has just gone away
+     * must not stay selected: `BuildPanel` reads `snap.cameos[activeTab]`, and
+     * a Command Post sold or shot out from under a player looking at the
+     * Powers tab would otherwise leave them staring at an empty grid with no
+     * highlighted tab to click away from. The snapshot's `activeTab` is the
+     * simulation's, so the correction is pushed back through `selectTab`
+     * rather than written locally — one authority, as everywhere else here. */
+    for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+      const on = snap.tabVisible[t] !== false;
+      if (this.tabVisible[t] === on) continue;
+      this.tabVisible[t] = on;
+      this.tabs[t].hidden = !on;
+      if (!on && (this.activeTab as number) === t) this.cb.selectTab(BuildTab.Structures);
+    }
+
     /* -- tabs ---------------------------------------------------------- */
     if (snap.activeTab !== this.activeTab) {
       this.activeTab = snap.activeTab;
@@ -2626,7 +2734,7 @@ class BuildPanel {
           `${c.name}, ${c.cost} credits${i < SLOT_HOTKEY_LABELS.length ? `, key ${SLOT_HOTKEY_LABELS[i]}` : ''}`,
         );
         slot.root.tabIndex = 0;
-        setIcon(slot.icon, iconForBuildable(c.key, c.name, this.activeTab, c.isBuilding));
+        setIcon(slot.icon, iconForCameo(c, this.activeTab));
         this.bindCameo(slot, c);
         slot.costNode.nodeValue = String(c.cost);
         slot.buildTime = this.extras?.(c.key).buildTimeSec ?? 0;

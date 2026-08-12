@@ -943,7 +943,6 @@ describe('banner copy', () => {
     expect(rewardSummary([{ kind: 'credits', amount: 750 }])).toBe('+750 credits');
     expect(rewardSummary([{ kind: 'unlock', unlockId: 'teslaCoil' }])).toBe('Tesla Coil unlocked');
     expect(rewardSummary([{ kind: 'map', mapId: 'frozenPass' }])).toBe('Map: Frozen Pass');
-    expect(rewardSummary([{ kind: 'power', powerId: 'airStrike' }])).toBe('Air Strike available');
     expect(rewardSummary([{ kind: 'cosmetic', cosmeticId: 'goldSkin' }])).toBe('Gold Skin unlocked');
     expect(rewardSummary([])).toBe('');
     expect(rewardSummary(undefined)).toBe('');

@@ -561,11 +561,15 @@ because it is the whole design:
 | Belongs to | a **hero unit** | the **player** |
 | Aimed at | a circle around the commander | **a point you name on the map** |
 | Needs | the hero alive and standing in the right place | nothing at all |
-| Earned by | building the hero | **completing a campaign mission** |
+| Earned by | building the hero | **buying it from a Command Post, in the match** |
 | How many | 4, one per army | 5, shared across every army |
 
-Powers charge from the start of every match and work with every hero dead. Each
-one is paid out by exactly one mission — see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
+Powers work with every hero dead. Each one is a ONE-OFF PURCHASE from your
+army's Command Post (Command Bunker / Pharos / Signal Rig), which publishes a
+fifth sidebar tab, **PWR**. Bought once, it is yours for the rest of that match
+and recharges on its own clock. The structure is 1,500 credits and −80 power off
+the radar tier; the five powers are 800 / 1,200 / 1,500 / 2,000 / 2,500. See
+[Campaign](/avihaymenahem/voltmarch/wiki/Campaign#commander-powers).
 
 | Power | Charge | Radius | Effect |
 |---|---|---|---|
@@ -578,12 +582,14 @@ one is paid out by exactly one mission — see [Campaign](/avihaymenahem/voltmar
 **The charge is spent whether or not the power catches anything.** A power that
 refunded itself on a miss would be a free map probe.
 
-**Honest caveat: there is no button for these yet.** The verb, the command bus,
-the multiplayer relay, the replay recorder and all five effects are implemented
-and tested, but nothing in the interface draws the buttons or the arm-then-click
-that aims them. Today they are reachable only from the browser console
-(`__vmPowers.fire('airstrike', x, z)`). Charges are also not written into a save,
-so a loaded game starts every power charging from full.
+**The powers bar is on the right rail**, under the superweapon countdowns: one
+row per power you have BOUGHT, showing its clock. Click a ready row to arm it,
+then click the map to aim. Right-click or Escape puts it away. A power you have
+not bought has no row and the simulation refuses it.
+
+**The tab needs the lights on.** It is published only by a completed, POWERED
+Command Post, so a raid on the structure or a brownout closes it. What you have
+already bought stays bought.
 
 ---
 

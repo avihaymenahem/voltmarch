@@ -52,7 +52,9 @@ import {
   ArmorClass, CommandKind, CreditReason, EntityFlag, EntityKind, Faction, UnitState,
 } from '../src/core/types';
 import type { Command, EntityId, PlayerId, SimContext } from '../src/core/types';
-import { AI_DIFFICULTY, AI_SKILL, CELL, MAX_QUEUE_DEPTH, SIM_DT, SIM_HZ } from '../src/core/config';
+import {
+  AI_DIFFICULTY, AI_SKILL, BUILD_TAB_ORDER, CELL, MAX_QUEUE_DEPTH, SIM_DT, SIM_HZ,
+} from '../src/core/config';
 import { Rng } from '../src/core/math';
 import { Economy } from '../src/sim/Economy';
 
@@ -217,7 +219,10 @@ function makeHarness(options: Options): Harness {
    * queueDepth: a stand-in that refuses the third item would hide a brain that
    * asked for it, and hiding that is the whole bug this file is about. */
   interface Item { defId: number; isBuilding: boolean; ticks: number; ready: boolean }
-  const queues: Item[][] = [[], [], [], []];
+  // ONE SLOT PER BUILD TAB, derived. A four-element literal threw on
+  // `queues[4].length` the day `BuildTab.Powers` landed — the same hard-coded
+  // four that stopped the brain buying a commander power at all.
+  const queues: Item[][] = BUILD_TAB_ORDER.map(() => []);
 
   function onStart(tab: number, defId: number): void {
     const entry = defId < 0 ? undefined

@@ -831,6 +831,41 @@ export const UNLOCK_TAGS: Readonly<Record<string, string>> = {
   mrdSlipway: 'struct.naval',
   rclDrydock: 'struct.naval',
 
+  /* -- unit.commander: the four heroes -------------------------------------
+   * ONE PER ARMY, `maxAlive: 1`, 1500 credits off a barracks and a radar.
+   *
+   * These shipped ungated with a written reason: "a fresh profile can field one
+   * … a unit a player cannot build on day one is a unit most players never
+   * meet". That reason is answered by WHICH mission pays for it. `combat.veteran.2`
+   * — Old Guard, promote fifteen units to elite rank — cannot be completed
+   * without playing the game properly for a while, so by the time the hero is
+   * gated the player has long since met the barracks it comes out of. And the
+   * hero is what fifteen elite soldiers are FOR.
+   *
+   * NOT ON ANY OPENING PATH. A commander is not a prerequisite for anything,
+   * appears in no `defaultBuildOrder`, and no scenario base places one;
+   * `tests/progression-gate.spec.ts` re-derives that per faction rather than
+   * trusting this note.                                                       */
+  fieldMarshal: 'unit.commander',
+  commissar: 'unit.commander',
+  mrdHierarch: 'unit.commander',
+  rclBaron: 'unit.commander',
+
+  /* -- struct.support: the service pad -------------------------------------
+   * Three defs for four armies, the Neutral shape, paid by `combat.razed.1` —
+   * Demolition Crew, raze 25 enemy structures, difficulty 1 and the earliest
+   * gate in this table.
+   *
+   * The depots' own note in the block below asked for exactly that: "a support
+   * structure gated behind mission progress would be a tutorial for a mechanic
+   * nobody had met". Twenty-five razed structures is a couple of matches, so
+   * the player has met it. NOTHING ABOUT REPAIR BECOMES IMPOSSIBLE: the repair
+   * toggle on a structure and the engineer that mends one are both day-one, and
+   * so is every unit the pad would have serviced. This gates convenience.      */
+  repairDepot: 'struct.support',
+  mrdDepot: 'struct.support',
+  rclDepot: 'struct.support',
+
   /* -- struct.tech: the one building that opens the top of every tab ------ */
   battleLab: 'struct.tech',
   mrdReliquary: 'struct.tech',
@@ -2393,6 +2428,70 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: Faction.Neutral, cost: 600, buildTime: 20, tab: BuildTab.Structures,
     prereqs: [], sortOrder: 902, model: 'civ_apartments', dim: CIV.civApartments,
     maxHp: 800, power: 0, sight: 16,
+  }),
+
+  /* -- THE COMMAND POST, one per army --------------------------------------
+   * APPENDED, for the reason the Repair Depot and superweapon blocks above
+   * state: `src/game/Replay.ts` records `defId` as a RAW ARRAY INDEX, so a row
+   * inserted anywhere above this line makes every existing recording play back
+   * a different game.
+   *
+   * THREE ROWS FOR FOUR ARMIES, the `battleLab` / `mrdReliquary` / `rclCrucible`
+   * shape: `Faction.Neutral` means "both original armies", so `commandPost`
+   * covers the Allies and the Soviets with two mass lists behind it, and the
+   * Pact and the Reclamation — which never draw from the Neutral pool — get one
+   * each.
+   *
+   * WHAT IT IS FOR. It is the ONLY structure in the game that publishes
+   * `BuildTab.Powers`, and that tab is the only route to a commander power. The
+   * five powers were a MISSION reward until v2.6.0: owned from the first tick of
+   * every match by a veteran profile and never by a fresh one, resolved in the
+   * UI because the simulation was forbidden from asking. A building is world
+   * state — the same on both clients, visible to the AI, in the checksum, in the
+   * save — so the question moved into the simulation where it belongs.
+   *
+   * THE PRICE IS A REAL DECISION, and it is priced against the tech building it
+   * sits beside rather than against nothing:
+   *
+   *   Battle Lab      2000 credits, 24 s, -60 power, opens the top of every tab.
+   *   Command Post    1500 credits, 20 s, -80 power, opens a tab of its own.
+   *
+   * Cheaper and quicker to raise, and then MORE EXPENSIVE TO KEEP: -80 is the
+   * third-heaviest draw in the game after a superweapon's -150 and an Arc
+   * Pylon's -90, so a base that adds one on top of a lab has to have paid for
+   * the generation first. That is the trade the structure exists to pose —
+   * hardware, or the commander's own repertoire — and it is answered on the
+   * power bar, not in credits. 750 hp against the lab's 900 for the same
+   * reason: it is an antenna farm, and it should be the thing a raid kills.
+   *
+   * PREREQ IS THE RADAR TIER, not the tech building. Behind the lab it would be
+   * a fifth tier on a tree the file's own header caps at three, and the powers
+   * would arrive so late that only the two 240 s ones would ever charge twice.
+   *
+   * NO `unlockedBy`, deliberately and permanently. `UNLOCK_TAGS` has no row for
+   * these keys and must not gain one: this structure is the only route to a
+   * commander power, and gating the route would put the powers straight back
+   * behind the profile — with the additional defect that the gate would now be
+   * inside the simulation. Every match, every profile, both armies. */
+  building({
+    key: 'commandPost', name: 'Command Post', blurb: 'Requisitions commander powers. Opens the Powers tab.',
+    faction: Faction.Neutral, cost: 1500, buildTime: 20, tab: BuildTab.Structures,
+    prereqs: ['radar'], sortOrder: 85, model: 'commandPost', dim: B.commandPost,
+    maxHp: 750, power: -80, sight: 22,
+  }),
+  building({
+    key: 'mrdPharos', name: 'Pharos', blurb: 'Requisitions commander powers. Opens the Powers tab.',
+    faction: FACTION_MERIDIAN, cost: 1500, buildTime: 20, tab: BuildTab.Structures,
+    prereqs: ['mrdOculus'], sortOrder: 85, model: 'meridian_pharos', dim: B.commandPost,
+    maxHp: 700, power: -80, sight: 22,
+    flags: mrdFlags(-80),
+  }),
+  building({
+    key: 'rclSignalRig', name: 'Signal Rig', blurb: 'Requisitions commander powers. Opens the Powers tab.',
+    faction: FACTION_RECLAIM, cost: 1500, buildTime: 20, tab: BuildTab.Structures,
+    prereqs: ['rclSpotter'], sortOrder: 85, model: 'reclaim_signalrig', dim: B.commandPost,
+    maxHp: 800, power: -80, sight: 22,
+    flags: rclFlags(-80),
   }),
 ];
 

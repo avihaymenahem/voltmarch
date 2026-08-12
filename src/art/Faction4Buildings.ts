@@ -997,6 +997,77 @@ function spotter(): StructureMassList {
  * with a lit gap between them held in the top of the frame, with the
  * transformer cans that feed it stacked against one flank.
  */
+/**
+ * THE SIGNAL RIG. The Reclamation's Command Post, and the faction's answer to
+ * an aerial is that an aerial is SCRAP YOU CLIMB.
+ *
+ * The Crucible holds its coil inside the frame, which is the faction saying "we
+ * built this". The Signal Rig hangs its gear OFF the frame — a raking derrick
+ * running out past the deck, a drum of cable on the ground, a horn slung under
+ * the head — which is the faction saying "we found this and it works". Nothing
+ * on it is machined and nothing on it is symmetric except the frame it is
+ * bolted to.
+ *
+ * `bodyFraction` 0.34 on a 10.5 m roofline puts the frame top around 4.1 m and
+ * gives the derrick the whole upper two thirds. The derrick RAKES rather than
+ * standing plumb, for the reason the Breaker Dock's shear legs do: a vertical
+ * member is the one thing on a Reclamation building that would read as a
+ * finished product.
+ */
+function signalRig(): StructureMassList {
+  const f = fp('commandPost');
+  const s = reclaimFrame(f.w, f.h, f.height, { bodyFraction: 0.34, team: 1.18, coil: 0.44 });
+  const legX = -s.w * 0.16;
+  const legZ = s.d * 0.06;
+  const legH = f.height - s.frameTop - 1.6;
+  const headY = s.frameTop + legH + 0.55;
+  s.masses.push(
+    // The derrick. One tapered leg, raked out over the deck; `mirrorX` gives
+    // the pair, which RCL-3 exempts for running gear the way it does the
+    // Breaker Dock's shear legs.
+    {
+      name: 'derrick', primitive: 'taperedBox', role: MassRole.Primary,
+      size: [0.72, legH, 0.72], anchor: [legX, s.frameTop + legH * 0.5, legZ],
+      slot: 'bareMetal', capSlot: 'grille', chamfer: 0.07, mirrorX: true,
+      rot: [0, 0, 0.11], shape: { topScaleX: 0.46, topScaleZ: 0.46 },
+    },
+    // The head the two legs meet under, and the horn slung beneath it. A horn
+    // and not a dish: the Reclamation does not own a dish.
+    cyl('head', MassRole.Primary, [1.55, 1.15, 1.55], [0, headY, legZ], 'paintMed', {
+      topRadius: 0.58, capSlot: 'grille', segments: 10,
+    }),
+    cyl('horn', MassRole.Primary, [1.85, 1.45, 1.85], [0.55, headY - 1.20, legZ], 'bareMetal', {
+      topRadius: 0.30, rot: [0.42, 0, -0.26], capSlot: 'grille', segments: 10,
+    }),
+    cyl('horn.throat', MassRole.Emissive, [0.52, 0.55, 0.52], [0.30, headY - 0.62, legZ], 'emissive', {
+      feature: Feature.Window, capSlot: 'emissive', segments: 8, chamfer: 0.05, group: 'throat',
+    }),
+    // The whip above the head, and its stay. Short: the height is the derrick's
+    // job and a long pole on top of it would push past the frozen roofline.
+    cyl('whip', MassRole.Greeble, [0.26, 1.20, 0.26], [0, headY + 0.70, legZ], 'bareMetal', {
+      group: 'whip', topRadius: 0.42, segments: 6, rot: [0, 0, -0.07],
+    }),
+    girder('head.tie', [s.w * 0.44, 0.24, 0.24], [0, s.frameTop + legH * 0.62, legZ], { group: 'headTies' }),
+    // The cable drum on the deck, lying on its side, and the run off it. This
+    // is the mass that says the thing was assembled where it stands.
+    cyl('drum', MassRole.Greeble, [1.20, 1.05, 1.20], [s.w * 0.30, s.roofY + 0.60, -s.d * 0.26], 'bareMetal', {
+      group: 'drum', rot: [0, 0, 1.5708], capSlot: 'hatch', segments: 10, chamfer: 0.05,
+    }),
+    box('drum.run', MassRole.Greeble, [s.w * 0.40, 0.20, 0.20], [s.w * 0.06, s.roofY + 0.28, -s.d * 0.26], 'bareMetal', {
+      group: 'drum', chamfer: 0.04,
+    }),
+    // The generator can against the far flank. One can, not a bank: the frame
+    // already carries the faction's repetition.
+    cyl('can', MassRole.Greeble, [0.78, s.roofY * 0.50, 0.78], [-s.w * 0.34, s.roofY * 0.27, -s.d * 0.24], 'bareMetal', {
+      group: 'can', topRadius: 0.88, capSlot: 'hatch', segments: 10, chamfer: 0.05,
+    }),
+  );
+  return list('reclaim_signalrig', 'Signal Rig', 'commandPost', s.masses, [
+    ...baseSockets(s.d, s.roofY + 0.9, s.w * 0.32, -s.d * 0.30),
+    { part: PartId.Antenna, pos: [0, f.height, 0] },
+  ]);
+}
+
 function crucible(): StructureMassList {
   const f = fp('battleLab');
   const s = reclaimFrame(f.w, f.h, f.height, { bodyFraction: 0.44, team: 1.10, coil: 0.52 });
@@ -1381,6 +1452,7 @@ export const RECLAIM_STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   breakerYard(),
   spotter(),
   crucible(),
+  signalRig(),
   drydock(),
   slagHeap(),
   barricade(),
@@ -1406,6 +1478,7 @@ export const RECLAIM_STRUCTURE_MODELS: Readonly<Record<string, string>> = {
   rclBreakerYard: 'reclaim_breakeryard',
   rclSpotter: 'reclaim_spotter',
   rclCrucible: 'reclaim_crucible',
+  rclSignalRig: 'reclaim_signalrig',
   rclDrydock: 'reclaim_drydock',
   rclHeap: 'reclaim_heap',
   rclBarricade: 'reclaim_barricade',

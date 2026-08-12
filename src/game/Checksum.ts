@@ -202,6 +202,15 @@ function hashPlayers(world: World): number {
     // disagree about who owns Uranium Shells and the desync detector would stay
     // silent until the damage difference had compounded into a dead tank.
     h = mix(h, p.upgradeMask);
+    // COMMANDER POWERS BOUGHT, for exactly the reasons the paragraph above
+    // gives for the upgrade mask, and one more that is specific to this one:
+    // until v2.6.0 ownership of a power lived in localStorage and the
+    // simulation was FORBIDDEN from reading it, precisely because two clients
+    // could disagree and nothing would notice. This line is what makes reading
+    // it safe — a disagreement about who owns Chronoshift is now a checksum
+    // fault at the tick it appears, not a mystery when somebody presses the
+    // button four minutes later.
+    h = mix(h, p.commanderPowerMask);
     // Production queues are sim state and a desync here is a classic one: two
     // runs that agree on every unit on the field but disagree about what is
     // being built diverge visibly a few seconds later.

@@ -587,9 +587,15 @@ anyone paying attention — it is a structure-killer and an area-denial threat. 
 cannot move.
 
 **Commander powers** — Airstrike, Orbital Scan, Emergency Repair, Ore Boost, Chronoshift — are
-earned from the mission table, charge from the start of every match and need no structure at all.
-They are fully implemented, and **there is no button for them yet**: today they are console-only. Do
-not plan around them (see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign#commander-powers)).
+**bought in the match, from a Command Post**, and they are a real third late-game layer beside the
+superweapons and the upgrades. The structure is 1,500 credits and **−80 power** off the radar tier;
+the powers are 800 to 2,500 each. Nine thousand credits buys all five, which is most of a starting
+bank — so the honest question mid-game is whether that money is better spent on hardware.
+
+Two things make it a decision rather than a shopping list. The **−80** is the third-heaviest draw in
+the game, so a Post on top of a Battle Lab wants generation paid for first. And the tab is published
+only while the Post is standing and POWERED, so it is a structure worth raiding and a grid worth
+protecting (see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign#commander-powers)).
 
 **Commander abilities** are the ones you can actually press, and they are free with your faction's
 1,500-credit hero. Iron Will (5 s of invulnerability, 60 s cooldown) is a small Iron Curtain you can
@@ -638,9 +644,10 @@ Behaviours worth knowing:
   repeatedly makes the next push bigger.**
 - With no Construction Yard it goes all-in with everything, immediately.
 - It **mirrors your unlocks**. Anything you have earned, it can build.
-- **It does not build superweapons and it never calls a commander power.** The brain classifies a
-  captured or scenario-given silo honestly but has no branch that asks for one, and it has no branch
-  for the five powers either. Both of those are yours alone in a skirmish.
+- **It builds superweapons, and it earns its commander powers the same way you do.** From Normal
+  upward it will raise a Command Post and buy the powers its difficulty allows — Normal gets Ore
+  Boost and Emergency Repair, Hard adds the Airstrike and the Orbital Scan, Brutal gets all five —
+  and then call them off live measurements. Easy builds no Post and buys nothing.
 - **It does not use transports and it does not garrison.** Its infantry walk.
 
 ---

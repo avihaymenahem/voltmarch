@@ -36,9 +36,16 @@ Around each construction vehicle the scenario reserves 13 m of ground and around
 
 ---
 
-## 2. The seven battlefields
+## 2. The ten battlefields
 
-Three ship open. The other four are earned — see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
+Three ship open. The other seven are earned — see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
+
+The last three arrived in v2.6.0 for a reason worth knowing: the five missions that used to pay
+out commander powers needed something real to grant once the powers became an in-match purchase,
+and "another battlefield" is a reward the lobby actually consumes. Each reuses an existing
+terrain preset at a **player count or a light the roster did not previously offer**, on its own
+landform roll — a preset is a balance surface, and inventing three would have been a different
+release.
 
 | Map | Biome | Character | Ore richness | Water | Unlocked by |
 | --- | --- | --- | --- | --- | --- |
@@ -49,13 +56,16 @@ Three ship open. The other four are earned — see [Campaign](/avihaymenahem/vol
 | **Contested Strait** | Temperate | Temperate land, coast prop mix | 0.80 | **24.3 %** | Blitz — win inside 15 minutes |
 | **Coral Shore** | Temperate | Densest prop cover in the game | 0.75 | **26.4 %** | Total Mobilisation — build 750 units |
 | **[Sunder Atoll](/avihaymenahem/voltmarch/wiki/Sunder-Atoll)** | Temperate | **Four islands, no land route.** 4 players | 0.80 | **53.8 %** | free |
+| **Saltpan Reach** | Arid | The arid flats cut to 2 players, at dusk | **1.00** | none | Armour Column — destroy 250 vehicles |
+| **Foundry Line** | Urban | The industrial grid head to head, at noon. 2 players | **0.70** | none | Hostile Takeover — capture 10 structures |
+| **Glacier Shelf** | Snowbound | High relief opened up for **4 players** | 0.90 | negligible | Continental Yield — mine 1,000,000 ore |
 
 Ore richness is a multiplier on the 900-unit-per-cell ceiling, so a field on Airbase Flats holds
 roughly **43 % more ore per cell** than the same field on Industrial Grid. That difference compounds
 over a long match and it is the single biggest map-level economic variable.
 
-> **Read the water column carefully.** Four of the seven are landlocked and mean it. Two carry a
-> quarter of the map in open sea. The seventh is more than half water and has no land route at
+> **Read the water column carefully.** Seven of the ten are landlocked and mean it. Two carry a
+> quarter of the map in open sea. The tenth is more than half water and has no land route at
 > all — see §6.
 
 ---
@@ -214,7 +224,7 @@ Water sits at a flat 2.0 m. Below it, ground units simply cannot go; there is no
 no depth gradient in the navigation grid. Hover units cross land and water alike. Naval hulls can
 *only* be on water. Aircraft ignore all of it.
 
-**Three of the seven maps carry a real sea. Four are landlocked.** Measured on all seven, with
+**Three of the ten maps carry a real sea. Seven are landlocked.** Measured on the original seven, with
 their real seeds and biomes, straight off the generator:
 
 | Map | Water cells | Largest single body | Navigable for ships |

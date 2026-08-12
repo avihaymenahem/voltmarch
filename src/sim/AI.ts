@@ -96,6 +96,7 @@ import {
   BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, MAX_QUEUE_DEPTH, SIM_DT, SIM_HZ,
 } from '../core/config';
 import {
+  BUILD_TAB_COUNT,
   EntityFlag, EntityKind, Faction, FACTION_PALETTE_KEYS, Locomotor, NONE, OrderKind, Stance,
   UnitState,
 } from '../core/types';
@@ -111,16 +112,18 @@ import { SUPERWEAPONS, SuperweaponId, superweapons } from './Superweapons';
 import type { SuperweaponDef } from './Superweapons';
 import { commanderPowers } from './CommanderPowers';
 import { hasUpgradeKey } from './Upgrades';
-import { COMMANDER_POWERS, CommanderPowerId } from '../progression/powers';
+import {
+  COMMANDER_POWERS, CommanderPowerId, ownsCommanderPower, powerByContentKey,
+} from '../progression/powers';
 import type { Channels, CommandBus, EventBus } from '../core/events';
 import type { EntityStore, World } from '../core/world';
 import { PerEntityU32 } from '../core/world';
 import { Rng, cellToWorld, clamp, clampCell, dist2, distSq2, hash2i, worldToCell } from '../core/math';
 import {
-  AI_DEPLOY, AI_NAVAL, AI_POWER, AI_SUPERWEAPON, AI_UPGRADE, BUILD_ROLE_NAMES, BuildCatalog,
-  BuildRole, THREAT_CLASS_NAMES, UpgradeAudience,
+  AI_DEPLOY, AI_NAVAL, AI_POWER, AI_POWER_BUY, AI_SUPERWEAPON, AI_UPGRADE, BUILD_ROLE_NAMES,
+  BuildCatalog, BuildRole, THREAT_CLASS_NAMES, UpgradeAudience,
   classifyThreat, difficultyProfile, openingFor, personalityProfile, pickUnit,
-  prereqsMet, superweaponPlanFor, upgradePlanFor,
+  powerPlanFor, prereqsMet, superweaponPlanFor, upgradePlanFor,
 } from './AIStrategy';
 import type {
   CatalogEntry, DefLookup, DifficultyProfile, OpeningStep, PersonalityProfile,
@@ -234,6 +237,8 @@ export interface AiIntent {
   superweaponsFired: number;
   powersCalled: number;
   upgradesBought: number;
+  /** Commander powers requisitioned from a Command Post. */
+  powersBought: number;
   /** Structures owned, by role name. */
   structures: Record<string, number>;
   /** Observed threat mix, by class name, normalised. */
@@ -421,8 +426,19 @@ export class AiBrain {
 
   /* -- production bookkeeping -------------------------------------------- */
   /** Requests issued but not yet acknowledged by a `production:started`. */
-  private readonly inFlight = new Int32Array(4);
-  private readonly inFlightTick = new Int32Array(4);
+  /**
+   * Outstanding `ProductionStart`s per tab, and the tick each was issued.
+   *
+   * `BUILD_TAB_COUNT`, NOT 4. Both of these were `new Int32Array(4)` and the
+   * guards that read them tested `tab > 3`, which is the same literal written
+   * five times. When `BuildTab.Powers` landed at index 4 the effect was
+   * silent and total: `canQueue` refused every commander power outright, so a
+   * brain built its Command Post, banked thirty thousand credits and never
+   * bought a thing. Nothing threw, nothing logged, and every unit test passed
+   * — it took booting a match and watching a Brutal AI sit on the money.
+   */
+  private readonly inFlight = new Int32Array(BUILD_TAB_COUNT);
+  private readonly inFlightTick = new Int32Array(BUILD_TAB_COUNT);
   /** Structures that finished and are waiting for a PlaceBuilding command. */
   private readonly pendingPlaceDef = new Int32Array(MAX_QUEUE_DEPTH);
   private pendingPlaceCount = 0;
@@ -604,6 +620,16 @@ export class AiBrain {
    * ever asks about its own faction's three.
    */
   private readonly upgradeAskedTick = new Int32Array(4).fill(-1e9);
+  /**
+   * Tick each `powerPlan` step was last asked for. See `powerSettled`.
+   *
+   * Sized to the plan, which is five for every army — one commander power is
+   * the same purchase in every sidebar, so unlike the upgrade plan there is no
+   * per-faction length to allow for.
+   */
+  private readonly powerAskedTick = new Int32Array(COMMANDER_POWERS.length).fill(-1e9);
+  /** Commander powers this brain has bought, for the debug probe. */
+  private powersBought = 0;
   /** Tick the fire layer last looked for a target and found nothing worth one. */
   private superBackoffTick = -1e9;
   /**
@@ -724,13 +750,13 @@ export class AiBrain {
     offs.push(events.on('production:started', (e) => {
       if ((e.player as number) !== me) return;
       const t = e.tab as number;
-      if (t >= 0 && t < 4 && this.inFlight[t] > 0) this.inFlight[t]--;
+      if (t >= 0 && t < BUILD_TAB_COUNT && this.inFlight[t] > 0) this.inFlight[t]--;
     }));
 
     offs.push(events.on('production:cancelled', (e) => {
       if ((e.player as number) !== me) return;
       const t = e.tab as number;
-      if (t >= 0 && t < 4 && this.inFlight[t] > 0) this.inFlight[t]--;
+      if (t >= 0 && t < BUILD_TAB_COUNT && this.inFlight[t] > 0) this.inFlight[t]--;
     }));
 
     offs.push(events.on('production:ready', (e) => {
@@ -1280,7 +1306,16 @@ export class AiBrain {
       || this.tryOreBoost(svc, p);
   }
 
-  /** May this difficulty call this power, and has its charge run? */
+  /**
+   * May this difficulty call this power, has it been BOUGHT, and has its charge
+   * run?
+   *
+   * Three conditions, two of them here. The purchase is inside `svc.isReady`
+   * since v2.6.0, which is deliberate rather than an omission: the human's HUD
+   * asks the same method, so a brain and a sidebar cannot disagree about what
+   * "ready" means. The mask stays first so a Normal brain never even measures
+   * whether an airstrike would land.
+   */
   private powerReady(svc: CommanderPowerReader, power: CommanderPowerId): boolean {
     if ((this.diff.powerMask & (1 << (power as number))) === 0) return false;
     return svc.isReady(this.player, power as number);
@@ -2282,7 +2317,7 @@ export class AiBrain {
     // A ProductionStart that was never acknowledged is assumed lost. Without
     // this the AI deadlocks forever against a production module that has not
     // landed yet — which is the boot state of this repo.
-    for (let t = 0; t < 4; t++) {
+    for (let t = 0; t < BUILD_TAB_COUNT; t++) {
       if (this.inFlight[t] > 0 && s.tick - this.inFlightTick[t] > AI_BUILD.requestTimeoutTicks) {
         this.inFlight[t] = 0;
       }
@@ -2492,6 +2527,8 @@ export class AiBrain {
     this.considerNavy();
     this.considerSuperweapon();
     this.considerUpgrades(s, p);
+    this.considerCommandPost(p);
+    this.considerPowers(s, p);
 
     if (this.bestEntry !== null) {
       this.buildGoal = this.bestGoal;
@@ -2746,6 +2783,98 @@ export class AiBrain {
    * no wall goes up — so buying one at exactly its price hands the enemy a
    * window where the AI has spent everything and fielded nothing.
    */
+  /**
+   * Build the Command Post, once, if this rung uses commander powers at all.
+   *
+   * GATED ON `powerMask`, WHICH IS THE WHOLE LADDER. An Easy brain has mask 0,
+   * so it never builds the structure and never buys a power — the same number
+   * that already decided it would never CALL one. That keeps one knob for the
+   * whole layer instead of a second `maxPowers` that could disagree with it.
+   *
+   * `roleCount + roleBuilding` is the one-at-a-time test, the same shape the
+   * repair depot above uses: a post standing OR rising counts, so the brain
+   * cannot queue two while the first is on the line.
+   *
+   * SCORED BELOW EVERY PRODUCER AND BELOW THE UPGRADE LAYER, on `pers.tech`,
+   * because that is what it is: the price of admission to a layer of buttons,
+   * bought out of a working economy or not at all. It also has to clear the
+   * same POWER headroom a superweapon does, and for a sharper reason — the
+   * Powers tab is published only by a `Powered` structure, so a post built into
+   * a brownout does not open the tab at all and the AI would have paid 1500
+   * credits for a dark building it can never buy anything from.
+   */
+  private considerCommandPost(p: PlayerState): void {
+    if (this.diff.powerMask === 0) return;
+    if (this.roleCount[BuildRole.CommandPost] + this.roleBuilding[BuildRole.CommandPost] > 0) return;
+    if (this.roleCount[BuildRole.Refinery] < AI_POWER_BUY.minRefineries) return;
+    const entry = this.catalog.forRole(BuildRole.CommandPost, this.faction);
+    if (entry === undefined) return;
+    // `entry.power` is negative; a surplus that does not cover it plus the
+    // headroom means the post arrives dark. Same projection the superweapon
+    // block makes, and the same reason.
+    if (p.powerProduced - p.powerConsumed + entry.power < AI_SUPERWEAPON.powerHeadroom) return;
+    this.consider(entry, AI_POWER_BUY.score * this.pers.tech, 'a command post for the powers');
+  }
+
+  /**
+   * Buy the commander powers this rung is allowed, cheapest useful first.
+   *
+   * `considerUpgrades`' twin — read that function and `upgradeSettled`, because
+   * every argument there applies here unchanged: a power produces a BIT, no
+   * census can see it, and without the settled test the scorer would re-propose
+   * the same 2500-credit purchase on every build pass for the rest of the
+   * match.
+   *
+   * THE LADDER IS `powerMask`, AGAIN. A Normal brain is allowed Ore Boost and
+   * Emergency Repair and buys exactly those two; it will not spend a credit on
+   * a Chronoshift it is not allowed to call. That is the same bit `callPower`
+   * checks, so the AI can never own a power it will not use or use one it has
+   * not bought.
+   *
+   * No `return` after a hit, like the upgrade layer: the five are not
+   * alternatives and the plan order only decides which is reached first.
+   */
+  private considerPowers(s: SimContext, p: PlayerState): void {
+    if (this.diff.powerMask === 0) return;
+    if (this.roleCount[BuildRole.CommandPost] === 0) return;
+    if (this.roleCount[BuildRole.Refinery] < AI_POWER_BUY.minRefineries) return;
+
+    const plan = powerPlanFor();
+    for (let k = 0; k < plan.length; k++) {
+      const spec = powerByContentKey(plan[k]);
+      if (spec === undefined) continue;
+      if ((this.diff.powerMask & (1 << (spec.id as number))) === 0) continue;
+      const entry = this.catalog.get(plan[k]);
+      if (entry === undefined) continue;
+      if (this.powerSettled(s, p, entry, spec.id as number)) continue;
+      if (p.credits < entry.cost * AI_POWER_BUY.bankMultiple) continue;
+      this.consider(entry, AI_POWER_BUY.score * this.pers.tech, `power: ${spec.key}`);
+    }
+  }
+
+  /**
+   * Is this power bought, on the line, or asked for too recently to ask again?
+   *
+   * `upgradeSettled` with one word changed, and the same three answers widest
+   * first. BOUGHT reads `PlayerState.commanderPowerMask` — the simulation's own
+   * authority, the same bit the human's sidebar greys the cameo on and the same
+   * bit `CommanderPowerService.use` refuses on. Reading a column of our OWN
+   * player is what this class does everywhere and is not the vision rule.
+   */
+  private powerSettled(
+    s: SimContext, p: PlayerState, entry: CatalogEntry, powerId: number,
+  ): boolean {
+    if (ownsCommanderPower(p, powerId)) return true;
+    if (s.tick - this.powerAskedTick[powerId] < AI_POWER_BUY.reaskTicks) return true;
+    const queue = p.queues[entry.tab as number];
+    if (queue === undefined) return false;
+    for (let i = 0; i < queue.items.length; i++) {
+      const it = queue.items[i];
+      if (!it.isBuilding && it.defId === entry.defId) return true;
+    }
+    return false;
+  }
+
   private considerUpgrades(s: SimContext, p: PlayerState): void {
     const allowed = Math.min(this.diff.maxUpgrades, this.upgradePlan.length);
     if (allowed <= 0) return;
@@ -2906,7 +3035,7 @@ export class AiBrain {
   private canQueue(entry: CatalogEntry, spendable: number): boolean {
     if (spendable < entry.cost) return false;
     const tab = entry.tab as number;
-    if (tab < 0 || tab > 3) return false;
+    if (tab < 0 || tab >= BUILD_TAB_COUNT) return false;
     const p = this.world.player(this.player);
     const queue = p === undefined ? undefined : p.queues[tab];
     const queued = queue === undefined ? 0 : queue.items.length;
@@ -2929,6 +3058,15 @@ export class AiBrain {
     // invisible to every probe; and the ask tick, because it produces no entity
     // and would otherwise be re-proposed on every build pass forever. See
     // `upgradeSettled`.
+    // A COMMANDER POWER NEEDS THE SAME TWO RECORDS AN UPGRADE DOES, and for the
+    // same reason: it produces no entity, so it is invisible to every probe and
+    // would be re-proposed on every build pass forever. See `powerSettled`.
+    if (entry.role === BuildRole.CommanderPower) {
+      this.powersBought++;
+      const spec = powerByContentKey(entry.key);
+      if (spec !== undefined) this.powerAskedTick[spec.id as number] = tick;
+      return;
+    }
     if (entry.role !== BuildRole.Upgrade) return;
     this.upgradesRequested++;
     for (let k = 0; k < this.upgradePlan.length && k < this.upgradeAskedTick.length; k++) {
@@ -4348,6 +4486,16 @@ export class AiBrain {
   get superweaponFireCount(): number { return this.superweaponsFired; }
   get commanderPowerCount(): number { return this.powersCalled; }
   get upgradeRequestCount(): number { return this.upgradesRequested; }
+  /**
+   * Commander powers this brain has ASKED for. Same reason the upgrade counter
+   * exists: a power produces a bit, so nothing else in the world records that
+   * the AI ever tried to buy one.
+   */
+  get powerBuyCount(): number { return this.powersBought; }
+  /** Command Posts owned or under construction. */
+  get commandPostCount(): number {
+    return this.roleCount[BuildRole.CommandPost] + this.roleBuilding[BuildRole.CommandPost];
+  }
   /** Superweapon structures owned or under construction. */
   get superweaponCount(): number {
     return this.roleCount[BuildRole.Superweapon] + this.roleBuilding[BuildRole.Superweapon];
@@ -4421,6 +4569,7 @@ export class AiBrain {
       superweaponsFired: this.superweaponsFired,
       powersCalled: this.powersCalled,
       upgradesBought: this.upgradesRequested,
+      powersBought: this.powersBought,
       structures,
       threat,
       waveThreshold: this.waveThreshold(),

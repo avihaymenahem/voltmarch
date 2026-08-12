@@ -519,6 +519,15 @@ describe('producer flags', () => {
     for (const entry of rig.production.catalog.entries) {
       if (entry.producesTabs.length === 0) continue;
       if (entry.kind !== 0 /* BuildKind.Building */) continue;
+      // THE POWERS TAB PRODUCES NOTHING, so the structure that publishes it is
+      // not a producer in the sense this guard means. A Command Post sells
+      // commander powers — bits on the player, never entities — so it carries
+      // neither flag deliberately: `IsFactory` would make `Viability` tell a
+      // player down to one Command Post that they can still play, and it would
+      // move the structure out of the power grid's first shed class, which is
+      // the class the Powers tab is gated on. `Viability.defaultIsProducer`
+      // makes the same exclusion from the other side.
+      if (entry.producesTabs.every((t) => t === 4 /* BuildTab.Powers */)) continue;
       const id = rig.production.spawnBuilding(rig.world.player(P0), entry, 20, 20, 1);
       if (id === (0 as EntityId)) continue;
       const i = st.index(id);

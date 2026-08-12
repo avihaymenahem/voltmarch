@@ -230,6 +230,17 @@ export interface ActionDef {
  * slots — which is why ten cameos carry a badge and the eleventh does not. A
  * badge on a key that does nothing is worse than no badge.
  *
+ * THE FIFTH TAB HAS NO LETTER, AND THAT IS THE ALPHABET'S DOING RATHER THAN AN
+ * OVERSIGHT. All twenty-six are allocated by the paragraph above, so a key for
+ * `BuildTab.Powers` could only be taken from the ten slot badges — and it would
+ * be a key that does nothing in every match before a Command Post is standing,
+ * which is most of every match. This file's own rule is that "a badge on a key
+ * that does nothing is worse than no badge", so the Powers row is the empty
+ * string: index-aligned with `BuildTab`, matched by no `KeyboardEvent.code`
+ * (which is never empty), filtered out of the help screen's chip list, and
+ * reachable by click and by the arrow keys from the tab strip like every other
+ * tab. Do not "fix" this by stealing `KeyM` from the tenth slot.
+ *
  * These are FIXED, not rebindable, and the honest consequence is that a player
  * who rebinds an order onto one of them creates a collision. The engine does not
  * pretend otherwise: `buildHotkeyBlockedBy` resolves it at the bottom of this
@@ -238,7 +249,7 @@ export interface ActionDef {
  * ========================================================================== */
 
 /** Tab hotkeys, in `BuildTab` order, as `KeyboardEvent.code`. */
-export const BUILD_TAB_HOTKEYS: readonly string[] = ['KeyB', 'KeyT', 'KeyI', 'KeyV'];
+export const BUILD_TAB_HOTKEYS: readonly string[] = ['KeyB', 'KeyT', 'KeyI', 'KeyV', ''];
 
 /** Slot hotkeys for the first ten cells of the open tab, in reading order. */
 export const BUILD_SLOT_HOTKEYS: readonly string[] = [
@@ -800,13 +811,18 @@ export const ACTIONS: readonly ActionDef[] = [
     label: 'Build Tab Keys',
     description:
       'Jump straight to structures, defences, infantry and vehicles without reaching for the ' +
-      'tabs. Bare keys only — a modifier belongs to an order, so Ctrl+B is left alone.',
+      'tabs. Bare keys only — a modifier belongs to an order, so Ctrl+B is left alone. The ' +
+      'Powers tab has no key: every letter is spoken for, and the tab is only on screen while ' +
+      'a Command Post is standing.',
     category: 'building',
     surface: 'hud',
     binding: 'fixed',
     defaultChord: null,
-    fixedChips: [...BUILD_TAB_HOTKEY_LABELS],
-    fixedCodes: [...BUILD_TAB_HOTKEYS],
+    // The Powers tab's empty code is dropped here rather than at the source:
+    // the arrays stay index-aligned with `BuildTab`, and the help screen shows
+    // only keys that exist.
+    fixedChips: BUILD_TAB_HOTKEY_LABELS.filter((c) => c !== ''),
+    fixedCodes: BUILD_TAB_HOTKEYS.filter((c) => c !== ''),
     chipJoin: 'list',
   },
   {
@@ -1187,6 +1203,9 @@ export function liveChordFor(id: string, bindings?: StoredBindings): ActionChord
  * camera row on `B` really would fight the tab.
  */
 export function buildHotkeyBlockedBy(code: string, bindings?: StoredBindings): ActionDef | undefined {
+  // The Powers tab's "code". Nothing can take a key that is not a key, and a
+  // rebind stored with an empty code would otherwise be reported as taking it.
+  if (code === '') return undefined;
   for (const a of ACTIONS) {
     if (a.binding !== 'rebindable') continue;
     const live = liveChordFor(a.id, bindings);

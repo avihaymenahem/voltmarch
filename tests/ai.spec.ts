@@ -23,7 +23,9 @@ import {
 import type {
   AvailabilityResult, Command, EntityId, IRng, IVision, PlayerId, SimContext,
 } from '../src/core/types';
-import { AI_DIFFICULTY, AI_MILITARY, AI_SQUAD_MIN, CELL, SIM_DT, SIM_HZ } from '../src/core/config';
+import {
+  AI_DIFFICULTY, AI_MILITARY, AI_SQUAD_MIN, BUILD_TAB_ORDER, CELL, SIM_DT, SIM_HZ,
+} from '../src/core/config';
 
 /**
  * Ticks before a brain of this difficulty is allowed to launch its FIRST
@@ -204,7 +206,11 @@ function makeHarness(options: HarnessOptions = {}): Harness {
 
   /* -- the stand-in production module ---------------------------------- */
   interface FakeItem { defId: number; isBuilding: boolean; ticks: number; ready: boolean }
-  const queues: FakeItem[][] = [[], [], [], []];
+  // ONE SLOT PER BUILD TAB, derived rather than written as four. The brain
+  // issues into `BuildTab.Powers` once it owns a Command Post, and a
+  // four-element literal here threw on `queues[4].length` — the fake failing
+  // for the same reason the brain itself did (`AI.inFlight` was `Int32Array(4)`).
+  const queues: FakeItem[][] = BUILD_TAB_ORDER.map(() => []);
 
   function onProductionStart(tab: number, defId: number): void {
     if (!options.production) return;

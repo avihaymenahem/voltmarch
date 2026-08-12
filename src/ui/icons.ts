@@ -913,6 +913,11 @@ const TAB_FALLBACK: Readonly<Record<number, IconName>> = {
   [BuildTab.Defense]: 'turret',
   [BuildTab.Infantry]: 'infantry',
   [BuildTab.Vehicles]: 'tank',
+  // A commander power has no hardware to draw, so the last resort is the
+  // superweapon glyph — the one icon in the set that already means "a thing the
+  // player calls down rather than builds". In practice `iconForCameo` in
+  // Sidebar.ts resolves all five to their own silhouette before reaching here.
+  [BuildTab.Powers]: 'superweapon',
 };
 
 /**
@@ -944,7 +949,17 @@ export function iconForUnitKey(key: string, name: string, kind: EntityKind): Ico
   return iconForBuildable(key, name, tab, isBuilding);
 }
 
-/** The four tab icons, in `BuildTab` order. */
+/**
+ * The tab icons, in `BuildTab` order.
+ *
+ * NOT DRAWN BY THE SIDEBAR any more — the icon-over-label stack was removed to
+ * give the band back its height, and the strip carries words. The array is kept
+ * because `tests/hud.spec.ts` uses it as the check that every tab has an
+ * identity in the icon set, so a tab added with no glyph is caught here rather
+ * than the day something starts drawing them again. The Powers tab borrows the
+ * superweapon glyph, which is the one that already means "called down, not
+ * built".
+ */
 export const TAB_ICONS: readonly IconName[] = [
-  'tabStructures', 'tabDefense', 'tabInfantry', 'tabVehicles',
+  'tabStructures', 'tabDefense', 'tabInfantry', 'tabVehicles', 'superweapon',
 ];

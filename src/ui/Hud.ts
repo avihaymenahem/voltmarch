@@ -603,11 +603,11 @@ export class Hud {
    * production service has not yet published a grid — see `snapshot()`.
    */
   private readonly localSnapshot: HudSnapshot;
-  private readonly localPool: HudCameo[][] = [[], [], [], []];
+  private readonly localPool: HudCameo[][] = [[], [], [], [], []];
   private localTab: BuildTab = BuildTab.Structures;
 
   /** The grid the local snapshot renders: catalog rows when reachable. */
-  private readonly gridRows: GridRow[][] = [[], [], [], []];
+  private readonly gridRows: GridRow[][] = [[], [], [], [], []];
   private gridFaction = -1;
   private gridFromCatalog = false;
   /** content key -> display name, for the "Requires X" sentence. */
@@ -641,21 +641,11 @@ export class Hud {
    *
    * Rebuilt in place every frame from `powersOwnedBy` — which takes a
    * caller-supplied array for exactly this reason — so the bar costs no
-   * allocation whatever the profile owns.
+   * allocation whatever the player has bought.
    */
   private readonly powers: CommanderPowerView;
   /** Scratch for `powersOwnedBy`. Never handed out, never reallocated. */
   private readonly ownedPowers: CommanderPowerDef[] = [];
-  /**
-   * The `isUnlocked` predicate, allocated ONCE.
-   *
-   * `powersOwnedBy` wants a function and this runs every frame, so the closure
-   * is built here rather than at the call site. It answers TRUE with no
-   * progression layer installed — the rule `progression-link` states and the
-   * reason a `?shot=` boot shows all five rather than none.
-   */
-  private readonly isPowerUnlocked = (unlockId: string): boolean =>
-    readProgression()?.isUnlocked(unlockId) ?? true;
   /**
    * The `CommanderPowerId` currently on the cursor, or 0 for none.
    *
@@ -762,8 +752,16 @@ export class Hud {
       brownout: false,
       hasRadar: false,
       activeTab: BuildTab.Structures,
-      cameos: [[], [], [], []],
-      tabAlert: [false, false, false, false],
+      cameos: [[], [], [], [], []],
+      tabAlert: [false, false, false, false, false],
+      // THE FALLBACK GRID NEVER SHOWS THE POWERS TAB. It runs when no
+      // production service has published a roster — a headless test, the first
+      // frames of a boot, a build with `src/sim/**` stubbed — and in that state
+      // there is no census, so nothing can answer whether a Command Post is
+      // standing and powered. `false` is the honest answer and it is also the
+      // safe one: a tab whose entries could not be bought would be a button
+      // that does nothing.
+      tabVisible: [true, true, true, true, false],
       selectionCount: 0,
       selectionPrimary: 0 as EntityId,
       gameTimeSec: 0,
@@ -1124,6 +1122,13 @@ export class Hud {
   /* ------------------------------------------------------------------ */
 
   private selectTab(tab: BuildTab): void {
+    // A HIDDEN TAB IS NOT SELECTABLE. The sidebar already hides the button and
+    // the Powers tab has no hotkey, so nothing reaches this with a hidden tab
+    // today — but `selectTab` is the ONE choke point between every route in
+    // (click, key, the sidebar's own correction when a tab goes away) and the
+    // simulation's `activeTab`, and a refusal anywhere else would be a second
+    // rule to keep in step.
+    if (this.tabHidden(tab)) return;
     if (this.production !== null) {
       this.production.setActiveTab(tab);
       this.production.clearTabAlert(tab);
@@ -1538,7 +1543,8 @@ export class Hud {
           // bound, and upgrades exist only in `Production.CONTENT`. A pooled
           // object is reused across rows, so it is set once here rather than
           // per row below — there is nothing that could flip it.
-          defId: -1, isBuilding: false, isUpgrade: false, key: '', name: '', cost: 0,
+          defId: -1, isBuilding: false, isUpgrade: false, isPower: false,
+          key: '', name: '', cost: 0,
           progress: 0, queued: 0, ready: false, onHold: false, available: true, reason: '',
           owned: 0,
         };
@@ -2315,17 +2321,27 @@ export class Hud {
    * five comparisons, and the bar's own signature gate quantises the countdown
    * to whole seconds, so a charging power still writes DOM once a second.
    *
-   * OWNERSHIP IS A LOCAL QUESTION and is answered here, on the machine that
-   * owns the profile, exactly as `powersOwnedBy`'s header requires. The
-   * simulation is never asked and must never be — a sim that refused a power
-   * because THIS browser had not earned it would diverge from a peer that had.
+   * OWNERSHIP IS SIMULATION STATE and is read straight off the local player's
+   * `commanderPowerMask`. It used to be a profile question answered here
+   * because the simulation was forbidden to ask it; both halves of that changed
+   * in v2.6.0, and the consequence for this function is that the bar and
+   * `CommanderPowerService.use` now read the SAME bit. A row can no longer
+   * appear for a power the simulation would refuse, which is the failure mode
+   * the old arrangement could only avoid by agreeing with itself.
    */
+  /** True when this tab is not on screen. Reads whichever snapshot is live. */
+  private tabHidden(tab: BuildTab): boolean {
+    const snap = this.production?.snapshot ?? this.localSnapshot;
+    return snap.tabVisible[tab as number] === false;
+  }
+
   private fillPowers(): void {
     const seam = commanderPowerSeam();
-    if (seam === null) { this.powers.count = 0; return; }
-
-    const owned = powersOwnedBy(this.isPowerUnlocked, this.ownedPowers);
     const player = this.world.localPlayer;
+    const me = this.world.players[player as number];
+    if (seam === null || me === undefined) { this.powers.count = 0; return; }
+
+    const owned = powersOwnedBy(me, this.ownedPowers);
     const rows = this.powers.rows;
     const n = Math.min(owned.length, rows.length);
 

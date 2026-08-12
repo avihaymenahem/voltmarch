@@ -51,7 +51,7 @@
  * ============================================================================
  */
 
-import { EntityFlag, EntityKind, NONE } from '../core/types';
+import { BuildTab, EntityFlag, EntityKind, NONE } from '../core/types';
 import type { EntityId, PlayerId } from '../core/types';
 import type { World } from '../core/world';
 
@@ -130,7 +130,17 @@ export function defaultIsProducer(world: World, slot: number): boolean {
   const st = world.store;
   if ((st.flags[slot] & (EntityFlag.IsBuilder | EntityFlag.IsFactory)) !== 0) return true;
   const entry = production()?.entryOf(st.handleOf(slot)) ?? null;
-  return entry !== null && entry.producesTabs.length > 0;
+  if (entry === null) return false;
+  // A TAB THAT MAKES NOTHING IS NOT PRODUCTION, and `BuildTab.Powers` is the
+  // one that makes nothing: a Command Post sells commander powers, which are
+  // BITS on the player and never entities. A player down to one of those has
+  // exactly the Refinery's problem in the paragraph above — an asset that
+  // cannot rebuild anything — and counting it would be the same way of telling
+  // a stranded player they are fine.
+  for (let i = 0; i < entry.producesTabs.length; i++) {
+    if ((entry.producesTabs[i] as BuildTab) !== BuildTab.Powers) return true;
+  }
+  return false;
 }
 
 /**

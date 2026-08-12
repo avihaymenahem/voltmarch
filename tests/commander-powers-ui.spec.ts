@@ -53,7 +53,7 @@ import {
   SELF_DESTRUCT_CONFIRM_SECONDS, lockedSentence, storageState,
 } from '../src/ui/Sidebar';
 import {
-  COMMANDER_POWERS, COMMANDER_POWER_LIST, powersOwnedBy,
+  COMMANDER_POWERS, COMMANDER_POWER_LIST, CommanderPowerId, grantCommanderPower, powersOwnedBy,
 } from '../src/progression/powers';
 import { GLYPHS } from '../src/ui/Chrome';
 import { ICONS } from '../src/ui/icons';
@@ -189,25 +189,32 @@ describe('commander powers — the bar has a row for every power', () => {
     expect(seen.size).toBe(COMMANDER_POWER_LIST.length);
   });
 
-  it('offers every power when no progression layer is installed', () => {
-    // `progression-link`'s rule: absent means ungated. The `?shot=` harness and
-    // a build with `src/progression/**` deleted must both show all five rather
-    // than none, or the bar disappears from every screenshot fixture.
-    const out = powersOwnedBy(() => true, []);
+  it('has a row for every power, so a full purse still fits the bar', () => {
+    // The bar is a fixed pool of `COMMANDER_POWER_ROWS` buttons. A player who
+    // buys all five must see all five, and the day a sixth power lands this
+    // is what says the pool has to grow with it.
+    const all = { commanderPowerMask: 0 };
+    for (const p of COMMANDER_POWER_LIST) grantCommanderPower(all, p.id as number);
+    const out = powersOwnedBy(all, []);
     expect(out.length).toBe(COMMANDER_POWER_LIST.length);
     expect(out.length).toBeLessThanOrEqual(COMMANDER_POWER_ROWS);
   });
 
-  it('offers only what the profile earned, and never more rows than exist', () => {
-    const owned = powersOwnedBy((id) => id === 'power.airstrike', []);
-    expect(owned.map((p) => p.key)).toEqual(['airstrike']);
-    expect(powersOwnedBy(() => false, []).length).toBe(0);
+  it('offers only what was BOUGHT in this match, and nothing on a fresh one', () => {
+    // The bar and `CommanderPowerService.use` read the same bit since v2.6.0,
+    // so a row can no longer appear for a power the simulation would refuse.
+    const owner = { commanderPowerMask: 0 };
+    expect(powersOwnedBy(owner, []).length).toBe(0);
+    grantCommanderPower(owner, CommanderPowerId.Airstrike);
+    expect(powersOwnedBy(owner, []).map((p) => p.key)).toEqual(['airstrike']);
   });
 
   it('reuses the caller-supplied array, so a per-frame rebuild allocates nothing', () => {
+    const all = { commanderPowerMask: 0 };
+    for (const p of COMMANDER_POWER_LIST) grantCommanderPower(all, p.id as number);
     const pool: ReturnType<typeof powersOwnedBy> = [];
-    const a = powersOwnedBy(() => true, pool);
-    const b = powersOwnedBy(() => true, pool);
+    const a = powersOwnedBy(all, pool);
+    const b = powersOwnedBy(all, pool);
     expect(a).toBe(pool);
     expect(b).toBe(pool);
     expect(pool.length).toBe(COMMANDER_POWER_LIST.length);

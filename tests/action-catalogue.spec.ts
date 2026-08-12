@@ -51,6 +51,7 @@ import {
   sameChord,
 } from '../src/input/ActionCatalogue';
 
+import { BUILD_TAB_COUNT } from '../src/core/types';
 import { KEYBINDS, chordLabel, findConflicts, defaultBindings } from '../src/shell/settings-store';
 
 /* ==========================================================================
@@ -249,10 +250,21 @@ describe('the build keyboard', () => {
     expect(BUILD_SLOT_HOTKEY_LABELS).toEqual(BUILD_SLOT_HOTKEYS.map(bareKeyLabel));
   });
 
-  it('has one tab key per build tab', () => {
-    // Four tabs, four keys. A fifth tab with no key would ship a badge-less tab
-    // and a help row that under-promises.
-    expect(BUILD_TAB_HOTKEYS.length).toBe(4);
+  it('has one slot per build tab, index-aligned with `BuildTab`', () => {
+    // ONE SLOT PER TAB, not one KEY per tab, and the difference is v2.6.0's.
+    // This read `toBe(4)` with the comment "a fifth tab with no key would ship
+    // a badge-less tab and a help row that under-promises". The fifth tab
+    // arrived and it does ship without a key, because there is no letter left
+    // to give it — the block above this array allocates all twenty-six — and a
+    // key that does nothing in every match before a Command Post is standing
+    // is worse than no key by this file's own rule. What still has to hold is
+    // the ALIGNMENT: the array is indexed by `BuildTab` in `Hud.onKeyDown`
+    // and in the strip, so a short array would silently give the last tab the
+    // wrong badge. The help row filters the empty slot; `bld.tabKeys` below.
+    expect(BUILD_TAB_HOTKEYS.length).toBe(BUILD_TAB_COUNT);
+    expect(BUILD_TAB_HOTKEY_LABELS.length).toBe(BUILD_TAB_COUNT);
+    // An empty slot is never matched: `KeyboardEvent.code` is never ''.
+    expect(BUILD_TAB_HOTKEYS.filter((c) => c === '').length).toBe(1);
   });
 
   it('uses each letter once across both surfaces', () => {
@@ -262,6 +274,9 @@ describe('the build keyboard', () => {
 
   it('names only bare letter keys, because the HUD returns early on any modifier', () => {
     for (const code of [...BUILD_TAB_HOTKEYS, ...BUILD_SLOT_HOTKEYS]) {
+      // The Powers tab's empty slot is not a key and is not asserted to be
+      // one; every code that IS a key still has to be a bare letter.
+      if (code === '') continue;
       expect(/^Key[A-Z]$/.test(code), `${code} is not a plain letter code`).toBe(true);
     }
   });
@@ -288,8 +303,13 @@ describe('the build keyboard', () => {
       // Index-aligned, or the help screen strikes through the wrong letter.
       expect(a?.fixedCodes?.length).toBe(a?.fixedChips?.length);
     }
-    expect(actionById('bld.tabKeys')?.fixedChips).toEqual([...BUILD_TAB_HOTKEY_LABELS]);
-    expect(actionById('bld.tabKeys')?.fixedCodes).toEqual([...BUILD_TAB_HOTKEYS]);
+    // FILTERED, because a chip for a key that does not exist would be an
+    // empty box on the help screen. The arrays themselves stay index-aligned
+    // with `BuildTab`; the row shows the keys a player can press.
+    expect(actionById('bld.tabKeys')?.fixedChips)
+      .toEqual(BUILD_TAB_HOTKEY_LABELS.filter((c) => c !== ''));
+    expect(actionById('bld.tabKeys')?.fixedCodes)
+      .toEqual(BUILD_TAB_HOTKEYS.filter((c) => c !== ''));
     expect(actionById('bld.slotKeys')?.fixedChips).toEqual([...BUILD_SLOT_HOTKEY_LABELS]);
     expect(actionById('bld.slotKeys')?.fixedCodes).toEqual([...BUILD_SLOT_HOTKEYS]);
   });

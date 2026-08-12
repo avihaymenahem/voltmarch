@@ -103,8 +103,9 @@ index — never from anything another person typed. You are *You*; the other pla
 Because gating is lifted, a PvP match is the only place you will see the whole roster without having
 ground the mission table out — including the six superweapons, all four aircraft and every commander
 power. Every one of those goes through the same command bus as a right-click, so they resolve
-identically on both machines and record correctly into a replay. (The five commander powers still
-have no button; they are console-only on both ends.)
+identically on both machines and record correctly into a replay. The five commander powers are NOT
+in that list any more and never needed to be: they are bought from a Command Post with credits both
+players can see, so they were never gated by the profile in the first place.
 
 Unlock suppression is not a convenience, it is a correctness requirement: the gate is consulted while
 the world is being built, and it answers from the *local* profile. Two players with different mission

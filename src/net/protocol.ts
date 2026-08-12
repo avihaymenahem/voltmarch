@@ -318,8 +318,17 @@ const ORDERS: ReadonlySet<number> = new Set<number>([
   OrderKind.Unload,
 ]);
 
+/**
+ * AN ALLOWLIST, NOT A RANGE CHECK, and `Powers` is spelt out here for the same
+ * reason the other four are: a `c.tab < BUILD_TAB_COUNT` test would silently
+ * start accepting whatever the next tab turns out to be, on a relay that is
+ * deliberately kept ignorant of the game's tables. A production command in the
+ * Powers tab is an ordinary `ProductionStart` carrying `defId` 3072 + the power
+ * id, which is inside `WIRE_LIMITS.maxDefId` — see `POWER_PUBLIC_ID_BASE`.
+ */
 const TABS: ReadonlySet<number> = new Set<number>([
   BuildTab.Structures, BuildTab.Defense, BuildTab.Infantry, BuildTab.Vehicles,
+  BuildTab.Powers,
 ]);
 
 const STANCES: ReadonlySet<number> = new Set<number>([

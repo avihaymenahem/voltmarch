@@ -36,6 +36,9 @@ import {
   MemoryBackend, SaveStore, autosaveSlotId, base64ToBytes, bytesToBase64,
   nextAutosaveSlot, type IndexStorage, type SaveSlotInfo,
 } from '../src/game/SaveStore';
+import {
+  CommanderPowerId, grantCommanderPower, ownedCommanderPowerKeys,
+} from '../src/progression/powers';
 
 const P0 = 0 as PlayerId;
 const P1 = 1 as PlayerId;
@@ -1051,6 +1054,60 @@ describe('world state that is not entities', () => {
     // No section in the file, so nothing is written: the engine's own seeding
     // stands, which is exactly what the build that wrote this file did.
     expect(dst.powers.get(P0, 'airstrike')).toBe(99);
+  });
+
+  /* -- the PURCHASE, which is a different fact from the charge --------------
+   * `PlayerState.commanderPowerMask` is what the five missions used to write
+   * onto the PROFILE. `src/sim/CommanderPowers.ts` said, correctly at the time,
+   * that ownership "must NEVER enter a save file" — a save carrying unlocks
+   * would hand a fresh account content it had not earned. That sentence was
+   * about the profile. This is what happened during ONE MATCH, so a snapshot
+   * that dropped it would give the powers back for free on every reload, and a
+   * snapshot that merged rather than replaced would leave the previous match's
+   * purchases behind.                                                        */
+  it('restores exactly the powers that were BOUGHT, in both directions', () => {
+    const src = makeFixture();
+    populate(src, 4);
+    const a = src.world.player(P0);
+    grantCommanderPower(a, CommanderPowerId.Airstrike);
+    grantCommanderPower(a, CommanderPowerId.Chronoshift);
+    // The AI's slot too — the powers it bought are as much a part of the match
+    // as the player's, and a load that rearmed the opponent (or disarmed it)
+    // is the save-scum this file already caught once for the charges.
+    grantCommanderPower(src.world.player(P1), CommanderPowerId.OreBoost);
+
+    const captured = captureSnapshot(src.host, 'bought');
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+
+    const dst = makeDestination(src);
+    // A fresh engine owns nothing, which is what a load boots into...
+    expect(dst.world.player(P0).commanderPowerMask).toBe(0);
+    // ...and something the file does NOT name must be cleared, not kept.
+    grantCommanderPower(dst.world.player(P0), CommanderPowerId.EmergencyRepair);
+
+    expect(restoreSnapshot(captured.value.bytes, dst.host).ok).toBe(true);
+
+    expect(ownedCommanderPowerKeys(dst.world.player(P0), []))
+      .toEqual(['airstrike', 'chronoshift']);
+    expect(ownedCommanderPowerKeys(dst.world.player(P1), [])).toEqual(['oreBoost']);
+    expect(dst.world.player(P0).commanderPowerMask).toBe(a.commanderPowerMask);
+  });
+
+  it('gives no powers to a save written before they were purchasable', () => {
+    // `powerKeys` is optional and there is no `SAVE_SCHEMA_VERSION` bump, so an
+    // older file arrives `undefined` and restores to none — which is the truth
+    // about it: in the build that wrote it there was nothing to buy.
+    const src = makeFixture();
+    populate(src, 4);
+    const captured = captureSnapshot(src.host, 'pre-powers');
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+
+    const dst = makeDestination(src);
+    grantCommanderPower(dst.world.player(P0), CommanderPowerId.Chronoshift);
+    expect(restoreSnapshot(captured.value.bytes, dst.host).ok).toBe(true);
+    expect(dst.world.player(P0).commanderPowerMask).toBe(0);
   });
 
   it('drops a power key this build does not have and clamps one it does', () => {

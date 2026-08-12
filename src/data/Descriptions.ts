@@ -150,6 +150,11 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'top of every tab — the heaviest tank, the capital ship and both '
     + 'superweapons. It hangs off the Radar Dome.',
 
+  commandPost:
+    'Opens the Powers tab, where commander powers are bought one at a time — '
+    + 'an airstrike, a scan, a field repair. Nothing else opens it. Hangs off '
+    + 'the Radar Dome, and draws heavily.',
+
   navalYard:
     'Builds Allied ships into the vehicle queue. Only worth founding on a map '
     + 'with water — and where there is water, it is also your only way of '
@@ -419,6 +424,11 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'order and no button. A repair costs a fraction of a new hull, so it pays '
     + 'for itself as soon as you own vehicles.',
 
+  mrdPharos:
+    'The Pact lights a beacon to call one in. Opens the Powers tab, where '
+    + 'commander powers are bought one at a time — an airstrike, a scan, a '
+    + 'field repair. Needs an Oculus, and draws heavily.',
+
   mrdReliquary:
     "The Pact's tech building, and the gate in front of everything expensive: "
     + 'the Zenith siege beam, the Helios Spire, the Sunmonitor and the '
@@ -567,6 +577,11 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     'Park a damaged hull beside it and it is welded back up automatically — no '
     + 'order, no button. The toughest repair structure in the game, and a repair '
     + 'costs a fraction of a new hull.',
+
+  rclSignalRig:
+    'A scavenged derrick slung with a horn, toughest of the four. '
+    + 'Opens the Powers tab, where commander powers are bought one at a time — '
+    + 'an airstrike, a scan, a field repair. Draws heavily.',
 
   rclCrucible:
     'The Reclamation tech building. It opens the Slaghurler — the only hull in '

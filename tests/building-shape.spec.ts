@@ -380,8 +380,24 @@ describe('the shape pass costs no geometry', () => {
    * has always sat beside it, and the SUPERWEAPON rebase is where the first
    * version of that assertion — a mean — stopped being able to do the job.
    */
-  const BASELINE_TRIANGLES = 159_832;
-  const BASELINE_PARTS = 130;
+  /*
+   * 172380 / 138 over 69 — the four Command Posts (Command Post, Command
+   * Bunker, Pharos, Signal Rig), the structure that publishes `BuildTab.Powers`
+   * and the only route to a commander power. 2236 / 3968 / 3064 / 3280
+   * triangles, two parts each, all four inside the per-structure ceiling.
+   *
+   * THE MEAN IS WHY THIS REBASE IS HONEST RATHER THAN A RATCHET RELEASED. Every
+   * one of the four is ABOVE the roster mean — an antenna is a lathe and a
+   * lattice, and neither is cheap — so the mean moved UP, from 2453 to 2498,
+   * and `MAX_MEAN_TRIANGLES` (2500) is untouched. That is two triangles per
+   * structure of headroom, which is the tightest this pair of assertions has
+   * ever been and is stated here so the next person does not spend it by
+   * accident. It was paid for: the Command Bunker shipped at 4392 with a
+   * `catwalk()` on its roof and the catwalk was cut for exactly this reason,
+   * which is the note in `sovietCommandPost`.
+   */
+  const BASELINE_TRIANGLES = 172_380;
+  const BASELINE_PARTS = 138;
   /**
    * WHY THE MEAN WAS REPLACED BY A PER-STRUCTURE CEILING.
    *
@@ -521,7 +537,10 @@ describe('the Reclamation honours the rules its own header states', () => {
     // Frame members (columns, ties, legs, posts, jambs, crib), plus the two
     // things this file explicitly bolts to a column: the flank team plate and
     // the conduit that runs down it.
-    const allowed = /^(col\.|tie|brace|crib\.|post$|awning\.post|rail\.leg|shearleg|bay\.jamb|cradle\.leg|team\.rib|team\.post|team\.skirt|lit\.column)/;
+    // `derrick` joins `shearleg` for the reason that one is exempt: both are
+    // RUNNING GEAR for a lifting or signalling frame, and a derrick with one
+    // leg is not a derrick. See `signalRig` in Faction4Buildings.ts.
+    const allowed = /^(col\.|tie|brace|crib\.|post$|awning\.post|rail\.leg|shearleg|derrick|bay\.jamb|cradle\.leg|team\.rib|team\.post|team\.skirt|lit\.column)/;
     for (const l of RECLAIM_STRUCTURE_MASS_LISTS) {
       for (const m of l.masses) {
         if (m.mirrorX !== true) continue;

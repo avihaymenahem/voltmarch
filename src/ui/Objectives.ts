@@ -132,7 +132,6 @@ export type Reward =
   | { kind: 'unlock'; unlockId: string }
   | { kind: 'credits'; amount: number }
   | { kind: 'map'; mapId: string }
-  | { kind: 'power'; powerId: string }
   | { kind: 'cosmetic'; cosmeticId: string };
 
 export interface MissionDef {
