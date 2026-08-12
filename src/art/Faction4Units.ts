@@ -468,8 +468,17 @@ interface ScrapInfantryOpts {
   name: string;
   /** 'prod' arc pike | 'satchel' slag charge | 'tool' tinker's cutter. */
   weapon: 'prod' | 'satchel' | 'tool';
-  /** 'coil' battery coil | 'hopper' slag hopper | 'roll' tool roll. */
-  pack: 'coil' | 'hopper' | 'roll';
+  /**
+   * 'coil' battery coil | 'hopper' slag hopper | 'roll' tool roll |
+   * 'bottles' the dredger's salvaged air.
+   *
+   * `'bottles'` ALSO REPLACES THE BOOT WITH A SWIM FIN, exactly as
+   * `UnitDefs.InfantryOpts.pack` does with `'rebreather'`, and for the reason
+   * given there: the swimmers are the only soldiers whose silhouette has to
+   * read as amphibious at 20 px, and one option that cannot be half-applied
+   * beats two that can. Every other pack leaves the boot alone.
+   */
+  pack: 'coil' | 'hopper' | 'roll' | 'bottles';
   /**
    * A commander. Three added shapes, all in the outline — see the note on
    * `InfantryOpts.officer` in `UnitDefs.ts`, which this mirrors deliberately so
@@ -479,6 +488,19 @@ interface ScrapInfantryOpts {
    * tailored one, and the crest is a salvaged blade, not a plume.
    */
   officer?: boolean;
+}
+
+/**
+ * Which of the three torso widths a variant takes. Written as a function so the
+ * two axes below cannot drift apart, which a doubled nested ternary would let
+ * them do silently — and so the ORDER is stated once: hero first, then swimmer,
+ * then the rifleman everything else is measured against.
+ */
+function torsoScale(
+  o: ScrapInfantryOpts, officer: number, swimmer: number, base: number,
+): number {
+  if (o.officer === true) return officer;
+  return o.pack === 'bottles' ? swimmer : base;
 }
 
 function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
@@ -530,8 +552,13 @@ function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
     // silhouette and a hide cape adds silhouette the torso does not own.
     // Measured at 29.4% with the base wedge, which the validator rejected. X and
     // Z only, so the height band is untouched.
+    //
+    // The Dredger's is broader for exactly the same arithmetic and a different
+    // shape: a swim fin is twice the length of the boot it replaces and it all
+    // lands forward of the ankle, so the union silhouette grows while the torso
+    // does not. Measured at 33.9% on the base wedge — REJECTED by a point.
     primary('torso', 'taperedBox',
-      [W * (o.officer === true ? 1.04 : 0.84), torsoH, W * (o.officer === true ? 0.88 : 0.72)],
+      [W * torsoScale(o, 1.04, 0.94, 0.84), torsoH, W * torsoScale(o, 0.88, 0.80, 0.72)],
       [0, torsoY, 0], 'paintMed', {
         shape: { topScaleX: 1.10, topScaleZ: 0.86, shear: W * 0.10, cornerCut: 0.06 },
       }),
@@ -595,6 +622,22 @@ function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
     masses.push(greeble('roll', 'cylinder', [0.26, W * 0.60, 0.26], [0, torsoY + 0.08, -W * 0.40], 'tread', {
       rot: [0, 0, Math.PI * 0.5], group: 'pack', shape: { segments: 10, rTop: 1 },
     }));
+  } else if (o.pack === 'bottles') {
+    // TWO BOTTLES OF DIFFERENT LENGTHS, and the mismatch is the point. Every
+    // other army's diver wears a matched pair; this one wears whatever was in
+    // the heap, which is the asymmetry rule reaching the smallest figure in the
+    // roster. `mirrorX` is deliberately NOT used here for that reason.
+    masses.push(
+      greeble('bottleLong', 'cylinder', [0.24, 0.74, 0.24], [W * 0.24, torsoY + 0.12, -W * 0.42], 'bareMetal', {
+        group: 'pack', shape: { segments: 10, rTop: 0.88, capChamfer: 0.04 },
+      }),
+      greeble('bottleShort', 'cylinder', [0.22, 0.54, 0.22], [-W * 0.22, torsoY + 0.02, -W * 0.42], 'bareMetal', {
+        rot: [0, 0, 0.14], group: 'pack', shape: { segments: 10, rTop: 0.86, capChamfer: 0.04 },
+      }),
+      greeble('bottleStrap', 'taperedBox', [W * 0.62, 0.12, 0.14], [0, torsoY + 0.30, -W * 0.44], 'tread', {
+        group: 'pack', shape: { topScaleX: 0.94 },
+      }),
+    );
   } else {
     masses.push(greeble('battery', 'cylinder', [0.30, 0.46, 0.30], [0, torsoY + 0.08, -W * 0.40], 'bareMetal', {
       group: 'pack', shape: { segments: 10, rTop: 0.90, capChamfer: 0.04 },
@@ -612,13 +655,20 @@ function scrapInfantry(o: ScrapInfantryOpts): UnitMassList {
       rot: [0, 0, -0.42], group: 'pauldron',
       shape: { outline: taperOutline(W * 0.40, W * 0.46, 0.70), thickness: 0.10, bevel: 0.03 },
     }),
-    greeble('boot', 'taperedBox', [W * 0.40, 0.16, W * 0.60], [W * 0.24, 0.08, 0.06], 'paintTiny', {
-      // The boot is the far end of the leg, so it takes the HIP pivot, not an
-      // ankle of its own: a boot rotating about its own centre would stay flat
-      // on the ground while the shin swung away from it.
-      mirrorX: true, group: 'boots', gait: { limb: 'leg', pivotY: hipY },
-      shape: { topScaleZ: 0.82, shear: -0.04 },
-    }),
+    // The boot is the far end of the leg, so it takes the HIP pivot, not an
+    // ankle of its own: a boot rotating about its own centre would stay flat
+    // on the ground while the shin swung away from it. The fin keeps the
+    // boot's NAME and group as well as its pivot — `RIDES_THE_LEG` in
+    // `tests/infantry-gait-rosters.spec.ts` is keyed on the name.
+    o.pack === 'bottles'
+      ? greeble('boot', 'taperedBox', [W * 0.42, 0.13, W * 1.16], [W * 0.24, 0.066, W * 0.23], 'paintTiny', {
+        mirrorX: true, group: 'boots', gait: { limb: 'leg', pivotY: hipY },
+        shape: { topScaleX: 0.60, topScaleZ: 1.14, shear: W * 0.14 },
+      })
+      : greeble('boot', 'taperedBox', [W * 0.40, 0.16, W * 0.60], [W * 0.24, 0.08, 0.06], 'paintTiny', {
+        mirrorX: true, group: 'boots', gait: { limb: 'leg', pivotY: hipY },
+        shape: { topScaleZ: 0.82, shear: -0.04 },
+      }),
     greeble('belt', 'taperedBox', [W * 0.88, 0.12, W * 0.62], [0, torsoY - torsoH * 0.34, 0], 'paintTiny', {
       group: 'belt', shape: { topScaleX: 0.94 },
     }),
@@ -1019,7 +1069,22 @@ function scrapSupport(o: ScrapSupportOpts): UnitMassList {
 interface ScrapShipOpts {
   key: string; name: string;
   length: number; beam: number; height: number;
-  armament: 'bowGun' | 'battery';
+  /**
+   * What the bow carries. `'ramp'` is not an armament and that is the point: a
+   * hauler's bow is a door, so the branch that would put a gun there hangs a
+   * salvaged leaf on hinges instead, walks the bridge right aft to open the
+   * well, and deletes the ram the two armed hulls share. See `ShipOpts.armament`
+   * in `UnitDefs.ts`, which this mirrors so all four armies' landing ships are
+   * built by the same decision.
+   */
+  armament: 'bowGun' | 'battery' | 'ramp';
+  /**
+   * The eight-slot hull. It adds a travelling gantry over the well, which is
+   * what an eight-slot lift needs to strike cargo down and — the reason it is
+   * an option rather than a size threshold — what tells the Hauler apart from
+   * the Pact's Argosy and from any four-slot hull that lands beside it later.
+   */
+  heavy?: boolean;
 }
 
 function scrapShip(o: ScrapShipOpts): UnitMassList {
@@ -1028,6 +1093,15 @@ function scrapShip(o: ScrapShipOpts): UnitMassList {
   const hullY = hullH * 0.5;
   const superH = H * 0.40;
   const superY = H * 0.640;
+  const deckY = hullH + H * 0.08;
+  const lander = o.armament === 'ramp';
+  // The bridge position is the whole difference between an armed hull's profile
+  // and a hauler's, so it is ONE number that the glass, the coil, the cap slab
+  // and the bridge glow all derive from rather than six repetitions of
+  // `-L * 0.12`.
+  const superZ = lander ? -L * 0.34 : -L * 0.12;
+  const superL = lander ? L * 0.20 : L * 0.30;
+  const superX = lander ? -W * 0.04 : -W * 0.06;
 
   const masses: MassDef[] = [
     primary('hull', 'taperedBox', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
@@ -1036,19 +1110,19 @@ function scrapShip(o: ScrapShipOpts): UnitMassList {
     primary('deck', 'plate', [W * 0.98, H * 0.08, L * 0.92], [0, hullH + H * 0.04, -L * 0.02], 'paintMed', {
       shape: { outline: taperOutline(W * 0.98, L * 0.92, 0.42, 0.86), thickness: H * 0.08, bevel: 0.05 },
     }),
-    primary('bridge', 'taperedBox', [W * 0.66, superH, L * 0.30], [-W * 0.06, superY, -L * 0.12], 'paintLarge', {
+    primary('bridge', 'taperedBox', [W * 0.66, superH, superL], [superX, superY, superZ], 'paintLarge', {
       shape: { topScaleX: 0.72, topScaleZ: 0.70, shear: L * 0.05, cornerCut: 0.20 },
       plates: [
         {
           name: 'bridge.clad',
-          outline: taperOutline(L * 0.26, superH * 0.62, 0.68, 0.92),
+          outline: taperOutline(superL * 0.87, superH * 0.62, 0.68, 0.92),
           thickness: 0.12,
           offset: [W * 0.34, 0, 0], rot: [0, Math.PI * 0.5, 1.44],
           slot: 'paintMed', group: 'bridgeClad',
         },
         {
           name: 'bridge.team',
-          outline: taperOutline(L * 0.24, superH * 0.46, 0.70, 0.96),
+          outline: taperOutline(superL * 0.80, superH * 0.46, 0.70, 0.96),
           thickness: 0.10,
           offset: [-W * 0.34, 0.02, 0], rot: [0, Math.PI * 0.5, -1.50],
           slot: 'teamSlab', role: MassRole.TeamSlab, group: 'bridgeTeam',
@@ -1056,12 +1130,60 @@ function scrapShip(o: ScrapShipOpts): UnitMassList {
       ],
     }),
     // Sized so the derrick crown IS the top of the silhouette.
-    primary('derrick', 'cone', [W * 0.22, H * 0.22, W * 0.22], [W * 0.20, H - H * 0.11, -L * 0.20], 'bareMetal', {
+    primary('derrick', 'cone', [W * 0.22, H * 0.22, W * 0.22], [W * 0.20, H - H * 0.11, lander ? superZ + L * 0.06 : -L * 0.20], 'bareMetal', {
       shape: { segments: 10, rTop: 0.28 },
     }),
   ];
 
-  if (o.armament === 'bowGun') {
+  if (lander) {
+    masses.push(
+      // THE RAMP IS A PRIMARY, because it is the shape a player has to read from
+      // across the map to know this hull carries their tanks. Rolled a few
+      // degrees off level as well as raked, which no other army's ramp is: this
+      // one was cut off something else and hung on the hinges that fitted.
+      primary('bowRamp', 'plate', [W * 0.80, 0.16, L * 0.30], [0, deckY + H * 0.10, L * 0.36], 'stripe', {
+        rot: [-0.44, 0, 0.06],
+        shape: { outline: taperOutline(W * 0.80, L * 0.30, 0.70, 0.94), thickness: 0.16, bevel: 0.04 },
+      }),
+      greeble('rampHinge', 'cylinder', [0.26, W * 0.46, 0.26], [0, deckY + H * 0.02, L * 0.22], 'bareMetal', {
+        rot: [0, 0, Math.PI * 0.5], group: 'rampGear', shape: { segments: 10, rTop: 1 },
+      }),
+      // The well: a coaming down each side of the open vehicle deck and the
+      // winch that hauls the door shut at the head of it. Without the coaming
+      // the deck is a flat plate and the hull reads as a barge with a lid.
+      greeble('wellCoaming', 'taperedBox', [0.16, H * 0.20, L * 0.50], [W * 0.46, deckY + H * 0.11, L * 0.04], 'paintMed', {
+        mirrorX: true, rot: [0, 0, -0.16], group: 'well', shape: { topScaleX: 0.62 },
+      }),
+      greeble('rampWinch', 'cylinder', [0.54, W * 0.42, 0.54], [0, deckY + H * 0.16, -L * 0.14], 'bareMetal', {
+        rot: [0, 0, Math.PI * 0.5], group: 'well', shape: { segments: 10, rTop: 0.90, capChamfer: 0.04 },
+      }),
+      // NON-SKID. A vehicle deck is ribbed steel rather than painted topside,
+      // and it is also what pays for the bow gun and the ram this variant
+      // deletes — bible 5.4 wants 5-34% bare metal, and stripping the two
+      // largest metal objects off a hull is measured, not forgiven.
+      greeble('wellFloor', 'plate', [W * 0.68, 0.10, L * 0.44], [0, deckY + 0.05, L * 0.02], 'tread', {
+        group: 'well',
+        shape: { outline: taperOutline(W * 0.68, L * 0.44, 0.88, 0.96), thickness: 0.10, bevel: 0.03 },
+      }),
+      // A FIFTH TEAM PANEL, and R-T1 asked for it rather than taste. The
+      // hauler's violet lives on the bridge cladding and the bridge cap, and
+      // both shrink with the deckhouse when it walks aft — measured at 6.5%
+      // against R-T1's 8-14%, on the widest deck in the army. The coaming is
+      // where a landing ship carries its number anyway, and it is the one long
+      // flat run the well leaves free.
+      slab('coamingBand', [0.10, H * 0.11, L * 0.40], [W * 0.47, deckY + H * 0.13, L * 0.02], { mirrorX: true }),
+    );
+    if (o.heavy === true) {
+      masses.push(
+        greeble('gantryLeg', 'taperedBox', [0.22, H * 0.30, 0.26], [W * 0.40, deckY + H * 0.15, -L * 0.02], 'bareMetal', {
+          mirrorX: true, group: 'gantry', shape: { topScaleX: 0.68, topScaleZ: 0.78 },
+        }),
+        greeble('gantryBeam', 'taperedBox', [W * 0.94, 0.24, 0.32], [0, deckY + H * 0.31, -L * 0.02], 'bareMetal', {
+          group: 'gantry', shape: { topScaleX: 0.92, topScaleZ: 0.60, shear: 0.06 },
+        }),
+      );
+    }
+  } else if (o.armament === 'bowGun') {
     masses.push(
       // Grille, not paint: a barge hull is one enormous painted surface and
       // bible 5.4 caps painted area at 80%, so the bow shield has to be plant.
@@ -1084,10 +1206,10 @@ function scrapShip(o: ScrapShipOpts): UnitMassList {
   }
 
   masses.push(
-    ...arcCoil('coil', -W * 0.28, superY + superH * 0.5, -L * 0.12, W * 0.16, H - (superY + superH * 0.5)),
+    ...arcCoil('coil', -W * 0.28, superY + superH * 0.5, superZ, W * 0.16, H - (superY + superH * 0.5)),
     ...cladding('hullSlab', L * 0.36, H * 0.26, [-W * 0.52, hullH * 0.66, L * 0.06], 0.20),
     greeble('bridgeGlass', 'plate', [W * 0.50, 0.10, superH * 0.30],
-      [-W * 0.06, superY + superH * 0.14, -L * 0.12 + L * 0.15], 'glass', {
+      [superX, superY + superH * 0.14, superZ + superL * 0.5], 'glass', {
         rot: [1.30, 0, 0], group: 'bridgeGlass',
         shape: { outline: taperOutline(W * 0.50, superH * 0.30, 0.80), thickness: 0.10, bevel: 0.03 },
       }),
@@ -1096,43 +1218,74 @@ function scrapShip(o: ScrapShipOpts): UnitMassList {
     greeble('tender', 'cylinder', [0.40, 1.30, 0.40], [W * 0.36, hullH + H * 0.12, -L * 0.26], 'bareMetal', {
       rot: [Math.PI * 0.5, 0, 0], group: 'tender', shape: { segments: 10, rTop: 0.86 },
     }),
-    greeble('rail', 'greebleStrip', [0.16, 0.22, L * 0.72], [W * 0.44, hullH + H * 0.12, 0], 'bareMetal', {
-      mirrorX: true, group: 'rails', shape: { density: 2.2, seed: 0x7a11 },
-    }),
-    greeble('sternWinch', 'cylinder', [0.46, W * 0.34, 0.46], [-W * 0.14, hullH + H * 0.14, -L * 0.38], 'bareMetal', {
-      rot: [0, 0, Math.PI * 0.5], group: 'winch', shape: { segments: 10, rTop: 1 },
-    }),
-    greeble('ram', 'hull', [W * 0.34, hullH * 0.62, L * 0.10], [0, hullY, L * 0.50], 'bareMetal', {
-      group: 'ram',
-      shape: {
-        points: [
-          [-0.5, 0.5, -0.5], [0.5, 0.5, -0.5], [0, 0.10, 0.5],
-          [-0.34, -0.5, -0.5], [0.34, -0.5, -0.5], [0, -0.26, 0.34],
-        ],
-      },
-    }),
   );
+
+  // None of these three survives a bow door and an open well: the side rail
+  // runs where the coaming now is, the stern winch is under the deckhouse once
+  // the deckhouse moves aft, and a ram bow physically cannot share a stem with
+  // a ramp. Leaving them on was the fastest way to build the armed-hull
+  // silhouette the `'ramp'` variant exists to avoid.
+  if (!lander) {
+    masses.push(
+      greeble('rail', 'greebleStrip', [0.16, 0.22, L * 0.72], [W * 0.44, hullH + H * 0.12, 0], 'bareMetal', {
+        mirrorX: true, group: 'rails', shape: { density: 2.2, seed: 0x7a11 },
+      }),
+      greeble('sternWinch', 'cylinder', [0.46, W * 0.34, 0.46], [-W * 0.14, hullH + H * 0.14, -L * 0.38], 'bareMetal', {
+        rot: [0, 0, Math.PI * 0.5], group: 'winch', shape: { segments: 10, rTop: 1 },
+      }),
+      greeble('ram', 'hull', [W * 0.34, hullH * 0.62, L * 0.10], [0, hullY, L * 0.50], 'bareMetal', {
+        group: 'ram',
+        shape: {
+          points: [
+            [-0.5, 0.5, -0.5], [0.5, 0.5, -0.5], [0, 0.10, 0.5],
+            [-0.34, -0.5, -0.5], [0.34, -0.5, -0.5], [0, -0.26, 0.34],
+          ],
+        },
+      }),
+    );
+  }
 
   masses.push(
     slab('hullStripe', [0.08, hullH * 0.26, L * 0.66], [W * 0.48, hullH * 0.72, -L * 0.02], { mirrorX: true }),
-    slab('bridgeCap', [W * 0.30, 0.08, L * 0.16], [-W * 0.06, superY + superH * 0.5, -L * 0.12]),
+    slab('bridgeCap', [W * 0.30, 0.08, superL * 0.53], [superX, superY + superH * 0.5, superZ]),
     slab('deckPatch', [W * 0.46, 0.08, L * 0.14], [0, hullH + H * 0.09, L * 0.08]),
   );
-  masses.push(insignia([W * 0.32, 0.06, W * 0.32], [0, hullH + H * 0.09, -L * 0.30]));
+  // Aft on an armed hull, where the deck is clear. On a hauler that patch of
+  // deck is under the bridge, so it moves forward into the well instead.
+  masses.push(insignia([W * 0.32, 0.06, W * 0.32], [0, hullH + H * 0.09, lander ? -L * 0.18 : -L * 0.30]));
+  // On a hauler the middle of the deck is the well floor, so the conduit runs
+  // on top of the non-skid rather than inside it — and it is joined by a lit
+  // loading lane, which R-T5 asked for rather than taste: the widest hull in
+  // the army carries the same three strips as the narrowest and measured 0.5%
+  // emissive, exactly on the floor of the 0.5-3% band.
+  const deckLightY = lander ? deckY + 0.14 : hullH + H * 0.10;
   masses.push(
-    glow('conduit', [0.07, 0.10, L * 0.52], [W * 0.30, hullH + H * 0.10, -L * 0.04]),
-    glow('bridgeGlow', [W * 0.54, 0.24, 0.06], [-W * 0.06, superY + superH * 0.28, -L * 0.12 + L * 0.15]),
+    glow('conduit', [0.07, 0.10, L * 0.52], [W * 0.30, deckLightY, -L * 0.04]),
+    glow('bridgeGlow', [W * 0.54, 0.24, 0.06], [superX, superY + superH * 0.28, superZ + superL * 0.5]),
     glow('navLight', [0.30, 0.26, 0.06], [W * 0.36, hullH + H * 0.18, L * 0.32], { mirrorX: true }),
   );
+  if (lander) {
+    masses.push(glow('wellLane', [W * 0.16, 0.06, L * 0.24], [0, deckLightY, L * 0.02]));
+  }
 
   return {
     key: o.key, name: o.name, faction: RECLAIM_ART_FACTION, cls: 'naval',
     hullLength: L, masses, hullNumber: HULL_NUMBER,
-    sockets: [
-      { part: PartId.MuzzleA, pos: [0, hullH + H * 0.18, L * 0.50] },
-      { part: PartId.Exhaust, pos: [W * 0.20, H, -L * 0.20] },
-      { part: PartId.Emitter, pos: [-W * 0.28, H, -L * 0.12] },
-    ],
+    sockets: lander
+      // A hauler has no muzzle to hang a flash on and a door where the bow
+      // socket would be, so it publishes what a lift publishes: the point cargo
+      // walks through, the stack, and the coil.
+      ? [
+        { part: PartId.DockEntry, pos: [0, deckY, L * 0.46] },
+        { part: PartId.Door, pos: [0, deckY, L * 0.40] },
+        { part: PartId.Exhaust, pos: [W * 0.20, H, superZ + L * 0.06] },
+        { part: PartId.Emitter, pos: [-W * 0.28, H, superZ] },
+      ]
+      : [
+        { part: PartId.MuzzleA, pos: [0, hullH + H * 0.18, L * 0.50] },
+        { part: PartId.Exhaust, pos: [W * 0.20, H, -L * 0.20] },
+        { part: PartId.Emitter, pos: [-W * 0.28, H, superZ] },
+      ],
   };
 }
 
@@ -1256,8 +1409,16 @@ export const RECLAIM_UNIT_MASS_LISTS: readonly UnitMassList[] = [
 
   scrapShip({ key: 'reclaim_scow', name: 'Slag Scow', length: 10.0, beam: 3.8, height: 3.0, armament: 'bowGun' }),
   scrapShip({ key: 'reclaim_hulk', name: 'Reclaimed Hulk', length: 15.0, beam: 4.8, height: 4.4, armament: 'battery' }),
+  // The two naval rungs added when every army got a full fleet. The skimmer is
+  // the smallest hull the Reclamation floats on purpose — it is bought for its
+  // sight radius, and a silhouette that reads as cheap is half of what stops a
+  // player sending it into a fight it cannot win.
+  scrapShip({ key: 'reclaim_skimmer', name: 'Scrap Skimmer', length: 7.0, beam: 2.8, height: 2.4, armament: 'bowGun' }),
+  scrapShip({ key: 'reclaim_hauler', name: 'Slag Hauler', length: 13.0, beam: 6.2, height: 3.6, armament: 'ramp', heavy: true }),
 
   scrapFlyer('reclaim_hornet', 'Swarmhornet', 10.0, 10.6, 2.9),
+
+  scrapInfantry({ key: 'reclaim_dredger', name: 'Dredger', weapon: 'prod', pack: 'bottles' }),
 ];
 
 /** key -> mass list, for anything that wants the geometry rather than the model. */
@@ -1282,6 +1443,9 @@ export const RECLAIM_UNIT_MODELS: Readonly<Record<string, string>> = {
   rclHornet: 'reclaim_hornet',
   rclScow: 'reclaim_scow',
   rclHulk: 'reclaim_hulk',
+  rclSkimmer: 'reclaim_skimmer',
+  rclHauler: 'reclaim_hauler',
+  rclDredger: 'reclaim_dredger',
 };
 
 /* ==========================================================================

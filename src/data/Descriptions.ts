@@ -282,6 +282,21 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'and better armour. It needs the Battle Lab, and like the escort it '
     + 'cannot answer aircraft.',
 
+  hydrofoil:
+    'The cheapest hull afloat, and it is bought for its eyes: nothing on the '
+    + 'water sees further. The gun came off a light land chassis and it will '
+    + 'lose to any warship it meets.',
+
+  landingCraft:
+    'An unarmed lift with four cargo slots — four riflemen, or two tanks. It is '
+    + 'how an Allied armoured push crosses water at all, and it dies fast to '
+    + 'anything that catches it alone.',
+
+  frogman:
+    'A rifleman who crosses water with no hull under him. Slower and softer '
+    + 'than a regular soldier, with nothing to hide behind out there, so he '
+    + 'raids a coast rather than holding a line.',
+
   upgAlliedOptics:
     'A purchase, not a unit: buy it once and every rifleman you own or ever '
     + 'train sees further. Sight decides who shoots first, so it is worth more '
@@ -370,6 +385,21 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     'The Soviet siege ship: the longest naval reach in the game, heavy armour, '
     + 'and missiles that elevate — so it is the one Soviet hull that answers '
     + 'aircraft at range.',
+
+  picketBoat:
+    'Soviet naval scouting on the cheap: a wide horizon and a light cannon that '
+    + 'is there to annoy rather than to win. Tougher and slower than the Allied '
+    + 'scout, and no answer to a warship.',
+
+  assaultBarge:
+    'Four slots of sealift — four conscripts, or two tanks. Better armoured and '
+    + 'slower than the Allied craft, unarmed like it, and worth an escort on '
+    + 'every single crossing you make.',
+
+  navalInfantry:
+    'The cheap way across a strait: conscripts who swim, bought in numbers '
+    + 'rather than one at a time. Slow and soft in open water, and your answer '
+    + 'to losing the last hull that could carry them.',
 
   upgSovietBodyArmour:
     'A purchase, not a unit: buy it once and every conscript you own or ever '
@@ -525,6 +555,26 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'it, and missiles that elevate — so unlike the escort it answers '
     + 'aircraft. It needs a Slipway and the Reliquary.',
 
+  mrdCutter:
+    'The widest horizon and the quickest keel of any scout hull, on almost no '
+    + 'armour at all. Its repeater is there to annoy infantry; against a '
+    + 'warship the cutter simply runs or sinks.',
+
+  mrdLighter:
+    'Four slots under a folded sail — four Wayfarers, or two hover tanks. The '
+    + 'fastest of the small lifts and the thinnest-skinned, so pick the moment '
+    + 'to cross rather than fighting your way over.',
+
+  mrdArgosy:
+    'Eight slots, which is four tanks in one hull: the Pact lands a whole '
+    + 'spearhead at once instead of feeding it across in waves. Unarmed and '
+    + 'slow, so clear the sea before you sail it.',
+
+  mrdTidewalker:
+    'A Pact soldier who wades where every other army needs a keel. He sees '
+    + 'further than the other swimmers and costs more, and he is still slower '
+    + 'in the water than anything hunting him.',
+
   upgMrdWayfinding:
     'A purchase, not a unit: buy it once and every Wayfarer you own or ever '
     + 'train sees further still. The Pact already has the widest eyes in the '
@@ -678,6 +728,21 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     "Somebody else's capital ship, welded back together: heavy armour, high "
     + 'explosive and long reach. No turret, though, so you have to point the '
     + 'whole ship, and it cannot answer aircraft.',
+
+  rclSkimmer:
+    'The cheapest thing the Reclamation floats, bought for its horizon and not '
+    + 'for its coil. No turret, so it aims by turning the whole boat, and '
+    + 'anything actually armed will sink it.',
+
+  rclHauler:
+    'Eight slots of welded salvage: four tanks in one crossing. Heavy armour '
+    + 'rather than light, so it survives what sinks the other lifts — and it is '
+    + 'still unarmed, and slower than all of them.',
+
+  rclDredger:
+    'The cheapest swimmer in the game, carrying an arc prod that hurts armour '
+    + 'where a rifle would not. Fragile and slow, so send him at an undefended '
+    + 'shoreline rather than into a fight.',
 
   upgRclSwarmDrill:
     'A purchase, not a unit: buy it once and every picker you own or ever train '

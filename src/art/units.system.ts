@@ -67,6 +67,9 @@ const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   // the boot scorecard on every single boot — with no def row and no line here.
   // See `flakTrooper` below: same defect, same fix, three files apart.
   vindicator: 'allied_vindicator',
+  hydrofoil: 'allied_hydrofoil',
+  landingCraft: 'allied_lighter',
+  frogman: 'allied_frogman',
 
   conscript: 'soviet_conscript',
   // `soviet_flak` was built into every match and bound to nothing until the
@@ -80,6 +83,9 @@ const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   submarine: 'soviet_sub',
   dreadnought: 'soviet_dreadnought',
   mig: 'soviet_mig',
+  picketBoat: 'soviet_picket',
+  assaultBarge: 'soviet_lighter',
+  navalInfantry: 'soviet_diver',
 };
 
 /**

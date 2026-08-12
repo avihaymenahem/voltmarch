@@ -885,6 +885,26 @@ const UNIT_RULES: ReadonlyArray<readonly [string, IconName]> = [
   ['zenith', 'artillery'], ['carryall', 'mcv'], ['kestrel', 'helicopter'],
   ['corvette', 'ship'], ['sunmonitor', 'ship'],
 
+  // THE THIRTEEN ROWS THAT FINISHED THE NAVAL LINE. Same reason again: not one
+  // of these words is in the shared vocabulary, so without them a recon hull, a
+  // landing ship and a swimmer would all take their tab's last resort — a tank,
+  // a tank and a rifleman. That is `iconForBuildable` working as documented
+  // rather than failing, which is exactly why nothing goes red when it happens.
+  //
+  // THE LIFTS TAKE `apc`, NOT `ship`, and that is a decision rather than an
+  // oversight. `transport` has mapped to `apc` since this table was written,
+  // and the thing a player needs off a glyph in a grid of warships is "this one
+  // carries your army" — which a hull silhouette does not say and the troop box
+  // does. The two eight-slot heavies take it for the same reason.
+  //
+  // `picketBoat` and `navalInfantry` are deliberately absent: `boat` and
+  // `infantry` below already answer them, and a rule that restates a rule is a
+  // rule that can disagree with it later.
+  ['hydrofoil', 'ship'], ['cutter', 'ship'], ['skimmer', 'ship'],
+  ['landingcraft', 'apc'], ['barge', 'apc'], ['lighter', 'apc'],
+  ['argosy', 'apc'], ['hauler', 'apc'],
+  ['frogman', 'infantry'], ['tidewalker', 'infantry'], ['dredger', 'infantry'],
+
   ['dog', 'dog'], ['hound', 'dog'], ['bear', 'dog'],
   ['engineer', 'engineer'], ['mechanic', 'engineer'], ['spy', 'engineer'], ['saboteur', 'engineer'],
   ['rocket', 'rocketInfantry'], ['missile', 'rocketInfantry'], ['bazooka', 'rocketInfantry'],
