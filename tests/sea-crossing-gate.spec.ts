@@ -160,13 +160,13 @@ const MOBILITY: readonly (readonly [Faction, string, string])[] = [
 describe('mapForcesSeaCrossing is derived from the ground', () => {
   it('finds one land mass on every shipped battlefield but the atoll', () => {
     /*
-     * MEASURED, and reported rather than only asserted — durable land masses
-     * (>= TERRAIN_ISLAND_MIN_CELLS, 573) and the largest thing below the floor:
+     * MEASURED, and reported rather than only asserted — land masses of at
+     * least TERRAIN_ISLAND_MIN_CELLS (573), and the ground they hold:
      *
      *   temperate-valley  1 x 12802     airbase-flats    1 x 12692
-     *   frozen-sector     1 x 12370     industrial-grid  1 x 12849
-     *   contested-strait  1 x  9698     coral-shore      1 x  9942
-     *   sunder-atoll      4 x 1819..1874, plus one 31-cell noise basin
+     *   frozen-sector     1 x 11909     industrial-grid  1 x 12849
+     *   contested-strait  1 x  9285     coral-shore      1 x  9705
+     *   sunder-atoll      4 x 1819..1874 (7404), plus one 31-cell noise basin
      *
      * Two orders of magnitude of margin on each side of the floor, which is why
      * this is counted in land masses and not in raw regions: a bare region
