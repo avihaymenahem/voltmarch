@@ -3565,8 +3565,18 @@ function seaOffMapCentre(p: SeaProfile): SeaSpec {
  * entry with a name, a blurb, a pinned `mapSeed` and a biome, and that the
  * preset which selects this geometry was "a separate step with a separate
  * owner". That step has now happened: the preset is `atoll` (see `MAP_PRESETS`
- * in `src/core/config.ts` for why its biome is `desert`), the lobby entry is
+ * in `src/core/config.ts` for why its biome is `temperate`), the lobby entry is
  * `sunder-atoll`, and the registration is at the bottom of `MAP_SEAS` below.
+ *
+ * That parenthesis read "for why its biome is `desert`" until it was checked
+ * against `settings-store.MAPS`, which pins `temperate`. Desert WAS the first
+ * choice and it lost, on two FATAL scorecard checks measured on the
+ * `13-atoll-crossing` fixture with biome as the only variable: median luminance
+ * 0.5228 against a 0.134-0.491 band, emerald leak 0.0411 against 0.000-0.020.
+ * Both are the same cause seen twice — a bright sand seabed under 54% water
+ * fills the dry half of the frame with sunlit hardpan AND lights the shallows
+ * from below, walking the turquoise ramp round into green. The palette that was
+ * the best reason to pick desert is what disqualified it.
  * `tests/archipelago.spec.ts` still builds this constant directly, which is the
  * same route `NAVAL_SEA` had for its whole life before `MAP_SEAS` existed.
  *

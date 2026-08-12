@@ -73,8 +73,8 @@ other army's basic rifleman is a small-arms unit that does 0.10 to a heavy tank.
 arc, and an arc is 0.90 against Heavy. He is bad at it — 26 damage on a one-second cycle at 14 m —
 but forty of them are not.
 
-The Slagger's 12 m is the shortest reach of any gun in the game — only an Attack Dog's jaws get
-closer. He has to walk right up to the wall.
+The Slagger's 12 m is the shortest reach of any gun in the game bar the Attack Dog's jaws, which
+bite at 3.6 m. He has to walk right up to the wall.
 
 ## Vehicles
 

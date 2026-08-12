@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/progress/01-main-menu.png" alt="VOLTMARCH main menu over a live battlefield" width="820" />
+  <img src="docs/progress/02-hud-full.png" alt="An Allied base mid-match: the sidebar build tabs, the power and credit readouts, and the detail panel describing a Power Plant" width="820" />
 </p>
 
 ---
@@ -30,14 +30,24 @@
 A full RTS built for the browser: a main menu and settings shell, skirmish setup, four playable
 factions with distinct rosters and tech trees, an AI opponent that plays a real game, harvesters and
 refineries, power grids that gate production, base placement, fog of war, superweapons, engineer
-capture, neutral civilian structures worth fighting over, online 1v1, and a modern bottom-anchored
-HUD.
+capture, neutral civilian structures worth fighting over, commander powers bought in the match,
+free-for-alls of up to four armies, online 1v1, and a modern bottom-anchored HUD.
 
 The civilian block is the thing engineer capture and infantry garrisons point AT: two mirrored
 hamlets sit on the perpendicular bisector between the two openings — equidistant from both armies —
 each with an Oil Derrick that pays its holder every second, a hospital and an apartment block that
 five riflemen can turn into a firing position. Nobody builds them; you take them, or you clear them
 out.
+
+Ten battlefields, three of which carry a real sea. **Sunder Atoll** is the one the navy exists for —
+four islands, one army each, 53.8% of the map underwater and no land route between any two of them,
+so every crossing is by ship or it does not happen. Nothing on it is progression-gated, because
+content required to *reach the enemy* is never a reward: a fresh profile that could not build a
+transport would be in a permanent stalemate rather than a hard match.
+
+<p align="center">
+  <img src="docs/progress/13-atoll-crossing.png" alt="A dock on an island coast, a landing party crossing the shoal, and warships holding the lane" width="820" />
+</p>
 
 VOLTMARCH is not a port or a clone. It is a new title in the tradition of late-90s and 2000s
 base-building RTS — the conventions it adopts (harvester economy, tech tiers, build queues) are the
@@ -55,7 +65,7 @@ Three shipped assets are not generated, all deliberate:
   still runs offline and from a `file://` path.
 - **The brand lockup** in `public/brand/` — the wordmark on the title screen and loading curtain,
   and the favicons and app icons, derived by `tools/brand.mjs` from a supplied `logo.png`.
-- **Recorded audio** in `public/audio/` — 183 files, 6.9 MB. `sfx/` covers **all 39 sound-effect
+- **Recorded audio** in `public/audio/` — 184 Ogg files, 6.7 MB. `sfx/` covers **all 39 sound-effect
   families** and `voice/` gives the unit barks two real voices, all CC0 from
   [Kenney](https://kenney.nl), several CC0 libraries and Warfork by Team Forbidden. `eva/` is the
   announcer, rendered offline with [Piper](https://github.com/OHF-Voice/piper1-gpl) and a
@@ -66,6 +76,12 @@ Three shipped assets are not generated, all deliberate:
   normalisation and variant set, and every one keeps its recipe as a fallback so a missing file
   degrades to the synthesised bank rather than to silence. See
   [`public/audio/README.md`](public/audio/README.md).
+
+"Shipped" means `public/` — what the browser downloads. The two PNGs in `docs/progress/` on this
+page are a different thing: screenshots of the running game, captured by `npm run shots` and
+downscaled to 1640 px, which the product never loads. They are photographs of procedurally generated
+art rather than art, but they are still binary files in the repository and this list would be
+dishonest by omission without them.
 
 ## Running it
 
@@ -88,6 +104,8 @@ Then open <http://localhost:5173>.
 | `npm run server` | build and run the multiplayer relay on `127.0.0.1:8787` |
 | `npm run server:test` | the relay's own suite, via `node --test` |
 | `npm run desync-probe` | compare the unspecified `Math.*` functions across browser engines |
+| `npm run replay-probe` | replay a recorded match and require a deleted command to diverge |
+| `npm run naval-proof` | drive a live match until a hull is floating, and photograph it |
 
 `npm run build` deliberately does **not** run `tsc`. esbuild strips types, so a type error must never
 be able to stop the game from running; type errors are caught by `npm run typecheck` instead.
@@ -123,6 +141,20 @@ reveal fog and script its own input. Resource, spawn and damage cheats are all c
 only issue commands, and one that fudges its own state diverges and is named by the checksum within
 100 ms. Closing the rest means a server-authoritative simulation, which this deliberately is not.
 
+## Saves, replays, and one break worth announcing
+
+A save is a binary snapshot of the world; a replay is the command stream plus the header needed to
+rebuild the boot. Both refuse rather than load wrong, and both say why in a sentence meant for a
+person.
+
+**Commander powers shipped as a fifth build tab, and that invalidates every earlier save.**
+`BUILD_TAB_COUNT` went from 4 to 5, and it is one of the ten constants in `structuralHash()` — the
+numbers that decide what a column index or an enum value *means*. So a save written before the
+Powers tab is refused on load with `build-mismatch` and "This save was written by a different build
+of the game, and the world it describes no longer fits this one." That is the gate working, not a
+bug: the alternative is a file that loads with every index past the new tab shifted by one. Replays
+are versioned separately (`REPLAY_FORMAT_VERSION` 2) and a v1 file is refused for the same reason.
+
 ## Boot flags
 
 Appended to the URL, e.g. `?art=dusk&seed=1234`.
@@ -133,8 +165,11 @@ Appended to the URL, e.g. `?art=dusk&seed=1234`.
 | `?map=<preset>` | map preset |
 | `?art=<mood>` | lighting mood — `noon`, `dusk`, `night`, `overcast`, `dust` |
 | `?tier=<tier>` | quality override — `low`, `medium`, `high`, `ultra` |
-| `?seed=<int>` | deterministic RNG seed |
+| `?seed=<int>` | deterministic RNG seed — the scenario layout and every draw of `s.rng` |
+| `?mapseed=<int>` | the terrain roll, which is a *different* seed: reproduce or skip a landform |
+| `?biome=<name>` | `temperate`, `desert`, `snow`, `urban` |
 | `?fog=off` | disable fog of war |
+| `?relay=<url>` | point multiplayer at one relay for a single session |
 | `?unlockall` | developer flag: treat every mission-gated unit and structure as owned |
 
 `?unlockall` (or `?unlock=all`) is read-only — it changes what the unlock gate *answers*, never what

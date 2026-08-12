@@ -5,7 +5,7 @@
  * `tests/archipelago.spec.ts` measures the GEOMETRY — four islands, one sea, a
  * coast that wanders — against `ARCHIPELAGO_SEA` directly, on `temperate`,
  * because that file is about the capability. This one measures the BATTLEFIELD
- * a player actually selects: the `atoll` preset, the `desert` biome and the
+ * a player actually selects: the `atoll` preset, the `temperate` biome and the
  * pinned `mapSeed` that `settings-store.MAPS` names together, run through the
  * real generator and the real ore seeder.
  *

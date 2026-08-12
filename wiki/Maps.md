@@ -17,10 +17,16 @@ This page covers what the ground does to your army. For what you build on it see
 | Map size | 512 × 512 m |
 | Navigation grid | 128 × 128 cells of 4 m |
 | Dead border | 2 cells (8 m) on every edge — nothing may enter it |
-| Players | 2 on five maps, **4** on Sunder Atoll |
+| Players | **4** on five maps, 2 on the other five |
 | Start separation | ~193 m on the diagonal |
-| Impassable to tracked vehicles | 26–33 % of cells (measured across the six continent maps) |
-| Buildable ground | 62–70 % of cells |
+| Impassable to tracked vehicles | 21.9–29.7 % on the seven landlocked maps; 43.9–54.7 % on the three with a sea |
+| Buildable ground | 66.9–74.1 % landlocked; 49.0–51.4 % on the coastal pair, 30.7 % on Sunder Atoll |
+
+Five maps seat four armies — Temperate Valley, Airbase Flats, Industrial Grid, Glacier Shelf and
+Sunder Atoll. The other five are two-army. Every figure above was measured through the real
+generator on the shipped lobby row: the map's preset, biome, pinned `mapSeed` and its own army
+count, which matters because the start shelves are levelled per army and a map seating four is a
+measurably different piece of ground from the same seed seating two.
 
 Two armies, two corners, on the classic diagonal. Each start sits on a **reserved shelf**: the
 generator levels a 58 m disc, guarantees the inner 54 m is flat, dry, buildable and joined to the
@@ -218,28 +224,39 @@ slowly and in single file, which is the one situation where being crushable stop
 
 ---
 
-## 6. Water — two seas and four dry maps
+## 6. Water — three seas and seven dry maps
 
 Water sits at a flat 2.0 m. Below it, ground units simply cannot go; there is no shallows, no wading,
 no depth gradient in the navigation grid. Hover units cross land and water alike. Naval hulls can
 *only* be on water. Aircraft ignore all of it.
 
-**Three of the ten maps carry a real sea. Seven are landlocked.** Measured on the original seven, with
-their real seeds and biomes, straight off the generator:
+**Three of the ten maps carry a real sea. Seven are landlocked.** All ten measured straight off the
+generator on their shipped lobby row — preset, biome, pinned `mapSeed` and the map's own army count:
 
-| Map | Water cells | Largest single body | Navigable for ships |
+| Map | Water | Largest single body | Navigable for ships |
 | --- | --- | --- | --- |
-| Temperate Valley | 0.15 % | 9 cells (~144 m²) | nothing usable |
+| Temperate Valley | 0.00 % | none | none |
 | Airbase Flats | 0.00 % | none | none |
 | Frozen Sector | 0.16 % | 14 cells (~224 m²) | nothing usable |
 | Industrial Grid | 0.00 % | none | none |
+| Saltpan Reach | 0.00 % | none | none |
+| Foundry Line | 0.00 % | none | none |
+| Glacier Shelf | 0.23 % | 21 cells (~336 m²) | nothing usable |
 | **Contested Strait** | **24.3 %** | **3,973 cells (~63,600 m²)** | **3,622 cells** |
 | **Coral Shore** | **26.4 %** | **4,319 cells (~69,100 m²)** | **3,952 cells** |
-| **Sunder Atoll** | **53.8 %** | **8,815 cells (~141,000 m²)** | **7,735 cells** |
+| **Sunder Atoll** | **53.8 %** | **8,798 cells (~141,000 m²)** | **7,784 cells** |
 
-The four dry maps are dry because nothing declares a shoreline for them, and the biome noise alone
-only ever produces puddles — the largest is smaller than a war factory. That is the correct answer
-for those four. It used to be the answer for all six, which is what made the naval arm unreachable.
+The seven dry maps are dry because nothing declares a shoreline for them, and the biome noise alone
+only ever produces puddles — the largest anywhere is 21 cells, smaller than a war factory. That is
+the correct answer for those seven. It used to be the answer for all six maps that existed then,
+which is what made the naval arm unreachable.
+
+**Do not read the puddle rows as stable.** A start shelf is a levelled disc, so the army count a map
+seats changes which cells end up under the 2.0 m line: Temperate Valley reads 0.00 % seating four
+and carried a few wet cells back when it seated two. This is exactly why the engine's test is
+`NAVAL_MIN_SEA_CELLS` — 300 cells in the largest connected navigable body — and not "is there any
+water at all". The two clusters are four orders of magnitude apart, so nothing about a puddle
+count is load-bearing.
 
 **On the two coastal maps the shoreline is authored, not accidental.** It is a single straight
 coast with a low-frequency wander, laid along the perpendicular bisector of the two openings so both
@@ -253,7 +270,12 @@ can express and reads as deep blue; **Coral Shore** is a 5 m lagoon on the oppos
 and reads turquoise, because the absorption gradient is driven by depth.
 
 **What this buys you.** Naval Yards, Naval Pens, Slipways and Breaker Docks have somewhere to stand:
-178 legal 3×3 shore sites on Contested Strait, 81 on Coral Shore. The sea is one connected body on
+178 legal 3×3 shore sites on Contested Strait, 81 on Coral Shore — counted as buildable footprints
+from which a yard's production spiral can reach the sea, which is the stricter of the two site
+tests in the repo. [Sunder Atoll](/avihaymenahem/voltmarch/wiki/Sunder-Atoll) quotes 237 for
+Contested Strait against its 532, using the looser placement rule (a buildable 3×3 with eight
+navigable cells within 24 m). Neither number is wrong; they answer different questions, and a
+figure from one is not comparable with a figure from the other. The sea is one connected body on
 both — 99.8 % of every navigable cell is in the main expanse — so a fleet can cross the map without
 portaging. Amphibious hover movement finally has something to be amphibious across, and it is the
 one chassis that can contest both the sea and the shore.

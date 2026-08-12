@@ -113,9 +113,11 @@ confiscated by a cap. With the default 10,000 start you begin exactly at the cap
 harvester load is wasted until a refinery raises the ceiling — which is a reason to build the
 refinery before you build much else.
 
-**The Ore Silo is the cheapest building in the game at 150 credits and 5 seconds**, draws 10 power,
-and occupies a single cell. Two silos are worth more storage than a refinery. If you are seeing the
-**Silos needed** toast, build some.
+**The Ore Silo costs 150 credits and 5 seconds**, draws 10 power, and occupies a single cell. Two
+silos are worth more storage than a refinery. If you are seeing the **Silos needed** toast, build
+some. (It is not the cheapest building in the game — walls are 100, in all three flavours: Concrete
+Wall, Rampart and Scrap Barricade. The silo is joint fourth at 150 with the Gate and the two other
+armies' silos.)
 
 The cap works in both directions. **Lose a refinery or a silo and your cap shrinks immediately**,
 and any credits above the new cap are lost on the spot. A player sitting at 14,900 credits with two
