@@ -90,8 +90,7 @@ Three shipped assets are not generated, all deliberate:
   announcer, rendered offline with [Piper](https://github.com/OHF-Voice/piper1-gpl) and a
   public-domain LibriVox voice, because no CC0 pack contains "Insufficient funds." `music/` is a
   three-tier adaptive score by Kevin MacLeod, **CC-BY 4.0** — the one attribution obligation in the
-  product. **Nothing is synthesised any more** — ambience was the last of it and it is gone. A
-  recorded take is decoded once and
+  product. Only ambience is still synthesised. A recorded take is decoded once and
   rendered through the same offline bake as a synthesised recipe, inheriting the same saturation,
   normalisation and variant set, and every one keeps its recipe as a fallback so a missing file
   degrades to the synthesised bank rather than to silence. See

@@ -33,13 +33,13 @@ import {
 } from '../core/types';
 import { CreditReason } from '../core/types';
 import {
-  AUDIO_DISTANCE, AUDIO_DUCK, AUDIO_MUSIC, AUDIO_MUTE_IN_SHOT_MODE, CELL,
+  AUDIO_AMBIENCE, AUDIO_DISTANCE, AUDIO_DUCK, AUDIO_MUSIC, AUDIO_MUTE_IN_SHOT_MODE, CELL,
 } from '../core/config';
 import { RENDER_CONFIG } from '../render/renderer';
 import { ctx } from '../game/context';
 
 import { AudioEngine, setAudioFacade, type AudioFacade, type PanResolver } from './AudioEngine';
-import { FX_SOUND, SFX, registerSfxBank, type Theatre } from './Weapons';
+import { AmbienceRig, FX_SOUND, SFX, registerSfxBank, type Theatre } from './Weapons';
 import { EVA_LINE_ID, EvaAnnouncer, type EvaMode } from './Eva';
 import { BarkDirector, barkClassFor, type BarkCategory, type BarkClass } from './Barks';
 import { TrackMusic } from './TrackMusic';
@@ -71,7 +71,7 @@ let barks: BarkDirector | null = null;
  * call site below is unchanged.
  */
 let music: TrackMusic | null = null;
-
+let ambience: AmbienceRig | null = null;
 let unsubscribe: Array<() => void> = [];
 
 /** Scratch for the pan resolver. Allocated once; the frame loop allocates none. */
@@ -271,7 +271,7 @@ export default defineSystem({
       mode: flag('barks') === 'off' ? 'off' : flag('barks') === 'reduced' ? 'reduced' : 'on',
     });
     music = new TrackMusic(engine);
-
+    ambience = new AmbienceRig(engine);
 
     /* -- the IAudio port --------------------------------------------------- */
     const port: IAudio = {
@@ -340,6 +340,8 @@ export default defineSystem({
         const t2 = typeof performance !== 'undefined' ? performance.now() : 0;
         console.info(`[audio] voices ready (+${Math.round(t2 - t1)} ms in the background)`);
       })();
+      ambience.startWind(theatreFromFlags());
+      ambience.startHum();
       music.start();
     }
 
@@ -381,11 +383,11 @@ export default defineSystem({
     unsubscribe = [];
     setAudioFacade(null);
     music?.dispose();
-
+    ambience?.dispose();
     barks?.dispose();
     eva?.dispose();
     engine?.dispose();
-    engine = null; eva = null; barks = null; music = null;
+    engine = null; eva = null; barks = null; music = null; ambience = null;
     brownoutSince = -1;
     fundsStalledSince = -1;
     matchStartAt = -1;
@@ -445,49 +447,14 @@ function subscribe(): void {
   }));
 
   /* -- economy ------------------------------------------------------------- */
-  /**
-   * Quiet gap that separates one delivery from the next, in seconds.
-   *
-   * Comfortably under `UNLOAD_SECONDS` (2.2) so two deliveries in a row are two
-   * sounds, and comfortably over one sim tick (0.033) so ONE delivery is not
-   * sixty-six of them.
-   */
-  const ORE_DUMP_GAP_SEC = 0.5;
-
-  /**
-   * When the local player last heard a delivery, in context seconds. See the
-   * edge test below; `-Infinity` so the first delivery of a match always sounds.
-   */
-  let lastOreDumpAt = -Infinity;
-
   unsubscribe.push(bus.on('economy:credits', (p) => {
     if (p.player !== local()) return;
     // Ore arriving at a full silo is wasted; that is what "Silos needed" means.
     if (p.reason === CreditReason.Waste) eva?.say('silosNeeded');
-    // A HARVESTER UNLOADING, ONCE PER DELIVERY — and it is edge-triggered for
-    // a reason that was audible from the title screen.
-    //
-    // `economy:credits` is a STREAM, not a moment. `Harvesting.ts` unloads a
-    // hopper gradually over `UNLOAD_SECONDS`, depositing a slice every sim
-    // tick, and every slice emits this event. Playing the sound on each one
-    // fired `ore.dump` THIRTY TIMES A SECOND for the length of every delivery,
-    // and thirty overlapping copies of a short sample per second do not read as
-    // thirty sounds — they fuse into a pitched drone. Reported as "the weirdest
-    // sound I've ever heard", "like a ship's horn", heard on the MAIN MENU,
-    // because the title screen boots a real world with a real economy behind it.
-    //
-    // Measured before the fix: successive plays 33 ms apart, indefinitely.
-    //
-    // The gap test is what makes this an edge. Credits arrive every tick WHILE
-    // a harvester is docked and stop between deliveries, so a quiet gap is
-    // exactly the boundary between one delivery and the next — no sim change,
-    // no new event, and it stays correct with several harvesters because each
-    // one's arrival is its own edge unless two land inside the same gap.
-    if (p.reason === CreditReason.Harvest && p.delta > 0) {
-      const now = engine?.now() ?? 0;
-      if (now - lastOreDumpAt > ORE_DUMP_GAP_SEC) engine?.ui(SFX.oreDump);
-      lastOreDumpAt = now;
-    }
+    // A harvester unloading. `ore.dump` was recorded, baked and never played:
+    // nothing in the game dispatched it, so the one moment the economy is
+    // audible had no sound at all.
+    if (p.reason === CreditReason.Harvest && p.delta > 0) engine?.ui(SFX.oreDump);
   }));
 
   unsubscribe.push(bus.on('economy:power', (p) => {
@@ -498,11 +465,9 @@ function subscribe(): void {
     } else {
       brownoutSince = -1;
     }
-    // KEPT WITHOUT ITS CONSUMER, and deliberately. The hum used to sag here
-    // before EVA said a word; the hum is gone, but `poweredPlants` and
-    // `brownoutSince` are still read by the EVA brownout line below, so this is
-    // a live count and not a leftover.
+    // The hum sags before EVA says a word — the player feels it first.
     poweredPlants = Math.max(0, Math.round(p.produced / 100));
+    ambience?.setPower(poweredPlants, p.brownout || p.consumed > p.produced);
   }));
 
   /* -- combat -------------------------------------------------------------- */
@@ -685,6 +650,8 @@ function updateHeat(r: RenderContext): void {
     }
     hostileNear = near;
 
+    // Fade the hum out when the camera leaves the base entirely.
+    ambience?.setHumAudible(poweredPlants > 0 && nearOwnedStructure(fx, fz));
   }
 
   let damage = 0;
@@ -708,6 +675,23 @@ function pushExternalHeat(v: number): void {
   externalHeat = v < 0 ? 0 : v > 1 ? 1 : v;
   externalHeatAt = engine?.now() ?? 0;
   music?.setCombatHeat(externalHeat);
+}
+
+/** True when any owned structure is within the hum's audible radius. */
+function nearOwnedStructure(x: number, z: number): boolean {
+  const { world } = ctx();
+  const s = world.store;
+  const localP = world.localPlayer as number;
+  const r = AUDIO_AMBIENCE.humRangeMetres;
+  const r2 = r * r;
+  for (let n = 0; n < s.aliveCount; n++) {
+    const i = s.alive[n];
+    if (s.kind[i] !== EntityKind.Building) continue;
+    if (s.owner[i] !== localP) continue;
+    const dx = s.posX[i] - x, dz = s.posZ[i] - z;
+    if (dx * dx + dz * dz <= r2) return true;
+  }
+  return false;
 }
 
 /**
@@ -791,10 +775,11 @@ if (typeof globalThis !== 'undefined') {
     heat: (v: number) => { pushExternalHeat(v); },
     theatre: (t: Theatre) => {
       void engine?.setTheatre(t === 'temperate' ? 'temperate' : t);
+      ambience?.startWind(t);
     },
     volume: (bus: string, percent: number) => {
       if (bus === 'master') engine?.setMasterVolume(percent);
-      else engine?.setBusVolume(bus as 'music' | 'sfx' | 'voice' | 'ui', percent);
+      else engine?.setBusVolume(bus as 'music' | 'sfx' | 'voice' | 'ui' | 'ambience', percent);
     },
   };
 }

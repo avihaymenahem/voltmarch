@@ -3,7 +3,7 @@
  * VOLTMARCH — src/audio/Weapons.ts
  * ============================================================================
  * THE BAKED SFX BANK. Every gun, explosion, impact, engine, UI blip and
- * sound effect in the game, expressed as DSP.
+ * ambience loop in the game, expressed as DSP.
  *
  * These are recipes, not configuration: the filter centres and envelope shapes
  * below ARE the sound, in the same way a mesh's vertices are the model. The
@@ -24,6 +24,7 @@
  */
 
 import { FxKind, FX_KIND_COUNT } from '../core/types';
+import { AUDIO_AMBIENCE } from '../core/config';
 import {
   AudioEngine, LoopVoice, biquad, bodyDrop, dbToGain, env, envSustain, gain, noiseSrc, osc,
   rand, ringMod, shaper, sweep, tail, transient, type BakeKit, type SoundSpec,
@@ -1385,33 +1386,234 @@ function ui(
 
 export type Theatre = 'desert' | 'temperate' | 'snow' | 'urban';
 
-/*
- * THE SYNTHESISED AMBIENCE IS GONE, AND THIS IS THE ONLY MARKER IT LEAVES.
- *
- * `AmbienceRig` stood here: a pink-noise wind bed whose lowpass wandered on two
- * LFOs, and a base hum built from three SAWTOOTH oscillators at 50, 50.6 and
- * 75 Hz through a 220 Hz lowpass and a waveshaper. The 50 and 50.6 beat against
- * each other at 0.6 Hz, so it throbbed roughly once every two seconds, and the
- * shaper made it growl rather than drone.
- *
- * It was reported as "the weirdest sound I've ever heard" on the initial page
- * load, and the reason it arrived THERE is the sharp part: the hum's level is
- * driven by `setPower(plants)` and is silent at zero plants, but the title
- * screen boots a real world behind the menu just to have something moving —
- * measured at 31 buildings — so powered plants existed, the camera sat among
- * them, and the hum came up over the main menu with no base to explain it.
- *
- * This is the same verdict the rest of the bank already got, and the reason is
- * written at length in CLAUDE.md: the synthesised bank measured correct on
- * every number `tools/audio-measure.mjs` reports and still read as a synth
- * patch, which is why 39 sound-effect families moved to recordings. Ambience
- * was the last of it. **The measurement is a proxy; the ear is not.**
- *
- * Removed rather than gated to a match, because "wrong sound, later" is still
- * the wrong sound. If recorded ambience lands one day it wants a fresh bus and
- * a fresh rig, not this one revived: nothing here was worth keeping except the
- * shape of the power hook, which `audio.system.ts` still has for EVA.
+/**
+ * Wind, base hum and water — the three beds that make a paused frame feel like
+ * a place rather than a screenshot.
  */
+export class AmbienceRig {
+  private wind: LoopVoice | null = null;
+  private windLp: BiquadFilterNode | null = null;
+  private hum: LoopVoice | null = null;
+  private humOscs: OscillatorNode[] = [];
+  private water: LoopVoice | null = null;
+  private theatre: Theatre = 'temperate';
+  private gustTimer: ReturnType<typeof setTimeout> | null = null;
+  private lowPower = false;
+  private plants = 0;
+  private humAudible = true;
+
+  constructor(private readonly engine: AudioEngine) {}
+
+  /* ---- wind ------------------------------------------------------------ */
+
+  /**
+   * A 10 s pink bed through a lowpass whose cutoff wanders on two LFOs, with a
+   * third LFO on the gain. Three sines is the entire difference between "wind"
+   * and "tape hiss".
+   */
+  startWind(theatre: Theatre): void {
+    this.stopWind();
+    this.theatre = theatre;
+    const e = this.engine;
+    const cfg = AUDIO_AMBIENCE.wind[theatre];
+    const loop = e.openLoop('ambience', 0, false);
+    if (loop === null) return;
+    const ctx = e.ctx;
+
+    const src = ctx.createBufferSource();
+    src.buffer = e.pink;
+    src.loop = true;
+    // Loop the middle of the bed so the seam never lands on the buffer edge.
+    src.loopStart = 0.2;
+    src.loopEnd = Math.max(1, e.pink.duration - 0.2);
+    const lp = biquad(ctx, 'lowpass', (cfg.lpMinHz + cfg.lpMaxHz) * 0.5, 0.8);
+
+    // Two cutoff LFOs at 0.05 and 0.13 Hz, per the desert row of the table.
+    const mid = (cfg.lpMinHz + cfg.lpMaxHz) * 0.5;
+    const span = (cfg.lpMaxHz - cfg.lpMinHz) * 0.5;
+    lp.frequency.value = mid;
+    const lfoA = ctx.createOscillator(); lfoA.frequency.value = 0.05;
+    const lfoB = ctx.createOscillator(); lfoB.frequency.value = 0.13;
+    const depthA = gain(ctx, span * 0.72);
+    const depthB = gain(ctx, span * 0.28);
+    lfoA.connect(depthA).connect(lp.frequency);
+    lfoB.connect(depthB).connect(lp.frequency);
+    lfoA.start(); lfoB.start();
+
+    // Gain LFO at 0.06 Hz, depth 0.35 — gusts you feel before you hear.
+    const lfoG = ctx.createOscillator(); lfoG.frequency.value = 0.06;
+    const depthG = gain(ctx, 0.35);
+    lfoG.connect(depthG).connect(loop.amp.gain);
+    lfoG.start();
+
+    src.connect(lp).connect(loop.input);
+    src.start();
+
+    e.attachLoopSource(loop, src);
+    e.attachLoopSource(loop, lfoA);
+    e.attachLoopSource(loop, lfoB);
+    e.attachLoopSource(loop, lfoG);
+    e.attachLoopNode(loop, lp);
+
+    // Snow adds a wandering whistle at Q7 — the single most evocative 3 nodes
+    // in the whole ambience budget.
+    if (theatre === 'snow') {
+      const wg = gain(ctx, dbToGain(-34));
+      const bp = biquad(ctx, 'bandpass', 1250, 7);
+      const wander = ctx.createOscillator(); wander.frequency.value = 0.11;
+      const wd = gain(ctx, 180);
+      wander.connect(wd).connect(bp.frequency);
+      wander.start();
+      const ws = ctx.createBufferSource();
+      ws.buffer = e.white; ws.loop = true;
+      ws.connect(bp).connect(wg).connect(loop.input);
+      ws.start();
+      e.attachLoopSource(loop, ws);
+      e.attachLoopSource(loop, wander);
+    }
+    // Urban swaps the whistle for distant traffic.
+    if (theatre === 'urban') {
+      const tg = gain(ctx, dbToGain(-40));
+      const tlp = biquad(ctx, 'lowpass', 400, 0.7);
+      const ts = ctx.createBufferSource();
+      ts.buffer = e.pink; ts.loop = true;
+      ts.connect(tlp).connect(tg).connect(loop.input);
+      ts.start();
+      e.attachLoopSource(loop, ts);
+    }
+
+    this.wind = loop;
+    this.windLp = lp;
+    loop.setGain(dbToGain(cfg.db), 1200);
+    this.scheduleGust();
+  }
+
+  /** Cutoff to 1400 Hz and +5 dB over 2.5 s, every 18-40 s. */
+  private scheduleGust(): void {
+    const cfg = AUDIO_AMBIENCE.wind[this.theatre];
+    const delay = (cfg.gustSec[0] + Math.random() * (cfg.gustSec[1] - cfg.gustSec[0])) * 1000;
+    this.gustTimer = setTimeout(() => {
+      const loop = this.wind;
+      const lp = this.windLp;
+      if (loop !== null && lp !== null && loop.alive) {
+        const t = this.engine.now();
+        lp.frequency.cancelScheduledValues(t);
+        lp.frequency.setTargetAtTime(1400, t, 0.8);
+        lp.frequency.setTargetAtTime(lp.frequency.value, t + 2.5, 1.4);
+        loop.setGain(dbToGain(cfg.db + 5), 900);
+        setTimeout(() => loop.alive && loop.setGain(dbToGain(cfg.db), 1600), 2500);
+      }
+      this.scheduleGust();
+    }, delay);
+  }
+
+  stopWind(): void {
+    if (this.gustTimer !== null) { clearTimeout(this.gustTimer); this.gustTimer = null; }
+    this.wind?.stop(900);
+    this.wind = null;
+    this.windLp = null;
+  }
+
+  /* ---- base hum -------------------------------------------------------- */
+
+  /**
+   * Three saws at 50.0 / 50.6 / 75.0 Hz. The 0.6 Hz beat between the first two
+   * IS the generator wobble; a single oscillator sounds like a test tone.
+   */
+  startHum(): void {
+    if (this.hum !== null) return;
+    const e = this.engine;
+    const loop = e.openLoop('ambience', 0, false);
+    if (loop === null) return;
+    const ctx = e.ctx;
+    const lp = biquad(ctx, 'lowpass', 220, 1.5);
+    const drive = shaper(ctx, 2, '2x');
+    lp.connect(drive).connect(loop.input);
+    this.humOscs = [];
+    for (const f of [50.0, 50.6, 75.0]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      o.connect(lp);
+      o.start();
+      this.humOscs.push(o);
+      e.attachLoopSource(loop, o);
+    }
+    this.hum = loop;
+    this.applyHumLevel(0);
+  }
+
+  /** Powered plant count drives the level; the brownout drives the pitch. */
+  setPower(plants: number, lowPower: boolean): void {
+    const changed = plants !== this.plants || lowPower !== this.lowPower;
+    this.plants = plants;
+    this.lowPower = lowPower;
+    if (!changed) return;
+    this.applyHumLevel(1200);
+    // On low power all three oscillators sag -80 cents over 3 s and pick up a
+    // 1.6 Hz flutter. The player hears the brownout before EVA announces it.
+    const t = this.engine.now();
+    for (const o of this.humOscs) {
+      o.detune.setTargetAtTime(lowPower ? AUDIO_AMBIENCE.humSagCents : 0, t, AUDIO_AMBIENCE.humSagSec / 3);
+    }
+  }
+
+  private applyHumLevel(ms: number): void {
+    if (this.hum === null) return;
+    if (this.plants <= 0 || !this.humAudible) { this.hum.setGain(0, ms || 400); return; }
+    const table = AUDIO_AMBIENCE.humDb;
+    const db = table[Math.min(table.length - 1, this.plants - 1)];
+    this.hum.setGain(dbToGain(db) * (this.lowPower ? 0.85 : 1), ms || 400);
+  }
+
+  /** Fades out when the camera leaves the base (§3.5: 4 s, > 40 tiles). */
+  setHumAudible(v: boolean): void {
+    if (v === this.humAudible) return;
+    this.humAudible = v;
+    this.applyHumLevel(AUDIO_AMBIENCE.humFadeSec * 1000);
+  }
+
+  /* ---- water ----------------------------------------------------------- */
+
+  /** Only instantiated when water covers more than 8% of the visible frustum. */
+  startWater(): void {
+    if (this.water !== null) return;
+    const e = this.engine;
+    const loop = e.openLoop('ambience', 0, true);
+    if (loop === null) return;
+    const ctx = e.ctx;
+    const bp = biquad(ctx, 'bandpass', 700, 0.8);
+    const src = ctx.createBufferSource();
+    src.buffer = e.white; src.loop = true;
+    src.connect(bp).connect(loop.input);
+    src.start();
+    // Two slow sines gate the level: the swell, not individual waves.
+    for (const [f, d] of [[0.35, 0.35], [0.9, 0.25]] as const) {
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = f;
+      const depth = gain(ctx, d);
+      lfo.connect(depth).connect(loop.amp.gain);
+      lfo.start();
+      e.attachLoopSource(loop, lfo);
+    }
+    e.attachLoopSource(loop, src);
+    this.water = loop;
+    loop.setGain(dbToGain(-33), 1500);
+  }
+
+  stopWater(): void { this.water?.stop(1200); this.water = null; }
+
+  /** Pan follows the visible-water centroid, clamped to +-0.4. */
+  setWaterPan(pan: number): void { this.water?.setPan(Math.max(-0.4, Math.min(0.4, pan))); }
+
+  dispose(): void {
+    this.stopWind();
+    this.stopWater();
+    this.hum?.stop(400);
+    this.hum = null;
+    this.humOscs = [];
+  }
+}
 
 /**
  * A pooled vehicle engine. `playbackRate` carries the throttle so nothing is

@@ -28,12 +28,7 @@ generators. **Three shipped assets are not generated**, all deliberate, all in `
    [CC0-Public-Domain-Sounds](https://github.com/lavenderdotpet/CC0-Public-Domain-Sounds), Warfork
    by Team Forbidden, and Piper for EVA. `music/` is a three-tier adaptive score by Kevin MacLeod,
    **CC-BY 4.0** — the only attribution OBLIGATION in the product, and the reason `public/audio/`
-   is no longer CC0-only. See `public/audio/README.md`. **Nothing in the soundscape is synthesised**
-   any more: ambience was the last of it and it is deleted, along with its bus and its options
-   slider. A pink-noise wind bed and a hum of three sawtooths at 50/50.6/75 Hz through a waveshaper,
-   beating at 0.6 Hz — reported as the weirdest sound in the game, and heard at the MAIN MENU
-   because the title screen boots a real world behind itself and the hum followed its powered
-   plants. Same verdict as the other 39 families, and for the same stated reason.
+   is no longer CC0-only. See `public/audio/README.md`. Only ambience is still synthesised.
 
    **EVA is re-renderable**: `py tools/render-eva.py <scratch-dir>` reads the line texts straight
    out of `EVA_LINES` and writes `public/audio/eva/`. It refuses to run if it parses fewer lines

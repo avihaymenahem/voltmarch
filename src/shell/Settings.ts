@@ -97,7 +97,7 @@ const SHADOW_MAP_SIZE: Record<ShadowChoice, number> = {
 };
 
 /** Audio bus name -> the settings field that drives it. */
-const AUDIO_BUSES = ['music', 'sfx', 'voice', 'ui'] as const;
+const AUDIO_BUSES = ['music', 'sfx', 'voice', 'ui', 'ambience'] as const;
 
 /**
  * Push settings into the running engine.
@@ -659,6 +659,10 @@ export class SettingsScreen implements Screen {
     mix.appendChild(row('Interface', slider({
       min: 0, max: 100, step: 1, value: a.ui, format: pct,
       onChange: (v) => set({ ui: v }),
+    })));
+    mix.appendChild(row('Ambience', slider({
+      min: 0, max: 100, step: 1, value: a.ambience, format: pct,
+      onChange: (v) => set({ ambience: v }),
     })));
 
     const note = el('p', 'vm-body');

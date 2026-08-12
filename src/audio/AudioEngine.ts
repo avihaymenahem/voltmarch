@@ -476,16 +476,7 @@ export function ringMod(
  * 3. SOUND REGISTRATION
  * ========================================================================== */
 
-/*
- * FOUR BUSES, NOT FIVE. `ambience` was removed with the synthesised wind and
- * base hum that were its only sources — see the block where `AmbienceRig` used
- * to be in `Weapons.ts`. A bus with no producer is a fader in the options
- * screen that moves nothing, which is worse than a missing feature because the
- * player cannot tell it is missing.
- *
- * Recorded ambience, if it ever lands, adds this back in one line.
- */
-export type BusName = 'music' | 'sfx' | 'voice' | 'ui';
+export type BusName = 'music' | 'sfx' | 'voice' | 'ui' | 'ambience';
 
 export type VoiceCategory =
   | 'gunfire' | 'explosion' | 'tesla' | 'rocket'
@@ -873,7 +864,7 @@ export class AudioEngine {
     const glueMakeup = gain(ctx, dbToGain(SFX_GLUE.makeupDb));
     this.sfxGlue.connect(glueMakeup).connect(this.masterDuck);
 
-    const names: BusName[] = ['music', 'sfx', 'voice', 'ui'];
+    const names: BusName[] = ['music', 'sfx', 'voice', 'ui', 'ambience'];
     for (const name of names) {
       const level = gain(ctx, dbToGain(AUDIO_BUS_DB[name]));
       const duck = gain(ctx, 1);
@@ -992,7 +983,7 @@ export class AudioEngine {
   /* Buses, sliders, ducking                                                */
   /* ---------------------------------------------------------------------- */
 
-  /** The node a source connects to. Music and EVA both route through here. */
+  /** The node a source connects to. Music/EVA/ambience all route through here. */
   busInput(name: BusName): GainNode {
     return this.strips.get(name)!.level;
   }
