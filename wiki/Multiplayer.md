@@ -97,15 +97,19 @@ index — never from anything another person typed. You are *You*; the other pla
 | Starting credits | Forced to **10,000** on both clients |
 | Game speed | Forced to **1×** |
 | Opening | Forced to the **construction vehicle** start |
-| Unlocks | **Suppressed entirely.** Both players can build everything, including aircraft, superweapons and the naval arm. |
+| Unlocks | **Suppressed entirely.** Both players can build everything, including aircraft and superweapons. |
 | Pause | Does not exist. The pause menu opens over a still-running simulation. |
 
 Because gating is lifted, a PvP match is the only place you will see the whole roster without having
-ground the mission table out — including the six superweapons, all four aircraft and every commander
-power. Every one of those goes through the same command bus as a right-click, so they resolve
-identically on both machines and record correctly into a replay. The five commander powers are NOT
-in that list any more and never needed to be: they are bought from a Command Post with credits both
-players can see, so they were never gated by the profile in the first place.
+ground the mission table out — including the six superweapons and all four aircraft. Both go through
+the same command bus as a right-click, so they resolve identically on both machines and record
+correctly into a replay.
+
+Two things are NOT in that list any more and neither needed to be. **The five commander powers** are
+bought from a Command Post with credits both players can see, so they were never gated by the
+profile. **The navy** is not gated either: docks, hulls and the swimmer infantry are day-one in a
+skirmish too, and a lockstep match is exactly why — a profile-based refusal lands on one machine and
+not the other, and content required to reach the enemy is the worst possible thing to hang that on.
 
 Unlock suppression is not a convenience, it is a correctness requirement: the gate is consulted while
 the world is being built, and it answers from the *local* profile. Two players with different mission

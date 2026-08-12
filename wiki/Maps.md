@@ -198,8 +198,8 @@ Three rules, and they do not agree with each other in the way you would expect:
    and rejects the shot if the ground rises more than 0.9 m above the sight line. A ridge between you
    and a tank means the tank is visible and unshootable.
 3. **Arcing shells ignore rule 2.** Anything firing `Shell`-class ordnance — the Slaghurler's mortar,
-   the Kite Corvette's and Slag Scow's guns, the Slagger's satchel, naval deck guns — lobs over
-   cover. That is the entire point of them.
+   the Sun Cutter's, Kite Corvette's and Slag Scow's guns, the Slagger's satchel, naval deck guns —
+   lobs over cover. That is the entire point of them.
 
 **There is no high-ground bonus.** No range bonus, no damage bonus, no accuracy bonus. Searching the
 combat, damage and targeting code for one finds nothing. Range is measured on the ground plane, so
@@ -227,8 +227,19 @@ slowly and in single file, which is the one situation where being crushable stop
 ## 6. Water — three seas and seven dry maps
 
 Water sits at a flat 2.0 m. Below it, ground units simply cannot go; there is no shallows, no wading,
-no depth gradient in the navigation grid. Hover units cross land and water alike. Naval hulls can
-*only* be on water. Aircraft ignore all of it.
+no depth gradient in the navigation grid. Hover units cross land and water alike. Aircraft ignore all
+of it. **Every hull a shipyard builds can *only* be on water** — carriers included, so a landing is
+made from open water onto the sand rather than by driving the hull up the beach.
+
+Two things cross under their own power without hovering or flying: the **Sandskiff**, which is
+gated on a land structure, and the four **swimmer infantry** — Frogman, Naval Infantry, Tidewalker,
+Dredger — who are built at a barracks rather than a dock and are therefore offered on a dry map too.
+
+**No sea means no naval content is offered at all.** On a landlocked map the four docks and the
+eighteen hull types behind them are left out of the sidebar entirely rather than shown and refused —
+and so is anything whose prerequisite chain runs through a dock. The measure is 300 cells in the
+largest connected navigable body: the dry maps top out at 21, the three seas carry 3,622 to 7,784,
+and the threshold sits in the gap with a decade of margin on each side.
 
 **Three of the ten maps carry a real sea. Seven are landlocked.** All ten measured straight off the
 generator on their shipped lobby row — preset, biome, pinned `mapSeed` and the map's own army count:
@@ -280,9 +291,12 @@ both — 99.8 % of every navigable cell is in the main expanse — so a fleet ca
 portaging. Amphibious hover movement finally has something to be amphibious across, and it is the
 one chassis that can contest both the sea and the shore.
 
-> **A caveat worth knowing.** Nothing forces a Naval Yard to be built on the coast. You can found
-> one in the middle of the map, and the game will let you; it just will not put your hulls anywhere
-> useful. Build it on the beach.
+> **A yard must be on the coast, and the game enforces it.** All four docks carry a placement rule
+> that demands eight navigable water cells within 24 m of the footprint, and an inland site is refused
+> outright with *Must be founded on the coast* — or, on a landlocked map, with a different sentence,
+> *No navigable water on this battlefield*, because there is nowhere to move the ghost to. The rule and the launch search are two statements of one fact:
+> a hull leaves the yard onto water, so a yard with no water beside it would be a permanently
+> stalled production queue. This page used to say nothing stopped you; something does.
 
 ---
 

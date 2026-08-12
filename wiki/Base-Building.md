@@ -1,7 +1,7 @@
 # Base Building
 
 Everything you own grows out of one building. This page covers the construction vehicle, the
-Construction Yard, where a structure may go, the four build queues, power and brownouts, the tech
+Construction Yard, where a structure may go, the five build queues, power and brownouts, the tech
 tree, and the three things you can do to a building that is already standing: repair it, sell it,
 or move it.
 
@@ -85,10 +85,11 @@ your base"*. This is genuinely fiddly and worth knowing about in advance.
 
 ---
 
-## The four queues
+## The five queues
 
-You have exactly **four production queues**, one per sidebar tab, and they belong to **you**, not
-to a building.
+You have exactly **five production queues**, one per sidebar tab, and they belong to **you**, not
+to a building. The fifth, **PWR**, arrived with the Command Post in v2.6.0; it is the only tab with
+no hotkey, and the only one that closes when its publisher browns out.
 
 This is Command & Conquer's model, not StarCraft's, and the difference matters:
 
@@ -105,6 +106,7 @@ This is Command & Conquer's model, not StarCraft's, and the difference matters:
 | **DEF** Defence | `T` | Construction Yard |
 | **INF** Infantry | `I` | Barracks / Chapterhouse / Rookery |
 | **VEH** Vehicles | `V` | War Factory, Naval Yard, and their equivalents |
+| **PWR** Powers | — | Command Post, Command Bunker, Pharos, Signal Rig |
 
 A queue can be in one of these states, and the cameo says which:
 
@@ -167,6 +169,12 @@ Every cell of the footprint must pass all of:
 
 And the footprint's **centre** must be inside one of your build radii.
 
+**One structure has a sixth test.** The four docks — Naval Yard, Naval Pen, Slipway and Breaker
+Dock — must be founded on a coast: navigable water within **24 m** of the footprint, at least eight
+cells of it. That rule and the launch search are two statements of one fact, because a hull leaves
+the yard onto water; a dock founded inland would be a paid-for, finished, permanently stalled
+production queue.
+
 Fog of war is **not** checked. You can plant a building on ground you have never explored, as long
 as it is inside your radius.
 
@@ -181,6 +189,11 @@ The worst problem across the footprint wins:
 | *Something is already there* | Another structure's footprint |
 | *Clear your units off the site* | A unit is standing on it |
 | *Too far from your base* | Outside every build radius you own |
+| *Must be founded on the coast* | A dock, sited away from navigable water. There is a coast; move the ghost |
+| *No navigable water on this battlefield* | The same fault on a landlocked map. There is nowhere to move to, and the message says so rather than sending you up and down a dry map |
+
+The coast fault is deliberately **last** in that priority order, so it never masks a fault you can
+see for yourself — "there is a rock in the way" is the more useful sentence when both are true.
 
 If you click anyway, the order is still sent and EVA answers *"Cannot deploy here."* The ghost is
 dropped for a fresh build; a refused **relocation** stays on the cursor so you can try again.
@@ -279,7 +292,7 @@ Both armies share the same spine and differ in the leaves.
 | War Factory | 2,000 | 24 s | −40 | 3×2 | Ore Refinery |
 | Radar Dome | 1,000 | 14 s | −40 | 2×2 | Ore Refinery |
 | Ore Silo | 150 | 5 s | −10 | 1×1 | Ore Refinery |
-| Naval Yard *(Allies)* / Naval Pen *(Soviets)* | 1,000 | 14 s | −30 | 3×3 | Ore Refinery |
+| Naval Yard *(Allies)* / Naval Pen *(Soviets)* | 1,000 | 14 s | −30 | 3×3 | Ore Refinery, **and a coast** |
 | Repair Depot | 800 | 10 s | −30 | 2×2 | War Factory |
 | Battle Lab | 2,000 | 24 s | −60 | 2×2 | Radar Dome |
 
@@ -311,7 +324,7 @@ the phrase "dies in a brownout" was written for.
 | Forgeyard | 2,000 | 24 s | −40 | 3×2 | Ore Cistern |
 | Oculus | 1,000 | 14 s | −40 | 2×2 | Ore Cistern |
 | Sun Vault | 150 | 5 s | −10 | 1×1 | Ore Cistern |
-| Slipway | 1,000 | 14 s | −30 | 3×3 | Ore Cistern |
+| Slipway | 1,000 | 14 s | −30 | 3×3 | Ore Cistern, **and a coast** |
 | Solar Infirmary | 800 | 10 s | −30 | 2×2 | Forgeyard |
 | Reliquary | 2,000 | 24 s | −60 | 2×2 | Oculus |
 | Rampart *(wall)* | 100 | 2 s | — | 1×1 | Chapterhouse |
@@ -334,7 +347,7 @@ softest hulls in the game.
 | Breaker Yard | 1,900 | 22 s | −40 | 3×2 | Ore Sorter |
 | Spotter Mast | 1,000 | 14 s | −40 | 2×2 | Ore Sorter |
 | Slag Heap | 150 | 5 s | −10 | 1×1 | Ore Sorter |
-| Breaker Dock | 1,000 | 14 s | −30 | 3×3 | Ore Sorter |
+| Breaker Dock | 1,000 | 14 s | −30 | 3×3 | Ore Sorter, **and a coast** |
 | Patch Yard | 800 | 10 s | −30 | 2×2 | Breaker Yard |
 | Crucible | 2,000 | 24 s | −60 | 2×2 | Spotter Mast |
 | Scrap Barricade *(wall)* | 100 | 2 s | — | 1×1 | Rookery |

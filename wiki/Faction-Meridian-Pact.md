@@ -51,6 +51,7 @@ Trained at the **Chapterhouse**.
 | Wayfarer | 175 | 5 s | Chapterhouse | 110 | Infantry | 3.8 | Pulse Carbine, 15 x3, small arms | 20 m | yes | Line infantry. Long eyes, thin skin — 26 m of sight, the widest of any basic rifleman, and the fastest |
 | Sunlancer | 450 | 8 s | Chapterhouse, Oculus | 130 | Infantry | 3.2 | Sun Lance, 58, rocket, 2.0 m splash | 26 m | yes | The anti-armour answer on foot, and the heaviest anti-air punch the Pact can field before the Reliquary. Cheaper and longer-ranged than an Allied Javelin |
 | Artificer | 500 | 10 s | Chapterhouse, Ore Cistern | 95 | Infantry | 3.6 | unarmed | — | — | Captures enemy and neutral structures outright, and repairs your own |
+| Tidewalker | 380 | 7 s | Chapterhouse | 100 | Infantry | 3.0 | Pulse Carbine, 15 x3, small arms | 20 m | yes | **Crosses open water on his own.** 28 m of sight, two metres past the Wayfarer's — and the most expensive swimmer of the four, for 100 hit points |
 | Hierarch | 1500 | 20 s | Chapterhouse, Oculus | 430 | Infantry | 4.0 | Focus Lance, 60, AP, 1.4 m splash | 26 m | no | Commander. One alive at a time. The fastest commander, with 36 m of sight |
 
 The Sunlancer matters more here than the equivalent unit does in other armies. With no dedicated
@@ -66,7 +67,7 @@ crushes anything.
 | Unit | Cost | Time | Needs | HP | Armour | Speed | Weapon | Range | Air | What it is for |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Sun Collector | 1000 | 13 s | Forgeyard, Ore Cistern | 800 | Light | 7.0 | unarmed | — | — | Half the load, twice the trips. Carries 450 credits of ore, 400 cheaper and 40% faster than a standard harvester |
-| Sandskiff **(locked)** | 550 | 9 s | Forgeyard | 190 | Light | **9.2** | Arc Repeater, 13 x4, autocannon | 23 m | yes | The raider, and the fastest ground hull on the map. Turreted, shoots at aircraft, **and carries two infantry** |
+| Sandskiff **(locked)** | 550 | 9 s | Forgeyard | 190 | Light | **9.2** | Arc Repeater, 13 x4, autocannon | 23 m | yes | The raider, and the fastest ground hull on the map. Turreted, shoots at aircraft, **and holds two cargo slots** — two infantry, or one vehicle. Gated on the Forgeyard rather than the Slipway, which makes it the only hull in the game with a hold that still crosses dry land |
 | Solarch | 800 | 12 s | Forgeyard | 330 | Light | 7.6 | Focus Lance, 60, AP, 1.4 m splash | 26 m | no | The Pact main line. Outranges, never brawls. Turreted, faster than any other line tank |
 | Zenith Emitter **(locked)** | 1500 | 19 s | Forgeyard, Reliquary | 240 | Light | 6.2 | Zenith Emitter, 94, prism | **33 m** | no | Siege beam. Enormous damage that nearly nothing resists, at the longest ground reach in the army. Must stop to fire. 240 hit points |
 | Pactworks Carryall | 3000 | 32 s | Forgeyard | 950 | Heavy | 5.0 | unarmed | — | — | Unfolds into a second Conclave. Cannot be crushed |
@@ -82,13 +83,26 @@ it dies.
 
 ## Navy
 
-Built at the **Slipway**. Note that the Pact's ground army already crosses water, so the Slipway is
-about firepower afloat rather than about getting anywhere.
+Built at the **Slipway**, which only offers itself on a map with a real sea. The
+Pact's VEHICLES already cross water, so the Slipway buys firepower afloat and a
+lift for the half of the army that cannot: **every Pact infantryman is Locomotor
+Foot**, Wayfarer, Sunlancer, Artificer and Hierarch alike, and only the
+Tidewalker swims. **Every hull here is water-only**, the carriers included: they
+stand off the beach and put their cargo on the sand.
 
 | Unit | Cost | Time | Needs | HP | Armour | Speed | Weapon | Range | Air | What it is for |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Kite Corvette **(locked)** | 950 | 13 s | Slipway | 380 | Light | 7.6 | Mirror Battery, 70, HE, 3.4 m splash | 33 m | no | Escort hull. High explosive at 1.00 against Concrete makes it a shoreline demolition tool |
+| Sun Cutter | 480 | 6 s | Slipway | 170 | Light | **11.6** | Mirror Battery, 70, HE, 3.4 m splash | 33 m | no | Recon, and **the fastest thing in the game that is not an aircraft**. 46 m of sight ties the Oculus, the widest radar going. 170 hit points — it sees two islands away and loses every fight it starts |
+| Sun Lighter | 720 | 10 s | Slipway | 440 | Light | 7.0 | unarmed | — | — | **Four slots**: two vehicles, or four infantry |
+| Argosy | 1250 | 15 s | Slipway | 740 | Light | 5.6 | unarmed | — | — | **Eight slots.** The Pact arrives all at once |
+| Kite Corvette | 950 | 13 s | Slipway | 380 | Light | 7.6 | Mirror Battery, 70, HE, 3.4 m splash | 33 m | no | Escort hull. High explosive at 1.00 against Concrete makes it a shoreline demolition tool |
 | Sunmonitor **(locked)** | 1900 | 23 s | Slipway, Reliquary | 780 | Medium | 5.6 | Monitor Lance, 110 x2, rocket, 4.2 m splash | **40 m** | yes | Pact capital ship. Forty metres of reach, Medium armour, and its missiles elevate |
+
+The Sun Cutter carries the Corvette's gun on half the price and under half the
+hull — 170 hit points against 380. It is a scout that can be shot at, not a
+cheap warship.
+
+The Sunmonitor's **(locked)** is the Reliquary, not the campaign.
 
 ## Structures
 
@@ -102,7 +116,7 @@ about firepower afloat rather than about getting anywhere.
 | Oculus | 1000 | 14 s | Ore Cistern | 650 | -40 | Reveals the minimap, sees 46 m — the widest radar in the game — and opens tier two |
 | Sun Vault | 150 | 5 s | Ore Cistern | 450 | -10 | +1500 to your bank cap |
 | Solar Infirmary | 800 | 10 s | Forgeyard | 700 | -30 | Mends any hull standing in the light |
-| Slipway **(locked)** | 1000 | 14 s | Ore Cistern | 950 | -30 | Builds Pact warships |
+| Slipway | 1000 | 14 s | Ore Cistern | 950 | -30 | Builds Pact hulls. **Must be founded on a coast** — the game refuses an inland site |
 | Reliquary **(locked)** | 2000 | 24 s | Oculus | 850 | -60 | Unlocks the top of every tab: Zenith Emitter, Helios Spire, Sunmonitor and the Heliograph |
 
 Every economy and tech building is priced at the shared curve to the credit. The faction is meant to
@@ -157,12 +171,17 @@ has to walk into a fight to be useful with 430 hit points.
 
 ## Strengths
 
-- Every hull hovers. The entire army is amphibious and ignores slope; any lake is a flanking route.
+- Every hull the **Forgeyard** builds hovers. That whole half of the army is amphibious and ignores
+  slope; any lake is a flanking route. The Slipway's hulls are ships and stay on the water like
+  anyone else's.
 - The cheapest power in the game per credit, which puts the Pact a full tier ahead in the opening.
 - Reach at every tier: 26 m line tank, 33 m siege beam, 40 m capital ship, 46 m radar.
 - The fastest ground hull in the game (Sandskiff, 9.2 m/s) and the fastest line tank (Solarch,
   7.6 m/s).
-- The Sandskiff is a raider, an anti-air platform and a two-man transport in one 550-credit package.
+- The Sandskiff is a raider, an anti-air platform and a two-slot carrier in one 550-credit package —
+  and it is the **only hull in the game with a hold that can still cross a beach**, because it is
+  gated on the Forgeyard rather than the Slipway.
+- The Sun Cutter is the fastest thing in the game that does not fly, at 11.6 m/s.
 - Light armour actually resists armour-piercing better than Medium does (0.85 against 1.00).
 
 ## Weaknesses
@@ -174,8 +193,11 @@ has to walk into a fight to be useful with 430 hit points.
 - The Solar Array is 420 hit points. Your power grid is the softest target on the map, and losing it
   darkens your Helios Spires.
 - No gate, and no dedicated anti-air emplacement.
-- No dedicated troop transport — the Sandskiff's two seats are all you get, against a Hover
-  Transport's five.
+- The Argosy is the most expensive eight-slot hull in the game at 1250, and the Sun Lighter the
+  most expensive four at 720. The Pact pays a premium to move in bulk, on top of already paying
+  for the Slipway it does not strictly need.
 - One superweapon against the shared-pool armies' two.
-- The Sandskiff, Zenith Emitter, Kestrel, the whole navy, the Reliquary, the Helios Spire and the
-  Heliograph are all behind campaign unlocks on a fresh profile.
+- The Sandskiff, Zenith Emitter, Kestrel, the Reliquary, the Helios Spire and the Heliograph are all
+  behind campaign unlocks on a fresh profile. The navy is not: the Slipway, its four lower hulls and
+  the Tidewalker are day-one — but the Sandskiff, which is the raider unlock, is also the Pact's
+  only carrier that works away from a coast.

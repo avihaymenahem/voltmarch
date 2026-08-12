@@ -45,10 +45,15 @@ superweapon, and they play nothing like the first two or like each other.
 A brand-new profile does not have the whole roster. Every faction starts with a complete economy, a
 complete base and a complete army — construction yard, power, refinery, barracks, vehicle factory,
 radar, silo, wall, one cheap defence, line infantry, an engineer, a harvester and a main battle
-tank. What is held back is the *widening*: the naval arm, the tech building and everything hanging
-off it, the fast-harass raider, the tier-3 specialist, aircraft, and the expensive defences.
-Missions pay those out, and the four unlock groups are mirrored across all four armies — one
-mission grants "the raider" and every faction gets its raider — so switching sides never sends you
-back to the start of the curve. See [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
+tank. What is held back is the *widening*: the tech building and everything hanging off it, the
+fast-harass raider, the tier-3 specialist, aircraft, the repair pad, the commander hero and the
+expensive defences. Missions pay those out, and every unlock group is mirrored across all four
+armies — one mission grants "the raider" and every faction gets its raider — so switching sides
+never sends you back to the start of the curve. See [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
+
+**The navy is not on that list.** Docks, landing ships, carriers, recon hulls and the swimmer
+infantry are all buildable in your first match; content you need in order to reach the enemy is
+never gated on progress. What still gates a fleet is the map — no sea, no naval branch — and, for
+a capital ship, your own tech building.
 
 Faction pages below mark anything gated with **(locked)**.
