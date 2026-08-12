@@ -405,7 +405,17 @@ roster was unusable against three of your four opponents.
   was unreachable, and **every passenger in every saved game came back `Alive | Garrisoned |
   Immobilized` with no host** — unrenderable, unselectable, untargetable, unmovable, permanently.
   And two lockstep clients that disagreed about WHICH hull a man was in produced an identical
-  checksum. `GarrisonService` still keeps occupancy in a side array and still has the first half.
+  checksum. `GarrisonService` has the sibling column `store.garrisonId`, saved and hashed
+  the same way — TWO columns, so "in a building or in a hull, never both" is true by
+  construction rather than by scan order. The fix actually lands in
+  `GarrisonService.recover`, whose no-host branch is the one neither service had.
+- **`structuralHash()` does NOT cover the column list**, and a commit on this branch said
+  it did. It hashes `MAX_ENTITIES`, the cell and enum counts and three flag bits, on
+  purpose, because the entity chunk is self-describing: `restoreEntities` finds no column
+  and leaves the default. So adding a column does NOT refuse an older save — `BUILD_TAB_COUNT`
+  is in there, which is why the Powers tab did — and a pre-column save comes back with the
+  ids at 0 and the `Garrisoned` bit intact off the `flags` column. That is exactly the
+  state the recovery branches exist to catch, on the first load after this ships.
 - **`UnitState.Drowned` exists to sit on the far side of `Damage.cleanupTick`'s early return for
   `Selling`.** A sunk transport's squad and a levelled garrison's occupants reached neither
   scoreboard while comments in both services promised they did.

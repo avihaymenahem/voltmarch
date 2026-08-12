@@ -97,8 +97,11 @@
  * untargetable, unmovable, permanently. And two lockstep clients that disagreed
  * about WHICH hull a man was in produced an identical checksum.
  *
- * `GarrisonService` still keeps its occupancy in a side array and still has the
- * first half of that bug. Filed, not fixed here.
+ * `GarrisonService` has the sibling column `store.garrisonId`, saved and hashed
+ * the same way. TWO columns and not one, so "in a building or in a hull, never
+ * both" is true by construction rather than by scan order — `ride` below skips
+ * a unit with no `carrierId` in one comparison, and sharing a column would send
+ * every garrison occupant down this service's repair branches instead.
  * ============================================================================
  */
 
@@ -551,7 +554,23 @@ export class TransportService {
         if ((f & EntityFlag.Garrisoned) === 0) continue;
         if ((f & EntityFlag.PendingDestroy) !== 0) continue;
         const held = st.carrierId[i] as EntityId;
-        if ((held as number) === 0) continue;          // a garrisoned man, not ours
+        if ((held as number) === 0) {
+          // NEITHER COLUMN CLAIMS HIM, so nobody ever will. `GarrisonService`
+          // owns anyone with a `garrisonId` and skips the rest, and this loop
+          // used to skip anyone without a `carrierId` — so a unit carrying
+          // `Garrisoned` and neither id fell between the two services and
+          // stayed alive, immobile and invisible forever.
+          //
+          // It is reachable by exactly one route and that route is a save
+          // written before these columns existed: `restoreEntities` finds no
+          // column, leaves `alloc`'s 0, and the `Garrisoned` bit rides back in
+          // on the `flags` column, which HAS always been persisted. Garrison
+          // occupants are recovered by `GarrisonService.recover`'s own no-host
+          // branch; a VEHICLE passenger has no equivalent, because a vehicle
+          // could not ride at all until this release.
+          if (st.garrisonId[i] === 0) this.strand(i);
+          continue;
+        }
         const t = st.index(held);
         if (t < 0) { this.strand(i); continue; }
         // THE HULL IS ALREADY DYING, AND CATCHING IT HERE IS WHAT MAKES THE SQUAD
