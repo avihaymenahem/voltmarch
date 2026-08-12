@@ -101,6 +101,24 @@ export interface BuildExtras {
   buildTimeSec: number;
   powerDelta: number;
   blurb: string;
+  /**
+   * THE LONG FORM, for the strip along the foot of the rail — one to three
+   * sentences saying what the thing is, why you would build it instead of
+   * something else, and what it needs and leads to.
+   *
+   * `blurb` and this are DIFFERENT TEXT ON PURPOSE, and the reason is the bug
+   * that created this field: the brief printed the blurb, the hover card
+   * printed the same blurb, so the strip was a second copy of the card and a
+   * player reading both learned nothing the second time. Worse, a blurb is
+   * written for somebody who already knows the game — "Unlocks the top of
+   * every tab" is exactly right about a Reliquary and tells a new player
+   * nothing about what a Reliquary IS.
+   *
+   * Empty is a legal answer and the caller falls back to `blurb`, which is
+   * what a headless build with no def tables gets. Coverage is a TEST
+   * (`tests/build-descriptions.spec.ts`), not a runtime concern.
+   */
+  description: string;
   /** Human sentence naming what this needs, e.g. `Requires Radar Dome`. */
   prereq: string;
   /**
@@ -2483,16 +2501,28 @@ class BuildPanel {
    * the tab's first entry only when the tab's contents no longer contain it,
    * which happens for free — the lookup below simply misses.
    *
-   * WHY A LOCKED ENTRY GETS ITS REASON INSTEAD OF ITS BLURB
-   * ------------------------------------------------------
+   * WHY A LOCKED ENTRY GETS ITS REASON INSTEAD OF ITS DESCRIPTION
+   * -------------------------------------------------------------
    * The slot banner already says the ONE WORD — LOCKED, FUNDS, POWER — and the
    * whole sentence ("Requires Radar Dome") lived only in the tooltip. At the
    * moment you cannot build a thing, that sentence is the single most useful
-   * line the panel can show, and the blurb describing what the thing does once
-   * you have it can wait. So the reason wins the two rows while it applies.
+   * line the panel can show, and the paragraph describing what the thing does
+   * once you have it can wait. So the reason wins the rows while it applies.
+   *
+   * WHY IT PRINTS `description` AND THE CARD PRINTS `blurb`
+   * ------------------------------------------------------
+   * Because it used to print the blurb, and so does the card, and the two were
+   * therefore the same sentence twice. See `BuildExtras.description`. The
+   * fallback to `blurb` is not decoration: a build with no def tables bound
+   * has no descriptions either, and a strip that empties itself teaches the
+   * player to stop looking at it — which is the same argument that makes this
+   * rest on the tab's first entry rather than blanking.
    *
    * `extras` allocates an object per call — see `Hud.entryOf` — so it is
-   * reached only when the signature actually changed, never per frame.
+   * reached only when the signature actually changed, never per frame. THAT IS
+   * THE WHOLE ZERO-DOM-WRITE STORY HERE and lengthening the text does not
+   * touch it: `briefSig` is still the key plus the locked reason, so a steady
+   * selection writes nothing however long the sentence is.
    */
   private setBrief(c: HudCameo | null): void {
     const locked = c !== null && !c.available && c.reason !== '';
@@ -2509,16 +2539,19 @@ class BuildPanel {
       return;
     }
 
+    const extra = this.extras?.(c.key) ?? null;
     this.briefNameNode.nodeValue = c.name;
     this.briefTextNode.nodeValue = locked
-      ? lockedSentence(c.reason, this.extras?.(c.key).unlockHint ?? '')
-      : (this.extras?.(c.key).blurb ?? '');
+      ? lockedSentence(c.reason, extra?.unlockHint ?? '')
+      : (extra === null ? '' : (extra.description !== '' ? extra.description : extra.blurb));
     this.briefTextEl.classList.toggle('is-locked', locked);
   }
 
   private tipFor(c: HudCameo, index: number): TooltipContent {
+    // The CARD keeps the one-clause `blurb`; the strip at the foot of the rail
+    // is the one that got the paragraph. See `BuildExtras.description`.
     const extra = this.extras?.(c.key)
-      ?? { buildTimeSec: 0, powerDelta: 0, blurb: '', prereq: '', unlockHint: '' };
+      ?? { buildTimeSec: 0, powerDelta: 0, blurb: '', description: '', prereq: '', unlockHint: '' };
     return {
       title: c.name,
       cost: c.cost,

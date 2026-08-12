@@ -1928,8 +1928,19 @@
 
      Why the vertical room exists: eight is the largest roster in any tab of any
      faction, so at two columns the grid needs four rows and the rail is tall
-     enough for six. Height was the surplus; the cameo is where it goes. */
-  grid-auto-rows: calc(84 * var(--vm-u));
+     enough for six. Height was the surplus; the cameo is where it goes.
+
+     82u NOW, NOT 84, AND THE TWO UNITS WENT TO THE BRIEF. The strip below grew
+     from two text lines to four when it stopped printing the same sentence the
+     hover card prints — see its own block. Four rows of cameos is the number
+     that matters (it is the largest roster), and at 84u the taller strip left
+     the fourth row a few pixels short of fitting, so the grid would have begun
+     scrolling on tabs that used to sit still. Measured at 1440p: the grid box
+     is 680 px and four rows at 82u plus three 4u gaps is exactly 680. The cost
+     is 2.4% of cameo height, which is a quarter of one device pixel at the
+     resolutions this ships at; the gain is that the palette does not start
+     scrolling. */
+  grid-auto-rows: calc(82 * var(--vm-u));
   gap: calc(4 * var(--vm-u));
   flex: 1 1 auto;
   min-height: 0;
@@ -1944,24 +1955,37 @@
 .vm-hud .vm-grid::-webkit-scrollbar-thumb { background: rgba(var(--vm-accent-rgb), 0.35); }
 
 /* --------------------------------------------------------------------------
- * THE BRIEF — the description line, permanently on screen
+ * THE BRIEF — the description panel, permanently on screen
  * --------------------------------------------------------------------------
- * Every def already carried a one-sentence `blurb` and every one of them was
- * already written; the only way to read one was to hold the pointer still on a
- * cameo until the tooltip's delay expired. The strip makes that text ambient.
+ * It used to print the def's one-clause `blurb`, which was ALSO what the hover
+ * card printed — so the strip was a second copy of the card, and the blurbs are
+ * written for somebody who already knows the game. "Unlocks the top of every
+ * tab" is exactly right about a Reliquary and says nothing about what a
+ * Reliquary is. It prints `BuildExtras.description` now: one to three sentences
+ * from `src/data/Descriptions.ts`, written for a first-time player.
  *
- * THE HEIGHT IS FIXED AND THAT IS THE POINT. 35u buys the name line plus two
- * text lines, and the longest blurb in the game is 60 characters, which at 8u
- * against the rail's 240u wraps to exactly two. Sizing the box to the sentence
- * instead would re-lay-out the SCROLLING GRID above it on every hover — a far
- * worse artefact than a blank half-line under a short one.
+ * THE HEIGHT IS STILL FIXED AND THAT IS STILL THE POINT — it went from 35u to
+ * 53u, not from a constant to `auto`. Sizing the box to the sentence would
+ * re-lay-out the SCROLLING GRID above it on every hover, which is a far worse
+ * artefact than a blank half-line under a short entry.
+ *
+ * 53u IS DERIVED, NOT CHOSEN: 7u of padding + a 9.5u name line + four 9u text
+ * lines = 52.5u, rounded up. Four lines is what the copy needs — measured in
+ * the shipped face rather than estimated, the text column is 432 px at 1440p
+ * and 16 px Rajdhani wraps ordinary prose at about 62 characters, so the 200
+ * character ceiling `tests/build-descriptions.spec.ts` enforces lands inside
+ * four lines with room to spare. The longest entry in the game today is the
+ * Battle Lab at 199, and it wraps to four.
+ *
+ * `-webkit-line-clamp` still cuts silently and without an ellipsis if that ever
+ * stops being true, which is why the character cap is a TEST and not a comment.
  *
  * `pointer-events: none` because the strip is a readout, not a control: it must
  * never eat a click aimed at the slot above it, and it has nothing to hover.
  * ------------------------------------------------------------------------ */
 .vm-hud .vm-brief {
   flex: 0 0 auto;
-  height: calc(35 * var(--vm-u));
+  height: calc(53 * var(--vm-u));
   margin-top: calc(3 * var(--vm-u));
   padding: calc(3.5 * var(--vm-u)) calc(5 * var(--vm-u));
   box-sizing: border-box;
@@ -1987,17 +2011,17 @@
 .vm-hud .vm-brief-text {
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
   overflow: hidden;
   font-size: calc(8 * var(--vm-u));
   line-height: calc(9 * var(--vm-u));
   color: var(--vm-dim);
 }
 
-/* A blocked entry spends the two rows on WHY, in the amber the cost badge
-   already uses for the same condition. The blurb describing what the thing
-   does once you own it is the less useful sentence at that moment. */
+/* A blocked entry spends the rows on WHY, in the amber the cost badge already
+   uses for the same condition. The description of what the thing does once you
+   own it is the less useful text at that moment. */
 .vm-hud .vm-brief-text.is-locked { color: var(--vm-warn); }
 
 .vm-hud .vm-slot {

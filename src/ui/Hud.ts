@@ -114,6 +114,14 @@ import {
   type SuperweaponView,
 } from './Sidebar';
 import { readProgression } from './Objectives';
+// THE ONE STATIC EDGE FROM src/ui INTO src/data, and it is safe for the reason
+// rule 1 in this file's header cares about: `Descriptions.ts` imports NOTHING.
+// It is a frozen `Record<string, string>` and a lookup, so there is no module
+// here that can fail to arrive and take the interface down with it — which is
+// what the `import()` seams around production, terrain and the def tables are
+// defending against. Reaching it lazily would only mean the strip printed the
+// short blurb for the first few frames of every match.
+import { describeBuildable } from '../data/Descriptions';
 import { iconForUnitKey, makeIcon, type IconName } from './icons';
 import { buildHotkeyBlockedBy, type StoredBindings } from '../input/ActionCatalogue';
 
@@ -1588,12 +1596,19 @@ export class Hud {
   /** Tooltip extras: from the live catalog when there is one, else the roster. */
   private extrasFor(key: string): BuildExtras {
     const unlockHint = this.unlockHintFor(key);
+    // The long form is a pure key -> string lookup with no dependency of its
+    // own, so unlike production, terrain and the def tables it needs no
+    // `import()` seam — there is nothing here that can fail to land. It falls
+    // back to '' for an unknown key and the sidebar then prints the blurb, so
+    // the fallback roster below is covered too.
+    const description = describeBuildable(key);
     const entry = this.production?.catalog.byKey(key) ?? null;
     if (entry !== null) {
       return {
         buildTimeSec: entry.buildTime,
         powerDelta: entry.power,
         blurb: entry.blurb,
+        description,
         prereq: this.prereqSentence(entry.prereqs),
         unlockHint,
       };
@@ -1601,12 +1616,13 @@ export class Hud {
     const row = FALLBACK_ROSTER.find((r) => r.key === key && r.faction === this.faction)
       ?? FALLBACK_ROSTER.find((r) => r.key === key);
     if (row === undefined) {
-      return { buildTimeSec: 0, powerDelta: 0, blurb: '', prereq: '', unlockHint };
+      return { buildTimeSec: 0, powerDelta: 0, blurb: '', description, prereq: '', unlockHint };
     }
     return {
       buildTimeSec: row.buildTime,
       powerDelta: row.power,
       blurb: row.blurb,
+      description,
       prereq: this.prereqSentence(row.prereqs),
       unlockHint,
     };
