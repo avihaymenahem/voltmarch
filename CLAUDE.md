@@ -34,8 +34,7 @@ generators. **Three shipped assets are not generated**, all deliberate, all in `
    out of `EVA_LINES` and writes `public/audio/eva/`. It refuses to run if it parses fewer lines
    than the table declares — a guard added because the first version matched only single-quoted
    strings and silently skipped `allyUnderAttack`, whose text is double-quoted for containing an
-   apostrophe. The voice model is 109 MB and gitignored; only the ~460 kB of Ogg is committed.
-   apostrophe. The voice model is 109 MB and gitignored; only the ~450 kB of Ogg is committed.
+   apostrophe. The voice model is 109 MB and gitignored; only the ~405 kB of Ogg is committed.
 
    **The voice was chosen on its licence chain, not its sound.** `en_GB-cori-high` is LibriVox
    (public domain) data, trained from scratch, so it avoids the research-only Blizzard/Lessac terms
