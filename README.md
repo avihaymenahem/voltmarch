@@ -53,9 +53,16 @@ out.
 
 Ten battlefields, three of which carry a real sea. **Sunder Atoll** is the one the navy exists for —
 four islands, one army each, 53.8% of the map underwater and no land route between any two of them,
-so every crossing is by ship or it does not happen. Nothing on it is progression-gated, because
-content required to *reach the enemy* is never a reward: a fresh profile that could not build a
-transport would be in a permanent stalemate rather than a hard match.
+so every crossing is by ship or it does not happen.
+
+Every army fields a full naval line: a recon hull with the widest sight in the game, a four-slot
+landing ship, an eight-slot heavy, an escort, a capital ship, and infantry who swim across on their
+own. Cargo is measured in **slots** rather than seats — a rifleman costs one and a vehicle costs two
+— so an eight-slot hull is four tanks, and putting armour on another island is a thing you can
+actually do. **None of it is progression-gated.** A dock still needs a real coast and a capital ship
+still needs the army's tech structure, but no part of the navy is behind a profile unlock, because a
+battlefield that sells itself on naval yards and then hides them is not a hard match, it is a
+stalemate with extra steps.
 
 <p align="center">
   <img src="docs/progress/13-atoll-crossing.png" alt="A dock on an island coast, a landing party crossing the shoal, and warships holding the lane" width="820" />
@@ -89,11 +96,16 @@ Three shipped assets are not generated, all deliberate:
   degrades to the synthesised bank rather than to silence. See
   [`public/audio/README.md`](public/audio/README.md).
 
-"Shipped" means `public/` — what the browser downloads. The two PNGs in `docs/progress/` on this
-page are a different thing: screenshots of the running game, captured by `npm run shots` and
-downscaled to 1640 px, which the product never loads. They are photographs of procedurally generated
-art rather than art, but they are still binary files in the repository and this list would be
-dishonest by omission without them.
+"Shipped" means `public/` — what the browser downloads. Three PNGs in `docs/` on this page are a
+different thing, and the product loads none of them.
+
+Two are screenshots of the running game, captured by `npm run shots` and downscaled to 1640 px:
+photographs of procedurally generated art rather than art. The third is `docs/hero.png`, the
+illustration at the top, which is **key art and not a screenshot** — it was drawn, not rendered by
+this engine, which is why it is captioned as such and why the in-engine capture sits directly
+beneath it. None of them is in the credits screen, because that screen is checked against `public/`
+and a line for a file the game never loads would make it less true, not more. They are still binary
+files in the repository and this list would be dishonest by omission without them.
 
 ## Running it
 
