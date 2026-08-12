@@ -21,7 +21,7 @@ generators. **Three shipped assets are not generated**, all deliberate, all in `
    `logo-full.png` is the main-menu title and the loading curtain; `mark-*.png` are the favicons
    and app icons. See `public/brand/README.md`. This said "eight PNGs derived by" while one of the
    eight was the underived SOURCE, sitting in the shipped directory and being published unused.
-3. **Recorded audio** in `public/audio/` — 182 Ogg files, 6.9 MB, added 2026-08-09 at the user's
+3. **Recorded audio** in `public/audio/` — 183 Ogg files, 6.9 MB, added 2026-08-09 at the user's
    request. `sfx/` covers **all 39 sound-effect families** (CC0), `voice/` gives the unit barks two
    real voices (Kenney, CC0), and `eva/` is the announcer, **rendered speech** rather than found
    audio. Sources: Kenney, several CC0 libraries via
@@ -34,7 +34,7 @@ generators. **Three shipped assets are not generated**, all deliberate, all in `
    out of `EVA_LINES` and writes `public/audio/eva/`. It refuses to run if it parses fewer lines
    than the table declares — a guard added because the first version matched only single-quoted
    strings and silently skipped `allyUnderAttack`, whose text is double-quoted for containing an
-   apostrophe. The voice model is 109 MB and gitignored; only the ~420 kB of Ogg is committed.
+   apostrophe. The voice model is 109 MB and gitignored; only the ~460 kB of Ogg is committed.
 
    **The voice was chosen on its licence chain, not its sound.** `en_GB-cori-high` is LibriVox
    (public domain) data, trained from scratch, so it avoids the research-only Blizzard/Lessac terms
@@ -231,6 +231,35 @@ in-match strip, `src/game/Playback.ts` + `playback.system.ts` for the feeding.
 - **`buildVersion` warns and does not refuse.** It is a correlation, not a cause — most releases here
   touch art the sim cannot observe — and the real question is measured every 30 ticks by the
   checkpoint compare, which the bar puts on screen. See `Replay.buildWarning`.
+
+## An economy can stop dead, and one rule exists to unstick it
+
+Reported as *"if my ore harvester being smashed and i dont have any money left.. how can i make a
+progress?"*. `Viability` asks whether a player can still PLAY and says yes for a base full of
+producers with an empty bank; nothing asked whether they could still EARN. `src/sim/OreCrisis.ts`
+is that second question and `orecrisis.system.ts` is its two consequences.
+
+**The dead end is real and it was measured, not argued.** Selling refunds `SELL_REFUND` = 0.5, so
+both routes out are self-blocking: buying a miner needs the refinery AND the vehicle factory
+standing (they are its prereqs, and they are the two most valuable things you own), and rebuilding
+the refinery for its free miner costs 2000 against the 1000 the old one pays. Enumerated
+exhaustively over the real bound catalog in `tests/ore-crisis.spec.ts`, **Construction Yard + power
++ refinery — the ordinary second-building state — is unrecoverable for all four armies**, as is
+refinery + factory + power with the yard bombed.
+
+So the predicate is three-valued. `SellOut` (selling genuinely covers it) gets a chip and
+`EvaLine.NoOreMiner` naming the sell tool, and nothing else. `Stranded` gets a standing refinery
+redeeming its `shipsWith` promise after ten seconds. **That is a free harvester and this file will
+not pretend otherwise**; what makes it defensible is that all four gate clauses must hold together
+and the fourth is A FINISHED REFINERY STANDING — so killing the refinery, which is the economic
+target in every game in this genre, still starves the opponent out. It binds the AI identically,
+because it moves entities and a rule that bound only the human would desync a lockstep match.
+
+Two things to leave alone. The chip's detail line is one nowrap line of ~45 characters and the
+first version put the instruction past the ellipsis — lead with the verb, and screenshot it if it
+grows. And do not "simplify" the predicate to "no miner and no money": two refineries refund
+exactly 2000, which buys a fresh refinery, which ships a miner, and that player must NOT be handed
+one.
 
 ## Hard rules
 

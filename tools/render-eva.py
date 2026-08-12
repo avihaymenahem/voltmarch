@@ -16,7 +16,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path("C:/Users/Administrator/projects/voltmarch")
+# DERIVED FROM THIS FILE, NOT HARDCODED. It read
+# `Path("C:/Users/Administrator/projects/voltmarch")`, which is one particular
+# checkout on one particular machine. Run from a `git worktree` — which is how
+# every parallel agent here works — it parsed the MAIN checkout's `Eva.ts` and
+# deleted and rewrote the MAIN checkout's `public/audio/eva/`, so a new line
+# added in a worktree would render nothing and clobber a tree that knew nothing
+# about it. Same class of defect as the shot harness photographing a
+# neighbour's build.
+ROOT = Path(__file__).resolve().parent.parent
 SCRATCH = Path(sys.argv[1])
 VOICES = SCRATCH / "tts-voices"
 OUT = ROOT / "public" / "audio" / "eva"

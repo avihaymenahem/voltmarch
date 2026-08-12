@@ -55,7 +55,7 @@ Three shipped assets are not generated, all deliberate:
   still runs offline and from a `file://` path.
 - **The brand lockup** in `public/brand/` — the wordmark on the title screen and loading curtain,
   and the favicons and app icons, derived by `tools/brand.mjs` from a supplied `logo.png`.
-- **Recorded audio** in `public/audio/` — 182 files, 6.9 MB. `sfx/` covers **all 39 sound-effect
+- **Recorded audio** in `public/audio/` — 183 files, 6.9 MB. `sfx/` covers **all 39 sound-effect
   families** and `voice/` gives the unit barks two real voices, all CC0 from
   [Kenney](https://kenney.nl), several CC0 libraries and Warfork by Team Forbidden. `eva/` is the
   announcer, rendered offline with [Piper](https://github.com/OHF-Voice/piper1-gpl) and a

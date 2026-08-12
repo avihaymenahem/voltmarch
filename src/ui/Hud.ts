@@ -269,6 +269,15 @@ const EVA_TOASTS: Readonly<Record<number, readonly [ToastKind, string]>> = {
   [EvaLine.OreMinerUnderAttack]: ['warn', 'Miner under attack'],
 };
 
+/*
+ * `EvaLine.NoOreMiner` and `EvaLine.Reinforcements` are deliberately ABSENT
+ * above, for the same reason `ConstructionComplete` is: `orecrisis.system.ts`
+ * posts its own chip for both, and that chip names the shortfall in credits
+ * and the tool to press. The generic row would post a second, vaguer chip for
+ * the same event — and, because `eva:line` is handled before the system's own
+ * toast lands, it would post it FIRST.
+ */
+
 /** Toast severity -> its leading icon. */
 const TOAST_ICONS: Readonly<Record<ToastKind, IconName>> = {
   info: 'info',
@@ -1083,6 +1092,18 @@ export class Hud {
   /** Raise an event chip. Public so any module can post one. */
   toast(kind: ToastKind, key: string, title: string, detail = ''): void {
     this.toasts.push(kind, key, title, detail);
+  }
+
+  /**
+   * Mark the sell tool as the thing to press, or stop.
+   *
+   * The seam `src/sim/orecrisis.system.ts` reaches through, alongside `toast`
+   * and by the same structural rule: the sim names an intent, the HUD decides
+   * what that looks like. It stays on `window.__vmHud`, so a headless boot or
+   * the `?shot=` harness simply has nobody to call.
+   */
+  setOreCrisis(active: boolean): void {
+    this.sidebar.setUrgentSell(active);
   }
 
   /* ------------------------------------------------------------------ */

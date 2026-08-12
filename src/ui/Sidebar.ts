@@ -2024,6 +2024,8 @@ class BuildPanel {
   private readonly grid: HTMLElement;
   private readonly slots: BuildSlot[] = [];
   private readonly tools: HTMLButtonElement[] = [];
+  /** See `setUrgentSell`. Mirrors the class so the DOM is touched only on a change. */
+  private urgentSell = false;
   private readonly tooltip: Tooltip;
 
   /* -- the brief -------------------------------------------------------- *
@@ -2449,6 +2451,26 @@ class BuildPanel {
   }
 
   get armedMode(): ArmedMode { return this.armed; }
+
+  /**
+   * Draw the eye to the sell tool while the economy is stopped.
+   *
+   * Called from `Hud.setOreCrisis`, which `orecrisis.system.ts` drives. The
+   * chip in the corner already says "Use the SELL tool"; a player who has
+   * never armed it is then looking at a row of two unlabelled icons, and
+   * naming a control the player cannot pick out is the same defect one layer
+   * down. Idempotent and free when nothing changes — `classList.toggle` with
+   * an explicit boolean writes only on a real transition.
+   *
+   * Deliberately NOT armed automatically. Arming a destructive modal tool for
+   * someone is how a misclick sells the Construction Yard, which is the bug
+   * `tests/sell-lockout.spec.ts` exists for.
+   */
+  setUrgentSell(on: boolean): void {
+    if (this.urgentSell === on) return;
+    this.urgentSell = on;
+    this.tools[1]?.classList.toggle('is-urgent', on);
+  }
 
   /**
    * Seconds left on this build, from the rate it is ACTUALLY moving at.
@@ -3172,6 +3194,9 @@ export class Sidebar {
   }
 
   get armedMode(): ArmedMode { return this.build.armedMode; }
+
+  /** Flag the sell tool as the thing to press. See `BuildPanel.setUrgentSell`. */
+  setUrgentSell(on: boolean): void { this.build.setUrgentSell(on); }
 
   /** Build slots the grid can show at once. Diagnostics only. */
   get slotCount(): number { return this.build.slotCount; }

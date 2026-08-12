@@ -834,6 +834,26 @@ export const EVA_LINES: Readonly<Record<string, EvaLineDef>> = {
     phones: 'O r , m Y n R , V n d R , @ t a k',
     priority: 2, cooldown: 30,
   },
+  /**
+   * THE ONLY LINE IN THE TABLE THAT TELLS THE PLAYER WHAT BUTTON TO PRESS.
+   *
+   * Every other line reports. This one instructs, because the state it
+   * announces — no ore miner and no money for one — is the one state where
+   * reporting is useless: the player can already SEE that the bank is empty,
+   * and what they cannot see is that the sidebar's sell tool is the way out.
+   * See `src/sim/OreCrisis.ts`. The vocabulary is `oreMinerUnderAttack`'s, not
+   * the catalog's "Ore Harvester", because the announcer already calls it a
+   * miner and one voice should use one word.
+   *
+   * P1 and `noDropout`, matching `lowPower`: an economy that has stopped is at
+   * least as urgent as a brownout, and an instruction is the last thing that
+   * should be squelched.
+   */
+  noOreMiner: {
+    text: 'No ore miner. Sell a structure to rebuild.',
+    phones: 'n o , O r , m Y n R ; s E l , @ , s t r V k C R , t u , r i b I l d',
+    priority: 1, cooldown: 45, noDropout: true,
+  },
   building: {
     text: 'Building.',
     phones: 'b I l d I N',
@@ -899,6 +919,11 @@ export const EVA_LINE_ID: Readonly<Record<number, string>> = {
   [EvaLine.MissionFailed]: 'missionFailed',
   [EvaLine.BuildingCaptured]: 'buildingCaptured',
   [EvaLine.OreMinerUnderAttack]: 'oreMinerUnderAttack',
+  [EvaLine.NoOreMiner]: 'noOreMiner',
+  // `reinforcements` was in this table's LINE inventory from the start and had
+  // no `EvaLine` to dispatch it — a recorded, mastered take that no sim code
+  // could reach. The ore-crisis rescue is the first caller.
+  [EvaLine.Reinforcements]: 'reinforcements',
 };
 
 /* ==========================================================================
