@@ -71,6 +71,17 @@ generators. **Three shipped assets are not generated**, all deliberate, all in `
    listed as CC0 on OpenGameArt shipped a `creativecommons.txt` reading CC-BY 3.0, under a
    different author's name than the page credited. It was rejected rather than shipped mislabelled.
 
+4. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
+   784 kB, downsampled to 1600px. It is the ONLY entry in this list that is **not shipped**: it
+   lives in `docs/`, not `public/`, so it is in no bundle, reaches no player, and is deliberately
+   NOT in the credits screen — `tests/credits-truthful.spec.ts` checks that screen against
+   `public/`, and adding a line for a file the game never loads would make the credits less true,
+   not more. It is listed here because the rule below is about assets nobody generated, and the
+   next person to audit this list should not have to rediscover why the README opens with a
+   painting. The README labels it as key art and keeps the in-engine capture directly beneath it,
+   because a photoreal illustration sitting above the sentence "all art is generated from code" is
+   exactly the quiet falsehood `docs/SPEC_DRIFT_AUDIT.md` catalogues.
+
 This paragraph previously said "cameos, icons and the wordmark are still all generated", which was
 false on two counts the moment the brand assets landed — the wordmark on the title screen and every
 favicon are those PNGs. It said so directly under an instruction to update it in the same commit as

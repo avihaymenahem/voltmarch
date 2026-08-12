@@ -20,7 +20,19 @@
 </p>
 
 <p align="center">
+  <img src="docs/hero.png" alt="VOLTMARCH key art: an amphibious assault on a contested coast" width="900" />
+</p>
+
+<p align="center">
+  <sub><i>Key art — an illustration, not a screenshot. The game looks like the shot below.</i></sub>
+</p>
+
+<p align="center">
   <img src="docs/progress/02-hud-full.png" alt="An Allied base mid-match: the sidebar build tabs, the power and credit readouts, and the detail panel describing a Power Plant" width="820" />
+</p>
+
+<p align="center">
+  <sub>In-engine, captured by <code>npm run shots</code> from this build.</sub>
 </p>
 
 ---
