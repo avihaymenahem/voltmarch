@@ -482,9 +482,14 @@ export class AiBrain {
   /** A cell on our own beach: foot-passable land touching the sea. -1 when none. */
   private shoreCx = -1;
   private shoreCz = -1;
-  /** The wet cell beside it — what a hull is actually ordered to. */
-  private shoreWaterCx = -1;
-  private shoreWaterCz = -1;
+  /*
+   * `shoreWaterCx/Cz` used to live here — the wet cell beside our own beach,
+   * written by every `probeSea` and READ BY NOTHING. The wet cell that actually
+   * matters is the one beside the FAR beach, and `amphibiousWanted` takes that
+   * straight out of `shoreOut[2]/[3]` at the moment it needs it. A field that is
+   * only ever written is a comment that the compiler cannot check, so it is
+   * gone rather than left looking load-bearing.
+   */
   /** Where the warships hold station. -1 when there is no sea to hold. */
   private stationX = -1;
   private stationZ = -1;
@@ -2497,32 +2502,6 @@ export class AiBrain {
     return this.buildUnits(s, p, false);
   }
 
-  /**
-   * Score the navy: a dock, then escorts, then a hull for a landing.
-   *
-   * THE COAST GATE COMES FIRST AND IS THE CHEAP ONE. `seaCells` is a cached
-   * one-shot count of water near the base, so a desert match pays a single
-   * integer compare for all of this and never reaches a catalog lookup.
-   *
-   * THE ECONOMY GATE IS THE SAME RULE `considerSuperweapon` HAD TO LEARN. A
-   * dock is 1000 credits and 30 power and produces nothing that can take
-   * ground, so it is bought OUT OF a working land army and never INSTEAD OF
-   * one: a refinery and a war factory must already be standing. Without that
-   * ordering the yard's 1.15 would beat the war factory's 1.8 on affordability
-   * alone in the one window where the AI has credits and no factory, and the
-   * opponent would answer the opening with a boat.
-   *
-   * A TRANSPORT IS BOUGHT AGAINST A PLAN, NEVER ON SPECULATION. `amphibWanted`
-   * is the measured verdict from `amphibiousWanted`, so on a map where the
-   * objective is walkable this never fires and the AI never owns a ferry it has
-   * no water to use. That is the difference between this and a build rule that
-   * says "coastal map, buy a transport" — which is how you get a 900-credit hull
-   * parked next to a Construction Yard for twenty minutes.
-   *
-   * AND A DOCK IS NOT BOUGHT UNTIL THERE IS SOMEWHERE TO PUT IT. See the gate
-   * below; that one is not a nicety, it is what stops a 1000-credit purchase
-   * from freezing the Structures tab for the rest of the match.
-   */
   /* -- "is there anywhere to put a dock", memoised on a tick stamp ---------- */
   private dockSiteTick = -1e9;
   private dockSiteOk = false;
@@ -2556,6 +2535,32 @@ export class AiBrain {
     return this.dockSiteOk;
   }
 
+  /**
+   * Score the navy: a dock, then escorts, then a hull for a landing.
+   *
+   * THE COAST GATE COMES FIRST AND IS THE CHEAP ONE. `seaCells` is a cached
+   * one-shot count of water near the base, so a desert match pays a single
+   * integer compare for all of this and never reaches a catalog lookup.
+   *
+   * THE ECONOMY GATE IS THE SAME RULE `considerSuperweapon` HAD TO LEARN. A
+   * dock is 1000 credits and 30 power and produces nothing that can take
+   * ground, so it is bought OUT OF a working land army and never INSTEAD OF
+   * one: a refinery and a war factory must already be standing. Without that
+   * ordering the yard's 1.15 would beat the war factory's 1.8 on affordability
+   * alone in the one window where the AI has credits and no factory, and the
+   * opponent would answer the opening with a boat.
+   *
+   * A TRANSPORT IS BOUGHT AGAINST A PLAN, NEVER ON SPECULATION. `amphibWanted`
+   * is the measured verdict from `amphibiousWanted`, so on a map where the
+   * objective is walkable this never fires and the AI never owns a ferry it has
+   * no water to use. That is the difference between this and a build rule that
+   * says "coastal map, buy a transport" — which is how you get a 900-credit hull
+   * parked next to a Construction Yard for twenty minutes.
+   *
+   * AND A DOCK IS NOT BOUGHT UNTIL THERE IS SOMEWHERE TO PUT IT. See the gate
+   * below; that one is not a nicety, it is what stops a 1000-credit purchase
+   * from freezing the Structures tab for the rest of the match.
+   */
   private considerNavy(): void {
     if (!this.navalMap) return;
 
@@ -3712,11 +3717,8 @@ export class AiBrain {
     if (this.findShore(bx, bz, this.shoreOut)) {
       this.shoreCx = this.shoreOut[0];
       this.shoreCz = this.shoreOut[1];
-      this.shoreWaterCx = this.shoreOut[2];
-      this.shoreWaterCz = this.shoreOut[3];
     } else {
       this.shoreCx = -1; this.shoreCz = -1;
-      this.shoreWaterCx = -1; this.shoreWaterCz = -1;
     }
   }
 
