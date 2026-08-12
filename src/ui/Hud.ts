@@ -1094,6 +1094,18 @@ export class Hud {
     this.toasts.push(kind, key, title, detail);
   }
 
+  /**
+   * Mark the sell tool as the thing to press, or stop.
+   *
+   * The seam `src/sim/orecrisis.system.ts` reaches through, alongside `toast`
+   * and by the same structural rule: the sim names an intent, the HUD decides
+   * what that looks like. It stays on `window.__vmHud`, so a headless boot or
+   * the `?shot=` harness simply has nobody to call.
+   */
+  setOreCrisis(active: boolean): void {
+    this.sidebar.setUrgentSell(active);
+  }
+
   /* ------------------------------------------------------------------ */
   /* slot actions                                                        */
   /* ------------------------------------------------------------------ */

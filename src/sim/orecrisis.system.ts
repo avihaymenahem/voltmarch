@@ -151,6 +151,8 @@ function reset(): void {
 
 interface HudToastSink {
   toast(kind: string, key: string, title: string, detail?: string): void;
+  /** Optional: older HUDs (and every headless boot) simply do not have it. */
+  setOreCrisis?(active: boolean): void;
 }
 
 function hudToast(): HudToastSink | null {
@@ -224,8 +226,14 @@ export default defineSystem({
       if (pi === local) localCrisis = state;
 
       /* -- the chip, on the edge, for the local player only -------------- */
-      if (pi === local && state !== OreCrisisState.None && lastState[pi] !== state) {
-        announce(w, p.id, survey);
+      if (pi === local) {
+        if (state !== OreCrisisState.None && lastState[pi] !== state) announce(w, p.id, survey);
+        // The tool highlight tracks the STATE, not the edge: a chip expires
+        // after a few seconds and the crisis does not, so a player who looked
+        // away would come back to an instruction with nothing to point at.
+        if (state !== lastState[pi]) {
+          hudToast()?.setOreCrisis?.(state !== OreCrisisState.None);
+        }
       }
       lastState[pi] = state;
 
@@ -243,9 +251,7 @@ export default defineSystem({
       w.audio.eva(p.id, EvaLine.Reinforcements);
       if (pi === local) {
         hudToast()?.toast(
-          'good', 'ore-crisis', 'Ore miner dispatched',
-          'Your refinery sent a replacement because nothing you own could be '
-          + 'sold to pay for one.',
+          'good', 'ore-crisis', 'Ore miner dispatched', 'Your refinery sent a replacement',
         );
       }
     }
@@ -264,7 +270,16 @@ export default defineSystem({
  * and it is the right sentence for both — "sell a structure to rebuild" is
  * literally what a `SellOut` player must do, and a `Stranded` one is about to
  * watch the game do the equivalent for them. The CHIP is where the two
- * diverge, because the chip has room to name the number.
+ * diverge, because the chip can name the number.
+ *
+ * THE DETAIL LINE IS SHORT ON PURPOSE, AND THIS WAS MEASURED, NOT GUESSED.
+ * `.vm-toast-detail` is `white-space: nowrap` + `text-overflow: ellipsis`, so
+ * the chip renders ONE line of about 45 characters and silently drops the
+ * rest. The first version of this string opened with "Mining has stopped and
+ * you are 1400 credits short. Use the SELL tool..." and a live capture showed
+ * the player exactly "Mining has stopped and you are 1400 credits s…" — the
+ * entire instruction, which is the whole point of the chip, was past the
+ * ellipsis. Lead with the verb. If this text grows, screenshot it.
  */
 function announce(w: World, player: PlayerId, s: OreCrisisSurvey): void {
   w.audio.eva(player, EvaLine.NoOreMiner);
@@ -272,16 +287,8 @@ function announce(w: World, player: PlayerId, s: OreCrisisSurvey): void {
   if (toast === null) return;
   if (s.state === OreCrisisState.SellOut) {
     const short = Math.max(0, s.harvesterCost - s.credits);
-    toast.toast(
-      'alert', 'ore-crisis', 'No ore miner',
-      `Mining has stopped and you are ${short} credits short. Use the SELL tool `
-      + 'in the sidebar to cash in a structure for half its cost, then rebuild.',
-    );
+    toast.toast('alert', 'ore-crisis', 'No ore miner', `Use the SELL tool — ${short} short`);
   } else {
-    toast.toast(
-      'alert', 'ore-crisis', 'No ore miner',
-      'Mining has stopped and selling cannot cover a replacement. Hold your '
-      + 'refinery — it will dispatch one.',
-    );
+    toast.toast('alert', 'ore-crisis', 'No ore miner', 'Hold your refinery — it will send one');
   }
 }

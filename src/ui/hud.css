@@ -1915,6 +1915,30 @@
   background: rgba(255, 77, 61, 0.18);
 }
 
+/* THE TOOL THE PLAYER HAS TO FIND, WHEN THEY HAVE TO FIND IT.
+   `orecrisis.system.ts` sets this while the local player has no ore miner and
+   cannot pay for one. The chip in the corner says "Use the SELL tool"; without
+   something on the tool itself that sentence sends a new player hunting
+   through a row of unlabelled icons, which is the same failure one layer down.
+   Inert at every other moment — the class is absent, so the `?shot=` HUD
+   fixtures render byte-identically. */
+.vm-hud .vm-tool.is-urgent {
+  color: var(--vm-warn);
+  border-color: var(--vm-warn);
+  animation: vm-tool-urgent 1.4s ease-in-out infinite;
+}
+
+/* Border and glow only. Nothing here moves the button or changes its box, so
+   the tool row cannot reflow while it pulses. */
+@keyframes vm-tool-urgent {
+  0%, 100% { background: rgba(255, 176, 46, 0.10); box-shadow: 0 0 0 0 rgba(255, 176, 46, 0); }
+  50% { background: rgba(255, 176, 46, 0.30); box-shadow: 0 0 calc(6 * var(--vm-u)) 0 rgba(255, 176, 46, 0.45); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vm-hud .vm-tool.is-urgent { animation: none; background: rgba(255, 176, 46, 0.24); }
+}
+
 /* -- the slot grid -------------------------------------------------------- */
 
 .vm-hud .vm-grid {

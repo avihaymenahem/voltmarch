@@ -472,8 +472,14 @@ describe('orecrisis.system', () => {
     // verb, and the number that makes it feel possible.
     expect(said).toContain('No ore miner');
     expect(said).toMatch(/SELL tool/);
-    expect(said).toMatch(/\d+ credits short/);
+    expect(said).toMatch(/\d+ short/);
     expect(rig.eva).toContain(EvaLine.NoOreMiner);
+    // THE DETAIL LINE MUST SURVIVE THE CHIP. `.vm-toast-detail` is nowrap +
+    // ellipsis at roughly 45 characters, and the first version of this string
+    // put the instruction past the cut — a live capture showed the player
+    // "Mining has stopped and you are 1400 credits s…" and nothing else.
+    const detail = said.split('|')[3] ?? '';
+    expect(detail.length, `chip detail "${detail}" will be ellipsised`).toBeLessThanOrEqual(45);
   });
 
   it('does NOT rescue a player who could sell their way out', () => {
