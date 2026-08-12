@@ -379,12 +379,35 @@ const ECONOMY: readonly MissionDef[] = [
   // of this file means by "the first four chain steps are all reachable inside a
   // handful of matches".
   //
-  // AND THE REAL RATE IS LOWER STILL, because this rule counts BANKED credits.
-  // `Economy.deposit` marks only `banked` with `CreditReason.Harvest` and dumps
-  // the overflow as `CreditReason.Waste`, while `p.stats.oreMined` takes the
-  // full amount — so every credit mined into a full bank advances this mission
-  // by nothing while the end screen's "Ore Harvested" still counts it. That gap
-  // is left alone here and written up rather than quietly patched.
+  // AND THE UNIT THIS ROW IS PRICED IN IS NOW THE UNIT IT IS COUNTED IN.
+  //
+  // The paragraph above derives 70,000 from two MINED quantities — 74,538 is
+  // what `OreField.seedField` puts IN THE GROUND, and the 429-700 credits per
+  // harvester per minute is `HarvesterController.deliveredTotal`, which takes
+  // the full pre-cap payout. The rule, meanwhile, used to count BANKED credits:
+  // `Economy.deposit` marked only the banked part `Harvest` and dumped the
+  // overflow as `Waste`, so ore mined into a full silo advanced this mission by
+  // nothing while the end screen's "Ore Harvested" credited every unit of it.
+  // Worse, a PARTIAL overflow lost the banked part too, because the `Waste`
+  // mark overwrote the tick's reason — and so did any repair drip or crate that
+  // shared the tick. Measured on the real ledger: 100 loads of 700 into a full
+  // bank moved this mission by 0 of 70,000.
+  //
+  // `EvCredits.mined` now carries the mined figure and `MissionTracker` counts
+  // that, so the derivation above is exact rather than optimistic. Nothing
+  // about the target moved; what moved is that the target is now reachable by
+  // the argument that set it. A player CANNOT bank 100% of what they mine, so
+  // under the old rule "one map's worth of ore" was a number no map could pay.
+  //
+  // ORE SILOS ARE THEREFORE NOT A PROGRESSION GATE ANY MORE. They still do
+  // exactly what their blurb says — raise the cap, so you keep what you mine —
+  // and they only recently started really doing it: `Economy.recomputeStorage`
+  // used to overwrite the spawners' running total, so a silo raised the ceiling
+  // for five ticks and then un-raised it. The two defects compounded, because a
+  // silo that did nothing meant more overflow and more overflow meant a slower
+  // ore mission. What a silo no longer does is silently decide how fast that
+  // mission moves. The end screen shows both halves: "Ore Harvested" and the
+  // part of it that never fitted, "Ore Wasted".
   //
   // LOWERING COSTS NO PLAYER ANY PROGRESS. `MissionTracker` stores raw
   // accumulated `value` per mission id and compares it to `def.target` on each

@@ -174,15 +174,23 @@ What is behind the gate, and therefore what an unlock *widens*:
 Two things follow from this that are easy to miss:
 
 **The tech centre is the biggest single unlock in the game.** Strip Mine — 70,000 credits of
-lifetime banked ore, roughly one map's worth — opens the Battle Lab and its equivalents, and the tech
+lifetime *mined* ore, roughly one map's worth — opens the Battle Lab and its equivalents, and the tech
 building is the prereq for the tier-3 specialists, the Prism Tower, the capital ships and **every
 superweapon in the game**. Until you have it, four of your five sidebar tabs stop one tier short and
 you have no end-game at all. If you only chase one mission, chase this one.
 
 That target was 250,000 until v2.4.0, which was three whole maps of ore and put a mid-game building
 further out than any superweapon chain — so a new profile could not reach the late game from either
-side, because the AI mirrors your unlocks. It is one map now. Progress already banked still counts:
+side, because the AI mirrors your unlocks. It is one map now. Progress already earned still counts:
 the tracker keeps a raw total per mission and re-compares it, so nothing was reset.
+
+**Every ore mission counts ore MINED, not credits banked.** Those are the same number only while you
+have room for the load. Ore that lands in a full silo used to advance these missions by nothing while
+the end screen credited it in full — one label over two numbers — so the target was priced in ore out
+of the ground and scored in credits that fitted. It is mined ore on both sides now. Silos are still
+worth building, because ore you cannot keep is still ore you cannot spend; they simply no longer
+decide how fast the campaign moves. The end screen reports both halves: **Ore Harvested** and the
+part of it that never fitted, **Ore Wasted**.
 
 **Chains cost the sum of their rungs, not their last number.** A locked mission does not accumulate,
 so Strip Mine only starts counting once Prospector's 25,000 is done — and Fleet Admiral's "win 40"
@@ -272,7 +280,7 @@ effects and [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building#superwea
 
 **But the five superweapon rewards in the mission table are not what unlocks them.** Every
 superweapon structure is gated on its army's **tech building** — Battle Lab, Reliquary or Crucible —
-and on nothing else. The tech building *is* a campaign unlock (*Strip Mine*, 250,000 mined ore), so a
+and on nothing else. The tech building *is* a campaign unlock (*Strip Mine*, 70,000 mined ore), so a
 fresh profile genuinely has no superweapons; but the moment you have the tech building you can build
 all of your faction's, whether or not you have finished *Total War*, *Continental Engineering* or the
 20-win mastery chains that claim to award them.
@@ -308,8 +316,8 @@ If you want the roster open quickly, the cheap end of the table is:
 6. **Field Command** — 150 kills. Opens the specialist defences, which is the first unlock that
    changes how you defend.
 7. **Untouched** — win without losing a structure. Easiest against Easy with a turtle opening.
-8. **Strip Mine** — 250,000 ore. This is the wall. Expect a dozen matches. Everything tier-3 sits
-   behind it.
+8. **Strip Mine** — 70,000 ore. Two or three matches, and it counts what you MINE rather than what
+   fitted in your silos. Everything tier-3 sits behind it.
 
 *Blitz* (win inside 15 minutes) is much easier than it sounds against an Easy opponent, which does
 not commit its first attack until the five-minute mark — see [Strategy](/avihaymenahem/voltmarch/wiki/Strategy).

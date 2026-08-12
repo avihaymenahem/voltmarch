@@ -2567,7 +2567,7 @@ export class Shell {
   private static readonly EMPTY_STATS = {
     unitsBuilt: 0, unitsLost: 0, unitsKilled: 0,
     buildingsBuilt: 0, buildingsLost: 0, buildingsKilled: 0,
-    oreMined: 0, creditsSpent: 0, peakArmyValue: 0,
+    oreMined: 0, oreWasted: 0, creditsSpent: 0, peakArmyValue: 0,
   };
 
   private buildResult(won: boolean): MatchResult {
