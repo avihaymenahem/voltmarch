@@ -455,8 +455,19 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     FACTION_MERIDIAN, [1.0, 1.0, 0.7, 1.2, 0.4], 0),
   fighter('rclHulk',     BuildRole.Warship, EntityKind.Vehicle, 1800, ['rclDrydock', 'rclCrucible'],
     FACTION_RECLAIM, [0.8, 1.1, 1.2, 1.4, 0.3], 0),
+  // THE AIR COLUMN IS 0.4, NOT 1.0, AND THE NAME IS WHY IT WAS WRONG. This hull
+  // is called "Aircraft Cruiser" and carries exactly one weapon — `navalGun` —
+  // whose `canTargetAir` is false. `answers` documents 1.0 as "does its job",
+  // and `tests/air-layer.spec.ts` refuses any unit that claims a real air
+  // answer its gun cannot deliver, because seeing a gunship would then make the
+  // AI build the wrong army confidently. The same gate previously caught
+  // `apocalypse` at 1.2 with a 125 mm gun.
+  //
+  // Scored 0.4 alongside `mrdCorvette` — incidental deterrence, not an answer.
+  // The alternative is to give the ship an AA mount and earn the name, which is
+  // a combat-balance change and does not belong in a catalog row.
   fighter('destroyer',   BuildRole.Warship, EntityKind.Vehicle, 1800, ['navalYard', 'battleLab'],
-    Faction.Allies, [0.9, 1.2, 1.1, 1.2, 1.0], 0),
+    Faction.Allies, [0.9, 1.2, 1.1, 1.2, 0.4], 0),
   fighter('dreadnought', BuildRole.Warship, EntityKind.Vehicle, 2000, ['subPen', 'battleLab'],
     Faction.Soviets, [0.7, 1.0, 1.2, 1.6, 0.2], 0),
   fighter('mrdMonitor',  BuildRole.Warship, EntityKind.Vehicle, 1900, ['mrdSlipway', 'mrdReliquary'],

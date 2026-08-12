@@ -185,16 +185,21 @@ describe('§2 a unit is only real once all five tables carry it', () => {
   });
 
   /**
-   * The AI has no naval layer: nothing in `AI.ts` scores a shore, picks a
-   * slipway or escorts anything, so every hull below is authored content the
-   * brain cannot ever want. That is a real gap, not an oversight in this test,
-   * and listing it here is the only thing that keeps it from growing by
-   * accident — a NEW key falling in here fails.
+   * Units the AI deliberately has no doctrine for. EMPTY, and it should stay
+   * that way — a new key landing here is authored content the brain can never
+   * want, which is a content defect wearing an exemption.
+   *
+   * It held all nine hulls — transport, gunboat, destroyer, submarine,
+   * dreadnought, mrdCorvette, mrdMonitor, rclScow, rclHulk — under a comment
+   * reading "The AI has no naval layer: nothing in `AI.ts` scores a shore,
+   * picks a slipway or escorts anything". That was true and is not: the brain
+   * now surveys the sea, founds a yard, holds a lane with warships and runs an
+   * amphibious Board/Cross/Land cycle through `channels.command`.
+   *
+   * The converse assertion below is what forced this edit rather than letting
+   * the list quietly outlive the gap it documented — exactly what it is for.
    */
-  const NO_AI_DOCTRINE: readonly string[] = [
-    'transport', 'gunboat', 'destroyer', 'submarine', 'dreadnought',
-    'mrdCorvette', 'mrdMonitor', 'rclScow', 'rclHulk',
-  ];
+  const NO_AI_DOCTRINE: readonly string[] = [];
 
   it('gives every produced unit a spawn fallback and a cameo', () => {
     const produced = [...new Set(BUILDINGS.flatMap((b) => b.produces))];

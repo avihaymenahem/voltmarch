@@ -103,7 +103,8 @@ import type {
 } from '../core/types';
 import { abilities } from './Abilities';
 import { transportService } from './Transport';
-import { MoveClass, getNav, mapSupportsNaval, navigableSeaCells } from './Flowfield';
+import { MoveClass, getNav, navigableSeaCells } from './Flowfield';
+import { mapSupportsNaval } from './NavalWater';
 import { moveClassAt } from './Movement';
 import { SUPERWEAPONS, SuperweaponId, superweapons } from './Superweapons';
 import type { SuperweaponDef } from './Superweapons';
@@ -3524,7 +3525,7 @@ export class AiBrain {
     // on `airbase-flats` (0 water cells) is a 1000-credit building whose only
     // output is a warship that sits on dry land, and that is a regression on
     // four shipped maps rather than a missed opportunity on two.
-    this.navalMap = mapSupportsNaval();
+    this.navalMap = mapSupportsNaval(this.world.terrain);
     if (!this.navalMap) {
       this.seaCells = 0;
       this.shoreCx = -1; this.shoreCz = -1;

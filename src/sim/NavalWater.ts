@@ -17,9 +17,16 @@
  *   - the map lobby       wants to say what kind of game a battlefield is.
  *
  * Three independent notions of "has water" is how a codebase grows a
- * contradiction, so this module is deliberately tiny and imports nothing but
- * `core/config` and `core/types`. Anything in `src/` can take it — the shell,
- * the HUD, the sim — without dragging THREE or the terrain implementation in.
+ * contradiction — and TWO of them actually shipped into the same merge, this
+ * one and a `mapSupportsNaval` in `sim/Flowfield.ts` with a threshold of 400
+ * against this file's 300. They agreed on every map in the game, because the
+ * real numbers are 0/3/11/14 against 3622/3952, which is exactly what makes a
+ * duplicated definition dangerous: no test over the maps you own can catch it.
+ * `Flowfield`'s copy is gone and its measurement is imported here instead.
+ *
+ * So this module imports `core/config`, `core/types` and `sim/Flowfield` — and
+ * nothing else. None of the three touches THREE or the terrain implementation,
+ * so anything in `src/` can still take it: the shell, the HUD, the sim.
  *
  * WHAT IT MEASURES, AND WHY IT IS NOT "ANY WATER"
  * ----------------------------------------------
@@ -51,6 +58,7 @@
 import { MAP_CELLS, MAP_CELL_COUNT, NAVAL_MIN_SEA_CELLS } from '../core/config';
 import { Locomotor } from '../core/types';
 import type { ITerrain } from '../core/types';
+import { getNav, navigableSeaCells } from './Flowfield';
 
 /** What one map's water adds up to. */
 export interface NavalWaterSurvey {
@@ -192,5 +200,18 @@ export function surveyNavalWater(terrain: ITerrain | null): NavalWaterSurvey {
  * by one of them and told by another that there is nowhere to put it.
  */
 export function mapSupportsNaval(terrain: ITerrain | null): boolean {
+  // THE LIVE PATHFINDER WINS WHENEVER THERE IS ONE, and that is not an
+  // optimisation. `surveyNavalWater` re-derives "navigable water" as
+  // water AND hover-passable — the same rule `Flowfield.rebuildCost` uses, but
+  // a SECOND copy of it. A gate that answers "there is a navy here" from its
+  // own copy of the rule can drift from the module that actually decides where
+  // a hull may go, and then the build menu offers a shipyard for a sea no ship
+  // can enter. Asking the nav removes the possibility rather than testing for
+  // it.
+  //
+  // The flood below is the fallback for the cases with no nav yet: the lobby
+  // describing a map before a match exists, a headless test, the `?shot=`
+  // harness. Same threshold either way.
+  if (getNav() !== null) return navigableSeaCells() >= NAVAL_MIN_SEA_CELLS;
   return surveyNavalWater(terrain).navalViable;
 }

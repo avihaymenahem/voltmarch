@@ -391,13 +391,11 @@ class Expander {
  */
 export const NAV_POCKET_MAX_CELLS = 96;
 
-/**
- * Cells of contiguous open water below which a map has no navy.
- *
- * See `mapSupportsNaval`. Declared beside the other connectivity constants
- * because it is the same kind of fact about the same labelling.
- */
-export const NAVAL_MAP_MIN_CELLS = 400;
+/* The threshold that used to live here is `NAVAL_MIN_SEA_CELLS` in
+ * `core/config`, and the predicate is `mapSupportsNaval` in `sim/NavalWater`.
+ * Two of each arrived in the same wave, written by different hands against the
+ * same measurement, and each docstring called itself "THE gate for all naval
+ * content" — see the note on `navigableSeaCells` below. */
 
 /**
  * Ring radius, in cells, for every region-aware search here (retargeting an
@@ -1701,18 +1699,22 @@ export function navigableSeaCells(): number {
   return main > 0 ? nav.regionSize(main, MoveClass.Naval) : 0;
 }
 
-/**
- * True when this map has enough open water to be worth a navy.
+/* THE PREDICATE THAT WAS HERE MOVED TO `sim/NavalWater.ts`, AND THIS COMMENT IS
+ * THE REASON RATHER THAN A SIGNPOST.
  *
- * THE GATE FOR ALL NAVAL CONTENT. A Naval Yard on `airbase-flats` — 0 water
- * cells — is a building that can produce a Dreadnought which then sits on dry
- * land forever, and nothing in the game said no: the only gates naval content
- * carried were the `struct.naval` progression unlock and `prereqs:
- * ['navalYard']`, neither of which knows what the ground looks like.
- */
-export function mapSupportsNaval(): boolean {
-  return navigableSeaCells() >= NAVAL_MAP_MIN_CELLS;
-}
+ * Two `mapSupportsNaval` implementations landed in the same wave — this one,
+ * counting the nav's own `MoveClass.Naval` region, and one in `NavalWater.ts`
+ * flooding the terrain directly — with two thresholds, 400 and 300. They agreed
+ * on every shipped map, because the real numbers are 0/3/11/14 against
+ * 3622/3952, which is exactly what makes a duplicate definition dangerous: it
+ * cannot be caught by testing the maps you have. Both docstrings claimed to be
+ * the single source of truth.
+ *
+ * `NavalWater.mapSupportsNaval` is now the one answer, and it PREFERS this
+ * module's count whenever a nav exists — the pathfinder is the authority on
+ * where a ship can go, so the gate must not re-derive that rule and drift from
+ * it. `navigableSeaCells()` below stays exported as the cheap primitive it
+ * always was; it is the measurement, not the policy. */
 
 let active: FlowFieldCache | null = null;
 
