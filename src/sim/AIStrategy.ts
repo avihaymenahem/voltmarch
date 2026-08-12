@@ -53,7 +53,7 @@
  */
 
 import {
-  AI_SKILL, AI_THREAT_CLASS_COUNT, BUILDING_DIMENSIONS, SIM_HZ,
+  AI_SKILL, AI_THREAT_CLASS_COUNT, BUILDING_DIMENSIONS, NAVAL_BUILDING_DIMENSIONS, SIM_HZ,
   AI_DIFFICULTY, AI_PERSONALITY,
 } from '../core/config';
 import { BuildTab, EntityKind, Faction, UpgradeLever, UpgradeScope } from '../core/types';
@@ -148,8 +148,40 @@ export const enum BuildRole {
    * `catalog.all` looking for something to shoot with.
    */
   Upgrade = 20,
+  /**
+   * A Naval Yard, Sub Pen, Slipway or Breaker Dock.
+   *
+   * ITS OWN BUCKET FOR THE REASON `Repair` AND `Superweapon` ARE, and this one
+   * was already mis-filing before the AI could build one. `roleOfBuilding`'s
+   * flag fallback reaches `IsFactory` and separates barracks from war factory
+   * by width: "every infantry producer is 2 cells wide, every vehicle producer
+   * is 3". Every naval yard in the game is `IsFactory` and 3x3, so it lands on
+   * `BuildRole.WarFactory` exactly — and `roleCount[WarFactory] > 0` is the gate
+   * that stops the build layer asking for a war factory. An AI that built a
+   * dock would have believed it owned a tank plant and never built one.
+   */
+  NavalYard = 21,
+  /**
+   * A hull with seats. NOT `Support`, and never a weight in `buildUnits`.
+   *
+   * The composition scorer picks army by answer vector; a transport answers
+   * nothing and is bought for a PLAN, not for a threat mix. It is also the row
+   * `census` keys the strike-group exclusion off — see `isNavalHull`.
+   */
+  Transport = 22,
+  /**
+   * An armed hull that floats. Escorts and capital ships both.
+   *
+   * The exclusion this role exists for is the same one the transport gets and
+   * it is the more dangerous of the two: a warship carries `CanAttack`, so
+   * without a role of its own the census drops it straight into `armyIds`, the
+   * squad layer tags it GROUP_STRIKE, and the AI marches a destroyer overland
+   * at the enemy base. It would count toward `waveThreshold` on the way, so the
+   * wave that never arrives is also a wave that is permanently N units short.
+   */
+  Warship = 23,
 }
-export const BUILD_ROLE_COUNT = 21;
+export const BUILD_ROLE_COUNT = 24;
 
 /**
  * The five things an army can be asked to kill. The composition scorer works
@@ -175,7 +207,7 @@ export const BUILD_ROLE_NAMES: readonly string[] = [
   'builder', 'power', 'refinery', 'barracks', 'warFactory', 'radar', 'techLab',
   'storage', 'defense', 'antiAir', 'harvester', 'skirmisher', 'infantry',
   'armor', 'siege', 'support', 'mcv', 'unknown', 'repair', 'superweapon',
-  'upgrade',
+  'upgrade', 'navalYard', 'transport', 'warship',
 ];
 
 /* ==========================================================================
@@ -311,6 +343,7 @@ function upgrade(
 }
 
 const B = BUILDING_DIMENSIONS;
+const NB = NAVAL_BUILDING_DIMENSIONS;
 
 /**
  * The AI's world model when no `DefTables` exists yet. Costs are the classic
@@ -362,6 +395,72 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     ['mrdReliquary'], FACTION_MERIDIAN),
   structure('rclStormworks', BuildRole.Superweapon, 2500, -150, B.superweapon,
     ['rclCrucible'], FACTION_RECLAIM),
+
+  /* -- THE NAVY -------------------------------------------------------------
+   * WHY THESE ROWS DID NOT EXIST, stated as it was measured. `bindOracle` walks
+   * THIS array and asks `factsFor(e.key)` about each entry, so a key that is not
+   * here is a key the AI never resolves a `publicId` for and can therefore never
+   * name in a `ProductionStart`. Four naval structures and nine hulls shipped;
+   * `grep -n naval src/sim/AI.ts` returned nothing, and the reason is one level
+   * further down than the brain: the opponent had no WORD for a dock. It could
+   * not have built one if it had wanted to.
+   *
+   * THE YARD ROWS ARE LOAD-BEARING EVEN IF NOTHING EVER QUEUES ONE. Every naval
+   * yard in the game is `IsFactory` and 3x3, and `roleOfBuilding`'s flag
+   * fallback separates producers by width — "2 wide is a barracks, 3 wide is a
+   * war factory". So a dock the AI captured, or one a scenario handed it, was
+   * already being counted as its war factory, and `roleCount[WarFactory] > 0` is
+   * the gate that stops the build layer asking for the real one.
+   *
+   * THE PACT'S TRANSPORT IS NOT ON A DOCK, and that is content, not an error:
+   * `mrdSkiff` lists `prereqs: ['mrdForgeyard']` — their war factory — because
+   * the Sandskiff is an amphibious raider the Pact fields with no navy at all.
+   * Transcribed as authored, so a Pact brain can run an amphibious operation
+   * without ever paying 1000 credits for a slipway.
+   *
+   * WEIGHT IS 0 ON EVERY HULL BELOW, and it is the whole safety property.
+   * `buildUnits` skips `weight <= 0`, so no ship can ever win the composition
+   * roll and be bought as line army. The navy layer asks for these by ROLE,
+   * explicitly, when it has a plan for them — which is the only way a 1800
+   * credit capital ship should ever be bought.
+   *
+   * The answer vectors are authored honestly anyway: they are what a naval gun
+   * is actually good against, and they are what the composition scorer would use
+   * the day a hull is given a weight.
+   * ---------------------------------------------------------------------- */
+  structure('navalYard',  BuildRole.NavalYard, 1000, -30, NB.navalYard, ['refinery'],
+    Faction.Allies),
+  structure('subPen',     BuildRole.NavalYard, 1000, -30, NB.subPen,    ['refinery'],
+    Faction.Soviets),
+  structure('mrdSlipway', BuildRole.NavalYard, 1000, -30, NB.navalYard, ['mrdCistern'],
+    FACTION_MERIDIAN),
+  structure('rclDrydock', BuildRole.NavalYard, 1000, -30, NB.navalYard, ['rclSorter'],
+    FACTION_RECLAIM),
+
+  // The troop hulls. `transport` is Faction.Neutral because the Allied yard and
+  // the Soviet pen both list it in `produces`.
+  fighter('transport', BuildRole.Transport, EntityKind.Vehicle, 900, ['navalYard'],
+    Faction.Neutral, NO_ANSWER, 0),
+  fighter('mrdSkiff',  BuildRole.Transport, EntityKind.Vehicle, 550, ['mrdForgeyard'],
+    FACTION_MERIDIAN, [0.9, 0.7, 0.2, 0.3, 0.0], 0),
+  fighter('rclScow',   BuildRole.Transport, EntityKind.Vehicle, 850, ['rclDrydock'],
+    FACTION_RECLAIM, [0.8, 0.9, 0.4, 0.7, 0.0], 0),
+
+  // The escorts, and then the capital ships behind a tech gate.
+  fighter('gunboat',     BuildRole.Warship, EntityKind.Vehicle, 1000, ['navalYard'],
+    Faction.Allies, [1.0, 1.1, 0.8, 1.0, 0.6], 0),
+  fighter('submarine',   BuildRole.Warship, EntityKind.Vehicle, 1000, ['subPen'],
+    Faction.Soviets, [0.2, 1.2, 1.2, 0.6, 0.0], 0),
+  fighter('mrdCorvette', BuildRole.Warship, EntityKind.Vehicle, 950, ['mrdSlipway'],
+    FACTION_MERIDIAN, [1.0, 1.0, 0.7, 1.2, 0.4], 0),
+  fighter('rclHulk',     BuildRole.Warship, EntityKind.Vehicle, 1800, ['rclDrydock', 'rclCrucible'],
+    FACTION_RECLAIM, [0.8, 1.1, 1.2, 1.4, 0.3], 0),
+  fighter('destroyer',   BuildRole.Warship, EntityKind.Vehicle, 1800, ['navalYard', 'battleLab'],
+    Faction.Allies, [0.9, 1.2, 1.1, 1.2, 1.0], 0),
+  fighter('dreadnought', BuildRole.Warship, EntityKind.Vehicle, 2000, ['subPen', 'battleLab'],
+    Faction.Soviets, [0.7, 1.0, 1.2, 1.6, 0.2], 0),
+  fighter('mrdMonitor',  BuildRole.Warship, EntityKind.Vehicle, 1900, ['mrdSlipway', 'mrdReliquary'],
+    FACTION_MERIDIAN, [0.8, 1.1, 1.1, 1.5, 0.5], 0),
 
   /* -- THE TWELVE UPGRADES --------------------------------------------------
    * THESE ROWS ARE WHY THE AI CAN BUY AN UPGRADE AT ALL. `bindOracle` walks
@@ -767,6 +866,30 @@ export interface ProductionOracle {
   atCap?(player: number, publicId: number): boolean;
   /** The build ghost's own answer for a footprint ORIGIN cell. */
   placeable(player: number, publicId: number, cx: number, cz: number): boolean;
+  /**
+   * The content key of a LIVE entity, or '' when the service cannot name it.
+   *
+   * THE ONLY RELIABLE ENTITY -> CATALOG BRIDGE, and the reason it had to be
+   * added. `BuildCatalog.entryForUnit`/`entryForBuilding` are keyed on
+   * `facts.publicId` — the id `issueProductionStart` speaks — while every
+   * caller looks them up with `store.defId`, which is the DEF TABLE index. The
+   * two id spaces are not the same in a real match, so both reverse maps miss
+   * every time and both callers fall through to their heuristics. That was
+   * invisible while the heuristics happened to be right: `roleOfBuilding`'s
+   * EntityFlag fallback correctly separates a yard from a refinery, so nothing
+   * ever asked why the catalog path was not answering.
+   *
+   * It stops being invisible the moment a WARSHIP exists. There is no flag that
+   * separates a Kite Corvette from a Solarch — every ship and the entire
+   * Meridian army share `Locomotor.Hover` — so a missed lookup puts a destroyer
+   * in the land strike group, which then marches on the enemy base overland and
+   * counts toward a `waveThreshold` it can never help reach.
+   *
+   * `ProductionService` already keeps this map (`entryOfEntity`, stamped at
+   * spawn) and already exposes it as `entryOf`. Optional so the headless tests,
+   * which have no production module, keep working against the heuristics.
+   */
+  entityKey?(id: number): string;
 }
 
 /**
@@ -1172,6 +1295,118 @@ export const AI_DEPLOY = {
   expansionSpacing: 90,
   /** Attempts before the AI stops relocating and just deploys where it stands. */
   maxRelocations: 6,
+} as const;
+
+/* ==========================================================================
+ * 3a-bis. THE NAVY
+ *
+ * WHAT THE MEASUREMENT SAYS, BEFORE ANY OF THESE NUMBERS MEAN ANYTHING.
+ * Run against the real generator through the real `FlowFieldCache`, on the
+ * pinned seed and biome of both shipped sea maps:
+ *
+ *                       land regions   A->B by land   water on the A->B line
+ *     contested-strait   1 (100%)       68 cells       0 cells
+ *     coral-shore        1 (100%)       68 cells       0 cells
+ *
+ * The land is ONE region on both. Nothing is unreachable, and the straight line
+ * between the two openings does not touch water at all — `MAP_SEAS` derives its
+ * waterline from the PERPENDICULAR BISECTOR of the two openings so that both
+ * armies are equidistant from it, which necessarily puts the sea off a FLANK
+ * and never between them. `SeaSpec` is a signed half-plane (`seaDistance` is a
+ * dot product), so a strait with a far shore is not expressible by this
+ * generator at all.
+ *
+ * AND A MAP WITH NO SEA GETS NO NAVY AT ALL. `mapSupportsNaval()` in
+ * `sim/Flowfield.ts` is the gate in front of every constant below — the largest
+ * contiguous body the real `FlowFieldCache` routes `MoveClass.Naval` through,
+ * which is 3622/3952 cells on the two sea maps against 0-14 on the four
+ * landlocked ones. It lives there rather than here so the build menu can share
+ * the one definition instead of growing a second.
+ *
+ * SO `amphibiousMinSaving` IS THE HONEST GATE AND IT IS EXPECTED TO REFUSE.
+ * A landing on either shipped map costs 104-113 cells against 68 on foot — the
+ * water route is 54-67% WORSE — and on `contested-strait` there is not one
+ * shore cell within 24 of the enemy base to land on. An AI that ran an
+ * amphibious assault there would be playing badly, visibly, on purpose. The
+ * operation is gated on a MEASURED saving so that it fires when a map gives it
+ * a reason and stays silent when one does not.
+ *
+ * The sea is still worth contesting on both: it is a quarter of the map that
+ * currently belongs to whoever bothers to sail on it, which is nobody.
+ * ========================================================================== */
+
+export const AI_NAVAL = {
+  /**
+   * Cells around the base the BEACH search anchors on.
+   *
+   * The "does this map have a navy" question does NOT live here — it is
+   * `mapSupportsNaval()` in `sim/Flowfield.ts`, deliberately, so the build menu
+   * and the brain share one definition instead of two that drift. This constant
+   * only bounds how far from the base a beach is still considered ours.
+   */
+  seaSearchCells: 40,
+  /**
+   * Warships the AI will own at once, before the difficulty cap.
+   *
+   * Low, and deliberately: a hull cannot take ground, so every credit here is a
+   * credit not spent on the army that can. Two escorts deny the lane to
+   * harvesting and scouting hulls, which is the whole return on the water.
+   */
+  maxWarships: 3,
+  /** Transports owned at once. One operation at a time, so one hull plus a spare. */
+  maxTransports: 2,
+  /**
+   * Score the naval yard enters the build scorer at.
+   *
+   * Below every producer the AI does not own yet (`barracks` 1.5, `warFactory`
+   * 1.8) and below the first refinery, so the navy is bought OUT OF a working
+   * economy and never INSTEAD OF one — the same ordering rule `considerSuper-
+   * weapon` had to learn the hard way.
+   */
+  yardScore: 1.15,
+  /**
+   * Cells of saving an amphibious route must beat before a landing is ordered.
+   *
+   * Measured as (land hops) - (walk to the beach + the crossing + walk inland),
+   * so a positive number means the water is genuinely the short way. 12 cells
+   * is 48 m: enough that the boarding and unloading overhead (a squad walks to
+   * the hull, rides, and walks off a beach) is paid for. On both shipped maps
+   * the saving is NEGATIVE by 37-46 cells and this refuses, correctly.
+   */
+  amphibiousMinSaving: 12,
+  /** Infantry a landing wants before it is worth the hull. */
+  minLandingSquad: 3,
+  /**
+   * Ticks between amphibious evaluations.
+   *
+   * Rate-limited because the answer is bounded but not cheap: refusing costs a
+   * full `shoreSearchCells` ring walk, and a map with no beach near the
+   * objective refuses every single time. Five seconds is far inside the
+   * timescale of "should I run a landing" and takes the cost to nothing.
+   */
+  evalTicks: 150,
+  /**
+   * Ticks a boarding may run before the operation is abandoned.
+   *
+   * SIZED TO THE WALK, and the first value was not. 450 ticks is 15 seconds;
+   * the beach can be `shoreSearchCells` away (30 cells, 120 m) and infantry
+   * move at roughly 3.8 m/s, so an honest boarding takes past 30 seconds before
+   * anyone is aboard. The clock expired first, every time — the operation
+   * re-staged on a loop and the probe sat at `boarding 0/5` forever while the
+   * squad was doing exactly what it had been told to.
+   *
+   * Same shape as the bug `AI_DEPLOY.approachTicks` exists to record: a clock
+   * that measures a decision must not be shorter than the movement the decision
+   * requires. 1800 is a minute — twice the longest honest walk, with room for a
+   * detour around the base.
+   */
+  boardTicks: 1800,
+  /** Ticks the crossing may take before the operation is abandoned. */
+  crossTicks: 1200,
+  /** Metres from the landing point at which the hull unloads. */
+  landingArriveMetres: 12,
+  /** Cells searched outward for a shore cell (a beach touching open sea). */
+  shoreSearchCells: 30,
 } as const;
 
 /* ==========================================================================

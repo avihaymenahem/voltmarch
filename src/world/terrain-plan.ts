@@ -105,7 +105,7 @@ export function plannedTerrainInput(): TerrainGenOptions {
   return cached;
 }
 
-/** Test seam. Nothing in the game calls this. */
+/** Drop the memo so the next boot re-reads the settled query. See `Shell.bootGame`. */
 export function resetTerrainPlan(): void {
   cached = null;
 }
