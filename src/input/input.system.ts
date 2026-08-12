@@ -94,6 +94,7 @@ import {
 import {
   CommandMode, FeedbackKind, OrderExecutor, createCapabilities, feedbackFor,
   gatherDeployable, gatherLoadedTransports, gatherOccupiedGarrisons,
+  deadClickReason, deadClickText,
   garrisonRefusalText, issueOrder, makeDefRoleResolver, planScatter,
   readCapabilities, resolveContextOrder, setRoleResolver,
   type OrderResolution, type SelectionCapabilities,
@@ -526,8 +527,24 @@ function buildingDisplayName(id: EntityId): string {
   return def?.name ?? '';
 }
 
+/**
+ * Say why a right-click issued nothing.
+ *
+ * The RULE is `deadClickReason` in Commands.ts, next to the resolver whose
+ * output it reads; this is only the part that needs a HUD. Keyed
+ * `order:refused` so walking the cursor along a cliff edge replaces one toast
+ * rather than stacking thirty — the stack coalesces by key and counts the
+ * repeats — and it is a different key from `garrison:refused` for the reason
+ * recorded there: sharing one filed a refusal under somebody else's heading.
+ */
+function explainDeadClick(res: OrderResolution, issued: number): void {
+  const text = deadClickText(deadClickReason(caps, res, issued));
+  if (text === null) return;
+  hud()?.toast?.('warn', 'order:refused', text[0], text[1]);
+}
+
 function executeResolved(res: OrderResolution, queued: boolean): void {
-  if (!res.valid) return;
+  if (!res.valid) { explainDeadClick(res, 0); return; }
   const { world, channels } = ctx();
   const player = world.localPlayer;
 
@@ -580,7 +597,7 @@ function executeResolved(res: OrderResolution, queued: boolean): void {
   }
 
   const n = gatherOwnOrderable(res.order !== OrderKind.Stop);
-  if (n === 0) return;
+  if (n === 0) { explainDeadClick(res, 0); return; }
 
   // ONE command, ONE destination, for the whole group. That is what makes
   // sim/Steering.ts recognise them as a group and preserve the formation's

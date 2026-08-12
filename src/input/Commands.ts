@@ -293,6 +293,92 @@ export function garrisonRefusalText(token: string): string {
   return GARRISON_REFUSAL_TEXT[token] ?? token;
 }
 
+/* --------------------------------------------------------------------------
+ * THE DEAD CLICK
+ *
+ * A right-click that issues NO COMMAND AT ALL is the worst thing this module
+ * can do, because it is indistinguishable from lag, from a mis-click, and from
+ * the game having stopped. It was also, until this existed, completely silent:
+ * `input.system.ts#executeResolved` opened with `if (!res.valid) return;` and
+ * closed a gathered-nothing with a bare `return`, and between them they are the
+ * whole of the reported complaint — "sometimes when i pick multiple troops and
+ * clicking a point, they do nothing, like i didnt gave them a command".
+ *
+ * The decision lives HERE, next to `resolveContextOrder`, rather than in the
+ * DOM module that shows it. It is a question about a resolution and a
+ * capability record and nothing else — no camera, no HUD, no `ctx()` — so
+ * putting it here is what makes it testable at all, and it is the same split
+ * `garrisonRefusalText` above already makes: the token is decided by the rules,
+ * the sentence is looked up, and `input.system.ts` only knows how to toast.
+ * ------------------------------------------------------------------------- */
+
+/** Why a click produced nothing. */
+export const enum DeadClick {
+  /** Not dead: a command went out. */
+  None = '',
+  /** Nothing of the player's is selected. Deliberately not reported. */
+  NoSelection = 'no selection',
+  /** Own structures only, and none of them takes a ground order. */
+  StructuresOnly = 'structures only',
+  /** The pointer was not over the battlefield. */
+  OffMap = 'off map',
+  /** Force-fire with nothing armed in the selection. */
+  Unarmed = 'unarmed',
+  /** The units that made the resolution valid are gone. */
+  Vanished = 'vanished',
+}
+
+const DEAD_CLICK_TEXT: Readonly<Record<string, readonly [string, string]>> = {
+  [DeadClick.StructuresOnly]: ['No unit to give that to',
+    'The selection is all structures. Only a factory takes a ground order, and '
+    + 'what it takes is a rally point.'],
+  [DeadClick.OffMap]: ['That is not a place on the map',
+    'The cursor was off the battlefield — past the edge, or above the horizon. '
+    + 'Aim at ground you can see.'],
+  [DeadClick.Unarmed]: ['Nothing here can shoot',
+    'Force-fire needs an armed unit in the selection.'],
+  [DeadClick.Vanished]: ['Those units are gone',
+    'Nothing left in the selection is still yours to order.'],
+};
+
+/**
+ * Classify a right-click that issued no command.
+ *
+ * `issued` is what the caller actually put on the wire — 0 when the resolution
+ * was invalid, and also 0 when it was valid and the gather came back empty,
+ * which is a different fault with the same symptom.
+ *
+ * `NoSelection` is returned and then NOT SHOWN, on purpose. A right-click on
+ * open ground with nothing selected is the commonest gesture in an RTS — it is
+ * how you cancel — and a toast on every one of them would be worse than the
+ * silence this exists to end. Everything else means the player had a selection,
+ * aimed it somewhere, and got no result.
+ */
+export function deadClickReason(
+  caps: SelectionCapabilities,
+  res: OrderResolution,
+  issued: number,
+): DeadClick {
+  if (issued > 0) return DeadClick.None;
+  if (caps.ownCount === 0) return DeadClick.NoSelection;
+  // Structures only. A selection holding a factory never reaches here: rule 4
+  // of the resolver turns its click into a rally move and marks it valid.
+  if (caps.mobileCount === 0) return DeadClick.StructuresOnly;
+  if (!res.valid) {
+    // For a mobile selection the resolver leaves `valid` false in exactly two
+    // cases, and they are told apart by the order it settled on.
+    return res.order === OrderKind.ForceAttack ? DeadClick.Unarmed : DeadClick.OffMap;
+  }
+  // Valid, mobile, and nothing gathered: every unit that made `mobileCount`
+  // non-zero has died, boarded something or changed hands since.
+  return DeadClick.Vanished;
+}
+
+/** Title and detail for a reason, or null when it must not be shown. */
+export function deadClickText(reason: DeadClick): readonly [string, string] | null {
+  return DEAD_CLICK_TEXT[reason] ?? null;
+}
+
 /** Modifier state at the moment of the click. */
 export interface Modifiers {
   shift: boolean;
@@ -1171,6 +1257,34 @@ export class OrderExecutor {
         break;
 
       case OrderKind.Harvest:
+        // ONLY A HARVESTER MINES, AND THE ORDER DOES NOT KNOW THAT.
+        //
+        // `resolveContextOrder` promotes a click on ore — or on your own
+        // refinery — to `Harvest` whenever ANY unit in the selection is a
+        // harvester (`caps.hasHarvester`), and §4 of this file then issues ONE
+        // command for the WHOLE group. So a drag-box over your base that picks
+        // up the miner along with the escort turned every tank in it into a
+        // prospector: `UnitState.SeekOre`.
+        //
+        // `sim/Harvesting.ts` iterates `EntityFlag.IsHarvester` and nothing
+        // else — its loop rejects everything else on the first line — so
+        // nothing in the game ever moved those units on again. `seeksGoal`
+        // lists `SeekOre`, so nav drove them to the ore and parked them there
+        // holding a flow field, outside every stance behaviour (`reachOf` and
+        // `holdPost` both answer only to `Idle` and `Guarding`) and outside the
+        // AI's idle-army sweep, for the rest of the match. Measured with
+        // `tools/order-probe.mjs`: a flight of three ordered onto an ore patch
+        // came to rest carrying `o7 s5` and never left it.
+        //
+        // A tank told to go to the ore should go to the ore. That is a Move,
+        // and rewriting `orderKind` to match is what keeps the column legible
+        // to everything downstream that reads it — including this executor's
+        // own `queued` test, which asks whether an order is still standing.
+        if ((s.flags[i] & EntityFlag.IsHarvester) === 0) {
+          s.orderKind[i] = mobile ? OrderKind.Move : OrderKind.None;
+          s.state[i] = mobile ? UnitState.Moving : UnitState.Idle;
+          break;
+        }
         s.state[i] = UnitState.SeekOre;
         break;
 

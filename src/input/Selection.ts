@@ -75,7 +75,7 @@
 import {
   CELL, MAX_SELECTION, PICK_RADIUS, PICK_SCREEN_RADIUS_PX, PICK_WORLD_SLOP,
 } from '../core/config';
-import { EntityFlag, EntityKind, NONE, VisionLevel } from '../core/types';
+import { EntityFlag, EntityKind, Locomotor, NONE, VisionLevel } from '../core/types';
 import type { EntityId, ISelection, PlayerId, SelectionState } from '../core/types';
 import type { Channels } from '../core/events';
 import type { World } from '../core/world';
@@ -140,6 +140,31 @@ const STAGING = new Int32Array(MAX_SELECTION * 4);
  * ========================================================================== */
 
 /**
+ * Append every airborne entity to a candidate list that came from a ground
+ * query, and return the new count.
+ *
+ * The list is `CANDIDATES`, sized to `MAX_QUERY_RESULTS`, and a full one is
+ * left alone rather than grown — the ground query has already answered for
+ * everything standing on the terrain, and a pick that silently allocated would
+ * break the zero-allocation rule for a case that cannot arise (this roster has
+ * a handful of flyers, not 256).
+ *
+ * Not filtered by ownership or by vision: `pickEntity`'s own loop applies
+ * `SELECT_REJECT_MASK`, `isSelectableKind` and `canInteractWith` to every
+ * candidate, and duplicating any of that here is how the two would drift.
+ */
+function appendAirborne(world: World, count: number): number {
+  const s = world.store;
+  let n = count;
+  for (let a = 0; a < s.aliveCount && n < CANDIDATES.length; a++) {
+    const i = s.alive[a];
+    if (s.locomotor[i] !== Locomotor.Air) continue;
+    CANDIDATES[n++] = i;
+  }
+  return n;
+}
+
+/**
  * The entity under a screen point, or NONE.
  *
  * `groundX/groundZ` is the ground-plane hit for that same screen point — the
@@ -153,6 +178,37 @@ const STAGING = new Int32Array(MAX_SELECTION * 4);
  *
  * Candidates the local player cannot see are not scored at all, so the cursor
  * over a shrouded enemy reads as ordinary ground — see `canInteractWith`.
+ *
+ * WHY THE CANDIDATE SET IS TAKEN TWICE
+ * ------------------------------------
+ * The circle query below is a query on the GROUND PLANE, around the point the
+ * cursor ray hit the terrain. That is the right question for everything that
+ * stands on the terrain and a question no aircraft can ever answer yes to.
+ *
+ * A flyer holds `AIR_CRUISE_ALTITUDE` metres of altitude, so the pixel it is
+ * drawn at and the terrain under that pixel are different places: at the
+ * shipped camera pitch the ray passes through the hull and lands 23-25 m
+ * further on. Measured on a live match, three Vindicators drawn at screen
+ * (569,180), (669,213) and (775,241) had ground hits 25.2, 23.5 and 22.9 m from
+ * their own x/z — against a query radius of `PICK_RADIUS + 10` = 11.6 m. So no
+ * aircraft was EVER a candidate, and the screen-proximity test below — which
+ * projects `posY` and would have found every one of them — never got to see
+ * one.
+ *
+ * The player-visible defect was total and it was silent. A left-click on a
+ * plane's pixels selected nothing (or a building 25 m away that the ground hit
+ * happened to land inside), and selecting nothing REPLACES the selection with
+ * nothing, so the right-click that followed had no orderable unit and
+ * `executeResolved` discarded it without a word. Reported as "clicking on
+ * planes and then guiding them to attack or move, doesnt work". The same gate
+ * is why a right-click on an ENEMY aircraft resolved as bare ground: `hover`
+ * was NONE, so the resolver offered Move instead of Attack.
+ *
+ * `appendAirborne` therefore adds every flyer to the candidate list outright.
+ * It is a full pass over `alive`, which is what `selectInRect` already pays on
+ * every marquee, and it costs two typed-array reads per entity. Duplicates are
+ * not filtered: an aircraft low enough to fall inside the circle as well would
+ * simply be scored twice with the same numbers, and the scoring is idempotent.
  */
 export function pickEntity(
   world: World,
@@ -166,7 +222,10 @@ export function pickEntity(
   const viewer = world.localPlayer;
   // 10 m of slack around the ground hit: enough to reach the origin of a 3x3
   // structure whose roof is what the cursor is actually over.
-  const n = world.spatial.queryCircle(groundX, groundZ, PICK_RADIUS + 10, CANDIDATES, CANDIDATES.length);
+  const n = appendAirborne(
+    world,
+    world.spatial.queryCircle(groundX, groundZ, PICK_RADIUS + 10, CANDIDATES, CANDIDATES.length),
+  );
 
   let best = -1;
   let bestContained = false;
@@ -185,16 +244,27 @@ export function pickEntity(
     if (!canInteractWith(world, viewer, i)) continue;
 
     // --- world containment ---------------------------------------------
+    // A FLYER HAS NO GROUND POINT TO BE INSIDE OF, so this test is skipped for
+    // one and the screen test below stands in for it. Running it anyway would
+    // not merely be useless: it compares the cursor's terrain hit against the
+    // aircraft's x/z, which are 23-25 m apart precisely WHEN the player is
+    // pointing straight at the hull, so it answers "no" in exactly the case it
+    // is being asked about — and then a building that happens to sit under
+    // that far-away terrain point wins the pick as `contained`, which is the
+    // measured behaviour: clicking a Vindicator selected a Power Plant.
+    const airborne = s.locomotor[i] === Locomotor.Air;
     let contained = false;
-    const dx = groundX - s.posX[i];
-    const dz = groundZ - s.posZ[i];
-    if (s.footprintW[i] > 0) {
-      const halfW = s.footprintW[i] * CELL * 0.5 + PICK_WORLD_SLOP;
-      const halfH = s.footprintH[i] * CELL * 0.5 + PICK_WORLD_SLOP;
-      contained = Math.abs(dx) <= halfW && Math.abs(dz) <= halfH;
-    } else {
-      const r = s.radius[i] + PICK_WORLD_SLOP;
-      contained = dx * dx + dz * dz <= r * r;
+    if (!airborne) {
+      const dx = groundX - s.posX[i];
+      const dz = groundZ - s.posZ[i];
+      if (s.footprintW[i] > 0) {
+        const halfW = s.footprintW[i] * CELL * 0.5 + PICK_WORLD_SLOP;
+        const halfH = s.footprintH[i] * CELL * 0.5 + PICK_WORLD_SLOP;
+        contained = Math.abs(dx) <= halfW && Math.abs(dz) <= halfH;
+      } else {
+        const r = s.radius[i] + PICK_WORLD_SLOP;
+        contained = dx * dx + dz * dz <= r * r;
+      }
     }
 
     // --- screen proximity ------------------------------------------------
@@ -209,6 +279,13 @@ export function pickEntity(
       const sy = SCREEN[1] - screenY;
       px2 = sx * sx + sy * sy;
     }
+    // For a flyer the screen test IS the containment test — the pixels really
+    // are under the cursor, and there is no second, better answer to be had.
+    // Promoting it keeps the lexicographic ranking below meaningful: a plane
+    // and the ground unit whose roof the ray landed on are then separated by
+    // "mobile beats structure" and then by pixels, rather than by an accident
+    // of where the terrain happened to be.
+    if (airborne) contained = px2 <= maxPx2;
     if (!contained && px2 > maxPx2) continue;
 
     const mobile = isMobileKind(s.kind[i]);
