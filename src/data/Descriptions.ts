@@ -61,10 +61,33 @@
  *
  * EVERY CLAIM WAS CHECKED AGAINST THE SHIPPED TABLES
  * --------------------------------------------------
- * Not against the wiki, which was the source for the VOICE and for most of the
- * framing, and which is wrong in four places (see the commit that added this
- * file). Where a wiki sentence and `DEF_TABLES` disagreed, the table won and
- * the sentence was rewritten.
+ * `wiki/` was the source for the VOICE and for most of the framing, and it is
+ * accurate almost everywhere. It is not accurate in SIX places, all found by
+ * checking rather than by reading, and in every one of them `DEF_TABLES` won
+ * and the sentence here was written from the table instead. They are listed
+ * because a finding nobody wrote down is a finding that gets made again:
+ *
+ *   1. `Faction-Allies.md` gives the Multigunner IFV "25 mm Chaingun, 22 x4".
+ *      It fires `ifvChaingun`, 11 x5 on a 0.60 s cycle. `DEFAULT_WEAPONS[6]`
+ *      still holds the 22 x4 row and no shipped def fires it — see the
+ *      REBALANCE_WEAPONS block in `Defs.ts`.
+ *   2. `Faction-Meridian-Pact.md` gives the Sandskiff "Arc Repeater, 19 x4".
+ *      The row is 13 x4; `Defs.ts` retuned it in place and says why.
+ *   3. `Faction-Meridian-Pact.md`: "only the Helios Spire actually stops firing
+ *      when your grid browns out. The Glaive Post and the Zenith Emitter keep
+ *      shooting". Half stale. `glaiveRepeater` carries `needsPower` now and the
+ *      Glaive Post is a structure drawing power, so it goes dark WITH the
+ *      Spire. The Zenith half is still right, and for the reason `Defs.ts`
+ *      gives: it is a hull, and a hull can never carry `NeedsPower`.
+ *   4. `Faction-Allies.md` calls the Vindicator "the heaviest and slowest of
+ *      the four aircraft". Heaviest yes; slowest no — it is 11.5 against the
+ *      Swarmhornet's 11.0.
+ *   5. `Economy.md`: "The Ore Silo is the cheapest building in the game at 150
+ *      credits". The three walls are 100.
+ *   6. `Faction-Reclamation.md`: "The Slagger's 12 m is the shortest reach of
+ *      any gun in the game — only an Attack Dog's jaws get closer." Those two
+ *      clauses contradict each other, and the table agrees with the second:
+ *      `bite` is 3.6 m.
  * ============================================================================
  */
 
