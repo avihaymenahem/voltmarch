@@ -445,14 +445,49 @@ function subscribe(): void {
   }));
 
   /* -- economy ------------------------------------------------------------- */
+  /**
+   * Quiet gap that separates one delivery from the next, in seconds.
+   *
+   * Comfortably under `UNLOAD_SECONDS` (2.2) so two deliveries in a row are two
+   * sounds, and comfortably over one sim tick (0.033) so ONE delivery is not
+   * sixty-six of them.
+   */
+  const ORE_DUMP_GAP_SEC = 0.5;
+
+  /**
+   * When the local player last heard a delivery, in context seconds. See the
+   * edge test below; `-Infinity` so the first delivery of a match always sounds.
+   */
+  let lastOreDumpAt = -Infinity;
+
   unsubscribe.push(bus.on('economy:credits', (p) => {
     if (p.player !== local()) return;
     // Ore arriving at a full silo is wasted; that is what "Silos needed" means.
     if (p.reason === CreditReason.Waste) eva?.say('silosNeeded');
-    // A harvester unloading. `ore.dump` was recorded, baked and never played:
-    // nothing in the game dispatched it, so the one moment the economy is
-    // audible had no sound at all.
-    if (p.reason === CreditReason.Harvest && p.delta > 0) engine?.ui(SFX.oreDump);
+    // A HARVESTER UNLOADING, ONCE PER DELIVERY — and it is edge-triggered for
+    // a reason that was audible from the title screen.
+    //
+    // `economy:credits` is a STREAM, not a moment. `Harvesting.ts` unloads a
+    // hopper gradually over `UNLOAD_SECONDS`, depositing a slice every sim
+    // tick, and every slice emits this event. Playing the sound on each one
+    // fired `ore.dump` THIRTY TIMES A SECOND for the length of every delivery,
+    // and thirty overlapping copies of a short sample per second do not read as
+    // thirty sounds — they fuse into a pitched drone. Reported as "the weirdest
+    // sound I've ever heard", "like a ship's horn", heard on the MAIN MENU,
+    // because the title screen boots a real world with a real economy behind it.
+    //
+    // Measured before the fix: successive plays 33 ms apart, indefinitely.
+    //
+    // The gap test is what makes this an edge. Credits arrive every tick WHILE
+    // a harvester is docked and stop between deliveries, so a quiet gap is
+    // exactly the boundary between one delivery and the next — no sim change,
+    // no new event, and it stays correct with several harvesters because each
+    // one's arrival is its own edge unless two land inside the same gap.
+    if (p.reason === CreditReason.Harvest && p.delta > 0) {
+      const now = engine?.now() ?? 0;
+      if (now - lastOreDumpAt > ORE_DUMP_GAP_SEC) engine?.ui(SFX.oreDump);
+      lastOreDumpAt = now;
+    }
   }));
 
   unsubscribe.push(bus.on('economy:power', (p) => {
