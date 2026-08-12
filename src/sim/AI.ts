@@ -2504,6 +2504,11 @@ export class AiBrain {
    * "coastal map, buy a transport" — which is how you get a 900-credit hull
    * parked next to a Construction Yard for twenty minutes.
    */
+  /* PROBE */ readonly dbgYard = {
+    passes: 0, undef: 0, lostScore: 0, unavailable: 0, cannotQueue: 0,
+    tooPoor: 0, tabFull: 0, won: 0, lostTo: '', maxSpendable: 0, richPasses: 0,
+  };
+
   private considerNavy(): void {
     if (!this.navalMap) return;
 
@@ -2524,6 +2529,20 @@ export class AiBrain {
       // and something to build tanks in.
       if (this.roleCount[BuildRole.Refinery] === 0) return;
       if (this.roleCount[BuildRole.WarFactory] === 0) return;
+      /* PROBE */ {
+        const e = this.catalog.forRole(BuildRole.NavalYard, this.faction);
+        const sc = AI_NAVAL.yardScore * this.pers.tech;
+        this.dbgYard.passes++;
+        if (this.spendable > this.dbgYard.maxSpendable) this.dbgYard.maxSpendable = this.spendable;
+        if (e !== undefined && this.spendable >= e.cost) this.dbgYard.richPasses++;
+        if (e === undefined) this.dbgYard.undef++;
+        else if (sc <= this.bestScore) { this.dbgYard.lostScore++; this.dbgYard.lostTo = this.bestGoal; }
+        else if (!this.available(e)) this.dbgYard.unavailable++;
+        else if (!this.canQueue(e, this.spendable)) {
+          this.dbgYard.cannotQueue++;
+          if (this.spendable < e.cost) this.dbgYard.tooPoor++; else this.dbgYard.tabFull++;
+        } else this.dbgYard.won++;
+      }
       this.consider(this.catalog.forRole(BuildRole.NavalYard, this.faction),
         AI_NAVAL.yardScore * this.pers.tech, 'a dock, to stop giving away the sea');
       return;
