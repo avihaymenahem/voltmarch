@@ -172,6 +172,13 @@ function hashEntities(world: World): number {
     h = mix(h, q(s.guardZ[i]));
     h = mix(h, q(s.cargo[i]));
     h = mix(h, q(s.buildProgress[i]));
+    // WHICH HULL A PASSENGER IS INSIDE. `flags` already carries `Garrisoned`,
+    // so two clients always agreed about whether a man was aboard SOMETHING —
+    // and, while this lived in a service-private side array, never about which.
+    // A divergence there was caught only indirectly one tick later, via the
+    // position `TransportService.carry` copies off the host, and only if the
+    // two hulls had drifted far enough apart to survive `q`'s quantisation.
+    h = mix(h, s.carrierId[i]);
     // SUMMED, not folded. See the header: `alive[]` order follows the free
     // list, and a slot recycled in a different order is the same world.
     sum = (sum + h) >>> 0;

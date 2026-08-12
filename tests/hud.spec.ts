@@ -3,8 +3,10 @@
  *
  * Everything in `src/ui/**` that does not need a DOM: the resolution-
  * independence arithmetic, the row-count budget, the glyph inventory, the arc
- * geometry and the faction skin swap. The tests run under `environment: 'node'`
- * like the rest of the suite, so nothing here touches `document`.
+ * geometry, the faction skin swap — and, since the two occupancy rows were
+ * lifted out of the `Hud` class as pure functions, what those rows say about a
+ * selection. The tests run under `environment: 'node'` like the rest of the
+ * suite, so nothing here touches `document`.
  *
  * These are the checks a HUD critic runs from VISUAL_DNA §2 and §2.17, encoded
  * so a regression is a red build rather than a screenshot argument.
@@ -21,7 +23,16 @@ import {
   HUD_COMMAND_BAR,
   HUD_OVERLAY,
 } from '../src/core/config';
-import { BUILD_TAB_COUNT, BuildTab, Faction } from '../src/core/types';
+import { BUILD_TAB_COUNT, BuildTab, EntityKind, Faction } from '../src/core/types';
+import type { EntityId, PlayerId } from '../src/core/types';
+import { World } from '../src/core/world';
+import {
+  computeCargoAction,
+  computeGarrisonAction,
+  type GarrisonSeamRead,
+  type TransportSeamRead,
+} from '../src/ui/Hud';
+import type { CargoAction, GarrisonAction } from '../src/ui/Sidebar';
 import {
   BUILD_SLOT_HOTKEYS,
   BUILD_SLOT_HOTKEY_LABELS,
@@ -535,5 +546,237 @@ describe('every buildable carries a brief that fits the strip', () => {
         `${entry.key}'s blurb only repeats its name`,
       ).not.toBe(entry.name.trim().toLowerCase());
     }
+  });
+});
+
+/* ==========================================================================
+ * THE TWO OCCUPANCY ROWS READ THE WHOLE SELECTION
+ *
+ * Reported as: "when selecting multiple vehicles that can load and unload
+ * troops, add the unload button in the bottom mid HUD as well".
+ *
+ * The button was there. It was gated on `selection.count !== 1`, while the
+ * order layer underneath it — `gatherLoadedTransports` -> `issueUnload`, and
+ * `gatherOccupiedGarrisons` -> `issueEvacuate` — had walked the whole selection
+ * since it shipped. So the D key emptied N transports and the button emptied
+ * one, and `tests/transport.spec.ts` could not see the difference because it
+ * tests the sim and the gate was in the view.
+ *
+ * There was no coverage of the cargo row at all before this block. These are
+ * the cases the gate was hiding: a sum over several hulls, a mixed loaded/empty
+ * pair, and the two ways the row should disappear.
+ * ========================================================================== */
+
+describe('the cargo row is a sum over every selected hull with seats', () => {
+  const LOCAL = 0 as PlayerId;
+  const ENEMY = 1 as PlayerId;
+
+  function makeWorld(): World {
+    const w = new World();
+    w.addPlayer(Faction.Allies, 'Commander', true, true);
+    w.addPlayer(Faction.Soviets, 'Opponent', false, false);
+    return w;
+  }
+
+  function spawn(w: World, kind: EntityKind, owner: PlayerId): EntityId {
+    return w.store.alloc(kind, -1, owner, Faction.Allies, 0, 0, 0);
+  }
+
+  function select(w: World, ids: readonly EntityId[]): void {
+    for (let i = 0; i < ids.length; i++) w.selection.ids[i] = ids[i] as number;
+    w.selection.count = ids.length;
+  }
+
+  /**
+   * The transport seam, faked from a table of `[seats, aboard]`.
+   *
+   * Duck-typed exactly as `src/sim/features.system.ts` publishes it, which is
+   * the whole point of the seam: the HUD never imports `TransportService`, so
+   * a fake answering the two questions is indistinguishable from the real one.
+   */
+  function seats(table: ReadonlyMap<EntityId, readonly [number, number]>): TransportSeamRead {
+    return {
+      capacity: (h) => table.get(h)?.[0] ?? 0,
+      passengerCount: (h) => table.get(h)?.[1] ?? 0,
+      // The fake speaks in bodies, so one slot per passenger keeps these
+      // tables readable. The real service charges a vehicle two, which is
+      // covered where it belongs, in `transport.spec.ts`.
+      usedSlots: (h) => table.get(h)?.[1] ?? 0,
+    };
+  }
+
+  function occupants(table: ReadonlyMap<EntityId, number>): GarrisonSeamRead {
+    return { occupantCount: (b) => table.get(b) ?? 0 };
+  }
+
+  /** A row in the state `buildSelectionView` finds it in: hidden and blank. */
+  function cargoRow(): CargoAction {
+    return { visible: false, enabled: false, count: 0, capacity: 0, hint: '' };
+  }
+
+  function garrisonRow(): GarrisonAction {
+    return { visible: false, enabled: false, count: 0, hint: '' };
+  }
+
+  it('sums men and seats across two loaded transports', () => {
+    const w = makeWorld();
+    const a = spawn(w, EntityKind.Vehicle, LOCAL);
+    const b = spawn(w, EntityKind.Vehicle, LOCAL);
+    select(w, [a, b]);
+
+    const action = cargoRow();
+    computeCargoAction(action, w, seats(new Map([[a, [5, 3]], [b, [4, 2]]])));
+
+    expect(action.visible).toBe(true);
+    expect(action.enabled).toBe(true);
+    expect(action.count).toBe(5);
+    expect(action.capacity).toBe(9);
+    // The readout is `${count} / ${capacity}` — the hint is the only place the
+    // player learns the men are spread over more than one hull.
+    expect(action.hint).toContain('all 5 passengers');
+    expect(action.hint).toContain('all 2 hulls');
+  });
+
+  it('counts an empty hull’s seats and stays enabled for the loaded one', () => {
+    // The mixed selection is the case the old gate got most wrong: it showed
+    // nothing at all, so a loaded transport dragged over with an empty one
+    // could not be unloaded from the panel.
+    const w = makeWorld();
+    const loaded = spawn(w, EntityKind.Vehicle, LOCAL);
+    const empty = spawn(w, EntityKind.Vehicle, LOCAL);
+    select(w, [loaded, empty]);
+
+    const action = cargoRow();
+    computeCargoAction(action, w, seats(new Map([[loaded, [5, 2]], [empty, [5, 0]]])));
+
+    expect(action.visible).toBe(true);
+    expect(action.enabled).toBe(true);
+    expect(action.count).toBe(2);
+    expect(action.capacity).toBe(10);
+    // One hull is loaded, so the hint stays singular about where the men land
+    // even though two hulls are selected.
+    expect(action.hint).toContain('the hull');
+    expect(action.hint).not.toContain('hulls');
+  });
+
+  it('hides the row when nothing selected has seats', () => {
+    const w = makeWorld();
+    const a = spawn(w, EntityKind.Vehicle, LOCAL);
+    const b = spawn(w, EntityKind.Infantry, LOCAL);
+    select(w, [a, b]);
+
+    const action = cargoRow();
+    action.visible = true;                       // must be actively cleared
+    computeCargoAction(action, w, seats(new Map()));
+
+    expect(action.visible).toBe(false);
+  });
+
+  it('shows 0 / N for a selection of empty transports rather than hiding', () => {
+    // The ONE place this row differs from the garrison row, and it is
+    // deliberate — see the block above `CargoAction` in `src/ui/Sidebar.ts`.
+    // Passengers are invisible on the field, so "0 / 10" is the answer to a
+    // question the player cannot ask any other way.
+    const w = makeWorld();
+    const a = spawn(w, EntityKind.Vehicle, LOCAL);
+    const b = spawn(w, EntityKind.Vehicle, LOCAL);
+    select(w, [a, b]);
+
+    const action = cargoRow();
+    computeCargoAction(action, w, seats(new Map([[a, [5, 0]], [b, [5, 0]]])));
+
+    expect(action.visible).toBe(true);
+    expect(action.enabled).toBe(false);
+    expect(action.count).toBe(0);
+    expect(action.capacity).toBe(10);
+  });
+
+  it('leaves an enemy hull out of the sum', () => {
+    // Selection can hold entities you do not own — a marquee over a mixed
+    // fight, or a click on an enemy. Their seats are not yours to empty.
+    const w = makeWorld();
+    const mine = spawn(w, EntityKind.Vehicle, LOCAL);
+    const theirs = spawn(w, EntityKind.Vehicle, ENEMY);
+    select(w, [mine, theirs]);
+
+    const action = cargoRow();
+    computeCargoAction(action, w, seats(new Map([[mine, [5, 1]], [theirs, [8, 6]]])));
+
+    expect(action.count).toBe(1);
+    expect(action.capacity).toBe(5);
+  });
+
+  it('hides the row when the transport service never landed', () => {
+    // `sim.features` absent — a `?shot=` boot, or a content module that never
+    // registered. The seam answers null and the row is simply not offered.
+    const w = makeWorld();
+    select(w, [spawn(w, EntityKind.Vehicle, LOCAL)]);
+    const action = cargoRow();
+    action.visible = true;
+    computeCargoAction(action, w, null);
+    expect(action.visible).toBe(false);
+  });
+
+  it('sums occupants across two garrisoned buildings', () => {
+    const w = makeWorld();
+    const a = spawn(w, EntityKind.Building, LOCAL);
+    const b = spawn(w, EntityKind.Building, LOCAL);
+    select(w, [a, b]);
+
+    const action = garrisonRow();
+    computeGarrisonAction(action, w, occupants(new Map([[a, 3], [b, 2]])));
+
+    expect(action.visible).toBe(true);
+    expect(action.enabled).toBe(true);
+    expect(action.count).toBe(5);
+    expect(action.hint).toContain('all 5 occupants');
+    expect(action.hint).toContain('2 buildings');
+  });
+
+  it('hides the garrison row at zero occupants, where the cargo row would not', () => {
+    // The asymmetry, asserted in one place so it cannot be "tidied" away: a
+    // permanent "0 inside" on a Power Plant is noise on every structure the
+    // player ever clicks, whereas "0 / 5" on a hull is information.
+    const w = makeWorld();
+    const a = spawn(w, EntityKind.Building, LOCAL);
+    const b = spawn(w, EntityKind.Building, LOCAL);
+    select(w, [a, b]);
+
+    const action = garrisonRow();
+    action.visible = true;
+    computeGarrisonAction(action, w, occupants(new Map([[a, 0], [b, 0]])));
+    expect(action.visible).toBe(false);
+  });
+
+  it('counts only the occupied buildings when naming them', () => {
+    // Three selected, one occupied: "3 inside" over "the building", not over
+    // three of them. The hint is the only thing that says how many places the
+    // men come out of, so the count behind it has to be the occupied one.
+    const w = makeWorld();
+    const full = spawn(w, EntityKind.Building, LOCAL);
+    const empty1 = spawn(w, EntityKind.Building, LOCAL);
+    const empty2 = spawn(w, EntityKind.Building, LOCAL);
+    select(w, [full, empty1, empty2]);
+
+    const action = garrisonRow();
+    computeGarrisonAction(action, w, occupants(new Map([[full, 3]])));
+
+    expect(action.visible).toBe(true);
+    expect(action.count).toBe(3);
+    expect(action.hint).toContain('the building');
+    expect(action.hint).not.toContain('buildings');
+  });
+
+  it('ignores a selected vehicle even when the garrison seam answers for it', () => {
+    // `EntityKind.Building` is the gate, not the seam's answer. A transport and
+    // a strongpoint are two rows, and a vehicle must never appear in this one.
+    const w = makeWorld();
+    const hull = spawn(w, EntityKind.Vehicle, LOCAL);
+    select(w, [hull]);
+
+    const action = garrisonRow();
+    action.visible = true;
+    computeGarrisonAction(action, w, occupants(new Map([[hull, 4]])));
+    expect(action.visible).toBe(false);
   });
 });

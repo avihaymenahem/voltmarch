@@ -509,8 +509,11 @@ export class GarrisonService {
       if ((st.flags[i] & EntityFlag.Garrisoned) === 0) continue;
       if (st.index(this.hostOf.getAt(i) as EntityId) !== b) continue;
       // They are already inside a building that is exploding on its own; a
-      // second body-and-stain per man on top of that is noise.
-      st.state[i] = UnitState.Selling;
+      // second body-and-stain per man on top of that is noise. `Drowned` and
+      // not `Selling`, because `Damage.cleanupTick` returns on `Selling`
+      // before the statistics block: a garrison wiped out with its building
+      // reached neither scoreboard, and a five-man loss went unrecorded.
+      st.state[i] = UnitState.Drowned;
       st.markDead(st.handleOf(i));
       this.hostOf.clear(st.handleOf(i));
     }

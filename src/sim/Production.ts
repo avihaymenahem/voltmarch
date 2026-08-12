@@ -330,13 +330,49 @@ export interface BuildEntry {
    * the heel, the bob or the wake, and `setMoveClass`, whose own docstring
    * calls itself "the only way to say NAVAL", had no caller outside `tests/`.
    *
-   * WHAT IS AND IS NOT A SHIP, and the line is `passengers`: a hull with seats
-   * (`transport`, `mrdSkiff`, `rclScow`) is the army's amphibious lift and has
-   * to be able to put infantry down on a beach, so it stays Hover. A hull with
-   * a gun and no seats is a warship. That keeps every faction's ability to move
-   * infantry over land exactly where it was.
+   * THIS USED TO BE ONE FLAG NAMED `naval`, AND IT ANSWERED TWO QUESTIONS.
+   * `spawnUnit` read it as "water-only"; `isSeaMobility` read it as "warship",
+   * and defined the Sunder Atoll progression exemption as the flag's ABSENCE.
+   * So a carrier could not be made water-only without silently losing its
+   * unlock exemption on the one map where it is the only road, and a warship
+   * could not be exempted without gaining the ability to walk. The two
+   * questions are now two fields.
+   *
+   * The old rule drew the line at `passengers`, to protect the unarmed Hover
+   * Transport's ability to beach. Two hulls have seats AND a gun, and both fell
+   * through: `mrdSkiff` (intended — a Pact LAND raider gated on `mrdForgeyard`,
+   * and the whole Pact army hovers) and `rclScow`, a dock-built, naval-sortOrder
+   * hull with a 68-damage HE gun that could drive to the middle of an island and
+   * shell a base. `tests/naval-shore.spec.ts` asserted that roster verbatim
+   * under the name "marks exactly the gunned hulls as warships", which is how it
+   * survived: the test pinned the defect rather than catching it.
+   *
+   * THE RULE NOW: a hull a SHIPYARD builds never touches dry land, carrier or
+   * not. Carriers do not need to beach — `Transport.place` walks a widening ring
+   * for a foot-passable cell and puts the squad on the sand from open water,
+   * which is how the AI has been landing all along. A land unit that swims
+   * (`mrdSkiff`, the Pact hover army, the new swimmer infantry) is a different
+   * thing and keeps `waterOnly: false`.
    */
-  readonly naval: boolean;
+  readonly waterOnly: boolean;
+  /**
+   * This hull is a WARSHIP rather than the mobility half of the naval arm, and
+   * the only thing that reads it is `ProductionCatalog.isSeaMobility` — see
+   * `waterOnly` above for why these are two fields and not one.
+   *
+   * A gunboat widens an army; a barge is how the army arrives at all. That
+   * distinction is what `mobilityExempt` needs and it is orthogonal to whether
+   * the hull can cross a beach.
+   */
+  readonly warship: boolean;
+  /**
+   * This LAND unit may enter water — `MoveClass.Hover`. See
+   * `UnitDef.amphibious`, which is where it is authored; this is the catalog's
+   * view of it, because `spawnUnit` declares move class off the ENTRY and a
+   * second lookup through the def tables here would be a second answer to one
+   * question. The four swimmers carry it and nothing else does.
+   */
+  readonly amphibious: boolean;
   /**
    * Cap on how many of this entry one player may have at once. 0 = unlimited,
    * which is every entry except the four commanders.
@@ -369,8 +405,10 @@ interface ContentSpec {
   shipsWith?: string;
   /** See `BuildEntry.needsShore`. Authored on the four naval yards only. */
   needsShore?: boolean;
-  /** See `BuildEntry.naval`. Authored on the seven warship hulls only. */
-  naval?: boolean;
+  /** See `BuildEntry.waterOnly`. Authored on every hull a shipyard builds. */
+  waterOnly?: boolean;
+  /** See `BuildEntry.warship`. Authored on the gunned hulls with no cargo role. */
+  warship?: boolean;
 }
 
 const S = BuildTab.Structures;
@@ -578,35 +616,38 @@ const CONTENT: readonly ContentSpec[] = [
     cost: 3000, buildTime: 32, prereqs: ['warFactory'], sortOrder: 50,
   },
 
-  /* -- naval (shares the Vehicles tab; there are only four tabs) ----------
-   * `naval: true` is the WARSHIP flag — see `BuildEntry.naval`. The Hover
-   * Transport deliberately does not carry it: it has seats, and an amphibious
-   * lift that cannot beach is not a lift.
+  /* -- naval (shares the Vehicles tab; the Powers tab holds no units) ------
+   * TWO FLAGS, TWO QUESTIONS — see `BuildEntry.waterOnly` and `.warship`.
+   * `waterOnly` is on EVERY hull a shipyard builds, carriers included: a
+   * carrier lands its squad from open water through `Transport.place`, so it
+   * has never needed to beach, and the one hull that used both seats and a gun
+   * to walk ashore was shelling bases from inland. `warship` is only about the
+   * progression exemption and is off for anything with a cargo hold.
    * -------------------------------------------------------------------- */
   {
-    key: 'transport', name: 'Hover Transport', blurb: 'Carries a squad across water.',
+    key: 'transport', name: 'Heavy Transport', blurb: 'Carries eight slots of anything across water.',
     kind: BuildKind.Unit, faction: Faction.Neutral, tab: V,
-    cost: 900, buildTime: 12, prereqs: ['navalYard'], sortOrder: 60,
+    cost: 1200, buildTime: 15, prereqs: ['navalYard'], sortOrder: 62, waterOnly: true,
   },
   {
     key: 'gunboat', name: 'Assault Destroyer', blurb: 'Allied escort. Shoots at everything.',
     kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
-    cost: 1000, buildTime: 14, prereqs: ['navalYard'], sortOrder: 70, naval: true,
+    cost: 1000, buildTime: 14, prereqs: ['navalYard'], sortOrder: 70, waterOnly: true, warship: true,
   },
   {
     key: 'destroyer', name: 'Aircraft Cruiser', blurb: 'Allied capital ship.',
     kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
-    cost: 1800, buildTime: 22, prereqs: ['navalYard', 'battleLab'], sortOrder: 80, naval: true,
+    cost: 1800, buildTime: 22, prereqs: ['navalYard', 'battleLab'], sortOrder: 80, waterOnly: true, warship: true,
   },
   {
     key: 'submarine', name: 'Attack Submarine', blurb: 'Soviet ambush hull.',
     kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
-    cost: 1000, buildTime: 14, prereqs: ['subPen'], sortOrder: 70, naval: true,
+    cost: 1000, buildTime: 14, prereqs: ['subPen'], sortOrder: 70, waterOnly: true, warship: true,
   },
   {
     key: 'dreadnought', name: 'Dreadnought', blurb: 'Soviet siege ship.',
     kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
-    cost: 2000, buildTime: 24, prereqs: ['subPen', 'battleLab'], sortOrder: 80, naval: true,
+    cost: 2000, buildTime: 24, prereqs: ['subPen', 'battleLab'], sortOrder: 80, waterOnly: true, warship: true,
   },
 
   /* ======================================================================
@@ -737,12 +778,12 @@ const CONTENT: readonly ContentSpec[] = [
   {
     key: 'mrdCorvette', name: 'Kite Corvette', blurb: 'Escort hull. Shells shorelines.',
     kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
-    cost: 950, buildTime: 13, prereqs: ['mrdSlipway'], sortOrder: 70, naval: true,
+    cost: 950, buildTime: 13, prereqs: ['mrdSlipway'], sortOrder: 70, waterOnly: true, warship: true,
   },
   {
     key: 'mrdMonitor', name: 'Sunmonitor', blurb: 'Pact capital ship. Forty metres of reach.',
     kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
-    cost: 1900, buildTime: 23, prereqs: ['mrdSlipway', 'mrdReliquary'], sortOrder: 80, naval: true,
+    cost: 1900, buildTime: 23, prereqs: ['mrdSlipway', 'mrdReliquary'], sortOrder: 80, waterOnly: true, warship: true,
   },
 
   /* ======================================================================
@@ -887,14 +928,20 @@ const CONTENT: readonly ContentSpec[] = [
     cost: 900, buildTime: 12, prereqs: ['rclBreakerYard', 'rclSpotter'], sortOrder: 60,
   },
   {
+    // THE HULL THAT MOTIVATED SPLITTING THE FLAG. It has four slots and a
+    // 68-damage HE bow gun, so the old `passengers`-based rule left it
+    // amphibious, and `Flowfield.rebuildCost` grants `MoveClass.Hover` flat
+    // cost over every passable land cell — no slope penalty, no rough penalty.
+    // A player could drive it to the middle of an island and shell a base with
+    // a dock-built warship. It keeps the gun; it stops crossing the beach.
     key: 'rclScow', name: 'Slag Scow', blurb: 'A barge with a bow gun bolted to it.',
     kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
-    cost: 850, buildTime: 12, prereqs: ['rclDrydock'], sortOrder: 70,
+    cost: 850, buildTime: 12, prereqs: ['rclDrydock'], sortOrder: 61, waterOnly: true,
   },
   {
     key: 'rclHulk', name: 'Reclaimed Hulk', blurb: 'Somebody else’s capital ship, welded back together.',
     kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
-    cost: 1800, buildTime: 22, prereqs: ['rclDrydock', 'rclCrucible'], sortOrder: 80, naval: true,
+    cost: 1800, buildTime: 22, prereqs: ['rclDrydock', 'rclCrucible'], sortOrder: 80, waterOnly: true, warship: true,
   },
   /*
    * APPENDED, NOT INSERTED. A building's `publicId` is its index in THIS
@@ -1399,13 +1446,16 @@ export class ProductionCatalog {
    * Is this entry the MOBILITY half of the naval arm rather than a warship —
    * the dock that reaches the water and the lift that carries an army over it?
    *
-   * `requiresSea` AND NOT `naval`, and both halves are already authored: `naval`
-   * is the WARSHIP flag (see `BuildEntry.naval`) and the amphibious lifts
-   * deliberately do not carry it, because "a lift that cannot beach is not a
-   * lift". Today that resolves to exactly six entries — `navalYard`, `subPen`,
-   * `mrdSlipway` and `rclDrydock`, plus `transport` and `rclScow` — and it
-   * EXCLUDES the seven warship hulls, which is the point: a gunboat widens an
-   * army, a barge is how the army arrives at all.
+   * `requiresSea` AND NOT `warship`, and both halves are authored: `warship` is
+   * on the gunned hulls with no cargo role, and every carrier deliberately does
+   * without it. A gunboat widens an army; a barge is how the army arrives at
+   * all, and only the second is something a player must never be locked out of.
+   *
+   * THIS USED TO READ `!entry.naval`, WHICH WAS THE MOBILITY FLAG. The two
+   * meanings shared one bit, so the exemption was defined as "can this hull
+   * cross a beach" — which meant a carrier could not be made water-only without
+   * silently losing its exemption on the one map where it is the only road.
+   * `BuildEntry.waterOnly` carries the mobility half now.
    *
    * Derived from the two flags rather than from a list of keys, for the same
    * reason `computeSeaBound` is a fixpoint and not a name match: a new lift or a
@@ -1418,7 +1468,7 @@ export class ProductionCatalog {
    * between two armies. It is not a filter and it changes nothing on its own.
    */
   isSeaMobility(entry: BuildEntry): boolean {
-    return !entry.naval && this.requiresSea(entry);
+    return !entry.warship && this.requiresSea(entry);
   }
 
   /** Catalog entry by its index. Null for an out-of-range id. */
@@ -1543,7 +1593,7 @@ function computeSeaBound(
   const marked = new Uint8Array(entries.length);
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
-    if (e.needsShore || e.naval) marked[e.index] = 1;
+    if (e.needsShore || e.waterOnly) marked[e.index] = 1;
   }
 
   for (let pass = 0; pass < entries.length; pass++) {
@@ -1645,7 +1695,9 @@ function emptyNonEntityEntry(index: number, spec: ContentSpec): BuildEntry {
     shipsWith: '',
     needsShore: false,
     entityKind: EntityKind.None,
-    naval: false,
+    waterOnly: false,
+    warship: false,
+    amphibious: false,
     // The one-at-a-time rule here is ownership, not a cap: see
     // `availabilityOf`, which refuses a second copy because the bit is set.
     maxAlive: 0,
@@ -1732,7 +1784,9 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
       needsShore: spec.needsShore === true,
       entityKind: EntityKind.Building,
       // A structure never launches itself.
-      naval: false,
+      waterOnly: false,
+      warship: false,
+      amphibious: false,
       // No structure is capped. If one ever is, this reads the def field.
       maxAlive: 0,
     };
@@ -1775,7 +1829,9 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
     shipsWith: '',
     needsShore: false,
     entityKind: def?.kind ?? fb.kind,
-    naval: spec.naval === true,
+    waterOnly: def?.waterOnly ?? spec.waterOnly === true,
+    warship: spec.warship === true,
+    amphibious: def?.amphibious ?? false,
     maxAlive: def?.maxAlive ?? 0,
   };
 }
@@ -2712,7 +2768,7 @@ export class ProductionService implements QueueHooks {
     const radius = def?.radius ?? (fb === undefined ? 2 : Math.max(fb.width, fb.length) * 0.45);
     const loco = def?.locomotor ?? fb?.locomotor ?? Locomotor.Wheel;
 
-    if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot, unit.naval)) return false;
+    if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot, unit.waterOnly)) return false;
     if (this.spawnUnit(p, unit, spot[0], spot[1], yaw) === NONE) return false;
     p.stats.unitsBuilt++;
     return true;
@@ -3330,7 +3386,7 @@ export class ProductionService implements QueueHooks {
     const radius = def?.radius ?? Math.max(fb.width, fb.length) * 0.45;
     const loco = def?.locomotor ?? fb.locomotor;
 
-    if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot, entry.naval)) return false;
+    if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot, entry.waterOnly)) return false;
 
     const id = this.spawnUnit(p, entry, spot[0], spot[1], yaw);
     if (id === NONE) return false;
@@ -3605,8 +3661,15 @@ export class ProductionService implements QueueHooks {
     // and that guess is a coin toss the moment a ship sits in a slipway with
     // one skirt on the ramp — it latches for the life of the slot and there is
     // no second chance to correct it. `setMoveClass` exists for exactly this,
-    // and until now nothing in `src/` called it. See `BuildEntry.naval`.
-    if (entry.naval) setMoveClass(st, id, MoveClass.Naval);
+    // and until now nothing in `src/` called it. See `BuildEntry.waterOnly`.
+    //
+    // The inverse of that coin toss was live until this flag covered carriers:
+    // a lift whose egress cell happened to be WATER latched `MoveClass.Naval`
+    // permanently and could never beach again. `tryEgress` routes anything
+    // `requiresSea` to the dock, and a dock founded facing the sea puts its door
+    // point over water, so it was the common case rather than an exotic one.
+    if (entry.waterOnly) setMoveClass(st, id, MoveClass.Naval);
+    else if (entry.amphibious) setMoveClass(st, id, MoveClass.Hover);
 
     this.entryOfEntity.setAt(i, entry.index);
     if (kind < p.entityCount.length) p.entityCount[kind]++;

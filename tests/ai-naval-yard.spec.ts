@@ -194,15 +194,15 @@ describe('a hull launches from the dock, not from the war factory sharing its ta
 
   it('produces an amphibious lift the war factory could never have released', async () => {
     /*
-     * `transport` does NOT carry `naval` — it beaches itself on purpose — so
-     * `entry.naval` is the wrong discriminator and picking on it leaves the lift
-     * at the war factory door. `ProductionCatalog.requiresSea` is the right one:
-     * it is the prereq closure that already knows a Hover Transport is gated on
-     * a dock, and it excludes `mrdSkiff`, which is gated on a land forgeyard.
+     * `transport` does NOT carry `warship` - it is the mobility half of the
+     * naval arm - so `entry.warship` is the wrong discriminator and picking on
+     * it leaves the lift at the war factory door. `ProductionCatalog.requiresSea`
+     * is the right one: it is the prereq closure that already knows a carrier is
+     * gated on a dock, and it excludes `mrdSkiff`, gated on a land forgeyard.
      */
     const rig = await riggedBase();
     const lift = rig.catalog.byKey('transport')!;
-    expect(lift.naval, 'the lift is not flagged naval — that is the point').toBe(false);
+    expect(lift.warship, 'the lift is not a warship — that is the point').toBe(false);
     expect(rig.catalog.requiresSea(lift), 'but it does require a sea').toBe(true);
 
     expect(rig.service.availability(rig.player, lift.publicId).ok).toBe(true);

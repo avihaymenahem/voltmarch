@@ -1,6 +1,6 @@
 /**
  * ============================================================================
- * src/sim/Transport.ts — INFANTRY RIDE INSIDE VEHICLES
+ * src/sim/Transport.ts — AN ARMY RIDES INSIDE A HULL
  * ============================================================================
  *
  * `EntityFlag.Garrisoned` has said "Inside a transport or a garrison" since the
@@ -12,11 +12,24 @@
  * Hover Transport — a unit whose entire blurb is "Carries a squad across water"
  * — could not carry anything. This is the consumer.
  *
- * WHAT A TRANSPORT IS HERE
- * ------------------------
- * A vehicle whose def sets `passengers > 0`. Infantry walk to it, vanish from
- * the field, and ride. The hull is the only thing on the map; killing it kills
- * everyone aboard. `OrderKind.Unload` puts them back on the ground around it.
+ * WHAT A CARRIER IS HERE
+ * ----------------------
+ * A vehicle whose def sets `cargoSlots > 0`. Infantry and vehicles drive to it,
+ * vanish from the field, and ride. The hull is the only thing on the map;
+ * killing it kills everyone aboard. `OrderKind.Unload` puts them back on the
+ * ground around it.
+ *
+ * A SLOT IS NOT A SEAT. Infantry cost one, a vehicle costs two, so the number
+ * on the def is a hold and not a bench. This started as infantry-only, and the
+ * reason was honest at the time: every query here scanned
+ * `byKind[EntityKind.Infantry]` and nothing else, so admitting a vehicle would
+ * have made the accounting lie in a way nothing downstream could detect. Six
+ * scan sites and the `'not infantry'` refusal are gone; `store.carrierId` is a
+ * real column and `collect` walks both cargo kinds.
+ *
+ * The cost of NOT having this was not abstract. On Sunder Atoll there is no
+ * land route between any two armies, so "infantry only" meant the entire
+ * vehicle roster was unusable against three of your four opponents.
  *
  * PASSENGERS DO NOT SHOOT, AND THAT IS THE DESIGN
  * ----------------------------------------------
@@ -73,22 +86,32 @@
  * that order, and every scan iterates `store.byKind` in slot order, so two runs
  * of one seed load and unload the same men into the same positions.
  *
- * NOT SAVED. `hostOf` is service state and `game/SaveGame.ts` does not persist
- * it — exactly as it does not persist garrison occupancy. Loading a save puts
- * every passenger back on the field where it stands. Fixing that means a real
- * store column and a save-format bump, and it should fix both services at once.
+ * SAVED, AND HASHED. `store.carrierId` is a real column: `SaveGame` remaps it
+ * with the other entity references and `Checksum.hashEntities` mixes it.
+ *
+ * It used to be a service-private `PerEntityU32`, and that was two live bugs
+ * rather than a gap. A load bumps every `store.gen[i]`, so the side array's
+ * stamp check failed and returned 0; `ride` skips at `held === 0`, so `strand`
+ * was unreachable and every passenger in every saved game came back
+ * `Alive | Garrisoned | Immobilized` with no host — unrenderable, unselectable,
+ * untargetable, unmovable, permanently. And two lockstep clients that disagreed
+ * about WHICH hull a man was in produced an identical checksum.
+ *
+ * `GarrisonService` still keeps its occupancy in a side array and still has the
+ * first half of that bug. Filed, not fixed here.
  * ============================================================================
  */
 
 import type { Channels } from '../core/events';
 import type { World } from '../core/world';
-import { PerEntityU32 } from '../core/world';
 import {
-  EntityFlag, EntityKind, FxKind, Locomotor, NONE, OrderKind, UnitState,
+  ENTITY_KIND_COUNT, EntityFlag, EntityKind, FxKind, NONE, OrderKind, UnitState,
 } from '../core/types';
 import type { DefTables, EntityId, Faction, PlayerId, SimContext } from '../core/types';
 import { MAX_ENTITIES } from '../core/config';
 import { isInMap, worldToCell } from '../core/math';
+import { locomotorForMoveClass } from './Flowfield';
+import { moveClassAt } from './Movement';
 
 /* ==========================================================================
  * 1. TUNING
@@ -106,6 +129,29 @@ export const TRANSPORT = {
   /** Candidate positions per ring. Walked in a fixed order, so ties are stable. */
   unloadSpokes: 8,
 } as const;
+
+/**
+ * What one passenger costs, by `EntityKind`.
+ *
+ * A slot is the unit of cargo, not a seat: infantry cost one and a vehicle
+ * costs two, so an eight-slot hull is four tanks or eight riflemen or any mix
+ * that adds up. Indexed by kind so there is no branch and no table lookup on
+ * the hot path, and so a kind nobody thought about (a Building, a Prop) costs
+ * more slots than any hull has and is therefore refused by arithmetic rather
+ * than by a special case.
+ */
+/** A cost no hull can pay, so an ineligible kind is refused by arithmetic. */
+const SLOT_COST_NEVER = 9999;
+
+const SLOT_COST_BY_KIND = (() => {
+  const t = new Int32Array(ENTITY_KIND_COUNT).fill(SLOT_COST_NEVER);
+  t[EntityKind.Infantry] = 1;
+  t[EntityKind.Vehicle] = 2;
+  return t;
+})();
+
+/** Kind lists a passenger can be found in. Order fixes the unload order. */
+const CARGO_KINDS: readonly EntityKind[] = [EntityKind.Infantry, EntityKind.Vehicle];
 
 /* ==========================================================================
  * 2. PUBLIC SHAPES
@@ -126,7 +172,7 @@ export interface TransportStats {
 
 /** Why a unit cannot board. Empty string when it can. */
 export type BoardRefusal =
-  | '' | 'not a transport' | 'gone' | 'not infantry' | 'hostile' | 'full';
+  | '' | 'not a transport' | 'gone' | 'cannot ride' | 'hostile' | 'full';
 
 /* ==========================================================================
  * 3. THE SERVICE
@@ -140,43 +186,46 @@ export type BoardRefusal =
 const RIDER_COUNT = new Int32Array(MAX_ENTITIES);
 const RIDER_TOUCHED = new Int32Array(MAX_ENTITIES);
 
+/**
+ * Scratch for `collect`. Sized well past the largest hull in the roster (eight
+ * slots, so at most eight passengers) because the cost of being wrong is a
+ * silently short passenger list, and re-entrancy is impossible here: every
+ * caller finishes its walk before it mutates anything.
+ */
+const PASSENGER_SLOTS = new Int32Array(64);
+
 export class TransportService {
   readonly stats: TransportStats = {
     loaded: 0, riding: 0, boarded: 0, unloaded: 0, unloadRefusals: 0, drowned: 0,
   };
 
-  /** For a passenger: the hull's handle. 0 when not aboard anything. */
-  private readonly hostOf: PerEntityU32;
-
   /**
-   * Seats per unit def, resolved once from the def tables.
+   * Cargo slots per unit def, resolved once from the def tables.
    *
-   * Int8 because five is the largest number in the roster and a seat count that
+   * Int8 because eight is the largest number in the roster and a capacity that
    * needed more than 127 would be a content bug rather than a range problem.
    * Empty until `bindDefs`, which answers 0 for everything — the honest reading
    * of "no def tables are installed", and the same shape `Garrison`'s
    * `fallbackWeapon` uses for the same reason.
    */
-  private seatsByDef: Int8Array = new Int8Array(0);
+  private slotsByDef: Int8Array = new Int8Array(0);
 
   private unhookKilled: (() => void) | null = null;
 
   constructor(
     private readonly world: World,
     private readonly channels: Channels,
-  ) {
-    this.hostOf = new PerEntityU32(world.store, 0);
-  }
+  ) {}
 
-  /** Publish the seat counts. Called once at init, from the def binding. */
+  /** Publish the slot counts. Called once at init, from the def binding. */
   bindDefs(tables: DefTables): void {
     const units = tables.units;
-    const seats = new Int8Array(units.length);
+    const slots = new Int8Array(units.length);
     for (let d = 0; d < units.length; d++) {
-      const p = units[d].passengers;
-      seats[d] = p > 127 ? 127 : p < 0 ? 0 : p | 0;
+      const p = units[d].cargoSlots;
+      slots[d] = p > 127 ? 127 : p < 0 ? 0 : p | 0;
     }
-    this.seatsByDef = seats;
+    this.slotsByDef = slots;
   }
 
   /** Wire into the rest of the sim. Kept out of the constructor, as Garrison is. */
@@ -192,27 +241,36 @@ export class TransportService {
 
   /* -- queries ----------------------------------------------------------- */
 
-  /** Seats on the hull in slot `i`. 0 when it is not a transport. */
+  /** Cargo slots on the hull in slot `i`. 0 when it is not a carrier. */
   capacityAt(i: number): number {
     const st = this.world.store;
     if (st.kind[i] === EntityKind.Building) return 0;
     const d = st.defId[i];
-    return d >= 0 && d < this.seatsByDef.length ? this.seatsByDef[d] : 0;
+    return d >= 0 && d < this.slotsByDef.length ? this.slotsByDef[d] : 0;
   }
 
-  /** Seats on `hull`. 0 when it is gone or is not a transport. */
+  /** Cargo slots on `hull`. 0 when it is gone or is not a carrier. */
   capacity(hull: EntityId): number {
     const i = this.world.store.index(hull);
     return i < 0 ? 0 : this.capacityAt(i);
   }
 
-  /** The hull this unit is riding in, or NONE. */
-  hostOfUnit(unit: EntityId): EntityId {
-    const h = this.hostOf.get(unit) as EntityId;
-    return this.world.store.index(h) >= 0 ? h : NONE;
+  /** Slots one passenger in slot `i` occupies. Infantry 1, vehicle 2. */
+  slotCostAt(i: number): number {
+    const k = this.world.store.kind[i];
+    return k >= 0 && k < SLOT_COST_BY_KIND.length ? SLOT_COST_BY_KIND[k] : SLOT_COST_NEVER;
   }
 
-  /** How many men are aboard `hull` right now. O(infantry), called rarely. */
+  /** The hull this unit is riding in, or NONE. */
+  hostOfUnit(unit: EntityId): EntityId {
+    const st = this.world.store;
+    const i = st.index(unit);
+    if (i < 0) return NONE;
+    const h = st.carrierId[i] as EntityId;
+    return st.index(h) >= 0 ? h : NONE;
+  }
+
+  /** How many passengers are aboard `hull` right now. */
   passengerCount(hull: EntityId): number {
     const st = this.world.store;
     const b = st.index(hull);
@@ -220,16 +278,21 @@ export class TransportService {
   }
 
   private passengerCountAt(b: number): number {
-    const st = this.world.store;
-    const list = st.byKind[EntityKind.Infantry];
-    const n = st.byKindCount[EntityKind.Infantry];
-    let count = 0;
-    for (let a = 0; a < n; a++) {
-      const i = list[a];
-      if ((st.flags[i] & EntityFlag.Garrisoned) === 0) continue;
-      if (st.index(this.hostOf.getAt(i) as EntityId) === b) count++;
-    }
-    return count;
+    return this.collect(b, PASSENGER_SLOTS);
+  }
+
+  /** Slots CONSUMED aboard the hull in slot `b`, which is not a head count. */
+  usedSlotsAt(b: number): number {
+    const n = this.collect(b, PASSENGER_SLOTS);
+    let used = 0;
+    for (let k = 0; k < n; k++) used += this.slotCostAt(PASSENGER_SLOTS[k]);
+    return used;
+  }
+
+  /** Slots consumed aboard `hull`. 0 when it is gone. */
+  usedSlots(hull: EntityId): number {
+    const b = this.world.store.index(hull);
+    return b < 0 ? 0 : this.usedSlotsAt(b);
   }
 
   /** Passenger handles into `out`. Returns how many were written. */
@@ -237,16 +300,41 @@ export class TransportService {
     const st = this.world.store;
     const b = st.index(hull);
     if (b < 0) return 0;
-    const list = st.byKind[EntityKind.Infantry];
-    const n = st.byKindCount[EntityKind.Infantry];
+    const n = this.collect(b, PASSENGER_SLOTS);
     let count = 0;
-    for (let a = 0; a < n && count < out.length; a++) {
-      const i = list[a];
-      if ((st.flags[i] & EntityFlag.Garrisoned) === 0) continue;
-      if (st.index(this.hostOf.getAt(i) as EntityId) !== b) continue;
-      out[count++] = st.handleOf(i) as number;
+    for (let k = 0; k < n && count < out.length; k++) {
+      out[count++] = st.handleOf(PASSENGER_SLOTS[k]) as number;
     }
     return count;
+  }
+
+  /**
+   * Every passenger SLOT aboard the hull in slot `b`, into `out`.
+   *
+   * Walks the Infantry list and then the Vehicle list - the two kinds that can
+   * be cargo - rather than `store.alive`, which would make a question asked
+   * once per loaded hull per tick O(world). The kind order also fixes the
+   * unload order, so two runs of one seed put the same men on the same metre.
+   *
+   * `carrierId` is a store column, so this is a filter and not a join against a
+   * side table a save load could invalidate. That mattered: it used to be one,
+   * and every passenger in every saved game came back as an invisible immortal.
+   */
+  private collect(b: number, out: Int32Array): number {
+    const st = this.world.store;
+    let n = 0;
+    for (let c = 0; c < CARGO_KINDS.length; c++) {
+      const kind = CARGO_KINDS[c];
+      const list = st.byKind[kind];
+      const count = st.byKindCount[kind];
+      for (let a = 0; a < count && n < out.length; a++) {
+        const i = list[a];
+        if ((st.flags[i] & EntityFlag.Garrisoned) === 0) continue;
+        if (st.index(st.carrierId[i] as EntityId) !== b) continue;
+        out[n++] = i;
+      }
+    }
+    return n;
   }
 
   /** '' when the unit in slot `i` may board `hull`, otherwise the reason. */
@@ -258,14 +346,21 @@ export class TransportService {
     const hf = st.flags[b];
     if ((hf & EntityFlag.Alive) === 0 || (hf & EntityFlag.PendingDestroy) !== 0) return 'gone';
 
-    const seats = this.capacityAt(b);
-    if (seats <= 0) return 'not a transport';
-    // Vehicles do not ride inside vehicles. `passengerCountAt` counts the
-    // infantry list and nothing else, so admitting one would make the seat
-    // accounting lie in a way nothing downstream could detect.
-    if (st.kind[i] !== EntityKind.Infantry) return 'not infantry';
+    const slots = this.capacityAt(b);
+    if (slots <= 0) return 'not a transport';
+    // A CARRIER MAY NOT BOARD A CARRIER, and nothing else detects the cycle:
+    // `capacityAt` answers for any non-Building, and two hulls each holding the
+    // other would copy each other's position forever. Nesting used to be
+    // prevented only as a side effect of the infantry-only rule that this
+    // replaces, so removing that rule without this line reopens it.
+    if (this.capacityAt(i) > 0) return 'cannot ride';
+    const cost = this.slotCostAt(i);
+    // Anything that is not Infantry or Vehicle costs more slots than any hull
+    // in the game has, so a Building or a Prop is refused by arithmetic rather
+    // than by a special case that could fall out of step with the kind list.
+    if (cost > slots) return 'cannot ride';
     if (!w.areAllied(st.owner[i] as PlayerId, st.owner[b] as PlayerId)) return 'hostile';
-    if (this.passengerCountAt(b) >= seats) return 'full';
+    if (this.usedSlotsAt(b) + cost > slots) return 'full';
     return '';
   }
 
@@ -283,38 +378,48 @@ export class TransportService {
   }
 
   /**
-   * Walk every infantryman with a live `Enter` order onto its hull.
+   * Walk everything with a live `Enter` order onto its hull.
    *
    * The order point is rewritten to the hull's CURRENT position every tick, so
-   * a squad chases a transport that is still moving instead of walking to where
+   * a squad chases a carrier that is still moving instead of walking to where
    * it used to be. That is the one behaviour a garrison never needs.
+   *
+   * BOTH CARGO KINDS, not just infantry. A vehicle carrying `OrderKind.Enter`
+   * used to be visited by neither this loop nor `Garrison`'s, so the order was
+   * never executed AND never cleared: the tank drove onto the hull, parked in
+   * `UnitState.Moving`, and stayed there. Nothing rejected it, because nothing
+   * looked at it.
    */
   private board(): void {
     const st = this.world.store;
-    const list = st.byKind[EntityKind.Infantry];
-    const count = st.byKindCount[EntityKind.Infantry];
 
-    for (let a = 0; a < count; a++) {
-      const i = list[a];
-      const f = st.flags[i];
-      if ((f & EntityFlag.Alive) === 0) continue;
-      if ((f & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) continue;
-      if ((st.orderKind[i] as OrderKind) !== OrderKind.Enter) continue;
+    for (let c = 0; c < CARGO_KINDS.length; c++) {
+      const kind = CARGO_KINDS[c];
+      const list = st.byKind[kind];
+      const count = st.byKindCount[kind];
 
-      const target = st.orderTarget[i] as EntityId;
-      const t = st.index(target);
-      if (t < 0) { this.clearOrder(i); continue; }
-      // A Building target belongs to GarrisonService, which ran 5 slots ago.
-      if (st.kind[t] === EntityKind.Building) continue;
+      for (let a = 0; a < count; a++) {
+        const i = list[a];
+        const f = st.flags[i];
+        if ((f & EntityFlag.Alive) === 0) continue;
+        if ((f & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) continue;
+        if ((st.orderKind[i] as OrderKind) !== OrderKind.Enter) continue;
 
-      if (this.refusalFor(target, i) !== '') { this.clearOrder(i); continue; }
+        const target = st.orderTarget[i] as EntityId;
+        const t = st.index(target);
+        if (t < 0) { this.clearOrder(i); continue; }
+        // A Building target belongs to GarrisonService, which ran 5 slots ago.
+        if (st.kind[t] === EntityKind.Building) continue;
 
-      st.orderX[i] = st.posX[t];
-      st.orderZ[i] = st.posZ[t];
-      st.state[i] = UnitState.Moving;
+        if (this.refusalFor(target, i) !== '') { this.clearOrder(i); continue; }
 
-      if (!this.withinReach(i, t)) continue;
-      this.embark(i, t);
+        st.orderX[i] = st.posX[t];
+        st.orderZ[i] = st.posZ[t];
+        st.state[i] = UnitState.Moving;
+
+        if (!this.withinReach(i, t)) continue;
+        this.embark(i, t);
+      }
     }
   }
 
@@ -328,7 +433,7 @@ export class TransportService {
     st.orderKind[i] = OrderKind.None;
     st.orderTarget[i] = 0;
     st.velX[i] = 0; st.velZ[i] = 0; st.speed[i] = 0;
-    this.hostOf.setAt(i, host as number);
+    st.carrierId[i] = host as number;
     this.carry(i, t);
 
     this.channels.fx.push(
@@ -349,45 +454,49 @@ export class TransportService {
    */
   private ride(): void {
     const st = this.world.store;
-    const list = st.byKind[EntityKind.Infantry];
-    const n = st.byKindCount[EntityKind.Infantry];
     let men = 0;
     let touched = 0;
 
-    for (let a = 0; a < n; a++) {
-      const i = list[a];
-      const f = st.flags[i];
-      if ((f & EntityFlag.Garrisoned) === 0) continue;
-      if ((f & EntityFlag.PendingDestroy) !== 0) continue;
-      const held = this.hostOf.getAt(i) as EntityId;
-      if ((held as number) === 0) continue;          // a garrisoned man, not ours
-      const t = st.index(held);
-      if (t < 0) { this.strand(i); continue; }
-      // THE HULL IS ALREADY DYING, AND CATCHING IT HERE IS WHAT MAKES THE SQUAD
-      // COUNT. `Phase.Damage` (1200) stamps `PendingDestroy`; this runs at
-      // Phase.Cleanup order -395; `Damage.cleanupTick` runs at Phase.Cleanup
-      // order 0 and scans the alive list for that flag, emitting exactly one
-      // `entity:killed` per corpse whatever killed it. Marking the passengers
-      // HERE therefore puts them in front of that scan, so each one gets its
-      // own event, its own "unit lost" and its own scoreboard entry.
-      //
-      // Doing it from the `entity:killed` hook alone would not: that hook fires
-      // from inside the death scan's own loop, so a passenger whose slot index
-      // sits EARLIER in the alive list than its hull's has already been walked
-      // past, and `flushDestroyed()` would free it in the same call with no
-      // event ever emitted. The hook stays as the backstop for a hull killed
-      // outside the tick, where this pass has not run.
-      if ((st.flags[t] & EntityFlag.PendingDestroy) !== 0) { this.sink(i); continue; }
+    for (let c = 0; c < CARGO_KINDS.length; c++) {
+      const kind = CARGO_KINDS[c];
+      const list = st.byKind[kind];
+      const n = st.byKindCount[kind];
 
-      this.carry(i, t);
-      men++;
-      // DISTINCT hulls, not adjacent runs: `byKind` is walked in slot order and
-      // one hull's passengers are nowhere near each other in it, so comparing
-      // against the previous slot would count the same transport repeatedly.
-      if (RIDER_COUNT[t] === 0 && touched < RIDER_TOUCHED.length) {
-        RIDER_TOUCHED[touched++] = t;
+      for (let a = 0; a < n; a++) {
+        const i = list[a];
+        const f = st.flags[i];
+        if ((f & EntityFlag.Garrisoned) === 0) continue;
+        if ((f & EntityFlag.PendingDestroy) !== 0) continue;
+        const held = st.carrierId[i] as EntityId;
+        if ((held as number) === 0) continue;          // a garrisoned man, not ours
+        const t = st.index(held);
+        if (t < 0) { this.strand(i); continue; }
+        // THE HULL IS ALREADY DYING, AND CATCHING IT HERE IS WHAT MAKES THE SQUAD
+        // COUNT. `Phase.Damage` (1200) stamps `PendingDestroy`; this runs at
+        // Phase.Cleanup order -395; `Damage.cleanupTick` runs at Phase.Cleanup
+        // order 0 and scans the alive list for that flag, emitting exactly one
+        // `entity:killed` per corpse whatever killed it. Marking the passengers
+        // HERE therefore puts them in front of that scan, so each one gets its
+        // own event, its own "unit lost" and its own scoreboard entry.
+        //
+        // Doing it from the `entity:killed` hook alone would not: that hook fires
+        // from inside the death scan's own loop, so a passenger whose slot index
+        // sits EARLIER in the alive list than its hull's has already been walked
+        // past, and `flushDestroyed()` would free it in the same call with no
+        // event ever emitted. The hook stays as the backstop for a hull killed
+        // outside the tick, where this pass has not run.
+        if ((st.flags[t] & EntityFlag.PendingDestroy) !== 0) { this.sink(i); continue; }
+
+        this.carry(i, t);
+        men++;
+        // DISTINCT hulls, not adjacent runs: `byKind` is walked in slot order and
+        // one hull's passengers are nowhere near each other in it, so comparing
+        // against the previous slot would count the same transport repeatedly.
+        if (RIDER_COUNT[t] === 0 && touched < RIDER_TOUCHED.length) {
+          RIDER_TOUCHED[touched++] = t;
+        }
+        RIDER_COUNT[t]++;
       }
-      RIDER_COUNT[t]++;
     }
 
     this.stats.riding = men;
@@ -413,6 +522,8 @@ export class TransportService {
   /** Consume every standing `OrderKind.Unload`. */
   private unloadOrders(): void {
     const st = this.world.store;
+    // Every carrier in the game is a Vehicle, and `refusalFor` refuses anything
+    // with capacity as CARGO, so a carrier can never be inside another list.
     const list = st.byKind[EntityKind.Vehicle];
     const n = st.byKindCount[EntityKind.Vehicle];
 
@@ -443,15 +554,11 @@ export class TransportService {
     const b = st.index(hull);
     if (b < 0) return 0;
 
-    const list = st.byKind[EntityKind.Infantry];
-    const n = st.byKindCount[EntityKind.Infantry];
+    const n = this.collect(b, PASSENGER_SLOTS);
     let out = 0;
     let refused = 0;
-    for (let a = 0; a < n; a++) {
-      const i = list[a];
-      if ((st.flags[i] & EntityFlag.Garrisoned) === 0) continue;
-      if (st.index(this.hostOf.getAt(i) as EntityId) !== b) continue;
-      if (this.place(i, b, out)) out++;
+    for (let k = 0; k < n; k++) {
+      if (this.place(PASSENGER_SLOTS[k], b, out)) out++;
       else refused++;
     }
     this.stats.unloaded += out;
@@ -470,7 +577,17 @@ export class TransportService {
     const st = this.world.store;
     const world = this.world;
     const spokes = TRANSPORT.unloadSpokes;
-    const base = st.radius[b] + TRANSPORT.unloadInsetMetres;
+    // THE PASSENGER'S OWN RADIUS, not just the hull's. A tank put down at a
+    // rifleman's inset overlaps the hull it came out of and spends its first
+    // seconds being shoved clear by `Movement.relax`.
+    const base = st.radius[b] + st.radius[i] + TRANSPORT.unloadInsetMetres;
+    // THE PASSENGER'S OWN LOCOMOTOR, resolved through its move class so an
+    // amphibious swimmer reads as Hover and can be put down in the water it
+    // swims in. This was hardcoded `Locomotor.Foot`, which is right for a
+    // rifleman and wrong twice over now: a tank would be dropped on foot-only
+    // ground its own class cannot leave, and a swimmer unloaded over deep water
+    // would be refused every ring and ride on forever.
+    const loco = locomotorForMoveClass(moveClassAt(st, i));
 
     for (let ring = 0; ring < TRANSPORT.unloadRings; ring++) {
       const r = base + ring * TRANSPORT.unloadRingStepMetres;
@@ -482,10 +599,10 @@ export class TransportService {
         const cx = worldToCell(px);
         const cz = worldToCell(pz);
         if (!isInMap(cx, cz)) continue;
-        // Foot passability is the whole point: a naval transport is sitting ON
-        // WATER when it arrives, and a garrison-style unconditional ring would
-        // put the squad it just ferried into the sea.
-        if (!world.terrain.isPassable(cx, cz, Locomotor.Foot)) continue;
+        // Passability is the whole point: a carrier is sitting ON WATER when it
+        // arrives, and a garrison-style unconditional ring would put the squad
+        // it just ferried into the sea.
+        if (!world.terrain.isPassable(cx, cz, loco)) continue;
         if (world.terrain.isOccupied(cx, cz)) continue;
         this.disembark(i, px, pz);
         return true;
@@ -507,7 +624,7 @@ export class TransportService {
     st.orderTarget[i] = 0;
     st.state[i] = UnitState.Idle;
     st.velX[i] = 0; st.velZ[i] = 0; st.speed[i] = 0;
-    this.hostOf.clear(st.handleOf(i));
+    st.carrierId[i] = 0;
   }
 
   /**
@@ -533,30 +650,25 @@ export class TransportService {
     const b = st.index(hull);
     if (b < 0) return;
     if (this.capacityAt(b) <= 0) return;
-    const list = st.byKind[EntityKind.Infantry];
-    const n = st.byKindCount[EntityKind.Infantry];
-    for (let a = 0; a < n; a++) {
-      const i = list[a];
-      if ((st.flags[i] & EntityFlag.Garrisoned) === 0) continue;
-      if (st.index(this.hostOf.getAt(i) as EntityId) !== b) continue;
-      this.sink(i);
-    }
+    const n = this.collect(b, PASSENGER_SLOTS);
+    for (let k = 0; k < n; k++) this.sink(PASSENGER_SLOTS[k]);
   }
 
   /**
    * One passenger goes down with the hull.
    *
-   * `UnitState.Selling` is `sim/Damage.ts`'s "left the world without dying"
-   * channel — no second fireball and no second wreck on top of the hull's own.
-   * They still count as lost: the death scan emits `entity:killed` for every
-   * corpse it finds, whatever set the flag.
+   * `UnitState.Drowned` is `sim/Damage.ts`'s "went down inside something else"
+   * channel — no second fireball and no second wreck on top of the hull's own,
+   * but a real loss. It used to be `Selling`, which returns before the
+   * statistics block, so this comment's promise that "they still count as lost"
+   * was false for as long as it had been written.
    */
   private sink(i: number): void {
     const st = this.world.store;
     const h = st.handleOf(i);
-    if (!st.markDead(h)) { this.hostOf.clear(h); return; }
-    st.state[i] = UnitState.Selling;
-    this.hostOf.clear(h);
+    if (!st.markDead(h)) { st.carrierId[i] = 0; return; }
+    st.state[i] = UnitState.Drowned;
+    st.carrierId[i] = 0;
     this.stats.drowned++;
   }
 

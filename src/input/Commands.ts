@@ -130,7 +130,7 @@ export interface RoleResolver {
  *   - `EntityFlag.IsHarvester` is authoritative; the store sets it at spawn.
  *   - seats are content, not physics: nothing in the flags or the store says
  *     "this hull has room for five men", so the heuristic answers 0 and
- *     `makeDefRoleResolver` reads `UnitDef.passengers`.
+ *     `makeDefRoleResolver` reads `UnitDef.cargoSlots`.
  */
 export const HEURISTIC_ROLES: RoleResolver = {
   canCapture(world: World, i: number): boolean {
@@ -173,13 +173,13 @@ export function roleResolver(): RoleResolver {
  * at all. Four of those six keys are not in this roster and never were; the two
  * that matched were given a capacity no simulation code could read, which is
  * how the Hover Transport came to offer an `Enter` cursor that did nothing.
- * `UnitDef.passengers` is now real content and this reads it.
+ * `UnitDef.cargoSlots` is real content and this reads it.
  */
 export function makeDefRoleResolver(tables: DefTables): RoleResolver {
   const units = tables.units;
   const seats = new Int8Array(units.length);
   for (let d = 0; d < units.length; d++) {
-    const p = units[d].passengers;
+    const p = units[d].cargoSlots;
     seats[d] = p > 127 ? 127 : p < 0 ? 0 : p | 0;
   }
   const defOf = (world: World, i: number): UnitDef | undefined => {

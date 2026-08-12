@@ -104,8 +104,10 @@ import {
   type AdviceKind,
   type ArmedMode,
   type BuildExtras,
+  type CargoAction,
   type CommanderPowerRow,
   type CommanderPowerView,
+  type GarrisonAction,
   type HudSoundCue,
   type HudTelemetry,
   type SelectionCard,
@@ -447,13 +449,21 @@ function abilitySeam(): AbilitySeamRead | null {
  * `__vmFeatures` rather than a handle of its own because that is where
  * `sim/features.system.ts` already publishes its five siblings.
  *
- * Occupancy is a QUERY, not a subscription. `passengerCount` walks the infantry
- * list, so this is only ever asked for the one primary entity of a selection —
- * see the note on `fillCargo`.
+ * Occupancy is a QUERY, not a subscription. `capacity` is O(1) off the def and
+ * `passengerCount` walks the infantry list, which is why every caller here asks
+ * the cheap one first and the expensive one only for a hull that has seats —
+ * see `computeCargoAction`.
  */
-interface TransportSeamRead {
+export interface TransportSeamRead {
   capacity(hull: EntityId): number;
   passengerCount(hull: EntityId): number;
+  /**
+   * SLOTS CONSUMED, which is not a head count and is what the readout needs.
+   * Infantry cost one slot and a vehicle costs two, so an eight-slot hull
+   * holding four tanks is completely full while `passengerCount` says 4 — the
+   * row would have read "4 / 8" on a hull that can take nothing more.
+   */
+  usedSlots(hull: EntityId): number;
 }
 
 function transportSeam(): TransportSeamRead | null {
@@ -494,8 +504,9 @@ function superweaponSeam(): SuperweaponSeamRead | null {
  *
  * Exactly the transport seam's bargain, one entity kind over, and published on
  * the same handle by the same module (`sim/features.system.ts`). Occupancy is a
- * QUERY here too — `occupantCount` walks the infantry list — so it is only ever
- * asked for the one primary entity of a selection. See `fillGarrison`.
+ * QUERY here too — `occupantCount` walks the infantry list — and it is asked
+ * only of a selected BUILDING, which is the cheap gate this row has instead of
+ * the transport row's `capacity`. See `computeGarrisonAction`.
  *
  * The seam is READ-ONLY, and that is deliberate rather than incidental:
  * `GarrisonService.evacuate` is right there on the same object and calling it
@@ -503,7 +514,7 @@ function superweaponSeam(): SuperweaponSeamRead | null {
  * other. The verb goes out as `OrderKind.Unload` through `channels.commands`
  * like every other order; the seam only answers "is anybody in there".
  */
-interface GarrisonSeamRead {
+export interface GarrisonSeamRead {
   occupantCount(building: EntityId): number;
 }
 
@@ -511,6 +522,168 @@ function garrisonSeam(): GarrisonSeamRead | null {
   const g = globalThis as unknown as { __vmFeatures?: { garrison?: GarrisonSeamRead } };
   const s = g.__vmFeatures?.garrison;
   return s !== undefined && typeof s.occupantCount === 'function' ? s : null;
+}
+
+/* ==========================================================================
+ * THE TWO OCCUPANCY ROWS, DERIVED FROM THE WHOLE SELECTION
+ *
+ * Pure over `(action, world, seam)` and exported so `tests/hud.spec.ts` can ask
+ * them things: the rest of this file needs a `document` to exist and these two
+ * do not, and before they were lifted out there was no coverage of the cargo
+ * row at all.
+ *
+ * They are written as a pair and should be read as one, because the defect was
+ * in both. Each hard-gated on `selection.count !== 1` while the ORDER layer
+ * behind it had walked the whole selection since the day it shipped —
+ * `gatherLoadedTransports` and `gatherOccupiedGarrisons` in
+ * `src/input/Commands.ts`, feeding `issueUnload` / `issueEvacuate`, one order
+ * per hull at that hull's own position. So the D key emptied N transports and
+ * the button emptied one, which is what the player hit:
+ *
+ *   "when selecting multiple vehicles that can load and unload troops, add the
+ *    unload button in the bottom mid HUD as well"
+ *
+ * THE ONE DIFFERENCE BETWEEN THEM IS DELIBERATE and is argued at `CargoAction`
+ * in `src/ui/Sidebar.ts`: an empty transport keeps its row and reads "0 / 5",
+ * because seats are a fixed property of a hull and this is the only place in
+ * the product that says whether anybody is aboard; an empty building shows
+ * nothing, because almost every building in the game can never be garrisoned
+ * and a permanent "0 inside" on a Power Plant is noise on every structure the
+ * player ever clicks.
+ * ========================================================================== */
+
+/**
+ * Fill the cargo row from every selected hull of yours that has seats.
+ *
+ * THE NUMBER IS A SUM AND IT IS A SUM OVER EXACTLY WHAT THE BUTTON EMPTIES.
+ * This is where the note saying otherwise used to be: one hull only, because
+ * "4 / 5" across three transports "would be a number about nothing". That was
+ * a true statement about a button that unloaded `sel.ids[0]` and nothing else.
+ * It stops being true the moment the button issues one `OrderKind.Unload` per
+ * loaded hull — "9 / 15" then names precisely the men who walk out and the
+ * seats they walk out of, which is the number the player is deciding on.
+ *
+ * `enabled` is "somebody is aboard SOMETHING", not "aboard everything": a
+ * loaded Hover Transport picked up alongside an empty one still unloads, and
+ * the empty one is simply skipped. The row stays visible either way — see the
+ * block above.
+ *
+ * Re-asked every frame, because men board and leave under a stationary
+ * selection. `capacity` gates the expensive question, so the cost is one walk
+ * of the infantry list per selected hull WITH SEATS per frame — not per
+ * selected entity, and nothing at all for a selection of tanks. The panel's
+ * signature gate then writes DOM only when an integer or the hint changes.
+ */
+export function computeCargoAction(
+  action: CargoAction,
+  world: World,
+  seam: TransportSeamRead | null,
+): void {
+  if (seam === null) { action.visible = false; return; }
+
+  const sel = world.selection;
+  const store = world.store;
+  const local = world.localPlayer as number;
+
+  let hulls = 0;
+  let loaded = 0;
+  let slots = 0;
+  let used = 0;
+  let aboard = 0;
+
+  for (let k = 0; k < sel.count; k++) {
+    const id = sel.ids[k] as EntityId;
+    const i = store.index(id);
+    if (i < 0 || store.owner[i] !== local) continue;
+    // Skipped for the reason `gatherLoadedTransports` skips it: a hull dying
+    // this tick is one the button will not address, and a row that counts men
+    // the button cannot put down is the exact disagreement between key and
+    // button that this change exists to remove.
+    if ((store.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
+    const slotsHere = seam.capacity(id);
+    if (slotsHere <= 0) continue;
+    const menHere = seam.passengerCount(id);
+    hulls++;
+    slots += slotsHere;
+    used += seam.usedSlots(id);
+    aboard += menHere;
+    if (menHere > 0) loaded++;
+  }
+
+  if (hulls === 0) { action.visible = false; return; }
+
+  action.visible = true;
+  // SLOTS on both sides of the slash. `aboard` is still the number the hint
+  // talks about, because "put all 4 passengers down" is what a player is about
+  // to do; "6 / 8" is what the hold actually looks like.
+  action.capacity = slots;
+  action.count = used;
+  action.enabled = aboard > 0;
+  if (aboard > 0) {
+    const who = aboard === 1 ? 'the passenger' : `all ${aboard} passengers`;
+    const where = loaded === 1 ? 'the hull' : `all ${loaded} hulls`;
+    action.hint = `Put ${who} down around ${where}`;
+  } else {
+    action.hint = hulls === 1
+      ? 'Empty. Right-click this hull with troops or vehicles selected to load it.'
+      : 'Empty. Right-click a hull with troops or vehicles selected to load it.';
+  }
+}
+
+/**
+ * Fill the Evacuate row from every selected structure of yours with men in it.
+ *
+ * `computeCargoAction`'s twin, one entity kind over, and the same correction:
+ * the note here also claimed the count was a property of one building and that
+ * "3 inside" over four strongpoints "would be a number about nothing". It is a
+ * number about the four squads the button is about to turn out.
+ *
+ * `hosts` is counted rather than taken from `sel.count` because the hint names
+ * it and only OCCUPIED buildings are in it — so one strongpoint marquee'd up
+ * with three empty barracks says "the building", not "their 4 buildings",
+ * which is also exactly how many orders the click issues.
+ */
+export function computeGarrisonAction(
+  action: GarrisonAction,
+  world: World,
+  seam: GarrisonSeamRead | null,
+): void {
+  if (seam === null) { action.visible = false; return; }
+
+  const sel = world.selection;
+  const store = world.store;
+  const local = world.localPlayer as number;
+
+  let hosts = 0;
+  let inside = 0;
+
+  for (let k = 0; k < sel.count; k++) {
+    const id = sel.ids[k] as EntityId;
+    const i = store.index(id);
+    if (i < 0 || store.owner[i] !== local) continue;
+    if (store.kind[i] !== EntityKind.Building) continue;
+    if ((store.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
+    const men = seam.occupantCount(id);
+    if (men <= 0) continue;
+    hosts++;
+    inside += men;
+  }
+
+  // Hidden rather than greyed at zero, unlike the cargo row. See the block above.
+  if (hosts === 0) { action.visible = false; return; }
+
+  action.visible = true;
+  action.count = inside;
+  action.enabled = true;
+  if (hosts === 1) {
+    action.hint = inside === 1
+      ? 'Turn the occupant out onto the ground around the building'
+      : `Turn all ${inside} occupants out onto the ground around the building`;
+  } else {
+    // `hosts > 1` implies `inside >= 2`: an unoccupied building never gets
+    // counted, so there is no singular case to spell out here.
+    action.hint = `Turn all ${inside} occupants out onto the ground around their ${hosts} buildings`;
+  }
 }
 
 /**
@@ -660,6 +833,23 @@ export class Hud {
   private destructArmedFor = 0;
   /** Scratch for the self-destruct sweep. Never handed out. */
   private readonly destructIds = new Int32Array(MAX_SELECTION);
+  /**
+   * Scratch for the Unload and Evacuate sweeps, and the one-entity buffer the
+   * orders ride out on. Never handed out, never reallocated.
+   *
+   * Two buffers because the order is issued PER HULL: `issueUnload` in
+   * `src/input/input.system.ts` does the same, and it has to — an unload has no
+   * shared destination, the men come out around the vehicle they were riding
+   * in, so each command carries that hull's own position. The sweep also fills
+   * `unloadIds` BEFORE the issuing loop for the reason `selfDestructSelection`
+   * spells out: reading the live selection while issuing commands against it is
+   * the shape of the superweapon race, and one `Int32Array` copy forecloses it.
+   *
+   * The two handlers can never overlap — a click is one handler — so one buffer
+   * serves both.
+   */
+  private readonly unloadIds = new Int32Array(MAX_SELECTION);
+  private readonly oneId = new Int32Array(1);
   /** Scratch for grouping the selection into cards. */
   private readonly groupKeys: number[] = [];
   private readonly groupFirst: number[] = [];
@@ -1993,58 +2183,33 @@ export class Hud {
   }
 
   /**
-   * The transport's cargo row.
+   * The transport's cargo row — every selected hull with seats, summed.
    *
-   * ONE selected transport only, and it must be yours — the same rule the
-   * ability row follows, and for a stronger reason here: the count is a
-   * property of one hull, and "4 / 5" over a selection of three transports
-   * would be a number about nothing.
-   *
-   * Re-asked every frame like the ability row, because men board and leave
-   * under a stationary selection. That costs one walk of the infantry list per
-   * frame and ONLY while a single transport is selected; the panel's signature
-   * gate then writes DOM only when the integer actually changes.
+   * `computeCargoAction` holds the walk and the reasoning, including why the
+   * sum is a number about something now that Unload empties all of them.
    */
   private fillCargo(): void {
-    const action = this.view.cargo;
-    const sel = this.world.selection;
-
-    if (sel.count !== 1) { action.visible = false; return; }
-
-    const seam = transportSeam();
-    if (seam === null) { action.visible = false; return; }
-
-    const id = sel.ids[0] as EntityId;
-    const idx = this.world.store.index(id);
-    if (idx < 0 || this.world.store.owner[idx] !== (this.world.localPlayer as number)) {
-      action.visible = false;
-      return;
-    }
-
-    const capacity = seam.capacity(id);
-    if (capacity <= 0) { action.visible = false; return; }
-
-    const count = seam.passengerCount(id);
-    action.visible = true;
-    action.capacity = capacity;
-    action.count = count;
-    action.enabled = count > 0;
-    action.hint = count > 0
-      ? `Put ${count === 1 ? 'the passenger' : `all ${count} passengers`} down around the hull`
-      : 'Nobody aboard. Right-click this hull with infantry selected to load it.';
+    computeCargoAction(this.view.cargo, this.world, transportSeam());
   }
 
   /**
-   * Unload the selected transport.
+   * Unload every selected transport that has somebody aboard.
    *
-   * Through `channels.commands` as an ordinary Order, for the same reason
+   * `issueUnload` in `src/input/input.system.ts`, reached from the other end.
+   * That function has answered the D key for N transports since it shipped;
+   * this one only ever addressed `sel.ids[0]`, so the SAME gesture did two
+   * different things depending on whether you reached it by key or by button.
+   * The walk is reimplemented rather than imported because `src/ui` must not
+   * take a dependency on `src/input` — see this file's header — and it asks the
+   * seam's `passengerCount(id) > 0` where `gatherLoadedTransports` asks the
+   * service's `isLoadedAt(i)`. Same question, and the seam is what the HUD has.
+   *
+   * Through `channels.commands` as ordinary Orders, for the same reason
    * `OrderKind.UseAbility` goes that way: the AI issues the identical command,
    * the replay records one thing rather than two, and the lockstep link carries
    * it without a special case.
    */
   private unloadSelection(): void {
-    const sel = this.world.selection;
-    if (sel.count !== 1) return;
     const action = this.view.cargo;
     if (!action.visible) return;
     if (!action.enabled) {
@@ -2052,63 +2217,57 @@ export class Hud {
       this.toast('warn', 'cargo', 'Unload', 'Nobody aboard');
       return;
     }
+    const seam = transportSeam();
+    if (seam === null) return;
+
     const store = this.world.store;
-    const idx = store.index(sel.ids[0] as EntityId);
-    if (idx < 0) return;
-    this.channels.commands.issueOrder(
-      this.world.localPlayer, OrderKind.Unload, sel.ids, 1,
-      store.posX[idx], store.posZ[idx], sel.ids[0] as EntityId,
-    );
+    const sel = this.world.selection;
+    const local = this.world.localPlayer as number;
+    let n = 0;
+    for (let k = 0; k < sel.count && n < this.unloadIds.length; k++) {
+      const id = sel.ids[k] as EntityId;
+      const i = store.index(id);
+      if (i < 0 || store.owner[i] !== local) continue;
+      if ((store.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
+      // Already unloading: a second click must not re-issue, exactly as a
+      // second D press must not. The row can still read `enabled` here —
+      // passengers stay aboard until `TransportService` finds each of them a
+      // standable cell — so this is the one way a lit button legitimately
+      // issues nothing, and it says so rather than going quiet.
+      if ((store.orderKind[i] as OrderKind) === OrderKind.Unload) continue;
+      if (seam.passengerCount(id) <= 0) continue;
+      this.unloadIds[n++] = sel.ids[k];
+    }
+    if (n === 0) {
+      this.soundHook?.('error');
+      this.toast('warn', 'cargo', 'Unload', 'Already unloading');
+      return;
+    }
+
+    for (let k = 0; k < n; k++) {
+      const i = store.index(this.unloadIds[k] as EntityId);
+      if (i < 0) continue;
+      this.oneId[0] = this.unloadIds[k];
+      this.channels.commands.issueOrder(
+        this.world.localPlayer, OrderKind.Unload, this.oneId, 1,
+        store.posX[i], store.posZ[i], this.unloadIds[k] as EntityId,
+      );
+    }
     this.toast('info', 'cargo', 'Unload', action.hint);
   }
 
   /**
-   * The garrisoned structure's Evacuate row.
+   * The garrisoned structure's Evacuate row — every occupied one, summed.
    *
-   * ONE selected structure only, and it must be yours — the cargo row's rule,
-   * and the same reason: the count is a property of one building and "3 inside"
-   * over a selection of four strongpoints would be a number about nothing.
-   *
-   * Re-asked every frame like the cargo row, and it costs the same walk of the
-   * infantry list, ONLY while a single structure is selected. The row is hidden
-   * rather than greyed when the building is empty, and that is the ONE place
-   * this departs from `fillCargo`: an empty transport reading `0 / 5` is
-   * information because seats are a fixed property of the hull, whereas almost
-   * every building in the game can never be garrisoned at all, so a permanent
-   * "0 inside" on a Power Plant would be noise on every structure the player
-   * ever clicks.
+   * `computeGarrisonAction` holds the walk, the reasoning, and the one place
+   * this row deliberately differs from the cargo row.
    */
   private fillGarrison(): void {
-    const action = this.view.garrison;
-    const sel = this.world.selection;
-
-    if (sel.count !== 1) { action.visible = false; return; }
-
-    const seam = garrisonSeam();
-    if (seam === null) { action.visible = false; return; }
-
-    const id = sel.ids[0] as EntityId;
-    const store = this.world.store;
-    const idx = store.index(id);
-    if (idx < 0 || store.owner[idx] !== (this.world.localPlayer as number)) {
-      action.visible = false;
-      return;
-    }
-    if (store.kind[idx] !== EntityKind.Building) { action.visible = false; return; }
-
-    const count = seam.occupantCount(id);
-    if (count <= 0) { action.visible = false; return; }
-
-    action.visible = true;
-    action.count = count;
-    action.enabled = true;
-    action.hint = count === 1
-      ? 'Turn the occupant out onto the ground around the building'
-      : `Turn all ${count} occupants out onto the ground around the building`;
+    computeGarrisonAction(this.view.garrison, this.world, garrisonSeam());
   }
 
   /**
-   * Empty the selected garrison.
+   * Empty every selected garrison.
    *
    * `OrderKind.Unload` ON THE BUILDING — the same order the transport's Unload
    * button issues, addressed to a structure instead of a hull. That is not a
@@ -2120,10 +2279,14 @@ export class Hud {
    * `src/input/Commands.ts` resolves it at the ONE Phase.Command drain: a
    * `Unload` landing on a Building reaches `GarrisonService.evacuate`, and on a
    * hull it does what it always did.
+   *
+   * `gatherOccupiedGarrisons`'s walk, for the reason given on
+   * `unloadSelection` — and with its one asymmetry preserved: there is no
+   * `orderKind` guard, because a building's evacuation is applied
+   * SYNCHRONOUSLY inside the same drain, so a second click finds the occupant
+   * count already 0 and gathers nothing.
    */
   private evacuateSelection(): void {
-    const sel = this.world.selection;
-    if (sel.count !== 1) return;
     const action = this.view.garrison;
     if (!action.visible) return;
     if (!action.enabled) {
@@ -2131,13 +2294,33 @@ export class Hud {
       this.toast('warn', 'garrison', 'Evacuate', 'Nobody inside');
       return;
     }
+    const seam = garrisonSeam();
+    if (seam === null) return;
+
     const store = this.world.store;
-    const idx = store.index(sel.ids[0] as EntityId);
-    if (idx < 0) return;
-    this.channels.commands.issueOrder(
-      this.world.localPlayer, OrderKind.Unload, sel.ids, 1,
-      store.posX[idx], store.posZ[idx], sel.ids[0] as EntityId,
-    );
+    const sel = this.world.selection;
+    const local = this.world.localPlayer as number;
+    let n = 0;
+    for (let k = 0; k < sel.count && n < this.unloadIds.length; k++) {
+      const id = sel.ids[k] as EntityId;
+      const i = store.index(id);
+      if (i < 0 || store.owner[i] !== local) continue;
+      if (store.kind[i] !== EntityKind.Building) continue;
+      if ((store.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
+      if (seam.occupantCount(id) <= 0) continue;
+      this.unloadIds[n++] = sel.ids[k];
+    }
+    if (n === 0) { this.soundHook?.('error'); return; }
+
+    for (let k = 0; k < n; k++) {
+      const i = store.index(this.unloadIds[k] as EntityId);
+      if (i < 0) continue;
+      this.oneId[0] = this.unloadIds[k];
+      this.channels.commands.issueOrder(
+        this.world.localPlayer, OrderKind.Unload, this.oneId, 1,
+        store.posX[i], store.posZ[i], this.unloadIds[k] as EntityId,
+      );
+    }
     this.toast('info', 'garrison', 'Evacuate', action.hint);
   }
 

@@ -607,6 +607,7 @@ const REF_COLUMNS: readonly { id: number; of: (s: EntityStore) => Int32Array }[]
   { id: 201, of: (s) => s.orderTarget },
   { id: 202, of: (s) => s.dockTarget },
   { id: 203, of: (s) => s.lastAttackerId },
+  { id: 204, of: (s) => s.carrierId },
 ];
 
 /** `kind` is written separately: `alloc` needs it before any column lands. */

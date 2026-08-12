@@ -171,6 +171,23 @@ export class EntityStore {
   readonly cargoMax = new Float32Array(MAX_ENTITIES);
   /** Refinery a harvester is assigned to, or NONE. */
   readonly dockTarget = new Int32Array(MAX_ENTITIES);
+  /**
+   * The carrier this unit is riding INSIDE, or 0.
+   *
+   * A real column rather than service state, and that is the whole point.
+   * `TransportService` used to hold this in a `PerEntityU32`, which
+   * `SaveGame` does not persist and `Checksum` cannot see. Two consequences,
+   * both live: a loaded save bumped every `store.gen[i]`, so the side array's
+   * stamp check failed and every passenger was left `Alive | Garrisoned |
+   * Immobilized` with no host — unrenderable, unselectable, untargetable and
+   * unmovable, forever; and two lockstep clients that disagreed about WHICH
+   * hull a man was in produced an identical checksum, so the desync was found
+   * a tick later through position, if at all.
+   *
+   * Held as a HANDLE, not a slot, and remapped by `SaveGame`'s `REF_COLUMNS`
+   * like every other entity reference.
+   */
+  readonly carrierId = new Int32Array(MAX_ENTITIES);
 
   /* -- buildings ---------------------------------------------------------- */
   /** 0..1 construction progress. 1 = complete. */
@@ -360,6 +377,7 @@ export class EntityStore {
     // Economy
     this.cargo[i] = 0; this.cargoMax[i] = 0;
     this.dockTarget[i] = 0;
+    this.carrierId[i] = 0;
 
     // Buildings
     this.buildProgress[i] = 1;

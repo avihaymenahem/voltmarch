@@ -75,7 +75,8 @@ import {
   DEG2RAD, Rng, clampCell, clampWorld, footprintOriginCell, hashU32, isInMap,
   snapFootprintToGrid, worldToCell, wrapAngle,
 } from '../core/math';
-import { TerrainRegions } from '../sim/Flowfield';
+import { MoveClass, TerrainRegions } from '../sim/Flowfield';
+import { setMoveClass } from '../sim/Movement';
 import { getTerrain } from '../world/Terrain';
 // Zero-cost edge: `UnlockGate.ts` imports nothing but its own type-only module,
 // and `isBuildable` answers "yes" when no gate has been installed.
@@ -1074,7 +1075,7 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
     Locomotor.Hover, 30, GUNNER, Faction.Soviets),
   dreadnought: unit('dreadnought', EntityKind.Vehicle, NU.dreadnought, 900, ArmorClass.Heavy, 4.0,
     Locomotor.Hover, 38, TURRETED, Faction.Soviets),
-  transport: unit('transport', EntityKind.Vehicle, NU.transport, 600, ArmorClass.Light, 6.0,
+  transport: unit('transport', EntityKind.Vehicle, NU.transport, 780, ArmorClass.Light, 5.4,
     Locomotor.Hover, 26, 0, Faction.Neutral),
 
   /* -- THE ALLIED AND SOVIET AIR ARMS --------------------------------------
@@ -2422,6 +2423,17 @@ export class ScenarioBuilder {
     }
     s.guardX[i] = px;
     s.guardZ[i] = pz;
+
+    // DECLARE THE MOVE CLASS HERE TOO. `Production.spawnUnit` has done this
+    // since warships learned to launch onto water, and this path — every
+    // scenario, every capture fixture, every headless test that seeds a fleet —
+    // never did, so a scenario-placed hull fell through to
+    // `Movement.moveClassAt`'s guess: Hover if the cell it was posed on is dry,
+    // Naval if wet, latched against `store.gen[i]` for the life of the slot.
+    // Two spawners answering one question differently is how the `?shot=naval`
+    // fixture and a produced fleet ended up with different turn models.
+    if (def?.waterOnly === true) setMoveClass(s, id, MoveClass.Naval);
+    else if (def?.amphibious === true) setMoveClass(s, id, MoveClass.Hover);
 
     this.finish(id, i, key, owner, kind, options.selected === true);
     return id;

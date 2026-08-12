@@ -89,7 +89,8 @@ import type { World } from '../core/world';
 import { clampCell, hash2f, isInMap, worldToCell, wrapAngle } from '../core/math';
 import { sliceForEntity } from '../core/loop';
 import {
-  MoveClass, NAV_POCKET_MAX_CELLS, NAV_REGION_SEARCH_CELLS, type FlowFieldCache,
+  MoveClass, NAV_POCKET_MAX_CELLS, NAV_REGION_SEARCH_CELLS, movesShareSpace,
+  type FlowFieldCache,
 } from './Flowfield';
 import { moveClassAt } from './Movement';
 import { crushPassesThrough } from './Crush';
@@ -1533,9 +1534,9 @@ export class SteeringSolver {
             && (st.kind[j] === EntityKind.Infantry || st.kind[j] === EntityKind.Vehicle);
           if (jMover) {
             const jc = moveClassAt(st, j);
-            // Aircraft, ships and ground units share no space.
-            if (jc === MoveClass.Air) continue;
-            if ((jc === MoveClass.Naval) !== (cls === MoveClass.Naval)) continue;
+            // Aircraft share no space with anything; a ship shares water with an
+            // amphibious hull and with nothing else. See `movesShareSpace`.
+            if (!movesShareSpace(jc, cls)) continue;
             // A HULL DOES NOT LEAN AROUND, OR BRAKE FOR, A MAN IT IS ENTITLED
             // TO DRIVE OVER. `sim/Crush.ts` owns that entitlement; this is the
             // half of it that lets the hull ARRIVE. Skipping the whole
