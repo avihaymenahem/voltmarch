@@ -10,7 +10,7 @@
  *                         to say WHY — "not on the coast" and "this map has no
  *                         coast" are different sentences and only one of them
  *                         is actionable.
- *   - the sidebar         should not offer four naval structures and nine hulls
+ *   - the sidebar         should not offer four naval structures and eighteen hulls
  *                         on a map with no water in it.
  *   - `sim/AI.ts`         should not spend an opening on a shipyard it cannot
  *                         found.

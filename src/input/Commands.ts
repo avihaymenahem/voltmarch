@@ -461,7 +461,16 @@ export function readCapabilities(
     if (roles.isHarvester(world, i)) out.hasHarvester = true;
     if (roles.canCapture(world, i)) out.canCapture = true;
     if (roles.canRepair(world, i)) out.canRepair = true;
-    if (s.kind[i] === EntityKind.Infantry) out.hasPassengers = true;
+    // ANYTHING THAT CAN BE CARGO, which is no longer just infantry. This read
+    // `kind === Infantry` and was the last place the old infantry-only rule
+    // survived: `TransportService.board` walks both cargo kinds and the sim
+    // carries a tank perfectly well, but a VEHICLE-ONLY selection never got
+    // the board cursor, so the order the sim was ready to execute could not
+    // be issued from the mouse at all. A mixed selection worked, which is
+    // what made it look like a cursor quirk rather than a dead feature.
+    if (s.kind[i] === EntityKind.Infantry || s.kind[i] === EntityKind.Vehicle) {
+      out.hasPassengers = true;
+    }
     if (isDeployable(world, i)) out.deployCount++;
   }
   return out;

@@ -1215,12 +1215,17 @@ export const UNITS: readonly UnitDef[] = [
    *
    * THE NAVAL LINE IS FOUR RUNGS, AND EVERY ARMY HAS ALL FOUR:
    *
-   *   sortOrder 60   recon      0 slots, fastest hull afloat, wide sight,
+   *   sortOrder 62   recon      0 slots, fastest hull afloat, wide sight,
    *                             a gun that annoys rather than kills
-   *   sortOrder 61   landing    4 slots — two vehicles, or four infantry
-   *   sortOrder 62   heavy      8 slots — four vehicles
+   *   sortOrder 64   landing    4 slots — two vehicles, or four infantry
+   *   sortOrder 66   heavy      8 slots — four vehicles
    *   sortOrder 70   escort     the gunned hull
    *   sortOrder 80   capital    gated on the army's tech structure
+   *
+   * 62/64/66 and not 60/61/62, because the Meridian and Reclamation aircraft
+   * already hold 60 in their Vehicles tabs and `tests/faction3.spec.ts` asserts
+   * Meridian sortOrder is UNIQUE per (faction, tab). The gaps are deliberate:
+   * one more rung can land between any two without renumbering a line.
    *
    * A SLOT IS NOT A SEAT: infantry cost one, a vehicle costs two. Before this,
    * `passengers` counted infantry and only infantry, so an army could not put a
