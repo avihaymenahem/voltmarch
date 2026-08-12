@@ -2513,17 +2513,16 @@ export class AiBrain {
    * opponent would answer the opening with a boat.
    *
    * A TRANSPORT IS BOUGHT AGAINST A PLAN, NEVER ON SPECULATION. `amphibWanted`
-   * is the measured verdict from `amphibiousWanted`, so on a map where walking
-   * is shorter this never fires and the AI never owns a ferry it has no water
-   * to use. That is the difference between this and a build rule that says
-   * "coastal map, buy a transport" — which is how you get a 900-credit hull
+   * is the measured verdict from `amphibiousWanted`, so on a map where the
+   * objective is walkable this never fires and the AI never owns a ferry it has
+   * no water to use. That is the difference between this and a build rule that
+   * says "coastal map, buy a transport" — which is how you get a 900-credit hull
    * parked next to a Construction Yard for twenty minutes.
+   *
+   * AND A DOCK IS NOT BOUGHT UNTIL THERE IS SOMEWHERE TO PUT IT. See the gate
+   * below; that one is not a nicety, it is what stops a 1000-credit purchase
+   * from freezing the Structures tab for the rest of the match.
    */
-  /* PROBE */ readonly dbgYard = {
-    passes: 0, undef: 0, lostScore: 0, unavailable: 0, cannotQueue: 0, noSite: 0,
-    tooPoor: 0, tabFull: 0, won: 0, lostTo: '', maxSpendable: 0, richPasses: 0, creeps: 0,
-  };
-
   /* -- "is there anywhere to put a dock", memoised on a tick stamp ---------- */
   private dockSiteTick = -1e9;
   private dockSiteOk = false;
@@ -2578,21 +2577,6 @@ export class AiBrain {
       if (this.roleCount[BuildRole.Refinery] === 0) return;
       if (this.roleCount[BuildRole.WarFactory] === 0) return;
       const yard = this.catalog.forRole(BuildRole.NavalYard, this.faction);
-      /* PROBE */ {
-        const e = yard;
-        const sc = AI_NAVAL.yardScore * this.pers.tech;
-        this.dbgYard.passes++;
-        if (this.spendable > this.dbgYard.maxSpendable) this.dbgYard.maxSpendable = this.spendable;
-        if (e !== undefined && this.spendable >= e.cost) this.dbgYard.richPasses++;
-        if (e === undefined) this.dbgYard.undef++;
-        else if (!this.dockHasSomewhereToStand(e)) this.dbgYard.noSite++;
-        else if (sc <= this.bestScore) { this.dbgYard.lostScore++; this.dbgYard.lostTo = this.bestGoal; }
-        else if (!this.available(e)) this.dbgYard.unavailable++;
-        else if (!this.canQueue(e, this.spendable)) {
-          this.dbgYard.cannotQueue++;
-          if (this.spendable < e.cost) this.dbgYard.tooPoor++; else this.dbgYard.tabFull++;
-        } else this.dbgYard.won++;
-      }
       // A DOCK IS NOT BOUGHT UNTIL THERE IS SOMEWHERE TO PUT IT, and that is a
       // gate rather than a nicety. `canQueue` caps the Structures tab at ONE,
       // and a finished building that cannot be placed sits at the head of that
@@ -3051,7 +3035,7 @@ export class AiBrain {
           az = this.builderZ + (dz / len) * reach;
         }
       }
-    } else if (this.coastCreepWanted && ++this.dbgYard.creeps > 0) {
+    } else if (this.coastCreepWanted) {
       // Nothing else wanted this one, and the base has to reach the water. The
       // anchor is the beach and `findPlacement` pulls it back to the nearest
       // LEGAL cell, which is the coast-facing edge of the build envelope — one

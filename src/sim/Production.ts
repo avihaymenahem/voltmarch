@@ -2907,12 +2907,25 @@ export class ProductionService implements QueueHooks {
     if (entry === null || entry.kind !== BuildKind.Unit) return true; // drop the impossible
 
     const fi = (p.id as number) * BUILD_TAB_COUNT + (tab as number);
-    // A naval hull launches from the dock, never from the war factory that
-    // happens to share its tab. See `rescanAvailability`. The fallback is the
-    // ordinary primary, so a naval entry on an army with no dock behaves exactly
-    // as it did — which is to say it fails the water test, which is correct:
-    // there is nowhere for it to come out.
-    const slot = entry.naval && this.navalFactory[fi] >= 0
+    /*
+     * A HULL LAUNCHES FROM THE DOCK, never from the war factory that happens to
+     * share its tab. See `rescanAvailability` for what that cost.
+     *
+     * `requiresSea`, NOT `naval`, and the difference is the two amphibious
+     * lifts. `transport` and `rclScow` do not carry `naval` — they beach
+     * themselves on purpose, so they must not be forced to egress onto water —
+     * but they ARE gated on a dock, which is precisely what `requiresSea`'s
+     * prereq closure already computes. Picking on `naval` alone left both lifts
+     * spawning at the war factory door, where a hull of their size is reliably
+     * `blockedByEntity` by the army massed around it; the AI ordered two Scows
+     * and produced neither, and the finished one jammed the Vehicles queue.
+     * `mrdSkiff` is the case that proves the closure rather than a name match:
+     * it is gated on a LAND forgeyard, so it keeps coming out of the forgeyard.
+     *
+     * The fallback is the ordinary primary, so an army with no dock behaves
+     * exactly as it did.
+     */
+    const slot = this.catalog.requiresSea(entry) && this.navalFactory[fi] >= 0
       ? this.navalFactory[fi]
       : this.primaryFactory[fi];
     if (slot < 0) return false;
