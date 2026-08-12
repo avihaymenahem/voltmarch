@@ -3420,6 +3420,68 @@ export const HARVEST_FX_INTERVAL = 6;
  */
 export const ORE_MIN_CLAIM = 25;
 
+/* --------------------------------------------------------------------------
+ * THE HARVESTER LEASH — how far from its ANCHOR a harvester will work.
+ *
+ * THE DEFECT. `rescoreOre` and `acquireOre` scored the whole map: nearest
+ * unclaimed cell within ORE_SEARCH_CELLS (40 cells = 160 m) of WHERE THE HULL
+ * IS STANDING, with a `nearestField` fallback that re-centres the search on any
+ * field anywhere. There was no notion of a home patch, so the choice was a
+ * memoryless random walk with a 160 m step — mine the contested patch, rescore
+ * from there, and the enemy's home field is now the nearest thing. Measured on
+ * the stock skirmish map, seed 1337: a harvester that started at 167,284 ended
+ * 148 m from its start and spent 574 ticks (19 s) within 70 m of the ENEMY base
+ * centre, on a map whose two bases are 182 m apart. That is the reported
+ * "sometimes they just suicide and going to enemy camp".
+ *
+ * THE RADIUS IS BOUNDED ON BOTH SIDES BY MEASURED FIELD GEOMETRY, not chosen.
+ * Every number below is from `OreField.seedField` run against the real
+ * heightfield on the stock skirmish layout (identical on seeds 4242/1337/90210):
+ *
+ *   home field      declared r30, LIVE radius 27.8-28.0 m, 140-143 cells
+ *   contested patch declared r22, LIVE radius 20.6 m, 81 cells
+ *   field centres   90 m apart (home->contested); 180 m home->home
+ *   home field to its owner's nearest building   21 m
+ *   home field to the ENEMY's nearest building  156 m
+ *
+ * LOWER BOUND — the leash must never shrink the patch it is anchored on. The
+ * anchor is snapped to the field's node cell (see `anchorOnField`), so the
+ * furthest cell it has to cover is the live radius: 28 m.
+ *
+ * UPPER BOUND — the leash must not reach the NEXT patch, or "bound to this
+ * field" means nothing. Centres are 90 m apart and the nearest cell of a
+ * neighbouring home field is therefore 90 - 28 = 62 m from this node.
+ *
+ * So the window is [28, 62] and 48 leaves 20 m of headroom under the first and
+ * 14 m under the second. The headroom under the lower bound is real rather than
+ * decorative: Sunder Atoll's home fields are r30 on ground with an 8 m coastal
+ * wander, so their live radius runs to the declared figure.
+ *
+ * WHAT THIS IS NOT MEASURED AGAINST, deliberately: the haul. A full hopper must
+ * always be able to reach a dock, so `ReturnToRefinery` is never leashed — only
+ * the two sites that CHOOSE an ore cell are. That decoupling is why the radius
+ * can be sized by the field alone.
+ * ------------------------------------------------------------------------ */
+
+/** Metres from its anchor a harvester will accept an ore cell. */
+export const HARVESTER_LEASH_METRES = 48;
+
+/**
+ * Seconds a leashed harvester will wait beside a patch that has nothing left
+ * before it re-anchors on another one.
+ *
+ * ORE REGROWS, so "dry" is usually temporary: `ORE_REGROW_RATE` is 0.6/s and
+ * `ORE_REGROW_NODE_BONUS` is 3.0, so a stripped node is back over
+ * `ORE_MIN_CLAIM` (25) in about 14 s. Anything shorter than that would send a
+ * harvester away from a patch that was about to feed it again.
+ *
+ * The ceiling is the round trip. `tests/harvester-soak.spec.ts` measures a
+ * healthy harvester completing one every 30-60 s, so a harvester that has
+ * waited 30 s has spent exactly one trip's worth of income finding out that the
+ * patch is finished — and waiting longer costs more than moving.
+ */
+export const HARVESTER_LEASH_PATIENCE = 30;
+
 /* -- power ---------------------------------------------------------------- */
 
 /**

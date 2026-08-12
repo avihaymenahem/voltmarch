@@ -167,6 +167,10 @@ export class OreField implements IOreField {
   private avoidCx = -1;
   private avoidCz = -1;
   private avoidCells = 0;
+  /** Caller-supplied inclusion DISC; -1 disables it. See `findFreeOre`. */
+  private keepCx = -1;
+  private keepCz = -1;
+  private keepCellsSq = 0;
 
   constructor() {
     this.fieldOf.fill(-1);
@@ -399,18 +403,34 @@ export class OreField implements IOreField {
    *   harvester that has proved it cannot reach that ground, not to the map,
    *   and the very next caller must not inherit it. See
    *   HARVESTER_UNREACHABLE_BAN_CELLS.
+   * @param keepCx,keepCz  centre of the only ground this caller WILL accept, or
+   *   -1 for none. `keepCells` is its EUCLIDEAN radius in cells — a disc rather
+   *   than the exclusion's square, because it models a distance from a point in
+   *   the world and a square would reach 41% further along its diagonals than
+   *   the number says. This is the harvester leash; see HARVESTER_LEASH_METRES.
+   *
+   *   The ring walk still starts at `cx,cz` — the HULL — so the cell chosen
+   *   inside the disc is the one nearest the harvester, not the one nearest the
+   *   anchor. That ordering is what all the existing tuning assumes (a hauler
+   *   leaving its refinery should take the near rim of its patch), and keeping
+   *   it is why this is a filter rather than a re-centred search.
    */
   findFreeOre(
     cx: number, cz: number, maxCells: number,
     claimant: EntityId, minAmount: number, time: number,
     out: Int32Array,
     avoidCx = -1, avoidCz = -1, avoidCells = 0,
+    keepCx = -1, keepCz = -1, keepCells = 0,
   ): boolean {
     this.avoidCx = avoidCx;
     this.avoidCz = avoidCz;
     this.avoidCells = avoidCells;
+    this.keepCx = keepCx;
+    this.keepCz = keepCz;
+    this.keepCellsSq = keepCells * keepCells;
     const ok = this.searchRings(cx, cz, maxCells, minAmount, claimant as number, time, out);
     this.avoidCx = -1;
+    this.keepCx = -1;
     return ok;
   }
 
@@ -470,6 +490,13 @@ export class OreField implements IOreField {
       const az = gz > this.avoidCz ? gz - this.avoidCz : this.avoidCz - gz;
       // Chebyshev, so the exclusion is the square the ring walk itself uses.
       if ((ax > az ? ax : az) <= this.avoidCells) return;
+    }
+    if (this.keepCx >= 0) {
+      // Euclidean, in whole cells, so the comparison is exact integer
+      // arithmetic on every machine — this runs inside the sim.
+      const kx = gx - this.keepCx;
+      const kz = gz - this.keepCz;
+      if (kx * kx + kz * kz > this.keepCellsSq) return;
     }
     if (this.searchClaimant >= 0) {
       const c = this.claimant[i];
@@ -627,6 +654,19 @@ export class OreField implements IOreField {
 
   field(id: number): OreFieldRecord | undefined {
     return this.records[id];
+  }
+
+  /**
+   * The field this CELL belongs to, or -1 for ground no field was seeded on.
+   *
+   * Containment, not proximity — `nearestField` answers a different question
+   * (which centre is closest) and gets this one wrong wherever two fields
+   * overlap or a field is ragged. The harvester leash needs containment: "the
+   * patch the player pointed at" is the field whose cells they clicked.
+   */
+  fieldAtCell(cx: number, cz: number): number {
+    if (!isInMap(cx, cz)) return -1;
+    return this.fieldOf[cellIndex(cx, cz)];
   }
 
   /**
