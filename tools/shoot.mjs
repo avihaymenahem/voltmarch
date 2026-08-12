@@ -132,11 +132,10 @@
  */
 
 import { chromium } from 'playwright';
-import { spawn, spawnSync } from 'node:child_process';
-import { createServer } from 'node:net';
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, readdirSync, renameSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { build, serve } from './lib/serve.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'shots');
@@ -144,10 +143,11 @@ const OUT = join(ROOT, 'shots');
 /**
  * Where the preview is ASKED to listen, and nothing more.
  *
- * The origin the browser is pointed at is read back from our own vite's stdout
- * — see `previewOrigin` and the block above the spawn. A port number written
- * down here and then assumed is how this harness photographed another
- * checkout's build.
+ * The origin the browser is pointed at is read back from our own vite's stdout,
+ * and the bytes it serves are compared with the `dist/` on this disk. Both live
+ * in `tools/lib/serve.mjs` now, with the full account of why — a port number
+ * written down here and then assumed is how this harness photographed another
+ * checkout's build, and twelve sibling tools had the same hole.
  */
 const PORT_HINT = 4317;
 
@@ -492,111 +492,6 @@ mkdirSync(STAGE, { recursive: true });
 const releaseLock = () => { try { rmSync(LOCK, { force: true }); } catch {} };
 process.on('exit', releaseLock);
 
-const run = (cmd, args) =>
-  spawn(cmd, args, { cwd: ROOT, shell: process.platform === 'win32', stdio: 'pipe' });
-
-async function waitForServer(url, timeoutMs = 60_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try { if ((await fetch(url)).ok) return true; } catch { /* not up */ }
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  return false;
-}
-
-/** The colour vite writes its banner in, which would otherwise split the URL. */
-const ANSI = /\[[0-9;]*m/g;
-
-/**
- * The origin OUR preview is listening on, taken from OUR child's own stdout.
- *
- * This is the whole of the identity guarantee. vite prints
- * `➜  Local:   http://127.0.0.1:4317/` once it has BOUND, so the number that
- * comes back is one this process watched its own child take, rather than one
- * written down in a constant and hoped for. The banner is colourised and vite
- * bolds the port digits inside the URL, so stripping ANSI first is load-bearing
- * rather than tidy.
- *
- * A child that exits without announcing one REJECTS, deliberately: the two ways
- * that happens are a broken install and a port collision, and both used to end
- * with the harness quietly capturing from whatever else answered. The caller
- * treats a rejection as "try the next rung of the ladder", never as "carry on".
- */
-function previewOrigin(child, timeoutMs = 60_000) {
-  return new Promise((resolve, reject) => {
-    let out = '';
-    const finish = (settle, value) => {
-      clearTimeout(timer);
-      child.stdout.off('data', onOut);
-      child.stderr.off('data', onOut);
-      child.off('exit', onExit);
-      settle(value);
-    };
-    const onOut = (chunk) => {
-      out += String(chunk).replace(ANSI, '');
-      const m = /https?:\/\/(?:localhost|127\.0\.0\.1):(\d+)\//.exec(out);
-      if (m !== null) finish(resolve, `http://127.0.0.1:${m[1]}/`);
-    };
-    const onExit = (code) => finish(reject, new Error(
-      `the preview server exited (${code}) before it announced a port. Output:\n${out.slice(-2000)}`,
-    ));
-    const timer = setTimeout(() => finish(reject, new Error(
-      `the preview server never announced a port within ${timeoutMs} ms. Output:\n${out.slice(-2000)}`,
-    )), timeoutMs);
-    child.stdout.on('data', onOut);
-    child.stderr.on('data', onOut);
-    child.on('exit', onExit);
-  });
-}
-
-/** A port nothing is listening on right now, chosen by the OS. */
-function freePort() {
-  return new Promise((resolve, reject) => {
-    const probe = createServer();
-    probe.on('error', reject);
-    probe.listen(0, '127.0.0.1', () => {
-      const { port } = probe.address();
-      probe.close(() => resolve(port));
-    });
-  });
-}
-
-/**
- * Prove the origin is serving the `dist/` ON THIS DISK, by comparing the bytes.
- *
- * Reading the port off our own child is necessary and STILL not sufficient on
- * Windows, where a wildcard bind (`0.0.0.0`) and a specific one (`127.0.0.1`)
- * can hold the same port number at once and the OS routes by longest match. Two
- * processes can therefore both be "listening on 4317" and both be right, and
- * which one answers is not something this file gets to assume.
- *
- * `dist/index.html` names its own hashed chunks, so it is a fingerprint of the
- * build for free — no nonce to inject, no server to modify. Identical bytes
- * mean the reply came from a `dist/` that is byte-for-byte the one just built,
- * which is the only property the grade actually needs.
- */
-async function assertOurBuild(base) {
-  const wanted = readFileSync(join(ROOT, 'dist', 'index.html'));
-  let served;
-  try {
-    const res = await fetch(base, { signal: AbortSignal.timeout(30_000) });
-    served = Buffer.from(await res.arrayBuffer());
-  } catch (err) {
-    throw new Error(`could not read ${base} back to check whose build it serves: ${err}`);
-  }
-  if (!served.equals(wanted)) {
-    throw new Error(
-      `${base} is not serving this checkout's dist/.\n` +
-        `Its index.html is ${served.length} bytes where ours is ${wanted.length}; the hashed ` +
-        'chunk names it points at belong to somebody else\'s build.\n' +
-        'That is another worktree\'s preview holding the port. Kill it and re-run:\n' +
-        (process.platform === 'win32'
-          ? `  Get-NetTCPConnection -LocalPort ${PORT_HINT} -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`
-          : `  lsof -ti :${PORT_HINT} | xargs kill -9`),
-    );
-  }
-}
-
 if (noBuild) {
   if (!existsSync(join(ROOT, 'dist', 'index.html'))) {
     console.error('--no-build was given but dist/index.html does not exist. Build once first.');
@@ -604,146 +499,43 @@ if (noBuild) {
   }
   console.log('> NOT building — serving the existing dist/ (--no-build)');
 } else {
-  console.log('> building...');
-  await new Promise((resolve, reject) => {
-    const b = run('npm', ['run', 'build']);
-    let out = '';
-    b.stdout.on('data', (d) => (out += d));
-    b.stderr.on('data', (d) => (out += d));
-    b.on('close', (c) => (c === 0 ? resolve() : reject(new Error(`build failed:\n${out.slice(-4000)}`))));
-  });
+  await build(ROOT, { log: console.log });
 }
 
 /*
  * ============================================================================
  * THE SERVER HAS TO BE OURS, AND "THE PROBE SAW NOTHING" IS NOT PROOF THAT IT IS
  * ============================================================================
- * This used to be `run('npx', ['vite', 'preview', ...])` with
- * `cleanup = () => server.kill()`. On Windows `run` goes through a shell, so
- * the tree is cmd.exe -> npx-cli.js -> node vite.js and `kill()` reaped the
- * first of three. The real server survived every invocation, kept the port
- * bound, and the NEXT run then either died on `--strictPort` or connected to a
- * preview of the PREVIOUS BUILD and photographed it without saying so. A
- * scorecard captured against a stale server is a comparison of one build
- * against itself, which reads exactly like "the change did nothing".
+ * The mechanism, and the full account of the defect it closes, now live in
+ * `tools/lib/serve.mjs` — because this harness was never the only tool with the
+ * hole. Twelve siblings had the same fixed port and the same 1500 ms probe,
+ * FIVE of them shared port 4319 with each other, and two of them
+ * (`desync-probe`, `replay-probe`) exist to produce a COMPARISON, which is the
+ * one kind of output a foreign server corrupts invisibly. Nine copies of one
+ * fix is how the divergence arose in the first place, so there is one copy.
  *
- * The answer then was a direct node process, a tree kill, and a `fetch` probe
- * that refused to start when something already answered on the fixed port 4317.
- * THE PROBE IS A TIME-OF-CHECK/TIME-OF-USE TEST AND IT NEVER CLOSED THE HOLE:
+ * Nothing about this file's behaviour changed in the move. `serve()` still
+ * reads the port back from our own child's stdout rather than asserting it;
+ * still byte-compares the served `index.html` against the `dist/` on this disk,
+ * because on Windows a wildcard bind and a specific one can hold the same port
+ * number at once; still walks off a busy 4317 onto a port the OS says is free
+ * so two worktrees can capture simultaneously; and `assertAlive` still re-checks
+ * the child before every single page.
  *
- *   1. it aborted after 1500 ms, and on a machine with a saturated CPU a
- *      localhost fetch takes longer than that all by itself. A probe that timed
- *      out landed in the `catch`, whose comment read "anything else means
- *      nothing answered, which is what we want" — so a LIVE foreign server was
- *      read as an empty port;
- *   2. `--strictPort` then made OUR vite exit immediately, and nothing looked
- *      at that exit code;
- *   3. `waitForServer` only ever asked whether SOMETHING answers. The foreign
- *      server does. Twelve fixtures were then photographed out of another
- *      checkout's `dist/`, at full confidence, with nothing in the report to
- *      say so.
- *
- * A TCP port is machine-wide and every `git worktree` in this repo runs this
- * same tool, so "another checkout" is the normal case here rather than a
- * hypothesis. MEASURED, by holding 4317 with a server whose first response is
- * delayed past the probe's 1500 ms and whose `dist/` is one constant different:
- * the harness printed `ok` and `1/1 captured`, and `12-blob-readability` came
- * back differing from the reference in 12.4% of its pixels at max delta 255,
- * with a console-message count that did not match either. That is the whole of
- * the reported "the shot harness is nondeterministic" — a neighbour's build,
- * not a race inside the game.
- *
- * So the port is no longer asserted, it is READ BACK from our own child's
- * stdout (`previewOrigin`); the bytes served at that origin are compared with
- * the `dist/index.html` on this disk (`assertOurBuild`), because on Windows a
- * wildcard bind and a specific one can hold the same port number at once; and
- * the child is checked for liveness before every shot. The harness now cannot
- * photograph a server it did not start, and — because the ladder below steps
- * off a busy 4317 onto a port the OS says is free — two worktrees can capture
- * at once instead of one of them silently capturing the other's work.
+ * One thing DID change, and it means the guarantee above was inert here until
+ * now: the ANSI strip left the ESC byte in the middle of the URL, so the port
+ * never parsed and every rung of the ladder burned its full timeout. See the
+ * banner section of `tools/lib/serve.mjs`.
  * ============================================================================
  */
-function killTree(child) {
-  if (!child || child.pid === undefined || child.exitCode !== null) return;
-  try {
-    if (process.platform === 'win32') {
-      spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-    } else {
-      process.kill(-child.pid, 'SIGKILL');
-    }
-  } catch { /* already gone */ }
-  try { child.kill('SIGKILL'); } catch { /* already gone */ }
-}
-
 console.log('> serving...');
 
-let server = null;
-let BASE = null;
-let cleanedUp = false;
-const cleanup = () => {
-  if (cleanedUp) return;
-  cleanedUp = true;
-  killTree(server);
-};
-process.on('exit', cleanup);
-process.on('SIGINT', () => { cleanup(); process.exit(1); });
-process.on('SIGTERM', () => { cleanup(); process.exit(1); });
-
-/*
- * THE PORT LADDER, AND WHY THERE IS ONE AT ALL.
- *
- * `vite.config.ts` sets `preview.strictPort: true`, so a busy port is a refusal
- * rather than a hop to the next one — and the CLI cannot talk it out of that.
- * A refusal is the right default (silently moving would hide a leaked server
- * from the person who left it running), and it is the WRONG behaviour for a
- * repo whose normal state is several worktrees sharing one machine and one port
- * number.
- *
- * So: 4317 first, because a single-agent run should keep the address a human
- * already knows, and then up to three ports the OS says are free. Every rung
- * ends with a port THIS process watched vite bind and announce, so moving off
- * 4317 gives up nothing — the identity of the server is established by
- * `previewOrigin` and `assertOurBuild`, never by the number.
- */
-{
-  const problems = [];
-  const ladder = 4;
-  for (let attempt = 0; attempt < ladder && server === null; attempt++) {
-    const port = attempt === 0 ? PORT_HINT : await freePort();
-    const child = spawn(
-      process.execPath,
-      [join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'),
-        'preview', '--port', String(port), '--host', '127.0.0.1'],
-      { cwd: ROOT, stdio: 'pipe', detached: process.platform !== 'win32' },
-    );
-    try {
-      BASE = await previewOrigin(child);
-      server = child;
-    } catch (err) {
-      killTree(child);
-      // vite's own reason, which is on a later line than its banner.
-      const why = /^Error: .*/m.exec(err.message);
-      problems.push(`port ${port}: ${why !== null ? why[0] : err.message.split('\n')[0]}`);
-    }
-  }
-  if (server === null) {
-    cleanup();
-    throw new Error(`no preview of our own would start:\n  ${problems.join('\n  ')}`);
-  }
-  if (problems.length) console.log(`  (${problems.join('; ')})`);
-}
-
-if (!(await waitForServer(BASE))) {
-  cleanup();
-  throw new Error(`the preview announced ${BASE} and then never answered it`);
-}
-try {
-  await assertOurBuild(BASE);
-} catch (err) {
-  cleanup();
-  throw err;
-}
-console.log(`> serving ${BASE} (pid ${server.pid}, dist/ verified)`);
+const server = await serve({
+  root: ROOT, mode: 'preview', portHint: PORT_HINT, log: console.log,
+});
+const BASE = server.origin;
+const cleanup = () => server.stop();
+console.log(`> serving ${BASE} (pid ${server.child.pid}, dist/ verified)`);
 
 // Real GPU first. Headless Chromium will hand back a black canvas rather than
 // fail loudly if no backend is available, which would silently poison every
@@ -1240,19 +1032,13 @@ for (const shot of shots) {
   let entry = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     /*
-     * OUR SERVER, STILL ALIVE, BEFORE EVERY SINGLE PAGE.
-     *
-     * `previewOrigin` proves the origin was ours at the moment it was read.
-     * This proves it has not since died and left the port to whatever picks it
-     * up next — the whole failure this run exists to make impossible, moved
-     * from the start of the run to the start of each shot.
+     * OUR SERVER, STILL ALIVE, BEFORE EVERY SINGLE PAGE. `serve()` proves the
+     * origin was ours at the moment it was read; this proves it has not since
+     * died and left the port to whatever picks it up next — the whole failure
+     * this run exists to make impossible, moved from the start of the run to
+     * the start of each shot.
      */
-    if (server.exitCode !== null) {
-      throw new Error(
-        `the preview server exited (${server.exitCode}) part-way through the run. Every shot ` +
-          `after that point would have been photographed from whatever else answers ${BASE}.`,
-      );
-    }
+    server.assertAlive(`shot ${shot.name}`);
     process.stdout.write(
       attempt === 1
         ? `> ${shot.name} ... `

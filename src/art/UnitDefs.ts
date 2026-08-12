@@ -435,8 +435,17 @@ interface InfantryOpts {
   hullNumber: number;
   /** 'rifle' | 'launcher' | 'tool' — changes the held object only. */
   weapon: 'rifle' | 'launcher' | 'tool';
-  /** Backpack shape: engineers carry a toolbox, flak troopers a magazine drum. */
-  pack: 'radio' | 'drum' | 'case';
+  /**
+   * Backpack shape: engineers carry a toolbox, flak troopers a magazine drum.
+   *
+   * `'rebreather'` ALSO REPLACES THE BOOT WITH A SWIM FIN, and that coupling is
+   * deliberate rather than lazy: the swimmers are the only soldiers in the game
+   * whose silhouette has to read as amphibious at 20 px, and one option that
+   * cannot be half-applied is worth more than two that can. A man wearing twin
+   * bottles is a diver; a diver wears fins. Every other pack leaves the boot
+   * exactly as it was.
+   */
+  pack: 'radio' | 'drum' | 'case' | 'rebreather';
   /** The silhouette family. This is what stops two armies sharing one mesh. */
   build: 'plated' | 'greatcoat';
   /**
@@ -591,6 +600,19 @@ function infantry(o: InfantryOpts): UnitMassList {
     masses.push(greeble('toolcase', 'taperedBox', [W * 0.62, 0.42, 0.22], [0, torsoY + 0.06, -W * 0.42], 'paintSmall', {
       group: 'pack', shape: { topScaleX: 0.90, topScaleZ: 0.84 },
     }));
+  } else if (o.pack === 'rebreather') {
+    // TWIN BOTTLES ACROSS THE SHOULDERS, not one slab. A single tank reads as
+    // the radio pack it replaced; a pair with a manifold yoke over them is the
+    // one back profile in the roster that cannot be anything but a diver, and
+    // it is visible from behind, which is where a swimmer is usually seen.
+    masses.push(
+      greeble('bottle', 'revolve', [0.22, 0.68, 0.22], [W * 0.22, torsoY + 0.10, -W * 0.44], 'bareMetal', {
+        mirrorX: true, group: 'pack', shape: { profile: CAPSULE_PROFILE, segments: 10 },
+      }),
+      greeble('manifold', 'cylinder', [0.14, W * 0.58, 0.14], [0, torsoY + 0.40, -W * 0.42], 'bareMetal', {
+        rot: [0, 0, HALF_PI], group: 'pack', shape: { segments: 8 },
+      }),
+    );
   } else {
     masses.push(
       greeble('radio', 'taperedBox', [W * 0.52, 0.44, 0.22], [0, torsoY + 0.10, -W * 0.42], 'paintSmall', {
@@ -608,10 +630,20 @@ function infantry(o: InfantryOpts): UnitMassList {
     greeble('helmetAerial', 'cylinder', [0.05, H * 0.14, 0.05], [-W * 0.18, H - H * 0.07, -0.06], 'bareMetal', {
       group: 'helmet gear', shape: { segments: 8 },
     }),
-    greeble('boot', 'taperedBox', [W * 0.40, 0.16, W * 0.62], [W * 0.24, 0.08, 0.06], 'paintTiny', {
-      mirrorX: true, group: 'boots', gait: { limb: 'leg', pivotY: legTop },
-      shape: { topScaleX: 1.10, topScaleZ: 0.92, shear: -0.05 },
-    }),
+    // The fin keeps the NAME, the group and the hip pivot of the boot it
+    // replaces, and all three are load-bearing: `RIDES_THE_LEG` in
+    // `tests/infantry-gait-rosters.spec.ts` is keyed on the name, and a blade
+    // hanging half a metre off the ankle shears off the shin the moment the
+    // walk cycle runs unless it turns about the same joint the thigh does.
+    o.pack === 'rebreather'
+      ? greeble('boot', 'taperedBox', [W * 0.42, 0.13, W * 1.18], [W * 0.24, 0.066, W * 0.24], 'paintTiny', {
+        mirrorX: true, group: 'boots', gait: { limb: 'leg', pivotY: legTop },
+        shape: { topScaleX: 0.60, topScaleZ: 1.16, shear: W * 0.14 },
+      })
+      : greeble('boot', 'taperedBox', [W * 0.40, 0.16, W * 0.62], [W * 0.24, 0.08, 0.06], 'paintTiny', {
+        mirrorX: true, group: 'boots', gait: { limb: 'leg', pivotY: legTop },
+        shape: { topScaleX: 1.10, topScaleZ: 0.92, shear: -0.05 },
+      }),
     plateMass('webbing', MassRole.Greeble, taperOutline(W * 0.90, W * 0.66, 0.86), 0.12,
       [0, torsoY - torsoH * 0.34, 0], undefined, 'paintTiny', { group: 'webbing' }),
     greeble('collar', 'revolve', [W * 0.60, 0.11, W * 0.50], [0, legTop + torsoH - 0.03, 0], 'paintTiny', {
@@ -1279,7 +1311,19 @@ function hullPlan(W: number, L: number, bowFine: number, transom: number): V2[] 
 interface ShipOpts {
   key: string; name: string; faction: UnitMassList['faction']; hullNumber: number;
   length: number; beam: number; height: number; brutalist: boolean;
-  armament: 'turret' | 'battery' | 'escort';
+  /**
+   * What the bow carries, which is the only thing that separates the four
+   * hulls this factory builds.
+   *
+   * `'ramp'` IS NOT AN ARMAMENT AND THAT IS THE POINT. A landing ship's bow is
+   * a door, so the branch that would have put a gun there puts a hazard-striped
+   * leaf on hinges instead, moves the deckhouse right aft to open the well the
+   * cargo stands in, and deletes the stern gun and the ram stem the other three
+   * share. Reusing `'escort'` and calling it a lighter would have shipped a
+   * gunboat silhouette on a rung whose whole job is to look unarmed — the same
+   * defect as the Attack Dog drawing a Conscript, one file over.
+   */
+  armament: 'turret' | 'battery' | 'escort' | 'ramp';
 }
 
 function ship(o: ShipOpts): UnitMassList {
@@ -1291,6 +1335,14 @@ function ship(o: ShipOpts): UnitMassList {
   const deckTop = hullH + H * 0.10;
   const fine = o.brutalist ? 0.34 : 0.28;
   const transom = o.brutalist ? 0.44 : 0.36;
+  const lander = o.armament === 'ramp';
+  // The deckhouse position is the whole difference between a warship's profile
+  // and a landing ship's, so it is ONE number that everything hanging off the
+  // superstructure — the bridge glass, both team bands, the bridge glow —
+  // derives from rather than nine repetitions of `-L * 0.10`.
+  const superZ = lander ? -L * 0.34 : -L * 0.10;
+  const superL = lander ? L * 0.22 : L * 0.34;
+  const mastZ = lander ? superZ : -L * 0.16;
 
   const masses: MassDef[] = [
     primary('hull', 'planPrism', [W, hullH, L], [0, hullY, 0], 'paintLarge', {
@@ -1306,18 +1358,48 @@ function ship(o: ShipOpts): UnitMassList {
     // The weather deck: a plate on the hull's own plan, cambered 3 degrees.
     plateMass('deck', MassRole.Primary, hullPlan(W * 0.92, L * 0.90, fine, transom), H * 0.10,
       [0, hullH + H * 0.05, -L * 0.02], undefined, 'paintMed', { capSlot: 'paintLarge' }),
-    primary('superstructure', 'taperedBox', [W * 0.72, superH, L * 0.34], [0, superY, -L * 0.10], 'paintLarge', {
+    primary('superstructure', 'taperedBox', [W * 0.72, superH, superL], [0, superY, superZ], 'paintLarge', {
       shape: o.brutalist
         ? { topScaleX: 0.78, topScaleZ: 0.84, shear: -L * 0.015, cornerCut: W * 0.09 }
         : { topScaleX: 0.70, topScaleZ: 0.78, shear: -L * 0.025, cornerCut: W * 0.06 },
     }),
     // Sized so the funnel crown IS the top of the silhouette.
-    primary('funnelMast', 'revolve', [W * 0.26, H * 0.20, W * 0.26], [0, H - H * 0.10, -L * 0.16], 'bareMetal', {
+    primary('funnelMast', 'revolve', [W * 0.26, H * 0.20, W * 0.26], [0, H - H * 0.10, mastZ], 'bareMetal', {
       shape: { profile: TAPER_DRUM, segments: 12 },
     }),
   ];
 
-  if (o.armament === 'turret') {
+  if (lander) {
+    masses.push(
+      // THE RAMP IS A PRIMARY, not a greeble, because it is the shape a player
+      // has to recognise from across the map to know this hull carries their
+      // tanks. Raked up at the stem the way a bow door rides under way, cut
+      // narrower at the lip so it reads as a door and not as a lid, and slotted
+      // `stripe` — hazard chevrons are what a vehicle deck is painted with, and
+      // it is the same slot `hoverTransport` puts on the same shape.
+      plateMass('bowRamp', MassRole.Primary, taperOutline(W * 0.78, L * 0.30, 0.82), 0.18,
+        [0, deckTop + H * 0.08, L * 0.36], [-0.46, 0, 0], 'stripe', { capSlot: 'stripe' }),
+      greeble('rampHinge', 'cylinder', [0.26, W * 0.46, 0.26], [0, deckTop + H * 0.02, L * 0.22], 'bareMetal', {
+        rot: [0, 0, HALF_PI], group: 'ramp gear', shape: { segments: 10 },
+      }),
+      // The well: a coaming down each side of the open vehicle deck, and the
+      // winch that hauls the ramp shut at the head of it. Without the coaming
+      // the deck is a flat plate and the hull reads as a barge with a lid.
+      armour('wellCoaming', taperOutline(L * 0.50, H * 0.20, 0.90), 0.12,
+        [W * 0.46, deckTop + H * 0.10, L * 0.04], [0, HALF_PI, HALF_PI - 0.14], 'paintMed', 'well', { mirrorX: true }),
+      greeble('rampWinch', 'revolve', [0.52, W * 0.42, 0.52], [0, deckTop + H * 0.16, -L * 0.14], 'bareMetal', {
+        rot: [0, 0, HALF_PI], group: 'well', shape: { profile: DRUM_PROFILE, segments: 10 },
+      }),
+      // Bollards, and they are here for a measured reason as much as a real
+      // one. Deleting the stern gun and the ram stem took the only two bare
+      // metal objects off the bow and the quarterdeck with them, and the hull
+      // measured 4.6% metal against bible 5.4's 5-34% floor. A lighter's deck
+      // furniture IS its metalwork; this is where a warship's guns went.
+      greeble('bollard', 'cylinder', [0.28, 0.54, 0.28], [W * 0.42, deckTop + 0.27, L * 0.14], 'bareMetal', {
+        mirrorX: true, group: 'deck fittings', shape: { segments: 8 },
+      }),
+    );
+  } else if (o.armament === 'turret') {
     masses.push(
       greeble('foreTurret', 'revolve', [W * 0.50, H * 0.20, W * 0.54], [0, hullH + H * 0.19, L * 0.28], 'paintMed', {
         group: 'fore mount', shape: { profile: ALLIED_TURRET, segments: 12 },
@@ -1356,48 +1438,75 @@ function ship(o: ShipOpts): UnitMassList {
 
   masses.push(
     armour('bridgeGlass', taperOutline(W * 0.56, superH * 0.30, 0.88), 0.12,
-      [0, superY + superH * 0.16, -L * 0.10 + L * 0.17], [HALF_PI - 0.20, 0, 0], 'glass', 'bridge'),
-    greeble('radarDish', 'revolve', [W * 0.26, 0.16, W * 0.26], [0, H * 0.80, -L * 0.16], 'bareMetal', {
+      [0, superY + superH * 0.16, superZ + superL * 0.5], [HALF_PI - 0.20, 0, 0], 'glass', 'bridge'),
+    greeble('radarDish', 'revolve', [W * 0.26, 0.16, W * 0.26], [0, H * 0.80, mastZ], 'bareMetal', {
       rot: [-0.5, 0, 0], group: 'radar', shape: { profile: DRUM_PROFILE, segments: 12 },
     }),
     greeble('lifeboat', 'revolve', [0.42, 1.40, 0.42], [W * 0.40, hullH + H * 0.14, -L * 0.24], 'paintSmall', {
       mirrorX: true, rot: [HALF_PI, 0, 0], group: 'boats', shape: { profile: CAPSULE_PROFILE, segments: 10 },
     }),
     greebleRun('deckRun', L * 0.70, 0.26, 0.20, [W * 0.34, deckTop + 0.06, -L * 0.02], 0x9A + o.hullNumber, { mirrorX: true }),
-    greeble('aftGun', 'cylinder', [W * 0.30, H * 0.12, L * 0.10], [0, hullH + H * 0.16, -L * 0.38], 'bareMetal', {
-      group: 'aft gun', shape: { segments: 10, rTop: 0.74 },
-    }),
-    // The stem: a cone, not a wedge box.
-    greeble('bowRam', 'cone', [W * 0.30, L * 0.10, hullH * 0.60], [0, hullY, L * 0.50], 'bareMetal', {
-      rot: [-HALF_PI, 0, 0], group: 'stem', shape: { segments: 10, rTop: 0.22 },
-    }),
     // The armour belt: one long plate down each topside, raked with the
     // tumblehome so it reads as plating rather than as a painted stripe.
     armour('hull.belt', taperOutline(L * 0.70, hullH * 0.52, 0.78), 0.08,
       [W * 0.44, hullH * 0.62, -L * 0.02], [0, HALF_PI, HALF_PI - 0.26], 'paintMed', 'hull armour', { mirrorX: true }),
   );
 
+  // A lighter has neither of these and cannot: the stern gun belongs to a hull
+  // that fights, and a ram stem is the one thing that physically cannot share a
+  // bow with a door. Leaving them on was the fastest way to build the escort
+  // silhouette this variant exists to avoid.
+  if (!lander) {
+    masses.push(
+      greeble('aftGun', 'cylinder', [W * 0.30, H * 0.12, L * 0.10], [0, hullH + H * 0.16, -L * 0.38], 'bareMetal', {
+        group: 'aft gun', shape: { segments: 10, rTop: 0.74 },
+      }),
+      // The stem: a cone, not a wedge box.
+      greeble('bowRam', 'cone', [W * 0.30, L * 0.10, hullH * 0.60], [0, hullY, L * 0.50], 'bareMetal', {
+        rot: [-HALF_PI, 0, 0], group: 'stem', shape: { segments: 10, rTop: 0.22 },
+      }),
+    );
+  }
+
+  // R-T1 is measured off the built mesh, so the same four panels measure a
+  // different fraction of a different ship. A lighter is a third of a
+  // deckhouse shorter and carries a wide open well where a warship carries a
+  // gun, a stem and a stack — more plain surface, fewer objects — and the
+  // shipped panels landed at 8.1%, a tenth of a point off R-T1's floor. Area
+  // goes as k squared, so 1.18 buys 39%.
+  const teamK = lander ? TEAM_K.ship * 1.18 : TEAM_K.ship;
   masses.push(
-    slab('hullStripe', [0.08, hullH * 0.28, L * 0.70], [W * 0.45, hullH * 0.74, -L * 0.02], { mirrorX: true , k: TEAM_K.ship }),
-    slab('superBand', [0.08, superH * 0.44, L * 0.26], [W * 0.33, superY, -L * 0.10], { mirrorX: true , k: TEAM_K.ship }),
-    slab('superCap', [W * 0.34, 0.08, L * 0.18], [0, superY + superH * 0.5, -L * 0.10], { k: TEAM_K.ship }),
-    slab('deckPatch', [W * 0.52, 0.08, L * 0.16], [0, deckTop, L * 0.10], { k: TEAM_K.ship }),
+    slab('hullStripe', [0.08, hullH * 0.28, L * 0.70], [W * 0.45, hullH * 0.74, -L * 0.02], { mirrorX: true , k: teamK }),
+    slab('superBand', [0.08, superH * 0.44, superL * 0.76], [W * 0.33, superY, superZ], { mirrorX: true , k: teamK }),
+    slab('superCap', [W * 0.34, 0.08, superL * 0.53], [0, superY + superH * 0.5, superZ], { k: teamK }),
+    slab('deckPatch', [W * 0.52, 0.08, L * 0.16], [0, deckTop, L * 0.10], { k: teamK }),
   );
-  masses.push(insignia([W * 0.36, 0.06, W * 0.36], [0, deckTop, -L * 0.30]));
+  // Aft on a warship, where the deck is clear. On a lighter that patch of deck
+  // is under the deckhouse, so it moves forward into the well instead.
+  masses.push(insignia([W * 0.36, 0.06, W * 0.36], [0, deckTop, lander ? -L * 0.18 : -L * 0.30]));
   masses.push(
     glowPanel('navLight', [0.34, 0.30, 0.06], [W * 0.38, hullH + H * 0.20, L * 0.34], { mirrorX: true }),
-    glowPanel('bridgeGlow', [W * 0.62, 0.26, 0.06], [0, superY + superH * 0.30, -L * 0.10 + L * 0.17]),
+    glowPanel('bridgeGlow', [W * 0.62, 0.26, 0.06], [0, superY + superH * 0.30, superZ + superL * 0.5]),
     glowPanel('deckRunway', [W * 0.30, 0.05, L * 0.36], [0, deckTop + 0.01, -L * 0.02]),
   );
 
   return {
     key: o.key, name: o.name, faction: o.faction, cls: 'naval',
     hullLength: L, masses, hullNumber: o.hullNumber,
-    sockets: [
-      { part: PartId.MuzzleA, pos: [0, hullH + H * 0.21, L * 0.46] },
-      { part: PartId.Exhaust, pos: [0, superY + superH * 0.5 + H * 0.30, -L * 0.16] },
-      { part: PartId.Dish, pos: [0, superY + superH * 0.5 + H * 0.30, -L * 0.16] },
-    ],
+    sockets: lander
+      // A lighter has no muzzle to hang a flash on and a door where the bow
+      // socket would be, so it publishes the two the transport publishes: the
+      // point cargo walks through, and the stack.
+      ? [
+        { part: PartId.DockEntry, pos: [0, deckTop, L * 0.46] },
+        { part: PartId.Door, pos: [0, deckTop, L * 0.40] },
+        { part: PartId.Exhaust, pos: [0, superY + superH * 0.5 + H * 0.30, mastZ] },
+      ]
+      : [
+        { part: PartId.MuzzleA, pos: [0, hullH + H * 0.21, L * 0.46] },
+        { part: PartId.Exhaust, pos: [0, superY + superH * 0.5 + H * 0.30, mastZ] },
+        { part: PartId.Dish, pos: [0, superY + superH * 0.5 + H * 0.30, mastZ] },
+      ],
   };
 }
 
@@ -1818,6 +1927,22 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
     key: 'allied_vindicator', name: 'Vindicator', faction: 'allies', hullNumber: 4172,
     length: 11.0, span: 12.0, height: 3.0, nacelles: false,
   }),
+  // The two naval rungs added when every army got a full fleet. The recon hull
+  // is the smallest thing afloat in the game on purpose — it is bought for its
+  // sight radius, and a silhouette that reads as cheap is half of what stops a
+  // player mistaking it for a warship and sending it into a fight.
+  ship({
+    key: 'allied_hydrofoil', name: 'Hydrofoil', faction: 'allies', hullNumber: 4172,
+    length: 7.2, beam: 2.5, height: 2.4, brutalist: false, armament: 'turret',
+  }),
+  ship({
+    key: 'allied_lighter', name: 'Landing Craft', faction: 'allies', hullNumber: 4172,
+    length: 11.0, beam: 5.0, height: 3.0, brutalist: false, armament: 'ramp',
+  }),
+  infantry({
+    key: 'allied_frogman', name: 'Frogman', faction: 'allies', hullNumber: 4172,
+    weapon: 'rifle', pack: 'rebreather', build: 'plated',
+  }),
 
   /* -- Soviets ---------------------------------------------------------- */
   infantry({ key: 'soviet_conscript', name: 'Conscript', faction: 'soviets', hullNumber: 8188, weapon: 'rifle', pack: 'radio', build: 'greatcoat' }),
@@ -1855,6 +1980,18 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   plane({
     key: 'soviet_mig', name: 'MiG Fighter', faction: 'soviets', hullNumber: 8188,
     length: 10.0, span: 10.5, height: 2.9, nacelles: true,
+  }),
+  ship({
+    key: 'soviet_picket', name: 'Picket Boat', faction: 'soviets', hullNumber: 8188,
+    length: 7.0, beam: 2.7, height: 2.5, brutalist: true, armament: 'turret',
+  }),
+  ship({
+    key: 'soviet_lighter', name: 'Assault Barge', faction: 'soviets', hullNumber: 8188,
+    length: 11.0, beam: 5.2, height: 3.0, brutalist: true, armament: 'ramp',
+  }),
+  infantry({
+    key: 'soviet_diver', name: 'Naval Infantry', faction: 'soviets', hullNumber: 8188,
+    weapon: 'rifle', pack: 'rebreather', build: 'greatcoat',
   }),
 ];
 

@@ -592,7 +592,21 @@ function executeResolved(res: OrderResolution, queued: boolean): void {
       channels.commands.issueSetRally(player, sel.ids[i] as EntityId, res.x, res.z);
       issued++;
     }
-    if (issued > 0) feedback(OrderKind.SetRally, res.x, res.z);
+    if (issued > 0) {
+      feedback(OrderKind.SetRally, res.x, res.z);
+      // DESELECT, because the flag IS the selection. `Overlay.collectRallyLinks`
+      // draws a rally marker for every SELECTED factory and nothing else — it
+      // has no visibility flag, no timer and no fade — so a player who sets a
+      // rally point and looks away is left with a flag stuck under the cursor
+      // until they happen to click elsewhere. Setting the point is the end of
+      // the gesture, so end the gesture.
+      //
+      // Selection is not sim state: it carries no `CommandKind`, crosses no
+      // wire, and appears in none of the three checksum blocks. Clearing it
+      // here changes what one player sees and nothing either client simulates.
+      selection?.clear();
+      refreshResolution();
+    }
     return;
   }
 

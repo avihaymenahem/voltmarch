@@ -105,9 +105,11 @@ import type {
 } from '../core/types';
 import { abilities } from './Abilities';
 import { transportService } from './Transport';
-import { MoveClass, getNav, navigableSeaCells } from './Flowfield';
+import {
+  MOVE_CLASS_COUNT, MOVE_CLASS_NAMES, MoveClass, getNav, moveClassForLocomotor,
+  navigableSeaCells,
+} from './Flowfield';
 import { mapSupportsNaval } from './NavalWater';
-import { moveClassAt } from './Movement';
 import { SUPERWEAPONS, SuperweaponId, superweapons } from './Superweapons';
 import type { SuperweaponDef } from './Superweapons';
 import { commanderPowers } from './CommanderPowers';
@@ -227,6 +229,8 @@ export interface AiIntent {
   navalYards: number;
   warships: number;
   transports: number;
+  /** Recon hulls owned — bought for `sight`, never counted as escorts. */
+  reconHulls: number;
   /** Landings that put a squad ashore. */
   landings: number;
   /** Why the last amphibious evaluation decided as it did, with numbers. */
@@ -477,6 +481,14 @@ export class AiBrain {
   private readonly warshipIds = new Int32Array(16);
   private warshipCount = 0;
   /**
+   * Recon hulls owned. Never in `armyIds`, and the reason is worth stating
+   * because this one carries a gun and so LOOKS like an escort: it is bought
+   * for `sight`, `chooseScout` drives it, and `holdTheLane` must not park the
+   * map's best pair of eyes on a station midpoint.
+   */
+  private readonly reconIds = new Int32Array(4);
+  private reconCount = 0;
+  /**
    * Naval cells within `AI_NAVAL.seaSearchCells` of the base, counted on the
    * census clock. 0 means "landlocked as far as this brain is concerned", and
    * it is the gate every other naval thought sits behind.
@@ -666,6 +678,17 @@ export class AiBrain {
   private readonly oreOut = new Int32Array(2);
   private readonly orderScratch = new Int32Array(AI_ROSTER_CAP);
   private readonly haveRoleFn: (role: BuildRole) => boolean;
+  /**
+   * `forLift`'s filter: rows this brain could actually start this pass.
+   *
+   * A FIELD RATHER THAN A CLOSURE PER CALL, like `haveRoleFn` beside it, and
+   * both halves are load-bearing. `available` is what keeps the 8-slot Heavy
+   * Transport — `Faction.Neutral`, meaning the two ORIGINAL armies share it —
+   * from being offered to a Pact or Reclamation brain whose dock cannot build
+   * it. `canQueue` is affordability, so a hull the brain cannot pay for does
+   * not shut out the smaller one it can.
+   */
+  private readonly buyableFn: (e: CatalogEntry) => boolean;
   /** `consider()` state, held as fields so scoring allocates no closures. */
   private bestEntry: CatalogEntry | null = null;
   private bestScore = 0;
@@ -704,6 +727,7 @@ export class AiBrain {
     this.offensiveUnlockTick = Math.round((AI_MILITARY.firstStrikeSeconds * SIM_HZ) / agg);
     this.rearmTicks = Math.round((AI_MILITARY.rearmSeconds * SIM_HZ) / agg);
     this.haveRoleFn = (role: BuildRole) => this.roleCount[role] > 0;
+    this.buyableFn = (e: CatalogEntry) => this.available(e) && this.canQueue(e, this.spendable);
     // Both plans are pure functions of the faction, so they are resolved once
     // here rather than per build pass. They are lists of KEYS, not entries: the
     // catalog is re-bound underneath us when production lands, and an entry
@@ -1453,6 +1477,7 @@ export class AiBrain {
     this.mcvCount = 0;
     this.transportCount = 0;
     this.warshipCount = 0;
+    this.reconCount = 0;
     this.infantryCount = 0;
     this.vehicleCount = 0;
     this.superOwnedMask = 0;
@@ -1539,6 +1564,12 @@ export class AiBrain {
       if (naval === BuildRole.Warship) {
         if (this.warshipCount < this.warshipIds.length) {
           this.warshipIds[this.warshipCount++] = st.handleOf(i) as number;
+        }
+        continue;
+      }
+      if (naval === BuildRole.ReconHull) {
+        if (this.reconCount < this.reconIds.length) {
+          this.reconIds[this.reconCount++] = st.handleOf(i) as number;
         }
         continue;
       }
@@ -1676,6 +1707,14 @@ export class AiBrain {
    * unit IS. `Locomotor.Hover` describes what it can DO, which is the question,
    * and it is the property every troop hull in this game already has (see the
    * embark note in `amphibiousWanted`).
+   *
+   * THE RECON HULL GETS NO FALLBACK, and that is honest rather than lazy:
+   * "armed, hovers, no seats" describes a Kite Corvette and a Solarch as
+   * exactly as it describes a Hydrofoil, so only the catalog can tell them
+   * apart. Getting it wrong drops the boat into `armyIds` and the AI marches it
+   * overland at the enemy base — the warship failure one paragraph up. Nothing
+   * is lost by refusing to guess: every recon hull in the game is gated on a
+   * dock, and a rig with no catalog cannot have built one.
    */
   private navalRoleOfUnit(i: number, kind: EntityKind, flags: number): BuildRole {
     // THE SERVICE'S REVERSE MAP FIRST, and it is the one that actually answers
@@ -1687,7 +1726,8 @@ export class AiBrain {
       ? this.catalog.get(named)
       : this.catalog.entryForUnit(this.store.defId[i]);
     if (entry !== undefined) {
-      if (entry.role === BuildRole.Transport || entry.role === BuildRole.Warship) {
+      if (entry.role === BuildRole.Transport || entry.role === BuildRole.Warship
+        || entry.role === BuildRole.ReconHull) {
         return entry.role;
       }
       return BuildRole.Unknown;
@@ -2601,15 +2641,27 @@ export class AiBrain {
   private considerNavy(): void {
     if (!this.navalMap) return;
 
-    // THE TRANSPORT IS SCORED FIRST AND WITHOUT A DOCK GATE, because the Pact's
-    // one is not on a dock: `mrdSkiff` lists `prereqs: ['mrdForgeyard']` — their
-    // WAR FACTORY — since the Sandskiff is an amphibious raider they field with
-    // no navy at all. Gating this on a slipway would have cost a Meridian brain
-    // 1000 credits for a building its transport does not need. `available()` is
-    // the real gate either way and answers per faction from the oracle.
+    // THE TRANSPORT IS SCORED FIRST AND CARRIES NO DOCK GATE OF ITS OWN.
+    // `available()` is the real gate and answers per faction from the oracle,
+    // which is a prereq closure rather than a guess made here — every carrier
+    // any army now fields is gated on that army's own dock, and stating it a
+    // second time in this file is how the two get to disagree.
+    //
+    // SIZED TO THE SQUAD, through `forLift` rather than `forRole`. Every army
+    // fields a 4-slot landing ship and an 8-slot heavy now, and `forRole`
+    // answers with whichever row is declared first — which was, for the Pact,
+    // the 2-slot Sandskiff: a hull that cannot carry `minLandingSquad` at all,
+    // so the operation was refused for the rest of the match by a purchase made
+    // minutes earlier, with nothing anywhere saying so.
+    //
+    // The number it is sized against is recomputed every build pass, so a brain
+    // that has grown an army since it bought its first hull buys the bigger one
+    // next, and one that has just lost a wave does not.
     if (this.amphibWanted && this.transportCount < AI_NAVAL.maxTransports) {
-      this.consider(this.catalog.forRole(BuildRole.Transport, this.faction),
-        1.5, 'a transport for the landing');
+      this.consider(
+        this.catalog.forLift(this.faction, this.landingSlotsWanted(), this.buyableFn),
+        1.5, 'a transport for the landing',
+      );
     }
 
     const yards = this.roleCount[BuildRole.NavalYard] + this.roleBuilding[BuildRole.NavalYard];
@@ -2644,11 +2696,12 @@ export class AiBrain {
        *
        * `coastCreepWanted` already aims every unanchored structure at the beach,
        * but that only creeps as fast as the brain happens to build — and a poor
-       * brain builds slowly. Measured over twelve minutes on Sunder Atoll: the
-       * Allied brain placed SIX structures in total, two of them power plants,
-       * and its build envelope reached the shore band by exactly five cells,
-       * every one of which had one of its own units parked on it. The Soviet
-       * brain, which built five plants, reached the water and founded a dock.
+       * brain builds slowly. Measured over twelve minutes on Sunder Atoll BEFORE
+       * `islandSeats` moved the openings: the Allied brain placed SIX structures
+       * in total, two of them power plants, and its build envelope reached the
+       * shore band by exactly five cells, every one of which had one of its own
+       * units parked on it. The Soviet brain, which built five plants, reached
+       * the water and founded a dock.
        *
        * So the step toward the water is bought DELIBERATELY, at the dock's own
        * score, because it IS the dock purchase one building earlier. A power
@@ -2676,6 +2729,49 @@ export class AiBrain {
       this.consider(this.catalog.forRole(BuildRole.Warship, this.faction),
         0.9 + this.basePressure * 0.3, 'a hull to hold the lane');
     }
+
+    /*
+     * THE RECON HULL, AND UNTIL NOW NOTHING BOUGHT ONE. Four of them shipped —
+     * `hydrofoil`, `picketBoat`, `mrdCutter`, `rclSkimmer`, sight 42-46 and the
+     * fastest things afloat — and this function knew about docks, ferries and
+     * escorts only, so `BuildRole.ReconHull` had no purchaser at all. On an
+     * island map that is the difference between an AI that knows where the
+     * enemy is and one guessing at quadrant centres it cannot walk to.
+     *
+     * SCORED BELOW THE ESCORT and gated on a scout being worth having: once the
+     * enemy base is remembered (`memCount > 0`) there is nothing left to find,
+     * and `scout` says the same thing one layer up. 450 credits is cheap for a
+     * unit that ends the guessing and expensive for a second one, which is what
+     * `maxReconHulls` is.
+     */
+    if (this.reconCount < AI_NAVAL.maxReconHulls && this.memCount === 0) {
+      this.consider(this.catalog.forRole(BuildRole.ReconHull, this.faction),
+        0.75, 'a fast hull to find them with');
+    }
+  }
+
+  /**
+   * Slots the landing party would consume if it sailed right now.
+   *
+   * WHAT A HULL IS BOUGHT AGAINST. Infantry cost one slot and a vehicle costs
+   * two — `TransportService.slotCostAt` is the authority and is asked rather
+   * than restated — so "six men and a tank" is eight slots and not seven units.
+   * Floored at `minLandingSquad` so the first hull of the match is bought for
+   * the landing the brain intends rather than for the army it has at that
+   * second, and left UNCAPPED at the top because `forLift` already falls back to
+   * the biggest hull the faction fields: a brain with forty bodies asking for
+   * forty slots gets the 8-slot heavy, which is the right answer stated once.
+   */
+  private landingSlotsWanted(): number {
+    const st = this.store;
+    const svc = transportService();
+    let slots = 0;
+    for (let k = 0; k < this.strikeCount; k++) {
+      const i = st.index(this.strikeIds[k] as EntityId);
+      if (i < 0 || (st.flags[i] & ORDERABLE_REJECT) !== 0) continue;
+      slots += svc === null ? 1 : svc.slotCostAt(i);
+    }
+    return Math.max(AI_NAVAL.minLandingSquad, slots);
   }
 
   /**
@@ -3087,19 +3183,26 @@ export class AiBrain {
    * is exactly the C&C rule that a base creeps outward one building at a time.
    * A Naval Yard additionally has to stand on a coast. On an island map those
    * two conditions can have an EMPTY INTERSECTION on turn one, and on Sunder
-   * Atoll they do: measured through the real generator and the real placement
+   * Atoll they DID: measured through the real generator and the real placement
    * rule, 532 sites on that map are buildable ground beside navigable water,
    * 400-470 sites per army are inside that army's build radius, and for three of
-   * the four armies the OVERLAP IS ZERO. The nearest ground-and-shore site sits
+   * the four armies the OVERLAP WAS ZERO — the nearest ground-and-shore site sat
    * 72, 76 and 79 m from the Construction Yard against a 56 m radius.
    *
-   * So the answer is not a better search — no search can find a legal site that
-   * does not exist — it is to WALK THE BASE TO THE WATER, which is what a human
-   * does and what this map's own layout is designed around (its expansion ore
-   * sits at 72 m, outside the opening radius, on the inward face). While this is
-   * true, every structure that has no anchor of its own is anchored on the beach
-   * instead of on the Construction Yard, so each one lands at the coast-facing
-   * edge of the envelope and drags the envelope 20 m closer to the sea.
+   * THAT IS FIXED IN THE MAP AND NOT HERE. `islandSeats` in
+   * `src/game/Scenarios.ts` seats every opening 30 m along its own coast, which
+   * takes all four armies to 25-54 legal dock sites on turn one — because the
+   * human opens with the identical envelope and had the identical problem, and a
+   * start position is not something the brain can be clever about.
+   *
+   * SO THIS IS NO LONGER THE ATOLL'S MECHANISM, and it is kept because the state
+   * it answers is still reachable: a yard rebuilt inland after the first is
+   * bombed, an opening pushed off its shelf, a map that does not exist yet. No
+   * search can find a legal site that does not exist, so the answer is to WALK
+   * THE BASE TO THE WATER, which is what a human does. While this is true, every
+   * structure that has no anchor of its own is anchored on the beach instead of
+   * on the Construction Yard, so each one lands at the coast-facing edge of the
+   * envelope and drags the envelope 20 m closer to the sea.
    *
    * IT TURNS ITSELF OFF. A dock founded (or merely under construction) makes
    * `roleCount + roleBuilding` non-zero, so the pull stops and the base goes back
@@ -3685,21 +3788,41 @@ export class AiBrain {
     }
   }
 
-  /** Cheapest expendable body available. Fast and fragile wins. */
+  /**
+   * The best pair of eyes available, out of the army AND out of the boats.
+   *
+   * WHAT THIS SCORED BEFORE: `maxSpeed * 2 - maxHp * 0.01`. Speed and fragility
+   * — a proxy for "expendable" — and NOT ONE TERM FOR SIGHT, which is the only
+   * property a scout is actually for. Two units of equal speed reveal wildly
+   * different amounts of map and this could not tell them apart.
+   *
+   * `sight` leads now, at a weight that lets it beat speed: the recon hulls see
+   * 42-46 m against 20-32 for a line unit, which is the difference between a
+   * route that maps the coast and one that walks past it.
+   *
+   * AND IT SCANS `reconIds`, which is the other half. That list is excluded
+   * from `armyIds` by construction — see `navalRoleOfUnit` — so before this the
+   * one class of unit in the game bought FOR its sight radius was invisible to
+   * the only function that wanted one. On Sunder Atoll it is also the only
+   * scout that can leave the island: `buildScoutRoute` aims at quadrant centres
+   * that a rifleman cannot reach at all.
+   */
   private chooseScout(): boolean {
     const st = this.store;
     let best = -1;
     let bestScore = -1;
-    for (let a = 0; a < this.armyCount; a++) {
-      const i = st.index(this.armyIds[a] as EntityId);
-      if (i < 0) continue;
-      if ((st.flags[i] & ORDERABLE_REJECT) !== 0) continue;
-      if (this.groupTag.getAt(i) === GROUP_SCOUT) continue;
-      // Speed gets it across the map; low max HP is the proxy for "this is not
-      // a unit I want in the battle line".
-      const score = st.maxSpeed[i] * 2 - st.maxHp[i] * 0.01;
+    const consider = (id: EntityId): void => {
+      const i = st.index(id);
+      if (i < 0) return;
+      if ((st.flags[i] & ORDERABLE_REJECT) !== 0) return;
+      if (this.groupTag.getAt(i) === GROUP_SCOUT) return;
+      // Sight is what a scout is for; speed gets it there; low max HP is the
+      // proxy for "this is not a unit I want in the battle line".
+      const score = st.sight[i] * 0.6 + st.maxSpeed[i] * 2 - st.maxHp[i] * 0.01;
       if (score > bestScore) { bestScore = score; best = i; }
-    }
+    };
+    for (let a = 0; a < this.armyCount; a++) consider(this.armyIds[a] as EntityId);
+    for (let k = 0; k < this.reconCount; k++) consider(this.reconIds[k] as EntityId);
     if (best < 0) return false;
     this.scoutId = st.handleOf(best);
     this.groupTag.setAt(best, GROUP_SCOUT);
@@ -4046,9 +4169,14 @@ export class AiBrain {
     this.landZ = cellToWorld(this.shoreOut[3]);
 
     // THE ONE ARM: can the army we would otherwise send even get there?
-    const cls = this.strikeMoveClass();
-    if (!nav.isReachable(acx, acz, ocx, ocz, cls)) {
-      this.amphibVerdict = 'objective unreachable on land — the sea is the only way';
+    // EVERY class in the group is asked, and one refusal is enough — see
+    // `strikeMoveClasses`.
+    const classes = this.strikeMoveClasses();
+    for (let cls = 0; cls < MOVE_CLASS_COUNT; cls++) {
+      if ((classes & (1 << cls)) === 0) continue;
+      if (nav.isReachable(acx, acz, ocx, ocz, cls as MoveClass)) continue;
+      this.amphibVerdict = `objective unreachable on land for ${MOVE_CLASS_NAMES[cls]}`
+        + ' — the sea is the only way';
       return true;
     }
     // It can walk. The crossing is still measured and reported, because the
@@ -4062,20 +4190,41 @@ export class AiBrain {
   }
 
   /**
-   * The move class of the group a landing would replace.
+   * Every move class present in the group a landing would replace, as a bitmask.
    *
-   * Taken from a real member rather than assumed, because "can the army get
-   * there" is a different question for infantry, for tracks and for the Pact's
-   * entirely amphibious roster — a Meridian brain asking about `Track` would be
-   * told it cannot reach ground its own units hover straight over.
+   * THIS USED TO SAMPLE `strikeIds[0]` AND ANSWER FOR THE WHOLE ARMY, which is
+   * a coin toss on any army that is not uniform. The Meridian Pact's infantry
+   * are `Locomotor.Foot` and their vehicles are `Locomotor.Hover`, and
+   * `MoveClass.Hover` sees the four atoll islands as ONE region — so
+   * `amphibiousWanted` answered "unreachable, take ships" or "reachable on
+   * foot" for the SAME army on the SAME tick depending on which unit the squad
+   * layer happened to file first. A decision that flips on array order is not a
+   * decision, and the operation it gates was being started and abandoned in
+   * alternation.
+   *
+   * The caller asks every class and takes one refusal as the answer, which is
+   * the most restrictive reading without having to invent a total order over
+   * classes. There is no such order to invent honestly: `Foot` needs one cell
+   * of corridor where `Track` needs two, `Hover` crosses water where neither
+   * does, and none of the three sets contains the others.
+   *
+   * READ OFF THE LOCOMOTOR, not off `moveClassAt`. That function answers
+   * `Naval` for a hover unit standing in water, so a Pact tank crossing a ford
+   * would tell this brain its army is a fleet — the same "where it IS versus
+   * what it can DO" distinction `navalRoleOfUnit` turns on.
    */
-  private strikeMoveClass(): MoveClass {
+  private strikeMoveClasses(): number {
     const st = this.store;
+    let mask = 0;
     for (let k = 0; k < this.strikeCount; k++) {
       const i = st.index(this.strikeIds[k] as EntityId);
-      if (i >= 0) return moveClassAt(st, i);
+      if (i < 0) continue;
+      mask |= 1 << moveClassForLocomotor(st.locomotor[i]);
     }
-    return MoveClass.Track;
+    // Nothing alive in the group: answer for the army the AI would build, which
+    // is the same default this had before and is what keeps a brain with a dead
+    // strike group from concluding the enemy is walkable.
+    return mask === 0 ? 1 << MoveClass.Track : mask;
   }
 
   /**
@@ -4092,10 +4241,19 @@ export class AiBrain {
 
     if (this.amphib === AmphibState.Idle) {
       if (!this.amphibWanted || this.transportCount === 0) return;
-      // The landing party comes OUT of the strike group, so it may only be
-      // taken once the group can still reach its threshold without them.
-      // Otherwise every hull built guarantees a wave that never launches.
-      if (this.strikeCount < AI_NAVAL.minLandingSquad + this.waveThreshold()) return;
+      /*
+       * The landing party comes OUT of the strike group, so the group has to be
+       * able to spare it. THE RESERVE IS `AI_NAVAL.landingReserve` AND IT USED
+       * TO BE `waveThreshold()` — a LAND wave, 12 bodies on a Normal Turtle, so
+       * this asked for fifteen men before it would put four on a four-slot
+       * hull. Measured on Sunder Atoll: three brains that never staged at all.
+       *
+       * It is backwards where it matters most. `amphibWanted` is only true when
+       * the objective is UNREACHABLE ON LAND, so the wave those eleven extra
+       * bodies were being saved for has nowhere to march — the reserve was
+       * protecting an attack that cannot happen from the only attack that can.
+       */
+      if (this.strikeCount < AI_NAVAL.minLandingSquad + AI_NAVAL.landingReserve) return;
       this.stageAmphibious(s);
       return;
     }
@@ -4117,41 +4275,82 @@ export class AiBrain {
     }
   }
 
-  /** Commit a hull and a squad, and send both to the embarkation beach. */
+  /**
+   * Commit a hull and a squad, and send both to the embarkation beach.
+   *
+   * THE SMALLEST HULL THAT FITS, not the biggest hull owned. This took the
+   * largest empty carrier unconditionally, which was harmless while every army
+   * had exactly one — and every army fields two now, a 4-slot landing ship and
+   * an 8-slot heavy. Taking the heavy to move three riflemen leaves the landing
+   * ship idle for the next operation and puts the expensive hull under the guns;
+   * taking the SMALLEST that holds the party keeps a spare, which is what
+   * `AI_NAVAL.maxTransports` = 2 is for.
+   *
+   * CAPACITY IS IN SLOTS AND A SQUAD IS IN BODIES, and the two stopped being
+   * the same number when vehicles were allowed to ride: infantry cost one slot,
+   * a vehicle costs two. `usedSlotsAt` is asked rather than counted, so this
+   * brain's idea of a full hull is the same arithmetic `refusalFor` will apply
+   * when the men actually walk aboard.
+   */
   private stageAmphibious(s: SimContext): void {
     const st = this.store;
     const svc = transportService();
     if (svc === null) return;
 
-    // An empty hull with the most seats. A hull already carrying somebody is
-    // mid-operation by definition and must not be restarted underneath itself.
+    // What the party would consume, so the hull can be sized to it. Capped at
+    // the biggest EMPTY hull available: there is no point sizing against eight
+    // slots that are not on the water.
+    let biggest = 0;
+    for (let k = 0; k < this.transportCount; k++) {
+      const i = st.index(this.transportIds[k] as EntityId);
+      if (i < 0 || (st.flags[i] & ORDERABLE_REJECT) !== 0) continue;
+      if (svc.usedSlotsAt(i) > 0) continue;
+      const cap = svc.capacityAt(i);
+      if (cap > biggest) biggest = cap;
+    }
+    if (biggest <= 0) return;
+    const want = Math.min(biggest, this.landingSlotsWanted());
+
+    // The smallest empty hull that holds `want`. A hull already carrying
+    // somebody is mid-operation by definition and must not be restarted
+    // underneath itself.
     let hull = NONE;
-    let seats = 0;
+    let slots = 0;
     for (let k = 0; k < this.transportCount; k++) {
       const id = this.transportIds[k] as EntityId;
       const i = st.index(id);
       if (i < 0 || (st.flags[i] & ORDERABLE_REJECT) !== 0) continue;
+      if (svc.usedSlotsAt(i) > 0) continue;
       const cap = svc.capacityAt(i);
-      if (cap <= seats || svc.passengerCount(id) > 0) continue;
-      seats = cap; hull = id;
+      if (cap < want) continue;
+      if (hull !== NONE && cap >= slots) continue;
+      slots = cap; hull = id;
     }
-    if (hull === NONE || seats <= 0) return;
+    if (hull === NONE || slots <= 0) return;
 
-    // Infantry only: `TransportService.refusalFor` answers 'not infantry' for
-    // anything else, and asking it here rather than assuming is what keeps this
-    // brain's idea of who can board identical to the human's.
+    // `TransportService.refusalFor` is the same function the human's right
+    // click goes through — it answers 'cannot ride' for anything that is not
+    // cargo and 'full' on the slot arithmetic — so asking it here rather than
+    // assuming is what keeps the two ideas of a legal boarding identical.
     this.amphibSquadCount = 0;
-    for (let k = 0; k < this.strikeCount && this.amphibSquadCount < seats; k++) {
+    let used = 0;
+    for (let k = 0; k < this.strikeCount; k++) {
       const id = this.strikeIds[k] as EntityId;
       const i = st.index(id);
       if (i < 0 || (st.flags[i] & ORDERABLE_REJECT) !== 0) continue;
+      const cost = svc.slotCostAt(i);
+      if (used + cost > slots) continue;
       if (svc.refusalFor(hull, i) !== '') continue;
       if (this.amphibSquadCount >= this.amphibSquad.length) break;
       this.amphibSquad[this.amphibSquadCount++] = id as number;
+      used += cost;
     }
-    if (this.amphibSquadCount < AI_NAVAL.minLandingSquad) {
+    // MEASURED IN SLOTS, like everything else here: two tanks are four slots
+    // and a landing worth running, and they are two BODIES. Counting heads
+    // would refuse exactly the armoured landing the hold was widened for.
+    if (used < AI_NAVAL.minLandingSquad) {
       this.amphibSquadCount = 0;
-      this.amphibVerdict = 'no infantry free to land with';
+      this.amphibVerdict = `nobody free to land with (${slots} slots waiting)`;
       return;
     }
 
@@ -4217,13 +4416,16 @@ export class AiBrain {
     if (s.tick - this.amphibIssuedTick < AI_MILITARY.reissueTicks) return;
     this.amphibIssuedTick = s.tick;
 
-    // Hold the hull ON the beach cell. A transport that wanders is a transport
-    // the squad walks after forever.
-    if (distSq2(st.posX[h], st.posZ[h], this.embarkX, this.embarkZ) > CELL * CELL * 4) {
-      this.issueOrder(
-        OrderKind.Move, this.one(this.amphibHull), 1, this.embarkX, this.embarkZ, NONE,
-      );
-    }
+    // THE HULL BRINGS ITSELF IN NOW, and this is where it used to be done by
+    // hand. `TransportService.callHullIn` runs off the same `OrderKind.Enter`
+    // the squad below is about to receive, so the brain and a player's click go
+    // through one mechanism instead of two that can disagree.
+    //
+    // The old code steered the hull onto `embarkX/embarkZ`, a LAND cell, which
+    // was correct only while carriers were amphibious. They are `waterOnly`
+    // now — see `BuildEntry.waterOnly` — so that destination is unreachable and
+    // the move would have failed silently, every reissue, for the whole
+    // `boardTicks` window.
 
     // One Enter for the whole squad — one command for a group, exactly as a
     // human right-clicking a hull with a box selection produces one.
@@ -4516,6 +4718,8 @@ export class AiBrain {
   get seaSize(): number { return this.seaCells; }
   get warshipSize(): number { return this.warshipCount; }
   get transportSize(): number { return this.transportCount; }
+  /** Recon hulls owned. Its own number for the same reason it is its own role. */
+  get reconHullSize(): number { return this.reconCount; }
   /** Naval yards owned or under construction. */
   get navalYardCount(): number {
     return this.roleCount[BuildRole.NavalYard] + this.roleBuilding[BuildRole.NavalYard];
@@ -4563,6 +4767,7 @@ export class AiBrain {
       navalYards: this.navalYardCount,
       warships: this.warshipCount,
       transports: this.transportCount,
+      reconHulls: this.reconCount,
       landings: this.landingsMade,
       amphibious: this.amphibVerdict,
       superweapons: this.superweaponCount,

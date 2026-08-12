@@ -71,6 +71,17 @@ generators. **Three shipped assets are not generated**, all deliberate, all in `
    listed as CC0 on OpenGameArt shipped a `creativecommons.txt` reading CC-BY 3.0, under a
    different author's name than the page credited. It was rejected rather than shipped mislabelled.
 
+4. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
+   784 kB, downsampled to 1600px. It is the ONLY entry in this list that is **not shipped**: it
+   lives in `docs/`, not `public/`, so it is in no bundle, reaches no player, and is deliberately
+   NOT in the credits screen — `tests/credits-truthful.spec.ts` checks that screen against
+   `public/`, and adding a line for a file the game never loads would make the credits less true,
+   not more. It is listed here because the rule below is about assets nobody generated, and the
+   next person to audit this list should not have to rediscover why the README opens with a
+   painting. The README labels it as key art and keeps the in-engine capture directly beneath it,
+   because a photoreal illustration sitting above the sentence "all art is generated from code" is
+   exactly the quiet falsehood `docs/SPEC_DRIFT_AUDIT.md` catalogues.
+
 This paragraph previously said "cameos, icons and the wordmark are still all generated", which was
 false on two counts the moment the brand assets landed — the wordmark on the title screen and every
 favicon are those PNGs. It said so directly under an instruction to update it in the same commit as
@@ -334,22 +345,111 @@ shipped seed, and no land route between any two of them. Ten battlefields ship n
 - **The map-capability gate:** no navigable water means no naval content is offered at all. Verified
   over all ten shipped maps in `tests/sea-crossing-gate.spec.ts`, which is the only test that loops
   the whole roster.
-- **Naval MOBILITY is exempt from the progression gate where the armies are not land-connected**,
-  and warships are not. The rule is narrower than "ungate naval": *content required to reach the
-  enemy is never progression-gated*. Sunder Atoll shipped with no map unlock so a fresh profile
-  could pick it, and on a fresh profile it was a PERMANENT STALEMATE — `struct.naval` gates all four
-  docks, one mission pays it ("win 10 skirmishes"), every lift is gated on a dock, and
-  `UnlockGate.mirrorAI` resolves the AI against the HUMAN's profile, so all four armies were
-  stranded. Every existing test was green, because "complete army" had been derived over CONTENT
-  with no notion that a battlefield can make one row load-bearing.
+- **THE NAVY IS NOT PROGRESSION-GATED, ANYWHERE, AND THAT IS DELIBERATE.** `struct.naval`,
+  `unit.naval` and `unit.naval.capital` are deleted — from `UNLOCK_TAGS` and from `UNLOCKS`, not
+  merely unreferenced. The exemption they needed (`isSeaMobility` + `mobilityExempt`) is deleted
+  with them. Do not reintroduce any of it.
+
+  The old rule was *content required to reach the enemy is never progression-gated*, and it fired
+  only where `mapForcesSeaCrossing` — water present AND ground split — which is Sunder Atoll and
+  nowhere else. So on Contested Strait and Coral Shore, the two battlefields the lobby sells as
+  naval, a partially progressed profile got no dock, no lift and no warship; `UnlockGate.mirrorAI`
+  resolves the AI against the human's profile, so BOTH sides were dead and the water was scenery.
+  The maps also arrive long before their content — Contested Strait is paid by one win under
+  fifteen minutes, `struct.naval` wanted ten wins on an independent chain — and its own lobby blurb
+  reads "Naval yards earn their cost here."
+
+  The in-match gates are untouched and they are the right ones: a dock needs a real coast, every
+  hull needs a dock, and the four capital ships need the army's tech structure.
+  `tests/sea-crossing-gate.spec.ts` now pins the RULE — no sea-bound entry may name an unlock id —
+  so the next hull added behind one fails there rather than in a player's match.
+- **`waterOnly` and `warship` are two fields because they are two questions.** This was one bit
+  named `naval`: `spawnUnit` read it as "water-only" and `isSeaMobility` read it as "warship",
+  defining the exemption as the flag's ABSENCE. The line was drawn at "does it carry passengers", to
+  protect the unarmed Hover Transport's ability to beach — and two hulls have a hold AND a gun.
+  `mrdSkiff` is intended (a Pact land raider gated on a land structure; the whole army hovers).
+  `rclScow` was not: a dock-built, naval-sortOrder hull with a 68-damage HE bow gun that could drive
+  inland and shell a base. `tests/naval-shore.spec.ts` asserted that roster verbatim under the name
+  "marks exactly the gunned hulls as warships" while excluding two gunned hulls, so the test pinned
+  the defect rather than catching it.
+
+  **The rule now: a hull a SHIPYARD builds never touches dry land, carrier or not.** A carrier does
+  not need to beach — `Transport.place` walks a widening ring for a cell the PASSENGER can stand on
+  and puts the squad on the sand from open water, which is how the AI has landed all along. A land
+  unit that swims is a different thing and keeps `waterOnly: false`.
 - **Naval hulls carry `MoveClass.Naval`**, yards require a coast, and the beach profile is piecewise
   so a dock can actually be placed: coastal buildable ground went 16.4% → 57.4% on contested-strait,
   and coral-shore had **zero** legal dock sites before.
 - **The AI got a navy** — sea survey, a dock on a shore it walks to, warships holding a lane, and an
-  amphibious Board/Cross/Land cycle. Landings on the atoll went 0 → 12. `npm test` deliberately does
-  not run that proof: `tests/amphibious-landing.spec.ts` is the one opt-in file, skipped unless
-  `VM_LANDING_PROBE` is set, because it drives a real 24-minute four-army match and "the brain lands
-  twelve times" is a fact about one seed rather than an invariant.
+  amphibious Board/Cross/Land cycle. `npm test` deliberately does not run that proof:
+  `tests/amphibious-landing.spec.ts` is the one opt-in file, skipped unless `VM_LANDING_PROBE` is
+  set, because it drives a real 24-minute four-army match and a landing count is a fact about one
+  seed rather than an invariant.
+
+  **Re-measured rather than carried forward.** This read "landings went 0 → 12" and the 12 did not
+  reproduce on a later build. Seed 4242, four brains, 24 minutes:
+
+  ```
+                    before          after
+      naval yards   0 / 1 / 0 / 0   1 / 1 / 1 / 1
+      transports    0 / 2 / 0 / 0   2 / 2 / 2 / 0
+      landings      0 / 9 / 0 / 0   5 / 5 / 1 / 0
+  ```
+
+  THREE OF FOUR, NOT FOUR, and the fourth has a named cause: the Reclamation brain founds its dock
+  at minute five, orders a hauler, and jams its Vehicles queue behind a finished unit that cannot
+  egress from a base holding 104 units — banking 23 000 credits while it tries. Present identically
+  BEFORE the change, and the same shape as wall 3 in `ai-naval-yard.spec.ts`. Do not quote "all four
+  armies land".
+
+## Cargo is SLOTS, and a carrier is not a bench
+
+Reported as *"limited to 1 type of ship only that carries 4 troops each"*. Exactly true:
+`cargoSlots > 0` was set on three defs in the whole game, one per army — and the carrier took
+INFANTRY ONLY, so on Sunder Atoll, where no two armies share a land route, the entire vehicle
+roster was unusable against three of your four opponents.
+
+- **Infantry cost one slot, a vehicle costs two** (`SLOT_COST_BY_KIND` in `src/sim/Transport.ts`).
+  Eight slots is four tanks, or eight riflemen, or any mix. `UnitDef.passengers` is `cargoSlots`.
+- **`refusalFor` refuses a carrier as cargo**, and it is the only thing that does. `capacityAt`
+  answers for any non-Building, nothing detects a cycle, and two hulls each holding the other would
+  copy each other's position forever. Nesting used to be prevented as a side effect of the
+  infantry-only rule; removing that rule without this line reopens it.
+- **`store.carrierId` is a real column** — saved through `REF_COLUMNS`, hashed by
+  `Checksum.hashEntities`. It was a service-private `PerEntityU32`, which was two live bugs: a load
+  bumps every `store.gen[i]`, so the stamp check returned 0, `ride` skipped at `held === 0`, `strand`
+  was unreachable, and **every passenger in every saved game came back `Alive | Garrisoned |
+  Immobilized` with no host** — unrenderable, unselectable, untargetable, unmovable, permanently.
+  And two lockstep clients that disagreed about WHICH hull a man was in produced an identical
+  checksum. `GarrisonService` has the sibling column `store.garrisonId`, saved and hashed
+  the same way — TWO columns, so "in a building or in a hull, never both" is true by
+  construction rather than by scan order. The fix actually lands in
+  `GarrisonService.recover`, whose no-host branch is the one neither service had.
+- **`structuralHash()` does NOT cover the column list**, and a commit on this branch said
+  it did. It hashes `MAX_ENTITIES`, the cell and enum counts and three flag bits, on
+  purpose, because the entity chunk is self-describing: `restoreEntities` finds no column
+  and leaves the default. So adding a column does NOT refuse an older save — `BUILD_TAB_COUNT`
+  is in there, which is why the Powers tab did — and a pre-column save comes back with the
+  ids at 0 and the `Garrisoned` bit intact off the `flags` column. That is exactly the
+  state the recovery branches exist to catch, on the first load after this ships.
+- **`UnitState.Drowned` exists to sit on the far side of `Damage.cleanupTick`'s early return for
+  `Selling`.** A sunk transport's squad and a levelled garrison's occupants reached neither
+  scoreboard while comments in both services promised they did.
+- **A carrier comes to the shore when you load it.** `TransportService.callHullIn`, off the same
+  `OrderKind.Enter` a right-click produces. Water is impassable to `MoveClass.Foot`, so
+  `Flowfield.snapToReachable` pulled the squad's goal back to the last dry cell and they stood on
+  the sand while `board` re-stamped the order every tick — 0 aboard, forever. The AI had worked
+  around this privately by steering its own hull onto a LAND cell; that is deleted, because carriers
+  are `waterOnly` now and the destination was unreachable.
+- **The swimmers are `Locomotor.Foot` plus an `amphibious` def bit → `MoveClass.Hover`.** NOT a new
+  `Locomotor` member: `passGrid` sets bits 0-3 only and `findEgressSpot` asks
+  `isPassable(cx, cz, loco)`, so a locomotor with no bit is impassable on every cell of the map and
+  the finished man would sit `ready: true` at the head of the Infantry queue forever, silently, with
+  the player already charged, blocking every rifleman behind him. That is the aircraft egress bug.
+- **`movesShareSpace` replaced `(jc === Naval) !== (cls === Naval)`** in `Steering` and
+  `Movement.relax`. The old test is right for a world of ships and tanks and wrong the moment
+  anything amphibious exists: a destroyer drove straight through the Pact's entire hover army with
+  no separation and no hard relaxation. Silent interpenetration, not a collision.
 
 ## Hard rules
 
@@ -360,7 +460,10 @@ shipped seed, and no land route between any two of them. Ten battlefields ship n
   130 — which is a TARGET, not a description. Measured on the thirteen capture fixtures via
   `renderer.info.render.calls` and reported per shot in `shots/_report.json` as `frame.drawCalls`,
   the real figure is **174–273** (that count includes the three CSM shadow cascades): `08-naval-water`
-  is the cheapest at 174, `01-establishing-base` the dearest at 273. This line read "under 130 draw
+  is the cheapest at 174, `01-establishing-base` the dearest at 273. **Re-measured 2026-08-12 from a
+  fresh `_report.json` and unchanged on every one of the thirteen** — the first time this range has
+  been confirmed rather than inherited, and it survived a release that added thirteen models. This
+  line read "under 130 draw
   calls" as a statement of fact while the counter disagreed by more than 2×; `MAX_DRAW_CALLS` in
   `config.ts` is the aspiration and `AdaptiveResolution`'s own header already records a profile at
   203. Do not quote 130 as achieved, and do not spend draws freely on the grounds that the budget is

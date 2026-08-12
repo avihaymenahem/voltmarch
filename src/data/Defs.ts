@@ -703,8 +703,12 @@ interface UnitSpec {
    */
   crushableBy?: number;
   cargoMax?: number;
-  /** Infantry seats. Omitted = not a transport. */
-  passengers?: number;
+  /** Cargo slots: infantry 1, vehicle 2. Omitted = not a carrier. */
+  cargoSlots?: number;
+  /** See `UnitDef.waterOnly`. Every hull a shipyard builds. */
+  waterOnly?: boolean;
+  /** See `UnitDef.amphibious`. The four swimmers, and nothing else. */
+  amphibious?: boolean;
   deploysInto?: string | null;
   canCapture?: boolean;
   /** Cap on units of this def alive at once. Omitted = unlimited. */
@@ -794,18 +798,31 @@ export const UNLOCK_TAGS: Readonly<Record<string, string>> = {
   mrdZenith: 'unit.specialist',
   rclSlaghurler: 'unit.specialist',
 
-  /* -- unit.naval: escort hulls ------------------------------------------- */
-  transport: 'unit.naval',
-  gunboat: 'unit.naval',
-  submarine: 'unit.naval',
-  mrdCorvette: 'unit.naval',
-  rclScow: 'unit.naval',
-
-  /* -- unit.naval.capital ------------------------------------------------- */
-  destroyer: 'unit.naval.capital',
-  dreadnought: 'unit.naval.capital',
-  mrdMonitor: 'unit.naval.capital',
-  rclHulk: 'unit.naval.capital',
+  /* -- THE NAVY IS NOT PROGRESSION-GATED, AND THAT IS A DECISION -----------
+   * Three groups used to live here — `unit.naval` (escorts and lifts, paid by
+   * "win a skirmish without losing a structure"), `unit.naval.capital` (paid by
+   * "win 40 skirmishes") and `struct.naval` (all four docks, "win 10
+   * skirmishes"). All three are gone, along with the ids in `Missions.ts`.
+   *
+   * They made the two battlefields advertised as naval maps unplayable as such.
+   * `mobilityExempt` lifted the gate only where the sea is the ONLY road, which
+   * is `mapSupportsNaval && !mapLandLinked` — true on Sunder Atoll and nowhere
+   * else. Contested Strait and Coral Shore are one land mass with a sea beside
+   * it, so on those two a partially progressed profile got no dock, no lift and
+   * no warship. `UnlockGate.mirrorAI` resolves the AI against the human's
+   * profile, so BOTH sides were equally dead and the water was scenery.
+   *
+   * Worse, the maps arrive before their content: Contested Strait is unlocked
+   * by `tactics.fast.1` — one win under fifteen minutes — while `struct.naval`
+   * needed ten wins, on an independent chain. Its own lobby blurb reads "Naval
+   * yards earn their cost here."
+   *
+   * The in-match tech gate is untouched and it is the right one: capital ships
+   * still need `battleLab` / `mrdReliquary` / `rclCrucible`, and every hull
+   * still needs a dock on a real coast. What is gone is the PROFILE gate, which
+   * answered "have you played enough" to a question that should be "have you
+   * built the shipyard".
+   * -------------------------------------------------------------------- */
 
   /* -- unit.air: all four armies now have one -----------------------------
    * This read "only two armies have one" and named two keys, which made the
@@ -824,12 +841,6 @@ export const UNLOCK_TAGS: Readonly<Record<string, string>> = {
   rclHornet: 'unit.air',
   vindicator: 'unit.air',
   mig: 'unit.air',
-
-  /* -- struct.naval ------------------------------------------------------- */
-  navalYard: 'struct.naval',
-  subPen: 'struct.naval',
-  mrdSlipway: 'struct.naval',
-  rclDrydock: 'struct.naval',
 
   /* -- unit.commander: the four heroes -------------------------------------
    * ONE PER ARMY, `maxAlive: 1`, 1500 credits off a barracks and a radar.
@@ -956,7 +967,9 @@ function unit(s: UnitSpec): UnitDef {
     crushLevel: s.crushLevel ?? 0,
     crushableBy: s.crushableBy ?? 0,
     cargoMax: s.cargoMax ?? 0,
-    passengers: s.passengers ?? 0,
+    cargoSlots: s.cargoSlots ?? 0,
+    waterOnly: s.waterOnly ?? false,
+    amphibious: s.amphibious ?? false,
     popCost: 1,
     deploysInto: s.deploysInto ?? null,
     canCapture: s.canCapture ?? false,
@@ -1196,36 +1209,42 @@ export const UNITS: readonly UnitDef[] = [
   }),
 
   /* -- Naval -------------------------------------------------------------- *
-   * Locomotor.Hover across the board: `Locomotor` has no Naval member, and
-   * `sim/Flowfield.ts` promotes a Hover unit to MoveClass.Naval the first time
-   * it queries a water cell. Documented at `moveClassForLocomotor`.            */
-  /* -- WHO CARRIES INFANTRY, AND WHY IT IS THESE THREE ---------------------
-   * `passengers` is set on exactly three hulls, and the split is a faction
-   * difference rather than an oversight:
+   * Locomotor.Hover across the board: `Locomotor` has no Naval member, so a
+   * hull's move class is DECLARED by `waterOnly` at spawn rather than guessed
+   * from the cell it launched into. See `BuildEntry.waterOnly`.
    *
-   *   transport  5   Allies + Soviets. A dedicated 900-credit unarmed hull
-   *                  whose entire blurb is this mechanic.
-   *   mrdSkiff   2   The Pact. Their tree draws from no shared pool
-   *                  (`SHARED_POOL_FACTIONS` in Production.ts is Allies and
-   *                  Soviets ONLY), so the Hover Transport does not reach them
-   *                  and sortOrder 60 is empty in both parallel naval lines.
-   *                  The Sandskiff is already amphibious; two seats make it the
-   *                  Pact's insertion hull without making a 550-credit armed
-   *                  raider strictly better than a 900-credit troop ship.
-   *   rclScow    4   The Reclamation, for the same reason. It is described in
-   *                  its own blurb as a barge.
+   * THE NAVAL LINE IS FOUR RUNGS, AND EVERY ARMY HAS ALL FOUR:
    *
-   * The alternative was two new defs at naval sortOrder 60 with two new models,
-   * and it would have bought a symmetry the four armies do not otherwise have.
+   *   sortOrder 62   recon      0 slots, fastest hull afloat, wide sight,
+   *                             a gun that annoys rather than kills
+   *   sortOrder 64   landing    4 slots — two vehicles, or four infantry
+   *   sortOrder 66   heavy      8 slots — four vehicles
+   *   sortOrder 70   escort     the gunned hull
+   *   sortOrder 80   capital    gated on the army's tech structure
+   *
+   * 62/64/66 and not 60/61/62, because the Meridian and Reclamation aircraft
+   * already hold 60 in their Vehicles tabs and `tests/faction3.spec.ts` asserts
+   * Meridian sortOrder is UNIQUE per (faction, tab). The gaps are deliberate:
+   * one more rung can land between any two without renumbering a line.
+   *
+   * A SLOT IS NOT A SEAT: infantry cost one, a vehicle costs two. Before this,
+   * `passengers` counted infantry and only infantry, so an army could not put a
+   * tank on another island at all — which on Sunder Atoll, where there is no
+   * land route between any two armies, meant the whole vehicle roster was
+   * unusable against three of your four opponents.
+   *
+   * The Reclamation's Slag Scow IS the landing rung rather than a fifth hull:
+   * it already had four slots and a barge in its blurb. It keeps its bow gun
+   * and loses the ability to drive inland, which it should never have had.
    */
   unit({
-    key: 'transport', name: 'Hover Transport', blurb: 'Carries a squad across water.',
+    key: 'transport', name: 'Heavy Transport', blurb: 'Eight slots of anything, over open water.',
     faction: Faction.Neutral, kind: EntityKind.Vehicle,
-    cost: 900, buildTime: 12, tab: BuildTab.Vehicles, prereqs: ['navalYard'], sortOrder: 60,
-    model: 'allied_harvester',
-    maxHp: 600, armor: ArmorClass.Light, maxSpeed: 6.0, turnRate: 2.6 - NU.transport.l * 0.14,
+    cost: 1200, buildTime: 15, tab: BuildTab.Vehicles, prereqs: ['navalYard'], sortOrder: 66,
+    model: 'allied_transport',
+    maxHp: 780, armor: ArmorClass.Light, maxSpeed: 5.4, turnRate: 2.6 - NU.transport.l * 0.14,
     locomotor: Locomotor.Hover, radius: hullRadius(NU.transport), sight: 26,
-    weapons: UNARMED, hasTurret: false, passengers: 5,
+    weapons: UNARMED, hasTurret: false, cargoSlots: 8, waterOnly: true,
   }),
   unit({
     key: 'gunboat', name: 'Assault Destroyer', blurb: 'Allied escort. Shoots at everything.',
@@ -1234,7 +1253,7 @@ export const UNITS: readonly UnitDef[] = [
     model: 'allied_destroyer',
     maxHp: 400, armor: ArmorClass.Light, maxSpeed: 7.0, turnRate: 2.6 - NU.gunboat.l * 0.14,
     locomotor: Locomotor.Hover, radius: hullRadius(NU.gunboat), sight: 34,
-    weapons: [w('navalGun')], hasTurret: true,
+    weapons: [w('navalGun')], hasTurret: true, waterOnly: true,
   }),
   unit({
     key: 'destroyer', name: 'Aircraft Cruiser', blurb: 'Allied capital ship.',
@@ -1244,7 +1263,7 @@ export const UNITS: readonly UnitDef[] = [
     model: 'allied_destroyer',
     maxHp: 700, armor: ArmorClass.Medium, maxSpeed: 6.4, turnRate: 2.6 - NU.destroyer.l * 0.14,
     locomotor: Locomotor.Hover, radius: hullRadius(NU.destroyer), sight: 36,
-    weapons: [w('navalGun')], hasTurret: true,
+    weapons: [w('navalGun')], hasTurret: true, waterOnly: true,
   }),
   unit({
     key: 'submarine', name: 'Attack Submarine', blurb: 'Soviet ambush hull.',
@@ -1253,7 +1272,7 @@ export const UNITS: readonly UnitDef[] = [
     model: 'soviet_dreadnought',
     maxHp: 500, armor: ArmorClass.Light, maxSpeed: 6.0, turnRate: 2.6 - NU.submarine.l * 0.14,
     locomotor: Locomotor.Hover, radius: hullRadius(NU.submarine), sight: 30,
-    weapons: [w('torpedo')], hasTurret: false,
+    weapons: [w('torpedo')], hasTurret: false, waterOnly: true,
   }),
   unit({
     key: 'dreadnought', name: 'Dreadnought', blurb: 'Soviet siege ship.',
@@ -1263,7 +1282,7 @@ export const UNITS: readonly UnitDef[] = [
     model: 'soviet_dreadnought',
     maxHp: 900, armor: ArmorClass.Heavy, maxSpeed: 4.0, turnRate: 2.6 - NU.dreadnought.l * 0.14,
     locomotor: Locomotor.Hover, radius: hullRadius(NU.dreadnought), sight: 38,
-    weapons: [w('shipMissile')], hasTurret: true,
+    weapons: [w('shipMissile')], hasTurret: true, waterOnly: true,
   }),
 
   /* ======================================================================
@@ -1348,7 +1367,10 @@ export const UNITS: readonly UnitDef[] = [
     model: 'meridian_skiff',
     maxHp: 190, armor: ArmorClass.Light, maxSpeed: 9.2, turnRate: 2.6 - U.ifv.l * 0.14,
     locomotor: Locomotor.Hover, radius: hullRadius(U.ifv), sight: 32,
-    weapons: [w('arcRepeater')], hasTurret: true, crushableBy: 4, passengers: 2,
+    // NOT `waterOnly`, and it is the case that proves the rule: the Sandskiff is
+    // gated on `mrdForgeyard`, a LAND structure, and the whole Pact army hovers.
+    // It is a land raider that can swim, not a ship that can walk.
+    weapons: [w('arcRepeater')], hasTurret: true, crushableBy: 4, cargoSlots: 2,
     flags: MRD_TURRETED,
   }),
   unit({
@@ -1430,7 +1452,7 @@ export const UNITS: readonly UnitDef[] = [
     model: 'meridian_corvette',
     maxHp: 380, armor: ArmorClass.Light, maxSpeed: 7.6, turnRate: 2.6 - NU.gunboat.l * 0.14,
     locomotor: Locomotor.Hover, radius: hullRadius(NU.gunboat), sight: 34,
-    weapons: [w('mirrorGun')], hasTurret: true,
+    weapons: [w('mirrorGun')], hasTurret: true, waterOnly: true,
     flags: MRD_TURRETED,
   }),
   unit({
@@ -1441,7 +1463,7 @@ export const UNITS: readonly UnitDef[] = [
     model: 'meridian_monitor',
     maxHp: 780, armor: ArmorClass.Medium, maxSpeed: 5.6, turnRate: 2.6 - NU.destroyer.l * 0.14,
     locomotor: Locomotor.Hover, radius: hullRadius(NU.destroyer), sight: 38,
-    weapons: [w('monitorLance')], hasTurret: true,
+    weapons: [w('monitorLance')], hasTurret: true, waterOnly: true,
     flags: MRD_TURRETED,
   }),
 
@@ -1589,11 +1611,11 @@ export const UNITS: readonly UnitDef[] = [
     key: 'rclScow', name: 'Slag Scow', blurb: 'A barge with a bow gun bolted to it.',
     faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
     cost: 850, buildTime: 12, tab: BuildTab.Vehicles,
-    prereqs: ['rclDrydock'], sortOrder: 70,
+    prereqs: ['rclDrydock'], sortOrder: 64,
     model: 'reclaim_scow',
     maxHp: 340, armor: ArmorClass.Light, maxSpeed: 7.2, turnRate: RCL_TURN(NU.gunboat),
     locomotor: Locomotor.Hover, radius: hullRadius(NU.gunboat), sight: 32,
-    weapons: [w('scowGun')], hasTurret: false, passengers: 4,
+    weapons: [w('scowGun')], hasTurret: false, cargoSlots: 4, waterOnly: true,
     flags: RCL_GUNNER,
   }),
   unit({
@@ -1604,7 +1626,7 @@ export const UNITS: readonly UnitDef[] = [
     model: 'reclaim_hulk',
     maxHp: 820, armor: ArmorClass.Heavy, maxSpeed: 4.4, turnRate: RCL_TURN(NU.destroyer),
     locomotor: Locomotor.Hover, radius: hullRadius(NU.destroyer), sight: 36,
-    weapons: [w('hulkBattery')], hasTurret: false,
+    weapons: [w('hulkBattery')], hasTurret: false, waterOnly: true,
     flags: RCL_GUNNER,
   }),
 
@@ -1791,6 +1813,182 @@ export const UNITS: readonly UnitDef[] = [
     locomotor: Locomotor.Air, radius: hullRadius(U.ifv), sight: 32,
     weapons: [w('migCannon')], hasTurret: false, crushableBy: 0,
   }),
+
+  /* ======================================================================
+   * THE NAVAL LINE, COMPLETED — 13 rows APPENDED, never inserted.
+   *
+   * `store.defId` is a raw index into this array and `Replay` records it as
+   * one, so a row landing in the middle would re-bind every unit in every
+   * recording that already exists. This block is the tail; anything added
+   * after it goes after it.
+   *
+   * WHY THESE THIRTEEN. A player on a water map had ONE carrier per army and
+   * nothing else to do with the sea — and the carrier took infantry only, so
+   * on Sunder Atoll, where no two armies share a land route, the whole vehicle
+   * roster was unusable against three of your four opponents. Every army now
+   * has four rungs: a recon hull, a four-slot landing ship, an eight-slot
+   * heavy, and a swimmer who needs no hull at all.
+   *
+   * `mrdSkiff` and `rclScow` already occupied rungs and were not duplicated.
+   * The Sandskiff IS the Pact's raider and the Slag Scow IS the Reclamation's
+   * landing ship; a parallel hull beside either would have bought a symmetry
+   * the four armies do not otherwise have.
+   * ====================================================================== */
+
+  /* -- rung 62: recon. No hold, the widest eyes afloat, a gun that annoys ---
+   * Priced under half an escort and armed with a weapon borrowed from a light
+   * land chassis, so it cannot be mistaken for a cheap warship: it wins nothing
+   * it meets, and it sees two islands away.                                   */
+  unit({
+    key: 'hydrofoil', name: 'Hydrofoil', blurb: 'Sees far. Dies fast.',
+    faction: Faction.Allies, kind: EntityKind.Vehicle,
+    cost: 450, buildTime: 6, tab: BuildTab.Vehicles, prereqs: ['navalYard'], sortOrder: 62,
+    model: 'allied_hydrofoil',
+    maxHp: 180, armor: ArmorClass.Light, maxSpeed: 11.0, turnRate: 2.6 - NU.recon.l * 0.14,
+    locomotor: Locomotor.Hover, radius: hullRadius(NU.recon), sight: 44,
+    weapons: [w('ifvChaingun')], hasTurret: true, waterOnly: true,
+  }),
+  unit({
+    key: 'picketBoat', name: 'Picket Boat', blurb: 'Soviet eyes on the water.',
+    faction: Faction.Soviets, kind: EntityKind.Vehicle,
+    cost: 450, buildTime: 6, tab: BuildTab.Vehicles, prereqs: ['subPen'], sortOrder: 62,
+    model: 'soviet_picket',
+    maxHp: 200, armor: ArmorClass.Light, maxSpeed: 10.4, turnRate: 2.6 - NU.recon.l * 0.14,
+    locomotor: Locomotor.Hover, radius: hullRadius(NU.recon), sight: 42,
+    weapons: [w('lightCannon')], hasTurret: true, waterOnly: true,
+  }),
+  unit({
+    key: 'mrdCutter', name: 'Sun Cutter', blurb: 'A mirror on a hull, and very little else.',
+    faction: FACTION_MERIDIAN, kind: EntityKind.Vehicle,
+    cost: 480, buildTime: 6, tab: BuildTab.Vehicles, prereqs: ['mrdSlipway'], sortOrder: 62,
+    model: 'meridian_cutter',
+    maxHp: 170, armor: ArmorClass.Light, maxSpeed: 11.6, turnRate: 2.6 - NU.recon.l * 0.14,
+    locomotor: Locomotor.Hover, radius: hullRadius(NU.recon), sight: 46,
+    // NOT `glaiveRepeater`, which carries `needsPower`. The Pact's standing
+    // rule is that everything MOBILE keeps firing through a brownout - only
+    // its towers go dark - and `tests/faction3.spec.ts` enforces it over the
+    // whole mobile roster. A scout that stops seeing when the lights go out is
+    // the worst possible time to lose a scout.
+    weapons: [w('mirrorGun')], hasTurret: true, waterOnly: true,
+    flags: MRD_TURRETED,
+  }),
+  unit({
+    key: 'rclSkimmer', name: 'Scrap Skimmer', blurb: 'A coil, an outboard, and no deck to speak of.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
+    cost: 400, buildTime: 5, tab: BuildTab.Vehicles, prereqs: ['rclDrydock'], sortOrder: 62,
+    model: 'reclaim_skimmer',
+    maxHp: 160, armor: ArmorClass.Light, maxSpeed: 11.2, turnRate: RCL_TURN(NU.recon),
+    locomotor: Locomotor.Hover, radius: hullRadius(NU.recon), sight: 42,
+    weapons: [w('spitCoil')], hasTurret: false, waterOnly: true,
+    flags: RCL_GUNNER,
+  }),
+
+  /* -- rung 64: the landing ship. Four slots — two vehicles, or four men ---- */
+  unit({
+    key: 'landingCraft', name: 'Landing Craft', blurb: 'Four slots and a bow ramp.',
+    faction: Faction.Allies, kind: EntityKind.Vehicle,
+    cost: 700, buildTime: 10, tab: BuildTab.Vehicles, prereqs: ['navalYard'], sortOrder: 64,
+    model: 'allied_lighter',
+    maxHp: 460, armor: ArmorClass.Light, maxSpeed: 6.6, turnRate: 2.6 - NU.lighter.l * 0.14,
+    locomotor: Locomotor.Hover, radius: hullRadius(NU.lighter), sight: 24,
+    weapons: UNARMED, hasTurret: false, cargoSlots: 4, waterOnly: true,
+  }),
+  unit({
+    key: 'assaultBarge', name: 'Assault Barge', blurb: 'Four slots, welded shut.',
+    faction: Faction.Soviets, kind: EntityKind.Vehicle,
+    cost: 680, buildTime: 10, tab: BuildTab.Vehicles, prereqs: ['subPen'], sortOrder: 64,
+    model: 'soviet_lighter',
+    maxHp: 520, armor: ArmorClass.Light, maxSpeed: 6.0, turnRate: 2.6 - NU.lighter.l * 0.14,
+    locomotor: Locomotor.Hover, radius: hullRadius(NU.lighter), sight: 24,
+    weapons: UNARMED, hasTurret: false, cargoSlots: 4, waterOnly: true,
+  }),
+  unit({
+    key: 'mrdLighter', name: 'Sun Lighter', blurb: 'Four slots under a folded sail.',
+    faction: FACTION_MERIDIAN, kind: EntityKind.Vehicle,
+    cost: 720, buildTime: 10, tab: BuildTab.Vehicles, prereqs: ['mrdSlipway'], sortOrder: 64,
+    model: 'meridian_lighter',
+    maxHp: 440, armor: ArmorClass.Light, maxSpeed: 7.0, turnRate: 2.6 - NU.lighter.l * 0.14,
+    locomotor: Locomotor.Hover, radius: hullRadius(NU.lighter), sight: 26,
+    weapons: UNARMED, hasTurret: false, cargoSlots: 4, waterOnly: true,
+    flags: MRD_MOVER,
+  }),
+
+  /* -- rung 66: the heavy. Eight slots — four vehicles ---------------------- */
+  unit({
+    key: 'mrdArgosy', name: 'Argosy', blurb: 'Eight slots. The Pact arrives all at once.',
+    faction: FACTION_MERIDIAN, kind: EntityKind.Vehicle,
+    cost: 1250, buildTime: 15, tab: BuildTab.Vehicles, prereqs: ['mrdSlipway'], sortOrder: 66,
+    model: 'meridian_argosy',
+    maxHp: 740, armor: ArmorClass.Light, maxSpeed: 5.6, turnRate: 2.6 - NU.transport.l * 0.14,
+    locomotor: Locomotor.Hover, radius: hullRadius(NU.transport), sight: 28,
+    weapons: UNARMED, hasTurret: false, cargoSlots: 8, waterOnly: true,
+    flags: MRD_MOVER,
+  }),
+  unit({
+    key: 'rclHauler', name: 'Slag Hauler', blurb: 'Eight slots of somebody else’s ship.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Vehicle,
+    cost: 1100, buildTime: 14, tab: BuildTab.Vehicles, prereqs: ['rclDrydock'], sortOrder: 66,
+    model: 'reclaim_hauler',
+    maxHp: 800, armor: ArmorClass.Heavy, maxSpeed: 5.0, turnRate: RCL_TURN(NU.transport),
+    locomotor: Locomotor.Hover, radius: hullRadius(NU.transport), sight: 24,
+    weapons: UNARMED, hasTurret: false, cargoSlots: 8, waterOnly: true,
+    flags: RCL_MOVER,
+  }),
+
+  /* -- the swimmers: infantry who need no hull at all ----------------------
+   * `amphibious` maps them to `MoveClass.Hover`, the one ground class
+   * `Flowfield.rebuildCost` does not block on a wet cell. It is a bit on the
+   * def and NOT a new `Locomotor` member, which is not a style choice:
+   * `passGrid` sets bits 0-3 only and `Production.findEgressSpot` asks
+   * `isPassable(cx, cz, loco)`, so a locomotor with no bit is impassable on
+   * every cell of the map. The finished man would sit `ready: true` at the head
+   * of the Infantry queue forever, silently, with the player already charged,
+   * blocking every rifleman behind him — the aircraft egress bug, which
+   * `core/types.ts` documents twice as the thing never to do again.
+   *
+   * Slow, soft and visible: a raiding tool and the answer to losing your last
+   * carrier, not a main line. Every one of them is slower than the rifleman it
+   * shares a barracks with, and out on open water there is nothing to hide
+   * behind.                                                                  */
+  unit({
+    key: 'frogman', name: 'Frogman', blurb: 'Swims. Everything else about him is worse.',
+    faction: Faction.Allies, kind: EntityKind.Infantry,
+    cost: 350, buildTime: 7, tab: BuildTab.Infantry, prereqs: ['barracks'], sortOrder: 40,
+    model: 'allied_frogman',
+    maxHp: 105, armor: ArmorClass.Infantry, maxSpeed: 2.9, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 26,
+    weapons: [w('rifle')], hasTurret: false, crushableBy: 1, amphibious: true,
+  }),
+  unit({
+    key: 'navalInfantry', name: 'Naval Infantry', blurb: 'Swims. Cheaply, and in numbers.',
+    faction: Faction.Soviets, kind: EntityKind.Infantry,
+    cost: 320, buildTime: 6, tab: BuildTab.Infantry, prereqs: ['barracks'], sortOrder: 40,
+    model: 'soviet_diver',
+    maxHp: 115, armor: ArmorClass.Infantry, maxSpeed: 2.8, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 24,
+    weapons: [w('conscriptRifle')], hasTurret: false, crushableBy: 1, amphibious: true,
+  }),
+  unit({
+    key: 'mrdTidewalker', name: 'Tidewalker', blurb: 'Walks on the water. Slowly.',
+    faction: FACTION_MERIDIAN, kind: EntityKind.Infantry,
+    cost: 380, buildTime: 7, tab: BuildTab.Infantry,
+    prereqs: ['mrdChapterhouse'], sortOrder: 40,
+    model: 'meridian_tidewalker',
+    maxHp: 100, armor: ArmorClass.Infantry, maxSpeed: 3.0, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 28,
+    weapons: [w('pulseCarbine')], hasTurret: false, crushableBy: 1, amphibious: true,
+    flags: MRD_FOOT | EntityFlag.CanAttack,
+  }),
+  unit({
+    key: 'rclDredger', name: 'Dredger', blurb: 'Comes up the beach with a prod and bad intentions.',
+    faction: FACTION_RECLAIM, kind: EntityKind.Infantry,
+    cost: 300, buildTime: 6, tab: BuildTab.Infantry, prereqs: ['rclRookery'], sortOrder: 40,
+    model: 'reclaim_dredger',
+    maxHp: 95, armor: ArmorClass.Infantry, maxSpeed: 3.0, turnRate: 6.0,
+    locomotor: Locomotor.Foot, radius: hullRadius(U.infantry), sight: 24,
+    weapons: [w('arcProd')], hasTurret: false, crushableBy: 1, amphibious: true,
+    flags: RCL_FOOT | EntityFlag.CanAttack,
+  }),
 ];
 
 /* ==========================================================================
@@ -1909,7 +2107,7 @@ export const BUILDINGS: readonly BuildingDef[] = [
     // One flat list for both armies; `def.faction` does the filtering, which is
     // why the Allied and Soviet anti-armour troopers sit side by side here.
     produces: ['gi', 'javelin', 'conscript', 'attackDog', 'flakTrooper',
-      'engineer', 'fieldMarshal', 'commissar'],
+      'frogman', 'navalInfantry', 'engineer', 'fieldMarshal', 'commissar'],
     producesTab: BuildTab.Infantry,
     // Infantry walk out of a door, not a vehicle ramp: half a cell is enough.
     exitClearance: 2,
@@ -1942,7 +2140,8 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: Faction.Allies, cost: 1000, buildTime: 14, tab: BuildTab.Structures,
     prereqs: ['refinery'], sortOrder: 70, model: 'navalYard', dim: NB.navalYard,
     maxHp: 1000, power: -30, sight: 24,
-    produces: ['transport', 'gunboat', 'destroyer'], producesTab: BuildTab.Vehicles,
+    produces: ['hydrofoil', 'landingCraft', 'transport', 'gunboat', 'destroyer'],
+    producesTab: BuildTab.Vehicles,
     exitClearance: 8,
   }),
   building({
@@ -1950,7 +2149,8 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: Faction.Soviets, cost: 1000, buildTime: 14, tab: BuildTab.Structures,
     prereqs: ['refinery'], sortOrder: 70, model: 'subPen', dim: NB.subPen,
     maxHp: 1000, power: -30, sight: 24,
-    produces: ['transport', 'submarine', 'dreadnought'], producesTab: BuildTab.Vehicles,
+    produces: ['picketBoat', 'assaultBarge', 'transport', 'submarine', 'dreadnought'],
+    producesTab: BuildTab.Vehicles,
     exitClearance: 8,
   }),
   building({
@@ -2051,7 +2251,7 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: FACTION_MERIDIAN, cost: 500, buildTime: 10, tab: BuildTab.Structures,
     prereqs: ['mrdSolarArray'], sortOrder: 30, model: 'meridian_chapterhouse', dim: B.barracks,
     maxHp: 750, power: -20, sight: 20,
-    produces: ['mrdWayfarer', 'mrdLancer', 'mrdArtificer', 'mrdHierarch'],
+    produces: ['mrdWayfarer', 'mrdLancer', 'mrdTidewalker', 'mrdArtificer', 'mrdHierarch'],
     producesTab: BuildTab.Infantry,
     exitClearance: 2,
     flags: mrdFlags(-20, EntityFlag.IsFactory | EntityFlag.PrimaryFactory),
@@ -2085,7 +2285,8 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: FACTION_MERIDIAN, cost: 1000, buildTime: 14, tab: BuildTab.Structures,
     prereqs: ['mrdCistern'], sortOrder: 70, model: 'meridian_slipway', dim: NB.navalYard,
     maxHp: 950, power: -30, sight: 24,
-    produces: ['mrdCorvette', 'mrdMonitor'], producesTab: BuildTab.Vehicles,
+    produces: ['mrdCutter', 'mrdLighter', 'mrdArgosy', 'mrdCorvette', 'mrdMonitor'],
+    producesTab: BuildTab.Vehicles,
     exitClearance: 8,
     flags: mrdFlags(-30, EntityFlag.IsFactory | EntityFlag.PrimaryFactory),
   }),
@@ -2172,7 +2373,7 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: FACTION_RECLAIM, cost: 450, buildTime: 9, tab: BuildTab.Structures,
     prereqs: ['rclFurnace'], sortOrder: 30, model: 'reclaim_rookery', dim: B.barracks,
     maxHp: 850, power: -20, sight: 20,
-    produces: ['rclPicker', 'rclSlagger', 'rclTinker', 'rclBaron'],
+    produces: ['rclPicker', 'rclSlagger', 'rclDredger', 'rclTinker', 'rclBaron'],
     producesTab: BuildTab.Infantry,
     exitClearance: 2,
     flags: rclFlags(-20, EntityFlag.IsFactory | EntityFlag.PrimaryFactory),
@@ -2206,7 +2407,8 @@ export const BUILDINGS: readonly BuildingDef[] = [
     faction: FACTION_RECLAIM, cost: 1000, buildTime: 14, tab: BuildTab.Structures,
     prereqs: ['rclSorter'], sortOrder: 70, model: 'reclaim_drydock', dim: NB.navalYard,
     maxHp: 1050, power: -30, sight: 24,
-    produces: ['rclScow', 'rclHulk'], producesTab: BuildTab.Vehicles,
+    produces: ['rclSkimmer', 'rclScow', 'rclHauler', 'rclHulk'],
+    producesTab: BuildTab.Vehicles,
     exitClearance: 8,
     flags: rclFlags(-30, EntityFlag.IsFactory | EntityFlag.PrimaryFactory),
   }),

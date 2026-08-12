@@ -579,6 +579,14 @@ export class DamageSystem {
       return;
     }
 
+    // --- but going down inside something else IS a death -------------------
+    // `UnitState.Drowned` exists to sit on the other side of that `return`.
+    // A sunk transport's squad and a levelled garrison's occupants produce no
+    // second fireball and no second wreck - the host already made both - but
+    // they are losses, and for years they reached neither scoreboard while two
+    // comments in `Transport.ts` and `Garrison.ts` said they did.
+    const quiet = st.state[i] === UnitState.Drowned;
+
     // --- player statistics ----------------------------------------------
     const victim = w.players[player as number];
     if (victim !== undefined) {
@@ -590,6 +598,8 @@ export class DamageSystem {
       if (kind === EntityKind.Building) scorer.stats.buildingsKilled++;
       else if (kind === EntityKind.Infantry || kind === EntityKind.Vehicle) scorer.stats.unitsKilled++;
     }
+
+    if (quiet) return;
 
     // --- the boom --------------------------------------------------------
     switch (kind) {

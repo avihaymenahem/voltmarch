@@ -65,11 +65,11 @@
 
 import { chromium } from 'playwright';
 import sharp from 'sharp';
-import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { serve } from './lib/serve.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 /*
@@ -83,8 +83,12 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
  * before-set went with it mid-session. Sibling directory, no shared parent.
  */
 const OUT = join(ROOT, 'shots-sobel');
-const PORT = 4319;
-const BASE = `http://localhost:${PORT}/`;
+/**
+ * A HINT — and the fifth tool to hard-code 4319, which is what made the number
+ * worthless. `serve()` walks off a busy port onto one the OS says is free and
+ * proves what it lands on; see the header of `tools/lib/serve.mjs`.
+ */
+const PORT_HINT = 4319;
 
 /** The bible quotes its pixel tolerances at 1440p; so does every other probe here. */
 const VIEWPORT = { width: 2560, height: 1440 };
@@ -455,37 +459,43 @@ writeFileSync(cfgPath, [
   `};`,
 ].join('\n'));
 
-const server = spawn('npx', ['vite', '--config', cfgPath, '--port', String(PORT), '--strictPort'], {
-  cwd: ROOT, shell: process.platform === 'win32', stdio: 'pipe',
-});
 /*
- * DRAIN THE SERVER'S PIPES. With `stdio: 'pipe'` and nobody reading, the OS
- * buffer fills and the child blocks on its next write — vite is chatty in dev
- * (every optimised dep, every HMR event) so it hits the wall inside a minute
- * and the next `page.goto` gets ERR_CONNECTION_REFUSED with no explanation.
- * Two runs died that way.
+ * THE IDENTITY CHECK HERE IS THE WEAKER OF THE TWO, AND IT SAYS SO.
+ *
+ * A preview tool can byte-compare the `index.html` it is served against the
+ * `dist/` on disk, which is conclusive. This runs the DEV server, and a dev
+ * server transforms everything it serves, so there is no file to compare. What
+ * `serve({ mode: 'dev' })` does instead is ask the origin for
+ * `/@fs/<this root>/package.json?raw` and compare THOSE bytes: vite answers an
+ * absolute path only if it is inside its own `fs.allow`, which defaults to the
+ * workspace root it was started with, so a server rooted at another worktree
+ * falls through to the SPA fallback and fails the compare.
+ *
+ * WHAT THAT PROVES: the answering server is rooted at this tree. WHAT IT DOES
+ * NOT: anything about the module graph it has cached — a leaked dev server from
+ * an EARLIER run of this same checkout passes it while serving stale
+ * transforms. Reading the port off our own child is what rules that one out,
+ * and it is the reason the check is worth having rather than the reason it is
+ * sufficient.
  */
-let serverTail = '';
-const drain = (chunk) => { serverTail = (serverTail + chunk).slice(-4000); };
-server.stdout.on('data', drain);
-server.stderr.on('data', drain);
-server.on('exit', (code) => {
-  if (code !== null && code !== 0) console.error(`vite exited ${code}:\n${serverTail}`);
-});
-const cleanup = () => { try { server.kill(); } catch { /* already gone */ } };
-process.on('exit', cleanup);
-process.on('SIGINT', () => { cleanup(); process.exit(1); });
-
-async function waitForServer(url, timeoutMs = 90_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try { if ((await fetch(url)).ok) return true; } catch { /* not up yet */ }
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  return false;
-}
 console.log('> serving (dev, so /src/** stays importable) ...');
-if (!(await waitForServer(BASE))) { cleanup(); throw new Error(`vite never came up on ${BASE}`); }
+const server = await serve({
+  root: ROOT,
+  mode: 'dev',
+  portHint: PORT_HINT,
+  viteArgs: ['--config', cfgPath],
+  log: console.log,
+});
+const BASE = server.origin;
+const cleanup = () => server.stop();
+/*
+ * vite's own last words, which `serve()` keeps for the same reason this file
+ * used to: with `stdio: 'pipe'` and nobody reading, the OS buffer fills, the
+ * child blocks on its next write — vite is chatty in dev, every optimised dep
+ * and every HMR event — and the next `page.goto` gets ERR_CONNECTION_REFUSED
+ * with no explanation. Two runs died that way.
+ */
+const serverTail = () => server.tail();
 
 const browser = await chromium.launch({
   headless: !headed,
@@ -519,6 +529,7 @@ page.on('pageerror', (e) => problems.push('pageerror: ' + e.message.slice(0, 200
  * optimiser has nothing left to discover.
  */
 const boot = async () => {
+  server.assertAlive('the structure sweep');
   await page.goto(`${BASE}?shot=terrain-showcase&seed=3&fog=off`, { waitUntil: 'load' });
   await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 120_000 });
   await page.evaluate(() => window.__VM.ready());
@@ -534,7 +545,7 @@ for (let attempt = 1; ; attempt++) {
   try { await boot(); break; } catch (err) {
     if (attempt >= 4 || !/context was destroyed|Target closed|Timeout|CONNECTION_REFUSED/i.test(String(err))) {
       console.error(`vite said:
-${serverTail}`);
+${serverTail()}`);
       throw err;
     }
     console.log(`  (vite reloaded the page under us; re-booting, attempt ${attempt + 1})`);

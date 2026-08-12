@@ -373,7 +373,9 @@ Mix them roughly evenly and use Grizzlies as the anti-Rhino element. Javelins be
 in front: they have 24 m of range against a Rhino's 26 and have to walk into the gun. Prism Tanks
 must stop to fire and die to anything that reaches them — keep them behind the line at 30 m, and
 remember the Prism Tank is the one Allied hull that does **not** crush infantry. The Vindicator is
-your base-opener; the Hover Transport is how a squad of Javelins gets across a map without walking.
+your base-opener. On a map with a sea, the Heavy Transport is how four Grizzlies arrive on somebody
+else's beach at the same moment — eight slots at two per vehicle — and the Hydrofoil is 450 credits
+for 44 m of sight, which is every metre the Radar Dome you paid a thousand for can see.
 
 **[Soviet Union](/avihaymenahem/voltmarch/wiki/Faction-Soviets).** Rhinos win fights and lose exchange rates. Conscripts are the best anti-infantry
 value in the game at 0.50 DPS per credit — screen with them and let the Rhinos shoot armour.
@@ -391,9 +393,12 @@ so slope costs you nothing and you can take routes tracked armies will not. Neve
 conscript wave reach the line.
 
 The Pact pays for hovering twice: nothing it fields can crush, so it never wins a ram and never
-clears an infantry screen by driving through it. Its transport is the Sandskiff — two seats on a
-550-credit armed raider, which is a different tool from a 900-credit troop ship: use it to put two
-Sunlancers somewhere nobody expects them, not to move an army.
+clears an infantry screen by driving through it. The Sandskiff holds two slots on a 550-credit armed
+raider and is the only hull in the game with a hold that still crosses a beach — use it to put two
+Sunlancers somewhere nobody expects them, not to move an army. Moving an army is what the Argosy is
+for: eight slots, 1250 credits, and a Slipway on a coast. Pact VEHICLES do not need it — they hover
+across on their own — but every Pact infantryman walks, and the Sunlancers you want on the far shore
+are exactly the units that cannot get there without a hull.
 
 **[The Reclamation](/avihaymenahem/voltmarch/wiki/Faction-Reclamation).** Nothing you field has a turret, so every hull must point its chassis at what it
 wants to kill, inside a range band where everyone else is already shooting. The compensation is a full
@@ -402,8 +407,11 @@ Pickers and Grinders in numbers, arcs chaining through the enemy line, Slaghurle
 for anything made of concrete. Never fight at 24 m — close or leave.
 
 Two hulls crush — the Grinder and the Scrapjaw, both at level 5 — which is the army's cheapest answer
-to a mass of infantry after its arcs. The Slag Scow carries four, so a Reclamation landing is four
-Slaggers arriving at a wall that nothing else in the army can hurt.
+to a mass of infantry after its arcs. The Slag Scow holds four slots and keeps its bow gun, so a
+Reclamation landing is four Slaggers arriving at a wall nothing else in the army can hurt, under
+covering fire from the barge that brought them. The Slag Hauler is the cheapest eight-slot hull in
+the game at 1100 and the only carrier anywhere behind Heavy armour — which matters, because the
+Reclamation has **no escort hull** to screen a crossing with.
 
 **Numbers that scale.** Veterancy is worth more than it looks. Three kills gives rank 1 (×1.15
 damage, ×1.10 HP, ×0.9 cooldown); six gives rank 2 (×1.35 damage, ×1.25 HP, ×0.8 cooldown). An elite
@@ -459,7 +467,7 @@ cheapest structure in the game per credit saved, and most players never build on
 trigger; *Hold Ground* fires freely and never repositions for a target. *Aggressive* and *Defensive*
 behave identically in this build — nothing chases a target of opportunity. So: put your defensive
 line on **Hold Ground** so it does not walk off a wall to close on a raider, and put engineers,
-harvester escorts and loaded transports on **Hold Fire** so they do not start fights they are not
+harvester escorts and loaded carriers on **Hold Fire** so they do not start fights they are not
 there for.
 
 **Relocating beats rebuilding.** Moving a structure costs 35 % of its build cost (minimum 50) plus
@@ -512,11 +520,20 @@ no ammunition, no cooldown, no exposure. It has to actually line up: right-click
 the target, not on him, because the pathfinder aims at your click. The kill radius is about 2.2 m for
 a Grizzly.
 
-**Land a squad where the wall is not.** All three transports are Hover, so they cross anything. The
-Hover Transport carries five, the Slag Scow four, the Sandskiff two. The two things worth putting in
-one are engineers (a hamlet, or an enemy structure your tanks already softened past 50 %) and the
-anti-structure infantry the Reclamation and the Allies otherwise cannot get into a base — a Slagger
-does 27 DPS to concrete for 380 credits, the best rate in the game, and cannot walk there alive.
+**Land a squad where the wall is not.** Every army has a four-slot landing ship and an eight-slot
+carrier, and **a slot is not a seat** — infantry cost one, a vehicle costs two — so eight slots is
+four tanks or eight riflemen or any mix. Every one of those hulls is water-only and unloads onto the
+sand from open water; only the Sandskiff crosses a beach, and it holds two.
+
+The things worth putting aboard are engineers (a hamlet, or an enemy structure your tanks already
+softened past 50 %), the anti-structure infantry the Reclamation and the Allies otherwise cannot get
+into a base — a Slagger does 27 DPS to concrete for 380 credits, the best rate in the game, and
+cannot walk there alive — and, now that vehicles ride, the siege hull that was never going to reach
+the far shore under its own power.
+
+**The carrier comes to the shore when you load it.** Select the squad, right-click the hull lying
+offshore, and it moves in to collect them. You do not have to drive it onto the beach first, and
+before this you could not: the squad walked to the sand and stood there.
 
 ---
 
@@ -548,14 +565,17 @@ does 27 DPS to concrete for 380 credits, the best rate in the game, and cannot w
   refinery are up, with three or four bodies garrisoning the block beside it — a garrisoned building
   fires with the sum of its occupants' weapons at +6 m range, and an occupied structure cannot be
   captured out from under you.
-- **Build a Naval Yard on two maps and nowhere else.** Contested Strait and Coral Shore each carry a
-  quarter of the map in open sea — 24.3 % and 26.4 % of cells, one connected body of roughly 63,000
-  and 69,000 m². On those two the naval branch is a real option and a fleet can cross the map. On
-  the other four, water covers 0.0–0.16 % in puddles smaller than a war factory and the whole branch
-  is dead weight. Nothing stops you founding a yard on a landlocked map; it will simply produce hulls
-  with nowhere to go. Note that transports are useful everywhere regardless: all three carriers are
-  Hover and work perfectly well on land, where they are a way to move five men fast rather than a way
-  to cross a sea.
+- **Build a dock on three maps, and you cannot build one anywhere else.** Contested Strait and Coral
+  Shore each carry a quarter of the map in open sea — 24.3 % and 26.4 % of cells, one connected body
+  of roughly 63,000 and 69,000 m² — and [Sunder Atoll](/avihaymenahem/voltmarch/wiki/Sunder-Atoll) is
+  53.8 % water with no land route at all. On the other seven, water covers 0.00–0.23 % in puddles
+  smaller than a war factory, and the whole branch is not offered: the sidebar leaves the docks and
+  every hull behind them out. Even on a wet map the yard must go on the coast — an inland site is
+  refused.
+- **The swimmers are the exception and they are cheap.** Frogman 350, Naval Infantry 320, Tidewalker
+  380, Dredger 300 — built at the barracks, on any map, and they cross open water under their own
+  power. They are slower and dearer than the rifleman standing next to them, so they are a raiding
+  tool and the answer to losing your last carrier, not a main line.
 
 ---
 
@@ -648,7 +668,10 @@ Behaviours worth knowing:
   upward it will raise a Command Post and buy the powers its difficulty allows — Normal gets Ore
   Boost and Emergency Repair, Hard adds the Airstrike and the Orbital Scan, Brutal gets all five —
   and then call them off live measurements. Easy builds no Post and buys nothing.
-- **It does not use transports and it does not garrison.** Its infantry walk.
+- **It runs amphibious operations.** On a map where the sea is the only road it surveys the water,
+  puts a dock on a shore it can walk to, holds a lane with warships and then boards, crosses and
+  lands a squad — the same Enter, Move and Unload orders you would issue. It still does not garrison
+  a building.
 
 ---
 
@@ -682,24 +705,23 @@ Behaviours worth knowing:
 
 Be aware of these before you build a plan around one:
 
-- **Naval is map-dependent, not unusable.** Contested Strait and Coral Shore carve a real sea (24.3 %
-  and 26.4 % of cells, one connected body each); the other four shipped maps carry 0.0–0.16 % in
-  puddles. Pick a coastal map or leave the branch alone. Transports are the exception and are worth
-  building anywhere, because they are Hover and work on land.
-- **Commander *powers* have no button.** All five are implemented, tested, and reachable only from
-  the browser console. The four hero *abilities* are on the HUD and work — build your commander.
+- **Naval is map-dependent.** Contested Strait, Coral Shore and Sunder Atoll carve a real sea; the
+  other seven carry 0.00–0.23 % in puddles and are not offered the branch at all. Pick a wet map or
+  plan without it — and note that a carrier no longer works on land, so there is no such thing as
+  using one as a fast land ferry. The four swimmer infantry are the exception: barracks-built, on
+  every map.
 - **The Prism Tank does not crush**, despite carrying a crush level of 2. It is missing the flag the
   crush resolver actually reads. Every other Allied and Soviet tank crushes; this one does not.
-- **Vehicles cannot ram vehicles.** Fifteen hulls carry a crushable-by number and nothing reads it.
+- **Vehicles cannot ram vehicles.** Eleven hulls carry a crushable-by number and nothing reads it.
   Only infantry are crushable.
 - **Aggressive and Defensive stance are the same thing.** Nothing chases a target of opportunity in
   this build. Hold Fire and Hold Ground are the two that do something.
 - **Roads are not a speed bonus.** They change routing, not velocity.
 - **There is no high-ground advantage.** Terrain blocks direct fire; it does not buff it.
 - **Objective credits are never paid.** See [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
-- **Cosmetic rewards render nothing.** Fourteen insignia and decals exist as text on a screen.
-- **Passengers do not shoot.** A loaded transport fires with its own gun and nothing else. A
-  *garrison* volleys with everyone inside; a transport is a delivery.
+- **Cosmetic rewards render nothing.** Seventeen insignia and decals exist as text on a screen.
+- **Passengers do not shoot.** A loaded carrier fires with its own gun and nothing else. A
+  *garrison* volleys with everyone inside; a carrier is a delivery.
 
 ---
 

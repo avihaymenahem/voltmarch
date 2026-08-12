@@ -144,7 +144,9 @@ over it. On the right of the head row you get, depending on what is selected:
 - **Relocate** — for exactly one owned structure; see [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building)
 - **Ability** — for exactly one commander; prints the ability name when ready and a countdown
   in seconds while cooling
-- **Cargo / Unload** — for a transport; see [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs)
+- **Cargo / Unload** — for any selected hulls with a hold, summed across all of them; see
+  [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs)
+- **Evacuate** — for any selected structures with somebody garrisoned inside
 
 ### Objectives (top right) and toasts (top left)
 
@@ -197,7 +199,7 @@ The rules, in priority order:
 | An enemy structure | An engineer | Capture |
 | An enemy | Anything armed | Attack |
 | An enemy | Nothing armed | Walk there anyway |
-| Your own transport | Infantry | Board it |
+| Your own hull with a hold | Infantry, plus any vehicles selected with them | Board it — and the hull comes to the shore to collect them |
 | A neutral civilian structure | An engineer | Capture it permanently |
 | A neutral civilian structure | Infantry | Garrison it |
 | A damaged friendly structure | An engineer | Walk in and repair it |

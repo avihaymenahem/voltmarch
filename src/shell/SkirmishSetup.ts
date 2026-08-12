@@ -224,11 +224,11 @@ export function applyStartCondition(value: StartCondition): void {
  *
  * THREE NOW, AND THE THIRD IS A DIFFERENT ARGUMENT FROM THE FIRST TWO.
  * `sunder-atoll` is open on request, and the request is right for a reason the
- * other five entries make plain: naval yards, pens, slipways, drydocks, nine
- * hulls, the transport and the whole amphibious layer need water, four of the
- * six maps are landlocked, and BOTH of the two that are not sit behind mission
- * gates ("win inside 15 minutes", "build 750 units"). So on a fresh profile
- * every one of those was content the player could not reach — the same defect
+ * other five entries make plain: naval yards, pens, slipways, drydocks and
+ * eighteen hulls need water, four of the six maps are landlocked, and BOTH of
+ * the two that are not sit behind mission gates ("win inside 15 minutes",
+ * "build 750 units"). So on a fresh profile every one of those was content the
+ * player could not reach — the same defect
  * `MAP_SEAS`' own header records for the maps that shipped dry, arriving by a
  * different route. A map that teaches the sea has to be there before the
  * missions that reward it.

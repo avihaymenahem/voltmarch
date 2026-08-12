@@ -47,9 +47,9 @@ Read it as shapes, not as numbers:
 | Class | Who has it |
 |---|---|
 | Infantry | Every foot unit, including all four commanders |
-| Light | IFV, Prism Tank, all aircraft, most Pact hulls, most Reclamation hulls, escort ships, the Hover Transport |
+| Light | IFV, Prism Tank, all aircraft, most Pact hulls, most Reclamation hulls, escort ships, all four recon hulls, and every carrier except the Slag Hauler |
 | Medium | Grizzly, Grinder, Aircraft Cruiser, Sunmonitor |
-| Heavy | Rhino, Apocalypse, harvesters, construction vehicles, Dreadnought, Reclaimed Hulk |
+| Heavy | Rhino, Apocalypse, harvesters, construction vehicles, Dreadnought, Reclaimed Hulk, **Slag Hauler** |
 | Concrete | Every structure |
 | Wood | Wrecks, crates, trees and rocks |
 
@@ -72,10 +72,10 @@ column says — see [Chain lightning](#chain-lightning).
 
 | Weapon | Carried by | Damage | Warhead | Range | Cycle | Raw DPS | Splash | Hits air |
 |---|---|---|---|---|---|---|---|---|
-| M1 Carbine | G.I. | 18 x3 | Small Arms | 18 | 1.03 s | 52 | – | yes |
-| AK Pattern | Conscript | 16 x3 | Small Arms | 17 | 0.96 s | 50 | – | yes |
-| Pulse Carbine | Wayfarer | 15 x3 | Small Arms | 20 | 0.96 s | 47 | – | yes |
-| Arc Prod | Scrap Picker | 26 | Tesla | 14 | 1.05 s | 25 | – | yes |
+| M1 Carbine | G.I., Frogman | 18 x3 | Small Arms | 18 | 1.03 s | 52 | – | yes |
+| AK Pattern | Conscript, Naval Infantry | 16 x3 | Small Arms | 17 | 0.96 s | 50 | – | yes |
+| Pulse Carbine | Wayfarer, Tidewalker | 15 x3 | Small Arms | 20 | 0.96 s | 47 | – | yes |
+| Arc Prod | Scrap Picker, Dredger | 26 | Tesla | 14 | 1.05 s | 25 | – | yes |
 | Jaws | Attack Dog | 55 | Small Arms | 3.6 | 1.10 s | 50 | – | no |
 | Shoulder Rocket | Javelin | 60 | Rocket | 24 | 2.20 s | 27 | 2.4 | yes |
 | Flak Burst | Flak Trooper | 11 x4 | Autocannon | 20 | 1.36 s | 32 | 1.1 | yes |
@@ -92,15 +92,15 @@ tank. Both elevate, so both are also anti-air.
 
 | Weapon | Carried by | Damage | Warhead | Range | Cycle | Raw DPS | Splash | Hits air |
 |---|---|---|---|---|---|---|---|---|
-| 90 mm Cannon | Grizzly | 55 | Armour-Piercing | 24 | 1.50 s | 37 | 1.6 | no |
+| 90 mm Cannon | Grizzly, Picket Boat | 55 | Armour-Piercing | 24 | 1.50 s | 37 | 1.6 | no |
 | 125 mm Cannon | Rhino | 78 | Armour-Piercing | 26 | 2.00 s | 39 | 2.1 | no |
 | Twin 125 mm | Apocalypse | 60 x2 | Armour-Piercing | 28 | 2.58 s | 47 | 2.2 | no |
-| 25 mm Multigunner | Multigunner IFV | 11 x5 | Autocannon | 22 | 0.84 s | 65 | – | yes |
+| 25 mm Multigunner | Multigunner IFV, Hydrofoil | 11 x5 | Autocannon | 22 | 0.84 s | 65 | – | yes |
 | Prism Emitter | Prism Tank, Field Marshal | 92 | Prism | 30 | 2.60 s | 35 | – | no |
 | Focus Lance | Solarch, Hierarch | 60 | Armour-Piercing | 26 | 1.60 s | 38 | 1.4 | no |
 | Arc Repeater | Sandskiff | 13 x4 | Autocannon | 23 | 0.76 s | 68 | – | yes |
 | Zenith Emitter | Zenith Emitter | 94 | Prism | 33 | 2.90 s | 32 | – | no |
-| Spit Coil | Arcspitter | 30 | Tesla | 16 | 0.95 s | 32 | – | yes |
+| Spit Coil | Arcspitter, Scrap Skimmer | 30 | Tesla | 16 | 0.95 s | 32 | – | yes |
 | Grinder Arc | Grinder, Scrap Baron | 70 | Tesla | 18 | 1.90 s | 37 | – | no |
 | Slag Mortar | Slaghurler | 124 | High Explosive | 42 (min 11) | 4.30 s | 29 | 5.8 | no |
 | Vindicator AGM | Vindicator | 62 x2 | Rocket | 23 | 2.58 s | 48 | 2.2 | yes |
@@ -116,7 +116,7 @@ tank. Both elevate, so both are also anti-air.
 | 5 in Deck Gun | Assault Destroyer, Aircraft Cruiser | 74 | High Explosive | 34 | 2.20 s | 34 | 3.6 | no |
 | Torpedo Tube | Attack Submarine | 105 | Rocket | 30 | 3.40 s | 31 | 3.0 | no |
 | Cruise Battery | Dreadnought | 120 x2 | Rocket | 42 | 4.35 s | 55 | 4.5 | yes |
-| Mirror Battery | Kite Corvette | 70 | High Explosive | 33 | 2.10 s | 33 | 3.4 | no |
+| Mirror Battery | Kite Corvette, Sun Cutter | 70 | High Explosive | 33 | 2.10 s | 33 | 3.4 | no |
 | Monitor Lance | Sunmonitor | 110 x2 | Rocket | 40 | 4.12 s | 53 | 4.2 | yes |
 | Scow Gun | Slag Scow | 68 | High Explosive | 32 | 2.30 s | 30 | 3.2 | no |
 | Hulk Battery | Reclaimed Hulk | 116 x2 | High Explosive | 38 | 3.90 s | 59 | 4.4 | no |
@@ -144,14 +144,16 @@ Air is a hard veto applied *before* the armour matrix, and an explicit attack
 order does not bypass it — a tank ordered onto a gunship will track it with the
 turret and never pull the trigger.
 
-**Can hit air:** every rifle and carbine, the Arc Prod, the Javelin, the Flak
-Trooper, the Sunlancer, the IFV chaingun, the Sandskiff's repeater, all four
-aircraft, the Dreadnought and the Sunmonitor, and the Multigunner AA, Prism
-Tower, Tesla Coil, Helios Spire and Arc Pylon.
+**Can hit air:** every rifle and carbine — which includes all four swimmer
+infantry — the Arc Prod, the Javelin, the Flak Trooper, the Sunlancer, the IFV
+chaingun and the Hydrofoil that shares it, the Sandskiff's repeater, the Scrap
+Skimmer's coil, all four aircraft, the Dreadnought and the Sunmonitor, and the
+Multigunner AA, Prism Tower, Tesla Coil, Helios Spire and Arc Pylon.
 
-**Cannot:** every tank cannon, every artillery piece, the flamethrower, the
-torpedo, the naval deck guns, the siege beams, the emplaced MG, the Glaive Post
-and the Spitpost.
+**Cannot:** every tank cannon — including the one the Picket Boat carries to
+sea — every artillery piece, the flamethrower, the torpedo, the naval deck guns,
+the Mirror Battery on both the Corvette and the Sun Cutter, the siege beams, the
+emplaced MG, the Glaive Post and the Spitpost.
 
 That gap is the point of owning aircraft: an armoured column with no escort
 genuinely cannot answer one.

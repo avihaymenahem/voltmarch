@@ -102,9 +102,10 @@ What each of the letters actually does:
   under artillery.
 - **D — Deploy.** Unpacks a construction vehicle into its Construction Yard **where it stands**.
   It is not a move order — drive it into place first. A structure that folds back into a vehicle
-  takes the same key, and so does a transport with a squad aboard: the men get out around the
-  hull. Double-clicking a construction vehicle does the same thing, and so does right-clicking it
-  while it is selected.
+  takes the same key; so does a loaded hull, which puts its cargo down around itself; and so does
+  an occupied structure, which turns its garrison out the same way. All three act on the whole
+  selection, so one press empties every loaded hull you have. Double-clicking a construction
+  vehicle does the same thing, and so does right-clicking it while it is selected.
 - **F — Force fire.** Arms the cursor to fire on the next click, whatever is there — ground,
   wreckage or your own hardware. It works into unexplored shroud, which nothing else does.
 - **Y — Set rally point.** Arms the cursor to move the rally flag of every selected factory.

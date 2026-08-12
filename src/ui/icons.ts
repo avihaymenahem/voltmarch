@@ -849,6 +849,26 @@ const STRUCTURE_RULES: ReadonlyArray<readonly [string, IconName]> = [
   ['chapterhouse', 'barracks'], ['forgeyard', 'warfactory'], ['oculus', 'radar'],
   ['vault', 'silo'], ['slipway', 'navalyard'], ['reliquary', 'lab'],
   ['rampart', 'wall'], ['glaive', 'turret'], ['helios', 'prism'],
+  ['infirmary', 'depot'],
+
+  // THE RECLAMATION, for exactly the reason stated above the Pact block, and
+  // that army never got one. Its structures are named out of a scrapyard, so
+  // not one of them matched the shared vocabulary: an Ore Sorter is a REFINERY
+  // and drew a generic depot, a Rookery is a BARRACKS and drew a depot, a
+  // Breaker Dock is a NAVAL YARD and drew a depot. Nine of the eleven slots in
+  // the tab were the same glyph, which is the failure mode the Pact block was
+  // written to fix and nobody carried across.
+  //
+  // Found by `tests/icons-coverage.spec.ts`, which is new and exists because
+  // `iconForBuildable` always returns a REAL icon: a key no rule matches draws
+  // the tab's last resort and nothing anywhere goes red.
+  //
+  // 'breakeryard' must precede 'breakerdock' only in the sense that both are
+  // spelled out — 'breaker' alone would collide.
+  ['foundry', 'conyard'], ['furnace', 'power'], ['sorter', 'refinery'],
+  ['rookery', 'barracks'], ['breakeryard', 'warfactory'], ['spotter', 'radar'],
+  ['slagheap', 'silo'], ['breakerdock', 'navalyard'], ['crucible', 'lab'],
+  ['patchyard', 'depot'],
 
   ['conyard', 'conyard'], ['constructionyard', 'conyard'], ['construction', 'conyard'],
   // THE SUPERWEAPONS, and they must all precede the `silo` and `helios` rules
@@ -885,10 +905,49 @@ const UNIT_RULES: ReadonlyArray<readonly [string, IconName]> = [
   ['zenith', 'artillery'], ['carryall', 'mcv'], ['kestrel', 'helicopter'],
   ['corvette', 'ship'], ['sunmonitor', 'ship'],
 
+  // THE THIRTEEN ROWS THAT FINISHED THE NAVAL LINE. Same reason again: not one
+  // of these words is in the shared vocabulary, so without them a recon hull, a
+  // landing ship and a swimmer would all take their tab's last resort — a tank,
+  // a tank and a rifleman. That is `iconForBuildable` working as documented
+  // rather than failing, which is exactly why nothing goes red when it happens.
+  //
+  // THE LIFTS TAKE `apc`, NOT `ship`, and that is a decision rather than an
+  // oversight. `transport` has mapped to `apc` since this table was written,
+  // and the thing a player needs off a glyph in a grid of warships is "this one
+  // carries your army" — which a hull silhouette does not say and the troop box
+  // does. The two eight-slot heavies take it for the same reason.
+  //
+  // `picketBoat` and `navalInfantry` are deliberately absent: `boat` and
+  // `infantry` below already answer them, and a rule that restates a rule is a
+  // rule that can disagree with it later.
+  // THE RECLAMATION, which is the one army that never got a block of its own.
+  // Found while adding the rows above: the Pact has had one since it shipped,
+  // and the fourth army's unit words are just as absent from the shared
+  // vocabulary — so `rclScrapper`, `rclCrawler`, `rclHornet`, `rclScow` and
+  // `rclHulk` all drew a TANK and `rclTinker` drew a rifleman. Nothing went red,
+  // because the tab fallback is `iconForBuildable` working as documented.
+  //
+  // 'scrapjaw' precedes the generic 'scrap' idea and 'slaghurler' precedes
+  // 'slagger', because the first match wins and the longer word is the
+  // narrower claim. 'grinder' is a tank, 'arcspitter' a fast buggy.
+  ['scrapjaw', 'harvester'], ['picker', 'infantry'], ['slaghurler', 'artillery'],
+  ['slagger', 'rocketInfantry'], ['tinker', 'engineer'], ['arcspitter', 'apc'],
+  ['grinder', 'tank'], ['crawler', 'mcv'], ['swarmhornet', 'helicopter'],
+  ['slagscow', 'apc'], ['reclaimedhulk', 'ship'],
+
+  ['hydrofoil', 'ship'], ['cutter', 'ship'], ['skimmer', 'ship'],
+  ['landingcraft', 'apc'], ['barge', 'apc'], ['lighter', 'apc'],
+  ['argosy', 'apc'], ['hauler', 'apc'],
+  ['frogman', 'infantry'], ['tidewalker', 'infantry'], ['dredger', 'infantry'],
+
   ['dog', 'dog'], ['hound', 'dog'], ['bear', 'dog'],
   ['engineer', 'engineer'], ['mechanic', 'engineer'], ['spy', 'engineer'], ['saboteur', 'engineer'],
   ['rocket', 'rocketInfantry'], ['missile', 'rocketInfantry'], ['bazooka', 'rocketInfantry'],
   ['flaktroop', 'rocketInfantry'], ['grenad', 'rocketInfantry'],
+  // The Allied anti-armour trooper. It drew a RIFLEMAN, which is the one thing
+  // a player must not read off that slot: the whole point of the unit is that
+  // it is the answer to armour and the rifleman beside it is not.
+  ['javelin', 'rocketInfantry'],
   ['harvest', 'harvester'], ['miner', 'harvester'], ['collector', 'harvester'], ['ore', 'harvester'],
   ['mcv', 'mcv'], ['dozer', 'mcv'], ['deploy', 'mcv'], ['sputnik', 'mcv'],
   ['apoc', 'heavyTank'], ['mammoth', 'heavyTank'], ['rhino', 'heavyTank'], ['heavy', 'heavyTank'],

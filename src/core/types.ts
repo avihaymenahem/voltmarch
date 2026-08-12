@@ -237,6 +237,20 @@ export const enum UnitState {
   Repairing = 14,
   /** Sold or self-destructing; refund already paid. */
   Selling = 15,
+  /**
+   * Went down INSIDE something else - a transport that sank, a garrison whose
+   * building was levelled. No fireball and no wreck of its own, because the
+   * host already produced both, but a real loss that belongs on the scoreboard.
+   *
+   * `Selling` was doing this job and it is the wrong channel: `Damage.cleanupTick`
+   * returns on `Selling` BEFORE the statistics block, which is right for an MCV
+   * unfolding into a Construction Yard and wrong for eight men drowning. Both
+   * `Transport.sink` and `Garrison` carried comments promising these still
+   * counted as lost; neither did, and no test covered it.
+   *
+   * APPENDED, never inserted: `state` is persisted as a raw U8 by `SaveGame`.
+   */
+  Drowned = 16,
 }
 
 /**
@@ -875,14 +889,43 @@ export interface UnitDef extends BuildableDef {
   /** Ore capacity. 0 for non-harvesters. */
   readonly cargoMax: number;
   /**
-   * Infantry seats. 0 means "not a transport", which is 41 of the 44 rows.
+   * Cargo SLOTS. 0 means "not a carrier".
+   *
+   * A slot is not a seat. Infantry cost one, a vehicle costs two
+   * (`TRANSPORT_SLOT_COST`), so an eight-slot hull is four tanks or eight
+   * riflemen or any mix. This was `passengers` and it counted infantry only,
+   * because `TransportService` scanned `byKind[EntityKind.Infantry]` and
+   * nothing else — admitting a vehicle would have made the seat accounting lie
+   * in a way nothing downstream could detect. The scan is hull-indexed now and
+   * the accounting is in slots, so the field means what a player would guess.
    *
    * Deliberately NOT `cargoMax`, which is ore by the tonne and is read as a
    * float fill fraction by every line of `sim/Harvesting.ts`. A harvester with
-   * 600 units of ore aboard is not a transport with 600 passengers, and one
+   * 600 units of ore aboard is not a carrier with 600 passengers, and one
    * column meaning both would have made `store.cargo` mean two things at once.
    */
-  readonly passengers: number;
+  readonly cargoSlots: number;
+  /**
+   * This hull is a SHIP: `MoveClass.Naval` for the life of its slot, and it
+   * never crosses a beach. Authored on every hull a shipyard builds, carriers
+   * included — see `BuildEntry.waterOnly` in `sim/Production.ts` for why this
+   * is separate from the warship flag and what happened when it was not.
+   */
+  readonly waterOnly: boolean;
+  /**
+   * This LAND unit may enter water: `MoveClass.Hover`, which is the one ground
+   * class `Flowfield.rebuildCost` does not block on a wet cell.
+   *
+   * The swimmer infantry, and nothing else — the Pact's hover army gets the
+   * same answer from `Locomotor.Hover` without needing the flag. It is a bit on
+   * the def rather than a new `Locomotor` member on purpose: `passGrid` sets
+   * bits 0-3 only, `Production.findEgressSpot` tests `isPassable(_, _, loco)`,
+   * and a locomotor with no `passGrid` bit is impassable on every cell of the
+   * map — so the finished unit would sit `ready: true` at the head of the
+   * Infantry queue forever, silently, with the player already charged, blocking
+   * every infantryman behind it. That is bit-for-bit the aircraft egress bug.
+   */
+  readonly amphibious: boolean;
   /** Population/queue cost. Always 1 in this build. */
   readonly popCost: number;
   /** Set for MCV: the building key it deploys into. */

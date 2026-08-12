@@ -22,11 +22,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { World, PerEntityF32 } from '../src/core/world';
+import type { EntityStore } from '../src/core/world';
+import { Channels } from '../src/core/events';
+import { Rng } from '../src/core/math';
 import {
-  BuildTab, EntityFlag, EntityKind, Faction, Locomotor, OrderKind, Stance, UnitState,
+  BuildTab, EntityFlag, EntityKind, Faction, Locomotor, NONE, OrderKind, Stance, UnitState,
 } from '../src/core/types';
 import type { DefTables, EntityId, PlayerId } from '../src/core/types';
-import { CELL, MAP_CELLS, MAP_CELL_COUNT, MAX_ENTITIES } from '../src/core/config';
+import { CELL, MAP_CELLS, MAP_CELL_COUNT, MAX_ENTITIES, SIM_DT } from '../src/core/config';
+import { GarrisonService } from '../src/sim/Garrison';
+import { hashOnly } from '../src/game/Checksum';
 import {
   captureSnapshot, defIndexFromTables, readSnapshotMeta, restoreSnapshot, structuralHash,
   SAVE_SCHEMA_VERSION,
@@ -638,6 +643,186 @@ describe('snapshot round trip', () => {
     expect(restored.value.rngState).toBe(0x1234abcd);
     expect(restored.value.speedIndex).toBe(2);
     expect(dst.world.tick).toBe(71234);
+  });
+});
+
+/* ==========================================================================
+ * GARRISONS — the side-array class of the same bug
+ *
+ * A garrison's occupancy was a service-private `PerEntityU32` until v2.6.x, and
+ * rule B above is exactly what broke it: the load bumps every generation, the
+ * side array's stamp check fails, `getAt` returns 0, and the man is left
+ * `Alive | Garrisoned | Immobilized` with no host — hidden by the render
+ * bridge, refused by selection, rejected by targeting, skipped by movement.
+ * Alive, immortal, invisible, for the rest of that save's life.
+ *
+ * It is `store.garrisonId` now, remapped with the other references, so the
+ * three cases below are: it comes back hosted; a file that predates the column
+ * degrades to men on the ground rather than to ghosts; and the column is in the
+ * checksum, so two clients cannot disagree about which strongpoint holds a
+ * squad and hash the same.
+ * ========================================================================== */
+
+/** Infantry, bare — the garrison service reads the store and no def table. */
+function spawnRifleman(world: World, owner: PlayerId, x: number, z: number): EntityId {
+  const id = world.store.alloc(EntityKind.Infantry, 0, owner, Faction.Allies, x, 0, z, 0);
+  const s = world.store;
+  const i = s.index(id);
+  s.hp[i] = 100; s.maxHp[i] = 100;
+  s.radius[i] = 1;
+  s.maxSpeed[i] = 4;
+  s.locomotor[i] = Locomotor.Foot;
+  s.flags[i] |= EntityFlag.CanMove | EntityFlag.CanAttack;
+  return id;
+}
+
+/** A 2x2 unarmed structure: `GarrisonService.refusalFor` accepts exactly this. */
+function spawnBlock(world: World, owner: PlayerId, cx: number, cz: number): EntityId {
+  const id = world.store.alloc(
+    EntityKind.Building, 2, owner, Faction.Allies, (cx + 1) * CELL, 0, (cz + 1) * CELL, 0,
+  );
+  const s = world.store;
+  const i = s.index(id);
+  s.footprintW[i] = 2; s.footprintH[i] = 2;
+  s.hp[i] = 500; s.maxHp[i] = 500;
+  s.flags[i] |= EntityFlag.BlocksNav;
+  return id;
+}
+
+/** Walk `count` men into a fresh block and return the world's occupied state. */
+function garrisonFixture(count = 3): { fx: Fixture; block: EntityId; men: EntityId[] } {
+  const fx = makeFixture();
+  const { world } = fx;
+  const st = world.store;
+  const block = spawnBlock(world, P0, 20, 20);
+  const b = st.index(block);
+
+  const men: EntityId[] = [];
+  for (let k = 0; k < count; k++) {
+    const m = spawnRifleman(world, P0, st.posX[b], st.posZ[b] - CELL - 0.5);
+    st.orderKind[st.index(m)] = OrderKind.Enter;
+    st.orderTarget[st.index(m)] = block as number;
+    men.push(m);
+  }
+
+  const garrison = new GarrisonService(world, new Channels());
+  garrison.simTick({ dt: SIM_DT, tick: 1, time: SIM_DT, rng: new Rng(7) });
+  expect(garrison.occupantCount(block), 'fixture failed to garrison anybody').toBe(count);
+  world.spatial.rebuild();
+  return { fx, block, men };
+}
+
+/** Every live infantry slot in a store, by index. */
+function infantrySlots(s: EntityStore): number[] {
+  const out: number[] = [];
+  for (let a = 0; a < s.byKindCount[EntityKind.Infantry]; a++) {
+    out.push(s.byKind[EntityKind.Infantry][a]);
+  }
+  return out;
+}
+
+describe('a garrison survives the round trip', () => {
+  it('brings every occupant back inside the same building', () => {
+    const { fx: src, block } = garrisonFixture(3);
+    const captured = captureSnapshot(src.host, 'garrison');
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+
+    const dst = makeDestination(src);
+    expect(restoreSnapshot(captured.value.bytes, dst.host).ok).toBe(true);
+
+    const b = dst.world.store;
+    const blocks = [];
+    for (let a = 0; a < b.byKindCount[EntityKind.Building]; a++) {
+      blocks.push(b.byKind[EntityKind.Building][a]);
+    }
+    expect(blocks.length).toBe(1);
+    const host = b.handleOf(blocks[0]);
+    // A different handle VALUE for the same building — the generations moved.
+    expect(host).not.toBe(block);
+
+    const garrison = new GarrisonService(dst.world, new Channels());
+    expect(garrison.occupantCount(host)).toBe(3);
+    for (const i of infantrySlots(b)) {
+      expect(b.flags[i] & EntityFlag.Garrisoned).not.toBe(0);
+      expect(garrison.hostOfUnit(b.handleOf(i))).toBe(host);
+    }
+  });
+
+  it('leaves NOBODY alive, garrisoned and hostless — the whole point', () => {
+    // The assertion the old side array failed. Nothing here asks WHERE the men
+    // ended up: inside the building or standing on the ground are both correct
+    // and both playable. `Alive | Garrisoned` with no host is neither.
+    const { fx: src } = garrisonFixture(4);
+    const captured = captureSnapshot(src.host, 'hostless');
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+
+    const dst = makeDestination(src);
+    expect(restoreSnapshot(captured.value.bytes, dst.host).ok).toBe(true);
+
+    const b = dst.world.store;
+    const garrison = new GarrisonService(dst.world, new Channels());
+    // A tick of the owning service, exactly as the loaded match runs one.
+    garrison.simTick({ dt: SIM_DT, tick: 1, time: SIM_DT, rng: new Rng(7) });
+
+    let hidden = 0;
+    for (const i of infantrySlots(b)) {
+      if ((b.flags[i] & EntityFlag.Alive) === 0) continue;
+      if ((b.flags[i] & EntityFlag.Garrisoned) === 0) continue;
+      if (garrison.hostOfUnit(b.handleOf(i)) === NONE) hidden++;
+    }
+    expect(hidden, 'invisible immortals came back from the save').toBe(0);
+  });
+
+  it('strands the squad of a save written before the column existed', () => {
+    // What such a file restores to, precisely: `restoreEntities` skips a
+    // REF_COLUMN the blob does not carry and leaves `alloc`'s 0 behind, so
+    // zeroing the column here IS the older format, without a hand-built blob.
+    // The graceful degradation is men on the ground, not a refusal and not a
+    // ghost — the save is not refused at all, because `structuralHash()` covers
+    // the frame the data lives in and deliberately not the column list.
+    const { fx: src } = garrisonFixture(3);
+    const captured = captureSnapshot(src.host, 'pre-column');
+    expect(captured.ok).toBe(true);
+    if (!captured.ok) return;
+
+    const dst = makeDestination(src);
+    const restored = restoreSnapshot(captured.value.bytes, dst.host);
+    expect(restored.ok, 'an older save must load, not throw and not refuse').toBe(true);
+
+    const b = dst.world.store;
+    for (const i of infantrySlots(b)) b.garrisonId[i] = 0;
+
+    const garrison = new GarrisonService(dst.world, new Channels());
+    garrison.simTick({ dt: SIM_DT, tick: 1, time: SIM_DT, rng: new Rng(7) });
+
+    expect(garrison.stats.stranded).toBe(3);
+    for (const i of infantrySlots(b)) {
+      expect(b.flags[i] & EntityFlag.Garrisoned).toBe(0);
+      expect(b.flags[i] & EntityFlag.Immobilized).toBe(0);
+      expect(b.state[i]).toBe(UnitState.Idle);
+    }
+  });
+
+  it('hashes two worlds that disagree about WHICH building holds a man apart', () => {
+    // The second half of the side-array bug, and the one no save test can see:
+    // `flags` carries `Garrisoned`, so two lockstep clients always agreed a man
+    // was inside SOMETHING. Which one is a damage difference on the next
+    // Phase.Weapons, because the volley is summed from the men in the room.
+    const { fx: a } = garrisonFixture(2);
+    const { fx: c } = garrisonFixture(2);
+    // THE SPARE GOES IN BOTH. Adding it to one world only would move the hash
+    // by an entity, and the case would pass with the `garrisonId` line deleted.
+    expect(spawnBlock(a.world, P0, 40, 40)).not.toBe(NONE);
+    const spare = spawnBlock(c.world, P0, 40, 40);
+    expect(hashOnly(a.world)).toBe(hashOnly(c.world));
+
+    // One man, moved between two identical strongpoints. Nothing else differs:
+    // same flags, same slot, same position (`enter` parks the body at the host
+    // it came from), so `garrisonId` is the only word that can carry it.
+    c.world.store.garrisonId[infantrySlots(c.world.store)[0]] = spare as number;
+    expect(hashOnly(a.world)).not.toBe(hashOnly(c.world));
   });
 });
 

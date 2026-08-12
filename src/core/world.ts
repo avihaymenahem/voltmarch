@@ -171,6 +171,52 @@ export class EntityStore {
   readonly cargoMax = new Float32Array(MAX_ENTITIES);
   /** Refinery a harvester is assigned to, or NONE. */
   readonly dockTarget = new Int32Array(MAX_ENTITIES);
+  /**
+   * The carrier this unit is riding INSIDE, or 0.
+   *
+   * A real column rather than service state, and that is the whole point.
+   * `TransportService` used to hold this in a `PerEntityU32`, which
+   * `SaveGame` does not persist and `Checksum` cannot see. Two consequences,
+   * both live: a loaded save bumped every `store.gen[i]`, so the side array's
+   * stamp check failed and every passenger was left `Alive | Garrisoned |
+   * Immobilized` with no host — unrenderable, unselectable, untargetable and
+   * unmovable, forever; and two lockstep clients that disagreed about WHICH
+   * hull a man was in produced an identical checksum, so the desync was found
+   * a tick later through position, if at all.
+   *
+   * Held as a HANDLE, not a slot, and remapped by `SaveGame`'s `REF_COLUMNS`
+   * like every other entity reference.
+   */
+  readonly carrierId = new Int32Array(MAX_ENTITIES);
+  /**
+   * The structure this unit is garrisoned INSIDE, or 0.
+   *
+   * A SIBLING OF `carrierId`, NOT A REUSE OF IT, and `TransportService.ride` is
+   * what decides that. Its passenger loop skips a unit whose `carrierId` is 0
+   * with the note "a garrisoned man, not ours" — the one test in that loop that
+   * costs neither a handle resolution nor a look at the host's kind. Share one
+   * column and that test is gone: every garrison occupant would fall through
+   * into the transport's own repair branches, so a levelled building would
+   * `sink` its men through the transport's counter and a freed host would
+   * `strand` them through it, both of them before anything asked what KIND of
+   * thing the host was. Two columns make "a man is inside a building or inside
+   * a hull, never both" true by construction rather than by scan order, and the
+   * whole cost is 16 kB of address space (4096 slots x 4 bytes) allocated once
+   * and never touched by the frame loop.
+   *
+   * It is a COLUMN and not a `PerEntityU32` in `Garrison.ts` — against the rule
+   * at the top of this class — for the two reasons `carrierId` is one: a side
+   * array is not SAVED and is not HASHED. It used to be one, and a load bumps
+   * every `gen[i]`, so its stamp check failed, `getAt` returned 0, `tally`
+   * skipped at `b < 0`, and every occupant of every garrisoned building came
+   * back from a save `Alive | Garrisoned | Immobilized` with no host —
+   * unrenderable, unselectable, untargetable, unmovable, forever. And two
+   * lockstep clients that agreed a man was garrisoned while disagreeing about
+   * WHICH strongpoint held him produced an identical checksum.
+   *
+   * Held as a HANDLE, and remapped by `SaveGame`'s `REF_COLUMNS` (id 205).
+   */
+  readonly garrisonId = new Int32Array(MAX_ENTITIES);
 
   /* -- buildings ---------------------------------------------------------- */
   /** 0..1 construction progress. 1 = complete. */
@@ -360,6 +406,8 @@ export class EntityStore {
     // Economy
     this.cargo[i] = 0; this.cargoMax[i] = 0;
     this.dockTarget[i] = 0;
+    this.carrierId[i] = 0;
+    this.garrisonId[i] = 0;
 
     // Buildings
     this.buildProgress[i] = 1;

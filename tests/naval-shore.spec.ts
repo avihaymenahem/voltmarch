@@ -68,6 +68,7 @@ import { moveClassOf, resetMoveClasses } from '../src/sim/Movement';
 import { MoveClass, FlowFieldCache } from '../src/sim/Flowfield';
 import { invalidateNavalWater, mapSupportsNaval, surveyNavalWater } from '../src/sim/NavalWater';
 import { resolveDefBinding, MAP_SEAS, SKIRMISH_START_OFFSETS } from '../src/game/Scenarios';
+import { UNITS } from '../src/data/Defs';
 import { Terrain, setActiveTerrain } from '../src/world/Terrain';
 
 /* ==========================================================================
@@ -326,20 +327,28 @@ describe('a warship leaves the yard onto water', () => {
       .toBe(true);
   });
 
-  it('still puts the AMPHIBIOUS transport down on land', async () => {
+  it('launches the CARRIER onto water too, and it never comes ashore', async () => {
     /*
-     * The counterweight, and the reason `naval` is a per-hull flag rather than
-     * "anything a naval yard builds". A Hover Transport has five seats: an
-     * amphibious lift that cannot beach is not a lift, and marking every hull
-     * out of a shipyard water-only would have silently deleted every faction's
-     * ability to move infantry over ground.
+     * THIS TEST USED TO ASSERT THE OPPOSITE, and it was wrong in a way that
+     * cost a real defect. `waterOnly` was one flag named `naval` that also
+     * decided the Sunder Atoll progression exemption, and the line was drawn at
+     * `passengers > 0` so the unarmed Hover Transport could beach. Two hulls
+     * have both seats and a gun. `rclScow` - dock-built, naval sortOrder, a
+     * 68-damage HE bow gun - could therefore drive to the middle of an island
+     * and shell a base, and the roster assertion below pinned that under the
+     * name "marks exactly the gunned hulls as warships".
+     *
+     * A carrier does not need to beach. `Transport.place` walks a widening ring
+     * for a cell the PASSENGER can stand on and puts the squad on the sand from
+     * open water, which is how the AI has landed all along.
      */
     const rig = await makeRig();
     plantBase(rig, SHORE_CX - 4, 40);
     rig.run(2);
 
     const transport = rig.catalog.byKey('transport')!;
-    expect(transport.naval, 'the transport must NOT be a warship').toBe(false);
+    expect(transport.waterOnly, 'a shipyard hull is water-only').toBe(true);
+    expect(transport.warship, 'but a carrier is not a warship').toBe(false);
     rig.service.enqueue(rig.player, transport.publicId);
     rig.run(Math.ceil(transport.buildTime / SIM_DT) * 2 + 60);
 
@@ -349,19 +358,34 @@ describe('a warship leaves the yard onto water', () => {
     const i = st.index(hulls[0]);
     const cx = Math.floor(st.posX[i] / CELL);
     expect(rig.world.terrain.isWater(cx, Math.floor(st.posZ[i] / CELL)),
-      'the transport was launched onto water and can no longer beach').toBe(false);
-    expect(moveClassOf(st, hulls[0])).toBe(MoveClass.Hover);
+      'the carrier must launch onto water like every other hull').toBe(true);
+    expect(moveClassOf(st, hulls[0])).toBe(MoveClass.Naval);
   });
 
-  it('marks exactly the gunned hulls as warships', () => {
-    // Stated as a roster so a new ship cannot be added without a decision being
-    // made about it. The rule is `passengers > 0` means amphibious lift.
+  it('makes every shipyard hull water-only and every gunned one a warship', () => {
+    // TWO FLAGS, TWO QUESTIONS. `waterOnly` is mobility and covers carriers;
+    // `warship` is the progression exemption and does not. Stated as rules over
+    // the catalog rather than as a key list, because a key list is what let the
+    // Slag Scow sit in the wrong column without anybody having to defend it.
     const catalog = new ProductionCatalog({ tables: null, unitId: {}, buildingId: {} });
-    const naval = catalog.entries.filter((e) => e.naval).map((e) => e.key).sort();
-    expect(naval).toEqual([
-      'destroyer', 'dreadnought', 'gunboat', 'mrdCorvette', 'mrdMonitor',
-      'rclHulk', 'submarine',
-    ]);
+
+    const wet = catalog.entries.filter((e) => e.waterOnly).map((e) => e.key).sort();
+    const warships = catalog.entries.filter((e) => e.warship).map((e) => e.key).sort();
+
+    // Every warship is water-only. The converse is false: carriers are wet too.
+    for (const key of warships) {
+      expect(wet, `"${key}" is a warship but not water-only`).toContain(key);
+    }
+    // A warship carries nothing; a carrier is not a warship. That IS the split.
+    for (const e of catalog.entries) {
+      if (!e.warship) continue;
+      const def = UNITS.find((u) => u.key === e.key);
+      expect(def?.cargoSlots ?? 0, `"${e.key}" is a warship with a hold`).toBe(0);
+    }
+    // The Sandskiff is the one hull with a hold that is NOT water-only, because
+    // it is a land raider gated on `mrdForgeyard` and the Pact army hovers.
+    expect(wet).not.toContain('mrdSkiff');
+
     const shore = catalog.entries.filter((e) => e.needsShore).map((e) => e.key).sort();
     expect(shore).toEqual(['mrdSlipway', 'navalYard', 'rclDrydock', 'subPen']);
   });
@@ -678,14 +702,20 @@ describe('the beach is ground a dock can stand on', () => {
 const SEA_BOUND_KEYS = [
   // The four yards — `needsShore`, one per faction.
   'navalYard', 'subPen', 'mrdSlipway', 'rclDrydock',
-  // The seven warships — `naval`, launched onto water.
+  // The gunned hulls — `warship`, and every one of them `waterOnly`.
   'gunboat', 'destroyer', 'submarine', 'dreadnought',
   'mrdCorvette', 'mrdMonitor', 'rclHulk',
-  // The two amphibious lifts. NEITHER carries `naval` — they have seats, and a
-  // lift that cannot beach is not a lift — but both are gated on a dock that
-  // cannot be founded without water, so both are just as unreachable. These are
-  // the two that matching on the flags alone would have missed.
-  'transport', 'rclScow',
+  // The recon rung. Gunned, no hold, so `warship` as well.
+  'hydrofoil', 'picketBoat', 'mrdCutter', 'rclSkimmer',
+  // The carriers. NONE of them carries `warship` — a gunboat widens an army, a
+  // barge is how the army arrives — but every one is gated on a dock that
+  // cannot be founded without water, so all of them are just as unreachable.
+  // These are the rows that matching on the flags alone would miss, which is
+  // why `computeSeaBound` is a prereq-closure fixpoint and not a flag test.
+  'transport', 'rclScow', 'landingCraft', 'assaultBarge',
+  'mrdLighter', 'mrdArgosy', 'rclHauler',
+  // NOT the four swimmers. They are gated on a BARRACKS, so a dry map still
+  // offers them: infantry with one extra verb, not sea content.
 ];
 
 describe('the catalog knows which content needs a sea', () => {

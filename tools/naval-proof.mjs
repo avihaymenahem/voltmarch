@@ -43,17 +43,22 @@
  * ============================================================================
  */
 
-import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { build, serve } from './lib/serve.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'shots');
-/** Deliberately NOT tools/shoot.mjs's 4317: the two must be runnable at once. */
-const PORT = 4319;
-const BASE = `http://localhost:${PORT}/`;
+/**
+ * A HINT. This read "deliberately NOT tools/shoot.mjs's 4317: the two must be
+ * runnable at once", which was true of shoot.mjs and false of everything else —
+ * `flash-stack`, `boot-profile`, `desync-probe` and `sobel` all sat on 4319 as
+ * well, so the tool this one was most likely to collide with was itself.
+ * `serve()` walks off a busy port and proves the origin it lands on.
+ */
+const PORT_HINT = 4319;
 const VIEWPORT = { width: 1920, height: 1080 };
 
 /** `?shot=naval` anchors on the map centre; `buildNaval` puts the yard here. */
@@ -72,57 +77,19 @@ const TAG = tagIx >= 0 ? argv[tagIx + 1] : 'after';
 
 mkdirSync(OUT, { recursive: true });
 
-const run = (cmd, args) =>
-  spawn(cmd, args, { cwd: ROOT, shell: process.platform === 'win32', stdio: 'pipe' });
-
-async function waitForServer(url, timeoutMs = 60_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try { if ((await fetch(url)).ok) return true; } catch { /* not up */ }
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  return false;
-}
-
-function killTree(child) {
-  if (!child || child.pid === undefined || child.exitCode !== null) return;
-  try {
-    if (process.platform === 'win32') {
-      spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-    } else {
-      process.kill(-child.pid, 'SIGKILL');
-    }
-  } catch { /* already gone */ }
-  try { child.kill('SIGKILL'); } catch { /* already gone */ }
-}
-
 if (!noBuild) {
-  console.log('> building...');
-  await new Promise((resolve, reject) => {
-    const b = run('npm', ['run', 'build']);
-    let out = '';
-    b.stdout.on('data', (d) => (out += d));
-    b.stderr.on('data', (d) => (out += d));
-    b.on('close', (c) => (c === 0 ? resolve() : reject(new Error(`build failed:\n${out.slice(-4000)}`))));
-  });
+  await build(ROOT, { log: console.log });
 } else if (!existsSync(join(ROOT, 'dist', 'index.html'))) {
   console.error('--no-build was given but dist/index.html does not exist.');
   process.exit(5);
 }
 
 console.log('> serving...');
-const server = spawn(
-  process.execPath,
-  [join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'),
-    'preview', '--port', String(PORT), '--strictPort'],
-  { cwd: ROOT, stdio: 'pipe', detached: process.platform !== 'win32' },
-);
-let cleanedUp = false;
-const cleanup = () => { if (!cleanedUp) { cleanedUp = true; killTree(server); } };
-process.on('exit', cleanup);
-process.on('SIGINT', () => { cleanup(); process.exit(1); });
-
-if (!(await waitForServer(BASE))) { cleanup(); throw new Error(`preview never came up on ${BASE}`); }
+const server = await serve({
+  root: ROOT, mode: 'preview', portHint: PORT_HINT, log: console.log,
+});
+const BASE = server.origin;
+const cleanup = () => server.stop();
 
 const browser = await chromium.launch({
   headless: true,
@@ -141,6 +108,7 @@ page.on('pageerror', (e) => problems.push(`[pageerror] ${e.message}`));
 
 let report = null;
 try {
+  server.assertAlive('the naval capture');
   await page.goto(`${BASE}?shot=naval&seed=13&tier=medium&fog=off`, { waitUntil: 'load' });
   await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 60_000 });
   await page.evaluate(() => window.__VM.ready());

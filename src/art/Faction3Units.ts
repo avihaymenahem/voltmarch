@@ -403,8 +403,17 @@ interface PactInfantryOpts {
   name: string;
   /** 'carbine' | 'lance' | 'tool' — the held object and nothing else. */
   weapon: 'carbine' | 'lance' | 'tool';
-  /** 'vane' collector pack | 'cells' battery stack | 'kit' artificer's case. */
-  pack: 'vane' | 'cells' | 'kit';
+  /**
+   * 'vane' collector pack | 'cells' battery stack | 'kit' artificer's case |
+   * 'gills' the tidewalker's sealed rebreather.
+   *
+   * `'gills'` ALSO REPLACES THE BOOT WITH A SWIM FIN, exactly as
+   * `UnitDefs.InfantryOpts.pack` does with `'rebreather'`, and for the reason
+   * given there: the swimmers are the only soldiers whose silhouette has to
+   * read as amphibious at 20 px, and one option that cannot be half-applied
+   * beats two that can. Every other pack leaves the boot alone.
+   */
+  pack: 'vane' | 'cells' | 'kit' | 'gills';
   /**
    * A commander. Three added shapes, all in the outline — see the note on
    * `InfantryOpts.officer` in `UnitDefs.ts`, which this mirrors deliberately so
@@ -543,6 +552,17 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
     masses.push(greeble('kit', 'box', [W * 0.62, 0.42, 0.22], [0, torsoY + 0.06, -W * 0.42], 'paintSmall', {
       group: 'pack', chamfer: 0.05,
     }));
+  } else if (o.pack === 'gills') {
+    // A LATHED BELL, not the twin bottles the other three armies' divers wear.
+    // The Pact does not carry its air; it carries a ceramic gill that takes the
+    // oxygen out of the water, and the shape says so — one drum with a hex
+    // manifold on it rather than two steel tubes and a yoke.
+    masses.push(greeble('gill', 'lathe', [W * 0.56, 0.52, 0.30], [0, torsoY + 0.12, -W * 0.44], 'paintSmall', {
+      profile: 'capsule', segments: 12, rot: [0, 0, Math.PI * 0.5], group: 'pack',
+    }));
+    masses.push(greeble('gillYoke', 'prism', [W * 0.34, 0.16, 0.22], [0, torsoY + 0.42, -W * 0.40], 'bareMetal', {
+      plan: 'hexagon', capSlot: 'bareMetal', group: 'pack',
+    }));
   } else {
     masses.push(greeble('collector', 'box', [W * 0.52, 0.40, 0.20], [0, torsoY + 0.10, -W * 0.42], 'paintSmall', { group: 'pack' }));
   }
@@ -557,10 +577,16 @@ function pactInfantry(o: PactInfantryOpts): UnitMassList {
     }),
     // Boot and thigh band ride the SAME hip as the leg. The boot is the far end
     // of the limb, so a boot left welded to the ground is the single most
-    // obvious way a walk cycle can look broken.
-    greeble('boot', 'box', [W * 0.40, 0.16, W * 0.62], [W * 0.24, 0.08, 0.06], 'paintTiny', {
-      mirrorX: true, group: 'boots', gait: hip,
-    }),
+    // obvious way a walk cycle can look broken. The fin keeps the boot's NAME
+    // and group as well as its pivot — `RIDES_THE_LEG` in
+    // `tests/infantry-gait-rosters.spec.ts` is keyed on the name.
+    o.pack === 'gills'
+      ? greeble('boot', 'box', [W * 0.42, 0.13, W * 1.18], [W * 0.24, 0.066, W * 0.24], 'paintTiny', {
+        mirrorX: true, group: 'boots', gait: hip, taper: [0.60, 1.16, W * 0.14],
+      })
+      : greeble('boot', 'box', [W * 0.40, 0.16, W * 0.62], [W * 0.24, 0.08, 0.06], 'paintTiny', {
+        mirrorX: true, group: 'boots', gait: hip,
+      }),
     greeble('belt', 'box', [W * 0.90, 0.12, W * 0.66], [0, torsoY - torsoH * 0.34, 0], 'paintTiny', { group: 'belt' }),
     greeble('gorget', 'box', [W * 0.60, 0.11, W * 0.50], [0, legTop + torsoH - 0.03, 0], 'paintTiny', { group: 'gorget' }),
   );
@@ -935,7 +961,24 @@ function pactSupport(o: PactSupportOpts): UnitMassList {
 interface PactShipOpts {
   key: string; name: string;
   length: number; beam: number; height: number;
-  armament: 'battery' | 'lances';
+  /**
+   * What the bow carries. `'ramp'` is not an armament and that is the point:
+   * a lighter's bow is a door, so the branch that would put a gun there puts a
+   * hexagonal leaf on hinges instead, walks the bridge right aft to open the
+   * well, and deletes the stern mount and the ram the two warships share. See
+   * `ShipOpts.armament` in `UnitDefs.ts`, which this mirrors so all four armies'
+   * landing ships are built by the same decision.
+   */
+  armament: 'battery' | 'lances' | 'ramp';
+  /**
+   * The eight-slot hull, which only this army and the Reclamation field.
+   *
+   * It adds a travelling gantry over the well, and it exists because the Pact
+   * is the one army with TWO ramp ships in one sidebar: without it the Argosy
+   * is the Lighter at a hundred and eighteen per cent, and two cameos that
+   * differ only in scale are two cameos a player cannot tell apart.
+   */
+  heavy?: boolean;
 }
 
 function pactShip(o: PactShipOpts): UnitMassList {
@@ -944,6 +987,14 @@ function pactShip(o: PactShipOpts): UnitMassList {
   const hullY = hullH * 0.5;
   const superH = H * 0.42;
   const superY = H * 0.655;
+  const deckY = hullH + H * 0.10;
+  const lander = o.armament === 'ramp';
+  // The bridge position is the whole difference between a warship's profile and
+  // a lighter's, so it is ONE number everything hanging off the bridge derives
+  // from rather than eight repetitions of `-L * 0.10`.
+  const superZ = lander ? -L * 0.34 : -L * 0.10;
+  const superL = lander ? L * 0.22 : L * 0.34;
+  const mastZ = lander ? superZ : -L * 0.16;
 
   const masses: MassDef[] = [
     // DEADRISE. The hull was the single flattest primary mass in the game at
@@ -967,20 +1018,69 @@ function pactShip(o: PactShipOpts): UnitMassList {
     }),
     // The superstructure narrows going up, which is what a warship bridge does
     // and what stops the second-largest mass on the hull reading as a shed.
-    primary('bridge', 'planPrism', [W * 0.72, superH, L * 0.34], [0, superY, -L * 0.10], 'paintLarge', {
+    primary('bridge', 'planPrism', [W * 0.72, superH, superL], [0, superY, superZ], 'paintLarge', {
       capSlot: 'paintLarge',
       shape: {
-        plan: hexPlan(W * 0.72, L * 0.34),
+        plan: hexPlan(W * 0.72, superL),
         topScaleX: 0.80, topScaleZ: 0.88, shear: -L * 0.018,
       },
     }),
     // Sized so the mast crown IS the top of the silhouette.
-    primary('mast', 'lathe', [W * 0.26, H * 0.20, W * 0.26], [0, H - H * 0.10, -L * 0.16], 'bareMetal', {
+    primary('mast', 'lathe', [W * 0.26, H * 0.20, W * 0.26], [0, H - H * 0.10, mastZ], 'bareMetal', {
       profile: 'cone', segments: 12, topRadius: 0.36,
     }),
   ];
 
-  if (o.armament === 'battery') {
+  if (lander) {
+    masses.push(
+      // THE RAMP IS A PRIMARY, because it is the shape a player has to read
+      // from across the map to know this hull carries their tanks. A hexagonal
+      // leaf and not a plate: the Pact's plan language reaches the door the same
+      // way it reaches the bridge behind it, and a tapered `planPrism` keeps the
+      // de-boxify gate's axis fraction at zero where an untapered one would not.
+      primary('bowRamp', 'planPrism', [W * 0.78, H * 0.09, L * 0.30], [0, deckY + H * 0.08, L * 0.36], 'stripe', {
+        capSlot: 'stripe', rot: [-0.46, 0, 0],
+        shape: { plan: hexPlan(W * 0.78, L * 0.30), topScaleX: 0.86, topScaleZ: 0.94 },
+      }),
+      greeble('rampHinge', 'lathe', [0.26, W * 0.46, 0.26], [0, deckY + H * 0.02, L * 0.22], 'bareMetal', {
+        profile: 'cyl', segments: 10, rot: [0, 0, Math.PI * 0.5], group: 'rampGear',
+      }),
+      // The well: a coaming down each side of the open vehicle deck, and the
+      // capstan that hauls the door shut at the head of it. Without the coaming
+      // the deck is a flat plate and the hull reads as a barge with a lid.
+      greeble('wellCoaming', 'box', [0.14, H * 0.20, L * 0.50], [W * 0.46, deckY + H * 0.10, L * 0.04], 'paintMed', {
+        mirrorX: true, rot: [0, 0, -0.14], group: 'well', chamfer: 0.04,
+      }),
+      greeble('capstan', 'lathe', [0.52, W * 0.42, 0.52], [0, deckY + H * 0.16, -L * 0.14], 'bareMetal', {
+        profile: 'capsule', segments: 10, rot: [0, 0, Math.PI * 0.5], group: 'well',
+      }),
+      // NON-SKID, and it is here for a measured reason as much as a real one.
+      // Deleting the stern mount, the ram and the guard rail took every large
+      // metal surface off the hull with them, and the Lighter measured 3.7%
+      // bare metal against bible 5.4's 5-34% floor. A vehicle deck is ribbed
+      // steel rather than painted topside anyway — this is the one surface on
+      // the ship a tank's tracks actually touch.
+      greeble('wellFloor', 'box', [W * 0.66, 0.10, L * 0.44], [0, deckY + 0.05, L * 0.02], 'tread', {
+        group: 'well', chamfer: 0.03,
+      }),
+      greeble('bollard', 'lathe', [0.28, 0.54, 0.28], [W * 0.42, deckY + 0.27, L * 0.14], 'bareMetal', {
+        mirrorX: true, profile: 'cyl', segments: 8, group: 'deckFittings',
+      }),
+    );
+    if (o.heavy === true) {
+      // The gantry: a portal frame straddling the well on two legs, which is
+      // what an eight-slot hull needs to strike cargo down and what tells it
+      // apart from the four-slot hull beside it in the sidebar.
+      masses.push(
+        greeble('gantryLeg', 'box', [0.20, H * 0.30, 0.24], [W * 0.40, deckY + H * 0.15, -L * 0.02], 'bareMetal', {
+          mirrorX: true, taper: [0.70, 0.80, 0], group: 'gantry', chamfer: 0.03,
+        }),
+        greeble('gantryBeam', 'box', [W * 0.94, 0.22, 0.30], [0, deckY + H * 0.31, -L * 0.02], 'bareMetal', {
+          taper: [0.94, 0.62, 0], group: 'gantry', chamfer: 0.03,
+        }),
+      );
+    }
+  } else if (o.armament === 'battery') {
     masses.push(
       greeble('foreMount', 'lathe', [W * 0.50, H * 0.20, W * 0.54], [0, hullH + H * 0.19, L * 0.28], 'paintMed', {
         profile: 'cyl', segments: 12, topRadius: 0.80, group: 'foreGun',
@@ -999,46 +1099,69 @@ function pactShip(o: PactShipOpts): UnitMassList {
   }
 
   masses.push(
-    ...mirrorVane('vane', W * 0.62, L * 0.10, [0, superY + superH * 0.5 + 0.22, -L * 0.10], -0.50),
-    greeble('bridgeGlass', 'box', [W * 0.56, superH * 0.30, 0.12], [0, superY + superH * 0.16, -L * 0.10 + L * 0.17], 'paintTiny', {
+    ...mirrorVane('vane', W * 0.62, L * 0.10, [0, superY + superH * 0.5 + 0.22, superZ], -0.50),
+    greeble('bridgeGlass', 'box', [W * 0.56, superH * 0.30, 0.12], [0, superY + superH * 0.16, superZ + superL * 0.5], 'paintTiny', {
       faceSlots: { pz: 'glass' }, group: 'bridgeGlass',
     }),
-    greeble('dish', 'lathe', [W * 0.26, 0.16, W * 0.26], [0, H * 0.80, -L * 0.16], 'bareMetal', {
+    greeble('dish', 'lathe', [W * 0.26, 0.16, W * 0.26], [0, H * 0.80, mastZ], 'bareMetal', {
       profile: 'disc', segments: 12, rot: [-0.5, 0, 0], group: 'dish',
     }),
     greeble('tender', 'lathe', [0.42, 1.40, 0.42], [W * 0.40, hullH + H * 0.14, -L * 0.24], 'paintSmall', {
       mirrorX: true, profile: 'capsule', segments: 10, rot: [Math.PI * 0.5, 0, 0], group: 'tenders',
     }),
-    greeble('rail', 'box', [W * 0.98, 0.16, L * 0.86], [0, hullH + H * 0.14, 0], 'grille', { group: 'rails' }),
-    greeble('sternMount', 'prism', [W * 0.30, H * 0.12, L * 0.10], [0, hullH + H * 0.16, -L * 0.36], 'bareMetal', {
-      plan: 'hexagon', capSlot: 'grille', group: 'sternGun',
-    }),
-    greeble('ram', 'prism', [W * 0.30, hullH * 0.60, L * 0.10], [0, hullY, L * 0.50], 'bareMetal', {
-      plan: 'triangle', capSlot: 'bareMetal', group: 'ram',
-    }),
   );
+
+  // None of these three can share a hull with a bow door and an open well: the
+  // guard rail spans the deck the cargo stands on, the stern mount is a gun on
+  // an unarmed lift, and a ram bow is the one thing that physically cannot
+  // share a stem with a ramp. Leaving them on was the fastest way to build the
+  // warship silhouette the `'ramp'` variant exists to avoid.
+  if (!lander) {
+    masses.push(
+      greeble('rail', 'box', [W * 0.98, 0.16, L * 0.86], [0, hullH + H * 0.14, 0], 'grille', { group: 'rails' }),
+      greeble('sternMount', 'prism', [W * 0.30, H * 0.12, L * 0.10], [0, hullH + H * 0.16, -L * 0.36], 'bareMetal', {
+        plan: 'hexagon', capSlot: 'grille', group: 'sternGun',
+      }),
+      greeble('ram', 'prism', [W * 0.30, hullH * 0.60, L * 0.10], [0, hullY, L * 0.50], 'bareMetal', {
+        plan: 'triangle', capSlot: 'bareMetal', group: 'ram',
+      }),
+    );
+  }
 
   masses.push(
     slab('hullStripe', [0.08, hullH * 0.28, L * 0.70], [W * 0.46, hullH * 0.74, -L * 0.02], { mirrorX: true }),
-    slab('bridgeBand', [0.08, superH * 0.44, L * 0.26], [W * 0.33, superY, -L * 0.10], { mirrorX: true }),
-    slab('bridgeCap', [W * 0.34, 0.08, L * 0.18], [0, superY + superH * 0.5, -L * 0.10]),
-    slab('deckPatch', [W * 0.52, 0.08, L * 0.16], [0, hullH + H * 0.10, L * 0.10]),
+    slab('bridgeBand', [0.08, superH * 0.44, superL * 0.76], [W * 0.33, superY, superZ], { mirrorX: true }),
+    slab('bridgeCap', [W * 0.34, 0.08, superL * 0.53], [0, superY + superH * 0.5, superZ]),
+    slab('deckPatch', [W * 0.52, 0.08, L * 0.16], [0, deckY, L * 0.10]),
   );
-  masses.push(insignia([W * 0.36, 0.06, W * 0.36], [0, hullH + H * 0.10, -L * 0.30]));
+  // Aft on a warship, where the deck is clear. On a lighter that patch of deck
+  // is under the bridge, so it moves forward into the well instead.
+  masses.push(insignia([W * 0.36, 0.06, W * 0.36], [0, deckY, lander ? -L * 0.18 : -L * 0.30]));
   masses.push(
     glow('navLight', [0.34, 0.30, 0.06], [W * 0.38, hullH + H * 0.20, L * 0.34], { mirrorX: true }),
-    glow('bridgeGlow', [W * 0.62, 0.26, 0.06], [0, superY + superH * 0.30, -L * 0.10 + L * 0.17]),
-    glow('deckRun', [W * 0.30, 0.05, L * 0.36], [0, hullH + H * 0.11, -L * 0.02]),
+    glow('bridgeGlow', [W * 0.62, 0.26, 0.06], [0, superY + superH * 0.30, superZ + superL * 0.5]),
+    // On a lighter the middle of the deck is the well floor, so the strip rides
+    // on top of the non-skid rather than inside it.
+    glow('deckRun', [W * 0.30, 0.05, L * 0.36], [0, lander ? deckY + 0.13 : hullH + H * 0.11, -L * 0.02]),
   );
 
   return {
     key: o.key, name: o.name, faction: MERIDIAN_ART_FACTION, cls: 'naval',
     hullLength: L, masses, hullNumber: HULL_NUMBER,
-    sockets: [
-      { part: PartId.MuzzleA, pos: [0, hullH + H * 0.21, L * 0.46] },
-      { part: PartId.Exhaust, pos: [0, superY + superH * 0.5 + H * 0.30, -L * 0.16] },
-      { part: PartId.Dish, pos: [0, superY + superH * 0.5 + H * 0.30, -L * 0.16] },
-    ],
+    sockets: lander
+      // A lighter has no muzzle to hang a flash on and a door where the bow
+      // socket would be, so it publishes what a lift publishes: the point cargo
+      // walks through, and the stack.
+      ? [
+        { part: PartId.DockEntry, pos: [0, deckY, L * 0.46] },
+        { part: PartId.Door, pos: [0, deckY, L * 0.40] },
+        { part: PartId.Exhaust, pos: [0, superY + superH * 0.5 + H * 0.30, mastZ] },
+      ]
+      : [
+        { part: PartId.MuzzleA, pos: [0, hullH + H * 0.21, L * 0.46] },
+        { part: PartId.Exhaust, pos: [0, superY + superH * 0.5 + H * 0.30, mastZ] },
+        { part: PartId.Dish, pos: [0, superY + superH * 0.5 + H * 0.30, mastZ] },
+      ],
   };
 }
 
@@ -1172,8 +1295,17 @@ export const MERIDIAN_UNIT_MASS_LISTS: readonly UnitMassList[] = [
 
   pactShip({ key: 'meridian_corvette', name: 'Kite Corvette', length: 10.0, beam: 3.6, height: 3.0, armament: 'battery' }),
   pactShip({ key: 'meridian_monitor', name: 'Sunmonitor', length: 15.0, beam: 4.6, height: 4.4, armament: 'lances' }),
+  // The three naval rungs added when every army got a full fleet. The cutter is
+  // the smallest hull the Pact floats on purpose — it is bought for its sight
+  // radius, and a silhouette that reads as cheap is half of what stops a player
+  // sending it into a fight it cannot win.
+  pactShip({ key: 'meridian_cutter', name: 'Sun Cutter', length: 7.4, beam: 2.6, height: 2.4, armament: 'battery' }),
+  pactShip({ key: 'meridian_lighter', name: 'Sun Lighter', length: 11.2, beam: 5.0, height: 3.0, armament: 'ramp' }),
+  pactShip({ key: 'meridian_argosy', name: 'Argosy', length: 13.2, beam: 6.0, height: 3.6, armament: 'ramp', heavy: true }),
 
   pactFlyer('meridian_kestrel', 'Kestrel Gunship', 10.5, 11.0, 2.9),
+
+  pactInfantry({ key: 'meridian_tidewalker', name: 'Tidewalker', weapon: 'carbine', pack: 'gills' }),
 ];
 
 /** key -> mass list, for anything that wants the geometry rather than the model. */
@@ -1198,6 +1330,10 @@ export const MERIDIAN_UNIT_MODELS: Readonly<Record<string, string>> = {
   mrdKestrel: 'meridian_kestrel',
   mrdCorvette: 'meridian_corvette',
   mrdMonitor: 'meridian_monitor',
+  mrdCutter: 'meridian_cutter',
+  mrdLighter: 'meridian_lighter',
+  mrdArgosy: 'meridian_argosy',
+  mrdTidewalker: 'meridian_tidewalker',
 };
 
 /* ==========================================================================

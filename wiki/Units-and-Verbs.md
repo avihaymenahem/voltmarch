@@ -17,12 +17,13 @@ see [Controls](/avihaymenahem/voltmarch/wiki/Controls).
 | Guard | **G** | Anything that moves |
 | Scatter | **X** | Anything that moves |
 | Cycle stance | **Z** | Anything that moves |
-| Deploy / Unload | **D** | Construction vehicles, loaded transports |
+| Deploy / Unload / Evacuate | **D** | Construction vehicles, loaded hulls, occupied structures |
 | Set rally point | **Y**, or right-click with only factories selected | Factories |
 | Capture | Right-click an enemy or neutral structure | Engineers |
 | Repair a structure | Right-click a damaged friendly structure | Engineers |
 | Garrison | Right-click a garrisonable structure | Infantry |
-| Board a transport | Right-click a friendly transport | Infantry |
+| Evacuate a garrison | **D**, or the button on the selection panel | Occupied structures |
+| Board a carrier | Right-click a friendly hull with a hold | Infantry, and any vehicles selected with them |
 | Harvest | Right-click ore, or your own refinery | Harvesters |
 | Commander ability | **Shift + F**, or the button on the selection panel | Commanders |
 | Repair tool / Sell tool | Sidebar buttons, then click a structure | Any structure |
@@ -44,14 +45,21 @@ pays out what.
 | Locked at the start | What it takes away |
 |---|---|
 | The tech building (Battle Lab, Reliquary, Crucible) | **Every superweapon**, and every tier-3 unit |
-| The naval yard, and the escort hulls | **The Hover Transport and the Slag Scow** |
 | The air tier | All four aircraft |
 | The AA emplacement | The Allied Multigunner AA |
 
 Everything else — engineers, garrisons, deploy, harvesting, repair, sell,
 relocate, crushing, crates and all four commanders — is available in your very
-first skirmish. The **Sandskiff** is behind the raider unlock, so the Pact's
-transport capability is gated too.
+first skirmish.
+
+**The navy is not one of them.** Docks, landing ships, carriers, recon hulls and
+the swimmer infantry are all buildable on a fresh profile; the only naval gate
+left is in the match, where a capital ship still needs your army's tech
+building and every hull still needs a dock standing on a real coast. Three
+missions used to pay those unlocks out and now pay cosmetics instead — see
+[Campaign](/avihaymenahem/voltmarch/wiki/Campaign). The **Sandskiff** is still
+behind the raider unlock, but it is a raider that happens to hold two, not the
+Pact's only way across water.
 
 ---
 
@@ -140,10 +148,15 @@ In practice that is:
   fireballs, but five entries on your losses.
 - An occupied structure cannot be captured by an enemy engineer.
 
-**There is no way to get them out again.** The evacuate path exists in the
-simulation and nothing in the interface calls it — no button, no hotkey, no
-order. Men you put into a building stay there until the building dies. Treat a
-garrison as a one-way commitment of those five men.
+**They can be turned out again.** Press **D** with the structure selected, or
+use the **Evacuate** button on the selection panel; the occupants are placed on
+a ring around the building exactly as a carrier unloads. Both the key and the
+button work across a whole selection, so four garrisoned strongpoints empty on
+one press, and the panel's count is the sum over all of them.
+
+This page used to say there was no way out, because for a long time there was
+not: `GarrisonService.evacuate` existed with no caller anywhere in the
+interface.
 
 ### The civilian buildings
 
@@ -165,42 +178,83 @@ moment he dies.
 
 ---
 
-## Troop transports
+## Carriers, and the cargo slot
 
-Three hulls carry infantry. Right-click a friendly transport with infantry
-selected; they walk to it and disappear inside.
+**A slot is not a seat.** Infantry cost **one** slot and a vehicle costs
+**two**, so an eight-slot hull is four tanks, or eight riflemen, or any mix that
+adds up. The number on the hull is a hold rather than a bench.
 
-| Transport | Army | Seats | Cost | Notes |
-|---|---|---|---|---|
-| **Hover Transport** | Allies and Soviets | **5** | 900 | Unarmed. Amphibious. Naval Yard / Naval Pen. |
-| **Sandskiff** | Meridian Pact | **2** | 550 | Armed, and the fastest ground hull in the game. |
-| **Slag Scow** | The Reclamation | **4** | 850 | Armed barge. Breaker Dock. |
+That is the change that matters. Cargo used to be infantry only, and on
+[Sunder Atoll](/avihaymenahem/voltmarch/wiki/Sunder-Atoll) — where no two armies
+share a land route — it meant your entire vehicle roster was unusable against
+three of your four opponents.
+
+Eight hulls have a hold:
+
+| Hull | Army | Slots | Cost | Time | Built at |
+|---|---|---|---|---|---|
+| **Landing Craft** | Allies | **4** | 700 | 10 s | Naval Yard |
+| **Assault Barge** | Soviets | **4** | 680 | 10 s | Naval Pen |
+| **Sun Lighter** | Meridian Pact | **4** | 720 | 10 s | Slipway |
+| **Slag Scow** | The Reclamation | **4** | 850 | 12 s | Breaker Dock |
+| **Heavy Transport** | Allies and Soviets | **8** | 1200 | 15 s | Naval Yard / Naval Pen |
+| **Argosy** | Meridian Pact | **8** | 1250 | 15 s | Slipway |
+| **Slag Hauler** | The Reclamation | **8** | 1100 | 14 s | Breaker Dock |
+| **Sandskiff** | Meridian Pact | **2** | 550 | 9 s | Forgeyard |
+
+Only two of the eight are armed: the Slag Scow's bow gun (68, high explosive,
+32 m) and the Sandskiff's arc repeater.
+
+**Every hull a shipyard builds is water-only, carriers included.** A carrier
+does not beach itself — it stands off the shore and puts its cargo on the sand
+from open water. The **Sandskiff** is the one exception and it is the case that
+proves the rule: it is gated on the Forgeyard, a land structure, and the whole
+Pact army hovers, so it is a land raider that can swim rather than a ship that
+can walk.
+
+The Slag Scow used to be able to drive to the middle of an island and shell a
+base with a dock-built gun. It keeps the gun and has lost the beach.
+
+### Boarding
+
+Right-click a friendly hull with a hold. The passengers walk to it and disappear
+inside.
+
+- **The carrier comes to you.** Order a squad onto a hull lying offshore and the
+  hull moves in to collect them. Water is impassable to a rifleman, so before
+  this the squad walked to the sand and stood there for as long as you were
+  willing to watch.
+- A boarding order chases: a unit told to enter a moving hull follows it rather
+  than walking to where it used to be.
+- **A carrier cannot board a carrier.** Everything else that moves can, which
+  includes harvesters and construction vehicles.
+- The board cursor only appears when at least one **infantryman** is in the
+  selection. Vehicles ride perfectly well; select them together with a rifleman
+  and the whole group boards.
 
 **Passengers do not fire.** This is deliberate and it is the difference between a
-transport and a garrison: a garrison volleys with the sum of its occupants'
-rifles, a transport is a delivery. A loaded Sandskiff shoots with its own arc
-repeater and nothing else. Verified in a live match — a squad of G.I.s riding a
-Hover Transport did no damage at all to an enemy standing 8 m away, well inside
-their rifle range.
+carrier and a garrison: a garrison volleys with the sum of its occupants'
+rifles, a carrier is a delivery. A loaded Sandskiff shoots with its own arc
+repeater and nothing else.
 
-**Riding:**
+The squad rides *at* the hull, so if the hull dies mid-lagoon the squad dies
+mid-lagoon. Every passenger counts as a separate loss.
 
-- The squad rides *at* the hull, so if the hull dies mid-lake the squad dies
-  mid-lake. Every man counts as a separate loss.
-- A boarding order chases: infantry told to enter a moving transport follow it
-  rather than walking to where it used to be.
-- The transport can be ordered anywhere its locomotor allows. All three are
-  Hover, which means all three cross water.
+### Unloading
 
-**Unloading:** press **D** with the transport selected, or use the Unload button
-on the selection panel. Passengers are placed on a widening ring around the
-hull, and only on ground infantry can actually stand on — a naval transport
-sitting over water will hold its cargo rather than drowning it. If it cannot
-find a beach the order stands for another tick and puts them down the moment it
-touches one.
+Press **D** with the hull selected, or use the Unload button on the selection
+panel. Both work across a whole selection, so a fleet of four empties on one
+press, and the panel's readout is slots used over slots available summed over
+every selected hull.
 
-Loading up is per-man, not per-squad: if the fourth passenger finds nowhere to
-stand, the first three still got out.
+Passengers are placed on a widening ring around the hull, and only on ground
+each one can actually stand on — a carrier sitting over water holds its cargo
+rather than drowning it, a tank is not put down on foot-only ground, and a
+swimmer *can* be put down in the sea. If nothing works the order stands for
+another tick and unloads the moment the hull touches something usable.
+
+Unloading is per-passenger, not per-hold: if the fourth finds nowhere to stand,
+the first three still got out.
 
 ---
 
@@ -380,10 +434,11 @@ that marks a hull as a crusher in the first place. Treat the Prism Tank as
 harmless to infantry underfoot.
 
 **Nothing can crush the Apocalypse Tank, either harvester, the Scrapjaw, any
-construction vehicle, any transport or any aircraft** — all of them carry a
-crushable-by of 0, which means uncrushable.
+construction vehicle, any aircraft, or any hull a shipyard builds** — all of
+them carry a crushable-by of 0, which means uncrushable. The Sandskiff is the
+one carrier that does not: it is a land raider, and it carries a 4.
 
-**Vehicles cannot crush vehicles at all.** Fifteen hulls carry a crushable-by
+**Vehicles cannot crush vehicles at all.** Eleven hulls carry a crushable-by
 number in the 4–6 range and nothing reads it — the roster only ever marks
 infantry as crushable. Ramming a tank with a bigger tank does nothing.
 
@@ -604,8 +659,8 @@ already bought stays bought.
 - **Aggressive and Defensive stance behave identically.** Nothing chases a target
   of opportunity in this build. Hold Fire and Hold Ground are the two that
   matter.
-- **Garrisoned infantry never come out.** There is no evacuate order.
-- **Passengers in a transport contribute nothing.** Unload them first.
+- **Passengers in a carrier contribute nothing.** Unload them first.
+- **A slot is not a seat.** Eight slots is four tanks or eight riflemen.
 - **A superweapon that is not powered is not charging**, and the HUD row simply
   will not be there.
 - **An engineer sent at a healthy enemy building dies and accomplishes 25%.**

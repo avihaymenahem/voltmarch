@@ -23,14 +23,19 @@
 
 import { chromium } from 'playwright';
 import sharp from 'sharp';
-import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { build, serve } from './lib/serve.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 4319;
-const BASE = `http://localhost:${PORT}/`;
+/**
+ * A HINT — see `tools/lib/serve.mjs`. Four other tools hard-coded this same
+ * 4319, which is why the refusal that used to live at the bottom of this file
+ * ("something is already serving, kill it") fired on a sibling as often as on a
+ * leak, and told the reader to kill a process that was doing its job.
+ */
+const PORT_HINT = 4319;
 
 const argv = process.argv.slice(2);
 const headed = argv.includes('--headed');
@@ -78,52 +83,6 @@ const MUZZLE_STEPS = [6, 10, 14, 25, 45];
  * "that layer does not matter" again.
  */
 const ABLATE = argv.includes('--ablate');
-
-const run = (cmd, args) =>
-  spawn(cmd, args, { cwd: ROOT, shell: process.platform === 'win32', stdio: 'pipe' });
-
-/**
- * Kill a child AND everything it spawned.
- *
- * `child.kill()` is not enough and the difference was not academic. This tool
- * used to start the preview with `npx vite preview` through a shell, which on
- * Windows is cmd.exe -> npx-cli.js -> node vite.js: THREE processes, of which
- * `server.kill()` reaped the first. The real server survived every run, kept
- * port 4319 bound, and the next run then either died on `--strictPort` or —
- * far worse — connected to a preview of the PREVIOUS BUILD and measured it
- * without saying so. Every "before/after" comparison taken while a stale
- * server was up was a comparison of one build against itself.
- *
- * The server is now started as a single direct node process (see below), and
- * this is the belt to that pair of braces.
- */
-function killTree(child) {
-  if (!child || child.pid === undefined || child.exitCode !== null) return;
-  try {
-    if (process.platform === 'win32') {
-      spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-    } else {
-      process.kill(-child.pid, 'SIGKILL');
-    }
-  } catch { /* already gone */ }
-  try { child.kill('SIGKILL'); } catch { /* already gone */ }
-}
-
-async function serverAlive(url, timeoutMs = 1500) {
-  try {
-    const ctl = AbortSignal.timeout(timeoutMs);
-    return (await fetch(url, { signal: ctl })).ok;
-  } catch { return false; }
-}
-
-async function waitForServer(url, timeoutMs = 60_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await serverAlive(url)) return true;
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  return false;
-}
 
 /** Luminance distribution of one PNG buffer, in sRGB — the bible's frame. */
 async function measure(buf) {
@@ -327,52 +286,31 @@ rmSync(OUT, { recursive: true, force: true });
 mkdirSync(OUT, { recursive: true });
 
 console.log('> building...');
-await new Promise((resolve, reject) => {
-  const b = run('npm', ['run', 'build']);
-  let out = '';
-  b.stdout.on('data', (d) => (out += d));
-  b.stderr.on('data', (d) => (out += d));
-  b.on('close', (c) => (c === 0 ? resolve() : reject(new Error(`build failed:\n${out.slice(-4000)}`))));
-});
+await build(ROOT, { log: () => {} });
 
 /*
- * REFUSE TO RUN AGAINST A SERVER WE DID NOT START. A leaked preview from an
- * earlier run answers on this port and serves ITS build, so the probe would
- * quietly measure whatever was compiled last time. That is indistinguishable
- * from "the change had no effect", which is the single most expensive wrong
+ * MEASURE OUR OWN BUILD, AND PROVE IT RATHER THAN REFUSING ON A GUESS.
+ *
+ * This block used to be: probe the fixed port, and if anything answers, throw
+ * "that is almost certainly a leaked preview — kill it". Two things wrong with
+ * that, and the second is the expensive one. The probe aborted after 1500 ms,
+ * so a busy machine read a LIVE neighbour as an empty port and the tool went on
+ * to measure it; and even when the probe worked, four sibling tools also used
+ * 4319, so the advice to kill whatever holds it was as likely to be aimed at a
+ * colleague's running capture as at a leak.
+ *
+ * `serve()` steps off a busy port onto one the OS says is free and then
+ * byte-compares what that origin serves against the `dist/` just built here. A
+ * before/after comparison taken off a stale or foreign server reads exactly
+ * like "the change had no effect", which is the single most expensive wrong
  * answer this tool can give.
  */
-if (await serverAlive(BASE)) {
-  throw new Error(
-    `something is already serving ${BASE}.\n` +
-    'That is almost certainly a leaked preview from an earlier run, and it is\n' +
-    'serving ITS build, not the one just compiled. Kill it and re-run:\n' +
-    (process.platform === 'win32'
-      ? `  Get-NetTCPConnection -LocalPort ${PORT} -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }`
-      : `  lsof -ti :${PORT} | xargs kill -9`),
-  );
-}
-
 console.log('> serving...');
-// ONE process, started directly. Not `npx vite` and not through a shell: on
-// Windows that is cmd.exe -> npx-cli.js -> node vite.js, and killing the
-// parent leaves the server running. See `killTree`.
-const server = spawn(
-  process.execPath,
-  [join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'),
-    'preview', '--port', String(PORT), '--strictPort'],
-  { cwd: ROOT, stdio: 'pipe', detached: process.platform !== 'win32' },
-);
-let cleanedUp = false;
-const cleanup = () => {
-  if (cleanedUp) return;
-  cleanedUp = true;
-  killTree(server);
-};
-process.on('exit', cleanup);
-process.on('SIGINT', () => { cleanup(); process.exit(1); });
-process.on('SIGTERM', () => { cleanup(); process.exit(1); });
-if (!(await waitForServer(BASE))) { cleanup(); throw new Error(`preview never came up on ${BASE}`); }
+const server = await serve({
+  root: ROOT, mode: 'preview', portHint: PORT_HINT, log: console.log,
+});
+const BASE = server.origin;
+const cleanup = () => server.stop();
 
 const browser = await chromium.launch({
   headless: !headed,
@@ -393,6 +331,7 @@ const results = { tag: TAG, viewport: VIEWPORT, webgl: null, cases: [] };
 try {
   // unit-parade, not battle: full-health units emit no damage smoke, so the
   // baseline frame is static and every luminance delta is the flashes alone.
+  server.assertAlive('the flash sweep');
   await page.goto(`${BASE}?shot=unit-parade&seed=1`, { waitUntil: 'load' });
   await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 60_000 });
   await page.evaluate(() => window.__VM.ready());

@@ -68,10 +68,22 @@ export const UNLOCKS = {
   unitRaider: 'unit.raider',
   /** The faction's tier-3 specialist: Prism Tank / Apocalypse / Zenith Emitter. */
   unitSpecialist: 'unit.specialist',
-  /** Escort hulls: Hover Transport, Assault Destroyer, Attack Sub, Kite Corvette. */
-  unitNaval: 'unit.naval',
-  /** Capital ships: Aircraft Cruiser / Dreadnought / Sunmonitor. */
-  unitNavalCapital: 'unit.naval.capital',
+  /*
+   * THREE NAVAL IDS USED TO SIT HERE — `unit.naval`, `unit.naval.capital` and
+   * `struct.naval` — and they are deleted rather than left as ids nothing
+   * gates. See the block that replaced them in `UNLOCK_TAGS`: they made both
+   * maps advertised as naval unplayable as such, for the human and, through
+   * `UnlockGate.mirrorAI`, for the AI as well.
+   *
+   * Deleted and not merely unreferenced, for the reason the `power` `Reward`
+   * variant was deleted when commander powers moved into the match: a schema
+   * member nothing produces is the next reader's false lead.
+   *
+   * The three missions that paid them still exist and still pay — cosmetics
+   * now. A mission whose reward evaporates is worse than a mission that never
+   * existed, because a profile that already completed it would silently lose
+   * what it earned.
+   */
   /**
    * The air arm, and ALL FOUR armies have one: Kestrel Gunship, Swarmhornet,
    * Vindicator, MiG Fighter.
@@ -91,8 +103,6 @@ export const UNLOCKS = {
   /* -- structures --------------------------------------------------------- */
   /** Tech centre: Battle Lab / Reliquary. Opens the top of every tab. */
   structTech: 'struct.tech',
-  /** Naval production: Naval Yard / Naval Pen / Slipway. */
-  structNaval: 'struct.naval',
   /** Advanced defences: Flame Tower, Prism Tower, Tesla Coil, Helios Spire. */
   structDefenceSpecialist: 'struct.defence.specialist',
   /** Anti-air emplacement: Multigunner AA. */
@@ -196,6 +206,10 @@ export const UNLOCKS = {
   insigniaAllies: 'cosmetic.insignia.allies',
   insigniaSoviets: 'cosmetic.insignia.soviets',
   insigniaMeridian: 'cosmetic.insignia.meridian',
+  /* -- what the three naval missions pay now ------------------------------ */
+  insigniaAdmiralty: 'cosmetic.insignia.admiralty',
+  insigniaUnbroken: 'cosmetic.insignia.unbroken',
+  decalFleet: 'cosmetic.decal.fleet',
   decalWarhead: 'cosmetic.decal.warhead',
   decalGrid: 'cosmetic.decal.grid',
   decalChevron: 'cosmetic.decal.chevron',
@@ -585,7 +599,7 @@ const TACTICS: readonly MissionDef[] = [
     target: 10,
     requires: ['tactics.wins.1'],
     rule: { on: 'win' },
-    reward: grant(UNLOCKS.structNaval),
+    reward: cosmeticUnlock(UNLOCKS.insigniaAdmiralty),
   },
   {
     id: 'tactics.wins.3',
@@ -595,7 +609,7 @@ const TACTICS: readonly MissionDef[] = [
     target: 40,
     requires: ['tactics.wins.2'],
     rule: { on: 'win' },
-    reward: grant(UNLOCKS.unitNavalCapital),
+    reward: cosmeticUnlock(UNLOCKS.decalFleet),
   },
   {
     id: 'tactics.fast.1',
@@ -613,7 +627,7 @@ const TACTICS: readonly MissionDef[] = [
     description: 'Win a skirmish without losing a single structure.',
     target: 1,
     rule: { on: 'noLoss', kinds: STRUCTURES, requireWin: true },
-    reward: grant(UNLOCKS.unitNaval),
+    reward: cosmeticUnlock(UNLOCKS.insigniaUnbroken),
   },
   {
     id: 'tactics.streak.1',

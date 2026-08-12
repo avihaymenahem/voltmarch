@@ -34,18 +34,35 @@
  * buildable ground, ground beside navigable water, ground inside the build
  * radius, and the intersection of the three. That decomposition is what turned
  * "the AI never builds a dock" into "for three of four armies the intersection
- * is EMPTY, and the nearest coastal site is 72-79 m from a 56 m build radius".
+ * is EMPTY, and the nearest coastal site is 72-79 m from a 56 m build radius" —
+ * a fact about the MAP, which is where it was fixed. The same decomposition now
+ * reads 54 / 34 / 35 / 25 legal sites at tick zero.
  *
- * MEASURED ON `mapSeed 0xa7011`, `simSeed 4242`, four brains, 24 minutes:
+ * MEASURED ON `mapSeed 0xa7011`, `simSeed 4242`, four brains, 24 minutes. The
+ * "before" column is the state this file was written against; "seated" is after
+ * `islandSeats` put every opening within reach of its own coast and the four
+ * defects below were closed:
  *
- *                      before          after
- *     naval yards      0 / 0 / 0 / 1   0 / 1 / 0 / 1
- *     transports       0 / 0 / 0 / 0   0 / 0 / 0 / 3
- *     landings         0 / 0 / 0 / 0   0 / 0 / 0 / 12
+ *                      before          seated
+ *     naval yards      0 / 1 / 0 / 0   1 / 1 / 1 / 1
+ *     transports       0 / 2 / 0 / 0   2 / 2 / 2 / 0
+ *     warships         0 / 3 / 0 / 0   0 / 0 / 3 / 0
+ *     recon hulls      0 / 0 / 0 / 0   2 / 2 / 2 / 0
+ *     landings         0 / 9 / 0 / 0   5 / 5 / 1 / 0
  *
- * The Reclamation brain's first landing is at minute 8 and it runs them
- * continuously after. Two brains still never reach the water on this seed; see
- * the note in `AiBrain.coastCreepWanted`.
+ * The four that were closed, each of which alone kept a brain off the water:
+ * the START POSITION (`islandSeats`), a landing party priced against a LAND
+ * wave (`AI_NAVAL.landingReserve`), a hull chosen by catalog order rather than
+ * by capacity (`BuildCatalog.forLift`), and `amphibiousWanted` characterising a
+ * mixed army from `strikeIds[0]` (`AiBrain.strikeMoveClasses`).
+ *
+ * THE FOURTH BRAIN IS NOT AN AMPHIBIOUS FAILURE and it is worth saying which
+ * one it is. The Reclamation brain founds its dock at minute 5 and orders a
+ * Slag Hauler; its VEHICLES QUEUE is jammed behind a finished `rclPicker` with
+ * `ready: true` that cannot egress from a base holding 104 units, so the hauler
+ * never leaves the yard — the same shape as wall 3 in
+ * `tests/ai-naval-yard.spec.ts`, at a war factory rather than a dock, and
+ * present identically in the "before" column. It banks 23 000 credits doing it.
  * ============================================================================
  */
 
@@ -80,6 +97,8 @@ import { AiDirector } from '../src/sim/AI';
 import { BuildRole } from '../src/sim/AIStrategy';
 import type { ProductionFacts, ProductionOracle } from '../src/sim/AIStrategy';
 import { invalidateNavalWater } from '../src/sim/NavalWater';
+import { UnlockGate, setUnlockGate } from '../src/progression/UnlockGate';
+import { MISSION_UNLOCK_IDS } from '../src/data/Missions';
 import {
   MAP_SEAS, SKIRMISH_ARMIES_MAX, buildScenario, clearScenario, startPointsFor,
 } from '../src/game/Scenarios';
@@ -123,6 +142,22 @@ interface Match {
 
 async function boot(): Promise<Match> {
   invalidateNavalWater();
+  /*
+   * A REAL GATE, OWNING NOTHING — a profile that has never finished a mission.
+   *
+   * This probe ran with NO gate installed at all, and `isBuildable` short
+   * circuits on `active === null`, so every gated def in the game was buildable
+   * and the one layer between a fresh player and a navy was not in the picture.
+   * A regression in gating could not have moved a single number here.
+   *
+   * It is installed BEFORE `buildScenario`, because the scenario asks
+   * `isBuildable` while it spawns the starting army — the tick-zero question
+   * `Playback` and PvP both had to learn about. And it is what makes the result
+   * mean something: the naval unlock tags are gone, so a FRESH profile is now
+   * supposed to be able to build the whole naval arm, and this is the only test
+   * in the repo that watches four brains actually do it.
+   */
+  setUnlockGate(new UnlockGate(() => [], { knownUnlockIds: MISSION_UNLOCK_IDS }));
   const world = new World();
   const channels = new Channels();
   world.terrain = terrain;
@@ -413,6 +448,9 @@ async function boot(): Promise<Match> {
       return res;
     },
     dispose(): void {
+      // The gate is module-level state; leaking it would gate every spec file
+      // that runs after this one.
+      setUnlockGate(null);
       setProduction(null);
       setTransportService(null);
       setActiveNav(null);
@@ -450,6 +488,7 @@ describe('a four-army match on Sunder Atoll puts a squad ashore on another islan
               yards: b.navalYardCount,
               transports: it.transports,
               warships: it.warships,
+              recon: it.reconHulls,
               landings: b.landingCount,
               seaCells: it.seaCells,
               amph: b.amphibiousVerdict,
@@ -487,21 +526,39 @@ describe('a four-army match on Sunder Atoll puts a squad ashore on another islan
       }
 
       const last = rows[rows.length - 1] as {
-        brains: { p: number; yards: number; transports: number;
-          landings: number; amph: string }[];
+        brains: { p: number; yards: number; transports: number; warships: number;
+          recon: number; landings: number; amph: string }[];
       };
       const line = last.brains.map((b) => `p${b.p} yards=${b.yards} `
-        + `transports=${b.transports} landings=${b.landings} amph="${b.amph}"`).join('; ');
-      const yards = last.brains.reduce((a, b) => a + b.yards, 0);
-      const landings = last.brains.reduce((a, b) => a + b.landings, 0);
+        + `transports=${b.transports} warships=${b.warships} recon=${b.recon} `
+        + `landings=${b.landings} amph="${b.amph}"`).join('; ');
+      const sum = (f: (b: typeof last.brains[number]) => number): number =>
+        last.brains.reduce((a, b) => a + f(b), 0);
+      const yards = sum((b) => b.yards);
+      const landings = sum((b) => b.landings);
 
-      // THE THREE FACTS, in the order they have to become true. Each gets its
-      // own message, because a failure of the first explains a failure of the
-      // third and the reverse is not true.
+      // THE FACTS, in the order they have to become true. Each gets its own
+      // message, because a failure of the first explains a failure of the last
+      // and the reverse is not true.
       expect(last.brains.some((b) => b.amph.startsWith('objective unreachable')),
         `no brain ever wanted a landing: ${line}`).toBe(true);
       expect(yards, `no brain ever founded a dock: ${line}`).toBeGreaterThan(0);
+      // EVERY brain, not some brain. Three of four never reached the water at
+      // all while every naval test in the repo was green, and "somebody built a
+      // dock" is exactly the assertion that let that ship — the map now seats
+      // all four openings within reach of a coast, so all four are held to it.
+      for (const b of last.brains) {
+        expect(b.yards, `p${b.p} never founded a dock: ${line}`).toBeGreaterThan(0);
+      }
       expect(landings, `a dock was founded and nobody ever crossed: ${line}`)
+        .toBeGreaterThan(0);
+      // The two hulls nothing else in the suite proves get BOUGHT. A warship is
+      // the escort layer's only output, and until `considerNavy` learned about
+      // `BuildRole.ReconHull` the four recon boats had no purchaser at all: a
+      // whole rung of content the AI could name and never ask for.
+      expect(sum((b) => b.warships), `no brain ever built an escort: ${line}`)
+        .toBeGreaterThan(0);
+      expect(sum((b) => b.recon), `no brain ever bought a recon hull: ${line}`)
         .toBeGreaterThan(0);
     } finally {
       m.dispose();

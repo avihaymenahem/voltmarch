@@ -75,7 +75,8 @@ import {
   DEG2RAD, Rng, clampCell, clampWorld, footprintOriginCell, hashU32, isInMap,
   snapFootprintToGrid, worldToCell, wrapAngle,
 } from '../core/math';
-import { TerrainRegions } from '../sim/Flowfield';
+import { MoveClass, TerrainRegions } from '../sim/Flowfield';
+import { setMoveClass } from '../sim/Movement';
 import { getTerrain } from '../world/Terrain';
 // Zero-cost edge: `UnlockGate.ts` imports nothing but its own type-only module,
 // and `isBuildable` answers "yes" when no gate has been installed.
@@ -1074,7 +1075,7 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
     Locomotor.Hover, 30, GUNNER, Faction.Soviets),
   dreadnought: unit('dreadnought', EntityKind.Vehicle, NU.dreadnought, 900, ArmorClass.Heavy, 4.0,
     Locomotor.Hover, 38, TURRETED, Faction.Soviets),
-  transport: unit('transport', EntityKind.Vehicle, NU.transport, 600, ArmorClass.Light, 6.0,
+  transport: unit('transport', EntityKind.Vehicle, NU.transport, 780, ArmorClass.Light, 5.4,
     Locomotor.Hover, 26, 0, Faction.Neutral),
 
   /* -- THE ALLIED AND SOVIET AIR ARMS --------------------------------------
@@ -1184,6 +1185,48 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
     Locomotor.Hover, 32, GUNNER, Faction.Reclaim, { turnRate: RCL_TURN(NU.gunboat) }),
   rclHulk: unit('rclHulk', EntityKind.Vehicle, NU.destroyer, 820, ArmorClass.Heavy, 4.4,
     Locomotor.Hover, 36, GUNNER, Faction.Reclaim, { turnRate: RCL_TURN(NU.destroyer) }),
+
+  /* -- the completed naval line ---------------------------------------------
+   * WITHOUT A ROW HERE THE UNIT DOES NOT EXIST. `ProductionService.spawnUnit`
+   * reads `FALLBACK_UNITS` before the def table, so a hull with a flawless def
+   * and no row here takes the player's credits, runs its bar to 100%, and never
+   * leaves the dock. Silently. Forever. Every field must match the def, which
+   * `tests/data.spec.ts` checks column by column.                            */
+  hydrofoil: unit('hydrofoil', EntityKind.Vehicle, NU.recon, 180, ArmorClass.Light, 11.0,
+    Locomotor.Hover, 44, TURRETED, Faction.Allies),
+  picketBoat: unit('picketBoat', EntityKind.Vehicle, NU.recon, 200, ArmorClass.Light, 10.4,
+    Locomotor.Hover, 42, TURRETED, Faction.Soviets),
+  mrdCutter: unit('mrdCutter', EntityKind.Vehicle, NU.recon, 170, ArmorClass.Light, 11.6,
+    Locomotor.Hover, 46, TURRETED, Faction.Meridian),
+  rclSkimmer: unit('rclSkimmer', EntityKind.Vehicle, NU.recon, 160, ArmorClass.Light, 11.2,
+    Locomotor.Hover, 42, GUNNER, Faction.Reclaim, { turnRate: 3.6 - NU.recon.l * 0.14 }),
+
+  landingCraft: unit('landingCraft', EntityKind.Vehicle, NU.lighter, 460, ArmorClass.Light, 6.6,
+    Locomotor.Hover, 24, 0, Faction.Allies),
+  assaultBarge: unit('assaultBarge', EntityKind.Vehicle, NU.lighter, 520, ArmorClass.Light, 6.0,
+    Locomotor.Hover, 24, 0, Faction.Soviets),
+  mrdLighter: unit('mrdLighter', EntityKind.Vehicle, NU.lighter, 440, ArmorClass.Light, 7.0,
+    Locomotor.Hover, 26, 0, Faction.Meridian),
+
+  mrdArgosy: unit('mrdArgosy', EntityKind.Vehicle, NU.transport, 740, ArmorClass.Light, 5.6,
+    Locomotor.Hover, 28, 0, Faction.Meridian),
+  rclHauler: unit('rclHauler', EntityKind.Vehicle, NU.transport, 800, ArmorClass.Heavy, 5.0,
+    Locomotor.Hover, 24, 0, Faction.Reclaim, { turnRate: 3.6 - NU.transport.l * 0.14 }),
+
+  /* -- the swimmers --------------------------------------------------------
+   * `Locomotor.Foot` here and in the def, deliberately. The amphibious half is
+   * a def bit that `Production.spawnUnit` turns into `MoveClass.Hover`; a new
+   * locomotor would have no `passGrid` bit and would jam the barracks queue.  */
+  frogman: unit('frogman', EntityKind.Infantry, U.infantry, 105, ArmorClass.Infantry, 2.9,
+    Locomotor.Foot, 26, GUNNER | EntityFlag.Crushable, Faction.Allies, { crushableBy: 1 }),
+  navalInfantry: unit('navalInfantry', EntityKind.Infantry, U.infantry, 115,
+    ArmorClass.Infantry, 2.8,
+    Locomotor.Foot, 24, GUNNER | EntityFlag.Crushable, Faction.Soviets, { crushableBy: 1 }),
+  mrdTidewalker: unit('mrdTidewalker', EntityKind.Infantry, U.infantry, 100,
+    ArmorClass.Infantry, 3.0,
+    Locomotor.Foot, 28, GUNNER | EntityFlag.Crushable, Faction.Meridian, { crushableBy: 1 }),
+  rclDredger: unit('rclDredger', EntityKind.Infantry, U.infantry, 95, ArmorClass.Infantry, 3.0,
+    Locomotor.Foot, 24, GUNNER | EntityFlag.Crushable, Faction.Reclaim, { crushableBy: 1 }),
 };
 
 export interface FallbackBuilding {
@@ -1522,7 +1565,20 @@ const UNIT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   destroyer: ['destroyer', 'alliedcruiser', 'cruiser'],
   submarine: ['submarine', 'sub', 'akula', 'typhoon'],
   dreadnought: ['dreadnought', 'sovietcruiser', 'battleship'],
-  transport: ['transport', 'landingcraft', 'hovertransport'],
+  transport: ['transport', 'hovertransport', 'heavytransport'],
+  hydrofoil: ['hydrofoil', 'alliedhydrofoil', 'fastboat'],
+  picketBoat: ['picketboat', 'sovietpicket', 'picket'],
+  mrdCutter: ['mrdcutter', 'suncutter', 'meridiancutter'],
+  rclSkimmer: ['rclskimmer', 'scrapskimmer', 'skimmer'],
+  landingCraft: ['landingcraft', 'alliedlighter', 'lighter'],
+  assaultBarge: ['assaultbarge', 'sovietlighter', 'barge'],
+  mrdLighter: ['mrdlighter', 'sunlighter', 'meridianlighter'],
+  mrdArgosy: ['mrdargosy', 'argosy', 'meridianargosy'],
+  rclHauler: ['rclhauler', 'slaghauler', 'hauler'],
+  frogman: ['frogman', 'alliedfrogman', 'diver'],
+  navalInfantry: ['navalinfantry', 'sovietdiver', 'marine'],
+  mrdTidewalker: ['mrdtidewalker', 'tidewalker', 'meridiantidewalker'],
+  rclDredger: ['rcldredger', 'dredger', 'reclaimdredger'],
   // The air arms. WITHOUT A ROW HERE THE DEF DOES NOT EXIST as far as any
   // consumer is concerned: `resolveDefBinding` returns `bindAliases(unitByKey,
   // UNIT_ALIASES)`, which iterates the keys of THIS table — so an unlisted def
@@ -1706,6 +1762,16 @@ const FACTION_KEY_MAP: Readonly<Record<string, readonly string[]>> = {
   destroyer:        ['destroyer',   'destroyer',  'dreadnought', 'mrdMonitor',      'rclHulk'],
   dreadnought:      ['dreadnought', 'destroyer',  'dreadnought', 'mrdMonitor',      'rclHulk'],
   transport:        ['transport',   'transport',  'transport',  'mrdCarryall',      'rclCrawler'],
+  /* the completed naval line: recon, the four-slot landing ship, the eight-slot
+   * heavy, and the swimmer who needs none of them. `transport` is shared by the
+   * Allied yard and the Soviet pen, so both columns name it. */
+  hydrofoil:        ['hydrofoil',   'hydrofoil',  'picketBoat', 'mrdCutter',        'rclSkimmer'],
+  picketBoat:       ['picketBoat',  'hydrofoil',  'picketBoat', 'mrdCutter',        'rclSkimmer'],
+  landingCraft:     ['landingCraft', 'landingCraft', 'assaultBarge', 'mrdLighter',  'rclScow'],
+  assaultBarge:     ['assaultBarge', 'landingCraft', 'assaultBarge', 'mrdLighter',  'rclScow'],
+  heavyLift:        ['transport',   'transport',  'transport',  'mrdArgosy',        'rclHauler'],
+  frogman:          ['frogman',     'frogman',    'navalInfantry', 'mrdTidewalker', 'rclDredger'],
+  navalInfantry:    ['navalInfantry', 'frogman',  'navalInfantry', 'mrdTidewalker', 'rclDredger'],
 };
 
 /** Resolved def indices for the content vocabulary. -1 means "no real def". */
@@ -2422,6 +2488,17 @@ export class ScenarioBuilder {
     }
     s.guardX[i] = px;
     s.guardZ[i] = pz;
+
+    // DECLARE THE MOVE CLASS HERE TOO. `Production.spawnUnit` has done this
+    // since warships learned to launch onto water, and this path — every
+    // scenario, every capture fixture, every headless test that seeds a fleet —
+    // never did, so a scenario-placed hull fell through to
+    // `Movement.moveClassAt`'s guess: Hover if the cell it was posed on is dry,
+    // Naval if wet, latched against `store.gen[i]` for the life of the slot.
+    // Two spawners answering one question differently is how the `?shot=naval`
+    // fixture and a produced fleet ended up with different turn models.
+    if (def?.waterOnly === true) setMoveClass(s, id, MoveClass.Naval);
+    else if (def?.amphibious === true) setMoveClass(s, id, MoveClass.Hover);
 
     this.finish(id, i, key, owner, kind, options.selected === true);
     return id;
@@ -3171,10 +3248,18 @@ function addStartOre(
  *
  * AND THE EXPANSION IS THE THING WORTH CROSSING FOR, which is a property of
  * WHERE it sits rather than of what it holds. `BUILD_RADIUS` is 56 m and the
- * opening Construction Yard stands on the island centre, so 56 m is exactly
- * the reach of everything an army can build without creeping. The home field
- * at 44 m is inside it: a refinery, a wall and a defence all go up on turn one.
- * The expansion at 72 m is outside it, on the face that borders the lagoon.
+ * opening Construction Yard stands `ISLAND_SEAT_OFFSET` off the island centre
+ * ALONG THE COAST, which is why both offsets below are still radial and still
+ * mean what they say: 44 m of radius against 30 m of tangent is 53 m from the
+ * yard, and 62 m of radius against the same tangent is 69 m. The home field is
+ * inside the reach — a refinery, a wall and a defence all go up on turn one —
+ * and the expansion is outside it, on the face that borders the lagoon.
+ *
+ * That is the whole reason the seat is TANGENTIAL. A radial seat of the same
+ * size would have moved the yard 30 m along the line both fields sit on, which
+ * pushes the home field to 74 m (outside the reach it is defined by) and pulls
+ * the expansion to 32 m — a second home field, which is exactly the defect the
+ * 52 m expansion offset was replaced for.
  *
  * To hold the expansion you must extend the base TOWARD the beach a landing
  * arrives on, which is the decision the map is made of — and it is a decision
@@ -3259,6 +3344,107 @@ function addIslandOre(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
       s.x - outward.x * ISLAND_ORE_EXPANSION, s.z - outward.z * ISLAND_ORE_EXPANSION, 22,
     );
   }
+}
+
+/* --------------------------------------------------------------------------
+ * WHERE THE ARMY ACTUALLY STANDS ON AN ISLAND
+ *
+ * REPORTED AS "AI ISN'T BUILDING ANY NAVY", and it was not the brain. Measured
+ * on the shipped `sunder-atoll` seed through the real generator and the real
+ * `evaluatePlacement`, with the opening base standing on the island centre:
+ *
+ *     army   coastal 3x3 sites   sites in the build radius   BOTH   nearest
+ *     p0             532                   448                 0      72 m
+ *     p1             532                   442                 0      76 m
+ *     p2             532                   430                 0      79 m
+ *     p3             532                   468                 1      61 m
+ *
+ * 532 places to put a dock and, for three armies out of four, NOT ONE of them
+ * inside the envelope a Construction Yard opens with. The nearest coastal site
+ * is 72-79 m out against a 56 m `BUILD_RADIUS` (62 m once the yard's own radius
+ * is counted), so on turn one three of the four armies on a map whose entire
+ * premise is the sea COULD NOT FOUND A DOCK — and neither could the human, who
+ * has the identical envelope. Every naval test was green: the map really does
+ * offer 532 sites, `evaluatePlacement` really does accept them, and nothing was
+ * asking whether an opening base could reach one.
+ *
+ * SO THE FIX IS IN THE MAP AND NOT IN THE BRAIN. The AI's coast creep — buy a
+ * power plant, place it seaward, repeat — was written to walk that 20 m gap and
+ * it is a workaround for a start position, not a strategy: it costs 800 credits
+ * a step, it is bounded by `AI_NAVAL.coastReachTicks`, and the human's version
+ * of it is the same twenty minutes of busywork before the map's own content
+ * becomes reachable.
+ *
+ * THE ISLAND GEOMETRY DOES NOT MOVE, and that is not a preference. Rotating or
+ * reshaping an island needs `sin`/`cos`, which ECMA-262 does not pin to bit
+ * precision, and terrain generates independently on both machines of a lockstep
+ * match — see the block above `ARCHIPELAGO_SEA`. This moves a START POINT,
+ * which is arithmetic the generator never sees: `startPointsFor` still reserves
+ * every shelf at the island centre, so the heightfield is byte-identical.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Metres the opening is seated off its island centre, along the coast.
+ *
+ * THIRTY, AND IT IS A MEASUREMENT. The gap to close is 20-23 m (the table
+ * above), the coastal ring wanders 8 m with `wavinessMetres`, and the seat has
+ * to clear the worst of that wander in whatever direction it happens to point
+ * rather than in the best one. Swept through the real generator and the real
+ * `evaluatePlacement`, counting legal 3x3 dock sites inside each army's own
+ * build radius:
+ *
+ *     offset    p0   p1   p2   p3    nearest legal site
+ *      0 m       0    0    0    1    72 / 76 / 79 / 61 m
+ *     24 m      32   21   16   10    54 / 54 / 57 / 54 m
+ *     30 m      54   34   35   25    48 / 48 / 52 / 53 m
+ *     36 m      63   40   51   28    43 / 43 / 47 / 49 m
+ *
+ * 24 m works and leaves one bad seed between the map and no dock at all; 36 m
+ * pushes the far edge of the opening layout past `TERRAIN_START_FLAT_RADIUS`
+ * (58 m, against ~25 m of base half-width), which is the levelled ground the
+ * shelf actually guarantees. 30 m is the middle with both margins intact, and
+ * `tests/ai-naval-yard.spec.ts` re-measures it rather than trusting this table.
+ */
+export const ISLAND_SEAT_OFFSET = 30;
+
+/**
+ * Where each army stands, given the spots `startSpots` chose.
+ *
+ * A NO-OP ON EVERY MAP THAT IS NOT AN ARCHIPELAGO, so nothing on a continent
+ * moves by a millimetre.
+ *
+ * THE SPOT AND THE SEAT ARE DIFFERENT THINGS and this is the split: the SPOT is
+ * the island — it is what the generator levels a shelf at, what both ore fields
+ * are measured from, and what `startSpots` must keep answering, since an island
+ * is a place and not a base. The SEAT is where that army's Construction Yard
+ * lands on it. Folding the offset into `startSpots` instead would move the
+ * shelf reservation with it, and `TerrainFields.resolveStarts` would push it
+ * straight back: an island start already sits at the maximum inland distance
+ * its radius allows, so any offset it is given is spent and then undone.
+ *
+ * TANGENTIAL, NOT SEAWARD, and the ore block above is the reason — a radial
+ * seat trades a dock for a broken ore layout. The direction is `outward` turned
+ * a quarter turn, which is a swap and a sign flip and therefore EXACT: a
+ * bearing in degrees through `sin`/`cos` would be the one thing this file is
+ * not allowed to introduce. All four turn the same way, so the four openings
+ * stay one layout rotated four times and the ore stays balanced by
+ * construction.
+ */
+export function islandSeats(
+  spots: readonly StartSpot[], sea: SeaSpec | null,
+): readonly StartSpot[] {
+  const islands = sea?.islands;
+  if (islands === undefined || islands.length === 0) return spots;
+  const out: StartSpot[] = [];
+  for (const s of spots) {
+    outwardFrom(s.x, s.z, outward);
+    out.push({
+      x: clampWorld(s.x - outward.z * ISLAND_SEAT_OFFSET, 4),
+      z: clampWorld(s.z + outward.x * ISLAND_SEAT_OFFSET, 4),
+      facingDeg: s.facingDeg,
+    });
+  }
+  return out;
 }
 
 /* --------------------------------------------------------------------------
@@ -3772,6 +3958,12 @@ const PLANS: Record<string, ScenarioPlan> = {
       // table. `b.armies` is 2 unless a lobby said otherwise, so this is the
       // same two spots and the same two owners it has always been.
       const spots = startSpots(cx, cz, b.armies, b.sea);
+      // WHERE THE ISLAND IS, AND WHERE THE ARMY STANDS ON IT — see
+      // `islandSeats`. Identical to `spots` on every map that is not an
+      // archipelago, and the ORE below keeps reading `spots`: both fields are
+      // defined as radii from the island centre and moving them with the seat
+      // is what would unbalance them.
+      const seats = islandSeats(spots, b.sea);
       const owners: PlayerId[] = rotateStarts(
         // `armySlot` creates a player when the world is short, so a four-army
         // map seats four whatever the boot handed us. It alternates the two
@@ -3782,17 +3974,17 @@ const PLANS: Record<string, ScenarioPlan> = {
       );
 
       if (start === 'base') {
-        for (let i = 0; i < spots.length; i++) {
+        for (let i = 0; i < seats.length; i++) {
           // `facingDeg + 180` is the threat axis: a base's defended face looks
           // at the enemy, so the layout is turned away from where it is aimed.
-          buildBaseFor(b, owners[i], spots[i].x, spots[i].z, {
-            facingDeg: wrapDeg(spots[i].facingDeg + 180),
+          buildBaseFor(b, owners[i], seats[i].x, seats[i].z, {
+            facingDeg: wrapDeg(seats[i].facingDeg + 180),
           });
         }
       } else {
         const mine: EntityId[] = [];
-        for (let i = 0; i < spots.length; i++) {
-          const mcv = buildMcvStartFor(b, owners[i], spots[i]);
+        for (let i = 0; i < seats.length; i++) {
+          const mcv = buildMcvStartFor(b, owners[i], seats[i]);
           // BY OWNER, NOT BY SPOT INDEX. These two used to be the same thing,
           // because slot 0 was pinned to a fixed corner and the human was
           // always in it. `rotateStarts` broke that equivalence, and this line
@@ -3812,8 +4004,10 @@ const PLANS: Record<string, ScenarioPlan> = {
       // dropped on them — the same failure `START_CLEAR_RADIUS` documents.
       addCivilians(b, spots);
       // Look at YOUR opening, wherever the generator put it — which since
-      // `rotateStarts` is no longer always `spots[0]`.
-      const home = spots[localSlot(b, owners)];
+      // `rotateStarts` is no longer always `spots[0]`, and on an island is the
+      // SEAT rather than the island centre: the camera frames the base, and the
+      // base is what moved.
+      const home = seats[localSlot(b, owners)];
       b.setCameraFocus(home.x, home.z - 8);
       b.scatter({ minX: cx - 120, minZ: cz - 120, maxX: cx + 120, maxZ: cz + 120 }, 140);
     },

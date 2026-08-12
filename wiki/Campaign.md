@@ -47,8 +47,8 @@ resets it.
 | War Machine | destroy 500 | Field Command | **Tier-3 specialist unit** |
 | Total War | destroy 1,500 | War Machine | Strategic superweapon *(see §6)* + Warlord insignia |
 | Can Opener | destroy 60 vehicles | — | **Anti-air emplacement** |
-| Armour Column | destroy 250 vehicles | Can Opener | **Repair depot** |
-| Demolition Crew | destroy 25 structures | — | **Battlefield: Saltpan Reach** |
+| Armour Column | destroy 250 vehicles | Can Opener | **Battlefield: Saltpan Reach** |
+| Demolition Crew | destroy 25 structures | — | **Support pad** |
 | Scorched Earth | destroy 100 structures | Demolition Crew | Warhead decal |
 | Blooded | promote 20 units to veteran | — | Veteran insignia |
 | Old Guard | promote 15 units to elite | Blooded | **Commander hero** |
@@ -80,10 +80,10 @@ resets it.
 | Mission | Target | Requires | Reward |
 | --- | --- | --- | --- |
 | Opening Move | win a skirmish | — | Bronze insignia |
-| Theatre Command | win 10 | Opening Move | **Naval production** |
-| Fleet Admiral | win 40 | Theatre Command | **Capital ships** |
+| Theatre Command | win 10 | Opening Move | Admiralty insignia |
+| Fleet Admiral | win 40 | Theatre Command | Fleet decal |
 | Blitz | win inside 15 minutes | — | **Map: Contested Strait** |
-| Untouched | win without losing a structure | — | **Escort hulls** |
+| Untouched | win without losing a structure | — | Unbroken insignia |
 | On A Roll | win 3 in a row | Opening Move | Gold insignia |
 | Undefeated | win 10 in a row | On A Roll | Centurion decal |
 
@@ -167,9 +167,31 @@ What is behind the gate, and therefore what an unlock *widens*:
 | Tech centre | Battle Lab · Reliquary · Crucible |
 | Specialist defence | Prism Tower · Tesla Coil · Helios Spire · Arc Pylon |
 | Anti-air emplacement | Multigunner AA *(Allied only — no other faction has a dedicated AA structure)* |
-| Naval production | Naval Yard · Naval Pen · Slipway · Breaker Dock |
-| Escort hulls | Hover Transport · Assault Destroyer · Attack Submarine · Kite Corvette · Slag Scow |
-| Capital ships | Aircraft Cruiser · Dreadnought · Sunmonitor · Reclaimed Hulk |
+| Support pad | Repair Depot · Solar Infirmary · Patch Yard |
+| Commander hero | Field Marshal · War Commissar · Hierarch · Scrap Baron |
+
+> ### The navy left this table
+>
+> Three groups used to sit in it — *Naval production* (all four docks, paid by
+> **Theatre Command**), *Escort hulls* (**Untouched**) and *Capital ships*
+> (**Fleet Admiral**) — and all three are gone. The three missions still exist
+> and still pay; they pay cosmetics now, so nobody who had already earned one
+> lost anything.
+>
+> **They made the maps sold as naval unplayable as such.** *Contested Strait* is
+> unlocked by one win under fifteen minutes while the docks needed ten wins on
+> an independent chain, so the lobby handed you a battlefield whose own blurb
+> reads "Naval yards earn their cost here" and no way to build a naval yard.
+> And because the AI resolves against **your** profile, both sides were equally
+> stranded and the water was scenery. On [Sunder Atoll](/avihaymenahem/voltmarch/wiki/Sunder-Atoll),
+> where the sea is the only road, four armies sat on four islands and the match
+> could not end.
+>
+> The rule that replaced them is narrower than "ungate the navy": **content
+> required to reach the enemy is never progression-gated.** What is left is the
+> in-match tech gate, which was always the right one — a capital ship still
+> needs the Battle Lab, Reliquary or Crucible, and every hull still needs a dock
+> on a real coast.
 
 Two things follow from this that are easy to miss:
 
@@ -207,12 +229,20 @@ players get everything.
 
 Seven of the ten battlefields are earned. See [Maps](/avihaymenahem/voltmarch/wiki/Maps) for what each one plays like.
 
+**Three ship open**: Temperate Valley, Airbase Flats and
+[Sunder Atoll](/avihaymenahem/voltmarch/wiki/Sunder-Atoll). The atoll is open
+deliberately — it is the map the navy exists for, and a battlefield that teaches
+the sea has to be there before the missions that reward it.
+
 | Map | Earned by |
 | --- | --- |
 | Frozen Sector | Prospector — mine 25,000 ore |
 | Industrial Grid | Groundworks — complete 50 structures |
 | Contested Strait | Blitz — win inside 15 minutes |
 | Coral Shore | Total Mobilisation — build 750 units |
+| Saltpan Reach | Armour Column — destroy 250 vehicles |
+| Foundry Line | Hostile Takeover — capture 10 enemy structures |
+| Glacier Shelf | Continental Yield — mine 1,000,000 ore |
 
 Locked maps are shown in the skirmish lobby, greyed out, with the reason on them. Map unlocking is
 fully wired and works.
@@ -227,13 +257,20 @@ honestly.
 
 | Reward class | Count | Works? |
 | --- | --- | --- |
-| Unit unlocks | 5 | **Yes.** The sidebar opens up. |
-| Structure unlocks | 3 | **Yes.** |
+| Unit unlocks | 4 | **Yes.** The sidebar opens up. |
+| Structure unlocks | 4 | **Yes.** |
 | Map unlocks | 7 | **Yes.** The lobby unlocks the map. |
 | Commander powers | 0 | **Not a mission reward any more** — they are bought in the match. See below. |
 | Superweapon unlocks | 5 | **Gate nothing.** The superweapons themselves are real; these five ids are not what opens them. |
 | Objective credits | 13 | **No.** Nothing pays them (§3). |
-| Cosmetics | 14 | **Display only.** |
+| Cosmetics | 17 | **Display only.** |
+
+Those first two counts read 5 and 3 for a long time and were already too low
+before the navy left — the commander hero and the support pad had landed and
+nobody added them. They are the four unit groups (raider, tier-3 specialist,
+aircraft, commander hero) and the four structure groups (tech centre, specialist
+defence, anti-air emplacement, support pad). The naval groups that used to swell
+them are gone; three cosmetics arrived to replace what those missions paid.
 
 ### Commander powers
 
@@ -301,8 +338,9 @@ So those five rewards are correct about the direction of travel and wrong about 
 
 ### Cosmetics
 
-Fourteen insignia and decals. Awarding one shows a banner and adds a line to the Missions screen.
-Nothing renders them — no unit, structure or HUD element reads a cosmetic id.
+Seventeen insignia and decals. Awarding one shows a banner and adds a line to the Missions screen.
+Nothing renders them — no unit, structure or HUD element reads a cosmetic id. Three of the seventeen
+are the new payouts for Theatre Command, Fleet Admiral and Untouched.
 
 ### Old Guard used to be impossible
 

@@ -41,6 +41,7 @@ Trained at the **Barracks**.
 | Attack Dog **(locked)** | 300 | 6 s | Barracks | 70 | Infantry | **6.2** | Jaws, 55, small arms | 3.6 m | no | The raider. Fastest foot unit in the game, and it shreds infantry. Nearly useless against anything armoured |
 | Flak Trooper | 300 | 6 s | Barracks, Radar | 110 | Infantry | 3.3 | Flak Burst, 11 x4, autocannon | 20 m | yes | Erases anything Light: raiders, hover hulls, aircraft. 1.00 against Light, 0.35 against Heavy |
 | Engineer | 500 | 10 s | Barracks, Refinery | 90 | Infantry | 3.4 | unarmed | — | — | Captures enemy and neutral structures outright, and repairs your own |
+| Naval Infantry | 320 | 6 s | Barracks | 115 | Infantry | 2.8 | AK Pattern, 16 x3, small arms | 17 m | yes | **Crosses open water on his own.** The toughest swimmer of the four and the slowest — 15 more hit points than a Conscript for 220 more credits, at 2.8 m/s against 3.4 |
 | War Commissar | 1500 | 20 s | Barracks, Radar | 520 | Infantry | 3.5 | Tesla Coil, 120, tesla, chains to 2 | 30 m | yes | Commander. One alive at a time. The toughest commander in the game |
 
 Note the split between the Flak Trooper and the Allied Javelin. Both are the shared-pool armies'
@@ -75,13 +76,21 @@ you are the wrong faction; build a Dreadnought or an Apocalypse.
 
 ## Navy
 
-Built at the **Naval Pen**. Only matters on maps with water.
+Built at the **Naval Pen**, which only offers itself on a map with a real sea.
+Four rungs, none of them behind a campaign unlock. **Every hull here is
+water-only** — a carrier stands off the beach and puts its cargo on the sand
+rather than driving up it.
 
 | Unit | Cost | Time | Needs | HP | Armour | Speed | Weapon | Range | Air | What it is for |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Hover Transport **(locked)** | 900 | 12 s | Naval Pen | 600 | Light | 6.0 | unarmed | — | — | Five infantry seats. The only way to put a squad on the far shore |
-| Attack Submarine **(locked)** | 1000 | 14 s | Naval Pen | 500 | Light | 6.0 | Torpedo Tube, 105, rocket, 3.0 m splash | 30 m | no | Ambush hull. Heavy single-shot damage on a long cycle |
+| Picket Boat | 450 | 6 s | Naval Pen | 200 | Light | 10.4 | 90 mm Cannon, 55, AP, 1.6 m splash | 24 m | no | Recon. **42 m of sight** on the cheapest hull you can buy, and a tank gun that fires once every 1.5 s from 200 hit points |
+| Assault Barge | 680 | 10 s | Naval Pen | 520 | Light | 6.0 | unarmed | — | — | **Four slots**: two vehicles, or four infantry. The toughest four-slot hull in the game |
+| Heavy Transport | 1200 | 15 s | Naval Pen | 780 | Light | 5.4 | unarmed | — | — | **Eight slots** — four Rhinos |
+| Attack Submarine | 1000 | 14 s | Naval Pen | 500 | Light | 6.0 | Torpedo Tube, 105, rocket, 3.0 m splash | 30 m | no | Ambush hull. Heavy single-shot damage on a long cycle |
 | Dreadnought **(locked)** | 2000 | 24 s | Naval Pen, Battle Lab | 900 | Heavy | 4.0 | Cruise Battery, 120 x2, rocket, 4.5 m splash | **42 m** | yes | Siege ship. The longest naval reach in the game, Heavy armour, and its missiles elevate — the one Soviet hull that answers aircraft at range |
+
+The Dreadnought's **(locked)** is the Battle Lab, not the campaign — the same
+tech gate that holds back the Apocalypse.
 
 ## Structures
 
@@ -95,7 +104,7 @@ Built at the **Naval Pen**. Only matters on maps with water.
 | Radar Dome | 1000 | 14 s | Ore Refinery | 700 | -40 | Reveals the minimap, sees 44 m, and opens tier two |
 | Ore Silo | 150 | 5 s | Ore Refinery | 500 | -10 | +1500 to your bank cap |
 | Repair Depot | 800 | 10 s | War Factory | 800 | -30 | Mends any vehicle parked on the pad. Priced at roughly two full repairs of a main battle tank |
-| Naval Pen **(locked)** | 1000 | 14 s | Ore Refinery | 1000 | -30 | Builds Soviet warships |
+| Naval Pen | 1000 | 14 s | Ore Refinery | 1000 | -30 | Builds Soviet hulls. **Must be founded on a coast** — the game refuses an inland site |
 | Battle Lab **(locked)** | 2000 | 24 s | Radar Dome | 900 | -60 | Unlocks the top of every tab: Apocalypse, Dreadnought, and both superweapons |
 
 ## Defences
@@ -163,5 +172,6 @@ anywhere.
 - The Attack Dog, your raider, is 70 hit points and only useful against infantry.
 - The Flame Tower's 18 m is the shortest range of any emplacement in the game — plenty of attackers
   will simply out-range it.
-- Attack Dog, Apocalypse, MiG, the whole navy, the Tesla Coil, the Battle Lab and both superweapons
-  are behind campaign unlocks on a fresh profile.
+- Attack Dog, Apocalypse, MiG, the Tesla Coil, the Battle Lab and both superweapons are behind
+  campaign unlocks on a fresh profile. The navy is not: the Pen, the hulls and the Naval Infantry
+  are all day-one.

@@ -4,9 +4,9 @@ Four armies. Two of them are variations on a shared chassis; two of them are not
 
 The **Allied Forces** and the **Soviet Union** draw from a common pool. Their Construction Yard,
 Power Plant, Ore Refinery, Barracks, War Factory, Radar Dome, Ore Silo, Battle Lab, Repair Depot,
-Wall, Gate, Engineer, Ore Harvester, Construction Vehicle and Hover Transport are literally the same
+Wall, Gate, Engineer, Ore Harvester, Construction Vehicle and Heavy Transport are literally the same
 things at the same prices. They diverge at the tanks, the infantry specialists, the defences, the
-navy and the superweapons.
+rest of the navy and the superweapons.
 
 The **Meridian Pact** and **The Reclamation** share none of that. Each has its own construction
 yard, its own power plant, its own refinery, its own harvester, its own MCV — a complete parallel
@@ -31,9 +31,20 @@ gate at all**, because the Gate lives in the pool.
 | Superweapons | **2** | **2** | 1 | 1 |
 | Emplacements that shoot up | Multigunner AA (the only dedicated one), Prism Tower | Tesla Coil only | Helios Spire only | Arc Pylon only |
 | Gate | Yes | Yes | **none** | **none** |
-| Troop transport | Hover Transport, 5 seats | Hover Transport, 5 seats | Sandskiff, 2 seats | Slag Scow, 4 seats |
+| Recon hull | Hydrofoil 450, 44 m sight | Picket Boat 450, 42 m | Sun Cutter 480, **46 m** | Scrap Skimmer **400**, 42 m |
+| Landing ship, 4 slots | Landing Craft 700 | Assault Barge 680 | Sun Lighter 720 | Slag Scow 850, **armed** |
+| Heavy carrier, 8 slots | Heavy Transport 1200 | Heavy Transport 1200 | Argosy 1250 | Slag Hauler **1100**, Heavy armour |
+| Escort hull | Assault Destroyer 1000 | Attack Submarine 1000 | Kite Corvette 950 | **none** |
+| Swimmer infantry | Frogman 350 | Naval Infantry 320 | Tidewalker 380 | Dredger **300** |
+| Carrier that works inland | none | none | Sandskiff, 2 slots | none |
 | Can crush infantry | Grizzly, Harvester | Rhino, Apocalypse, Harvester | **nothing** | Scrapjaw, Grinder |
 | Turrets | Yes | Yes | Yes | **None, on anything** |
+
+**A cargo slot is not a seat.** Infantry cost one, a vehicle costs two, so a
+four-slot landing ship is two tanks and an eight-slot carrier is four. Every
+row of that naval block needs a dock standing on a coast, and the whole of it
+is buildable on a brand-new profile — see
+[Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs#carriers-and-the-cargo-slot).
 
 ---
 
@@ -43,7 +54,7 @@ gate at all**, because the Gate lives in the pool.
 | --- | --- | --- |
 | **Allied Forces** | Cost-efficient medium armour, three armed emplacements including the only dedicated anti-air turret in the game, long-range beam damage that most armour barely resists, two superweapons that answer two different problems | Nothing survives being focused — the Grizzly is 80 hp lighter than a Rhino and the Prism Tank is a 1200-credit vehicle with 260 hp; the beam units must stop to fire and cannot shoot at aircraft |
 | **Soviet Union** | Raw hit points, the only 800-hp tank in the game, the cheapest infantry going, two cheap defences from the first minute, the best air-superiority fighter, a warned nuke and true invulnerability | Slow. Every Soviet answer is heavier rather than smarter, so a fast army decides where the fight happens; no dedicated anti-air structure; the Attack Dog and Apocalypse both sit behind unlocks |
-| **Meridian Pact** | Reach — every Pact gun out-ranges its opposite number; total amphibiousness, since every hull hovers and can cross any lake on the map; the cheapest power per credit in the game, which puts the Pact a tier ahead early | Skin. The whole line is Light armour, which autocannon and massed rifles tear through; nothing the Pact fields can crush infantry, so it never wins a ram; its power plant has 420 hp and its best emplacement goes dark when the grid does |
+| **Meridian Pact** | Reach — every Pact gun out-ranges its opposite number; total amphibiousness on the ground, since every Forgeyard hull hovers and can cross any lake on the map; the cheapest power per credit in the game, which puts the Pact a tier ahead early | Skin. The whole line is Light armour, which autocannon and massed rifles tear through; nothing the Pact fields can crush infantry, so it never wins a ram; its power plant has 420 hp and its best emplacement goes dark when the grid does |
 | **The Reclamation** | Tempo. The cheapest power plant, the cheapest vehicle factory and the cheapest units in the game, with no radar or tech building between you and a line army; chained arcs delete massed infantry outright and hit extra targets standing behind the one you shot | Range and facing. Every arc is 14–20 m where everyone else is 22–26, and nothing in the army has a turret, so a hull must point its whole chassis at what it wants to kill. Arcs barely scratch concrete: the *entire* answer to an enemy base is one siege hull and one satchel infantryman |
 
 ---

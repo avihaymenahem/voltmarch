@@ -138,6 +138,31 @@ export function locomotorForMoveClass(cls: MoveClass): Locomotor {
   }
 }
 
+/**
+ * Can two move classes ever stand on the same ground, and therefore collide?
+ *
+ * `Steering`'s separation and `Movement`'s overlap relaxation both need this,
+ * and both used to spell it `(jc === Naval) !== (cls === Naval)` — "skip unless
+ * we agree about being naval". That is right for a world of ships and tanks and
+ * wrong the moment anything amphibious exists: `MoveClass.Hover` is the one
+ * ground class `rebuildCost` does not block on a wet cell, so a hovercraft and
+ * a destroyer genuinely do share water, and under the old test they were
+ * mutually invisible. A destroyer drove through the Pact's entire army, and
+ * would have driven through a swimming squad, with no separation and no hard
+ * relaxation — silent interpenetration rather than a collision.
+ *
+ * Air shares space with nothing, which is the caller's first test anyway; it is
+ * repeated here so the predicate is total rather than nearly so.
+ */
+export function movesShareSpace(a: MoveClass, b: MoveClass): boolean {
+  if (a === MoveClass.Air || b === MoveClass.Air) return false;
+  if (a === b) return true;
+  // Naval is water-only. The only class it meets is the amphibious one.
+  if (a === MoveClass.Naval) return b === MoveClass.Hover;
+  if (b === MoveClass.Naval) return a === MoveClass.Hover;
+  return true;
+}
+
 /** True for classes that are unaffected by ground obstacles. */
 export function isFlying(cls: MoveClass): boolean {
   return cls === MoveClass.Air;

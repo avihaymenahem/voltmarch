@@ -10,28 +10,35 @@
  *   node tools/order-probe.mjs [--headed] [--clicks=20]
  */
 import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { serve } from './lib/serve.mjs';
 
-const PORT = Number(process.env.PROBE_PORT ?? 4351);
-const BASE = `http://localhost:${PORT}/`;
+/**
+ * A HINT, and `PROBE_ROOT` is why the identity check matters more here than the
+ * port number ever did.
+ *
+ * This tool is deliberately runnable against ANOTHER checkout — `PROBE_ROOT`
+ * points it at one, which is how a fix is compared against the tree it was
+ * meant to fix. The whole value of that is knowing WHICH tree answered, and
+ * until now nothing did: `PORT` was fixed (and shared with `tools/wedge.mjs`),
+ * `waitForServer` asked only whether something answered, and `run()` used
+ * `stdio: 'ignore'`, so a vite that died on `--strictPort` because the OTHER
+ * checkout's server already held 4351 was completely silent. The probe then
+ * drove the tree it was supposed to be comparing against.
+ *
+ * `serve()` serves `PROBE_ROOT`'s own `dist/` and byte-compares it, so pointing
+ * this at a second checkout now proves it reached that second checkout.
+ */
+const PORT_HINT = Number(process.env.PROBE_PORT ?? 4351);
 const ROOT = process.env.PROBE_ROOT
   ?? join(dirname(fileURLToPath(import.meta.url)), '..');
 const HEADED = process.argv.includes('--headed');
 const CLICKS = Number((process.argv.find((a) => a.startsWith('--clicks=')) ?? '--clicks=20').slice(9));
 
-function run(cmd, args) {
-  return spawn(cmd, args, { cwd: ROOT, stdio: 'ignore', shell: process.platform === 'win32' });
-}
-async function waitForServer(url, ms = 90_000) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    try { const r = await fetch(url); if (r.ok) return true; } catch {}
-    await new Promise((r) => setTimeout(r, 400));
-  }
-  return false;
-}
+/** Filled in by `serve()` in main, below — the origin our own child announced. */
+let BASE = null;
+let server = null;
 
 /* ---------------------------------------------------------------- in-page -- */
 
@@ -72,6 +79,7 @@ async function boot(browser, { player = 'allies', ai = 'soviets', seed = 7, star
   page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text().slice(0, 300)); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message.slice(0, 300)));
 
+  server.assertAlive('this boot');
   await page.goto(BASE + '?blank=1', { waitUntil: 'domcontentloaded' });
   await page.evaluate((s) => {
     localStorage.clear();
@@ -113,9 +121,11 @@ async function canvasPoint(page, px, py) {
 /* ------------------------------------------------------------------ main -- */
 
 (async () => {
-  const server = run('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort']);
-  process.on('exit', () => server.kill());
-  if (!await waitForServer(BASE)) { console.error('server never came up'); process.exit(1); }
+  server = await serve({
+    root: ROOT, mode: 'preview', portHint: PORT_HINT, log: console.log,
+  });
+  BASE = server.origin;
+  console.log(`> serving ${BASE} out of ${ROOT} (dist/ verified)`);
 
   const browser = await chromium.launch({
     headless: !HEADED,
@@ -126,7 +136,7 @@ async function canvasPoint(page, px, py) {
 
   const units = await page.evaluate(UNITS);
   console.log(`units at t0: ${units.length}  kinds=${JSON.stringify(units.map((u) => `${u.kind}/${u.loco}`))}`);
-  if (units.length === 0) { console.log('no mobile units'); await browser.close(); server.kill(); return; }
+  if (units.length === 0) { console.log('no mobile units'); await browser.close(); server.stop(); return; }
 
   const cx = units.reduce((a, u) => a + u.x, 0) / units.length;
   const cz = units.reduce((a, u) => a + u.z, 0) / units.length;
@@ -328,5 +338,5 @@ async function canvasPoint(page, px, py) {
 
   if (errors.length) console.log('console errors:', errors.slice(0, 8));
   await browser.close();
-  server.kill();
+  server.stop();
 })();

@@ -315,6 +315,9 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
   gunboat: 'allied_gunboat',
   destroyer: 'allied_destroyer',
   vindicator: 'allied_vindicator',
+  hydrofoil: 'allied_hydrofoil',
+  landingCraft: 'allied_lighter',
+  frogman: 'allied_frogman',
 
   /* -- Soviets ----------------------------------------------------------- */
   conscript: 'soviet_conscript',
@@ -326,6 +329,9 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
   submarine: 'soviet_sub',
   dreadnought: 'soviet_dreadnought',
   mig: 'soviet_mig',
+  picketBoat: 'soviet_picket',
+  assaultBarge: 'soviet_lighter',
+  navalInfantry: 'soviet_diver',
 
   /* -- shared between the two original armies ---------------------------- */
   // The Engineer is one model for both, which is a content fact and not an
@@ -348,6 +354,10 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
   mrdKestrel: 'meridian_kestrel',
   mrdCorvette: 'meridian_corvette',
   mrdMonitor: 'meridian_monitor',
+  mrdCutter: 'meridian_cutter',
+  mrdLighter: 'meridian_lighter',
+  mrdArgosy: 'meridian_argosy',
+  mrdTidewalker: 'meridian_tidewalker',
 
   /* -- the Reclamation --------------------------------------------------- */
   rclPicker: 'reclaim_picker',
@@ -362,6 +372,9 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
   rclHornet: 'reclaim_hornet',
   rclScow: 'reclaim_scow',
   rclHulk: 'reclaim_hulk',
+  rclSkimmer: 'reclaim_skimmer',
+  rclHauler: 'reclaim_hauler',
+  rclDredger: 'reclaim_dredger',
 };
 
 /**

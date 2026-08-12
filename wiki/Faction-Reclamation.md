@@ -66,6 +66,7 @@ Trained at the **Rookery**.
 | Scrap Picker | **90** | **3 s** | Rookery | 85 | Infantry | 3.6 | Arc Prod, 26, tesla, chains to 1 | 14 m | yes | Ninety credits, three seconds, bring forty. The cheapest unit in the game — and unlike a G.I. or a Conscript, his warhead actually hurts armour (0.90 vs Heavy) and aircraft |
 | Slagger | 380 | 7 s | Rookery | 115 | Infantry | 3.0 | Slag Charge, 74, HE, 2.6 m splash | 12 m | no | A satchel of molten slag. High explosive at 1.00 against Concrete makes him one of only two things the Reclamation can bring to a land map that actually hurts a building |
 | Tinker | 500 | 10 s | Rookery, Ore Sorter | 85 | Infantry | 3.5 | unarmed | — | — | Captures enemy and neutral structures outright, and repairs your own |
+| Dredger | 300 | 6 s | Rookery | 95 | Infantry | 3.0 | Arc Prod, 26, tesla, chains to 1 | 14 m | yes | **Crosses open water on his own.** The cheapest swimmer of the four, and the only one whose warhead hurts armour — but he is 210 credits dearer than the Picker he otherwise is |
 | Scrap Baron | 1500 | 20 s | Rookery, Spotter Mast | 470 | Infantry | 3.7 | Grinder Arc, 70, tesla, chains to 2 | 18 m | no | Commander. One alive at a time |
 
 The Scrap Picker is the reason this faction's early game feels different from everyone else's. Every
@@ -99,16 +100,25 @@ until it dies.
 
 ## Navy
 
-Built at the **Breaker Dock**.
+Built at the **Breaker Dock**, which only offers itself on a map with a real
+sea. **Every hull here is water-only** — the Scow and the Hauler stand off the
+beach and put their cargo on the sand rather than driving up it.
 
 | Unit | Cost | Time | Needs | HP | Armour | Speed | Weapon | Range | Air | What it is for |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Slag Scow **(locked)** | 850 | 12 s | Breaker Dock | 340 | Light | 7.2 | Scow Gun, 68, HE, 3.2 m splash | 32 m | no | A barge with a bow gun bolted to it. High explosive means it can actually hurt a shoreline base — **and it carries four infantry** |
+| Scrap Skimmer | 400 | 5 s | Breaker Dock | 160 | Light | 11.2 | Spit Coil, 30, tesla, chains to 1 | 16 m | yes | Recon. The cheapest and fastest-built hull in the game, 42 m of sight, and 160 hit points behind a coil that reaches sixteen metres |
+| Slag Scow | 850 | 12 s | Breaker Dock | 340 | Light | 7.2 | Scow Gun, 68, HE, 3.2 m splash | 32 m | no | **Four slots** *and* a bow gun. High explosive means it can hurt a shoreline base while it delivers |
+| Slag Hauler | 1100 | 14 s | Breaker Dock | 800 | **Heavy** | 5.0 | unarmed | — | — | **Eight slots**, on the only Heavy-armoured carrier in the game and the cheapest eight-slot hull going |
 | Reclaimed Hulk **(locked)** | 1800 | 22 s | Breaker Dock, Crucible | 820 | Heavy | 4.4 | Hulk Battery, 116 x2, HE, 4.4 m splash | 38 m | no | Somebody else's capital ship, welded back together. Heavy armour, high explosive, 38 m of reach, and no turret — you must point the whole ship |
 
-The Slag Scow is the closest thing the Reclamation has to a troop transport. It is also an armed
-warship, which makes it a better deal than it looks — but four seats against a Hover Transport's
-five, and you can only build it if you have water.
+**The Reclamation has no escort hull.** Every other army fields a dedicated
+gunned ship between its carriers and its capital ship; the Slag Scow does both
+jobs, badly and cheaply, which is the faction in one row. Four hulls off the
+dock against everyone else's five.
+
+The Scow used to be able to drive inland and shell a base with that gun. It
+keeps the gun and has lost the beach — a dock-built hull no longer crosses dry
+ground. The Reclaimed Hulk's **(locked)** is the Crucible, not the campaign.
 
 ## Structures
 
@@ -122,7 +132,7 @@ five, and you can only build it if you have water.
 | Spotter Mast | 1000 | 14 s | Ore Sorter | 700 | -40 | Reveals the minimap, sees 42 m, and opens the heavy coil |
 | Slag Heap | 150 | 5 s | Ore Sorter | 550 | -10 | +1500 to your bank cap |
 | Patch Yard | 800 | 10 s | Breaker Yard | 900 | -30 | Welds any hull that stops moving. The toughest repair structure in the game |
-| Breaker Dock **(locked)** | 1000 | 14 s | Ore Sorter | 1050 | -30 | Builds Reclamation hulls that float |
+| Breaker Dock | 1000 | 14 s | Ore Sorter | 1050 | -30 | Builds Reclamation hulls that float. **Must be founded on a coast** — the game refuses an inland site |
 | Crucible **(locked)** | 2000 | 24 s | Spotter Mast | 900 | -60 | Opens the siege hull, the Reclaimed Hulk and the Stormworks |
 
 Read the prerequisite column and you have the faction: **Foundry, Furnace, Ore Sorter, Breaker
@@ -199,6 +209,9 @@ commander in the game — and it is the faction's real economic engine, not the 
 - The weakest power plant in the game at 80. Your base is a sprawl of furnaces, and the Arc Pylon
   alone eats more than one furnace produces.
 - No gate and no dedicated anti-air emplacement.
+- **No escort hull.** Four hulls off the dock where every other army gets five, and the gap is the
+  gunned ship that would screen a landing.
 - One superweapon against the shared-pool armies' two.
-- The Arcspitter, Slaghurler, Swarmhornet, the whole navy, the Crucible, the Arc Pylon and the
-  Stormworks are behind campaign unlocks on a fresh profile.
+- The Arcspitter, Slaghurler, Swarmhornet, the Crucible, the Arc Pylon and the Stormworks are behind
+  campaign unlocks on a fresh profile. The navy is not: the Breaker Dock, its three lower hulls and
+  the Dredger are all day-one.

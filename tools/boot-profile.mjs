@@ -36,14 +36,21 @@
  */
 
 import { chromium } from 'playwright';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { existsSync, writeFileSync } from 'node:fs';
+import { serve } from './lib/serve.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 4319;
-const BASE = `http://localhost:${PORT}/`;
+/**
+ * A HINT, shared with four other tools until `serve()` made the number stop
+ * mattering. Every millisecond this file reports is a property of the bundle it
+ * booted, so a neighbour's `dist/` answering on 4319 does not produce an error
+ * here — it produces a boot profile of somebody else's build, in the right
+ * shape, with plausible numbers.
+ */
+const PORT_HINT = 4319;
 
 const argv = process.argv.slice(2);
 function opt(name, fallback) {
@@ -85,42 +92,12 @@ if (!noBuild) {
   process.exit(1);
 }
 
-function killTree(child) {
-  if (child.pid === undefined) return;
-  try {
-    if (process.platform === 'win32') {
-      spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-    } else {
-      process.kill(-child.pid, 'SIGKILL');
-    }
-  } catch { /* already gone */ }
-  try { child.kill('SIGKILL'); } catch { /* already gone */ }
-}
-
-async function waitForServer(url) {
-  for (let i = 0; i < 100; i++) {
-    try {
-      const res = await fetch(url, { method: 'HEAD' });
-      if (res.ok) return true;
-    } catch { /* not up yet */ }
-    await new Promise((r) => setTimeout(r, 100));
-  }
-  return false;
-}
-
 console.log('> serving...');
-const server = spawn(
-  process.execPath,
-  [join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'),
-    'preview', '--port', String(PORT), '--strictPort'],
-  { cwd: ROOT, stdio: 'pipe', detached: process.platform !== 'win32' },
-);
-let cleanedUp = false;
-const cleanup = () => { if (!cleanedUp) { cleanedUp = true; killTree(server); } };
-process.on('exit', cleanup);
-process.on('SIGINT', () => { cleanup(); process.exit(1); });
-
-if (!(await waitForServer(BASE))) { cleanup(); throw new Error(`preview never came up on ${BASE}`); }
+const server = await serve({
+  root: ROOT, mode: 'preview', portHint: PORT_HINT, log: console.log,
+});
+const BASE = server.origin;
+const cleanup = () => server.stop();
 
 const browser = await chromium.launch({
   headless: true,
@@ -154,6 +131,9 @@ for (const pair of EXTRA.split(',')) {
 
 const samples = [];
 for (let run = 0; run < RUNS; run++) {
+  // Per run, not once: the median below is taken over several boots and a
+  // server that died between two of them would silently mix two bundles.
+  server.assertAlive(`run ${run + 1}`);
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const lines = [];
   const t0 = Date.now();

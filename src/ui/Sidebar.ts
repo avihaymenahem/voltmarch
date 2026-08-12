@@ -295,15 +295,21 @@ export interface AbilityAction {
  *
  * The button follows Relocate's rule for the same reason: greyed with a hint,
  * never hidden and never `disabled`.
+ *
+ * BOTH NUMBERS ARE SUMS OVER THE WHOLE SELECTION, not readings off a primary
+ * entity. Unload issues one order per loaded hull, so "9 / 15" describes the
+ * men that one click puts on the ground and the seats they came out of; see
+ * `computeCargoAction` in `src/ui/Hud.ts` for why the row used to insist on a
+ * single hull and why that stopped being right.
  */
 export interface CargoAction {
-  /** False hides the row: nothing with seats is selected. */
+  /** False hides the row: nothing of yours with seats is selected. */
   visible: boolean;
-  /** False greys the button — empty, or not yours. */
+  /** False greys the button — every selected hull is empty. */
   enabled: boolean;
-  /** Men aboard the primary. */
+  /** Men aboard, summed over every selected hull that has seats. */
   count: number;
-  /** Seats on the primary. Never 0 while `visible`. */
+  /** Seats, summed over those same hulls. Never 0 while `visible`. */
   capacity: number;
   /** One line for the tooltip and the aria description. Never empty. */
   hint: string;
@@ -335,7 +341,7 @@ export interface GarrisonAction {
   visible: boolean;
   /** False greys the button — nobody inside. */
   enabled: boolean;
-  /** Men inside the primary. */
+  /** Men inside, summed over every occupied structure in the selection. */
   count: number;
   /** One line for the tooltip and the aria description. Never empty. */
   hint: string;
@@ -1861,6 +1867,12 @@ class SelectionPanel {
    * Signature-gated like every other row here. The count is INTEGER men, so
    * unlike the ability cooldown there is nothing to quantise: a steady
    * transport writes no DOM at all until somebody gets in or out.
+   *
+   * NO FIELD IN THE SIGNATURE COUNTS HULLS, and none is needed: both numbers
+   * are sums across the selection and how many hulls they came from is already
+   * spelled out in `hint`, which the gate hashes. A field that changed without
+   * changing the gate would leave the row stale — the reason this string exists
+   * at all — so anything added to `CargoAction` has to be added here too.
    */
   private updateCargo(action: CargoAction): void {
     const sig = action.visible

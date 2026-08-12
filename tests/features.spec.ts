@@ -32,6 +32,7 @@ import type { BuildEntry } from '../src/sim/Production';
 
 import { CAPTURE, CaptureService, setCaptureService } from '../src/sim/Capture';
 import { CRATES, CrateReward, CrateService } from '../src/sim/Crates';
+import { DamageSystem } from '../src/sim/Damage';
 import { GARRISON, GarrisonService } from '../src/sim/Garrison';
 import { RepairSellService } from '../src/sim/RepairSell';
 import {
@@ -673,7 +674,114 @@ describe('garrison', () => {
       killer: 0 as EntityId, killerPlayer: SOVIETS, x: 0, z: 0, value: 0,
     });
 
-    expect(rig.world.store.isPendingDestroy(gi)).toBe(true);
+    const st = rig.world.store;
+    expect(st.isPendingDestroy(gi)).toBe(true);
+    // `Drowned` and not `Selling`. `Damage.onDeath` returns on `Selling` BEFORE
+    // the statistics block, so this used to be a loss that reached neither
+    // scoreboard while the comment above it said otherwise.
+    expect(st.state[st.index(gi)]).toBe(UnitState.Drowned);
+    expect(rig.garrison.stats.drowned).toBe(1);
+  });
+
+  it('marks a dying building\'s occupants in FRONT of the death scan', () => {
+    // THE MEN ARE SPAWNED FIRST, AND THAT IS THE TEST. `Damage.cleanupTick`
+    // walks `alive[]` in slot order and emits one `entity:killed` per corpse;
+    // the garrison's own hook fires from INSIDE that loop, so an occupant
+    // sitting earlier in the list than his building has already been walked
+    // past and `flushDestroyed()` frees him with no event and no `unitsLost`.
+    // Order them the other way round and the hook alone looks correct.
+    const men: EntityId[] = [];
+    for (let k = 0; k < 3; k++) men.push(rig.unit('gi', ALLIES, 0, 0));
+    const b = rig.building('powerPlant', ALLIES, 20, 20);
+    for (const m of men) {
+      placeAgainst(rig, m, b);
+      order(rig, m, OrderKind.Enter, b);
+    }
+    rig.step((s) => rig.garrison.simTick(s));
+    expect(rig.garrison.occupantCount(b)).toBe(3);
+
+    const damage = new DamageSystem(rig.world, rig.channels);
+    let infantryDeaths = 0;
+    rig.channels.events.on('entity:killed', (ev) => {
+      if (ev.kind === EntityKind.Infantry) infantryDeaths++;
+    });
+
+    // What Phase.Damage does to a building it has finished off: a flag, no
+    // event. Then Phase.Cleanup in its registered order — garrison at -400,
+    // the death scan at 0.
+    rig.world.store.markDead(b);
+    rig.step((s) => { rig.garrison.simTick(s); damage.cleanupTick(s); });
+
+    expect(infantryDeaths, 'a man went down without an entity:killed').toBe(3);
+    expect(rig.world.players[ALLIES as number].stats.unitsLost).toBe(3);
+    expect(rig.garrison.stats.drowned).toBe(3);
+  });
+
+  it('puts an occupant back on the ground if its host vanishes silently', () => {
+    const b = rig.building('powerPlant', ALLIES, 20, 20);
+    const gi = rig.unit('gi', ALLIES, 0, 0);
+    placeAgainst(rig, gi, b);
+    order(rig, gi, OrderKind.Enter, b);
+    rig.step((s) => rig.garrison.simTick(s));
+
+    // Straight to the store, bypassing `entity:killed` — a service torn down
+    // mid-match reaches this, and so does a `flushDestroyed` race.
+    const st = rig.world.store;
+    st.markDead(b);
+    st.flushDestroyed();
+    rig.step((s) => rig.garrison.simTick(s));
+
+    const i = st.index(gi);
+    expect(st.flags[i] & EntityFlag.Garrisoned).toBe(0);
+    expect(st.flags[i] & EntityFlag.Immobilized).toBe(0);
+    expect(rig.garrison.stats.stranded).toBe(1);
+  });
+
+  it('never leaves a man alive, garrisoned and hostless', () => {
+    // THE STATE A SAVE USED TO PRODUCE FOR EVERY OCCUPANT OF EVERY GARRISON,
+    // and the reason `garrisonId` is a store column: a load bumps every
+    // generation, so the service-private side array that held this read as 0,
+    // `tally` skipped the man at `b < 0`, and nothing put him back. Hidden by
+    // `RenderBridge.HIDDEN_MASK`, refused by `Selection`, rejected by
+    // `TARGETABLE_REJECT_MASK`, skipped by `Movement` — alive and untouchable
+    // for the rest of that save's life. A file written before the column
+    // existed still loads and still lands here, which is why the repair is a
+    // tick of the service and not the save format alone.
+    const b = rig.building('powerPlant', ALLIES, 20, 20);
+    const gi = rig.unit('gi', ALLIES, 0, 0);
+    placeAgainst(rig, gi, b);
+    order(rig, gi, OrderKind.Enter, b);
+    rig.step((s) => rig.garrison.simTick(s));
+
+    const st = rig.world.store;
+    const i = st.index(gi);
+    st.garrisonId[i] = 0;                       // what an older save restores to
+    rig.step((s) => rig.garrison.simTick(s));
+
+    expect(st.flags[i] & EntityFlag.Garrisoned).toBe(0);
+    expect(st.state[i]).toBe(UnitState.Idle);
+    expect(rig.garrison.hostOfUnit(gi)).toBe(0);
+    expect(rig.garrison.stats.stranded).toBe(1);
+  });
+
+  it('leaves a transport passenger to the transport', () => {
+    // The other side of the two-column split. A man in a hull carries the same
+    // `Garrisoned` flag and an empty `garrisonId`, which is byte-identical to
+    // the hostless state above — `carrierId` is the only thing that tells them
+    // apart, so it is read before anybody is dropped. Tip a passenger out of a
+    // moving hull and he lands wherever the hull happens to be, which on a sea
+    // crossing is the sea.
+    const st = rig.world.store;
+    const gi = rig.unit('gi', ALLIES, 100, 100);
+    const hull = rig.unit('grizzly', ALLIES, 100, 100);
+    const i = st.index(gi);
+    st.flags[i] |= EntityFlag.Garrisoned | EntityFlag.Immobilized;
+    st.carrierId[i] = hull as number;
+
+    rig.step((s) => rig.garrison.simTick(s));
+
+    expect(st.flags[i] & EntityFlag.Garrisoned).not.toBe(0);
+    expect(rig.garrison.stats.stranded).toBe(0);
   });
 });
 

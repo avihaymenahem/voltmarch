@@ -66,7 +66,7 @@ import type { EntityId, SimContext } from '../core/types';
 import type { EntityStore, World } from '../core/world';
 import type { Channels } from '../core/events';
 import { angleDelta, clamp, isInMap, turnToward, worldToCell } from '../core/math';
-import { MoveClass, moveClassForLocomotor, type FlowFieldCache } from './Flowfield';
+import { MoveClass, moveClassForLocomotor, movesShareSpace, type FlowFieldCache } from './Flowfield';
 import { crushPassesThrough } from './Crush';
 import { upgradeMul } from './Upgrades';
 import { getTerrain } from '../world/Terrain';
@@ -636,8 +636,7 @@ export class MovementIntegrator {
           if ((jf & EntityFlag.CanMove) === 0) continue;
           if (jk !== EntityKind.Infantry && jk !== EntityKind.Vehicle) continue;
           const jc = moveClassAt(st, j);
-          if (jc === MoveClass.Air) continue;
-          if ((jc === MoveClass.Naval) !== (cls === MoveClass.Naval)) continue;
+          if (!movesShareSpace(jc, cls)) continue;
 
           // A ROLLING HULL DOES NOT BOUNCE OFF A MAN IT IS ENTITLED TO CRUSH.
           //

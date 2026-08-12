@@ -125,7 +125,14 @@ actually runs — a fully buildable 3×3 with eight navigable water cells within
 **532 legal Naval Yard sites**, split 146 / 155 / 125 / 106 across the four islands. For comparison
 Contested Strait offers 237. Nobody is locked out of the water.
 
-> **It very nearly shipped with none.** The generator levels each start onto the terrace its ground
+> **It very nearly shipped unplayable, twice.** The first time was progression: all four docks sat
+> behind a mission worth ten skirmish wins, every carrier was gated on a dock, and the AI resolves
+> its own roster against **your** profile — so a fresh account got four armies on four islands, none
+> of them able to build a hull, and a match that could not end. Every test in the repo was green,
+> because "a complete army" had been derived over content with no notion that a battlefield can make
+> one row load-bearing. The naval unlocks are deleted now.
+>
+> **The second time was the ground.** The generator levels each start onto the terrace its ground
 > already sits on, which on these islands was 9.9 m — and a coast that has to fall 7.9 m in its last
 > 26 m is a 0.23 slope, which is too steep to build on. Buildable ground stopped 34 m short of the
 > water, the legal-site count over the whole map was **zero**, and every naval structure and hull in
@@ -143,13 +150,27 @@ continent it merely happens to be spelled "one land region".
 
 ### What that means for your build
 
-- **A Naval Yard is a tech requirement, not a luxury.** It gates the Transport, which is how
-  infantry leave your island at all.
-- **A Transport carries five.** Two is the sensible ceiling on how many you own — one operation and
-  a spare.
-- **Hover crosses on its own.** The Meridian Pact's entire roster is amphibious and can drive from
-  island to island without a hull to carry it. On this map that is not a quiet mobility advantage,
-  it is the single biggest faction asymmetry in the game.
+- **A dock is a tech requirement, not a luxury.** It gates every carrier, and a carrier is how your
+  army leaves the island. Nothing on that branch is behind a campaign unlock — it was, once, and on
+  a fresh profile this map was a permanent stalemate for all four armies.
+- **A slot is not a seat, and that is why the vehicle roster exists here.** Infantry cost one slot,
+  a vehicle costs two, so the four-slot landing ship carries two tanks and the eight-slot carrier
+  carries four. Before that, cargo was infantry-only and every tank you built was unusable against
+  three of your four opponents.
+- **The hull will come and get them.** Right-click a carrier lying offshore with the squad selected
+  and it moves in to collect. Infantry cannot swim to it, so this is the whole loading verb.
+- **No hull a dock builds can drive onto the sand.** The landing is made from open water. Plan the
+  approach as a beach, not as a ramp.
+- **Buy the recon hull first.** It is 400–480 credits for 42–46 m of sight, the widest of any unit
+  in the game, and on a map whose fights are decided by seeing a crossing before it lands that is
+  the cheapest thing you can spend money on.
+- **Hover crosses on its own.** The Meridian Pact's entire ground roster is amphibious and can drive
+  from island to island without a hull to carry it. On this map that is not a quiet mobility
+  advantage, it is the single biggest faction asymmetry in the game. It stops at the vehicles,
+  though: every Pact infantryman walks, so a Sunlancer needs a Sun Lighter like anybody else.
+- **Every army has a swimmer.** Frogman, Naval Infantry, Tidewalker and Dredger cross open water
+  under their own power and come out of the barracks rather than the dock, which makes them the
+  answer to losing your last carrier. They are slower and dearer than the rifleman beside them.
 - **Aircraft ignore all of it.** An air force is the other answer to "there is no road".
 
 ---
@@ -177,7 +198,7 @@ shortest crossing between adjacent islands and the worst place to be caught.
 
 ## 7. The screenshot fixture
 
-`?shot=atoll` poses the development fixture for this map: a dock on the sand, a transport nosed into
+`?shot=atoll` poses the development fixture for this map: a dock on the sand, a carrier standing off
 the surf with its squad already ashore, and the escort still out over the shoal. It is the only
 fixture in the build not framed on the map centre, for the obvious reason — on this map the centre
 is the middle of the lagoon and there is no land within 94 m of it.
