@@ -798,18 +798,31 @@ export const UNLOCK_TAGS: Readonly<Record<string, string>> = {
   mrdZenith: 'unit.specialist',
   rclSlaghurler: 'unit.specialist',
 
-  /* -- unit.naval: escort hulls ------------------------------------------- */
-  transport: 'unit.naval',
-  gunboat: 'unit.naval',
-  submarine: 'unit.naval',
-  mrdCorvette: 'unit.naval',
-  rclScow: 'unit.naval',
-
-  /* -- unit.naval.capital ------------------------------------------------- */
-  destroyer: 'unit.naval.capital',
-  dreadnought: 'unit.naval.capital',
-  mrdMonitor: 'unit.naval.capital',
-  rclHulk: 'unit.naval.capital',
+  /* -- THE NAVY IS NOT PROGRESSION-GATED, AND THAT IS A DECISION -----------
+   * Three groups used to live here — `unit.naval` (escorts and lifts, paid by
+   * "win a skirmish without losing a structure"), `unit.naval.capital` (paid by
+   * "win 40 skirmishes") and `struct.naval` (all four docks, "win 10
+   * skirmishes"). All three are gone, along with the ids in `Missions.ts`.
+   *
+   * They made the two battlefields advertised as naval maps unplayable as such.
+   * `mobilityExempt` lifted the gate only where the sea is the ONLY road, which
+   * is `mapSupportsNaval && !mapLandLinked` — true on Sunder Atoll and nowhere
+   * else. Contested Strait and Coral Shore are one land mass with a sea beside
+   * it, so on those two a partially progressed profile got no dock, no lift and
+   * no warship. `UnlockGate.mirrorAI` resolves the AI against the human's
+   * profile, so BOTH sides were equally dead and the water was scenery.
+   *
+   * Worse, the maps arrive before their content: Contested Strait is unlocked
+   * by `tactics.fast.1` — one win under fifteen minutes — while `struct.naval`
+   * needed ten wins, on an independent chain. Its own lobby blurb reads "Naval
+   * yards earn their cost here."
+   *
+   * The in-match tech gate is untouched and it is the right one: capital ships
+   * still need `battleLab` / `mrdReliquary` / `rclCrucible`, and every hull
+   * still needs a dock on a real coast. What is gone is the PROFILE gate, which
+   * answered "have you played enough" to a question that should be "have you
+   * built the shipyard".
+   * -------------------------------------------------------------------- */
 
   /* -- unit.air: all four armies now have one -----------------------------
    * This read "only two armies have one" and named two keys, which made the
@@ -828,12 +841,6 @@ export const UNLOCK_TAGS: Readonly<Record<string, string>> = {
   rclHornet: 'unit.air',
   vindicator: 'unit.air',
   mig: 'unit.air',
-
-  /* -- struct.naval ------------------------------------------------------- */
-  navalYard: 'struct.naval',
-  subPen: 'struct.naval',
-  mrdSlipway: 'struct.naval',
-  rclDrydock: 'struct.naval',
 
   /* -- unit.commander: the four heroes -------------------------------------
    * ONE PER ARMY, `maxAlive: 1`, 1500 credits off a barracks and a radar.

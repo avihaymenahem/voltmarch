@@ -103,7 +103,6 @@ import { MoveClass } from './Flowfield';
 // up offering a shipyard for a sea the pathfinder will not route through — see
 // the header of `NavalWater.ts`, where two copies already had to be reconciled.
 import { mapSupportsNaval } from './NavalWater';
-import { mapForcesSeaCrossing } from './LandRoutes';
 
 import { BuildQueues, HoldReason, type QueueHooks, type QueueItemInfo } from './BuildQueue';
 import {
@@ -336,7 +335,8 @@ export interface BuildEntry {
    * So a carrier could not be made water-only without silently losing its
    * unlock exemption on the one map where it is the only road, and a warship
    * could not be exempted without gaining the ability to walk. The two
-   * questions are now two fields.
+   * questions are two fields now, and the exemption is gone entirely — the
+   * naval unlock tags went with it.
    *
    * The old rule drew the line at `passengers`, to protect the unarmed Hover
    * Transport's ability to beach. Two hulls have seats AND a gun, and both fell
@@ -356,13 +356,14 @@ export interface BuildEntry {
    */
   readonly waterOnly: boolean;
   /**
-   * This hull is a WARSHIP rather than the mobility half of the naval arm, and
-   * the only thing that reads it is `ProductionCatalog.isSeaMobility` — see
+   * This hull is a WARSHIP rather than a carrier — a gun and no hold. See
    * `waterOnly` above for why these are two fields and not one.
    *
-   * A gunboat widens an army; a barge is how the army arrives at all. That
-   * distinction is what `mobilityExempt` needs and it is orthogonal to whether
-   * the hull can cross a beach.
+   * `sim/AI.ts` reads it: the brain builds warships and carriers against
+   * separate caps and picks between them for different jobs, so "how many ships
+   * do I have" is two questions. It also used to drive the Sunder Atoll
+   * progression exemption, which is gone with the naval unlock tags — see the
+   * block that replaced them in `UNLOCK_TAGS`.
    */
   readonly warship: boolean;
   /**
@@ -1442,35 +1443,6 @@ export class ProductionCatalog {
       && this.seaBound[entry.index] === 1;
   }
 
-  /**
-   * Is this entry the MOBILITY half of the naval arm rather than a warship —
-   * the dock that reaches the water and the lift that carries an army over it?
-   *
-   * `requiresSea` AND NOT `warship`, and both halves are authored: `warship` is
-   * on the gunned hulls with no cargo role, and every carrier deliberately does
-   * without it. A gunboat widens an army; a barge is how the army arrives at
-   * all, and only the second is something a player must never be locked out of.
-   *
-   * THIS USED TO READ `!entry.naval`, WHICH WAS THE MOBILITY FLAG. The two
-   * meanings shared one bit, so the exemption was defined as "can this hull
-   * cross a beach" — which meant a carrier could not be made water-only without
-   * silently losing its exemption on the one map where it is the only road.
-   * `BuildEntry.waterOnly` carries the mobility half now.
-   *
-   * Derived from the two flags rather than from a list of keys, for the same
-   * reason `computeSeaBound` is a fixpoint and not a name match: a new lift or a
-   * fifth dock has to be picked up by the rule, and `mrdSkiff` — a Pact hull
-   * with seats gated on a LAND forgeyard — must not be, because it is not sea
-   * content and was never part of this question.
-   *
-   * WHAT THIS IS FOR: `ProductionService.mobilityExempt`, which lifts the
-   * PROGRESSION gate off these entries on a map where the sea is the only road
-   * between two armies. It is not a filter and it changes nothing on its own.
-   */
-  isSeaMobility(entry: BuildEntry): boolean {
-    return !entry.warship && this.requiresSea(entry);
-  }
-
   /** Catalog entry by its index. Null for an out-of-range id. */
   at(index: number): BuildEntry | null {
     return index >= 0 && index < this.entries.length ? this.entries[index] : null;
@@ -2139,7 +2111,7 @@ export class ProductionService implements QueueHooks {
     // never seen and cannot build reads as the game cheating, and it spoils the
     // reveal the unlock exists to deliver. Difficulty stays where it lives: the
     // economy handicap and composition quality in AIStrategy.
-    if (!isBuildable(entry, p) && !this.mobilityExempt(entry)) {
+    if (!isBuildable(entry, p)) {
       // NAME THE MISSION. `reasonFor` resolves the def's `unlockedBy` through
       // the hint table `progression.system.ts` injects and answers
       // "Locked — Strip Mine: mine 70,000 credits of ore" rather than
@@ -2196,61 +2168,6 @@ export class ProductionService implements QueueHooks {
     result.ok = true;
     result.reason = '';
     return result;
-  }
-
-  /**
-   * Is the PROGRESSION gate lifted off this entry because the battlefield makes
-   * it the only way to reach the enemy?
-   *
-   * THE RULE, and it is narrower than "ungate naval":
-   *
-   *     CONTENT REQUIRED TO REACH THE ENEMY IS NEVER PROGRESSION-GATED.
-   *
-   * `Sunder Atoll` shipped with no map unlock so a fresh profile could select
-   * it, and on a fresh profile it was not merely diminished — it was a permanent
-   * stalemate. `struct.naval` gates all four docks and is paid by ONE mission
-   * ("win 10 skirmishes"); every lift is gated on a dock; and
-   * `UnlockGate.mirrorAI` resolves the AI against the human's profile, so all
-   * four armies sat on four islands unable to touch each other and the match
-   * could not end. A player who has not won ten skirmishes is exactly the player
-   * who cannot win one here.
-   *
-   * WHAT IS NOT DONE, and each was considered:
-   *
-   *   - Naval is NOT ungated globally. On a land map a dock is optional content
-   *     and gating it there is the intended design (`docs/MISSIONS_DESIGN.md`).
-   *   - The MISSION TABLE is untouched. `validateMissions` enforces one grant
-   *     per unlock id and all fourteen cosmetics are already paid, so moving
-   *     `struct.naval` to an earlier mission cascades through the whole reward
-   *     structure to fix one map.
-   *   - No def array is reordered, inserted into or removed from. This is a
-   *     filter on AVAILABILITY, and it has to be: replays store `defId` as a raw
-   *     array index and saves are key-stable.
-   *   - WARSHIPS STAY GATED. `isSeaMobility` is the dock and the lift and
-   *     nothing else — a gunboat widens an army, a barge is how the army
-   *     arrives. Escorts and capital ships remain the reward they were.
-   *
-   * TWO PROPERTIES IT SHARES WITH THE LANDLOCKED FILTER (see `rebuildCameos`),
-   * and they are why it is safe:
-   *
-   *   1. IT IS DERIVED FROM THE MAP, which every client in a match shares, so it
-   *      is deterministic and PvP-safe. It is NOT the profile-reading unlock
-   *      gate that caused the tick-zero desync — two players on one battlefield
-   *      always get the same answer from `mapForcesSeaCrossing`. Do not
-   *      "helpfully" reroute this through `suppressUnlockGate`.
-   *   2. IT APPLIES TO EVERY PLAYER ALIKE, so the mirrored AI is exempt on the
-   *      same map the human is. Without that half the human simply wins
-   *      uncontested, which is a different bug with the same root.
-   *
-   * THE MAP IS ASKED LAST, AND THAT IS THE COST MODEL. `isSeaMobility` is a
-   * bitmap read and rejects every entry in the game but six, so the memoised
-   * survey behind `mapForcesSeaCrossing` is reached about twice per snapshot
-   * rather than once per cameo — the same mistake `NavalWater`'s own header
-   * records being made and fixed one layer up.
-   */
-  private mobilityExempt(entry: BuildEntry): boolean {
-    if (!this.catalog.isSeaMobility(entry)) return false;
-    return mapForcesSeaCrossing(this.world.terrain);
   }
 
   /** True when a completed, powered structure of this key exists. */

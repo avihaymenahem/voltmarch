@@ -252,166 +252,115 @@ describe('mapForcesSeaCrossing is derived from the ground', () => {
     expect(TERRAIN_ISLAND_MIN_CELLS).toBeGreaterThan(0);
   });
 });
-
 /* ==========================================================================
- * 2. WHAT THE EXEMPTION COVERS
- * ========================================================================== */
-
-describe('the mobility half of the naval arm', () => {
-  it('is the four docks and the two lifts, and nothing else', async () => {
-    const catalog = await boundCatalog();
-    const got = catalog.entries.filter((e) => catalog.isSeaMobility(e)).map((e) => e.key).sort();
-    expect(got).toEqual(
-      ['mrdSlipway', 'navalYard', 'rclDrydock', 'rclScow', 'subPen', 'transport'],
-    );
-  });
-
-  it('excludes every warship, which stays the reward it was', async () => {
-    const catalog = await boundCatalog();
-    for (const key of [
-      'gunboat', 'destroyer', 'submarine', 'dreadnought', 'mrdCorvette', 'mrdMonitor', 'rclHulk',
-    ]) {
-      const e = catalog.byKey(key);
-      expect(e, key).not.toBeNull();
-      expect(catalog.requiresSea(e!), `${key} needs a sea`).toBe(true);
-      expect(catalog.isSeaMobility(e!), `${key} is a warship, not a road`).toBe(false);
-    }
-  });
-
-  it('excludes the Sandskiff, which is a land-gated hull with seats', async () => {
-    // The case that proves this is the rule and not a name match: `mrdSkiff`
-    // carries passengers and IS the Pact's insertion hull, but it is gated on
-    // `mrdForgeyard` — a land structure — so it is not sea content and was
-    // never part of this question. It stays behind `unit.raider`.
-    const catalog = await boundCatalog();
-    const e = catalog.byKey('mrdSkiff');
-    expect(e, 'mrdSkiff').not.toBeNull();
-    expect(catalog.requiresSea(e!)).toBe(false);
-    expect(catalog.isSeaMobility(e!)).toBe(false);
-    expect(e!.unlockedBy).toBe(UNLOCKS.unitRaider);
-  });
-
-  it('still tags the dock and the lift in the def table', async () => {
-    // The exemption is a filter on AVAILABILITY. Nothing about the content
-    // changed: no def array moved, no `unlockedBy` was cleared, and the same
-    // rows are still gated on every other battlefield in the game.
-    const catalog = await boundCatalog();
-    for (const key of ['navalYard', 'subPen', 'mrdSlipway', 'rclDrydock']) {
-      expect(catalog.byKey(key)?.unlockedBy, key).toBe(UNLOCKS.structNaval);
-    }
-    for (const key of ['transport', 'rclScow']) {
-      expect(catalog.byKey(key)?.unlockedBy, key).toBe(UNLOCKS.unitNaval);
-    }
-  });
-});
-
-/* ==========================================================================
- * 3. THE REGRESSION — A BRAND-NEW PROFILE ON SUNDER ATOLL
+ * 2. THE NAVY IS NOT PROGRESSION-GATED, ANYWHERE
  *
- * Every assertion below FAILS on the build that shipped v2.5.0.
- * ========================================================================== */
-
-describe('a profile with nothing unlocked, on the atoll', () => {
-  it('is offered a dock and a lift by every army', async () => {
-    const t = terrainFor(ATOLL);
-    for (const [faction, dock, lift] of MOBILITY) {
-      setUnlockGate(gateOwning());
-      const service = await makeService(t, faction, faction);
-      // NOT "available" — an empty world has no construction yard — but the
-      // refusal must never again be the progression one. That is the whole
-      // difference between "build this later" and "this match cannot end".
-      expect(refusal(service, 0, dock), `${dock} for faction ${faction as number}`)
-        .not.toBe(LOCKED_REASON);
-      if (lift !== '') {
-        expect(refusal(service, 0, lift), `${lift} for faction ${faction as number}`)
-          .not.toBe(LOCKED_REASON);
-      }
-      setUnlockGate(null);
-    }
-  });
-
-  it('exempts the AI on the same battlefield, or the human wins uncontested', async () => {
-    // `UnlockGate.mirrorAI` resolves the AI against the HUMAN's profile, so the
-    // stalemate was symmetrical and so is the fix. Player 1 is the AI.
-    const t = terrainFor(ATOLL);
-    setUnlockGate(gateOwning());
-    const service = await makeService(t, Faction.Allies, Faction.Soviets);
-    expect(refusal(service, 1, 'subPen')).not.toBe(LOCKED_REASON);
-    expect(refusal(service, 1, 'transport')).not.toBe(LOCKED_REASON);
-  });
-
-  it('keeps every warship locked — the road is free, the fleet is not', async () => {
-    const t = terrainFor(ATOLL);
-    setUnlockGate(gateOwning());
-    const service = await makeService(t, Faction.Allies, Faction.Soviets);
-    expect(refusal(service, 0, 'gunboat')).toBe(LOCKED_REASON);
-    expect(refusal(service, 0, 'destroyer')).toBe(LOCKED_REASON);
-    expect(refusal(service, 1, 'submarine')).toBe(LOCKED_REASON);
-    // And nothing else in the game moved either: the two ids that pay for the
-    // dock and the lift still gate everything else they gated.
-    expect(refusal(service, 0, 'battleLab')).toBe(LOCKED_REASON);
-    expect(refusal(service, 0, 'prismTank')).toBe(LOCKED_REASON);
-  });
-
-  it('changes nothing for a profile that already owns the ids', async () => {
-    // The exemption is a floor, not a switch: a veteran sees exactly what they
-    // saw before, on this map and on every other.
-    const t = terrainFor(ATOLL);
-    setUnlockGate(gateOwning(UNLOCKS.structNaval, UNLOCKS.unitNaval));
-    const service = await makeService(t, Faction.Allies, Faction.Soviets);
-    expect(refusal(service, 0, 'navalYard')).not.toBe(LOCKED_REASON);
-    expect(refusal(service, 0, 'gunboat')).not.toBe(LOCKED_REASON);
-  });
-});
-
-/* ==========================================================================
- * 4. AND THE OTHER SIX BATTLEFIELDS DID NOT MOVE
+ * This file used to describe an EXEMPTION: `unit.naval`, `unit.naval.capital`
+ * and `struct.naval` gated the whole arm, and `ProductionService.mobilityExempt`
+ * lifted the gate for docks and lifts on a map where the sea is the only road.
+ * `mapForcesSeaCrossing` is `mapSupportsNaval && !mapLandLinked`, which is true
+ * on Sunder Atoll and NOWHERE ELSE — so on Contested Strait and Coral Shore, the
+ * two battlefields the lobby sells as naval, a partially progressed profile got
+ * no dock, no lift and no warship. `UnlockGate.mirrorAI` resolves the AI against
+ * the human's profile, so both sides were equally dead and the water was scenery.
  *
- * The regression risk. `contested-strait` and `coral-shore` are the subtle
- * half: they HAVE a sea, so `mapSupportsNaval` is true and the cameos are
- * published — a rule keyed on water alone would have ungated the whole naval
- * arm on both of them and quietly deleted a mission reward.
+ * The three tags are deleted. What survives, and what these tests now pin, is
+ * that the IN-MATCH gates are untouched: a dock still needs a coast, a capital
+ * ship still needs the army's tech structure, and a dry map still offers nothing.
+ *
+ * `mapForcesSeaCrossing` itself is NOT dead — section 1 above still measures it,
+ * and `sim/AI.ts` asks it to decide whether an amphibious landing is the only
+ * way to reach an objective.
  * ========================================================================== */
 
-describe('naval stays behind Theatre Command everywhere else', () => {
-  it('is locked on both half-plane sea maps, which have a sea and one shore', async () => {
-    for (const id of SEA_MAPS) {
+describe('a brand-new profile can build a navy on every map that has a sea', () => {
+  it('opens the dock, the carriers and the warships on all three sea maps', async () => {
+    for (const id of [...SEA_MAPS, ATOLL]) {
       const t = terrainFor(id);
       expect(mapSupportsNaval(t), `${id} has a sea`).toBe(true);
       setUnlockGate(gateOwning());
       const service = await makeService(t, Faction.Allies, Faction.Soviets);
-      expect(refusal(service, 0, 'navalYard'), id).toBe(LOCKED_REASON);
-      expect(refusal(service, 0, 'transport'), id).toBe(LOCKED_REASON);
-      expect(refusal(service, 1, 'subPen'), id).toBe(LOCKED_REASON);
+      for (const key of ['navalYard', 'transport', 'gunboat']) {
+        expect(refusal(service, 0, key), `${key} on ${id}`).not.toBe(LOCKED_REASON);
+      }
+      expect(refusal(service, 1, 'subPen'), `subPen on ${id}`).not.toBe(LOCKED_REASON);
+      expect(refusal(service, 1, 'submarine'), `submarine on ${id}`).not.toBe(LOCKED_REASON);
       setUnlockGate(null);
     }
   });
 
-  it('is locked on all four land maps, for all four armies', async () => {
-    for (const id of LAND_MAPS) {
-      const t = terrainFor(id);
-      for (const [faction, dock, lift] of MOBILITY) {
-        setUnlockGate(gateOwning());
-        const service = await makeService(t, faction, faction);
-        expect(refusal(service, 0, dock), `${dock} on ${id}`).toBe(LOCKED_REASON);
-        if (lift !== '') {
-          expect(refusal(service, 0, lift), `${lift} on ${id}`).toBe(LOCKED_REASON);
-        }
-        setUnlockGate(null);
-      }
+  it('carries no naval unlock tag on any hull or dock', async () => {
+    // The rule, not a sample: nothing sea-bound may name an unlock id. A new
+    // hull added with one would fail here rather than in a player's match six
+    // months later, which is how the last three got there.
+    const catalog = await boundCatalog();
+    for (const e of catalog.entries) {
+      if (!catalog.requiresSea(e)) continue;
+      expect(e.unlockedBy, `"${e.key}" is sea content behind an unlock`).toBe('');
     }
   });
 
-  it('leaves a world with no terrain gated, which is every other spec file', async () => {
-    // `World.terrain` defaults to the `FlatTerrain` null object. If the
-    // exemption leaked there it would ungate naval for the whole suite and for
-    // the `?shot=` harness, and nothing would say so.
-    setUnlockGate(gateOwning());
+  it('still gates the capital ships on the army tech structure', async () => {
+    // THE GATE THAT SURVIVED, and the one that should have been doing this job
+    // all along: a Dreadnought is earned inside the match, by building a lab.
+    const catalog = await boundCatalog();
+    const pairs: readonly (readonly [string, string])[] = [
+      ['destroyer', 'battleLab'],
+      ['dreadnought', 'battleLab'],
+      ['mrdMonitor', 'mrdReliquary'],
+      ['rclHulk', 'rclCrucible'],
+    ];
+    for (const [hull, tech] of pairs) {
+      const e = catalog.byKey(hull);
+      expect(e, hull).not.toBeNull();
+      expect(e!.prereqs, `${hull} must still need ${tech}`).toContain(tech);
+    }
+  });
+
+  it('still needs a dock for every hull, so nothing is free', async () => {
+    const catalog = await boundCatalog();
+    for (const key of ['transport', 'gunboat', 'destroyer', 'submarine', 'dreadnought',
+      'mrdCorvette', 'mrdMonitor', 'rclScow', 'rclHulk']) {
+      const e = catalog.byKey(key);
+      expect(e, key).not.toBeNull();
+      expect(catalog.requiresSea(e!), `${key} must still be sea-bound`).toBe(true);
+    }
+  });
+
+  it('leaves the Sandskiff exactly where it was', async () => {
+    // The case that proves this is a rule about SEA CONTENT and not about
+    // anything with a hold: `mrdSkiff` carries, and is gated on `mrdForgeyard`,
+    // a land structure. It was never part of this question and it still is not.
+    const catalog = await boundCatalog();
+    const e = catalog.byKey('mrdSkiff');
+    expect(e, 'mrdSkiff').not.toBeNull();
+    expect(catalog.requiresSea(e!)).toBe(false);
+    expect(e!.unlockedBy).toBe(UNLOCKS.unitRaider);
+  });
+});
+
+/* ==========================================================================
+ * 3. AND A DRY MAP STILL OFFERS NOTHING
+ *
+ * The regression risk runs the other way now. Ungating naval must not put four
+ * docks and nine hulls in the sidebar of a map with no water in it — that filter
+ * is `rebuildCameos`' `requiresSea` test against `mapSupportsNaval`, which is a
+ * different mechanism from the unlock gate and has to keep working on its own.
+ * ========================================================================== */
+
+describe('a battlefield with no navigable water', () => {
+  it('reports no sea on all seven land maps', () => {
+    for (const id of LAND_MAPS) {
+      expect(mapSupportsNaval(terrainFor(id)), id).toBe(false);
+    }
+  });
+
+  it('answers no sea for a world with no terrain, which is every other spec', () => {
+    // `World.terrain` defaults to the `FlatTerrain` null object. If this ever
+    // reported a sea, the whole suite and the `?shot=` harness would start
+    // publishing naval cameos, and nothing would say so.
     const world = new World();
-    world.addPlayer(Faction.Allies, 'Commander', true, true);
-    world.addPlayer(Faction.Soviets, 'Opponent', false, false);
-    const service = new ProductionService(world, new Channels(), await boundCatalog());
+    expect(mapSupportsNaval(world.terrain)).toBe(false);
     expect(mapForcesSeaCrossing(world.terrain)).toBe(false);
-    expect(refusal(service, 0, 'navalYard')).toBe(LOCKED_REASON);
   });
 });
