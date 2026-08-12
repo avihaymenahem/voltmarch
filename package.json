@@ -1,6 +1,6 @@
 {
   "name": "voltmarch",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "private": true,
   "type": "module",
   "description": "VOLTMARCH - an original real-time strategy game for the browser, built on Three.js. All art is procedurally generated from code.",
