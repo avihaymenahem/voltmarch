@@ -628,7 +628,7 @@ const CONTENT: readonly ContentSpec[] = [
   {
     key: 'transport', name: 'Heavy Transport', blurb: 'Carries eight slots of anything across water.',
     kind: BuildKind.Unit, faction: Faction.Neutral, tab: V,
-    cost: 1200, buildTime: 15, prereqs: ['navalYard'], sortOrder: 62, waterOnly: true,
+    cost: 1200, buildTime: 15, prereqs: ['navalYard'], sortOrder: 66, waterOnly: true,
   },
   {
     key: 'gunboat', name: 'Assault Destroyer', blurb: 'Allied escort. Shoots at everything.',
@@ -937,7 +937,7 @@ const CONTENT: readonly ContentSpec[] = [
     // a dock-built warship. It keeps the gun; it stops crossing the beach.
     key: 'rclScow', name: 'Slag Scow', blurb: 'A barge with a bow gun bolted to it.',
     kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
-    cost: 850, buildTime: 12, prereqs: ['rclDrydock'], sortOrder: 61, waterOnly: true,
+    cost: 850, buildTime: 12, prereqs: ['rclDrydock'], sortOrder: 64, waterOnly: true,
   },
   {
     key: 'rclHulk', name: 'Reclaimed Hulk', blurb: 'Somebody else’s capital ship, welded back together.',
@@ -1317,6 +1317,82 @@ const CONTENT: readonly ContentSpec[] = [
     blurb: 'Teleports the units guarding your base to the marker.',
     kind: BuildKind.Power, faction: Faction.Neutral, tab: P,
     cost: 2500, buildTime: 30, prereqs: [], sortOrder: 50,
+  },
+  /* -- the naval line, completed. See the block of the same name in Defs.ts.
+   * `waterOnly` on every hull; `warship` only on the recon boats, which carry a
+   * gun and no hold. The carriers deliberately do without it — see
+   * `BuildEntry.warship`, which the AI reads to keep two counts.            */
+  {
+    key: 'hydrofoil', name: 'Hydrofoil', blurb: 'Sees far. Dies fast.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
+    cost: 450, buildTime: 6, prereqs: ['navalYard'], sortOrder: 62,
+    waterOnly: true, warship: true,
+  },
+  {
+    key: 'picketBoat', name: 'Picket Boat', blurb: 'Soviet eyes on the water.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
+    cost: 450, buildTime: 6, prereqs: ['subPen'], sortOrder: 62,
+    waterOnly: true, warship: true,
+  },
+  {
+    key: 'mrdCutter', name: 'Sun Cutter', blurb: 'A mirror on a hull, and very little else.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
+    cost: 480, buildTime: 6, prereqs: ['mrdSlipway'], sortOrder: 62,
+    waterOnly: true, warship: true,
+  },
+  {
+    key: 'rclSkimmer', name: 'Scrap Skimmer', blurb: 'A coil, an outboard, and no deck to speak of.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
+    cost: 400, buildTime: 5, prereqs: ['rclDrydock'], sortOrder: 62,
+    waterOnly: true, warship: true,
+  },
+  {
+    key: 'landingCraft', name: 'Landing Craft', blurb: 'Four slots and a bow ramp.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: V,
+    cost: 700, buildTime: 10, prereqs: ['navalYard'], sortOrder: 64, waterOnly: true,
+  },
+  {
+    key: 'assaultBarge', name: 'Assault Barge', blurb: 'Four slots, welded shut.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: V,
+    cost: 680, buildTime: 10, prereqs: ['subPen'], sortOrder: 64, waterOnly: true,
+  },
+  {
+    key: 'mrdLighter', name: 'Sun Lighter', blurb: 'Four slots under a folded sail.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
+    cost: 720, buildTime: 10, prereqs: ['mrdSlipway'], sortOrder: 64, waterOnly: true,
+  },
+  {
+    key: 'mrdArgosy', name: 'Argosy', blurb: 'Eight slots. The Pact arrives all at once.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: V,
+    cost: 1250, buildTime: 15, prereqs: ['mrdSlipway'], sortOrder: 66, waterOnly: true,
+  },
+  {
+    key: 'rclHauler', name: 'Slag Hauler', blurb: 'Eight slots of somebody else\u2019s ship.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: V,
+    cost: 1100, buildTime: 14, prereqs: ['rclDrydock'], sortOrder: 66, waterOnly: true,
+  },
+  /* -- the swimmers. LAND content: a barracks, not a dock, so `requiresSea`
+   * leaves them alone and a dry map still offers them. They are not sea
+   * content; they are infantry with one extra verb.                         */
+  {
+    key: 'frogman', name: 'Frogman', blurb: 'Swims. Everything else about him is worse.',
+    kind: BuildKind.Unit, faction: Faction.Allies, tab: I,
+    cost: 350, buildTime: 7, prereqs: ['barracks'], sortOrder: 40,
+  },
+  {
+    key: 'navalInfantry', name: 'Naval Infantry', blurb: 'Swims. Cheaply, and in numbers.',
+    kind: BuildKind.Unit, faction: Faction.Soviets, tab: I,
+    cost: 320, buildTime: 6, prereqs: ['barracks'], sortOrder: 40,
+  },
+  {
+    key: 'mrdTidewalker', name: 'Tidewalker', blurb: 'Walks on the water. Slowly.',
+    kind: BuildKind.Unit, faction: Faction.Meridian, tab: I,
+    cost: 380, buildTime: 7, prereqs: ['mrdChapterhouse'], sortOrder: 40,
+  },
+  {
+    key: 'rclDredger', name: 'Dredger', blurb: 'Comes up the beach with a prod and bad intentions.',
+    kind: BuildKind.Unit, faction: Faction.Reclaim, tab: I,
+    cost: 300, buildTime: 6, prereqs: ['rclRookery'], sortOrder: 40,
   },
 ];
 

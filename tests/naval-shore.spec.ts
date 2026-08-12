@@ -702,14 +702,20 @@ describe('the beach is ground a dock can stand on', () => {
 const SEA_BOUND_KEYS = [
   // The four yards — `needsShore`, one per faction.
   'navalYard', 'subPen', 'mrdSlipway', 'rclDrydock',
-  // The seven warships — `naval`, launched onto water.
+  // The gunned hulls — `warship`, and every one of them `waterOnly`.
   'gunboat', 'destroyer', 'submarine', 'dreadnought',
   'mrdCorvette', 'mrdMonitor', 'rclHulk',
-  // The two amphibious lifts. NEITHER carries `naval` — they have seats, and a
-  // lift that cannot beach is not a lift — but both are gated on a dock that
-  // cannot be founded without water, so both are just as unreachable. These are
-  // the two that matching on the flags alone would have missed.
-  'transport', 'rclScow',
+  // The recon rung. Gunned, no hold, so `warship` as well.
+  'hydrofoil', 'picketBoat', 'mrdCutter', 'rclSkimmer',
+  // The carriers. NONE of them carries `warship` — a gunboat widens an army, a
+  // barge is how the army arrives — but every one is gated on a dock that
+  // cannot be founded without water, so all of them are just as unreachable.
+  // These are the rows that matching on the flags alone would miss, which is
+  // why `computeSeaBound` is a prereq-closure fixpoint and not a flag test.
+  'transport', 'rclScow', 'landingCraft', 'assaultBarge',
+  'mrdLighter', 'mrdArgosy', 'rclHauler',
+  // NOT the four swimmers. They are gated on a BARRACKS, so a dry map still
+  // offers them: infantry with one extra verb, not sea content.
 ];
 
 describe('the catalog knows which content needs a sea', () => {

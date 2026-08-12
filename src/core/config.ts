@@ -2888,6 +2888,11 @@ export const NAVAL_UNIT_DIMENSIONS = {
   submarine:   { l: 12.0, w: 3.2, h: 1.8, turretY: 0 },
   dreadnought: { l: 18.0, w: 5.6, h: 4.2, turretY: 2.40 },
   transport:   { l: 13.0, w: 6.0, h: 2.4, turretY: 0 },
+  // The two rungs added when every army got a full naval line. `recon` is the
+  // smallest hull in the game on purpose - it is bought for its sight radius
+  // and its speed, and a silhouette that reads as "cheap" is part of that.
+  recon:       { l: 7.0,  w: 2.6, h: 1.6, turretY: 0.90 },
+  lighter:     { l: 11.0, w: 5.0, h: 2.0, turretY: 0 },
 } as const;
 
 /** Naval structures. Footprint in CELLS, height in metres. */

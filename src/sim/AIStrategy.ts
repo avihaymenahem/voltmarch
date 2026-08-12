@@ -201,8 +201,19 @@ export const enum BuildRole {
    * plans, different earn conditions and different caps.
    */
   CommanderPower = 25,
+  /**
+   * A cheap fast hull bought for its sight radius, not its gun.
+   *
+   * A ROLE OF ITS OWN because `BuildRole.Warship` carries a CAP — `maxWarships`
+   * — and a recon boat competing with escorts for those three slots would mean
+   * an army that can see the enemy and not fight them, or the reverse, chosen
+   * by whichever `forRole` returned first. It also keeps `holdTheLane` off it:
+   * parking the map's best eyes on a station midpoint is the one thing a scout
+   * must not do.
+   */
+  ReconHull = 26,
 }
-export const BUILD_ROLE_COUNT = 26;
+export const BUILD_ROLE_COUNT = 27;
 
 /**
  * The five things an army can be asked to kill. The composition scorer works
@@ -229,6 +240,7 @@ export const BUILD_ROLE_NAMES: readonly string[] = [
   'storage', 'defense', 'antiAir', 'harvester', 'skirmisher', 'infantry',
   'armor', 'siege', 'support', 'mcv', 'unknown', 'repair', 'superweapon',
   'upgrade', 'navalYard', 'transport', 'warship', 'commandPost', 'commanderPower',
+  'reconHull',
 ];
 
 /* ==========================================================================
@@ -540,6 +552,52 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     Faction.Soviets, [0.7, 1.0, 1.2, 1.6, 0.2], 0),
   fighter('mrdMonitor',  BuildRole.Warship, EntityKind.Vehicle, 1900, ['mrdSlipway', 'mrdReliquary'],
     FACTION_MERIDIAN, [0.8, 1.1, 1.1, 1.5, 0.5], 0),
+
+  /* -- the rest of the naval line -----------------------------------------
+   * WEIGHT 0 ON EVERY ROW, as on the hulls above and for the same reason: the
+   * navy layer asks for these by role when it has a plan for them, and nothing
+   * here may win a composition roll and be bought as line army.
+   *
+   * The recon hulls answer almost nothing on purpose — they are bought for a
+   * sight radius, and an honest answer vector is what keeps the composition
+   * scorer from ever mistaking one for a cheap escort.                       */
+  fighter('hydrofoil',    BuildRole.ReconHull, EntityKind.Vehicle, 450, ['navalYard'],
+    Faction.Allies, [0.5, 0.3, 0.1, 0.1, 0.3], 0),
+  fighter('picketBoat',   BuildRole.ReconHull, EntityKind.Vehicle, 450, ['subPen'],
+    Faction.Soviets, [0.4, 0.5, 0.2, 0.2, 0.0], 0),
+  fighter('mrdCutter',    BuildRole.ReconHull, EntityKind.Vehicle, 480, ['mrdSlipway'],
+    FACTION_MERIDIAN, [0.5, 0.4, 0.1, 0.1, 0.2], 0),
+  fighter('rclSkimmer',   BuildRole.ReconHull, EntityKind.Vehicle, 400, ['rclDrydock'],
+    FACTION_RECLAIM, [0.6, 0.3, 0.1, 0.1, 0.0], 0),
+
+  // The carriers. All four rungs are `Transport`, and the brain picks between
+  // them by SLOTS rather than by role — see `stageAmphibious`, which sizes the
+  // hull to the squad it is about to move instead of always taking the biggest.
+  fighter('landingCraft', BuildRole.Transport, EntityKind.Vehicle, 700, ['navalYard'],
+    Faction.Allies, NO_ANSWER, 0),
+  fighter('assaultBarge', BuildRole.Transport, EntityKind.Vehicle, 680, ['subPen'],
+    Faction.Soviets, NO_ANSWER, 0),
+  fighter('mrdLighter',   BuildRole.Transport, EntityKind.Vehicle, 720, ['mrdSlipway'],
+    FACTION_MERIDIAN, NO_ANSWER, 0),
+  fighter('mrdArgosy',    BuildRole.Transport, EntityKind.Vehicle, 1250, ['mrdSlipway'],
+    FACTION_MERIDIAN, NO_ANSWER, 0),
+  fighter('rclHauler',    BuildRole.Transport, EntityKind.Vehicle, 1100, ['rclDrydock'],
+    FACTION_RECLAIM, NO_ANSWER, 0),
+
+  /* -- the swimmers. LINE INFANTRY, with weight, and that is the difference
+   * between them and everything else in this block: they are bought off a
+   * barracks on a dry map like any other rifleman, and their extra verb costs
+   * the AI nothing to own. Weighted low — they are slower and softer than the
+   * rifleman beside them, so the scorer should prefer that rifleman unless the
+   * water is the point.                                                      */
+  fighter('frogman',       BuildRole.Infantry, EntityKind.Infantry, 350, ['barracks'],
+    Faction.Allies, [0.8, 0.2, 0.1, 0.2, 0.0], 0.15),
+  fighter('navalInfantry', BuildRole.Infantry, EntityKind.Infantry, 320, ['barracks'],
+    Faction.Soviets, [0.8, 0.2, 0.1, 0.2, 0.0], 0.15),
+  fighter('mrdTidewalker', BuildRole.Infantry, EntityKind.Infantry, 380, ['mrdChapterhouse'],
+    FACTION_MERIDIAN, [0.8, 0.3, 0.1, 0.2, 0.0], 0.15),
+  fighter('rclDredger',    BuildRole.Infantry, EntityKind.Infantry, 300, ['rclRookery'],
+    FACTION_RECLAIM, [0.9, 0.3, 0.1, 0.2, 0.0], 0.15),
 
   /* -- THE TWELVE UPGRADES --------------------------------------------------
    * THESE ROWS ARE WHY THE AI CAN BUY AN UPGRADE AT ALL. `bindOracle` walks

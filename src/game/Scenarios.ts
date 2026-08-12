@@ -1185,6 +1185,48 @@ export const FALLBACK_UNITS: Readonly<Record<string, FallbackUnit>> = {
     Locomotor.Hover, 32, GUNNER, Faction.Reclaim, { turnRate: RCL_TURN(NU.gunboat) }),
   rclHulk: unit('rclHulk', EntityKind.Vehicle, NU.destroyer, 820, ArmorClass.Heavy, 4.4,
     Locomotor.Hover, 36, GUNNER, Faction.Reclaim, { turnRate: RCL_TURN(NU.destroyer) }),
+
+  /* -- the completed naval line ---------------------------------------------
+   * WITHOUT A ROW HERE THE UNIT DOES NOT EXIST. `ProductionService.spawnUnit`
+   * reads `FALLBACK_UNITS` before the def table, so a hull with a flawless def
+   * and no row here takes the player's credits, runs its bar to 100%, and never
+   * leaves the dock. Silently. Forever. Every field must match the def, which
+   * `tests/data.spec.ts` checks column by column.                            */
+  hydrofoil: unit('hydrofoil', EntityKind.Vehicle, NU.recon, 180, ArmorClass.Light, 11.0,
+    Locomotor.Hover, 44, TURRETED, Faction.Allies),
+  picketBoat: unit('picketBoat', EntityKind.Vehicle, NU.recon, 200, ArmorClass.Light, 10.4,
+    Locomotor.Hover, 42, TURRETED, Faction.Soviets),
+  mrdCutter: unit('mrdCutter', EntityKind.Vehicle, NU.recon, 170, ArmorClass.Light, 11.6,
+    Locomotor.Hover, 46, TURRETED, Faction.Meridian),
+  rclSkimmer: unit('rclSkimmer', EntityKind.Vehicle, NU.recon, 160, ArmorClass.Light, 11.2,
+    Locomotor.Hover, 42, GUNNER, Faction.Reclaim, { turnRate: 3.6 - NU.recon.l * 0.14 }),
+
+  landingCraft: unit('landingCraft', EntityKind.Vehicle, NU.lighter, 460, ArmorClass.Light, 6.6,
+    Locomotor.Hover, 24, 0, Faction.Allies),
+  assaultBarge: unit('assaultBarge', EntityKind.Vehicle, NU.lighter, 520, ArmorClass.Light, 6.0,
+    Locomotor.Hover, 24, 0, Faction.Soviets),
+  mrdLighter: unit('mrdLighter', EntityKind.Vehicle, NU.lighter, 440, ArmorClass.Light, 7.0,
+    Locomotor.Hover, 26, 0, Faction.Meridian),
+
+  mrdArgosy: unit('mrdArgosy', EntityKind.Vehicle, NU.transport, 740, ArmorClass.Light, 5.6,
+    Locomotor.Hover, 28, 0, Faction.Meridian),
+  rclHauler: unit('rclHauler', EntityKind.Vehicle, NU.transport, 800, ArmorClass.Heavy, 5.0,
+    Locomotor.Hover, 24, 0, Faction.Reclaim, { turnRate: 3.6 - NU.transport.l * 0.14 }),
+
+  /* -- the swimmers --------------------------------------------------------
+   * `Locomotor.Foot` here and in the def, deliberately. The amphibious half is
+   * a def bit that `Production.spawnUnit` turns into `MoveClass.Hover`; a new
+   * locomotor would have no `passGrid` bit and would jam the barracks queue.  */
+  frogman: unit('frogman', EntityKind.Infantry, U.infantry, 105, ArmorClass.Infantry, 2.9,
+    Locomotor.Foot, 26, GUNNER | EntityFlag.Crushable, Faction.Allies, { crushableBy: 1 }),
+  navalInfantry: unit('navalInfantry', EntityKind.Infantry, U.infantry, 115,
+    ArmorClass.Infantry, 2.8,
+    Locomotor.Foot, 24, GUNNER | EntityFlag.Crushable, Faction.Soviets, { crushableBy: 1 }),
+  mrdTidewalker: unit('mrdTidewalker', EntityKind.Infantry, U.infantry, 100,
+    ArmorClass.Infantry, 3.0,
+    Locomotor.Foot, 28, GUNNER | EntityFlag.Crushable, Faction.Meridian, { crushableBy: 1 }),
+  rclDredger: unit('rclDredger', EntityKind.Infantry, U.infantry, 95, ArmorClass.Infantry, 3.0,
+    Locomotor.Foot, 24, GUNNER | EntityFlag.Crushable, Faction.Reclaim, { crushableBy: 1 }),
 };
 
 export interface FallbackBuilding {
@@ -1523,7 +1565,20 @@ const UNIT_ALIASES: Readonly<Record<string, readonly string[]>> = {
   destroyer: ['destroyer', 'alliedcruiser', 'cruiser'],
   submarine: ['submarine', 'sub', 'akula', 'typhoon'],
   dreadnought: ['dreadnought', 'sovietcruiser', 'battleship'],
-  transport: ['transport', 'landingcraft', 'hovertransport'],
+  transport: ['transport', 'hovertransport', 'heavytransport'],
+  hydrofoil: ['hydrofoil', 'alliedhydrofoil', 'fastboat'],
+  picketBoat: ['picketboat', 'sovietpicket', 'picket'],
+  mrdCutter: ['mrdcutter', 'suncutter', 'meridiancutter'],
+  rclSkimmer: ['rclskimmer', 'scrapskimmer', 'skimmer'],
+  landingCraft: ['landingcraft', 'alliedlighter', 'lighter'],
+  assaultBarge: ['assaultbarge', 'sovietlighter', 'barge'],
+  mrdLighter: ['mrdlighter', 'sunlighter', 'meridianlighter'],
+  mrdArgosy: ['mrdargosy', 'argosy', 'meridianargosy'],
+  rclHauler: ['rclhauler', 'slaghauler', 'hauler'],
+  frogman: ['frogman', 'alliedfrogman', 'diver'],
+  navalInfantry: ['navalinfantry', 'sovietdiver', 'marine'],
+  mrdTidewalker: ['mrdtidewalker', 'tidewalker', 'meridiantidewalker'],
+  rclDredger: ['rcldredger', 'dredger', 'reclaimdredger'],
   // The air arms. WITHOUT A ROW HERE THE DEF DOES NOT EXIST as far as any
   // consumer is concerned: `resolveDefBinding` returns `bindAliases(unitByKey,
   // UNIT_ALIASES)`, which iterates the keys of THIS table — so an unlisted def
@@ -1707,6 +1762,16 @@ const FACTION_KEY_MAP: Readonly<Record<string, readonly string[]>> = {
   destroyer:        ['destroyer',   'destroyer',  'dreadnought', 'mrdMonitor',      'rclHulk'],
   dreadnought:      ['dreadnought', 'destroyer',  'dreadnought', 'mrdMonitor',      'rclHulk'],
   transport:        ['transport',   'transport',  'transport',  'mrdCarryall',      'rclCrawler'],
+  /* the completed naval line: recon, the four-slot landing ship, the eight-slot
+   * heavy, and the swimmer who needs none of them. `transport` is shared by the
+   * Allied yard and the Soviet pen, so both columns name it. */
+  hydrofoil:        ['hydrofoil',   'hydrofoil',  'picketBoat', 'mrdCutter',        'rclSkimmer'],
+  picketBoat:       ['picketBoat',  'hydrofoil',  'picketBoat', 'mrdCutter',        'rclSkimmer'],
+  landingCraft:     ['landingCraft', 'landingCraft', 'assaultBarge', 'mrdLighter',  'rclScow'],
+  assaultBarge:     ['assaultBarge', 'landingCraft', 'assaultBarge', 'mrdLighter',  'rclScow'],
+  heavyLift:        ['transport',   'transport',  'transport',  'mrdArgosy',        'rclHauler'],
+  frogman:          ['frogman',     'frogman',    'navalInfantry', 'mrdTidewalker', 'rclDredger'],
+  navalInfantry:    ['navalInfantry', 'frogman',  'navalInfantry', 'mrdTidewalker', 'rclDredger'],
 };
 
 /** Resolved def indices for the content vocabulary. -1 means "no real def". */
