@@ -344,9 +344,12 @@ console.log(
   `\nWeighted grade score: ${(score * 100).toFixed(1)}%  ` +
     `(${failures.length} failing checks over ${rows.length} image${rows.length === 1 ? '' : 's'})`,
 );
-if (rows.length < 12) {
+// Kept in step with `SHOTS` in tools/shoot.mjs and with the assertion in
+// tests/shot-camera.spec.ts, which is what fails when the three disagree.
+const FULL_SET = 13;
+if (rows.length < FULL_SET) {
   console.warn(
-    `NOTE: scored ${rows.length} image(s), not the full 12-shot set. This number is NOT comparable\n` +
+    `NOTE: scored ${rows.length} image(s), not the full ${FULL_SET}-shot set. This number is NOT comparable\n` +
       '      to a full-set score — scenario mix dominates the aggregate. Re-run `npm run shots` first.',
   );
 }

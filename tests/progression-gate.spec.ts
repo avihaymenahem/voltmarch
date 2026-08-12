@@ -524,8 +524,22 @@ describe('the harness gate', () => {
  * ========================================================================== */
 
 describe('map unlocks', () => {
+  /*
+   * THE STARTER SET, RESTATED. `SkirmishSetup.STARTER_MAPS` is module-private,
+   * so this is a duplicate on purpose and the duplication is the test: if the
+   * two ever disagree, a map is either offered with no mission paying for it or
+   * gated with no way to earn it.
+   *
+   * `sunder-atoll` is the third and it is open for a different reason from the
+   * two originals — every naval structure and hull in the game needs water,
+   * four of the seven maps are landlocked, and both half-plane sea maps are
+   * mission-gated. Without an open sea map the entire naval arm is unreachable
+   * on a fresh profile.
+   */
+  const STARTERS = ['temperate-valley', 'airbase-flats', 'sunder-atoll'];
+
   it('pays out an id for every map that is not a starter', () => {
-    const starters = new Set(['temperate-valley', 'airbase-flats']);
+    const starters = new Set(STARTERS);
     for (const m of MAPS) {
       if (starters.has(m.id)) continue;
       expect(MISSION_UNLOCK_IDS, `map "${m.id}" is neither a starter nor a reward`)
@@ -534,7 +548,7 @@ describe('map unlocks', () => {
   });
 
   it('does not gate the starters', () => {
-    for (const id of ['temperate-valley', 'airbase-flats']) {
+    for (const id of STARTERS) {
       expect(MISSION_UNLOCK_IDS).not.toContain(`map.${id}`);
     }
   });

@@ -50,7 +50,7 @@
 import './shell.css';
 
 import { bootstrap, type BootOptions, type GameHandle } from '../game/Bootstrap';
-import { resetScenarioPlan } from '../game/Scenarios';
+import { resetScenarioPlan, setPlannedArmies } from '../game/Scenarios';
 import { resetTerrainPlan } from '../world/terrain-plan';
 import { DEFAULT_ART, GAME_SPEEDS } from '../core/config';
 import { EntityKind, Faction, type PlayerId } from '../core/types';
@@ -59,6 +59,7 @@ import { DEF_TABLES } from '../data/Defs';
 import {
   MAPS,
   SettingsStore,
+  armyCount,
   buildMatchQuery,
   chordEquals,
   cloneSetup,
@@ -1944,6 +1945,38 @@ export class Shell {
      */
     resetScenarioPlan();
     resetTerrainPlan();
+
+    /*
+     * HOW MANY ARMIES THE GROUND IS BUILT FOR — and until this line, NOTHING
+     * IN THE PRODUCT EVER SAID.
+     *
+     * `setPlannedArmies` shipped with its whole contract written out ("THIS IS
+     * THE CHANNEL THE TERRAIN READS") and exactly one reference in the repo:
+     * its own definition. `plannedArmyOverride()` therefore returned `null` on
+     * every boot, `planScenario` clamped to `SKIRMISH_ARMIES_DEFAULT`, and the
+     * consequences ran the whole depth of the boot:
+     *
+     *   `terrain-plan.plannedTerrainInput` reserved TWO levelled start shelves
+     *   `PLANS.skirmish.build` called `startSpots(cx, cz, 2, sea)`
+     *   `Shell.applySetupToWorld` seated FOUR players regardless
+     *
+     * So three of the six shipped maps declare `players: 4`, the lobby offers
+     * the fourth seat, and armies three and four opened with no units, no
+     * buildings and no shelf — which is precisely what `verifyArmies()` below
+     * warns about, on a defect nobody had connected to its cause.
+     *
+     * HERE AND NOT IN THE LOBBY. The count has to be standing before
+     * `bootstrap()` runs, because `world-warm` asks `plannedTerrainInput()` at
+     * MODULE SCOPE to prewarm the generator; and it has to be after the two
+     * resets above, because those are what let the plan be re-derived at all.
+     * This is the only line in the boot where both are true.
+     *
+     * `armyCount(this.setup)` is right for all three launch paths without a
+     * branch: the lobby writes `opponents` through `withArmyCount`, PvP seats
+     * its lobby the same way, and `startReplay` rebuilds `opponents` from the
+     * recording's header before it boots.
+     */
+    setPlannedArmies(armyCount(this.setup));
 
     const boot: BootOptions = {
       canvas: this.options.canvas,

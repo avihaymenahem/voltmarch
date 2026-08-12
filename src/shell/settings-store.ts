@@ -715,6 +715,33 @@ export const MAPS: readonly MapChoice[] = [
     mapSeed: 0xc0aa11, mood: 'noon', players: 2,
     blurb: 'Dense canopy and wet ground. The highest prop count in the game.',
   },
+  /*
+   * THE FOUR-ARMY ISLAND MAP, and the one entry where every field is
+   * load-bearing rather than descriptive.
+   *
+   * `preset: 'atoll'` is what reaches `MAP_SEAS` and carves four islands
+   * instead of a half-plane; `biome: 'temperate'` is argued in `MAP_PRESETS`,
+   * where it beat `desert` on two FATAL scorecard checks. `players: 4` is not a
+   * claim about the ground — `startPointsFor` reads the island list and answers
+   * with one start per island, so the number and the terrain come from the same
+   * array and cannot drift.
+   *
+   * `mapSeed` reads as ATOLL in hex, in the spirit of `0x0cea11` and
+   * `0xc0aa11`. It must stay unique: `Replays.replayMap` identifies a
+   * recording's battlefield by seed first.
+   *
+   * A STARTER, deliberately, and it is the only map in the roster that ships
+   * open without being one of the two originals. Everything the naval arm
+   * exists for is unreachable on a landlocked map, and the two seas that do
+   * exist are both behind mission gates — so on a fresh profile the entire
+   * naval and amphibious layer was content nobody could see. See
+   * `STARTER_MAPS` in `src/shell/SkirmishSetup.ts`.
+   */
+  {
+    id: 'sunder-atoll', name: 'Sunder Atoll', biome: 'temperate', preset: 'atoll',
+    mapSeed: 0xa7011, mood: 'noon', players: 4,
+    blurb: 'Four islands, no land route. Every crossing is by sea or not at all.',
+  },
 ];
 
 export function mapById(id: string): MapChoice {

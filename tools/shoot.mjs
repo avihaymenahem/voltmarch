@@ -310,6 +310,34 @@ const SHOTS = [
     pose: [['focusOn', MAP_CENTER, MAP_CENTER, 50], ['setUiVisible', false]],
     camera: { distance: 50, pitchDeg: 47.0458 },
   },
+  {
+    // THE ONLY SHOT NOT POSED ON THE MAP CENTRE, and the reason is geometric
+    // rather than stylistic: on Sunder Atoll the map centre IS the lagoon. The
+    // four islands sit 138 x 134 m off centre with a radius of 98, so the
+    // nearest dry land to (256, 256) is 94 m away diagonally and there is none
+    // at all along either axis through it. A frame posed there at any legal
+    // dolly is open water and the shoal bank — no coast, no structures, nothing
+    // to light.
+    //
+    // (339.5, 337.1) is 76 m inward from island 2's centre along the line to
+    // the map centre — `ATOLL_FOCUS_INWARD` in
+    // `src/game/scenarios/Showcases.ts`, which is the point `buildAtoll`
+    // composes around and publishes through `setCameraFocus`. `preflight`
+    // checks only that a pose's focusOn DISTANCE matches its `camera` block, so
+    // saying where to look is allowed; saying it at the wrong dolly is not.
+    name: '13-atoll-crossing',
+    caption: 'An island coast as a route, not a boundary: dock, landing party, escort over the shoal.',
+    // `biome` and `mapseed` are on the flags because a fixture that does not
+    // name them gets `TERRAIN_DEFAULT_BIOME` and `TERRAIN_SEED` — which is
+    // temperate grass on an unrelated landform roll. The first capture of this
+    // shot did exactly that and photographed a green island, on a map whose
+    // whole argument for its biome is that it has no green in it. These three
+    // together are the `sunder-atoll` row of `settings-store.MAPS`, so the
+    // fixture and the battlefield a player selects are the same ground.
+    flags: { shot: 'atoll', seed: 17, biome: 'temperate', mapseed: 0xa7011 },
+    pose: [['focusOn', 186.9, 188.9, 62], ['setUiVisible', false]],
+    camera: { distance: 62, pitchDeg: 48.4558 },
+  },
 ];
 
 /*

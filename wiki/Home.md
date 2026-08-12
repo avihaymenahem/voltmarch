@@ -34,7 +34,8 @@ superweapon, and they play nothing like the first two or like each other.
 | [Soviet Union](/avihaymenahem/voltmarch/wiki/Faction-Soviets) | Armour and volume. Slower, heavier, hits like a building. |
 | [Meridian Pact](/avihaymenahem/voltmarch/wiki/Faction-Meridian-Pact) | Nothing the Pact fields touches the ground. |
 | [The Reclamation](/avihaymenahem/voltmarch/wiki/Faction-Reclamation) | Welded out of other people's wrecks. No turrets, anywhere. |
-| [Maps](/avihaymenahem/voltmarch/wiki/Maps) | The six battlefields and what each one rewards. |
+| [Maps](/avihaymenahem/voltmarch/wiki/Maps) | The seven battlefields and what each one rewards. |
+| [Sunder Atoll](/avihaymenahem/voltmarch/wiki/Sunder-Atoll) | Four islands, no land route. The map the navy exists for. |
 | [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) | Missions, unlocks, and what a fresh profile is missing. |
 | [Strategy](/avihaymenahem/voltmarch/wiki/Strategy) | Openings, scouting, expansions, and how to lose less often. |
 | [Multiplayer](/avihaymenahem/voltmarch/wiki/Multiplayer) | Head-to-head 1v1, and what it takes to actually run a match. |

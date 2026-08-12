@@ -216,8 +216,13 @@ function fx(id: string): Fixture {
 /* ========================================================================== */
 
 describe('the sea reaches the maps that are named after it', () => {
-  it('declares one for the coast and tropical presets and nothing else', () => {
-    expect(Object.keys(MAP_SEAS).sort()).toEqual(['coast', 'tropical']);
+  it('declares one for the coast, tropical and atoll presets and nothing else', () => {
+    // `atoll` is the archipelago and is measured by `tests/sunder-atoll.spec.ts`
+    // rather than here: every fixture in THIS file is a half-plane, and the
+    // assertions below (one shore, one land region, a straight-line normal) are
+    // statements about that shape which an island map does not and must not
+    // satisfy.
+    expect(Object.keys(MAP_SEAS).sort()).toEqual(['atoll', 'coast', 'tropical']);
     for (const m of LANDLOCKED) expect(MAP_SEAS[m.preset], m.id).toBeUndefined();
   });
 

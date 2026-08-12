@@ -2,7 +2,7 @@
  * ============================================================================
  * VOLTMARCH — src/game/scenarios/Showcases.ts
  * ============================================================================
- * THE EIGHT SINGLE-SUBJECT FIXTURES.
+ * THE NINE SINGLE-SUBJECT FIXTURES.
  *
  * Each of these exists to answer exactly one question a critic asks, and each
  * is composed for the exact camera distance `tools/shoot.mjs` poses it at. The
@@ -17,16 +17,27 @@
  *   placement         36 m  "is the build-ghost UI readable over the world?"
  *   selection         34 m  "can you tell what is selected, hurt and veteran?"
  *   blob              50 m  "does 70 units stay readable?"
+ *   atoll             62 m  "does an island coast read as a place to land?"
  *
- * All eight are centred on the map centre (256, 256) because that is where the
- * harness points the camera, unconditionally, for every shot.
+ * EIGHT of the nine are centred on the map centre (256, 256), because that is
+ * where `tools/shoot.mjs` points the camera for every shot in its table.
+ *
+ * `atoll` IS THE EXCEPTION, and it is a geometric fact rather than a stylistic
+ * choice. On `ARCHIPELAGO_SEA` the four islands sit at the corners of a
+ * rectangle 138 x 134 m off centre with a radius of 98, so the nearest dry land
+ * to (256, 256) is 94 m away DIAGONALLY and there is none at all along either
+ * axis through it — the map centre is the middle of the lagoon. A frame posed
+ * there at any legal dolly is open water and the shoal bank, with no coast, no
+ * structures and nothing to light. `SHOTS` poses this one on an island cape
+ * instead; a pose is free to say so, because `preflight` requires only that its
+ * `focusOn` DISTANCE match the declared camera, not its position.
  * ============================================================================
  */
 
 import { BuildTab, NONE, OrderKind, Stance, UnitState } from '../../core/types';
 import type { EntityId, PlayerId, ProductionItem } from '../../core/types';
 import { WATER_LEVEL } from '../../core/config';
-import { footprintOriginCell } from '../../core/math';
+import { DEG2RAD, footprintOriginCell } from '../../core/math';
 import type { ScenarioBuilder } from '../Scenarios';
 import { buildAlliedArmy } from './AlliedBase';
 import { buildSovietArmy, buildSovietOutpost } from './SovietBase';
@@ -489,4 +500,191 @@ export function buildBlob(b: ScenarioBuilder, cx: number, cz: number): void {
   b.setCredits(b.soviets, 1240);
 
   console.info(`[scenario] blob: ${allied} Allied + ${soviet} Soviet units massed`);
+}
+
+/* ==========================================================================
+ * 13 - atoll (camera 62 m, yaw 34, sim pre-advanced 3 s)
+ *
+ * THE ONE QUESTION THIS FRAME ANSWERS: does an island coast read as somewhere
+ * you would put troops ashore? Every other water in the build is a BOUNDARY - a
+ * line with land behind it - and an archipelago's water is the ROUTE. So the
+ * composition is a crossing caught part-way rather than a shoreline at rest: a
+ * dock on the sand, a transport nosed into the surf with its squad already off,
+ * and the escort still out over the shoal that got them there.
+ *
+ * COMPOSED IN ISLAND POLAR COORDINATES, not in world x/z, and that is what
+ * makes it robust. The islands sit on the map's diagonal, so an axis-aligned
+ * layout would arrive on screen at 44 degrees to everything in it. `at(i, a)`
+ * below reads "i metres inward from this island's centre, a metres along its
+ * coast", which is the frame the picture is actually built in:
+ *
+ *     i = 0    the island centre, i.e. the start shelf
+ *     i = 56   the edge of BUILD_RADIUS from an opening Construction Yard
+ *     i = 98   the nominal waterline
+ *     i = 106  the near rim of the central shoal bank
+ *
+ * BUDGET: `layoutBudget(62, 34)` is about 58 x 36 m, and this composition is
+ * deliberately longer than that along the inward axis - the frame is 62 m deep
+ * and the SUBJECT is that depth, from dry sand through the surf line to open
+ * water. Nothing sits more than ~30 m off the axis, which is the half the
+ * budget really constrains.
+ *
+ * WHY ISLAND 2. Its inward cape faces back along the camera's own yaw, so the
+ * coast runs ACROSS the frame rather than into it. The index is read off
+ * `b.sea.islands` rather than restated, so if the island list ever moves the
+ * whole composition moves with it.
+ * ========================================================================== */
+
+/**
+ * Which island of `ARCHIPELAGO_SEA` this fixture stands on.
+ *
+ * ISLAND 3, AND THE INDEX IS A SCORECARD DECISION rather than a compositional
+ * one. The rig's yaw is fixed at 34 degrees, so which world direction lands in
+ * the FAR quarter of the frame is fixed too — `buildNaval`'s own header records
+ * the same fact from the other side ("Land is the near corner, which is where
+ * the camera's own yaw already puts the widest, most foreshortened ground").
+ *
+ * Scorecard #12 is far-minus-near mean saturation, weight 3, and it exists to
+ * catch fog and aerial haze washing out distance. Composed on island 2 the
+ * lagoon fell in the far quarter and the beach in the near, which measured
+ * -0.15 against a -0.05 floor: a FATAL failure earned by having water in the
+ * distance rather than by any haze. Island 3 lies on the opposite diagonal, so
+ * its coast puts the land far and the water near, and the same composition
+ * measures +0.19 — in line with the +0.15 to +0.18 every other fixture reads.
+ */
+const ATOLL_ISLAND = 3;
+/**
+ * Metres inward from that island's centre to the camera focus.
+ *
+ * `tools/shoot.mjs` restates the resulting world position in its `pose`, and
+ * `b.setCameraFocus` below publishes the same point for a plain `?shot=atoll`
+ * boot that never runs the harness. Both are this number.
+ *
+ * 96 m is the WATERLINE, not the beach behind it, and the 20 m it moved out
+ * from an earlier 76 is the difference between a photograph of a coast and a
+ * photograph of a forest. At 76 the frame was four fifths dry ground with a
+ * corner of sea; the metrics were fine and the picture had lost its subject.
+ * At 96 the far half is the beach, the dock and the squad ashore, and the near
+ * half is open water with the transport nosed into the surf.
+ */
+export const ATOLL_FOCUS_INWARD = 96;
+
+export function buildAtoll(b: ScenarioBuilder, cx: number, cz: number): void {
+  const islands = b.sea?.islands ?? [];
+  const home = islands[ATOLL_ISLAND] ?? { x: cx, z: cz, radiusX: 98, radiusZ: 98 };
+
+  // `u` points from the island centre at the map centre - "inward", toward the
+  // lagoon every crossing uses. `p` is its left normal, running along the coast.
+  const rawX = cx - home.x;
+  const rawZ = cz - home.z;
+  const len = Math.hypot(rawX, rawZ) || 1;
+  const ux = rawX / len;
+  const uz = rawZ / len;
+  const px = -uz;
+  const pz = ux;
+  const at = (inward: number, along: number): { x: number; z: number } => ({
+    x: home.x + ux * inward + px * along,
+    z: home.z + uz * inward + pz * along,
+  });
+  // Compass bearing of the inward axis, so everything below can be turned
+  // relative to the WATER rather than to the world grid. `atan2(x, z)` is this
+  // module's convention throughout.
+  const inwardDeg = Math.atan2(ux, uz) / DEG2RAD;
+  const face = (turn: number): number => {
+    const d = (inwardDeg + turn) % 360;
+    return d < 0 ? d + 360 : d;
+  };
+
+  const owner = b.allies;
+  const foe = b.soviets;
+
+  /* -- the shore establishment ------------------------------------------- */
+  // The yard on the sand with its slipway pointing at the water. `i = 84` is
+  // 14 m short of the waterline: inside the band `tests/sunder-atoll.spec.ts`
+  // measures at 68-80% buildable, and far enough out that what it stands on is
+  // the beach rather than the levelled start shelf.
+  const yard = at(84, -15);
+  b.spawnBuilding('navalYard', owner, yard.x, yard.z, { yawDeg: face(0) });
+  const power = at(62, -26);
+  b.spawnBuilding('powerPlant', owner, power.x, power.z, { yawDeg: face(90) });
+  // One gun covering the beach, because a landing site nobody defends reads as
+  // a harbour rather than as a front.
+  const box = at(86, 14);
+  b.spawnBuilding('pillbox', owner, box.x, box.z, { yawDeg: face(0) });
+
+  /* -- the squad that is already ashore ----------------------------------- */
+  // Facing INLAND, which is the tell that they came off the water rather than
+  // having been garrisoned there all along.
+  for (let k = 0; k < 4; k++) {
+    const s = at(92 - (k % 2) * 4, 2 + k * 3.6);
+    b.spawnUnit('gi', owner, s.x, s.z, {
+      yawDeg: face(180 + (k - 1.5) * 9),
+      state: UnitState.Moving,
+      stance: Stance.Aggressive,
+    });
+  }
+  const armour = at(88, -5);
+  b.spawnUnit('grizzly', owner, armour.x, armour.z, {
+    yawDeg: face(165), state: UnitState.Guarding, stance: Stance.Defensive,
+  });
+
+  /* -- the crossing -------------------------------------------------------- */
+  // Hulls sit ON the water plane rather than on the terrain sampler: `float`
+  // takes `max(WATER_LEVEL, ground)`, so a missing terrain module beaches the
+  // fleet instead of burying it. Same reasoning as `buildNaval`.
+  const seaOpts = { float: true, state: UnitState.Moving, stance: Stance.Aggressive };
+
+  // The transport that put them there, still nosed into the surf line.
+  const lander = at(104, 3);
+  b.spawnUnit('transport', owner, lander.x, lander.z, {
+    ...seaOpts, yawDeg: face(180), state: UnitState.Idle,
+  });
+
+  // The escort, out over the shoal, holding the lane the transport came down.
+  // The AttackMove order gives them a heading, and a heading is what puts a
+  // wake behind them.
+  const screen = at(126, -8);
+  const screenTo = at(120, 42);
+  b.formation('destroyer', owner, screen.x, screen.z, 2, {
+    ...seaOpts, yawDeg: face(90), columns: 2, spacing: 15, jitter: 1.4, veterancy: 1,
+    order: { kind: OrderKind.AttackMove, x: screenTo.x, z: screenTo.z },
+  });
+  const boats = at(118, 26);
+  b.formation('gunboat', owner, boats.x, boats.z, 2, {
+    ...seaOpts, yawDeg: face(100), columns: 2, spacing: 10, jitter: 1.1,
+    order: { kind: OrderKind.AttackMove, x: screenTo.x, z: screenTo.z },
+  });
+
+  // ...and what they are holding it against, coming off the shoal bank.
+  const raider = at(140, -30);
+  const raiderTo = at(104, 0);
+  b.formation('submarine', foe, raider.x, raider.z, 2, {
+    ...seaOpts, yawDeg: face(180), columns: 2, spacing: 11, jitter: 1.2,
+    order: { kind: OrderKind.AttackMove, x: raiderTo.x, z: raiderTo.z },
+  });
+
+  // One hulk at the waterline. It sells the scale of the water, and it is the
+  // only dark mass in a frame that is otherwise sand, sea and sky.
+  const hulk = at(101, -26);
+  b.spawnWreck(hulk.x, hulk.z, b.world.player(foe).faction, true);
+
+  /* -- dressing ------------------------------------------------------------ */
+  // The `atoll` preset leads with `bush`, and the desert biome's own instanced
+  // carpet reaches for palms unprompted - `PROP_DEFS.palm` weights desert 0.85
+  // against temperate 0.10, and it is the heaviest canopy entry desert has.
+  // That is where the island reading comes from; none of it is asked for here.
+  //
+  // The box is axis-aligned because `scatter` takes a `WorldBox`. It straddles
+  // the coast on purpose and the wet cells are rejected by the terrain sampler
+  // rather than by arithmetic in this file.
+  const near = at(58, -46);
+  const far = at(100, 46);
+  b.scatter({
+    minX: Math.min(near.x, far.x), minZ: Math.min(near.z, far.z),
+    maxX: Math.max(near.x, far.x), maxZ: Math.max(near.z, far.z),
+  }, 52);
+
+  const focus = at(ATOLL_FOCUS_INWARD, 0);
+  b.setCameraFocus(focus.x, focus.z);
+  b.setCredits(owner, 6200);
 }

@@ -1184,7 +1184,47 @@ export class TerrainFields implements ITerrain {
         }
       }
       const mean = n > 0 ? sum / n : b.baseHeight;
-      const tier = clamp(Math.round((mean - b.baseHeight) / b.stepHeight), 0, b.tierCount);
+      /*
+       * WHICH TERRACE, AND WHY AN ISLAND HAS NO CHOICE ABOUT IT.
+       *
+       * On a continent the shelf takes the terrace the ground already sits on,
+       * which is what stops a reserved start reading as a plateau stamped onto
+       * a valley. An ISLAND cannot afford that, and the arithmetic is short:
+       *
+       *   `flattenDisc` levels TERRAIN_START_FLAT_RADIUS (58 m) and wobbles its
+       *   rim TERRAIN_START_EDGE_WOBBLE (14 m) further, so on the 98 m islands
+       *   `ARCHIPELAGO_SEA` carves there are ~26 m of coast left to get from
+       *   the shelf back down to WATER_LEVEL. `computeDerived` calls a cell
+       *   buildable only when its height spread over a +/-3 m window is under
+       *   TERRAIN_BUILD_FLATNESS (1.1 m) — about a 0.13 grade — so 26 m buys
+       *   3.4 m of fall and a shelf above ~5.4 m makes the ENTIRE coast
+       *   unbuildable.
+       *
+       * Tier 1 is 9.9 m on desert, 8.8 m on temperate, 9.5 m on snow. Every one
+       * of them is over that line, and the mean height at all four island
+       * centres lands on tier 1 for every seed tried — 48 of them, spread 9.7
+       * to 10.1 m. This is not a bad roll; it is the shape of the map.
+       *
+       * WHAT IT COST, MEASURED. `hasNavigableWater` requires 8 wet cells within
+       * PRODUCTION.shoreSearchCells (6 cells, 24 m) of a naval yard's 3x3
+       * footprint. With buildable ground stopping ~34 m short of the waterline,
+       * the count of legal yard sites on the whole map was ZERO, against 237 on
+       * `contested-strait`. Naval yards, pens, slipways, drydocks, nine hulls
+       * and the transport — every amphibious verb the game owns — were
+       * unreachable content on the one map that exists to need them.
+       *
+       * So an island shelf takes tier 0 and the dry margin decides the rest.
+       * The guarantee itself is untouched: it is still levelled, still dry,
+       * still `TERRAIN_START_FLAT_RADIUS` across, still 100% buildable. It is
+       * only lower, which is the one property an island actually needs.
+       *
+       * GATED ON `archipelago`, so no continent and neither half-plane sea map
+       * sees this line. `tests/archipelago.spec.ts` measures the coast that
+       * results rather than trusting it.
+       */
+      const tier = this.archipelago
+        ? 0
+        : clamp(Math.round((mean - b.baseHeight) / b.stepHeight), 0, b.tierCount);
       const level = Math.max(
         b.baseHeight + tier * b.stepHeight,
         WATER_LEVEL + TERRAIN_START_DRY_MARGIN,

@@ -334,8 +334,47 @@ describe('the coast wanders', () => {
       // 8 m of fbm either way is at least ~8 m of measured spread.
       expect(hi - lo, `island at ${isl.x},${isl.z} coast spread ${lo}..${hi} m`)
         .toBeGreaterThan(8);
-      // ...and not so much that the island stops being the island it declared.
-      expect(hi - lo).toBeLessThan(4 * ARCHIPELAGO_SEA.wavinessMetres);
+      /*
+       * ...and not so much that the island stops being the island it declared.
+       *
+       * THE BOUND MOVED, AND THE REASON IS THE ISLAND SHELF, not the coastline.
+       * It read `4 * wavinessMetres` (32 m), which was the right calibration
+       * while `levelStartAreas` put an island start on the terrace it happened
+       * to sit on — tier 1, ~9.9 m. The waterline then fell 7.9 m over the last
+       * ~26 m of coast, a 0.23 grade, and a grade that steep pins the waterline
+       * in place: the biome swell moves the ground up and down by well under a
+       * metre and the 0.23 slope converts that into 3-4 m of horizontal travel.
+       *
+       * An island shelf is tier 0 now — see `levelStartAreas` in
+       * `src/world/terrain-gen.ts` for the naval-yard measurement that forced
+       * it — so the same coast falls 1.4 m over the same 26 m, a 0.05 grade,
+       * and the SAME swell now moves the waterline 15-20 m in and out. The
+       * coast wanders more because the beach is flatter, which is the whole
+       * point of the change and reads as bays rather than as a stencil.
+       *
+       * MEASURED across five configurations, spread per island:
+       *   desert   0xa7011   (SHIPPED)  12, 10, 12, 10
+       *   desert   0x5ea0a7             14, 12, 12, 10
+       *   temperate 0x7e44a1            10, 34, 26, 10
+       *   temperate 4242                10, 10,  8, 10
+       *   temperate 0xa5c1a1            10, 30, 14, 36
+       *
+       * 48 m is 6x waviness, clear of the 36 m worst case. It is a backstop,
+       * not the invariant: what "the island stops being the island" really
+       * means is measured directly below and by the channel-width test further
+       * down, both of which are tighter than this.
+       */
+      expect(hi - lo).toBeLessThan(6 * ARCHIPELAGO_SEA.wavinessMetres);
+      /*
+       * THE PROPERTY THE BOUND ABOVE IS A PROXY FOR. A bay is welcome; a bay
+       * that reaches inside the start guarantee is a base with its back in the
+       * sea. `BUILD_RADIUS` is 56 m from the island centre and the shelf is
+       * flat to 58, so the nearest the waterline may come is the first number
+       * that leaves either intact. Measured minimum across the five
+       * configurations above: 66 m, on temperate 0xa5c1a1.
+       */
+      expect(lo, `island at ${isl.x},${isl.z} coast comes within ${lo} m of the start`)
+        .toBeGreaterThan(BUILD_RADIUS + 4);
     }
   });
 

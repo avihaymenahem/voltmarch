@@ -197,7 +197,7 @@ players get everything.
 
 ## 5. Maps
 
-Four of the six battlefields are earned. See [Maps](/avihaymenahem/voltmarch/wiki/Maps) for what each one plays like.
+Four of the seven battlefields are earned. See [Maps](/avihaymenahem/voltmarch/wiki/Maps) for what each one plays like.
 
 | Map | Earned by |
 | --- | --- |
