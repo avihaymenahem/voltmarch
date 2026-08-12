@@ -980,6 +980,11 @@ export function createPlayerState(
     // the table that fills it lives there, the empty shape lives here.
     upgradeMask: 0,
     upgradeMul: new Float32Array(UPGRADE_MUL_SLOTS).fill(1),
+    // No power bought yet. Every match starts here, including a match that is
+    // about to be overwritten by a load — `SaveGame` REPLACES the mask rather
+    // than merging into it, so a reload cannot hand back a purchase twice or
+    // leave the previous match's behind.
+    commanderPowerMask: 0,
     rallyX: new Map<number, number>(),
     rallyZ: new Map<number, number>(),
     entityCount: new Int32Array(ENTITY_KIND_COUNT),

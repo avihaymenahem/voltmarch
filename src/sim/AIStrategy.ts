@@ -180,8 +180,29 @@ export const enum BuildRole {
    * wave that never arrives is also a wave that is permanently N units short.
    */
   Warship = 23,
+  /**
+   * The Command Post — the ONE structure that publishes `BuildTab.Powers`.
+   *
+   * A ROLE OF ITS OWN, and not because the AI needs a fifth adjective: without
+   * one, `roleOfBuilding`'s flag fallback ends at "2x2 and draws power => a tech
+   * lab", so a standing Command Post would be counted as the army's Battle Lab
+   * and the brain would stop building the real one — every tier-3 hull silently
+   * unreachable for the rest of the match. `forRole(TechLab)` would also be able
+   * to answer with it.
+   */
+  CommandPost = 24,
+  /**
+   * A purchasable commander power. `BuildRole.Upgrade`'s twin.
+   *
+   * Separate because `requestProduction` has to record an ASK TICK for anything
+   * that produces no entity — an upgrade and a power are both invisible to
+   * every census, so without it the scorer re-proposes the same 2500-credit
+   * purchase on every build pass forever — and because the two have different
+   * plans, different earn conditions and different caps.
+   */
+  CommanderPower = 25,
 }
-export const BUILD_ROLE_COUNT = 24;
+export const BUILD_ROLE_COUNT = 26;
 
 /**
  * The five things an army can be asked to kill. The composition scorer works
@@ -207,7 +228,7 @@ export const BUILD_ROLE_NAMES: readonly string[] = [
   'builder', 'power', 'refinery', 'barracks', 'warFactory', 'radar', 'techLab',
   'storage', 'defense', 'antiAir', 'harvester', 'skirmisher', 'infantry',
   'armor', 'siege', 'support', 'mcv', 'unknown', 'repair', 'superweapon',
-  'upgrade', 'navalYard', 'transport', 'warship',
+  'upgrade', 'navalYard', 'transport', 'warship', 'commandPost', 'commanderPower',
 ];
 
 /* ==========================================================================
@@ -245,6 +266,8 @@ export interface CatalogEntry {
 
 /** Shorthand for an all-zero answer vector (structures, economy). */
 const NO_ANSWER: readonly number[] = [0, 0, 0, 0, 0];
+/** Shared empty prereq list. See `power()` for why a power row has none. */
+const NO_PREREQS: readonly string[] = [];
 
 /**
  * THE MERIDIAN PACT's faction id.
@@ -342,6 +365,29 @@ function upgrade(
   };
 }
 
+/**
+ * One purchasable commander power, as the AI's build layer sees it.
+ *
+ * `upgrade()`'s twin, and every word of that function's docstring applies:
+ * `isBuilding: false` keeps it out of the placement path, `weight: 0` keeps it
+ * out of `buildUnits`' candidate list.
+ *
+ * NO PREREQS, deliberately, because the CONTENT row has none either. The gate
+ * is the tab: the Powers queue has a factory only while a completed, powered
+ * Command Post stands, and `available()` reads the oracle's answer, which is
+ * `availabilityOf`'s. Naming `commandPost` here would be a second copy of that
+ * rule that a Pact brain could not satisfy, since its building is called
+ * something else.
+ */
+function power(key: string, cost: number, buildTimeSec: number): CatalogEntry {
+  return {
+    key, defId: -1, isBuilding: false, tab: BuildTab.Powers, cost, buildTimeSec,
+    power: 0, footprintW: 0, footprintH: 0,
+    prereqs: NO_PREREQS, role: BuildRole.CommanderPower, faction: Faction.Neutral,
+    answers: NO_ANSWER, weight: 0,
+  };
+}
+
 const B = BUILDING_DIMENSIONS;
 const NB = NAVAL_BUILDING_DIMENSIONS;
 
@@ -366,6 +412,28 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
   structure('warFactory', BuildRole.WarFactory, 2000, -40, B.warFactory, ['refinery']),
   structure('radar',      BuildRole.Radar,      1000, -40, B.radar,      ['refinery']),
   structure('battleLab',  BuildRole.TechLab,    2000, -60, B.battleLab,  ['radar']),
+  // The Command Post, one row per army — three rows, not four, because the
+  // Neutral key is shared by the two original armies exactly as `repairDepot`
+  // is. Without these the brain cannot NAME the structure in a
+  // `ProductionStart` (`bindOracle` only asks `factsFor` about keys in this
+  // array), and a captured or scenario-placed one would be misfiled as a tech
+  // lab by `roleOfBuilding`.
+  structure('commandPost',  BuildRole.CommandPost, 1500, -80, B.commandPost, ['radar']),
+  structure('mrdPharos',    BuildRole.CommandPost, 1500, -80, B.commandPost, ['mrdOculus'],
+    FACTION_MERIDIAN),
+  structure('rclSignalRig', BuildRole.CommandPost, 1500, -80, B.commandPost, ['rclSpotter'],
+    FACTION_RECLAIM),
+
+  /* -- the five commander powers ------------------------------------------
+   * FIVE ROWS FOR FOUR ARMIES, matching the CONTENT table: a power is not an
+   * army's hardware, so `Faction.Neutral` here means universal rather than "the
+   * two original armies". `forRole` would only ever return the first row of a
+   * role anyway; these are reached by KEY through `powerPlanFor`. */
+  power('power.orbitalScan',      800, 15),
+  power('power.emergencyRepair', 1200, 20),
+  power('power.airstrike',       1500, 24),
+  power('power.oreBoost',        2000, 24),
+  power('power.chronoshift',     2500, 30),
   structure('oreSilo',    BuildRole.Storage,     150, -10, B.oreSilo,    ['refinery']),
   // The service pad, one row per army. Three rows, not four: `repairDepot` is
   // Faction.Neutral, which the two original armies share. Without these the
@@ -1706,12 +1774,78 @@ export const AI_SUPERWEAPON = {
 } as const;
 
 /**
+ * WHICH POWERS THE AI BUYS, AND IN WHICH ORDER.
+ *
+ * Ordered by what the brain can actually USE, which is not the same as what a
+ * human would rank them by. `AI.callPower` fires Emergency Repair and the
+ * Airstrike off live measurements it takes every half second, and Ore Boost off
+ * a bank test that is nearly always available late — so those three are the
+ * ones that reliably turn credits into effect. Orbital Scan self-limits (it
+ * fires once, while the AI does not know where the enemy lives) and Chronoshift
+ * needs a five-hull reserve, an attacking posture and a quiet base at the same
+ * moment, so both sit at the back where a brain that only affords two or three
+ * never reaches them.
+ *
+ * ONE LIST FOR EVERY ARMY, unlike `UPGRADE_PLAN` and `SUPERWEAPON_PLAN`. Those
+ * two are per-faction because the content is; a commander power is the same
+ * five rows for everybody (see the `byFactionTab` note in `Production.ts`).
+ */
+const POWER_PLAN: readonly string[] = [
+  'power.emergencyRepair',
+  'power.airstrike',
+  'power.oreBoost',
+  'power.orbitalScan',
+  'power.chronoshift',
+];
+
+/** The commander powers the AI buys, best first. */
+export function powerPlanFor(): readonly string[] { return POWER_PLAN; }
+
+/**
+ * What the AI insists on before it buys a commander power.
+ *
+ * MODELLED ON `AI_UPGRADE`, because the purchase has the same shape: credits
+ * out, no entity in, a bit set. The differences are the two numbers that are
+ * not shared.
+ */
+export const AI_POWER_BUY = {
+  /**
+   * Refineries required before 800-2500 credits on a button is defensible.
+   *
+   * The same gate the superweapon uses, and for the same reason: a power bought
+   * out of a one-refinery economy is a power bought instead of the second
+   * refinery.
+   */
+  minRefineries: 2,
+  /**
+   * Score in `chooseBuild`.
+   *
+   * Below `AI_UPGRADE.score` (1.45) deliberately. An upgrade improves every
+   * unit the AI will build for the rest of the match; a power is one button on
+   * a two-to-four-minute clock. When the brain can afford exactly one of them,
+   * the multiplier is the better buy and this number is what says so.
+   * Multiplied by `pers.tech`, like the other two late-game layers.
+   */
+  score: 1.25,
+  /**
+   * Cost multiple of the bank held before buying. Higher than the upgrade's 1.6
+   * because the powers cost up to 2500 and buy nothing that can defend the
+   * base — an AI that emptied its account onto a Chronoshift it cannot use for
+   * four minutes has handed the player the window.
+   */
+  bankMultiple: 1.8,
+  /** Ticks before the AI re-asks for the same power. See `AI_UPGRADE.reaskTicks`. */
+  reaskTicks: 1800,
+} as const;
+
+/**
  * When the AI calls each commander power.
  *
- * These are the cheapest of the three systems to use badly, because they cost
- * nothing but a clock — so every rule below is a MINIMUM EFFECT test rather
- * than a cost test. A power spent on two scouts is a power not available for
- * the push four minutes later, and that is the only currency it has.
+ * These are the cheapest of the three systems to use badly, because the only
+ * thing they cost once bought is a clock — so every rule below is a MINIMUM
+ * EFFECT test rather than a cost test. A power spent on two scouts is a power
+ * not available for the push four minutes later, and that is the only currency
+ * it has after the purchase.
  */
 export const AI_POWER = {
   /** Hostiles under the marker before a bombing run is worth its charge. */

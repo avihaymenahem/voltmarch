@@ -2,34 +2,44 @@
  * ============================================================================
  * VOLTMARCH — src/progression/powers.ts
  * ============================================================================
- * THE COMMANDER POWER TABLE. Five player-level support powers, each paid out by
- * exactly one mission, each charging on its own clock and callable at a point
- * on the map.
+ * THE COMMANDER POWER TABLE. Five player-level support powers, each BOUGHT ONCE
+ * PER MATCH from a Command Post, each charging on its own clock afterwards and
+ * callable at a point on the map for the rest of that match.
  *
- * WHY THIS TABLE IS HERE AND NOT IN `core/config.ts`
- * --------------------------------------------------
- * It has to be readable by THREE modules that may not import each other:
+ * THE POWERS ARE NOT A MISSION REWARD ANY MORE, AND THE FILE MOVED WITH THEM
+ * --------------------------------------------------------------------------
+ * Until v2.6.0 each of these five carried an `unlockId`, five missions paid
+ * them out, and `powersOwnedBy(isUnlocked)` read the local profile to decide
+ * which buttons the HUD drew. That is gone. The powers are earned INSIDE the
+ * match now: build the army's support structure (`commandPost` / `mrdPharos` /
+ * `rclSignalRig`), open the Powers tab it publishes, and buy each power with
+ * credits. What replaced the profile bit is `PlayerState.commanderPowerMask`,
+ * and the difference is the whole reason this was worth doing — see the header
+ * of `src/sim/CommanderPowers.ts`, which used to be forty lines of argument for
+ * why the simulation could not be allowed to ask "do you own this?" and is now
+ * a short note saying it may.
  *
- *   `src/data/Missions.ts`      validates at load that every `power` reward it
- *                               pays names a real power, and that every power
- *                               is paid by exactly one mission. Missions.ts is
- *                               a LEAF — it imports `core/types` and
- *                               `progression/types` and nothing else — so the
- *                               table cannot live anywhere that drags the sim
- *                               in behind it.
+ * WHY THIS TABLE IS STILL HERE AND NOT IN `core/config.ts`
+ * --------------------------------------------------------
+ * It has to be readable by modules that may not import each other:
+ *
  *   `src/sim/CommanderPowers.ts` is the mechanism.
- *   the missions/end screens    print the label and the hint.
+ *   `src/sim/Production.ts`      authors the five purchasable CONTENT rows and
+ *                                installs the bit when one finishes.
+ *   `src/ui/**`                  prints the label and the hint.
  *
  * `AbilityId` is in `core/config.ts` for the mirror-image reason: `Defs.ts`
  * names an ability on a unit row, so the enum had to sit somewhere the data
  * layer could reach. Nothing in `src/data/**` names a POWER on a row — a power
- * belongs to a PLAYER, not to a unit — so the same trick is not needed, and the
- * unlock id, which is a progression concept, keeps the table next to the thing
- * that grants it. Balance numbers live in `COMMANDER_POWER_FX` below, in one
- * block, for the same reason `ABILITY_FX` is one block.
+ * belongs to a PLAYER, not to a unit. Balance numbers live in
+ * `COMMANDER_POWER_FX` below, in one block, for the same reason `ABILITY_FX`
+ * is one block; the PRICE does not, because a price is production-layer
+ * authoring and lives beside every other price in `Production.CONTENT`.
  *
  * NOTHING HERE IMPORTS THE ENGINE, and that is load-bearing: `src/progression/**`
- * is unit-testable under `environment: 'node'` and must stay that way.
+ * is unit-testable under `environment: 'node'` and must stay that way. The
+ * ownership helpers at the bottom take a structural `{ commanderPowerMask }`
+ * rather than a `PlayerState` for exactly that reason.
  *
  *
  * THE POWERS ARE POINT-TARGETED, WHICH IS THE OPPOSITE OF `sim/Abilities.ts`
@@ -40,24 +50,21 @@
  * is the whole reason they are a separate mechanism rather than five more
  * `AbilityId` rows:
  *
- *   - A commander power has no unit. It is called by the PLAYER, is charged
- *     from the start of the match, and works with every hero dead. "Callable
- *     once charged, in any match" is what the missions screen has always
- *     promised for these five, and a power that needs a living hero standing on
- *     the right spot does not deliver that sentence.
+ *   - A commander power has no unit. It is called by the PLAYER, charges from
+ *     the moment it is bought, and works with every hero dead.
  *   - Three of the five would be near-duplicates of a faction ability if they
  *     were self-centred (Chronoshift/Chrono Rally, Emergency Repair/Salvage
  *     Call, Airstrike/Prism Focus). Aimed at a point they are all distinct.
  *
  *
- * THE SIMULATION NEVER READS THE PROFILE TO ANSWER "DO I OWN THIS?"
- * -----------------------------------------------------------------
- * `CommanderPowerService` executes any `CommandKind.UsePower` that reaches it,
- * subject only to the charge, which is simulation state. Ownership is a LOCAL
- * question — the profile lives in this browser's localStorage — and a
- * simulation that refused a power because THIS machine had not earned it would
- * diverge from a peer that had. See the header of `src/sim/CommanderPowers.ts`
- * for the full argument and what it means for PvP.
+ * OWNERSHIP IS A BITMASK OVER `CommanderPowerId`, AND THAT IS WHY IT WORKS
+ * ------------------------------------------------------------------------
+ * `commanderPowerMask` is a plain 32-bit integer with bit `id` set when the
+ * player has bought power `id`. Six ids, so five live bits; there is no risk of
+ * running out and no reason to author a separate bit column the way `UpgradeDef`
+ * has to (an upgrade's bit is not its table position, because `UPGRADES` is not
+ * a direct-lookup array). Here the id IS the index and it is already promised
+ * append-only for the wire, so the bit cannot move either.
  * ============================================================================
  */
 
@@ -80,26 +87,36 @@ export const enum CommanderPowerId {
 
 export interface CommanderPowerDef {
   readonly id: CommanderPowerId;
-  /** Stable key. Console and tests address a power by this, never by index. */
-  readonly key: string;
   /**
-   * The unlock id the mission table pays out. THE JOIN: `MissionTracker` writes
-   * this string onto the profile, and it is the only thing tying a completed
-   * mission to a usable power.
+   * Stable key. Console, tests and the SAVE FILE address a power by this, never
+   * by index — `SaveGame` stores the bought set as keys for the same reason it
+   * stores `upgradeKeys`, and `CommanderPowerService.chargeStates` has always
+   * keyed on it.
+   *
+   * It is also the `ContentSpec.key` of the purchasable row in
+   * `src/sim/Production.ts`, prefixed: `power.airstrike` is bought to own
+   * `airstrike`. One string, two tables, joined by `powerByContentKey` below.
    */
-  readonly unlockId: string;
+  readonly key: string;
   readonly label: string;
   /** One line, present tense, says what it does rather than what it is called. */
   readonly hint: string;
   /** Effect radius in metres, measured from the target point. */
   readonly radius: number;
   /**
-   * Seconds from match start (and from each use) before it can be called.
+   * Seconds from the purchase (and from each use) before it can be called.
    *
    * Deliberately longer than a commander ability's 40-60 s cooldown and shorter
-   * than a superweapon's 300 s charge: these are strategic verbs with no build
-   * cost and no structure to kill, so the only thing limiting them is the
-   * clock.
+   * than a superweapon's 300 s charge. This used to read "these are strategic
+   * verbs with no build cost and no structure to kill, so the only thing
+   * limiting them is the clock" — which stopped being true the moment they were
+   * priced. There is a structure to kill now (the Command Post), and there is a
+   * bill; the clock is what stops one purchase being called twice in a push.
+   *
+   * The numbers were LEFT WHERE THEY WERE anyway. Shortening them to "pay for"
+   * the new price would have made the powers stronger per call at the exact
+   * moment they became a purchase, which is two balance changes pointed the
+   * same way; the price is the change, and the charge is the control.
    */
   readonly chargeSeconds: number;
 }
@@ -109,7 +126,6 @@ export const COMMANDER_POWERS: readonly CommanderPowerDef[] = [
   {
     id: CommanderPowerId.None,
     key: 'none',
-    unlockId: '',
     label: '',
     hint: '',
     radius: 0,
@@ -118,7 +134,6 @@ export const COMMANDER_POWERS: readonly CommanderPowerDef[] = [
   {
     id: CommanderPowerId.Airstrike,
     key: 'airstrike',
-    unlockId: 'power.airstrike',
     label: 'Airstrike',
     hint: 'Bombs everything hostile under the marker.',
     radius: 20,
@@ -127,7 +142,6 @@ export const COMMANDER_POWERS: readonly CommanderPowerDef[] = [
   {
     id: CommanderPowerId.OrbitalScan,
     key: 'orbitalScan',
-    unlockId: 'power.orbital-scan',
     label: 'Orbital Scan',
     hint: 'Charts a wide circle of the map permanently.',
     radius: 90,
@@ -136,7 +150,6 @@ export const COMMANDER_POWERS: readonly CommanderPowerDef[] = [
   {
     id: CommanderPowerId.EmergencyRepair,
     key: 'emergencyRepair',
-    unlockId: 'power.emergency-repair',
     label: 'Emergency Repair',
     hint: 'Patches up your units and structures under the marker.',
     radius: 24,
@@ -145,7 +158,6 @@ export const COMMANDER_POWERS: readonly CommanderPowerDef[] = [
   {
     id: CommanderPowerId.OreBoost,
     key: 'oreBoost',
-    unlockId: 'power.ore-boost',
     label: 'Ore Boost',
     hint: 'Emergency cash, wired straight to your account.',
     radius: 0,
@@ -154,7 +166,6 @@ export const COMMANDER_POWERS: readonly CommanderPowerDef[] = [
   {
     id: CommanderPowerId.Chronoshift,
     key: 'chronoshift',
-    unlockId: 'power.chronoshift',
     label: 'Chronoshift',
     hint: 'Teleports the units guarding your base to the marker.',
     radius: 30,
@@ -188,18 +199,6 @@ export const COMMANDER_POWER_FX = {
 /** Every power except the `None` row, in table order. */
 export const COMMANDER_POWER_LIST: readonly CommanderPowerDef[] = COMMANDER_POWERS.slice(1);
 
-/** The unlock id of every power. What the mission table has to pay out. */
-export const COMMANDER_POWER_UNLOCK_IDS: readonly string[] =
-  COMMANDER_POWER_LIST.map((p) => p.unlockId);
-
-/** The power a mission's `power` reward names, or undefined. O(n) over five. */
-export function powerByUnlockId(unlockId: string): CommanderPowerDef | undefined {
-  for (let i = 1; i < COMMANDER_POWERS.length; i++) {
-    if (COMMANDER_POWERS[i].unlockId === unlockId) return COMMANDER_POWERS[i];
-  }
-  return undefined;
-}
-
 /** The power with this key, or undefined. For the console handle and tests. */
 export function powerByKey(key: string): CommanderPowerDef | undefined {
   for (let i = 1; i < COMMANDER_POWERS.length; i++) {
@@ -214,28 +213,112 @@ export function isCommanderPowerId(id: number): boolean {
 }
 
 /**
- * The powers this profile has earned, in table order.
+ * THE CONTENT KEY of a power's purchasable row, and the join back.
  *
- * THE ONE PLACE OWNERSHIP IS ANSWERED, and it is deliberately a pure function
- * of a predicate rather than a reach into the profile: the caller is the UI
- * drawing the buttons, on the machine that owns the profile, and the simulation
- * must never be able to ask this question. `src/sim/CommanderPowers.ts` explains
- * what happens if it does.
+ * `power.` + the power key. One prefix, computed in one place, so the
+ * production table and this one cannot drift into two spellings of the same
+ * purchase — the failure `validateMissions` used to catch for the mission join
+ * and which nothing would catch here.
+ */
+export const COMMANDER_POWER_CONTENT_PREFIX = 'power.';
+
+/** The `ContentSpec.key` of the row that buys `power`. */
+export function commanderPowerContentKey(power: CommanderPowerDef): string {
+  return COMMANDER_POWER_CONTENT_PREFIX + power.key;
+}
+
+/** The power a production content key buys, or undefined. O(n) over five. */
+export function powerByContentKey(contentKey: string): CommanderPowerDef | undefined {
+  if (!contentKey.startsWith(COMMANDER_POWER_CONTENT_PREFIX)) return undefined;
+  return powerByKey(contentKey.slice(COMMANDER_POWER_CONTENT_PREFIX.length));
+}
+
+/* ==========================================================================
+ * OWNERSHIP — a bitmask over `CommanderPowerId`, per player, per match
  *
- * Pass `progression-link`'s `isUnlocked`, which answers TRUE with no
- * progression layer installed — so a build with `src/progression/**` removed,
- * and the `?shot=` harness, both offer all five rather than none.
+ * Structural on purpose. The only field these touch is `commanderPowerMask`,
+ * which `PlayerState` has and nothing in `src/progression/**` may import, so
+ * they are declared over the narrowest shape that carries it. That keeps this
+ * module engine-free (see the header) while giving `src/sim/Production.ts`,
+ * `src/sim/CommanderPowers.ts`, `src/game/SaveGame.ts` and the HUD ONE
+ * vocabulary for the question instead of four copies of `1 << id`.
+ * ========================================================================== */
+
+/** Anything carrying a per-match commander-power purse. `PlayerState` does. */
+export interface CommanderPowerOwner {
+  commanderPowerMask: number;
+}
+
+/** True when this player has BOUGHT this power in this match. */
+export function ownsCommanderPower(owner: CommanderPowerOwner, power: number): boolean {
+  if (!isCommanderPowerId(power)) return false;
+  return (owner.commanderPowerMask & (1 << power)) !== 0;
+}
+
+/**
+ * Install a purchase. False when the bit was already set, which is the caller's
+ * signal that nothing changed — same contract as `grantUpgrade`.
+ */
+export function grantCommanderPower(owner: CommanderPowerOwner, power: number): boolean {
+  if (!isCommanderPowerId(power)) return false;
+  const bit = 1 << power;
+  if ((owner.commanderPowerMask & bit) !== 0) return false;
+  owner.commanderPowerMask |= bit;
+  return true;
+}
+
+/**
+ * Every power this player has bought, as power KEYS, appended to `out`.
+ *
+ * Keys and not the raw mask, for the reason `SaveGame` stores `upgradeKeys`: a
+ * save outlives the table that produced its indices. `CommanderPowerId` happens
+ * to be append-only because it rides the wire, but the save format does not get
+ * to depend on a promise another file made.
+ */
+export function ownedCommanderPowerKeys(
+  owner: CommanderPowerOwner, out: string[],
+): string[] {
+  out.length = 0;
+  for (let i = 1; i < COMMANDER_POWERS.length; i++) {
+    if ((owner.commanderPowerMask & (1 << i)) !== 0) out.push(COMMANDER_POWERS[i].key);
+  }
+  return out;
+}
+
+/**
+ * Replace this player's purchases with exactly the ones named. Unknown keys are
+ * skipped — a save from a later build naming a sixth power loads without it,
+ * which is the conservative direction.
+ */
+export function setCommanderPowersByKey(
+  owner: CommanderPowerOwner, keys: readonly string[],
+): void {
+  let mask = 0;
+  for (let i = 0; i < keys.length; i++) {
+    const def = powerByKey(keys[i]);
+    if (def !== undefined) mask |= 1 << (def.id as number);
+  }
+  owner.commanderPowerMask = mask;
+}
+
+/**
+ * The powers this player has bought, in table order.
+ *
+ * THE ONE PLACE OWNERSHIP IS ANSWERED for the HUD, and it is now a pure
+ * function of SIMULATION state. It used to take an `isUnlocked` predicate and
+ * read the local profile, which is why the simulation was forbidden from asking
+ * the same question; both halves of that arrangement are gone.
  *
  * `out` is caller-supplied so a per-frame HUD rebuild allocates nothing.
  */
 export function powersOwnedBy(
-  isUnlocked: (unlockId: string) => boolean,
+  owner: CommanderPowerOwner,
   out?: CommanderPowerDef[],
 ): CommanderPowerDef[] {
   const dst = out ?? [];
   dst.length = 0;
   for (let i = 1; i < COMMANDER_POWERS.length; i++) {
-    if (isUnlocked(COMMANDER_POWERS[i].unlockId)) dst.push(COMMANDER_POWERS[i]);
+    if ((owner.commanderPowerMask & (1 << i)) !== 0) dst.push(COMMANDER_POWERS[i]);
   }
   return dst;
 }

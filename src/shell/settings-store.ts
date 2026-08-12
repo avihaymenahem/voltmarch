@@ -742,6 +742,50 @@ export const MAPS: readonly MapChoice[] = [
     mapSeed: 0xa7011, mood: 'noon', players: 4,
     blurb: 'Four islands, no land route. Every crossing is by sea or not at all.',
   },
+
+  /*
+   * THREE MORE BATTLEFIELDS, and they exist because five missions needed
+   * something real to pay.
+   *
+   * v2.6.0 moved the five commander powers out of the mission table and into a
+   * structure you build (`src/sim/Production.ts`, the Powers tab), which left
+   * Armour Column, Demolition Crew, Old Guard, Continental Yield and Hostile
+   * Takeover with nothing to grant. `validateMissions` refuses a mission that
+   * pays nothing, and — more to the point — this project has already shipped
+   * five rewards that were strings nothing read. So each of the five got a
+   * payload something actually consumes, and three of them are these: a map
+   * unlock is read by `mapAvailable` in `src/shell/SkirmishSetup.ts` and gates a
+   * row in the lobby.
+   *
+   * EVERY ONE REUSES AN EXISTING `MAP_PRESET`, deliberately. A preset is a
+   * balance surface — `tests/rock-density.spec.ts` walks every one of them for
+   * prop density and `tests/scatter.spec.ts` pins two by name — so inventing
+   * three would be three new things to tune in a release that is about
+   * something else. What makes these different battlefields is the pair the
+   * roster's own comment calls load-bearing: `mapSeed` is the LANDFORM ROLL
+   * ("fixed per map so a map IS a map"), and `players` is the shape the ground
+   * is played in. Each entry is a preset at a player count or a light the
+   * roster did not previously offer.
+   *
+   * THE SEEDS MUST STAY UNIQUE. `Replays.replayMap` identifies a recording's
+   * battlefield by seed first, and `tests/sunder-atoll.spec.ts` asserts it.
+   * These read as words in hex in the spirit of `0x0cea11` and `0xa7011`.
+   */
+  {
+    id: 'saltpan-reach', name: 'Saltpan Reach', biome: 'desert', preset: 'arid',
+    mapSeed: 0x5a17a4, mood: 'dusk', players: 2,
+    blurb: 'The arid flats cut down to two armies, under a low sun. Nowhere to hide armour.',
+  },
+  {
+    id: 'foundry-line', name: 'Foundry Line', biome: 'urban', preset: 'urban',
+    mapSeed: 0xf0be11, mood: 'noon', players: 2,
+    blurb: 'The industrial grid at noon, head to head. Everything standing is somebody’s.',
+  },
+  {
+    id: 'glacier-shelf', name: 'Glacier Shelf', biome: 'snow', preset: 'snow',
+    mapSeed: 0x91ac1e, mood: 'overcast', players: 4,
+    blurb: 'High relief under flat grey light, opened up for four. The cliffs still channel it.',
+  },
 ];
 
 export function mapById(id: string): MapChoice {

@@ -88,7 +88,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 3204 across 123 files (+1 opt-in probe)
+npm test             # vitest, currently 3240 across 124 files (+1 opt-in probe)
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -231,6 +231,54 @@ in-match strip, `src/game/Playback.ts` + `playback.system.ts` for the feeding.
 - **`buildVersion` warns and does not refuse.** It is a correlation, not a cause — most releases here
   touch art the sim cannot observe — and the real question is measured every 30 ticks by the
   checkpoint compare, which the bar puts on screen. See `Replay.buildWarning`.
+
+## Commander powers are BOUGHT, and that is the shape of the whole feature
+
+Five player-level support powers — Airstrike, Orbital Scan, Emergency Repair, Ore Boost,
+Chronoshift. Until v2.6.0 they were a MISSION reward: five missions wrote `power.airstrike` and
+friends onto the local profile, `powersOwnedBy` read localStorage, and `src/sim/CommanderPowers.ts`
+carried forty lines explaining why the SIMULATION was forbidden to ask whether you owned one — a
+profile-based refusal lands on one machine only, mid-match, at the exact tick a player presses a
+button, with no checksum that catches it earlier.
+
+They are earned inside the match now. **A building is world state**, and that single sentence is
+the reason this was worth doing: same on both clients, visible to the AI, in the checksum, in the
+save, in the replay. The tightrope is gone and `use()` may finally refuse.
+
+- **The Command Post is the gate.** `commandPost` (Allies + Soviets), `mrdPharos`, `rclSignalRig` —
+  the `battleLab`/`mrdReliquary`/`rclCrucible` shape, three defs and four mass lists. 1500 credits,
+  20 s, **-80 power**, off the radar tier. It is the ONLY thing in the game that declares
+  `producesTabs: [BuildTab.Powers]`, and `tests/command-post.spec.ts` pins that.
+- **`BuildTab.Powers = 4`, `BUILD_TAB_COUNT = 5`.** Appended, never inserted: the enum indexes
+  `PlayerState.queues`, `HudSnapshot.cameos`, every flat `(player, tab)` array, and it travels on
+  `Command.tab` across the wire and into replays. **Grep for hard-coded fours before you touch
+  anything tab-shaped** — `AI.canQueue` tested `tab > 3` and `AI.inFlight` was `Int32Array(4)`, so a
+  Brutal brain built its Command Post, banked thirty thousand credits and bought nothing. Nothing
+  threw, nothing logged, and the whole suite was green. It took booting a match to find, and two
+  test fakes had the same literal.
+- **`BuildKind.Power = 3` is `BuildKind.Upgrade`'s twin.** Same queue, same drip payment, same
+  cameo grid, same `availabilityOf`; it leaves a bit in `PlayerState.commanderPowerMask` instead of
+  `upgradeMask`. `POWER_PUBLIC_ID_BASE` is **3072**, splitting the old 2048..4095 upgrade window in
+  half — both halves stay under `WIRE_LIMITS.maxDefId` 4095, and `resolve()` tests the NARROWER
+  range first so every existing upgrade id still resolves to the entry it always did.
+- **The tab needs the lights on, and that is the one place buildability is gated on power.**
+  `census` skips a Powers-tab publisher that is not `EntityFlag.Powered`. The standing note that a
+  brownout must never revoke a prerequisite is about the ROUTE OUT of a blackout — build a plant,
+  from the Structures tab, which is not gated and never will be. Nothing in the Powers tab is a
+  route out of anything, so this cannot soft-lock.
+- **A Command Post is not a producer.** It carries neither `IsBuilder` nor `IsFactory`, and
+  `Viability.defaultIsProducer` skips the Powers tab explicitly. A tab that makes nothing cannot
+  tell a stranded player they can still play — the Refinery's problem, in that function's own
+  header. It also keeps the structure in the power grid's FIRST shed class, which is what closes the
+  tab in a brownout.
+- **The AI earns them the same way.** `BuildRole.CommandPost` / `BuildRole.CommanderPower`,
+  `considerCommandPost` and `considerPowers` in `AI.ts` (the `considerUpgrades` twin, ask-tick and
+  all), gated by the SAME `powerMask` that already decided whether the rung may CALL one. Easy has
+  mask 0 and builds no Post at all.
+- **The five missions that used to pay the powers pay real content now.** `unit.commander` (the four
+  heroes), `struct.support` (the three repair depots) and three new battlefields. The `power`
+  `Reward` variant is deleted rather than left as a schema nothing produces — see the block in
+  `src/data/Missions.ts`.
 
 ## Hard rules
 

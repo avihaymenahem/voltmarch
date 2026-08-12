@@ -78,6 +78,18 @@ import { isBuildable, LOCKED_REASON, unlockGate } from '../progression/UnlockGat
 // an upgrade is in-match state and must never consult the local profile.
 import { grantUpgrade, hasUpgradeKey, upgradeByKey } from './Upgrades';
 
+// The commander-power TABLE, and the pure mask helpers over it. Same shape of
+// edge as `./Upgrades`: `src/progression/powers.ts` imports nothing at all — not
+// core, not the store, not localStorage — so this pulls in no progression layer
+// and adds no cycle. It is the second edge from `src/sim/**` into
+// `src/progression/**` (the first is `UnlockGate`), and unlike that one it is
+// not a gate: a purchase is in-match state, and nothing here asks the profile
+// anything.
+import {
+  COMMANDER_POWER_LIST, commanderPowerContentKey, grantCommanderPower, ownsCommanderPower,
+  powerByContentKey,
+} from '../progression/powers';
+
 // The naval declaration, and the only edge from production into movement.
 // `Movement.ts` imports `./Flowfield`, `./Crush`, `./Upgrades` and the world
 // modules and never imports this file, so the edge is one-way. `setMoveClass`
@@ -139,6 +151,24 @@ export const enum BuildKind {
    * learn a new concept to carry one.
    */
   Upgrade = 2,
+  /**
+   * A purchasable COMMANDER POWER. Shaped exactly like `Upgrade` — a queue
+   * slot, a price, a build time, then it vanishes leaving a bit set — except
+   * that the bit lands in `PlayerState.commanderPowerMask` and what it buys is
+   * a button on the powers bar rather than a multiplier.
+   *
+   * APPENDED, same warning as `Upgrade`: `BuildKind` is compared numerically in
+   * `src/ui/Hud.ts` and in `tests/sell-lockout.spec.ts`.
+   *
+   * WHY A FOURTH KIND AND NOT A THIRTEENTH UPGRADE. An upgrade's effect is a
+   * multiplier read at the point of use by six consuming systems; a power's
+   * effect is a command the player issues at a point on the map, and the two
+   * have no code in common past the purchase. Folding a power into `UPGRADES`
+   * would mean a row in that table with no lever, no scope and no multiplier —
+   * three fields lying — so that `hasUpgradeKey` could answer a question
+   * `ownsCommanderPower` answers directly.
+   */
+  Power = 3,
 }
 
 /**
@@ -161,6 +191,24 @@ export const UNIT_PUBLIC_ID_BASE = 4096;
  * `resolve()` can therefore recognise an upgrade id on sight.
  */
 export const UPGRADE_PUBLIC_ID_BASE = 2048;
+
+/**
+ * Added to a `CommanderPowerId` to make a purchasable power's `publicId`.
+ *
+ * THE SPACE WAS ALREADY CARVED, and this is the half of it nobody had used.
+ * `UPGRADE_PUBLIC_ID_BASE` is 2048 and `UNIT_PUBLIC_ID_BASE` is 4096, so
+ * `resolve()` used to read the WHOLE of 2048..4095 as "an upgrade". 3072 splits
+ * that range down the middle: 2048..3071 is upgrades (twelve of them, bits 0-11,
+ * so the ceiling is not close) and 3072..4095 is powers (six ids, the None row
+ * included and never authored). Both halves stay under `WIRE_LIMITS.maxDefId`
+ * 4095, which is the constraint that put upgrades at 2048 rather than 8192 in
+ * the first place — an id above it is dropped by the relay and ends the match on
+ * the peer as a tripwire.
+ *
+ * `resolve()` now tests the narrower range FIRST, so an id that was an upgrade
+ * yesterday still resolves to the same entry today.
+ */
+export const POWER_PUBLIC_ID_BASE = 3072;
 
 /** One buildable, fully resolved. `index` is the id every api here speaks in. */
 export interface BuildEntry {
@@ -328,6 +376,7 @@ const S = BuildTab.Structures;
 const D = BuildTab.Defense;
 const I = BuildTab.Infantry;
 const V = BuildTab.Vehicles;
+const P = BuildTab.Powers;
 
 /**
  * THE TECH TREE.
@@ -1117,6 +1166,109 @@ const CONTENT: readonly ContentSpec[] = [
     kind: BuildKind.Upgrade, faction: Faction.Reclaim, tab: S,
     cost: 1000, buildTime: 24, prereqs: ['rclSorter', 'rclSpotter'], sortOrder: 95,
   },
+
+  /* ======================================================================
+   * THE COMMAND POST, ONE PER ARMY — the structure that opens `BuildTab.Powers`
+   *
+   * Three rows for four armies, the `battleLab` shape: Neutral covers the two
+   * original armies, the Pact and the Reclamation get one each. `producesTabs`
+   * is `[P]` and nothing else in the game declares that tab, which is what makes
+   * the structure the gate rather than a decoration in front of one — with no
+   * such building standing, `availabilityOf` refuses every power with "Requires
+   * a production structure", exactly as the Vehicles tab is refused without a
+   * war factory.
+   *
+   * Numbers and their argument are in `src/data/Defs.ts`; this table has to
+   * agree with it and `tests/data.spec.ts` compares them field for field.
+   * ====================================================================== */
+  {
+    key: 'commandPost', name: 'Command Post',
+    blurb: 'Requisitions commander powers. Opens the Powers tab.',
+    kind: BuildKind.Building, faction: Faction.Neutral, tab: S,
+    cost: 1500, buildTime: 20, prereqs: ['radar'], sortOrder: 85,
+    producesTabs: [P],
+  },
+  {
+    key: 'mrdPharos', name: 'Pharos',
+    blurb: 'Requisitions commander powers. Opens the Powers tab.',
+    kind: BuildKind.Building, faction: Faction.Meridian, tab: S,
+    cost: 1500, buildTime: 20, prereqs: ['mrdOculus'], sortOrder: 85,
+    producesTabs: [P],
+  },
+  {
+    key: 'rclSignalRig', name: 'Signal Rig',
+    blurb: 'Requisitions commander powers. Opens the Powers tab.',
+    kind: BuildKind.Building, faction: Faction.Reclaim, tab: S,
+    cost: 1500, buildTime: 20, prereqs: ['rclSpotter'], sortOrder: 85,
+    producesTabs: [P],
+  },
+
+  /* ======================================================================
+   * THE FIVE PURCHASABLE COMMANDER POWERS
+   *
+   * FIVE ROWS, NOT TWENTY, and `Faction.Neutral` here means something it means
+   * nowhere else in this table — see the `byFactionTab` build below, which
+   * treats a Neutral row in the Powers tab as universal rather than as "the two
+   * original armies". The reason is that a commander power is not an army's
+   * hardware: all four armies call the same airstrike. What differs per faction
+   * is the STRUCTURE that opens the tab, and that difference is already
+   * expressed by three separate building rows above.
+   *
+   * NO PREREQS, and that is deliberate rather than an omission. The gate is the
+   * tab: `factories[player][Powers]` is the count of completed, POWERED Command
+   * Posts, and `availabilityOf` refuses on it. Naming `commandPost` in `prereqs`
+   * as well would be a second copy of the same rule that a Pact player could not
+   * satisfy — prereqs are content KEYS, and the Pact's building is called
+   * something else.
+   *
+   * THE PRICES. 7500 credits to own all five, on top of the 1500 the structure
+   * costs — nine thousand against a 10 000 starting bank, so buying the set is a
+   * whole opening's worth of income and nobody does it by accident. Ranked by
+   * what the power decides rather than by its charge:
+   *
+   *   Orbital Scan       800   information, once, on a 120 s clock
+   *   Emergency Repair  1200   saves an engagement you were losing
+   *   Airstrike         1500   wins one you were not in
+   *   Ore Boost         2000   pays 2500 per call — the only row that has to be
+   *                            priced against its own output, and at 2000 the
+   *                            first call is nearly a wash. Cheaper and it is
+   *                            free money with a 180 s delay.
+   *   Chronoshift       2500   puts eight units inside a base
+   *
+   * `buildTime` is short across the board (15-30 s): this is a requisition, not
+   * construction, and a power that took as long as a war factory to authorise
+   * would simply never be bought.
+   * ====================================================================== */
+  {
+    key: 'power.orbitalScan', name: 'Orbital Scan',
+    blurb: 'Charts a wide circle of the map permanently. Callable once charged.',
+    kind: BuildKind.Power, faction: Faction.Neutral, tab: P,
+    cost: 800, buildTime: 15, prereqs: [], sortOrder: 20,
+  },
+  {
+    key: 'power.emergencyRepair', name: 'Emergency Repair',
+    blurb: 'Patches up your units and structures under the marker.',
+    kind: BuildKind.Power, faction: Faction.Neutral, tab: P,
+    cost: 1200, buildTime: 20, prereqs: [], sortOrder: 30,
+  },
+  {
+    key: 'power.airstrike', name: 'Airstrike',
+    blurb: 'Bombs everything hostile under the marker.',
+    kind: BuildKind.Power, faction: Faction.Neutral, tab: P,
+    cost: 1500, buildTime: 24, prereqs: [], sortOrder: 10,
+  },
+  {
+    key: 'power.oreBoost', name: 'Ore Boost',
+    blurb: 'Emergency cash, wired straight to your account.',
+    kind: BuildKind.Power, faction: Faction.Neutral, tab: P,
+    cost: 2000, buildTime: 24, prereqs: [], sortOrder: 40,
+  },
+  {
+    key: 'power.chronoshift', name: 'Chronoshift',
+    blurb: 'Teleports the units guarding your base to the marker.',
+    kind: BuildKind.Power, faction: Faction.Neutral, tab: P,
+    cost: 2500, buildTime: 30, prereqs: [], sortOrder: 50,
+  },
 ];
 
 /** Every army a player or an AI can be. Neutral is not one of them. */
@@ -1159,6 +1311,8 @@ export class ProductionCatalog {
   private readonly byDefIdUnit = new Map<number, BuildEntry>();
   /** Upgrades by `publicId`. Their `defId` is -1, so the two maps above cannot hold them. */
   private readonly byUpgradeId = new Map<number, BuildEntry>();
+  /** Purchasable commander powers by `publicId`. Same reason as `byUpgradeId`. */
+  private readonly byPowerId = new Map<number, BuildEntry>();
   /** 1 where the entry needs a sea to exist. Indexed by `BuildEntry.index`. */
   private readonly seaBound: Uint8Array;
   /** True when a real DefTables was found and merged. */
@@ -1178,6 +1332,7 @@ export class ProductionCatalog {
 
     for (const e of entries) {
       this.byKeyMap.set(e.key, e);
+      if (e.kind === BuildKind.Power) { this.byPowerId.set(e.publicId, e); continue; }
       if (e.kind === BuildKind.Upgrade) { this.byUpgradeId.set(e.publicId, e); continue; }
       if (e.defId >= 0) {
         (e.kind === BuildKind.Building ? this.byDefIdBuilding : this.byDefIdUnit).set(e.defId, e);
@@ -1192,9 +1347,25 @@ export class ProductionCatalog {
     for (const faction of PLAYABLE_FACTIONS) {
       const sharesPool = SHARED_POOL_FACTIONS.includes(faction);
       for (let t = 0; t < BUILD_TAB_COUNT; t++) {
+        // NEUTRAL MEANS SOMETHING DIFFERENT IN THE POWERS TAB, and this is the
+        // one place it is decided. Everywhere else Neutral is "the two ORIGINAL
+        // armies field the same hardware", which is why the Pact and the
+        // Reclamation are absent from `SHARED_POOL_FACTIONS`. A commander power
+        // is not hardware: there is one Airstrike and every army calls it. What
+        // differs per faction is the STRUCTURE that publishes the tab, and that
+        // is already three separate `BuildKind.Building` rows.
+        //
+        // The alternative was twenty rows — five powers times four armies —
+        // whose only difference would be the `faction` field, plus four public
+        // ids per power to keep them distinguishable on the wire. That is a
+        // table that can develop an asymmetry by accident, which is exactly what
+        // the twelve explicit `UPGRADES` rows exist to prevent; here there is
+        // nothing to keep symmetric, because there is only one of each.
+        const universal = (t as BuildTab) === BuildTab.Powers;
         const list = entries
           .filter((e) => e.buildable && e.tab === (t as BuildTab)
-            && ((sharesPool && e.faction === Faction.Neutral) || e.faction === faction))
+            && (((sharesPool || universal) && e.faction === Faction.Neutral)
+              || e.faction === faction))
           .sort((a, b) => a.sortOrder - b.sortOrder || a.index - b.index);
         this.byFactionTab.set(faction * BUILD_TAB_COUNT + t, list);
       }
@@ -1256,8 +1427,8 @@ export class ProductionCatalog {
    */
   resolve(id: number, isBuilding?: boolean): BuildEntry | null {
     if (id < 0) return null;
-    // UPGRADES FIRST, AND UNCONDITIONALLY, because their id range is the only
-    // one in the catalog that is unambiguous on its own.
+    // UPGRADES AND POWERS FIRST, AND UNCONDITIONALLY, because their id ranges
+    // are the only ones in the catalog that are unambiguous on their own.
     //
     // The `isBuilding` hint is NOT usable here. Every command path derives it
     // from the tab (`tabIsStructural`), and an upgrade lives in whichever tab
@@ -1265,7 +1436,14 @@ export class ProductionCatalog {
     // with `isBuilding === true`. Honouring that hint would make them
     // unresolvable while the infantry and vehicle ones worked, which is exactly
     // the kind of half-working that gets shipped.
-    if (id >= UPGRADE_PUBLIC_ID_BASE && id < UNIT_PUBLIC_ID_BASE) {
+    // POWERS FIRST, because their range is the NARROWER one inside the same
+    // window: 3072..4095 was upgrade territory under the old single test, so the
+    // order of these two is what keeps every existing upgrade id resolving to
+    // the entry it always did.
+    if (id >= POWER_PUBLIC_ID_BASE && id < UNIT_PUBLIC_ID_BASE) {
+      return this.byPowerId.get(id) ?? null;
+    }
+    if (id >= UPGRADE_PUBLIC_ID_BASE && id < POWER_PUBLIC_ID_BASE) {
       return this.byUpgradeId.get(id) ?? null;
     }
     if (this.bound) {
@@ -1368,6 +1546,21 @@ function computeSeaBound(
   return marked;
 }
 
+/**
+ * The `CommanderPowerId` a `BuildKind.Power` entry buys.
+ *
+ * Derived from `publicId` rather than re-parsed from the key, because the id is
+ * what `resolveEntry` committed to and what travels on the wire; going back to
+ * the string would be a second decoding of the same fact. Returns
+ * `CommanderPowerId.None` (0) for anything that is not a power row, which every
+ * caller treats as "no", because `ownsCommanderPower` and `grantCommanderPower`
+ * both reject id 0.
+ */
+function powerIdOf(entry: BuildEntry): number {
+  if (entry.kind !== BuildKind.Power) return 0;
+  return entry.publicId - POWER_PUBLIC_ID_BASE;
+}
+
 /** Entity kinds `unitCensus` walks. Module scope: it runs every tick. */
 const OWNED_COUNT_KINDS: readonly EntityKind[] = [EntityKind.Infantry, EntityKind.Vehicle];
 
@@ -1381,6 +1574,57 @@ const OWNED_COUNT_KINDS: readonly EntityKind[] = [EntityKind.Infantry, EntityKin
  */
 const UNIT_DEF_SLOTS = 256;
 
+/**
+ * The half of a `BuildEntry` that is true of anything which never becomes an
+ * entity — an upgrade or a commander power.
+ *
+ * Neither has a def row, a fallback row, a footprint, hp, armour or a
+ * locomotor, so every entity-shaped field is zero and every one of them is zero
+ * for the SAME reason. Written once so the two branches cannot drift into
+ * disagreeing about what "not a thing on the map" means; the caller overrides
+ * `kind` and `publicId`, which are the only two fields that differ.
+ */
+function emptyNonEntityEntry(index: number, spec: ContentSpec): BuildEntry {
+  return {
+    index,
+    key: spec.key,
+    name: spec.name,
+    blurb: spec.blurb,
+    kind: BuildKind.Upgrade,
+    faction: spec.faction,
+    tab: spec.tab,
+    cost: spec.cost,
+    buildTime: spec.buildTime,
+    prereqs: spec.prereqs,
+    sortOrder: spec.sortOrder,
+    buildable: spec.buildable !== false,
+    // Never progression-gated. Both of these are bought inside a match with
+    // credits both clients can see; hanging either off the local profile is the
+    // tick-zero desync `Scenarios.ts` already had to be rescued from.
+    unlockedBy: '',
+    // No def table has a row for it, and nothing may look one up: -1 keeps it
+    // out of `byDefIdUnit` / `byDefIdBuilding` entirely.
+    defId: -1,
+    publicId: 0,
+    footprintW: 0,
+    footprintH: 0,
+    height: 0,
+    power: 0,
+    storage: 0,
+    buildRadius: 0,
+    producesTabs: EMPTY_TABS,
+    exitX: 0,
+    exitZ: 0,
+    shipsWith: '',
+    needsShore: false,
+    entityKind: EntityKind.None,
+    naval: false,
+    // The one-at-a-time rule here is ownership, not a cap: see
+    // `availabilityOf`, which refuses a second copy because the bit is set.
+    maxAlive: 0,
+  };
+}
+
 /** Merge one authored spec with the fallback tables and any real def. */
 function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): BuildEntry | null {
   const isBuilding = spec.kind === BuildKind.Building;
@@ -1389,52 +1633,36 @@ function resolveEntry(spec: ContentSpec, index: number, binding: DefBinding): Bu
   // becomes an entity, so there is no hp, footprint, armour or locomotor to
   // borrow. Everything about it that the production layer cares about — cost,
   // time, prereqs, tab, faction — is authored in `CONTENT` above, and
-  // everything about its EFFECT is in `UPGRADES`. This branch is first because
-  // both branches below would warn and drop the row for a missing fallback.
+  // everything about its EFFECT is in `UPGRADES`. These two branches are first
+  // because both branches below would warn and drop the row for a missing
+  // fallback.
+  // A POWER IS THE SAME SHAPE AS AN UPGRADE and shares the branch's whole
+  // argument: no entity, no fallback row, nothing to borrow. What it needs that
+  // an upgrade does not is the `CommanderPowerDef` behind the content key,
+  // because its `publicId` is the power's id and a row naming a power this build
+  // does not implement must be dropped rather than shipped as a button that
+  // charges and fires nothing — the exact defect `validateMissions` used to
+  // catch on the mission side.
+  if (spec.kind === BuildKind.Power) {
+    const power = powerByContentKey(spec.key);
+    if (power === undefined) {
+      console.warn(`[production] no COMMANDER_POWERS row for "${spec.key}" — entry dropped`);
+      return null;
+    }
+    return {
+      ...emptyNonEntityEntry(index, spec),
+      kind: BuildKind.Power,
+      publicId: POWER_PUBLIC_ID_BASE + (power.id as number),
+    };
+  }
+
   if (spec.kind === BuildKind.Upgrade) {
     const def = upgradeByKey(spec.key);
     if (def === null) {
       console.warn(`[production] no UPGRADES row for "${spec.key}" — entry dropped`);
       return null;
     }
-    return {
-      index,
-      key: spec.key,
-      name: spec.name,
-      blurb: spec.blurb,
-      kind: BuildKind.Upgrade,
-      faction: spec.faction,
-      tab: spec.tab,
-      cost: spec.cost,
-      buildTime: spec.buildTime,
-      prereqs: spec.prereqs,
-      sortOrder: spec.sortOrder,
-      buildable: spec.buildable !== false,
-      // Never progression-gated. An upgrade is bought inside a match with
-      // credits both clients can see; hanging it off the local profile is the
-      // tick-zero desync `Scenarios.ts` already had to be rescued from.
-      unlockedBy: '',
-      // No def table has a row for it, and nothing may look one up: -1 keeps it
-      // out of `byDefIdUnit` / `byDefIdBuilding` entirely.
-      defId: -1,
-      publicId: UPGRADE_PUBLIC_ID_BASE + def.bit,
-      footprintW: 0,
-      footprintH: 0,
-      height: 0,
-      power: 0,
-      storage: 0,
-      buildRadius: 0,
-      producesTabs: EMPTY_TABS,
-      exitX: 0,
-      exitZ: 0,
-      shipsWith: '',
-      needsShore: false,
-      entityKind: EntityKind.None,
-      naval: false,
-      // The one-at-a-time rule for an upgrade is ownership, not a cap: see
-      // `availabilityOf`, which refuses a second copy because the bit is set.
-      maxAlive: 0,
-    };
+    return { ...emptyNonEntityEntry(index, spec), publicId: UPGRADE_PUBLIC_ID_BASE + def.bit };
   }
 
   if (isBuilding) {
@@ -1614,7 +1842,7 @@ export class ProductionService implements QueueHooks {
   };
 
   /** Cameo objects, pooled per tab so the HUD snapshot never allocates. */
-  private readonly cameoPool: HudCameo[][] = [[], [], [], []];
+  private readonly cameoPool: HudCameo[][] = [[], [], [], [], []];
   private cameoFaction: Faction = Faction.Neutral;
   /**
    * The entry behind each published cameo, per tab, in the SAME ORDER.
@@ -1625,7 +1853,7 @@ export class ProductionService implements QueueHooks {
    * built together and read together, and the coupling is a field instead of an
    * assumption.
    */
-  private readonly cameoEntries: BuildEntry[][] = [[], [], [], []];
+  private readonly cameoEntries: BuildEntry[][] = [[], [], [], [], []];
   /** The naval verdict the published cameo lists were built for. */
   private cameoNaval = false;
 
@@ -1682,8 +1910,12 @@ export class ProductionService implements QueueHooks {
       credits: 0, creditsDisplay: 0,
       powerProduced: 0, powerConsumed: 0, brownout: false, hasRadar: false,
       activeTab: BuildTab.Structures,
-      cameos: [[], [], [], []],
-      tabAlert: [false, false, false, false],
+      cameos: [[], [], [], [], []],
+      tabAlert: [false, false, false, false, false],
+      // The four original tabs are always on screen; Powers is written every
+      // tick by `refreshSnapshot` off the factory count, which is the count of
+      // completed, POWERED Command Posts.
+      tabVisible: [true, true, true, true, false],
       selectionCount: 0, selectionPrimary: NONE,
       gameTimeSec: 0, matchPhase: MatchPhase.Playing,
     };
@@ -1802,6 +2034,16 @@ export class ProductionService implements QueueHooks {
       result.ok = false;
       result.capped = true;
       result.reason = 'Installed';
+      return result;
+    }
+    // ALREADY BOUGHT. The same answer for the same reason: a commander power is
+    // a one-off purchase, and once the bit is set it will never become buyable
+    // again. `capped` rather than a plain refusal so the AI's stuck-reason
+    // diagnostic reads it as "you already do" — see the paragraph above.
+    if (entry.kind === BuildKind.Power && ownsCommanderPower(p, powerIdOf(entry))) {
+      result.ok = false;
+      result.capped = true;
+      result.reason = 'Requisitioned';
       return result;
     }
     // The progression gate. Third, not first: "Wrong faction" is a fact about
@@ -2089,6 +2331,25 @@ export class ProductionService implements QueueHooks {
 
       for (let t = 0; t < entry.producesTabs.length; t++) {
         const tab = entry.producesTabs[t] as number;
+        /*
+         * THE ONE TAB THAT NEEDS THE LIGHTS ON.
+         *
+         * Note the NOTE above: a brownout deliberately does not revoke a
+         * prerequisite, because gating construction on power soft-locks a player
+         * whose only way out of a blackout is the Power Plant they would then be
+         * forbidden from building. That argument is about the ROUTE OUT, and it
+         * does not reach here: nothing in the Powers tab is a route out of
+         * anything. A dark Command Post sells no powers, and the player's answer
+         * is the same answer it always was — build a plant, from the Structures
+         * tab, which is not gated on power and never will be.
+         *
+         * `EntityFlag.Powered` is the grid's own bit, cleared on a shed victim
+         * by `PowerGrid.recompute` (an unflagged consumer like this one is in
+         * the first class to go dark). `census` runs EVERY TICK, so the tab
+         * opens and closes with the grid rather than with an event contract
+         * somebody has to remember to fire.
+         */
+        if ((tab as BuildTab) === BuildTab.Powers && (flags & EntityFlag.Powered) === 0) continue;
         const fi = owner * BUILD_TAB_COUNT + tab;
         this.factories[fi]++;
         // Primary wins; otherwise the first one found. Deterministic either way
@@ -2466,7 +2727,10 @@ export class ProductionService implements QueueHooks {
     // `availabilityOf` answered for the installed half: the cameo is still
     // clickable while the first copy is building, and two on the line is the
     // same double charge one tick later.
-    if (entry.kind === BuildKind.Upgrade) {
+    // A COMMANDER POWER IS THE SAME ONE-OFF, and inherits the whole paragraph
+    // above: no entity, no def id, so `maxAlive` cannot express it and a
+    // shift-click would otherwise buy one Chronoshift five times over.
+    if (entry.kind === BuildKind.Upgrade || entry.kind === BuildKind.Power) {
       if (this.queues.countOf(p, entry.tab, entry.publicId, false) > 0) return;
       n = 1;
     }
@@ -2904,6 +3168,12 @@ export class ProductionService implements QueueHooks {
       this.installUpgrade(p, entry);
       return true;
     }
+    // A COMMANDER POWER HAS NOWHERE TO DRIVE EITHER, for the same reasons and
+    // through the same seam.
+    if (entry !== null && entry.kind === BuildKind.Power) {
+      this.installPower(p, entry);
+      return true;
+    }
     if (entry === null || entry.kind !== BuildKind.Unit) return true; // drop the impossible
 
     const fi = (p.id as number) * BUILD_TAB_COUNT + (tab as number);
@@ -3008,6 +3278,50 @@ export class ProductionService implements QueueHooks {
     this.eva(p, EvaLine.NewConstructionOptions);
     if ((p.id as number) === (this.world.localPlayer as number)) {
       hudToast()?.toast('info', `upgrade-${entry.key}`, `${entry.name} installed`, entry.blurb);
+    }
+  }
+
+  /**
+   * Install a finished commander power. The mirror of `installUpgrade`, and
+   * deliberately its twin line for line.
+   *
+   * THE ONE PLACE `commanderPowerMask` GROWS DURING A MATCH, and the whole
+   * argument for the feature is in that sentence: it is reached only from
+   * `tryEgress`, which is reached only from `tick`, which is `Phase.Production`
+   * — so the write happens inside `simTick`, at a fixed point in a fixed order,
+   * on every client, off a command that crossed the bus. Ownership used to be a
+   * string in this browser's localStorage; it is now a bit two clients compute
+   * identically and `Checksum.hashPlayers` compares. That is why
+   * `CommanderPowerService.use` may finally refuse a power the player does not
+   * own without desyncing anybody.
+   *
+   * THE CHARGE IS NOT RESET HERE, and that is the answer to "does a purchase
+   * arrive ready?". Every power's charge has been ticking down from full since
+   * the match started (`CommanderPowerService.resetCharges`), so a Chronoshift
+   * bought at minute twelve is callable the moment it is paid for. That is
+   * correct: the build time IS the wait, the player has just spent 2500 credits
+   * and thirty seconds on it, and a second 240-second silence afterwards would
+   * make the last two powers unbuyable in any match that ends inside twenty
+   * minutes.
+   */
+  private installPower(p: PlayerState, entry: BuildEntry): void {
+    const power = powerIdOf(entry);
+    if (!grantCommanderPower(p, power)) return;
+
+    // Same tick, same reason as the upgrade: the cameo has to stop reading
+    // "buy me" the instant the credits stopped being spendable.
+    this.techDirty = true;
+
+    const ev = this.channels.events.payload('production:ready');
+    ev.player = p.id;
+    ev.tab = entry.tab;
+    ev.defId = entry.publicId;
+    ev.isBuilding = false;
+    this.channels.events.emitPooled('production:ready');
+
+    this.eva(p, EvaLine.NewConstructionOptions);
+    if ((p.id as number) === (this.world.localPlayer as number)) {
+      hudToast()?.toast('info', `power-${entry.key}`, `${entry.name} available`, entry.blurb);
     }
   }
 
@@ -3306,6 +3620,12 @@ export class ProductionService implements QueueHooks {
     snap.selectionPrimary = world.selection.count > 0
       ? (world.selection.ids[0] as EntityId) : NONE;
     snap.gameTimeSec = s.time;
+    // THE TAB APPEARS AND DISAPPEARS WITH THE STRUCTURE. `factories[Powers]`
+    // counts completed, POWERED Command Posts (see `census`), so this is one
+    // read and it is already the exact condition the entries in the tab are
+    // gated on — there is no second rule for the sidebar to disagree with.
+    snap.tabVisible[BuildTab.Powers as number] =
+      this.factories[(p.id as number) * BUILD_TAB_COUNT + (BuildTab.Powers as number)] > 0;
 
     // ONCE PER SNAPSHOT, not once per cameo. With a live pathfinder this is two
     // array reads (`navigableSeaCells`); without one it is a memoised flood
@@ -3358,6 +3678,8 @@ export class ProductionService implements QueueHooks {
         // yes/no, and 1 is what makes the sidebar's `owned` badge appear.
         cameo.owned = entry.kind === BuildKind.Upgrade
           ? (hasUpgradeKey(p, entry.key) ? 1 : 0)
+          : entry.kind === BuildKind.Power
+            ? (ownsCommanderPower(p, powerIdOf(entry)) ? 1 : 0)
           : entry.kind === BuildKind.Building
             ? (entry.publicId >= 0 && entry.publicId < p.buildingCount.length
               ? p.buildingCount[entry.publicId] : 0)
@@ -3465,7 +3787,8 @@ export class ProductionService implements QueueHooks {
       const pool = this.cameoPool[t];
       while (pool.length < roster.length) {
         pool.push({
-          defId: -1, isBuilding: false, isUpgrade: false, key: '', name: '', cost: 0,
+          defId: -1, isBuilding: false, isUpgrade: false, isPower: false,
+          key: '', name: '', cost: 0,
           progress: 0, queued: 0, ready: false, onHold: false, available: false, reason: '', owned: 0,
         });
       }
@@ -3481,7 +3804,15 @@ export class ProductionService implements QueueHooks {
         const cameo = pool[list.length];
         cameo.defId = entry.publicId;
         cameo.isBuilding = entry.kind === BuildKind.Building;
-        cameo.isUpgrade = entry.kind === BuildKind.Upgrade;
+        cameo.isPower = entry.kind === BuildKind.Power;
+        // A POWER DRAWS AS AN UPGRADE, and that is a statement about the ART
+        // rather than a conflation. `isUpgrade` is what `Cameos.archetypeFor`
+        // reads to pick the badge silhouette instead of trying to find a mesh,
+        // and there is no more a model for "Airstrike" than for "Composite
+        // Armour". `isPower` is what tells the sidebar this is the fourth kind
+        // of cell; anything that only wants to know "is there a model" keeps
+        // asking one question.
+        cameo.isUpgrade = entry.kind === BuildKind.Upgrade || cameo.isPower;
         cameo.key = entry.key;
         cameo.name = entry.name;
         cameo.cost = entry.cost;

@@ -70,8 +70,17 @@ export const MAX_PLAYERS = 8;
 export const MAX_SELECTION = 100;
 /** Ctrl+0..9. */
 export const CONTROL_GROUP_COUNT = 10;
-/** The four sidebar tabs in display order. Drives per-player queue creation. */
-export const BUILD_TAB_ORDER = [0, 1, 2, 3] as const;
+/**
+ * The sidebar tabs in display order. Drives per-player queue creation.
+ *
+ * MUST STAY THE SAME LENGTH AS `BUILD_TAB_COUNT` in core/types.ts. It is spelt
+ * out rather than derived because config may not import types (types imports
+ * nothing, config imports nothing, and the one-way edge is what keeps both
+ * loadable from a node test); `tests/production.spec.ts` asserts the two agree.
+ * Slot 4 is `BuildTab.Powers`, whose queue is real — a power is bought through
+ * the ordinary drip-paid queue like everything else.
+ */
+export const BUILD_TAB_ORDER = [0, 1, 2, 3, 4] as const;
 
 /** Spatial hash cell size in metres. Bigger than CELL: ~2 units per bucket. */
 export const SPATIAL_CELL = 8;
@@ -278,6 +287,18 @@ export const BUILDING_DIMENSIONS = {
   powerPlant:  { w: 2, h: 2, height: 9.0 },   // twin stacks
   radar:       { w: 2, h: 2, height: 12.0 },  // tallest silhouette until the silo
   battleLab:   { w: 2, h: 2, height: 8.0 },
+  // THE COMMAND POST, one shape for all four armies (Command Post, Pharos,
+  // Signal Rig). MUST MATCH `BUILDING_FOOTPRINTS.commandPost` EXACTLY — the art
+  // resolves through `fp()`, which reads that table first, while the def's
+  // `dim:` reads this one.
+  //
+  // 2x2 like the tech building, 10.5 m tall rather than 8.0, and the extra two
+  // and a half metres are the point: the two structures cost about the same and
+  // sit at the same tier, so the only thing telling an opponent which one you
+  // built is the roofline. A mast is also what the building IS — a transmitter
+  // — so the silhouette is honest rather than decorated. Still under the Radar
+  // Dome's 12.0, which has to stay the tallest thing in a base that has one.
+  commandPost: { w: 2, h: 2, height: 10.5 },
   // THE SUPERWEAPON PAD, one shape for all six of them (Nuclear Silo, Iron
   // Curtain, Chronosphere, Weather Control, Heliograph, Stormworks).
   //
@@ -4995,6 +5016,8 @@ export const BUILDING_FOOTPRINTS: Readonly<Record<string, { w: number; h: number
   warFactory: { w: 3, h: 2, height: 8.5 },
   radar: { w: 2, h: 2, height: 12.0 },
   techCentre: { w: 2, h: 2, height: 8.0 },
+  /** MUST MATCH `BUILDING_DIMENSIONS.commandPost`. See the note there. */
+  commandPost: { w: 2, h: 2, height: 10.5 },
   // MUST MATCH `BUILDING_DIMENSIONS.repairDepot` EXACTLY — same reason the
   // `gate` row states it: `fp()` in the art reads THIS table first while the
   // def's `dim:` reads the other one, so a disagreement gives the sim one

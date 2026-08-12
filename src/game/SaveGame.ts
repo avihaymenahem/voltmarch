@@ -167,12 +167,19 @@ import type { EntityStore, World } from '../core/world';
 import { footprintOriginCell } from '../core/math';
 import { snapRallyClear } from '../sim/Placement';
 import { ownedUpgradeKeys, setUpgradesByKey } from '../sim/Upgrades';
+// The commander-power purse, by key, through the same two functions the upgrade
+// mask uses. `src/progression/powers.ts` imports nothing, so this edge costs
+// the save layer no dependency it did not already have.
+import { ownedCommanderPowerKeys, setCommanderPowersByKey } from '../progression/powers';
 
 /** Rally re-snap output on load. Module scope: the loop must not allocate. */
 const loadRallySnap = new Float64Array(2);
 
 /** Shared empty list for a save written before `upgradeKeys` existed. */
 const EMPTY_UPGRADE_KEYS: readonly string[] = [];
+
+/** The same, for a save written before commander powers were purchasable. */
+const EMPTY_POWER_KEYS: readonly string[] = [];
 
 /* ==========================================================================
  * 1. VERSION AND IDENTITY
@@ -681,6 +688,29 @@ interface PlayerSection {
    * players chunk is JSON and this is a purely additive key.
    */
   upgradeKeys?: string[];
+  /**
+   * COMMANDER POWERS BOUGHT IN THIS MATCH, BY POWER KEY.
+   *
+   * Keys and not the raw mask, for the reason `upgradeKeys` and
+   * `buildingCountKeys` are keys: a save outlives the table that produced its
+   * indices, and a build that appended a sixth power must not hand the loaded
+   * player a different one than they paid for.
+   *
+   * OPTIONAL, and no `SAVE_SCHEMA_VERSION` bump — the players chunk is JSON and
+   * this is purely additive, exactly like `upgradeKeys`. A save written before
+   * powers were purchasable arrives `undefined`, restores to none, and that is
+   * the truth about it: in the build that wrote it nobody had bought anything,
+   * because there was nothing to buy.
+   *
+   * ONE WARNING FOR THE NEXT READER. `src/sim/CommanderPowers.ts` used to say —
+   * correctly, at the time — that power ownership "must NEVER enter a save
+   * file", because it was PROFILE state and a save carrying unlocks would hand a
+   * fresh account content it had not earned. That sentence was about the
+   * profile. This is not the profile: it is what happened during one match, and
+   * a snapshot of a match that dropped it would give the powers back for free on
+   * every reload.
+   */
+  powerKeys?: string[];
 }
 
 interface SuperweaponSection {
@@ -1166,6 +1196,7 @@ function capturePlayer(
     rally,
     stats: { ...p.stats } as unknown as Record<string, number>,
     upgradeKeys: ownedUpgradeKeys(p, []),
+    powerKeys: ownedCommanderPowerKeys(p, []),
   };
 }
 
@@ -2055,6 +2086,13 @@ function restorePlayer(
    * cannot leave a player wearing the previous match's numbers — and a save
    * written before this key existed correctly restores to none. */
   setUpgradesByKey(p, ps.upgradeKeys ?? EMPTY_UPGRADE_KEYS);
+
+  /* Commander powers bought in this match. REPLACES rather than merges, same as
+   * the upgrades above: `Shell.loadGame` boots a fresh engine (mask 0) and then
+   * restores onto it, so a merge and a replace agree today — but a load onto a
+   * live world must not be able to leave the previous match's purchases behind,
+   * and `setCommanderPowersByKey` is the one operation that cannot. */
+  setCommanderPowersByKey(p, ps.powerKeys ?? EMPTY_POWER_KEYS);
 
   /* Building counts drive prereqs and the victory check, so they are restored
    * by KEY wherever the save recorded one: a def table that gained a row would

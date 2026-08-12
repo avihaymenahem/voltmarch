@@ -343,14 +343,28 @@ export const enum ProjectileKind {
   Flame = 6,
 }
 
-/** The four sidebar tabs, in display order. */
+/**
+ * The sidebar tabs, in display order.
+ *
+ * `Powers` is APPENDED and is the only one that is not always on screen: it
+ * exists from tab index 4 for every player, but the sidebar draws it only while
+ * a completed, POWERED Command Post stands (`src/sim/Production.ts#census`), and
+ * the entries in it are the five commander powers rather than hardware.
+ *
+ * APPENDED, NEVER INSERTED. `BuildTab` is a `const enum` inlined at every call
+ * site, it indexes `PlayerState.queues`, `HudSnapshot.cameos`, the flat
+ * `(player, tab)` arrays in `BuildQueue`/`Production`, and it travels on
+ * `Command.tab` across the multiplayer wire and into replay files. Renumbering
+ * a member changes what an existing recording means with no error anywhere.
+ */
 export const enum BuildTab {
   Structures = 0,
   Defense = 1,
   Infantry = 2,
   Vehicles = 3,
+  Powers = 4,
 }
-export const BUILD_TAB_COUNT = 4;
+export const BUILD_TAB_COUNT = 5;
 
 /* --------------------------------------------------------------------------
  * IN-MATCH UPGRADES — the vocabulary only. The table is `UPGRADES` in
@@ -1365,6 +1379,23 @@ export interface PlayerState {
    */
   upgradeMul: Float32Array;
 
+  /**
+   * COMMANDER POWERS BOUGHT SO FAR. Bit `CommanderPowerId` set = owned.
+   *
+   * SIM STATE, exactly like `upgradeMask`, and for exactly the same reason: a
+   * power is bought inside a match, from a structure both clients can see, with
+   * credits both clients can see. It is hashed by `Checksum.hashPlayers`, saved
+   * by power KEY in `SaveGame`, and never read from the local profile.
+   *
+   * This field is what replaced ownership-by-profile. `src/sim/CommanderPowers.ts`
+   * spent forty lines explaining why the SIMULATION could never ask "do you own
+   * this?" — the answer lived in localStorage, so a refusal would land on one
+   * machine only, mid-match, at the exact tick a button was pressed. A bit in
+   * the player block is the same question with a world-state answer, so the
+   * simulation may now ask it and PvP is unharmed.
+   */
+  commanderPowerMask: number;
+
   /** Per-factory rally points, keyed by factory EntityId. */
   rallyX: Map<number, number>;
   rallyZ: Map<number, number>;
@@ -1408,6 +1439,17 @@ export interface HudCameo {
    * yes/no rather than a count.
    */
   isUpgrade: boolean;
+  /**
+   * True for a purchasable commander power — the fourth kind of cell.
+   *
+   * Drawn like an upgrade (one-off, `owned` reads as yes/no, no mesh exists for
+   * it) but it is not one: it installs a bit in `PlayerState.commanderPowerMask`
+   * rather than in `upgradeMask`, and the thing it unlocks is a button on the
+   * powers bar rather than a multiplier. `isUpgrade` is set alongside it so
+   * every consumer that only cares about "is this a thing with a model" keeps
+   * working without learning a fourth case.
+   */
+  isPower: boolean;
   key: string;
   name: string;
   cost: number;
@@ -1442,6 +1484,17 @@ export interface HudSnapshot {
   cameos: HudCameo[][];
   /** Per-tab "something finished" badge. */
   tabAlert: boolean[];
+  /**
+   * Per-tab "is this tab on screen at all".
+   *
+   * TRUE FOR THE FOUR ORIGINAL TABS, ALWAYS. Only `BuildTab.Powers` ever
+   * answers false, and it answers false until a completed, powered Command Post
+   * stands — which is the whole point of the structure. It is a snapshot field
+   * rather than something the sidebar derives from `cameos[t].length` because an
+   * empty tab and an absent tab are different states: the Defence tab is empty
+   * before a barracks and must still be reachable.
+   */
+  tabVisible: boolean[];
   selectionCount: number;
   selectionPrimary: EntityId;
   gameTimeSec: number;

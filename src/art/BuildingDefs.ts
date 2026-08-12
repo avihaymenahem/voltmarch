@@ -1031,6 +1031,87 @@ function alliedTech(): StructureMassList {
     baseSockets(s.d, roof + 0.8, s.w * 0.34, -s.d * 0.32));
 }
 
+/**
+ * THE COMMAND POST (Allied). The structure the Powers tab hangs off.
+ *
+ * THE BUILDING IS AN AERIAL, and that is the whole silhouette brief: it sells
+ * nothing you can see on the ground, so the only thing an opponent can read
+ * from across the map is what it is REACHING FOR. `commandPost` is 10.5 m
+ * against the Tech Centre's 8.0 on the same 2x2 plan, and every one of those
+ * two and a half metres belongs to the mast — a raked whip on a guyed collar,
+ * a beacon under its cap, and a horizontal yagi across the top that reads as an
+ * antenna from any angle.
+ *
+ * `bodyFraction` 0.40 rather than the Tech Centre's 0.54. The shell tops out at
+ * 4.2 m, which leaves 6.3 m of clear air for the mast to occupy: a taller body
+ * would put the aerial's base above the camera's read of the roofline and the
+ * structure would look like a lab with a stick on it. The height gate's
+ * tolerance is +/-12%, so the mast is load-bearing in the validator's sense as
+ * well as the architect's.
+ *
+ * NOT A SECOND RADAR DOME. The Radar Dome's cue is a SWEEPING dish — a lathe on
+ * a `Feature.Spinner` — and this deliberately has none: nothing here rotates.
+ * A commander power is called, not scanned for, and two structures with the
+ * same moving part would be two structures a player has to read the label of.
+ */
+function alliedCommandPost(): StructureMassList {
+  const f = fp('commandPost');
+  const s = alliedShell(f.w, f.h, f.height, {
+    key: 'commandPost', paired: true, team: 1.16, windowCount: 5, bodyFraction: 0.40,
+  });
+  const roof = s.roofY;
+  const collarY = roof + 0.9;
+  const mastTop = f.height - 0.9;
+  const mastH = mastTop - collarY;
+  s.masses.push(
+    // The collar the whip stands in: a squat tapered drum, wider than the mast
+    // by enough that the join reads as engineering rather than as a seam.
+    cyl('mast.collar', MassRole.Primary, [s.w * 0.30, 1.8, s.w * 0.30], [0, collarY, s.d * 0.04], 'paintMed', {
+      topRadius: 0.62, capSlot: 'grille', segments: 12,
+    }),
+    // The whip. Tapered to a quarter of its base and RAKED, so the tallest line
+    // in the model is not a vertical one — a plumb pole against the sky is the
+    // one shape on this structure that could still read as a box edge.
+    cyl('mast', MassRole.Primary, [0.82, mastH, 0.82], [0, collarY + mastH * 0.5, s.d * 0.04], 'bareMetal', {
+      topRadius: 0.26, rot: [0.06, 0, -0.05], capSlot: 'grille', segments: 10,
+    }),
+    // The yagi: three elements on the whip, longest at the bottom. Boxes, and
+    // correctly so — an antenna element IS a bar — and they cost the boxiness
+    // gate nothing because their projected wall area is a rounding error.
+    box('yagi.lo', MassRole.Greeble, [3.10, 0.16, 0.16], [0, mastTop - 1.55, s.d * 0.04], 'bareMetal', {
+      group: 'yagi', chamfer: 0.04,
+    }),
+    box('yagi.mid', MassRole.Greeble, [2.40, 0.15, 0.15], [0, mastTop - 0.95, s.d * 0.04], 'bareMetal', {
+      group: 'yagi', chamfer: 0.04,
+    }),
+    box('yagi.hi', MassRole.Greeble, [1.70, 0.14, 0.14], [0, mastTop - 0.42, s.d * 0.04], 'bareMetal', {
+      group: 'yagi', chamfer: 0.04,
+    }),
+    // The beacon. One small emissive at the very top: an aerial's obstruction
+    // light, and the only thing on the structure that is lit from outside.
+    cyl('beacon', MassRole.Emissive, [0.44, 0.50, 0.44], [0, mastTop + 0.30, s.d * 0.04], 'emissive', {
+      capSlot: 'emissive', feature: Feature.Window, segments: 8, chamfer: 0.05,
+    }),
+    // Guy stays down to the roof, mirrored. Running gear for the mast, which is
+    // what the mirror exemption is for.
+    cyl('guy', MassRole.Greeble, [0.16, 3.0, 0.16], [s.w * 0.26, collarY + 1.1, -s.d * 0.20], 'bareMetal', {
+      mirrorX: true, group: 'guys', rot: [0.10, 0, 0.32], segments: 6,
+    }),
+    // The signals cabin against one flank: the room the requisition is sent
+    // from, and the mass that stops the roof reading as a bare deck.
+    tbox('cabin', MassRole.Primary, [s.w * 0.34, 1.5, s.d * 0.40], [-s.w * 0.28, roof + 0.75, s.d * 0.18], 'paintMed', {
+      topScaleX: 0.78, topScaleZ: 0.78, cornerCut: 0.22,
+    }),
+    box('cabin.duct', MassRole.Greeble, [s.w * 0.14, 0.9, 0.28], [-s.w * 0.28, roof + 0.45, s.d * 0.40], 'vent', {
+      group: 'cabinDuct', chamfer: 0.05,
+    }),
+  );
+  return list('allied_commandpost', 'Command Post', 'allies', 'commandPost', s.masses, [
+    ...baseSockets(s.d, roof + 0.8, s.w * 0.34, -s.d * 0.32),
+    { part: PartId.Antenna, pos: [0, f.height, 0] },
+  ]);
+}
+
 function alliedPillbox(): StructureMassList {
   const f = fp('pillbox');
   const w = f.w * CELL * 0.80;
@@ -1384,6 +1465,73 @@ function sovietTech(): StructureMassList {
   return list('soviet_tech', 'Battle Lab', 'soviets', 'techCentre', s.masses, [
     ...baseSockets(s.d, f.height, s.w * 0.30, -s.d * 0.24),
     { part: PartId.CoilTip, pos: [s.w * 0.02, roof * 2.30, s.d * 0.22] },
+  ]);
+}
+
+/**
+ * THE COMMAND BUNKER (Soviet). The same building, argued from the other side.
+ *
+ * The Allied answer to "where do orders come from" is an aerial. The Soviet
+ * answer is a BUNKER WITH A WIRE OUT OF IT: a heavy low slab, a lattice tower
+ * bolted to one corner rather than standing on the centre line, and a
+ * horizontal dipole across the top of it. Same 10.5 m roofline, reached by a
+ * girder frame instead of a machined whip, which is the whole difference
+ * between the two armies stated in one piece of hardware.
+ *
+ * `lattice()` is the faction's own frame primitive and it does two jobs here:
+ * it carries `bounds[1]` from the shell's own roofline to the frozen one, and
+ * it is the highest-frequency surface in the Soviet atlas, which is what pays
+ * for the flat rivet-plate slab underneath it on scorecard #34.
+ */
+function sovietCommandPost(): StructureMassList {
+  const f = fp('commandPost');
+  const s = sovietShell(f.w, f.h, f.height, {
+    key: 'commandPost', team: 1.10, windowCount: 4, bodyFraction: 0.34,
+  });
+  const roof = s.roofY;
+  const towerX = -s.w * 0.30;
+  const towerZ = -s.d * 0.24;
+  const towerTop = f.height - 1.1;
+  s.masses.push(
+    // The frame, off-centre. A tower on the axis would be a Radar Tower; a
+    // tower on a corner is a mast bolted to a bunker.
+    ...lattice(towerX, towerZ, 1.7, towerTop, 'frame'),
+    // The head: a tapered drum the dipole hangs off, so the frame ends in
+    // something rather than stopping.
+    cyl('head', MassRole.Primary, [1.35, 1.30, 1.35], [towerX, towerTop + 0.45, towerZ], 'rivetPlate', {
+      topRadius: 0.70, capSlot: 'grille', segments: 10,
+    }),
+    box('dipole', MassRole.Greeble, [3.40, 0.18, 0.18], [towerX, towerTop + 1.20, towerZ], 'bareMetal', {
+      group: 'dipole', chamfer: 0.04,
+    }),
+    box('dipole.stub', MassRole.Greeble, [0.18, 0.18, 1.60], [towerX, towerTop + 1.20, towerZ], 'bareMetal', {
+      group: 'dipole', chamfer: 0.04,
+    }),
+    cyl('beacon', MassRole.Emissive, [0.40, 0.46, 0.40], [towerX, towerTop + 1.62, towerZ], 'emissive', {
+      capSlot: 'emissive', feature: Feature.Window, segments: 8, chamfer: 0.05,
+    }),
+    // The transformer vessel that feeds it, and a bus bar across the roof. Both
+    // are Soviet stock hardware; both are what makes the roof read as plant.
+    ...sovietVessel(s.w * 0.26, s.d * 0.10, s.w * 0.15, roof * 1.10, 'transformer'),
+    box('bus', MassRole.Greeble, [s.w * 0.52, 0.24, 0.24], [0, roof + 0.55, -s.d * 0.24], 'bareMetal', {
+      group: 'bus', chamfer: 0.05,
+    }),
+    // The sunk map room: a hexagonal drum, low and wide, the one machined shape
+    // on an otherwise welded building.
+    pri('mapRoom', MassRole.Primary, [s.w * 0.52, 1.25, s.d * 0.46], [s.w * 0.10, roof + 0.62, s.d * 0.22], 'paintMed', {
+      plan: 'hexagon', capSlot: 'paintSmall', chamfer: 0.08,
+    }),
+    greebleRun('roof.run', s.d * 0.40, 0.24, 0.18, [s.w * 0.34, roof + 0.30, -s.d * 0.02], 0x50C7),
+    // NO CATWALK, and it is a budget decision stated rather than an omission.
+    // `catwalk()` is eight small boxes and it took this structure to 4392
+    // triangles against a roster mean of ~2500; the lattice already gives the
+    // frame its climbable read, and `tests/building-shape.spec.ts` holds the
+    // mean as a hard ceiling precisely so that four new structures cannot buy
+    // slack for the sixty-five already shipped.
+  );
+  return list('soviet_commandpost', 'Command Bunker', 'soviets', 'commandPost', s.masses, [
+    ...baseSockets(s.d, roof * 1.30, s.w * 0.30, -s.d * 0.24),
+    { part: PartId.Antenna, pos: [towerX, f.height, towerZ] },
   ]);
 }
 
@@ -2373,6 +2521,7 @@ export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   alliedDepot(),
   alliedRadar(),
   alliedTech(),
+  alliedCommandPost(),
   oreSilo('allies'),
   alliedNavalYard(),
   alliedPillbox(),
@@ -2391,6 +2540,7 @@ export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   sovietDepot(),
   sovietRadar(),
   sovietTech(),
+  sovietCommandPost(),
   oreSilo('soviets'),
   sovietSubPen(),
   sovietSentry(),

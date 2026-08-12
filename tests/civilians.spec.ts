@@ -79,14 +79,35 @@ const NO_MODS = { shift: false, ctrl: false, alt: false };
  * 1. THE FIVE TABLES
  * ========================================================================== */
 
+/**
+ * Where `civOilDerrick` sits in `BUILDINGS`. Pinned, because that is what
+ * "appended, never inserted" actually means for a replay: the number a
+ * recording wrote down has to still name the same content.
+ */
+const CIVILIAN_DEF_INDEX = 51;
+
 describe('the civilian block is described identically by every table that owns part of it', () => {
-  it('has a def row per key, in the declared order, APPENDED to BUILDINGS', () => {
+  it('has a def row per key, in the declared order, and nothing was INSERTED', () => {
     // Appended, never inserted: `src/game/Replay.ts` records `defId` as a raw
     // array index, so a row inserted mid-array makes every existing recording
-    // play back a different game. The three civilians must therefore be the
-    // LAST three rows and nothing else may sit after them.
-    const tail = BUILDINGS.slice(BUILDINGS.length - CIVILIAN_KEYS.length).map((b) => b.key);
-    expect(tail).toEqual([...CIVILIAN_KEYS]);
+    // play back a different game.
+    //
+    // THIS USED TO SAY "the LAST three rows and nothing else may sit after
+    // them", which is a STRICTER claim than the invariant it cites and a
+    // WEAKER guard than it looks. Appending a fourth block after the civilians
+    // — which v2.6.0 did, with the three Command Posts — moves no existing
+    // index and breaks no recording; inserting one ABOVE them does, and the
+    // tail check would not have noticed as long as the tail was rewritten to
+    // match. So the assertion is now the invariant itself: the three keys are
+    // consecutive, in order, and they start where they have always started.
+    const keys = BUILDINGS.map((b) => b.key);
+    const at = keys.indexOf(CIVILIAN_KEYS[0]);
+    expect(keys.slice(at, at + CIVILIAN_KEYS.length)).toEqual([...CIVILIAN_KEYS]);
+    // The pinned index. Every row above this one keeps the `defId` every
+    // replay on disk recorded for it; a bare number is the only thing that
+    // can say so, and a failure here is somebody having inserted rather than
+    // appended.
+    expect(at, 'a row was INSERTED above the civilian block').toBe(CIVILIAN_DEF_INDEX);
   });
 
   it.each(CIVILIAN_KEYS)('%s: def, fallback and MASS LIST share one footprint', (key) => {

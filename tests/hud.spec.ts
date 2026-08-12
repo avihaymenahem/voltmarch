@@ -31,6 +31,7 @@ import {
 import {
   BUILD_COLUMNS, BUILD_ROWS, SLOT_HOTKEY_CODES, TAB_HOTKEY_CODES,
 } from '../src/ui/Sidebar';
+import { ICONS, TAB_ICONS } from '../src/ui/icons';
 import { ProductionCatalog } from '../src/sim/Production';
 import { resolveDefBinding } from '../src/game/Scenarios';
 import {
@@ -273,10 +274,17 @@ describe('HUD — the glyph inventory (§2.4, §2.6, §2.7, §2.12)', () => {
     }
   });
 
-  it('has exactly 4 tab glyphs and 6 command-bar glyphs', () => {
-    const tabs = REQUIRED.filter((n) => n.startsWith('tab'));
+  it('has an icon for every build tab and 6 command-bar glyphs', () => {
     const cmds = REQUIRED.filter((n) => n.startsWith('cmd'));
-    expect(tabs.length).toBe(BUILD_TAB_COUNT);
+    // THE CLAIM IS "EVERY TAB HAS AN ICON", AND IT IS ASSERTED ON THE ARRAY
+    // THAT HOLDS THEM. It used to be asserted on a NAME PREFIX — how many
+    // required glyphs start with `tab` — which was the same number only for
+    // as long as every tab happened to have a glyph of its own. The Powers
+    // tab borrows `superweapon`, the one icon in the set that already means
+    // "called down, not built", so the prefix count says four and the roster
+    // is five. Reading `TAB_ICONS` says what the test was always for.
+    expect(TAB_ICONS.length).toBe(BUILD_TAB_COUNT);
+    for (const n of TAB_ICONS) expect(ICONS[n], `no glyph for "${n}"`).toBeDefined();
     expect(cmds.length).toBe(HUD_COMMAND_BAR.iconCount);
   });
 

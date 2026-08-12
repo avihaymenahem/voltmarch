@@ -42,9 +42,7 @@ import { join } from 'node:path';
 import { MISSIONS, UNLOCKS } from '../src/data/Missions';
 import { BUILDINGS, UNITS, UNLOCK_TAGS } from '../src/data/Defs';
 import type { Reward } from '../src/progression/types';
-import {
-  COMMANDER_POWER_LIST, COMMANDER_POWER_UNLOCK_IDS, powerByUnlockId,
-} from '../src/progression/powers';
+import { COMMANDER_POWER_LIST, commanderPowerContentKey } from '../src/progression/powers';
 
 /* ==========================================================================
  * 0. SOURCE READING — the same technique tests/replay.spec.ts uses
@@ -89,10 +87,16 @@ const DECLARED_ON_DEFS: ReadonlySet<string> = new Set(
     .filter((s): s is string => typeof s === 'string' && s.length > 0),
 );
 
-const MAP_UNLOCK_IDS: readonly string[] = [
-  UNLOCKS.mapFrozenSector, UNLOCKS.mapIndustrialGrid,
-  UNLOCKS.mapContestedStrait, UNLOCKS.mapCoralShore,
-];
+/**
+ * DERIVED FROM THE PREFIX, not listed.
+ *
+ * It was a hand-written list of four and the three battlefields added in v2.6.0
+ * — the payload for three of the five missions the commander powers vacated —
+ * fell straight through it into the def-tag branch, where they were reported as
+ * broken claims. A map unlock id is `map.` + a `MapChoice.id` and there is one
+ * consumer for all of them, so the membership test is the prefix.
+ */
+function isMapUnlockId(id: string): boolean { return id.startsWith('map.'); }
 
 const SUPERWEAPON_UNLOCK_IDS: readonly string[] = [
   UNLOCKS.superSiege, UNLOCKS.superStrategic, UNLOCKS.superChronosphere,
@@ -117,20 +121,7 @@ function claimFor(r: Reward): Claim | null {
     case 'unlock': {
       const id = r.unlockId;
 
-      if (COMMANDER_POWER_UNLOCK_IDS.includes(id)) {
-        return {
-          consumer: 'src/sim/CommanderPowers.ts#CommanderPowerService.use',
-          resolves: () => {
-            const spec = powerByUnlockId(id);
-            if (spec === undefined) return false;
-            // The service must have a branch for it. A power in the table with
-            // no case in the switch is the same inert reward one layer down.
-            return powerService.includes(`case CommanderPowerId.${nameOf(spec.key)}:`);
-          },
-        };
-      }
-
-      if (MAP_UNLOCK_IDS.includes(id)) {
+      if (isMapUnlockId(id)) {
         return {
           consumer: 'src/shell/SkirmishSetup.ts#mapAvailable -> progression-link#isMapUnlocked',
           resolves: () => lobbySource.includes('isMapUnlocked(')
@@ -198,12 +189,6 @@ function claimFor(r: Reward): Claim | null {
         resolves: () => TAGGED.has(id) && DECLARED_ON_DEFS.has(id),
       };
     }
-
-    case 'power':
-      return {
-        consumer: 'src/progression/powers.ts#COMMANDER_POWERS',
-        resolves: () => powerByUnlockId(r.powerId) !== undefined,
-      };
 
     case 'map':
       return {
@@ -299,45 +284,23 @@ describe('every reward the mission table pays is accounted for', () => {
 });
 
 /* ==========================================================================
- * 3. THE POWERS, BOTH DIRECTIONS
+ * 3. THE POWERS ARE NOT A REWARD ANY MORE — THE SAME PIN, POINTED AT THE
+ *    MECHANISM THAT REPLACED THEM
  *
- * The specific defect, pinned. These fail on the old code in the most direct
- * way there is: `src/progression/powers.ts` does not exist there.
+ * This section used to assert that each of the five was paid by exactly one
+ * mission and had a firing branch in the service. The first half is gone
+ * because the missions no longer pay them: a power is BOUGHT from a Command
+ * Post (`BuildKind.Power` in `src/sim/Production.ts`), which is world state.
+ *
+ * The second half is what matters and it is kept and widened. The original
+ * defect was a reward that existed as a string and nothing else; the same
+ * defect in the new shape would be a purchasable row with no effect behind it,
+ * or an effect with nothing that sells it. Both directions are pinned here.
  * ========================================================================== */
 
+const productionSource = code('src/sim/Production.ts');
+
 describe('the five commander powers', () => {
-  it('are each paid by exactly one mission', () => {
-    for (const power of COMMANDER_POWER_LIST) {
-      const payers = MISSIONS.filter(
-        (m) => m.reward.some((r) => r.kind === 'unlock' && r.unlockId === power.unlockId),
-      );
-      expect(payers.map((m) => m.id), `"${power.key}" is not paid exactly once`).toHaveLength(1);
-    }
-  });
-
-  it('are paid as BOTH an unlock and a power, never one without the other', () => {
-    // The `unlock` half is what the profile stores and what the HUD asks about;
-    // the `power` half is what the end screen prints. One alone is either a
-    // power the player owns and is never told about, or a power the player is
-    // told about and does not own.
-    for (const m of MISSIONS) {
-      for (const r of m.reward) {
-        if (r.kind !== 'power') continue;
-        expect(
-          m.reward.some((o) => o.kind === 'unlock' && o.unlockId === r.powerId),
-          `"${m.id}" pays power ${r.powerId} with no matching unlock`,
-        ).toBe(true);
-      }
-      for (const r of m.reward) {
-        if (r.kind !== 'unlock' || !COMMANDER_POWER_UNLOCK_IDS.includes(r.unlockId)) continue;
-        expect(
-          m.reward.some((o) => o.kind === 'power' && o.powerId === r.unlockId),
-          `"${m.id}" unlocks power ${r.unlockId} with no matching power reward`,
-        ).toBe(true);
-      }
-    }
-  });
-
   it('each have a branch in the service that fires them', () => {
     for (const power of COMMANDER_POWER_LIST) {
       expect(
@@ -347,13 +310,41 @@ describe('the five commander powers', () => {
     }
   });
 
-  it('are not gated behind a production def, which is what made them look wired', () => {
-    // The trap that hid this for so long: `power.*` ids sit in `profile.unlocked`
-    // exactly like `unit.raider` does, so they LOOK honoured. `UnlockGate` only
-    // ever answers about a def carrying `unlockedBy`, and no def carries these.
-    for (const id of COMMANDER_POWER_UNLOCK_IDS) {
-      expect(TAGGED.has(id), `${id} is now a def tag — re-point its claim`).toBe(false);
+  it('each have a purchasable CONTENT row, so every one can be reached in play', () => {
+    // The direction that would have caught the original bug in its new form: a
+    // power the simulation can fire and nothing sells is content nobody can
+    // reach, which looks exactly like a balance decision.
+    for (const power of COMMANDER_POWER_LIST) {
+      expect(
+        productionSource,
+        `"${power.key}" has no BuildKind.Power row — nothing in the game sells it`,
+      ).toContain(`key: '${commanderPowerContentKey(power)}'`);
     }
+  });
+
+  it('are not gated behind a def tag or a mission — the building is the only route', () => {
+    // The whole point of the change. A `power.*` id in `UNLOCK_TAGS` or in the
+    // mission table would put ownership back on the profile, with the extra
+    // defect that the gate now lives INSIDE the simulation.
+    for (const power of COMMANDER_POWER_LIST) {
+      const contentKey = commanderPowerContentKey(power);
+      expect(TAGGED.has(`power.${power.key}`), 'a power is a def tag again').toBe(false);
+      for (const [mission, r] of ALL_REWARDS) {
+        if (r.kind !== 'unlock') continue;
+        expect(
+          r.unlockId.startsWith('power.') && r.unlockId !== contentKey ? '' : r.unlockId,
+          `"${mission}" grants ${r.unlockId}, which is a commander power again`,
+        ).not.toMatch(/^power\./);
+      }
+    }
+  });
+
+  it('are sold by a structure that publishes the Powers tab, and by nothing else', () => {
+    // `producesTabs: [P]` is the gate. If some other structure grew one, the
+    // Command Post would stop being the commitment the design rests on.
+    const publishers = Array.from(productionSource.matchAll(/key: '([A-Za-z.]+)',[\s\S]{0,400}?producesTabs: \[P\]/g))
+      .map((m) => m[1]!);
+    expect(publishers.sort()).toEqual(['commandPost', 'mrdPharos', 'rclSignalRig']);
   });
 });
 
@@ -361,7 +352,6 @@ describe('the five commander powers', () => {
 function describe1(r: Reward): string {
   switch (r.kind) {
     case 'unlock': return `unlock:${r.unlockId}`;
-    case 'power': return `power:${r.powerId}`;
     case 'map': return `map:${r.mapId}`;
     case 'cosmetic': return `cosmetic:${r.cosmeticId}`;
     case 'credits': return `credits:${r.amount}`;

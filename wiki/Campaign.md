@@ -47,11 +47,11 @@ resets it.
 | War Machine | destroy 500 | Field Command | **Tier-3 specialist unit** |
 | Total War | destroy 1,500 | War Machine | Strategic superweapon *(see §6)* + Warlord insignia |
 | Can Opener | destroy 60 vehicles | — | **Anti-air emplacement** |
-| Armour Column | destroy 250 vehicles | Can Opener | Airstrike power *(see §6)* |
-| Demolition Crew | destroy 25 structures | — | Orbital Scan power *(see §6)* |
+| Armour Column | destroy 250 vehicles | Can Opener | **Repair depot** |
+| Demolition Crew | destroy 25 structures | — | **Battlefield: Saltpan Reach** |
 | Scorched Earth | destroy 100 structures | Demolition Crew | Warhead decal |
 | Blooded | promote 20 units to veteran | — | Veteran insignia |
-| Old Guard | promote 15 units to elite | Blooded | Emergency Repair power |
+| Old Guard | promote 15 units to elite | Blooded | **Commander hero** |
 
 ### Economy
 
@@ -59,7 +59,7 @@ resets it.
 | --- | --- | --- | --- |
 | Prospector | mine 25,000 credits of ore | — | **Map: Frozen Sector** |
 | Strip Mine | mine 70,000 | Prospector | **Tech centre** |
-| Continental Yield | mine 1,000,000 | Strip Mine | Ore Boost power *(see §6)* |
+| Continental Yield | mine 1,000,000 | Strip Mine | **Battlefield: Glacier Shelf** |
 | War Chest | hold 20,000 credits at once | — | Magnate insignia |
 | Grid Surplus | run a 300-point power surplus | — | Grid decal |
 
@@ -73,7 +73,7 @@ resets it.
 | Total Mobilisation | train or build 750 units | Production Line | **Map: Coral Shore** |
 | Motor Pool | build 200 vehicles | — | Laurel decal |
 | Air Wing | build 400 vehicles | Motor Pool | **Aircraft — all four armies** |
-| Hostile Takeover | capture 10 enemy structures | — | Chronoshift power *(see §6)* |
+| Hostile Takeover | capture 10 enemy structures | — | **Battlefield: Foundry Line** |
 
 ### Tactics
 
@@ -205,7 +205,7 @@ players get everything.
 
 ## 5. Maps
 
-Four of the seven battlefields are earned. See [Maps](/avihaymenahem/voltmarch/wiki/Maps) for what each one plays like.
+Seven of the ten battlefields are earned. See [Maps](/avihaymenahem/voltmarch/wiki/Maps) for what each one plays like.
 
 | Map | Earned by |
 | --- | --- |
@@ -229,35 +229,46 @@ honestly.
 | --- | --- | --- |
 | Unit unlocks | 5 | **Yes.** The sidebar opens up. |
 | Structure unlocks | 3 | **Yes.** |
-| Map unlocks | 4 | **Yes.** The lobby unlocks the map. |
-| Commander powers | 5 | **Implemented, but there is no button** — see below. |
+| Map unlocks | 7 | **Yes.** The lobby unlocks the map. |
+| Commander powers | 0 | **Not a mission reward any more** — they are bought in the match. See below. |
 | Superweapon unlocks | 5 | **Gate nothing.** The superweapons themselves are real; these five ids are not what opens them. |
 | Objective credits | 13 | **No.** Nothing pays them (§3). |
 | Cosmetics | 14 | **Display only.** |
 
 ### Commander powers
 
-*Airstrike, Orbital Scan, Emergency Repair, Ore Boost, Chronoshift.* These are **real, implemented
-and distinct from the four hero abilities**. They belong to the player rather than to a unit, they
-charge from the start of every match, they work with every commander dead, and they land on a point
-you name anywhere on the map.
+*Airstrike, Orbital Scan, Emergency Repair, Ore Boost, Chronoshift.* **These stopped being a mission
+reward in v2.6.0 and are now bought inside the match**, which is why the table above pays them
+nothing.
 
-| Power | Earned by | Charge | Radius | Effect |
-| --- | --- | --- | --- | --- |
-| **Orbital Scan** | Demolition Crew — raze 25 structures | 2:00 | 90 m | Permanently charts a wide circle of the map |
-| **Airstrike** | Armour Column — kill 250 vehicles | 2:30 | 20 m | 260 High Explosive on the marker. Friendly-fires. |
-| **Emergency Repair** | Old Guard — promote 15 units to elite | 2:30 | 24 m | Restores 45 % of max HP to up to 24 units **and structures** |
-| **Ore Boost** | Continental Yield — mine 1,000,000 ore | 3:00 | — | 2,500 credits, immediately |
-| **Chronoshift** | Hostile Takeover — capture 10 structures | 4:00 | 30 m | Lifts up to 8 units from within 40 m of your base centroid to the marker |
+Build the **Command Post** — your army's is called a Command Post, a Command Bunker, a Pharos or a
+Signal Rig — and it publishes a fifth sidebar tab, **PWR**, listing the five powers as one-off
+purchases. Buy one and it is yours for the rest of that match: it charges on its own clock and is
+callable from the powers bar as often as the clock allows.
+
+| | |
+| --- | --- |
+| Structure | 1,500 credits, 20 s, **−80 power**, 750–800 HP, off the radar tier |
+| Powers | Orbital Scan 800 · Emergency Repair 1,200 · Airstrike 1,500 · Ore Boost 2,000 · Chronoshift 2,500 |
+| Whole set | 9,000 credits — most of a starting bank |
+
+| Power | Charge | Radius | Effect |
+| --- | --- | --- | --- |
+| **Orbital Scan** | 2:00 | 90 m | Permanently charts a wide circle of the map |
+| **Airstrike** | 2:30 | 20 m | 260 High Explosive on the marker. Friendly-fires. |
+| **Emergency Repair** | 2:30 | 24 m | Restores 45 % of max HP to up to 24 units **and structures** |
+| **Ore Boost** | 3:00 | — | 2,500 credits, immediately |
+| **Chronoshift** | 4:00 | 30 m | Lifts up to 8 units from within 40 m of your base centroid to the marker |
 
 The charge is spent whether or not the power catches anything.
 
-> **The honest caveat: there is no button for these yet.** The verb, the command bus, the
-> multiplayer relay, the replay recorder and all five effects are implemented and tested — a power
-> fired in a PvP match or a replay resolves identically on every machine — but nothing in the
-> interface draws the five buttons or the arm-then-click that aims them. Today they are reachable
-> only from the browser console (`__vmPowers.fire('airstrike', x, z)`). Charges are also not written
-> into a save, so a loaded game starts every power charging from full.
+**The tab is only on screen while a completed, POWERED Command Post is standing.** Lose it to a raid
+or brown out your grid and the tab closes — the powers you already bought stay bought, but you
+cannot buy another until the lights are back on.
+
+> **Two caveats this page used to carry are now discharged.** There IS a button: the powers bar sits
+> on the right rail with an arm-then-click reticle. And charges ARE written into a save, along with
+> the purchases themselves, so a reload gives back exactly the match you left.
 
 Do not confuse them with the **four commander abilities**, which are on the HUD, have a hotkey and a
 cooldown ring, and work. Those come free with your faction's 1,500-credit hero and are not in the

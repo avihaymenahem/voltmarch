@@ -157,7 +157,6 @@ export function rewardSummary(rewards: readonly Reward[] | undefined): string {
     case 'credits': return `+${Math.max(0, Math.floor(r.amount))} credits${extra}`;
     case 'unlock': return `${humaniseRewardId(r.unlockId)} unlocked${extra}`;
     case 'map': return `Map: ${humaniseRewardId(r.mapId)}${extra}`;
-    case 'power': return `${humaniseRewardId(r.powerId)} available${extra}`;
     case 'cosmetic': return `${humaniseRewardId(r.cosmeticId)} unlocked${extra}`;
     default: return '';
   }

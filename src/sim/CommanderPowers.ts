@@ -2,61 +2,54 @@
  * ============================================================================
  * VOLTMARCH — src/sim/CommanderPowers.ts
  * ============================================================================
- * The five commander powers the mission table pays out.
+ * The five commander powers a Command Post sells.
  *
- * These are PLAYER-level support powers: no unit carries them, they charge from
- * the start of the match, and they land on a point the caller names. That is a
- * different mechanism from `src/sim/Abilities.ts` — the four faction abilities
- * are self-centred on a hero and are keyed to `UnitDef.ability` — and
- * `src/progression/powers.ts` explains why the two are not one thing.
- *
- *
- * WHY IT EXISTS AT ALL: FIVE REWARDS THAT GRANTED NOTHING
- * -------------------------------------------------------
- * `power.airstrike`, `power.orbital-scan`, `power.emergency-repair`,
- * `power.ore-boost` and `power.chronoshift` were paid out by five missions,
- * written onto the profile by `MissionTracker`, printed on the end screen as
- * "Commander Power — <name> — Callable once charged, in any match", and read by
- * NOTHING. `UnlockGate` only ever answers about a def carrying `unlockedBy`,
- * and `UNLOCK_TAGS` in `src/data/Defs.ts` has no `power.*` row, so the five ids
- * sat in `profile.unlocked` where no question was ever asked of them. This file
- * is the answer to that question.
+ * These are PLAYER-level support powers: no unit carries them, they are BOUGHT
+ * once per match and then charge on their own clock, and they land on a point
+ * the caller names. That is a different mechanism from `src/sim/Abilities.ts` —
+ * the four faction abilities are self-centred on a hero and are keyed to
+ * `UnitDef.ability` — and `src/progression/powers.ts` explains why the two are
+ * not one thing.
  *
  *
- * THE SIMULATION NEVER ASKS WHETHER YOU OWN THE POWER — READ THIS BEFORE
- * "TIGHTENING" ANYTHING
- * ----------------------------------------------------------------------
- * `use()` checks the CHARGE and nothing else. It does not consult
- * `UnlockGate`, `isBuildable`, `__vmProgression`, or any other view of the
- * profile, and it must never learn how.
+ * OWNERSHIP IS WORLD STATE NOW, AND THIS FILE IS THE REASON THAT MATTERED
+ * -----------------------------------------------------------------------
+ * `use()` checks the CHARGE and `PlayerState.commanderPowerMask`. Forty lines
+ * used to stand here arguing that it could check only the first, and the
+ * argument was correct for the design it described:
  *
- * The profile is per-browser localStorage. `src/game/Scenarios.ts` already
- * consults the unlock gate while BUILDING the world, so a veteran and a fresh
- * account produce different starting armies from the same seed and desync on
- * tick zero — which is why PvP has to call `suppressUnlockGate(true)` and lift
- * gating entirely. A power that the simulation REFUSED on profile grounds would
- * be strictly worse than that: the refusal happens mid-match, on one machine
- * only, and the two simulations part company at the exact tick one player
- * pressed a button. There is no checksum that catches it earlier and no way to
- * explain it afterwards.
+ *   Ownership was PROFILE state. `power.airstrike` was a string in this
+ *   browser's localStorage, paid out by a mission. A simulation that refused a
+ *   power on those grounds would refuse it on ONE MACHINE, mid-match, at the
+ *   exact tick a player pressed a button — with no checksum that catches it
+ *   earlier and no way to explain it afterwards. So the refusal was pushed out
+ *   to the UI that draws the button, and `use()` was made deliberately
+ *   credulous.
  *
- * So ownership is resolved exactly once, on the machine that ISSUES the
- * command, by the UI that draws the button — the same place a locked cameo is
- * greyed out. What that means per configuration:
+ * A BUILDING IS NOT THE PROFILE. `commanderPowerMask` grows in exactly one
+ * place (`ProductionService.installPower`), inside `simTick`, at a fixed point
+ * in a fixed order, off a command that crossed the bus — so both clients set the
+ * bit on the same tick or neither does. It is hashed by `Checksum.hashPlayers`,
+ * so a divergence in it is caught where it happens rather than as a mystery
+ * several seconds later. It is in the save file, by key. The AI reads the same
+ * bit the human's sidebar greys the cameo on.
  *
- *   Single player   the HUD offers the powers this profile has earned. The AI
- *                   resolves against the same profile (`UnlockGate.mirrorAI`),
- *                   so it fields what you field.
- *   PvP             `suppressUnlockGate(true)` is already set for the match, so
- *                   every client offers all five to everybody. Both sides have
- *                   the same menu, the command stream is identical, and there
- *                   is nothing for the profile to make asymmetric.
- *   Replay          the command stream is the recording. Ownership never enters
- *                   into it, so a replay plays back on an empty profile.
+ * The tightrope is therefore gone, and with it the reason the simulation had to
+ * be lied to. What is left is the ordinary rule every other purchase in this
+ * game already follows: you own it because you bought it, in this match, and
+ * everyone watching agrees.
  *
- * A client hacked to issue a power it has not earned therefore gains nothing in
- * PvP (everyone already has all five) and cheats only itself in single player,
- * which is where `?unlockall` already lives.
+ * WHAT THIS BUYS THAT THE OLD ARRANGEMENT COULD NOT:
+ *
+ *   Single player   the powers are earned in the match rather than owned from
+ *                   the start. A fresh account and a veteran open identically.
+ *   PvP             no `suppressUnlockGate` special case is needed and none
+ *                   exists here: both sides buy from a structure both sides can
+ *                   see and shoot at.
+ *   Replay          the purchase is in the command stream, so it replays.
+ *   Cheating        a client hacked to issue an unbought power is now REFUSED by
+ *                   its own simulation, which is the first time that sentence
+ *                   has been true.
  *
  *
  * DETERMINISM
@@ -79,29 +72,42 @@
  *   1. `CommanderPowerBar` in `src/ui/Sidebar.ts` draws the buttons and the
  *      arm-then-click that aims them, off `powersOwnedBy` (v2.3.0).
  *   2. `AI.callPower` issues all five through `channels.command`, gated by
- *      `AiDifficulty.powerMask` (v2.3.0).
+ *      `powerMask` AND by the purchase (v2.3.0, v2.6.0).
  *   3. CHARGES ARE IN THE SAVE, through `chargeStates`/`setChargeTicks` below.
  *
- * ON (3), BECAUSE THE BOUNDARY IS THE INTERESTING PART. Two different things
- * were being conflated:
+ * ON (3), BECAUSE THE BOUNDARY IS THE INTERESTING PART, and because v2.6.0
+ * moved it. There are two per-match facts here now and the save carries both:
  *
- *   OWNERSHIP is PROFILE state. `power.airstrike` lives in `profile.unlocked`,
- *     `src/progression/profile-store.ts` persists it, and it must NEVER enter a
- *     save file: a save that carried unlocks would be a way to hand a fresh
- *     account content it had not earned, and the same file would then describe
- *     a different game on two profiles.
+ *   OWNERSHIP is `PlayerState.commanderPowerMask`, sim state, saved by KEY
+ *     alongside `upgradeKeys` in the players chunk. It used to be profile state
+ *     and was deliberately excluded from every save — "a save that carried
+ *     unlocks would be a way to hand a fresh account content it had not earned".
+ *     That sentence is still true of the PROFILE and no longer describes this:
+ *     a bought power is a thing that happened in one match, so a snapshot of
+ *     that match must carry it, and a reload that handed the powers back or took
+ *     them away would be the same defect the charge omission was.
  *   CHARGE is per-MATCH SIMULATION state. It is seeded full at match start —
  *     that is correct and unchanged — but a LOAD is not a match start. It is
  *     the resumption of one match, and `SaveGame.ts`'s whole thesis is that a
  *     snapshot "restores the numbers that were there".
  *
- * The old note called the omission "the safe direction to be wrong in — you
- * never load into a free strike". That was only half the ledger. `Shell.loadGame`
- * boots a fresh engine before restoring, so a load ran `resetCharges()` over
- * EVERY SLOT, the AI's included: reloading during a hard fight put the enemy
- * brain's Emergency Repair and Airstrike back to 150 s of charge, every time.
- * Save-scumming a fight disarmed the opponent's entire late-game layer, which is
- * not a safe direction to be wrong in at all.
+ * The old note called the charge omission "the safe direction to be wrong in —
+ * you never load into a free strike". That was only half the ledger.
+ * `Shell.loadGame` boots a fresh engine before restoring, so a load ran
+ * `resetCharges()` over EVERY SLOT, the AI's included: reloading during a hard
+ * fight put the enemy brain's Emergency Repair and Airstrike back to 150 s of
+ * charge, every time. Save-scumming a fight disarmed the opponent's entire
+ * late-game layer, which is not a safe direction to be wrong in at all.
+ *
+ *
+ * THE CHARGE TABLE STILL TICKS FOR POWERS NOBODY OWNS, DELIBERATELY
+ * -----------------------------------------------------------------
+ * `tick()` decrements every slot for every player whether the bit is set or not,
+ * and `resetCharges()` seeds all of them at construction. That is one branchless
+ * loop over 8 x 6 int32s rather than a mask test per slot, and it means a power
+ * bought at minute twelve is callable the moment it is paid for rather than
+ * starting a fresh 240-second silence on top of the 2500 credits and the thirty
+ * seconds of build time. `installPower` says the same thing from the other side.
  *
  *
  * PHASE.COMMAND, ORDER 9700
@@ -131,6 +137,7 @@ import { clampWorld } from '../core/math';
 import type { World } from '../core/world';
 import {
   COMMANDER_POWERS, COMMANDER_POWER_FX, CommanderPowerId, isCommanderPowerId,
+  ownsCommanderPower,
 } from '../progression/powers';
 import { getEconomy } from './Economy';
 
@@ -149,6 +156,8 @@ export type PowerResult =
   | 'charging'
   /** `power` is not a `CommanderPowerId`. A caller bug, not a player one. */
   | 'unknown'
+  /** This player has not bought it from a Command Post. */
+  | 'notOwned'
   /** Not a plausible player slot. */
   | 'noPlayer'
   /** It fired the transaction and there was simply nothing there to affect. */
@@ -174,6 +183,17 @@ export interface CommanderPowerStats {
   fired: Int32Array;
   /** Calls refused because the power had not finished charging. */
   refusedCharging: number;
+  /**
+   * Calls refused because the player never bought the power.
+   *
+   * A COUNTER AND NOT A CONSOLE WARNING. On an honest client this is zero
+   * forever — the HUD only draws bought powers and the AI only calls bought
+   * powers — so a non-zero value means either a hacked client, a replay from a
+   * build whose purchase rules differed, or a bug in the gate. All three are
+   * worth being able to see after the fact, and none is worth a log line inside
+   * `simTick`.
+   */
+  refusedUnowned: number;
   unitsBombed: number;
   cellsCharted: number;
   entitiesRepaired: number;
@@ -194,6 +214,7 @@ export class CommanderPowerService {
   readonly stats: CommanderPowerStats = {
     fired: new Int32Array(COMMANDER_POWERS.length),
     refusedCharging: 0,
+    refusedUnowned: 0,
     unitsBombed: 0,
     cellsCharted: 0,
     entitiesRepaired: 0,
@@ -243,10 +264,24 @@ export class CommanderPowerService {
     return ticks <= 0 ? 0 : ticks / SIM_HZ;
   }
 
-  /** True when this player may call this power right now. */
+  /**
+   * True when this player may call this power right now — BOUGHT and charged.
+   *
+   * Both halves, because both halves are what `use()` enforces and a HUD button
+   * that lit up for a power the simulation would refuse is the bug this whole
+   * arrangement exists to make impossible. The AI asks the same question.
+   */
   isReady(player: PlayerId, power: number): boolean {
     const slot = this.slotOf(player, power);
-    return slot >= 0 && this.charge[slot] <= 0;
+    if (slot < 0 || this.charge[slot] > 0) return false;
+    const p = this.world.players[player as number];
+    return p !== undefined && ownsCommanderPower(p, power);
+  }
+
+  /** Has this player bought this power in this match? */
+  owns(player: PlayerId, power: number): boolean {
+    const p = this.world.players[player as number];
+    return p !== undefined && ownsCommanderPower(p, power);
   }
 
   /* ======================================================================
@@ -330,6 +365,17 @@ export class CommanderPowerService {
     if (!isCommanderPowerId(power)) return 'unknown';
     const slot = this.slotOf(player, power);
     if (slot < 0) return 'noPlayer';
+    // THE PURCHASE, AND THE SIMULATION IS ALLOWED TO ASK. `commanderPowerMask`
+    // is written by `ProductionService.installPower` inside `simTick` off a
+    // command that crossed the bus, so both clients answer this identically on
+    // the same tick — which is the whole reason the header stopped being an
+    // argument for NOT asking. Before the charge, because "you never bought it"
+    // is final and "still charging" is not.
+    const p = this.world.players[player as number];
+    if (p === undefined || !ownsCommanderPower(p, power)) {
+      this.stats.refusedUnowned++;
+      return 'notOwned';
+    }
     if (this.charge[slot] > 0) { this.stats.refusedCharging++; return 'charging'; }
 
     const spec = COMMANDER_POWERS[power];

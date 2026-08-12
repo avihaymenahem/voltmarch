@@ -38,7 +38,8 @@ import { World } from '../src/core/world';
 import { Economy, setActiveEconomy } from '../src/sim/Economy';
 import {
   COMMANDER_POWERS, COMMANDER_POWER_FX, COMMANDER_POWER_LIST, CommanderPowerId,
-  isCommanderPowerId, powerByKey, powerByUnlockId, powersOwnedBy,
+  commanderPowerContentKey, grantCommanderPower, isCommanderPowerId, ownedCommanderPowerKeys,
+  ownsCommanderPower, powerByContentKey, powerByKey, powersOwnedBy, setCommanderPowersByKey,
 } from '../src/progression/powers';
 import {
   CommanderPowerService, commanderPowerSeamOf, setCommanderPowerSeam,
@@ -115,8 +116,31 @@ function spawn(rig: Rig, player: PlayerId, x: number, z: number, o: SpawnOpts = 
   return h;
 }
 
-/** Run every power's charge out so `use` is testable without a 4-minute wait. */
+/**
+ * Buy every power for every seated player.
+ *
+ * The purchase is `ProductionService.installPower`'s job in the running game;
+ * these tests build a `CommanderPowerService` over a bare world with no
+ * production layer in it, so the mask is set directly through the same pure
+ * helper that function calls.
+ */
+function own(rig: Rig): void {
+  for (const pl of rig.world.players) {
+    for (const p of COMMANDER_POWER_LIST) grantCommanderPower(pl, p.id as number);
+  }
+}
+
+/**
+ * Buy every power for every seated player, then run every charge out.
+ *
+ * TWO CONDITIONS SINCE v2.6.0, and folding them into one helper is deliberate:
+ * `use()` now checks `commanderPowerMask` BEFORE the charge, so a fixture that
+ * only waited would get `notOwned` from every call and the resulting failure
+ * would be about the fixture rather than about the effect under test. The
+ * ownership gate has its own tests in §2b, where it is the subject.
+ */
 function charge(rig: Rig): void {
+  own(rig);
   let longest = 0;
   for (const p of COMMANDER_POWER_LIST) longest = Math.max(longest, p.chargeSeconds);
   step(rig, Math.ceil(longest * SIM_HZ) + 1);
@@ -134,40 +158,132 @@ describe('the commander power table', () => {
     }
   });
 
-  it('gives every power a unique key, a unique unlock id and a real charge', () => {
+  it('gives every power a unique key, a unique content key and a real charge', () => {
     const keys = new Set<string>();
     const ids = new Set<string>();
     for (const p of COMMANDER_POWER_LIST) {
+      const content = commanderPowerContentKey(p);
       expect(keys.has(p.key), `duplicate key "${p.key}"`).toBe(false);
-      expect(ids.has(p.unlockId), `duplicate unlock "${p.unlockId}"`).toBe(false);
+      expect(ids.has(content), `duplicate content key "${content}"`).toBe(false);
       keys.add(p.key);
-      ids.add(p.unlockId);
-      expect(p.unlockId.startsWith('power.'), `"${p.key}" is not in the power namespace`).toBe(true);
+      ids.add(content);
+      expect(content.startsWith('power.'), `"${p.key}" is not in the power namespace`).toBe(true);
       expect(p.label.length, `"${p.key}" has no label`).toBeGreaterThan(0);
       expect(p.hint.length, `"${p.key}" has no hint`).toBeGreaterThan(0);
       expect(p.chargeSeconds).toBeGreaterThan(0);
     }
   });
 
-  it('resolves a power by unlock id and by key, and refuses a stranger', () => {
-    expect(powerByUnlockId('power.airstrike')?.id).toBe(CommanderPowerId.Airstrike);
+  it('resolves a power by content key and by key, and refuses a stranger', () => {
+    expect(powerByContentKey('power.airstrike')?.id).toBe(CommanderPowerId.Airstrike);
     expect(powerByKey('chronoshift')?.id).toBe(CommanderPowerId.Chronoshift);
-    expect(powerByUnlockId('power.does-not-exist')).toBeUndefined();
+    expect(powerByContentKey('power.doesNotExist')).toBeUndefined();
+    // A bare power key is NOT a content key: the prefix is the join.
+    expect(powerByContentKey('airstrike')).toBeUndefined();
     // The None row is not addressable through either lookup.
-    expect(powerByUnlockId('')).toBeUndefined();
+    expect(powerByContentKey('')).toBeUndefined();
     expect(powerByKey('none')).toBeUndefined();
     expect(isCommanderPowerId(CommanderPowerId.None)).toBe(false);
     expect(isCommanderPowerId(COMMANDER_POWERS.length)).toBe(false);
     expect(isCommanderPowerId(1.5)).toBe(false);
   });
 
-  it('answers ownership from a predicate and never from the profile itself', () => {
-    const owned = powersOwnedBy((id) => id === 'power.ore-boost');
-    expect(owned.map((p) => p.key)).toEqual(['oreBoost']);
-    // The absent-progression contract: `isUnlocked` answers true with no layer
-    // installed, so every power is offered rather than none.
-    expect(powersOwnedBy(() => true).length).toBe(COMMANDER_POWER_LIST.length);
-    expect(powersOwnedBy(() => false).length).toBe(0);
+  it('answers ownership from the MATCH mask, never from a profile', () => {
+    // The v2.6.0 change in one assertion. `powersOwnedBy` used to take an
+    // `isUnlocked` predicate and read this browser's localStorage; it takes
+    // simulation state now, which is the whole reason
+    // `CommanderPowerService.use` is allowed to ask the same question.
+    const owner = { commanderPowerMask: 0 };
+    expect(powersOwnedBy(owner).length).toBe(0);
+
+    expect(grantCommanderPower(owner, CommanderPowerId.OreBoost)).toBe(true);
+    expect(powersOwnedBy(owner).map((p) => p.key)).toEqual(['oreBoost']);
+    // A second grant is a no-op and says so, exactly as `grantUpgrade` does.
+    expect(grantCommanderPower(owner, CommanderPowerId.OreBoost)).toBe(false);
+
+    for (const p of COMMANDER_POWER_LIST) grantCommanderPower(owner, p.id as number);
+    expect(powersOwnedBy(owner).length).toBe(COMMANDER_POWER_LIST.length);
+
+    // The None row is not ownable and neither is anything off the end.
+    expect(grantCommanderPower(owner, CommanderPowerId.None)).toBe(false);
+    expect(grantCommanderPower(owner, COMMANDER_POWERS.length)).toBe(false);
+    expect(ownsCommanderPower(owner, CommanderPowerId.None)).toBe(false);
+  });
+
+  it('round-trips the bought set through KEYS, which is what the save stores', () => {
+    // Keys and not the raw mask, for the reason `SaveGame` stores
+    // `upgradeKeys`: a save outlives the table that produced its indices.
+    const owner = { commanderPowerMask: 0 };
+    grantCommanderPower(owner, CommanderPowerId.Airstrike);
+    grantCommanderPower(owner, CommanderPowerId.Chronoshift);
+    const keys = ownedCommanderPowerKeys(owner, []);
+    expect(keys).toEqual(['airstrike', 'chronoshift']);
+
+    const loaded = { commanderPowerMask: 0 };
+    setCommanderPowersByKey(loaded, keys);
+    expect(loaded.commanderPowerMask).toBe(owner.commanderPowerMask);
+
+    // REPLACES, never merges — a load must not leave the previous match's
+    // purchases behind — and an unknown key from a later build is dropped
+    // rather than guessed at.
+    setCommanderPowersByKey(loaded, ['oreBoost', 'somethingFromTheFuture']);
+    expect(ownedCommanderPowerKeys(loaded, [])).toEqual(['oreBoost']);
+  });
+});
+
+/* ==========================================================================
+ * 1b. OWNERSHIP — the gate the simulation was once forbidden to have
+ *
+ * The header of `src/sim/CommanderPowers.ts` spent forty lines explaining why
+ * `use()` could not consult ownership: it lived in this browser's localStorage,
+ * so a refusal would land on one machine only, at the tick a button was
+ * pressed. `commanderPowerMask` is written inside `simTick` off a command that
+ * crossed the bus, which is what makes these assertions safe to make at all.
+ * ========================================================================== */
+
+describe('ownership', () => {
+  it('refuses a power that was never bought, however long the charge has run', () => {
+    const rig = makeRig();
+    // Everything else `use()` needs is true: the charge is out, the player is
+    // real, the target is on the map. Only the purchase is missing.
+    let longest = 0;
+    for (const p of COMMANDER_POWER_LIST) longest = Math.max(longest, p.chargeSeconds);
+    step(rig, Math.ceil(longest * SIM_HZ) + 1);
+
+    for (const p of COMMANDER_POWER_LIST) {
+      expect(rig.powers.use(P0, p.id, 100, 100), `"${p.key}" fired unbought`).toBe('notOwned');
+      expect(rig.powers.isReady(P0, p.id), `"${p.key}" reported ready unbought`).toBe(false);
+      expect(rig.powers.owns(P0, p.id)).toBe(false);
+    }
+    expect(rig.powers.stats.refusedUnowned).toBe(COMMANDER_POWER_LIST.length);
+    // The charge was NOT spent by a refusal. A power you do not own must not be
+    // a way to reset somebody else's clock.
+    expect(rig.powers.stats.fired.reduce((a, b) => a + b, 0)).toBe(0);
+  });
+
+  it('fires exactly the power that was bought, and no other', () => {
+    const rig = makeRig();
+    grantCommanderPower(rig.world.players[0], CommanderPowerId.OreBoost);
+    let longest = 0;
+    for (const p of COMMANDER_POWER_LIST) longest = Math.max(longest, p.chargeSeconds);
+    step(rig, Math.ceil(longest * SIM_HZ) + 1);
+
+    expect(rig.powers.use(P0, CommanderPowerId.OreBoost, 100, 100)).toBe('fired');
+    expect(rig.powers.use(P0, CommanderPowerId.Airstrike, 100, 100)).toBe('notOwned');
+  });
+
+  it('is per player: one slot buying a power does not arm the other', () => {
+    // The PvP-shaped assertion. Ownership is a column of the player block, so
+    // it cannot leak sideways the way a module-level set could.
+    const rig = makeRig();
+    grantCommanderPower(rig.world.players[0], CommanderPowerId.Airstrike);
+    let longest = 0;
+    for (const p of COMMANDER_POWER_LIST) longest = Math.max(longest, p.chargeSeconds);
+    step(rig, Math.ceil(longest * SIM_HZ) + 1);
+
+    expect(rig.powers.isReady(P0, CommanderPowerId.Airstrike)).toBe(true);
+    expect(rig.powers.isReady(P1, CommanderPowerId.Airstrike)).toBe(false);
+    expect(rig.powers.use(P1, CommanderPowerId.Airstrike, 100, 100)).toBe('notOwned');
   });
 });
 
@@ -178,6 +294,7 @@ describe('the commander power table', () => {
 describe('the charge', () => {
   it('starts full, so nothing is callable on the first tick of a match', () => {
     const rig = makeRig();
+    own(rig);
     for (const p of COMMANDER_POWER_LIST) {
       expect(rig.powers.isReady(P0, p.id), `"${p.key}" was ready at t=0`).toBe(false);
       expect(rig.powers.chargeSecondsOf(P0, p.id)).toBeGreaterThan(p.chargeSeconds - 1);
@@ -188,6 +305,7 @@ describe('the charge', () => {
 
   it('counts down in whole ticks and is spent again on use', () => {
     const rig = makeRig();
+    own(rig);
     const spec = COMMANDER_POWERS[CommanderPowerId.OreBoost];
     step(rig, Math.ceil(spec.chargeSeconds * SIM_HZ) + 1);
 
@@ -271,6 +389,9 @@ describe('the save port', () => {
 
   it('restores a ready power as ready, and the AI slot alongside the human one', () => {
     const rig = makeRig();
+    // `isReady` is BOUGHT AND CHARGED since v2.6.0; this test is about the
+    // charge half, so the purchase half is established first.
+    own(rig);
     expect(rig.powers.isReady(P0, CommanderPowerId.Airstrike)).toBe(false);
 
     expect(rig.powers.setChargeTicks(P0, 'airstrike', 0)).toBe(true);
@@ -285,6 +406,7 @@ describe('the save port', () => {
 
   it('refuses a key it does not have and clamps one that is over-full', () => {
     const rig = makeRig();
+    own(rig);
     expect(rig.powers.setChargeTicks(P0, 'timeStop', 100)).toBe(false);
     expect(rig.powers.setChargeTicks(P0, '', 100)).toBe(false);
     expect(rig.powers.setChargeTicks(P0, 'none', 100), 'the None row is not a power').toBe(false);

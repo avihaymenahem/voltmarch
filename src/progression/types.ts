@@ -59,7 +59,12 @@ export type Reward =
   | { kind: 'unlock'; unlockId: string }
   | { kind: 'credits'; amount: number }
   | { kind: 'map'; mapId: string }
-  | { kind: 'power'; powerId: string }
+  // NO `power` VARIANT. There was one until v2.6.0, paid by five missions and
+  // printed on the end screen as "Callable once charged, in any match". The
+  // five commander powers are BOUGHT from a Command Post now
+  // (`src/sim/Production.ts`, `BuildKind.Power`), so a mission has nothing to
+  // grant and a variant nothing produces would be exactly the dead schema this
+  // block's own paragraph warns about.
   | { kind: 'cosmetic'; cosmeticId: string };
 
 export interface MissionDef {

@@ -617,6 +617,74 @@ function oculus(): StructureMassList {
   ]);
 }
 
+/**
+ * THE PHAROS. The Pact's Command Post: a LIGHTHOUSE, which is what an army that
+ * signals with mirrors builds when it needs to be heard rather than seen.
+ *
+ * The Reliquary answers "where does the tech come from" with a focusing lens
+ * held inside the crown. This answers "where do the orders come from" with a
+ * lantern held ABOVE it — a fluted column carrying an open gallery, a gold
+ * flame in the middle of it, and a finial on top. Same 2x2 plan as the
+ * Reliquary and two and a half metres taller, so the two are told apart from
+ * across the map by the one thing that reads at that distance: how far up they
+ * go and what is at the top.
+ *
+ * `bodyFraction` 0.36 rather than the Reliquary's 0.50. Every Pact structure
+ * corbels — the main volume overhangs its plinth — and the column has to stand
+ * clear of that overhang or the whole crown reads as a chimney growing out of a
+ * wall. 0.36 puts the shell's crown at roughly 5 m on a 10.5 m roofline, which
+ * leaves the column and the lantern the top half of the silhouette.
+ */
+function pharos(): StructureMassList {
+  const f = fp('commandPost');
+  const s = pactShell(f.w, f.h, f.height, { bodyFraction: 0.36, team: 1.14, lightCount: 5 });
+  const colBase = s.crownTop - 0.3;
+  const galleryY = f.height - 2.3;
+  const colH = galleryY - colBase;
+  s.masses.push(
+    // The column. A tapered lathe, never a post: PACT-5 wants cones, and a
+    // parallel shaft here would be the one axis-aligned wall on the building.
+    cyl('column', MassRole.Primary, [s.w * 0.34, colH, s.w * 0.34],
+      [0, colBase + colH * 0.5, s.d * 0.04], 'paintMed', {
+        topRadius: 0.74, capSlot: 'paintSmall', segments: 12,
+      }),
+    // The gallery: a wide ring the lantern sits inside, corbelled out from the
+    // column exactly as the body is corbelled out from the plinth.
+    cyl('gallery', MassRole.Primary, [s.w * 0.46, 0.55, s.w * 0.46], [0, galleryY, s.d * 0.04], 'bareMetal', {
+      topRadius: 1.08, capSlot: 'grille', segments: 12, chamfer: 0.06,
+    }),
+    // The flame. The Pact's accent is gold and this is the only place on the
+    // roster it is the whole point of a mass.
+    cyl('lantern', MassRole.Emissive, [s.w * 0.22, 1.55, s.w * 0.22], [0, galleryY + 0.95, s.d * 0.04], 'emissive', {
+      capSlot: 'emissive', feature: Feature.Window, segments: 10, chamfer: 0.05, group: 'lantern',
+    }),
+    // The cap over it, and the finial above that. A lantern with an open top
+    // would read as a smokestack.
+    cyl('lantern.cap', MassRole.Primary, [s.w * 0.34, 0.85, s.w * 0.34], [0, galleryY + 2.05, s.d * 0.04], 'paintMed', {
+      topRadius: 0.34, capSlot: 'grille', segments: 10,
+    }),
+    cyl('finial', MassRole.Greeble, [0.34, 0.75, 0.34], [0, galleryY + 2.80, s.d * 0.04], 'bareMetal', {
+      group: 'finial', topRadius: 0.30, segments: 8, chamfer: 0.04,
+    }),
+    // Four mirror vanes around the gallery, raked outward. Mirrored on X, which
+    // is what the Pact's whole visual language is made of.
+    box('vane', MassRole.Greeble, [1.30, 0.14, 0.55], [s.w * 0.40, galleryY + 0.30, s.d * 0.04], 'bareMetal', {
+      mirrorX: true, group: 'vanes', rot: [0, 0, -0.28], chamfer: 0.04,
+    }),
+    box('vane.aft', MassRole.Greeble, [0.55, 0.14, 1.30], [0, galleryY + 0.30, -s.d * 0.36], 'bareMetal', {
+      group: 'vanes', rot: [0.28, 0, 0], chamfer: 0.04,
+    }),
+    // The cable trunk down one flank, and the cistern that cools the lantern.
+    box('trunk', MassRole.Greeble, [s.w * 0.15, s.roofY * 0.52, s.d * 0.15], [s.w * 0.33, s.roofY * 0.26, -s.d * 0.30], 'grille', {
+      mirrorX: true, group: 'trunk',
+    }),
+  );
+  return list('meridian_pharos', 'Pharos', 'commandPost', s.masses, [
+    ...baseSockets(s.d, s.roofY + 0.8, s.w * 0.33, -s.d * 0.30),
+    { part: PartId.Antenna, pos: [0, f.height, 0] },
+  ]);
+}
+
 function reliquary(): StructureMassList {
   const f = fp('battleLab');
   const s = pactShell(f.w, f.h, f.height, { bodyFraction: 0.50, team: 1.10, lightCount: 6 });
@@ -1037,6 +1105,7 @@ export const MERIDIAN_STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   depot(),
   slipway(),
   sunVault(),
+  pharos(),
   glavePost(),
   heliosSpire(),
   rampart(),
@@ -1058,6 +1127,7 @@ export const MERIDIAN_STRUCTURE_MODELS: Readonly<Record<string, string>> = {
   mrdForgeyard: 'meridian_forgeyard',
   mrdOculus: 'meridian_oculus',
   mrdReliquary: 'meridian_reliquary',
+  mrdPharos: 'meridian_pharos',
   mrdDepot: 'meridian_depot',
   mrdSlipway: 'meridian_slipway',
   mrdVault: 'meridian_vault',

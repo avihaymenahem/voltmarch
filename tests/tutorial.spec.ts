@@ -207,7 +207,12 @@ describe('tutorial — bindings come from ActionCatalogue, never from prose', ()
 
   it('takes the build-tab letters from the catalogue arrays, not a copy', () => {
     const row = actionKeyRow('bld.tabKeys', bindings, false, codeLabel);
-    expect(row?.chips.map((c) => c.text)).toEqual([...BUILD_TAB_HOTKEY_LABELS]);
+    // The Powers tab's slot is the empty string — every letter is spoken for
+    // and a badge on a key that does nothing is worse than no badge, which is
+    // this catalogue's own rule. `bld.tabKeys` filters it, so the help screen
+    // shows keys that exist and the arrays stay index-aligned with `BuildTab`.
+    expect(row?.chips.map((c) => c.text))
+      .toEqual(BUILD_TAB_HOTKEY_LABELS.filter((c) => c !== ''));
   });
 
   it('renders a pointer action as its gesture phrase', () => {

@@ -1284,6 +1284,13 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
   // and then never places, with nothing logged: `spawnBuilding` looks this
   // table up before it ever consults the def.
   repairDepot: building('repairDepot', B.repairDepot, 800, -30, 18, 0, Faction.Neutral),
+  // The Command Post, the only structure that publishes `BuildTab.Powers`. No
+  // flag: it is not a factory in the sense `GarrisonService.refusalFor` means,
+  // it produces no entity, and it must go dark FIRST in a brownout — which
+  // `shedPriority` already gives an unflagged consumer. The tab it opens is
+  // gated on `EntityFlag.Powered`, so going dark closes it, which is the whole
+  // "standing and powered" rule stated once in the power grid.
+  commandPost: building('commandPost', B.commandPost, 750, -80, 22, 0, Faction.Neutral),
 
   pillbox: building('pillbox', B.pillbox, 500, 0, 26,
     EntityFlag.CanAttack, Faction.Allies, { weaponRange: 22 }),
@@ -1340,6 +1347,7 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
     EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Meridian),
   mrdReliquary: building('mrdReliquary', B.battleLab, 850, -60, 20, 0, Faction.Meridian),
   mrdDepot: building('mrdDepot', B.repairDepot, 700, -30, 18, 0, Faction.Meridian),
+  mrdPharos: building('mrdPharos', B.commandPost, 700, -80, 22, 0, Faction.Meridian),
 
   mrdRampart: building('mrdRampart', B.wall, 320, 0, 0,
     EntityFlag.NotSelectable, Faction.Meridian),
@@ -1371,6 +1379,7 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
     EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Reclaim),
   rclCrucible: building('rclCrucible', B.battleLab, 900, -60, 20, 0, Faction.Reclaim),
   rclDepot: building('rclDepot', B.repairDepot, 900, -30, 18, 0, Faction.Reclaim),
+  rclSignalRig: building('rclSignalRig', B.commandPost, 800, -80, 22, 0, Faction.Reclaim),
 
   rclBarricade: building('rclBarricade', B.wall, 340, 0, 0,
     EntityFlag.NotSelectable, Faction.Reclaim),
@@ -1563,6 +1572,7 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   barracks: ['barracks', 'infantrybarracks', 'boot camp', 'bootcamp'],
   radar: ['radar', 'radardome', 'airfield'],
   battleLab: ['battlelab', 'techcenter', 'lab', 'researchlab'],
+  commandPost: ['commandpost', 'command', 'post', 'powerspost'],
   oreSilo: ['oresilo', 'silo', 'storage'],
   pillbox: ['pillbox', 'bunker', 'machinegunnest'],
   prismTower: ['prismtower', 'prism', 'spectrumtower'],
@@ -1585,6 +1595,7 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   mrdVault: ['mrdvault', 'sunvault', 'meridianvault'],
   mrdSlipway: ['mrdslipway', 'slipway', 'meridianslipway'],
   mrdReliquary: ['mrdreliquary', 'reliquary', 'meridianreliquary'],
+  mrdPharos: ['mrdpharos', 'pharos', 'meridianpharos'],
   mrdRampart: ['mrdrampart', 'rampart', 'meridianrampart'],
   mrdGlaive: ['mrdglaive', 'glaivepost', 'meridianglaive'],
   mrdHelios: ['mrdhelios', 'heliosspire', 'meridianhelios'],
@@ -1599,6 +1610,7 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   rclHeap: ['rclheap', 'slagheap', 'reclaimheap'],
   rclDrydock: ['rcldrydock', 'breakerdock', 'reclaimdrydock'],
   rclCrucible: ['rclcrucible', 'crucible', 'reclaimcrucible'],
+  rclSignalRig: ['rclsignalrig', 'signalrig', 'reclaimsignalrig'],
   rclBarricade: ['rclbarricade', 'scrapbarricade', 'reclaimbarricade'],
   rclSpitpost: ['rclspitpost', 'spitpost', 'reclaimspitpost'],
   rclPylon: ['rclpylon', 'arcpylon', 'reclaimpylon'],
@@ -1651,6 +1663,7 @@ const FACTION_KEY_MAP: Readonly<Record<string, readonly string[]>> = {
   warFactory:       ['warFactory',  'warFactory', 'warFactory', 'mrdForgeyard',     'rclBreakerYard'],
   radar:            ['radar',       'radar',      'radar',      'mrdOculus',        'rclSpotter'],
   battleLab:        ['battleLab',   'battleLab',  'battleLab',  'mrdReliquary',     'rclCrucible'],
+  commandPost:      ['commandPost', 'commandPost','commandPost','mrdPharos',        'rclSignalRig'],
   oreSilo:          ['oreSilo',     'oreSilo',    'oreSilo',    'mrdVault',         'rclHeap'],
   // The pad. Allies and Soviets share one def (Faction.Neutral), so the first
   // three columns are the same key and only the two new armies branch.
