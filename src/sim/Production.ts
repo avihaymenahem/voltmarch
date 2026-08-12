@@ -1595,6 +1595,13 @@ export class ProductionService implements QueueHooks {
   private readonly factories: Int32Array;
   /** Chosen spawn factory per (player, tab). Slot index, or -1. */
   private readonly primaryFactory: Int32Array;
+  /**
+   * Per player and tab, the completed `needsShore` producer — a dock. -1 when
+   * this army owns none. See the note in `rescanAvailability`: a hull has to
+   * egress onto water, and `primaryFactory` cannot tell a slipway from a war
+   * factory because both declare the same tab.
+   */
+  private readonly navalFactory: Int32Array;
 
   private readonly scratch: PlayerScratch[] = [];
   private readonly intents: Intent[] = [];
@@ -1652,6 +1659,7 @@ export class ProductionService implements QueueHooks {
     this.buildingCount = new Int32Array(n);
     this.factories = new Int32Array(MAX_PLAYERS * BUILD_TAB_COUNT);
     this.primaryFactory = new Int32Array(MAX_PLAYERS * BUILD_TAB_COUNT).fill(-1);
+    this.navalFactory = new Int32Array(MAX_PLAYERS * BUILD_TAB_COUNT).fill(-1);
 
     for (let p = 0; p < MAX_PLAYERS; p++) {
       this.scratch.push({
@@ -2051,6 +2059,7 @@ export class ProductionService implements QueueHooks {
     this.buildingCount.fill(0);
     this.factories.fill(0);
     this.primaryFactory.fill(-1);
+    this.navalFactory.fill(-1);
 
     const list = st.byKind[EntityKind.Building];
     const count = st.byKindCount[EntityKind.Building];
@@ -2088,6 +2097,38 @@ export class ProductionService implements QueueHooks {
         else if ((flags & EntityFlag.PrimaryFactory) !== 0
           && (st.flags[this.primaryFactory[fi]] & EntityFlag.PrimaryFactory) === 0) {
           this.primaryFactory[fi] = i;
+        }
+        /*
+         * A SHIP COMES OUT OF A SHIPYARD, AND THE TAB CANNOT SAY SO.
+         *
+         * All four docks declare `producesTabs: [V]` — the same tab the war
+         * factory declares — because a hull IS a vehicle to the sidebar and to
+         * the queue. So `primaryFactory[V]` is whichever of the two the rescan
+         * met first, and on any real build order that is the war factory: it is
+         * founded minutes earlier and `EntityFlag.PrimaryFactory` follows the
+         * player's own choice, which no AI ever makes.
+         *
+         * `tryEgress` then asked `findEgressSpot` for a WATER cell within
+         * `navalEgressRings` of the WAR FACTORY's door. Inland there is none, so
+         * the search failed, `tryEgress` returned false, and the finished hull
+         * sat at the head of the Vehicles queue with `ready: true` FOREVER —
+         * taking every tank, harvester and transport behind it down with it.
+         * Measured on Sunder Atoll: a Reclamation brain founded a drydock at
+         * minute five, ordered two Scows and a Hulk, produced none of the three,
+         * and banked 20 000 credits behind a queue whose head was a finished
+         * ship with nowhere to float.
+         *
+         * `needsShore` is the fact that separates the two, it is already on the
+         * entry, and it is the same bit `evaluatePlacement` uses to insist the
+         * dock stands on a coast — so "the building that had to be on water" and
+         * "the building a hull launches from" are one statement, not two.
+         */
+        if (entry.needsShore) {
+          if (this.navalFactory[fi] < 0) this.navalFactory[fi] = i;
+          else if ((flags & EntityFlag.PrimaryFactory) !== 0
+            && (st.flags[this.navalFactory[fi]] & EntityFlag.PrimaryFactory) === 0) {
+            this.navalFactory[fi] = i;
+          }
         }
       }
     }
@@ -2866,7 +2907,14 @@ export class ProductionService implements QueueHooks {
     if (entry === null || entry.kind !== BuildKind.Unit) return true; // drop the impossible
 
     const fi = (p.id as number) * BUILD_TAB_COUNT + (tab as number);
-    const slot = this.primaryFactory[fi];
+    // A naval hull launches from the dock, never from the war factory that
+    // happens to share its tab. See `rescanAvailability`. The fallback is the
+    // ordinary primary, so a naval entry on an army with no dock behaves exactly
+    // as it did — which is to say it fails the water test, which is correct:
+    // there is nowhere for it to come out.
+    const slot = entry.naval && this.navalFactory[fi] >= 0
+      ? this.navalFactory[fi]
+      : this.primaryFactory[fi];
     if (slot < 0) return false;
 
     const st = this.world.store;
