@@ -342,7 +342,7 @@ export const CREDITS: readonly CreditGroup[] = [
       'Deterministic seeded RNG, replayable from a seed',
       'Structure-of-arrays entity store, 4096 slots',
       'Flow-field pathing with budgeted expansion',
-      'Instanced render bridge under 130 draw calls',
+      'Instanced render bridge, geometry batched by material',
     ],
   },
   {
@@ -359,7 +359,7 @@ export const CREDITS: readonly CreditGroup[] = [
     lines: [
       'Every mesh generated procedurally from code',
       'Every texture baked at boot in a worker',
-      'Ambience and the adaptive music score synthesised at boot',
+      'Ambience synthesised at boot',
       'No downloaded models or world textures',
     ],
   },
@@ -371,15 +371,23 @@ export const CREDITS: readonly CreditGroup[] = [
      * `public/audio/README.md`; `tests/credits-truthful.spec.ts` checks it
      * against what is actually in `public/`.
      *
-     * 61 recorded takes across 20 families now cover the interface, the
-     * impacts, and every conventional weapon and explosion. The synthesised
-     * bank measured in band and still read as a synth patch; recordings carry
-     * micro-detail no oscillator recipe reproduces.
+     * 184 Ogg files ship: 114 takes across ALL 39 sound-effect families, 34
+     * unit barks over 14 families in two voices, 33 EVA lines, and 3 music
+     * tracks. Counted off the disk, not remembered — this comment said "61
+     * takes across 20 families" for three releases after the bank tripled.
+     * The synthesised bank measured in band and still read as a synth patch;
+     * recordings carry micro-detail no oscillator recipe reproduces.
      *
      * The Art group above no longer says "weapons synthesised", because they
-     * are not. What IS still generated is listed there instead — and Tesla,
-     * Prism and several impacts are on that list BY MEASUREMENT, having been
-     * tried with recordings that scored worse. See `public/audio/README.md`.
+     * are not — and as of this commit it no longer says the MUSIC is either.
+     * `TrackMusic` is the default score and `audio.system.ts` constructs it
+     * unconditionally: three streamed Ogg tracks crossfaded by combat heat,
+     * with the procedural `MusicDirector` kept only as its fallback. The line
+     * read "Ambience and the adaptive music score synthesised at boot" while
+     * the very next credit group licensed that music from Kevin MacLeod under
+     * CC-BY — the screen contradicted itself, two groups apart. Ambience is
+     * the only thing in the soundscape still synthesised. See
+     * `public/audio/README.md`.
      */
     title: 'Shipped Assets',
     lines: [

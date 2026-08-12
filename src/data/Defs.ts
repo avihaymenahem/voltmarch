@@ -1755,9 +1755,16 @@ export const UNITS: readonly UnitDef[] = [
     cost: 1200, buildTime: 16, tab: BuildTab.Vehicles,
     prereqs: ['warFactory', 'radar'], sortOrder: 45,
     model: 'allied_vindicator',
-    // The heaviest and slowest of the four, and the hardest-hitting of the two
-    // that carry a splash warhead which hurts Concrete — an Allied player buys
-    // this to open a base, not to win a dogfight.
+    // The heaviest of the four, and the hardest-hitting of the two that carry a
+    // splash warhead which hurts Concrete — an Allied player buys this to open a
+    // base, not to win a dogfight.
+    //
+    // It said "the heaviest and SLOWEST of the four" and the second half was
+    // false against the number three lines below: 11.5 beats the Swarmhornet's
+    // 11.0, so the Vindicator is second-slowest. Full order, slowest first —
+    // rclHornet 11.0, vindicator 11.5, mrdKestrel 12.0, mig 13.5. The same
+    // wrong claim had been copied into `wiki/Faction-Allies.md`, while
+    // `wiki/Strategy.md` carried the correct table two pages away.
     //
     // "the ONLY one" was wrong: `kestrelPod` is Rocket too, same 0.90 against
     // Concrete, and it also splashes. The difference is weight of fire, not the
