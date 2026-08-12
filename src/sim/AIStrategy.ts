@@ -274,6 +274,26 @@ export interface CatalogEntry {
   readonly answers: readonly number[];
   /** Relative frequency in a default army. 0 for anything not army. */
   readonly weight: number;
+  /**
+   * Cargo slots this hull carries. 0 for everything that is not a carrier.
+   *
+   * THE ONE FACT ABOUT A CARRIER THE BUILD LAYER CANNOT GET ANY OTHER WAY.
+   * `TransportService.capacityAt` answers it for a hull that EXISTS, which is
+   * what `stageAmphibious` uses, but `considerNavy` is choosing which one to
+   * BUY and there is nothing to measure yet. `ProductionFacts` does not carry
+   * it either — the live oracle in `ai.system.ts` publishes cost, tab, power and
+   * prereqs, and widening that seam means widening every implementation of it.
+   *
+   * So it is DOCTRINE, exactly as `answers` and `weight` are: authored here,
+   * overwritten from `UnitDef.cargoSlots` the moment a real def table binds, and
+   * checked against that table by `tests/ai-naval-yard.spec.ts` so the authored
+   * number cannot quietly stop being the shipped one. Without it `forRole`
+   * hands a Meridian brain the 2-slot Sandskiff for an amphibious assault — the
+   * first Transport-role row its faction can field — and a 2-slot hull cannot
+   * carry `AI_NAVAL.minLandingSquad`, so the operation is refused forever by a
+   * purchase made three minutes earlier.
+   */
+  readonly slots: number;
 }
 
 /** Shorthand for an all-zero answer vector (structures, economy). */
@@ -324,7 +344,7 @@ function structure(
     // behaves the same shape either way.
     buildTimeSec: Math.max(3, cost / 60),
     power, footprintW: dim.w, footprintH: dim.h,
-    prereqs, role, faction, answers, weight: 0,
+    prereqs, role, faction, answers, weight: 0, slots: 0,
   };
 }
 
@@ -337,13 +357,14 @@ function fighter(
   faction: Faction,
   answers: readonly number[],
   weight: number,
+  slots: number = 0,
 ): CatalogEntry {
   return {
     key, defId: -1, isBuilding: false,
     tab: kind === EntityKind.Infantry ? BuildTab.Infantry : BuildTab.Vehicles,
     cost, buildTimeSec: Math.max(2, cost / 90),
     power: 0, footprintW: 0, footprintH: 0,
-    prereqs, role, faction, answers, weight,
+    prereqs, role, faction, answers, weight, slots,
   };
 }
 
@@ -373,7 +394,7 @@ function upgrade(
   return {
     key, defId: -1, isBuilding: false, tab, cost, buildTimeSec,
     power: 0, footprintW: 0, footprintH: 0,
-    prereqs, role: BuildRole.Upgrade, faction, answers: NO_ANSWER, weight: 0,
+    prereqs, role: BuildRole.Upgrade, faction, answers: NO_ANSWER, weight: 0, slots: 0,
   };
 }
 
@@ -396,7 +417,7 @@ function power(key: string, cost: number, buildTimeSec: number): CatalogEntry {
     key, defId: -1, isBuilding: false, tab: BuildTab.Powers, cost, buildTimeSec,
     power: 0, footprintW: 0, footprintH: 0,
     prereqs: NO_PREREQS, role: BuildRole.CommanderPower, faction: Faction.Neutral,
-    answers: NO_ANSWER, weight: 0,
+    answers: NO_ANSWER, weight: 0, slots: 0,
   };
 }
 
@@ -492,11 +513,22 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
    * already being counted as its war factory, and `roleCount[WarFactory] > 0` is
    * the gate that stops the build layer asking for the real one.
    *
-   * THE PACT'S TRANSPORT IS NOT ON A DOCK, and that is content, not an error:
-   * `mrdSkiff` lists `prereqs: ['mrdForgeyard']` — their war factory — because
-   * the Sandskiff is an amphibious raider the Pact fields with no navy at all.
-   * Transcribed as authored, so a Pact brain can run an amphibious operation
-   * without ever paying 1000 credits for a slipway.
+   * `mrdSkiff` USED TO BE FILED HERE TOO, as a second `BuildRole.Transport` row
+   * on top of the `Skirmisher` one in the Pact's army block below — the only
+   * duplicate key in this whole array — on the grounds that the Sandskiff is an
+   * amphibious raider gated on `mrdForgeyard` rather than on a slipway, so a
+   * Pact brain could ferry without ever paying for a dock. IT COULD NOT. `byKey`
+   * and `unitByDef` both keep the LAST row of a key, so every skiff the census
+   * ever saw resolved to the Skirmisher row and `transportCount` stayed 0 — the
+   * shadow row was reachable by exactly one call, `forRole(Transport, Pact)`,
+   * which is the buy. A Pact brain would therefore buy skiffs for an operation
+   * that could never see them, forever, because the cap it is bought against
+   * counts a list the purchase never joins.
+   *
+   * It is deleted rather than repaired: two slots cannot carry
+   * `AI_NAVAL.minLandingSquad`, so `forLift` — which sizes a hull to the party —
+   * would never return it in any case. The skiff is still line army with a real
+   * weight, which is how the Pact actually fields it.
    *
    * WEIGHT IS 0 ON EVERY HULL BELOW, and it is the whole safety property.
    * `buildUnits` skips `weight <= 0`, so no ship can ever win the composition
@@ -520,11 +552,9 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
   // The troop hulls. `transport` is Faction.Neutral because the Allied yard and
   // the Soviet pen both list it in `produces`.
   fighter('transport', BuildRole.Transport, EntityKind.Vehicle, 900, ['navalYard'],
-    Faction.Neutral, NO_ANSWER, 0),
-  fighter('mrdSkiff',  BuildRole.Transport, EntityKind.Vehicle, 550, ['mrdForgeyard'],
-    FACTION_MERIDIAN, [0.9, 0.7, 0.2, 0.3, 0.0], 0),
+    Faction.Neutral, NO_ANSWER, 0, 8),
   fighter('rclScow',   BuildRole.Transport, EntityKind.Vehicle, 850, ['rclDrydock'],
-    FACTION_RECLAIM, [0.8, 0.9, 0.4, 0.7, 0.0], 0),
+    FACTION_RECLAIM, [0.8, 0.9, 0.4, 0.7, 0.0], 0, 4),
 
   // The escorts, and then the capital ships behind a tech gate.
   fighter('gunboat',     BuildRole.Warship, EntityKind.Vehicle, 1000, ['navalYard'],
@@ -574,15 +604,15 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
   // them by SLOTS rather than by role — see `stageAmphibious`, which sizes the
   // hull to the squad it is about to move instead of always taking the biggest.
   fighter('landingCraft', BuildRole.Transport, EntityKind.Vehicle, 700, ['navalYard'],
-    Faction.Allies, NO_ANSWER, 0),
+    Faction.Allies, NO_ANSWER, 0, 4),
   fighter('assaultBarge', BuildRole.Transport, EntityKind.Vehicle, 680, ['subPen'],
-    Faction.Soviets, NO_ANSWER, 0),
+    Faction.Soviets, NO_ANSWER, 0, 4),
   fighter('mrdLighter',   BuildRole.Transport, EntityKind.Vehicle, 720, ['mrdSlipway'],
-    FACTION_MERIDIAN, NO_ANSWER, 0),
+    FACTION_MERIDIAN, NO_ANSWER, 0, 4),
   fighter('mrdArgosy',    BuildRole.Transport, EntityKind.Vehicle, 1250, ['mrdSlipway'],
-    FACTION_MERIDIAN, NO_ANSWER, 0),
+    FACTION_MERIDIAN, NO_ANSWER, 0, 8),
   fighter('rclHauler',    BuildRole.Transport, EntityKind.Vehicle, 1100, ['rclDrydock'],
-    FACTION_RECLAIM, NO_ANSWER, 0),
+    FACTION_RECLAIM, NO_ANSWER, 0, 8),
 
   /* -- the swimmers. LINE INFANTRY, with weight, and that is the difference
    * between them and everything else in this block: they are bought off a
@@ -791,8 +821,13 @@ export const FALLBACK_CATALOG: readonly CatalogEntry[] = [
     FACTION_MERIDIAN, [1.25, 0.6, 0.2, 0.35, 0.8], 3),
   fighter('mrdLancer', BuildRole.Skirmisher, EntityKind.Infantry, 450, ['mrdChapterhouse', 'mrdOculus'],
     FACTION_MERIDIAN, [0.5, 1.3, 1.4, 0.9, 1.6], 2),
+  // Two cargo slots, declared on a Skirmisher row: `slots` describes the HULL,
+  // not the doctrine, and `fromUnitDef` would overwrite a 0 here with the def's
+  // 2 the moment a real table bound. Nothing buys it as a lift — `forLift`
+  // asks for `minLandingSquad` and 2 is short of it — but a human can still put
+  // two men in one, and the AI's own number has to agree with the game's.
   fighter('mrdSkiff', BuildRole.Skirmisher, EntityKind.Vehicle, 550, ['mrdForgeyard'],
-    FACTION_MERIDIAN, [1.2, 1.4, 0.5, 0.4, 1.2], 3),
+    FACTION_MERIDIAN, [1.2, 1.4, 0.5, 0.4, 1.2], 3, 2),
   fighter('mrdSolarch', BuildRole.Armor, EntityKind.Vehicle, 800, ['mrdForgeyard'],
     FACTION_MERIDIAN, [0.7, 1.4, 1.3, 1.0, 0], 5),
   fighter('mrdZenith', BuildRole.Siege, EntityKind.Vehicle, 1500, ['mrdForgeyard', 'mrdReliquary'],
@@ -931,10 +966,22 @@ const ROLE_BY_KEY: Readonly<Record<string, BuildRole>> = (() => {
   return m;
 })();
 
-/** Same idea for the answer vectors and army weights. */
-const DOCTRINE_BY_KEY: Readonly<Record<string, { answers: readonly number[]; weight: number }>> = (() => {
-  const m: Record<string, { answers: readonly number[]; weight: number }> = {};
-  for (const e of FALLBACK_CATALOG) m[e.key] = { answers: e.answers, weight: e.weight };
+/**
+ * Same idea for the answer vectors, army weights and cargo slots.
+ *
+ * `slots` rides here rather than beside `cost` because it is the same KIND of
+ * fact as the other two: something the AI needs to know about a hull that the
+ * production module has no reason to publish. `fromUnitDef` overwrites it from
+ * `UnitDef.cargoSlots` whenever a real def table is bound; on the oracle path
+ * this value is the only one there is.
+ */
+const DOCTRINE_BY_KEY: Readonly<
+  Record<string, { answers: readonly number[]; weight: number; slots: number }>
+> = (() => {
+  const m: Record<string, { answers: readonly number[]; weight: number; slots: number }> = {};
+  for (const e of FALLBACK_CATALOG) {
+    m[e.key] = { answers: e.answers, weight: e.weight, slots: e.slots };
+  }
   return m;
 })();
 
@@ -1094,7 +1141,7 @@ export class BuildCatalog {
       let final = e;
 
       if (tables !== null) {
-        const doctrine = DOCTRINE_BY_KEY[e.key] ?? { answers: NO_ANSWER, weight: 0 };
+        const doctrine = DOCTRINE_BY_KEY[e.key] ?? { answers: NO_ANSWER, weight: 0, slots: 0 };
         const replacement = e.isBuilding
           ? fromBuildingDef(tables.buildings[id], e, doctrine)
           : fromUnitDef(tables.units[id], e, doctrine);
@@ -1134,7 +1181,7 @@ export class BuildCatalog {
         // order one, which is the honest state.
         continue;
       }
-      const doctrine = DOCTRINE_BY_KEY[e.key] ?? { answers: NO_ANSWER, weight: 0 };
+      const doctrine = DOCTRINE_BY_KEY[e.key] ?? { answers: NO_ANSWER, weight: 0, slots: 0 };
       const merged: CatalogEntry = {
         key: e.key,
         defId: facts.publicId,
@@ -1150,6 +1197,7 @@ export class BuildCatalog {
         faction: facts.faction,
         answers: doctrine.answers,
         weight: doctrine.weight,
+        slots: doctrine.slots,
       };
       this.byKey.set(e.key, merged);
       this.list[i] = merged;
@@ -1195,12 +1243,60 @@ export class BuildCatalog {
     }
     return fallback;
   }
+
+  /**
+   * The SMALLEST carrier this faction can buy that holds `wantSlots`, or the
+   * biggest it can buy when nothing does.
+   *
+   * `forRole(Transport)` cannot answer this and never could: it returns the
+   * FIRST row of a role, which was `mrdSkiff` for the Pact — a 2-slot land
+   * raider gated on their war factory — and for everyone else whichever carrier
+   * happened to be filed first. Every army now fields a 4-slot landing ship and
+   * an 8-slot heavy, so "a transport" is no longer a thing you can ask for: an
+   * 8-slot hull at 1100-1250 credits to ferry three riflemen is 500 credits of
+   * nothing, and a 2-slot hull for a six-man landing is an operation that never
+   * stages.
+   *
+   * SMALLEST-THAT-FITS RATHER THAN CHEAPEST-THAT-FITS, because cost and
+   * capacity are the same ordering in every faction's list today and slots are
+   * the property the operation is actually sized against. A tie goes to the row
+   * declared first, so the answer is stable and does not depend on catalog
+   * order beyond that.
+   *
+   * `allowed` IS NOT AN OPTIMISATION AND THE CALLER MUST PASS IT. Faction
+   * `Neutral` on a hull means "the two ORIGINAL armies share this", not
+   * "everyone" — `transport`, the 8-slot Heavy, is gated on `navalYard`, which
+   * the Sub Pen aliases and the Slipway and the Breaker Dock do NOT. Without a
+   * buildability filter this function hands the Pact and the Reclamation the
+   * one carrier they can never order, `consider` refuses it, and the brain owns
+   * a dock and no ferry: measured over a 24-minute four-army match as two
+   * brains with a naval yard, four warships between them and ZERO transports.
+   * The filter also carries affordability, which is the other half of the same
+   * lesson — a 1200-credit heavy the brain cannot pay for must not shut out the
+   * 700-credit landing craft it can.
+   */
+  forLift(
+    faction: Faction, wantSlots: number, allowed?: (e: CatalogEntry) => boolean,
+  ): CatalogEntry | undefined {
+    let best: CatalogEntry | undefined;
+    let biggest: CatalogEntry | undefined;
+    for (let i = 0; i < this.list.length; i++) {
+      const e = this.list[i];
+      if (e.role !== BuildRole.Transport || e.slots <= 0) continue;
+      if (e.faction !== faction && e.faction !== Faction.Neutral) continue;
+      if (allowed !== undefined && !allowed(e)) continue;
+      if (biggest === undefined || e.slots > biggest.slots) biggest = e;
+      if (e.slots < wantSlots) continue;
+      if (best === undefined || e.slots < best.slots) best = e;
+    }
+    return best ?? biggest;
+  }
 }
 
 function fromBuildingDef(
   def: BuildingDef | undefined,
   base: CatalogEntry,
-  doctrine: { answers: readonly number[]; weight: number },
+  doctrine: { answers: readonly number[]; weight: number; slots: number },
 ): CatalogEntry | null {
   if (def === undefined) return null;
   return {
@@ -1220,13 +1316,14 @@ function fromBuildingDef(
     faction: def.faction,
     answers: doctrine.answers,
     weight: doctrine.weight,
+    slots: 0,
   };
 }
 
 function fromUnitDef(
   def: UnitDef | undefined,
   base: CatalogEntry,
-  doctrine: { answers: readonly number[]; weight: number },
+  doctrine: { answers: readonly number[]; weight: number; slots: number },
 ): CatalogEntry | null {
   if (def === undefined) return null;
   return {
@@ -1244,6 +1341,10 @@ function fromUnitDef(
     faction: def.faction,
     answers: doctrine.answers,
     weight: doctrine.weight,
+    // THE DEF TABLE WINS on this one field, unlike `answers` and `weight`:
+    // slots are content, not doctrine, and the authored number beside the row
+    // above exists only for the oracle path and the headless tests.
+    slots: def.cargoSlots,
   };
 }
 
@@ -1506,6 +1607,16 @@ export const AI_NAVAL = {
   /** Transports owned at once. One operation at a time, so one hull plus a spare. */
   maxTransports: 2,
   /**
+   * Recon hulls owned at once.
+   *
+   * ONE. It is a pair of eyes, not a picket line: `chooseScout` drives exactly
+   * one scout at a time, so a second boat is 450 credits of nothing. Its own
+   * number rather than a share of `maxWarships` for the reason `BuildRole.
+   * ReconHull` is its own role — a scout competing with the escorts for those
+   * three slots is an army that can see or fight, chosen by catalog order.
+   */
+  maxReconHulls: 1,
+  /**
    * Score the naval yard enters the build scorer at.
    *
    * Below every producer the AI does not own yet (`barracks` 1.5, `warFactory`
@@ -1518,19 +1629,50 @@ export const AI_NAVAL = {
    * Ticks a brain may spend BUYING ITS WAY TO THE COAST before it gives up.
    *
    * A Naval Yard has to stand on a shore, and construction has to stand inside
-   * a build radius. On an island opening those two sets can be disjoint: on
-   * Sunder Atoll the nearest buildable-and-coastal site is 61-79 m from the
-   * Construction Yard against a 56 m radius, so on three of four islands there
-   * is no legal dock site AT ALL on turn one. The answer is base creep — see
-   * `AiBrain.coastCreepWanted` — and this bounds how long the brain is willing
-   * to pay for it. Ten minutes: long enough to cross 20 m of gap several times
-   * over at the rate a poor brain completes structures, short enough that a
-   * base whose only beach is a cliff face stops buying generators for a dock it
-   * will never found. Probing does NOT stop when this expires; only paying does.
+   * a build radius. Those two sets can be disjoint, and on Sunder Atoll they
+   * WERE: the nearest buildable-and-coastal site was 72-79 m from the opening
+   * Construction Yard against a 56 m radius, so three of the four armies had no
+   * legal dock site at all on turn one. That particular hole is closed in the
+   * MAP — `islandSeats` in `src/game/Scenarios.ts` seats each opening 30 m along
+   * its own coast — because the human opens with the same envelope and had the
+   * same problem, and no amount of AI cleverness was going to fix a start
+   * position.
+   *
+   * The creep stays, because "a base that cannot reach water" is a state a
+   * match can still arrive at: a yard rebuilt inland after the first one is
+   * bombed, a future map, an opening pushed off its shelf. This bounds how long
+   * the brain will PAY for the walk. Ten minutes: long enough to cross 20 m of
+   * gap several times over at the rate a poor brain completes structures, short
+   * enough that a base whose only beach is a cliff face stops buying generators
+   * for a dock it will never found. Probing does NOT stop when this expires;
+   * only paying does.
    */
   coastReachTicks: 30 * 60 * 10,
-  /** Infantry a landing wants before it is worth the hull. */
+  /**
+   * Cargo SLOTS a landing party must fill before it is worth the crossing.
+   *
+   * Slots and not bodies, because they stopped being the same number when
+   * vehicles were allowed to ride: three riflemen are three slots and so is one
+   * tank and a rifleman. Counting heads would refuse a two-tank landing, which
+   * is four slots of the best ground-holding a hull can carry.
+   */
   minLandingSquad: 3,
+  /**
+   * Bodies the strike group keeps while a landing party is taken out of it.
+   *
+   * THIS USED TO BE `waveThreshold()` AND THAT IS A LAND WAVE. The gate read
+   * `strikeCount >= minLandingSquad + waveThreshold()` — 3 + 12 on a Normal
+   * Turtle — so a brain needed FIFTEEN free bodies before it would put four men
+   * on a four-slot landing ship. Measured on Sunder Atoll: three brains that
+   * never staged an operation and one that reached the number at minute eight.
+   *
+   * The reserve belongs to the OPERATION, not to the wave, and the arithmetic
+   * that made it a wave is backwards where it matters most: `amphibiousWanted`
+   * is only true when the objective is UNREACHABLE ON LAND, so the wave those
+   * bodies are being held back for has nowhere to walk. Two is enough to keep a
+   * landing from emptying the base of everything that can shoot.
+   */
+  landingReserve: 2,
   /**
    * Ticks between amphibious evaluations.
    *
