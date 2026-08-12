@@ -233,14 +233,16 @@ describe('MissionTracker — advancing on the event stream', () => {
     const { tracker, channels, detach } = makeTracker(defs, store);
     tracker.beginMatch({ seed: 1, localPlayer: 0, faction: Faction.Allies });
 
-    const credit = (delta: number, held: number, reason: CreditReason): void => {
+    // `mined` is the ORE ledger and `delta` is the BANK's; a harvest event
+    // carries both and everything else carries `mined: 0`. See `EvCredits`.
+    const credit = (delta: number, held: number, reason: CreditReason, mined = 0): void => {
       channels.events.emit('economy:credits', {
-        player: P0, credits: held, delta, storage: held, storageMax: 20000, reason,
+        player: P0, credits: held, delta, storage: held, storageMax: 20000, reason, mined,
       });
     };
-    credit(200, 4000, CreditReason.Harvest);
+    credit(200, 4000, CreditReason.Harvest, 200);
     credit(500, 4500, CreditReason.Refund);   // a refund is not income
-    credit(150, 3000, CreditReason.Harvest);
+    credit(150, 3000, CreditReason.Harvest, 150);
 
     expect(tracker.progressOf('test.mine').value).toBe(350);
     expect(tracker.progressOf('test.mine').complete).toBe(true);

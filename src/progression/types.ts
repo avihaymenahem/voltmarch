@@ -201,6 +201,12 @@ export interface CaptureRule {
  * Sum of positive `economy:credits` deltas.
  * `reasons` are `CreditReason` values; the default is `[Harvest]`, because
  * "earn 70,000 credits" means mined, not refunded.
+ *
+ * A rule that asks for `Harvest` is counted from `EvCredits.mined` — the ore
+ * that came OUT OF THE GROUND — and not from the banked delta. Those are
+ * different numbers whenever a load lands in a full silo, and reading the delta
+ * meant an ore mission stalled for exactly the player who saves up. See the
+ * handler in `MissionTracker.attach`.
  */
 export interface EarnRule {
   on: 'earn';

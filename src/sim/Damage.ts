@@ -621,7 +621,49 @@ export class DamageSystem {
     }
   }
 
-  /** Infantry: no wreck, no crater. A body, a puff, a stain. */
+  /**
+   * Infantry: no wreck, no crater, NO GROUND MARK. Two puffs and the slot is
+   * gone.
+   *
+   * THIS SAID "A body, a puff, a stain" AND DELIVERED ONE OF THE THREE. There
+   * is no corpse anywhere in the engine — `vfx.system.ts` routes
+   * `FxKind.UnitDeathInfantry` to `spawnDust` plus a dirt `spawnImpact` and
+   * ignores the entity id this push carries, and `art/Wrecks.ts` has no
+   * infantry path — and nothing here ever called `world.vfx.decal`. Only the
+   * puff was real, twice over.
+   *
+   * THE STAIN IS A BUDGET DECISION, NOT AN OVERSIGHT, and the budget says no.
+   * `DecalKind.Squish` and atlas tile 10 are the obvious pattern to copy, but a
+   * crush is RARE — a tracked hull has to drive over a man who failed to
+   * scatter — and an infantry death is the ordinary outcome of every firefight.
+   * `world.vfx.decal` lands in the STATIC field (`DECAL_POOL_STATIC` = 384,
+   * `world/roads.system.ts`), which is the pool that holds every PERMANENT mark
+   * in the game: road manholes, cracks, patches and oil, every vehicle-death
+   * and building-death scorch, every splash scorch over
+   * `COMBAT_DAMAGE.scorchMinDamage`, the nuke's crater.
+   *
+   * `DecalField.spawn` advances `head` unconditionally and there is no free
+   * list — `collapse` blanks a slot's pixels but does not give back its place
+   * in the ring — so a permanent mark's whole life is measured in SUBSEQUENT
+   * static spawns, and a short lifetime on the newcomer would not buy back one
+   * slot. Road wear alone takes 47-113 of the 384 at boot (measured over three
+   * temperate seeds), leaving 271-337. One decal per infantry death makes
+   * infantry the dominant producer in that pool: a single 60-man push wiped out
+   * costs ~20% of the entire permanent layer, and five engagements erase it.
+   *
+   * The two ways out are both worse than the omission. The TRACK field
+   * (`DECAL_POOL_TRACKS` = 640) churns at up to 24 spawns a frame under
+   * `TREAD_STAMPS_PER_FRAME`, so it wraps in well under a second during exactly
+   * the battle that would be laying these; a mark that vanishes while the body
+   * is still settling reads as a glitch. A THIRD field is one more draw call
+   * against a budget already measured at 171-263 for a target of 130 — the
+   * split that bought the static pool its own eviction pressure cost exactly
+   * one draw, and spending the next one on a ~0.5 m smudge under a rifleman is
+   * not the trade.
+   *
+   * `tests/infantry-death.spec.ts` pins both halves: the effects this really
+   * pushes, and the arithmetic above.
+   */
   private infantryDeath(x: number, y: number, z: number, faction: Faction, id: EntityId): void {
     this.channels.fx.push(FxKind.UnitDeathInfantry, x, y + 0.9, z, 0, 1, 0, 1, id, faction);
     this.channels.fx.push(FxKind.DustPuff, x, y + 0.2, z, 0, 1, 0, 0.7, NONE, faction);

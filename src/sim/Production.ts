@@ -3294,6 +3294,11 @@ export class ProductionService implements QueueHooks {
     ev.storage = p.credits;
     ev.storageMax = p.storageMax;
     ev.reason = reason;
+    // Production never mines. The payload is POOLED, so leaving this alone
+    // would republish whatever `Economy` last wrote and the mission tracker
+    // would count the same ore twice — once from Economy's own flush and again
+    // from the next build charge.
+    ev.mined = 0;
     this.channels.events.emitPooled('economy:credits');
   }
 

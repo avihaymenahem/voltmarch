@@ -106,6 +106,14 @@ export function resultCells(r: MatchResult): StatCell[] {
     { label: 'Structures Lost', value: s.buildingsLost.toLocaleString() },
     { label: 'Structures Razed', value: s.buildingsKilled.toLocaleString() },
     { label: 'Ore Harvested', value: Math.round(s.oreMined).toLocaleString() },
+    // THE SECOND HALF OF THE FIRST ROW. "Ore Harvested" is what came out of the
+    // ground; this is the part of it that hit a full silo and evaporated. Ore
+    // you mined and could not keep used to be invisible everywhere in the
+    // product — the end screen credited it in full, the sidebar flashed red for
+    // one tick, and the ore missions (which now count MINED ore, see
+    // `MissionTracker`) never mentioned it. A player who parks at their cap is
+    // owed the number, because it is the whole argument for building a silo.
+    { label: 'Ore Wasted', value: Math.round(s.oreWasted).toLocaleString() },
     { label: 'Credits Spent', value: Math.round(s.creditsSpent).toLocaleString() },
     { label: 'Credits Left', value: Math.round(r.credits).toLocaleString() },
   ];

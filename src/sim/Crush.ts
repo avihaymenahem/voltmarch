@@ -491,8 +491,8 @@ export class CrushResolver {
    *
    * NOT `store.markDead`. A tree is deleted; a soldier is KILLED, and every
    * consequence of a kill — the armour matrix, `entity:damaged`, kill credit,
-   * the veterancy promotion, `unitsLost`/`unitsKilled`, the body and the puff
-   * from `Damage.infantryDeath`, `EvaLine.UnitLost` — lives behind
+   * the veterancy promotion, `unitsLost`/`unitsKilled`, the death puffs from
+   * `Damage.infantryDeath`, `EvaLine.UnitLost` — lives behind
    * `channels.damage`. Pushing onto that queue is how every weapon in the game
    * kills something and it is how this does too; only the source of the record
    * differs. `Phase.Movement` is upstream of `Phase.Damage`, so it resolves on

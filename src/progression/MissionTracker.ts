@@ -268,12 +268,37 @@ export class MissionTracker {
 
     off.push(bus.on('economy:credits', (p) => {
       if (!this.isLocal(p.player as number)) return;
+      /*
+       * ORE IS COUNTED FROM `mined`, NOT FROM THE DELTA.
+       *
+       * `delta` is the BANK moving and `reason` is the ONE cause the coalescer
+       * kept, so this used to lose a harvest three separate ways, all of them
+       * measured: a load into a full silo counted 0 (the overflow's `Waste`
+       * mark is the reason that survives), a load that only PARTLY fitted also
+       * counted 0 — including the part that fitted — and a load sharing a tick
+       * with a repair drip or a crate counted 0 as well. Meanwhile the end
+       * screen's "Ore Harvested" counted every credit of it, so one label sat
+       * over two numbers, and the gap was widest for the player who parks at
+       * their cap while saving for a tech centre. Every ore mission in
+       * `data/Missions.ts` reads "Mine N credits of ore"; `mined` is that.
+       *
+       * A rule that lists Harvest ALONGSIDE another earn reason would take the
+       * mined figure and skip the other cause for that tick. No such rule
+       * exists — every `earn` row in the table is `[Harvest]` — and inventing a
+       * per-reason breakdown in a pooled payload for a case nothing asks for is
+       * how the coalescer got complicated in the first place.
+       */
       const delta = p.delta;
-      if (delta > 0) {
+      const mined = p.mined;
+      if (delta > 0 || mined > 0) {
         this.forEachRule('earn', (def, rule) => {
           if (rule.on !== 'earn') return;
           const reasons = rule.reasons ?? DEFAULT_EARN_REASONS;
-          if (!reasons.includes(p.reason)) return;
+          if (mined > 0 && reasons.includes(CreditReason.Harvest)) {
+            this.advance(def, mined);
+            return;
+          }
+          if (delta <= 0 || !reasons.includes(p.reason)) return;
           this.advance(def, delta);
         });
       }

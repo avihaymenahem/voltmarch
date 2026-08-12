@@ -753,6 +753,19 @@ export class Economy {
   private readonly pendingDelta = new Float64Array(MAX_PLAYERS);
   private readonly pendingReason = new Int32Array(MAX_PLAYERS);
   private readonly pendingDirty = new Uint8Array(MAX_PLAYERS);
+  /**
+   * Credits of ore mined this tick, full amount, before the cap.
+   *
+   * SEPARATE FROM `pendingDelta` BECAUSE THEY ANSWER DIFFERENT QUESTIONS, and
+   * conflating them is what made "Ore Harvested" and the ore missions disagree.
+   * `pendingDelta` is the BANK moving and it nets everything in the tick;
+   * `pendingReason` holds ONE cause and the exceptional one wins. So a load
+   * that overflowed marked `Waste` and a load that shared a tick with a repair
+   * drip marked `Build`, and in both cases the `earn` rule — which asks for
+   * `reason === Harvest` — saw nothing at all, including for the part that DID
+   * reach the bank. This accumulator cannot be overwritten by another cause.
+   */
+  private readonly pendingMined = new Float64Array(MAX_PLAYERS);
 
   private readonly lastSiloEva = new Float64Array(MAX_PLAYERS);
   private readonly lastFundsEva = new Float64Array(MAX_PLAYERS);
@@ -944,10 +957,17 @@ export class Economy {
       this.mark(player, banked, reason);
     }
     if (reason === CreditReason.Harvest) {
+      // THE MINE AND THE BANK ARE TWO LEDGERS. `oreMined` is what came out of
+      // the ground; `pendingMined` is the same figure on its way to the event,
+      // where the mission tracker reads it. Both take the FULL amount, because
+      // a full silo does not un-mine ore — it only stops you keeping it. What
+      // you kept is `oreMined - oreWasted`.
       p.stats.oreMined += amount;
+      this.pendingMined[player as number] += amount;
     }
     if (lost > 0) {
       this.wastedTotalArr[player as number] += lost;
+      if (reason === CreditReason.Harvest) p.stats.oreWasted += lost;
       this.mark(player, 0, CreditReason.Waste);
       this.evaSiloNeeded(player);
     }
@@ -1130,7 +1150,7 @@ export class Economy {
 
     // 1. Flush coalesced credit notifications.
     for (let p = 0; p < n; p++) {
-      if (this.pendingDirty[p] === 0) continue;
+      if (this.pendingDirty[p] === 0 && this.pendingMined[p] === 0) continue;
       this.pendingDirty[p] = 0;
       const pl = this.world.players[p];
       const ev = this.channels.events.payload('economy:credits');
@@ -1140,8 +1160,10 @@ export class Economy {
       ev.storage = pl.credits;
       ev.storageMax = pl.storageMax;
       ev.reason = this.pendingReason[p];
+      ev.mined = this.pendingMined[p];
       this.pendingDelta[p] = 0;
       this.pendingReason[p] = CreditReason.Init;
+      this.pendingMined[p] = 0;
       this.channels.events.emitPooled('economy:credits');
     }
 

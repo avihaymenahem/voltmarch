@@ -987,7 +987,7 @@ export function createPlayerState(
     stats: {
       unitsBuilt: 0, unitsLost: 0, unitsKilled: 0,
       buildingsBuilt: 0, buildingsLost: 0, buildingsKilled: 0,
-      oreMined: 0, creditsSpent: 0, peakArmyValue: 0,
+      oreMined: 0, oreWasted: 0, creditsSpent: 0, peakArmyValue: 0,
     },
     aiDifficulty: 1,
     aiPersonality: 0,

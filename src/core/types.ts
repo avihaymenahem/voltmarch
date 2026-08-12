@@ -1151,6 +1151,21 @@ export interface EvCredits {
   player: PlayerId; credits: number; delta: number; storage: number; storageMax: number;
   /** Machine-readable cause: 'harvest' | 'build' | 'refund' | 'sell' | 'init' | 'waste'. */
   reason: number;
+  /**
+   * Credits of ore taken OUT OF THE GROUND this tick, before the storage cap.
+   *
+   * `delta` and `reason` describe the BANK; this describes the MINE, and the
+   * two are different numbers whenever a load lands in a full silo. One
+   * coalesced event carries one net delta and one reason, so a tick that mixed
+   * a harvest with anything else — the overflow's own `Waste` mark, a repair
+   * drip, a crate — lost the harvest entirely: `reason` was overwritten and the
+   * `earn` mission rule counted nothing. Every ore mission in `data/Missions.ts`
+   * says "Mine N credits of ore", so this is the number they are about.
+   *
+   * ALWAYS SET IT, including to 0 — the payload is pooled and a stale value
+   * from the previous emitter would be read as ore nobody mined.
+   */
+  mined: number;
 }
 export interface EvPower {
   player: PlayerId; produced: number; consumed: number;
@@ -1284,7 +1299,18 @@ export interface PlayerStats {
   buildingsBuilt: number;
   buildingsLost: number;
   buildingsKilled: number;
+  /** Credits of ore taken out of the ground, banked or not. */
   oreMined: number;
+  /**
+   * The part of `oreMined` that never reached the bank because there was no
+   * room for it. `oreMined - oreWasted` is what the player actually got.
+   *
+   * Deposit overflow ONLY. `Economy.wasted()` also counts credits confiscated
+   * when a silo dies and the cap shrinks under a standing balance; that money
+   * was banked, not ore, and putting it under an "Ore Wasted" label would be
+   * the same category error this field exists to close.
+   */
+  oreWasted: number;
   creditsSpent: number;
   peakArmyValue: number;
 }

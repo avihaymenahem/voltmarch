@@ -495,7 +495,7 @@ describe('the death goes through the damage channel', () => {
     expect(dealt).toBeLessThan(maxHp + 2);
   });
 
-  it('gives him the same body and puff any other dead rifleman gets', () => {
+  it('gives him the same death puffs any other dead rifleman gets', () => {
     const rig = makeRig();
     const tank = spawn(rig, 'grizzly', rig.red, C(40), C(50));
     spawn(rig, 'conscript', rig.blue, C(50), C(50));
