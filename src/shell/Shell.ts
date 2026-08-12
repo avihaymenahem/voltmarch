@@ -59,6 +59,7 @@ import { DEF_TABLES } from '../data/Defs';
 import {
   MAPS,
   SettingsStore,
+  armyCount,
   buildMatchQuery,
   chordEquals,
   cloneSetup,
@@ -1946,52 +1947,51 @@ export class Shell {
     resetTerrainPlan();
 
     /*
-     * HOW MANY ARMIES THIS WORLD IS FOR — and this call is the join that was
-     * missing, not a refinement of it.
+     * HOW MANY ARMIES THE GROUND IS BUILT FOR — and until this line, NOTHING
+     * IN THE PRODUCT EVER SAID.
      *
-     * `setPlannedArmies` shipped exported, documented over sixteen lines as
-     * "Called by the skirmish lobby", with ZERO CALLERS anywhere in `src/`,
-     * `tests/`, `tools/` or `server/`. One commit taught the lobby, shell and
-     * radar to count to four; another taught the start table to count to four;
-     * neither owned the wire between them. Measured on the real call chain —
-     * four players seated exactly as `applySetupToWorld` seats them, then
-     * `buildScenario(world, 'skirmish', seed, {})` with the argument list
-     * `scenarios.system.ts` actually passes:
+     * `setPlannedArmies` shipped with its whole contract written out ("THIS IS
+     * THE CHANNEL THE TERRAIN READS") and exactly one reference in the repo:
+     * its own definition. `plannedArmyOverride()` therefore returned `null` on
+     * every boot, `planScenario` clamped to `SKIRMISH_ARMIES_DEFAULT`, and the
+     * consequences ran the whole depth of the boot:
      *
-     *     plannedScenario().armies = 2      plannedStartPoints() = 3 shelves
-     *     seated players = 4
-     *       p0 assets=6  p1 assets=7  p2 assets=0  p3 assets=0
+     *   `terrain-plan.plannedTerrainInput` reserved TWO levelled start shelves
+     *   `PLANS.skirmish.build` called `startSpots(cx, cz, 2, sea)`
+     *   `Shell.applySetupToWorld` seated FOUR players regardless
      *
-     * So picking 3-Way or 4-Way produced two armies that opened with NOTHING
-     * and an unearned victory about eight seconds in. `verifyArmies` is the
-     * tripwire written for precisely this and it fired correctly — into a
-     * console nobody reads.
+     * So three of the six shipped maps declare `players: 4`, the lobby offers
+     * the fourth seat, and armies three and four opened with no units, no
+     * buildings and no shelf — measured as `p2 assets=0  p3 assets=0`, an
+     * unearned victory about eight seconds in. `verifyArmies()` below is the
+     * tripwire written for exactly this, and it fired correctly into a console
+     * nobody reads.
      *
-     * `tests/archipelago.spec.ts` did not catch it because it passes
-     * `{ armies: 4 }` EXPLICITLY. It is the only caller in the repo that does,
-     * which is exactly how it proved four bases on four islands while the route
-     * a player actually takes was never connected.
+     * `tests/archipelago.spec.ts` could not catch it: it passes `{ armies: 4 }`
+     * EXPLICITLY, the only caller in the repo that does, so it proved four
+     * bases on four islands while stepping straight over the channel a player
+     * goes through. A test can be entirely right about the thing it tests and
+     * still leave the feature disconnected.
      *
-     * BEFORE THE BOOT, because terrain reserves a start shelf per army and
-     * generation is dispatched during it — same lifetime and same reason as
-     * `setPlannedStart`, which sits beside it in `Scenarios.ts`.
+     * HERE AND NOT IN THE LOBBY. The count has to be standing before
+     * `bootstrap()` runs, because `world-warm` asks `plannedTerrainInput()` at
+     * MODULE SCOPE to prewarm the generator; and it has to be after the two
+     * resets above, because those are what let the plan be re-derived at all —
+     * the plan is memoised and does not move once read. This is the only line
+     * in the boot where both are true.
      *
-     * NULL ON EVERY OTHER PATH, and that is not tidiness. `null` means "the
-     * default two", so clearing it is what stops a four-way lobby leaking into
-     * the tutorial, the title backdrop, or a PvP match whose slot count comes
-     * from the relay. Playback takes its count from the recording for the same
-     * reason it takes every other boot flag from there: a replay must rebuild
-     * the match it recorded, not the one the lobby happens to be showing.
+     * `armyCount(this.setup)` is right for all three launch paths without a
+     * branch: the lobby writes `opponents` through `withArmyCount`, PvP seats
+     * its lobby the same way, and `startReplay` rebuilds `opponents` from the
+     * recording's header before it boots.
+     *
+     * THE BACKDROP IS THE ONE EXCEPTION. The title screen boots a real world
+     * with the AI off purely to have something moving behind the menu, and it
+     * inherits whatever the lobby last held — so a player who set up a 4-Way
+     * and backed out would have the menu quietly generate and simulate four
+     * bases to look at one. Two is what that scene has always been.
      */
-    if (backdrop || this.tutorial !== null || this.pvp !== null) {
-      setPlannedArmies(null);
-    } else if (this.replay !== null) {
-      const seated = this.replay.file.header.players.filter(
-        (p) => p.faction !== Faction.Neutral).length;
-      setPlannedArmies(seated >= 2 ? seated : null);
-    } else {
-      setPlannedArmies(1 + effectiveOpponents(this.setup).length);
-    }
+    setPlannedArmies(backdrop ? null : armyCount(this.setup));
 
     const boot: BootOptions = {
       canvas: this.options.canvas,

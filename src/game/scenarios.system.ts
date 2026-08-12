@@ -137,6 +137,7 @@ export const SCENARIO_PITCH_DEG: Readonly<Record<string, number>> = {
   placement: 46.1032,         // d = 36
   selection: 46.0464,         // d = 34
   blob: 47.0458,              // d = 50
+  atoll: 48.4558,             // d = 62
 };
 
 /**

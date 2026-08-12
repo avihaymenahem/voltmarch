@@ -18,6 +18,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { defaultCameraCodes } from '../src/input/ActionCatalogue';
+import { MAP_SEAS } from '../src/game/Scenarios';
 
 import {
   CREDIT_OPTIONS,
@@ -379,10 +380,13 @@ describe('free-for-all setup', () => {
   it('offers at least one four-army battlefield on a fresh profile', () => {
     // `SkirmishSetup.STARTER_MAPS` — a four-way gated behind a mission would be
     // a feature no new player can reach.
-    const starters = ['temperate-valley', 'airbase-flats'];
+    const starters = ['temperate-valley', 'airbase-flats', 'sunder-atoll'];
     const open = MAPS.filter((m) => starters.includes(m.id));
-    expect(open.length).toBe(2);
+    expect(open.length).toBe(3);
     expect(open.some((m) => m.players >= 4)).toBe(true);
+    // ...and at least one of them has water, or the naval half of the build is
+    // content a new player cannot reach. Both half-plane sea maps are gated.
+    expect(open.some((m) => MAP_SEAS[m.preset] !== undefined)).toBe(true);
   });
 
   it('grows into unclaimed factions and shrinks from the end', () => {

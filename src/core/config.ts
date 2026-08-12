@@ -2769,6 +2769,74 @@ export const MAP_PRESETS: Record<string, MapPreset> = {
     relief: 0.30, cliffs: 0.45, water: 0.45, scatter: 0.85, urban: 0.30,
     oreRichness: 0.80, props: ['bush', 'tree', 'rock', 'boulder'],
   },
+  /*
+   * FOUR ISLANDS, NO LAND ROUTE — the preset that selects `ARCHIPELAGO_SEA`.
+   *
+   * THE BIOME IS `temperate`, AND IT WAS THE SECOND CHOICE. `MapChoice.biome`
+   * is a separate flag from this key, so the pairing is authored and has to be
+   * argued; the argument for `desert` was a good one and it lost on the
+   * scorecard, which is worth recording because it is not the answer anybody
+   * reasoning from first principles arrives at.
+   *
+   * THE CASE FOR DESERT, all of it true:
+   *   `WATER_PALETTE_BY_BIOME.desert` is `tropical`, the turquoise ramp.
+   *   `PROP_DEFS.palm` weights desert 0.85 against temperate 0.10 and snow
+   *     0.00, and is the heaviest CANOPY entry desert has, so an arid coast
+   *     grows palms with nothing in this table asking for them.
+   *   Desert is hue-locked to 41 degrees and has `basinDepth: 0`, so the map
+   *     would carry no green ground at all and no inland puddles.
+   *
+   * WHAT IT MEASURED, on the `13-atoll-crossing` fixture, same frame, same
+   * seed, biome the only variable:
+   *
+   *                            desert     temperate   band
+   *     #4  median luminance   0.5228     0.4461      0.134-0.491
+   *     #9  emerald leak       0.0411     0.0181      0.000-0.020
+   *
+   * Two FATAL failures against none. Both are the same cause seen twice: this
+   * map is 54% water over a seabed the biome colours, and a bright sand bed
+   * does two things at once — it fills the dry half of the frame with sunlit
+   * hardpan, which is what puts the median over its ceiling, and it lights the
+   * SHALLOWS from below, which walks the turquoise ramp round into hue 100-120
+   * over the shoals. The palette that was the best reason to pick desert is
+   * what disqualified it. `docs/RA3_LOOK_BIBLE.md` wins over instinct, and this
+   * is an instance of it doing so.
+   *
+   * `water` is the MEASURED 53.6-54.1% across four seeds, not an intention, and
+   * it is a ceiling set by the start guarantee — see the block above
+   * `ARCHIPELAGO_SEA` in `src/game/Scenarios.ts`. `relief` and `cliffs` restate
+   * `temperate`'s because the landform comes from the same `BiomeDef`.
+   *
+   * `scatter` 1.15: above `temperate`'s 1.0 because the coastline is the
+   * subject here and a bare island reads as a sandbar, below `tropical`'s 1.45
+   * because a 98 m island cannot carry Coral Shore's density and still show the
+   * ground a base stands on.
+   *
+   * `urban` 0.10 is the lowest in the game. Road edges are refused on wet
+   * ground, so a lattice would come out as four disconnected stubs; an atoll
+   * with kerbs is a worse lie than an atoll with none.
+   *
+   * `oreRichness` 0.80, same as `coast`: an island economy cannot be reinforced
+   * by walking to a neighbour's field, so it must not be poor; each army opens
+   * on two uncontested patches, so it must not be rich.
+   *
+   * `props` leads with `bush` for the reason the header above gives, and
+   * rock+boulder come to 25%.
+   *
+   * `barrel` HOLDS INDEX 1 ON A MEASUREMENT, not on a reading. It was `tree`
+   * for one pass — matching `coast`, and better jetsam than oil drums on an
+   * island nobody has lived on — and `tree` at index 1 is a 3x weight on the
+   * canopy def in `Scatter`'s picker ON TOP of temperate's own 1.00 for it.
+   * Scorecard #9 (hue 100-120, weight 3, FATAL) went 0.0181 -> 0.0260 against a
+   * 0.020 ceiling on the `13-atoll-crossing` frame, twice, with nothing else
+   * changed. The canopy this map wants comes from the biome weights unprompted;
+   * asking for more of it is what tips a green island into an emerald one.
+   */
+  atoll: {
+    name: 'Sunder Atoll', mood: 'noon',
+    relief: 0.42, cliffs: 0.35, water: 0.54, scatter: 1.15, urban: 0.10,
+    oreRichness: 0.80, props: ['bush', 'barrel', 'rock', 'boulder'],
+  },
   /** Roads, kerbs, crosswalks, container stacks. The terrain-detail fixture. */
   urban: {
     name: 'Industrial Grid', mood: 'noon',

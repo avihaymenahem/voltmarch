@@ -1328,7 +1328,7 @@ export const AI_DEPLOY = {
  * generator at all.
  *
  * AND A MAP WITH NO SEA GETS NO NAVY AT ALL. `mapSupportsNaval()` in
- * `sim/Flowfield.ts` is the gate in front of every constant below — the largest
+ * `sim/NavalWater.ts` is the gate in front of every constant below — the largest
  * contiguous body the real `FlowFieldCache` routes `MoveClass.Naval` through,
  * which is 3622/3952 cells on the two sea maps against 0-14 on the four
  * landlocked ones. It lives there rather than here so the build menu can share
@@ -1351,9 +1351,12 @@ export const AI_NAVAL = {
    * Cells around the base the BEACH search anchors on.
    *
    * The "does this map have a navy" question does NOT live here — it is
-   * `mapSupportsNaval()` in `sim/Flowfield.ts`, deliberately, so the build menu
-   * and the brain share one definition instead of two that drift. This constant
-   * only bounds how far from the base a beach is still considered ours.
+   * `mapSupportsNaval()` in `sim/NavalWater.ts`, deliberately, so the build
+   * menu, the placement rule and the brain share one definition instead of
+   * several that drift. Two of them DID land in the same wave, at thresholds
+   * 400 and 300, each calling itself the single source of truth; they agreed on
+   * every shipped map, which is what made it dangerous rather than visible.
+   * This constant only bounds how far from the base a beach is still ours.
    */
   seaSearchCells: 40,
   /**

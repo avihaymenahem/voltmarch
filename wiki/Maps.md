@@ -17,9 +17,9 @@ This page covers what the ground does to your army. For what you build on it see
 | Map size | 512 × 512 m |
 | Navigation grid | 128 × 128 cells of 4 m |
 | Dead border | 2 cells (8 m) on every edge — nothing may enter it |
-| Players | 2 |
+| Players | 2 on five maps, **4** on Sunder Atoll |
 | Start separation | ~193 m on the diagonal |
-| Impassable to tracked vehicles | 26–33 % of cells (measured across all six shipped maps) |
+| Impassable to tracked vehicles | 26–33 % of cells (measured across the six continent maps) |
 | Buildable ground | 62–70 % of cells |
 
 Two armies, two corners, on the classic diagonal. Each start sits on a **reserved shelf**: the
@@ -36,9 +36,9 @@ Around each construction vehicle the scenario reserves 13 m of ground and around
 
 ---
 
-## 2. The six battlefields
+## 2. The seven battlefields
 
-Two ship open. The other four are earned — see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
+Three ship open. The other four are earned — see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
 
 | Map | Biome | Character | Ore richness | Water | Unlocked by |
 | --- | --- | --- | --- | --- | --- |
@@ -48,14 +48,15 @@ Two ship open. The other four are earned — see [Campaign](/avihaymenahem/voltm
 | **Industrial Grid** | Urban | Almost no relief, roads everywhere | **0.70** (poorest) | none | Groundworks — complete 50 structures |
 | **Contested Strait** | Temperate | Temperate land, coast prop mix | 0.80 | **24.3 %** | Blitz — win inside 15 minutes |
 | **Coral Shore** | Temperate | Densest prop cover in the game | 0.75 | **26.4 %** | Total Mobilisation — build 750 units |
+| **[Sunder Atoll](/avihaymenahem/voltmarch/wiki/Sunder-Atoll)** | Temperate | **Four islands, no land route.** 4 players | 0.80 | **53.8 %** | free |
 
 Ore richness is a multiplier on the 900-unit-per-cell ceiling, so a field on Airbase Flats holds
 roughly **43 % more ore per cell** than the same field on Industrial Grid. That difference compounds
 over a long match and it is the single biggest map-level economic variable.
 
-> **Read the water column carefully.** Four of the six are landlocked and mean it. The other two
-> carry a quarter of the map in open sea, and they are the only two on which the naval arm is a
-> real option — see §6.
+> **Read the water column carefully.** Four of the seven are landlocked and mean it. Two carry a
+> quarter of the map in open sea. The seventh is more than half water and has no land route at
+> all — see §6.
 
 ---
 
@@ -213,8 +214,8 @@ Water sits at a flat 2.0 m. Below it, ground units simply cannot go; there is no
 no depth gradient in the navigation grid. Hover units cross land and water alike. Naval hulls can
 *only* be on water. Aircraft ignore all of it.
 
-**Two of the six maps carry a real sea. Four are landlocked.** Measured on all six, with their real
-seeds and biomes, straight off the generator:
+**Three of the seven maps carry a real sea. Four are landlocked.** Measured on all seven, with
+their real seeds and biomes, straight off the generator:
 
 | Map | Water cells | Largest single body | Navigable for ships |
 | --- | --- | --- | --- |
@@ -224,6 +225,7 @@ seeds and biomes, straight off the generator:
 | Industrial Grid | 0.00 % | none | none |
 | **Contested Strait** | **24.3 %** | **3,973 cells (~63,600 m²)** | **3,622 cells** |
 | **Coral Shore** | **26.4 %** | **4,319 cells (~69,100 m²)** | **3,952 cells** |
+| **Sunder Atoll** | **53.8 %** | **8,815 cells (~141,000 m²)** | **7,735 cells** |
 
 The four dry maps are dry because nothing declares a shoreline for them, and the biome noise alone
 only ever produces puddles — the largest is smaller than a war factory. That is the correct answer

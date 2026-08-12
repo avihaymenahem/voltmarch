@@ -89,7 +89,7 @@ import { CIVILIAN_DIMENSIONS as CIV, CIVILIAN_KEYS } from '../data/Civilians';
 import { buildAlliedBase, type BaseOptions } from './scenarios/AlliedBase';
 import { buildSovietBase } from './scenarios/SovietBase';
 import {
-  buildBattle, buildBlob, buildEconomy, buildNaval, buildPlacement,
+  buildAtoll, buildBattle, buildBlob, buildEconomy, buildNaval, buildPlacement,
   buildSelection, buildTerrainShowcase, buildUnitParade,
 } from './scenarios/Showcases';
 
@@ -282,6 +282,7 @@ export const SCENARIO_NAMES = [
   'placement',
   'selection',
   'blob',
+  'atoll',
 ] as const;
 
 export type ScenarioName = (typeof SCENARIO_NAMES)[number];
@@ -2846,6 +2847,20 @@ interface ScenarioPlan {
    * march the whole composition off the coast it was authored around.
    */
   anchor?: 'shelf' | 'centre';
+  /**
+   * Armies this fixture composes, 2..`SKIRMISH_ARMIES_MAX`. Omitted means
+   * `SKIRMISH_ARMIES_DEFAULT`, which is every fixture but `atoll`.
+   *
+   * ON THE PLAN FOR EXACTLY THE REASON `sea` IS. The generator reserves one
+   * levelled shelf per army and does it at Phase.Command order 40, long before
+   * `game.scenario` runs — and `plannedScenario()` is the only thing that early
+   * which knows anything about this boot. The LOBBY's channel is
+   * `setPlannedArmies`, and it is deliberately separate: a `?shot=` boot never
+   * runs the lobby, so a fixture that needs four openings has no other way to
+   * say so and would otherwise be photographed on a map with two shelves
+   * reserved and two islands left ungraded.
+   */
+  armies?: number;
   summary: string;
   /**
    * `start` is only meaningful to `skirmish`. Every other plan is a posed
@@ -3010,6 +3025,12 @@ function buildMcvStartFor(b: ScenarioBuilder, owner: PlayerId, spot: StartSpot):
 function addStartOre(
   b: ScenarioBuilder, spots: readonly StartSpot[], sea: SeaSpec | null = null,
 ): void {
+  const islands = sea?.islands;
+  if (islands !== undefined && islands.length > 0) {
+    addIslandOre(b, spots);
+    return;
+  }
+
   let midX = 0;
   let midZ = 0;
   for (const s of spots) {
@@ -3024,35 +3045,134 @@ function addStartOre(
   }
   if (spots.length === 0) return;
 
-  /* -- THE CONTESTED PATCH, AND WHERE IT CAN GO ---------------------------
+  /* -- THE CONTESTED PATCH ------------------------------------------------
    * On a continent it goes on the centroid of the openings: the one point
    * every army is equally far from, which is what makes it worth fighting for.
-   *
-   * ON AN ARCHIPELAGO THE CENTROID IS OPEN WATER — it is the map centre, which
-   * is the shoal bank — and ore is a ground resource: `OreField` seeds cells,
-   * harvesters are Track hulls, and a patch out there is a patch nobody can
-   * ever mine. It would also be the second contested-middle feature on a map
-   * that already has one, and the shoals are the better version of it because
-   * they are terrain rather than a resource that runs out.
-   *
-   * So each island gets a SECOND patch on its inward face instead. Two per
-   * army, symmetric, all of it minable, and the expansion still points toward
-   * the sea lane the fight is actually about.
+   * The archipelago cannot use that point and takes the branch at the top of
+   * this function instead — see `addIslandOre`.
    * --------------------------------------------------------------------- */
-  const islands = sea?.islands;
-  if (islands !== undefined && islands.length > 0) {
-    for (let i = 0; i < spots.length; i++) {
-      const s = spots[i];
-      const toX = MAP_SIZE * 0.5 - s.x;
-      const toZ = MAP_SIZE * 0.5 - s.z;
-      const len = Math.hypot(toX, toZ) || 1;
-      // 52 m inward: outside the base's own build radius, well inside the
-      // island's 98 m short axis with the beach cone to spare.
-      b.addOre(s.x + (toX / len) * 52, s.z + (toZ / len) * 52, 22);
-    }
-    return;
-  }
+  if (spots.length === 0) return;
   b.addOre(midX / spots.length, midZ / spots.length, 22);
+}
+
+/* --------------------------------------------------------------------------
+ * ORE ON AN ISLAND MAP
+ *
+ * WHY THIS IS NOT THE CONTINENT FORMULA WITH A DIFFERENT THIRD PATCH, which is
+ * what it was. `addStartOre` above puts each home field at a bearing taken from
+ * `StartSpot.facingDeg` — "perpendicular to the approach lane" — and on a
+ * continent that is exactly right, because there IS one approach lane and the
+ * facing names it. On four islands round a rectangle there are three bearings
+ * to every other army and the facing names one of them arbitrarily, so the
+ * patch lands at a different angle on each island. MEASURED at `oreRichness`
+ * 0.80 through the real `OreField.seedField` against the real heightfield:
+ * 42 392 / 30 347 / 42 452 / 43 169 credits, a ratio of 0.70. One army opened
+ * 28% poorer than its neighbours on a map whose whole premise is that the four
+ * openings are interchangeable, and nothing was looking.
+ *
+ * THE FIX IS TO STOP READING THE FACING. Every position here is a pure radial
+ * offset from the ISLAND CENTRE along the line to the map centre, so all four
+ * islands are the same layout rotated, and the four totals are equal by
+ * construction rather than by luck. `tests/archipelago.spec.ts` measures the
+ * spread rather than trusting it.
+ *
+ * WHICH FACE GETS WHICH. Both faces of an island are coast; the difference is
+ * what the water beyond them leads to. The OUTWARD face borders the map rim —
+ * a dead end nobody sails through — so the home field goes there, behind the
+ * base relative to every threat. The INWARD face borders the lagoon and the
+ * shoals, which is the only water anyone crosses, and that is where the
+ * expansion goes.
+ *
+ * AND THE EXPANSION IS THE THING WORTH CROSSING FOR, which is a property of
+ * WHERE it sits rather than of what it holds. `BUILD_RADIUS` is 56 m and the
+ * opening Construction Yard stands on the island centre, so 56 m is exactly
+ * the reach of everything an army can build without creeping. The home field
+ * at 44 m is inside it: a refinery, a wall and a defence all go up on turn one.
+ * The expansion at 72 m is outside it, on the face that borders the lagoon.
+ *
+ * To hold the expansion you must extend the base TOWARD the beach a landing
+ * arrives on, which is the decision the map is made of — and it is a decision
+ * rather than a chore because the ground out there is real: measured 21-49%
+ * buildable in the 60-80 m band and 68-80% in 80-90 m, i.e. patchy sand you
+ * have to site around rather than either a parade square or a cliff.
+ *
+ * AN EARLIER DRAFT OF THIS BLOCK CLAIMED THE EXPANSION SAT WHERE NO STRUCTURE
+ * COULD STAND, and it was true when it was written: the island was a mesa with
+ * a 0.45 skirt and buildable ground stopped at ~62 m. Levelling the island
+ * shelf to tier 0 — which is what gave the map a coast a naval yard can stand
+ * on at all, see `levelStartAreas` in `src/world/terrain-gen.ts` — turned that
+ * skirt into a beach and made the claim false in the same wave that made it.
+ * `tests/sunder-atoll.spec.ts` caught it, which is the only reason it is not
+ * still written here as though it were so.
+ *
+ * THE OFFSETS, and each is bounded on both sides:
+ *   home 44 m, r30      Outer rim at 74 m, inside a 98 m short axis, so the
+ *                       whole patch clears the waterline at the worst of the
+ *                       8 m coastal wander. Inner rim 14 m from the start, so
+ *                       a refinery placed against the yard reaches it, and the
+ *                       CENTRE is inside `BUILD_RADIUS`. Measured 27 081-28 508
+ *                       credits, a 5% spread over the four.
+ *   expansion 62 m, r22 Six metres outside `BUILD_RADIUS`, which is a margin
+ *                       rather than a rounding — the 52 m this replaced was
+ *                       INSIDE it, despite a comment claiming otherwise, which
+ *                       made it a second home field.
+ *
+ * WHY 62 AND NOT FURTHER OUT. Swept against the real seeder at 60 through 72 m,
+ * the per-island TOTAL balance falls as the patch moves seaward, because the
+ * 60-80 m ring is the patchiest passable ground an island has — it is where the
+ * levelled shelf's apron meets the natural landform. 60 m balances best and
+ * clears the build radius by a single cell, which is not a margin; 62 m is the
+ * nearest offset that clears it by a real one.
+ *
+ * WHAT SHIPS, on `sunder-atoll`'s pinned seed and biome, through the real
+ * seeder and the real heightfield:
+ *
+ *     island        home      expansion    total
+ *     (118, 390)    28 304    14 161       42 465
+ *     (394, 122)    27 081    14 094       41 175
+ *     (394, 390)    28 508    13 300       41 808
+ *     (118, 122)    28 081    14 723       42 804
+ *
+ * 168 252 credits on the map, ~42 000 an army, ratio 0.962. What is left is the
+ * per-cell hash jitter `ORE_CELL_JITTER` puts on every field in the game, and
+ * it is what a symmetric layout is supposed to look like.
+ * -------------------------------------------------------------------------- */
+
+/** Metres from an island centre to its home field, along the outward radius. */
+const ISLAND_ORE_HOME = 44;
+/**
+ * Metres from an island centre to its expansion, along the inward radius.
+ * Six metres outside `BUILD_RADIUS` — see the block above for the sweep.
+ */
+const ISLAND_ORE_EXPANSION = 62;
+
+/**
+ * The unit vector from the map centre to a start, i.e. "outward". Zero-safe:
+ * a start exactly on the centre has no outward direction, and an archipelago
+ * never seats one there, but a NaN here would seed ore at NaN and the field
+ * would silently be empty.
+ */
+function outwardFrom(x: number, z: number, out: { x: number; z: number }): void {
+  const dx = x - MAP_SIZE * 0.5;
+  const dz = z - MAP_SIZE * 0.5;
+  const len = Math.hypot(dx, dz);
+  if (!(len > 1e-3)) { out.x = 0; out.z = -1; return; }
+  out.x = dx / len;
+  out.z = dz / len;
+}
+
+const outward = { x: 0, z: 0 };
+
+function addIslandOre(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
+  for (const s of spots) {
+    outwardFrom(s.x, s.z, outward);
+    b.addOre(
+      s.x + outward.x * ISLAND_ORE_HOME, s.z + outward.z * ISLAND_ORE_HOME, 30,
+    );
+    b.addOre(
+      s.x - outward.x * ISLAND_ORE_EXPANSION, s.z - outward.z * ISLAND_ORE_EXPANSION, 22,
+    );
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -3108,6 +3228,29 @@ function addCivilians(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
    * A four-army hamlet layout is a real composition and it is not authored yet.
    * A skipped one is a map with less neutral furniture; a wrong one is a free
    * derrick for whoever spawned nearest it.
+   *
+   * THE ARCHIPELAGO WAS TRIED AND REJECTED, which is worth recording because
+   * the idea is an obvious one. An oil derrick per island, on the cape facing
+   * the lagoon, looks like the perfect answer to "give the map something worth
+   * crossing for": 15 credits a second, captured outright at any health because
+   * it is neutral-owned, and reverting the moment the last man leaves.
+   *
+   * IT FAILS ON THE ONE THING THIS MAP HAS NONE OF: neutral land. Every square
+   * metre above the waterline belongs to exactly one of four islands, each of
+   * which is one army's whole territory. A derrick is therefore either inside
+   * somebody's `BUILD_RADIUS`, where it is free income they can wall in, or out
+   * near their beach, where it is still on their island and 76 m from their
+   * yard. There is no position on this map that is equally far from four
+   * armies and dry — the one point that is, the map centre, is the shoal bank.
+   * A prize that ships as a gift to its host is worse than no prize.
+   *
+   * (The first attempt also put all four on ground `isBuildable` refuses, since
+   * `spawnBuilding` does not test it and reported success anyway. That is fixed
+   * by the tier-0 island shelf now, so it is not the reason — the paragraph
+   * above is.)
+   *
+   * `addIslandOre` carries the contested objective instead: the expansion field
+   * is outside the opening base's reach, on the face every crossing arrives at.
    */
   if (spots.length !== 2 || b.archipelago) return;
   const first = spots[0]!;
@@ -3328,69 +3471,17 @@ function seaOffMapCentre(p: SeaProfile): SeaSpec {
   };
 }
 
-/**
- * Sea per MAP PRESET key, for the presets whose whole identity is the water.
- * Absent means landlocked, which is every other preset.
- */
-export const MAP_SEAS: Record<string, SeaSpec> = {
-  /**
-   * Contested Strait. The sea is the quarter of the map on the far side of the
-   * bisector, 112 m from every opening — 14 m clear of the 98 m shelf-push
-   * budget its own `bandWidth` and `wavinessMetres` set.
-   *
-   * `depth` is the full 8.0 m the heightfield can express (WATER_LEVEL 2.0 down
-   * to TERRAIN_SEA_FLOOR -6), so `Water.fitRamp` gets a real absorption
-   * gradient rather than the shallow fallback the fixture spent years in.
-   *
-   * 9 m of wander on a 64 m feature: bigger than the fixture's 6/46 because a
-   * shoreline this long shows its own straightness in a way a 90 m one does
-   * not, and a ruler-straight coast reads as a clipping plane.
-   */
-  coast: seaOffMapCentre({
-    offsetMetres: -112,
-    depth: 8.0,
-    // Wider than the fixture's 34: this coast is looked at from match dolly
-    // rather than from a posed 55 m frame, and the bed has 150 m of open water
-    // to fall through rather than the corner of one screen.
-    shelfMetres: 40,
-    wavinessMetres: 9,
-    wavelengthMetres: 64,
-    bandWidth: 7,
-  }),
-  /**
-   * Coral Shore. The OPPOSITE side of the same bisector, so the two naval maps
-   * are not one map twice, and deliberately SHALLOWER at 5.0 m. Depth is what
-   * drives the absorption ramp, so a 5 m lagoon reads turquoise where the
-   * strait reads deep blue — the one visual axis these two share that is not
-   * the biome. Still far above `TERRAIN_SEA_FLOOR`, so nothing is clamped.
-   *
-   * MEASURED, NOT PREFERRED: this seed's north-east coast is the rougher of the
-   * two, and dock sites move with the offset in a way `coast`'s do not — 100 m
-   * out yields 81 buildable-and-launchable footprints, 108 m yields 65, 116 m
-   * yields 28. The offset is at the near end of its legal range for that
-   * reason, and `wavinessMetres` is 5 rather than 9 to buy the 6 m of
-   * shelf-push margin that costs.
-   */
-  tropical: seaOffMapCentre({
-    offsetMetres: 100,
-    depth: 5.0,
-    // Longer shelf on shallower water: the bed has to spend its 5 m over enough
-    // distance that the beach is a beach and not a step.
-    shelfMetres: 46,
-    wavinessMetres: 5,
-    wavelengthMetres: 58,
-    bandWidth: 7,
-  }),
-};
-
 /* --------------------------------------------------------------------------
  * THE ARCHIPELAGO — FOUR ARMIES, FOUR ISLANDS, ONE SEA
  *
- * NOT REGISTERED IN `MAP_SEAS`, deliberately: that record is keyed on MAP
- * PRESET and a preset is a lobby entry with a name, a blurb, a pinned
- * `mapSeed` and a biome. This is the CAPABILITY — the geometry, proven against
- * the real generator — and the preset that selects it is a separate step with a
- * separate owner. `tests/archipelago.spec.ts` builds it directly, which is the
+ * THIS BLOCK USED TO OPEN "NOT REGISTERED IN `MAP_SEAS`, deliberately", on the
+ * grounds that the record is keyed on MAP PRESET, that a preset is a lobby
+ * entry with a name, a blurb, a pinned `mapSeed` and a biome, and that the
+ * preset which selects this geometry was "a separate step with a separate
+ * owner". That step has now happened: the preset is `atoll` (see `MAP_PRESETS`
+ * in `src/core/config.ts` for why its biome is `desert`), the lobby entry is
+ * `sunder-atoll`, and the registration is at the bottom of `MAP_SEAS` below.
+ * `tests/archipelago.spec.ts` still builds this constant directly, which is the
  * same route `NAVAL_SEA` had for its whole life before `MAP_SEAS` existed.
  *
  * WHY THE ISLANDS ARE THIS BIG, WHICH IS THE ONLY REAL DESIGN CONSTRAINT HERE
@@ -3500,6 +3591,74 @@ export const ARCHIPELAGO_SEA: SeaSpec = {
       radiusX: 44, radiusZ: 28, depth: 1.1,
     },
   ],
+};
+
+/**
+ * Sea per MAP PRESET key, for the presets whose whole identity is the water.
+ * Absent means landlocked, which is every other preset.
+ */
+export const MAP_SEAS: Record<string, SeaSpec> = {
+  /**
+   * Contested Strait. The sea is the quarter of the map on the far side of the
+   * bisector, 112 m from every opening — 14 m clear of the 98 m shelf-push
+   * budget its own `bandWidth` and `wavinessMetres` set.
+   *
+   * `depth` is the full 8.0 m the heightfield can express (WATER_LEVEL 2.0 down
+   * to TERRAIN_SEA_FLOOR -6), so `Water.fitRamp` gets a real absorption
+   * gradient rather than the shallow fallback the fixture spent years in.
+   *
+   * 9 m of wander on a 64 m feature: bigger than the fixture's 6/46 because a
+   * shoreline this long shows its own straightness in a way a 90 m one does
+   * not, and a ruler-straight coast reads as a clipping plane.
+   */
+  coast: seaOffMapCentre({
+    offsetMetres: -112,
+    depth: 8.0,
+    // Wider than the fixture's 34: this coast is looked at from match dolly
+    // rather than from a posed 55 m frame, and the bed has 150 m of open water
+    // to fall through rather than the corner of one screen.
+    shelfMetres: 40,
+    wavinessMetres: 9,
+    wavelengthMetres: 64,
+    bandWidth: 7,
+  }),
+  /**
+   * Coral Shore. The OPPOSITE side of the same bisector, so the two naval maps
+   * are not one map twice, and deliberately SHALLOWER at 5.0 m. Depth is what
+   * drives the absorption ramp, so a 5 m lagoon reads turquoise where the
+   * strait reads deep blue — the one visual axis these two share that is not
+   * the biome. Still far above `TERRAIN_SEA_FLOOR`, so nothing is clamped.
+   *
+   * MEASURED, NOT PREFERRED: this seed's north-east coast is the rougher of the
+   * two, and dock sites move with the offset in a way `coast`'s do not — 100 m
+   * out yields 81 buildable-and-launchable footprints, 108 m yields 65, 116 m
+   * yields 28. The offset is at the near end of its legal range for that
+   * reason, and `wavinessMetres` is 5 rather than 9 to buy the 6 m of
+   * shelf-push margin that costs.
+   */
+  tropical: seaOffMapCentre({
+    offsetMetres: 100,
+    depth: 5.0,
+    // Longer shelf on shallower water: the bed has to spend its 5 m over enough
+    // distance that the beach is a beach and not a step.
+    shelfMetres: 46,
+    wavinessMetres: 5,
+    wavelengthMetres: 58,
+    bandWidth: 7,
+  }),
+  /**
+   * Sunder Atoll. THE ONE ENTRY THAT IS NOT A HALF-PLANE — `islands` being
+   * non-empty is what tells the generator to ignore `x`/`z` and the normal
+   * entirely, so `seaOffMapCentre` has nothing to contribute here and the spec
+   * is referenced whole. Everything about the geometry is argued above
+   * `ARCHIPELAGO_SEA`; this line is the registration and nothing else.
+   *
+   * It is also the only entry whose preset seats FOUR armies, and that is not a
+   * property of this table — `startPointsFor` reads `sea.islands` and answers
+   * with one start per island, and `MapChoice.players` is what the lobby
+   * offers. Both derive from the same list, so neither can drift.
+   */
+  atoll: ARCHIPELAGO_SEA,
 };
 
 const PLANS: Record<string, ScenarioPlan> = {
@@ -3652,6 +3811,34 @@ const PLANS: Record<string, ScenarioPlan> = {
     map: 'temperate', distance: 50, yawDeg: 24, frozen: true, settleTicks: 0,
     summary: '36 Allied units massed against 30 Soviets — the readability-under-load frame.',
     build: buildBlob,
+  },
+
+  atoll: {
+    map: 'atoll', distance: 62, yawDeg: 34, frozen: false, settleTicks: 90,
+    /*
+     * NO `sea:` HERE, DELIBERATELY, and it is the difference between a fixture's
+     * shoreline and a battlefield's.
+     *
+     * `plan.sea` is the FIXTURE channel: `naval` uses it because `buildNaval`
+     * places six hulls against one specific waterline and `assertShoreMatchesSea`
+     * fails the pair if they drift. It also carries a `setShore` obligation —
+     * and `setShore` publishes a HALF-PLANE, which an archipelago is not and
+     * cannot be described as.
+     *
+     * This map's water IS the map. It comes from `MAP_SEAS.atoll` through
+     * `map: 'atoll'` above, exactly as it does when a player picks Sunder Atoll
+     * in the lobby, so this fixture photographs the shipped battlefield rather
+     * than a private copy of it.
+     *
+     * `anchor` is left at its default, and setting it would change nothing:
+     * `buildScenario` reads `plan.anchor === 'centre' || builder.archipelago`,
+     * so an island map is anchored to the map centre either way. That matters
+     * here — `startShelf()` on this map is island ZERO, 193 m off centre, and
+     * every layout treats (cx, cz) as the middle of the world.
+     */
+    armies: SKIRMISH_ARMIES_MAX,
+    summary: 'An island beach mid-landing: dock, transport ashore, escort over the shoal.',
+    build: buildAtoll,
   },
 };
 
@@ -3866,7 +4053,11 @@ export function planScenario(
     sea: plan.sea ?? MAP_SEAS[mapKey] ?? null,
     // A posed fixture composes a fixed number of bases; only `skirmish` is a
     // match, so only `skirmish` may be seated by the lobby.
-    armies: name === 'skirmish' ? clampArmies(armiesOverride) : SKIRMISH_ARMIES_DEFAULT,
+    // A posed fixture composes a fixed number of bases, so only `skirmish` may
+    // be seated by the LOBBY — but a fixture may still declare its own, which
+    // is how `atoll` gets four islands graded. `clampArmies(undefined)` is
+    // `SKIRMISH_ARMIES_DEFAULT`, so every other plan is unchanged.
+    armies: name === 'skirmish' ? clampArmies(armiesOverride) : clampArmies(plan.armies),
   };
 }
 
@@ -4053,7 +4244,7 @@ export function buildScenario(
   const sea = getTerrain()?.seaSpec ?? plan.sea ?? MAP_SEAS[map] ?? null;
   const armies = resolved === 'skirmish'
     ? clampArmies(options.armies ?? plannedArmyOverride())
-    : SKIRMISH_ARMIES_DEFAULT;
+    : clampArmies(plan.armies);
 
   keyTable = new PerEntityObj<string>(world.store);
   const builder = new ScenarioBuilder(

@@ -344,9 +344,19 @@ describe('tools/shoot.mjs', () => {
     return out;
   }
 
-  it('declares a canonical camera for all twelve fixtures', () => {
-    // 12 is the number `node tools/metrics.mjs --expect 12` is calibrated on.
-    expect(declaredCameras().length).toBe(12);
+  it('declares a canonical camera for every shot in the table', () => {
+    /*
+     * THIRTEEN SINCE `13-atoll-crossing` LANDED, and the number is restated in
+     * three places that must move together: here, the `rows.length` floor in
+     * `tools/metrics.mjs`, and whatever `--expect N` a caller passes it.
+     *
+     * The floor is not decoration. `metrics.mjs` aggregates a WEIGHTED score
+     * across every image it is handed, and scenario mix dominates that number —
+     * a run over four shots and a run over thirteen are not comparable figures
+     * even when nothing about the art has changed. So a short sample warns
+     * loudly rather than quietly reporting a better score.
+     */
+    expect(declaredCameras().length).toBe(13);
   });
 
   it('declares a pitch that matches the config curve at each shot\'s dolly', () => {

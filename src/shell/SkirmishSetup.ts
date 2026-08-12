@@ -218,11 +218,22 @@ export function applyStartCondition(value: StartCondition): void {
  * Two, not one. A single starter map means every early match is the same match
  * and the missions that unlock the others read as a chore; two with genuinely
  * different shapes — a wooded valley and an open flat — means the first hour
- * already has a decision in it. The other four are rewards, and the mission
- * table is the authority on which (`UNLOCKS.map*`); this list only has to agree
- * about the two that are free, which `tests/progression-gate.spec.ts` checks.
+ * already has a decision in it. The rest are rewards, and the mission table is
+ * the authority on which (`UNLOCKS.map*`); this list only has to agree about
+ * the ones that are free, which `tests/progression-gate.spec.ts` checks.
+ *
+ * THREE NOW, AND THE THIRD IS A DIFFERENT ARGUMENT FROM THE FIRST TWO.
+ * `sunder-atoll` is open on request, and the request is right for a reason the
+ * other five entries make plain: naval yards, pens, slipways, drydocks, nine
+ * hulls, the transport and the whole amphibious layer need water, four of the
+ * six maps are landlocked, and BOTH of the two that are not sit behind mission
+ * gates ("win inside 15 minutes", "build 750 units"). So on a fresh profile
+ * every one of those was content the player could not reach — the same defect
+ * `MAP_SEAS`' own header records for the maps that shipped dry, arriving by a
+ * different route. A map that teaches the sea has to be there before the
+ * missions that reward it.
  */
-const STARTER_MAPS: readonly string[] = ['temperate-valley', 'airbase-flats'];
+const STARTER_MAPS: readonly string[] = ['temperate-valley', 'airbase-flats', 'sunder-atoll'];
 
 /** Is this map playable right now? Starters always are. */
 function mapAvailable(id: string): boolean {
