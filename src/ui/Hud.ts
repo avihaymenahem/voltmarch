@@ -269,6 +269,15 @@ const EVA_TOASTS: Readonly<Record<number, readonly [ToastKind, string]>> = {
   [EvaLine.OreMinerUnderAttack]: ['warn', 'Miner under attack'],
 };
 
+/*
+ * `EvaLine.NoOreMiner` and `EvaLine.Reinforcements` are deliberately ABSENT
+ * above, for the same reason `ConstructionComplete` is: `orecrisis.system.ts`
+ * posts its own chip for both, and that chip names the shortfall in credits
+ * and the tool to press. The generic row would post a second, vaguer chip for
+ * the same event — and, because `eva:line` is handled before the system's own
+ * toast lands, it would post it FIRST.
+ */
+
 /** Toast severity -> its leading icon. */
 const TOAST_ICONS: Readonly<Record<ToastKind, IconName>> = {
   info: 'info',

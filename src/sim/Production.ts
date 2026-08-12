@@ -2321,9 +2321,38 @@ export class ProductionService implements QueueHooks {
    * put it — a refinery walled in on all sides is the player's problem, and a
    * harvester spawned inside a cliff would be worse.
    */
-  private deliverBundledUnit(p: PlayerState, i: number, entry: BuildEntry): void {
+  /**
+   * Redeem the `shipsWith` promise of a structure that is ALREADY STANDING.
+   *
+   * The delivery above fires once, at `building:completed`. This is the same
+   * gift asked for later, by `orecrisis.system.ts`, on behalf of a player whose
+   * harvester is dead and who has been measured — not guessed — to be unable to
+   * raise the price of another by any sequence of sells. See `OreCrisis.ts` for
+   * that arithmetic and for why the state is reachable without playing badly.
+   *
+   * It refuses anything that is not the caller's own finished, live structure
+   * carrying a `shipsWith`, and returns whether a unit actually reached the
+   * ground — the caller must not start a cooldown on a delivery that never
+   * happened, or a refinery ringed by rocks would burn the rescue silently.
+   */
+  redeemBundledUnit(player: PlayerId, building: EntityId): boolean {
+    const st = this.world.store;
+    const i = st.index(building);
+    if (i < 0 || st.kind[i] !== EntityKind.Building) return false;
+    if (st.owner[i] !== (player as number)) return false;
+    const f = st.flags[i];
+    if ((f & EntityFlag.Alive) === 0) return false;
+    if ((f & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) return false;
+    const entry = this.entryForSlot(i);
+    if (entry === null || entry.shipsWith === '') return false;
+    const p = this.world.players[player as number];
+    if (p === undefined) return false;
+    return this.deliverBundledUnit(p, i, entry);
+  }
+
+  private deliverBundledUnit(p: PlayerState, i: number, entry: BuildEntry): boolean {
     const unit = this.catalog.byKey(entry.shipsWith);
-    if (unit === null || unit.kind !== BuildKind.Unit) return;
+    if (unit === null || unit.kind !== BuildKind.Unit) return false;
 
     const st = this.world.store;
     const yaw = st.yaw[i];
@@ -2340,9 +2369,10 @@ export class ProductionService implements QueueHooks {
     const radius = def?.radius ?? (fb === undefined ? 2 : Math.max(fb.width, fb.length) * 0.45);
     const loco = def?.locomotor ?? fb?.locomotor ?? Locomotor.Wheel;
 
-    if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot, unit.naval)) return;
-    if (this.spawnUnit(p, unit, spot[0], spot[1], yaw) === NONE) return;
+    if (!this.findEgressSpot(exitX, exitZ, radius, loco, spot, unit.naval)) return false;
+    if (this.spawnUnit(p, unit, spot[0], spot[1], yaw) === NONE) return false;
     p.stats.unitsBuilt++;
+    return true;
   }
 
   /** Release nav cells and cached economy when a structure leaves the world. */

@@ -646,6 +646,16 @@ export const enum EvaLine {
   MissionFailed = 13,
   BuildingCaptured = 14,
   OreMinerUnderAttack = 15,
+  /**
+   * No ore miner, no money for one. The line that names the way out.
+   *
+   * APPENDED, never inserted — see `EVA_LINE_ID`, which is keyed by these
+   * numbers, and `SaveGame`, which does not store them but would be the next
+   * thing to break if this enum were ever renumbered.
+   */
+  NoOreMiner = 16,
+  /** A gift arrived. Used by the ore-crisis rescue; see `OreCrisis.ts`. */
+  Reinforcements = 17,
 }
 
 /* ==========================================================================
