@@ -89,7 +89,7 @@ mission should be adding a data row, and data rows can be validated at module lo
 
 ## The unlock curve
 
-Three traps, and the rules that avoid them.
+Four traps, and the rules that avoid them.
 
 **1. Locking the roster makes game *one* boring, not game ten.**
 The starting army must be complete enough for a genuinely satisfying match: the full building line,
@@ -105,11 +105,35 @@ Superweapons are the one deliberate exception and sit at the end of long chains.
 An unlock the player does not notice is not a reward. Every unlock gets an end-screen reveal, a
 "NEW" badge on its cameo, and an entry in the missions screen.
 
+**4. A battlefield can turn optional content into the only road.**
+The three rules above are all about CONTENT, and they were all satisfied when `Sunder Atoll` shipped:
+a fresh profile kept a complete army, nothing it was missing was strictly stronger, and every reward
+was visible. It was still a **permanent stalemate** on a fresh profile — four islands, one army each,
+`struct.naval` behind "win 10 skirmishes", every lift behind a dock, and `UnlockGate.mirrorAI`
+stranding the AI on the same terms. Four armies that could not touch each other, and no way for the
+match to end.
+
+So the rule the other three do not cover:
+
+> **Content required to REACH THE ENEMY is never progression-gated.**
+
+It is answered from the **map**, not from the profile — `mapForcesSeaCrossing` in
+`src/sim/LandRoutes.ts` is true only where there is navigable water AND the ground is split into more
+than one land mass, which today is `Sunder Atoll` and nothing else. On every land map, and on both
+half-plane sea maps, a dock stays exactly as gated as it was: there the sea is a second front, not
+the only one. The exemption covers the dock and the amphibious lift and stops there
+(`ProductionCatalog.isSeaMobility`) — **warships stay earned**, because a gunboat widens an army and
+a barge is how the army arrives.
+
+Deriving it from the map rather than the profile is also what keeps it PvP-safe: every client shares
+the battlefield, so every client gets the same answer. `tests/sea-crossing-gate.spec.ts` is the gate.
+
 ### What is gated
 
 | Tier | Available | Earned |
 | --- | --- | --- |
 | Units | Infantry, main tank, harvester, dozer, basic defence | Prism/tesla specialists, artillery, naval, air |
+| ...except | On a map with no land route, the dock and the lift (see trap 4) | The warships still are |
 | Structures | Con yard, power, barracks, refinery, war factory, radar | Tech centre, advanced defences, superweapon structures |
 | Maps | 2–3 starters | Naval, urban, canyon, snow biomes |
 | Meta | — | Commander powers, insignia, unit decals |
