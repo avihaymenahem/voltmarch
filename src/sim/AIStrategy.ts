@@ -1334,13 +1334,23 @@ export const AI_DEPLOY = {
  * landlocked ones. It lives there rather than here so the build menu can share
  * the one definition instead of growing a second.
  *
- * SO `amphibiousMinSaving` IS THE HONEST GATE AND IT IS EXPECTED TO REFUSE.
- * A landing on either shipped map costs 104-113 cells against 68 on foot — the
- * water route is 54-67% WORSE — and on `contested-strait` there is not one
- * shore cell within 24 of the enemy base to land on. An AI that ran an
- * amphibious assault there would be playing badly, visibly, on purpose. The
- * operation is gated on a MEASURED saving so that it fires when a map gives it
- * a reason and stays silent when one does not.
+ * SO THE LANDING CORRECTLY REFUSES ON BOTH, and the reason is `isReachable`:
+ * the land is one region, so the objective is walkable and there is nothing the
+ * sea can do about it. `Sunder Atoll` is the map where that inverts — four
+ * islands, one sea, and an objective in another land region — and there the
+ * same test fires.
+ *
+ * THIS HEADER USED TO CREDIT THAT REFUSAL TO `amphibiousMinSaving`, AND THAT
+ * WAS NEVER TRUE. That gate compared a STRAIGHT LINE from the group to the
+ * objective against a THREE-SEGMENT POLYLINE over the same two endpoints
+ * (group -> beach -> far beach -> objective). By the triangle inequality the
+ * polyline is never shorter, so the saving was never positive, so the test
+ * `saving < 12` was true on every map, every seed, every tick, and the second
+ * arm of `amphibiousWanted` was unreachable code wearing a measurement's
+ * clothes. The quoted "104-113 cells against 68" is that same arithmetic: it is
+ * the triangle inequality restated, not a property of those two maps. The
+ * constant is gone and `amphibiousWanted` has one arm, which is what it always
+ * had. See the block comment there for what a real second arm would need.
  *
  * The sea is still worth contesting on both: it is a quarter of the map that
  * currently belongs to whoever bothers to sail on it, which is nobody.
@@ -1379,15 +1389,20 @@ export const AI_NAVAL = {
    */
   yardScore: 1.15,
   /**
-   * Cells of saving an amphibious route must beat before a landing is ordered.
+   * Ticks a brain may spend BUYING ITS WAY TO THE COAST before it gives up.
    *
-   * Measured as (land hops) - (walk to the beach + the crossing + walk inland),
-   * so a positive number means the water is genuinely the short way. 12 cells
-   * is 48 m: enough that the boarding and unloading overhead (a squad walks to
-   * the hull, rides, and walks off a beach) is paid for. On both shipped maps
-   * the saving is NEGATIVE by 37-46 cells and this refuses, correctly.
+   * A Naval Yard has to stand on a shore, and construction has to stand inside
+   * a build radius. On an island opening those two sets can be disjoint: on
+   * Sunder Atoll the nearest buildable-and-coastal site is 61-79 m from the
+   * Construction Yard against a 56 m radius, so on three of four islands there
+   * is no legal dock site AT ALL on turn one. The answer is base creep — see
+   * `AiBrain.coastCreepWanted` — and this bounds how long the brain is willing
+   * to pay for it. Ten minutes: long enough to cross 20 m of gap several times
+   * over at the rate a poor brain completes structures, short enough that a
+   * base whose only beach is a cliff face stops buying generators for a dock it
+   * will never found. Probing does NOT stop when this expires; only paying does.
    */
-  amphibiousMinSaving: 12,
+  coastReachTicks: 30 * 60 * 10,
   /** Infantry a landing wants before it is worth the hull. */
   minLandingSquad: 3,
   /**

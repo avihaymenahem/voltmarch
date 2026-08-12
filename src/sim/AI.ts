@@ -96,7 +96,8 @@ import {
   BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, MAX_QUEUE_DEPTH, SIM_DT, SIM_HZ,
 } from '../core/config';
 import {
-  EntityFlag, EntityKind, Faction, FACTION_PALETTE_KEYS, NONE, OrderKind, Stance, UnitState,
+  EntityFlag, EntityKind, Faction, FACTION_PALETTE_KEYS, Locomotor, NONE, OrderKind, Stance,
+  UnitState,
 } from '../core/types';
 import type {
   ArmorClass, EntityId, PlayerId, PlayerState, SimContext,
@@ -481,9 +482,14 @@ export class AiBrain {
   /** A cell on our own beach: foot-passable land touching the sea. -1 when none. */
   private shoreCx = -1;
   private shoreCz = -1;
-  /** The wet cell beside it — what a hull is actually ordered to. */
-  private shoreWaterCx = -1;
-  private shoreWaterCz = -1;
+  /*
+   * `shoreWaterCx/Cz` used to live here — the wet cell beside our own beach,
+   * written by every `probeSea` and READ BY NOTHING. The wet cell that actually
+   * matters is the one beside the FAR beach, and `amphibiousWanted` takes that
+   * straight out of `shoreOut[2]/[3]` at the moment it needs it. A field that is
+   * only ever written is a comment that the compiler cannot check, so it is
+   * gone rather than left looking load-bearing.
+   */
   /** Where the warships hold station. -1 when there is no sea to hold. */
   private stationX = -1;
   private stationZ = -1;
@@ -1617,11 +1623,24 @@ export class AiBrain {
    * ship that has just rolled out of a yard onto its slipway. Guessing here
    * would take the Pact's whole army out of its own strike group.
    *
-   * A TRANSPORT, by contrast, has a fact of its own that no other unit shares:
-   * seats. `capacityAt` is the same question `isUndeployedMcv` already asks for
-   * the same reason, so the unbound case still keeps a troop hull out of the
-   * army — which is the half that would otherwise put an unarmed 900-credit
-   * ferry in an attack wave.
+   * A TRANSPORT, by contrast, has TWO facts of its own, and the fallback needs
+   * BOTH. Seats are the obvious one — `capacityAt` is the same question
+   * `isUndeployedMcv` already asks for the same reason, and it is what keeps an
+   * unarmed 900-credit ferry out of an attack wave. Seats ALONE are not enough:
+   * "unarmed vehicle with passengers" is also every armoured personnel carrier
+   * anyone will ever add, and `stageAmphibious` picks the hull with the MOST
+   * seats out of this list and then sends it across open water. A carrier that
+   * cannot swim wins that comparison, sails nowhere, and the operation dies on
+   * `crossTicks` with the squad locked inside it — while `transports` reports a
+   * fleet the brain does not have. It reported THREE for a brain with no naval
+   * yard, which is how this was noticed.
+   *
+   * So the second fact is AMPHIBIOUSNESS, read off the locomotor column rather
+   * than off `moveClassAt`: `MoveClass` answers Hover for a hull standing on
+   * sand and Naval for the same hull one cell out, so it describes where the
+   * unit IS. `Locomotor.Hover` describes what it can DO, which is the question,
+   * and it is the property every troop hull in this game already has (see the
+   * embark note in `amphibiousWanted`).
    */
   private navalRoleOfUnit(i: number, kind: EntityKind, flags: number): BuildRole {
     // THE SERVICE'S REVERSE MAP FIRST, and it is the one that actually answers
@@ -1639,6 +1658,7 @@ export class AiBrain {
       return BuildRole.Unknown;
     }
     if (kind === EntityKind.Vehicle && (flags & EntityFlag.CanAttack) === 0
+      && this.store.locomotor[i] === Locomotor.Hover
       && (transportService()?.capacityAt(i) ?? 0) > 0) {
       return BuildRole.Transport;
     }
@@ -2482,6 +2502,39 @@ export class AiBrain {
     return this.buildUnits(s, p, false);
   }
 
+  /* -- "is there anywhere to put a dock", memoised on a tick stamp ---------- */
+  private dockSiteTick = -1e9;
+  private dockSiteOk = false;
+  private readonly dockSiteOut = new Int32Array(2);
+  /** Tick this brain first wanted a dock it had nowhere to put. -1 when it does. */
+  private coastWantTick = -1;
+
+  /**
+   * Could this brain place a Naval Yard right now, and where?
+   *
+   * THE SAME SEARCH `placeNext` WILL RUN, run early. Anchored on the beach and
+   * answered by `siteIsLegal`, which is `ProductionOracle.placeable` — the build
+   * ghost's own rule, including the coast test the four yards carry. Asking any
+   * cheaper question here (is the shore inside the build radius? is there
+   * buildable ground near water?) would be a SECOND definition of placeable, and
+   * this file already has one seam to the placement rule.
+   *
+   * Rate-limited on a tick stamp: a refusal costs the full 16-ring spiral, and
+   * this is asked on the build clock. `AI_NAVAL.evalTicks` is the cadence the
+   * amphibious evaluation already pays for its own ring walk.
+   */
+  private dockHasSomewhereToStand(entry: CatalogEntry): boolean {
+    if (this.shoreCx < 0) return false;
+    const tick = this.world.tick;
+    if (tick - this.dockSiteTick < AI_NAVAL.evalTicks) return this.dockSiteOk;
+    this.dockSiteTick = tick;
+    this.dockSiteOk = this.findPlacement(
+      entry.defId, entry.footprintW, entry.footprintH,
+      cellToWorld(this.shoreCx), cellToWorld(this.shoreCz), this.dockSiteOut,
+    );
+    return this.dockSiteOk;
+  }
+
   /**
    * Score the navy: a dock, then escorts, then a hull for a landing.
    *
@@ -2498,11 +2551,15 @@ export class AiBrain {
    * opponent would answer the opening with a boat.
    *
    * A TRANSPORT IS BOUGHT AGAINST A PLAN, NEVER ON SPECULATION. `amphibWanted`
-   * is the measured verdict from `amphibiousWanted`, so on a map where walking
-   * is shorter this never fires and the AI never owns a ferry it has no water
-   * to use. That is the difference between this and a build rule that says
-   * "coastal map, buy a transport" — which is how you get a 900-credit hull
+   * is the measured verdict from `amphibiousWanted`, so on a map where the
+   * objective is walkable this never fires and the AI never owns a ferry it has
+   * no water to use. That is the difference between this and a build rule that
+   * says "coastal map, buy a transport" — which is how you get a 900-credit hull
    * parked next to a Construction Yard for twenty minutes.
+   *
+   * AND A DOCK IS NOT BOUGHT UNTIL THERE IS SOMEWHERE TO PUT IT. See the gate
+   * below; that one is not a nicety, it is what stops a 1000-credit purchase
+   * from freezing the Structures tab for the rest of the match.
    */
   private considerNavy(): void {
     if (!this.navalMap) return;
@@ -2524,8 +2581,55 @@ export class AiBrain {
       // and something to build tanks in.
       if (this.roleCount[BuildRole.Refinery] === 0) return;
       if (this.roleCount[BuildRole.WarFactory] === 0) return;
-      this.consider(this.catalog.forRole(BuildRole.NavalYard, this.faction),
-        AI_NAVAL.yardScore * this.pers.tech, 'a dock, to stop giving away the sea');
+      const yard = this.catalog.forRole(BuildRole.NavalYard, this.faction);
+      // A DOCK IS NOT BOUGHT UNTIL THERE IS SOMEWHERE TO PUT IT, and that is a
+      // gate rather than a nicety. `canQueue` caps the Structures tab at ONE,
+      // and a finished building that cannot be placed sits at the head of that
+      // queue with `awaitingPlacement` set — forever. So a dock bought while the
+      // coast is still out of reach does not merely fail to appear: it freezes
+      // every other structure this brain will ever build, which is how one
+      // unplaceable 1000-credit purchase ended a base's development at minute
+      // five. Worse, the base creep in `coastCreepWanted` is DRIVEN by placing
+      // ordinary structures, so the blockage also removes the only mechanism
+      // that would have made the site legal. Measured on Sunder Atoll: two of
+      // four brains bought a yard, neither ever placed one, and both stopped
+      // building anything at all from that moment.
+      if (yard === undefined) return;
+      const score = AI_NAVAL.yardScore * this.pers.tech;
+      if (this.dockHasSomewhereToStand(yard)) {
+        this.coastWantTick = -1;
+        this.consider(yard, score, 'a dock, to stop giving away the sea');
+        return;
+      }
+
+      /*
+       * NOWHERE TO PUT ONE. BUY THE STEP THAT MAKES ONE EXIST.
+       *
+       * `coastCreepWanted` already aims every unanchored structure at the beach,
+       * but that only creeps as fast as the brain happens to build — and a poor
+       * brain builds slowly. Measured over twelve minutes on Sunder Atoll: the
+       * Allied brain placed SIX structures in total, two of them power plants,
+       * and its build envelope reached the shore band by exactly five cells,
+       * every one of which had one of its own units parked on it. The Soviet
+       * brain, which built five plants, reached the water and founded a dock.
+       *
+       * So the step toward the water is bought DELIBERATELY, at the dock's own
+       * score, because it IS the dock purchase one building earlier. A power
+       * plant is the right instrument: every faction has one, it is the cheapest
+       * structure any of them owns, and a spare generator is the one surplus
+       * this AI can always use.
+       *
+       * BOUNDED BY A CLOCK, because "walk toward the sea" must not become
+       * "build generators forever" on a base whose nearest beach is a cliff.
+       * After `AI_NAVAL.coastReachTicks` of trying, the brain stops paying for
+       * steps — but it keeps PROBING, so a site opened up by a demolished
+       * building or a moved unit is still taken.
+       */
+      if (!this.coastCreepWanted) return;
+      if (this.coastWantTick < 0) this.coastWantTick = this.world.tick;
+      if (this.world.tick - this.coastWantTick > AI_NAVAL.coastReachTicks) return;
+      this.consider(this.catalog.forRole(BuildRole.Power, this.faction), score,
+        'extending the base to the water, so a dock has a coast to stand on');
       return;
     }
 
@@ -2837,6 +2941,46 @@ export class AiBrain {
    * -------------------------------------------------------------------- */
 
   /**
+   * Is this brain's base still too far from the water to found a dock?
+   *
+   * THE PREDICATE IS A DISTANCE, AND IT IS THE ONE THE PLACEMENT RULE USES.
+   * `evaluatePlacement` accepts a site inside `BUILD_RADIUS` of the Construction
+   * Yard or `PLACEMENT.adjacencyRadius` of any other finished structure — which
+   * is exactly the C&C rule that a base creeps outward one building at a time.
+   * A Naval Yard additionally has to stand on a coast. On an island map those
+   * two conditions can have an EMPTY INTERSECTION on turn one, and on Sunder
+   * Atoll they do: measured through the real generator and the real placement
+   * rule, 532 sites on that map are buildable ground beside navigable water,
+   * 400-470 sites per army are inside that army's build radius, and for three of
+   * the four armies the OVERLAP IS ZERO. The nearest ground-and-shore site sits
+   * 72, 76 and 79 m from the Construction Yard against a 56 m radius.
+   *
+   * So the answer is not a better search — no search can find a legal site that
+   * does not exist — it is to WALK THE BASE TO THE WATER, which is what a human
+   * does and what this map's own layout is designed around (its expansion ore
+   * sits at 72 m, outside the opening radius, on the inward face). While this is
+   * true, every structure that has no anchor of its own is anchored on the beach
+   * instead of on the Construction Yard, so each one lands at the coast-facing
+   * edge of the envelope and drags the envelope 20 m closer to the sea.
+   *
+   * IT TURNS ITSELF OFF. A dock founded (or merely under construction) makes
+   * `roleCount + roleBuilding` non-zero, so the pull stops and the base goes back
+   * to clustering. It never starts at all on a map with no navy
+   * (`navalMap` is `mapSupportsNaval()`), and it never starts when the coast is
+   * already inside the Construction Yard's own radius — which is the case on
+   * both older sea maps, where the AI founds its dock in the first minutes.
+   */
+  private get coastCreepWanted(): boolean {
+    if (!this.navalMap || this.shoreCx < 0) return false;
+    if (this.roleCount[BuildRole.NavalYard] + this.roleBuilding[BuildRole.NavalYard] > 0) {
+      return false;
+    }
+    return dist2(
+      this.builderX, this.builderZ, cellToWorld(this.shoreCx), cellToWorld(this.shoreCz),
+    ) > BUILD_RADIUS;
+  }
+
+  /**
    * Find a spot for the oldest ready structure and commit it.
    *
    * The anchor is role-dependent, which is most of what makes an AI base look
@@ -2853,7 +2997,27 @@ export class AiBrain {
 
     let ax = this.builderX;
     let az = this.builderZ;
-    if (role === BuildRole.Refinery && this.expandX >= 0) {
+    if (role === BuildRole.NavalYard && this.shoreCx >= 0) {
+      /*
+       * THE BEACH, and it is the one `probeSea` already found.
+       *
+       * `shoreCx/shoreCz` is foot-passable land touching the MAIN naval region
+       * (see `isShore`), which is the same fact `evaluatePlacement` demands of a
+       * `needsShore` structure — so anchoring here puts the spiral's ring 0 on
+       * ground that already satisfies the rule instead of on ground that never
+       * can.
+       *
+       * Before this the dock was anchored on the Construction Yard like a power
+       * plant and hunted by a 16-ring spiral, which reaches
+       * `AI_BUILD.placementRings * CELL` = 64 m. On Sunder Atoll the buildable
+       * coast is 61-79 m out, so on three of four islands the search could not
+       * physically reach the water and the AI reported "no legal building site
+       * inside the build radius" for a building whose whole point is to be on
+       * one.
+       */
+      ax = cellToWorld(this.shoreCx);
+      az = cellToWorld(this.shoreCz);
+    } else if (role === BuildRole.Refinery && this.expandX >= 0) {
       ax = this.expandX; az = this.expandZ;
     } else if (role === BuildRole.Refinery) {
       const cx = clampCell(worldToCell(this.builderX));
@@ -2876,6 +3040,13 @@ export class AiBrain {
           az = this.builderZ + (dz / len) * reach;
         }
       }
+    } else if (this.coastCreepWanted) {
+      // Nothing else wanted this one, and the base has to reach the water. The
+      // anchor is the beach and `findPlacement` pulls it back to the nearest
+      // LEGAL cell, which is the coast-facing edge of the build envelope — one
+      // structure, one step closer. See `coastCreepWanted`.
+      ax = cellToWorld(this.shoreCx);
+      az = cellToWorld(this.shoreCz);
     }
 
     if (!this.findPlacement(defId, fw, fh, ax, az, this.cellOut)) {
@@ -3546,11 +3717,8 @@ export class AiBrain {
     if (this.findShore(bx, bz, this.shoreOut)) {
       this.shoreCx = this.shoreOut[0];
       this.shoreCz = this.shoreOut[1];
-      this.shoreWaterCx = this.shoreOut[2];
-      this.shoreWaterCz = this.shoreOut[3];
     } else {
       this.shoreCx = -1; this.shoreCz = -1;
-      this.shoreWaterCx = -1; this.shoreWaterCz = -1;
     }
   }
 
@@ -3667,7 +3835,7 @@ export class AiBrain {
   /**
    * Is a landing the right answer to the current objective, and where?
    *
-   * TWO ARMS, and the first is the one this whole layer was asked for:
+   * ONE ARM, and it is the one this whole layer was asked for:
    *
    *   IMPOSSIBLE ON FOOT. `FlowFieldCache.isReachable` is an exact answer, not
    *     an estimate — two cost-grid region labels compared — so "there is no
@@ -3677,17 +3845,27 @@ export class AiBrain {
    *     `deploy` already writes sites off as unreachable, and it is the same
    *     mechanism reused rather than a second one invented.
    *
-   *   SHORTER BY SEA. The land leg is measured as the STRAIGHT LINE from the
-   *     group to the objective, which is a LOWER BOUND on the real route — a
-   *     land path is never shorter than the crow flies. Comparing the true
-   *     water route against an optimistic land route makes this test refuse
-   *     whenever it is close, which is the direction an expensive, slow,
-   *     interruptible operation should fail in. It also costs a square root
-   *     instead of a flood fill.
+   * THERE USED TO BE A SECOND ARM AND IT COULD NOT FIRE. "Shorter by sea"
+   * compared `|G->O|` — the straight line from the group to the objective —
+   * against `|G->E| + |E->L| + |L->O|`, the three legs of the crossing over the
+   * SAME TWO ENDPOINTS. The triangle inequality makes the second at least as
+   * long as the first for every pair of intermediate points, on every map, at
+   * every tick, so `saving` was never positive and `saving < 12` was a constant
+   * `true`. It read as a measurement — it even published its numbers into
+   * `amphibVerdict` — and it decided nothing. It is deleted rather than tuned,
+   * because no value of the threshold makes an always-negative quantity clear
+   * it.
    *
-   * Writes `embarkX/Z` and `landX/Z` on success. `amphibVerdict` always carries
-   * the numbers, because "the AI did not do an amphibious assault" is a mystery
-   * and "saving -46 cells: walking is shorter" is an answer.
+   * WHAT A REAL SECOND ARM WOULD NEED is a LAND leg that is a route rather than
+   * a chord: a flood fill over `MoveClass` from the group to the objective, so
+   * that a walk around a bay can be longer than the crossing that skips it.
+   * `FlowFieldCache` labels regions but does not publish a distance, so that is
+   * a new capability, not a re-tuning — and until it exists "can I walk there at
+   * all" is the only honest question this function can ask.
+   *
+   * Writes `embarkX/Z` and `landX/Z` on success, and `amphibVerdict` always says
+   * what it decided: "the AI did not do an amphibious assault" is a mystery,
+   * "the objective is reachable on foot" is an answer.
    */
   private amphibiousWanted(): boolean {
     this.amphibVerdict = '';
@@ -3729,27 +3907,20 @@ export class AiBrain {
     this.landX = cellToWorld(this.shoreOut[2]);
     this.landZ = cellToWorld(this.shoreOut[3]);
 
-    // ARM ONE: can the army we would otherwise send even get there?
+    // THE ONE ARM: can the army we would otherwise send even get there?
     const cls = this.strikeMoveClass();
     if (!nav.isReachable(acx, acz, ocx, ocz, cls)) {
       this.amphibVerdict = 'objective unreachable on land — the sea is the only way';
       return true;
     }
-
-    // ARM TWO: is the sea measurably shorter than the most optimistic walk?
-    const byLand = dist2(gx, gz, this.objectiveX, this.objectiveZ) / CELL;
-    const toBeach = dist2(gx, gz, this.embarkX, this.embarkZ) / CELL;
+    // It can walk. The crossing is still measured and reported, because the
+    // distance is what a second arm would one day be built out of and a silent
+    // refusal is the thing this verdict string exists to prevent.
     const crossing = dist2(this.embarkX, this.embarkZ, this.landX, this.landZ) / CELL;
-    const inland = dist2(this.landX, this.landZ, this.objectiveX, this.objectiveZ) / CELL;
-    const saving = byLand - (toBeach + crossing + inland);
-    if (saving < AI_NAVAL.amphibiousMinSaving) {
-      this.amphibVerdict =
-        `saving ${saving.toFixed(0)} cells (land ${byLand.toFixed(0)} vs sea `
-        + `${(toBeach + crossing + inland).toFixed(0)}) — walking is shorter`;
-      return false;
-    }
-    this.amphibVerdict = `saving ${saving.toFixed(0)} cells by sea`;
-    return true;
+    this.amphibVerdict =
+      `reachable on foot (${(dist2(gx, gz, this.objectiveX, this.objectiveZ) / CELL).toFixed(0)}`
+      + ` cells) — no landing needed; the crossing would be ${crossing.toFixed(0)}`;
+    return false;
   }
 
   /**
