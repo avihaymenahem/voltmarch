@@ -381,10 +381,26 @@ shipped seed, and no land route between any two of them. Ten battlefields ship n
   so a dock can actually be placed: coastal buildable ground went 16.4% → 57.4% on contested-strait,
   and coral-shore had **zero** legal dock sites before.
 - **The AI got a navy** — sea survey, a dock on a shore it walks to, warships holding a lane, and an
-  amphibious Board/Cross/Land cycle. Landings on the atoll went 0 → 12. `npm test` deliberately does
-  not run that proof: `tests/amphibious-landing.spec.ts` is the one opt-in file, skipped unless
-  `VM_LANDING_PROBE` is set, because it drives a real 24-minute four-army match and "the brain lands
-  twelve times" is a fact about one seed rather than an invariant.
+  amphibious Board/Cross/Land cycle. `npm test` deliberately does not run that proof:
+  `tests/amphibious-landing.spec.ts` is the one opt-in file, skipped unless `VM_LANDING_PROBE` is
+  set, because it drives a real 24-minute four-army match and a landing count is a fact about one
+  seed rather than an invariant.
+
+  **Re-measured rather than carried forward.** This read "landings went 0 → 12" and the 12 did not
+  reproduce on a later build. Seed 4242, four brains, 24 minutes:
+
+  ```
+                    before          after
+      naval yards   0 / 1 / 0 / 0   1 / 1 / 1 / 1
+      transports    0 / 2 / 0 / 0   2 / 2 / 2 / 0
+      landings      0 / 9 / 0 / 0   5 / 5 / 1 / 0
+  ```
+
+  THREE OF FOUR, NOT FOUR, and the fourth has a named cause: the Reclamation brain founds its dock
+  at minute five, orders a hauler, and jams its Vehicles queue behind a finished unit that cannot
+  egress from a base holding 104 units — banking 23 000 credits while it tries. Present identically
+  BEFORE the change, and the same shape as wall 3 in `ai-naval-yard.spec.ts`. Do not quote "all four
+  armies land".
 
 ## Cargo is SLOTS, and a carrier is not a bench
 
@@ -444,7 +460,10 @@ roster was unusable against three of your four opponents.
   130 — which is a TARGET, not a description. Measured on the thirteen capture fixtures via
   `renderer.info.render.calls` and reported per shot in `shots/_report.json` as `frame.drawCalls`,
   the real figure is **174–273** (that count includes the three CSM shadow cascades): `08-naval-water`
-  is the cheapest at 174, `01-establishing-base` the dearest at 273. This line read "under 130 draw
+  is the cheapest at 174, `01-establishing-base` the dearest at 273. **Re-measured 2026-08-12 from a
+  fresh `_report.json` and unchanged on every one of the thirteen** — the first time this range has
+  been confirmed rather than inherited, and it survived a release that added thirteen models. This
+  line read "under 130 draw
   calls" as a statement of fact while the counter disagreed by more than 2×; `MAX_DRAW_CALLS` in
   `config.ts` is the aspiration and `AdaptiveResolution`'s own header already records a profile at
   203. Do not quote 130 as achieved, and do not spend draws freely on the grounds that the budget is
