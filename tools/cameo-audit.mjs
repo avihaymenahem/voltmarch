@@ -62,21 +62,27 @@
  */
 
 import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { serve } from './lib/serve.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 /**
- * Deliberately an odd port. Several harnesses in this repo (`shoot.mjs` 4317,
- * `playtest.mjs` 4331) reuse a server they find already listening, and with
- * more than one workflow active the port you expected is regularly somebody
- * else's `vite preview`. `assertDevServer` below is the guard; this is just the
- * cheap half of it.
+ * A HINT — and the note that used to sit here was the clearest statement in the
+ * repo of a problem it then failed to solve. It read: "deliberately an odd port,
+ * because several harnesses here reuse a server they find already listening, so
+ * the port you expected is regularly somebody else's `vite preview`", and then
+ * this file went on to do exactly the same thing —
+ * `if (!(await waitForServer(BASE, 1500))) start one` — with a number one digit
+ * further from the collision. Picking an odd port is not a mechanism; it is a
+ * hope that nobody else picks it, and `tools/wedge.mjs` and
+ * `tools/order-probe.mjs` are the pair that shows how that ends.
+ *
+ * Adoption is gone. `serve()` starts the dev server, reads the origin off our
+ * own child, and proves the tree it is rooted at.
  */
-const PORT = 4392;
-const BASE = `http://localhost:${PORT}/`;
+const PORT_HINT = 4392;
 
 const HEADED = process.argv.includes('--headed');
 const SHEET = process.argv.includes('--sheet');
@@ -89,18 +95,6 @@ const JSON_AT = (() => {
 /* server                                                                     */
 /* -------------------------------------------------------------------------- */
 
-const run = (cmd, args) =>
-  spawn(cmd, args, { cwd: ROOT, shell: process.platform === 'win32', stdio: 'pipe' });
-
-async function waitForServer(url, timeoutMs = 90_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try { if ((await fetch(url)).ok) return true; } catch { /* not up yet */ }
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  return false;
-}
-
 /**
  * Prove we are talking to `vite` and not `vite preview`.
  *
@@ -109,6 +103,13 @@ async function waitForServer(url, timeoutMs = 90_000) {
  * dies with "Failed to fetch dynamically imported module", which reads like a
  * missing file rather than like the wrong server. This asserts the difference
  * up front, because trap 2 in the header cost a run before it was written down.
+ *
+ * It is a check on the server's MODE and not on its identity — `serve()` does
+ * identity, and the two are separate questions. This one survives the move
+ * because it names the exact capability the probe below depends on: `/src/**`
+ * addressable by source path. `assertServesSource` would also fail against a
+ * preview server, but it would report it as the wrong TREE, which is the wrong
+ * thing to go looking for.
  */
 async function assertDevServer(base) {
   const res = await fetch(`${base}src/art/UnitFactory.ts`);
@@ -116,8 +117,7 @@ async function assertDevServer(base) {
   if (body.trimStart().startsWith('<!doctype') || body.includes('<html')) {
     throw new Error(
       `${base} is serving the SPA fallback for /src/**.ts, so it is a PREVIEW server, ` +
-      'not a dev server. Something else is already listening on this port — stop it, ' +
-      'or change PORT in tools/cameo-audit.mjs.',
+      'not a dev server, and the probe below imports modules by source path.',
     );
   }
 }
@@ -388,32 +388,20 @@ const SHEET_PROBE = async (armyName) => {
 /* driver                                                                     */
 /* -------------------------------------------------------------------------- */
 
-let server = null;
-if (!(await waitForServer(BASE, 1500))) {
-  server = run('npx', ['vite', '--port', String(PORT), '--strictPort']);
-}
-/**
- * Kill the WHOLE tree, not the shell we spawned.
- *
- * On Windows `spawn(..., { shell: true })` gives us a `cmd.exe` whose child is
- * the real vite process, and `child.kill()` reaps only the shell. The orphaned
- * vite then keeps port 4338 — so the next run's `waitForServer` succeeds
- * against a server holding a stale module graph, and the probe dies with
- * "Failed to fetch dynamically imported module". That cost a run.
+/*
+ * The tree kill that used to be explained here is in `tools/lib/serve.mjs` now,
+ * along with the reason: on Windows `spawn(..., { shell: true })` gives a
+ * `cmd.exe` whose child is the real vite, `child.kill()` reaps only the shell,
+ * and the orphan keeps the port — so the NEXT run's `waitForServer` succeeded
+ * against a server holding a stale module graph and the probe died with "Failed
+ * to fetch dynamically imported module". That cost a run. vite is spawned as one
+ * direct node process now, so there is no shell to reap in the first place.
  */
-const cleanup = () => {
-  if (server === null) return;
-  try {
-    if (process.platform === 'win32' && server.pid !== undefined) {
-      spawn('taskkill', ['/pid', String(server.pid), '/T', '/F'], { stdio: 'ignore' });
-    } else {
-      server.kill();
-    }
-  } catch { /* already gone */ }
-};
-process.on('exit', cleanup);
-process.on('SIGINT', () => { cleanup(); process.exit(1); });
-if (!(await waitForServer(BASE))) { cleanup(); throw new Error(`dev server never came up on ${BASE}`); }
+const server = await serve({
+  root: ROOT, mode: 'dev', portHint: PORT_HINT, log: console.log,
+});
+const BASE = server.origin;
+const cleanup = () => server.stop();
 try {
   await assertDevServer(BASE);
 } catch (err) {
@@ -489,6 +477,7 @@ await page.addInitScript(() => {
 });
 
 console.log('> booting the game...');
+server.assertAlive('the audit');
 await page.goto(`${BASE}?blank=1`, { waitUntil: 'domcontentloaded' });
 await page.evaluate(() => {
   localStorage.clear();

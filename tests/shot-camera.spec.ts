@@ -40,6 +40,8 @@ import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+import { stripAnsi } from '../tools/lib/serve.mjs';
+
 import { CameraRig } from '../src/render/camera';
 import { RENDER_CONFIG, configureRender } from '../src/render/renderer';
 import {
@@ -333,6 +335,11 @@ describe('tools/shoot.mjs', () => {
     fileURLToPath(new URL('../tools/shoot.mjs', import.meta.url)),
     'utf8',
   );
+  // The serving mechanism lives here now, shared by thirteen tools.
+  const serveSource = readFileSync(
+    fileURLToPath(new URL('../tools/lib/serve.mjs', import.meta.url)),
+    'utf8',
+  );
 
   /** Every `camera: { distance: N, pitchDeg: M }` block in the shot table. */
   function declaredCameras(): Array<{ distance: number; pitchDeg: number }> {
@@ -403,24 +410,58 @@ describe('tools/shoot.mjs', () => {
    * defect back, and it should go red rather than be caught in review.
    * --------------------------------------------------------------------- */
 
+  /*
+   * THE MECHANISM MOVED, AND THAT IS THE POINT OF THE MOVE. It lived in
+   * `shoot.mjs` and TWELVE other tools carried the same fixed-port bug — five
+   * of them on one port, and five that DELIBERATELY adopted a foreign server
+   * ("if nothing answers within 1500 ms, start our own"). One copy in
+   * `tools/lib/serve.mjs` is what stops the next tool from re-inventing the
+   * defect, so these assertions now read both files: the caller must go through
+   * the module, and the module must still do the three things.
+   */
   it('takes the origin from its own child, never from a port number', () => {
     // The old code asserted a constant and then trusted whatever answered it.
-    expect(source).toContain('function previewOrigin(');
-    expect(source).toContain('await previewOrigin(');
+    expect(source).toContain("from './lib/serve.mjs'");
+    expect(source).toMatch(/await serve\(\{/);
+    expect(serveSource).toContain('export function originFrom(');
+    expect(serveSource).toContain('await originFrom(');
     // The one thing that must never come back: a probe whose timeout is read as
     // "the port is free".
     expect(source).not.toContain('something is already serving');
+    expect(serveSource).not.toContain('something is already serving');
   });
 
   it('checks the served index.html against the dist/ on this disk', () => {
-    expect(source).toContain('function assertOurBuild(');
-    expect(source).toContain('await assertOurBuild(');
-    expect(source).toMatch(/is not serving this checkout's dist\//);
+    expect(serveSource).toContain('export async function assertServesDist(');
+    expect(serveSource).toMatch(/is not serving this checkout's dist\//);
+    expect(source).toMatch(/mode: 'preview'/);
   });
 
   it('refuses to keep shooting once its own server has exited', () => {
-    expect(source).toMatch(/server\.exitCode !== null/);
-    expect(source).toMatch(/the preview server exited \(\$\{server\.exitCode\}\)/);
+    expect(source).toMatch(/server\.assertAlive\(/);
+    expect(serveSource).toMatch(/child\.exitCode !== null/);
+    expect(serveSource).toMatch(/exited \(\$\{child\.exitCode\}\) part-way through/);
+  });
+
+  it('strips the WHOLE escape sequence, ESC byte included', () => {
+    /*
+     * THE FIX WAS INERT, AND ONLY RUNNING IT SHOWED THAT. The strip was
+     * `/\[[0-9;]*m/g`, which removes the CSI body and LEAVES the ESC. vite
+     * bolds the port digits inside the URL it prints, so the banner really is
+     *
+     *   "...\u001b[36mhttp://127.0.0.1:\u001b[1m4472\u001b[22m/\u001b[39m"
+     *
+     * and that strip turns it into `http://127.0.0.1:\u001b4472\u001b/` — the
+     * URL regex returns null, every rung of the port ladder burns its timeout,
+     * and the harness dies claiming no preview would start. The whole
+     * origin-from-our-own-child fix could not fire in this environment.
+     *
+     * A grep cannot catch that, so this one runs the function.
+     */
+    const banner = '  \u001b[32m\u27a1\u001b[39m  \u001b[1mLocal\u001b[22m:'
+      + '   \u001b[36mhttp://127.0.0.1:\u001b[1m4472\u001b[22m/\u001b[39m';
+    expect(stripAnsi(banner)).toBe('  \u27a1  Local:   http://127.0.0.1:4472/');
+    expect(stripAnsi(banner)).not.toContain('\u001b');
   });
 
   it('reads the GL backend every shot and refuses a mid-run change', () => {

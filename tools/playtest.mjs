@@ -36,28 +36,16 @@
  */
 
 import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { serve } from './lib/serve.mjs';
 
-const PORT = 4331;
-const BASE = `http://localhost:${PORT}/`;
+/** A hint — the origin is read back off our own child. See `tools/lib/serve.mjs`. */
+const PORT_HINT = 4331;
 const MODE = process.argv[2] ?? 'ai';
 const HEADED = process.argv.includes('--headed');
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-function run(cmd, args) {
-  return spawn(cmd, args, { cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32' });
-}
-async function waitForServer(url, ms = 90_000) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    try { const r = await fetch(url); if (r.ok) return true; } catch {}
-    await new Promise((r) => setTimeout(r, 400));
-  }
-  return false;
-}
 
 /* -------------------------------------------------------------------------- */
 /* in-page probe: everything below runs inside the game page                   */
@@ -108,6 +96,10 @@ const ONLY = process.argv[3];
 const FACTIONS = ONLY ? [ONLY] : ['allies', 'soviets', 'meridian', 'reclaim'];
 
 async function boot(browser, { player, ai, seed, start = 'mcv', credits = 10000, difficulty = 2 }) {
+  // Per boot: `determinism` mode boots twice and compares, and a server that
+  // died between the two would put the halves of that comparison on different
+  // bundles.
+  server.assertAlive(`the ${player} boot`);
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
   page.setDefaultTimeout(180_000);
   page.setDefaultNavigationTimeout(180_000);
@@ -394,12 +386,27 @@ async function modeDeterminism(browser) {
 
 /* -------------------------------------------------------------------------- */
 
-let server = null;
-const alreadyUp = await waitForServer(BASE, 1500);
-if (!alreadyUp) server = run('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort']);
-const cleanup = () => { try { server?.kill(); } catch {} };
-process.on('exit', cleanup);
-if (!(await waitForServer(BASE))) { cleanup(); throw new Error('preview never came up'); }
+/*
+ * ALWAYS OUR OWN SERVER — the `alreadyUp` shortcut is deleted, not disabled.
+ *
+ * It was `const alreadyUp = await waitForServer(BASE, 1500); if (!alreadyUp)
+ * start one`, and the saving it bought was one vite boot. What it cost is the
+ * `determinism` mode below: two runs are booted and their worlds compared, and
+ * if the port belongs to a neighbouring worktree then BOTH runs come off that
+ * build and the verdict "DETERMINISTIC (identical world at t+300s)" is a true
+ * statement about somebody else's simulation. A 1500 ms probe on a busy machine
+ * also misreads a live server as an absent one, at which point our own vite
+ * dies on --strictPort and nobody reads the exit code.
+ *
+ * `serve()` walks off a busy port instead of sharing it, so two agents can run
+ * `playtest` at once — which is the case the shortcut was really trying to
+ * serve, and served wrongly.
+ */
+const server = await serve({
+  root: ROOT, mode: 'preview', portHint: PORT_HINT, log: console.log,
+});
+const BASE = server.origin;
+const cleanup = () => server.stop();
 
 const browser = await chromium.launch({
   headless: !HEADED,

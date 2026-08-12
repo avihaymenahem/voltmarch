@@ -21,12 +21,16 @@
  */
 
 import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { serve } from './lib/serve.mjs';
 
-const PORT = 4351;
-const BASE = `http://localhost:${PORT}/`;
+/**
+ * A hint, and one it shared with `tools/order-probe.mjs` — so running the two
+ * pathfinding probes together meant one of them measuring the other's server.
+ * `serve()` reads the origin off our own child and walks off a busy port.
+ */
+const PORT_HINT = 4351;
 const MODE = process.argv[2] ?? 'alley';
 const HEADED = process.argv.includes('--headed');
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -35,18 +39,6 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WINDOW_S = 12;
 /** Metres of total travel inside that window that still counts as moving. */
 const MOVE_EPS = 1.5;
-
-function run(cmd, args) {
-  return spawn(cmd, args, { cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32' });
-}
-async function waitForServer(url, ms = 90_000) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    try { const r = await fetch(url); if (r.ok) return true; } catch { /* not up yet */ }
-    await new Promise((r) => setTimeout(r, 400));
-  }
-  return false;
-}
 
 /* -------------------------------------------------------------------------- */
 /* boot — identical contract to playtest.mjs, see its header for the two races */
@@ -64,6 +56,7 @@ async function boot(browser, { player, ai, seed, start = 'mcv', credits = 60000,
   });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message.slice(0, 300)));
 
+  server.assertAlive('this boot');
   await page.goto(BASE + '?blank=1', { waitUntil: 'domcontentloaded' });
   await page.evaluate((s) => {
     localStorage.clear();
@@ -515,12 +508,19 @@ async function modeSoak(browser) {
 
 /* -------------------------------------------------------------------------- */
 
-let server = null;
-const alreadyUp = await waitForServer(BASE, 1500);
-if (!alreadyUp) server = run('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort']);
-const cleanup = () => { try { server?.kill(); } catch { /* already gone */ } };
-process.on('exit', cleanup);
-if (!(await waitForServer(BASE))) { cleanup(); throw new Error('preview never came up'); }
+/*
+ * ALWAYS OUR OWN SERVER. The `alreadyUp` shortcut — adopt whatever answers the
+ * fixed port within 1500 ms — is deleted. A wedge count is a claim about THIS
+ * checkout's steering code, and adopting a neighbour's preview produces a count
+ * about theirs with no way to tell from the output; the same shortcut also
+ * misreads a live server as absent on a loaded machine, which is how the
+ * adoption happened without anybody choosing it.
+ */
+const server = await serve({
+  root: ROOT, mode: 'preview', portHint: PORT_HINT, log: console.log,
+});
+const BASE = server.origin;
+const cleanup = () => server.stop();
 
 const browser = await chromium.launch({
   headless: !HEADED,

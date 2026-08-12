@@ -40,13 +40,34 @@
  */
 
 import { chromium } from 'playwright';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { serve } from './lib/serve.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 4321;
-const BASE = `http://localhost:${PORT}/`;
+
+/**
+ * A HINT, and the reason it can only ever be one.
+ *
+ * This was `const PORT = 4321` plus a `waitForServer` that asked whether
+ * ANYTHING answered there. Nothing checked whose build it was, so a leaked
+ * preview — or a neighbouring worktree's, since a TCP port is machine-wide and
+ * every checkout of this repo runs this same tool — would have been recorded
+ * from and replayed against without a word.
+ *
+ * That is fatal here specifically. Phase A asserts that two runs produce the
+ * same checksums and phase C asserts that a CORRUPTED recording does not. Both
+ * are claims about ONE ENGINE agreeing with itself; both are satisfied just as
+ * happily by a stranger's engine agreeing with itself, and the run then prints
+ * REPLAY PROBE PASSED about a build nobody looked at. The negative control does
+ * not help — it is equally deterministic on somebody else's bundle.
+ *
+ * `serve()` reads the port back off our own child and byte-compares the served
+ * `index.html` against this checkout's `dist/`, so 4321 is where we ASK to
+ * listen and the origin below is where we were actually heard.
+ */
+const PORT_HINT = 4321;
 
 const args = process.argv.slice(2);
 const HEADED = args.includes('--headed');
@@ -70,31 +91,11 @@ if (BUILD) {
   if (built.status !== 0) throw new Error('npm run build failed');
 }
 
-const server = spawn(
-  process.platform === 'win32' ? 'npx.cmd' : 'npx',
-  ['vite', 'preview', '--port', String(PORT), '--strictPort'],
-  { cwd: ROOT, shell: process.platform === 'win32', stdio: 'pipe' },
-);
-server.stdout.on('data', () => {});
-server.stderr.on('data', (d) => process.stderr.write(String(d)));
-const cleanup = () => { try { server.kill(); } catch { /* already gone */ } };
-process.on('exit', cleanup);
-
-async function waitForServer(url) {
-  for (let i = 0; i < 160; i++) {
-    try { if ((await fetch(url)).ok) return true; } catch { /* not up yet */ }
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return false;
-}
-if (!(await waitForServer(BASE))) {
-  cleanup();
-  throw new Error(
-    `preview never came up on ${BASE}. A leaked preview from an earlier run on `
-    + 'this port would serve ITS build and every number below would be that '
-    + "build's, so this refuses rather than guessing.",
-  );
-}
+const server = await serve({
+  root: ROOT, mode: 'preview', portHint: PORT_HINT, log: console.log,
+});
+const BASE = server.origin;
+const cleanup = () => server.stop();
 
 const browser = await chromium.launch({
   headless: !HEADED,
@@ -125,6 +126,9 @@ const untilPlaying = () => page.waitForFunction(
 /* -- phase A: record ------------------------------------------------------- */
 
 console.log(`\n=== RECORD  ?skipmenu=1&seed=${SEED} ===`);
+// The only navigation in the run — phases B and C re-arm the shell in the page
+// that this one loads — so one liveness check covers all three.
+server.assertAlive('the recording phase');
 await page.goto(`${BASE}?skipmenu=1&seed=${SEED}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 120_000 });
 await page.evaluate(() => window.__VM.ready());

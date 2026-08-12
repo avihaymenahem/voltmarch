@@ -54,10 +54,10 @@
  */
 
 import { chromium, firefox, webkit } from 'playwright';
-import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { build, serve } from './lib/serve.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -89,9 +89,29 @@ const REFERENCE_PATH = join(ROOT, 'tools', 'desync-reference.json');
  */
 const PROBE_VERSION = 1;
 
-/** Distinct from tools/shoot.mjs (4317) so the two can run concurrently. */
-const PORT = 4319;
-const BASE = `http://localhost:${PORT}`;
+/**
+ * WHERE THE PREVIEW IS ASKED TO LISTEN, AND WHY THAT IS ONLY A REQUEST HERE.
+ *
+ * This said "distinct from tools/shoot.mjs (4317) so the two can run
+ * concurrently", and it was distinct from 4317 and shared with FOUR OTHER
+ * TOOLS: `flash-stack`, `boot-profile`, `naval-proof` and `sobel` all hard-coded
+ * 4319 too, two of them with the same reassuring comment. A number chosen to
+ * avoid one collision cannot avoid the next one, and the collision it could not
+ * avoid at all is the second worktree running THIS tool.
+ *
+ * That matters more here than almost anywhere else in `tools/`. The entire
+ * output of this file is a COMPARISON: hashes from engine A held against hashes
+ * from engine B and against a committed baseline. Serve one of those engines
+ * from a neighbour's `dist/` and the probe reports a divergence that does not
+ * exist — or, if the neighbour happens to be an OLDER build of a fix, hides one
+ * that does. Either way the answer looks exactly like a real finding, and the
+ * finding is what this tool exists to produce.
+ *
+ * So `serve()` reads the port back off our own child and byte-compares the
+ * served `index.html` against this checkout's `dist/`. 4319 is a hint; a busy
+ * one is walked off, not asserted.
+ */
+const PORT_HINT = 4319;
 
 const ENGINES = { chromium, firefox, webkit };
 
@@ -279,57 +299,15 @@ async function traceSim(page, ticks, interval) {
  * SERVING (only needed by probe 2)
  * ========================================================================== */
 
-function run(cmd, args) {
-  return spawn(cmd, args, { cwd: ROOT, shell: process.platform === 'win32' });
-}
-
-function killTree(child) {
-  if (!child || child.pid === undefined || child.exitCode !== null) return;
-  try {
-    if (process.platform === 'win32') {
-      spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-    } else {
-      process.kill(-child.pid, 'SIGKILL');
-    }
-  } catch { /* already gone */ }
-  try { child.kill('SIGKILL'); } catch { /* already gone */ }
-}
-
-async function waitForServer(url, timeoutMs = 60_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try { if ((await fetch(url)).ok) return true; } catch { /* not up yet */ }
-    await new Promise((r) => setTimeout(r, 300));
-  }
-  return false;
-}
-
 async function startPreview() {
   if (!noBuild) {
-    console.log('> building...');
-    await new Promise((resolve, reject) => {
-      const b = run('npm', ['run', 'build']);
-      let out = '';
-      b.stdout.on('data', (d) => (out += d));
-      b.stderr.on('data', (d) => (out += d));
-      b.on('close', (c) => (c === 0 ? resolve() : reject(new Error(`build failed:\n${out.slice(-4000)}`))));
-    });
+    await build(ROOT, { log: console.log });
   } else if (!existsSync(join(ROOT, 'dist', 'index.html'))) {
     throw new Error('--no-build was given but dist/index.html does not exist.');
   }
 
   console.log('> serving...');
-  const server = spawn(
-    process.execPath,
-    [join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js'),
-      'preview', '--port', String(PORT), '--strictPort'],
-    { cwd: ROOT, detached: process.platform !== 'win32' },
-  );
-  if (!(await waitForServer(BASE))) {
-    killTree(server);
-    throw new Error(`preview server never came up on ${BASE}`);
-  }
-  return server;
+  return serve({ root: ROOT, mode: 'preview', portHint: PORT_HINT, log: console.log });
 }
 
 /* ==========================================================================
@@ -551,7 +529,11 @@ try {
       const browser = await ENGINES[name].launch();
       try {
         const page = await browser.newPage();
-        const url = `${BASE}/?skipmenu=1&seed=${seed}&fog=off`;
+        // OUR server, still alive, before every engine's page. An engine traced
+        // off a stranger's build is a column in the comparison table and there
+        // is nothing in the table to say it came from somewhere else.
+        server.assertAlive(`the ${name} trace`);
+        const url = `${server.origin}?skipmenu=1&seed=${seed}&fog=off`;
         await page.goto(url, { waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => window.__VM !== undefined, null, { timeout: 60_000 });
         await page.evaluate(() => window.__VM.ready());
@@ -589,7 +571,7 @@ try {
     }
   }
 } finally {
-  if (server !== null) killTree(server);
+  server?.stop();
 }
 
 if (jsonOut !== null) {

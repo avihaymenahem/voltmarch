@@ -59,14 +59,15 @@
  */
 
 import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { writeFileSync, mkdirSync } from 'node:fs';
+import { build, serve } from './lib/serve.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PORT = 4339;
-const BASE = `http://localhost:${PORT}/`;
+/** A hint. The origin actually used is read off our own child — see the block
+ *  above the spawn in `tools/lib/serve.mjs`. */
+const PORT_HINT = 4339;
 
 /* -------------------------------------------------------------------------- */
 /* args                                                                       */
@@ -125,23 +126,21 @@ const CONFIGS = ONLY_TOTAL ? [ALL_CONFIGS[0]] : ALL_CONFIGS;
 /* server                                                                     */
 /* -------------------------------------------------------------------------- */
 
-function run(cmd, args) {
-  return spawn(cmd, args, { cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32' });
-}
-
-async function waitForServer(url, ms = 90_000) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    try {
-      const r = await fetch(url);
-      if (r.ok) return true;
-    } catch {
-      /* not up yet */
-    }
-    await new Promise((r) => setTimeout(r, 400));
-  }
-  return false;
-}
+/*
+ * NO ADOPTION. This block was
+ *
+ *     if (!(await waitForServer(BASE, 1500))) server = run("npx", [...]);
+ *
+ * which reads "reuse whatever is already there, it saves a boot" and means
+ * "profile whatever is already there". Two ways it went wrong, and neither
+ * leaves a mark in the report: on a busy machine the 1500 ms probe times out
+ * against a LIVE neighbour, so the tool starts its own vite, that vite dies on
+ * --strictPort with nobody reading the exit code, and the GPU timings below are
+ * then taken off the neighbour; and when the probe works as intended it adopts
+ * the neighbour deliberately. A GPU profile is a number per frame with no
+ * provenance in it, so a run against another worktree's bundle is a plausible
+ * table of milliseconds for a build nobody chose.
+ */
 
 /* -------------------------------------------------------------------------- */
 /* in-page instrument                                                         */
@@ -448,35 +447,16 @@ async function boot(browser, url) {
 
 /* -------------------------------------------------------------------------- */
 
-let server = null;
 if (!NO_BUILD) {
-  console.log('> building...');
-  await new Promise((resolve, reject) => {
-    const b = run('npm', ['run', 'build']);
-    b.on('close', (c) => (c === 0 ? resolve() : reject(new Error('build failed'))));
-  });
+  await build(ROOT, { log: console.log });
 }
 
-if (!(await waitForServer(BASE, 1500))) {
-  console.log('> serving...');
-  server = run('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort']);
-}
-const cleanup = () => {
-  try {
-    server?.kill();
-  } catch {
-    /* already gone */
-  }
-};
-process.on('exit', cleanup);
-process.on('SIGINT', () => {
-  cleanup();
-  process.exit(1);
+console.log('> serving...');
+const server = await serve({
+  root: ROOT, mode: 'preview', portHint: PORT_HINT, log: console.log,
 });
-if (!(await waitForServer(BASE))) {
-  cleanup();
-  throw new Error(`preview never came up on ${BASE}`);
-}
+const BASE = server.origin;
+const cleanup = () => server.stop();
 
 const browser = await chromium.launch({
   headless: !HEADED,
@@ -511,6 +491,7 @@ const report = {
 
 try {
   console.log(`> booting ${url} at ${SIZE_W}x${SIZE_H} ...`);
+  server.assertAlive('the profile');
   const { page, errors } = await boot(browser, url);
 
   report.gpu = await page.evaluate(() => {

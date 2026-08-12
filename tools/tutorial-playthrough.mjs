@@ -49,30 +49,14 @@
  */
 
 import { chromium } from 'playwright';
-import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { serve } from './lib/serve.mjs';
 
-const PORT = 4332;
-const BASE = `http://localhost:${PORT}/`;
+/** A hint. `tools/lib/serve.mjs` reads the real origin off our own child. */
+const PORT_HINT = 4332;
 const HEADED = process.argv.includes('--headed');
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-
-/* -------------------------------------------------------------------------- */
-/* server                                                                      */
-/* -------------------------------------------------------------------------- */
-
-function run(cmd, args) {
-  return spawn(cmd, args, { cwd: ROOT, stdio: 'inherit', shell: process.platform === 'win32' });
-}
-async function waitForServer(url, ms = 90_000) {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    try { const r = await fetch(url); if (r.ok) return true; } catch { /* not up yet */ }
-    await new Promise((r) => setTimeout(r, 400));
-  }
-  return false;
-}
 
 /* -------------------------------------------------------------------------- */
 /* in-page helpers — installed before any page script runs                     */
@@ -331,6 +315,7 @@ async function playthrough(browser) {
   await page.addInitScript(HELPERS);
 
   /* -- 1. a clean profile, then the real title screen -------------------- */
+  server.assertAlive('the playthrough');
   await page.goto(BASE + '?blank=1', { waitUntil: 'domcontentloaded' });
   await page.evaluate(() => {
     localStorage.clear();
@@ -834,12 +819,18 @@ async function playthrough(browser) {
 
 /* -------------------------------------------------------------------------- */
 
-let server = null;
-const alreadyUp = await waitForServer(BASE, 1500);
-if (!alreadyUp) server = run('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort']);
-const cleanup = () => { try { server?.kill(); } catch { /* already gone */ } };
-process.on('exit', cleanup);
-if (!(await waitForServer(BASE))) { cleanup(); throw new Error('preview never came up'); }
+/*
+ * ALWAYS OUR OWN SERVER. The `alreadyUp` adoption is deleted. This file's exit
+ * code is a claim that FOURTEEN tutorial steps were acknowledged by the shell
+ * in this checkout — the coach copy, the step order and the `vm.tutorial.v1`
+ * record all come from the bundle, so a run against a neighbour's preview
+ * certifies their tutorial and reports it as ours.
+ */
+const server = await serve({
+  root: ROOT, mode: 'preview', portHint: PORT_HINT, log: console.log,
+});
+const BASE = server.origin;
+const cleanup = () => server.stop();
 
 const browser = await chromium.launch({
   headless: !HEADED,
