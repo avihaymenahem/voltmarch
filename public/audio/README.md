@@ -5,13 +5,13 @@ Everything here is a **downloaded, recorded** asset — the third declared excep
 the credits screen in `src/shell/MainMenu.ts` all name it, and `tests/credits-truthful.spec.ts`
 checks those three against what is actually in this directory.
 
-**182 files, 6.9 MB.** Every one of the 39 sound-effect families is a recording, the unit barks are
+**183 files, 6.9 MB.** Every one of the 39 sound-effect families is a recording, the unit barks are
 two real human voices, and the EVA announcer is rendered speech. Nothing a player hears from the
 SFX or voice buses comes from an oscillator.
 
 ## The announcer
 
-EVA's 31 lines are the only audio here that had to be **made** rather than found — no CC0 pack
+EVA's 32 lines are the only audio here that had to be **made** rather than found — no CC0 pack
 contains "Insufficient funds." They are rendered by [`tools/render-eva.py`](../../tools/render-eva.py)
 using **Piper** with the **`en_GB-cori-high`** voice, and re-rendering is a single command.
 
@@ -39,7 +39,7 @@ does not warrant it elsewhere; and a public-domain dedication disposes of copyri
 without transferring the reader's voice likeness. For an unnamed announcer in a free game the
 exposure is negligible, but no licence in the chain addresses it.
 
-The voice model is ~109 MB and is **gitignored** (`tools/tts-voices/`). Only the ~420 kB of `.ogg`
+The voice model is ~109 MB and is **gitignored** (`tools/tts-voices/`). Only the ~450 kB of `.ogg`
 is committed.
 
 ## Provenance

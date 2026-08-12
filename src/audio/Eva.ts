@@ -834,6 +834,16 @@ export const EVA_LINES: Readonly<Record<string, EvaLineDef>> = {
     phones: 'O r , m Y n R , V n d R , @ t a k',
     priority: 2, cooldown: 30,
   },
+  harvesterIdle: {
+    // Cooldown matched to `oreMinerUnderAttack` because it is the same subject
+    // and the same urgency: a harvester needs the player, now-ish, and 30 s is
+    // long enough that a field draining in stages cannot chatter. It is the
+    // third layer of coalescing under `Harvesting.announceDry`'s per-field
+    // record and the toast stack's six-second merge.
+    text: 'Harvester idle.',
+    phones: 'h A r v @ s t R , Y d @ l',
+    priority: 2, cooldown: 30,
+  },
   building: {
     text: 'Building.',
     phones: 'b I l d I N',
@@ -899,6 +909,7 @@ export const EVA_LINE_ID: Readonly<Record<number, string>> = {
   [EvaLine.MissionFailed]: 'missionFailed',
   [EvaLine.BuildingCaptured]: 'buildingCaptured',
   [EvaLine.OreMinerUnderAttack]: 'oreMinerUnderAttack',
+  [EvaLine.HarvesterIdle]: 'harvesterIdle',
 };
 
 /* ==========================================================================

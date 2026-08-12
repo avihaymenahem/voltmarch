@@ -646,6 +646,12 @@ export const enum EvaLine {
   MissionFailed = 13,
   BuildingCaptured = 14,
   OreMinerUnderAttack = 15,
+  /**
+   * A harvester has run out of ore inside its leash and is waiting for orders.
+   * See §ANCHOR in `sim/Harvesting.ts`: only a HUMAN player's harvester reports
+   * — an AI re-anchors itself, because there is nobody to tell.
+   */
+  HarvesterIdle = 16,
 }
 
 /* ==========================================================================
