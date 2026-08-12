@@ -4217,13 +4217,16 @@ export class AiBrain {
     if (s.tick - this.amphibIssuedTick < AI_MILITARY.reissueTicks) return;
     this.amphibIssuedTick = s.tick;
 
-    // Hold the hull ON the beach cell. A transport that wanders is a transport
-    // the squad walks after forever.
-    if (distSq2(st.posX[h], st.posZ[h], this.embarkX, this.embarkZ) > CELL * CELL * 4) {
-      this.issueOrder(
-        OrderKind.Move, this.one(this.amphibHull), 1, this.embarkX, this.embarkZ, NONE,
-      );
-    }
+    // THE HULL BRINGS ITSELF IN NOW, and this is where it used to be done by
+    // hand. `TransportService.callHullIn` runs off the same `OrderKind.Enter`
+    // the squad below is about to receive, so the brain and a player's click go
+    // through one mechanism instead of two that can disagree.
+    //
+    // The old code steered the hull onto `embarkX/embarkZ`, a LAND cell, which
+    // was correct only while carriers were amphibious. They are `waterOnly`
+    // now — see `BuildEntry.waterOnly` — so that destination is unreachable and
+    // the move would have failed silently, every reissue, for the whole
+    // `boardTicks` window.
 
     // One Enter for the whole squad — one command for a group, exactly as a
     // human right-clicking a hull with a box selection produces one.

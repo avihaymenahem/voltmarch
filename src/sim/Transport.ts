@@ -108,10 +108,13 @@ import {
   ENTITY_KIND_COUNT, EntityFlag, EntityKind, FxKind, NONE, OrderKind, UnitState,
 } from '../core/types';
 import type { DefTables, EntityId, Faction, PlayerId, SimContext } from '../core/types';
-import { MAX_ENTITIES } from '../core/config';
+import { CELL, MAX_ENTITIES } from '../core/config';
 import { isInMap, worldToCell } from '../core/math';
 import { locomotorForMoveClass } from './Flowfield';
 import { moveClassAt } from './Movement';
+import {
+  PICKUP_SETTLE_METRES, nearestBoardingWater,
+} from './NavalWater';
 
 /* ==========================================================================
  * 1. TUNING
@@ -168,6 +171,8 @@ export interface TransportStats {
   unloadRefusals: number;
   /** Men lost with the hull they were riding in. */
   drowned: number;
+  /** Carriers diverted to collect a squad that could not walk to them. */
+  pickups: number;
 }
 
 /** Why a unit cannot board. Empty string when it can. */
@@ -194,10 +199,26 @@ const RIDER_TOUCHED = new Int32Array(MAX_ENTITIES);
  */
 const PASSENGER_SLOTS = new Int32Array(64);
 
+/** [cx, cz] out-param for the pickup search. */
+const PICKUP_CELL = new Int32Array(2);
+
+/**
+ * Hull slots already sent to a pickup this tick, so five men boarding one
+ * carrier issue ONE diversion between them rather than five that each restart
+ * the hull's path. Cleared by touched-list, as `RIDER_COUNT` is.
+ */
+const PICKUP_TOUCHED = new Int32Array(MAX_ENTITIES);
+const PICKUP_TICK = new Int32Array(MAX_ENTITIES);
+let pickupEpoch = 0;
+
 export class TransportService {
   readonly stats: TransportStats = {
     loaded: 0, riding: 0, boarded: 0, unloaded: 0, unloadRefusals: 0, drowned: 0,
+    pickups: 0,
   };
+
+  /** How many entries of `PICKUP_TOUCHED` are live. */
+  private pickupTouched = 0;
 
   /**
    * Cargo slots per unit def, resolved once from the def tables.
@@ -372,6 +393,9 @@ export class TransportService {
   /* -- the tick (Phase.Cleanup) ------------------------------------------ */
 
   simTick(_s: SimContext): void {
+    pickupEpoch++;
+    for (let k = 0; k < this.pickupTouched; k++) PICKUP_TICK[PICKUP_TOUCHED[k]] = 0;
+    this.pickupTouched = 0;
     this.board();
     this.ride();
     this.unloadOrders();
@@ -417,10 +441,72 @@ export class TransportService {
         st.orderZ[i] = st.posZ[t];
         st.state[i] = UnitState.Moving;
 
-        if (!this.withinReach(i, t)) continue;
+        if (!this.withinReach(i, t)) { this.callHullIn(i, t); continue; }
         this.embark(i, t);
       }
     }
+  }
+
+  /**
+   * Bring a carrier in to a squad that cannot walk to it.
+   *
+   * THE HALF OF BOARDING THAT NEVER EXISTED FOR THE PLAYER. A carrier is
+   * `MoveClass.Naval` and a rifleman is `MoveClass.Foot`; water is impassable
+   * to Foot, so `Flowfield.requestFieldClass` snaps the squad's goal back to
+   * the last dry cell. Told to board a hull lying offshore they walked to the
+   * sand and stood there, while `board` re-stamped the order onto the hull's
+   * position every tick — a boarding that sat at 0 aboard for as long as the
+   * player was willing to watch it. `sim/AI.ts` documents hitting exactly this
+   * and worked around it privately, by ordering its own hull onto the beach;
+   * nothing did it for a player's click.
+   *
+   * Deliberately NOT gated on "the hull is naval": the question is whether THIS
+   * passenger can reach it, so a beached amphibious lift is left alone and the
+   * same code brings in a Sandskiff that happens to be out at sea.
+   *
+   * It overrides only `None` and `Move`. A hull that is unloading, attacking or
+   * deploying is doing something the player asked for more recently.
+   */
+  private callHullIn(i: number, t: number): void {
+    const st = this.world.store;
+    const world = this.world;
+
+    // Can this passenger simply walk there? Then the hull stays put.
+    const loco = locomotorForMoveClass(moveClassAt(st, i));
+    const hcx = worldToCell(st.posX[t]);
+    const hcz = worldToCell(st.posZ[t]);
+    if (isInMap(hcx, hcz) && world.terrain.isPassable(hcx, hcz, loco)) return;
+
+    const k = st.orderKind[t] as OrderKind;
+    if (k !== OrderKind.None && k !== OrderKind.Move) return;
+
+    // ONE diversion per hull per tick. Five men boarding one carrier would
+    // otherwise write five destinations, and each write restarts the path.
+    if (PICKUP_TICK[t] === pickupEpoch) return;
+    PICKUP_TICK[t] = pickupEpoch;
+    if (this.pickupTouched < PICKUP_TOUCHED.length) {
+      PICKUP_TOUCHED[this.pickupTouched++] = t;
+    }
+
+    const bcx = worldToCell(st.posX[i]);
+    const bcz = worldToCell(st.posZ[i]);
+    if (!isInMap(bcx, bcz)) return;
+    if (!nearestBoardingWater(bcx, bcz, PICKUP_CELL)) return;
+
+    const px = (PICKUP_CELL[0] + 0.5) * CELL;
+    const pz = (PICKUP_CELL[1] + 0.5) * CELL;
+    const dx = st.posX[t] - px;
+    const dz = st.posZ[t] - pz;
+    // Already close enough. Re-issuing here is what leaves a hull shuffling on
+    // the spot instead of holding station while the squad walks down.
+    if (dx * dx + dz * dz <= PICKUP_SETTLE_METRES * PICKUP_SETTLE_METRES) return;
+
+    st.orderKind[t] = OrderKind.Move;
+    st.orderTarget[t] = 0;
+    st.orderX[t] = px;
+    st.orderZ[t] = pz;
+    st.state[t] = UnitState.Moving;
+    this.stats.pickups++;
   }
 
   /** Move one man aboard. */

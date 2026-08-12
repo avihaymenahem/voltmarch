@@ -55,10 +55,10 @@
  * ============================================================================
  */
 
-import { MAP_CELLS, MAP_CELL_COUNT, NAVAL_MIN_SEA_CELLS } from '../core/config';
+import { CELL, MAP_CELLS, MAP_CELL_COUNT, NAVAL_MIN_SEA_CELLS } from '../core/config';
 import { Locomotor } from '../core/types';
 import type { ITerrain } from '../core/types';
-import { getNav, navigableSeaCells } from './Flowfield';
+import { MoveClass, getNav, navigableSeaCells } from './Flowfield';
 
 /** What one map's water adds up to. */
 export interface NavalWaterSurvey {
@@ -215,3 +215,55 @@ export function mapSupportsNaval(terrain: ITerrain | null): boolean {
   if (getNav() !== null) return navigableSeaCells() >= NAVAL_MIN_SEA_CELLS;
   return surveyNavalWater(terrain).navalViable;
 }
+
+/* ==========================================================================
+ * PICKUP POINTS — where a hull and a land unit can actually touch
+ * ========================================================================== */
+
+/**
+ * The navigable cell nearest to (`cx`, `cz`) that a hull can sit in.
+ *
+ * Both halves of an amphibious pickup need this and they used to have neither.
+ * A carrier is `MoveClass.Naval` and cannot cross a beach; infantry are
+ * `MoveClass.Foot` and water is impassable to them, so `Flowfield` snaps their
+ * goal back to the last dry cell. Told to board a hull sitting offshore, a
+ * squad therefore walked to the sand and stopped, while `TransportService.board`
+ * re-stamped the order every tick — the boarding sat at 0 aboard forever, which
+ * is exactly the failure `sim/AI.ts` documents having hit from the other side.
+ *
+ * Nothing moved the HULL toward them. The AI eventually learned to, privately,
+ * inside `AiBrain`; the player path never did. This is that search, extracted
+ * so both callers ask one question, and pinned to the MAIN naval region so a
+ * hull is never sent to a landlocked pond it cannot reach.
+ *
+ * Returns false when there is no nav cache, no sea, or nothing within
+ * `maxRadius` cells — every caller must handle that rather than assume a coast.
+ */
+export function nearestBoardingWater(
+  cx: number, cz: number, out: Int32Array, maxRadius = PICKUP_SEARCH_CELLS,
+): boolean {
+  const nav = getNav();
+  if (nav === null) return false;
+  const main = nav.mainRegion(MoveClass.Naval);
+  if (main === 0) return false;
+  return nav.nearestInRegion(cx, cz, main, MoveClass.Naval, out, maxRadius);
+}
+
+/**
+ * How far a carrier will divert to collect a squad, in cells.
+ *
+ * Generous, because the cost of being short is the reported bug — a hull that
+ * refuses to come in and a squad that stands on the sand — and the cost of
+ * being long is one hull crossing more open water than it needed to. 30 cells
+ * is 120 m, the same reach `AI_NAVAL.shoreSearchCells` uses to find a beach.
+ */
+export const PICKUP_SEARCH_CELLS = 30;
+
+/**
+ * Metres of slack before a waiting hull is re-ordered toward its pickup point.
+ *
+ * Without it every tick rewrites the hull's destination, which restarts its
+ * path and leaves it shuffling in place. Two cells, matching the tolerance the
+ * AI's own boarding loop settled on.
+ */
+export const PICKUP_SETTLE_METRES = CELL * 2;
