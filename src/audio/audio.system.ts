@@ -38,7 +38,9 @@ import {
 import { RENDER_CONFIG } from '../render/renderer';
 import { ctx } from '../game/context';
 
-import { AudioEngine, setAudioFacade, type AudioFacade, type PanResolver } from './AudioEngine';
+import {
+  AudioEngine, setAudioFacade, type AudioFacade, type BusName, type PanResolver,
+} from './AudioEngine';
 import { AmbienceRig, FX_SOUND, SFX, registerSfxBank, type Theatre } from './Weapons';
 import { EVA_LINE_ID, EvaAnnouncer, type EvaMode } from './Eva';
 import { BarkDirector, barkClassFor, type BarkCategory, type BarkClass } from './Barks';
@@ -117,6 +119,59 @@ let poweredPlants = 0;
  */
 let matchStartAt = -1;
 let bootLineFired = false;
+
+/**
+ * Ducks holding every non-music bus silent while no match is running.
+ *
+ * WHY THIS EXISTS. The title screen boots a REAL WORLD behind the menu, purely
+ * so there is something moving to look at — a real base, real harvesters, a
+ * real economy. Every sound that world makes came straight out of the
+ * speakers: measured on the menu, `ore.dump` alone fired 123 times in a few
+ * seconds, and the ambience beds ran underneath it. None of it means anything
+ * to a player who is reading a menu, and some of it is actively confusing —
+ * "new construction options" announced for a base that is not yours.
+ *
+ * A BUS DUCK RATHER THAN A GUARD AT EVERY CALL SITE. There are more than
+ * thirty places that emit a sound, they are added regularly, and a rule
+ * enforced at thirty sites is a rule that will be broken at the thirty-first.
+ * This is one choke point, it covers sounds nobody has written yet, and it
+ * cannot be bypassed by accident.
+ *
+ * MUSIC IS DELIBERATELY EXEMPT. A menu with a score is the point; a menu
+ * narrating somebody else's harvesters is not.
+ */
+const menuDucks: Array<{ release: () => void }> = [];
+
+/** Buses that go quiet outside a match. `music` is absent on purpose. */
+const SILENT_OUTSIDE_MATCH: readonly BusName[] = ['sfx', 'voice', 'ui', 'ambience'];
+
+/** -120 dB is 1e-6 of full scale: silence, without a special case for zero. */
+const MENU_SILENCE_DB = -120;
+
+/**
+ * How long the world stays audible after a match ends.
+ *
+ * Long enough for "Mission accomplished" and the music sting to land. Shorter
+ * and the verdict is cut off by its own silence.
+ */
+const MATCH_END_QUIET_MS = 6000;
+
+function applyMenuSilence(on: boolean): void {
+  const e = engine;
+  if (e === null) return;
+  if (on) {
+    if (menuDucks.length > 0) return;
+    for (const bus of SILENT_OUTSIDE_MATCH) {
+      menuDucks.push(e.duck('menu', bus, MENU_SILENCE_DB, 0, 0));
+    }
+    return;
+  }
+  // 220 ms rather than instant: a match starting should feel like the world
+  // fading up, not like a switch being thrown.
+  for (const d of menuDucks) d.release();
+  menuDucks.length = 0;
+  for (const bus of SILENT_OUTSIDE_MATCH) e.duck('menu', bus, 0, 220, 220).release();
+}
 
 /* -------------------------------------------------------------------------- */
 /* Spatialisation                                                             */
@@ -342,6 +397,10 @@ export default defineSystem({
       })();
       ambience.startWind(theatreFromFlags());
       ambience.startHum();
+      // THE MENU IS SILENT EXCEPT FOR MUSIC. The loops above are started here
+      // because a match may begin at any moment and a loop that has to spin up
+      // arrives late; `menuSilence` is what keeps them inaudible until then.
+      applyMenuSilence(true);
       music.start();
     }
 
@@ -551,11 +610,22 @@ function subscribe(): void {
     bootLineFired = false;
     eva?.resetMatch();
     barks?.resetMatch();
+    // THE WORLD BECOMES AUDIBLE HERE, and only here. `outcome.system.ts` is the
+    // sole emitter of this event, and the menu's backdrop world never reaches
+    // it — which is precisely the distinction the duck needs and the reason it
+    // keys on the match rather than on a screen name the audio layer would
+    // otherwise have to learn.
+    applyMenuSilence(false);
   }));
 
   unsubscribe.push(bus.on('match:ended', (p) => {
     if (p.localWon) { eva?.say('missionAccomplished'); music?.win(); }
     else { eva?.say('missionFailed'); music?.loss(); }
+    // BACK TO SILENCE, but not until the verdict line has been heard: the duck
+    // takes hold on the next tick and EVA is already queued above. Without this
+    // the end screen and the menu behind it inherit a live soundscape from a
+    // match that is over.
+    setTimeout(() => applyMenuSilence(true), MATCH_END_QUIET_MS);
   }));
 
 }
