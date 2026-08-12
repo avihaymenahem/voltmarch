@@ -203,11 +203,16 @@ const PASSENGER_SLOTS = new Int32Array(64);
 const PICKUP_CELL = new Int32Array(2);
 
 /**
- * Hull slots already sent to a pickup this tick, so five men boarding one
- * carrier issue ONE diversion between them rather than five that each restart
- * the hull's path. Cleared by touched-list, as `RIDER_COUNT` is.
+ * The tick on which each hull slot was last sent to a pickup, so five men
+ * boarding one carrier issue ONE diversion between them rather than five that
+ * each restart the hull's path.
+ *
+ * STAMPED, not cleared. `RIDER_COUNT` next to it uses a touched-list because it
+ * is a COUNT and has to start each tick at zero; this is a monotonically
+ * increasing stamp, so a stale entry can never equal the current epoch and
+ * there is nothing to reset. That also keeps it from being half module state
+ * and half instance state, which a touched-list would have made it.
  */
-const PICKUP_TOUCHED = new Int32Array(MAX_ENTITIES);
 const PICKUP_TICK = new Int32Array(MAX_ENTITIES);
 let pickupEpoch = 0;
 
@@ -216,9 +221,6 @@ export class TransportService {
     loaded: 0, riding: 0, boarded: 0, unloaded: 0, unloadRefusals: 0, drowned: 0,
     pickups: 0,
   };
-
-  /** How many entries of `PICKUP_TOUCHED` are live. */
-  private pickupTouched = 0;
 
   /**
    * Cargo slots per unit def, resolved once from the def tables.
@@ -394,8 +396,6 @@ export class TransportService {
 
   simTick(_s: SimContext): void {
     pickupEpoch++;
-    for (let k = 0; k < this.pickupTouched; k++) PICKUP_TICK[PICKUP_TOUCHED[k]] = 0;
-    this.pickupTouched = 0;
     this.board();
     this.ride();
     this.unloadOrders();
@@ -484,9 +484,6 @@ export class TransportService {
     // otherwise write five destinations, and each write restarts the path.
     if (PICKUP_TICK[t] === pickupEpoch) return;
     PICKUP_TICK[t] = pickupEpoch;
-    if (this.pickupTouched < PICKUP_TOUCHED.length) {
-      PICKUP_TOUCHED[this.pickupTouched++] = t;
-    }
 
     const bcx = worldToCell(st.posX[i]);
     const bcz = worldToCell(st.posZ[i]);
