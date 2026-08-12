@@ -88,7 +88,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 3240 across 124 files (+1 opt-in probe)
+npm test             # vitest, currently 3318 across 129 files (+1 opt-in probe)
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -126,9 +126,9 @@ mechanism enforcing `docs/RA3_LOOK_BIBLE.md`. It never covered it, and the visua
 three defects that each produce a confident wrong image. See **The look is measured, not judged**
 below and the header of `tools/shoot.mjs`; the short version is that the harness could photograph
 ANOTHER WORKTREE'S BUILD and report `12/12 captured`, which is what "the shot harness is
-nondeterministic" turned out to be. The residual after the fix is bounded and characterised: nine
-of twelve fixtures are byte-identical run to run, and three vary on exactly one row by at most
-2/255.
+nondeterministic" turned out to be. The residual after the fix is bounded and characterised: the
+fixtures that do not show the HUD are byte-identical run to run, and the three that do vary on
+exactly one row by at most 2/255.
 
 The one flake `npm test` ever had was `perf-hud.spec.ts` "allocates nothing per frame" — it
 compared GC counts with a tolerance of 2 and occasionally reported 3 in a full run. It was TWO bugs
@@ -309,20 +309,65 @@ save, in the replay. The tightrope is gone and `use()` may finally refuse.
   `Reward` variant is deleted rather than left as a schema nothing produces — see the block in
   `src/data/Missions.ts`.
 
+## Four armies, four islands, and a road made of water
+
+**Sunder Atoll** is the map the navy exists for: four islands, one army each, **53.80% water** on the
+shipped seed, and no land route between any two of them. Ten battlefields ship now
+(`MAPS` in `src/shell/settings-store.ts`); three carry a real sea.
+
+- **The 54% is a ceiling, not a taste.** A start shelf needs 96 m of dry ground in EVERY direction
+  (`TERRAIN_START_FLAT_RADIUS` 58 + `TERRAIN_START_EDGE_WOBBLE` 14 + band 6 + waviness 8 +
+  `TERRAIN_SEA_START_CLEARANCE` 10), so four islands cost 4·π·98² = 120 700 m² of a 262 144 m² map.
+  Wetter means shrinking a global promise or seating fewer armies. See the block above
+  `ARCHIPELAGO_SEA` in `src/game/Scenarios.ts`.
+- **The islands are AXIS-ALIGNED ellipses and must stay that way.** Rotating one needs `sin`/`cos`,
+  and **ECMA-262 does not pin those to bit precision** — only `+ - * /` and `Math.sqrt` are exact.
+  Terrain generates independently on both machines of a lockstep match, so a rotated island is a
+  tick-zero desync waiting for two engines to disagree in the last mantissa bit. `ellipseDistance`
+  in `src/world/terrain-gen.ts` uses the first-order (Sampson) distance for the same reason: the
+  exact ellipse distance has no closed form, and a Newton iteration whose count depends on a
+  convergence test is a determinism liability.
+- **`mapSupportsNaval` and `mapLandLinked` are different questions and neither substitutes.**
+  `src/sim/NavalWater.ts` asks whether there is enough open water for a navy to be a thing;
+  `src/sim/LandRoutes.ts` asks whether the ground is one piece. `mapForcesSeaCrossing` is the AND —
+  water present *and* ground split — and it is true on the atoll alone.
+- **The map-capability gate:** no navigable water means no naval content is offered at all. Verified
+  over all ten shipped maps in `tests/sea-crossing-gate.spec.ts`, which is the only test that loops
+  the whole roster.
+- **Naval MOBILITY is exempt from the progression gate where the armies are not land-connected**,
+  and warships are not. The rule is narrower than "ungate naval": *content required to reach the
+  enemy is never progression-gated*. Sunder Atoll shipped with no map unlock so a fresh profile
+  could pick it, and on a fresh profile it was a PERMANENT STALEMATE — `struct.naval` gates all four
+  docks, one mission pays it ("win 10 skirmishes"), every lift is gated on a dock, and
+  `UnlockGate.mirrorAI` resolves the AI against the HUMAN's profile, so all four armies were
+  stranded. Every existing test was green, because "complete army" had been derived over CONTENT
+  with no notion that a battlefield can make one row load-bearing.
+- **Naval hulls carry `MoveClass.Naval`**, yards require a coast, and the beach profile is piecewise
+  so a dock can actually be placed: coastal buildable ground went 16.4% → 57.4% on contested-strait,
+  and coral-shore had **zero** legal dock sites before.
+- **The AI got a navy** — sea survey, a dock on a shore it walks to, warships holding a lane, and an
+  amphibious Board/Cross/Land cycle. Landings on the atoll went 0 → 12. `npm test` deliberately does
+  not run that proof: `tests/amphibious-landing.spec.ts` is the one opt-in file, skipped unless
+  `VM_LANDING_PROBE` is set, because it drives a real 24-minute four-army match and "the brain lands
+  twelve times" is a fact about one seed rather than an invariant.
+
 ## Hard rules
 
 - **Determinism.** Inside `simTick`, `Math.random()`, `Date.now()` and `performance.now()` are
   banned — there is a test asserting this. Use `s.rng` and the tick counter. This is not
   hygiene any more: it is what makes multiplayer possible at all.
 - **Performance.** 200+ units at 60fps, zero allocation in the frame loop, and a draw-call budget of
-  130 — which is a TARGET, not a description. Measured on the twelve capture fixtures via
-  `renderer.info.render.calls`, the real figure is **171–263** (that count includes the three CSM
-  shadow cascades). This line read "under 130 draw calls" as a statement of fact while the counter
-  disagreed by up to 2×; `MAX_DRAW_CALLS` in `config.ts` is the aspiration and `AdaptiveResolution`'s
-  own header already records a profile at 203. Do not quote 130 as achieved, and do not spend draws
-  freely on the grounds that the budget is fictional — closing that gap is real outstanding work.
-  InstancedMesh for anything repeated, pools for anything spawned, caller-supplied output arrays in
-  query paths.
+  130 — which is a TARGET, not a description. Measured on the thirteen capture fixtures via
+  `renderer.info.render.calls` and reported per shot in `shots/_report.json` as `frame.drawCalls`,
+  the real figure is **174–273** (that count includes the three CSM shadow cascades): `08-naval-water`
+  is the cheapest at 174, `01-establishing-base` the dearest at 273. This line read "under 130 draw
+  calls" as a statement of fact while the counter disagreed by more than 2×; `MAX_DRAW_CALLS` in
+  `config.ts` is the aspiration and `AdaptiveResolution`'s own header already records a profile at
+  203. Do not quote 130 as achieved, and do not spend draws freely on the grounds that the budget is
+  fictional — closing that gap is real outstanding work. **Requote this range from a real
+  `_report.json` rather than carrying it forward**; it has drifted upward twice, and the top of it
+  moved 263 → 273 while nobody was looking. InstancedMesh for anything repeated, pools for anything
+  spawned, caller-supplied output arrays in query paths.
 - **The AI issues the same commands the player does**, through `channels.command`. It must never
   reach into entity state directly.
 - **No `AmbientLight` anywhere.** `HemisphereLight` only — a flat ambient kills the shadow tint that
@@ -352,10 +397,16 @@ If a change would add one of those, it is wrong even if it looks fine in isolati
 
 ### What the harness guarantees, and the one thing it does not
 
-Two captures of one build are BYTE-IDENTICAL for the nine fixtures that do not show the HUD —
-measured over 6 idle runs, 5 runs under 14 saturated CPU threads, and 6 runs after the fix below.
-"The pixels did not change" is therefore a real statement about those nine, and any diff in them is
-a real change.
+There are **thirteen** fixtures — `01`..`12` plus `13-atoll-crossing`, the only one not posed on the
+map centre, because on Sunder Atoll the map centre is the lagoon. Ten of the thirteen do not show
+the HUD.
+
+Two captures of one build are BYTE-IDENTICAL for the fixtures that do not show the HUD — measured
+over 6 idle runs, 5 runs under 14 saturated CPU threads, and 6 runs after the fix below, on the nine
+such fixtures that existed at the time. "The pixels did not change" is therefore a real statement
+about those nine, and any diff in them is a real change. `13-atoll-crossing` was added afterwards
+and has **two** runs behind it, both identical — the same claim, on far less evidence, and worth
+saying so rather than quietly widening "nine" to "ten".
 
 The three HUD fixtures — `02-hud-full`, `09-placement`, `10-selection` — each have at least three
 states, and the entire difference is **one row, y = 91, at most 2/255**, inside x 744..1141. That is
@@ -366,6 +417,11 @@ build disagree. Layout is not involved: four boots report the panel and all ~60 
 at identical geometry to four decimals. It cannot be fixed from the harness and a retry cannot
 converge on a value. **Do not add a pixel tolerance to `tools/metrics.mjs` to paper over it** — a
 tolerance there hides exactly the regressions the harness exists to catch.
+
+Because that decision is per page rather than per run, two runs CAN agree by chance and one pair of
+matching HUD captures proves nothing. A recent pair came back 13/13 identical, HUD fixtures
+included; that is consistent with a coin landing the same way twice and is not evidence the
+variance is gone.
 
 **The harness used to photograph other people's builds, and said `12/12 captured`.** It served the
 bundle on a fixed port 4317 and guarded it with a `fetch` probe that aborts after 1500 ms — a
@@ -411,7 +467,10 @@ primitives; do not reach for a plain box.
 breaks the entire visual-critique pipeline** — update both consumers.
 
 Boot flags: `?shot=<id>` (skips the menu, freezes the sim, poses the camera), `?map=`, `?art=`,
-`?tier=`, `?seed=`, `?fog=off`.
+`?tier=`, `?seed=`, `?mapseed=`, `?biome=`, `?fog=off`, `?relay=`, `?unlockall`. **`?seed=` and
+`?mapseed=` are different seeds** — the first drives the scenario layout and every draw of `s.rng`,
+the second is the terrain roll. Confusing them is what made a v1 replay reproduce the hills and
+nothing else.
 
 ## Things that have gone wrong before
 
