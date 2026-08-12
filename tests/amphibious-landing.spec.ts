@@ -1,6 +1,52 @@
 /**
- * TEMPORARY PROBE — a real four-army match on Sunder Atoll, headless.
- * Deleted before the branch lands; see tests/amphibious-landing.spec.ts.
+ * ============================================================================
+ * tests/amphibious-landing.spec.ts — DOES A LANDING ACTUALLY HAPPEN?
+ * ============================================================================
+ * AN INSTRUMENT, NOT A GATE, and it is skipped unless `VM_LANDING_PROBE` is set:
+ *
+ *     VM_LANDING_PROBE=1 npx vitest run tests/amphibious-landing.spec.ts
+ *     VM_LANDING_PROBE=1 VM_LANDING_MIN=12 npx vitest run tests/amphibious-landing.spec.ts
+ *     VM_LANDING_PROBE=1 VM_LANDING_OUT=probe.json npx vitest run ...   # full trace
+ *
+ * WHY IT IS NOT PART OF `npm test`. It runs a REAL 24 sim-minute four-army match
+ * on the real Sunder Atoll heightfield — terrain, flow fields, steering,
+ * movement, production, economy, harvesting, transport, combat, vision and four
+ * `AiBrain`s on their real phases — which takes about 3.5 minutes. It is also
+ * SEED-DEPENDENT in a way a gate must not be: "the Reclamation brain lands
+ * twelve times" is a fact about one match, not an invariant, and pinning it
+ * would fail on the next content change for a reason that is not a regression.
+ * The invariants live in `tests/ai-naval-yard.spec.ts`, which is fast; this file
+ * is what you run when you want to know whether the whole chain works.
+ *
+ * WHY IT EXISTS AT ALL. Every layer of the amphibious feature had passing tests
+ * while the feature produced nothing: `tests/naval-shore.spec.ts` proved a hull
+ * egresses onto water, `tests/transport.spec.ts` proved boarding and unloading,
+ * `tests/sunder-atoll.spec.ts` proved the map offers 532 legal dock sites, and
+ * `tests/ai.spec.ts` proved the brain issues commands. All four were green while
+ * a four-army match produced `navalYardCount = 0` and `landings = 0` for every
+ * brain. Nothing was looking at the end-to-end number, so nothing saw that three
+ * independent walls stood between the parts.
+ *
+ * WHAT IT MEASURES, per brain and per sim-minute: naval yards, transports,
+ * warships, landings, the amphibious verdict with its numbers, the naval goal,
+ * and what the build layer is blocked on. With `VM_LANDING_OUT` it also writes a
+ * per-player decomposition of WHY there is or is not a legal dock site —
+ * buildable ground, ground beside navigable water, ground inside the build
+ * radius, and the intersection of the three. That decomposition is what turned
+ * "the AI never builds a dock" into "for three of four armies the intersection
+ * is EMPTY, and the nearest coastal site is 72-79 m from a 56 m build radius".
+ *
+ * MEASURED ON `mapSeed 0xa7011`, `simSeed 4242`, four brains, 24 minutes:
+ *
+ *                      before          after
+ *     naval yards      0 / 0 / 0 / 1   0 / 1 / 0 / 1
+ *     transports       0 / 0 / 0 / 0   0 / 0 / 0 / 3
+ *     landings         0 / 0 / 0 / 0   0 / 0 / 0 / 12
+ *
+ * The Reclamation brain's first landing is at minute 8 and it runs them
+ * continuously after. Two brains still never reach the water on this seed; see
+ * the note in `AiBrain.coastCreepWanted`.
+ * ============================================================================
  */
 
 import { describe, expect, it, beforeAll, afterAll } from 'vitest';
@@ -70,6 +116,8 @@ interface Match {
   commands: Record<string, number>;
   step(ticks: number): void;
   diagnose(): unknown;
+  census(): unknown;
+  queues(): unknown;
   dispose(): void;
 }
 
@@ -224,6 +272,35 @@ async function boot(): Promise<Match> {
         vision.update();                  // Phase.Vision
       }
     },
+    queues(): unknown {
+      const out: unknown[] = [];
+      for (const b of director.brains) {
+        const p = world.player(b.player);
+        for (let t = 0; t < p.queues.length; t++) {
+          const q = p.queues[t];
+          if (q.items.length === 0) continue;
+          out.push({
+            p: b.player, tab: t, awaiting: q.awaitingPlacement,
+            head: production.catalog.resolve(q.items[0].defId, q.items[0].isBuilding)?.key ?? '?',
+            ready: q.items[0].ready, progress: +q.items[0].progress.toFixed(3),
+            depth: q.items.length,
+          });
+        }
+      }
+      return out;
+    },
+    census(): unknown {
+      const st = world.store;
+      const out: Record<string, number> = {};
+      for (let a = 0; a < st.aliveCount; a++) {
+        const i = st.alive[a];
+        const k = production.entryOf(st.handleOf(i))?.key ?? '';
+        if (k === '') continue;
+        const key = `p${st.owner[i]} ${k}`;
+        out[key] = (out[key] ?? 0) + 1;
+      }
+      return out;
+    },
     diagnose(): unknown {
       const st = world.store;
       const rep = makePlacementReport();
@@ -254,6 +331,9 @@ async function boot(): Promise<Match> {
         let groundShore = 0;   // ...and navigable water beside it
         let groundRadius = 0;  // ...and inside the build radius (shore ignored)
         let nearestGroundShore = 1e9;
+        const faults: Record<number, number> = {};
+        const inRadiusPts: number[] = [];
+        const shorePts: number[] = [];
         const w = entry.footprintW; const h = entry.footprintH;
         const acx = Math.floor(bx / CELL) - ((w / 2) | 0);
         const acz = Math.floor(bz / CELL) - ((h / 2) | 0);
@@ -288,13 +368,25 @@ async function boot(): Promise<Match> {
               const d = Math.hypot(centreX - bx, centreZ - bz);
               if (d < nearestGroundShore) nearestGroundShore = d;
             }
-            if (inRadius) groundRadius++;
+            if (inRadius) { groundRadius++; inRadiusPts.push(centreX, centreZ); }
+            if (shore) shorePts.push(centreX, centreZ);
+            if (shore && inRadius) {
+              const rr = evaluatePlacement(world, b.player, entry, cx, cz, rep);
+              if (!rr.ok) faults[rr.fault] = (faults[rr.fault] ?? 0) + 1;
+            }
             if (!evaluatePlacement(world, b.player, entry, cx, cz, rep).ok) continue;
             legal++;
             const d = Math.hypot(centreX - bx, centreZ - bz);
             if (d < nearest) nearest = d;
             const ring = Math.max(Math.abs(cx - acx), Math.abs(cz - acz));
             if (ring <= AI_BUILD.placementRings) withinSpiral++;
+          }
+        }
+        let gap = 1e9;
+        for (let a = 0; a < inRadiusPts.length; a += 2) {
+          for (let c = 0; c < shorePts.length; c += 2) {
+            const d = Math.hypot(inRadiusPts[a] - shorePts[c], inRadiusPts[a + 1] - shorePts[c + 1]);
+            if (d < gap) gap = d;
           }
         }
         res.push({
@@ -312,6 +404,8 @@ async function boot(): Promise<Match> {
           nearestGroundShoreMetresFromYard:
             groundShore === 0 ? -1 : Math.round(nearestGroundShore),
           buildRadius: BUILD_RADIUS,
+          gapMetres: gap === 1e9 ? -1 : Math.round(gap),
+          faultsOnShoreRadiusSites: faults,
           yards: b.navalYardCount,
           landings: b.landingCount,
         });
@@ -330,11 +424,14 @@ async function boot(): Promise<Match> {
   };
 }
 
-describe('probe', () => {
-  it('runs a four-army match on sunder-atoll', async () => {
+const ENABLED = process.env.VM_LANDING_PROBE !== undefined
+  && process.env.VM_LANDING_PROBE !== '';
+
+describe('a four-army match on Sunder Atoll puts a squad ashore on another island', () => {
+  it.runIf(ENABLED)('founds a dock, builds a hull, and lands', async () => {
     const { writeFileSync } = await import('node:fs');
-    const MINUTES = Number(process.env.VM_PROBE_MIN ?? '24');
-    const out = process.env.VM_PROBE_OUT ?? 'probe.json';
+    const MINUTES = Number(process.env.VM_LANDING_MIN ?? '24');
+    const out = process.env.VM_LANDING_OUT ?? '';
     const m = await boot();
     const rows: unknown[] = [];
     const atStart = m.diagnose();
@@ -358,7 +455,6 @@ describe('probe', () => {
               amph: b.amphibiousVerdict,
               naval: it.naval,
               blocked: it.blocked,
-              dbgYard: { ...b.dbgYard },
               military: it.military,
               economy: it.economy,
               army: it.army,
@@ -376,14 +472,37 @@ describe('probe', () => {
         if (st.kind[i] !== EntityKind.Building) continue;
         perOwner[st.owner[i]] = (perOwner[st.owner[i]] ?? 0) + 1;
       }
-      writeFileSync(
-        out,
-        `${JSON.stringify(
-          { minutes: MINUTES, perOwner, commands: m.commands, atStart, diagnosis: m.diagnose(), rows },
-          null, 1,
-        )}\n`,
-      );
-      expect(true).toBe(true);
+      if (out !== '') {
+        writeFileSync(out, `${JSON.stringify({
+          minutes: MINUTES,
+          perOwner,
+          commands: m.commands,
+          atStart,
+          diagnosis: m.diagnose(),
+          census: m.census(),
+          queues: m.queues(),
+          rows,
+        }, null, 1)}
+`);
+      }
+
+      const last = rows[rows.length - 1] as {
+        brains: { p: number; yards: number; transports: number;
+          landings: number; amph: string }[];
+      };
+      const line = last.brains.map((b) => `p${b.p} yards=${b.yards} `
+        + `transports=${b.transports} landings=${b.landings} amph="${b.amph}"`).join('; ');
+      const yards = last.brains.reduce((a, b) => a + b.yards, 0);
+      const landings = last.brains.reduce((a, b) => a + b.landings, 0);
+
+      // THE THREE FACTS, in the order they have to become true. Each gets its
+      // own message, because a failure of the first explains a failure of the
+      // third and the reverse is not true.
+      expect(last.brains.some((b) => b.amph.startsWith('objective unreachable')),
+        `no brain ever wanted a landing: ${line}`).toBe(true);
+      expect(yards, `no brain ever founded a dock: ${line}`).toBeGreaterThan(0);
+      expect(landings, `a dock was founded and nobody ever crossed: ${line}`)
+        .toBeGreaterThan(0);
     } finally {
       m.dispose();
     }
