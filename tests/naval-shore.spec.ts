@@ -650,3 +650,212 @@ describe('the beach is ground a dock can stand on', () => {
     });
   }
 });
+
+/* ==========================================================================
+ * 6. THE BUILD MENU — "maps that don't have water shouldn't show water
+ *    vehicles and buildings"
+ *
+ * The player's words, and they were describing four SHIPPED maps. Naval content
+ * carried the `struct.naval` progression unlock and `prereqs: ['navalYard']`,
+ * and NEITHER of those knows what the ground looks like — so `airbase-flats`
+ * (0 water cells) and `industrial-grid` (0) offered four naval structures and
+ * every hull behind them, against contested-strait's 3622 and coral-shore's
+ * 3952.
+ *
+ * WHAT WAS AND WAS NOT BROKEN, because it changes what the fix has to be. §4
+ * above already refuses to FOUND a yard off the coast, and `NO_SEA_TEXT`
+ * already says "No navigable water on this battlefield" rather than sending the
+ * player up and down a dry map looking for a coast. So the sim was never going
+ * to let a Dreadnought onto dry land. What was broken is that the menu
+ * ADVERTISED all of it — a column of cameos that could never be placed.
+ * `Placement.ts` says so in as many words: "The lasting fix for this case is
+ * not a better sentence, it is not offering the cameo at all."
+ *
+ * So these are tests about what is PUBLISHED, not about what is legal.
+ * ========================================================================== */
+
+/** Every entry the shipped content marks as needing a sea, by key. */
+const SEA_BOUND_KEYS = [
+  // The four yards — `needsShore`, one per faction.
+  'navalYard', 'subPen', 'mrdSlipway', 'rclDrydock',
+  // The seven warships — `naval`, launched onto water.
+  'gunboat', 'destroyer', 'submarine', 'dreadnought',
+  'mrdCorvette', 'mrdMonitor', 'rclHulk',
+  // The two amphibious lifts. NEITHER carries `naval` — they have seats, and a
+  // lift that cannot beach is not a lift — but both are gated on a dock that
+  // cannot be founded without water, so both are just as unreachable. These are
+  // the two that matching on the flags alone would have missed.
+  'transport', 'rclScow',
+];
+
+describe('the catalog knows which content needs a sea', () => {
+  it('marks the yards, the warships and the hulls gated behind them', async () => {
+    const catalog = new ProductionCatalog(await resolveDefBinding());
+    expect(catalog.bound, 'unbound catalog — this would pass vacuously').toBe(true);
+
+    const marked = catalog.entries.filter((e) => catalog.requiresSea(e)).map((e) => e.key).sort();
+    expect(marked).toEqual([...SEA_BOUND_KEYS].sort());
+  });
+
+  it('does not mark a hull whose prereq is a LAND structure', async () => {
+    /*
+     * `mrdSkiff` is the case that proves the prereq closure is doing real work
+     * rather than pattern-matching a name. It is a Pact hull with seats — it
+     * reads like naval content and it is named like naval content — but it is
+     * gated on `mrdForgeyard`, which stands anywhere. A dry map keeps it.
+     */
+    const catalog = new ProductionCatalog(await resolveDefBinding());
+    const skiff = catalog.byKey('mrdSkiff');
+    expect(skiff, 'mrdSkiff has gone missing from the catalog').not.toBeNull();
+    expect(skiff!.prereqs).toContain('mrdForgeyard');
+    expect(catalog.requiresSea(skiff!), 'a land-gated hull was hidden as naval').toBe(false);
+  });
+
+  it('leaves the def arrays and the rosters completely alone', async () => {
+    /*
+     * THE CONSTRAINT THAT MAKES THIS SAFE TO SHIP. Replays store `defId` as a
+     * RAW ARRAY INDEX (`src/game/Replay.ts`) and saves are key-stable, so
+     * reordering, inserting into or removing from the def arrays would silently
+     * repoint every recorded command in every file ever written. The gate is a
+     * filter on what gets PUBLISHED to the HUD; the catalog underneath it is
+     * untouched and still holds every entry, at its own index, on every map.
+     */
+    const catalog = new ProductionCatalog(await resolveDefBinding());
+    for (const key of SEA_BOUND_KEYS) {
+      const e = catalog.byKey(key);
+      expect(e, `${key} was removed from the catalog rather than hidden`).not.toBeNull();
+      expect(catalog.at(e!.index)!.key, `${key} moved index`).toBe(key);
+    }
+    // And the roster — which `tests/hud.spec.ts` sizes the build grid against —
+    // still carries the naval rows regardless of any map.
+    const vehicles = catalog.roster(Faction.Allies, BuildTab.Vehicles).map((e) => e.key);
+    expect(vehicles, 'the roster itself was filtered').toContain('destroyer');
+    const structures = catalog.roster(Faction.Allies, BuildTab.Structures).map((e) => e.key);
+    expect(structures, 'the roster itself was filtered').toContain('navalYard');
+  });
+});
+
+describe('the build menu hides naval content on a map with no sea', () => {
+  /** Keys published to the HUD for one tab, after a tick. */
+  const published = (rig: Rig, tab: BuildTab): string[] =>
+    rig.service.snapshot.cameos[tab as number].map((c) => c.key);
+
+  it('publishes no naval structures and no hulls on a dry map', async () => {
+    const rig = await makeRig(false);
+    rig.run(1);
+
+    expect(mapSupportsNaval(rig.world.terrain), 'the rig map is not actually dry').toBe(false);
+
+    const structures = published(rig, BuildTab.Structures);
+    const vehicles = published(rig, BuildTab.Vehicles);
+    expect(structures, 'a Naval Yard on a battlefield with no water').not.toContain('navalYard');
+    expect(vehicles, 'a warship with nowhere to float').not.toContain('gunboat');
+    expect(vehicles, 'a warship with nowhere to float').not.toContain('destroyer');
+    // The lift, whose prereq structure can never be founded. Hidden by the same
+    // rule as the hulls, not by a second one.
+    expect(vehicles, 'a lift gated on a dock that cannot exist').not.toContain('transport');
+  });
+
+  it('still publishes every LAND buildable on that same dry map', async () => {
+    /*
+     * THE OTHER HALF, AND IT IS NOT A FORMALITY. A gate written as "hide the
+     * Vehicles tab" or "hide anything with seats" would pass the test above and
+     * gut the army. What must survive is everything that was never about water.
+     */
+    const rig = await makeRig(false);
+    rig.run(1);
+
+    const structures = published(rig, BuildTab.Structures);
+    const vehicles = published(rig, BuildTab.Vehicles);
+    // NOT `conyard`: it is `buildable: false` — the MCV's deploy target, never
+    // in any roster on any map. Asserting it here failed on the SEA map too,
+    // which is how it was caught.
+    for (const key of ['powerPlant', 'refinery', 'warFactory', 'barracks']) {
+      expect(structures, `${key} was hidden by the naval gate`).toContain(key);
+    }
+    for (const key of ['harvester', 'mcv', 'grizzly']) {
+      expect(vehicles, `${key} was hidden by the naval gate`).toContain(key);
+    }
+  });
+
+  it('publishes the naval content again on a map that HAS a sea', async () => {
+    const rig = await makeRig(true);
+    rig.run(1);
+
+    expect(mapSupportsNaval(rig.world.terrain), 'the coastal rig has no navigable sea').toBe(true);
+
+    expect(published(rig, BuildTab.Structures), 'the yard vanished from a sea map')
+      .toContain('navalYard');
+    const vehicles = published(rig, BuildTab.Vehicles);
+    expect(vehicles, 'the hull vanished from a sea map').toContain('gunboat');
+    expect(vehicles, 'the lift vanished from a sea map').toContain('transport');
+  });
+
+  it('does NOT hide land content on a sea map', async () => {
+    /*
+     * Asked explicitly because the inverse mistake is the easy one to make and
+     * the expensive one to find: ground units still decide an archipelago, and
+     * a gate that read "this is a naval map, show naval things" would leave a
+     * player on Coral Shore unable to build a tank.
+     */
+    const rig = await makeRig(true);
+    rig.run(1);
+
+    const structures = published(rig, BuildTab.Structures);
+    const vehicles = published(rig, BuildTab.Vehicles);
+    // NOT `conyard`: it is `buildable: false` — the MCV's deploy target, never
+    // in any roster on any map. Asserting it here failed on the SEA map too,
+    // which is how it was caught.
+    for (const key of ['powerPlant', 'refinery', 'warFactory', 'barracks']) {
+      expect(structures, `${key} is missing from a sea map`).toContain(key);
+    }
+    for (const key of ['harvester', 'mcv', 'grizzly']) {
+      expect(vehicles, `${key} is missing from a sea map`).toContain(key);
+    }
+  });
+
+  it('follows the map when the terrain is regenerated under a live service', async () => {
+    /*
+     * `Terrain.setSea` and `Terrain.setBiome` rebuild the heightfield IN PLACE:
+     * same object, different battlefield. A gate that latched its verdict at
+     * match start would keep publishing the old map's menu — and because the
+     * object identity never changes, nothing would look wrong. That is the
+     * hazard `surveyNavalWater`'s fingerprint exists for, asserted one layer up
+     * where the cameos are.
+     */
+    const rig = await makeRig(false);
+    rig.run(1);
+    expect(published(rig, BuildTab.Structures)).not.toContain('navalYard');
+
+    rig.world.terrain = coastalTerrain(rig.world.terrain);
+    invalidateNavalWater();
+    rig.run(1);
+    expect(published(rig, BuildTab.Structures), 'the menu did not follow the new map')
+      .toContain('navalYard');
+  });
+
+  it('keeps the cameo list and the entries behind it in step', async () => {
+    /*
+     * The published list is now SHORTER than the roster, and `refreshSnapshot`
+     * fills each cameo's `available` / `reason` / `owned` from the entry behind
+     * it. Those two used to be matched by POSITION in `catalog.roster()`, which
+     * is exactly the coupling this change breaks — a stale index here would
+     * quietly print one buildable's cost under another's name.
+     */
+    const rig = await makeRig(false);
+    rig.run(2);
+
+    for (let t = 0; t < 4; t++) {
+      for (const cameo of rig.service.snapshot.cameos[t]) {
+        const entry = rig.catalog.byKey(cameo.key);
+        expect(entry, `published cameo "${cameo.key}" has no catalog entry`).not.toBeNull();
+        expect(cameo.defId, `${cameo.key}: cameo id does not match its entry`)
+          .toBe(entry!.publicId);
+        expect(cameo.cost, `${cameo.key}: cameo cost belongs to another entry`)
+          .toBe(entry!.cost);
+        expect(cameo.name, `${cameo.key}: cameo name belongs to another entry`)
+          .toBe(entry!.name);
+      }
+    }
+  });
+});
