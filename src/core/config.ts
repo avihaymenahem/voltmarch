@@ -4338,7 +4338,6 @@ export const AUDIO_BUS_DB = {
   sfx: 0,
   voice: 2,
   ui: -4,
-  ambience: -14,
 } as const;
 
 /** §3.7 master. Ratio 20 with a 0 knee is a limiter, not a compressor. */
@@ -4559,26 +4558,6 @@ export const AUDIO_MUSIC = {
   nearUnitTiles: 30,
   firingRef: 10,
   weights: [0.55, 0.30, 0.15] as readonly number[],
-} as const;
-
-/** §3.5 ambience. */
-export const AUDIO_AMBIENCE = {
-  /** Voss-McCartney pink noise source length, in seconds. */
-  pinkSeconds: 10,
-  crossfadeMs: 400,
-  wind: {
-    desert: { db: -30, lpMinHz: 380, lpMaxHz: 900, gustSec: [18, 40] as readonly number[] },
-    temperate: { db: -28, lpMinHz: 340, lpMaxHz: 820, gustSec: [16, 34] as readonly number[] },
-    snow: { db: -24, lpMinHz: 300, lpMaxHz: 700, gustSec: [20, 45] as readonly number[] },
-    urban: { db: -34, lpMinHz: 250, lpMaxHz: 550, gustSec: [24, 50] as readonly number[] },
-  },
-  /** Base hum level by powered-plant count; index 0 is one plant. */
-  humDb: [-34, -31, -29, -27.5, -26.5, -26] as readonly number[],
-  humSagCents: -80,
-  humSagSec: 3,
-  humFadeSec: 4,
-  /** Metres from the nearest owned structure past which the hum fades out. */
-  humRangeMetres: 160,
 } as const;
 
 /** Screenshot harness: `?shot=` must be dead silent, and must never resume. */

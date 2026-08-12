@@ -326,13 +326,33 @@
   color: var(--vm-text-faint);
 }
 
+/*
+ * THE LABEL MAY NOT COLLAPSE, AND IT WAS COLLAPSING.
+ *
+ * `min-width: 0` next to a hint that could not shrink (`flex: 0 0 auto`) meant
+ * the LABEL absorbed the whole shortfall on any row whose hint was long. On the
+ * Multiplayer row it measured **zero pixels wide** — and a zero-width flex item
+ * does not clip its text, it overflows it, so "Multiplayer" was painted
+ * straight through "No match server is configured for this build." Two strings
+ * on the same pixels, on the first screen of the game.
+ *
+ * `min-width: max-content` keeps `flex: 1 1 auto` — the label still takes the
+ * free space and still pushes the hint right — while refusing to shrink below
+ * its own text. The hint gives way instead, and truncates rather than
+ * overflowing, which is the correct priority: the label is what the row IS and
+ * the hint is a note about it.
+ */
 .vm-shell .vm-btn-label {
   flex: 1 1 auto;
-  min-width: 0;
+  min-width: max-content;
 }
 
 .vm-shell .vm-btn-hint {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 11px;
   letter-spacing: 0.16em;
   color: var(--vm-text-faint);

@@ -94,7 +94,12 @@ export function multiplayerAvailable(): boolean {
  */
 export function unavailableReason(): string {
   const raw = fromQuery() || fromStorage() || fromBuild() || localDefault();
-  if (raw === '') return 'No match server is configured for this build.';
+  // SHORT, because it renders as a menu-row hint beside a label. The long
+  // form ran to 305 px and squeezed the row's label to zero width, where a
+  // flex item overflows its text rather than clipping it — so this sentence
+  // was painted over the word "Multiplayer". The CSS refuses to collapse the
+  // label now; this keeps the row from needing the ellipsis in the first place.
+  if (raw === '') return 'No match server configured';
   if (!/^wss?:\/\//.test(raw)) return 'The configured match server address is not a WebSocket URL.';
   if (raw.startsWith('ws://') && !pageIsPlaintext()) {
     return 'The match server must use wss:// when the game is served over https.';

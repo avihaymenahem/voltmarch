@@ -140,7 +140,6 @@ export interface AudioSettings {
   sfx: number;
   voice: number;
   ui: number;
-  ambience: number;
   muted: boolean;
 }
 
@@ -475,7 +474,6 @@ export function defaultSettings(): Settings {
       sfx: 85,
       voice: 90,
       ui: 70,
-      ambience: 60,
       muted: false,
     },
     gameplay: {
@@ -618,7 +616,6 @@ export function normalizeSettings(raw: unknown): Settings {
       sfx: num(a.sfx, 0, 100, d.audio.sfx),
       voice: num(a.voice, 0, 100, d.audio.voice),
       ui: num(a.ui, 0, 100, d.audio.ui),
-      ambience: num(a.ambience, 0, 100, d.audio.ambience),
       muted: bool(a.muted, d.audio.muted),
     },
     gameplay: {

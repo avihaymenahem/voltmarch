@@ -33,13 +33,13 @@ import {
 } from '../core/types';
 import { CreditReason } from '../core/types';
 import {
-  AUDIO_AMBIENCE, AUDIO_DISTANCE, AUDIO_DUCK, AUDIO_MUSIC, AUDIO_MUTE_IN_SHOT_MODE, CELL,
+  AUDIO_DISTANCE, AUDIO_DUCK, AUDIO_MUSIC, AUDIO_MUTE_IN_SHOT_MODE, CELL,
 } from '../core/config';
 import { RENDER_CONFIG } from '../render/renderer';
 import { ctx } from '../game/context';
 
 import { AudioEngine, setAudioFacade, type AudioFacade, type PanResolver } from './AudioEngine';
-import { AmbienceRig, FX_SOUND, SFX, registerSfxBank, type Theatre } from './Weapons';
+import { FX_SOUND, SFX, registerSfxBank, type Theatre } from './Weapons';
 import { EVA_LINE_ID, EvaAnnouncer, type EvaMode } from './Eva';
 import { BarkDirector, barkClassFor, type BarkCategory, type BarkClass } from './Barks';
 import { TrackMusic } from './TrackMusic';
@@ -71,7 +71,7 @@ let barks: BarkDirector | null = null;
  * call site below is unchanged.
  */
 let music: TrackMusic | null = null;
-let ambience: AmbienceRig | null = null;
+
 let unsubscribe: Array<() => void> = [];
 
 /** Scratch for the pan resolver. Allocated once; the frame loop allocates none. */
@@ -271,7 +271,7 @@ export default defineSystem({
       mode: flag('barks') === 'off' ? 'off' : flag('barks') === 'reduced' ? 'reduced' : 'on',
     });
     music = new TrackMusic(engine);
-    ambience = new AmbienceRig(engine);
+
 
     /* -- the IAudio port --------------------------------------------------- */
     const port: IAudio = {
@@ -340,8 +340,6 @@ export default defineSystem({
         const t2 = typeof performance !== 'undefined' ? performance.now() : 0;
         console.info(`[audio] voices ready (+${Math.round(t2 - t1)} ms in the background)`);
       })();
-      ambience.startWind(theatreFromFlags());
-      ambience.startHum();
       music.start();
     }
 
@@ -383,11 +381,11 @@ export default defineSystem({
     unsubscribe = [];
     setAudioFacade(null);
     music?.dispose();
-    ambience?.dispose();
+
     barks?.dispose();
     eva?.dispose();
     engine?.dispose();
-    engine = null; eva = null; barks = null; music = null; ambience = null;
+    engine = null; eva = null; barks = null; music = null;
     brownoutSince = -1;
     fundsStalledSince = -1;
     matchStartAt = -1;
@@ -465,9 +463,11 @@ function subscribe(): void {
     } else {
       brownoutSince = -1;
     }
-    // The hum sags before EVA says a word — the player feels it first.
+    // KEPT WITHOUT ITS CONSUMER, and deliberately. The hum used to sag here
+    // before EVA said a word; the hum is gone, but `poweredPlants` and
+    // `brownoutSince` are still read by the EVA brownout line below, so this is
+    // a live count and not a leftover.
     poweredPlants = Math.max(0, Math.round(p.produced / 100));
-    ambience?.setPower(poweredPlants, p.brownout || p.consumed > p.produced);
   }));
 
   /* -- combat -------------------------------------------------------------- */
@@ -650,8 +650,6 @@ function updateHeat(r: RenderContext): void {
     }
     hostileNear = near;
 
-    // Fade the hum out when the camera leaves the base entirely.
-    ambience?.setHumAudible(poweredPlants > 0 && nearOwnedStructure(fx, fz));
   }
 
   let damage = 0;
@@ -675,23 +673,6 @@ function pushExternalHeat(v: number): void {
   externalHeat = v < 0 ? 0 : v > 1 ? 1 : v;
   externalHeatAt = engine?.now() ?? 0;
   music?.setCombatHeat(externalHeat);
-}
-
-/** True when any owned structure is within the hum's audible radius. */
-function nearOwnedStructure(x: number, z: number): boolean {
-  const { world } = ctx();
-  const s = world.store;
-  const localP = world.localPlayer as number;
-  const r = AUDIO_AMBIENCE.humRangeMetres;
-  const r2 = r * r;
-  for (let n = 0; n < s.aliveCount; n++) {
-    const i = s.alive[n];
-    if (s.kind[i] !== EntityKind.Building) continue;
-    if (s.owner[i] !== localP) continue;
-    const dx = s.posX[i] - x, dz = s.posZ[i] - z;
-    if (dx * dx + dz * dz <= r2) return true;
-  }
-  return false;
 }
 
 /**
@@ -775,11 +756,10 @@ if (typeof globalThis !== 'undefined') {
     heat: (v: number) => { pushExternalHeat(v); },
     theatre: (t: Theatre) => {
       void engine?.setTheatre(t === 'temperate' ? 'temperate' : t);
-      ambience?.startWind(t);
     },
     volume: (bus: string, percent: number) => {
       if (bus === 'master') engine?.setMasterVolume(percent);
-      else engine?.setBusVolume(bus as 'music' | 'sfx' | 'voice' | 'ui' | 'ambience', percent);
+      else engine?.setBusVolume(bus as 'music' | 'sfx' | 'voice' | 'ui', percent);
     },
   };
 }

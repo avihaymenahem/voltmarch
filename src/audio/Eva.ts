@@ -1209,7 +1209,7 @@ export class EvaAnnouncer {
   }
 
   /**
-   * EVA ducks music -11 dB, SFX -5 dB and ambience -6 dB for the length of the
+   * EVA ducks music -11 dB and SFX -5 dB for the length of the
    * line. It never ducks itself, and it never writes a duck param directly —
    * the engine reduces every active duck into one ramp per bus.
    */
@@ -1220,7 +1220,6 @@ export class EvaAnnouncer {
     this.ducks = [
       e.duck('eva', 'music', D.evaMusicDb, D.evaAttackMs, D.evaReleaseMs),
       e.duck('eva', 'sfx', D.evaSfxDb, D.evaAttackMs, 350),
-      e.duck('eva', 'ambience', D.evaAmbDb, 80, 500),
     ];
   }
 

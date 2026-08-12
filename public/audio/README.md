@@ -120,8 +120,26 @@ through `sf.SoundFile`; the stream is identical.
 
 ## What is still generated
 
-Ambience, and nothing else. The five-layer procedural sequencer is still in the tree and is still
-the automatic fallback if a music track fails to load, but it is no longer what plays.
+**Nothing.** Ambience was the last of it and it is deleted.
+
+It was a pink-noise wind bed under a wandering lowpass, and a base hum of three SAWTOOTH oscillators
+at 50, 50.6 and 75 Hz through a 220 Hz lowpass and a waveshaper. The 50 and the 50.6 beat against
+each other at 0.6 Hz, so it throbbed about once every two seconds, and the shaper made it growl.
+
+It was reported as the weirdest sound in the game, heard on the INITIAL PAGE LOAD — and that is the
+part worth recording, because the hum was gated on powered plants and should have been silent at the
+menu. The title screen boots a real world behind itself just to have something moving. Measured: 31
+buildings. So plants existed, the camera sat among them, and a base hum came up over the main menu
+with no base on screen to explain it.
+
+Removed rather than gated to a match, because the verdict is the same one the other 39 families got:
+the synthesised bank measured correct on every number `tools/audio-measure.mjs` reports and still
+read as a synth patch. **The measurement is a proxy; the ear is not.** The `ambience` BUS went with
+it — a fader in the options screen that moves nothing is worse than a missing feature, because the
+player cannot tell it is missing.
+
+The five-layer procedural music sequencer is still in the tree and is still the automatic fallback
+if a music track fails to load, but it is not what plays.
 
 Every synthesised recipe also survives as a **fallback**. If a file 404s or the browser refuses the
 container, the oscillator version renders instead — including EVA, where an offline player gets a

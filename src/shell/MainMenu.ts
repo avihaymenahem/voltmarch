@@ -359,7 +359,6 @@ export const CREDITS: readonly CreditGroup[] = [
     lines: [
       'Every mesh generated procedurally from code',
       'Every texture baked at boot in a worker',
-      'Ambience synthesised at boot',
       'No downloaded models or world textures',
     ],
   },
@@ -385,9 +384,17 @@ export const CREDITS: readonly CreditGroup[] = [
      * with the procedural `MusicDirector` kept only as its fallback. The line
      * read "Ambience and the adaptive music score synthesised at boot" while
      * the very next credit group licensed that music from Kevin MacLeod under
-     * CC-BY — the screen contradicted itself, two groups apart. Ambience is
-     * the only thing in the soundscape still synthesised. See
-     * `public/audio/README.md`.
+     * CC-BY — the screen contradicted itself, two groups apart.
+     *
+     * "Ambience synthesised at boot" is gone from the Art group too, and with
+     * it the last synthesised sound in the product. It was a pink-noise wind
+     * bed and a base hum of three sawtooths at 50, 50.6 and 75 Hz through a
+     * waveshaper; the 50 and 50.6 beat at 0.6 Hz, it throbbed once every two
+     * seconds, and it came up over the MAIN MENU because the title screen boots
+     * a real world behind itself and the hum's level follows powered plants.
+     * Reported as the weirdest sound in the game and removed rather than gated,
+     * which is the same verdict the other 39 families got. NOTHING in the
+     * soundscape is synthesised now. See `public/audio/README.md`.
      */
     title: 'Shipped Assets',
     lines: [
