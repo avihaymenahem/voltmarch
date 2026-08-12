@@ -1853,6 +1853,16 @@ export interface ConnectivityReport {
   readonly relocatedMaxMetres: number;
   /** Entities that ended the build outside the main region. Must be 0. */
   readonly strandedEntities: number;
+  /**
+   * Structures seated on ground `terrain.isBuildable` refuses — too steep, or
+   * water. NOT automatically a defect: a naval yard is authored against a
+   * waterline on purpose. It is the number that was never measured, which is
+   * how four civilian derricks came to stand on a 0.45 slope while
+   * `spawnBuilding` returned a live handle. See `ScenarioBuilder.spawnBuilding`.
+   */
+  readonly unbuildableGround: number;
+  /** `"<key> at <x>,<z>"` for the first of them, or empty. */
+  readonly unbuildableFirst: string;
   /** One line for the console. */
   readonly summary: string;
 }
@@ -1930,6 +1940,10 @@ export class ScenarioBuilder {
   /** Placements moved onto connected ground, and the worst distance moved. */
   private relocated = 0;
   private relocatedMaxMetres = 0;
+  /** Structures seated on ground `terrain.isBuildable` refuses. See `spawnBuilding`. */
+  private unbuildableGround = 0;
+  /** The first of them, so the console line names one rather than a count. */
+  private unbuildableFirst = '';
 
   constructor(
     readonly world: World,
@@ -2088,6 +2102,34 @@ export class ScenarioBuilder {
   }
 
   /**
+   * True when every cell a `fw` x `fh` footprint would cover is ground the
+   * PLACEMENT RULE would accept — `terrain.isBuildable`, the same grid
+   * `sim/Placement.evaluatePlacement` reads for `PlacementFault.Terrain`.
+   *
+   * SEPARATE FROM `footprintClear`, WHICH ASKS A DIFFERENT QUESTION. That one is
+   * about other structures; this one is about slope and water. Nothing in this
+   * builder used to ask it at all: `spawnBuilding` snapped, un-stranded and
+   * de-overlapped a structure and then planted it on whatever grade was there,
+   * returning a live EntityId. Four civilian derricks went down on a 0.45 slope
+   * that way — ground no player could have built on, on a map where they were
+   * meant to be a contested prize — and the call reported success.
+   */
+  footprintBuildable(x: number, z: number, fw: number, fh: number): boolean {
+    footprintOriginCell(x, z, fw, fh, scratchCell);
+    const ox = scratchCell[0];
+    const oz = scratchCell[1];
+    for (let dz = 0; dz < fh; dz++) {
+      for (let dx = 0; dx < fw; dx++) {
+        const cx = ox + dx;
+        const cz = oz + dz;
+        if (!isInMap(cx, cz)) return false;
+        if (!this.world.terrain.isBuildable(cx, cz)) return false;
+      }
+    }
+    return true;
+  }
+
+  /**
    * Nearest clear footprint to (x, z), searched outward a ring at a time.
    * Writes the snapped centre into `out`; false when nothing within the limit
    * fits.
@@ -2162,7 +2204,10 @@ export class ScenarioBuilder {
       `(${(mainFraction * 100).toFixed(1)}%); ` +
       `${this.relocated} placement${this.relocated === 1 ? '' : 's'} relocated` +
       (this.relocated > 0 ? ` (worst ${this.relocatedMaxMetres.toFixed(1)} m)` : '') +
-      `; ${stranded} entit${stranded === 1 ? 'y' : 'ies'} stranded`;
+      `; ${stranded} entit${stranded === 1 ? 'y' : 'ies'} stranded` +
+      `; ${this.unbuildableGround} structure${this.unbuildableGround === 1 ? '' : 's'} on ` +
+      'ground isBuildable refuses' +
+      (this.unbuildableFirst === '' ? '' : ` (first: ${this.unbuildableFirst})`);
 
     return {
       regions,
@@ -2172,6 +2217,8 @@ export class ScenarioBuilder {
       relocated: this.relocated,
       relocatedMaxMetres: this.relocatedMaxMetres,
       strandedEntities: stranded,
+      unbuildableGround: this.unbuildableGround,
+      unbuildableFirst: this.unbuildableFirst,
       summary,
     };
   }
@@ -2459,6 +2506,32 @@ export class ScenarioBuilder {
       px = placeOut[0];
       pz = placeOut[1];
     }
+
+    /* -- AND THE GROUND UNDER IT ------------------------------------------
+     * COUNTED AND NAMED, NOT MOVED OR REFUSED, and the asymmetry with the
+     * occupancy check above is deliberate.
+     *
+     * Two structures in one square is always wrong, so that case relocates and
+     * then skips. Standing on ground `isBuildable` refuses is only USUALLY
+     * wrong: `?shot=naval` deliberately founds a yard against a waterline, the
+     * beach cone is unbuildable for most of its run, and a scenario is authored
+     * content rather than a player's click — the rule that stops you putting a
+     * refinery on a cliff is not a rule that should silently delete a fixture's
+     * composition or shove it sideways past the pose it was captured for.
+     *
+     * What was actually wrong was the SILENCE. Nothing in this builder asked
+     * `isBuildable` at all, so a layout could seat a whole army on ground that
+     * same army could not extend and every call reported success. It goes on the
+     * connectivity report next to `strandedEntities`, where a test can assert it
+     * and the boot log prints it.
+     * --------------------------------------------------------------------- */
+    if (!this.footprintBuildable(px, pz, fw, fh)) {
+      this.unbuildableGround++;
+      if (this.unbuildableFirst === '') {
+        this.unbuildableFirst = `${key} at ${px.toFixed(0)},${pz.toFixed(0)}`;
+      }
+    }
+
     const yaw = wrapAngle((options.yawDeg ?? 0) * DEG2RAD);
     const py = this.world.terrain.heightAt(px, pz);
     const faction = this.world.player(owner).faction;
@@ -4319,7 +4392,8 @@ export function buildScenario(
         `that is NOT connected to the map — they cannot leave it. ${connectivity.summary}`,
         'color:#f66', 'color:inherit',
       );
-    } else if (connectivity.relocated > 0 || connectivity.regions > 1) {
+    } else if (connectivity.relocated > 0 || connectivity.regions > 1
+      || connectivity.unbuildableGround > 0) {
       console.warn(`[scenario] connectivity: ${connectivity.summary}`);
     } else {
       console.info(`[scenario] connectivity: ${connectivity.summary}`);
