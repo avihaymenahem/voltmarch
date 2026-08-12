@@ -101,6 +101,100 @@
  * deliberately does NOT do is separation, formation or crowd relaxation. Those
  * belong to Steering, and faking them here would be the thing that is genuinely
  * hard to unpick later.
+ *
+ * ============================================================================
+ * §ANCHOR — THE PATCH A HARVESTER IS BOUND TO
+ * ============================================================================
+ * Reported: "they need to be bound to a specific area, whenever i lead them to
+ * some point, they shouldnt go out of a range of it, because sometimes they
+ * just suicide and going to enemy camp". Two separate defects were behind it,
+ * and both reproduce.
+ *
+ * DEFECT 1 — THE CHOICE HAD NO MEMORY. `acquireOre` and `rescoreOre` scored the
+ * nearest cell within ORE_SEARCH_CELLS (160 m) OF THE HULL, with a
+ * `nearestField` fallback that re-centres the search on any field anywhere on
+ * the map. Nothing recorded which patch this harvester was supposed to be
+ * working, so each re-score was a fresh 160 m step from wherever the last one
+ * left it — a memoryless random walk. Measured on the stock skirmish map, seed
+ * 1337: a harvester that started at 167,284 reached 148 m from its start and
+ * spent 574 ticks inside 70 m of the ENEMY base centre, on a map whose bases are
+ * 182 m apart.
+ *
+ * DEFECT 2 — THE PLAYER'S CLICK WAS DISCARDED. `OrderKind.Harvest` writes
+ * `orderX/orderZ` and sets `SeekOre`, and `tickSeek` then republishes the cell
+ * it was ALREADY claiming over the top of it, on the very next tick. Measured on
+ * a two-patch fixture: harvester at 60,30 seeking the near patch, ordered to a
+ * patch 140 m away, order point overwritten within one tick, still on the near
+ * patch 60 s later. So the one control the player had over where a harvester
+ * works did nothing at all — which is the literal complaint, "whenever i lead
+ * them to some point".
+ *
+ * THE ANCHOR IS THE GUARD POST. `guardX/guardZ` is the column the rest of the
+ * game already calls "where this unit belongs when nobody is telling it
+ * anything" (see §LEASH in sim/Targeting.ts). It is serialised into every save,
+ * hashed into the desync checksum, and — because a harvester is unarmed and
+ * `TargetingSystem` skips everything without `CanAttack` — read by nobody. The
+ * economy is the one consumer it was missing.
+ *
+ * REUSING IT REQUIRED TAKING OWNERSHIP OF IT, and that is the part a reader
+ * should not skip. `NavAssigner` re-stamps the post on the tick a goal-seeking
+ * state ends, and for a harvester that fires TWICE PER ROUND TRIP — SeekOre ->
+ * Harvesting, and ReturnToRefinery -> Docked, the only two harvester states
+ * `seeksGoal` excludes. Traced over four minutes, one harvester's post read
+ * 316,188 | 272,250 | 295,193 | 294,190 | 317,188 | 286,192: it alternates
+ * between the ore face and the refinery apron and moves tens of metres a
+ * sample. A leash centred on that walks with the unit and is not a leash. Both
+ * stamp sites in `sim/Steering.ts` now skip harvesters and say why.
+ *
+ * WHAT SETS IT
+ *   - A Harvest order whose ORDER POINT HOLDS ORE. Detected by diffing
+ *     `orderX/orderZ` against our own `destX/destZ`, exactly as `NavAssigner`
+ *     detects a new order and for the same reason ("so this works no matter who
+ *     issued it") — the AI issues the same order through the same columns. The
+ *     test is `oreAt(orderCell) > 0` rather than "which branch of Commands.ts
+ *     produced this", so the OTHER Harvest order — right-clicking your own
+ *     refinery, which means "go unload" and carries a target instead of a point
+ *     — cannot be mistaken for a new patch.
+ *   - The first auto-acquire after the anchor was dropped. A harvester that
+ *     ships with a refinery, rolls out of a war factory or is posed by a
+ *     scenario has never been told anything, and the honest answer is the patch
+ *     it picks on its own.
+ *   - `HARVESTER_LEASH_PATIENCE` seconds of a dry leash (below).
+ * The anchor is SNAPPED TO THE FIELD'S NODE CELL when the point lands in a
+ * seeded field, so "that patch" means the patch and not the pixel. Ground with
+ * no field takes the point as given.
+ *
+ * WHAT DROPS IT: any order that is not a Harvest order. A move, an attack-move,
+ * a flee — the player has taken the harvester off ore, so the leash it was
+ * working under is stale, and the next acquire re-takes an anchor from wherever
+ * the hull ended up. That is what makes "send it somewhere far away
+ * deliberately" work, and it is why the leash is a default rather than a cage.
+ *
+ * WHAT IT CONSTRAINS: the two sites that CHOOSE an ore cell, and nothing else.
+ * `ReturnToRefinery` is never leashed — a full hopper must always reach a dock,
+ * and that decoupling is what lets HARVESTER_LEASH_METRES be sized by the field
+ * alone rather than by the round trip.
+ *
+ * WHEN THE PATCH RUNS DRY. Ore regrows, so dry is usually temporary and the
+ * first answer is to WAIT: the harvester banks what it is carrying and idles
+ * beside its own patch on the existing `DRY_RETRY`, taking cells back as they
+ * come up. `leashDry` counts the seconds it has failed to find anything at all,
+ * and past HARVESTER_LEASH_PATIENCE the harvester re-anchors — ONCE,
+ * deliberately — on the nearest field that still holds ore TO ITS OWN REFINERY,
+ * not to itself. That origin is the whole difference between expanding to the
+ * next patch and walking to the enemy: the ore has to end up at the refinery,
+ * so the patch worth taking is the one nearest it.
+ *
+ * The wait is what a player sees. Four harvesters parked ON a stripped patch
+ * says "this patch is out" at a glance; the same four scattered across the map,
+ * which is what happened before, says nothing. `HarvesterStats.waiting` counts
+ * them for the overlay.
+ *
+ * THE LEASH CAN NEVER BE THE REASON A HARVESTER HAS NOTHING TO DO. If the
+ * re-anchor finds no field with ore anywhere, the anchor is DROPPED and the
+ * unleashed fallback chain runs unchanged — the same principle
+ * `acquireOre`'s "a banned cell beats no cell" escape already states, one level
+ * up.
  * ============================================================================
  */
 
@@ -109,6 +203,7 @@ import {
   HARVESTER_DOCK_RADIUS, HARVESTER_DOCK_CLEARANCE, HARVESTER_QUEUE_GAP,
   HARVESTER_DOCK_FALLBACK_TRIES, HARVESTER_DOCK_STANDDOWN,
   HARVESTER_FORCE_DRIVE_SECONDS, HARVESTER_FORCE_DRIVE_TRIES,
+  HARVESTER_LEASH_METRES, HARVESTER_LEASH_PATIENCE,
   HARVESTER_NAV_GIVEUP_METRES, HARVESTER_NAV_GIVEUP_SECONDS, HARVESTER_NAV_PARK_GRACE,
   HARVESTER_UNREACHABLE_BAN_CELLS, HARVESTER_UNREACHABLE_BAN_SECONDS,
   HARVESTER_STUCK_SECONDS, MAP_CELLS, MAX_PLAYERS,
@@ -174,6 +269,91 @@ const UNSTRAND_SEARCH_CELLS = 6;
  * structure is walled in and the honest answer is that it has no dock.
  */
 const HARVESTER_DOCK_APPROACH_RINGS = 3;
+/**
+ * The leash, in whole CELLS, which is the unit the ore grid is indexed in.
+ *
+ * Rounded DOWN so the disc can never exceed the metre figure it is derived
+ * from, and integral so `findFreeOre`'s containment test is exact integer
+ * arithmetic — this runs inside `simTick`, where a float comparison that lands
+ * differently on two machines is a desync.
+ */
+const LEASH_CELLS = Math.floor(HARVESTER_LEASH_METRES / CELL);
+/**
+ * The unreachable-ground ban's radius WHEN THE HARVESTER IS LEASHED, in cells.
+ *
+ * `HARVESTER_UNREACHABLE_BAN_CELLS` is 20 cells (80 m) and its config comment
+ * says exactly why: the re-plan has to "land on a DIFFERENT PATCH, not one cell
+ * to the left of the thing that stopped it". That is the correct size for a
+ * harvester with the whole map to choose from, and it is fatal for one with a
+ * 12-cell leash — a Chebyshev square of 20 cells centred anywhere near the hull
+ * covers the entire disc, so the FIRST ban empties the patch and every later
+ * search returns nothing.
+ *
+ * Measured with the full-size ban applied inside the leash: seed 4242 slot 43
+ * spent 3382 ticks in SeekOre and 3602 Idle for ONE delivery and 84 m, cycling
+ * between banning its patch, waiting out the patience and re-anchoring on the
+ * next field 90 m away — 2 crawling harvesters against a ceiling of 1.
+ *
+ * A THIRD OF THE LEASH, so the bound is stated as the invariant rather than as
+ * a number: the exclusion may never take more than a third of the ground the
+ * harvester is allowed to work, which leaves the re-plan somewhere real to go.
+ * At the shipped leash that is 4 cells — 16 m, about four hull lengths, and a
+ * quarter of a home field's 56 m diameter, so a re-plan under it lands on
+ * visibly different ground rather than against the same rock.
+ *
+ * The claim the ban makes is also weaker here, and correctly so. Unleashed it
+ * means "this patch defeated me"; leashed it can only mean "this corner did",
+ * because the alternative — concluding the patch is unusable — is the caller's
+ * decision to make and it already has a better mechanism for it.
+ */
+const LEASH_BAN_CELLS = Math.min(HARVESTER_UNREACHABLE_BAN_CELLS, Math.floor(LEASH_CELLS / 3));
+/**
+ * Metres of order-point movement that counts as a NEW harvest order.
+ *
+ * Same threshold and the same reasoning as `NAV_FORMATION_GOAL_EPS`: the
+ * columns are compared against our own last published value, so anything above
+ * the noise floor was written by somebody else.
+ */
+const NEW_ORDER_EPS = 0.6;
+
+/* --------------------------------------------------------------------------
+ * `acquireInLeash` outcomes, and the middle one is the whole hysteresis.
+ *
+ * "IS THIS PATCH DRY" AND "IS THERE ANYTHING TO PICK UP" ARE DIFFERENT
+ * QUESTIONS, and answering the first with the second is what would make the
+ * dry alert unusable. The second tier accepts a cell holding ONE unit, and
+ * regrowth lifts a stripped cell off zero within a single `ORE_REGROW_INTERVAL`
+ * (half a second) — so a patch that is finished in every sense a player cares
+ * about answers "yes, there is ore" twice a second forever. Keyed on that, the
+ * alert would fire, clear and re-fire continuously about a harvester the player
+ * can see is working.
+ *
+ * So the DRY CLOCK is keyed on the first tier only: no cell in the leash holds
+ * `ORE_MIN_CLAIM` (25), which is already defined in config as the amount below
+ * which "a harvester that drives 90 m for 3 units of ore looks broken". The
+ * ACQUIRE still takes the scraps — the patch is 48 m away, so there is no
+ * wasted drive and the last few hundred credits still get collected — it simply
+ * does not count as the patch being alive.
+ *
+ * That gives the hysteresis for real rather than by a magic number: clearing
+ * the dry state requires regrowth to lift one cell from 0 to 25, which at
+ * ORE_REGROW_RATE 0.6/s takes 14 s at the node (ORE_REGROW_NODE_BONUS 3.0) and
+ * 42 s anywhere else. HARVESTER_LEASH_PATIENCE is 30 s, so the node always gets
+ * its chance before anyone concludes anything.
+ * ------------------------------------------------------------------------ */
+/** Nothing in the leash, at any amount. */
+const LEASH_EMPTY = 0;
+/** Only cells below ORE_MIN_CLAIM. Taken, but the patch counts as dry. */
+const LEASH_SCRAPS = 1;
+/** A cell worth the trip. The patch is alive. */
+const LEASH_WORTH_A_TRIP = 2;
+
+/**
+ * `dryNotified` sentinel. -2 rather than -1 because -1 is a REAL field id here:
+ * it is what `fieldAtCell` returns for a harvester anchored on loose scrap
+ * outside every seeded field, and that harvester must still be able to report.
+ */
+const DRY_NOTIFIED_NONE = -2;
 
 export interface HarvesterStats {
   harvesters: number;
@@ -189,6 +369,13 @@ export interface HarvesterStats {
   delivered: number;
   /** Harvesters the fallback mover is driving this tick. */
   driven: number;
+  /**
+   * Harvesters sitting beside an anchored patch that currently has nothing to
+   * give. Not a stall — see §ANCHOR — but the number that tells you the
+   * difference between "the economy is waiting for regrowth" and "the economy
+   * is broken", which is otherwise indistinguishable from `idle`.
+   */
+  waiting: number;
 }
 
 /**
@@ -298,15 +485,53 @@ export class HarvesterController {
   private readonly forceDrive: PerEntityF32;
   /** Force-drive windows already spent on the CURRENT destination. */
   private readonly forceTries: PerEntityF32;
+  /**
+   * 1 while `guardX/guardZ` holds an ore anchor for this harvester. See §ANCHOR.
+   *
+   * A FLAG AND NOT A SENTINEL IN THE POSITION, because there isn't one:
+   * `EntityStore.alloc` seeds `guardX/guardZ` with the spawn point, so every
+   * value in that column is a plausible anchor and "unset" cannot be encoded
+   * there. Generation-stamped, so a recycled slot starts unanchored rather than
+   * inheriting a dead hull's patch.
+   *
+   * NOT SERIALISED, and that is a deliberate accepted loss: the POSITION is
+   * saved (it is `guardX/guardZ`), only the bit saying we own it is not, so a
+   * loaded harvester re-anchors on its next acquire and lands on the patch it
+   * is standing at. Paying for a save column and a hash slot to skip one
+   * re-anchor is not worth it.
+   */
+  private readonly anchored: PerEntityU32;
+  /**
+   * Sim time at which this harvester's leash FIRST came up empty, or -1 while
+   * it has ore to go at.
+   *
+   * A TIMESTAMP RATHER THAN AN ACCUMULATOR, because the only code that can
+   * observe the condition is `decide()`, which is throttled to `DRY_RETRY` and
+   * therefore does not see every tick. A counter fed a `dt` it is only handed
+   * every other second measures the number of retries, not the elapsed time,
+   * and HARVESTER_LEASH_PATIENCE is written in seconds. Reset by every
+   * successful acquire and by every change of anchor, so it measures the
+   * CURRENT patch and not the harvester's history.
+   */
+  private readonly leashDryAt: PerEntityF32;
 
   /** Per-REFINERY: the harvester currently holding its dock, or 0. */
   private readonly dockHolder: PerEntityU32;
 
   private readonly lastUnderAttackEva = new Float64Array(MAX_PLAYERS);
+  /**
+   * Per player, the ore field they have already been told is exhausted, or
+   * `DRY_NOTIFIED_NONE`. See `announceDry` — this is the coalescing, and it is
+   * keyed on WHAT was announced rather than on when, so it re-arms on the event
+   * that matters instead of on a clock.
+   */
+  private readonly dryNotified = new Int32Array(MAX_PLAYERS);
+  /** Sim time of each player's last dry notice. Diagnostics only. */
+  private readonly lastDryEva = new Float64Array(MAX_PLAYERS);
 
   private readonly statsOut: HarvesterStats = {
     harvesters: 0, seeking: 0, harvesting: 0, returning: 0, docked: 0, idle: 0,
-    cargo: 0, cargoCapacity: 0, delivered: 0, driven: 0,
+    cargo: 0, cargoCapacity: 0, delivered: 0, driven: 0, waiting: 0,
   };
   private deliveredTotal = 0;
   private drivenThisTick = 0;
@@ -347,8 +572,12 @@ export class HarvesterController {
     this.dockTries = new PerEntityF32(store, 0);
     this.forceDrive = new PerEntityF32(store, 0);
     this.forceTries = new PerEntityF32(store, 0);
+    this.anchored = new PerEntityU32(store, 0);
+    this.leashDryAt = new PerEntityF32(store, -1);
     this.dockHolder = new PerEntityU32(store, 0);
     this.lastUnderAttackEva.fill(-1e9);
+    this.dryNotified.fill(DRY_NOTIFIED_NONE);
+    this.lastDryEva.fill(-1e9);
 
     this.unsubscribes.push(
       channels.events.on('entity:damaged', (ev) => this.onDamaged(ev.id, ev.player, ev.x, ev.z)),
@@ -364,7 +593,7 @@ export class HarvesterController {
     const st = this.statsOut;
     st.harvesters = 0; st.seeking = 0; st.harvesting = 0;
     st.returning = 0; st.docked = 0; st.idle = 0;
-    st.cargo = 0; st.cargoCapacity = 0;
+    st.cargo = 0; st.cargoCapacity = 0; st.waiting = 0;
 
     const n = store.aliveCount;
     for (let a = 0; a < n; a++) {
@@ -379,6 +608,15 @@ export class HarvesterController {
       st.cargoCapacity += store.cargoMax[i];
 
       const id = store.handleOf(i);
+      if (this.anchored.getAt(i) !== 0 && this.leashDryAt.getAt(i) >= 0) st.waiting++;
+
+      // THE ORDER EDGE, AHEAD OF EVERY STATE. It has to be read before the FSM
+      // runs, because `tickSeek`'s first act is to republish the cell it is
+      // already claiming — which is the whole of defect 2 in §ANCHOR. Reading it
+      // here and re-planning turns a Harvest right-click into a redirect
+      // instead of a no-op.
+      if (this.takeNewOrder(i, id, s.time)) continue;
+
       switch (store.state[i]) {
         case UnitState.SeekOre:
           st.seeking++;
@@ -581,9 +819,21 @@ export class HarvesterController {
     // here as well as in `acquireOre` because a rescore is a fresh choice of
     // destination and must not quietly reintroduce the one we just condemned.
     const bx = this.liveBan(i, time) ? this.banCx.getAt(i) : -1;
+    // AND THE LEASH, for the same reason and with more force. A rescore is a
+    // re-choice taken from WHEREVER THE HULL HAS GOT TO, every
+    // ORE_SCORING_INTERVAL, which makes it the actual engine of the map-crossing
+    // drift in §ANCHOR: each one moves the hull a little, and the next one is
+    // taken from the new position with the whole 160 m search radius back in
+    // play. Confining it to the anchor disc is what turns the walk into a
+    // stationary process.
+    const leashed = this.anchored.getAt(i) !== 0;
+    const kx = leashed ? clampCell(worldToCell(store.guardX[i])) : -1;
+    const kz = leashed ? clampCell(worldToCell(store.guardZ[i])) : -1;
     if (!this.ore.findFreeOre(
-      cx, cz, ORE_SEARCH_CELLS, id, ORE_MIN_CLAIM, time, this.cellOut,
+      cx, cz, leashed ? this.leashSearchCells(i) : ORE_SEARCH_CELLS,
+      id, ORE_MIN_CLAIM, time, this.cellOut,
       bx, this.banCz.getAt(i), HARVESTER_UNREACHABLE_BAN_CELLS,
+      kx, kz, LEASH_CELLS,
     )) return;
 
     const nx = (this.cellOut[0] + 0.5) * CELL;
@@ -599,12 +849,395 @@ export class HarvesterController {
     this.resetProgress(i);
   }
 
+  /* -- the anchor -------------------------------------------------------- */
+
+  /**
+   * Read the order columns and act on anything this module did not write there.
+   * True means the caller should skip this harvester's state tick — a re-plan
+   * has already happened and the FSM would only undo it.
+   *
+   * See §ANCHOR. This is `NavAssigner`'s trick applied to the columns from the
+   * other side: diff against our own last published value rather than asking
+   * for a notification, so a player click and an AI order look identical here,
+   * which is what they are.
+   */
+  private takeNewOrder(i: number, id: EntityId, time: number): boolean {
+    const store = this.world.store;
+
+    // ANY OTHER ORDER TAKES THIS HARVESTER OFF ORE, so the patch it was bound
+    // to is stale. Dropped on the order rather than on the way back, because a
+    // move across the map keeps the unit busy for a minute and an anchor that
+    // survived it would drag the harvester back to a patch the player has
+    // visibly moved it away from. This is the override.
+    if (store.orderKind[i] !== OrderKind.Harvest) {
+      this.dropAnchor(i);
+      return false;
+    }
+
+    const ox = store.orderX[i];
+    const oz = store.orderZ[i];
+    const dx = ox - this.destX.getAt(i);
+    const dz = oz - this.destZ.getAt(i);
+    if (dx * dx + dz * dz <= NEW_ORDER_EPS * NEW_ORDER_EPS) return false;
+
+    // Somebody else wrote the columns. A Harvest order carries EITHER a point on
+    // ore ("work that patch") OR a refinery target and a point nobody set ("go
+    // unload"); the ore under the point is what tells them apart, and it does so
+    // without this module having to know which branch of `Commands.ts` ran.
+    const cx = clampCell(worldToCell(ox));
+    const cz = clampCell(worldToCell(oz));
+    if (this.ore.oreAt(cx, cz) <= 0) return false;
+
+    this.anchorOnField(i, cx, cz);
+    // The claim in hand belongs to the OLD patch, and `acquireOre` will not
+    // consider anything while a live claim of ours is sitting on the grid.
+    // Dropping it here is also the fix for defect 2 on its own: without it
+    // `tickSeek` republishes that cell over the player's point on the next line.
+    this.dropClaim(i, id);
+    this.resetForceBudget(i);
+    if (!this.acquireOre(i, id, time)) {
+      if (store.cargo[i] > 0) this.beginReturn(i, id, time);
+      else this.enterIdle(i, id, time, DRY_RETRY);
+    }
+    return true;
+  }
+
+  /**
+   * Anchor this harvester on the patch containing cell `cx,cz`, snapping to the
+   * field's NODE when the cell belongs to one.
+   *
+   * The snap is what makes the leash mean "that patch" rather than "that pixel".
+   * `HARVESTER_LEASH_METRES` is derived from a field's live radius measured FROM
+   * ITS NODE (28 m against a 48 m leash); anchored on a rim cell instead, the
+   * same 48 m would fail to cover the far rim of the very field the player
+   * pointed at, and would simultaneously reach 20 m into the next one.
+   */
+  private anchorOnField(i: number, cx: number, cz: number): void {
+    const store = this.world.store;
+    const f = this.ore.fieldAtCell(cx, cz);
+    const rec = f >= 0 ? this.ore.field(f) : undefined;
+    if (rec !== undefined) {
+      store.guardX[i] = rec.x;
+      store.guardZ[i] = rec.z;
+    } else {
+      // Scrap ore outside every seeded field. The point as given is the honest
+      // answer — there is no patch to snap to.
+      store.guardX[i] = (cx + 0.5) * CELL;
+      store.guardZ[i] = (cz + 0.5) * CELL;
+    }
+    this.anchored.setAt(i, 1);
+    this.leashDryAt.setAt(i, -1);
+  }
+
+  /** Forget the patch. The next acquire is unleashed and re-takes an anchor. */
+  private dropAnchor(i: number): void {
+    if (this.anchored.getAt(i) === 0) return;
+    this.anchored.setAt(i, 0);
+    this.leashDryAt.setAt(i, -1);
+  }
+
+  /** The seeded field this harvester's anchor sits on, or -1 for open ground. */
+  private anchorField(i: number): number {
+    if (this.anchored.getAt(i) === 0) return -1;
+    const store = this.world.store;
+    return this.ore.fieldAtCell(
+      clampCell(worldToCell(store.guardX[i])), clampCell(worldToCell(store.guardZ[i])));
+  }
+
+  /**
+   * Tell this harvester's owner, ONCE, that it has run out of work.
+   *
+   * COALESCED PER PLAYER AND PER PATCH. Eight harvesters on one exhausted field
+   * is one event, not eight: they all report the same fact about the same
+   * ground, and the player's response to it is a single decision. The record is
+   * the FIELD ID rather than a cooldown, so it says what was announced and not
+   * merely when — which is what lets `rearmDryNotice` clear it on the real
+   * change (that field became workable again) instead of on a timer that has no
+   * relationship to anything.
+   *
+   * Ground with no seeded field under it (`-1`) is announced under that id like
+   * any other, so a harvester anchored on loose scrap still reports.
+   */
+  private announceDry(i: number, time: number): void {
+    const store = this.world.store;
+    const p = store.owner[i];
+    if (p >= MAX_PLAYERS) return;
+    const field = this.anchorField(i);
+    if (this.dryNotified[p] === field) return;
+    this.dryNotified[p] = field;
+
+    // `eva:line` AND NOT `combat:underAttack`, though the second is tempting:
+    // it is the product's only "something needs you, and it is HERE" channel
+    // and it carries a minimap ping. It also sets `Hud.lastAttackTime`, whose
+    // advice line reads "Base under attack — check the tactical map" for ten
+    // seconds. Borrowing the locate affordance would mean lying about why.
+    //
+    // So this goes down the announcer channel, which is audio AND a HUD toast
+    // (`EVA_TOASTS` in ui/Hud.ts) — visible, and coalesced a second time by the
+    // toast stack's own six-second merge on top of the per-field record above.
+    const eva = this.channels.events.payload('eva:line');
+    eva.player = p as PlayerId;
+    eva.line = EvaLine.HarvesterIdle;
+    this.channels.events.emitPooled('eva:line');
+    this.lastDryEva[p] = time;
+  }
+
+  /** A field this player was told about is working again; allow a new notice. */
+  private rearmDryNotice(player: number, field: number): void {
+    if (player < MAX_PLAYERS && this.dryNotified[player] === field) {
+      this.dryNotified[player] = DRY_NOTIFIED_NONE;
+    }
+  }
+
+  /**
+   * Cells of ring search needed to see the whole leash disc from where the hull
+   * happens to be standing.
+   *
+   * THE WALK STAYS CENTRED ON THE HULL and is widened instead of re-centred on
+   * the anchor, because the cell it picks must be the one nearest the
+   * HARVESTER — a hauler rolling off its refinery should take the near rim of
+   * its patch, not drive through it to the middle. Every existing tuning
+   * decision in this file assumes that ordering.
+   *
+   * Widening is free in the common case: `searchRings` stops one ring past its
+   * first hit, so a harvester standing on its own patch never walks past ~12
+   * rings whatever this returns. It only pays when the hull is genuinely far
+   * from its anchor, which is the tick after a player clicks a distant patch —
+   * exactly when it must.
+   */
+  private leashSearchCells(i: number): number {
+    const store = this.world.store;
+    const hx = clampCell(worldToCell(store.posX[i]));
+    const hz = clampCell(worldToCell(store.posZ[i]));
+    const ax = clampCell(worldToCell(store.guardX[i]));
+    const az = clampCell(worldToCell(store.guardZ[i]));
+    const dx = hx > ax ? hx - ax : ax - hx;
+    const dz = hz > az ? hz - az : az - hz;
+    const reach = (dx > dz ? dx : dz) + LEASH_CELLS;
+    return reach > ORE_SEARCH_CELLS ? Math.min(reach, MAP_CELLS) : ORE_SEARCH_CELLS;
+  }
+
+  /**
+   * Move to the nearest field that still holds ore, measured FROM THIS
+   * HARVESTER'S OWN REFINERY. False when no field anywhere holds anything, in
+   * which case the anchor is dropped and the caller's unleashed fallbacks run.
+   *
+   * FROM THE REFINERY AND NOT FROM THE HULL, and that one choice is the
+   * difference between expanding and suiciding. The ore has to end up at a dock,
+   * so the patch worth taking is the one nearest the dock; searching from the
+   * hull is how a harvester that had already drifted to the contested patch
+   * concluded that the enemy's home field was its nearest option.
+   */
+  private reanchor(i: number, id: EntityId, time: number): boolean {
+    const store = this.world.store;
+    const ri = this.pickRefinery(i, time);
+    const ox = ri >= 0 ? store.posX[ri] : store.posX[i];
+    const oz = ri >= 0 ? store.posZ[ri] : store.posZ[i];
+
+    // A DIFFERENT FIELD IF THERE IS ONE, and this is not `nearestField`'s
+    // answer. That helper skips only EXHAUSTED fields, which covers the dry
+    // case — a stripped field reads `remaining <= 0` and drops out on its own —
+    // and misses the other one entirely: a patch this hull cannot REACH still
+    // holds ore, so `nearestField` hands back the field we are trying to leave
+    // and the harvester idles beside it forever. The current field is kept as a
+    // fallback rather than banned, because staying on a patch that may come
+    // back beats having no patch at all.
+    const here = this.ore.fieldAtCell(
+      clampCell(worldToCell(store.guardX[i])), clampCell(worldToCell(store.guardZ[i])));
+    let best = -1;
+    let bestD = Infinity;
+    let same = -1;
+    for (let f = 0; f < this.ore.fieldCount; f++) {
+      const r = this.ore.field(f);
+      if (r === undefined || r.remaining <= 0) continue;
+      if (f === here) { same = f; continue; }
+      const dx = r.x - ox;
+      const dz = r.z - oz;
+      const d = dx * dx + dz * dz;
+      if (d < bestD) { bestD = d; best = f; }
+    }
+    const pick = best >= 0 ? best : same;
+    const rec = pick >= 0 ? this.ore.field(pick) : undefined;
+    if (rec === undefined) {
+      // Nothing seeded anywhere still holds ore. The leash must never be the
+      // reason a harvester has nothing to do — same principle as "a banned cell
+      // beats no cell" below, one level up — so give it up entirely and let the
+      // scrap-hunting fallbacks have the map.
+      this.dropAnchor(i);
+      return false;
+    }
+    this.anchorOnField(i, rec.nodeCx, rec.nodeCz);
+    this.dropClaim(i, id);
+    this.resetForceBudget(i);
+    return true;
+  }
+
   /**
    * Find, lease and target the nearest unclaimed ore cell. Falls back to
    * scraps (any non-empty cell) before giving up, so the last few hundred
    * credits on a map do get collected instead of stranding four harvesters.
+   *
+   * LEASHED FIRST, UNLEASHED ONLY WHEN THERE IS NO ANCHOR. An anchored
+   * harvester that finds nothing on its patch returns FALSE rather than falling
+   * through — the caller idles it beside the patch and `decide()` retries every
+   * `DRY_RETRY` while regrowth catches up. Falling through would make the leash
+   * decorative: the very first stripped cell would put the whole map back in
+   * scope, which is the behaviour §ANCHOR exists to stop.
    */
   private acquireOre(i: number, id: EntityId, time: number): boolean {
+    if (this.anchored.getAt(i) !== 0) {
+      const got = this.acquireInLeash(i, id, time);
+      if (got === LEASH_WORTH_A_TRIP) {
+        // The patch is alive. Clear this harvester's clock AND re-arm the
+        // player's notice for this field — "the situation actually changed" is
+        // exactly this, and nothing else.
+        this.leashDryAt.setAt(i, -1);
+        this.rearmDryNotice(this.world.store.owner[i], this.anchorField(i));
+        return true;
+      }
+      // Scraps count as a take but NOT as the patch being alive; the clock keeps
+      // running underneath them. See the LEASH_* constants.
+      if (got === LEASH_SCRAPS) {
+        if (this.leashDryAt.getAt(i) < 0) this.leashDryAt.setAt(i, time);
+        return true;
+      }
+      /* ===================================================================
+       * NOTHING ON THE PATCH, FOR EITHER OF THE TWO REASONS, GETS THE SAME
+       * ANSWER: WAIT, THEN RE-ANCHOR. THERE IS NO UNLEASHED ESCAPE HERE.
+       *
+       * The reasons really are different — NO ORE is a fact about the field and
+       * regrowth undoes it, while NO REACHABLE GROUND is a fact about this hull
+       * and a ban blanketing the disc is near-certain (the ban is 20 cells and
+       * the leash is 12) — and an earlier draft therefore gave the second one
+       * its own door: a live ban sent the acquire unleashed for one trip, on the
+       * reasoning that a patch a harvester cannot reach is not its patch.
+       *
+       * THAT DOOR WAS THE ENTIRE REMAINING BUG. Traced on seed 4242 slot 43,
+       * whose anchor was correctly set once at t217 to its own home field node
+       * (224,340) and never moved again: at t795 the unleashed acquire published
+       * a SeekOre destination of 274,194 — 154 m from the anchor, and 14 m from
+       * the ENEMY's home field. The harvester spent the next 1450 ticks driving
+       * there, which is the reported suicide with the leash fully working and
+       * the anchor perfectly stable. An escape hatch that reaches 160 m from the
+       * hull is not a smaller version of the leash; it is the old behaviour with
+       * extra steps.
+       *
+       * Waiting instead costs at most HARVESTER_LEASH_PATIENCE, and the two
+       * clocks line up: HARVESTER_UNREACHABLE_BAN_SECONDS is also 30, so a
+       * harvester that idles out its patience has also outlived the ban that
+       * caused it and gets a clean retry. If the patch is genuinely unreachable
+       * rather than momentarily blocked, `reanchor` moves it — to a field chosen
+       * from its REFINERY, which is the bound the escape hatch never had.
+       * =================================================================== */
+      const since = this.leashDryAt.getAt(i);
+      if (since < 0) {
+        this.leashDryAt.setAt(i, time);
+        return false;
+      }
+      if (time - since < HARVESTER_LEASH_PATIENCE) return false;
+
+      /* ===================================================================
+       * THE PATCH IS FINISHED, AND WHO OWNS THE HARVESTER DECIDES WHAT
+       * HAPPENS NEXT. This asymmetry will read as an inconsistency, so:
+       *
+       * A HUMAN'S harvester STOPS AND SAYS SO. That is the player's call to
+       * make — "alert the user that the harvester is sitting unemployed, let
+       * him send him to a new place" — and it is the only version that keeps
+       * the leash honest. Anything that re-anchors on the player's behalf is
+       * the module choosing a new patch for them, which is how the original
+       * defect worked. The harvester idles ON the exhausted patch, where it is
+       * findable, and `announceDry` tells them once.
+       *
+       * THE AI'S HARVESTER RE-ANCHORS ITSELF, because there is nobody to tell.
+       * An AI that sat waiting for an order that will never come would convert
+       * a rare suicide into a permanent economy stall in every match against
+       * every AI — strictly worse than the bug, and a failure this file's own
+       * header records shipping before (hulls parked with full hoppers for
+       * 1200+ consecutive ticks). `PlayerState.isHuman` is the split, not
+       * `isLocal`: an ally's harvester in a multiplayer match has a human
+       * behind it who gets their own alert, and a replay's recorded slots are
+       * all `isHuman` precisely so the AI stays shut down.
+       * =================================================================== */
+      if (this.world.player(this.world.store.owner[i] as PlayerId).isHuman) {
+        this.announceDry(i, time);
+        return false;
+      }
+      if (this.reanchor(i, id, time)) {
+        return this.acquireInLeash(i, id, time) !== LEASH_EMPTY;
+      }
+      // `reanchor` gave the anchor up; fall through to the unleashed chain.
+    }
+    if (!this.acquireAnywhere(i, id, time)) return false;
+    /* =====================================================================
+     * ADOPT A PATCH ONLY IF WE DID NOT HAVE ONE. This condition is the whole
+     * difference between an escape hatch and a trapdoor, and getting it wrong
+     * made the reported bug measurably WORSE than doing nothing.
+     *
+     * A harvester reaches here still anchored only because a ban sent it out
+     * for one trip. Re-anchoring it on whatever it could reach instead BINDS it
+     * there permanently — and `acquireAnywhere` searches 160 m from the HULL,
+     * so a harvester that had drifted as far as the contested patch adopts the
+     * ENEMY's home field and settles beside their base for the rest of the
+     * match. Measured with this re-anchor unconditional, seeds 4242 and 1337:
+     * one harvester on each came within 42 m and 43 m of the enemy base centre
+     * and spent 1631 and 1429 ticks inside 70 m of it, against 0 and 574 before
+     * any of this existed. Keeping the anchor puts the same harvester back on
+     * its own field the moment the ban lapses.
+     *
+     * The case this DOES fire for is the one it was written for: a harvester
+     * nobody has ever told anything — a war-factory rollout, a refinery's free
+     * harvester, a scenario spawn — adopting the patch it chose for itself. It
+     * also fires after `reanchor` gave the anchor up, correctly and for the
+     * same reason: there is no patch left to keep.
+     * =================================================================== */
+    if (this.anchored.getAt(i) === 0) {
+      const packed = this.claimIdx.getAt(i);
+      if (packed >= 0) this.anchorOnField(i, packed % MAP_CELLS, (packed / MAP_CELLS) | 0);
+    }
+    return true;
+  }
+
+  /**
+   * The leashed search: the first two tiers of the unleashed chain, confined to
+   * the anchor disc.
+   *
+   * THE BAN IS APPLIED AND NEVER DROPPED HERE, unlike the unleashed chain's
+   * "a banned cell beats no cell" escape. That escape exists because the ban
+   * must never be the reason a harvester has nothing to do — but under a leash
+   * it is not: failing here hands the decision back to `acquireOre`, which has
+   * a better answer than re-picking ground nav has proved unreachable. Taking
+   * the escape here instead was measured at seed 90210 slot 37 spending 7122 of
+   * 7200 ticks in SeekOre with 20 in Harvesting, one delivery and 106 m
+   * covered: it re-picked the banned cell, failed to reach it, re-banned it and
+   * went round again for the whole match.
+   *
+   * The unleashed chain's THIRD tier is missing for a structural reason rather
+   * than a measured one: it re-centres the search on `nearestField`, and
+   * "search from a different field" is exactly what a leash forbids.
+   */
+  private acquireInLeash(i: number, id: EntityId, time: number): number {
+    const store = this.world.store;
+    const cx = clampCell(worldToCell(store.posX[i]));
+    const cz = clampCell(worldToCell(store.posZ[i]));
+    const kx = clampCell(worldToCell(store.guardX[i]));
+    const kz = clampCell(worldToCell(store.guardZ[i]));
+    const reach = this.leashSearchCells(i);
+    const bx = this.liveBan(i, time) ? this.banCx.getAt(i) : -1;
+    const bz = this.banCz.getAt(i);
+    const br = LEASH_BAN_CELLS;
+
+    const worth = this.ore.findFreeOre(
+      cx, cz, reach, id, ORE_MIN_CLAIM, time, this.cellOut, bx, bz, br, kx, kz, LEASH_CELLS);
+    if (worth) return this.claimAndTarget(i, id, time) ? LEASH_WORTH_A_TRIP : LEASH_EMPTY;
+
+    const scraps = this.ore.findFreeOre(
+      cx, cz, reach, id, 1, time, this.cellOut, bx, bz, br, kx, kz, LEASH_CELLS);
+    if (!scraps) return LEASH_EMPTY;
+    return this.claimAndTarget(i, id, time) ? LEASH_SCRAPS : LEASH_EMPTY;
+  }
+
+  /** The original unleashed chain, unchanged. Reached only without an anchor. */
+  private acquireAnywhere(i: number, id: EntityId, time: number): boolean {
     const store = this.world.store;
     const cx = clampCell(worldToCell(store.posX[i]));
     const cz = clampCell(worldToCell(store.posZ[i]));
@@ -642,6 +1275,16 @@ export class HarvesterController {
       found = this.ore.findFreeOre(cx, cz, ORE_SEARCH_CELLS, id, 1, time, this.cellOut);
     }
     if (!found) return false;
+    return this.claimAndTarget(i, id, time);
+  }
+
+  /**
+   * Lease `cellOut` and drive at it. Extracted so the leashed and unleashed
+   * searches commit identically — the two used to be one function and the tail
+   * is the part that must not drift between them.
+   */
+  private claimAndTarget(i: number, id: EntityId, time: number): boolean {
+    const store = this.world.store;
     if (!this.ore.claim(this.cellOut[0], this.cellOut[1], id, time)) return false;
 
     this.dropClaim(i, id);
@@ -1149,8 +1792,16 @@ export class HarvesterController {
     store.speed[i] = 0;
     store.velX[i] = 0;
     store.velZ[i] = 0;
-    this.destX.setAt(i, store.posX[i]);
-    this.destZ.setAt(i, store.posZ[i]);
+    // PUBLISHED, NOT JUST RECORDED. This used to write `destX/destZ` alone and
+    // leave `orderX/orderZ` holding the cell we gave up on, which is a lie in
+    // the one direction that matters now: `takeNewOrder` reads a difference
+    // between those two pairs as "somebody else wrote an order", so every idle
+    // harvester would have re-read its own abandoned cell as a fresh player
+    // click — re-anchoring on it and resetting the patience clock every
+    // `DRY_RETRY`, so the clock could never reach HARVESTER_LEASH_PATIENCE.
+    // Publishing the hull's own position is also what `OrderKind.Stop` does,
+    // and it is honest: an idle harvester has nowhere to be but here.
+    this.setDest(i, store.posX[i], store.posZ[i]);
     this.nextScore.setAt(i, time + retryIn);
     this.resetProgress(i);
   }
