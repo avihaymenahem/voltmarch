@@ -50,7 +50,7 @@
 import './shell.css';
 
 import { bootstrap, type BootOptions, type GameHandle } from '../game/Bootstrap';
-import { resetScenarioPlan } from '../game/Scenarios';
+import { resetScenarioPlan, setPlannedArmies } from '../game/Scenarios';
 import { resetTerrainPlan } from '../world/terrain-plan';
 import { DEFAULT_ART, GAME_SPEEDS } from '../core/config';
 import { EntityKind, Faction, type PlayerId } from '../core/types';
@@ -1944,6 +1944,54 @@ export class Shell {
      */
     resetScenarioPlan();
     resetTerrainPlan();
+
+    /*
+     * HOW MANY ARMIES THIS WORLD IS FOR — and this call is the join that was
+     * missing, not a refinement of it.
+     *
+     * `setPlannedArmies` shipped exported, documented over sixteen lines as
+     * "Called by the skirmish lobby", with ZERO CALLERS anywhere in `src/`,
+     * `tests/`, `tools/` or `server/`. One commit taught the lobby, shell and
+     * radar to count to four; another taught the start table to count to four;
+     * neither owned the wire between them. Measured on the real call chain —
+     * four players seated exactly as `applySetupToWorld` seats them, then
+     * `buildScenario(world, 'skirmish', seed, {})` with the argument list
+     * `scenarios.system.ts` actually passes:
+     *
+     *     plannedScenario().armies = 2      plannedStartPoints() = 3 shelves
+     *     seated players = 4
+     *       p0 assets=6  p1 assets=7  p2 assets=0  p3 assets=0
+     *
+     * So picking 3-Way or 4-Way produced two armies that opened with NOTHING
+     * and an unearned victory about eight seconds in. `verifyArmies` is the
+     * tripwire written for precisely this and it fired correctly — into a
+     * console nobody reads.
+     *
+     * `tests/archipelago.spec.ts` did not catch it because it passes
+     * `{ armies: 4 }` EXPLICITLY. It is the only caller in the repo that does,
+     * which is exactly how it proved four bases on four islands while the route
+     * a player actually takes was never connected.
+     *
+     * BEFORE THE BOOT, because terrain reserves a start shelf per army and
+     * generation is dispatched during it — same lifetime and same reason as
+     * `setPlannedStart`, which sits beside it in `Scenarios.ts`.
+     *
+     * NULL ON EVERY OTHER PATH, and that is not tidiness. `null` means "the
+     * default two", so clearing it is what stops a four-way lobby leaking into
+     * the tutorial, the title backdrop, or a PvP match whose slot count comes
+     * from the relay. Playback takes its count from the recording for the same
+     * reason it takes every other boot flag from there: a replay must rebuild
+     * the match it recorded, not the one the lobby happens to be showing.
+     */
+    if (backdrop || this.tutorial !== null || this.pvp !== null) {
+      setPlannedArmies(null);
+    } else if (this.replay !== null) {
+      const seated = this.replay.file.header.players.filter(
+        (p) => p.faction !== Faction.Neutral).length;
+      setPlannedArmies(seated >= 2 ? seated : null);
+    } else {
+      setPlannedArmies(1 + effectiveOpponents(this.setup).length);
+    }
 
     const boot: BootOptions = {
       canvas: this.options.canvas,
