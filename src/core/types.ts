@@ -656,6 +656,19 @@ export const enum EvaLine {
   NoOreMiner = 16,
   /** A gift arrived. Used by the ore-crisis rescue; see `OreCrisis.ts`. */
   Reinforcements = 17,
+  /**
+   * A harvester has run out of ore inside its leash and is waiting for orders.
+   * See §ANCHOR in `sim/Harvesting.ts`: only a HUMAN player's harvester reports
+   * — an AI re-anchors itself, because there is nobody to tell.
+   *
+   * NUMBERED 18 BECAUSE 16 WAS TAKEN WHILE THIS WAS BEING WRITTEN. Two agents
+   * added an EVA line in the same wave and both appended at 16. `EVA_LINE_ID`
+   * is keyed on these numeric values, so a merge that kept both texts and one
+   * number would have played the wrong line rather than failing — the reason
+   * the comment above says APPENDED, never inserted, applies just as hard to
+   * two parallel appends as to an insert.
+   */
+  HarvesterIdle = 18,
 }
 
 /* ==========================================================================

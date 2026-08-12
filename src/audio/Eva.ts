@@ -854,6 +854,16 @@ export const EVA_LINES: Readonly<Record<string, EvaLineDef>> = {
     phones: 'n o , O r , m Y n R ; s E l , @ , s t r V k C R , t u , r i b I l d',
     priority: 1, cooldown: 45, noDropout: true,
   },
+  harvesterIdle: {
+    // Cooldown matched to `oreMinerUnderAttack` because it is the same subject
+    // and the same urgency: a harvester needs the player, now-ish, and 30 s is
+    // long enough that a field draining in stages cannot chatter. It is the
+    // third layer of coalescing under `Harvesting.announceDry`'s per-field
+    // record and the toast stack's six-second merge.
+    text: 'Harvester idle.',
+    phones: 'h A r v @ s t R , Y d @ l',
+    priority: 2, cooldown: 30,
+  },
   building: {
     text: 'Building.',
     phones: 'b I l d I N',
@@ -924,6 +934,7 @@ export const EVA_LINE_ID: Readonly<Record<number, string>> = {
   // no `EvaLine` to dispatch it — a recorded, mastered take that no sim code
   // could reach. The ore-crisis rescue is the first caller.
   [EvaLine.Reinforcements]: 'reinforcements',
+  [EvaLine.HarvesterIdle]: 'harvesterIdle',
 };
 
 /* ==========================================================================

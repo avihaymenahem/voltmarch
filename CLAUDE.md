@@ -21,7 +21,7 @@ generators. **Three shipped assets are not generated**, all deliberate, all in `
    `logo-full.png` is the main-menu title and the loading curtain; `mark-*.png` are the favicons
    and app icons. See `public/brand/README.md`. This said "eight PNGs derived by" while one of the
    eight was the underived SOURCE, sitting in the shipped directory and being published unused.
-3. **Recorded audio** in `public/audio/` — 183 Ogg files, 6.9 MB, added 2026-08-09 at the user's
+3. **Recorded audio** in `public/audio/` — 184 Ogg files, 6.9 MB, added 2026-08-09 at the user's
    request. `sfx/` covers **all 39 sound-effect families** (CC0), `voice/` gives the unit barks two
    real voices (Kenney, CC0), and `eva/` is the announcer, **rendered speech** rather than found
    audio. Sources: Kenney, several CC0 libraries via
@@ -35,6 +35,7 @@ generators. **Three shipped assets are not generated**, all deliberate, all in `
    than the table declares — a guard added because the first version matched only single-quoted
    strings and silently skipped `allyUnderAttack`, whose text is double-quoted for containing an
    apostrophe. The voice model is 109 MB and gitignored; only the ~460 kB of Ogg is committed.
+   apostrophe. The voice model is 109 MB and gitignored; only the ~450 kB of Ogg is committed.
 
    **The voice was chosen on its licence chain, not its sound.** `en_GB-cori-high` is LibriVox
    (public domain) data, trained from scratch, so it avoids the research-only Blizzard/Lessac terms

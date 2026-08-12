@@ -275,6 +275,11 @@ const EVA_TOASTS: Readonly<Record<number, readonly [ToastKind, string]>> = {
   [EvaLine.MissionFailed]: ['alert', 'Mission failed'],
   [EvaLine.BuildingCaptured]: ['info', 'Structure captured'],
   [EvaLine.OreMinerUnderAttack]: ['warn', 'Miner under attack'],
+  // A harvester whose patch is exhausted, waiting for orders. It IS a toast and
+  // not audio-only, because the whole point of the alert is that the player has
+  // to do something about it — see §ANCHOR in `sim/Harvesting.ts`, where a human
+  // player's harvester deliberately does not re-anchor itself.
+  [EvaLine.HarvesterIdle]: ['warn', 'Harvester idle — no ore in range'],
 };
 
 /*

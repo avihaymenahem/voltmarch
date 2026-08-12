@@ -249,6 +249,21 @@ describe('harvester soak on a real map', () => {
    *   after 5 fixes      22          ~2902 m
    *   after 8 fixes      26          ~2900 m
    *   after 9 fixes      33          ~4400 m
+   *   with the leash     38          ~4442 m
+   *
+   * THE TENTH IS THE ONLY ONE THAT MOVED DISTANCE DOWN PER DELIVERY, and that is
+   * the point of it rather than a side effect. §ANCHOR in `sim/Harvesting.ts`
+   * binds a harvester to the patch it was sent to, so the metres it covers are
+   * round trips instead of drift: measured on the same three seeds immediately
+   * before it, 36 deliveries over 5428 m; after, 38 over 4442 m. Credits
+   * delivered rose 24 255 -> 25 655 (+5.8%) over the same 240 s.
+   *
+   * It was also a real defect and not only a tidiness: on seed 1337 a harvester
+   * reached 148 m from its start and spent 574 ticks inside 70 m of the ENEMY
+   * base centre, on a map whose bases are 182 m apart. After the leash, no
+   * harvester on any of the three seeds comes within 154 m of an enemy base and
+   * the count of ticks spent in enemy territory is ZERO. `tests/harvester-
+   * leash.spec.ts` pins the decisions; this file is where the cost is measured.
    *
    * The three most recent were all in NAV, not in the harvester FSM, and all
    * three were cases of a watchdog that could not see the failure it existed

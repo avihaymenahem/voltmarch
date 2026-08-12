@@ -615,7 +615,21 @@ export class NavAssigner {
         // A unit under `OrderKind.Guard` never reaches this branch while the
         // order stands: `Guarding` is a seeking state, and `finishOrder`
         // deliberately does not clear it on arrival.
-        if ((ag.flags[i] & AgentFlag.HasSlot) !== 0) {
+        //
+        // AND A HARVESTER NEVER REACHES IT AT ALL. Its post is its ORE ANCHOR,
+        // owned by `sim/Harvesting.ts` — the same split `finishOrder` already
+        // makes for `state`, and for the same stated reason: "arriving does not
+        // end those behaviours, it starts the next stage of them". This branch
+        // fires TWICE PER ROUND TRIP for a harvester (SeekOre -> Harvesting,
+        // ReturnToRefinery -> Docked), because those are the two states that are
+        // not `seeksGoal`. Measured on the stock skirmish map, the post of one
+        // harvester over four minutes: 316,188 | 316,188 | 272,250 | 295,193 |
+        // 294,190 | 317,188 | 286,192 | 290,190 — it alternates between the ore
+        // face and the refinery apron and drifts tens of metres a sample. A
+        // leash centred on that is a random walk with the leash for a step,
+        // which is the exact oscillation §LEASH in Targeting.ts warns about.
+        if ((ag.flags[i] & AgentFlag.HasSlot) !== 0
+            && (st.flags[i] & EntityFlag.IsHarvester) === 0) {
           st.guardX[i] = st.posX[i];
           st.guardZ[i] = st.posZ[i];
         }
@@ -1300,8 +1314,19 @@ export class NavAssigner {
       // case sent a unit that had just completed a 60 m move straight back to
       // wherever it spawned, because `Targeting` (phase 900) read the stale
       // post before `PathRequest` (phase 500) got another turn.
-      st.guardX[i] = st.posX[i];
-      st.guardZ[i] = st.posZ[i];
+      //
+      // EXCEPT FOR A HARVESTER, whose post is its ore anchor and belongs to
+      // `sim/Harvesting.ts` — see the matching guard in `simTick`. `state` is
+      // still cleared here, or a harvester given a plain move order would never
+      // go back to work; only the post is withheld. Harvesting drops the anchor
+      // itself the moment it sees a non-Harvest order, and re-takes it on the
+      // next acquire from wherever the move left the hull, so the override the
+      // player expects still happens — one tick later and through the module
+      // that knows what a harvester's post MEANS.
+      if ((st.flags[i] & EntityFlag.IsHarvester) === 0) {
+        st.guardX[i] = st.posX[i];
+        st.guardZ[i] = st.posZ[i];
+      }
     }
     this.arrivals++;
   }
