@@ -392,6 +392,14 @@ class Expander {
 export const NAV_POCKET_MAX_CELLS = 96;
 
 /**
+ * Cells of contiguous open water below which a map has no navy.
+ *
+ * See `mapSupportsNaval`. Declared beside the other connectivity constants
+ * because it is the same kind of fact about the same labelling.
+ */
+export const NAVAL_MAP_MIN_CELLS = 400;
+
+/**
  * Ring radius, in cells, for every region-aware search here (retargeting an
  * unreachable goal, lifting a trapped unit out of a pocket). 40 cells is 160 m
  * — far enough to escape any pocket the generator can leave behind, short
@@ -1653,6 +1661,58 @@ const SNAP_OUT = new Int32Array(2);
  * (Steering, Movement) that want the MoveClass-aware surface the port cannot
  * express, plus anything that wants to read cost cells for a debug overlay.
  * ========================================================================== */
+
+/* ==========================================================================
+ * DOES THIS MAP HAVE A SEA?
+ *
+ * ONE DEFINITION, ONE READER-FACING FUNCTION, because the alternative is two
+ * and they drift. "Has water" is asked by at least two very different callers —
+ * the AI, deciding whether a Naval Yard is worth 1000 credits, and the build
+ * menu, deciding whether to show the row at all — and an answer that differs
+ * between them is a map where the sidebar offers a dock the opponent knows
+ * better than to buy, or worse, the reverse.
+ *
+ * IT IS THE LARGEST CONTIGUOUS BODY, NOT THE TOTAL. A total counts a hundred
+ * disconnected puddles as an ocean; what a hull needs is one body big enough to
+ * sail in. That is exactly what `regionGridFor(MoveClass.Naval)` already
+ * labels, so this is two array reads on a labelling the cost grid maintains
+ * anyway — not a new scan, and not a second definition of navigability.
+ *
+ * MEASURED, and the gap is why the threshold needs no fine judgement:
+ *
+ *     contested-strait  3622 cells      airbase-flats      0
+ *     coral-shore       3952 cells      industrial-grid    0
+ *                                       temperate-valley   9
+ *                                       frozen-sector     14
+ *
+ * Two and a half orders of magnitude. 400 sits far above every landlocked map's
+ * noise basin and far below both real seas.
+ * ========================================================================== */
+
+/**
+ * Cells in the largest contiguous body a ship can route through. 0 when there
+ * is no nav, which is the honest answer for "no world yet" and keeps every
+ * caller's naval branch closed until there is one.
+ */
+export function navigableSeaCells(): number {
+  const nav = active;
+  if (nav === null) return 0;
+  const main = nav.mainRegion(MoveClass.Naval);
+  return main > 0 ? nav.regionSize(main, MoveClass.Naval) : 0;
+}
+
+/**
+ * True when this map has enough open water to be worth a navy.
+ *
+ * THE GATE FOR ALL NAVAL CONTENT. A Naval Yard on `airbase-flats` — 0 water
+ * cells — is a building that can produce a Dreadnought which then sits on dry
+ * land forever, and nothing in the game said no: the only gates naval content
+ * carried were the `struct.naval` progression unlock and `prereqs:
+ * ['navalYard']`, neither of which knows what the ground looks like.
+ */
+export function mapSupportsNaval(): boolean {
+  return navigableSeaCells() >= NAVAL_MAP_MIN_CELLS;
+}
 
 let active: FlowFieldCache | null = null;
 

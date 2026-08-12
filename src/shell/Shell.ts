@@ -50,6 +50,8 @@
 import './shell.css';
 
 import { bootstrap, type BootOptions, type GameHandle } from '../game/Bootstrap';
+import { resetScenarioPlan } from '../game/Scenarios';
+import { resetTerrainPlan } from '../world/terrain-plan';
 import { DEFAULT_ART, GAME_SPEEDS } from '../core/config';
 import { EntityKind, Faction, type PlayerId } from '../core/types';
 import { DEF_TABLES } from '../data/Defs';
@@ -1843,6 +1845,42 @@ export class Shell {
     query.delete('shot');
     query.delete('skipmenu');
     history.replaceState(null, '', `${location.pathname}?${query.toString()}`);
+
+    /*
+     * THE QUERY IS ONLY NOW TRUE, SO THE TWO PER-BOOT MEMOS THAT READ IT HAVE
+     * TO BE DROPPED HERE.
+     *
+     * `plannedScenario()` and `plannedTerrainInput()` both cache the first
+     * answer they give, and both are asked long before this line —
+     * `world-warm.system.ts` calls `installWorldWorkers()` at MODULE SCOPE,
+     * which calls `plannedTerrainInput()` during import, while the query still
+     * holds whatever the page was opened with rather than what the lobby chose.
+     *
+     * THE BUG THAT WAS, measured on a real match: `MAP_SEAS` is keyed on the
+     * map PRESET and reached only through `plannedScenario().sea`, so a stale
+     * `?map=` left `sea: null` in the cached terrain input. Booting "Contested
+     * Strait" — whose blurb is "A shoreline through the middle. Naval yards
+     * earn their cost here" — produced a map the terrain module itself reported
+     * as `0% water, 1 region(s)`, against the 24.3% the same generator produces
+     * when handed the same preset directly. Both sea maps shipped DRY: four
+     * naval structures, nine hulls and two unlock chains were unreachable
+     * content in every match anyone actually played. `tests/naval-maps.spec.ts`
+     * could not see it because it builds `Terrain` directly and never boots.
+     *
+     * `resetTerrainPlan()` already existed and was documented "Test seam.
+     * Nothing in the game calls this" — that was the defect, stated.
+     *
+     * `?shot=` fixtures are untouched: they never come through `bootGame`, and
+     * they carry their sea on `plan.sea` rather than through `?map=`.
+     *
+     * Cost when it changes nothing: none. Cost when it does: the prewarm's
+     * dispatched job stops matching `terrainGenKey`, `prewarmedTerrain()`
+     * resolves `null` by its own documented contract, and the map generates on
+     * the main thread — the slow path, which is the right trade against
+     * generating the wrong map quickly.
+     */
+    resetScenarioPlan();
+    resetTerrainPlan();
 
     const boot: BootOptions = {
       canvas: this.options.canvas,

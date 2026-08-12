@@ -103,6 +103,8 @@ import type {
 } from '../core/types';
 import { abilities } from './Abilities';
 import { transportService } from './Transport';
+import { MoveClass, getNav, mapSupportsNaval, navigableSeaCells } from './Flowfield';
+import { moveClassAt } from './Movement';
 import { SUPERWEAPONS, SuperweaponId, superweapons } from './Superweapons';
 import type { SuperweaponDef } from './Superweapons';
 import { commanderPowers } from './CommanderPowers';
@@ -113,7 +115,7 @@ import type { EntityStore, World } from '../core/world';
 import { PerEntityU32 } from '../core/world';
 import { Rng, cellToWorld, clamp, clampCell, dist2, distSq2, hash2i, worldToCell } from '../core/math';
 import {
-  AI_DEPLOY, AI_POWER, AI_SUPERWEAPON, AI_UPGRADE, BUILD_ROLE_NAMES, BuildCatalog,
+  AI_DEPLOY, AI_NAVAL, AI_POWER, AI_SUPERWEAPON, AI_UPGRADE, BUILD_ROLE_NAMES, BuildCatalog,
   BuildRole, THREAT_CLASS_NAMES, UpgradeAudience,
   classifyThreat, difficultyProfile, openingFor, personalityProfile, pickUnit,
   prereqsMet, superweaponPlanFor, upgradePlanFor,
@@ -159,6 +161,29 @@ const GROUP_NONE = 0;
 const GROUP_RESERVE = 1;
 const GROUP_STRIKE = 2;
 const GROUP_SCOUT = 3;
+/**
+ * Committed to an amphibious operation.
+ *
+ * A fourth tag rather than a flag on the strike group, and for the same reason
+ * `GROUP_SCOUT` is one: `regroupSquads` walks the army and files everything it
+ * finds into strike or reserve, so anything with a job of its own has to be
+ * INVISIBLE to that pass or it will be re-tagged and walked off to the rally
+ * point in the middle of boarding. The tag is cleared the moment the squad is
+ * back on dry land, which is what returns them to the ordinary strike group.
+ */
+const GROUP_NAVAL = 4;
+
+/** What an amphibious operation is currently doing. */
+const enum AmphibState {
+  /** Nothing staged. */
+  Idle = 0,
+  /** A squad has been told to board, and the hull is holding at the beach. */
+  Boarding = 1,
+  /** Loaded, and sailing for the landing point. */
+  Crossing = 2,
+  /** At the landing point, with an Unload order standing. */
+  Landing = 3,
+}
 
 /** Anything a unit must have to be worth ordering around. */
 const ORDERABLE_REQUIRE = EntityFlag.Alive | EntityFlag.CanMove;
@@ -190,6 +215,17 @@ export interface AiIntent {
   deploy: string;
   /** What the late layer is doing. Empty when it has nothing to do. */
   lateGame: string;
+  /** What the navy layer is doing. Empty when there is no water to think about. */
+  naval: string;
+  /** Water cells found near the base. -1 before the first probe. */
+  seaCells: number;
+  navalYards: number;
+  warships: number;
+  transports: number;
+  /** Landings that put a squad ashore. */
+  landings: number;
+  /** Why the last amphibious evaluation decided as it did, with numbers. */
+  amphibious: string;
   /** Superweapon structures owned or going up. */
   superweapons: number;
   /** Strikes actually fired, powers actually called, upgrades actually bought. */
@@ -414,6 +450,71 @@ export class AiBrain {
   private lastGatherTick = -1e9;
   private rallyX = MAP_SIZE * 0.5;
   private rallyZ = MAP_SIZE * 0.5;
+
+  /* -- the navy ------------------------------------------------------------ */
+  /** Troop hulls owned. Never in `armyIds` — see `navalRoleOfUnit`. */
+  private readonly transportIds = new Int32Array(8);
+  private transportCount = 0;
+  /** Armed hulls owned. Never in `armyIds`, for the same reason. */
+  private readonly warshipIds = new Int32Array(16);
+  private warshipCount = 0;
+  /**
+   * Naval cells within `AI_NAVAL.seaSearchCells` of the base, counted on the
+   * census clock. 0 means "landlocked as far as this brain is concerned", and
+   * it is the gate every other naval thought sits behind.
+   */
+  private seaCells = -1;
+  /**
+   * Does this MAP have a navy at all — the shared `mapSupportsNaval()` answer.
+   *
+   * Separate from `seaCells` because it is a different question with a
+   * different lifetime. This one is about the MAP, is the same predicate the
+   * build menu is entitled to, and is re-asked every census because it costs
+   * two array reads. `shoreCx` is about this BASE and is cached behind a ring
+   * walk.
+   */
+  private navalMap = false;
+  /** Where `probeSea` last ran. Water cannot move, so a still base re-probes never. */
+  private seaProbeX = -1e9;
+  private seaProbeZ = -1e9;
+  /** A cell on our own beach: foot-passable land touching the sea. -1 when none. */
+  private shoreCx = -1;
+  private shoreCz = -1;
+  /** The wet cell beside it — what a hull is actually ordered to. */
+  private shoreWaterCx = -1;
+  private shoreWaterCz = -1;
+  /** Where the warships hold station. -1 when there is no sea to hold. */
+  private stationX = -1;
+  private stationZ = -1;
+  private lastStationTick = -1e9;
+
+  /* -- the amphibious operation -------------------------------------------- */
+  private amphib: AmphibState = AmphibState.Idle;
+  /** The hull carrying the operation. NONE when nothing is staged. */
+  private amphibHull: EntityId = NONE;
+  /** The squad committed to it, tagged GROUP_NAVAL. */
+  private readonly amphibSquad = new Int32Array(8);
+  private amphibSquadCount = 0;
+  /** Beach the squad boards from, and the hostile beach it lands on. */
+  private embarkX = -1;
+  private embarkZ = -1;
+  private landX = -1;
+  private landZ = -1;
+  /** Tick the current state was entered. Drives the abandon clocks. */
+  private amphibTick = -1e9;
+  /** Cached verdict of `amphibiousWanted`, and the tick it was taken. */
+  private amphibWanted = false;
+  private amphibEvalTick = -1e9;
+  /** Last tick an order went out for the operation. Rate-limits re-issue. */
+  private amphibIssuedTick = -1e9;
+  /** Landings that reached Unload and put at least one man ashore. */
+  private landingsMade = 0;
+  /** What the navy layer is doing. Empty when it has nothing to do. */
+  private navalGoal = '';
+  /** Why the last amphibious evaluation refused. Published to the probe. */
+  private amphibVerdict = '';
+  /** Scratch for the shore search. Written, never retained. */
+  private readonly shoreOut = new Int32Array(4);
 
   /* -- scouting ----------------------------------------------------------- */
   private readonly scoutWaypointX = new Float32Array(6);
@@ -690,6 +791,11 @@ export class AiBrain {
     }
     if (t % AI_CADENCE.squad === 3) this.squad(s);
     if (t % AI_CADENCE.scout === 4) this.scout(s);
+    // The navy, on the squad clock one slot after the squad layer. It reads
+    // `strikeIds` and `objectiveX` — both written by `squad` — so running it
+    // first would stage a landing against the last tick's objective and pull
+    // its squad out of a strike group that has not been rebuilt yet.
+    if (t % AI_CADENCE.squad === 5) this.navy(s);
     // On the squad clock, one slot later: the commander's ability is a combat
     // decision and wants the squad layer's fresh picture of who is near what.
     if (t % AI_CADENCE.squad === 4) this.commanderAbility(s);
@@ -1303,6 +1409,8 @@ export class AiBrain {
     this.armyCount = 0;
     this.harvesterCount = 0;
     this.mcvCount = 0;
+    this.transportCount = 0;
+    this.warshipCount = 0;
     this.infantryCount = 0;
     this.vehicleCount = 0;
     this.superOwnedMask = 0;
@@ -1370,6 +1478,29 @@ export class AiBrain {
         }
         continue;
       }
+
+      // THE FLOATING CENSUS, and it runs BEFORE the `CanAttack` fork because a
+      // warship carries that flag. Everything that floats goes into its own
+      // list and NEVER into `armyIds`: `armyIds` is what `regroupSquads` files
+      // into the strike group and what `pressAttack` walks at a land objective,
+      // so one destroyer in it is a destroyer ordered to march on the enemy
+      // base — and a body counted toward `waveThreshold` that can never
+      // arrive. Same failure the Garrisoned mask above exists to stop, reached
+      // by a different route.
+      const naval = this.navalRoleOfUnit(i, kind, f);
+      if (naval === BuildRole.Transport) {
+        if (this.transportCount < this.transportIds.length) {
+          this.transportIds[this.transportCount++] = st.handleOf(i) as number;
+        }
+        continue;
+      }
+      if (naval === BuildRole.Warship) {
+        if (this.warshipCount < this.warshipIds.length) {
+          this.warshipIds[this.warshipCount++] = st.handleOf(i) as number;
+        }
+        continue;
+      }
+
       // An unarmed non-harvester (engineer, MCV) is not army; it must never be
       // counted toward a wave threshold or the AI attacks with a truck.
       if ((f & EntityFlag.CanAttack) === 0) {
@@ -1420,6 +1551,10 @@ export class AiBrain {
     // AI_MILITARY.pressureDecayPerSec.
     const decay = AI_MILITARY.pressureDecayPerSec * AI_CADENCE.census * SIM_DT;
     this.basePressure = Math.max(0, this.basePressure - decay);
+
+    // Last, because it anchors on the base centroid the loop above just wrote.
+    // It is a cached one-shot, not a per-census scan — see `probeSea`.
+    this.probeSea();
   }
 
   /**
@@ -1467,6 +1602,46 @@ export class AiBrain {
       && st.cargoMax[i] <= 0
       && (transportService()?.capacityAt(i) ?? 0) <= 0
       && st.maxSpeed[i] > 0;
+  }
+
+  /**
+   * Is this one of ours a troop hull, an armed hull, or neither?
+   *
+   * THE CATALOG IS THE ONLY HONEST ANSWER FOR A WARSHIP, and that is why the
+   * fallback below does not try to invent one. Every ship in this game is
+   * `Locomotor.Hover` — `Locomotor` has no Naval member — and so is the entire
+   * Meridian ARMY, so "hovers and shoots" describes a Solarch as exactly as it
+   * describes a Kite Corvette. `MoveClass` would answer it, but only after
+   * `moveClassAt` has seen the hull standing in water, which is not true of a
+   * ship that has just rolled out of a yard onto its slipway. Guessing here
+   * would take the Pact's whole army out of its own strike group.
+   *
+   * A TRANSPORT, by contrast, has a fact of its own that no other unit shares:
+   * seats. `capacityAt` is the same question `isUndeployedMcv` already asks for
+   * the same reason, so the unbound case still keeps a troop hull out of the
+   * army — which is the half that would otherwise put an unarmed 900-credit
+   * ferry in an attack wave.
+   */
+  private navalRoleOfUnit(i: number, kind: EntityKind, flags: number): BuildRole {
+    // THE SERVICE'S REVERSE MAP FIRST, and it is the one that actually answers
+    // in a real match — see `ProductionOracle.entityKey`. `entryForUnit` is
+    // kept behind it because it is the only path the headless tests have, and
+    // because it is correct wherever the two id spaces do agree.
+    const named = this.oracle?.entityKey?.(this.store.handleOf(i) as number) ?? '';
+    const entry = named !== ''
+      ? this.catalog.get(named)
+      : this.catalog.entryForUnit(this.store.defId[i]);
+    if (entry !== undefined) {
+      if (entry.role === BuildRole.Transport || entry.role === BuildRole.Warship) {
+        return entry.role;
+      }
+      return BuildRole.Unknown;
+    }
+    if (kind === EntityKind.Vehicle && (flags & EntityFlag.CanAttack) === 0
+      && (transportService()?.capacityAt(i) ?? 0) > 0) {
+      return BuildRole.Transport;
+    }
+    return BuildRole.Unknown;
   }
 
   /**
@@ -2293,6 +2468,7 @@ export class AiBrain {
      * publishes as `blocked` when it queues nothing. A superweapon refused for
      * "Requires a Battle Lab" is the least interesting thing that can be wrong
      * with this AI, and reported first it would bury whatever actually is. */
+    this.considerNavy();
     this.considerSuperweapon();
     this.considerUpgrades(s, p);
 
@@ -2303,6 +2479,61 @@ export class AiBrain {
 
     // Nothing structural is worth building: convert credits into army.
     return this.buildUnits(s, p, false);
+  }
+
+  /**
+   * Score the navy: a dock, then escorts, then a hull for a landing.
+   *
+   * THE COAST GATE COMES FIRST AND IS THE CHEAP ONE. `seaCells` is a cached
+   * one-shot count of water near the base, so a desert match pays a single
+   * integer compare for all of this and never reaches a catalog lookup.
+   *
+   * THE ECONOMY GATE IS THE SAME RULE `considerSuperweapon` HAD TO LEARN. A
+   * dock is 1000 credits and 30 power and produces nothing that can take
+   * ground, so it is bought OUT OF a working land army and never INSTEAD OF
+   * one: a refinery and a war factory must already be standing. Without that
+   * ordering the yard's 1.15 would beat the war factory's 1.8 on affordability
+   * alone in the one window where the AI has credits and no factory, and the
+   * opponent would answer the opening with a boat.
+   *
+   * A TRANSPORT IS BOUGHT AGAINST A PLAN, NEVER ON SPECULATION. `amphibWanted`
+   * is the measured verdict from `amphibiousWanted`, so on a map where walking
+   * is shorter this never fires and the AI never owns a ferry it has no water
+   * to use. That is the difference between this and a build rule that says
+   * "coastal map, buy a transport" — which is how you get a 900-credit hull
+   * parked next to a Construction Yard for twenty minutes.
+   */
+  private considerNavy(): void {
+    if (!this.navalMap) return;
+
+    // THE TRANSPORT IS SCORED FIRST AND WITHOUT A DOCK GATE, because the Pact's
+    // one is not on a dock: `mrdSkiff` lists `prereqs: ['mrdForgeyard']` — their
+    // WAR FACTORY — since the Sandskiff is an amphibious raider they field with
+    // no navy at all. Gating this on a slipway would have cost a Meridian brain
+    // 1000 credits for a building its transport does not need. `available()` is
+    // the real gate either way and answers per faction from the oracle.
+    if (this.amphibWanted && this.transportCount < AI_NAVAL.maxTransports) {
+      this.consider(this.catalog.forRole(BuildRole.Transport, this.faction),
+        1.5, 'a transport for the landing');
+    }
+
+    const yards = this.roleCount[BuildRole.NavalYard] + this.roleBuilding[BuildRole.NavalYard];
+    if (yards === 0) {
+      // The land army comes first, in both directions: something to mine with
+      // and something to build tanks in.
+      if (this.roleCount[BuildRole.Refinery] === 0) return;
+      if (this.roleCount[BuildRole.WarFactory] === 0) return;
+      this.consider(this.catalog.forRole(BuildRole.NavalYard, this.faction),
+        AI_NAVAL.yardScore * this.pers.tech, 'a dock, to stop giving away the sea');
+      return;
+    }
+
+    // Escorts. Capped hard: a hull cannot hold ground, so every credit here is
+    // one the army that can does not get.
+    if (this.warshipCount < AI_NAVAL.maxWarships) {
+      this.consider(this.catalog.forRole(BuildRole.Warship, this.faction),
+        0.9 + this.basePressure * 0.3, 'a hull to hold the lane');
+    }
   }
 
   /**
@@ -3196,6 +3427,637 @@ export class AiBrain {
   }
 
   /* ======================================================================
+   * 2.8b THE NAVY — holding the water, and crossing it
+   *
+   * WHAT WAS ACTUALLY MISSING, and it was one level below the brain. `grep -n
+   * naval src/sim/AI.ts` returned nothing, but so did `grep -n navalYard
+   * src/sim/AIStrategy.ts`: the AI's catalog had no row for a dock, a troop
+   * hull or a warship, and `bindOracle` only ever resolves a `publicId` for a
+   * key that IS in that array. The opponent did not decline to build a navy. It
+   * had no word for one, and could not have named a dock in a `ProductionStart`
+   * if every heuristic in this file had told it to.
+   *
+   * THE GEOMETRY, MEASURED, BECAUSE IT DECIDES WHAT THIS LAYER MAY DO.
+   * Both shipped sea maps, real generator, real `FlowFieldCache`:
+   *
+   *                       land regions   A->B on land   water on the A->B line
+   *     contested-strait   1 (100%)       68 cells       0
+   *     coral-shore        1 (100%)       68 cells       0
+   *
+   * The land is ONE region: nothing on either map is unreachable on foot, and
+   * the straight line between the two openings never touches water. That is not
+   * an accident of the seed — `MAP_SEAS` derives its waterline from the
+   * perpendicular bisector of the two openings precisely so both armies are
+   * equidistant from it, which puts the sea off a FLANK by construction. A
+   * measured landing on either map costs 104-113 cells against 68 on foot.
+   *
+   * So this layer has TWO jobs and only one of them fires today:
+   *
+   *   HOLD THE WATER   always, where there is water. A quarter of both maps is
+   *                    sea that currently belongs to whoever sails on it, which
+   *                    is nobody. Escorts deny it. This is live.
+   *   CROSS IT         only when crossing is measurably shorter than walking,
+   *                    or when walking is impossible outright. On both shipped
+   *                    maps this correctly REFUSES, and `amphibVerdict` says so
+   *                    in numbers rather than staying silent about it.
+   *
+   * Gating the crossing on a measured saving is the whole design. An AI that
+   * ran a landing on `contested-strait` would be visibly playing badly, and
+   * "the feature is in there somewhere" is not worth that.
+   *
+   * EVERY ORDER BELOW IS THE PLAYER'S ORDER. Boarding is `OrderKind.Enter`
+   * addressed to the hull — what `input/Commands.ts` resolves from a
+   * right-click on a friendly transport. Unloading is `OrderKind.Unload`
+   * carrying the hull as its own target — what the D key issues. The crossing
+   * is a plain Move. `sim/Transport.ts` refuses this brain exactly as it
+   * refuses a human, and `refusalFor` is the same function both go through.
+   * ====================================================================== */
+
+  /**
+   * The navy, on the squad clock.
+   *
+   * Orders only. Everything this layer BUYS is scored in `considerNavy`, on the
+   * build clock, through the one queueing path — the same split `deploy` and
+   * `build` already keep.
+   */
+  private navy(s: SimContext): void {
+    if (!this.navalMap) {
+      this.navalGoal = '';
+      this.amphibWanted = false;
+      return;
+    }
+    this.holdTheLane(s);
+    // The verdict is computed HERE and cached, not asked at each use. Two
+    // callers want it — this layer, to stage an operation, and `considerNavy`
+    // on the build clock, to decide whether a 900-credit hull has a job — and
+    // the ring search behind it is bounded but not free: a map with no beach
+    // near the objective walks every ring of it before answering no.
+    if (this.amphib === AmphibState.Idle
+      && s.tick - this.amphibEvalTick >= AI_NAVAL.evalTicks) {
+      this.amphibEvalTick = s.tick;
+      this.amphibWanted = this.amphibiousWanted();
+    }
+    this.runAmphibious(s);
+  }
+
+  /**
+   * Count the sea around the base, and find our own beach.
+   *
+   * Probed ONCE and cached, because water is the one thing on the map that
+   * cannot be built, sold or destroyed. It is re-probed only when the base has
+   * genuinely moved — a second yard across the map is a different coast — and
+   * that is a comparison against the last probe's own anchor rather than a
+   * timer, so a stationary base pays for this exactly once per match.
+   */
+  private probeSea(): void {
+    const nav = getNav();
+    if (nav === null) { this.seaCells = 0; this.navalMap = false; return; }
+
+    // THE MAP QUESTION IS NOT THE BASE QUESTION, and they are asked separately
+    // because they fail differently. `mapSupportsNaval()` is the shared
+    // predicate — the largest contiguous body the real `FlowFieldCache` routes
+    // `MoveClass.Naval` through — and it is the same answer the build menu is
+    // entitled to. It is two array reads over a labelling the cost grid keeps
+    // anyway, so it is asked every census and never cached.
+    //
+    // A map with no sea gets NOTHING: no yard, no hull, no ferry. Buying a dock
+    // on `airbase-flats` (0 water cells) is a 1000-credit building whose only
+    // output is a warship that sits on dry land, and that is a regression on
+    // four shipped maps rather than a missed opportunity on two.
+    this.navalMap = mapSupportsNaval();
+    if (!this.navalMap) {
+      this.seaCells = 0;
+      this.shoreCx = -1; this.shoreCz = -1;
+      return;
+    }
+    this.seaCells = navigableSeaCells();
+
+    // The BEACH is per-base and does need caching: it is a ring walk, and it
+    // only changes when the base does.
+    const moved = AI_NAVAL.seaSearchCells * CELL * 0.25;
+    if (this.shoreCx >= 0
+      && distSq2(this.baseX, this.baseZ, this.seaProbeX, this.seaProbeZ) < moved * moved) return;
+
+    this.seaProbeX = this.baseX;
+    this.seaProbeZ = this.baseZ;
+    const bx = clampCell(worldToCell(this.baseX));
+    const bz = clampCell(worldToCell(this.baseZ));
+    if (this.findShore(bx, bz, this.shoreOut)) {
+      this.shoreCx = this.shoreOut[0];
+      this.shoreCz = this.shoreOut[1];
+      this.shoreWaterCx = this.shoreOut[2];
+      this.shoreWaterCz = this.shoreOut[3];
+    } else {
+      this.shoreCx = -1; this.shoreCz = -1;
+      this.shoreWaterCx = -1; this.shoreWaterCz = -1;
+    }
+  }
+
+  /**
+   * Nearest BEACH to a cell: foot-passable land that touches open sea.
+   *
+   * Both halves are required and each one alone is a different bug. Land that
+   * does not touch water is not a beach, so a squad ordered there waits for a
+   * hull that can never reach it. Water that does not touch land is not a beach
+   * either — `Transport.place` walks a widening ring asking
+   * `isPassable(_, _, Locomotor.Foot)` and refuses the unload when nothing in
+   * it is standable, so a hull told to land in open sea keeps its cargo and the
+   * operation stalls with the squad still aboard.
+   *
+   * Rings are walked in a fixed order and the first hit wins, so two runs of
+   * one seed choose the same beach.
+   */
+  private findShore(cx: number, cz: number, out: Int32Array): boolean {
+    const nav = getNav();
+    if (nav === null) return false;
+    for (let r = 0; r <= AI_NAVAL.shoreSearchCells; r++) {
+      for (let d = -r; d <= r; d++) {
+        if (this.isShore(nav, cx + d, cz - r, out)) return true;
+        if (this.isShore(nav, cx + d, cz + r, out)) return true;
+      }
+      for (let d = -r + 1; d <= r - 1; d++) {
+        if (this.isShore(nav, cx - r, cz + d, out)) return true;
+        if (this.isShore(nav, cx + r, cz + d, out)) return true;
+      }
+    }
+    return false;
+  }
+
+  private isShore(
+    nav: NonNullable<ReturnType<typeof getNav>>, cx: number, cz: number, out: Int32Array,
+  ): boolean {
+    if (cx < 1 || cz < 1 || cx >= MAP_CELLS - 1 || cz >= MAP_CELLS - 1) return false;
+    if (!nav.isPassableClass(cx, cz, MoveClass.Foot)) return false;
+    // THE WATER IT TOUCHES MUST BE THE SEA, not a pond. `contested-strait`
+    // labels 6 naval regions — one body of 3973 cells and 15 cells of puddle
+    // spread over five more — and the nearest wet cell to a base is quite
+    // capable of being a puddle. A beach on one is a beach no hull can reach,
+    // and it made every amphibious evaluation refuse with "the two beaches are
+    // not on the same sea" before the measurement that was supposed to decide
+    // it ever ran. Refusing for a true reason and refusing for the right reason
+    // are different things, and only the second one tells you anything.
+    const main = nav.mainRegion(MoveClass.Naval);
+    if (main <= 0) return false;
+    // BOTH CELLS COME OUT OF THIS, and the second one is the one the hull is
+    // actually given. A beach is a LAND cell, so its own naval region is 0 —
+    // asking `isReachable(beachA, beachB, MoveClass.Naval)` compares two zeroes
+    // and answers false for every pair on the map. That is exactly what it did:
+    // every evaluation refused with "the two beaches are not on the same sea"
+    // and the measurement that was supposed to decide the operation never ran.
+    //
+    // Requiring the adjacent water to be the MAIN region makes "same sea" true
+    // by construction, so there is no reachability call left to get wrong, and
+    // it hands back a wet cell a ship can be ordered to.
+    if (nav.regionOf(cx - 1, cz, MoveClass.Naval) === main) { out[2] = cx - 1; out[3] = cz; }
+    else if (nav.regionOf(cx + 1, cz, MoveClass.Naval) === main) { out[2] = cx + 1; out[3] = cz; }
+    else if (nav.regionOf(cx, cz - 1, MoveClass.Naval) === main) { out[2] = cx; out[3] = cz - 1; }
+    else if (nav.regionOf(cx, cz + 1, MoveClass.Naval) === main) { out[2] = cx; out[3] = cz + 1; }
+    else return false;
+    out[0] = cx; out[1] = cz;
+    return true;
+  }
+
+  /**
+   * Keep the escorts on the water between our coast and the enemy's.
+   *
+   * `AttackMove`, not `Move`, and not a patrol route: the point of a hull on
+   * open water is that anything trying to cross has to go through it, and
+   * AttackMove is the order that makes a unit stop and shoot on the way. A
+   * route would look busier and deny less.
+   *
+   * The station is the midpoint of our beach and the objective, snapped to a
+   * naval cell. When there is no objective yet it is our own beach, which is
+   * the correct default: an escort with nothing to escort belongs where our own
+   * coast can be raided.
+   */
+  private holdTheLane(s: SimContext): void {
+    if (this.warshipCount === 0 || this.shoreCx < 0) return;
+    const nav = getNav();
+    if (nav === null) return;
+
+    const tx = this.objectiveX >= 0 ? this.objectiveX : cellToWorld(this.shoreCx);
+    const tz = this.objectiveZ >= 0 ? this.objectiveZ : cellToWorld(this.shoreCz);
+    const midCx = clampCell(worldToCell((cellToWorld(this.shoreCx) + tx) * 0.5));
+    const midCz = clampCell(worldToCell((cellToWorld(this.shoreCz) + tz) * 0.5));
+
+    // Snap onto water the ships can actually occupy. `nearestInRegion` against
+    // the sea's own region is what stops the station landing in a bay the fleet
+    // cannot enter from where it is.
+    const region = nav.regionOf(this.shoreCx, this.shoreCz, MoveClass.Naval) > 0
+      ? nav.regionOf(this.shoreCx, this.shoreCz, MoveClass.Naval)
+      : nav.mainRegion(MoveClass.Naval);
+    if (!nav.nearestInRegion(midCx, midCz, region, MoveClass.Naval, this.shoreOut)) return;
+
+    this.stationX = cellToWorld(this.shoreOut[0]);
+    this.stationZ = cellToWorld(this.shoreOut[1]);
+    this.navalGoal = `${this.warshipCount} hull(s) holding the lane`;
+
+    if (s.tick - this.lastStationTick < AI_MILITARY.reissueTicks) return;
+    this.lastStationTick = s.tick;
+    this.moveGroup(
+      this.warshipIds, this.warshipCount, OrderKind.AttackMove, this.stationX, this.stationZ,
+    );
+  }
+
+  /* ----------------------------------------------------------------------
+   * The amphibious operation
+   * -------------------------------------------------------------------- */
+
+  /**
+   * Is a landing the right answer to the current objective, and where?
+   *
+   * TWO ARMS, and the first is the one this whole layer was asked for:
+   *
+   *   IMPOSSIBLE ON FOOT. `FlowFieldCache.isReachable` is an exact answer, not
+   *     an estimate — two cost-grid region labels compared — so "there is no
+   *     way there" is decided by the same labelling the pathfinder routes on.
+   *     A wave sent at a target in another region does not path badly, it
+   *     grinds into the nearest cliff and stays there. This arm is the reason
+   *     `deploy` already writes sites off as unreachable, and it is the same
+   *     mechanism reused rather than a second one invented.
+   *
+   *   SHORTER BY SEA. The land leg is measured as the STRAIGHT LINE from the
+   *     group to the objective, which is a LOWER BOUND on the real route — a
+   *     land path is never shorter than the crow flies. Comparing the true
+   *     water route against an optimistic land route makes this test refuse
+   *     whenever it is close, which is the direction an expensive, slow,
+   *     interruptible operation should fail in. It also costs a square root
+   *     instead of a flood fill.
+   *
+   * Writes `embarkX/Z` and `landX/Z` on success. `amphibVerdict` always carries
+   * the numbers, because "the AI did not do an amphibious assault" is a mystery
+   * and "saving -46 cells: walking is shorter" is an answer.
+   */
+  private amphibiousWanted(): boolean {
+    this.amphibVerdict = '';
+    const nav = getNav();
+    if (nav === null || this.shoreCx < 0) { this.amphibVerdict = 'no coast'; return false; }
+    if (this.objectiveX < 0) { this.amphibVerdict = 'no objective'; return false; }
+
+    const gx = this.strikeCount > 0 ? this.groupCentre(true) : this.baseX;
+    const gz = this.strikeCount > 0 ? this.groupCentre(false) : this.baseZ;
+    const acx = clampCell(worldToCell(gx));
+    const acz = clampCell(worldToCell(gz));
+    const ocx = clampCell(worldToCell(this.objectiveX));
+    const ocz = clampCell(worldToCell(this.objectiveZ));
+
+    // A beach on the objective's side. Without one there is nowhere to put the
+    // squad down, and `Transport.place` would refuse the unload anyway.
+    if (!this.findShore(ocx, ocz, this.shoreOut)) {
+      this.amphibVerdict = 'no beach near the objective';
+      return false;
+    }
+    // THE TWO ENDS ARE NOT SYMMETRIC, and this is the asymmetry that makes the
+    // operation work at all.
+    //
+    // EMBARK ON THE BEACH — the LAND cell. Every troop hull in the game is
+    // `Locomotor.Hover`, so it can sit on the sand, and the squad simply walks
+    // up to it. Holding the hull on the water instead put it a cell offshore
+    // and the boarding stalled at `0/5` forever: infantry path with
+    // `MoveClass.Foot`, their goal snaps back to the last dry cell, and they
+    // stand on the beach looking at a ship they never quite reach.
+    //
+    // UNLOAD FROM THE WATER — the wet cell beside the far beach. That end has
+    // to be wet because a hostile shore is defended and a hull that beaches
+    // itself is a stationary target; `Transport.place` already walks a widening
+    // ring asking `isPassable(_, _, Locomotor.Foot)`, so it finds the sand from
+    // there. Both wet cells are in the MAIN naval region by construction (see
+    // `isShore`), so the crossing is one sea and there is nothing left to ask.
+    this.embarkX = cellToWorld(this.shoreCx);
+    this.embarkZ = cellToWorld(this.shoreCz);
+    this.landX = cellToWorld(this.shoreOut[2]);
+    this.landZ = cellToWorld(this.shoreOut[3]);
+
+    // ARM ONE: can the army we would otherwise send even get there?
+    const cls = this.strikeMoveClass();
+    if (!nav.isReachable(acx, acz, ocx, ocz, cls)) {
+      this.amphibVerdict = 'objective unreachable on land — the sea is the only way';
+      return true;
+    }
+
+    // ARM TWO: is the sea measurably shorter than the most optimistic walk?
+    const byLand = dist2(gx, gz, this.objectiveX, this.objectiveZ) / CELL;
+    const toBeach = dist2(gx, gz, this.embarkX, this.embarkZ) / CELL;
+    const crossing = dist2(this.embarkX, this.embarkZ, this.landX, this.landZ) / CELL;
+    const inland = dist2(this.landX, this.landZ, this.objectiveX, this.objectiveZ) / CELL;
+    const saving = byLand - (toBeach + crossing + inland);
+    if (saving < AI_NAVAL.amphibiousMinSaving) {
+      this.amphibVerdict =
+        `saving ${saving.toFixed(0)} cells (land ${byLand.toFixed(0)} vs sea `
+        + `${(toBeach + crossing + inland).toFixed(0)}) — walking is shorter`;
+      return false;
+    }
+    this.amphibVerdict = `saving ${saving.toFixed(0)} cells by sea`;
+    return true;
+  }
+
+  /**
+   * The move class of the group a landing would replace.
+   *
+   * Taken from a real member rather than assumed, because "can the army get
+   * there" is a different question for infantry, for tracks and for the Pact's
+   * entirely amphibious roster — a Meridian brain asking about `Track` would be
+   * told it cannot reach ground its own units hover straight over.
+   */
+  private strikeMoveClass(): MoveClass {
+    const st = this.store;
+    for (let k = 0; k < this.strikeCount; k++) {
+      const i = st.index(this.strikeIds[k] as EntityId);
+      if (i >= 0) return moveClassAt(st, i);
+    }
+    return MoveClass.Track;
+  }
+
+  /**
+   * Drive one operation from boarding to landing.
+   *
+   * A STATE MACHINE WITH AN ABANDON CLOCK ON EVERY STATE, which is the same
+   * lesson `deploy` records at length: a step that can silently fail forever
+   * (a squad that cannot reach the beach, a hull wedged on a headland) has to
+   * be able to give up, or the AI spends the rest of the match holding units
+   * out of its army for an operation that is never going to happen.
+   */
+  private runAmphibious(s: SimContext): void {
+    const st = this.store;
+
+    if (this.amphib === AmphibState.Idle) {
+      if (!this.amphibWanted || this.transportCount === 0) return;
+      // The landing party comes OUT of the strike group, so it may only be
+      // taken once the group can still reach its threshold without them.
+      // Otherwise every hull built guarantees a wave that never launches.
+      if (this.strikeCount < AI_NAVAL.minLandingSquad + this.waveThreshold()) return;
+      this.stageAmphibious(s);
+      return;
+    }
+
+    // The hull is the operation. Losing it ends it, and the squad aboard went
+    // down with it — `TransportService.killPassengers` already charged them.
+    const h = st.index(this.amphibHull);
+    if (h < 0) {
+      this.navalGoal = 'the transport was sunk — operation over';
+      this.abandonAmphibious();
+      return;
+    }
+
+    switch (this.amphib) {
+      case AmphibState.Boarding: this.amphibBoarding(s, h); return;
+      case AmphibState.Crossing: this.amphibCrossing(s, h); return;
+      case AmphibState.Landing: this.amphibLanding(s, h); return;
+      default: return;
+    }
+  }
+
+  /** Commit a hull and a squad, and send both to the embarkation beach. */
+  private stageAmphibious(s: SimContext): void {
+    const st = this.store;
+    const svc = transportService();
+    if (svc === null) return;
+
+    // An empty hull with the most seats. A hull already carrying somebody is
+    // mid-operation by definition and must not be restarted underneath itself.
+    let hull = NONE;
+    let seats = 0;
+    for (let k = 0; k < this.transportCount; k++) {
+      const id = this.transportIds[k] as EntityId;
+      const i = st.index(id);
+      if (i < 0 || (st.flags[i] & ORDERABLE_REJECT) !== 0) continue;
+      const cap = svc.capacityAt(i);
+      if (cap <= seats || svc.passengerCount(id) > 0) continue;
+      seats = cap; hull = id;
+    }
+    if (hull === NONE || seats <= 0) return;
+
+    // Infantry only: `TransportService.refusalFor` answers 'not infantry' for
+    // anything else, and asking it here rather than assuming is what keeps this
+    // brain's idea of who can board identical to the human's.
+    this.amphibSquadCount = 0;
+    for (let k = 0; k < this.strikeCount && this.amphibSquadCount < seats; k++) {
+      const id = this.strikeIds[k] as EntityId;
+      const i = st.index(id);
+      if (i < 0 || (st.flags[i] & ORDERABLE_REJECT) !== 0) continue;
+      if (svc.refusalFor(hull, i) !== '') continue;
+      if (this.amphibSquadCount >= this.amphibSquad.length) break;
+      this.amphibSquad[this.amphibSquadCount++] = id as number;
+    }
+    if (this.amphibSquadCount < AI_NAVAL.minLandingSquad) {
+      this.amphibSquadCount = 0;
+      this.amphibVerdict = 'no infantry free to land with';
+      return;
+    }
+
+    // Out of the strike group, so `regroupSquads` leaves them alone and
+    // `pressAttack` does not walk them at the land objective mid-boarding.
+    for (let k = 0; k < this.amphibSquadCount; k++) {
+      const i = st.index(this.amphibSquad[k] as EntityId);
+      if (i >= 0) this.groupTag.setAt(i, GROUP_NAVAL);
+    }
+
+    this.amphibHull = hull;
+    this.amphib = AmphibState.Boarding;
+    this.amphibTick = s.tick;
+    this.amphibIssuedTick = -1e9;
+    this.navalGoal = `staging a landing: ${this.amphibSquadCount} aboard for `
+      + `${this.landX.toFixed(0)},${this.landZ.toFixed(0)}`;
+  }
+
+  /**
+   * Walk the squad onto the hull at the beach.
+   *
+   * The hull is sent to the embarkation point and the squad is given
+   * `OrderKind.Enter` against it. `TransportService.board` then rewrites each
+   * man's order point to the hull's CURRENT position every tick, so this does
+   * not have to chase a moving ship — that is the one behaviour the transport
+   * service has that a garrison does not, and it is why boarding needs one
+   * command rather than a re-issue loop.
+   */
+  private amphibBoarding(s: SimContext, h: number): void {
+    const st = this.store;
+    const svc = transportService();
+    if (svc === null) { this.abandonAmphibious(); return; }
+
+    const aboard = svc.passengerCount(this.amphibHull);
+    const waiting = this.liveSquadCount();
+
+    // Everybody who is still alive is aboard: sail.
+    if (aboard > 0 && waiting === 0) {
+      this.amphib = AmphibState.Crossing;
+      this.amphibTick = s.tick;
+      this.amphibIssuedTick = -1e9;
+      this.navalGoal = `${aboard} aboard — crossing to `
+        + `${this.landX.toFixed(0)},${this.landZ.toFixed(0)}`;
+      return;
+    }
+
+    if (s.tick - this.amphibTick > AI_NAVAL.boardTicks) {
+      // Boarding stalled. If anyone made it aboard the operation is still worth
+      // running with a short squad; if nobody did, the beach is unreachable and
+      // holding the squad out of the army any longer is pure loss.
+      if (aboard > 0) {
+        this.amphib = AmphibState.Crossing;
+        this.amphibTick = s.tick;
+        this.amphibIssuedTick = -1e9;
+        return;
+      }
+      this.navalGoal = 'nobody could reach the hull — landing abandoned';
+      this.abandonAmphibious();
+      return;
+    }
+
+    this.navalGoal = `boarding ${aboard}/${aboard + waiting} at the beach`;
+    if (s.tick - this.amphibIssuedTick < AI_MILITARY.reissueTicks) return;
+    this.amphibIssuedTick = s.tick;
+
+    // Hold the hull ON the beach cell. A transport that wanders is a transport
+    // the squad walks after forever.
+    if (distSq2(st.posX[h], st.posZ[h], this.embarkX, this.embarkZ) > CELL * CELL * 4) {
+      this.issueOrder(
+        OrderKind.Move, this.one(this.amphibHull), 1, this.embarkX, this.embarkZ, NONE,
+      );
+    }
+
+    // One Enter for the whole squad — one command for a group, exactly as a
+    // human right-clicking a hull with a box selection produces one.
+    let n = 0;
+    for (let k = 0; k < this.amphibSquadCount; k++) {
+      const i = st.index(this.amphibSquad[k] as EntityId);
+      if (i < 0) continue;
+      const f = st.flags[i];
+      if ((f & ORDERABLE_REQUIRE) !== ORDERABLE_REQUIRE) continue;
+      if ((f & ORDERABLE_REJECT) !== 0) continue;
+      this.orderScratch[n++] = this.amphibSquad[k];
+    }
+    if (n > 0) {
+      this.issueOrder(
+        OrderKind.Enter, this.orderScratch, n, st.posX[h], st.posZ[h], this.amphibHull,
+      );
+    }
+  }
+
+  /** Sail the loaded hull to the hostile beach. */
+  private amphibCrossing(s: SimContext, h: number): void {
+    const st = this.store;
+    const svc = transportService();
+    if (svc === null) { this.abandonAmphibious(); return; }
+
+    if (svc.passengerCount(this.amphibHull) === 0) {
+      this.navalGoal = 'the squad is gone — crossing abandoned';
+      this.abandonAmphibious();
+      return;
+    }
+
+    const arrive = AI_NAVAL.landingArriveMetres * AI_NAVAL.landingArriveMetres;
+    if (distSq2(st.posX[h], st.posZ[h], this.landX, this.landZ) <= arrive) {
+      this.amphib = AmphibState.Landing;
+      this.amphibTick = s.tick;
+      this.amphibIssuedTick = -1e9;
+      return;
+    }
+
+    if (s.tick - this.amphibTick > AI_NAVAL.crossTicks) {
+      // The hull could not get there. Put the squad back on OUR shore rather
+      // than sailing forever — an Unload where it stands is refused when there
+      // is no standable ground, which is exactly the right failure.
+      this.navalGoal = 'the crossing timed out — putting the squad ashore';
+      this.amphib = AmphibState.Landing;
+      this.landX = st.posX[h];
+      this.landZ = st.posZ[h];
+      this.amphibTick = s.tick;
+      this.amphibIssuedTick = -1e9;
+      return;
+    }
+
+    this.navalGoal = `crossing — ${svc.passengerCount(this.amphibHull)} aboard`;
+    if (s.tick - this.amphibIssuedTick < AI_MILITARY.reissueTicks) return;
+    this.amphibIssuedTick = s.tick;
+    this.issueOrder(OrderKind.Move, this.one(this.amphibHull), 1, this.landX, this.landZ, NONE);
+  }
+
+  /**
+   * Put the squad ashore and hand it back to the army.
+   *
+   * The order carries the hull as its own target, which is the shape
+   * `input.system.ts:issueUnload` produces. A refusal is not an error and is
+   * deliberately not treated as one: `unloadOrders` leaves the order standing
+   * for one more tick when no ring cell is standable, so a hull that arrived a
+   * few metres off the beach puts its squad down as soon as it touches one.
+   */
+  private amphibLanding(s: SimContext, h: number): void {
+    const st = this.store;
+    const svc = transportService();
+    if (svc === null) { this.abandonAmphibious(); return; }
+
+    if (svc.passengerCount(this.amphibHull) === 0) {
+      // Everybody is off. THIS is the landing, and it is the only place the
+      // counter moves.
+      this.landingsMade++;
+      this.navalGoal = `landed at ${this.landX.toFixed(0)},${this.landZ.toFixed(0)}`;
+      // Straight onto the objective: they are behind whatever was holding the
+      // land route, which is the entire point of having sailed.
+      let n = 0;
+      for (let k = 0; k < this.amphibSquadCount; k++) {
+        const i = st.index(this.amphibSquad[k] as EntityId);
+        if (i < 0) continue;
+        // Back into the ordinary strike group — `regroupSquads` picks up an
+        // untagged body on its next pass.
+        this.groupTag.setAt(i, GROUP_NONE);
+        const f = st.flags[i];
+        if ((f & ORDERABLE_REQUIRE) !== ORDERABLE_REQUIRE) continue;
+        if ((f & ORDERABLE_REJECT) !== 0) continue;
+        this.orderScratch[n++] = this.amphibSquad[k];
+      }
+      if (n > 0 && this.objectiveX >= 0) {
+        this.issueOrder(
+          OrderKind.AttackMove, this.orderScratch, n, this.objectiveX, this.objectiveZ, NONE,
+        );
+      }
+      this.amphib = AmphibState.Idle;
+      this.amphibHull = NONE;
+      this.amphibSquadCount = 0;
+      return;
+    }
+
+    if (s.tick - this.amphibTick > AI_NAVAL.boardTicks) {
+      this.navalGoal = 'no standable beach — the squad rides on';
+      this.abandonAmphibious();
+      return;
+    }
+
+    this.navalGoal = `unloading at ${this.landX.toFixed(0)},${this.landZ.toFixed(0)}`;
+    if (s.tick - this.amphibIssuedTick < AI_MILITARY.reissueTicks) return;
+    this.amphibIssuedTick = s.tick;
+    this.issueOrder(
+      OrderKind.Unload, this.one(this.amphibHull), 1,
+      st.posX[h], st.posZ[h], this.amphibHull,
+    );
+  }
+
+  /** Squad members still alive and NOT yet aboard. */
+  private liveSquadCount(): number {
+    const st = this.store;
+    let n = 0;
+    for (let k = 0; k < this.amphibSquadCount; k++) {
+      const i = st.index(this.amphibSquad[k] as EntityId);
+      if (i < 0) continue;
+      if ((st.flags[i] & EntityFlag.Garrisoned) !== 0) continue;
+      n++;
+    }
+    return n;
+  }
+
+  /** Release everybody back to the army and clear the operation. */
+  private abandonAmphibious(): void {
+    const st = this.store;
+    for (let k = 0; k < this.amphibSquadCount; k++) {
+      const i = st.index(this.amphibSquad[k] as EntityId);
+      if (i >= 0 && this.groupTag.getAt(i) === GROUP_NAVAL) this.groupTag.setAt(i, GROUP_NONE);
+    }
+    this.amphib = AmphibState.Idle;
+    this.amphibHull = NONE;
+    this.amphibSquadCount = 0;
+    this.amphibIssuedTick = -1e9;
+  }
+
+  /* ======================================================================
    * 2.9 COMMAND PLUMBING — the only exit from this class
    * ====================================================================== */
 
@@ -3322,6 +4184,28 @@ export class AiBrain {
   get vehicleSize(): number { return this.vehicleCount; }
 
   /**
+   * The navy, in numbers nothing else can report.
+   *
+   * `seaSize` is the one that answers "did this brain even notice the water",
+   * which is a different failure from "it noticed and declined" and has the
+   * same symptom. `amphibiousVerdict` is the second half of that: a landing
+   * that never happens because walking is shorter is a DECISION, and it says so
+   * with the measured saving in it rather than leaving the reader to guess
+   * whether the code ran at all.
+   */
+  get seaSize(): number { return this.seaCells; }
+  get warshipSize(): number { return this.warshipCount; }
+  get transportSize(): number { return this.transportCount; }
+  /** Naval yards owned or under construction. */
+  get navalYardCount(): number {
+    return this.roleCount[BuildRole.NavalYard] + this.roleBuilding[BuildRole.NavalYard];
+  }
+  /** Landings that actually put a squad on the ground. */
+  get landingCount(): number { return this.landingsMade; }
+  get amphibiousState(): number { return this.amphib as number; }
+  get amphibiousVerdict(): string { return this.amphibVerdict; }
+
+  /**
    * Readable snapshot. Allocates — deliberately: this is called by the console
    * probe and by tests, never by the sim.
    */
@@ -3354,6 +4238,13 @@ export class AiBrain {
       mcvs: this.mcvCount,
       deploy: this.deployGoal,
       lateGame: this.lateGoal,
+      naval: this.navalGoal,
+      seaCells: this.seaCells,
+      navalYards: this.navalYardCount,
+      warships: this.warshipCount,
+      transports: this.transportCount,
+      landings: this.landingsMade,
+      amphibious: this.amphibVerdict,
       superweapons: this.superweaponCount,
       superweaponsFired: this.superweaponsFired,
       powersCalled: this.powersCalled,

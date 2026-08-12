@@ -26,7 +26,7 @@
 
 import { defineSystem } from '../core/loop';
 import { Faction, Phase } from '../core/types';
-import type { AvailabilityResult, PlayerId, SimContext } from '../core/types';
+import type { AvailabilityResult, EntityId, PlayerId, SimContext } from '../core/types';
 import { DEFAULT_SEED } from '../core/config';
 import { ctx } from '../game/context';
 import { AiDirector } from './AI';
@@ -104,6 +104,12 @@ function buildOracle(): ProductionOracle | null {
 
     available(player: number, publicId: number): boolean {
       return svc.availability(player as PlayerId, publicId, avail).ok;
+    },
+
+    // The service's own spawn-time stamp. See `ProductionOracle.entityKey` for
+    // why the brain cannot derive this from `store.defId` itself.
+    entityKey(id: number): string {
+      return svc.entryOf(id as EntityId)?.key ?? '';
     },
 
     reason(player: number, publicId: number): string {
