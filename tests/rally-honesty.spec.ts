@@ -40,13 +40,20 @@ import { snapRallyClear } from '../src/sim/Placement';
 const CX = MAP_SIZE * 0.5;
 const CZ = MAP_SIZE * 0.5;
 
+/**
+ * THE CONSTRUCTOR ALREADY GENERATED — `Terrain` ends its constructor in
+ * `adopt(fields)` or `generate()`, and nothing here passes prewarmed `fields`.
+ * The `t.generate()` that used to sit below rebuilt the heightfield, the ramp
+ * carver, the splat and all 64 chunk meshes for a result already in hand, once
+ * per `rig()` and this file calls `rig()` eight times. Idempotency was
+ * re-measured, not assumed: see the note on `build()` in
+ * `tests/reachability.spec.ts` for the columns that were compared.
+ */
 function rig(): World {
   const world = new World();
   world.addPlayer(Faction.Allies, 'Commander', true, true);
   const scene = new THREE.Scene();
-  const t = new Terrain({ scene, seed: 4242, biome: 'temperate', anisotropy: 1 });
-  t.generate();
-  world.terrain = t;
+  world.terrain = new Terrain({ scene, seed: 4242, biome: 'temperate', anisotropy: 1 });
   return world;
 }
 

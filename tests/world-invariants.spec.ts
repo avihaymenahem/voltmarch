@@ -52,7 +52,13 @@ const CX = MAP_SIZE * 0.5;
 const CZ = MAP_SIZE * 0.5;
 
 /**
- * The world every case here inspects: a real generated map, really populated.
+ * A real generated map, with NOTHING STANDING ON IT.
+ *
+ * This said "a real generated map, really populated" and the second half was
+ * false: `Terrain` places no entities, so `world.store.aliveCount` is 0 here and
+ * every column is untouched. Two cases below inspected exactly this and were
+ * therefore unfailable — see `populate` for what that cost and how it is fixed.
+ * Read the name as what it is: the GROUND, before an army arrives.
  *
  * THE CONSTRUCTOR ALREADY GENERATED. This used to call `terrain.generate()`
  * after it. `Terrain`'s constructor ends in `adopt(fields)` or `generate()`, and
@@ -81,6 +87,53 @@ function buildWorld(seed: number, biome: string): World {
   return world;
 }
 
+/**
+ * Seat two armies and build the pre-seeded opening into `world`. Returns it.
+ *
+ * TWO ASSERTIONS IN THIS FILE COULD NOT FAIL, AND THIS IS THE FIX FOR BOTH.
+ * They are worth writing down, because they are the file's own subject matter
+ * turned on the file: a guard that cannot fail is not a weak test, it is the
+ * absence of a test wearing one's clothes.
+ *
+ *   1. "nothing in the store is NaN -> holds for a freshly generated world"
+ *      swept ten store columns over `alive[0..aliveCount)`. On a bare
+ *      `buildWorld` that count is 0, so the sweep read ZERO ROWS. It passed by
+ *      walking an empty loop, and it would have passed just as green with every
+ *      column in the store full of NaN.
+ *
+ *   2. "hashes two identically-built worlds the same" compared `hashOnly` of
+ *      two bare worlds. `hashOnly` folds census + entities + players and never
+ *      touches terrain, so on two empty, playerless worlds it is a CONSTANT
+ *      (2525216261, measured). The case compared that constant with itself. No
+ *      amount of non-determinism in map generation could have moved it — which
+ *      is precisely the property it was written to defend.
+ *
+ * Both now run against a world with 232 live entities and two players in it.
+ * `start: 'base'` rather than the default `mcv` on purpose: it is the opening
+ * that puts the most state in the store, and it is the shipping path the
+ * overlap sweep below already exercises.
+ */
+function populate(world: World, seed: number): World {
+  world.addPlayer(0 as never, 'A', true, true);
+  world.addPlayer(1 as never, 'B', false, false);
+  buildScenario(world, 'skirmish', seed, { start: 'base' });
+  return world;
+}
+
+/** `buildWorld` with an army standing on it. */
+function populated(seed: number, biome: string): World {
+  return populate(buildWorld(seed, biome), seed);
+}
+
+/**
+ * What `hashOnly` returns for a world with no entities and no players.
+ *
+ * Named rather than inlined because it is the exact value the hash case used to
+ * compare against itself, and an assertion that the populated hash is NOT this
+ * is the cheapest possible statement that the fold saw some state.
+ */
+const EMPTY_WORLD_HASH = hashOnly(new World());
+
 /* ==========================================================================
  * ONE GENERATION PER BIOME AT THE SHARED SEED
  *
@@ -93,8 +146,11 @@ function buildWorld(seed: number, biome: string): World {
  * and this mirrors it.
  *
  * NO CASE CAN CORRUPT ANOTHER'S WORLD, because no case is handed a world. The
- * cache holds plain strings; each `World` is unreachable before the first
- * assertion runs, so nothing depends on which `it()` triggered the scan.
+ * cache holds plain strings and counts; each `World` is unreachable before the
+ * first assertion runs, so nothing depends on which `it()` triggered the scan.
+ * That is what lets the scan MUTATE its own world — it now runs `populate` on
+ * each one, after the read-only start check and before the store sweep — and
+ * still hand two independent cases their answers.
  *
  * THE OTHER SEEDS ARE DELIBERATELY NOT CACHED. `buildScenario` MUTATES the
  * world it is given, so the overlap sweep cannot share one; and the determinism
@@ -115,6 +171,10 @@ interface FreshCase {
   nonFinite: string[];
   /** One entry per two-army start cell a base could not be placed on. */
   unbuildableStarts: string[];
+  /** Live slots the NaN sweep walked. Zero means the sweep proved nothing. */
+  entities: number;
+  /** Slot-column pairs the NaN sweep actually read. Same purpose. */
+  reads: number;
 }
 
 let freshCases: FreshCase[] | null = null;
@@ -124,21 +184,17 @@ function freshScan(): FreshCase[] {
   const out: FreshCase[] = [];
   for (const biome of BIOME_NAMES) {
     const world = buildWorld(SHARED_SEED, biome);
-    const s = world.store;
-    const columns: ReadonlyArray<readonly [string, Float32Array]> = [
-      ['posX', s.posX], ['posY', s.posY], ['posZ', s.posZ],
-      ['yaw', s.yaw], ['turretYaw', s.turretYaw],
-      ['hp', s.hp], ['velX', s.velX], ['velZ', s.velZ],
-      ['orderX', s.orderX], ['orderZ', s.orderZ],
-    ];
-    const nonFinite: string[] = [];
-    for (let a = 0; a < s.aliveCount; a++) {
-      const i = s.alive[a];
-      for (const [name, col] of columns) {
-        if (!Number.isFinite(col[i])) nonFinite.push(`${biome}: ${name} on slot ${i}`);
-      }
-    }
 
+    /*
+     * THE STARTS ARE MEASURED FIRST, AND THE ORDER IS LOAD-BEARING.
+     *
+     * `isBuildable` is `buildGrid[i] !== 0 && occupant[i] === 0`, and
+     * `populate` below stamps `markOccupied` across every structure it places —
+     * starting with the one on this exact cell. Asking afterwards would report
+     * every start unbuildable and would be measuring THE BASE rather than the
+     * ground under it. It would fail loudly rather than silently, which is the
+     * only reason this is a comment and not a mechanism.
+     */
     const unbuildableStarts: string[] = [];
     for (const spot of startSpots(CX, CZ, 2)) {
       const cx = Math.floor(spot.x / CELL);
@@ -148,7 +204,30 @@ function freshScan(): FreshCase[] {
       }
     }
 
-    out.push({ biome, nonFinite, unbuildableStarts });
+    // THEN PUT AN ARMY ON IT, so the sweep below has rows to sweep. See
+    // `populate`: without this the loop ran zero times and could not fail.
+    populate(world, SHARED_SEED);
+
+    const s = world.store;
+    const columns: ReadonlyArray<readonly [string, Float32Array]> = [
+      ['posX', s.posX], ['posY', s.posY], ['posZ', s.posZ],
+      ['yaw', s.yaw], ['turretYaw', s.turretYaw],
+      ['hp', s.hp], ['velX', s.velX], ['velZ', s.velZ],
+      ['orderX', s.orderX], ['orderZ', s.orderZ],
+    ];
+    const nonFinite: string[] = [];
+    let reads = 0;
+    for (let a = 0; a < s.aliveCount; a++) {
+      const i = s.alive[a];
+      for (const [name, col] of columns) {
+        reads++;
+        if (!Number.isFinite(col[i])) nonFinite.push(`${biome}: ${name} on slot ${i}`);
+      }
+    }
+
+    out.push({
+      biome, nonFinite, unbuildableStarts, reads, entities: s.aliveCount,
+    });
   }
   freshCases = out;
   return out;
@@ -194,13 +273,12 @@ describe('no two structures stand on the same ground', () => {
     const failures: string[] = [];
     for (const biome of BIOME_NAMES) {
       for (const seed of [1, 7, 4242, 0x51c0de]) {
-        const world = buildWorld(seed, biome);
-        world.addPlayer(0 as never, 'A', true, true);
-        world.addPlayer(1 as never, 'B', false, false);
-        // THE SHIPPING PATH. `start: 'base'` is the pre-seeded opening the
-        // report is about — the one that "yielded this, placing building on top
-        // of each other".
-        buildScenario(world, 'skirmish', seed, { start: 'base' });
+        // THE SHIPPING PATH. `populate`'s `start: 'base'` is the pre-seeded
+        // opening the report is about — the one that "yielded this, placing
+        // building on top of each other". It is a shared helper rather than
+        // four inlined lines because the NaN sweep and both hash cases must
+        // build the SAME world this one does, or they drift apart silently.
+        const world = populated(seed, biome);
 
         const s = world.store;
         const rects: { i: number; r: ReturnType<typeof footprintRect> }[] = [];
@@ -285,10 +363,28 @@ describe('nothing in the store is NaN', () => {
    * `clampWorld` reaching a nav goal, one in a faction index. Neither had a
    * test. This is the one that would have caught both.
    */
-  it('holds for a freshly generated world', () => {
-    const bad = freshScan().flatMap((c) => c.nonFinite);
+  it('holds for a freshly built base and its army', () => {
+    const cases = freshScan();
+    const bad = cases.flatMap((c) => c.nonFinite);
     expect(bad, `\n${bad.join('\n')}\n`).toEqual([]);
-    expect(freshScan().length, 'biomes measured').toBe(BIOME_NAMES.length);
+    expect(cases.length, 'biomes measured').toBe(BIOME_NAMES.length);
+
+    /*
+     * THE SWEEP MUST HAVE SWEPT SOMETHING.
+     *
+     * This case spent its whole life green over an EMPTY store — `buildWorld`
+     * places no entities, so `aliveCount` was 0 and the loop above ran zero
+     * times. It could not have failed if every column were NaN. The bound is
+     * 100 against a measured 232 live entities per biome: loose enough not to
+     * pin the scenario's exact roster, tight enough that a world which quietly
+     * stopped being populated fails here instead of passing vacuously.
+     */
+    for (const c of cases) {
+      expect(c.entities, `${c.biome}: the sweep found no entities to inspect`)
+        .toBeGreaterThan(100);
+    }
+    const reads = cases.reduce((n, c) => n + c.reads, 0);
+    expect(reads, 'slot-column pairs actually read').toBeGreaterThan(4000);
   });
 
   it('holds for terrain heights across the whole map', () => {
@@ -326,16 +422,39 @@ describe('a seed produces the same world twice', () => {
   });
 
   it('hashes two identically-built worlds the same', () => {
-    const a = buildWorld(99, 'temperate');
-    const b = buildWorld(99, 'temperate');
+    // POPULATED, and that is the entire point. On two bare worlds `hashOnly` is
+    // a constant — it folds census, entities and players, and never terrain —
+    // so this compared 2525216261 with itself and could not fail however
+    // non-deterministic generation became. See `populate`.
+    const a = populated(99, 'temperate');
+    const b = populated(99, 'temperate');
     expect(hashOnly(a)).toBe(hashOnly(b));
+
+    // The fold saw state. Without this the case could silently return to
+    // comparing the empty constant the day `populate` stops populating.
+    expect(a.store.aliveCount, 'entities folded into the hash').toBeGreaterThan(100);
+    expect(hashOnly(a), 'the hash is the empty-world constant')
+      .not.toBe(EMPTY_WORLD_HASH);
   });
 
   it('hashes two DIFFERENT seeds differently, so the check is not vacuous', () => {
     // Without this, a checksum that always returned the same constant would
     // make the case above pass forever.
-    const a = buildWorld(1, 'temperate');
-    const b = buildWorld(2, 'temperate');
+    const a = populated(1, 'temperate');
+    const b = populated(2, 'temperate');
+
+    /*
+     * BOTH HALVES, AND THEY ANSWER DIFFERENT QUESTIONS.
+     *
+     * The height sample is the direct statement that GENERATION moved — it
+     * fails naming a coordinate, which is a debuggable failure. But it does not
+     * touch `hashOnly` at all, so on its own it was an anti-vacuity guard for a
+     * function it never called: a `hashOnly` hardcoded to `return 7` would have
+     * left this green while the case above passed forever on the constant.
+     *
+     * So the hash comparison is added rather than substituted. Neither is
+     * stronger than the other and dropping either one loses a real signal.
+     */
     const sampleA: number[] = [];
     const sampleB: number[] = [];
     for (let x = 0; x <= MAP_SIZE; x += 61) {
@@ -343,6 +462,8 @@ describe('a seed produces the same world twice', () => {
       sampleB.push(b.terrain.heightAt(x, CZ));
     }
     expect(sampleA).not.toEqual(sampleB);
+    expect(hashOnly(a), 'two different seeds hashed the same')
+      .not.toBe(hashOnly(b));
   });
 });
 

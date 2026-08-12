@@ -34,11 +34,27 @@ import { CELL, MAP_CELLS, MAP_SIZE } from '../src/core/config';
 /** Cells a scenario actually drops an army into, as a radius in metres. */
 const SPAWN_RADIUS_M = 48;
 
+/**
+ * THE CONSTRUCTOR ALREADY GENERATED. This used to call `t.generate()` after it.
+ * `Terrain`'s constructor ends in `adopt(fields)` or `generate()`, and nothing
+ * here passes prewarmed `fields`, so all ~51 maps this file builds were built
+ * TWICE — heightfield, ramp carver, splat and all 64 chunk meshes, for a result
+ * the second pass could only reproduce.
+ *
+ * `generate()` documents itself as pure and it is, re-measured rather than
+ * assumed: over four biomes x two seeds x with-and-without reserved starts, a
+ * second call leaves `height`, `slope`, `wallUp`, `wallTop`, `surface`,
+ * `passGrid`, `costGrid`, `buildGrid`, `splatA`, `splatB`, `heightAt()`,
+ * `startLocations()` and `startReport()` byte-identical. So the call was cost
+ * with no effect, and dropping it changes no number this file asserts.
+ *
+ * This file is the slowest in the suite and the one with the least headroom
+ * against the 120 s `testTimeout` — it has timed out for real under concurrent
+ * load — so the halving matters here more than anywhere.
+ */
 function build(seed: number, biome: string): Terrain {
   const scene = new THREE.Scene();
-  const t = new Terrain({ scene, seed, biome: biome as never, anisotropy: 1 });
-  t.generate();
-  return t;
+  return new Terrain({ scene, seed, biome: biome as never, anisotropy: 1 });
 }
 
 /**
