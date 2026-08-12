@@ -510,10 +510,24 @@ function subscribe(): void {
     if (p.player !== local()) return;
     // Ore arriving at a full silo is wasted; that is what "Silos needed" means.
     if (p.reason === CreditReason.Waste) eva?.say('silosNeeded');
-    // A harvester unloading. `ore.dump` was recorded, baked and never played:
-    // nothing in the game dispatched it, so the one moment the economy is
-    // audible had no sound at all.
-    if (p.reason === CreditReason.Harvest && p.delta > 0) engine?.ui(SFX.oreDump);
+    // NO SOUND FOR A HARVESTER UNLOADING, and `ore.dump` is deliberately
+    // back to having no call site.
+    //
+    // It was wired here on the reasoning that "the one moment the economy is
+    // audible had no sound at all". The reasoning was right and the event was
+    // wrong: `economy:credits` is a STREAM. `Harvesting.ts` empties a hopper
+    // gradually over `UNLOAD_SECONDS`, depositing a slice every sim tick, so
+    // one delivery fired this sixty-odd times. Measured on the menu: 123 plays
+    // in a few seconds, successive calls 33 ms apart. Overlapping copies of a
+    // short sample at that rate do not read as a repeat, they fuse into a
+    // drone.
+    //
+    // An edge trigger on the gap between deliveries was written and works, and
+    // it is still not wanted: with several harvesters cycling, a correct
+    // once-per-delivery chime is a metronome nobody asked for. Removed on the
+    // user's call rather than repaired. The spec and its recording stay
+    // registered, so restoring it is one line here.
+
   }));
 
   unsubscribe.push(bus.on('economy:power', (p) => {
