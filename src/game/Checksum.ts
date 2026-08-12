@@ -179,6 +179,14 @@ function hashEntities(world: World): number {
     // position `TransportService.carry` copies off the host, and only if the
     // two hulls had drifted far enough apart to survive `q`'s quantisation.
     h = mix(h, s.carrierId[i]);
+    // AND WHICH BUILDING AN OCCUPANT IS INSIDE — the sibling column, with the
+    // identical history and one sharper consequence. A garrison's volley is
+    // resolved from the men in it (`GarrisonService.weaponsTick` sums their
+    // rifles and fires at the best one's cooldown), so two clients that put the
+    // same rifleman in two different strongpoints do not merely disagree about
+    // bookkeeping: they deal different damage from different buildings on the
+    // next `Phase.Weapons`, and until this line the hash said they agreed.
+    h = mix(h, s.garrisonId[i]);
     // SUMMED, not folded. See the header: `alive[]` order follows the free
     // list, and a slot recycled in a different order is the same world.
     sum = (sum + h) >>> 0;

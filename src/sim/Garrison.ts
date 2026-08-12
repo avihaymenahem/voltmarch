@@ -54,6 +54,32 @@
  * an order whose target is not a Building rather than clearing it. It used to
  * clear it, which is the whole reason the Hover Transport could not carry
  * anything; see the ownership table in `Transport.ts`'s header.
+ *
+ * OCCUPANCY IS A STORE COLUMN
+ * ---------------------------
+ * `store.garrisonId`, whose own note in `src/core/world.ts` says why it is a
+ * SIBLING of `carrierId` and not the same column. `SaveGame` remaps it with the
+ * other entity references (id 205) and `Checksum.hashEntities` mixes it.
+ *
+ * It was a service-private `PerEntityU32` here until v2.6.x, and that was two
+ * live defects rather than a gap. A load bumps every `store.gen[i]`, so the
+ * side array's stamp check failed and returned 0; `tally` then skipped at
+ * `b < 0` and nothing recovered the man, so EVERY occupant of EVERY garrisoned
+ * building came back from a save `Alive | Garrisoned | Immobilized` with no
+ * host — hidden by `RenderBridge.HIDDEN_MASK`, refused by `Selection`, rejected
+ * by `TARGETABLE_REJECT_MASK`, skipped by `Movement`: alive, immortal and
+ * invisible, permanently. And two clients could disagree about which building
+ * held a squad and still hash identically.
+ *
+ * `recover` below is the other half of that fix, and it is what makes a save
+ * written before the column existed degrade instead of rotting.
+ *
+ * INFANTRY ONLY, AND DELIBERATELY. `Transport.ts` lost its six
+ * `byKind[EntityKind.Infantry]` scans when it learned to carry vehicles; every
+ * scan here is still infantry-only and stays that way. A garrison fires with
+ * its occupants' RIFLES — `tally` sums `weaponAt(store.weaponIndex[i])` — so a
+ * building full of tanks has nothing to give it. A reader arriving from that
+ * file should expect the difference rather than the symmetry.
  * ============================================================================
  */
 
@@ -113,6 +139,10 @@ export interface GarrisonStats {
   entries: number;
   evacuations: number;
   volleys: number;
+  /** Men who went down with their building. See `sink`. */
+  drowned: number;
+  /** Men put back on the ground because nothing was holding them. See `recover`. */
+  stranded: number;
 }
 
 /** Why a structure cannot be entered. Empty string when it can. */
@@ -133,10 +163,9 @@ const TOUCHED = new Int32Array(MAX_ENTITIES);
 export class GarrisonService {
   readonly stats: GarrisonStats = {
     occupied: 0, occupants: 0, entries: 0, evacuations: 0, volleys: 0,
+    drowned: 0, stranded: 0,
   };
 
-  /** For an occupant: the host structure's handle. 0 when not garrisoned. */
-  private readonly hostOf: PerEntityU32;
   /** For a structure: `owner + 1` before the first occupier took it. */
   private readonly originalOwner: PerEntityU32;
   /** For a structure: seconds until the next volley. */
@@ -151,7 +180,6 @@ export class GarrisonService {
     private readonly world: World,
     private readonly channels: Channels,
   ) {
-    this.hostOf = new PerEntityU32(world.store, 0);
     this.originalOwner = new PerEntityU32(world.store, 0);
     this.volleyCooldown = new PerEntityF32(world.store, 0);
   }
@@ -176,8 +204,11 @@ export class GarrisonService {
 
   /** The structure this unit is inside, or NONE. */
   hostOfUnit(unit: EntityId): EntityId {
-    const h = this.hostOf.get(unit) as EntityId;
-    return this.world.store.index(h) >= 0 ? h : NONE;
+    const st = this.world.store;
+    const i = st.index(unit);
+    if (i < 0) return NONE;
+    const h = st.garrisonId[i] as EntityId;
+    return st.index(h) >= 0 ? h : NONE;
   }
 
   /** How many men are inside `building` right now. O(infantry), called rarely. */
@@ -191,7 +222,7 @@ export class GarrisonService {
     for (let a = 0; a < n; a++) {
       const i = list[a];
       if ((st.flags[i] & EntityFlag.Garrisoned) === 0) continue;
-      if (st.index(this.hostOf.getAt(i) as EntityId) === b) count++;
+      if (st.index(st.garrisonId[i] as EntityId) === b) count++;
     }
     return count;
   }
@@ -207,7 +238,7 @@ export class GarrisonService {
     for (let a = 0; a < n && count < out.length; a++) {
       const i = list[a];
       if ((st.flags[i] & EntityFlag.Garrisoned) === 0) continue;
-      if (st.index(this.hostOf.getAt(i) as EntityId) !== b) continue;
+      if (st.index(st.garrisonId[i] as EntityId) !== b) continue;
       out[count++] = st.handleOf(i) as number;
     }
     return count;
@@ -257,7 +288,10 @@ export class GarrisonService {
       const i = list[a];
       const f = st.flags[i];
       if ((f & EntityFlag.Alive) === 0) continue;
-      if ((f & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) continue;
+      if ((f & EntityFlag.PendingDestroy) !== 0) continue;
+      // A man already inside is not looking for a door; he is the one thing in
+      // this loop that can be in a broken state, so he goes to `recover`.
+      if ((f & EntityFlag.Garrisoned) !== 0) { this.recover(i); continue; }
       if ((st.orderKind[i] as OrderKind) !== OrderKind.Enter) continue;
 
       const target = st.orderTarget[i] as EntityId;
@@ -308,7 +342,7 @@ export class GarrisonService {
     st.orderZ[i] = st.posZ[t];
     st.guardX[i] = st.posX[t];
     st.guardZ[i] = st.posZ[t];
-    this.hostOf.setAt(i, host as number);
+    st.garrisonId[i] = host as number;
 
     // First man into a neutral block raises your flag over it.
     const owner = st.owner[i] as PlayerId;
@@ -326,6 +360,52 @@ export class GarrisonService {
       0, 1, 0, 0.9, host, st.faction[t] as Faction,
     );
     this.stats.entries++;
+  }
+
+  /**
+   * One occupant, checked against the building he says he is inside. Four
+   * outcomes, three of them repairs.
+   *
+   *   the host stands           nothing to do, and this is the normal case;
+   *   the host is dying         `sink` him HERE, in front of the death scan;
+   *   the host handle is stale  `strand` him where he stands;
+   *   there is no host at all   `strand` him, unless a hull claims him.
+   *
+   * WHY THE DYING BRANCH IS WHAT MAKES THE SQUAD COUNT. `Phase.Damage` (1200)
+   * stamps `PendingDestroy`; this runs at `Phase.Cleanup` order -400 and
+   * `Damage.cleanupTick` runs at `Phase.Cleanup` order 0, scanning the alive
+   * list for that flag and emitting exactly one `entity:killed` per corpse.
+   * Marking the men here puts every one of them IN FRONT of that scan, so each
+   * gets his own event, his own `unitsLost` and his own line on the killer's
+   * scoreboard. The `entity:killed` hook alone did NOT: it fires from inside
+   * the scan's own loop, so an occupant whose slot sits EARLIER in `alive[]`
+   * than his building's had already been walked past, and `flushDestroyed()`
+   * freed him in the same call with no event ever emitted. Roughly half a
+   * garrison, on average, went down unrecorded — while the hook's own comment
+   * promised the opposite. `Transport.ride` carries the same reasoning; that is
+   * where this one came from.
+   *
+   * WHY THE NO-HOST BRANCH EXISTS: THAT IS WHAT AN OLD SAVE LOOKS LIKE.
+   * `SaveGame.structuralHash()` deliberately does not cover the column list —
+   * the entity chunk is self-describing and skips ids it does not know — so a
+   * file written before `garrisonId` existed still loads, and every occupant in
+   * it arrives with a 0. Nobody owned that state: `Transport.ride` skips
+   * `carrierId === 0` as "a garrisoned man, not ours", and the man was left
+   * exactly as invisible as the bug this column fixed. BOTH columns are read
+   * before he is claimed, because a live passenger has `carrierId` set and must
+   * not be tipped out of a moving hull by the wrong service.
+   */
+  private recover(i: number): void {
+    const st = this.world.store;
+    const host = st.garrisonId[i] as EntityId;
+    if ((host as number) === 0) {
+      if ((st.carrierId[i] as number) !== 0) return;   // riding: Transport's man
+      this.strand(i);
+      return;
+    }
+    const b = st.index(host);
+    if (b < 0) { this.strand(i); return; }
+    if ((st.flags[b] & EntityFlag.PendingDestroy) !== 0) this.sink(i);
   }
 
   /* -- the volley (Phase.Weapons) ---------------------------------------- */
@@ -405,7 +485,7 @@ export class GarrisonService {
       const f = st.flags[i];
       if ((f & EntityFlag.Garrisoned) === 0) continue;
       if ((f & EntityFlag.PendingDestroy) !== 0) continue;
-      const b = st.index(this.hostOf.getAt(i) as EntityId);
+      const b = st.index(st.garrisonId[i] as EntityId);
       if (b < 0) continue;
 
       if (OCC_COUNT[b] === 0) {
@@ -450,7 +530,7 @@ export class GarrisonService {
     for (let a = 0; a < n; a++) {
       const i = list[a];
       if ((st.flags[i] & EntityFlag.Garrisoned) === 0) continue;
-      if (st.index(this.hostOf.getAt(i) as EntityId) !== b) continue;
+      if (st.index(st.garrisonId[i] as EntityId) !== b) continue;
       this.place(i, b, out);
       out++;
     }
@@ -481,9 +561,32 @@ export class GarrisonService {
     const halfW = Math.max(st.footprintW[b], 1) * CELL * 0.5 + GARRISON.evacuateMetres;
     const halfH = Math.max(st.footprintH[b], 1) * CELL * 0.5 + GARRISON.evacuateMetres;
     const angle = (ordinal / GARRISON.capacity) * Math.PI * 2;
-    const px = st.posX[b] + Math.sin(angle) * halfW;
-    const pz = st.posZ[b] + Math.cos(angle) * halfH;
+    this.putDown(
+      i,
+      st.posX[b] + Math.sin(angle) * halfW,
+      st.posZ[b] + Math.cos(angle) * halfH,
+    );
+  }
 
+  /**
+   * An occupant nothing is holding, dropped where he stands.
+   *
+   * Dropped and not killed, because every route here is a save load or a
+   * teardown rather than combat, and deleting a squad because a service was
+   * disposed would be a silent loss with no cause a player can see. Where he
+   * stands and not on a ring, because there is no host left to ring — the body
+   * has been parked at the building's centre since `enter`, so this puts him on
+   * the strongpoint he was holding. `Transport.strand` makes the same call.
+   */
+  private strand(i: number): void {
+    const st = this.world.store;
+    this.putDown(i, st.posX[i], st.posZ[i]);
+    this.stats.stranded++;
+  }
+
+  /** Clear the occupancy state and set one man down at a chosen point. */
+  private putDown(i: number, px: number, pz: number): void {
+    const st = this.world.store;
     st.flags[i] &= ~(EntityFlag.Garrisoned | EntityFlag.Immobilized);
     st.posX[i] = px; st.posZ[i] = pz;
     st.posY[i] = this.world.terrain.heightAt(px, pz);
@@ -494,10 +597,19 @@ export class GarrisonService {
     st.orderTarget[i] = 0;
     st.state[i] = UnitState.Idle;
     st.velX[i] = 0; st.velZ[i] = 0; st.speed[i] = 0;
-    this.hostOf.clear(st.handleOf(i));
+    st.garrisonId[i] = 0;
   }
 
-  /** The building died. Everyone inside dies with it, quietly. */
+  /**
+   * The building died. Everyone inside dies with it, quietly.
+   *
+   * THE BACKSTOP, not the usual path — `recover` catches a building already
+   * stamped `PendingDestroy` at `Phase.Cleanup` order -400, four hundred slots
+   * ahead of the death scan, and that is what gets each man his own
+   * `entity:killed`. This route covers a structure killed outside the tick,
+   * where that pass has not run. Idempotent through `sink`'s `markDead` guard,
+   * so a building that reaches both routes kills its garrison once.
+   */
   private killOccupants(building: EntityId): void {
     const st = this.world.store;
     const b = st.index(building);
@@ -507,16 +619,29 @@ export class GarrisonService {
     for (let a = 0; a < n; a++) {
       const i = list[a];
       if ((st.flags[i] & EntityFlag.Garrisoned) === 0) continue;
-      if (st.index(this.hostOf.getAt(i) as EntityId) !== b) continue;
-      // They are already inside a building that is exploding on its own; a
-      // second body-and-stain per man on top of that is noise. `Drowned` and
-      // not `Selling`, because `Damage.cleanupTick` returns on `Selling`
-      // before the statistics block: a garrison wiped out with its building
-      // reached neither scoreboard, and a five-man loss went unrecorded.
-      st.state[i] = UnitState.Drowned;
-      st.markDead(st.handleOf(i));
-      this.hostOf.clear(st.handleOf(i));
+      if (st.index(st.garrisonId[i] as EntityId) !== b) continue;
+      this.sink(i);
     }
+  }
+
+  /**
+   * One occupant goes down with the building.
+   *
+   * They are already inside something that is exploding on its own, so a second
+   * body-and-stain per man is noise: `UnitState.Drowned` is `sim/Damage.ts`'s
+   * "went down inside something else" channel, which suppresses the fireball
+   * and the wreck and keeps the loss. It has to be `Drowned` and not `Selling`,
+   * which is what this was — `Damage.onDeath` returns on `Selling` BEFORE the
+   * statistics block, so a garrison wiped out with its building reached neither
+   * scoreboard while the comment here promised it did.
+   */
+  private sink(i: number): void {
+    const st = this.world.store;
+    const h = st.handleOf(i);
+    if (!st.markDead(h)) { st.garrisonId[i] = 0; return; }
+    st.state[i] = UnitState.Drowned;
+    st.garrisonId[i] = 0;
+    this.stats.drowned++;
   }
 
   /**

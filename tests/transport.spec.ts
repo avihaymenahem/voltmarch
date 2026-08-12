@@ -594,14 +594,29 @@ describe('garrisons and transports', () => {
     loadSquad(rig, hull, 2);
 
     // A man inside a BUILDING carries the same flag and must not be counted as
-    // a passenger; the garrison's own `hostOf` column is what separates them.
+    // a passenger; `store.garrisonId` against `store.carrierId` is what
+    // separates them.
+    //
+    // THE HOST IS REAL, and it has to be. This used to set the flag and nothing
+    // else, so the "garrison occupant" was a man with no host of either kind —
+    // which is not a garrison occupant, it is the permanently invisible state
+    // `GarrisonService.recover` now repairs, and the fixture asserted it
+    // survived the tick. Held by an actual building, the assertion means what it
+    // says: two services, two columns, neither one touching the other's men.
     const st = rig.world.store;
+    const block = st.alloc(
+      EntityKind.Building, 0, ALLIES, Faction.Allies, 600, 0, 600, 0,
+    );
+    st.footprintW[st.index(block)] = 2;
+    st.footprintH[st.index(block)] = 2;
     const stray = rig.unit('gi', ALLIES, 600, 600);
     st.flags[st.index(stray)] |= EntityFlag.Garrisoned;
+    st.garrisonId[st.index(stray)] = block as number;
     rig.step();
 
     expect(rig.transport.passengerCount(hull)).toBe(2);
     expect(rig.transport.stats.riding).toBe(2);
     expect(isAboard(rig, stray)).toBe(true);   // untouched by the transport tick
+    expect(rig.garrison.hostOfUnit(stray)).toBe(block);
   });
 });

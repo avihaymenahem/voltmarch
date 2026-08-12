@@ -608,6 +608,11 @@ const REF_COLUMNS: readonly { id: number; of: (s: EntityStore) => Int32Array }[]
   { id: 202, of: (s) => s.dockTarget },
   { id: 203, of: (s) => s.lastAttackerId },
   { id: 204, of: (s) => s.carrierId },
+  // 204 and 205 are the two halves of "inside something else". Both are
+  // remapped rather than copied for the reason at the top of this file: a raw
+  // copy would resolve, after the generation bump, against whatever unit
+  // recycled the slot — a squad that reappears inside a stranger's building.
+  { id: 205, of: (s) => s.garrisonId },
 ];
 
 /** `kind` is written separately: `alloc` needs it before any column lands. */
