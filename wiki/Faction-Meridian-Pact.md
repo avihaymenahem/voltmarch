@@ -66,7 +66,7 @@ crushes anything.
 | Unit | Cost | Time | Needs | HP | Armour | Speed | Weapon | Range | Air | What it is for |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Sun Collector | 1000 | 13 s | Forgeyard, Ore Cistern | 800 | Light | 7.0 | unarmed | — | — | Half the load, twice the trips. Carries 450 credits of ore, 400 cheaper and 40% faster than a standard harvester |
-| Sandskiff **(locked)** | 550 | 9 s | Forgeyard | 190 | Light | **9.2** | Arc Repeater, 19 x4, autocannon | 23 m | yes | The raider, and the fastest ground hull on the map. Turreted, shoots at aircraft, **and carries two infantry** |
+| Sandskiff **(locked)** | 550 | 9 s | Forgeyard | 190 | Light | **9.2** | Arc Repeater, 13 x4, autocannon | 23 m | yes | The raider, and the fastest ground hull on the map. Turreted, shoots at aircraft, **and carries two infantry** |
 | Solarch | 800 | 12 s | Forgeyard | 330 | Light | 7.6 | Focus Lance, 60, AP, 1.4 m splash | 26 m | no | The Pact main line. Outranges, never brawls. Turreted, faster than any other line tank |
 | Zenith Emitter **(locked)** | 1500 | 19 s | Forgeyard, Reliquary | 240 | Light | 6.2 | Zenith Emitter, 94, prism | **33 m** | no | Siege beam. Enormous damage that nearly nothing resists, at the longest ground reach in the army. Must stop to fire. 240 hit points |
 | Pactworks Carryall | 3000 | 32 s | Forgeyard | 950 | Heavy | 5.0 | unarmed | — | — | Unfolds into a second Conclave. Cannot be crushed |
@@ -124,9 +124,14 @@ the shared-pool Gate to let your own column through a wall run — plan your per
 aircraft, but it is locked behind the Reliquary and draws 55 power. Below that tier your only
 answers to a gunship are the Sunlancer and the Kestrel.
 
-Of the three, only the Helios Spire actually stops firing when your grid browns out. The Glaive Post
-and the Zenith Emitter keep shooting whatever the power situation — their cameo text warns about the
-grid, but in play the Spire is the one that goes dark.
+**Both Pact emplacements go dark in a brownout.** The Glaive Post and the Helios Spire each draw
+power and each fire a weapon flagged `needsPower`, and the rule needs all three parts to hold — the
+weapon asks for power, the structure draws it, and the structure is currently unpowered. Lose the
+grid and both stop. The Zenith Emitter keeps shooting, because it is a VEHICLE: it draws no power,
+so the second clause can never be true for it whatever the grid is doing.
+
+That matters more for the Pact than for anyone else. Two of your three static answers switch off
+together, and the mobile one is a 1500-credit siege hull you did not buy to sit at home.
 
 ## Superweapon
 

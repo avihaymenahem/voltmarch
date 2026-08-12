@@ -95,10 +95,10 @@ tank. Both elevate, so both are also anti-air.
 | 90 mm Cannon | Grizzly | 55 | Armour-Piercing | 24 | 1.50 s | 37 | 1.6 | no |
 | 125 mm Cannon | Rhino | 78 | Armour-Piercing | 26 | 2.00 s | 39 | 2.1 | no |
 | Twin 125 mm | Apocalypse | 60 x2 | Armour-Piercing | 28 | 2.58 s | 47 | 2.2 | no |
-| 25 mm Chaingun | Multigunner IFV | 22 x4 | Autocannon | 22 | 0.76 s | 116 | – | yes |
+| 25 mm Multigunner | Multigunner IFV | 11 x5 | Autocannon | 22 | 0.84 s | 65 | – | yes |
 | Prism Emitter | Prism Tank, Field Marshal | 92 | Prism | 30 | 2.60 s | 35 | – | no |
 | Focus Lance | Solarch, Hierarch | 60 | Armour-Piercing | 26 | 1.60 s | 38 | 1.4 | no |
-| Arc Repeater | Sandskiff | 19 x4 | Autocannon | 23 | 0.76 s | 100 | – | yes |
+| Arc Repeater | Sandskiff | 13 x4 | Autocannon | 23 | 0.76 s | 68 | – | yes |
 | Zenith Emitter | Zenith Emitter | 94 | Prism | 33 | 2.90 s | 32 | – | no |
 | Spit Coil | Arcspitter | 30 | Tesla | 16 | 0.95 s | 32 | – | yes |
 | Grinder Arc | Grinder, Scrap Baron | 70 | Tesla | 18 | 1.90 s | 37 | – | no |

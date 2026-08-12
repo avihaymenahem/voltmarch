@@ -59,7 +59,7 @@ Built at the **War Factory**.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Ore Harvester | 1400 | 16 s | War Factory, Refinery | 1000 | Heavy | 5.0 | unarmed | — | — | Your entire economy. Carries 700 credits of ore. Crushes infantry |
 | Grizzly Tank | 700 | 11 s | War Factory | 340 | Medium | 6.6 | 90 mm Cannon, 55, AP | 24 m | no | The main battle tank. Turreted, crushes infantry |
-| Multigunner IFV **(locked)** | 600 | 10 s | War Factory, Radar | 220 | Light | 8.4 | 25 mm Chaingun, 22 x4, autocannon | 22 m | yes | The raider. Fast, turreted, 1.00 against Light armour — it erases other raiders and aircraft |
+| Multigunner IFV **(locked)** | 600 | 10 s | War Factory, Radar | 220 | Light | 8.4 | 25 mm Multigunner, 11 x5, autocannon | 22 m | yes | The raider. Fast, turreted, 1.00 against Light armour — it erases other raiders and aircraft |
 | Prism Tank **(locked)** | 1200 | 17 s | War Factory, Battle Lab | 260 | Light | 6.0 | Prism Emitter, 92, prism | 30 m | no | Beam artillery. Enormous damage that almost nothing resists. Must stop to fire. Fragile |
 | Construction Vehicle | 3000 | 32 s | War Factory | 1000 | Heavy | 4.2 | unarmed | — | — | Unfolds into a second Construction Yard. Cannot be crushed |
 
@@ -71,7 +71,7 @@ means it is safe from two thirds of the army and also doing nothing.
 
 | Unit | Cost | Time | Needs | HP | Armour | Speed | Weapon | Range | Air | What it is for |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Vindicator **(locked)** | 1200 | 16 s | War Factory, Radar | 240 | Light | 11.5 | Vindicator AGM, 62 x2, rocket, 2.2 m splash | 23 m | yes | Strike aircraft. The heaviest and slowest of the four aircraft in the game, carrying a rocket warhead that hurts armour and buildings alike (0.95 vs Heavy, 0.90 vs Concrete). You buy this to open a base, not to win a dogfight |
+| Vindicator **(locked)** | 1200 | 16 s | War Factory, Radar | 240 | Light | 11.5 | Vindicator AGM, 62 x2, rocket, 2.2 m splash | 23 m | yes | Strike aircraft. The heaviest of the four aircraft in the game, carrying a rocket warhead that hurts armour and buildings alike (0.95 vs Heavy, 0.90 vs Concrete). You buy this to open a base, not to win a dogfight |
 
 ## Navy
 
