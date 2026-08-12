@@ -248,27 +248,35 @@ async function canvasPoint(page, px, py) {
       await page.evaluate(([x, z]) => window.__VM.focusOn(x, z), ax);
       await frames(page, 6);
 
-      // Where does each aircraft actually land on screen?
+      // WHERE THE GAME DRAWS THEM, ASKED OF THE GAME.
+      //
+      // An earlier version of this did the projection itself out of
+      // `camera.matrixWorldInverse` and `projectionMatrix`, and it was wrong by
+      // about 80 px vertically — it ignored the canvas rect that
+      // `CameraRig.worldToScreen` adds and the lift `pickEntity` aims at. The
+      // harness then clicked empty sky and reported that aircraft could not be
+      // selected, which was true for a completely different reason. An
+      // instrument that recomputes what it is measuring will eventually
+      // disagree with it; ask the rig.
       const proj = await page.evaluate(() => {
         const w = globalThis.__vmProduction.world; const st = w.store;
-        const cam = window.__VM.camera;
-        const m = cam.matrixWorldInverse.elements, p = cam.projectionMatrix.elements;
-        const at = (ex, ey, ez) => {
-          const vx = m[0] * ex + m[4] * ey + m[8] * ez + m[12];
-          const vy = m[1] * ex + m[5] * ey + m[9] * ez + m[13];
-          const vz = m[2] * ex + m[6] * ey + m[10] * ez + m[14];
-          const cx = p[0] * vx + p[4] * vy + p[8] * vz + p[12];
-          const cy = p[1] * vx + p[5] * vy + p[9] * vz + p[13];
-          const cw = p[3] * vx + p[7] * vy + p[11] * vz + p[15];
-          return [Math.round((cx / cw * 0.5 + 0.5) * window.innerWidth),
-            Math.round((-(cy / cw) * 0.5 + 0.5) * window.innerHeight)];
+        const rig = window.__VM.rig; const T = window.__VM.THREE;
+        const at = (x, y, z) => {
+          const p = new T.Vector2();
+          rig.worldToScreen(new T.Vector3(x, y, z), p);
+          return [Math.round(p.x), Math.round(p.y)];
         };
         const out = [];
         for (let a = 0; a < st.aliveCount; a++) {
           const i = st.alive[a];
           if (st.owner[i] !== w.localPlayer || st.locomotor[i] !== 5) continue;
-          out.push({ id: st.handleOf(i), air: at(st.posX[i], st.posY[i], st.posZ[i]),
-            ground: at(st.posX[i], 0, st.posZ[i]) });
+          const hit = new T.Vector3();
+          const sprite = at(st.posX[i], st.posY[i] + st.radius[i] * 0.9, st.posZ[i]);
+          rig.screenToGround(sprite[0], sprite[1], hit);
+          out.push({ id: st.handleOf(i), air: sprite, ground: at(st.posX[i], 0, st.posZ[i]),
+            // The whole defect in one number: how far the terrain under the
+            // hull's pixels is from the hull, against pickEntity's 11.6 m query.
+            groundOffsetM: +Math.hypot(hit.x - st.posX[i], hit.z - st.posZ[i]).toFixed(1) });
         }
         return out;
       });
