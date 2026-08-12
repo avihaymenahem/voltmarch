@@ -53,7 +53,8 @@
  * `Superweapons.ts`. A number RETYPED here is a second copy that nothing
  * compares, which is precisely the class of defect `docs/SPEC_DRIFT_AUDIT.md`
  * catalogues; the Multigunner IFV's gun was rebalanced from 22x4 to 11x5 and
- * the wiki still quotes the old figure today.
+ * the wiki went on quoting the old figure for three releases before anyone
+ * compared the two.
  *
  * The rule costs less than it sounds like. "Reaches further than a Grizzly" is
  * a comparison the balance pass cannot silently break in the way "reaches 26 m"
@@ -62,32 +63,42 @@
  * EVERY CLAIM WAS CHECKED AGAINST THE SHIPPED TABLES
  * --------------------------------------------------
  * `wiki/` was the source for the VOICE and for most of the framing, and it is
- * accurate almost everywhere. It is not accurate in SIX places, all found by
+ * accurate almost everywhere. It was not accurate in SIX places, all found by
  * checking rather than by reading, and in every one of them `DEF_TABLES` won
- * and the sentence here was written from the table instead. They are listed
- * because a finding nobody wrote down is a finding that gets made again:
+ * and the sentence here was written from the table instead.
  *
- *   1. `Faction-Allies.md` gives the Multigunner IFV "25 mm Chaingun, 22 x4".
+ * ALL SIX ARE NOW FIXED IN `wiki/` AND ON THE PUBLISHED WIKI, and the list is
+ * kept anyway, in the past tense, because a finding nobody wrote down is a
+ * finding that gets made again — and because two of the six had the same wrong
+ * number in a SECOND place (`Combat.md`) that this list did not name, which is
+ * the argument for writing findings down rather than fixing them in passing:
+ *
+ *   1. `Faction-Allies.md` gave the Multigunner IFV "25 mm Chaingun, 22 x4".
  *      It fires `ifvChaingun`, 11 x5 on a 0.60 s cycle. `DEFAULT_WEAPONS[6]`
  *      still holds the 22 x4 row and no shipped def fires it — see the
  *      REBALANCE_WEAPONS block in `Defs.ts`.
- *   2. `Faction-Meridian-Pact.md` gives the Sandskiff "Arc Repeater, 19 x4".
+ *   2. `Faction-Meridian-Pact.md` gave the Sandskiff "Arc Repeater, 19 x4".
  *      The row is 13 x4; `Defs.ts` retuned it in place and says why.
  *   3. `Faction-Meridian-Pact.md`: "only the Helios Spire actually stops firing
  *      when your grid browns out. The Glaive Post and the Zenith Emitter keep
  *      shooting". Half stale. `glaiveRepeater` carries `needsPower` now and the
  *      Glaive Post is a structure drawing power, so it goes dark WITH the
- *      Spire. The Zenith half is still right, and for the reason `Defs.ts`
- *      gives: it is a hull, and a hull can never carry `NeedsPower`.
- *   4. `Faction-Allies.md` calls the Vindicator "the heaviest and slowest of
+ *      Spire. The Zenith half was right, and for the reason `Defs.ts` gives: it
+ *      is a hull, and a hull can never carry `NeedsPower`.
+ *   4. `Faction-Allies.md` called the Vindicator "the heaviest and slowest of
  *      the four aircraft". Heaviest yes; slowest no — it is 11.5 against the
- *      Swarmhornet's 11.0.
+ *      Swarmhornet's 11.0. The same wrong phrase was in `Defs.ts`'s own comment
+ *      three lines above the number, which is where the wiki got it.
  *   5. `Economy.md`: "The Ore Silo is the cheapest building in the game at 150
  *      credits". The three walls are 100.
  *   6. `Faction-Reclamation.md`: "The Slagger's 12 m is the shortest reach of
  *      any gun in the game — only an Attack Dog's jaws get closer." Those two
  *      clauses contradict each other, and the table agrees with the second:
  *      `bite` is 3.6 m.
+ *
+ * The second copies, found only because 1 and 2 were: `Combat.md`'s weapon
+ * table carried the IFV at 22 x4 / 116 dps and the Sandskiff at 19 x4 / 100
+ * dps. Real figures are 11 x5 over 0.84 s (65 dps) and 13 x4 over 0.76 s (68).
  * ============================================================================
  */
 

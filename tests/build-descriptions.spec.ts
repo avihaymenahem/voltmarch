@@ -18,8 +18,9 @@
  *
  * The last one deserves its own sentence. `docs/SPEC_DRIFT_AUDIT.md` is a
  * catalogue of second copies that stopped agreeing with their originals, and
- * the wiki quoting the Multigunner IFV's pre-rebalance `22 x4` is a live
- * example of the same defect in the same product. Every number a player needs
+ * the wiki quoting the Multigunner IFV's pre-rebalance `22 x4` — on two pages,
+ * for three releases — was an example of the same defect in the same product.
+ * It has since been corrected in both. Every number a player needs
  * here is already derived and on screen — the cost on the cameo, the build time
  * and power draw in the tooltip, the prerequisite sentence out of `prereqs`.
  * A description is therefore prose ABOUT the numbers and never a copy of them,
