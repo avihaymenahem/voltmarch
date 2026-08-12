@@ -345,14 +345,38 @@ shipped seed, and no land route between any two of them. Ten battlefields ship n
 - **The map-capability gate:** no navigable water means no naval content is offered at all. Verified
   over all ten shipped maps in `tests/sea-crossing-gate.spec.ts`, which is the only test that loops
   the whole roster.
-- **Naval MOBILITY is exempt from the progression gate where the armies are not land-connected**,
-  and warships are not. The rule is narrower than "ungate naval": *content required to reach the
-  enemy is never progression-gated*. Sunder Atoll shipped with no map unlock so a fresh profile
-  could pick it, and on a fresh profile it was a PERMANENT STALEMATE — `struct.naval` gates all four
-  docks, one mission pays it ("win 10 skirmishes"), every lift is gated on a dock, and
-  `UnlockGate.mirrorAI` resolves the AI against the HUMAN's profile, so all four armies were
-  stranded. Every existing test was green, because "complete army" had been derived over CONTENT
-  with no notion that a battlefield can make one row load-bearing.
+- **THE NAVY IS NOT PROGRESSION-GATED, ANYWHERE, AND THAT IS DELIBERATE.** `struct.naval`,
+  `unit.naval` and `unit.naval.capital` are deleted — from `UNLOCK_TAGS` and from `UNLOCKS`, not
+  merely unreferenced. The exemption they needed (`isSeaMobility` + `mobilityExempt`) is deleted
+  with them. Do not reintroduce any of it.
+
+  The old rule was *content required to reach the enemy is never progression-gated*, and it fired
+  only where `mapForcesSeaCrossing` — water present AND ground split — which is Sunder Atoll and
+  nowhere else. So on Contested Strait and Coral Shore, the two battlefields the lobby sells as
+  naval, a partially progressed profile got no dock, no lift and no warship; `UnlockGate.mirrorAI`
+  resolves the AI against the human's profile, so BOTH sides were dead and the water was scenery.
+  The maps also arrive long before their content — Contested Strait is paid by one win under
+  fifteen minutes, `struct.naval` wanted ten wins on an independent chain — and its own lobby blurb
+  reads "Naval yards earn their cost here."
+
+  The in-match gates are untouched and they are the right ones: a dock needs a real coast, every
+  hull needs a dock, and the four capital ships need the army's tech structure.
+  `tests/sea-crossing-gate.spec.ts` now pins the RULE — no sea-bound entry may name an unlock id —
+  so the next hull added behind one fails there rather than in a player's match.
+- **`waterOnly` and `warship` are two fields because they are two questions.** This was one bit
+  named `naval`: `spawnUnit` read it as "water-only" and `isSeaMobility` read it as "warship",
+  defining the exemption as the flag's ABSENCE. The line was drawn at "does it carry passengers", to
+  protect the unarmed Hover Transport's ability to beach — and two hulls have a hold AND a gun.
+  `mrdSkiff` is intended (a Pact land raider gated on a land structure; the whole army hovers).
+  `rclScow` was not: a dock-built, naval-sortOrder hull with a 68-damage HE bow gun that could drive
+  inland and shell a base. `tests/naval-shore.spec.ts` asserted that roster verbatim under the name
+  "marks exactly the gunned hulls as warships" while excluding two gunned hulls, so the test pinned
+  the defect rather than catching it.
+
+  **The rule now: a hull a SHIPYARD builds never touches dry land, carrier or not.** A carrier does
+  not need to beach — `Transport.place` walks a widening ring for a cell the PASSENGER can stand on
+  and puts the squad on the sand from open water, which is how the AI has landed all along. A land
+  unit that swims is a different thing and keeps `waterOnly: false`.
 - **Naval hulls carry `MoveClass.Naval`**, yards require a coast, and the beach profile is piecewise
   so a dock can actually be placed: coastal buildable ground went 16.4% → 57.4% on contested-strait,
   and coral-shore had **zero** legal dock sites before.
@@ -361,6 +385,45 @@ shipped seed, and no land route between any two of them. Ten battlefields ship n
   not run that proof: `tests/amphibious-landing.spec.ts` is the one opt-in file, skipped unless
   `VM_LANDING_PROBE` is set, because it drives a real 24-minute four-army match and "the brain lands
   twelve times" is a fact about one seed rather than an invariant.
+
+## Cargo is SLOTS, and a carrier is not a bench
+
+Reported as *"limited to 1 type of ship only that carries 4 troops each"*. Exactly true:
+`cargoSlots > 0` was set on three defs in the whole game, one per army — and the carrier took
+INFANTRY ONLY, so on Sunder Atoll, where no two armies share a land route, the entire vehicle
+roster was unusable against three of your four opponents.
+
+- **Infantry cost one slot, a vehicle costs two** (`SLOT_COST_BY_KIND` in `src/sim/Transport.ts`).
+  Eight slots is four tanks, or eight riflemen, or any mix. `UnitDef.passengers` is `cargoSlots`.
+- **`refusalFor` refuses a carrier as cargo**, and it is the only thing that does. `capacityAt`
+  answers for any non-Building, nothing detects a cycle, and two hulls each holding the other would
+  copy each other's position forever. Nesting used to be prevented as a side effect of the
+  infantry-only rule; removing that rule without this line reopens it.
+- **`store.carrierId` is a real column** — saved through `REF_COLUMNS`, hashed by
+  `Checksum.hashEntities`. It was a service-private `PerEntityU32`, which was two live bugs: a load
+  bumps every `store.gen[i]`, so the stamp check returned 0, `ride` skipped at `held === 0`, `strand`
+  was unreachable, and **every passenger in every saved game came back `Alive | Garrisoned |
+  Immobilized` with no host** — unrenderable, unselectable, untargetable, unmovable, permanently.
+  And two lockstep clients that disagreed about WHICH hull a man was in produced an identical
+  checksum. `GarrisonService` still keeps occupancy in a side array and still has the first half.
+- **`UnitState.Drowned` exists to sit on the far side of `Damage.cleanupTick`'s early return for
+  `Selling`.** A sunk transport's squad and a levelled garrison's occupants reached neither
+  scoreboard while comments in both services promised they did.
+- **A carrier comes to the shore when you load it.** `TransportService.callHullIn`, off the same
+  `OrderKind.Enter` a right-click produces. Water is impassable to `MoveClass.Foot`, so
+  `Flowfield.snapToReachable` pulled the squad's goal back to the last dry cell and they stood on
+  the sand while `board` re-stamped the order every tick — 0 aboard, forever. The AI had worked
+  around this privately by steering its own hull onto a LAND cell; that is deleted, because carriers
+  are `waterOnly` now and the destination was unreachable.
+- **The swimmers are `Locomotor.Foot` plus an `amphibious` def bit → `MoveClass.Hover`.** NOT a new
+  `Locomotor` member: `passGrid` sets bits 0-3 only and `findEgressSpot` asks
+  `isPassable(cx, cz, loco)`, so a locomotor with no bit is impassable on every cell of the map and
+  the finished man would sit `ready: true` at the head of the Infantry queue forever, silently, with
+  the player already charged, blocking every rifleman behind him. That is the aircraft egress bug.
+- **`movesShareSpace` replaced `(jc === Naval) !== (cls === Naval)`** in `Steering` and
+  `Movement.relax`. The old test is right for a world of ships and tanks and wrong the moment
+  anything amphibious exists: a destroyer drove straight through the Pact's entire hover army with
+  no separation and no hard relaxation. Silent interpenetration, not a collision.
 
 ## Hard rules
 
