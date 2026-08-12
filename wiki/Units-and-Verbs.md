@@ -438,7 +438,7 @@ construction vehicle, any aircraft, or any hull a shipyard builds** — all of
 them carry a crushable-by of 0, which means uncrushable. The Sandskiff is the
 one carrier that does not: it is a land raider, and it carries a 4.
 
-**Vehicles cannot crush vehicles at all.** Fifteen hulls carry a crushable-by
+**Vehicles cannot crush vehicles at all.** Eleven hulls carry a crushable-by
 number in the 4–6 range and nothing reads it — the roster only ever marks
 infantry as crushable. Ramming a tank with a bigger tank does nothing.
 

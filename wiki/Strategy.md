@@ -712,7 +712,7 @@ Be aware of these before you build a plan around one:
   every map.
 - **The Prism Tank does not crush**, despite carrying a crush level of 2. It is missing the flag the
   crush resolver actually reads. Every other Allied and Soviet tank crushes; this one does not.
-- **Vehicles cannot ram vehicles.** Fifteen hulls carry a crushable-by number and nothing reads it.
+- **Vehicles cannot ram vehicles.** Eleven hulls carry a crushable-by number and nothing reads it.
   Only infantry are crushable.
 - **Aggressive and Defensive stance are the same thing.** Nothing chases a target of opportunity in
   this build. Hold Fire and Hold Ground are the two that do something.
