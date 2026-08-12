@@ -36,17 +36,25 @@ import { resolveDefBinding } from '../src/game/Scenarios';
 import { BuildTab, Faction } from '../src/core/types';
 
 /**
- * The cap the strip can actually render, and it is measured rather than
+ * The cap the strip can actually render, and it is MEASURED rather than
  * guessed. `.vm-brief` is 53u tall against a 240u rail: 7u of padding, a 9.5u
  * name line and four 9u text lines. Live at 1440p that is a 432 px text column
- * at 16 px Rajdhani, which wraps ordinary mixed-case prose at about 62
- * characters — call it 50 for a line that lands badly, and four lines is 200.
+ * at 16 px Rajdhani. Probing that exact column with the exact shipped face:
+ * ordinary mixed-case prose wraps at about 62 characters, and a string of long
+ * words wraps as badly as 49.
+ *
+ * 190 is four lines at the BAD ratio, not the good one. The distinction is the
+ * whole point of the number: at 200 the copy fits only because the sentences
+ * happen to break well, which is a property of the words rather than of the
+ * box, and the next author would not know that. 190 fits whatever anyone
+ * writes. Every entry was then rendered in a real match at 1440p, 1080p and
+ * 1366x768 and none of them clipped.
  *
  * Both bounds matter. Over the cap the tail is cut with no ellipsis and nobody
  * sees it happen. Well under it and the entry is not answering the three
  * questions a first-time player has, which is what the file is for.
  */
-const MAX_CHARS = 200;
+const MAX_CHARS = 190;
 const MIN_CHARS = 80;
 
 const FACTIONS = [Faction.Allies, Faction.Soviets, Faction.Meridian, Faction.Reclaim] as const;

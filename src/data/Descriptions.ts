@@ -94,8 +94,8 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
   refinery:
     'Where harvesters cash ore in for credits. It comes with a free harvester '
-    + 'and raises your storage cap. Build it early and build it near the ore: '
-    + 'the length of that drive is what sets your income.',
+    + 'and raises your storage cap. Build it early and near the ore: the length '
+    + 'of that drive is what sets your income.',
 
   barracks:
     'Trains every foot soldier. A second one does not give you a second queue, '
@@ -140,7 +140,7 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   wall:
     'Cheap blocks that stop vehicles, and only vehicles — infantry walk '
     + 'straight through a wall line. Their other use is creep: every structure '
-    + 'you plant extends the ground you are allowed to build on.',
+    + 'you plant extends the ground you may build on.',
 
   gate:
     'A wall segment your own units can drive through and the enemy cannot. '
@@ -152,7 +152,7 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   engineer:
     'Walks into a building and takes it, and is spent doing it. A neutral '
     + 'structure flips at any health; an enemy one has to be at half health or '
-    + 'below. He also repairs one of your own back to full.',
+    + 'below. He also repairs one of yours back to full.',
 
   harvester:
     'Your entire economy in one vehicle. It finds ore, mines it and banks it at '
@@ -162,12 +162,12 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   mcv:
     'A Construction Yard folded up and driven around. Take it where you want a '
     + 'second base and press D to unpack it. This is how you expand across the '
-    + 'map, and how you replace a yard you have lost.',
+    + 'map, and how you replace a lost yard.',
 
   transport:
     'An unarmed lift with more infantry seats than anything else in the game. '
-    + 'It hovers, so it crosses water — the only way either original army puts '
-    + 'a squad on a far shore. Passengers cannot fire.',
+    + 'It hovers, so it crosses water — the only way either original army puts a '
+    + 'squad ashore. Passengers cannot fire.',
 
   /* ======================================================================
    * ALLIED FORCES
@@ -175,8 +175,8 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
   pillbox:
     'A cheap machine-gun nest and your first real defence. It shreds infantry '
-    + 'and barely scratches armour, and it draws no power at all, so it keeps '
-    + 'firing through a blackout that darkens everything else.',
+    + 'and barely scratches armour, and it draws no power, so it keeps firing '
+    + 'through a blackout that darkens the rest.',
 
   aaTurret:
     'The only emplacement in the game built purely for aircraft. It reaches up, '
@@ -186,22 +186,22 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   prismTower:
     'A beam tower with the longest reach of any defence in the game, and it '
     + 'shoots at aircraft. Prism ignores most armour. It needs the Battle Lab, '
-    + 'and it goes dark the moment your grid browns out.',
+    + 'and goes dark the moment your grid browns out.',
 
   chronosphere:
     'The one superweapon that moves your own army instead of hurting somebody '
-    + "else's. Pick a source and a destination, and a squad's worth of your "
-    + 'units is lifted out of one and set down in the other.',
+    + "else's. Pick a source and a destination, and a squad's worth of your units "
+    + 'is lifted from one to the other.',
 
   weatherControl:
-    'A sustained lightning barrage over a patch of map. It lands more total '
-    + 'damage than a nuclear strike, but scattered — use it to deny ground or '
-    + 'wreck a production line, not to delete one building.',
+    'A sustained lightning barrage over a patch of map. More total damage than '
+    + 'a nuclear strike, but scattered — use it to deny ground or wreck a '
+    + 'production line, not to delete one building.',
 
   gi:
     'Your basic rifleman: cheap bodies that shred other infantry, and they can '
-    + 'shoot at aircraft. Against armour he is nearly useless — small arms '
-    + 'barely mark a tank — so bring a Javelin for that.',
+    + 'shoot at aircraft. Against armour he is nearly useless — small arms barely '
+    + 'mark a tank — so bring a Javelin.',
 
   javelin:
     'A shoulder rocket that genuinely kills tanks and aircraft where a rifle '
@@ -211,7 +211,7 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   fieldMarshal:
     'Your commander, one alive at a time. He carries a full prism emitter, and '
     + 'Chrono Rally teleports nearby units to him — the longest reach of any '
-    + 'commander ability, for regrouping a scattered push.',
+    + 'commander ability, for regrouping a push.',
 
   grizzly:
     'The Allied main battle tank and the backbone of a push: turreted, quick, '
@@ -226,7 +226,7 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   prismTank:
     'Beam artillery. Enormous damage that almost no armour resists, from '
     + 'further out than any tank gun reaches. It stops to fire, cannot shoot at '
-    + 'aircraft, and dies to a raid it did not see coming.',
+    + 'aircraft, and dies to a raid it did not see.',
 
   vindicator:
     'A strike aircraft, and the toughest of the four. Its rockets hurt armour '
@@ -256,7 +256,7 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   upgAlliedLogistics:
     'A purchase, not a unit: buy it once and everything in every queue finishes '
     + 'sooner — structures, infantry and vehicles alike. It compounds over the '
-    + 'rest of the match, so buy it early or not at all.',
+    + 'match, so buy it early or not at all.',
 
   /* ======================================================================
    * SOVIET UNION
@@ -268,9 +268,9 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'against armour, and it fires through a blackout.',
 
   flameTower:
-    'A short-ranged flamethrower, brutal on foot troops because the splash '
-    + 'catches whoever is stood near the target. It has the shortest reach of '
-    + 'any emplacement in the game, so attackers can stand off it.',
+    'A short-ranged flamethrower, brutal on foot troops because its splash '
+    + 'catches whoever is standing near the target. It has the shortest reach of '
+    + 'any emplacement, so attackers stand off it.',
 
   teslaCoil:
     'Deletes infantry and hurts armour badly, and it elevates, so it is the '
@@ -299,13 +299,13 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
   flakTrooper:
     'A drum-fed autocannon. It erases anything light — raiders, hover hulls and '
-    + 'every aircraft in the game — and only chips heavy armour. The Soviet '
-    + 'answer to a big tank is a bigger tank, not this man.',
+    + 'every aircraft — and only chips heavy armour. The Soviet answer to a big '
+    + 'tank is a bigger tank, not this man.',
 
   commissar:
     'Your commander, one alive at a time, and the toughest of the four. He '
-    + 'carries a tesla coil that chains between targets and elevates, and his '
-    + 'Iron Will makes nearby units briefly invulnerable.',
+    + 'carries a tesla coil that chains between targets and elevates, and Iron '
+    + 'Will makes nearby units briefly invulnerable.',
 
   rhino:
     'The Soviet main battle tank: slower and dearer than the Allied one, but '
@@ -358,8 +358,8 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
   mrdSolarArray:
     'The cheapest power per credit in the game, which is why the Pact reaches '
-    + 'its second tier before anyone else. It also has half a Power Plant of '
-    + 'hit points, so your grid is the softest target you own.',
+    + "its second tier before anyone else. It also has half a Power Plant's hit "
+    + 'points, so your grid is your softest target.',
 
   mrdCistern:
     'The Pact refinery. Collectors cash their ore in here, it raises your '
@@ -368,8 +368,8 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
   mrdChapterhouse:
     'Trains Pact infantry. A second one makes the one queue faster rather than '
-    + 'adding another. It also unlocks the Rampart and the Glaive Post, which '
-    + 'are the only defences you get for a long while.',
+    + 'adding another. It also unlocks the Rampart and the Glaive Post, the only '
+    + 'defences you get for a long while.',
 
   mrdForgeyard:
     'Builds every Pact hull — collectors, the line tank, the raider and the '
@@ -414,17 +414,17 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   mrdHelios:
     'A long beam tower that shoots at aircraft — the only anti-air structure '
     + 'the Pact has, and its only defence with real reach. It needs the '
-    + 'Reliquary, and it goes dark when your grid browns out.',
+    + 'Reliquary, and goes dark when your grid browns out.',
 
   mrdHeliograph:
     'The one superweapon the Pact gets. A single annihilating strike, announced '
     + 'before it burns. There is no Iron Curtain and no Chronosphere here — '
-    + 'whatever you want done, this is the only button.',
+    + 'whatever you want done, this is the button.',
 
   mrdWayfarer:
     'Pact line infantry: the fastest basic rifleman in the game and the '
-    + 'widest-eyed, with thin skin to pay for it. The carbine elevates, but it '
-    + 'is a nuisance to an aircraft rather than a deterrent.',
+    + 'widest-eyed, with thin skin to pay for it. The carbine elevates, but it is '
+    + 'a nuisance to aircraft rather than a deterrent.',
 
   mrdLancer:
     'The Pact anti-armour infantryman, cheaper and longer-ranged than the '
@@ -434,7 +434,7 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   mrdArtificer:
     'Walks into a building and takes it, and is spent doing it. A neutral '
     + 'structure flips at any health; an enemy one has to be at half health or '
-    + 'below. He also repairs one of your own back to full.',
+    + 'below. He also repairs one of yours back to full.',
 
   mrdHierarch:
     'Your commander, one alive at a time: the fastest, the widest-eyed and the '
@@ -484,7 +484,7 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   upgMrdWayfinding:
     'A purchase, not a unit: buy it once and every Wayfarer you own or ever '
     + 'train sees further still. The Pact already has the widest eyes in the '
-    + 'game; this is what turns that into shooting first.',
+    + 'game; this turns that into shooting first.',
 
   upgMrdSolarSails:
     'A purchase, not a unit: buy it once and every Pact hull you own or ever '
@@ -523,7 +523,7 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
   rclBreakerYard:
     'Builds every Reclamation hull and sets their rally point. It is the '
     + 'cheapest and fastest vehicle factory in the game, and the line hulls '
-    + 'behind it need nothing else — that is the whole tempo.',
+    + 'behind it need nothing else — that is the tempo.',
 
   rclSpotter:
     'Turns the tactical map on, and it is the gate in front of the Arc Pylon, '
@@ -541,9 +541,9 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'map with water.',
 
   rclDepot:
-    'Park a damaged hull beside it and it is welded back up automatically — '
-    + 'there is no order and no button. It is the toughest repair structure in '
-    + 'the game, and a repair costs a fraction of a new hull.',
+    'Park a damaged hull beside it and it is welded back up automatically — no '
+    + 'order, no button. The toughest repair structure in the game, and a repair '
+    + 'costs a fraction of a new hull.',
 
   rclCrucible:
     'The Reclamation tech building. It opens the Slaghurler — the only hull in '
@@ -561,34 +561,34 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
     + 'it fires straight through a total blackout.',
 
   rclPylon:
-    'Chained arcs and it elevates, which makes it the closest thing the '
-    + 'Reclamation has to anti-air. It draws more power than any building bar a '
-    + 'superweapon, then fires through the brownout it caused.',
+    'Chained arcs, and it elevates — the closest thing the Reclamation has to '
+    + 'anti-air. It draws more power than any building bar a superweapon, then '
+    + 'fires through the brownout it caused.',
 
   rclStormworks:
-    'The one superweapon the Reclamation gets: a barrage of loose arcs anywhere '
-    + 'on the map. More total damage than a nuclear strike, but none of it '
-    + 'where you aimed. It denies ground, it does not demolish.',
+    "The Reclamation's one superweapon: loose arcs raining anywhere on the map. "
+    + 'More total damage than a nuclear strike, but none of it where you aimed. '
+    + 'It denies ground, it does not demolish.',
 
   rclPicker:
     'The cheapest unit in the game and the fastest to train. Unlike every other '
-    + "army's basic rifleman his arc really does hurt armour and aircraft — he "
-    + 'is simply bad at it, so bring a great many of him.',
+    + "army's basic rifleman his arc really does hurt armour and aircraft — he is "
+    + 'simply bad at it, so bring a great many.',
 
   rclSlagger:
     'A satchel of molten slag, and one of only two things the Reclamation can '
     + 'bring to a land map that truly hurts a building. His reach is nearly the '
-    + 'shortest in the game; he has to walk right up.',
+    + 'shortest going; he has to walk right up.',
 
   rclTinker:
     'Walks into a building and takes it, and is spent doing it. A neutral '
     + 'structure flips at any health; an enemy one has to be at half health or '
-    + 'below. He also repairs one of your own back to full.',
+    + 'below. He also repairs one of yours back to full.',
 
   rclBaron:
     'Your commander, one alive at a time. Salvage Call strips nearby wrecks for '
     + 'credits and heals every friendly around him — the only ability that pays '
-    + 'you, and the shortest cooldown of the four.',
+    + 'you, and the shortest cooldown going.',
 
   rclScrapper:
     'The Reclamation harvester: cheaper than a standard one, a slightly smaller '
@@ -637,13 +637,13 @@ export const BUILD_DESCRIPTIONS: Readonly<Record<string, string>> = {
 
   upgRclOvercharge:
     'A purchase, not a unit: buy it once and every Reclamation hull you own or '
-    + 'ever build hits harder. Your hulls are frail and short-ranged, so more '
-    + 'damage is how they win the exchange they do get.',
+    + 'ever build hits harder. Your hulls are frail and short-ranged, so damage '
+    + 'is how they win the exchange they do get.',
 
   upgRclSalvage:
     'A purchase, not a unit: buy it once and every ore load a Scrapjaw banks is '
-    + 'worth more credits — the biggest yield bonus in the game. It pays off '
-    + 'over a long match and does nothing in a short one.',
+    + 'worth more credits — the biggest yield bonus going. It pays off over a '
+    + 'long match and does nothing in a short one.',
 };
 
 /**
