@@ -1461,6 +1461,7 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
   civOilDerrick: civilian('civOilDerrick', CIV.civOilDerrick, 900, 14),
   civHospital: civilian('civHospital', CIV.civHospital, 1100, 20),
   civApartments: civilian('civApartments', CIV.civApartments, 800, 16),
+  civOreMine: civilian('civOreMine', CIV.civOreMine, 700, 12),
 };
 
 export interface FallbackProp {
@@ -1719,6 +1720,11 @@ const BUILDING_ALIASES: Readonly<Record<string, readonly string[]>> = {
   civOilDerrick: ['civoilderrick', 'oilderrick', 'derrick'],
   civHospital: ['civhospital', 'hospital', 'civilianhospital'],
   civApartments: ['civapartments', 'apartments', 'apartmentblock', 'civilianblock'],
+  // 'coalmine' and 'moneymine' are in here because the request that produced
+  // this structure named all three ("coal / ore / money mines") and a layout
+  // author reaching for any of those words should get the one structure rather
+  // than a `[scenario] unknown building key` warning and a gap in the map.
+  civOreMine: ['civoremine', 'oremine', 'mine', 'coalmine', 'moneymine'],
 };
 
 /**
@@ -3517,6 +3523,48 @@ export function islandSeats(
  * -------------------------------------------------------------------------- */
 export const CIVILIAN_HAMLET_OFFSET = 62;
 
+/* --------------------------------------------------------------------------
+ * THE ORE MINES — SAME LINE, FURTHER OUT
+ *
+ * Reported as "lets spawn small amount of coal / ore / money mines around the
+ * map, conquering with troops make us get income". `src/data/Civilians.ts`
+ * carries the rate (5 credits a second, a third of a derrick, derived against
+ * the MEASURED harvester rather than the config's intended one); this is where
+ * they stand.
+ *
+ * THE SAME BISECTOR, AND THAT IS NOT LAZINESS. The block above proves the
+ * perpendicular bisector is the ONLY locus on a two-army map where a point is
+ * exactly as far from one army as from the other, so it is the only line a
+ * neutral prize can sit on without shipping as a gift to whoever spawned
+ * nearest. It is a LINE, not a point — every metre of it has that property —
+ * so the mines take the far end of the two arms the hamlets take the near end
+ * of, and the map gains two more objectives without gaining an unfair one.
+ *
+ * 128 M, and the bounds are these:
+ *   - The hamlets occupy 45-79 m along each arm (`put(...)` offsets the two
+ *     garrisonable blocks +/-17 m about the 62 m centre). 128 clears the far
+ *     one by 49 m, so a squad holding a mine is well outside the hamlet's
+ *     crossfire and the two are separate decisions rather than one position.
+ *   - 128 m along the bisector from a midpoint that is ~96 m from each opening
+ *     puts a mine sqrt(96^2 + 128^2) = 160 m from BOTH armies, against the
+ *     hamlet's 115 m. It is the furthest thing on the map worth walking to,
+ *     which is the trade being sold: a third of a derrick's rate for more than
+ *     a third again of the walk.
+ *   - The midpoint is near the map centre on a 512 m map, so 128 m either way
+ *     is ~90 m per axis on the shipped diagonal and comfortably inside the rim.
+ *
+ * THE FALLBACKS ARE FOR WATER, NOT FOR TIDINESS. `spawnBuilding` relocates off
+ * ground another structure already holds, but ground `isBuildable` REFUSES it
+ * only counts and names — see the asymmetry documented at that call site — so a
+ * mine authored into the sea on `contested-strait` would stand there, in the
+ * water, and the connectivity report would mention it in a line nobody reads.
+ * Measured on that map's sea half-plane, one of the two arms lands wet. So the
+ * offset walks INWARD along its own arm, in a fixed order, and takes the first
+ * footprint the placement rule would accept; if none of the three does, the map
+ * gets one mine instead of two rather than a drowned one.
+ */
+const MINE_BISECTOR_OFFSETS: readonly number[] = [128, 112, 96];
+
 /**
  * Drop the neutral structures both finished mechanics have had nothing to
  * point at. Deterministic from the seed: every position below is pure
@@ -3600,6 +3648,23 @@ function addCivilians(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
     put(CIVILIAN_KEYS[0]!, 0, 0, 0);
     put(CIVILIAN_KEYS[1]!, -17, 15, 90);
     put(CIVILIAN_KEYS[2]!, 17, -15, -90);
+
+    // THE MINE, at the far end of the same arm. See `MINE_BISECTOR_OFFSETS`
+    // for the geometry and `src/data/Civilians.ts` for what it pays.
+    //
+    // The footprint is asked for by NAME rather than assumed 2x2, because the
+    // whole point of `CIVILIAN_DIMENSIONS` is that four tables read one
+    // constant — a hard-coded 2 here would be a fifth opinion about the size of
+    // this building, and the one nothing checks.
+    const mineDim = CIV[CIVILIAN_KEYS[3]!]!;
+    for (const reach of MINE_BISECTOR_OFFSETS) {
+      const du = reach - CIVILIAN_HAMLET_OFFSET;
+      const mxp = hx + ux * side * du;
+      const mzp = hz + uz * side * du;
+      if (!b.footprintBuildable(mxp, mzp, mineDim.w, mineDim.h)) continue;
+      b.spawnBuilding(CIVILIAN_KEYS[3]!, owner, mxp, mzp, { yawDeg: wrapDeg(face) });
+      break;
+    }
   }
 }
 

@@ -134,6 +134,7 @@ const FACTION_KEYS: Readonly<Record<string, string>> = {
   civOilDerrick: 'civ_derrick',
   civHospital: 'civ_hospital',
   civApartments: 'civ_apartments',
+  civOreMine: 'civ_mine',
 };
 
 /**

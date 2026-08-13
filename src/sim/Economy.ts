@@ -21,10 +21,11 @@
  *     calls it 30 times a second.
  *   - The renderer wants DENSITY, not objects. `densityAt(cx,cz)` returns
  *     0..1 and `drainDirty()` hands back exactly the cells that changed since
- *     the last frame, so the crystal instancer restamps eight cells instead of
- *     rebuilding a field. Ore visibly draining is the single clearest signal
- *     this game gives that the economy is a real system and not a number that
- *     goes up.
+ *     the last CALL, so `src/world/ore.system.ts` — the world-space crystal
+ *     renderer, and the only consumer of any of this — restamps eight instance
+ *     slots instead of rebuilding a field. Ore visibly draining is the single
+ *     clearest signal this game gives that the economy is a real system and not
+ *     a number that goes up.
  *
  * REGROWTH SPREADS FROM A NODE
  * ----------------------------
@@ -119,9 +120,11 @@ const ORE_RESIDUE = 0.5;
 
 /**
  * The `IOreField` port. One instance, published as `world.ore` by
- * `economy.system.ts`; everything on the sim side reaches ore through the port
- * and only the renderer imports this class directly (for `densityAt` and
- * `drainDirty`, which the port deliberately does not carry).
+ * `economy.system.ts`; everything on the sim side reaches ore through the port.
+ * `src/world/ore.system.ts` — the world-space crystal renderer — is the one
+ * consumer that needs the concrete class, and it does not import it: it takes
+ * the live instance from `getOreField()` at the bottom of this file, for
+ * `densityAt` and `drainDirty`, which the port deliberately does not carry.
  */
 export class OreField implements IOreField {
   /** Ore units remaining per cell. */
@@ -514,9 +517,19 @@ export class OreField implements IOreField {
   }
 
   /**
-   * 0..1 fill fraction of a cell, for the crystal renderer. A cell that never
-   * held ore returns 0 rather than NaN, which matters because the renderer
-   * samples the whole map and not just the seeded footprint.
+   * 0..1 fill fraction of a cell, for the world-space crystal renderer in
+   * `src/world/ore.system.ts`. A cell that never held ore returns 0 rather than
+   * NaN: `capacity` is 0 everywhere off a seeded field, and the caller feeds
+   * this straight into an instance transform.
+   *
+   * THE OLD REASON FOR THE GUARD WAS WRONG. It read "which matters because the
+   * renderer samples the whole map and not just the seeded footprint" — written
+   * while no renderer existed, and the one that was eventually written does the
+   * opposite. `ore.system.ts` walks each field's own `cells` list once to hand
+   * out instance slots, and thereafter re-reads only what `drainDirty` returns;
+   * it never asks about a cell it has no slot for. The guard stays because
+   * `densityAtWorld` below takes arbitrary metres from anywhere, so the
+   * unseeded-cell case is still reachable through this class's public surface.
    */
   densityAt(cx: number, cz: number): number {
     if (!isInMap(cx, cz)) return 0;
@@ -532,9 +545,10 @@ export class OreField implements IOreField {
 
   /**
    * Hand back the cells whose amount changed since the last call and clear the
-   * queue. The crystal instancer calls this once per frame and restamps only
-   * what moved; a full-map rescan of 16 384 cells every frame would cost more
-   * than the crystals do.
+   * queue. `src/world/ore.system.ts` calls this at most once per frame — it
+   * skips the call outright when `pendingDirty` is 0 — and restamps only what
+   * moved; a full-map rescan of 16 384 cells every frame would cost more than
+   * the crystals do.
    *
    * @returns how many indices were written into `out`.
    */
@@ -551,7 +565,17 @@ export class OreField implements IOreField {
     return n;
   }
 
-  /** Pending dirty cells, so a renderer can size its drain buffer. */
+  /**
+   * Pending dirty cells.
+   *
+   * This said "so a renderer can size its drain buffer", and that is not what
+   * the renderer does with it. `src/world/ore.system.ts` drains into a fixed
+   * `Int32Array(2048)` allocated at module scope — sizing per frame would
+   * allocate in the frame loop, which is banned. It reads this for two other
+   * things: as the per-frame skip test (0 pending means no `setMatrixAt` work
+   * at all), and to drain the queue to empty after its one full stamp at
+   * slot-assignment time, where replaying those cells would be redundant.
+   */
   get pendingDirty(): number {
     return this.dirtyCount;
   }
@@ -1279,9 +1303,23 @@ export class Economy {
 /* ==========================================================================
  * 3. MODULE ACCESSORS
  *
- * `world.ore` is the sanctioned way to reach ore from the sim. These exist for
- * the render-side crystal instancer and the debug console, which need the
- * concrete class (densityAt / drainDirty / stats) rather than the port.
+ * `world.ore` is the sanctioned way to reach ore from the sim; these two are
+ * the exceptions, and they are not symmetrical.
+ *
+ * `getOreField()` has exactly ONE production caller: `src/world/ore.system.ts`,
+ * the world-space crystal renderer, which needs `densityAt` and `drainDirty`
+ * and the port carries neither. (`stats()` is not part of that — the only
+ * caller of `stats()` is `economy.system.ts`, on the instance it built.)
+ *
+ * `getEconomy()` is the busier one, and it is not a render accessor at all:
+ * eight sim modules reach the ledger through it — `Abilities`, `ai.system`,
+ * `Capture`, `civilian.system`, `CommanderPowers`, `Crates`, `Relocate`,
+ * `RepairSell`.
+ *
+ * NEITHER IS THE DEBUG CONSOLE'S ROUTE, and this block used to name the console
+ * as one of the two callers. The console reads `globalThis.__vmEconomy`, which
+ * `economy.system.ts` writes at the end of its own `init` from the concrete
+ * objects it just constructed.
  * ========================================================================== */
 
 let activeOre: OreField | null = null;

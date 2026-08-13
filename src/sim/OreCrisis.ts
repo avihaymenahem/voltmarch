@@ -50,14 +50,17 @@
  * Which is why this is a THREE-valued predicate and not a boolean:
  *
  *   None      has a harvester, or one on the line, or the money for one.
- *   SellOut   broke and harvesterless, but the sell tool genuinely covers it.
- *             The player is not stuck; they did not know the verb existed.
- *             This state gets a HUD chip and an EVA line NAMING THE SELL TOOL
- *             and nothing else. Telling someone what to click is the entire
- *             fix, and it is the fix the user asked for.
- *   Stranded  broke and harvesterless and no sequence of sells reaches the
- *             price. Nothing the player can click changes the state, so a
- *             prompt would be a lie. This is the only state that gets help.
+ *   SellOut   broke and harvesterless, but the sell tool genuinely covers it —
+ *             OR a captured derrick / ore mine is already banking toward a
+ *             price this player's storage cap can hold (§2b, route M).
+ *             Either way the player is not stuck; they did not know the verb
+ *             existed. This state gets a HUD chip and an EVA line NAMING THE
+ *             SELL TOOL and nothing else. Telling someone what to click is the
+ *             entire fix, and it is the fix the user asked for.
+ *   Stranded  broke and harvesterless, no sequence of sells reaches the price,
+ *             and nothing on the map is paying them. Nothing the player can
+ *             click changes the state, so a prompt would be a lie. This is the
+ *             only state that gets help.
  *
  * `raisable` is what separates them, and it is computed per route: total
  * refund value of every finished sellable structure, MINUS the cheapest one
@@ -81,9 +84,28 @@
  */
 
 import { BuildTab, EntityFlag, EntityKind } from '../core/types';
-import type { PlayerId } from '../core/types';
+import type { DefTables, PlayerId } from '../core/types';
 import type { World } from '../core/world';
 import { SELL_REFUND } from '../core/config';
+/*
+ * THE ONE IMPORT OUT OF `src/data`, AND IT IS DELIBERATE.
+ *
+ * `src/data/Defs.ts` says no file under `src/sim` imports `src/data`, and until
+ * now `civilian.system.ts` was the only exception. The reason for the rule is
+ * cycles, and `src/data/Civilians.ts` states in its own header that it IMPORTS
+ * NOTHING precisely so that "a leaf with no imports at all cannot participate
+ * in a cycle whoever picks it up". This is that case: a bare list of content
+ * keys, no types, no behaviour.
+ *
+ * The alternative was worse in a specific way. This module can already tell a
+ * captured neutral structure from an ordinary one — `prod.entryOf()` returns
+ * null for anything with no `CONTENT` row — but that test does not separate
+ * the two structures that PAY from the two that are firing positions, and
+ * counting a captured hospital as income would deny the rescue to a player who
+ * is genuinely stranded. That is the one direction this module must never err
+ * in. See `countIncomeStructures`.
+ */
+import { CIVILIAN_INCOME_KEYS } from '../data/Civilians';
 
 import { BuildKind } from './Production';
 import type { BuildEntry, ProductionService } from './Production';
@@ -134,6 +156,15 @@ export interface OreCrisisSurvey {
   refineries: number;
   refineryBuildable: boolean;
   raisableForRefinery: number;
+
+  /* -- route M: the map is already paying you --------------------------- */
+  /**
+   * Captured neutral structures this player holds that pay a credit trickle —
+   * Oil Derricks and Ore Mines. See `countIncomeStructures`.
+   */
+  incomeStructures: number;
+  /** Credits this player can hold at once. The reason income is not always a route. */
+  storageMax: number;
 }
 
 export function makeOreCrisisSurvey(): OreCrisisSurvey {
@@ -141,7 +172,7 @@ export function makeOreCrisisSurvey(): OreCrisisSurvey {
     player: 0, state: OreCrisisState.None, harvesters: 0, queued: 0, credits: 0,
     harvesterKey: '', harvesterCost: 0, harvesterBuildable: false, raisableForHarvester: 0,
     refineryKey: '', refineryCost: 0, refineries: 0, refineryBuildable: false,
-    raisableForRefinery: 0,
+    raisableForRefinery: 0, incomeStructures: 0, storageMax: 0,
   };
 }
 
@@ -179,6 +210,117 @@ export function refineryEntryFor(prod: ProductionService, player: PlayerId): Bui
     if (e.kind === BuildKind.Building && e.shipsWith !== '') return e;
   }
   return null;
+}
+
+/* ==========================================================================
+ * 2b. ROUTE M — THE MAP IS ALREADY PAYING YOU
+ *
+ * A DEFECT THAT PREDATES THE ORE MINES AND WAS WIDENED BY THEM.
+ *
+ * This module's premise, stated at the top of the file, is "no income, so the
+ * bank never moves again". That premise stopped being universally true the day
+ * `src/data/Civilians.ts` shipped: a captured Oil Derrick pays 15 credits a
+ * SECOND, so a broke, harvesterless player holding one banks a 1400-credit
+ * harvester in 94 seconds without touching anything. Nothing here was looking,
+ * so `orecrisis.system.ts` handed that player a free harvester after ten —
+ * i.e. the rescue fired for a player who was never stuck. The ore mines make it
+ * two structures and four positions on the map, which is why it is fixed here
+ * rather than left as a known edge.
+ *
+ * WHAT COUNTS, AND WHY IT IS BY KEY. `prod.entryOf()` already answers "this is
+ * a captured neutral structure" (no `CONTENT` row, so no catalog entry), and
+ * that was the tempting test because it needs no import. It is WRONG in the one
+ * direction that matters: two of the four civilian structures are firing
+ * positions that pay nothing, and a player down to a captured hospital would
+ * have been read as earning and denied the rescue they actually need. This
+ * module's own header says over-estimation must bias toward SellOut — toward
+ * telling the player to solve it themselves — but that argument is about the
+ * SELL arithmetic, where the player really can act. Inventing income they do
+ * not have is a different error and it has no defence.
+ *
+ * INCOME IS NOT AUTOMATICALLY A ROUTE, AND THE STORAGE CAP IS WHY.
+ * `Economy.deposit` honours `PlayerState.storageMax` and throws the overflow
+ * away. `BASE_STORAGE` is 1000 with no refinery standing, against a 1400-2000
+ * refinery and a 1000-1400 harvester — so a player with a mine, a Construction
+ * Yard and no refinery accrues to 1000 and then stops forever, and that IS the
+ * dead end this module exists for. So the clause is per route and it tests the
+ * CAP rather than the rate: income is a route only where the thing being bought
+ * fits in the bank. Route V is safe by construction (a harvester's prereqs
+ * include the refinery, whose `REFINERY_STORAGE` lifts the cap to 3000); route
+ * S is the one that bites.
+ *
+ * IT DOWNGRADES TO `SellOut`, NOT TO `None`. The player is genuinely without a
+ * miner and the chip that names the sell tool is still true and still the
+ * fastest way out — selling reaches the price in seconds where the trickle
+ * takes minutes. What they must not get is the free harvester.
+ *
+ * THE RATE IS DELIBERATELY NOT READ. Only the COUNT is. A rate would make this
+ * a question about how long the wait is, and there is no honest threshold for
+ * that — the difference between 94 seconds and 280 is a balance opinion, while
+ * "the bank is rising toward a price it can hold" is a fact.
+ * ========================================================================== */
+
+/**
+ * Def ids of the paying structures, resolved from the catalog's own bound
+ * tables and cached against their identity.
+ *
+ * `bindingTables` is the same `DefTables` every other consumer reads and it is
+ * installed once at boot, so this is a one-time map lookup per match rather
+ * than a per-survey one — and `surveyOreCrisis` runs twice a second for every
+ * player. Re-resolved whenever the identity changes, which is what makes a
+ * headless test that swaps catalogs behave.
+ */
+let boundTables: DefTables | null = null;
+const incomeDefIds: number[] = [];
+
+function incomeDefIdsFor(prod: ProductionService): readonly number[] {
+  const tables = prod.bindingTables;
+  if (tables === null) {
+    boundTables = null;
+    incomeDefIds.length = 0;
+    return incomeDefIds;
+  }
+  if (tables !== boundTables) {
+    boundTables = tables;
+    incomeDefIds.length = 0;
+    for (let k = 0; k < CIVILIAN_INCOME_KEYS.length; k++) {
+      const id = tables.buildingByKey.get(CIVILIAN_INCOME_KEYS[k]!);
+      if (id !== undefined) incomeDefIds.push(id);
+    }
+  }
+  return incomeDefIds;
+}
+
+/**
+ * Paying structures `player` currently holds.
+ *
+ * Same four rejections `civilian.system.ts#payHolders` applies, in the same
+ * order — dead, pending, unfinished, not yours — because a structure this
+ * counts and that one does not pay would be exactly the wrong kind of
+ * disagreement. It is a pure read and allocates nothing.
+ */
+export function countIncomeStructures(
+  world: World, prod: ProductionService, player: PlayerId,
+): number {
+  const ids = incomeDefIdsFor(prod);
+  if (ids.length === 0) return 0;
+  const st = world.store;
+  const owner = player as number;
+  const list = st.byKind[EntityKind.Building];
+  const count = st.byKindCount[EntityKind.Building];
+  let held = 0;
+  for (let a = 0; a < count; a++) {
+    const i = list[a];
+    if (st.owner[i] !== owner) continue;
+    const f = st.flags[i];
+    if ((f & EntityFlag.Alive) === 0) continue;
+    if ((f & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) continue;
+    const defId = st.defId[i];
+    for (let k = 0; k < ids.length; k++) {
+      if (ids[k] === defId) { held++; break; }
+    }
+  }
+  return held;
 }
 
 /* ==========================================================================
@@ -220,6 +362,8 @@ export function surveyOreCrisis(
   out.refineries = 0;
   out.refineryBuildable = false;
   out.raisableForRefinery = 0;
+  out.incomeStructures = 0;
+  out.storageMax = p?.storageMax ?? 0;
   if (p === undefined) return out;
 
   const refinery = refineryEntryFor(prod, player);
@@ -256,6 +400,7 @@ export function surveyOreCrisis(
 
   /* -- 2. what could be sold, per route -------------------------------- */
   measureRaisable(world, prod, player, harvester, refinery, out);
+  out.incomeStructures = countIncomeStructures(world, prod, player);
 
   /* -- 3. can either route be walked right now? ------------------------ */
   const canBuyNow = out.harvesterBuildable && out.credits >= harvester.cost;
@@ -269,7 +414,18 @@ export function surveyOreCrisis(
     && out.credits + out.raisableForHarvester >= harvester.cost;
   const sellOutS = out.refineryBuildable
     && out.credits + out.raisableForRefinery >= refinery.cost;
-  out.state = sellOutV || sellOutS ? OreCrisisState.SellOut : OreCrisisState.Stranded;
+
+  /* -- route M: a captured derrick or mine is already banking for them --
+   * See §2b. The cap test is the whole subtlety: money that cannot fit in the
+   * bank is not a route, and `BASE_STORAGE` (1000) is under every refinery
+   * price in the game. */
+  const incomeIsARoute = out.incomeStructures > 0
+    && ((out.harvesterBuildable && out.storageMax >= harvester.cost)
+      || (out.refineryBuildable && out.storageMax >= refinery.cost));
+
+  out.state = sellOutV || sellOutS || incomeIsARoute
+    ? OreCrisisState.SellOut
+    : OreCrisisState.Stranded;
   return out;
 }
 

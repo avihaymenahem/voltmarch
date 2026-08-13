@@ -408,9 +408,20 @@ export class Minimap {
         // Ore is the one thing on this map allowed to be bright, and it was
         // not bright enough: at 0.85 of a 400-unit ramp a half-mined field
         // blended into the dirt surface it sits on, so the economy — the single
-        // most important thing a tactical map has to show — was invisible until
-        // it was untouched. The ramp now saturates at 200 and lands on a lifted
-        // gold, which makes an ore field read as a shape at 1 px per cell.
+        // most important thing a tactical map has to show — was invisible on
+        // THIS PANEL until it was untouched. The ramp now saturates at 200 and
+        // lands on a lifted gold, which makes an ore field read as a shape at
+        // 1 px per cell.
+        //
+        // "Invisible" was once true of the whole product, not just this panel:
+        // ore had no world-space representation at all, and the minimap was the
+        // only place it was drawn. `src/world/ore.system.ts` ended that, so
+        // this bake is now the tactical ABSTRACTION of something the player can
+        // also see on the ground. It is not redundant — 1 px per cell is what
+        // shows a field's SHAPE and where the next expansion is, which the
+        // camera cannot at 32-72 m — but it is no longer load-bearing on its
+        // own, and a change here should not be argued as the last line of
+        // defence for finding ore.
         const oreAmount = ore.oreAt(cx, cz);
         if (oreAmount > 0) {
           const k = 0.45 + Math.min(1, oreAmount / 200) * 0.55;

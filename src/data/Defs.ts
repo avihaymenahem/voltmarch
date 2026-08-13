@@ -2702,6 +2702,40 @@ export const BUILDINGS: readonly BuildingDef[] = [
     maxHp: 800, power: -80, sight: 22,
     flags: rclFlags(-80),
   }),
+
+  /* -- THE ORE MINE, and why it is HERE rather than beside its siblings -----
+   * Reported as "lets spawn small amount of coal / ore / money mines around the
+   * map, conquering with troops make us get income". It is the Oil Derrick's
+   * mechanic pointed at a second structure — `src/data/Civilians.ts` carries
+   * the rate and its derivation — so every field below is copied from the
+   * civilian block at row 51 and nothing about the rules changed.
+   *
+   * IT DOES NOT SIT WITH THAT BLOCK, and resisting the urge to tidy it in there
+   * is the only interesting thing about this row. `store.defId` is a RAW ARRAY
+   * INDEX and `src/game/Replay.ts` records it raw, so a row inserted after
+   * `civApartments` would shift the three Command Posts down one and every
+   * recording on disk would play back a different game. The same sentence is
+   * written above the Repair Depot, the superweapons and the Command Posts;
+   * this is the first time obeying it has cost the table its grouping, and
+   * `tests/civilians.spec.ts` now pins BOTH facts — the original three still
+   * consecutive at index 51, this one last.
+   *
+   * EVERY FIELD IS LOAD-BEARING FOR `GarrisonService.refusalFor` for the reason
+   * the civilian block states: no weapons, both footprint axes >= 2 cells, no
+   * `IsBuilder|IsFactory|IsRefinery|IsRadar`. A squad has to be able to walk in,
+   * because "with troops" is half of what was asked for and the engineer is the
+   * other half.
+   *
+   * NOT IN `src/sim/Production.ts#CONTENT`, which is what makes it unbuildable,
+   * and `cost` is a valuation rather than a price — the fallback row clears
+   * `EntityFlag.Sellable`, so nobody buys one and nobody cashes one in. 700
+   * against the derrick's 1000: it pays a third as much. */
+  building({
+    key: 'civOreMine', name: 'Ore Mine', blurb: 'A worked seam. Pays its owner while it is held.',
+    faction: Faction.Neutral, cost: 700, buildTime: 20, tab: BuildTab.Structures,
+    prereqs: [], sortOrder: 903, model: 'civ_mine', dim: CIV.civOreMine,
+    maxHp: 700, power: 0, sight: 12,
+  }),
 ];
 
 /* ==========================================================================

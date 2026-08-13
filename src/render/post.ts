@@ -804,7 +804,12 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     });
 
     build('smaa', () => {
-      const p = new (SMAAPass as unknown as new (w?: number, h?: number) => Pass)(width(), height());
+      // `SMAAPass` takes NO constructor arguments in three 0.185 (it sizes
+      // itself from `setSize`). The old two-argument cast still compiled and
+      // still worked, because the extras were ignored — but a cast that hides a
+      // signature change is how the next upgrade breaks silently.
+      const p = new SMAAPass() as unknown as Pass;
+      demoteSmaaTargets(p);
       return p;
     });
 
@@ -1082,6 +1087,70 @@ export function createPostChain(options: CreatePostOptions): PostChain {
    * Nothing here is done when the AO pass is the SSAO fallback: it has no
    * `blendMaterial` and its composite is a different shape.
    */
+  /**
+   * SMAA's two internal targets hold 0..1 MASKS. Give them 8 bits.
+   *
+   * `SMAAPass` hardcodes `HalfFloatType` on `_edgesRT` and `_weightsRT`. Neither
+   * is an image: `_edgesRT` is a two-channel edge mask and `_weightsRT` is the
+   * blend-weight lookup, both defined on 0..1, and Jimenez et al. specify RG8
+   * and RGBA8 for exactly these. Sixteen bits per channel buys no precision
+   * anything downstream can use, and costs the bandwidth twice — once writing
+   * each target, once reading it back in the next sub-pass.
+   *
+   * WHY THIS IS WORTH DOING AT ALL: SMAA measured at 5.36 ms on the reference
+   * iGPU, the second-largest cost in the chain and larger than bloom and grade
+   * combined, on a frame that profiling showed is bandwidth-bound rather than
+   * draw-call-bound. Four full-resolution surfaces halve, 29.5 MB to 14.75 MB
+   * each at 2560x1440.
+   *
+   * THE PRECONDITION, AND IT IS LOAD-BEARING: this is only correct because SMAA
+   * runs LAST, on the LDR sRGB image the grade pass has already encoded. Its
+   * inputs are display-referred and already 8-bit-representable. Move SMAA
+   * earlier in `PASS_ORDER` — anywhere it would see scene-linear HDR — and
+   * these targets must go back to half-float. `tests/post-chain.spec.ts` pins
+   * the ordering next to this reasoning so the two cannot drift apart.
+   *
+   * `SMAAPass.setSize` only forwards to the targets' own `setSize`, so
+   * replacing the objects here is enough; `applyPendingSize` keeps working.
+   */
+  function demoteSmaaTargets(pass: unknown): void {
+    const p = pass as {
+      _edgesRT?: THREE.WebGLRenderTarget;
+      _weightsRT?: THREE.WebGLRenderTarget;
+    };
+    const edges = p._edgesRT;
+    const weights = p._weightsRT;
+    // Renamed or restructured upstream: leave the pass exactly as three built
+    // it rather than half-applying this.
+    if (edges === undefined || weights === undefined) {
+      if (DEV) console.warn('[post] SMAA internals not found — targets left half-float');
+      return;
+    }
+
+    const swap = (
+      old: THREE.WebGLRenderTarget, name: string,
+    ): THREE.WebGLRenderTarget => {
+      const next = new THREE.WebGLRenderTarget(old.width, old.height, {
+        type: THREE.UnsignedByteType,
+        // A mask needs neither, and both are full-resolution attachments.
+        depthBuffer: false,
+        stencilBuffer: false,
+        minFilter: old.texture.minFilter,
+        magFilter: old.texture.magFilter,
+        // Format is deliberately left at the default RGBA rather than copied.
+        // `texture.format` is typed `AnyPixelFormat`, which admits compressed
+        // formats a render target cannot take, and SMAA's own targets are
+        // plain RGBA anyway — the saving here is the TYPE, not the channels.
+      });
+      next.texture.name = name;
+      old.dispose();
+      return next;
+    };
+
+    p._edgesRT = swap(edges, 'SMAA.edges');
+    p._weightsRT = swap(weights, 'SMAA.weights');
+  }
+
   function installAoInPlaceComposite(pass: unknown): void {
     const p = pass as {
       output: number;

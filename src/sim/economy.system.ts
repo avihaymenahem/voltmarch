@@ -11,10 +11,18 @@
  *  1. `world.ore` — the `IOreField` port. Every other sim module reaches ore
  *     through this and never imports Economy.ts.
  *  2. `setActiveOreField` / `setActiveEconomy` — module accessors for the
- *     handful of callers that need the concrete classes: the crystal renderer
- *     (densityAt / drainDirty), production (spend / refund / buildSpeedMul)
- *     and the HUD (incomeRate / creditsDisplay).
- *  3. A SECOND system module at Phase.Movement — the harvester mover. See the
+ *     callers that need the concrete classes. Counted, because this line used
+ *     to name three consumers and two of them do not exist: `getOreField()` is
+ *     read by ONE file, `src/world/ore.system.ts` (densityAt / drainDirty), and
+ *     `getEconomy()` by eight sim modules (Abilities, ai.system, Capture,
+ *     civilian.system, CommanderPowers, Crates, Relocate, RepairSell).
+ *     Production does not use either — `buildSpeedMul` is `PowerGrid`'s, off
+ *     `PlayerState` — and neither does the HUD, which reads `creditsDisplay`
+ *     off the snapshot. `incomeRate` has exactly one caller: the debug counter
+ *     at the bottom of this file.
+ *  3. `globalThis.__vmEconomy`, set at the end of `init`. That, not the
+ *     accessors above, is how the debug console reaches these objects.
+ *  4. A SECOND system module at Phase.Movement — the harvester mover. See the
  *     header of Harvesting.ts for why it exists and how it hands over.
  *
  * ORDER INSIDE THE TICK
@@ -34,9 +42,25 @@
  * system deliberately initialises LAST (Phase.Cleanup, order 10000) because it
  * needs terrain, defs and models to already exist. This module initialises at
  * Phase.Economy, which is much earlier. So the ore fields are seeded on the
- * first tick that finds a scenario, which is inside the scenario system's own
- * `loop.runHeadless(settleTicks)` call — early enough that a settled fixture
- * shot already has harvesters mid-run.
+ * first tick that finds a scenario, which for a SETTLED fixture is inside the
+ * scenario system's own `loop.runHeadless(settleTicks)` call — early enough
+ * that such a shot already has harvesters mid-run.
+ *
+ * AND A FIXTURE THAT DOES NOT SETTLE NEVER SEEDS ORE AT ALL. That is the price
+ * of this design and it is being paid today, so it is written down here rather
+ * than left to be rediscovered. `?shot=` boots PAUSED and `GameLoop.captureClock`
+ * makes an organic frame worth zero time, so the ONLY sim ticks a fixture ever
+ * receives are its plan's `settleTicks` — and `scenarios.system.ts` guards that
+ * call with `if (spec.settleTicks > 0)`. On a `settleTicks: 0` plan `simTick`
+ * never runs, `seedFromScenario` never runs, `OreField.fieldCount` stays 0, and
+ * `src/world/ore.system.ts` correctly draws nothing. NINE of the thirteen
+ * capture fixtures are in that state, and FIVE of those nine call `b.addOre`
+ * first — `01`, `02` and `11` (allied-base), `03` (terrain-showcase) and `07`
+ * (soviet-base). Their declared ore reaches `ScenarioSpec.ore` and stops there.
+ * Of the four that do tick, only `06-economy` (`settleTicks: 180`) declares any
+ * ore at all; battle, naval and atoll declare none. So `06-economy` is the ONLY
+ * frame in the whole capture set in which a crystal can appear, which is the
+ * limit of what the look harness can grade about this renderer.
  * ============================================================================
  */
 
@@ -46,8 +70,12 @@ import { Locomotor, Phase } from '../core/types';
 import type { SimContext } from '../core/types';
 import type { World } from '../core/world';
 import {
-  ORE_REGROW_INTERVAL, POWER_RECOMPUTE_INTERVAL, SIM_DT,
+  CELL, ORE_REGROW_INTERVAL, POWER_RECOMPUTE_INTERVAL, SIM_DT,
 } from '../core/config';
+// The road mask, to keep ore off the carriageway. Reached through the module
+// accessor rather than injected: it is one query at seed time, and a map with
+// no road network returns null and the exclusion degrades to a no-op.
+import { getRoads } from '../world/Roads';
 import { ctx, hasGameContext } from '../game/context';
 import { activeScenario } from '../game/Scenarios';
 
@@ -151,11 +179,40 @@ function seedFromScenario(): boolean {
 
   const terrain = world.terrain;
 
-  // Ore must land where a harvester can actually stand. Without this filter a
-  // patch authored near a shoreline drops a third of its value into the sea and
-  // the field reads as half-mined before anyone has touched it.
-  const accept = (cx: number, cz: number): boolean =>
-    !terrain.isWater(cx, cz) && terrain.isPassable(cx, cz, Locomotor.Track);
+  /* Ore must land where a harvester can actually stand. Without this filter a
+   * patch authored near a shoreline drops a third of its value into the sea and
+   * the field reads as half-mined before anyone has touched it.
+   *
+   * AND NOT ON THE ROAD NETWORK. Roads are passable — that is the point of them
+   * — so they sailed through the two tests above and ore seeded straight across
+   * the carriageway. That was invisible for as long as ore had no world-space
+   * renderer, and the moment `src/world/ore.system.ts` drew it the result was
+   * crystals growing out of tarmac, which reads as a bug in one glance.
+   *
+   * Excluded HERE rather than in the renderer, deliberately. Skipping the draw
+   * would leave ore that is minable but invisible, which is the exact defect
+   * the renderer was written to fix, wearing a smaller hat. The cost is a few
+   * cells of capacity on maps with roads through a field; the whole corridor is
+   * a couple of cells wide, and a harvester parked on a dual carriageway was
+   * never the intent.
+   *
+   * `isCarriageway`, NOT `isRoad`, AND THE DIFFERENCE WAS MEASURED. `isRoad` is
+   * the whole corridor including pavement and kerb, and on the stock temperate
+   * layout it cut the seeded cell count from 363 to 208 — a 43% economy change
+   * smuggled in behind a visual fix, which is not a trade worth making without
+   * saying so. `isCarriageway` is only the part a vehicle drives on, which is
+   * also the part where a crystal growing out of tarmac actually looks broken.
+   * A cluster on the verge reads as ore the road was cut through.
+   *
+   * `getRoads()` is null on maps with no network, and the clause degrades to
+   * true — no roads, no exclusion. */
+  const roads = getRoads();
+  const accept = (cx: number, cz: number): boolean => {
+    if (terrain.isWater(cx, cz)) return false;
+    if (!terrain.isPassable(cx, cz, Locomotor.Track)) return false;
+    if (roads !== null && roads.isCarriageway((cx + 0.5) * CELL, (cz + 0.5) * CELL)) return false;
+    return true;
+  };
 
   let cells = 0;
   let value = 0;

@@ -395,9 +395,22 @@ describe('the shape pass costs no geometry', () => {
    * accident. It was paid for: the Command Bunker shipped at 4392 with a
    * `catwalk()` on its roof and the catwalk was cut for exactly this reason,
    * which is the note in `sovietCommandPost`.
+   *
+   * REBASED AGAIN FOR THE ORE MINE (`civOreMine`), the capturable neutral that
+   * pays its holder. 2616 triangles and 2 parts, well inside the per-structure
+   * ceiling: 172 380 -> 174 996 and 138 -> 140.
+   *
+   * AND THE HEADROOM ABOVE WAS NOT SPENT. The mine shipped at 2760, which put
+   * the roster mean at 2502 and broke `MAX_MEAN_TRIANGLES`. The note above says
+   * plainly what to do about that — the Command Bunker lost its catwalk for the
+   * same two triangles — so the mine lost its second sheave and its ore skip,
+   * both `MassRole.Greeble`, and the mean came back to 2499.9. `MAX_MEAN_
+   * TRIANGLES` is still 2500 and has never been raised. That is the whole point
+   * of these two assertions being separate: this constant absorbs a roster that
+   * legitimately grew, and the mean refuses to absorb anything at all.
    */
-  const BASELINE_TRIANGLES = 172_380;
-  const BASELINE_PARTS = 138;
+  const BASELINE_TRIANGLES = 174_996;
+  const BASELINE_PARTS = 140;
   /**
    * WHY THE MEAN WAS REPLACED BY A PER-STRUCTURE CEILING.
    *

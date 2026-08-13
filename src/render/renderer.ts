@@ -1166,7 +1166,26 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
 
   renderer.shadowMap.enabled = cfg.shadows.enabled;
   renderer.shadowMap.type = cfg.shadows.type;
-  renderer.shadowMap.autoUpdate = true;
+  /* ONE SHADOW PASS PER FRAME, NOT TWO.
+   *
+   * With `autoUpdate = true` the shadow map is rebuilt on EVERY
+   * `WebGLRenderer.render()` call — and the post chain makes more than one per
+   * frame. `GTAOPass` renders the scene a second time for its normal prepass,
+   * so the entire shadow pass ran twice: measured at 110 draw calls for the
+   * pair, against 55 for the geometry that actually casts.
+   *
+   * `beginFrame()` is the single per-frame entry point (its only caller is
+   * `Bootstrap.present`), so arming `needsUpdate` there gives exactly one
+   * rebuild per frame, at the first render that needs it. `WebGLShadowMap`
+   * clears the flag itself once it has run, and its early-out requires BOTH
+   * `autoUpdate === false` and `needsUpdate === false` — which is why the two
+   * existing `needsUpdate = true` writes in the settings handlers below keep
+   * working unchanged.
+   *
+   * Pixel-identical by construction: the same pass runs, once instead of twice,
+   * and nothing between the two renders moves a caster.
+   */
+  renderer.shadowMap.autoUpdate = false;
 
   // Nice default background so frame zero is never a black void.
   renderer.setClearColor(new THREE.Color(RENDER_CONFIG.sky.horizon), 1);
@@ -1508,6 +1527,11 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
 
     beginFrame() {
       renderer.info.reset();
+      // Arm the one shadow rebuild this frame is allowed. See the
+      // `autoUpdate = false` block in `createRenderer` for why this is not the
+      // default: with autoUpdate on, GTAO's normal prepass rendered the whole
+      // shadow pass a second time.
+      if (renderer.shadowMap.enabled) renderer.shadowMap.needsUpdate = true;
       /*
        * A complete frame is about to be drawn into the current buffer, so a
        * repaint scheduled by a resize earlier in this task is redundant. This is

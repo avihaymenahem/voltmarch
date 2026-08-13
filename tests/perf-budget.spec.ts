@@ -147,6 +147,58 @@ describe('post.ts wiring', () => {
     expect(ids.indexOf("'bloom'")).toBeGreaterThan(ids.indexOf("'ao'"));
     expect(ids.indexOf("'smaa'")).toBeGreaterThan(ids.indexOf("'grade'"));
   });
+
+  it('keeps SMAA last, which is what licenses its 8-bit internal targets', () => {
+    /* `demoteSmaaTargets` replaces SMAA's `_edgesRT` and `_weightsRT` with
+     * `UnsignedByteType`. Those hold 0..1 masks — an edge mask and a
+     * blend-weight lookup — and Jimenez et al. specify RG8/RGBA8 for exactly
+     * them, so sixteen bits per channel bought nothing while costing the
+     * bandwidth twice on a frame measured to be bandwidth-bound.
+     *
+     * IT IS ONLY CORRECT WHILE SMAA RUNS LAST. Its input is then the LDR sRGB
+     * image the grade pass has already encoded — display-referred, and
+     * representable in 8 bits by construction. Move SMAA anywhere it would see
+     * scene-linear HDR and the demotion clips highlights in the edge pass.
+     *
+     * So this is not a duplicate of the ordering assertion above: that one
+     * protects the LOOK, this one protects a memory-format decision that has no
+     * other guard. If you reorder the chain, revert `demoteSmaaTargets` in the
+     * same commit. */
+    const order = POST_CODE.match(/PASS_ORDER[^=]*=\s*\[([^\]]*)\]/);
+    expect(order).not.toBeNull();
+    const ids = ((order as RegExpMatchArray)[1].match(/'([a-z]+)'/g) ?? []);
+    expect(ids.length).toBeGreaterThan(1);
+    expect(ids[ids.length - 1], 'SMAA must be the last pass').toBe("'smaa'");
+    // POST_CODE, not POST_SRC: every string below also appears in the prose
+    // that explains it, and prose must not be able to satisfy the assertion.
+    expect(POST_CODE, 'the demotion and its precondition must stay together')
+      .toContain('demoteSmaaTargets');
+    expect(POST_CODE).toMatch(/type:\s*THREE\.UnsignedByteType/);
+  });
+
+  it('renders the shadow map once a frame, not once per render() call', () => {
+    /* GTAO renders the scene a second time for its normal prepass, and
+     * `WebGLShadowMap` rebuilds on every `render()` while `autoUpdate` is true —
+     * so the whole shadow pass ran twice, measured at 110 draw calls for the
+     * pair. `beginFrame()` is the single per-frame entry point, so arming
+     * `needsUpdate` there gives exactly one rebuild. Pixel-identical.
+     *
+     * Both halves are asserted because either alone is a bug: `autoUpdate =
+     * false` without the re-arm freezes the shadow map at frame one, which is a
+     * far worse defect than the one being fixed. */
+    const code = stripComments(RENDERER_SRC);
+    expect(code, 'autoUpdate must stay off')
+      .toMatch(/shadowMap\.autoUpdate\s*=\s*false/);
+    expect(code, 'nothing may turn it back on')
+      .not.toMatch(/shadowMap\.autoUpdate\s*=\s*true/);
+    // `beginFrame() {`, not `beginFrame()` — the latter finds the interface
+    // declaration `beginFrame(): void;` first, and an assertion that reads a
+    // type signature instead of a body proves nothing.
+    const at = code.indexOf('beginFrame() {');
+    expect(at, 'beginFrame implementation not found').toBeGreaterThan(-1);
+    expect(code.slice(at, at + 400), 'beginFrame must re-arm the one rebuild')
+      .toMatch(/shadowMap\.needsUpdate\s*=\s*true/);
+  });
 });
 
 /* -------------------------------------------------------------------------- */
@@ -213,9 +265,27 @@ describe('MSAA multisamples the scene pass and nothing else', () => {
     expect(declared).toEqual(['0']);
   });
 
-  it('constructs exactly two render targets, exactly one of them multisampled', () => {
-    expect(POST_CODE.match(/new THREE\.WebGLRenderTarget\(/g)).toHaveLength(2);
+  it('constructs exactly three render targets, exactly one of them multisampled', () => {
+    /* TWO became THREE when `demoteSmaaTargets` started replacing SMAA's
+     * `_edgesRT` and `_weightsRT` — one constructor, called twice, swapping
+     * three's hardcoded `HalfFloatType` for `UnsignedByteType` on two masks
+     * defined on 0..1.
+     *
+     * The count is not what this test protects, and bumping it is not the
+     * point. What it protects is "exactly one of them multisampled", and that
+     * half is unchanged and asserted below: `samples` appears once, on the
+     * scene target. A render target that quietly acquires a sample count is the
+     * defect this whole section exists to prevent a second time. */
+    expect(POST_CODE.match(/new THREE\.WebGLRenderTarget\(/g)).toHaveLength(3);
     expect(POST_CODE.match(/samples: want,/g)).toHaveLength(1);
+    // And the two SMAA replacements name no sample count at all — grep the
+    // helper's body rather than trusting the global count above.
+    const smaaStart = POST_CODE.indexOf('function demoteSmaaTargets');
+    expect(smaaStart).toBeGreaterThan(-1);
+    const smaaBody = POST_CODE.slice(smaaStart, smaaStart + 1400);
+    expect(smaaBody).toContain('new THREE.WebGLRenderTarget(');
+    expect(smaaBody, 'an SMAA mask target must never be multisampled')
+      .not.toMatch(/samples/);
   });
 
   it('lets no post pass reach the multisampled target', () => {

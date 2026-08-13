@@ -44,6 +44,15 @@
  *    Every ring count below is inside that band. A smooth 32-segment tube is a
  *    different engine.
  *
+ *    ...and because they are faceted AND flat shaded, foliage pays nothing for
+ *    PER-FACET paint variation: `PropMesh.facetJitter` re-rolls the albedo once
+ *    per triangle/quad on canopy blobs, conifer tiers and shrub lobes (+-14% V,
+ *    +-6 deg H off the builder's seeded stream). That is scorecard #34 — Sobel
+ *    |grad|>25 coverage, the one metric failing on all thirteen fixtures — and
+ *    it is NOT the banned per-pixel noise: a canopy facet is ~2.7 m, ~80 px at
+ *    gameplay zoom, bounded by a real geometric crease, and every vertex inside
+ *    it carries the identical colour. See the doc comment on `facetJitter`.
+ *
  * ONE GEOMETRY PER KEY. A `PropDef` bakes exactly one mesh; where two looks
  * must coexist on the same map (summer vs autumn foliage, golden vs green
  * grass, timber crates vs shipping containers) they are separate KEYS with
@@ -60,7 +69,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 import { PROP_EMISSIVE_GAIN, PROP_MATERIAL, SCATTER_WIND } from '../core/config';
-import { clamp, clamp01, Rng, TAU } from '../core/math';
+import { clamp, clamp01, Rng, srgbToLinear, TAU } from '../core/math';
 import { linearColorTriple } from '../core/assets';
 import { applyShroudTint } from '../render/FogOfWar';
 import { SurfaceId, type BiomeName } from './Biomes';
@@ -97,7 +106,8 @@ function hexToHsv(hex: string, out: Float32Array): void {
   out[0] = h; out[1] = max <= 0 ? 0 : d / max; out[2] = max;
 }
 
-function hsvToHex(h: number, s: number, v: number): string {
+/** HSV (hue in TURNS, wrapped; s/v 0..1) -> sRGB 0..1 into `out`. */
+function hsvToRgb(h: number, s: number, v: number, out: Float32Array): void {
   h -= Math.floor(h);
   const i = Math.floor(h * 6), f = h * 6 - i;
   const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
@@ -110,8 +120,32 @@ function hsvToHex(h: number, s: number, v: number): string {
     case 5: r = v; g = p; b = q; break;
     default: break;
   }
-  const to = (x: number): string => Math.round(clamp01(x) * 255).toString(16).padStart(2, '0');
-  return `#${to(r)}${to(g)}${to(b)}`;
+  out[0] = clamp01(r); out[1] = clamp01(g); out[2] = clamp01(b);
+}
+
+const RGB_SCRATCH = new Float32Array(3);
+
+function hsvToHex(h: number, s: number, v: number): string {
+  hsvToRgb(h, s, v, RGB_SCRATCH);
+  const to = (x: number): string => Math.round(x * 255).toString(16).padStart(2, '0');
+  return `#${to(RGB_SCRATCH[0])}${to(RGB_SCRATCH[1])}${to(RGB_SCRATCH[2])}`;
+}
+
+/**
+ * HSV straight to a LINEAR triple, skipping the 8-bit hex round trip.
+ *
+ * `color()` goes through hex because every authored literal in this file is a
+ * hex from the bible and `linear()` memoises on that string. The facet jitter
+ * cannot: it produces a fresh colour per triangle, so a hex cache would only
+ * grow, and quantising a +-14% value swing to 8 bits throws away the small
+ * steps that are the whole point. Same transfer function either way —
+ * `linearColorTriple` calls this same `srgbToLinear`.
+ */
+function hsvToLinear(h: number, s: number, v: number, out: Float32Array): void {
+  hsvToRgb(h, s, v, out);
+  out[0] = srgbToLinear(out[0]);
+  out[1] = srgbToLinear(out[1]);
+  out[2] = srgbToLinear(out[2]);
 }
 
 /**
@@ -157,8 +191,25 @@ export class PropMesh {
   private readonly glsArr: number[] = [];
   private readonly idxArr: number[] = [];
 
+  /* The colours `vertex()` actually emits. Facet jitter overwrites these. */
   private cr = 1; private cg = 1; private cb = 1;
   private br = 1; private bg = 1; private bb = 1;
+  /*
+   * Pristine copies of the same two pairs, plus their HSV. The copies let
+   * `noFacetJitter()` restore the AUTHORED paint bit-for-bit instead of a value
+   * re-derived through HSV; the HSV is what the jitter perturbs.
+   */
+  private cr0 = 1; private cg0 = 1; private cb0 = 1;
+  private br0 = 1; private bg0 = 1; private bb0 = 1;
+  private cH = 0; private cS = 0; private cV = 1;
+  private bH = 0; private bS = 0; private bV = 1;
+
+  /* Non-null = re-roll the paint on every primitive. See `facetJitter`. */
+  private jitterRng: Rng | null = null;
+  private jitterValue = 0;
+  private jitterHue = 0;
+  private readonly facetRgb = new Float32Array(3);
+
   private emit = 0;
   private glossV = 0;
 
@@ -179,17 +230,93 @@ export class PropMesh {
   /** Set the paint. The chamfer colour is derived unless `bevel()` follows. */
   color(hex: string): this {
     const c = linear(hex);
-    this.cr = c[0]; this.cg = c[1]; this.cb = c[2];
-    const b = linear(bevelHighlight(hex));
-    this.br = b[0]; this.bg = b[1]; this.bb = b[2];
+    this.cr0 = c[0]; this.cg0 = c[1]; this.cb0 = c[2];
+    hexToHsv(hex, HSV);
+    this.cH = HSV[0]; this.cS = HSV[1]; this.cV = HSV[2];
+    this.bevel(bevelHighlight(hex));
+    this.cr = this.cr0; this.cg = this.cg0; this.cb = this.cb0;
     return this;
   }
 
   /** Override the chamfer-strip colour (a stone kerb lip, a painted band). */
   bevel(hex: string): this {
     const b = linear(hex);
+    this.br0 = b[0]; this.bg0 = b[1]; this.bb0 = b[2];
     this.br = b[0]; this.bg = b[1]; this.bb = b[2];
+    hexToHsv(hex, HSV);
+    this.bH = HSV[0]; this.bS = HSV[1]; this.bV = HSV[2];
     return this;
+  }
+
+  /**
+   * PER-FACET PAINT JITTER — the detail-density lever that costs nothing.
+   *
+   * Scorecard #34 (Sobel |grad|>25 coverage) fails on every capture fixture and
+   * native-resolution crops put the deficit in bare ground and TREE CANOPIES: a
+   * canopy blob is ~200 flat-shaded facets that all arrive at the framebuffer
+   * within a couple of luminance levels of each other, so the Sobel operator
+   * sees one silhouette and nothing inside it. Give adjacent facets a real
+   * albedo step and every facet boundary becomes a measurable edge.
+   *
+   * WHY THIS IS NOT THE BANNED NOISE. CLAUDE.md: "if per-pixel noise is visible
+   * at gameplay zoom, it is wrong. Detail comes from geometry and from crisp
+   * drawn shapes." A canopy facet here is ~2.7 m on a side — about 80 px at the
+   * 29.6 px/m gameplay zoom — bounded by a real geometric crease with a real
+   * normal discontinuity. It IS a crisp shape. The jitter is rolled once per
+   * PRIMITIVE and every vertex of that primitive gets the identical colour, so
+   * there is no gradient inside a facet and nothing to alias.
+   *
+   * WHY IT IS FREE. Props are flat shaded — `vertex()` never shares a vertex
+   * across faces (see the section header) — so a per-facet colour needs no new
+   * attribute, no new draw call and no new triangle. It is the same `color`
+   * buffer the paint already rides in.
+   *
+   * THE BAND. `value` +-0.14 and `hueDeg` +-6 for foliage. Bible §6.5 asks for
+   * value +-18% / hue +-8 deg PER INSTANCE and the scatter system already does
+   * that; this is deliberately tighter one level down. Note the interaction with
+   * the tone-ladder rule in section 3: the temperate leaf ladder spans 1.29x
+   * across its three lobes, and +-14% adds up to 1.33x facet-to-facet, so the
+   * worst-case within-canopy span is ~1.71x rather than the 1.40x the ladder
+   * rule quotes. That rule is about LOBE-scale alternation, which reads as
+   * blotches because a lobe is a whole mass; facet-scale variation is the
+   * greeble scale the bible asks for in §5.3 ("every greeble >= 3 px"). If a
+   * capture ever shows canopies reading as confetti, lower the value swing —
+   * do not reach for the hue.
+   *
+   * DETERMINISM. Draws come from the builder's own seeded stream, which is a
+   * fresh `Rng` per prop def, so jittering one archetype cannot move another.
+   * The roll happens BEFORE the degenerate-facet early-return in `tri`/`quad`,
+   * so the draw count depends only on the call sequence, never on geometry.
+   *
+   * @param rng    the builder's seeded stream. Never `Math.random`.
+   * @param value  fractional value swing, symmetric. 0.14 = +-14%.
+   * @param hueDeg hue swing in DEGREES, symmetric. Saturation is untouched.
+   */
+  facetJitter(rng: Rng, value: number, hueDeg: number): this {
+    this.jitterRng = rng;
+    this.jitterValue = value;
+    this.jitterHue = hueDeg / 360;
+    return this;
+  }
+
+  /** Stop jittering and restore the authored paint exactly. */
+  noFacetJitter(): this {
+    this.jitterRng = null;
+    this.cr = this.cr0; this.cg = this.cg0; this.cb = this.cb0;
+    this.br = this.br0; this.bg = this.bg0; this.bb = this.bb0;
+    return this;
+  }
+
+  /** One roll per primitive. Both the paint and its bevel band move together. */
+  private rollFacet(): void {
+    const r = this.jitterRng;
+    if (r === null) return;
+    const dh = (r.next() * 2 - 1) * this.jitterHue;
+    const dv = 1 + (r.next() * 2 - 1) * this.jitterValue;
+    hsvToLinear(this.cH + dh, this.cS, clamp01(this.cV * dv), this.facetRgb);
+    this.cr = this.facetRgb[0]; this.cg = this.facetRgb[1]; this.cb = this.facetRgb[2];
+    hsvToLinear(this.bH + dh, this.bS, clamp01(this.bV * dv), this.facetRgb);
+    this.br = this.facetRgb[0]; this.bg = this.facetRgb[1]; this.bb = this.facetRgb[2];
   }
 
   /** 0 = lit paint, 1 = full emissive. Bible R-T5: clean discs and rounded rects. */
@@ -246,6 +373,7 @@ export class PropMesh {
     ox: number, oy: number, oz: number,
     bevelPaint = false,
   ): void {
+    this.rollFacet();
     SCRATCH_A[0] = x1 - x0; SCRATCH_A[1] = y1 - y0; SCRATCH_A[2] = z1 - z0;
     SCRATCH_B[0] = x2 - x0; SCRATCH_B[1] = y2 - y0; SCRATCH_B[2] = z2 - z0;
     let nx = SCRATCH_A[1] * SCRATCH_B[2] - SCRATCH_A[2] * SCRATCH_B[1];
@@ -274,6 +402,7 @@ export class PropMesh {
     ox: number, oy: number, oz: number,
     bevelPaint = false,
   ): void {
+    this.rollFacet();
     SCRATCH_A[0] = x2 - x0; SCRATCH_A[1] = y2 - y0; SCRATCH_A[2] = z2 - z0;
     SCRATCH_B[0] = x3 - x1; SCRATCH_B[1] = y3 - y1; SCRATCH_B[2] = z3 - z1;
     let nx = SCRATCH_A[1] * SCRATCH_B[2] - SCRATCH_A[2] * SCRATCH_B[1];
@@ -823,6 +952,19 @@ function chamferFor(minDim: number): number {
   return clamp(minDim * 0.09, 0.02, 0.13);
 }
 
+/**
+ * The foliage facet-jitter band. See `PropMesh.facetJitter` for why this is a
+ * legitimate detail source and not the banned per-pixel noise.
+ *
+ * Applied to canopy blobs, conifer tiers and shrub lobes — the three places a
+ * prop is a big smooth-reading mass of near-identical facets, and the two the
+ * #34 crops named. Deliberately NOT applied to blade cards (grass tufts, palm
+ * fronds, shrub twigs): a blade is 0.20 m wide, ~6 px on screen, and a colour
+ * step across a 6 px card is the per-pixel noise the rule forbids.
+ */
+const FOLIAGE_FACET_VALUE = 0.14;
+const FOLIAGE_FACET_HUE_DEG = 6;
+
 /* ---- canopy -------------------------------------------------------------- */
 
 function broadleaf(m: PropMesh, rng: Rng, p: PropPalette, autumn: boolean): void {
@@ -857,6 +999,10 @@ function broadleaf(m: PropMesh, rng: Rng, p: PropPalette, autumn: boolean): void
   m.sway(SCATTER_WIND.canopyAmplitude, trunkH * 0.5, height);
   m.ao(0.60, trunkH * 0.6, height);
   const cy = trunkH + canopyR * 0.62;
+  // 10 segs x 5 rings = 50 facets per blob, ~2.7 m each at this canopy radius.
+  // Without the jitter all 200 of them arrive within a couple of luminance
+  // levels of each other and the Sobel operator sees one flat green disc.
+  m.facetJitter(rng, FOLIAGE_FACET_VALUE, FOLIAGE_FACET_HUE_DEG);
   for (let i = 0; i < 4; i++) {
     const a = (i / 4) * TAU + rng.range(-0.4, 0.4);
     const d = i === 0 ? 0 : canopyR * rng.range(0.34, 0.56);
@@ -865,6 +1011,7 @@ function broadleaf(m: PropMesh, rng: Rng, p: PropPalette, autumn: boolean): void
     m.blob(Math.cos(a) * d, cy + (i === 0 ? 0 : rng.range(-0.3, 1.4)), Math.sin(a) * d,
       r, r * rng.range(0.74, 0.94), r, 10, 5, 0.34);
   }
+  m.noFacetJitter();
 }
 
 function buildTree(m: PropMesh, rng: Rng, p: PropPalette): void { broadleaf(m, rng, p, false); }
@@ -881,6 +1028,10 @@ function buildConifer(m: PropMesh, rng: Rng, p: PropPalette): void {
   // separates a conifer from a green traffic cone at RTS distance.
   m.sway(SCATTER_WIND.canopyAmplitude * 0.55, trunkH, height);
   m.ao(0.52, trunkH, height);
+  // A cone is 12 tall triangles that differ only by their normal, and a conifer
+  // is the darkest thing on the map — the shading spread across those 12 is
+  // small enough in absolute terms that the whole tier reads as one silhouette.
+  m.facetJitter(rng, FOLIAGE_FACET_VALUE, FOLIAGE_FACET_HUE_DEG);
   let y = trunkH;
   let r = baseR;
   for (let i = 0; i < 4; i++) {
@@ -890,6 +1041,7 @@ function buildConifer(m: PropMesh, rng: Rng, p: PropPalette): void {
     y += h * 0.90;
     r *= 0.74;
   }
+  m.noFacetJitter();
 }
 
 function buildPalm(m: PropMesh, rng: Rng, p: PropPalette): void {
@@ -926,6 +1078,7 @@ function buildBush(m: PropMesh, rng: Rng, p: PropPalette): void {
   const h = rng.range(1.2, 2.0);
   const r = rng.range(0.95, 1.45);
   m.ao(0.45, 0, h).sway(SCATTER_WIND.canopyAmplitude * 0.45, 0, h);
+  m.facetJitter(rng, FOLIAGE_FACET_VALUE, FOLIAGE_FACET_HUE_DEG);
   // Lobes are deliberately UNEVEN in all three axes and offset well past their
   // own radius. A first pass used four concentric near-spheres and every bush
   // on the map read as a dark green beach ball.
@@ -941,7 +1094,9 @@ function buildBush(m: PropMesh, rng: Rng, p: PropPalette): void {
     );
   }
   // Long twigs breaking the outline. These are what stop a shrub from reading
-  // as a primitive at the 39-degree camera.
+  // as a primitive at the 39-degree camera. Jitter OFF for them: a twig card is
+  // 0.20 m wide and a colour step across ~6 px is noise, not a facet.
+  m.noFacetJitter();
   m.color(p.shrubDark).sway(SCATTER_WIND.canopyAmplitude * 0.8, 0, h + 0.6);
   for (let i = 0; i < 9; i++) {
     const a = (i / 9) * TAU + rng.range(-0.35, 0.35);

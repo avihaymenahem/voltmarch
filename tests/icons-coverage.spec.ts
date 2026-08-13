@@ -85,10 +85,10 @@ describe('every structure gets a real icon rule', () => {
     // Repair depots. `depot` IS the glyph, so a matching rule and the fallback
     // are indistinguishable from here - see the header.
     'serviceDepot', 'mrdDepot', 'rclDepot',
-    // The three civilian structures. Nobody builds them; they appear only as
+    // The four civilian structures. Nobody builds them; they appear only as
     // capture targets on the map, never in a build grid, so the sidebar glyph
     // is not a thing a player reads. `depot` is a neutral building.
-    'civOilDerrick', 'civHospital', 'civApartments',
+    'civOilDerrick', 'civHospital', 'civApartments', 'civOreMine',
     // THE THREE COMMAND POSTS, and this one is a deliberate hold rather than a
     // rule. `radar` would say "comms" and collide with the actual Radar Dome
     // one row up; `superweapon` would say "a thing you call down" and collide

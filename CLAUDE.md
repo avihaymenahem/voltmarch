@@ -491,6 +491,36 @@ a long game, and nothing, they just not respond"*. Eight defects, three rules.
   And `guardX/guardZ` is a harvester's ORE ANCHOR: `Steering` has two stamp sites that skip
   harvesters, `RepairSell.applyStance` was a third that did not.
 
+## Ore is drawn in the world now, and the harness cannot see it
+
+Reported as *"We have ore scattered around the map, but i cant see it, how do i know where to place
+my harvesters?"* — and the answer was that ore had **no world-space representation at all**.
+`OreField` published `densityAt` / `densityAtWorld` / `drainDirty` / `pendingDirty` / `getOreField()`
+with **zero production callers**, and nine prose sites across five files described a "crystal
+instancer" in the present tense that had never been written. `src/world/ore.system.ts` is that
+module. `docs/SPEC_DRIFT_AUDIT.md` #62 is the entry.
+
+- **One `InstancedMesh`, one draw call, `castShadow = false`.** Updated only from `drainDirty` —
+  never a 16 384-cell rescan — and shroud-tinted, because a renderer without `applyShroudTint` is a
+  map hack that shows every field through unexplored fog.
+- **`init()` CANNOT SEE THE ORE.** Fields are seeded by the scenario at `Phase.Cleanup`; this module
+  inits far earlier, so enumerating cells in `init` yields an empty set and the mesh silently never
+  appears. It allocates at capacity with `count = 0` and fills from `frame()`. `builtForFields` is
+  reset in `dispose()` — without that, the second match of a session renders no ore whenever the new
+  scenario seeds the same NUMBER of fields as the last.
+- **Placement is clumps, not a grid.** One cluster per 4 m cell reads as a plantation however hard
+  each is jittered, so 62% of cells draw nothing on a stable hash and the survivors scale up. The
+  cluster is SUNK 16% of its height because its base is a flat disc and terrain is never flat —
+  un-sunk, it visibly floats, which was the first thing anyone said about it.
+- **Ore is excluded from the road CARRIAGEWAY at seeding**, not in the renderer: skipping the draw
+  would recreate the original defect, minable-but-invisible ore. `isCarriageway`, never `isRoad` —
+  `isRoad` includes pavement and kerb and cut seeded cells 363 → 208 on the stock temperate layout,
+  a 43% economy change hidden behind a visual fix.
+- **`npm run shots` CANNOT REGRESS THIS.** `?shot=` boots paused, ore is seeded from `simTick`, and
+  nine of the thirteen fixtures declare `settleTicks: 0` — five of those nine call `addOre` and never
+  seed it. **`06-economy` is the only frame in the capture set where a crystal can appear.** Do not
+  read an unchanged look-bible grade as evidence this renderer is fine.
+
 ## Hard rules
 
 - **Determinism.** Inside `simTick`, `Math.random()`, `Date.now()` and `performance.now()` are
@@ -499,8 +529,25 @@ a long game, and nothing, they just not respond"*. Eight defects, three rules.
 - **Performance.** 200+ units at 60fps, zero allocation in the frame loop, and a draw-call budget of
   130 — which is a TARGET, not a description. Measured on the thirteen capture fixtures via
   `renderer.info.render.calls` and reported per shot in `shots/_report.json` as `frame.drawCalls`,
-  the real figure is **174–273** (that count includes the three CSM shadow cascades): `08-naval-water`
-  is the cheapest at 174, `01-establishing-base` the dearest at 273. **Re-measured 2026-08-12 from a
+  the real figure is **146–219**: `03-terrain-closeup` and `08-naval-water` are the cheapest at 146,
+  `01-establishing-base` the dearest at 219. The `+1` over the 145–218 measured earlier in the same
+  release is `render/contact-shadows.system.ts`, which is one `InstancedMesh` for every contact pool
+  in the frame — the cost was predicted at one draw and measured at one draw.
+
+  **It was 174–273 until the duplicate shadow pass was deleted**, and that is the whole of the
+  improvement — see the `autoUpdate = false` block in `renderer.ts`. Requote this from a real
+  `shots/_report.json` rather than carrying it forward; it has now drifted three times, twice
+  upward and once down, and a range nobody re-measures is how `MAX_DRAW_CALLS` came to be quoted as
+  achieved.
+
+  **This line used to say "that count includes the three CSM shadow cascades". THERE IS NO CSM.**
+  `src/render/scene.ts:451-473` builds ONE `DirectionalLight` with ONE orthographic shadow camera,
+  and the only other shadow-capable light — the ground bounce at `:489` — sets
+  `castShadow = false` at `:493`. `QualitySettings.shadowCascades` is written and read by nobody.
+  The phrase made 273 sound accounted for when it is not, which is worse than no explanation at all.
+  What the count DOES include is the shadow map rendered **twice per frame**: `GTAOPass` issues its
+  own `renderer.render()` for a normal prepass, and `renderer.shadowMap.autoUpdate` is `true`, so
+  the shadow pass runs again inside it. **Re-measured 2026-08-12 from a
   fresh `_report.json` and unchanged on every one of the thirteen** — the first time this range has
   been confirmed rather than inherited, and it survived a release that added thirteen models. This
   line read "under 130 draw

@@ -370,7 +370,46 @@ describe('a harvester obeys the player', () => {
       'the redirect must be consumed once, or tickReturn never runs').toBeGreaterThan(0);
   });
 
-  /* -- 5. stance must not move the anchor ---------------------------------- */
+  /* -- 5. the dock queue is a line, not a pile ----------------------------- */
+
+  it('gives queued haulers separate dock slots', () => {
+    /* Reported as "Ore harvesters: They keep clashing each other".
+     *
+     * `commitDockPoint` used to hand every non-lock-holding hauler the SAME
+     * point — `reach + HARVESTER_QUEUE_GAP` — while the comment directly above
+     * it described an indexed queue, and `queueRank` sat twenty lines below
+     * computing exactly that index for a caller that threw it away. N hulls
+     * converging on one coordinate settle ~7.7 m apart via `Movement.relax` and
+     * shove each other the whole way in.
+     *
+     * The assertion is deliberately about SEPARATION rather than exact
+     * coordinates: the stagger's sign and spacing are tuning, but "no two
+     * waiters are sent to the same place" is the invariant. */
+    const st = rig.world.store;
+    const hulls = [h];
+    for (let k = 0; k < 3; k++) hulls.push(spawnHarvester(rig, HUMAN, HOME_X + 8 * k, PATCH_Z - 26));
+    for (const u of hulls) st.cargo[st.index(u)] = 300;
+
+    // Let them all decide to haul, and let the dock lock settle.
+    rig.step(6 * SIM_HZ);
+
+    const waiting = hulls
+      .map((u) => st.index(u))
+      .filter((i) => st.state[i] === UnitState.ReturnToRefinery);
+    expect(waiting.length, 'precondition: at least two haulers queued').toBeGreaterThan(1);
+
+    for (let a = 0; a < waiting.length; a++) {
+      for (let b = a + 1; b < waiting.length; b++) {
+        const d = Math.hypot(
+          st.orderX[waiting[a]] - st.orderX[waiting[b]],
+          st.orderZ[waiting[a]] - st.orderZ[waiting[b]],
+        );
+        expect(d, 'two queued haulers were sent to the same point').toBeGreaterThan(1);
+      }
+    }
+  });
+
+  /* -- 6. stance must not move the anchor ---------------------------------- */
 
   it('keeps its ore anchor when the player changes stance', () => {
     const st = rig.world.store;

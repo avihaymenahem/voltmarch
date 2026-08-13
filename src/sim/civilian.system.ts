@@ -1,11 +1,20 @@
 /**
  * ============================================================================
- * src/sim/civilian.system.ts — AN OIL DERRICK PAYS WHOEVER HOLDS IT
+ * src/sim/civilian.system.ts — A CAPTURED STRUCTURE PAYS WHOEVER HOLDS IT
  * ============================================================================
  *
- * The reason to walk an engineer across the map. `src/data/Civilians.ts` puts
- * three neutral structures on it and two of them are firing positions; this is
- * the third one's whole mechanic.
+ * The reason to walk an engineer across the map — or a squad, which flips the
+ * deed just as well for as long as they stand in it. `src/data/Civilians.ts`
+ * puts four neutral structures on it; two are firing positions, and the other
+ * two (the Oil Derrick and the Ore Mine) are this file's whole mechanic.
+ *
+ * TWO SOURCES, ONE LOOP, AND NO SECOND MECHANISM. The mine arrived from "lets
+ * spawn small amount of coal / ore / money mines around the map, conquering
+ * with troops make us get income" and it is the derrick's rule pointed at a
+ * second def id at a third of the rate. The only change this file needed was
+ * turning one resolved def id into `CIVILIAN_INCOME_SOURCES`; everything below
+ * about determinism, iteration order and the phase is unchanged and still
+ * true, because none of it ever depended on there being exactly one.
  *
  * IT JOINS THE GAME BY EXISTING. `src/game/Systems.ts` globs `*.system.ts` and
  * registers whatever default-exports a `SystemModule`, which is why nothing in
@@ -54,19 +63,32 @@ import type { PlayerId, SimContext } from '../core/types';
 import type { World } from '../core/world';
 import { ctx } from '../game/context';
 import { resolveDefBinding } from '../game/Scenarios';
-import { CIVILIAN_INCOME } from '../data/Civilians';
+import { CIVILIAN_INCOME, CIVILIAN_INCOME_SOURCES } from '../data/Civilians';
 
 import { getEconomy, type Economy } from './Economy';
 
 /**
- * The def index of the paying structure, or -1 for "there is none".
+ * The def index of each paying structure, parallel to
+ * `CIVILIAN_INCOME_SOURCES`, or -1 for "this build has no such def".
  *
  * Resolved ONCE, in `init`, off the same `resolveDefBinding()` every other
  * consumer uses — so it is content, identical on every client, and settled
- * before the first tick runs. -1 makes this module completely inert, which is
- * the correct behaviour for a boot with no data module at all.
+ * before the first tick runs. All -1 makes this module completely inert, which
+ * is the correct behaviour for a boot with no data module at all.
+ *
+ * A PLAIN ARRAY AND NOT A MAP, because the tick walks it once per payout round
+ * and the whole file allocates nothing per tick. It is two entries long.
  */
-let derrickDefId = -1;
+const sourceDefIds: number[] = CIVILIAN_INCOME_SOURCES.map(() => -1);
+
+/**
+ * The interval every source shares. See `CIVILIAN_INCOME_SOURCES` for why there
+ * is only one: the payout round is gated on a single `s.tick % n`, and a source
+ * with its own period would need a second coalescing window for one mechanic.
+ * `tests/civilians.spec.ts` asserts the sources agree, so this is a read of the
+ * first rather than a choice made here.
+ */
+const INTERVAL_TICKS = CIVILIAN_INCOME.intervalTicks;
 
 /** Captured at init so the tick never pays for a context lookup. */
 let world: World | null = null;
@@ -75,10 +97,13 @@ let world: World | null = null;
 export interface DerrickStats {
   payouts: number;
   credited: number;
+  /** Derricks held by a real army at the last payout. */
   derricksHeld: number;
+  /** Ore mines held by a real army at the last payout. */
+  minesHeld: number;
 }
 
-const stats: DerrickStats = { payouts: 0, credited: 0, derricksHeld: 0 };
+const stats: DerrickStats = { payouts: 0, credited: 0, derricksHeld: 0, minesHeld: 0 };
 
 /**
  * ONE PAYOUT ROUND. Returns how many derricks were held by a real army.
@@ -94,8 +119,8 @@ const stats: DerrickStats = { payouts: 0, credited: 0, derricksHeld: 0 };
  * the same array in the same order on every client, so two machines in lockstep
  * credit the same players in the same sequence.
  */
-export function payDerricks(
-  w: World, economy: Economy, defId: number, out?: DerrickStats,
+export function payHolders(
+  w: World, economy: Economy, defId: number, credits: number, out?: DerrickStats,
 ): number {
   const st = w.store;
   const list = st.byKind[EntityKind.Building];
@@ -125,13 +150,25 @@ export function payDerricks(
     // money that did not come out of the ground — it skips the AI's
     // `resourceBonus` handicap (which must apply to MINING, not to a fixed map
     // reward) and the mission tracker does not count it as ore.
-    const banked = economy.deposit(owner, CIVILIAN_INCOME.credits, CreditReason.Bounty);
+    const banked = economy.deposit(owner, credits, CreditReason.Bounty);
     if (banked > 0 && out !== undefined) {
       out.payouts++;
       out.credited += banked;
     }
   }
   return held;
+}
+
+/**
+ * The derrick's binding of `payHolders`, kept because it is the one every
+ * existing caller and `tests/civilians.spec.ts` name. It is not a legacy shim
+ * — the derrick is still a source and this is still exactly its payout — but
+ * new code should call `payHolders` with the source it means.
+ */
+export function payDerricks(
+  w: World, economy: Economy, defId: number, out?: DerrickStats,
+): number {
+  return payHolders(w, economy, defId, CIVILIAN_INCOME.credits, out);
 }
 
 export default defineSystem({
@@ -142,46 +179,63 @@ export default defineSystem({
   async init(): Promise<void> {
     world = ctx().world;
     const binding = await resolveDefBinding();
-    derrickDefId = binding.buildingId[CIVILIAN_INCOME.key] ?? -1;
 
     stats.payouts = 0;
     stats.credited = 0;
     stats.derricksHeld = 0;
+    stats.minesHeld = 0;
 
     (globalThis as unknown as Record<string, unknown>).__vmCivilians = {
-      defId: () => derrickDefId,
+      defId: () => sourceDefIds[0]!,
+      defIds: () => sourceDefIds.slice(),
       stats,
       income: CIVILIAN_INCOME,
+      sources: CIVILIAN_INCOME_SOURCES,
     };
 
-    if (derrickDefId < 0) {
-      // Loud, because the failure is otherwise invisible: derricks stand on
-      // the map, change hands, and silently pay nobody. Exactly the shape of
-      // the "finished mechanic with no content" defect this whole change set
-      // exists to close.
-      console.warn(
-        `[civilian] no def bound for "${CIVILIAN_INCOME.key}" — oil derricks will pay nothing. `
-        + 'Check BUILDING_ALIASES in src/game/Scenarios.ts.',
+    for (let k = 0; k < CIVILIAN_INCOME_SOURCES.length; k++) {
+      const src = CIVILIAN_INCOME_SOURCES[k]!;
+      const defId = binding.buildingId[src.key] ?? -1;
+      sourceDefIds[k] = defId;
+      if (defId < 0) {
+        // Loud, because the failure is otherwise invisible: the structure
+        // stands on the map, changes hands, and silently pays nobody. Exactly
+        // the shape of the "finished mechanic with no content" defect this
+        // whole module exists to close.
+        console.warn(
+          `[civilian] no def bound for "${src.key}" — it will pay nothing. `
+          + 'Check BUILDING_ALIASES in src/game/Scenarios.ts.',
+        );
+        continue;
+      }
+      console.info(
+        `%c[civilian]%c "${src.key}" pays ${src.credits} credits every `
+        + `${src.intervalTicks} ticks (def ${defId})`,
+        'color:#fd7', 'color:inherit',
       );
-      return;
     }
-    console.info(
-      `%c[civilian]%c oil derricks pay ${CIVILIAN_INCOME.credits} credits every `
-      + `${CIVILIAN_INCOME.intervalTicks} ticks (def ${derrickDefId})`,
-      'color:#fd7', 'color:inherit',
-    );
   },
 
   simTick(s: SimContext): void {
-    if (derrickDefId < 0 || world === null) return;
-    if (s.tick % CIVILIAN_INCOME.intervalTicks !== 0) return;
+    if (world === null) return;
+    if (s.tick % INTERVAL_TICKS !== 0) return;
     const economy = getEconomy();
     if (economy === null) return;
-    stats.derricksHeld = payDerricks(world, economy, derrickDefId, stats);
+    // FIXED ORDER over a fixed-length array, which is the lockstep clause: two
+    // clients credit the same players from the same sources in the same
+    // sequence, so the coalesced `economy:credits` event carries the same
+    // numbers on both machines.
+    for (let k = 0; k < CIVILIAN_INCOME_SOURCES.length; k++) {
+      const defId = sourceDefIds[k]!;
+      if (defId < 0) continue;
+      const held = payHolders(world, economy, defId, CIVILIAN_INCOME_SOURCES[k]!.credits, stats);
+      if (k === 0) stats.derricksHeld = held;
+      else stats.minesHeld = held;
+    }
   },
 
   dispose(): void {
-    derrickDefId = -1;
+    sourceDefIds.fill(-1);
     world = null;
     delete (globalThis as unknown as Record<string, unknown>).__vmCivilians;
   },

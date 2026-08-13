@@ -542,8 +542,34 @@ const SUN_NOON = {
   intensity: 3.4,
   /** Shadows are TINTED, not black — black shadows read as holes. */
   shadowColor: '#2A3550',
-  /** Poisson PCF radius in shadow texels. Higher = softer, mushier contact. */
-  shadowSoftness: 2.2,
+  /**
+   * PCF radius in shadow texels. Higher = softer, mushier contact.
+   *
+   * 2.2 -> 1.0, AND IT COSTS NOTHING. three's `SHADOWMAP_TYPE_PCF` is a FIXED
+   * five-tap Vogel disk with interleaved-gradient rotation
+   * (`shadowmap_pars_fragment.glsl.js`), and `radius` only scales the offsets:
+   * `radius * texelSize`. The tap count does not move with it. So this is a
+   * pure quality knob with no frame cost attached in either direction, which is
+   * unusual enough to be worth stating — it was being read as a
+   * quality/performance trade and it is not one.
+   *
+   * 2.2 put every cast-shadow edge at roughly an 11 px smear at 1440p. The
+   * bible's §3.3/§11 position is that "hardness is identity": RA3's shadows are
+   * crisp, and a soft edge is the single most reliable way to make a stylised
+   * frame read as a generic engine. At 1.0 the same edge lands near 5 px and
+   * bevel-scale detail — roof stacks, track shadows, kerbs — starts resolving
+   * instead of dissolving.
+   *
+   * STILL NOT INSIDE THE BIBLE'S 1.2-2.5 px BAND, and this note should not
+   * pretend otherwise. At the shipped `medium` tier a shadow texel is ~2.5
+   * screen px, so radius 1.0 is ~5 px however tight the radius goes; closing
+   * the rest needs `mapSize` 1536 -> 2048, which moves the capture pipeline and
+   * belongs in its own commit with its own re-baseline.
+   *
+   * `overcast` deliberately keeps 6.0. A flat, soft, desaturated mood is what
+   * that preset is FOR — it is the "is the lighting carrying this?" control.
+   */
+  shadowSoftness: 1.0,
   shadowBias: -0.0005,
   shadowNormalBias: 0.02,
   /**
@@ -1069,7 +1095,17 @@ const RECLAIM_LOOK: FactionLook = {
   chamfer: 0.030,
 };
 
-/** Ore crystal colour. Referenced by both terrain and HUD. */
+/**
+ * Ore crystal colour.
+ *
+ * This said "Referenced by both terrain and HUD" and was referenced by NEITHER
+ * — it had no reader anywhere in the tree until `src/world/ore.system.ts` was
+ * written, which is now its only one: the lit vertex colour of the crystal
+ * cluster and the material's `emissive`. Terrain does not sample it. Nor does
+ * the HUD — the minimap's ore gold is `SEMANTIC.ore` (`#C8A83C`) in
+ * `src/ui/Chrome.ts`, a different constant with a different value. Nothing
+ * links them, so changing this one does not move the minimap.
+ */
 export const ORE_CRYSTAL_COLOR = '#FFC64A';
 /** Neutral rock. */
 export const ROCK_COLOR = '#7C7468';
@@ -1112,7 +1148,17 @@ const SURFACES: Record<SurfaceArchetype, SurfaceLook> = {
   terrainRock:       S(0.82, 0.82, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00),
   /** Slightly wet-looking. Puddles at 0.12. */
   terrainRoad:       S(0.72, 0.72, 0.00, 0.00, 0.00, 0.20, 0.00, 0.00, 0.00),
-  /** Emissive scales with remaining ore amount. */
+  /**
+   * Glossy and non-metallic, and that is the whole row — `SurfaceLook` has no
+   * emissive field, so the old comment ("Emissive scales with remaining ore
+   * amount") described a quantity this table cannot express and a behaviour
+   * nothing implements. What actually scales with remaining ore in
+   * `src/world/ore.system.ts` is the instance SCALE, quantised into
+   * `ORE_DENSITY_STEPS` buckets; `emissiveIntensity` is a constant 0.18, held
+   * deliberately low to keep ore under the bloom threshold. The one number here
+   * that reaches the crystals is the 0.22 roughness, restated as a literal
+   * there because `SURFACES` is module-private.
+   */
   oreCrystal:        S(0.22, 0.22, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00),
   water:             S(0.06, 0.06, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00),
   wreck:             S(0.88, 0.88, 0.06, 0.20, 0.45, 0.60, 0.00, 0.55, 0.00),
@@ -3173,10 +3219,17 @@ export const ORE_FIELD_FALLOFF = 1.55;
 /** Ore units per cell at a field centre when a scenario does not say. */
 export const ORE_FIELD_DEFAULT_RICHNESS = ORE_CELL_MAX * 0.85;
 /**
- * Density buckets a renderer should quantise `OreField.densityAt` into. Four
- * steps is enough that a draining patch visibly loses crystals three times
- * before it disappears, and few enough that the crystal instancer can keep one
- * batch per step.
+ * Density buckets `src/world/ore.system.ts` quantises `OreField.densityAt`
+ * into. Four steps is enough that a draining cell visibly steps down three
+ * times before it collapses to nothing, which is what makes ore read as being
+ * CONSUMED rather than fading out like a fog bug.
+ *
+ * IT IS NOT A BATCH COUNT. This used to end "and few enough that the crystal
+ * instancer can keep one batch per step" — the renderer that was eventually
+ * written draws the entire field from ONE `InstancedMesh`, one instance per
+ * seeded cell, and spends the bucket on the instance's SCALE. There is no
+ * per-step batch and raising this number would not add one; it would only make
+ * the size ladder finer.
  */
 export const ORE_DENSITY_STEPS = 4;
 
@@ -6983,6 +7036,72 @@ export const SQUISH_LIFE_SECONDS = 90;
  * expresses as a tint above 1.0 (valid because the main pass is HDR).
  */
 export const LIGHT_POOL_HALF_SIZE = 3.6;
+
+/* ------------------------------------------------------- contact darkening -- */
+
+/**
+ * THE POOL EVERY UNIT AND STRUCTURE SITS IN. Bible §3.3, scorecard row 13.
+ *
+ * Not the cast shadow, and not a substitute for it: the bible measured a dark
+ * pool present in EVERY reference frame, wider than the geometric shadow, and
+ * present even when the unit is already standing inside a large shadow. Its own
+ * words for what happens without it are "units without this float", and it
+ * calls the layer "one of the highest-value cheap wins" — which is exactly what
+ * it is here, at one extra draw call for the entire board.
+ *
+ * `src/art/UnitFactory.ts` and `src/art/BuildingFactory.ts` both already carry
+ * what their headers call "the baked half" of this: a vertex-AO gradient that
+ * darkens a hull toward its own skirt. That half stops at the silhouette. This
+ * is the other half, on the GROUND, and neither one does the other's job.
+ *
+ * The colour is the bible's `#101418` verbatim — near-black with a blue lean,
+ * so the pool sits in the same hue family as the hemisphere-filled shadows
+ * rather than reading as a grey smudge, and `tools/metrics.mjs` scores hue
+ * leakage. It is a MULTIPLY factor, not a paint: see `src/render/ContactShadows.ts`.
+ */
+export const CONTACT_DARKEN_COLOR = '#101418';
+/** Bible §3.3: peak alpha 0.35 at the centre of the pool. */
+export const CONTACT_DARKEN_PEAK_ALPHA = 0.35;
+/**
+ * Pool radius as a fraction of the entity's FOOTPRINT LONG AXIS (its full
+ * width, not its half-width). Bible §3.3 gives the band 0.55-0.70; 0.65 sits
+ * where the pool is unambiguously wider than the hull without reaching the
+ * neighbouring unit in a packed formation.
+ *
+ * For a vehicle of collision radius 2.2 m the footprint is 4.4 m, so the pool
+ * is 2.86 m of radius — 5.7 m across under a 4.4 m tank. That is the "wider
+ * than its cast shadow" the scorecard checks for.
+ */
+export const CONTACT_DARKEN_RADIUS_SCALE = 0.65;
+/**
+ * Fraction of the radius held at full strength before the gradient starts.
+ *
+ * Same shape as the Scorch tile in `src/world/Decals.ts` (`1 - smoothstep(0.42,
+ * 1.0, r)`) and for the same reason: a pool that ramps from the very centre
+ * reads as a soft grey disc, and the darkest part of a real contact shadow is
+ * the part the object is actually standing on.
+ */
+export const CONTACT_DARKEN_CORE = 0.34;
+/**
+ * Metres the pool floats above the heightfield.
+ *
+ * Above `DECAL_LIFT` (0.035) on purpose. Both layers multiply and multiplication
+ * commutes, so the ORDER does not matter — but a tread strip and a pool at the
+ * same height on a slope decided by two different conforming schemes would
+ * z-fight, and neither writes depth to break the tie.
+ */
+export const CONTACT_DARKEN_LIFT = 0.055;
+/**
+ * Entities whose footprint long axis is under this get no pool at all.
+ *
+ * A 0.5 m disc is under two pixels at the RTS camera: it cannot read as contact
+ * darkening, it can only read as a dirty texel. Same argument as
+ * `PROP_SHADOW_MIN_RADIUS` in `src/render/RenderBridge.ts`, one order of
+ * magnitude cheaper to enforce.
+ */
+export const CONTACT_DARKEN_MIN_FOOTPRINT = 1.0;
+/** Instances the pool mesh starts with. Grows geometrically, never per spawn. */
+export const CONTACT_DARKEN_CAPACITY = 256;
 
 /* ==========================================================================
  * 20. PATHFINDING, STEERING AND MOVEMENT   (owned by src/sim/**)

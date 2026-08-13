@@ -100,14 +100,39 @@ describe('the civilian block is described identically by every table that owns p
     // tail check would not have noticed as long as the tail was rewritten to
     // match. So the assertion is now the invariant itself: the three keys are
     // consecutive, in order, and they start where they have always started.
+    /* THE BLOCK IS NO LONGER CONTIGUOUS, AND THAT IS THE INVARIANT WORKING
+     * RATHER THAN FAILING.
+     *
+     * `civOreMine` was added after the original three and is APPENDED at the end
+     * of `BUILDINGS`, which is the only safe place to put it: every row keeps
+     * the `defId` it already had, so every replay on disk still plays back the
+     * game it recorded. Putting it fourth — next to its siblings, where it reads
+     * more nicely — would have shifted every structure below it and silently
+     * rewritten history.
+     *
+     * So contiguity was never the invariant; it was a proxy for it that held
+     * only while the block happened to be the newest thing in the file. The
+     * assertions below are the invariant itself: the ORIGINAL three still start
+     * where they have always started and are still consecutive, and anything
+     * added since sits strictly after them. */
     const keys = BUILDINGS.map((b) => b.key);
-    const at = keys.indexOf(CIVILIAN_KEYS[0]);
-    expect(keys.slice(at, at + CIVILIAN_KEYS.length)).toEqual([...CIVILIAN_KEYS]);
+    const original = CIVILIAN_KEYS.slice(0, 3);
+    const at = keys.indexOf(original[0]);
+    expect(keys.slice(at, at + original.length)).toEqual(original);
     // The pinned index. Every row above this one keeps the `defId` every
     // replay on disk recorded for it; a bare number is the only thing that
     // can say so, and a failure here is somebody having inserted rather than
     // appended.
     expect(at, 'a row was INSERTED above the civilian block').toBe(CIVILIAN_DEF_INDEX);
+
+    // Everything added to the civilian family since must exist, and must sit
+    // BELOW the pinned block — i.e. it was appended, not spliced in.
+    for (const key of CIVILIAN_KEYS.slice(3)) {
+      const idx = keys.indexOf(key);
+      expect(idx, `${key} has no def row`).toBeGreaterThan(-1);
+      expect(idx, `${key} was INSERTED rather than appended`)
+        .toBeGreaterThanOrEqual(at + original.length);
+    }
   });
 
   it.each(CIVILIAN_KEYS)('%s: def, fallback and MASS LIST share one footprint', (key) => {

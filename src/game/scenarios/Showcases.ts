@@ -84,7 +84,29 @@ export function buildTerrainShowcase(b: ScenarioBuilder, cx: number, cz: number)
   // are trying to photograph.
   b.spawnWreck(cx + 11, cz + 5, b.world.player(b.soviets).faction, false);
 
-  // An ore corner so the crystal shader is in frame against plain dirt.
+  /* An ore corner. NOTHING IS DRAWN HERE, and the comment that used to sit on
+   * this line ("so the crystal shader is in frame against plain dirt") was
+   * wrong twice over.
+   *
+   * There is no crystal SHADER: `src/world/ore.system.ts` draws one
+   * `InstancedMesh` on an ordinary `MeshStandardMaterial`, with only the shroud
+   * tint injected. That is the smaller error.
+   *
+   * The larger one is that this fixture never seeds the field. `addOre` appends
+   * to `ScenarioSpec.ore`; the cells are laid into the grid by
+   * `seedFromScenario`, which runs from `simTick`. `?shot=` boots PAUSED with
+   * `captureClock` on, so the only ticks a fixture gets are its plan's
+   * `settleTicks` — and `terrain-showcase` declares 0, which
+   * `scenarios.system.ts` guards away entirely. So `fieldCount` stays 0, the
+   * renderer draws nothing, and `03-terrain-closeup` has never contained a
+   * crystal. The same is true of `01`/`02`/`11` (allied-base) and `07`
+   * (soviet-base); `06-economy` at `settleTicks: 180` is the only fixture in
+   * the set where ore reaches the ground.
+   *
+   * The call is LEFT AS IT IS on purpose. Deleting it would lose the authored
+   * intent, and the fix that WOULD make the ore appear — a non-zero
+   * `settleTicks` on this plan — changes what `03-terrain-closeup` photographs
+   * and is a capture-harness decision, not a comment fix. */
   b.addOre(cx + 16, cz - 15, 9);
 
   // Keep the middle of the frame CLEAR. Scatter here is a frame around the

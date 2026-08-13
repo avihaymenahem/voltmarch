@@ -877,17 +877,42 @@
   letter-spacing: 0.12em;
 }
 
-.vm-hud .vm-dock-map.is-offline .vm-map-canvas {
-  filter: grayscale(0.75) brightness(0.5);
-}
+/* THE OFFLINE GREYSCALE IS GONE, and deleting it is the fix.
+ *
+ * It was `filter: grayscale(0.75) brightness(0.5)` over the WHOLE canvas, and
+ * the whole canvas includes the terrain-and-ore bake — which is knowledge of
+ * your own explored ground, not radar intel. `Minimap` already gates the right
+ * things per element: `drawBlips` and `drawTerritory` each hold their own
+ * `if (!hasRadar) continue`, so enemy positions are withheld and the bake is
+ * deliberately spared. This rule then re-gated what that code had carefully
+ * spared, one layer up, where it could not tell the difference.
+ *
+ * What it cost: the minimap's gold ore blend is the ONLY ore display the game
+ * had, and `Minimap`'s own comment says the ramp was rebalanced because "the
+ * economy — the single most important thing a tactical map has to show — was
+ * invisible until it was untouched". This removed three quarters of the
+ * saturation that fix bought. Worse, the Radar Dome needs a Refinery, so the
+ * player had to site their first refinery blind, and the only display that
+ * would have told them where only became readable once that refinery was
+ * already standing. A brownout re-greyed it too, since the dome needs power.
+ *
+ * The genre rule is that no-radar hides UNITS, not terrain and not resources.
+ * This build implements that rule correctly one layer down; the CSS was the
+ * only thing breaking it. `src/world/ore.system.ts` now draws ore in the world
+ * as well, so the map and the ground finally agree.
+ */
 
-/* "NO RADAR" said what was broken and never what to do about it. */
+/* "NO RADAR" said what was broken and never what to do about it.
+ *
+ * MOVED OFF THE CENTRE OF THE FIELD. At `top: 50%` the words sat squarely over
+ * the middle of the map, which is where the contested centroid ore patch is
+ * drawn — the hint covered the single most decision-relevant thing on the
+ * display. It sits under the map now. */
 .vm-hud .vm-map-hint {
   position: absolute;
   left: calc(3 * var(--vm-u));
   right: calc(3 * var(--vm-u));
-  top: 50%;
-  transform: translateY(-50%);
+  bottom: calc(2 * var(--vm-u));
   text-align: center;
   font-size: calc(8 * var(--vm-u));
   font-weight: 600;

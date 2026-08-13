@@ -16,6 +16,12 @@ annotation is another claim that can rot, and this file has already demonstrated
 Check the finding against HEAD before acting on it. Confirmed-still-live as of 2026-08-07:
 findings 2, 3, 4, 6 and 7.
 
+**One finding was added after the audit: #62, at the end of §3.** It is the missing world-space ore
+renderer — nine claims across five files, three of them flatly false. It is out of numbering order
+because it was found on 2026-08-12 rather than on 2026-08-05, and it is annotated with its state
+(fixed, with a named residue) against the rule above, because a finding added *after* its own fix
+would otherwise read as a live defect.
+
 ---
 
 ## 1. What this class of bug is
@@ -79,7 +85,8 @@ leaks its own bug into the product being measured (see finding 7).
 
 Findings are ranked by blast radius, not by how interesting they are.
 
-- **Tier 1 (§3, findings 1–17)** — a player, a reviewer or a CI run gets a wrong answer today.
+- **Tier 1 (§3, findings 1–17, plus #62)** — a player, a reviewer or a CI run gets a wrong answer
+  today. #62 sits at the end of §3 out of numbering order; see the note in the header.
 - **Tier 2 (§4, findings 18–47)** — real contradictions, either narrower in effect or dormant.
 - **Tier 3 (§5, findings 48–61)** — verified, small.
 
@@ -561,6 +568,60 @@ merge gate asks of it.
 
 ---
 
+### 62. Nine prose sites across five files described a world-space ore renderer that did not exist — **ADDED 2026-08-12, NOT PART OF THE ORIGINAL 61. FIXED**
+
+This is the only entry in this document that was not found in the 2026-08-05 pass, and it is
+recorded here because by every measure §1 offers it is the **largest single instance** of the bug
+class: nine claims, five files, three of them flatly false, load-bearing on a player-visible feature,
+and the whole thing invisible to `tsc` and to `npm test` for the reason §1 names — *a module that was
+never written generates no failing test*.
+
+**Claim.** Ore was described, in the present tense, as having a world-space renderer. `OreField`
+published a complete render API — `densityAt` (*"for the crystal renderer"*), `densityAtWorld`,
+`drainDirty` (*"the crystal instancer calls this once per frame"*), `pendingDirty` (*"so a renderer
+can size its drain buffer"*), `getOreField()` (*"for the render-side crystal instancer"*).
+`Economy.ts`'s header argued the design around it. `economy.system.ts` listed it as a wired
+consumer. `config.ts` carried three authored constants for it — `ORE_CRYSTAL_COLOR`
+(*"Referenced by both terrain and HUD"*), `SURFACES.oreCrystal` (*"Emissive scales with remaining
+ore amount"*), `ORE_DENSITY_STEPS` (*"few enough that the crystal instancer can keep one batch per
+step"*) — plus the `'oreCrystal'` SurfaceArchetype. `Showcases.ts` posed a fixture *"so the crystal
+shader is in frame"*.
+
+**Reality.** There was no renderer, no shader, no instancer and no batch. Every one of those symbols
+had zero production callers. Confirmed case 4 (`deploysInto`) and case 5 (the eleven primitives) are
+the same shape at a fraction of the size.
+
+**Consequence — the one that reached a player.** Reported as *"We have ore scattered around the map,
+but i cant see it, how do i know where to place my harvesters?"*. Ore had three tells, none of which
+finds it: the minimap bake, a sparkle emitted at a harvester **already** mining, and the cursor
+changing over an ore cell — a probe that confirms a guess and cannot direct one. Worse, the ground
+cue pointed backwards: `scatter.system.ts` clears an exclusion disc around every field so harvesters
+have a clear run, so with nothing drawn back into it an ore patch read as **emptier** than ordinary
+ground.
+
+**Fixed.** `src/world/ore.system.ts` — one `InstancedMesh`, one instance per seeded cell, scale
+quantised into `ORE_DENSITY_STEPS`, updates driven off `drainDirty`, shroud-tinted so it is not a map
+hack. The nine prose sites were rewritten against the module that now exists; several were still
+wrong in a *new* way at that point (wrong consumer named, wrong mechanism, a guard justified by a
+sampling strategy the real renderer does not use), which is worth noting on its own — **writing the
+code does not repair the claims, and the second-pass errors were as confident as the first**.
+
+**The residue, and it is real.** `densityAtWorld` still has zero callers. And the fixture claim was
+false for a *second* reason nobody had noticed: `addOre` only appends to `ScenarioSpec.ore`, the
+cells are laid in by `seedFromScenario` which runs from `simTick`, and `?shot=` boots paused — so a
+plan with `settleTicks: 0` never seeds ore at all. Nine of the thirteen capture fixtures are in that
+state and five of those nine call `addOre`. **`06-economy` is the only frame in the whole capture set
+in which a crystal can appear**, so `docs/RA3_LOOK_BIBLE.md` cannot presently grade this renderer on
+anything else. That is an open item, not a fixed one.
+
+**Check.** `grep -rn "crystal instancer\|crystal shader\|crystal renderer" src/` → prose only, and
+every hit should now name `src/world/ore.system.ts`.
+`grep -rn "densityAtWorld" src/` → one declaration, no callers.
+`grep -n "settleTicks" src/game/Scenarios.ts` against the `b.addOre` sites in
+`src/game/scenarios/Showcases.ts` and `src/game/Scenarios.ts`.
+
+---
+
 ## 4. Tier 2 — real contradictions, narrower or dormant
 
 ### 18. The sun is world-fixed; the bible mandates it follow camera yaw, and yaw is free — **LIVE**
@@ -959,7 +1020,8 @@ unaudited**; they are the obvious place to start a follow-up once those tasks la
 
 ## 8. How to stop this recurring
 
-The defining fact about all 61 findings is that **none was reachable by `tsc` or by `npm test`**. So
+The defining fact about all 61 findings — and about #62, added later — is that **none was reachable
+by `tsc` or by `npm test`**. So
 the question is not "write more tests" — it is "what is the smallest mechanical check that converts
 the largest number of these from prose into a failing assertion?"
 
@@ -1080,6 +1142,10 @@ the wrong table. For these the only defences are:
   machine auto-detected as `low` still renders 2048² shadow maps, and #12 means the adaptive
   mitigation that four files describe has never existed.
 - **Re-audit the vision subsystem after task #26 lands** (§6 K6, §7).
+- **#62 is fixed but leaves an open item**: `06-economy` is the only capture fixture in which ore
+  can be drawn at all, because every other fixture that declares ore has `settleTicks: 0` and
+  `?shot=` boots paused. Until a fixture with ore actually ticks, `npm run shots` cannot regress
+  this renderer. Also still dead: `OreField.densityAtWorld`, zero callers.
 - This audit wrote no source file. Its only side effect is `shots/_metrics.json` (gitignored), which
   now holds a stale one-row score. Regenerate with
   `npm run shots && node tools/metrics.mjs shots/*.png --expect 12` — note the argument order, per

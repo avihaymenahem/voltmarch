@@ -2508,6 +2508,96 @@ function civApartments(): StructureMassList {
   ]);
 }
 
+/**
+ * ORE MINE. The second structure that pays its holder, and the one that has to
+ * NOT look like the first.
+ *
+ * Both are 2x2, both are neutral, both are a tall thing over a low shed, and at
+ * RTS distance that is a recipe for two objectives a player cannot tell apart on
+ * the minimap edge of their screen. Three cues separate them, in the order the
+ * camera reads them:
+ *
+ *   THE SHEAVE WHEELS. A disc on a HORIZONTAL axis, and nothing else in the
+ *   roster of 60 structures has one — every other wheel-like mass in the game
+ *   (radar dish, weather saucer, helipad) is either vertical-axis or a dish.
+ *   Two of them, at different heights on the same frame, because one reads as a
+ *   fan and two read as winding gear.
+ *   THE SPOIL HEAP. A faceted cone, which is the other thing no structure here
+ *   has: every roof in the game is flat or stepped, so a pile is unambiguous. It
+ *   is also the only mass that says what the building produces.
+ *   THE HEADFRAME LEANS. The derrick's mast is a symmetric taper about its own
+ *   axis; this frame is offset to -Z and braced back to the shed, so its
+ *   silhouette is an A rather than a spike.
+ *
+ * The lattice does the same job it does on the derrick — a headframe is a thing
+ * you see through — and for the same measured reason recorded there: a solid
+ * tapered prism at this size photographs as a monument.
+ */
+function civMine(): StructureMassList {
+  const f = fp('civOreMine');
+  const s = alliedShell(f.w, f.h, f.height, {
+    key: 'civOreMine', team: 1.22, windowCount: 3, bodyFraction: 0.34,
+  });
+  const roof = s.roofY;
+  const frameH = f.height - roof - 1.2;
+  const frameZ = -s.d * 0.18;
+  const headY = roof + frameH;
+  s.masses.push(
+    // The frame core: a six-sided plan closing to a fifth of its base. Six and
+    // not four so the braces catch a different highlight from the shed's own
+    // octagonal skirt, which is what stops the two masses reading as one prism.
+    pplan('frame', MassRole.Primary, [s.w * 0.30, frameH, s.d * 0.30], [0, roof + frameH * 0.5, frameZ], 'bareMetal', {
+      plan: ngon(s.w * 0.15, s.d * 0.15, 6, HALF_PI * 0.5),
+      topScaleX: 0.22, topScaleZ: 0.22, bottomScaleX: 1.24, bottomScaleZ: 1.24,
+    }, { capSlot: 'grille' }),
+    ...lattice(0, frameZ - s.d * 0.14, s.w * 0.58, frameH * 0.92, 'frame.front').map(
+      (m) => ({ ...m, anchor: [m.anchor[0], m.anchor[1] + roof, m.anchor[2]] as V3 })),
+    ...lattice(0, frameZ + s.d * 0.14, s.w * 0.58, frameH * 0.92, 'frame.back').map(
+      (m) => ({ ...m, anchor: [m.anchor[0], m.anchor[1] + roof, m.anchor[2]] as V3 })),
+    // THE WINDING GEAR. Horizontal axis, so `rot` puts the lathe on its side.
+    cyl('sheave.high', MassRole.Primary, [1.55, 0.34, 1.55], [0, headY - 0.35, frameZ], 'bareMetal', {
+      rot: [0, 0, HALF_PI], group: 'sheave', chamfer: 0.05, capSlot: 'grille', segments: 12,
+    }),
+    /* THE SECOND SHEAVE AND THE SKIP WERE CUT, AND THE REASON IS THE BUDGET.
+     *
+     * `tests/building-shape.spec.ts` holds `MAX_MEAN_TRIANGLES` at 2500 and its
+     * own note records that the Command Post block left "two triangles per
+     * structure of headroom ... stated here so the next person does not spend
+     * it by accident", and that the Command Bunker's roof catwalk was cut for
+     * exactly this reason. Adding the Ore Mine at 2760 pushed the roster mean to
+     * 2502. The precedent in that note is to CUT, not to rebase the guard — a
+     * mean raised to fit the model it was measuring is not a guard — so this
+     * follows it.
+     *
+     * Both cuts are `MassRole.Greeble`, which is the right tier to spend: a
+     * second pulley 1.85 m under the first and an ore skip parked on a rail are
+     * both under two pixels of separation at the shot camera's 30-62 m. The
+     * silhouette masses — the headframe, the winding sheave, the A-brace and
+     * the spoil heap — are untouched, and they are what says "mine" at RTS
+     * range.
+     */
+    // The hoist rope's brace, tying the head back to the shed roof. This is the
+    // mass that makes the silhouette an A instead of a T.
+    box('brace', MassRole.Greeble, [0.30, 0.30, s.d * 0.66], [0, roof + frameH * 0.62, s.d * 0.10], 'bareMetal', {
+      rot: [-0.62, 0, 0], group: 'brace', chamfer: 0.05,
+    }),
+    // The chute off the frame, raked down to the heap.
+    box('chute', MassRole.Greeble, [0.62, 0.34, s.d * 0.52], [-s.w * 0.24, roof * 0.94, -s.d * 0.02], 'tread', {
+      rot: [0.44, 0, 0.30], group: 'chute', chamfer: 0.05,
+    }),
+    // THE SPOIL HEAP: a seven-sided cone closing to almost nothing. `pplan`
+    // rather than a lathe so it faces the same number of ways the frame does
+    // and the two share a highlight direction.
+    pplan('spoil', MassRole.Primary, [s.w * 0.44, roof * 0.62, s.d * 0.44], [-s.w * 0.28, roof * 0.31, s.d * 0.28], 'paintMed', {
+      plan: ngon(s.w * 0.22, s.d * 0.22, 7, 0),
+      topScaleX: 0.10, topScaleZ: 0.10, bottomScaleX: 1.0, bottomScaleZ: 1.0,
+    }, { capSlot: 'paintSmall', group: 'spoil' }),
+  );
+  return list('civ_mine', 'Ore Mine', 'allies', 'civOreMine', s.masses, [
+    { part: PartId.Stack, pos: [0, f.height, frameZ] },
+  ]);
+}
+
 /* ==========================================================================
  * 5. THE ROSTER
  * ========================================================================== */
@@ -2558,6 +2648,7 @@ export const STRUCTURE_MASS_LISTS: readonly StructureMassList[] = [
   civDerrick(),
   civHospital(),
   civApartments(),
+  civMine(),
 ];
 
 export const STRUCTURE_BY_KEY: ReadonlyMap<string, StructureMassList> =

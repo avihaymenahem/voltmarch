@@ -1543,13 +1543,51 @@ export class HarvesterController {
       return;
     }
 
-    // Not holding the dock: take a QUEUE SLOT, indexed, so haulers form a line
-    // instead of all aiming at one point and shoving each other off it. The
-    // index is this harvester's rank among everyone waiting on the same
-    // refinery, ordered by handle so both clients of a lockstep match agree.
-    const out = mine ? reach : reach + HARVESTER_QUEUE_GAP;
-    this.dockX.setAt(i, store.posX[ri] + fwdX * out);
-    this.dockZ.setAt(i, store.posZ[ri] + fwdZ * out);
+    /* Not holding the dock: take a QUEUE SLOT, indexed, so haulers form a line
+     * instead of all aiming at one point and shoving each other off it. The
+     * index is this harvester's rank among everyone waiting on the same
+     * refinery, ordered by handle so both clients of a lockstep match agree.
+     *
+     * THAT PARAGRAPH WAS HERE FOR A RELEASE BEFORE THE CODE WAS. The line under
+     * it read `mine ? reach : reach + HARVESTER_QUEUE_GAP` — one point, for
+     * every waiter — while `queueRank` sat twenty lines below computing exactly
+     * the index described, called once and collapsed to a boolean for an
+     * unrelated stand-down test. Reported as "Ore harvesters: They keep
+     * clashing each other", which is precisely what N hulls converging on one
+     * coordinate looks like: they settle about `radius[i] + radius[j]` = 7.7 m
+     * apart by `Movement.relax` and shove each other the whole way in, and
+     * again every time the dock lock changes hands.
+     *
+     * THE RANK IS TAKEN ONCE PER COMMIT, never per tick, and that is the part
+     * that is easy to get wrong. `commitDockPoint`'s own header exists because
+     * a goal that moves every tick starves nav's watchdogs of the stable
+     * evidence they accumulate; re-ranking on every tick would move the goal
+     * by a whole `HARVESTER_QUEUE_GAP` each time a hauler ahead docked or died,
+     * which is fifteen times `NAV_FORMATION_GOAL_EPS` and re-arms the wedge
+     * ladder. The existing call sites — `beginReturn`, the refinery re-pick,
+     * the lock hand-over and the counted escalations — are already exactly the
+     * set of moments at which re-ranking is correct.
+     *
+     * THE LATERAL STAGGER is what makes it a queue rather than a column. A pure
+     * line along the approach axis puts every waiter on the lane the docked
+     * hauler has to drive OUT along; alternating half a gap left and right by
+     * rank parity keeps the lane clear and reads as a car park rather than a
+     * traffic jam. `rank & 1` is integer arithmetic, so it is bit-identical
+     * across machines.
+     */
+    if (mine) {
+      this.dockX.setAt(i, store.posX[ri] + fwdX * reach);
+      this.dockZ.setAt(i, store.posZ[ri] + fwdZ * reach);
+      return;
+    }
+    const rank = this.queueRank(i, ri);
+    const out = reach + HARVESTER_QUEUE_GAP * (rank + 1);
+    // Perpendicular to the approach axis, in the ground plane.
+    const sideX = fwdZ;
+    const sideZ = -fwdX;
+    const lateral = ((rank & 1) === 0 ? 1 : -1) * HARVESTER_QUEUE_GAP * 0.5 * (rank === 0 ? 0 : 1);
+    this.dockX.setAt(i, clampWorld(store.posX[ri] + fwdX * out + sideX * lateral, 2));
+    this.dockZ.setAt(i, clampWorld(store.posZ[ri] + fwdZ * out + sideZ * lateral, 2));
   }
 
   /**
