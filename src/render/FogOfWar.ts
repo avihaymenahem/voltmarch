@@ -206,7 +206,13 @@ void main() {
  * break a 4 m texel grid across a full-screen surface and buy nothing on a 3 m
  * silhouette.
  */
-const SHROUD_UV_SCALE = 1 / MAP_SIZE;
+/**
+ * Exported because the TSL port needs the SAME number, not a second `1 /
+ * MAP_SIZE` written out again in `render/shroud-nodes.ts`. It is baked into the
+ * GLSL below as a literal at 10 decimal places; the node path reads this
+ * constant directly, so the two cannot drift.
+ */
+export const SHROUD_UV_SCALE = 1 / MAP_SIZE;
 
 /** 1x1 R8 = 255, i.e. "fully visible, tint nothing". */
 function makeClearMask(): THREE.DataTexture {

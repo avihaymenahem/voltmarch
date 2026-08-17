@@ -167,10 +167,17 @@ describe('the colour and depth programs share one copy of the maths', () => {
   });
 
   it('bumps the colour cache key whenever that source moves', () => {
-    // v1 -> v2 was the shroud tint; v2 -> v3 is the move to shared snippets.
+    // v1 -> v2 was the shroud tint; v2 -> v3 the move to shared snippets;
+    // v3 -> v4 the move of every animation NUMBER into `art/structure-anim.ts`,
+    // shared with the TSL port in `art/StructureNodeMaterial.ts`. Every value is
+    // identical and prints as the literal it replaced, but constants that used
+    // to be typed inline are interpolated now, so the SOURCE changed again.
+    //
     // Three keys its program cache on this string, so a changed source under an
-    // unchanged key is served the OLD program.
-    expect(stripComments(SRC)).toContain("'ra3.structure.v3'");
+    // unchanged key is served the OLD program. THIS ASSERTION IS MEANT TO NEED
+    // EDITING: a pin somebody has to consciously move is the mechanism, and a
+    // regex over the version number would quietly accept never bumping it.
+    expect(stripComments(SRC)).toContain("'ra3.structure.v4'");
   });
 });
 
