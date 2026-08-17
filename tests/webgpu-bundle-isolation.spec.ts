@@ -130,7 +130,37 @@ describe('the node system is behind one dynamic import', () => {
  * ========================================================================== */
 
 const DIST = join(ROOT, 'dist', 'assets');
-const haveDist = existsSync(DIST);
+
+/**
+ * A STALE `dist/` MUST SKIP, NOT FAIL — and this cost a red `npm test` once.
+ *
+ * `npm test` does not build. During the Stage F verification `dist/` was left
+ * holding a PRE-CUTOVER bundle (built deliberately, to measure what the seam
+ * costs a WebGL player), and the two assertions below correctly reported that it
+ * has no node chunk — a red suite for a reason that had nothing to do with the
+ * change under test. CLAUDE.md's "`npm test` has no known flake" is a promise
+ * about exactly this, and a test whose result depends on which build happens to
+ * be on disk breaks it.
+ *
+ * So the freshness question is asked directly: is the entry chunk newer than
+ * every `.ts` under `src/`? The INVARIANT tests above run unconditionally and
+ * are the real gate; this block is the measurement, taken when it is available
+ * and honest about when it is not.
+ */
+function distIsCurrent(): boolean {
+  if (!existsSync(DIST)) return false;
+  const entry = readdirSync(DIST).find((f) => /^index-.*\.js$/.test(f));
+  if (entry === undefined) return false;
+  const built = statSync(join(DIST, entry)).mtimeMs;
+  let newestSource = 0;
+  for (const f of FILES) {
+    const m = statSync(f).mtimeMs;
+    if (m > newestSource) newestSource = m;
+  }
+  return built >= newestSource;
+}
+
+const haveDist = distIsCurrent();
 
 describe.runIf(haveDist)('the built entry chunk carries no node system', () => {
   const files = haveDist ? readdirSync(DIST).filter((f) => f.endsWith('.js')) : [];
