@@ -47,7 +47,6 @@ resets it.
 | War Machine | destroy 500 | Field Command | **Tier-3 specialist unit** |
 | Total War | destroy 1,500 | War Machine | Strategic superweapon *(see §6)* + Warlord insignia |
 | Can Opener | destroy 60 vehicles | — | **Anti-air emplacement** |
-| Armour Column | destroy 250 vehicles | Can Opener | **Battlefield: Saltpan Reach** |
 | Demolition Crew | destroy 25 structures | — | **Support pad** |
 | Scorched Earth | destroy 100 structures | Demolition Crew | Warhead decal |
 | Blooded | promote 20 units to veteran | — | Veteran insignia |
@@ -59,7 +58,6 @@ resets it.
 | --- | --- | --- | --- |
 | Prospector | mine 25,000 credits of ore | — | **Map: Frozen Sector** |
 | Strip Mine | mine 70,000 | Prospector | **Tech centre** |
-| Continental Yield | mine 1,000,000 | Strip Mine | **Battlefield: Glacier Shelf** |
 | War Chest | hold 20,000 credits at once | — | Magnate insignia |
 | Grid Surplus | run a 300-point power surplus | — | Grid decal |
 
@@ -73,7 +71,6 @@ resets it.
 | Total Mobilisation | train or build 750 units | Production Line | **Map: Coral Shore** |
 | Motor Pool | build 200 vehicles | — | Laurel decal |
 | Air Wing | build 400 vehicles | Motor Pool | **Aircraft — all four armies** |
-| Hostile Takeover | capture 10 enemy structures | — | **Battlefield: Foundry Line** |
 
 ### Tactics
 
@@ -227,7 +224,7 @@ players get everything.
 
 ## 5. Maps
 
-Seven of the ten battlefields are earned. See [Maps](/avihaymenahem/voltmarch/wiki/Maps) for what each one plays like.
+Four of the seven battlefields are earned. See [Maps](/avihaymenahem/voltmarch/wiki/Maps) for what each one plays like.
 
 **Three ship open**: Temperate Valley, Airbase Flats and
 [Sunder Atoll](/avihaymenahem/voltmarch/wiki/Sunder-Atoll). The atoll is open
@@ -240,9 +237,6 @@ the sea has to be there before the missions that reward it.
 | Industrial Grid | Groundworks — complete 50 structures |
 | Contested Strait | Blitz — win inside 15 minutes |
 | Coral Shore | Total Mobilisation — build 750 units |
-| Saltpan Reach | Armour Column — destroy 250 vehicles |
-| Foundry Line | Hostile Takeover — capture 10 enemy structures |
-| Glacier Shelf | Continental Yield — mine 1,000,000 ore |
 
 Locked maps are shown in the skirmish lobby, greyed out, with the reason on them. Map unlocking is
 fully wired and works.

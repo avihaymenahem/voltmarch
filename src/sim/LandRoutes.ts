@@ -45,16 +45,19 @@
  * `TERRAIN_ISLAND_MIN_CELLS` — a constant this module did not invent and does
  * not restate: `core/config` derives it as the cell count of the start
  * guarantee's own disc, and `terrain-gen`'s `islandStartSatisfied` already uses
- * it for exactly this meaning. Measured by THIS function over the ten shipped
+ * it for exactly this meaning. Measured by THIS function over the seven shipped
  * battlefields, at the preset, biome, pinned `mapSeed` and army count the lobby
  * offers — land masses, and the ground they hold:
  *
  *     temperate-valley  1 x 12802        airbase-flats     1 x 12692
  *     frozen-sector     1 x 11909        industrial-grid   1 x 12849
  *     contested-strait  1 x  9285        coral-shore       1 x  9705
- *     saltpan-reach     1 x 11631        foundry-line      1 x 12533
- *     glacier-shelf     1 x 12032
  *     sunder-atoll      4 x 1819..1874 (7404 cells) + one 31-cell noise basin
+ *
+ * Three rows are gone from that table rather than restated — `saltpan-reach`
+ * (1 x 11631), `foundry-line` (1 x 12533) and `glacier-shelf` (1 x 12032) were
+ * preset-clones cut from `MAPS`. All three were single land masses, so the
+ * floor argument below is unchanged by their removal.
  *
  * So the floor sits between 31 and 1819 with two orders of magnitude of margin
  * on each side, and a bare region COUNT would have read that 31-cell basin as a

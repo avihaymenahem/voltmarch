@@ -17,13 +17,13 @@ This page covers what the ground does to your army. For what you build on it see
 | Map size | 512 × 512 m |
 | Navigation grid | 128 × 128 cells of 4 m |
 | Dead border | 2 cells (8 m) on every edge — nothing may enter it |
-| Players | **4** on five maps, 2 on the other five |
+| Players | **4** on four maps, 2 on the other three |
 | Start separation | ~193 m on the diagonal |
-| Impassable to tracked vehicles | 21.9–29.7 % on the seven landlocked maps; 43.9–54.7 % on the three with a sea |
-| Buildable ground | 66.9–74.1 % landlocked; 49.0–51.4 % on the coastal pair, 30.7 % on Sunder Atoll |
+| Impassable to tracked vehicles | 21.6–27.3 % on the four landlocked maps; 40.8–54.6 % on the three with a sea |
+| Buildable ground | 68.5–74.1 % landlocked; 49.0–51.4 % on the coastal pair, 30.7 % on Sunder Atoll |
 
-Five maps seat four armies — Temperate Valley, Airbase Flats, Industrial Grid, Glacier Shelf and
-Sunder Atoll. The other five are two-army. Every figure above was measured through the real
+Four maps seat four armies — Temperate Valley, Airbase Flats, Industrial Grid and
+Sunder Atoll. The other three are two-army. Every figure above was measured through the real
 generator on the shipped lobby row: the map's preset, biome, pinned `mapSeed` and its own army
 count, which matters because the start shelves are levelled per army and a map seating four is a
 measurably different piece of ground from the same seed seating two.
@@ -42,16 +42,18 @@ Around each construction vehicle the scenario reserves 13 m of ground and around
 
 ---
 
-## 2. The ten battlefields
+## 2. The seven battlefields
 
-Three ship open. The other seven are earned — see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
+Three ship open. The other four are earned — see [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
 
-The last three arrived in v2.6.0 for a reason worth knowing: the five missions that used to pay
-out commander powers needed something real to grant once the powers became an in-match purchase,
-and "another battlefield" is a reward the lobby actually consumes. Each reuses an existing
-terrain preset at a **player count or a light the roster did not previously offer**, on its own
-landform roll — a preset is a balance surface, and inventing three would have been a different
-release.
+It was ten. Saltpan Reach, Foundry Line and Glacier Shelf arrived in v2.6.0 as payloads — the five
+missions that used to grant commander powers needed something real once the powers became an
+in-match purchase — and each one reused an existing terrain preset **verbatim**, on its own landform
+roll. That was the point at the time: a preset is a balance surface, so cloning three was cheaper
+than tuning three. It is also why they went. Every balance number a preset carries — relief, cliffs,
+water, scatter, urban density, ore richness, props — was identical to a map already in the list, so
+the lobby was selling a reroll of a battlefield you already owned as a reward for a long mission.
+The three missions that paid them were retired with them.
 
 | Map | Biome | Character | Ore richness | Water | Unlocked by |
 | --- | --- | --- | --- | --- | --- |
@@ -62,16 +64,13 @@ release.
 | **Contested Strait** | Temperate | Temperate land, coast prop mix | 0.80 | **24.3 %** | Blitz — win inside 15 minutes |
 | **Coral Shore** | Temperate | Densest prop cover in the game | 0.75 | **26.4 %** | Total Mobilisation — build 750 units |
 | **[Sunder Atoll](/avihaymenahem/voltmarch/wiki/Sunder-Atoll)** | Temperate | **Four islands, no land route.** 4 players | 0.80 | **53.8 %** | free |
-| **Saltpan Reach** | Arid | The arid flats cut to 2 players, at dusk | **1.00** | none | Armour Column — destroy 250 vehicles |
-| **Foundry Line** | Urban | The industrial grid head to head, at noon. 2 players | **0.70** | none | Hostile Takeover — capture 10 structures |
-| **Glacier Shelf** | Snowbound | High relief opened up for **4 players** | 0.90 | negligible | Continental Yield — mine 1,000,000 ore |
 
 Ore richness is a multiplier on the 900-unit-per-cell ceiling, so a field on Airbase Flats holds
 roughly **43 % more ore per cell** than the same field on Industrial Grid. That difference compounds
 over a long match and it is the single biggest map-level economic variable.
 
-> **Read the water column carefully.** Seven of the ten are landlocked and mean it. Two carry a
-> quarter of the map in open sea. The tenth is more than half water and has no land route at
+> **Read the water column carefully.** Four of the seven are landlocked and mean it. Two carry a
+> quarter of the map in open sea. The seventh is more than half water and has no land route at
 > all — see §6.
 
 ---
@@ -224,7 +223,7 @@ slowly and in single file, which is the one situation where being crushable stop
 
 ---
 
-## 6. Water — three seas and seven dry maps
+## 6. Water — three seas and four dry maps
 
 Water sits at a flat 2.0 m. Below it, ground units simply cannot go; there is no shallows, no wading,
 no depth gradient in the navigation grid. Hover units cross land and water alike. Aircraft ignore all
@@ -238,10 +237,10 @@ Dredger — who are built at a barracks rather than a dock and are therefore off
 **No sea means no naval content is offered at all.** On a landlocked map the four docks and the
 eighteen hull types behind them are left out of the sidebar entirely rather than shown and refused —
 and so is anything whose prerequisite chain runs through a dock. The measure is 300 cells in the
-largest connected navigable body: the dry maps top out at 21, the three seas carry 3,622 to 7,784,
+largest connected navigable body: the dry maps top out at 14, the three seas carry 3,622 to 7,784,
 and the threshold sits in the gap with a decade of margin on each side.
 
-**Three of the ten maps carry a real sea. Seven are landlocked.** All ten measured straight off the
+**Three of the seven maps carry a real sea. Four are landlocked.** All seven measured straight off the
 generator on their shipped lobby row — preset, biome, pinned `mapSeed` and the map's own army count:
 
 | Map | Water | Largest single body | Navigable for ships |
@@ -250,16 +249,13 @@ generator on their shipped lobby row — preset, biome, pinned `mapSeed` and the
 | Airbase Flats | 0.00 % | none | none |
 | Frozen Sector | 0.16 % | 14 cells (~224 m²) | nothing usable |
 | Industrial Grid | 0.00 % | none | none |
-| Saltpan Reach | 0.00 % | none | none |
-| Foundry Line | 0.00 % | none | none |
-| Glacier Shelf | 0.23 % | 21 cells (~336 m²) | nothing usable |
 | **Contested Strait** | **24.3 %** | **3,973 cells (~63,600 m²)** | **3,622 cells** |
 | **Coral Shore** | **26.4 %** | **4,319 cells (~69,100 m²)** | **3,952 cells** |
 | **Sunder Atoll** | **53.8 %** | **8,798 cells (~141,000 m²)** | **7,784 cells** |
 
-The seven dry maps are dry because nothing declares a shoreline for them, and the biome noise alone
-only ever produces puddles — the largest anywhere is 21 cells, smaller than a war factory. That is
-the correct answer for those seven. It used to be the answer for all six maps that existed then,
+The four dry maps are dry because nothing declares a shoreline for them, and the biome noise alone
+only ever produces puddles — the largest anywhere is 14 cells, smaller than a war factory. That is
+the correct answer for those four. It used to be the answer for all six maps that existed then,
 which is what made the naval arm unreachable.
 
 **Do not read the puddle rows as stable.** A start shelf is a levelled disc, so the army count a map
