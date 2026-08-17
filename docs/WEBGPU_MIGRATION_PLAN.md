@@ -246,22 +246,35 @@ Each stage ends green on all four gates and on `npm run shots` at 92.0% with zer
   **What TSL could not express** is `STAGE_D_TSL_GAPS` at the foot of `StructureNodeMaterial.ts`.
   Two entries change what later stages must do:
 
-  1. **THERE IS NO `customDepthMaterial` ON THE NODE PATH, AND IT IS MIGRATION-BLOCKING.**
+  1. **THERE IS NO `customDepthMaterial` ON THE NODE PATH. IT WAS MIGRATION-BLOCKING; IT IS CLOSED.**
      `object.customDepthMaterial` is read in one file in three 0.185 — `WebGLShadowMap.js`. The node
      path sets `scene.overrideMaterial` to a shared depth-only material and harvests
      `castShadowPositionNode ?? positionNode`, `colorNode`, `depthNode` and
      `maskShadowNode ?? maskNode` off the object's own material. `maskNode` is why the construction
      ground cut survives into the shadow pass from ONE declaration where the GLSL needs the discard
-     injected twice. `positionNode` is why the vertex half does not: every displacement in this stage
+     injected twice. `positionNode` is why the vertex half did not: every displacement in this stage
      — construction sink, bay door, radar spin, walk cycle, wind sway — must happen in MODEL space
      before `instancedMesh( object )` rewrites `positionLocal`, and the only hook that early is
      `setupPosition`, which the shadow pass never calls. So on the node path a half-built structure
-     casts its finished silhouette again and a swaying canopy casts a frozen shadow. Two routes out,
-     both outside a material file: publish the instance origin and yaw as per-instance attributes so
-     the maths can be re-expressed post-instancing in `castShadowPositionNode`, or set
-     `material.allowOverride = false` and pay the full physical shader over the shadow map. Measure
-     the second before assuming the first; it is one line. The same missing instance matrix is why
-     `PropNodeMaterial` needs an `aSwayPhase` attribute `Scatter` does not publish yet.
+     cast its finished silhouette and a swaying canopy cast a frozen shadow.
+
+     Of the two routes named here, `material.allowOverride = false` is **INVALID, not merely
+     expensive** — a caster that receives shadows samples the map the pass is writing, WebGPU
+     refuses it inside one synchronization scope, and the frame draws nothing. Measured; do not
+     retry it. See `RENDER_FINDINGS.md` §7e.
+
+     The route that works is `castShadowPositionNode`, and it needs **no per-instance attribute at
+     all** — the other half of the first route as written here. `src/render/cast-shadow-nodes.ts`
+     resets `positionLocal` to `positionGeometry`, runs the SAME model-space edit the colour pass
+     runs, and re-applies three's own `instancedMesh( builder.object )`, reaching the instance
+     transform through the builder rather than through an upload. Structures and props call it;
+     `tools/shadow-override-probe.mjs` gains a `tsl-castshadow` arm measuring **0.460% darker than
+     the shipping WebGL render against the defect's 3.040%**, and `tests/stage-d-node-materials.spec.ts`
+     §3b compiles the override material three actually builds and pins the ordering.
+
+     `aSwayPhase` is a separate thing and is still needed: `PropNodeMaterial` reads the wind phase
+     off it because a shared material cannot reach a specific mesh's `instanceMatrix` from a
+     module-scope node. `Scatter` publishes it.
   2. **`.setLayout()` IS ONLY LEGAL WHEN EVERY INPUT IS A PARAMETER, AND THE OFFLINE GATE CANNOT SEE
      THE VIOLATION.** Stage C's advice to declare layouts on anything called more than once is right
      and incomplete: a layout emits a REAL WGSL function, and a WGSL function sees nothing but its

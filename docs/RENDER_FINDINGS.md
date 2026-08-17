@@ -774,9 +774,60 @@ written. It is now.
   a third renderer, and what it renders from the same graph is unmeasured. Two backends means two
   grade baselines.
 
-## 7e. The node path's shadow gap: `allowOverride = false` is INVALID, not merely expensive
+## 7e. The node path's shadow gap: CLOSED by `castShadowPositionNode`, and `allowOverride = false` is INVALID
 
-**Measured 2026-08-17, Stage D2, `tools/shadow-override-probe.mjs`, real Chrome, real WebGPU.**
+**Measured 2026-08-17, Stages D2 and D3, `tools/shadow-override-probe.mjs`, real Chrome, real
+WebGPU. Six arms, one run.**
+
+```
+arm                        backend    devErrs   darker vs the shipping reference
+glsl-webgl (REFERENCE)     webgl            0   —
+glsl-webgl-nodepth         webgl            0   3.040%    <- the defect, on WebGL
+tsl-override               webgpu           0   3.040%    <- the same defect
+tsl-nooverride             webgpu           2   89.312%   <- BLANK FRAME
+tsl-nooverride-noreceive   webgpu           0   0.470%    <- correct, unusable
+tsl-castshadow             webgpu           0   0.460%    <- correct, and shipped
+```
+
+`tsl-castshadow` against `tsl-nooverride-noreceive` is **0.024% of pixels changed and 0.000%
+darker** — the two agree about the shadow and differ only where the diagnostic arm's casters stop
+receiving one. The three phantom black slabs thrown by structures that are entirely below the ground
+cut are gone.
+
+**THE ROUTE, IN ONE PARAGRAPH.** `castShadowPositionNode` is harvested onto the override material's
+`positionNode`, and `NodeMaterial.setupPosition` assigns `positionNode` AFTER
+`instancedMesh( object )` and REPLACES `positionLocal` with it. So a node that ignores the instanced
+value, resets `positionLocal` to `positionGeometry`, runs the same model-space edit the colour pass
+runs, and re-applies three's own `instancedMesh( builder.object )` reproduces the colour pass's
+position exactly. `src/render/cast-shadow-nodes.ts`; structures and props call it with the function
+they already had, so there is still ONE declaration of each displacement.
+
+**IT UPLOADS NOTHING.** The instance transform is reached through `builder.object` — a bare `Fn`
+receives the live `NodeBuilder` and `RenderObjects` keys its chain map on the object, so the body
+runs once per caster with that caster's mesh in hand. No new attribute, no new uniform, no byte
+added to `InstanceBatcher` or `Scatter`, nothing in the frame loop. The alternative that was costed
+against it — publishing a per-instance 3x3 basis so the displacement could be rotated
+post-instancing — is 36 bytes an instance a frame through the renderer's two hottest writers.
+
+**WHAT IT DOES COST, exactly.** `instancedMesh( object )` runs twice in the shadow pass, so the
+shadow vertex stage carries **one extra mat4**: four more `nodeAttributeN` slots (13 of a guaranteed
+16 on the probe's structure geometry, 14 on the real one, which carries `uv` for the atlas alpha)
+where the matrices arrive as an interleaved attribute, and a second uniform buffer of `count * 64`
+bytes over the same array where they arrive as a uniform buffer — three picks between those on
+`count * 64 <= maxUniformBufferBindingSize`, i.e. 1024 instances. Both are a second BINDING of a
+buffer that is already resident, never a second copy. Pinned in `tests/stage-d-node-materials.spec.ts`
+§3b, including the attribute-limit headroom, because blowing 16 lands in a player's browser and in
+no other gate.
+
+**THE UNIT MATERIAL DELIBERATELY DOES NOT CALL IT.** `createUnitMaterial` has no
+`customDepthMaterial` — the only two in the game are `createStructureDepthMaterial` and
+`PropLibrary`'s — so a marching rifleman's shadow is the rest pose on the shipping renderer and has
+always been. Wiring the walk cycle here is one line and would make the node path better than the
+renderer it has to stay byte-comparable with, on the most numerous caster in the game, for the least
+visible of the five displacements. The honest route is to give the GLSL material a depth material
+first so both paths gain it together.
+
+### The route that is closed, and why it is closed on CORRECTNESS rather than cost
 
 `object.customDepthMaterial` is read in exactly one file in three 0.185 — `WebGLShadowMap.js`. The
 node renderer instead sets `scene.overrideMaterial` to a shared depth material and harvests four
@@ -789,13 +840,6 @@ door, the radar spin, the walk cycle, the wind sway — is invisible to the shad
 first because it is one line. **It was measured, and it does not work.**
 
 ```
-arm                        backend    devErrs   darker vs the shipping reference
-glsl-webgl (REFERENCE)     webgl            0   —
-glsl-webgl-nodepth         webgl            0   3.040%    <- the defect, on WebGL
-tsl-override               webgpu           0   3.040%    <- the same defect
-tsl-nooverride             webgpu           2   89.312%   <- BLANK FRAME
-tsl-nooverride-noreceive   webgpu           0   0.470%    <- correct
-
 ! tsl-nooverride: GPUValidationError: [Texture "ShadowDepthTexture"] usage
   (TextureBinding|RenderAttachment) includes writable usage and another usage in
   the same synchronization scope.
@@ -819,22 +863,23 @@ tsl-nooverride-noreceive   webgpu           0   0.470%    <- correct
   pass now compiles the full physical shader as well as the depth one" stayed unquantified. It is
   moot: the route is closed on correctness before cost.
 
-### The only remaining route, and the one discovery that shortens it
+### The prediction that was wrong, and it is the reusable half of this entry
 
-`castShadowPositionNode` IS harvested, and `NodeMaterial.setupPosition` assigns `positionNode` AFTER
-`instancedMesh( object )` — so an expression set there sees the instanced position and can rewrite
-it. Re-expressing each displacement post-instancing is therefore the route.
-
-**`positionGeometry` is the raw `position` attribute and is untouched by instancing.** The MODEL-space
-position is reachable inside that expression for free, so `vRaClip` — the whole construction ground
-cut, which `maskNode` already carries into the shadow pass — can be written from `positionGeometry.y`
-with nothing uploaded. What still needs a per-instance upload is the DISPLACEMENT, because a
+This section used to end: *"What still needs a per-instance upload is the DISPLACEMENT, because a
 model-space offset must be rotated and scaled by the instance basis before it can be added to an
-instanced position, and `composeBasis` in `RenderBridge.ts` emits yaw, pitch, roll and three scales.
+instanced position."* **True of the offset and false of the conclusion.** The premise assumes the
+expression must ADD to the instanced position. It does not have to: `setupPosition` ASSIGNS
+`positionNode` over `positionLocal`, so the expression is free to discard the instanced value, go
+back to `positionGeometry`, and re-run the instancing itself — at which point the basis is three's
+own matrix node and needs no basis of ours.
 
-**Not attempted.** It touches three materials, both uploaders (`InstanceBatcher` and `Scatter`) and
-the hottest per-frame upload path in the renderer, and no offline gate can verify it — only the probe
-above can.
+**The general lesson: `positionNode` is a replacement, not a contribution.** An hour of design went
+into how to encode a 3x3 basis in as few per-instance floats as possible, against a question that
+evaporates once that one word is read correctly. It cost the same hour twice, since Stage D2 wrote
+the sentence and Stage D3 believed it before checking `NodeMaterial.js`.
+
+**What the probe still could NOT measure.** The node `Renderer` has no `info.programs`, so "the
+shadow pass compiles a second program" stayed unquantified across all six arms.
 
 ## 8. Unverified — do not quote these as fact
 

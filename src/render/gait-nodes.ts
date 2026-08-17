@@ -30,8 +30,12 @@
  * varying-backed var and `normalLocal` is a var, both assignable; three's own
  * `Instance.js` assigns both, which is the precedent.
  *
- * **THE COST OF THAT CHOICE IS THE SHADOW PASS, AND IT IS A REAL GAP.** See
- * `STAGE_D_TSL_GAPS` in `src/art/StructureNodeMaterial.ts`.
+ * **THE COST OF THAT CHOICE WAS THE SHADOW PASS**, which never calls our
+ * `setupPosition`. `render/cast-shadow-nodes.ts` closes that for the materials
+ * whose GLSL twins carry a `customDepthMaterial`; this one's does not, so the
+ * unit material deliberately leaves the swing out of the shadow map and matches
+ * the shipping renderer. The argument is in `UnitNodeMaterial.ts` beside the
+ * line that would add it. See `STAGE_D_TSL_GAPS` #1.
  * ============================================================================
  */
 

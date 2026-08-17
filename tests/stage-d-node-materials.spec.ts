@@ -24,8 +24,11 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import {
-  GLSLNodeBuilder, Mesh, PerspectiveCamera, PlaneGeometry, Scene, WGSLNodeBuilder, WebGPURenderer,
+  GLSLNodeBuilder, Mesh, NodeMaterial, PerspectiveCamera, PlaneGeometry, Scene, WGSLNodeBuilder,
+  WebGPURenderer,
 } from 'three/webgpu';
+import type { Node } from 'three/webgpu';
+import { Fn } from 'three/tsl';
 import { BUILDING_ANIM, PROP_MATERIAL, SCATTER_WIND, UNIT_MATERIAL } from '../src/core/config';
 import { STRUCTURE_ANIM, STRUCTURE_ANIM_LINEAR } from '../src/art/structure-anim';
 import { createStructureNodeMaterial } from '../src/art/StructureNodeMaterial';
@@ -84,10 +87,19 @@ const VERTEX_ATTRIBUTES: ReadonlyArray<readonly [string, number]> = [
   ['color', 3],     // vertexColors: true on units and props
 ];
 
-/** Per-instance attributes the batcher and the scatter upload. */
+/**
+ * Per-instance attributes the batcher and the scatter upload.
+ *
+ * `aSwayPhase` is here because the alternative is worse than it looks: with the
+ * attribute absent, `attribute()` warns and SUBSTITUTES a default, so every prop
+ * assertion below would be made against a shader that never reads the phase —
+ * which is exactly the substitution this file's own header warns about, running
+ * in this file. `Scatter` publishes it; see `world/prop-wind.ts`.
+ */
 const INSTANCE_ATTRIBUTES: ReadonlyArray<readonly [string, number]> = [
   ['aState', 4],      // (hpFrac, buildProgress, selected, seed)
   ['aTeamColor', 3],  // LINEAR rgb
+  ['aSwayPhase', 1],  // prop wind phase, off the instance's world XZ
 ];
 
 /**
@@ -224,42 +236,58 @@ describe('the Stage D graphs compile', () => {
  * the identifiers only the entry point can reach.
  * ========================================================================== */
 
-describe('the generated WGSL has no function that reaches outside itself', () => {
-  /**
-   * Names that exist only in the entry point's scope: our attributes, our
-   * varyings, and three's generated uniform/varying handles.
-   *
-   * `nodeUniform\\d+` is the important one and the least obvious — it is how a
-   * sampler arrives, so a `texture().sample()` inside a declared function fails
-   * on a name this list would otherwise miss entirely.
-   */
-  const OUT_OF_SCOPE = [
-    'aState', 'aFeature', 'aTeamColor', 'aGait', 'aSway', 'aSwayPhase', 'aEmit', 'aGloss',
-    'vRaState', 'vRaTeam', 'vRaClip', 'vShroudUv', 'vEmit', 'vGloss',
-  ];
+/**
+ * Names that exist only in the entry point's scope: our attributes, our
+ * varyings, and three's generated uniform/varying handles.
+ *
+ * `nodeUniform\\d+` is the important one and the least obvious — it is how a
+ * sampler arrives, so a `texture().sample()` inside a declared function fails
+ * on a name this list would otherwise miss entirely.
+ *
+ * AT MODULE SCOPE because section 5 runs the identical scan over the SHADOW
+ * graph. One scanner, two callers: a second transcription of it is the drift
+ * this whole file is written against.
+ */
+const OUT_OF_SCOPE = [
+  'aState', 'aFeature', 'aTeamColor', 'aGait', 'aSway', 'aSwayPhase', 'aEmit', 'aGloss',
+  'vRaState', 'vRaTeam', 'vRaClip', 'vShroudUv', 'vEmit', 'vGloss',
+];
 
-  /** Bodies of every `fn name( ... ) -> type { ... }` three declared. */
-  function declaredFunctions(wgsl: string): Array<{ name: string; body: string }> {
-    const out: Array<{ name: string; body: string }> = [];
-    const re = /\bfn\s+([A-Za-z_]\w*)\s*\(/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(wgsl)) !== null) {
-      // `main` IS the entry point and is the one scope that legitimately holds
-      // every attribute and varying in the module.
-      if (m[1] === 'main') continue;
-      const open = wgsl.indexOf('{', re.lastIndex);
-      if (open < 0) continue;
-      let depth = 0;
-      let i = open;
-      for (; i < wgsl.length; i++) {
-        if (wgsl[i] === '{') depth++;
-        else if (wgsl[i] === '}' && --depth === 0) break;
-      }
-      out.push({ name: m[1], body: wgsl.slice(open, i + 1) });
+/** Bodies of every `fn name( ... ) -> type { ... }` three declared. */
+function declaredFunctions(wgsl: string): Array<{ name: string; body: string }> {
+  const out: Array<{ name: string; body: string }> = [];
+  const re = /\bfn\s+([A-Za-z_]\w*)\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(wgsl)) !== null) {
+    // `main` IS the entry point and is the one scope that legitimately holds
+    // every attribute and varying in the module.
+    if (m[1] === 'main') continue;
+    const open = wgsl.indexOf('{', re.lastIndex);
+    if (open < 0) continue;
+    let depth = 0;
+    let i = open;
+    for (; i < wgsl.length; i++) {
+      if (wgsl[i] === '{') depth++;
+      else if (wgsl[i] === '}' && --depth === 0) break;
     }
-    return out;
+    out.push({ name: m[1], body: wgsl.slice(open, i + 1) });
   }
+  return out;
+}
 
+/** The scope scan itself, so both callers assert the same thing. */
+function expectNoCapturingFunction(wgsl: string): void {
+  for (const fn of declaredFunctions(wgsl)) {
+    for (const name of OUT_OF_SCOPE) {
+      expect(fn.body, `fn ${fn.name} reads ${name}, which only main can see`)
+        .not.toMatch(new RegExp(`\\b${name}\\b`));
+    }
+    expect(fn.body, `fn ${fn.name} reads a nodeUniform, which only main can see`)
+      .not.toMatch(/\bnodeUniform\d+\b/);
+  }
+}
+
+describe('the generated WGSL has no function that reaches outside itself', () => {
   const cases: ReadonlyArray<readonly [string, () => THREE.Material]> = [
     ['the unit material', () => createUnitNodeMaterial(fakeAtlas(), 'unit.scope')],
     ['the structure material', () => createStructureNodeMaterial(fakeAtlas(), 'structure.scope')],
@@ -270,14 +298,7 @@ describe('the generated WGSL has no function that reaches outside itself', () =>
     it(`declares no capturing function in ${label}`, () => {
       const material = make();
       for (const stage of [compile(material, 'wgsl').vertex, compile(material, 'wgsl').fragment]) {
-        for (const fn of declaredFunctions(stage)) {
-          for (const name of OUT_OF_SCOPE) {
-            expect(fn.body, `fn ${fn.name} reads ${name}, which only main can see`)
-              .not.toMatch(new RegExp(`\\b${name}\\b`));
-          }
-          expect(fn.body, `fn ${fn.name} reads a nodeUniform, which only main can see`)
-            .not.toMatch(/\bnodeUniform\d+\b/);
-        }
+        expectNoCapturingFunction(stage);
       }
       material.dispose();
     });
@@ -510,6 +531,262 @@ describe('the prop node material', () => {
     expect(vertex).toContain(SHROUD_NODE_VARYING);
     expect(fragment).toContain(SHROUD_NODE_VARYING);
     mat.dispose();
+  });
+});
+
+/* ==========================================================================
+ * 3b. THE SHADOW PASS SEES THE VERTEX DISPLACEMENT
+ *
+ * `STAGE_D_TSL_GAPS` #1 WAS THE MIGRATION BLOCKER AND THIS IS ITS GATE.
+ *
+ * The node renderer never reads `object.customDepthMaterial`. It sets
+ * `scene.overrideMaterial` to a shared depth material and harvests four fields
+ * off the caster's own material (`Renderer._getShadowNodes`), of which
+ * `setupPosition` is not one — so every model-space displacement in this stage
+ * was invisible to the shadow map and a half-built structure cast its finished
+ * silhouette. `castShadowPositionNode` IS harvested, and it is applied AFTER
+ * `instancedMesh( object )`, which is what makes the fix expressible at all.
+ *
+ * WHAT THIS SECTION CAN AND CANNOT DO. It compiles the OVERRIDE MATERIAL — the
+ * same three fields wired the same way `Renderer` wires them — so it is testing
+ * the graph the shadow pass really builds, and it can prove the reset, the edit,
+ * the varying and the re-instancing are all there and in that order. It cannot
+ * prove the shadow is CORRECT. That is `tools/shadow-override-probe.mjs`, whose
+ * `tsl-castshadow` arm measures 0.460% darker than the shipping WebGL render
+ * against the defect's 3.040%, and this file must not be read as a substitute
+ * for it — `STAGE_D_TSL_GAPS` #6 is the standing reminder that generating a
+ * module is not compiling one.
+ * ========================================================================== */
+
+/**
+ * What `Renderer._getShadowNodes` plus `Renderer.renderObject` actually build.
+ *
+ * Reconstructed rather than imported because three exposes neither: the harvest
+ * lives inside a private method and the override material is owned by the shadow
+ * node. Every line here is transcribed from `Renderer.js`, and the transcription
+ * is the point — a stub that merely put `castShadowPositionNode` on a material
+ * would not exercise `NodeMaterial.setupPosition`'s instancing, which is the one
+ * thing the fix has to survive.
+ */
+function shadowGraphOf(source: THREE.Material): NodeMaterial {
+  const src = source as unknown as {
+    castShadowPositionNode: Node | null;
+    colorNode: Node | null;
+    maskNode: Node | null;
+  };
+  const mat = new NodeMaterial();
+  mat.name = 'shadow.override';
+  const override = mat as unknown as { positionNode: Node | null; colorNode: Node | null };
+  override.positionNode = src.castShadowPositionNode;
+  const mask = src.maskNode;
+  if (mask !== null && mask !== undefined) {
+    // `colorNode = Fn( ( [ color ] ) => { maskNode.not().discard(); return color; } )( colorNode )`
+    const gated = mask as unknown as { not(): { discard(): void } };
+    override.colorNode = (Fn(([color]: [Node]) => {
+      gated.not().discard();
+      return color;
+    }) as unknown as (c: Node | null) => Node)(src.colorNode);
+  } else {
+    override.colorNode = src.colorNode;
+  }
+  return mat;
+}
+
+describe('the shadow pass graph', () => {
+  const CASTERS: ReadonlyArray<readonly [string, () => THREE.Material]> = [
+    ['the structure material', () => createStructureNodeMaterial(fakeAtlas(), 'structure.shadow')],
+    ['the prop material', () => createPropNodeMaterial()],
+  ];
+
+  for (const [label, make] of CASTERS) {
+    it(`${label} declares a castShadowPositionNode at all`, () => {
+      const mat = make() as unknown as { castShadowPositionNode: Node | null };
+      // The whole fix is one property. Without it the harvest finds nothing and
+      // the shadow pass silently reverts to the finished silhouette — which is
+      // exactly the failure mode the gap had: no warning, no error, a picture.
+      expect(mat.castShadowPositionNode).not.toBeNull();
+      (mat as unknown as THREE.Material).dispose();
+    });
+
+    for (const which of BOTH) {
+      it(`builds ${which.toUpperCase()} for ${label}'s shadow override`, () => {
+        const source = make();
+        const { vertex, fragment } = compile(shadowGraphOf(source), which);
+        expect(vertex.length).toBeGreaterThan(300);
+        expect(fragment.length).toBeGreaterThan(100);
+        expect(vertex).not.toMatch(/NaN/);
+        expect(fragment).not.toMatch(/NaN/);
+        source.dispose();
+      });
+    }
+
+    it(`declares no capturing WGSL function in ${label}'s shadow override`, () => {
+      // The same scan section 1b runs, over the graph nobody was looking at.
+      const source = make();
+      const { vertex, fragment } = compile(shadowGraphOf(source), 'wgsl');
+      expectNoCapturingFunction(vertex);
+      expectNoCapturingFunction(fragment);
+      source.dispose();
+    });
+  }
+
+  /**
+   * The three statements, in order, in the emitted vertex stage.
+   *
+   * ORDER IS THE ENTIRE CORRECTNESS ARGUMENT and none of the three is provable
+   * from a name-presence check:
+   *
+   *   1. `positionLocal = position` a SECOND time — the reset. Without it the
+   *      edit runs on the already-instanced position and rotates about a world
+   *      axis through the world origin.
+   *   2. the edit.
+   *   3. an instance-matrix multiply AFTER the edit — the re-instancing. Without
+   *      it the caster is drawn in model space, at the map origin.
+   */
+  function flowOf(source: THREE.Material): string {
+    const { vertex } = compile(shadowGraphOf(source), 'glsl');
+    return vertex;
+  }
+
+  /** Index of the Nth `positionLocal = ( nodeVarN * vec4( positionLocal ...` multiply. */
+  function instancingSites(glsl: string): number[] {
+    const out: number[] = [];
+    const re = /positionLocal\s*=\s*\(\s*nodeVar\d+\s*\*\s*vec4\(\s*positionLocal/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(glsl)) !== null) out.push(m.index);
+    return out;
+  }
+
+  it('resets the structure to model space, sinks it, then re-instances', () => {
+    const source = createStructureNodeMaterial(fakeAtlas(), 'structure.order');
+    const glsl = flowOf(source);
+
+    // 1. TWO resets. The first is three's own initialiser; the second is ours,
+    //    and it has to sit after the instancing three already emitted.
+    const resets = [...glsl.matchAll(/positionLocal\s*=\s*position\s*;/g)].map((m) => m.index);
+    expect(resets.length).toBeGreaterThanOrEqual(2);
+
+    const sites = instancingSites(glsl);
+    expect(sites.length).toBe(2);
+    expect(resets[1]).toBeGreaterThan(sites[0]);
+
+    // 2. The sink is solved and applied between the reset and the second
+    //    instancing. `raDrop` is the shared name in both shaders.
+    const drop = glsl.indexOf('raDrop =');
+    expect(drop).toBeGreaterThan(resets[1]);
+    expect(drop).toBeLessThan(sites[1]);
+
+    // 3. And the ground cut travels with it. `vRaClip` is what `maskNode` tests,
+    //    and an UNASSIGNED varying reads as zero, passes `>= 0.0` and discards
+    //    nothing — which is how a sunk structure kept its finished shadow even
+    //    though the mask was harvested correctly all along.
+    expect(glsl).toMatch(/vRaClip\s*=\s*nodeVar\d+\s*;/);
+    expect(glsl).not.toMatch(/vRaClip\s*=\s*0\.0\s*;/);
+    expect(glsl.indexOf('vRaClip =')).toBeGreaterThan(drop);
+
+    source.dispose();
+  });
+
+  it('resets the prop to model space, sways it, then re-instances', () => {
+    const source = createPropNodeMaterial();
+    const glsl = flowOf(source);
+
+    const resets = [...glsl.matchAll(/positionLocal\s*=\s*position\s*;/g)].map((m) => m.index);
+    const sites = instancingSites(glsl);
+    expect(resets.length).toBeGreaterThanOrEqual(2);
+    expect(sites.length).toBe(2);
+    expect(resets[1]).toBeGreaterThan(sites[0]);
+
+    // The wind reads the per-instance phase and the per-vertex amplitude, and
+    // both have to land between the reset and the re-instancing. A frozen
+    // canopy shadow is precisely what `PropLibrary`'s depth material exists to
+    // prevent on the WebGL path.
+    const sway = glsl.indexOf('swayPhase = aSwayPhase');
+    expect(sway).toBeGreaterThan(resets[1]);
+    expect(sway).toBeLessThan(sites[1]);
+    expect(glsl.slice(sway, sites[1])).toMatch(/aSway\b/);
+
+    source.dispose();
+  });
+
+  it('leaves the unit material without one, matching the shipping renderer', () => {
+    /*
+     * A DECISION, PINNED. `createUnitMaterial` has no `customDepthMaterial` —
+     * the only two in the game are `createStructureDepthMaterial` and
+     * `PropLibrary`'s — so on WebGL a marching rifleman's shadow is the rest
+     * pose. Wiring `castShadowPosition( applyGaitNodes )` here is one line and
+     * would make the node path better than the renderer it must stay
+     * byte-comparable with, on the most numerous caster in the game. If a
+     * swinging shadow is ever wanted, the depth material comes first and both
+     * paths gain it in one commit.
+     */
+    const mat = createUnitNodeMaterial(fakeAtlas(), 'unit.shadow');
+    expect((mat as unknown as { castShadowPositionNode: Node | null })
+      .castShadowPositionNode).toBeNull();
+    mat.dispose();
+  });
+
+  /**
+   * Every `layout( location = N ) in <type> <name>;` in a GLSL vertex stage,
+   * split into the ones WE named and three's own `nodeAttributeN` aliases.
+   *
+   * The regex is written against the real emitted form and the counts below are
+   * the check that it still matches: a pattern that silently stopped matching
+   * would make every assertion here vacuously true, which is what the first
+   * version of this test did.
+   */
+  function vertexAttributes(glsl: string): { named: Set<string>; generated: number } {
+    const all = [...glsl.matchAll(/layout\(\s*location\s*=\s*\d+\s*\)\s*in\s+\w+\s+(\w+)\s*;/g)]
+      .map((m) => m[1]);
+    return {
+      named: new Set(all.filter((n) => !/^nodeAttribute\d+$/.test(n))),
+      generated: all.filter((n) => /^nodeAttribute\d+$/.test(n)).length,
+    };
+  }
+
+  it('adds no per-instance data, which is the whole reason this route was taken', () => {
+    /*
+     * THE CONSTRAINT THAT CHOSE THE DESIGN, PINNED.
+     *
+     * The alternative was uploading a per-instance 3x3 basis so the displacement
+     * could be rotated AFTER instancing — 36 bytes an instance a frame through
+     * `InstanceBatcher` and `Scatter`, the two hottest writers in the renderer,
+     * against a suite that asserts zero allocations per frame exactly. This
+     * route reaches the instance transform through `builder.object` instead, so
+     * the only per-instance data it touches is the matrix three uploads anyway.
+     *
+     * TWO ASSERTIONS, AND THE SECOND IS THE COST. The shadow stage names no
+     * GEOMETRY attribute the colour stage does not, and its only additions are
+     * three's own instance-matrix aliases — exactly FOUR of them, one mat4,
+     * because `instancedMesh( object )` now runs twice. That is the price, it is
+     * a second binding of a buffer that is already resident rather than a second
+     * copy of one, and it is written down here so a future change that starts
+     * uploading something cannot pass quietly.
+     */
+    const source = createStructureNodeMaterial(fakeAtlas(), 'structure.cost');
+    const colour = vertexAttributes(compile(source, 'glsl').vertex);
+    const shadow = vertexAttributes(compile(shadowGraphOf(source), 'glsl').vertex);
+
+    // The regex still matches something, so the two loops below are not vacuous.
+    expect(colour.named.size).toBeGreaterThan(2);
+    expect(colour.generated).toBe(4);
+
+    for (const name of shadow.named) {
+      expect(colour.named, `the shadow pass reads ${name} and the colour pass does not`)
+        .toContain(name);
+    }
+    expect(shadow.generated).toBe(colour.generated + 4);
+
+    /*
+     * AND THE HARD LIMIT THIS SPENDS AGAINST. WebGPU guarantees only 16 vertex
+     * attributes; the shadow stage measures 13 here and 14 on the real structure
+     * geometry, which carries `uv` for the atlas alpha the harvested `colorNode`
+     * samples. Doubling the instance matrix costs four of the sixteen, so a
+     * future geometry that adds three more channels blows the limit in a
+     * player's browser and in no other gate.
+     */
+    expect(shadow.named.size + shadow.generated).toBeLessThanOrEqual(16 - 2);
+    source.dispose();
   });
 });
 

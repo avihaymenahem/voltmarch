@@ -23,11 +23,13 @@
  *
  * ---------------------------------------------------------------------------
  * READ `STAGE_D_TSL_GAPS` AT THE FOOT OF THIS FILE BEFORE WIRING ANY OF THIS UP.
- * One of its entries is migration-blocking and has no workaround inside a
- * material: **the node path has no `customDepthMaterial`**, so
- * `createStructureDepthMaterial` and `PropLibrary`'s `depthMaterial` have no
- * twin, and the shadow pass cannot see a vertex displacement that has to happen
- * before instancing.
+ * Its first entry was migration-blocking — **the node path has no
+ * `customDepthMaterial`**, so `createStructureDepthMaterial` and `PropLibrary`'s
+ * `depthMaterial` have no twin and the shadow pass could not see a vertex
+ * displacement that has to happen before instancing. It is CLOSED:
+ * `mat.castShadowPositionNode` below, `render/cast-shadow-nodes.ts` for the
+ * mechanism. The entry is kept in full because the route that does not work is
+ * one line and looks obviously right.
  * ---------------------------------------------------------------------------
  */
 
@@ -289,7 +291,11 @@ class StructureStandardNodeMaterial extends MeshPhysicalNodeMaterial {
  * `maskShadowNode || maskNode` onto the shadow pass's override material. So the
  * discard reaches both passes from one declaration and cannot drift.
  *
- * That does NOT rescue the vertex half — see `STAGE_D_TSL_GAPS` #1.
+ * THE MASK ALONE WAS NOT ENOUGH, and that is worth knowing before reading the line that fixes it as
+ * redundant. `vRaClip` is WRITTEN by `applyStructureVertex`, which the shadow pass never ran, so the
+ * mask compared a varying nothing had assigned: `0 >= 0`, nothing discarded, finished silhouette.
+ * The RULE reached both passes from one declaration; the VALUE it tests did not.
+ * `castShadowPositionNode` carries both — see `STAGE_D_TSL_GAPS` #1.
  */
 export function createStructureNodeMaterial(
   atlas: GreebleAtlas, name: string, coat?: StructureCoat,
@@ -373,13 +379,17 @@ export function createPadNodeMaterial(
  * entry on it held; these are the ones terrain could not have found, because
  * terrain is a single non-instanced mesh that casts no shadow.
  *
- * **ENTRY 1 IS MIGRATION-BLOCKING AND HAS NO WORKAROUND INSIDE A MATERIAL.**
+ * **ENTRY 1 WAS MIGRATION-BLOCKING AND IS NOW CLOSED**, by a material and
+ * nothing else. It is kept in full because the route that does NOT work is one
+ * line, looks obviously right, and would be re-tried within an afternoon of
+ * anyone rediscovering the gap.
  * ========================================================================== */
 
 export const STAGE_D_TSL_GAPS: readonly string[] = [
   /*
-   * 1. THERE IS NO `customDepthMaterial` ON THE NODE PATH, SO A PRE-INSTANCING
-   *    VERTEX DISPLACEMENT CANNOT REACH THE SHADOW PASS.
+   * 1. THERE IS NO `customDepthMaterial` ON THE NODE PATH. THAT WAS
+   *    MIGRATION-BLOCKING; `castShadowPositionNode` CLOSES IT, AND UPLOADS
+   *    NOTHING TO DO SO.
    *
    *    `object.customDepthMaterial` is read in exactly one file in three 0.185:
    *    `src/renderers/webgl/WebGLShadowMap.js`. The node path renders shadows by
@@ -390,20 +400,21 @@ export const STAGE_D_TSL_GAPS: readonly string[] = [
    *    (`Renderer._getShadowNodes`).
    *
    *    `maskNode` is why the construction ground cut survives: one declaration,
-   *    both passes. `positionNode` is why the vertex half does not. Every
+   *    both passes. `positionNode` is why the vertex half did not. Every
    *    displacement in this stage — the construction sink, the bay door, the
-   *    radar spin, the walk cycle, the wind sway — has to happen in MODEL space,
+   *    radar spin, the walk cycle, the wind sway — happens in MODEL space,
    *    before `instancedMesh( object )` rewrites `positionLocal`; the only hook
    *    that early is `setupPosition`, and the shadow pass never calls ours.
    *
-   *    So on the node path a half-built structure casts its FINISHED silhouette
-   *    again — the exact defect `createStructureDepthMaterial` was written to
-   *    fix — and a swaying canopy casts a frozen shadow.
+   *    So on the node path a half-built structure cast its FINISHED silhouette
+   *    — the exact defect `createStructureDepthMaterial` was written to fix —
+   *    and a swaying canopy cast a frozen shadow. Worse than a mismatch at
+   *    `buildProgress` 0.30: the structures are ENTIRELY below the cut, so the
+   *    frame showed three hard black slabs thrown by objects that are not there.
    *
    *    ROUTE (b) IS NOT "EXPENSIVE BUT CORRECT". IT IS INVALID. MEASURED.
    *    ------------------------------------------------------------------
-   *    This entry used to name two routes out and say "measure (b) first, it is
-   *    one line". (b) was `material.allowOverride = false`, which makes
+   *    (b) was `material.allowOverride = false`, which makes
    *    `Renderer.renderObject` skip the override and draw the object into the
    *    shadow map with its own material — and therefore its own `setupPosition`.
    *    It was measured, by `tools/shadow-override-probe.mjs`, on real WebGPU in
@@ -415,6 +426,7 @@ export const STAGE_D_TSL_GAPS: readonly string[] = [
    *        tsl-override               webgpu           0   3.040%   <- same defect
    *        tsl-nooverride             webgpu           2   89.312%  <- BLANK FRAME
    *        tsl-nooverride-noreceive   webgpu           0   0.470%   <- correct
+   *        tsl-castshadow             webgpu           0   0.460%   <- THE FIX
    *
    *        ! tsl-nooverride: GPUValidationError: [Texture "ShadowDepthTexture"]
    *          usage (TextureBinding|RenderAttachment) includes writable usage and
@@ -429,43 +441,45 @@ export const STAGE_D_TSL_GAPS: readonly string[] = [
    *
    *    The fifth arm is the proof of that diagnosis rather than of a fix: with
    *    `receiveShadow = false` on the casters the sampler disappears, the frame
-   *    is valid, and the shadow is CORRECT — 0.470% darker against the shipping
-   *    reference, versus the defect's 3.040%. So the flag genuinely does reach
+   *    is valid, and the shadow is CORRECT. So the flag genuinely does reach
    *    `setupPosition`. It is simply unusable, because every caster in this game
    *    receives shadows and a building that cannot be shadowed by the building
-   *    beside it is not a rendering the look bible would accept.
+   *    beside it is not a rendering the look bible would accept. DO NOT RETRY IT.
    *
-   *    (Note also what the probe could NOT measure: the node `Renderer` has no
-   *    `info.programs`, so "the shadow pass now compiles the full physical
-   *    shader" stayed unquantified. It is moot now.)
+   *    ROUTE (a) IS THE ONE, AND IT IS CHEAPER THAN THIS ENTRY BELIEVED TWICE.
+   *    ----------------------------------------------------------------------
+   *    `render/cast-shadow-nodes.ts` is thirty lines and it is called from
+   *    `createStructureNodeMaterial` and `createPropNodeMaterials` with the SAME
+   *    function that material's `setupPosition` calls, so every displacement has
+   *    exactly one declaration.
    *
-   *    SO ROUTE (a) IS THE ONLY ROUTE, and it is cheaper than this entry
-   *    believed. Re-express each displacement POST-instancing and hand it to
-   *    `castShadowPositionNode`, which `_getShadowNodes` does harvest onto the
-   *    override material's `positionNode` — and which `NodeMaterial.setupPosition`
-   *    assigns AFTER `instancedMesh( object )`, so the expression sees the
-   *    instanced position.
+   *    THE SENTENCE THAT WAS WRONG, because it is the reusable part: this entry
+   *    said the DISPLACEMENT still needs a per-instance upload, "because a
+   *    model-space offset must be rotated and scaled by the instance basis
+   *    before it can be added to an instanced position". True of the offset,
+   *    false of the conclusion — the expression does not have to ADD to the
+   *    instanced position. `setupPosition` does
+   *    `positionLocal.assign( subBuild( this.positionNode, ... ) )`: it REPLACES.
+   *    So the expression discards the instanced value, resets `positionLocal` to
+   *    `positionGeometry`, runs the edit in model space where it belongs, and
+   *    calls three's own `instancedMesh( builder.object )` — reaching the
+   *    instance matrix through the builder rather than through an upload.
+   *    `InstanceBatcher` and `Scatter` are untouched.
    *
-   *    The one discovery that shortens the job: **`positionGeometry` is the raw
-   *    `position` attribute and is untouched by instancing**, so the MODEL-space
-   *    position is reachable inside that expression for free. `vRaClip` — which
-   *    is the whole construction cut, and which `maskNode` already carries into
-   *    the shadow pass — can therefore be written from `positionGeometry.y`
-   *    without uploading anything. What still needs a per-instance upload is the
-   *    displacement itself, because a model-space offset has to be rotated and
-   *    scaled by the instance basis before it can be added to an instanced
-   *    position, and `composeBasis` in `RenderBridge.ts` emits a basis with yaw,
-   *    pitch, roll and three scales.
+   *    WHAT IT COSTS. One extra mat4 in the shadow vertex stage, because
+   *    `instancedMesh` now runs twice there: four more attribute slots where the
+   *    matrices arrive interleaved, or a second uniform buffer over the same
+   *    array where they arrive as a uniform buffer. A second BINDING of a
+   *    resident buffer, never a second copy, and nothing on the CPU.
+   *    `tests/stage-d-node-materials.spec.ts` section 3b pins the ordering, the
+   *    varying, and that attribute count against the guaranteed 16.
    *
-   *    NOT ATTEMPTED HERE, deliberately. It touches three materials
-   *    (`StructureNodeMaterial`, `UnitNodeMaterial`, `PropNodeMaterial`), both
-   *    uploaders (`InstanceBatcher` and `Scatter`) and the hottest per-frame
-   *    upload path in the renderer, and it cannot be verified by any offline
-   *    gate — only by the probe above. Landing it half-checked is the failure
-   *    this file's own §6 entry #6 is about.
+   *    THE UNIT MATERIAL IS DELIBERATELY LEFT OUT. `createUnitMaterial` has no
+   *    `customDepthMaterial`, so infantry shadows are the rest pose on the
+   *    shipping renderer too; see the block in `UnitNodeMaterial.ts`.
    */
-  'no customDepthMaterial on the node path; allowOverride=false is a WebGPU validation error, '
-  + 'castShadowPositionNode is the only route',
+  'no customDepthMaterial on the node path; allowOverride=false is a WebGPU validation error; '
+  + 'CLOSED by castShadowPositionNode re-running the model-space edit and re-instancing',
   /*
    * 2. `material.positionNode` IS APPLIED AFTER INSTANCING, `<begin_vertex>` IS
    *    APPLIED BEFORE IT. `NodeMaterial.setupPosition` runs morph, skinning,
