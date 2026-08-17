@@ -1,0 +1,820 @@
+{
+  "origin": "http://127.0.0.1:5303",
+  "node": "v24.19.0",
+  "when": "2026-08-17T10:35:22.275Z",
+  "probe": {
+    "steps": [
+      {
+        "name": "onBeforeCompile exists on Material.prototype",
+        "value": true
+      },
+      {
+        "name": "NodeMaterial declares its own customProgramCacheKey",
+        "value": true
+      }
+    ],
+    "navigatorGpu": true,
+    "warnings": [
+      "THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend."
+    ],
+    "rawAdapter": {
+      "info": {
+        "vendor": "amd",
+        "architecture": "gcn-5",
+        "device": "",
+        "description": ""
+      },
+      "features": [
+        "depth32float-stencil8",
+        "rg11b10ufloat-renderable",
+        "bgra8unorm-storage",
+        "texture-formats-tier1",
+        "chromium-experimental-multi-draw-indirect",
+        "texture-compression-bc",
+        "dual-source-blending",
+        "core-features-and-limits",
+        "chromium-experimental-timestamp-query-inside-passes",
+        "float32-filterable",
+        "indirect-first-instance",
+        "float32-blendable",
+        "subgroup-size-control",
+        "depth-clip-control",
+        "texture-compression-bc-sliced-3d",
+        "shader-f16",
+        "texture-formats-tier2",
+        "timestamp-query",
+        "clip-distances",
+        "primitive-index",
+        "texture-component-swizzle",
+        "subgroups"
+      ],
+      "isFallbackAdapter": false
+    },
+    "backend": {
+      "isWebGPUBackend": false,
+      "isWebGLBackend": true,
+      "constructor": "WebGLBackend",
+      "coordinateSystem": 2000
+    },
+    "liveBackend": "webgl2-fallback",
+    "onBeforeCompile": {
+      "plainStandardMaterialCalls": 0,
+      "nodeMaterialCalls": 0,
+      "customProgramCacheKeyCalls": 1,
+      "plainMaterialStillStandard": true,
+      "plainMaterialClass": "MeshStandardMaterial"
+    },
+    "generatedShader": {
+      "language": "GLSL",
+      "length": 13041,
+      "hasIncludeDirective": false,
+      "hasMapFragmentChunk": false,
+      "carriesTheInjection": false,
+      "head": "#version 300 es\n\n// Three.js r185 - Node System\n\n\n// extensions\n\n\n// precision\n\nprecision highp float;\nprecision highp int;\nprecision highp sampler2D;\nprecision highp sampler3D;\nprecision highp samplerCube;\nprecision highp sampler2DArray;\n\nprecision highp usampler2D;\nprecision highp usampler3D;\nprecision highp usamplerCube;\nprecision highp usampler2DArray;\n\nprecision highp isampler2D;\nprecision highp isampler3D;\nprec"
+    },
+    "shaderChunk": {
+      "exportedFromThreeWebgpu": false,
+      "mapFragmentPresent": false
+    },
+    "escapeHatches": {
+      "tslSlotNodes": {
+        "worked": true,
+        "slots": [],
+        "fragmentLength": 13092
+      },
+      "wgslFn": {
+        "worked": true,
+        "functionEmitted": true,
+        "fragmentLength": 13122
+      }
+    },
+    "info": {
+      "topLevelKeys": [
+        "autoReset",
+        "frame",
+        "calls",
+        "render",
+        "compute",
+        "memory",
+        "memoryMap"
+      ],
+      "renderKeys": [
+        "calls",
+        "frameCalls",
+        "drawCalls",
+        "triangles",
+        "points",
+        "lines",
+        "timestamp"
+      ],
+      "memoryKeys": [
+        "attributes",
+        "attributesSize",
+        "geometries",
+        "indexAttributes",
+        "indexAttributesSize",
+        "indirectStorageAttributes",
+        "indirectStorageAttributesSize",
+        "programs",
+        "programsSize",
+        "readbackBuffers",
+        "readbackBuffersSize",
+        "renderTargets",
+        "storageAttributes",
+        "storageAttributesSize",
+        "textures",
+        "texturesSize",
+        "uniformBuffers",
+        "uniformBuffersSize",
+        "total"
+      ],
+      "snapshots": [
+        {
+          "label": "after reset + 1 render",
+          "calls": 10,
+          "render": {
+            "calls": 10,
+            "frameCalls": 2,
+            "drawCalls": 5,
+            "triangles": 2881,
+            "points": 0,
+            "lines": 0,
+            "timestamp": 0
+          },
+          "memoryPrograms": 8,
+          "memoryGeometries": 2,
+          "memoryTextures": 3,
+          "programsIsArray": false,
+          "programsProp": "undefined"
+        },
+        {
+          "label": "after a 2nd render with NO reset",
+          "calls": 12,
+          "render": {
+            "calls": 12,
+            "frameCalls": 4,
+            "drawCalls": 10,
+            "triangles": 5762,
+            "points": 0,
+            "lines": 0,
+            "timestamp": 0
+          },
+          "memoryPrograms": 8,
+          "memoryGeometries": 2,
+          "memoryTextures": 3,
+          "programsIsArray": false,
+          "programsProp": "undefined"
+        },
+        {
+          "label": "after reset() with no render",
+          "calls": 12,
+          "render": {
+            "calls": 12,
+            "frameCalls": 0,
+            "drawCalls": 0,
+            "triangles": 0,
+            "points": 0,
+            "lines": 0,
+            "timestamp": 0
+          },
+          "memoryPrograms": 8,
+          "memoryGeometries": 2,
+          "memoryTextures": 3,
+          "programsIsArray": false,
+          "programsProp": "undefined"
+        }
+      ],
+      "debugTsProgramsExpression": 0
+    },
+    "nodeOverWebGL": {
+      "isWebGLBackend": true,
+      "renderKeys": [
+        "calls",
+        "frameCalls",
+        "drawCalls",
+        "triangles",
+        "points",
+        "lines",
+        "timestamp"
+      ]
+    },
+    "ok": true,
+    "consoleLog": [
+      "warning: THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+      "warning: Device failed at creation.",
+      "error: THREE.TSL: Input 'f32' not found in 'Fn()'. Stack trace not available. Enable \"THREE.Node.captureStackTrace\" to capture stack traces.",
+      "error: THREE.WebGLProgram: Shader Error 0 - VALIDATE_STATUS false\n\nProgram Info Log: Fragment shader is not compiled.\n\u0000\n\nFRAGMENT\n\nERROR: 0:225: 'fn' : syntax error\n\u0000\n\n  220: vec3 outgoingLight;\n  221: vec3 nodeVar119;\n  222: vec4 nodeVar120;\n  223: \n  224: // codes\n> 225: fn vmSpikeTint ( t: f32 ) -> vec3<f32> {\n  226:         return vec3<f32>( t, 1.0 - t, 0.5 );\n  227:       }\n  228: \n  229: float V_GGX_SmithCorrelated ( float alpha, float dotNL, float dotNV ) {\n  230: \n  231: \tfloat nodeVar0;",
+      "warning: WebGL: INVALID_OPERATION: useProgram: program not valid",
+      "warning: WebGL: INVALID_OPERATION: uniformBlockBinding: program not linked",
+      "warning: WebGL: INVALID_OPERATION: uniformBlockBinding: program not linked",
+      "warning: WebGL: INVALID_OPERATION: getUniformLocation: program not linked",
+      "warning: WebGL: INVALID_OPERATION: useProgram: program not valid",
+      "warning: WebGL: INVALID_OPERATION: useProgram: program not valid",
+      "warning: WebGL: INVALID_OPERATION: useProgram: program not valid"
+    ]
+  },
+  "runs": [
+    {
+      "cfg": {
+        "backend": "webgl",
+        "draws": 64,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGLRenderer",
+        "live": "webgl2",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 131,
+      "compileMs": 674.6,
+      "scene": {
+        "requestedDraws": 64,
+        "instancedBatches": 22,
+        "instancesPerBatch": 256,
+        "singles": 41,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 668320
+      },
+      "draws": {
+        "colour": 64,
+        "shadow": 47,
+        "total": 111,
+        "triangles": 668320
+      },
+      "drawsDuringMeasure": 111,
+      "info": {
+        "topLevelKeys": [
+          "memory",
+          "render",
+          "programs",
+          "autoReset",
+          "reset",
+          "update"
+        ],
+        "autoReset": false,
+        "render": {
+          "frame": 92,
+          "calls": 111,
+          "triangles": 1231680,
+          "points": 0,
+          "lines": 0
+        },
+        "memory": {
+          "geometries": 18,
+          "textures": 7
+        },
+        "compute": null,
+        "programsIsArray": true,
+        "programsLength": 109,
+        "memoryPrograms": null
+      },
+      "cpuMs": {
+        "p10": 1.4,
+        "p50": 1.7,
+        "p90": 2.4,
+        "mean": 1.8217,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6661,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 445,
+        "elapsedMs": 2074.6,
+        "fps": 214.5,
+        "cpuSharePct": 98.9,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgpu",
+        "draws": 64,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 10411.7,
+      "compileMs": 9090.2,
+      "scene": {
+        "requestedDraws": 64,
+        "instancedBatches": 22,
+        "instancesPerBatch": 256,
+        "singles": 41,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 668320
+      },
+      "draws": {
+        "colour": 65,
+        "shadow": 47,
+        "total": 112,
+        "triangles": 668321
+      },
+      "drawsDuringMeasure": 112,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 112,
+          "triangles": 1231681,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 1636412,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 629760,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 156,
+          "programsSize": 1443519,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 221,
+          "uniformBuffersSize": 769552,
+          "total": 50491651
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 156
+      },
+      "cpuMs": {
+        "p10": 1.7,
+        "p50": 2.1,
+        "p90": 2.6,
+        "mean": 2.1312,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6661,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 1242,
+        "elapsedMs": 2000.6,
+        "fps": 620.8,
+        "cpuSharePct": 95.5,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": [
+        "warning: THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+        "warning: Device failed at creation."
+      ]
+    },
+    {
+      "cfg": {
+        "backend": "nodegl",
+        "draws": 64,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 253.8,
+      "compileMs": 1093,
+      "scene": {
+        "requestedDraws": 64,
+        "instancedBatches": 22,
+        "instancesPerBatch": 256,
+        "singles": 41,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 668320
+      },
+      "draws": {
+        "colour": 65,
+        "shadow": 47,
+        "total": 112,
+        "triangles": 668321
+      },
+      "drawsDuringMeasure": 112,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 112,
+          "triangles": 1231681,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 1636412,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 629760,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 156,
+          "programsSize": 1443519,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 221,
+          "uniformBuffersSize": 769552,
+          "total": 50491651
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 156
+      },
+      "cpuMs": {
+        "p10": 1.7,
+        "p50": 1.9,
+        "p90": 2.4,
+        "mean": 1.9514,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6659,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 1264,
+        "elapsedMs": 2001.2,
+        "fps": 631.6,
+        "cpuSharePct": 95.8,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgl",
+        "draws": 1000,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGLRenderer",
+        "live": "webgl2",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 251.7,
+      "compileMs": 412.4,
+      "scene": {
+        "requestedDraws": 1000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 969,
+        "materials": 70,
+        "sphereSegments": 11,
+        "expectedTriangles": 697148
+      },
+      "draws": {
+        "colour": 1000,
+        "shadow": 612,
+        "total": 1612,
+        "triangles": 697148
+      },
+      "drawsDuringMeasure": 1612,
+      "info": {
+        "topLevelKeys": [
+          "memory",
+          "render",
+          "programs",
+          "autoReset",
+          "reset",
+          "update"
+        ],
+        "autoReset": false,
+        "render": {
+          "frame": 92,
+          "calls": 1612,
+          "triangles": 1276388,
+          "points": 0,
+          "lines": 0
+        },
+        "memory": {
+          "geometries": 18,
+          "textures": 7
+        },
+        "compute": null,
+        "programsIsArray": true,
+        "programsLength": 162,
+        "memoryPrograms": null
+      },
+      "cpuMs": {
+        "p10": 4.7,
+        "p50": 5.2,
+        "p90": 6.6,
+        "mean": 5.6593,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6661,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 332,
+        "elapsedMs": 2002.1,
+        "fps": 165.8,
+        "cpuSharePct": 96.7,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgpu",
+        "draws": 1000,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 165.1,
+      "compileMs": 5546.6,
+      "scene": {
+        "requestedDraws": 1000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 969,
+        "materials": 70,
+        "sphereSegments": 11,
+        "expectedTriangles": 697148
+      },
+      "draws": {
+        "colour": 1001,
+        "shadow": 612,
+        "total": 1613,
+        "triangles": 697149
+      },
+      "drawsDuringMeasure": 1613,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 1613,
+          "triangles": 1276389,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 480828,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 217728,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2290013,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 1775,
+          "uniformBuffersSize": 1199360,
+          "total": 50200337
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 9.8,
+        "p50": 11.2,
+        "p90": 16,
+        "mean": 12.1469,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.7854,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 194,
+        "elapsedMs": 2004,
+        "fps": 96.8,
+        "cpuSharePct": 97.2,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": [
+        "warning: THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+        "warning: Device failed at creation."
+      ]
+    },
+    {
+      "cfg": {
+        "backend": "nodegl",
+        "draws": 1000,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 98.5,
+      "compileMs": 3484.1,
+      "scene": {
+        "requestedDraws": 1000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 969,
+        "materials": 70,
+        "sphereSegments": 11,
+        "expectedTriangles": 697148
+      },
+      "draws": {
+        "colour": 1001,
+        "shadow": 612,
+        "total": 1613,
+        "triangles": 697149
+      },
+      "drawsDuringMeasure": 1613,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 1613,
+          "triangles": 1276389,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 480828,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 217728,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2290013,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 1775,
+          "uniformBuffersSize": 1199360,
+          "total": 50200337
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 9.1,
+        "p50": 9.5,
+        "p90": 10.5,
+        "mean": 9.7583,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6661,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 167,
+        "elapsedMs": 2004.1,
+        "fps": 83.3,
+        "cpuSharePct": 97.4,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    }
+  ]
+}
