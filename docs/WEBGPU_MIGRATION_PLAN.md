@@ -39,41 +39,154 @@ justified by.
 **None of this means "never".** It means the justification has to be something other than the
 numbers above, and the sequencing has to start with a measurement nobody has taken yet.
 
+> **UPDATE 2026-08-17 — that measurement has now been taken, and it agrees.** At 194 drawn units on
+> a four-army map at 2560x1440: GPU 29.83 ms against CPU 3.55 ms, a ratio of **8.4x**, with 79-90%
+> of GPU time proportional to pixel count (r2 0.995-1.000). The CPU is idle for 88% of the frame.
+> **There is no CPU bottleneck for WebGPU to relieve** — not "a small one", none. See §1, which is
+> now a set of results rather than a plan.
+
 ---
 
-## 1. PHASE 0 — FIND OUT WHERE THE FRAME ACTUALLY GOES. Hours, not weeks. Do this first.
+## 1. PHASE 0 — WHERE THE FRAME ACTUALLY GOES. **MEASURED 2026-08-17. ANSWERED.**
 
-**We do not currently know whether we are CPU-bound or GPU-bound, and that single fact decides
-whether WebGPU is worth anything at all.** WebGPU helps a CPU-bound submission path. It does close
-to nothing for a fill-rate- or shader-bound frame — and a 2560x1440 frame running GTAO, bloom and a
-grade pass over 60-75% ground coverage has every reason to be the latter.
+**The question was whether we are CPU-bound or GPU-bound, because that single fact decides whether
+WebGPU is worth anything at all.** It is answered, with an instrument, on the heaviest content this
+game can produce.
 
-The instruments already exist and have never been pointed at this question:
+> **VERDICT: GPU ≫ CPU by 8.4x, colour pass dominant, and 79-90% of GPU time is proportional to
+> pixel count. Row 3 of the table below. The migration raises nothing.**
 
-- **CPU side is already there.** `src/render/debug.ts` reports `frameMs`, `frameMsAvg`, `frameMsMax`
-  and `cpuMs` through `stats()`, and `AdaptiveResolution.sample(frameMs, dtSec)` already consumes
-  wall-clock frame time.
-- **GPU side is already there too.** `src/ui/PerfHud.ts:44` and `:454` use
-  `EXT_disjoint_timer_query_webgl2` "where the browser offers it, and silence" otherwise. Chrome
-  disables that extension on many configurations, so **the first thing to establish is whether it
-  reports at all on the target machine** — if it does not, use per-pass wall-clock deltas with
-  `gl.finish()` in a throwaway profiling build, which is inaccurate in absolute terms but fine for
-  apportionment.
+Reproduce with:
 
-**Deliverable:** a table of `cpuMs` vs `gpuMs` at 200+ units on the heaviest map, plus a per-pass GPU
-breakdown (shadow / colour / GTAO / bloom / grade). Roughly a day's work, most of it already built.
+```bash
+node tools/gpu-profile.mjs --match --armies 4 --map sunder-atoll --ai 3 --aip 2 \
+  --credits 50000 --sim 900 --units 210 --size 2560x1440 --sweep --json shots/_phase0.json
+```
 
-**The decision rule:**
+**`EXT_disjoint_timer_query_webgl2` IS available here** — ANGLE / D3D11 on an AMD Radeon iGPU
+(`0x00001638`, Renoir/Cezanne class). The `gl.finish()` fallback this section anticipated was not
+needed, and would have been useless anyway: `tools/gpu-profile.mjs`'s own header records
+`gl.finish()` reporting 4.2 ms for a frame the timer query measured at 67.5.
 
-| finding | what it means |
-|---|---|
-| `cpuMs` ≈ `frameMs`, GPU idle | CPU-bound. WebGPU's draw-submission win is real — but so is §2, and §2 is free. |
-| GPU ≫ CPU, post chain dominant | **Fill-rate bound. WebGPU changes nothing.** Fix resolution scale, pass count, and overdraw. |
-| GPU ≫ CPU, colour pass dominant | Shader/overdraw bound. WebGPU changes nothing. Fix materials and overdraw. |
-| Neither dominates; frame is fine | There is no performance problem to solve, and the migration is a maintenance decision. |
+### 1.1 The three clocks, at 194 drawn units, 2560x1440
 
-**Do not start §3 before this table exists.** Three of the four outcomes above say the migration
-does not help.
+Four-army Sunder Atoll, Brutal + Boomer, 50 000 credits, seed 7. 449 entities, 150 buildings,
+1518 particles, 132 draws (68 colour + 43 shadow + 21 post), 1.01 M triangles.
+
+| clock | median | p95 | what it is |
+|---|---|---|---|
+| `frameMs` | **42.45 ms** | 50.60 | free-running rAF, sim live — **23.6 fps** |
+| `gpuMs` | **29.83 ms** | — | `EXT_disjoint_timer_query_webgl2` |
+| `cpuMs` (whole frame) | **3.55 ms** | — | all of `captureFrame`, nothing waiting on the GPU |
+| `cpuMs` (`stats()`) | 2.70 ms | 4.20 | the engine's own counter — see §1.5 |
+| `simMs` | 1.00 ms | 2.10 | one 30 Hz tick |
+
+`cpuMs` and `gpuMs` overlap in a pipelined frame and are not summed. **The CPU is idle 88% of the
+frame.** There is no draw-submission bottleneck to relieve, because there is no CPU bottleneck at
+all.
+
+### 1.2 The per-pass breakdown
+
+Shares come from a timer query around each pass; absolutes come from the ablation, because a query
+per pass fences every boundary and inflates the sum (38.90 ms of passes against a 29.83 ms frame,
+30% high). **Every bucket was checked against turning that pass off** — `RENDER_FINDINGS.md` §7 is
+about exactly the failure where a control does nothing and looks like a total regression.
+
+| pass | query ms | share | disabling it saves |
+|---|---|---|---|
+| **colour (`render`)** | **21.47** | **55.2%** | — (`post-off` leaves 19.71 ms) |
+| GTAO | 6.57 | 16.9% | 4.97 |
+| bloom | 4.86 | 12.5% | 3.32 |
+| SMAA | 3.65 | 9.4% | 2.78 |
+| grade | 2.34 | 6.0% | **0.54 — the one to distrust** |
+| *shadow map (inside `render`)* | *0.99* | — | *0.69* |
+
+Read the ablation, which has no fencing artefact: **colour pass ~19.7 ms (66%), whole post chain
+10.12 ms (34%), shadow map 0.7 ms (2%).**
+
+**The shadow pass is not the problem and §2 item 4 should be closed.** It is 29-59 draw calls, and
+it costs under one millisecond of the thirty.
+
+**Half-res AO is already the largest single saving in the chain.** `ao-fullres` costs **+11.48 ms** —
+more than bloom, SMAA and the grade combined. Do not raise it.
+
+### 1.3 The resolution sweep — the arm that needs no extension
+
+| scale | pixels | GPU ms | fps |
+|---|---|---|---|
+| 1.00 | 2560x1440 | 29.84 | 33.5 |
+| 0.90 | 2304x1296 | 25.02 | 40.0 |
+| 0.80 | 2048x1152 | 20.48 | 48.8 |
+| 0.70 | 1792x1008 | 16.82 | 59.4 |
+| 0.60 | 1536x864 | 14.50 | 69.0 |
+| 0.55 | 1408x792 | 13.58 | 73.7 |
+
+```
+GPU ms = 5.86 + 6.40 x Mpx    r2 0.995     79.1% pixel-proportional
+```
+
+A second run on `glacier-shelf` at 70 units gave `3.37 + 7.93 x Mpx`, **r2 1.000**, 89.7%
+pixel-proportional. **A frame whose cost is that linear in pixel count is fill-rate bound**, and
+that conclusion needed no timer query at all.
+
+**60 fps arrives at render scale 0.694 (1776x999).** Resolution scale is the lever. Draw submission
+is not.
+
+### 1.4 CPU does scale with units. It is still nowhere near mattering.
+
+| content | drawn units | size | `cpuMs` | `gpuMs` |
+|---|---|---|---|---|
+| `?shot=allied-base` | 14 | 1280x720 | 1.90 | 12.65 |
+| industrial-grid, 4 armies | 91 | 1280x720 | 2.60 | 11.35 |
+| temperate-valley, 4 armies | 86 | 1280x720 | 2.90 | 12.00 |
+| glacier-shelf, 4 armies | 113 | 1280x720 | 4.60 | 12.13 |
+| glacier-shelf, 4 armies | 70 | 2560x1440 | 3.30 | 32.06 |
+| **sunder-atoll, 4 armies** | **194** | **2560x1440** | **3.55** | **29.83** |
+
+**A 14x change in unit count moved CPU by 1.7 ms. A 4x change in pixel count moved GPU by 17 ms.**
+That is the whole argument, in two numbers.
+
+Note also that GPU time is flat to within 7% across every four-army land map at a fixed resolution —
+**map choice does not move this verdict**, and the heaviest frame is a function of pixels, not of
+which battlefield it is.
+
+### 1.5 Two things found while measuring, which are defects rather than results
+
+- **`stats().cpuMs` under-reports CPU by every render-side system.** `GameLoop.renderPass` calls
+  `registry.runFrame(rc)` **before** `hooks.render`, and `hooks.render` is where
+  `debug.beginFrame()` starts the stopwatch. So the RenderBridge instance uploads, VFX, the ore
+  instancer, the fog blit and the HUD all run outside the engine's own CPU window. Measured paired
+  per frame: 2.70 ms reported against 3.55 ms actual, i.e. **24% of render CPU is invisible to the
+  counter this section named as the CPU instrument**. It does not change the verdict — the true
+  figure is still an eighth of the GPU — but nothing should be quoted off `stats().cpuMs` until it
+  brackets the whole of `renderPass`.
+- **Three silent defects in `tools/gpu-profile.mjs` itself**, all fixed, all documented in that
+  file's header: minified pass names made the per-pass table unmappable in the only build it runs
+  against; the shadow probe reported exactly 0.00 ms because `WebGLShadowMap.render` is entered 22
+  times per frame and 21 of those early-out on an empty `shadowsArray`; and the readiness gate
+  (`drawCalls > 8`) was satisfied by an empty world, which draws 23.
+
+### 1.6 The decision rule, resolved
+
+| finding | what it means | |
+|---|---|---|
+| `cpuMs` ≈ `frameMs`, GPU idle | CPU-bound. WebGPU's draw-submission win is real. | ✗ |
+| GPU ≫ CPU, post chain dominant | Fill-rate bound. WebGPU changes nothing. | ✗ (post is 34%) |
+| **GPU ≫ CPU, colour pass dominant** | **Shader/overdraw bound. WebGPU changes nothing.** | **✓ 8.4x, colour 66%** |
+| Neither dominates; frame is fine | No performance problem; migration is a maintenance call. | ✗ |
+
+The colour pass dominates AND its cost is pixel-proportional, so rows 2 and 3 are not really
+alternatives here: the ground shader is expensive **per pixel**, over 60-75% of the frame. Both rows
+reach the same instruction, which is the instruction in §2.
+
+**THE ONE CAVEAT, STATED PLAINLY.** This is an integrated Radeon. A discrete GPU would cut the GPU
+side and leave the CPU side where it is, narrowing the ratio — but 8.4x is an enormous margin to
+close, and the *slope* (r2 0.995-1.000 against pixel count) is a property of what this frame draws,
+not of the device it drew on. A discrete-GPU re-run is worth having before a large spend; it is not
+worth waiting for before believing this.
+
+**§3 onward is not justified by performance.** Three of the four rows said the migration does not
+help, and the measurement landed on one of them.
 
 ---
 
@@ -91,12 +204,15 @@ Ordered by (measured or expected win) / (cost). These are the "immediately" answ
    renderer-independent.
 3. **Terrain half-res LOD is parked on a branch** (`terrain-halfres-lod`), rejected earlier because
    it only reached 4 of 64 chunks. Worth re-measuring now that terrain has changed.
-4. **Shadow pass is 29-59 draws — a third to a half of the colour pass.** One directional light, one
-   ortho camera. Check the `castShadow` radius gate is culling as intended and that the shadow camera
-   is not being fitted wider than the visible ground.
-5. **Post chain cost is unmeasured.** GTAO + bloom + grade at 1440p is 21 draws but potentially a
-   large share of GPU time. Phase 0 will say. If it dominates, half-res AO and a cheaper bloom mip
-   chain are cheap wins.
+4. ~~**Shadow pass is 29-59 draws — a third to a half of the colour pass.**~~ **CLOSED BY §1.**
+   Draw calls are not what it costs: the shadow map measures **0.99 ms of a 29.83 ms frame**, and
+   disabling shadows entirely saves **0.69 ms** while removing 43 draws. It is 2% of the GPU. There
+   is nothing here worth the risk of touching the `castShadow` gate.
+5. ~~**Post chain cost is unmeasured.**~~ **MEASURED: 10.12 ms, 34% of the frame** (`post-off`
+   ablation). Ordered: GTAO 4.97, bloom 3.32, SMAA 2.78, grade 0.54. **Half-res AO is already
+   shipped and is already the biggest saving in the chain** — running AO at full resolution costs
+   **+11.48 ms**, more than bloom, SMAA and the grade put together. The remaining cheap win is the
+   bloom mip chain; the expensive-but-real one is the colour pass, which is the other 66%.
 6. **Overdraw is unmeasured.** Foliage and VFX sprites are the usual offenders; the flash work just
    demonstrated the sprite layer was responsible for +13.15pp of blown pixels against the light
    layer's +0.95pp, which means the sprites are covering a lot of screen.
@@ -180,13 +296,29 @@ Each stage ends green on all four gates and on `npm run shots` at 92.0% with zer
 
 ---
 
-## 6. WHAT I RECOMMEND
+## 6. WHAT I RECOMMEND — **PHASE 0 IS DONE; THIS IS NOW THE ANSWER, NOT THE PLAN**
 
-Run **Phase 0** (§1) and the top two items of **§2** first. They are days of work, they carry no
-architectural risk, and they will either produce the frame-rate rise directly or tell us precisely
-which of WebGPU's advantages we would actually be buying. **Stage A** then costs a few days and
-settles the migration question with a number instead of an argument.
+This section used to say: run Phase 0, and if it comes back "fill-rate bound" the migration would
+cost weeks and raise nothing. **It came back fill-rate bound.** GPU 29.83 ms against CPU 3.55 ms at
+194 units and 1440p, 79-90% of it proportional to pixel count.
 
-If the answer comes back "CPU-bound on draw submission", the migration is justified and this plan is
-ready to execute. If it comes back "fill-rate bound" — which the frame's composition makes more
-likely — then the migration would have cost weeks and raised nothing, and §2 is the whole answer.
+So, in order:
+
+1. **Do not start §3.** There is no draw-submission cost to remove. The colour pass draws 68 times
+   and takes 19.7 ms doing it; that is 290 microseconds of GPU per draw call, which is a statement
+   about the shader, not about submission overhead.
+2. **The frame rate lever is resolution, and it is already built.** 60 fps arrives at render scale
+   **0.694** on this machine. §2 item 1 — confirm `AdaptiveResolution` is enabled, tuned, and
+   actually engaging — is now the single highest-value item in this document, and it is free.
+3. **Then the colour pass**, which is 66% of the frame and is expensive *per pixel* over the 60-75%
+   of the screen that is ground. That is `TerrainMaterial.ts`, and it is the same file
+   `RENDER_FINDINGS.md` §3 identifies as the largest visual gap. Cost and look point at one shader.
+4. **§2 item 2 (no LOD system) is worth re-costing downward.** Triangles are not what is expensive
+   here: 1.01 M triangles at 194 units cost 3.55 ms of CPU and a GPU time that barely moves with
+   content. An impostor system would save vertex work the frame is not spending.
+5. **Stage A remains worth a few days if and only if the justification changes.** A discrete-GPU
+   re-run is the one measurement that could move this, and it is cheap: same command, other machine.
+
+If the migration happens, let it be for maintenance, for TSL, or for a platform reason — and say so
+out loud. **It must not be sold as a frame-rate fix**, because the frame rate has now been measured
+and this is not where it went.
