@@ -24,9 +24,12 @@
  *   - IT EXECUTES NOTHING. No pixel is produced. Numeric equivalence between
  *     `GRADE_FRAG` and this graph needs a device and a frame, and belongs to the
  *     Stage F dual-backend verification.
- *   - IT COMPILES FOR WGSL. `WebGPURenderer` also has a WebGL2 backend
- *     (`GLSLNodeBuilder`), which is a third renderer with its own codegen. Two
- *     backends means two grade baselines — `docs/WEBGPU_MIGRATION_PLAN.md` §4.5.
+ *   - COMPILING FOR BOTH BACKENDS IS NOT EQUIVALENCE ON BOTH. The graph is put
+ *     through `WGSLNodeBuilder` and `GLSLNodeBuilder`, so neither can silently
+ *     stop building — but the numeric A/B in `tools/grade-ab/` was taken on a
+ *     WebGPU device only. What the WebGL2 backend renders from the same graph is
+ *     unmeasured. Two backends means two grade baselines —
+ *     `docs/WEBGPU_MIGRATION_PLAN.md` §4.5.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -800,6 +803,33 @@ describe('the assembled node chain', () => {
     expect(src).toContain('0.18');
     expect(src).toContain('0.94');
     expect(src.match(/textureSample\(/g)?.length, 'centre fetch + four unsharp taps').toBe(5);
+    g.dispose();
+  });
+
+  it('compiles for the WebGL2 backend too — two backends, two baselines', () => {
+    /*
+     * `WebGPURenderer` serves a WebGL2 backend to any browser without a device,
+     * and that is a THIRD renderer: node materials over WebGL2, with its own
+     * generator (`GLSLNodeBuilder`). `WEBGPU_MIGRATION_PLAN.md` §4.5 — two
+     * backends means two grade baselines, and a graph that only compiles for
+     * WGSL would strand every one of those users on a black frame.
+     *
+     * Stage C established that `GLSLNodeBuilder` runs headlessly on the same
+     * stub, so this costs nothing. It is a COMPILE check, not an equivalence
+     * one: the numeric A/B in `tools/grade-ab/` was taken on WebGPU, and what
+     * the WebGL2 backend produces from the same graph is still unmeasured.
+     */
+    const cfg = postConfigCopy();
+    cfg.smaa.enabled = false;
+    const g = graphFor(cfg);
+    const glsl = compileFragmentNode(g.output, 'glsl').fragment;
+
+    expect(glsl.length).toBeGreaterThan(1000);
+    // The same curve, through the other generator.
+    expect(glsl).toContain('0.842479062253094');
+    expect(glsl).toContain('0.18');
+    expect(glsl).toContain('0.0031308');
+    expect(glsl).not.toContain('textureSample('); // that is WGSL's spelling
     g.dispose();
   });
 

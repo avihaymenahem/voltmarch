@@ -753,8 +753,11 @@ None of these would have failed a build, and two are invisible until a capture d
   1/.8/.6/.4/.2, half-res first mip, `lerpBloomFactor` identical) and the settled energy pair travels
   through one shared function — but no pixel of either has been diffed on a device. AO needs a real
   scene with depth to A/B at all. Both belong to the Stage F dual-backend verification.
-- **WGSL only.** `WebGPURenderer`'s WebGL2 backend is a third renderer with its own codegen
-  (`GLSLNodeBuilder`). Two backends means two grade baselines — the A/B above says nothing about it.
+- **The A/B is WGSL only.** The graph is COMPILED for both backends —
+  `tests/post-nodes.spec.ts` puts it through `GLSLNodeBuilder` as well, so neither can silently stop
+  building — but the 1/255 number was taken on a WebGPU device. `WebGPURenderer`'s WebGL2 backend is
+  a third renderer, and what it renders from the same graph is unmeasured. Two backends means two
+  grade baselines.
 
 ## 8. Unverified — do not quote these as fact
 

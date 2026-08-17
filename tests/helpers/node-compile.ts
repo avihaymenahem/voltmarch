@@ -27,7 +27,7 @@
  * something new, this throws rather than silently compiling a different graph.
  */
 
-import { HalfFloatType, Mesh, NodeMaterial, PerspectiveCamera, PlaneGeometry, Scene, WGSLNodeBuilder, WebGPUCoordinateSystem } from 'three/webgpu';
+import { GLSLNodeBuilder, HalfFloatType, Mesh, NodeMaterial, PerspectiveCamera, PlaneGeometry, Scene, WGSLNodeBuilder, WebGLCoordinateSystem, WebGPUCoordinateSystem } from 'three/webgpu';
 import type { Node } from 'three/webgpu';
 import { context } from 'three/tsl';
 
@@ -44,19 +44,20 @@ export interface CompiledNode {
   builder: any;
 }
 
-function stubRenderer(): any {
+function stubRenderer(webgl: boolean): any {
+  const coordinateSystem = webgl ? WebGLCoordinateSystem : WebGPUCoordinateSystem;
   return {
     contextNode: context(),
     backend: {
       getDomElement: () => null,
-      coordinateSystem: WebGPUCoordinateSystem,
+      coordinateSystem,
       // `generateTextureDimension` asks the backend how many samples a texture
       // carries so it can pick `textureDimensions` overloads. 1 = not
       // multisampled, which is true of every target in this chain: `post.ts`'s
       // header spends a page on why nothing downstream of the scene may be.
       utils: { getTextureSampleData: () => ({ primarySamples: 1 }) },
     },
-    coordinateSystem: WebGPUCoordinateSystem,
+    coordinateSystem,
     getRenderTarget: () => null,
     getMRT: () => null,
     getOutputRenderTarget: () => null,
@@ -89,7 +90,19 @@ function stubRenderer(): any {
  * `RenderPipeline`, whose output quad is also a `NodeMaterial` with a
  * `fragmentNode`.
  */
-export function compileFragmentNode(node: Node): CompiledNode {
+/**
+ * The two backends `WebGPURenderer` can run, and both must be checked.
+ *
+ * `docs/WEBGPU_MIGRATION_PLAN.md` §4.5: a WebGPU build still serves the WebGL2
+ * fallback to browsers without a device, and that is a THIRD renderer — node
+ * materials over WebGL2, with its own generator. Two backends means two grade
+ * baselines. `GLSLNodeBuilder` is exported alongside `WGSLNodeBuilder` and runs
+ * headlessly on the same stub, so "does it still compile on both" costs nothing
+ * and is a unit test rather than a browser capture.
+ */
+export type NodeBackend = 'wgsl' | 'glsl';
+
+export function compileFragmentNode(node: Node, backend: NodeBackend = 'wgsl'): CompiledNode {
   const material = new NodeMaterial();
   (material as any).fragmentNode = node;
 
@@ -98,7 +111,8 @@ export function compileFragmentNode(node: Node): CompiledNode {
   scene.add(mesh);
   const camera = new PerspectiveCamera();
 
-  const builder: any = new WGSLNodeBuilder(mesh, stubRenderer());
+  const Builder = backend === 'glsl' ? GLSLNodeBuilder : WGSLNodeBuilder;
+  const builder: any = new Builder(mesh, stubRenderer(backend === 'glsl'));
   builder.material = material;
   builder.scene = scene;
   builder.camera = camera;
