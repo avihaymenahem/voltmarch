@@ -99,7 +99,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 3631 across 141 files (+1 opt-in probe)
+npm test             # vitest, currently 3640 across 142 files (+2 opt-in probes)
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -553,6 +553,53 @@ i.e. by nothing. Do not go looking for the commit; there isn't one.
 
 The measurements, the rejected hypotheses and what not to re-run are in
 [`docs/RENDER_FINDINGS.md`](docs/RENDER_FINDINGS.md) §5b.
+## The AI mends and rebuilds, and one third of that report was never the AI
+
+Reported as *"our entire AI logic is crap. when im starting a game from scratch, enemy already has
+its building set up, no progress. also when they are being attacked, and for example their buildings
+destroyed, they are not rebuilding, not healing"*. Three symptoms, two defects, one misreading.
+
+- **THE PREBUILT BASE IS NOT AN AI AFFORDANCE AND THERE IS NO ASYMMETRY TO DELETE.** `Scenarios.ts`
+  seeds every seat in ONE loop with no `isHuman`, no difficulty and no slot test;
+  `START_CONDITION_DEFAULT` is **`'mcv'`**, both lobby blurbs read "Both sides start with…", and
+  `tests/match-start.spec.ts` already asserts both slots symmetrically under both openings. What a
+  player actually sees is the AI's construction vehicle unfolding at t≈0 — it has a deploy layer
+  ahead of its build script — while they are still driving theirs. Do not "fix" the scenario.
+
+  The two REAL asymmetries are both documented and neither is a structure:
+  `AI_DIFFICULTY[].resourceBonus` (0.8 / 1.0 / 1.15 / 1.35 on harvested income) and
+  `aiMirrorsUnlocks`, which is on by default and, when a player turns it off, genuinely does give a
+  prebuilt AI base the gated tech the human's is missing.
+- **`CommandKind.RepairToggle` HAD NO CALLER IN `src/sim/AI.ts`**, so an AI base never healed —
+  measured at 0.35 mean HP unchanged to four decimals over ten sim-minutes while the brain spent
+  34 000 credits on infantry. `AiBrain.repairBase` is the fix and it is the PLAYER'S OWN WRENCH:
+  same command `input.system.ts` sends, same `REPAIR_COST_PER_HP` out of the same bank, same
+  cancel-when-broke. It cost 3116 credits in the probe, which is what makes it a decision rather
+  than a handout.
+
+  **A toggle is a toggle.** `RepairSell.tickRepairs` clears the flag at full HP and on going broke,
+  so the brain only ever needs to switch one ON — and re-sending it to a structure already mending
+  switches that repair OFF. `isRepairing` is therefore consulted per candidate, not counted once.
+  This is not theoretical: the first probe run read **954 toggles against `hpRestored: 0`**, because
+  a parked-and-reissued command passes `CommandBus.drain` TWICE and the harness applied both.
+- **A LOST CONSTRUCTION YARD WAS PERMANENT.** `census` refills `roleCount` every pass, so a bombed
+  refinery or war factory is already re-proposed by the adaptive scorer — that half of the report
+  was wrong. But `conyard` carries `producesTab: BuildTab.Structures`, so with it gone NO structure
+  can be built by anyone, and the only route back is an MCV off a surviving war factory. Nothing
+  ever called `forRole(BuildRole.Mcv, ...)`; the yard-less branch spent the whole bank on units, so
+  the 3000 was never reached even with a live economy. `mcv` carries no unlock tag precisely so a
+  fresh profile can replace one — its own def says so.
+
+  **`AI_REBUILD.bankFraction` is the half that makes it work.** Ordering the vehicle is the obvious
+  line; holding its price back from `buildUnits` is the one without which the brain converts the
+  money into riflemen 200 credits at a time and never buys anything.
+- **Kill the war factory AND the yard and the position is unrecoverable BY DESIGN** — the
+  `OreCrisis` dead end in another costume. A probe that bombs a base flat measures the rules, not
+  the brain; `tests/ai-rebuild-repair.spec.ts` deliberately leaves one refinery and the factory
+  standing, and says why.
+- **`AI_SKILL[].maxRepairs` is a concurrency cap, not a switch.** Every rung mends, because a base
+  that never heals is a broken opponent rather than a gentle one. Easy patches one building while
+  the next two burn; Brutal answers the salvo.
 
 ## Hard rules
 

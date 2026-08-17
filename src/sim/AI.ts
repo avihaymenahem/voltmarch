@@ -90,8 +90,8 @@
  */
 
 import {
-  AI_BUILD, AI_CADENCE, AI_ECONOMY, AI_MEMORY, AI_MILITARY, AI_ROSTER_CAP,
-  AI_SCOUT, AI_SQUAD_MAX, AI_SQUAD_MIN, AI_THREAT_CLASS_COUNT,
+  AI_BUILD, AI_CADENCE, AI_ECONOMY, AI_MEMORY, AI_MILITARY, AI_REBUILD, AI_REPAIR,
+  AI_ROSTER_CAP, AI_SCOUT, AI_SQUAD_MAX, AI_SQUAD_MIN, AI_THREAT_CLASS_COUNT,
   ABILITIES, AbilityId,
   BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, MAX_QUEUE_DEPTH, SIM_DT, SIM_HZ,
 } from '../core/config';
@@ -113,6 +113,7 @@ import { mapSupportsNaval } from './NavalWater';
 import { SUPERWEAPONS, SuperweaponId, superweapons } from './Superweapons';
 import type { SuperweaponDef } from './Superweapons';
 import { commanderPowers } from './CommanderPowers';
+import { repairSellService } from './RepairSell';
 import { hasUpgradeKey } from './Upgrades';
 import {
   COMMANDER_POWERS, CommanderPowerId, ownsCommanderPower, powerByContentKey,
@@ -243,6 +244,8 @@ export interface AiIntent {
   upgradesBought: number;
   /** Commander powers requisitioned from a Command Post. */
   powersBought: number;
+  /** Drip-repairs this brain has switched on. */
+  repairsOrdered: number;
   /** Structures owned, by role name. */
   structures: Record<string, number>;
   /** Observed threat mix, by class name, normalised. */
@@ -659,6 +662,15 @@ export class AiBrain {
   private superweaponsFired = 0;
   private powersCalled = 0;
   private upgradesRequested = 0;
+  /**
+   * Repair toggles this brain has sent, for the debug probe.
+   *
+   * A COUNT OF COMMANDS, NOT OF REPAIRS. The service can refuse one, and a drip
+   * that goes broke cancels itself; this number is what the brain ASKED for,
+   * which is the thing `tests/ai-rebuild-repair.spec.ts` needs in order to tell
+   * "never tried" from "tried and could not pay".
+   */
+  private repairsOrdered = 0;
   /** Aim point scratch for the cluster scorer. Written, never retained. */
   private readonly aimOut = new Float64Array(2);
 
@@ -846,6 +858,11 @@ export class AiBrain {
       this.deploy(s);
       this.build(s, p);
     }
+    // Mending, on the build clock in a slot of its own. It shares the action
+    // budget and the bank with the build layer but never the same tick, for
+    // the reason every offset in this function exists: no single tick may do
+    // two layers' work for eight brains at once.
+    if (t % AI_CADENCE.build === 6) this.repairBase(p);
     if (t % AI_CADENCE.squad === 3) this.squad(s);
     if (t % AI_CADENCE.scout === 4) this.scout(s);
     // The navy, on the squad clock one slot after the squad layer. It reads
@@ -2380,9 +2397,52 @@ export class AiBrain {
         this.blocked = '';
         return;
       }
-      // Genuinely crippled: everything the AI has goes into units from whatever
-      // factories survived.
-      this.buildUnits(s, p, true);
+
+      /* -- BUY ANOTHER YARD -------------------------------------------------
+       * `conyard` is what carries `producesTab: BuildTab.Structures`, so with
+       * no Construction Yard this brain cannot build a structure of any kind —
+       * not a refinery, not a power plant, not a wall. The one route back, for
+       * a human exactly as for the AI, is a Construction Vehicle off a
+       * surviving war factory; `src/data/Defs.ts` carries no unlock tag on
+       * `mcv` for precisely that reason.
+       *
+       * Nothing in this file ever bought one. The branch fell straight through
+       * to `buildUnits(immediate)`, which spends the WHOLE bank on whatever the
+       * threat mix likes — so the brain could never accumulate the price even
+       * with a refinery still running. Measured over ten sim-minutes with a
+       * live economy: 196 riflemen, 28 tanks, 14 rocket troopers, zero
+       * construction vehicles, zero structures, for the rest of the match.
+       *
+       * The order below is the whole fix, and the reserve is the half that
+       * makes it work rather than the half that looks like it should. */
+      let reserve = 0;
+      const mcv = this.catalog.forRole(BuildRole.Mcv, this.faction);
+      if (mcv !== undefined && this.available(mcv)) {
+        if (this.yardOnOrder(mcv)) {
+          // Already coming. Keep spending the rest on defence while it builds —
+          // an empty base is what loses the vehicle before it unfolds.
+          this.posture = AiPosture.Crippled;
+          this.buildGoal = `rebuilding the construction yard — ${mcv.key} on order`;
+          this.blocked = '';
+          this.buildUnits(s, p, true, mcv.cost);
+          return;
+        }
+        if (this.canQueue(mcv, p.credits)) {
+          this.posture = AiPosture.Crippled;
+          this.buildGoal = `construction yard lost — buying ${mcv.key}`;
+          this.blocked = '';
+          this.requestProduction(mcv, s.tick);
+          return;
+        }
+        // Not affordable yet. Hold most of the price back so the army does not
+        // eat it one rifleman at a time, and let the rest buy defence.
+        reserve = Math.round(mcv.cost * AI_REBUILD.bankFraction);
+        this.posture = AiPosture.Crippled;
+        this.buildGoal = `saving ${mcv.cost} for ${mcv.key} to rebuild the yard`;
+      }
+      // Genuinely crippled: everything the AI has left goes into units from
+      // whatever factories survived.
+      this.buildUnits(s, p, true, reserve);
       return;
     }
 
@@ -2396,6 +2456,82 @@ export class AiBrain {
       return;
     }
     this.requestProduction(choice, s.tick);
+  }
+
+  /* ======================================================================
+   * 2.5b MENDING THE BASE
+   * ====================================================================== */
+
+  /**
+   * Turn the drip-repair on for the worst-damaged structure that is not
+   * already mending.
+   *
+   * THE PLAYER'S OWN WRENCH, AND NOTHING ELSE. `issueRepairToggle` is exactly
+   * what `input.system.ts` sends when the repair cursor is armed and a building
+   * is clicked, so `RepairSellService` applies the identical rule to both:
+   * finished structures only, owned by the issuer, actually damaged, charged at
+   * `REPAIR_COST_PER_HP` out of the same bank the army comes from, and
+   * cancelled the moment that bank cannot pay the tick. This layer therefore
+   * adds no rule to the game — it removes the asymmetry where only one side
+   * could press a button that already existed.
+   *
+   * Reported as *"they are not rebuilding, not healing"*, and the healing half
+   * was literally true: `issueRepairToggle` had no caller in this file. A base
+   * bombed to 35% measured 0.35 mean HP ten sim-minutes later, unchanged to
+   * four decimals, while the brain spent 34 000 credits on infantry.
+   *
+   * ONE STRUCTURE PER PASS, worst first. That is a rate a human hand can match
+   * at 2 Hz, it costs one action from the same budget every other verb draws
+   * on, and it makes the concurrency ladder in `AI_SKILL[].maxRepairs` the
+   * thing that actually decides how much of a raid gets undone.
+   *
+   * NO SWITCHING OFF ANYWHERE. `RepairSell.tickRepairs` clears the flag at full
+   * HP and on going broke, so the only toggle this brain ever needs to send is
+   * the one that turns a repair ON — and re-sending it on a structure already
+   * mending would turn that repair OFF, which is why `isRepairing` is consulted
+   * for every candidate rather than counted once.
+   */
+  private repairBase(p: PlayerState): void {
+    if (this.posture === AiPosture.Defeated) return;
+    const svc = repairSellService();
+    if (svc === null) return;
+    // Below this a fresh drip is simply cancelled on its first tick, so arming
+    // one spends an action to achieve nothing. See `AI_REPAIR.minCredits`.
+    if (p.credits < AI_REPAIR.minCredits) return;
+
+    const st = this.store;
+    const me = this.player as number;
+
+    let active = 0;
+    let worst = NONE;
+    // Seeded at the threshold, so a structure has to be genuinely hurt to
+    // become a candidate at all rather than merely the least healthy thing
+    // standing.
+    let worstFrac: number = AI_REPAIR.startFraction;
+
+    const n = st.aliveCount;
+    for (let a = 0; a < n; a++) {
+      const i = st.alive[a];
+      if (st.owner[i] !== me) continue;
+      if (st.kind[i] !== EntityKind.Building) continue;
+      const f = st.flags[i];
+      if ((f & EntityFlag.Alive) === 0) continue;
+      if ((f & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) continue;
+      const max = st.maxHp[i];
+      if (max <= 0) continue;
+      const h = st.handleOf(i);
+      if (svc.isRepairing(h)) { active++; continue; }
+      const frac = st.hp[i] / max;
+      // Strictly less than, so the FIRST of two equally hurt structures in
+      // `alive` order wins. Ties have to break the same way on both machines
+      // of a lockstep match, and store order is the only ordering here that is.
+      if (frac < worstFrac) { worstFrac = frac; worst = h; }
+    }
+
+    if (active >= this.diff.maxRepairs || worst === NONE) return;
+    if (!this.spend()) return;
+    this.commands.issueRepairToggle(this.player, worst);
+    this.repairsOrdered++;
   }
 
   /** Score one candidate into `bestEntry`. Allocation-free by construction. */
@@ -3049,10 +3185,16 @@ export class AiBrain {
    * Queue army. Returns the entry when called from `chooseBuild`; when called
    * directly (the crippled path) it issues immediately and returns null.
    */
-  private buildUnits(s: SimContext, p: PlayerState, immediate: boolean): CatalogEntry | null {
+  private buildUnits(
+    s: SimContext, p: PlayerState, immediate: boolean, reserve = 0,
+  ): CatalogEntry | null {
     // `this.spendable` already has the credit floor and any opening-step
-    // reservation taken out of it; the crippled path spends the lot.
-    const spendable = immediate ? p.credits : this.spendable;
+    // reservation taken out of it; the crippled path spends the lot MINUS
+    // whatever the caller is saving for. `reserve` is only ever non-zero on
+    // the yard-less path, where the thing being saved for is the Construction
+    // Vehicle that ends the crippled state — see `build`. Without it that path
+    // spends `p.credits` outright and the 3000 is never reached.
+    const spendable = immediate ? Math.max(0, p.credits - reserve) : this.spendable;
 
     // Candidates: everything armed this faction can actually field right now.
     const cands = this.candidates;
@@ -3139,6 +3281,33 @@ export class AiBrain {
     // cannot be placed until the first one is down.
     const cap = entry.isBuilding ? 1 : this.diff.queueDepth;
     return queued + this.inFlight[tab] < Math.min(cap, MAX_QUEUE_DEPTH);
+  }
+
+  /**
+   * Is a replacement Construction Vehicle already coming?
+   *
+   * TWO OBSERVATIONS, NO CLOCK, and both are needed because they cover
+   * different halves of the same second. `inFlight` is the window between
+   * `issueProductionStart` going onto the bus and `production:started` coming
+   * back — during which the queue is still empty and a second ask would be
+   * accepted. The queue walk is everything after that, right up to the vehicle
+   * rolling out, at which point `census` sees it and `mcvPending` short
+   * circuits this branch entirely.
+   *
+   * Between the three of them an MCV is visible at every instant of its life,
+   * which is why `AI_REBUILD` carries no re-ask timer.
+   */
+  private yardOnOrder(entry: CatalogEntry): boolean {
+    const tab = entry.tab as number;
+    if (tab >= 0 && tab < BUILD_TAB_COUNT && this.inFlight[tab] > 0) return true;
+    const p = this.world.player(this.player);
+    if (p === undefined) return false;
+    const q = p.queues[tab];
+    if (q === undefined) return false;
+    for (let k = 0; k < q.items.length; k++) {
+      if (q.items[k].defId === entry.defId) return true;
+    }
+    return false;
   }
 
   private requestProduction(entry: CatalogEntry, tick: number): void {
@@ -4694,6 +4863,12 @@ export class AiBrain {
    * the AI ever tried to buy one.
    */
   get powerBuyCount(): number { return this.powersBought; }
+  /**
+   * Drip-repairs this brain has switched on. Same reason again: a repair sets a
+   * flag on a structure that already existed, so no census, entity count or
+   * structure list records that it ever happened.
+   */
+  get repairOrderCount(): number { return this.repairsOrdered; }
   /** Command Posts owned or under construction. */
   get commandPostCount(): number {
     return this.roleCount[BuildRole.CommandPost] + this.roleBuilding[BuildRole.CommandPost];
@@ -4775,6 +4950,7 @@ export class AiBrain {
       powersCalled: this.powersCalled,
       upgradesBought: this.upgradesRequested,
       powersBought: this.powersBought,
+      repairsOrdered: this.repairsOrdered,
       structures,
       threat,
       waveThreshold: this.waveThreshold(),
