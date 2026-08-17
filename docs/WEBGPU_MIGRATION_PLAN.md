@@ -211,7 +211,68 @@ Each stage ends green on all four gates and on `npm run shots` at 92.0% with zer
   re-implemented via `setupOutput` — and four traps, of which the expensive one is that
   `customProgramCacheKey` GOES ON FIRING while `onBeforeCompile` dies silently, so a ported
   material that keeps its old hand-managed key gets a stale program with nothing thrown.
-- **Stage D — structures, units, props.** 24 injection sites, mostly greeble/atlas materials.
+- **Stage D — structures, units, props. DONE.** `src/art/UnitNodeMaterial.ts`,
+  `src/art/StructureNodeMaterial.ts`, `src/world/PropNodeMaterial.ts`, over three shared helpers in
+  `src/render/` (`shroud-nodes.ts`, `gait-nodes.ts`, `dither-nodes.ts`). Gated by
+  `tests/stage-d-node-materials.spec.ts` (30) and measured by `tools/stage-d-node-compare.mjs`.
+
+  **THE INVENTORY IN §3 IS STALE AND THE REAL NUMBER IS SMALLER.** `onBeforeCompile` sites on the
+  merged tree: **11, across 10 files**, not 24 across 12. Stage C took one (terrain). Stage D takes
+  **five**: `applyStructureShader`, `createStructureDepthMaterial`, `createUnitMaterial`,
+  `createPropMaterial`'s colour and depth injections. **Five remain and none of them is Stage D's**:
+  `Roads.ts` (unassigned), `WaterMaterial`/VFX (Stage E), and three one-line
+  `applyShroudTint` calls — `ContactShadows.ts`, `ore.system.ts`, `entity-props.system.ts` — which
+  are now one call to `render/shroud-nodes.ts` each. `RenderBridge.ts`'s placeholder material is a
+  sixth and needs the instance matrix; see the gap below.
+
+  Measured against the shipping render on a real WebGPU device (`backend.isWebGPUBackend` true, not
+  the fallback), 640x480, dither off on both sides:
+
+  ```
+                                  changed   over 8/255   max   mean
+      tsl-webgpu  vs glsl-webgl    6.838%      0.799%     77   0.347
+      tsl-webgl2  vs glsl-webgl    5.595%      0.726%     77   0.318
+      glsl-webgpu vs glsl-webgl   18.190%     17.682%    238  11.650   <- CONTROL
+      stock-webgpu vs stock-webgl  0.638%      0.000%      1   0.006   <- FLOOR
+  ```
+
+  The control is the shipping GLSL materials on the node renderer, where `onBeforeCompile` is
+  silently dead; it differs VISIBLY on 17.682% of pixels against the port's 0.799%, a factor of 22,
+  which is what makes the port's number mean anything. The floor — two stock physical materials, one
+  per renderer — is 0.638% of pixels at max delta **1**, so unlike Stage C's terrain scene there is
+  effectively no lighting-model gap to hide behind here, and the residual is the port's own: it is
+  concentrated on silhouettes and normal-mapped curvature, not on any of the ported branches.
+
+  **What TSL could not express** is `STAGE_D_TSL_GAPS` at the foot of `StructureNodeMaterial.ts`.
+  Two entries change what later stages must do:
+
+  1. **THERE IS NO `customDepthMaterial` ON THE NODE PATH, AND IT IS MIGRATION-BLOCKING.**
+     `object.customDepthMaterial` is read in one file in three 0.185 — `WebGLShadowMap.js`. The node
+     path sets `scene.overrideMaterial` to a shared depth-only material and harvests
+     `castShadowPositionNode ?? positionNode`, `colorNode`, `depthNode` and
+     `maskShadowNode ?? maskNode` off the object's own material. `maskNode` is why the construction
+     ground cut survives into the shadow pass from ONE declaration where the GLSL needs the discard
+     injected twice. `positionNode` is why the vertex half does not: every displacement in this stage
+     — construction sink, bay door, radar spin, walk cycle, wind sway — must happen in MODEL space
+     before `instancedMesh( object )` rewrites `positionLocal`, and the only hook that early is
+     `setupPosition`, which the shadow pass never calls. So on the node path a half-built structure
+     casts its finished silhouette again and a swaying canopy casts a frozen shadow. Two routes out,
+     both outside a material file: publish the instance origin and yaw as per-instance attributes so
+     the maths can be re-expressed post-instancing in `castShadowPositionNode`, or set
+     `material.allowOverride = false` and pay the full physical shader over the shadow map. Measure
+     the second before assuming the first; it is one line. The same missing instance matrix is why
+     `PropNodeMaterial` needs an `aSwayPhase` attribute `Scatter` does not publish yet.
+  2. **`.setLayout()` IS ONLY LEGAL WHEN EVERY INPUT IS A PARAMETER, AND THE OFFLINE GATE CANNOT SEE
+     THE VIOLATION.** Stage C's advice to declare layouts on anything called more than once is right
+     and incomplete: a layout emits a REAL WGSL function, and a WGSL function sees nothing but its
+     parameters, so a body reading a module-scope attribute, varying or uniform emits names that are
+     not in scope. Four of Stage D's five helpers did. Chrome refused all four
+     (`unresolved value 'aSwayPhase'`, `'vRaState'`, `'nodeUniform1'`) — and **not one of them failed
+     `WGSLNodeBuilder.build()`**, because that GENERATES a module and nothing in Node compiles one.
+     The GLSL backend inlines regardless, so the WebGL2 arm was green throughout. Fact 6 is still the
+     cheapest verification available and it is weaker than it reads.
+     `tests/stage-d-node-materials.spec.ts` now greps every declared `fn` for identifiers only the
+     entry point can reach, which catches the class without a browser. Keep that check.
 - **Stage E — water, shroud, VFX.** `WaterMaterial` is a raw `ShaderMaterial`; VFX is additive
   sprites and the flash budget.
 - **Stage F — cutover, dual-backend verification, two grade baselines.**

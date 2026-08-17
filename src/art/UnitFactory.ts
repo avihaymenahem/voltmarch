@@ -522,6 +522,61 @@ function buildPrism(ctx: BuildCtx, m: MassDef, chamfer: number, sideSlot: SlotNa
  * 3. THE MATERIAL FACTORY (R10)
  * ========================================================================== */
 
+/** The subset of a unit material RULING #3 is a statement about. */
+export interface UnitMaterialRuling {
+  envMapIntensity: number;
+  clearcoat: number;
+  clearcoatRoughness: number;
+  roughness: number;
+  metalness: number;
+}
+
+/**
+ * RULING #3, ASSERTED RATHER THAN COMMENTED. Each of these has been broken once
+ * already by somebody "simplifying" the material.
+ *
+ * IT TAKES A `path` BECAUSE THERE ARE TWO UNIT MATERIALS NOW. `./UnitNodeMaterial.ts`
+ * is the TSL twin for `WebGPURenderer` and it is exactly as capable of being
+ * "simplified" as this one — more so, since it is newer and nobody has looked at
+ * it in a shipped frame yet. Two copies of these five checks would be the drift
+ * `terrain-uniforms.ts` exists to prevent, so there is one copy and both
+ * constructors call it.
+ *
+ * The physical-material check is the one clause that has to know which path it
+ * is on: `MeshPhysicalMaterial` sets `isMeshPhysicalMaterial` and
+ * `MeshPhysicalNodeMaterial` sets `isMeshPhysicalNodeMaterial`, and the whole
+ * point of the clause is that the material is not a Standard one — which is the
+ * risk on BOTH paths, because `MeshStandardNodeMaterial` is right there and is
+ * what the terrain uses.
+ */
+export function assertUnitMaterialRuling(
+  mat: UnitMaterialRuling, path: 'glsl' | 'node',
+): void {
+  if (!DEV) return;
+  if (mat.envMapIntensity <= 0) {
+    throw new Error('R10: envMapIntensity is 0 — units go matte and the silhouette rim dies');
+  }
+  const physical = path === 'glsl'
+    ? (mat as { isMeshPhysicalMaterial?: boolean }).isMeshPhysicalMaterial
+    : (mat as { isMeshPhysicalNodeMaterial?: boolean }).isMeshPhysicalNodeMaterial;
+  if (physical !== true) {
+    throw new Error('R10/RULING #3: unit materials must be MeshPhysicalMaterial, not MeshStandardMaterial');
+  }
+  if (mat.clearcoat <= 0) {
+    throw new Error(
+      'RULING #3: clearcoat is 0 — the clear coat over a broad diffuse lobe IS the ' +
+      'painted-plastic-toy read. Without it RA3 armour goes to matte plastic.');
+  }
+  if (mat.clearcoatRoughness <= 0 || mat.clearcoatRoughness >= 1) {
+    throw new Error('RULING #3: clearcoatRoughness must be a tight-but-not-mirror 0.38');
+  }
+  // The ORM map is AUTHORITATIVE. A scalar below 1 would silently scale every
+  // authored roughness in the atlas and there would be no way to see it.
+  if (mat.roughness !== 1 || mat.metalness !== 1) {
+    throw new Error('R10: roughness/metalness scalars must stay 1.0 — the ORM map is authoritative');
+  }
+}
+
 /**
  * THE ONLY PLACE A UNIT MATERIAL IS CONSTRUCTED.
  *
@@ -564,29 +619,7 @@ export function createUnitMaterial(atlas: GreebleAtlas, name: string): THREE.Mes
   // that crease AO must darken ambient and never the direct key.
   mat.aoMapIntensity = 1.0;
 
-  if (DEV) {
-    // RULING #3, asserted rather than commented. Each of these has been broken
-    // once already by somebody "simplifying" the material.
-    if (mat.envMapIntensity <= 0) {
-      throw new Error('R10: envMapIntensity is 0 — units go matte and the silhouette rim dies');
-    }
-    if (!(mat as THREE.Material as { isMeshPhysicalMaterial?: boolean }).isMeshPhysicalMaterial) {
-      throw new Error('R10/RULING #3: unit materials must be MeshPhysicalMaterial, not MeshStandardMaterial');
-    }
-    if (mat.clearcoat <= 0) {
-      throw new Error(
-        'RULING #3: clearcoat is 0 — the clear coat over a broad diffuse lobe IS the ' +
-        'painted-plastic-toy read. Without it RA3 armour goes to matte plastic.');
-    }
-    if (mat.clearcoatRoughness <= 0 || mat.clearcoatRoughness >= 1) {
-      throw new Error('RULING #3: clearcoatRoughness must be a tight-but-not-mirror 0.38');
-    }
-    // The ORM map is AUTHORITATIVE. A scalar below 1 would silently scale every
-    // authored roughness in the atlas and there would be no way to see it.
-    if (mat.roughness !== 1 || mat.metalness !== 1) {
-      throw new Error('R10: roughness/metalness scalars must stay 1.0 — the ORM map is authoritative');
-    }
-  }
+  assertUnitMaterialRuling(mat, 'glsl');
 
   // THE SHROUD SELF-TINT. Units draw above the fog carpet, which is now depth
   // tested (see FogOfWar.ts §1b), so each one samples the mask at its own world
