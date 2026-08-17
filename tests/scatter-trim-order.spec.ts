@@ -27,9 +27,22 @@
  *      `undefined.x`. `trimTypes()` now rebuilds the index itself.
  *
  * Both are exercised on the URBAN preset at the density the `terrain-showcase`
- * fixture actually runs — the one combination in the repo that reliably drives
- * the trim, because a city prop mix lights up more distinct types than the
- * 22-type budget can hold.
+ * fixture actually runs, WITH THE TYPE CAP SET BY THIS FILE.
+ *
+ * THE CAP IS AN INPUT NOW, AND THAT IS THE THIRD THING THIS FILE LEARNED.
+ * It used to rely on that preset saturating the shipped `SCATTER_LIMITS.
+ * maxTypes`, and asserted `stats().types === SCATTER_LIMITS.maxTypes` to prove
+ * the trim had run. Its own comment named the failure mode — "if a roster
+ * change ever stops this combination from trimming, the tests below go green
+ * while testing nothing" — and then that happened: with `maxTypes` raised to 30
+ * (and the preference lists resolving properly, which redistributes the mix)
+ * nothing in the game trims at all, and the assertion would have been comparing
+ * two numbers that no longer describe a trim.
+ *
+ * `ScatterOptions.maxTypes` exists for this. A cap the test sets itself cannot
+ * stop binding, so the ordering below is proved for good rather than for as
+ * long as the roster happens to cooperate. The subject of this file is the
+ * ORDER of the last two passes, never the value of the shipped cap.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -43,11 +56,18 @@ import { Scatter } from '../src/world/Scatter';
 /** `03-terrain-closeup`'s own inputs: MAP_PRESETS.urban through scatter.system.ts. */
 const URBAN_FIXTURE = { biome: 'temperate' as BiomeName, urban: 0.95, density: 0.6 };
 
-function rig(biome: BiomeName, urban: number, densityScale: number): Scatter {
+/**
+ * The cap these tests impose. Comfortably under what any preset lights up
+ * (17-22 archetypes place, measured over all seven), so the trim always fires
+ * and always has something to rank.
+ */
+const TEST_CAP = 12;
+
+function rig(biome: BiomeName, urban: number, densityScale: number, maxTypes = TEST_CAP): Scatter {
   const scene = new THREE.Scene();
   const terrain = new Terrain({ scene, seed: 0x7e44a1, biome, anisotropy: 1 });
   return new Scatter({
-    scene, terrain, biome, seed: 0x5ca77e, urban, densityScale,
+    scene, terrain, biome, seed: 0x5ca77e, urban, densityScale, maxTypes,
     preferred: ['tree', 'bush', 'rock'],
   });
 }
@@ -56,19 +76,22 @@ describe('Scatter — the trim runs BEFORE the coverage gate', () => {
   it('drives the trim on the urban fixture, so the rest of this file means something', () => {
     const scatter = rig(URBAN_FIXTURE.biome, URBAN_FIXTURE.urban, URBAN_FIXTURE.density);
     scatter.generate();
-    // The whole point of these assertions is the trimming path. If a roster
-    // change ever stops this combination from trimming, the tests below go
-    // green while testing nothing, so say so out loud here.
+    // The whole point of these assertions is the trimming path. The cap is an
+    // input to `rig` precisely so this can never silently stop being true; if
+    // it ever does, the fixture is placing fewer than TEST_CAP types and
+    // something much larger is wrong.
     expect(
       scatter.stats().types,
-      'urban fixture no longer saturates the type budget — pick another combination',
-    ).toBe(SCATTER_LIMITS.maxTypes);
+      'the urban fixture no longer reaches the test cap — the roster or the masks have moved',
+    ).toBe(TEST_CAP);
     scatter.dispose();
   });
 
-  it('never exceeds the draw-call type budget', () => {
+  it('honours the shipped cap when no override is given', () => {
+    // The override must not be the only thing holding the budget: with it
+    // absent, `SCATTER_LIMITS.maxTypes` still binds.
     for (const [urban, density] of [[0.95, 0.6], [0.25, 1.0], [0.45, 0.85]] as const) {
-      const scatter = rig('temperate', urban, density);
+      const scatter = rig('temperate', urban, density, SCATTER_LIMITS.maxTypes);
       scatter.generate();
       expect(scatter.stats().types).toBeLessThanOrEqual(SCATTER_LIMITS.maxTypes);
       scatter.dispose();

@@ -883,6 +883,9 @@ export function specForPalette(key: string, p: UnitPalette, size: number, seed: 
   return {
     plating: p.rivets ? 'riveted' : 'welded',
     sheen: p.rivets ? RIVETED_SHEEN : WELDED_SHEEN,
+    // Scorecard #22: no rust, mud, streaks or scratches on any HULL. Buildings
+    // override this in `structureAtlasSpec` — see `rustPipework`.
+    surfaceClass: 'hull',
     key,
     size,
     seed,

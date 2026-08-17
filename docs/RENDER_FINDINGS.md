@@ -263,7 +263,119 @@ hex was chosen to look right through a bug.
 
 ---
 
+## 6b. `shadowIntensity` is a BANNED knob that still cannot be removed on its own
+
+**Measured 2026-08-17 by bisect, one knob moved per capture, everything else held constant.**
+
+`RA3_LOOK_BIBLE.md` §3.3:165 bans it by name — *"Never use a shadow-darkness multiplier — the
+hemisphere fill does it."* — and `LIGHTING.shadowIntensity` is 0.80, i.e. 20% of the key handed back
+to every shadowed pixel. That is real: `0.2 x 3.4 x sin(38deg) = 0.42` of scene-linear radiance
+against a hemisphere fill of 0.60. Measured shadow/lit per channel before any change:
+
+```
+01-establishing-base   0.446  0.515  0.561   luminance 0.499
+03-terrain-closeup     0.406  0.481  0.592   luminance 0.464
+bible §3.3 / §13 #7    .20-.26 .29-.35 .46-.56  luminance 0.33
+```
+
+R and G are 1.6-2.2x above band. **The HUE was already right** — normalised to blue, (0.75, 0.86,
+1.00) against a typical target of (0.75, 0.80, 1.00) — so `shadowTint` needs no rework and the
+failure is purely level. Everything above says "set it to 1.0".
+
+**Setting it to 1.0 alone makes the grade worse, and that is the finding:**
+
+```
+                     grade   weight-3 failures
+0.80 (shipped)       91.1%   1   (03 p99, owned by the Allied structure albedo)
+1.0                  90.2%   2   (+ 09-placement scorecard #9: 0.0123 -> 0.0640, ceiling 0.02)
+```
+
+The mechanism is not subtle once seen. The key is WARM, and while it leaks into shadow it washes
+shadowed grass toward yellow-olive. Remove the leak and shadowed ground is lit by the fill alone,
+which is bluer; on a green albedo, raising B toward R walks the hue up into scorecard #9's 100-120
+"amateur emerald" window. Measured shadowed ground moved from (53,56,21) at hue 65 to a population
+centred on (42,58,39) at **hue 110**.
+
+**And this is our fill being too blue, not the metric being unfair.** The bible's own typical shadow
+ratio (0.75, 0.80, 1.00) applied to our grass `#666B44` computes to **hue 91** — outside the window
+with room to spare. A correctly-tinted shadow does not trip #9. Ours is bluer than the bible's,
+which is a statement about `hemiSky` / `hemiGround` / the env probe.
+
+**So: it is a PAIRED change.** Go to 1.0 and re-balance the hemisphere in the same commit, then
+re-measure #9 and the shadow/lit ratio together. Do not raise it on the strength of the bible quote
+alone — the capture above is exactly what that costs. This is the one item from
+`VISUAL_GAP_PLAN.md` P0 that did not land clean, and it was deferred deliberately rather than
+bundled with the albedo and environment-response fixes, which did.
+
+Note also what this does NOT license: **there is no test pinning `shadowIntensity`.** Asserting 1.0
+would fail and asserting 0.80 would pin a defect, so `tests/lighting-law.spec.ts` carries a comment
+where the assertion should be. That is intentional — a green suite must not become evidence for the
+wrong thing.
+
+---
+
+## 6c. Terrain `envMapIntensity` is INERT — `VISUAL_GAP_PLAN.md` P0-3 names the wrong lever
+
+**Measured 2026-08-17 on a booted page, whole-frame per-pixel diff, with `needsUpdate` forced so the
+uniform really was pushed.**
+
+P0-3 asked for `envMapIntensity: 0.35` (bible line 1159) on `TerrainMaterial.ts`'s
+`MeshStandardMaterial`, reasoning that the unset three default of 1.0 was admitting a flat ambient at
+2.86x the specified level over 60-75% of the frame. **The premise is half right and the lever does
+not work.**
+
+```
+material.envMapIntensity   0.0 -> 8.0     0 pixels changed        max delta 0
+scene.environmentIntensity 0.0 -> 6.0     110 525 / 110 526 terrain px   max delta 254
+CONTROL: terrain.color -> green           30.78% of frame         max delta 234
+```
+
+The control is the load-bearing row — it proves the instrument reads that material's pixels through
+the identical code path, so "0 changed" is a fact about the knob and not about the probe. (Two
+earlier runs of this were WRONG and are worth knowing about: one sampled a 128x128 centre crop where
+terrain was a small minority and reported a mean that could not have resolved the effect, and one
+omitted `needsUpdate`, so three never pushed the uniform at all. Only the version with both a max-delta
+statistic and a working control is quotable.)
+
+**What this means:**
+
+1. **Terrain is strongly environment-lit** — scaling the scene probe moves essentially every terrain
+   pixel to saturation. So the plan's underlying worry, that the ground carries a large flat indirect
+   term, is REAL and still unaddressed.
+2. **The only live control is global**: `LIGHTING.envIntensity` -> `scene.environmentIntensity`, set
+   in `scene.ts`. There is no per-material dial for the ground today.
+3. `USE_ENVMAP` IS defined in the terrain program and `getIBLIrradiance` / `getIBLRadiance` are
+   present (2 and 4 call sites), so this is not a missing feature — something in this material's
+   custom-program path is not taking the uniform. `material.roughness` is inert on terrain for a
+   known and deliberate reason (`onBeforeCompile` replaces `<roughnessmap_fragment>` with the
+   splat-driven `raRough`); `envMapIntensity` has no such explanation yet.
+
+**So the line was NOT shipped.** Adding an authoritative-looking constant that reaches no pixel is
+precisely the `SURFACES` defect (§3, and `config.ts`'s own dead material table) and precisely the trap
+§5 and §7 describe. If the bible's 0.35 is wanted for the ground specifically, it must be scaled
+inside `TerrainMaterial.ts`'s own injected GLSL, with `customProgramCacheKey` bumped past
+`'ra-terrain-v3'` — and then MEASURED, because §6b is a fresh reminder that a change which is
+bible-correct in isolation can still cost grade points.
+
+**Do not re-attempt this as a one-line config edit.** It has now been tried and disproved once.
+
+---
+
 ## 7. Traps that cost someone an hour
+
+**A DEV SERVER IS A MACHINE-WIDE PORT TOO, AND `preview_start` WILL SILENTLY REUSE SOMEONE ELSE'S.**
+Found 2026-08-17 by an agent working in a `git worktree`: it called `preview_start`, got a "reused"
+server on 5173 — and that server's `cwd` was the MAIN CHECKOUT, not its worktree. Every page it
+booted would have measured somebody else's tree while reporting success. It noticed, ran its own on
+5231, and verified there.
+
+This is the SAME DEFECT the shot harness had on port 4317, described at length in CLAUDE.md, in a
+place nobody had thought to look for it. The harness was fixed by walking to a free port and
+byte-comparing the served `index.html` against the local `dist/`; `preview_start` has no such guard,
+and its "reused" is a success message. **Check `cwd` in `preview_list` before trusting any page you
+did not start yourself**, and prefer an explicit unused port when a worktree is involved.
+
+
 
 **`AO_NOON` in `config.ts` is the ART block and disabling it disables NOTHING.** The live switch is
 `RENDER_CONFIG.post.ao.enabled` in `renderer.ts`, plus the quality tier (`medium` for the harness).

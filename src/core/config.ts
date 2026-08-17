@@ -582,12 +582,65 @@ const SUN_NOON = {
   shadowBias: -0.0005,
   shadowNormalBias: 0.02,
   /**
-   * How dark shadows go. 1.0 = fully black.
+   * How much of the shadow term reaches the surface. Three r185's `getShadow`
+   * ends `return mix(1.0, shadow, shadowIntensity)`, so anything below 1.0 adds
+   * the KEY LIGHT back into shadow.
    *
-   * Eased from 0.92. Together with the ambient fill this is what sets the
-   * bible's §13 #7 lit/shadow ratio; at 0.92 the shadow term was removing so
-   * much of the key that the ambient could not put the ratio back inside the
-   * 0.20-0.26 band without washing the lit side out too.
+   * THIS WAS 0.80, AND THE BIBLE BANS IT BY NAME. §3.3 line 165, verbatim:
+   * "Never use a shadow-darkness multiplier — the hemisphere fill does it."
+   * At 0.80 every shadowed pixel was getting 20% of the key handed back —
+   * `0.2 x 3.4 x sin(38deg) = 0.42` of scene-linear radiance against a
+   * hemisphere fill of 0.60, i.e. roughly a THIRD of everything a shadowed
+   * surface received came from a light that is supposed to be blocked.
+   *
+   * Measured on the shipped captures before the change, shadow/lit per channel:
+   *
+   *     01-establishing-base   0.446  0.515  0.561   luminance 0.499
+   *     03-terrain-closeup     0.406  0.481  0.592   luminance 0.464
+   *     bible §3.3 / §13 #7    .20-.26 .29-.35 .46-.56  luminance 0.33
+   *
+   * R and G were 1.6-2.2x above band. Note what was NOT wrong: normalised to
+   * blue we sat at (0.75, 0.86, 1.00) against a typical target of
+   * (0.75, 0.80, 1.00), so the shadow HUE was already right and `shadowTint`
+   * needed no rework. The failure was purely LEVEL, which is exactly the
+   * signature of a multiplier lifting every channel together.
+   *
+   * The superseded note here read "eased from 0.92 ... at 0.92 the shadow term
+   * was removing so much of the key that the ambient could not put the ratio
+   * back inside the 0.20-0.26 band". That is the right diagnosis attached to
+   * the wrong knob: if the shadow end is too dark the fix is the fill, which is
+   * what the bible sentence above means, not a leak in the shadow itself.
+   * `hemiSkyIntensity` below is the knob that sentence points at.
+   *
+   * SO WHY IS IT STILL 0.80? Because setting it to 1.0 ALONE is measurably
+   * worse, and this was bisected rather than argued. One capture with only this
+   * knob moved, everything else in this commit held constant:
+   *
+   *                        grade   weight-3 failures
+   *     0.80 (this)        91.1%   1  (03 p99, owned by the Allied albedo)
+   *     1.0                90.2%   2  (+ 09-placement scorecard #9)
+   *
+   * `09-placement` greenHueLeak goes 0.0123 -> 0.0640 against a 0.02 ceiling —
+   * 3.2x over, on a weight-3 check. The mechanism is not mysterious. The key is
+   * WARM; while it leaks into shadow it washes the grass toward yellow-olive.
+   * Take it away and shadowed ground is lit by the fill alone, which is bluer,
+   * and on a green albedo raising B toward R walks the hue straight up into
+   * scorecard #9's 100-120 "amateur emerald" window. Measured shadowed ground
+   * went (53,56,21) at hue 65 to a population centred on (42,58,39) at hue 110.
+   *
+   * And note the arithmetic that says this is OUR fill being too blue rather
+   * than the metric being unfair: the bible's own typical shadow ratio
+   * (0.75, 0.80, 1.00) applied to our grass '#666B44' lands at hue 91 — outside
+   * the window with room to spare. A correct shadow does not trip #9. Ours is
+   * bluer than the bible's, which is a statement about `hemiSky`/`hemiGround`
+   * and the env probe, not about this line.
+   *
+   * SO THIS KNOB IS NOT A ONE-LINE FIX, IT IS A PAIRED CHANGE: go to 1.0 and
+   * re-balance the hemisphere in the same commit, then re-measure #9 and the
+   * shadow/lit ratio together. Deliberately NOT bundled with the albedo and
+   * environment-response fixes around it, which are unambiguous and land clean.
+   * Do not raise this to 1.0 on the strength of the bible quote alone without
+   * doing the fill half — the capture above is what that costs.
    */
   shadowIntensity: 0.80,
   /**
@@ -5014,8 +5067,43 @@ export const PLACEMENT = {
  * both, but the values are architectural, not vehicular.
  */
 export const RA3_ALLIED_STRUCTURE: UnitPalette = {
-  /** White ceramic tile. Lighter than a hull: buildings catch the key. */
-  base: '#BCC6D6',
+  /**
+   * White ceramic tile. Lighter than a hull: buildings catch the key.
+   *
+   * WAS '#BCC6D6' (V 0.839), AND AT THAT VALUE THE GREEBLING WAS BEING
+   * TONE-MAPPED OFF. The atlas's whole detail language is multiplicative on
+   * this base — cavity recess x0.32, the +16% lip, the +22% V bevel — so the
+   * bevel highlight alone lands at `0.839 x 1.22 = 1.024`. That is above 1.0 in
+   * ALBEDO, before a single photon: the brightest half of the detail was
+   * unrepresentable no matter what the renderer did with it.
+   *
+   * Measured on the shipped captures, whole frame, pixels with every channel
+   * >= 250:
+   *
+   *     01-establishing-base (Allied)   2.37% clipped white
+   *     07-soviet-base       (Soviet)   0.00% clipped white
+   *
+   * Same generator, same lighting, same fixtures, same atlas code. The only
+   * difference is that `RA3_SOVIET_STRUCTURE.base` is '#67702C' at V 0.439 and
+   * its panel work reads. **The greebling is not missing — it is clipped**, so
+   * the fix is here and NOT in `greeble-gen.ts`. Do not answer a flat-looking
+   * Allied facade by adding more panel lines to it.
+   *
+   * V 0.780 is the SURGICAL value and 0.729 was an over-correction — measured,
+   * not guessed. The defect is precisely that `base x 1.22 > 1.0`, so the cure
+   * is to get back under 1.0 with headroom, not to go as dark as the Soviets.
+   * At 0.780 the bevel lands at 0.951: representable, with real separation from
+   * the base instead of a clamp. Dropping to 0.729 instead took the whole top
+   * end of the frame with it and pushed `03-terrain-closeup` BELOW scorecard
+   * #6's p99 floor — 0.8990 against 0.9000, with `10-selection` -0.021 and
+   * `11-dusk-mood` -0.040 alongside it. Highlights have to still reach.
+   *
+   * The scale factor is applied to all three channels equally, so hue (217) and
+   * saturation (0.121) are bit-for-bit what the palette was designed around.
+   * This is still the palest army in the game and still unmistakably ceramic
+   * rather than Soviet olive.
+   */
+  base: '#AFB8C7',
   shadow: '#28303F',
   /** Cobalt trim. R-T2: flat slab inserts, never a tint. */
   team: '#2A2ED0',
@@ -5062,22 +5150,55 @@ export const RA3_SOVIET_STRUCTURE: UnitPalette = {
  * The pads are the cheapest chroma in the whole game and were being wasted.
  * Every structure sits on one, so they cover a large, contiguous share of any
  * base shot — and they were pure neutral ('#1E2024' at S 0.10, '#8A867A' at
- * S 0.09). Value is unchanged: the Allied slab is still near-black and the
- * Soviet deck is still mid grey-brown. Only the hue axis moved — Allied to
- * slate blue (S 0.54), Soviet to warm ochre steel (S 0.30) — which is exactly
- * the near-black-but-unmistakably-blue pavement in refs/ra3steam_02.jpg.
+ * S 0.09). The hue axis is right and stays: Allied slate blue, Soviet warm
+ * ochre steel.
+ *
+ * THE VALUE WAS NOT RIGHT, AND THE SENTENCE THAT USED TO END THIS BLOCK —
+ * "Value is unchanged: the Allied slab is still near-black" — was describing
+ * the defect as though it were the design. Measured off the shipped captures,
+ * as a share of frame and as sRGB luminance:
+ *
+ *                             01-establishing-base   07-soviet-base
+ *     Allied pad, on screen        23  (12.3%)           18
+ *     ground IN CAST SHADOW        53                    57
+ *     lit ground beside it        106                   103
+ *
+ * The pad was **2.3x darker than a cast shadow** and 4.6x darker than the
+ * ground, over a TWELFTH of the frame. Nothing that dark can read as "occluded
+ * ground"; it reads as a hole cut in the map, and that is what it looks like.
+ * RA3's aprons are concrete — lighter than the grass around them, with the
+ * darkening supplied by CONTACT AO rather than by albedo, which is also what
+ * bible §3.3's contact-pool paragraph asks for.
+ *
+ * The superseded note cited refs/ra3steam_02.jpg. That directory is gitignored
+ * and is not on every machine, so this argument deliberately rests on two
+ * things that are checkable in-repo instead. The first is the table above. The
+ * second is that THREE OF THE FOUR ARMIES ALREADY DISAGREED WITH THE ALLIED
+ * VALUE — Soviet '#8A8060' (V 0.54), Meridian '#8E8672' (V 0.56, in
+ * Faction3Buildings.ts), Reclamation '#645E6E' (V 0.44, Faction4Buildings.ts)
+ * — and the Pact's own comment states the principle outright: "a bone building
+ * on a near-black pad reads as a model on a plinth; a bone building on a warm
+ * stone pad reads as a building on ground." The Allied pad at V 0.19 was the
+ * lone outlier, and it was the one under the whitest buildings in the game.
+ *
+ * So: base to poured concrete at V 0.66, S 0.20 — pale enough to sit at about
+ * the lit ground's luminance, saturated enough to stay unmistakably the blue
+ * army's pavement. Every other entry moves with it, because they were all
+ * ratios of a near-black base: `bareMetal` and `trackLink` had gone DARKER than
+ * concrete would be, and `insigniaColor` has to come down rather than up to
+ * keep the stencil readable against a pale slab.
  */
 export const RA3_ALLIED_PAD: UnitPalette = {
-  base: '#172231',
-  shadow: '#070C14',
+  base: '#8794A8',
+  shadow: '#303845',
   team: '#2A2ED0',
-  teamSecondary: '#0F1726',
+  teamSecondary: '#636F82',
   insignia: 'eagle',
-  insigniaColor: '#6E7C8A',
+  insigniaColor: '#4A5666',
   hullNumber: 1949,
   emissive: '#8DD9CD',
-  bareMetal: '#68727E',
-  trackLink: '#0D141F',
+  bareMetal: '#A9B3BF',
+  trackLink: '#5B6573',
   /** Deep cobalt canopy — a named RA3 accent mass, not a dark grey. */
   glass: '#0F2E60',
   stencil: '#D8D2C8',
@@ -7865,24 +7986,56 @@ export const SCATTER_LIMITS = {
   maxProps: 9000,
   /**
    * Maximum simultaneously-live prop types, i.e. InstancedMeshes. Types past
-   * this cap are dropped lowest-count first.
+   * this cap are dropped lowest-count first (`Scatter.trimTypes`).
    *
-   * THE ARITHMETIC HERE SAID 2 DRAWS PER TYPE AND IT IS 3. A scatter mesh is
-   * opaque on the DEFAULT layer, so besides its colour draw and its shadow
-   * draw it is also submitted in `GTAOPass`'s normal prepass. At the cap that
-   * is 22 x 3 = 66 submissions, not 44 — the cap was sized against a 2x model
-   * and is therefore half again as expensive as it was budgeted to be.
+   * THE COST IS 2N, AND THIS BLOCK SAID 3N. It read "THE ARITHMETIC HERE SAID
+   * 2 DRAWS PER TYPE AND IT IS 3", on the grounds that a scatter mesh is opaque
+   * on the DEFAULT layer and was therefore also submitted in `GTAOPass`'s
+   * normal prepass. That prepass no longer exists: `installAoDepthGBuffer` in
+   * `src/render/post.ts` hands GTAO the depth the colour pass already wrote and
+   * reconstructs the normals with one full-screen quad, so `_renderGBuffer` is
+   * false. Measured, not assumed — `frame.drawCallsByPass.ao` is **0** on all
+   * thirteen fixtures in `shots/_report.json`.
    *
-   * The shadow term is the only one that shrinks: a `castShadow` radius gate
-   * drops the shadow draw for props too small to throw anything readable, so
-   * the real figure is between 2N and 3N depending on how much of the live
-   * roster clears that radius. It is never 2N flat.
+   * So it is one colour draw plus one shadow draw per type, and the shadow term
+   * is the only one that shrinks: a `castShadow` radius gate drops the shadow
+   * draw for props too small to throw anything readable. Never more than 2N.
    *
-   * Note also that `MAX_DRAW_CALLS` (130) budgets the COLOUR pass only, while
-   * `shots/_report.json`'s `frame.drawCalls` is the sum over colour + shadow +
-   * prepass. Do not compare the two directly.
+   * `MAX_DRAW_CALLS` (130) budgets the COLOUR pass alone, which is N of that
+   * 2N; `shots/_report.json`'s `frame.drawCalls` is the sum over every scene
+   * submission. Quote `frame.drawCallsByPass.colour`, never `frame.drawCalls`.
+   *
+   * RAISED 22 -> 30, AND THE GAIN IS ONE TYPE TODAY, NOT EIGHT.
+   * `docs/VISUAL_GAP_PLAN.md` P1-9 says the harness logs "8 prop type(s)
+   * trimmed" on `03-terrain-closeup` and that raising the cap costs +8 colour
+   * draws. Both halves are stale. The eight is the PRE-REORDER figure quoted in
+   * `tests/scatter-trim-order.spec.ts`'s header, from when `trimTypes` ran
+   * AFTER `fillToTarget` and therefore ranked a set the fill had inflated. With
+   * the trim in its current position the same fixture trims ONE type
+   * (`roadSignDisc`), measured by replaying its real inputs — scenario
+   * `terrain-showcase`, map preset `urban`, biome `temperate`, `?seed=3`, focus
+   * box and scenario exclusions included.
+   *
+   * The cap is not what limits prop variety. Measured over all seven presets,
+   * 17-22 archetypes of the 31 defined ever place a single instance, and the
+   * ones that never do are hard-surface street furniture on wilderness maps
+   * (correct — a parked sedan does not belong in a forest) and slope-gated
+   * civic solos. Raising the cap to 31 changes nothing that raising it to 30
+   * does not.
+   *
+   * WHAT IT BUYS IS HEADROOM FOR THE SPLAT FIX. `03-terrain-closeup` currently
+   * lands exactly ON 22, and P0-1 takes `SurfaceId.Dirt` from ~2% to ~22% of
+   * temperate ground, which makes `containerStack` and both grass tufts legal
+   * over far more of the map. That fixture is the one frame in the set that has
+   * ever saturated this number, and it is about to saturate it harder.
+   *
+   * PROJECTION AGAINST THE BUDGET. `03-terrain-closeup` runs the LOWEST colour
+   * pass of the thirteen — 51 of 130 — so its worst case at this cap is 51 + 8
+   * = 59. The frames that run the highest colour pass (`01`, `02`, `11` at 77)
+   * are `allied-base` on a preset that lights 18 types and never trims, so they
+   * do not move at all. Even a hypothetical map lighting all 30 lands at ~90.
    */
-  maxTypes: 22,
+  maxTypes: 30,
   /**
    * Metres the visible chunk box is grown by, so a prop just outside the
    * frustum still casts its shadow into it. Bible §3.2 puts the sun at 33
@@ -7909,6 +8062,7 @@ export const PROP_MATERIAL = {
   bevelValueGain: 0.22,
   bevelSaturationLoss: 0.15,
 } as const;
+
 
 /**
  * Emissive gain for lamp heads and signal lenses. Lower than UNIT_MATERIAL's

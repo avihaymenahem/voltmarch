@@ -64,6 +64,16 @@
  * on chimneys, pipes and scaffolding — those masses carry the `bareMetal` slot
  * whose atlas tile already reads as warm turned metal. Nothing here streaks
  * a wall.
+ *
+ * That paragraph described the intent correctly and NOTHING IMPLEMENTED IT.
+ * One greeble generator dresses hulls and architecture both, its spec said
+ * nothing about which, and so scorecard #22 — "no streaks, mud, rust or
+ * scratches on any HULL", a rule about VEHICLES — was enforced here too and no
+ * building in the game had any rust. `structureAtlasSpec` now overrides
+ * `surfaceClass` to 'structure', which is the ONE field it must disagree with
+ * `specForPalette` (the unit builder it spreads) about, and `rustPipework` in
+ * `greeble-gen.ts` does the drawing. Still only `bareMetal`: `rivetPlate` is
+ * the SOVIET WALL as well as the stack body, so rusting it would rust facades.
  * ============================================================================
  */
 
@@ -1706,6 +1716,11 @@ export function structureAtlasSpec(
 ): GreebleSpec {
   return {
     ...specForPalette(key, p.structure, atlasSize, p.seed),
+    // `specForPalette` is the UNIT spec builder and it answers 'hull'. That is
+    // the one field architecture must disagree with it on: bible 5.5 puts rust
+    // on a building's chimneys, pipes and scaffolding, and scorecard #22 —
+    // which is about vehicles — used to be enforced here by default.
+    surfaceClass: 'structure',
     panelDensity: p.panelDensity,
     rivetPitchPx: BUILDING_GREEBLE.rivetPitchPx,
   };
@@ -1719,6 +1734,10 @@ export function padAtlasSpec(
     atlasSize * (BUILDING_GREEBLE.padAtlasSize / BUILDING_GREEBLE.atlasSize)));
   return {
     ...specForPalette(key, p.pad, padSize, p.padSeed),
+    // Architecture too, and honest to say so — though no pad mass samples
+    // `bareMetal` (they take paintSmall / grille / stripe / insignia), so this
+    // is a classification rather than a visual change.
+    surfaceClass: 'structure',
     panelDensity: BUILDING_GREEBLE.padPanelDensity,
     rivetPitchPx: BUILDING_GREEBLE.padRivetPitchPx,
   };
