@@ -29,6 +29,7 @@ import {
   MAX_ARMIES,
   PERSONALITIES,
   SETTINGS_STORAGE_KEY,
+  SETTINGS_VERSION,
   SETUP_STORAGE_KEY,
   SPEEDS,
   SettingsStore,
@@ -118,7 +119,10 @@ describe('settings — normalisation is total', () => {
     const s = normalizeSettings(v1);
     expect(s.controls.bindings['cam.panUp'].code).toBe('ArrowUp');
     expect(s.controls.bindings['cam.panRight'].code).toBe('ArrowRight');
-    expect(s.version).toBe(2);
+    // Every load stamps the CURRENT version, whichever migrations ran. Pinned
+    // against the constant rather than a literal, so bumping the schema does
+    // not send someone hunting through the keybind migration.
+    expect(s.version).toBe(SETTINGS_VERSION);
   });
 
   it('leaves a v1 pan scheme alone once the player has touched it', () => {
@@ -541,7 +545,11 @@ describe('SettingsStore', () => {
     s.patch({ graphics: { bloom: false } });
     s.patch({ graphics: { bloom: false } });
     expect(calls).toBe(1);
-    expect(lastChanged).toEqual(['graphics.bloom']);
+    // `graphics.calibrated` rides along because turning bloom off is a decision
+    // about the picture, and a decision retires the one-time hardware
+    // calibration — see `retiresCalibration`. That is ONE patch producing TWO
+    // changed paths, which is the point of this test: still one notification.
+    expect(lastChanged).toEqual(['graphics.calibrated', 'graphics.bloom']);
     off();
     s.patch({ graphics: { bloom: true } });
     expect(calls).toBe(1);

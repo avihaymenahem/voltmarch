@@ -69,11 +69,16 @@ import {
   mapById,
   normalizeSetup,
   rollSeed,
+  touched,
   type Chord,
+  type GraphicsSettings,
   type MatchSetup,
   type OpponentSetup,
   type Settings,
 } from './settings-store';
+
+import { armCalibration, disarmCalibration } from '../render/calibration.system';
+import { describeCalibration, type CalibrationResult } from '../render/HardwareCalibration';
 
 import { applySettings, SettingsScreen } from './Settings';
 import { CreditsScreen, MainMenuScreen } from './MainMenu';
@@ -1244,6 +1249,10 @@ export class Shell {
 
       this.setHudVisible(true);
       this.show(null, 'playing');
+      // LAST, and only ever on a profile that has never been calibrated. The
+      // measurement needs a live renderer drawing a real scene, which is true
+      // from exactly here onwards.
+      this.maybeCalibrate();
     } catch (err) {
       // An in-page rebuild is the fast path, not the only path. If disposing
       // and re-bootstrapping onto the same canvas fails for any reason, fall
@@ -2707,8 +2716,86 @@ export class Shell {
 
   private readonly onSettingsChanged = (settings: Settings, changed: readonly string[]): void => {
     if (this.game === null) return;
+
+    /*
+     * `graphics.calibrated` IS THE WHOLE PROTOCOL, in both directions.
+     *
+     *   true  — somebody decided. `SettingsStore.patch` writes it alongside any
+     *           picture-affecting graphics row, so moving one mid-probe cancels
+     *           the calibration and `disarmCalibration` puts the scale it was
+     *           probing at back where it found it. `commitCalibration` also
+     *           writes it, and the render system has already disarmed itself by
+     *           then, so a successful run does not cancel itself here.
+     *   false — the player asked for one: "Calibrate Now", or Reset Graphics.
+     *
+     * CANCELLING RUNS BEFORE `applySettings`, deliberately: the cancelling
+     * change is very often a move of the Resolution Scale slider, and putting
+     * the probe's entry value back AFTER pushing the player's new one would
+     * leave the slider reading one number and the renderer doing another.
+     * `disarmCalibration` is also guarded against that from its own side, so
+     * this ordering is belt to its braces rather than the only thing holding.
+     */
+    const flag = touched(changed, 'graphics.calibrated');
+    if (flag && settings.graphics.calibrated) disarmCalibration();
+
     applySettings(settings, this.game, changed);
+
+    if (flag && !settings.graphics.calibrated) this.maybeCalibrate();
   };
+
+  /**
+   * "Calibrate Now" — the player asking for a measurement they already had, or
+   * asking for the pending one to start immediately.
+   *
+   * TWO STEPS, AND BOTH ARE NEEDED. The patch is what makes it survive a page
+   * reload for a profile that had already been calibrated; the direct call is
+   * what makes the button do something for a profile where the flag was ALREADY
+   * false, in which case the patch is an empty diff that fires no listener.
+   * `maybeCalibrate` is idempotent — `armCalibration` refuses a second arm — so
+   * the two overlapping is harmless.
+   */
+  recalibrate(): void {
+    this.settings.patch({ graphics: { calibrated: false } });
+    this.maybeCalibrate();
+  }
+
+  /**
+   * Run the one-time hardware calibration, if this profile has never had one.
+   *
+   * The refusal is the feature: `graphics.calibrated` is true for every profile
+   * that has ever stored settings and for every profile whose owner has touched
+   * a Graphics row, so this is a no-op for everyone except a genuinely fresh
+   * player and anyone who has explicitly asked again.
+   */
+  private maybeCalibrate(): void {
+    if (this.game === null || this.disposed) return;
+    if (this.settings.get().graphics.calibrated) return;
+    armCalibration((result) => { this.commitCalibration(result); });
+  }
+
+  /**
+   * Persist what the calibration measured.
+   *
+   * Written through `SettingsStore.patch` like any other change, so the result
+   * is an ordinary set of player settings from the moment it lands — editable,
+   * diffed, and applied by the same `applySettings` a slider goes through.
+   * There is no second, privileged copy of these numbers anywhere.
+   *
+   * `ao` and `shadowQuality` carry their unchanged defaults except in the one
+   * case the controller sheds them (see `HardwareCalibration#finish`), so
+   * `diffSettings` normally reports only `calibrated` and `resolutionScale`.
+   */
+  private commitCalibration(result: CalibrationResult): void {
+    if (this.disposed) return;
+    const patch: Partial<GraphicsSettings> = {
+      calibrated: true,
+      resolutionScale: result.resolutionScale,
+      ao: result.ao,
+      shadowQuality: result.shadowQuality,
+    };
+    this.settings.patch({ graphics: patch });
+    console.info(`[shell] ${describeCalibration(result)}`);
+  }
 
   private status(text: string): void {
     this.options.status?.(text);

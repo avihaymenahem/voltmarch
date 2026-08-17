@@ -515,6 +515,20 @@ Three consequences that change what work is worth doing:
    revised note. `AdaptiveResolution`'s floor is 0.55, so the controller can reach 60 fps on this
    hardware — once its one-way-ratchet bug is fixed (it required a median below 13.69 ms to restore,
    which a 60 Hz display can never produce).
+
+   **THIS FIT IS NOW SHIPPED PRODUCT, not just a finding.** `src/render/HardwareCalibration.ts`
+   re-derives the same line on the player's own machine — two probe windows at two known pixel
+   counts, ordinary least squares, solve for the target — and writes the answer into
+   `graphics.resolutionScale` once, on the first battle, never again. Adaptive resolution is off by
+   default as of v2.14.0 and is a toggle. The numbers above are the test fixture:
+   `tests/hardware-calibration.spec.ts` feeds the solver 5.86 + 6.40/Mpx and requires it back
+   exactly. **Note that this entry's 0.694 is against a ~17.22 ms target, not 16.7** — the same
+   line at 16.7 gives 0.678, and the spec pins both so the two never get quoted for each other.
+
+   **The one case where the model must NOT be applied** is a flat fitted slope. A vsync-capped
+   display with headroom reports the monitor's interval at every resolution, and a CPU-bound frame
+   reports the same number for a different reason; in both, cutting pixels costs sharpness and buys
+   nothing. The calibration returns the ceiling under 1.0 ms/Mpx rather than solving.
 2. **Map choice is irrelevant to cost** — all four-army land maps sit within 7% of each other
    (11.35–12.13 ms at 720p). Pixels are what vary. Note also that only four-army Sunder Atoll
    reaches 200+ units (215 and rising, because no land route means armies accumulate); every land

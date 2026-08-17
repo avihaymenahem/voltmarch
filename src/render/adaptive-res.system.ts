@@ -32,20 +32,36 @@ import { ctx } from '../game/context';
 import type { RendererHandle } from './renderer';
 
 import { AdaptiveResolution } from './AdaptiveResolution';
+import { calibrationRunning } from './calibration.system';
 
 let handle: RendererHandle | null = null;
 let controller: AdaptiveResolution | null = null;
-let enabled = true;
+/**
+ * OFF UNTIL SOMETHING TURNS IT ON, and that is the shipped default now.
+ *
+ * This was `true`, so dynamic scaling ran on any page that never called
+ * `setAdaptiveResolution` — including `?shot=`, where only `handle.isFixedSize`
+ * stood between the capture set and a controller resizing the drawing buffer.
+ * The product default moved to off (`settings-store.ts#defaultSettings`, and the
+ * v3 migration beside it), and a module default that disagreed with it would be
+ * a second answer to the same question.
+ *
+ * `shell/Settings.ts#applySettings` pushes the player's choice on every boot, so
+ * a player who wants it back gets it back on the frame they ask.
+ */
+let enabled = false;
 /** Unsubscribe for the layout-box watcher below. */
 let offResize: (() => void) | null = null;
 /** Last CSS layout box seen, so a genuine window change can be told apart. */
 let lastCssW = 0;
 let lastCssH = 0;
 /**
- * The last scale THIS controller commanded, or -1 before it has commanded one.
+ * The last scale THIS controller commanded, or -1 before `init()` has seeded it.
  *
  * Anything else observed on the handle came from another caller — the Settings
- * slider or `__VM.setResolutionScale` — and is treated as a deliberate choice.
+ * slider, `__VM.setResolutionScale`, or the first-run hardware calibration — and
+ * is treated as a deliberate choice. `init()` seeds it from the live handle; see
+ * the block there for why leaving it at -1 was a hole rather than a start state.
  */
 let lastCommanded = -1;
 
@@ -103,6 +119,26 @@ export default defineSystem({
     controller = new AdaptiveResolution(handle.resolutionScale);
     adaptiveChanges = 0;
     adaptiveMedianMs = 0;
+    /*
+     * SEED `lastCommanded` WITH WHAT IS ALREADY ON THE HANDLE. It was -1, which
+     * disabled the outside-change check below until this controller had itself
+     * commanded a scale — and by then the damage is done, because the boot
+     * order guarantees an outside change first: `init()` runs inside
+     * `bootstrap()`, and `Shell.bootGame` calls `applySettings` AFTER
+     * `bootstrap()` returns. So the ceiling was captured from whatever the
+     * quality tier had picked, the player's stored Resolution Scale landed one
+     * moment later, and this controller was free to climb back over it — the
+     * same defect `setCeiling` was written to fix, arriving through the one
+     * route that check could not see.
+     *
+     * The first-run hardware calibration walks the scale through the same
+     * window, so it would have inherited it exactly.
+     *
+     * Seeded rather than left at -1 because a `Number.isFinite` guard already
+     * stands in front of the comparison: `resolutionScale` has been observed
+     * reading `null` on a handle that never got a valid drawing buffer.
+     */
+    lastCommanded = Number.isFinite(handle.resolutionScale) ? handle.resolutionScale : -1;
 
     /*
      * STAND DOWN WHILE THE WINDOW IS ACTUALLY CHANGING SIZE.
@@ -136,6 +172,17 @@ export default defineSystem({
     // silently corrupt the visual scorecard — the exact class of defect
     // `docs/SPEC_DRIFT_AUDIT.md` catalogues. Never steer during one.
     if (handle.isFixedSize) return;
+    /*
+     * TWO CONTROLLERS MUST NOT STEER ONE HANDLE.
+     *
+     * `render.hardwareCalibration` runs at Present order 90, immediately before
+     * this, and it deliberately moves the scale between two probe values to fit
+     * a line. Every one of those moves looks to the check below like a
+     * deliberate outside choice, so without this the calibration would re-arm
+     * this controller's ceiling on every probe and then be steered against
+     * while it measured — a line fitted through a moving target.
+     */
+    if (calibrationRunning()) return;
 
     /*
      * DID SOMEONE ELSE MOVE THE SCALE?
@@ -194,5 +241,6 @@ export default defineSystem({
     adaptiveMedianMs = 0;
     lastCssW = 0;
     lastCssH = 0;
+    lastCommanded = -1;
   },
 });
