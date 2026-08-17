@@ -98,5 +98,7 @@ tools/terrain-node-compare/out-nodither/*.png
 tools/stage-d-node-compare/page.js
 tools/stage-d-node-compare/out/*.png
 tools/stage-d-node-compare/out-nodither/*.png
+tools/road-node-compare/page.js
+tools/road-node-compare/out/*.png
 tools/shadow-override-probe/page.js
 tools/shadow-override-probe/out/*.png

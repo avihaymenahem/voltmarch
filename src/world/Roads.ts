@@ -74,7 +74,7 @@ import {
 } from '../core/config';
 import {
   ROAD_ARROW, ROAD_ATTRIBUTE_NAMES, ROAD_MARKS, ROAD_MARK_LINEAR, ROAD_MATERIAL_NAMES,
-  SURFACE_TILE_METRES, arrowMask, roadSurfaceTextures, type RoadSurfaceKind,
+  ROAD_SURFACE_KINDS, SURFACE_TILE_METRES, arrowMask, roadSurfaceTextures, type RoadSurfaceKind,
 } from './road-markings';
 import { DEG2RAD, Rng, clamp, clamp01, wrapAngle } from '../core/math';
 import { Locomotor } from '../core/types';
@@ -1449,6 +1449,49 @@ function makeMaterial(
     side: THREE.DoubleSide,
   });
   return mat;
+}
+
+export interface RoadGlslMaterialSet {
+  readonly materials: Readonly<Record<RoadSurfaceKind, THREE.MeshStandardMaterial>>;
+  /** Live uniform objects, shared by all three. Mutate `.value`, never replace. */
+  readonly uniforms: RoadUniforms;
+  dispose(): void;
+}
+
+/**
+ * The three shipping road materials, built and patched, with nothing else.
+ *
+ * PULLED OUT OF `buildMeshes` SO SOMETHING OTHER THAN A ROAD NETWORK CAN HOLD
+ * THEM. `tools/road-node-compare.mjs` stands these up beside
+ * `createRoadNodeMaterials` and diffs the two on a real device — which is the
+ * only check that can catch the failures three stages of this migration have
+ * already hit, where a node graph generates valid source offline and is refused
+ * by Chrome, or compiles on both backends and renders an unwritten varying.
+ * Building a whole `RoadNetwork` to reach three materials would drag terrain,
+ * routing and 17-49k triangles into a question about a fragment shader.
+ *
+ * It also gives this file the same shape as `RoadNodeMaterial.ts`, which is what
+ * makes "read the two side by side" a thing anyone can actually do.
+ *
+ * @param uniforms Pass the network's own block so a retune reaches its meshes.
+ *                 Omit for a standalone set.
+ */
+export function createRoadGlslMaterials(
+  anisotropy: number, uniforms: RoadUniforms = makeRoadUniforms(),
+): RoadGlslMaterialSet {
+  const materials = {
+    carriageway: makeMaterial('carriageway', anisotropy),
+    kerb: makeMaterial('kerb', anisotropy),
+    pavement: makeMaterial('pavement', anisotropy),
+  } as const;
+  for (const kind of ROAD_SURFACE_KINDS) patchMaterial(materials[kind], kind, uniforms);
+  return {
+    materials,
+    uniforms,
+    dispose(): void {
+      for (const kind of ROAD_SURFACE_KINDS) materials[kind].dispose();
+    },
+  };
 }
 
 /* ==========================================================================
@@ -2938,12 +2981,8 @@ export class RoadNetwork {
 
     // The three requests — asphalt, flat paint, paving — live in
     // `road-markings.ts` beside every other number both shaders read.
-    const roadMat = makeMaterial('carriageway', anis);
-    const kerbMat = makeMaterial('kerb', anis);
-    const paveMat = makeMaterial('pavement', anis);
-    patchMaterial(roadMat, 'carriageway', this.uniforms);
-    patchMaterial(kerbMat, 'kerb', this.uniforms);
-    patchMaterial(paveMat, 'pavement', this.uniforms);
+    const { carriageway: roadMat, kerb: kerbMat, pavement: paveMat } =
+      createRoadGlslMaterials(anis, this.uniforms).materials;
     this.materials.push(roadMat, kerbMat, paveMat);
 
     this.roadMesh = this.mount(road.toGeometry('road.carriageway', 'aRoad'), roadMat, false);

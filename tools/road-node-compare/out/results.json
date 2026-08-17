@@ -1,0 +1,49 @@
+{
+  "origin": "http://127.0.0.1:5365",
+  "when": "2026-08-17T14:10:38.322Z",
+  "dither": true,
+  "arms": [
+    {
+      "arm": "glsl-webgl",
+      "backend": "webgl",
+      "ms": 214.40000000037253
+    },
+    {
+      "arm": "tsl-webgpu",
+      "backend": "webgpu",
+      "ms": 64.79999999888241
+    },
+    {
+      "arm": "tsl-webgl2",
+      "backend": "webgl2-fallback",
+      "ms": 428.90000000037253
+    },
+    {
+      "arm": "glsl-webgpu",
+      "backend": "webgpu",
+      "ms": 35.90000000037253
+    }
+  ],
+  "error": null,
+  "warnings": [],
+  "diffs": {
+    "tsl-webgpu": {
+      "changed": 0.30211798336798334,
+      "strong": 0.0020465176715176716,
+      "maxDelta": 68,
+      "meanDelta": 0.4228073024948025
+    },
+    "tsl-webgl2": {
+      "changed": 0.29711213617463617,
+      "strong": 0,
+      "maxDelta": 7,
+      "meanDelta": 0.36015462577962576
+    },
+    "glsl-webgpu": {
+      "changed": 0.2992885914760915,
+      "strong": 0.16398453742203742,
+      "maxDelta": 151,
+      "meanDelta": 6.505775727650728
+    }
+  }
+}
