@@ -7153,12 +7153,35 @@ export const ROAD_MIN_AXIS_DEGREES = 8;
 /** Arc length between ribbon cross-sections. Drives tri count and smoothness. */
 export const ROAD_SAMPLE_METRES = 2.0;
 /**
- * Metres the road surface floats above the heightfield. The terrain grid is
- * 1 m and roads only run on ground under ROAD_MAX_SLOPE, so 6 cm clears the
- * worst interpolation error with room to spare while staying invisible at a
- * 39-degree camera.
+ * Metres the road surface floats above the heightfield. 6 cm is invisible at a
+ * 39-degree camera and clears the interpolation error of a road-surface mesh
+ * whose spans are shorter than the 1 m terrain grid.
+ *
+ * THIS COMMENT USED TO END "roads only run on ground under ROAD_MAX_SLOPE, so
+ * 6 cm clears the worst interpolation error with room to spare", AND THAT WAS
+ * FALSE BY TWO ORDERS OF MAGNITUDE. The lift only ever had to cover the error
+ * of the mesh that carries it, and that mesh was built edge-to-edge across a
+ * 13.6 m carriageway: measured worst case 4.22 m of terrain standing above the
+ * tarmac, with a sixth of the road surface underground. `ROAD_CONFORM_METRES`
+ * is what makes the sentence true; see `RoadNetwork.conformSpans`.
  */
 export const ROAD_SURFACE_LIFT = 0.06;
+/**
+ * Longest span, in metres, of any edge of a road-surface triangle — carriageway
+ * ribbon, junction pad and pavement alike. Below the 1 m terrain grid, so a
+ * span cannot chord over a whole heightfield cell.
+ *
+ * This is a QUALITY knob with a measured gate behind it
+ * (`tests/roads-drape.spec.ts`), not a taste one. Raising it puts the road back
+ * underground in proportion; the full argument is in `RoadNetwork.conformSpans`.
+ */
+export const ROAD_CONFORM_METRES = 1.2;
+/**
+ * Hard ceiling on sub-spans per edge, so a pathological width cannot explode
+ * the vertex count. At 1.2 m this binds only above 19.2 m, and the widest thing
+ * in the game is a 13.6 m arterial.
+ */
+export const ROAD_CONFORM_MAX_SPANS = 16;
 
 /** Nodes per axis in the generator lattice. 4 => ~102 m blocks on a 512 m map. */
 export const ROAD_LATTICE_N = 4;
