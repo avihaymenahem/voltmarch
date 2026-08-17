@@ -1136,15 +1136,53 @@ for (const c of CONFIGS) {
 
 if (Object.keys(report.passes).length) {
   console.log('\nPER-PASS GPU TIME  (composer passes, timer-query wrapped)');
-  console.log('  pass                med ms      p95    share');
+  console.log('  pass                med ms      p95    share   ablation saves   responds?');
   const total = Object.values(report.passes).reduce((s, p) => s + p.median, 0);
+  /*
+   * THE PASS TABLE AND THE ABLATION ARE TWO INDEPENDENT INSTRUMENTS, SHOWN SIDE
+   * BY SIDE, AND THAT IS THE POINT.
+   *
+   * `RENDER_FINDINGS.md` §7: an agent built an AO-disabled control, edited a
+   * config block nothing was wired to, got byte-identical captures and concluded
+   * its change had deleted AO. A no-op control and a total regression look
+   * exactly alike. So a per-pass number is only quotable if TURNING THAT PASS
+   * OFF also moves the frame, and the two numbers are printed together so the
+   * check cannot be skipped.
+   *
+   * They will not be equal and should not be expected to. Disabling a pass also
+   * removes a ping-pong target write and re-points its neighbours, so an
+   * ablation saving is normally SMALLER than the pass's own query. What the
+   * column is for is the qualitative answer: a bucket with real time in it and
+   * an ablation saving near zero is a bucket measuring something other than what
+   * its name says.
+   */
+  const savesFor = (id) => {
+    const cfg = report.configs[`${id}-off`];
+    return cfg ? baseGpu - Math.min(...cfg.gpuBlocks) : NaN;
+  };
   for (const [name, p] of Object.entries(report.passes).sort((a, b) => b[1].median - a[1].median)) {
+    const saves = name === 'render' ? NaN : savesFor(name);
+    const responds = Number.isFinite(saves)
+      ? (saves > 0.25 && saves > p.median * 0.2 ? 'yes' : 'NO — do not quote')
+      : 'n/a';
     console.log(
       `  ${name.padEnd(18)} ${fmt(p.median).padStart(7)} ${fmt(p.p95).padStart(8)} ` +
-        `${fmt((p.median / total) * 100, 1).padStart(7)}%`,
+        `${fmt((p.median / total) * 100, 1).padStart(7)}%   ${fmt(saves).padStart(12)}   ${responds}`,
     );
   }
   console.log(`  ${'TOTAL'.padEnd(18)} ${fmt(total).padStart(7)}`);
+  /*
+   * AND THE SUM OVER-REPORTS. Wrapping every pass in its own TIME_ELAPSED query
+   * puts a fence at each pass boundary, so work the driver would have overlapped
+   * is serialised and each pass is charged for the pipeline bubble in front of
+   * it. The whole-frame query has one fence and is the honest absolute. Read the
+   * per-pass table as SHARES; read the ablation for absolutes.
+   */
+  console.log(
+    `  (sum ${fmt(total)} ms against a whole-frame ${fmt(baseGpu)} ms — `
+    + `${fmt((total / baseGpu - 1) * 100, 0)}% high, because a query per pass fences every `
+    + 'boundary. Shares are the quotable part.)',
+  );
   if (report.shadow) {
     const p = report.shadowProbe;
     console.log(
