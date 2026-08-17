@@ -235,11 +235,22 @@ hex was chosen to look right through a bug.
   waterline: a warship used to sit *on* the sea rather than in it. No prepass, stencil or mask was
   needed. `installAoOccluderFilter` is kept as the fallback path for the old prepass, and a non-zero
   `ao` in `_report.json` is the signal that it fired.
-- **Terrain LOD is correct and nearly worthless at present.** A half-resolution index over the same
-  vertices, boundary ring kept at full resolution so cracks are arithmetically impossible. It
-  qualifies **4 of 64 chunks** on the seed ten of thirteen fixtures use — ~1.5% of terrain triangles
-  (16/64 on contested-strait). Branch `terrain-halfres-lod`. It becomes worth having if maps get
-  flatter, and `tests/terrain-lod.spec.ts` pins the count so a generator change announces itself.
+- **Terrain LOD: built, correct, and DELIBERATELY NOT MERGED (decided 2026-08-17).** Branch
+  `terrain-halfres-lod`. A second index over the same vertices gives a flat chunk 2424 triangles
+  instead of 8192 (−70.4%); the boundary ring stays at full resolution so every chunk-edge sample is
+  still a triangle corner, which makes cracks *arithmetically impossible* rather than merely
+  unlikely and removes the need for any neighbour-agreement pass. Gate is `cliffTris === 0` (reusing
+  the existing relief metric, so LOD cannot disagree with `castShadow`) plus a measured
+  `lodError ≤ 0.15 m`, which is under every hull's ride height — load-bearing, because units and
+  props are placed from `heightAt`, not from the drawn mesh.
+
+  **Why it is parked, and do not re-propose it without new information:** it qualifies **4 of 64
+  chunks** on the seed ten of thirteen fixtures use (7 / 5 / 6 / 16 on the other maps), ~1.5% of
+  terrain. And it is pointed the wrong way — triangles are not the constraint (draw calls are, and
+  the colour pass has ~50 spare), while the headline visual finding is that the ground has too
+  LITTLE detail (§3). Adding the ground structure §3 calls for would reduce the qualifying count
+  further. `tests/terrain-lod.spec.ts` pins the counts, so if a future generator pass makes maps
+  flatter this becomes worth having and the test will say so. Merge is one command away.
 - **The scatter shadow-radius gate saves nothing today.** All 31 shipped `PROP_DEFS` clear 0.70 m
   (smallest is `bench` at 1.182). It is an enforced invariant for the next small prop, not a win.
 - **WASM would not help the frame.** The bottleneck is GPU, and the JS here is already in the shape
