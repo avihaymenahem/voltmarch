@@ -725,6 +725,34 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
     // `roughnessmap_fragment` is replaced.
     roughness: 0.92,
     metalness: 0.0,
+    /*
+     * THERE IS DELIBERATELY NO `envMapIntensity` HERE, AND IT IS NOT AN
+     * OVERSIGHT — IT WAS MEASURED. Setting it does nothing on this material.
+     *
+     * `VISUAL_GAP_PLAN.md` P0-3 asked for `envMapIntensity: 0.35` (bible 1159)
+     * on the grounds that the unset default of 1.0 was admitting a flat ambient
+     * over 60-75% of the frame. The premise is half right and the lever is
+     * wrong. Measured on a booted page, whole-frame per-pixel diff, with
+     * `needsUpdate` forced so the uniform really was pushed:
+     *
+     *     material.envMapIntensity  0 -> 8    0 pixels changed, max delta 0
+     *     scene.environmentIntensity 0 -> 6   110 525 / 110 526 terrain px, max 254
+     *     CONTROL: terrain.color -> green     30.78% of frame, max delta 234
+     *
+     * So terrain IS strongly environment-lit, and the ONLY live control is
+     * `LIGHTING.envIntensity` via `scene.environmentIntensity` (renderer sets it
+     * in `scene.ts`), which is global. The per-material multiplier never reaches
+     * the pixels — `USE_ENVMAP` is defined and `getIBLIrradiance` is called, so
+     * it is not a missing feature; something in this material's custom program
+     * path is not taking the uniform.
+     *
+     * Adding the line anyway would have shipped a dead knob that reads
+     * authoritative — the exact defect `SURFACES` in config.ts already is, and
+     * the trap RENDER_FINDINGS.md §5 and §7 are both about. If you want the
+     * bible's 0.35 for the ground specifically, it has to be scaled inside this
+     * file's own injected GLSL (and `customProgramCacheKey` bumped), not
+     * declared on the material. See RENDER_FINDINGS.md §6c.
+     */
     dithering: true,
   });
   material.name = 'Terrain';

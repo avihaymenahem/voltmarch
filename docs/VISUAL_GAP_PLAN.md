@@ -96,7 +96,16 @@ docstring at `Biomes.ts:241` says, forever, including for future biomes and any 
   this, and do not "fix" that by cranking `uSplatSharpen`** — above ~4 the control texture's own 2 m
   stair-stepping shows through the warp (`TerrainMaterial.ts:172-178` warns about exactly this).
 
-### P0-2 · `shadowIntensity: 0.80` — `src/core/config.ts:592`
+### P0-2 · `shadowIntensity: 0.80` — **DEFERRED 2026-08-17: correct, but not on its own**
+
+> **Setting this to 1.0 alone makes the grade WORSE and it was bisected, not argued.** One capture
+> per knob: at 1.0 the grade is 90.2% with 2 weight-3 failures; at 0.80 it is 91.1% with 1.
+> `09-placement` scorecard #9 goes 0.0123 -> **0.0640** against a 0.02 ceiling, because the warm key
+> leaking into shadow was masking a fill that is bluer than the bible's — shadowed ground moves from
+> hue 65 to hue 110, straight into the "amateur emerald" window. Note the bible's own shadow ratio
+> (0.75, 0.80, 1.00) on our grass computes to hue 91, clear of it, so this is our fill being too
+> blue rather than the metric being unfair. **It is a PAIRED change — multiplier plus hemisphere, one
+> commit, measured together.** `RENDER_FINDINGS.md` §6b. The analysis below is correct and stands.
 
 Three r185's `getShadow` ends `return mix(1.0, shadow, shadowIntensity)`. At 0.80 **every shadowed
 pixel gets 20% of the key light added back**: `0.2 × 3.4 × sin(38°) = 0.42` of scene-linear radiance
@@ -125,7 +134,18 @@ The failure is purely level. Set to 1.0.
   during the dead-uniform era (see `RENDER_FINDINGS.md` §5) and is not credible — **re-measure before
   trusting it.** A trim to ~0.48 with intensity 1.0 is the balanced move.
 
-### P0-3 · Terrain `envMapIntensity` is never set — `src/world/TerrainMaterial.ts:722-729`
+### P0-3 · ~~Terrain `envMapIntensity` is never set~~ — **DISPROVED 2026-08-17, the lever is inert**
+
+> **STOP. This item as written does not work and has already been tried.** Setting
+> `envMapIntensity` on the terrain material changes **0 pixels** between 0.0 and 8.0, measured on a
+> booted page with `needsUpdate` forced and against a working control. The premise below is half
+> right — terrain IS strongly environment-lit, `scene.environmentIntensity` 0 -> 6 moves 110 525 of
+> 110 526 terrain pixels to max delta 254 — but the only live control is GLOBAL
+> (`LIGHTING.envIntensity`), and there is no per-material dial for the ground. Getting one means
+> scaling inside `TerrainMaterial.ts`'s own injected GLSL and bumping `customProgramCacheKey` past
+> `'ra-terrain-v3'`. Full measurement, including the two ways I got this wrong first, in
+> `RENDER_FINDINGS.md` §6c. **Do not re-attempt as a config edit.** The original reasoning is kept
+> below because the concern it raises is real and still open.
 
 Grepped `src/render/`, `src/world/`, `ArtBridge.ts`, `config.ts`: the only live sites are
 `PROP_MATERIAL` (0.55) and `UNIT` (0.80). **Terrain runs at three's default 1.0** against
