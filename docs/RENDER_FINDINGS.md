@@ -960,6 +960,23 @@ webgpu          91.0%    13   12x #34 + ONE weight-3      12/13 captured
   this is the scenario's authored camera being re-applied, not a rendering difference. One of
   thirteen fixtures is therefore unscored on that arm and the 91.0% is over twelve.
 
+### The WebGL path is preserved, and that was CAPTURED rather than reasoned about
+
+`vite build` + `npm run shots` on the pre-cutover tree (`56547ff`), then the same on the merged one,
+byte-compared:
+
+```
+12 / 13 fixtures BYTE-IDENTICAL
+02-hud-full        354 subpixels, ONE ROW y = 91, x 754..1141, max delta 2/255
+```
+
+That row is the documented Chromium envelope — the bottom edge of `.vm-panel::after`, a
+`linear-gradient` behind a `drop-shadow` inside a `backdrop-filter` parent, rasterised once per page
+— and it is the only thing that moved. **`09-placement` and `10-selection` also show the HUD and
+came back byte-identical**, which is the coin landing the other way and is why this is evidence
+rather than a coincidence. A capture set that matched on nine and differed on four would have meant
+something else entirely.
+
 ### Three defects that a green `npm test` could not see, and one it should have
 
 1. **`renderer.getDrawingBufferSize()` takes a `Vector2`, not a duck.** It calls `target.set(w, h)`.
@@ -998,11 +1015,21 @@ webgpu          91.0%    13   12x #34 + ONE weight-3      12/13 captured
   attribute "aGait" not found on geometry` warnings per boot. On the GLSL path a missing attribute
   reads as 0 and nothing says so. Not investigated; it is a warning, and the walk cycle looks right
   in the captures.
-- **Bundle isolation held.** `WGSLNodeBuilder`, `GLSLNodeBuilder`, `RenderPipeline`,
-  `MeshPhysicalNodeMaterial`, `MeshStandardNodeMaterial` and `castShadowPositionNode` are **0
-  occurrences in the entry chunk** and all present in a separate 758 kB `gpu-path-install-*.js` that
-  a WebGL boot never fetches. `tests/webgpu-bundle-isolation.spec.ts` pins both halves and fails
-  when a static import is added on purpose.
+- **Bundle isolation held, and what a WebGL player pays was MEASURED rather than asserted.**
+  `WGSLNodeBuilder`, `GLSLNodeBuilder`, `RenderPipeline`, `MeshPhysicalNodeMaterial`,
+  `MeshStandardNodeMaterial` and `castShadowPositionNode` are **0 occurrences in the entry chunk**
+  and all present in a separate `gpu-path-install-*.js` a WebGL boot never fetches.
+  `tests/webgpu-bundle-isolation.spec.ts` pins both halves and fails when a static import is added
+  on purpose. `vite build` on the pre-cutover tree (`56547ff`) against this one:
+
+  ```
+  entry chunk       2 678.86 kB  ->  2 687.83 kB     +8.97 kB   (+0.335%)
+  node chunk                  —  ->    776.39 kB     never fetched on the WebGL path
+  ```
+
+  The +9 kB is the router and the one branch at each material site. Stage B's "+100 bytes" figure
+  was for a stage that wired nothing in; this is the real cost of the seam and it is the number to
+  quote.
 
 ## 8. Unverified — do not quote these as fact
 
