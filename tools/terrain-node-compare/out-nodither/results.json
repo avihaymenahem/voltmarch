@@ -1,0 +1,95 @@
+{
+  "origin": "http://127.0.0.1:5305",
+  "biome": "temperate",
+  "seed": "4242",
+  "when": "2026-08-17T12:04:20.175Z",
+  "arms": [
+    {
+      "arm": "glsl-webgl",
+      "backend": "webgl",
+      "ms": 133.89999999990687
+    },
+    {
+      "arm": "tsl-webgpu",
+      "backend": "webgpu",
+      "ms": 84.1999999997206
+    },
+    {
+      "arm": "tsl-webgl2",
+      "backend": "webgl2-fallback",
+      "ms": 392.70000000018626
+    },
+    {
+      "arm": "glsl-webgpu",
+      "backend": "webgpu",
+      "ms": 24
+    },
+    {
+      "arm": "stock-webgl",
+      "backend": "webgl",
+      "ms": 42.89999999990687
+    },
+    {
+      "arm": "stock-webgpu",
+      "backend": "webgpu",
+      "ms": 13.899999999906868
+    }
+  ],
+  "error": null,
+  "restoreIntensity": 1,
+  "diffs": {
+    "tsl-webgpu": {
+      "changed": 0.5777546777546777,
+      "maxDelta": 31
+    },
+    "tsl-webgl2": {
+      "changed": 0.0454716735966736,
+      "maxDelta": 11
+    },
+    "glsl-webgpu": {
+      "changed": 0.997920997920998,
+      "maxDelta": 205
+    },
+    "stock-webgl": {
+      "changed": 1,
+      "maxDelta": 171
+    },
+    "stock-webgpu": {
+      "changed": 1,
+      "maxDelta": 171
+    },
+    "stock-webgpu-vs-stock-webgl": {
+      "changed": 0.04191138253638254,
+      "maxDelta": 1
+    }
+  },
+  "env": [
+    {
+      "label": "sun 2.4 -> 0  (CONTROL ON THE CONTROL)",
+      "changed": 0.997560420997921,
+      "maxDelta": 61
+    },
+    {
+      "label": "material.envMapIntensity 0->8, no own envMap",
+      "changed": 0,
+      "maxDelta": 0
+    },
+    {
+      "label": "scene.environmentIntensity 0->6  (CONTROL)",
+      "changed": 0.997920997920998,
+      "maxDelta": 210
+    },
+    {
+      "label": "material.envMapIntensity 0->8, WITH own envMap",
+      "changed": 0,
+      "maxDelta": 0
+    }
+  ],
+  "restoreDelta": {
+    "changed": 0.997920997920998,
+    "maxDelta": 210
+  },
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ]
+}

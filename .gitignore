@@ -92,3 +92,6 @@ tools/tts-voices/
 # ~50 MB per capture set; they are evidence for one review, not history.
 shots-*/
 ab/
+tools/terrain-node-compare/page.js
+tools/terrain-node-compare/out/*.png
+tools/terrain-node-compare/out-nodither/*.png

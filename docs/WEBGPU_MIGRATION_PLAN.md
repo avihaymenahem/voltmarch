@@ -188,8 +188,29 @@ Each stage ends green on all four gates and on `npm run shots` at 92.0% with zer
 
   The WebGL chain remains the shipping default and nothing imports the node chain yet, so
   `three/webgpu` is absent from `dist/` entirely.
-- **Stage C — terrain.** The single biggest shader. Port the splat classifier and warp to TSL. Its
-  outputs are already pinned by `terrain-*.spec.ts` and the splat quantile work.
+- **Stage C — terrain. DONE.** `src/world/TerrainNodeMaterial.ts`, gated by
+  `tests/terrain-node-material.spec.ts` (32) and measured by `tools/terrain-node-compare.mjs`.
+  All four GLSL chunk replacements ported; the shipping `TerrainMaterial.ts` is unchanged in
+  behaviour and `three/webgpu` is absent from the WebGL bundle.
+
+  **The finding that changes how every later stage is verified: a TSL node graph compiles to WGSL
+  AND to GLSL in plain Node, with no GPU, no canvas and no `renderer.init()`.** `WGSLNodeBuilder`
+  and `GLSLNodeBuilder` are exported from `three/webgpu` and will run a full
+  setup/analyze/generate against a `WebGPURenderer` that was constructed and never initialised
+  (`hasFeature` needs a stub; nothing else does). "Does the shader still compile, on both backends"
+  is a unit test from here on, not a browser capture.
+
+  Measured against the shipping render on a real WebGPU device, dither off on both sides:
+  `tsl-webgl2` vs `glsl-webgl` is **4.547% of pixels at max delta 11**, against a
+  stock-material lighting floor of 4.191% / max 1 — i.e. the translation sits on the floor. The
+  WebGPU arm's larger residual (57.775% / max 31) is the BACKEND, not the shader: the identical
+  graph across the two backends agrees within 1/255 on 99.9% of pixels.
+
+  **What TSL could not express** is enumerated as `TSL_GAPS` at the foot of that file. One real
+  feature gap — `material.dithering` has no node implementation anywhere in three and was
+  re-implemented via `setupOutput` — and four traps, of which the expensive one is that
+  `customProgramCacheKey` GOES ON FIRING while `onBeforeCompile` dies silently, so a ported
+  material that keeps its old hand-managed key gets a stale program with nothing thrown.
 - **Stage D — structures, units, props.** 24 injection sites, mostly greeble/atlas materials.
 - **Stage E — water, shroud, VFX.** `WaterMaterial` is a raw `ShaderMaterial`; VFX is additive
   sprites and the flash budget.

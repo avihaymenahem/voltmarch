@@ -14,20 +14,38 @@ and leave both standing.
 ## 1. The draw-call budget was never being missed
 
 `renderer.info.autoReset` is `false` and the reset happens once per frame in `beginFrame()`, so
-`frame.drawCalls` in `shots/_report.json` is a **SUM OVER THREE SCENE SUBMISSIONS**: colour pass,
-shadow pass, and `GTAOPass`'s normal prepass. `MAX_DRAW_CALLS` (130) budgets the COLOUR PASS ALONE.
+`frame.drawCalls` in `shots/_report.json` is a **SUM OVER EVERY SCENE SUBMISSION**, while
+`MAX_DRAW_CALLS` (130) budgets the COLOUR PASS ALONE. Quote `frame.drawCallsByPass.colour` against
+the budget; quote `frame.drawCalls` only as the content fingerprint it is.
 
-Instrumented live against `renderBufferDirect`, reproducing `_report.json` exactly:
+**THIS ENTRY SAID "THREE SCENE SUBMISSIONS" AND IT IS TWO.** The original measurement was
 
 ```
 01-establishing-base:  219 total = 78 colour + 54 shadow + 67 AO prepass + 20 post quads
 ```
 
-`stats()` and `_report.json` now carry `drawCallsByPass` = `{shadow, colour, ao, post, total}`,
-reconciling exactly on all 13 fixtures. **Current colour pass is 51–77 against 130.**
+and the AO prepass in it is gone: `installAoDepthGBuffer` in `src/render/post.ts` hands `GTAOPass`
+the depth the colour pass already wrote and reconstructs normals with one full-screen quad, so
+`_renderGBuffer` is false and `ao` is **0 on all thirteen fixtures**. A non-zero `ao` now means that
+wiring failed and the prepass came back.
 
-> **There are roughly 50 colour draws of headroom and the project should be SPENDING them.** Several
-> systems below are capped "for the draw budget" against a budget that is half empty.
+`stats()` and `_report.json` carry `drawCallsByPass` = `{shadow, colour, ao, post, total}`,
+reconciling exactly on all 13. **Current measured range: colour 54–77, shadow 29–59, ao 0, post 21,
+total 105–157.**
+
+> **THE ORIGINAL GUIDANCE HERE — "there are ~50 colour draws of headroom and the project should be
+> SPENDING them" — IS NOT WRONG BUT IT IS NOT THE LEVER, AND §9 IS WHY.** Draw submission is not what
+> costs us: profiled at 194 units and 2560x1440, the CPU is idle 88% of the frame and 79–90% of GPU
+> time is proportional to PIXEL COUNT. Extra draws are close to free; extra *shaded pixels* are the
+> whole cost. Spend the headroom on content that adds silhouette and edge density, not on anything
+> that adds overdraw or another full-screen pass.
+
+**WEBGPU CHANGES THIS INSTRUMENT AND DOES NOT SAY SO.** Measured on a genuine WebGPU device:
+`info.render.calls` is per-frame draws on WebGL but a **monotonic lifetime count of `render()`
+invocations** under WebGPU, which `reset()` never clears — per-frame lives in `render.drawCalls`.
+`info.programs` is `undefined`, so `debug.ts`'s `?? 0` reports 0 forever. Nothing throws. Read
+through `normaliseInfo()` / `handle.frameInfo()` in `src/render/backend.ts`, never `renderer.info`
+directly, or every draw-call number in this project silently becomes fiction on the node path.
 
 ---
 
@@ -395,19 +413,119 @@ statistic and a working control is quotable.)
 2. **The only live control is global**: `LIGHTING.envIntensity` -> `scene.environmentIntensity`, set
    in `scene.ts`. There is no per-material dial for the ground today.
 3. `USE_ENVMAP` IS defined in the terrain program and `getIBLIrradiance` / `getIBLRadiance` are
-   present (2 and 4 call sites), so this is not a missing feature — something in this material's
-   custom-program path is not taking the uniform. `material.roughness` is inert on terrain for a
-   known and deliberate reason (`onBeforeCompile` replaces `<roughnessmap_fragment>` with the
-   splat-driven `raRough`); `envMapIntensity` has no such explanation yet.
+   present (2 and 4 call sites), so this is not a missing feature.
 
-**So the line was NOT shipped.** Adding an authoritative-looking constant that reaches no pixel is
-precisely the `SURFACES` defect (§3, and `config.ts`'s own dead material table) and precisely the trap
-§5 and §7 describe. If the bible's 0.35 is wanted for the ground specifically, it must be scaled
-inside `TerrainMaterial.ts`'s own injected GLSL, with `customProgramCacheKey` bumped past
-`'ra-terrain-v3'` — and then MEASURED, because §6b is a fresh reminder that a change which is
-bible-correct in isolation can still cost grade points.
+### THE CAUSE, FOUND 2026-08-17 DURING THE TSL PORT. It is not this material.
 
-**Do not re-attempt this as a one-line config edit.** It has now been tried and disproved once.
+The paragraph above used to end "something in this material's custom-program path is not taking the
+uniform", and that guess sent the fix in the wrong direction — into the injected GLSL and a
+`customProgramCacheKey` bump. **The custom-program path has nothing to do with it.** three overwrites
+the uniform every frame, for every standard material in the game that has no `envMap` of its own:
+
+```js
+// three/src/renderers/WebGLRenderer.js:2693
+if ( ( material.isMeshStandardMaterial || material.isMeshLambertMaterial
+       || material.isMeshPhongMaterial )
+     && material.envMap === null && scene.environment !== null ) {
+  m_uniforms.envMapIntensity.value = scene.environmentIntensity;
+}
+```
+
+`scene.environment` is set in `scene.ts` and terrain carries no `envMap`, so both conditions hold and
+the assignment lands after every `refreshMaterialUniforms`. Writing `material.envMapIntensity` cannot
+survive to a draw. **That is the whole of it**, and it explains the measurement exactly — including
+why the control worked.
+
+**THE NODE PATH IMPLEMENTS THE SAME RULE ON PURPOSE, so the migration does not close this for free:**
+
+```js
+// three/src/nodes/accessors/MaterialProperties.js:21
+materialEnvIntensity = uniform( 1 ).onObjectUpdate( ( { material, scene } ) =>
+  material.envMap ? material.envMapIntensity : scene.environmentIntensity );
+```
+
+Re-measured on `WebGPURenderer`'s real WebGPU backend with `tools/terrain-node-compare.mjs`
+(`TerrainNodeMaterial`, 640x480, `scene.environmentNode`):
+
+```
+sun 2.4 -> 0        CONTROL ON THE CONTROL      99.756% of px    max delta 61
+material.envMapIntensity 0 -> 8, no own envMap   0.000% of px    max delta 0
+scene.environmentIntensity 0 -> 6   CONTROL     99.792% of px    max delta 211
+```
+
+Identical behaviour, on a material that has no custom-program path at all. Two probe defects were hit
+getting there and both are worth knowing: measuring the WebGPU canvas in-page via `drawImage` into a
+2D context returns a blank buffer, so EVERY row including the control read zero; and
+`scene.environment` set to a raw equirect `DataTexture` contributes nothing on the node path, because
+`EnvironmentNode` reaches it through `pmremTexture()`. `PMREMGenerator` cannot pre-filter it either —
+it draws with a raw `ShaderMaterial`, which the node renderer refuses out loud. The sun row exists
+because two successive dead instruments is enough.
+
+### THE EXIT IS ONE LINE, AND IT WORKS ON BOTH RENDERERS
+
+Both rules key off the same thing: **give the material its own `envMap` and `envMapIntensity` becomes
+live.** `material.envMap = scene.environment` satisfies the WebGL guard and the node accessor at
+once. `TerrainNodeMaterial.setEnvironment(env, intensity)` is that, and it is INERT until called, so
+nothing changes until someone asks.
+
+**Land it at `scene.environmentIntensity`, not at the bible's 0.35.** That reproduces today's
+appearance exactly — `materialEnvIntensity` resolves to the same number either way — and makes the
+knob editable without moving a pixel. Changing the ground's brightness is a separate decision, and
+§6b is a fresh reminder that a change which is bible-correct in isolation can still cost grade
+points, so it must be captured and scored on its own.
+
+**Do not re-attempt this as a one-line config edit on `envMapIntensity` alone.** That has now been
+tried and disproved twice, on two renderers, and the reason is written above.
+
+---
+
+## 9. WHERE THE FRAME ACTUALLY GOES — we are fill-rate bound, and it was never measured before
+
+**Measured 2026-08-17 with `tools/gpu-profile.mjs`. `EXT_disjoint_timer_query_webgl2` IS available
+on this machine (ANGLE/D3D11, AMD Radeon integrated `0x00001638`), so these are real GPU timings and
+not a `gl.finish()` estimate** — which matters, because that tool's own header records `gl.finish()`
+reporting 4.2 ms for a frame the timer query measured at 67.5.
+
+194 drawn units, 2560x1440, four-army Sunder Atoll, seed 7, adaptive resolution verified inert:
+
+```
+frameMs  free-running   42.45 ms  -> 23.6 fps      p95 50.60
+gpuMs                   29.83 ms
+cpuMs    whole frame     3.55 ms                   <- CPU idle 88% of the frame
+simMs    one tick        1.00 ms                   p95  2.10
+```
+
+**GPU exceeds CPU by 8.4x.** Per-pass, by ablation, every bucket verified to respond:
+
+| pass | ms | share | disabling saves |
+|---|---|---|---|
+| colour | 21.47 | **55.2%** | — |
+| GTAO | 6.57 | 16.9% | 4.97 |
+| bloom | 4.86 | 12.5% | 3.32 |
+| SMAA | 3.65 | 9.4% | 2.78 |
+| grade | 2.34 | 6.0% | 0.54 (flagged as suspect by the instrument) |
+| shadow | 0.99 | ~2% | 0.69 |
+
+**The fit is the finding:** `GPU ms = 5.86 + 6.40 x Mpx`, **r² 0.995**, and a second run at 70 units
+gave r² 1.000 with 89.7% of GPU time pixel-proportional. **60 fps lands at render scale 0.694.**
+
+Three consequences that change what work is worth doing:
+
+1. **Resolution scale is the frame-rate lever**, not draw calls, not triangles, not the sim. See §1's
+   revised note. `AdaptiveResolution`'s floor is 0.55, so the controller can reach 60 fps on this
+   hardware — once its one-way-ratchet bug is fixed (it required a median below 13.69 ms to restore,
+   which a 60 Hz display can never produce).
+2. **Map choice is irrelevant to cost** — all four-army land maps sit within 7% of each other
+   (11.35–12.13 ms at 720p). Pixels are what vary. Note also that only four-army Sunder Atoll
+   reaches 200+ units (215 and rising, because no land route means armies accumulate); every land
+   map peaked near 114 and fell back to ~70 by minute 25.
+3. **Full-res AO would cost +11.48 ms**, so the shipped half-res AO is already the post chain's
+   single biggest saving. Shadows at 2% are not worth optimising.
+
+**`stats().cpuMs` UNDER-REPORTS CPU BY 24%** and is the instrument §1 names. `GameLoop.renderPass`
+calls `registry.runFrame()` *before* `hooks.render`, where `debug.beginFrame()` starts the
+stopwatch — so RenderBridge uploads, VFX, the ore instancer, fog and the HUD all fall outside the
+counter. Paired per frame: 2.70 reported against 3.55 actual. Not yet fixed.
 
 ---
 

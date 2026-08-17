@@ -98,13 +98,16 @@
  */
 
 import * as THREE from 'three';
-import { hexToLinearRgb } from '../core/math';
-import { CELL, CLIFF_SLOPE, MAP_SIZE } from '../core/config';
-import { SURFACE_COUNT, SurfaceId, type BiomeDef } from './Biomes';
+import { SURFACE_COUNT, type BiomeDef } from './Biomes';
 import {
   MACRO_N, WARP_N, buildLayerArrayBytes, buildMacroBytes, buildWarpBytes,
   macroSeed, terrainTextureKey, warpSeed, type TerrainTextureData,
 } from './terrain-texture-gen';
+import {
+  SPLAT_SHARPEN, TERRAIN_LAYER_ROUGH_DEFAULT, TERRAIN_LAYER_SCALE_DEFAULT,
+  TERRAIN_SCALAR_DEFAULTS, TERRAIN_VEC3_DEFAULTS,
+  applyTerrainBiome, type TerrainBiomeSink,
+} from './terrain-uniforms';
 
 /* ==========================================================================
  * 1. THE UNIFORM BLOCK
@@ -170,14 +173,16 @@ export interface TerrainUniforms {
 }
 
 /**
- * Splat-weight exponent. Not per-biome: the control texture's resolution is a
- * property of the terrain grid, not of the art, so the correct sharpening is
- * the same everywhere. Above ~4 the boundary starts to show the control
- * texture's own 4 m stair-stepping through the warp.
+ * THE DEFAULTS AND THE BIOME TABLE ARE IN `./terrain-uniforms.ts` NOW, and they
+ * moved because there are two terrain materials. `TerrainNodeMaterial.ts` is
+ * the TSL port for the node-material renderer path, it has to mean exactly what
+ * this file means by a biome, and two copies of `applyBiome` that agree today
+ * is the drift CLAUDE.md catalogues. The values below are unchanged — this is a
+ * move, not an edit, and `npm run shots` is what says so.
  */
-const SPLAT_SHARPEN = 2.8;
-
 function createUniforms(): TerrainUniforms {
+  const S = TERRAIN_SCALAR_DEFAULTS;
+  const v3 = (c: readonly number[]): THREE.Vector3 => new THREE.Vector3(c[0], c[1], c[2]);
   return {
     uLayers: { value: null },
     uSplat0: { value: null },
@@ -185,34 +190,34 @@ function createUniforms(): TerrainUniforms {
     uWarp: { value: null },
     uMacro: { value: null },
 
-    uInvMapSize: { value: 1 / MAP_SIZE },
-    uLayerScale: { value: [8, 5.5, 6.5, 7, 4.8, 3.2] },
-    uLayerRough: { value: [0.95, 0.92, 0.9, 0.85, 0.7, 0.68] },
+    uInvMapSize: { value: S.uInvMapSize },
+    uLayerScale: { value: TERRAIN_LAYER_SCALE_DEFAULT.slice() },
+    uLayerRough: { value: TERRAIN_LAYER_ROUGH_DEFAULT.slice() },
 
-    uMacroScale: { value: 34 },
-    uMacroStrength: { value: 0.13 },
-    uMacroTint: { value: new THREE.Vector3(0.088, 0.068, 0.019) },
-    uWarpScale: { value: 11 },
-    uWarpAmp: { value: 0.55 },
-    uCellSize: { value: CELL },
-    uCellJitter: { value: 0.038 },
-    uSplatSharpen: { value: SPLAT_SHARPEN },
+    uMacroScale: { value: S.uMacroScale },
+    uMacroStrength: { value: S.uMacroStrength },
+    uMacroTint: { value: v3(TERRAIN_VEC3_DEFAULTS.uMacroTint) },
+    uWarpScale: { value: S.uWarpScale },
+    uWarpAmp: { value: S.uWarpAmp },
+    uCellSize: { value: S.uCellSize },
+    uCellJitter: { value: S.uCellJitter },
+    uSplatSharpen: { value: S.uSplatSharpen },
 
-    uCliffNy: { value: Math.cos(CLIFF_SLOPE) },
-    uCliffBase: { value: new THREE.Vector3(0.19, 0.17, 0.1) },
-    uCliffShade: { value: new THREE.Vector3(0.06, 0.05, 0.03) },
-    uCliffHi: { value: new THREE.Vector3(0.32, 0.29, 0.18) },
-    uCliffCap: { value: new THREE.Vector3(0.1, 0.12, 0.01) },
-    uCliffCapM: { value: 0.75 },
-    uCliffSkirtM: { value: 1.3 },
-    uStriationM: { value: 0.46 },
-    uCourseM: { value: 0.22 },
-    uCourseOn: { value: 0 },
-    uCliffRelief: { value: 0.55 },
-    uCliffRough: { value: 0.85 },
-    uCliffGrainMean: { value: 0.17 },
-    uStepHeight: { value: 6 },
-    uFaceMix: { value: 0.78 },
+    uCliffNy: { value: S.uCliffNy },
+    uCliffBase: { value: v3(TERRAIN_VEC3_DEFAULTS.uCliffBase) },
+    uCliffShade: { value: v3(TERRAIN_VEC3_DEFAULTS.uCliffShade) },
+    uCliffHi: { value: v3(TERRAIN_VEC3_DEFAULTS.uCliffHi) },
+    uCliffCap: { value: v3(TERRAIN_VEC3_DEFAULTS.uCliffCap) },
+    uCliffCapM: { value: S.uCliffCapM },
+    uCliffSkirtM: { value: S.uCliffSkirtM },
+    uStriationM: { value: S.uStriationM },
+    uCourseM: { value: S.uCourseM },
+    uCourseOn: { value: S.uCourseOn },
+    uCliffRelief: { value: S.uCliffRelief },
+    uCliffRough: { value: S.uCliffRough },
+    uCliffGrainMean: { value: S.uCliffGrainMean },
+    uStepHeight: { value: S.uStepHeight },
+    uFaceMix: { value: S.uFaceMix },
   };
 }
 
@@ -661,21 +666,39 @@ export interface CreateTerrainMaterialOptions {
   textures?: TerrainTextureData | null;
 }
 
-const SCRATCH_RGB = new Float32Array(3);
-
-function setLinear(v: THREE.Vector3, hex: string): void {
-  hexToLinearRgb(hex, SCRATCH_RGB);
-  v.set(SCRATCH_RGB[0], SCRATCH_RGB[1], SCRATCH_RGB[2]);
-}
-
-/** Relative luminance of a hex colour in LINEAR space. */
-function linearLuma(hex: string): number {
-  hexToLinearRgb(hex, SCRATCH_RGB);
-  return SCRATCH_RGB[0] * 0.2126 + SCRATCH_RGB[1] * 0.7152 + SCRATCH_RGB[2] * 0.0722;
-}
-
 export function createTerrainMaterials(options: CreateTerrainMaterialOptions): TerrainMaterialSet {
   const uniforms = createUniforms();
+
+  /*
+   * The biome sink. Every field is a live reference into `uniforms`, so
+   * `applyTerrainBiome` mutates the same slots the old inline `applyBiome` did
+   * — including the two ARRAYS, which are handed over bare because TSL's
+   * `uniformArray` keeps its array somewhere else and the shared applier must
+   * not care which.
+   */
+  const biomeSink: TerrainBiomeSink = {
+    layerScale: uniforms.uLayerScale.value,
+    layerRough: uniforms.uLayerRough.value,
+    uMacroScale: uniforms.uMacroScale,
+    uMacroStrength: uniforms.uMacroStrength,
+    uMacroTint: uniforms.uMacroTint,
+    uWarpScale: uniforms.uWarpScale,
+    uWarpAmp: uniforms.uWarpAmp,
+    uCellJitter: uniforms.uCellJitter,
+    uCliffBase: uniforms.uCliffBase,
+    uCliffShade: uniforms.uCliffShade,
+    uCliffHi: uniforms.uCliffHi,
+    uCliffCap: uniforms.uCliffCap,
+    uCliffCapM: uniforms.uCliffCapM,
+    uCliffSkirtM: uniforms.uCliffSkirtM,
+    uStriationM: uniforms.uStriationM,
+    uCourseM: uniforms.uCourseM,
+    uCourseOn: uniforms.uCourseOn,
+    uCliffRelief: uniforms.uCliffRelief,
+    uCliffRough: uniforms.uCliffRough,
+    uCliffGrainMean: uniforms.uCliffGrainMean,
+    uStepHeight: uniforms.uStepHeight,
+  };
 
   /*
    * ADOPT OR GENERATE — and the key comparison is what makes that safe.
@@ -773,34 +796,7 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
   material.customProgramCacheKey = () => 'ra-terrain-v3';
 
   function applyBiome(biome: BiomeDef): void {
-    const scale = uniforms.uLayerScale.value;
-    const rough = uniforms.uLayerRough.value;
-    for (let i = 0; i < SURFACE_COUNT; i++) {
-      scale[i] = biome.layers[i].tileMetres;
-      rough[i] = biome.layers[i].roughness;
-    }
-
-    uniforms.uMacroScale.value = biome.macroMetres;
-    uniforms.uMacroStrength.value = biome.macroStrength;
-    setLinear(uniforms.uMacroTint.value, biome.macroTint);
-    uniforms.uWarpScale.value = biome.warpMetres;
-    uniforms.uWarpAmp.value = biome.warpAmplitude;
-    uniforms.uCellJitter.value = biome.cellJitter;
-
-    const c = biome.cliff;
-    setLinear(uniforms.uCliffBase.value, c.base);
-    setLinear(uniforms.uCliffShade.value, c.shade);
-    setLinear(uniforms.uCliffHi.value, c.highlight);
-    setLinear(uniforms.uCliffCap.value, c.capColor);
-    uniforms.uCliffCapM.value = c.capMetres;
-    uniforms.uCliffSkirtM.value = c.skirtMetres;
-    uniforms.uStriationM.value = c.striationMetres;
-    uniforms.uCourseM.value = c.courseMetres > 0 ? c.courseMetres : 0.22;
-    uniforms.uCourseOn.value = c.courseMetres > 0 ? 1 : 0;
-    uniforms.uCliffRelief.value = c.relief;
-    uniforms.uCliffRough.value = c.roughness;
-    uniforms.uCliffGrainMean.value = Math.max(1e-3, linearLuma(biome.layers[SurfaceId.Rock].albedo));
-    uniforms.uStepHeight.value = biome.stepHeight;
+    applyTerrainBiome(biome, biomeSink);
 
     // The layer array is the only thing a biome swap must actually rebuild.
     // `pendingLayers` is non-null only on the first pass, and only when the
