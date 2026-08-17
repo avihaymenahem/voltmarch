@@ -48,6 +48,7 @@ import {
 import type { SceneRig } from './scene';
 import type { CameraRig, CameraPose } from './camera';
 import type { PostChain, PassId, DrawCallBreakdown } from './post';
+import { PASS_ORDER } from './post-order';
 import { renderBridge, type RenderAudit } from './RenderBridge';
 
 /* ========================================================================== */
@@ -851,11 +852,22 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
       resolution: `${handle.size.width}x${handle.size.height}`,
       pixelRatio: handle.size.pixelRatio,
       quality: RENDER_CONFIG.quality,
-      post: post?.active
-        ? (post.composer!.passes as Array<{ constructor: { name: string } }>)
-            .map((p) => p.constructor.name.replace(/^_|Pass$/g, ''))
-            .join('+')
-        : 'off',
+      /*
+       * `composer` IS NULL ON THE NODE PATH AND `passes` IS EMPTY, PERMANENTLY.
+       * There is no `EffectComposer` and no `Pass` objects there — the chain is
+       * one node expression — so this threw `Cannot read properties of null
+       * (reading 'passes')` on the first `stats()` call, which is the FIRST
+       * thing `tools/shoot.mjs` does after `ready()`. Fall back to the pass ids
+       * the chain says are live, which is the same information the WebGL string
+       * carries.
+       */
+      post: !post?.active
+        ? 'off'
+        : post.composer !== null
+          ? (post.composer.passes as Array<{ constructor: { name: string } }>)
+              .map((p) => p.constructor.name.replace(/^_|Pass$/g, ''))
+              .join('+')
+          : PASS_ORDER.filter((id) => post.isPassEnabled(id)).join('+'),
       counters: { ...counters },
     };
   }

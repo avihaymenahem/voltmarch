@@ -527,10 +527,24 @@ describe('AO: the depth G-buffer saving, rebuilt', () => {
      */
     const a = aoFixture();
     const b = aoFixture();
+    /*
+     * THROUGH `.value`, WHICH IS THE HALF THIS TEST USED TO MISS.
+     *
+     * `noiseNode` is a NODE — `DenoiseNode` builds it as
+     * `texture( generateDefaultNoise() )` and its body calls
+     * `this.noiseNode.sample( uv )`. `ao-node.ts` assigned the bare
+     * `DataTexture`, which also has `.image.data`, so this assertion passed on
+     * the wrong shape while the real frame threw
+     * `TypeError: this.noiseNode.sample is not a function` and drew no AO at
+     * all. Reading through `.value` is what makes the seed check also a SHAPE
+     * check: a `DataTexture` has no `.value`.
+     */
     const dataOf = (ao: typeof a): Uint8Array => {
-      const n = (ao.denoised as unknown as { node: { noiseNode: { image: { data: Uint8Array } } } })
-        .node.noiseNode;
-      return n.image.data;
+      const n = (ao.denoised as unknown as {
+        node: { noiseNode: { isTextureNode?: boolean; value: { image: { data: Uint8Array } } } };
+      }).node.noiseNode;
+      expect(n.isTextureNode, 'noiseNode must be a texture() NODE, not a DataTexture').toBe(true);
+      return n.value.image.data;
     };
     const da = dataOf(a);
     const db = dataOf(b);

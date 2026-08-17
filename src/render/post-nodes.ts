@@ -59,7 +59,7 @@
  * full-screen passes; the point of listing it is that it is not zero.
  */
 
-import { HalfFloatType, RGBAFormat, RenderPipeline, UnsignedByteType } from 'three/webgpu';
+import { HalfFloatType, RGBAFormat, RenderPipeline, UnsignedByteType, Vector2 } from 'three/webgpu';
 import type { Camera, DepthTexture, Node, Renderer, Scene, TextureNode } from 'three/webgpu';
 import { pass, rtt } from 'three/tsl';
 import { smaa } from 'three/addons/tsl/display/SMAANode.js';
@@ -410,10 +410,21 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
   const { renderer, scene, camera } = options;
   const cfg = options.cfg ?? RENDER_CONFIG.post;
 
-  const r = renderer as unknown as {
-    getDrawingBufferSize(target: { width: number; height: number }): { width: number; height: number };
-  };
-  const size = r.getDrawingBufferSize({ width: 1, height: 1 });
+  /*
+   * `getDrawingBufferSize` TAKES A `Vector2`, NOT A DUCK. It calls `target.set(
+   * w, h )` and returns it, so a plain `{ width, height }` literal throws
+   * `TypeError: e.set is not a function` — which is what the first boot of the
+   * real game on the node path did, inside `createPostChain`, before a single
+   * frame. Nothing offline caught it: `buildPostGraph` needs no renderer and the
+   * spec never reaches this function.
+   *
+   * ONE SCRATCH, reused by both readers below. This runs at construction and on
+   * a pass toggle, never in the frame loop, but allocating a Vector2 to ask for
+   * a size that is already known is pointless either way.
+   */
+  const r = renderer as unknown as { getDrawingBufferSize(target: Vector2): Vector2 };
+  const sizeScratch = new Vector2();
+  const size = r.getDrawingBufferSize(sizeScratch);
 
   let graph = buildPostGraph({ scene, camera, cfg, width: size.width, height: size.height });
 
@@ -435,7 +446,7 @@ export function createNodePostChain(options: CreateNodePostChainOptions): NodePo
       const signature = JSON.stringify(enabledPasses(cfg));
       if (signature !== passSignature) {
         passSignature = signature;
-        const s = r.getDrawingBufferSize({ width: 1, height: 1 });
+        const s = r.getDrawingBufferSize(sizeScratch);
         graph.dispose();
         graph = buildPostGraph({ scene, camera, cfg, width: s.width, height: s.height });
         pipeline.outputNode = graph.output;

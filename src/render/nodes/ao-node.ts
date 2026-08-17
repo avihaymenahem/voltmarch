@@ -64,7 +64,7 @@
 import { DataTexture, HalfFloatType, RGBAFormat, RepeatWrapping, UnsignedByteType, Vector3 } from 'three/webgpu';
 import type { Camera, DepthTexture, Node, TextureNode } from 'three/webgpu';
 import { SimplexNoise } from 'three/addons/math/SimplexNoise.js';
-import { float, getNormalFromDepth, mix, rtt, uniform, uv } from 'three/tsl';
+import { float, getNormalFromDepth, mix, rtt, texture, uniform, uv } from 'three/tsl';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { denoise } from 'three/addons/tsl/display/DenoiseNode.js';
 
@@ -159,6 +159,20 @@ export function normalFromDepthTexture(
  * The texture is REPLACED rather than rewritten in place because `DenoiseNode`
  * has already wrapped the old one in a `texture()` node; assigning
  * `node.noiseNode` is what the shader will actually read.
+ *
+ * **AND THE REPLACEMENT MUST BE WRAPPED AGAIN.** `noiseNode` is a NODE, not a
+ * texture: `DenoiseNode` constructs it as `texture( generateDefaultNoise() )`,
+ * and its body calls `this.noiseNode.sample( uv )` and
+ * `textureSize( this.noiseNode, 0 )`. Assigning the bare `DataTexture` threw
+ * `TypeError: this.noiseNode.sample is not a function` on the FIRST REAL FRAME —
+ * inside `THREE.TSL`'s own catch, so it printed three times and left the AO
+ * silently absent instead of failing the boot.
+ *
+ * Nothing offline saw it. `tests/post-nodes.spec.ts` reads
+ * `denoised.node.noiseNode.image.data` to prove the seed is deterministic, and a
+ * `DataTexture` HAS `.image.data` — so the assertion passed on the wrong shape.
+ * Fifth instance of this stage's standing lesson: offline compilation is
+ * necessary and not sufficient. The spec asserts the node wrapper now.
  */
 export function seedDenoiseNoise(node: { noiseNode: unknown }): DataTexture {
   const size = AO_NOISE_SIZE;
@@ -271,7 +285,7 @@ export function createAoNodes(options: CreateAoOptions): AoNodes {
 
   const denoiseNode = denoise(march.getTextureNode(), depthNode, normals, camera);
   const denoiseLike = denoiseNode as unknown as DenoiseNodeLike;
-  denoiseLike.noiseNode = seedDenoiseNoise(denoiseLike);
+  denoiseLike.noiseNode = texture(seedDenoiseNoise(denoiseLike));
 
   /*
    * MATCH `GTAOPass`'s SAMPLE DISC, WHICH IS NOT `DenoiseNode`'s.
