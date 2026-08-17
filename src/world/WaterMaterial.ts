@@ -63,16 +63,20 @@
 
 import * as THREE from 'three';
 import {
-  MAP_SIZE, WATER_FIELD, WATER_FOAM, WATER_GLINT, WATER_LOOK, WATER_SHORE,
-  WATER_SSR, WATER_TEXTURE_SIZE, WATER_WAKE, WATER_WAVES,
+  WATER_FOAM, WATER_LOOK, WATER_TEXTURE_SIZE, WATER_WAVES,
   type WaterPalette,
 } from '../core/config';
-import { DEG2RAD, TAU, clamp, clamp01, fbm2, hexToLinearRgb, lerp, simplex2 } from '../core/math';
+import { TAU, clamp, clamp01, fbm2, lerp, simplex2 } from '../core/math';
 import { shroudUniforms } from '../render/FogOfWar';
 import {
-  LACE_SIGMA, buildFoamLace, buildWaveSlopes, probit, waterTextureKey,
+  LACE_SIGMA, buildFoamLace, buildWaveSlopes, waterTextureKey,
   type WaterTextureData,
 } from './water-texture-gen';
+import {
+  WATER_CONSTANTS, applyWaterPalette, resampleRamp, waterAbsorbFor,
+  waterLightNorm, waterLinearVec as linearVec,
+  type WaterPaletteSink,
+} from './water-uniforms';
 
 /* ==========================================================================
  * 1. UNIFORMS
@@ -574,62 +578,18 @@ export interface WaterMaterialSet {
   dispose(): void;
 }
 
-const _v3 = new THREE.Vector3();
-const _rgb = new Float32Array(3);
-
-function linearVec(hex: string, out?: THREE.Vector3): THREE.Vector3 {
-  hexToLinearRgb(hex, _rgb as unknown as number[]);
-  const v = out ?? new THREE.Vector3();
-  return v.set(_rgb[0], _rgb[1], _rgb[2]);
-}
-
 /**
- * Resample an authored, unevenly spaced ramp onto N even stops.
+ * THE PALETTE MATHS MOVED, AND THE RE-EXPORT IS NOT TIDINESS.
  *
- * The shader wants even spacing so its lookup is a branchless chain of mixes.
- * Eight stops over `rampDepth` is one stop per ~1 m on a 2.4 TL basin, which
- * is finer than the 8-bit depth field can resolve anyway.
+ * `resampleRamp`, the absorption scaling, the shore-churn threshold and the
+ * lace renormaliser now live in `./water-uniforms.ts`, because
+ * `WaterNodeMaterial.ts` draws the same sea and two copies of "what a palette
+ * means" is exactly the drift CLAUDE.md catalogues. `tests/water.spec.ts`
+ * imports `resampleRamp` from THIS module, and scorecard #25's probe is built
+ * on it, so the name stays here and the split is invisible to every caller —
+ * which is how a guard keeps guarding across a refactor.
  */
-export function resampleRamp(palette: WaterPalette, stops: number): THREE.Vector3[] {
-  const out: THREE.Vector3[] = [];
-  const src = palette.ramp;
-  const last = src.length - 1;
-  for (let i = 0; i < stops; i++) {
-    const t = stops === 1 ? 0 : i / (stops - 1);
-    let k = 0;
-    while (k < last - 1 && t > src[k + 1].t) k++;
-    const a = src[k];
-    const b = src[k + 1] ?? a;
-    const span = b.t - a.t;
-    const f = span > 1e-6 ? clamp01((t - a.t) / span) : 0;
-    out.push(linearVec(a.hex).lerp(linearVec(b.hex), f));
-  }
-  return out;
-}
-
-/**
- * The lace threshold that yields `WATER_SHORE.coverage` inside the band.
- *
- * Inside the band the shader adds `bandMask * 0.30` (bandMask ~ 1) to a lace
- * value distributed N(0.5, LACE_SIGMA), then runs it through a 0.14-wide
- * smoothstep. Solving for the threshold rather than eyeballing it is what
- * makes scorecard #27's "~45% coverage" a property of the code.
- */
-function shoreChurnThreshold(): number {
-  const push = 0.30;
-  const rampWidth = 0.14;
-  const level = 0.5 + LACE_SIGMA * probit(1 - clamp(WATER_SHORE.coverage, 0.02, 0.98));
-  return level + push - rampWidth * 0.5;
-}
-
-/**
- * `1 / sqrt(m^2 + (1-m)^2)` — mixing two independent gaussians of equal sigma
- * with weight m narrows the result by exactly that factor. Undoing it keeps
- * the foam coverage where the probe measured it.
- */
-function laceRenormaliser(mix: number): number {
-  return 1 / Math.sqrt(mix * mix + (1 - mix) * (1 - mix));
-}
+export { resampleRamp };
 
 export function createWaterMaterial(opts: WaterMaterialOptions): WaterMaterialSet {
   const size = opts.textureSize ?? WATER_TEXTURE_SIZE;
@@ -688,12 +648,14 @@ export function createWaterMaterial(opts: WaterMaterialOptions): WaterMaterialSe
   laceTexture.generateMipmaps = true;
   laceTexture.needsUpdate = true;
 
-  const rot = WATER_WAVES.rotationDeg;
-  const d1 = WATER_WAVES.swellHeadingDeg * DEG2RAD;
-  const d2 = WATER_WAVES.swellHeadingDeg2 * DEG2RAD;
-
-  // RULING #7 lives here. Not in a comment — in a clamp.
-  const ssrMix = Math.min(WATER_SSR.mix, WATER_SSR.mixMax);
+  /*
+   * EVERY NUMBER BELOW COMES FROM `WATER_CONSTANTS`, and RULING #7's clamp
+   * moved there with them. It used to be one `Math.min` in this function; a
+   * second factory that forgot it would ship a mirror while this file's header
+   * went on saying the mix is "not merely documented, clamped". It is clamped
+   * once now, in the table both factories read.
+   */
+  const C = WATER_CONSTANTS;
 
   const uniforms: WaterUniforms = {
     uField: { value: null },
@@ -702,106 +664,49 @@ export function createWaterMaterial(opts: WaterMaterialOptions): WaterMaterialSe
     uWake: { value: null },
 
     uTime: { value: 0 },
-    uInvMapSize: { value: 1 / MAP_SIZE },
+    uInvMapSize: { value: C.uInvMapSize },
     uWaterLevel: { value: 0 },
-    uEncodeMetres: { value: WATER_FIELD.encodeMetres },
-    uShoreEncode: { value: WATER_SHORE.encodeMetres },
+    uEncodeMetres: { value: C.uEncodeMetres },
+    uShoreEncode: { value: C.uShoreEncode },
 
-    uRamp: { value: resampleRamp(opts.palette, WATER_LOOK.rampStops) },
+    uRamp: { value: resampleRamp(opts.palette, C.rampStops) },
     uRampDepth: { value: opts.rampDepth },
     uAbsorb: { value: new THREE.Vector3() },
-    uSeabed: { value: linearVec(opts.palette.seabed) },
-    uBed: {
-      value: new THREE.Vector3(
-        WATER_LOOK.seabedFadeMetres, WATER_LOOK.seabedContrast, WATER_LOOK.refractionMetres,
-      ),
-    },
+    uSeabed: { value: new THREE.Vector3() },
+    uBed: { value: new THREE.Vector3() },
 
-    uWaveA: {
-      value: new THREE.Vector4(
-        WATER_WAVES.swellMetres, WATER_WAVES.swellMetres2,
-        WATER_WAVES.swellAmplitude, WATER_WAVES.swellSpeed,
-      ),
-    },
-    uWaveB: {
-      value: new THREE.Vector4(
-        WATER_WAVES.chopTileMetres, WATER_WAVES.chopSpeed,
-        WATER_WAVES.chopStrength, WATER_WAVES.swellSharpness,
-      ),
-    },
-    uWaveC: {
-      value: new THREE.Vector4(
-        WATER_WAVES.microTileMetres, WATER_WAVES.microSpeed,
-        WATER_WAVES.microStrength, WATER_WAVES.seaState,
-      ),
-    },
-    uSwellDir: {
-      value: new THREE.Vector4(Math.cos(d1), Math.sin(d1), Math.cos(d2), Math.sin(d2)),
-    },
-    uRot47: { value: new THREE.Vector2(Math.cos(rot[1] * DEG2RAD), Math.sin(rot[1] * DEG2RAD)) },
-    uRot113: { value: new THREE.Vector2(Math.cos(rot[2] * DEG2RAD), Math.sin(rot[2] * DEG2RAD)) },
+    uWaveA: { value: new THREE.Vector4(...C.waveA) },
+    uWaveB: { value: new THREE.Vector4(...C.waveB) },
+    uWaveC: { value: new THREE.Vector4(...C.waveC) },
+    uSwellDir: { value: new THREE.Vector4(...C.swellDir) },
+    uRot47: { value: new THREE.Vector2(...C.rot47) },
+    uRot113: { value: new THREE.Vector2(...C.rot113) },
 
-    uFoamColor: { value: linearVec(opts.palette.foam) },
-    uFoam: {
-      value: new THREE.Vector4(
-        WATER_FOAM.thresholdLo, WATER_FOAM.thresholdHi,
-        WATER_FOAM.crestGain, WATER_FOAM.scrollSpeed,
-      ),
-    },
-    uLaceParams: {
-      value: new THREE.Vector4(
-        WATER_FOAM.laceTileMetres, WATER_FOAM.laceDetailMetres, WATER_FOAM.laceDetailMix,
-        laceRenormaliser(WATER_FOAM.laceDetailMix),
-      ),
-    },
-    uFoamMisc: {
-      // y is the mip compensation. It was a bare 0.03 here and invisible to
-      // `probeFoam`; it is `WATER_FOAM.distanceBias` now so the probe reads the
-      // same number the shader does.
-      value: new THREE.Vector3(
-        WATER_FOAM.choppyBias, WATER_FOAM.distanceBias, WATER_WAKE.foamGain,
-      ),
-    },
+    uFoamColor: { value: new THREE.Vector3() },
+    uFoam: { value: new THREE.Vector4(...C.foam) },
+    uLaceParams: { value: new THREE.Vector4(...C.laceParams) },
+    // foamMisc.y is the mip compensation. It was a bare 0.03 here and invisible
+    // to `probeFoam`; it is `WATER_FOAM.distanceBias` now so the probe reads the
+    // same number the shader does.
+    uFoamMisc: { value: new THREE.Vector3(...C.foamMisc) },
 
-    uShoreFoam: { value: linearVec(opts.palette.shoreFoam) },
-    uShoreMid: { value: linearVec(opts.palette.shoreMid) },
-    uShoreWater: { value: linearVec(opts.palette.shoreWater) },
-    uShore: {
-      value: new THREE.Vector4(
-        WATER_SHORE.bandMetres, WATER_SHORE.pulseHz * TAU,
-        WATER_SHORE.pulseAmount, WATER_SHORE.scrollSpeed,
-      ),
-    },
-    uShoreMisc: {
-      value: new THREE.Vector3(
-        WATER_SHORE.lightenDepthMetres, shoreChurnThreshold(), WATER_FOAM.laceTileMetres * 0.5,
-      ),
-    },
+    uShoreFoam: { value: new THREE.Vector3() },
+    uShoreMid: { value: new THREE.Vector3() },
+    uShoreWater: { value: new THREE.Vector3() },
+    uShore: { value: new THREE.Vector4(...C.shore) },
+    uShoreMisc: { value: new THREE.Vector3(...C.shoreMisc) },
 
-    uSunDir: { value: new THREE.Vector3(0.4, 0.6, 0.7).normalize() },
-    uSunColor: { value: new THREE.Vector3(3.1, 2.8, 2.3) },
-    uHemiSky: { value: new THREE.Vector3(0.2, 0.35, 0.7) },
-    uHemiGround: { value: new THREE.Vector3(0.25, 0.2, 0.12) },
+    uSunDir: { value: new THREE.Vector3(...C.sunDir).normalize() },
+    uSunColor: { value: new THREE.Vector3(...C.sunColor) },
+    uHemiSky: { value: new THREE.Vector3(...C.hemiSky) },
+    uHemiGround: { value: new THREE.Vector3(...C.hemiGround) },
     uLightNorm: { value: 1 },
-    uGrade: {
-      value: new THREE.Vector3(
-        WATER_LOOK.sunDiffuse, WATER_LOOK.fillDiffuse, WATER_LOOK.outputGain,
-      ),
-    },
-    uGlint: {
-      value: new THREE.Vector4(
-        WATER_GLINT.roughness, WATER_GLINT.anisotropy, WATER_GLINT.intensity, 0.9,
-      ),
-    },
+    uGrade: { value: new THREE.Vector3(...C.grade) },
+    uGlint: { value: new THREE.Vector4(...C.glint) },
     uSsr: {
-      value: new THREE.Vector3(
-        ssrMix, WATER_SSR.fresnelPower,
-        // The shore channel saturates at its encode range, so a falloff past
-        // that would leave the grazing term at a permanent floor offshore.
-        Math.min(WATER_SSR.shoreFalloffMetres, WATER_SHORE.encodeMetres * 0.92),
-      ),
+      value: new THREE.Vector3(C.ssrMix, C.ssrFresnelPower, C.ssrShoreFalloff),
     },
-    uReflect: { value: linearVec(opts.palette.reflect) },
+    uReflect: { value: new THREE.Vector3() },
 
     // BY REFERENCE, not copied — FogOfWar swaps the mask in when it is
     // constructed, long after this material exists. Copies would freeze the
@@ -827,7 +732,26 @@ export function createWaterMaterial(opts: WaterMaterialOptions): WaterMaterialSe
     toneMapped: true,
   });
 
-  applyAbsorb(uniforms, opts.palette, opts.rampDepth);
+  /*
+   * ONE call sets every palette-derived slot, including the four that are now
+   * constructed EMPTY above (`uSeabed`, `uFoamColor`, the three shore colours,
+   * `uReflect`, `uAbsorb`, `uBed`). It used to be a mixture — some filled at
+   * construction, some by `applyAbsorb` afterwards — which is how `uBed.x`
+   * came to be written twice with two different values on the way through.
+   */
+  const paletteSink: WaterPaletteSink = {
+    ramp: uniforms.uRamp.value,
+    uRampDepth: uniforms.uRampDepth,
+    uAbsorb: uniforms.uAbsorb,
+    uSeabed: uniforms.uSeabed,
+    uBed: uniforms.uBed,
+    uFoamColor: uniforms.uFoamColor,
+    uShoreFoam: uniforms.uShoreFoam,
+    uShoreMid: uniforms.uShoreMid,
+    uShoreWater: uniforms.uShoreWater,
+    uReflect: uniforms.uReflect,
+  };
+  applyWaterPalette(opts.palette, opts.rampDepth, paletteSink);
 
   if (opts.anisotropy !== undefined) {
     waveTexture.anisotropy = opts.anisotropy;
@@ -842,17 +766,7 @@ export function createWaterMaterial(opts: WaterMaterialOptions): WaterMaterialSe
     texturesAdopted: adopted,
 
     applyPalette(palette: WaterPalette, rampDepth: number): void {
-      const stops = resampleRamp(palette, WATER_LOOK.rampStops);
-      const dst = uniforms.uRamp.value;
-      for (let i = 0; i < stops.length; i++) dst[i].copy(stops[i]);
-      uniforms.uRampDepth.value = rampDepth;
-      linearVec(palette.seabed, uniforms.uSeabed.value);
-      linearVec(palette.foam, uniforms.uFoamColor.value);
-      linearVec(palette.shoreFoam, uniforms.uShoreFoam.value);
-      linearVec(palette.shoreMid, uniforms.uShoreMid.value);
-      linearVec(palette.shoreWater, uniforms.uShoreWater.value);
-      linearVec(palette.reflect, uniforms.uReflect.value);
-      applyAbsorb(uniforms, palette, rampDepth);
+      applyWaterPalette(palette, rampDepth, paletteSink);
     },
 
     applyLighting(rig: WaterLightRig): void {
@@ -860,7 +774,7 @@ export function createWaterMaterial(opts: WaterMaterialOptions): WaterMaterialSe
       uniforms.uSunColor.value.copy(rig.sunColor);
       uniforms.uHemiSky.value.copy(rig.hemiSky);
       uniforms.uHemiGround.value.copy(rig.hemiGround);
-      uniforms.uLightNorm.value = lightNorm(rig);
+      uniforms.uLightNorm.value = waterLightNorm(rig);
     },
 
     setField(tex: THREE.Texture | null): void { uniforms.uField.value = tex; },
@@ -881,35 +795,6 @@ export function createWaterMaterial(opts: WaterMaterialOptions): WaterMaterialSe
       material.dispose();
     },
   };
-}
-
-/**
- * Absorption is scaled by the same factor the ramp depth is. A procedural
- * basin is often only 2 m deep; at the bible's literal coefficients the water
- * would be almost perfectly clear and the whole absorption identity would be
- * invisible. Scaling both together preserves the LOOK at any basin depth —
- * the seabed still vanishes at the same FRACTION of the way down.
- */
-function applyAbsorb(u: WaterUniforms, palette: WaterPalette, rampDepth: number): void {
-  const k = WATER_LOOK.rampDepthMetres / Math.max(rampDepth, 0.25);
-  u.uAbsorb.value.set(
-    palette.absorb[0] * k, palette.absorb[1] * k, palette.absorb[2] * k,
-  );
-  u.uBed.value.x = WATER_LOOK.seabedFadeMetres / k;
-}
-
-/**
- * The value `lightBody` takes for flat calm water under this rig. Dividing by
- * it means the authored ramp hexes render as themselves at noon (they were
- * sampled off graded frames, so they ARE the target pixel values) while a
- * night or overcast preset still darkens and tints the water correctly.
- */
-function lightNorm(rig: WaterLightRig): number {
-  const ndl = Math.max(rig.sunDir.y, 0);
-  _v3.copy(rig.sunColor).multiplyScalar(WATER_LOOK.sunDiffuse * ndl)
-    .addScaledVector(rig.hemiSky, WATER_LOOK.fillDiffuse);
-  const l = 0.2126 * _v3.x + 0.7152 * _v3.y + 0.0722 * _v3.z;
-  return l > 1e-4 ? l : 1e-4;
 }
 
 /* ==========================================================================
@@ -1119,11 +1004,14 @@ export function probeOpenWaterLuminance(
   const sea = opts.seaState ?? WATER_WAVES.seaState;
   const distFrac = opts.distanceFrac ?? 0.5;
   const ramp = resampleRamp(palette, WATER_LOOK.rampStops);
-  const norm = lightNorm(rig);
-  const k = WATER_LOOK.rampDepthMetres / Math.max(rampDepth, 0.25);
-  const absorb = [palette.absorb[0] * k, palette.absorb[1] * k, palette.absorb[2] * k];
+  const norm = waterLightNorm(rig);
+  // The SAME derivation the material uploads, not a second copy of it. This
+  // probe grades the shipped shader; a private re-derivation here would let the
+  // guard pass a sea the material never draws.
+  const a = waterAbsorbFor(palette, rampDepth);
+  const absorb = [a.r, a.g, a.b];
   const seabed = linearVec(palette.seabed);
-  const fade = WATER_LOOK.seabedFadeMetres / k;
+  const fade = a.fadeMetres;
 
   // Flat water: N = up, so ndl = sunDir.y and the hemisphere reads pure sky.
   const ndl = Math.max(rig.sunDir.y, 0);
