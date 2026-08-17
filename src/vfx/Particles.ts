@@ -60,6 +60,18 @@ import {
 } from '../core/config';
 import { clamp01, hexToLinearRgb, hexToRgb, value2 } from '../core/math';
 import { RENDER_ORDER } from '../render/scene';
+/*
+ * The tuned numbers moved to `./vfx-material-constants.ts` so the TSL twins in
+ * `./vfx-node-materials.ts` read the same ones. They are still interpolated into
+ * the GLSL below exactly as before; only the declaration site changed. A second
+ * implementation that re-typed any of them would be a brightness change on one
+ * renderer only, which is the shape of a bug reported seven times here.
+ */
+import {
+  VFX_ALPHA_CUTOFF, VFX_DEBRIS, VFX_HALO_T0, VFX_HALO_T1, VFX_INV_PI,
+  VFX_LIT_FX_FALLOFF_EXP, VFX_LIT_FX_GAIN, VFX_LIT_FX_MAX, VFX_LIT_HEMI_GAIN,
+  VFX_LIT_RIM_EXP, VFX_ROW_STEP, litSmokeDefaults,
+} from './vfx-material-constants';
 
 /* ==========================================================================
  * 1. THE SPRITE ATLAS
@@ -379,7 +391,7 @@ void main() {
 /** Shared prologue: atlas lookup, ramp lookup, alpha resolve. */
 const SPRITE_SAMPLE = /* glsl */ `
   vec4 tex = texture2D(uAtlas, vUv);
-  if (tex.a <= 0.003) discard;
+  if (tex.a <= ${VFX_ALPHA_CUTOFF.toFixed(3)}) discard;
   float rad = clamp(length(vLocal), 0.0, 1.0);
   // radialMix 0 -> ramp driven by particle age (CPU wrote it into tA).
   // radialMix 1 -> ramp swept tA..tB across the sprite radius, which is what
@@ -387,7 +399,7 @@ const SPRITE_SAMPLE = /* glsl */ `
   float t = clamp(mix(vRamp.y, vRamp.z, rad * vRamp.w), 0.0, 1.0);
   vec4 ramp = texture2D(uRamp, vec2(t, (vRamp.x + 0.5) * uRowStep));
   float alpha = tex.a * ramp.a * vTint.y;
-  if (alpha <= 0.003) discard;
+  if (alpha <= ${VFX_ALPHA_CUTOFF.toFixed(3)}) discard;
 `;
 
 /**
@@ -415,8 +427,9 @@ const SPRITE_SAMPLE = /* glsl */ `
  * at a much lower average overshoot. The white core is untouched; only its
  * skirt is.
  */
-const HALO_T0 = 0.50;
-const HALO_T1 = 0.70;
+// Declared in `./vfx-material-constants.ts`; the reasoning above is why.
+const HALO_T0 = VFX_HALO_T0;
+const HALO_T1 = VFX_HALO_T1;
 
 const ADDITIVE_FRAG = /* glsl */ `
 precision highp float;
@@ -472,8 +485,9 @@ ${SPRITE_SAMPLE}
  * that wants to be brighter than the bible's own swatch is a bug by
  * construction, so the clamp is set at the swatch and cannot be argued with.
  */
-const LIT_FX_GAIN = 0.35;
-const LIT_FX_MAX = 0.30;
+// Declared in `./vfx-material-constants.ts`; the reasoning above is why.
+const LIT_FX_GAIN = VFX_LIT_FX_GAIN;
+const LIT_FX_MAX = VFX_LIT_FX_MAX;
 
 const LIT_FRAG = /* glsl */ `
 precision highp float;
@@ -527,8 +541,8 @@ ${SPRITE_SAMPLE}
   // ceiling below has to bound.
   vec3 albedo = ramp.rgb * uTintGain
               + shade * uShadeGain
-              + hemi * 0.22
-              + uRimLit * uSunColor * pow(max(ndl, 0.0), 3.0) * uRimGain;
+              + hemi * ${VFX_LIT_HEMI_GAIN.toFixed(2)}
+              + uRimLit * uSunColor * pow(max(ndl, 0.0), ${VFX_LIT_RIM_EXP.toFixed(1)}) * uRimGain;
 
   /*
    * THE CEILING — the other half of why 05-combat and 08-naval-water rendered
@@ -589,9 +603,9 @@ ${SPRITE_SAMPLE}
   float d = max(length(toL), 0.5);
   if (d < uFxRange) {
     float w = 1.0 - d / uFxRange;
-    float atten = (w * w) / pow(d, 1.35);
+    float atten = (w * w) / pow(d, ${VFX_LIT_FX_FALLOFF_EXP.toFixed(2)});
     vec3 fx = uFxColor * albedo
-            * (atten * 0.3183098862 * ${LIT_FX_GAIN.toFixed(3)})
+            * (atten * ${VFX_INV_PI.toFixed(10)} * ${LIT_FX_GAIN.toFixed(3)})
             * max(dot(n, toL / d), 0.0);
     float peak = max(fx.r, max(fx.g, fx.b));
     if (peak > ${LIT_FX_MAX.toFixed(3)}) fx *= ${LIT_FX_MAX.toFixed(3)} / peak;
@@ -1216,7 +1230,7 @@ export class ParticleSystem {
     this.root.frustumCulled = false;
     this.atlas = buildSpriteAtlas();
     this.ramps = buildRampTexture();
-    const rowStep = 1 / VFX_RAMPS.length;
+    const rowStep = VFX_ROW_STEP;
 
     const commonUniforms = () => ({
       uAtlas: { value: this.atlas },
@@ -1244,23 +1258,25 @@ export class ParticleSystem {
     });
     this.additiveMat.name = 'VfxAdditive';
 
+    // Fourteen defaults, from the table both material sets read.
+    const lit = litSmokeDefaults();
     this.litMat = new THREE.ShaderMaterial({
       uniforms: {
         ...commonUniforms(),
-        uSunDirView: { value: new THREE.Vector3(0, 1, 0) },
-        uSunColor: { value: new THREE.Vector3(1, 0.87, 0.72) },
-        uUpView: { value: new THREE.Vector3(0, 1, 0) },
-        uHemiSky: { value: new THREE.Vector3(0.28, 0.42, 0.72) },
-        uHemiGround: { value: new THREE.Vector3(0.18, 0.14, 0.10) },
-        uShadeDark: { value: linearVec3(VFX_SMOKE.shadeDark) },
-        uShadeLit: { value: linearVec3(VFX_SMOKE.shadeLit) },
-        uRimLit: { value: linearVec3(VFX_SMOKE.rimLit) },
-        uTintGain: { value: VFX_SMOKE.tintGain },
-        uShadeGain: { value: VFX_SMOKE.shadeGain },
-        uRimGain: { value: VFX_SMOKE.rimGain },
-        uFxPosView: { value: new THREE.Vector3(0, -1e6, 0) },
-        uFxColor: { value: new THREE.Vector3(0, 0, 0) },
-        uFxRange: { value: 0 },
+        uSunDirView: { value: lit.uSunDirView },
+        uSunColor: { value: lit.uSunColor },
+        uUpView: { value: lit.uUpView },
+        uHemiSky: { value: lit.uHemiSky },
+        uHemiGround: { value: lit.uHemiGround },
+        uShadeDark: { value: lit.uShadeDark },
+        uShadeLit: { value: lit.uShadeLit },
+        uRimLit: { value: lit.uRimLit },
+        uTintGain: { value: lit.uTintGain },
+        uShadeGain: { value: lit.uShadeGain },
+        uRimGain: { value: lit.uRimGain },
+        uFxPosView: { value: lit.uFxPosView },
+        uFxColor: { value: lit.uFxColor },
+        uFxRange: { value: lit.uFxRange },
       },
       vertexShader: SPRITE_VERT,
       fragmentShader: LIT_FRAG,
@@ -1278,10 +1294,10 @@ export class ParticleSystem {
     this.litMat.name = 'VfxLitSmoke';
 
     this.debrisMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0.055, 0.048, 0.042),
-      roughness: 0.78,
-      metalness: 0.35,
-      flatShading: true,
+      color: new THREE.Color(...VFX_DEBRIS.color),
+      roughness: VFX_DEBRIS.roughness,
+      metalness: VFX_DEBRIS.metalness,
+      flatShading: VFX_DEBRIS.flatShading,
     });
     this.debrisMat.name = 'VfxDebris';
 

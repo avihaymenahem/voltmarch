@@ -69,6 +69,10 @@ import {
 } from './LightPool';
 import { emitAdditive, resetEmit } from './Particles';
 import { admitGlare } from './FlashBudget';
+// Shared with the TSL twin in `./vfx-node-materials.ts` — see that file's header.
+import {
+  RIBBON_DEFAULT_FOV_DEG, VFX_ALPHA_CUTOFF, ribbonPxScale,
+} from './vfx-material-constants';
 
 /**
  * Sustained-light envelopes, built ONCE at module load.
@@ -139,7 +143,7 @@ void main() {
   float cs = pow(max(0.0, 1.0 - abs(vSide)), vFall);
   vec4 ramp = texture2D(uRamp, vec2(vRamp.y, (vRamp.x + 0.5) * uRowStep));
   float a = ramp.a * vRamp.w * cs;
-  if (a <= 0.003) discard;
+  if (a <= ${VFX_ALPHA_CUTOFF.toFixed(3)}) discard;
   vec3 col = ramp.rgb * vRamp.z;
   gl_FragColor = vec4(col * a, a);   // premultiplied additive
 }
@@ -217,7 +221,7 @@ export class RibbonBatch {
       uniforms: {
         uRamp: { value: rampTexture },
         uRowStep: { value: 1 / rampRows },
-        uPxScale: { value: 2 * Math.tan(THREE.MathUtils.degToRad(36) * 0.5) / VFX_PX_REFERENCE_HEIGHT },
+        uPxScale: { value: ribbonPxScale(RIBBON_DEFAULT_FOV_DEG) },
       },
       vertexShader: RIBBON_VERT,
       fragmentShader: RIBBON_FRAG,
@@ -244,8 +248,7 @@ export class RibbonBatch {
 
   /** Push the camera's vertical FOV so pixel widths stay honest after a zoom. */
   setFov(fovDeg: number): void {
-    this.material.uniforms.uPxScale.value =
-      2 * Math.tan(THREE.MathUtils.degToRad(fovDeg) * 0.5) / VFX_PX_REFERENCE_HEIGHT;
+    this.material.uniforms.uPxScale.value = ribbonPxScale(fovDeg);
   }
 
   /** Start a frame. Must be paired with `end()`. */
