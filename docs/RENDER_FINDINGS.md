@@ -745,6 +745,21 @@ None of these would have failed a build, and two are invisible until a capture d
    2.** Same 16 taps over the same 2 rings, spread evenly along the radius instead of clustered.
    Same cost, different filter, nothing to catch it.
 
+### What the WebGL bundle actually cost, measured rather than asserted
+
+**+100 bytes.** `vite build` at `1c7cc0c` (the branch point) emits `index-*.js` at **2 673.60 kB**;
+with Stage B it is **2 673.70 kB**. That is the shared modules `post.ts` now imports — the tone-mode
+table, the pass order, and the two AO parameter helpers — after tree-shaking drops everything in
+them the WebGL chain does not use.
+
+`three/webgpu` is **absent from the bundle entirely** (`grep -c WGSLNodeBuilder dist/assets/index-*.js`
+= 0), because nothing in `src/main.ts`'s graph imports the node chain yet. That is the load-bearing
+half: the node passes cannot affect a shipped frame until something wires them in.
+
+The first commit message for this work said the bundle was "byte-for-byte the size it was", which is
+the kind of claim `docs/SPEC_DRIFT_AUDIT.md` exists to catalogue. It was not measured when it was
+written. It is now.
+
 ### What Stage B did NOT establish
 
 - **No frame time, and no claim to one.** §7b's verdict stands and is not disturbed by any of this.
