@@ -27,13 +27,13 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { MAX_PLAYERS, SIM_DT, SIM_HZ } from '../src/core/config';
+import { CELL, MAX_PLAYERS, SIM_DT, SIM_HZ } from '../src/core/config';
 import { Channels } from '../src/core/events';
 import { Rng } from '../src/core/math';
 import {
   ArmorClass, CreditReason, EntityFlag, EntityKind, Faction, Locomotor, Stance, UnitState,
 } from '../src/core/types';
-import type { EntityId, PlayerId, SimContext } from '../src/core/types';
+import type { EntityId, ITerrain, PlayerId, SimContext } from '../src/core/types';
 import { World } from '../src/core/world';
 import { Economy, setActiveEconomy } from '../src/sim/Economy';
 import {
@@ -469,33 +469,59 @@ describe('AIRSTRIKE', () => {
 });
 
 describe('ORBITAL SCAN', () => {
-  it('charts a circle for the caller through the vision service', () => {
+  it('arms a live sweep over the enemy rather than charting a circle', () => {
     const rig = makeRig();
-    const calls: Array<{ player: number; x: number; z: number; r: number }> = [];
+    const calls: Array<{ player: number; seconds: number; radius: number }> = [];
     // The structural probe the effect uses. `IVision` does not carry the manual
-    // reveals, so a boot whose vision service has none must chart nothing
-    // rather than throw — which is the second half of this test.
+    // reveals, so a boot whose vision service has none must sweep nothing
+    // rather than throw — which is the last test in this block.
     const vision = rig.world.vision as unknown as Record<string, unknown>;
-    vision.exploreCircle = (player: number, x: number, z: number, r: number): void => {
-      calls.push({ player, x, z, r });
+    vision.sweepEnemies = (player: number, seconds: number, radius: number): void => {
+      calls.push({ player, seconds, radius });
     };
+    spawn(rig, P1, 250, 180, { kind: EntityKind.Building });
     charge(rig);
 
     expect(rig.powers.use(P0, CommanderPowerId.OrbitalScan, 250, 180)).toBe('fired');
     expect(calls).toEqual([{
       player: P0 as number,
-      x: 250,
-      z: 180,
-      r: COMMANDER_POWERS[CommanderPowerId.OrbitalScan].radius,
+      seconds: 5,
+      radius: COMMANDER_POWERS[CommanderPowerId.OrbitalScan].radius,
     }]);
-    expect(rig.powers.stats.cellsCharted).toBeGreaterThan(0);
+    // Assets, not cells. THE POINT OF THE CHANGE: the old power charted terrain
+    // permanently, so a second cast over the same ground did nothing at all.
+    expect(rig.powers.stats.assetsExposed).toBe(1);
+  });
+
+  it('counts hostile assets only — not allies, not Gaia, not wrecks', () => {
+    const rig = makeRig();
+    const vision = rig.world.vision as unknown as Record<string, unknown>;
+    vision.sweepEnemies = (): void => {};
+    spawn(rig, P0, 100, 100);                                   // own unit
+    spawn(rig, P1, 250, 180);                                   // enemy unit
+    spawn(rig, P1, 260, 180, { kind: EntityKind.Building });    // enemy base
+    spawn(rig, P1, 270, 180, { kind: EntityKind.Wreck });       // not an asset
+    charge(rig);
+
+    expect(rig.powers.use(P0, CommanderPowerId.OrbitalScan, 250, 180)).toBe('fired');
+    expect(rig.powers.stats.assetsExposed).toBe(2);
+  });
+
+  it('reports noTargets when the enemy owns nothing left to expose', () => {
+    const rig = makeRig();
+    const vision = rig.world.vision as unknown as Record<string, unknown>;
+    vision.sweepEnemies = (): void => {};
+    spawn(rig, P0, 100, 100);
+    charge(rig);
+    expect(rig.powers.use(P0, CommanderPowerId.OrbitalScan, 250, 180)).toBe('noTargets');
+    expect(rig.powers.stats.assetsExposed).toBe(0);
   });
 
   it('degrades to a no-op when the vision service has no manual reveal', () => {
     const rig = makeRig();
     charge(rig);
     expect(() => rig.powers.use(P0, CommanderPowerId.OrbitalScan, 250, 180)).not.toThrow();
-    expect(rig.powers.stats.cellsCharted).toBe(0);
+    expect(rig.powers.stats.assetsExposed).toBe(0);
   });
 });
 
@@ -594,6 +620,39 @@ describe('CHRONOSHIFT', () => {
     const s = st.index(stranger);
     expect(st.posX[s], 'it teleported the enemy').toBe(106);
     expect(rig.powers.stats.unitsShifted).toBe(1);
+  });
+
+  it('leaves a unit where it is when the destination is water it cannot cross', () => {
+    // THE OTHER ROUTE TO AN IMMORTAL UNIT AT SEA. `applyChronoshift` wrote
+    // `posX`/`posZ` straight from `clampWorld`, which bounds the point to the
+    // MAP and says nothing about passability — so aiming the marker over the
+    // sea teleported a tank into it, `Idle`, with a `MoveClass` that cannot
+    // leave the cell. `Flowfield` cannot recover a unit from an impassable
+    // cell, so it never moved again, and `Shell.pollOutcome` counted it
+    // forever. Sibling of the `Transport.strand` defect in transport.spec.ts.
+    const rig = makeRig();
+    const st = rig.world.store;
+    spawn(rig, P0, 100, 100, { kind: EntityKind.Building });
+    const guard = spawn(rig, P0, 108, 104);
+    charge(rig);
+
+    const base = rig.world.terrain;
+    rig.world.terrain = {
+      ...base,
+      // Spread copies OWN properties only, and `terrain`'s methods live on its
+      // prototype — so every method this path touches has to be named. Same
+      // reason transport.spec.ts re-declares `heightAt` in its own fake.
+      heightAt: (x: number, z: number) => base.heightAt(x, z),
+      isOccupied: () => false,
+      // Everything beyond x = 300 is open sea for a tracked hull.
+      isPassable: (cx: number, _cz: number) => cx * CELL < 300,
+    } as ITerrain;
+
+    expect(rig.powers.use(P0, CommanderPowerId.Chronoshift, 400, 400)).toBe('noTargets');
+    const g = st.index(guard);
+    expect(st.posX[g], 'teleported into the sea').toBe(108);
+    expect(st.posZ[g]).toBe(104);
+    expect(rig.powers.stats.unitsShifted).toBe(0);
   });
 
   it('lifts nothing when the caller has no buildings to call home', () => {

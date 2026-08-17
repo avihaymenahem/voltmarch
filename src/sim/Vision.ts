@@ -75,7 +75,7 @@ import {
   FOG_DEFAULT_SIGHT, FOG_MIN_SIGHT, FOG_SIGHT_SCALE, FOG_STRUCTURE_SIGHT_BONUS,
   FOG_RADAR_DETECT_MUL, FOG_CLOAK_REVEAL_SECONDS, FOG_MAX_DETECTORS,
 } from '../core/config';
-import { EntityFlag, EntityKind, UpgradeLever, VisionLevel } from '../core/types';
+import { EntityFlag, EntityKind, Faction, UpgradeLever, VisionLevel } from '../core/types';
 import type { EntityId, PlayerId, IVision } from '../core/types';
 import { upgradeMul } from './Upgrades';
 import { devAsserts } from '../core/loop';
@@ -150,6 +150,14 @@ export class Vision implements IVision {
   private readonly cloakBits: PerEntityU32;
   /** Sim time until which a cloaked entity is exposed (it fired, or was hit). */
   private readonly revealUntil: PerEntityF32;
+  /**
+   * Per-player Orbital Scan deadline, in `world.time` seconds, and the radius
+   * lit around each hostile asset while it runs. See `sweepEnemies`. Float64
+   * for the deadline because it is compared against `world.time`, which is
+   * `tick * SIM_DT` and drifts off a float32 well inside one match.
+   */
+  private readonly sweepUntil = new Float64Array(MAX_PLAYERS);
+  private readonly sweepRadius = new Float64Array(MAX_PLAYERS);
   /** Explicit detector radius in metres, 0 = not a detector. */
   private readonly detectRadius: PerEntityF32;
 
@@ -453,6 +461,46 @@ export class Vision implements IVision {
       }
     }
 
+    /* -- 2b. Orbital Scan sweeps ----------------------------------------- */
+    //
+    // Runs AFTER the ordinary stamp and BEFORE the compose, so a swept cell is
+    // indistinguishable from one a scout is standing in — same `timers` write,
+    // same decay when the window shuts. See `sweepEnemies` for why this is a
+    // per-tick re-stamp rather than a one-shot grid write.
+    //
+    // Cost: one extra pass over the alive list per SWEEPING player, and there
+    // is normally none. `update` itself is already O(alive) with a stampCircle
+    // per sighted entity, so a sweep at most doubles a tick that only happens
+    // every `VISION_TICK_INTERVAL` ticks, for five seconds.
+    for (let p = 0; p < np; p++) {
+      if (this.sweepUntil[p] <= world.time) continue;
+      const seer = world.players[p];
+      if (seer === undefined) continue;
+      const ally = seer.allyMask ?? (1 << p);
+      const r = this.sweepRadius[p];
+      for (let a = 0; a < n; a++) {
+        const i = s.alive[a];
+        const f = s.flags[i];
+        if ((f & (EntityFlag.PendingDestroy | EntityFlag.Garrisoned)) !== 0) continue;
+        const owner = s.owner[i];
+        // Allies are already lighting their own ground; Gaia is not "the enemy
+        // side" and revealing neutral scenery would light half the map for
+        // nothing. Hostile ARMY AND BASE only — the same three kinds
+        // `Shell.pollOutcome` counts as a living asset, so what the sweep shows
+        // you is exactly what you still have to kill.
+        if ((ally & (1 << owner)) !== 0) continue;
+        const op = world.players[owner];
+        if (op === undefined || op.faction === Faction.Neutral) continue;
+        const kind = s.kind[i];
+        if (kind !== EntityKind.Infantry && kind !== EntityKind.Vehicle
+          && kind !== EntityKind.Building) continue;
+        // Stamped for the SEER'S ally mask, not the target's: a scan is
+        // intelligence shared with your team, and must never light a cell for
+        // the player being scanned.
+        this.stampCircle(ally, s.posX[i], s.posZ[i], r, np);
+      }
+    }
+
     /* -- 3. compose ------------------------------------------------------- */
     let changedMask = 0;
     for (let p = 0; p < np; p++) {
@@ -540,6 +588,51 @@ export class Vision implements IVision {
   /* ------------------------------------------------------------------------
    * 2.5 Manual reveals
    * ---------------------------------------------------------------------- */
+
+  /**
+   * ORBITAL SCAN — light every hostile asset for `seconds`, and keep lighting
+   * them as they move.
+   *
+   * This replaced a one-shot `exploreCircle`, and the reason is worth keeping.
+   * `exploreCircle` sets VIS_EXPLORED, which is PERMANENT TERRAIN MEMORY and
+   * says nothing about units — so the second cast over the same ground was
+   * literally a no-op, and no cast ever showed an enemy. Reported as "orbital
+   * scan feels useless after 1 scan", which was not a feeling: it was the
+   * mechanic.
+   *
+   * What this does instead is arm a DEADLINE. `update` re-stamps a circle on
+   * every hostile unit and structure on every vision tick until the deadline
+   * passes, so the light tracks a moving convoy rather than photographing a
+   * patch of dirt. Nothing is written to the grid directly: the stamps go
+   * through the same `timers` path unit sight uses, so when the window closes
+   * the cells decay through `VISION_REGROW_TICKS` exactly like any other lost
+   * vision, and the enemy fades rather than vanishing on a frame boundary.
+   *
+   * DELIBERATELY NOT A MAP REVEAL. Lighting every cell would set VIS_EXPLORED
+   * map-wide on the first cast and hand the terrain half of the power straight
+   * back to the one-shot problem above. Empty ground stays dark; scouting keeps
+   * its job, and the power is worth calling every time because their army is in
+   * a different place every time.
+   *
+   * Deterministic: the deadline is `world.time`, which is `tick * SIM_DT`, and
+   * the power is issued through the command bus so both clients arm it on the
+   * same tick. Not persisted across a save — a five-second effect that survived
+   * a reload would be stranger than one that did not.
+   */
+  sweepEnemies(player: PlayerId, seconds: number, radius: number): void {
+    const p = player as number;
+    if (!Number.isInteger(p) || p < 0 || p >= MAX_PLAYERS) return;
+    if (!(seconds > 0) || !(radius > 0)) return;
+    this.sweepUntil[p] = this.world.time + seconds;
+    this.sweepRadius[p] = radius;
+  }
+
+  /** True while `player` has an Orbital Scan sweep still running. */
+  isSweeping(player: PlayerId): boolean {
+    const p = player as number;
+    if (!Number.isInteger(p) || p < 0 || p >= MAX_PLAYERS) return false;
+    return this.sweepUntil[p] > this.world.time;
+  }
 
   /** Light and explore every cell for every player. Used by `revealMap`. */
   revealAll(): void {

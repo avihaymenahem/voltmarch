@@ -47,7 +47,7 @@ import {
 } from './renderer';
 import type { SceneRig } from './scene';
 import type { CameraRig, CameraPose } from './camera';
-import type { PostChain, PassId } from './post';
+import type { PostChain, PassId, DrawCallBreakdown } from './post';
 import { renderBridge, type RenderAudit } from './RenderBridge';
 
 /* ========================================================================== */
@@ -118,7 +118,21 @@ export interface FrameStats {
   frameMsAvg: number;
   frameMsMax: number;
   cpuMs: number;
+  /**
+   * `renderer.info.render.calls` — the frame's total across EVERY scene
+   * submission. Kept exactly as it was: three consumers read this field, and
+   * `shots/_report.json` has published it under this name for a dozen releases.
+   */
   drawCalls: number;
+  /**
+   * The same number, split by what spent it. `drawCalls` is a sum over the
+   * shadow pass, the colour pass and GTAO's normal prepass, so it has never been
+   * comparable with `MAX_DRAW_CALLS`, which bounds the colour pass alone — read
+   * `colour` for that. See `DrawCallBreakdown` in `post.ts`; the four parts sum
+   * to `total`, and `total` is `drawCalls` whenever the post chain drew the
+   * frame. All zero when there is no post chain to meter.
+   */
+  drawCallsByPass: DrawCallBreakdown;
   triangles: number;
   points: number;
   lines: number;
@@ -643,7 +657,14 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     rows.frame.nodeValue = `${frameMs.toFixed(1)} / ${frameMsAvg.toFixed(1)} / ${frameMsMax.toFixed(1)}`;
     rows.cpu.nodeValue = cpuMs.toFixed(2);
     rows.sim.nodeValue = `${counters.simMs.toFixed(2)} (${counters.substeps})`;
-    rows.draws.nodeValue = String(info.render.calls);
+    // Total first, then the colour pass in brackets — the only one of the two
+    // that `MAX_DRAW_CALLS` is a budget for. Reading 219 against a budget of 130
+    // is what made the gap look like outstanding work for three releases; the
+    // second number is the one to judge. See `DrawCallBreakdown` in post.ts.
+    const byPass = post?.drawCallsByPass;
+    rows.draws.nodeValue = byPass === undefined
+      ? String(info.render.calls)
+      : `${info.render.calls} (${byPass.colour} col ${byPass.shadow} shd ${byPass.ao} ao)`;
     rows.tris.nodeValue = info.render.triangles.toLocaleString();
     rows.progs.nodeValue = String(info.programs?.length ?? 0);
     rows.geo.nodeValue = `${info.memory.geometries} / ${info.memory.textures}`;
@@ -768,6 +789,20 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
   }
 
   /* ---- stats ------------------------------------------------------------ */
+  /**
+   * The breakdown, COPIED. `PostChain` rewrites one record in place every frame
+   * because it runs inside the frame loop; `stats()` is called four times a
+   * second (see `EngineSource.read`) and already allocates, so the copy is where
+   * it belongs. Handing out the live object would give every consumer a value
+   * that changes underneath it — including `tools/shoot.mjs`, which serialises
+   * this into `_report.json` as a statement about ONE captured frame.
+   */
+  function readDrawCallsByPass(totalCalls: number): DrawCallBreakdown {
+    const d = post?.drawCallsByPass;
+    if (d === undefined) return { shadow: 0, colour: 0, ao: 0, post: 0, total: totalCalls };
+    return { shadow: d.shadow, colour: d.colour, ao: d.ao, post: d.post, total: d.total };
+  }
+
   function stats(): FrameStats {
     const info = renderer.info;
     return {
@@ -777,6 +812,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
       frameMsMax,
       cpuMs,
       drawCalls: info.render.calls,
+      drawCallsByPass: readDrawCallsByPass(info.render.calls),
       triangles: info.render.triangles,
       points: info.render.points,
       lines: info.render.lines,

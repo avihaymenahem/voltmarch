@@ -1165,11 +1165,19 @@ function toKindMesh(m: StructureModel): KindMesh {
     });
   }
 
+  const depth = meridianBuildingLibrary.depthMaterial();
+
   const parts: NonNullable<KindMesh['parts']>[number][] = [];
   if (m.pad !== null) {
     // A pad is 40 mm of slab on the ground. Casting a shadow from it buys
-    // nothing and costs a shadow-map draw per structure on screen.
-    parts.push({ geometry: m.pad, material: m.padMaterial, castShadow: false, receiveShadow: true });
+    // nothing and costs a shadow-map draw per structure on screen — and for
+    // the same reason it must not occlude AO either: an opaque 40 mm slab in
+    // the GTAO normal prepass reads as a wall a few centimetres above the
+    // ground, which is the failure `render/post.ts#aoOccluder` documents.
+    parts.push({
+      geometry: m.pad, material: m.padMaterial, castShadow: false, receiveShadow: true,
+      aoOccluder: false,
+    });
   }
   if (m.turret !== null) {
     parts.push({
@@ -1179,6 +1187,7 @@ function toKindMesh(m: StructureModel): KindMesh {
       followsTurret: true,
       castShadow: true,
       receiveShadow: true,
+      customDepthMaterial: depth,
     });
   }
 
@@ -1190,6 +1199,7 @@ function toKindMesh(m: StructureModel): KindMesh {
     turretPivotY: m.turretPivot[1],
     castShadow: true,
     receiveShadow: true,
+    customDepthMaterial: depth,
   };
 }
 

@@ -73,7 +73,11 @@
  *     nothing else, and that module already refuses to select or hover anything
  *     the local player cannot see — it re-checks the whole selection every frame
  *     in `pruneDead`. Re-deriving the fog rules here would be a second copy of
- *     them, and two copies of a rule is one copy too many.
+ *     them, and two copies of a rule is one copy too many. The hover ring now
+ *     takes the HANDLE from input as well (`setHoveredEntity`, so the pass is a
+ *     lookup instead of two walks of the alive list for a singleton), but the
+ *     FLAG is still what gates the draw — so this is a shortcut to the entity,
+ *     never a second opinion about whether it may be drawn.
  *
  * The question is always put to the `IVision` PORT, never to `EntityFlag.Cloaked`.
  * That bit is set viewer-independently on your OWN submerged submarine — whose
@@ -91,10 +95,21 @@
  *
  * ALLOCATION
  * ----------
- * Zero per frame: the floater, marker and rally pools are fixed, scratch
- * vectors are fields, and the only strings built are floater labels, which are
- * cached on the pool entry at spawn. The rally pass caches its `rgba()` strings
- * on the faction change rather than rebuilding them per flag per frame.
+ * The floater, marker and rally pools are fixed, the selection-ring projection
+ * buffers are module-scope typed arrays, scratch vectors are fields, and the
+ * only strings built are floater labels, which are cached on the pool entry at
+ * spawn. The rally pass caches its `rgba()` strings on the faction change
+ * rather than per flag per frame; the self-repair pulse caches its two on the
+ * FRAME rather than per bar, which is as far as that can go — its alpha is
+ * continuously animated, and rounding it to reach zero would move pixels the
+ * capture fixtures photograph.
+ *
+ * The one residual, stated rather than claimed away: `drawMarkers` still builds
+ * two `rgba()` strings per LIVE order marker per frame, because that alpha is
+ * the marker's own age and no two markers share it. It is bounded by
+ * `ORDER_MARKER_POOL` and it is normally dead code — `src/input/input.system.ts`
+ * draws the world-space order rings and the HUD leaves this pass unsubscribed
+ * while that module is registered. See `orderMarker` below.
  * ============================================================================
  */
 
@@ -109,6 +124,7 @@ import {
   EntityFlag,
   EntityKind,
   Faction,
+  NONE,
   UnitState,
   type EntityId,
   type PlayerId,
@@ -164,6 +180,46 @@ const HINT_WORD = 'ROTATE';
 const TARGET_LINE = 'rgba(255,77,61,0.55)';
 /** Points sampled around a selection ring. 20 is smooth at every zoom. */
 const RING_SEGMENTS = 20;
+/** Points actually emitted per ring: the last one repeats the first, to close it. */
+const RING_POINTS = RING_SEGMENTS + 1;
+
+/* --------------------------------------------------------------------------
+ * THE SELECTION-RING SCRATCH
+ *
+ * `drawSelectionRings` strokes the SAME 21-point circle three times for every
+ * selected unit — the dark under-stroke, the accent, then the wide faint halo —
+ * and each pass used to re-project it from nothing: 3 x 21 x sel.count calls
+ * into `CameraRig.worldToScreen` per frame, which until this release each
+ * forced a synchronous layout flush (see `readRect` there). The three passes
+ * share one `pulse`, computed once, so all three project to identical pixels.
+ * Project once, replay three times.
+ *
+ * THE PASS ORDER IS THE PICTURE, so the buffer holds the WHOLE selection rather
+ * than one ring at a time. Projecting per unit and issuing that unit's three
+ * strokes together is the obvious shape and it is wrong: where two rings
+ * overlap — which is most of a real group — unit A's accent would land UNDER
+ * unit B's dark under-stroke instead of over it, and the affordance would
+ * visibly change as units bunched up.
+ *
+ * Module scope and never reallocated. `MAX_SELECTION` is the hard ceiling on
+ * how many rings can exist, plus one slot for the hover ring, which is never
+ * one of them (a hovered entity that is also selected is skipped).
+ * -------------------------------------------------------------------------- */
+
+/** Slot index of the hover ring. */
+const HOVER_RING_SLOT = MAX_SELECTION;
+/**
+ * Projected x,y per ring point, `RING_POINTS` points to a slot.
+ *
+ * Float64 and not Float32, at twice the 17 kB and no other cost: the values go
+ * straight to `ctx.moveTo`/`lineTo`, which rasterise at subpixel precision, and
+ * rounding a coordinate to float32 is a change of up to ~1e-4 px that could
+ * flip an antialiased edge by 1/255. The whole point of this rewrite is that
+ * the frame does not move.
+ */
+const RING_XY = new Float64Array((MAX_SELECTION + 1) * RING_POINTS * 2);
+/** 1 where the matching point in `RING_XY` projected in front of the camera. */
+const RING_OK = new Uint8Array((MAX_SELECTION + 1) * RING_POINTS);
 
 /* --------------------------------------------------------------------------
  * THE BUILD RADIUS
@@ -522,6 +578,9 @@ export class Overlay {
   private garrisonHintCount = 0;
   /** Seconds until the next rebuild of the set above. */
   private garrisonHintIn = 0;
+  /** The entity under the cursor, pushed by input. See `setHoveredEntity`. */
+  private hoveredId: EntityId = NONE;
+
   /** Last pointer position in CLIENT px, and whether it is over the window. */
   private pointerX = 0;
   private pointerY = 0;
@@ -682,6 +741,25 @@ export class Overlay {
 
   clearMarquee(): void {
     this.marqueeActive = false;
+  }
+
+  /**
+   * The entity under the cursor, or `NONE`. Pushed by `src/input/input.system.ts`
+   * on the same line it writes `EntityFlag.Hovered`.
+   *
+   * THE HOVERED ENTITY IS A SINGLETON — `Selection.setHovered` clears the old
+   * slot's bit before setting the new one, so at most one exists — and the hover
+   * ring used to find it with TWO full walks of `store.alive`, one per stroke
+   * pass, ~800 iterations a frame at 400 entities to locate a handle input had
+   * in hand. This is that handle.
+   *
+   * Safe to never call, and that is not a courtesy: with no input module nothing
+   * writes the flag either, so `NONE` and "no hover ring" are the same true
+   * answer. The flag is still the authority — see `drawSelectionRings` — so a
+   * handle that goes stale between the push and the draw rings nothing.
+   */
+  setHoveredEntity(id: EntityId): void {
+    this.hoveredId = id;
   }
 
   /** Spawn a floating number at a world position. Silently drops when full. */
@@ -869,63 +947,71 @@ export class Overlay {
 
     const pulse = 1 + 0.04 * Math.sin(this.time * Math.PI * 1.6);
 
-    if (sel.count > 0) {
+    // ONE projection pass for the whole selection, then three stroke passes
+    // that replay it. See the RING_XY block at the top of this file for why the
+    // buffer holds the whole selection rather than one ring at a time.
+    let rings = 0;
+    for (let i = 0; i < sel.count && rings < MAX_SELECTION; i++) {
+      const idx = store.index(sel.ids[i] as EntityId);
+      if (idx < 0) continue;
+      this.projectGroundRing(idx, pulse, rings);
+      rings++;
+    }
+
+    if (rings > 0) {
       // The dark under-stroke FIRST. A cyan hairline on snow, on a white
       // Allied roof or inside a fireball is not a ring, it is a rumour; a
       // wider dark pass beneath it means the ring reads on every surface the
       // grade can produce, and costs one extra stroke per selected unit.
       ctx.lineWidth = Math.max(2, 3.2 * u);
       ctx.strokeStyle = 'rgba(3,6,10,0.62)';
-      for (let i = 0; i < sel.count; i++) {
-        const idx = store.index(sel.ids[i] as EntityId);
-        if (idx < 0) continue;
-        this.strokeGroundRing(idx, pulse);
-      }
+      for (let i = 0; i < rings; i++) this.strokeProjectedRing(i);
+
       ctx.lineWidth = Math.max(1, 1.5 * u);
       ctx.strokeStyle = rgba(this.accent, 0.95);
-      for (let i = 0; i < sel.count; i++) {
-        const idx = store.index(sel.ids[i] as EntityId);
-        if (idx < 0) continue;
-        this.strokeGroundRing(idx, pulse);
-      }
+      for (let i = 0; i < rings; i++) this.strokeProjectedRing(i);
+
       // A second, wider, very faint ring gives the affordance depth without a
       // glow filter — the canvas has no cheap blur and a shadowBlur here costs
       // more than every other overlay pass combined.
       ctx.lineWidth = Math.max(1, 4 * u);
       ctx.strokeStyle = rgba(this.accent, 0.16);
-      for (let i = 0; i < sel.count; i++) {
-        const idx = store.index(sel.ids[i] as EntityId);
-        if (idx < 0) continue;
-        this.strokeGroundRing(idx, pulse);
-      }
+      for (let i = 0; i < rings; i++) this.strokeProjectedRing(i);
     }
 
     // Hover: only when it is not already selected, or the two rings stack and
     // the selected ring appears to thicken for no reason.
+    //
+    // ONE HANDLE, NOT A SCAN. `EntityFlag.Hovered` is a singleton — see
+    // `setHoveredEntity` — and this pass used to walk `store.alive` twice to
+    // find it. The FLAG is still what decides: input pushes the handle, and if
+    // it has gone stale between the push and this draw, `index()` answers < 0 or
+    // the bit is off and nothing is drawn.
+    const h = this.hoveredId === NONE ? -1 : store.index(this.hoveredId);
+    if (h < 0) return;
+    const hFlags = store.flags[h];
+    if ((hFlags & EntityFlag.Hovered) === 0) return;
+    if ((hFlags & EntityFlag.Selected) !== 0) return;
+
+    this.projectGroundRing(h, 1, HOVER_RING_SLOT);
     ctx.lineWidth = Math.max(2, 2.6 * u);
     ctx.strokeStyle = 'rgba(3,6,10,0.5)';
-    for (let i = 0; i < store.aliveCount; i++) {
-      const e = store.alive[i];
-      const flags = store.flags[e];
-      if ((flags & EntityFlag.Hovered) === 0) continue;
-      if ((flags & EntityFlag.Selected) !== 0) continue;
-      this.strokeGroundRing(e, 1);
-    }
+    this.strokeProjectedRing(HOVER_RING_SLOT);
     ctx.lineWidth = Math.max(1, 1.2 * u);
     ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-    for (let i = 0; i < store.aliveCount; i++) {
-      const e = store.alive[i];
-      const flags = store.flags[e];
-      if ((flags & EntityFlag.Hovered) === 0) continue;
-      if ((flags & EntityFlag.Selected) !== 0) continue;
-      this.strokeGroundRing(e, 1);
-    }
+    this.strokeProjectedRing(HOVER_RING_SLOT);
   }
 
-  /** One world-space circle, projected. `k` scales the radius (the pulse). */
-  private strokeGroundRing(idx: number, k: number): void {
+  /**
+   * One world-space circle, projected into `slot` of the scratch buffers.
+   * `k` scales the radius (the pulse). Nothing is drawn.
+   *
+   * A point behind the camera writes 0 into `RING_OK` and its `RING_XY` pair is
+   * then meaningless — `strokeProjectedRing` breaks the path there, exactly as
+   * the single-pass version used to break it inline.
+   */
+  private projectGroundRing(idx: number, k: number, slot: number): void {
     const store = this.world.store;
-    const ctx = this.ctx;
     const isBuilding = store.kind[idx] === EntityKind.Building;
     const r = (isBuilding
       ? Math.max(2.4, store.footprintW[idx] * 2.4)
@@ -935,14 +1021,29 @@ export class Overlay {
     const cy = store.posY[idx] + 0.06;
     const cz = store.posZ[idx];
 
-    ctx.beginPath();
-    let started = false;
-    for (let s = 0; s <= RING_SEGMENTS; s++) {
+    const base = slot * RING_POINTS;
+    for (let s = 0; s < RING_POINTS; s++) {
       const a = (s / RING_SEGMENTS) * Math.PI * 2;
       this.v3.set(cx + Math.cos(a) * r, cy, cz + Math.sin(a) * r);
-      if (!this.cameraRig.worldToScreen(this.v3, this.v2)) { started = false; continue; }
-      if (!started) { ctx.moveTo(this.v2.x, this.v2.y); started = true; }
-      else ctx.lineTo(this.v2.x, this.v2.y);
+      const ok = this.cameraRig.worldToScreen(this.v3, this.v2);
+      RING_OK[base + s] = ok ? 1 : 0;
+      RING_XY[(base + s) * 2] = this.v2.x;
+      RING_XY[(base + s) * 2 + 1] = this.v2.y;
+    }
+  }
+
+  /** Replay a projected ring as one stroked path, in the current ink. */
+  private strokeProjectedRing(slot: number): void {
+    const ctx = this.ctx;
+    const base = slot * RING_POINTS;
+    ctx.beginPath();
+    let started = false;
+    for (let s = 0; s < RING_POINTS; s++) {
+      if (RING_OK[base + s] === 0) { started = false; continue; }
+      const x = RING_XY[(base + s) * 2];
+      const y = RING_XY[(base + s) * 2 + 1];
+      if (!started) { ctx.moveTo(x, y); started = true; }
+      else ctx.lineTo(x, y);
     }
     ctx.stroke();
   }
@@ -1454,6 +1555,27 @@ export class Overlay {
     }
   }
 
+  /* -- the self-repair pulse ink ------------------------------------- *
+   * `beat` is a function of `this.time` alone, so EVERY mending bar in a frame
+   * wants the identical pair of strings — and `rgba()` builds a string of its
+   * own AND an array inside `hexToRgb`, so a screenful of recovering infantry
+   * was allocating four objects per unit per frame in the innermost draw pass.
+   * Same trick as `rebuildRallyInk`, on a faster clock: the tone changes every
+   * frame rather than every faction change, so this is two allocations per
+   * FRAME instead of two per bar, and none at all in a frame where nothing is
+   * healing. Not zero — the alpha is continuously animated and rounding it to
+   * reach zero would change the pixels the fixtures photograph. */
+  private mendBeat = -1;
+  private mendCapInk = '';
+  private mendCrossInk = '';
+
+  private rebuildMendInk(beat: number): void {
+    if (beat === this.mendBeat) return;
+    this.mendBeat = beat;
+    this.mendCapInk = rgba(SEMANTIC.ok, 0.22 + 0.42 * beat);
+    this.mendCrossInk = rgba(SEMANTIC.ok, 0.55 + 0.45 * beat);
+  }
+
   private drawOneBar(e: number, mending: boolean): void {
     const store = this.world.store;
     const ctx = this.ctx;
@@ -1519,9 +1641,10 @@ export class Overlay {
      * -------------------------------------------------------------------- */
     if (mending) {
       const beat = 0.55 + 0.45 * Math.sin(this.time * 4.4);
+      this.rebuildMendInk(beat);
       if (lit < barW) {
         const cap = Math.min(barW - lit, Math.max(2, Math.round(4 * u)));
-        ctx.fillStyle = rgba(SEMANTIC.ok, 0.22 + 0.42 * beat);
+        ctx.fillStyle = this.mendCapInk;
         ctx.fillRect(x + lit, y, cap, barH);
       }
       const s = Math.max(5, Math.round(7 * u));
@@ -1530,7 +1653,7 @@ export class Overlay {
       const gy = Math.round(y + barH * 0.5 - s * 0.5);
       ctx.fillStyle = SEMANTIC.worldBacking;
       ctx.fillRect(gx - pad, gy - pad, s + pad * 2, s + pad * 2);
-      ctx.fillStyle = rgba(SEMANTIC.ok, 0.55 + 0.45 * beat);
+      ctx.fillStyle = this.mendCrossInk;
       ctx.fillRect(gx, Math.round(gy + (s - arm) * 0.5), s, arm);
       ctx.fillRect(Math.round(gx + (s - arm) * 0.5), gy, arm, s);
     }
@@ -1689,6 +1812,7 @@ export class Overlay {
     }
     this.pointerInside = false;
     this.rallyArmed = false;
+    this.hoveredId = NONE;
     for (const f of this.floaters) f.active = false;
     for (const m of this.markers) m.active = false;
   }

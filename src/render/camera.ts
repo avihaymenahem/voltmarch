@@ -402,6 +402,8 @@ export class CameraRig {
   private readonly _offset = new THREE.Vector3();
   private readonly _shakeOffset = new THREE.Vector3();
   private readonly _rect = { left: 0, top: 0, width: 1, height: 1 };
+  /** False once per frame, so `readRect` measures at most once. See `readRect`. */
+  private rectValid = false;
   private readonly _mpp = { h: 1, v: 1 };
 
   constructor(options: CreateCameraOptions) {
@@ -455,6 +457,10 @@ export class CameraRig {
   /* ---------------------------------------------------------------------- */
 
   setAspect(width: number, height: number): void {
+    // BEFORE the early return. A resize that happens to preserve the aspect
+    // ratio still moves the rect, and this is the one invalidating cause that
+    // is already reported to this file.
+    this.rectValid = false;
     const a = Math.max(1e-3, width / Math.max(1, height));
     if (Math.abs(this.camera.aspect - a) < 1e-6) return;
     this.camera.aspect = a;
@@ -780,6 +786,11 @@ export class CameraRig {
 
   update(dt: number): void {
     if (this.disposed) return;
+    // The frame boundary, and the only cache invalidation `readRect` needs that
+    // is not already reported to this file. Runs before anything in the frame
+    // projects or picks, so the first reader pays for one real measurement and
+    // every reader after it is free.
+    this.rectValid = false;
     const cfg = RENDER_CONFIG.camera;
     const d = Math.min(dt, 0.1); // never integrate a tab-switch hitch
 
@@ -1022,12 +1033,34 @@ export class CameraRig {
     );
   }
 
+  /**
+   * The element's client rect, measured AT MOST ONCE PER FRAME.
+   *
+   * `getBoundingClientRect` forces a synchronous layout flush, and this sits at
+   * the bottom of `worldToScreen` — which `src/ui/Overlay.ts` calls once per
+   * ring POINT per unit per frame, 21 points to a ring. A forty-unit selection
+   * was therefore driving ~2500 forced reflows inside one overlay pass, for a
+   * rectangle that only moves when the PAGE moves.
+   *
+   * WHAT ACTUALLY INVALIDATES IT: a window resize; a page SCROLL, because the
+   * rect is viewport-relative and not document-relative; any layout change that
+   * moves the canvas (the sidebar collapsing, entering fullscreen); and a
+   * browser zoom. Only the first of those is reported to this file, and hanging
+   * a listener on each of the others would still miss the fourth — so the cache
+   * is dropped once per frame in `update()` instead, which catches every cause
+   * there is or ever will be. Staleness is bounded by ONE FRAME: a pointer or
+   * wheel event that lands between two frames reads the rect as of the current
+   * frame, which is the same rect every projection in that frame used, so the
+   * cursor and the picture can never disagree with each other.
+   */
   private readRect(): { left: number; top: number; width: number; height: number } {
+    if (this.rectValid) return this._rect;
     const r = this.domElement.getBoundingClientRect();
     this._rect.left = r.left;
     this._rect.top = r.top;
     this._rect.width = Math.max(1, r.width);
     this._rect.height = Math.max(1, r.height);
+    this.rectValid = true;
     return this._rect;
   }
 

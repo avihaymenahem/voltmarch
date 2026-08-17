@@ -99,7 +99,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 3318 across 129 files (+1 opt-in probe)
+npm test             # vitest, currently 3591 across 138 files (+1 opt-in probe)
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -527,37 +527,42 @@ module. `docs/SPEC_DRIFT_AUDIT.md` #62 is the entry.
   banned — there is a test asserting this. Use `s.rng` and the tick counter. This is not
   hygiene any more: it is what makes multiplayer possible at all.
 - **Performance.** 200+ units at 60fps, zero allocation in the frame loop, and a draw-call budget of
-  130 — which is a TARGET, not a description. Measured on the thirteen capture fixtures via
-  `renderer.info.render.calls` and reported per shot in `shots/_report.json` as `frame.drawCalls`,
-  the real figure is **146–219**: `03-terrain-closeup` and `08-naval-water` are the cheapest at 146,
-  `01-establishing-base` the dearest at 219. The `+1` over the 145–218 measured earlier in the same
-  release is `render/contact-shadows.system.ts`, which is one `InstancedMesh` for every contact pool
-  in the frame — the cost was predicted at one draw and measured at one draw.
+  130.
 
-  **It was 174–273 until the duplicate shadow pass was deleted**, and that is the whole of the
-  improvement — see the `autoUpdate = false` block in `renderer.ts`. Requote this from a real
-  `shots/_report.json` rather than carrying it forward; it has now drifted three times, twice
-  upward and once down, and a range nobody re-measures is how `MAX_DRAW_CALLS` came to be quoted as
-  achieved.
+  **`frame.drawCalls` AND `MAX_DRAW_CALLS` MEASURE DIFFERENT QUANTITIES, AND THIS BLOCK COMPARED
+  THEM FOR THREE RELEASES.** `renderer.info.autoReset` is `false` (`renderer.ts`) and the reset
+  happens once per frame in `beginFrame()`, so the 146–219 in `shots/_report.json` is a SUM OVER
+  THREE SCENE SUBMISSIONS: the colour pass, the shadow pass, and `GTAOPass`'s normal prepass — which
+  is a whole second `renderer.render()` of the scene with an override material. `MAX_DRAW_CALLS`
+  budgets the COLOUR PASS. Instrumented live against `renderBufferDirect` and reproducing
+  `_report.json` exactly, `01-establishing-base`'s 219 is:
 
-  **This line used to say "that count includes the three CSM shadow cascades". THERE IS NO CSM.**
-  `src/render/scene.ts:451-473` builds ONE `DirectionalLight` with ONE orthographic shadow camera,
-  and the only other shadow-capable light — the ground bounce at `:489` — sets
-  `castShadow = false` at `:493`. `QualitySettings.shadowCascades` is written and read by nobody.
-  The phrase made 273 sound accounted for when it is not, which is worse than no explanation at all.
-  What the count DOES include is the shadow map rendered **twice per frame**: `GTAOPass` issues its
-  own `renderer.render()` for a normal prepass, and `renderer.shadowMap.autoUpdate` is `true`, so
-  the shadow pass runs again inside it. **Re-measured 2026-08-12 from a
-  fresh `_report.json` and unchanged on every one of the thirteen** — the first time this range has
-  been confirmed rather than inherited, and it survived a release that added thirteen models. This
-  line read "under 130 draw
-  calls" as a statement of fact while the counter disagreed by more than 2×; `MAX_DRAW_CALLS` in
-  `config.ts` is the aspiration and `AdaptiveResolution`'s own header already records a profile at
-  203. Do not quote 130 as achieved, and do not spend draws freely on the grounds that the budget is
-  fictional — closing that gap is real outstanding work. **Requote this range from a real
-  `_report.json` rather than carrying it forward**; it has drifted upward twice, and the top of it
-  moved 263 → 273 while nobody was looking. InstancedMesh for anything repeated, pools for anything
-  spawned, caller-supplied output arrays in query paths.
+  ```
+  219 total = 78 colour + 54 shadow + 67 AO normal prepass + 20 post quads
+  ```
+
+  So **the budget is met** — the colour pass is ~78 against 130 — and the previous instruction here
+  ("do not spend draws freely on the grounds that the budget is fictional — closing that gap is real
+  outstanding work") was chasing a gap that does not exist. The instrument now reports the split:
+  `stats()` emits `drawCallsByPass` and `shots/_report.json` carries `frame.drawCallsByPass`, where
+  `shadow + colour + ao + post === total` by construction. **Quote `frame.drawCallsByPass.colour`
+  against `MAX_DRAW_CALLS`; quote `frame.drawCalls` only as the content fingerprint it is.**
+
+  The three-submission total was 174–273 until the duplicate shadow pass was deleted (see the
+  `autoUpdate = false` block in `renderer.ts`), and it drops again with the pad AO exclusion.
+  **Requote both figures from a real `_report.json` rather than carrying them forward** — the old
+  range drifted three times, twice upward, and a range nobody re-measures is exactly how the
+  comparison above came to be believed.
+
+  **There is no CSM.** `src/render/scene.ts` builds ONE `DirectionalLight` with ONE orthographic
+  shadow camera, and the only other shadow-capable light — the ground bounce — sets
+  `castShadow = false`. `QualitySettings.shadowCascades` used to be written and read by nobody; it
+  is deleted now, along with `shadowResolution`, `lodBias`, `lodDistances`, `cascadeNear`,
+  `shadowColor`, `bloom.mips` and `lensDirt`. **There is still no LOD system** — `lodDistances` was
+  deleted rather than wired, so do not write code that assumes one exists.
+
+  InstancedMesh for anything repeated, pools for anything spawned, caller-supplied output arrays in
+  query paths.
 - **The AI issues the same commands the player does**, through `channels.command`. It must never
   reach into entity state directly.
 - **No `AmbientLight` anywhere.** `HemisphereLight` only — a flat ambient kills the shadow tint that

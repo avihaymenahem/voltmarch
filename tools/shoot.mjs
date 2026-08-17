@@ -897,6 +897,19 @@ async function captureShot(shot, attempt) {
       const s = RA.stats();
       const frame = {
         drawCalls: s.drawCalls,
+        /*
+         * WHAT THOSE DRAW CALLS WERE SPENT ON, because `drawCalls` alone has
+         * been misread as a budget overrun for several releases. It is a SUM
+         * over three scene submissions — the shadow map, the colour pass and
+         * GTAO's normal prepass — plus the full-screen quads, since
+         * `renderer.info.autoReset` is false and the counter is reset once per
+         * frame. `MAX_DRAW_CALLS` bounds the COLOUR pass, which on
+         * `01-establishing-base` is 78 of the 219 reported here.
+         *
+         * Additive: `drawCalls` keeps its name, its value and its position, so
+         * every existing `_report.json` comparison still reads.
+         */
+        drawCallsByPass: s.drawCallsByPass,
         triangles: s.triangles,
         programs: s.programs,
         geometries: s.geometries,

@@ -172,6 +172,10 @@ const DEFAULT_KEY: Readonly<Record<StructureFaction, string>> = {
  * calls instead of four.
  */
 function toKindMesh(m: StructureModel): KindMesh {
+  // ONE depth material for the whole roster. Every part whose vertex shader
+  // sinks it below the pad while it builds must carry it, or the shadow map
+  // keeps drawing the finished silhouette of a structure that is not there yet.
+  const depth = buildingLibrary.depthMaterial();
   const sockets: SocketSpec[] = m.sockets.map((s) => ({
     part: s.part, x: s.x, y: s.y, z: s.z, yaw: s.yaw, pitch: s.pitch, followsTurret: false,
   }));
@@ -189,8 +193,15 @@ function toKindMesh(m: StructureModel): KindMesh {
       geometry: m.pad,
       material: m.padMaterial,
       // A pad is 40 mm of slab on the ground. Casting a shadow from it buys
-      // nothing and costs a shadow-map draw per structure on screen.
+      // nothing and costs a shadow-map draw per structure on screen — and for
+      // the same reason it is not an AMBIENT OCCLUDER either: GTAO's normal
+      // prepass took it (opaque, depth-writing, on the BUILDINGS layer) and
+      // read four centimetres of slab as a wall standing on the ground, which
+      // is the failure `render/post.ts#aoOccluder` already documents for the
+      // decal sheet. -10 draws on `01-establishing-base`, one per pad-bearing
+      // MODEL on screen, because batches are keyed per (model, part).
       castShadow: false,
+      aoOccluder: false,
       receiveShadow: true,
     });
   }
@@ -201,6 +212,7 @@ function toKindMesh(m: StructureModel): KindMesh {
       x: m.turretPivot[0], y: m.turretPivot[1], z: m.turretPivot[2],
       followsTurret: true,
       castShadow: true,
+      customDepthMaterial: depth,
       receiveShadow: true,
     });
   }
@@ -212,6 +224,7 @@ function toKindMesh(m: StructureModel): KindMesh {
     sockets,
     turretPivotY: m.turretPivot[1],
     castShadow: true,
+    customDepthMaterial: depth,
     receiveShadow: true,
   };
 }

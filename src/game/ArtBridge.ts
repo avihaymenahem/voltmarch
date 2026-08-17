@@ -158,7 +158,6 @@ export function artPatch(art: ArtDirection): DeepPartial<RenderConfig> {
         mapSize: sun.cascadeResolution,
         bias: sun.shadowBias,
         normalBias: sun.shadowNormalBias,
-        nearExtent: sun.cascadeNear,
         farExtent: sun.cascadeFar,
         intensity: sun.shadowIntensity,
         radius: sun.shadowSoftness,
@@ -169,7 +168,6 @@ export function artPatch(art: ArtDirection): DeepPartial<RenderConfig> {
       elevation: sun.elevationDeg,
       color: hexToInt(sun.color),
       intensity: sun.intensity,
-      shadowColor: hexToInt(sun.shadowColor),
     },
     sky: {
       zenith: hexToInt(atm.skyZenith),
@@ -198,12 +196,15 @@ export function artPatch(art: ArtDirection): DeepPartial<RenderConfig> {
         samples: ao.samples,
         halfRes: ao.halfRes,
       },
+      // `strength` is the AUTHORED figure; `post.ts#syncConfig` multiplies it
+      // by `max(0.25, emissiveBoost / 1.6)` before it reaches the pass. This
+      // bridge deliberately does not pre-multiply — a critic mutating
+      // `emissiveBoost` at runtime must see the glow move.
       bloom: {
         threshold: bloom.threshold,
         strength: bloom.strength,
         radius: bloom.radius,
         emissiveBoost: bloom.emissiveBoost,
-        lensDirt: bloom.lensDirt,
       },
       grade: {
         mode: toneMode(tone.mode),

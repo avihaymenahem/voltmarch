@@ -739,17 +739,80 @@ function lin(hex: string): string {
 }
 function f(n: number): string { return n.toFixed(4); }
 
+/* --------------------------------------------------------------------------
+ * The vertex maths, written ONCE and injected into TWO programs.
+ *
+ * The colour pass and the shadow pass have to agree about where a structure IS,
+ * or the frame shows a shadow of a building that is not there — which is
+ * exactly what shipped until the depth material below existed. Two copies of
+ * this arithmetic is the obvious way for them to drift apart again, so there is
+ * one copy and each program decides only WHERE to inject it.
+ *
+ * `SOLVE` writes the four globals `PARS` declares; the colour program needs it
+ * at `<beginnormal_vertex>` (the radar spin has to reach `objectNormal` before
+ * `<defaultnormal_vertex>` consumes it), the depth program has no normals and
+ * takes it at `<begin_vertex>`. `APPLY` then moves `transformed` identically in
+ * both.
+ * -------------------------------------------------------------------------- */
+
+/** Uniforms, attributes and the four globals `SOLVE`/`APPLY` communicate through. */
+const STRUCTURE_ANIM_PARS = `
+        uniform float uTime;
+        attribute vec4 aState;      // hpFrac, buildProgress, selected, seed
+        attribute vec4 aFeature;    // code, riseHeight, animParam, phase
+        varying float vRaClip;
+        float raSpinC = 1.0;
+        float raSpinS = 0.0;
+        float raSink = 0.0;
+        float raDoor = 0.0;`;
+
+/** Solve sink / door / spin for this vertex. Touches nothing but the globals. */
+const STRUCTURE_ANIM_SOLVE = `
+        {
+          float code = aFeature.x;
+          float bp = clamp(aState.y, 0.0, 1.0);
+          // A pad never rises; everything else sinks by its own model height.
+          float rises = 1.0 - step(0.5, code) * step(code, 1.5);
+          raSink = (1.0 - bp) * aFeature.y * rises;
+          // Bay door: retracts DOWNWARD into the floor, where the same ground
+          // cut that hides an unbuilt structure hides the leaf for free.
+          float isDoor = step(1.5, code) * step(code, 2.5);
+          float ph = fract(uTime / ${f(BUILDING_ANIM.doorPeriodSeconds)} + aState.w);
+          float open = smoothstep(0.0, 0.10, ph) * smoothstep(${f(BUILDING_ANIM.doorOpenFraction + 0.14)}, ${f(BUILDING_ANIM.doorOpenFraction)}, ph);
+          raDoor = isDoor * aFeature.z * open;
+          // Radar sweep: about the model Y axis, so a dish is authored on the
+          // centre line. RA3's dome is a dish on a central tower; this is that.
+          float isSpin = step(2.5, code) * step(code, 3.5);
+          float ang = uTime * aFeature.z * isSpin;
+          raSpinC = cos(ang);
+          raSpinS = sin(ang);
+        }`;
+
+/** Move `transformed` and publish the ground cut. Identical in both programs. */
+const STRUCTURE_ANIM_APPLY = `
+        transformed.xz = mat2(raSpinC, raSpinS, -raSpinS, raSpinC) * transformed.xz;
+        transformed.y -= raSink + raDoor;
+        // A static pad is never clipped (its skirt is BELOW the origin on
+        // purpose); everything else is cut at the ground plane.
+        vRaClip = (abs(aFeature.x - 1.0) < 0.5) ? 1.0 : transformed.y;`;
+
+/** The ground cut itself. Goes after `<clipping_planes_fragment>` in both. */
+const STRUCTURE_CLIP_FRAGMENT = `
+        // Construction rise: the part of the structure still underground is
+        // simply not there. This is what makes it grow out of its pad.
+        if (vRaClip < 0.0) discard;`;
+
 /**
  * THE ANIMATION SHADER. Everything a structure does at runtime lives here:
  * construction rise, bay doors, radar sweep, damage soot, interior fire,
  * selection pulse. All of it reads per-instance `aState` and per-vertex
  * `aFeature`, so an animated base is still one draw call per part and zero CPU.
  *
- * KNOWN LIMIT: this is a colour-pass program. `MeshDepthMaterial` (the shadow
- * pass) does not run `onBeforeCompile`, so a structure part-way through
- * construction casts its FINISHED silhouette for the few seconds it is rising.
- * Documented rather than hidden — the fix is a `customDepthMaterial`, which
- * needs a hook on the InstancedMesh the batcher owns.
+ * This is the COLOUR pass. `createStructureDepthMaterial` is its shadow-pass
+ * twin and the two share `STRUCTURE_ANIM_*` above; a structure part-way through
+ * construction used to cast its FINISHED silhouette, because three substitutes
+ * its own `MeshDepthMaterial` for the shadow map and that material never ran
+ * this `onBeforeCompile`.
  */
 function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
   const A = BUILDING_ANIM;
@@ -765,47 +828,18 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
     applyShroudTint(shader);
 
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', `#include <common>
-        uniform float uTime;
-        attribute vec4 aState;      // hpFrac, buildProgress, selected, seed
+      .replace('#include <common>', `#include <common>${STRUCTURE_ANIM_PARS}
         attribute vec3 aTeamColor;  // LINEAR rgb
-        attribute vec4 aFeature;    // code, riseHeight, animParam, phase
         varying vec4 vRaState;
-        varying vec3 vRaTeam;
-        varying float vRaClip;
-        float raSpinC = 1.0;
-        float raSpinS = 0.0;
-        float raSink = 0.0;
-        float raDoor = 0.0;`)
-      .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
-        {
-          float code = aFeature.x;
-          float bp = clamp(aState.y, 0.0, 1.0);
-          // A pad never rises; everything else sinks by its own model height.
-          float rises = 1.0 - step(0.5, code) * step(code, 1.5);
-          raSink = (1.0 - bp) * aFeature.y * rises;
-          // Bay door: retracts DOWNWARD into the floor, where the same ground
-          // cut that hides an unbuilt structure hides the leaf for free.
-          float isDoor = step(1.5, code) * step(code, 2.5);
-          float ph = fract(uTime / ${f(A.doorPeriodSeconds)} + aState.w);
-          float open = smoothstep(0.0, 0.10, ph) * smoothstep(${f(A.doorOpenFraction + 0.14)}, ${f(A.doorOpenFraction)}, ph);
-          raDoor = isDoor * aFeature.z * open;
-          // Radar sweep: about the model Y axis, so a dish is authored on the
-          // centre line. RA3's dome is a dish on a central tower; this is that.
-          float isSpin = step(2.5, code) * step(code, 3.5);
-          float ang = uTime * aFeature.z * isSpin;
-          raSpinC = cos(ang);
-          raSpinS = sin(ang);
-          objectNormal.xz = mat2(raSpinC, raSpinS, -raSpinS, raSpinC) * objectNormal.xz;
-        }`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
-        transformed.xz = mat2(raSpinC, raSpinS, -raSpinS, raSpinC) * transformed.xz;
-        transformed.y -= raSink + raDoor;
+        varying vec3 vRaTeam;`)
+      // The spin has to reach `objectNormal` here, BEFORE
+      // `<defaultnormal_vertex>` turns it into `transformedNormal` — which is
+      // why the solve cannot simply live next to the `transformed` edit below.
+      .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>${STRUCTURE_ANIM_SOLVE}
+        objectNormal.xz = mat2(raSpinC, raSpinS, -raSpinS, raSpinC) * objectNormal.xz;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>${STRUCTURE_ANIM_APPLY}
         vRaState = aState;
-        vRaTeam = aTeamColor;
-        // A static pad is never clipped (its skirt is BELOW the origin on
-        // purpose); everything else is cut at the ground plane.
-        vRaClip = (abs(aFeature.x - 1.0) < 0.5) ? 1.0 : transformed.y;`);
+        vRaTeam = aTeamColor;`);
 
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
@@ -813,10 +847,8 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
         varying vec4 vRaState;
         varying vec3 vRaTeam;
         varying float vRaClip;`)
-      .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>
-        // Construction rise: the part of the structure still underground is
-        // simply not there. This is what makes it grow out of its pad.
-        if (vRaClip < 0.0) discard;`)
+      .replace('#include <clipping_planes_fragment>',
+        `#include <clipping_planes_fragment>${STRUCTURE_CLIP_FRAGMENT}`)
       .replace('#include <map_fragment>', `#include <map_fragment>
         {
           // DAMAGE. Bible 8.8: a hurt structure soots, it does not recolour.
@@ -853,8 +885,73 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
   // function is shared by every structure material in the game.
   // v2: the shroud self-tint changed the generated program. Without the bump
   // three serves the cached v1 and the injection is silently a no-op.
-  mat.customProgramCacheKey = () => 'ra3.structure.v2';
+  // v3: the vertex injection moved into the shared `STRUCTURE_ANIM_*` snippets.
+  // The maths is unchanged and the generated GLSL is equivalent, but the SOURCE
+  // is not, and this key's whole job is to stop the cache serving a program
+  // built from different source. Bump it whenever the string changes.
+  mat.customProgramCacheKey = () => 'ra3.structure.v3';
   mat.needsUpdate = true;
+}
+
+/**
+ * THE SHADOW-PASS TWIN OF `applyStructureShader`, AND THE END OF A KNOWN LIMIT.
+ *
+ * three does not draw the shadow map with an object's own material: it
+ * substitutes a shared `MeshDepthMaterial`, which never runs the colour
+ * material's `onBeforeCompile`. So everything the structure vertex shader does
+ * — the construction sink, the bay door, the radar spin — was invisible to the
+ * shadow pass, and a structure part-way through its rise cast the silhouette of
+ * a FINISHED building. At `buildProgress === 0` it was worse than a mismatch:
+ * the colour pass discards every fragment (`RenderBridge.sunkStructures`
+ * describes that state from the other side), so the frame showed a full, sharp
+ * shadow of a building with nothing but a pad under it.
+ *
+ * `Object3D.customDepthMaterial` is the hook, and reaching the InstancedMesh
+ * needed `BatchPartSpec.customDepthMaterial` — see `render/InstanceBatcher.ts`.
+ * The precedent is `PropLibrary.createPropMaterial`, which does the same for the
+ * wind sway.
+ *
+ * ONE MATERIAL FOR EVERY STRUCTURE IN THE GAME. It reads `aState` (the
+ * batcher's per-instance channel) and `aFeature` (per-vertex, written by
+ * `MeshAcc.toGeometry` and carried into the batcher's private geometry by
+ * reference) and nothing else — no atlas, no palette, no coat — so all four
+ * armies, bodies and turrets alike, share one program.
+ *
+ * PACKING IS LEFT AT THE `MeshDepthMaterial` DEFAULT, deliberately, and this is
+ * where the prop precedent should NOT be copied. `PropLibrary` asks for
+ * `RGBADepthPacking`; in three 0.185 a directional light's shadow map is a real
+ * `DepthTexture` and the sampler reads the depth attachment, so the fragment
+ * COLOUR is never looked at. Packing it costs a `packDepthToRGBA` per fragment
+ * and buys nothing. `BasicDepthPacking` is also what three's own `_depthMaterial`
+ * uses, so this stays byte-identical to the pass it replaces apart from the
+ * vertex maths and the discard.
+ */
+export function createStructureDepthMaterial(): THREE.MeshDepthMaterial {
+  const mat = new THREE.MeshDepthMaterial();
+  mat.name = 'ra3.structure.depth';
+  mat.onBeforeCompile = (shader) => {
+    shader.uniforms.uTime = buildingTime;
+    shader.vertexShader = shader.vertexShader
+      // The depth program has no `<beginnormal_vertex>` outside
+      // `USE_DISPLACEMENTMAP` and needs no normals, so solve and apply land in
+      // the same chunk. `<begin_vertex>` still runs before `<project_vertex>`,
+      // which is the only ordering that matters.
+      .replace('#include <common>', `#include <common>${STRUCTURE_ANIM_PARS}`)
+      .replace('#include <begin_vertex>',
+        `#include <begin_vertex>${STRUCTURE_ANIM_SOLVE}${STRUCTURE_ANIM_APPLY}`);
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying float vRaClip;`)
+      .replace('#include <clipping_planes_fragment>',
+        `#include <clipping_planes_fragment>${STRUCTURE_CLIP_FRAGMENT}`);
+  };
+  // Without a key of its own three would serve this material the program it
+  // compiled for its OWN stock depth material — same shader id, same
+  // parameters — and the injection would silently do nothing. That is the
+  // failure the colour material's key exists to prevent, one pass over.
+  mat.customProgramCacheKey = () => 'ra3.structure.depth.v1';
+  mat.needsUpdate = true;
+  return mat;
 }
 
 /**
@@ -1632,8 +1729,27 @@ export class BuildingLibrary {
   private readonly materials = new Map<string, THREE.MeshPhysicalMaterial>();
   private readonly atlases = new Map<string, GreebleAtlas>();
   private readonly factory: GreebleFactory;
+  /**
+   * The one shadow-pass program every structure shares. Built on first ask
+   * rather than in the constructor, because `buildingLibrary` is constructed at
+   * module load and a WebGL material allocated there would outlive a match that
+   * never started.
+   */
+  private depth: THREE.MeshDepthMaterial | null = null;
 
   constructor(factory: GreebleFactory = greebles) { this.factory = factory; }
+
+  /**
+   * The shadow-pass material for every structure part that casts.
+   *
+   * One instance for the whole game: it reads only `aState` and `aFeature`, so
+   * nothing about a faction, an atlas or a coat can change it. See
+   * `createStructureDepthMaterial`.
+   */
+  depthMaterial(): THREE.MeshDepthMaterial {
+    if (this.depth === null) this.depth = createStructureDepthMaterial();
+    return this.depth;
+  }
 
   /**
    * Build this library's atlases off the main thread, before `build` needs them.
@@ -1726,6 +1842,11 @@ export class BuildingLibrary {
       m.turret?.dispose();
     }
     for (const mat of this.materials.values()) mat.dispose();
+    // Not in `materials` (wrong type, and it is not keyed on an atlas), so it
+    // needs its own line — a leaked program per match is exactly the kind of
+    // thing nobody notices until the fourth skirmish of a session.
+    this.depth?.dispose();
+    this.depth = null;
     this.models.clear();
     this.materials.clear();
     this.atlases.clear();

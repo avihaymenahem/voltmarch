@@ -30,6 +30,11 @@
  */
 
 import * as THREE from 'three';
+// The two terrain extremes the shadow depth slab is fitted around. Imported
+// rather than copied: `TERRAIN_SEA_FLOOR`'s own comment already says "do not
+// deepen this without re-checking that pad", and a pad that reads the constant
+// is the only version of that sentence a compiler can enforce.
+import { TERRAIN_MAX_HEIGHT, TERRAIN_SEA_FLOOR } from '../core/config';
 import {
   RENDER_CONFIG,
   onConfigChanged,
@@ -464,12 +469,18 @@ export function createScene(options: CreateSceneOptions): SceneRig {
   shadow.radius = cfgShadow.radius;
   if ('intensity' in shadow) (shadow as any).intensity = cfgShadow.intensity;
   const shadowCam = shadow.camera as THREE.OrthographicCamera;
+  // Placeholder bounds only. `fitShadow` overwrites all six of these from the
+  // visible ground quad before the first frame is presented, so the numbers
+  // here configure nothing — they exist so the camera is well-formed if
+  // something reads it before the first fit. (This used to read
+  // `cfgShadow.nearExtent`, which said the same thing far less clearly and was
+  // the field's only consumer; it is gone from RendererConfig now.)
   shadowCam.near = 1;
   shadowCam.far = 700;
-  shadowCam.left = -cfgShadow.nearExtent;
-  shadowCam.right = cfgShadow.nearExtent;
-  shadowCam.top = cfgShadow.nearExtent;
-  shadowCam.bottom = -cfgShadow.nearExtent;
+  shadowCam.left = -cfgShadow.farExtent;
+  shadowCam.right = cfgShadow.farExtent;
+  shadowCam.top = cfgShadow.farExtent;
+  shadowCam.bottom = -cfgShadow.farExtent;
   shadowCam.updateProjectionMatrix();
 
   /* ---- fill ------------------------------------------------------------ */
@@ -653,6 +664,49 @@ export function createScene(options: CreateSceneOptions): SceneRig {
    * the point, because a texel grid that changes size cannot be snapped to.
    */
   const SHADOW_EXTENT_STEP = 16;
+
+  /**
+   * Metres the light sits from the plane `dot(p, sunDir) === 0`.
+   *
+   * It is a plain standoff and nothing else: an orthographic light has no
+   * position in any meaningful sense, only a direction and a depth slab, and
+   * `near`/`far` below are measured from THIS plane. It used to be the bare
+   * literal 250 written twice — once in `sun.position`, once inside the `far`
+   * expression — which is precisely how the two came apart.
+   */
+  const SHADOW_STANDOFF = 250;
+
+  /**
+   * Metres above y = 0 that may still cast into the fitted quad.
+   *
+   * TERRAIN_MAX_HEIGHT (24) of hill, plus the tallest structure in the roster
+   * (the Radar, 12 m) standing on top of it, plus `AI_BUILD.airAltitudeMetres`
+   * (6) of aircraft over that, plus slack for debris and projectiles.
+   *
+   * A caster is NOT bounded by the ortho box's x/y: light-space x and y are
+   * perpendicular to `sunDir`, so a caster and the shadow it throws share them
+   * exactly, and anything whose shadow lands inside the quad is inside the box
+   * by construction. Depth is the only axis that has to be widened for it.
+   */
+  const SHADOW_CASTER_CEILING = TERRAIN_MAX_HEIGHT + 24;
+
+  /**
+   * Metres below y = 0 that may still RECEIVE. `TERRAIN_SEA_FLOOR` is -6 and
+   * the seabed is a lit, shadow-receiving surface; the rest is slack, matching
+   * the 12 m the x/y extent is padded by for the same reason.
+   */
+  const SHADOW_RECEIVER_FLOOR = -TERRAIN_SEA_FLOOR + 8;
+
+  /**
+   * Floor on `sin(elevation)` when converting a height into a depth margin.
+   *
+   * The conversion is `height / sin(elevation)` and the sun elevation is a
+   * configurable mood value (38 deg at noon, lower on other presets). Without a
+   * clamp a sunset preset at 3 degrees would ask for a 900 m near margin and
+   * put the whole depth budget back where this fix found it.
+   */
+  const SHADOW_MIN_SIN_ELEVATION = 0.2;
+
   // Scratch — allocated once, reused forever. Nothing here allocates per frame.
   const _corners: THREE.Vector3[] = [];
   for (let i = 0; i < 5; i++) _corners.push(new THREE.Vector3());
@@ -736,7 +790,7 @@ export function createScene(options: CreateSceneOptions): SceneRig {
      * constant, and a world position quantised in it lands on the same texel
      * every frame. That is what makes the snap mean something.
      */
-    _lightPos.copy(sunDir).multiplyScalar(250);
+    _lightPos.copy(sunDir).multiplyScalar(SHADOW_STANDOFF);
     _lightMatrix.lookAt(_lightPos, _zero, _up);
     _lightMatrix.setPosition(0, 0, 0);
     _lightToWorld.copy(_lightMatrix);   // rotation only; needed to unsnap
@@ -783,16 +837,82 @@ export function createScene(options: CreateSceneOptions): SceneRig {
     // Depth is deliberately NOT carried into the light position. Sliding the
     // light along its own forward axis cannot change texel alignment, but it
     // does leave `sun.position` drifting a fraction of a millimetre per frame,
-    // which makes "is the shadow rig stable?" impossible to assert exactly.
-    // near/far below already spans the depth range with margin.
+    // which makes "is the shadow rig stable?" impossible to assert exactly. The
+    // depth SLAB moves instead — see near/far below, which is the fix for the
+    // bug that pinning this created.
     const cz = 0;
 
     shadowCam.left = -padded;
     shadowCam.right = padded;
     shadowCam.bottom = -padded;
     shadowCam.top = padded;
-    shadowCam.near = 1;
-    shadowCam.far = Math.max(300, 250 + (maxZ - minZ) + 60);
+
+    /*
+     * THE DEPTH SLAB, RE-CENTRED ON THE CONTENT — AND WHY IT HAD TO BE.
+     *
+     * `cz` is pinned to 0, so the light sits on the plane
+     * `dot(p, sunDir) === SHADOW_STANDOFF` and a point's depth in the shadow
+     * view is exactly `SHADOW_STANDOFF - dot(p, sunDir)`. Light-space z IS
+     * `dot(p, sunDir)`, so `minZ`/`maxZ` above already measure the fitted
+     * quad's depth extent and nothing new has to be computed for this.
+     *
+     * `near`/`far` used to be `1` and `250 + (maxZ - minZ) + 60`, which is a
+     * slab centred on the WORLD ORIGIN rather than on the quad. Rearranged,
+     * that far plane covers the quad only while `maxZ >= -60` — and across a
+     * 512 m map with the noon sun at azimuth 312 / elevation 38,
+     * `dot(p, sunDir)` sweeps about -300..+270.
+     *
+     * MEASURED, by re-simulating this whole function over a 4 m focus grid at
+     * 8 camera yaws (16 384 fits per distance). The old slab lost the sun
+     * shadow ENTIRELY at 22.5% / 12.1% / 1.1% of focus positions at camera
+     * distance 30 / 62 / 140, and lost part of it at 31.5% / 28.0% / 22.6%. The
+     * new one loses NOTHING at any of the three, which is not luck: the quad's
+     * depth extent IS [STANDOFF - maxZ, STANDOFF - minZ], so containing it is
+     * an identity rather than a fit. The concrete case is the Sunder Atoll
+     * island at (394, 122) at distance 62 — quad depth 388.9..462.6 against an
+     * old far plane of 383.7, now inside a 304..496 slab. Every one of the
+     * thirteen `npm run shots` fixtures sits at depth ~260, inside the old
+     * working band, so the harness could never have caught this.
+     *
+     * WHY NOT JUST RAISE `far` TO 700. Because three applies `shadowBias` to a
+     * post-divide [0,1] coordinate, so the bias is a FRACTION OF (far - near):
+     * at the shipped -0.0005 the old 341/376/460 m mean slabs were already
+     * detaching contact shadows by 0.17-0.23 m. A wider slab buys coverage by
+     * making peter-panning worse. Re-centring AND tightening does both jobs at
+     * once — mean slab 341 / 376 / 460 m becomes 149 / 184 / 268 m, so
+     * depth-range over content goes 10.9x / 5.8x / 3.1x to 4.8x / 2.8x / 1.8x
+     * and the ground detachment 0.17-0.23 m to 0.07-0.13 m.
+     *
+     * That is a SMALLER bias in metres, which is the trade being taken: less
+     * peter-panning, less headroom against acne. If acne ever shows up on a
+     * steep sunward slope, `RENDER_CONFIG.renderer.shadows.bias` is the knob —
+     * it is a fraction of this slab, so it now buys about half the push it did.
+     *
+     * WHY THE MARGINS ARE HEIGHT / sin(elevation), NOT HEIGHT. A caster `h`
+     * above the plane whose shadow lands inside the quad lies `h / sin(el)`
+     * further along the sun ray than that shadow, and it is the ray distance,
+     * not the height, that the near plane has to clear. `sinEl` comes from the
+     * live `sunDir` so a mood change re-derives it instead of inheriting a
+     * constant fitted to noon.
+     *
+     * TEXEL SNAPPING IS UNTOUCHED. `sun.position` is not a term in any of this;
+     * only the projection's depth range moves, and the projection's x/y — the
+     * only thing texel alignment depends on — is quantised exactly as before.
+     * The slab is floored/ceiled onto SHADOW_EXTENT_STEP so it can only ever
+     * widen, never clip, and so it holds still for every camera move inside one
+     * step: an unquantised slab would wobble `far - near` every frame, and with
+     * it the metric size of the bias, which is peter-panning that breathes.
+     */
+    const sinEl = Math.max(SHADOW_MIN_SIN_ELEVATION, sunDir.y);
+    const nearRaw = SHADOW_STANDOFF - maxZ - SHADOW_CASTER_CEILING / sinEl;
+    const farRaw = SHADOW_STANDOFF - minZ + SHADOW_RECEIVER_FLOOR / sinEl;
+    // An ORTHOGRAPHIC near plane may legitimately be negative: the light is a
+    // plane, not a point, and there is no perspective divide to blow up. Do not
+    // "fix" this by clamping to a positive number — that reintroduces the clip
+    // this whole block exists to remove, on the half of the map where
+    // `dot(p, sunDir)` is largest.
+    shadowCam.near = Math.floor(nearRaw / SHADOW_EXTENT_STEP) * SHADOW_EXTENT_STEP;
+    shadowCam.far = Math.ceil(farRaw / SHADOW_EXTENT_STEP) * SHADOW_EXTENT_STEP;
     shadowCam.updateProjectionMatrix();
 
     /*
@@ -804,7 +924,7 @@ export function createScene(options: CreateSceneOptions): SceneRig {
      */
     _snapped.set(cx, cy, cz).applyMatrix4(_lightToWorld);
     sun.target.position.copy(_snapped);
-    sun.position.copy(_snapped).addScaledVector(sunDir, 250);
+    sun.position.copy(_snapped).addScaledVector(sunDir, SHADOW_STANDOFF);
     sun.target.updateMatrixWorld();
     sun.updateMatrixWorld();
   }

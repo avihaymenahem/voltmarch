@@ -620,3 +620,83 @@ describe('garrisons and transports', () => {
     expect(rig.garrison.hostOfUnit(stray)).toBe(block);
   });
 });
+
+/* ========================================================================== */
+/* Orphaned passengers                                                        */
+/* ========================================================================== */
+
+/**
+ * A HULL THAT VANISHES WITHOUT KILLING ITS SQUAD.
+ *
+ * `ride` reaches `strand` when `st.index(carrierId)` no longer resolves — the
+ * "flushDestroyed race" its own header names, alongside a save load and a
+ * disposed service. Forcing an unresolvable handle is the honest way to
+ * reproduce it: it is the state, not the route, that these two pin.
+ *
+ * Reported as an unwinnable match on Sunder Atoll — the enemy base was flat and
+ * two harvesters sat in open water, alive, unkillable and counted by
+ * `Shell.pollOutcome`. `strand` used to `disembark` at the passenger's own
+ * position, which while riding IS the hull's position, and a shipyard hull is
+ * always afloat.
+ */
+describe('a passenger whose hull disappeared', () => {
+  let rig: Rig;
+  beforeEach(() => { rig = makeRig(); });
+
+  /** Point `carrierId` at a handle no live slot answers to. */
+  function orphan(rig: Rig, man: EntityId): void {
+    const st = rig.world.store;
+    st.carrierId[st.index(man)] = 0x7ffffff0;
+  }
+
+  it('drowns rather than standing on the sea when no ground is in reach', () => {
+    const hull = rig.unit('transport', ALLIES, 300, 300);
+    const men = loadSquad(rig, hull, 2);
+    const st = rig.world.store;
+
+    const base = rig.world.terrain;
+    rig.world.terrain = {
+      ...base,
+      isPassable: (_cx: number, _cz: number, loco: Locomotor) => loco !== Locomotor.Foot,
+      isOccupied: () => false,
+    } as ITerrain;
+
+    for (const m of men) orphan(rig, m);
+    rig.step();
+
+    for (const m of men) {
+      const i = st.index(m);
+      expect(i, 'slot vanished without a flush').toBeGreaterThanOrEqual(0);
+      // `markDead` only STAMPS: the slot is not freed and `Alive` is not
+      // cleared until `flushDestroyed` runs at Phase.Cleanup, which this rig
+      // does not drive. `PendingDestroy` is therefore the assertion — it is
+      // what `Damage.cleanupTick` scans for, and what makes the harvester
+      // stop being a living asset the moment a real tick runs.
+      expect(st.flags[i] & EntityFlag.PendingDestroy, 'left afloat and alive').not.toBe(0);
+      expect(st.state[i]).toBe(UnitState.Drowned);
+      expect(st.carrierId[i]).toBe(0);
+    }
+    expect(rig.transport.stats.stranded).toBe(2);
+    expect(rig.transport.stats.drowned).toBe(2);
+  });
+
+  it('is set down where it stands when that ground is legitimate', () => {
+    const hull = rig.unit('transport', ALLIES, 300, 300);
+    const men = loadSquad(rig, hull, 2);
+    const st = rig.world.store;
+
+    // Land under the hull: the save-load and disposal cases the old comment
+    // was protecting. Behaviour must be UNCHANGED for them.
+    for (const m of men) orphan(rig, m);
+    rig.step();
+
+    for (const m of men) {
+      const i = st.index(m);
+      expect(i, 'killed on passable ground').toBeGreaterThanOrEqual(0);
+      expect(st.flags[i] & EntityFlag.Alive).not.toBe(0);
+      expect(st.flags[i] & EntityFlag.Garrisoned).toBe(0);
+      expect(st.carrierId[i]).toBe(0);
+    }
+    expect(rig.transport.stats.stranded).toBe(0);
+  });
+});

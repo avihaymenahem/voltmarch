@@ -133,8 +133,10 @@ import {
 } from '../core/types';
 import type { Channels } from '../core/events';
 import type { EntityId, PlayerId, SimContext } from '../core/types';
-import { clampWorld } from '../core/math';
+import { clampWorld, isInMap, worldToCell } from '../core/math';
 import type { World } from '../core/world';
+import { locomotorForMoveClass } from './Flowfield';
+import { moveClassAt } from './Movement';
 import {
   COMMANDER_POWERS, COMMANDER_POWER_FX, CommanderPowerId, isCommanderPowerId,
   ownsCommanderPower,
@@ -195,7 +197,12 @@ export interface CommanderPowerStats {
    */
   refusedUnowned: number;
   unitsBombed: number;
-  cellsCharted: number;
+  /**
+   * Hostile units and structures exposed by Orbital Scan, summed over casts.
+   * Was `cellsCharted` while the power charted a circle; it exposes assets now,
+   * and a stat that kept counting cells would be measuring the deleted design.
+   */
+  assetsExposed: number;
   entitiesRepaired: number;
   creditsGranted: number;
   unitsShifted: number;
@@ -216,7 +223,7 @@ export class CommanderPowerService {
     refusedCharging: 0,
     refusedUnowned: 0,
     unitsBombed: 0,
-    cellsCharted: 0,
+    assetsExposed: 0,
     entitiesRepaired: 0,
     creditsGranted: 0,
     unitsShifted: 0,
@@ -456,19 +463,31 @@ export class CommanderPowerService {
   }
 
   /**
-   * ORBITAL SCAN — charts a wide circle permanently.
+   * ORBITAL SCAN — exposes every hostile unit and structure for a few seconds.
    *
-   * `exploreCircle` marks the cells EXPLORED and not visible: terrain and static
-   * objects are remembered, live units are not handed over. That is the honest
-   * version of a scan — it tells you what is built there, not where the tanks
-   * are standing this second — and it is the one reveal primitive that cannot
-   * leak live information into targeting.
+   * IT USED TO CHART A CIRCLE, AND THAT IS WHY IT FELT DEAD. `exploreCircle`
+   * sets VIS_EXPLORED — permanent terrain memory, and nothing about units. So
+   * the first cast over a patch of map told you what was built there, and every
+   * later cast over the same patch did NOTHING AT ALL, because the bit was
+   * already set. Reported as "orbital scan feels useless after 1 scan". It was
+   * not a feeling; a repeat cast was a genuine no-op.
+   *
+   * The old comment argued this was "the honest version of a scan … the one
+   * reveal primitive that cannot leak live information into targeting". That
+   * concern is real and it is now a deliberate trade rather than an accident:
+   * the sweep DOES hand live positions to the caster, which is the whole point
+   * of a five-second window, and the window is what keeps it from being a
+   * permanent targeting aid. `Vision.sweepEnemies` carries the rest.
+   *
+   * `x`/`z` no longer bound the effect — the sweep is global over hostile
+   * assets. The point is kept because it is where the beam plays, so the cast
+   * still has a place on the field rather than being a HUD-only event.
    *
    * Reached through a structural probe rather than `IVision`, which does not
    * carry the manual reveals. The same duck-typed seam idiom as `abilitySeam()`
    * and `readProgression()`, and it degrades the way they do: a boot with no
    * vision service (the `?shot=` harness runs one, a headless test may not)
-   * charts nothing rather than throwing.
+   * sweeps nothing rather than throwing.
    */
   private applyOrbitalScan(owner: PlayerId, x: number, z: number, radius: number): boolean {
     const w = this.world;
@@ -477,13 +496,28 @@ export class CommanderPowerService {
 
     this.channels.fx.push(FxKind.PrismBeam, x, y + 40, z, 0, -1, 0, 4.0, NONE, Faction.Meridian);
 
-    if (typeof v.exploreCircle !== 'function') return false;
-    v.exploreCircle(owner, x, z, radius);
-    // Cells inside the circle, in whole cells. A count rather than a re-walk of
-    // the grid: the grid is the vision module's and nothing here may read it.
-    const cells = Math.round((Math.PI * radius * radius) / (CELL * CELL));
-    this.stats.cellsCharted += cells;
-    return cells > 0;
+    if (typeof v.sweepEnemies !== 'function') return false;
+    v.sweepEnemies(owner, ORBITAL_SCAN_SECONDS, radius);
+
+    // Counted here rather than read back out of the grid, for the reason the
+    // old cell count gave: the grid belongs to the vision module and nothing
+    // here may read it. Assets, not cells — the sweep is sized by how much the
+    // enemy owns, not by how much dirt it covered.
+    const st = w.store;
+    let assets = 0;
+    for (let k = 0; k < ANCHOR_KINDS.length; k++) {
+      const list = st.byKind[ANCHOR_KINDS[k]];
+      const cnt = st.byKindCount[ANCHOR_KINDS[k]];
+      for (let j = 0; j < cnt; j++) {
+        const i = list[j];
+        if ((st.flags[i] & EntityFlag.PendingDestroy) !== 0) continue;
+        if (w.areAllied(owner, st.owner[i] as PlayerId)) continue;
+        if (w.players[st.owner[i]]?.faction === Faction.Neutral) continue;
+        assets++;
+      }
+    }
+    this.stats.assetsExposed += assets;
+    return assets > 0;
   }
 
   /**
@@ -599,6 +633,24 @@ export class CommanderPowerService {
       const nx = clampWorld(x + Math.sin(ang) * r, 2);
       const nz = clampWorld(z + Math.cos(ang) * r, 2);
 
+      // THE DESTINATION MUST BE GROUND THIS UNIT CAN STAND ON.
+      //
+      // `clampWorld` bounds the point to the MAP, not to passable terrain, so
+      // this used to teleport a tank into the sea and leave it there: position
+      // written directly, `Idle`, no order, on a cell its own `MoveClass`
+      // cannot traverse. `Flowfield` cannot pull a unit off an impassable cell,
+      // so it never moves again, and `Shell.pollOutcome` counts it forever
+      // through `countLivingAssets` — the same unwinnable match `Transport
+      // .strand` produced by the other route, and the same class of bug: a
+      // position written without asking whether the unit can be there.
+      //
+      // A refused unit is SKIPPED, not drowned. Chronoshift is a player-aimed
+      // power and the right failure is "that one did not come with you" —
+      // unlike `strand`, where the unit is already in the water and standing
+      // still is not an option. `moved` is not incremented, so the next
+      // candidate takes this slot and a bad aim costs placement, not an army.
+      if (!this.canStandAt(e, nx, nz)) continue;
+
       this.channels.fx.push(
         FxKind.PrismBeam, st.posX[e], st.posY[e] + 2, st.posZ[e],
         0, 1, 0, 1.2, st.handleOf(e), st.faction[e] as Faction,
@@ -692,6 +744,24 @@ export class CommanderPowerService {
     return true;
   }
 
+  /**
+   * Can entity `e` stand at this world point?
+   *
+   * Resolved through the unit's OWN move class, exactly as `Transport.place`
+   * does, so a hovercraft and an amphibious swimmer are judged by what they can
+   * actually cross rather than by a hardcoded foot rule. Occupancy is NOT
+   * tested: Chronoshift lands a formation on a spacing ring and the units are
+   * allowed to settle against each other, which `Movement.relax` resolves in a
+   * few ticks. Passability is the part that is permanent.
+   */
+  private canStandAt(e: number, x: number, z: number): boolean {
+    const cx = worldToCell(x);
+    const cz = worldToCell(z);
+    if (!isInMap(cx, cz)) return false;
+    const loco = locomotorForMoveClass(moveClassAt(this.world.store, e));
+    return this.world.terrain.isPassable(cx, cz, loco);
+  }
+
   /** An allied, living, mobile unit — the set Chronoshift lifts. */
   private isFriendlyMover(e: number, owner: PlayerId): boolean {
     const st = this.world.store;
@@ -713,7 +783,21 @@ export class CommanderPowerService {
 /** What `applyOrbitalScan` needs of the vision service, and nothing more. */
 interface ExploreCapable {
   exploreCircle(player: PlayerId, x: number, z: number, r: number): void;
+  /** See `Vision.sweepEnemies`. Optional so a stub vision still boots. */
+  sweepEnemies(player: PlayerId, seconds: number, radius: number): void;
 }
+
+/**
+ * How long an Orbital Scan holds the enemy lit, in seconds.
+ *
+ * Lives here rather than in `core/config.ts` because it is the power's own
+ * behaviour and not an art or balance table knob, and beside `chargeSeconds`
+ * in `progression/powers.ts` it would read as a cooldown. Five seconds is long
+ * enough to read a base layout and a convoy heading and short enough that it
+ * cannot be leaned on as a permanent targeting aid — which is the trade
+ * `applyOrbitalScan` documents.
+ */
+const ORBITAL_SCAN_SECONDS = 5;
 
 /** Kinds an area effect may be credited to, in preference order. */
 const ANCHOR_KINDS: readonly EntityKind[] = [

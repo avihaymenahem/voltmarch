@@ -82,7 +82,7 @@ describe('banned post effects stay banned', () => {
    * assertion above passes at module scope while that line is present — it only
    * bites once the shell applies settings, which no node test does.
    */
-  it('no source file writes a non-zero grain or chromatic-aberration literal', () => {
+  it('no source file writes a non-zero grain, CA or lens-dirt literal', () => {
     const files = [
       'src/render/renderer.ts',
       'src/shell/Settings.ts',
@@ -92,15 +92,26 @@ describe('banned post effects stay banned', () => {
     const offenders: string[] = [];
     for (const f of files) {
       const text = src(f);
-      for (const key of ['grain', 'chromaticAberration']) {
+      /*
+       * `lensDirt` joined the scan when the field was deleted. It is a third
+       * instance of the same failure: `RA3_LOOK_BIBLE.md` §11 bans lens dirt by
+       * name, and `lensDirt: 0.12` was nonetheless authored in TWO of these
+       * four files and bridged through a third for the whole life of the
+       * project — read only by a `console.info` noting that the bundled
+       * `UnrealBloomPass` has no dirt uniform to feed it. Nothing was looking,
+       * which is this file's entire thesis. There is now no field to set; the
+       * scan is here so reintroducing one fails in CI rather than in a grade.
+       */
+      for (const key of ['grain', 'chromaticAberration', 'lensDirt']) {
         for (const hit of nonZeroLiterals(text, key)) offenders.push(`${f}: ${hit}`);
       }
     }
     expect(
       offenders,
-      'CLAUDE.md bans film grain and chromatic aberration by name. If you are '
-      + 'deliberately lifting that ban, change CLAUDE.md and this test in the '
-      + 'same commit — do not just raise the number.',
+      'CLAUDE.md bans film grain and chromatic aberration by name, and '
+      + 'RA3_LOOK_BIBLE.md §11 bans lens dirt. If you are deliberately lifting '
+      + 'one of those bans, change the document and this test in the same '
+      + 'commit — do not just raise the number.',
     ).toEqual([]);
   });
 

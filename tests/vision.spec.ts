@@ -585,3 +585,85 @@ describe('Vision — cadence', () => {
     expect(VISION_REGROW_TICKS).toBeLessThanOrEqual(255);
   });
 });
+
+/* ========================================================================== */
+
+/**
+ * ORBITAL SCAN — the sweep that replaced a one-shot chart.
+ *
+ * The power used to call `exploreCircle`, which sets VIS_EXPLORED: permanent
+ * terrain memory, no units, and therefore a literal no-op on the second cast
+ * over the same ground. `sweepEnemies` arms a deadline instead and `update`
+ * re-stamps every hostile asset until it passes, so the light TRACKS them.
+ */
+describe('Vision — Orbital Scan sweep', () => {
+  it('lights an enemy the caller cannot see, and only for the caller', () => {
+    const world = makeWorld();
+    const v = new Vision(world);
+    spawnScout(world, P1, 400, 400, 12);   // enemy, far from anything of P0's
+
+    v.update();
+    expect(v.gridFor(P0)[cellOf(400, 400)], 'lit before the sweep').toBe(0);
+
+    v.sweepEnemies(P0, 5, 30);
+    v.update();
+
+    expect(v.gridFor(P0)[cellOf(400, 400)]).toBe(VIS_FULL);
+    // The scanned player learns nothing: a sweep is the CALLER's intelligence.
+    expect(v.gridFor(P1)[cellOf(100, 100)]).toBe(0);
+  });
+
+  it('follows a moving enemy rather than photographing where it was', () => {
+    const world = makeWorld();
+    const v = new Vision(world);
+    const tank = spawnScout(world, P1, 400, 400, 12);
+    const i = world.store.index(tank);
+
+    v.sweepEnemies(P0, 5, 30);
+    v.update();
+    expect(v.gridFor(P0)[cellOf(400, 400)]).toBe(VIS_FULL);
+
+    // Drive it 100 m away — far outside the 30 m stamp around its old cell,
+    // and still inside the 512 m map (cellOf past the edge reads undefined).
+    world.store.posX[i] = 400;
+    world.store.posZ[i] = 300;
+    world.spatial.rebuild();
+    v.update();
+
+    expect(v.gridFor(P0)[cellOf(400, 300)], 'the light did not follow').toBe(VIS_FULL);
+  });
+
+  it('expires, and the cells then decay through the ordinary regrow path', () => {
+    const world = makeWorld();
+    const v = new Vision(world);
+    spawnScout(world, P1, 400, 400, 12);
+
+    v.sweepEnemies(P0, 5, 30);
+    expect(v.isSweeping(P0)).toBe(true);
+    v.update();
+    expect(v.gridFor(P0)[cellOf(400, 400)]).toBe(VIS_FULL);
+
+    // `world.time` is what the deadline is measured against.
+    world.time += 6;
+    expect(v.isSweeping(P0)).toBe(false);
+    for (let n = 0; n <= VISION_REGROW_TICKS; n++) v.update();
+
+    const g = v.gridFor(P0);
+    expect(g[cellOf(400, 400)] & VIS_VISIBLE, 'still lit after expiry').toBe(0);
+    // EXPLORED remains, because the caller genuinely saw it — the same memory
+    // any scout leaves. That is the one thing the old chart got right.
+    expect(g[cellOf(400, 400)] & VIS_EXPLORED).toBe(VIS_EXPLORED);
+  });
+
+  it('does not light empty ground — scouting keeps its job', () => {
+    const world = makeWorld();
+    const v = new Vision(world);
+    spawnScout(world, P1, 400, 400, 12);
+
+    v.sweepEnemies(P0, 5, 30);
+    v.update();
+
+    // 200 m from the only enemy asset: nothing owns it, so nothing reveals it.
+    expect(v.gridFor(P0)[cellOf(200, 200)]).toBe(0);
+  });
+});
