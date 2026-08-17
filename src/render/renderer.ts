@@ -57,6 +57,15 @@
 import * as THREE from 'three';
 
 import { RepaintGuard } from './RepaintGuard';
+import {
+  assertBackend,
+  liveBackendOf,
+  normaliseInfo,
+  requestedBackend,
+  type GpuBackend,
+  type LiveBackend,
+  type NormalisedFrameInfo,
+} from './backend';
 
 declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -1121,6 +1130,21 @@ export interface RendererHandle {
   setExposure(v: number): void;
   setShadowsEnabled(v: boolean): void;
   onResize(fn: ResizeListener): () => void;
+  /**
+   * The backend that is ACTUALLY LIVE, read off the renderer rather than
+   * inferred from what was requested. Today this is always `'webgl'`; it exists
+   * so that every consumer of a frame statistic can name the renderer that
+   * produced it, which is the one thing the WebGPU spike found nothing could do.
+   * See `src/render/backend.ts`.
+   */
+  readonly backend: LiveBackend;
+  /**
+   * This frame's statistics, with the same MEANING whichever renderer produced
+   * them. `renderer.info.render.calls` is per-frame draws under WebGL and a
+   * monotonic count of `render()` calls under WebGPU, so reading the raw field
+   * is only safe while there is exactly one renderer. Read this instead.
+   */
+  frameInfo(): NormalisedFrameInfo;
   /** Reset renderer.info.render counters — call once per rendered frame. */
   beginFrame(): void;
   dispose(): void;
@@ -1146,6 +1170,41 @@ export interface CreateRendererOptions {
 
 export function createRenderer(options: CreateRendererOptions = {}): RendererHandle {
   const cfg = RENDER_CONFIG.renderer;
+
+  /*
+   * `?gpu=webgpu` IS A REFUSAL, NOT A SWITCH, AND THAT IS THE HONEST STATE.
+   *
+   * The seam is here so that the day a WebGPU path exists it cannot be selected
+   * silently or arrive silently. It does not exist yet: the post chain is
+   * `EffectComposer` + `ShaderPass` + `UnrealBloomPass` + `GTAOPass`, all
+   * WebGL-only, and `three/webgpu` has its own node-based `PostProcessing` with
+   * no equivalent of `installAoDepthGBuffer`. That is Stage B of
+   * `docs/WEBGPU_MIGRATION_PLAN.md` and it is weeks, not a flag.
+   *
+   * So the flag THROWS rather than quietly handing back the WebGL renderer.
+   * Quietly handing back the WebGL renderer is exactly what
+   * `THREE.WebGPURenderer` does when its device request fails, and Stage A spent
+   * an hour measuring the consequences of it — see `docs/RENDER_FINDINGS.md`
+   * §7b/§7c. A flag that appears to work and does nothing is worse than one that
+   * says no.
+   *
+   * Whether it is worth building at all is now a measured question rather than
+   * an open one, and the measurement says no: at our 54-76 colour draws the two
+   * renderers are indistinguishable inside a 29-73% run-to-run spread, and by
+   * 4000 draws `WebGPURenderer` costs 1.9-2.1x the CPU per frame. The curves do
+   * not cross.
+   */
+  const wantBackend: GpuBackend = requestedBackend(
+    typeof location !== 'undefined' ? location.search : '',
+  );
+  if (wantBackend === 'webgpu') {
+    throw new Error(
+      '?gpu=webgpu: there is no WebGPU path yet — the post chain is WebGL-only ' +
+        '(EffectComposer/ShaderPass/UnrealBloomPass/GTAOPass) and porting it is Stage B of ' +
+        'docs/WEBGPU_MIGRATION_PLAN.md. Refusing rather than silently running WebGL, which is ' +
+        'the failure mode the flag exists to prevent. See docs/RENDER_FINDINGS.md §7b.',
+    );
+  }
 
   THREE.ColorManagement.enabled = true;
 
@@ -1459,11 +1518,27 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
     }
   });
 
+  /*
+   * The tripwire runs on the SHIPPING PATH, not only under the flag.
+   *
+   * It is a tautology today — a `WebGLRenderer` cannot report anything but
+   * `'webgl'` — and it is here precisely so it is already load-bearing when it
+   * stops being one. A guard first wired on the day the thing it guards arrives
+   * is a guard nobody has ever seen fire.
+   */
+  const liveBackend = liveBackendOf(renderer);
+  assertBackend(wantBackend, liveBackend);
+
   const handle: RendererHandle = {
     renderer,
     canvas,
     size,
     capabilities,
+    backend: liveBackend,
+
+    frameInfo() {
+      return normaliseInfo(renderer.info);
+    },
 
     get resolutionScale() { return cfg.resolutionScale; },
     get isFixedSize() { return fixedWidth !== null; },

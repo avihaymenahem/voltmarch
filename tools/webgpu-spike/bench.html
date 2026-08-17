@@ -1,0 +1,32 @@
+<!doctype html>
+<!--
+  THROWAWAY SPIKE — Stage A of docs/WEBGPU_MIGRATION_PLAN.md §5. NOT SHIPPED.
+
+  No bundler. An import map straight at node_modules/three/build/ so the
+  measurement cannot be perturbed by vite dep-optimisation, and so that nothing
+  here can ever reach the production bundle: `vite build` takes index.html as
+  its only input and this file is not it.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>VOLTMARCH WebGPU spike — bench</title>
+    <style>
+      html, body { margin: 0; background: #111; overflow: hidden; }
+      canvas { display: block; }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "/three/three.module.js",
+          "three/webgpu": "/three/three.webgpu.js",
+          "three/tsl": "/three/three.tsl.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <script type="module" src="./bench.js"></script>
+  </body>
+</html>

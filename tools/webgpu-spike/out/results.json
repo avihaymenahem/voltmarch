@@ -1,0 +1,3386 @@
+{
+  "origin": "http://127.0.0.1:5303",
+  "node": "v24.19.0",
+  "when": "2026-08-17T11:14:25.873Z",
+  "probe": {
+    "steps": [
+      {
+        "name": "onBeforeCompile exists on Material.prototype",
+        "value": true
+      },
+      {
+        "name": "NodeMaterial declares its own customProgramCacheKey",
+        "value": true
+      }
+    ],
+    "navigatorGpu": true,
+    "warnings": [],
+    "errors": [],
+    "rawAdapter": {
+      "info": {
+        "vendor": "amd",
+        "architecture": "gcn-5",
+        "device": "",
+        "description": ""
+      },
+      "features": [
+        "depth32float-stencil8",
+        "rg11b10ufloat-renderable",
+        "bgra8unorm-storage",
+        "texture-formats-tier1",
+        "chromium-experimental-multi-draw-indirect",
+        "texture-compression-bc",
+        "dual-source-blending",
+        "core-features-and-limits",
+        "chromium-experimental-timestamp-query-inside-passes",
+        "float32-filterable",
+        "indirect-first-instance",
+        "float32-blendable",
+        "subgroup-size-control",
+        "depth-clip-control",
+        "texture-compression-bc-sliced-3d",
+        "clip-distances",
+        "shader-f16",
+        "texture-formats-tier2",
+        "timestamp-query",
+        "primitive-index",
+        "texture-component-swizzle",
+        "subgroups"
+      ],
+      "isFallbackAdapter": false
+    },
+    "backend": {
+      "isWebGPUBackend": true,
+      "isWebGLBackend": false,
+      "constructor": "WebGPUBackend",
+      "coordinateSystem": 2001
+    },
+    "liveBackend": "webgpu",
+    "deviceAdapterInfo": {
+      "vendor": "amd",
+      "architecture": "gcn-5",
+      "device": "",
+      "description": ""
+    },
+    "onBeforeCompile": {
+      "plainStandardMaterialCalls": 0,
+      "nodeMaterialCalls": 0,
+      "customProgramCacheKeyCalls": 1,
+      "plainMaterialStillStandard": true,
+      "plainMaterialClass": "MeshStandardMaterial"
+    },
+    "generatedShader": {
+      "language": "WGSL",
+      "length": 14729,
+      "hasIncludeDirective": false,
+      "hasMapFragmentChunk": false,
+      "carriesTheInjection": false,
+      "head": "// Three.js r185 - Node System\n\n// global\ndiagnostic( off, derivative_uniformity );\n\n\n// structs\n\nstruct OutputStruct {\n\t@location( 0 ) color: vec4<f32>\n};\nvar<private> output : OutputStruct;\n\n// uniforms\n@binding( 1 ) @group( 1 ) var nodeUniform16_sampler : sampler;\n@binding( 2 ) @group( 1 ) var nodeUniform16 : texture_2d<f32>;\n\nstruct objectStruct {\n\tnodeUniform0 : vec3<f32>,\n\tnodeUniform1 : f32,\n\tnodeUniform2 : f3"
+    },
+    "shaderChunk": {
+      "exportedFromThreeWebgpu": false,
+      "mapFragmentPresent": false
+    },
+    "escapeHatches": {
+      "tslSlotNodes": {
+        "worked": true,
+        "slots": [],
+        "fragmentLength": 14778
+      },
+      "wgslFn": {
+        "threw": false,
+        "functionEmitted": true,
+        "shaderLanguage": "WGSL",
+        "compileErrors": 0,
+        "firstError": null,
+        "worked": true
+      }
+    },
+    "info": {
+      "topLevelKeys": [
+        "autoReset",
+        "frame",
+        "calls",
+        "render",
+        "compute",
+        "memory",
+        "memoryMap"
+      ],
+      "renderKeys": [
+        "calls",
+        "frameCalls",
+        "drawCalls",
+        "triangles",
+        "points",
+        "lines",
+        "timestamp"
+      ],
+      "memoryKeys": [
+        "attributes",
+        "attributesSize",
+        "geometries",
+        "indexAttributes",
+        "indexAttributesSize",
+        "indirectStorageAttributes",
+        "indirectStorageAttributesSize",
+        "programs",
+        "programsSize",
+        "readbackBuffers",
+        "readbackBuffersSize",
+        "renderTargets",
+        "storageAttributes",
+        "storageAttributesSize",
+        "textures",
+        "texturesSize",
+        "uniformBuffers",
+        "uniformBuffersSize",
+        "total"
+      ],
+      "snapshots": [
+        {
+          "label": "after reset + 1 render",
+          "calls": 10,
+          "render": {
+            "calls": 10,
+            "frameCalls": 2,
+            "drawCalls": 5,
+            "triangles": 2881,
+            "points": 0,
+            "lines": 0,
+            "timestamp": 0
+          },
+          "memoryPrograms": 8,
+          "memoryGeometries": 2,
+          "memoryTextures": 3,
+          "programsIsArray": false,
+          "programsProp": "undefined"
+        },
+        {
+          "label": "after a 2nd render with NO reset",
+          "calls": 12,
+          "render": {
+            "calls": 12,
+            "frameCalls": 4,
+            "drawCalls": 10,
+            "triangles": 5762,
+            "points": 0,
+            "lines": 0,
+            "timestamp": 0
+          },
+          "memoryPrograms": 8,
+          "memoryGeometries": 2,
+          "memoryTextures": 3,
+          "programsIsArray": false,
+          "programsProp": "undefined"
+        },
+        {
+          "label": "after reset() with no render",
+          "calls": 12,
+          "render": {
+            "calls": 12,
+            "frameCalls": 0,
+            "drawCalls": 0,
+            "triangles": 0,
+            "points": 0,
+            "lines": 0,
+            "timestamp": 0
+          },
+          "memoryPrograms": 8,
+          "memoryGeometries": 2,
+          "memoryTextures": 3,
+          "programsIsArray": false,
+          "programsProp": "undefined"
+        }
+      ],
+      "debugTsProgramsExpression": 0
+    },
+    "nodeOverWebGL": {
+      "isWebGLBackend": true,
+      "renderKeys": [
+        "calls",
+        "frameCalls",
+        "drawCalls",
+        "triangles",
+        "points",
+        "lines",
+        "timestamp"
+      ]
+    },
+    "ok": true,
+    "consoleLog": [
+      "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+    ]
+  },
+  "runs": [
+    {
+      "cfg": {
+        "backend": "webgl",
+        "draws": 50,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGLRenderer",
+        "live": "webgl2",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 72.2,
+      "compileMs": 407.5,
+      "scene": {
+        "requestedDraws": 50,
+        "instancedBatches": 18,
+        "instancesPerBatch": 313,
+        "singles": 31,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 623360
+      },
+      "draws": {
+        "colour": 50,
+        "shadow": 37,
+        "total": 87,
+        "triangles": 623360
+      },
+      "drawsDuringMeasure": 87,
+      "info": {
+        "topLevelKeys": [
+          "memory",
+          "render",
+          "programs",
+          "autoReset",
+          "reset",
+          "update"
+        ],
+        "autoReset": false,
+        "render": {
+          "frame": 92,
+          "calls": 87,
+          "triangles": 1159808,
+          "points": 0,
+          "lines": 0
+        },
+        "memory": {
+          "geometries": 18,
+          "textures": 7
+        },
+        "compute": null,
+        "programsIsArray": true,
+        "programsLength": 87,
+        "memoryPrograms": null
+      },
+      "cpuMs": {
+        "p10": 1.3,
+        "p50": 1.6,
+        "p90": 1.9,
+        "mean": 1.6088,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6668,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 621,
+        "elapsedMs": 2001.2,
+        "fps": 310.3,
+        "cpuSharePct": 97.4,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgpu",
+        "draws": 50,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": true,
+        "isWebGLBackend": false,
+        "live": "webgpu",
+        "adapter": "amd / gcn-5",
+        "features": [
+          "depth32float-stencil8",
+          "rg11b10ufloat-renderable",
+          "bgra8unorm-storage",
+          "texture-formats-tier1",
+          "texture-compression-bc",
+          "dual-source-blending",
+          "core-features-and-limits",
+          "float32-filterable",
+          "indirect-first-instance",
+          "float32-blendable",
+          "depth-clip-control",
+          "texture-compression-bc-sliced-3d",
+          "clip-distances",
+          "texture-formats-tier2",
+          "timestamp-query",
+          "shader-f16",
+          "subgroups"
+        ]
+      },
+      "initMs": 306.3,
+      "compileMs": 5119.4,
+      "scene": {
+        "requestedDraws": 50,
+        "instancedBatches": 18,
+        "instancesPerBatch": 313,
+        "singles": 31,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 623360
+      },
+      "draws": {
+        "colour": 51,
+        "shadow": 37,
+        "total": 88,
+        "triangles": 623361
+      },
+      "drawsDuringMeasure": 88,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 88,
+          "triangles": 1159809,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 1636412,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 1259520,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 124,
+          "programsSize": 1169499,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 79190008,
+          "uniformBuffers": 175,
+          "uniformBuffersSize": 755456,
+          "total": 84010895
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 124
+      },
+      "cpuMs": {
+        "p10": 1.5,
+        "p50": 1.7,
+        "p90": 2,
+        "mean": 1.7583,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 24.7413,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 371,
+        "elapsedMs": 2371.8,
+        "fps": 156.4,
+        "cpuSharePct": 82,
+        "syncMethod": "queue.onSubmittedWorkDone"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "nodegl",
+        "draws": 50,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 107,
+      "compileMs": 7524.2,
+      "scene": {
+        "requestedDraws": 50,
+        "instancedBatches": 18,
+        "instancesPerBatch": 313,
+        "singles": 31,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 623360
+      },
+      "draws": {
+        "colour": 51,
+        "shadow": 37,
+        "total": 88,
+        "triangles": 623361
+      },
+      "drawsDuringMeasure": 88,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 88,
+          "triangles": 1159809,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 1636412,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 629760,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 124,
+          "programsSize": 1118142,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 79190008,
+          "uniformBuffers": 175,
+          "uniformBuffersSize": 758512,
+          "total": 83332834
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 124
+      },
+      "cpuMs": {
+        "p10": 2.1,
+        "p50": 2.6,
+        "p90": 3.4,
+        "mean": 2.7143,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6668,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 392,
+        "elapsedMs": 2005.8,
+        "fps": 195.4,
+        "cpuSharePct": 98.7,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgl",
+        "draws": 64,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGLRenderer",
+        "live": "webgl2",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 74.9,
+      "compileMs": 261.5,
+      "scene": {
+        "requestedDraws": 64,
+        "instancedBatches": 22,
+        "instancesPerBatch": 256,
+        "singles": 41,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 668320
+      },
+      "draws": {
+        "colour": 64,
+        "shadow": 47,
+        "total": 111,
+        "triangles": 668320
+      },
+      "drawsDuringMeasure": 111,
+      "info": {
+        "topLevelKeys": [
+          "memory",
+          "render",
+          "programs",
+          "autoReset",
+          "reset",
+          "update"
+        ],
+        "autoReset": false,
+        "render": {
+          "frame": 92,
+          "calls": 111,
+          "triangles": 1231680,
+          "points": 0,
+          "lines": 0
+        },
+        "memory": {
+          "geometries": 18,
+          "textures": 7
+        },
+        "compute": null,
+        "programsIsArray": true,
+        "programsLength": 109,
+        "memoryPrograms": null
+      },
+      "cpuMs": {
+        "p10": 1.7,
+        "p50": 2.2,
+        "p90": 2.9,
+        "mean": 2.22,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6668,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 483,
+        "elapsedMs": 2083.7,
+        "fps": 231.8,
+        "cpuSharePct": 99,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgpu",
+        "draws": 64,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": true,
+        "isWebGLBackend": false,
+        "live": "webgpu",
+        "adapter": "amd / gcn-5",
+        "features": [
+          "depth32float-stencil8",
+          "rg11b10ufloat-renderable",
+          "bgra8unorm-storage",
+          "texture-formats-tier1",
+          "texture-compression-bc",
+          "dual-source-blending",
+          "core-features-and-limits",
+          "float32-filterable",
+          "indirect-first-instance",
+          "float32-blendable",
+          "depth-clip-control",
+          "texture-compression-bc-sliced-3d",
+          "timestamp-query",
+          "shader-f16",
+          "clip-distances",
+          "texture-formats-tier2",
+          "subgroups"
+        ]
+      },
+      "initMs": 365.2,
+      "compileMs": 4895.8,
+      "scene": {
+        "requestedDraws": 64,
+        "instancedBatches": 22,
+        "instancesPerBatch": 256,
+        "singles": 41,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 668320
+      },
+      "draws": {
+        "colour": 65,
+        "shadow": 47,
+        "total": 112,
+        "triangles": 668321
+      },
+      "drawsDuringMeasure": 112,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 112,
+          "triangles": 1231681,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 1636412,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 1259520,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 156,
+          "programsSize": 1506461,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 79190008,
+          "uniformBuffers": 221,
+          "uniformBuffersSize": 765488,
+          "total": 84357889
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 156
+      },
+      "cpuMs": {
+        "p10": 1.4,
+        "p50": 1.7,
+        "p90": 2.2,
+        "mean": 1.7848,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.4,
+        "p50": 16.7,
+        "p90": 17,
+        "mean": 25.02,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 385,
+        "elapsedMs": 2352.2,
+        "fps": 163.7,
+        "cpuSharePct": 83.8,
+        "syncMethod": "queue.onSubmittedWorkDone"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "nodegl",
+        "draws": 64,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 101,
+      "compileMs": 4800.9,
+      "scene": {
+        "requestedDraws": 64,
+        "instancedBatches": 22,
+        "instancesPerBatch": 256,
+        "singles": 41,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 668320
+      },
+      "draws": {
+        "colour": 65,
+        "shadow": 47,
+        "total": 112,
+        "triangles": 668321
+      },
+      "drawsDuringMeasure": 112,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 112,
+          "triangles": 1231681,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 1636412,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 629760,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 156,
+          "programsSize": 1443519,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 79190008,
+          "uniformBuffers": 221,
+          "uniformBuffersSize": 769552,
+          "total": 83669251
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 156
+      },
+      "cpuMs": {
+        "p10": 1.8,
+        "p50": 2.5,
+        "p90": 3.3,
+        "mean": 2.5579,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.5,
+        "p50": 16.7,
+        "p90": 16.9,
+        "mean": 16.6666,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 458,
+        "elapsedMs": 2000,
+        "fps": 229,
+        "cpuSharePct": 98.5,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgl",
+        "draws": 200,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGLRenderer",
+        "live": "webgl2",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 59.9,
+      "compileMs": 414.5,
+      "scene": {
+        "requestedDraws": 200,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 169,
+        "materials": 70,
+        "sphereSegments": 26,
+        "expectedTriangles": 703668
+      },
+      "draws": {
+        "colour": 200,
+        "shadow": 132,
+        "total": 332,
+        "triangles": 703668
+      },
+      "drawsDuringMeasure": 332,
+      "info": {
+        "topLevelKeys": [
+          "memory",
+          "render",
+          "programs",
+          "autoReset",
+          "reset",
+          "update"
+        ],
+        "autoReset": false,
+        "render": {
+          "frame": 92,
+          "calls": 332,
+          "triangles": 1287468,
+          "points": 0,
+          "lines": 0
+        },
+        "memory": {
+          "geometries": 18,
+          "textures": 7
+        },
+        "compute": null,
+        "programsIsArray": true,
+        "programsLength": 162,
+        "memoryPrograms": null
+      },
+      "cpuMs": {
+        "p10": 2.5,
+        "p50": 3,
+        "p90": 3.7,
+        "mean": 3.1167,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.4,
+        "p50": 16.7,
+        "p90": 16.9,
+        "mean": 16.6666,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 429,
+        "elapsedMs": 2002.8,
+        "fps": 214.2,
+        "cpuSharePct": 97.1,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgpu",
+        "draws": 200,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": true,
+        "isWebGLBackend": false,
+        "live": "webgpu",
+        "adapter": "amd / gcn-5",
+        "features": [
+          "depth32float-stencil8",
+          "rg11b10ufloat-renderable",
+          "bgra8unorm-storage",
+          "texture-formats-tier1",
+          "texture-compression-bc",
+          "dual-source-blending",
+          "core-features-and-limits",
+          "float32-filterable",
+          "indirect-first-instance",
+          "float32-blendable",
+          "depth-clip-control",
+          "texture-compression-bc-sliced-3d",
+          "timestamp-query",
+          "shader-f16",
+          "clip-distances",
+          "texture-formats-tier2",
+          "subgroups"
+        ]
+      },
+      "initMs": 164.3,
+      "compileMs": 6832.9,
+      "scene": {
+        "requestedDraws": 200,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 169,
+        "materials": 70,
+        "sphereSegments": 26,
+        "expectedTriangles": 703668
+      },
+      "draws": {
+        "colour": 201,
+        "shadow": 132,
+        "total": 333,
+        "triangles": 703669
+      },
+      "drawsDuringMeasure": 333,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 333,
+          "triangles": 1287469,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 780348,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 642816,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2379176,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 79190008,
+          "uniformBuffers": 495,
+          "uniformBuffersSize": 830464,
+          "total": 83822812
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 2.6,
+        "p50": 3.1,
+        "p90": 3.6,
+        "mean": 3.1069,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.3,
+        "p50": 16.7,
+        "p90": 17,
+        "mean": 35.4415,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 366,
+        "elapsedMs": 2348.2,
+        "fps": 155.9,
+        "cpuSharePct": 83.6,
+        "syncMethod": "queue.onSubmittedWorkDone"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "nodegl",
+        "draws": 200,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 94.2,
+      "compileMs": 7094.8,
+      "scene": {
+        "requestedDraws": 200,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 169,
+        "materials": 70,
+        "sphereSegments": 26,
+        "expectedTriangles": 703668
+      },
+      "draws": {
+        "colour": 201,
+        "shadow": 132,
+        "total": 333,
+        "triangles": 703669
+      },
+      "drawsDuringMeasure": 333,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 333,
+          "triangles": 1287469,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 780348,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 321408,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2290013,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 79190008,
+          "uniformBuffers": 495,
+          "uniformBuffersSize": 843120,
+          "total": 83424897
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 4.5,
+        "p50": 5.3,
+        "p90": 6.2,
+        "mean": 5.3138,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.5,
+        "p50": 16.7,
+        "p90": 16.8,
+        "mean": 16.6666,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 389,
+        "elapsedMs": 2002.2,
+        "fps": 194.3,
+        "cpuSharePct": 97.4,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgl",
+        "draws": 1000,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGLRenderer",
+        "live": "webgl2",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 205.3,
+      "compileMs": 258.3,
+      "scene": {
+        "requestedDraws": 1000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 969,
+        "materials": 70,
+        "sphereSegments": 11,
+        "expectedTriangles": 697148
+      },
+      "draws": {
+        "colour": 1000,
+        "shadow": 612,
+        "total": 1612,
+        "triangles": 697148
+      },
+      "drawsDuringMeasure": 1612,
+      "info": {
+        "topLevelKeys": [
+          "memory",
+          "render",
+          "programs",
+          "autoReset",
+          "reset",
+          "update"
+        ],
+        "autoReset": false,
+        "render": {
+          "frame": 92,
+          "calls": 1612,
+          "triangles": 1276388,
+          "points": 0,
+          "lines": 0
+        },
+        "memory": {
+          "geometries": 18,
+          "textures": 7
+        },
+        "compute": null,
+        "programsIsArray": true,
+        "programsLength": 162,
+        "memoryPrograms": null
+      },
+      "cpuMs": {
+        "p10": 5.7,
+        "p50": 6.6,
+        "p90": 7.7,
+        "mean": 6.631,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6666,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 206,
+        "elapsedMs": 2006.2,
+        "fps": 102.7,
+        "cpuSharePct": 97.1,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgpu",
+        "draws": 1000,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": true,
+        "isWebGLBackend": false,
+        "live": "webgpu",
+        "adapter": "amd / gcn-5",
+        "features": [
+          "depth32float-stencil8",
+          "rg11b10ufloat-renderable",
+          "bgra8unorm-storage",
+          "texture-formats-tier1",
+          "texture-compression-bc",
+          "dual-source-blending",
+          "core-features-and-limits",
+          "float32-filterable",
+          "indirect-first-instance",
+          "float32-blendable",
+          "depth-clip-control",
+          "texture-compression-bc-sliced-3d",
+          "clip-distances",
+          "timestamp-query",
+          "texture-formats-tier2",
+          "shader-f16",
+          "subgroups"
+        ]
+      },
+      "initMs": 179.5,
+      "compileMs": 7600.4,
+      "scene": {
+        "requestedDraws": 1000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 969,
+        "materials": 70,
+        "sphereSegments": 11,
+        "expectedTriangles": 697148
+      },
+      "draws": {
+        "colour": 1001,
+        "shadow": 612,
+        "total": 1613,
+        "triangles": 697149
+      },
+      "drawsDuringMeasure": 1613,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 1613,
+          "triangles": 1276389,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 480828,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 435456,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2379176,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 79190008,
+          "uniformBuffers": 1775,
+          "uniformBuffersSize": 1136144,
+          "total": 83621612
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 10.1,
+        "p50": 11.4,
+        "p90": 12.7,
+        "mean": 11.5031,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 34.447,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 198,
+        "elapsedMs": 2369.4,
+        "fps": 83.6,
+        "cpuSharePct": 82.8,
+        "syncMethod": "queue.onSubmittedWorkDone"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "nodegl",
+        "draws": 1000,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 138.4,
+      "compileMs": 3458.4,
+      "scene": {
+        "requestedDraws": 1000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 969,
+        "materials": 70,
+        "sphereSegments": 11,
+        "expectedTriangles": 697148
+      },
+      "draws": {
+        "colour": 1001,
+        "shadow": 612,
+        "total": 1613,
+        "triangles": 697149
+      },
+      "drawsDuringMeasure": 1613,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 1613,
+          "triangles": 1276389,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 480828,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 217728,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2290013,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 79190008,
+          "uniformBuffers": 1775,
+          "uniformBuffersSize": 1199360,
+          "total": 83377937
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 12.4,
+        "p50": 13.5,
+        "p90": 14.8,
+        "mean": 13.6326,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6666,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 122,
+        "elapsedMs": 2014.7,
+        "fps": 60.6,
+        "cpuSharePct": 96.9,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgl",
+        "draws": 4000,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGLRenderer",
+        "live": "webgl2",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 86.3,
+      "compileMs": 325.5,
+      "scene": {
+        "requestedDraws": 4000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 3969,
+        "materials": 70,
+        "sphereSegments": 5,
+        "expectedTriangles": 642728
+      },
+      "draws": {
+        "colour": 4000,
+        "shadow": 2412,
+        "total": 6412,
+        "triangles": 642728
+      },
+      "drawsDuringMeasure": 6412,
+      "info": {
+        "topLevelKeys": [
+          "memory",
+          "render",
+          "programs",
+          "autoReset",
+          "reset",
+          "update"
+        ],
+        "autoReset": false,
+        "render": {
+          "frame": 92,
+          "calls": 6412,
+          "triangles": 1189208,
+          "points": 0,
+          "lines": 0
+        },
+        "memory": {
+          "geometries": 18,
+          "textures": 7
+        },
+        "compute": null,
+        "programsIsArray": true,
+        "programsLength": 162,
+        "memoryPrograms": null
+      },
+      "cpuMs": {
+        "p10": 17.1,
+        "p50": 18.5,
+        "p90": 20.8,
+        "mean": 18.7429,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 33.3,
+        "mean": 19.0532,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 110,
+        "elapsedMs": 2003.8,
+        "fps": 54.9,
+        "cpuSharePct": 97.9,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgpu",
+        "draws": 4000,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": true,
+        "isWebGLBackend": false,
+        "live": "webgpu",
+        "adapter": "amd / gcn-5",
+        "features": [
+          "depth32float-stencil8",
+          "rg11b10ufloat-renderable",
+          "texture-formats-tier1",
+          "bgra8unorm-storage",
+          "texture-compression-bc",
+          "dual-source-blending",
+          "core-features-and-limits",
+          "float32-filterable",
+          "indirect-first-instance",
+          "float32-blendable",
+          "depth-clip-control",
+          "texture-compression-bc-sliced-3d",
+          "texture-formats-tier2",
+          "shader-f16",
+          "timestamp-query",
+          "clip-distances",
+          "subgroups"
+        ]
+      },
+      "initMs": 193.4,
+      "compileMs": 8246.1,
+      "scene": {
+        "requestedDraws": 4000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 3969,
+        "materials": 70,
+        "sphereSegments": 5,
+        "expectedTriangles": 642728
+      },
+      "draws": {
+        "colour": 4001,
+        "shadow": 2412,
+        "total": 6413,
+        "triangles": 642729
+      },
+      "drawsDuringMeasure": 6413,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 6413,
+          "triangles": 1189209,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 425532,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 400896,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2379176,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 79190008,
+          "uniformBuffers": 6575,
+          "uniformBuffersSize": 2278208,
+          "total": 84673820
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 33.4,
+        "p50": 35.5,
+        "p90": 38,
+        "mean": 35.7424,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 33.3,
+        "p50": 33.4,
+        "p90": 50,
+        "mean": 51.3523,
+        "n": 419
+      },
+      "rafFps": 29.9,
+      "uncapped": {
+        "frames": 60,
+        "elapsedMs": 2033.3,
+        "fps": 29.5,
+        "cpuSharePct": 98.2,
+        "syncMethod": "queue.onSubmittedWorkDone"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "nodegl",
+        "draws": 4000,
+        "width": 2560,
+        "height": 1440
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 122.9,
+      "compileMs": 2102.5,
+      "scene": {
+        "requestedDraws": 4000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 3969,
+        "materials": 70,
+        "sphereSegments": 5,
+        "expectedTriangles": 642728
+      },
+      "draws": {
+        "colour": 4001,
+        "shadow": 2412,
+        "total": 6413,
+        "triangles": 642729
+      },
+      "drawsDuringMeasure": 6413,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 6413,
+          "triangles": 1189209,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 425532,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 200448,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2290013,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 79190008,
+          "uniformBuffers": 6575,
+          "uniformBuffersSize": 2530720,
+          "total": 84636721
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 40.3,
+        "p50": 42,
+        "p90": 44.5,
+        "mean": 42.4633,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 33.3,
+        "p50": 49.9,
+        "p90": 50.1,
+        "mean": 42.7604,
+        "n": 419
+      },
+      "rafFps": 20,
+      "uncapped": {
+        "frames": 48,
+        "elapsedMs": 2033.2,
+        "fps": 23.6,
+        "cpuSharePct": 99.3,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgl",
+        "draws": 50,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGLRenderer",
+        "live": "webgl2",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 74.4,
+      "compileMs": 196.7,
+      "scene": {
+        "requestedDraws": 50,
+        "instancedBatches": 18,
+        "instancesPerBatch": 313,
+        "singles": 31,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 623360
+      },
+      "draws": {
+        "colour": 50,
+        "shadow": 37,
+        "total": 87,
+        "triangles": 623360
+      },
+      "drawsDuringMeasure": 87,
+      "info": {
+        "topLevelKeys": [
+          "memory",
+          "render",
+          "programs",
+          "autoReset",
+          "reset",
+          "update"
+        ],
+        "autoReset": false,
+        "render": {
+          "frame": 92,
+          "calls": 87,
+          "triangles": 1159808,
+          "points": 0,
+          "lines": 0
+        },
+        "memory": {
+          "geometries": 18,
+          "textures": 7
+        },
+        "compute": null,
+        "programsIsArray": true,
+        "programsLength": 87,
+        "memoryPrograms": null
+      },
+      "cpuMs": {
+        "p10": 1.4,
+        "p50": 1.9,
+        "p90": 2.6,
+        "mean": 1.995,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.8,
+        "mean": 16.6666,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 748,
+        "elapsedMs": 2000.5,
+        "fps": 373.9,
+        "cpuSharePct": 98.2,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgpu",
+        "draws": 50,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": true,
+        "isWebGLBackend": false,
+        "live": "webgpu",
+        "adapter": "amd / gcn-5",
+        "features": [
+          "depth32float-stencil8",
+          "rg11b10ufloat-renderable",
+          "texture-formats-tier1",
+          "bgra8unorm-storage",
+          "texture-compression-bc",
+          "dual-source-blending",
+          "core-features-and-limits",
+          "float32-filterable",
+          "indirect-first-instance",
+          "float32-blendable",
+          "depth-clip-control",
+          "texture-compression-bc-sliced-3d",
+          "texture-formats-tier2",
+          "timestamp-query",
+          "clip-distances",
+          "shader-f16",
+          "subgroups"
+        ]
+      },
+      "initMs": 264.9,
+      "compileMs": 4213.6,
+      "scene": {
+        "requestedDraws": 50,
+        "instancedBatches": 18,
+        "instancesPerBatch": 313,
+        "singles": 31,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 623360
+      },
+      "draws": {
+        "colour": 51,
+        "shadow": 37,
+        "total": 88,
+        "triangles": 623361
+      },
+      "drawsDuringMeasure": 88,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 88,
+          "triangles": 1159809,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 1636412,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 1259520,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 124,
+          "programsSize": 1169499,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 175,
+          "uniformBuffersSize": 755456,
+          "total": 50833295
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 124
+      },
+      "cpuMs": {
+        "p10": 2,
+        "p50": 2.5,
+        "p90": 3.1,
+        "mean": 2.5469,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 24.4628,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 520,
+        "elapsedMs": 2243.6,
+        "fps": 231.8,
+        "cpuSharePct": 86.6,
+        "syncMethod": "queue.onSubmittedWorkDone"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "nodegl",
+        "draws": 50,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 111.4,
+      "compileMs": 2024.2,
+      "scene": {
+        "requestedDraws": 50,
+        "instancedBatches": 18,
+        "instancesPerBatch": 313,
+        "singles": 31,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 623360
+      },
+      "draws": {
+        "colour": 51,
+        "shadow": 37,
+        "total": 88,
+        "triangles": 623361
+      },
+      "drawsDuringMeasure": 88,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 88,
+          "triangles": 1159809,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 1636412,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 629760,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 124,
+          "programsSize": 1118142,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 175,
+          "uniformBuffersSize": 758512,
+          "total": 50155234
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 124
+      },
+      "cpuMs": {
+        "p10": 4.6,
+        "p50": 5.9,
+        "p90": 7.8,
+        "mean": 6.2543,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.8,
+        "mean": 16.6663,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 487,
+        "elapsedMs": 2025.7,
+        "fps": 240.4,
+        "cpuSharePct": 92.2,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgl",
+        "draws": 64,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGLRenderer",
+        "live": "webgl2",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 212.9,
+      "compileMs": 294.7,
+      "scene": {
+        "requestedDraws": 64,
+        "instancedBatches": 22,
+        "instancesPerBatch": 256,
+        "singles": 41,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 668320
+      },
+      "draws": {
+        "colour": 64,
+        "shadow": 47,
+        "total": 111,
+        "triangles": 668320
+      },
+      "drawsDuringMeasure": 111,
+      "info": {
+        "topLevelKeys": [
+          "memory",
+          "render",
+          "programs",
+          "autoReset",
+          "reset",
+          "update"
+        ],
+        "autoReset": false,
+        "render": {
+          "frame": 92,
+          "calls": 111,
+          "triangles": 1231680,
+          "points": 0,
+          "lines": 0
+        },
+        "memory": {
+          "geometries": 18,
+          "textures": 7
+        },
+        "compute": null,
+        "programsIsArray": true,
+        "programsLength": 109,
+        "memoryPrograms": null
+      },
+      "cpuMs": {
+        "p10": 3.8,
+        "p50": 4.8,
+        "p90": 7.3,
+        "mean": 5.3181,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.8,
+        "mean": 16.6668,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 479,
+        "elapsedMs": 2002.9,
+        "fps": 239.2,
+        "cpuSharePct": 93.6,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgpu",
+        "draws": 64,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": true,
+        "isWebGLBackend": false,
+        "live": "webgpu",
+        "adapter": "amd / gcn-5",
+        "features": [
+          "depth32float-stencil8",
+          "rg11b10ufloat-renderable",
+          "texture-formats-tier1",
+          "bgra8unorm-storage",
+          "texture-compression-bc",
+          "dual-source-blending",
+          "core-features-and-limits",
+          "float32-filterable",
+          "indirect-first-instance",
+          "float32-blendable",
+          "depth-clip-control",
+          "texture-compression-bc-sliced-3d",
+          "texture-formats-tier2",
+          "shader-f16",
+          "timestamp-query",
+          "clip-distances",
+          "subgroups"
+        ]
+      },
+      "initMs": 389,
+      "compileMs": 12194.3,
+      "scene": {
+        "requestedDraws": 64,
+        "instancedBatches": 22,
+        "instancesPerBatch": 256,
+        "singles": 41,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 668320
+      },
+      "draws": {
+        "colour": 65,
+        "shadow": 47,
+        "total": 112,
+        "triangles": 668321
+      },
+      "drawsDuringMeasure": 112,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 112,
+          "triangles": 1231681,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 1636412,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 1259520,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 156,
+          "programsSize": 1506461,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 221,
+          "uniformBuffersSize": 765488,
+          "total": 51180289
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 156
+      },
+      "cpuMs": {
+        "p10": 2.7,
+        "p50": 3.5,
+        "p90": 4.4,
+        "mean": 3.5598,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 37.2313,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 453,
+        "elapsedMs": 2248.9,
+        "fps": 201.4,
+        "cpuSharePct": 86.4,
+        "syncMethod": "queue.onSubmittedWorkDone"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "nodegl",
+        "draws": 64,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 147.6,
+      "compileMs": 2781.7,
+      "scene": {
+        "requestedDraws": 64,
+        "instancedBatches": 22,
+        "instancesPerBatch": 256,
+        "singles": 41,
+        "materials": 70,
+        "sphereSegments": 48,
+        "expectedTriangles": 668320
+      },
+      "draws": {
+        "colour": 65,
+        "shadow": 47,
+        "total": 112,
+        "triangles": 668321
+      },
+      "drawsDuringMeasure": 112,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 112,
+          "triangles": 1231681,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 1636412,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 629760,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 156,
+          "programsSize": 1443519,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 221,
+          "uniformBuffersSize": 769552,
+          "total": 50491651
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 156
+      },
+      "cpuMs": {
+        "p10": 2.7,
+        "p50": 3.1,
+        "p90": 3.7,
+        "mean": 3.1717,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.4,
+        "p50": 16.7,
+        "p90": 17,
+        "mean": 16.6663,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 633,
+        "elapsedMs": 2005.4,
+        "fps": 315.6,
+        "cpuSharePct": 97,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgl",
+        "draws": 200,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGLRenderer",
+        "live": "webgl2",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 75.8,
+      "compileMs": 409.4,
+      "scene": {
+        "requestedDraws": 200,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 169,
+        "materials": 70,
+        "sphereSegments": 26,
+        "expectedTriangles": 703668
+      },
+      "draws": {
+        "colour": 200,
+        "shadow": 132,
+        "total": 332,
+        "triangles": 703668
+      },
+      "drawsDuringMeasure": 332,
+      "info": {
+        "topLevelKeys": [
+          "memory",
+          "render",
+          "programs",
+          "autoReset",
+          "reset",
+          "update"
+        ],
+        "autoReset": false,
+        "render": {
+          "frame": 92,
+          "calls": 332,
+          "triangles": 1287468,
+          "points": 0,
+          "lines": 0
+        },
+        "memory": {
+          "geometries": 18,
+          "textures": 7
+        },
+        "compute": null,
+        "programsIsArray": true,
+        "programsLength": 162,
+        "memoryPrograms": null
+      },
+      "cpuMs": {
+        "p10": 3.2,
+        "p50": 3.6,
+        "p90": 4.5,
+        "mean": 3.7626,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.8,
+        "mean": 16.6666,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 428,
+        "elapsedMs": 2024.6,
+        "fps": 211.4,
+        "cpuSharePct": 97.3,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgpu",
+        "draws": 200,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": true,
+        "isWebGLBackend": false,
+        "live": "webgpu",
+        "adapter": "amd / gcn-5",
+        "features": [
+          "depth32float-stencil8",
+          "rg11b10ufloat-renderable",
+          "bgra8unorm-storage",
+          "texture-formats-tier1",
+          "texture-compression-bc",
+          "dual-source-blending",
+          "core-features-and-limits",
+          "float32-filterable",
+          "indirect-first-instance",
+          "float32-blendable",
+          "depth-clip-control",
+          "texture-compression-bc-sliced-3d",
+          "clip-distances",
+          "shader-f16",
+          "timestamp-query",
+          "texture-formats-tier2",
+          "subgroups"
+        ]
+      },
+      "initMs": 199.3,
+      "compileMs": 7620.6,
+      "scene": {
+        "requestedDraws": 200,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 169,
+        "materials": 70,
+        "sphereSegments": 26,
+        "expectedTriangles": 703668
+      },
+      "draws": {
+        "colour": 201,
+        "shadow": 132,
+        "total": 333,
+        "triangles": 703669
+      },
+      "drawsDuringMeasure": 333,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 333,
+          "triangles": 1287469,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 780348,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 642816,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2379176,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 495,
+          "uniformBuffersSize": 830464,
+          "total": 50645212
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 3.8,
+        "p50": 4.3,
+        "p90": 4.8,
+        "mean": 4.3117,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 36.9926,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 486,
+        "elapsedMs": 2207.7,
+        "fps": 220.1,
+        "cpuSharePct": 89.4,
+        "syncMethod": "queue.onSubmittedWorkDone"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "nodegl",
+        "draws": 200,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 131.7,
+      "compileMs": 3380.6,
+      "scene": {
+        "requestedDraws": 200,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 169,
+        "materials": 70,
+        "sphereSegments": 26,
+        "expectedTriangles": 703668
+      },
+      "draws": {
+        "colour": 201,
+        "shadow": 132,
+        "total": 333,
+        "triangles": 703669
+      },
+      "drawsDuringMeasure": 333,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 333,
+          "triangles": 1287469,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 780348,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 321408,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2290013,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 495,
+          "uniformBuffersSize": 843120,
+          "total": 50247297
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 4.8,
+        "p50": 5.2,
+        "p90": 5.8,
+        "mean": 5.2579,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6668,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 526,
+        "elapsedMs": 2003.9,
+        "fps": 262.5,
+        "cpuSharePct": 97.2,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgl",
+        "draws": 1000,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGLRenderer",
+        "live": "webgl2",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 89.4,
+      "compileMs": 374.6,
+      "scene": {
+        "requestedDraws": 1000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 969,
+        "materials": 70,
+        "sphereSegments": 11,
+        "expectedTriangles": 697148
+      },
+      "draws": {
+        "colour": 1000,
+        "shadow": 612,
+        "total": 1612,
+        "triangles": 697148
+      },
+      "drawsDuringMeasure": 1612,
+      "info": {
+        "topLevelKeys": [
+          "memory",
+          "render",
+          "programs",
+          "autoReset",
+          "reset",
+          "update"
+        ],
+        "autoReset": false,
+        "render": {
+          "frame": 92,
+          "calls": 1612,
+          "triangles": 1276388,
+          "points": 0,
+          "lines": 0
+        },
+        "memory": {
+          "geometries": 18,
+          "textures": 7
+        },
+        "compute": null,
+        "programsIsArray": true,
+        "programsLength": 162,
+        "memoryPrograms": null
+      },
+      "cpuMs": {
+        "p10": 5.5,
+        "p50": 6,
+        "p90": 6.8,
+        "mean": 6.1267,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6666,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 350,
+        "elapsedMs": 2004.2,
+        "fps": 174.6,
+        "cpuSharePct": 96.5,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgpu",
+        "draws": 1000,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": true,
+        "isWebGLBackend": false,
+        "live": "webgpu",
+        "adapter": "amd / gcn-5",
+        "features": [
+          "depth32float-stencil8",
+          "rg11b10ufloat-renderable",
+          "texture-formats-tier1",
+          "bgra8unorm-storage",
+          "texture-compression-bc",
+          "dual-source-blending",
+          "core-features-and-limits",
+          "float32-filterable",
+          "indirect-first-instance",
+          "float32-blendable",
+          "depth-clip-control",
+          "texture-compression-bc-sliced-3d",
+          "texture-formats-tier2",
+          "shader-f16",
+          "timestamp-query",
+          "clip-distances",
+          "subgroups"
+        ]
+      },
+      "initMs": 184.2,
+      "compileMs": 7682.8,
+      "scene": {
+        "requestedDraws": 1000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 969,
+        "materials": 70,
+        "sphereSegments": 11,
+        "expectedTriangles": 697148
+      },
+      "draws": {
+        "colour": 1001,
+        "shadow": 612,
+        "total": 1613,
+        "triangles": 697149
+      },
+      "drawsDuringMeasure": 1613,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 1613,
+          "triangles": 1276389,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 480828,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 435456,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2379176,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 1775,
+          "uniformBuffersSize": 1136144,
+          "total": 50444012
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 9.3,
+        "p50": 9.9,
+        "p90": 10.7,
+        "mean": 9.9698,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 33.731,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 239,
+        "elapsedMs": 2022.8,
+        "fps": 118.2,
+        "cpuSharePct": 95.8,
+        "syncMethod": "queue.onSubmittedWorkDone"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "nodegl",
+        "draws": 1000,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 101.7,
+      "compileMs": 6713.1,
+      "scene": {
+        "requestedDraws": 1000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 969,
+        "materials": 70,
+        "sphereSegments": 11,
+        "expectedTriangles": 697148
+      },
+      "draws": {
+        "colour": 1001,
+        "shadow": 612,
+        "total": 1613,
+        "triangles": 697149
+      },
+      "drawsDuringMeasure": 1613,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 1613,
+          "triangles": 1276389,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 480828,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 217728,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2290013,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 1775,
+          "uniformBuffersSize": 1199360,
+          "total": 50200337
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 11.4,
+        "p50": 12.3,
+        "p90": 13.1,
+        "mean": 12.2871,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.6668,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 194,
+        "elapsedMs": 2007,
+        "fps": 96.7,
+        "cpuSharePct": 97.2,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgl",
+        "draws": 4000,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGLRenderer",
+        "live": "webgl2",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 75.2,
+      "compileMs": 311.4,
+      "scene": {
+        "requestedDraws": 4000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 3969,
+        "materials": 70,
+        "sphereSegments": 5,
+        "expectedTriangles": 642728
+      },
+      "draws": {
+        "colour": 4000,
+        "shadow": 2412,
+        "total": 6412,
+        "triangles": 642728
+      },
+      "drawsDuringMeasure": 6412,
+      "info": {
+        "topLevelKeys": [
+          "memory",
+          "render",
+          "programs",
+          "autoReset",
+          "reset",
+          "update"
+        ],
+        "autoReset": false,
+        "render": {
+          "frame": 92,
+          "calls": 6412,
+          "triangles": 1189208,
+          "points": 0,
+          "lines": 0
+        },
+        "memory": {
+          "geometries": 18,
+          "textures": 7
+        },
+        "compute": null,
+        "programsIsArray": true,
+        "programsLength": 162,
+        "memoryPrograms": null
+      },
+      "cpuMs": {
+        "p10": 14.7,
+        "p50": 15.2,
+        "p90": 16.3,
+        "mean": 15.4669,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 16.6,
+        "p50": 16.7,
+        "p90": 16.7,
+        "mean": 16.7064,
+        "n": 419
+      },
+      "rafFps": 59.9,
+      "uncapped": {
+        "frames": 128,
+        "elapsedMs": 2000.4,
+        "fps": 64,
+        "cpuSharePct": 98,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "webgpu",
+        "draws": 4000,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": true,
+        "isWebGLBackend": false,
+        "live": "webgpu",
+        "adapter": "amd / gcn-5",
+        "features": [
+          "depth32float-stencil8",
+          "rg11b10ufloat-renderable",
+          "texture-formats-tier1",
+          "bgra8unorm-storage",
+          "texture-compression-bc",
+          "dual-source-blending",
+          "core-features-and-limits",
+          "float32-filterable",
+          "indirect-first-instance",
+          "float32-blendable",
+          "depth-clip-control",
+          "texture-compression-bc-sliced-3d",
+          "texture-formats-tier2",
+          "shader-f16",
+          "timestamp-query",
+          "clip-distances",
+          "subgroups"
+        ]
+      },
+      "initMs": 189.2,
+      "compileMs": 7967.4,
+      "scene": {
+        "requestedDraws": 4000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 3969,
+        "materials": 70,
+        "sphereSegments": 5,
+        "expectedTriangles": 642728
+      },
+      "draws": {
+        "colour": 4001,
+        "shadow": 2412,
+        "total": 6413,
+        "triangles": 642729
+      },
+      "drawsDuringMeasure": 6413,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 6413,
+          "triangles": 1189209,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 425532,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 400896,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2379176,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 6575,
+          "uniformBuffersSize": 2278208,
+          "total": 51496220
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 30.3,
+        "p50": 32.3,
+        "p90": 36.4,
+        "mean": 33.0026,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 33.2,
+        "p50": 33.3,
+        "p90": 33.4,
+        "mean": 48.2496,
+        "n": 419
+      },
+      "rafFps": 30,
+      "uncapped": {
+        "frames": 58,
+        "elapsedMs": 2031.7,
+        "fps": 28.5,
+        "cpuSharePct": 98.2,
+        "syncMethod": "queue.onSubmittedWorkDone"
+      },
+      "consoleLog": []
+    },
+    {
+      "cfg": {
+        "backend": "nodegl",
+        "draws": 4000,
+        "width": 1280,
+        "height": 720
+      },
+      "ok": true,
+      "identity": {
+        "navigatorGpu": true,
+        "kind": "WebGPURenderer",
+        "isWebGPUBackend": false,
+        "isWebGLBackend": true,
+        "live": "webgl2-fallback",
+        "adapter": "ANGLE (AMD, AMD Radeon(TM) Graphics (0x00001638) Direct3D11 vs_5_0 ps_5_0, D3D11)"
+      },
+      "initMs": 123.4,
+      "compileMs": 2167.3,
+      "scene": {
+        "requestedDraws": 4000,
+        "instancedBatches": 30,
+        "instancesPerBatch": 188,
+        "singles": 3969,
+        "materials": 70,
+        "sphereSegments": 5,
+        "expectedTriangles": 642728
+      },
+      "draws": {
+        "colour": 4001,
+        "shadow": 2412,
+        "total": 6413,
+        "triangles": 642729
+      },
+      "drawsDuringMeasure": 6413,
+      "info": {
+        "topLevelKeys": [
+          "autoReset",
+          "frame",
+          "calls",
+          "render",
+          "compute",
+          "memory",
+          "memoryMap"
+        ],
+        "autoReset": false,
+        "render": {
+          "calls": 275,
+          "frameCalls": 3,
+          "drawCalls": 6413,
+          "triangles": 1189209,
+          "points": 0,
+          "lines": 0,
+          "timestamp": 0
+        },
+        "memory": {
+          "attributes": 54,
+          "attributesSize": 425532,
+          "geometries": 19,
+          "indexAttributes": 17,
+          "indexAttributesSize": 200448,
+          "indirectStorageAttributes": 0,
+          "indirectStorageAttributesSize": 0,
+          "programs": 238,
+          "programsSize": 2290013,
+          "readbackBuffers": 0,
+          "readbackBuffersSize": 0,
+          "renderTargets": 2,
+          "storageAttributes": 0,
+          "storageAttributesSize": 0,
+          "textures": 9,
+          "texturesSize": 46012408,
+          "uniformBuffers": 6575,
+          "uniformBuffersSize": 2530720,
+          "total": 51459121
+        },
+        "compute": {
+          "calls": 0,
+          "frameCalls": 0,
+          "timestamp": 0
+        },
+        "programsIsArray": false,
+        "programsLength": null,
+        "memoryPrograms": 238
+      },
+      "cpuMs": {
+        "p10": 44.5,
+        "p50": 62.2,
+        "p90": 91.2,
+        "mean": 66.3674,
+        "n": 420
+      },
+      "frameMs": {
+        "p10": 49.9,
+        "p50": 66.6,
+        "p90": 100,
+        "mean": 66.9053,
+        "n": 419
+      },
+      "rafFps": 15,
+      "uncapped": {
+        "frames": 24,
+        "elapsedMs": 2052.7,
+        "fps": 11.7,
+        "cpuSharePct": 99.1,
+        "syncMethod": "gl.finish"
+      },
+      "consoleLog": []
+    }
+  ]
+}
