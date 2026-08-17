@@ -1131,6 +1131,68 @@ populated on the reporter's configuration. The host machine crashed its GPU driv
 path, so none of those four was attempted. **Do not quote the suite as evidence that recovery has
 been observed on hardware.**
 
+## 7h. THE TWO READBACKS DISAGREE ABOUT ROW ORDER AND ROW STRIDE — measured 2026-08-17
+
+Reported under `?gpu=webgpu`: *"The 3D models in side menu not showing"*. Every build slot fell back
+to a flat glyph, so a player could not tell what they were building. The cause was one line —
+`CameoRenderer` read its target back with `readRenderTargetPixels`, which is synchronous and exists
+only on `WebGLRenderer` — and the fix is an async path beside it. The interesting part is not the
+fix; it is the two facts a "looks about right" fix would have shipped wrong, both silent.
+
+**MEASURED ON A REAL WEBGPU DEVICE, NOT REASONED ABOUT.** `node tools/cameo-readback-probe.mjs`
+renders a picture that is a different colour in all four corners into a render target built exactly
+as `CameoRenderer.ensureTarget` builds one — 148x116, i.e. a 74x58 build slot at
+`HUD_CAMEO.supersample` 2 — reads it back through each renderer's own readback, and runs the
+SHIPPED `src/render/backend.ts` helpers over the bytes. Real Chrome, `channel: 'chrome'`, both arms
+in one page on two canvases (§7g: one context type per canvas, for life).
+
+```
+                       buffer          derived stride   rows        centre grey
+  webgl                68 672 B        592 B (tight)    bottom-up   128,128,128
+  webgpu               88 912 B        768 B (aligned)  top-down    128,128,128
+```
+
+- **Row order is OPPOSITE.** `gl.readPixels(0, 0, …)` starts at the framebuffer's BOTTOM-left;
+  WebGPU's `copyTextureToBuffer` takes a texel origin and a WebGPU texture's origin is its TOP-left,
+  and three passes our `y` straight through as `origin.y`. Keeping the existing flip on the node
+  path renders every cameo upside down. The probe prints the corners under BOTH row orders side by
+  side, and they differ in all four — so this is a discrimination, not an agreement by symmetry.
+- **Every node-path row is PADDED.** `WebGPUTextureUtils.copyTextureToBuffer` rounds `bytesPerRow`
+  up to 256 bytes because `GPUCommandEncoder.copyTextureToBuffer` requires it, and sizes the buffer
+  `(height - 1) * bytesPerRow + width * bytesPerTexel` — the last row is not padded
+  (mrdoob/three.js#31658). 148 px is 592 B of pixels in a 768 B row, and nothing in the cameo grid
+  is a multiple of 64 px wide, so this is the ordinary case rather than an edge. A blit that assumes
+  tight rows walks diagonally through the image. `readbackStride` therefore DERIVES the stride from
+  the buffer length and throws on a length matching no known layout, so a three upgrade that changes
+  the packing fails loudly instead of shearing twenty portraits.
+- **Pixel format and colour space are the SAME on both**, which is the one thing that did not need a
+  workaround. `RGBAFormat` + `UnsignedByteType` + `SRGBColorSpace` becomes `rgba8unorm-srgb` on
+  WebGPU and `SRGB8_ALPHA8` on WebGL; both encode on store, both hand back `Uint8Array`, and a mid
+  sRGB grey reads 128 on both. `createImageData`/`putImageData` needs no conversion either way. A
+  linear readback would have read 55.
+- **TWO OVERLAPPING READS OF ONE RENDER TARGET DO NOT CROSS**, measured because they happen every
+  frame: `HUD_CAMEO.perFrameBudget` is 2 and `CameoRenderer` owns ONE target, so a frame renders
+  cameo A, issues its read, renders cameo B over the top and issues a second read with A's still
+  outstanding. If the copies were not ordered against the renders, A's slot would show B's picture —
+  the wrong unit in the wrong slot, silently. The probe's third arm renders two DIFFERENT pictures
+  into one target with both reads in flight and requires each to hold its own; it does. The reason
+  is that both submits are synchronous: `Renderer.render` ends in `backend.finishRender` ->
+  `queue.submit`, and `copyTextureToBuffer` submits its encoder before its first `await`, so the
+  queue sees render A, copy A, render B, copy B. The same fact is why disposing a render target
+  cannot corrupt a read already issued against it.
+- **`toneMappingExposure * 1.42` in `CameoRenderer.render` is INERT, and has been on the WebGL path
+  since it was written.** Neither renderer tone-maps into a user render target:
+  `WebGLPrograms.getParameters` sets `toneMapping = NoToneMapping` unless the current target is null
+  or XR, and the node `Renderer`'s `currentToneMapping` getter does the same through
+  `isOutputTarget`. It is kept — identically on both paths — because removing it changes the WebGL
+  path's uniform writes and that is a separate question. Do not "fix" the cameo exposure by tuning
+  this number; it does nothing.
+
+`tests/cameo-readback.spec.ts` pins the arithmetic without a GPU (31 assertions, 20 deliberate
+breaks each red on exactly the tests naming them), including that the shipped blitter is
+byte-for-byte the loop it replaced when handed WebGL's layout. **It cannot establish the two facts
+in the table above** — only the probe can, and its verdict is here.
+
 ## 8. Unverified — do not quote these as fact
 
 - **`GL_INVALID_OPERATION: glDrawElements: Mismatch between texture format and sampler type` is

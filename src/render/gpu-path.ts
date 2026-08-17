@@ -204,7 +204,40 @@ export interface NodeRendererLike {
   setSize(w: number, h: number, updateStyle?: boolean): void;
   setClearColor(color: THREE.ColorRepresentation, alpha?: number): void;
   setRenderTarget(t: THREE.RenderTarget | null): void;
+  getRenderTarget(): THREE.RenderTarget | null;
+  setScissorTest(enabled: boolean): void;
+  getScissorTest(): boolean;
   clear(color?: boolean, depth?: boolean, stencil?: boolean): void;
+  /**
+   * Draws one frame. THROWS unless `await renderer.init()` has resolved —
+   * which is why `prepareRenderer()` exists and why nothing constructs this
+   * renderer inside `bootstrap()`.
+   */
+  render(scene: THREE.Object3D, camera: THREE.Camera): void;
+  /**
+   * THE ONLY READBACK THIS RENDERER HAS. `WebGLRenderer.readRenderTargetPixels`
+   * — synchronous, caller-supplied buffer — does not exist on `Renderer` at all;
+   * this returns a freshly allocated typed array a frame or more later.
+   *
+   * Typed as `ArrayBufferView` because the element type follows the target's
+   * GPU format: three picks it from `_getTypedArrayType(format)`, and an
+   * RGBA8/RGBA8-sRGB target yields `Uint8Array`. The caller narrows, because a
+   * float target would hand back `Float32Array` and quietly mean something else.
+   *
+   * The GPU copy is ENCODED AND SUBMITTED SYNCHRONOUSLY inside this call — an
+   * `async` body runs to its first `await`, and three's is `mapAsync` — so the
+   * bytes are captured against the render that preceded the call, and disposing
+   * the render target afterwards cannot corrupt them.
+   */
+  readRenderTargetPixelsAsync(
+    renderTarget: THREE.RenderTarget,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    textureIndex?: number,
+    faceIndex?: number,
+  ): Promise<ArrayBufferView>;
   getMaxAnisotropy(): number;
   compile(scene: THREE.Object3D, camera: THREE.Camera): unknown;
   dispose(): void;
