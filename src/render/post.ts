@@ -1136,8 +1136,9 @@ export function createPostChain(options: CreatePostOptions): PostChain {
        *     uTime        0
        *
        * against a `RENDER_CONFIG.post.grade` that correctly held shadowTint
-       * #4F5667, lift #06090F, gain #FFF6E8, grain 0 and CA 0. Four separate
-       * defects, none of which announced itself:
+       * #4F5667 (the value of the day — it is #565665 now, re-derived once the
+       * uniform could be seen), lift #06090F, gain #FFF6E8, grain 0 and CA 0.
+       * Four separate defects, none of which announced itself:
        *
        *  1. The WHOLE 3-way colour balance was a no-op. Every measurement in
        *     the `shadowTint` block of `config.ts` — three values, each with a

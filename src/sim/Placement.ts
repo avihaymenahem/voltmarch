@@ -888,14 +888,23 @@ export class PlacementController {
      * colour nobody authored: darker, and much more saturated.
      *
      * `validColor` #4ADE80 — a soft mint — reached the screen as rgb(17,186,55),
-     * a pure emerald. That is scorecard #9's "amateur emerald green" by name,
-     * painted across a quarter of the frame whenever a structure is on the
-     * cursor: `09-placement` measured 0.0383 against a 0.02 ceiling, the worst
-     * number on the board and nearly 2x the limit. It was not a grade problem
-     * and no amount of tint chasing would have found it.
+     * a pure emerald.
      *
      * Do not "restore" the conversion. If a colour here looks washed out, the
      * hex in PLACEMENT is the thing to change — it is now what you actually see.
+     *
+     * THE PARAGRAPH THAT USED TO SIT HERE BLAMED THE CARPET, and it was wrong.
+     * It read that the emerald was "painted across a quarter of the frame" and
+     * that `09-placement`'s scorecard #9 failure was therefore this bug rather
+     * than the grade. Measured afterwards by repainting each part of this ghost
+     * independently in a live capture: 771 of that fixture's 190 383 failing
+     * pixels are under the carpet — 0.4% — and turning the carpet off makes the
+     * number WORSE, 0.0516 -> 0.0601, because the sheet covers leaking ground.
+     * Nearly half of the failure (0.0516 -> 0.0268 with it hidden) belongs to
+     * `this.volume`, which takes the same tint from `updateMeshes` and is
+     * DoubleSide at 0.17, so it lays ~0.31 of `validColor` over a large area of
+     * lawn. The rest is terrain the ghost never touches. See the `validColor`
+     * block in `src/core/config.ts` for the measurement and the colour it chose.
      */
     okColor.setHex(hexToInt(PLACEMENT.validColor));
     badColor.setHex(hexToInt(PLACEMENT.invalidColor));
