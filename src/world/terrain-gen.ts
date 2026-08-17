@@ -164,6 +164,14 @@ export const SPLAT_N = MAP_CELLS * TERRAIN_SPLAT_PER_CELL;
 export const SPLAT_BYTES = SPLAT_N * SPLAT_N * 4;
 /** Metres per splat texel (2). */
 const SPLAT_METRES = MAP_SIZE / SPLAT_N;
+/**
+ * Buckets in `TerrainFields.patchQuantile`'s histogram of a patch noise field.
+ *
+ * 4096 over a [0,1] field is a raw quantile error of 2.4e-4, against a
+ * smoothstep halo of 0.07 that spans 287 of them. Deliberately a power of two
+ * so `(v * bins) | 0` is exact.
+ */
+const PATCH_QUANTILE_BINS = 4096;
 /** Heightfield samples per build cell (4). */
 const SAMPLES_PER_CELL = Math.round(CELL / GRID);
 /** Face-normal Y below which a triangle is a cliff, not ground. */
@@ -2130,6 +2138,94 @@ export class TerrainFields implements ITerrain {
    * ====================================================================== */
 
   /**
+   * The value of a patch field that exactly `amount` of the map lies above.
+   *
+   * `1 - amount` IS NOT THAT VALUE, and it was used as though it were for the
+   * whole life of this file. It is the right threshold only for a field that is
+   * UNIFORM on [0,1], and a 3-octave normalised simplex fbm is Gaussian.
+   * Measured over the real 256x256 splat grid, all four biomes, three seeds:
+   * p05 0.265 · p50 0.500 · p95 0.734 · sigma 0.143. So the temperate dirt gate
+   * at 0.78 sat above the 96th percentile and the sand gate at 0.90 past the
+   * 99.99th, and the biome's declared coverage was off by up to 200x:
+   *
+   * ```
+   *                  declared    patch term painted   texels w>0.5
+   *   temperate dirt    22%          2.21-2.28%        1.81-1.88%
+   *   temperate sand    10%          0.05%             0.01%
+   *   urban     dirt    18%          0.76-0.81%        0.53-0.60%
+   *   snow      dirt    14%          0.20-0.24%        0.10-0.12%
+   *   desert    dirt    34%         15.38-15.89%      14.98-15.51%
+   * ```
+   *
+   * Desert is the trap: `1 - 0.34` = 0.66 happens to land near the real 66th
+   * percentile of a Gaussian centred on 0.5, so the one biome anybody would
+   * spot-check looked broadly right while the other three did not.
+   *
+   * So measure the field instead of assuming its shape. One histogram pass over
+   * the same 65 536 texel centres the classifier samples, then read the
+   * quantile back off the cumulative from the top, stepping linearly inside the
+   * bucket the edge lands in. Per biome, per seed, per wavelength — which is
+   * what makes `dirtPatchAmount`'s docstring true for a biome nobody has
+   * written yet and for any `?mapseed=`.
+   *
+   * DETERMINISM. This is terrain, so it is generated independently on both
+   * clients of a lockstep match and must agree to the last bit. A fixed-bucket
+   * histogram over a fixed sample set uses only `+ - * /` and a truncation,
+   * exactly like `fbm2` itself — ECMA-262 pins those. A sort would be equally
+   * exact but costs 65 536 log 65 536 comparisons and half a megabyte; a
+   * Newton/bisection root-find on the CDF would NOT be safe, because its step
+   * count depends on a convergence test, which is the same reason
+   * `ellipseDistance` refuses one.
+   *
+   * COST. One extra 65 536-sample fbm pass per patch field per terrain build —
+   * two per map, ~1-2 ms, at boot, on the worker `buildSplat` already runs on.
+   * Nothing per frame and nothing per tick.
+   *
+   * 4096 buckets puts the raw quantile error at 2.4e-4, and the linear step
+   * inside the landing bucket takes the delivered coverage to within 0.05
+   * percentage points of `amount` — against a smoothstep halo of 0.07, which is
+   * 287 buckets wide. Sharpening this further would be measuring nothing.
+   */
+  private patchQuantile(inv: number, salt: number, amount: number): number {
+    // A gate above every sample (nothing passes) and below every sample (all of
+    // it does). Both are outside the field's real range, so the smoothstep
+    // still resolves to a hard 0 or 1 across its whole halo.
+    if (amount <= 0) return 2;
+    if (amount >= 1) return -1;
+
+    const bins = PATCH_QUANTILE_BINS;
+    const hist = new Int32Array(bins);
+    const seed = this.seed + salt;
+    for (let tz = 0; tz < SPLAT_N; tz++) {
+      const z = (tz + 0.5) * SPLAT_METRES;
+      for (let tx = 0; tx < SPLAT_N; tx++) {
+        const x = (tx + 0.5) * SPLAT_METRES;
+        const v = fbm2(x * inv, z * inv, 3, 2.0, 0.5, seed) * 0.5 + 0.5;
+        // simplex is nominally in [-1,1] but not guaranteed to the bit, and a
+        // future octave count could widen it. Clamping the INDEX rather than
+        // the value keeps the tail samples counted where they belong.
+        let bin = (v * bins) | 0;
+        if (bin < 0) bin = 0; else if (bin >= bins) bin = bins - 1;
+        hist[bin]!++;
+      }
+    }
+
+    // Walk down from the top until `want` samples have been passed. Whatever
+    // bucket that lands in holds the edge; assume the bucket's samples are
+    // spread evenly across it and take the matching fraction of its width.
+    let want = amount * (SPLAT_N * SPLAT_N);
+    for (let bin = bins - 1; bin >= 0; bin--) {
+      const c = hist[bin]!;
+      if (c >= want) {
+        const frac = c > 0 ? want / c : 0;
+        return (bin + 1 - frac) / bins;
+      }
+      want -= c;
+    }
+    return 0;
+  }
+
+  /**
    * Paint the six-layer control texture and derive the per-cell dominant
    * surface from it.
    *
@@ -2146,6 +2242,13 @@ export class TerrainFields implements ITerrain {
     const invDirt = 1 / b.dirtPatchMetres;
     const invSand = 1 / (b.dirtPatchMetres * 1.7);
     const totalRise = Math.max(1e-3, b.tierCount * b.stepHeight);
+
+    // The thresholds, MEASURED off the two fields rather than assumed from
+    // their declared coverage. See `patchQuantile` for why `1 - amount` was
+    // wrong and by how much. Hoisted: both were loop-invariant constants being
+    // recomputed 65 536 times, and the quantile pass must not be.
+    const dEdge = this.patchQuantile(invDirt, 13, b.dirtPatchAmount);
+    const sEdge = b.sandPatchAmount > 0 ? this.patchQuantile(invSand, 211, b.sandPatchAmount) : 2;
 
     for (let tz = 0; tz < SPLAT_N; tz++) {
       const z = (tz + 0.5) * SPLAT_METRES;
@@ -2176,13 +2279,11 @@ export class TerrainFields implements ITerrain {
         }
         if (b.sandPatchAmount > 0) {
           const n = fbm2(x * invSand, z * invSand, 3, 2.0, 0.5, s + 211) * 0.5 + 0.5;
-          const edge = 1 - b.sandPatchAmount;
-          sand = Math.max(sand, smoothstep(edge - 0.08, edge + 0.08, n));
+          sand = Math.max(sand, smoothstep(sEdge - 0.08, sEdge + 0.08, n));
         }
 
         // Dirt: blobby patches, drier with altitude, guaranteed on ramps.
         const patch = fbm2(x * invDirt, z * invDirt, 3, 2.0, 0.5, s + 13) * 0.5 + 0.5;
-        const dEdge = 1 - b.dirtPatchAmount;
         let dirt = smoothstep(dEdge - 0.07, dEdge + 0.07, patch);
         dirt = clamp01(dirt + clamp01((h - b.baseHeight) / totalRise) * b.dirtAltitude);
         dirt = clamp01(dirt + smoothstep(b.rockSlope * 0.5, b.rockSlope, neighbourSlope) * 0.38);
