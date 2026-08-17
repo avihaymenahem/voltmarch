@@ -99,7 +99,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 3628 across 141 files (+1 opt-in probe)
+npm test             # vitest, currently 3631 across 141 files (+1 opt-in probe)
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -520,6 +520,39 @@ module. `docs/SPEC_DRIFT_AUDIT.md` #62 is the entry.
   nine of the thirteen fixtures declare `settleTicks: 0` — five of those nine call `addOre` and never
   seed it. **`06-economy` is the only frame in the capture set where a crystal can appear.** Do not
   read an unchanged look-bible grade as evidence this renderer is fine.
+
+## Explosion brightness has been reported SEVEN times, and six of them measured the wrong case
+
+Latest: *"flashes become huge again with 100% brightness, cant see nothing in fight"*. **There is no
+regression.** Every constant in `VFX_GLARE`, `VFX_LIGHTS` and `VFX_EXPLOSION` is byte-identical from
+v1.24.0 to v2.12.0, and the one render change in that window that could touch a flash —
+`bloom.radius` 0.70 → 0.34 — moves the failing case from 16.003% to 15.580% of frame over L=0.95,
+i.e. by nothing. Do not go looking for the commit; there isn't one.
+
+- **`VFX_GLARE.radiusM` was 7 m and the complaint is about the SCREEN.** `src/vfx/FlashBudget.ts`
+  bounds how much additive glare one PATCH OF GROUND may emit, and it does that correctly. Nothing
+  bounded the frame. At `CAMERA.defaultDistance` 55 m the focus plane is 35.7 m tall, so a firefight
+  spread over 30-40 m is one screenful of detonations each holding a private budget and a private
+  PointLight.
+- **`tools/flash-stack.mjs` packed every sweep it ever ran into a 4 m spiral** — inside `radiusM` and
+  inside every `mergeRadius`. Six passes of measurement therefore all landed on the configuration
+  that IS bounded, and all six reported the bound working. It sweeps `SPREADS = [4, 18]` now; **do
+  not delete that axis to save renders.** At 1280x720 on the 55 m dolly, twelve unit deaths against a
+  2.430% baseline: 5.442% blown inside 4 m, **15.580% across 18 m**.
+- **The fix is a second tier of the same budget, at the scale of the frame** — `VFX_GLARE.wide`,
+  34 m / ceiling 4.0 / exponent 3.0, multiplied into the locality tier. Twenty deaths across 18 m go
+  36.200% -> 14.314% blown; ONE death is bit-identical (4.253% either side), which is the property
+  the whole file rests on and which every previous fix broke.
+- **The point lights are NOT the offender.** Ablated (`material.visible = false` on `VfxAdditive`,
+  `VfxLitSmoke`, `VfxDebris`, `VfxBeamOverlay`, `VfxRibbonDepth` — never `mesh.visible`, which the
+  pools reassign on upload), twelve spread deaths cost +0.95pp against +13.15pp with the sprites
+  drawn, and `VFX_LIGHT_MERGE_CEIL` saturates exactly as advertised. An older note calling the light
+  pile the largest lever was taken through a mask that never worked.
+- **`VFX_NOON.muzzleMs`, `muzzleSize` and `muzzleColor` are read by nobody.** The live muzzle numbers
+  are `VFX_GUNS.flash[size]`. They are labelled INERT in `config.ts` now; tuning them does nothing.
+
+The measurements, the rejected hypotheses and what not to re-run are in
+[`docs/RENDER_FINDINGS.md`](docs/RENDER_FINDINGS.md) §5b.
 
 ## Hard rules
 

@@ -203,6 +203,56 @@ hex was chosen to look right through a bug.
 
 ---
 
+## 5b. The flash "regression" is not one — the budget was LOCAL and the screen is not
+
+**Measured 2026-08-17 for the SEVENTH brightness report** ("flashes become huge again with 100%
+brightness, cant see nothing in fight"). Three answers, each of which cost a run, and the first two
+are the ones that will otherwise be re-derived.
+
+**1. Nothing regressed. There is no commit to point at.** Every constant in `VFX_GLARE`,
+`VFX_LIGHTS` and `VFX_EXPLOSION` is byte-identical from v1.24.0 (`bb3022a`, the last flash pass)
+through v2.12.0 — compared field by field across five release commits. `exposure`, `contrast`,
+bloom `threshold` and bloom `strength` are unchanged too. The only render change in that window that
+could plausibly touch a flash is `bloom.radius` 0.70 → 0.34 at v2.11.0, and **it is not the cause**:
+rebuilt with 0.70, the failing case measures 16.003% of frame over L=0.95 against 15.580% at the
+shipped 0.34, which is inside the presentation-RNG spread. Do not re-run that A/B.
+
+**2. `tools/flash-stack.mjs` had measured the bounded case six times in a row.** Every sweep it has
+ever run packs its emissions into a **4 m spiral** — inside `VFX_GLARE.radiusM` (7 m) and inside
+every `mergeRadius` in `VFX_LIGHTS` (4–9 m). So both stacking bounds fired on every measurement ever
+taken with it, and both were duly reported working. A firefight is 30–40 m across; at
+`CAMERA.defaultDistance` 55 m the focus plane is 35.7 m tall, so that is one screenful. Measured at
+1280×720 on the 55 m dolly, twelve unit deaths, frame area over L=0.95 against a 2.430% baseline:
+
+```
+one death                      3.991%   (+1.56pp)
+twelve inside 4 m              5.442%   (+3.01pp)   <- the only case the tool could see
+twelve across 18 m            15.580%  (+13.15pp)   <- what the report is about
+```
+
+The tool now sweeps `SPREADS = [4, 18]`. **Do not delete that axis to save renders.**
+
+**3. The point-light pool is NOT the offender and `VFX_LIGHT_MERGE_CEIL` is not leaking.** With
+every VFX sprite and ribbon material hidden (`VfxAdditive`, `VfxLitSmoke`, `VfxDebris`,
+`VfxBeamOverlay`, `VfxRibbonDepth`, via `material.visible` — never `mesh.visible`, which the pools
+reassign on upload), twelve spread deaths cost **+0.95pp**, against +13.15pp with them drawn. The
+merge saturates at 1.9× `basePeak` exactly as `LightPool`'s own header claims. This overturns the
+older note in `config.ts` that called the light pile the largest single lever; that note was taken
+through the mask that never worked, and `VFX_EXPLOSION.outputGain`'s block already records the
+correction.
+
+The fix is a second glare tier at the scale of the frame (`VFX_GLARE.wide`, 34 m / ceiling 4.0 /
+exponent 3.0). After it, twenty deaths across 18 m go **36.200% → 14.314%** blown (frame mean
+0.7172 → 0.5440), while one death is bit-identical (4.253% either side) and twenty inside 4 m barely
+move (12.739% → 12.290%). Weighted grade unchanged at 92.0%, 13 failures, all #34.
+
+**Dead knobs found on the way**: `VFX_NOON.muzzleMs`, `muzzleSize` and `muzzleColor` are declared on
+`VfxLook` in `types.ts`, set in `config.ts`, and **read by nobody**. The live muzzle numbers are
+`VFX_GUNS.flash[].lifeMs` and `VFX_GUNS.flash[].widM/lenM`. Tuning the `VFX_NOON` trio changes
+nothing on screen.
+
+---
+
 ## 6. Smaller settled facts
 
 - **GTAO's prepass is DELETED — done, shipped, `ao` is 0 on all 13 fixtures.** Totals fell 38–56 per
