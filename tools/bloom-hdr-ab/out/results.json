@@ -1,0 +1,211 @@
+{
+  "size": "1280x720",
+  "settle": 10,
+  "when": "2026-08-17T17:02:20.863Z",
+  "fixtures": {
+    "03-terrain-closeup": {
+      "adapter": {
+        "vendor": "nvidia",
+        "architecture": "ampere"
+      },
+      "chains": {
+        "webgl": {
+          "scene": "Xae",
+          "scene-dim": "Xae",
+          "grade-only": "Xae+fW",
+          "ao-grade": "Xae+pl+fW",
+          "grade-smaa": "Xae+fW+qae",
+          "bloom-grade": "Xae+Gg+fW",
+          "nobloom": "Xae+pl+fW+qae",
+          "full": "Xae+pl+Gg+fW+qae"
+        },
+        "webgpu": {
+          "scene": "render",
+          "scene-dim": "render",
+          "grade-only": "render+grade",
+          "ao-grade": "render+ao+grade",
+          "grade-smaa": "render+grade+smaa",
+          "bloom-grade": "render+bloom+grade",
+          "nobloom": "render+ao+grade+smaa",
+          "full": "render+ao+bloom+grade+smaa"
+        }
+      },
+      "smaaWiring": {
+        "weightsReadsEdges": true,
+        "blendReadsWeights": true,
+        "weightsInputName": "SMAAPass.edges",
+        "edgesTargetName": "SMAAPass.edges",
+        "blendInputName": "SMAAPass.weights",
+        "weightsTargetName": "SMAAPass.weights"
+      },
+      "errors": {
+        "webgl": [],
+        "webgpu": []
+      },
+      "rungs": {
+        "scene": {
+          "webgl": {
+            "mean": 0.35058409993303413,
+            "p99": 0.7411764705882353,
+            "blown": 0
+          },
+          "webgpu": {
+            "mean": 0.35423967470161316,
+            "p99": 0.7411764705882353,
+            "blown": 0
+          }
+        },
+        "scene-dim": {
+          "webgl": {
+            "mean": 0.12126173310618502,
+            "p99": 0.3764705882352941,
+            "blown": 0
+          },
+          "webgpu": {
+            "mean": 0.12132419356798352,
+            "p99": 0.3764705882352941,
+            "blown": 0
+          }
+        },
+        "grade-only": {
+          "webgl": {
+            "mean": 0.38893093542327045,
+            "p99": 0.9176470588235294,
+            "blown": 0.004448784722222222
+          },
+          "webgpu": {
+            "mean": 0.3897529534983979,
+            "p99": 0.9176470588235294,
+            "blown": 0.004461805555555556
+          }
+        },
+        "ao-grade": {
+          "webgl": {
+            "mean": 0.377196547669655,
+            "p99": 0.9019607843137255,
+            "blown": 0.0037706163194444445
+          },
+          "webgpu": {
+            "mean": 0.36785647003390964,
+            "p99": 0.8862745098039215,
+            "blown": 0.0032725694444444443
+          }
+        },
+        "grade-smaa": {
+          "webgl": {
+            "mean": 0.387698611788253,
+            "p99": 0.8980392156862745,
+            "blown": 0.003510199652777778
+          },
+          "webgpu": {
+            "mean": 0.38610366965431026,
+            "p99": 0.8941176470588236,
+            "blown": 0.0033268229166666667
+          }
+        },
+        "bloom-grade": {
+          "webgl": {
+            "mean": 0.38503308992434787,
+            "p99": 0.9098039215686274,
+            "blown": 0.004388020833333333
+          },
+          "webgpu": {
+            "mean": 0.38574882155726503,
+            "p99": 0.9098039215686274,
+            "blown": 0.004409722222222222
+          }
+        },
+        "nobloom": {
+          "webgl": {
+            "mean": 0.37817162520235503,
+            "p99": 0.8823529411764706,
+            "blown": 0.003060980902777778
+          },
+          "webgpu": {
+            "mean": 0.36648413558989024,
+            "p99": 0.8627450980392157,
+            "blown": 0.002507595486111111
+          }
+        },
+        "full": {
+          "webgl": {
+            "mean": 0.3784116743683415,
+            "p99": 0.8823529411764706,
+            "blown": 0.0030598958333333333
+          },
+          "webgpu": {
+            "mean": 0.3666256593209937,
+            "p99": 0.8666666666666667,
+            "blown": 0.002507595486111111
+          }
+        }
+      },
+      "halo": {
+        "webgl": {
+          "addedMean": 0.00043919490230119975,
+          "addedPx": 0.041748046875,
+          "maxAdd": 0.49521333333333334
+        },
+        "webgpu": {
+          "addedMean": 0.00033594817708334395,
+          "addedPx": 0.024368489583333333,
+          "maxAdd": 0.32705019607843144
+        }
+      },
+      "cross": {
+        "scene": {
+          "changed": 0.7515353732638889,
+          "maxDelta": 211,
+          "meanSigned": 0.003655574768520078
+        },
+        "scene-dim": {
+          "changed": 0.5498524305555555,
+          "maxDelta": 185,
+          "meanSigned": 0.00006246046177144558
+        },
+        "grade-only": {
+          "changed": 0.7105230034722222,
+          "maxDelta": 254,
+          "meanSigned": 0.0008220180751293836
+        },
+        "ao-grade": {
+          "changed": 0.8981174045138889,
+          "maxDelta": 254,
+          "meanSigned": -0.009340077635657192
+        },
+        "grade-smaa": {
+          "changed": 0.7915375434027778,
+          "maxDelta": 247,
+          "meanSigned": -0.0015949421338850517
+        },
+        "bloom-grade": {
+          "changed": 0.7124587673611111,
+          "maxDelta": 254,
+          "meanSigned": 0.000715731632965687
+        },
+        "nobloom": {
+          "changed": 0.9134049479166667,
+          "maxDelta": 236,
+          "meanSigned": -0.01168748961226187
+        },
+        "full": {
+          "changed": 0.9146907552083333,
+          "maxDelta": 236,
+          "meanSigned": -0.011786015047140847
+        }
+      },
+      "haloNoAo": {
+        "webgl": {
+          "addedMean": 0.000544513076150574,
+          "addedPx": 0.032974175347222225,
+          "maxAdd": 0.4110282352941176
+        },
+        "webgpu": {
+          "addedMean": 0.00047623280058549996,
+          "addedPx": 0.02414822048611111,
+          "maxAdd": 0.4121654901960784
+        }
+      }
+    }
+  }
+}

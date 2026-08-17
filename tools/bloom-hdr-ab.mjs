@@ -101,6 +101,28 @@ const WANT = flag('shots', '03-terrain-closeup,01-establishing-base').split(',')
 const RUNGS = [
   { id: 'scene', passes: { ao: false, bloom: false, grade: false, smaa: false }, exposure: null },
   { id: 'scene-dim', passes: { ao: false, bloom: false, grade: false, smaa: false }, exposure: 0.25 },
+  /*
+   * EVERY RUNG BELOW ENDS IN THE GRADE, AND THAT IS NOT TIDINESS.
+   *
+   * `EffectComposer` gives the LAST ENABLED PASS `renderToScreen = true`, and
+   * two of this project's passes behave differently when they are the one that
+   * writes the canvas. `UnrealBloomPass` blits the read buffer with a
+   * tone-mapped `MeshBasicMaterial` and then blends its LINEAR composite
+   * additively on top of that already-encoded frame; `GTAOPass` composites
+   * straight to the default framebuffer. The node graph has no such notion, so
+   * an `ao`-last or `bloom`-last rung compares two different arrangements and
+   * says nothing. Measured before it was believed: an `ao`-last pair came back
+   * 99.999% of pixels changed at a mean of +50.9/255, which is not an AO
+   * difference, it is two different composites.
+   *
+   * With the grade last on both arms the tail is identical — the grade does the
+   * tonemap and the sRGB write, the renderer does neither — so a difference
+   * between two of these rungs is a difference in the pass that was added.
+   */
+  { id: 'grade-only', passes: { ao: false, bloom: false, grade: true, smaa: false }, exposure: null },
+  { id: 'ao-grade', passes: { ao: true, bloom: false, grade: true, smaa: false }, exposure: null },
+  { id: 'grade-smaa', passes: { ao: false, bloom: false, grade: true, smaa: true }, exposure: null },
+  { id: 'bloom-grade', passes: { ao: false, bloom: true, grade: true, smaa: false }, exposure: null },
   { id: 'nobloom', passes: { ao: true, bloom: false, grade: true, smaa: true }, exposure: null },
   { id: 'full', passes: { ao: true, bloom: true, grade: true, smaa: true }, exposure: null },
 ];
@@ -243,6 +265,30 @@ async function runArm(server, gpu, fixtures) {
 
       const baseExposure = await page.evaluate(() => window.__VM.config.renderer.exposure);
 
+      /*
+       * IS THE WEBGL SMAA ACTUALLY WIRED?
+       *
+       * `SMAAPass` binds `_uniformsWeights.tDiffuse` to `_edgesRT.texture` and
+       * `_uniformsBlend.tDiffuse` to `_weightsRT.texture` ONCE, in its
+       * constructor; `render()` rebinds only `_uniformsEdges.tDiffuse`. So any
+       * code that REPLACES either render target leaves two materials sampling
+       * textures nobody writes any more, and SMAA silently becomes a no-op that
+       * still costs three full-screen passes. Read off the live pass rather
+       * than reasoned about, because that is the failure this probe found.
+       */
+      const smaaWiring = await page.evaluate(() => {
+        const p = window.__VM.post?.passes?.smaa;
+        if (p === undefined || p === null) return null;
+        return {
+          weightsReadsEdges: p._uniformsWeights?.tDiffuse?.value === p._edgesRT?.texture,
+          blendReadsWeights: p._uniformsBlend?.tDiffuse?.value === p._weightsRT?.texture,
+          weightsInputName: p._uniformsWeights?.tDiffuse?.value?.name ?? null,
+          edgesTargetName: p._edgesRT?.texture?.name ?? null,
+          blendInputName: p._uniformsBlend?.tDiffuse?.value?.name ?? null,
+          weightsTargetName: p._weightsRT?.texture?.name ?? null,
+        };
+      });
+
       const shots = {};
       const chains = {};
       for (const rung of RUNGS) {
@@ -277,7 +323,7 @@ async function runArm(server, gpu, fixtures) {
         writeFileSync(join(OUT, `${name}--${gpu}--${rung.id}.png`), shots[rung.id]);
       }
 
-      out[name] = { shots, chains, backend, adapter, errors };
+      out[name] = { shots, chains, backend, adapter, errors, smaaWiring };
       await page.close();
     }
   } finally {
@@ -308,6 +354,7 @@ try {
     const entry = {
       adapter: arms.webgpu[name].adapter,
       chains: { webgl: arms.webgl[name].chains, webgpu: arms.webgpu[name].chains },
+      smaaWiring: arms.webgl[name].smaaWiring,
       errors: { webgl: arms.webgl[name].errors, webgpu: arms.webgpu[name].errors },
       rungs: {}, halo: {}, cross: {},
     };
@@ -327,6 +374,10 @@ try {
     }
     entry.halo.webgl = deltaOf(px.webgl.nobloom, px.webgl.full);
     entry.halo.webgpu = deltaOf(px.webgpu.nobloom, px.webgpu.full);
+    entry.haloNoAo = {
+      webgl: deltaOf(px.webgl['grade-only'], px.webgl['bloom-grade']),
+      webgpu: deltaOf(px.webgpu['grade-only'], px.webgpu['bloom-grade']),
+    };
     report.fixtures[name] = entry;
   }
 
@@ -336,6 +387,7 @@ try {
   const pc = (v) => `${(v * 100).toFixed(3)}%`;
   for (const [name, e] of Object.entries(report.fixtures)) {
     console.log(`\n### ${name}   adapter ${JSON.stringify(e.adapter)}`);
+    console.log(`  webgl SMAA wiring: ${JSON.stringify(e.smaaWiring)}`);
     console.log('  pass list as the page reported it');
     for (const rung of RUNGS) {
       console.log(
@@ -361,16 +413,18 @@ try {
         `mean signed ${(c.meanSigned * 255).toFixed(3)}/255`,
       );
     }
-    console.log('  halo = full - nobloom');
-    for (const gpu of ['webgl', 'webgpu']) {
-      const h = e.halo[gpu];
-      console.log(
-        `    ${gpu.padEnd(7)} addedMean ${(h.addedMean * 255).toFixed(4)}/255  ` +
-        `over ${pc(h.addedPx)} of px, peak +${(h.maxAdd * 255).toFixed(1)}`,
-      );
+    for (const [label, set] of [['halo = full - nobloom', e.halo],
+      ['halo WITHOUT AO = bloom-grade - grade-only', e.haloNoAo]]) {
+      console.log(`  ${label}`);
+      for (const gpu of ['webgl', 'webgpu']) {
+        const h = set[gpu];
+        console.log(
+          `    ${gpu.padEnd(7)} addedMean ${(h.addedMean * 255).toFixed(4)}/255  ` +
+          `over ${pc(h.addedPx)} of px, peak +${(h.maxAdd * 255).toFixed(1)}`,
+        );
+      }
+      console.log(`    ratio webgpu/webgl = ${(set.webgpu.addedMean / set.webgl.addedMean).toFixed(4)}`);
     }
-    const r = e.halo.webgpu.addedMean / e.halo.webgl.addedMean;
-    console.log(`    ratio webgpu/webgl = ${r.toFixed(4)}`);
   }
   console.log(`\nwrote ${OUT}`);
 } catch (err) {

@@ -36,7 +36,13 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { AO_HALF_RES_SCALE, aoDenoiseRadius, aoTargetSize, msaaSampleCount } from '../src/render/post';
+import * as THREE from 'three';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+
+import {
+  AO_HALF_RES_SCALE, aoDenoiseRadius, aoTargetSize, demoteSmaaTargets, msaaSampleCount,
+  type SmaaPassInternals,
+} from '../src/render/post';
 import { PASS_ORDER } from '../src/render/post-order';
 import { RENDER_CONFIG } from '../src/render/renderer';
 import { defaultSettings } from '../src/shell/settings-store';
@@ -191,7 +197,50 @@ describe('post.ts wiring', () => {
     // that explains it, and prose must not be able to satisfy the assertion.
     expect(POST_CODE, 'the demotion and its precondition must stay together')
       .toContain('demoteSmaaTargets');
-    expect(POST_CODE).toMatch(/type:\s*THREE\.UnsignedByteType/);
+    expect(POST_CODE).toMatch(/THREE\.UnsignedByteType/);
+  });
+
+  it('leaves SMAA\'s materials bound to the targets the pass renders into', () => {
+    /* THE ONE THAT MATTERS, AND THE ONE THE SOURCE SCANS COULD NOT SEE.
+     *
+     * `demoteSmaaTargets` used to build two replacement render targets and
+     * dispose the originals. `SMAAPass` binds `_uniformsWeights.tDiffuse` to
+     * `_edgesRT.texture` and `_uniformsBlend.tDiffuse` to `_weightsRT.texture`
+     * ONCE, in its constructor, and `render()` never rebinds either — so the
+     * swap left two of the three sub-passes sampling dead textures, every blend
+     * weight came back zero, and SMAA returned its input while still costing
+     * three full-screen passes a frame.
+     *
+     * Every assertion in this file's SMAA section passed throughout: they read
+     * `post.ts` as TEXT, and the text said `UnsignedByteType` on two mask
+     * targets, which was true. What was false was a reference identity, and the
+     * only way to see it is to build the pass and look. So this one does.
+     *
+     * Mutation-tested: restoring the swap turns the first two expectations red
+     * (`SMAAPass.edges` !== `SMAA.edges`), and removing the type writes turns
+     * the last two red. */
+    const scope = globalThis as unknown as { Image?: unknown };
+    const hadImage = scope.Image !== undefined;
+    // `SMAAPass` allocates `new Image()` for its area and search lookup tables,
+    // and this file runs under `environment: 'node'`. Nothing decodes them here
+    // — the pass is constructed and inspected, never rendered.
+    if (!hadImage) scope.Image = class { src = ''; onload: (() => void) | null = null; };
+    try {
+      const pass = new SMAAPass() as unknown as SmaaPassInternals & {
+        _uniformsWeights: { tDiffuse: { value: unknown } };
+        _uniformsBlend: { tDiffuse: { value: unknown } };
+      };
+      demoteSmaaTargets(pass);
+
+      expect(pass._uniformsWeights.tDiffuse.value, 'weights pass must read the edges target')
+        .toBe(pass._edgesRT?.texture);
+      expect(pass._uniformsBlend.tDiffuse.value, 'blend pass must read the weights target')
+        .toBe(pass._weightsRT?.texture);
+      expect(pass._edgesRT?.texture.type).toBe(THREE.UnsignedByteType);
+      expect(pass._weightsRT?.texture.type).toBe(THREE.UnsignedByteType);
+    } finally {
+      if (!hadImage) delete scope.Image;
+    }
   });
 
   it('renders the shadow map once a frame, not once per render() call', () => {
@@ -283,25 +332,29 @@ describe('MSAA multisamples the scene pass and nothing else', () => {
     expect(declared).toEqual(['0']);
   });
 
-  it('constructs exactly three render targets, exactly one of them multisampled', () => {
-    /* TWO became THREE when `demoteSmaaTargets` started replacing SMAA's
-     * `_edgesRT` and `_weightsRT` — one constructor, called twice, swapping
-     * three's hardcoded `HalfFloatType` for `UnsignedByteType` on two masks
-     * defined on 0..1.
+  it('constructs exactly two render targets, exactly one of them multisampled', () => {
+    /* THIS READ "EXACTLY THREE" AND THE THIRD WAS A BUG.
      *
-     * The count is not what this test protects, and bumping it is not the
-     * point. What it protects is "exactly one of them multisampled", and that
-     * half is unchanged and asserted below: `samples` appears once, on the
-     * scene target. A render target that quietly acquires a sample count is the
-     * defect this whole section exists to prevent a second time. */
-    expect(POST_CODE.match(/new THREE\.WebGLRenderTarget\(/g)).toHaveLength(3);
+     * Two became three when `demoteSmaaTargets` started REPLACING SMAA's
+     * `_edgesRT` and `_weightsRT` rather than retyping them (one constructor,
+     * called twice). It is back to two — the composer target and the
+     * multisampled scene target — because that replacement silently unbound two
+     * of SMAA's three materials; see the binding test above, which is the guard
+     * this count never was.
+     *
+     * The count is not what this test protects and bumping it is not the point.
+     * What it protects is "exactly one of them multisampled": `samples` appears
+     * once, on the scene target. A render target that quietly acquires a sample
+     * count is the defect this whole section exists to prevent a second time. */
+    expect(POST_CODE.match(/new THREE\.WebGLRenderTarget\(/g)).toHaveLength(2);
     expect(POST_CODE.match(/samples: want,/g)).toHaveLength(1);
-    // And the two SMAA replacements name no sample count at all — grep the
-    // helper's body rather than trusting the global count above.
+    // And the demotion allocates NOTHING. A new target there is the failure
+    // mode by construction, whether or not it names a sample count.
     const smaaStart = POST_CODE.indexOf('function demoteSmaaTargets');
     expect(smaaStart).toBeGreaterThan(-1);
     const smaaBody = POST_CODE.slice(smaaStart, smaaStart + 1400);
-    expect(smaaBody).toContain('new THREE.WebGLRenderTarget(');
+    expect(smaaBody, 'the demotion must retype in place, never reallocate')
+      .not.toContain('new THREE.WebGLRenderTarget(');
     expect(smaaBody, 'an SMAA mask target must never be multisampled')
       .not.toMatch(/samples/);
   });

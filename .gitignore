@@ -106,3 +106,4 @@ tools/road-node-compare/page.js
 tools/road-node-compare/out/*.png
 tools/shadow-override-probe/page.js
 tools/shadow-override-probe/out/*.png
+tools/bloom-hdr-ab/out/*.png
