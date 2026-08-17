@@ -463,6 +463,13 @@ export class SettingsScreen implements Screen {
 
   private renderGraphics(body: HTMLElement): void {
     const g = this.shell.settings.get().graphics;
+    /*
+     * TOUCHING ANY ROW ON THIS TAB RETIRES THE ONE-TIME CALIBRATION, and that
+     * is enforced by `SettingsStore.patch` rather than here — see the block
+     * above `retiresCalibration`. So this helper stays exactly what it was, and
+     * the next row somebody adds inherits the rule instead of having to
+     * remember it.
+     */
     const set = (patch: Partial<typeof g>): void => {
       this.shell.settings.patch({ graphics: patch });
     };
@@ -510,11 +517,40 @@ export class SettingsScreen implements Screen {
           + 'right now — Adaptive Resolution lowered it to hold the frame rate.'
         : 'Renders below native and upscales. The cheapest frame you will ever buy.',
     ));
+    /*
+     * ONE-TIME CALIBRATION, AND THE ROW HAS TO SAY WHICH STATE IT IS IN.
+     *
+     * "Calibrate" next to no other information is a button nobody presses,
+     * because it does not say whether it has ever run or what it would change.
+     * The note carries the last decision and its reason — see
+     * `describeCalibration` — so pressing it is an informed thing to do.
+     */
+    presets.appendChild(row(
+      'Hardware Calibration',
+      button(g.calibrated ? 'Calibrate Again' : 'Calibrate Now', {
+        iconName: 'monitor',
+        onClick: () => {
+          // Through the shell, NOT through `set`, and not through `patch`
+          // either. Writing `calibrated: false` on a profile where it is
+          // ALREADY false produces an empty diff, `patch` returns early, no
+          // listener fires and the button does nothing — which is precisely
+          // the state a first-time player pressing it is in.
+          this.shell.recalibrate();
+          this.renderTab();
+        },
+      }),
+      g.calibrated
+        ? 'Measures your GPU for a few seconds during a battle and solves for the '
+          + 'resolution that holds 60 fps. Already done — press to measure again.'
+        : 'Measures your GPU for a few seconds at the start of your next battle and '
+          + 'solves for the resolution that holds 60 fps. Runs once.',
+    ));
     presets.appendChild(row(
       'Adaptive Resolution',
       toggle(g.adaptiveResolution, (v) => { set({ adaptiveResolution: v }); this.renderTab(); }),
-      'Trades sharpness for frame rate automatically, down to 55% of native. '
-      + 'Off holds the scale exactly where you set it.',
+      'Off by default. Keeps trading sharpness for frame rate for the whole '
+      + 'match, down to 55% of native, instead of settling on one measured '
+      + 'value. Off holds the scale exactly where you set it.',
     ));
 
     const light = this.section(body, 'Lighting');

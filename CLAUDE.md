@@ -99,7 +99,9 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 3975 across 154 files (+2 opt-in probes)
+npm test             # vitest, currently 4025 across 155 files (+2 opt-in probes)
+                     #   3 of those only run when `dist/` exists — `webgpu-bundle-isolation`
+                     #   is `describe.runIf(haveDist)`, so a clean tree reports 4022.
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -823,6 +825,56 @@ free fixes, the first of which is a 10x threshold bug in the terrain splat class
 opposite — things that are true and cost a lot to establish. Overturn an entry by rewriting it, not
 by appending a contradiction.
 
+## Graphics are MEASURED ONCE at first run, and adaptive resolution is off
+
+Reported as *"i want the adaptive resolution to be off by default. instead, set the graphic options
+that match the best for user for the first time and thats it"*. `AdaptiveResolution` is not deleted
+— it is a good controller, its one-way ratchet is fixed, and it stays a toggle. What changed is the
+default and what fills the gap: `src/render/HardwareCalibration.ts` plus `calibration.system.ts`.
+
+- **THE FRAME IS A STRAIGHT LINE AND THE ANSWER CAN BE SOLVED.** `docs/RENDER_FINDINGS.md` §9 fitted
+  `GPU ms = 5.86 + 6.40 x Mpx` at r² 0.995, with 79-90% of GPU time pixel-proportional. So the
+  calibration renders two probe windows at two known pixel counts (probe A from the adapter prior,
+  probe B at 70% of it — 49% of the pixels), fits that line, and solves for the scale that meets
+  16.7 ms. 110 frames: ~1.8 s at 60 fps, ~4.7 s on the 23.6 fps machine §9 measured.
+  `tests/hardware-calibration.spec.ts` feeds it §9's own machine and requires it to recover 5.86 and
+  6.40 exactly, then reproduces §9's published 0.694 — which is at a 17.22 ms target, not 16.7.
+- **THE ADAPTER IS A PRIOR AND CANNOT CHANGE THE ANSWER.** `capabilities.adapter` (§7g),
+  `classifyGpu` and the backend (§7f: WebGPU 1.74-1.89x faster) decide only where probing STARTS.
+  Two different priors on one machine produce one result, and that is a test.
+- **IT REFUSES TO CUT WHEN THE FRAME IS NOT FILL-RATE BOUND.** A fitted slope under 1.0 ms/Mpx means
+  a vsync-capped display with headroom or a CPU-bound frame, and blurring buys nothing in either
+  case. This is the property that makes it safe to ship on hardware nobody here owns.
+- **IT MUST NEVER RUN UNDER `?shot=`, AND THE STRUCTURAL GUARD IS THE ONE THAT MATTERS.**
+  `armCalibration` has exactly ONE caller, `src/shell/Shell.ts`, and `main.ts#bootHarness` never
+  imports the shell — pinned by a test that enumerates `src/**/*.ts`. Two runtime guards back it up
+  (`loop.captureClock`, read LIVE in both places, and `handle.isFixedSize`). **A fourth, `rc.dt > 0`,
+  is deliberately NOT called a guard**: it survived mutation because `sample()`'s own `frameMs > 0`
+  filter already refuses a zero interval, and a line labelled "guard" that cannot be made to fail is
+  exactly the assertion this project has shipped believing. It would not have sufficed anyway —
+  `GameLoop.advanceTicks` renders at a synthetic 33.3 ms.
+- **`graphics.calibrated` is the whole protocol, and its default depends on whether a blob exists.**
+  A profile with NO stored settings gets `false`; a blob written by an older build has no such key
+  and `normalizeSettings` defaults it to `true`, because raising a setting somebody lowered is the
+  one failure this feature has to avoid. Any change to a picture-affecting graphics row retires it —
+  enforced in `SettingsStore.patch`, not in the options screen, so the next row added inherits it.
+  The exempt list (`panelBlur`, `perfOverlay`, `fov`, the zooms, `fpsCap`) is the only escape and
+  everything off it retires by default. Reset Graphics and "Calibrate Now" are the two routes back.
+- **v3 of the settings schema takes adaptive resolution off a pre-v3 profile that has `true`.** Same
+  shape and same honest limit as `migrateBindings`: nothing distinguishes the old default from a
+  deliberate choice, so somebody who liked it flips one toggle once.
+- **WHAT IT ACTUALLY SETS, AND WHAT IS DEAD.** `resolutionScale` (the lever — 79-90% of the frame),
+  and, only when the fit says the 0.55 floor still misses 60 fps, `ao` off (16.9%, 4.97 ms) and
+  `shadowQuality` low (~2%). **It does NOT touch the quality tier**, because the tier is the one
+  setting that moves `maxPixelRatio` and therefore the pixel count the calibration just solved for —
+  a feedback loop the measurement cannot see. It never turns MSAA on. Three things are worth knowing
+  before wiring anything else to a "tier": `applySettings` re-asserts `ao`/`bloom`/`smaa`/
+  `shadowQuality`/`resolutionScale` ON TOP of the tier, so all the tier uniquely still owns is
+  `maxPixelRatio`, `ao.samples`, `ao.halfRes`, `bloom.radius` and the art `textureSize`;
+  **`graphics.fpsCap` has ZERO readers** (persisted, clamped, no UI row, no consumer); and **`?tier=`
+  never reaches the product path** — `main.ts` parses it and does not hand it to `Shell`, so it is
+  harness-only while this file's boot-flag list implies otherwise.
+
 ## The look is measured, not judged
 
 [`docs/RA3_LOOK_BIBLE.md`](docs/RA3_LOOK_BIBLE.md) is the visual law: camera, lighting, palette,
@@ -920,7 +972,10 @@ Boot flags: `?shot=<id>` (skips the menu, freezes the sim, poses the camera), `?
 `?tier=`, `?seed=`, `?mapseed=`, `?biome=`, `?fog=off`, `?relay=`, `?unlockall`. **`?seed=` and
 `?mapseed=` are different seeds** — the first drives the scenario layout and every draw of `s.rng`,
 the second is the terrain roll. Confusing them is what made a v1 replay reproduce the hills and
-nothing else.
+nothing else. **`?tier=` is HARNESS-ONLY** and this line implied otherwise for its whole life:
+`main.ts` parses it into `options.tier`, hands `options` to `bootstrap()` on the `?shot=` path, and
+does NOT pass it to `Shell` — which takes its tier from `settings.graphics.tier` instead. All four
+tiers boot identically on the product path.
 
 ## Things that have gone wrong before
 

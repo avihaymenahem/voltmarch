@@ -32,10 +32,24 @@ import { ctx } from '../game/context';
 import type { RendererHandle } from './renderer';
 
 import { AdaptiveResolution } from './AdaptiveResolution';
+import { calibrationRunning } from './calibration.system';
 
 let handle: RendererHandle | null = null;
 let controller: AdaptiveResolution | null = null;
-let enabled = true;
+/**
+ * OFF UNTIL SOMETHING TURNS IT ON, and that is the shipped default now.
+ *
+ * This was `true`, so dynamic scaling ran on any page that never called
+ * `setAdaptiveResolution` — including `?shot=`, where only `handle.isFixedSize`
+ * stood between the capture set and a controller resizing the drawing buffer.
+ * The product default moved to off (`settings-store.ts#defaultSettings`, and the
+ * v3 migration beside it), and a module default that disagreed with it would be
+ * a second answer to the same question.
+ *
+ * `shell/Settings.ts#applySettings` pushes the player's choice on every boot, so
+ * a player who wants it back gets it back on the frame they ask.
+ */
+let enabled = false;
 /** Unsubscribe for the layout-box watcher below. */
 let offResize: (() => void) | null = null;
 /** Last CSS layout box seen, so a genuine window change can be told apart. */
@@ -136,6 +150,17 @@ export default defineSystem({
     // silently corrupt the visual scorecard — the exact class of defect
     // `docs/SPEC_DRIFT_AUDIT.md` catalogues. Never steer during one.
     if (handle.isFixedSize) return;
+    /*
+     * TWO CONTROLLERS MUST NOT STEER ONE HANDLE.
+     *
+     * `render.hardwareCalibration` runs at Present order 90, immediately before
+     * this, and it deliberately moves the scale between two probe values to fit
+     * a line. Every one of those moves looks to the check below like a
+     * deliberate outside choice, so without this the calibration would re-arm
+     * this controller's ceiling on every probe and then be steered against
+     * while it measured — a line fitted through a moving target.
+     */
+    if (calibrationRunning()) return;
 
     /*
      * DID SOMEONE ELSE MOVE THE SCALE?
