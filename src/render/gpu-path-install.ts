@@ -61,19 +61,82 @@ const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
  * ========================================================================== */
 
 /**
+ * The private field on `Renderer` that holds three's own fallback factory.
+ *
+ * Named once, here, so the reach into three's internals below is a single
+ * grep-able constant rather than a string literal buried in a cast — and so a
+ * three upgrade that renames it fails at the guard rather than silently
+ * reinstating the crash. See `disableThreeFallback`.
+ */
+const THREE_FALLBACK_FIELD = '_getFallback';
+
+/**
+ * **REMOVE THREE'S WEBGL FALLBACK. IT CANNOT WORK ON A SHARED CANVAS AND IT IS
+ * WHAT KILLED A PLAYER'S PAGE.**
+ *
+ * `WebGPURenderer`'s constructor installs `parameters.getFallback = () => new
+ * WebGLBackend( parameters )` for every construction that is not `forceWebGL` —
+ * unconditionally, with no option to decline. `Renderer.init()` then calls it on
+ * ANY throw out of `WebGPUBackend.init`, and `WebGLBackend.init` runs
+ * `renderer.domElement.getContext( 'webgl2', … )` on the SAME canvas. A canvas
+ * holds one context type for its whole life, so on `index.html`'s single `#gl`
+ * that call returns `null` and the very next line, `new WebGLExtensions( this )`,
+ * dereferences it:
+ *
+ *     TypeError: Cannot read properties of null (reading 'getSupportedExtensions')
+ *
+ * That is the crash as reported, and it replaced the REAL cause — a driver reset
+ * making `requestDevice()` fail — with a message about a WebGL extension list.
+ *
+ * So the fallback is not merely unwanted, it is a lie generator: on this canvas
+ * its only two outcomes are that TypeError, or (on a canvas where WebGL2 does
+ * open) a `webgl2-fallback` renderer that `assertBackend` refuses anyway. Nulling
+ * it makes `init()` reject with the ORIGINAL error, which is the one worth
+ * showing. `renderer.ts#prepareRenderer` catches that rejection and
+ * `device-loss.ts` turns it into words.
+ *
+ * **THE GUARD IS LOAD-BEARING.** This writes a private field, so a three upgrade
+ * that renames or removes it would leave the broken fallback armed again with
+ * nothing failing. Checking the field is present before writing it turns that
+ * into a build-time-visible warning instead of a silent regression; the write is
+ * skipped rather than forced, because inventing a private on three's renderer is
+ * strictly worse than leaving it alone.
+ */
+function disableThreeFallback(renderer: object): boolean {
+  if (!(THREE_FALLBACK_FIELD in renderer)) {
+    console.warn(
+      `[render] three's WebGPURenderer no longer carries '${THREE_FALLBACK_FIELD}'. Its WebGL ` +
+        'fallback could not be disabled, and on a shared canvas that fallback crashes inside ' +
+        'WebGLExtensions rather than reporting the real device failure. ' +
+        'See src/render/device-loss.ts.',
+    );
+    return false;
+  }
+  (renderer as unknown as Record<string, unknown>)[THREE_FALLBACK_FIELD] = null;
+  return true;
+}
+
+/**
  * Construct and INITIALISE a `WebGPURenderer`.
  *
  * `await renderer.init()` is not optional and not deferrable: `Renderer.render()`
- * throws `.render() called before the backend is initialized` outright. It is
- * also where the fallback fires — `init()` catches the `requestDevice()` failure
- * and swaps in a `WebGLBackend` behind a single `console.warn`, and RESOLVES.
- * So a successful await here proves nothing about which backend is live; that
- * question is settled by `assertBackend(liveBackendOf(renderer))` back in
- * `renderer.ts`, on `backend.isWebGPUBackend`. See `RENDER_FINDINGS.md` §7c.
+ * throws `.render() called before the backend is initialized` outright. It used
+ * to be where the fallback fired — `init()` caught the `requestDevice()` failure
+ * and swapped in a `WebGLBackend` behind a single `console.warn`, then RESOLVED.
+ * `disableThreeFallback` above removes that path, so `init()` now REJECTS with
+ * the real cause and this function's caller decides what to do about it.
+ *
+ * A successful await still proves nothing about which backend is live if the
+ * guard could not fire; that question is settled by
+ * `assertBackend(liveBackendOf(renderer))` back in `renderer.ts`, on
+ * `backend.isWebGPUBackend`. See `RENDER_FINDINGS.md` §7c.
  *
  * `alpha: false` and `powerPreference` carry over from the WebGL construction
  * for the reasons written there — the opaque-canvas argument is about the
- * compositor and is renderer-independent.
+ * compositor and is renderer-independent. **`powerPreference` IS A HINT**: Stage
+ * A asked for `'high-performance'` and observed an integrated `amd`/`gcn-5`
+ * adapter on a box holding an RTX 3080, which is why the adapter is now read
+ * back off the device and published rather than assumed.
  */
 async function createNodeRenderer(
   canvas: HTMLCanvasElement, antialias: boolean,
@@ -92,6 +155,7 @@ async function createNodeRenderer(
      */
     forceWebGL: false,
   });
+  disableThreeFallback(renderer);
   await renderer.init();
   return renderer as unknown as NodeRendererLike;
 }

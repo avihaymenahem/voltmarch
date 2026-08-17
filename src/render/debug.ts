@@ -40,6 +40,8 @@ import {
   RENDER_CONFIG,
   configureRender,
   applyQualityTier,
+  gpuReport,
+  type GpuReport,
   type RendererHandle,
   type RenderConfig,
   type DeepPartial,
@@ -427,6 +429,31 @@ export interface VMHandle {
   renderAudit(
     options?: { on?: boolean; now?: boolean; reset?: boolean; failure?: boolean },
   ): RenderAudit | null;
+
+  /* -- the GPU seam (ADDITIVE — nothing above changes shape). -- */
+  /**
+   * Which backend was asked for, which is live, WHICH ADAPTER IT IS ON, and
+   * whether the device has been lost.
+   *
+   * The third of those is the one that did not exist before and is the reason
+   * this method does. `powerPreference: 'high-performance'` is a hint, not an
+   * instruction: Stage A requested it and its probe still landed on an
+   * integrated `amd`/`gcn-5` adapter, on a machine that also holds an RTX 3080,
+   * because Windows hybrid setups resolve the preference through the driver's
+   * own per-application profile. So "which GPU was this crash on?" was not
+   * answerable from the running page — the WebGL debug string names whichever
+   * chip WebGL got, which need not be the one the WebGPU device came from.
+   *
+   * Reads through `backend.ts#normaliseAdapterInfo`, for the same reason
+   * `stats()` reads through `normaliseInfo`: the raw shape differs between
+   * browsers, `GPUAdapterInfo` puts its fields on the prototype so a spread
+   * copies nothing, and a field that silently reads `undefined` prints the word
+   * "undefined" into the one report somebody was relying on.
+   *
+   * Safe at any time. On the WebGL path `adapter` is null and `deviceLost` is
+   * null, permanently.
+   */
+  gpuInfo(): GpuReport;
 }
 
 declare global {
@@ -1059,6 +1086,13 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
       if (options?.failure === true) return b.failedAudit();
       if (options?.now === true) return b.auditNow();
       return b.lastAudit();
+    },
+
+    gpuInfo(): GpuReport {
+      // `handle.backend` is the READ, not the request — the whole point of
+      // `src/render/backend.ts`. Passing it in rather than letting `gpuReport`
+      // guess keeps the one source of that answer in one place.
+      return gpuReport(handle.backend);
     },
   };
 

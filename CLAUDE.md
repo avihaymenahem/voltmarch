@@ -99,7 +99,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 3932 across 153 files (+2 opt-in probes)
+npm test             # vitest, currently 3975 across 154 files (+2 opt-in probes)
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -698,6 +698,38 @@ that picks. **The default is still WebGL** and nothing in the product selects th
   (`channel: 'chrome'`) because Playwright's bundled Chromium cannot get a WebGPU device here, and
   it asserts `rendererHandle.backend` per shot — a `webgl2-fallback` fails the capture rather than
   being labelled `webgpu`.
+- **A CANVAS HOLDS ONE CONTEXT TYPE FOR LIFE, AND THREE'S OWN FALLBACK DOES NOT KNOW THAT.**
+  Reported as a driver reset that killed the page with
+  `TypeError: … null (reading 'getSupportedExtensions') at WebGLBackend.init`.
+  `WebGPURenderer`'s constructor installs a `getFallback` that builds a `WebGLBackend` on
+  `renderer.domElement`; `Renderer.init()` calls it on ANY throw out of `WebGPUBackend.init`; and
+  that backend then asks the canvas WebGPU already claimed for a `webgl2` context, gets `null`, and
+  dereferences it. `index.html` ships one canvas, so this is unavoidable — and `assertBackend` could
+  not fire, because it reads the object `init()` RESOLVES with and here `init()` REJECTS.
+  `gpu-path-install.ts#disableThreeFallback` nulls `_getFallback` BEFORE `init()` (guarded by an
+  `in` check, so a three upgrade warns rather than silently re-arming it), and `prepareRenderer`
+  catches the rejection. **Do not restore three's fallback and do not build any renderer on a canvas
+  a `WebGPURenderer` has touched** — `liveCanvas()` in `renderer.ts` mints a fresh one, and it is
+  identity on every WebGL boot.
+- **`?gpu=webgpu` REFUSES when the device cannot be had. It does not substitute, loudly or
+  quietly.** A visible panel names the failure and the GPU and carries a one-click *Continue on
+  WebGL* that reloads without the flag. The argument is above `raiseGpuFailure` in `renderer.ts`:
+  a notice-plus-fallback is the same lie `assertBackend` exists to forbid — every downstream number
+  would go on being produced about WebGL while the address bar said WebGPU, which is Stage A's
+  defect exactly — and a lost device takes every GPU resource with it, so "recover onto WebGL" is a
+  full re-boot either way.
+- **`device.lost` IS A PROMISE THAT RESOLVES, and it is watched.** `device-loss.ts#watchDeviceLoss`,
+  filtering `reason === 'destroyed'` (that is our own `device.destroy()`, i.e. teardown). A loss
+  sets `isContextLost()` — which `post.render()` already early-outs on — and never clears, because a
+  lost WebGPU device does not come back. `tests/gpu-device-loss.spec.ts` drives all of it from
+  stubs; **no part of the recovery has been observed on real hardware** and `RENDER_FINDINGS.md`
+  §7g says exactly which four claims that leaves unverified.
+- **`powerPreference: 'high-performance'` IS A HINT AND WINDOWS IGNORES IT.** Stage A asked for it
+  and its probe observed an integrated `amd`/`gcn-5` adapter on a box that also holds an RTX 3080.
+  The live adapter is read off `device.adapterInfo` through `backend.ts#normaliseAdapterInfo` and
+  published on `capabilities.adapter` and `__VM.gpuInfo()`. **The WebGL debug string is not a
+  substitute** — it names whichever chip *WebGL* got. And do not read `GPUAdapterInfo` with a
+  spread: its fields are on the prototype, so `{...info}` is `{}` on every real adapter.
 - **The speed verdict was overturned and the old one is still quoted in places.** Stage A's
   synthetic sweep said WebGPU was at best neutral; on the REAL game it is **1.74-1.89x faster**
   across a 9x pixel range, because §9 had already established the frame is fill-rate bound and the

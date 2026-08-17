@@ -59,14 +59,27 @@ import * as THREE from 'three';
 import { RepaintGuard } from './RepaintGuard';
 import {
   assertBackend,
+  describeAdapter,
   liveBackendOf,
+  normaliseAdapterInfo,
   normaliseInfo,
   requestedBackend,
+  type AdapterIdentity,
   type GpuBackend,
   type LiveBackend,
   type NormalisedFrameInfo,
   type RendererInfoLike,
 } from './backend';
+import {
+  CanvasQuarantine,
+  GpuUnavailableError,
+  gpuFailureConsoleLine,
+  gpuFailureReport,
+  hrefWithoutGpuFlag,
+  showGpuFailure,
+  watchDeviceLoss,
+  type GpuFailure,
+} from './device-loss';
 import { nodePath, prepareGpuPath, type NodeRendererLike } from './gpu-path';
 
 declare const __DEV__: boolean;
@@ -1101,15 +1114,36 @@ export interface RendererHandle {
     maxSamples: number;
     anisotropy: number;
     floatRenderTargets: boolean;
-    /** Unmasked GPU string when WEBGL_debug_renderer_info is available. */
+    /**
+     * One line naming the GPU. On the WebGL path this is the unmasked
+     * `WEBGL_debug_renderer_info` string; on the node path it is the WebGPU
+     * adapter's own account of itself, falling back to that same probe.
+     */
     gpu: string;
+    /**
+     * WHICH ADAPTER THE WEBGPU DEVICE ACTUALLY CAME FROM, or null on the WebGL
+     * path and on a device that reported nothing.
+     *
+     * `powerPreference: 'high-performance'` is a HINT. Stage A asked for it and
+     * measured on an integrated `amd`/`gcn-5` adapter, on a machine that also
+     * holds an RTX 3080, because Windows routes the preference through the
+     * driver's own application profile. A crash report that cannot name the GPU
+     * cannot be acted on, and until now nothing in the product could.
+     */
+    adapter: AdapterIdentity | null;
   };
   /**
-   * True between `webglcontextlost` and `webglcontextrestored`. Every draw path
-   * must early-out while this is set: commands issued to a lost context are
-   * dropped, and what the compositor then presents is an undefined (in
-   * practice, black) drawing buffer. Skipping the frame leaves the last good
-   * one on screen instead.
+   * True between `webglcontextlost` and `webglcontextrestored` — and, on the
+   * node path, from the moment a WebGPU device resolves its `lost` promise.
+   * Every draw path must early-out while this is set: commands issued to a dead
+   * context or device are dropped, and what the compositor then presents is an
+   * undefined (in practice, black) drawing buffer. Skipping the frame leaves the
+   * last good one on screen instead.
+   *
+   * THE WEBGPU HALF NEVER CLEARS. A lost WebGL context is restored by the
+   * browser and `webglcontextrestored` says so; a lost WebGPU device is gone
+   * with everything it held, and the route back is the panel `device-loss.ts`
+   * puts on screen.
    */
   isContextLost(): boolean;
   /**
@@ -1214,6 +1248,197 @@ export interface CreateRendererOptions {
 let preparedNode: { canvas: HTMLCanvasElement; renderer: NodeRendererLike } | null = null;
 
 /**
+ * The adapter the live WebGPU device actually came from, or null.
+ *
+ * Read once, off `backend.device.adapterInfo`, because three keeps the
+ * `GPUAdapter` as a local inside `WebGPUBackend.init` and drops it. Published on
+ * `RendererHandle.capabilities.adapter` and `__VM.gpuInfo()`.
+ */
+let preparedAdapter: AdapterIdentity | null = null;
+
+/**
+ * Set once a live device has been lost. Never cleared: a lost WebGPU device does
+ * not come back, and everything it held — every texture, buffer and pipeline the
+ * match built — went with it.
+ */
+let deviceLost: GpuFailure | null = null;
+
+/* -------------------------------------------------------------------------- */
+/* The poisoned canvas                                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Canvases that have held (or attempted) a `webgpu` context.
+ *
+ * **EMPTY FOR THE ENTIRE LIFE OF A WEBGL PAGE.** Nothing poisons a canvas unless
+ * `?gpu=webgpu` was typed AND the device failed, so `liveCanvas()` on the
+ * shipping path is one `WeakSet.has` returning false and handing back the
+ * argument. The WebGL construction below is untouched by this whole section.
+ */
+const canvasQuarantine = new CanvasQuarantine<HTMLCanvasElement>();
+
+/**
+ * A brand-new canvas in the old one's place, carrying its identity.
+ *
+ * The old element is DETACHED and stripped of its id, because two elements both
+ * answering `#gl` — which is how `createRenderer` finds the canvas when no
+ * option is passed — would be a coin flip between a live canvas and a dead one.
+ *
+ * `width`/`height` are copied so the replacement is not the 300x150 default for
+ * the frame before `doResize` runs; `style.cssText` so it occupies the same box.
+ * Nothing else is copied: event listeners are re-attached by whoever attaches
+ * them, and a WebGL context is what the caller is about to create.
+ */
+function mintCanvas(old: HTMLCanvasElement): HTMLCanvasElement {
+  const doc = old.ownerDocument;
+  const fresh = doc.createElement('canvas');
+  fresh.className = old.className;
+  fresh.style.cssText = old.style.cssText;
+  fresh.width = old.width;
+  fresh.height = old.height;
+  const id = old.id;
+  old.id = '';
+  fresh.id = id;
+  old.parentNode?.replaceChild(fresh, old);
+  return fresh;
+}
+
+/**
+ * The canvas a caller should actually draw into.
+ *
+ * IDENTITY ON EVERY PATH THAT HAS NOT LOST A DEVICE, which is every WebGL boot
+ * and every healthy WebGPU boot. It exists for the one case where handing back
+ * the argument is a crash: an element that has held a `webgpu` context can never
+ * open a `webgl2` one — the browser has no release for that — so a WebGL
+ * renderer built on it dereferences `null` inside `WebGLExtensions`. That is the
+ * exact failure `docs/RENDER_FINDINGS.md` §7g records, produced by three's own
+ * fallback; producing it ourselves instead would not be an improvement.
+ *
+ * Also follows the replacement chain, because callers hold stale references:
+ * `Shell` keeps `options.canvas` for the life of the page and hands the same
+ * field to `bootstrap()` on every match.
+ */
+function liveCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
+  return canvasQuarantine.resolve(canvas, mintCanvas);
+}
+
+/* -------------------------------------------------------------------------- */
+/* THE POLICY — what `?gpu=webgpu` does when WebGPU is not there              */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * ============================================================================
+ * `?gpu=webgpu` REFUSES. IT DOES NOT QUIETLY BECOME SOMETHING ELSE, AND IT DOES
+ * NOT LOUDLY BECOME SOMETHING ELSE EITHER — THE HUMAN DECIDES, IN ONE CLICK.
+ * ============================================================================
+ *
+ * The question this answers: when the WebGPU device cannot be had, should the
+ * flag fail, or should the page fall back to WebGL behind a visible notice?
+ *
+ * **IT FAILS**, and the argument has four parts.
+ *
+ * 1. IT IS THE SAME PRINCIPLE `assertBackend` ALREADY ENFORCES. That function
+ *    throws on `webgl2-fallback` so a page can never report frames under a
+ *    renderer nobody selected. A notice-plus-fallback is the same substitution
+ *    with a banner on it — and a banner is dismissible, scrolls away, and does
+ *    not travel. Everything downstream (the perf HUD, `stats()`,
+ *    `shots/_report.json`, any benchmark) would keep being produced, correctly
+ *    formatted, about WebGL, while the address bar said WebGPU. That is Stage
+ *    A's defect exactly: an hour of measurement with one column mislabelled.
+ *
+ * 2. THE FALLBACK IS NOT FREE MID-MATCH ANYWAY. A lost device takes every
+ *    texture, buffer, pipeline and bind group with it. "Recover onto WebGL" is
+ *    not a swap; it is a full re-boot of the renderer and of every module that
+ *    built a GPU resource. Since a re-boot is required either way, doing it as
+ *    an explicit page reload is strictly simpler and strictly more honest than
+ *    doing it as an in-place substitution that has to be got right in twenty
+ *    modules.
+ *
+ * 3. REFUSING CANNOT LOOP. An automatic fallback that reloads is one bad
+ *    condition away from a reload cycle; one that does not reload has to make
+ *    the whole engine backend-agnostic at runtime. A button pressed by a person
+ *    is neither.
+ *
+ * 4. NOTHING IS LOST BY REFUSING. At boot no frame has been drawn, so a reload
+ *    costs a player nothing at all. The flag is opt-in, defaults to WebGL for
+ *    every unrecognised value, and is removed by one click on the panel below.
+ *
+ * What is NOT acceptable, and what this replaces, is the previous behaviour: a
+ * `TypeError` about `getSupportedExtensions` in a console the player was not
+ * looking at, and a black page. The refusal is *visible* — a panel, in words,
+ * naming the GPU, with the way out on it — which is the half that makes
+ * refusing defensible rather than merely principled.
+ *
+ * The mechanism for a WebGL recovery is still fixed and still correct: a
+ * poisoned canvas is never reused (see `liveCanvas` above), and three's own
+ * fallback — which reuses it and crashes — is disabled in
+ * `gpu-path-install.ts#disableThreeFallback`. The policy chooses not to take
+ * that route automatically; it does not leave it broken.
+ */
+function raiseGpuFailure(failure: GpuFailure): void {
+  console.error(gpuFailureConsoleLine(failure));
+  if (typeof document === 'undefined' || document.body === null) return;
+  const here = typeof location !== 'undefined' ? location.href : '';
+  showGpuFailure(
+    gpuFailureReport(failure),
+    {
+      body: document.body,
+      createElement: (tag: string) => document.createElement(tag),
+    },
+    {
+      onWebgl: () => {
+        // `replace`, not `assign`: the WebGPU URL must not sit in the back
+        // stack waiting for a stray Back press to reproduce the failure.
+        location.replace(hrefWithoutGpuFlag(here));
+      },
+      onRetry: () => {
+        location.replace(here);
+      },
+    },
+  );
+}
+
+/**
+ * Everything known about the GPU seam right now — for a bug report.
+ *
+ * Surfaced through `window.__VM.gpuInfo()`. ADDITIVE: nothing on that handle
+ * changes shape, which `tools/shoot.mjs` and `tools/metrics.mjs` depend on.
+ */
+export interface GpuReport {
+  /** What the URL asked for. */
+  readonly requested: GpuBackend;
+  /** What is live, read off the renderer. Null before one exists. */
+  readonly live: LiveBackend | null;
+  /** The WebGPU adapter's own account of itself, when it gave one. */
+  readonly adapter: AdapterIdentity | null;
+  /** One line naming the GPU, from either the adapter or the WebGL probe. */
+  readonly gpu: string;
+  /** Set only once a live device died. */
+  readonly deviceLost: GpuFailure | null;
+}
+
+/** The current GPU seam state. Safe to call at any time, including pre-boot. */
+export function gpuReport(live: LiveBackend | null = null): GpuReport {
+  return {
+    requested: requestedBackend(typeof location !== 'undefined' ? location.search : ''),
+    live,
+    adapter: preparedAdapter,
+    gpu: describeAdapter(preparedAdapter) ?? probeGpuRenderer() ?? 'unknown',
+    deviceLost,
+  };
+}
+
+/**
+ * TEST SEAM ONLY. Clears the module-level device state so a spec can drive
+ * `prepareRenderer` more than once. Never called from product code.
+ */
+export function resetGpuStateForTests(): void {
+  preparedNode = null;
+  preparedAdapter = null;
+  deviceLost = null;
+}
+
+/**
  * Acquire whatever the URL asked for. **Await this before `bootstrap()`.**
  *
  * On the WebGL path it is a no-op returning `'webgl'` — no import, no device, no
@@ -1235,14 +1460,86 @@ export async function prepareRenderer(
   search: string = typeof location !== 'undefined' ? location.search : '',
 ): Promise<GpuBackend> {
   const want = await prepareGpuPath(search);
+  /*
+   * THE WEBGL PATH LEAVES HERE HAVING TOUCHED NOTHING. No quarantine lookup, no
+   * device, no watch, no import — byte for byte the same boot it was before
+   * device-loss handling existed.
+   */
   if (want !== 'webgpu') return 'webgl';
-  if (preparedNode !== null && preparedNode.canvas === canvas) return 'webgpu';
+
+  /*
+   * A DEVICE THAT HAS ALREADY DIED MUST NOT BE ASKED FOR AGAIN IN THIS PAGE.
+   * `Shell` re-enters this function on every match, and the second match after a
+   * loss would otherwise mint a canvas, request a fresh device and quietly carry
+   * on — leaving the player looking at a "device lost" panel over a game that
+   * had restarted behind it.
+   */
+  if (deviceLost !== null) throw new GpuUnavailableError(deviceLost);
+
+  const target = liveCanvas(canvas);
+  if (preparedNode !== null && preparedNode.canvas === target) return 'webgpu';
   const path = nodePath();
   if (path === null) throw new Error('[render] node path requested but not installed');
-  preparedNode = {
-    canvas,
-    renderer: await path.createRenderer(canvas, RENDER_CONFIG.renderer.antialias),
-  };
+
+  let renderer: NodeRendererLike;
+  try {
+    renderer = await path.createRenderer(target, RENDER_CONFIG.renderer.antialias);
+  } catch (err) {
+    /*
+     * **THE REJECTION THAT USED TO KILL THE PAGE IS CAUGHT HERE.**
+     *
+     * Nothing wrapped this await before, so `requestAdapter()` returning null on
+     * a recovering driver became an unhandled rejection — and, with three's
+     * fallback still armed, not even the honest one: `WebGLBackend.init` ran
+     * first and threw about `getSupportedExtensions` off a canvas that could no
+     * longer open WebGL2. `disableThreeFallback` removes the second half;
+     * this removes the first.
+     *
+     * The canvas is quarantined UNCONDITIONALLY rather than on a guess about how
+     * far `init()` got. `WebGPUBackend.init` calls `getContext('webgpu')` from
+     * `updateSize()` on its last line, and three's fallback may have opened one
+     * too, so "did this element get poisoned" is not answerable from out here —
+     * and being wrong in the cheap direction costs one detached DOM node, while
+     * being wrong in the other direction is the crash.
+     */
+    canvasQuarantine.poison(target);
+    const failure: GpuFailure = {
+      phase: 'init',
+      reason: null,
+      message: err instanceof Error ? err.message : String(err),
+      // `preparedAdapter` is normally null here — the adapter is read off a
+      // device that was never created — but a SECOND failure after a good boot
+      // still knows which GPU it was, and that is the report worth having.
+      adapter: preparedAdapter,
+    };
+    raiseGpuFailure(failure);
+    throw new GpuUnavailableError(failure, err);
+  }
+
+  /*
+   * READ THE ADAPTER, AND WATCH THE DEVICE, BEFORE ANYONE CAN DRAW.
+   *
+   * This is the earliest moment a device exists and the latest moment at which
+   * nothing has used it. The watch is deliberately NOT cancelled by
+   * `handle.dispose()`: the renderer outlives the handle by design (see the
+   * dispose block in `createRenderer`), so a device lost between two matches
+   * would otherwise resolve into silence.
+   */
+  const device = renderer.backend.device;
+  preparedAdapter = normaliseAdapterInfo(device?.adapterInfo);
+  watchDeviceLoss(device, (info) => {
+    deviceLost = {
+      phase: 'lost',
+      reason: info.reason ?? null,
+      message: info.message ?? '',
+      adapter: preparedAdapter,
+    };
+    // The canvas held a live `webgpu` context, so it can never open WebGL2.
+    canvasQuarantine.poison(target);
+    raiseGpuFailure(deviceLost);
+  });
+
+  preparedNode = { canvas: target, renderer };
   return 'webgpu';
 }
 
@@ -1281,6 +1578,18 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
     canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;display:block;';
     document.body.appendChild(canvas);
   }
+  /*
+   * NEVER BUILD A RENDERER ON A CANVAS THAT HAS HELD A `webgpu` CONTEXT.
+   *
+   * A no-op on every WebGL boot and on every healthy WebGPU boot — the
+   * quarantine is empty unless a device actually failed — so the construction
+   * below is reached with exactly the element it was reached with before. It
+   * matters in one case and that case is a crash: `new WebGLRenderer({ canvas })`
+   * on a poisoned element gets `getContext('webgl2') === null`, which is the
+   * `getSupportedExtensions` TypeError from the bug report with our name on it
+   * instead of three's. See `liveCanvas`.
+   */
+  canvas = liveCanvas(canvas);
 
   // ?shot= implies we will read pixels back out of the canvas.
   const wantsShot =
@@ -1447,8 +1756,27 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
       floatRenderTargets:
         !!gl.getExtension('EXT_color_buffer_float') || !!gl.getExtension('EXT_color_buffer_half_float'),
       gpu,
+      // There is no WebGPU adapter on this path, and `null` says so. The field
+      // is not optional because "absent" and "the adapter reported nothing" are
+      // different facts and a bug report has to be able to tell them apart.
+      adapter: null,
     };
   } else {
+    /*
+     * THE ADAPTER IS THE BETTER ANSWER HERE AND IT WAS NOT BEING ASKED.
+     *
+     * `probeGpuRenderer()` opens a throwaway WebGL context and reads
+     * `WEBGL_debug_renderer_info`, which names whichever GPU the browser gives
+     * *WebGL* — not necessarily the one the *WebGPU* device came from. On a
+     * Windows hybrid laptop those are routinely different chips, and
+     * `powerPreference: 'high-performance'` is a hint the driver profile can
+     * overrule: Stage A asked for high-performance and got an integrated
+     * `amd`/`gcn-5` on a box holding an RTX 3080.
+     *
+     * So the device's own `adapterInfo` leads, and the WebGL probe stays as the
+     * fallback for the configurations that report nothing (`GPUAdapterInfo` is
+     * allowed to be empty, and several are).
+     */
     capabilities = {
       webgl2: true,
       // WebGPU guarantees 8192 in the default limits; three does not publish a
@@ -1458,7 +1786,8 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
       maxSamples: 4,
       anisotropy: nodeRenderer!.getMaxAnisotropy(),
       floatRenderTargets: true,
-      gpu: probeGpuRenderer() ?? 'unknown',
+      gpu: describeAdapter(preparedAdapter) ?? probeGpuRenderer() ?? 'unknown',
+      adapter: preparedAdapter,
     };
   }
 
@@ -1691,7 +2020,13 @@ export function createRenderer(options: CreateRendererOptions = {}): RendererHan
     get isFixedSize() { return fixedWidth !== null; },
 
     isContextLost() {
-      return contextLost;
+      /*
+       * `deviceLost` is module state, not handle state, and that is deliberate:
+       * the node renderer outlives the handle (see `dispose`), so the fact that
+       * its device died has to outlive the handle too. A `webglcontextlost` on
+       * the WebGL path is unaffected — that flag is per-handle, as it was.
+       */
+      return contextLost || (nodeRenderer !== null && deviceLost !== null);
     },
 
     setPresenter(fn) {

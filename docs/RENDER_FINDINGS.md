@@ -1031,6 +1031,106 @@ something else entirely.
   was for a stage that wired nothing in; this is the real cost of the seam and it is the number to
   quote.
 
+## 7g. A CANVAS HOLDS ONE CONTEXT TYPE FOR LIFE, so three's WebGL fallback cannot work here
+
+Reported by a player, 2026-08-17: their GPU driver reset while the game was on the WebGPU path, and
+the page died with
+
+```
+TypeError: Cannot read properties of null (reading 'getSupportedExtensions')
+    at new WebGLExtensions (chunk-….js)
+    at WebGLBackend.init (chunk-….js)
+```
+
+**The mechanism is three's, it is structural, and it is not a bug in our wiring.** Traced through
+three 0.185's own source rather than inferred:
+
+1. `WebGPURenderer`'s constructor sets `parameters.getFallback = () => new WebGLBackend(parameters)`
+   — unconditionally, for every construction that is not `forceWebGL`, with no option to decline.
+2. `Renderer.init()` catches **any** throw out of `WebGPUBackend.init` and calls it. Both
+   `requestAdapter()` returning null and `requestDevice()` rejecting on a dead driver land here.
+3. `WebGLBackend.init` then runs `renderer.domElement.getContext('webgl2', …)` — the **same**
+   canvas — and `new WebGLExtensions(this)` on the result one line later.
+
+`index.html` ships ONE canvas (`#gl`). `WebGPUBackend` has already called `getContext('webgpu')` on
+it (from `updateSize()`, on `init`'s last line), and the HTML spec gives a canvas exactly one
+context type for its whole life — there is no release, no reset, no attribute that undoes it. So
+step 3 returns `null` by specification and step 3's next line dereferences it. **Three's fallback is
+unavailable to any application that puts its canvas in its HTML**, which is most of them.
+
+**`assertBackend` could not fire, and that is a real limit on the guard rather than an oversight.**
+It reads the object `init()` RESOLVES with. Here `init()` REJECTS, so nothing downstream of the
+throw ever ran. §7c's tripwire covers "a renderer was built and it is the wrong one"; it never
+covered "no renderer was built at all".
+
+### What changed
+
+- **Three's fallback is removed before `init()`** — `gpu-path-install.ts#disableThreeFallback`
+  writes `renderer._getFallback = null`, guarded by an `in` check so a three upgrade that renames
+  the field warns instead of silently re-arming the crash. On this canvas the fallback's only two
+  outcomes were that TypeError or a `webgl2-fallback` renderer `assertBackend` refuses anyway, so
+  removing it costs nothing and makes `init()` reject with the REAL cause.
+- **The rejection is caught** in `prepareRenderer` and becomes a `GpuUnavailableError`.
+- **`device.lost` is watched** (`device-loss.ts#watchDeviceLoss`), filtering `reason === 'destroyed'`
+  because that is our own `device.destroy()`. A loss sets `isContextLost()`, which `post.render()`
+  already early-outs on, so the last good frame stays on screen instead of an undefined buffer.
+- **A failed or lost canvas is QUARANTINED** and any later renderer gets a freshly minted element
+  carrying its id, class, style and size. This is the half that makes a WebGL recovery possible at
+  all; without it we would simply reproduce three's crash under our own name.
+- **The adapter is published** — `backend.ts#normaliseAdapterInfo` off `device.adapterInfo`, on
+  `capabilities.adapter` and `__VM.gpuInfo()`. `powerPreference: 'high-performance'` is a HINT:
+  Stage A asked for it and observed an integrated `amd`/`gcn-5` adapter on a box holding an RTX
+  3080, and until now the running page could not say which GPU a crash was on. Note the WebGL debug
+  string is NOT a substitute — it names whichever chip *WebGL* got, which on a hybrid laptop need
+  not be the one the WebGPU device came from.
+
+### What it cost the bundle, and what it cost the WebGL path
+
+`vite build`, against §7f's Stage F figures:
+
+```
+entry chunk       2 687.83 kB  ->  2 693.69 kB     +5.86 kB   (+0.218%)
+node chunk          776.39 kB  ->    776.74 kB     never fetched on the WebGL path
+```
+
+`device-loss.ts` is in the entry chunk on purpose: the failure it reports can happen before the node
+chunk has finished loading, so a recovery path that lives inside the thing that failed to load is no
+recovery path. `tests/webgpu-bundle-isolation.spec.ts` still reports 0 node symbols in the entry.
+
+**The WebGL construction path takes exactly three touches and all three are inert there**, which is
+argued from the diff rather than measured — `npm run shots` was not run, because the host machine
+had already crashed its GPU driver twice on this work:
+
+1. `canvas = liveCanvas(canvas)` — one `WeakSet.has` returning false, handing back its argument. The
+   quarantine is empty unless a WebGPU device actually failed.
+2. `adapter: null` added to the WebGL `capabilities` literal — a data field no render path reads.
+3. `isContextLost()` gains `|| (nodeRenderer !== null && deviceLost !== null)`, which short-circuits
+   on `nodeRenderer === null` — every WebGL boot.
+
+No shader, material, pass, size, clear or tone-mapping call changed. Anyone who wants the pixel
+proof should capture it; the claim here is structural.
+
+### The policy: `?gpu=webgpu` REFUSES, visibly, with a one-click route to WebGL
+
+Argued at length above `raiseGpuFailure` in `renderer.ts`. Short form: an automatic fallback behind
+a banner is the same substitution `assertBackend` exists to forbid — every downstream number would
+keep being produced, correctly formatted, about WebGL, while the address bar said WebGPU, which is
+Stage A's defect exactly. A lost device also takes every texture, buffer and pipeline with it, so
+"recover onto WebGL" is a full re-boot either way; doing it as an explicit page reload is simpler
+and more honest than an in-place substitution twenty modules have to get right. Refusing at boot
+costs a player nothing, because no frame has been drawn.
+
+### What is NOT verified, and cannot be from here
+
+`tests/gpu-device-loss.spec.ts` drives a rejected `init()`, a resolved `device.lost`, and an
+`adapterInfo` whose fields sit on the prototype — the three signals this code reacts to, reproduced
+exactly, and every assertion in it was mutation-tested red. It does **not** establish that a real
+Chrome resolves `device.lost` on a real driver reset rather than only killing the GPU process, that
+the panel is legible, that its buttons reload as intended, or that `GPUDevice.adapterInfo` is
+populated on the reporter's configuration. The host machine crashed its GPU driver twice on this
+path, so none of those four was attempted. **Do not quote the suite as evidence that recovery has
+been observed on hardware.**
+
 ## 8. Unverified — do not quote these as fact
 
 - **`GL_INVALID_OPERATION: glDrawElements: Mismatch between texture format and sampler type` is

@@ -138,6 +138,89 @@ export function assertBackend(requested: GpuBackend, live: LiveBackend): void {
   throw new BackendMismatchError(requested, live, detail);
 }
 
+/* ==========================================================================
+ * THE ADAPTER — which GPU the device actually came from
+ * ========================================================================== */
+
+/**
+ * What a WebGPU adapter reports about itself.
+ *
+ * **THIS EXISTS BECAUSE `powerPreference` IS A HINT AND NOTHING MORE.** Stage A
+ * asked for `'high-performance'` (`gpu-path-install.ts`) and its probe still
+ * observed an INTEGRATED `amd` / `gcn-5` adapter, on a box that also holds an
+ * RTX 3080 — on Windows hybrid-graphics setups the preference is routed through
+ * the driver's own application profile and the browser does not overrule it. So
+ * a WebGPU measurement, or a WebGPU crash report, can be about a GPU nobody
+ * chose, and nothing in the product could say which one it was.
+ *
+ * Four strings, all possibly empty: `GPUAdapterInfo` is deliberately vague for
+ * fingerprinting reasons and several configurations report almost nothing. An
+ * adapter that reports four empty strings is a different fact from no adapter at
+ * all, which is why `normaliseAdapterInfo` distinguishes them.
+ */
+export interface AdapterIdentity {
+  /** `'amd'`, `'nvidia'`, `'intel'`, `'apple'`, `'qualcomm'`, … */
+  readonly vendor: string;
+  /** `'gcn-5'`, `'ampere'`, `'gen-12lp'`, … — the microarchitecture family. */
+  readonly architecture: string;
+  /** Usually empty. A vendor-specific device id when reported. */
+  readonly device: string;
+  /** Free text; where a real model name shows up when one shows up at all. */
+  readonly description: string;
+}
+
+/**
+ * Reads an adapter identity off whatever the runtime handed us.
+ *
+ * SAME CONTRACT AS `normaliseInfo`, AND FOR THE SAME REASON: the shape moves
+ * between browsers and between three versions, and reading it raw at the call
+ * site is how a field silently becomes `undefined` and gets printed as the word
+ * "undefined" into the one report somebody was relying on.
+ *
+ * `GPUAdapterInfo` is a live interface object rather than a plain record, so its
+ * fields sit on the PROTOTYPE: `Object.keys()` returns `[]` and `{ ...info }`
+ * copies nothing. Property access is the only read that works, so property
+ * access is the only read this does — a spread here would produce `null` on
+ * every real adapter and look like "the browser reported nothing".
+ *
+ * The source may be `adapter.info` or `device.adapterInfo`; both carry the same
+ * four fields. Returns `null` only when the object is absent or carries none of
+ * them.
+ */
+export function normaliseAdapterInfo(info: unknown): AdapterIdentity | null {
+  if (typeof info !== 'object' || info === null) return null;
+  const o = info as Record<string, unknown>;
+  const read = (key: string): string => {
+    const v = o[key];
+    return typeof v === 'string' ? v : '';
+  };
+  const id: AdapterIdentity = {
+    vendor: read('vendor'),
+    architecture: read('architecture'),
+    device: read('device'),
+    description: read('description'),
+  };
+  const any =
+    id.vendor !== '' || id.architecture !== '' || id.device !== '' || id.description !== '';
+  return any ? id : null;
+}
+
+/**
+ * One line naming the adapter, for a boot log or a bug report.
+ *
+ * `null` when there is nothing to say — never the string "unknown", so the
+ * caller picks its own fallback instead of inheriting one from here.
+ */
+export function describeAdapter(id: AdapterIdentity | null): string | null {
+  if (id === null) return null;
+  // `description` is the only field that ever carries a marketing name, so it
+  // leads when present; vendor/architecture are the two usually set.
+  const family = [id.vendor, id.architecture].filter((s) => s !== '').join(' ');
+  const parts = [id.description, family].filter((s) => s !== '');
+  if (parts.length === 0) return id.device !== '' ? `device ${id.device}` : null;
+  return parts.length === 2 && parts[0] !== parts[1] ? `${parts[0]} (${parts[1]})` : parts[0];
+}
+
 /**
  * Both renderers' `info` objects, structurally.
  *

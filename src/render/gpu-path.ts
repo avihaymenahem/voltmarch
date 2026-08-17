@@ -53,6 +53,7 @@ import type * as THREE from 'three';
 
 import type { GpuBackend } from './backend';
 import { requestedBackend } from './backend';
+import type { DeviceLike } from './device-loss';
 import type { ShroudLook } from '../core/types';
 import type { BiomeDef } from '../world/Biomes';
 import type { CreateTerrainMaterialOptions } from '../world/TerrainMaterial';
@@ -171,7 +172,22 @@ export interface NodeRendererLike {
     };
     readonly memory: { geometries: number; textures: number; programs: number };
   };
-  readonly backend: { readonly isWebGPUBackend?: boolean; readonly isWebGLBackend?: boolean };
+  /**
+   * `device` IS THE ONLY WAY TO LEARN THE DEVICE DIED OR WHICH GPU IT CAME FROM.
+   *
+   * three keeps the `GPUAdapter` as a local in `WebGPUBackend.init` and never
+   * stores it, so `device.adapterInfo` is the only surviving read of the vendor
+   * and architecture — and `powerPreference: 'high-performance'` is a hint that
+   * Windows hybrid setups ignore, so the answer is not knowable any other way.
+   * `device.lost` is the loss signal. Both are read through `backend.ts` and
+   * `device-loss.ts`; nothing here dereferences a GPU type, which is what keeps
+   * this file free of `three/webgpu` and of `@webgpu/types`.
+   */
+  readonly backend: {
+    readonly isWebGPUBackend?: boolean;
+    readonly isWebGLBackend?: boolean;
+    readonly device?: DeviceLike;
+  };
   readonly isWebGPURenderer: true;
   outputColorSpace: THREE.ColorSpace;
   toneMapping: THREE.ToneMapping;
