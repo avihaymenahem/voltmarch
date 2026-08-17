@@ -41,7 +41,7 @@ import { PROP_EMISSIVE_GAIN, PROP_MATERIAL } from '../core/config';
 import { PROP_GLOSS_ROUGHNESS } from './PropLibrary';
 import { ditherOutput } from '../render/dither-nodes';
 import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
-import { PROP_WIND } from './prop-wind';
+import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from './prop-wind';
 
 type FloatN = Node<'float'>;
 type Vec3N = Node<'vec3'>;
@@ -52,43 +52,28 @@ type Vec4N = Node<'vec4'>;
  * ========================================================================== */
 
 /**
- * THE NAME OF A PER-INSTANCE ATTRIBUTE THAT DOES NOT EXIST YET, AND THE ONE
- * DELIBERATE HOLE IN STAGE D.
+ * THE HOLE STAGE D LEFT HERE IS CLOSED, AND THIS IS WHERE IT WAS.
  *
- * The GLSL reads the sway phase straight off the instance transform:
+ * The GLSL reads the sway phase straight off the instance transform, and
+ * `instanceMatrix` is not reachable from a shared node material — three builds
+ * it inside `createInstanceMatrixNode` from the mesh it is given and never
+ * surfaces it as an accessor, while ONE prop material is shared by every type in
+ * the game and the mesh is not known until the draw. Stage D therefore shipped
+ * this port reading an attribute nothing published: every prop took phase 0, the
+ * whole forest swayed as one, and `attribute()` warned by name.
  *
- *     swayPhase = instanceMatrix[3].x * 0.113 + instanceMatrix[3].z * 0.171
+ * It was left LOUD rather than papered over with `instanceIndex`, because a
+ * plausible-looking phase from a different source would have rendered a forest
+ * that looks fine and matches nothing — the kind of quiet falsehood
+ * `docs/SPEC_DRIFT_AUDIT.md` exists to catalogue.
  *
- * `instanceMatrix` is not reachable from a shared node material. three builds it
- * inside `createInstanceMatrixNode` from the mesh it is given — as a uniform
- * buffer for small counts and as an interleaved attribute for large ones
- * (`src/nodes/accessors/Instance.js`) — and it never surfaces it as an
- * accessor. A material shared by every prop type in the game cannot ask for a
- * specific mesh's buffer, and the mesh is not known until the draw.
- *
- * The phase is also the ONLY thing here that needs it. The displacement itself
- * is model-space and lands in `setupPosition` exactly as `<begin_vertex>` does;
- * `aSway`, `aEmit` and `aGloss` are real per-vertex attributes and translate
- * without argument. So the hole is one float.
- *
- * **WHAT STAGE F MUST DO, IN ONE LINE.** `Scatter` already composes `srcMatrix`
- * on the CPU. Have it publish
- *
- *     aSwayPhase[i] = m[12] * PROP_WIND.phaseX + m[14] * PROP_WIND.phaseZ
- *
- * as an `InstancedBufferAttribute` alongside `instanceMatrix`, repacked on the
- * same flip. Four bytes per instance against the matrix's sixty-four.
- *
- * **UNTIL THEN THE WIND IS IN STEP ACROSS THE WHOLE MAP AND THREE SAYS SO.** A
- * missing attribute is not silent on the node path: `attribute()` warns and
- * substitutes, so every prop takes phase 0, the forest sways as one, and the
- * console names the attribute. That failure is loud, is one line from being
- * fixed, and is deliberately not papered over with `instanceIndex` — a
- * plausible-looking phase from a different source would render a forest that
- * looks fine and matches nothing, which is the worse of the two outcomes and is
- * the kind of quiet falsehood `docs/SPEC_DRIFT_AUDIT.md` exists to catalogue.
+ * `Scatter` publishes it now: one `InstancedBufferAttribute`, read back out of
+ * the matrix it just composed so the two paths cannot disagree, repacked on the
+ * same chunk flip as the matrix and the colour. The name and the full argument
+ * live in `./prop-wind.ts` beside the coefficients, because `Scatter` is in the
+ * main bundle and must never import `three/webgpu`.
  */
-export const PROP_WIND_PHASE_ATTRIBUTE = 'aSwayPhase';
+export { PROP_WIND_PHASE_ATTRIBUTE } from './prop-wind';
 
 const aSwayPhase = attribute<'float'>(PROP_WIND_PHASE_ATTRIBUTE, 'float');
 /** Per-vertex wind amplitude in metres. Zero on a trunk, largest at the tip. */

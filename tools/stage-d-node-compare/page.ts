@@ -202,11 +202,12 @@ function propGeometry(): THREE.BufferGeometry {
   const phase = new Float32Array(PROP_INSTANCES);
   for (let i = 0; i < PROP_INSTANCES; i++) {
     /*
-     * THE ATTRIBUTE `Scatter` DOES NOT PUBLISH YET, computed here exactly as
-     * `PROP_WIND_PHASE_ATTRIBUTE`'s note says Stage F must compute it: the
-     * instance's world X and Z through the two phase coefficients. Without it
-     * the node arm sways in step and the diff would report a defect that is
-     * really a missing upload — see `PropNodeMaterial.ts` §1.
+     * The same phase `Scatter` now publishes, computed the same way: the
+     * instance's world X and Z through the two coefficients. This page builds
+     * its own geometry rather than standing up a real scatter (see the header),
+     * so it fills the column itself — but it is no longer standing in for a
+     * missing feature, and if the two formulas ever diverge
+     * `tests/scatter-wind-phase.spec.ts` is what says so.
      */
     const worldX = (i - 2) * 6;
     const worldZ = 8;

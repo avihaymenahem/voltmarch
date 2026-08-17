@@ -113,6 +113,15 @@ import {
   createPropMaterial, PropLibrary, PROP_DEFS, propPalette,
   type PropDef, type PropFamily, type PropGeometry, type PropMaterialSet, type PropPalette,
 } from './PropLibrary';
+/*
+ * FROM `prop-wind.ts`, NOT FROM `PropNodeMaterial.ts`, and that is the whole
+ * reason the name lives in the shared table. `PropNodeMaterial` imports
+ * `three/webgpu`, and `Scatter` is in the main bundle — reaching for the
+ * constant there would drag the entire node system into the WebGL build for a
+ * renderer those players will never run. Same rule as the note at the foot of
+ * `TerrainNodeMaterial.ts`; `tests/render-backend.spec.ts` is the gate.
+ */
+import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from './prop-wind';
 
 /* ==========================================================================
  * 1. CONSTANTS AND SMALL TYPES
@@ -421,7 +430,30 @@ interface ScatterType {
   srcMatrix: Float32Array;
   /** 3 floats per instance (linear multipliers), sorted by chunk. */
   srcColor: Float32Array;
-  /** Prefix offsets into srcMatrix/srcColor, one per chunk plus a terminator. */
+  /**
+   * 1 float per instance: the wind phase, sorted by chunk.
+   *
+   * THE ONE QUANTITY THE NODE PATH CANNOT REACH FOR ITSELF. The shipping GLSL
+   * reads it straight off the instance transform —
+   * `instanceMatrix[3].x * PROP_WIND.phaseX + instanceMatrix[3].z * phaseZ` —
+   * and `instanceMatrix` is not reachable from a shared TSL node material:
+   * three builds it inside `createInstanceMatrixNode` from the mesh it is given
+   * and never surfaces it as an accessor, while ONE prop material is shared by
+   * every type in the game and the mesh is not known until the draw. See
+   * `PropNodeMaterial.PROP_WIND_PHASE_ATTRIBUTE`, whose note asked for exactly
+   * this column.
+   *
+   * FOUR BYTES AN INSTANCE ON A RENDERER THAT IGNORES THEM, and that is the
+   * trade taken rather than hidden. The WebGL material still reads the matrix,
+   * because switching it to this attribute would move the phase from a float32
+   * computed in the shader to a float64 computed here and rounded — identical to
+   * seven decimal places, and `npm run shots` guarantees BYTE-identical captures,
+   * which is a promise worth more than 16 kB on a 4131-prop layout. So the two
+   * paths derive one number by two routes, and `tests/scatter-wind-phase.spec.ts`
+   * pins them against each other rather than trusting that they agree.
+   */
+  srcPhase: Float32Array;
+  /** Prefix offsets into srcMatrix/srcColor/srcPhase, one per chunk plus a terminator. */
   chunkStart: Int32Array;
   /**
    * Live instances in each chunk, so chunk `c` owns
@@ -446,6 +478,7 @@ interface ScatterType {
    */
   rangeMatrix: { start: number; count: number };
   rangeColor: { start: number; count: number };
+  rangePhase: { start: number; count: number };
 }
 
 /* A placed prop, before chunk sorting. Kept as parallel arrays to stay flat. */
@@ -1068,10 +1101,11 @@ export class Scatter {
       if (w <= 1e-3) continue;
       avail.push({
         def, defIndex: i, geo, mesh: null, count: 0,
-        srcMatrix: EMPTY_F32, srcColor: EMPTY_F32,
+        srcMatrix: EMPTY_F32, srcColor: EMPTY_F32, srcPhase: EMPTY_F32,
         chunkStart: EMPTY_I32, chunkLive: EMPTY_I32, instOf: EMPTY_I32,
         drawCount: 0,
         rangeMatrix: { start: 0, count: 0 }, rangeColor: { start: 0, count: 0 },
+        rangePhase: { start: 0, count: 0 },
       });
       weights.push(w);
     }
@@ -1620,11 +1654,21 @@ export class Scatter {
 
       const mat = new Float32Array(list.length * 16);
       const col = new Float32Array(list.length * 3);
+      const phase = new Float32Array(list.length);
       const live = new Int32Array(CHUNK_COUNT);
       const instOf = new Int32Array(list.length);
       for (let i = 0; i < sorted.length; i++) {
         const p = sorted[i];
         composeMatrix(p, mat, i * 16);
+        /*
+         * READ BACK OUT OF THE MATRIX WE JUST WROTE, not recomputed from `p`.
+         * The GLSL's phase is `instanceMatrix[3].x * phaseX + [3].z * phaseZ`,
+         * and columns 12 and 14 ARE that translation — so taking them from here
+         * makes the two paths agree by construction rather than by two people
+         * typing `p.x` and `p.z` in the same order. It is also the line that
+         * would keep working if `composeMatrix` ever gained an offset.
+         */
+        phase[i] = mat[i * 16 + 12] * PROP_WIND.phaseX + mat[i * 16 + 14] * PROP_WIND.phaseZ;
         col[i * 3] = p.cr; col[i * 3 + 1] = p.cg; col[i * 3 + 2] = p.cb;
         const c = chunkOf(p.x, p.z);
         p.slot = s; p.inst = i; p.chunk = c;
@@ -1638,6 +1682,7 @@ export class Scatter {
 
       type.srcMatrix = mat;
       type.srcColor = col;
+      type.srcPhase = phase;
       type.chunkStart = start;
       type.chunkLive = live;
       type.instOf = instOf;
@@ -1650,6 +1695,19 @@ export class Scatter {
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 3), 3);
       mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+      /*
+       * The wind phase, as a real per-instance attribute.
+       *
+       * ON THE TYPE'S OWN GEOMETRY, which is safe because `Scatter` builds its
+       * own `PropLibrary` (see the constructor) and there is exactly one
+       * `InstancedMesh` per type — `entity-props.system.ts` has a separate
+       * library and therefore separate geometries. An instanced attribute is
+       * sized by the instance count, so a geometry shared between two meshes of
+       * different populations would read past the end of one of them.
+       */
+      const phaseAttr = new THREE.InstancedBufferAttribute(new Float32Array(list.length), 1);
+      phaseAttr.setUsage(THREE.DynamicDrawUsage);
+      type.geo.geometry.setAttribute(PROP_WIND_PHASE_ATTRIBUTE, phaseAttr);
       // Per TYPE, not per instance: an InstancedMesh is one submission, so the
       // shadow pass either gets all 735 grass tufts of the stock temperate
       // layout or none of them.
@@ -1752,7 +1810,12 @@ export class Scatter {
       if (mesh === null) continue;
       const dstM = mesh.instanceMatrix.array as Float32Array;
       const dstC = (mesh.instanceColor as THREE.InstancedBufferAttribute).array as Float32Array;
-      const srcM = type.srcMatrix, srcC = type.srcColor, start = type.chunkStart;
+      const phaseAttr = mesh.geometry.getAttribute(
+        PROP_WIND_PHASE_ATTRIBUTE,
+      ) as THREE.InstancedBufferAttribute;
+      const dstP = phaseAttr.array as Float32Array;
+      const srcM = type.srcMatrix, srcC = type.srcColor, srcP = type.srcPhase;
+      const start = type.chunkStart;
       const liveIn = type.chunkLive;
       let w = 0;
       for (let c = 0; c < CHUNK_COUNT; c++) {
@@ -1773,6 +1836,11 @@ export class Scatter {
           dstC[dc] = srcC[sc]; dstC[dc + 1] = srcC[sc + 1]; dstC[dc + 2] = srcC[sc + 2];
           sc += 3; dc += 3;
         }
+        // Same repack, one float wide. It rides the SAME cursor as the matrix
+        // and the colour, so instance k of the packed buffer is one prop in all
+        // three columns — a phase that drifted out of step with the transform
+        // would sway the wrong trees and look exactly like a placement bug.
+        for (let i = a, dp = w; i < b; i++, dp++) dstP[dp] = srcP[i];
         w += b - a;
       }
       mesh.count = w;
@@ -1795,6 +1863,7 @@ export class Scatter {
         // [0, w) is exactly what changed.
         markRange(mesh.instanceMatrix, type.rangeMatrix, w * 16);
         markRange(mesh.instanceColor as THREE.InstancedBufferAttribute, type.rangeColor, w * 3);
+        markRange(phaseAttr, type.rangePhase, w);
       }
     }
     this.visibleInstances = instances;

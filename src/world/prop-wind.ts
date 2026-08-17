@@ -57,3 +57,35 @@ export const PROP_WIND = {
   /** Z sways less than X: the wind has a direction, even a procedural one. */
   zAmplitude: 0.72,
 } as const;
+
+/**
+ * THE PER-INSTANCE WIND PHASE, AS A REAL ATTRIBUTE. Published by `Scatter`,
+ * consumed by `PropNodeMaterial`.
+ *
+ * The shipping GLSL does not need it — it reads the phase straight off the
+ * instance transform:
+ *
+ *     swayPhase = instanceMatrix[3].x * phaseX + instanceMatrix[3].z * phaseZ
+ *
+ * `instanceMatrix` is not reachable from a shared TSL node material. three
+ * builds it inside `createInstanceMatrixNode` from the mesh it is given — as a
+ * uniform buffer for small counts and as an interleaved attribute for large ones
+ * (`src/nodes/accessors/Instance.js`) — and never surfaces it as an accessor. A
+ * material shared by every prop type in the game cannot ask for a specific
+ * mesh's buffer, and the mesh is not known until the draw.
+ *
+ * WHY THE NAME LIVES HERE AND NOT IN `PropNodeMaterial.ts`, where it started.
+ * `Scatter` is in the main bundle and `PropNodeMaterial` imports `three/webgpu`;
+ * a `Scatter` that imported the constant from the material would pull the whole
+ * node system into the WebGL build. `PropNodeMaterial` re-exports it, so the
+ * shader side still reads as its owner.
+ *
+ * ONLY THE NODE PATH READS IT, and the four bytes an instance are spent on both
+ * renderers anyway. `PropLibrary`'s GLSL was deliberately left on
+ * `instanceMatrix[3]`: switching it would move the phase from a float32 computed
+ * in the shader to a float64 computed on the CPU and rounded — the same number to
+ * seven decimals, and `npm run shots` promises BYTE-identical captures. So the
+ * two derive one quantity by two routes, and `tests/scatter-wind-phase.spec.ts`
+ * pins them against each other instead of assuming they agree.
+ */
+export const PROP_WIND_PHASE_ATTRIBUTE = 'aSwayPhase';
