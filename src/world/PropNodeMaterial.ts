@@ -9,8 +9,13 @@
  * `MeshPhysicalMaterial` for the whole roster with four `onBeforeCompile`
  * injections, plus a `MeshDepthMaterial` carrying the identical wind so a
  * swaying canopy never casts a frozen shadow. This file is the node-path twin of
- * the first of those two. **There is no twin for the second and there cannot be
- * one** — see `StructureNodeMaterial.STAGE_D_TSL_GAPS` #1.
+ * BOTH, and the second one is `castShadowPositionNode` rather than a second
+ * material.
+ *
+ * This header said "there is no twin for the second and there cannot be one",
+ * which was true of `customDepthMaterial` and false of the shadow pass. See
+ * `render/cast-shadow-nodes.ts`; `StructureNodeMaterial.STAGE_D_TSL_GAPS` #1 is
+ * the entry that was closed.
  *
  * THE FOUR INJECTIONS, AND WHERE EACH ONE LANDS HERE
  * --------------------------------------------------
@@ -39,6 +44,7 @@ import {
 } from 'three/tsl';
 import { PROP_EMISSIVE_GAIN, PROP_MATERIAL } from '../core/config';
 import { PROP_GLOSS_ROUGHNESS } from './PropLibrary';
+import { castShadowPosition } from '../render/cast-shadow-nodes';
 import { ditherOutput } from '../render/dither-nodes';
 import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
 import { PROP_WIND, PROP_WIND_PHASE_ATTRIBUTE } from './prop-wind';
@@ -132,6 +138,25 @@ const windOffset = Fn(([time, freq]: [FloatN, FloatN]) => {
  * link with `unresolved value 'aSwayPhase'`. `render/shroud-nodes.ts` carries
  * the finding; `STAGE_D_TSL_GAPS` #6 is the entry. */
 
+/**
+ * THE MODEL-SPACE HALF OF THE VERTEX STAGE, AS ONE FUNCTION WITH TWO CALLERS.
+ *
+ * Split out of `setupPosition` so the shadow pass can run the identical edit —
+ * `render/cast-shadow-nodes.ts` is handed this function, never a copy of it. The
+ * GLSL path needs the same rule expressed twice (once in `createPropMaterial`'s
+ * `onBeforeCompile`, once in the `MeshDepthMaterial` beside it) and keeping the
+ * two in step is a manual obligation; here there is one declaration.
+ *
+ * `vEmit` and `vGloss` ride along because they are assigned in the same place on
+ * the colour path. Neither is read by the shadow pass, and assigning an unread
+ * varying costs a dead store the backend removes.
+ */
+function applyPropVertex(uniforms: PropNodeUniforms): void {
+  positionLocal.addAssign(windOffset(uniforms.uWindTime, uniforms.uWindFreq));
+  vEmit.assign(aEmit);
+  vGloss.assign(aGloss);
+}
+
 /* ==========================================================================
  * 4. THE MATERIAL
  * ========================================================================== */
@@ -142,9 +167,7 @@ class PropStandardNodeMaterial extends MeshPhysicalNodeMaterial {
   }
 
   override setupPosition(builder: NodeBuilder): Vec3N {
-    positionLocal.addAssign(windOffset(this.uniforms.uWindTime, this.uniforms.uWindFreq));
-    vEmit.assign(aEmit);
-    vGloss.assign(aGloss);
+    applyPropVertex(this.uniforms);
     const position = super.setupPosition(builder) as Vec3N;
     /*
      * Scatter instances these as TALL, depth-writing meshes standing on the
@@ -210,6 +233,17 @@ export function createPropNodeMaterials(): PropNodeMaterialSet {
    */
   material.emissiveNode = materialEmissive
     .add(vertexColor().rgb.mul(vEmit).mul(uniforms.uEmitGain));
+
+  /*
+   * THE NODE-PATH TWIN OF `createPropMaterial`'s SECOND MATERIAL, which this
+   * file's header said could not exist. It can: `castShadowPositionNode` is
+   * harvested onto the shadow pass's override material and is applied AFTER
+   * `instancedMesh( object )`, so an expression that resets `positionLocal`,
+   * runs the wind and re-instances lands the swaying tip in the shadow map with
+   * no `customDepthMaterial` and no extra upload. `render/cast-shadow-nodes.ts`
+   * carries the whole mechanism.
+   */
+  material.castShadowPositionNode = castShadowPosition(() => applyPropVertex(uniforms));
 
   return {
     material,

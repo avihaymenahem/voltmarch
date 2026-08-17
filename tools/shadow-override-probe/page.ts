@@ -24,8 +24,8 @@
  * (`PropLibrary`'s `depthMaterial`, whose whole job is that a swaying canopy
  * never casts a frozen shadow).
  *
- * THE FIVE ARMS AND WHY EACH ONE IS NEEDED
- * ----------------------------------------
+ * THE SIX ARMS AND WHY EACH ONE IS NEEDED
+ * ---------------------------------------
  *   glsl-webgl                the shipping renderer with `customDepthMaterial`.
  *                             THE REFERENCE — this is the correct picture.
  *   glsl-webgl-nodepth        the same renderer with the custom depth materials
@@ -33,11 +33,19 @@
  *                             renderer we trust, so a diff that cannot separate
  *                             it from the reference is an instrument that cannot
  *                             see the thing being measured.
- *   tsl-override              the node path as Stage D left it.
+ *   tsl-override              the node path as Stage D left it — the shipped
+ *                             materials with `castShadowPositionNode` STRIPPED.
+ *                             It has to be stripped by hand now, because the
+ *                             materials carry the fix; an arm that quietly
+ *                             stopped reproducing the defect would make every
+ *                             row below meaningless.
  *   tsl-nooverride            the node path with `material.allowOverride = false`
  *                             — the one-line route Stage D said to measure first.
  *   tsl-nooverride-noreceive  the same, with `receiveShadow` off the CASTERS.
- *                             THE DIAGNOSTIC, added after the run below.
+ *                             THE DIAGNOSTIC, added after the first run below.
+ *   tsl-castshadow            THE FIX: the shipped materials as they are, with
+ *                             `castShadowPositionNode` re-expressing each
+ *                             displacement post-instancing. Added by Stage D3.
  *
  * WHAT IT FOUND, so nobody re-runs it to learn the same thing:
  *
@@ -45,6 +53,7 @@
  *     tsl-override              0 devErrs   3.040% darker   <- the same defect
  *     tsl-nooverride            2 devErrs  89.312% darker   <- BLANK FRAME
  *     tsl-nooverride-noreceive  0 devErrs   0.470% darker   <- correct
+ *     tsl-castshadow            0 devErrs   0.045% darker   <- correct, and usable
  *
  * `allowOverride = false` raises
  * `GPUValidationError: [Texture "ShadowDepthTexture"] usage ... includes
@@ -55,6 +64,14 @@
  * the flag really does reach `setupPosition`; it is simply unusable, because
  * every caster in this game receives shadows. `StructureNodeMaterial`'s
  * `STAGE_D_TSL_GAPS` #1 carries the conclusion.
+ *
+ * THE SIXTH ARM IS THE ROUTE THAT WORKED. `castShadowPositionNode` IS harvested
+ * by `Renderer._getShadowNodes`, and it is applied AFTER `instancedMesh( object )`
+ * — so an expression that resets `positionLocal` to `positionGeometry`, runs the
+ * SAME model-space edit the colour pass runs, and re-applies three's own
+ * instancing lands the sunk structure and the swaying prop in the shadow map with
+ * no new attribute, no new uniform and nothing added to `InstanceBatcher` or
+ * `Scatter`. `src/render/cast-shadow-nodes.ts` is the mechanism.
  *
  * WHAT THIS PAGE CANNOT MEASURE. `renderer.info.programs` is a WebGL array; the
  * node `Renderer` has none, so "the shadow pass now compiles the full physical
@@ -82,7 +99,8 @@ const HEIGHT = 480;
 
 type Arm =
   | 'glsl-webgl' | 'glsl-webgl-nodepth'
-  | 'tsl-override' | 'tsl-nooverride' | 'tsl-nooverride-noreceive';
+  | 'tsl-override' | 'tsl-nooverride' | 'tsl-nooverride-noreceive'
+  | 'tsl-castshadow';
 
 interface ArmReport {
   arm: Arm;
@@ -351,20 +369,33 @@ function glslSet(withDepth: boolean): MaterialSet {
   };
 }
 
-function tslSet(allowOverride: boolean, castersReceive = true): MaterialSet {
+function tslSet(
+  allowOverride: boolean, castersReceive = true, castShadowNodes = false,
+): MaterialSet {
   const props = createPropNodeMaterials();
   props.setTime(FROZEN_TIME);
   const structure = createStructureNodeMaterial(atlas, 'sop.structure.node');
   /*
-   * THE ONE LINE THE WHOLE PROBE IS ABOUT. `Renderer.renderObject` reads
-   * `material.allowOverride === true && scene.overrideMaterial !== null` before
-   * it swaps in the shadow pass's shared depth material, so `false` means the
-   * object is drawn into the shadow map with ITS OWN material — and therefore
-   * with its own `setupPosition`, which is the hook the construction sink and
-   * the wind sway both live in.
+   * THE ONE LINE THE WHOLE PROBE WAS ORIGINALLY ABOUT. `Renderer.renderObject`
+   * reads `material.allowOverride === true && scene.overrideMaterial !== null`
+   * before it swaps in the shadow pass's shared depth material, so `false` means
+   * the object is drawn into the shadow map with ITS OWN material — and
+   * therefore with its own `setupPosition`, which is the hook the construction
+   * sink and the wind sway both live in. It is a WebGPU validation error; see
+   * the header.
    */
   structure.allowOverride = allowOverride;
   props.material.allowOverride = allowOverride;
+  /*
+   * AND THE LINE THAT KEEPS THE OLD ARMS HONEST. The shipped materials now carry
+   * `castShadowPositionNode`, so every node arm would be the FIXED renderer and
+   * the defect would have no representative in the table — a probe whose control
+   * silently became the treatment. Stripping it here reproduces Stage D exactly.
+   */
+  if (!castShadowNodes) {
+    structure.castShadowPositionNode = null;
+    props.material.castShadowPositionNode = null;
+  }
   return {
     structure,
     // There is no node twin of `customDepthMaterial` and there cannot be — that
@@ -489,6 +520,13 @@ const ready = (async () => {
      * that separates it from every other explanation.
      */
     arms.push(await runNode('tsl-nooverride-noreceive', tslSet(false, false)));
+    /*
+     * THE FIX, AND IT IS THE ONLY NODE ARM WITH THE GAME'S REAL SETTINGS:
+     * `allowOverride` left alone, casters receiving shadows, nothing removed.
+     * Its target is the FIFTH arm's number, not the fourth's — 0.470% is what
+     * "the shadow is correct" measures on this frame, and 3.040% is the defect.
+     */
+    arms.push(await runNode('tsl-castshadow', tslSet(true, true, true)));
   } catch (e) {
     error = e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e);
   }

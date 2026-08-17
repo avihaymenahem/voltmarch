@@ -37,6 +37,7 @@ import {
   Fn, attribute, clamp, float, materialColor, materialEmissive, max, mix, normalLocal,
   positionLocal, select, sin, smoothstep, step, uniform, varyingProperty, vec3, vec4,
 } from 'three/tsl';
+import { castShadowPosition } from '../render/cast-shadow-nodes';
 import { ditherOutput } from '../render/dither-nodes';
 import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
 import { STRUCTURE_ANIM, STRUCTURE_ANIM_LINEAR, STRUCTURE_FEATURE } from './structure-anim';
@@ -327,6 +328,17 @@ export function createStructureNodeMaterial(
   mat.colorNode = materialColor.mul(sootFactor());
   mat.emissiveNode = structureEmissive(materialEmissive);
   mat.maskNode = vRaClip.greaterThanEqual(0.0);
+  /*
+   * AND THE OTHER HALF OF THE GROUND CUT, WHICH THE MASK ALONE NEVER GAVE US.
+   * `maskNode` reaches the shadow pass; the varying it tests did not, because
+   * `vRaClip` is written by `applyStructureVertex` and the shadow pass never
+   * calls our `setupPosition`. So the mask compared an unassigned varying, no
+   * fragment discarded, and a structure at `buildProgress` 0.3 cast the
+   * silhouette of a finished one. `render/cast-shadow-nodes.ts` carries the
+   * mechanism; it runs the SAME function, so the sink, the door, the spin and
+   * the cut cannot drift between the two passes.
+   */
+  mat.castShadowPositionNode = castShadowPosition(applyStructureVertex);
 
   assertUnitMaterialRuling(mat, 'node');
   return mat;

@@ -59,8 +59,21 @@ const HEADED = flag('--headed');
 
 const ARMS = [
   'glsl-webgl', 'glsl-webgl-nodepth', 'tsl-override', 'tsl-nooverride',
-  'tsl-nooverride-noreceive',
+  'tsl-nooverride-noreceive', 'tsl-castshadow',
 ];
+
+/**
+ * THE ARM UNDER TEST, and the two numbers it is judged between.
+ *
+ * `glsl-webgl-nodepth` is the DEFECT measured on a renderer we trust, and
+ * `tsl-nooverride-noreceive` is what CORRECT measures on this frame — both are
+ * captured in the same run rather than quoted from a previous one, so a change
+ * to the fixture moves the bar with it. The fix has to land nearer the second,
+ * and it has to raise no device error, or its pixels are a blank canvas.
+ */
+const FIX_ARM = 'tsl-castshadow';
+const DEFECT_ARM = 'glsl-webgl-nodepth';
+const CORRECT_ARM = 'tsl-nooverride-noreceive';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -210,6 +223,14 @@ try {
   diffs['tsl-nooverride-noreceive-vs-tsl-override'] = await diff(
     path.join(OUT_DIR, 'tsl-override.png'), path.join(OUT_DIR, 'tsl-nooverride-noreceive.png'),
   );
+  // And the same question for the fix: did it MOVE the node path, and did it
+  // land where the diagnostic arm says correct is?
+  diffs[`${FIX_ARM}-vs-tsl-override`] = await diff(
+    path.join(OUT_DIR, 'tsl-override.png'), path.join(OUT_DIR, `${FIX_ARM}.png`),
+  );
+  diffs[`${FIX_ARM}-vs-${CORRECT_ARM}`] = await diff(
+    path.join(OUT_DIR, `${CORRECT_ARM}.png`), path.join(OUT_DIR, `${FIX_ARM}.png`),
+  );
 
   const out = { origin, when: new Date().toISOString(), ...report, diffs };
   await writeFile(path.join(OUT_DIR, 'results.json'), JSON.stringify(out, null, 2));
@@ -284,6 +305,40 @@ try {
       );
       exitCode = 1;
     }
+  }
+
+  /*
+   * THE GATE. Everything above is a print-out; this is the assertion, and it is
+   * written against the two arms captured beside it rather than against remembered
+   * numbers.
+   *
+   * A DEVICE ERROR VOIDS THE ARM BEFORE ANY PIXEL IS READ — that is the whole
+   * lesson of `tsl-nooverride`, whose 89% was a blank canvas and read like a
+   * shader difference. So it is checked first and separately.
+   */
+  const fix = (report.arms ?? []).find((a) => a.arm === FIX_ARM);
+  const fixDiff = diffs[FIX_ARM];
+  const defectDiff = diffs[DEFECT_ARM];
+  const correctDiff = diffs[CORRECT_ARM];
+  if (!fix || !fixDiff || !defectDiff || !correctDiff) {
+    console.error(`\nFIX ARM MISSING: ${FIX_ARM} did not render.`);
+    exitCode = 1;
+  } else if ((fix.deviceErrors?.length ?? 0) > 0) {
+    console.error(`\nFIX FAILED: ${FIX_ARM} raised a device error, so its frame is invalid.`);
+    exitCode = 1;
+  } else {
+    // Halfway is not good enough and "under the defect" is not either: a fix
+    // that reached 1.5% would be a shadow that is still wrong by half a
+    // building. The bar is the CORRECT arm's residual plus a quarter of the
+    // distance to the defect, which on the numbers above is 0.470% + 0.643%.
+    const bar = correctDiff.darker + (defectDiff.darker - correctDiff.darker) * 0.25;
+    const ok = fixDiff.darker <= bar;
+    console.log(
+      `\n${FIX_ARM}: ${(fixDiff.darker * 100).toFixed(3)}% darker against a bar of `
+      + `${(bar * 100).toFixed(3)}% (correct ${(correctDiff.darker * 100).toFixed(3)}%, `
+      + `defect ${(defectDiff.darker * 100).toFixed(3)}%) — ${ok ? 'CLOSED' : 'STILL OPEN'}`,
+    );
+    if (!ok) exitCode = 1;
   }
 
   if (report.warnings?.length) {

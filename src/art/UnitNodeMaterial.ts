@@ -158,6 +158,29 @@ export function createUnitNodeMaterial(
   const mat = new UnitStandardNodeMaterial();
   mat.name = name;
   configureUnitNodeBase(mat, atlas);
+  /*
+   * NO `castShadowPositionNode`, AND THAT IS A DECISION RATHER THAN AN OMISSION.
+   *
+   * `render/cast-shadow-nodes.ts` closes the node path's shadow gap and it would
+   * take the walk cycle too, in one line — `castShadowPosition( applyGaitNodes )`
+   * — because `castShadowPosition` is handed the SAME function the colour pass
+   * runs and needs nothing else. It is deliberately not called, for the reason
+   * `prop-wind.ts` states about the wind coefficients: the two renderers must
+   * not disagree.
+   *
+   * `createUnitMaterial` HAS NO `customDepthMaterial`. Grep it: the only two in
+   * the game are `createStructureDepthMaterial` and `PropLibrary`'s, so on the
+   * shipping WebGL renderer a marching rifleman's shadow is the REST POSE and
+   * always has been. Wiring it here would make the node path better than the
+   * renderer it has to be byte-comparable with, on the most numerous caster in
+   * the game, for the least visible displacement of the five — a leg's worth of
+   * shadow on a 1.4 m model. That is a second grade baseline bought with the
+   * shadow pass's most-multiplied cost.
+   *
+   * THE HONEST ROUTE, if a swinging shadow is ever wanted: give
+   * `createUnitMaterial` a depth material FIRST, so both paths gain it in the
+   * same commit, and add the line here in that commit.
+   */
   assertUnitMaterialRuling(mat, 'node');
   return mat;
 }

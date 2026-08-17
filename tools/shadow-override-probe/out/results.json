@@ -1,11 +1,11 @@
 {
-  "origin": "http://127.0.0.1:5375",
-  "when": "2026-08-17T14:01:10.968Z",
+  "origin": "http://127.0.0.1:5381",
+  "when": "2026-08-17T14:36:05.467Z",
   "arms": [
     {
       "arm": "glsl-webgl",
       "backend": "webgl",
-      "ms": 351.6000000014901,
+      "ms": 547.4000000003725,
       "drawCalls": 5,
       "triangles": 458,
       "programs": 5,
@@ -14,7 +14,7 @@
     {
       "arm": "glsl-webgl-nodepth",
       "backend": "webgl",
-      "ms": 42.20000000111759,
+      "ms": 105.29999999888241,
       "drawCalls": 5,
       "triangles": 458,
       "programs": 4,
@@ -23,7 +23,7 @@
     {
       "arm": "tsl-override",
       "backend": "webgpu",
-      "ms": 1.400000000372529,
+      "ms": 1,
       "drawCalls": 5,
       "triangles": 231,
       "programs": 0,
@@ -32,7 +32,7 @@
     {
       "arm": "tsl-nooverride",
       "backend": "webgpu",
-      "ms": 5.5,
+      "ms": 3.300000000745058,
       "drawCalls": 5,
       "triangles": 231,
       "programs": 0,
@@ -44,7 +44,16 @@
     {
       "arm": "tsl-nooverride-noreceive",
       "backend": "webgpu",
-      "ms": 1.199999999254942,
+      "ms": 0.599999999627471,
+      "drawCalls": 5,
+      "triangles": 231,
+      "programs": 0,
+      "deviceErrors": []
+    },
+    {
+      "arm": "tsl-castshadow",
+      "backend": "webgpu",
+      "ms": 0.6000000014901161,
       "drawCalls": 5,
       "triangles": 231,
       "programs": 0,
@@ -82,6 +91,13 @@
       "maxDelta": 170,
       "meanDelta": 0.658881237006237
     },
+    "tsl-castshadow": {
+      "changed": 0.05465501559251559,
+      "strong": 0.013084719334719335,
+      "darker": 0.00460304054054054,
+      "maxDelta": 170,
+      "meanDelta": 0.6552040020790021
+    },
     "tsl-nooverride-vs-tsl-override": {
       "changed": 0.8707835239085239,
       "strong": 0.8699194386694387,
@@ -95,6 +111,20 @@
       "darker": 0.008514163201663202,
       "maxDelta": 170,
       "meanDelta": 2.910076663201663
+    },
+    "tsl-castshadow-vs-tsl-override": {
+      "changed": 0.06251949064449064,
+      "strong": 0.046881496881496884,
+      "darker": 0.008416709979209978,
+      "maxDelta": 170,
+      "meanDelta": 2.906389682952183
+    },
+    "tsl-castshadow-vs-tsl-nooverride-noreceive": {
+      "changed": 0.00024363305613305615,
+      "strong": 0.00016891891891891893,
+      "darker": 0,
+      "maxDelta": 69,
+      "meanDelta": 0.006353950103950104
     }
   }
 }
