@@ -76,8 +76,26 @@
  * (bottom-left 10%) that painters must leave flat, so a chamfer strip samples
  * an unbroken colour.
  *
- * ZERO GRIME. No streaks, no mud, no rust, no scratched edges (scorecard #22).
- * The only darkening is cavity darkening, which is bible 5.5's ruling.
+ * ZERO GRIME ON HULLS. No streaks, no mud, no rust, no scratched edges — and
+ * that is the whole of scorecard #22, which reads "Zero grime on vehicles / No
+ * streaks, mud, rust or scratches on any HULL". It is a rule about VEHICLES.
+ *
+ * This comment used to state it as a rule about everything, and it was wrong in
+ * a way that cost the game a feature: ONE generator dresses both the units and
+ * the architecture, nothing in the spec said which was being painted, so the
+ * units-only rule was enforced on buildings too and there was NO RUST ANYWHERE
+ * IN THE GAME — including on the buildings the bible explicitly asks for it on.
+ * Bible 5.5, one line below #22's own source:
+ *
+ *   "Rust exists only on buildings, confined to chimneys, pipes and
+ *    scaffolding: #6A4528/#4D3A2E streaks over #2C2A22, 25-40% coverage of the
+ *    stack."
+ *
+ * `spec.surfaceClass` is the discriminator that was missing, and `rustPipework`
+ * is its ONLY consequence: it runs on the `bareMetal` tile, on 'structure'
+ * atlases, and nowhere else. Paint, team slabs, walls and every hull stay
+ * exactly as clean as they were — the only darkening on those is cavity
+ * darkening, which is bible 5.5's other ruling.
  *
  * DETERMINISM: seeded, pure, no DOM, no Math.random. Two runs produce
  * byte-identical atlases so the screenshot harness stays diffable.
@@ -498,6 +516,14 @@ export interface GreebleSpec {
   rivetPitchPx: number;
   /** Which surface language the tiles are drawn in. */
   plating: Plating;
+  /**
+   * HULL or ARCHITECTURE. It changes exactly one thing — whether the
+   * `bareMetal` tile rusts — and it exists because scorecard #22 forbids rust
+   * "on any hull" while bible 5.5 requires it on a building's chimneys, pipes
+   * and scaffolding. One generator serves both, so without this field the
+   * stricter rule silently won everywhere. See the header, and `rustPipework`.
+   */
+  surfaceClass: 'hull' | 'structure';
   /**
    * Paint gloss, 0 = matte primer .. 1 = wet lacquer. ROUGHNESS ONLY — it must
    * never become texture. RA3's painted-toy read is a clear coat over a broad
@@ -1146,6 +1172,137 @@ function turnedGrain(v: number, seed: number): number {
   return a * TURN_NORM; // -1 .. 1
 }
 
+/* --------------------------------------------------------------------------
+ * RUST — buildings only, pipework only, drawn and never sampled.
+ *
+ * Bible 5.5: "Rust exists only on buildings, confined to chimneys, pipes and
+ * scaffolding: #6A4528/#4D3A2E streaks over #2C2A22, 25-40% coverage of the
+ * stack." Those masses are exactly the ones carrying the `bareMetal` slot —
+ * `BuildingFactory`'s own header says so and `BuildingDefs` bears it out: pipes,
+ * conduits, feed pipes, masts, gantry legs and stays, catwalk rails and posts,
+ * collars, silo and stack caps. 106 of its masses take this slot.
+ *
+ * WHY ONLY THIS TILE, when scaffolding and chimneys use two others as well:
+ *
+ *   - `rivetPlate` carries the Soviet stack BODY, and it is also the SOVIET
+ *     WALL (`BuildingDefs`: `const wall = soviet ? 'rivetPlate' : 'paintMed'`).
+ *     Rusting it would rust whole facades, which is worse than no rust at all —
+ *     the bible confines this deliberately and so does this function.
+ *   - `stripe` carries the SOVIET-5 lattice, which the bible wants read as
+ *     EXPOSED YELLOW scaffolding. Rust over hazard yellow fights a different
+ *     explicit ruling to reach the same one.
+ *
+ * So the stack's cap, collar and every pipe and catwalk rail around it rust,
+ * and the painted stack body does not. That is the narrowest thing that is
+ * faithful to 5.5, and it is the reading `BuildingFactory` already documented.
+ *
+ * IT IS DRAWN, NOT SAMPLED. Every mark here is a `cline` or a `cfill` — an
+ * exact width with one texel of AA, max-composited. There is no fbm and there
+ * must never be: "weathering" is the single most popular excuse for putting a
+ * noise field back into this file, and a noise field is what made the buildings
+ * look mouldy. A rust streak has a shape, an origin and a direction.
+ *
+ * The origin is not arbitrary either. `paintBareMetal` cuts four machined rings
+ * across the tile, water sits at a joint, so every streak STARTS at a ring and
+ * runs toward lower v — row 0 is v = 0, the bottom, so that is downward on the
+ * model. A stain that starts nowhere reads as dirt sprayed onto a prop.
+ *
+ * ALBEDO AND ROUGHNESS ONLY. Height is untouched, so the normal map is bit for
+ * bit what it was and the speckle gate stays at zero: rust is a stain, not
+ * relief.
+ * -------------------------------------------------------------------------- */
+
+/** Bible 5.5's two rust hues: the bloom at the joint, and the run-off below. */
+const RUST_BLOOM = '#6A4528';
+const RUST_RUNOFF = '#4D3A2E';
+
+/**
+ * Streaks hung off each machined ring. Five at these widths MEASURES 32.0%
+ * coverage of the tile, inside 5.5's 25-40% band — six at 5.5-10% widths came
+ * out at 45.5%, which is a rusty pipe rather than a pipe with rust on it.
+ * `tests/greeble-rust.spec.ts` holds the band; re-measure there if you retune.
+ */
+const RUST_STREAKS_PER_RING = 5;
+
+/**
+ * Composite one rust mask into albedo and roughness, then clear it.
+ *
+ * `paintMask`'s twin, and separate from it on purpose: rust has no team-mask
+ * meaning and it MUST raise roughness (oxide is matte against turned metal,
+ * and leaving the rust as glossy as the barrel is what makes painted-on
+ * weathering read as a decal).
+ */
+function paintRust(s: Surface, sc: Scratch, r: Rect, hex: string, roughness: number): void {
+  hexToRgb(hex, RGB_TMP);
+  const size = s.size;
+  for (let y = 0; y < r.h; y++) {
+    for (let x = 0; x < r.w; x++) {
+      const i = ((r.y + y) | 0) * size + ((r.x + x) | 0);
+      const m = sc.mask[i];
+      if (m <= 0.002) continue;
+      const o = i * 3;
+      s.albedo[o] = lerp(s.albedo[o], RGB_TMP[0], m);
+      s.albedo[o + 1] = lerp(s.albedo[o + 1], RGB_TMP[1], m);
+      s.albedo[o + 2] = lerp(s.albedo[o + 2], RGB_TMP[2], m);
+      s.roughness[i] = clamp01(lerp(s.roughness[i], roughness, m));
+      // Drawn structure, like any other mark, so the R1 gate can see it.
+      if (m > sc.structure[i]) sc.structure[i] = m;
+    }
+  }
+  clearRect(sc.mask, size, r);
+}
+
+/**
+ * Streak rust down from the machined rings of a pipe, a mast or a stack cap.
+ *
+ * Two passes, and the order is the point: the darker RUN-OFF is drawn first,
+ * wide and long, then the lighter BLOOM is drawn narrower and shorter INSIDE
+ * it. That gives every streak a dark edge and a brighter core along its upper
+ * length, which is what a real run looks like and what stops a flat bar of
+ * colour reading as a painted stripe.
+ */
+function rustPipework(s: Surface, sc: Scratch, r: Rect, rings: number, seed: number): void {
+  const rng = new Rng(seed);
+  const size = s.size;
+  const bandH = r.h / rings;
+  const slot = r.w / RUST_STREAKS_PER_RING;
+
+  // Positions, widths and lengths are drawn ONCE and reused by both passes, so
+  // the bloom is guaranteed to sit inside its own run-off rather than beside it.
+  const xs: number[] = [], ws: number[] = [], ls: number[] = [], ys: number[] = [];
+  for (let n = 0; n < rings; n++) {
+    const ringY = r.h * ((n + 0.5) / rings);
+    for (let i = 0; i < RUST_STREAKS_PER_RING; i++) {
+      // An even slot with jitter INSIDE it: never a comb, never a clump.
+      xs.push((i + rng.range(0.18, 0.82)) * slot);
+      ws.push(r.w * rng.range(0.045, 0.080));
+      // Clamped at the tile edge so a low ring's run does not just clip away.
+      ls.push(Math.min(bandH * rng.range(0.35, 1.0), ringY - 1));
+      ys.push(ringY);
+    }
+  }
+
+  for (let k = 0; k < xs.length; k++) {
+    if (ls[k] <= 1) continue;
+    cline(sc.mask, size, r, xs[k], ys[k], xs[k], ys[k] - ls[k], ws[k]);
+  }
+  // A short creep ALONG each joint, where the run-off pools before it falls.
+  for (let n = 0; n < rings; n++) {
+    const ringY = r.h * ((n + 0.5) / rings);
+    for (let j = 0; j < 2; j++) {
+      const cw = r.w * rng.range(0.16, 0.28);
+      cfill(sc.mask, size, r, rng.range(0, r.w - cw), ringY - r.h * 0.022, cw, r.h * 0.020);
+    }
+  }
+  paintRust(s, sc, r, RUST_RUNOFF, 0.94);
+
+  for (let k = 0; k < xs.length; k++) {
+    if (ls[k] <= 1) continue;
+    cline(sc.mask, size, r, xs[k], ys[k], xs[k], ys[k] - ls[k] * 0.55, ws[k] * 0.45);
+  }
+  paintRust(s, sc, r, RUST_BLOOM, 0.88);
+}
+
 function paintBareMetal(s: Surface, sc: Scratch, spec: GreebleSpec): void {
   const r = tileRect('bareMetal', s.size);
   clearScratch(sc, s.size, r);
@@ -1178,6 +1335,11 @@ function paintBareMetal(s: Surface, sc: Scratch, spec: GreebleSpec): void {
     cline(sc.groove, size, r, 0, y, r.w, y, Math.max(1.4, r.w * 0.014));
     cline(sc.lip, size, r, 0, y + 2, r.w, y + 2, 1.0);
   }
+  // Bible 5.5's rust, on architecture only. BEFORE `composite`, so the machined
+  // rings still cut their grooves through the stain and the pipe keeps reading
+  // as a pipe; after it, the rust would bury the geometry that gives it a
+  // reason to be there.
+  if (spec.surfaceClass === 'structure') rustPipework(s, sc, r, rings, spec.seed + 29);
   composite(s, sc, r, '#241C14', w);
   clearBevelPatch(s, r, spec.bareMetal, UNIT_MATERIAL.bareMetalRoughness);
 }
@@ -1547,6 +1709,7 @@ export function greebleSpecHash(spec: GreebleSpec): string {
     spec.emissiveColor, spec.bareMetal, spec.trackLink, spec.glass,
     spec.stencil, spec.hazard, spec.rivets ? 'r' : '-', spec.rivetPitchPx,
     spec.plating, spec.sheen, spec.panelDensity, spec.hullNumber,
+    spec.surfaceClass,
   ].join('|');
 }
 
