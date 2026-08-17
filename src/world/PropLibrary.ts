@@ -636,6 +636,79 @@ export class PropMesh {
   }
 
   /**
+   * A tapered prism running from A to B — a branch, a limb, anything that has
+   * to point somewhere `cyl` cannot. `cyl` stands on +Y and takes a yaw only,
+   * so every "branch" in this file used to be a vertical stub offset radially,
+   * which is why a canopy could only ever be a ball sitting on a pole.
+   *
+   * `sides` defaults to 3 deliberately. The bible's 12-16 segment band is about
+   * masses a player reads as a shape; a branch is 0.1-0.2 m thick, ~5 px at
+   * gameplay zoom, and its silhouette is its LENGTH. Three sides is two
+   * triangles per span and looks identical at any distance the game is played
+   * from.
+   *
+   * `bow` lifts the mid-spans along +Y so the limb arcs instead of being a
+   * dead-straight stick; it is ignored when `spans` is 1.
+   *
+   * No end caps: both ends are buried, the base inside the trunk and the tip
+   * inside its lobe cluster.
+   */
+  limb(
+    x0: number, y0: number, z0: number,
+    x1: number, y1: number, z1: number,
+    r0: number, r1: number,
+    sides = 3, spans = 1, bow = 0,
+  ): void {
+    const n = Math.max(3, Math.round(sides));
+    const sp = Math.max(1, Math.round(spans));
+    let dx = x1 - x0, dy = y1 - y0, dz = z1 - z0;
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 1e-6) return;
+    dx /= len; dy /= len; dz /= len;
+
+    // Any unit vector not parallel to the axis gives a stable perpendicular
+    // basis. The 0.9 switch keeps the cross product away from zero length.
+    const upright = Math.abs(dy) >= 0.9;
+    // cross(d, +Y) for a leaning limb, cross(d, +X) for a near-vertical one.
+    let ux = upright ? 0 : -dz;
+    let uy = upright ? dz : 0;
+    let uz = upright ? -dy : dx;
+    const ul = Math.hypot(ux, uy, uz);
+    if (ul < 1e-9) return;
+    ux /= ul; uy /= ul; uz /= ul;
+    const vx = dy * uz - dz * uy, vy = dz * ux - dx * uz, vz = dx * uy - dy * ux;
+
+    // Ring i: centre, radius, and the n corner offsets in (u, v).
+    const cxs = new Array<number>(sp + 1), cys = new Array<number>(sp + 1), czs = new Array<number>(sp + 1);
+    const rs = new Array<number>(sp + 1);
+    for (let i = 0; i <= sp; i++) {
+      const t = i / sp;
+      cxs[i] = x0 + (x1 - x0) * t;
+      cys[i] = y0 + (y1 - y0) * t + (sp > 1 ? bow * Math.sin(Math.PI * t) : 0);
+      czs[i] = z0 + (z1 - z0) * t;
+      rs[i] = r0 + (r1 - r0) * t;
+    }
+
+    for (let k = 0; k < n; k++) {
+      const a0 = (k / n) * TAU, a1 = ((k + 1) / n) * TAU;
+      const c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+      // Outward reference: the mid-direction of the two corners, in world space.
+      const mu = (c0 + c1) * 0.5, mv = (s0 + s1) * 0.5;
+      const ox = ux * mu + vx * mv, oy = uy * mu + vy * mv, oz = uz * mu + vz * mv;
+      for (let i = 0; i < sp; i++) {
+        const ra = rs[i], rb = rs[i + 1];
+        this.quad(
+          cxs[i] + (ux * c0 + vx * s0) * ra, cys[i] + (uy * c0 + vy * s0) * ra, czs[i] + (uz * c0 + vz * s0) * ra,
+          cxs[i] + (ux * c1 + vx * s1) * ra, cys[i] + (uy * c1 + vy * s1) * ra, czs[i] + (uz * c1 + vz * s1) * ra,
+          cxs[i + 1] + (ux * c1 + vx * s1) * rb, cys[i + 1] + (uy * c1 + vy * s1) * rb, czs[i + 1] + (uz * c1 + vz * s1) * rb,
+          cxs[i + 1] + (ux * c0 + vx * s0) * rb, cys[i + 1] + (uy * c0 + vy * s0) * rb, czs[i + 1] + (uz * c0 + vz * s0) * rb,
+          ox, oy, oz, false,
+        );
+      }
+    }
+  }
+
+  /**
    * A tapered blade / frond: a V-folded card arcing outward and drooping.
    * Bible §6.5 grass tufts are "a radial fan of 14-20 tapered blade cards, each
    * 0.15 m x 1.4-1.8 m, arcing outward". The fold gives the card a spine so it
@@ -982,36 +1055,132 @@ function broadleaf(m: PropMesh, rng: Rng, p: PropPalette, autumn: boolean): void
     m.box(Math.cos(a) * trunkR * 0.9, 0.20, Math.sin(a) * trunkR * 0.9,
       trunkR * 0.8, 0.60, trunkR * 0.8, 0.05, a);
   }
-  // Branch stubs pushing into the canopy — kills the lollipop read.
-  m.color(p.trunk);
-  for (let i = 0; i < 3; i++) {
-    const a = (i / 3) * TAU + 0.7;
-    const r = canopyR * 0.30;
-    m.cyl(Math.cos(a) * r, trunkH * 0.80, Math.sin(a) * r,
-      trunkR * 0.55, trunkR * 0.28, canopyR * 0.60, 8, 0.03, false, false);
-  }
-
-  // Canopy: 4 overlapping squashed blobs at three tones (bible §6.5 gives
-  // three colours per season for exactly this reason).
+  /*
+   * CANOPY: BRANCHES CARRYING LOBE CLUSTERS, NOT FOUR BIG ELLIPSOIDS.
+   *
+   * What this replaced: three vertical stubs plus four `blob(r=canopyR, 10, 5)`
+   * overlapping ellipsoids. Two measured defects, both structural.
+   *
+   *   1. A facet was 2*pi*4.2/10 = 2.64 m, which is ~85 px at fixture 01's
+   *      32.2 px/m and ~170 px at 03. The chord sagitta left ~6.6 px of
+   *      dead-straight edge per segment: a visibly polygonal rim.
+   *   2. A union of ellipsoids is CONVEX BY CONSTRUCTION, so it cannot produce
+   *      a hole. Measured on the shipped build over six seeds, the canopy
+   *      silhouette filled 98.7-100% of its own convex hull with zero enclosed
+   *      gaps. Sky through a canopy is most of what makes one read as organic,
+   *      and this one could not have any.
+   *
+   * So: 6-8 limbs radiating off the trunk onto a squashed crown shell, each
+   * ending in a cluster of 3-6 small `blob(r 0.6-1.1, 6, 3)` lobes. The union
+   * is non-convex because the gaps BETWEEN clusters are never filled by a
+   * lobe, and it shows sky because 26-32 lobes at ~0.85 m cover only a
+   * fraction of a 4 m shell.
+   *
+   * Re-measured with the same instrument, 7 seeds x both keys:
+   *
+   *              hull fill      enclosed sky      triangles
+   *   before     98.7-100%      0.0% on EVERY     688
+   *   after      55.2-79.7%     3.1-18.8%         920-1088 (mean ~1010)
+   *
+   * "Enclosed sky" is empty silhouette area the border flood-fill cannot
+   * reach — a hole you see the sky through, not a notch in the rim. Before,
+   * there was not one on any seed, which is what convex-by-construction means.
+   *
+   * Lobe facets are ~2*pi*0.85/6 = 0.89 m, ~29 px at 01 — still a crisp,
+   * crease-bounded shape carrying one flat colour, so `facetJitter` stays
+   * legal under the "no per-pixel noise" rule and stays ON. Do NOT smooth
+   * these normals: shared vertices delete the jitter and a smooth-shaded lobe
+   * in one flat olive is the green balloon this replaced.
+   *
+   * Cost: +47% triangles on two of 31 prop types, +3.3% on the whole roster
+   * (19 738 -> 20 394), and 0 extra draw calls — same InstancedMesh, same
+   * material, same program. Triangles are not the constraint here; the colour
+   * pass runs 51-77 draws against a budget of 130.
+   */
+  const cy = trunkH + canopyR * 0.62;
+  const crownRy = canopyR * 0.88;
+  // Bright, mid, dark — indexed by the height band below, so the crown is lit
+  // on top and shaded underneath instead of speckled at random.
   const tones = autumn
-    ? [p.autumnA, p.autumnB, p.autumnC, p.autumnA]
-    : [p.leafA, p.leafB, p.leafC, p.leafA];
+    ? [p.autumnC, p.autumnA, p.autumnB]
+    : [p.leafC, p.leafA, p.leafB];
+
+  // One sway ramp and one AO ramp for the whole assembly. Both are functions of
+  // Y alone, so a limb tip and the lobe sitting on it move together in wind
+  // instead of the foliage sliding off its own branch.
   m.sway(SCATTER_WIND.canopyAmplitude, trunkH * 0.5, height);
   m.ao(0.60, trunkH * 0.6, height);
-  const cy = trunkH + canopyR * 0.62;
-  // 10 segs x 5 rings = 50 facets per blob, ~2.7 m each at this canopy radius.
-  // Without the jitter all 200 of them arrive within a couple of luminance
-  // levels of each other and the Sobel operator sees one flat green disc.
-  m.facetJitter(rng, FOLIAGE_FACET_VALUE, FOLIAGE_FACET_HUE_DEG);
-  for (let i = 0; i < 4; i++) {
-    const a = (i / 4) * TAU + rng.range(-0.4, 0.4);
-    const d = i === 0 ? 0 : canopyR * rng.range(0.34, 0.56);
-    const r = canopyR * (i === 0 ? 1.0 : rng.range(0.56, 0.78));
-    m.color(tones[i]);
-    m.blob(Math.cos(a) * d, cy + (i === 0 ? 0 : rng.range(-0.3, 1.4)), Math.sin(a) * d,
-      r, r * rng.range(0.74, 0.94), r, 10, 5, 0.34);
+
+  /*
+   * The lobe TOTAL is rolled, then dealt out across the branches — not rolled
+   * per branch. `PropLibrary` bakes ONE mesh per key and instances it, so every
+   * tree on the map is this tree: independent 6-8 branches x 3-5 lobes spans
+   * 18..40 lobes, and the thin tail of that is a whole map of scraggly trees
+   * from one unlucky seed. It was measured before it was fixed — rolling
+   * per branch gave 896..1160 triangles and a 60.1% hull fill on the sparse
+   * end. Dealing a 26-32 total holds the canopy mass still and lets the
+   * branch count vary freely, which is the half that shows.
+   */
+  const branchN = rng.int(6, 8);
+  const lobeTotal = rng.int(26, 32);
+  for (let b = 0; b < branchN; b++) {
+    // Azimuth is spread evenly and then kicked, so clusters cannot land in a
+    // rosette; elevation runs from slightly drooping to 60 degrees up.
+    const a = (b / branchN) * TAU + rng.range(-0.34, 0.34);
+    const el = rng.range(-0.26, 1.05);
+    // Deliberately reaches PAST the shell: the ellipsoid clamp below is what
+    // fixes the outer envelope, so aiming the tips at it is what makes the
+    // crown actually fill out to the bible's 7-10 m rather than fall short of
+    // it on the seeds where the elevations happen to bunch.
+    const reach = rng.range(0.78, 1.12);
+    const ca = Math.cos(a), sa = Math.sin(a);
+    const ce = Math.cos(el), se = Math.sin(el);
+    const tipX = ca * ce * canopyR * reach;
+    const tipY = cy + se * crownRy * reach;
+    const tipZ = sa * ce * canopyR * reach;
+
+    m.color(p.trunk);
+    m.limb(
+      ca * trunkR * 0.5, trunkH * rng.range(0.70, 0.94), sa * trunkR * 0.5,
+      tipX, tipY, tipZ,
+      trunkR * 0.52, trunkR * 0.16, 3, 2, canopyR * 0.09,
+    );
+
+    // The cluster. Offsets are taken along the limb axis, across it, and in Y,
+    // so a cluster is an elongated mass following its branch rather than a ball.
+    m.facetJitter(rng, FOLIAGE_FACET_VALUE, FOLIAGE_FACET_HUE_DEG);
+    const lobeN = Math.floor((lobeTotal + b) / branchN);
+    for (let k = 0; k < lobeN; k++) {
+      const lr = rng.range(0.62, 1.10);
+      const along = rng.range(-0.70, 1.05);
+      const side = rng.range(-1.05, 1.05);
+      const lift = rng.range(-0.70, 0.85);
+      let lx = tipX + ca * ce * along - sa * side;
+      let ly = tipY + se * along + lift;
+      let lz = tipZ + sa * ce * along + ca * side;
+      /*
+       * Hold the crown inside the bible 6.5 broadleaf envelope — canopy 7-10 m
+       * across, 9-13 m tall. Three independent offsets plus a lobe radius can
+       * stack to 3 m of overhang on an unlucky roll, and `def.adorn` (7.0 m) is
+       * what the scatter placer spaces clumps by, so an overhanging crown means
+       * trees interpenetrating on the map.
+       *
+       * The clamp is OUTWARD ONLY: a lobe may sit anywhere inside the crown
+       * ellipsoid and is only pulled back when it bulges past it. Every inward
+       * bite survives, and the bites are the whole point.
+       */
+      const ex = canopyR - lr, ey = crownRy - lr;
+      const q = Math.hypot(lx / ex, (ly - cy) / ey, lz / ex);
+      if (q > 1) { lx /= q; ly = cy + (ly - cy) / q; lz /= q; }
+      // Tone by height in the crown: a lit top, a shaded underside, one mid
+      // band. Bible 6.5 asks for three colours per season and this is what they
+      // are for — form, not confetti.
+      const t = (ly - (cy - crownRy)) / (2 * crownRy);
+      m.color(tones[t > 0.66 ? 0 : t > 0.38 ? 1 : 2]);
+      m.blob(lx, ly, lz, lr, lr * rng.range(0.74, 0.98), lr, 6, 3, 0);
+    }
+    m.noFacetJitter();
   }
-  m.noFacetJitter();
 }
 
 function buildTree(m: PropMesh, rng: Rng, p: PropPalette): void { broadleaf(m, rng, p, false); }
