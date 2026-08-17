@@ -32,11 +32,15 @@
  *    literally nothing; a panning one costs one memcpy of a few hundred
  *    matrices and an upload of exactly those, not of the whole allocation.
  *
- *    ONE COLOUR DRAW PER TYPE. Read `SCATTER_LIMITS.maxTypes` for the rest of
- *    the arithmetic: a scatter mesh is opaque on the DEFAULT layer, so it is
- *    also submitted in `GTAOPass`'s normal prepass and, if it clears
- *    `SCATTER_SHADOW_MIN_RADIUS`, in the shadow pass. Three submissions per
- *    type, not one, and today every type in the roster clears the radius.
+ *    ONE COLOUR DRAW PER TYPE, plus one shadow draw if the type clears
+ *    `SCATTER_SHADOW_MIN_RADIUS` — which today every type in the roster does.
+ *    TWO submissions per type, not three: this said three because a scatter
+ *    mesh is opaque on the DEFAULT layer and `GTAOPass` used to draw the whole
+ *    scene again for its normal G-buffer. `installAoDepthGBuffer`
+ *    (`src/render/post.ts`) now reconstructs those normals from the depth the
+ *    colour pass already wrote, `_renderGBuffer` is false, and that submission
+ *    is gone — `ao` is 0 on all thirteen fixtures in `shots/_report.json`.
+ *    Read `SCATTER_LIMITS.maxTypes` for the rest of the arithmetic.
  *
  * 3. CLUSTERED, NEVER UNIFORM. Bible §6.5: "3-9 trees per clump, 4-8 m spacing
  *    inside, 20-50 m between clumps. Street rows are regular at 8-12 m pitch,
@@ -102,7 +106,7 @@ import {
   SCATTER_JITTER, SCATTER_LIMITS,
 } from '../core/config';
 import { clamp, clamp01, DEG2RAD, fbm2, Rng, TAU } from '../core/math';
-import { SURFACE_COUNT, SurfaceId, type BiomeName } from './Biomes';
+import { SurfaceId, type BiomeName } from './Biomes';
 import { PASS_GROUND, type Terrain } from './Terrain';
 import {
   createPropMaterial, PropLibrary, PROP_DEFS, propPalette,
@@ -152,7 +156,7 @@ export const PROP_CLEAR_MARGIN = 1.25;
  * one: the shadow camera is fitted to a `farExtent` of 320 m over a 2048-texel
  * map, so 0.70 m of radius is one to three texels of shadow map, a bilinear
  * smudge that is sub-pixel at the RTS camera. A caster costs a whole extra
- * instanced draw, and at `SCATTER_LIMITS.maxTypes` = 22 that is up to 22 of
+ * instanced draw, and at `SCATTER_LIMITS.maxTypes` = 30 that is up to 30 of
  * them.
  *
  * IT IS A SECOND COPY OF THE NUMBER, and that is a known wart: RenderBridge
@@ -222,6 +226,117 @@ export function isCrushableFamily(family: PropFamily): boolean {
   return CRUSHABLE_FAMILIES.has(family);
 }
 
+/* --------------------------------------------------------------------------
+ * `MapPreset.props` IS READ BY TWO SYSTEMS THAT DO NOT SHARE A KEY NAMESPACE.
+ *
+ * The field is authored in the ENTITY-prop vocabulary, and that is the older
+ * and the stricter of its two readers:
+ *
+ *   1. `ScenarioBuilder.scatter()` (`src/game/Scenarios.ts`) resolves it
+ *      against `FALLBACK_PROPS`, whose eight keys are `tree pine bush rock
+ *      boulder barrel crate wreck`. An unknown key there is not ignored —
+ *      `spawnProp` warns and returns `NONE`, and `scatter()` RETURNS on the
+ *      first `NONE`, so one bad string empties the whole entity dressing pass.
+ *   2. This module resolves it against `PROP_DEFS`, whose thirty-one keys are
+ *      the instanced archetypes: `tree treeAutumn conifer palm bush hedge
+ *      grassTuft ... crateStack ... rockCluster`.
+ *
+ * The two tables share exactly FOUR names — `tree`, `bush`, `barrel`,
+ * `boulder`. Every other entry in every preset list was silently inert here,
+ * because the lookup was a bare `preferred.indexOf(def.key)`:
+ *
+ *      'rock'   in all seven presets   -> no def key
+ *      'pine'   in temperate, tropical, snow
+ *      'crate'  in urban
+ *
+ * ELEVEN OF THE TWENTY-EIGHT ENTRIES DID NOTHING. The obvious repair — rename
+ * them to `rockCluster`/`conifer`/`crateStack` — is the one repair that must
+ * NOT be made: it fixes reader 2 by breaking reader 1, and reader 1 is the one
+ * `tests/start-clearance.spec.ts` exercises. On `snow`, where `pine` sits at
+ * index 0 and the entity picker is weighted `-log2(1-u)` so index 0 comes up
+ * about half the time, the very first draw would abort the pass.
+ *
+ * So the translation lives HERE, where the second namespace lives, and the
+ * preset table keeps speaking the vocabulary its first reader requires. A
+ * preference entry matches, in order:
+ *
+ *   - a def KEY exactly            ('bush' -> bush, 'boulder' -> boulder)
+ *   - a def FAMILY exactly         ('rock' -> boulder + rockCluster)
+ *   - an alias below               ('pine' -> conifer, 'crate' -> crateStack)
+ *
+ * `resolvePreference` returns the FIRST rank that matches, so a list naming
+ * both 'rock' and 'boulder' ranks boulder by the earlier of the two.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Entity-prop key -> the instanced archetypes it names. Only for entries that
+ * are neither a def key nor a family; everything else resolves without help.
+ *
+ * `tree` IS a def key and still appears here, because the entity table has ONE
+ * broadleaf and this roster has two — `tree` and its off-season twin
+ * `treeAutumn`. Boosting only the summer one is what drove the autumn share to
+ * 5.7% against bible §6.5's "70% one season, 30% off-colour": the biome weights
+ * are already authored at 1.00/0.42, i.e. 29.6% autumn, and the preference
+ * multiplier was landing on one half of the pair and wrecking the ratio the
+ * table had got right. Boosting both restores it by construction.
+ */
+const PREFERENCE_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  tree: ['tree', 'treeAutumn'],
+  pine: ['conifer'],
+  crate: ['crateStack'],
+};
+
+/**
+ * Rank of `def` in `preferred`, or -1. Lower is stronger; see the block above.
+ */
+function preferenceRank(def: PropDef, preferred: readonly string[]): number {
+  for (let i = 0; i < preferred.length; i++) {
+    const p = preferred[i];
+    if (p === def.key || p === def.family) return i;
+    const alias = PREFERENCE_ALIASES[p];
+    if (alias !== undefined && alias.indexOf(def.key) >= 0) return i;
+  }
+  return -1;
+}
+
+/**
+ * True when `key` names at least one archetype in this roster.
+ *
+ * Exported so a test can assert the contract in the block above — that every
+ * string in every `MAP_PRESETS[...].props` resolves in BOTH namespaces — rather
+ * than leaving it to the next person to rediscover by reading two files.
+ */
+export function preferenceResolves(key: string): boolean {
+  for (let i = 0; i < PROP_DEFS.length; i++) {
+    if (preferenceRank(PROP_DEFS[i], [key]) >= 0) return true;
+  }
+  return false;
+}
+
+/**
+ * The preference multiplier for rank `r`, and it is a LEAN, NOT A LANDSLIDE.
+ *
+ * This was `3 / (r + 1) + 1` — x4.00, x2.50, x2.00, x1.75 over a four-entry
+ * list. That curve was tuned while ELEVEN of the twenty-eight entries were
+ * inert, so in practice it was quadrupling one or two types per preset and the
+ * rest of the list was decoration. Honouring the whole list at x4 would have
+ * spent the budget even harder on even fewer archetypes — the exact opposite of
+ * what a preference list is for on a map that is trying to look varied.
+ *
+ * Measured on the shipped presets, x4.00/x2.50/x2.00/x1.75 applied to a fully
+ * resolving list roughly doubles the rock family (9.8% -> ~18% on temperate)
+ * against a standing instruction not to: "reduce the number of boulders and
+ * rocks by at least 30% all around, they spawn way too much" is why the rock
+ * biome weights were cut 35% in the first place (`PROP_DEFS`, rock block).
+ *
+ * So the curve is halved in strength: `1 + 1.5 / (r + 1)` — x2.50, x1.75,
+ * x1.50, x1.38. The preset still gets what it asked for, in the order it asked
+ * for it, without the top entry eating the map.
+ */
+function preferenceMultiplier(rank: number): number {
+  return 1 + 1.5 / (rank + 1);
+}
+
 export interface EmptyPatch {
   /** Centre of the offending square, world metres. */
   readonly x: number;
@@ -265,8 +380,27 @@ export interface ScatterOptions {
   readonly urban: number;
   /** Density multiplier. `MapPreset.scatter`. */
   readonly densityScale: number;
-  /** Prop keys the map preset asks for, richest first. Weighted 3:2:1... */
+  /**
+   * What the map preset asks for, richest first — `MapPreset.props`.
+   *
+   * Written in the ENTITY-prop vocabulary, because a second system reads the
+   * same field against `Scenarios.FALLBACK_PROPS`. `preferenceRank` translates;
+   * see the block above `PREFERENCE_ALIASES` for why the translation is here
+   * and not a rename in `config.ts`.
+   */
   readonly preferred?: readonly string[];
+  /**
+   * Live-type ceiling, defaulting to `SCATTER_LIMITS.maxTypes`.
+   *
+   * Exists so `tests/scatter-trim-order.spec.ts` can DRIVE the trim rather than
+   * hope a preset saturates the shipped cap. That test asserts the order of the
+   * last two passes — trim, then gate — after a bug where the trim reopened
+   * holes the coverage gate had just closed. Its only lever used to be "find a
+   * preset that trims", and its own header says what happens when the roster
+   * moves under it: "the tests below go green while testing nothing". They did.
+   * A cap it sets itself cannot stop binding.
+   */
+  readonly maxTypes?: number;
   /** The box a scenario actually photographs. Density is boosted inside it. */
   readonly focus?: { minX: number; minZ: number; maxX: number; maxZ: number } | null;
   readonly focusBoost?: number;
@@ -897,8 +1031,10 @@ export class Scatter {
       // Affinity: a def with urban 1.0 wants urban 1.0 and vice versa.
       const fit = def.urban * urban + (1 - def.urban) * (1 - urban);
       let w = biomeW * (0.15 + 0.85 * fit);
-      const pref = preferred.indexOf(def.key);
-      if (pref >= 0) w *= 3 / (pref + 1) + 1;
+      // Key, family or alias — see PREFERENCE_ALIASES. A bare
+      // `preferred.indexOf(def.key)` left 11 of the 28 shipped entries inert.
+      const pref = preferenceRank(def, preferred);
+      if (pref >= 0) w *= preferenceMultiplier(pref);
       if (w <= 1e-3) continue;
       avail.push({
         def, defIndex: i, geo, mesh: null, count: 0,
@@ -917,12 +1053,38 @@ export class Scatter {
     const hectares = Math.max(walkableCells * CELL * CELL / 10000, 0.01);
     const target = SCATTER_DENSITY.wildernessPerHectare
       + (SCATTER_DENSITY.cityPerHectare - SCATTER_DENSITY.wildernessPerHectare) * urban;
-    // `MapPreset.scatter` is a mood dial, not a licence to empty the map:
-    // ruling #9's 75/ha is a floor and the preset cannot scale below it.
-    const perHa = Math.max(
-      target * Math.max(this.opts.densityScale, 0.05),
-      SCATTER_DENSITY.hardFloorPerHectare,
-    );
+    /*
+     * `MapPreset.scatter` IS A MOOD DIAL, NOT A LICENCE TO EMPTY THE MAP — and
+     * the floor that was enforcing that sentence only enforced half of it.
+     *
+     * Bible ruling #9 states TWO minima: "City >= 75/ha, wilderness >= 260/ha".
+     * `SCATTER_DENSITY.hardFloorPerHectare` is 95 and its own docstring quotes
+     * only the first of them. It was then applied as a single scalar to every
+     * map in the game, so on a WILDERNESS preset the binding constraint was a
+     * CITY number — 95/ha against a ruling that asks for 260 — and `scatter`
+     * could pull the map to a third of its target with nothing to stop it.
+     *
+     * Measured on the shipped presets before this changed:
+     *
+     *     preset      urban  scatter   achieved   lerped target
+     *     snow         0.20     0.70    160.6/ha      229/ha    70%
+     *     arid         0.45     0.85    162.0/ha      190/ha    85%
+     *     coast        0.30     0.85    182.0/ha      214/ha    85%
+     *
+     * Three presets under the bible band, and `snow` at 70% of it. None of them
+     * was anywhere near 95/ha, so the floor never fired on any map that needed
+     * it; the only preset it ever bound was `urban`, the one it was written for.
+     *
+     * The floor is now the ruling's own pair, lerped by the same `urban` the
+     * target is: `wildernessPerHectare` at the wilderness end,
+     * `hardFloorPerHectare` at the city end. Note what this does NOT do — it
+     * does not touch a preset asking for MORE than the band (`tropical` 1.45,
+     * `atoll` 1.15 and `temperate` 1.00 are bit-identical after this change),
+     * so the dial still works upward and only its downward travel is bounded.
+     */
+    const floor = SCATTER_DENSITY.wildernessPerHectare
+      + (SCATTER_DENSITY.hardFloorPerHectare - SCATTER_DENSITY.wildernessPerHectare) * urban;
+    const perHa = Math.max(target * Math.max(this.opts.densityScale, 0.05), floor);
     const budget = Math.min(SCATTER_LIMITS.maxProps, Math.round(perHa * hectares));
     this.budget = budget;
 
@@ -1003,36 +1165,10 @@ export class Scatter {
      * 221/ha budget, which is bible §6.6's failure mode wearing a nicer hat.
      * So: keep spending the remaining budget on clustered vegetation until it
      * is gone or the map genuinely has nowhere left to put a bush.           */
-    const topUpRng = rng.fork();
-    const topUp = avail.filter((t) => t.def.mode === 'clump' || t.def.mode === 'field');
-    if (topUp.length > 0) {
-      const topWeights = topUp.map((t) => {
-        const w = weights[avail.indexOf(t)];
-        // Grass is capped separately; do not let it eat the whole remainder.
-        return t.def.family === 'grass' ? w * 0.5 : w;
-      });
-      const topTotal = topWeights.reduce((a, b) => a + b, 0);
-      let stalled = 0;
-      while (this.placements.length < budget && stalled < 400) {
-        const before = this.placements.length;
-        // Weighted pick without allocating.
-        let roll = topUpRng.next() * topTotal;
-        let pick = topUp[0];
-        for (let i = 0; i < topUp.length; i++) {
-          roll -= topWeights[i];
-          if (roll <= 0) { pick = topUp[i]; break; }
-        }
-        if (pick.def.family === 'grass' && grassPlaced >= grassCap) { stalled++; continue; }
-        const cellIndex = this.pickClumpCentre(pick.def, topUpRng, habitatSeed);
-        if (cellIndex < 0) { stalled++; continue; }
-        const cx = ((cellIndex % MAP_CELLS) + 0.5) * CELL;
-        const cz = (((cellIndex / MAP_CELLS) | 0) + 0.5) * CELL;
-        const n = this.placeClump(pick.defIndex, pick.def, cx, cz, topUpRng);
-        pick.count += n;
-        if (pick.def.family === 'grass') grassPlaced += n;
-        if (this.placements.length === before) stalled++; else stalled = 0;
-      }
-    }
+    grassPlaced = this.topUpToBudget(
+      avail, (t) => weights[avail.indexOf(t)], budget, grassCap, grassPlaced,
+      habitatSeed, rng.fork(),
+    );
 
     /* -- focus boost: the scenario's photographed box --------------------- */
     const focus = this.opts.focus;
@@ -1072,6 +1208,39 @@ export class Scatter {
      * 0.2960 -> 0.2569. What a type finally delivered is the honest basis for
      * spending a draw call on it; what it was allocated is not.               */
     const live = this.trimTypes(avail);
+
+    /* -- 4b. RE-TOP-UP: THE TRIM SPENDS DENSITY IT DOES NOT PAY BACK ------- *
+     * `trimTypes()` deletes every placement of the types it drops, and until
+     * now nothing replaced them. So the density contract was met at 3b and then
+     * quietly broken a few lines later, on exactly the maps that trim — the
+     * ones with the richest prop mix, which are the ones the density target
+     * matters most on.
+     *
+     * It was masked for the whole life of the module by how much the structured
+     * passes used to OVERSHOOT into ineligible ground. With the splat
+     * classifier fixed (P0-1) the overshoot is gone and the shortfall is the
+     * whole story:
+     *
+     *     urban preset          94.49/ha against a floor of 95
+     *     03-terrain-closeup    3593 props -> 1784   (192/ha -> 95.5/ha)
+     *
+     * Half the props in the terrain hero shot, deleted after the budget said
+     * they were needed. The same top-up, run again over the SURVIVING types, is
+     * the whole fix; `grassPlaced` is recomputed from those survivors rather
+     * than carried over, because the trim may have taken grass with it.
+     *
+     * This ADDS placements and never removes one, so the invariant above — the
+     * gate is last, and nothing below it may remove a placement — still holds.
+     */
+    let liveGrass = 0;
+    for (let i = 0; i < live.length; i++) {
+      if (live[i].def.family === 'grass') liveGrass += live[i].count;
+    }
+    this.topUpToBudget(
+      live, (t) => weights[avail.indexOf(t)], budget, grassCap, liveGrass,
+      habitatSeed, rng.fork(),
+    );
+
     this.fillToTarget(live, rng.fork());
     this.types = live.filter((t) => t.count > 0);
 
@@ -1083,6 +1252,62 @@ export class Scatter {
 
   private finishTiming(t0: number): void {
     this.generateMs = (typeof performance !== 'undefined' ? performance.now() : 0) - t0;
+  }
+
+  /**
+   * Spend clustered vegetation until `this.placements.length` reaches `budget`
+   * or the map genuinely has nowhere left to put a bush. Returns the running
+   * grass count so the caller can keep honouring `grassCap` across two calls.
+   *
+   * Called TWICE per generate: once after the structured passes (pass 3b) and
+   * once after `trimTypes` has deleted whatever it dropped (pass 4b). It only
+   * ever appends, which is what keeps the "nothing may remove a placement after
+   * the gate" invariant intact.
+   *
+   * `pool` is filtered to the modes that can be topped up — a 'street' type
+   * needs a kerb polyline and a 'solo' type is a landmark, and neither is
+   * something to spray until a number goes up.
+   */
+  private topUpToBudget(
+    pool: readonly ScatterType[],
+    weightOf: (t: ScatterType) => number,
+    budget: number,
+    grassCap: number,
+    grassPlaced: number,
+    habitatSeed: number,
+    rng: Rng,
+  ): number {
+    const topUp = pool.filter((t) => t.def.mode === 'clump' || t.def.mode === 'field');
+    if (topUp.length === 0) return grassPlaced;
+    const topWeights = topUp.map((t) => {
+      const w = weightOf(t);
+      // Grass is capped separately; do not let it eat the whole remainder.
+      return t.def.family === 'grass' ? w * 0.5 : w;
+    });
+    const topTotal = topWeights.reduce((a, b) => a + b, 0);
+    if (topTotal <= 0) return grassPlaced;
+    let grass = grassPlaced;
+    let stalled = 0;
+    while (this.placements.length < budget && stalled < 400) {
+      const before = this.placements.length;
+      // Weighted pick without allocating.
+      let roll = rng.next() * topTotal;
+      let pick = topUp[0];
+      for (let i = 0; i < topUp.length; i++) {
+        roll -= topWeights[i];
+        if (roll <= 0) { pick = topUp[i]; break; }
+      }
+      if (pick.def.family === 'grass' && grass >= grassCap) { stalled++; continue; }
+      const cellIndex = this.pickClumpCentre(pick.def, rng, habitatSeed);
+      if (cellIndex < 0) { stalled++; continue; }
+      const cx = ((cellIndex % MAP_CELLS) + 0.5) * CELL;
+      const cz = (((cellIndex / MAP_CELLS) | 0) + 0.5) * CELL;
+      const n = this.placeClump(pick.defIndex, pick.def, cx, cz, rng);
+      pick.count += n;
+      if (pick.def.family === 'grass') grass += n;
+      if (this.placements.length === before) stalled++; else stalled = 0;
+    }
+    return grass;
   }
 
   /**
@@ -1265,6 +1490,7 @@ export class Scatter {
    *     civic props are weighted well above their count.
    */
   private trimTypes(avail: ScatterType[]): ScatterType[] {
+    const cap = Math.max(1, Math.round(this.opts.maxTypes ?? SCATTER_LIMITS.maxTypes));
     const placed = avail.filter((t) => t.count > 0);
     /*
      * A type that placed NOTHING is not costing a draw call, and the passes
@@ -1274,16 +1500,16 @@ export class Scatter {
      * squeezed out by a type that has already earned its slot.
      */
     const idle = avail.filter((t) => t.count === 0);
-    if (placed.length <= SCATTER_LIMITS.maxTypes) {
-      return placed.concat(idle.slice(0, SCATTER_LIMITS.maxTypes - placed.length));
+    if (placed.length <= cap) {
+      return placed.concat(idle.slice(0, cap - placed.length));
     }
     const familyWeight = (t: ScatterType): number =>
       t.def.family === 'civic' ? 5.0 : t.def.family === 'canopy' ? 1.7 : 1.0;
     const score = (t: ScatterType): number =>
       t.count * t.def.adorn * t.def.adorn * familyWeight(t);
     const ranked = placed.slice().sort((a, b) => score(b) - score(a));
-    const keep = new Set(ranked.slice(0, SCATTER_LIMITS.maxTypes));
-    const dropped = new Set(ranked.slice(SCATTER_LIMITS.maxTypes).map((t) => t.defIndex));
+    const keep = new Set(ranked.slice(0, cap));
+    const dropped = new Set(ranked.slice(cap).map((t) => t.defIndex));
     // Compact the placements, dropping instances of trimmed types.
     const kept: Placement[] = [];
     for (let i = 0; i < this.placements.length; i++) {
@@ -1308,7 +1534,7 @@ export class Scatter {
      */
     this.rebuildCellIndex();
     console.warn(
-      `[scatter] ${dropped.size} prop type(s) trimmed to hold the ${SCATTER_LIMITS.maxTypes}-type ` +
+      `[scatter] ${dropped.size} prop type(s) trimmed to hold the ${cap}-type ` +
       'draw-call budget (SCATTER_LIMITS.maxTypes in core/config.ts)',
     );
     return avail.filter((t) => keep.has(t));
@@ -1577,12 +1803,7 @@ export class Scatter {
     const z0 = box ? Math.max(0, Math.floor(box.minZ / G)) : 0;
     const z1 = box ? Math.min(COVER_N, Math.ceil(box.maxZ / G)) : COVER_N;
 
-    // Pass 1: the walkable domain, plus a histogram of surfaces so "texture
-    // variation" is measured against whatever this biome's DOMINANT layer is.
-    // Hardcoding SurfaceId.Ground would score a desert map as 100% adorned,
-    // because its base layer is Sand.
-    const histogram = SURFACE_HISTOGRAM;
-    histogram.fill(0);
+    // Pass 1: the walkable domain.
     let walkableCells = 0;
     for (let gz = z0; gz < z1; gz++) {
       for (let gx = x0; gx < x1; gx++) {
@@ -1594,17 +1815,51 @@ export class Scatter {
         if ((t.passGrid[ci] & PASS_GROUND) === 0) continue;
         this.coverWalkable[gz * COVER_N + gx] = 1;
         walkableCells++;
-        histogram[t.surface[ci]]++;
       }
     }
-    let baseSurface = 0;
-    for (let s = 1; s < histogram.length; s++) {
-      if (histogram[s] > histogram[baseSurface]) baseSurface = s;
-    }
 
-    // Pass 2: adornment from the terrain itself. Bible §6.6 counts "a distinct
-    // second material" alongside props and decals, so any cell carrying a
-    // non-base surface, or a structure, is already adorned.
+    /*
+     * Pass 2: adornment from the terrain itself — HARD SURFACE ONLY.
+     *
+     * "NOT THE BIOME'S BASE LAYER" IS NOT THE SAME FACT AS "HAS SOMETHING ON
+     * IT", AND THIS TESTED THE FIRST ONE. The rule used to be "this cell's
+     * splat differs from the DOMINANT layer", taken off a histogram of the
+     * whole walkable map so a desert did not score 100% adorned off its own
+     * sand. That was defensible only while non-base surface was rare, and it
+     * stopped being rare: the splat classifier was thresholding a Gaussian fbm
+     * as though it were uniform, and with that fixed (P0-1, `terrain-gen.ts`)
+     * non-base ground goes from ~4% of cells to ~33%. Measured on a PROPLESS
+     * temperate map, before -> after:
+     *
+     *     adornedFraction   0.0397 -> 0.3277
+     *     emptyPatches      84     -> 0
+     *
+     * So terrain alone passed a ship-blocking gate — scorecard #15, weight 3 —
+     * on a map with not one prop on it, and the two `emptyPatches > 10`
+     * assertions that are the ONLY proof in the suite that this validator can
+     * still fail passed vacuously.
+     *
+     * "Sits on a splat BOUNDARY" was tried next and is worse, not better: fbm
+     * dirt at 4 m cells is finely divided, so the propless figure went to
+     * 0.67-0.81 across the four biomes. A rule that marks four fifths of an
+     * empty map is not a rule.
+     *
+     * So the test is the material, and only the materials that are a DIFFERENT
+     * material: `Concrete` and `Paving` — building pads and roads, bible §6.6's
+     * "painted marking, or a distinct second material". Grass, dirt, sand and
+     * scree are all THE GROUND. A twenty-six metre square of bare dirt is
+     * exactly as unadorned as a twenty-six metre square of bare grass, and it
+     * is the fill pass's job to put something on it.
+     *
+     * This is also what puts the density back. `fillToTarget` is the mechanism
+     * that keeps ground from being empty, and counting dirt as adornment had
+     * switched it off — `03-terrain-closeup` fell from 192/ha to 108/ha with
+     * nothing else changed, because the gate stopped asking for anything.
+     *
+     * The histogram and its `baseSurface` are deleted rather than corrected:
+     * the biome-independence they bought is free here, since no biome uses
+     * Concrete or Paving as its base layer.
+     */
     for (let gz = z0; gz < z1; gz++) {
       for (let gx = x0; gx < x1; gx++) {
         const i = gz * COVER_N + gx;
@@ -1612,7 +1867,9 @@ export class Scatter {
         const cx = Math.min(MAP_CELLS - 1, (((gx + 0.5) * G) / CELL) | 0);
         const cz = Math.min(MAP_CELLS - 1, (((gz + 0.5) * G) / CELL) | 0);
         const ci = cz * MAP_CELLS + cx;
-        if (t.surface[ci] !== baseSurface || t.isOccupied(cx, cz)) { this.coverAdorned[i] = 1; continue; }
+        const s0 = t.surface[ci];
+        const hardSurface = s0 === SurfaceId.Concrete || s0 === SurfaceId.Paving;
+        if (hardSurface || t.isOccupied(cx, cz)) { this.coverAdorned[i] = 1; continue; }
         /*
          * GROUND THE PLACER IS FORBIDDEN TO TOUCH IS NOT UNADORNED GROUND.
          *
@@ -2182,8 +2439,6 @@ const CLUMP_BUCKET_METRES = 64;
 const CLUMP_BUCKET_N = Math.max(1, Math.ceil(MAP_SIZE / CLUMP_BUCKET_METRES));
 
 const EMPTY_F32 = new Float32Array(0);
-/** Surface histogram scratch for validateCoverage(). SURFACE_COUNT is 6. */
-const SURFACE_HISTOGRAM = new Int32Array(SURFACE_COUNT);
 const EMPTY_I32 = new Int32Array(0);
 const NORMAL_SCRATCH = new Float32Array(3);
 const JITTER_OUT = new Float32Array(3);

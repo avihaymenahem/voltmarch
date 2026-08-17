@@ -179,10 +179,23 @@ export default defineSystem({
         'this too — a single-layer splat puts the whole burden on props.',
       );
     }
-    if (s.types * 2 > MAX_DRAW_CALLS * 0.4) {
+    /*
+     * THE TWO SIDES OF THIS COMPARISON WERE DIFFERENT QUANTITIES.
+     *
+     * It read `s.types * 2 > MAX_DRAW_CALLS * 0.4` — colour PLUS shadow against
+     * a budget that covers the colour pass alone. That is the exact confusion
+     * CLAUDE.md writes up under "frame.drawCalls AND MAX_DRAW_CALLS MEASURE
+     * DIFFERENT QUANTITIES", and it made the warning fire at 26 live types on a
+     * colour pass measured at 51-77 of 130.
+     *
+     * One type is one COLOUR draw. The shadow draw is real and it is also
+     * budgeted elsewhere, but it is not what `MAX_DRAW_CALLS` counts.
+     */
+    if (s.types > MAX_DRAW_CALLS * 0.4) {
       console.warn(
-        `[scatter] ${s.types} prop types = up to ${s.types * 2} draw calls (colour + shadow) ` +
-        `of the ${MAX_DRAW_CALLS} budget. Lower SCATTER_LIMITS.maxTypes if the frame is tight.`,
+        `[scatter] ${s.types} prop types = ${s.types} colour draws of the ${MAX_DRAW_CALLS} ` +
+        `colour-pass budget (and ${s.types} more in the shadow pass). ` +
+        'Lower SCATTER_LIMITS.maxTypes if the frame is tight.',
       );
     }
 
