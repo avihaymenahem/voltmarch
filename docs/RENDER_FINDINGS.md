@@ -942,18 +942,17 @@ webgpu          91.0%    13   12x #34 + ONE weight-3      12/13 captured
 
 - **#34 failing on every fixture on both arms is correct and must not be demoted.** See §2.
 - **THE WEIGHT-3 FAILURE IS REAL: `03-terrain-closeup` #6 p99 luminance 0.8851 against a floor of
-  0.900** (WebGL: 0.9744 on the same fixture). The visible cause is a **systematically weaker bloom
-  halo** on the node path — measured frame-wide, pixels at luminance >= 250 go 3.400% -> 2.539% on
-  `01-establishing-base` and 0.915% -> 0.666% on `11-dusk-mood`. Side by side at 4x, the emissive
-  strips on an Allied power plant are the same brightness on both and only the WebGL one has a glow
-  bleeding onto the surrounding armour.
+  0.900** (WebGL: 0.9744 on the same fixture), and frame-wide the pixels at luminance >= 250 go
+  3.400% -> 2.539% on `01-establishing-base`.
 
-  **It is not `BloomNode`'s parameters.** They were compared field by field against
-  `UnrealBloomPass` in the same build of three: 5 mips, kernels 6/10/14/18/22, factors
-  1/.8/.6/.4/.2, `lerpBloomFactor` identical, `luminosityHighPass` identical to
-  `LuminosityHighPassShader`, half-res first mip, `HalfFloatType` on every intermediate, and the
-  composite ends `sum.mul( strength )` on both. **So the difference is in the HDR reaching it, and
-  that is where it was left.** Do not start by re-reading `bloom-node.ts`.
+  **THIS ENTRY USED TO CALL THAT "A SYSTEMATICALLY WEAKER BLOOM HALO" AND SAY THE CAUSE WAS THE HDR
+  REACHING THE PASS. THE BLOOM PASS IS NOT INVOLVED AND NEITHER READING SURVIVED MEASUREMENT** —
+  see §7g, which decomposes the failure pass by pass. `BloomNode`'s parameters were compared field
+  by field against `UnrealBloomPass` and are identical, which was correct and is still worth
+  knowing; what was wrong was the inference that a weaker-looking halo therefore had to be an input
+  problem. Handed the same scene, the two arms' p99 luminance and blown-pixel fraction agree **to
+  four decimal places** with bloom on and everything else off. Do not re-open `bloom-node.ts`, and
+  do not re-open the HDR either.
 - **`02-hud-full` CANNOT BE CAPTURED ON THE NODE ARM.** It is the only fixture that re-dollies away
   from its scenario's declared distance (55 m against `allied-base`'s 62), and on the node path the
   rig reports 62 at the shutter — the pose is applied and then reverts. Pitch reverts with it, so
@@ -1130,6 +1129,140 @@ the panel is legible, that its buttons reload as intended, or that `GPUDevice.ad
 populated on the reporter's configuration. The host machine crashed its GPU driver twice on this
 path, so none of those four was attempted. **Do not quote the suite as evidence that recovery has
 been observed on hardware.**
+## 7h. THE HALO WAS NEVER THE BLOOM. SMAA WAS DEAD ON WEBGL AND AO IS TWICE AS STRONG ON THE NODE PATH
+
+**Measured 2026-08-17 with `tools/bloom-hdr-ab.mjs`, `03-terrain-closeup`, 1280x720, both arms in
+one run, on the machine's NVIDIA adapter** (`{vendor: nvidia, architecture: ampere}` — every earlier
+WebGPU number in this file was taken on the integrated AMD part, and the defect reproduces
+unchanged, so it is not adapter-dependent).
+
+### The instrument, because the answer depends on it
+
+Seven captures per arm, and the design rule is that **every rung ends in the grade**.
+`EffectComposer` gives the last enabled pass `renderToScreen = true`, and two of this chain's passes
+behave differently when they are the one that writes the canvas — `UnrealBloomPass` blits the read
+buffer through a tone-mapped `MeshBasicMaterial` and then adds its LINEAR composite on top of that
+already-encoded frame, and `GTAOPass` composites straight to the default framebuffer. The node graph
+has no such notion. An `ao`-last rung measured before this was understood came back **99.999% of
+pixels changed at a mean of +50.9/255**, which is not an AO difference; it is two different
+composites. With the grade last on both arms the tail is identical and a difference between two
+rungs is a difference in the pass that was added.
+
+`setPostEnabled(false)` is unusable for the same reason and worse — see the open item at the end.
+
+### The decomposition. p99 luminance, and it is additive
+
+```
+rung          webgl     webgpu    what it adds
+grade-only    0.9176    0.9176    <- the scene and the grade AGREE, exactly
+bloom-grade   0.9098    0.9098    <- BLOOM AGREES, exactly. blown px 0.439% / 0.441%
+ao-grade      0.9020    0.8863    <- AO: -0.0156 vs -0.0313
+grade-smaa    0.9137    0.8941    <- SMAA: -0.0039 vs -0.0235   (before the fix)
+nobloom       0.8980    0.8627    <- and the two deficits sum to the whole gap
+```
+
+**`scene` (post emptied to the render pass alone) is identical too: p99 0.7412 on both, and 0.3765
+on both again at a quarter exposure** — the second rung exists because AgX is compressive at the
+top, so equal bytes at normal exposure would not have proved equal HDR. The HDR reaching the bloom
+was never the problem.
+
+### Defect 1: `demoteSmaaTargets` made SMAA a no-op that still cost three full-screen passes
+
+`SMAAPass` binds two of its three materials ONCE, in its constructor —
+`_uniformsWeights.tDiffuse = _edgesRT.texture` and `_uniformsBlend.tDiffuse = _weightsRT.texture` —
+and `render()` rebinds only `_uniformsEdges.tDiffuse` and `_uniformsBlend.tColor`.
+`post.ts#demoteSmaaTargets` **replaced both render targets** with 8-bit ones and disposed the
+originals, so the weights pass and the blend pass sampled dead textures, every blend weight came
+back zero, and `SMAABlendShader` returns its input unchanged at zero weight.
+
+Read off a booted page rather than deduced: `_uniformsWeights.tDiffuse.value.name` was
+`SMAAPass.edges` while the pass rendered into `SMAA.edges`.
+
+`tools/bloom-hdr-ab/profile.mjs` bins the pass's effect by the pre-pass |laplacian|, and **that is
+the instrument that can tell a pass that ran from a pass that returned its input**, which a
+whole-frame mean cannot:
+
+```
+mean |dY| per bin      0..2   2..5   5..10  10..20  20..40  40..inf
+webgl BEFORE the fix   1.50   1.06   1.02   1.00    1.00    0.99     <- flat: the dither floor
+webgl AFTER            1.62   1.30   1.58   1.94    2.41    9.37
+webgpu (always worked) 1.53   1.09   1.09   1.25    1.73   10.35
+```
+
+Whole-frame mean |laplacian| through SMAA: **26.24 -> 26.17 before (0.3%), 26.24 -> 20.09 after
+(23%), against the node path's 26.54 -> 20.01.** The node twin,
+`post-nodes.ts#demoteSmaaMaskTargets`, mutates `texture.type` in place and therefore always worked;
+`post.ts` does the same now.
+
+**THE WEBGL PATH IS NO LONGER BYTE-IDENTICAL TO THE PRE-CUTOVER BUILD, DELIBERATELY, AND THE
+SCORECARD HAS NOT BEEN RE-RUN.** Every WebGL capture in this project — including the
+`12 / 13 byte-identical` result in §7f and the reference set behind
+`docs/grade-baseline.json` — was taken with SMAA inert. `npm run shots` plus `tools/metrics.mjs`
+must be re-run at 1440p before this is released; it was not run here because the host had reset its
+GPU driver twice that day and 13 captures at 2560x1440 is the load that did it. What IS known, at
+720p on `03-terrain-closeup`: p99 0.9176 -> 0.8824 and blown pixels 0.445% -> 0.306% on the WebGL
+arm with everything on. Scorecard #34 (edgeCoverage) will move — SMAA removes edge energy, and #34
+already fails 13/13 for being too LOW, so this pushes the wrong way. That is a real cost and it does
+not make the dead pass worth keeping.
+
+`tests/perf-budget.spec.ts` builds a real `SMAAPass`, runs the exported `demoteSmaaTargets` over it
+and asserts the two reference identities. Every source-scanning assertion in that file passed
+throughout the defect's life, because the text really did say `UnsignedByteType` on two mask
+targets; what was false was a reference identity, and the only way to see one is to build the object
+and look. Mutation-tested both ways: restoring the swap reddens it, deleting the type writes reddens
+it.
+
+### Defect 2: the node path's AO is ~1.85x stronger, and it is OPEN
+
+Same fixture, `ao-grade` minus `grade-only`, binned by pre-pass |laplacian|:
+
+```
+mean |dY| per bin   0..2   2..5   5..10  10..20  20..40  40..inf
+webgl               2.11   1.99   3.40   4.82    5.18    6.25
+webgpu              3.83   3.88   6.41   8.92    9.83    11.15
+ratio               1.82   1.96   1.89   1.85    1.90    1.78
+```
+
+**A near-constant multiplier on the darkening across every bin, with the same shape and the same
+per-channel signature** (webgl dR/dG/dB -4.20/-2.74/-1.95, webgpu -6.84/-5.38/-3.90). A different
+normal reconstruction, a different march radius or a different denoise would change the SHAPE. A
+flat ratio says the occlusion TERM is scaled differently.
+
+Already ruled out, by reading: the march and denoise parameters are shared through
+`src/render/ao-params.ts` and both sides apply `pow(ao, scale)`; `GTAOPass.updateGtaoMaterial`
+really does assign each of them (it is not silently dropping the object into a `try/catch`);
+`blendIntensity` and the node's `mix(1, ao, intensity)` both read `cfg.ao.intensity`; and neither AO
+installer has the stale-binding bug SMAA had — `installAoDepthGBuffer`'s wrapper rebinds `tDepth` on
+all three materials every frame.
+
+**THE NEXT PROBE IS TO READ THE AO TERM ITSELF, NOT THE COMPOSITE.** `GTAOPass.output =
+GTAOPass.OUTPUT.Denoise` on one arm against the node `denoised` RTT on the other, same fixture, same
+size, and compare the occlusion buffers directly. Everything above measures AO through the grade,
+which is monotone but not linear, so "1.85x" is a display-space figure and the real ratio is
+unknown. Two things worth checking in the same pass: three's TSL `getNormalFromDepth` swaps the roles
+of the `b`/`t` taps relative to the GLSL `computeNormalFromDepth` that `post.ts` transcribed
+(consistently, so it negates `dpdy` and therefore the normal — which may be deliberate WGSL
+Y-convention compensation, or may not), and `GTAOShader` takes `SAMPLES` as a `#define` while
+`GTAONode` takes it as a uniform.
+
+### Two open items this run turned up and did not close
+
+- **`setPostEnabled(false)` DOES NOTHING ON THE NODE PATH, AND HALF-DOES SOMETHING WORSE.**
+  `PostChain.render`'s contract says "Falls back to renderer.render() when inactive", and the WebGL
+  implementation does. `createNodeBackedPostChain.render` calls `chain.render()` unconditionally —
+  so the whole graph still draws, while `applyToneMapping` has meanwhile switched the RENDERER back
+  to AgX with the grade still in the graph doing AgX itself. `NodeRendererLike` publishes no
+  `render(scene, camera)`, which is why it was left rather than patched in passing.
+- **The halo's ADDED ENERGY still differs by ~13% with AO out of the picture.**
+  `bloom-grade` minus `grade-only`: webgl 0.1389/255 over 3.297% of pixels, webgpu 0.1214/255 over
+  2.415%, same peak (+104.8 / +105.1). p99 and blown-pixel fraction are identical, so this is a
+  slightly tighter halo rather than a dimmer one, and the most likely cause is the one structural
+  difference between the two passes: `UnrealBloomPass`'s high pass samples a TEXTURE (a bilinear 2x2
+  downsample of the composited HDR), while `BloomNode`'s high pass re-evaluates the input
+  EXPRESSION at half resolution. With AO in the chain that is `bilinear(colour * ao)` against
+  `bilinear(colour) * bilinear(ao)`. Not chased; it moves no scorecard check.
+
+---
 
 ## 8. Unverified — do not quote these as fact
 
