@@ -50,6 +50,7 @@
 import './shell.css';
 
 import { bootstrap, type BootOptions, type GameHandle } from '../game/Bootstrap';
+import { prepareRenderer } from '../render/renderer';
 import { resetScenarioPlan, setPlannedArmies } from '../game/Scenarios';
 import { resetTerrainPlan } from '../world/terrain-plan';
 import { DEFAULT_ART, GAME_SPEEDS } from '../core/config';
@@ -2004,6 +2005,16 @@ export class Shell {
       tier: settings.graphics.tier === 'auto' ? null : settings.graphics.tier,
       seed,
     };
+
+    /*
+     * THE DEVICE, BEFORE THE ENGINE. See `main.ts#bootHarness` and
+     * `render/renderer.ts#prepareRenderer`: `WebGPURenderer` cannot be
+     * constructed synchronously and `bootstrap()` is. It is idempotent per
+     * canvas and a no-op on the WebGL path, so every launch route can await it
+     * unconditionally — and it is BEFORE `bootstrap`, so the synchronous window
+     * between `bootstrap()` and `applySetupToWorld` below is untouched.
+     */
+    await prepareRenderer(this.options.canvas);
 
     const game = bootstrap(boot);
     this.game = game;

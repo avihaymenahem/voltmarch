@@ -66,7 +66,7 @@
  */
 
 import * as THREE from 'three';
-import { NodeMaterial } from 'three/webgpu';
+import { MeshStandardNodeMaterial, NodeMaterial } from 'three/webgpu';
 import type { Node } from 'three/webgpu';
 import {
   Discard, Fn, float, floor, fract, mix, modelWorldMatrix, positionLocal, positionWorld,
@@ -240,6 +240,39 @@ export function shroudTint(out: Vec4N): Vec4N {
 
 /** Marker the spec greps for. Not read at runtime. */
 export const SHROUD_NODE_VARYING = 'vShroudUv';
+
+/**
+ * A `MeshStandardNodeMaterial` that does nothing but wear the self-tint.
+ *
+ * THREE SITES IN THE GAME ARE EXACTLY THIS AND NOTHING ELSE — `ore.system.ts`'s
+ * crystal instancer, `entity-props.system.ts`'s wrecks, and (before Stage F gave
+ * it its own file) the contact pool. Each is a stock `MeshStandardMaterial`
+ * whose whole `onBeforeCompile` is one call to `applyShroudTint`. Porting them
+ * three times would put three copies of the mixin contract in three files;
+ * this is the one copy.
+ *
+ * The parameters are `MeshStandardMaterialParameters` verbatim, so a caller
+ * hands over the SAME object literal it hands the GLSL constructor and the two
+ * cannot drift on `vertexColors`, `emissive` or `roughness`.
+ */
+export function createShroudTintedStandardNodeMaterial(
+  params: THREE.MeshStandardMaterialParameters,
+): MeshStandardNodeMaterial {
+  const mat = new (class ShroudTintedStandardNodeMaterial extends MeshStandardNodeMaterial {
+    override setupPosition(builder: Parameters<MeshStandardNodeMaterial['setupPosition']>[0]): Node {
+      const position = super.setupPosition(builder) as Node;
+      shroudVertexUv();
+      return position;
+    }
+    override setupOutput(
+      builder: Parameters<MeshStandardNodeMaterial['setupOutput']>[0], out: Node,
+    ): Node {
+      return super.setupOutput(builder, shroudTint(out as Vec4N)) as Node;
+    }
+  })();
+  mat.setValues(params);
+  return mat;
+}
 
 /* ==========================================================================
  * 5. THE CARPET'S OWN NOISE — Stage E

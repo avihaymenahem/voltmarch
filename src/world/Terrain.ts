@@ -33,6 +33,7 @@
  */
 
 import * as THREE from 'three';
+import { nodePath, type TerrainMaterialSetLike } from '../render/gpu-path';
 import { TERRAIN_CHUNK_METRES, TERRAIN_LAYER_TEXTURE_SIZE, type SeaSpec } from '../core/config';
 import { LAYERS, RENDER_ORDER } from '../render/scene';
 import type { BiomeDef } from './Biomes';
@@ -110,7 +111,12 @@ export class Terrain extends TerrainFields {
   private readonly scene: THREE.Scene;
   private readonly root = new THREE.Group();
   private readonly chunks: THREE.Mesh[] = [];
-  readonly materials: TerrainMaterialSet;
+  /**
+   * `TerrainMaterialSetLike`, not `TerrainMaterialSet` — the GLSL set and
+   * `TerrainNodeMaterial`'s twin have the same METHODS and different TYPES.
+   * See `render/gpu-path.ts`.
+   */
+  readonly materials: TerrainMaterialSetLike;
 
   constructor(options: TerrainOptions) {
     super({
@@ -128,12 +134,16 @@ export class Terrain extends TerrainFields {
     this.splatTexA = makeSplatTexture(this.splatA, 'terrain.splatA');
     this.splatTexB = makeSplatTexture(this.splatB, 'terrain.splatB');
 
-    this.materials = createTerrainMaterials({
+    const terrainOptions = {
       biome: this.biomeDef,
       layerTextureSize: TERRAIN_LAYER_TEXTURE_SIZE,
       seed: this.seed,
       textures: options.textures ?? null,
-    });
+    };
+    const np = nodePath();
+    this.materials = np !== null
+      ? np.createTerrainMaterials(terrainOptions)
+      : createTerrainMaterials(terrainOptions);
     this.materials.setSplat(this.splatTexA, this.splatTexB);
     if (options.anisotropy !== undefined) this.materials.setAnisotropy(options.anisotropy);
 

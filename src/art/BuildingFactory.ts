@@ -93,6 +93,7 @@ import {
 } from '../core/config';
 import { clamp01, hexToLinearRgb, lerp, smoothstep } from '../core/math';
 import { applyShroudTint } from '../render/FogOfWar';
+import { nodePath } from '../render/gpu-path';
 import { PartId, type SocketDef } from '../core/types';
 import {
   detailCoverage,
@@ -1044,6 +1045,31 @@ export function defaultCoat(atlas: GreebleAtlas): StructureCoat {
   return atlas.spec.plating === 'welded' ? 'glaze' : 'field';
 }
 
+/**
+ * The routers. See `UnitFactory.unitMaterialFor` — same shape, same reason.
+ *
+ * `structureDepthMaterialFor` returns NULL on the node path and that is the
+ * whole of `STAGE_D_TSL_GAPS` #1 in one line: `object.customDepthMaterial` is
+ * read in exactly one file in three 0.185 (`WebGLShadowMap.js`), and the node
+ * renderer instead harvests `castShadowPositionNode` off the object's own
+ * material — which `createStructureNodeMaterial` sets. Assigning a
+ * `MeshDepthMaterial` there would be inert, and `MeshDepthMaterial` is not in
+ * `StandardNodeLibrary` at all. See `docs/RENDER_FINDINGS.md` §7e.
+ */
+export function structureMaterialFor(
+  atlas: GreebleAtlas, name: string, coat?: StructureCoat,
+): THREE.Material {
+  const np = nodePath();
+  return np !== null
+    ? np.createStructureMaterial(atlas, name, coat)
+    : createStructureMaterial(atlas, name, coat);
+}
+
+export function padMaterialFor(atlas: GreebleAtlas, name: string): THREE.Material {
+  const np = nodePath();
+  return np !== null ? np.createPadMaterial(atlas, name) : createPadMaterial(atlas, name);
+}
+
 export function createStructureMaterial(
   atlas: GreebleAtlas, name: string, coat?: StructureCoat,
 ): THREE.MeshPhysicalMaterial {
@@ -1119,8 +1145,8 @@ export interface StructureModel {
   /** A defence turret, or null. Origin is the turret pivot, +Z forward. */
   turret: THREE.BufferGeometry | null;
   turretPivot: [number, number, number];
-  material: THREE.MeshPhysicalMaterial;
-  padMaterial: THREE.MeshPhysicalMaterial;
+  material: THREE.Material;
+  padMaterial: THREE.Material;
   atlas: GreebleAtlas;
   sockets: SocketDef[];
   turretSockets: SocketDef[];
@@ -1521,8 +1547,8 @@ export function buildStructure(
   list: StructureMassList,
   atlas: GreebleAtlas,
   padAtlas: GreebleAtlas,
-  material: THREE.MeshPhysicalMaterial,
-  padMaterial: THREE.MeshPhysicalMaterial,
+  material: THREE.Material,
+  padMaterial: THREE.Material,
 ): StructureModel {
   const bodyMasses = list.masses.filter((m) => (m.target ?? 'body') !== 'pad');
   const bb = massBounds(bodyMasses.length > 0 ? bodyMasses : list.masses);
@@ -1761,7 +1787,7 @@ export function padAtlasSpec(
 
 export class BuildingLibrary {
   private readonly models = new Map<string, StructureModel>();
-  private readonly materials = new Map<string, THREE.MeshPhysicalMaterial>();
+  private readonly materials = new Map<string, THREE.Material>();
   private readonly atlases = new Map<string, GreebleAtlas>();
   private readonly factory: GreebleFactory;
   /**
@@ -1781,7 +1807,12 @@ export class BuildingLibrary {
    * nothing about a faction, an atlas or a coat can change it. See
    * `createStructureDepthMaterial`.
    */
-  depthMaterial(): THREE.MeshDepthMaterial {
+  depthMaterial(): THREE.Material | undefined {
+    // NULL ON THE NODE PATH — see `structureMaterialFor` above. `undefined` and
+    // not null, because `BatchPartSpec.customDepthMaterial` is optional and an
+    // explicit null there would set `mesh.customDepthMaterial = null`, which
+    // three treats as "no override" only by accident of falsiness.
+    if (nodePath() !== null) return undefined;
     if (this.depth === null) this.depth = createStructureDepthMaterial();
     return this.depth;
   }
@@ -1841,12 +1872,12 @@ export class BuildingLibrary {
 
     let material = this.materials.get(structKey);
     if (material === undefined) {
-      material = createStructureMaterial(atlas, structKey, p.coat);
+      material = structureMaterialFor(atlas, structKey, p.coat);
       this.materials.set(structKey, material);
     }
     let padMaterial = this.materials.get(padKey);
     if (padMaterial === undefined) {
-      padMaterial = createPadMaterial(padAtlas, padKey);
+      padMaterial = padMaterialFor(padAtlas, padKey);
       this.materials.set(padKey, padMaterial);
     }
 

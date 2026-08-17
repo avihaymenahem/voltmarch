@@ -445,6 +445,14 @@ export function clearKindMeshes(): void {
  * An unregistered kind draws a hazard-striped box at the real WorldScale size.
  * It must be UNMISTAKEABLY unfinished: a plain grey box reads as "someone's
  * minimalist tank" and quietly ships.
+ *
+ * DELIBERATELY NOT PORTED TO TSL. `MeshStandardMaterial` IS in
+ * `StandardNodeLibrary`, so under `WebGPURenderer` this converts and draws — but
+ * its `onBeforeCompile` is silently dead there, so it loses the hazard stripes
+ * and the team tint and comes out FLAT WHITE. That is still unmistakeably
+ * unfinished, which is the whole requirement, and a white box in a shipped frame
+ * means the same bug the stripes would have meant. The port would be a fifth
+ * node material for a surface no correct build ever draws.
  * ========================================================================== */
 
 let placeholderMaterial: THREE.MeshStandardMaterial | null = null;

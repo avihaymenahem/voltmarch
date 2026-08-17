@@ -93,7 +93,7 @@ export default defineSystem({
     terrain = new Terrain({
       ...input,
       scene: sceneRig.scene,
-      anisotropy: handle.renderer.capabilities.getMaxAnisotropy(),
+      anisotropy: handle.capabilities.anisotropy,
       fields,
       textures: layerTextures,
     });

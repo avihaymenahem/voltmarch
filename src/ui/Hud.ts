@@ -900,9 +900,20 @@ export class Hud {
     this.sidebar = new Sidebar({
       parent: this.root,
       faction: this.faction,
-      // Lends the main GL context so build slots can show the real model. The
-      // sidebar falls back to flat glyphs if this is absent or unusable.
-      renderer: this.handle.renderer,
+      /*
+       * Lends the main GL context so build slots can show the real model. The
+       * sidebar falls back to flat glyphs if this is absent or unusable.
+       *
+       * NULL ON THE NODE PATH, AND THAT IS A REAL GAP RATHER THAN A CHOICE.
+       * `Cameos` renders each portrait into a render target and calls
+       * `renderer.readRenderTargetPixels` — a SYNCHRONOUS readback that exists
+       * only on `WebGLRenderer`. The node `Renderer` publishes
+       * `readRenderTargetPixelsAsync` and nothing synchronous, so the cameo
+       * generator would have to become async end to end. Under `?gpu=webgpu`
+       * the sidebar therefore falls back to its flat glyphs, exactly as it does
+       * on a machine whose context it cannot use. See the Stage F report.
+       */
+      renderer: this.handle.webgl,
       callbacks: {
         selectTab: (tab) => this.selectTab(tab),
         activate: (tab, cameo) => this.onSlotActivate(tab, cameo),

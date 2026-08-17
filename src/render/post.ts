@@ -202,6 +202,7 @@ import {
   type RendererHandle,
 } from './renderer';
 import { LAYERS } from './scene';
+import { nodePath } from './gpu-path';
 /*
  * ONE TONE-MODE TABLE FOR BOTH POST CHAINS.
  *
@@ -879,9 +880,134 @@ export interface CreatePostOptions {
   camera: THREE.Camera;
 }
 
+/**
+ * THE NODE-BACKED CHAIN. Stage F of `docs/WEBGPU_MIGRATION_PLAN.md`.
+ *
+ * `PostChain` has ONE type and two implementations rather than two types,
+ * because everything downstream — `Bootstrap.present`, `Settings.applySettings`,
+ * `debug.stats()` — asks it the same questions and must not have to ask which
+ * renderer it is talking to.
+ *
+ * WHAT IS GENUINELY DIFFERENT, stated rather than hidden:
+ *
+ *  - **`composer` is null and `passes` is empty**, permanently. There is no
+ *    `EffectComposer` and no `Pass` objects: the node chain is one expression.
+ *    `debug.stats().post` therefore reads the graph's own pass list.
+ *  - **`drawCallsByPass` is zeros with a true `total`.** See
+ *    `gpu-path-install.ts#createNodePostAdapter` — the node `Renderer` has no
+ *    seam between the shadow pass and the colour pass, so the split cannot be
+ *    measured rather than merely being unmeasured. Inventing one would produce a
+ *    number that looks like the WebGL figure and is not.
+ *  - **A pass toggle rebuilds the graph**, which `NodePostChain.syncConfig`
+ *    already handles by comparing the enabled-pass signature — a node has no
+ *    `enabled` flag the way a `Pass` does.
+ *
+ * The tone-mapping contract is identical and is the one thing that MUST match:
+ * the renderer does not tonemap while the grade is live, or AgX runs twice.
+ */
+function createNodeBackedPostChain(options: CreatePostOptions): PostChain {
+  const { handle } = options;
+  const path = nodePath();
+  if (path === null || handle.node === null) {
+    throw new Error('[post] node-backed chain requested without an installed node path');
+  }
+
+  const cfg = RENDER_CONFIG.post;
+  const chain = path.createPostChain(handle.node, options.scene, options.camera);
+  const zeros: DrawCallBreakdown = { shadow: 0, colour: 0, ao: 0, post: 0, total: 0 };
+  let enabled = cfg.enabled;
+  let disposed = false;
+
+  function applyToneMapping(): void {
+    const gradeLive = cfg.grade.enabled && enabled;
+    handle.setToneMappingMode(gradeLive ? 'none' : RENDER_CONFIG.post.grade.mode);
+  }
+
+  applyToneMapping();
+  chain.setSize(Math.max(2, handle.size.width), Math.max(2, handle.size.height));
+  const offResize = handle.onResize((size) => chain.setSize(size.width, size.height));
+  const offConfig = onConfigChanged((changed) => {
+    if (!touched(changed, 'post')) return;
+    chain.syncConfig();
+    applyToneMapping();
+  });
+
+  return {
+    composer: null,
+    passes: {},
+    failures: {},
+    get enabled() { return enabled; },
+    get active() { return enabled && !disposed; },
+
+    get drawCallsByPass(): Readonly<DrawCallBreakdown> {
+      const split = chain.drawCallsByPass();
+      if (split !== null) return split;
+      zeros.total = handle.frameInfo().drawCalls;
+      return zeros;
+    },
+
+    render(dt: number): void {
+      if (disposed) return;
+      if (handle.isContextLost()) return;
+      chain.render();
+      void dt;
+    },
+
+    setCamera(camera: THREE.Camera): void { chain.setCamera(camera); },
+    setScene(scene: THREE.Scene): void { chain.setScene(scene); },
+
+    setEnabled(v: boolean): void {
+      if (enabled === v) return;
+      enabled = v;
+      RENDER_CONFIG.post.enabled = v;
+      applyToneMapping();
+    },
+
+    setPassEnabled(id: PassId, v: boolean): void {
+      if (id === 'render') return;
+      switch (id) {
+        case 'ao': cfg.ao.enabled = v; break;
+        case 'bloom': cfg.bloom.enabled = v; break;
+        case 'grade': cfg.grade.enabled = v; break;
+        case 'smaa': cfg.smaa.enabled = v; break;
+      }
+      chain.syncConfig();
+      applyToneMapping();
+    },
+
+    isPassEnabled(id: PassId): boolean {
+      switch (id) {
+        case 'render': return true;
+        case 'ao': return cfg.ao.enabled;
+        case 'bloom': return cfg.bloom.enabled;
+        case 'grade': return cfg.grade.enabled;
+        case 'smaa': return cfg.smaa.enabled;
+        default: return false;
+      }
+    },
+
+    syncConfig(): void {
+      chain.syncConfig();
+      applyToneMapping();
+    },
+
+    setSize(width: number, height: number): void { chain.setSize(width, height); },
+
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      offResize();
+      offConfig();
+      chain.dispose();
+      handle.setToneMappingMode(RENDER_CONFIG.post.grade.mode);
+    },
+  };
+}
+
 export function createPostChain(options: CreatePostOptions): PostChain {
   const { handle } = options;
-  const renderer = handle.renderer;
+  if (handle.webgl === null) return createNodeBackedPostChain(options);
+  const renderer = handle.webgl;
   let scene = options.scene;
   let camera = options.camera;
 

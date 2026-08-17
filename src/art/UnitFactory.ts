@@ -40,6 +40,7 @@ import {
 } from '../core/config';
 import { clamp01, lerp, smoothstep } from '../core/math';
 import { applyShroudTint } from '../render/FogOfWar';
+import { nodePath } from '../render/gpu-path';
 import { applyGait, declareGaitPhase } from '../render/Gait';
 import { PartId, type ModelBuild, type ModelPart, type SocketDef } from '../core/types';
 import {
@@ -578,6 +579,19 @@ export function assertUnitMaterialRuling(
 }
 
 /**
+ * THE ROUTER. One branch, taken once per atlas, at library-build time.
+ *
+ * `createUnitMaterial` below stays exactly what it was — the GLSL constructor,
+ * unchanged and still "the only place a unit material is constructed" on the
+ * shipping renderer. This picks between it and `UnitNodeMaterial.ts`'s twin,
+ * which the WebGL bundle never even downloads (see `render/gpu-path.ts`).
+ */
+export function unitMaterialFor(atlas: GreebleAtlas, name: string): THREE.Material {
+  const np = nodePath();
+  return np !== null ? np.createUnitMaterial(atlas, name) : createUnitMaterial(atlas, name);
+}
+
+/**
  * THE ONLY PLACE A UNIT MATERIAL IS CONSTRUCTED.
  *
  * RULING #3: roughness 0.52, metalness 0, clearcoat 0.30 @ 0.38, env 0.80.
@@ -659,7 +673,17 @@ export interface UnitModel {
   /** Hull-local pivot the turret geometry rotates about. */
   turretPivot: [number, number, number];
   /** Shared per faction-class. Never per unit. */
-  material: THREE.MeshPhysicalMaterial;
+  /**
+   * WIDENED TO `THREE.Material` FOR THE NODE PATH.
+   *
+   * `MeshPhysicalNodeMaterial` is NOT a `MeshPhysicalMaterial` — it extends
+   * `NodeMaterial`, which extends `Material` directly — so the two share no type
+   * below this one. Nothing downstream reads a physical property off here; the
+   * model hands the material to a `Mesh` and to `InstanceBatcher`. What the
+   * RULING #3 numbers are actually checked by is `assertUnitMaterialRuling`,
+   * which both constructors call and which takes `UnitMaterialRuling`.
+   */
+  material: THREE.Material;
   atlas: GreebleAtlas;
   /** Hull-space named transforms. */
   sockets: SocketDef[];
@@ -692,7 +716,7 @@ function toSocketDefs(list: UnitMassList, turretSpace: boolean): SocketDef[] {
  * Assemble one unit. Throws in a dev build if the mass list violates R8 or R12
  * — "reject at build time, not in review".
  */
-export function buildUnit(list: UnitMassList, atlas: GreebleAtlas, material: THREE.MeshPhysicalMaterial): UnitModel {
+export function buildUnit(list: UnitMassList, atlas: GreebleAtlas, material: THREE.Material): UnitModel {
   const bb = unitBounds(list);
   const bounds: [number, number, number] = [
     bb.max[0] - bb.min[0], bb.max[1] - bb.min[1], bb.max[2] - bb.min[2],
@@ -943,7 +967,7 @@ export function specForPalette(key: string, p: UnitPalette, size: number, seed: 
 
 export class UnitLibrary {
   private readonly models = new Map<string, UnitModel>();
-  private readonly materials = new Map<string, THREE.MeshPhysicalMaterial>();
+  private readonly materials = new Map<string, THREE.Material>();
   private readonly factory: GreebleFactory;
 
   constructor(factory: GreebleFactory = greebles) { this.factory = factory; }
@@ -980,7 +1004,7 @@ export class UnitLibrary {
 
     let material = this.materials.get(atlas.key);
     if (material === undefined) {
-      material = createUnitMaterial(atlas, atlasKey);
+      material = unitMaterialFor(atlas, atlasKey);
       this.materials.set(atlas.key, material);
     }
 

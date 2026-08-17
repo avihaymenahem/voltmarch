@@ -75,6 +75,7 @@ import {
 import type { ShroudLook } from '../core/types';
 import { hexToLinearRgb } from '../core/math';
 import { LAYERS, RENDER_ORDER } from './scene';
+import { nodePath, type ShroudMaterialSetLike } from './gpu-path';
 import { VIS_EXPLORED, VIS_VISIBLE } from '../sim/Vision';
 
 /* ==========================================================================
@@ -331,10 +332,51 @@ export interface FogOfWarOptions {
   look?: ShroudLook;
 }
 
+/**
+ * Wrap the shipping GLSL carpet in the same four methods the node set exposes.
+ *
+ * NOT A NEW ABSTRACTION LAYER: it is the four things `FogOfWar` already did to
+ * `this.material.uniforms` inline, moved behind names, so the class body has one
+ * shape rather than a branch at every touch point. Every value written here is
+ * the value that was written before, in the same order, including the
+ * `shroudUniforms` writes — which are what keep a mood change from re-tinting
+ * the ground while every building stays on the old palette.
+ */
+function glslShroudSet(material: THREE.ShaderMaterial): ShroudMaterialSetLike {
+  const scratch = new Float32Array(3);
+  return {
+    material,
+    setFogTexture(tex: THREE.Texture): void { material.uniforms.uFog.value = tex; },
+    setTime(t: number): void { material.uniforms.uTime.value = t; },
+    applyLook(look: ShroudLook): void {
+      const u = material.uniforms;
+      hexToLinearRgb(look.exploredTint, scratch);
+      (u.uExploredTint.value as THREE.Vector3).set(scratch[0], scratch[1], scratch[2]);
+      shroudUniforms.uFogTint.value.set(scratch[0], scratch[1], scratch[2], FOG_EXPLORED_ALPHA);
+      hexToLinearRgb(look.unexploredColor, scratch);
+      (u.uUnexploredColor.value as THREE.Vector3).set(scratch[0], scratch[1], scratch[2]);
+      shroudUniforms.uFogDark.value.set(scratch[0], scratch[1], scratch[2], FOG_UNEXPLORED_ALPHA);
+      u.uNoiseScale.value = Math.max(1, look.noiseScale);
+      u.uNoiseSpeed.value = look.noiseSpeed;
+    },
+    dispose(): void { material.dispose(); },
+  };
+}
+
 export class FogOfWar {
   /** 128x128 R8. Red channel is the smoothed fog level, 0..255. */
   readonly texture: THREE.DataTexture;
-  readonly material: THREE.ShaderMaterial;
+  /**
+   * The carpet's material set, GLSL or node.
+   *
+   * This was the raw `THREE.ShaderMaterial`. `ShaderMaterial` is not in
+   * `StandardNodeLibrary`, so under `WebGPURenderer` it draws through a bare
+   * `NodeMaterial` — a black carpet over the whole map — and
+   * `render/shroud-nodes.ts` §6 is the twin. Four things touched the material
+   * directly (the mesh, `uTime`, `applyLook`, `dispose`) and all four are now
+   * methods on the set, which both paths implement.
+   */
+  readonly materials: ShroudMaterialSetLike;
   readonly mesh: THREE.Mesh;
 
   /** Smoothed per-cell level in 0..1. The thing that animates. */
@@ -387,7 +429,8 @@ export class FogOfWar {
     shroudUniforms.uFogTint.value.set(tint[0], tint[1], tint[2], FOG_EXPLORED_ALPHA);
     shroudUniforms.uFogDark.value.set(dark[0], dark[1], dark[2], FOG_UNEXPLORED_ALPHA);
 
-    this.material = new THREE.ShaderMaterial({
+    const np = nodePath();
+    const glslMaterial = np !== null ? null : new THREE.ShaderMaterial({
       name: 'ShroudMaterial',
       vertexShader: SHROUD_VERT,
       fragmentShader: SHROUD_FRAG,
@@ -422,10 +465,15 @@ export class FogOfWar {
       toneMapped: false,
     });
 
+    this.materials = glslMaterial !== null
+      ? glslShroudSet(glslMaterial)
+      : np!.createShroudMaterial(look);
+    this.materials.setFogTexture(this.texture);
+
     /* -- geometry -------------------------------------------------------- */
     this.geometry = buildDrapedGrid(options.heightAt);
 
-    this.mesh = new THREE.Mesh(this.geometry, this.material);
+    this.mesh = new THREE.Mesh(this.geometry, this.materials.material);
     this.mesh.name = 'Shroud';
     this.mesh.renderOrder = RENDER_ORDER.SHROUD;
     this.mesh.castShadow = false;
@@ -489,7 +537,7 @@ export class FogOfWar {
   update(grid: Uint8Array, version: number, dt: number, time: number): void {
     if (!this.on) return;
 
-    this.material.uniforms.uTime.value = time;
+    this.materials.setTime(time);
 
     const versionChanged = version !== this.lastVersion;
     if (versionChanged) {
@@ -600,18 +648,7 @@ export class FogOfWar {
    * which is the same perceptual move for a fraction of the cost.
    */
   applyLook(look: ShroudLook): void {
-    const u = this.material.uniforms;
-    const rgb = FogOfWar.scratchRgb;
-    hexToLinearRgb(look.exploredTint, rgb);
-    (u.uExploredTint.value as THREE.Vector3).set(rgb[0], rgb[1], rgb[2]);
-    // The self-tint has to move with it, or a mood change re-tints the ground
-    // and leaves every building and ship on the old palette.
-    shroudUniforms.uFogTint.value.set(rgb[0], rgb[1], rgb[2], FOG_EXPLORED_ALPHA);
-    hexToLinearRgb(look.unexploredColor, rgb);
-    (u.uUnexploredColor.value as THREE.Vector3).set(rgb[0], rgb[1], rgb[2]);
-    shroudUniforms.uFogDark.value.set(rgb[0], rgb[1], rgb[2], FOG_UNEXPLORED_ALPHA);
-    u.uNoiseScale.value = Math.max(1, look.noiseScale);
-    u.uNoiseSpeed.value = look.noiseSpeed;
+    this.materials.applyLook(look);
   }
 
   private static readonly scratchRgb = new Float32Array(3);
@@ -619,7 +656,7 @@ export class FogOfWar {
   dispose(): void {
     this.scene.remove(this.mesh);
     this.geometry.dispose();
-    this.material.dispose();
+    this.materials.dispose();
     // Hand the shared uniform back its 1x1 default BEFORE disposing the real
     // one. Six long-lived materials hold this object by reference, and leaving
     // a disposed GPU texture bound in all of them is a use-after-free that

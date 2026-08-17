@@ -1017,7 +1017,10 @@ describe('ribbon batch', () => {
     // uPxScale = 2*tan(fov/2)/1440 — no framebuffer height in it at all.
     B.step(16, 36, 79.5);
     const expected = 2 * Math.tan((36 * Math.PI / 180) * 0.5) / 1440;
-    expect(B.overlay.material.uniforms.uPxScale.value).toBeCloseTo(expected, 10);
+    // Through `RibbonBatch.pxScale`, not `material.uniforms`: the batch holds a
+    // `THREE.Material` now so it can hold either kind, and the accessor is the
+    // seam Stage F added for exactly this (`VFX_NODE_CUTOVER_NOTES` #2).
+    expect(B.overlay.pxScale).toBeCloseTo(expected, 10);
     // A 3 px core at the bible's 79.5 m slant lands near the measured 0.1 m.
     expect(B.pxToMetres(3, 79.5)).toBeGreaterThan(0.05);
     expect(B.pxToMetres(3, 79.5)).toBeLessThan(0.2);

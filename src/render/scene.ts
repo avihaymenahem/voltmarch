@@ -42,7 +42,9 @@ import {
   srgb,
   srgbVec3,
   sunDirection,
+  type RendererHandle,
 } from './renderer';
+import { nodePath } from './gpu-path';
 
 /* ========================================================================== */
 /* Layers and render-order bands                                              */
@@ -378,13 +380,22 @@ export interface SceneRig {
 }
 
 export interface CreateSceneOptions {
-  renderer: THREE.WebGLRenderer;
+  /**
+   * The renderer handle, not the renderer.
+   *
+   * This took a `THREE.WebGLRenderer` and used it for exactly two things: the
+   * `PMREMGenerator` constructor and one `setClearColor`. Both differ between
+   * backends — three ships a SECOND `PMREMGenerator` in `three/webgpu` that
+   * drives a node `Renderer`, and the core one would throw on its first
+   * `render()` — so the seam has to be the handle.
+   */
+  handle: RendererHandle;
   /** Skip the placeholder ground regardless of config. */
   noPlaceholderGround?: boolean;
 }
 
 export function createScene(options: CreateSceneOptions): SceneRig {
-  const { renderer } = options;
+  const { handle } = options;
   const cfgSun = RENDER_CONFIG.sun;
   const cfgSky = RENDER_CONFIG.sky;
   const cfgFog = RENDER_CONFIG.fog;
@@ -395,7 +406,17 @@ export function createScene(options: CreateSceneOptions): SceneRig {
   scene.matrixWorldAutoUpdate = true;
 
   /* ---- sky ------------------------------------------------------------- */
-  const { material: skyMaterial, uniforms: skyUniforms } = createSkyMaterial();
+  /*
+   * THE SKY IS A RAW `ShaderMaterial` AND `ShaderMaterial` IS NOT IN
+   * `StandardNodeLibrary`. Under `WebGPURenderer` it does not degrade — it fails
+   * `NodeBuilder: Material "ShaderMaterial" is not compatible` and draws through
+   * a bare `NodeMaterial`, i.e. the entire background. `render/sky-nodes.ts` is
+   * the twin; both publish the same nine `{ value }` slots so `syncSkyUniforms`
+   * below is written once.
+   */
+  const np = nodePath();
+  const { material: skyMaterial, uniforms: skyUniforms } =
+    np !== null ? np.createSkyMaterial() : createSkyMaterial();
   const skyGeo = new THREE.SphereGeometry(1, 48, 32);
   const sky = new THREE.Mesh(skyGeo, skyMaterial);
   sky.name = 'SkyDome';
@@ -545,7 +566,11 @@ export function createScene(options: CreateSceneOptions): SceneRig {
   }
 
   /* ---- environment probe ------------------------------------------------ */
-  let pmrem: THREE.PMREMGenerator | null = null;
+  /**
+   * Either `THREE.PMREMGenerator` (WebGL) or the node one from `three/webgpu`,
+   * reduced to the one method this file calls.
+   */
+  let pmrem: { fromScene(s: THREE.Scene, sigma: number, near: number, far: number): THREE.RenderTarget; dispose(): void } | null = null;
   let envRT: THREE.WebGLRenderTarget | null = null;
   let environment: THREE.Texture | null = null;
   let studio = false;
@@ -554,11 +579,19 @@ export function createScene(options: CreateSceneOptions): SceneRig {
     if (studio) return;
     try {
       if (!pmrem) {
-        pmrem = new THREE.PMREMGenerator(renderer);
-        pmrem.compileEquirectangularShader();
+        if (handle.webgl !== null) {
+          const gen = new THREE.PMREMGenerator(handle.webgl);
+          gen.compileEquirectangularShader();
+          pmrem = gen;
+        } else {
+          // `compileEquirectangularShader()` has no node counterpart and needs
+          // none: it prewarms the equirect path, and this project only ever
+          // calls `fromScene`.
+          pmrem = np!.createPmrem(handle.node!);
+        }
       }
       const prev = envRT;
-      envRT = pmrem.fromScene(envScene, 0, 1, 120);
+      envRT = pmrem.fromScene(envScene, 0, 1, 120) as THREE.WebGLRenderTarget;
       environment = envRT.texture;
       scene.environment = environment;
       (scene as any).environmentIntensity = cfgSky.envIntensity;
@@ -632,7 +665,7 @@ export function createScene(options: CreateSceneOptions): SceneRig {
         f.far = cfgFog.end;
       }
     }
-    renderer.setClearColor(srgb(cfgSky.horizon), 1);
+    (handle.webgl ?? handle.node!).setClearColor(srgb(cfgSky.horizon), 1);
 
     syncSkyUniforms();
     (scene as any).environmentIntensity = cfgSky.envIntensity;

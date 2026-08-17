@@ -137,6 +137,7 @@ function nextPresentedFrame(): Promise<void> {
  * makes, so this file never becomes a second place where either API is defined.
  */
 import { bootstrap, type GameHandle } from './game/Bootstrap';
+import { prepareRenderer } from './render/renderer';
 import type { Shell } from './shell/Shell';
 
 /* -------------------------------------------------------------------------- */
@@ -161,6 +162,14 @@ async function main(): Promise<void> {
 /** `?shot=` — the pre-shell behaviour, byte for byte. */
 async function bootHarness(): Promise<void> {
   status('Building world');
+  /*
+   * `?gpu=webgpu` ACQUIRES THE DEVICE HERE, BEFORE THE ENGINE EXISTS.
+   * `WebGPURenderer.render()` throws until `await renderer.init()` has resolved
+   * and `bootstrap()` is synchronous, so the async half lives in front of it.
+   * On the WebGL path this is a no-op that imports nothing — which is what keeps
+   * `three/webgpu` out of the bundle a WebGL player downloads.
+   */
+  await prepareRenderer(options.canvas);
   game = bootstrap(options);
 
   status('Compiling shaders');

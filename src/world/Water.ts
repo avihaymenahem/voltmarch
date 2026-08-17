@@ -51,6 +51,7 @@
  */
 
 import * as THREE from 'three';
+import { nodePath, type WaterMaterialSetLike } from '../render/gpu-path';
 import {
   MAP_CELLS, MAP_SIZE, WATER_LEVEL, WATER_LOOK, WATER_MESH,
   WATER_PALETTES, WATER_PALETTE_BY_BIOME, WATER_SEED,
@@ -153,7 +154,8 @@ export interface WaterStats {
 
 export class Water {
   readonly root = new THREE.Group();
-  readonly materials: WaterMaterialSet;
+  /** `WaterMaterialSetLike` — see the same note in `Terrain.ts`. */
+  readonly materials: WaterMaterialSetLike;
 
   /** Depth in metres below the waterline, per field texel. Negative on land. */
   readonly depth = new Float32Array(FIELD_N * FIELD_N);
@@ -223,14 +225,18 @@ export class Water {
     this.wakeTexture.generateMipmaps = false;
     this.wakeTexture.needsUpdate = true;
 
-    this.materials = createWaterMaterial({
+    const waterOptions = {
       palette: this.palette,
       rampDepth: WATER_LOOK.rampDepthMin,
       seed: this.seed,
       textureSize: options.textureSize ?? WATER_TEXTURE_SIZE,
       anisotropy: options.anisotropy,
       textures: options.textures ?? null,
-    });
+    };
+    const np = nodePath();
+    this.materials = np !== null
+      ? np.createWaterMaterial(waterOptions)
+      : createWaterMaterial(waterOptions);
     this.materials.setField(this.fieldTexture);
     this.materials.setWake(this.wakeTexture);
     this.materials.setWaterLevel(this.level);

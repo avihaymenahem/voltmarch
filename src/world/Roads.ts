@@ -55,6 +55,7 @@
  */
 
 import * as THREE from 'three';
+import { nodePath } from '../render/gpu-path';
 import {
   CELL, MAP_CELLS, MAP_SIZE,
   ROAD_ARM_MERGE_RADIANS, ROAD_ARTERIAL_LANES, ROAD_BEND_MIN_LEG, ROAD_BEND_RADIUS_MAX, ROAD_BEND_RADIUS_MIN,
@@ -1559,7 +1560,7 @@ export class RoadNetwork {
   private roadMesh: THREE.Mesh | null = null;
   private kerbMesh: THREE.Mesh | null = null;
   private paveMesh: THREE.Mesh | null = null;
-  private readonly materials: THREE.MeshStandardMaterial[] = [];
+  private readonly materials: THREE.Material[] = [];
   private readonly uniforms = makeRoadUniforms();
 
   /** Measured, for `stats()` and for the boot-log conformance line. */
@@ -2981,8 +2982,18 @@ export class RoadNetwork {
 
     // The three requests — asphalt, flat paint, paving — live in
     // `road-markings.ts` beside every other number both shaders read.
+    /*
+     * The node set carries its OWN uniform block rather than adopting
+     * `this.uniforms`: a `RoadUniforms` is nine `{ value }` slots and a
+     * `RoadNodeUniforms` is nine TSL uniform nodes, and there is no shared type
+     * that both a GLSL `onBeforeCompile` and a node graph can read. Nothing
+     * retunes road markings at runtime, so the network's own block is simply
+     * unread on the node path.
+     */
+    const np = nodePath();
     const { carriageway: roadMat, kerb: kerbMat, pavement: paveMat } =
-      createRoadGlslMaterials(anis, this.uniforms).materials;
+      (np !== null ? np.createRoadMaterials(anis) : createRoadGlslMaterials(anis, this.uniforms))
+        .materials;
     this.materials.push(roadMat, kerbMat, paveMat);
 
     this.roadMesh = this.mount(road.toGeometry('road.carriageway', 'aRoad'), roadMat, false);

@@ -260,7 +260,16 @@ export default defineSystem({
     // then reports "gpu n/a" rather than inventing a number.
     let gl: ReturnType<typeof asTimerGl> = null;
     try {
-      gl = asTimerGl(ctx().handle.renderer.getContext());
+      /*
+       * WEBGL ONLY. `EXT_disjoint_timer_query_webgl2` is a WebGL extension and
+       * there is no context to ask on the node path — WebGPU's equivalent is
+       * `timestamp-query`, which three drives through `renderer.info.render
+       * .timestamp` and which this panel does not read. The panel already
+       * reports "gpu n/a" when the extension is absent, which is the honest
+       * state here too rather than a fabricated number.
+       */
+      const webgl = ctx().handle.webgl;
+      gl = webgl === null ? null : asTimerGl(webgl.getContext());
     } catch {
       gl = null;
     }

@@ -155,7 +155,7 @@ export default defineSystem({
       scene: sceneRig.scene,
       bedHeight: (x, z) => terrain.heightAt(x, z),
       palette: query('water') ?? terrain.biomeKey,
-      anisotropy: handle.renderer.capabilities.getMaxAnisotropy(),
+      anisotropy: handle.capabilities.anisotropy,
       fields,
       fieldsKey,
       textures,

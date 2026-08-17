@@ -99,6 +99,7 @@
  */
 
 import * as THREE from 'three';
+import { nodePath, type PropMaterialSetLike } from '../render/gpu-path';
 
 import {
   CELL, MAP_CELLS, MAP_SIZE, MAP_CELL_COUNT,
@@ -599,7 +600,8 @@ function dominantTone(def: PropDef, p: PropPalette): string {
 
 export class Scatter {
   readonly library: PropLibrary;
-  readonly materials: PropMaterialSet;
+  /** `PropMaterialSetLike` — `depthMaterial` is null on the node path. */
+  readonly materials: PropMaterialSetLike;
   private readonly palette: PropPalette;
   private readonly root = new THREE.Group();
   private readonly scene: THREE.Scene;
@@ -684,7 +686,8 @@ export class Scatter {
     this.terrain = options.terrain;
     this.palette = propPalette(options.biome);
     this.library = new PropLibrary({ biome: options.biome, seed: options.seed });
-    this.materials = createPropMaterial();
+    const np = nodePath();
+    this.materials = np !== null ? np.createPropMaterials() : createPropMaterial();
     this.root.name = 'PropScatter';
     this.root.matrixAutoUpdate = false;
     this.scene.add(this.root);
@@ -1716,7 +1719,16 @@ export class Scatter {
       // Assigned either way. It is inert while `castShadow` is false, and
       // leaving it wired means flipping the gate back on for one type never
       // silently loses the wind animation from its depth pass.
-      mesh.customDepthMaterial = this.materials.depthMaterial;
+      /*
+       * NULL ON THE NODE PATH, AND THE WIND STILL REACHES THE SHADOW MAP.
+       * `PropNodeMaterial` sets `castShadowPositionNode`, which the node
+       * renderer harvests onto the shadow pass's override material — so a
+       * swaying canopy casts a swaying shadow with no second material and no
+       * extra upload. `docs/RENDER_FINDINGS.md` §7e.
+       */
+      if (this.materials.depthMaterial !== null) {
+        mesh.customDepthMaterial = this.materials.depthMaterial;
+      }
       // We cull by chunk on the CPU; three's own test would use a bounding
       // sphere spanning the whole map and never reject anything.
       mesh.frustumCulled = false;

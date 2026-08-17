@@ -510,8 +510,8 @@ describe('FogOfWar — the shroud overlay', () => {
     // Everything that draws above the carpet now tints itself from the shared
     // mask instead; see FogOfWar.ts §1b and the `applyShroudTint` coverage test
     // below. depthWrite stays FALSE — the shroud must not occlude anything.
-    expect(fog.material.depthTest).toBe(true);
-    expect(fog.material.depthWrite).toBe(false);
+    expect(fog.materials.material.depthTest).toBe(true);
+    expect(fog.materials.material.depthWrite).toBe(false);
 
     fog.dispose();
   });

@@ -47,6 +47,7 @@
  */
 
 import * as THREE from 'three';
+import { nodePath, type LitSmokeUniformSink } from '../render/gpu-path';
 
 import {
   VFX_ATLAS_COLS,
@@ -1222,9 +1223,17 @@ export class ParticleSystem {
   readonly lit: SpriteLayer;
   readonly debris: DebrisLayer;
 
-  private readonly additiveMat: THREE.ShaderMaterial;
-  private readonly litMat: THREE.ShaderMaterial;
-  private readonly debrisMat: THREE.MeshStandardMaterial;
+  private readonly additiveMat: THREE.Material;
+  private readonly litMat: THREE.Material;
+  /**
+   * The eight lit-smoke uniforms `syncLighting` and `setDominantLight` write.
+   *
+   * Held separately because a node material has no `uniforms` map — the node set
+   * publishes the SAME `{ value }` slots (a TSL `uniform()` node IS a `.value`
+   * holder), so the two writer methods below are unchanged.
+   */
+  private readonly litUniforms: LitSmokeUniformSink;
+  private readonly debrisMat: THREE.Material;
 
   /* -- scratch, allocated once ------------------------------------------- */
   private readonly _right = new THREE.Vector3();
@@ -1246,7 +1255,9 @@ export class ParticleSystem {
       uCols: { value: VFX_ATLAS_COLS },
     });
 
-    this.additiveMat = new THREE.ShaderMaterial({
+    const np = nodePath();
+
+    const glslAdditive = np !== null ? null : new THREE.ShaderMaterial({
       uniforms: commonUniforms(),
       vertexShader: SPRITE_VERT,
       fragmentShader: ADDITIVE_FRAG,
@@ -1263,11 +1274,12 @@ export class ParticleSystem {
       side: THREE.DoubleSide,
       fog: false,
     });
-    this.additiveMat.name = 'VfxAdditive';
+    if (glslAdditive !== null) glslAdditive.name = 'VfxAdditive';
+    this.additiveMat = glslAdditive ?? np!.createAdditiveSpriteMaterial(this.atlas, this.ramps);
 
     // Fourteen defaults, from the table both material sets read.
     const lit = litSmokeDefaults();
-    this.litMat = new THREE.ShaderMaterial({
+    const glslLit = np !== null ? null : new THREE.ShaderMaterial({
       uniforms: {
         ...commonUniforms(),
         uSunDirView: { value: lit.uSunDirView },
@@ -1298,15 +1310,24 @@ export class ParticleSystem {
       side: THREE.DoubleSide,
       fog: false,
     });
-    this.litMat.name = 'VfxLitSmoke';
+    if (glslLit !== null) {
+      glslLit.name = 'VfxLitSmoke';
+      this.litMat = glslLit;
+      this.litUniforms = glslLit.uniforms as unknown as LitSmokeUniformSink;
+    } else {
+      const set = np!.createLitSpriteMaterial(this.atlas, this.ramps);
+      this.litMat = set.material;
+      this.litUniforms = set.uniforms;
+    }
 
-    this.debrisMat = new THREE.MeshStandardMaterial({
+    const glslDebris = np !== null ? null : new THREE.MeshStandardMaterial({
       color: new THREE.Color(...VFX_DEBRIS.color),
       roughness: VFX_DEBRIS.roughness,
       metalness: VFX_DEBRIS.metalness,
       flatShading: VFX_DEBRIS.flatShading,
     });
-    this.debrisMat.name = 'VfxDebris';
+    if (glslDebris !== null) glslDebris.name = 'VfxDebris';
+    this.debrisMat = glslDebris ?? np!.createDebrisMaterial();
 
     this.additive = new SpriteLayer(VFX_MAX_ADDITIVE, this.additiveMat, 'VfxAdditive', false);
     this.lit = new SpriteLayer(VFX_MAX_LIT, this.litMat, 'VfxLitSmoke', true);
@@ -1345,7 +1366,7 @@ export class ParticleSystem {
     sunDirWorld: THREE.Vector3, sunColor: THREE.Color, sunIntensity: number,
     hemiSky: THREE.Color, hemiGround: THREE.Color, hemiIntensity: number,
   ): void {
-    const u = this.litMat.uniforms;
+    const u = this.litUniforms;
     // World -> view for the sun and for world-up. `transformDirection` uses
     // only the rotation, which is what a direction needs.
     this._v.copy(sunDirWorld).transformDirection(camera.matrixWorldInverse);
@@ -1375,7 +1396,7 @@ export class ParticleSystem {
     x: number, y: number, z: number,
     r: number, g: number, b: number, range: number,
   ): void {
-    const u = this.litMat.uniforms;
+    const u = this.litUniforms;
     this._v.set(x, y, z).applyMatrix4(camera.matrixWorldInverse);
     (u.uFxPosView.value as THREE.Vector3).copy(this._v);
     (u.uFxColor.value as THREE.Vector3).set(r, g, b);

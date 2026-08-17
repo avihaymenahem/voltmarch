@@ -159,7 +159,7 @@ export default defineSystem({
       scene: sceneRig.scene,
       terrain,
       seed: roadSeed(),
-      anisotropy: handle.renderer.capabilities.getMaxAnisotropy(),
+      anisotropy: handle.capabilities.anisotropy,
       decals: staticDecals,
     });
     network.generate();

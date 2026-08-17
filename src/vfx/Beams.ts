@@ -43,6 +43,7 @@
  */
 
 import * as THREE from 'three';
+import { nodePath } from '../render/gpu-path';
 
 import {
   VFX_BEAM,
@@ -157,8 +158,22 @@ void main() {
 export class RibbonBatch {
   readonly mesh: THREE.Mesh;
   readonly geometry: THREE.BufferGeometry;
-  readonly material: THREE.ShaderMaterial;
+  readonly material: THREE.Material;
   readonly maxQuads: number;
+
+  /**
+   * THE ACCESSOR STAGE E ASKED FOR, and the whole of `VFX_NODE_CUTOVER_NOTES`
+   * #2. This class reached through `material.uniforms.uPxScale` in two places —
+   * `setFov` here and `BeamSystem.pxToMetres` — and a node material has no
+   * `uniforms` map at all. `VfxRibbonNodeSet` publishes `setFov` and `pxScale`
+   * for exactly those two callers; this pair is where the batch stops caring
+   * which kind it holds.
+   */
+  private readonly writeFov: (fovDeg: number) => void;
+  private readonly readPxScale: () => number;
+
+  /** `2 * tan(fovY/2) / 1440`, live. `BeamSystem.pxToMetres` is the caller. */
+  get pxScale(): number { return this.readPxScale(); }
 
   private readonly pos: Float32Array;
   private readonly dir: Float32Array;
@@ -217,7 +232,8 @@ export class RibbonBatch {
     geo.setDrawRange(0, 0);
     this.geometry = geo;
 
-    this.material = new THREE.ShaderMaterial({
+    const np = nodePath();
+    const glsl = np !== null ? null : new THREE.ShaderMaterial({
       uniforms: {
         uRamp: { value: rampTexture },
         uRowStep: { value: 1 / rampRows },
@@ -235,7 +251,18 @@ export class RibbonBatch {
       side: THREE.DoubleSide,
       fog: false,
     });
-    this.material.name = name;
+
+    if (glsl !== null) {
+      glsl.name = name;
+      this.material = glsl;
+      this.writeFov = (fovDeg) => { glsl.uniforms.uPxScale.value = ribbonPxScale(fovDeg); };
+      this.readPxScale = () => glsl.uniforms.uPxScale.value as number;
+    } else {
+      const set = np!.createRibbonMaterial(rampTexture, rampRows, name, depthTest);
+      this.material = set.material;
+      this.writeFov = (fovDeg) => set.setFov(fovDeg);
+      this.readPxScale = () => set.pxScale;
+    }
 
     this.mesh = new THREE.Mesh(geo, this.material);
     this.mesh.name = name;
@@ -248,7 +275,7 @@ export class RibbonBatch {
 
   /** Push the camera's vertical FOV so pixel widths stay honest after a zoom. */
   setFov(fovDeg: number): void {
-    this.material.uniforms.uPxScale.value = ribbonPxScale(fovDeg);
+    this.writeFov(fovDeg);
   }
 
   /** Start a frame. Must be paired with `end()`. */
@@ -704,7 +731,7 @@ export class BeamSystem {
    * streaks) resolve through here once, at spawn.
    */
   pxToMetres(px: number, viewDepth: number): number {
-    return px * (this.overlay.material.uniforms.uPxScale.value as number) * viewDepth;
+    return px * this.overlay.pxScale * viewDepth;
   }
 
   /** Nominal conversion at the camera's focus, for effects with no depth yet. */

@@ -299,7 +299,17 @@ export interface VMHandle {
   readonly version: string;
   readonly THREE: typeof THREE;
 
-  readonly renderer: THREE.WebGLRenderer;
+  /**
+   * The shipping WebGL renderer, or NULL under `?gpu=webgpu`.
+   *
+   * `window.__VM.renderer` is part of the tooling contract CLAUDE.md calls
+   * load-bearing, so it keeps its name and its meaning — "the WebGLRenderer" —
+   * and reports null rather than quietly handing back an object of a different
+   * class with a different `info`, a different `capabilities` and no
+   * `getContext()`. `rendererHandle` is the backend-agnostic one and carries
+   * `backend`, `frameInfo()` and both renderers.
+   */
+  readonly renderer: THREE.WebGLRenderer | null;
   readonly rendererHandle: RendererHandle;
   readonly scene: THREE.Scene;
   readonly sceneRig: SceneRig;
@@ -539,7 +549,7 @@ export interface DebugHandle {
 export function initDebug(options: InitDebugOptions): DebugHandle {
   const { handle, sceneRig, cameraRig } = options;
   const post = options.post ?? null;
-  const renderer = handle.renderer;
+  const webgl = handle.webgl;
   const hooks: DebugHooks = options.hooks ?? {};
   // `typeof` is the one operator safe on an undeclared identifier, so this also
   // works under a bare `node`/vitest run where the define never ran.
@@ -641,7 +651,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
   let texMBCountdown = 0;
 
   function updateOverlay(): void {
-    const info = renderer.info;
+    const info = handle.frameInfo();
     const mem = (performance as any).memory;
     if (mem) {
       heapMB = mem.usedJSHeapSize / (1024 * 1024);
@@ -662,12 +672,21 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     // is what made the gap look like outstanding work for three releases; the
     // second number is the one to judge. See `DrawCallBreakdown` in post.ts.
     const byPass = post?.drawCallsByPass;
+    /*
+     * A ZERO COLOUR BUCKET WITH A NON-ZERO TOTAL MEANS THE SPLIT IS UNAVAILABLE,
+     * not that nothing drew. The node renderer has no seam between the shadow
+     * pass and the colour pass to meter, so `drawCallsByPass` reports the true
+     * total and zeros. Say so on the overlay instead of printing `0 col`, which
+     * reads as a catastrophic regression.
+     */
     rows.draws.nodeValue = byPass === undefined
-      ? String(info.render.calls)
-      : `${info.render.calls} (${byPass.colour} col ${byPass.shadow} shd ${byPass.ao} ao)`;
-    rows.tris.nodeValue = info.render.triangles.toLocaleString();
-    rows.progs.nodeValue = String(info.programs?.length ?? 0);
-    rows.geo.nodeValue = `${info.memory.geometries} / ${info.memory.textures}`;
+      ? String(info.drawCalls)
+      : byPass.total > 0 && byPass.colour === 0 && byPass.shadow === 0
+        ? `${info.drawCalls} (no per-pass split)`
+        : `${info.drawCalls} (${byPass.colour} col ${byPass.shadow} shd ${byPass.ao} ao)`;
+    rows.tris.nodeValue = info.triangles.toLocaleString();
+    rows.progs.nodeValue = String(info.programs);
+    rows.geo.nodeValue = `${info.geometries} / ${info.textures}`;
     rows.texmb.nodeValue = cachedTexMB.toFixed(1);
     rows.ents.nodeValue = `${counters.entities} (${counters.units}u ${counters.buildings}b)`;
     rows.parts.nodeValue = `${counters.particles} / ${counters.batches} batches`;
@@ -804,21 +823,28 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
   }
 
   function stats(): FrameStats {
-    const info = renderer.info;
+    /*
+     * THROUGH `frameInfo()`, NEVER `renderer.info`. Under the node renderer
+     * `info.render.calls` is a MONOTONIC COUNT OF `render()` INVOCATIONS since
+     * page load that `reset()` does not clear, and `info.programs` is
+     * `undefined` so `?? 0` would report 0 forever. Both are silent.
+     * `src/render/backend.ts#normaliseInfo` is where that is written down.
+     */
+    const info = handle.frameInfo();
     return {
       fps,
       frameMs,
       frameMsAvg,
       frameMsMax,
       cpuMs,
-      drawCalls: info.render.calls,
-      drawCallsByPass: readDrawCallsByPass(info.render.calls),
-      triangles: info.render.triangles,
-      points: info.render.points,
-      lines: info.render.lines,
-      programs: info.programs?.length ?? 0,
-      geometries: info.memory.geometries,
-      textures: info.memory.textures,
+      drawCalls: info.drawCalls,
+      drawCallsByPass: readDrawCallsByPass(info.drawCalls),
+      triangles: info.triangles,
+      points: info.points,
+      lines: info.lines,
+      programs: info.programs,
+      geometries: info.geometries,
+      textures: info.textures,
       textureMB: cachedTexMB,
       heapMB,
       heapGrowthMB: heapBase ? heapMB - heapBase : 0,
@@ -847,7 +873,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     version,
     THREE,
 
-    renderer,
+    renderer: webgl,
     rendererHandle: handle,
     get scene() {
       return sceneRig.scene;

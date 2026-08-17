@@ -50,6 +50,7 @@ import {
 import { EntityFlag, EntityKind } from '../core/types';
 import type { World } from '../core/world';
 import { applyShroudTint } from './FogOfWar';
+import { nodePath } from './gpu-path';
 
 /* ==========================================================================
  * SHADER
@@ -123,7 +124,7 @@ function wantsPool(kind: number, flags: number): boolean {
 
 export class ContactShadowField {
   readonly mesh: THREE.InstancedMesh;
-  private readonly material: THREE.ShaderMaterial;
+  private readonly material: THREE.Material;
   private readonly geometry: THREE.PlaneGeometry;
   private capacity: number;
 
@@ -133,7 +134,15 @@ export class ContactShadowField {
     this.geometry = new THREE.PlaneGeometry(1, 1);
     this.geometry.rotateX(-Math.PI / 2);
 
-    this.material = new THREE.ShaderMaterial({
+    /*
+     * `ShaderMaterial` IS NOT IN `StandardNodeLibrary`. Under `WebGPURenderer`
+     * this would draw through a bare `NodeMaterial` into a `(DstColor, Zero)`
+     * blend — a hard black square under every unit and building.
+     * `render/ground-overlay-nodes.ts` is the twin, and it carries the same
+     * shroud self-tint from the same declaration.
+     */
+    const np = nodePath();
+    const glsl = np !== null ? null : new THREE.ShaderMaterial({
       name: 'ContactShadows',
       uniforms: {
         uColor: { value: new THREE.Color(CONTACT_DARKEN_COLOR) },
@@ -161,10 +170,13 @@ export class ContactShadowField {
       polygonOffsetFactor: -3,
       polygonOffsetUnits: -3,
     });
-    // A pool is ground truth about explored terrain, so it must fade with the
-    // shroud exactly as the thing standing on it does.
-    this.material.onBeforeCompile = (shader) => { applyShroudTint(shader); };
-    this.material.customProgramCacheKey = () => 'vm.contact.shroud.v1';
+    if (glsl !== null) {
+      // A pool is ground truth about explored terrain, so it must fade with the
+      // shroud exactly as the thing standing on it does.
+      glsl.onBeforeCompile = (shader) => { applyShroudTint(shader); };
+      glsl.customProgramCacheKey = () => 'vm.contact.shroud.v1';
+    }
+    this.material = glsl ?? np!.createContactShadowMaterial();
 
     this.capacity = CONTACT_DARKEN_CAPACITY;
     this.mesh = new THREE.InstancedMesh(this.geometry, this.material, this.capacity);
