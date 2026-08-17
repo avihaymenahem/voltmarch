@@ -39,6 +39,8 @@ const opt = (n, d) => {
 const START_PORT = Number(opt('--port', '5303'));
 const HEADED = flag('--headed');
 const QUICK = flag('--quick');
+/** 'low-power' (default adapter pick) keeps BOTH arms on the same iGPU here. */
+const POWER = opt('--power', undefined);
 
 /** The sweep. 64 is where we actually sit — colour pass 54-76 at v2.12.0. */
 const DRAW_POINTS = QUICK ? [64, 1000] : [50, 64, 200, 1000, 4000];
@@ -100,8 +102,42 @@ async function serve(startPort) {
 
 const fmt = (n, w = 8) => String(n).padStart(w);
 
+/*
+ * EXACTLY ONE BROWSER AND ONE SOCKET, AND BOTH ARE CLOSED ON EVERY EXIT PATH.
+ *
+ * This host is resource-constrained and orphaned headless Chromiums are what
+ * took it down once already. `main` is wrapped so a throw, a Ctrl-C or an
+ * unhandled rejection still tears the pair down — a `browser.close()` on the
+ * happy path only is the same class of bug as the flow-field ref that came back
+ * on every exit except the one that mattered.
+ */
+let BROWSER = null;
+let SERVER = null;
+async function teardown() {
+  try {
+    if (BROWSER) await BROWSER.close();
+  } catch { /* already gone */ }
+  BROWSER = null;
+  try {
+    if (SERVER) SERVER.close();
+  } catch { /* already gone */ }
+  SERVER = null;
+}
+for (const sig of ['SIGINT', 'SIGTERM']) {
+  process.on(sig, async () => {
+    await teardown();
+    process.exit(130);
+  });
+}
+process.on('unhandledRejection', async (e) => {
+  console.error('unhandledRejection:', e);
+  await teardown();
+  process.exit(1);
+});
+
 async function main() {
   const { server, origin } = await serve(START_PORT);
+  SERVER = server;
   console.log(`> serving ${origin} (this process owns the socket)`);
 
   /*
@@ -114,7 +150,7 @@ async function main() {
    * `channel-probe.mjs` for the per-binary table. With the bundled build the
    * 'webgpu' arm measures WebGL2 and says WebGPU.
    */
-  const browser = await chromium.launch({
+  BROWSER = await chromium.launch({
     channel: opt('--channel', 'chrome'),
     headless: !HEADED,
     args: [
@@ -133,6 +169,7 @@ async function main() {
       '--enable-features=Vulkan,WebGPU',
     ],
   });
+  const browser = BROWSER;
 
   const results = { origin, node: process.version, when: new Date().toISOString(), probe: null, runs: [] };
 
@@ -174,7 +211,7 @@ async function main() {
         await page.waitForFunction('window.__BENCH_READY === true', null, { timeout: 60_000 });
         const r = await page.evaluate(
           (cfg) => window.__BENCH.run(cfg),
-          { backend, draws, width: w, height: h },
+          { backend, draws, width: w, height: h, powerPreference: POWER },
         );
         r.consoleLog = logs.slice(0, 12);
         results.runs.push(r);
@@ -196,8 +233,7 @@ async function main() {
     }
   }
 
-  await browser.close();
-  server.close();
+  await teardown();
 
   await mkdir(path.join(HERE, 'out'), { recursive: true });
   const dest = path.join(HERE, 'out', 'results.json');
@@ -246,7 +282,10 @@ function report(results) {
   }
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+main()
+  .then(teardown)
+  .catch(async (e) => {
+    console.error(e);
+    await teardown();
+    process.exit(1);
+  });

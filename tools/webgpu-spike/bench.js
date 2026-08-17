@@ -77,10 +77,18 @@ function frameDraws(renderer, isNode) {
   return isNode ? r.drawCalls : r.calls;
 }
 
-async function makeRenderer(kind, canvas, width, height) {
+/**
+ * THIS MACHINE HAS TWO GPUs — an RTX 3080 Laptop and the 5900HX's Radeon iGPU —
+ * and `requestAdapter()` with no preference picks the low-power one. Both arms
+ * landed on the SAME iGPU, so the default comparison is matched and fair, but
+ * "matched" had to be checked rather than assumed: a run where WebGL took the
+ * discrete card and WebGPU took the integrated one would be a GPU benchmark
+ * wearing a renderer benchmark's label. Every row records the adapter it ran on.
+ */
+async function makeRenderer(kind, canvas, width, height, powerPreference) {
   if (kind === 'webgl') {
     const THREE = await import('three');
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference });
     renderer.setPixelRatio(1);
     renderer.setSize(width, height, false);
     renderer.shadowMap.enabled = true;
@@ -93,6 +101,7 @@ async function makeRenderer(kind, canvas, width, height) {
   const renderer = new THREE.WebGPURenderer({
     canvas,
     antialias: false,
+    powerPreference,
     forceWebGL: kind === 'nodegl',
   });
   await renderer.init();
@@ -218,11 +227,13 @@ async function gpuSync(renderer, isNode) {
 const EXPECTED_BACKEND = { webgl: 'webgl2', webgpu: 'webgpu', nodegl: 'webgl2-fallback' };
 
 async function runOne(cfg) {
-  const { backend, draws, width, height } = cfg;
+  const { backend, draws, width, height, powerPreference } = cfg;
   const canvas = document.getElementById('c');
 
   const t0 = performance.now();
-  const { THREE, renderer, MaterialClass, isNode } = await makeRenderer(backend, canvas, width, height);
+  const { THREE, renderer, MaterialClass, isNode } = await makeRenderer(
+    backend, canvas, width, height, powerPreference,
+  );
   const identity = await backendIdentity(renderer, isNode);
 
   const want = EXPECTED_BACKEND[backend];
