@@ -7986,24 +7986,56 @@ export const SCATTER_LIMITS = {
   maxProps: 9000,
   /**
    * Maximum simultaneously-live prop types, i.e. InstancedMeshes. Types past
-   * this cap are dropped lowest-count first.
+   * this cap are dropped lowest-count first (`Scatter.trimTypes`).
    *
-   * THE ARITHMETIC HERE SAID 2 DRAWS PER TYPE AND IT IS 3. A scatter mesh is
-   * opaque on the DEFAULT layer, so besides its colour draw and its shadow
-   * draw it is also submitted in `GTAOPass`'s normal prepass. At the cap that
-   * is 22 x 3 = 66 submissions, not 44 — the cap was sized against a 2x model
-   * and is therefore half again as expensive as it was budgeted to be.
+   * THE COST IS 2N, AND THIS BLOCK SAID 3N. It read "THE ARITHMETIC HERE SAID
+   * 2 DRAWS PER TYPE AND IT IS 3", on the grounds that a scatter mesh is opaque
+   * on the DEFAULT layer and was therefore also submitted in `GTAOPass`'s
+   * normal prepass. That prepass no longer exists: `installAoDepthGBuffer` in
+   * `src/render/post.ts` hands GTAO the depth the colour pass already wrote and
+   * reconstructs the normals with one full-screen quad, so `_renderGBuffer` is
+   * false. Measured, not assumed — `frame.drawCallsByPass.ao` is **0** on all
+   * thirteen fixtures in `shots/_report.json`.
    *
-   * The shadow term is the only one that shrinks: a `castShadow` radius gate
-   * drops the shadow draw for props too small to throw anything readable, so
-   * the real figure is between 2N and 3N depending on how much of the live
-   * roster clears that radius. It is never 2N flat.
+   * So it is one colour draw plus one shadow draw per type, and the shadow term
+   * is the only one that shrinks: a `castShadow` radius gate drops the shadow
+   * draw for props too small to throw anything readable. Never more than 2N.
    *
-   * Note also that `MAX_DRAW_CALLS` (130) budgets the COLOUR pass only, while
-   * `shots/_report.json`'s `frame.drawCalls` is the sum over colour + shadow +
-   * prepass. Do not compare the two directly.
+   * `MAX_DRAW_CALLS` (130) budgets the COLOUR pass alone, which is N of that
+   * 2N; `shots/_report.json`'s `frame.drawCalls` is the sum over every scene
+   * submission. Quote `frame.drawCallsByPass.colour`, never `frame.drawCalls`.
+   *
+   * RAISED 22 -> 30, AND THE GAIN IS ONE TYPE TODAY, NOT EIGHT.
+   * `docs/VISUAL_GAP_PLAN.md` P1-9 says the harness logs "8 prop type(s)
+   * trimmed" on `03-terrain-closeup` and that raising the cap costs +8 colour
+   * draws. Both halves are stale. The eight is the PRE-REORDER figure quoted in
+   * `tests/scatter-trim-order.spec.ts`'s header, from when `trimTypes` ran
+   * AFTER `fillToTarget` and therefore ranked a set the fill had inflated. With
+   * the trim in its current position the same fixture trims ONE type
+   * (`roadSignDisc`), measured by replaying its real inputs — scenario
+   * `terrain-showcase`, map preset `urban`, biome `temperate`, `?seed=3`, focus
+   * box and scenario exclusions included.
+   *
+   * The cap is not what limits prop variety. Measured over all seven presets,
+   * 17-22 archetypes of the 31 defined ever place a single instance, and the
+   * ones that never do are hard-surface street furniture on wilderness maps
+   * (correct — a parked sedan does not belong in a forest) and slope-gated
+   * civic solos. Raising the cap to 31 changes nothing that raising it to 30
+   * does not.
+   *
+   * WHAT IT BUYS IS HEADROOM FOR THE SPLAT FIX. `03-terrain-closeup` currently
+   * lands exactly ON 22, and P0-1 takes `SurfaceId.Dirt` from ~2% to ~22% of
+   * temperate ground, which makes `containerStack` and both grass tufts legal
+   * over far more of the map. That fixture is the one frame in the set that has
+   * ever saturated this number, and it is about to saturate it harder.
+   *
+   * PROJECTION AGAINST THE BUDGET. `03-terrain-closeup` runs the LOWEST colour
+   * pass of the thirteen — 51 of 130 — so its worst case at this cap is 51 + 8
+   * = 59. The frames that run the highest colour pass (`01`, `02`, `11` at 77)
+   * are `allied-base` on a preset that lights 18 types and never trims, so they
+   * do not move at all. Even a hypothetical map lighting all 30 lands at ~90.
    */
-  maxTypes: 22,
+  maxTypes: 30,
   /**
    * Metres the visible chunk box is grown by, so a prop just outside the
    * frustum still casts its shadow into it. Bible §3.2 puts the sun at 33

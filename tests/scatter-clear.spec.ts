@@ -17,7 +17,8 @@ import * as THREE from 'three';
 import { CELL, SCATTER_LIMITS } from '../src/core/config';
 import { FxKind } from '../src/core/types';
 import { Terrain } from '../src/world/Terrain';
-import { Scatter, PROP_CLEAR_MARGIN, setActiveScatter } from '../src/world/Scatter';
+import { Scatter, PROP_CLEAR_MARGIN, isCrushableFamily, setActiveScatter } from '../src/world/Scatter';
+import { PROP_DEFS } from '../src/world/PropLibrary';
 import { clearPropsUnder } from '../src/world/scatter-clear.system';
 
 /** A generated map with props on it. Seeds are fixed, so this is repeatable. */
@@ -48,8 +49,19 @@ const POS = new Float32Array(SCATTER_LIMITS.maxProps * 4);
  * The densest 4x4-cell (16 m) window on the map, as cell coordinates. Picking
  * the footprint by measurement rather than by guess is what keeps these tests
  * from silently passing on empty ground when the generator changes.
+ *
+ * `only` narrows the histogram to the props a caller actually cares about, and
+ * the mow test is why it exists. That test asserts a trail fells something, so
+ * what it needs is the densest CRUSHABLE ground — but this ranked by TOTAL prop
+ * count, which on a map that is 35% grass and 14% rock is as likely to point at
+ * a tuft field or a scree slope as at a copse. It had been passing on two
+ * bushes out of the four props its 60 m line met; one generator change later
+ * the same line met two boulders and the test went red having found nothing
+ * wrong. The map carried 1847 crushable props at the time.
  */
-function densestFootprint(scatter: Scatter, w: number, h: number): { cx: number; cz: number } {
+function densestFootprint(
+  scatter: Scatter, w: number, h: number, only?: (defIndex: number) => boolean,
+): { cx: number; cz: number } {
   const n = scatter.positions(POS);
   let best = { cx: 40, cz: 40 };
   let bestCount = -1;
@@ -58,6 +70,7 @@ function densestFootprint(scatter: Scatter, w: number, h: number): { cx: number;
   const N = Math.ceil(512 / TILE);
   const hist = new Int32Array(N * N);
   for (let i = 0; i < n; i++) {
+    if (only !== undefined && !only(POS[i * 4 + 3])) continue;
     const tx = Math.min(N - 1, (POS[i * 4] / TILE) | 0);
     const tz = Math.min(N - 1, (POS[i * 4 + 2] / TILE) | 0);
     hist[tz * N + tx]++;
@@ -483,14 +496,31 @@ function propKeys(scatter: Scatter): string[] {
   return out.sort();
 }
 
+/** True for a `positions()` defIndex whose family a hull may flatten. */
+const isCrushableIndex = (defIndex: number): boolean =>
+  isCrushableFamily(PROP_DEFS[defIndex].family);
+
 /**
  * Mow a trail with the same call a hull makes. Runs the disc along a line
- * through the densest ground so it actually meets trees; returns the count.
+ * through the densest CRUSHABLE ground so it actually meets trees; returns the
+ * count. See `densestFootprint` for why the filter is not optional here.
  */
 function mowTrail(scatter: Scatter, cx: number, cz: number): number {
   let felled = 0;
+  /*
+   * THROUGH the window's centre, not along its top-left corner.
+   *
+   * `densestFootprint` returns the ORIGIN of a w x h window CENTRED on the
+   * densest 16 m tile — `tileX * 16 / CELL - w / 2` — so `cx * CELL, cz * CELL`
+   * is 8 m outside the tile the histogram just measured, on both axes. The
+   * trail was therefore sweeping ground that had never been ranked for density
+   * at all, and passing or failing on whatever happened to be lying there.
+   * Two cells in on each axis puts it back on the tile it was aimed at.
+   */
+  const z = (cz + 2) * CELL;
+  const x0 = (cx + 2) * CELL - 30;
   for (let step = 0; step < 24; step++) {
-    felled += scatter.crushDisc(cx * CELL + step * 2.5, cz * CELL, 2.7);
+    felled += scatter.crushDisc(x0 + step * 2.5, z, 2.7);
   }
   return felled;
 }
@@ -527,7 +557,7 @@ describe('Scatter — the felled-prop mask', () => {
 
   it('THE REPORTED BUG: a mowed trail is still gone on the regenerated world', () => {
     const src = track(rig()).scatter;
-    const { cx, cz } = densestFootprint(src, 4, 4);
+    const { cx, cz } = densestFootprint(src, 4, 4, isCrushableIndex);
     const crushed = mowTrail(src, cx, cz);
     expect(crushed, 'the trail met no crushable vegetation').toBeGreaterThan(0);
     const survivors = propKeys(src);
@@ -551,7 +581,12 @@ describe('Scatter — the felled-prop mask', () => {
     const src = track(rig()).scatter;
     const { cx, cz } = densestFootprint(src, 5, 5);
     const built = src.clearFootprint(cx * CELL, cz * CELL, (cx + 5) * CELL, (cz + 5) * CELL);
-    const mowed = mowTrail(src, cx + 8, cz + 8);
+    // The trail is aimed AFTER the clear, at whatever crushable ground is still
+    // standing — `positions()` already excludes what the footprint took. It used
+    // to be `cx + 8, cz + 8`, an unmeasured guess 32 m diagonally away, which
+    // asserts `mowed > 0` about ground nothing had looked at.
+    const trail = densestFootprint(src, 4, 4, isCrushableIndex);
+    const mowed = mowTrail(src, trail.cx, trail.cz);
     expect(built).toBeGreaterThan(0);
     expect(mowed).toBeGreaterThan(0);
 
