@@ -32,11 +32,30 @@ async function main() {
   // ---------------------------------------------------------------- Q1 ----
   out.navigatorGpu = typeof navigator !== 'undefined' && !!navigator.gpu;
   out.warnings = [];
+  out.errors = [];
   const realWarn = console.warn;
+  const realError = console.error;
   console.warn = (...a) => {
     out.warnings.push(a.map(String).join(' '));
     realWarn(...a);
   };
+  /*
+   * ERRORS ARE CAPTURED BECAUSE THIS PROBE ALREADY LIED ONCE.
+   *
+   * The first run reported `wgslFn: { worked: true, functionEmitted: true }`
+   * while the console carried `ERROR: 0:225: 'fn' : syntax error` and
+   * `useProgram: program not valid` — the WGSL had been emitted verbatim into a
+   * GLSL shader that then failed to link. "The text I looked for is in the
+   * string" is not "it compiled", and a probe whose success criterion cannot
+   * see a failed link is the measured-correct/actually-wrong gap CLAUDE.md
+   * writes up for the audio bank.
+   */
+  console.error = (...a) => {
+    out.errors.push(a.map(String).join(' '));
+    realError(...a);
+  };
+  const errorsAt = () => out.errors.length;
+  const errorsSince = (n) => out.errors.slice(n);
 
   let rawAdapter = null;
   if (out.navigatorGpu) {
@@ -206,10 +225,18 @@ async function main() {
   }
 
   // (b) wgslFn — raw WGSL wired in as a node. The nearest thing to writing a
-  //     shader chunk by hand.
+  //     shader chunk by hand, and the only route that lets you keep hand-tuned
+  //     shader code rather than re-expressing it as a node graph.
+  //
+  //     PORTABILITY IS THE WHOLE QUESTION HERE, not whether it compiles once.
+  //     §4.5 says a migrated build still has to run on the WebGL2 fallback for
+  //     browsers without WebGPU, and a `wgslFn` on that backend is emitted into
+  //     a GLSL shader verbatim. Measured, not assumed: `errorsSince` below is
+  //     what catches it.
   try {
+    const before = errorsAt();
     const raw = wgslFn(`
-      fn vmSpikeTint( t: f32 ) -> vec3<f32> {
+      fn vmSpikeTint( t:f32 ) -> vec3<f32> {
         return vec3<f32>( t, 1.0 - t, 0.5 );
       }
     `);
@@ -222,13 +249,18 @@ async function main() {
     renderer.render(scene, camera);
     const s = await renderer.debug.getShaderAsync(scene, camera, m);
     const frag = s.fragmentShader || '';
+    const errs = errorsSince(before);
     hatch.wgslFn = {
-      worked: true,
+      threw: false,
       functionEmitted: frag.includes('vmSpikeTint'),
-      fragmentLength: frag.length,
+      shaderLanguage: /@fragment|var<uniform>|vec3<f32>\s*\(/.test(frag) ? 'WGSL' : 'GLSL',
+      compileErrors: errs.length,
+      firstError: errs[0] ? errs[0].slice(0, 300) : null,
+      // The only honest success condition: emitted AND nothing complained.
+      worked: frag.includes('vmSpikeTint') && errs.length === 0,
     };
   } catch (e) {
-    hatch.wgslFn = { worked: false, error: String(e) };
+    hatch.wgslFn = { threw: true, worked: false, error: String(e) };
   }
   out.escapeHatches = hatch;
 
@@ -281,6 +313,7 @@ async function main() {
   }
 
   console.warn = realWarn;
+  console.error = realError;
   renderer.dispose();
   out.ok = true;
 }

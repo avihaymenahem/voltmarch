@@ -104,7 +104,18 @@ async function main() {
   const { server, origin } = await serve(START_PORT);
   console.log(`> serving ${origin} (this process owns the socket)`);
 
+  /*
+   * `channel: 'chrome'` IS LOAD-BEARING AND IS NOT A PREFERENCE.
+   *
+   * Playwright's BUNDLED Chromium, headless, cannot create a WebGPU device on
+   * this platform: Dawn's D3D12 backend fails to load `dxil.dll` with Windows
+   * error 87 and `WebGPURenderer` continues on WebGL2 behind one `warn()`.
+   * Real Chrome and real Edge both succeed, headless and headed. See
+   * `channel-probe.mjs` for the per-binary table. With the bundled build the
+   * 'webgpu' arm measures WebGL2 and says WebGPU.
+   */
   const browser = await chromium.launch({
+    channel: opt('--channel', 'chrome'),
     headless: !HEADED,
     args: [
       // Same GPU posture tools/shoot.mjs launches with ...

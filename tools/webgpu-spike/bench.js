@@ -206,6 +206,17 @@ async function gpuSync(renderer, isNode) {
   return 'none';
 }
 
+/**
+ * THE SEAM ASSERTS ITS BACKEND AND REFUSES TO PROCEED.
+ *
+ * Silently measuring WebGL2 and labelling the column "webgpu" is the whole
+ * failure this spike exists to avoid — and it is what the first run of it did,
+ * for an hour, because `WebGPURenderer` constructed fine and rendered fine. A
+ * benchmark that cannot tell which renderer produced its numbers is not a
+ * benchmark. Nothing downstream of here is allowed to see a mislabelled row.
+ */
+const EXPECTED_BACKEND = { webgl: 'webgl2', webgpu: 'webgpu', nodegl: 'webgl2-fallback' };
+
 async function runOne(cfg) {
   const { backend, draws, width, height } = cfg;
   const canvas = document.getElementById('c');
@@ -213,6 +224,15 @@ async function runOne(cfg) {
   const t0 = performance.now();
   const { THREE, renderer, MaterialClass, isNode } = await makeRenderer(backend, canvas, width, height);
   const identity = await backendIdentity(renderer, isNode);
+
+  const want = EXPECTED_BACKEND[backend];
+  if (identity.live !== want) {
+    throw new Error(
+      `BACKEND MISMATCH: arm '${backend}' wanted '${want}' and got '${identity.live}'. ` +
+        `navigator.gpu=${identity.navigatorGpu}. Refusing to report a number under a ` +
+        `renderer nobody asked for — see the dxil.dll finding in channel-probe.mjs.`,
+    );
+  }
 
   const built = buildScene(THREE, MaterialClass, draws);
   const { scene, camera } = built;
