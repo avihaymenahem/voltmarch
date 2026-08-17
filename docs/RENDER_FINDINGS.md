@@ -555,6 +555,89 @@ Three traps worth carrying forward:
   must assert its live backend and refuse, not infer. The first hour of this spike measured
   WebGL2-vs-WebGL2 and labelled one column "webgpu".
 
+## 7d. The post chain in TSL — Stage B, measured 2026-08-17
+
+Two questions were open when Stage B started. Both are now answered with an instrument.
+
+### The grade port is numerically the same shader
+
+`tools/grade-ab/run.mjs` renders one fixed scene-linear HDR chart through **`GRADE_FRAG` on
+`WebGLRenderer`** and through **`src/render/nodes/grade-node.ts` on `WebGPURenderer`**, at exactly
+the texture's resolution with `NearestFilter` so no filtering difference can enter, with both arms
+taking their uniforms from the same `gradeUniformValuesFor()`. Live backend asserted
+`isWebGPUBackend === true` — the run REFUSES to report a number under the WebGL2 fallback.
+
+```
+chart (0 -> 0.18 -> 1.0 -> 8.0 neutral ramps + saturated hues at 1.4, 256x64)
+    max |delta|            1 / 255
+    mean |delta|           0.0000407      (2 subpixels of 49 152 differ, by 1 each)
+    subpixels over 1/255   0
+```
+
+**That is the whole grade** — unsharp mask, exposure, AgX, the 3-way tint, lift/gain, the gamma
+contrast about 0.18, the declared white point, shadow saturation, the paper-white fold, the vignette
+and the sRGB encode — agreeing to within a single least-significant bit across shadows, mids, HDR to
+8x, and saturated primaries. Bit-equality was never the bar (two languages, two compilers); one LSB
+on two subpixels is.
+
+**`screenUV` and `vUv` agree about which way is up.** This was the predicted failure and it did not
+happen. Measured deliberately with a Y-varying ramp so the test could actually see a flip:
+
+```
+                straight        flipped
+    max         1               216
+    mean        0.00012         56.38
+```
+
+The flipped comparison being catastrophic is what makes the straight one meaningful — do not delete
+that arm to save a render.
+
+### The AO scene submission does NOT have to be rebuilt, but the shader cost does
+
+`WEBGPU_MIGRATION_PLAN.md` §3 said the `installAoDepthGBuffer` saving "has no direct equivalent and
+would be redone from scratch". Half right, and the half that is wrong is the expensive half:
+
+- **The second scene submission is gone by construction.** `GTAONode` owns no scene and no prepass —
+  it is a full-screen quad over a depth node, and `pass(scene, camera).getTextureNode('depth')` is
+  the depth the colour pass already wrote. There is nothing to delete because the node pipeline
+  never had it. The seventy lines of `installAoDepthGBuffer` reaching into six private members of
+  `GTAOPass` have no counterpart.
+- **The naive port is nevertheless a real regression, and it is the trap §1 already names.** Both
+  `GTAONode` and `DenoiseNode` accept a null `normalNode` and reconstruct the view normal from depth
+  in the shader. `GTAONode` hoists that above its direction loop and pays for one.
+  **`DenoiseNode` calls `sampleNormal` for the centre tap AND inside its 16-sample loop — 17
+  reconstructions per denoised pixel**, each nine `textureLoad`s and three inverse-projection
+  transforms. Identical arithmetic to `PoissonDenoiseShader`, identical conclusion: reconstruct ONCE
+  into a texture and hand it to both. `src/render/nodes/ao-node.ts` does that with one `RTTNode` at
+  the AO resolution.
+
+### Three defects the node port would have inherited, found by reading three's source
+
+None of these would have failed a build, and two are invisible until a capture disagrees with itself.
+
+1. **`DenoiseNode.generateDefaultNoise()` calls `new SimplexNoise()`, whose default RNG is `Math`.**
+   Byte-for-byte the same defect `post.ts#seedAoDenoiseNoise` fixes on the WebGL side, arrived at
+   independently in three's node port. Unseeded, two boots of one build cannot produce the same
+   image. Both chains now seed from `AO_NOISE_SEED` in `src/render/ao-params.ts`.
+2. **`DenoiseNode` ships `lumaPhi`/`depthPhi`/`normalPhi` at 5/5/5 and `GTAOPass`'s constructor
+   overwrites them with 10/2/3.** The WebGL chain inherits the latter silently by never setting
+   them, so a node port that also never sets them denoises with a *different filter* from the same
+   config. Pinned in `tests/post-nodes.spec.ts` by reading `GTAOPass.js` itself.
+3. **`DenoiseNode` builds its Poisson disc with radius exponent 1; `GTAOPass.pdRadiusExponent` is
+   2.** Same 16 taps over the same 2 rings, spread evenly along the radius instead of clustered.
+   Same cost, different filter, nothing to catch it.
+
+### What Stage B did NOT establish
+
+- **No frame time, and no claim to one.** §7b's verdict stands and is not disturbed by any of this.
+- **Bloom and AO are verified structurally and by parameter, not numerically.** `BloomNode` was
+  compared field by field against `UnrealBloomPass` (5 mips, kernels 6/10/14/18/22, factors
+  1/.8/.6/.4/.2, half-res first mip, `lerpBloomFactor` identical) and the settled energy pair travels
+  through one shared function — but no pixel of either has been diffed on a device. AO needs a real
+  scene with depth to A/B at all. Both belong to the Stage F dual-backend verification.
+- **WGSL only.** `WebGPURenderer`'s WebGL2 backend is a third renderer with its own codegen
+  (`GLSLNodeBuilder`). Two backends means two grade baselines — the A/B above says nothing about it.
+
 ## 8. Unverified — do not quote these as fact
 
 - **`GL_INVALID_OPERATION: glDrawElements: Mismatch between texture format and sampler type` is

@@ -124,11 +124,19 @@ those 62 replacements is a rewrite, not a port. The heaviest single item is
 `customProgramCacheKey`.
 
 The post chain is a second front. `ShaderPass`, `UnrealBloomPass` and `GTAOPass` are the WebGL
-`EffectComposer` stack; `three/webgpu` has its own node-based `PostProcessing`. **The GTAO
-depth-G-buffer work that deleted an entire scene submission this month —
-`installAoDepthGBuffer` / `setGBuffer` in `src/render/post.ts` — has no direct equivalent and would
-be redone from scratch.** That was a 39-57 draws-per-frame saving; losing it during migration and
-rebuilding it is a real, temporary regression.
+`EffectComposer` stack; `three/webgpu` has its own node-based `RenderPipeline` (`PostProcessing` is
+that class's deprecated name since r183).
+
+**REWRITTEN AFTER STAGE B MEASURED IT.** This paragraph said the GTAO depth-G-buffer work —
+`installAoDepthGBuffer` / `setGBuffer` in `src/render/post.ts` — "has no direct equivalent and would
+be redone from scratch", and that the 39-57 draws-per-frame saving would be lost and rebuilt. Half
+of that is wrong and the half that is wrong is the expensive half:
+
+- **The scene submission is gone by construction.** `GTAONode` owns no scene and no prepass; it is a
+  quad over `pass(scene, camera).getTextureNode('depth')`. There is nothing to rebuild.
+- **The SHADER-cost half is real and had to be built.** `DenoiseNode` reconstructs the normal from
+  depth SEVENTEEN times per pixel when handed a null `normalNode` — the identical trap
+  `PoissonDenoiseShader` presented, with the identical answer. See `RENDER_FINDINGS.md` §7d.
 
 **It is not incremental.** You cannot run half the scene on `WebGLRenderer` and half on
 `WebGPURenderer`. The cutover is atomic per-scene.
@@ -166,9 +174,20 @@ Each stage ends green on all four gates and on `npm run shots` at 92.0% with zer
 - **Stage A — spike, throwaway.** `WebGPURenderer` with a *stock* `MeshStandardNodeMaterial` scene,
   no custom shaders, measuring draw submission and frame time against the WebGL build on the same
   content. Answers "is the win real for us" for a few days' cost. **Delete the branch afterward.**
-- **Stage B — the post chain.** Rebuild bloom, GTAO and the grade as TSL nodes, verified against the
-  existing scorecard. Doing this first means the hardest measured surface is proven before any
-  material work.
+- **Stage B — the post chain. DONE.** Bloom, GTAO and the grade as TSL nodes:
+  `src/render/post-nodes.ts` assembles the graph, `src/render/nodes/*` are the three passes, and
+  `src/render/{post-order,grade-curve,ao-params}.ts` hold what both chains must agree on so there is
+  one declaration of the pass order, the grade mapping and the AO numbers rather than two.
+
+  Verified by `tests/post-nodes.spec.ts`, which compiles the real graph to WGSL with three's own
+  `WGSLNodeBuilder` and reads the emitted shader — the first instrument this project has had that
+  looks at the SHADER rather than at the config that was supposed to reach it (`RENDER_FINDINGS.md`
+  §5) — and by `tools/grade-ab/run.mjs`, which runs `GRADE_FRAG` and the TSL grade over one HDR
+  chart on a real WebGPU device and diffs them: **max 1/255, zero subpixels over 1**. Numbers,
+  method and what was NOT established are in `RENDER_FINDINGS.md` §7d.
+
+  The WebGL chain remains the shipping default and nothing imports the node chain yet, so
+  `three/webgpu` is absent from `dist/` entirely.
 - **Stage C — terrain.** The single biggest shader. Port the splat classifier and warp to TSL. Its
   outputs are already pinned by `terrain-*.spec.ts` and the splat quantile work.
 - **Stage D — structures, units, props.** 24 injection sites, mostly greeble/atlas materials.

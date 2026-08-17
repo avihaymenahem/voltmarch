@@ -37,12 +37,29 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { AO_HALF_RES_SCALE, aoDenoiseRadius, aoTargetSize, msaaSampleCount } from '../src/render/post';
+import { PASS_ORDER } from '../src/render/post-order';
 import { RENDER_CONFIG } from '../src/render/renderer';
 import { defaultSettings } from '../src/shell/settings-store';
 import { VFX_LIGHT_POOL_BY_TIER, VFX_LIGHT_POOL } from '../src/core/config';
 
 const ROOT = join(__dirname, '..');
 const POST_SRC = readFileSync(join(ROOT, 'src/render/post.ts'), 'utf8');
+/*
+ * `PASS_ORDER` DECLARED TO MOVE OUT OF `post.ts`, AND THESE GUARDS FOLLOWED IT.
+ *
+ * It lives in `src/render/post-order.ts` now, so that `src/render/post-nodes.ts`
+ * — the TSL port of this chain — can read the canonical order without importing
+ * `EffectComposer`, `UnrealBloomPass` and `GTAOPass` to get at a five-element
+ * array. `post.ts` re-exports it and every existing importer is unchanged.
+ *
+ * The two assertions below used to regex it out of `POST_SRC` and silently
+ * matched nothing once it moved, which is precisely the failure mode
+ * `expect(order).not.toBeNull()` was there to catch — it worked. They read the
+ * new home now, and the array-order half is asserted against the IMPORTED value
+ * rather than against source text, which is strictly stronger: a regex cannot
+ * tell a re-export from a declaration.
+ */
+const ORDER_SRC = readFileSync(join(ROOT, 'src/render/post-order.ts'), 'utf8');
 const RENDERER_SRC = readFileSync(join(ROOT, 'src/render/renderer.ts'), 'utf8');
 
 /**
@@ -138,14 +155,12 @@ describe('post.ts wiring', () => {
   });
 
   it('still keeps AO ahead of bloom', () => {
-    // An occluded crevice must not bloom. The order is the file's contract and
-    // no performance change is allowed to quietly reshuffle it.
-    const order = POST_SRC.match(/PASS_ORDER[^=]*=\s*\[([^\]]*)\]/);
-    expect(order).not.toBeNull();
-    const ids = (order as RegExpMatchArray)[1];
-    expect(ids.indexOf("'ao'")).toBeGreaterThan(ids.indexOf("'render'"));
-    expect(ids.indexOf("'bloom'")).toBeGreaterThan(ids.indexOf("'ao'"));
-    expect(ids.indexOf("'smaa'")).toBeGreaterThan(ids.indexOf("'grade'"));
+    // An occluded crevice must not bloom. The order is the chain's contract and
+    // no performance change is allowed to quietly reshuffle it. Asserted on the
+    // real array — both post chains index it, so this covers both.
+    expect(PASS_ORDER.indexOf('ao')).toBeGreaterThan(PASS_ORDER.indexOf('render'));
+    expect(PASS_ORDER.indexOf('bloom')).toBeGreaterThan(PASS_ORDER.indexOf('ao'));
+    expect(PASS_ORDER.indexOf('smaa')).toBeGreaterThan(PASS_ORDER.indexOf('grade'));
   });
 
   it('keeps SMAA last, which is what licenses its 8-bit internal targets', () => {
@@ -164,11 +179,14 @@ describe('post.ts wiring', () => {
      * protects the LOOK, this one protects a memory-format decision that has no
      * other guard. If you reorder the chain, revert `demoteSmaaTargets` in the
      * same commit. */
-    const order = POST_CODE.match(/PASS_ORDER[^=]*=\s*\[([^\]]*)\]/);
-    expect(order).not.toBeNull();
-    const ids = ((order as RegExpMatchArray)[1].match(/'([a-z]+)'/g) ?? []);
-    expect(ids.length).toBeGreaterThan(1);
-    expect(ids[ids.length - 1], 'SMAA must be the last pass').toBe("'smaa'");
+    // The array itself, and its DECLARATION, so that a re-export cannot satisfy
+    // this while the real order lives somewhere nobody is watching.
+    expect(PASS_ORDER.length).toBeGreaterThan(1);
+    expect(PASS_ORDER[PASS_ORDER.length - 1], 'SMAA must be the last pass').toBe('smaa');
+    const declared = stripComments(ORDER_SRC).match(/PASS_ORDER[^=]*=\s*\[([^\]]*)\]/);
+    expect(declared, 'PASS_ORDER must be DECLARED in post-order.ts').not.toBeNull();
+    const ids = ((declared as RegExpMatchArray)[1].match(/'([a-z]+)'/g) ?? []);
+    expect(ids[ids.length - 1]).toBe("'smaa'");
     // POST_CODE, not POST_SRC: every string below also appears in the prose
     // that explains it, and prose must not be able to satisfy the assertion.
     expect(POST_CODE, 'the demotion and its precondition must stay together')

@@ -200,69 +200,58 @@ import {
   touched,
   srgbVec3,
   type RendererHandle,
-  type ToneMappingMode,
 } from './renderer';
 import { LAYERS } from './scene';
+/*
+ * ONE TONE-MODE TABLE FOR BOTH POST CHAINS.
+ *
+ * It was a module-private literal here. `src/render/nodes/grade-node.ts` — the
+ * TSL port of this pass — needs the same mapping, and `grade-curve.ts` imports
+ * no renderer at all (its only import is a `type`), so neither chain drags the
+ * other's build of three into the bundle. Nothing about this pass changes: same
+ * table, same numbers, one declaration.
+ */
+import { TONE_MODE_ID } from './grade-curve';
 
 declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 
-export type PassId = 'render' | 'ao' | 'bloom' | 'grade' | 'smaa';
+/*
+ * `PassId` and `PASS_ORDER` moved to `post-order.ts` and are re-exported here.
+ * Both chains need them and `post-nodes.ts` must not import this file to get
+ * them — that would pull `EffectComposer`, `UnrealBloomPass`, `GTAOPass` and the
+ * WebGL build of three into the node chain's graph to read a five-element array.
+ * Every existing importer of `PassId`/`PASS_ORDER` from `./post` is unchanged.
+ */
+export { PASS_ORDER } from './post-order';
+export type { PassId } from './post-order';
+import { PASS_ORDER, type PassId } from './post-order';
 
-/**
- * Fraction of the drawing buffer the AO chain runs at when `ao.halfRes` is on.
+/*
+ * THE AO NUMBERS MOVED TO `ao-params.ts`, AND THE RE-EXPORT IS THE POINT.
  *
- * A half, not a third. See the file header: below a half the saving collapses
- * because what remains is GTAOPass's full-resolution composite, while the
- * upsample error keeps growing.
+ * `AO_HALF_RES_SCALE`, `aoTargetSize` and `aoDenoiseRadius` are consumed by
+ * `tests/perf-budget.spec.ts` THROUGH THIS MODULE and by the TSL port
+ * (`nodes/ao-node.ts`) directly. They now have one declaration, in a file that
+ * imports no renderer, so the two chains cannot end up with two sets of numbers.
+ * Every caller here and in the tests is unchanged; the reasoning for each value
+ * moved with it.
  */
-export const AO_HALF_RES_SCALE = 0.5;
-
-/**
- * The G-buffer / march / denoise size for a given drawing buffer.
- *
- * Pure, and exported, so `tests/perf-budget.spec.ts` can assert the arithmetic
- * without a GL context — a resolution rule nobody has watched produce a number
- * is how `halfRes` came to be documented, defaulted, tier-mapped and dead.
- */
-export function aoTargetSize(
-  width: number,
-  height: number,
-  halfRes: boolean,
-): { width: number; height: number } {
-  const s = halfRes ? AO_HALF_RES_SCALE : 1;
-  return {
-    width: Math.max(2, Math.round(width * s)),
-    height: Math.max(2, Math.round(height * s)),
-  };
-}
-
-/**
- * Poisson-denoise kernel radius, in the AO target's OWN texels.
- *
- * The denoise runs at the AO resolution, so a constant texel radius would
- * silently halve the world-space footprint of the blur the moment `halfRes`
- * turned on — the AO would come back noisier at the cheaper setting, which is
- * the wrong direction. Halving the radius with the resolution keeps the filter
- * covering the same part of the image. 8 is GTAOPass's own default.
- */
-/**
- * Seed for the Poisson-denoise rotation field. Any fixed value will do; what
- * matters is that it is fixed. Declared module-private rather than in
- * `core/config.ts` because it is not a tunable — there is nothing to tune, and
- * changing it moves every AO crease in every fixture.
- */
-const AO_NOISE_SEED = 0x5eed_a011;
-
-export function aoDenoiseRadius(halfRes: boolean): number {
-  return halfRes ? 4 : 8;
-}
-
-/**
- * The canonical order. Rationale is in the file header. Nobody edits this
- * array without editing that comment first.
- */
-export const PASS_ORDER: readonly PassId[] = ['render', 'ao', 'bloom', 'grade', 'smaa'] as const;
+export {
+  AO_HALF_RES_SCALE,
+  AO_NOISE_SEED,
+  AO_NOISE_SIZE,
+  aoDenoiseRadius,
+  aoTargetSize,
+} from './ao-params';
+import {
+  AO_NOISE_SEED,
+  AO_NOISE_SIZE,
+  aoDenoiseParams,
+  aoDenoiseRadius,
+  aoMarchParams,
+  aoTargetSize,
+} from './ao-params';
 
 /**
  * How many MSAA samples the SCENE target actually gets.
@@ -289,19 +278,22 @@ export function msaaSampleCount(requested: number, maxSamples: number): number {
   return Math.min(want, cap);
 }
 
-const TONE_MODE_ID: Record<ToneMappingMode, number> = {
-  none: 0,
-  agx: 1,
-  aces: 2,
-  neutral: 3,
-  linear: 0,
-};
-
 /* ========================================================================== */
 /* Grade shader                                                               */
 /* ========================================================================== */
 
-const GRADE_VERT = /* glsl */ `
+/*
+ * EXPORTED SO THE PORT CAN BE COMPARED AGAINST IT, AND FOR NO OTHER REASON.
+ *
+ * `tools/grade-ab/` renders a fixed HDR chart through THIS shader on WebGL and
+ * through `nodes/grade-node.ts` on WebGPU and diffs the two images. That is the
+ * only check that can answer "does the port change the look", and it cannot be
+ * written against a copy of the source — a copy is a second thing to keep in
+ * step, which is the defect class the whole of `docs/SPEC_DRIFT_AUDIT.md`
+ * catalogues. Adding `export` changes no behaviour and no byte of the bundle
+ * that was not already there.
+ */
+export const GRADE_VERT = /* glsl */ `
 varying vec2 vUv;
 void main() {
   vUv = uv;
@@ -309,7 +301,7 @@ void main() {
 }
 `;
 
-const GRADE_FRAG = /* glsl */ `
+export const GRADE_FRAG = /* glsl */ `
 precision highp float;
 
 uniform sampler2D tDiffuse;
@@ -581,7 +573,7 @@ void main() {
 }
 `;
 
-interface GradeUniforms {
+export interface GradeUniforms {
   tDiffuse: { value: THREE.Texture | null };
   uTexel: { value: THREE.Vector2 };
   uTime: { value: number };
@@ -604,7 +596,7 @@ interface GradeUniforms {
   [key: string]: THREE.IUniform;
 }
 
-function makeGradeUniforms(): GradeUniforms {
+export function makeGradeUniforms(): GradeUniforms {
   return {
     tDiffuse: { value: null },
     uTexel: { value: new THREE.Vector2(1 / 1920, 1 / 1080) },
@@ -1414,7 +1406,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     const old = p.pdNoiseTexture;
     if (old === undefined) return;
 
-    const size = 64;
+    const size = AO_NOISE_SIZE;
     const rng = new Rng(AO_NOISE_SEED);
     const simplex = new SimplexNoise({ random: () => rng.next() });
     const data = new Uint8Array(size * size * 4);
@@ -1973,13 +1965,13 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     if (typeof ao.updateGtaoMaterial === 'function') {
       try {
         ao.updateGtaoMaterial({
-          radius: c.radius,
-          distanceExponent: 1.0,
-          thickness: 1.0,
-          // GTAO's `scale` is the contrast curve on the AO term — this is
-          // where the art bible's "power 1.6" lands.
-          scale: c.power,
-          samples: c.samples,
+          // GTAO's `scale` is the contrast curve on the AO term — this is where
+          // the art bible's "power 1.6" lands. The whole block comes from
+          // `ao-params.ts` so the TSL port cannot be configured differently.
+          ...aoMarchParams(c),
+          // Kept at the call site: `GTAONode` has no such option (it always
+          // marches in world space), so it belongs to this pass rather than to
+          // the shared table.
           screenSpaceRadius: false,
         });
       } catch {
@@ -2005,7 +1997,15 @@ export function createPostChain(options: CreatePostOptions): PostChain {
        */
       if (typeof ao.updatePdMaterial === 'function') {
         try {
-          ao.updatePdMaterial({ radius: aoDenoiseRadius(c.halfRes) });
+          /*
+           * `lumaPhi`/`depthPhi`/`normalPhi` are written explicitly now and the
+           * values are UNCHANGED: 10/2/3 is what `GTAOPass`'s own constructor
+           * already puts there, over `PoissonDenoiseShader`'s 5/5/5 defaults.
+           * Passing them is a no-op for this pass and the whole point for the
+           * TSL port, whose `DenoiseNode` ships the 5/5/5 defaults and would
+           * otherwise denoise with a different filter from the same config.
+           */
+          ao.updatePdMaterial(aoDenoiseParams(c));
         } catch {
           /* parameter shape drift between three versions — non-fatal */
         }
