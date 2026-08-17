@@ -331,10 +331,32 @@ Each stage ends green on all four gates and on `npm run shots` at 92.0% with zer
   no `uniforms` map. `VfxRibbonNodeSet` publishes `setFov` and `pxScale` for exactly those two
   callers; the batch needs a small accessor before it can hold either kind. `SpriteLayer` already
   takes `THREE.Material`, so the two sprite layers need no change.
-- **Stage F — cutover, dual-backend verification, two grade baselines.** The one remaining
-  `onBeforeCompile` after Stage E is `Roads.ts`, handled separately.
+- **Stage F — cutover, dual-backend verification, two grade baselines. DONE, and the verdict in §0
+  is overturned for the real game.** `src/render/gpu-path.ts` is the seam, `gpu-path-install.ts` is
+  the single dynamic-import target, and `?gpu=webgpu` boots and draws the shipped game.
+  `render/sky-nodes.ts` and `render/ground-overlay-nodes.ts` are the three materials this inventory
+  missed. Numbers, method and residuals are in `RENDER_FINDINGS.md` §7f; the short version:
 
-**Rough order of magnitude: weeks, not days.** Stage A alone answers the question that matters.
+  ```
+                  webgl      webgpu    ratio
+  1280x720        2.03 ms    1.17 ms   0.576
+  2560x1440       6.32 ms    3.44 ms   0.546
+  3840x2160      17.19 ms    9.10 ms   0.529
+  grade          92.0%      91.0%      13/13 vs 12/13 captured
+  ```
+
+  **§7b measured a synthetic scene and §9 had already said why that could not predict this one.**
+  The sweep timed PER-DRAW CPU cost with no post chain; §9 established the frame is fill-rate bound
+  with the CPU idle 88% of it. The migration was justified by the wrong argument and turned out to
+  be worth doing for a reason nobody had measured.
+
+  **THE DEFAULT IS STILL WEBGL.** One weight-3 scorecard failure is open (`03-terrain-closeup` #6
+  p99, 0.885 against 0.900, from a systematically weaker bloom halo whose cause is in the HDR
+  reaching `BloomNode` rather than in its parameters), one fixture cannot be captured on the node
+  arm at all, `drawCallsByPass` is WebGL-only, and the sidebar cameos fall back to flat glyphs.
+
+**Rough order of magnitude: weeks, not days.** Stage A alone answers the question that matters —
+and answered it wrongly, for the reason above.
 
 ---
 

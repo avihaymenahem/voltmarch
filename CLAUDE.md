@@ -658,6 +658,52 @@ argument for why draping rather than grading the heightfield.
   crossing the corridor, which no span size can drape over; the honest fix is routing — `classifyCells`
   erodes by ONE cell and guarantees flat ground only +/-6 m out, against a 10.28 m arterial corridor.
 
+## There are two renderers now, and a WebGL player downloads exactly one of them
+
+`?gpu=webgpu` used to throw. It boots the real game since v3.0.0-dev: every shader in the project
+exists twice, once as GLSL and once as a TSL node graph, and `src/render/gpu-path.ts` is the seam
+that picks. **The default is still WebGL** and nothing in the product selects the other one.
+
+- **`gpu-path.ts` IMPORTS NO THREE AT ALL, and that is the constraint the whole design is built
+  around.** `three/webgpu` is the entire node system — both backends, both builders, the node
+  material library, ~758 kB emitted. It reaches the bundle through exactly ONE dynamic
+  `import('./gpu-path-install')`, inside `prepareGpuPath()`, behind `requestedBackend()`. Rollup
+  emits that as its own chunk and a WebGL boot never fetches it: `WGSLNodeBuilder`,
+  `GLSLNodeBuilder`, `RenderPipeline`, `MeshPhysicalNodeMaterial`, `MeshStandardNodeMaterial` and
+  `castShadowPositionNode` are **0 occurrences in the entry chunk**.
+  `tests/webgpu-bundle-isolation.spec.ts` pins it and fails when a static import is added on
+  purpose. **Never `import ... from 'three/webgpu'` outside a `*Node*.ts` / `*-nodes.ts` file.**
+- **Every material site is one branch, taken once at construction:**
+  `const np = nodePath(); np !== null ? np.createX(...) : createX(...)`. Never in the frame loop.
+- **`RendererHandle.renderer` IS GONE. It is `webgl` and `node`, and one of them is null.** The two
+  renderer families share no base type, and almost everything the consumers reached for is genuinely
+  WebGL-only — `getContext()` for the timer query, `capabilities.getMaxAnisotropy()`,
+  `readRenderTargetPixels`, `PMREMGenerator`'s constructor. Anything that works on both reads
+  `frameInfo()`, `size`, `capabilities` or `backend`. **`window.__VM.renderer` is null under
+  `?gpu=webgpu`** and `__VM.rendererHandle` is the backend-agnostic one.
+- **NEVER READ `renderer.info` DIRECTLY.** Under the node renderer `info.render.calls` is a
+  MONOTONIC COUNT OF `render()` INVOCATIONS since page load that `reset()` does not clear, and
+  `info.programs` is `undefined`. `handle.frameInfo()` / `normaliseInfo()` is the only safe read.
+- **`prepareRenderer(canvas)` must be awaited BEFORE `bootstrap()`.** `WebGPURenderer.render()`
+  throws until `await renderer.init()` resolves and `bootstrap()` is synchronous by design. On the
+  WebGL path it is a no-op that imports nothing.
+- **`ShaderMaterial` is NOT in `StandardNodeLibrary`.** It does not degrade under `WebGPURenderer` —
+  it fails `Material "ShaderMaterial" is not compatible` and draws through a bare `NodeMaterial`.
+  Adding one without a node twin is a black surface, not a slightly wrong one.
+- **`drawCallsByPass` IS WEBGL-ONLY.** The node `Renderer` has no seam between the shadow pass and
+  the colour pass to meter, so it reports zeros with a true total and `MAX_DRAW_CALLS` cannot be
+  checked there. Do not invent a split.
+- **`npm run shots` has two arms and they may never share a directory.** `shots/` and
+  `node tools/shoot.mjs --gpu=webgpu` -> `shots-webgpu/`. The node arm launches REAL Chrome
+  (`channel: 'chrome'`) because Playwright's bundled Chromium cannot get a WebGPU device here, and
+  it asserts `rendererHandle.backend` per shot — a `webgl2-fallback` fails the capture rather than
+  being labelled `webgpu`.
+- **The speed verdict was overturned and the old one is still quoted in places.** Stage A's
+  synthetic sweep said WebGPU was at best neutral; on the REAL game it is **1.74-1.89x faster**
+  across a 9x pixel range, because §9 had already established the frame is fill-rate bound and the
+  sweep measured per-draw CPU cost. `docs/RENDER_FINDINGS.md` §7f is the measurement; §7b now
+  carries the correction at its head.
+
 ## Hard rules
 
 - **Determinism.** Inside `simTick`, `Math.random()`, `Date.now()` and `performance.now()` are

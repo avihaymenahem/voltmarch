@@ -75,6 +75,21 @@ try {
   try {
     await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 90_000 });
     await page.evaluate(() => window.__VM.ready());
+    /*
+     * WAIT FOR THE CURTAIN, NOT JUST FOR `ready()`.
+     *
+     * `__VM.ready()` resolves when `registry.init()` has; the SCENARIO — and
+     * therefore every entity, every structure and the terrain mesh — is seeded
+     * afterwards, by `main.ts` calling `game.start()` and running the boot
+     * paint. Measuring at `ready()` measured an empty scene: 23 draw calls, 1
+     * entity, 11 189 triangles against the 149 / 865 353 a real fixture has.
+     * `tools/shoot.mjs` waits on `#loading` for exactly this reason and calls
+     * a visible curtain at the shutter a refusal.
+     */
+    await page.waitForFunction(() => {
+      const c = document.getElementById('loading');
+      return c === null || c.hidden === true;
+    }, null, { timeout: 120_000 });
   } catch (err) {
     booted = false;
     console.error(`\n!! did not reach __VM.ready: ${err.message}`);

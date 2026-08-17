@@ -555,11 +555,20 @@ moved something** before trusting what it tells you about the treatment.
 This is the same shape as §5: the config block that reads authoritative is not always the one wired
 to the thing.
 
-## 7b. WebGPU, measured — Stage A of `WEBGPU_MIGRATION_PLAN.md`, 2026-08-17
+## 7b. WebGPU on a SYNTHETIC scene — Stage A of `WEBGPU_MIGRATION_PLAN.md`, 2026-08-17
 
-Stage A said "answers 'is the win real for us' for a few days' cost". It cost a day and the answer is
-**no**. Instruments: `tools/webgpu-spike/` on branch `worktree-agent-a2eb23cacd5ec7ab4` — a throwaway
-that is not to be merged; the numbers below are the deliverable, not the code.
+> **THIS ENTRY'S VERDICT IS OVERTURNED FOR THE REAL GAME. READ §7f FIRST.**
+> Everything below is correct about the thing it measured — a stock-material
+> scene with no post chain, timed inside `renderer.render()` — and that thing
+> turned out not to predict the shipped frame. On the REAL game, with the real
+> post chain, at three resolutions across a 9x pixel range, **WebGPU is 1.74-1.89x
+> FASTER**. The measurements here are not withdrawn; the inference from them to
+> the product is. §7f says why the two are not in conflict.
+
+Stage A said "answers 'is the win real for us' for a few days' cost". It cost a day and the answer
+it gave was **no**. Instruments: `tools/webgpu-spike/` on branch
+`worktree-agent-a2eb23cacd5ec7ab4` — a throwaway that is not to be merged; the numbers below are the
+deliverable, not the code.
 
 **A synthetic scene shaped like our real frame** (50–4000 opaque draws, triangles pinned at
 0.62–0.70M across the whole sweep so it isolates per-DRAW cost, 70 distinct materials, ≤30
@@ -880,6 +889,120 @@ the sentence and Stage D3 believed it before checking `NodeMaterial.js`.
 
 **What the probe still could NOT measure.** The node `Renderer` has no `info.programs`, so "the
 shadow pass compiles a second program" stayed unquantified across all six arms.
+
+## 7f. THE REAL GAME ON BOTH RENDERERS — Stage F, measured 2026-08-17
+
+**`?gpu=webgpu` boots and draws the shipped game.** Everything below was taken on the merged
+Stage A..F tree, in **real Chrome** (`channel: 'chrome'`), with `renderer.backend.isWebGPUBackend`
+asserted true per page — Playwright's bundled Chromium still cannot create a device here (§7c).
+
+### The frame is FASTER on WebGPU, and §7b did not predict it
+
+`tools/gpu-frame-ab.mjs`. Both arms in one run, one browser at a time, the game's own rAF loop
+stopped, `N` frames driven by `__VM.advanceFrames` with **one `canvas.toDataURL()` GPU flush per
+block**, min of per-block medians, size pinned by `__VM.setSize`. `allied-base`, seed 7, 151
+entities, 149/158 draws, 865k triangles — the same content on both, verified by the triangle count
+agreeing to 0.006%.
+
+```
+                    webgl      webgpu    ratio      Mpx
+1280x720            2.03 ms    1.17 ms   0.576     0.92
+2560x1440           6.32 ms    3.44 ms   0.546     3.69
+3840x2160          17.19 ms    9.10 ms   0.529     8.29
+battle @1440p       5.80 ms    3.18 ms   0.549     3.69
+stats().cpuMs       1.10 ms    0.25 ms   0.227
+```
+
+- **BOTH ARMS SCALE WITH PIXELS, and that is what makes the flush trustworthy.** WebGL runs
+  ~1.95 ms/Mpx and WebGPU ~1.06 ms/Mpx over a 9x range. If `toDataURL()` were failing to
+  synchronise on the node path, its wall time would be CPU-only and would barely move with
+  resolution. It moves by 7.8x across 9x the pixels. That check is the one that turns this from a
+  plausible number into a measurement — **do not delete the resolution axis.**
+- **This is NOT comparable with §9's 42.45 ms**, and neither number is wrong. §9 is a live
+  four-army Sunder Atoll match at 194 units, bounded by a per-frame 1-pixel `readPixels` and timed
+  with a GPU timer query. This is a posed fixture at 151 entities with no VFX, timed by wall clock
+  over a block. Different scene, different bound, different clock. Do not divide one by the other.
+- **Why §7b's sweep pointed the other way.** It measured PER-DRAW CPU cost on a stock-material scene
+  with no post chain, at draw counts from 50 to 4000, timed inside `renderer.render()`. §9 then
+  established that this project is FILL-RATE bound — 79-90% of GPU time proportional to pixel count,
+  CPU idle 88% of the frame — so per-draw CPU cost is close to the least relevant axis there is
+  here. A synthetic scene shaped like our draw count was not shaped like our frame.
+- **`stats().cpuMs` is 4.4x lower on the node path**, which is the advertised win showing up where
+  §7b looked for it. It is not where the frame time came from.
+
+### The scorecard: two baselines, and one weight-3 failure that is NOT closed
+
+`npm run shots` and `node tools/shoot.mjs --gpu=webgpu`, then `tools/metrics.mjs` over each set.
+
+```
+                grade    failures
+webgl           92.0%    13   all #34 edgeCoverage        13/13 captured
+webgpu          91.0%    13   12x #34 + ONE weight-3      12/13 captured
+```
+
+- **#34 failing on every fixture on both arms is correct and must not be demoted.** See §2.
+- **THE WEIGHT-3 FAILURE IS REAL: `03-terrain-closeup` #6 p99 luminance 0.8851 against a floor of
+  0.900** (WebGL: 0.9744 on the same fixture). The visible cause is a **systematically weaker bloom
+  halo** on the node path — measured frame-wide, pixels at luminance >= 250 go 3.400% -> 2.539% on
+  `01-establishing-base` and 0.915% -> 0.666% on `11-dusk-mood`. Side by side at 4x, the emissive
+  strips on an Allied power plant are the same brightness on both and only the WebGL one has a glow
+  bleeding onto the surrounding armour.
+
+  **It is not `BloomNode`'s parameters.** They were compared field by field against
+  `UnrealBloomPass` in the same build of three: 5 mips, kernels 6/10/14/18/22, factors
+  1/.8/.6/.4/.2, `lerpBloomFactor` identical, `luminosityHighPass` identical to
+  `LuminosityHighPassShader`, half-res first mip, `HalfFloatType` on every intermediate, and the
+  composite ends `sum.mul( strength )` on both. **So the difference is in the HDR reaching it, and
+  that is where it was left.** Do not start by re-reading `bloom-node.ts`.
+- **`02-hud-full` CANNOT BE CAPTURED ON THE NODE ARM.** It is the only fixture that re-dollies away
+  from its scenario's declared distance (55 m against `allied-base`'s 62), and on the node path the
+  rig reports 62 at the shutter — the pose is applied and then reverts. Pitch reverts with it, so
+  this is the scenario's authored camera being re-applied, not a rendering difference. One of
+  thirteen fixtures is therefore unscored on that arm and the 91.0% is over twelve.
+
+### Three defects that a green `npm test` could not see, and one it should have
+
+1. **`renderer.getDrawingBufferSize()` takes a `Vector2`, not a duck.** It calls `target.set(w, h)`.
+   `post-nodes.ts` passed `{ width: 1, height: 1 }` and the game died in `createPostChain` before a
+   frame. `buildPostGraph` needs no renderer, so no spec reached the function.
+2. **`DenoiseNode.noiseNode` is a NODE, not a texture.** `ao-node.ts` assigned the reseeded
+   `DataTexture` directly; the body calls `this.noiseNode.sample( uv )`, which threw inside
+   `THREE.TSL`'s own catch — three console errors, no boot failure, and an AO term that darkened
+   the whole frame by roughly one sRGB decode. **`tests/post-nodes.spec.ts` asserted the wrong shape
+   and passed**, because it read `noiseNode.image.data` and a `DataTexture` has `.image.data`. It
+   reads through `.value` and asserts `isTextureNode` now.
+3. **`ShaderMaterial` IS NOT IN `StandardNodeLibrary`.** Basic/Lambert/Phong/Standard/Physical/Toon/
+   Normal/Matcap/Line*/Points/Sprite/Shadow are; `ShaderMaterial` is not, so under `WebGPURenderer`
+   it does not degrade — it fails `NodeBuilder: Material "ShaderMaterial" is not compatible` and
+   draws through a bare `NodeMaterial`. Stages B..E counted `onBeforeCompile` sites and the raw
+   `ShaderMaterial`s carrying LIT shading, and missed three that carry neither: the **sky dome**, the
+   **contact-shadow pool** and the **decal field**. That is the entire background, a black square
+   under every unit and every scorch painted solid black over a `DstColor` blend.
+   `render/sky-nodes.ts` and `render/ground-overlay-nodes.ts` are the twins.
+
+### What Stage F did NOT close
+
+- **`drawCallsByPass` IS WEBGL-ONLY NOW, and that is a property of the renderer rather than a gap
+  nobody filled.** The WebGL split comes from wrapping `WebGLRenderer.shadowMap.render` and reading
+  `info.render.calls` on either side of it — a seam that exists because the shadow pass is a
+  distinct method call there. The node `Renderer` draws shadows inside `_renderScene`, and `Info`
+  publishes `render.drawCalls` as a per-frame TOTAL and nothing else. On the node path
+  `stats().drawCallsByPass` reports zeros with a true total, the F3 overlay prints
+  `(no per-pass split)` rather than `0 col`, and **`MAX_DRAW_CALLS` cannot be checked**. Faking a
+  split would produce a number that looks like the WebGL one and means something else.
+- **The sidebar cameos fall back to flat glyphs.** `Cameos` renders each portrait into a target and
+  calls `renderer.readRenderTargetPixels` — synchronous, and WebGL-only. The node `Renderer`
+  publishes `readRenderTargetPixelsAsync` and nothing synchronous, so the generator would have to
+  become async end to end. `Hud` passes `handle.webgl`, which is null there.
+- **`aGait` is missing on some geometry under the node path** — five `THREE.AttributeNode: Vertex
+  attribute "aGait" not found on geometry` warnings per boot. On the GLSL path a missing attribute
+  reads as 0 and nothing says so. Not investigated; it is a warning, and the walk cycle looks right
+  in the captures.
+- **Bundle isolation held.** `WGSLNodeBuilder`, `GLSLNodeBuilder`, `RenderPipeline`,
+  `MeshPhysicalNodeMaterial`, `MeshStandardNodeMaterial` and `castShadowPositionNode` are **0
+  occurrences in the entry chunk** and all present in a separate 758 kB `gpu-path-install-*.js` that
+  a WebGL boot never fetches. `tests/webgpu-bundle-isolation.spec.ts` pins both halves and fails
+  when a static import is added on purpose.
 
 ## 8. Unverified — do not quote these as fact
 
