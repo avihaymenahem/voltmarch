@@ -1440,10 +1440,33 @@ const TERRAIN_NOON = {
   puddles: 0.12,
 };
 
+/**
+ * **THIS WHOLE BLOCK IS INERT. NOTHING READS IT, AND TUNING IT DOES NOTHING.**
+ *
+ * Found while porting the water to TSL (`src/world/WaterNodeMaterial.ts`,
+ * migration Stage E), and it is the `VFX_NOON.muzzleMs` shape exactly: an art
+ * block with real measurements written on it, wired to no shader.
+ *
+ * The sea takes its colours from `WATER_PALETTES` and its numbers from
+ * `WATER_SSR`, `WATER_LOOK`, `WATER_WAVES`, `WATER_FOAM`, `WATER_SHORE` and
+ * `WATER_GLINT`. `DEFAULT_ART.water` — this object — has no consumer anywhere
+ * in `src/`. The live grazing exponent is `WATER_SSR.fresnelPower`, and it is
+ * **5.0**, not the 5.4 below.
+ *
+ * It is LABELLED rather than deleted or reconciled, deliberately. Deleting it
+ * would take the `ArtDirection.water` slot out of `src/core/types.ts` and out of
+ * every mood preset; setting `WATER_SSR.fresnelPower` to 5.4 would be a look
+ * change, and every shipped frame was graded at 5.0. Either is a decision for
+ * whoever owns the look, not a side effect of a renderer migration.
+ */
 const WATER_NOON = {
   shallow: '#2E7C6C',
   deep: '#0A2E44',
   /**
+   * INERT — see the block comment above. The live exponent is
+   * `WATER_SSR.fresnelPower` (5.0). What follows is the reasoning that was
+   * written when this was believed to be reaching the shader:
+   *
    * Higher = the water only goes reflective at grazing angles.
    *
    * Raised from 4.2. At 4.2 the surface was handing back sky over most of its
