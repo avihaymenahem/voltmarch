@@ -759,7 +759,12 @@ const TONE_NOON = {
   /** Shadows desaturate slightly — a filmic trick that reads as "graded". */
   shadowSaturation: 0.94,
   /**
-   * 3-way colour balance: cool shadows, neutral mids, warm highlights.
+   * 3-way colour balance: cool shadows, cool mids, warm highlights.
+   *
+   * This line read "neutral mids" while `midTint` was #8C8578 — luma-normalised
+   * (1.11, 0.99, 0.78), which is not neutral in either direction it could have
+   * meant. It was inert at the time, so nothing contradicted it. Both halves
+   * are true now: the mids really are tinted, and they really are cool.
    *
    * `shadowTint` now carries the WHOLE of the bible's blue shadow requirement
    * (§13 #7), because the hemisphere fill that used to smear blue over every
@@ -804,12 +809,47 @@ const TONE_NOON = {
    * was cloning the uniform object out from under the handle `syncConfig`
    * writes to. So this field, `midTint`, `highlightTint`, `lift` and `gain`
    * were all inert, and the leak those paragraphs chase was never the tint's
-   * doing. The values are LEFT AS THEY WERE rather than re-derived: they now
-   * reach the shader for the first time, and re-tuning them belongs to whoever
-   * looks at the frame with the grade actually running.
+   * doing.
+   *
+   * RE-DERIVED WITH THE SHADER RUNNING. These two are now measured values, and
+   * the measurement is a different instrument from the one above: each capture
+   * is INVERTED back through this exact grade to post-bloom scene-linear, then
+   * re-graded under a candidate and rescored. The inverse is exact — a round
+   * trip reproduces the captured 8-bit pixel with a maximum error of 0/255 —
+   * so a candidate can be ranked, and looked at, without a rebuild. What is
+   * quoted below was then confirmed by a real `npm run shots`.
+   *
+   * The two knobs do two different jobs, because the leak has two populations:
+   *
+   *   - `shadowTint` #4F5667 -> #565665 raises RED 0.84 -> 0.97 and eases blue
+   *     1.46 -> 1.36 (luma-normalised). Dark grass and shadowed foliage sit at
+   *     hue 100-106, against the BOTTOM edge of the window, so returning red to
+   *     them rotates the whole mass DOWN and out — toward the 55-75 the bible
+   *     asks of grass in the same breath as it bans 100-120. This is what fixes
+   *     `07-soviet-base` (0.0238 -> 0.0104) and most of `09-placement`.
+   *   - `midTint` #8C8578 -> #818C9C flips the mids from warm (1.11, 0.99,
+   *     0.78) to cool (0.85, 1.02, 1.29), and it is aimed at a population that
+   *     moves the OTHER WAY. `08-naval-water`'s leak is a flat-shaded tree
+   *     canopy plus the shallow-water/shore blend, and its hue histogram peaks
+   *     at 113 and 118 — against the TOP edge. Warming those rotates them
+   *     deeper in; cooling pushes them past 120. Measured on 08 alone: warm mid
+   *     0.0211, neutral 0.0190, this 0.0168.
+   *
+   * `highlightTint` IS LEFT ALONE ON EVIDENCE, not on caution: swept over
+   * (1.065, 0.855), (1.00, 1.00) and (1.12, 0.74) against every candidate pair,
+   * it changed check #9 in the fourth decimal on all thirteen fixtures. The
+   * leak lives in the shadow and mid weights and nowhere else.
+   *
+   * A NEUTRAL MID WAS TRIED AND REJECTED, and the reason is scorecard #5 rather
+   * than #9. `vividPixelFrac` counts S > 0.35, so the minimum-chroma mid is the
+   * NEUTRAL one: at #808080 the leak falls to 0.0190 but 08's vivid fraction
+   * goes 0.391 -> 0.344, under the 0.35 floor, trading a weight-3 failure for a
+   * weight-3 failure. A mid tint that is decisively cool is both further from
+   * neutral and on the right side of 120, which is why 08 ends up with a LOWER
+   * leak and a HIGHER vivid fraction (0.396) than it started with.
    */
-  shadowTint: '#4F5667',
-  midTint: '#8C8578',
+  shadowTint: '#565665',
+  midTint: '#818C9C',
   highlightTint: '#FFF0D2',
   /**
    * Lift raises the black point. Dropped further toward zero: RA3's own p1
@@ -1383,7 +1423,8 @@ const HUD_NOON = {
   textDim: '#7C8792',
   danger: '#E03A2A',
   warn: '#E0A72A',
-  ok: '#4ADE80',
+  /** Kept identical to `PLACEMENT.validColor`; see the note there. */
+  ok: '#34D399',
   cornerRadiusPx: 3,
   rivetSpacingPx: 22,
   panelNoise: 0.06,
@@ -4906,11 +4947,51 @@ export const PLACEMENT = {
    *  a pointer that has to be looked for is not one. */
   facingOpacity: 0.92,
 
-  /** Cell is legal. HudLook.ok. */
-  validColor: '#4ADE80',
+  /**
+   * Cell is legal. Kept identical to `HudLook.ok` — move both or neither, or
+   * the sidebar's "valid" green stops being the world's "valid" green.
+   *
+   * #4ADE80 -> #34D399, AND THE CARPET IS NOT WHY. Measured by repainting each
+   * part of the ghost separately in a live capture of `09-placement`: of the
+   * 190 383 pixels that fail scorecard #9 in that frame, **771 — 0.4% — lie
+   * under the carpet**, and removing the carpet outright makes the fixture
+   * WORSE (0.0516 -> 0.0601), because a 0.58-alpha sheet at hue ~135 is
+   * covering leaking ground.
+   *
+   * The offender is the HOLOGRAM VOLUME, which takes this same colour from
+   * `updateMeshes` (`volumeMat.color.copy(tint)`) and is DoubleSide at
+   * `ghostOpacity` 0.17 — so front wall plus back wall lay ~0.31 of it over a
+   * large, mostly-lawn area of the frame. At #4ADE80 that composite lands at
+   * hue 100.7 over sunlit grass: just inside the window's bottom edge, which is
+   * the worst possible place to sit, because ordinary variation in the ground
+   * underneath scatters pixels across the boundary. Hiding the volume alone
+   * takes the fixture 0.0516 -> 0.0268.
+   *
+   * So the tint has to leave the neighbourhood of the edge, and there is only
+   * one direction available. Yellower is worse, measured: #8FE04C reads 0.0340
+   * and #A3E635 0.0279, because rotating down drags the composite over shadowed
+   * ground INTO the window from above. Bluer works, and the knee is sharp —
+   * predicted from two captures and confirmed against three held out, all
+   * within 0.0005: hue 146 -> 0.0392, hue 151 -> 0.0262, hue 155 -> 0.0097.
+   * #34D399 is hue 158, the first ordinary GREEN clear of the knee rather than
+   * a teal; #2DD4BF at hue 172 measures the same 0.0093 and is not worth the
+   * colour.
+   */
+  validColor: '#34D399',
   /** Cell is illegal. HudLook.danger. */
   invalidColor: '#E03A2A',
-  /** Ghost volume tint while the whole footprint is legal. */
+  /**
+   * Ghost volume tint while the whole footprint is legal.
+   *
+   * IT REACHES THE SCREEN FOR AT MOST ONE FRAME, and that is why it may sit
+   * only 6 degrees of hue from `validColor` without the two being confusable.
+   * The volume and the edge wire are CONSTRUCTED with this colour, and then
+   * `updateMeshes` overwrites both with `okColor`/`badColor` on every frame the
+   * ghost is up — so what a player actually sees on a legal footprint is
+   * `validColor`, never this. Left as it is rather than churned: it is the
+   * constructor default for two materials, and deleting it would mean giving
+   * them an untinted first frame.
+   */
   ghostColor: '#7FD8C0',
 } as const;
 
