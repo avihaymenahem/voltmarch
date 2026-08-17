@@ -540,7 +540,25 @@ sixths of the scenario set.
 
 ---
 
-### 17. The RA3 "baseline" that overrides the bible is measured on 4:3 JPEGs at a third of the pixel count — **LIVE, high**
+### 17. The RA3 "baseline" that overrides the bible is measured on 4:3 JPEGs at a third of the pixel count — **`edgeCoverage` half FIXED 2026-08-17; `farNearSatDelta` / `vignetteRatio` half still LIVE**
+
+**Resolution (2026-08-17).** The `edgeCoverage` half is settled and the gate is off. The correction
+into the reference frame was measured on all thirteen captures — resampled to both recorded
+geometries, squashed and cover-cropped, JPEG q85, combined 10:4 as the corpus is — at
+**1.264 ± 0.039** (range 1.220–1.340, CV 3.1%, correlation −0.78 with native coverage, so no single
+rescale is correct). **It does not close the gap: normalised, ZERO of thirteen reach the 0.599
+floor**, the best reaching 0.5719 against an RA3 median of 0.745. Resolution supplies ~29% of the
+gap in log terms; the rest is per-pixel noise, measured at σ = 8/255 to reproduce the RA3 median on
+any of our frames — the thing CLAUDE.md bans outright. So the band was never reachable by authoring,
+`edgeCoverage` is now `w: 0` in `tools/metrics.mjs` with the evidence in its header, and #34's real
+instrument is `tools/sobel.mjs` (per-building crops), which is what the bible's 40–46% is about.
+The weighted grade moved 89.2% → 97.0% purely from the demotion; the three remaining failures are
+all check #9. **The `farNearSatDelta` and `vignetteRatio` aspect contamination named below is
+untouched and still live.** Also fixed in passing: finding 16 — `shots/_metrics.json` now persists
+`sampleCount`, `expectedCount`, `partial`, `imageSizes` and `informational`.
+
+---
+
 
 `docs/grade-baseline.json` is built from 14 references: **ten at 1440×1080, four at 1024×768, all
 JPEG, all 4:3.** `edgeCoverage` is a per-pixel Sobel *coverage fraction* and is not scale-invariant.

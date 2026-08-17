@@ -192,36 +192,40 @@ describe('Scatter — the 25x25 m gate only judges ground it can act on', () => 
  * ==========================================================================
  * THE MEASUREMENT FRAME OF SCORECARD #34, WRITTEN DOWN SO IT IS NOT RE-DERIVED
  * ==========================================================================
- * `tools/metrics.mjs` scores #34 ("Sobel |grad|>25 coverage") against the RA3
- * band in `docs/grade-baseline.json`, [0.599, 0.855]. Every one of the twelve
- * fixtures fails it, and a day was spent finding out why. The answer is not in
- * the scene, and the next person should not have to spend the day again.
+ * SETTLED 2026-08-17: `tools/metrics.mjs` no longer GATES on #34. It scored
+ * "Sobel |grad|>25 coverage" against the RA3 band in `docs/grade-baseline.json`,
+ * [0.599, 0.855], and every one of the thirteen fixtures failed it. Two separate
+ * investigations went into why. The answer is not in the scene, the check is
+ * `w: 0` now, and the full evidence is in that file's header — read it there
+ * rather than re-deriving it here.
  *
  * Sobel coverage on flat-shaded art is a BOUNDARY DENSITY: a step edge lights
  * about two pixel columns, so coverage ~= 2 * L / A for L pixels of visible
  * contrast boundary in A pixels of frame. 0.60 therefore asks for a boundary
  * roughly every 3.3 px, everywhere — which at `03-terrain-closeup`'s 36 px/m is
  * a feature every 9 cm of ground. CLAUDE.md bans exactly that: "if per-pixel
- * noise is visible at gameplay zoom, it is wrong."
+ * noise is visible at gameplay zoom, it is wrong." Measured directly: gaussian
+ * luma noise at sigma = 8/255 takes ANY of the thirteen to the RA3 median of
+ * 0.745, which is what the band is really asking for.
  *
  * The band was measured on fourteen references that are 1440x1080 or 1024x768
  * JPEGs (`docs/SPEC_DRIFT_AUDIT.md` finding 17). Coverage is not scale
- * invariant, and JPEG ringing manufactures more of it. Measured on our own
- * frames, unchanged, at the reference corpus's own size and format:
+ * invariant, and JPEG ringing manufactures more of it. Measured across all
+ * thirteen captures at the corpus's own two geometries and format, combined
+ * 10:4 the way the corpus is, the correction is **1.264 +/- 0.039** — and it is
+ * not enough: normalised into that frame, ZERO of thirteen reach the 0.599
+ * floor. The best gets to 0.5719. Resolution supplies about 29% of the gap in
+ * log terms and per-pixel noise is the rest.
  *
- *              2560x1440 PNG   1024x768 PNG   1024x768 JPEG q75
- *   01-base        0.4455         0.5639           0.5972
- *   03-terrain     0.1891         0.2670           0.2924
+ * An earlier spot check here read `01-base 1024x768 JPEG q75 = 0.5972` against
+ * a 0.599 floor and made the gap look like rounding. That was one fixture at
+ * the corpus's SMALLEST geometry; over all thirteen at the 10:4 mix it is not
+ * close.
  *
- * `01-establishing-base` reaches 0.597 against a 0.599 floor without a single
- * pixel of the scene changing. What is left over on the ground-heavy fixtures
- * is real and worth closing, but it is single-digit points: 6x the prop density
- * moved `03-terrain-closeup` 0.1891 -> 0.2251, and a second ground material in
- * the splat moved it 0.1891 -> 0.1795.
- *
- * The check below is the load-bearing half of that, as an executable fact
+ * The checks below are the load-bearing half of that, as executable facts
  * rather than a paragraph: the estimator's own scale sensitivity, on a figure
- * with a fixed number of real edges.
+ * with a fixed number of real edges. They stay green and stay relevant — they
+ * are why the gate came off.
  */
 describe('scorecard #34 — the estimator is not scale invariant', () => {
   /** `tools/metrics.mjs`'s kernel and threshold, verbatim. */

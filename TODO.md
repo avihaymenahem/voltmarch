@@ -252,14 +252,19 @@ false, and a visual-tuning pass that trusted it would be misled.
 - The perf-hud zero-allocation gate's *sensitivity* was only ever verified under
   `--max-semi-space-size=4`, and that flag appears only in prose — `package.json` is a bare
   `vitest run` and `vite.config.ts` has no `poolOptions`. One `execArgv` line pins it.
-- `tools/metrics.mjs` — the header names the wrong two metrics as baseline-rebased (it is
-  `medianLuminance` + `edgeCoverage`, not `vignetteRatio`), which silently widens the flagship
-  luminance check from [0.26, 0.40] to roughly [0.134, 0.491]. Scorecard #6 gates `p1Luminance` at
-  [0.00, 0.25] against the bible's 0.06 ceiling and a measured max of 0.077, so it can never fail.
-  Scorecard #20 compares only the first and last populated bucket, never tests the top band, and
-  auto-passes any frame with fewer than three populated buckets — a blown or near-black frame takes
-  a weight-2 pass. And `shots/_metrics.json` still persists `{ score, rows, failures }` with no
-  sample count.
+- `tools/metrics.mjs` — **partly done 2026-08-17.** The header's baseline-rebased list is corrected
+  and `edgeCoverage` no longer carries `baselineKey` at all: it is `w: 0`, informational, because
+  the rebased band was measured to be unreachable by authoring (factor 1.264 ± 0.039 into the
+  reference frame, 0 of 13 in band after normalising, remainder = per-pixel noise at σ = 8/255).
+  See `docs/SPEC_DRIFT_AUDIT.md` finding 17 and that file's own #34 block. `shots/_metrics.json`
+  now persists `sampleCount` / `expectedCount` / `partial` / `imageSizes` / `informational`.
+  **Still open:** `medianLuminance` is the one remaining `baselineKey`, and it still silently
+  widens the flagship luminance check from [0.26, 0.40] to roughly [0.134, 0.491] — safe in
+  principle (luminance is scale-invariant) but nobody has argued the widening itself is right.
+  Scorecard #6 gates `p1Luminance` at [0.00, 0.25] against the bible's 0.06 ceiling and a measured
+  max of 0.077, so it can never fail. Scorecard #20 compares only the first and last populated
+  bucket, never tests the top band, and auto-passes any frame with fewer than three populated
+  buckets — a blown or near-black frame takes a weight-2 pass.
 
   **Weight the metrics half low.** The RA3 reference frames were abandoned; the scorecard is a
   regression detector now, not a quality score. The exception is #20, which tests the ACES
@@ -352,6 +357,15 @@ abandoned RA3 targets". Measured at v2.3.0, and again after the material-worker 
 twelve fixtures: **89.0% weighted, 15 failing checks, and three of them FATAL** — check #9,
 emerald-green, on `07-soviet-base`, `08-naval-water` and `09-placement` (0.0227 / 0.0208 / 0.0225).
 So the number was 1.0 point optimistic and the "no fatals" claim was false.
+
+**Re-measured 2026-08-17 on all thirteen: 97.0% weighted, 3 failing checks, all three FATAL** —
+still check #9 on the same three fixtures (0.0227 / 0.0264 / 0.0383). **The jump from 89.2% is the
+scale changing, not the art**: `edgeCoverage` went `w: 2` → `w: 0` and stopped contributing 13
+failures it could never have passed (see finding 17). Comparing a post-2026-08-17 grade to any
+earlier one compares two different denominators — `metrics.mjs` now prints the informational list
+under the score so that is visible at the point of quoting. The real outstanding art defect on this
+set is emerald-green leakage, and it got worse on `09-placement` (0.0225 → 0.0383) while nobody was
+reading past the edgeCoverage wall of red.
 
 This is the defect class this file exists to catalogue, committed in the file that catalogues it: a
 claim that quietly stopped being true, in the document a reader would trust to tell them what is

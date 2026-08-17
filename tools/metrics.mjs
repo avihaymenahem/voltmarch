@@ -34,12 +34,16 @@ const BASELINE_PATH = join(ROOT, 'docs', 'grade-baseline.json');
  *
  * `baselineKey` marks metrics where the observed RA3 distribution is a better
  * target than the asserted one, and the band is widened to the reference spread
- * at runtime. Two cases matter:
- *   - edgeCoverage: the bible's 28-46% is measured on unit/building crops; a
- *     whole-frame RA3 render measures 0.47-0.87. Not comparable, so we take the
- *     observed whole-frame band.
- *   - vignetteRatio: the references span 0.25-1.42 because they are marketing
- *     shots with wildly different composition. Too content-dependent to gate on.
+ * at runtime. EXACTLY ONE metric carries it: `medianLuminance`. That is safe
+ * because median luminance is scale-invariant — resampling a frame does not
+ * move it — so a band derived from references of unrecorded geometry is still
+ * applied in a compatible frame.
+ *
+ * This comment used to name `edgeCoverage` and `vignetteRatio` as "the two
+ * cases that matter". Both were wrong: `vignetteRatio` has never carried the
+ * flag (audit finding 6), and `edgeCoverage` carried it until the measurement
+ * recorded below took it off. Do not add `baselineKey` to a resolution-
+ * sensitive metric — the guard below will tell you why, and refuse to be quiet.
  */
 const TARGETS = {
   medianLuminance:   { range: [0.26, 0.40], w: 3, check: 4,  label: 'Frame median luminance (sRGB)', baselineKey: true },
@@ -49,7 +53,9 @@ const TARGETS = {
   p99Luminance:      { range: [0.90, 1.00], w: 3, check: 6,  label: 'p99 luminance, highlights reach (sRGB)' },
   greenHueLeak:      { range: [0.00, 0.02], w: 3, check: 9,  label: 'Fraction at hue 100-120 (amateur emerald green)' },
   farNearSatDelta:   { range: [-0.05, 1.0], w: 3, check: 12, label: 'Far minus near saturation (no fog/haze)' },
-  edgeCoverage:      { range: [0.20, 0.46], w: 2, check: 34, label: 'Sobel |grad|>25 coverage (detail density)', baselineKey: true, resolutionSensitive: true },
+  // w: 0 — measured, not conceded. See "SCORECARD #34 IS NOT GATEABLE HERE" below.
+  // The band shown is the bible's CROP band, printed as context only.
+  edgeCoverage:      { range: [0.20, 0.46], w: 0, check: 34, label: 'Sobel |grad|>25 whole-frame coverage (informational only)', resolutionSensitive: true },
   satLumMonotonic:   { range: [1, 1],       w: 2, check: 20, label: 'Saturation falls as luminance rises (ACES shoulder)' },
   vignetteRatio:     { range: [0.00, 2.00], w: 0, check: 37, label: 'Corner/centre luminance (informational only)' },
   chromaticAber:     { range: [0.00, 1.00], w: 0, check: 36, label: 'R/B edge misregistration (informational only)' },
@@ -248,12 +254,16 @@ if (mode === 'baseline') {
   /*
    * RECORD THE FRAME THE MEASUREMENT WAS TAKEN IN.
    *
-   * The shipped baseline does NOT carry this, and that omission is a live
-   * defect: `edgeCoverage` is strongly resolution-sensitive (see the block
-   * above `resolveRange`), the references are 4:3 JPEGs at roughly a third of
-   * our capture's pixel count, and the rebased band is applied to 2560x1440
-   * PNGs regardless. A stored distribution with no record of its own frame
-   * cannot be checked for that mistake by anyone who comes later.
+   * The shipped baseline does NOT carry this. It cost the project two separate
+   * investigations of a check that failed all thirteen fixtures for a reason
+   * that turned out to be the container — see the #34 block below, where the
+   * factor is finally measured at 1.264 +/- 0.039. A stored distribution with
+   * no record of its own frame cannot be checked for that mistake by anyone who
+   * comes later, and the corpus that produced this one is gone (`refs/` is
+   * gitignored and no longer on any disk here), so it can never be checked now.
+   *
+   * `imageSizes` is per-file and deliberately not summarised: the shipped
+   * corpus mixes 1440x1080 and 1024x768, and an average would have hidden that.
    */
   const geom = rows.map((r) => [r.width, r.height]);
   writeFileSync(BASELINE_PATH, JSON.stringify({
@@ -273,33 +283,80 @@ if (mode === 'baseline') {
 const baseline = existsSync(BASELINE_PATH) ? JSON.parse(readFileSync(BASELINE_PATH, 'utf8')) : null;
 
 /*
- * THE INSTRUMENT REPORTS ITS OWN UNCERTAINTY.
+ * ==========================================================================
+ * SCORECARD #34 IS NOT GATEABLE HERE — SETTLED BY MEASUREMENT 2026-08-17
+ * ==========================================================================
+ * `edgeCoverage` was `w: 2, baselineKey: true` and failed ALL THIRTEEN
+ * fixtures against the rebased band [0.5996, 0.8547]. It is `w: 0` now. That
+ * is a demotion, it lifts the weighted grade by 7.8 points, and the reason it
+ * is not simply a concession is that the failure was measured and found not to
+ * be about the art. What follows is the evidence, so nobody re-derives it.
  *
- * `docs/SPEC_DRIFT_AUDIT.md` §8.3 prescribes exactly this, and #34 is why.
+ * WHAT THE METRIC IS. A BOUNDARY DENSITY: a step edge lights ~2 pixel columns,
+ * so coverage ~= 2L/A for L pixels of contrast boundary in A pixels of frame.
+ * It moves when the capture size moves even if not one rendered pixel changes.
+ * `tests/scatter-trim-order.spec.ts` pins that as an executable fact.
  *
- * `edgeCoverage` is a BOUNDARY DENSITY: a step edge lights ~2 pixel columns, so
- * coverage scales with boundary-length-per-pixel, which means it moves when the
- * capture size moves even if not one rendered pixel changes. Measured on one
- * unmodified frame, re-encoded three ways:
+ * THE REFERENCE FRAME IS RECORDED, NOT GUESSED. `docs/SPEC_DRIFT_AUDIT.md`
+ * finding 17: the 14 references are ten 1440x1080 and four 1024x768 JPEGs, all
+ * 4:3. So the corpus is not even ONE measurement frame — it mixes two that
+ * differ by 40% in linear scale, and the p25..p75 band is taken across both.
+ * `grade-baseline.json` itself records no geometry (the `--baseline` writer
+ * emits `imageSizes` now; the shipped file predates it).
  *
- *     2560x1440 PNG (our capture)     0.1891
- *     1440x1080 JPEG q85              0.2396
- *     1024x768  JPEG q75              0.2924      +55%, zero art changed
+ * THE CORRECTION FACTOR, MEASURED ON OUR OWN 13 CAPTURES. Each resampled to
+ * both reference geometries, both squashed and cover-cropped, JPEG q85, then
+ * combined 10:4 the way the corpus is:
  *
- * The shipped `grade-baseline.json` records no geometry at all, and the
- * references are 4:3 JPEGs at roughly a third of our pixel count. So the
- * rebased band is derived in one frame and applied in another — the same class
- * of error as measuring linear luminance against an sRGB target, which this
- * file's own header already documents. The bible's §0.1 rule is "two
- * measurement frames — never mix them".
+ *     factor = 1.264 +/- 0.039  (13 paired samples, range 1.220-1.340, CV 3.1%)
  *
- * The band is deliberately NOT adjusted here. Doing that on an inference would
- * be the very defect this warning exists to expose, and settling it needs the
- * reference corpus (`refs/`, gitignored) to re-derive. Until then the check
- * stays exactly as strict as it was and simply stops pretending its failure is
- * a pure verdict on the art.
+ * It is NOT a clean multiplier. It correlates -0.78 with native coverage — a
+ * saturation effect, since coverage is bounded at 1 — so the frames that need
+ * the most help get the least. No single rescale can be correct.
+ *
+ * AND IT IS NOWHERE NEAR ENOUGH. Normalised into the reference frame, ZERO of
+ * 13 land in the band. The best (07-soviet-base) reaches 0.5719 against a
+ * 0.5996 floor; the median reaches 0.4447 against an RA3 median of 0.745.
+ * Closing that needs 2.25x and resolution supplies 1.26x — about 29% of the
+ * gap in log terms. So normalising would have dressed an unreachable band in a
+ * measured factor and still failed everything. That option is refuted, not
+ * declined.
+ *
+ * WHAT THE REMAINING 71% IS. Per-pixel noise. Sweeping gaussian luma noise over
+ * our unmodified captures: sigma = 8/255 takes ANY of them to ~0.75, the RA3
+ * median, on the nose. The references are 2008-era compressed marketing JPEGs;
+ * their coverage is substantially mosquito noise and grain. CLAUDE.md bans
+ * exactly that ("if per-pixel noise is visible at gameplay zoom, it is wrong"),
+ * so the rebased band rewards the one thing the project forbids.
+ *
+ * WHY THE ASSERTED BAND IS NOT THE ANSWER EITHER. Bible #34 reads "28-36% on
+ * units, 40-46% on buildings" — a CROP band on the subject. Measured whole-
+ * frame it becomes a function of how much sky and bare ground a fixture is
+ * posed over. Restricting to blocks that carry subject, the 13 captures span
+ * 0.398-0.541 (CV 10.3%) while their whole-frame values span 2.4x. The band in
+ * `TARGETS` above, [0.20, 0.46], is neither of the bible's numbers anyway.
+ *
+ * WHERE #34 ACTUALLY LIVES: `tools/sobel.mjs`, which measures per-building
+ * crops in a studio render and is, in its own words, "the only number in the
+ * repo that belongs next to the bible's 40-46%". Use it. This whole-frame
+ * number is a regression detector for a FIXED capture geometry and nothing
+ * more — which is what TODO.md already concluded about the metrics half.
+ *
+ * ONE FIXTURE READS LOW AND IT IS COMPOSITION, NOT GREEBLE. `03-terrain-closeup`
+ * is rank 1 (lowest) at every geometry tested — Spearman rho >= 0.984 against
+ * native over a 3.3x scale range, so the RANKING is geometry-invariant even
+ * though the value is not. But 34.4% of its 64px blocks are near-featureless
+ * bare ground, 2.6x the set median, and its subject blocks measure 0.4021 —
+ * inside the bible's 0.40-0.46 building band. It is posed over an empty field,
+ * not built from flat art.
  */
 if (baseline && !baseline.imageSizes) {
+  /*
+   * Correctly SILENT as of the block above: no `baselineKey` metric is
+   * resolution-sensitive any more, so the missing geometry cannot contaminate
+   * a weighted check. Kept armed, because the next person to reach for
+   * `baselineKey` on a scale-dependent metric needs to be told, not trusted.
+   */
   const affected = Object.entries(TARGETS)
     .filter(([, t]) => t.baselineKey && t.resolutionSensitive)
     .map(([k]) => k);
@@ -309,11 +366,11 @@ if (baseline && !baseline.imageSizes) {
 ! grade-baseline.json records no capture geometry, and ${affected.join(', ')} `
       + `${affected.length === 1 ? 'is' : 'are'} resolution-sensitive.
 `
-      + `  Its band is rebased from references of unknown size onto captures of a known one,
+      + `  Its band would be rebased from references of unknown size onto captures of a known
 `
-      + `  so a failure here is NOT purely a statement about the art. Re-derive with
+      + `  one, so a failure there is NOT a statement about the art. See the #34 block above:
 `
-      + `  \`node tools/metrics.mjs --baseline refs/*\` to record the frame and settle it.
+      + `  that exact mistake was measured at a factor of 1.264 and cost a day to find twice.
 `,
     );
   }
@@ -344,6 +401,25 @@ console.log(
   `\nWeighted grade score: ${(score * 100).toFixed(1)}%  ` +
     `(${failures.length} failing checks over ${rows.length} image${rows.length === 1 ? '' : 's'})`,
 );
+
+/*
+ * NAME WHAT THE SCORE DOES NOT COVER, EVERY TIME IT IS PRINTED.
+ *
+ * A grade is quotable, and a quoted grade outlives the context it was measured
+ * in — TODO.md and this file's own history both carry scorecard numbers that
+ * silently stopped being true. Three checks carry `w: 0` and contribute
+ * nothing; #34 among them is a DEMOTION, not a metric that was always
+ * cosmetic, and it moved this number by 7.8 points on the 13-shot set. Anyone
+ * comparing today's grade to a pre-2026-08-17 one is comparing two different
+ * scales, and this line is how they find that out.
+ */
+const informational = Object.entries(TARGETS).filter(([, t]) => t.w === 0);
+if (informational.length) {
+  console.log(
+    `  Excludes ${informational.length} informational check(s), weight 0 and not scored: ` +
+      informational.map(([k, t]) => `#${t.check} ${k}`).join(', ') + '.',
+  );
+}
 // Kept in step with `SHOTS` in tools/shoot.mjs and with the assertion in
 // tests/shot-camera.spec.ts, which is what fails when the three disagree.
 const FULL_SET = 13;
@@ -361,4 +437,24 @@ if (failures.some((f) => f.weight === 3)) {
   }
 }
 
-writeFileSync(join(ROOT, 'shots', '_metrics.json'), JSON.stringify({ score, rows, failures }, null, 2));
+// `informational` travels with the score for the same reason it is printed: the
+// persisted grade is what gets quoted months later, and it must carry its own
+// scale. `imageSizes` for the same reason the baseline writer records it —
+// `edgeCoverage` here is only comparable between runs of identical geometry.
+writeFileSync(
+  join(ROOT, 'shots', '_metrics.json'),
+  JSON.stringify(
+    {
+      score,
+      sampleCount: rows.length,
+      expectedCount: FULL_SET,
+      partial: rows.length < FULL_SET,
+      imageSizes: rows.map((r) => [r.width, r.height]),
+      informational: informational.map(([k, t]) => ({ key: k, check: t.check })),
+      rows,
+      failures,
+    },
+    null,
+    2,
+  ),
+);
