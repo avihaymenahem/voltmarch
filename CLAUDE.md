@@ -568,6 +568,31 @@ module. `docs/SPEC_DRIFT_AUDIT.md` #62 is the entry.
 - **No `AmbientLight` anywhere.** `HemisphereLight` only — a flat ambient kills the shadow tint that
   the whole grade depends on.
 
+## Before you research the renderer, read what was already measured
+
+[`docs/RENDER_FINDINGS.md`](docs/RENDER_FINDINGS.md) holds the ANSWERS to questions that have
+already been paid for — with the instrument, the number and the date. It exists because several
+expensive investigations were re-run from scratch by people who had no way to know they were
+settled. Read it before opening a renderer question. The four that change what you would otherwise
+do:
+
+- **The draw-call budget is not being missed.** `frame.drawCalls` sums THREE scene submissions;
+  `MAX_DRAW_CALLS` budgets the colour pass alone, which runs 51–77 against 130. There are ~50 colour
+  draws of headroom and several systems are capped "for the budget" against a budget that is half
+  empty.
+- **Reading `config.ts` is not the same as knowing what the shader did.** The grade pass ran on its
+  constructor literals for its entire life — `ShaderPass` deep-copies a plain shader description —
+  so grain and chromatic aberration shipped LIVE while config said 0 and a test that scanned config
+  passed. When it matters, read the uniform off a booted page.
+- **The AAA gap is under-tuning, not missing systems, and not the procedural constraint.** The road
+  generator hits the bible's detail band from pure code while terrain delivers a quarter of it.
+- **`edgeCoverage` failing 13/13 is real** and must not be demoted: subject crops are in band, the
+  ground is ~4× under, and the frame is 60–75% ground.
+
+`docs/SPEC_DRIFT_AUDIT.md` catalogues claims that stopped being true; `RENDER_FINDINGS.md` is the
+opposite — things that are true and cost a lot to establish. Overturn an entry by rewriting it, not
+by appending a contradiction.
+
 ## The look is measured, not judged
 
 [`docs/RA3_LOOK_BIBLE.md`](docs/RA3_LOOK_BIBLE.md) is the visual law: camera, lighting, palette,
