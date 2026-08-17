@@ -473,7 +473,27 @@ void main() {
     col = texture2D(tDiffuse, uv).rgb;
   }
 
-  /* --- unsharp mask ------------------------------------------------------ */
+  /* --- unsharp mask: LUMA ONLY -------------------------------------------
+   * The overshoot is applied as a SCALE on the whole triple, computed from
+   * luma, rather than as a per-channel add.
+   *
+   * The per-channel version -- col += (col - blur) * uSharpen, then a clamp to
+   * zero -- is a chroma generator at any high-contrast edge. On the dark side of a
+   * whitecap the undershoot drives every channel negative; the clamp lands R
+   * and B on exactly 0 while G survives, and the grade's "blown highlights go
+   * to paper white" fold then lifts R and B back TOGETHER, so the pixel comes
+   * out at hue exactly 120.0 with R == B. That is not a rounding artefact: on
+   * 08-naval-water: 15 265 pixels sat at h in [119.5, 120] and 23.7% of the
+   * whole scorecard-#9 leak was |R - B| <= 2, i.e. ringing rather than art.
+   * Bible 4.6 measures R/B edge registration at +0.0 px in every reference
+   * frame and metrics.mjs #36 read us at 0.78-1.02 against RA3's 0.512.
+   *
+   * Luma is linear, so luma(col * s) == luma(col) * s: this produces exactly
+   * the same luminance edge the per-channel version did, which is the half
+   * scorecard #34 measures (its Sobel runs on grey). Only the chroma differs.
+   * A pixel whose sharpened luma goes negative goes to BLACK, which has no hue
+   * at all, instead of to a saturated primary.
+   */
   if (uSharpen > 0.0001) {
     vec3 blur =
       texture2D(tDiffuse, uv + vec2( uTexel.x, 0.0)).rgb +
@@ -481,7 +501,9 @@ void main() {
       texture2D(tDiffuse, uv + vec2(0.0,  uTexel.y)).rgb +
       texture2D(tDiffuse, uv + vec2(0.0, -uTexel.y)).rgb;
     blur *= 0.25;
-    col += (col - blur) * uSharpen;
+    float lc = luma(col);
+    float ls = lc + (lc - luma(blur)) * uSharpen;
+    col *= max(ls, 0.0) / max(lc, 1e-4);
     col = max(col, 0.0);
   }
 
@@ -918,13 +940,60 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     });
 
     build('grade', () => {
-      gradeUniforms = makeGradeUniforms();
       const p = new ShaderPass({
         name: 'GradePass',
-        uniforms: gradeUniforms as unknown as { [k: string]: THREE.IUniform },
+        uniforms: makeGradeUniforms() as unknown as { [k: string]: THREE.IUniform },
         vertexShader: GRADE_VERT,
         fragmentShader: GRADE_FRAG,
       });
+      /*
+       * THE HANDLE MUST COME BACK OUT OF THE PASS, NOT GO INTO IT.
+       *
+       * `ShaderPass` handed a plain shader DESCRIPTION does
+       * `this.uniforms = UniformsUtils.clone( shader.uniforms )` — a deep copy.
+       * (It aliases only when handed a real `ShaderMaterial`.) This block used
+       * to keep the object it passed in, so `gradeUniforms` pointed at a
+       * detached copy and EVERY write to it went nowhere: `syncConfig`, the
+       * `uTexel` write in `setSize`, and the per-frame `uTime`.
+       *
+       * The grade therefore ran, for its entire life, on the literals in
+       * `makeGradeUniforms()`. Read live off a booted `07-soviet-base`:
+       *
+       *     uShadowTint  (1,1,1)      uMidTint (1,1,1)   uHighTint (1,1,1)
+       *     uLift        (0,0,0)      uGain    (1,1,1)
+       *     uGrain       0.016        uCA      0.0016
+       *     uTexel       (1/1920, 1/1080)  at a 2560x1440 buffer
+       *     uTime        0
+       *
+       * against a `RENDER_CONFIG.post.grade` that correctly held shadowTint
+       * #4F5667, lift #06090F, gain #FFF6E8, grain 0 and CA 0. Four separate
+       * defects, none of which announced itself:
+       *
+       *  1. The WHOLE 3-way colour balance was a no-op. Every measurement in
+       *     the `shadowTint` block of `config.ts` — three values, each with a
+       *     scorecard #9 number attached — moved a uniform the shader never
+       *     saw. So did `lift` and `gain`.
+       *  2. GRAIN AND CHROMATIC ABERRATION WERE BOTH LIVE. Both are banned by
+       *     name in CLAUDE.md and RA3_LOOK_BIBLE.md §4.6, both were turned off
+       *     in config by `docs/SPEC_DRIFT_AUDIT.md` finding 8, and both kept
+       *     running because turning them off in config reached nothing.
+       *     `tools/metrics.mjs` #36 (R/B edge misregistration) read 0.78-1.02
+       *     against RA3's measured 0.512 and nobody could account for it: that
+       *     was uCA 0.0016, exactly as designed, on a pass that should be dead.
+       *  3. The unsharp mask sampled on a 1920x1080 texel grid at 1440p.
+       *  4. `uTime` never advanced, which is the only reason the grain was not
+       *     caught by the shot harness — a frozen hash pattern is
+       *     byte-identical run to run, so `tools/shoot.mjs` reported stability
+       *     over an effect that is banned precisely because it is unstable.
+       *
+       * The scalars hid all of it: every literal above except grain, CA, texel
+       * and time is EXACTLY the `TONE_NOON` value, so exposure, contrast,
+       * saturation, shadowSaturation, vignette, sharpen and the tone mode all
+       * read back correct and the pass looked synced.
+       *
+       * Do not "tidy" this by assigning `gradeUniforms` before the `new`.
+       */
+      gradeUniforms = p.uniforms as unknown as GradeUniforms;
       return p as unknown as Pass;
     });
 
@@ -1437,6 +1506,26 @@ export function createPostChain(options: CreatePostOptions): PostChain {
      * depth beneath, which is exactly the decal precedent this filter was
      * written for. STRICT `=== false`: an unset `userData` — every mesh in the
      * game bar the few that ask — keeps the behaviour it has always had.
+     *
+     * THE RULE FOR DECIDING WHO MAY OPT OUT, measured rather than argued.
+     * An excluded mesh's pixels sample whatever depth is BEHIND it. For a 40 mm
+     * pad or a decal sheet that is the terrain it lies on, so the substitution
+     * is very nearly exact and the exclusion is free. For anything standing
+     * PROUD of the ground it is wrong by the object's whole height, and the
+     * background's occlusion gets painted onto the object: an A/B over the
+     * thirteen fixtures put a ragged dark fringe along a cafe umbrella's top
+     * edge at max delta 171/255 and a grey smear across the lit top faces of a
+     * crate stack.
+     *
+     * So the test is NOT "is this thing small" — it is "is this thing within a
+     * few centimetres of the surface behind it". Scatter props fail that test
+     * and were measured and REJECTED (`tools/shot-compare.mjs`, and the branch
+     * `scatter-ao-occluder-ab` holds the diff and the crops): excluding all 22
+     * types saves 14-22 draws a frame and moves the scorecard by nothing, but
+     * costs the props their ground contact, which nothing else supplies —
+     * `contact-shadows.system.ts` reads the ENTITY store and scatter props are
+     * not entities. The route that gets those draws honestly is to give them
+     * the contact-decal layer bible §3.3 prescribes and THEN exclude them.
      */
     if (mesh.userData.vmAoOccluder === false) return false;
     if (mesh.layers.isEnabled(LAYERS.EFFECTS) || mesh.layers.isEnabled(LAYERS.OVERLAY)) return false;

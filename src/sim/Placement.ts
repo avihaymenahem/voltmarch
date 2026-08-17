@@ -878,11 +878,30 @@ export class PlacementController {
   constructor(deps: PlacementDeps) {
     this.deps = deps;
 
-    okColor.setHex(hexToInt(PLACEMENT.validColor)).convertSRGBToLinear();
-    badColor.setHex(hexToInt(PLACEMENT.invalidColor)).convertSRGBToLinear();
-    ghostTint.setHex(hexToInt(PLACEMENT.ghostColor)).convertSRGBToLinear();
-    bandColor.setHex(hexToInt(FACING_BAND_COLOR)).convertSRGBToLinear();
-    arrowColor.setHex(hexToInt(FACING_ARROW_COLOR)).convertSRGBToLinear();
+    /*
+     * `setHex` ALREADY converts. These five lines each carried a trailing
+     * `.convertSRGBToLinear()` and they were the only five calls to it in the
+     * whole codebase — because with `THREE.ColorManagement.enabled = true`
+     * (render/renderer.ts) `Color.setHex(hex)` defaults to `SRGBColorSpace` and
+     * runs `colorSpaceToWorking` on its way in. The extra call linearised the
+     * result a SECOND time, so every one of these five overlays shipped at a
+     * colour nobody authored: darker, and much more saturated.
+     *
+     * `validColor` #4ADE80 — a soft mint — reached the screen as rgb(17,186,55),
+     * a pure emerald. That is scorecard #9's "amateur emerald green" by name,
+     * painted across a quarter of the frame whenever a structure is on the
+     * cursor: `09-placement` measured 0.0383 against a 0.02 ceiling, the worst
+     * number on the board and nearly 2x the limit. It was not a grade problem
+     * and no amount of tint chasing would have found it.
+     *
+     * Do not "restore" the conversion. If a colour here looks washed out, the
+     * hex in PLACEMENT is the thing to change — it is now what you actually see.
+     */
+    okColor.setHex(hexToInt(PLACEMENT.validColor));
+    badColor.setHex(hexToInt(PLACEMENT.invalidColor));
+    ghostTint.setHex(hexToInt(PLACEMENT.ghostColor));
+    bandColor.setHex(hexToInt(FACING_BAND_COLOR));
+    arrowColor.setHex(hexToInt(FACING_ARROW_COLOR));
 
     this.group = new THREE.Group();
     this.group.name = 'placement-ghost';

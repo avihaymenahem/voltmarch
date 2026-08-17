@@ -796,6 +796,17 @@ const TONE_NOON = {
    * saturated greens rotating into the 100-120 window. It also moves §13 #7's
    * lit/shadow ratio the way the previous note said it needed to go: the
    * complaint there was "too dark in RED", and this returns 2.5x of it.
+   *
+   * EVERY NUMBER IN THE THREE PARAGRAPHS ABOVE WAS MEASURED THROUGH A UNIFORM
+   * THE SHADER NEVER READ. `uShadowTint` sat at its constructor literal
+   * (1, 1, 1) for the whole of that history — see the block above
+   * `gradeUniforms = p.uniforms` in `src/render/post.ts`, where a `ShaderPass`
+   * was cloning the uniform object out from under the handle `syncConfig`
+   * writes to. So this field, `midTint`, `highlightTint`, `lift` and `gain`
+   * were all inert, and the leak those paragraphs chase was never the tint's
+   * doing. The values are LEFT AS THEY WERE rather than re-derived: they now
+   * reach the shader for the first time, and re-tuning them belongs to whoever
+   * looks at the frame with the grade actually running.
    */
   shadowTint: '#4F5667',
   midTint: '#8C8578',

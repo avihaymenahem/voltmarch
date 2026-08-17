@@ -87,3 +87,8 @@ logs/
 
 # Piper voice models — 109 MB, staged for tools/render-eva.py, never shipped
 tools/tts-voices/
+
+# A/B capture sets and crop stitches from tools/shot-compare.mjs.
+# ~50 MB per capture set; they are evidence for one review, not history.
+shots-*/
+ab/
