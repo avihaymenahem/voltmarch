@@ -72,7 +72,10 @@ import {
   ROAD_SURFACE_LIFT,
   ROAD_WAYPOINT_SPACING,
 } from '../core/config';
-import { linearColorTriple, materialTextureSet, textures, type TextureRequest } from '../core/assets';
+import {
+  ROAD_ARROW, ROAD_ATTRIBUTE_NAMES, ROAD_MARKS, ROAD_MARK_LINEAR, ROAD_MATERIAL_NAMES,
+  SURFACE_TILE_METRES, arrowMask, roadSurfaceTextures, type RoadSurfaceKind,
+} from './road-markings';
 import { DEG2RAD, Rng, clamp, clamp01, wrapAngle } from '../core/math';
 import { Locomotor } from '../core/types';
 import { LAYERS, RENDER_ORDER } from '../render/scene';
@@ -1108,78 +1111,19 @@ class CarriagewayCover {
  * ========================================================================== */
 
 /**
- * Metres per repeat of each generated surface texture, and its texel edge.
+ * The surface tiles, the clean-set palette, the texture requests and the arrow
+ * masks now live in `./road-markings.ts`, WHICH IS THE POINT OF THAT FILE.
  *
- * These live here rather than in config because they are chosen TOGETHER with
- * the generator parameters below: 4.8 m across 512 texels puts a 1.2 m slab on
- * exactly 128 texels and four whole slabs in the tile, which is the difference
- * between paving that tiles seamlessly and paving whose joints step at every
- * repeat. Asphalt and kerb are near-uniform colour fields, so their tile is
- * sized for cheap generation rather than for feature alignment.
+ * `./RoadNodeMaterial.ts` is this module's TSL twin and has to build byte-for-
+ * byte the same textures out of byte-for-byte the same requests, or the two
+ * renderers disagree about the road — which is §4.5's "two grade baselines"
+ * risk arriving through the smallest possible door, on the one surface
+ * `docs/RENDER_FINDINGS.md` measures as already inside the bible's detail band.
+ * Nothing about the values changed in the move; `tests/road-node-material.spec.ts`
+ * writes every one of them out a second time, by hand, to prove it.
  */
-const SURFACE_TILE_METRES = { asphalt: 6.0, kerb: 2.0, pavement: 4.8 } as const;
-const SURFACE_TEXELS = { asphalt: 256, kerb: 128, pavement: 512 } as const;
-
-/** Metres to pavement texels. 1.2 m lands on exactly 128; 0.03 m on 3.2. */
-function paveTexels(metres: number): number {
-  return (metres / SURFACE_TILE_METRES.pavement) * SURFACE_TEXELS.pavement;
-}
-
-/**
- * The clean-set palette, read off `docs/surface-refs/`.
- *
- * `ROAD_COLORS` still owns every PAINT colour (lane white, centre yellow, kerb
- * red) because those are correct. What it cannot own is the surface base tones:
- * its asphalt `#46464A` is a mid neutral grey that was authored to be seen
- * through a heavy speckle overlay, and with the speckle gone it reads as
- * concrete. RA3's carriageway is a dark, slightly warm near-black.
- *
- * THE PAVEMENT MOVED, and it is measured. It was `#cbc0ae` — V 0.80, S 0.14 —
- * a pale beige, and pavement is the largest single desaturated mass on the map
- * AND it fills the far field, where the camera's grazing angle stacks a sky
- * sheen on top of it. That combination owned scorecard #12 (far minus near
- * saturation), which was failing on nine of the twelve critique shots at −0.06
- * to −0.30 against a −0.05 floor: a near-white far field is exactly the "haze"
- * the check exists to catch, whether or not any fog is enabled.
- *
- * The replacement is a cool concrete: V 0.80 -> 0.55 and S 0.14 -> 0.19, and
- * the hue moves to a blue-grey, which is both what RA3's sidewalks actually are
- * and the same cool shadow language `TONE_NOON.shadowTint` carries. The kerb
- * stays one step lighter than the pavement so the step still catches the sun.
- */
-const SURFACE_COLOURS = {
-  // Every one of these carries real chroma, and that is the point. Road surface
-  // is the largest man-made mass on the map and it runs through the FAR field
-  // of most frames, so a near-neutral carriageway is measured directly by
-  // scorecard #12 as haze. The old set was asphalt S 0.09, pavement S 0.11 and
-  // kerb S 0.11 — three big grey planes. These are the same values with the
-  // grey axis traded for a cool blue, which is what RA3's tarmac actually is.
-  asphalt: '#242a33',
-  kerb: '#7e8aa2',
-  pavement: '#697488',
-  pavementJoint: '#4c5568',
-} as const;
-
-function vec3Of(hex: string): THREE.Vector3 {
-  const [r, g, b] = linearColorTriple(hex);
-  return new THREE.Vector3(r, g, b);
-}
-
-/**
- * Lane arrows, painted on the approach to every junction mouth.
- *
- * Rasterized by the `decal` generator from real polygon paths, so the arrow has
- * hard edges and one texel of antialiasing — it is a DRAWN SHAPE, never a
- * noise-modulated blob. Both paths are authored tip-toward-v=0 and (for the
- * turn) head-toward-+u, which is what lets the shader place them by
- * `distance to the junction` and `distance from the centre line` without ever
- * needing to know which way traffic runs.
- */
-function arrowMask(path: 'arrowStraight' | 'arrowTurn'): THREE.DataTexture {
-  return textures.get({
-    kind: 'decal', channel: 'mask', tiling: false,
-    size: 128, colour: ROAD_COLORS.laneLine, path, amount: 1,
-  });
+function vec3Of(triple: readonly [number, number, number]): THREE.Vector3 {
+  return new THREE.Vector3(triple[0], triple[1], triple[2]);
 }
 
 /** Shared marking uniforms, so a critic can retune the whole network at once. */
@@ -1198,28 +1142,38 @@ interface RoadUniforms {
 function makeRoadUniforms(): RoadUniforms {
   return {
     uLaneWidth: { value: ROAD_LANE_WIDTH },
-    uCentre: { value: vec3Of(ROAD_COLORS.centreLine) },
-    uPaint: { value: vec3Of(ROAD_COLORS.laneLine) },
-    uWheelPath: { value: vec3Of(ROAD_COLORS.wheelPath) },
-    uKerbRed: { value: vec3Of(ROAD_COLORS.kerbRed) },
-    uKerbYellow: { value: vec3Of(ROAD_COLORS.kerbYellow) },
+    uCentre: { value: vec3Of(ROAD_MARK_LINEAR.centre) },
+    uPaint: { value: vec3Of(ROAD_MARK_LINEAR.paint) },
+    uWheelPath: { value: vec3Of(ROAD_MARK_LINEAR.wheelPath) },
+    uKerbRed: { value: vec3Of(ROAD_MARK_LINEAR.kerbRed) },
+    uKerbYellow: { value: vec3Of(ROAD_MARK_LINEAR.kerbYellow) },
     uArrowStraight: { value: arrowMask('arrowStraight') },
     uArrowTurn: { value: arrowMask('arrowTurn') },
   };
 }
 
 /**
- * Where a lane arrow sits, in metres from the junction mouth: tip at NEAR,
- * tail at FAR. It starts past the stop bar (which ends at 9.6 m) so paint
- * never overlaps paint, and it is 5.4 x 2.3 m — a real road arrow, drawn at
- * bible §6.1's 2-3x oversize so it survives the RTS camera.
+ * A GLSL float literal for a JavaScript number.
+ *
+ * `ROAD_MARKS` holds plain numbers so `RoadNodeMaterial.ts` can feed them to TSL
+ * directly, and `${3.0}` interpolates as `3` — which GLSL ES reads as an int and
+ * refuses to `step()` against a float. This appends the point that JavaScript
+ * drops. It also means three values now print one trailing zero shorter than the
+ * hand-typed literals they replaced (`0.90` -> `0.9`, `0.30` -> `0.3`,
+ * `0.80` -> `0.8`): identical floats, different SOURCE, which is exactly what
+ * the program cache key below exists to notice.
  */
-const ROAD_ARROW_NEAR = 11.0;
-const ROAD_ARROW_FAR = 16.4;
-const ROAD_ARROW_HALF_WIDTH = 1.15;
+function glf(n: number): string {
+  const s = String(n);
+  return s.includes('.') || s.includes('e') ? s : `${s}.0`;
+}
 
 /**
  * The carriageway marking shader.
+ *
+ * EVERY CONSTANT COMES FROM `./road-markings.ts`, which `RoadNodeMaterial.ts`
+ * also reads. A stripe width typed twice is a road that is 0.12 m wide on one
+ * renderer and 0.15 m on the other.
  *
  * `aRoad` is (u, v, halfWidth, dEnd):
  *   u       signed metres across the carriageway, -halfWidth..+halfWidth
@@ -1240,8 +1194,8 @@ const ROAD_MARKING_GLSL = /* glsl */ `
   float lanes = floor(rw * 2.0 / uLaneWidth + 0.5);
 
   // Anti-aliasing widths in the two road-local axes.
-  float aaU = fwidth(ru) * 0.6 + 0.004;
-  float aaV = fwidth(rv) * 0.6 + 0.004;
+  float aaU = fwidth(ru) * ${glf(ROAD_MARKS.aaGain)} + ${glf(ROAD_MARKS.aaFloor)};
+  float aaV = fwidth(rv) * ${glf(ROAD_MARKS.aaGain)} + ${glf(ROAD_MARKS.aaFloor)};
 
   // --- lane arrow lookup, in UNIFORM control flow -------------------------
   // The arrow box is anchored on (distance from the centre line, distance to
@@ -1253,9 +1207,9 @@ const ROAD_MARKING_GLSL = /* glsl */ `
   // undefined in non-uniform control flow; the box gate does the selecting.
   float arrowLane   = floor(abs(ru) / uLaneWidth);
   float arrowCentre = (arrowLane + 0.5) * uLaneWidth;
-  float arrowU = (abs(ru) - arrowCentre) / ${(ROAD_ARROW_HALF_WIDTH * 2).toFixed(3)} + 0.5;
-  float arrowV = (dEnd - ${ROAD_ARROW_NEAR.toFixed(3)})
-               / ${(ROAD_ARROW_FAR - ROAD_ARROW_NEAR).toFixed(3)};
+  float arrowU = (abs(ru) - arrowCentre) / ${ROAD_ARROW.width.toFixed(3)} + 0.5;
+  float arrowV = (dEnd - ${ROAD_ARROW.near.toFixed(3)})
+               / ${ROAD_ARROW.span.toFixed(3)};
   vec2  arrowUv = vec2(arrowU, arrowV);
   float arrowStraightA = texture2D(uArrowStraight, arrowUv).a;
   float arrowTurnA     = texture2D(uArrowTurn, arrowUv).a;
@@ -1270,46 +1224,48 @@ const ROAD_MARKING_GLSL = /* glsl */ `
     // it reads as "texture" rather than as "polish" it is wrong.
     float laneIdx = floor(abs(ru) / uLaneWidth);
     float inLane  = abs(ru) - laneIdx * uLaneWidth;
-    float wheel = (1.0 - smoothstep(0.28, 0.46, abs(inLane - 0.85)))
-                + (1.0 - smoothstep(0.28, 0.46, abs(inLane - 2.55)));
-    diffuseColor.rgb = mix(diffuseColor.rgb, uWheelPath, clamp(wheel, 0.0, 1.0) * 0.34);
+    float wheel = (1.0 - smoothstep(${glf(ROAD_MARKS.wheelLo)}, ${glf(ROAD_MARKS.wheelHi)}, abs(inLane - ${glf(ROAD_MARKS.wheelInner)})))
+                + (1.0 - smoothstep(${glf(ROAD_MARKS.wheelLo)}, ${glf(ROAD_MARKS.wheelHi)}, abs(inLane - ${glf(ROAD_MARKS.wheelOuter)})));
+    diffuseColor.rgb = mix(diffuseColor.rgb, uWheelPath, clamp(wheel, 0.0, 1.0) * ${glf(ROAD_MARKS.wheelMix)});
 
     // --- centre line: double solid yellow, 0.12 stripe / 0.12 gap ----------
-    float c = 1.0 - smoothstep(0.06 - aaU, 0.06 + aaU, abs(abs(ru) - 0.12));
+    float c = 1.0 - smoothstep(${glf(ROAD_MARKS.lineHalf)} - aaU, ${glf(ROAD_MARKS.lineHalf)} + aaU, abs(abs(ru) - ${glf(ROAD_MARKS.centreOffset)}));
     if (c > 0.0) { mark = max(mark, c); markCol = uCentre; }
 
     // --- lane dividers: white dashes 3.0 m on / 2.8 m off ------------------
     // A 4-lane carriageway has exactly one divider each side of the centre,
     // at |u| = one lane width. Unrolled rather than looped: GLSL ES 1.00 wants
     // constant loop bounds and there is only ever one iteration to do.
-    if (lanes >= 4.0) {
-      float dash = step(mod(rv, 5.8), 3.0);
-      float d = 1.0 - smoothstep(0.06 - aaU, 0.06 + aaU, abs(abs(ru) - uLaneWidth));
+    if (lanes >= ${glf(ROAD_MARKS.dividerLanes)}) {
+      float dash = step(mod(rv, ${glf(ROAD_MARKS.dashPeriod)}), ${glf(ROAD_MARKS.dashOn)});
+      float d = 1.0 - smoothstep(${glf(ROAD_MARKS.lineHalf)} - aaU, ${glf(ROAD_MARKS.lineHalf)} + aaU, abs(abs(ru) - uLaneWidth));
       mark = max(mark, d * dash);
     }
 
     // --- edge line: solid white 0.15 m, inset 0.25 m from the kerb ---------
-    float e = 1.0 - smoothstep(0.075 - aaU, 0.075 + aaU, abs(abs(ru) - (rw - 0.325)));
+    float e = 1.0 - smoothstep(${glf(ROAD_MARKS.edgeHalf)} - aaU, ${glf(ROAD_MARKS.edgeHalf)} + aaU, abs(abs(ru) - (rw - ${glf(ROAD_MARKS.edgeInset)})));
     mark = max(mark, e);
 
     // --- crosswalk zebra + stop bar at every junction mouth ----------------
     float zA = ${ROAD_CROSSWALK_START.toFixed(3)};
     float zB = zA + ${ROAD_CROSSWALK_DEPTH.toFixed(3)};
-    if (dEnd > zA - 0.4 && dEnd < zB + 0.4) {
+    if (dEnd > zA - ${glf(ROAD_MARKS.crosswalkGate)} && dEnd < zB + ${glf(ROAD_MARKS.crosswalkGate)}) {
       float band = smoothstep(zA - aaV, zA + aaV, dEnd) * (1.0 - smoothstep(zB - aaV, zB + aaV, dEnd));
       // Bars run ALONG the direction of travel and repeat across the road:
-      // 0.55 m bar, 0.55 m gap (bible §6.3 wants 0.45-0.60 for both).
-      float bar = mod(ru + 1024.0, ${ROAD_CROSSWALK_PERIOD.toFixed(3)});
+      // 0.55 m bar, 0.55 m gap (bible §6.3 wants 0.45-0.60 for both). The
+      // +1024 bias keeps the dividend of mod() non-negative, which is what
+      // lets the TSL port translate it as WGSL's % — see road-markings.ts.
+      float bar = mod(ru + ${glf(ROAD_MARKS.crosswalkBias)}, ${ROAD_CROSSWALK_PERIOD.toFixed(3)});
       float halfP = ${(ROAD_CROSSWALK_PERIOD * 0.5).toFixed(3)};
       float stripe = 1.0 - smoothstep(halfP * 0.5 - aaU, halfP * 0.5 + aaU, abs(bar - halfP * 0.5));
       // Keep the bars off the very edge so they do not touch the kerb.
-      float inset = 1.0 - smoothstep(rw - 0.55, rw - 0.30, abs(ru));
+      float inset = 1.0 - smoothstep(rw - ${glf(ROAD_MARKS.zebraInsetLo)}, rw - ${glf(ROAD_MARKS.zebraInsetHi)}, abs(ru));
       mark = max(mark, band * stripe * inset);
     }
     float sA = zB + ${ROAD_STOPBAR_GAP.toFixed(3)};
     float sB = sA + ${ROAD_STOPBAR_WIDTH.toFixed(3)};
     float stop = smoothstep(sA - aaV, sA + aaV, dEnd) * (1.0 - smoothstep(sB - aaV, sB + aaV, dEnd));
-    mark = max(mark, stop * (1.0 - smoothstep(rw - 0.45, rw - 0.25, abs(ru))));
+    mark = max(mark, stop * (1.0 - smoothstep(rw - ${glf(ROAD_MARKS.stopInsetLo)}, rw - ${glf(ROAD_MARKS.stopInsetHi)}, abs(ru))));
 
     // --- lane arrow -------------------------------------------------------
     // Hard box gate. The masks are ClampToEdge, and the turn arrow's shaft
@@ -1320,12 +1276,12 @@ const ROAD_MARKING_GLSL = /* glsl */ `
     // A two-lane street's single lane does everything, so it gets the turn
     // arrow (which is what the RA3 city-road reference shows). On a four-lane
     // arterial the inner lane runs straight on and the kerb lane turns off.
-    float wantTurn = lanes < 4.0 ? 1.0 : step(0.5, arrowLane);
+    float wantTurn = lanes < ${glf(ROAD_MARKS.dividerLanes)} ? 1.0 : step(0.5, arrowLane);
     mark = max(mark, mix(arrowStraightA, arrowTurnA, wantTurn) * inArrow);
   }
 
   roadPaintAmt = clamp(mark, 0.0, 1.0);
-  diffuseColor.rgb = mix(diffuseColor.rgb, markCol, roadPaintAmt * 0.92);
+  diffuseColor.rgb = mix(diffuseColor.rgb, markCol, roadPaintAmt * ${glf(ROAD_MARKS.markMix)});
 `;
 
 /**
@@ -1346,21 +1302,21 @@ const KERB_PAINT_GLSL = /* glsl */ `
 
   if (kPaint > 0.5 && kPaint < 1.5) {
     // Red: whole vertical face + the first 0.08 m of the top face.
-    float m = 1.0 - smoothstep(kTop + 0.075, kTop + 0.095, kProf);
+    float m = 1.0 - smoothstep(kTop + ${glf(ROAD_MARKS.kerbRedLo)}, kTop + ${glf(ROAD_MARKS.kerbRedHi)}, kProf);
     roadPaintAmt = m;
-    diffuseColor.rgb = mix(diffuseColor.rgb, uKerbRed, m * 0.94);
+    diffuseColor.rgb = mix(diffuseColor.rgb, uKerbRed, m * ${glf(ROAD_MARKS.kerbRedMix)});
   } else if (kPaint > 1.5) {
     // Yellow dashes on the top face: 0.9 m on, 0.45 m off.
-    float dash = step(mod(kAlong, 1.35), 0.90);
-    float onTop = step(kTop + 0.005, kProf);
+    float dash = step(mod(kAlong, ${glf(ROAD_MARKS.kerbDashPeriod)}), ${glf(ROAD_MARKS.kerbDashOn)});
+    float onTop = step(kTop + ${glf(ROAD_MARKS.kerbTopEps)}, kProf);
     roadPaintAmt = dash * onTop;
-    diffuseColor.rgb = mix(diffuseColor.rgb, uKerbYellow, roadPaintAmt * 0.92);
+    diffuseColor.rgb = mix(diffuseColor.rgb, uKerbYellow, roadPaintAmt * ${glf(ROAD_MARKS.kerbYellowMix)});
   }
 
   // The convex top edge carries a bevel highlight. Scorecard #11 grades this
   // on units, but a razor-sharp kerb edge is the same tell at half the size.
-  float bevel = 1.0 - smoothstep(0.0, 0.035, abs(kProf - kTop));
-  diffuseColor.rgb *= 1.0 + bevel * 0.22;
+  float bevel = 1.0 - smoothstep(0.0, ${glf(ROAD_MARKS.kerbBevel)}, abs(kProf - kTop));
+  diffuseColor.rgb *= 1.0 + bevel * ${glf(ROAD_MARKS.kerbBevelGain)};
 `;
 
 /**
@@ -1377,9 +1333,26 @@ const KERB_PAINT_GLSL = /* glsl */ `
 const PAVEMENT_GLSL = /* glsl */ `
   float roadPaintAmt = 0.0;
   // Bible §6.2(a): a 0.3 m soldier course, 12% darker, along the outer edge.
-  float soldier = smoothstep(0.80, 0.94, vRoad.z);
-  diffuseColor.rgb *= 1.0 - soldier * 0.12;
+  float soldier = smoothstep(${glf(ROAD_MARKS.soldierLo)}, ${glf(ROAD_MARKS.soldierHi)}, vRoad.z);
+  diffuseColor.rgb *= 1.0 - soldier * ${glf(ROAD_MARKS.soldierDarken)};
 `;
+
+/**
+ * The three snippets, keyed the way everything else in this port is.
+ *
+ * EXPORTED SO A TEST CAN READ THEM, and that is worth the export. `npm run
+ * build` does not compile a shader and `npm test` has no GL context, so a
+ * template string that interpolates `3` where GLSL needs `3.0` fails in a
+ * PLAYER'S browser and nowhere else — three logs the compile error and renders
+ * the material black. `tests/road-node-material.spec.ts` §6 walks every numeric
+ * literal in these strings and requires a decimal point, which is the whole
+ * class in one assertion.
+ */
+export const ROAD_GLSL: Readonly<Record<RoadSurfaceKind, string>> = {
+  carriageway: ROAD_MARKING_GLSL,
+  kerb: KERB_PAINT_GLSL,
+  pavement: PAVEMENT_GLSL,
+};
 
 /**
  * Wire a fragment snippet plus one vec4 attribute into a MeshStandardMaterial.
@@ -1387,8 +1360,10 @@ const PAVEMENT_GLSL = /* glsl */ `
  * snippets above can be written against one varying.
  */
 function patchMaterial(
-  mat: THREE.MeshStandardMaterial, attrName: string, glsl: string, uniforms: RoadUniforms,
+  mat: THREE.MeshStandardMaterial, kind: RoadSurfaceKind, uniforms: RoadUniforms,
 ): void {
+  const attrName = ROAD_ATTRIBUTE_NAMES[kind];
+  const glsl = ROAD_GLSL[kind];
   mat.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader =
@@ -1413,34 +1388,44 @@ function patchMaterial(
         // as paint at a grazing angle.
         .replace(
           '#include <roughnessmap_fragment>',
-          '#include <roughnessmap_fragment>\n  roughnessFactor = mix(roughnessFactor, 0.52, roadPaintAmt);',
+          '#include <roughnessmap_fragment>\n  roughnessFactor = mix(roughnessFactor, '
+          + `${glf(ROAD_MARKS.paintRoughness)}, roadPaintAmt);`,
         );
   };
-  // Force a program key distinct from an unpatched MeshStandardMaterial.
-  mat.customProgramCacheKey = () => `road:${attrName}`;
+  /*
+   * Force a program key distinct from an unpatched MeshStandardMaterial.
+   *
+   * v2: the marking constants moved into `./road-markings.ts`, shared with the
+   * TSL port. Every value is identical, but three of them now PRINT one trailing
+   * zero shorter (see `glf`), so the source three compiles is not byte-identical
+   * to v1's — and stopping the cache serving a program built from different
+   * source is this key's whole job. `PropLibrary`'s key was bumped for exactly
+   * this reason when the wind coefficients moved.
+   *
+   * DO NOT COPY THIS KEY TO `RoadNodeMaterial.ts`. `customProgramCacheKey` still
+   * fires on node materials while `onBeforeCompile` is silently dead
+   * (`TerrainNodeMaterial.TSL_GAPS` #6), so a key carried across could only ever
+   * be stale — and a stale key hands back the previous program with nothing
+   * thrown and nothing logged. `tests/road-node-material.spec.ts` §5 pins that.
+   */
+  mat.customProgramCacheKey = () => `road:${attrName}:v2`;
 }
 
 /**
  * Build one road material from a CLEAN texture request.
  *
- * Note what is NOT here any more: `t.repeat.set(1/tileMetres, ...)`. The mesh
- * builders already divide their UVs by the tile size, so the old code applied
- * the repeat TWICE and every surface was tiling at the square of its intended
- * period. Tiling now lives in exactly one place — the UV — which is also what
- * lets the pavement tile in road-local metres instead of world XZ.
+ * The request and the wrapping now come from `roadSurfaceTextures` in
+ * `./road-markings.ts`, so `RoadNodeMaterial.ts` binds THE SAME `DataTexture`
+ * objects rather than a second roll of the same generator — which is what lets
+ * a compare harness stand the two shaders side by side and measure the shader
+ * instead of the texture factory.
  */
 function makeMaterial(
-  name: string, req: TextureRequest, anisotropy: number,
+  kind: RoadSurfaceKind, anisotropy: number,
 ): THREE.MeshStandardMaterial {
-  const { map, normalMap, ormMap } = materialTextureSet(textures, { ...req, anisotropy });
-  for (const t of [map, normalMap, ormMap]) {
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(1, 1);
-    t.anisotropy = anisotropy;
-    t.needsUpdate = true;
-  }
+  const { map, normalMap, ormMap } = roadSurfaceTextures(kind, anisotropy);
   const mat = new THREE.MeshStandardMaterial({
-    name,
+    name: ROAD_MATERIAL_NAMES[kind],
     map,
     normalMap,
     roughnessMap: ormMap,
@@ -2951,44 +2936,14 @@ export class RoadNetwork {
 
     const anis = this.anisotropy;
 
-    // Carriageway. A near-solid dark grey-brown with a perfectly flat height
-    // field — every scrap of interest on this surface is painted on top of it
-    // by ROAD_MARKING_GLSL, exactly as in the RA3 reference.
-    const roadMat = makeMaterial('RoadAsphalt', {
-      kind: 'asphalt', size: SURFACE_TEXELS.asphalt, seed: 0x2a11,
-      colour: SURFACE_COLOURS.asphalt,
-      // `wear` here buys two broad out-of-phase drifts at half and a fifth of
-      // the tile — a 2% value change across six metres. It reads as a road
-      // that has been resurfaced in patches, and it is physically incapable of
-      // becoming texture: `budgetedNoise` clamps frequency as well as
-      // amplitude, so there is no value of this that produces speckle.
-      wear: 0.6, roughness: ROAD_ROUGHNESS.asphalt,
-    }, anis);
-
-    // Kerb. Smooth pale extruded stone: no slab pattern at all, because a kerb
-    // is 0.28 m wide and any pattern on it is sub-pixel noise at this camera.
-    // The reads that matter are the geometry's own shadow, the bevel highlight
-    // in KERB_PAINT_GLSL and the red corner paint.
-    const kerbMat = makeMaterial('RoadKerb', {
-      kind: 'flatPaint', size: SURFACE_TEXELS.kerb, seed: 0x51c3,
-      colour: SURFACE_COLOURS.kerb, wear: 0.35, roughness: ROAD_ROUGHNESS.kerb,
-    }, anis);
-
-    // Pavement. Real rectangular slabs at bible §6.1's 1.2 m with a 0.03 m
-    // joint, each slab face FLAT and offset from its neighbours by a couple of
-    // percent. That offset is cell-constant, which is why it survives mip
-    // filtering — per-pixel speckle does not, and turns to crawling static at
-    // exactly the distance an RTS camera sits.
-    const paveMat = makeMaterial('RoadPavement', {
-      kind: 'paving', size: SURFACE_TEXELS.pavement, seed: 0x7b09,
-      colour: SURFACE_COLOURS.pavement, jointColour: SURFACE_COLOURS.pavementJoint,
-      slabW: paveTexels(ROAD_SLAB_METRES), slabH: paveTexels(ROAD_SLAB_METRES),
-      jointWidth: paveTexels(ROAD_SLAB_JOINT), variation: 0.03, bond: 0,
-      wear: 0.4, roughness: ROAD_ROUGHNESS.pavement,
-    }, anis);
-    patchMaterial(roadMat, 'aRoad', ROAD_MARKING_GLSL, this.uniforms);
-    patchMaterial(kerbMat, 'aKerb', KERB_PAINT_GLSL, this.uniforms);
-    patchMaterial(paveMat, 'aPave', PAVEMENT_GLSL, this.uniforms);
+    // The three requests — asphalt, flat paint, paving — live in
+    // `road-markings.ts` beside every other number both shaders read.
+    const roadMat = makeMaterial('carriageway', anis);
+    const kerbMat = makeMaterial('kerb', anis);
+    const paveMat = makeMaterial('pavement', anis);
+    patchMaterial(roadMat, 'carriageway', this.uniforms);
+    patchMaterial(kerbMat, 'kerb', this.uniforms);
+    patchMaterial(paveMat, 'pavement', this.uniforms);
     this.materials.push(roadMat, kerbMat, paveMat);
 
     this.roadMesh = this.mount(road.toGeometry('road.carriageway', 'aRoad'), roadMat, false);
