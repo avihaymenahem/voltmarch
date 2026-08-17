@@ -661,6 +661,128 @@ void main() {
 }
 `;
 
+/* ========================================================================== */
+/* AO G-buffer: normals reconstructed from the scene's own depth              */
+/* ========================================================================== */
+
+/**
+ * ONE FULL-SCREEN QUAD THAT REPLACES A WHOLE SECOND RENDER OF THE SCENE.
+ *
+ * `GTAOPass` builds its G-buffer by drawing every mesh again with
+ * `MeshNormalMaterial` — measured at 39-57 draw calls across the thirteen
+ * capture fixtures, 27-31% of every frame's total, and the single largest
+ * remaining cost in the renderer. It only does that because it owns no depth:
+ * `setGBuffer(depthTexture, normalTexture)` sets `_renderGBuffer = false` and
+ * the prepass disappears.
+ *
+ * The scene has already written depth into the composer's colour target. Making
+ * that depth SAMPLEABLE (a `DepthTexture` in place of the renderbuffer three
+ * would otherwise allocate — same storage, same format, no extra memory) hands
+ * GTAO everything it is missing except the normals, and a view normal is the
+ * cross product of the two view-space depth derivatives.
+ *
+ * WHY A QUAD RATHER THAN `NORMAL_VECTOR_TYPE = 0`. Passing a depth texture and
+ * NO normal texture is the one-line version: both shaders then call their own
+ * `computeNormalFromDepth`. It is right for GTAOShader, which needs the normal
+ * once per pixel and hoists it above the DIRECTIONS loop. It is wrong for
+ * `PoissonDenoiseShader`, which calls `getViewNormal` once for the centre tap
+ * and AGAIN FOR EVERY ONE OF ITS 16 POISSON SAMPLES — 17 reconstructions of 9
+ * `texelFetch`es and 3 inverse-projection transforms each, ~150 fetches and ~50
+ * `mat4 * vec4` per denoised pixel, where today it does one texture read. That
+ * is trading a draw-call cost this repo can measure for a shader cost it cannot
+ * (there is no GPU timer in the capture harness), which is the swap
+ * `PostConfig.msaaSamples` already has a paragraph about.
+ *
+ * So the reconstruction happens ONCE, into the normal target `GTAOPass` already
+ * allocates and already resizes, and both shaders keep the single-fetch
+ * `NORMAL_VECTOR_TYPE = 1` path they use today. The body below is three's own
+ * `computeNormalFromDepth` (GTAOShader.js) verbatim — same 9 taps, same
+ * pick-the-continuous-side heuristic across the depth discontinuity — and the
+ * result is packed `n * 0.5 + 0.5` because that is what `MeshNormalMaterial`
+ * wrote and what `unpackRGBToNormal` on the other side expects. Only the SOURCE
+ * of the normals changes; nothing downstream of the G-buffer moves.
+ *
+ * `USE_REVERSED_DEPTH_BUFFER` is injected by three's program builder for every
+ * material when the renderer asks for it, exactly as it is for `GTAOShader`, so
+ * this branch stays in step with the pass it feeds rather than assuming.
+ */
+const NORMAL_FROM_DEPTH_VERT = /* glsl */ `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = vec4(position.xy, 0.0, 1.0);
+}
+`;
+
+const NORMAL_FROM_DEPTH_FRAG = /* glsl */ `
+precision highp float;
+
+uniform sampler2D tDepth;
+uniform mat4 cameraProjectionMatrixInverse;
+
+varying vec2 vUv;
+
+vec3 getViewPosition(const in vec2 screenPosition, const in float depth) {
+  #ifdef USE_REVERSED_DEPTH_BUFFER
+    vec4 clipSpacePosition = vec4(vec2(screenPosition) * 2.0 - 1.0, depth, 1.0);
+  #else
+    vec4 clipSpacePosition = vec4(vec3(screenPosition, depth) * 2.0 - 1.0, 1.0);
+  #endif
+  vec4 viewSpacePosition = cameraProjectionMatrixInverse * clipSpacePosition;
+  return viewSpacePosition.xyz / viewSpacePosition.w;
+}
+
+float fetchDepth(const ivec2 p) {
+  return texelFetch(tDepth, p, 0).x;
+}
+
+void main() {
+  vec2 size = vec2(textureSize(tDepth, 0));
+  ivec2 p = ivec2(vUv * size);
+  float c0 = fetchDepth(p);
+  float l2 = fetchDepth(p - ivec2(2, 0));
+  float l1 = fetchDepth(p - ivec2(1, 0));
+  float r1 = fetchDepth(p + ivec2(1, 0));
+  float r2 = fetchDepth(p + ivec2(2, 0));
+  float b2 = fetchDepth(p - ivec2(0, 2));
+  float b1 = fetchDepth(p - ivec2(0, 1));
+  float t1 = fetchDepth(p + ivec2(0, 1));
+  float t2 = fetchDepth(p + ivec2(0, 2));
+  float dl = abs((2.0 * l1 - l2) - c0);
+  float dr = abs((2.0 * r1 - r2) - c0);
+  float db = abs((2.0 * b1 - b2) - c0);
+  float dt = abs((2.0 * t1 - t2) - c0);
+  vec3 ce = getViewPosition(vUv, c0).xyz;
+  vec3 dpdx = (dl < dr)
+    ?  ce - getViewPosition((vUv - vec2(1.0 / size.x, 0.0)), l1).xyz
+    : -ce + getViewPosition((vUv + vec2(1.0 / size.x, 0.0)), r1).xyz;
+  vec3 dpdy = (db < dt)
+    ?  ce - getViewPosition((vUv - vec2(0.0, 1.0 / size.y)), b1).xyz
+    : -ce + getViewPosition((vUv + vec2(0.0, 1.0 / size.y)), t1).xyz;
+  gl_FragColor = vec4(normalize(cross(dpdx, dpdy)) * 0.5 + 0.5, 1.0);
+}
+`;
+
+/**
+ * A depth attachment the AO pass can SAMPLE.
+ *
+ * Handed to a scene-bound render target in place of the depth renderbuffer
+ * three allocates by default when `depthBuffer` is true. `DEPTH_COMPONENT24`
+ * either way, so this is the same storage under a name the shader can read —
+ * not an extra buffer. `RenderTarget.setSize` does not touch an attached depth
+ * texture, but `WebGLTextures.setupDepthTexture` corrects `image.width/height`
+ * from the target's own size on every re-setup, so a resize needs nothing here.
+ */
+function makeSceneDepthTexture(name: string): THREE.DepthTexture {
+  const d = new THREE.DepthTexture(1, 1);
+  d.format = THREE.DepthFormat;
+  d.type = THREE.UnsignedIntType;
+  d.minFilter = THREE.NearestFilter;
+  d.magFilter = THREE.NearestFilter;
+  d.name = name;
+  return d;
+}
+
 /** Normalise a colour so multiplying by it does not change overall luminance. */
 const _tmpVec = new THREE.Vector3();
 function lumaNormalized(hex: number, out: THREE.Vector3): THREE.Vector3 {
@@ -690,6 +812,12 @@ function lumaNormalized(hex: number, out: THREE.Vector3): THREE.Vector3 {
  * 54 shadow + 78 colour + 67 AO prepass + 20 full-screen quads: the pass the
  * budget is about is 78, inside a total of 219.
  *
+ * THE PREPASS IS GONE AND THE THIRD SUBMISSION WITH IT. `installAoDepthGBuffer`
+ * gives GTAO the depth the colour pass already wrote, so the frame is two scene
+ * submissions and a handful of quads. On the same fixture, measured the same
+ * way: 53 shadow + 77 colour + 0 AO + 21 quads = 151, from 207. The `ao` bucket
+ * stays because the prepass is still the fallback path — see the field itself.
+ *
  * So the INSTRUMENT is split, not the renderer — nothing about the frame
  * changes. Four buckets, exhaustive by construction because `post` is the
  * residual: `shadow + colour + ao + post === total` always, and a meter that
@@ -701,9 +829,24 @@ export interface DrawCallBreakdown {
   shadow: number;
   /** The main scene submission with the shadow map taken out. THIS is what `MAX_DRAW_CALLS` bounds. */
   colour: number;
-  /** GTAO's normal/depth prepass: the scene again, minus the non-occluders filtered below. */
+  /**
+   * GTAO's normal/depth prepass: the scene again, minus the non-occluders
+   * filtered below.
+   *
+   * **ZERO ON EVERY SHIPPING PATH SINCE `installAoDepthGBuffer`**, which hands
+   * the pass the scene's own depth texture and clears `_renderGBuffer`. It was
+   * 39-57 across the thirteen capture fixtures — 27-31% of the frame — and it
+   * is kept as a bucket rather than deleted for two reasons: the prepass is
+   * still the fallback when a three upgrade moves the internals that wiring
+   * needs, and a bucket that silently disappears takes the proof that it went
+   * with it. A non-zero `ao` in `shots/_report.json` now means the fallback is
+   * live and something should be looked at.
+   */
   ao: number;
-  /** The residual — full-screen quads: AO's composite, bloom's mip chain, grade, SMAA, copies. */
+  /**
+   * The residual — full-screen quads: AO's normal reconstruction and composite,
+   * bloom's mip chain, grade, SMAA, copies.
+   */
   post: number;
   /** The frame's `renderer.info.render.calls`, i.e. the figure the harness reports. */
   total: number;
@@ -774,6 +917,12 @@ export function createPostChain(options: CreatePostOptions): PostChain {
    * the flag is a single, observable transition in `applyAoConfig`.
    */
   let aoHalfRes = cfg.ao.halfRes;
+  /**
+   * The quad material that fills the AO normal target from the scene's depth.
+   * Null while the AO pass is SSAO, or while the depth G-buffer could not be
+   * installed and the normal prepass is still doing the job.
+   */
+  let normalFromDepthMaterial: THREE.ShaderMaterial | null = null;
 
   const width = () => Math.max(2, handle.size.width);
   const height = () => Math.max(2, handle.size.height);
@@ -899,6 +1048,27 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     rt.texture.name = 'PostHDR';
     composer = new EffectComposer(renderer, rt);
     composer.renderToScreen = true;
+
+    /*
+     * BOTH HALVES OF THE PING-PONG, BECAUSE THE SCENE LANDS IN EITHER ONE.
+     *
+     * `EffectComposer.render()` does not reset `readBuffer` at the top of a
+     * frame, and this chain swaps an ODD number of times (bloom, grade, SMAA;
+     * render and AO both declare `needsSwap = false`), so the target
+     * `RenderPass` draws into alternates between `renderTarget1` and
+     * `renderTarget2` frame by frame. Attaching to one of them would give the
+     * AO pass a correct depth buffer every other frame and a stale one in
+     * between — a flicker, not a crash, which is the worst kind.
+     *
+     * Two textures rather than one shared between the pair: three records
+     * `properties.get(depthTexture).__renderTarget`, i.e. a depth texture
+     * belongs to one target, and the AO wrapper reads the depth off the buffer
+     * it is actually handed rather than off a module variable that has to be
+     * kept in step. Neither costs memory — `depthBuffer: true` above already
+     * allocated a full-resolution depth attachment on each.
+     */
+    composer.renderTarget1.depthTexture = makeSceneDepthTexture('SceneDepth1');
+    composer.renderTarget2.depthTexture = makeSceneDepthTexture('SceneDepth2');
   } catch (err) {
     failures.render = String(err);
     console.error('[post] EffectComposer construction failed — falling back to direct render', err);
@@ -1018,13 +1188,29 @@ export function createPostChain(options: CreatePostOptions): PostChain {
         const p = new GTAOPass(scene, camera, ao.width, ao.height);
         p.output = GTAOPass.OUTPUT.Default;
         seedAoDenoiseNoise(p);
+        /*
+         * The occluder filter and the prepass meter are installed FIRST and
+         * UNCONDITIONALLY, and `installAoDepthGBuffer` then tries to delete the
+         * prepass they describe. When it succeeds — the shipping path — three
+         * never calls `_overrideVisibility`, so neither fires and `ao` reports
+         * 0. When it fails, because a three upgrade moved one of the six
+         * internals it needs, the prepass is still there and must still be
+         * filtered or the black decal polygons come straight back. Installing
+         * them the other way round would make the fallback the unfiltered one.
+         */
         installAoOccluderFilter(p);
         // After the filter, so the mark is taken once the traverse (which draws
         // nothing) is done and the window holds only the prepass itself.
         installAoPrepassMeter(p);
+        const fromDepth = installAoDepthGBuffer(p);
         installAoResolutionScale(p);
         installAoInPlaceComposite(p);
-        if (DEV) console.info(`[post] AO: GTAO @ ${ao.width}x${ao.height}`);
+        if (DEV) {
+          console.info(
+            `[post] AO: GTAO @ ${ao.width}x${ao.height}` +
+            (fromDepth ? ' (normals from scene depth, no prepass)' : ' (normal prepass — depth G-buffer unavailable)')
+          );
+        }
         return p as unknown as Pass;
       } catch (errGtao) {
         console.warn('[post] GTAO unavailable — falling back to SSAO', errGtao);
@@ -1103,6 +1289,9 @@ export function createPostChain(options: CreatePostOptions): PostChain {
 
   /** Free the MSAA target and its transfer quad. Safe to call when already off. */
   function disposeMsaa(): void {
+    // Explicit: `RenderTarget.dispose()` releases the target, not a texture the
+    // caller attached to it.
+    sceneMsaa?.depthTexture?.dispose();
     sceneMsaa?.dispose();
     sceneMsaa = null;
     resolveQuad?.dispose();
@@ -1149,6 +1338,26 @@ export function createPostChain(options: CreatePostOptions): PostChain {
         depthBuffer: true,
         stencilBuffer: false,
         samples: want,
+        /*
+         * THE MSAA HALF OF THE AO G-BUFFER, AND IT HAS TO BE HERE RATHER THAN
+         * ON THE COMPOSER TARGETS.
+         *
+         * With MSAA on, the scene is drawn into THIS target, so this is the
+         * only depth that describes it. The composer's read buffer receives a
+         * colour-only transfer quad, and `FullScreenQuad.render` goes through
+         * `renderer.render`, which clears — so the depth on the read buffer at
+         * AO time is a cleared 1.0, not the scene.
+         *
+         * A multisampled depth attachment cannot be sampled, and this one is
+         * not the one that gets sampled: three attaches the TEXTURE to the
+         * single-sample framebuffer and a multisample depth RENDERBUFFER to the
+         * multisampled one, then `updateMultisampleRenderTarget` blits with
+         * `DEPTH_BUFFER_BIT` set whenever `resolveDepthBuffer && depthBuffer`
+         * (both default true). So the texture holds resolved depth by the time
+         * `renderer.render()` returns — the same one resolve the file header
+         * counts, carrying depth as well as colour.
+         */
+        depthTexture: makeSceneDepthTexture('SceneMSAADepth'),
       });
       sceneMsaa.texture.name = 'SceneMSAA';
       resolveMaterial = new THREE.ShaderMaterial({
@@ -1249,6 +1458,124 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       const s = aoTargetSize(w, h, aoHalfRes);
       bound(s.width, s.height);
     };
+  }
+
+  /**
+   * DELETE GTAO'S SECOND RENDER OF THE SCENE.
+   *
+   * The reasoning is at `NORMAL_FROM_DEPTH_FRAG`; this is the wiring. Three
+   * things happen, and all three are needed:
+   *
+   *  1. `setGBuffer(depth, normal)` sets `_renderGBuffer = false`, which is the
+   *     one flag standing between this chain and 39-57 draw calls a frame. The
+   *     arguments only have to be non-undefined for the defines it derives —
+   *     `NORMAL_VECTOR_TYPE = 1` because a normal texture was supplied, and
+   *     `DEPTH_SWIZZLING = 'x'` because depth and normal are different textures
+   *     — so the depth handed here is a representative, not the live one.
+   *  2. The live depth is bound per frame, off the buffer the scene was
+   *     ACTUALLY drawn into: `sceneMsaa` when MSAA is on, otherwise the
+   *     `readBuffer` the composer handed this pass. Never a captured variable;
+   *     see the note on the ping-pong at the composer's construction.
+   *  3. The normal target is filled by one full-screen quad instead of a scene
+   *     submission, through GTAOPass's own `_renderPass` helper, so the clear
+   *     and the `autoClear` save/restore are the ones the rest of the pass uses.
+   *
+   * WHAT THE AO NOW CONSIDERS AN OCCLUDER, AND WHAT THAT COST. The old G-buffer
+   * was a filtered scene (`aoOccluder` below). The new one is the depth buffer
+   * the frame already wrote, so the occluder set is exactly "everything that
+   * writes depth in the main pass" and the filter cannot reach it. Two objects
+   * change side, and both were deliberate exclusions:
+   *
+   *   - WATER. `WaterMaterial` is the only transparent material in the game
+   *     with `depthWrite: true`, so the sea surface was absent from the old
+   *     G-buffer and is present in the new one. AO on the naval fixtures is now
+   *     computed for the water plane rather than for the seabed behind it.
+   *   - BUILDING PADS. `userData.vmAoOccluder = false` kept 40 mm of slab out of
+   *     the old G-buffer. It is opaque and depth-writing, so it is in the new
+   *     one.
+   *
+   * Neither can be filtered out of a depth buffer that the colour pass wrote:
+   * what is behind them was overwritten, and recovering it means submitting the
+   * scene again, which is the cost being removed. So this is a measured trade,
+   * not an oversight — see `docs/RA3_LOOK_BIBLE.md` and the grade recorded in
+   * the commit message. `aoOccluder` and its opt-out stay because they still
+   * govern the fallback prepass, and only because of that.
+   *
+   * Returns false, having changed nothing, if any internal it needs is missing:
+   * a half-installed G-buffer is a black or inverted AO term, and the prepass it
+   * would have replaced still works.
+   */
+  function installAoDepthGBuffer(pass: unknown): boolean {
+    const p = pass as {
+      camera: THREE.Camera;
+      normalRenderTarget?: THREE.WebGLRenderTarget;
+      gtaoMaterial?: THREE.ShaderMaterial;
+      pdMaterial?: THREE.ShaderMaterial;
+      setGBuffer?(depthTexture: THREE.DepthTexture, normalTexture: THREE.Texture): void;
+      render(
+        renderer: THREE.WebGLRenderer,
+        writeBuffer: THREE.WebGLRenderTarget,
+        readBuffer: THREE.WebGLRenderTarget,
+        deltaTime: number,
+        maskActive: boolean,
+      ): void;
+      _renderPass?(
+        renderer: THREE.WebGLRenderer,
+        material: THREE.Material,
+        target: THREE.WebGLRenderTarget | null,
+        clearColor?: number,
+        clearAlpha?: number,
+      ): void;
+    };
+
+    const normalTarget = p.normalRenderTarget;
+    const gtao = p.gtaoMaterial;
+    const pd = p.pdMaterial;
+    const setGBuffer = p.setGBuffer;
+    const renderPass = p._renderPass;
+    const seedDepth = composer?.renderTarget1.depthTexture ?? null;
+    if (
+      normalTarget === undefined || gtao === undefined || pd === undefined ||
+      typeof setGBuffer !== 'function' || typeof renderPass !== 'function' ||
+      seedDepth === null
+    ) {
+      if (DEV) console.warn('[post] AO depth G-buffer unavailable — keeping the normal prepass');
+      return false;
+    }
+
+    setGBuffer.call(p, seedDepth, normalTarget.texture);
+
+    normalFromDepthMaterial = new THREE.ShaderMaterial({
+      name: 'AoNormalFromDepth',
+      uniforms: {
+        tDepth: { value: seedDepth },
+        cameraProjectionMatrixInverse: { value: new THREE.Matrix4() },
+      },
+      vertexShader: NORMAL_FROM_DEPTH_VERT,
+      fragmentShader: NORMAL_FROM_DEPTH_FRAG,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.NoBlending,
+    });
+    const normalMat = normalFromDepthMaterial;
+
+    const baseRender = p.render.bind(p);
+    const doPass = renderPass.bind(p);
+
+    p.render = function depthGBufferRender(renderer_, writeBuffer, readBuffer, deltaTime, maskActive) {
+      // The scene's own depth, from whichever target it was drawn into.
+      const depth = (sceneMsaa !== null ? sceneMsaa.depthTexture : readBuffer.depthTexture) ?? seedDepth;
+      normalMat.uniforms.tDepth.value = depth;
+      gtao.uniforms.tDepth.value = depth;
+      pd.uniforms.tDepth.value = depth;
+      // `.copy` into the matrix allocated once above — this runs in the frame loop.
+      (normalMat.uniforms.cameraProjectionMatrixInverse.value as THREE.Matrix4)
+        .copy(p.camera.projectionMatrixInverse);
+      doPass(renderer_, normalMat, normalTarget);
+      baseRender(renderer_, writeBuffer, readBuffer, deltaTime, maskActive);
+    };
+
+    return true;
   }
 
   /**
@@ -1445,6 +1772,17 @@ export function createPostChain(options: CreatePostOptions): PostChain {
   /**
    * KEEP NON-OCCLUDERS OUT OF THE AO NORMAL/DEPTH PREPASS.
    *
+   * SCOPE, FIRST, BECAUSE IT NARROWED. `installAoDepthGBuffer` deletes the
+   * prepass on every path where three's internals are where this file expects
+   * them, and `_overrideVisibility` is the prepass's own fence — so on the
+   * shipping path NOTHING BELOW RUNS, and `userData.vmAoOccluder` does not
+   * affect a shipped pixel. What governs the AO now is the main pass's depth
+   * buffer, i.e. `depthWrite`, and the two objects that changed side as a result
+   * are named in `installAoDepthGBuffer`. This is kept, working and tested,
+   * because the prepass is what a three upgrade falls back to, and an
+   * unfiltered prepass is the black-polygon defect described next. Do not read
+   * it as the live occluder rule.
+   *
    * `GTAOPass` renders the whole scene a second time with a normal material to
    * build its G-buffer, and its own filter only skips Points and Lines. Every
    * transparent MESH therefore lands in that buffer as a solid, opaque
@@ -1550,10 +1888,16 @@ export function createPostChain(options: CreatePostOptions): PostChain {
   }
 
   /**
-   * Bracket GTAO's normal/depth prepass, which is the second of the frame's three
-   * scene submissions and the one nobody expects. `_overrideVisibility` and
-   * `_restoreVisibility` are the pass's own fences around it (GTAOPass.js:504-506)
-   * — nothing else needs hooking, and nothing about the frame changes.
+   * Bracket GTAO's normal/depth prepass, which USED TO BE the second of the
+   * frame's three scene submissions and the one nobody expected.
+   * `_overrideVisibility` and `_restoreVisibility` are the pass's own fences
+   * around it (GTAOPass.js:504-506) — nothing else needs hooking, and nothing
+   * about the frame changes.
+   *
+   * It is the same fence `installAoDepthGBuffer` removes the need for, so on the
+   * shipping path this meter never fires and `drawCallsByPass.ao` is 0 — which
+   * is the measurement, not a gap in it. Left installed so that a fallback to
+   * the prepass is VISIBLE in `shots/_report.json` rather than silent.
    *
    * The shadow delta is subtracted for the same reason it is in the colour meter:
    * whichever submission happens to rebuild the shadow map, those draws belong to
@@ -2010,9 +2354,15 @@ export function createPostChain(options: CreatePostOptions): PostChain {
         }
         delete passes[id];
       }
+      normalFromDepthMaterial?.dispose();
+      normalFromDepthMaterial = null;
       try {
         disposeMsaa();
         msaaSamples = 0;
+        // The depth attachments are ours, not the targets': `RenderTarget`
+        // disposes what it allocated, and it did not allocate these.
+        composer?.renderTarget1.depthTexture?.dispose();
+        composer?.renderTarget2.depthTexture?.dispose();
         (composer as any)?.renderTarget1?.dispose?.();
         (composer as any)?.renderTarget2?.dispose?.();
         (composer as any)?.dispose?.();
