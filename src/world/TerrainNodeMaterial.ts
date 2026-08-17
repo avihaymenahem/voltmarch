@@ -66,6 +66,19 @@
  *    re-implements the same `+/-0.5/255` ordered shift so the two renders match.
  *    See `TSL_GAPS` at the foot of this file.
  *  - **`envMapIntensity`.** See section 6.
+ *
+ * NOTHING IN `src/` IMPORTS THIS YET, AND THAT IS CHECKED
+ * ------------------------------------------------------
+ * Verified on the shipped bundle: `MeshStandardNodeMaterial` and
+ * `WGSLNodeBuilder` appear ZERO times in `dist/assets/*.js`, so `three/webgpu`
+ * is not in the WebGL build at all and the shipping renderer is untouched at
+ * runtime as well as in source.
+ *
+ * **Keep it that way when the seam wires this up: reach it through a DYNAMIC
+ * import, behind `requestedBackend()`.** A static import from anything the main
+ * chunk already pulls in drags the whole node system — compiler, both builders,
+ * the lighting graph — into the bundle every WebGL player downloads, for a
+ * renderer they will not run.
  * ============================================================================
  */
 

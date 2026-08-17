@@ -32,8 +32,9 @@ import { createTerrainMaterials } from '../src/world/TerrainMaterial';
 import { createTerrainNodeMaterials } from '../src/world/TerrainNodeMaterial';
 import {
   SPLAT_SHARPEN, TERRAIN_LAYER_ROUGH_DEFAULT, TERRAIN_LAYER_SCALE_DEFAULT,
-  TERRAIN_SCALAR_DEFAULTS,
+  TERRAIN_SCALAR_DEFAULTS, TERRAIN_VEC3_DEFAULTS,
 } from '../src/world/terrain-uniforms';
+import { CELL, CLIFF_SLOPE, MAP_SIZE } from '../src/core/config';
 
 /* Small, because these tests build the real procedural tiles and 256 would be
  * 60x the bytes for a question none of them ask. */
@@ -268,6 +269,65 @@ describe('the translated shader keeps the GLSL structures', () => {
  * ========================================================================== */
 
 describe('the uniform block', () => {
+  /*
+   * THE LITERALS ARE WRITTEN OUT AGAIN ON PURPOSE, and this is the one test in
+   * the file that must not be tidied.
+   *
+   * The defaults and the biome table were MOVED out of `TerrainMaterial.ts`
+   * into `terrain-uniforms.ts` so both materials read one copy. Every other
+   * assertion here compares one material against the other or against that
+   * shared table — so a value that drifted during the move would drift on both
+   * sides at once and every one of them would still pass. These numbers are
+   * transcribed from `TerrainMaterial.ts` as it stood at v2.13.0, before the
+   * move, and they are the only thing standing between a refactor and a silent
+   * change to the shipping ground.
+   *
+   * `uCliffNy` and `uCellSize` are derived from `config.ts` rather than typed
+   * in, so they are checked as expressions; everything else is a literal.
+   */
+  it('leaves the SHIPPING material on its pre-refactor values, to the digit', () => {
+    const set = createTerrainMaterials({
+      biome: BIOMES.temperate, layerTextureSize: LAYER_SIZE, seed: SEED,
+    });
+    // Before any biome is applied, `createUniforms` alone. Rebuild a virgin one:
+    // `createTerrainMaterials` calls `applyBiome` in its constructor, so the
+    // biome-owned slots are already overwritten and only the grid- and
+    // camera-derived constants survive to be checked here.
+    const u = set.uniforms;
+    expect(u.uInvMapSize.value).toBe(1 / MAP_SIZE);
+    expect(u.uCellSize.value).toBe(CELL);
+    expect(u.uSplatSharpen.value).toBe(2.8);
+    expect(u.uCliffNy.value).toBe(Math.cos(CLIFF_SLOPE));
+    expect(u.uFaceMix.value).toBe(0.78);
+    set.dispose();
+  });
+
+  it('leaves the SHARED default table on its pre-refactor values', () => {
+    // The slots a biome overwrites, checked at the source rather than on a
+    // constructed material — which is the only place they are still visible.
+    expect(TERRAIN_LAYER_SCALE_DEFAULT).toEqual([8, 5.5, 6.5, 7, 4.8, 3.2]);
+    expect(TERRAIN_LAYER_ROUGH_DEFAULT).toEqual([0.95, 0.92, 0.9, 0.85, 0.7, 0.68]);
+    expect(TERRAIN_SCALAR_DEFAULTS.uMacroScale).toBe(34);
+    expect(TERRAIN_SCALAR_DEFAULTS.uMacroStrength).toBe(0.13);
+    expect(TERRAIN_SCALAR_DEFAULTS.uWarpScale).toBe(11);
+    expect(TERRAIN_SCALAR_DEFAULTS.uWarpAmp).toBe(0.55);
+    expect(TERRAIN_SCALAR_DEFAULTS.uCellJitter).toBe(0.038);
+    expect(TERRAIN_SCALAR_DEFAULTS.uCliffCapM).toBe(0.75);
+    expect(TERRAIN_SCALAR_DEFAULTS.uCliffSkirtM).toBe(1.3);
+    expect(TERRAIN_SCALAR_DEFAULTS.uStriationM).toBe(0.46);
+    expect(TERRAIN_SCALAR_DEFAULTS.uCourseM).toBe(0.22);
+    expect(TERRAIN_SCALAR_DEFAULTS.uCourseOn).toBe(0);
+    expect(TERRAIN_SCALAR_DEFAULTS.uCliffRelief).toBe(0.55);
+    expect(TERRAIN_SCALAR_DEFAULTS.uCliffRough).toBe(0.85);
+    expect(TERRAIN_SCALAR_DEFAULTS.uCliffGrainMean).toBe(0.17);
+    expect(TERRAIN_SCALAR_DEFAULTS.uStepHeight).toBe(6);
+    expect(TERRAIN_VEC3_DEFAULTS.uMacroTint).toEqual([0.088, 0.068, 0.019]);
+    expect(TERRAIN_VEC3_DEFAULTS.uCliffBase).toEqual([0.19, 0.17, 0.1]);
+    expect(TERRAIN_VEC3_DEFAULTS.uCliffShade).toEqual([0.06, 0.05, 0.03]);
+    expect(TERRAIN_VEC3_DEFAULTS.uCliffHi).toEqual([0.32, 0.29, 0.18]);
+    expect(TERRAIN_VEC3_DEFAULTS.uCliffCap).toEqual([0.1, 0.12, 0.01]);
+  });
+
   it('starts at the same defaults as the GLSL material', () => {
     const set = makeSet();
     const u = set.uniforms;
