@@ -323,8 +323,19 @@ save, in the replay. The tightrope is gone and `use()` may finally refuse.
 ## Four armies, four islands, and a road made of water
 
 **Sunder Atoll** is the map the navy exists for: four islands, one army each, **53.80% water** on the
-shipped seed, and no land route between any two of them. Ten battlefields ship now
+shipped seed, and no land route between any two of them. Seven battlefields ship now
 (`MAPS` in `src/shell/settings-store.ts`); three carry a real sea.
+
+**It was ten, and the cut cost three missions.** `saltpan-reach`, `foundry-line` and `glacier-shelf`
+each reused an existing `MAP_PRESET` verbatim, so all seven balance numbers matched a map already in
+the roster and the lobby was selling a reroll of a battlefield as a reward. Each was also the SOLE
+payload of one mission — Armour Column, Continental Yield and Hostile Takeover — and those three are
+RETIRED rather than repaid, because the def catalogue has nothing left that a new `UNLOCK_TAGS` group
+could legally cover: what is still ungated is either the opening path, naval, non-mirrored (`gate`,
+`flameTower`), or the deliberately-open Command Posts. The survey is written out inside `UNLOCKS` in
+`src/data/Missions.ts` so nobody pays to run it twice. **Do not "fix" this by paying them cosmetics
+or credits** — both are declared gaps in `tests/reward-wiring.spec.ts` and paying into one is the
+original defect with a different noun.
 
 - **The 54% is a ceiling, not a taste.** A start shelf needs 96 m of dry ground in EVERY direction
   (`TERRAIN_START_FLAT_RADIUS` 58 + `TERRAIN_START_EDGE_WOBBLE` 14 + band 6 + waviness 8 +

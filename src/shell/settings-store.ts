@@ -672,7 +672,7 @@ export interface MapChoice {
    * is now the number the lobby offers and the number `normalizeSetup` clamps
    * the army list to, so a map that says 2 CANNOT be launched as a four-way.
    *
-   * WHY THESE THREE AND NOT ALL SIX. Two armies open on the authored diagonal
+   * WHY SOME AND NOT ALL. Two armies open on the authored diagonal
    * (`SKIRMISH_START_OFFSETS`); three or more fan around the map centre on the
    * same ellipse, with no reserved terrain shelf. That fan is fine on ground
    * with no strong axis to it and wrong on ground that has one — `frozen-sector`
@@ -744,48 +744,31 @@ export const MAPS: readonly MapChoice[] = [
   },
 
   /*
-   * THREE MORE BATTLEFIELDS, and they exist because five missions needed
-   * something real to pay.
+   * THREE PRESET-CLONES USED TO SIT HERE, AND THE ROSTER IS SEVEN AGAIN.
    *
-   * v2.6.0 moved the five commander powers out of the mission table and into a
-   * structure you build (`src/sim/Production.ts`, the Powers tab), which left
-   * Armour Column, Demolition Crew, Old Guard, Continental Yield and Hostile
-   * Takeover with nothing to grant. `validateMissions` refuses a mission that
-   * pays nothing, and — more to the point — this project has already shipped
-   * five rewards that were strings nothing read. So each of the five got a
-   * payload something actually consumes, and three of them are these: a map
-   * unlock is read by `mapAvailable` in `src/shell/SkirmishSetup.ts` and gates a
-   * row in the lobby.
+   * `saltpan-reach` (arid, 2p, dusk), `foundry-line` (urban, 2p, noon) and
+   * `glacier-shelf` (snow, 4p, overcast) were added in v2.6.0 as payloads: the
+   * commander powers had stopped being a mission reward, five missions were
+   * left paying nothing, and a map unlock is read by `mapAvailable` in
+   * `src/shell/SkirmishSetup.ts`, so three new rows here closed three of the
+   * five holes.
    *
-   * EVERY ONE REUSES AN EXISTING `MAP_PRESET`, deliberately. A preset is a
-   * balance surface — `tests/rock-density.spec.ts` walks every one of them for
-   * prop density and `tests/scatter.spec.ts` pins two by name — so inventing
-   * three would be three new things to tune in a release that is about
-   * something else. What makes these different battlefields is the pair the
-   * roster's own comment calls load-bearing: `mapSeed` is the LANDFORM ROLL
-   * ("fixed per map so a map IS a map"), and `players` is the shape the ground
-   * is played in. Each entry is a preset at a player count or a light the
-   * roster did not previously offer.
+   * They were removed because the argument that justified them is the argument
+   * against them. Each reused an existing `MAP_PRESET` VERBATIM — arid, urban
+   * and snow — which was written down as a virtue ("a preset is a balance
+   * surface, so inventing three would be three new things to tune"). What that
+   * buys is three rows whose seven balance numbers (relief, cliffs, water,
+   * scatter, urban, oreRichness, props) are identical to a map already in the
+   * list. `mapSeed` rerolls the landform and `players`/`mood` change the framing,
+   * but a player picking Saltpan Reach over Airbase Flats was choosing a
+   * different roll of the same battlefield, and the lobby sold it as a reward.
    *
-   * THE SEEDS MUST STAY UNIQUE. `Replays.replayMap` identifies a recording's
-   * battlefield by seed first, and `tests/sunder-atoll.spec.ts` asserts it.
-   * These read as words in hex in the spirit of `0x0cea11` and `0xa7011`.
+   * WHAT IT COST, so nobody re-adds them to fix it: each was the SOLE reward of
+   * one mission, and there is no ungated content left to repay those three. See
+   * the retirement block inside `UNLOCKS` in `src/data/Missions.ts` for the
+   * survey — the short version is that the def catalogue has no four-army,
+   * off-opening-path family left that is not naval.
    */
-  {
-    id: 'saltpan-reach', name: 'Saltpan Reach', biome: 'desert', preset: 'arid',
-    mapSeed: 0x5a17a4, mood: 'dusk', players: 2,
-    blurb: 'The arid flats cut down to two armies, under a low sun. Nowhere to hide armour.',
-  },
-  {
-    id: 'foundry-line', name: 'Foundry Line', biome: 'urban', preset: 'urban',
-    mapSeed: 0xf0be11, mood: 'noon', players: 2,
-    blurb: 'The industrial grid at noon, head to head. Everything standing is somebody’s.',
-  },
-  {
-    id: 'glacier-shelf', name: 'Glacier Shelf', biome: 'snow', preset: 'snow',
-    mapSeed: 0x91ac1e, mood: 'overcast', players: 4,
-    blurb: 'High relief under flat grey light, opened up for four. The cliffs still channel it.',
-  },
 ];
 
 export function mapById(id: string): MapChoice {

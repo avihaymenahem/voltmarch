@@ -72,8 +72,26 @@ import {
  * recording of something this build has no lobby entry for.
  *
  * NOTHING DEPENDS ON GETTING THIS RIGHT. The boot is driven from the header's
- * own `mapPreset` / `biome` / `mapSeed`, not from the `MapChoice` — this is for
- * the NAME on the card, and a wrong guess costs a wrong label and nothing else.
+ * own `mapPreset` / `biome` / `mapSeed`, not from the `MapChoice` —
+ * `Shell.applyReplayQuery` writes all four flags over `buildMatchQuery`'s
+ * lobby-derived output — this is for the NAME on the card, and a wrong guess
+ * costs a wrong label and nothing else.
+ *
+ * THE PRESET+BIOME FALLBACK IS REACHABLE FOR REAL RECORDINGS NOW, not just for
+ * hand-typed URLs. `saltpan-reach`, `foundry-line` and `glacier-shelf` were cut
+ * from `MAPS`, and each one shared its preset and biome with the map it was a
+ * clone of — so a recording made on one of the three misses on seed and lands
+ * on its twin: Airbase Flats, Industrial Grid, Frozen Sector respectively. The
+ * card is then labelled with a battlefield the recording was not played on
+ * while the terrain underneath is still the recorded landform, because
+ * `mapSeed` travels in the header and drives the boot.
+ *
+ * LEFT AS IT IS, deliberately. The alternative — a "battlefield no longer in
+ * the roster" branch — needs a table of retired maps that has to be maintained
+ * forever to keep three old files' labels honest, and every other consumer
+ * (`replaySummary`, the download filename, the setup label the pause menu
+ * shows) degrades to a plausible name rather than an error. The playback
+ * itself is bit-exact either way.
  */
 export function replayMap(header: ReplayHeader): MapChoice {
   for (const m of MAPS) if (m.mapSeed === header.mapSeed) return m;
