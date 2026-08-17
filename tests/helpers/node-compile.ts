@@ -27,8 +27,8 @@
  * something new, this throws rather than silently compiling a different graph.
  */
 
-import { GLSLNodeBuilder, HalfFloatType, Mesh, NodeMaterial, PerspectiveCamera, PlaneGeometry, Scene, WGSLNodeBuilder, WebGLCoordinateSystem, WebGPUCoordinateSystem } from 'three/webgpu';
-import type { Node } from 'three/webgpu';
+import { GLSLNodeBuilder, HalfFloatType, Mesh, NodeMaterial, PerspectiveCamera, PlaneGeometry, Scene, WGSLNodeBuilder, WebGLCoordinateSystem, WebGPUCoordinateSystem, WebGPURenderer } from 'three/webgpu';
+import type { BufferGeometry, Material, Node } from 'three/webgpu';
 import { context } from 'three/tsl';
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- the stub is deliberately structural */
@@ -134,5 +134,76 @@ export function compileFragmentNode(node: Node, backend: NodeBackend = 'wgsl'): 
     vertex: String(builder.vertexShader ?? ''),
     uniformNames,
     builder,
+  };
+}
+
+/* ==========================================================================
+ * A WHOLE MATERIAL, NOT JUST A FRAGMENT EXPRESSION
+ *
+ * `compileFragmentNode` above answers "does this post-pass expression build",
+ * which is the shape Stage B needed. A ported MATERIAL is a different question:
+ * it has a vertex stage, geometry attributes, varyings and material flags, and
+ * every one of those is a place a port can break while the fragment expression
+ * alone still compiles.
+ *
+ * `tests/terrain-node-material.spec.ts` grew its own copy of this for Stage C.
+ * That one is left exactly where it is — it seeds the terrain's `aUp`/`aTop` —
+ * and this is the general version Stage E and anything after it calls. Both
+ * drive three's real builders, so a green run means the same thing in both.
+ * ========================================================================== */
+
+export interface CompiledMaterial {
+  vertex: string;
+  fragment: string;
+}
+
+/**
+ * A `WebGPURenderer` constructed and never initialised.
+ *
+ * The node builders reach the renderer for `contextNode` and
+ * `library.fromMaterial`, both of which exist the moment the object does.
+ * `hasFeature` is stubbed because `Renderer.hasFeature` throws by contract
+ * before the backend is up; `false` is the honest answer for every 8-bit
+ * texture in this project.
+ */
+export function offlineRenderer(): WebGPURenderer {
+  const canvas = {
+    width: 4, height: 4, style: {},
+    addEventListener() { /* nothing is ever fired offline */ },
+    removeEventListener() { /* ditto */ },
+    getContext() { return null; },
+  } as unknown as HTMLCanvasElement;
+  const renderer = new WebGPURenderer({ canvas, antialias: false });
+  (renderer as unknown as { hasFeature: () => boolean }).hasFeature = () => false;
+  return renderer;
+}
+
+/**
+ * Compile a node material's full graph offline, on either backend.
+ *
+ * @param geometry Optional — pass one carrying every attribute the material
+ *                 declares. `attribute()` WARNS AND SUBSTITUTES when the
+ *                 geometry lacks a name, which silently compiles a DIFFERENT
+ *                 shader from the one the game runs.
+ */
+export function compileNodeMaterial(
+  material: Material, backend: NodeBackend = 'wgsl', geometry?: BufferGeometry,
+): CompiledMaterial {
+  const geo = geometry ?? new PlaneGeometry(1, 1, 1, 1);
+  const mesh = new Mesh(geo, material);
+  const scene = new Scene();
+  scene.add(mesh);
+
+  const Builder = backend === 'glsl' ? GLSLNodeBuilder : WGSLNodeBuilder;
+  const builder: any = new Builder(mesh, offlineRenderer());
+  builder.material = material;
+  builder.scene = scene;
+  builder.camera = new PerspectiveCamera();
+  builder.geometry = geo;
+  builder.build();
+
+  return {
+    vertex: String(builder.vertexShader ?? ''),
+    fragment: String(builder.fragmentShader ?? ''),
   };
 }
