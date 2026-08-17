@@ -22,7 +22,7 @@ import {
   bevelHighlight, PropLibrary, PropMesh, PROP_DEFS, propPalette, shadeOf,
 } from '../src/world/PropLibrary';
 import {
-  Scatter, CHUNK_COUNT, COVER_N, SCATTER_SHADOW_MIN_RADIUS,
+  Scatter, CHUNK_COUNT, COVER_N, SCATTER_AO_MIN_RADIUS, SCATTER_SHADOW_MIN_RADIUS,
 } from '../src/world/Scatter';
 
 const BIOMES: readonly BiomeName[] = ['temperate', 'desert', 'snow', 'urban'];
@@ -571,6 +571,44 @@ describe('Scatter — chunk culling', () => {
       expect(Number(d[1]), 'the entity-prop gate moved; SCATTER_SHADOW_MIN_RADIUS must follow')
         .toBe(SCATTER_SHADOW_MIN_RADIUS);
     }
+  });
+
+  it('applies the prop AO-radius gate per type, and only as an opt-out', () => {
+    /* The GTAO G-buffer twin of the shadow gate above, and per TYPE for the same
+     * reason: one InstancedMesh is one submission to the normal prepass.
+     *
+     * TWO THINGS ARE PINNED AND THEY ARE DIFFERENT CLAIMS.
+     *
+     * The first is the gate itself — every mesh agrees with
+     * `SCATTER_AO_MIN_RADIUS`, whatever that constant is set to. The graded A/B
+     * on this branch says it should stay at `Infinity`'s opposite (i.e. that the
+     * exclusion should not ship), but a test that hard-codes the verdict would
+     * have to be edited by whoever changes their mind, which is how a decision
+     * stops being reviewable. So this asserts the RULE and passes at any value.
+     *
+     * The second is the one that would rot silently: `render/post.ts#aoOccluder`
+     * reads `userData.vmAoOccluder === false`, STRICTLY. Writing `true` for an
+     * occluding type would be harmless today and a live bug the moment that
+     * reader is ever relaxed to truthiness — and an `=== false` reader paired
+     * with a producer that writes both values is exactly the cross-file rot
+     * `tests/ao-occluder-filter.spec.ts` was written about. Only the opt-out is
+     * ever stamped; an occluder's `userData` stays untouched. */
+    const { scene, scatter } = rig('temperate', 0.25, 1.0);
+    scatter.generate();
+    let checked = 0;
+    scene.traverse((o) => {
+      const m = o as THREE.InstancedMesh;
+      if (!(m as { isInstancedMesh?: boolean }).isInstancedMesh) return;
+      if (!m.name.startsWith('prop.')) return;
+      const bs = m.geometry.boundingSphere;
+      expect(bs, `${m.name} has no bounding sphere to gate on`).not.toBeNull();
+      const occludes = bs!.radius >= SCATTER_AO_MIN_RADIUS;
+      expect(m.userData.vmAoOccluder, m.name).toBe(occludes ? undefined : false);
+      expect(m.userData.vmAoOccluder, `${m.name} must never be stamped true`).not.toBe(true);
+      checked++;
+    });
+    expect(checked).toBeGreaterThan(0);
+    scatter.dispose();
   });
 
   it('shows more of the map from higher up', () => {

@@ -186,6 +186,89 @@ function typeCastsShadow(geo: PropGeometry): boolean {
 }
 
 /**
+ * Bounding-sphere radius below which a prop TYPE stops occluding AO.
+ *
+ * `Number.POSITIVE_INFINITY` — no finite radius clears it, so EVERY scatter type
+ * is out of the GTAO G-buffer. THAT IS THE CHANGE THIS BRANCH EXISTS TO PUT IN
+ * FRONT OF A REVIEWER, AND THE MEASUREMENT SAYS DO NOT MERGE IT. Read the block
+ * on `typeOccludesAo` before deciding.
+ *
+ * The gate is a radius rather than a boolean because that was the middle option
+ * — exclude the small types, keep AO on the ones that read — and it was captured
+ * too. `1.70` is the value that excludes the six smallest types (`bench` 1.18,
+ * `roadSignDisc` 1.36, `barrel` 1.44, `grassTuftGreen` 1.49, `grassTuft` 1.62,
+ * `roadSign` 1.69) and keeps `hedge` 1.96 and everything above it. It is one
+ * edit from here and its numbers are in the block below.
+ */
+export const SCATTER_AO_MIN_RADIUS = Number.POSITIVE_INFINITY;
+
+/**
+ * True when this type is big enough to earn a slot in the GTAO G-buffer.
+ *
+ * WHY THE DRAW EXISTS AT ALL. A scatter mesh is opaque, depth-writing and on the
+ * DEFAULT layer, so `render/post.ts#aoOccluder` admits it and `GTAOPass` draws it
+ * a THIRD time — colour, shadow, and its normal prepass. Measured over the
+ * thirteen capture fixtures, excluding every type removes 14-22 draws per frame
+ * (267 summed over the set) and moves `drawCallsByPass.colour` and `.shadow` by
+ * exactly zero, which is the whole of the saving and the whole of the case for it.
+ *
+ * WHY IT SHOULD STAY ANYWAY. Two captures of the full set were scored:
+ *
+ *     grade 0.892308, 16 failures   ->   grade 0.892308, 16 failures
+ *
+ * Not a single check changed state and no check value moved past the fourth
+ * decimal, so `tools/metrics.mjs` cannot see this either way. The eye can, and
+ * CLAUDE.md's standing rule for that disagreement is that the eye wins.
+ *
+ * A prop is NOT the pad-and-decal case that `aoOccluder`'s opt-out was written
+ * for, and the difference is geometric rather than aesthetic. When a mesh leaves
+ * the G-buffer, its screen pixels sample whatever depth is BEHIND it. For a
+ * 40 mm foundation pad or a ground decal that is the terrain the thing is lying
+ * on, so the substitution is almost exact. For a prop standing 1-15 m proud of
+ * the ground it is wrong by the prop's whole height, and the error is visible in
+ * both directions:
+ *
+ *   1. THE PROP STOPS SEATING. `render/contact-shadows.system.ts` reads the
+ *      ENTITY store, and a scatter prop is not an entity — so it gets no contact
+ *      pool, and AO was the only thing darkening the ground where it stands.
+ *      Bible 3.3 on that layer: "Units without this float." Clearest on
+ *      `04-units-parade` at (900,430): the grass tuft loses the dark pool at its
+ *      base and the shrub stops darkening the ground under its skirt.
+ *   2. THE BACKGROUND'S AO LANDS ON THE PROP. Where props cluster — which is
+ *      what this file does by construction — the occlusion computed for the
+ *      geometry behind is multiplied onto the prop's own pixels. On
+ *      `03-terrain-closeup` that is a ragged dark fringe along the top edge of
+ *      the cafe umbrella's red panel (1450,1230; max delta 171/255) and a grey
+ *      smear across the crate stack's lit top faces (330,830). Bible 5.5 allows
+ *      exactly one form of wear on a prop and it is baked cavity darkening;
+ *      a smudge that moves with the camera is not it.
+ *
+ * Losing the inter-lobe darkening also flattens the shrubs into single pale
+ * blobs (`01-establishing-base` at (300,1250)), which is scorecard #34 territory
+ * — the detail-density check already failing on all thirteen.
+ *
+ * THE MIDDLE OPTION WAS CAPTURED AND IT IS NOT WORTH ITS OWN CONSTANT. At 1.70 m
+ * the visible cost really does almost vanish (the worst 96x96 block on the most
+ * sensitive fixture is a slight brightening of grass blades, form and seating
+ * intact) — but so does the saving: 1-4 draws per frame, 42 over the set against
+ * 267, ~2% of submissions, for a second radius threshold to keep in step forever.
+ *
+ * AND THE SAVING IS THE CHEAP KIND. These are depth/normal-only instanced draws,
+ * and `post.ts`'s own GPU timings put this frame's AO cost in BANDWIDTH — 6.02 ms
+ * for two full-resolution composite passes. Deleting 22 submissions does not
+ * touch that.
+ *
+ * The route that gets the draws without the trade is to give scatter props the
+ * contact-decal layer bible 3.3 actually prescribes, and exclude them afterwards.
+ * That is real work and it is not this change.
+ *
+ * `boundSphereRadius`, not `boundRadius`, for `typeCastsShadow`'s reason.
+ */
+function typeOccludesAo(geo: PropGeometry): boolean {
+  return geo.boundSphereRadius >= SCATTER_AO_MIN_RADIUS;
+}
+
+/**
  * The scatter families a vehicle hull is allowed to flatten.
  *
  * This is the SCATTER half of one rule the entity props already state in
@@ -1399,6 +1482,10 @@ export class Scatter {
       // layout or none of them.
       mesh.castShadow = typeCastsShadow(type.geo);
       mesh.receiveShadow = true;
+      // Per TYPE for the same reason: one submission, all or nothing. STRICT
+      // `=== false` at the reader, so only the opt-out is ever written — an
+      // unset `userData` is the behaviour every mesh in the game has.
+      if (!typeOccludesAo(type.geo)) mesh.userData.vmAoOccluder = false;
       // Assigned either way. It is inert while `castShadow` is false, and
       // leaving it wired means flipping the gate back on for one type never
       // silently loses the wind animation from its depth pass.
