@@ -81,10 +81,52 @@
  * observes a scale on the handle that it did not itself command. So the rule is
  * now what the old comment claimed: a deliberate choice wins, and the controller
  * reclaims only what is below it.
+ *
+ * THE RESTORE THRESHOLD, AND WHY IT IS NOT THE MIRROR OF THE CUT THRESHOLD
+ * -----------------------------------------------------------------------
+ * It used to be. Cutting needed `median > targetMs * 1.18` (19.7 ms) and
+ * restoring needed `median < targetMs * 0.82` — **13.69 ms**. That second
+ * number is below the 16.67 ms vsync interval of a 60 Hz display, so on the
+ * commonest display in the world the restore branch could not be reached, ever,
+ * by any scene. THE CONTROLLER WAS A ONE-WAY RATCHET: one heavy moment — a
+ * battle, a shader-compile storm, an alt-tab — walked the resolution down and
+ * nothing walked it back, for the rest of the session, while the Settings
+ * screen went on reporting the slider's 100%.
+ *
+ * Measured on an AMD iGPU through ANGLE/D3D11, a real match at a 3840x2160
+ * drawing buffer. The controller cut correctly, five steps, 1.0 -> 0.55, and
+ * the 90th-percentile frame came down 253.1 ms -> 25.9 ms doing it. Then the
+ * load was cut to a QUARTER of the pixels (`maxPixelRatio` 2 -> 1), leaving the
+ * frame vsync-locked with enormous headroom — p10 15.5 ms, median 16.6 ms,
+ * p90 17.8 ms — and it was watched for 121 more seconds:
+ *
+ *     scale 0.55, changes 5 ... unchanged, every sample, for the whole watch
+ *
+ * So the fix is that RESTORING NO LONGER NEEDS PROOF OF HEADROOM, because under
+ * vsync there is no way to observe any. It needs only the absence of a
+ * violation: `patienceUp` consecutive windows NOT over budget. That is a probe,
+ * and a probe can be wrong, so a step up that gets cut straight back doubles
+ * `patienceUp` (see `probing`) up to `patienceUpMax`. A machine with real
+ * headroom climbs back to its ceiling; a machine sitting exactly on the edge
+ * backs off to trying about once a minute rather than sawing every few seconds.
+ *
+ * The dead zone is therefore ONE-SIDED on purpose. Do not "restore the
+ * symmetry" — the asymmetry is the finding.
  * ============================================================================
  */
 
-/** Frame-time samples kept for the rolling median. ~2 s at 60 fps. */
+/**
+ * HARD CAP on the samples in one window. A window normally closes long before
+ * this — see `windowMinSamples`/`windowSec` — and this only bounds the buffer.
+ *
+ * IT USED TO BE THE ONLY BOUND, AND THAT MADE THE CONTROLLER SLOWEST EXACTLY
+ * WHERE IT WAS NEEDED MOST. 120 frames is 2 s at 60 fps and **9.4 s at the
+ * reporter's measured 13 fps**; `commit` clears the window, so every further
+ * step cost another 120 frames. Walking 1.0 -> 0.55 is six steps, so the
+ * machine that prompted this whole feature would have spent roughly forty
+ * seconds unplayable before the rescue finished. A window has to be bounded in
+ * TIME, not only in frames, or its latency scales with the problem.
+ */
 export const ADAPTIVE_WINDOW = 120;
 
 /** Tunables, exported so a test can assert against the same numbers. */
@@ -96,6 +138,10 @@ export const ADAPTIVE = {
    *
    * Wide on purpose. A controller that chases the last 5% resizes constantly,
    * and every resize reallocates the drawing buffer.
+   *
+   * ONE-SIDED NOW. It sets the CUT threshold (`targetMs * (1 + deadZone)` =
+   * 19.7 ms) and nothing else. See `THE RESTORE THRESHOLD` below for the
+   * measurement that took the matching lower threshold out.
    */
   deadZone: 0.18,
   /** Never render below this fraction of native. Past it, the image mushes. */
@@ -104,24 +150,53 @@ export const ADAPTIVE = {
   step: 0.075,
   /** Seconds between adjustments, so a change is judged before the next. */
   cooldownSec: 2.5,
+  /**
+   * A window closes once it holds this many samples AND spans `windowSec` of
+   * rendering. Both, not either: 24 samples is enough for a median that one
+   * hitch cannot move (it would take thirteen), and the time floor stops a
+   * 300 fps menu from deciding off a quarter-second glance.
+   */
+  windowMinSamples: 24,
+  /** Seconds of ACCEPTED frame time a window must span before it closes. */
+  windowSec: 0.75,
   /** Consecutive windows over budget before the FIRST cut. */
   patienceDown: 1,
   /**
-   * Consecutive windows under budget before giving resolution back.
+   * Consecutive windows NOT over budget before giving resolution back.
    *
-   * Deliberately higher than `patienceDown`: dropping is felt immediately and
-   * recovering is not, so the controller should be quick to help and slow to
-   * risk. It also stops a scene that is briefly cheap — a camera pointed at
+   * Deliberately far higher than `patienceDown`: dropping is felt immediately
+   * and recovering is not, so the controller should be quick to help and slow
+   * to risk. It also stops a scene that is briefly cheap — a camera pointed at
    * empty ground — from pumping the resolution back and forth.
+   *
+   * **THIS COUNTS WINDOWS NOW, AND IT USED TO COUNT FRAMES.** The prose here
+   * said "windows" in three places while `sample()` incremented the counter on
+   * every call, so `patienceUp: 3` meant three FRAMES — fifty milliseconds. The
+   * asymmetry this comment spends a paragraph justifying did not exist: both
+   * directions were gated by the 2.5 s cooldown and separated by 33 ms.
    */
-  patienceUp: 3,
+  patienceUp: 6,
+  /**
+   * Ceiling on the escalated `patienceUp` after probes that get cut straight
+   * back. See `probing` — six windows is ~4.5 s, forty-eight is ~36 s, so a
+   * machine that genuinely cannot afford the next step up settles into trying
+   * roughly once a minute instead of oscillating.
+   */
+  patienceUpMax: 48,
 } as const;
 
-/** What the controller decided this frame. */
+/**
+ * What the controller decided this frame.
+ *
+ * **THE INSTANCE IS REUSED.** `sample()` runs at `RenderPhase.Present` on every
+ * rendered frame, and CLAUDE.md's performance rule is zero allocation in the
+ * frame loop — a fresh object literal per frame is exactly what that forbids.
+ * Read the two fields and drop the reference; never store the object itself.
+ */
 export interface AdaptiveDecision {
   /** New scale to apply, or null to leave it alone. */
   scale: number | null;
-  /** Median frame time over the window, or 0 before the window fills. */
+  /** Median frame time of the last CLOSED window, or 0 before the first one. */
   medianMs: number;
 }
 
@@ -135,11 +210,31 @@ export class AdaptiveResolution {
   private readonly samples = new Float32Array(ADAPTIVE_WINDOW);
   /** Scratch for the median, so a decision allocates nothing. */
   private readonly sorted = new Float32Array(ADAPTIVE_WINDOW);
+  /**
+   * The one decision object, handed back from every `sample()`. See
+   * `AdaptiveDecision` — the frame loop may not allocate.
+   */
+  private readonly decision: AdaptiveDecision = { scale: null, medianMs: 0 };
+  /** Samples in the window under construction. Never exceeds the buffer. */
   private filled = 0;
-  private next = 0;
+  /** Milliseconds of ACCEPTED frame time in that window. */
+  private windowMs = 0;
+  /** Median of the last CLOSED window. Persisted so reporting has a number. */
+  private lastMedianMs = 0;
   private sinceChange = 0;
   private overRuns = 0;
   private underRuns = 0;
+  /**
+   * Windows of calm required before the next step up. Starts at
+   * `ADAPTIVE.patienceUp` and doubles every time a step up is cut straight
+   * back, up to `ADAPTIVE.patienceUpMax`.
+   */
+  private upPatience: number = ADAPTIVE.patienceUp;
+  /**
+   * True while the most recent change was a step UP whose verdict is still
+   * out. A cut arriving in that state means the probe was wrong.
+   */
+  private probing = false;
 
   /** Current scale, and the ceiling it may never exceed. */
   private scale: number;
@@ -187,47 +282,86 @@ export class AdaptiveResolution {
     // A tab restored from background, a breakpoint, or a first frame after a
     // shader compile produces an interval that describes nothing about the
     // scene. Feeding it in would drop the resolution for no reason.
+    //
+    // Rejected samples are excluded from `windowMs` as well as from the median,
+    // which is the point of measuring the span in ACCEPTED frame time: one
+    // 4.5 s stall (I have watched Vite hand the page one) must not close a
+    // window that holds four real samples.
     if (Number.isFinite(frameMs) && frameMs > 0 && frameMs < 1000) {
-      this.samples[this.next] = frameMs;
-      this.next = (this.next + 1) % ADAPTIVE_WINDOW;
-      if (this.filled < ADAPTIVE_WINDOW) this.filled++;
+      this.samples[this.filled++] = frameMs;
+      this.windowMs += frameMs;
     }
     this.sinceChange += dtSec;
 
-    if (this.filled < ADAPTIVE_WINDOW) return { scale: null, medianMs: 0 };
+    /*
+     * IS THE WINDOW CLOSED?
+     *
+     * Whichever comes first: enough evidence (samples AND time), or the buffer
+     * is full. A closed window is consumed and cleared — the counters below
+     * therefore count WINDOWS, which is what this file has always claimed and
+     * never did.
+     */
+    const enough =
+      this.filled >= ADAPTIVE.windowMinSamples && this.windowMs >= ADAPTIVE.windowSec * 1000;
+    if (!enough && this.filled < ADAPTIVE_WINDOW) return this.verdict(null);
 
-    const medianMs = this.median();
-    if (this.sinceChange < ADAPTIVE.cooldownSec) return { scale: null, medianMs };
+    this.lastMedianMs = this.median();
+    this.filled = 0;
+    this.windowMs = 0;
+
+    /*
+     * A WINDOW THAT LANDS INSIDE THE COOLDOWN IS DISCARDED, NOT COUNTED.
+     *
+     * The frames just after a change are polluted by the change itself — a
+     * reallocated drawing buffer, re-specialised shaders — so they are evidence
+     * about the resize, not about the scene. "A change is judged before the
+     * next" means the judging starts after the cooldown, not during it.
+     */
+    if (this.sinceChange < ADAPTIVE.cooldownSec) return this.verdict(null);
 
     const high = ADAPTIVE.targetMs * (1 + ADAPTIVE.deadZone);
-    const low = ADAPTIVE.targetMs * (1 - ADAPTIVE.deadZone);
 
-    if (medianMs > high) {
+    if (this.lastMedianMs > high) {
       this.underRuns = 0;
       this.overRuns++;
       if (this.overRuns >= ADAPTIVE.patienceDown && this.scale > ADAPTIVE.minScale) {
-        return this.commit(Math.max(ADAPTIVE.minScale, this.scale - ADAPTIVE.step), medianMs);
+        // A cut while a step up is still on probation means that step was
+        // wrong. Back off before trying it again.
+        if (this.probing) {
+          this.upPatience = Math.min(ADAPTIVE.patienceUpMax, this.upPatience * 2);
+          this.probing = false;
+        }
+        return this.commit(Math.max(ADAPTIVE.minScale, this.scale - ADAPTIVE.step));
       }
-      return { scale: null, medianMs };
+      return this.verdict(null);
     }
 
-    if (medianMs < low) {
-      this.overRuns = 0;
-      this.underRuns++;
-      if (this.underRuns >= ADAPTIVE.patienceUp && this.scale < this.ceiling) {
-        return this.commit(Math.min(this.ceiling, this.scale + ADAPTIVE.step), medianMs);
-      }
-      return { scale: null, medianMs };
-    }
-
-    // Inside the dead zone: this is the steady state and it must be sticky.
+    /*
+     * NOT OVER BUDGET. That is the whole restore condition — see the header.
+     * Under vsync the median cannot go below the refresh interval, so "prove
+     * you have headroom" is unsatisfiable and this used to be a one-way ratchet.
+     */
     this.overRuns = 0;
-    this.underRuns = 0;
-    return { scale: null, medianMs };
+    this.underRuns++;
+    if (this.underRuns >= this.upPatience && this.scale < this.ceiling) {
+      // A second step up in a row means the previous probe survived, so the
+      // escalated patience was pessimism about a machine that does have room.
+      if (this.probing) this.upPatience = ADAPTIVE.patienceUp;
+      this.probing = true;
+      return this.commit(Math.min(this.ceiling, this.scale + ADAPTIVE.step));
+    }
+    return this.verdict(null);
   }
 
-  private commit(next: number, medianMs: number): AdaptiveDecision {
-    if (Math.abs(next - this.scale) < 1e-4) return { scale: null, medianMs };
+  /** Fill in the reused decision object. Never allocates. */
+  private verdict(scale: number | null): AdaptiveDecision {
+    this.decision.scale = scale;
+    this.decision.medianMs = this.lastMedianMs;
+    return this.decision;
+  }
+
+  private commit(next: number): AdaptiveDecision {
+    if (Math.abs(next - this.scale) < 1e-4) return this.verdict(null);
     this.scale = next;
     this.sinceChange = 0;
     this.overRuns = 0;
@@ -235,26 +369,38 @@ export class AdaptiveResolution {
     // Clear the window. The samples describe the OLD resolution and would drag
     // the next decision toward a frame cost that no longer exists.
     this.filled = 0;
-    this.next = 0;
-    return { scale: next, medianMs };
+    this.windowMs = 0;
+    return this.verdict(next);
   }
 
-  /** Median of the window. Allocation-free; sorts into a reused buffer. */
+  /**
+   * Median of the window. Allocation-free.
+   *
+   * The tail is padded with `Infinity` and the WHOLE buffer sorted, rather than
+   * sorting a `subarray` view of the first `n`. `subarray` allocates a fresh
+   * TypedArray object on every call, and this runs once per closed window on
+   * the render thread; sorting 120 floats instead of 24 is cheaper than the
+   * garbage was.
+   */
   private median(): number {
     const n = this.filled;
-    this.sorted.set(this.samples.subarray(0, n));
-    const view = this.sorted.subarray(0, n);
-    view.sort();
-    return n % 2 === 1 ? view[(n - 1) >> 1] : (view[n / 2 - 1] + view[n / 2]) * 0.5;
+    if (n === 0) return this.lastMedianMs;
+    const s = this.sorted;
+    for (let i = 0; i < n; i++) s[i] = this.samples[i];
+    for (let i = n; i < ADAPTIVE_WINDOW; i++) s[i] = Number.POSITIVE_INFINITY;
+    s.sort();
+    return n % 2 === 1 ? s[(n - 1) >> 1] : (s[n / 2 - 1] + s[n / 2]) * 0.5;
   }
 
   /** Forget history — after a match change, a resize, or a tier change. */
   reset(scale: number): void {
     this.scale = Math.min(scale, this.ceiling);
     this.filled = 0;
-    this.next = 0;
+    this.windowMs = 0;
     this.sinceChange = 0;
     this.overRuns = 0;
     this.underRuns = 0;
+    this.upPatience = ADAPTIVE.patienceUp;
+    this.probing = false;
   }
 }
