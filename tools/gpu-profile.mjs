@@ -166,6 +166,14 @@ const ARMIES = Math.max(2, Math.min(4, parseInt(flag('armies', '4'), 10)));
 const MAP_ID = flag('map', 'industrial-grid');
 /** Index into `DIFFICULTIES`: 0 Easy, 1 Normal, 2 Hard, 3 Brutal. */
 const DIFFICULTY = parseInt(flag('ai', '3'), 10);
+/**
+ * Index into `PERSONALITIES`: 0 Turtle, 1 Rusher, 2 Boomer. -1 lets the brain
+ * pick. Boomer is the one that MASSES, and massing is the whole point of a
+ * load measurement — see the note above the peak print.
+ */
+const PERSONALITY = parseInt(flag('aip', '-1'), 10);
+/** Starting bank. One of `CREDIT_OPTIONS`; 50000 is the roster's ceiling. */
+const CREDITS = parseInt(flag('credits', '20000'), 10);
 /** Seconds of SIMULATED time to run before profiling. 30 Hz, stepped headless. */
 const SIM_SECONDS = parseInt(flag('sim', '600'), 10);
 /**
@@ -570,14 +578,20 @@ const INSTRUMENT = () => {
      */
     rampUnits(totalTicks, chunkTicks, target) {
       let done = 0;
+      let peak = 0;
+      let peakTick = 0;
+      const trace = [];
       while (done < totalTicks) {
         const n = Math.min(chunkTicks, totalTicks - done);
         vm.step(n);
         done += n;
         vm.hooks.renderFrame();
-        if (target > 0 && vm.stats().counters.units >= target) break;
+        const u = vm.stats().counters.units;
+        trace.push([done, u]);
+        if (u > peak) { peak = u; peakTick = done; }
+        if (target > 0 && u >= target) break;
       }
-      return { ticks: done, load: window.__vmProf.load() };
+      return { ticks: done, peak, peakTick, trace, load: window.__vmProf.load() };
     },
     startQueries() {
       active = true;
@@ -691,16 +705,23 @@ async function seedLiveSetup(page, base) {
       aiFaction: s.keys[1],
       map: s.map,
       difficulty: s.difficulty,
-      personality: -1,
-      startingCredits: 20000,
+      personality: s.personality,
+      startingCredits: s.credits,
       speed: 1,
       seed: 7,
       opponents: s.keys.slice(1, s.armies).map((k) => ({
-        faction: k, difficulty: s.difficulty, personality: -1,
+        faction: k, difficulty: s.difficulty, personality: s.personality,
       })),
     }));
     localStorage.setItem('voltmarch.setup.start.v1', JSON.stringify('base'));
-  }, { keys: FACTION_KEYS, map: MAP_ID, difficulty: DIFFICULTY, armies: ARMIES });
+  }, {
+    keys: FACTION_KEYS,
+    map: MAP_ID,
+    difficulty: DIFFICULTY,
+    armies: ARMIES,
+    personality: PERSONALITY,
+    credits: CREDITS,
+  });
 }
 
 async function boot(browser, url) {
@@ -786,7 +807,12 @@ const report = {
   blocks: BLOCKS,
   frames: FRAMES,
   warmup: WARMUP,
-  match: MATCH ? { armies: ARMIES, map: MAP_ID, difficulty: DIFFICULTY, simSeconds: SIM_SECONDS, unitTarget: UNIT_TARGET } : null,
+  match: MATCH
+    ? {
+      armies: ARMIES, map: MAP_ID, difficulty: DIFFICULTY, personality: PERSONALITY,
+      credits: CREDITS, simSeconds: SIM_SECONDS, unitTarget: UNIT_TARGET,
+    }
+    : null,
   gpu: null,
   timerQuery: false,
   base: null,
@@ -814,6 +840,33 @@ try {
   await page.evaluate(([w, h]) => window.__VM.setSize(w, h), [SIZE_W, SIZE_H]);
   await page.evaluate(() => window.__VM.setUiVisible(false));
 
+  /*
+   * REFUSE TO PROFILE A BUFFER THAT IS NOT THE SIZE WE ASKED FOR.
+   *
+   * `AdaptiveResolution` is inert while `handle.isFixedSize`
+   * (`adaptive-res.system.ts` returns on that flag before it samples anything),
+   * which is the whole reason `__VM.setSize` is the pinning route. But that is a
+   * property of another module, asserted here rather than assumed: a controller
+   * quietly shrinking the drawing buffer mid-run would leave every millisecond
+   * in this report describing a resolution nobody chose, and `ms/Mpx` would look
+   * fine while the Mpx moved. Cheap, and it converts a silent corruption into a
+   * loud stop.
+   */
+  const pinned = await page.evaluate(() => ({
+    fixed: window.__VM.rendererHandle.isFixedSize,
+    res: window.__VM.stats().resolution,
+    scale: window.__VM.rendererHandle.resolutionScale,
+  }));
+  if (!pinned.fixed || pinned.res !== `${SIZE_W}x${SIZE_H}`) {
+    throw new Error(
+      `refusing to profile: asked for ${SIZE_W}x${SIZE_H}, renderer reports ${pinned.res} `
+      + `(isFixedSize ${pinned.fixed}, resolutionScale ${pinned.scale}). `
+      + 'An adaptive-resolution controller steering during a profile makes every '
+      + 'millisecond below a statement about an unknown pixel count.',
+    );
+  }
+  console.log(`  size pinned: ${pinned.res}, isFixedSize ${pinned.fixed}`);
+
   const inst = await page.evaluate(INSTRUMENT);
   report.timerQuery = inst.timerQuery;
   console.log(`  EXT_disjoint_timer_query_webgl2: ${inst.timerQuery ? 'available' : 'NOT AVAILABLE'}`);
@@ -833,13 +886,33 @@ try {
       ([ticks, chunk, target]) => window.__vmProf.rampUnits(ticks, chunk, target),
       [SIM_SECONDS * 30, 300, UNIT_TARGET],
     );
-    report.ramp = { ticks: ramp.ticks, simSeconds: ramp.ticks / 30, ...ramp.load };
+    report.ramp = {
+      ticks: ramp.ticks,
+      simSeconds: ramp.ticks / 30,
+      peakUnits: ramp.peak,
+      peakSimMinutes: ramp.peakTick / 30 / 60,
+      trace: ramp.trace,
+      ...ramp.load,
+    };
     console.log(
       `  ramped ${(ramp.ticks / 30 / 60).toFixed(1)} sim-minutes -> `
       + `${ramp.load.units} drawn units, ${ramp.load.entities} entities, ${ramp.load.draws} draws`,
     );
+    /*
+     * THE PEAK, ALWAYS PRINTED, AND IT IS NOT A CURIOSITY.
+     *
+     * Four Brutal armies do not accumulate — they annihilate. A 25-minute run on
+     * `glacier-shelf` peaked at 114 drawn units around minute five and was down
+     * to 70 by the end, so a profile taken at the tick the ramp happened to stop
+     * on can be quoted as "at N units" while N is a third of what the match ever
+     * held. Print both and let the reader see the difference.
+     */
+    console.log(`  peak was ${ramp.peak} drawn units at ${(ramp.peakTick / 30 / 60).toFixed(1)} sim-minutes`);
     if (UNIT_TARGET > 0 && ramp.load.units < UNIT_TARGET) {
-      console.log(`  NOTE: unit target ${UNIT_TARGET} NOT reached — the table below is at ${ramp.load.units}.`);
+      console.log(
+        `  NOTE: unit target ${UNIT_TARGET} NOT reached — every number below is at `
+        + `${ramp.load.units} units, and must be quoted that way.`,
+      );
     }
     await page.evaluate(() => window.__VM.resume());
   }
