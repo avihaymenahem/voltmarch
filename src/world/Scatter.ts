@@ -108,6 +108,7 @@ import {
 import { clamp, clamp01, DEG2RAD, fbm2, Rng, TAU } from '../core/math';
 import { SurfaceId, type BiomeName } from './Biomes';
 import { PASS_GROUND, type Terrain } from './Terrain';
+import { isCarriageway } from './Roads';
 import {
   createPropMaterial, PropLibrary, PROP_DEFS, propPalette,
   type PropDef, type PropFamily, type PropGeometry, type PropMaterialSet, type PropPalette,
@@ -768,6 +769,35 @@ export class Scatter {
     // centre clears an exclusion by 0.1 m can still host a prop 2.8 m inside
     // it. Cheap fast-reject above, exact test here.
     if (this.exclusions.length > 0 && this.inExclusion(x, z, 0)) return false;
+    /*
+     * NOTHING STANDS IN THE ROAD.
+     *
+     * Reported as umbrellas, crates and benches sitting in the middle of the
+     * carriageway and in the intersection. Measured before this line: 186 of
+     * 3585 props on industrial-grid, 207 of 4143 on temperate-valley, 105 of
+     * 4044 on frozen-sector — about one prop in twenty, on every map.
+     *
+     * The header of this file has claimed "street furniture spawns BESIDE
+     * roads, never on them" since it was written, and the mechanism it named
+     * was the `def.surfaces` mask. That mask cannot express it. Roads reach the
+     * splat through `Terrain.stampSurface`, which paints `SurfaceId.Paving`
+     * under the carriageway AND sets `surface[cell]` to it outright — so to the
+     * mask a lane of tarmac and a pedestrian plaza are one surface, and every
+     * `SURF_ANY` or `SURF_HARD` type was free to stand in traffic.
+     *
+     * `isCarriageway`, NEVER `isRoad`, and the difference is the whole point:
+     * `isRoad` also covers the kerb and the pavement, which is exactly where
+     * `traceKerbs` and `placeAlongLine` are DESIGNED to put lamps, benches,
+     * hydrants and railings. Excluding it would delete street furniture from
+     * the game to fix props in the road. This is the same distinction, for the
+     * same reason, that `economy.system.ts` draws when it seeds ore.
+     *
+     * At `legal()` rather than in the renderer, and rather than as an
+     * `addExclusion` disc: every placement mode in this file funnels through
+     * here, discs cannot describe a ribbon, and a prop culled at draw time
+     * would still hold its spacing slot and still be in the save.
+     */
+    if (isCarriageway(x, z)) return false;
     const surf = this.terrain.surfaceAt(x, z);
     if ((def.surfaces & (1 << surf)) === 0) return false;
     if (this.terrain.slopeAt(x, z) > def.maxSlope) return false;

@@ -98,10 +98,18 @@ function polygonArea(p: readonly number[]): number {
 /**
  * Triangles of one road mesh, projected to XZ and normalised to positive area.
  *
- * `wantSkirt` splits the pavement mesh: `aPave.z` is the outer fraction, 0 on
- * the kerb-side edge and 1 on both the outer edge and the skirt foot, so a
- * triangle with no zero vertex belongs to the skirt that drops to the ground
- * rather than to the flat slab. Only the slab is a sidewalk.
+ * `wantSkirt` splits the pavement mesh on `aPave.w`, which the builder sets to
+ * 1 on the skirt foot and 0 on every slab vertex.
+ *
+ * THIS USED TO READ `aPave.z`, THE OUTER FRACTION, AND TAKE "no vertex is 0" AS
+ * "this is the skirt". That worked only while the slab was exactly two vertices
+ * wide, so every slab triangle was guaranteed a 0 corner. The moment the
+ * pavement was subdivided across its width to stop it burying itself in the
+ * terrain, the sub-quads away from the kerb had no zero corner either, 40% of
+ * the sidewalk was counted as skirt, and this file failed with the pavement
+ * area collapsing from 8.3k to 3.6k m^2 — a measurement artefact that reads
+ * exactly like the deletion regression the floor below exists to catch. An
+ * explicit flag cannot be re-derived wrongly by the next change to the mesh.
  */
 function meshTriangles(mesh: THREE.Mesh, wantSkirt: boolean | null): Tri[] {
   const pos = mesh.geometry.getAttribute('position');
@@ -112,7 +120,7 @@ function meshTriangles(mesh: THREE.Mesh, wantSkirt: boolean | null): Tri[] {
   for (let i = 0; i < idx!.count; i += 3) {
     const i0 = idx!.getX(i), i1 = idx!.getX(i + 1), i2 = idx!.getX(i + 2);
     if (wantSkirt !== null && pave !== undefined) {
-      const isSkirt = pave.getZ(i0) > 0.5 && pave.getZ(i1) > 0.5 && pave.getZ(i2) > 0.5;
+      const isSkirt = pave.getW(i0) > 0.5 && pave.getW(i1) > 0.5 && pave.getW(i2) > 0.5;
       if (isSkirt !== wantSkirt) continue;
     }
     let t: Tri = {
@@ -342,12 +350,18 @@ describe('junction pavement does not lie on the carriageway', () => {
     // through. All six of these seeds had them: 44 inverted pad triangles
     // between them, the worst 300.8 m^2.
     //
-    // Scoped to the PAD, which `aRoad.w < 0` marks. The chain ribbons still
-    // carry four inverted triangles across this seed set -- 0.97, 1.29, 5.13
-    // and 14.57 m^2 -- from the fold-through clamp, which looks at one sample's
-    // turn and so cannot see a bend that folds over three or more. Separate
-    // defect, separate cause, unchanged by this fix, pinned here so it cannot
-    // quietly grow.
+    // Scoped to the PAD, which `aRoad.w < 0` marks.
+    //
+    // THE RIBBON FIGURE IS NOW ZERO, AND THIS LINE USED TO ALLOW ONE. The chain
+    // ribbons carried four inverted triangles across this seed set -- 0.97,
+    // 1.29, 5.13 and 14.57 m^2 -- from the fold-through clamp, which looks at
+    // one sample's turn and so cannot see a bend that folds over three or more.
+    // The clamp is still blind in exactly that way; what changed is that
+    // `MeshBuf.quadUp` refuses to emit a ribbon triangle that faces the ground,
+    // and a fold-through covers its own footprint the right way up anyway. An
+    // inverted triangle in a horizontal surface renders as a hole with terrain
+    // through it, which is one of the things "the roads are all broken" meant,
+    // so the tolerance is gone rather than widened.
     for (const [biome, seed] of CASES) {
       const scene = new THREE.Scene();
       const terrain = new Terrain({ scene, seed: seed ^ 0x9e37, biome });
@@ -374,7 +388,8 @@ describe('junction pavement does not lie on the carriageway', () => {
       }
       expect(`${biome} ${seed}: ${pad} inverted pad`)
         .toBe(`${biome} ${seed}: 0 inverted pad`);
-      expect(ribbon).toBeLessThanOrEqual(1);
+      expect(`${biome} ${seed}: ${ribbon} inverted ribbon`)
+        .toBe(`${biome} ${seed}: 0 inverted ribbon`);
       net.dispose();
     }
   }, 120000);

@@ -600,6 +600,63 @@ destroyed, they are not rebuilding, not healing"*. Three symptoms, two defects, 
 - **`AI_SKILL[].maxRepairs` is a concurrency cap, not a switch.** Every rung mends, because a base
   that never heals is a broken opponent rather than a gentle one. Easy patches one building while
   the next two burn; Brutal answers the salvo.
+## The roads were underground, and one number was doing four kinds of damage
+
+Reported as *"Look at the roads, all broken, 0 logic"* over a screenshot of a city map, with five
+named symptoms. Three of them were ONE defect: **the road surface was built edge-to-edge across a
+13.6 m carriageway, over a 1 m heightfield, with 6 cm of lift.** The mesh chorded straight over any
+ground that bulged in between. Measured on the shipped geometry, sampling every triangle:
+
+```
+                  carriageway buried   worst    centreline buried
+industrial-grid         16.86%         4.22 m   27.7%, 32 m unbroken
+temperate-valley        16.81%         3.51 m   27.8%, 46 m unbroken
+frozen-sector           28.66%         4.53 m   37.4%, 36 m unbroken
+```
+
+A sixth of the road replaced by the terrain splat is *"pale blotches punched through the asphalt"*;
+the same thing over 32-46 m is *"the road ends abruptly in mid-air"*; on `road.pavement` (worst
+5.92 m) it is *"the pavement breaks, floats and re-starts"*. `ROAD_CONFORM_METRES` (1.2 m, under the
+terrain grid) makes every road surface DRAPE instead, and `RoadNetwork.conformSpans` carries the
+argument for why draping rather than grading the heightfield.
+
+- **THIS WAS NEVER A REGRESSION AND `Roads.ts` HAD NOT BEEN TOUCHED.** It shipped from the day the
+  module was written. The reason is in the next bullet, and it is the more important finding.
+- **`npm run shots` CANNOT SEE A ROAD DEFECT.** All thirteen fixtures frame one short, straight,
+  nearly-flat run, so the geometry has nowhere to go wrong in them. A full A/B — pre-fix control
+  against fixed, 13 fixtures each — moved the weighted grade by **0.0 points, 92.0% and 13 failures
+  on both sides**, while the change is unmissable on any real map at gameplay zoom. The generator's
+  own suites work in the XZ plane (arc radii, off-axis degrees, kerb overlap, winding) and the whole
+  failure was in Y. `tests/roads-drape.spec.ts` is the gate that closes both gaps; do not read a
+  green scorecard as evidence about roads.
+- **NO SCATTER PROP MAY STAND ON THE CARRIAGEWAY**, and `Scatter.legal` is where that is enforced —
+  `isCarriageway`, NEVER `isRoad`, the same distinction and the same reason as ore seeding. `isRoad`
+  covers the kerb and pavement, which is exactly where `traceKerbs` and `placeAlongLine` are designed
+  to put lamps, benches and railings. Measured before: 186 / 207 / 105 props in the road on the three
+  maps above. The file's header had claimed "street furniture spawns BESIDE roads, never on them"
+  since it was written, naming a mechanism — the `def.surfaces` mask — that cannot express it, because
+  roads stamp `SurfaceId.Paving` and the mask cannot tell a traffic lane from a plaza.
+- **The density gates in `tests/scatter.spec.ts` build no RoadNetwork**, so they cannot see that
+  exclusion at all. A refused candidate is a spent attempt, not a relocated prop, so an exclusion over
+  a tenth of the map thins the WHOLE map: foundry-line went 162.4 -> 122.6 props/ha against a floor of
+  95. That is pinned in `roads-drape.spec.ts`, not in the file whose job it looks like.
+- **A CROSSWALK MEANS THERE IS A JUNCTION.** `junctionA`/`junctionB` is the only input to `dEnd`, and
+  `dEnd` places the zebra, the stop bar, the lane arrows and the yellow kerb dashes. It was set in
+  `buildChains` from `degree(node) >= 3` — a claim about the LATTICE — and never revisited, while
+  `mergeArms` goes on to empty the arm list of any node whose roads turn out to be collinear, and
+  `trimChains` merges a second time. Result: 12 phantom mouths against 6 real junctions on
+  temperate-valley, painting full junction approaches onto open road. That is *"crosswalks mid-block,
+  arrows pointing into kerbs"* — and the arrows name the cause, because a two-lane street draws the
+  TURN arrow, which turns toward the kerb when there is no side road to turn into.
+  `markJunctionMouths` now derives the flag from the pad that actually exists, immediately before
+  `buildMeshes` reads it.
+- **What was deliberately NOT fixed, and why.** `pruneDeadEnds` refuses to cut an arterial edge, so an
+  arterial that could not reach the far border stops in open country — 2 on frozen-sector, 1 on
+  contested-strait, **0 on either urban map**, so it is not what the report saw. Its own comment
+  records that removing that guard produced maps with no roads at all on a third of seeds. Bounded by
+  a test instead of changed. Likewise the residual burial (0.3-1.5%, worst 3.9 m) is a terrace FACE
+  crossing the corridor, which no span size can drape over; the honest fix is routing — `classifyCells`
+  erodes by ONE cell and guarantees flat ground only +/-6 m out, against a 10.28 m arterial corridor.
 
 ## Hard rules
 
