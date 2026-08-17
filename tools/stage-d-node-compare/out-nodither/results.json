@@ -1,0 +1,77 @@
+{
+  "origin": "http://127.0.0.1:5345",
+  "when": "2026-08-17T12:51:04.195Z",
+  "dither": false,
+  "arms": [
+    {
+      "arm": "glsl-webgl",
+      "backend": "webgl",
+      "ms": 274.5
+    },
+    {
+      "arm": "tsl-webgpu",
+      "backend": "webgpu",
+      "ms": 88
+    },
+    {
+      "arm": "tsl-webgl2",
+      "backend": "webgl2-fallback",
+      "ms": 466.20000000018626
+    },
+    {
+      "arm": "glsl-webgpu",
+      "backend": "webgpu",
+      "ms": 39.799999999813735
+    },
+    {
+      "arm": "stock-webgl",
+      "backend": "webgl",
+      "ms": 52.30000000074506
+    },
+    {
+      "arm": "stock-webgpu",
+      "backend": "webgpu",
+      "ms": 31.200000000186265
+    }
+  ],
+  "error": null,
+  "warnings": [],
+  "diffs": {
+    "tsl-webgpu": {
+      "changed": 0.06837967775467775,
+      "strong": 0.0079879158004158,
+      "maxDelta": 77,
+      "meanDelta": 0.34660537941787944
+    },
+    "tsl-webgl2": {
+      "changed": 0.05595439189189189,
+      "strong": 0.007257016632016632,
+      "maxDelta": 77,
+      "meanDelta": 0.31796062889812887
+    },
+    "glsl-webgpu": {
+      "changed": 0.18189968814968815,
+      "strong": 0.17681912681912682,
+      "maxDelta": 238,
+      "meanDelta": 11.65014617983368
+    },
+    "stock-webgl": {
+      "changed": 0.1870614604989605,
+      "strong": 0.18512214137214136,
+      "maxDelta": 134,
+      "meanDelta": 10.743486876299377
+    },
+    "stock-webgpu": {
+      "changed": 0.1870614604989605,
+      "strong": 0.18512214137214136,
+      "maxDelta": 134,
+      "meanDelta": 10.741745712058211
+    },
+    "stock-webgpu-vs-stock-webgl": {
+      "changed": 0.006376689189189189,
+      "strong": 0,
+      "maxDelta": 1,
+      "meanDelta": 0.006376689189189189
+    }
+  }
+}

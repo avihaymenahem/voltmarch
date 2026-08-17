@@ -95,3 +95,6 @@ ab/
 tools/terrain-node-compare/page.js
 tools/terrain-node-compare/out/*.png
 tools/terrain-node-compare/out-nodither/*.png
+tools/stage-d-node-compare/page.js
+tools/stage-d-node-compare/out/*.png
+tools/stage-d-node-compare/out-nodither/*.png

@@ -73,6 +73,7 @@ import { clamp, clamp01, Rng, srgbToLinear, TAU } from '../core/math';
 import { linearColorTriple } from '../core/assets';
 import { applyShroudTint } from '../render/FogOfWar';
 import { SurfaceId, type BiomeName } from './Biomes';
+import { PROP_WIND } from './prop-wind';
 
 /* ==========================================================================
  * 1. COLOUR
@@ -2093,22 +2094,22 @@ uniform float uWindFreq;
 const WIND_BODY = /* glsl */`
 {
   #ifdef USE_INSTANCING
-    float swayPhase = instanceMatrix[3].x * 0.113 + instanceMatrix[3].z * 0.171;
+    float swayPhase = instanceMatrix[3].x * ${PROP_WIND.phaseX} + instanceMatrix[3].z * ${PROP_WIND.phaseZ};
   #else
     float swayPhase = 0.0;
   #endif
   float w = uWindTime * uWindFreq + swayPhase;
   // Two harmonics so the motion never reads as one clean sine.
-  float sx = sin(w) * 0.78 + sin(w * 2.37 + swayPhase * 0.7) * 0.22;
-  float sz = cos(w * 0.83 + swayPhase * 1.31) * 0.78 + cos(w * 2.11) * 0.22;
+  float sx = sin(w) * ${PROP_WIND.harmonicA} + sin(w * ${PROP_WIND.xRateB} + swayPhase * ${PROP_WIND.xPhaseB}) * ${PROP_WIND.harmonicB};
+  float sz = cos(w * ${PROP_WIND.zRateA} + swayPhase * ${PROP_WIND.zPhaseA}) * ${PROP_WIND.harmonicA} + cos(w * ${PROP_WIND.zRateB}) * ${PROP_WIND.harmonicB};
   transformed.x += sx * aSway;
-  transformed.z += sz * aSway * 0.72;
+  transformed.z += sz * aSway * ${PROP_WIND.zAmplitude};
 }
 `;
 
 export function createPropMaterial(): PropMaterialSet {
   const uTime = { value: 0 };
-  const uFreq = { value: SCATTER_WIND.hz * TAU };
+  const uFreq = { value: PROP_WIND.radiansPerSecond };
   const uGain = { value: PROP_EMISSIVE_GAIN };
   const uGlossRough = { value: PROP_GLOSS_ROUGHNESS };
 
@@ -2153,7 +2154,11 @@ export function createPropMaterial(): PropMaterialSet {
     applyShroudTint(shader);
   };
   // v3: the shroud self-tint changed the generated program.
-  material.customProgramCacheKey = (): string => 'ra-prop-v3';
+  // v4: the wind coefficients moved into `./prop-wind.ts`, shared with the TSL
+  // port. Every value is identical and every one prints as the literal it
+  // replaced, but the SOURCE changed, and stopping the cache serving a program
+  // built from different source is this key's whole job.
+  material.customProgramCacheKey = (): string => 'ra-prop-v4';
 
   const depthMaterial = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
   depthMaterial.name = 'PropDepth';
@@ -2164,7 +2169,7 @@ export function createPropMaterial(): PropMaterialSet {
       .replace('#include <common>', `#include <common>\n${WIND_PARS}`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>${WIND_BODY}`);
   };
-  depthMaterial.customProgramCacheKey = (): string => 'ra-prop-depth-v1';
+  depthMaterial.customProgramCacheKey = (): string => 'ra-prop-depth-v2';
 
   return {
     material,

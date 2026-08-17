@@ -81,7 +81,7 @@
 
 import * as THREE from 'three';
 import { NodeMaterial } from 'three/webgpu';
-import type { Node } from 'three/webgpu';
+import type { Node, NodeBuilder } from 'three/webgpu';
 import {
   Discard, Fn, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, cross, dot, exp,
   float, length, max, min, mix, modelWorldMatrix, normalize, positionLocal, pow, sign, sin,
@@ -89,7 +89,7 @@ import {
 } from 'three/tsl';
 
 import { WATER_TEXTURE_SIZE } from '../core/config';
-import { shroudTint } from '../render/shroud-nodes';
+import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
 import {
   buildFoamLace, buildWaveSlopes, waterTextureKey, type WaterTextureData,
 } from './water-texture-gen';
@@ -216,6 +216,49 @@ function createUniformNodes(
 export type WaterNodeUniforms = ReturnType<typeof createUniformNodes>;
 
 /* ==========================================================================
+ * 2b. THE SHROUD MIXIN
+ *
+ * The same two calls at the same two points every Stage D material makes, and
+ * for the same reason spelled out in `shroud-nodes.ts` §4. The water needs it
+ * more literally than any of them: the fog carpet is draped on the SEABED and
+ * depth-tested, while this surface sits at `WATER_LEVEL` above it and writes
+ * depth in an earlier render band — so the carpet can never cover the sea, and
+ * without the self-tint unexplored ocean renders as bright daylight water.
+ *
+ * `shroudVertexUv()` derives the UV from `modelWorldMatrix * positionLocal`,
+ * which is world XZ. The swell displaces Y and nothing else, so that is exactly
+ * the `vWorld.xz` the GLSL passes to its hand-copied block — the two paths look
+ * up the same texel.
+ *
+ * `setupPosition` STILL RUNS ON A MATERIAL WITH A `vertexNode`. `NodeMaterial`
+ * builds `setupVertex()` (which calls it) and only then substitutes
+ * `this.vertexNode` for the result, so the varying is written even though the
+ * clip position comes from elsewhere. That is load-bearing and not obvious: a
+ * material that skipped it would compile, render, and tint the sea from an
+ * unwritten varying.
+ * ========================================================================== */
+
+class WaterShroudNodeMaterial extends NodeMaterial {
+  override setupPosition(builder: NodeBuilder): Vec3N {
+    const position = super.setupPosition(builder) as Vec3N;
+    shroudVertexUv();
+    return position;
+  }
+
+  override setupOutput(builder: NodeBuilder, outputNode: Vec4N): Vec4N {
+    /*
+     * BEFORE `super`, which is where the GLSL puts it: `<tonemapping_fragment>`
+     * — and therefore the injected block immediately above it — runs before
+     * `<fog_fragment>` and `<premultiplied_alpha_fragment>`, and `super` is
+     * exactly those two. The water has `fog: false` and is not premultiplied, so
+     * both are inert here; the ORDER is kept anyway so this material reads the
+     * same as every other one that claims the tint.
+     */
+    return super.setupOutput(builder, shroudTint(outputNode)) as Vec4N;
+  }
+}
+
+/* ==========================================================================
  * 3. THE SHADER
  * ========================================================================== */
 
@@ -320,6 +363,15 @@ export function createWaterNodeMaterial(opts: WaterMaterialOptions): WaterNodeMa
    *
    * Returns `vec3( height, gradX, gradZ )`; the GLSL wrote the gradient through
    * an `out vec2 grad`.
+   *
+   * NO `.setLayout()`, AND NOR ON `decodeSigned` OR `rampSample` BELOW. All
+   * three read module-scope UNIFORMS — `uWaveA`, `uSwellDir`, `uTime`,
+   * `uEncodeMetres`, the `uRamp` array — and a layout emits a real WGSL function
+   * that can see nothing but its declared parameters, so those names come out
+   * unresolved and Chrome refuses the module. The GLSL backend inlines either
+   * way, which is exactly why this class of defect survives an offline compile
+   * and has to be caught by the static scan in this module's spec. `crestWave`,
+   * `rot2` and `unrot2` DO carry layouts: every input of theirs is a parameter.
    */
   const swellHeight = Fn(([p]: [Vec2N]) => {
     const k1 = float(6.283185307179586).div(U.uWaveA.x).toVar('k1');
@@ -334,20 +386,12 @@ export function createWaterNodeMaterial(opts: WaterMaterialOptions): WaterNodeMa
     const grad = U.uSwellDir.xy.mul(w1.y.mul(k1).mul(0.62))
       .add(U.uSwellDir.zw.mul(w2.y.mul(k2).mul(0.38))).mul(amp).toVar('grad');
     return vec3(w1.x.mul(0.62).add(w2.x.mul(0.38)).mul(amp), grad.x, grad.y);
-  }).setLayout({
-    name: 'waterSwellHeight',
-    type: 'vec3',
-    inputs: [{ name: 'p', type: 'vec2' }],
   });
 
-  /** The field's sqrt-encoded signed depth channel, in metres. */
+  /** The field's sqrt-encoded signed depth channel, in metres. Reads `uEncodeMetres`. */
   const decodeSigned = Fn(([e]: [FloatN]) => {
-    const s = e.mul(2.0).sub(1.0).toVar('s');
+    const s = e.mul(2.0).sub(1.0).toVar('waterDecodeS');
     return sign(s).mul(s).mul(s).mul(U.uEncodeMetres);
-  }).setLayout({
-    name: 'waterDecodeSigned',
-    type: 'float',
-    inputs: [{ name: 'e', type: 'float' }],
   });
 
   /**
@@ -384,16 +428,12 @@ export function createWaterNodeMaterial(opts: WaterMaterialOptions): WaterNodeMa
    * on, and the GLSL's own comment says ES 1.00 forbade it anyway.
    */
   const rampSample = Fn(([t]: [FloatN]) => {
-    const f = clamp(t, 0.0, 1.0).mul(WATER_CONSTANTS.rampStops - 1).toVar('f');
-    const c = vec3(U.uRamp.element(0)).toVar('c');
+    const f = clamp(t, 0.0, 1.0).mul(WATER_CONSTANTS.rampStops - 1).toVar('waterRampF');
+    const c = vec3(U.uRamp.element(0)).toVar('waterRampC');
     for (let i = 1; i < WATER_CONSTANTS.rampStops; i++) {
       c.assign(mix(c, U.uRamp.element(i), clamp(f.sub(i - 1), 0.0, 1.0)));
     }
     return c;
-  }).setLayout({
-    name: 'waterRampSample',
-    type: 'vec3',
-    inputs: [{ name: 't', type: 'float' }],
   });
 
   /* ----------------------------------------------------------------------
@@ -627,22 +667,9 @@ export function createWaterNodeMaterial(opts: WaterMaterialOptions): WaterNodeMa
 
     col.assign(col.add(spec).mul(U.uGrade.z));
 
-    /* ---- the shroud, self-applied ---------------------------------------- */
-    /*
-     * The fog carpet is draped on the SEABED and depth-tested, while this
-     * surface sits at WATER_LEVEL above it and writes depth in an earlier render
-     * band — so the carpet can never cover the sea. Without this, unexplored
-     * ocean renders as bright daylight water.
-     *
-     * ONE CALL, not a hand-copied block. `WATER_FRAG` inlines the formula under
-     * a comment promising it matches `applyShroudTint`; here it IS
-     * `applyShroudTint`.
-     */
-    col.assign(shroudTint(col, vWorld.xz));
-
     // The waterline is one texel wide in the field, so fade the last few
     // centimetres of depth rather than leaving a hard stair-stepped edge.
-    const alpha = smoothstep(0.0, 0.12, depth).toVar('alpha');
+    const alpha = smoothstep(0.0, 0.12, depth).toVar('waterAlpha');
 
     return vec4(col, alpha);
   });
@@ -651,7 +678,7 @@ export function createWaterNodeMaterial(opts: WaterMaterialOptions): WaterNodeMa
    * 4. THE MATERIAL
    * -------------------------------------------------------------------- */
 
-  const material = new NodeMaterial();
+  const material = new WaterShroudNodeMaterial();
   material.name = 'WaterNodeMaterial';
   /*
    * `vertexNode` is the FULL clip-space position, which is what `WATER_VERT`

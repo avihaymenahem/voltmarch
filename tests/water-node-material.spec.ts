@@ -92,21 +92,22 @@ describe('the TSL water graph compiles', () => {
  * ========================================================================== */
 
 describe('the translated water keeps what the GLSL did', () => {
-  it('declares the wave maths as FUNCTIONS, not inlined at every call site', () => {
+  it('declares the PURE wave helpers as functions, and only those', () => {
     /*
-     * `crestWave` is called twice inside `swellHeight`, `swellHeight` once per
-     * STAGE, `decodeSigned` three times, `rot2`/`unrot2` twice each. Without
-     * `.setLayout()` a TSL `Fn` is a macro and three emits the body at every
-     * one of those, renaming collided locals on the way past — Stage C measured
-     * that at -9.9% of source length on the terrain shader when fixed.
+     * `crestWave` is called twice inside `swellHeight` and `rot2`/`unrot2` twice
+     * each, so a layout is worth having: without one a TSL `Fn` is a macro and
+     * three emits the body at every call site, renaming collided locals on the
+     * way past — Stage C measured that at -9.9% of source length on the terrain
+     * shader when fixed.
+     *
+     * THE OTHER THREE HELPERS DELIBERATELY HAVE NO LAYOUT. `swellHeight`,
+     * `decodeSigned` and `rampSample` all read module-scope UNIFORMS, and
+     * section 2b is the assertion that says why that matters.
      */
     const set = nodeSet();
     for (const which of ['wgsl', 'glsl'] as const) {
       const { fragment } = compileNodeMaterial(set.material, which);
-      for (const fn of [
-        'waterCrestWave', 'waterSwellHeight', 'waterDecodeSigned',
-        'waterRot2', 'waterUnrot2', 'waterRampSample',
-      ]) {
+      for (const fn of ['waterCrestWave', 'waterRot2', 'waterUnrot2']) {
         expect(fragment, `${fn} missing from ${which}`).toContain(fn);
       }
     }
@@ -117,13 +118,60 @@ describe('the translated water keeps what the GLSL did', () => {
     /*
      * `WaterMaterial.ts`'s own note: the crest height drives the foam threshold,
      * and a linearly interpolated crest across a 2 m quad visibly stair-steps
-     * the foam edge. So `swellHeight` must appear in both stages, not just the
-     * vertex one with a varying carrying the result.
+     * the foam edge. So the swell must be computed in BOTH stages, not once in
+     * the vertex stage with a varying carrying the result.
+     *
+     * `swellHeight` is a macro (see above), so the marker is its inlined body
+     * rather than a function name: `waterCrestWave` is the declared function it
+     * calls, and it can only appear in a stage the swell was evaluated in.
      */
     const set = nodeSet();
     const { vertex, fragment } = compileNodeMaterial(set.material, 'wgsl');
-    expect(vertex).toContain('waterSwellHeight');
-    expect(fragment).toContain('waterSwellHeight');
+    expect(vertex).toContain('waterCrestWave');
+    expect(fragment).toContain('waterCrestWave');
+    set.dispose();
+  });
+
+  it('declares no WGSL function that reaches outside itself', () => {
+    /*
+     * STAGE D'S FINDING, APPLIED HERE — and the reason section 1's compile
+     * checks are weaker than they read. `WGSLNodeBuilder.build()` GENERATES a
+     * module; nothing in Node compiles one. Four of Stage D's five helpers
+     * passed every offline test and were then refused by Chrome with
+     * `unresolved value 'nodeUniform1'`, because `.setLayout()` emits a real
+     * WGSL function and a WGSL function sees nothing but its parameters.
+     *
+     * This water shader had THREE helpers in that position — `swellHeight`,
+     * `decodeSigned` and `rampSample` all read uniforms — and they are macros
+     * now. This is what keeps them macros.
+     */
+    const set = nodeSet();
+    const { vertex, fragment } = compileNodeMaterial(set.material, 'wgsl');
+    let seen = 0;
+    for (const stage of [vertex, fragment]) {
+      const re = /\bfn\s+([A-Za-z_]\w*)\s*\(/g;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(stage)) !== null) {
+        if (m[1] === 'main') continue;
+        const open = stage.indexOf('{', re.lastIndex);
+        if (open < 0) continue;
+        let depth = 0;
+        let i = open;
+        for (; i < stage.length; i++) {
+          if (stage[i] === '{') depth++;
+          else if (stage[i] === '}' && --depth === 0) break;
+        }
+        const body = stage.slice(open, i + 1);
+        seen++;
+        expect(body, `fn ${m[1]} reads a nodeUniform, which only main can see`)
+          .not.toMatch(/\bnodeUniform\d+\b/);
+        expect(body, `fn ${m[1]} reads vShroudUv, which only main can see`)
+          .not.toMatch(/\bvShroudUv\b/);
+      }
+    }
+    // The scan has to find the three that ARE declared, or it is vacuous.
+    expect(seen, 'no declared function found — the scan is broken')
+      .toBeGreaterThanOrEqual(3);
     set.dispose();
   });
 
@@ -135,16 +183,30 @@ describe('the translated water keeps what the GLSL did', () => {
     set.dispose();
   });
 
-  it('calls the SHARED shroud tint instead of copying the formula a third time', () => {
+  it('uses the SHARED shroud tint instead of copying the formula a third time', () => {
     /*
      * `WATER_FRAG` writes the fog block out by hand under a comment reading
      * "Same formula as applyShroudTint()", because a raw ShaderMaterial has no
-     * `onBeforeCompile` to hook. On the node path it is a call, and the whole
-     * point of the port is that the third copy has nowhere to come back from.
+     * `onBeforeCompile` to hook. On the node path it is Stage D's
+     * `shroudTint` / `shroudVertexUv` pair, and the whole point is that the
+     * third copy has nowhere to come back from.
+     *
+     * The markers are the tint's own `.toVar()` names and the varying, because
+     * `shroudTintRgb` is a MACRO — it reads five uniforms and a sampler, so it
+     * may not carry a layout and therefore emits no function name to look for.
+     * Variable names survive inlining; that is what makes them usable here.
      */
     const set = nodeSet();
     for (const which of ['wgsl', 'glsl'] as const) {
-      expect(compileNodeMaterial(set.material, which).fragment).toContain('shroudTint');
+      const { vertex, fragment } = compileNodeMaterial(set.material, which);
+      for (const marker of ['vmV', 'vmRem', 'vmFog']) {
+        expect(fragment, `${marker} missing from ${which}`).toMatch(
+          new RegExp(`\\b${marker}\\b`),
+        );
+      }
+      // And the vertex half — a material that applies the tint without writing
+      // the varying compiles, renders, and tints from garbage.
+      expect(vertex, `vShroudUv unwritten in ${which}`).toContain('vShroudUv');
     }
     set.dispose();
   });

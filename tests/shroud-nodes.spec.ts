@@ -2,27 +2,28 @@
  * ============================================================================
  * VOLTMARCH — tests/shroud-nodes.spec.ts
  * ============================================================================
- * THE GATE FOR THE TSL SHROUD PORT (`docs/WEBGPU_MIGRATION_PLAN.md` Stage E).
+ * THE GATE FOR THE TSL SHROUD **CARPET** (Stage E of
+ * `docs/WEBGPU_MIGRATION_PLAN.md`).
  *
- * Same instrument and same limits as `tests/terrain-node-material.spec.ts`: a
- * TSL graph compiles to WGSL and to GLSL in plain Node, so "does it still
- * build, on both backends of the node path" is a unit test rather than a
- * browser capture. **A compiled shader is not a correct picture.** What these
- * tests prove is that the graph builds, that the uniforms are wired to the
- * SAME live objects `FogOfWar` mutates, and that the formula the two GLSL
- * copies share is now one function.
+ * The SELF-TINT half of `src/render/shroud-nodes.ts` is Stage D's and is gated
+ * by `tests/stage-d-node-materials.spec.ts`. This file covers what Stage E
+ * added: `createShroudNodeMaterial`, the domain warp, the ordered dither, and
+ * the four pure noise helpers that are the only things in the module allowed to
+ * carry a `.setLayout()`.
+ *
+ * Same instrument and same limits as the terrain and water specs: a TSL graph
+ * compiles to WGSL and to GLSL in plain Node. **A compiled shader is not a
+ * correct picture, and — Stage D's finding — it is not even a VALID shader.**
+ * `WGSLNodeBuilder.build()` generates a module; nothing here compiles one. That
+ * is why section 2 exists.
  * ============================================================================
  */
 
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { NodeMaterial } from 'three/webgpu';
-import { positionWorld, vec3, vec4 } from 'three/tsl';
 
 import { compileNodeMaterial } from './helpers/node-compile';
-import {
-  createShroudNodeMaterial, shroudTint, shroudTintNodes, syncShroudNodes,
-} from '../src/render/shroud-nodes';
+import { createShroudNodeMaterial } from '../src/render/shroud-nodes';
 import { shroudUniforms } from '../src/render/FogOfWar';
 import {
   DEFAULT_ART, FOG_DITHER, FOG_EDGE_WARP, FOG_EXPLORED_ALPHA, FOG_EXPLORED_LEVEL,
@@ -68,17 +69,66 @@ describe('the TSL shroud carpet compiles', () => {
 });
 
 /* ==========================================================================
- * 2. THE STRUCTURES THE GLSL RELIED ON
+ * 2. NO DECLARED WGSL FUNCTION CAPTURES MODULE SCOPE
+ *
+ * Stage D's check, applied to Stage E's helpers. `.setLayout()` turns a TSL `Fn`
+ * into a REAL WGSL function, and a WGSL function sees nothing but its declared
+ * parameters — so a body reading an attribute, a varying or a uniform emits a
+ * function full of names that are not in scope, and Chrome refuses the module
+ * while every offline test passes. The GLSL backend inlines regardless.
+ *
+ * The carpet's four helpers are PURE, which is what makes their layouts legal.
+ * This is the assertion that keeps them that way.
  * ========================================================================== */
 
-describe('the translated carpet keeps what SHROUD_FRAG did', () => {
-  it('declares its noise and dither helpers as FUNCTIONS, not sixteen inlinings', () => {
+describe('the carpet declares no capturing function', () => {
+  function declaredFunctions(wgsl: string): Array<{ name: string; body: string }> {
+    const out: Array<{ name: string; body: string }> = [];
+    const re = /\bfn\s+([A-Za-z_]\w*)\s*\(/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(wgsl)) !== null) {
+      // `main` IS the entry point and is the one scope that legitimately holds
+      // every attribute and varying in the module.
+      if (m[1] === 'main') continue;
+      const open = wgsl.indexOf('{', re.lastIndex);
+      if (open < 0) continue;
+      let depth = 0;
+      let i = open;
+      for (; i < wgsl.length; i++) {
+        if (wgsl[i] === '{') depth++;
+        else if (wgsl[i] === '}' && --depth === 0) break;
+      }
+      out.push({ name: m[1], body: wgsl.slice(open, i + 1) });
+    }
+    return out;
+  }
+
+  it('reaches nothing only main can see', () => {
+    const set = createShroudNodeMaterial();
+    const { vertex, fragment } = compileNodeMaterial(set.material, 'wgsl');
+    let seen = 0;
+    for (const stage of [vertex, fragment]) {
+      for (const fn of declaredFunctions(stage)) {
+        seen++;
+        expect(fn.body, `fn ${fn.name} reads a nodeUniform, which only main can see`)
+          .not.toMatch(/\bnodeUniform\d+\b/);
+        expect(fn.body, `fn ${fn.name} reads vShroudUv, which only main can see`)
+          .not.toMatch(/\bvShroudUv\b/);
+      }
+    }
+    // The scan must actually find the four helpers, or a build that stopped
+    // emitting declared functions would pass this and prove nothing.
+    expect(seen, 'no declared function found — the scan is vacuous')
+      .toBeGreaterThanOrEqual(4);
+    set.dispose();
+  });
+
+  it('still declares the four pure helpers as real functions', () => {
     /*
-     * `vnoise` calls `hash21` four times and the carpet calls `vnoise` four
-     * times. Without `.setLayout()` a TSL `Fn` is a MACRO — three emits the body
-     * at every call site and renames the collided locals on the way past, which
-     * is what Stage C measured on the terrain shader. The names below are the
-     * layout names, so finding them is finding real callables.
+     * The other half of the same rule: a layout on a PURE helper is legal and
+     * worth having. `shroudVnoise` calls `shroudHash21` four times and the
+     * carpet calls `shroudVnoise` four times, so without layouts three emits the
+     * hash body sixteen times over with renamed locals.
      */
     const set = createShroudNodeMaterial();
     for (const which of ['wgsl', 'glsl'] as const) {
@@ -89,24 +139,28 @@ describe('the translated carpet keeps what SHROUD_FRAG did', () => {
     }
     set.dispose();
   });
+});
 
+/* ==========================================================================
+ * 3. THE STRUCTURES `SHROUD_FRAG` RELIED ON
+ * ========================================================================== */
+
+describe('the translated carpet keeps what SHROUD_FRAG did', () => {
   it('discards the fully-clear fragment rather than blending a zero', () => {
-    // `if (a <= 0.003) discard;` — over a 33k-triangle full-map carpet, blending
-    // a transparent black is a full-screen overdraw for nothing.
+    // Over a 33k-triangle full-map carpet, blending a transparent black is a
+    // full-screen overdraw for nothing.
     const set = createShroudNodeMaterial();
-    const { fragment } = compileNodeMaterial(set.material, 'wgsl');
-    expect(fragment).toMatch(/discard/);
+    expect(compileNodeMaterial(set.material, 'wgsl').fragment).toMatch(/discard/);
     set.dispose();
   });
 
-  it('takes its screen-space dither from screenCoordinate, not from an RNG', () => {
+  it('takes its dither from screenCoordinate, never from an RNG', () => {
     /*
      * VISUAL_DNA I1 wants an ORDERED dither: stable frame to frame. White noise
-     * here would crawl and read as film grain, which is banned — and
+     * would crawl and read as film grain, which is banned — and
      * `RENDER_FINDINGS` records three's own `DenoiseNode` seeding itself from
      * `Math.random()`, which would also destroy the shot harness's
-     * byte-identical captures. Neither `random` nor a seeded-per-run constant
-     * may appear.
+     * byte-identical captures.
      */
     const set = createShroudNodeMaterial();
     for (const which of ['wgsl', 'glsl'] as const) {
@@ -117,9 +171,27 @@ describe('the translated carpet keeps what SHROUD_FRAG did', () => {
     set.dispose();
   });
 
+  it('emits no DESCENDING smoothstep, which is UNDEFINED in WGSL', () => {
+    // `SHROUD_FRAG` was already written as `1.0 - smoothstep(lo, hi, v)` rather
+    // than as a reversed-edge call, and its own comment says why. It translates
+    // with nothing to rewrite; this keeps it that way.
+    const set = createShroudNodeMaterial();
+    const call = /smoothstep\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,/g;
+    for (const which of ['wgsl', 'glsl'] as const) {
+      const src = Object.values(compileNodeMaterial(set.material, which)).join('\n');
+      let m: RegExpExecArray | null;
+      call.lastIndex = 0;
+      while ((m = call.exec(src)) !== null) {
+        expect(Number(m[1]), `descending smoothstep in ${which}: ${m[0]}`)
+          .toBeLessThan(Number(m[2]));
+      }
+    }
+    set.dispose();
+  });
+
   it('carries the carpet material flags across verbatim', () => {
-    // Every one of these is load-bearing and argued in `FogOfWar.ts` §1b / §2:
-    // depth ON so the carpet cannot dim a unit in front of it, no depth write,
+    // Every one is load-bearing and argued in `FogOfWar.ts` §1b / §2: depth ON
+    // so the carpet cannot dim a unit in front of it, no depth write,
     // DoubleSide, no scene fog, and NOT tone mapped.
     const set = createShroudNodeMaterial();
     expect(set.material.transparent).toBe(true);
@@ -133,11 +205,11 @@ describe('the translated carpet keeps what SHROUD_FRAG did', () => {
 });
 
 /* ==========================================================================
- * 3. THE UNIFORM VALUES, TRANSCRIBED
+ * 4. THE UNIFORM VALUES, TRANSCRIBED
  *
- * These literals are the ones `FogOfWar`'s `ShaderMaterial` uploads, written
- * out here rather than read from the node set, so a shared table cannot hide a
- * drift between the two carpets.
+ * The literals `FogOfWar`'s `ShaderMaterial` uploads, written out here rather
+ * than read back off the node set, so a shared source cannot hide a drift
+ * between the two carpets.
  * ========================================================================== */
 
 describe('the carpet uniforms match the shipping ShaderMaterial', () => {
@@ -157,7 +229,7 @@ describe('the carpet uniforms match the shipping ShaderMaterial', () => {
   });
 
   it('resolves the look hexes to LINEAR rgb, as the GLSL path does', () => {
-    // `#05070A` is very dark and sRGB-vs-linear is the whole difference between
+    // `#05070A` is very dark, and sRGB-vs-linear is the whole difference between
     // "near black" and "visibly grey" over a full-map carpet.
     const set = createShroudNodeMaterial();
     const dark = set.uniforms.uUnexploredColor.value;
@@ -173,10 +245,12 @@ describe('the carpet uniforms match the shipping ShaderMaterial', () => {
     /*
      * `FogOfWar.applyLook` writes both, and its comment says why: a mood change
      * that re-tints the ground and leaves every building and ship on the old
-     * palette is the bug. The node carpet has to keep that pairing.
+     * palette is the bug. Writing `shroudUniforms` also reaches the node path,
+     * because Stage D's mirrored uniforms PULL from that singleton.
      */
     const set = createShroudNodeMaterial();
-    const before = shroudUniforms.uFogTint.value.clone();
+    const beforeTint = shroudUniforms.uFogTint.value.clone();
+    const beforeDark = shroudUniforms.uFogDark.value.clone();
     set.applyLook({ ...DEFAULT_ART.shroud, exploredTint: '#FF0000', unexploredColor: '#00FF00' });
     expect(set.uniforms.uExploredTint.value.x).toBeGreaterThan(0.9);
     expect(shroudUniforms.uFogTint.value.x).toBeGreaterThan(0.9);
@@ -184,69 +258,23 @@ describe('the carpet uniforms match the shipping ShaderMaterial', () => {
     // Alpha channels are not part of a look and must survive the write.
     expect(shroudUniforms.uFogTint.value.w).toBe(FOG_EXPLORED_ALPHA);
     expect(shroudUniforms.uFogDark.value.w).toBe(FOG_UNEXPLORED_ALPHA);
-    // Put the module-scope object back; other specs share it.
-    shroudUniforms.uFogTint.value.copy(before);
+    // Put the module-scope singleton back; other specs share it.
+    shroudUniforms.uFogTint.value.copy(beforeTint);
+    shroudUniforms.uFogDark.value.copy(beforeDark);
     set.dispose();
   });
-});
 
-/* ==========================================================================
- * 4. THE SHARED SELF-TINT
- * ========================================================================== */
-
-describe('the shroud self-tint is one graph with the carpet', () => {
-  it('compiles into an arbitrary material on both backends', () => {
-    /*
-     * This is the case `applyShroudTint` serves on the WebGL side, and the case
-     * `WaterMaterial.ts` could NOT serve — a raw `ShaderMaterial` has no
-     * `onBeforeCompile` for the injection to hook, so the water writes the
-     * formula out a third time by hand. On the node path it is a function call
-     * from any graph, which is what this proves.
-     */
-    for (const which of ['wgsl', 'glsl'] as const) {
-      const material = new NodeMaterial();
-      material.fragmentNode = vec4(
-        shroudTint(vec3(0.5, 0.5, 0.5), positionWorld.xz), 1.0,
-      );
-      const { fragment } = compileNodeMaterial(material, which);
-      expect(fragment, `shroudTint missing from ${which}`).toContain('shroudTint');
-      expect(fragment).not.toMatch(/NaN/);
-      material.dispose();
-    }
-  });
-
-  it('aliases the three uniforms FogOfWar mutates in place', () => {
-    /*
-     * THE WHOLE WIRING RESTS ON THIS. `FogOfWar` calls `.set(...)` on these
-     * Vector4s; if the node path had allocated its own, the sea and every
-     * self-tinting material on the node renderer would freeze at construction
-     * and no test that only reads config would ever notice.
-     */
-    expect(shroudTintNodes.uFogTint.value).toBe(shroudUniforms.uFogTint.value);
-    expect(shroudTintNodes.uFogDark.value).toBe(shroudUniforms.uFogDark.value);
-    expect(shroudTintNodes.uFogParams.value).toBe(shroudUniforms.uFogParams.value);
-  });
-
-  it('syncs the two that CANNOT be aliased', () => {
-    // A number and a texture reference are REPLACED by `FogOfWar`, never
-    // mutated, so aliasing is impossible and `syncShroudNodes` is the answer.
-    const mask = new THREE.DataTexture(
-      new Uint8Array([128]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType,
+  it('swaps the mask texture without rebuilding the graph', () => {
+    // `FogOfWar` publishes the real 128x128 R8 long after the material exists.
+    const set = createShroudNodeMaterial();
+    const real = new THREE.DataTexture(
+      new Uint8Array(MAP_CELLS * MAP_CELLS), MAP_CELLS, MAP_CELLS,
+      THREE.RedFormat, THREE.UnsignedByteType,
     );
-    const prevMask = shroudUniforms.uFogMask.value;
-    const prevAmount = shroudUniforms.uFogAmount.value;
-
-    shroudUniforms.uFogMask.value = mask;
-    shroudUniforms.uFogAmount.value = 1;
-    expect(shroudTintNodes.uFogAmount.value).not.toBe(1);
-
-    syncShroudNodes();
-    expect(shroudTintNodes.uFogMask.value).toBe(mask);
-    expect(shroudTintNodes.uFogAmount.value).toBe(1);
-
-    shroudUniforms.uFogMask.value = prevMask;
-    shroudUniforms.uFogAmount.value = prevAmount;
-    syncShroudNodes();
-    mask.dispose();
+    set.setFogTexture(real);
+    expect(set.uniforms.uFog.value).toBe(real);
+    expect(compileNodeMaterial(set.material, 'wgsl').fragment.length).toBeGreaterThan(800);
+    real.dispose();
+    set.dispose();
   });
 });

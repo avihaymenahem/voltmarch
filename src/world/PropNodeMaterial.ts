@@ -1,0 +1,240 @@
+/**
+ * ============================================================================
+ * VOLTMARCH — src/world/PropNodeMaterial.ts
+ * ============================================================================
+ * THE PROP MATERIAL, AS A TSL NODE GRAPH. Stage D of
+ * `docs/WEBGPU_MIGRATION_PLAN.md`.
+ *
+ * `PropLibrary.createPropMaterial` is the shipping WebGL pair — one
+ * `MeshPhysicalMaterial` for the whole roster with four `onBeforeCompile`
+ * injections, plus a `MeshDepthMaterial` carrying the identical wind so a
+ * swaying canopy never casts a frozen shadow. This file is the node-path twin of
+ * the first of those two. **There is no twin for the second and there cannot be
+ * one** — see `StructureNodeMaterial.STAGE_D_TSL_GAPS` #1.
+ *
+ * THE FOUR INJECTIONS, AND WHERE EACH ONE LANDS HERE
+ * --------------------------------------------------
+ *   aSway  -> wind displacement            `setupPosition`, before `super`
+ *   aGloss -> per-vertex ROUGHNESS ONLY    `roughnessNode`
+ *   aEmit  -> additive emissive            `emissiveNode`
+ *   shroud -> self-tint                    `setupPosition` + `setupOutput`
+ *
+ * `aGloss` is the whole surface-variation budget for props and it is worth
+ * restating why it is roughness and nothing else: RA3 splits a parked car from
+ * the hedge beside it with a specular highlight over flat paint, and a roughness
+ * lerp is the entire cost of reproducing that out of ONE material and therefore
+ * ONE draw call. Nothing here touches albedo or normals, so no amount of it can
+ * become the per-pixel noise the texture rule bans.
+ *
+ * NO `customProgramCacheKey`, for the reason given in `UnitNodeMaterial.ts`.
+ * ============================================================================
+ */
+
+import * as THREE from 'three';
+import { MeshPhysicalNodeMaterial } from 'three/webgpu';
+import type { Node, NodeBuilder } from 'three/webgpu';
+import {
+  Fn, attribute, cos, materialEmissive, materialRoughness, mix, positionLocal, sin, uniform,
+  varyingProperty, vec3, vertexColor,
+} from 'three/tsl';
+import { PROP_EMISSIVE_GAIN, PROP_MATERIAL } from '../core/config';
+import { PROP_GLOSS_ROUGHNESS } from './PropLibrary';
+import { ditherOutput } from '../render/dither-nodes';
+import { shroudTint, shroudVertexUv } from '../render/shroud-nodes';
+import { PROP_WIND } from './prop-wind';
+
+type FloatN = Node<'float'>;
+type Vec3N = Node<'vec3'>;
+type Vec4N = Node<'vec4'>;
+
+/* ==========================================================================
+ * 1. THE PHASE ATTRIBUTE, AND THE ONE THING THIS PORT COULD NOT CARRY OVER
+ * ========================================================================== */
+
+/**
+ * THE NAME OF A PER-INSTANCE ATTRIBUTE THAT DOES NOT EXIST YET, AND THE ONE
+ * DELIBERATE HOLE IN STAGE D.
+ *
+ * The GLSL reads the sway phase straight off the instance transform:
+ *
+ *     swayPhase = instanceMatrix[3].x * 0.113 + instanceMatrix[3].z * 0.171
+ *
+ * `instanceMatrix` is not reachable from a shared node material. three builds it
+ * inside `createInstanceMatrixNode` from the mesh it is given — as a uniform
+ * buffer for small counts and as an interleaved attribute for large ones
+ * (`src/nodes/accessors/Instance.js`) — and it never surfaces it as an
+ * accessor. A material shared by every prop type in the game cannot ask for a
+ * specific mesh's buffer, and the mesh is not known until the draw.
+ *
+ * The phase is also the ONLY thing here that needs it. The displacement itself
+ * is model-space and lands in `setupPosition` exactly as `<begin_vertex>` does;
+ * `aSway`, `aEmit` and `aGloss` are real per-vertex attributes and translate
+ * without argument. So the hole is one float.
+ *
+ * **WHAT STAGE F MUST DO, IN ONE LINE.** `Scatter` already composes `srcMatrix`
+ * on the CPU. Have it publish
+ *
+ *     aSwayPhase[i] = m[12] * PROP_WIND.phaseX + m[14] * PROP_WIND.phaseZ
+ *
+ * as an `InstancedBufferAttribute` alongside `instanceMatrix`, repacked on the
+ * same flip. Four bytes per instance against the matrix's sixty-four.
+ *
+ * **UNTIL THEN THE WIND IS IN STEP ACROSS THE WHOLE MAP AND THREE SAYS SO.** A
+ * missing attribute is not silent on the node path: `attribute()` warns and
+ * substitutes, so every prop takes phase 0, the forest sways as one, and the
+ * console names the attribute. That failure is loud, is one line from being
+ * fixed, and is deliberately not papered over with `instanceIndex` — a
+ * plausible-looking phase from a different source would render a forest that
+ * looks fine and matches nothing, which is the worse of the two outcomes and is
+ * the kind of quiet falsehood `docs/SPEC_DRIFT_AUDIT.md` exists to catalogue.
+ */
+export const PROP_WIND_PHASE_ATTRIBUTE = 'aSwayPhase';
+
+const aSwayPhase = attribute<'float'>(PROP_WIND_PHASE_ATTRIBUTE, 'float');
+/** Per-vertex wind amplitude in metres. Zero on a trunk, largest at the tip. */
+const aSway = attribute<'float'>('aSway', 'float');
+/** Per-vertex additive emissive mask: lamp heads, signal lenses. */
+const aEmit = attribute<'float'>('aEmit', 'float');
+/** Per-vertex roughness lerp: 0 is the matte default, 1 is wet lacquer. */
+const aGloss = attribute<'float'>('aGloss', 'float');
+
+const vEmit = varyingProperty('float', 'vEmit');
+const vGloss = varyingProperty('float', 'vGloss');
+
+/* ==========================================================================
+ * 2. THE UNIFORMS
+ * ========================================================================== */
+
+/** The wind clock. Advanced once per frame by the scatter system, via `setTime`. */
+function createUniforms() {
+  return {
+    uWindTime: uniform(0),
+    uWindFreq: uniform(PROP_WIND.radiansPerSecond),
+    uEmitGain: uniform(PROP_EMISSIVE_GAIN),
+    uGlossRough: uniform(PROP_GLOSS_ROUGHNESS),
+  };
+}
+
+export type PropNodeUniforms = ReturnType<typeof createUniforms>;
+
+/* ==========================================================================
+ * 3. THE WIND
+ * ========================================================================== */
+
+/**
+ * `WIND_BODY`, node for node.
+ *
+ * MODEL SPACE, BEFORE INSTANCING, exactly as the GLSL's `<begin_vertex>` edit
+ * is. That matters more here than anywhere else in Stage D: props are placed
+ * with a random yaw, so the offset the GLSL adds is rotated per tree by the
+ * instance matrix afterwards. Applied post-instancing instead — which is where
+ * `material.positionNode` would land it — every tree in the forest would lean
+ * the same way, and it would look deliberate.
+ */
+const windOffset = Fn(([time, freq]: [FloatN, FloatN]) => {
+  const W = PROP_WIND;
+  const phase = aSwayPhase.toVar('swayPhase');
+  const w = time.mul(freq).add(phase).toVar('w');
+  // Two harmonics so the motion never reads as one clean sine.
+  const sx = sin(w).mul(W.harmonicA)
+    .add(sin(w.mul(W.xRateB).add(phase.mul(W.xPhaseB))).mul(W.harmonicB));
+  const sz = cos(w.mul(W.zRateA).add(phase.mul(W.zPhaseA))).mul(W.harmonicA)
+    .add(cos(w.mul(W.zRateB)).mul(W.harmonicB));
+  return vec3(sx.mul(aSway), 0.0, sz.mul(aSway).mul(W.zAmplitude));
+});
+/* NO LAYOUT: the body reads `aSwayPhase` and `aSway`, both attributes, and a
+ * WGSL function may only see its parameters — the emitted function failed to
+ * link with `unresolved value 'aSwayPhase'`. `render/shroud-nodes.ts` carries
+ * the finding; `STAGE_D_TSL_GAPS` #6 is the entry. */
+
+/* ==========================================================================
+ * 4. THE MATERIAL
+ * ========================================================================== */
+
+class PropStandardNodeMaterial extends MeshPhysicalNodeMaterial {
+  constructor(readonly uniforms: PropNodeUniforms) {
+    super();
+  }
+
+  override setupPosition(builder: NodeBuilder): Vec3N {
+    positionLocal.addAssign(windOffset(this.uniforms.uWindTime, this.uniforms.uWindFreq));
+    vEmit.assign(aEmit);
+    vGloss.assign(aGloss);
+    const position = super.setupPosition(builder) as Vec3N;
+    /*
+     * Scatter instances these as TALL, depth-writing meshes standing on the
+     * terrain, and the shroud carpet is depth tested — without the self-tint a
+     * forest inside never-explored black would stay fully lit. The UV is taken
+     * AFTER the wind, so a swaying tree samples the fog where it actually is.
+     */
+    shroudVertexUv();
+    return position;
+  }
+
+  override setupOutput(builder: NodeBuilder, outputNode: Vec4N): Vec4N {
+    const out = super.setupOutput(builder, shroudTint(outputNode)) as Vec4N;
+    return this.dithering === true ? ditherOutput(out) : out;
+  }
+}
+
+export interface PropNodeMaterialSet {
+  readonly material: MeshPhysicalNodeMaterial;
+  readonly uniforms: PropNodeUniforms;
+  /** Advance the wind clock. Called once per frame by the scatter system. */
+  setTime(t: number): void;
+  dispose(): void;
+}
+
+/**
+ * THE NODE-PATH TWIN OF `createPropMaterial`.
+ *
+ * Foliage gets only a whisper of clearcoat: bible §5.4 reserves the 0.30 coat
+ * for painted armour, and a waxy leaf reads as plastic. `envMapIntensity` is
+ * never 0 — zeroing it kills the silhouette rim that scorecard #23 checks. Both
+ * numbers come from `PROP_MATERIAL` in `config.ts`, which is also what the GLSL
+ * material reads, so neither can move on one renderer alone.
+ */
+export function createPropNodeMaterials(): PropNodeMaterialSet {
+  const uniforms = createUniforms();
+  const material = new PropStandardNodeMaterial(uniforms);
+  material.name = 'PropNodeMaterial';
+  material.color = new THREE.Color(0xffffff);
+  material.vertexColors = true;
+  material.roughness = PROP_MATERIAL.roughness;
+  material.metalness = PROP_MATERIAL.metalness;
+  material.clearcoat = PROP_MATERIAL.clearcoat;
+  material.clearcoatRoughness = PROP_MATERIAL.clearcoatRoughness;
+  material.envMapIntensity = PROP_MATERIAL.envMapIntensity;
+  material.emissive = new THREE.Color(0x000000);
+
+  /*
+   * A LERP, so `vGloss = 0` leaves the matte default bit-for-bit untouched. The
+   * GLSL injects this straight after `<roughnessmap_fragment>` and before the
+   * value reaches the BRDF; `roughnessNode` is the same point expressed the node
+   * way. `materialRoughness` is the scalar-times-map three would otherwise have
+   * used, so the starting value is identical.
+   */
+  material.roughnessNode = mix(materialRoughness, uniforms.uGlossRough, vGloss);
+
+  /*
+   * ADDITIVE, and tinted by the prop's own vertex colour — so a lamp head and a
+   * signal lens glow without a second material and therefore without a second
+   * draw call. `materialEmissive` is zero here (the material's emissive is
+   * black and there is no emissive map), which is exactly the GLSL's
+   * `totalEmissiveRadiance` at the point the injection lands.
+   */
+  material.emissiveNode = materialEmissive
+    .add(vertexColor().rgb.mul(vEmit).mul(uniforms.uEmitGain));
+
+  return {
+    material,
+    uniforms,
+    setTime(t: number): void { uniforms.uWindTime.value = t; },
+    dispose(): void { material.dispose(); },
+  };
+}
+
+/** Convenience for the spec and for anything that only wants the material. */
+export function createPropNodeMaterial(): MeshPhysicalNodeMaterial {
+  return createPropNodeMaterials().material;
+}
