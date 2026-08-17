@@ -59,6 +59,12 @@ async function probe(set) {
     return { ...set, launch: 'failed', error: String(e).split('\n')[0] };
   }
   const page = await browser.newPage();
+  // Chromium reports the REAL reason on the console ("Device failed at
+  // creation."), not in the promise rejection, so the rejection alone is not
+  // the diagnosis.
+  const logs = [];
+  page.on('console', (m) => logs.push(`${m.type()}: ${m.text()}`));
+  page.on('pageerror', (e) => logs.push(`pageerror: ${e.message}`));
   await page.goto(PAGE);
   const r = await page.evaluate(async () => {
     const out = { gpu: !!navigator.gpu };
@@ -92,10 +98,8 @@ async function probe(set) {
     }
     return out;
   });
-  // Chromium reports the real reason on the console, not in the rejection.
-  const gpuInfo = await page.evaluate(() => null).catch(() => null);
   await browser.close();
-  return { ...set, ...r, gpuInfo };
+  return { ...set, ...r, logs };
 }
 
 console.log(`WebGPU device probe — headless=${!HEADED}\n`);
@@ -111,5 +115,7 @@ for (const set of SETS) {
           ? 'navigator.gpu but no adapter'
           : 'no navigator.gpu';
   console.log(`  ${set.name.padEnd(38)} ${verdict}`);
-  console.log(`      ${JSON.stringify({ ...r, name: undefined, args: undefined })}`);
+  console.log(`      ${JSON.stringify({ ...r, name: undefined, args: undefined, logs: undefined })}`);
+  for (const l of (r.logs || []).slice(0, 4)) console.log(`      | ${l}`);
 }
+server.close();
