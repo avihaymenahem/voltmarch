@@ -388,19 +388,72 @@ export const STAGE_D_TSL_GAPS: readonly string[] = [
    *    again — the exact defect `createStructureDepthMaterial` was written to
    *    fix — and a swaying canopy casts a frozen shadow.
    *
-   *    THE TWO ROUTES OUT, neither of which belongs in a material file:
-   *      (a) Upload the instance ORIGIN and YAW as per-instance attributes from
-   *          `InstanceBatcher` and `Scatter`. Every displacement here can then be
-   *          re-expressed post-instancing and set as `castShadowPositionNode`,
-   *          which the shadow pass does read. Cost: one more `InstancedBufferAttribute`
-   *          per batch on BOTH renderers, uploaded every frame.
-   *      (b) `material.allowOverride = false`, which makes the shadow pass draw
-   *          the object with its own material and therefore its own
-   *          `setupPosition`. Correct, and it runs the full physical shader over
-   *          the shadow map — 29-59 draws a frame of lighting nobody looks at.
-   *    Measure (b) before assuming (a). It is one line.
+   *    ROUTE (b) IS NOT "EXPENSIVE BUT CORRECT". IT IS INVALID. MEASURED.
+   *    ------------------------------------------------------------------
+   *    This entry used to name two routes out and say "measure (b) first, it is
+   *    one line". (b) was `material.allowOverride = false`, which makes
+   *    `Renderer.renderObject` skip the override and draw the object into the
+   *    shadow map with its own material — and therefore its own `setupPosition`.
+   *    It was measured, by `tools/shadow-override-probe.mjs`, on real WebGPU in
+   *    real Chrome, and it does not work:
+   *
+   *        arm                        backend    devErrs   darker vs reference
+   *        glsl-webgl (reference)     webgl            0   —
+   *        glsl-webgl-nodepth         webgl            0   3.040%   <- the defect
+   *        tsl-override               webgpu           0   3.040%   <- same defect
+   *        tsl-nooverride             webgpu           2   89.312%  <- BLANK FRAME
+   *        tsl-nooverride-noreceive   webgpu           0   0.470%   <- correct
+   *
+   *        ! tsl-nooverride: GPUValidationError: [Texture "ShadowDepthTexture"]
+   *          usage (TextureBinding|RenderAttachment) includes writable usage and
+   *          another usage in the same synchronization scope.
+   *
+   *    THE CAUSE, and it is structural rather than a three bug. A lit material
+   *    that RECEIVES shadows samples the shadow map. Drawn into the shadow pass
+   *    with `allowOverride = false`, it samples the very texture that pass is
+   *    writing — which WebGPU forbids in one synchronization scope. The
+   *    validation error invalidates the whole command buffer, so the frame draws
+   *    NOTHING; the 89% above is a blank canvas, not a shader difference.
+   *
+   *    The fifth arm is the proof of that diagnosis rather than of a fix: with
+   *    `receiveShadow = false` on the casters the sampler disappears, the frame
+   *    is valid, and the shadow is CORRECT — 0.470% darker against the shipping
+   *    reference, versus the defect's 3.040%. So the flag genuinely does reach
+   *    `setupPosition`. It is simply unusable, because every caster in this game
+   *    receives shadows and a building that cannot be shadowed by the building
+   *    beside it is not a rendering the look bible would accept.
+   *
+   *    (Note also what the probe could NOT measure: the node `Renderer` has no
+   *    `info.programs`, so "the shadow pass now compiles the full physical
+   *    shader" stayed unquantified. It is moot now.)
+   *
+   *    SO ROUTE (a) IS THE ONLY ROUTE, and it is cheaper than this entry
+   *    believed. Re-express each displacement POST-instancing and hand it to
+   *    `castShadowPositionNode`, which `_getShadowNodes` does harvest onto the
+   *    override material's `positionNode` — and which `NodeMaterial.setupPosition`
+   *    assigns AFTER `instancedMesh( object )`, so the expression sees the
+   *    instanced position.
+   *
+   *    The one discovery that shortens the job: **`positionGeometry` is the raw
+   *    `position` attribute and is untouched by instancing**, so the MODEL-space
+   *    position is reachable inside that expression for free. `vRaClip` — which
+   *    is the whole construction cut, and which `maskNode` already carries into
+   *    the shadow pass — can therefore be written from `positionGeometry.y`
+   *    without uploading anything. What still needs a per-instance upload is the
+   *    displacement itself, because a model-space offset has to be rotated and
+   *    scaled by the instance basis before it can be added to an instanced
+   *    position, and `composeBasis` in `RenderBridge.ts` emits a basis with yaw,
+   *    pitch, roll and three scales.
+   *
+   *    NOT ATTEMPTED HERE, deliberately. It touches three materials
+   *    (`StructureNodeMaterial`, `UnitNodeMaterial`, `PropNodeMaterial`), both
+   *    uploaders (`InstanceBatcher` and `Scatter`) and the hottest per-frame
+   *    upload path in the renderer, and it cannot be verified by any offline
+   *    gate — only by the probe above. Landing it half-checked is the failure
+   *    this file's own §6 entry #6 is about.
    */
-  'no customDepthMaterial on the node path; a pre-instancing displacement cannot reach the shadow pass',
+  'no customDepthMaterial on the node path; allowOverride=false is a WebGPU validation error, '
+  + 'castShadowPositionNode is the only route',
   /*
    * 2. `material.positionNode` IS APPLIED AFTER INSTANCING, `<begin_vertex>` IS
    *    APPLIED BEFORE IT. `NodeMaterial.setupPosition` runs morph, skinning,

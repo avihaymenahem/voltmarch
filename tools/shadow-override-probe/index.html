@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VOLTMARCH: customDepthMaterial vs allowOverride on the node path</title>
+<style>
+  html, body { margin: 0; background: #0b0e12; color: #cfd8e3;
+    font: 13px/1.4 ui-monospace, monospace; }
+  .grid { display: grid; grid-template-columns: repeat(2, 640px); gap: 8px; padding: 8px; }
+  figure { margin: 0; }
+  figcaption { padding: 4px 0; }
+  canvas { display: block; width: 640px; height: 480px; background: #000; }
+</style>
+</head>
+<body>
+<div class="grid">
+  <figure><figcaption>glsl-webgl (reference: customDepthMaterial)</figcaption><canvas id="glsl-webgl"></canvas></figure>
+  <figure><figcaption>glsl-webgl-nodepth (CONTROL: the defect, on WebGL)</figcaption><canvas id="glsl-webgl-nodepth"></canvas></figure>
+  <figure><figcaption>tsl-override (the gap: shadow pass overrides)</figcaption><canvas id="tsl-override"></canvas></figure>
+  <figure><figcaption>tsl-nooverride (allowOverride = false)</figcaption><canvas id="tsl-nooverride"></canvas></figure>
+  <figure><figcaption>tsl-nooverride-noreceive (DIAGNOSTIC: casters do not receive)</figcaption><canvas id="tsl-nooverride-noreceive"></canvas></figure>
+</div>
+<script type="module" src="./page.js"></script>
+</body>
+</html>

@@ -774,6 +774,68 @@ written. It is now.
   a third renderer, and what it renders from the same graph is unmeasured. Two backends means two
   grade baselines.
 
+## 7e. The node path's shadow gap: `allowOverride = false` is INVALID, not merely expensive
+
+**Measured 2026-08-17, Stage D2, `tools/shadow-override-probe.mjs`, real Chrome, real WebGPU.**
+
+`object.customDepthMaterial` is read in exactly one file in three 0.185 — `WebGLShadowMap.js`. The
+node renderer instead sets `scene.overrideMaterial` to a shared depth material and harvests four
+fields off the object's own material (`Renderer._getShadowNodes`): `castShadowPositionNode ??
+positionNode`, `colorNode`, `depthNode`, `maskShadowNode ?? maskNode`. **`setupPosition` is not one
+of them**, so every model-space vertex displacement in this project — the construction sink, the bay
+door, the radar spin, the walk cycle, the wind sway — is invisible to the shadow pass.
+
+`StructureNodeMaterial.STAGE_D_TSL_GAPS` #1 named two routes out and said to measure the cheap one
+first because it is one line. **It was measured, and it does not work.**
+
+```
+arm                        backend    devErrs   darker vs the shipping reference
+glsl-webgl (REFERENCE)     webgl            0   —
+glsl-webgl-nodepth         webgl            0   3.040%    <- the defect, on WebGL
+tsl-override               webgpu           0   3.040%    <- the same defect
+tsl-nooverride             webgpu           2   89.312%   <- BLANK FRAME
+tsl-nooverride-noreceive   webgpu           0   0.470%    <- correct
+
+! tsl-nooverride: GPUValidationError: [Texture "ShadowDepthTexture"] usage
+  (TextureBinding|RenderAttachment) includes writable usage and another usage in
+  the same synchronization scope.
+```
+
+- **The cause is structural, not a three bug.** A lit material that RECEIVES shadows samples the
+  shadow map. Drawn into the shadow pass with `allowOverride = false`, it samples the very texture
+  that pass is writing, which WebGPU forbids inside one synchronization scope. The validation error
+  invalidates the whole command buffer, so the frame draws NOTHING — **the 89.312% is a blank
+  canvas, not a shader difference.** An arm that raised a device error must never be read as "very
+  different"; the probe prints the error count beside every diff for exactly that reason.
+- **The flag DOES reach `setupPosition`.** The fifth arm is the proof of the diagnosis: with
+  `receiveShadow = false` on the casters the sampler disappears, the frame is valid, and the shadow
+  comes out at 0.470% against the reference versus the defect's 3.040%. So the mechanism is right
+  and only the shadow-map read makes it unusable — and every caster in this game receives shadows.
+  A building that cannot be shadowed by the building beside it is not a rendering the bible accepts.
+- **`tsl-override` reproduced the defect to three decimal places** (3.040% darker, identical to the
+  WebGL control that IS the defect). That equality is what says the instrument is measuring the
+  shadow and nothing else.
+- **What the probe could NOT measure.** The node `Renderer` has no `info.programs`, so "the shadow
+  pass now compiles the full physical shader as well as the depth one" stayed unquantified. It is
+  moot: the route is closed on correctness before cost.
+
+### The only remaining route, and the one discovery that shortens it
+
+`castShadowPositionNode` IS harvested, and `NodeMaterial.setupPosition` assigns `positionNode` AFTER
+`instancedMesh( object )` — so an expression set there sees the instanced position and can rewrite
+it. Re-expressing each displacement post-instancing is therefore the route.
+
+**`positionGeometry` is the raw `position` attribute and is untouched by instancing.** The MODEL-space
+position is reachable inside that expression for free, so `vRaClip` — the whole construction ground
+cut, which `maskNode` already carries into the shadow pass — can be written from `positionGeometry.y`
+with nothing uploaded. What still needs a per-instance upload is the DISPLACEMENT, because a
+model-space offset must be rotated and scaled by the instance basis before it can be added to an
+instanced position, and `composeBasis` in `RenderBridge.ts` emits yaw, pitch, roll and three scales.
+
+**Not attempted.** It touches three materials, both uploaders (`InstanceBatcher` and `Scatter`) and
+the hottest per-frame upload path in the renderer, and no offline gate can verify it — only the probe
+above can.
+
 ## 8. Unverified — do not quote these as fact
 
 - **`GL_INVALID_OPERATION: glDrawElements: Mismatch between texture format and sampler type` is
