@@ -205,12 +205,36 @@ hex was chosen to look right through a bug.
 
 ## 6. Smaller settled facts
 
-- **GTAO's prepass can be deleted with DEPTH ONLY.** `setGBuffer(depth)` also sets
-  `normalVectorType = 0`, routing to `computeNormalFromDepth`. It does **not** require every
-  material to emit a normal — an early analysis assumed it did and scoped the work at multi-week.
-  The real blocker is water: `WaterMaterial` ships `transparent: true, depthWrite: true`, so it is
-  absent from the AO G-buffer but present in the main depth buffer, and feeding composer depth makes
-  the sea an occluder that deletes seabed AO on `08-naval-water` and `13-atoll-crossing`.
+- **GTAO's prepass is DELETED — done, shipped, `ao` is 0 on all 13 fixtures.** Totals fell 38–56 per
+  fixture (−639 summed); the colour pass is byte-for-byte unchanged and the grade is unchanged to
+  four decimals (0.892308 / 16 failures either side).
+
+  **Do NOT "simplify" it to `setGBuffer(depth)` alone.** That form sets `normalVectorType = 0` and
+  reconstructs normals in-shader, and it is a false economy here: `GTAOShader` calls `getViewNormal`
+  once per pixel, but **`PoissonDenoiseShader` calls it 17 times per pixel**
+  (`PoissonDenoiseShader.js:152`). Depth-only would trade 39–57 *measurable* draw calls for ~150
+  depth fetches and ~50 `mat4*vec4` per denoised pixel — a cost the shot harness cannot see. The
+  shipped form reconstructs the normal ONCE with a single quad into a target `GTAOPass` already
+  allocates. An earlier note in this file recommended the depth-only route; it was wrong.
+
+  **The predicted water regression was real in mechanism and BACKWARDS in sign.** The fear was that
+  feeding composer depth would make the sea an occluder and delete seabed AO. Measured as mean
+  |delta| against an AO-disabled capture of the same build — i.e. how much AO the frame actually
+  receives — the naval fixtures **GAINED**:
+
+  ```
+                         prepass   depth G-buffer
+    08-naval-water        2.1427       2.4826
+    13-atoll-crossing     1.7485       2.1786
+    01-establishing-base  3.5431       3.5204
+  ```
+
+  Because water was EXCLUDED from the old prepass, every water pixel had been sampling the depth
+  behind it — the seabed, metres below — so the ocean was wearing the seabed's occlusion. That is
+  the umbrella defect (§4) at map scale. On screen the gain is a contact shadow at each hull's
+  waterline: a warship used to sit *on* the sea rather than in it. No prepass, stencil or mask was
+  needed. `installAoOccluderFilter` is kept as the fallback path for the old prepass, and a non-zero
+  `ao` in `_report.json` is the signal that it fired.
 - **Terrain LOD is correct and nearly worthless at present.** A half-resolution index over the same
   vertices, boundary ring kept at full resolution so cracks are arithmetically impossible. It
   qualifies **4 of 64 chunks** on the seed ten of thirteen fixtures use — ~1.5% of terrain triangles
@@ -228,11 +252,24 @@ hex was chosen to look right through a bug.
 
 ---
 
-## 7. Unverified — do not quote these as fact
+## 7. Traps that cost someone an hour
 
-- A per-frame `GL_INVALID_OPERATION: glDrawElements: Mismatch between texture format and sampler
-  type` was reported in every shot. `shots/_report.json` stores no console message TEXT, so this
-  could be neither confirmed nor denied from the artefacts. **If it is real it is a live GL error
-  nobody has chased** — worth ten minutes with the browser console open.
+**`AO_NOON` in `config.ts` is the ART block and disabling it disables NOTHING.** The live switch is
+`RENDER_CONFIG.post.ao.enabled` in `renderer.ts`, plus the quality tier (`medium` for the harness).
+An agent building an AO-disabled control edited the art block, got byte-identical captures, and
+correctly-but-wrongly concluded its change had deleted AO entirely — a no-op control and a total
+regression look exactly alike. Whenever you build a control capture, **prove the control actually
+moved something** before trusting what it tells you about the treatment.
+
+This is the same shape as §5: the config block that reads authoritative is not always the one wired
+to the thing.
+
+## 8. Unverified — do not quote these as fact
+
+- **`GL_INVALID_OPERATION: glDrawElements: Mismatch between texture format and sampler type` is
+  REAL and PRE-EXISTING.** Upgraded from "unverified": it was reproduced on the baseline build as
+  well as the changed one, so it belongs to neither. It is a live per-frame GL error nobody has
+  chased and it deserves its own task. (`shots/_report.json` stores no console message TEXT, which
+  is why the artefacts alone could not settle it — that is worth fixing in the harness.)
 - `[roads] junction corner radii 3.1–6.0 m are outside scorecard #33's 4–8 m band` — self-reported by
   the harness, not independently checked.
