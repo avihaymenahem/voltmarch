@@ -215,8 +215,19 @@ describe('draw calls, split by pass', () => {
   });
 
   it('is additive: drawCalls keeps its name and its meaning', () => {
+    /*
+     * `info` IS `handle.frameInfo()` NOW, NOT `renderer.info`, and that is the
+     * point of the change rather than a rename. Under the node renderer
+     * `info.render.calls` is a MONOTONIC COUNT OF `render()` INVOCATIONS since
+     * page load that `reset()` never clears — so the old expression would have
+     * put a number that only ever climbs into `_report.json` under the name
+     * "draw calls", silently. `normaliseInfo()` in `src/render/backend.ts` is
+     * where that trap is written down; `frameInfo()` is the only safe read.
+     */
     expect(DEBUG_CODE, 'three consumers read this field by this name')
-      .toMatch(/drawCalls: info\.render\.calls/);
+      .toMatch(/drawCalls: info\.drawCalls/);
+    expect(DEBUG_CODE, 'and it must come through the backend-normalising seam')
+      .toMatch(/const info = handle\.frameInfo\(\);/);
     expect(DEBUG_CODE).toMatch(/drawCallsByPass: readDrawCallsByPass\(/);
     expect(SHOOT_CODE, 'the report block must carry both').toMatch(/drawCalls: s\.drawCalls/);
     expect(SHOOT_CODE).toMatch(/drawCallsByPass: s\.drawCallsByPass/);

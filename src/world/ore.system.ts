@@ -80,6 +80,7 @@
  */
 
 import * as THREE from 'three';
+import { nodePath } from '../render/gpu-path';
 
 import { defineSystem } from '../core/loop';
 import { RenderPhase } from '../core/types';
@@ -206,7 +207,7 @@ function hashCell(cx: number, cz: number): number {
  * ========================================================================== */
 
 let mesh: THREE.InstancedMesh | null = null;
-let material: THREE.MeshStandardMaterial | null = null;
+let material: THREE.Material | null = null;
 let geometry: THREE.BufferGeometry | null = null;
 
 /** Packed cell index -> instance slot, and back. Sized once at init. */
@@ -384,7 +385,13 @@ export default defineSystem({
      * in. Until then `count = 0` submits no draw.
      */
     geometry = buildCrystalCluster();
-    material = new THREE.MeshStandardMaterial({
+    /*
+     * ONE PARAMETER OBJECT, TWO CONSTRUCTORS. The node twin is a
+     * `MeshStandardNodeMaterial` wearing the same self-tint (`shroud-nodes.ts`
+     * §4), and it is handed this literal verbatim so `vertexColors`, the
+     * emissive and the roughness cannot drift between the two renderers.
+     */
+    const oreParams: THREE.MeshStandardMaterialParameters = {
       color: 0xffffff,
       vertexColors: true,
       // 0.22, matching the authored `SURFACES.oreCrystal` archetype in
@@ -399,12 +406,20 @@ export default defineSystem({
       // will not trade for anything.
       emissive: new THREE.Color(ORE_CRYSTAL_COLOR),
       emissiveIntensity: 0.18,
-    });
-    material.name = 'OreCrystalMaterial';
-    // Not optional — see the header. Without this, every ore field on the map
-    // is visible through unexplored fog.
-    material.onBeforeCompile = (shader) => { applyShroudTint(shader); };
-    material.customProgramCacheKey = () => 'vm.ore.shroud.v1';
+    };
+    const np = nodePath();
+    if (np !== null) {
+      material = np.createShroudTintedStandard(oreParams);
+      material.name = 'OreCrystalMaterial';
+    } else {
+      const glsl = new THREE.MeshStandardMaterial(oreParams);
+      glsl.name = 'OreCrystalMaterial';
+      // Not optional — see the header. Without this, every ore field on the map
+      // is visible through unexplored fog.
+      glsl.onBeforeCompile = (shader) => { applyShroudTint(shader); };
+      glsl.customProgramCacheKey = () => 'vm.ore.shroud.v1';
+      material = glsl;
+    }
 
     /* THE MESH IS ALLOCATED AT FULL CAPACITY AND FILLED LATER, and that split
      * is not tidiness — it is the whole reason this module works.

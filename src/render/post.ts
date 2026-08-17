@@ -200,69 +200,59 @@ import {
   touched,
   srgbVec3,
   type RendererHandle,
-  type ToneMappingMode,
 } from './renderer';
 import { LAYERS } from './scene';
+import { nodePath } from './gpu-path';
+/*
+ * ONE TONE-MODE TABLE FOR BOTH POST CHAINS.
+ *
+ * It was a module-private literal here. `src/render/nodes/grade-node.ts` — the
+ * TSL port of this pass — needs the same mapping, and `grade-curve.ts` imports
+ * no renderer at all (its only import is a `type`), so neither chain drags the
+ * other's build of three into the bundle. Nothing about this pass changes: same
+ * table, same numbers, one declaration.
+ */
+import { TONE_MODE_ID } from './grade-curve';
 
 declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
 
-export type PassId = 'render' | 'ao' | 'bloom' | 'grade' | 'smaa';
+/*
+ * `PassId` and `PASS_ORDER` moved to `post-order.ts` and are re-exported here.
+ * Both chains need them and `post-nodes.ts` must not import this file to get
+ * them — that would pull `EffectComposer`, `UnrealBloomPass`, `GTAOPass` and the
+ * WebGL build of three into the node chain's graph to read a five-element array.
+ * Every existing importer of `PassId`/`PASS_ORDER` from `./post` is unchanged.
+ */
+export { PASS_ORDER } from './post-order';
+export type { PassId } from './post-order';
+import { PASS_ORDER, type PassId } from './post-order';
 
-/**
- * Fraction of the drawing buffer the AO chain runs at when `ao.halfRes` is on.
+/*
+ * THE AO NUMBERS MOVED TO `ao-params.ts`, AND THE RE-EXPORT IS THE POINT.
  *
- * A half, not a third. See the file header: below a half the saving collapses
- * because what remains is GTAOPass's full-resolution composite, while the
- * upsample error keeps growing.
+ * `AO_HALF_RES_SCALE`, `aoTargetSize` and `aoDenoiseRadius` are consumed by
+ * `tests/perf-budget.spec.ts` THROUGH THIS MODULE and by the TSL port
+ * (`nodes/ao-node.ts`) directly. They now have one declaration, in a file that
+ * imports no renderer, so the two chains cannot end up with two sets of numbers.
+ * Every caller here and in the tests is unchanged; the reasoning for each value
+ * moved with it.
  */
-export const AO_HALF_RES_SCALE = 0.5;
-
-/**
- * The G-buffer / march / denoise size for a given drawing buffer.
- *
- * Pure, and exported, so `tests/perf-budget.spec.ts` can assert the arithmetic
- * without a GL context — a resolution rule nobody has watched produce a number
- * is how `halfRes` came to be documented, defaulted, tier-mapped and dead.
- */
-export function aoTargetSize(
-  width: number,
-  height: number,
-  halfRes: boolean,
-): { width: number; height: number } {
-  const s = halfRes ? AO_HALF_RES_SCALE : 1;
-  return {
-    width: Math.max(2, Math.round(width * s)),
-    height: Math.max(2, Math.round(height * s)),
-  };
-}
-
-/**
- * Poisson-denoise kernel radius, in the AO target's OWN texels.
- *
- * The denoise runs at the AO resolution, so a constant texel radius would
- * silently halve the world-space footprint of the blur the moment `halfRes`
- * turned on — the AO would come back noisier at the cheaper setting, which is
- * the wrong direction. Halving the radius with the resolution keeps the filter
- * covering the same part of the image. 8 is GTAOPass's own default.
- */
-/**
- * Seed for the Poisson-denoise rotation field. Any fixed value will do; what
- * matters is that it is fixed. Declared module-private rather than in
- * `core/config.ts` because it is not a tunable — there is nothing to tune, and
- * changing it moves every AO crease in every fixture.
- */
-const AO_NOISE_SEED = 0x5eed_a011;
-
-export function aoDenoiseRadius(halfRes: boolean): number {
-  return halfRes ? 4 : 8;
-}
-
-/**
- * The canonical order. Rationale is in the file header. Nobody edits this
- * array without editing that comment first.
- */
-export const PASS_ORDER: readonly PassId[] = ['render', 'ao', 'bloom', 'grade', 'smaa'] as const;
+export {
+  AO_HALF_RES_SCALE,
+  AO_NOISE_SEED,
+  AO_NOISE_SIZE,
+  aoDenoiseRadius,
+  aoTargetSize,
+} from './ao-params';
+import {
+  AO_NOISE_SEED,
+  AO_NOISE_SIZE,
+  aoDenoiseParams,
+  aoDenoiseRadius,
+  aoMarchParams,
+  aoTargetSize,
+} from './ao-params';
 
 /**
  * How many MSAA samples the SCENE target actually gets.
@@ -289,19 +279,101 @@ export function msaaSampleCount(requested: number, maxSamples: number): number {
   return Math.min(want, cap);
 }
 
-const TONE_MODE_ID: Record<ToneMappingMode, number> = {
-  none: 0,
-  agx: 1,
-  aces: 2,
-  neutral: 3,
-  linear: 0,
-};
+/** The subset of `SMAAPass` `demoteSmaaTargets` touches. All three are private. */
+export interface SmaaPassInternals {
+  _edgesRT?: THREE.WebGLRenderTarget;
+  _weightsRT?: THREE.WebGLRenderTarget;
+}
+
+/**
+ * SMAA's two internal targets hold 0..1 MASKS. Give them 8 bits.
+ *
+ * `SMAAPass` hardcodes `HalfFloatType` on `_edgesRT` and `_weightsRT`. Neither
+ * is an image: `_edgesRT` is a two-channel edge mask and `_weightsRT` is the
+ * blend-weight lookup, both defined on 0..1, and Jimenez et al. specify RG8 and
+ * RGBA8 for exactly these. Sixteen bits per channel buys no precision anything
+ * downstream can use, and costs the bandwidth twice — once writing each target,
+ * once reading it back in the next sub-pass.
+ *
+ * WHY THIS IS WORTH DOING AT ALL: SMAA measured at 5.36 ms on the reference
+ * iGPU, the second-largest cost in the chain and larger than bloom and grade
+ * combined, on a frame that profiling showed is bandwidth-bound rather than
+ * draw-call-bound. Four full-resolution surfaces halve, 29.5 MB to 14.75 MB
+ * each at 2560x1440.
+ *
+ * THE PRECONDITION, AND IT IS LOAD-BEARING: this is only correct because SMAA
+ * runs LAST, on the LDR sRGB image the grade pass has already encoded. Its
+ * inputs are display-referred and already 8-bit-representable. Move SMAA
+ * earlier in `PASS_ORDER` — anywhere it would see scene-linear HDR — and these
+ * targets must go back to half-float. `tests/perf-budget.spec.ts` pins the
+ * ordering next to this reasoning so the two cannot drift apart.
+ *
+ * ── THE TYPE IS MUTATED IN PLACE. IT USED TO SWAP THE OBJECTS, AND THAT MADE
+ *    SMAA A NO-OP THAT STILL COST THREE FULL-SCREEN PASSES ──────────────────
+ * `SMAAPass` binds two of its three materials to their inputs ONCE, in its
+ * constructor:
+ *
+ *     this._uniformsWeights[ 'tDiffuse' ].value = this._edgesRT.texture;
+ *     this._uniformsBlend  [ 'tDiffuse' ].value = this._weightsRT.texture;
+ *
+ * and `render()` rebinds only `_uniformsEdges.tDiffuse` (the read buffer) and
+ * `_uniformsBlend.tColor`. So the previous version of this function — which
+ * built two replacement `WebGLRenderTarget`s and disposed the originals — left
+ * the weights pass sampling a dead texture and the blend pass sampling a dead
+ * texture. Every blend weight came back zero, and `SMAABlendShader` returns
+ * `texture2D( tColor, vUv )` unchanged at zero weight, so **the pass returned
+ * its input**. Three full-screen passes a frame, for the image they were
+ * handed. `RENDER_FINDINGS.md` §7g.
+ *
+ * READ OFF A BOOTED PAGE, not deduced: the live pass reported
+ * `_uniformsWeights.tDiffuse.value.name === 'SMAAPass.edges'` while rendering
+ * into `SMAA.edges`. And measured: enabling SMAA on `03-terrain-closeup` at
+ * 1280x720 moved the frame's mean |laplacian| by 0.3%, against 24% on the node
+ * path, whose twin — `post-nodes.ts#demoteSmaaMaskTargets` — mutates the type
+ * in place and therefore always worked. Binned by pre-pass edge strength, the
+ * WebGL arm moved flat pixels and strong-edge pixels by the same ~1/255, which
+ * is the dither floor rather than antialiasing.
+ *
+ * In-place is safe for exactly the reason the node twin gives: three's
+ * `WebGLRenderTarget` allocates its GPU texture lazily, this runs at
+ * construction before the first render, and `EffectComposer` will `setSize`
+ * these long before anything samples them. `SMAAPass.setSize` only forwards to
+ * the targets' own `setSize`, so `applyPendingSize` keeps working.
+ *
+ * Exported, and taking the pass rather than living in `createPostChain`'s
+ * closure, so `tests/perf-budget.spec.ts` can drive a real `SMAAPass` through
+ * it and assert the binding a source scan cannot see.
+ */
+export function demoteSmaaTargets(pass: SmaaPassInternals): void {
+  const edges = pass._edgesRT;
+  const weights = pass._weightsRT;
+  // Renamed or restructured upstream: leave the pass exactly as three built it
+  // rather than half-applying this.
+  if (edges === undefined || weights === undefined) {
+    if (DEV) console.warn('[post] SMAA internals not found — targets left half-float');
+    return;
+  }
+
+  edges.texture.type = THREE.UnsignedByteType;
+  weights.texture.type = THREE.UnsignedByteType;
+}
 
 /* ========================================================================== */
 /* Grade shader                                                               */
 /* ========================================================================== */
 
-const GRADE_VERT = /* glsl */ `
+/*
+ * EXPORTED SO THE PORT CAN BE COMPARED AGAINST IT, AND FOR NO OTHER REASON.
+ *
+ * `tools/grade-ab/` renders a fixed HDR chart through THIS shader on WebGL and
+ * through `nodes/grade-node.ts` on WebGPU and diffs the two images. That is the
+ * only check that can answer "does the port change the look", and it cannot be
+ * written against a copy of the source — a copy is a second thing to keep in
+ * step, which is the defect class the whole of `docs/SPEC_DRIFT_AUDIT.md`
+ * catalogues. Adding `export` changes no behaviour and no byte of the bundle
+ * that was not already there.
+ */
+export const GRADE_VERT = /* glsl */ `
 varying vec2 vUv;
 void main() {
   vUv = uv;
@@ -309,7 +381,7 @@ void main() {
 }
 `;
 
-const GRADE_FRAG = /* glsl */ `
+export const GRADE_FRAG = /* glsl */ `
 precision highp float;
 
 uniform sampler2D tDiffuse;
@@ -581,7 +653,7 @@ void main() {
 }
 `;
 
-interface GradeUniforms {
+export interface GradeUniforms {
   tDiffuse: { value: THREE.Texture | null };
   uTexel: { value: THREE.Vector2 };
   uTime: { value: number };
@@ -604,7 +676,7 @@ interface GradeUniforms {
   [key: string]: THREE.IUniform;
 }
 
-function makeGradeUniforms(): GradeUniforms {
+export function makeGradeUniforms(): GradeUniforms {
   return {
     tDiffuse: { value: null },
     uTexel: { value: new THREE.Vector2(1 / 1920, 1 / 1080) },
@@ -887,9 +959,134 @@ export interface CreatePostOptions {
   camera: THREE.Camera;
 }
 
+/**
+ * THE NODE-BACKED CHAIN. Stage F of `docs/WEBGPU_MIGRATION_PLAN.md`.
+ *
+ * `PostChain` has ONE type and two implementations rather than two types,
+ * because everything downstream — `Bootstrap.present`, `Settings.applySettings`,
+ * `debug.stats()` — asks it the same questions and must not have to ask which
+ * renderer it is talking to.
+ *
+ * WHAT IS GENUINELY DIFFERENT, stated rather than hidden:
+ *
+ *  - **`composer` is null and `passes` is empty**, permanently. There is no
+ *    `EffectComposer` and no `Pass` objects: the node chain is one expression.
+ *    `debug.stats().post` therefore reads the graph's own pass list.
+ *  - **`drawCallsByPass` is zeros with a true `total`.** See
+ *    `gpu-path-install.ts#createNodePostAdapter` — the node `Renderer` has no
+ *    seam between the shadow pass and the colour pass, so the split cannot be
+ *    measured rather than merely being unmeasured. Inventing one would produce a
+ *    number that looks like the WebGL figure and is not.
+ *  - **A pass toggle rebuilds the graph**, which `NodePostChain.syncConfig`
+ *    already handles by comparing the enabled-pass signature — a node has no
+ *    `enabled` flag the way a `Pass` does.
+ *
+ * The tone-mapping contract is identical and is the one thing that MUST match:
+ * the renderer does not tonemap while the grade is live, or AgX runs twice.
+ */
+function createNodeBackedPostChain(options: CreatePostOptions): PostChain {
+  const { handle } = options;
+  const path = nodePath();
+  if (path === null || handle.node === null) {
+    throw new Error('[post] node-backed chain requested without an installed node path');
+  }
+
+  const cfg = RENDER_CONFIG.post;
+  const chain = path.createPostChain(handle.node, options.scene, options.camera);
+  const zeros: DrawCallBreakdown = { shadow: 0, colour: 0, ao: 0, post: 0, total: 0 };
+  let enabled = cfg.enabled;
+  let disposed = false;
+
+  function applyToneMapping(): void {
+    const gradeLive = cfg.grade.enabled && enabled;
+    handle.setToneMappingMode(gradeLive ? 'none' : RENDER_CONFIG.post.grade.mode);
+  }
+
+  applyToneMapping();
+  chain.setSize(Math.max(2, handle.size.width), Math.max(2, handle.size.height));
+  const offResize = handle.onResize((size) => chain.setSize(size.width, size.height));
+  const offConfig = onConfigChanged((changed) => {
+    if (!touched(changed, 'post')) return;
+    chain.syncConfig();
+    applyToneMapping();
+  });
+
+  return {
+    composer: null,
+    passes: {},
+    failures: {},
+    get enabled() { return enabled; },
+    get active() { return enabled && !disposed; },
+
+    get drawCallsByPass(): Readonly<DrawCallBreakdown> {
+      const split = chain.drawCallsByPass();
+      if (split !== null) return split;
+      zeros.total = handle.frameInfo().drawCalls;
+      return zeros;
+    },
+
+    render(dt: number): void {
+      if (disposed) return;
+      if (handle.isContextLost()) return;
+      chain.render();
+      void dt;
+    },
+
+    setCamera(camera: THREE.Camera): void { chain.setCamera(camera); },
+    setScene(scene: THREE.Scene): void { chain.setScene(scene); },
+
+    setEnabled(v: boolean): void {
+      if (enabled === v) return;
+      enabled = v;
+      RENDER_CONFIG.post.enabled = v;
+      applyToneMapping();
+    },
+
+    setPassEnabled(id: PassId, v: boolean): void {
+      if (id === 'render') return;
+      switch (id) {
+        case 'ao': cfg.ao.enabled = v; break;
+        case 'bloom': cfg.bloom.enabled = v; break;
+        case 'grade': cfg.grade.enabled = v; break;
+        case 'smaa': cfg.smaa.enabled = v; break;
+      }
+      chain.syncConfig();
+      applyToneMapping();
+    },
+
+    isPassEnabled(id: PassId): boolean {
+      switch (id) {
+        case 'render': return true;
+        case 'ao': return cfg.ao.enabled;
+        case 'bloom': return cfg.bloom.enabled;
+        case 'grade': return cfg.grade.enabled;
+        case 'smaa': return cfg.smaa.enabled;
+        default: return false;
+      }
+    },
+
+    syncConfig(): void {
+      chain.syncConfig();
+      applyToneMapping();
+    },
+
+    setSize(width: number, height: number): void { chain.setSize(width, height); },
+
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      offResize();
+      offConfig();
+      chain.dispose();
+      handle.setToneMappingMode(RENDER_CONFIG.post.grade.mode);
+    },
+  };
+}
+
 export function createPostChain(options: CreatePostOptions): PostChain {
   const { handle } = options;
-  const renderer = handle.renderer;
+  if (handle.webgl === null) return createNodeBackedPostChain(options);
+  const renderer = handle.webgl;
   let scene = options.scene;
   let camera = options.camera;
 
@@ -1174,7 +1371,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       // still worked, because the extras were ignored — but a cast that hides a
       // signature change is how the next upgrade breaks silently.
       const p = new SMAAPass() as unknown as Pass;
-      demoteSmaaTargets(p);
+      demoteSmaaTargets(p as unknown as SmaaPassInternals);
       return p;
     });
 
@@ -1414,7 +1611,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     const old = p.pdNoiseTexture;
     if (old === undefined) return;
 
-    const size = 64;
+    const size = AO_NOISE_SIZE;
     const rng = new Rng(AO_NOISE_SEED);
     const simplex = new SimplexNoise({ random: () => rng.next() });
     const data = new Uint8Array(size * size * 4);
@@ -1638,70 +1835,6 @@ export function createPostChain(options: CreatePostOptions): PostChain {
    * Nothing here is done when the AO pass is the SSAO fallback: it has no
    * `blendMaterial` and its composite is a different shape.
    */
-  /**
-   * SMAA's two internal targets hold 0..1 MASKS. Give them 8 bits.
-   *
-   * `SMAAPass` hardcodes `HalfFloatType` on `_edgesRT` and `_weightsRT`. Neither
-   * is an image: `_edgesRT` is a two-channel edge mask and `_weightsRT` is the
-   * blend-weight lookup, both defined on 0..1, and Jimenez et al. specify RG8
-   * and RGBA8 for exactly these. Sixteen bits per channel buys no precision
-   * anything downstream can use, and costs the bandwidth twice — once writing
-   * each target, once reading it back in the next sub-pass.
-   *
-   * WHY THIS IS WORTH DOING AT ALL: SMAA measured at 5.36 ms on the reference
-   * iGPU, the second-largest cost in the chain and larger than bloom and grade
-   * combined, on a frame that profiling showed is bandwidth-bound rather than
-   * draw-call-bound. Four full-resolution surfaces halve, 29.5 MB to 14.75 MB
-   * each at 2560x1440.
-   *
-   * THE PRECONDITION, AND IT IS LOAD-BEARING: this is only correct because SMAA
-   * runs LAST, on the LDR sRGB image the grade pass has already encoded. Its
-   * inputs are display-referred and already 8-bit-representable. Move SMAA
-   * earlier in `PASS_ORDER` — anywhere it would see scene-linear HDR — and
-   * these targets must go back to half-float. `tests/post-chain.spec.ts` pins
-   * the ordering next to this reasoning so the two cannot drift apart.
-   *
-   * `SMAAPass.setSize` only forwards to the targets' own `setSize`, so
-   * replacing the objects here is enough; `applyPendingSize` keeps working.
-   */
-  function demoteSmaaTargets(pass: unknown): void {
-    const p = pass as {
-      _edgesRT?: THREE.WebGLRenderTarget;
-      _weightsRT?: THREE.WebGLRenderTarget;
-    };
-    const edges = p._edgesRT;
-    const weights = p._weightsRT;
-    // Renamed or restructured upstream: leave the pass exactly as three built
-    // it rather than half-applying this.
-    if (edges === undefined || weights === undefined) {
-      if (DEV) console.warn('[post] SMAA internals not found — targets left half-float');
-      return;
-    }
-
-    const swap = (
-      old: THREE.WebGLRenderTarget, name: string,
-    ): THREE.WebGLRenderTarget => {
-      const next = new THREE.WebGLRenderTarget(old.width, old.height, {
-        type: THREE.UnsignedByteType,
-        // A mask needs neither, and both are full-resolution attachments.
-        depthBuffer: false,
-        stencilBuffer: false,
-        minFilter: old.texture.minFilter,
-        magFilter: old.texture.magFilter,
-        // Format is deliberately left at the default RGBA rather than copied.
-        // `texture.format` is typed `AnyPixelFormat`, which admits compressed
-        // formats a render target cannot take, and SMAA's own targets are
-        // plain RGBA anyway — the saving here is the TYPE, not the channels.
-      });
-      next.texture.name = name;
-      old.dispose();
-      return next;
-    };
-
-    p._edgesRT = swap(edges, 'SMAA.edges');
-    p._weightsRT = swap(weights, 'SMAA.weights');
-  }
-
   function installAoInPlaceComposite(pass: unknown): void {
     const p = pass as {
       output: number;
@@ -1973,13 +2106,13 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     if (typeof ao.updateGtaoMaterial === 'function') {
       try {
         ao.updateGtaoMaterial({
-          radius: c.radius,
-          distanceExponent: 1.0,
-          thickness: 1.0,
-          // GTAO's `scale` is the contrast curve on the AO term — this is
-          // where the art bible's "power 1.6" lands.
-          scale: c.power,
-          samples: c.samples,
+          // GTAO's `scale` is the contrast curve on the AO term — this is where
+          // the art bible's "power 1.6" lands. The whole block comes from
+          // `ao-params.ts` so the TSL port cannot be configured differently.
+          ...aoMarchParams(c),
+          // Kept at the call site: `GTAONode` has no such option (it always
+          // marches in world space), so it belongs to this pass rather than to
+          // the shared table.
           screenSpaceRadius: false,
         });
       } catch {
@@ -2005,7 +2138,15 @@ export function createPostChain(options: CreatePostOptions): PostChain {
        */
       if (typeof ao.updatePdMaterial === 'function') {
         try {
-          ao.updatePdMaterial({ radius: aoDenoiseRadius(c.halfRes) });
+          /*
+           * `lumaPhi`/`depthPhi`/`normalPhi` are written explicitly now and the
+           * values are UNCHANGED: 10/2/3 is what `GTAOPass`'s own constructor
+           * already puts there, over `PoissonDenoiseShader`'s 5/5/5 defaults.
+           * Passing them is a no-op for this pass and the whole point for the
+           * TSL port, whose `DenoiseNode` ships the 5/5/5 defaults and would
+           * otherwise denoise with a different filter from the same config.
+           */
+          ao.updatePdMaterial(aoDenoiseParams(c));
         } catch {
           /* parameter shape drift between three versions — non-fatal */
         }

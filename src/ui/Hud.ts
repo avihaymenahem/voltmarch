@@ -900,9 +900,25 @@ export class Hud {
     this.sidebar = new Sidebar({
       parent: this.root,
       faction: this.faction,
-      // Lends the main GL context so build slots can show the real model. The
-      // sidebar falls back to flat glyphs if this is absent or unusable.
-      renderer: this.handle.renderer,
+      /*
+       * Lends the main renderer — EITHER backend — so build slots can show the
+       * real model. The sidebar falls back to flat glyphs if this is absent or
+       * unusable, which is what a headless build gets.
+       *
+       * THIS READ `this.handle.webgl` AND THAT WAS THE WHOLE BUG. `webgl` is
+       * null under `?gpu=webgpu`, so every build slot on the node path fell
+       * back to a flat glyph and a player could not tell what they were
+       * building. `Cameos` renders each portrait into a render target and read
+       * it back with `readRenderTargetPixels`, which is synchronous and exists
+       * only on `WebGLRenderer`; the node `Renderer` has
+       * `readRenderTargetPixelsAsync` and nothing synchronous.
+       *
+       * It has both paths now. `frame()` was already incremental, so the async
+       * readback fits without changing its shape: a slot shows its glyph for a
+       * frame or two and then resolves into the model. `??` and not a branch —
+       * exactly one of these two is ever non-null (`RendererHandle.webgl`).
+       */
+      renderer: this.handle.webgl ?? this.handle.node,
       callbacks: {
         selectTab: (tab) => this.selectTab(tab),
         activate: (tab, cameo) => this.onSlotActivate(tab, cameo),

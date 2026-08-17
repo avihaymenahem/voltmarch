@@ -27,6 +27,46 @@
  * call, and all of it happens at RenderPhase.Hud — strictly before Bootstrap's
  * `present()` runs the real frame.
  *
+ * BOTH RENDERERS, AND THE ONE CALL THAT DIFFERS
+ * ---------------------------------------------
+ * Reported as *"The 3D models in side menu not showing"* under `?gpu=webgpu`.
+ * Every build slot fell back to a flat glyph, so a player could not tell what
+ * they were building — a usability defect, not a cosmetic one.
+ *
+ * The cause was ONE line. `readRenderTargetPixels` is synchronous and exists
+ * only on `WebGLRenderer`; the node `Renderer` publishes
+ * `readRenderTargetPixelsAsync` and nothing synchronous. So `Hud.ts` handed the
+ * sidebar `handle.webgl`, which is null on the node path, and the sidebar kept
+ * its glyphs.
+ *
+ * `frame()` was ALREADY incremental — it paints at most
+ * `HUD_CAMEO.perFrameBudget` cameos per frame — so an async readback fits its
+ * shape without changing it: render, ask for the pixels, blit them when they
+ * arrive. A slot shows its glyph for a frame or two and then resolves into the
+ * model. That is the intended behaviour, not a degradation.
+ *
+ * **THE SYNCHRONOUS PATH IS UNTOUCHED.** `this.webgl` non-null means the
+ * readback and the blit both still happen inside `render()`, on the same tick,
+ * with the same arithmetic — `blitReadback` with a tight stride and `bottom-up`
+ * is byte-for-byte the loop it replaced, and `tests/cameo-readback.spec.ts`
+ * pins that.
+ *
+ * The two byte-layout differences that a "looks about right" fix would have
+ * shipped wrong — row order and the 256-byte row alignment — live in
+ * `src/render/backend.ts`, with the reasoning and the tripwire.
+ *
+ * IN-FLIGHT READS AND THINGS THAT STOP EXISTING
+ * ---------------------------------------------
+ * An async result can arrive after the cell was unbound, after the subject
+ * changed, after a theatre or faction swap invalidated every cameo, after the
+ * renderer was disposed, or after the GPU device was lost. Every one of those
+ * is a DROP rather than a paint, gated on `Job.epoch` (bumped by `bind` and
+ * `invalidateAll`), on the job still being the one this canvas holds, and on
+ * `disposed`. A rejected read — which is what a lost device produces — is
+ * counted in `readFailures` and leaves the glyph standing. Nothing here can
+ * resurrect a dead canvas: the only surfaces a late blit touches are 2D
+ * contexts.
+ *
  * RESOLUTION — MEASURED, NOT ASSUMED
  * ----------------------------------
  * The header used to say the fallback existed because "a def key may not
@@ -75,6 +115,14 @@ import { hexToLinearRgb } from '../core/math';
 import { BuildTab, Faction, FACTION_PALETTE_KEYS } from '../core/types';
 import { buildingLibrary } from '../art/BuildingFactory';
 import { unitLibrary } from '../art/UnitFactory';
+import {
+  blitReadback,
+  liveBackendOf,
+  readbackRowOrder,
+  readbackStride,
+  type ReadbackRowOrder,
+} from '../render/backend';
+import type { NodeRendererLike } from '../render/gpu-path';
 import { shroudUniforms } from '../render/FogOfWar';
 import { meridianUnitLibrary } from '../art/Faction3Units';
 import { meridianBuildingLibrary } from '../art/Faction3Buildings';
@@ -606,10 +654,88 @@ interface Job {
   /** Wall-clock seconds of the last render; throttles the hover turntable. */
   lastRender: number;
   dirty: boolean;
+  /**
+   * True once REAL PIXELS have landed on this canvas for the current subject.
+   *
+   * Only the async path reads it, and only to decide whether to paint the 2D
+   * glyph as a placeholder. Painting it unconditionally would make a hovered
+   * cameo flicker between glyph and model thirty times a second.
+   */
+  painted: boolean;
+  /**
+   * Bumped whenever anything that would make an in-flight readback stale
+   * happens: a rebind to a different subject, or `invalidateAll`. A resolved
+   * read whose epoch no longer matches is dropped rather than painted.
+   *
+   * A COUNTER AND NOT AN OBJECT IDENTITY CHECK, because `bind()` REUSES the
+   * job object when the canvas is already bound — so "is this the same job?"
+   * is true across a subject change and cannot carry this.
+   */
+  epoch: number;
 }
 
+/**
+ * Either renderer, as much of one as a cameo needs.
+ *
+ * `NodeRendererLike` is `gpu-path.ts`'s STRUCTURAL view of
+ * `THREE.WebGPURenderer`, so naming it here costs this file — which is in the
+ * entry chunk — no import of `three/webgpu`.
+ */
+export type CameoRendererTarget = THREE.WebGLRenderer | NodeRendererLike;
+
+/**
+ * The renderer members the cameo draw touches that are IDENTICAL on both
+ * backends — same names, same signatures, assignable from either renderer with
+ * no cast at all.
+ *
+ * Two members that the draw also touches are deliberately absent.
+ *
+ *   `setRenderTarget` / `getRenderTarget`. `WebGLRenderer` types these in terms
+ *   of `WebGLRenderTarget`, the node `Renderer` in terms of its base
+ *   `RenderTarget`, and no single declaration accepts both without a cast —
+ *   the return types differ and the parameter is contravariant. They are saved
+ *   and restored per backend by `pushTarget`/`popTarget` instead, which is
+ *   three extra lines and no unchecked assertion.
+ *
+ *   The READBACK, which is the one call whose shape genuinely differs. Hiding
+ *   that behind a common name is precisely how the async version would have got
+ *   written as though it were synchronous.
+ */
+interface CameoDrawSurface {
+  toneMappingExposure: number;
+  getScissorTest(): boolean;
+  setScissorTest(enabled: boolean): void;
+  clear(color?: boolean, depth?: boolean, stencil?: boolean): void;
+  render(scene: THREE.Object3D, camera: THREE.Camera): void;
+}
+
+/**
+ * How many async readbacks may be outstanding at once.
+ *
+ * `HUD_CAMEO.perFrameBudget` is 2 and a read normally lands within a frame or
+ * two, so this is never reached in ordinary play. It exists for the case where
+ * it would matter: a device that has stopped retiring work, where an uncapped
+ * queue would keep rendering cameos nobody will ever see. At the cap the job is
+ * left dirty and retried, so nothing is lost.
+ */
+const MAX_INFLIGHT_READS = 8;
+
 export class CameoRenderer {
-  private readonly renderer: THREE.WebGLRenderer;
+  /**
+   * THE SYNCHRONOUS RENDERER, OR NULL ON THE NODE PATH. Non-null is the only
+   * thing that selects `readRenderTargetPixels`, which exists nowhere else.
+   */
+  private readonly webgl: THREE.WebGLRenderer | null;
+  /** The node renderer, or null on the WebGL path. Exactly one of the two. */
+  private readonly node: NodeRendererLike | null;
+  /** Whichever of the two, reduced to the six members the draw touches. */
+  private readonly draw: CameoDrawSurface;
+  /**
+   * Which end of the picture the readback's first row comes from, READ off the
+   * live backend rather than assumed. `gl.readPixels` is bottom-up;
+   * `copyTextureToBuffer` is top-down. See `src/render/backend.ts`.
+   */
+  private readonly rowOrder: ReadbackRowOrder;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(26, 1.25, 0.5, 200);
   private readonly pivot = new THREE.Group();
@@ -622,6 +748,14 @@ export class CameoRenderer {
   private readonly backdropCanvas: HTMLCanvasElement;
 
   private readonly shadowMesh: THREE.Mesh;
+
+  /**
+   * Whatever target was bound when a cameo render began, one field per
+   * backend because the two renderers' `getRenderTarget` return different
+   * types. Live only between `pushTarget` and `popTarget`.
+   */
+  private prevGlTarget: THREE.WebGLRenderTarget | null = null;
+  private prevNodeTarget: THREE.RenderTarget | null = null;
 
   private rt: THREE.WebGLRenderTarget | null = null;
   private rtW = 0;
@@ -648,11 +782,27 @@ export class CameoRenderer {
   private readonly scratchCentre = new THREE.Vector3();
 
   private disposed = false;
+  /** Monotonic, handed to each job on bind and on `invalidateAll`. */
+  private epoch = 0;
+  /** Async readbacks issued and not yet settled. Bounded by MAX_INFLIGHT_READS. */
+  private pendingReads = 0;
   /** Diagnostics for the boot log / debug overlay. */
   rendersThisFrame = 0;
   totalRenders = 0;
   meshHits = 0;
   fallbacks = 0;
+  /**
+   * Async readbacks that resolved and were PAINTED, and ones that failed.
+   *
+   * Two counters rather than one, because the interesting state is
+   * `asyncReads === 0 && readFailures > 0` — a node path whose readback is
+   * rejecting, which looks exactly like the glyph fallback it replaced. A
+   * lost device puts every outstanding read here.
+   */
+  asyncReads = 0;
+  readFailures = 0;
+  /** The last readback failure, kept for the debug overlay. */
+  lastReadError: string | null = null;
   /**
    * Every def key that took the 2D path, for `tools/cameo-audit.mjs`.
    *
@@ -663,8 +813,17 @@ export class CameoRenderer {
    */
   readonly fellBack = new Set<string>();
 
-  constructor(renderer: THREE.WebGLRenderer) {
-    this.renderer = renderer;
+  constructor(renderer: CameoRendererTarget) {
+    // READ, never inferred. `liveBackendOf` probes the renderer's own markers
+    // and is the same function the boot tripwire uses — so a `WebGPURenderer`
+    // that silently took its WebGL2 fallback is named `webgl2-fallback` here
+    // and gets that backend's row order, rather than WebGPU's.
+    const live = liveBackendOf(renderer);
+    const isNode = live !== 'webgl';
+    this.node = isNode ? (renderer as NodeRendererLike) : null;
+    this.webgl = isNode ? null : (renderer as THREE.WebGLRenderer);
+    this.draw = renderer;
+    this.rowOrder = readbackRowOrder(live);
 
     // Key light upper-LEFT at ~35 deg elevation, per §2.8. The rim is what
     // stops a dark hull dissolving into a dark backdrop; the hemisphere is the
@@ -762,9 +921,16 @@ export class CameoRenderer {
       hovered: false,
       lastRender: 0,
       dirty: false,
+      painted: false,
+      epoch: 0,
     };
     job.subject = subject;
     job.spin = 0;
+    // The subject CHANGED (the early-out above covers "it did not"), so any
+    // readback still in flight is a picture of the previous one. Retiring the
+    // epoch is what stops it landing on this cell three frames from now.
+    job.painted = false;
+    job.epoch = ++this.epoch;
     this.jobs.set(canvas, job);
     this.markDirty(job);
   }
@@ -785,9 +951,22 @@ export class CameoRenderer {
     if (!hovered) this.markDirty(job); // one last frame at the resting pose
   }
 
-  /** Force a repaint, e.g. after a device-pixel-ratio change resized the canvas. */
+  /**
+   * Force a repaint, e.g. after a device-pixel-ratio change resized the canvas.
+   *
+   * RETIRES EVERY IN-FLIGHT READBACK. The three callers — a DPR change, a
+   * theatre swap, a model-provider swap — each mean the pixels currently on
+   * their way back describe a cameo that is no longer the right one, and a DPR
+   * change additionally means the destination canvas has been resized under
+   * them. Bumping the epoch is one increment and it closes all three.
+   */
   invalidateAll(): void {
-    for (const job of this.jobs.values()) this.markDirty(job);
+    const epoch = ++this.epoch;
+    for (const job of this.jobs.values()) {
+      job.epoch = epoch;
+      job.painted = false;
+      this.markDirty(job);
+    }
   }
 
   private markDirty(job: Job): void {
@@ -867,6 +1046,14 @@ export class CameoRenderer {
     const h = canvas.height;
     if (w <= 0 || h <= 0) return;
 
+    // Nothing has retired its readback yet, so a fresh render would only add to
+    // the pile. Leave the job dirty and try again next frame; the drain loop
+    // still spends a budget slot, which is what keeps this from spinning.
+    if (this.node !== null && this.pendingReads >= MAX_INFLIGHT_READS) {
+      this.markDirty(job);
+      return;
+    }
+
     job.lastRender = time;
     this.totalRenders++;
 
@@ -878,6 +1065,7 @@ export class CameoRenderer {
       this.fallbacks++;
       this.fellBack.add(job.subject.key);
       paintFallback(ctx, w, h, job.subject, BACKDROPS[this.theatre]);
+      job.painted = false;
       return;
     }
     this.meshHits++;
@@ -889,6 +1077,7 @@ export class CameoRenderer {
       this.fallbacks++;
       this.fellBack.add(job.subject.key);
       paintFallback(ctx, w, h, job.subject, BACKDROPS[this.theatre]);
+      job.painted = false;
       return;
     }
 
@@ -961,40 +1150,128 @@ export class CameoRenderer {
     this.shadowMesh.scale.set(radius * 3.1, radius * 3.1, 1);
 
     // --- draw ------------------------------------------------------------
-    const prevTarget = this.renderer.getRenderTarget();
-    const prevExposure = this.renderer.toneMappingExposure;
-    const prevScissorTest = this.renderer.getScissorTest();
+    // Every call in this block exists with the same meaning on both renderers;
+    // the draw is therefore genuinely one code path. See `CameoDrawSurface`.
+    const prevExposure = this.draw.toneMappingExposure;
+    const prevScissorTest = this.draw.getScissorTest();
     // Cameos are the "twenty tiny photographs" exception to the frame's tone
     // contract; at the world's exposure they read as twenty dark smudges.
-    this.renderer.toneMappingExposure = prevExposure * 1.42;
-    this.renderer.setScissorTest(false);
-    this.renderer.setRenderTarget(rt);
-    this.renderer.clear(true, true, false);
-    this.renderer.render(this.scene, this.camera);
-    this.renderer.readRenderTargetPixels(rt, 0, 0, this.rtW, this.rtH, this.pixels);
-    this.renderer.setRenderTarget(prevTarget);
-    this.renderer.toneMappingExposure = prevExposure;
-    this.renderer.setScissorTest(prevScissorTest);
+    //
+    // NEITHER RENDERER APPLIES TONE MAPPING TO A USER RENDER TARGET, and this
+    // line has therefore been inert on the WebGL path since it was written:
+    // `WebGLPrograms.getParameters` reads `toneMapping = NoToneMapping` unless
+    // the current target is null or XR, and the node `Renderer`'s
+    // `currentToneMapping` getter does the same through `isOutputTarget`. It is
+    // kept, and kept identical on both paths, because removing it is a change
+    // to the WebGL path's uniform writes and this task is not that.
+    this.draw.toneMappingExposure = prevExposure * 1.42;
+    this.draw.setScissorTest(false);
+    this.pushTarget(rt);
+    this.draw.clear(true, true, false);
+    this.draw.render(this.scene, this.camera);
+
+    /*
+     * THE ONE CALL THAT IS NOT SHARED.
+     *
+     * `readRenderTargetPixels` is synchronous, fills a caller-supplied buffer,
+     * and exists only on `WebGLRenderer`. The node `Renderer` has
+     * `readRenderTargetPixelsAsync`, which allocates and resolves later. There
+     * is no signature that covers both, and pretending there is would have
+     * produced an `await` in a function the frame loop calls.
+     *
+     * The async branch issues its read HERE, inside the saved-state window,
+     * because three encodes and submits the texture-to-buffer copy
+     * synchronously — an `async` body runs to its first `await`, and three's is
+     * `mapAsync`. So the bytes are pinned against the render two lines above,
+     * and everything after this point may safely change or dispose the target.
+     */
+    const sync = this.webgl;
+    if (sync !== null) {
+      sync.readRenderTargetPixels(rt, 0, 0, this.rtW, this.rtH, this.pixels);
+    } else {
+      this.beginAsyncRead(job, rt, this.rtW, this.rtH);
+    }
+
+    this.popTarget();
+    this.draw.toneMappingExposure = prevExposure;
+    this.draw.setScissorTest(prevScissorTest);
 
     this.pivot.clear();
     this.current = null;
 
     // --- blit -------------------------------------------------------------
-    // GL reads bottom-up; flip while copying rows so the ImageData is upright.
-    const img = this.scratchCtx.createImageData(this.rtW, this.rtH);
-    const dst = img.data;
-    const src = this.pixels;
-    const stride = this.rtW * 4;
-    for (let y = 0; y < this.rtH; y++) {
-      const s = (this.rtH - 1 - y) * stride;
-      dst.set(src.subarray(s, s + stride), y * stride);
+    if (sync === null) {
+      // The pixels are a frame or two away. Leave a resolved cameo alone —
+      // repainting the glyph over it every hover frame is a visible flicker —
+      // and give a cell that has never resolved the 2D fallback to stand on
+      // until they land.
+      if (!job.painted) paintFallback(ctx, w, h, job.subject, BACKDROPS[this.theatre]);
+      return;
     }
+    this.paintPixels(job, ctx, w, h, this.pixels, this.rtW, this.rtH, this.rtW * 4);
+  }
+
+  /**
+   * Bind the cameo target, remembering whatever was bound.
+   *
+   * A SEPARATE FIELD PER BACKEND and no cast — see `CameoDrawSurface`. Both
+   * fields are cleared by `popTarget`, so this never holds a render target
+   * alive past the call that saved it.
+   */
+  private pushTarget(rt: THREE.WebGLRenderTarget): void {
+    const sync = this.webgl;
+    if (sync !== null) {
+      this.prevGlTarget = sync.getRenderTarget();
+      sync.setRenderTarget(rt);
+      return;
+    }
+    const node = this.node;
+    if (node === null) return;
+    this.prevNodeTarget = node.getRenderTarget();
+    node.setRenderTarget(rt);
+  }
+
+  /** Restore whatever `pushTarget` displaced. */
+  private popTarget(): void {
+    const sync = this.webgl;
+    if (sync !== null) {
+      sync.setRenderTarget(this.prevGlTarget);
+      this.prevGlTarget = null;
+      return;
+    }
+    const node = this.node;
+    if (node === null) return;
+    node.setRenderTarget(this.prevNodeTarget);
+    this.prevNodeTarget = null;
+  }
+
+  /**
+   * Blit a finished readback onto a cell and frame it.
+   *
+   * SHARED BY BOTH PATHS ON PURPOSE. `blitReadback` with `stride === rw * 4`
+   * and `bottom-up` performs exactly the row copy the WebGL path always did —
+   * same `subarray`, same `set`, same offsets — so the sync path's output bytes
+   * are unchanged. `tests/cameo-readback.spec.ts` asserts that against the
+   * original expression rather than trusting the reading.
+   */
+  private paintPixels(
+    job: Job,
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    src: Uint8Array,
+    rw: number,
+    rh: number,
+    stride: number,
+  ): void {
+    const img = this.scratchCtx.createImageData(rw, rh);
+    blitReadback(src, img.data, rw, rh, stride, this.rowOrder);
     this.scratchCtx.putImageData(img, 0, 0);
 
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.clearRect(0, 0, w, h);
-    ctx.drawImage(this.scratch, 0, 0, this.rtW, this.rtH, 0, 0, w, h);
+    ctx.drawImage(this.scratch, 0, 0, rw, rh, 0, 0, w, h);
 
     // The same crisp frame the fallback draws, so a grid that is half meshes
     // and half fallbacks still reads as one set of framed photographs. It goes
@@ -1002,6 +1279,122 @@ export class CameoRenderer {
     // filter on this canvas, and §2.8 requires that tint to be uniform with no
     // wipe boundary — a CSS frame would stay cold inside a sepia cameo.
     paintCameoFrame(ctx, w, h, job.subject.faction);
+    job.painted = true;
+  }
+
+  /* -- the async readback ------------------------------------------------- */
+
+  /**
+   * Ask the node renderer for this render target's pixels and arrange to blit
+   * them when they arrive.
+   *
+   * The epoch is captured HERE, before the promise exists, because everything
+   * that could invalidate this read happens after this line.
+   */
+  private beginAsyncRead(job: Job, rt: THREE.WebGLRenderTarget, rw: number, rh: number): void {
+    const node = this.node;
+    if (node === null) return;
+    const epoch = job.epoch;
+    this.pendingReads++;
+    let read: Promise<ArrayBufferView>;
+    try {
+      read = node.readRenderTargetPixelsAsync(rt, 0, 0, rw, rh);
+    } catch (err) {
+      // A dead device throws out of the encode rather than rejecting. Same
+      // outcome, different door, and an uncaught throw here would take the
+      // whole HUD frame down with it.
+      this.pendingReads--;
+      this.noteReadFailure(err);
+      return;
+    }
+    read.then(
+      (view) => {
+        this.pendingReads--;
+        this.finishAsyncRead(job, epoch, rw, rh, view);
+      },
+      (err: unknown) => {
+        this.pendingReads--;
+        this.noteReadFailure(err);
+      },
+    );
+  }
+
+  /**
+   * A readback landed. Decide whether it is still about anything.
+   *
+   * FIVE WAYS IT IS NOT, and each one is a real sequence rather than a
+   * defensive habit: the renderer was disposed (match ended), the job was
+   * rebound or invalidated (tab switch, theatre swap, DPR change), the canvas
+   * was unbound (the row scrolled away), the cell lost its 2D context, or the
+   * render target has been resized under us so the scratch canvas no longer
+   * fits the picture. The last one re-arms the job; the rest are drops,
+   * because something else has already queued the correct render.
+   */
+  private finishAsyncRead(
+    job: Job,
+    epoch: number,
+    rw: number,
+    rh: number,
+    view: ArrayBufferView,
+  ): void {
+    if (this.disposed) return;
+    if (job.epoch !== epoch) return;
+    if (this.jobs.get(job.canvas) !== job) return;
+
+    if (rw !== this.rtW || rh !== this.rtH) {
+      // `ensureTarget` replaced the target while this was in flight. The
+      // pixels are valid but the scratch canvas is the new size, so putting
+      // them there would clip. Render it again at the size that now exists.
+      this.markDirty(job);
+      return;
+    }
+
+    const canvas = job.canvas;
+    const w = canvas.width;
+    const h = canvas.height;
+    if (w <= 0 || h <= 0) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // `readRenderTargetPixelsAsync` returns whatever typed array the target's
+    // GPU format implies. Ours is RGBA8 / RGBA8-sRGB, which three maps to
+    // `Uint8Array`; anything else means the target's format changed and the
+    // bytes do not mean what the blitter thinks they mean.
+    if (!(view instanceof Uint8Array)) {
+      this.noteReadFailure(
+        new Error(`[hud] cameo readback returned ${view.constructor.name}, expected Uint8Array`),
+      );
+      return;
+    }
+
+    let stride: number;
+    try {
+      stride = readbackStride(rw, rh, view.byteLength);
+    } catch (err) {
+      this.noteReadFailure(err);
+      return;
+    }
+
+    this.paintPixels(job, ctx, w, h, view, rw, rh, stride);
+    this.asyncReads++;
+  }
+
+  /**
+   * Record a readback that did not produce pixels.
+   *
+   * NOT A THROW AND NOT A RE-QUEUE. A lost device rejects every outstanding
+   * read at once, and both retrying and throwing turn one failure into a storm;
+   * the cell keeps the glyph it already has, which is the correct picture of
+   * "no GPU". Logged once per distinct message so a repeating failure does not
+   * fill the console.
+   */
+  private noteReadFailure(err: unknown): void {
+    this.readFailures++;
+    const message = err instanceof Error ? err.message : String(err);
+    if (this.lastReadError !== message) {
+      this.lastReadError = message;
+      console.warn('[hud] cameo readback failed; slots keep their glyphs:', message);
+    }
   }
 
   /** Local-space bounds of a prototype, measured once and cached. */
@@ -1027,7 +1420,10 @@ export class CameoRenderer {
     this.rt.texture.colorSpace = THREE.SRGBColorSpace;
     this.rtW = tw;
     this.rtH = th;
-    this.pixels = new Uint8Array(tw * th * 4);
+    // The DESTINATION of the synchronous readback, and only of that one: the
+    // async path is handed a fresh array by three every time. Left empty on the
+    // node path rather than allocating ~160 kB nothing will ever write to.
+    this.pixels = this.webgl === null ? this.pixels : new Uint8Array(tw * th * 4);
     this.scratch.width = tw;
     this.scratch.height = th;
   }
@@ -1043,7 +1439,14 @@ export class CameoRenderer {
 
   dispose(): void {
     if (this.disposed) return;
+    // SET FIRST, so a readback that settles inside this call — or at any point
+    // after it — finds a disposed renderer and drops. `disposed` is the only
+    // gate an in-flight read has once `jobs` is cleared, and clearing `jobs`
+    // before setting it would leave a window where `jobs.get()` is undefined
+    // but the flag is still false. Both checks would catch it; ordering makes
+    // that a belt rather than a coincidence.
     this.disposed = true;
+    this.epoch++;
     this.pivot.clear();
     this.current = null;
     this.jobs.clear();

@@ -131,8 +131,11 @@ describe('every mission rule can actually be satisfied', () => {
 
     /* THE BOUND APPLIES TO RUNGS THAT GATE BUILDABLE CONTENT, and that set is
      * derived from the def table rather than listed here. A long tail is
-     * allowed to span a career — `economy.harvest.3` asks for 1,000,000 and
-     * pays the Ore Boost, which is a bonus that blocks nothing. An unlock id
+     * allowed to span a career — `construction.produce.2` asks for 750 units
+     * and pays a MAP, which opens a row in the lobby and blocks no def. (This
+     * cited `economy.harvest.3` and its 1,000,000 ore "which pays the Ore
+     * Boost"; that mission paid a map by the time the sentence was read, and it
+     * has since been retired with the preset-clone battlefield it paid.) An unlock id
      * some def carries as `unlockedBy` is a different animal: until it is paid,
      * a tab stops one tier short, and (via `UnlockGate.mirrorAI`) it stops
      * short for the opponent too. Nothing a player must own to SEE the rest of

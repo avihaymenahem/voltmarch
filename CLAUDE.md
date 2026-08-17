@@ -99,7 +99,9 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 3661 across 143 files (+2 opt-in probes)
+npm test             # vitest, currently 4027 across 155 files (+2 opt-in probes)
+                     #   3 of those only run when `dist/` exists — `webgpu-bundle-isolation`
+                     #   is `describe.runIf(haveDist)`, so a clean tree reports 4024.
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -323,8 +325,19 @@ save, in the replay. The tightrope is gone and `use()` may finally refuse.
 ## Four armies, four islands, and a road made of water
 
 **Sunder Atoll** is the map the navy exists for: four islands, one army each, **53.80% water** on the
-shipped seed, and no land route between any two of them. Ten battlefields ship now
+shipped seed, and no land route between any two of them. Seven battlefields ship now
 (`MAPS` in `src/shell/settings-store.ts`); three carry a real sea.
+
+**It was ten, and the cut cost three missions.** `saltpan-reach`, `foundry-line` and `glacier-shelf`
+each reused an existing `MAP_PRESET` verbatim, so all seven balance numbers matched a map already in
+the roster and the lobby was selling a reroll of a battlefield as a reward. Each was also the SOLE
+payload of one mission — Armour Column, Continental Yield and Hostile Takeover — and those three are
+RETIRED rather than repaid, because the def catalogue has nothing left that a new `UNLOCK_TAGS` group
+could legally cover: what is still ungated is either the opening path, naval, non-mirrored (`gate`,
+`flameTower`), or the deliberately-open Command Posts. The survey is written out inside `UNLOCKS` in
+`src/data/Missions.ts` so nobody pays to run it twice. **Do not "fix" this by paying them cosmetics
+or credits** — both are declared gaps in `tests/reward-wiring.spec.ts` and paying into one is the
+original defect with a different noun.
 
 - **The 54% is a ceiling, not a taste.** A start shelf needs 96 m of dry ground in EVERY direction
   (`TERRAIN_START_FLAT_RADIUS` 58 + `TERRAIN_START_EDGE_WOBBLE` 14 + band 6 + waviness 8 +
@@ -658,6 +671,84 @@ argument for why draping rather than grading the heightfield.
   crossing the corridor, which no span size can drape over; the honest fix is routing — `classifyCells`
   erodes by ONE cell and guarantees flat ground only +/-6 m out, against a 10.28 m arterial corridor.
 
+## There are two renderers now, and a WebGL player downloads exactly one of them
+
+`?gpu=webgpu` used to throw. It boots the real game since v3.0.0-dev: every shader in the project
+exists twice, once as GLSL and once as a TSL node graph, and `src/render/gpu-path.ts` is the seam
+that picks. **The default is still WebGL** and nothing in the product selects the other one.
+
+- **`gpu-path.ts` IMPORTS NO THREE AT ALL, and that is the constraint the whole design is built
+  around.** `three/webgpu` is the entire node system — both backends, both builders, the node
+  material library, ~758 kB emitted. It reaches the bundle through exactly ONE dynamic
+  `import('./gpu-path-install')`, inside `prepareGpuPath()`, behind `requestedBackend()`. Rollup
+  emits that as its own chunk and a WebGL boot never fetches it: `WGSLNodeBuilder`,
+  `GLSLNodeBuilder`, `RenderPipeline`, `MeshPhysicalNodeMaterial`, `MeshStandardNodeMaterial` and
+  `castShadowPositionNode` are **0 occurrences in the entry chunk**.
+  `tests/webgpu-bundle-isolation.spec.ts` pins it and fails when a static import is added on
+  purpose. **Never `import ... from 'three/webgpu'` outside a `*Node*.ts` / `*-nodes.ts` file.**
+- **Every material site is one branch, taken once at construction:**
+  `const np = nodePath(); np !== null ? np.createX(...) : createX(...)`. Never in the frame loop.
+- **`RendererHandle.renderer` IS GONE. It is `webgl` and `node`, and one of them is null.** The two
+  renderer families share no base type, and almost everything the consumers reached for is genuinely
+  WebGL-only — `getContext()` for the timer query, `capabilities.getMaxAnisotropy()`,
+  `readRenderTargetPixels`, `PMREMGenerator`'s constructor. Anything that works on both reads
+  `frameInfo()`, `size`, `capabilities` or `backend`. **`window.__VM.renderer` is null under
+  `?gpu=webgpu`** and `__VM.rendererHandle` is the backend-agnostic one.
+- **NEVER READ `renderer.info` DIRECTLY.** Under the node renderer `info.render.calls` is a
+  MONOTONIC COUNT OF `render()` INVOCATIONS since page load that `reset()` does not clear, and
+  `info.programs` is `undefined`. `handle.frameInfo()` / `normaliseInfo()` is the only safe read.
+- **`prepareRenderer(canvas)` must be awaited BEFORE `bootstrap()`.** `WebGPURenderer.render()`
+  throws until `await renderer.init()` resolves and `bootstrap()` is synchronous by design. On the
+  WebGL path it is a no-op that imports nothing.
+- **`ShaderMaterial` is NOT in `StandardNodeLibrary`.** It does not degrade under `WebGPURenderer` —
+  it fails `Material "ShaderMaterial" is not compatible` and draws through a bare `NodeMaterial`.
+  Adding one without a node twin is a black surface, not a slightly wrong one.
+- **`drawCallsByPass` IS WEBGL-ONLY.** The node `Renderer` has no seam between the shadow pass and
+  the colour pass to meter, so it reports zeros with a true total and `MAX_DRAW_CALLS` cannot be
+  checked there. Do not invent a split.
+- **`npm run shots` has two arms and they may never share a directory.** `shots/` and
+  `node tools/shoot.mjs --gpu=webgpu` -> `shots-webgpu/`. The node arm launches REAL Chrome
+  (`channel: 'chrome'`) because Playwright's bundled Chromium cannot get a WebGPU device here, and
+  it asserts `rendererHandle.backend` per shot — a `webgl2-fallback` fails the capture rather than
+  being labelled `webgpu`.
+- **A CANVAS HOLDS ONE CONTEXT TYPE FOR LIFE, AND THREE'S OWN FALLBACK DOES NOT KNOW THAT.**
+  Reported as a driver reset that killed the page with
+  `TypeError: … null (reading 'getSupportedExtensions') at WebGLBackend.init`.
+  `WebGPURenderer`'s constructor installs a `getFallback` that builds a `WebGLBackend` on
+  `renderer.domElement`; `Renderer.init()` calls it on ANY throw out of `WebGPUBackend.init`; and
+  that backend then asks the canvas WebGPU already claimed for a `webgl2` context, gets `null`, and
+  dereferences it. `index.html` ships one canvas, so this is unavoidable — and `assertBackend` could
+  not fire, because it reads the object `init()` RESOLVES with and here `init()` REJECTS.
+  `gpu-path-install.ts#disableThreeFallback` nulls `_getFallback` BEFORE `init()` (guarded by an
+  `in` check, so a three upgrade warns rather than silently re-arming it), and `prepareRenderer`
+  catches the rejection. **Do not restore three's fallback and do not build any renderer on a canvas
+  a `WebGPURenderer` has touched** — `liveCanvas()` in `renderer.ts` mints a fresh one, and it is
+  identity on every WebGL boot.
+- **`?gpu=webgpu` REFUSES when the device cannot be had. It does not substitute, loudly or
+  quietly.** A visible panel names the failure and the GPU and carries a one-click *Continue on
+  WebGL* that reloads without the flag. The argument is above `raiseGpuFailure` in `renderer.ts`:
+  a notice-plus-fallback is the same lie `assertBackend` exists to forbid — every downstream number
+  would go on being produced about WebGL while the address bar said WebGPU, which is Stage A's
+  defect exactly — and a lost device takes every GPU resource with it, so "recover onto WebGL" is a
+  full re-boot either way.
+- **`device.lost` IS A PROMISE THAT RESOLVES, and it is watched.** `device-loss.ts#watchDeviceLoss`,
+  filtering `reason === 'destroyed'` (that is our own `device.destroy()`, i.e. teardown). A loss
+  sets `isContextLost()` — which `post.render()` already early-outs on — and never clears, because a
+  lost WebGPU device does not come back. `tests/gpu-device-loss.spec.ts` drives all of it from
+  stubs; **no part of the recovery has been observed on real hardware** and `RENDER_FINDINGS.md`
+  §7g says exactly which four claims that leaves unverified.
+- **`powerPreference: 'high-performance'` IS A HINT AND WINDOWS IGNORES IT.** Stage A asked for it
+  and its probe observed an integrated `amd`/`gcn-5` adapter on a box that also holds an RTX 3080.
+  The live adapter is read off `device.adapterInfo` through `backend.ts#normaliseAdapterInfo` and
+  published on `capabilities.adapter` and `__VM.gpuInfo()`. **The WebGL debug string is not a
+  substitute** — it names whichever chip *WebGL* got. And do not read `GPUAdapterInfo` with a
+  spread: its fields are on the prototype, so `{...info}` is `{}` on every real adapter.
+- **The speed verdict was overturned and the old one is still quoted in places.** Stage A's
+  synthetic sweep said WebGPU was at best neutral; on the REAL game it is **1.74-1.89x faster**
+  across a 9x pixel range, because §9 had already established the frame is fill-rate bound and the
+  sweep measured per-draw CPU cost. `docs/RENDER_FINDINGS.md` §7f is the measurement; §7b now
+  carries the correction at its head.
+
 ## Hard rules
 
 - **Determinism.** Inside `simTick`, `Math.random()`, `Date.now()` and `performance.now()` are
@@ -744,6 +835,56 @@ free fixes, the first of which is a 10x threshold bug in the terrain splat class
 `docs/SPEC_DRIFT_AUDIT.md` catalogues claims that stopped being true; `RENDER_FINDINGS.md` is the
 opposite — things that are true and cost a lot to establish. Overturn an entry by rewriting it, not
 by appending a contradiction.
+
+## Graphics are MEASURED ONCE at first run, and adaptive resolution is off
+
+Reported as *"i want the adaptive resolution to be off by default. instead, set the graphic options
+that match the best for user for the first time and thats it"*. `AdaptiveResolution` is not deleted
+— it is a good controller, its one-way ratchet is fixed, and it stays a toggle. What changed is the
+default and what fills the gap: `src/render/HardwareCalibration.ts` plus `calibration.system.ts`.
+
+- **THE FRAME IS A STRAIGHT LINE AND THE ANSWER CAN BE SOLVED.** `docs/RENDER_FINDINGS.md` §9 fitted
+  `GPU ms = 5.86 + 6.40 x Mpx` at r² 0.995, with 79-90% of GPU time pixel-proportional. So the
+  calibration renders two probe windows at two known pixel counts (probe A from the adapter prior,
+  probe B at 70% of it — 49% of the pixels), fits that line, and solves for the scale that meets
+  16.7 ms. 110 frames: ~1.8 s at 60 fps, ~4.7 s on the 23.6 fps machine §9 measured.
+  `tests/hardware-calibration.spec.ts` feeds it §9's own machine and requires it to recover 5.86 and
+  6.40 exactly, then reproduces §9's published 0.694 — which is at a 17.22 ms target, not 16.7.
+- **THE ADAPTER IS A PRIOR AND CANNOT CHANGE THE ANSWER.** `capabilities.adapter` (§7g),
+  `classifyGpu` and the backend (§7f: WebGPU 1.74-1.89x faster) decide only where probing STARTS.
+  Two different priors on one machine produce one result, and that is a test.
+- **IT REFUSES TO CUT WHEN THE FRAME IS NOT FILL-RATE BOUND.** A fitted slope under 1.0 ms/Mpx means
+  a vsync-capped display with headroom or a CPU-bound frame, and blurring buys nothing in either
+  case. This is the property that makes it safe to ship on hardware nobody here owns.
+- **IT MUST NEVER RUN UNDER `?shot=`, AND THE STRUCTURAL GUARD IS THE ONE THAT MATTERS.**
+  `armCalibration` has exactly ONE caller, `src/shell/Shell.ts`, and `main.ts#bootHarness` never
+  imports the shell — pinned by a test that enumerates `src/**/*.ts`. Two runtime guards back it up
+  (`loop.captureClock`, read LIVE in both places, and `handle.isFixedSize`). **A fourth, `rc.dt > 0`,
+  is deliberately NOT called a guard**: it survived mutation because `sample()`'s own `frameMs > 0`
+  filter already refuses a zero interval, and a line labelled "guard" that cannot be made to fail is
+  exactly the assertion this project has shipped believing. It would not have sufficed anyway —
+  `GameLoop.advanceTicks` renders at a synthetic 33.3 ms.
+- **`graphics.calibrated` is the whole protocol, and its default depends on whether a blob exists.**
+  A profile with NO stored settings gets `false`; a blob written by an older build has no such key
+  and `normalizeSettings` defaults it to `true`, because raising a setting somebody lowered is the
+  one failure this feature has to avoid. Any change to a picture-affecting graphics row retires it —
+  enforced in `SettingsStore.patch`, not in the options screen, so the next row added inherits it.
+  The exempt list (`panelBlur`, `perfOverlay`, `fov`, the zooms, `fpsCap`) is the only escape and
+  everything off it retires by default. Reset Graphics and "Calibrate Now" are the two routes back.
+- **v3 of the settings schema takes adaptive resolution off a pre-v3 profile that has `true`.** Same
+  shape and same honest limit as `migrateBindings`: nothing distinguishes the old default from a
+  deliberate choice, so somebody who liked it flips one toggle once.
+- **WHAT IT ACTUALLY SETS, AND WHAT IS DEAD.** `resolutionScale` (the lever — 79-90% of the frame),
+  and, only when the fit says the 0.55 floor still misses 60 fps, `ao` off (16.9%, 4.97 ms) and
+  `shadowQuality` low (~2%). **It does NOT touch the quality tier**, because the tier is the one
+  setting that moves `maxPixelRatio` and therefore the pixel count the calibration just solved for —
+  a feedback loop the measurement cannot see. It never turns MSAA on. Three things are worth knowing
+  before wiring anything else to a "tier": `applySettings` re-asserts `ao`/`bloom`/`smaa`/
+  `shadowQuality`/`resolutionScale` ON TOP of the tier, so all the tier uniquely still owns is
+  `maxPixelRatio`, `ao.samples`, `ao.halfRes`, `bloom.radius` and the art `textureSize`;
+  **`graphics.fpsCap` has ZERO readers** (persisted, clamped, no UI row, no consumer); and **`?tier=`
+  never reaches the product path** — `main.ts` parses it and does not hand it to `Shell`, so it is
+  harness-only while this file's boot-flag list implies otherwise.
 
 ## The look is measured, not judged
 
@@ -842,7 +983,10 @@ Boot flags: `?shot=<id>` (skips the menu, freezes the sim, poses the camera), `?
 `?tier=`, `?seed=`, `?mapseed=`, `?biome=`, `?fog=off`, `?relay=`, `?unlockall`. **`?seed=` and
 `?mapseed=` are different seeds** — the first drives the scenario layout and every draw of `s.rng`,
 the second is the terrain roll. Confusing them is what made a v1 replay reproduce the hills and
-nothing else.
+nothing else. **`?tier=` is HARNESS-ONLY** and this line implied otherwise for its whole life:
+`main.ts` parses it into `options.tier`, hands `options` to `bootstrap()` on the `?shot=` path, and
+does NOT pass it to `Shell` — which takes its tier from `settings.graphics.tier` instead. All four
+tiers boot identically on the product path.
 
 ## Things that have gone wrong before
 

@@ -47,6 +47,7 @@
  */
 
 import * as THREE from 'three';
+import { nodePath, type LitSmokeUniformSink } from '../render/gpu-path';
 
 import {
   VFX_ATLAS_COLS,
@@ -60,6 +61,18 @@ import {
 } from '../core/config';
 import { clamp01, hexToLinearRgb, hexToRgb, value2 } from '../core/math';
 import { RENDER_ORDER } from '../render/scene';
+/*
+ * The tuned numbers moved to `./vfx-material-constants.ts` so the TSL twins in
+ * `./vfx-node-materials.ts` read the same ones. They are still interpolated into
+ * the GLSL below exactly as before; only the declaration site changed. A second
+ * implementation that re-typed any of them would be a brightness change on one
+ * renderer only, which is the shape of a bug reported seven times here.
+ */
+import {
+  VFX_ALPHA_CUTOFF, VFX_DEBRIS, VFX_HALO_T0, VFX_HALO_T1, VFX_INV_PI,
+  VFX_LIT_FX_FALLOFF_EXP, VFX_LIT_FX_GAIN, VFX_LIT_FX_MAX, VFX_LIT_HEMI_GAIN,
+  VFX_LIT_RIM_EXP, VFX_ROW_STEP, litSmokeDefaults,
+} from './vfx-material-constants';
 
 /* ==========================================================================
  * 1. THE SPRITE ATLAS
@@ -379,7 +392,7 @@ void main() {
 /** Shared prologue: atlas lookup, ramp lookup, alpha resolve. */
 const SPRITE_SAMPLE = /* glsl */ `
   vec4 tex = texture2D(uAtlas, vUv);
-  if (tex.a <= 0.003) discard;
+  if (tex.a <= ${VFX_ALPHA_CUTOFF.toFixed(3)}) discard;
   float rad = clamp(length(vLocal), 0.0, 1.0);
   // radialMix 0 -> ramp driven by particle age (CPU wrote it into tA).
   // radialMix 1 -> ramp swept tA..tB across the sprite radius, which is what
@@ -387,7 +400,7 @@ const SPRITE_SAMPLE = /* glsl */ `
   float t = clamp(mix(vRamp.y, vRamp.z, rad * vRamp.w), 0.0, 1.0);
   vec4 ramp = texture2D(uRamp, vec2(t, (vRamp.x + 0.5) * uRowStep));
   float alpha = tex.a * ramp.a * vTint.y;
-  if (alpha <= 0.003) discard;
+  if (alpha <= ${VFX_ALPHA_CUTOFF.toFixed(3)}) discard;
 `;
 
 /**
@@ -415,8 +428,9 @@ const SPRITE_SAMPLE = /* glsl */ `
  * at a much lower average overshoot. The white core is untouched; only its
  * skirt is.
  */
-const HALO_T0 = 0.50;
-const HALO_T1 = 0.70;
+// Declared in `./vfx-material-constants.ts`; the reasoning above is why.
+const HALO_T0 = VFX_HALO_T0;
+const HALO_T1 = VFX_HALO_T1;
 
 const ADDITIVE_FRAG = /* glsl */ `
 precision highp float;
@@ -472,8 +486,9 @@ ${SPRITE_SAMPLE}
  * that wants to be brighter than the bible's own swatch is a bug by
  * construction, so the clamp is set at the swatch and cannot be argued with.
  */
-const LIT_FX_GAIN = 0.35;
-const LIT_FX_MAX = 0.30;
+// Declared in `./vfx-material-constants.ts`; the reasoning above is why.
+const LIT_FX_GAIN = VFX_LIT_FX_GAIN;
+const LIT_FX_MAX = VFX_LIT_FX_MAX;
 
 const LIT_FRAG = /* glsl */ `
 precision highp float;
@@ -527,8 +542,8 @@ ${SPRITE_SAMPLE}
   // ceiling below has to bound.
   vec3 albedo = ramp.rgb * uTintGain
               + shade * uShadeGain
-              + hemi * 0.22
-              + uRimLit * uSunColor * pow(max(ndl, 0.0), 3.0) * uRimGain;
+              + hemi * ${VFX_LIT_HEMI_GAIN.toFixed(2)}
+              + uRimLit * uSunColor * pow(max(ndl, 0.0), ${VFX_LIT_RIM_EXP.toFixed(1)}) * uRimGain;
 
   /*
    * THE CEILING — the other half of why 05-combat and 08-naval-water rendered
@@ -589,9 +604,9 @@ ${SPRITE_SAMPLE}
   float d = max(length(toL), 0.5);
   if (d < uFxRange) {
     float w = 1.0 - d / uFxRange;
-    float atten = (w * w) / pow(d, 1.35);
+    float atten = (w * w) / pow(d, ${VFX_LIT_FX_FALLOFF_EXP.toFixed(2)});
     vec3 fx = uFxColor * albedo
-            * (atten * 0.3183098862 * ${LIT_FX_GAIN.toFixed(3)})
+            * (atten * ${VFX_INV_PI.toFixed(10)} * ${LIT_FX_GAIN.toFixed(3)})
             * max(dot(n, toL / d), 0.0);
     float peak = max(fx.r, max(fx.g, fx.b));
     if (peak > ${LIT_FX_MAX.toFixed(3)}) fx *= ${LIT_FX_MAX.toFixed(3)} / peak;
@@ -711,7 +726,7 @@ export class SpriteLayer {
   readonly capacity: number;
   readonly mesh: THREE.Mesh;
   readonly geometry: THREE.InstancedBufferGeometry;
-  readonly material: THREE.ShaderMaterial;
+  readonly material: THREE.Material;
 
   /* -- particle state (SoA) --------------------------------------------- */
   private readonly px: Float32Array;
@@ -766,7 +781,14 @@ export class SpriteLayer {
   /** Wall-clock milliseconds; drives the flicker phase. Render-side only. */
   private clockMs = 0;
 
-  constructor(capacity: number, material: THREE.ShaderMaterial, name: string, sorted: boolean) {
+  /**
+   * `THREE.Material`, not `THREE.ShaderMaterial` — this class uses the material
+   * for exactly one thing, handing it to a `THREE.Mesh`, and the TSL twins in
+   * `./vfx-node-materials.ts` are `NodeMaterial`s. Widening it is what lets
+   * Stage F pass either kind without a cast. `DebrisLayer` already took the base
+   * type for the same reason.
+   */
+  constructor(capacity: number, material: THREE.Material, name: string, sorted: boolean) {
     this.capacity = capacity;
     this.sorted = sorted;
     this.material = material;
@@ -1201,9 +1223,17 @@ export class ParticleSystem {
   readonly lit: SpriteLayer;
   readonly debris: DebrisLayer;
 
-  private readonly additiveMat: THREE.ShaderMaterial;
-  private readonly litMat: THREE.ShaderMaterial;
-  private readonly debrisMat: THREE.MeshStandardMaterial;
+  private readonly additiveMat: THREE.Material;
+  private readonly litMat: THREE.Material;
+  /**
+   * The eight lit-smoke uniforms `syncLighting` and `setDominantLight` write.
+   *
+   * Held separately because a node material has no `uniforms` map — the node set
+   * publishes the SAME `{ value }` slots (a TSL `uniform()` node IS a `.value`
+   * holder), so the two writer methods below are unchanged.
+   */
+  private readonly litUniforms: LitSmokeUniformSink;
+  private readonly debrisMat: THREE.Material;
 
   /* -- scratch, allocated once ------------------------------------------- */
   private readonly _right = new THREE.Vector3();
@@ -1216,7 +1246,7 @@ export class ParticleSystem {
     this.root.frustumCulled = false;
     this.atlas = buildSpriteAtlas();
     this.ramps = buildRampTexture();
-    const rowStep = 1 / VFX_RAMPS.length;
+    const rowStep = VFX_ROW_STEP;
 
     const commonUniforms = () => ({
       uAtlas: { value: this.atlas },
@@ -1225,7 +1255,9 @@ export class ParticleSystem {
       uCols: { value: VFX_ATLAS_COLS },
     });
 
-    this.additiveMat = new THREE.ShaderMaterial({
+    const np = nodePath();
+
+    const glslAdditive = np !== null ? null : new THREE.ShaderMaterial({
       uniforms: commonUniforms(),
       vertexShader: SPRITE_VERT,
       fragmentShader: ADDITIVE_FRAG,
@@ -1242,25 +1274,28 @@ export class ParticleSystem {
       side: THREE.DoubleSide,
       fog: false,
     });
-    this.additiveMat.name = 'VfxAdditive';
+    if (glslAdditive !== null) glslAdditive.name = 'VfxAdditive';
+    this.additiveMat = glslAdditive ?? np!.createAdditiveSpriteMaterial(this.atlas, this.ramps);
 
-    this.litMat = new THREE.ShaderMaterial({
+    // Fourteen defaults, from the table both material sets read.
+    const lit = litSmokeDefaults();
+    const glslLit = np !== null ? null : new THREE.ShaderMaterial({
       uniforms: {
         ...commonUniforms(),
-        uSunDirView: { value: new THREE.Vector3(0, 1, 0) },
-        uSunColor: { value: new THREE.Vector3(1, 0.87, 0.72) },
-        uUpView: { value: new THREE.Vector3(0, 1, 0) },
-        uHemiSky: { value: new THREE.Vector3(0.28, 0.42, 0.72) },
-        uHemiGround: { value: new THREE.Vector3(0.18, 0.14, 0.10) },
-        uShadeDark: { value: linearVec3(VFX_SMOKE.shadeDark) },
-        uShadeLit: { value: linearVec3(VFX_SMOKE.shadeLit) },
-        uRimLit: { value: linearVec3(VFX_SMOKE.rimLit) },
-        uTintGain: { value: VFX_SMOKE.tintGain },
-        uShadeGain: { value: VFX_SMOKE.shadeGain },
-        uRimGain: { value: VFX_SMOKE.rimGain },
-        uFxPosView: { value: new THREE.Vector3(0, -1e6, 0) },
-        uFxColor: { value: new THREE.Vector3(0, 0, 0) },
-        uFxRange: { value: 0 },
+        uSunDirView: { value: lit.uSunDirView },
+        uSunColor: { value: lit.uSunColor },
+        uUpView: { value: lit.uUpView },
+        uHemiSky: { value: lit.uHemiSky },
+        uHemiGround: { value: lit.uHemiGround },
+        uShadeDark: { value: lit.uShadeDark },
+        uShadeLit: { value: lit.uShadeLit },
+        uRimLit: { value: lit.uRimLit },
+        uTintGain: { value: lit.uTintGain },
+        uShadeGain: { value: lit.uShadeGain },
+        uRimGain: { value: lit.uRimGain },
+        uFxPosView: { value: lit.uFxPosView },
+        uFxColor: { value: lit.uFxColor },
+        uFxRange: { value: lit.uFxRange },
       },
       vertexShader: SPRITE_VERT,
       fragmentShader: LIT_FRAG,
@@ -1275,15 +1310,24 @@ export class ParticleSystem {
       side: THREE.DoubleSide,
       fog: false,
     });
-    this.litMat.name = 'VfxLitSmoke';
+    if (glslLit !== null) {
+      glslLit.name = 'VfxLitSmoke';
+      this.litMat = glslLit;
+      this.litUniforms = glslLit.uniforms as unknown as LitSmokeUniformSink;
+    } else {
+      const set = np!.createLitSpriteMaterial(this.atlas, this.ramps);
+      this.litMat = set.material;
+      this.litUniforms = set.uniforms;
+    }
 
-    this.debrisMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(0.055, 0.048, 0.042),
-      roughness: 0.78,
-      metalness: 0.35,
-      flatShading: true,
+    const glslDebris = np !== null ? null : new THREE.MeshStandardMaterial({
+      color: new THREE.Color(...VFX_DEBRIS.color),
+      roughness: VFX_DEBRIS.roughness,
+      metalness: VFX_DEBRIS.metalness,
+      flatShading: VFX_DEBRIS.flatShading,
     });
-    this.debrisMat.name = 'VfxDebris';
+    if (glslDebris !== null) glslDebris.name = 'VfxDebris';
+    this.debrisMat = glslDebris ?? np!.createDebrisMaterial();
 
     this.additive = new SpriteLayer(VFX_MAX_ADDITIVE, this.additiveMat, 'VfxAdditive', false);
     this.lit = new SpriteLayer(VFX_MAX_LIT, this.litMat, 'VfxLitSmoke', true);
@@ -1322,7 +1366,7 @@ export class ParticleSystem {
     sunDirWorld: THREE.Vector3, sunColor: THREE.Color, sunIntensity: number,
     hemiSky: THREE.Color, hemiGround: THREE.Color, hemiIntensity: number,
   ): void {
-    const u = this.litMat.uniforms;
+    const u = this.litUniforms;
     // World -> view for the sun and for world-up. `transformDirection` uses
     // only the rotation, which is what a direction needs.
     this._v.copy(sunDirWorld).transformDirection(camera.matrixWorldInverse);
@@ -1352,7 +1396,7 @@ export class ParticleSystem {
     x: number, y: number, z: number,
     r: number, g: number, b: number, range: number,
   ): void {
-    const u = this.litMat.uniforms;
+    const u = this.litUniforms;
     this._v.set(x, y, z).applyMatrix4(camera.matrixWorldInverse);
     (u.uFxPosView.value as THREE.Vector3).copy(this._v);
     (u.uFxColor.value as THREE.Vector3).set(r, g, b);

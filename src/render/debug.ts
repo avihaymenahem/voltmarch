@@ -40,6 +40,8 @@ import {
   RENDER_CONFIG,
   configureRender,
   applyQualityTier,
+  gpuReport,
+  type GpuReport,
   type RendererHandle,
   type RenderConfig,
   type DeepPartial,
@@ -48,6 +50,7 @@ import {
 import type { SceneRig } from './scene';
 import type { CameraRig, CameraPose } from './camera';
 import type { PostChain, PassId, DrawCallBreakdown } from './post';
+import { PASS_ORDER } from './post-order';
 import { renderBridge, type RenderAudit } from './RenderBridge';
 
 /* ========================================================================== */
@@ -299,7 +302,17 @@ export interface VMHandle {
   readonly version: string;
   readonly THREE: typeof THREE;
 
-  readonly renderer: THREE.WebGLRenderer;
+  /**
+   * The shipping WebGL renderer, or NULL under `?gpu=webgpu`.
+   *
+   * `window.__VM.renderer` is part of the tooling contract CLAUDE.md calls
+   * load-bearing, so it keeps its name and its meaning — "the WebGLRenderer" —
+   * and reports null rather than quietly handing back an object of a different
+   * class with a different `info`, a different `capabilities` and no
+   * `getContext()`. `rendererHandle` is the backend-agnostic one and carries
+   * `backend`, `frameInfo()` and both renderers.
+   */
+  readonly renderer: THREE.WebGLRenderer | null;
   readonly rendererHandle: RendererHandle;
   readonly scene: THREE.Scene;
   readonly sceneRig: SceneRig;
@@ -416,6 +429,31 @@ export interface VMHandle {
   renderAudit(
     options?: { on?: boolean; now?: boolean; reset?: boolean; failure?: boolean },
   ): RenderAudit | null;
+
+  /* -- the GPU seam (ADDITIVE — nothing above changes shape). -- */
+  /**
+   * Which backend was asked for, which is live, WHICH ADAPTER IT IS ON, and
+   * whether the device has been lost.
+   *
+   * The third of those is the one that did not exist before and is the reason
+   * this method does. `powerPreference: 'high-performance'` is a hint, not an
+   * instruction: Stage A requested it and its probe still landed on an
+   * integrated `amd`/`gcn-5` adapter, on a machine that also holds an RTX 3080,
+   * because Windows hybrid setups resolve the preference through the driver's
+   * own per-application profile. So "which GPU was this crash on?" was not
+   * answerable from the running page — the WebGL debug string names whichever
+   * chip WebGL got, which need not be the one the WebGPU device came from.
+   *
+   * Reads through `backend.ts#normaliseAdapterInfo`, for the same reason
+   * `stats()` reads through `normaliseInfo`: the raw shape differs between
+   * browsers, `GPUAdapterInfo` puts its fields on the prototype so a spread
+   * copies nothing, and a field that silently reads `undefined` prints the word
+   * "undefined" into the one report somebody was relying on.
+   *
+   * Safe at any time. On the WebGL path `adapter` is null and `deviceLost` is
+   * null, permanently.
+   */
+  gpuInfo(): GpuReport;
 }
 
 declare global {
@@ -539,7 +577,7 @@ export interface DebugHandle {
 export function initDebug(options: InitDebugOptions): DebugHandle {
   const { handle, sceneRig, cameraRig } = options;
   const post = options.post ?? null;
-  const renderer = handle.renderer;
+  const webgl = handle.webgl;
   const hooks: DebugHooks = options.hooks ?? {};
   // `typeof` is the one operator safe on an undeclared identifier, so this also
   // works under a bare `node`/vitest run where the define never ran.
@@ -641,7 +679,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
   let texMBCountdown = 0;
 
   function updateOverlay(): void {
-    const info = renderer.info;
+    const info = handle.frameInfo();
     const mem = (performance as any).memory;
     if (mem) {
       heapMB = mem.usedJSHeapSize / (1024 * 1024);
@@ -662,12 +700,21 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     // is what made the gap look like outstanding work for three releases; the
     // second number is the one to judge. See `DrawCallBreakdown` in post.ts.
     const byPass = post?.drawCallsByPass;
+    /*
+     * A ZERO COLOUR BUCKET WITH A NON-ZERO TOTAL MEANS THE SPLIT IS UNAVAILABLE,
+     * not that nothing drew. The node renderer has no seam between the shadow
+     * pass and the colour pass to meter, so `drawCallsByPass` reports the true
+     * total and zeros. Say so on the overlay instead of printing `0 col`, which
+     * reads as a catastrophic regression.
+     */
     rows.draws.nodeValue = byPass === undefined
-      ? String(info.render.calls)
-      : `${info.render.calls} (${byPass.colour} col ${byPass.shadow} shd ${byPass.ao} ao)`;
-    rows.tris.nodeValue = info.render.triangles.toLocaleString();
-    rows.progs.nodeValue = String(info.programs?.length ?? 0);
-    rows.geo.nodeValue = `${info.memory.geometries} / ${info.memory.textures}`;
+      ? String(info.drawCalls)
+      : byPass.total > 0 && byPass.colour === 0 && byPass.shadow === 0
+        ? `${info.drawCalls} (no per-pass split)`
+        : `${info.drawCalls} (${byPass.colour} col ${byPass.shadow} shd ${byPass.ao} ao)`;
+    rows.tris.nodeValue = info.triangles.toLocaleString();
+    rows.progs.nodeValue = String(info.programs);
+    rows.geo.nodeValue = `${info.geometries} / ${info.textures}`;
     rows.texmb.nodeValue = cachedTexMB.toFixed(1);
     rows.ents.nodeValue = `${counters.entities} (${counters.units}u ${counters.buildings}b)`;
     rows.parts.nodeValue = `${counters.particles} / ${counters.batches} batches`;
@@ -804,32 +851,50 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
   }
 
   function stats(): FrameStats {
-    const info = renderer.info;
+    /*
+     * THROUGH `frameInfo()`, NEVER `renderer.info`. Under the node renderer
+     * `info.render.calls` is a MONOTONIC COUNT OF `render()` INVOCATIONS since
+     * page load that `reset()` does not clear, and `info.programs` is
+     * `undefined` so `?? 0` would report 0 forever. Both are silent.
+     * `src/render/backend.ts#normaliseInfo` is where that is written down.
+     */
+    const info = handle.frameInfo();
     return {
       fps,
       frameMs,
       frameMsAvg,
       frameMsMax,
       cpuMs,
-      drawCalls: info.render.calls,
-      drawCallsByPass: readDrawCallsByPass(info.render.calls),
-      triangles: info.render.triangles,
-      points: info.render.points,
-      lines: info.render.lines,
-      programs: info.programs?.length ?? 0,
-      geometries: info.memory.geometries,
-      textures: info.memory.textures,
+      drawCalls: info.drawCalls,
+      drawCallsByPass: readDrawCallsByPass(info.drawCalls),
+      triangles: info.triangles,
+      points: info.points,
+      lines: info.lines,
+      programs: info.programs,
+      geometries: info.geometries,
+      textures: info.textures,
       textureMB: cachedTexMB,
       heapMB,
       heapGrowthMB: heapBase ? heapMB - heapBase : 0,
       resolution: `${handle.size.width}x${handle.size.height}`,
       pixelRatio: handle.size.pixelRatio,
       quality: RENDER_CONFIG.quality,
-      post: post?.active
-        ? (post.composer!.passes as Array<{ constructor: { name: string } }>)
-            .map((p) => p.constructor.name.replace(/^_|Pass$/g, ''))
-            .join('+')
-        : 'off',
+      /*
+       * `composer` IS NULL ON THE NODE PATH AND `passes` IS EMPTY, PERMANENTLY.
+       * There is no `EffectComposer` and no `Pass` objects there — the chain is
+       * one node expression — so this threw `Cannot read properties of null
+       * (reading 'passes')` on the first `stats()` call, which is the FIRST
+       * thing `tools/shoot.mjs` does after `ready()`. Fall back to the pass ids
+       * the chain says are live, which is the same information the WebGL string
+       * carries.
+       */
+      post: !post?.active
+        ? 'off'
+        : post.composer !== null
+          ? (post.composer.passes as Array<{ constructor: { name: string } }>)
+              .map((p) => p.constructor.name.replace(/^_|Pass$/g, ''))
+              .join('+')
+          : PASS_ORDER.filter((id) => post.isPassEnabled(id)).join('+'),
       counters: { ...counters },
     };
   }
@@ -847,7 +912,7 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
     version,
     THREE,
 
-    renderer,
+    renderer: webgl,
     rendererHandle: handle,
     get scene() {
       return sceneRig.scene;
@@ -1021,6 +1086,13 @@ export function initDebug(options: InitDebugOptions): DebugHandle {
       if (options?.failure === true) return b.failedAudit();
       if (options?.now === true) return b.auditNow();
       return b.lastAudit();
+    },
+
+    gpuInfo(): GpuReport {
+      // `handle.backend` is the READ, not the request — the whole point of
+      // `src/render/backend.ts`. Passing it in rather than letting `gpuReport`
+      // guess keeps the one source of that answer in one place.
+      return gpuReport(handle.backend);
     },
   };
 

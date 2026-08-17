@@ -53,6 +53,7 @@
  */
 
 import * as THREE from 'three';
+import { nodePath } from '../render/gpu-path';
 
 import { defineSystem } from '../core/loop';
 import { EntityKind, Phase } from '../core/types';
@@ -135,7 +136,7 @@ function buildWreck(p: PropPalette): THREE.BufferGeometry {
  * MODULE
  * ========================================================================== */
 
-let material: THREE.MeshStandardMaterial | null = null;
+let material: THREE.Material | null = null;
 let library: PropLibrary | null = null;
 let ownedGeometry: THREE.BufferGeometry | null = null;
 
@@ -158,18 +159,28 @@ export default defineSystem({
     const wanted = Object.values(LIBRARY_KEY);
     library = new PropLibrary({ biome, seed: 0x5EED_1A, keys: wanted });
 
-    material = new THREE.MeshStandardMaterial({
+    // One parameter object, two constructors — see the same note in
+    // `ore.system.ts`.
+    const propParams: THREE.MeshStandardMaterialParameters = {
       color: 0xffffff,
       vertexColors: true,
       roughness: 0.82,
       metalness: 0.0,
-    });
-    material.name = 'EntityPropMaterial';
-    // Props and wrecks are `isStaticKind`, i.e. drawn from MEMORY inside
-    // explored territory — the same category as buildings. Without the
-    // self-tint a remembered wreck would sit at full daylight in the fog.
-    material.onBeforeCompile = (shader) => { applyShroudTint(shader); };
-    material.customProgramCacheKey = () => 'vm.entityprop.shroud.v1';
+    };
+    const np = nodePath();
+    if (np !== null) {
+      material = np.createShroudTintedStandard(propParams);
+      material.name = 'EntityPropMaterial';
+    } else {
+      const glsl = new THREE.MeshStandardMaterial(propParams);
+      glsl.name = 'EntityPropMaterial';
+      // Props and wrecks are `isStaticKind`, i.e. drawn from MEMORY inside
+      // explored territory — the same category as buildings. Without the
+      // self-tint a remembered wreck would sit at full daylight in the fog.
+      glsl.onBeforeCompile = (shader) => { applyShroudTint(shader); };
+      glsl.customProgramCacheKey = () => 'vm.entityprop.shroud.v1';
+      material = glsl;
+    }
 
     ownedGeometry = buildWreck(palette);
 

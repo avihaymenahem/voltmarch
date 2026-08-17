@@ -56,18 +56,49 @@ export interface GraphicsSettings {
   /**
    * Let the renderer drop resolution below `resolutionScale` to hold 60 fps.
    *
-   * New, and it should have existed from the start: `setAdaptiveResolution` in
-   * `render/adaptive-res.system.ts` had ZERO callers anywhere in `src/`,
-   * `tools/` or `tests/`, so dynamic scaling was permanently on with no way to
-   * turn it off. On a GPU-bound machine it walks to its 0.55 floor within about
-   * half a minute and upscales, which is indistinguishable from broken
-   * antialiasing to anyone who does not know it is happening.
+   * **DEFAULT FALSE SINCE v2.14.0**, and the reason is the whole shape of
+   * `calibrated` below. Reported: *"i want the adaptive resolution to be off by
+   * default. instead, set the graphic options that match the best for user for
+   * the first time and thats it"*.
    *
-   * Default true: it is the largest performance lever this renderer has, and
-   * for most players holding 60 fps is worth more than the sharpness. But it is
-   * a trade, and a trade the player is entitled to decline.
+   * It stays available and it is a good controller — it is the largest single
+   * performance lever this renderer has, and the one-way ratchet that used to
+   * stop it ever restoring is fixed. But it is a PERMANENT NEGOTIATION with the
+   * frame: on a GPU-bound machine it walks to its 0.55 floor within about half
+   * a minute and upscales, which is indistinguishable from broken antialiasing
+   * to anyone who does not know it is happening. That was reported too, and it
+   * is why the Resolution Scale row had to grow a paragraph explaining why the
+   * slider said 100% while the renderer was at 55%.
+   *
+   * The first-run calibration replaces it with a decision taken ONCE, from a
+   * real measurement, that the player then owns.
    */
   adaptiveResolution: boolean;
+  /**
+   * Has this profile had its one-time hardware calibration?
+   *
+   * FALSE ON A FRESH PROFILE ONLY. `src/render/HardwareCalibration.ts` measures
+   * two probe windows at two known pixel counts on the first battle, fits
+   * `docs/RENDER_FINDINGS.md` §9's line, solves for the resolution scale that
+   * meets 60 fps, writes it here and sets this true. It never runs again.
+   *
+   * THREE PROPERTIES THIS FIELD EXISTS TO GUARANTEE:
+   *
+   *   1. **A returning player is never recalibrated.** A settings blob written
+   *      by an older build has no `calibrated` key, and `normalizeSettings`
+   *      defaults a MISSING key to `true` for exactly that case — their
+   *      graphics are already whatever they live with, and raising a setting
+   *      somebody lowered is the failure this whole feature has to avoid.
+   *      `defaultSettings()` (a profile with no stored blob at all) is the only
+   *      thing that produces `false`.
+   *   2. **Touching a Graphics row retires the calibration.** Every control on
+   *      that tab writes `calibrated: true` alongside its own value, so a
+   *      manual choice permanently wins — including one made before the first
+   *      battle has even started.
+   *   3. **The player can ask for it again.** "Calibrate Now" in Settings, and
+   *      Reset Graphics, both put this back to `false`. Nothing else does.
+   */
+  calibrated: boolean;
   shadows: boolean;
   shadowQuality: ShadowChoice;
   /** Screen-space ambient occlusion. */
@@ -239,8 +270,12 @@ export interface Settings {
  * has WASD written into it explicitly, so "fill in the default" cannot reach it
  * — and leaving it would hand every existing player the A/S order collision the
  * new defaults exist to avoid. See `migrateBindings`.
+ *
+ * v3: `adaptiveResolution` defaults to false. Same shape as v2 — every stored
+ * blob has `true` written into it explicitly, because that was the old default,
+ * so filling in the new default cannot reach one. See `migrateAdaptive`.
  */
-export const SETTINGS_VERSION = 2;
+export const SETTINGS_VERSION = 3;
 
 /** The v1 camera pan defaults, kept only so the v2 migration can recognise them. */
 const V1_PAN_DEFAULTS: Readonly<Record<string, string>> = {
@@ -453,7 +488,9 @@ export function defaultSettings(): Settings {
     graphics: {
       tier: 'auto',
       resolutionScale: 1.0,
-      adaptiveResolution: true,
+      // Off. The one-time calibration below replaces it — see the field docs.
+      adaptiveResolution: false,
+      calibrated: false,
       shadows: true,
       shadowQuality: 'high',
       ao: true,
@@ -573,12 +610,42 @@ function migrateBindings(bindings: Record<string, Chord>, version: number): void
   }
 }
 
+/**
+ * v3: `adaptiveResolution` off by default.
+ *
+ * SAME SHAPE AS `migrateBindings` AND WITH THE SAME HONEST LIMIT. A stored blob
+ * carries `adaptiveResolution: true` whether the player chose it or inherited it
+ * as the old default, and nothing distinguishes the two — so this reads `true`
+ * on a pre-v3 blob as "untouched old default" and takes it off. Somebody who
+ * genuinely liked it flips one toggle once; the alternative is that the new
+ * default reaches nobody who has ever played the game, which is not a default.
+ *
+ * An explicit `false` is already the new value and is left exactly as it is.
+ *
+ * `version === 0` is skipped for the same reason `migrateBindings` skips it: a
+ * blob with no readable version is not a v1 or v2 blob, it is something else.
+ */
+function migrateAdaptive(raw: unknown, version: number, fallback: boolean): boolean {
+  if (version > 0 && version < 3 && raw === true) return false;
+  return bool(raw, fallback);
+}
+
 /** Total, defensive, order-independent. See the section header. */
 export function normalizeSettings(raw: unknown): Settings {
   const d = defaultSettings();
   if (!isRecord(raw)) return d;
 
+  /*
+   * A STORED BLOB MEANS THIS PROFILE HAS ALREADY PLAYED, and that is the only
+   * evidence available for `graphics.calibrated` below. A blob written before
+   * calibration existed has no such key; defaulting it to `false` would put
+   * every returning player through a calibration that could raise a setting
+   * they had deliberately lowered. `defaultSettings()` — the no-blob path
+   * above — is the one route to `false`.
+   */
+  const hasStoredGraphics = isRecord(raw.graphics);
   const g = isRecord(raw.graphics) ? raw.graphics : {};
+  const storedVersion = num(raw.version, 0, 1e6, 0);
   const a = isRecord(raw.audio) ? raw.audio : {};
   const p = isRecord(raw.gameplay) ? raw.gameplay : {};
   const c = isRecord(raw.controls) ? raw.controls : {};
@@ -586,7 +653,7 @@ export function normalizeSettings(raw: unknown): Settings {
 
   const bindings: Record<string, Chord> = {};
   for (const k of KEYBINDS) bindings[k.id] = normalizeChord(rawBinds[k.id], k.def);
-  migrateBindings(bindings, num(raw.version, 0, 1e6, 0));
+  migrateBindings(bindings, storedVersion);
 
   const minZoom = num(g.minZoom, 8, 260, d.graphics.minZoom);
   const maxZoom = num(g.maxZoom, 8, 400, d.graphics.maxZoom);
@@ -596,7 +663,8 @@ export function normalizeSettings(raw: unknown): Settings {
     graphics: {
       tier: oneOf(g.tier, QUALITY_CHOICES, d.graphics.tier),
       resolutionScale: num(g.resolutionScale, 0.5, 2.0, d.graphics.resolutionScale),
-      adaptiveResolution: bool(g.adaptiveResolution, d.graphics.adaptiveResolution),
+      adaptiveResolution: migrateAdaptive(g.adaptiveResolution, storedVersion, d.graphics.adaptiveResolution),
+      calibrated: bool(g.calibrated, hasStoredGraphics),
       shadows: bool(g.shadows, d.graphics.shadows),
       shadowQuality: oneOf(g.shadowQuality, SHADOW_CHOICES, d.graphics.shadowQuality),
       ao: bool(g.ao, d.graphics.ao),
@@ -672,7 +740,7 @@ export interface MapChoice {
    * is now the number the lobby offers and the number `normalizeSetup` clamps
    * the army list to, so a map that says 2 CANNOT be launched as a four-way.
    *
-   * WHY THESE THREE AND NOT ALL SIX. Two armies open on the authored diagonal
+   * WHY SOME AND NOT ALL. Two armies open on the authored diagonal
    * (`SKIRMISH_START_OFFSETS`); three or more fan around the map centre on the
    * same ellipse, with no reserved terrain shelf. That fan is fine on ground
    * with no strong axis to it and wrong on ground that has one — `frozen-sector`
@@ -744,48 +812,31 @@ export const MAPS: readonly MapChoice[] = [
   },
 
   /*
-   * THREE MORE BATTLEFIELDS, and they exist because five missions needed
-   * something real to pay.
+   * THREE PRESET-CLONES USED TO SIT HERE, AND THE ROSTER IS SEVEN AGAIN.
    *
-   * v2.6.0 moved the five commander powers out of the mission table and into a
-   * structure you build (`src/sim/Production.ts`, the Powers tab), which left
-   * Armour Column, Demolition Crew, Old Guard, Continental Yield and Hostile
-   * Takeover with nothing to grant. `validateMissions` refuses a mission that
-   * pays nothing, and — more to the point — this project has already shipped
-   * five rewards that were strings nothing read. So each of the five got a
-   * payload something actually consumes, and three of them are these: a map
-   * unlock is read by `mapAvailable` in `src/shell/SkirmishSetup.ts` and gates a
-   * row in the lobby.
+   * `saltpan-reach` (arid, 2p, dusk), `foundry-line` (urban, 2p, noon) and
+   * `glacier-shelf` (snow, 4p, overcast) were added in v2.6.0 as payloads: the
+   * commander powers had stopped being a mission reward, five missions were
+   * left paying nothing, and a map unlock is read by `mapAvailable` in
+   * `src/shell/SkirmishSetup.ts`, so three new rows here closed three of the
+   * five holes.
    *
-   * EVERY ONE REUSES AN EXISTING `MAP_PRESET`, deliberately. A preset is a
-   * balance surface — `tests/rock-density.spec.ts` walks every one of them for
-   * prop density and `tests/scatter.spec.ts` pins two by name — so inventing
-   * three would be three new things to tune in a release that is about
-   * something else. What makes these different battlefields is the pair the
-   * roster's own comment calls load-bearing: `mapSeed` is the LANDFORM ROLL
-   * ("fixed per map so a map IS a map"), and `players` is the shape the ground
-   * is played in. Each entry is a preset at a player count or a light the
-   * roster did not previously offer.
+   * They were removed because the argument that justified them is the argument
+   * against them. Each reused an existing `MAP_PRESET` VERBATIM — arid, urban
+   * and snow — which was written down as a virtue ("a preset is a balance
+   * surface, so inventing three would be three new things to tune"). What that
+   * buys is three rows whose seven balance numbers (relief, cliffs, water,
+   * scatter, urban, oreRichness, props) are identical to a map already in the
+   * list. `mapSeed` rerolls the landform and `players`/`mood` change the framing,
+   * but a player picking Saltpan Reach over Airbase Flats was choosing a
+   * different roll of the same battlefield, and the lobby sold it as a reward.
    *
-   * THE SEEDS MUST STAY UNIQUE. `Replays.replayMap` identifies a recording's
-   * battlefield by seed first, and `tests/sunder-atoll.spec.ts` asserts it.
-   * These read as words in hex in the spirit of `0x0cea11` and `0xa7011`.
+   * WHAT IT COST, so nobody re-adds them to fix it: each was the SOLE reward of
+   * one mission, and there is no ungated content left to repay those three. See
+   * the retirement block inside `UNLOCKS` in `src/data/Missions.ts` for the
+   * survey — the short version is that the def catalogue has no four-army,
+   * off-opening-path family left that is not naval.
    */
-  {
-    id: 'saltpan-reach', name: 'Saltpan Reach', biome: 'desert', preset: 'arid',
-    mapSeed: 0x5a17a4, mood: 'dusk', players: 2,
-    blurb: 'The arid flats cut down to two armies, under a low sun. Nowhere to hide armour.',
-  },
-  {
-    id: 'foundry-line', name: 'Foundry Line', biome: 'urban', preset: 'urban',
-    mapSeed: 0xf0be11, mood: 'noon', players: 2,
-    blurb: 'The industrial grid at noon, head to head. Everything standing is somebody’s.',
-  },
-  {
-    id: 'glacier-shelf', name: 'Glacier Shelf', biome: 'snow', preset: 'snow',
-    mapSeed: 0x91ac1e, mood: 'overcast', players: 4,
-    blurb: 'High relief under flat grey light, opened up for four. The cliffs still channel it.',
-  },
 ];
 
 export function mapById(id: string): MapChoice {
@@ -1205,7 +1256,7 @@ export class SettingsStore {
    * that hands over `NaN` clamps instead of poisoning the config.
    */
   patch(patch: SettingsPatch): readonly string[] {
-    const next = normalizeSettings({
+    let next = normalizeSettings({
       ...this.state,
       graphics: { ...this.state.graphics, ...(patch.graphics ?? {}) },
       audio: { ...this.state.audio, ...(patch.audio ?? {}) },
@@ -1214,8 +1265,31 @@ export class SettingsStore {
         bindings: { ...this.state.controls.bindings, ...(patch.controls?.bindings ?? {}) },
       },
     });
-    const changed = diffSettings(this.state, next);
+    let changed = diffSettings(this.state, next);
     if (changed.length === 0) return changed;
+
+    /*
+     * A MANUAL GRAPHICS CHANGE RETIRES THE ONE-TIME CALIBRATION, and this is
+     * the only place that can be true for every control at once.
+     *
+     * It was first written into the Settings screen's own `set()` helper, which
+     * worked and was the wrong place twice over: it is invisible to any test
+     * that does not build a DOM, and the next graphics row somebody adds
+     * through a different path silently opts out of it. Here it is a property
+     * of the STORE — the thing that already decides what the numbers are — so a
+     * player's choice wins whether it came from the options screen, a hotkey,
+     * or something that does not exist yet.
+     *
+     * `graphics.calibrated` itself is excluded, which is what lets "Calibrate
+     * Now" put the flag back to false without instantly re-retiring it. And
+     * `reset()` deliberately does NOT go through here: resetting Graphics to
+     * defaults is a player asking the game to choose again, not a choice.
+     */
+    if (!next.graphics.calibrated && retiresCalibration(changed)) {
+      next = normalizeSettings({ ...next, graphics: { ...next.graphics, calibrated: true } });
+      changed = diffSettings(this.state, next);
+    }
+
     this.state = next;
     this.write(SETTINGS_STORAGE_KEY, next);
     this.emit(changed);
@@ -1252,6 +1326,49 @@ export class SettingsStore {
       }
     }
   }
+}
+
+/**
+ * Graphics rows that do NOT count as a decision about the picture.
+ *
+ * THE DEFAULT DIRECTION IS DELIBERATE: anything not on this list retires the
+ * calibration, so a row added later inherits the conservative behaviour — it
+ * leaves the player's choice alone — rather than the one that could overwrite
+ * something somebody set.
+ *
+ *   `calibrated` — bookkeeping. Including it would mean "Calibrate Now", whose
+ *       whole job is to put the flag back to false, instantly setting it true.
+ *   `panelBlur` — a class on `<html>`. Nothing in the render pipeline reads it.
+ *   `perfOverlay` — a diagnostic. Opening the frame-time readout is how a
+ *       player INVESTIGATES performance; it is not a decision about it.
+ *   `fov` / `minZoom` / `maxZoom` — the camera. They change what is on screen,
+ *       not what a pixel costs.
+ *   `fpsCap` — and this one is worth naming: it has ZERO readers anywhere in
+ *       `src/`. It is persisted, clamped and rendered, and nothing consumes it.
+ *       Exempt here because it cannot affect anything, including the frame.
+ */
+const CALIBRATION_EXEMPT: readonly string[] = [
+  'graphics.calibrated',
+  'graphics.panelBlur',
+  'graphics.perfOverlay',
+  'graphics.fov',
+  'graphics.minZoom',
+  'graphics.maxZoom',
+  'graphics.fpsCap',
+];
+
+/**
+ * Did this change touch a graphics row that is a decision about the picture?
+ *
+ * If so, the one-time calibration is over: a manual choice wins permanently and
+ * nothing may measure over the top of it.
+ */
+export function retiresCalibration(changed: readonly string[]): boolean {
+  for (let i = 0; i < changed.length; i++) {
+    const p = changed[i];
+    if (p.startsWith('graphics.') && !CALIBRATION_EXEMPT.includes(p)) return true;
+  }
+  return false;
 }
 
 /** Dotted paths whose value differs between two settings objects. */

@@ -93,6 +93,7 @@ import {
 } from '../core/config';
 import { clamp01, hexToLinearRgb, lerp, smoothstep } from '../core/math';
 import { applyShroudTint } from '../render/FogOfWar';
+import { nodePath } from '../render/gpu-path';
 import { PartId, type SocketDef } from '../core/types';
 import {
   detailCoverage,
@@ -111,6 +112,7 @@ import {
   MassRole, type MassDef,
 } from './MassList';
 import { createUnitMaterial, specForPalette, viewWeight } from './UnitFactory';
+import { STRUCTURE_ANIM, STRUCTURE_ANIM_LINEAR } from './structure-anim';
 
 declare const __DEV__: boolean;
 const DEV: boolean = typeof __DEV__ !== 'undefined' ? __DEV__ : true;
@@ -747,6 +749,16 @@ function lin(hex: string): string {
   hexToLinearRgb(hex, LIN);
   return `vec3(${LIN[0].toFixed(4)}, ${LIN[1].toFixed(4)}, ${LIN[2].toFixed(4)})`;
 }
+/**
+ * The same emission, for a colour that has already been converted.
+ *
+ * `structure-anim.ts` converts the two animation colours once so the TSL port
+ * reads the SAME floats rather than running `hexToLinearRgb` a second time. This
+ * formats them exactly as `lin()` does, so the generated GLSL is unchanged.
+ */
+function linVec3(rgb: readonly [number, number, number]): string {
+  return `vec3(${rgb[0].toFixed(4)}, ${rgb[1].toFixed(4)}, ${rgb[2].toFixed(4)})`;
+}
 function f(n: number): string { return n.toFixed(4); }
 
 /* --------------------------------------------------------------------------
@@ -787,8 +799,8 @@ const STRUCTURE_ANIM_SOLVE = `
           // Bay door: retracts DOWNWARD into the floor, where the same ground
           // cut that hides an unbuilt structure hides the leaf for free.
           float isDoor = step(1.5, code) * step(code, 2.5);
-          float ph = fract(uTime / ${f(BUILDING_ANIM.doorPeriodSeconds)} + aState.w);
-          float open = smoothstep(0.0, 0.10, ph) * smoothstep(${f(BUILDING_ANIM.doorOpenFraction + 0.14)}, ${f(BUILDING_ANIM.doorOpenFraction)}, ph);
+          float ph = fract(uTime / ${f(STRUCTURE_ANIM.doorPeriodSeconds)} + aState.w);
+          float open = smoothstep(0.0, ${f(STRUCTURE_ANIM.doorRampFraction)}, ph) * smoothstep(${f(STRUCTURE_ANIM.doorCloseFraction)}, ${f(STRUCTURE_ANIM.doorOpenFraction)}, ph);
           raDoor = isDoor * aFeature.z * open;
           // Radar sweep: about the model Y axis, so a dish is authored on the
           // centre line. RA3's dome is a dish on a central tower; this is that.
@@ -825,7 +837,8 @@ const STRUCTURE_CLIP_FRAGMENT = `
  * this `onBeforeCompile`.
  */
 function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
-  const A = BUILDING_ANIM;
+  const S = STRUCTURE_ANIM;
+  const SLIN = STRUCTURE_ANIM_LINEAR;
   mat.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = buildingTime;
 
@@ -863,8 +876,8 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
         {
           // DAMAGE. Bible 8.8: a hurt structure soots, it does not recolour.
           float raHp = clamp(vRaState.x, 0.0, 1.0);
-          float raDmg = 1.0 - smoothstep(${f(A.damageOnset * 0.3)}, ${f(A.damageOnset)}, raHp);
-          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * ${f(A.sootMultiplier)}, raDmg);
+          float raDmg = 1.0 - smoothstep(${f(S.damageOnsetLo)}, ${f(S.damageOnset)}, raHp);
+          diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * ${f(S.sootMultiplier)}, raDmg);
         }`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
         {
@@ -874,20 +887,20 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
           // the window plates, so it doubles as the window mask and no extra
           // UV varying is needed.
           float raWin = clamp(max(totalEmissiveRadiance.r,
-                             max(totalEmissiveRadiance.g, totalEmissiveRadiance.b)) * 6.0, 0.0, 1.0);
-          float raBurn = (1.0 - smoothstep(${f(A.burnOnset * 0.2)}, ${f(A.burnOnset)}, raHp)) * raWin;
-          float raFlick = 0.68 + 0.32 * sin(uTime * ${f(A.burnFlickerHz * 6.28318)} + vRaState.w * 37.0);
+                             max(totalEmissiveRadiance.g, totalEmissiveRadiance.b)) * ${f(S.burnMaskGain)}, 0.0, 1.0);
+          float raBurn = (1.0 - smoothstep(${f(S.burnOnsetLo)}, ${f(S.burnOnset)}, raHp)) * raWin;
+          float raFlick = ${f(S.burnFlickerBase)} + ${f(S.burnFlickerAmp)} * sin(uTime * ${f(S.burnFlickerRadians)} + vRaState.w * ${f(S.burnFlickerSeedScale)});
           totalEmissiveRadiance = mix(totalEmissiveRadiance,
-                                      ${lin(A.burnColor)} * (2.4 * raFlick), raBurn);
+                                      ${linVec3(SLIN.burnColor)} * (${f(S.burnEmissiveGain)} * raFlick), raBurn);
           // THE BUILD BAND. A bright scan line riding the ground cut while the
           // structure rises, so construction reads at a glance.
-          float raBand = (1.0 - smoothstep(0.0, ${f(A.riseBandMeters)}, vRaClip)) * (1.0 - raBp);
-          totalEmissiveRadiance += ${lin(A.riseBandColor)} * raBand * 2.2;
+          float raBand = (1.0 - smoothstep(0.0, ${f(S.riseBandMeters)}, vRaClip)) * (1.0 - raBp);
+          totalEmissiveRadiance += ${linVec3(SLIN.riseBandColor)} * raBand * ${f(S.riseBandGain)};
           // SELECTION. Team colour, pulsed. Readability comes from accents,
           // never from raising the exposure (bible R5).
-          float raPulse = 0.72 + 0.28 * sin(uTime * ${f(A.selectPulseHz * 6.28318)});
+          float raPulse = ${f(S.selectPulseBase)} + ${f(S.selectPulseAmp)} * sin(uTime * ${f(S.selectPulseRadians)});
           totalEmissiveRadiance += vRaTeam * clamp(vRaState.z, 0.0, 1.0)
-                                 * ${f(A.selectEmissive)} * raPulse;
+                                 * ${f(S.selectEmissive)} * raPulse;
         }`);
   };
   // Two materials whose only difference is a uniform still share one compiled
@@ -899,7 +912,11 @@ function applyStructureShader(mat: THREE.MeshPhysicalMaterial): void {
   // The maths is unchanged and the generated GLSL is equivalent, but the SOURCE
   // is not, and this key's whole job is to stop the cache serving a program
   // built from different source. Bump it whenever the string changes.
-  mat.customProgramCacheKey = () => 'ra3.structure.v3';
+  // v4: the numbers moved into `./structure-anim.ts`, shared with the TSL port.
+  // Every value is identical — `f()` prints them exactly as before — but the
+  // tuning constants that used to be typed inline are now interpolated, so a
+  // handful of literals gained trailing zeroes and the SOURCE changed again.
+  mat.customProgramCacheKey = () => 'ra3.structure.v4';
   mat.needsUpdate = true;
 }
 
@@ -1028,6 +1045,31 @@ export function defaultCoat(atlas: GreebleAtlas): StructureCoat {
   return atlas.spec.plating === 'welded' ? 'glaze' : 'field';
 }
 
+/**
+ * The routers. See `UnitFactory.unitMaterialFor` — same shape, same reason.
+ *
+ * `structureDepthMaterialFor` returns NULL on the node path and that is the
+ * whole of `STAGE_D_TSL_GAPS` #1 in one line: `object.customDepthMaterial` is
+ * read in exactly one file in three 0.185 (`WebGLShadowMap.js`), and the node
+ * renderer instead harvests `castShadowPositionNode` off the object's own
+ * material — which `createStructureNodeMaterial` sets. Assigning a
+ * `MeshDepthMaterial` there would be inert, and `MeshDepthMaterial` is not in
+ * `StandardNodeLibrary` at all. See `docs/RENDER_FINDINGS.md` §7e.
+ */
+export function structureMaterialFor(
+  atlas: GreebleAtlas, name: string, coat?: StructureCoat,
+): THREE.Material {
+  const np = nodePath();
+  return np !== null
+    ? np.createStructureMaterial(atlas, name, coat)
+    : createStructureMaterial(atlas, name, coat);
+}
+
+export function padMaterialFor(atlas: GreebleAtlas, name: string): THREE.Material {
+  const np = nodePath();
+  return np !== null ? np.createPadMaterial(atlas, name) : createPadMaterial(atlas, name);
+}
+
 export function createStructureMaterial(
   atlas: GreebleAtlas, name: string, coat?: StructureCoat,
 ): THREE.MeshPhysicalMaterial {
@@ -1103,8 +1145,8 @@ export interface StructureModel {
   /** A defence turret, or null. Origin is the turret pivot, +Z forward. */
   turret: THREE.BufferGeometry | null;
   turretPivot: [number, number, number];
-  material: THREE.MeshPhysicalMaterial;
-  padMaterial: THREE.MeshPhysicalMaterial;
+  material: THREE.Material;
+  padMaterial: THREE.Material;
   atlas: GreebleAtlas;
   sockets: SocketDef[];
   turretSockets: SocketDef[];
@@ -1505,8 +1547,8 @@ export function buildStructure(
   list: StructureMassList,
   atlas: GreebleAtlas,
   padAtlas: GreebleAtlas,
-  material: THREE.MeshPhysicalMaterial,
-  padMaterial: THREE.MeshPhysicalMaterial,
+  material: THREE.Material,
+  padMaterial: THREE.Material,
 ): StructureModel {
   const bodyMasses = list.masses.filter((m) => (m.target ?? 'body') !== 'pad');
   const bb = massBounds(bodyMasses.length > 0 ? bodyMasses : list.masses);
@@ -1745,7 +1787,7 @@ export function padAtlasSpec(
 
 export class BuildingLibrary {
   private readonly models = new Map<string, StructureModel>();
-  private readonly materials = new Map<string, THREE.MeshPhysicalMaterial>();
+  private readonly materials = new Map<string, THREE.Material>();
   private readonly atlases = new Map<string, GreebleAtlas>();
   private readonly factory: GreebleFactory;
   /**
@@ -1765,7 +1807,12 @@ export class BuildingLibrary {
    * nothing about a faction, an atlas or a coat can change it. See
    * `createStructureDepthMaterial`.
    */
-  depthMaterial(): THREE.MeshDepthMaterial {
+  depthMaterial(): THREE.Material | undefined {
+    // NULL ON THE NODE PATH — see `structureMaterialFor` above. `undefined` and
+    // not null, because `BatchPartSpec.customDepthMaterial` is optional and an
+    // explicit null there would set `mesh.customDepthMaterial = null`, which
+    // three treats as "no override" only by accident of falsiness.
+    if (nodePath() !== null) return undefined;
     if (this.depth === null) this.depth = createStructureDepthMaterial();
     return this.depth;
   }
@@ -1825,12 +1872,12 @@ export class BuildingLibrary {
 
     let material = this.materials.get(structKey);
     if (material === undefined) {
-      material = createStructureMaterial(atlas, structKey, p.coat);
+      material = structureMaterialFor(atlas, structKey, p.coat);
       this.materials.set(structKey, material);
     }
     let padMaterial = this.materials.get(padKey);
     if (padMaterial === undefined) {
-      padMaterial = createPadMaterial(padAtlas, padKey);
+      padMaterial = padMaterialFor(padAtlas, padKey);
       this.materials.set(padKey, padMaterial);
     }
 

@@ -84,11 +84,27 @@ pnpm-debug.log*
 logs/
 *.log
 .shots-staging/
+.shots-staging-webgpu/
 
 # Piper voice models — 109 MB, staged for tools/render-eva.py, never shipped
 tools/tts-voices/
 
-# A/B capture sets and crop stitches from tools/shot-compare.mjs.
-# ~50 MB per capture set; they are evidence for one review, not history.
+# A/B capture sets and crop stitches from tools/shot-compare.mjs, and the WebGPU
+# arm of the shot harness (`node tools/shoot.mjs --gpu=webgpu` -> `shots-webgpu/`,
+# 68 MB). ~50 MB per capture set; they are evidence for one review, not history.
+# The glob already covered the node arm by luck rather than by intent, which is
+# worth writing down beside the rule rather than rediscovering.
 shots-*/
 ab/
+tools/terrain-node-compare/page.js
+tools/terrain-node-compare/out/*.png
+tools/terrain-node-compare/out-nodither/*.png
+tools/stage-d-node-compare/page.js
+tools/stage-d-node-compare/out/*.png
+tools/stage-d-node-compare/out-nodither/*.png
+tools/road-node-compare/page.js
+tools/road-node-compare/out/*.png
+tools/shadow-override-probe/page.js
+tools/shadow-override-probe/out/*.png
+tools/bloom-hdr-ab/out/*.png
+tools/cameo-readback-probe/page.js

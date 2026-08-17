@@ -14,20 +14,38 @@ and leave both standing.
 ## 1. The draw-call budget was never being missed
 
 `renderer.info.autoReset` is `false` and the reset happens once per frame in `beginFrame()`, so
-`frame.drawCalls` in `shots/_report.json` is a **SUM OVER THREE SCENE SUBMISSIONS**: colour pass,
-shadow pass, and `GTAOPass`'s normal prepass. `MAX_DRAW_CALLS` (130) budgets the COLOUR PASS ALONE.
+`frame.drawCalls` in `shots/_report.json` is a **SUM OVER EVERY SCENE SUBMISSION**, while
+`MAX_DRAW_CALLS` (130) budgets the COLOUR PASS ALONE. Quote `frame.drawCallsByPass.colour` against
+the budget; quote `frame.drawCalls` only as the content fingerprint it is.
 
-Instrumented live against `renderBufferDirect`, reproducing `_report.json` exactly:
+**THIS ENTRY SAID "THREE SCENE SUBMISSIONS" AND IT IS TWO.** The original measurement was
 
 ```
 01-establishing-base:  219 total = 78 colour + 54 shadow + 67 AO prepass + 20 post quads
 ```
 
-`stats()` and `_report.json` now carry `drawCallsByPass` = `{shadow, colour, ao, post, total}`,
-reconciling exactly on all 13 fixtures. **Current colour pass is 51–77 against 130.**
+and the AO prepass in it is gone: `installAoDepthGBuffer` in `src/render/post.ts` hands `GTAOPass`
+the depth the colour pass already wrote and reconstructs normals with one full-screen quad, so
+`_renderGBuffer` is false and `ao` is **0 on all thirteen fixtures**. A non-zero `ao` now means that
+wiring failed and the prepass came back.
 
-> **There are roughly 50 colour draws of headroom and the project should be SPENDING them.** Several
-> systems below are capped "for the draw budget" against a budget that is half empty.
+`stats()` and `_report.json` carry `drawCallsByPass` = `{shadow, colour, ao, post, total}`,
+reconciling exactly on all 13. **Current measured range: colour 54–77, shadow 29–59, ao 0, post 21,
+total 105–157.**
+
+> **THE ORIGINAL GUIDANCE HERE — "there are ~50 colour draws of headroom and the project should be
+> SPENDING them" — IS NOT WRONG BUT IT IS NOT THE LEVER, AND §9 IS WHY.** Draw submission is not what
+> costs us: profiled at 194 units and 2560x1440, the CPU is idle 88% of the frame and 79–90% of GPU
+> time is proportional to PIXEL COUNT. Extra draws are close to free; extra *shaded pixels* are the
+> whole cost. Spend the headroom on content that adds silhouette and edge density, not on anything
+> that adds overdraw or another full-screen pass.
+
+**WEBGPU CHANGES THIS INSTRUMENT AND DOES NOT SAY SO.** Measured on a genuine WebGPU device:
+`info.render.calls` is per-frame draws on WebGL but a **monotonic lifetime count of `render()`
+invocations** under WebGPU, which `reset()` never clears — per-frame lives in `render.drawCalls`.
+`info.programs` is `undefined`, so `debug.ts`'s `?? 0` reports 0 forever. Nothing throws. Read
+through `normaliseInfo()` / `handle.frameInfo()` in `src/render/backend.ts`, never `renderer.info`
+directly, or every draw-call number in this project silently becomes fiction on the node path.
 
 ---
 
@@ -395,19 +413,133 @@ statistic and a working control is quotable.)
 2. **The only live control is global**: `LIGHTING.envIntensity` -> `scene.environmentIntensity`, set
    in `scene.ts`. There is no per-material dial for the ground today.
 3. `USE_ENVMAP` IS defined in the terrain program and `getIBLIrradiance` / `getIBLRadiance` are
-   present (2 and 4 call sites), so this is not a missing feature — something in this material's
-   custom-program path is not taking the uniform. `material.roughness` is inert on terrain for a
-   known and deliberate reason (`onBeforeCompile` replaces `<roughnessmap_fragment>` with the
-   splat-driven `raRough`); `envMapIntensity` has no such explanation yet.
+   present (2 and 4 call sites), so this is not a missing feature.
 
-**So the line was NOT shipped.** Adding an authoritative-looking constant that reaches no pixel is
-precisely the `SURFACES` defect (§3, and `config.ts`'s own dead material table) and precisely the trap
-§5 and §7 describe. If the bible's 0.35 is wanted for the ground specifically, it must be scaled
-inside `TerrainMaterial.ts`'s own injected GLSL, with `customProgramCacheKey` bumped past
-`'ra-terrain-v3'` — and then MEASURED, because §6b is a fresh reminder that a change which is
-bible-correct in isolation can still cost grade points.
+### THE CAUSE, FOUND 2026-08-17 DURING THE TSL PORT. It is not this material.
 
-**Do not re-attempt this as a one-line config edit.** It has now been tried and disproved once.
+The paragraph above used to end "something in this material's custom-program path is not taking the
+uniform", and that guess sent the fix in the wrong direction — into the injected GLSL and a
+`customProgramCacheKey` bump. **The custom-program path has nothing to do with it.** three overwrites
+the uniform every frame, for every standard material in the game that has no `envMap` of its own:
+
+```js
+// three/src/renderers/WebGLRenderer.js:2693
+if ( ( material.isMeshStandardMaterial || material.isMeshLambertMaterial
+       || material.isMeshPhongMaterial )
+     && material.envMap === null && scene.environment !== null ) {
+  m_uniforms.envMapIntensity.value = scene.environmentIntensity;
+}
+```
+
+`scene.environment` is set in `scene.ts` and terrain carries no `envMap`, so both conditions hold and
+the assignment lands after every `refreshMaterialUniforms`. Writing `material.envMapIntensity` cannot
+survive to a draw. **That is the whole of it**, and it explains the measurement exactly — including
+why the control worked.
+
+**THE NODE PATH IMPLEMENTS THE SAME RULE ON PURPOSE, so the migration does not close this for free:**
+
+```js
+// three/src/nodes/accessors/MaterialProperties.js:21
+materialEnvIntensity = uniform( 1 ).onObjectUpdate( ( { material, scene } ) =>
+  material.envMap ? material.envMapIntensity : scene.environmentIntensity );
+```
+
+Re-measured on `WebGPURenderer`'s real WebGPU backend with `tools/terrain-node-compare.mjs`
+(`TerrainNodeMaterial`, 640x480, `scene.environmentNode`):
+
+```
+sun 2.4 -> 0        CONTROL ON THE CONTROL      99.756% of px    max delta 61
+material.envMapIntensity 0 -> 8, no own envMap   0.000% of px    max delta 0
+scene.environmentIntensity 0 -> 6   CONTROL     99.792% of px    max delta 211
+```
+
+Identical behaviour, on a material that has no custom-program path at all. Two probe defects were hit
+getting there and both are worth knowing: measuring the WebGPU canvas in-page via `drawImage` into a
+2D context returns a blank buffer, so EVERY row including the control read zero; and
+`scene.environment` set to a raw equirect `DataTexture` contributes nothing on the node path, because
+`EnvironmentNode` reaches it through `pmremTexture()`. `PMREMGenerator` cannot pre-filter it either —
+it draws with a raw `ShaderMaterial`, which the node renderer refuses out loud. The sun row exists
+because two successive dead instruments is enough.
+
+### THE EXIT IS ONE LINE, AND IT WORKS ON BOTH RENDERERS
+
+Both rules key off the same thing: **give the material its own `envMap` and `envMapIntensity` becomes
+live.** `material.envMap = scene.environment` satisfies the WebGL guard and the node accessor at
+once. `TerrainNodeMaterial.setEnvironment(env, intensity)` is that, and it is INERT until called, so
+nothing changes until someone asks.
+
+**Land it at `scene.environmentIntensity`, not at the bible's 0.35.** That reproduces today's
+appearance exactly — `materialEnvIntensity` resolves to the same number either way — and makes the
+knob editable without moving a pixel. Changing the ground's brightness is a separate decision, and
+§6b is a fresh reminder that a change which is bible-correct in isolation can still cost grade
+points, so it must be captured and scored on its own.
+
+**Do not re-attempt this as a one-line config edit on `envMapIntensity` alone.** That has now been
+tried and disproved twice, on two renderers, and the reason is written above.
+
+---
+
+## 9. WHERE THE FRAME ACTUALLY GOES — we are fill-rate bound, and it was never measured before
+
+**Measured 2026-08-17 with `tools/gpu-profile.mjs`. `EXT_disjoint_timer_query_webgl2` IS available
+on this machine (ANGLE/D3D11, AMD Radeon integrated `0x00001638`), so these are real GPU timings and
+not a `gl.finish()` estimate** — which matters, because that tool's own header records `gl.finish()`
+reporting 4.2 ms for a frame the timer query measured at 67.5.
+
+194 drawn units, 2560x1440, four-army Sunder Atoll, seed 7, adaptive resolution verified inert:
+
+```
+frameMs  free-running   42.45 ms  -> 23.6 fps      p95 50.60
+gpuMs                   29.83 ms
+cpuMs    whole frame     3.55 ms                   <- CPU idle 88% of the frame
+simMs    one tick        1.00 ms                   p95  2.10
+```
+
+**GPU exceeds CPU by 8.4x.** Per-pass, by ablation, every bucket verified to respond:
+
+| pass | ms | share | disabling saves |
+|---|---|---|---|
+| colour | 21.47 | **55.2%** | — |
+| GTAO | 6.57 | 16.9% | 4.97 |
+| bloom | 4.86 | 12.5% | 3.32 |
+| SMAA | 3.65 | 9.4% | 2.78 |
+| grade | 2.34 | 6.0% | 0.54 (flagged as suspect by the instrument) |
+| shadow | 0.99 | ~2% | 0.69 |
+
+**The fit is the finding:** `GPU ms = 5.86 + 6.40 x Mpx`, **r² 0.995**, and a second run at 70 units
+gave r² 1.000 with 89.7% of GPU time pixel-proportional. **60 fps lands at render scale 0.694.**
+
+Three consequences that change what work is worth doing:
+
+1. **Resolution scale is the frame-rate lever**, not draw calls, not triangles, not the sim. See §1's
+   revised note. `AdaptiveResolution`'s floor is 0.55, so the controller can reach 60 fps on this
+   hardware — once its one-way-ratchet bug is fixed (it required a median below 13.69 ms to restore,
+   which a 60 Hz display can never produce).
+
+   **THIS FIT IS NOW SHIPPED PRODUCT, not just a finding.** `src/render/HardwareCalibration.ts`
+   re-derives the same line on the player's own machine — two probe windows at two known pixel
+   counts, ordinary least squares, solve for the target — and writes the answer into
+   `graphics.resolutionScale` once, on the first battle, never again. Adaptive resolution is off by
+   default as of v2.14.0 and is a toggle. The numbers above are the test fixture:
+   `tests/hardware-calibration.spec.ts` feeds the solver 5.86 + 6.40/Mpx and requires it back
+   exactly. **Note that this entry's 0.694 is against a ~17.22 ms target, not 16.7** — the same
+   line at 16.7 gives 0.678, and the spec pins both so the two never get quoted for each other.
+
+   **The one case where the model must NOT be applied** is a flat fitted slope. A vsync-capped
+   display with headroom reports the monitor's interval at every resolution, and a CPU-bound frame
+   reports the same number for a different reason; in both, cutting pixels costs sharpness and buys
+   nothing. The calibration returns the ceiling under 1.0 ms/Mpx rather than solving.
+2. **Map choice is irrelevant to cost** — all four-army land maps sit within 7% of each other
+   (11.35–12.13 ms at 720p). Pixels are what vary. Note also that only four-army Sunder Atoll
+   reaches 200+ units (215 and rising, because no land route means armies accumulate); every land
+   map peaked near 114 and fell back to ~70 by minute 25.
+3. **Full-res AO would cost +11.48 ms**, so the shipped half-res AO is already the post chain's
+   single biggest saving. Shadows at 2% are not worth optimising.
+
+**`stats().cpuMs` UNDER-REPORTS CPU BY 24%** and is the instrument §1 names. `GameLoop.renderPass`
+calls `registry.runFrame()` *before* `hooks.render`, where `debug.beginFrame()` starts the
+stopwatch — so RenderBridge uploads, VFX, the ore instancer, fog and the HUD all fall outside the
+counter. Paired per frame: 2.70 reported against 3.55 actual. Not yet fixed.
 
 ---
 
@@ -436,6 +568,777 @@ moved something** before trusting what it tells you about the treatment.
 
 This is the same shape as §5: the config block that reads authoritative is not always the one wired
 to the thing.
+
+## 7b. WebGPU on a SYNTHETIC scene — Stage A of `WEBGPU_MIGRATION_PLAN.md`, 2026-08-17
+
+> **THIS ENTRY'S VERDICT IS OVERTURNED FOR THE REAL GAME. READ §7f FIRST.**
+> Everything below is correct about the thing it measured — a stock-material
+> scene with no post chain, timed inside `renderer.render()` — and that thing
+> turned out not to predict the shipped frame. On the REAL game, with the real
+> post chain, at three resolutions across a 9x pixel range, **WebGPU is 1.74-1.89x
+> FASTER**. The measurements here are not withdrawn; the inference from them to
+> the product is. §7f says why the two are not in conflict.
+
+Stage A said "answers 'is the win real for us' for a few days' cost". It cost a day and the answer
+it gave was **no**. Instruments: `tools/webgpu-spike/` on branch
+`worktree-agent-a2eb23cacd5ec7ab4` — a throwaway that is not to be merged; the numbers below are the
+deliverable, not the code.
+
+**A synthetic scene shaped like our real frame** (50–4000 opaque draws, triangles pinned at
+0.62–0.70M across the whole sweep so it isolates per-DRAW cost, 70 distinct materials, ≤30
+InstancedMesh batches, one 2048 directional shadow map, stock `MeshStandardMaterial` vs
+`MeshStandardNodeMaterial`, no post chain). Median ms inside `renderer.render()` over 420 rAF frames
+after 90 untimed warmup frames plus `compileAsync`. Both arms in one browser session, both on the
+same `amd/gcn-5` iGPU — checked, because this box also has an RTX 3080 and `requestAdapter()` with no
+preference takes the low-power one.
+
+```
+draws    ---------- 2560x1440 ----------      ---------- 1280x720 -----------
+         webgl   webgpu  ratio  nodegl        webgl   webgpu  ratio  nodegl
+   50     1.60    1.70   1.06    2.60          1.90    2.50   1.32    5.90
+   64     2.20    1.70   0.77    2.50          4.80    3.50   0.73    3.10
+  200     3.00    3.10   1.03    5.30          3.60    4.30   1.19    5.20
+ 1000     6.60   11.40   1.73   13.50          6.00    9.90   1.65   12.30
+ 4000    18.50   35.50   1.92   42.00         15.20   32.30   2.13   62.20
+```
+
+- **THE TWO SUB-1.00 CELLS ARE NOISE. Do not quote them.** Within-run spread `(p90-p10)/p50` is
+  **29–73%** at and below 200 draws, so no low-end difference is resolvable. The 0.73 comes from a
+  WebGL point whose own spread is 73% (p10 3.80, p90 7.30) and which is non-monotonic against its
+  50- and 200-draw neighbours. Above 1000 draws the spread tightens to 10–23% and the gap is
+  1.65–2.13×, far outside it.
+- **The curves never cross — they diverge in WebGL's favour.** WebGPU's advertised win is lower CPU
+  per draw; at 54–76 colour draws the two are indistinguishable, and every step up makes WebGPU
+  relatively worse. **The sweep answers the headroom question in the negative: there is no draw count
+  at which switching starts to pay, at least up to 4000, which is 50× our load.** Uncapped throughput
+  agrees (WebGPU lower at 9 of 10 points).
+- **`nodegl` — node materials over `WebGPURenderer`'s WebGL2 fallback — is the WORST arm nearly
+  everywhere**, 1.3–4.1× the shipping renderer. That is §4.5's "two backends" cost, measured: after a
+  migration, every player without WebGPU gets a renderer slower than today's.
+- **This measures `three@0.185.1`'s `WebGPURenderer`, not the WebGPU API.** That is the right subject
+  — the migration is to three's node system — but it means the finding could be overturned by a
+  future three release, and should be re-measured rather than assumed permanent.
+
+**The `onBeforeCompile` blocker in §3 of the plan is REAL, and it is silent.** Under a genuine WebGPU
+backend, with a plain `MeshStandardMaterial` carrying `onBeforeCompile` — i.e. one of our 24 sites —
+handed straight to `WebGPURenderer`:
+
+```
+onBeforeCompile calls, plain MeshStandardMaterial   0
+onBeforeCompile calls, MeshStandardNodeMaterial     0
+customProgramCacheKey calls                         1     <- still invoked
+mesh.material is still the MeshStandardMaterial     true  <- no visible signal
+generated fragment shader                           WGSL, no #include, no map_fragment
+```
+
+Nothing throws, nothing warns, and the mesh's `material` is still the object you assigned — the
+conversion happens inside `RenderObject`. **`customProgramCacheKey` is the dangerous half**: it keeps
+being called, so a hand-managed cache key (`TerrainMaterial` has one) goes on keying variants whose
+injected code no longer exists. Escape hatches that DO work: TSL slot nodes (`colorNode`,
+`positionNode`, …) and `wgslFn`. **`wgslFn` is NOT portable** — on the WebGL2 fallback the WGSL is
+emitted verbatim into a GLSL shader and the program fails to link (`ERROR: 'fn' : syntax error`,
+then `useProgram: program not valid`). With two backends to support, TSL node graphs are the only
+route.
+
+**`renderer.info` is NOT the same object under WebGPU, and the difference is silent.**
+`src/render/post.ts` derives `drawCallsByPass` from deltas of `renderer.info.render.calls` and
+`src/render/debug.ts` reads `info.programs?.length ?? 0`. Under `three/webgpu`:
+
+| our code reads | WebGL means | WebGPU means |
+|---|---|---|
+| `info.render.calls` | draws this frame | **`render()` invocations since page load** — monotonic, and `reset()` does not clear it |
+| — | — | `info.render.drawCalls` is the per-frame draw count |
+| `info.programs.length` | programs in flight | **`info.programs` is `undefined`** → `?? 0` reports 0 forever |
+| `info.autoReset = false` | reset inside `render()` | reset lives in `setAnimationLoop`'s callback only, so a custom loop that leaves `autoReset` true never resets at all |
+
+None of these throw. A naive port keeps a green build and reports a draw-call count that climbs
+forever, a program count of 0, and a `drawCallsByPass` computed from differences of a counter that
+counts the wrong thing.
+
+## 7c. The shot harness cannot photograph WebGPU, and the reason is one DLL
+
+**Playwright's BUNDLED Chromium cannot create a WebGPU device on this machine when headless.** It is
+not flags, not the GPU, not a headless limitation:
+
+```
+requestAdapter()  -> real, non-fallback amd/gcn-5, full feature list incl. timestamp-query
+requestDevice()   -> OperationError: DynamicLib.Open: dxil.dll Windows Error: 87
+                       at EnsureDXCLibraries (third_party/dawn/.../PlatformFunctionsD3D12.cpp:212)
+THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.
+```
+
+`dxil.dll` and `dxcompiler.dll` are both PRESENT in that Chromium's own directory, so nothing is
+missing — error 87 is `ERROR_INVALID_PARAMETER`, what a bare-name `LoadLibrary` returns once
+Chromium has restricted its default DLL directories. Measured per binary, over `http://127.0.0.1`:
+
+```
+playwright chromium  headless   adapter only, device FAILED
+playwright chromium  headed     REAL WEBGPU, work submitted
+chrome               headless   REAL WEBGPU, work submitted
+chrome               headed     REAL WEBGPU, work submitted
+msedge               headless   REAL WEBGPU, work submitted
+msedge               headed     REAL WEBGPU, work submitted
+```
+
+**So a real hardware WebGPU backend IS obtainable here, headless included, and the fix for
+`tools/shoot.mjs` is `channel: 'chrome'` rather than the bundled build.** The only flag that helps
+the bundled binary is `--use-webgpu-adapter=swiftshader`, which buys a SOFTWARE device — the exact
+trap CLAUDE.md records at 76.5% of pixels changed while the harness printed `ok`.
+
+Three traps worth carrying forward:
+
+- **WebGPU needs a SECURE CONTEXT.** The first version of the device probe ran off a `data:` URL and
+  confidently reported "no `navigator.gpu`" for all eight flag sets. `http://127.0.0.1` is fine.
+- **`navigator.gpu` existing, and even a real adapter enumerating, is NOT evidence the renderer is on
+  WebGPU.** Both were true throughout the failing case. The only reliable read is
+  `renderer.backend.isWebGPUBackend === true`.
+- **`WebGPURenderer` falls back behind a single `warn()`.** Anything that reports a WebGPU number
+  must assert its live backend and refuse, not infer. The first hour of this spike measured
+  WebGL2-vs-WebGL2 and labelled one column "webgpu".
+
+## 7d. The post chain in TSL — Stage B, measured 2026-08-17
+
+Two questions were open when Stage B started. Both are now answered with an instrument.
+
+### The grade port is numerically the same shader
+
+`tools/grade-ab/run.mjs` renders one fixed scene-linear HDR chart through **`GRADE_FRAG` on
+`WebGLRenderer`** and through **`src/render/nodes/grade-node.ts` on `WebGPURenderer`**, at exactly
+the texture's resolution with `NearestFilter` so no filtering difference can enter, with both arms
+taking their uniforms from the same `gradeUniformValuesFor()`. Live backend asserted
+`isWebGPUBackend === true` — the run REFUSES to report a number under the WebGL2 fallback.
+
+```
+chart (0 -> 0.18 -> 1.0 -> 8.0 neutral ramps + saturated hues at 1.4, 256x64)
+    max |delta|            1 / 255
+    mean |delta|           0.0000407      (2 subpixels of 49 152 differ, by 1 each)
+    subpixels over 1/255   0
+```
+
+**That is the whole grade** — unsharp mask, exposure, AgX, the 3-way tint, lift/gain, the gamma
+contrast about 0.18, the declared white point, shadow saturation, the paper-white fold, the vignette
+and the sRGB encode — agreeing to within a single least-significant bit across shadows, mids, HDR to
+8x, and saturated primaries. Bit-equality was never the bar (two languages, two compilers); one LSB
+on two subpixels is.
+
+**`screenUV` and `vUv` agree about which way is up.** This was the predicted failure and it did not
+happen. Measured deliberately with a Y-varying ramp so the test could actually see a flip:
+
+```
+                straight        flipped
+    max         1               216
+    mean        0.00012         56.38
+```
+
+The flipped comparison being catastrophic is what makes the straight one meaningful — do not delete
+that arm to save a render.
+
+### The AO scene submission does NOT have to be rebuilt, but the shader cost does
+
+`WEBGPU_MIGRATION_PLAN.md` §3 said the `installAoDepthGBuffer` saving "has no direct equivalent and
+would be redone from scratch". Half right, and the half that is wrong is the expensive half:
+
+- **The second scene submission is gone by construction.** `GTAONode` owns no scene and no prepass —
+  it is a full-screen quad over a depth node, and `pass(scene, camera).getTextureNode('depth')` is
+  the depth the colour pass already wrote. There is nothing to delete because the node pipeline
+  never had it. The seventy lines of `installAoDepthGBuffer` reaching into six private members of
+  `GTAOPass` have no counterpart.
+- **The naive port is nevertheless a real regression, and it is the trap §1 already names.** Both
+  `GTAONode` and `DenoiseNode` accept a null `normalNode` and reconstruct the view normal from depth
+  in the shader. `GTAONode` hoists that above its direction loop and pays for one.
+  **`DenoiseNode` calls `sampleNormal` for the centre tap AND inside its 16-sample loop — 17
+  reconstructions per denoised pixel**, each nine `textureLoad`s and three inverse-projection
+  transforms. Identical arithmetic to `PoissonDenoiseShader`, identical conclusion: reconstruct ONCE
+  into a texture and hand it to both. `src/render/nodes/ao-node.ts` does that with one `RTTNode` at
+  the AO resolution.
+
+### Three defects the node port would have inherited, found by reading three's source
+
+None of these would have failed a build, and two are invisible until a capture disagrees with itself.
+
+1. **`DenoiseNode.generateDefaultNoise()` calls `new SimplexNoise()`, whose default RNG is `Math`.**
+   Byte-for-byte the same defect `post.ts#seedAoDenoiseNoise` fixes on the WebGL side, arrived at
+   independently in three's node port. Unseeded, two boots of one build cannot produce the same
+   image. Both chains now seed from `AO_NOISE_SEED` in `src/render/ao-params.ts`.
+2. **`DenoiseNode` ships `lumaPhi`/`depthPhi`/`normalPhi` at 5/5/5 and `GTAOPass`'s constructor
+   overwrites them with 10/2/3.** The WebGL chain inherits the latter silently by never setting
+   them, so a node port that also never sets them denoises with a *different filter* from the same
+   config. Pinned in `tests/post-nodes.spec.ts` by reading `GTAOPass.js` itself.
+3. **`DenoiseNode` builds its Poisson disc with radius exponent 1; `GTAOPass.pdRadiusExponent` is
+   2.** Same 16 taps over the same 2 rings, spread evenly along the radius instead of clustered.
+   Same cost, different filter, nothing to catch it.
+
+### What the WebGL bundle actually cost, measured rather than asserted
+
+**+100 bytes.** `vite build` at `1c7cc0c` (the branch point) emits `index-*.js` at **2 673.60 kB**;
+with Stage B it is **2 673.70 kB**. That is the shared modules `post.ts` now imports — the tone-mode
+table, the pass order, and the two AO parameter helpers — after tree-shaking drops everything in
+them the WebGL chain does not use.
+
+`three/webgpu` is **absent from the bundle entirely** (`grep -c WGSLNodeBuilder dist/assets/index-*.js`
+= 0), because nothing in `src/main.ts`'s graph imports the node chain yet. That is the load-bearing
+half: the node passes cannot affect a shipped frame until something wires them in.
+
+The first commit message for this work said the bundle was "byte-for-byte the size it was", which is
+the kind of claim `docs/SPEC_DRIFT_AUDIT.md` exists to catalogue. It was not measured when it was
+written. It is now.
+
+### What Stage B did NOT establish
+
+- **No frame time, and no claim to one.** §7b's verdict stands and is not disturbed by any of this.
+- **Bloom and AO are verified structurally and by parameter, not numerically.** `BloomNode` was
+  compared field by field against `UnrealBloomPass` (5 mips, kernels 6/10/14/18/22, factors
+  1/.8/.6/.4/.2, half-res first mip, `lerpBloomFactor` identical) and the settled energy pair travels
+  through one shared function — but no pixel of either has been diffed on a device. AO needs a real
+  scene with depth to A/B at all. Both belong to the Stage F dual-backend verification.
+- **The A/B is WGSL only.** The graph is COMPILED for both backends —
+  `tests/post-nodes.spec.ts` puts it through `GLSLNodeBuilder` as well, so neither can silently stop
+  building — but the 1/255 number was taken on a WebGPU device. `WebGPURenderer`'s WebGL2 backend is
+  a third renderer, and what it renders from the same graph is unmeasured. Two backends means two
+  grade baselines.
+
+## 7e. The node path's shadow gap: CLOSED by `castShadowPositionNode`, and `allowOverride = false` is INVALID
+
+**Measured 2026-08-17, Stages D2 and D3, `tools/shadow-override-probe.mjs`, real Chrome, real
+WebGPU. Six arms, one run.**
+
+```
+arm                        backend    devErrs   darker vs the shipping reference
+glsl-webgl (REFERENCE)     webgl            0   —
+glsl-webgl-nodepth         webgl            0   3.040%    <- the defect, on WebGL
+tsl-override               webgpu           0   3.040%    <- the same defect
+tsl-nooverride             webgpu           2   89.312%   <- BLANK FRAME
+tsl-nooverride-noreceive   webgpu           0   0.470%    <- correct, unusable
+tsl-castshadow             webgpu           0   0.460%    <- correct, and shipped
+```
+
+`tsl-castshadow` against `tsl-nooverride-noreceive` is **0.024% of pixels changed and 0.000%
+darker** — the two agree about the shadow and differ only where the diagnostic arm's casters stop
+receiving one. The three phantom black slabs thrown by structures that are entirely below the ground
+cut are gone.
+
+**THE ROUTE, IN ONE PARAGRAPH.** `castShadowPositionNode` is harvested onto the override material's
+`positionNode`, and `NodeMaterial.setupPosition` assigns `positionNode` AFTER
+`instancedMesh( object )` and REPLACES `positionLocal` with it. So a node that ignores the instanced
+value, resets `positionLocal` to `positionGeometry`, runs the same model-space edit the colour pass
+runs, and re-applies three's own `instancedMesh( builder.object )` reproduces the colour pass's
+position exactly. `src/render/cast-shadow-nodes.ts`; structures and props call it with the function
+they already had, so there is still ONE declaration of each displacement.
+
+**IT UPLOADS NOTHING.** The instance transform is reached through `builder.object` — a bare `Fn`
+receives the live `NodeBuilder` and `RenderObjects` keys its chain map on the object, so the body
+runs once per caster with that caster's mesh in hand. No new attribute, no new uniform, no byte
+added to `InstanceBatcher` or `Scatter`, nothing in the frame loop. The alternative that was costed
+against it — publishing a per-instance 3x3 basis so the displacement could be rotated
+post-instancing — is 36 bytes an instance a frame through the renderer's two hottest writers.
+
+**WHAT IT DOES COST, exactly.** `instancedMesh( object )` runs twice in the shadow pass, so the
+shadow vertex stage carries **one extra mat4**: four more `nodeAttributeN` slots (13 of a guaranteed
+16 on the probe's structure geometry, 14 on the real one, which carries `uv` for the atlas alpha)
+where the matrices arrive as an interleaved attribute, and a second uniform buffer of `count * 64`
+bytes over the same array where they arrive as a uniform buffer — three picks between those on
+`count * 64 <= maxUniformBufferBindingSize`, i.e. 1024 instances. Both are a second BINDING of a
+buffer that is already resident, never a second copy. Pinned in `tests/stage-d-node-materials.spec.ts`
+§3b, including the attribute-limit headroom, because blowing 16 lands in a player's browser and in
+no other gate.
+
+**THE UNIT MATERIAL DELIBERATELY DOES NOT CALL IT.** `createUnitMaterial` has no
+`customDepthMaterial` — the only two in the game are `createStructureDepthMaterial` and
+`PropLibrary`'s — so a marching rifleman's shadow is the rest pose on the shipping renderer and has
+always been. Wiring the walk cycle here is one line and would make the node path better than the
+renderer it has to stay byte-comparable with, on the most numerous caster in the game, for the least
+visible of the five displacements. The honest route is to give the GLSL material a depth material
+first so both paths gain it together.
+
+### The route that is closed, and why it is closed on CORRECTNESS rather than cost
+
+`object.customDepthMaterial` is read in exactly one file in three 0.185 — `WebGLShadowMap.js`. The
+node renderer instead sets `scene.overrideMaterial` to a shared depth material and harvests four
+fields off the object's own material (`Renderer._getShadowNodes`): `castShadowPositionNode ??
+positionNode`, `colorNode`, `depthNode`, `maskShadowNode ?? maskNode`. **`setupPosition` is not one
+of them**, so every model-space vertex displacement in this project — the construction sink, the bay
+door, the radar spin, the walk cycle, the wind sway — is invisible to the shadow pass.
+
+`StructureNodeMaterial.STAGE_D_TSL_GAPS` #1 named two routes out and said to measure the cheap one
+first because it is one line. **It was measured, and it does not work.**
+
+```
+! tsl-nooverride: GPUValidationError: [Texture "ShadowDepthTexture"] usage
+  (TextureBinding|RenderAttachment) includes writable usage and another usage in
+  the same synchronization scope.
+```
+
+- **The cause is structural, not a three bug.** A lit material that RECEIVES shadows samples the
+  shadow map. Drawn into the shadow pass with `allowOverride = false`, it samples the very texture
+  that pass is writing, which WebGPU forbids inside one synchronization scope. The validation error
+  invalidates the whole command buffer, so the frame draws NOTHING — **the 89.312% is a blank
+  canvas, not a shader difference.** An arm that raised a device error must never be read as "very
+  different"; the probe prints the error count beside every diff for exactly that reason.
+- **The flag DOES reach `setupPosition`.** The fifth arm is the proof of the diagnosis: with
+  `receiveShadow = false` on the casters the sampler disappears, the frame is valid, and the shadow
+  comes out at 0.470% against the reference versus the defect's 3.040%. So the mechanism is right
+  and only the shadow-map read makes it unusable — and every caster in this game receives shadows.
+  A building that cannot be shadowed by the building beside it is not a rendering the bible accepts.
+- **`tsl-override` reproduced the defect to three decimal places** (3.040% darker, identical to the
+  WebGL control that IS the defect). That equality is what says the instrument is measuring the
+  shadow and nothing else.
+- **What the probe could NOT measure.** The node `Renderer` has no `info.programs`, so "the shadow
+  pass now compiles the full physical shader as well as the depth one" stayed unquantified. It is
+  moot: the route is closed on correctness before cost.
+
+### The prediction that was wrong, and it is the reusable half of this entry
+
+This section used to end: *"What still needs a per-instance upload is the DISPLACEMENT, because a
+model-space offset must be rotated and scaled by the instance basis before it can be added to an
+instanced position."* **True of the offset and false of the conclusion.** The premise assumes the
+expression must ADD to the instanced position. It does not have to: `setupPosition` ASSIGNS
+`positionNode` over `positionLocal`, so the expression is free to discard the instanced value, go
+back to `positionGeometry`, and re-run the instancing itself — at which point the basis is three's
+own matrix node and needs no basis of ours.
+
+**The general lesson: `positionNode` is a replacement, not a contribution.** An hour of design went
+into how to encode a 3x3 basis in as few per-instance floats as possible, against a question that
+evaporates once that one word is read correctly. It cost the same hour twice, since Stage D2 wrote
+the sentence and Stage D3 believed it before checking `NodeMaterial.js`.
+
+**What the probe still could NOT measure.** The node `Renderer` has no `info.programs`, so "the
+shadow pass compiles a second program" stayed unquantified across all six arms.
+
+## 7f. THE REAL GAME ON BOTH RENDERERS — Stage F, measured 2026-08-17
+
+**`?gpu=webgpu` boots and draws the shipped game.** Everything below was taken on the merged
+Stage A..F tree, in **real Chrome** (`channel: 'chrome'`), with `renderer.backend.isWebGPUBackend`
+asserted true per page — Playwright's bundled Chromium still cannot create a device here (§7c).
+
+### The frame is FASTER on WebGPU, and §7b did not predict it
+
+`tools/gpu-frame-ab.mjs`. Both arms in one run, one browser at a time, the game's own rAF loop
+stopped, `N` frames driven by `__VM.advanceFrames` with **one `canvas.toDataURL()` GPU flush per
+block**, min of per-block medians, size pinned by `__VM.setSize`. `allied-base`, seed 7, 151
+entities, 149/158 draws, 865k triangles — the same content on both, verified by the triangle count
+agreeing to 0.006%.
+
+```
+                    webgl      webgpu    ratio      Mpx
+1280x720            2.03 ms    1.17 ms   0.576     0.92
+2560x1440           6.32 ms    3.44 ms   0.546     3.69
+3840x2160          17.19 ms    9.10 ms   0.529     8.29
+battle @1440p       5.80 ms    3.18 ms   0.549     3.69
+stats().cpuMs       1.10 ms    0.25 ms   0.227
+```
+
+- **BOTH ARMS SCALE WITH PIXELS, and that is what makes the flush trustworthy.** WebGL runs
+  ~1.95 ms/Mpx and WebGPU ~1.06 ms/Mpx over a 9x range. If `toDataURL()` were failing to
+  synchronise on the node path, its wall time would be CPU-only and would barely move with
+  resolution. It moves by 7.8x across 9x the pixels. That check is the one that turns this from a
+  plausible number into a measurement — **do not delete the resolution axis.**
+- **This is NOT comparable with §9's 42.45 ms**, and neither number is wrong. §9 is a live
+  four-army Sunder Atoll match at 194 units, bounded by a per-frame 1-pixel `readPixels` and timed
+  with a GPU timer query. This is a posed fixture at 151 entities with no VFX, timed by wall clock
+  over a block. Different scene, different bound, different clock. Do not divide one by the other.
+- **Why §7b's sweep pointed the other way.** It measured PER-DRAW CPU cost on a stock-material scene
+  with no post chain, at draw counts from 50 to 4000, timed inside `renderer.render()`. §9 then
+  established that this project is FILL-RATE bound — 79-90% of GPU time proportional to pixel count,
+  CPU idle 88% of the frame — so per-draw CPU cost is close to the least relevant axis there is
+  here. A synthetic scene shaped like our draw count was not shaped like our frame.
+- **`stats().cpuMs` is 4.4x lower on the node path**, which is the advertised win showing up where
+  §7b looked for it. It is not where the frame time came from.
+
+### The scorecard: two baselines, and one weight-3 failure that is NOT closed
+
+`npm run shots` and `node tools/shoot.mjs --gpu=webgpu`, then `tools/metrics.mjs` over each set.
+
+```
+                grade    failures
+webgl           92.0%    13   all #34 edgeCoverage        13/13 captured
+webgpu          91.0%    13   12x #34 + ONE weight-3      12/13 captured
+```
+
+- **#34 failing on every fixture on both arms is correct and must not be demoted.** See §2.
+- **THE WEIGHT-3 FAILURE IS REAL: `03-terrain-closeup` #6 p99 luminance 0.8851 against a floor of
+  0.900** (WebGL: 0.9744 on the same fixture), and frame-wide the pixels at luminance >= 250 go
+  3.400% -> 2.539% on `01-establishing-base`.
+
+  **THIS ENTRY USED TO CALL THAT "A SYSTEMATICALLY WEAKER BLOOM HALO" AND SAY THE CAUSE WAS THE HDR
+  REACHING THE PASS. THE BLOOM PASS IS NOT INVOLVED AND NEITHER READING SURVIVED MEASUREMENT** —
+  see §7g, which decomposes the failure pass by pass. `BloomNode`'s parameters were compared field
+  by field against `UnrealBloomPass` and are identical, which was correct and is still worth
+  knowing; what was wrong was the inference that a weaker-looking halo therefore had to be an input
+  problem. Handed the same scene, the two arms' p99 luminance and blown-pixel fraction agree **to
+  four decimal places** with bloom on and everything else off. Do not re-open `bloom-node.ts`, and
+  do not re-open the HDR either.
+- **`02-hud-full` CANNOT BE CAPTURED ON THE NODE ARM.** It is the only fixture that re-dollies away
+  from its scenario's declared distance (55 m against `allied-base`'s 62), and on the node path the
+  rig reports 62 at the shutter — the pose is applied and then reverts. Pitch reverts with it, so
+  this is the scenario's authored camera being re-applied, not a rendering difference. One of
+  thirteen fixtures is therefore unscored on that arm and the 91.0% is over twelve.
+
+### The WebGL path is preserved, and that was CAPTURED rather than reasoned about
+
+`vite build` + `npm run shots` on the pre-cutover tree (`56547ff`), then the same on the merged one,
+byte-compared:
+
+```
+12 / 13 fixtures BYTE-IDENTICAL
+02-hud-full        354 subpixels, ONE ROW y = 91, x 754..1141, max delta 2/255
+```
+
+That row is the documented Chromium envelope — the bottom edge of `.vm-panel::after`, a
+`linear-gradient` behind a `drop-shadow` inside a `backdrop-filter` parent, rasterised once per page
+— and it is the only thing that moved. **`09-placement` and `10-selection` also show the HUD and
+came back byte-identical**, which is the coin landing the other way and is why this is evidence
+rather than a coincidence. A capture set that matched on nine and differed on four would have meant
+something else entirely.
+
+### Three defects that a green `npm test` could not see, and one it should have
+
+1. **`renderer.getDrawingBufferSize()` takes a `Vector2`, not a duck.** It calls `target.set(w, h)`.
+   `post-nodes.ts` passed `{ width: 1, height: 1 }` and the game died in `createPostChain` before a
+   frame. `buildPostGraph` needs no renderer, so no spec reached the function.
+2. **`DenoiseNode.noiseNode` is a NODE, not a texture.** `ao-node.ts` assigned the reseeded
+   `DataTexture` directly; the body calls `this.noiseNode.sample( uv )`, which threw inside
+   `THREE.TSL`'s own catch — three console errors, no boot failure, and an AO term that darkened
+   the whole frame by roughly one sRGB decode. **`tests/post-nodes.spec.ts` asserted the wrong shape
+   and passed**, because it read `noiseNode.image.data` and a `DataTexture` has `.image.data`. It
+   reads through `.value` and asserts `isTextureNode` now.
+3. **`ShaderMaterial` IS NOT IN `StandardNodeLibrary`.** Basic/Lambert/Phong/Standard/Physical/Toon/
+   Normal/Matcap/Line*/Points/Sprite/Shadow are; `ShaderMaterial` is not, so under `WebGPURenderer`
+   it does not degrade — it fails `NodeBuilder: Material "ShaderMaterial" is not compatible` and
+   draws through a bare `NodeMaterial`. Stages B..E counted `onBeforeCompile` sites and the raw
+   `ShaderMaterial`s carrying LIT shading, and missed three that carry neither: the **sky dome**, the
+   **contact-shadow pool** and the **decal field**. That is the entire background, a black square
+   under every unit and every scorch painted solid black over a `DstColor` blend.
+   `render/sky-nodes.ts` and `render/ground-overlay-nodes.ts` are the twins.
+
+### What Stage F did NOT close
+
+- **`drawCallsByPass` IS WEBGL-ONLY NOW, and that is a property of the renderer rather than a gap
+  nobody filled.** The WebGL split comes from wrapping `WebGLRenderer.shadowMap.render` and reading
+  `info.render.calls` on either side of it — a seam that exists because the shadow pass is a
+  distinct method call there. The node `Renderer` draws shadows inside `_renderScene`, and `Info`
+  publishes `render.drawCalls` as a per-frame TOTAL and nothing else. On the node path
+  `stats().drawCallsByPass` reports zeros with a true total, the F3 overlay prints
+  `(no per-pass split)` rather than `0 col`, and **`MAX_DRAW_CALLS` cannot be checked**. Faking a
+  split would produce a number that looks like the WebGL one and means something else.
+- **The sidebar cameos fall back to flat glyphs.** `Cameos` renders each portrait into a target and
+  calls `renderer.readRenderTargetPixels` — synchronous, and WebGL-only. The node `Renderer`
+  publishes `readRenderTargetPixelsAsync` and nothing synchronous, so the generator would have to
+  become async end to end. `Hud` passes `handle.webgl`, which is null there.
+- **`aGait` is missing on some geometry under the node path** — five `THREE.AttributeNode: Vertex
+  attribute "aGait" not found on geometry` warnings per boot. On the GLSL path a missing attribute
+  reads as 0 and nothing says so. Not investigated; it is a warning, and the walk cycle looks right
+  in the captures.
+- **Bundle isolation held, and what a WebGL player pays was MEASURED rather than asserted.**
+  `WGSLNodeBuilder`, `GLSLNodeBuilder`, `RenderPipeline`, `MeshPhysicalNodeMaterial`,
+  `MeshStandardNodeMaterial` and `castShadowPositionNode` are **0 occurrences in the entry chunk**
+  and all present in a separate `gpu-path-install-*.js` a WebGL boot never fetches.
+  `tests/webgpu-bundle-isolation.spec.ts` pins both halves and fails when a static import is added
+  on purpose. `vite build` on the pre-cutover tree (`56547ff`) against this one:
+
+  ```
+  entry chunk       2 678.86 kB  ->  2 687.83 kB     +8.97 kB   (+0.335%)
+  node chunk                  —  ->    776.39 kB     never fetched on the WebGL path
+  ```
+
+  The +9 kB is the router and the one branch at each material site. Stage B's "+100 bytes" figure
+  was for a stage that wired nothing in; this is the real cost of the seam and it is the number to
+  quote.
+
+## 7g. A CANVAS HOLDS ONE CONTEXT TYPE FOR LIFE, so three's WebGL fallback cannot work here
+
+Reported by a player, 2026-08-17: their GPU driver reset while the game was on the WebGPU path, and
+the page died with
+
+```
+TypeError: Cannot read properties of null (reading 'getSupportedExtensions')
+    at new WebGLExtensions (chunk-….js)
+    at WebGLBackend.init (chunk-….js)
+```
+
+**The mechanism is three's, it is structural, and it is not a bug in our wiring.** Traced through
+three 0.185's own source rather than inferred:
+
+1. `WebGPURenderer`'s constructor sets `parameters.getFallback = () => new WebGLBackend(parameters)`
+   — unconditionally, for every construction that is not `forceWebGL`, with no option to decline.
+2. `Renderer.init()` catches **any** throw out of `WebGPUBackend.init` and calls it. Both
+   `requestAdapter()` returning null and `requestDevice()` rejecting on a dead driver land here.
+3. `WebGLBackend.init` then runs `renderer.domElement.getContext('webgl2', …)` — the **same**
+   canvas — and `new WebGLExtensions(this)` on the result one line later.
+
+`index.html` ships ONE canvas (`#gl`). `WebGPUBackend` has already called `getContext('webgpu')` on
+it (from `updateSize()`, on `init`'s last line), and the HTML spec gives a canvas exactly one
+context type for its whole life — there is no release, no reset, no attribute that undoes it. So
+step 3 returns `null` by specification and step 3's next line dereferences it. **Three's fallback is
+unavailable to any application that puts its canvas in its HTML**, which is most of them.
+
+**`assertBackend` could not fire, and that is a real limit on the guard rather than an oversight.**
+It reads the object `init()` RESOLVES with. Here `init()` REJECTS, so nothing downstream of the
+throw ever ran. §7c's tripwire covers "a renderer was built and it is the wrong one"; it never
+covered "no renderer was built at all".
+
+### What changed
+
+- **Three's fallback is removed before `init()`** — `gpu-path-install.ts#disableThreeFallback`
+  writes `renderer._getFallback = null`, guarded by an `in` check so a three upgrade that renames
+  the field warns instead of silently re-arming the crash. On this canvas the fallback's only two
+  outcomes were that TypeError or a `webgl2-fallback` renderer `assertBackend` refuses anyway, so
+  removing it costs nothing and makes `init()` reject with the REAL cause.
+- **The rejection is caught** in `prepareRenderer` and becomes a `GpuUnavailableError`.
+- **`device.lost` is watched** (`device-loss.ts#watchDeviceLoss`), filtering `reason === 'destroyed'`
+  because that is our own `device.destroy()`. A loss sets `isContextLost()`, which `post.render()`
+  already early-outs on, so the last good frame stays on screen instead of an undefined buffer.
+- **A failed or lost canvas is QUARANTINED** and any later renderer gets a freshly minted element
+  carrying its id, class, style and size. This is the half that makes a WebGL recovery possible at
+  all; without it we would simply reproduce three's crash under our own name.
+- **The adapter is published** — `backend.ts#normaliseAdapterInfo` off `device.adapterInfo`, on
+  `capabilities.adapter` and `__VM.gpuInfo()`. `powerPreference: 'high-performance'` is a HINT:
+  Stage A asked for it and observed an integrated `amd`/`gcn-5` adapter on a box holding an RTX
+  3080, and until now the running page could not say which GPU a crash was on. Note the WebGL debug
+  string is NOT a substitute — it names whichever chip *WebGL* got, which on a hybrid laptop need
+  not be the one the WebGPU device came from.
+
+### What it cost the bundle, and what it cost the WebGL path
+
+`vite build`, against §7f's Stage F figures:
+
+```
+entry chunk       2 687.83 kB  ->  2 693.69 kB     +5.86 kB   (+0.218%)
+node chunk          776.39 kB  ->    776.74 kB     never fetched on the WebGL path
+```
+
+`device-loss.ts` is in the entry chunk on purpose: the failure it reports can happen before the node
+chunk has finished loading, so a recovery path that lives inside the thing that failed to load is no
+recovery path. `tests/webgpu-bundle-isolation.spec.ts` still reports 0 node symbols in the entry.
+
+**The WebGL construction path takes exactly three touches and all three are inert there**, which is
+argued from the diff rather than measured — `npm run shots` was not run, because the host machine
+had already crashed its GPU driver twice on this work:
+
+1. `canvas = liveCanvas(canvas)` — one `WeakSet.has` returning false, handing back its argument. The
+   quarantine is empty unless a WebGPU device actually failed.
+2. `adapter: null` added to the WebGL `capabilities` literal — a data field no render path reads.
+3. `isContextLost()` gains `|| (nodeRenderer !== null && deviceLost !== null)`, which short-circuits
+   on `nodeRenderer === null` — every WebGL boot.
+
+No shader, material, pass, size, clear or tone-mapping call changed. Anyone who wants the pixel
+proof should capture it; the claim here is structural.
+
+### The policy: `?gpu=webgpu` REFUSES, visibly, with a one-click route to WebGL
+
+Argued at length above `raiseGpuFailure` in `renderer.ts`. Short form: an automatic fallback behind
+a banner is the same substitution `assertBackend` exists to forbid — every downstream number would
+keep being produced, correctly formatted, about WebGL, while the address bar said WebGPU, which is
+Stage A's defect exactly. A lost device also takes every texture, buffer and pipeline with it, so
+"recover onto WebGL" is a full re-boot either way; doing it as an explicit page reload is simpler
+and more honest than an in-place substitution twenty modules have to get right. Refusing at boot
+costs a player nothing, because no frame has been drawn.
+
+### What is NOT verified, and cannot be from here
+
+`tests/gpu-device-loss.spec.ts` drives a rejected `init()`, a resolved `device.lost`, and an
+`adapterInfo` whose fields sit on the prototype — the three signals this code reacts to, reproduced
+exactly, and every assertion in it was mutation-tested red. It does **not** establish that a real
+Chrome resolves `device.lost` on a real driver reset rather than only killing the GPU process, that
+the panel is legible, that its buttons reload as intended, or that `GPUDevice.adapterInfo` is
+populated on the reporter's configuration. The host machine crashed its GPU driver twice on this
+path, so none of those four was attempted. **Do not quote the suite as evidence that recovery has
+been observed on hardware.**
+## 7h. THE HALO WAS NEVER THE BLOOM. SMAA WAS DEAD ON WEBGL AND AO IS TWICE AS STRONG ON THE NODE PATH
+
+**Measured 2026-08-17 with `tools/bloom-hdr-ab.mjs`, `03-terrain-closeup`, 1280x720, both arms in
+one run, on the machine's NVIDIA adapter** (`{vendor: nvidia, architecture: ampere}` — every earlier
+WebGPU number in this file was taken on the integrated AMD part, and the defect reproduces
+unchanged, so it is not adapter-dependent).
+
+### The instrument, because the answer depends on it
+
+Seven captures per arm, and the design rule is that **every rung ends in the grade**.
+`EffectComposer` gives the last enabled pass `renderToScreen = true`, and two of this chain's passes
+behave differently when they are the one that writes the canvas — `UnrealBloomPass` blits the read
+buffer through a tone-mapped `MeshBasicMaterial` and then adds its LINEAR composite on top of that
+already-encoded frame, and `GTAOPass` composites straight to the default framebuffer. The node graph
+has no such notion. An `ao`-last rung measured before this was understood came back **99.999% of
+pixels changed at a mean of +50.9/255**, which is not an AO difference; it is two different
+composites. With the grade last on both arms the tail is identical and a difference between two
+rungs is a difference in the pass that was added.
+
+`setPostEnabled(false)` is unusable for the same reason and worse — see the open item at the end.
+
+### The decomposition. p99 luminance, and it is additive
+
+```
+rung          webgl     webgpu    what it adds
+grade-only    0.9176    0.9176    <- the scene and the grade AGREE, exactly
+bloom-grade   0.9098    0.9098    <- BLOOM AGREES, exactly. blown px 0.439% / 0.441%
+ao-grade      0.9020    0.8863    <- AO: -0.0156 vs -0.0313
+grade-smaa    0.9137    0.8941    <- SMAA: -0.0039 vs -0.0235   (before the fix)
+nobloom       0.8980    0.8627    <- and the two deficits sum to the whole gap
+```
+
+**`scene` (post emptied to the render pass alone) is identical too: p99 0.7412 on both, and 0.3765
+on both again at a quarter exposure** — the second rung exists because AgX is compressive at the
+top, so equal bytes at normal exposure would not have proved equal HDR. The HDR reaching the bloom
+was never the problem.
+
+### Defect 1: `demoteSmaaTargets` made SMAA a no-op that still cost three full-screen passes
+
+`SMAAPass` binds two of its three materials ONCE, in its constructor —
+`_uniformsWeights.tDiffuse = _edgesRT.texture` and `_uniformsBlend.tDiffuse = _weightsRT.texture` —
+and `render()` rebinds only `_uniformsEdges.tDiffuse` and `_uniformsBlend.tColor`.
+`post.ts#demoteSmaaTargets` **replaced both render targets** with 8-bit ones and disposed the
+originals, so the weights pass and the blend pass sampled dead textures, every blend weight came
+back zero, and `SMAABlendShader` returns its input unchanged at zero weight.
+
+Read off a booted page rather than deduced: `_uniformsWeights.tDiffuse.value.name` was
+`SMAAPass.edges` while the pass rendered into `SMAA.edges`.
+
+`tools/bloom-hdr-ab/profile.mjs` bins the pass's effect by the pre-pass |laplacian|, and **that is
+the instrument that can tell a pass that ran from a pass that returned its input**, which a
+whole-frame mean cannot:
+
+```
+mean |dY| per bin      0..2   2..5   5..10  10..20  20..40  40..inf
+webgl BEFORE the fix   1.50   1.06   1.02   1.00    1.00    0.99     <- flat: the dither floor
+webgl AFTER            1.62   1.30   1.58   1.94    2.41    9.37
+webgpu (always worked) 1.53   1.09   1.09   1.25    1.73   10.35
+```
+
+Whole-frame mean |laplacian| through SMAA: **26.24 -> 26.17 before (0.3%), 26.24 -> 20.09 after
+(23%), against the node path's 26.54 -> 20.01.** The node twin,
+`post-nodes.ts#demoteSmaaMaskTargets`, mutates `texture.type` in place and therefore always worked;
+`post.ts` does the same now.
+
+**THE WEBGL PATH IS NO LONGER BYTE-IDENTICAL TO THE PRE-CUTOVER BUILD, DELIBERATELY, AND THE
+SCORECARD HAS NOT BEEN RE-RUN.** Every WebGL capture in this project — including the
+`12 / 13 byte-identical` result in §7f and the reference set behind
+`docs/grade-baseline.json` — was taken with SMAA inert. `npm run shots` plus `tools/metrics.mjs`
+must be re-run at 1440p before this is released; it was not run here because the host had reset its
+GPU driver twice that day and 13 captures at 2560x1440 is the load that did it. What IS known, at
+720p on `03-terrain-closeup`: p99 0.9176 -> 0.8824 and blown pixels 0.445% -> 0.306% on the WebGL
+arm with everything on. Scorecard #34 (edgeCoverage) will move — SMAA removes edge energy, and #34
+already fails 13/13 for being too LOW, so this pushes the wrong way. That is a real cost and it does
+not make the dead pass worth keeping.
+
+`tests/perf-budget.spec.ts` builds a real `SMAAPass`, runs the exported `demoteSmaaTargets` over it
+and asserts the two reference identities. Every source-scanning assertion in that file passed
+throughout the defect's life, because the text really did say `UnsignedByteType` on two mask
+targets; what was false was a reference identity, and the only way to see one is to build the object
+and look. Mutation-tested both ways: restoring the swap reddens it, deleting the type writes reddens
+it.
+
+### Defect 2: the node path's AO is ~1.85x stronger, and it is OPEN
+
+Same fixture, `ao-grade` minus `grade-only`, binned by pre-pass |laplacian|:
+
+```
+mean |dY| per bin   0..2   2..5   5..10  10..20  20..40  40..inf
+webgl               2.11   1.99   3.40   4.82    5.18    6.25
+webgpu              3.83   3.88   6.41   8.92    9.83    11.15
+ratio               1.82   1.96   1.89   1.85    1.90    1.78
+```
+
+**A near-constant multiplier on the darkening across every bin, with the same shape and the same
+per-channel signature** (webgl dR/dG/dB -4.20/-2.74/-1.95, webgpu -6.84/-5.38/-3.90). A different
+normal reconstruction, a different march radius or a different denoise would change the SHAPE. A
+flat ratio says the occlusion TERM is scaled differently.
+
+Already ruled out, by reading: the march and denoise parameters are shared through
+`src/render/ao-params.ts` and both sides apply `pow(ao, scale)`; `GTAOPass.updateGtaoMaterial`
+really does assign each of them (it is not silently dropping the object into a `try/catch`);
+`blendIntensity` and the node's `mix(1, ao, intensity)` both read `cfg.ao.intensity`; and neither AO
+installer has the stale-binding bug SMAA had — `installAoDepthGBuffer`'s wrapper rebinds `tDepth` on
+all three materials every frame.
+
+**THE NEXT PROBE IS TO READ THE AO TERM ITSELF, NOT THE COMPOSITE.** `GTAOPass.output =
+GTAOPass.OUTPUT.Denoise` on one arm against the node `denoised` RTT on the other, same fixture, same
+size, and compare the occlusion buffers directly. Everything above measures AO through the grade,
+which is monotone but not linear, so "1.85x" is a display-space figure and the real ratio is
+unknown. Two things worth checking in the same pass: three's TSL `getNormalFromDepth` swaps the roles
+of the `b`/`t` taps relative to the GLSL `computeNormalFromDepth` that `post.ts` transcribed
+(consistently, so it negates `dpdy` and therefore the normal — which may be deliberate WGSL
+Y-convention compensation, or may not), and `GTAOShader` takes `SAMPLES` as a `#define` while
+`GTAONode` takes it as a uniform.
+
+### Two open items this run turned up and did not close
+
+- **`setPostEnabled(false)` DOES NOTHING ON THE NODE PATH, AND HALF-DOES SOMETHING WORSE.**
+  `PostChain.render`'s contract says "Falls back to renderer.render() when inactive", and the WebGL
+  implementation does. `createNodeBackedPostChain.render` calls `chain.render()` unconditionally —
+  so the whole graph still draws, while `applyToneMapping` has meanwhile switched the RENDERER back
+  to AgX with the grade still in the graph doing AgX itself. `NodeRendererLike` publishes no
+  `render(scene, camera)`, which is why it was left rather than patched in passing.
+- **The halo's ADDED ENERGY still differs by ~13% with AO out of the picture.**
+  `bloom-grade` minus `grade-only`: webgl 0.1389/255 over 3.297% of pixels, webgpu 0.1214/255 over
+  2.415%, same peak (+104.8 / +105.1). p99 and blown-pixel fraction are identical, so this is a
+  slightly tighter halo rather than a dimmer one, and the most likely cause is the one structural
+  difference between the two passes: `UnrealBloomPass`'s high pass samples a TEXTURE (a bilinear 2x2
+  downsample of the composited HDR), while `BloomNode`'s high pass re-evaluates the input
+  EXPRESSION at half resolution. With AO in the chain that is `bilinear(colour * ao)` against
+  `bilinear(colour) * bilinear(ao)`. Not chased; it moves no scorecard check.
+
+---
+
+## 7i. THE TWO READBACKS DISAGREE ABOUT ROW ORDER AND ROW STRIDE — measured 2026-08-17
+
+Reported under `?gpu=webgpu`: *"The 3D models in side menu not showing"*. Every build slot fell back
+to a flat glyph, so a player could not tell what they were building. The cause was one line —
+`CameoRenderer` read its target back with `readRenderTargetPixels`, which is synchronous and exists
+only on `WebGLRenderer` — and the fix is an async path beside it. The interesting part is not the
+fix; it is the two facts a "looks about right" fix would have shipped wrong, both silent.
+
+**MEASURED ON A REAL WEBGPU DEVICE, NOT REASONED ABOUT.** `node tools/cameo-readback-probe.mjs`
+renders a picture that is a different colour in all four corners into a render target built exactly
+as `CameoRenderer.ensureTarget` builds one — 148x116, i.e. a 74x58 build slot at
+`HUD_CAMEO.supersample` 2 — reads it back through each renderer's own readback, and runs the
+SHIPPED `src/render/backend.ts` helpers over the bytes. Real Chrome, `channel: 'chrome'`, both arms
+in one page on two canvases (§7g: one context type per canvas, for life).
+
+```
+                       buffer          derived stride   rows        centre grey
+  webgl                68 672 B        592 B (tight)    bottom-up   128,128,128
+  webgpu               88 912 B        768 B (aligned)  top-down    128,128,128
+```
+
+- **Row order is OPPOSITE.** `gl.readPixels(0, 0, …)` starts at the framebuffer's BOTTOM-left;
+  WebGPU's `copyTextureToBuffer` takes a texel origin and a WebGPU texture's origin is its TOP-left,
+  and three passes our `y` straight through as `origin.y`. Keeping the existing flip on the node
+  path renders every cameo upside down. The probe prints the corners under BOTH row orders side by
+  side, and they differ in all four — so this is a discrimination, not an agreement by symmetry.
+- **Every node-path row is PADDED.** `WebGPUTextureUtils.copyTextureToBuffer` rounds `bytesPerRow`
+  up to 256 bytes because `GPUCommandEncoder.copyTextureToBuffer` requires it, and sizes the buffer
+  `(height - 1) * bytesPerRow + width * bytesPerTexel` — the last row is not padded
+  (mrdoob/three.js#31658). 148 px is 592 B of pixels in a 768 B row, and nothing in the cameo grid
+  is a multiple of 64 px wide, so this is the ordinary case rather than an edge. A blit that assumes
+  tight rows walks diagonally through the image. `readbackStride` therefore DERIVES the stride from
+  the buffer length and throws on a length matching no known layout, so a three upgrade that changes
+  the packing fails loudly instead of shearing twenty portraits.
+- **Pixel format and colour space are the SAME on both**, which is the one thing that did not need a
+  workaround. `RGBAFormat` + `UnsignedByteType` + `SRGBColorSpace` becomes `rgba8unorm-srgb` on
+  WebGPU and `SRGB8_ALPHA8` on WebGL; both encode on store, both hand back `Uint8Array`, and a mid
+  sRGB grey reads 128 on both. `createImageData`/`putImageData` needs no conversion either way. A
+  linear readback would have read 55.
+- **TWO OVERLAPPING READS OF ONE RENDER TARGET DO NOT CROSS**, measured because they happen every
+  frame: `HUD_CAMEO.perFrameBudget` is 2 and `CameoRenderer` owns ONE target, so a frame renders
+  cameo A, issues its read, renders cameo B over the top and issues a second read with A's still
+  outstanding. If the copies were not ordered against the renders, A's slot would show B's picture —
+  the wrong unit in the wrong slot, silently. The probe's third arm renders two DIFFERENT pictures
+  into one target with both reads in flight and requires each to hold its own; it does. The reason
+  is that both submits are synchronous: `Renderer.render` ends in `backend.finishRender` ->
+  `queue.submit`, and `copyTextureToBuffer` submits its encoder before its first `await`, so the
+  queue sees render A, copy A, render B, copy B. The same fact is why disposing a render target
+  cannot corrupt a read already issued against it.
+- **`toneMappingExposure * 1.42` in `CameoRenderer.render` is INERT, and has been on the WebGL path
+  since it was written.** Neither renderer tone-maps into a user render target:
+  `WebGLPrograms.getParameters` sets `toneMapping = NoToneMapping` unless the current target is null
+  or XR, and the node `Renderer`'s `currentToneMapping` getter does the same through
+  `isOutputTarget`. It is kept — identically on both paths — because removing it changes the WebGL
+  path's uniform writes and that is a separate question. Do not "fix" the cameo exposure by tuning
+  this number; it does nothing.
+
+`tests/cameo-readback.spec.ts` pins the arithmetic without a GPU (31 assertions, 20 deliberate
+breaks each red on exactly the tests naming them), including that the shipped blitter is
+byte-for-byte the loop it replaced when handed WebGL's layout. **It cannot establish the two facts
+in the table above** — only the probe can, and its verdict is here.
 
 ## 8. Unverified — do not quote these as fact
 

@@ -36,13 +36,36 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { AO_HALF_RES_SCALE, aoDenoiseRadius, aoTargetSize, msaaSampleCount } from '../src/render/post';
+import * as THREE from 'three';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+
+import {
+  AO_HALF_RES_SCALE, aoDenoiseRadius, aoTargetSize, demoteSmaaTargets, msaaSampleCount,
+  type SmaaPassInternals,
+} from '../src/render/post';
+import { PASS_ORDER } from '../src/render/post-order';
 import { RENDER_CONFIG } from '../src/render/renderer';
 import { defaultSettings } from '../src/shell/settings-store';
 import { VFX_LIGHT_POOL_BY_TIER, VFX_LIGHT_POOL } from '../src/core/config';
 
 const ROOT = join(__dirname, '..');
 const POST_SRC = readFileSync(join(ROOT, 'src/render/post.ts'), 'utf8');
+/*
+ * `PASS_ORDER` DECLARED TO MOVE OUT OF `post.ts`, AND THESE GUARDS FOLLOWED IT.
+ *
+ * It lives in `src/render/post-order.ts` now, so that `src/render/post-nodes.ts`
+ * — the TSL port of this chain — can read the canonical order without importing
+ * `EffectComposer`, `UnrealBloomPass` and `GTAOPass` to get at a five-element
+ * array. `post.ts` re-exports it and every existing importer is unchanged.
+ *
+ * The two assertions below used to regex it out of `POST_SRC` and silently
+ * matched nothing once it moved, which is precisely the failure mode
+ * `expect(order).not.toBeNull()` was there to catch — it worked. They read the
+ * new home now, and the array-order half is asserted against the IMPORTED value
+ * rather than against source text, which is strictly stronger: a regex cannot
+ * tell a re-export from a declaration.
+ */
+const ORDER_SRC = readFileSync(join(ROOT, 'src/render/post-order.ts'), 'utf8');
 const RENDERER_SRC = readFileSync(join(ROOT, 'src/render/renderer.ts'), 'utf8');
 
 /**
@@ -138,14 +161,12 @@ describe('post.ts wiring', () => {
   });
 
   it('still keeps AO ahead of bloom', () => {
-    // An occluded crevice must not bloom. The order is the file's contract and
-    // no performance change is allowed to quietly reshuffle it.
-    const order = POST_SRC.match(/PASS_ORDER[^=]*=\s*\[([^\]]*)\]/);
-    expect(order).not.toBeNull();
-    const ids = (order as RegExpMatchArray)[1];
-    expect(ids.indexOf("'ao'")).toBeGreaterThan(ids.indexOf("'render'"));
-    expect(ids.indexOf("'bloom'")).toBeGreaterThan(ids.indexOf("'ao'"));
-    expect(ids.indexOf("'smaa'")).toBeGreaterThan(ids.indexOf("'grade'"));
+    // An occluded crevice must not bloom. The order is the chain's contract and
+    // no performance change is allowed to quietly reshuffle it. Asserted on the
+    // real array — both post chains index it, so this covers both.
+    expect(PASS_ORDER.indexOf('ao')).toBeGreaterThan(PASS_ORDER.indexOf('render'));
+    expect(PASS_ORDER.indexOf('bloom')).toBeGreaterThan(PASS_ORDER.indexOf('ao'));
+    expect(PASS_ORDER.indexOf('smaa')).toBeGreaterThan(PASS_ORDER.indexOf('grade'));
   });
 
   it('keeps SMAA last, which is what licenses its 8-bit internal targets', () => {
@@ -164,16 +185,62 @@ describe('post.ts wiring', () => {
      * protects the LOOK, this one protects a memory-format decision that has no
      * other guard. If you reorder the chain, revert `demoteSmaaTargets` in the
      * same commit. */
-    const order = POST_CODE.match(/PASS_ORDER[^=]*=\s*\[([^\]]*)\]/);
-    expect(order).not.toBeNull();
-    const ids = ((order as RegExpMatchArray)[1].match(/'([a-z]+)'/g) ?? []);
-    expect(ids.length).toBeGreaterThan(1);
-    expect(ids[ids.length - 1], 'SMAA must be the last pass').toBe("'smaa'");
+    // The array itself, and its DECLARATION, so that a re-export cannot satisfy
+    // this while the real order lives somewhere nobody is watching.
+    expect(PASS_ORDER.length).toBeGreaterThan(1);
+    expect(PASS_ORDER[PASS_ORDER.length - 1], 'SMAA must be the last pass').toBe('smaa');
+    const declared = stripComments(ORDER_SRC).match(/PASS_ORDER[^=]*=\s*\[([^\]]*)\]/);
+    expect(declared, 'PASS_ORDER must be DECLARED in post-order.ts').not.toBeNull();
+    const ids = ((declared as RegExpMatchArray)[1].match(/'([a-z]+)'/g) ?? []);
+    expect(ids[ids.length - 1]).toBe("'smaa'");
     // POST_CODE, not POST_SRC: every string below also appears in the prose
     // that explains it, and prose must not be able to satisfy the assertion.
     expect(POST_CODE, 'the demotion and its precondition must stay together')
       .toContain('demoteSmaaTargets');
-    expect(POST_CODE).toMatch(/type:\s*THREE\.UnsignedByteType/);
+    expect(POST_CODE).toMatch(/THREE\.UnsignedByteType/);
+  });
+
+  it('leaves SMAA\'s materials bound to the targets the pass renders into', () => {
+    /* THE ONE THAT MATTERS, AND THE ONE THE SOURCE SCANS COULD NOT SEE.
+     *
+     * `demoteSmaaTargets` used to build two replacement render targets and
+     * dispose the originals. `SMAAPass` binds `_uniformsWeights.tDiffuse` to
+     * `_edgesRT.texture` and `_uniformsBlend.tDiffuse` to `_weightsRT.texture`
+     * ONCE, in its constructor, and `render()` never rebinds either — so the
+     * swap left two of the three sub-passes sampling dead textures, every blend
+     * weight came back zero, and SMAA returned its input while still costing
+     * three full-screen passes a frame.
+     *
+     * Every assertion in this file's SMAA section passed throughout: they read
+     * `post.ts` as TEXT, and the text said `UnsignedByteType` on two mask
+     * targets, which was true. What was false was a reference identity, and the
+     * only way to see it is to build the pass and look. So this one does.
+     *
+     * Mutation-tested: restoring the swap turns the first two expectations red
+     * (`SMAAPass.edges` !== `SMAA.edges`), and removing the type writes turns
+     * the last two red. */
+    const scope = globalThis as unknown as { Image?: unknown };
+    const hadImage = scope.Image !== undefined;
+    // `SMAAPass` allocates `new Image()` for its area and search lookup tables,
+    // and this file runs under `environment: 'node'`. Nothing decodes them here
+    // — the pass is constructed and inspected, never rendered.
+    if (!hadImage) scope.Image = class { src = ''; onload: (() => void) | null = null; };
+    try {
+      const pass = new SMAAPass() as unknown as SmaaPassInternals & {
+        _uniformsWeights: { tDiffuse: { value: unknown } };
+        _uniformsBlend: { tDiffuse: { value: unknown } };
+      };
+      demoteSmaaTargets(pass);
+
+      expect(pass._uniformsWeights.tDiffuse.value, 'weights pass must read the edges target')
+        .toBe(pass._edgesRT?.texture);
+      expect(pass._uniformsBlend.tDiffuse.value, 'blend pass must read the weights target')
+        .toBe(pass._weightsRT?.texture);
+      expect(pass._edgesRT?.texture.type).toBe(THREE.UnsignedByteType);
+      expect(pass._weightsRT?.texture.type).toBe(THREE.UnsignedByteType);
+    } finally {
+      if (!hadImage) delete scope.Image;
+    }
   });
 
   it('renders the shadow map once a frame, not once per render() call', () => {
@@ -265,25 +332,29 @@ describe('MSAA multisamples the scene pass and nothing else', () => {
     expect(declared).toEqual(['0']);
   });
 
-  it('constructs exactly three render targets, exactly one of them multisampled', () => {
-    /* TWO became THREE when `demoteSmaaTargets` started replacing SMAA's
-     * `_edgesRT` and `_weightsRT` — one constructor, called twice, swapping
-     * three's hardcoded `HalfFloatType` for `UnsignedByteType` on two masks
-     * defined on 0..1.
+  it('constructs exactly two render targets, exactly one of them multisampled', () => {
+    /* THIS READ "EXACTLY THREE" AND THE THIRD WAS A BUG.
      *
-     * The count is not what this test protects, and bumping it is not the
-     * point. What it protects is "exactly one of them multisampled", and that
-     * half is unchanged and asserted below: `samples` appears once, on the
-     * scene target. A render target that quietly acquires a sample count is the
-     * defect this whole section exists to prevent a second time. */
-    expect(POST_CODE.match(/new THREE\.WebGLRenderTarget\(/g)).toHaveLength(3);
+     * Two became three when `demoteSmaaTargets` started REPLACING SMAA's
+     * `_edgesRT` and `_weightsRT` rather than retyping them (one constructor,
+     * called twice). It is back to two — the composer target and the
+     * multisampled scene target — because that replacement silently unbound two
+     * of SMAA's three materials; see the binding test above, which is the guard
+     * this count never was.
+     *
+     * The count is not what this test protects and bumping it is not the point.
+     * What it protects is "exactly one of them multisampled": `samples` appears
+     * once, on the scene target. A render target that quietly acquires a sample
+     * count is the defect this whole section exists to prevent a second time. */
+    expect(POST_CODE.match(/new THREE\.WebGLRenderTarget\(/g)).toHaveLength(2);
     expect(POST_CODE.match(/samples: want,/g)).toHaveLength(1);
-    // And the two SMAA replacements name no sample count at all — grep the
-    // helper's body rather than trusting the global count above.
+    // And the demotion allocates NOTHING. A new target there is the failure
+    // mode by construction, whether or not it names a sample count.
     const smaaStart = POST_CODE.indexOf('function demoteSmaaTargets');
     expect(smaaStart).toBeGreaterThan(-1);
     const smaaBody = POST_CODE.slice(smaaStart, smaaStart + 1400);
-    expect(smaaBody).toContain('new THREE.WebGLRenderTarget(');
+    expect(smaaBody, 'the demotion must retype in place, never reallocate')
+      .not.toContain('new THREE.WebGLRenderTarget(');
     expect(smaaBody, 'an SMAA mask target must never be multisampled')
       .not.toMatch(/samples/);
   });

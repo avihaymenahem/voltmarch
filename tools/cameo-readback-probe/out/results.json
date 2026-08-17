@@ -1,0 +1,181 @@
+{
+  "width": 148,
+  "height": 116,
+  "expected": {
+    "topLeft": 16719904,
+    "topRight": 2162464,
+    "bottomLeft": 2105599,
+    "bottomRight": 16776992,
+    "centre": 8421504
+  },
+  "arms": [
+    {
+      "arm": "webgl",
+      "live": "webgl",
+      "ok": true,
+      "error": null,
+      "raw": {
+        "constructor": "Uint8Array",
+        "byteLength": 68672,
+        "tightLength": 68672,
+        "alignedLength": 88912,
+        "firstTexel": [
+          0,
+          0,
+          0,
+          255
+        ]
+      },
+      "derived": {
+        "stride": 592,
+        "rowOrder": "bottom-up"
+      },
+      "samples": {
+        "topLeft": {
+          "r": 255,
+          "g": 32,
+          "b": 32
+        },
+        "topRight": {
+          "r": 32,
+          "g": 255,
+          "b": 32
+        },
+        "bottomLeft": {
+          "r": 32,
+          "g": 32,
+          "b": 255
+        },
+        "bottomRight": {
+          "r": 255,
+          "g": 255,
+          "b": 32
+        },
+        "centre": {
+          "r": 128,
+          "g": 128,
+          "b": 128
+        }
+      },
+      "wrongWay": {
+        "topLeft": {
+          "r": 32,
+          "g": 32,
+          "b": 255
+        },
+        "topRight": {
+          "r": 255,
+          "g": 255,
+          "b": 32
+        },
+        "bottomLeft": {
+          "r": 255,
+          "g": 32,
+          "b": 32
+        },
+        "bottomRight": {
+          "r": 32,
+          "g": 255,
+          "b": 32
+        },
+        "centre": {
+          "r": 128,
+          "g": 128,
+          "b": 128
+        }
+      }
+    },
+    {
+      "arm": "webgpu",
+      "live": "webgpu",
+      "ok": true,
+      "error": null,
+      "raw": {
+        "constructor": "Uint8Array",
+        "byteLength": 88912,
+        "tightLength": 68672,
+        "alignedLength": 88912,
+        "firstTexel": [
+          0,
+          0,
+          0,
+          255
+        ]
+      },
+      "derived": {
+        "stride": 768,
+        "rowOrder": "top-down"
+      },
+      "samples": {
+        "topLeft": {
+          "r": 255,
+          "g": 32,
+          "b": 32
+        },
+        "topRight": {
+          "r": 32,
+          "g": 255,
+          "b": 32
+        },
+        "bottomLeft": {
+          "r": 32,
+          "g": 32,
+          "b": 255
+        },
+        "bottomRight": {
+          "r": 255,
+          "g": 255,
+          "b": 32
+        },
+        "centre": {
+          "r": 128,
+          "g": 128,
+          "b": 128
+        }
+      },
+      "wrongWay": {
+        "topLeft": {
+          "r": 32,
+          "g": 32,
+          "b": 255
+        },
+        "topRight": {
+          "r": 255,
+          "g": 255,
+          "b": 32
+        },
+        "bottomLeft": {
+          "r": 255,
+          "g": 32,
+          "b": 32
+        },
+        "bottomRight": {
+          "r": 32,
+          "g": 255,
+          "b": 32
+        },
+        "centre": {
+          "r": 128,
+          "g": 128,
+          "b": 128
+        }
+      }
+    }
+  ],
+  "interleave": {
+    "ok": true,
+    "error": null,
+    "first": {
+      "r": 255,
+      "g": 32,
+      "b": 32
+    },
+    "second": {
+      "r": 255,
+      "g": 255,
+      "b": 32
+    },
+    "wantFirst": 16719904,
+    "wantSecond": 16776992
+  }
+}

@@ -66,6 +66,17 @@ export const gaitUniforms = {
 };
 
 /**
+ * `aState.w` is a phase in TURNS; the shader wants radians. Exported so the TSL
+ * port in `./gait-nodes.ts` multiplies by the SAME number rather than by a
+ * second copy of tau typed out to a different precision — the drift
+ * `terrain-uniforms.ts` exists to prevent, at its smallest possible scale.
+ *
+ * It is interpolated into the GLSL below and prints as `6.2831853`, which is
+ * character-for-character what that shader has always contained.
+ */
+export const GAIT_TURNS_TO_RADIANS = 6.2831853;
+
+/**
  * Inject the walk cycle into a unit material.
  *
  * ORDER MATTERS AND IS NOT NEGOTIABLE: this must run BEFORE `applyShroudTint`,
@@ -97,7 +108,7 @@ void main() {`,
     // aGait.x is 0 for every welded vertex, which is the overwhelming majority
     // of them and every single one on a vehicle. The multiply costs less than
     // the branch would.
-    float vmSwing = sin(aStateGaitPhase * 6.2831853) * uGaitSwing * aGait.x;
+    float vmSwing = sin(aStateGaitPhase * ${GAIT_TURNS_TO_RADIANS}) * uGaitSwing * aGait.x;
     float vmC = cos(vmSwing);
     float vmS = sin(vmSwing);
     float vmY = transformed.y - aGait.y;
@@ -114,7 +125,7 @@ void main() {`,
     '#include <beginnormal_vertex>',
     `#include <beginnormal_vertex>
   {
-    float vmSwingN = sin(aStateGaitPhase * 6.2831853) * uGaitSwing * aGait.x;
+    float vmSwingN = sin(aStateGaitPhase * ${GAIT_TURNS_TO_RADIANS}) * uGaitSwing * aGait.x;
     float vmCN = cos(vmSwingN);
     float vmSN = sin(vmSwingN);
     float vmNy = objectNormal.y;

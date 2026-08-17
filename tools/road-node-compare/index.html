@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VOLTMARCH road markings: GLSL vs TSL</title>
+<style>
+  html, body { margin: 0; background: #0b0e12; color: #cfd8e3;
+    font: 13px/1.4 ui-monospace, monospace; }
+  .grid { display: grid; grid-template-columns: repeat(2, 640px); gap: 8px; padding: 8px; }
+  figure { margin: 0; }
+  figcaption { padding: 4px 0; }
+  canvas { display: block; width: 640px; height: 480px; background: #000; }
+</style>
+</head>
+<body>
+<div class="grid">
+  <figure><figcaption>glsl-webgl (reference)</figcaption><canvas id="glsl-webgl"></canvas></figure>
+  <figure><figcaption>tsl-webgpu (the port)</figcaption><canvas id="tsl-webgpu"></canvas></figure>
+  <figure><figcaption>tsl-webgl2 (node path, GL backend)</figcaption><canvas id="tsl-webgl2"></canvas></figure>
+  <figure><figcaption>glsl-webgpu (CONTROL: injection dead)</figcaption><canvas id="glsl-webgpu"></canvas></figure>
+</div>
+<script type="module" src="./page.js"></script>
+</body>
+</html>

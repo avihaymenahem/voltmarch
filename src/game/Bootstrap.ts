@@ -141,7 +141,7 @@ export function bootstrap(options: BootOptions): GameHandle {
     preserveDrawingBuffer: shotMode || undefined,
   });
 
-  const sceneRig = createScene({ renderer: handle.renderer });
+  const sceneRig = createScene({ handle });
 
   const cameraRig = createCameraRig({
     domElement: options.canvas,
@@ -343,7 +343,7 @@ export function bootstrap(options: BootOptions): GameHandle {
     .init()
     .then(() => {
       // Compile every shader now rather than hitching on frame one.
-      handle.renderer.compile(sceneRig.scene, cameraRig.camera);
+      (handle.webgl ?? handle.node!).compile(sceneRig.scene, cameraRig.camera);
       sceneRig.bakeEnvironment();
       // Paint once before main.ts drops the loading curtain, so the reveal is
       // a battlefield and not one frame of clear colour. Zero dt under `?shot=`

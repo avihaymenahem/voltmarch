@@ -51,7 +51,7 @@ each with an Oil Derrick that pays its holder every second, a hospital and an ap
 five riflemen can turn into a firing position. Nobody builds them; you take them, or you clear them
 out.
 
-Ten battlefields, three of which carry a real sea. **Sunder Atoll** is the one the navy exists for —
+Seven battlefields, three of which carry a real sea. **Sunder Atoll** is the one the navy exists for —
 four islands, one army each, 53.8% of the map underwater and no land route between any two of them,
 so every crossing is by ship or it does not happen.
 

@@ -48,6 +48,7 @@
  */
 
 import * as THREE from 'three';
+import { nodePath } from '../render/gpu-path';
 import {
   DECAL_ATLAS_SIZE, DECAL_DARKEN_FLOOR, DECAL_GRID, DECAL_LIFT, DECAL_POOL,
   DECAL_SWEEP_PER_FRAME,
@@ -498,7 +499,9 @@ export class DecalField {
   readonly capacity: number;
 
   private readonly geometry: THREE.BufferGeometry;
-  private readonly material: THREE.ShaderMaterial;
+  private readonly material: THREE.Material;
+  /** Advances the fade clock. One call per frame, either backend. */
+  private readonly setMaterialTime: (t: number) => void;
   private readonly atlas: THREE.DataTexture;
   private readonly scene: THREE.Scene;
   private readonly heightAt: (x: number, z: number) => number;
@@ -606,7 +609,14 @@ export class DecalField {
 
     this.atlas = buildDecalAtlas();
 
-    this.material = new THREE.ShaderMaterial({
+    /*
+     * `ShaderMaterial` IS NOT IN `StandardNodeLibrary`, and this one blends
+     * `(DstColor, Zero)` — so under `WebGPURenderer` a bare `NodeMaterial`
+     * would paint every scorch, crater and tread mark solid black.
+     * `render/ground-overlay-nodes.ts` is the twin.
+     */
+    const np = nodePath();
+    const glsl = np !== null ? null : new THREE.ShaderMaterial({
       name: 'GroundDecals',
       uniforms: {
         uAtlas: { value: this.atlas },
@@ -647,6 +657,15 @@ export class DecalField {
       polygonOffsetFactor: -3,
       polygonOffsetUnits: -3,
     });
+
+    if (glsl !== null) {
+      this.material = glsl;
+      this.setMaterialTime = (t) => { glsl.uniforms.uTime.value = t; };
+    } else {
+      const set = np!.createDecalMaterial(this.atlas, ATLAS_COLS, TILE_INSET);
+      this.material = set.material;
+      this.setMaterialTime = (t) => set.setTime(t);
+    }
 
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.name = 'GroundDecals';
@@ -787,7 +806,7 @@ export class DecalField {
    */
   frame(dt: number): void {
     this.clock += dt;
-    this.material.uniforms.uTime.value = this.clock;
+    this.setMaterialTime(this.clock);
 
     // Collapse expired slots so their triangles go degenerate and stop
     // rasterising. Bounded work: DECAL_SWEEP_PER_FRAME slots, round robin.

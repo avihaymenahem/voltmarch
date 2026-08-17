@@ -9,6 +9,32 @@
  *   node tools/shoot.mjs hud combat      # only shots whose name matches
  *   node tools/shoot.mjs --headed        # watch it happen
  *   node tools/shoot.mjs --no-build      # serve the EXISTING dist/, do not rebuild
+ *   node tools/shoot.mjs --gpu=webgpu    # the node path, in REAL Chrome, into shots-webgpu/
+ *
+ * ============================================================================
+ * `--gpu=webgpu` AND WHY IT CANNOT USE THE BUNDLED CHROMIUM
+ * ============================================================================
+ * **Playwright's bundled Chromium cannot get a WebGPU device on this machine.**
+ * `requestAdapter()` returns a real, non-fallback adapter with the full feature
+ * list; `requestDevice()` then fails with
+ * `OperationError: DynamicLib.Open: dxil.dll Windows Error: 87`, Dawn refusing
+ * to load a DLL that is PRESENT in that Chromium's own directory — error 87 is
+ * `ERROR_INVALID_PARAMETER`, what a bare-name `LoadLibrary` returns once
+ * Chromium has restricted its default DLL directories. `WebGPURenderer` then
+ * takes its WebGL2 fallback behind ONE `console.warn`, and this harness would
+ * photograph node-materials-over-WebGL2 and label the column "webgpu".
+ *
+ * That is the exact shape of the SwiftShader defect this file already records
+ * at 76.5% of pixels changed while it printed `ok`. Real Chrome and real Edge
+ * both give a genuine device, headless included, so this arm launches with
+ * `channel: 'chrome'`.
+ *
+ * **`navigator.gpu` AND A LIVE ADAPTER ARE NOT EVIDENCE.** Both were true
+ * throughout the failing case. The only reliable read is
+ * `renderer.backend.isWebGPUBackend === true`, and the per-shot assertion below
+ * FAILS THE CAPTURE on anything else rather than annotating it. See
+ * `docs/RENDER_FINDINGS.md` §7c.
+ * ============================================================================
  *
  * `--no-build` exists for one job: measuring run-to-run variance. Two captures
  * are only a measurement of the HARNESS if they ran the same bytes, and with
@@ -138,7 +164,15 @@ import { dirname, join } from 'node:path';
 import { build, serve } from './lib/serve.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = join(ROOT, 'shots');
+/**
+ * `shots/` for the shipping renderer, `shots-webgpu/` for the node path.
+ *
+ * TWO BACKENDS MEANS TWO GRADE BASELINES — §4.5 of the migration plan — and the
+ * arms may never share a directory: one `_report.json` describing frames from
+ * two renderers is not a grade of anything, and `tools/metrics.mjs` globs
+ * whatever is there. Assigned again after the argv parse below.
+ */
+let OUT = join(ROOT, 'shots');
 
 /**
  * Where the preview is ASKED to listen, and nothing more.
@@ -448,6 +482,14 @@ if (preflightProblems.length) {
 const argv = process.argv.slice(2);
 const headed = argv.includes('--headed');
 const noBuild = argv.includes('--no-build');
+/** `webgl` (default) or `webgpu`. Chooses the browser, the boot flag and the out dir. */
+const GPU = (argv.find((a) => a.startsWith('--gpu='))?.slice('--gpu='.length) ?? 'webgl').toLowerCase();
+if (GPU !== 'webgl' && GPU !== 'webgpu') {
+  console.error(`--gpu must be 'webgl' or 'webgpu', got ${JSON.stringify(GPU)}`);
+  process.exit(1);
+}
+const NODE_PATH = GPU === 'webgpu';
+if (NODE_PATH) OUT = join(ROOT, 'shots-webgpu');
 const wanted = argv.filter((a) => !a.startsWith('--'));
 const shots = wanted.length ? SHOTS.filter((s) => wanted.some((w) => s.name.includes(w))) : SHOTS;
 
@@ -485,7 +527,7 @@ if (existsSync(LOCK)) {
 }
 writeFileSync(LOCK, `pid ${process.pid}\n${Date.now()}\n`);
 
-const STAGE = join(ROOT, '.shots-staging');
+const STAGE = join(ROOT, NODE_PATH ? '.shots-staging-webgpu' : '.shots-staging');
 rmSync(STAGE, { recursive: true, force: true });
 mkdirSync(STAGE, { recursive: true });
 
@@ -542,6 +584,10 @@ console.log(`> serving ${BASE} (pid ${server.child.pid}, dist/ verified)`);
 // critique, so we assert the context afterwards.
 const browser = await chromium.launch({
   headless: !headed,
+  // See the `--gpu=webgpu` block in the header: the BUNDLED Chromium cannot
+  // create a WebGPU device here (Dawn / dxil.dll / Windows error 87) and would
+  // silently hand back the WebGL2 fallback. Real Chrome can, headless included.
+  ...(NODE_PATH ? { channel: 'chrome' } : {}),
   args: [
     '--use-angle=default', '--enable-gpu', '--ignore-gpu-blocklist',
     '--enable-unsafe-swiftshader', '--disable-gpu-sandbox',
@@ -553,6 +599,8 @@ const report = {
   viewport: VIEWPORT,
   poseTolerance: POSE_TOLERANCE,
   built: !noBuild,
+  /** Which renderer produced these frames. Never inferred — read per shot. */
+  gpu: GPU,
   /** The origin OUR preview announced. Recorded so "whose build was that?" is answerable. */
   origin: BASE,
   webgl: null,
@@ -606,6 +654,7 @@ async function captureShot(shot, attempt) {
     // Pinned, not detected. See CAPTURE_TIER. A fixture that declares its own
     // `tier` flag wins, so a future shot can deliberately grade another tier.
     if (!qs.has('tier')) qs.set('tier', CAPTURE_TIER);
+    if (NODE_PATH) qs.set('gpu', 'webgpu');
     await page.goto(`${BASE}?${qs}`, { waitUntil: 'load' });
 
     await page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 60_000 });
@@ -670,11 +719,41 @@ async function captureShot(shot, attempt) {
      * one off another is not a grade of anything, and nothing downstream can
      * tell that from an art change.
      */
-    const webgl = await page.evaluate(() => {
+    /*
+     * ON THE NODE PATH THIS ASSERTS THE LIVE BACKEND, PER SHOT, AND FAILS.
+     *
+     * `window.__VM.renderer` is null under `?gpu=webgpu` by design — it is
+     * declared as "the WebGLRenderer" and reports null rather than handing back
+     * an object of a different class with a different `info`, a different
+     * `capabilities` and no `getContext()`. The backend comes off
+     * `rendererHandle.backend`, which `liveBackendOf` derived from
+     * `renderer.backend.isWebGPUBackend` — the ONE reliable signal. A page that
+     * took the WebGL2 fallback reports `webgl2-fallback`, and the shot dies here
+     * rather than being written into `_report.json` under `gpu: webgpu`.
+     */
+    const webgl = await page.evaluate((wantNode) => {
+      const handle = window.__VM.rendererHandle;
+      if (wantNode) {
+        const backend = handle?.backend ?? 'missing';
+        if (backend !== 'webgpu') return `!BACKEND:${backend}`;
+        // The adapter string, for the same "which GPU took this?" question the
+        // WebGL arm answers. WebGPU exposes no unmasked renderer name, so this
+        // is the throwaway WebGL probe `createRenderer` already ran at boot.
+        return `webgpu · ${handle.capabilities?.gpu ?? 'unknown'}`;
+      }
       const gl = window.__VM.renderer.getContext();
       const d = gl.getExtension('WEBGL_debug_renderer_info');
       return d ? gl.getParameter(d.UNMASKED_RENDERER_WEBGL) : 'masked';
-    });
+    }, NODE_PATH);
+    if (typeof webgl === 'string' && webgl.startsWith('!BACKEND:')) {
+      throw new Error(
+        `?gpu=webgpu but the live backend is '${webgl.slice('!BACKEND:'.length)}'. ` +
+          'WebGPURenderer takes its WebGL2 fallback behind a single console.warn, and a frame ' +
+          'captured through it is a DIFFERENT renderer — node materials over WebGL2, which ' +
+          'Stage A measured as the slowest of the three arms. Refusing to photograph it. ' +
+          'See docs/RENDER_FINDINGS.md 7c.',
+      );
+    }
     if (report.webgl === null) {
       report.webgl = webgl;
       console.log(`\n  webgl: ${webgl}\n  ${shot.name} ... `);

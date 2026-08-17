@@ -43,6 +43,15 @@
      file in the repo allowed to touch Node APIs. */
   /* tests/** is checked by tsconfig.test.json instead — those files run in Node
      and need `process` / `node:fs`, which game code must never see. */
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "shots", "tools"]
+  /* `tools/grade-ab/probe.ts` is named EXPLICITLY, and it is the only file
+     outside src/ in this program. It is browser code — it imports `src/render`
+     and runs under vite in a real Chrome — so tsconfig.node.json (Node globals,
+     no DOM) is the wrong home for it, and it is the instrument that proves the
+     TSL grade matches the shipping GLSL one (docs/RENDER_FINDINGS.md §7d). A
+     verification tool nobody typechecks is a verification tool that rots.
+     `tools` is no longer blanket-excluded because an exclude filters the
+     include, and the include lists that one path rather than a glob — nothing
+     else under tools/ enters this program. */
+  "include": ["src/**/*.ts", "tools/grade-ab/probe.ts"],
+  "exclude": ["node_modules", "dist", "shots"]
 }

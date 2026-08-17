@@ -1,0 +1,130 @@
+{
+  "origin": "http://127.0.0.1:5381",
+  "when": "2026-08-17T14:49:07.458Z",
+  "arms": [
+    {
+      "arm": "glsl-webgl",
+      "backend": "webgl",
+      "ms": 249.5,
+      "drawCalls": 5,
+      "triangles": 458,
+      "programs": 5,
+      "deviceErrors": []
+    },
+    {
+      "arm": "glsl-webgl-nodepth",
+      "backend": "webgl",
+      "ms": 32.90000000037253,
+      "drawCalls": 5,
+      "triangles": 458,
+      "programs": 4,
+      "deviceErrors": []
+    },
+    {
+      "arm": "tsl-override",
+      "backend": "webgpu",
+      "ms": 0.900000000372529,
+      "drawCalls": 5,
+      "triangles": 231,
+      "programs": 0,
+      "deviceErrors": []
+    },
+    {
+      "arm": "tsl-nooverride",
+      "backend": "webgpu",
+      "ms": 2.799999998882413,
+      "drawCalls": 5,
+      "triangles": 231,
+      "programs": 0,
+      "deviceErrors": [
+        "GPUValidationError: [Texture \"ShadowDepthTexture\"] usage (TextureBinding|RenderAttachment) includes writable usage and another usage in the same synchronization scope.\n - While validating render pass usage.\n - While finishing [CommandEncoder \"renderContext_4\"].\n",
+        "GPUValidationError: [Invalid CommandBuffer from CommandEncoder \"renderContext_4\"] is invalid due to a previous error.\n - While calling [Queue].Submit([[Invalid CommandBuffer from CommandEncoder \"renderContext_4\"]])\n"
+      ]
+    },
+    {
+      "arm": "tsl-nooverride-noreceive",
+      "backend": "webgpu",
+      "ms": 0.5,
+      "drawCalls": 5,
+      "triangles": 231,
+      "programs": 0,
+      "deviceErrors": []
+    },
+    {
+      "arm": "tsl-castshadow",
+      "backend": "webgpu",
+      "ms": 0.5,
+      "drawCalls": 5,
+      "triangles": 231,
+      "programs": 0,
+      "deviceErrors": []
+    }
+  ],
+  "error": null,
+  "warnings": [],
+  "diffs": {
+    "glsl-webgl-nodepth": {
+      "changed": 0.04433796777546777,
+      "strong": 0.03754547817047817,
+      "darker": 0.030395660083160084,
+      "maxDelta": 160,
+      "meanDelta": 2.3822277806652807
+    },
+    "tsl-override": {
+      "changed": 0.09372726091476091,
+      "strong": 0.03771439708939709,
+      "darker": 0.030402156964656965,
+      "maxDelta": 160,
+      "meanDelta": 2.438627208939709
+    },
+    "tsl-nooverride": {
+      "changed": 0.8965469074844075,
+      "strong": 0.8943899428274428,
+      "darker": 0.8931198024948025,
+      "maxDelta": 160,
+      "meanDelta": 62.380090306652804
+    },
+    "tsl-nooverride-noreceive": {
+      "changed": 0.054716735966735965,
+      "strong": 0.01315293659043659,
+      "darker": 0.004700493762993763,
+      "maxDelta": 170,
+      "meanDelta": 0.658881237006237
+    },
+    "tsl-castshadow": {
+      "changed": 0.05465501559251559,
+      "strong": 0.013084719334719335,
+      "darker": 0.00460304054054054,
+      "maxDelta": 170,
+      "meanDelta": 0.6552040020790021
+    },
+    "tsl-nooverride-vs-tsl-override": {
+      "changed": 0.8707835239085239,
+      "strong": 0.8699194386694387,
+      "darker": 0.8680905665280665,
+      "maxDelta": 160,
+      "meanDelta": 60.59079391891892
+    },
+    "tsl-nooverride-noreceive-vs-tsl-override": {
+      "changed": 0.06257471413721413,
+      "strong": 0.04693996881496881,
+      "darker": 0.008514163201663202,
+      "maxDelta": 170,
+      "meanDelta": 2.910076663201663
+    },
+    "tsl-castshadow-vs-tsl-override": {
+      "changed": 0.06251949064449064,
+      "strong": 0.046881496881496884,
+      "darker": 0.008416709979209978,
+      "maxDelta": 170,
+      "meanDelta": 2.906389682952183
+    },
+    "tsl-castshadow-vs-tsl-nooverride-noreceive": {
+      "changed": 0.00024363305613305615,
+      "strong": 0.00016891891891891893,
+      "darker": 0,
+      "maxDelta": 69,
+      "meanDelta": 0.006353950103950104
+    }
+  }
+}

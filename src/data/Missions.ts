@@ -138,7 +138,11 @@ export const UNLOCKS = {
   superIronCurtain: 'struct.superweapon.ironcurtain',
   superSolarLance: 'struct.superweapon.solarlance',
 
-  /* -- maps: two starters, four earned ------------------------------------ */
+  /* -- maps: seven ship, three are starters, these four are earned ---------
+   * The starters are `temperate-valley`, `airbase-flats` and `sunder-atoll`;
+   * `STARTER_MAPS` in `src/shell/SkirmishSetup.ts` is the list and
+   * `tests/progression-gate.spec.ts` §8 checks the two agree in both
+   * directions — every non-starter pays out, and no starter does. */
   mapFrozenSector: 'map.frozen-sector',
   mapIndustrialGrid: 'map.industrial-grid',
   mapContestedStrait: 'map.contested-strait',
@@ -161,8 +165,11 @@ export const UNLOCKS = {
    * not one to repeat while fixing it.
    *
    * Two are new `UNLOCK_TAGS` groups over content that was ungated, is mirrored
-   * one-per-army, and is nowhere near the opening path. Three are new
-   * battlefields (below). Cosmetics were NOT an option: all fourteen are
+   * one-per-army, and is nowhere near the opening path. THE OTHER THREE WERE
+   * NEW BATTLEFIELDS AND DID NOT LAST — the maps were preset-clones and have
+   * since been cut, taking their three missions with them; the block below this
+   * one records the survey that found nothing left to gate in their place.
+   * Cosmetics were NOT an option: all fourteen are
    * already paid, and nothing in the game renders one — `tests/reward-wiring.spec.ts`
    * asserts that gap explicitly, so paying a sixth into it would have been the
    * same bug with a different noun.
@@ -186,16 +193,64 @@ export const UNLOCKS = {
   unitCommander: 'unit.commander',
   structSupport: 'struct.support',
 
-  /* -- three more battlefields, for the three remaining orphans ------------
-   * A map unlock is read by `mapAvailable` in `src/shell/SkirmishSetup.ts`,
-   * which is a live consumer with a visible effect, and "a new battlefield" is
-   * a reward an RTS player actually wants. Each reuses an existing
-   * `MAP_PRESET` at a player count or a light the roster did not offer — see
-   * the block above these three rows in `src/shell/settings-store.ts` for why
-   * inventing presets would have been the wrong kind of work in this release. */
-  mapSaltpanReach: 'map.saltpan-reach',
-  mapFoundryLine: 'map.foundry-line',
-  mapGlacierShelf: 'map.glacier-shelf',
+  /* -- THREE MAP IDS ARE GONE, AND SO ARE THE THREE MISSIONS THAT PAID THEM --
+   * `map.saltpan-reach`, `map.foundry-line` and `map.glacier-shelf` were the
+   * other half of the v2.6.0 rescue described above: three new battlefields for
+   * three of the five missions the commander powers had orphaned. The maps were
+   * cut from `MAPS` because every one of them reused an existing `MAP_PRESET`
+   * verbatim, so all seven balance numbers matched a battlefield already in the
+   * roster (see the block at the end of `MAPS` in
+   * `src/shell/settings-store.ts`).
+   *
+   * DELETED, not left as ids nothing grants, for the reason the three naval ids
+   * above were deleted: a schema member nothing produces is the next reader's
+   * false lead. A profile that already earned one keeps the string; nothing
+   * reads it, exactly as with `unit.naval`.
+   *
+   * THE THREE MISSIONS ARE RETIRED WITH THEM — Armour Column
+   * (`combat.armour.2`), Continental Yield (`economy.harvest.3`) and Hostile
+   * Takeover (`construction.capture.1`). That is a real loss and it is recorded
+   * here rather than glossed, because the obvious repair — invent three new
+   * `UNLOCK_TAGS` groups, the way `unit.commander` and `struct.support` repaid
+   * two of the original five — WAS SURVEYED AND THERE IS NOTHING LEFT TO GATE.
+   *
+   * The survey, so nobody pays to run it twice. A valid group has to be built,
+   * mirrored across all four armies, off the opening path, and not naval
+   * (`UNLOCK_TAGS` has the rules; CLAUDE.md has the naval prohibition). Every
+   * def in `Defs.ts` that is currently ungated falls into one of four buckets:
+   *
+   *   1. THE OPENING PATH — construction vehicle, yard, power, refinery,
+   *      harvester, barracks, war factory, radar, silo, wall, one cheap
+   *      defence, line infantry, engineer, main battle tank, and their twins in
+   *      all four armies. `tests/match-start.spec.ts` and
+   *      `tests/progression-gate.spec.ts` §5 both forbid gating these.
+   *   2. NAVAL AND AMPHIBIOUS — four yards, eighteen hulls, four swimmers.
+   *      Off limits: `tests/sea-crossing-gate.spec.ts` pins that no sea-bound
+   *      entry may name an unlock id.
+   *   3. NOT MIRRORED — `gate` and `flameTower` reach two armies and one. A
+   *      group covering a subset of the roster is the `unit.air` defect, which
+   *      this table has already had to fix once.
+   *   4. DELIBERATELY AND PERMANENTLY OPEN — the three Command Posts. Their def
+   *      rows say so in as many words: gating the only route to a commander
+   *      power puts the powers back behind the profile.
+   *
+   * The one family that nearly qualified is the anti-armour infantryman —
+   * `javelin` / `flakTrooper` / `mrdLancer`. It has no fourth member:
+   * `tests/anti-armour-infantry.spec.ts` §1b records the Reclamation's foot
+   * answer to armour as `rclPicker`, its LINE RIFLEMAN, and
+   * `Scenarios.ts`'s role remap says the same thing by substituting `rclPicker`
+   * for the javelin role. Gating the other three would leave three of four
+   * armies with no infantry answer to a tank on a fresh profile, which is a
+   * CAPABILITY hole rather than a widening — rule 2 at the top of this file.
+   *
+   * The twelve `UPGRADES` are a perfect four-army mirror and are ruled out by
+   * the same rule 2, not by plumbing: every one of them is a flat multiplier on
+   * damage, armour, speed, sight, reload, ore value or build time. "Unlocks are
+   * VARIETY, not power" is the sentence that forbids it. `src/sim/Production.ts`
+   * also hard-codes `unlockedBy: ''` for them, and it should stay that way.
+   *
+   * So the arithmetic, which is the honest summary: after the cut there are
+   * three more profile missions than there are things left to pay them with. */
 
   /* -- cosmetics ---------------------------------------------------------- */
   insigniaBronze: 'cosmetic.insignia.bronze',
@@ -300,16 +355,11 @@ const COMBAT: readonly MissionDef[] = [
     rule: { on: 'kill', kinds: VEHICLES },
     reward: grant(UNLOCKS.structDefenceAA),
   },
-  {
-    id: 'combat.armour.2',
-    scope: 'profile', category: 'combat', difficulty: 2,
-    title: 'Armour Column',
-    description: 'Destroy 250 enemy vehicles.',
-    target: 250,
-    requires: ['combat.armour.1'],
-    rule: { on: 'kill', kinds: VEHICLES },
-    reward: mapUnlock(UNLOCKS.mapSaltpanReach),
-  },
+  // RETIRED: `combat.armour.2` — Armour Column, destroy 250 enemy vehicles.
+  // Its whole reward was `map.saltpan-reach`, an arid preset-clone that is no
+  // longer in `MAPS`. `combat.armour.1` (60 vehicles -> the AA emplacement) is
+  // the chain now, and nothing required this step. See the retirement block
+  // inside `UNLOCKS` for why it was not simply repaid.
 
   /* -- demolition ---------------------------------------------------------- */
   {
@@ -467,16 +517,12 @@ const ECONOMY: readonly MissionDef[] = [
     rule: { on: 'earn', reasons: [CreditReason.Harvest] },
     reward: grant(UNLOCKS.structTech),
   },
-  {
-    id: 'economy.harvest.3',
-    scope: 'profile', category: 'economy', difficulty: 3,
-    title: 'Continental Yield',
-    description: 'Mine 1,000,000 credits of ore.',
-    target: 1_000_000,
-    requires: ['economy.harvest.2'],
-    rule: { on: 'earn', reasons: [CreditReason.Harvest] },
-    reward: mapUnlock(UNLOCKS.mapGlacierShelf),
-  },
+  // RETIRED: `economy.harvest.3` — Continental Yield, mine 1,000,000 credits of
+  // ore. Paid `map.glacier-shelf` and nothing else. This was the file's longest
+  // single target and the harvest chain now ends at `economy.harvest.2` (70,000
+  // -> the tech building). `tests/content-truthful.spec.ts` cites the million
+  // as its example of a career-spanning target and has been updated to name
+  // `construction.produce.2` instead.
   {
     id: 'economy.bank.1',
     scope: 'profile', category: 'economy', difficulty: 2,
@@ -570,15 +616,16 @@ const CONSTRUCTION: readonly MissionDef[] = [
     rule: { on: 'produce', tab: BuildTab.Vehicles },
     reward: grant(UNLOCKS.unitAir),
   },
-  {
-    id: 'construction.capture.1',
-    scope: 'profile', category: 'construction', difficulty: 2,
-    title: 'Hostile Takeover',
-    description: 'Capture 10 enemy structures with engineers.',
-    target: 10,
-    rule: { on: 'capture' },
-    reward: mapUnlock(UNLOCKS.mapFoundryLine),
-  },
+  // RETIRED: `construction.capture.1` — Hostile Takeover, capture 10 enemy
+  // structures with engineers. Paid `map.foundry-line` and nothing else.
+  //
+  // THIS ONE COST THE MOST AND IS WORTH FLAGGING: it was the only PROFILE
+  // mission with `rule: { on: 'capture' }`, so nothing in the cross-game curve
+  // points a player at the engineer any more. `obj.capture.1` ("Seize The
+  // Asset") still carries the metric on the per-match objective board, so the
+  // event, `RULE_METRIC` and the tracking are all still exercised and a future
+  // mission can use them without new plumbing — what is missing is something
+  // for it to pay.
 ];
 
 const TACTICS: readonly MissionDef[] = [
