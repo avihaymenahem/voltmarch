@@ -88,11 +88,35 @@
  * ============================================================================
  */
 
-import { InstancedMesh } from 'three';
+import type { InstancedMesh, Object3D } from 'three';
 import type { Node, NodeBuilder } from 'three/webgpu';
-import { Fn, instancedMesh, normalGeometry, normalLocal, positionGeometry, positionLocal } from 'three/tsl';
+import {
+  Fn, instancedMesh, normalGeometry, normalLocal, positionGeometry, positionLocal,
+} from 'three/tsl';
 
 type Vec3N = Node<'vec3'>;
+
+/**
+ * `NodeMaterial.setupPosition`'s OWN test for "did instancing run", made again.
+ *
+ * TRANSCRIBED RATHER THAN APPROXIMATED, and `instanceof` is deliberately not
+ * used: three asks
+ * `object.isInstancedMesh && object.instanceMatrix && object.instanceMatrix.isInstancedBufferAttribute`,
+ * and the two predicates have to agree exactly. If ours ever said no where
+ * three's said yes, the caster would be drawn in MODEL space — at the map origin,
+ * in the shadow map only, with nothing thrown and nothing logged. `instanceof`
+ * would also answer no if `three` and `three/webgpu` ever resolved to two copies
+ * of the class, which is a bundler decision rather than a fact about the object.
+ *
+ * It has to be asked at all because one material is shared by every mesh that
+ * uses it, and nothing promises they are all instanced.
+ */
+function instancedCaster(object: Object3D): InstancedMesh | null {
+  const probe = object as Object3D & Partial<InstancedMesh>;
+  if (probe.isInstancedMesh !== true) return null;
+  if (probe.instanceMatrix?.isInstancedBufferAttribute !== true) return null;
+  return probe as InstancedMesh;
+}
 
 /**
  * Build the `castShadowPositionNode` for a material whose colour pass does
@@ -116,16 +140,10 @@ export function castShadowPosition(applyModelSpace: () => void): Vec3N {
 
     applyModelSpace();
 
-    /*
-     * NOT AN OPTIMISATION AND NOT A GUARD AGAINST A MISSING MATRIX — it is the
-     * same test `NodeMaterial.setupPosition` makes two lines above us, and it
-     * has to be made again because a material is shared by every mesh that uses
-     * it and nothing promises they are all instanced. A plain `Mesh` caster (a
-     * test fixture, a one-off) must come out of here in model space, which is
-     * where `modelViewProjection` expects it.
-     */
-    const object = builder.object;
-    if (object instanceof InstancedMesh) instancedMesh(object);
+    // A plain `Mesh` caster comes out of here in model space, which is exactly
+    // where `modelViewProjection` expects it.
+    const caster = instancedCaster(builder.object);
+    if (caster !== null) instancedMesh(caster);
 
     return positionLocal;
   })();

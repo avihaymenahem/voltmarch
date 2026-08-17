@@ -1,11 +1,11 @@
 {
   "origin": "http://127.0.0.1:5381",
-  "when": "2026-08-17T14:36:05.467Z",
+  "when": "2026-08-17T14:49:07.458Z",
   "arms": [
     {
       "arm": "glsl-webgl",
       "backend": "webgl",
-      "ms": 547.4000000003725,
+      "ms": 249.5,
       "drawCalls": 5,
       "triangles": 458,
       "programs": 5,
@@ -14,7 +14,7 @@
     {
       "arm": "glsl-webgl-nodepth",
       "backend": "webgl",
-      "ms": 105.29999999888241,
+      "ms": 32.90000000037253,
       "drawCalls": 5,
       "triangles": 458,
       "programs": 4,
@@ -23,7 +23,7 @@
     {
       "arm": "tsl-override",
       "backend": "webgpu",
-      "ms": 1,
+      "ms": 0.900000000372529,
       "drawCalls": 5,
       "triangles": 231,
       "programs": 0,
@@ -32,7 +32,7 @@
     {
       "arm": "tsl-nooverride",
       "backend": "webgpu",
-      "ms": 3.300000000745058,
+      "ms": 2.799999998882413,
       "drawCalls": 5,
       "triangles": 231,
       "programs": 0,
@@ -44,7 +44,7 @@
     {
       "arm": "tsl-nooverride-noreceive",
       "backend": "webgpu",
-      "ms": 0.599999999627471,
+      "ms": 0.5,
       "drawCalls": 5,
       "triangles": 231,
       "programs": 0,
@@ -53,7 +53,7 @@
     {
       "arm": "tsl-castshadow",
       "backend": "webgpu",
-      "ms": 0.6000000014901161,
+      "ms": 0.5,
       "drawCalls": 5,
       "triangles": 231,
       "programs": 0,
