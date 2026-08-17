@@ -62,7 +62,7 @@ describe('AO G-buffer from the scene depth', () => {
    * `_renderGBuffer = false`; without it `GTAOPass.render` opens with
    * `_renderOverride(renderer, this.normalMaterial, ...)`, which is
    * `renderer.render(scene, camera)` — 39-57 draw calls on the capture
-   * fixtures, 27-31% of the frame. Nothing throws if the call goes missing and
+   * fixtures, 26.8-29.4% of the frame. Nothing throws if the call goes missing and
    * nothing looks different; the draws simply come back. That is the exact
    * shape of defect this repo keeps rediscovering, so it gets a test.
    */

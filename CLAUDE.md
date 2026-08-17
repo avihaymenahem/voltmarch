@@ -531,28 +531,37 @@ module. `docs/SPEC_DRIFT_AUDIT.md` #62 is the entry.
 
   **`frame.drawCalls` AND `MAX_DRAW_CALLS` MEASURE DIFFERENT QUANTITIES, AND THIS BLOCK COMPARED
   THEM FOR THREE RELEASES.** `renderer.info.autoReset` is `false` (`renderer.ts`) and the reset
-  happens once per frame in `beginFrame()`, so the 146–219 in `shots/_report.json` is a SUM OVER
-  THREE SCENE SUBMISSIONS: the colour pass, the shadow pass, and `GTAOPass`'s normal prepass — which
-  is a whole second `renderer.render()` of the scene with an override material. `MAX_DRAW_CALLS`
-  budgets the COLOUR PASS. Instrumented live against `renderBufferDirect` and reproducing
-  `_report.json` exactly, `01-establishing-base`'s 219 is:
-
-  ```
-  219 total = 78 colour + 54 shadow + 67 AO normal prepass + 20 post quads
-  ```
-
-  So **the budget is met** — the colour pass is ~78 against 130 — and the previous instruction here
-  ("do not spend draws freely on the grounds that the budget is fictional — closing that gap is real
-  outstanding work") was chasing a gap that does not exist. The instrument now reports the split:
+  happens once per frame in `beginFrame()`, so the number in `shots/_report.json` is a SUM OVER
+  EVERY SCENE SUBMISSION, not the colour pass. `MAX_DRAW_CALLS` budgets the COLOUR PASS.
   `stats()` emits `drawCallsByPass` and `shots/_report.json` carries `frame.drawCallsByPass`, where
   `shadow + colour + ao + post === total` by construction. **Quote `frame.drawCallsByPass.colour`
   against `MAX_DRAW_CALLS`; quote `frame.drawCalls` only as the content fingerprint it is.**
 
-  The three-submission total was 174–273 until the duplicate shadow pass was deleted (see the
-  `autoUpdate = false` block in `renderer.ts`), and it drops again with the pad AO exclusion.
+  **THERE ARE TWO SCENE SUBMISSIONS NOW, NOT THREE.** `GTAOPass` used to build its normal G-buffer
+  by drawing the whole scene a second time with `MeshNormalMaterial` — 39-57 draws per fixture,
+  26.8-29.4% of every frame. `installAoDepthGBuffer` in `src/render/post.ts` hands the pass the
+  depth the colour pass already wrote and reconstructs the normals with one full-screen quad, so
+  `_renderGBuffer` is false and that submission is gone. Measured over all thirteen fixtures:
+
+  ```
+  before   total 143–213   ao 39–57   colour 51–77
+  after    total 105–157   ao      0  colour 51–77      (01-establishing-base: 207 -> 151)
+  ```
+
+  So **the budget is met** — the colour pass is 51–77 against 130, and it did not move — and the
+  previous instruction here ("do not spend draws freely on the grounds that the budget is
+  fictional") was chasing a gap that does not exist. **A non-zero `ao` now means the depth
+  G-buffer failed to install and the prepass came back**; it is kept as a real fallback for a three
+  upgrade that moves the internals that wiring reaches into.
+
   **Requote both figures from a real `_report.json` rather than carrying them forward** — the old
   range drifted three times, twice upward, and a range nobody re-measures is exactly how the
   comparison above came to be believed.
+
+  **The AO scorecard is not sensitive to AO.** Deleting the prepass moved the weighted grade by
+  0.000000 (0.892308, 16 failures, before and after) while changing 17-32% of every frame's pixels,
+  and turning AO OFF entirely moves it barely more. `tools/metrics.mjs` is a frame-wide statistic;
+  use `tools/shot-compare.mjs` and an AO-disabled control capture before believing any AO change.
 
   **There is no CSM.** `src/render/scene.ts` builds ONE `DirectionalLight` with ONE orthographic
   shadow camera, and the only other shadow-capable light — the ground bounce — sets

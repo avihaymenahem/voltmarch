@@ -670,7 +670,7 @@ void main() {
  *
  * `GTAOPass` builds its G-buffer by drawing every mesh again with
  * `MeshNormalMaterial` — measured at 39-57 draw calls across the thirteen
- * capture fixtures, 27-31% of every frame's total, and the single largest
+ * capture fixtures, 26.8-29.4% of every frame's total, and the single largest
  * remaining cost in the renderer. It only does that because it owns no depth:
  * `setGBuffer(depthTexture, normalTexture)` sets `_renderGBuffer = false` and
  * the prepass disappears.
@@ -835,8 +835,8 @@ export interface DrawCallBreakdown {
    *
    * **ZERO ON EVERY SHIPPING PATH SINCE `installAoDepthGBuffer`**, which hands
    * the pass the scene's own depth texture and clears `_renderGBuffer`. It was
-   * 39-57 across the thirteen capture fixtures — 27-31% of the frame — and it
-   * is kept as a bucket rather than deleted for two reasons: the prepass is
+   * 39-57 across the thirteen capture fixtures — 26.8-29.4% of the frame — and
+   * it is kept as a bucket rather than deleted for two reasons: the prepass is
    * still the fallback when a three upgrade moves the internals that wiring
    * needs, and a bucket that silently disappears takes the proof that it went
    * with it. A non-zero `ao` in `shots/_report.json` now means the fallback is
@@ -1488,18 +1488,44 @@ export function createPostChain(options: CreatePostOptions): PostChain {
    *
    *   - WATER. `WaterMaterial` is the only transparent material in the game
    *     with `depthWrite: true`, so the sea surface was absent from the old
-   *     G-buffer and is present in the new one. AO on the naval fixtures is now
-   *     computed for the water plane rather than for the seabed behind it.
+   *     G-buffer and is present in the new one.
    *   - BUILDING PADS. `userData.vmAoOccluder = false` kept 40 mm of slab out of
    *     the old G-buffer. It is opaque and depth-writing, so it is in the new
    *     one.
    *
    * Neither can be filtered out of a depth buffer that the colour pass wrote:
    * what is behind them was overwritten, and recovering it means submitting the
-   * scene again, which is the cost being removed. So this is a measured trade,
-   * not an oversight — see `docs/RA3_LOOK_BIBLE.md` and the grade recorded in
-   * the commit message. `aoOccluder` and its opt-out stay because they still
-   * govern the fallback prepass, and only because of that.
+   * scene again, which is the cost being removed.
+   *
+   * THE WATER CASE WAS THE PREDICTED REGRESSION AND IT IS AN IMPROVEMENT, which
+   * is worth stating plainly because the prediction was reasonable and wrong.
+   * The fear was that an opaque sea surface would delete the seabed's AO. What
+   * it actually deletes is the OLD defect: `aoOccluder`'s own rule, three
+   * paragraphs down, is that an excluded mesh's pixels sample whatever depth is
+   * BEHIND them, and it is only free "for anything within a few centimetres of
+   * the surface behind it". The sea is metres above its bed, so every water
+   * pixel was reading the seabed's occlusion — the umbrella defect, on the
+   * whole ocean. Measured as mean |delta| against an AO-disabled capture of the
+   * same build, i.e. how much AO the frame actually receives:
+   *
+   *                          prepass   depth G-buffer
+   *     08-naval-water        2.1427       2.4826
+   *     13-atoll-crossing     1.7485       2.1786
+   *     01-establishing-base  3.5431       3.5204
+   *
+   * The two naval fixtures GAIN AO; the land fixtures are unchanged inside a
+   * percent. On screen the gain is a contact shadow at every hull's waterline,
+   * which the prepass could not produce at all — a warship used to sit ON the
+   * sea rather than in it. The weighted grade is 0.892308 with 16 failures
+   * either way, unchanged to six decimals, which is the scorecard behaving
+   * exactly as `tools/shot-compare.mjs`'s header says it does.
+   *
+   * Pads were re-checked the same way and are benign: a 40 mm slab at the
+   * fixtures' camera distance is sub-pixel relief, and an A/B crop across a pad
+   * edge on `08-naval-water` peaks at 44/255 with no fringe.
+   *
+   * `aoOccluder` and its opt-out stay because they still govern the fallback
+   * prepass, and only because of that.
    *
    * Returns false, having changed nothing, if any internal it needs is missing:
    * a half-installed G-buffer is a black or inverted AO term, and the prepass it
