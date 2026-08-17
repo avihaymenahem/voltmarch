@@ -272,10 +272,23 @@ function layerArrayTexture(
 /* ==========================================================================
  * 3. THE SHADER — TSL translation of `FRAG_COMMON`
  *
- * `raHash21` and `raValue2` are real `Fn`s rather than inlined closures,
- * because they are called five times between them and a TSL `Fn` emits an
- * actual callable in both WGSL and GLSL. Inlining them would multiply the
- * instruction count of the single most expensive shader we draw.
+ * `.setLayout()` IS LOAD-BEARING AND A BARE `Fn` IS NOT A FUNCTION. A TSL `Fn`
+ * with no layout is INLINED at every call site — it is a macro, not a callable.
+ * `raHash21` has seven call sites (four inside `raValue2`, plus the striation
+ * band, the running-bond brick and the per-cell jitter), and without a layout
+ * three emitted its body seven times and renamed the collided locals `p3_1`
+ * through `p3_6` on the way past. Declaring the layout makes it a real function
+ * in both languages, which is what the GLSL original had.
+ *
+ * Measured on the temperate biome, fragment stage:
+ *
+ *     bare Fn      WGSL 17 111 chars   GLSL 16 773
+ *     setLayout    WGSL 15 425 chars   GLSL 15 465      (-9.9% / -7.8%)
+ *
+ * Source length is not instruction count and a driver will inline a six-op hash
+ * whatever we do, so this is not claimed as a frame-time win. It is claimed as
+ * the structure the GLSL had, restored, on the single most expensive shader we
+ * draw — and it is cheap.
  * ========================================================================== */
 
 /**
@@ -289,7 +302,7 @@ const raHash21 = Fn(([p]: [Vec2N]) => {
   const p3 = vec3(p.x, p.y, p.x).mul(0.1031).fract().toVar('p3');
   p3.addAssign(dot(p3, p3.yzx.add(33.33)));
   return p3.x.add(p3.y).mul(p3.z).fract();
-});
+}).setLayout({ name: 'raHash21', type: 'float', inputs: [{ name: 'p', type: 'vec2' }] });
 
 const raValue2 = Fn(([p]: [Vec2N]) => {
   const i = floor(p).toVar('i');
@@ -300,7 +313,7 @@ const raValue2 = Fn(([p]: [Vec2N]) => {
   const c = raHash21(i.add(vec2(0.0, 1.0)));
   const d = raHash21(i.add(vec2(1.0, 1.0)));
   return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
-});
+}).setLayout({ name: 'raValue2', type: 'float', inputs: [{ name: 'p', type: 'vec2' }] });
 
 /* ==========================================================================
  * 3b. DITHERING — A GAP IN THE NODE SYSTEM, RE-IMPLEMENTED
@@ -737,6 +750,12 @@ export function createTerrainNodeMaterials(
    */
   material.roughness = 0.92;
   material.metalness = 0.0;
+  /*
+   * Read by `TerrainStandardNodeMaterial.setupOutput` above and by NOTHING in
+   * three's node system — see section 3b. The shipping GLSL material carries
+   * the same flag and means the same thing by it.
+   */
+  material.dithering = true;
 
   const surface = raSurface();
   material.colorNode = surface.xyz;
@@ -878,3 +897,58 @@ export function createTerrainNodeMaterials(
     },
   };
 }
+
+/* ==========================================================================
+ * 8. WHAT TSL COULD NOT EXPRESS, AND WHAT IT COST
+ *
+ * Written down here rather than discovered again by whoever ports Stage D.
+ * Every entry was hit while translating THIS shader, which is the largest one
+ * in the project, so the list is close to complete for the material work that
+ * follows. NOTHING ON IT BLOCKED THE PORT — that is the headline, and it is
+ * worth saying plainly because the migration plan scheduled terrain early
+ * precisely because it was the biggest unknown.
+ * ========================================================================== */
+
+export const TSL_GAPS: readonly string[] = [
+  /*
+   * 1. THE ONLY REAL FEATURE GAP. `material.dithering` is implemented in
+   *    three's WebGL chunk system and nowhere else — no node in `src/nodes/`
+   *    reads the flag. Re-implemented in `TerrainStandardNodeMaterial`
+   *    (section 3b) from three's own GLSL, and pinned by the spec. Anything
+   *    else in the project that sets `dithering: true` will lose it silently on
+   *    the node path.
+   */
+  'material.dithering: no node implementation; re-implemented via setupOutput',
+  /*
+   * 2. `Fn` IS A MACRO UNTIL YOU GIVE IT A LAYOUT. A bare `Fn` inlines at every
+   *    call site. `.setLayout({ name, type, inputs })` is what makes it a
+   *    callable — see section 3 for the measured difference.
+   */
+  'Fn without setLayout inlines at every call site rather than emitting a function',
+  /*
+   * 3. A DESCENDING `smoothstep` IS UNDEFINED IN WGSL, where GLSL left it
+   *    unspecified and every driver did the obvious thing anyway. Written as
+   *    the ascending form and inverted; exactly equal because S(1-t) === 1-S(t)
+   *    for 3t^2-2t^3. See `raJoint`.
+   */
+  'smoothstep with edge0 > edge1 is undefined in WGSL; invert the ascending form',
+  /*
+   * 4. A TEXTURE NODE NEEDS ITS TEXTURE AT CONSTRUCTION, because the sampler
+   *    type is read off the value. Anything wired later needs a stand-in of the
+   *    right SHAPE — see section 2.
+   */
+  'texture() derives its sampler type from the value it was constructed with',
+  /*
+   * 5. `normalNode` REPLACES `normalView`, so it must be view space and it must
+   *    start from `normalViewGeometry`. Referencing `normalView` from inside its
+   *    own replacement is a cycle.
+   */
+  'normalNode is view space and must not reference normalView',
+  /*
+   * 6. NOT A GAP, BUT THE TRAP MOST LIKELY TO COST SOMEONE A DAY.
+   *    `onBeforeCompile` fails silently on node materials while
+   *    `customProgramCacheKey` goes on firing, so a ported material that keeps
+   *    its old cache key gets a stale program with nothing thrown.
+   */
+  'customProgramCacheKey still fires though onBeforeCompile is dead; do not port the key',
+];
