@@ -99,7 +99,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 3611 across 139 files (+1 opt-in probe)
+npm test             # vitest, currently 3628 across 141 files (+1 opt-in probe)
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -546,6 +546,7 @@ module. `docs/SPEC_DRIFT_AUDIT.md` #62 is the entry.
   ```
   before   total 143–213   ao 39–57   colour 51–77
   after    total 105–157   ao      0  colour 51–77      (01-establishing-base: 207 -> 151)
+  v2.12.0  total 105–157   ao      0  colour 54–77      (prop type cap 22 -> 30)
   ```
 
   So **the budget is met** — the colour pass is 51–77 against 130, and it did not move — and the

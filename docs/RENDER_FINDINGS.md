@@ -363,6 +363,20 @@ bible-correct in isolation can still cost grade points.
 
 ## 7. Traps that cost someone an hour
 
+**A DEV SERVER IS A MACHINE-WIDE PORT TOO, AND `preview_start` WILL SILENTLY REUSE SOMEONE ELSE'S.**
+Found 2026-08-17 by an agent working in a `git worktree`: it called `preview_start`, got a "reused"
+server on 5173 — and that server's `cwd` was the MAIN CHECKOUT, not its worktree. Every page it
+booted would have measured somebody else's tree while reporting success. It noticed, ran its own on
+5231, and verified there.
+
+This is the SAME DEFECT the shot harness had on port 4317, described at length in CLAUDE.md, in a
+place nobody had thought to look for it. The harness was fixed by walking to a free port and
+byte-comparing the served `index.html` against the local `dist/`; `preview_start` has no such guard,
+and its "reused" is a success message. **Check `cwd` in `preview_list` before trusting any page you
+did not start yourself**, and prefer an explicit unused port when a worktree is involved.
+
+
+
 **`AO_NOON` in `config.ts` is the ART block and disabling it disables NOTHING.** The live switch is
 `RENDER_CONFIG.post.ao.enabled` in `renderer.ts`, plus the quality tier (`medium` for the harness).
 An agent building an AO-disabled control edited the art block, got byte-identical captures, and

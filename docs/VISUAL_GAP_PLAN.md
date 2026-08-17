@@ -16,6 +16,65 @@ the ground is literally empty, foliage is convex faceted blobs, an entire factio
 materials, and shadows leak a third of their light back. Building greebling is GOOD and is not the
 problem — **do not spend a day adding panel lines.**
 
+---
+
+## STATUS AFTER THE FIRST EXECUTION PASS — v2.12.0, 2026-08-17
+
+Six of the eight items scheduled in this pass landed. **The two that did not are the interesting
+ones**, and both are written up with their measurements so they are not re-attempted as one-liners.
+
+| item | status |
+|---|---|
+| P0-1 splat quantile | **LANDED.** Declared coverage now delivered to 0.0063 pp, all four biomes |
+| P0-2 shadow multiplier | **DEFERRED** — correct but not on its own. `RENDER_FINDINGS.md` §6b |
+| P0-3 terrain `envMapIntensity` | **DISPROVED** — the lever is inert. `RENDER_FINDINGS.md` §6c |
+| P0-4 Allied pad | **LANDED** |
+| P1-5 facade albedo clipping | **LANDED** at V 0.780 (0.729 overshot and broke p99) |
+| P1-8 rust rule split | **LANDED** |
+| P1-9 prop variety and density | **LANDED**, and this document was WRONG about it — see below |
+| P2-11 canopy lobes | **LANDED.** Enclosed sky 0.0% → 3.1-18.8% on every seed |
+
+**Measured result of the whole pass**, baseline v2.11.0 → v2.12.0:
+
+```
+grade            92.0% -> 92.0%   13 failing checks, all #34, ZERO weight-3   (unchanged)
+edgeCoverage     IMPROVED ON ALL 13 FIXTURES: 12-blob +0.087, 10-selection +0.060,
+                 04-parade +0.041, 05-combat +0.041, 03-terrain 0.1760 -> 0.1965 (+11.6%)
+greenHueLeak     improved on 12 of 13; 08-naval-water 0.0171 -> 0.0074 (the value flagged
+                 below as "most likely to drift back" now has 63% margin, not 15%)
+draw calls       colour 54-77 against MAX_DRAW_CALLS 130 · ao 0 · total 105-157 (+14 over the set)
+tests            3611/139 files -> 3628/141
+```
+
+### THREE CLAIMS IN THIS DOCUMENT WERE WRONG. Do not trust the rest without checking.
+
+1. **P1-9's "dead strings" would have broken the game if acted on.** `MAP_PRESETS.props` has TWO
+   consumers with DISJOINT namespaces — `ScenarioBuilder.scatter` resolves against `FALLBACK_PROPS`,
+   `Scatter` against `PROP_DEFS`. `'tree'`, `'pine'`, `'rock'`, `'crate'` are live in the entity
+   namespace. `spawnProp` returns `NONE` on an unknown key and `scatter()` bails on the first `NONE`,
+   so renaming `pine` → `conifer` would have silently emptied the entity dressing pass on snow maps
+   about half the time. Fixed with a translation layer in `Scatter.ts`; `MAP_PRESETS` untouched.
+   **The real defect is the schema** — `MapPreset.props` should be two fields, entity and scatter.
+2. **"8 prop type(s) trimmed" was stale**, quoted from a spec header describing pre-reorder
+   behaviour. Headless replay trims one; a LIVE boot lights 29 types because road stamping makes
+   hard-surface props legal, so the cap was costing seven.
+3. **"46% of the count is grass tufts" was the config CAP, not a measurement.** Real share was
+   19.6-40.3%.
+
+Also relabelled: P0-1's coverage table is the **patch term**, not the painted layer — the dirt layer
+additionally receives `dirtAltitude`, a slope-scree boost and a ramp override, so temperate dirt was
+painting 14.60%, not 2.19%. The bug was real; the headline number was mislabelled.
+
+### What this pass cost that the plan did not predict
+
+The splat fix took non-base surface from ~4% to ~33%, which broke two things in `Scatter.ts` that had
+been latent: the "not the base surface ⇒ already adorned" rule became a rubber stamp (scorecard #15,
+weight 3, could no longer fail on terrain alone) and `trimTypes` deleting placements after the
+density floor was met stopped being masked. Both fixed. `hardFloorPerHectare: 95` was also quoting
+only half of ruling #9 — "city ≥75/ha, **wilderness ≥260/ha**" — as one scalar for every map.
+
+---
+
 ### Baselines to measure against (all current as of this file)
 
 ```
