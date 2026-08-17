@@ -725,7 +725,7 @@ export class SpriteLayer {
   readonly capacity: number;
   readonly mesh: THREE.Mesh;
   readonly geometry: THREE.InstancedBufferGeometry;
-  readonly material: THREE.ShaderMaterial;
+  readonly material: THREE.Material;
 
   /* -- particle state (SoA) --------------------------------------------- */
   private readonly px: Float32Array;
@@ -780,7 +780,14 @@ export class SpriteLayer {
   /** Wall-clock milliseconds; drives the flicker phase. Render-side only. */
   private clockMs = 0;
 
-  constructor(capacity: number, material: THREE.ShaderMaterial, name: string, sorted: boolean) {
+  /**
+   * `THREE.Material`, not `THREE.ShaderMaterial` — this class uses the material
+   * for exactly one thing, handing it to a `THREE.Mesh`, and the TSL twins in
+   * `./vfx-node-materials.ts` are `NodeMaterial`s. Widening it is what lets
+   * Stage F pass either kind without a cast. `DebrisLayer` already took the base
+   * type for the same reason.
+   */
+  constructor(capacity: number, material: THREE.Material, name: string, sorted: boolean) {
     this.capacity = capacity;
     this.sorted = sorted;
     this.material = material;
