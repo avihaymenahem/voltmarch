@@ -2716,22 +2716,31 @@ export class Shell {
 
   private readonly onSettingsChanged = (settings: Settings, changed: readonly string[]): void => {
     if (this.game === null) return;
-    applySettings(settings, this.game, changed);
 
     /*
      * `graphics.calibrated` IS THE WHOLE PROTOCOL, in both directions.
      *
-     *   true  — somebody decided. Every control on the Graphics tab writes it
-     *           alongside its own value, so moving any row mid-probe cancels
+     *   true  — somebody decided. `SettingsStore.patch` writes it alongside any
+     *           picture-affecting graphics row, so moving one mid-probe cancels
      *           the calibration and `disarmCalibration` puts the scale it was
      *           probing at back where it found it. `commitCalibration` also
      *           writes it, and the render system has already disarmed itself by
      *           then, so a successful run does not cancel itself here.
      *   false — the player asked for one: "Calibrate Now", or Reset Graphics.
+     *
+     * CANCELLING RUNS BEFORE `applySettings`, deliberately: the cancelling
+     * change is very often a move of the Resolution Scale slider, and putting
+     * the probe's entry value back AFTER pushing the player's new one would
+     * leave the slider reading one number and the renderer doing another.
+     * `disarmCalibration` is also guarded against that from its own side, so
+     * this ordering is belt to its braces rather than the only thing holding.
      */
-    if (!touched(changed, 'graphics.calibrated')) return;
-    if (settings.graphics.calibrated) disarmCalibration();
-    else this.maybeCalibrate();
+    const flag = touched(changed, 'graphics.calibrated');
+    if (flag && settings.graphics.calibrated) disarmCalibration();
+
+    applySettings(settings, this.game, changed);
+
+    if (flag && !settings.graphics.calibrated) this.maybeCalibrate();
   };
 
   /**

@@ -679,6 +679,67 @@ describe('hardware calibration — the wiring', () => {
     } finally { rig.teardown(); }
   });
 
+  it('DISARMING LEAVES A NEWER VALUE ALONE, whichever order the shell runs in', async () => {
+    /*
+     * The change that cancels a calibration is very often a move of the
+     * Resolution Scale slider itself, and `applySettings` and
+     * `disarmCalibration` run in the same turn of the shell's settings
+     * listener. An unconditional restore would put the probe's entry value back
+     * over the number the player had just chosen — slider reading one thing,
+     * renderer doing another, which is the exact defect that row's own comment
+     * in `Settings.ts` was written about.
+     */
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const rig = await systemRig();
+    try {
+      const mod = await import('../src/render/calibration.system');
+      expect(mod.armCalibration(() => {})).toBe(true);
+      rig.frame(60);
+      // `applySettings` pushing the player's brand-new choice.
+      rig.handle.setResolutionScale(1.25);
+      mod.disarmCalibration();
+      expect(rig.handle.resolutionScale, 'the player\'s choice must survive').toBe(1.25);
+    } finally { rig.teardown(); }
+  });
+
+  it('ADAPTIVE ADOPTS A SCALE SET AFTER ITS init AS THE NEW CEILING', async () => {
+    /*
+     * `lastCommanded` used to start at -1, which switched off the
+     * outside-change check until the adaptive controller had itself commanded
+     * one. THE BOOT ORDER GUARANTEES AN OUTSIDE CHANGE COMES FIRST: `init()`
+     * runs inside `bootstrap()` and `Shell.bootGame` calls `applySettings`
+     * after `bootstrap()` returns. So the ceiling was captured from whatever
+     * the quality tier picked, the player's stored Resolution Scale (or a
+     * calibration result) landed a moment later, and this controller went on
+     * steering from a scale that was no longer real.
+     *
+     * The damage is not a graceful climb — it is a CUT that lands above the
+     * player's setting. Believing itself at 1.0 while the renderer is at 0.6,
+     * one over-budget window commits 1.0 - 0.075 and RAISES the resolution on a
+     * machine that was already too slow. That is what this drives.
+     */
+    vi.spyOn(console, 'info').mockImplementation(() => {});
+    const rig = await systemRig();
+    try {
+      const adaptive = (await import('../src/render/adaptive-res.system')).default;
+      const { setAdaptiveResolution } = await import('../src/render/adaptive-res.system');
+      adaptive.init?.();                     // boot ceiling: the tier's 1.0
+      setAdaptiveResolution(true);
+      rig.handle.setResolutionScale(0.6);    // applySettings / the calibration
+      rig.applied.length = 0;
+
+      // Sustained 80 ms frames: it must cut, and every cut must land at or
+      // below the 0.6 that is actually in force.
+      const rc = { dt: 0.08, time: 0, alpha: 0, frame: 0, quality: 0 };
+      for (let i = 0; i < 4000; i++) adaptive.frame?.(rc as never);
+      expect(rig.applied.length, 'it should still be doing its job').toBeGreaterThan(0);
+      for (const s of rig.applied) {
+        expect(s, 'a cut may never land above the scale actually in force').toBeLessThanOrEqual(0.6);
+      }
+      adaptive.dispose?.();
+    } finally { rig.teardown(); }
+  });
+
   it('the adaptive controller stands down while this one is measuring', async () => {
     // Two controllers on one handle fit a line through a moving target. The
     // adaptive system reads every outside scale change as a deliberate choice,

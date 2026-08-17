@@ -99,9 +99,9 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 4025 across 155 files (+2 opt-in probes)
+npm test             # vitest, currently 4027 across 155 files (+2 opt-in probes)
                      #   3 of those only run when `dist/` exists — `webgpu-bundle-isolation`
-                     #   is `describe.runIf(haveDist)`, so a clean tree reports 4022.
+                     #   is `describe.runIf(haveDist)`, so a clean tree reports 4024.
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```

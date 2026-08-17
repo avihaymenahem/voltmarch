@@ -93,10 +93,24 @@ let done: ((result: CalibrationResult) => void) | null = null;
  * actually running, which is at most 110 of them, once per profile.
  */
 let loop: GameLoop | null = null;
+/**
+ * The last scale THIS module put on the handle, or -1.
+ *
+ * Read by `disarmCalibration` so a restore can never clobber somebody else's
+ * newer value. See the argument there.
+ */
+let lastApplied = -1;
 
 /** True when the screenshot harness owns this page. `?shot=` sets it in `Bootstrap`. */
 function underHarness(): boolean {
   return loop === null || loop.captureClock === true;
+}
+
+/** Every scale this module commands goes through here, so `lastApplied` cannot drift. */
+function apply(scale: number): void {
+  if (handle === null) return;
+  handle.setResolutionScale(scale);
+  lastApplied = handle.resolutionScale;
 }
 
 /** Progress 0..1 of a running calibration, for a status line. */
@@ -144,7 +158,7 @@ export function armCalibration(onDone: (result: CalibrationResult) => void): boo
     `[render] hardware calibration: probing from ${Math.round(prior.startScale * 100)}% — ${prior.note}`,
   );
   // The first probe's scale goes on NOW so the warmup frames are already at it.
-  handle.setResolutionScale(controller.firstProbeScale);
+  apply(controller.firstProbeScale);
   return true;
 }
 
@@ -155,6 +169,16 @@ export function armCalibration(onDone: (result: CalibrationResult) => void): boo
  * moves any graphics row is cancelling this, and without the restore they would
  * be left parked at probe B's 70% forever — `applySettings` re-pushes
  * `resolutionScale` only when it CHANGED, and their stored value never did.
+ *
+ * AND THE RESTORE ONLY FIRES IF THE LIVE SCALE IS STILL THE ONE THIS MODULE PUT
+ * THERE. The cancelling change is very often a move of the Resolution Scale
+ * slider itself, and the shell's settings listener runs `applySettings` and this
+ * in one turn — so a restore that ran unconditionally would put the probe's
+ * entry value back over the number the player had just chosen, leaving the
+ * slider reading one thing and the renderer doing another. That is the exact
+ * defect the Resolution Scale row's own comment was written about. Guarding on
+ * `lastApplied` makes it independent of which of the two runs first, rather than
+ * correct only while somebody remembers the order.
  */
 export function disarmCalibration(): void {
   if (controller === null) return;
@@ -162,7 +186,10 @@ export function disarmCalibration(): void {
   controller = null;
   done = null;
   calibrationProgress = 0;
-  if (handle !== null && Number.isFinite(back) && back > 0) handle.setResolutionScale(back);
+  if (handle === null || !Number.isFinite(back) || back <= 0) return;
+  const live = handle.resolutionScale;
+  if (Number.isFinite(live) && Math.abs(live - lastApplied) > 1e-3) return;
+  apply(back);
 }
 
 export default defineSystem({
@@ -178,6 +205,7 @@ export default defineSystem({
     loop = c.loop;
     controller = null;
     done = null;
+    lastApplied = -1;
     calibrationProgress = 0;
   },
 
@@ -195,7 +223,7 @@ export default defineSystem({
 
     const step = c.sample(rc.dt * 1000, mpx);
     calibrationProgress = step.progress;
-    if (step.scale !== null) handle.setResolutionScale(step.scale);
+    if (step.scale !== null) apply(step.scale);
 
     const result = step.result;
     if (result === null) return;
@@ -219,6 +247,7 @@ export default defineSystem({
     loop = null;
     controller = null;
     done = null;
+    lastApplied = -1;
     calibrationProgress = 0;
   },
 });
