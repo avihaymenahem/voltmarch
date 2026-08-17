@@ -11,6 +11,8 @@
  */
 
 import { beforeAll, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import * as THREE from 'three';
 
 import { MAP_SIZE, SCATTER_COVERAGE, SCATTER_DENSITY, SCATTER_LIMITS } from '../src/core/config';
@@ -19,9 +21,25 @@ import type { BiomeName } from '../src/world/Biomes';
 import {
   bevelHighlight, PropLibrary, PropMesh, PROP_DEFS, propPalette, shadeOf,
 } from '../src/world/PropLibrary';
-import { Scatter, CHUNK_COUNT, COVER_N } from '../src/world/Scatter';
+import {
+  Scatter, CHUNK_COUNT, COVER_N, SCATTER_SHADOW_MIN_RADIUS,
+} from '../src/world/Scatter';
 
 const BIOMES: readonly BiomeName[] = ['temperate', 'desert', 'snow', 'urban'];
+
+/**
+ * Read as TEXT, not imported: `SCATTER_SHADOW_MIN_RADIUS` is a second copy of a
+ * literal that `src/render/RenderBridge.ts` does not export, and the only thing
+ * that can stop the two drifting apart is an assertion that reads the other one.
+ *
+ * BOTH candidate homes are read, so a rehome to `config.ts` — which is what the
+ * two comments ask for and what would delete the duplication — passes rather
+ * than going red for having done the right thing.
+ */
+const ROOT = join(__dirname, '..');
+const SHADOW_GATE_SRC = ['src/render/RenderBridge.ts', 'src/core/config.ts']
+  .map((f) => readFileSync(join(ROOT, f), 'utf8'))
+  .join('\n');
 
 function rig(biome: BiomeName, urban: number, densityScale: number): {
   scene: THREE.Scene; terrain: Terrain; scatter: Scatter;
@@ -97,6 +115,23 @@ describe('PropLibrary — 28 archetypes with real silhouettes', () => {
       // Foliage legitimately overhangs its trunk; the spacing figure is what
       // the placer uses, so only assert the bound is not wildly divergent.
       expect(pg.boundRadius, pg.def.key).toBeLessThan(pg.def.adorn * 2 + 4);
+    }
+  });
+
+  it('measures a 3-D bounding sphere for the shadow gate', () => {
+    for (const pg of lib.all()) {
+      const box = pg.geometry.boundingBox!;
+      const half = box.getSize(new THREE.Vector3()).length() / 2;
+      // Finite, positive, and no bigger than the box's half-diagonal: a zero
+      // would silently opt the type out of every radius gate, and a value over
+      // the diagonal means it was measured from the origin rather than from the
+      // box centre — which is the difference between `boundSphereRadius` and
+      // `boundRadius`.
+      expect(Number.isFinite(pg.boundSphereRadius), pg.def.key).toBe(true);
+      expect(pg.boundSphereRadius, pg.def.key).toBeGreaterThan(0);
+      expect(pg.boundSphereRadius, pg.def.key).toBeLessThanOrEqual(half + 1e-3);
+      // The geometry keeps it too, because Scatter gates off the mesh it holds.
+      expect(pg.geometry.boundingSphere, pg.def.key).not.toBeNull();
     }
   });
 
@@ -442,6 +477,100 @@ describe('Scatter — chunk culling', () => {
     scatter.update(cam, 0.016);
     expect(scatter.visibleInstances).toBe(first);
     scatter.dispose();
+  });
+
+  it('uploads the drawn prefix, not the whole allocation', () => {
+    /* The buffers are allocated at the type's FULL population, so a bare
+     * `needsUpdate = true` makes three `bufferSubData` the entire array — on
+     * this seed that is 4131 props x 76 B = 307 kB re-sent to change the 538
+     * instances an RTS camera at 40 m can see. The repack cursor writes a
+     * contiguous prefix from index 0, so [0, count) is exactly what changed and
+     * is the only span that may be uploaded. */
+    const { scene, scatter } = rig('temperate', 0.25, 1.0);
+    scatter.generate();
+    const meshes: THREE.InstancedMesh[] = [];
+    scene.traverse((o) => {
+      const m = o as THREE.InstancedMesh;
+      if ((m as { isInstancedMesh?: boolean }).isInstancedMesh && m.name.startsWith('prop.')) {
+        meshes.push(m);
+      }
+    });
+    expect(meshes.length).toBeGreaterThan(0);
+
+    // A tight view, so the drawn prefix is a small fraction of the capacity.
+    const cam = new THREE.PerspectiveCamera(34, 16 / 9, 1, 600);
+    cam.position.set(212, 40, 212);
+    cam.lookAt(256, 0, 256);
+    cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+    scatter.update(cam, 0);
+
+    let shortened = 0;
+    for (const m of meshes) {
+      const col = m.instanceColor!;
+      if (m.count === 0) {
+        expect(m.instanceMatrix.updateRanges.length, m.name).toBe(0);
+        continue;
+      }
+      expect(m.instanceMatrix.updateRanges, m.name).toEqual([{ start: 0, count: m.count * 16 }]);
+      expect(col.updateRanges, m.name).toEqual([{ start: 0, count: m.count * 3 }]);
+      if (m.count < m.instanceMatrix.count) shortened++;
+    }
+    expect(shortened, 'no mesh drew less than its capacity — the view was too wide')
+      .toBeGreaterThan(0);
+
+    // The range object is owned by the ScatterType and re-pointed in place:
+    // `addUpdateRange` would allocate one per attribute per repack, and this
+    // path runs on a camera pan under the file's "zero allocation" contract.
+    const probe = meshes.find((m) => m.count > 0)!;
+    const identity = probe.instanceMatrix.updateRanges[0];
+    for (const m of meshes) {
+      m.instanceMatrix.clearUpdateRanges();
+      m.instanceColor!.clearUpdateRanges();
+    }
+    const wide = new THREE.PerspectiveCamera(34, 16 / 9, 1, 900);
+    wide.position.set(256, 400, 256);
+    wide.lookAt(256, 0, 256);
+    wide.updateMatrixWorld(); wide.updateProjectionMatrix();
+    scatter.update(wide, 0.016);
+    expect(probe.instanceMatrix.updateRanges[0]).toBe(identity);
+    expect(probe.instanceMatrix.updateRanges[0].count).toBe(probe.count * 16);
+    scatter.dispose();
+  });
+
+  it('applies the prop shadow-radius gate per type', () => {
+    /* The gate RenderBridge's own comment asks for: "src/world/Scatter.ts ...
+     * should apply the same gate there". It is per TYPE because an
+     * InstancedMesh is one submission — the shadow pass gets all 735 grass
+     * tufts or none of them. Measured 2026-08-17 the whole roster clears 0.70 m
+     * (the smallest is `bench` at 1.18 m), so this asserts the RULE and not the
+     * current roster: a small prop added tomorrow must lose its shadow, and
+     * nothing here should go red when it does. */
+    const { scene, scatter } = rig('temperate', 0.25, 1.0);
+    scatter.generate();
+    let checked = 0;
+    scene.traverse((o) => {
+      const m = o as THREE.InstancedMesh;
+      if (!(m as { isInstancedMesh?: boolean }).isInstancedMesh) return;
+      if (!m.name.startsWith('prop.')) return;
+      const bs = m.geometry.boundingSphere;
+      expect(bs, `${m.name} has no bounding sphere to gate on`).not.toBeNull();
+      expect(m.castShadow, m.name).toBe(bs!.radius >= SCATTER_SHADOW_MIN_RADIUS);
+      checked++;
+    });
+    expect(checked).toBeGreaterThan(0);
+    scatter.dispose();
+
+    // The threshold is a SECOND COPY of the entity-prop gate's, because that
+    // one is not exported and a world module must not import the render bridge.
+    // Two copies that silently drift apart are worse than one, so every
+    // declaration of it anywhere must still read the same number as this one.
+    const decls = [...SHADOW_GATE_SRC.matchAll(/PROP_SHADOW_MIN_RADIUS\s*=\s*([\d.]+)/g)];
+    expect(decls.length, 'the entity-prop gate vanished; delete this copy or restore it')
+      .toBeGreaterThan(0);
+    for (const d of decls) {
+      expect(Number(d[1]), 'the entity-prop gate moved; SCATTER_SHADOW_MIN_RADIUS must follow')
+        .toBe(SCATTER_SHADOW_MIN_RADIUS);
+    }
   });
 
   it('shows more of the map from higher up', () => {

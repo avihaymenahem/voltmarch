@@ -78,6 +78,32 @@ export interface BatchPartSpec {
   layer?: number;
   /** Sort band. Defaults to RENDER_ORDER.OPAQUE. */
   renderOrder?: number;
+  /**
+   * The program the SHADOW pass draws this part with.
+   *
+   * three substitutes its own shared `MeshDepthMaterial` for the object's
+   * material when it fills a shadow map, and that material never runs the
+   * colour material's `onBeforeCompile`. So any silhouette a vertex shader
+   * produces — a structure sunk below its pad while it builds, a prop bent by
+   * wind — is invisible to the shadow pass, which keeps casting the UNANIMATED
+   * shape. Hanging a depth material here is the only hook that fixes it,
+   * because the batcher owns the InstancedMesh and nobody else can reach it.
+   *
+   * The depth program is drawn from the SAME geometry, so `aState`,
+   * `aTeamColor` and every attribute the source geometry carried are already
+   * bound; it only has to declare the ones it reads.
+   */
+  customDepthMaterial?: THREE.Material;
+  /**
+   * False marks this part as a NON-OCCLUDER for the GTAO normal prepass.
+   *
+   * The contract is `mesh.userData.vmAoOccluder === false`, read by
+   * `render/post.ts#aoOccluder`. It is for geometry that is opaque and
+   * depth-writing — so the prepass takes it — but is too thin to be an
+   * occluder of anything: a building's 40 mm foundation pad reads to AO as a
+   * wall a few centimetres above the ground, and costs a second draw to say so.
+   */
+  aoOccluder?: boolean;
 }
 
 /** Names the batch owns on its private geometry. Everything else is shared. */
@@ -240,6 +266,19 @@ export class BatchPart {
     this.mesh.layers.set(LAYERS.DEFAULT);
     if (spec.layer !== undefined && spec.layer !== LAYERS.DEFAULT) {
       this.mesh.layers.enable(spec.layer);
+    }
+    // Set only when asked: three tests `!== undefined`, so writing `undefined`
+    // here would be the same as not writing it, but leaving the property absent
+    // keeps the shadow pass on its fast shared-material path for every model
+    // that does not animate its own silhouette.
+    if (spec.customDepthMaterial !== undefined) {
+      this.mesh.customDepthMaterial = spec.customDepthMaterial;
+    }
+    // STRICT `=== false`. An omitted flag must keep the part in the AO prepass:
+    // that is what every model in the game relies on, and a typo'd truthy value
+    // must not silently remove one from it.
+    if (spec.aoOccluder === false) {
+      this.mesh.userData.vmAoOccluder = false;
     }
     // The mesh sits at the world origin forever: instance matrices are already
     // world-space, and `Frustum.intersectsObject` transforms our bounding

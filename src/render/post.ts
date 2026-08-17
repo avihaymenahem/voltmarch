@@ -652,6 +652,41 @@ function lumaNormalized(hex: number, out: THREE.Vector3): THREE.Vector3 {
 /* PostChain                                                                  */
 /* ========================================================================== */
 
+/**
+ * WHAT A FRAME'S DRAW CALLS WERE ACTUALLY SPENT ON.
+ *
+ * `renderer.info.autoReset` is false and `beginFrame()` resets the counter once
+ * per frame (see `renderer.ts`), so `renderer.info.render.calls` — the number
+ * `shots/_report.json` publishes as `drawCalls`, and the number every budget
+ * argument in this repo has quoted — is a SUM OVER EVERY SCENE SUBMISSION IN
+ * THE FRAME. There are three: the shadow map, the colour pass, and GTAO's
+ * normal prepass, which draws the whole scene a second time by design.
+ *
+ * `MAX_DRAW_CALLS` and `drawCalls` are therefore different quantities, and the
+ * gap between them has been read as a budget overrun for several releases.
+ * Instrumented at `renderBufferDirect`, `01-establishing-base`'s 219 is
+ * 54 shadow + 78 colour + 67 AO prepass + 20 full-screen quads: the pass the
+ * budget is about is 78, inside a total of 219.
+ *
+ * So the INSTRUMENT is split, not the renderer — nothing about the frame
+ * changes. Four buckets, exhaustive by construction because `post` is the
+ * residual: `shadow + colour + ao + post === total` always, and a meter that
+ * stops firing shows up as an implausibly large `post` rather than as a total
+ * that is quietly wrong.
+ */
+export interface DrawCallBreakdown {
+  /** Shadow-map submissions. Once a frame — see `beginFrame()` in renderer.ts. */
+  shadow: number;
+  /** The main scene submission with the shadow map taken out. THIS is what `MAX_DRAW_CALLS` bounds. */
+  colour: number;
+  /** GTAO's normal/depth prepass: the scene again, minus the non-occluders filtered below. */
+  ao: number;
+  /** The residual — full-screen quads: AO's composite, bloom's mip chain, grade, SMAA, copies. */
+  post: number;
+  /** The frame's `renderer.info.render.calls`, i.e. the figure the harness reports. */
+  total: number;
+}
+
 export interface PostChain {
   /** null when the composer could not be constructed at all. */
   readonly composer: EffectComposer | null;
@@ -662,6 +697,11 @@ export interface PostChain {
   readonly enabled: boolean;
   /** True when the chain is actually driving the frame (composer alive+on). */
   readonly active: boolean;
+  /**
+   * Last frame's draw calls, split by pass. Live object, rewritten in place at
+   * the end of every `render()` — copy it before handing it anywhere.
+   */
+  readonly drawCallsByPass: Readonly<DrawCallBreakdown>;
 
   /** Draw one frame. Falls back to renderer.render() when inactive. */
   render(dt: number): void;
@@ -704,7 +744,6 @@ export function createPostChain(options: CreatePostOptions): PostChain {
   let elapsed = 0;
   let disposed = false;
   let enabled = cfg.enabled;
-  let warnedDirt = false;
   /** Set by `rebuild()`; consumed by `render()`, which warms up first. */
   let chainDirty = false;
   /**
@@ -716,6 +755,90 @@ export function createPostChain(options: CreatePostOptions): PostChain {
 
   const width = () => Math.max(2, handle.size.width);
   const height = () => Math.max(2, handle.size.height);
+
+  /* ---- draw-call attribution (see `DrawCallBreakdown`) ------------------- */
+  /**
+   * ONE record, rewritten in place at the end of every frame. `stats()` copies
+   * it; this file never reallocates it, because everything below runs inside the
+   * frame loop and the zero-allocation rule applies there.
+   */
+  const drawCallsByPass: DrawCallBreakdown = { shadow: 0, colour: 0, ao: 0, post: 0, total: 0 };
+  /** `renderer.info.render.calls` when this frame's real drawing began. */
+  let callsAtFrameStart = 0;
+  /** Accumulators, zeroed per frame by `beginDrawCallFrame`. */
+  let shadowCalls = 0;
+  let sceneCalls = 0;
+  let aoCalls = 0;
+  /** The pair of marks the AO prepass meter brackets its window with. */
+  let aoMarkCalls = 0;
+  let aoMarkShadow = 0;
+
+  function beginDrawCallFrame(): void {
+    // A DELTA rather than an absolute, so the accounting still adds up on the
+    // paths that draw without `handle.beginFrame()` having reset the counter.
+    callsAtFrameStart = renderer.info.render.calls;
+    shadowCalls = 0;
+    sceneCalls = 0;
+    aoCalls = 0;
+  }
+
+  function endDrawCallFrame(): void {
+    const total = renderer.info.render.calls - callsAtFrameStart;
+    drawCallsByPass.shadow = shadowCalls;
+    drawCallsByPass.colour = sceneCalls;
+    drawCallsByPass.ao = aoCalls;
+    // The residual, deliberately — see the interface's own doc for why the four
+    // buckets are exhaustive rather than merely hopeful.
+    drawCallsByPass.post = total - shadowCalls - sceneCalls - aoCalls;
+    drawCallsByPass.total = total;
+  }
+
+  /*
+   * COUNT THE SHADOW PASS SEPARATELY, WITHOUT MOVING IT.
+   *
+   * `WebGLRenderer.render` calls `shadowMap.render` before it submits the scene,
+   * so from the composer's side the shadow draws and the colour draws arrive as
+   * one number. This is the only seam between them. The wrapper is read-only —
+   * two counter reads and a forward — and it is what lets `colour` be the figure
+   * `MAX_DRAW_CALLS` is actually about.
+   *
+   * Restored in `dispose()`: a second chain built over the same renderer would
+   * otherwise stack one wrapper per boot and count the same draws N times.
+   */
+  const shadowMap = renderer.shadowMap;
+  const baseShadowRender = shadowMap.render;
+  shadowMap.render = function meteredShadowRender(
+    lights: THREE.Light[], sc: THREE.Scene, cam: THREE.Camera,
+  ): void {
+    const before = renderer.info.render.calls;
+    baseShadowRender.call(shadowMap, lights, sc, cam);
+    shadowCalls += renderer.info.render.calls - before;
+  };
+
+  /**
+   * The colour pass, with the shadow map that three renders inside it taken back
+   * out. Installed OUTSIDE `installSceneMsaaResolve`, so the MSAA transfer quad —
+   * one draw, and only while MSAA is on — is counted with the scene it serves
+   * rather than with the post quads.
+   */
+  function installSceneCallMeter(pass: RenderPass): void {
+    const p = pass as unknown as {
+      render(
+        r: THREE.WebGLRenderer,
+        writeBuffer: THREE.WebGLRenderTarget,
+        readBuffer: THREE.WebGLRenderTarget,
+        deltaTime: number,
+        maskActive: boolean,
+      ): void;
+    };
+    const base = p.render.bind(p);
+    p.render = function meteredSceneRender(r, writeBuffer, readBuffer, deltaTime, maskActive) {
+      const before = renderer.info.render.calls;
+      const shadowBefore = shadowCalls;
+      base(r, writeBuffer, readBuffer, deltaTime, maskActive);
+      sceneCalls += (renderer.info.render.calls - before) - (shadowCalls - shadowBefore);
+    };
+  }
 
   /* ---- MSAA state (see the file header) --------------------------------- */
   /** Driver cap on `samples`, read once at construction. 0 = no MSAA possible. */
@@ -779,6 +902,8 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       // Installed unconditionally and inert while `sceneMsaa` is null, so the
       // settings toggle never has to re-wrap a live pass.
       installSceneMsaaResolve(p);
+      // Outermost, so it sees the resolve transfer too. See `DrawCallBreakdown`.
+      installSceneCallMeter(p);
       return p as unknown as Pass;
     });
 
@@ -825,6 +950,9 @@ export function createPostChain(options: CreatePostOptions): PostChain {
         p.output = GTAOPass.OUTPUT.Default;
         seedAoDenoiseNoise(p);
         installAoOccluderFilter(p);
+        // After the filter, so the mark is taken once the traverse (which draws
+        // nothing) is done and the window holds only the prepass itself.
+        installAoPrepassMeter(p);
         installAoResolutionScale(p);
         installAoInPlaceComposite(p);
         if (DEV) console.info(`[post] AO: GTAO @ ${ao.width}x${ao.height}`);
@@ -1208,6 +1336,44 @@ export function createPostChain(options: CreatePostOptions): PostChain {
   }
 
   /**
+   * The cache `hideAoNonOccluders` pushes into, handed over for the duration of a
+   * single `_overrideVisibility` call. A handoff rather than a captured argument
+   * because the callback is created ONCE, at chain construction, and the traverse
+   * below runs every frame — see the block on the filter itself.
+   *
+   * Declared BEFORE the filter that assigns it: `build('ao')` runs during
+   * construction, so a `let` further down the file would be in its temporal dead
+   * zone if anything ever rendered a prepass before construction finished.
+   */
+  let aoVisibilityCache: THREE.Object3D[] | null = null;
+
+  /** The object flags this filter reads. None of them are declared on `Object3D`. */
+  type AoCandidate = THREE.Object3D & {
+    readonly isPoints?: boolean;
+    readonly isLine?: boolean;
+    readonly isLine2?: boolean;
+    readonly isMesh?: boolean;
+  };
+
+  const hideAoNonOccluders = (o: THREE.Object3D): void => {
+    if (!o.visible) return;
+    const c = o as AoCandidate;
+    /*
+     * GTAOPass's own rule, reproduced: points and lines carry no meaningful
+     * normal, so they must not contribute to AO. Tested BEFORE `isMesh` because
+     * `Line2` extends `LineSegments2` extends `Mesh` — it answers true to both,
+     * and the old two-traverse arrangement gave the line rule first look at it.
+     */
+    const lineish = c.isPoints === true || c.isLine === true || c.isLine2 === true;
+    if (!lineish) {
+      if (c.isMesh !== true) return;
+      if (aoOccluder(o as THREE.Mesh)) return;
+    }
+    o.visible = false;
+    aoVisibilityCache?.push(o);
+  };
+
+  /**
    * KEEP NON-OCCLUDERS OUT OF THE AO NORMAL/DEPTH PREPASS.
    *
    * `GTAOPass` renders the whole scene a second time with a normal material to
@@ -1225,6 +1391,18 @@ export function createPostChain(options: CreatePostOptions): PostChain {
    * main pass, or that is transparent, or that lives on the effects/overlay
    * layers, is not an occluder. It is also a straight perf win — the prepass
    * stops drawing the particle, beam and decal layers.
+   *
+   * ONE TRAVERSE, NOT TWO, AND ONE CALLBACK FOR THE LIFE OF THE CHAIN. This used
+   * to delegate to `base` and then walk the scene AGAIN with a fresh arrow — two
+   * full traverses of ~300 nodes and two closures allocated per frame, inside the
+   * frame loop, which the project forbids. `base`'s own rule (hide visible
+   * Points/Line/Line2, push them to the cache) is four lines and is reproduced
+   * in `hideAoNonOccluders` just above, so the SET of hidden objects is
+   * identical to what the pair produced; only the push order differs, and
+   * `_restoreVisibility` just walks the cache setting `visible = true`. `base` is
+   * still resolved and type-checked, because a GTAOPass without
+   * `_overrideVisibility` is a version whose prepass this file cannot filter at
+   * all, and installing half of this would be worse than installing none.
    */
   function installAoOccluderFilter(pass: unknown): void {
     const p = pass as {
@@ -1236,28 +1414,82 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     if (typeof base !== 'function') return;
 
     p._overrideVisibility = function overrideVisibility(this: typeof p): void {
-      base.call(this);
       const cache = this._visibilityCache;
-      if (cache === undefined) return;
-      this.scene.traverse((o) => {
-        if (!o.visible || !(o as THREE.Mesh).isMesh) return;
-        if (aoOccluder(o as THREE.Mesh)) return;
-        o.visible = false;
-        cache.push(o);
-      });
+      if (cache === undefined) {
+        // Shape drift: let three do whatever it now does, and filter nothing.
+        base.call(this);
+        return;
+      }
+      aoVisibilityCache = cache;
+      this.scene.traverse(hideAoNonOccluders);
+      aoVisibilityCache = null;
     };
   }
 
   function aoOccluder(mesh: THREE.Mesh): boolean {
+    /*
+     * THE OPT-OUT, and it is a statement about geometry rather than a hint.
+     * A mesh whose author knows it must not occlude — a batched sheet that lies
+     * on the ground, anything whose depth is a lie — stamps
+     * `userData.vmAoOccluder = false` and drops out of BOTH halves of the
+     * G-buffer, because the traverse above flips `visible` and pushes to
+     * GTAOPass's own `_visibilityCache`. Those pixels then sample the terrain
+     * depth beneath, which is exactly the decal precedent this filter was
+     * written for. STRICT `=== false`: an unset `userData` — every mesh in the
+     * game bar the few that ask — keeps the behaviour it has always had.
+     */
+    if (mesh.userData.vmAoOccluder === false) return false;
     if (mesh.layers.isEnabled(LAYERS.EFFECTS) || mesh.layers.isEnabled(LAYERS.OVERLAY)) return false;
+    // Branch rather than `Array.isArray(mat) ? mat : [mat]`: that wrapper
+    // allocated a one-element array for every single-material mesh in the scene,
+    // every frame, and this runs from `_overrideVisibility` at GTAOPass.js:504.
     const mat = mesh.material;
-    const list = Array.isArray(mat) ? mat : [mat];
-    for (const m of list) {
-      if (m === undefined || m === null) continue;
-      if (m.transparent === true || m.depthWrite === false) return false;
-      if (m.blending !== THREE.NormalBlending && m.blending !== THREE.NoBlending) return false;
+    if (Array.isArray(mat)) {
+      for (let i = 0; i < mat.length; i++) {
+        if (!materialOccludes(mat[i])) return false;
+      }
+      return true;
     }
-    return true;
+    return materialOccludes(mat);
+  }
+
+  /** One material's half of `aoOccluder`. A null slot disqualifies nothing. */
+  function materialOccludes(m: THREE.Material | null | undefined): boolean {
+    if (m === undefined || m === null) return true;
+    if (m.transparent === true || m.depthWrite === false) return false;
+    return m.blending === THREE.NormalBlending || m.blending === THREE.NoBlending;
+  }
+
+  /**
+   * Bracket GTAO's normal/depth prepass, which is the second of the frame's three
+   * scene submissions and the one nobody expects. `_overrideVisibility` and
+   * `_restoreVisibility` are the pass's own fences around it (GTAOPass.js:504-506)
+   * — nothing else needs hooking, and nothing about the frame changes.
+   *
+   * The shadow delta is subtracted for the same reason it is in the colour meter:
+   * whichever submission happens to rebuild the shadow map, those draws belong to
+   * `shadow` and must not be counted twice.
+   */
+  function installAoPrepassMeter(pass: unknown): void {
+    const p = pass as {
+      _overrideVisibility?: () => void;
+      _restoreVisibility?: () => void;
+    };
+    const over = p._overrideVisibility;
+    const restore = p._restoreVisibility;
+    // Both or neither: a start mark with no end would leave `ao` at 0 and quietly
+    // inflate the `post` residual instead.
+    if (typeof over !== 'function' || typeof restore !== 'function') return;
+
+    p._overrideVisibility = function meteredOverride(this: typeof p): void {
+      over.call(this);
+      aoMarkCalls = renderer.info.render.calls;
+      aoMarkShadow = shadowCalls;
+    };
+    p._restoreVisibility = function meteredRestore(this: typeof p): void {
+      restore.call(this);
+      aoCalls += (renderer.info.render.calls - aoMarkCalls) - (shadowCalls - aoMarkShadow);
+    };
   }
 
   function applyAoConfig(): void {
@@ -1411,11 +1643,11 @@ export function createPostChain(options: CreatePostOptions): PostChain {
       // the knob a critic actually wants ("the tesla coil should read hotter").
       bloom.strength = cfg.bloom.strength * Math.max(0.25, cfg.bloom.emissiveBoost / 1.6);
       bloom.radius = cfg.bloom.radius;
-      const dirtUniform = bloom.compositeMaterial?.uniforms?.dirtTexture;
-      if (!dirtUniform && cfg.bloom.lensDirt > 0 && !warnedDirt && DEV) {
-        warnedDirt = true;
-        console.info('[post] lens dirt not supported by this UnrealBloomPass build — ignored');
-      }
+      // `lensDirt` used to be read here, and the only thing it ever did was
+      // decide whether to print this console.info — UnrealBloomPass has no dirt
+      // uniform to feed. RA3_LOOK_BIBLE.md §11 bans lens dirt by name, so the
+      // field is deleted rather than wired; tests/banned-effects.spec.ts now
+      // scans for it so it cannot come back as a configured no-op.
     }
 
     if (gradeUniforms) {
@@ -1582,6 +1814,7 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     get active() {
       return !!composer && enabled && composer.passes.length > 0;
     },
+    drawCallsByPass,
 
     render(dt: number) {
       if (disposed) return;
@@ -1600,10 +1833,23 @@ export function createPostChain(options: CreatePostOptions): PostChain {
           chainDirty = false;
           warmUp();
         }
+        // AFTER `warmUp()`, deliberately: it draws a complete throwaway frame
+        // through the same passes, and folding that in would double every
+        // bucket on the one frame that follows a rebuild.
+        beginDrawCallFrame();
         composer.render(dt);
+        endDrawCallFrame();
       } else {
+        beginDrawCallFrame();
         renderer.setRenderTarget(null);
+        const before = renderer.info.render.calls;
+        const shadowBefore = shadowCalls;
         renderer.render(scene, camera);
+        // The composer's RenderPass is not in this path, so neither is its meter.
+        // Attribute the direct draw to `colour` by hand, or the whole frame lands
+        // in the residual and reads as post.
+        sceneCalls += (renderer.info.render.calls - before) - (shadowCalls - shadowBefore);
+        endDrawCallFrame();
       }
     },
 
@@ -1661,6 +1907,9 @@ export function createPostChain(options: CreatePostOptions): PostChain {
     dispose() {
       if (disposed) return;
       disposed = true;
+      // Before anything else: the renderer outlives this chain, and a stacked
+      // shadow meter would count the next chain's frames once per dead chain.
+      shadowMap.render = baseShadowRender;
       offResize();
       offConfig();
       for (const id of PASS_ORDER) {

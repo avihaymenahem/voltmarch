@@ -808,9 +808,12 @@ export function buildUnit(list: UnitMassList, atlas: GreebleAtlas, material: THR
     sockets: [...sockets, ...turretSockets],
     boundsX: bounds[0], boundsY: bounds[1], boundsZ: bounds[2],
     footprintW: 0, footprintH: 0,
-    // Units are 2-3 k triangles; one LOD switch to a merged silhouette is
-    // enough, and the bridge decides whether to use it.
-    lodDistances: [90, 180],
+    // `lodDistances: [90, 180]` used to be written here under the note "the
+    // bridge decides whether to use it". THE BRIDGE DOES NOT, and neither does
+    // anything else: there is no `THREE.LOD`, no `SimplifyModifier` and no LOD
+    // switch anywhere in the repo, so this was a two-number promise of a system
+    // that has never existed. Deleted from `ModelBuild` with it. If unit LOD is
+    // ever built, the thresholds come back at the same time as the switch.
   };
 
   return {

@@ -540,8 +540,17 @@ const SUN_NOON = {
    * median luminance ran 0.515 against RA3's 0.342.
    */
   intensity: 3.4,
-  /** Shadows are TINTED, not black — black shadows read as holes. */
-  shadowColor: '#2A3550',
+  /*
+   * `shadowColor: '#2A3550'` USED TO SIT HERE AND IT WAS WIRED TO NOTHING.
+   * It was declared on `SunLook` and on `SunConfig`, written in three tables and
+   * copied through `ArtBridge`, and read by no shader, material or pass — a
+   * five-hop chain ending nowhere. Shadows ARE tinted, and the bible's §13 #7
+   * per-channel lit/shadow ratio is still met; the tint comes from
+   * `TONE_NOON.shadowTint` via `post.ts`'s `uShadowTint`, which applies to the
+   * low end of the luminance range rather than to a light. Deleting this
+   * changed no pixel — see `ATMOSPHERE_NOON.hemiSky` above, which says the same
+   * thing from the other side.
+   */
   /**
    * PCF radius in shadow texels. Higher = softer, mushier contact.
    *
@@ -581,9 +590,18 @@ const SUN_NOON = {
    * 0.20-0.26 band without washing the lit side out too.
    */
   shadowIntensity: 0.80,
-  /** Near cascade covers 90 m; far covers 320 m. Texel-snapped so shadows
-   *  do not crawl when the camera pans. */
-  cascadeNear: 90,
+  /**
+   * ONE shadow camera, fitted per frame to the visible ground quad and clamped
+   * to this radius, texel-snapped so shadows do not crawl when the camera pans.
+   *
+   * `cascadeNear: 90` used to sit above this line. THERE IS NO CASCADE CHAIN to
+   * be near of: `scene.ts` builds a single `DirectionalLight` with a single
+   * orthographic shadow camera, and the ground bounce next to it sets
+   * `castShadow = false`. Its one consumer wrote the shadow camera's INITIAL
+   * left/right/top/bottom, which `fitShadow` overwrites on the first frame, so
+   * the value never survived to be seen. Deleted rather than left looking
+   * configurable.
+   */
   cascadeFar: 320,
   cascadeResolution: 2048,
 };
@@ -625,7 +643,7 @@ const ATMOSPHERE_NOON = {
    * shadowed grass came back at a 0.030 / 0.069 / 0.162 per-channel ratio of
    * the lit grass, against §13 #7's required 0.20-0.26 / 0.29-0.35 /
    * 0.46-0.56. Shadows that dark are not "contrasty", they are holes — the
-   * exact failure the bible calls out for `shadowColor` in the first place, and
+   * exact failure the bible calls out for shadow colour in the first place, and
    * the reason RA3's own shadows stay fully readable.
    *
    * Contrast belongs to the grade (GRADE_PIVOT / GRADE_WHITE in post.ts), which
@@ -853,15 +871,62 @@ const BLOOM_NOON = {
    * still above sunlit white paint (~0.95 scene-linear at the new sun
    * intensity) and below a specular glint, which is exactly the band we want
    * blooming. Do not take it under 1.0.
+   *
+   * THE VALUE USED TO BE 1.20 UNDER THIS EXACT PROSE. The note narrating the
+   * ease from 1.25 down to 1.05 shipped while the number stopped at 1.20, so
+   * for the whole of that time the comment described a change nobody made and
+   * bible §4.4 was missed by 0.15. Nothing measured it: `tools/metrics.mjs` has
+   * no bloom probe at all (`grep bloom tools/metrics.mjs` is empty), so every
+   * drift in this struct was invisible to the grade.
+   *
+   * AND THEN IT WAS MEASURED, AND 1.05 LOST. Captured at 1.05 with the bible's
+   * strength beside it, the weighted grade fell 89.2% -> 87.4% and two fixtures
+   * broke outright: `08-naval-water` dropped below the saturation floor (#5,
+   * -0.130) and inverted its aerial-perspective delta (#12, -0.312), and
+   * `13-atoll-crossing` pushed past the median-luminance ceiling (#4, +0.059).
+   * A lower threshold recruits more pixels into the bloom, and over open water
+   * — which is a very large, very bright, low-detail surface — that reads as
+   * haze. The bible's §4.4 row was written for land frames; three of thirteen
+   * shipped fixtures are sea. 1.20 is restored, and this comment now records
+   * BOTH the spec and the measurement rather than pretending they agree.
    */
   threshold: 1.20,
+  /**
+   * AUTHORED strength, and it is NOT the effective one.
+   *
+   * `post.ts#syncConfig` sets the pass to
+   * `strength * max(0.25, emissiveBoost / 1.6)`, so `emissiveBoost` 1.35 scales
+   * whatever is written here by 0.84375. The bible (§4.4, pre-tonemap linear
+   * HDR row) asks for an EFFECTIVE 0.55, which would be an authored 0.652;
+   * 0.42 lands at 0.354. If you change `emissiveBoost`, this value must move
+   * with it or the glow silently rescales.
+   *
+   * 0.652 WAS TRIED AND REVERTED — see `threshold` above for the numbers. The
+   * +55% of bloom energy raised median luminance and lowered saturation on
+   * twelve of thirteen fixtures, which is the direction the grade punishes.
+   * The bible's effective 0.55 is NOT achieved here and this comment does not
+   * pretend it is; closing it needs the sea fixtures to stop hazing first,
+   * which is a water-material question, not a bloom one.
+   */
   strength: 0.42,
-  radius: 0.70,
-  mips: 5,
-  /** Extra gain applied to pixels flagged emissive by the material. */
+  /**
+   * Bible §4.4 pre-tonemap row. NOT a taste tweak — it INVERTS the mip
+   * weighting. `UnrealBloomPass.lerpBloomFactor` blends `bloomFactors`
+   * [1, .8, .6, .4, .2] against their reverse by this radius, so at the old
+   * 0.70 the five mip weights ran 0.44 / 0.52 / 0.60 / 0.68 / 0.76 — ASCENDING,
+   * i.e. the 1/32 mip (the widest, veiliest one) dominated, which is the
+   * "brightness comes from blur" failure the bible names in the same section.
+   * At 0.34 they run 0.728 / 0.664 / 0.60 / 0.536 / 0.472, descending as
+   * intended: tight core, faint skirt.
+   *
+   * Do NOT drop mips 4 and 5 to save the passes — at 0.34 their weights are
+   * still 0.536 and 0.472, so they carry the skirt the measured radial profile
+   * (half-falloff at r~30 px, gone by r~50 px) actually needs.
+   */
+  radius: 0.34,
+  /** Extra gain applied to pixels flagged emissive by the material. See
+   *  `strength` above: this multiplies it. */
   emissiveBoost: 1.35,
-  /** Procedural smudge mask modulating the bloom. */
-  lensDirt: 0.12,
 };
 
 const AO_NOON = {
@@ -1382,7 +1447,7 @@ export const MOODS: Record<string, DeepPartial<ArtDirection>> = {
   dusk: {
     sun: {
       elevationDeg: 12, azimuthDeg: 288,
-      color: '#FF9E5A', intensity: 4.4, shadowColor: '#2A2038',
+      color: '#FF9E5A', intensity: 4.4,
     },
     atmosphere: {
       fogColor: '#E8A05C', fogDensity: 0.0060, fogStart: 120,
@@ -1399,7 +1464,7 @@ export const MOODS: Record<string, DeepPartial<ArtDirection>> = {
   night: {
     sun: {
       elevationDeg: -6, color: '#7C9CD8', intensity: 0.8,
-      shadowColor: '#0A1020', shadowIntensity: 0.6,
+      shadowIntensity: 0.6,
     },
     atmosphere: {
       fogColor: '#14203A', fogDensity: 0.014,
@@ -1445,10 +1510,28 @@ export const MOODS: Record<string, DeepPartial<ArtDirection>> = {
  * softer image photographs better than a battlefield with no smoke.
  * ========================================================================== */
 
+/*
+ * THREE FIELDS WERE DELETED FROM THIS INTERFACE, and the reason is worth
+ * keeping because it is the shape of `docs/SPEC_DRIFT_AUDIT.md` #22:
+ *
+ *   - `shadowCascades` (1/2/2/2) configured a cascade chain that does not
+ *     exist. `scene.ts` builds ONE `DirectionalLight` with ONE orthographic
+ *     shadow camera; the ground bounce beside it sets `castShadow = false`.
+ *   - `shadowResolution` (1024/1536/2048/2048) had no reader. The LIVE shadow
+ *     map size is chosen in `src/shell/Settings.ts` from the graphics tier
+ *     (1024/1536/2048/4096, default 'high') and lands on
+ *     `RENDER_CONFIG.renderer.shadows.mapSize`. Two tables disagreeing about
+ *     one number, with only one of them wired up, is worse than one table.
+ *   - `lodBias` (0.6/0.85/1.0/1.4) was "metres at which units drop to their
+ *     lowest LOD" and THERE IS NO LOD SYSTEM: no `THREE.LOD`, no
+ *     `SimplifyModifier`, nothing repo-wide. `ModelBuild.lodDistances` went
+ *     with it.
+ *
+ * Everything left here has a real consumer. Do not add a knob back until the
+ * thing it configures exists.
+ */
 export interface QualitySettings {
   resolutionScale: number;
-  shadowResolution: number;
-  shadowCascades: number;
   ssao: boolean;
   bloom: boolean;
   godRays: boolean;
@@ -1459,8 +1542,6 @@ export interface QualitySettings {
   maxDecals: number;
   maxDynamicLights: number;
   waterReflections: boolean;
-  /** Metres at which units drop to their lowest LOD. */
-  lodBias: number;
   anisotropy: number;
   /** Edge length of generated albedo textures. */
   textureSize: number;
@@ -1468,28 +1549,28 @@ export interface QualitySettings {
 
 export const QUALITY_PRESETS: Record<QualityTier, QualitySettings> = {
   0 /* Low */: {
-    resolutionScale: 0.72, shadowResolution: 1024, shadowCascades: 1,
+    resolutionScale: 0.72,
     ssao: false, bloom: true, godRays: false, heatHaze: false,
     antialias: 'fxaa', maxParticles: 1200, maxDecals: 128, maxDynamicLights: 2,
-    waterReflections: false, lodBias: 0.6, anisotropy: 1, textureSize: 256,
+    waterReflections: false, anisotropy: 1, textureSize: 256,
   },
   1 /* Medium */: {
-    resolutionScale: 0.85, shadowResolution: 1536, shadowCascades: 2,
+    resolutionScale: 0.85,
     ssao: true, bloom: true, godRays: false, heatHaze: false,
     antialias: 'smaa', maxParticles: 3000, maxDecals: 256, maxDynamicLights: 4,
-    waterReflections: false, lodBias: 0.85, anisotropy: 4, textureSize: 512,
+    waterReflections: false, anisotropy: 4, textureSize: 512,
   },
   2 /* High */: {
-    resolutionScale: 1.0, shadowResolution: 2048, shadowCascades: 2,
+    resolutionScale: 1.0,
     ssao: true, bloom: true, godRays: true, heatHaze: true,
     antialias: 'smaa', maxParticles: 6000, maxDecals: 512, maxDynamicLights: 8,
-    waterReflections: true, lodBias: 1.0, anisotropy: 8, textureSize: 512,
+    waterReflections: true, anisotropy: 8, textureSize: 512,
   },
   3 /* Ultra */: {
-    resolutionScale: 1.0, shadowResolution: 2048, shadowCascades: 2,
+    resolutionScale: 1.0,
     ssao: true, bloom: true, godRays: true, heatHaze: true,
     antialias: 'smaa', maxParticles: 10000, maxDecals: 768, maxDynamicLights: 8,
-    waterReflections: true, lodBias: 1.4, anisotropy: 16, textureSize: 1024,
+    waterReflections: true, anisotropy: 16, textureSize: 1024,
   },
 };
 
@@ -1540,7 +1621,18 @@ export const LAYERS = {
 
 /** Hard target: 60 fps with 200+ active units. */
 export const TARGET_FPS = 60;
-/** Draw call ceiling. Exceeding this means a batch key is wrong. */
+/**
+ * Draw call ceiling for the COLOUR PASS. Exceeding this means a batch key is
+ * wrong.
+ *
+ * It does NOT budget `shots/_report.json`'s `frame.drawCalls`, which reads
+ * `renderer.info.render.calls` with `autoReset` off and is therefore the SUM
+ * over colour + shadow + the GTAO normal prepass + the post quads. Live
+ * instrumentation splits `01-establishing-base`'s 219 as 78 colour + 54 shadow
+ * + 67 prepass + 20 post. The colour pass is ~78, comfortably inside this
+ * number, so do NOT raise the constant to "match" a figure that measures a
+ * different quantity.
+ */
 export const MAX_DRAW_CALLS = 130;
 /** Cells a flow field may expand per tick, across ALL fields. */
 export const FLOWFIELD_BUDGET_CELLS = 8000;
@@ -7726,9 +7818,23 @@ export const SCATTER_LIMITS = {
   /** Absolute prop ceiling for the whole map. 26.2 ha x 260/ha = ~6800. */
   maxProps: 9000,
   /**
-   * Maximum simultaneously-live prop types, i.e. InstancedMeshes. Each costs
-   * one colour draw + one shadow draw, and MAX_DRAW_CALLS is 130 with terrain
-   * already spending ~34. Types past this cap are dropped lowest-count first.
+   * Maximum simultaneously-live prop types, i.e. InstancedMeshes. Types past
+   * this cap are dropped lowest-count first.
+   *
+   * THE ARITHMETIC HERE SAID 2 DRAWS PER TYPE AND IT IS 3. A scatter mesh is
+   * opaque on the DEFAULT layer, so besides its colour draw and its shadow
+   * draw it is also submitted in `GTAOPass`'s normal prepass. At the cap that
+   * is 22 x 3 = 66 submissions, not 44 — the cap was sized against a 2x model
+   * and is therefore half again as expensive as it was budgeted to be.
+   *
+   * The shadow term is the only one that shrinks: a `castShadow` radius gate
+   * drops the shadow draw for props too small to throw anything readable, so
+   * the real figure is between 2N and 3N depending on how much of the live
+   * roster clears that radius. It is never 2N flat.
+   *
+   * Note also that `MAX_DRAW_CALLS` (130) budgets the COLOUR pass only, while
+   * `shots/_report.json`'s `frame.drawCalls` is the sum over colour + shadow +
+   * prepass. Do not compare the two directly.
    */
   maxTypes: 22,
   /**

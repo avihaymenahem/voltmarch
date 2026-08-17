@@ -123,6 +123,10 @@ export interface KindMeshPart {
   part?: PartId;
   castShadow?: boolean;
   receiveShadow?: boolean;
+  /** Shadow-pass program. See `BatchPartSpec.customDepthMaterial`. */
+  customDepthMaterial?: THREE.Material;
+  /** False keeps this part out of the GTAO normal prepass. See `BatchPartSpec.aoOccluder`. */
+  aoOccluder?: boolean;
 }
 
 /**
@@ -143,6 +147,17 @@ export interface KindMesh {
   part?: PartId;
   castShadow?: boolean;
   receiveShadow?: boolean;
+  /**
+   * Shadow-pass program for the root body.
+   *
+   * Required by any model whose VERTEX shader moves its silhouette: three fills
+   * the shadow map with its own `MeshDepthMaterial`, which never runs the
+   * colour material's `onBeforeCompile`. Structures pass one because they sink
+   * below the ground plane while they build. See `BatchPartSpec`.
+   */
+  customDepthMaterial?: THREE.Material;
+  /** False keeps the root body out of the GTAO normal prepass. See `BatchPartSpec.aoOccluder`. */
+  aoOccluder?: boolean;
   /** Default turret ring height, metres. Used by sockets that omit `pivotY`. */
   turretPivotY?: number;
 }
@@ -225,9 +240,18 @@ function packKey(kind: EntityKind, faction: number, defId: number): number {
  * 0.70 m of RADIUS (1.4 m across) is deliberately below anything that has a
  * readable ground contact — bushes and rock clusters sit around 1.0-1.6 m and
  * keep their shadows, as do all units and structures, which are never Props.
- * This is the one place the rule can be applied without reaching into
- * src/world/Scatter.ts, which owns the far larger scattered-prop population and
- * should apply the same gate there.
+ *
+ * `src/world/Scatter.ts` NOW APPLIES THE SAME GATE — this comment used to end
+ * by saying it "should", and that TODO is closed: `SCATTER_SHADOW_MIN_RADIUS`
+ * is this constant, re-exported there against the same bounding-sphere measure.
+ * Measured when it landed, and worth knowing before quoting a saving: all 31
+ * shipped `PROP_DEFS` clear 0.70 m (smallest is `bench` at 1.182), so the
+ * scatter side currently gates NOTHING. It is an enforced invariant for the
+ * next small prop, not a draw-call win.
+ *
+ * The two constants are deliberately NOT one import: `src/world/` must not
+ * depend on `src/render/`. `tests/scatter.spec.ts` reads this file as TEXT and
+ * fails if the numbers drift apart, which buys the guarantee without the edge.
  */
 const PROP_SHADOW_MIN_RADIUS = 0.70;
 
@@ -255,6 +279,8 @@ function buildEntry(mesh: KindMesh, kind: EntityKind, name: string): ModelEntry 
     castShadow: mesh.castShadow !== false
       && (kind !== EntityKind.Prop || propCastsShadow(mesh.geometry)),
     receiveShadow: mesh.receiveShadow !== false,
+    customDepthMaterial: mesh.customDepthMaterial,
+    aoOccluder: mesh.aoOccluder,
     layer,
   }];
 
@@ -273,6 +299,8 @@ function buildEntry(mesh: KindMesh, kind: EntityKind, name: string): ModelEntry 
         castShadow: p.castShadow !== false
           && (kind !== EntityKind.Prop || propCastsShadow(p.geometry)),
         receiveShadow: p.receiveShadow !== false,
+        customDepthMaterial: p.customDepthMaterial,
+        aoOccluder: p.aoOccluder,
         layer,
       });
     }

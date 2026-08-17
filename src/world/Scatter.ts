@@ -30,7 +30,13 @@
  *    tested every frame (256 sphere tests, no allocation), and the instance
  *    buffers are REPACKED ONLY WHEN THAT SET CHANGES. A static camera costs
  *    literally nothing; a panning one costs one memcpy of a few hundred
- *    matrices.
+ *    matrices and an upload of exactly those, not of the whole allocation.
+ *
+ *    ONE COLOUR DRAW PER TYPE. Read `SCATTER_LIMITS.maxTypes` for the rest of
+ *    the arithmetic: a scatter mesh is opaque on the DEFAULT layer, so it is
+ *    also submitted in `GTAOPass`'s normal prepass and, if it clears
+ *    `SCATTER_SHADOW_MIN_RADIUS`, in the shadow pass. Three submissions per
+ *    type, not one, and today every type in the roster clears the radius.
  *
  * 3. CLUSTERED, NEVER UNIFORM. Bible §6.5: "3-9 trees per clump, 4-8 m spacing
  *    inside, 20-50 m between clumps. Street rows are regular at 8-12 m pitch,
@@ -136,6 +142,48 @@ const PATCH_CELLS =
  * the cells around it and leaves a bald ring.
  */
 export const PROP_CLEAR_MARGIN = 1.25;
+
+/**
+ * Bounding-sphere radius below which a prop TYPE stops casting a shadow.
+ *
+ * This is the gate `PROP_SHADOW_MIN_RADIUS` in src/render/RenderBridge.ts asks
+ * for in its own comment — "src/world/Scatter.ts ... should apply the same gate
+ * there" — applied to the far larger scattered population. The argument is that
+ * one: the shadow camera is fitted to a `farExtent` of 320 m over a 2048-texel
+ * map, so 0.70 m of radius is one to three texels of shadow map, a bilinear
+ * smudge that is sub-pixel at the RTS camera. A caster costs a whole extra
+ * instanced draw, and at `SCATTER_LIMITS.maxTypes` = 22 that is up to 22 of
+ * them.
+ *
+ * IT IS A SECOND COPY OF THE NUMBER, and that is a known wart: RenderBridge
+ * does not export it, and a world module must not import the render bridge to
+ * read a scalar. If it is ever rehomed to config.ts, delete this and import it.
+ *
+ * WHAT IT ACTUALLY SAVES TODAY IS NOTHING, AND THAT IS THE HONEST FIGURE.
+ * Measured 2026-08-17 over all four biomes, the smallest geometry in
+ * `PROP_DEFS` is `bench` at 1.18 m of sphere radius — every one of the 31 prop
+ * types clears 0.70 m with room to spare, so no shadow draw is removed from the
+ * shipped roster. This is an invariant that binds the next small prop somebody
+ * authors, not a saving. Do not quote it as a draw-call improvement.
+ *
+ * The test is the UNSCALED radius even though instances are jittered
+ * 0.80-1.25x (`SCATTER_JITTER`): the gate is per InstancedMesh and therefore
+ * all-or-nothing, and 1.0 sits inside that band, so the unscaled figure is the
+ * nominal instance rather than the best or worst case.
+ */
+export const SCATTER_SHADOW_MIN_RADIUS = 0.70;
+
+/**
+ * True when this type is big enough for its shadow to survive the cascade.
+ *
+ * Reads `boundSphereRadius`, not `boundRadius`: the latter is the XZ half-
+ * extent, and a telegraph pole is 1.25 m across, 9.5 m tall, and throws a 14 m
+ * line at the bible's 33-degree sun. Gating on the flat measure would delete
+ * exactly the shadows that read best.
+ */
+function typeCastsShadow(geo: PropGeometry): boolean {
+  return geo.boundSphereRadius >= SCATTER_SHADOW_MIN_RADIUS;
+}
 
 /**
  * The scatter families a vehicle hull is allowed to flatten.
@@ -254,6 +302,15 @@ interface ScatterType {
   instOf: Int32Array;
   /** Instances currently uploaded. */
   drawCount: number;
+  /**
+   * The one `{start, count}` this type ever hands three, per attribute.
+   *
+   * Owned here rather than built by `addUpdateRange` so that a repack stays
+   * allocation-free — see `markRange` at the foot of this file. Allocated once
+   * per type in `buildInstances()`, which runs on `generate()`.
+   */
+  rangeMatrix: { start: number; count: number };
+  rangeColor: { start: number; count: number };
 }
 
 /* A placed prop, before chunk sorting. Kept as parallel arrays to stay flat. */
@@ -848,6 +905,7 @@ export class Scatter {
         srcMatrix: EMPTY_F32, srcColor: EMPTY_F32,
         chunkStart: EMPTY_I32, chunkLive: EMPTY_I32, instOf: EMPTY_I32,
         drawCount: 0,
+        rangeMatrix: { start: 0, count: 0 }, rangeColor: { start: 0, count: 0 },
       });
       weights.push(w);
     }
@@ -1336,8 +1394,14 @@ export class Scatter {
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(list.length * 3), 3);
       mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
-      mesh.castShadow = true;
+      // Per TYPE, not per instance: an InstancedMesh is one submission, so the
+      // shadow pass either gets all 735 grass tufts of the stock temperate
+      // layout or none of them.
+      mesh.castShadow = typeCastsShadow(type.geo);
       mesh.receiveShadow = true;
+      // Assigned either way. It is inert while `castShadow` is false, and
+      // leaving it wired means flipping the gate back on for one type never
+      // silently loses the wind animation from its depth pass.
       mesh.customDepthMaterial = this.materials.depthMaterial;
       // We cull by chunk on the CPU; three's own test would use a bounding
       // sphere spanning the whole map and never reject anything.
@@ -1384,7 +1448,9 @@ export class Scatter {
    *
    * Cost when the camera has not crossed a chunk boundary: 256 sphere tests
    * plus a 256-byte compare. Cost when it has: one straight copy of the
-   * visible matrices. Zero allocation either way.
+   * visible matrices, and a `bufferSubData` of exactly that copy rather than of
+   * the whole allocation — see `markRange`. Zero allocation either way, which
+   * is why the range objects live on `ScatterType`.
    */
   update(camera: THREE.Camera, timeSeconds: number): void {
     this.materials.setTime(timeSeconds);
@@ -1457,8 +1523,22 @@ export class Scatter {
       type.drawCount = w;
       instances += w;
       if (w > 0) {
-        mesh.instanceMatrix.needsUpdate = true;
-        (mesh.instanceColor as THREE.InstancedBufferAttribute).needsUpdate = true;
+        // Upload the PREFIX, not the capacity. Both buffers are allocated at
+        // the type's full population (`list.length`) and a bare
+        // `needsUpdate = true` makes three `bufferSubData` the entire array, so
+        // a camera that pans one 32 m chunk into view re-sent every matrix of
+        // every type. MEASURED on the stock temperate layout — 4131 props, well
+        // under the 9000 ceiling, which is a CAP and not the live budget: 307 kB
+        // per repack before, and after, from the RA3 camera rig, 40 kB at 40 m /
+        // 53 kB at 60 m / 84 kB at 90 m, i.e. 13-28%. The saving is
+        // (1 - visible fraction), and it lands only on the frames where the
+        // visible CHUNK SET actually flips — at `SCATTER_CHUNK_METRES` = 32 that
+        // is a minority of pan frames. A few hundred kB, not a frame-rate fix.
+        //
+        // The repack cursor `w` writes from index 0 upward with no gaps, so
+        // [0, w) is exactly what changed.
+        markRange(mesh.instanceMatrix, type.rangeMatrix, w * 16);
+        markRange(mesh.instanceColor as THREE.InstancedBufferAttribute, type.rangeColor, w * 3);
       }
     }
     this.visibleInstances = instances;
@@ -2147,6 +2227,45 @@ function composeMatrix(p: Placement, out: Float32Array, o: number): void {
   out[o + 4] = ux * s; out[o + 5] = uy * s; out[o + 6] = uz * s; out[o + 7] = 0;
   out[o + 8] = fx * s; out[o + 9] = fy * s; out[o + 10] = fz * s; out[o + 11] = 0;
   out[o + 12] = p.x; out[o + 13] = p.y; out[o + 14] = p.z; out[o + 15] = 1;
+}
+
+/**
+ * Upload only the used prefix of a dynamic attribute.
+ *
+ * Third site for this shape. The other two are `markRange` in
+ * src/vfx/Particles.ts and `InstanceBatcher.uploadAttribute`; neither is
+ * exported, and a world module importing the VFX or render layer to reach a
+ * five-line helper is the worse trade. If a shared home is ever made, collapse
+ * all three.
+ *
+ * IT IS THE BATCHER'S FORM AND NOT PARTICLES', DELIBERATELY. `addUpdateRange`
+ * allocates a fresh `{start, count}` on every call, and this file's own
+ * contract two hundred lines up is "zero allocation either way" for `update()`
+ * — 22 types x 2 attributes would be 44 objects on a pan frame. The caller
+ * owns the range object instead, exactly as `InstanceBatcher` owns
+ * `this.rangeMatrix`; three merges ranges in place and then clears the array,
+ * so re-pushing the same object next time is safe.
+ *
+ * THE STALE-RANGE HAZARD `InstanceBatcher` GUARDS AGAINST DOES NOT APPLY HERE,
+ * which is why this one has no full-upload fallback. There, a culled mesh can
+ * leave a queued range the renderer never drained, so the next write must cover
+ * both spans. Scatter writes ONLY prefixes from index 0, so the union of a
+ * pending range and a new one is just the longer of the two, and anything past
+ * `mesh.count` is never read by the draw. Every scatter mesh is also
+ * `frustumCulled = false`, so it is submitted whenever its layer is drawn.
+ */
+function markRange(
+  attr: THREE.InstancedBufferAttribute,
+  range: { start: number; count: number },
+  count: number,
+): void {
+  range.start = 0;
+  range.count = count;
+  // Non-empty means our own object is still queued from a repack the renderer
+  // has not drained yet — it was just re-pointed above, so pushing it twice
+  // would only make three merge it with itself.
+  if (attr.updateRanges.length === 0) attr.updateRanges.push(range);
+  attr.needsUpdate = true;
 }
 
 /* ==========================================================================

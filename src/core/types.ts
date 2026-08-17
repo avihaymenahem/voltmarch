@@ -1923,15 +1923,24 @@ export interface SunLook {
   elevationDeg: number;
   color: string;
   intensity: number;
-  shadowColor: string;
   /** Poisson PCF radius in shadow-map texels. */
   shadowSoftness: number;
   shadowBias: number;
   shadowNormalBias: number;
   /** 0..1 — how black shadows go. 1.0 reads as a hole in the world. */
   shadowIntensity: number;
-  /** Fitted world-space extent of each cascade, in metres. */
-  cascadeNear: number;
+  /**
+   * THERE IS ONE SHADOW CAMERA, NOT A CASCADE CHAIN — `scene.ts` builds a
+   * single `DirectionalLight` with one orthographic shadow camera, and the
+   * ground bounce beside it sets `castShadow = false`. `cascadeFar` is the
+   * radius `fitShadow` clamps its per-frame fit to; `cascadeResolution` is the
+   * map size. The name is historical; the numbers are live.
+   *
+   * `cascadeNear` used to sit here and was deleted: its only consumer set the
+   * shadow camera's initial extents, which the first `fitShadow` overwrites
+   * before a frame is ever presented. A "near cascade extent" on a rig with one
+   * cascade configured nothing.
+   */
   cascadeFar: number;
   cascadeResolution: number;
 }
@@ -1985,12 +1994,14 @@ export interface ToneLook {
 export interface BloomLook {
   /** HDR threshold, applied BEFORE tonemap so white concrete never hazes. */
   threshold: number;
+  /**
+   * AUTHORED strength. The pass runs at `strength * max(0.25, emissiveBoost /
+   * 1.6)` — see `post.ts#syncConfig` and the note on `BLOOM_NOON.strength`.
+   */
   strength: number;
   radius: number;
-  mips: number;
-  /** Extra multiplier applied to emissive-flagged pixels. */
+  /** Extra multiplier applied to emissive-flagged pixels. Scales `strength`. */
   emissiveBoost: number;
-  lensDirt: number;
 }
 
 export interface AoLook {
@@ -2197,8 +2208,6 @@ export interface ModelBuild {
   boundsX: number; boundsY: number; boundsZ: number;
   /** Footprint in cells (buildings) or 0 (units). */
   footprintW: number; footprintH: number;
-  /** Screen-space-error thresholds for LOD switching, descending. */
-  lodDistances: number[];
 }
 
 /** Per-frame data the RenderBridge writes for one instance. */

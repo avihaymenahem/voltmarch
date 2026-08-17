@@ -316,6 +316,20 @@ function overlayMaterial(): THREE.MeshBasicMaterial {
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,
+    // DOUBLE-SIDED **AND** TRANSPARENT IS A TWO-DRAW MATERIAL IN THREE, and the
+    // second draw is not the expensive part. `WebGLRenderer` submits the mesh
+    // twice (back faces, then front) and sets `material.needsUpdate = true`
+    // before each submission; that bumps `material.version`, so `setProgram`'s
+    // cache check misses on EVERY frame and `getProgramCacheKey` runs its
+    // `const array = []` / `array.join()` — a fresh array and a fresh string,
+    // twice a frame, in the render path. `mesh.count === 0` pays it too: the
+    // early-out for an empty instanced draw happens after `setProgram`.
+    //
+    // Provably free here. Under AdditiveBlending the back-face submission
+    // rasterises nothing for a flat XZ annulus seen from above, so a single
+    // pass is the same pixels. NOT `side: FrontSide` — that would depend on
+    // `pushArc`'s winding below and can make the whole glyph vanish.
+    forceSinglePass: true,
     toneMapped: false,
   });
 }
@@ -812,6 +826,12 @@ function refreshResolution(): void {
     ? pickEntity(world, projector, input.pointerX, input.pointerY, V3[0], V3[2])
     : NONE;
   selection.setHovered(hover);
+  // Same line as the flag write, deliberately: the overlay's copy is then
+  // exactly as fresh as `EntityFlag.Hovered` itself, whichever of the two the
+  // draw pass happens to run after. Unconditional rather than gated on
+  // `setHovered`'s changed flag — a HUD that mounts mid-match would otherwise
+  // never learn the current hover.
+  hud()?.overlay.setHoveredEntity?.(hover);
 
   MODS.shift = input.shift;
   MODS.ctrl = input.ctrl;
@@ -1255,6 +1275,23 @@ interface HudBridge {
   overlay: {
     setMarquee(x0: number, y0: number, x1: number, y1: number): void;
     clearMarquee(): void;
+    /**
+     * THE HOVERED ENTITY, PUSHED RATHER THAN SEARCHED FOR.
+     *
+     * `Selection.setHovered` moves `EntityFlag.Hovered` — it clears the old
+     * slot before setting the new one — so there is at most ONE hovered entity
+     * in the world, and this module is the only thing that decides which. The
+     * overlay's hover ring used to find it with two full walks of `store.alive`
+     * per frame, ~800 iterations at 400 entities, to locate a handle we are
+     * holding on the line below.
+     *
+     * OPTIONAL, like `armedPower` and `toast`, and for the same reason: an
+     * overlay that predates this method simply does not have it, keeps finding
+     * the flag its own way, and nothing here can take input down. `EntityId`
+     * and not `number` — the overlay re-checks the flag off `store.index()`,
+     * and a raw slot would be a different thing wearing the same type.
+     */
+    setHoveredEntity?(id: EntityId): void;
   };
   sidebar: { setArmed(mode: 'none' | 'repair' | 'sell'): void };
   readonly armedMode: 'none' | 'repair' | 'sell';
@@ -1524,6 +1561,10 @@ export default defineSystem({
     unsubscribeKilled = null;
     input?.dispose();
     input = null;
+    // `Selection.dispose` gives the `Hovered` bit back; tell the overlay too, or
+    // it holds a handle nobody will ever clear. (It re-checks the flag, so this
+    // is belt and braces rather than a live bug.)
+    hud()?.overlay.setHoveredEntity?.(NONE);
     selection?.dispose();
     selection = null;
     overlay?.dispose();

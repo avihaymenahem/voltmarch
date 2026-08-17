@@ -665,12 +665,24 @@ enum` ⇒ bare integers at the boundary with no nominal typing. Nothing breaks t
 finding 5**. Bind `world.vfx` to a real `DecalField` — the obvious fix — and `Scorch`(0) becomes
 Tread, `Crater`(1) becomes Tyre, `Rubble`(6) becomes Manhole, with no type error anywhere.
 
-### 22. `QUALITY_PRESETS`: 15 of 16 fields dead, and one dead field already disagrees with the live table — **LATENT**
-Only `preset.textureSize` is read (`buildings/units/faction3/faction4.system.ts`). `ssao`, `godRays`,
-`heatHaze`, `waterReflections`, `maxDynamicLights`, `shadowCascades`, `shadowResolution`,
-`maxParticles`, `maxDecals`, `lodBias`, `anisotropy`, `resolutionScale`, `bloom`, `antialias` —
-**zero reads.** Where it overlaps `RENDER_QUALITY_PRESETS` it has already drifted:
-`shadowResolution` ultra **2048 vs 4096**; `resolutionScale` low/medium **0.72/0.85 vs 0.75/0.90**.
+### 22. `QUALITY_PRESETS`: 15 of 16 fields dead, and one dead field already disagrees with the live table — **PARTIALLY FIXED 2026-08-17**
+**`shadowCascades`, `shadowResolution` and `lodBias` are DELETED** — declaration and all four preset
+values — along with the sibling dead knobs found in the same sweep: `lodDistances` (`types.ts` +
+`UnitFactory.ts`, the only construction site repo-wide), `cascadeNear`/`nearExtent`, `shadowColor`
+(read by nobody; the blue shadow lift is `post.ts`'s `uShadowTint`), `bloom.mips` and `lensDirt`
+(#53). The `shadowResolution` 2048-vs-4096 drift recorded below is therefore gone with the field.
+
+**Still LATENT**, and the reason this is not marked FIXED outright: only `preset.textureSize` is read
+(`buildings/units/faction3/faction4.system.ts`). `ssao`, `godRays`, `heatHaze`, `waterReflections`,
+`maxDynamicLights`, `maxParticles`, `maxDecals`, `anisotropy`, `resolutionScale`, `bloom`,
+`antialias` — **still zero reads.** `resolutionScale` low/medium still drifts **0.72/0.85 vs
+0.75/0.90** against `RENDER_QUALITY_PRESETS`.
+
+Note for whoever finishes this: deleting `lodDistances` was the honest move rather than wiring it,
+because **there is no LOD system at all** — `THREE.LOD`, `LevelOfDetail` and `SimplifyModifier` all
+return nothing repo-wide. A half-resolution terrain index buffer is the real opportunity there
+(`terrain-gen.ts` emits a full 64×64 grid for all 64 chunks regardless of relief, and already
+computes `cliffTris` per chunk), and it is unbuilt.
 `renderer.ts:63-68` warns explicitly that the two tables *"used to share a bare name and be one
 import away from silently swapping"*. Also `waterReflections: true` at High/Ultra, which the bible
 bans outright — harmless while dead. `config.ts:5650` cites `QUALITY_PRESETS[t].maxDynamicLights` as
@@ -941,7 +953,7 @@ example) — this is drift in one block, not a sloppy file.
 | 50 | `TeslaBolt.trunk = new Float32Array(32 * 3)` with no clamp of `n = segs+1` against it — safe only because `VFX_TESLA.segMax = 14`. The sibling buffers two loops below *are* guarded. Raise `segMax` past 31 → writes past the end → `undefined` → **NaN into a position attribute** (confirmed case 6's failure mode). `VFX_TESLA` carries no comment tying `segMax` to this buffer. | LATENT | `Beams.ts:440,460-471`; `config.ts:4351` |
 | 51 | `INFANTRY_CONTENT` (`art/units.system.ts:82`) names `'mrdSunlancer'`; the def key is `'mrdLancer'` (`Defs.ts:771` — `Sunlancer` is the display *name*). Inert today only because the `bind` loop iterates `CONTENT_TO_MODEL` / `SHARED_CONTENT_TO_MODEL`, neither of which holds any `mrd*` key — so all three Meridian entries are unreachable and there are no Reclamation entries at all. | LATENT | grep: one hit |
 | 52 | `setMoveClass` (`Movement.ts:108`) is documented as *"whoever owns unit data calls `setMoveClass` at spawn … THIS is how an aircraft or a ship becomes one — nothing else can tell them apart from a hovercraft."* **Zero production callers** (tests only). `MoveClass.Air` has a full branch set in `Flowfield.ts` and at `Movement.ts:287` and is unreachable. *(Meridian doctrine at `Defs.ts:743-748` deliberately makes its flyers `Locomotor.Hover`, so this is a dead mechanism rather than a wrong result.)* | LATENT | `grep -rn setMoveClass src` |
-| 53 | `lensDirt: 0.12` authored in **two** config tables (`config.ts:601`, `renderer.ts:375`), copied through `ArtBridge.ts:207`, and read only by `post.ts:728-732` to decide whether to log *"lens dirt not supported by this UnrealBloomPass build — ignored"*. `RA3_LOOK_BIBLE.md:787` bans lens dirt outright. | LATENT | grep: 5 hits, no implementation |
+| 53 | `lensDirt: 0.12` authored in **two** config tables (`config.ts:601`, `renderer.ts:375`), copied through `ArtBridge.ts:207`, and read only by `post.ts:728-732` to decide whether to log *"lens dirt not supported by this UnrealBloomPass build — ignored"*. `RA3_LOOK_BIBLE.md:787` bans lens dirt outright. | **FIXED 2026-08-17** — field deleted from `types.ts`, both config tables, `ArtBridge.ts` and the `post.ts` log block. `tests/banned-effects.spec.ts` now scans for it, so it cannot return as a configured no-op. | grep: 0 hits |
 | 54 | `index.html:33-37` — *"No CDN, no webfont - these are the narrow faces that **ship with Windows/macOS/Linux**"* over `font-family: 'Rajdhani', 'Oswald', …`. Both are Google Fonts; neither ships anywhere; there is no `@font-face` in the tree. The first resolvable entry is `Arial Narrow`. The "no webfonts" property holds; the sentence does not — so the HUD an author with Rajdhani installed sees is not the HUD any player sees. | LIVE | `grep -rn "@font-face" src index.html` → nothing |
 | 55 | Events emitted with no subscriber: `'production:progress'` (`Production.ts:2192,2197`, every queue tick — the HUD reads progress off `HudSnapshot`) and `'vision:changed'` (`vision.system.ts:209-214`). Dead enums: `OrderKind.Patrol = 13` (*"Cycle waypoints forever"*, zero refs — the last dead `OrderKind`) and the whole `Relation` enum (`types.ts:162-170`, *"Computed from PlayerState.allyMask"* — **zero references repo-wide**, while every ally/enemy decision is an ad-hoc `areAllied()` at each site). Also written-never-read: `SelectionState.homogeneousDef` (two writers, `Selection.ts:654` and `Scenarios.ts:1927`). | LATENT | greps above |
 | 56 | `shell.css:76-77` — *"the shell fades between them by toggling `is-out`"* + a 180 ms transition + `.vm-screen.is-out { opacity: 0 }`. `is-out` is **never added or removed** (no literal anywhere; the four `is-${…}` construction sites are all mission/sidebar states). `.vm-panel.is-flat` likewise. | LIVE | `grep -rn "is-out" src` |

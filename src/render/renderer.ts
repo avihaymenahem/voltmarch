@@ -129,9 +129,14 @@ export interface RendererConfig {
     type: THREE.ShadowMapType;
     bias: number;
     normalBias: number;
-    /** Distance (m) the near cascade is fitted to. */
-    nearExtent: number;
-    /** Distance (m) the far cascade is fitted to. */
+    /**
+     * Radius (m) `scene.ts#fitShadow` clamps the per-frame ortho fit to.
+     *
+     * `nearExtent` used to sit above this and is deleted: there is ONE shadow
+     * camera, not a cascade chain, and its only read set that camera's initial
+     * left/right/top/bottom — which the first `fitShadow` overwrites before a
+     * frame is presented. It configured nothing.
+     */
     farExtent: number;
     /** 0..1 multiplier on shadow darkness. */
     intensity: number;
@@ -180,7 +185,13 @@ export interface SunConfig {
   elevation: number;
   color: number;
   intensity: number;
-  shadowColor: number;
+  /*
+   * NO `shadowColor` HERE ANY MORE. It was declared, written in three tables
+   * and bridged from `ArtDirection`, and read by nothing — three.js has no
+   * shadow-colour input on a `DirectionalLight`. The blue lift in the shadows
+   * is `GradeConfig.shadowTint` (post.ts's `uShadowTint`), which is a grade
+   * term on the low end of the luminance range. Deleting it moved no pixel.
+   */
 }
 
 export interface SkyConfig {
@@ -226,13 +237,29 @@ export interface AoConfig {
 
 export interface BloomConfig {
   enabled: boolean;
-  /** HDR luminance threshold. 1.25 = only genuine emissives bloom. */
+  /** HDR luminance threshold. 1.05 = only genuine emissives and glints bloom. */
   threshold: number;
+  /**
+   * AUTHORED strength. `post.ts#syncConfig` hands the pass
+   * `strength * max(0.25, emissiveBoost / 1.6)`, so this is not the effective
+   * figure — see `BLOOM_NOON.strength` in `core/config.ts`.
+   */
   strength: number;
+  /**
+   * `UnrealBloomPass` mip blend, NOT a pixel radius. It lerps the mip weights
+   * against their own reverse, so anything over 0.5 makes the widest mip
+   * dominate and the bloom reads as a veil. Bible §4.4: 0.34 pre-tonemap.
+   */
   radius: number;
-  /** Extra gain applied to values already above threshold. */
+  /** Extra gain applied to values already above threshold. Scales `strength`. */
   emissiveBoost: number;
-  lensDirt: number;
+  /*
+   * NO `lensDirt`. `RA3_LOOK_BIBLE.md` §11 bans lens dirt by name, and the
+   * field's only consumer was a `console.info` saying the bundled
+   * `UnrealBloomPass` has no dirt uniform to feed. A banned effect configured
+   * at 0.12 in two tables and bridged through a third is exactly the drift
+   * `docs/SPEC_DRIFT_AUDIT.md` #53 catalogues.
+   */
 }
 
 export interface GradeConfig {
@@ -377,7 +404,6 @@ export const RENDER_CONFIG: RenderConfig = {
       type: THREE.PCFShadowMap,
       bias: -0.0005,
       normalBias: 0.02,
-      nearExtent: 90,
       farExtent: 320,
       intensity: 0.92,
       radius: 2.2,
@@ -413,7 +439,6 @@ export const RENDER_CONFIG: RenderConfig = {
     elevation: 38,
     color: 0xffe7c4, // ~5200 K
     intensity: 3.1,
-    shadowColor: 0x2a3550,
   },
 
   sky: {
@@ -448,13 +473,22 @@ export const RENDER_CONFIG: RenderConfig = {
       samples: 12,
       halfRes: true,
     },
+    // Fallback only: `ArtBridge.artPatch` overwrites all four from
+    // `DEFAULT_ART.bloom` at boot. Kept in step with it anyway, because a
+    // fallback that disagrees with the shipped look is how you get a "why does
+    // it flash on the first frame" report. `emissiveBoost` 1.6 is the identity
+    // point of post.ts's multiplier, so strength here IS the effective figure.
+    // 0.354 = the shipped `BLOOM_NOON.strength` 0.42 x its 0.84375 scaling, and
+    // 1.20 is the shipped threshold — both restored after the bible's 1.05/0.55
+    // pair was captured and cost 1.8 points of grade. See `BLOOM_NOON` in
+    // core/config.ts for the measurement. `radius` 0.34 IS the bible value and
+    // is kept: it was a mip-weight inversion, not an energy knob.
     bloom: {
       enabled: true,
-      threshold: 1.25,
-      strength: 0.55,
-      radius: 0.7,
+      threshold: 1.20,
+      strength: 0.354,
+      radius: 0.34,
       emissiveBoost: 1.6,
-      lensDirt: 0.12,
     },
     grade: {
       enabled: true,
@@ -600,7 +634,11 @@ const RENDER_QUALITY_PRESETS: Record<RenderQualityTier, DeepPartial<RenderConfig
    */
   low: {
     renderer: { resolutionScale: 0.75, maxPixelRatio: 1.0, shadows: { enabled: true, mapSize: 1024 } },
-    post: { ao: { enabled: false }, bloom: { enabled: true, radius: 0.5 }, smaa: { enabled: false } },
+    // The `low` bloom radius is NOT a cost knob — `UnrealBloomPass` renders all
+    // five mips whatever it is; radius only reweights them. It was 0.5, which
+    // flattened the weighting toward the veily wide mip on exactly the machines
+    // least able to hide it. Held at the bible's 0.34 with everyone else.
+    post: { ao: { enabled: false }, bloom: { enabled: true, radius: 0.34 }, smaa: { enabled: false } },
   },
   medium: {
     renderer: { resolutionScale: 0.9, maxPixelRatio: 1.5, shadows: { enabled: true, mapSize: 1536 } },

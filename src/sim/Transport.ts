@@ -176,6 +176,12 @@ export interface TransportStats {
   drowned: number;
   /** Carriers diverted to collect a squad that could not walk to them. */
   pickups: number;
+  /**
+   * Passengers orphaned by a lost hull who found no standable ground and were
+   * drowned rather than left afloat. See `strand`. A non-zero value here in a
+   * normal match means hulls are being freed without `killPassengers` running.
+   */
+  stranded: number;
 }
 
 /** Why a unit cannot board. Empty string when it can. */
@@ -222,7 +228,7 @@ let pickupEpoch = 0;
 export class TransportService {
   readonly stats: TransportStats = {
     loaded: 0, riding: 0, boarded: 0, unloaded: 0, unloadRefusals: 0, drowned: 0,
-    pickups: 0,
+    pickups: 0, stranded: 0,
   };
 
   /**
@@ -677,12 +683,31 @@ export class TransportService {
    */
   private place(i: number, b: number, ordinal: number): boolean {
     const st = this.world.store;
-    const world = this.world;
-    const spokes = TRANSPORT.unloadSpokes;
     // THE PASSENGER'S OWN RADIUS, not just the hull's. A tank put down at a
     // rifleman's inset overlaps the hull it came out of and spends its first
     // seconds being shoved clear by `Movement.relax`.
     const base = st.radius[b] + st.radius[i] + TRANSPORT.unloadInsetMetres;
+    return this.setDownNear(i, st.posX[b], st.posZ[b], base, ordinal, false);
+  }
+
+  /**
+   * Find a cell this passenger can actually stand on and put him there.
+   *
+   * `origin` is the centre of the search, `base` the radius of the first ring.
+   * `includeOrigin` also tests the centre cell itself before widening — which
+   * `place` must NOT do (the centre is the hull, and a hull floats) but
+   * `strand` must (its centre is wherever the body was parked, which on a save
+   * load is a legitimate standing point and should be preserved exactly).
+   *
+   * Returns false when nothing in `unloadRings` rings works. The caller decides
+   * what that means: `place` leaves the man aboard, `strand` drowns him.
+   */
+  private setDownNear(
+    i: number, ox: number, oz: number, base: number, ordinal: number, includeOrigin: boolean,
+  ): boolean {
+    const st = this.world.store;
+    const world = this.world;
+    const spokes = TRANSPORT.unloadSpokes;
     // THE PASSENGER'S OWN LOCOMOTOR, resolved through its move class so an
     // amphibious swimmer reads as Hover and can be put down in the water it
     // swims in. This was hardcoded `Locomotor.Foot`, which is right for a
@@ -691,13 +716,23 @@ export class TransportService {
     // would be refused every ring and ride on forever.
     const loco = locomotorForMoveClass(moveClassAt(st, i));
 
+    if (includeOrigin) {
+      const cx = worldToCell(ox);
+      const cz = worldToCell(oz);
+      if (isInMap(cx, cz) && world.terrain.isPassable(cx, cz, loco)
+        && !world.terrain.isOccupied(cx, cz)) {
+        this.disembark(i, ox, oz);
+        return true;
+      }
+    }
+
     for (let ring = 0; ring < TRANSPORT.unloadRings; ring++) {
       const r = base + ring * TRANSPORT.unloadRingStepMetres;
       for (let s = 0; s < spokes; s++) {
         const spoke = (s + ordinal) % spokes;
         const angle = (spoke / spokes) * Math.PI * 2;
-        const px = st.posX[b] + Math.sin(angle) * r;
-        const pz = st.posZ[b] + Math.cos(angle) * r;
+        const px = ox + Math.sin(angle) * r;
+        const pz = oz + Math.cos(angle) * r;
         const cx = worldToCell(px);
         const cz = worldToCell(pz);
         if (!isInMap(cx, cz)) continue;
@@ -732,13 +767,39 @@ export class TransportService {
   /**
    * A passenger whose hull is gone but which never got an `entity:killed`.
    *
-   * Dropped where it stands rather than killed: this path is reached by save
-   * loads and disposal, not by combat, and deleting a squad because a service
-   * was torn down would be a silent loss with no cause the player can see.
+   * WHERE HE STANDS IS THE SEA, AND THAT LEFT MATCHES UNWINNABLE.
+   *
+   * This used to be a bare `disembark(i, posX[i], posZ[i])` — the same call
+   * `Garrison.strand` makes, and its comment said so. The premise does not
+   * carry over. A GARRISON occupant's body has been parked at the BUILDING's
+   * centre, which is on land by construction, so dropping him in place is
+   * right. A PASSENGER's body has been parked at the HULL's centre by `ride`,
+   * and since carriers became `waterOnly` a shipyard hull never touches dry
+   * land — so the same call put a tank, or a harvester, into open water with
+   * `Immobilized` cleared and a `MoveClass` that cannot traverse the cell it is
+   * standing on. `Flowfield` cannot pull it off an impassable cell, no land
+   * unit can reach it, and `Shell.pollOutcome` counts it through
+   * `countLivingAssets` — which filters on nothing. Reported as a wiped-out
+   * enemy on Sunder Atoll that would not resolve: two harvesters, at sea,
+   * unkillable, holding the match open forever.
+   *
+   * `disembark`'s own contract is "at a VALIDATED point" and this was the one
+   * caller that passed an unvalidated one.
+   *
+   * So: try where he stands FIRST — that preserves the save-load and disposal
+   * cases exactly, which are the ones the old comment was protecting and which
+   * really are on legitimate ground — then widen through the same rings
+   * `place` uses. If nothing in reach is standable he drowns, because the
+   * alternative is the immortal unit above. It is not a silent loss: `sink`
+   * goes through `markDead` and `UnitState.Drowned`, so he raises his own
+   * `entity:killed`, his own "unit lost" and his own scoreboard entry.
    */
   private strand(i: number): void {
     const st = this.world.store;
-    this.disembark(i, st.posX[i], st.posZ[i]);
+    const base = st.radius[i] + TRANSPORT.unloadInsetMetres;
+    if (this.setDownNear(i, st.posX[i], st.posZ[i], base, 0, true)) return;
+    this.sink(i);
+    this.stats.stranded++;
   }
 
   /**

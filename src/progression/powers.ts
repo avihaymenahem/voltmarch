@@ -143,8 +143,20 @@ export const COMMANDER_POWERS: readonly CommanderPowerDef[] = [
     id: CommanderPowerId.OrbitalScan,
     key: 'orbitalScan',
     label: 'Orbital Scan',
-    hint: 'Charts a wide circle of the map permanently.',
-    radius: 90,
+    hint: 'Exposes every enemy unit and building for five seconds.',
+    /**
+     * NOT a circle on the ground any more — this is the radius lit around EACH
+     * hostile asset while the sweep runs. It was 90 m centred on the marker,
+     * charting terrain permanently, which made a second cast over the same
+     * ground a literal no-op; see `CommanderPowers.applyOrbitalScan`.
+     *
+     * 30 m because it has to read as a BASE rather than a scatter of dots: a
+     * structure footprint plus its neighbours falls inside it, so a scanned
+     * base arrives as one lit shape. Widening it much past this starts joining
+     * separate positions into one blob and gives away ground the enemy does
+     * not actually hold.
+     */
+    radius: 30,
     chargeSeconds: 120,
   },
   {

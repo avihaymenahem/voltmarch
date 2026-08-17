@@ -2016,6 +2016,19 @@ export interface PropGeometry {
   /** XZ bounding radius in metres — drives the instance culling sphere. */
   readonly boundRadius: number;
   readonly boundHeight: number;
+  /**
+   * FULL 3-D bounding-sphere radius in metres, unscaled.
+   *
+   * Deliberately not `boundRadius`: that one is the XZ half-extent, which is
+   * the right measure for a culling disc and the WRONG one for "would this
+   * thing's shadow read". A telegraph pole is 1.25 m across and 9.5 m tall, and
+   * at the bible's 33-degree sun it throws a 14 m line that is plainly visible;
+   * gating on the XZ figure would delete it. This is the same measure
+   * `PROP_SHADOW_MIN_RADIUS` is tested against in src/render/RenderBridge.ts,
+   * so the entity-prop gate and `SCATTER_SHADOW_MIN_RADIUS` in
+   * src/world/Scatter.ts compare like with like.
+   */
+  readonly boundSphereRadius: number;
 }
 
 export interface PropLibraryOptions {
@@ -2051,12 +2064,22 @@ export class PropLibrary {
       this.totalTriangles += mesh.triangles;
       const bx = Math.max(Math.abs(mesh.min[0]), Math.abs(mesh.max[0]));
       const bz = Math.max(Math.abs(mesh.min[2]), Math.abs(mesh.max[2]));
+      // Once per type per library build, never per instance and never per
+      // frame. It also leaves `geo.boundingSphere` populated, which costs
+      // nothing here: every consumer of these geometries sets
+      // `frustumCulled = false` and culls by 32 m chunk instead.
+      geo.computeBoundingSphere();
       this.built.set(def.key, {
         def,
         geometry: geo,
         triangles: mesh.triangles,
         boundRadius: Math.hypot(bx, bz),
         boundHeight: Math.max(mesh.max[1], 0.5),
+        // Fall back to the XZ radius rather than 0 if the sphere could not be
+        // computed — a 0 would silently opt the type out of every radius gate.
+        boundSphereRadius: geo.boundingSphere !== null
+          ? geo.boundingSphere.radius
+          : Math.hypot(bx, bz),
       });
     }
     this.buildMs = (typeof performance !== 'undefined' ? performance.now() : 0) - t0;
