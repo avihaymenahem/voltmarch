@@ -3914,11 +3914,89 @@ export const CREDITS_TICKER_SNAP = 2;
  * can never turn into a wall of towers on its own.
  */
 export const AI_SKILL = [
-  { composition: 0.15, creditFloor: 1400, techBias: 0.6, scoutDelayMul: 2.2, discipline: 0.35, maxDefense: 3,  maxHarvesters: 5, maxRefineries: 2, queueDepth: 1, maxAntiAir: 1, airReactionSec: 12 },
-  { composition: 0.55, creditFloor: 600,  techBias: 1.0, scoutDelayMul: 1.0, discipline: 0.65, maxDefense: 6,  maxHarvesters: 7, maxRefineries: 3, queueDepth: 2, maxAntiAir: 2, airReactionSec: 6 },
-  { composition: 0.85, creditFloor: 250,  techBias: 1.2, scoutDelayMul: 0.7, discipline: 0.85, maxDefense: 8,  maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 3, airReactionSec: 2.5 },
-  { composition: 1.00, creditFloor: 0,    techBias: 1.4, scoutDelayMul: 0.5, discipline: 1.00, maxDefense: 10, maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 4, airReactionSec: 0 },
+  { composition: 0.15, creditFloor: 1400, techBias: 0.6, scoutDelayMul: 2.2, discipline: 0.35, maxDefense: 3,  maxHarvesters: 5, maxRefineries: 2, queueDepth: 1, maxAntiAir: 1, airReactionSec: 12,  maxRepairs: 1 },
+  { composition: 0.55, creditFloor: 600,  techBias: 1.0, scoutDelayMul: 1.0, discipline: 0.65, maxDefense: 6,  maxHarvesters: 7, maxRefineries: 3, queueDepth: 2, maxAntiAir: 2, airReactionSec: 6,   maxRepairs: 3 },
+  { composition: 0.85, creditFloor: 250,  techBias: 1.2, scoutDelayMul: 0.7, discipline: 0.85, maxDefense: 8,  maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 3, airReactionSec: 2.5, maxRepairs: 5 },
+  { composition: 1.00, creditFloor: 0,    techBias: 1.4, scoutDelayMul: 0.5, discipline: 1.00, maxDefense: 10, maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 4, airReactionSec: 0,   maxRepairs: 8 },
 ] as const;
+
+/**
+ * MENDING THE BASE — the doctrine half of `AI_SKILL[].maxRepairs`.
+ *
+ * Reported as *"when they are being attacked, and for example their buildings
+ * destroyed, they are not rebuilding, not healing"*. The healing half was
+ * exactly true and it was not a tuning problem: `CommandKind.RepairToggle` had
+ * NO CALLER in `src/sim/AI.ts`. The brain's entire command surface was five
+ * verbs — production, placement, orders, stance and commander powers — so a
+ * bombed AI base sat at whatever HP the raid left it on, permanently. Measured
+ * over ten sim-minutes on a base taken to 35%: mean HP after, 0.35, unchanged
+ * to four decimals, while the brain banked and spent 34 000 credits on infantry.
+ *
+ * THE FIX IS THE PLAYER'S OWN BUTTON, NOT A NEW RULE. `issueRepairToggle` is
+ * the wrench on the sidebar; `RepairSellService` charges the same
+ * `REPAIR_COST_PER_HP`, cancels the same way when the bank runs dry, and
+ * refuses the same structures. So this costs the AI real money out of the same
+ * account it builds from, which is what makes it a decision rather than a
+ * handout — and it binds the human identically because it IS the human's path.
+ *
+ * `startFraction` is deliberately well below 1.0. The toggle is a toggle: the
+ * service clears the flag at full HP by itself, so the AI never needs to switch
+ * one off, but re-arming on a structure grazed for 2% would spend an action and
+ * a trickle of credits on nothing. Three quarters is "this took a hit that
+ * mattered".
+ *
+ * `minCredits` is NOT a duplicate of `creditFloor`. The floor is what a rung
+ * refuses to spend on BUILDINGS AND UNITS; this is the much smaller reserve
+ * below which starting a fresh drip is self-defeating, because
+ * `RepairSell.tickRepairs` cancels a repair the moment the bank cannot pay the
+ * tick — an AI that arms six repairs on 40 credits gets six cancels and a
+ * wasted action budget.
+ */
+export const AI_REPAIR = {
+  /** Mend a structure at or below this fraction of maxHp. */
+  startFraction: 0.75,
+  /** Bank below which starting another drip just gets cancelled. */
+  minCredits: 400,
+} as const;
+
+/**
+ * REPLACING A LOST CONSTRUCTION YARD.
+ *
+ * The other half of the same report. `conyard` is what carries
+ * `producesTab: BuildTab.Structures`, so a player without one cannot build any
+ * structure at all, and the ONLY route back — for a human exactly as for the
+ * AI — is to buy a Construction Vehicle from a surviving war factory and
+ * unfold it. `src/data/Defs.ts` says so in the `mcv` def's own comment: "a
+ * fresh profile must be able to replace one it lost", which is why that def
+ * carries no unlock tag.
+ *
+ * The AI never bought one. `BuildRole.Mcv` exists in the catalog and the deploy
+ * layer knows how to drive and unfold one, but nothing in `AI.ts` ever called
+ * `forRole(BuildRole.Mcv, ...)` — so the yard-less branch of `build()` fell
+ * straight through to "spend everything on units". Measured: 196 riflemen, 28
+ * tanks and 14 rocket troopers over ten minutes, zero construction vehicles,
+ * zero structures, with the brain's own goal string reading "construction yard
+ * lost — throwing gi at them".
+ *
+ * `bankFraction` is the whole difficulty of this fix. An MCV is 3000 credits
+ * and the yard-less brain is ALSO the brain being told to throw everything it
+ * has at the enemy, so without holding money back it can never accumulate the
+ * price — it converts each 200-credit slice into a rifleman first. The reserve
+ * is a fraction of the cost rather than the whole of it so that a brain saving
+ * for the yard is still buying SOME defence while it saves; at zero it turtles
+ * with an empty base, and at one it dies holding exactly 3000 credits.
+ *
+ * THERE IS DELIBERATELY NO RE-ASK TIMER HERE. The upgrade and commander-power
+ * layers need one because they produce no entity and are otherwise invisible
+ * to every probe; an MCV is a vehicle sitting in a queue, so `AiBrain
+ * .yardOnOrder` reads the queue and `census` counts the finished vehicle. A
+ * clock on top of two exact observations is a third opinion that can disagree
+ * with both.
+ */
+export const AI_REBUILD = {
+  /** Fraction of an MCV's price held back from unit spending while saving. */
+  bankFraction: 0.75,
+} as const;
 
 /**
  * How many own entities one brain will track. A player fielding more than this
