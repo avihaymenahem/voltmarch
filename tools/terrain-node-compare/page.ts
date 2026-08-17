@@ -2,32 +2,42 @@
  * ============================================================================
  * VOLTMARCH — tools/terrain-node-compare/page.ts
  * ============================================================================
- * THE VISUAL PROOF FOR STAGE C. Renders ONE terrain chunk set with the shipping
- * GLSL material and with the TSL node material, on three renderer/backend
- * combinations, and hands the frames back for a pixel diff.
+ * THE VISUAL PROOF FOR STAGE C. Renders ONE generated terrain chunk set with
+ * the shipping GLSL material and with the TSL node material, across several
+ * renderer/backend combinations, and lets the driver screenshot each canvas.
  *
  * WHY THIS EXISTS SEPARATELY FROM `npm run shots`. The shot harness photographs
  * the whole game, which needs the renderer seam wired end to end and a grade
  * baseline per backend. This asks a much narrower question — does the ported
- * shader draw the same ground — and it can answer it before any of that lands.
+ * shader draw the same ground — and can answer it before any of that lands.
  *
- * WHAT IS DELIBERATELY MISSING FROM THE SCENE, and why the diff is still worth
- * something: no shadows, no post chain, no tone mapping, no environment (except
- * in the env arm, which asks for one on purpose). Every one of those is a place
- * the two renderers could differ for reasons that have nothing to do with this
- * material, and the question here is about this material. A scene this plain
- * makes any difference in the frame attributable to the shader under test.
+ * WHAT IS DELIBERATELY MISSING, and why the diff is still worth something: no
+ * shadows, no post chain, no tone mapping. Each is a place the two renderers
+ * could differ for reasons that have nothing to do with this material.
  *
- * THE CONTROL ARM IS NOT OPTIONAL. `glsl-webgpu` renders the SHIPPING
- * `MeshStandardMaterial` under `WebGPURenderer`, where `onBeforeCompile` is
- * silently dead — so it draws flat white ground. If that arm ever matched the
- * reference, the instrument would be measuring nothing and every other number
- * on the page would be worthless.
+ * TWO CONTROLS, AND NEITHER IS OPTIONAL
+ * -------------------------------------
+ *  - `glsl-webgpu` renders the SHIPPING `MeshStandardMaterial` under
+ *    `WebGPURenderer`, where `onBeforeCompile` is silently dead. If that arm
+ *    ever resembled the reference the instrument would be measuring nothing.
+ *  - `stock-webgl` / `stock-webgpu` render a PLAIN grey standard material on
+ *    each renderer. That pair is the floor: whatever they differ by is three's
+ *    two lighting models disagreeing, and this port cannot be blamed for it.
+ *    Without this arm, every pixel of difference gets attributed to the port.
+ *
+ * THE READBACK IS THE DRIVER'S JOB. An earlier version measured the environment
+ * sweep in-page by `drawImage`-ing the WebGPU canvas into a 2D context and
+ * diffing the bytes. Every row came back zero — INCLUDING THE CONTROL — which
+ * is the signature of a dead instrument rather than a null result, and is the
+ * exact failure `RENDER_FINDINGS.md` §6c warns about twice. The page now only
+ * SETS STATE and re-renders; the driver screenshots and diffs, through the same
+ * path that produces the non-zero arm numbers.
  * ============================================================================
  */
 
 import * as THREE from 'three';
-import { WebGPURenderer } from 'three/webgpu';
+import { MeshStandardNodeMaterial, WebGPURenderer } from 'three/webgpu';
+import { vec3 } from 'three/tsl';
 import { TERRAIN_CHUNK_METRES, TERRAIN_LAYER_TEXTURE_SIZE } from '../../src/core/config';
 import { BIOMES, type BiomeName } from '../../src/world/Biomes';
 import { SPLAT_N, TerrainFields, buildTerrainChunks } from '../../src/world/terrain-gen';
@@ -37,33 +47,30 @@ import { createTerrainNodeMaterials } from '../../src/world/TerrainNodeMaterial'
 const WIDTH = 640;
 const HEIGHT = 480;
 
-type Arm = 'glsl-webgl' | 'tsl-webgpu' | 'tsl-webgl2' | 'glsl-webgpu';
+type Arm =
+  | 'glsl-webgl' | 'tsl-webgpu' | 'tsl-webgl2' | 'glsl-webgpu'
+  | 'stock-webgl' | 'stock-webgpu';
 
-interface ArmReport {
-  arm: Arm;
-  backend: string;
-  ms: number;
-}
+interface ArmReport { arm: Arm; backend: string; ms: number }
 
-interface EnvReport {
-  /** Pixels changed by `material.envMapIntensity` with NO own envMap. */
-  intensityWithoutMap: number;
-  /** Pixels changed by `material.envMapIntensity` once `setEnvironment` ran. */
-  intensityWithMap: number;
-  /** Pixels changed by `scene.environmentIntensity`, the control. */
-  sceneIntensity: number;
-  total: number;
-  /** The intensity that reproduces today's appearance. */
-  matchingIntensity: number;
-}
+/** The environment sweep's steps, driven one at a time from Node. */
+type EnvStep =
+  | 'matIntensity0' | 'matIntensity8'
+  | 'sceneIntensity0' | 'sceneIntensity6'
+  | 'ownMap0' | 'ownMap8'
+  | 'sunOn' | 'sunOff'
+  | 'restore';
 
 declare global {
   interface Window {
     __TNC: {
       ready: Promise<void>;
       arms: ArmReport[];
-      env: EnvReport | null;
       error: string | null;
+      /** Set one environment state on the `env` canvas and re-render it. */
+      envStep(step: EnvStep): Promise<void>;
+      /** The scene environment intensity the restore step lands on. */
+      restoreIntensity: number;
     };
   }
 }
@@ -78,10 +85,22 @@ const biomeName = (params.get('biome') ?? 'temperate') as BiomeName;
 const biome = BIOMES[biomeName] ?? BIOMES.temperate;
 
 /**
- * `TerrainFields` is the generator half — no THREE, no meshes, and the same
- * class `Terrain` extends. Using it here rather than `Terrain` keeps this page
- * off the scene-graph plumbing it does not need, and keeps generation exactly
- * where it must stay: on the CPU, deterministic, unchanged by this port.
+ * `?dither=off` turns the ordered dither off on BOTH materials.
+ *
+ * It exists to attribute the residual. The dither is a deliberate +/-0.5/255 of
+ * per-pixel noise, and the two paths derive its grid position from
+ * `gl_FragCoord` and from `screenCoordinate` — the same quantity, but the two
+ * generated hashes need not land on the same value for a given pixel. So a
+ * comparison with dithering ON reports most of the frame as "changed" at a mean
+ * delta near 1, and reports it whether or not the shader is correct. Turning it
+ * off on both sides is the only way to see what is underneath.
+ */
+const DITHER = (params.get('dither') ?? 'on') !== 'off';
+
+/**
+ * `TerrainFields` is the generator half — no THREE, no meshes, and the class
+ * `Terrain` extends. Using it here keeps generation exactly where the migration
+ * requires it to stay: on the CPU, deterministic, untouched by this port.
  */
 const fields = new TerrainFields({
   seed,
@@ -105,7 +124,7 @@ function splatTexture(data: Uint8Array, name: string): THREE.DataTexture {
 }
 
 /* ==========================================================================
- * 2. THE SCENE — one geometry set, two materials, nothing else
+ * 2. THE SCENE — one geometry set, one material, nothing else
  * ========================================================================== */
 
 function buildScene(material: THREE.Material): { scene: THREE.Scene; camera: THREE.PerspectiveCamera } {
@@ -115,10 +134,9 @@ function buildScene(material: THREE.Material): { scene: THREE.Scene; camera: THR
   /*
    * HemisphereLight only, per the project's standing rule — a flat ambient
    * kills the shadow tint the whole grade depends on, and using one here would
-   * make this page lie about a material that is read under a hemisphere.
+   * make this page lie about a material that is always read under a hemisphere.
    */
-  const hemi = new THREE.HemisphereLight(0xbfd4ea, 0x4a4436, 1.1);
-  scene.add(hemi);
+  scene.add(new THREE.HemisphereLight(0xbfd4ea, 0x4a4436, 1.1));
   const sun = new THREE.DirectionalLight(0xfff2dd, 2.4);
   sun.position.set(-60, 90, 40);
   scene.add(sun);
@@ -139,10 +157,10 @@ function buildScene(material: THREE.Material): { scene: THREE.Scene; camera: THR
   }
 
   /*
-   * Posed to frame a terrace, not open ground. A camera over a flat plain would
-   * exercise the ground branch only, and the cliff branch is where the port had
-   * the most to get wrong — the triplanar, the striation, the cap, the skirt
-   * and the face-normal substitution all live there.
+   * Posed to frame a terrace, not open ground. A camera over a plain exercises
+   * the ground branch only, and the cliff branch is where the port had the most
+   * to get wrong — the triplanar, the striation, the cap, the skirt and the
+   * face-normal substitution all live there.
    */
   const camera = new THREE.PerspectiveCamera(38, WIDTH / HEIGHT, 0.5, 2000);
   camera.position.set(150, 62, 210);
@@ -154,7 +172,7 @@ function buildScene(material: THREE.Material): { scene: THREE.Scene; camera: THR
  * 3. THE ARMS
  * ========================================================================== */
 
-function canvasFor(arm: Arm): HTMLCanvasElement {
+function canvasFor(arm: Arm | 'env'): HTMLCanvasElement {
   const el = document.getElementById(arm) as HTMLCanvasElement;
   el.width = WIDTH;
   el.height = HEIGHT;
@@ -170,22 +188,36 @@ function configure(r: THREE.WebGLRenderer | WebGPURenderer): void {
 }
 
 function glslSet() {
-  const set = createTerrainMaterials({
-    biome, layerTextureSize: TERRAIN_LAYER_TEXTURE_SIZE, seed,
-  });
+  const set = createTerrainMaterials({ biome, layerTextureSize: TERRAIN_LAYER_TEXTURE_SIZE, seed });
   set.setSplat(splatTexture(fields.splatA, 'a'), splatTexture(fields.splatB, 'b'));
+  set.material.dithering = DITHER;
   return set;
 }
 
 function tslSet() {
-  const set = createTerrainNodeMaterials({
-    biome, layerTextureSize: TERRAIN_LAYER_TEXTURE_SIZE, seed,
-  });
+  const set = createTerrainNodeMaterials({ biome, layerTextureSize: TERRAIN_LAYER_TEXTURE_SIZE, seed });
   set.setSplat(splatTexture(fields.splatA, 'a'), splatTexture(fields.splatB, 'b'));
+  set.material.dithering = DITHER;
   return set;
 }
 
-async function runWebGL(arm: Arm, material: THREE.Material): Promise<ArmReport> {
+/**
+ * The lighting-model floor. Identical inputs, one material class per renderer,
+ * no custom shader on either side. `0.42` grey at `roughness 0.9` sits in the
+ * same part of the response curve the terrain layers do.
+ */
+function stockWebGL(): THREE.MeshStandardMaterial {
+  return new THREE.MeshStandardMaterial({ color: 0x6b6b6b, roughness: 0.9, metalness: 0 });
+}
+function stockNode(): MeshStandardNodeMaterial {
+  const m = new MeshStandardNodeMaterial();
+  m.color = new THREE.Color(0x6b6b6b);
+  m.roughness = 0.9;
+  m.metalness = 0;
+  return m;
+}
+
+function runWebGL(arm: Arm, material: THREE.Material): ArmReport {
   const renderer = new THREE.WebGLRenderer({
     canvas: canvasFor(arm), antialias: false, preserveDrawingBuffer: true,
   });
@@ -193,16 +225,20 @@ async function runWebGL(arm: Arm, material: THREE.Material): Promise<ArmReport> 
   const { scene, camera } = buildScene(material);
   const t0 = performance.now();
   renderer.render(scene, camera);
-  const ms = performance.now() - t0;
-  return { arm, backend: 'webgl', ms };
+  return { arm, backend: 'webgl', ms: performance.now() - t0 };
+}
+
+interface NodeArm {
+  report: ArmReport;
+  renderer: WebGPURenderer;
+  scene: THREE.Scene;
+  camera: THREE.PerspectiveCamera;
 }
 
 async function runNode(
-  arm: Arm, material: THREE.Material, forceWebGL: boolean,
-): Promise<{ report: ArmReport; renderer: WebGPURenderer; scene: THREE.Scene; camera: THREE.PerspectiveCamera }> {
-  const renderer = new WebGPURenderer({
-    canvas: canvasFor(arm), antialias: false, forceWebGL,
-  });
+  arm: Arm | 'env', material: THREE.Material, forceWebGL: boolean,
+): Promise<NodeArm> {
+  const renderer = new WebGPURenderer({ canvas: canvasFor(arm), antialias: false, forceWebGL });
   configure(renderer);
   await renderer.init();
   const { scene, camera } = buildScene(material);
@@ -211,63 +247,58 @@ async function runNode(
   const ms = performance.now() - t0;
   /*
    * `navigator.gpu` and a real adapter are BOTH true when three has silently
-   * fallen back, so neither is evidence. `backend.isWebGPUBackend` is.
+   * fallen back to WebGL2, so neither is evidence. This is.
    */
   const backend = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend
     ? 'webgpu' : 'webgl2-fallback';
-  return { report: { arm, backend, ms }, renderer, scene, camera };
+  return { report: { arm: arm as Arm, backend, ms }, renderer, scene, camera };
 }
 
 /* ==========================================================================
  * 4. THE ENVIRONMENT ARM — `RENDER_FINDINGS.md` §6c, re-run on the node path
  *
  * §6c measured `material.envMapIntensity` 0 -> 8 at ZERO pixels changed and
- * attributed it to this material's custom-program path. This repeats the same
- * measurement on a material that has no custom-program path at all, plus the
- * two rows that turn a null result into a diagnosis:
+ * attributed it to this material's custom-program path. This repeats the
+ * measurement on a material that HAS no custom-program path, plus the two rows
+ * that turn a null result into a diagnosis:
  *
  *   - `scene.environmentIntensity` as the CONTROL, so "0 changed" is a fact
- *     about the knob and not about the probe;
- *   - the same `envMapIntensity` sweep AFTER `setEnvironment` gives the material
- *     its own map, which is the documented condition under which three reads the
+ *     about the knob rather than about the probe;
+ *   - the same sweep AFTER `setEnvironment` gives the material its own map,
+ *     which is the documented condition under which three reads the
  *     per-material value at all.
  * ========================================================================== */
 
-function readPixels(renderer: WebGPURenderer, canvas: HTMLCanvasElement): Uint8ClampedArray {
-  const off = document.createElement('canvas');
-  off.width = canvas.width;
-  off.height = canvas.height;
-  const ctx = off.getContext('2d')!;
-  ctx.drawImage(canvas, 0, 0);
-  void renderer;
-  return ctx.getImageData(0, 0, off.width, off.height).data;
-}
-
-function changed(a: Uint8ClampedArray, b: Uint8ClampedArray): number {
-  let n = 0;
-  for (let i = 0; i < a.length; i += 4) {
-    if (a[i] !== b[i] || a[i + 1] !== b[i + 1] || a[i + 2] !== b[i + 2]) n++;
-  }
-  return n;
-}
-
 /**
- * A minimal cube environment. Procedural, one colour per face, because the
- * question is whether the SCALE reaches the pixels and not what the probe looks
- * like.
+ * A raw equirectangular environment, NOT pre-filtered here.
+ *
+ * `PMREMGenerator` was tried first and is WRONG on this path: it renders with a
+ * raw `ShaderMaterial`, which the node renderer refuses — the console said
+ * `THREE.NodeBuilder: Material "ShaderMaterial" is not compatible`, the returned
+ * target was empty, and the whole environment sweep read zero INCLUDING ITS
+ * CONTROL. `EnvironmentNode` wraps a non-PMREM value in `pmremTexture()` itself,
+ * which is the node system's own pre-filter, so handing it the raw equirect is
+ * both simpler and the supported route.
  */
-function makeEnvironment(renderer: WebGPURenderer): THREE.Texture {
-  const size = 8;
+function makeEnvironment(): THREE.Texture {
+  const size = 32;
   const data = new Uint8Array(size * size * 4);
-  for (let i = 0; i < size * size; i++) {
-    data[i * 4] = 180; data[i * 4 + 1] = 200; data[i * 4 + 2] = 235; data[i * 4 + 3] = 255;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = (y * size + x) * 4;
+      // A simple sky gradient: bright above, warm and dim below.
+      const t = y / (size - 1);
+      data[i] = Math.round(230 - t * 150);
+      data[i + 1] = Math.round(240 - t * 140);
+      data[i + 2] = Math.round(255 - t * 190);
+      data[i + 3] = 255;
+    }
   }
-  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
-  tex.mapping = THREE.EquirectangularReflectionMapping;
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.needsUpdate = true;
-  void renderer;
-  return tex;
+  const src = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+  src.mapping = THREE.EquirectangularReflectionMapping;
+  src.colorSpace = THREE.SRGBColorSpace;
+  src.needsUpdate = true;
+  return src;
 }
 
 /* ==========================================================================
@@ -275,78 +306,125 @@ function makeEnvironment(renderer: WebGPURenderer): THREE.Texture {
  * ========================================================================== */
 
 const arms: ArmReport[] = [];
-let env: EnvReport | null = null;
 let error: string | null = null;
+
+/** State for the environment sweep, filled by `main`. */
+let envArm: NodeArm | null = null;
+let envSet: ReturnType<typeof tslSet> | null = null;
+let envTexture: THREE.Texture | null = null;
+const RESTORE_INTENSITY = 1;
+
+/**
+ * Install the environment as a NODE, not a texture.
+ *
+ * `scene.environment = <equirect DataTexture>` was measured INERT on this path:
+ * with the harness proven live by a sun 2.4 -> 0 control that moved 99.758% of
+ * pixels at max delta 102, `scene.environmentIntensity` 0 -> 6 moved ZERO. The
+ * node system reaches a scene environment through `pmremTexture()`, and a raw
+ * `DataTexture` is not something it pre-filters here.
+ *
+ * `scene.environmentNode` is the node system's own door and needs no PMREM at
+ * all: `MeshStandardNodeMaterial.setupEnvironment` picks it up as
+ * `builder.environmentNode` and wraps it in the same `EnvironmentNode` — which
+ * is the object that multiplies by `materialEnvIntensity`, i.e. exactly the
+ * quantity under test.
+ */
+function setSceneEnv(scene: THREE.Scene): void {
+  (scene as unknown as { environmentNode: unknown }).environmentNode = vec3(0.62, 0.70, 0.86);
+}
+
+async function envStep(step: EnvStep): Promise<void> {
+  if (!envArm || !envSet || !envTexture) throw new Error('env arm not built');
+  const { renderer, scene, camera } = envArm;
+  const material = envSet.material;
+
+  switch (step) {
+    case 'matIntensity0':
+      setSceneEnv(scene);
+      scene.environmentIntensity = RESTORE_INTENSITY;
+      material.envMap = null;
+      material.envMapIntensity = 0;
+      break;
+    case 'matIntensity8':
+      material.envMapIntensity = 8;
+      break;
+    case 'sceneIntensity0':
+      setSceneEnv(scene);
+      material.envMap = null;
+      material.envMapIntensity = 1;
+      scene.environmentIntensity = 0;
+      break;
+    case 'sceneIntensity6':
+      scene.environmentIntensity = 6;
+      break;
+    case 'ownMap0':
+      setSceneEnv(scene);
+      scene.environmentIntensity = RESTORE_INTENSITY;
+      envSet.setEnvironment(envTexture, 0);
+      break;
+    case 'ownMap8':
+      envSet.setEnvironment(envTexture, 8);
+      break;
+    /*
+     * THE CONTROL ON THE CONTROL. If `sunOff` does not change the frame, the
+     * screenshots are stale and every row above is a fact about the harness
+     * rather than about the environment. Cost: two renders.
+     */
+    case 'sunOn':
+    case 'sunOff': {
+      const sun = scene.children.find((c) => (c as THREE.DirectionalLight).isDirectionalLight);
+      if (sun) (sun as THREE.DirectionalLight).intensity = step === 'sunOff' ? 0 : 2.4;
+      break;
+    }
+    case 'restore':
+      /*
+       * THE STATE THAT MATCHES TODAY. With the material's own map set to the
+       * SCENE's intensity, `materialEnvIntensity` resolves to the same number
+       * three would have used with no map at all — so the dial is live and the
+       * ground's brightness is unchanged. That is the whole point: the knob
+       * comes alive at the value it already had.
+       */
+      setSceneEnv(scene);
+      scene.environmentIntensity = RESTORE_INTENSITY;
+      envSet.setEnvironment(envTexture, RESTORE_INTENSITY);
+      break;
+  }
+  material.needsUpdate = true;
+  await renderer.renderAsync(scene, camera);
+}
 
 async function main(): Promise<void> {
   // 1. the reference: shipping GLSL material, shipping renderer.
-  arms.push(await runWebGL('glsl-webgl', glslSet().material));
+  arms.push(runWebGL('glsl-webgl', glslSet().material));
 
   // 2. the port, on the node renderer's real WebGPU backend where available.
-  const tslGpu = await runNode('tsl-webgpu', tslSet().material, false);
-  arms.push(tslGpu.report);
+  arms.push((await runNode('tsl-webgpu', tslSet().material, false)).report);
 
   // 3. the port, forced onto the node renderer's WebGL2 backend. Same graph,
   //    other compiler — a difference here is a TSL portability bug.
   arms.push((await runNode('tsl-webgl2', tslSet().material, true)).report);
 
-  // 4. THE CONTROL. The shipping GLSL material under the node renderer, where
-  //    `onBeforeCompile` never fires. This must look nothing like arm 1.
+  // 4. CONTROL: the shipping GLSL material under the node renderer, where
+  //    `onBeforeCompile` never fires. Must look nothing like arm 1.
   arms.push((await runNode('glsl-webgpu', glslSet().material, false)).report);
 
-  // 5. the environment sweep, on the arm that is the actual port.
-  const set = tslSet();
-  const node = await runNode('tsl-webgpu', set.material, false);
-  const canvas = canvasFor('tsl-webgpu');
+  // 5. CONTROL: the lighting-model floor, same plain material on each renderer.
+  arms.push(runWebGL('stock-webgl', stockWebGL()));
+  arms.push((await runNode('stock-webgpu', stockNode(), false)).report);
 
-  const shot = async (): Promise<Uint8ClampedArray> => {
-    await node.renderer.renderAsync(node.scene, node.camera);
-    return readPixels(node.renderer, canvas);
-  };
-
-  const environment = makeEnvironment(node.renderer);
-  node.scene.environment = environment;
-  node.scene.environmentIntensity = 1;
-
-  set.material.envMapIntensity = 0;
-  set.material.needsUpdate = true;
-  const a0 = await shot();
-  set.material.envMapIntensity = 8;
-  set.material.needsUpdate = true;
-  const a8 = await shot();
-
-  node.scene.environmentIntensity = 0;
-  const s0 = await shot();
-  node.scene.environmentIntensity = 6;
-  const s6 = await shot();
-  node.scene.environmentIntensity = 1;
-
-  // Now give the material its OWN map, which is the documented switch.
-  set.setEnvironment(environment, 0);
-  const b0 = await shot();
-  set.setEnvironment(environment, 8);
-  const b8 = await shot();
-
-  env = {
-    intensityWithoutMap: changed(a0, a8),
-    sceneIntensity: changed(s0, s6),
-    intensityWithMap: changed(b0, b8),
-    total: canvas.width * canvas.height,
-    matchingIntensity: 1,
-  };
-
-  // Leave the page in the state that MATCHES TODAY: scene intensity 1, and the
-  // per-material dial set to the same number, so the last frame on screen is
-  // the one the port is claimed to reproduce.
-  set.setEnvironment(environment, node.scene.environmentIntensity);
-  await node.renderer.renderAsync(node.scene, node.camera);
+  // 6. the environment sweep, on its own canvas so the arms above stay put.
+  envSet = tslSet();
+  envArm = await runNode('env', envSet.material, false);
+  envTexture = makeEnvironment();
+  await envStep('matIntensity0');
 }
 
 window.__TNC = {
   arms,
-  env,
   error,
+  envStep,
+  restoreIntensity: RESTORE_INTENSITY,
   ready: main()
     .catch((e: unknown) => { error = e instanceof Error ? `${e.message}\n${e.stack}` : String(e); })
-    .then(() => { window.__TNC.arms = arms; window.__TNC.env = env; window.__TNC.error = error; }),
+    .then(() => { window.__TNC.arms = arms; window.__TNC.error = error; }),
 };

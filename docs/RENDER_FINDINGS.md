@@ -395,19 +395,69 @@ statistic and a working control is quotable.)
 2. **The only live control is global**: `LIGHTING.envIntensity` -> `scene.environmentIntensity`, set
    in `scene.ts`. There is no per-material dial for the ground today.
 3. `USE_ENVMAP` IS defined in the terrain program and `getIBLIrradiance` / `getIBLRadiance` are
-   present (2 and 4 call sites), so this is not a missing feature — something in this material's
-   custom-program path is not taking the uniform. `material.roughness` is inert on terrain for a
-   known and deliberate reason (`onBeforeCompile` replaces `<roughnessmap_fragment>` with the
-   splat-driven `raRough`); `envMapIntensity` has no such explanation yet.
+   present (2 and 4 call sites), so this is not a missing feature.
 
-**So the line was NOT shipped.** Adding an authoritative-looking constant that reaches no pixel is
-precisely the `SURFACES` defect (§3, and `config.ts`'s own dead material table) and precisely the trap
-§5 and §7 describe. If the bible's 0.35 is wanted for the ground specifically, it must be scaled
-inside `TerrainMaterial.ts`'s own injected GLSL, with `customProgramCacheKey` bumped past
-`'ra-terrain-v3'` — and then MEASURED, because §6b is a fresh reminder that a change which is
-bible-correct in isolation can still cost grade points.
+### THE CAUSE, FOUND 2026-08-17 DURING THE TSL PORT. It is not this material.
 
-**Do not re-attempt this as a one-line config edit.** It has now been tried and disproved once.
+The paragraph above used to end "something in this material's custom-program path is not taking the
+uniform", and that guess sent the fix in the wrong direction — into the injected GLSL and a
+`customProgramCacheKey` bump. **The custom-program path has nothing to do with it.** three overwrites
+the uniform every frame, for every standard material in the game that has no `envMap` of its own:
+
+```js
+// three/src/renderers/WebGLRenderer.js:2693
+if ( ( material.isMeshStandardMaterial || material.isMeshLambertMaterial
+       || material.isMeshPhongMaterial )
+     && material.envMap === null && scene.environment !== null ) {
+  m_uniforms.envMapIntensity.value = scene.environmentIntensity;
+}
+```
+
+`scene.environment` is set in `scene.ts` and terrain carries no `envMap`, so both conditions hold and
+the assignment lands after every `refreshMaterialUniforms`. Writing `material.envMapIntensity` cannot
+survive to a draw. **That is the whole of it**, and it explains the measurement exactly — including
+why the control worked.
+
+**THE NODE PATH IMPLEMENTS THE SAME RULE ON PURPOSE, so the migration does not close this for free:**
+
+```js
+// three/src/nodes/accessors/MaterialProperties.js:21
+materialEnvIntensity = uniform( 1 ).onObjectUpdate( ( { material, scene } ) =>
+  material.envMap ? material.envMapIntensity : scene.environmentIntensity );
+```
+
+Re-measured on `WebGPURenderer`'s real WebGPU backend with `tools/terrain-node-compare.mjs`
+(`TerrainNodeMaterial`, 640x480, `scene.environmentNode`):
+
+```
+sun 2.4 -> 0        CONTROL ON THE CONTROL      99.756% of px    max delta 61
+material.envMapIntensity 0 -> 8, no own envMap   0.000% of px    max delta 0
+scene.environmentIntensity 0 -> 6   CONTROL     99.792% of px    max delta 211
+```
+
+Identical behaviour, on a material that has no custom-program path at all. Two probe defects were hit
+getting there and both are worth knowing: measuring the WebGPU canvas in-page via `drawImage` into a
+2D context returns a blank buffer, so EVERY row including the control read zero; and
+`scene.environment` set to a raw equirect `DataTexture` contributes nothing on the node path, because
+`EnvironmentNode` reaches it through `pmremTexture()`. `PMREMGenerator` cannot pre-filter it either —
+it draws with a raw `ShaderMaterial`, which the node renderer refuses out loud. The sun row exists
+because two successive dead instruments is enough.
+
+### THE EXIT IS ONE LINE, AND IT WORKS ON BOTH RENDERERS
+
+Both rules key off the same thing: **give the material its own `envMap` and `envMapIntensity` becomes
+live.** `material.envMap = scene.environment` satisfies the WebGL guard and the node accessor at
+once. `TerrainNodeMaterial.setEnvironment(env, intensity)` is that, and it is INERT until called, so
+nothing changes until someone asks.
+
+**Land it at `scene.environmentIntensity`, not at the bible's 0.35.** That reproduces today's
+appearance exactly — `materialEnvIntensity` resolves to the same number either way — and makes the
+knob editable without moving a pixel. Changing the ground's brightness is a separate decision, and
+§6b is a fresh reminder that a change which is bible-correct in isolation can still cost grade
+points, so it must be captured and scored on its own.
+
+**Do not re-attempt this as a one-line config edit on `envMapIntensity` alone.** That has now been
+tried and disproved twice, on two renderers, and the reason is written above.
 
 ---
 

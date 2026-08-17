@@ -37,8 +37,6 @@ import sharp from 'sharp';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '..');
 const PAGE_DIR = path.join(HERE, 'terrain-node-compare');
-const OUT_DIR = path.join(PAGE_DIR, 'out');
-
 const argv = process.argv.slice(2);
 const flag = (n) => argv.includes(n);
 const opt = (n, d) => {
@@ -50,8 +48,41 @@ const START_PORT = Number(opt('--port', '5305'));
 const HEADED = flag('--headed');
 const BIOME = opt('--biome', 'temperate');
 const SEED = opt('--seed', '4242');
+/** Separate directory so a dither-off run never overwrites the reference set. */
+const NO_DITHER = flag('--no-dither');
+const OUT_DIR = path.join(PAGE_DIR, NO_DITHER ? 'out-nodither' : 'out');
 
-const ARMS = ['glsl-webgl', 'tsl-webgpu', 'tsl-webgl2', 'glsl-webgpu'];
+const ARMS = [
+  'glsl-webgl', 'tsl-webgpu', 'tsl-webgl2', 'glsl-webgpu', 'stock-webgl', 'stock-webgpu',
+];
+
+/**
+ * The environment sweep, driven step by step from here.
+ *
+ * IT IS SCREENSHOTTED, NOT READ BACK IN THE PAGE. The first version diffed the
+ * WebGPU canvas through `drawImage` into a 2D context and every row came back
+ * zero — including the control, which is the signature of a dead instrument,
+ * and the exact trap `RENDER_FINDINGS.md` §6c records twice. These go through
+ * the same screenshot path that produces the non-zero arm numbers above.
+ */
+const ENV_PAIRS = [
+  ['sun 2.4 -> 0  (CONTROL ON THE CONTROL)', 'sunOn', 'sunOff'],
+  ['material.envMapIntensity 0->8, no own envMap', 'matIntensity0', 'matIntensity8'],
+  ['scene.environmentIntensity 0->6  (CONTROL)', 'sceneIntensity0', 'sceneIntensity6'],
+  /*
+   * CONFOUNDED, AND LABELLED SO RATHER THAN DELETED. Setting `material.envMap`
+   * is the documented switch that makes `envMapIntensity` live — but it also
+   * REPLACES the environment: `NodeMaterial.setupEnvironment` stops using
+   * `builder.environmentNode` and wraps the material's own texture in
+   * `pmremTexture()`, and a raw equirect `DataTexture` yields nothing there (the
+   * row above measures exactly that). So this row scales zero by eight and
+   * reports zero, which is a fact about the probe's environment and NOT about
+   * the knob. Answering it properly needs a PMREM render-target texture, which
+   * is what `scene.ts` holds in the real game and which `PMREMGenerator` cannot
+   * produce on the node renderer (it draws with a raw `ShaderMaterial`).
+   */
+  ['material.envMapIntensity 0->8, own envMap (CONFOUNDED)', 'ownMap0', 'ownMap8'],
+];
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -143,14 +174,22 @@ let exitCode = 0;
 try {
   const page = await browser.newPage({ viewport: { width: 1320, height: 1020 } });
   const consoleErrors = [];
-  page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+  // The favicon 404 is this server declining to serve one and is not a finding.
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !m.text().includes('favicon')) consoleErrors.push(m.text());
+  });
   page.on('pageerror', (e) => consoleErrors.push(String(e)));
 
-  await page.goto(`${origin}/index.html?biome=${BIOME}&seed=${SEED}`, { waitUntil: 'load' });
+  await page.goto(
+    `${origin}/index.html?biome=${BIOME}&seed=${SEED}&dither=${NO_DITHER ? 'off' : 'on'}`,
+    { waitUntil: 'load' },
+  );
   await page.evaluate(() => window.__TNC.ready);
 
   const report = await page.evaluate(() => ({
-    arms: window.__TNC.arms, env: window.__TNC.env, error: window.__TNC.error,
+    arms: window.__TNC.arms,
+    error: window.__TNC.error,
+    restoreIntensity: window.__TNC.restoreIntensity,
   }));
 
   if (report.error) {
@@ -169,22 +208,45 @@ try {
   for (const arm of ARMS.slice(1)) {
     diffs[arm] = await diff(ref, path.join(OUT_DIR, `${arm}.png`));
   }
+  // The floor: two plain standard materials, one per renderer. Whatever this
+  // differs by is three's two lighting models, not this port.
+  diffs['stock-webgpu-vs-stock-webgl'] = await diff(
+    path.join(OUT_DIR, 'stock-webgl.png'), path.join(OUT_DIR, 'stock-webgpu.png'),
+  );
 
-  const out = { origin, biome: BIOME, seed: SEED, when: new Date().toISOString(), ...report, diffs, consoleErrors };
+  // ------------------------------------------------------- environment ----
+  const env = [];
+  for (const [label, stepA, stepB] of ENV_PAIRS) {
+    await page.evaluate((s) => window.__TNC.envStep(s), stepA);
+    const a = path.join(OUT_DIR, `env-${stepA}.png`);
+    await page.locator('#env').screenshot({ path: a });
+    await page.evaluate((s) => window.__TNC.envStep(s), stepB);
+    const b = path.join(OUT_DIR, `env-${stepB}.png`);
+    await page.locator('#env').screenshot({ path: b });
+    env.push({ label, ...(await diff(a, b)) });
+  }
+  await page.evaluate(() => window.__TNC.envStep('restore'));
+  await page.locator('#env').screenshot({ path: path.join(OUT_DIR, 'env-restore.png') });
+  // Does landing the dial at the scene's own intensity reproduce today exactly?
+  const restoreDelta = await diff(
+    path.join(OUT_DIR, 'env-sceneIntensity6.png'), path.join(OUT_DIR, 'env-restore.png'),
+  );
+
+  const out = {
+    origin, biome: BIOME, seed: SEED, when: new Date().toISOString(),
+    ...report, diffs, env, restoreDelta, consoleErrors,
+  };
   await writeFile(path.join(OUT_DIR, 'results.json'), JSON.stringify(out, null, 2));
 
   console.log('\nbackends');
   for (const a of report.arms ?? []) console.log(`  ${a.arm.padEnd(14)} ${a.backend}`);
   console.log('\ndiff vs glsl-webgl (the shipping reference)');
   for (const [arm, d] of Object.entries(diffs)) {
-    console.log(`  ${arm.padEnd(14)} ${(d.changed * 100).toFixed(3)}% of pixels, max delta ${d.maxDelta}`);
+    console.log(`  ${arm.padEnd(28)} ${(d.changed * 100).toFixed(3)}% of pixels, max delta ${d.maxDelta}`);
   }
-  if (report.env) {
-    const e = report.env;
-    console.log('\nenvMapIntensity, on the node path (RENDER_FINDINGS.md 6c)');
-    console.log(`  material.envMapIntensity 0->8, no own envMap   ${e.intensityWithoutMap} / ${e.total} px`);
-    console.log(`  scene.environmentIntensity 0->6  (CONTROL)     ${e.sceneIntensity} / ${e.total} px`);
-    console.log(`  material.envMapIntensity 0->8, WITH own envMap ${e.intensityWithMap} / ${e.total} px`);
+  console.log('\nenvMapIntensity, on the node path (RENDER_FINDINGS.md 6c)');
+  for (const e of env) {
+    console.log(`  ${e.label.padEnd(48)} ${(e.changed * 100).toFixed(3)}% px, max delta ${e.maxDelta}`);
   }
   if (consoleErrors.length) console.log('\nconsole errors:\n  ' + consoleErrors.join('\n  '));
   console.log('\nwrote', OUT_DIR);
