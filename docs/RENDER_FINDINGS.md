@@ -437,6 +437,124 @@ moved something** before trusting what it tells you about the treatment.
 This is the same shape as §5: the config block that reads authoritative is not always the one wired
 to the thing.
 
+## 7b. WebGPU, measured — Stage A of `WEBGPU_MIGRATION_PLAN.md`, 2026-08-17
+
+Stage A said "answers 'is the win real for us' for a few days' cost". It cost a day and the answer is
+**no**. Instruments: `tools/webgpu-spike/` on branch `worktree-agent-a2eb23cacd5ec7ab4` — a throwaway
+that is not to be merged; the numbers below are the deliverable, not the code.
+
+**A synthetic scene shaped like our real frame** (50–4000 opaque draws, triangles pinned at
+0.62–0.70M across the whole sweep so it isolates per-DRAW cost, 70 distinct materials, ≤30
+InstancedMesh batches, one 2048 directional shadow map, stock `MeshStandardMaterial` vs
+`MeshStandardNodeMaterial`, no post chain). Median ms inside `renderer.render()` over 420 rAF frames
+after 90 untimed warmup frames plus `compileAsync`. Both arms in one browser session, both on the
+same `amd/gcn-5` iGPU — checked, because this box also has an RTX 3080 and `requestAdapter()` with no
+preference takes the low-power one.
+
+```
+draws    ---------- 2560x1440 ----------      ---------- 1280x720 -----------
+         webgl   webgpu  ratio  nodegl        webgl   webgpu  ratio  nodegl
+   50     1.60    1.70   1.06    2.60          1.90    2.50   1.32    5.90
+   64     2.20    1.70   0.77    2.50          4.80    3.50   0.73    3.10
+  200     3.00    3.10   1.03    5.30          3.60    4.30   1.19    5.20
+ 1000     6.60   11.40   1.73   13.50          6.00    9.90   1.65   12.30
+ 4000    18.50   35.50   1.92   42.00         15.20   32.30   2.13   62.20
+```
+
+- **THE TWO SUB-1.00 CELLS ARE NOISE. Do not quote them.** Within-run spread `(p90-p10)/p50` is
+  **29–73%** at and below 200 draws, so no low-end difference is resolvable. The 0.73 comes from a
+  WebGL point whose own spread is 73% (p10 3.80, p90 7.30) and which is non-monotonic against its
+  50- and 200-draw neighbours. Above 1000 draws the spread tightens to 10–23% and the gap is
+  1.65–2.13×, far outside it.
+- **The curves never cross — they diverge in WebGL's favour.** WebGPU's advertised win is lower CPU
+  per draw; at 54–76 colour draws the two are indistinguishable, and every step up makes WebGPU
+  relatively worse. **The sweep answers the headroom question in the negative: there is no draw count
+  at which switching starts to pay, at least up to 4000, which is 50× our load.** Uncapped throughput
+  agrees (WebGPU lower at 9 of 10 points).
+- **`nodegl` — node materials over `WebGPURenderer`'s WebGL2 fallback — is the WORST arm nearly
+  everywhere**, 1.3–4.1× the shipping renderer. That is §4.5's "two backends" cost, measured: after a
+  migration, every player without WebGPU gets a renderer slower than today's.
+- **This measures `three@0.185.1`'s `WebGPURenderer`, not the WebGPU API.** That is the right subject
+  — the migration is to three's node system — but it means the finding could be overturned by a
+  future three release, and should be re-measured rather than assumed permanent.
+
+**The `onBeforeCompile` blocker in §3 of the plan is REAL, and it is silent.** Under a genuine WebGPU
+backend, with a plain `MeshStandardMaterial` carrying `onBeforeCompile` — i.e. one of our 24 sites —
+handed straight to `WebGPURenderer`:
+
+```
+onBeforeCompile calls, plain MeshStandardMaterial   0
+onBeforeCompile calls, MeshStandardNodeMaterial     0
+customProgramCacheKey calls                         1     <- still invoked
+mesh.material is still the MeshStandardMaterial     true  <- no visible signal
+generated fragment shader                           WGSL, no #include, no map_fragment
+```
+
+Nothing throws, nothing warns, and the mesh's `material` is still the object you assigned — the
+conversion happens inside `RenderObject`. **`customProgramCacheKey` is the dangerous half**: it keeps
+being called, so a hand-managed cache key (`TerrainMaterial` has one) goes on keying variants whose
+injected code no longer exists. Escape hatches that DO work: TSL slot nodes (`colorNode`,
+`positionNode`, …) and `wgslFn`. **`wgslFn` is NOT portable** — on the WebGL2 fallback the WGSL is
+emitted verbatim into a GLSL shader and the program fails to link (`ERROR: 'fn' : syntax error`,
+then `useProgram: program not valid`). With two backends to support, TSL node graphs are the only
+route.
+
+**`renderer.info` is NOT the same object under WebGPU, and the difference is silent.**
+`src/render/post.ts` derives `drawCallsByPass` from deltas of `renderer.info.render.calls` and
+`src/render/debug.ts` reads `info.programs?.length ?? 0`. Under `three/webgpu`:
+
+| our code reads | WebGL means | WebGPU means |
+|---|---|---|
+| `info.render.calls` | draws this frame | **`render()` invocations since page load** — monotonic, and `reset()` does not clear it |
+| — | — | `info.render.drawCalls` is the per-frame draw count |
+| `info.programs.length` | programs in flight | **`info.programs` is `undefined`** → `?? 0` reports 0 forever |
+| `info.autoReset = false` | reset inside `render()` | reset lives in `setAnimationLoop`'s callback only, so a custom loop that leaves `autoReset` true never resets at all |
+
+None of these throw. A naive port keeps a green build and reports a draw-call count that climbs
+forever, a program count of 0, and a `drawCallsByPass` computed from differences of a counter that
+counts the wrong thing.
+
+## 7c. The shot harness cannot photograph WebGPU, and the reason is one DLL
+
+**Playwright's BUNDLED Chromium cannot create a WebGPU device on this machine when headless.** It is
+not flags, not the GPU, not a headless limitation:
+
+```
+requestAdapter()  -> real, non-fallback amd/gcn-5, full feature list incl. timestamp-query
+requestDevice()   -> OperationError: DynamicLib.Open: dxil.dll Windows Error: 87
+                       at EnsureDXCLibraries (third_party/dawn/.../PlatformFunctionsD3D12.cpp:212)
+THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.
+```
+
+`dxil.dll` and `dxcompiler.dll` are both PRESENT in that Chromium's own directory, so nothing is
+missing — error 87 is `ERROR_INVALID_PARAMETER`, what a bare-name `LoadLibrary` returns once
+Chromium has restricted its default DLL directories. Measured per binary, over `http://127.0.0.1`:
+
+```
+playwright chromium  headless   adapter only, device FAILED
+playwright chromium  headed     REAL WEBGPU, work submitted
+chrome               headless   REAL WEBGPU, work submitted
+chrome               headed     REAL WEBGPU, work submitted
+msedge               headless   REAL WEBGPU, work submitted
+msedge               headed     REAL WEBGPU, work submitted
+```
+
+**So a real hardware WebGPU backend IS obtainable here, headless included, and the fix for
+`tools/shoot.mjs` is `channel: 'chrome'` rather than the bundled build.** The only flag that helps
+the bundled binary is `--use-webgpu-adapter=swiftshader`, which buys a SOFTWARE device — the exact
+trap CLAUDE.md records at 76.5% of pixels changed while the harness printed `ok`.
+
+Three traps worth carrying forward:
+
+- **WebGPU needs a SECURE CONTEXT.** The first version of the device probe ran off a `data:` URL and
+  confidently reported "no `navigator.gpu`" for all eight flag sets. `http://127.0.0.1` is fine.
+- **`navigator.gpu` existing, and even a real adapter enumerating, is NOT evidence the renderer is on
+  WebGPU.** Both were true throughout the failing case. The only reliable read is
+  `renderer.backend.isWebGPUBackend === true`.
+- **`WebGPURenderer` falls back behind a single `warn()`.** Anything that reports a WebGPU number
+  must assert its live backend and refuse, not infer. The first hour of this spike measured
+  WebGL2-vs-WebGL2 and labelled one column "webgpu".
+
 ## 8. Unverified — do not quote these as fact
 
 - **`GL_INVALID_OPERATION: glDrawElements: Mismatch between texture format and sampler type` is
