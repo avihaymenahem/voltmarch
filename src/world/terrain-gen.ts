@@ -101,13 +101,27 @@
  *
  * PERFORMANCE SHAPE
  * -----------------
- * 8x8 chunks of 64 m at a 1 m grid, ~8.2k triangles each, ONE material (the
+ * 8x8 chunks of 64 m at a 1 m grid, 8192 triangles each, ONE material (the
  * ground/cliff split is a per-triangle branch inside the shader, not a second
  * draw — see TerrainMaterial.ts). Chunks with no real relief are kept out of
- * the shadow map entirely. Measured at the default 86 m of visible ground:
- * **34 draw calls and 278k triangles**, main pass plus shadow pass, against a
- * 130-draw budget for the whole game. Nothing here allocates after
- * `generate()` returns — every query path writes into a caller-supplied array.
+ * the shadow map entirely, and since v2.11 they also get a SECOND index buffer
+ * at half resolution — 2424 triangles over the same vertices, chosen here and
+ * drawn by `Terrain.buildMeshes` without a runtime switch. See
+ * `buildChunkLodIndex`, which is where the T-junction cracks are excluded.
+ *
+ * **BE HONEST ABOUT WHAT THAT IS WORTH.** The gate is measured, not hoped at:
+ * across the ten shipped battlefields and the four `?shot=` seas, between 4 and
+ * 23 of the 64 chunks qualify, and on the landform ten of the thirteen capture
+ * fixtures stand on it is FOUR. The generator's own edge bias raises the map
+ * rim and its terrace quantiser is what produces relief in the middle, so a
+ * genuinely flat 64 m square is rare by construction. The remaining headroom is
+ * not in a better threshold — it is in decimating PER COARSE CELL rather than
+ * per chunk, which the fan stitch in `buildChunkLodIndex` would already
+ * support, at the cost of a variable index length the wire guard can no longer
+ * check exactly.
+ *
+ * Nothing here allocates after `generate()` returns — every query path writes
+ * into a caller-supplied array.
  * ============================================================================
  */
 
@@ -120,7 +134,7 @@ import {
   TERRAIN_PRUNE_REGION_CELLS, TERRAIN_RAMP_CORE_WIDTH, TERRAIN_RAMP_HALF_WIDTH,
   TERRAIN_RAMP_FORCED_CORE_WIDTH, TERRAIN_RAMP_FORCED_HALF_WIDTH,
   TERRAIN_RAMP_MAX_GRADE, TERRAIN_RAMP_MAX_LENGTH, TERRAIN_RAMP_MAX_LINK_CELLS,
-  TERRAIN_ISLAND_MIN_CELLS,
+  TERRAIN_ISLAND_MIN_CELLS, TERRAIN_LOD_MAX_ERROR, TERRAIN_SHADOW_CLIFF_FRACTION,
   TERRAIN_SEA_BEACH_GRADE, TERRAIN_SEA_BEACH_RUN, TERRAIN_SEA_BLUFF_GRADE,
   TERRAIN_SEA_FLOOR, TERRAIN_SEA_SHOAL_MIN_DEPTH,
   TERRAIN_SEA_START_CLEARANCE,
@@ -158,6 +172,23 @@ export const TERRAIN_CHUNKS = CHUNK_N * CHUNK_N;
 export const CHUNK_VERTS = (CHUNK_QUADS + 1) * (CHUNK_QUADS + 1);
 /** Index entries in one chunk mesh. */
 export const CHUNK_INDICES = CHUNK_QUADS * CHUNK_QUADS * 6;
+/** Coarse quads along one chunk edge in the half-resolution index (32). */
+export const CHUNK_LOD_QUADS = CHUNK_QUADS >> 1;
+/**
+ * Index entries in one chunk's HALF-RESOLUTION mesh, and the arithmetic is the
+ * whole of the crack strategy — see `buildChunkLodIndex`.
+ *
+ * A coarse cell is 2x2 fine quads. The ones that do not touch the chunk edge
+ * are two triangles. The ones that DO keep the fine vertex in the middle of
+ * every edge they share with a neighbouring chunk, so they are fanned from the
+ * cell's own centre sample: five triangles along an edge, six in a corner.
+ * 2424 triangles against the full mesh's 8192, i.e. 70.4% fewer.
+ */
+export const CHUNK_LOD_INDICES = (
+  (CHUNK_LOD_QUADS - 2) * (CHUNK_LOD_QUADS - 2) * 2
+  + 4 * (CHUNK_LOD_QUADS - 2) * 5
+  + 4 * 6
+) * 3;
 /** Splat control texels along one axis (256). */
 export const SPLAT_N = MAP_CELLS * TERRAIN_SPLAT_PER_CELL;
 /** Bytes in one splat control texture. The wire guard checks against this. */
@@ -360,8 +391,25 @@ export interface TerrainChunkData {
   /** `aTop` attribute: metres below the lip of the local terrace face, 0..1. */
   readonly top: Float32Array;
   readonly index: Uint16Array;
+  /**
+   * A SECOND index over the SAME vertices at half resolution, or null when this
+   * chunk holds enough relief that decimating it would show.
+   *
+   * `Terrain.buildMeshes` draws this one when it exists. The vertex buffer is
+   * untouched either way — nothing is re-derived, nothing is uploaded twice,
+   * and the choice is made once at generation time. See `buildChunkLodIndex`
+   * for why it cannot crack against a full-resolution neighbour, and
+   * `TERRAIN_LOD_MAX_ERROR` for what "enough relief" is measured as.
+   */
+  readonly lodIndex: Uint16Array | null;
   /** Triangles steeper than `CLIFF_SLOPE`. Decides whether the chunk casts. */
   readonly cliffTris: number;
+  /**
+   * Metres of height error the half-resolution index would introduce, measured
+   * over every sample it drops. Reported whether or not the chunk qualified, so
+   * the decision is auditable from a field set rather than only reproducible.
+   */
+  readonly lodError: number;
 }
 
 /** A world position the generator must guarantee an army can spawn on. */
@@ -2602,6 +2650,9 @@ export function terrainGenKey(options: TerrainGenOptions): string {
  *     the shader picks its shading model per triangle, but a chunk whose steep
  *     triangles cover under ~4% of its area has nothing a 38-degree sun could
  *     throw far enough to notice, and is kept out of the shadow map entirely.
+ *  3. **A flat chunk gets a SECOND, half-resolution index.** Same vertices,
+ *     same normals, same attributes — 2424 triangles instead of 8192. See
+ *     `buildChunkLodIndex` and `chunkLodError`.
  *
  * The ONE implementation, called from the worker and from `Terrain.buildMeshes`
  * alike, so an adopted mesh and a locally derived one are the same vertices.
@@ -2671,7 +2722,206 @@ export function buildTerrainChunks(
         }
       }
 
-      out.push({ cx, cz, position, normal, up, top, index, cliffTris });
+      /*
+       * THE LOD GATE — two clauses, and both are necessary.
+       *
+       *  `cliffTris === 0` is the relief metric this file already computed for
+       *  the shadow decision, and using it here is what keeps the two from
+       *  disagreeing: `chunkCastsShadow` needs 4% of the chunk's triangles to
+       *  be steep, so a chunk that decimates is two orders of magnitude clear
+       *  of casting. A chunk can never throw a shadow from geometry its index
+       *  buffer no longer holds. `tests/terrain-lod.spec.ts` pins that.
+       *
+       *  `lodError` is what decimation actually breaks, measured rather than
+       *  inferred. The two gates very nearly select the same chunks (see
+       *  `TERRAIN_LOD_MAX_ERROR`), which is the reassuring result rather than a
+       *  reason to drop one: they are different questions and they agree.
+       */
+      const lodError = chunkLodError(height, g0x, g0z);
+      const lodIndex = cliffTris === 0 && lodError <= TERRAIN_LOD_MAX_ERROR
+        ? buildChunkLodIndex()
+        : null;
+
+      out.push({ cx, cz, position, normal, up, top, index, lodIndex, cliffTris, lodError });
+    }
+  }
+  return out;
+}
+
+/**
+ * True when a chunk holding this many steep triangles is submitted to the
+ * shadow map.
+ *
+ * ONE PREDICATE, TWO CALLERS, and that is the entire reason it is a function:
+ * `Terrain.buildMeshes` sets `castShadow` from it, and `buildTerrainChunks`
+ * refuses to decimate anything it returns true for. Those two have to agree —
+ * a chunk that casts from triangles it no longer draws is a shadow with no
+ * object — and as two bare `0.04` literals in two files they eventually would
+ * not.
+ */
+export function chunkCastsShadow(cliffTris: number): boolean {
+  return cliffTris >= CHUNK_QUADS * CHUNK_QUADS * 2 * TERRAIN_SHADOW_CLIFF_FRACTION;
+}
+
+/**
+ * Metres of height error `buildChunkLodIndex` would introduce on this chunk.
+ *
+ * Every heightfield sample the coarse index drops lands on exactly one coarse
+ * primitive — an edge between two surviving samples, or a cell's own diagonal —
+ * and the drawn surface runs straight along it. So the error at that sample is
+ * its distance from the midpoint of the two ends, and the chunk's error is the
+ * largest of those. Nothing here is a heuristic: it is the exact vertical gap
+ * between the two meshes at every point where they can differ.
+ *
+ * WHAT IS SKIPPED, AND WHY EACH ONE IS RIGHT:
+ *
+ *  - Even/even samples SURVIVE — they are the coarse corners.
+ *  - The chunk PERIMETER survives in full, at fine resolution. That is the
+ *    crack strategy; see `buildChunkLodIndex`.
+ *  - The centre of a chunk-edge cell survives, because it is that cell's fan
+ *    apex. `vx === 1 || vx === S - 1 || vz === 1 || vz === S - 1` is exactly
+ *    the set of odd/odd samples that are a fan apex.
+ *
+ * Only `+`, `-`, `*` and comparison, all of which ECMA-262 pins exactly, so two
+ * engines cannot select a different LOD for the same map.
+ */
+function chunkLodError(height: Float32Array, g0x: number, g0z: number): number {
+  const S = CHUNK_QUADS;
+  let max = 0;
+  for (let vz = 1; vz < S; vz++) {
+    const row = (g0z + vz) * GRID_STRIDE + g0x;
+    const oz = vz & 1;
+    for (let vx = 1; vx < S; vx++) {
+      const ox = vx & 1;
+      if (ox === 0 && oz === 0) continue;
+      if (ox === 1 && oz === 1
+        && (vx === 1 || vx === S - 1 || vz === 1 || vz === S - 1)) continue;
+
+      let a: number;
+      let b: number;
+      if (ox === 1 && oz === 1) {
+        // The cell centre sits on the b-c diagonal the two-triangle split cuts.
+        a = height[(g0z + vz + 1) * GRID_STRIDE + g0x + vx - 1];
+        b = height[(g0z + vz - 1) * GRID_STRIDE + g0x + vx + 1];
+      } else if (ox === 1) {
+        a = height[row + vx - 1];
+        b = height[row + vx + 1];
+      } else {
+        a = height[(g0z + vz - 1) * GRID_STRIDE + g0x + vx];
+        b = height[(g0z + vz + 1) * GRID_STRIDE + g0x + vx];
+      }
+      const e = Math.abs(height[row + vx] - (a + b) * 0.5);
+      if (e > max) max = e;
+    }
+  }
+  return max;
+}
+
+/**
+ * The half-resolution index for one chunk.
+ *
+ * THE PROBLEM THIS SOLVES IS T-JUNCTION CRACKS, and it is the only part of a
+ * terrain LOD that is hard. Drop every second sample from a chunk and its
+ * shared edge with a full-resolution neighbour now runs straight between two
+ * samples 2 m apart, while the neighbour's edge still bends through the sample
+ * in the middle. The two surfaces meet at the corners and part company between
+ * them, and the gap is a hole you can see the sky through.
+ *
+ * THE STRATEGY: KEEP THE BOUNDARY AT FULL RESOLUTION. Every one of the 65
+ * samples along each chunk edge is still a triangle corner here, so the coarse
+ * chunk's boundary polyline is IDENTICAL to a fine neighbour's, vertex for
+ * vertex, and a crack is not merely unlikely but arithmetically impossible.
+ * The cost is one ring of stitched cells: 624 triangles of the 2424, against
+ * 1800 for the 900 interior cells that decimate freely.
+ *
+ * It was chosen over the two alternatives for reasons that are about this
+ * codebase rather than about taste:
+ *
+ *  - **"Only decimate where all four neighbours also decimate"** makes the LOD
+ *    of one chunk depend on its neighbours', which is a second pass and a
+ *    tie-break rule, and on the measured seeds the qualifying chunks are
+ *    scattered rather than clustered — so it would have cancelled most of the
+ *    already-small saving. It also still cracks at the outside of the
+ *    qualifying blob unless the blob's rim is stitched, i.e. it needs this
+ *    machinery anyway.
+ *  - **Skirts** hide the crack behind a downward flange instead of removing it.
+ *    They cost geometry (the thing being saved), they need a depth to guess at,
+ *    and on a map whose whole grade depends on a ground-bounce fill they put an
+ *    unlit vertical face at every chunk seam. Worse, the artefact survives — it
+ *    just moves from "sky through the ground" to "a seam of wrong shading" —
+ *    and `tools/metrics.mjs` cannot see either one. A fix a frame-wide metric
+ *    cannot check has to be structural.
+ *
+ * THE STITCH. A coarse cell is 2x2 fine quads with corners `a` (-x,-z), `b`
+ * (-x,+z), `c` (+x,-z), `d` (+x,+z), matching the full mesh's own winding. An
+ * interior cell is `a,b,c` + `c,b,d`, the coarse twin of the fine quad. A cell
+ * on the chunk edge instead walks its perimeter — `a`, `b`, `d`, `c` with the
+ * fine mid-edge sample spliced into every side that IS a chunk edge — and fans
+ * it from the cell's own centre sample. The apex is the centre rather than an
+ * opposite corner because the centre is a real sample that is never collinear
+ * with any perimeter segment: fanning from a corner would emit a triangle whose
+ * three vertices lie on one straight line in plan, i.e. a sliver with no area
+ * and an undefined normal.
+ *
+ * ONE TOPOLOGY FOR EVERY CHUNK — the index depends only on `CHUNK_QUADS`, never
+ * on the heights — so `CHUNK_LOD_INDICES` is exact and the wire guard can check
+ * a length rather than a range.
+ */
+function buildChunkLodIndex(): Uint16Array {
+  const S = CHUNK_QUADS;
+  const CN = CHUNK_LOD_QUADS;
+  const stride = S + 1;
+  const out = new Uint16Array(CHUNK_LOD_INDICES);
+  // Perimeter scratch: 4 corners plus at most 4 spliced mid-edge samples.
+  const ring = new Int32Array(8);
+  let w = 0;
+
+  for (let cj = 0; cj < CN; cj++) {
+    const z0 = cj * 2;
+    const z1 = z0 + 1;
+    const z2 = z0 + 2;
+    for (let ci = 0; ci < CN; ci++) {
+      const x0 = ci * 2;
+      const x1 = x0 + 1;
+      const x2 = x0 + 2;
+
+      const a = z0 * stride + x0;
+      const b = z2 * stride + x0;
+      const c = z0 * stride + x2;
+      const d = z2 * stride + x2;
+
+      const west = ci === 0;
+      const east = ci === CN - 1;
+      const south = cj === 0;
+      const north = cj === CN - 1;
+
+      if (!west && !east && !south && !north) {
+        out[w] = a; out[w + 1] = b; out[w + 2] = c;
+        out[w + 3] = c; out[w + 4] = b; out[w + 5] = d;
+        w += 6;
+        continue;
+      }
+
+      // a -> b along the west side, b -> d along the north, d -> c along the
+      // east, c -> a along the south. Same circulation as the two-triangle
+      // split above, so both kinds of cell face the same way.
+      let n = 0;
+      ring[n++] = a;
+      if (west) ring[n++] = z1 * stride + x0;
+      ring[n++] = b;
+      if (north) ring[n++] = z2 * stride + x1;
+      ring[n++] = d;
+      if (east) ring[n++] = z1 * stride + x2;
+      ring[n++] = c;
+      if (south) ring[n++] = z0 * stride + x1;
+
+      const apex = z1 * stride + x1;
+      for (let k = 0; k < n; k++) {
+        out[w] = apex;
+        out[w + 1] = ring[k];
+        out[w + 2] = ring[k + 1 === n ? 0 : k + 1];
+        w += 3;
+      }
     }
   }
   return out;
@@ -2731,6 +2981,9 @@ export function terrainFieldTransfers(data: TerrainFieldData): ArrayBuffer[] {
   ];
   for (const c of data.chunks) {
     arrays.push(c.position, c.normal, c.up, c.top, c.index);
+    // Null on most chunks, and pushing it conditionally is the point: an
+    // `undefined` in the transfer list is a hard `DataCloneError`, not a skip.
+    if (c.lodIndex !== null) arrays.push(c.lodIndex);
   }
   for (const a of arrays) {
     const buf = a.buffer;

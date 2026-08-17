@@ -42,7 +42,7 @@ import { dirname, join, resolve } from 'node:path';
 
 import { MAP_CELL_COUNT, MAP_SIZE, WATER_LEVEL, WATER_SEED, type SeaSpec } from '../src/core/config';
 import {
-  CHUNK_INDICES, CHUNK_VERTS, GRID_COUNT, SPLAT_BYTES, TERRAIN_CHUNKS,
+  CHUNK_INDICES, CHUNK_LOD_INDICES, CHUNK_VERTS, GRID_COUNT, SPLAT_BYTES, TERRAIN_CHUNKS,
   TerrainFields, buildTerrainChunks, heightAtGrid, terrainFieldTransfers, terrainGenKey,
   type TerrainFieldData, type TerrainGenOptions,
 } from '../src/world/terrain-gen';
@@ -206,10 +206,24 @@ describe('terrain: worker and main thread produce identical bytes', () => {
         expect(a.cx, `${name} chunk ${i} cx`).toBe(b.cx);
         expect(a.cz, `${name} chunk ${i} cz`).toBe(b.cz);
         expect(a.cliffTris, `${name} chunk ${i} cliffTris`).toBe(b.cliffTris);
+        expect(a.lodError, `${name} chunk ${i} lodError`).toBe(b.lodError);
         for (const k of ['position', 'normal', 'up', 'top', 'index'] as const) {
           expect(
             bytesOf(a[k]).equals(bytesOf(b[k])),
             `${name}: chunk ${b.cx},${b.cz} ${k} differs`,
+          ).toBe(true);
+        }
+        /*
+         * THE LOD CHOICE HAS TO SURVIVE THE WORKER TOO. A chunk that decimates
+         * on one path and not the other is a map that draws differently
+         * depending on whether the prewarm landed in time — which is a
+         * scheduling accident, so the difference would be intermittent.
+         */
+        expect(a.lodIndex === null, `${name} chunk ${i} lod presence`).toBe(b.lodIndex === null);
+        if (a.lodIndex !== null && b.lodIndex !== null) {
+          expect(
+            bytesOf(a.lodIndex).equals(bytesOf(b.lodIndex)),
+            `${name}: chunk ${b.cx},${b.cz} lodIndex differs`,
           ).toBe(true);
         }
       }
@@ -539,6 +553,40 @@ describe('isTerrainReply', () => {
     expect(isTerrainReply(badIndex)).toBe(false);
   });
 
+  /**
+   * `lodIndex` is the one chunk field that is legitimately absent most of the
+   * time, so its guard has a shape none of the others do: `null` passes, a
+   * correct `Uint16Array` passes, and EVERYTHING ELSE — including the
+   * `undefined` an older worker would send — is refused. Accepting `undefined`
+   * would leave `c.lodIndex ?? c.index` drawing the full mesh in silence, which
+   * is a performance regression with no symptom.
+   */
+  it('refuses a malformed half-resolution index and accepts an absent one', () => {
+    const patch = (value: unknown): unknown => {
+      const v = fresh();
+      const list = ((v.data as Record<string, unknown>).chunks as unknown[]).slice();
+      list[5] = { ...(list[5] as object), lodIndex: value };
+      (v.data as Record<string, unknown>).chunks = list;
+      return v;
+    };
+    expect(isTerrainReply(patch(null)), 'null was refused').toBe(true);
+    expect(isTerrainReply(patch(new Uint16Array(CHUNK_LOD_INDICES))), 'a good one was refused')
+      .toBe(true);
+    expect(isTerrainReply(patch(undefined)), 'undefined was accepted').toBe(false);
+    expect(isTerrainReply(patch(new Uint16Array(CHUNK_LOD_INDICES - 3))), 'short was accepted')
+      .toBe(false);
+    expect(isTerrainReply(patch(new Uint32Array(CHUNK_LOD_INDICES))), 'wrong width was accepted')
+      .toBe(false);
+  });
+
+  it('refuses a chunk with no measured LOD error', () => {
+    const v = fresh();
+    const list = ((v.data as Record<string, unknown>).chunks as unknown[]).slice();
+    list[1] = { ...(list[1] as object), lodError: Number.NaN };
+    (v.data as Record<string, unknown>).chunks = list;
+    expect(isTerrainReply(v)).toBe(false);
+  });
+
   it('refuses a broken report or shelf list', () => {
     const noReport = fresh();
     delete (noReport.data as Record<string, unknown>).report;
@@ -613,8 +661,17 @@ describe('transfer lists', () => {
   it('lists every buffer a terrain reply owns, exactly once', () => {
     const data = generateViaWorker(CASES[0][1]);
     const list = terrainFieldTransfers(data);
-    // 15 grids + 5 arrays per chunk.
-    expect(list.length).toBe(15 + TERRAIN_CHUNKS * 5);
+    /*
+     * 15 grids, 5 arrays per chunk, plus one more for every chunk that earned a
+     * half-resolution index. Counted off the data rather than pinned, because
+     * the LOD count is a fact about this seed and pinning it here would make an
+     * unrelated generator change fail in a transfer-list test — but it is
+     * asserted to be non-zero, or this line would be checking nothing on the
+     * one map in the set that has flat ground.
+     */
+    const lods = data.chunks.filter((c) => c.lodIndex !== null).length;
+    expect(lods).toBeGreaterThan(0);
+    expect(list.length).toBe(15 + TERRAIN_CHUNKS * 5 + lods);
     expect(new Set(list).size).toBe(list.length);
     expect(replyTransfers({ kind: 'terrain:done', id: 1, data })).toEqual(list);
   });
@@ -870,6 +927,11 @@ describe('field set shape', () => {
     expect(data.chunks.length).toBe(TERRAIN_CHUNKS);
     expect(data.chunks[0].position.length).toBe(CHUNK_VERTS * 3);
     expect(data.chunks[0].index.length).toBe(CHUNK_INDICES);
+    // Every chunk either carries a full-length half-resolution index or none.
+    // Anything between the two is what the guard exists to stop.
+    for (const c of data.chunks) {
+      if (c.lodIndex !== null) expect(c.lodIndex.length).toBe(CHUNK_LOD_INDICES);
+    }
     expect(data.generateMs).toBeGreaterThanOrEqual(0);
 
     // Through `heightAtGrid` rather than a `Terrain`, which is the worker's
