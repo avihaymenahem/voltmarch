@@ -2240,6 +2240,18 @@ export interface DifficultyProfile {
   readonly maxHarvesters: number;
   /** Refineries it will build before it stops growing its economy. */
   readonly maxRefineries: number;
+  /**
+   * Structures this brain will have drip-repairing AT ONCE.
+   *
+   * A cap on concurrency, not on the verb: every rung mends, because a base
+   * that never heals is not a gentle opponent, it is a broken one. What the
+   * ladder buys is how much of a raid gets undone at the same time — Easy
+   * patches one building while the next two burn, Brutal answers the whole
+   * salvo. It is also a spending cap by proxy: `REPAIR_COST_PER_HP` is charged
+   * per structure per tick, so eight concurrent repairs is eight times the
+   * drain on the same account the army is bought from.
+   */
+  readonly maxRepairs: number;
   /** Items it keeps queued per unit tab. 1 leaves an audible gap between units. */
   readonly queueDepth: number;
   /**
@@ -2295,6 +2307,7 @@ export function difficultyProfile(index: number): DifficultyProfile {
     airReactionTicks: s.airReactionSec <= 0 ? 0 : Math.max(1, Math.round(s.airReactionSec * SIM_HZ)),
     maxHarvesters: s.maxHarvesters,
     maxRefineries: s.maxRefineries,
+    maxRepairs: s.maxRepairs,
     queueDepth: s.queueDepth,
     maxSuperweapons: late.superweapons,
     maxUpgrades: late.upgrades,

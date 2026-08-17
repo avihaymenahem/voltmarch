@@ -38,10 +38,19 @@
  * PERFORMANCE SHAPE
  * -----------------
  * THREE draw calls for the whole network (one per material) plus one shadow
- * draw for the kerbs, ~17k triangles at the default density. Nothing here runs
- * per frame: `generate()` is called once at init and the meshes are static.
- * The road mask is a 256x256 Uint8Array (65 KB) that scatter and pathfinding
- * read directly instead of paying a virtual call per query.
+ * draw for the kerbs, and 17-49k triangles depending on how much road the seed
+ * lays. Nothing here runs per frame: `generate()` is called once at init and
+ * the meshes are static. The road mask is a 256x256 Uint8Array (65 KB) that
+ * scatter and pathfinding read directly instead of paying a virtual call per
+ * query.
+ *
+ * That triangle figure was "~17k" and roughly TRIPLED when the road surfaces
+ * were made to drape over the heightfield instead of chording across it — see
+ * `RoadNetwork.conformSpans`, which is where the measurement and the argument
+ * live. It buys back a sixth of the carriageway that was underground. The
+ * DRAW CALL count is what the budget is written in (`MAX_DRAW_CALLS`, and
+ * `docs/RENDER_FINDINGS.md` §1 for why triangles are not the constraint here)
+ * and it did not move.
  * ============================================================================
  */
 
@@ -49,7 +58,8 @@ import * as THREE from 'three';
 import {
   CELL, MAP_CELLS, MAP_SIZE,
   ROAD_ARM_MERGE_RADIANS, ROAD_ARTERIAL_LANES, ROAD_BEND_MIN_LEG, ROAD_BEND_RADIUS_MAX, ROAD_BEND_RADIUS_MIN,
-  ROAD_COLORS, ROAD_CORNER_RADIUS_MAX, ROAD_CORNER_RADIUS_MIN,
+  ROAD_COLORS, ROAD_CONFORM_MAX_SPANS, ROAD_CONFORM_METRES,
+  ROAD_CORNER_RADIUS_MAX, ROAD_CORNER_RADIUS_MIN,
   ROAD_CROSSWALK_DEPTH, ROAD_CROSSWALK_PERIOD, ROAD_CROSSWALK_START,
   ROAD_ROUTE_SIMPLIFY,
   ROAD_EDGE_TOLERANCE, ROAD_KERB_HEIGHT, ROAD_KERB_RED_RUN, ROAD_KERB_TOP,
@@ -472,6 +482,41 @@ class MeshBuf {
 
   tri(a: number, b: number, c: number): void {
     this.idx.push(a, b, c);
+  }
+
+  /**
+   * `quad`, but each half is emitted only if it really faces the sky.
+   *
+   * A ROAD IS A HORIZONTAL SURFACE, AND A DOWNWARD-FACING TRIANGLE IN ONE IS A
+   * HOLE WITH BARE TERRAIN THROUGH IT. The carriageway ribbon produces them
+   * where a bend folds through itself: the fold-through clamp in
+   * `resolveChainEdges` looks at ONE sample's turn, so it cannot see a bend that
+   * folds over three or more, and the inner edge crosses the outer one.
+   * `tests/roads-junction.spec.ts` has pinned four such triangles across its
+   * seed set — 0.97, 1.29, 5.13 and 14.57 m^2 — as a known defect since the
+   * junction fix.
+   *
+   * They are dropped rather than repaired because the fold is a DOUBLING BACK:
+   * the ground an inverted triangle covers is covered again, right way up, by
+   * the part of the ribbon that folded over it. Removing it takes away the hole
+   * and leaves the tarmac.
+   *
+   * Negative signed area in XZ is the winding that faces +Y — the same test the
+   * spec applies, deliberately, so the geometry and its gate cannot drift
+   * apart. The `< 0` also drops exact degenerates, which a subdivided ribbon
+   * emits wherever two cross-section samples coincide.
+   */
+  quadUp(a: number, b: number, c: number, d: number): void {
+    if (this.faceUp(a, c, b)) this.idx.push(a, c, b);
+    if (this.faceUp(b, c, d)) this.idx.push(b, c, d);
+  }
+
+  private faceUp(a: number, b: number, c: number): boolean {
+    const p = this.pos;
+    const ax = p[a * 3], az = p[a * 3 + 2];
+    const bx = p[b * 3], bz = p[b * 3 + 2];
+    const cx = p[c * 3], cz = p[c * 3 + 2];
+    return (bx - ax) * (cz - az) - (bz - az) * (cx - ax) < 0;
   }
 
   toGeometry(name: string, extName: string): THREE.BufferGeometry {
@@ -1564,6 +1609,7 @@ export class RoadNetwork {
     this.solveJunctions();
     this.trimChains();
     this.solveJunctionPads();
+    this.markJunctionMouths();
     this.buildCover();
     this.buildMeshes();
     this.rasteriseMask();
@@ -2053,9 +2099,60 @@ export class RoadNetwork {
       walk(this.edges[e].a, e);
     }
 
+  }
+
+  /** True when this node really did produce junction-pad geometry. */
+  private hasPad(n: RoadNodeRec): boolean {
+    return n.arms.length >= 3 && n.padBoundary.length >= 6 && n.padTris.length > 0;
+  }
+
+  /**
+   * Decide, for each chain end, whether there is a junction mouth there.
+   *
+   * ============================================================================
+   * A CROSSWALK IN THE MIDDLE OF A STRAIGHT ROAD
+   * ============================================================================
+   * `junctionA` / `junctionB` is the ONLY input to `dEnd`, and `dEnd` is what
+   * ROAD_MARKING_GLSL uses to place the zebra crossing, the stop bar and the
+   * lane arrows — plus the yellow kerb dashes, through `paint`. It used to be
+   * set in `buildChains` from `degree(node) >= 3`: three edges meet here,
+   * therefore this is a junction.
+   *
+   * That is asked far too early and it is not the same question. Three edges
+   * meeting is a claim about the LATTICE; a junction is a claim about the
+   * GEOMETRY, and two steps later `mergeArms` collapses two arms that leave in
+   * nearly the same direction and then — when fewer than three survive —
+   * empties the arm list outright, because a node whose roads are collinear is
+   * a through-road and not a crossing. `trimChains` merges a SECOND time on the
+   * trimmed mouth angles and can drop a node below three again.
+   *
+   * Nothing revisited the flag, so those nodes got no pad, no trim and no kerb
+   * corners, while every chain arriving at them still painted a full junction
+   * approach onto open road. Measured before this function existed:
+   *
+   *     temperate-valley   12 phantom mouths against  6 real junctions
+   *     industrial-grid    12 phantom mouths against  2 real junctions
+   *     foundry-line        3 phantom mouths against  0 real junctions
+   *
+   * Reported as "crosswalk zebra stripes appear mid-block and at odd rotations,
+   * arrows point into kerbs" — and the arrows are the tell that names the cause,
+   * because a two-lane street draws the TURN arrow, which turns toward the kerb.
+   * At a real junction it points at the side road. With no side road it points
+   * at the kerb, which is precisely what was on screen.
+   *
+   * So the flag is now derived from the pad that actually exists, at the last
+   * moment before `buildMeshes` reads it, using the same predicate
+   * `buildJunctionPad` uses to decide whether to emit anything at all.
+   *
+   * `untrimmed` is the second clause and it is not the same case. That end lost
+   * a near-duplicate merge, so it was deliberately NOT cut back to the pad
+   * mouth and its ribbon runs on under the pad. There is no mouth on it to mark
+   * — the surviving arm carries the one for that direction.
+   */
+  private markJunctionMouths(): void {
     for (const c of this.chains) {
-      c.junctionA = this.degree(this.nodes[c.nodeA]) >= 3;
-      c.junctionB = this.degree(this.nodes[c.nodeB]) >= 3;
+      c.junctionA = this.hasPad(this.nodes[c.nodeA]) && !this.untrimmed.has(`${c.id}:a`);
+      c.junctionB = this.hasPad(this.nodes[c.nodeB]) && !this.untrimmed.has(`${c.id}:b`);
     }
   }
 
@@ -2782,6 +2879,59 @@ export class RoadNetwork {
     return this.terrain.heightAt(x, z) + ROAD_SURFACE_LIFT;
   }
 
+  /**
+   * Sub-spans a road-surface quad or triangle edge is cut into so the mesh
+   * DRAPES over the heightfield instead of chording across it.
+   *
+   * ============================================================================
+   * THE ROAD USED TO BE BUILT EDGE-TO-EDGE AND IT WENT UNDERGROUND
+   * ============================================================================
+   * A carriageway cross-section was two vertices — the left kerb line and the
+   * right kerb line — and nothing in between. An arterial is 13.6 m across
+   * (`ROAD_ARTERIAL_LANES` 4 x `ROAD_LANE_WIDTH` 3.4), the heightfield under it
+   * is a 1 m grid, and `ROAD_SURFACE_LIFT` is 6 cm. So the ribbon was a flat
+   * chord stretched over up to 13.6 m of ground that is free to bulge in
+   * between, and wherever it did the terrain came through the tarmac.
+   *
+   * Measured over the shipped mesh before this change, sampling every triangle
+   * on a barycentric grid and comparing against `heightAt`:
+   *
+   *     map                carriageway buried   worst   centreline buried
+   *     industrial-grid          16.86%         4.22 m    27.7%, 32 m unbroken
+   *     temperate-valley         16.81%         3.51 m    27.8%, 46 m unbroken
+   *     frozen-sector            28.66%         4.53 m    37.4%, 36 m unbroken
+   *
+   * That is one number with four faces, and every one of them was reported as a
+   * separate bug: a sixth of the road surface replaced by whatever the terrain
+   * splat is painted with reads as "pale blotches punched through the asphalt";
+   * a 32-46 m stretch of centreline under the ground reads as "the road just
+   * stops in mid-air"; the same arithmetic on `road.pavement` (worst 5.92 m)
+   * reads as "the pavement breaks, floats and re-starts"; and a crosswalk whose
+   * near half is buried reads as "a crosswalk at a nonsensical angle".
+   *
+   * `ROAD_MAX_SLOPE` does not save it. Legality is tested on the CENTRELINE and
+   * `classifyCells` erodes by ONE cell, which guarantees flat ground only
+   * +/-6 m out; an arterial corridor is 10.28 m half-width, so the outer 4 m of
+   * every corridor is ground nothing ever looked at.
+   *
+   * WHY DRAPING RATHER THAN GRADING. A real road is cut flat into the hill, and
+   * doing that here means editing `terrain.height` — which is the surface unit
+   * placement, buildability, the pass grid and every save file are derived
+   * from, after the terrain mesh has already been built. Draping is confined to
+   * this file, changes no gameplay surface, and costs vertices in a mesh whose
+   * draw-call count does not move (three, before and after).
+   *
+   * 1.2 m against a 1 m heightfield: a span shorter than the grid cannot chord
+   * over a whole cell, and the residual is then the terrain's own curvature
+   * inside one cell rather than across a whole carriageway. Do not raise it
+   * without re-running `tests/roads-drape.spec.ts`, which is this measurement
+   * kept as a gate.
+   */
+  private conformSpans(metres: number): number {
+    const n = Math.ceil(metres / ROAD_CONFORM_METRES);
+    return n < 1 ? 1 : n > ROAD_CONFORM_MAX_SPANS ? ROAD_CONFORM_MAX_SPANS : n;
+  }
+
   private buildMeshes(): void {
     const road = new MeshBuf();
     const kerb = new MeshBuf();
@@ -2878,8 +3028,13 @@ export class RoadNetwork {
 
     const total = polylineLength(p);
     let along = 0;
-    let prevL = -1;
-    let prevR = -1;
+    // One cross-section is `spans + 1` vertices, left kerb line to right. The
+    // count is fixed for the whole chain (`halfWidth` is), so the strip is a
+    // regular grid and every quad below pairs the same k on two rows.
+    const spans = this.conformSpans(w * 2);
+    const prev = new Int32Array(spans + 1);
+    const cur = new Int32Array(spans + 1);
+    let havePrev = false;
 
     for (let i = 0; i < n; i++) {
       const x = p[i * 2], z = p[i * 2 + 1];
@@ -2891,8 +3046,6 @@ export class RoadNetwork {
       const px = c.nrm[i * 2], pz = c.nrm[i * 2 + 1];
       const lxw = c.edgeL[i * 2], lzw = c.edgeL[i * 2 + 1];
       const rxw = c.edgeR[i * 2], rzw = c.edgeR[i * 2 + 1];
-      const ly = this.surfaceY(lxw, lzw);
-      const ry = this.surfaceY(rxw, rzw);
 
       // Distance to the nearest junction mouth. Drives the crosswalk, the
       // stop bar and the yellow kerb dashes; 1e4 means "nowhere near one".
@@ -2900,13 +3053,29 @@ export class RoadNetwork {
       const dB = c.junctionB ? total - along : 1e4;
       const dEnd = Math.min(dA, dB);
 
-      this.terrain.normalAt(lxw, lzw, this.nrmScratch);
-      const nx = this.nrmScratch[0], ny = this.nrmScratch[1], nz = this.nrmScratch[2];
-
-      const a = road.push(lxw, ly, lzw, nx, ny, nz, lxw * tileInv, lzw * tileInv, w, along, w, dEnd);
-      const b = road.push(rxw, ry, rzw, nx, ny, nz, rxw * tileInv, rzw * tileInv, -w, along, w, dEnd);
-      if (i > 0) road.quad(prevL, prevR, a, b);
-      prevL = a; prevR = b;
+      for (let k = 0; k <= spans; k++) {
+        const t = k / spans;
+        const vx = lxw + (rxw - lxw) * t;
+        const vz = lzw + (rzw - lzw) * t;
+        // `aRoad.x` is signed metres across, +halfWidth at the left kerb line
+        // and -halfWidth at the right. It is LINEAR in t, so subdividing the
+        // cross-section leaves every marking in ROAD_MARKING_GLSL evaluating to
+        // the value it evaluated to before — the paint does not move, only the
+        // surface it is painted on stops being underground.
+        const side = w - 2 * w * t;
+        this.terrain.normalAt(vx, vz, this.nrmScratch);
+        cur[k] = road.push(
+          vx, this.surfaceY(vx, vz), vz,
+          this.nrmScratch[0], this.nrmScratch[1], this.nrmScratch[2],
+          vx * tileInv, vz * tileInv, side, along, w, dEnd);
+      }
+      if (havePrev) {
+        // Same (a, b, c, d) roles as the two-vertex version this replaces:
+        // a/b are the previous row's inner and outer, c/d this row's.
+        for (let k = 0; k < spans; k++) road.quadUp(prev[k], prev[k + 1], cur[k], cur[k + 1]);
+      }
+      for (let k = 0; k <= spans; k++) prev[k] = cur[k];
+      havePrev = true;
 
       const paint = dEnd < ROAD_KERB_YELLOW_RUN ? 2 : 0;
       left.pts.push(lxw, lzw); left.nrm.push(px, pz); left.paint.push(paint); left.arc.push(along);
@@ -3039,26 +3208,79 @@ export class RoadNetwork {
     for (const a of n.arms) maxW = Math.max(maxW, a.halfWidth);
     for (const r of n.padRuns) runs.push(r);
 
-    this.terrain.normalAt(n.x, n.z, this.nrmScratch);
-    const nx = this.nrmScratch[0], ny = this.nrmScratch[1], nz = this.nrmScratch[2];
     const count = boundary.length / 2;
-    const ring: number[] = [];
-    for (let k = 0; k < count; k++) {
-      const bx = boundary[k * 2], bz = boundary[k * 2 + 1];
-      ring.push(road.push(bx, this.surfaceY(bx, bz), bz, nx, ny, nz,
-        bx * tileInv, bz * tileInv, 0, 0, maxW, -1));
-    }
-    const centre = n.padFan
-      ? road.push(n.x, this.surfaceY(n.x, n.z), n.z, nx, ny, nz,
-        n.x * tileInv, n.z * tileInv, 0, 0, maxW, -1)
-      : -1;
+
+    /*
+     * A PAD TRIANGLE IS THE WIDEST FLAT SPAN IN THE WHOLE NETWORK, so it is the
+     * worst offender for the burial described in `conformSpans`: a fan spoke
+     * runs the full `trimRadius` and an ear-clipped gore can be wider still,
+     * over ground nothing flattened. Each one is therefore subdivided
+     * barycentrically until no edge exceeds ROAD_CONFORM_METRES, with every
+     * vertex dropped onto `surfaceY`.
+     *
+     * `vertexAt` is the crack guard and it is the only reason this is not four
+     * lines. Two neighbouring triangles share an edge but disagree about which
+     * end is A and which is B, so one computes `lerp(A, B, t)` and the other
+     * `lerp(B, A, 1 - t)`. Those differ in the last mantissa bit, which is
+     * enough for two vertices that must be one vertex — and a hairline crack in
+     * a road surface is exactly the defect this whole change exists to remove.
+     * Quantising the world position to 0.1 mm before keying collapses the pair
+     * onto one buffer index, so shared edges are watertight by construction.
+     */
+    const shared = new Map<string, number>();
+    const vertexAt = (vx: number, vz: number): number => {
+      const key = `${Math.round(vx * 1e4)},${Math.round(vz * 1e4)}`;
+      const hit = shared.get(key);
+      if (hit !== undefined) return hit;
+      this.terrain.normalAt(vx, vz, this.nrmScratch);
+      const id = road.push(
+        vx, this.surfaceY(vx, vz), vz,
+        this.nrmScratch[0], this.nrmScratch[1], this.nrmScratch[2],
+        vx * tileInv, vz * tileInv,
+        // A pad carries no lane markings: `dEnd` of -1 is what makes
+        // ROAD_MARKING_GLSL take its `dEnd >= 0.0` branch not at all, so the
+        // other three channels are free and every sub-vertex may copy them.
+        0, 0, maxW, -1);
+      shared.set(key, id);
+      return id;
+    };
+
+    const cornerX = (i: number): number => (i < 0 ? n.x : boundary[i * 2]);
+    const cornerZ = (i: number): number => (i < 0 ? n.z : boundary[i * 2 + 1]);
 
     const t = n.padTris;
     for (let i = 0; i < t.length; i += 3) {
-      road.tri(
-        t[i] < 0 ? centre : ring[t[i]],
-        t[i + 1] < 0 ? centre : ring[t[i + 1]],
-        t[i + 2] < 0 ? centre : ring[t[i + 2]]);
+      const ax = cornerX(t[i]), az = cornerZ(t[i]);
+      const bx = cornerX(t[i + 1]), bz = cornerZ(t[i + 1]);
+      const cx = cornerX(t[i + 2]), cz = cornerZ(t[i + 2]);
+      const longest = Math.max(
+        Math.hypot(bx - ax, bz - az),
+        Math.hypot(cx - bx, cz - bz),
+        Math.hypot(ax - cx, az - cz));
+      const m = this.conformSpans(longest);
+
+      // Barycentric lattice, row by row from A. Row r holds r + 1 vertices
+      // running from the AB edge to the AC edge; both edges are therefore
+      // sampled at the same parameters a neighbouring triangle would use, which
+      // is what `vertexAt` then collapses.
+      let prevRow: number[] = [vertexAt(ax, az)];
+      for (let r = 1; r <= m; r++) {
+        const row: number[] = [];
+        const fr = r / m;
+        const abx = ax + (bx - ax) * fr, abz = az + (bz - az) * fr;
+        const acx = ax + (cx - ax) * fr, acz = az + (cz - az) * fr;
+        for (let s = 0; s <= r; s++) {
+          const fs = s / r;
+          row.push(vertexAt(abx + (acx - abx) * fs, abz + (acz - abz) * fs));
+        }
+        // Upward triangles keep the parent's (A, B, C) order, so the winding
+        // `triangulatePad` decided per triangle survives subdivision intact.
+        for (let s = 0; s < r; s++) {
+          road.tri(prevRow[s], row[s], row[s + 1]);
+          if (s + 1 < r) road.tri(prevRow[s], row[s + 1], prevRow[s + 1]);
+        }
+        prevRow = row;
+      }
     }
   }
 
@@ -3116,7 +3338,15 @@ export class RoadNetwork {
 
     let along = 0;
     let pFootA = -1, pTopA = -1, pOutA = -1;
-    let qInA = -1, qOutA = -1, qSkirtA = -1;
+    let qSkirtA = -1;
+    // The pavement is `paveSpans + 1` vertices from the kerb top outward. Same
+    // draping argument as the carriageway (`conformSpans`): a 3.2 m slab held
+    // flat at kerb-top height was measured 5.92 m underground at its worst,
+    // which is the "pavement breaks, floats and re-starts" report.
+    const paveSpans = this.conformSpans(PW);
+    const paveA = new Int32Array(paveSpans + 1);
+    const paveB = new Int32Array(paveSpans + 1);
+    let havePrevPave = false;
 
     for (let i = 0; i < n; i++) {
       const x = run.pts[i * 2], z = run.pts[i * 2 + 1];
@@ -3154,14 +3384,38 @@ export class RoadNetwork {
       const skX = outX + ox * sk, skZ = outZ + oz * sk;
       const ySk = this.terrain.heightAt(skX, skZ) + 0.03;
       const uA = along * pTile;
-      const qIn = pave.push(topX, yTop, topZ, 0, 1, 0, uA, 0, 0, along, 0, 0);
-      const qOut = pave.push(outX, yTop, outZ, 0, 1, 0, uA, pw * pTile, pw, along, 1, 0);
-      const qSk = pave.push(skX, ySk, skZ, 0, 1, 0, uA, (pw + sk) * pTile, pw + sk, along, 1, 0);
-      if (i > 0) {
-        pave.quad(qOutA, qInA, qOut, qIn);
-        pave.quad(qSkirtA, qOutA, qSk, qOut);
+      for (let k = 0; k <= paveSpans; k++) {
+        const across = (pw * k) / paveSpans;
+        const vx = topX + ox * across, vz = topZ + oz * across;
+        // The inner edge is PINNED to the kerb top rather than max()'d with the
+        // ground, because that vertex is welded to the kerb's own top face and
+        // a millimetre of disagreement there is a slot of daylight running the
+        // length of every street. Everywhere else the slab rides up over
+        // ground that would otherwise swallow it, and since the pavement sits
+        // ROAD_KERB_HEIGHT above the road it almost always stays flat anyway.
+        const vy = k === 0 ? yTop : Math.max(yTop, this.surfaceY(vx, vz));
+        // `aPave.z` is the NORMALISED across coordinate, not a flag: it is what
+        // PAVEMENT_GLSL runs `smoothstep(0.80, 0.94, ...)` over to darken the
+        // soldier course along the outer edge. A subdivided slab has to ramp it
+        // per sub-vertex or the whole outer half goes dark.
+        // `aPave.w` is the skirt flag, and it is a real channel rather than an
+        // inference because the two used to be the same thing: with exactly two
+        // slab vertices, "z > 0.5 on all three corners" identified the skirt by
+        // accident, and the first subdivided build silently reclassified 40% of
+        // the pavement as skirt. `tests/roads-junction.spec.ts` reads this.
+        paveB[k] = pave.push(vx, vy, vz, 0, 1, 0,
+          uA, across * pTile, across, along, k / paveSpans, 0);
       }
-      qInA = qIn; qOutA = qOut; qSkirtA = qSk;
+      const qOut = paveB[paveSpans];
+      const qSk = pave.push(skX, Math.min(ySk, pave.pos[qOut * 3 + 1]), skZ, 0, 1, 0,
+        uA, (pw + sk) * pTile, pw + sk, along, 1, 1);
+      if (havePrevPave) {
+        for (let k = 0; k < paveSpans; k++) pave.quad(paveA[k + 1], paveA[k], paveB[k + 1], paveB[k]);
+        pave.quad(qSkirtA, paveA[paveSpans], qSk, qOut);
+      }
+      for (let k = 0; k <= paveSpans; k++) paveA[k] = paveB[k];
+      havePrevPave = true;
+      qSkirtA = qSk;
     }
   }
 

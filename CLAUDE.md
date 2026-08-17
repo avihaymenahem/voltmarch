@@ -99,7 +99,7 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 3628 across 141 files (+1 opt-in probe)
+npm test             # vitest, currently 3661 across 143 files (+2 opt-in probes)
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -520,6 +520,143 @@ module. `docs/SPEC_DRIFT_AUDIT.md` #62 is the entry.
   nine of the thirteen fixtures declare `settleTicks: 0` — five of those nine call `addOre` and never
   seed it. **`06-economy` is the only frame in the capture set where a crystal can appear.** Do not
   read an unchanged look-bible grade as evidence this renderer is fine.
+
+## Explosion brightness has been reported SEVEN times, and six of them measured the wrong case
+
+Latest: *"flashes become huge again with 100% brightness, cant see nothing in fight"*. **There is no
+regression.** Every constant in `VFX_GLARE`, `VFX_LIGHTS` and `VFX_EXPLOSION` is byte-identical from
+v1.24.0 to v2.12.0, and the one render change in that window that could touch a flash —
+`bloom.radius` 0.70 → 0.34 — moves the failing case from 16.003% to 15.580% of frame over L=0.95,
+i.e. by nothing. Do not go looking for the commit; there isn't one.
+
+- **`VFX_GLARE.radiusM` was 7 m and the complaint is about the SCREEN.** `src/vfx/FlashBudget.ts`
+  bounds how much additive glare one PATCH OF GROUND may emit, and it does that correctly. Nothing
+  bounded the frame. At `CAMERA.defaultDistance` 55 m the focus plane is 35.7 m tall, so a firefight
+  spread over 30-40 m is one screenful of detonations each holding a private budget and a private
+  PointLight.
+- **`tools/flash-stack.mjs` packed every sweep it ever ran into a 4 m spiral** — inside `radiusM` and
+  inside every `mergeRadius`. Six passes of measurement therefore all landed on the configuration
+  that IS bounded, and all six reported the bound working. It sweeps `SPREADS = [4, 18]` now; **do
+  not delete that axis to save renders.** At 1280x720 on the 55 m dolly, twelve unit deaths against a
+  2.430% baseline: 5.442% blown inside 4 m, **15.580% across 18 m**.
+- **The fix is a second tier of the same budget, at the scale of the frame** — `VFX_GLARE.wide`,
+  34 m / ceiling 4.0 / exponent 3.0, multiplied into the locality tier. Twenty deaths across 18 m go
+  36.200% -> 14.314% blown; ONE death is bit-identical (4.253% either side), which is the property
+  the whole file rests on and which every previous fix broke.
+- **The point lights are NOT the offender.** Ablated (`material.visible = false` on `VfxAdditive`,
+  `VfxLitSmoke`, `VfxDebris`, `VfxBeamOverlay`, `VfxRibbonDepth` — never `mesh.visible`, which the
+  pools reassign on upload), twelve spread deaths cost +0.95pp against +13.15pp with the sprites
+  drawn, and `VFX_LIGHT_MERGE_CEIL` saturates exactly as advertised. An older note calling the light
+  pile the largest lever was taken through a mask that never worked.
+- **`VFX_NOON.muzzleMs`, `muzzleSize` and `muzzleColor` are read by nobody.** The live muzzle numbers
+  are `VFX_GUNS.flash[size]`. They are labelled INERT in `config.ts` now; tuning them does nothing.
+
+The measurements, the rejected hypotheses and what not to re-run are in
+[`docs/RENDER_FINDINGS.md`](docs/RENDER_FINDINGS.md) §5b.
+## The AI mends and rebuilds, and one third of that report was never the AI
+
+Reported as *"our entire AI logic is crap. when im starting a game from scratch, enemy already has
+its building set up, no progress. also when they are being attacked, and for example their buildings
+destroyed, they are not rebuilding, not healing"*. Three symptoms, two defects, one misreading.
+
+- **THE PREBUILT BASE IS NOT AN AI AFFORDANCE AND THERE IS NO ASYMMETRY TO DELETE.** `Scenarios.ts`
+  seeds every seat in ONE loop with no `isHuman`, no difficulty and no slot test;
+  `START_CONDITION_DEFAULT` is **`'mcv'`**, both lobby blurbs read "Both sides start with…", and
+  `tests/match-start.spec.ts` already asserts both slots symmetrically under both openings. What a
+  player actually sees is the AI's construction vehicle unfolding at t≈0 — it has a deploy layer
+  ahead of its build script — while they are still driving theirs. Do not "fix" the scenario.
+
+  The two REAL asymmetries are both documented and neither is a structure:
+  `AI_DIFFICULTY[].resourceBonus` (0.8 / 1.0 / 1.15 / 1.35 on harvested income) and
+  `aiMirrorsUnlocks`, which is on by default and, when a player turns it off, genuinely does give a
+  prebuilt AI base the gated tech the human's is missing.
+- **`CommandKind.RepairToggle` HAD NO CALLER IN `src/sim/AI.ts`**, so an AI base never healed —
+  measured at 0.35 mean HP unchanged to four decimals over ten sim-minutes while the brain spent
+  34 000 credits on infantry. `AiBrain.repairBase` is the fix and it is the PLAYER'S OWN WRENCH:
+  same command `input.system.ts` sends, same `REPAIR_COST_PER_HP` out of the same bank, same
+  cancel-when-broke. It cost 3116 credits in the probe, which is what makes it a decision rather
+  than a handout.
+
+  **A toggle is a toggle.** `RepairSell.tickRepairs` clears the flag at full HP and on going broke,
+  so the brain only ever needs to switch one ON — and re-sending it to a structure already mending
+  switches that repair OFF. `isRepairing` is therefore consulted per candidate, not counted once.
+  This is not theoretical: the first probe run read **954 toggles against `hpRestored: 0`**, because
+  a parked-and-reissued command passes `CommandBus.drain` TWICE and the harness applied both.
+- **A LOST CONSTRUCTION YARD WAS PERMANENT.** `census` refills `roleCount` every pass, so a bombed
+  refinery or war factory is already re-proposed by the adaptive scorer — that half of the report
+  was wrong. But `conyard` carries `producesTab: BuildTab.Structures`, so with it gone NO structure
+  can be built by anyone, and the only route back is an MCV off a surviving war factory. Nothing
+  ever called `forRole(BuildRole.Mcv, ...)`; the yard-less branch spent the whole bank on units, so
+  the 3000 was never reached even with a live economy. `mcv` carries no unlock tag precisely so a
+  fresh profile can replace one — its own def says so.
+
+  **`AI_REBUILD.bankFraction` is the half that makes it work.** Ordering the vehicle is the obvious
+  line; holding its price back from `buildUnits` is the one without which the brain converts the
+  money into riflemen 200 credits at a time and never buys anything.
+- **Kill the war factory AND the yard and the position is unrecoverable BY DESIGN** — the
+  `OreCrisis` dead end in another costume. A probe that bombs a base flat measures the rules, not
+  the brain; `tests/ai-rebuild-repair.spec.ts` deliberately leaves one refinery and the factory
+  standing, and says why.
+- **`AI_SKILL[].maxRepairs` is a concurrency cap, not a switch.** Every rung mends, because a base
+  that never heals is a broken opponent rather than a gentle one. Easy patches one building while
+  the next two burn; Brutal answers the salvo.
+## The roads were underground, and one number was doing four kinds of damage
+
+Reported as *"Look at the roads, all broken, 0 logic"* over a screenshot of a city map, with five
+named symptoms. Three of them were ONE defect: **the road surface was built edge-to-edge across a
+13.6 m carriageway, over a 1 m heightfield, with 6 cm of lift.** The mesh chorded straight over any
+ground that bulged in between. Measured on the shipped geometry, sampling every triangle:
+
+```
+                  carriageway buried   worst    centreline buried
+industrial-grid         16.86%         4.22 m   27.7%, 32 m unbroken
+temperate-valley        16.81%         3.51 m   27.8%, 46 m unbroken
+frozen-sector           28.66%         4.53 m   37.4%, 36 m unbroken
+```
+
+A sixth of the road replaced by the terrain splat is *"pale blotches punched through the asphalt"*;
+the same thing over 32-46 m is *"the road ends abruptly in mid-air"*; on `road.pavement` (worst
+5.92 m) it is *"the pavement breaks, floats and re-starts"*. `ROAD_CONFORM_METRES` (1.2 m, under the
+terrain grid) makes every road surface DRAPE instead, and `RoadNetwork.conformSpans` carries the
+argument for why draping rather than grading the heightfield.
+
+- **THIS WAS NEVER A REGRESSION AND `Roads.ts` HAD NOT BEEN TOUCHED.** It shipped from the day the
+  module was written. The reason is in the next bullet, and it is the more important finding.
+- **`npm run shots` CANNOT SEE A ROAD DEFECT.** All thirteen fixtures frame one short, straight,
+  nearly-flat run, so the geometry has nowhere to go wrong in them. A full A/B — pre-fix control
+  against fixed, 13 fixtures each — moved the weighted grade by **0.0 points, 92.0% and 13 failures
+  on both sides**, while the change is unmissable on any real map at gameplay zoom. The generator's
+  own suites work in the XZ plane (arc radii, off-axis degrees, kerb overlap, winding) and the whole
+  failure was in Y. `tests/roads-drape.spec.ts` is the gate that closes both gaps; do not read a
+  green scorecard as evidence about roads.
+- **NO SCATTER PROP MAY STAND ON THE CARRIAGEWAY**, and `Scatter.legal` is where that is enforced —
+  `isCarriageway`, NEVER `isRoad`, the same distinction and the same reason as ore seeding. `isRoad`
+  covers the kerb and pavement, which is exactly where `traceKerbs` and `placeAlongLine` are designed
+  to put lamps, benches and railings. Measured before: 186 / 207 / 105 props in the road on the three
+  maps above. The file's header had claimed "street furniture spawns BESIDE roads, never on them"
+  since it was written, naming a mechanism — the `def.surfaces` mask — that cannot express it, because
+  roads stamp `SurfaceId.Paving` and the mask cannot tell a traffic lane from a plaza.
+- **The density gates in `tests/scatter.spec.ts` build no RoadNetwork**, so they cannot see that
+  exclusion at all. A refused candidate is a spent attempt, not a relocated prop, so an exclusion over
+  a tenth of the map thins the WHOLE map: foundry-line went 162.4 -> 122.6 props/ha against a floor of
+  95. That is pinned in `roads-drape.spec.ts`, not in the file whose job it looks like.
+- **A CROSSWALK MEANS THERE IS A JUNCTION.** `junctionA`/`junctionB` is the only input to `dEnd`, and
+  `dEnd` places the zebra, the stop bar, the lane arrows and the yellow kerb dashes. It was set in
+  `buildChains` from `degree(node) >= 3` — a claim about the LATTICE — and never revisited, while
+  `mergeArms` goes on to empty the arm list of any node whose roads turn out to be collinear, and
+  `trimChains` merges a second time. Result: 12 phantom mouths against 6 real junctions on
+  temperate-valley, painting full junction approaches onto open road. That is *"crosswalks mid-block,
+  arrows pointing into kerbs"* — and the arrows name the cause, because a two-lane street draws the
+  TURN arrow, which turns toward the kerb when there is no side road to turn into.
+  `markJunctionMouths` now derives the flag from the pad that actually exists, immediately before
+  `buildMeshes` reads it.
+- **What was deliberately NOT fixed, and why.** `pruneDeadEnds` refuses to cut an arterial edge, so an
+  arterial that could not reach the far border stops in open country — 2 on frozen-sector, 1 on
+  contested-strait, **0 on either urban map**, so it is not what the report saw. Its own comment
+  records that removing that guard produced maps with no roads at all on a third of seeds. Bounded by
+  a test instead of changed. Likewise the residual burial (0.3-1.5%, worst 3.9 m) is a terrace FACE
+  crossing the corridor, which no span size can drape over; the honest fix is routing — `classifyCells`
+  erodes by ONE cell and guarantees flat ground only +/-6 m out, against a 10.28 m arterial corridor.
 
 ## Hard rules
 

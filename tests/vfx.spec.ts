@@ -27,8 +27,8 @@ import {
 } from '../src/core/config';
 
 import {
-  admitGlare, clearFlashBudget, glareAttenuatedCount, glareLoadAt, glareSpotCount,
-  stepFlashBudget,
+  admitGlare, clearFlashBudget, glareAttenuatedCount, glareEngagementCount,
+  glareLoadAt, glareSpotCount, glareWideLoadAt, stepFlashBudget,
 } from '../src/vfx/FlashBudget';
 import { LightPool, NO_LIGHT, setLightPool } from '../src/vfx/LightPool';
 import {
@@ -458,14 +458,95 @@ describe('the glare budget bounds co-located flashes', () => {
   });
 
   it('does not dim an effect outside the locality radius', () => {
+    // THIS TEST USED TO ASSERT `toBe(1)` AT 15 m AND THAT WAS THE SEVENTH BUG.
+    // Fifteen metres is a different patch of ground and the SAME screenful, and
+    // the frame is what goes white. The locality tier's independence is still
+    // the thing being pinned — it is now pinned on the locality's own load
+    // rather than on the multiplier, which two tiers share.
     clearFlashBudget();
     for (let i = 0; i < 8; i++) admitGlare(0, 0, 0, VFX_GLARE.cost.explosion);
     const far = VFX_GLARE.radiusM * 2 + 1;
-    expect(admitGlare(far, 0, 0, VFX_GLARE.cost.explosion)).toBe(1);
-    // Just inside, though, it is the same locality.
+    expect(glareLoadAt(far, 0, 0)).toBe(0);
+    // Beyond the ENGAGEMENT radius as well, nothing dims it at all: a battle on
+    // the far side of the map must not touch the one on screen.
+    const offMap = VFX_GLARE.wide.radiusM * 2 + 1;
+    expect(admitGlare(offMap, 0, 0, VFX_GLARE.cost.explosion)).toBe(1);
+
+    // Just inside the locality, though, it is the same locality.
     clearFlashBudget();
     for (let i = 0; i < 8; i++) admitGlare(0, 0, 0, VFX_GLARE.cost.explosion);
     expect(admitGlare(VFX_GLARE.radiusM * 0.9, 0, 0, VFX_GLARE.cost.explosion)).toBeLessThan(0.5);
+  });
+
+  it('bounds a whole ENGAGEMENT, not only a patch of ground', () => {
+    /*
+     * THE GATE THE SEVENTH REPORT NEEDED AND DID NOT HAVE.
+     *
+     * Six passes of measurement all packed their emissions inside
+     * `VFX_GLARE.radiusM`, so every one of them measured the case that was
+     * already bounded. Twelve deaths spread across 18 m — one screenful, which
+     * is what a firefight is — each took a private budget and the frame was the
+     * unbounded sum. Measured at 1280x720 on the default 55 m dolly, that put
+     * 15.580% of the frame over L=0.95 against a 2.430% baseline.
+     */
+    const emittedSpread = (n: number, spreadM: number): number => {
+      clearFlashBudget();
+      let total = 0;
+      for (let i = 0; i < n; i++) {
+        const a = i * 2.39996323;                       // golden angle
+        const r = n === 1 ? 0 : spreadM * Math.sqrt((i + 0.5) / n);
+        total += VFX_GLARE.cost.explosion
+          * admitGlare(Math.cos(a) * r, 1, Math.sin(a) * r, VFX_GLARE.cost.explosion);
+      }
+      return total;
+    };
+
+    // Every death lands in its own locality — that is the configuration this
+    // gate exists for, so assert it rather than assuming it.
+    clearFlashBudget();
+    emittedSpread(12, 18);
+    expect(glareSpotCount()).toBeGreaterThan(6);
+    expect(glareEngagementCount()).toBe(1);
+
+    const one = emittedSpread(1, 18);
+    expect(one).toBeCloseTo(VFX_GLARE.cost.explosion, 6);
+    // Twelve deaths across a screenful are a handful of deaths' worth of glare,
+    // not twelve. Without the engagement tier this is exactly 12.
+    expect(emittedSpread(12, 18) / one).toBeLessThan(5.5);
+    // And thirty — a base going up — must not be twice as bright as twelve.
+    expect(emittedSpread(30, 18) / one).toBeLessThan(6.5);
+
+    // The spread case must not end up HARSHER than the packed one: twelve
+    // deaths on one spot is one fireball and twelve across a screenful is a
+    // battle, and a battle is allowed to be the brighter of the two.
+    expect(emittedSpread(12, 18)).toBeGreaterThan(emittedSpread(12, 3));
+  });
+
+  it('leaves a duel alone — the second death in a frame is not dimmed', () => {
+    // The engagement tier's whole risk is making ordinary combat limp. Its
+    // exponent is 3.0 against the locality's 2.0 precisely so that the curve
+    // stays flat while the frame is nearly empty; if that is ever flattened to
+    // 2.0 this fails.
+    clearFlashBudget();
+    admitGlare(0, 1, 0, VFX_GLARE.cost.explosion);
+    // A second tank dying 20 m away: a different patch of ground, same screen.
+    expect(admitGlare(20, 1, 0, VFX_GLARE.cost.explosion)).toBeGreaterThan(0.95);
+    // A third, still comfortably alive.
+    expect(admitGlare(-20, 1, 6, VFX_GLARE.cost.explosion)).toBeGreaterThan(0.85);
+  });
+
+  it('gives the engagement its budget back between fights', () => {
+    clearFlashBudget();
+    for (let i = 0; i < 12; i++) {
+      admitGlare((i % 4) * 8 - 12, 1, ((i / 4) | 0) * 8 - 8, VFX_GLARE.cost.explosion);
+    }
+    expect(glareEngagementCount()).toBe(1);
+    expect(glareWideLoadAt(0, 1, 0)).toBeGreaterThan(VFX_GLARE.wide.ceiling * 0.5);
+
+    // Ten half-lives is ten seconds of quiet — long past any volley.
+    for (let i = 0; i < 10; i++) stepFlashBudget(VFX_GLARE.wide.halfLifeMs);
+    expect(glareEngagementCount()).toBe(0);
+    expect(admitGlare(0, 1, 0, VFX_GLARE.cost.explosion)).toBe(1);
   });
 
   it('gives the locality its budget back as the fire burns out', () => {
@@ -568,7 +649,7 @@ describe('the glare budget bounds co-located flashes', () => {
     P.dispose();
   });
 
-  it('twenty explosions spread across the map are NOT dimmed', () => {
+  it('explosions in SEPARATE ENGAGEMENTS are NOT dimmed', () => {
     const P = makeParticles();
     const pool = new LightPool();
     pool.attach(new THREE.Scene());
@@ -576,11 +657,26 @@ describe('the glare budget bounds co-located flashes', () => {
     setLightPool(pool);
     clearFlashBudget();
 
-    // The common case, and the one a blunt global dimmer would have ruined:
-    // twenty deaths across a battlefield are twenty full-brightness deaths.
-    const apart = VFX_GLARE.radiusM * 3;
-    for (let i = 0; i < 20; i++) {
-      spawnExplosion(60 + (i % 5) * apart, 1, 60 + ((i / 5) | 0) * apart, VFX_EXPLOSION.unitDeathTL, 'unit');
+    /*
+     * THIS TEST SAID `radiusM * 3` — 21 m — AND CALLED IT "ACROSS A
+     * BATTLEFIELD", AND THAT IS THE SEVENTH REPORT IN ONE LINE.
+     *
+     * Twenty-one metres is not across a battlefield, it is across a screen: at
+     * `CAMERA.defaultDistance` the focus plane is 35.7 m tall. So the case it
+     * pinned as "must be full brightness" is the case a player sees as one
+     * white sheet, and it pinned it hard enough that the engagement tier had to
+     * be written against a failing test. The property it was reaching for is
+     * real and is kept — a battle on the far side of the map must not dim the
+     * one on screen — and it is now stated at the distance that actually means
+     * that: beyond `VFX_GLARE.wide.radiusM`, which is one framed view.
+     *
+     * Six, not twenty, because `WIDE_SPOTS` is 8: twenty separate engagements
+     * would exhaust the table and recycle, which is a different behaviour and
+     * would make this test about slot pressure instead of about distance.
+     */
+    const apart = VFX_GLARE.wide.radiusM * 2.5;
+    for (let i = 0; i < 6; i++) {
+      spawnExplosion(60 + (i % 3) * apart, 1, 60 + ((i / 3) | 0) * apart, VFX_EXPLOSION.unitDeathTL, 'unit');
     }
     P.step(1, makeCamera(), 154);
     const tint = P.additive.geometry.getAttribute('aTint').array as Float32Array;
@@ -590,7 +686,7 @@ describe('the glare budget bounds co-located flashes', () => {
       if (tint[i * 3] > EMITTED_FLASH_GAIN * 0.98) flashes++;
     }
     // One full-gain flash disc per death, none of them attenuated.
-    expect(flashes).toBe(20);
+    expect(flashes).toBe(6);
     expect(glareAttenuatedCount()).toBe(0);
 
     setLightPool(null);

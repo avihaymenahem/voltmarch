@@ -55,6 +55,31 @@ const OUT = join(ROOT, '.flash-stack', TAG);
 const COUNTS = [1, 5, 20];
 
 /**
+ * HOW FAR APART, IN METRES — AND THIS AXIS DID NOT EXIST FOR THE FIRST SIX
+ * REPORTS, WHICH IS WHY THERE WAS A SEVENTH.
+ *
+ * Every sweep this file has ever run packed its emissions into a 4 m spiral.
+ * That is INSIDE `VFX_GLARE.radiusM` (7 m) and inside every `mergeRadius` in
+ * `VFX_LIGHTS` (4-9 m), so both of the mechanisms that bound stacking fired on
+ * every measurement ever taken here — and both were duly measured working. A
+ * firefight is not 4 m across. At `CAMERA.defaultDistance` 55 m the focus plane
+ * is 35.7 m tall, so a battle fills the frame at 30-40 m, and out there every
+ * detonation used to take a private budget and a private light.
+ *
+ * Measured the day this axis was added, twelve unit deaths at the default 55 m
+ * dolly, frame area over L=0.95 against a 2.430% baseline:
+ *
+ *     inside 4 m     5.442%   (+3.01pp)   <- the only case this tool could see
+ *     across 18 m   15.580%  (+13.15pp)   <- what the report is about
+ *
+ * 18 m is half a screenful: wide enough that no two deaths share a locality,
+ * narrow enough that they are unmistakably one battle. **Do not delete this
+ * axis to save renders.** A probe that can only see the bounded configuration
+ * reports the bound working, which is what it did six times.
+ */
+const SPREADS = [4, 18];
+
+/**
  * Millisecond checkpoints, cumulative. The metric reported per case is the MAX
  * over the sweep, because "how bright does it get" is the complaint, and a
  * fireball's peak is 40-100 ms in while a muzzle flash is gone by 90.
@@ -603,13 +628,16 @@ try {
   for (const effect of ['explosion', 'muzzle']) {
     const steps = effect === 'explosion' ? EXPLOSION_STEPS : MUZZLE_STEPS;
     for (const count of COUNTS) {
+     // n=1 is one emission at one point; a spread axis over it would be the
+     // same render twice.
+     for (const spreadM of (count === 1 ? [SPREADS[0]] : SPREADS)) {
       const frames = [];
       let prev = 0;
       for (const t of steps) {
         const dt = t - prev;
         prev = t;
         const url = await page.evaluate(
-          async ({ effect, count, dt, first }) => {
+          async ({ effect, count, dt, first, spreadM }) => {
             const V = window.__vmVfx;
             const RA = window.__VM;
             if (first) {
@@ -618,11 +646,12 @@ try {
               // Ground point at the centre of frame, from the camera rig's own
               // focus — no terrain sampler is exposed on __VM.
               const f = RA.rig.focus;
-              // A deterministic spiral inside a ~4 m radius: "co-located in a
-              // small area", which is what a squad firing at one target is.
+              // A deterministic spiral inside `spreadM`. At 4 m that is "a
+              // squad firing at one target"; at 18 m it is a battle, and the
+              // two need different answers. See SPREADS.
               for (let i = 0; i < count; i++) {
                 const a = i * 2.39996323;                 // golden angle
-                const r = count === 1 ? 0 : 4 * Math.sqrt(i / count);
+                const r = count === 1 ? 0 : spreadM * Math.sqrt(i / count);
                 const x = f.x + Math.cos(a) * r;
                 const z = f.z + Math.sin(a) * r;
                 if (effect === 'explosion') V.explode(x, f.y + 1.2, z, 2.2, 'unit');
@@ -647,10 +676,12 @@ try {
             await RA.waitFrames(3);
             return RA.screenshot();
           },
-          { effect, count, dt, first: t === steps[0] },
+          { effect, count, dt, first: t === steps[0], spreadM },
         );
         const buf = Buffer.from(url.split(',')[1], 'base64');
-        writeFileSync(join(OUT, `${effect}-${String(count).padStart(2, '0')}-t${t}.png`), buf);
+        writeFileSync(
+          join(OUT, `${effect}-${String(count).padStart(2, '0')}-r${spreadM}-t${t}.png`), buf,
+        );
         const m = await measure(buf);
         m.tMs = t;
         frames.push(m);
@@ -659,7 +690,7 @@ try {
       const worst = (k) => Math.max(...frames.map((f) => f[k]));
       const peakFrame = frames.reduce((a, b) => (b.fracOver95 > a.fracOver95 ? b : a));
       const c = {
-        effect, count,
+        effect, count, spreadM,
         peakAtMs: peakFrame.tMs,
         mean: worst('mean'),
         p99: worst('p99'),
@@ -673,11 +704,12 @@ try {
       };
       results.cases.push(c);
       console.log(
-        `  ${effect.padEnd(9)} n=${String(count).padStart(2)}  ` +
+        `  ${effect.padEnd(9)} n=${String(count).padStart(2)} r=${String(spreadM).padStart(2)}m  ` +
         `mean ${c.mean.toFixed(4)}  p99 ${c.p99.toFixed(4)}  ` +
         `>0.95 ${(c.fracOver95 * 100).toFixed(3)}%  >0.75 ${(c.fracOver75 * 100).toFixed(3)}%  ` +
         `(peak at ${c.peakAtMs} ms)`,
       );
+     }
     }
   }
 } finally {
@@ -700,7 +732,7 @@ for (const effect of ['explosion', 'muzzle']) {
       return Math.abs(d) < 1e-6 ? '  n/a' : `x${(v / d).toFixed(2)}`;
     };
     console.log(
-      `    n=${String(c.count).padStart(2)}  ` +
+      `    n=${String(c.count).padStart(2)} r=${String(c.spreadM).padStart(2)}m  ` +
       `mean ${r('mean').padStart(7)}   ` +
       `area>0.95 ${r('fracOver95').padStart(7)}   ` +
       `area>0.75 ${r('fracOver75').padStart(7)}   ` +

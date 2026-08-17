@@ -1378,9 +1378,26 @@ const VFX_NOON = {
   smokeSpread: 0.9,
   /** Dust is sampled from terrain albedo so it matches the ground it came from. */
   dustOpacity: 0.40,
+  /**
+   * THESE THREE ARE READ BY NOBODY. Found while chasing the seventh brightness
+   * report, which arrived pointing at this line.
+   *
+   * They are declared on `VfxLook` in `types.ts` and assigned here and in every
+   * art mood, and `grep -rn 'muzzleMs\|muzzleSize\|muzzleColor' src/` returns
+   * exactly those two files. The live muzzle flash reads `VFX_GUNS.flash[size]`
+   * — `lifeMs` 70/90/110, `lenM`/`widM`, `intensity` — and `VFX_RAMP.muzzle`
+   * for its colour. Changing anything below changes nothing on screen.
+   *
+   * Kept rather than deleted because `VfxLook` is a per-mood art contract and
+   * the moods assign them; deleting the field is a types-and-five-tables edit
+   * that belongs with whoever next wires a mood-driven muzzle. Labelled instead,
+   * because an inert knob that LOOKS like the one you want is how a brightness
+   * pass gets spent on nothing — see `docs/RENDER_FINDINGS.md` §5b and §5.
+   */
   muzzleColor: '#FFE9B0',
-  /** Muzzle flash lifetime in ms. Short and hot. */
+  /** INERT — see above. The live value is `VFX_GUNS.flash[size].lifeMs`. */
   muzzleMs: 90,
+  /** INERT — see above. The live values are `VFX_GUNS.flash[size].lenM/widM`. */
   muzzleSize: 0.9,
   teslaCore: '#FFFFFF',
   teslaArc: '#9BE0FF',
@@ -3914,11 +3931,89 @@ export const CREDITS_TICKER_SNAP = 2;
  * can never turn into a wall of towers on its own.
  */
 export const AI_SKILL = [
-  { composition: 0.15, creditFloor: 1400, techBias: 0.6, scoutDelayMul: 2.2, discipline: 0.35, maxDefense: 3,  maxHarvesters: 5, maxRefineries: 2, queueDepth: 1, maxAntiAir: 1, airReactionSec: 12 },
-  { composition: 0.55, creditFloor: 600,  techBias: 1.0, scoutDelayMul: 1.0, discipline: 0.65, maxDefense: 6,  maxHarvesters: 7, maxRefineries: 3, queueDepth: 2, maxAntiAir: 2, airReactionSec: 6 },
-  { composition: 0.85, creditFloor: 250,  techBias: 1.2, scoutDelayMul: 0.7, discipline: 0.85, maxDefense: 8,  maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 3, airReactionSec: 2.5 },
-  { composition: 1.00, creditFloor: 0,    techBias: 1.4, scoutDelayMul: 0.5, discipline: 1.00, maxDefense: 10, maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 4, airReactionSec: 0 },
+  { composition: 0.15, creditFloor: 1400, techBias: 0.6, scoutDelayMul: 2.2, discipline: 0.35, maxDefense: 3,  maxHarvesters: 5, maxRefineries: 2, queueDepth: 1, maxAntiAir: 1, airReactionSec: 12,  maxRepairs: 1 },
+  { composition: 0.55, creditFloor: 600,  techBias: 1.0, scoutDelayMul: 1.0, discipline: 0.65, maxDefense: 6,  maxHarvesters: 7, maxRefineries: 3, queueDepth: 2, maxAntiAir: 2, airReactionSec: 6,   maxRepairs: 3 },
+  { composition: 0.85, creditFloor: 250,  techBias: 1.2, scoutDelayMul: 0.7, discipline: 0.85, maxDefense: 8,  maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 3, airReactionSec: 2.5, maxRepairs: 5 },
+  { composition: 1.00, creditFloor: 0,    techBias: 1.4, scoutDelayMul: 0.5, discipline: 1.00, maxDefense: 10, maxHarvesters: 9, maxRefineries: 3, queueDepth: 2, maxAntiAir: 4, airReactionSec: 0,   maxRepairs: 8 },
 ] as const;
+
+/**
+ * MENDING THE BASE — the doctrine half of `AI_SKILL[].maxRepairs`.
+ *
+ * Reported as *"when they are being attacked, and for example their buildings
+ * destroyed, they are not rebuilding, not healing"*. The healing half was
+ * exactly true and it was not a tuning problem: `CommandKind.RepairToggle` had
+ * NO CALLER in `src/sim/AI.ts`. The brain's entire command surface was five
+ * verbs — production, placement, orders, stance and commander powers — so a
+ * bombed AI base sat at whatever HP the raid left it on, permanently. Measured
+ * over ten sim-minutes on a base taken to 35%: mean HP after, 0.35, unchanged
+ * to four decimals, while the brain banked and spent 34 000 credits on infantry.
+ *
+ * THE FIX IS THE PLAYER'S OWN BUTTON, NOT A NEW RULE. `issueRepairToggle` is
+ * the wrench on the sidebar; `RepairSellService` charges the same
+ * `REPAIR_COST_PER_HP`, cancels the same way when the bank runs dry, and
+ * refuses the same structures. So this costs the AI real money out of the same
+ * account it builds from, which is what makes it a decision rather than a
+ * handout — and it binds the human identically because it IS the human's path.
+ *
+ * `startFraction` is deliberately well below 1.0. The toggle is a toggle: the
+ * service clears the flag at full HP by itself, so the AI never needs to switch
+ * one off, but re-arming on a structure grazed for 2% would spend an action and
+ * a trickle of credits on nothing. Three quarters is "this took a hit that
+ * mattered".
+ *
+ * `minCredits` is NOT a duplicate of `creditFloor`. The floor is what a rung
+ * refuses to spend on BUILDINGS AND UNITS; this is the much smaller reserve
+ * below which starting a fresh drip is self-defeating, because
+ * `RepairSell.tickRepairs` cancels a repair the moment the bank cannot pay the
+ * tick — an AI that arms six repairs on 40 credits gets six cancels and a
+ * wasted action budget.
+ */
+export const AI_REPAIR = {
+  /** Mend a structure at or below this fraction of maxHp. */
+  startFraction: 0.75,
+  /** Bank below which starting another drip just gets cancelled. */
+  minCredits: 400,
+} as const;
+
+/**
+ * REPLACING A LOST CONSTRUCTION YARD.
+ *
+ * The other half of the same report. `conyard` is what carries
+ * `producesTab: BuildTab.Structures`, so a player without one cannot build any
+ * structure at all, and the ONLY route back — for a human exactly as for the
+ * AI — is to buy a Construction Vehicle from a surviving war factory and
+ * unfold it. `src/data/Defs.ts` says so in the `mcv` def's own comment: "a
+ * fresh profile must be able to replace one it lost", which is why that def
+ * carries no unlock tag.
+ *
+ * The AI never bought one. `BuildRole.Mcv` exists in the catalog and the deploy
+ * layer knows how to drive and unfold one, but nothing in `AI.ts` ever called
+ * `forRole(BuildRole.Mcv, ...)` — so the yard-less branch of `build()` fell
+ * straight through to "spend everything on units". Measured: 196 riflemen, 28
+ * tanks and 14 rocket troopers over ten minutes, zero construction vehicles,
+ * zero structures, with the brain's own goal string reading "construction yard
+ * lost — throwing gi at them".
+ *
+ * `bankFraction` is the whole difficulty of this fix. An MCV is 3000 credits
+ * and the yard-less brain is ALSO the brain being told to throw everything it
+ * has at the enemy, so without holding money back it can never accumulate the
+ * price — it converts each 200-credit slice into a rifleman first. The reserve
+ * is a fraction of the cost rather than the whole of it so that a brain saving
+ * for the yard is still buying SOME defence while it saves; at zero it turtles
+ * with an empty base, and at one it dies holding exactly 3000 credits.
+ *
+ * THERE IS DELIBERATELY NO RE-ASK TIMER HERE. The upgrade and commander-power
+ * layers need one because they produce no entity and are otherwise invisible
+ * to every probe; an MCV is a vehicle sitting in a queue, so `AiBrain
+ * .yardOnOrder` reads the queue and `census` counts the finished vehicle. A
+ * clock on top of two exact observations is a third opinion that can disagree
+ * with both.
+ */
+export const AI_REBUILD = {
+  /** Fraction of an MCV's price held back from unit spending while saving. */
+  bankFraction: 0.75,
+} as const;
 
 /**
  * How many own entities one brain will track. A player fielding more than this
@@ -5820,6 +5915,53 @@ export const VFX_LIGHTS = {
  *
  * The first effect in a locality is charged nothing and therefore attenuated
  * not at all, so a single explosion is unchanged. Only the crowd pays.
+ *
+ * ==========================================================================
+ * SEVENTH REPORT — "flashes become huge again with 100% brightness, cant see
+ * nothing in fight". THERE IS NO REGRESSION AND THIS WAS NEVER FIXED.
+ * ==========================================================================
+ *
+ * Every constant in this block, in `VFX_LIGHTS`, and in `VFX_EXPLOSION` is
+ * BYTE-IDENTICAL from v1.24.0 (bb3022a, the last flash pass) through v2.12.0 —
+ * checked field by field across five releases. The one render change in that
+ * window that could plausibly touch a flash is `bloom.radius` 0.70 -> 0.34 at
+ * v2.11.0, and rebuilding with 0.70 moves the failing case by NOTHING:
+ * 16.003% of frame over L=0.95 against 15.580% at the shipped 0.34, which is
+ * inside the run-to-run spread of the presentation RNG. So "again" is an
+ * accurate description of the experience and there is no commit to point at.
+ *
+ * WHAT WAS ACTUALLY WRONG: THE BUDGET IS LOCAL AND THE SCREEN IS NOT.
+ *
+ * `radiusM` is 7 m and every `mergeRadius` in `VFX_LIGHTS` is 4-9 m, so both
+ * bounding mechanisms only ever fire on effects that are nearly on top of each
+ * other. `tools/flash-stack.mjs` packs EVERY sweep it has ever run into a 4 m
+ * spiral — inside both — so six passes of measurement have all been taken on
+ * the one configuration that is bounded. A firefight is not 4 m across. It is
+ * 30-40 m across, which is one screenful at `CAMERA.defaultDistance`, and out
+ * there every detonation gets a private budget and a private PointLight and
+ * the frame is the sum of all of them with nothing capping it.
+ *
+ * Measured at 1280x720 on the DEFAULT 55 m dolly (`.flash-stack/spread`),
+ * twelve unit deaths, frame area over L=0.95 against a 2.430% baseline:
+ *
+ *                              area>0.95     vs baseline     frame mean
+ *     baseline, no effects        2.430%            —           0.368
+ *     one death                   3.991%        +1.56pp         0.402
+ *     twelve inside 4 m           5.442%        +3.01pp         0.425   <- bounded
+ *     twelve across 18 m         15.580%       +13.15pp         0.551   <- not
+ *
+ * and with every VFX sprite and ribbon layer hidden so only the point lights
+ * reach the frame, the same twelve across 18 m read +0.95pp. **The light pool
+ * is not the offender and the merge is not brightening without bound** — it
+ * saturates at `VFX_LIGHT_MERGE_CEIL` exactly as its own comment claims. The
+ * additive sprite layer, spread across a screenful, is the whole of it.
+ *
+ * SO THE BUDGET GETS A SECOND TIER, AT THE SCALE OF THE COMPLAINT. See `wide`
+ * below. The mechanism is unchanged — the same load / ceiling / exponent /
+ * floor / half-life, the same "charge what was actually emitted so the series
+ * converges" — applied a second time over a radius the size of the framed
+ * view, and the two attenuations multiply. A lone explosion still gets exactly
+ * 1.0 from both tiers, so the property this whole file rests on is intact.
  */
 export const VFX_GLARE = {
   /**
@@ -5873,6 +6015,87 @@ export const VFX_GLARE = {
   halfLifeMs: 750,
   /** Below this the locality is retired and its slot recycled. */
   retireLoad: 0.02,
+  /**
+   * THE SECOND TIER — how much glare one ENGAGEMENT may emit at once, as
+   * opposed to one patch of ground. The seventh report's fix; see the block
+   * above this struct for the measurement that says why it had to exist.
+   *
+   * Every field means exactly what its namesake above means and the code path
+   * is the same one, run twice. The two attenuations MULTIPLY, and each tier is
+   * charged what was actually emitted (`cost x the product`), so both series
+   * converge for the same reason the single one did.
+   */
+  wide: {
+    /**
+     * 34 m, and it is a statement about the CAMERA rather than about fire.
+     *
+     * At `CAMERA.defaultDistance` 55 m through the 36-degree vertical FOV the
+     * focus plane is `2 x 55 x tan(18deg)` = 35.7 m tall and about 63 m wide, so
+     * a 34 m radius is very nearly "everything you can see at once". That is
+     * the right scale because the complaint is about the SCREEN: two
+     * detonations 30 m apart do not overlap on the ground and would be wrong to
+     * dim each other on that basis, but they are both in the frame, they are
+     * both additive, and the frame is what goes white.
+     *
+     * It does NOT make the locality tier redundant and must not replace it.
+     * Twelve deaths in 4 m and twelve deaths across 34 m need different
+     * answers — the first is one fireball, the second is a battle — and a
+     * single tier can only give one.
+     */
+    radiusM: 34.0,
+    /**
+     * Ceiling on an engagement's load, in unit-death equivalents, and
+     * therefore the answer to "how violent may one screenful get".
+     *
+     * Deliberately well above the locality's 2.4: a battle is allowed to be
+     * bigger than a single fireball. What it is not allowed to be is
+     * PROPORTIONAL to the body count, which is what it was.
+     */
+    ceiling: 4.0,
+    /**
+     * 3.0, not the locality tier's 2.0, and the higher exponent is the whole
+     * reason this can be added without making ordinary combat look limp.
+     *
+     * The curve is `1 - (load/ceiling)^exp`, so a bigger exponent stays flatter
+     * for longer and then falls off a cliff. At 3.0 against ceiling 4.0 the
+     * SECOND death in a screenful emits 98.4% and the third 91.4% — i.e. a duel
+     * between two tanks is indistinguishable from today — while the seventh is
+     * at 14% and the twelfth is at the floor. Twelve deaths across a screenful
+     * then emit about 4.5 deaths' worth between them instead of twelve.
+     *
+     * At the locality tier's 2.0 the second death in the frame would already be
+     * down to 93.8% and a pair reads measurably dimmer than it does now, which
+     * is the "someone fixed the brightness" failure arriving from the other
+     * side.
+     */
+    exponent: 3.0,
+    /**
+     * Marginal cost of one more detonation once the whole screen is saturated.
+     *
+     * Lower than the locality's 0.06 because this tier's tail is the one that
+     * decides the extreme case: a base going up is thirty deaths inside one
+     * screenful, and at 0.06 the linear part of `ceiling + floor x N` alone
+     * would be another 1.8 deaths' worth on top of the ceiling. The PRODUCT of
+     * the two tiers is clamped up to `VFX_GLARE.floor` in `admitGlare`, so no
+     * emission is ever emitted as literally nothing however saturated both
+     * tiers are — that guarantee is unchanged and is asserted in the tests.
+     */
+    floor: 0.03,
+    /**
+     * 1000 ms, longer than the locality's 750.
+     *
+     * 750 is `billowLifeMs` because a patch of ground is free again when the
+     * fire on it has burned out. An ENGAGEMENT is not one fireball: a wave
+     * breaking on a base arrives over one to three seconds, and at a 750 ms
+     * half-life the budget is 60% back between two volleys 800 ms apart, which
+     * lets the frame re-blow on every one of them. A second is long enough to
+     * hold the lid across a volley and short enough that the screen is fully
+     * open again about two seconds after the shooting stops.
+     */
+    halfLifeMs: 1000,
+    /** Below this the engagement is retired and its slot recycled. */
+    retireLoad: 0.02,
+  },
   /**
    * Cost per effect, in unit-death-explosion equivalents. An explosion's cost is
    * additionally multiplied by k^2 (its size relative to a unit death), because
@@ -7153,12 +7376,35 @@ export const ROAD_MIN_AXIS_DEGREES = 8;
 /** Arc length between ribbon cross-sections. Drives tri count and smoothness. */
 export const ROAD_SAMPLE_METRES = 2.0;
 /**
- * Metres the road surface floats above the heightfield. The terrain grid is
- * 1 m and roads only run on ground under ROAD_MAX_SLOPE, so 6 cm clears the
- * worst interpolation error with room to spare while staying invisible at a
- * 39-degree camera.
+ * Metres the road surface floats above the heightfield. 6 cm is invisible at a
+ * 39-degree camera and clears the interpolation error of a road-surface mesh
+ * whose spans are shorter than the 1 m terrain grid.
+ *
+ * THIS COMMENT USED TO END "roads only run on ground under ROAD_MAX_SLOPE, so
+ * 6 cm clears the worst interpolation error with room to spare", AND THAT WAS
+ * FALSE BY TWO ORDERS OF MAGNITUDE. The lift only ever had to cover the error
+ * of the mesh that carries it, and that mesh was built edge-to-edge across a
+ * 13.6 m carriageway: measured worst case 4.22 m of terrain standing above the
+ * tarmac, with a sixth of the road surface underground. `ROAD_CONFORM_METRES`
+ * is what makes the sentence true; see `RoadNetwork.conformSpans`.
  */
 export const ROAD_SURFACE_LIFT = 0.06;
+/**
+ * Longest span, in metres, of any edge of a road-surface triangle — carriageway
+ * ribbon, junction pad and pavement alike. Below the 1 m terrain grid, so a
+ * span cannot chord over a whole heightfield cell.
+ *
+ * This is a QUALITY knob with a measured gate behind it
+ * (`tests/roads-drape.spec.ts`), not a taste one. Raising it puts the road back
+ * underground in proportion; the full argument is in `RoadNetwork.conformSpans`.
+ */
+export const ROAD_CONFORM_METRES = 1.2;
+/**
+ * Hard ceiling on sub-spans per edge, so a pathological width cannot explode
+ * the vertex count. At 1.2 m this binds only above 19.2 m, and the widest thing
+ * in the game is a 13.6 m arterial.
+ */
+export const ROAD_CONFORM_MAX_SPANS = 16;
 
 /** Nodes per axis in the generator lattice. 4 => ~102 m blocks on a 512 m map. */
 export const ROAD_LATTICE_N = 4;
