@@ -273,9 +273,53 @@ Each stage ends green on all four gates and on `npm run shots` at 92.0% with zer
      cheapest verification available and it is weaker than it reads.
      `tests/stage-d-node-materials.spec.ts` now greps every declared `fn` for identifiers only the
      entry point can reach, which catches the class without a browser. Keep that check.
-- **Stage E — water, shroud, VFX.** `WaterMaterial` is a raw `ShaderMaterial`; VFX is additive
-  sprites and the flash budget.
-- **Stage F — cutover, dual-backend verification, two grade baselines.**
+- **Stage E — water, shroud, VFX. DONE.** `src/world/WaterNodeMaterial.ts`,
+  `src/render/shroud-nodes.ts` §5-§7 (the carpet; §1-§4 are Stage D's self-tint), and
+  `src/vfx/vfx-node-materials.ts`. Shared constants in `water-uniforms.ts` and
+  `vfx-material-constants.ts`; gated by `tests/water-node-material.spec.ts`,
+  `tests/shroud-nodes.spec.ts` and `tests/vfx-node-materials.spec.ts`, each of which adopts Stage
+  D's declared-`fn` scan with a non-vacuity floor.
+
+  **The flash budget was never at risk and that is structural, not lucky.** `src/vfx/FlashBudget.ts`
+  is CPU arithmetic: `admitGlare` returns a multiplier, the emitters fold it into `EmitDesc`'s
+  intensity, and it arrives at both material sets as the same `aTint.x` instance attribute. No
+  shader reads it and no shader can change it. Measured anyway, one machine, one session, `before`
+  = the pre-Stage-E `src/vfx/` and `after` = HEAD: **`tools/flash-stack.mjs`'s entire `cases` array
+  is byte-identical between the two arms.** Do not re-run this to confirm a VFX MATERIAL port; do
+  re-run it if anything ever touches the emitter gain path.
+
+  **Four findings worth carrying forward.**
+
+  1. **A `varying()` wrapped around a module-scope `toVar` emits its assignment where the NODE
+     RESOLVES, not where the var is last written.** The first VFX port computed `vUv` and `vLocal`
+     into scratch vars inside the vertex `Fn` and wrapped them afterwards; the emitted stage read
+     `vUv = spriteUvOut;` **before** `spriteUvOut` was ever assigned, so both shipped as (0, 0) — a
+     black atlas tile and a dead radial ramp, on the WebGPU path only. It compiled clean on both
+     backends and passed every name-presence assertion. Use `varyingProperty` + `.assign()` inside
+     the `Fn`, and **assert the right-hand side, not the name**.
+  2. **One DESCENDING `smoothstep` was hiding in `WATER_FRAG`** — the seabed cutoff
+     `smoothstep( uBed.x, uBed.x * 0.35, bedDepth )`. GLSL leaves `edge0 >= edge1` unspecified and
+     every driver does the obvious thing; WGSL leaves it UNDEFINED. Inverted, and both Stage E
+     specs now scan the compiled source for any literal-edged `smoothstep` with `edge0 >= edge1`.
+  3. **A `texture()` node cannot hold null.** The GLSL water carries `uField: { value: null }` until
+     `Water.ts` builds the field; a TSL `texture()` reads its sampler type off the value at
+     construction, so `setField(null)` restores a stand-in OF THE RIGHT FORMAT instead of clearing.
+  4. **`WATER_NOON.fresnelPower` is 5.4, carries six lines of measurement, and is read by nothing** —
+     nor is any other field of `DEFAULT_ART.water`. The live grazing exponent is
+     `WATER_SSR.fresnelPower` = 5.0. Labelled INERT in `config.ts` (the `VFX_NOON.muzzleMs` shape)
+     and deliberately NOT "corrected": every shipped frame was graded at 5.0.
+
+  **No Stage E surface hits Stage D's shadow gap.** `Water.ts:411` sets `castShadow = false`, the
+  shroud carpet sets it false, and of the VFX layers only `VfxDebris` casts — and it displaces
+  nothing, being instance matrices on a stock standard material.
+
+  **What Stage F still owes this stage:** `RibbonBatch` reaches through
+  `material.uniforms.uPxScale` in `setFov` and in `BeamSystem.pxToMetres`, and a node material has
+  no `uniforms` map. `VfxRibbonNodeSet` publishes `setFov` and `pxScale` for exactly those two
+  callers; the batch needs a small accessor before it can hold either kind. `SpriteLayer` already
+  takes `THREE.Material`, so the two sprite layers need no change.
+- **Stage F — cutover, dual-backend verification, two grade baselines.** The one remaining
+  `onBeforeCompile` after Stage E is `Roads.ts`, handled separately.
 
 **Rough order of magnitude: weeks, not days.** Stage A alone answers the question that matters.
 
