@@ -901,19 +901,24 @@ export class Hud {
       parent: this.root,
       faction: this.faction,
       /*
-       * Lends the main GL context so build slots can show the real model. The
-       * sidebar falls back to flat glyphs if this is absent or unusable.
+       * Lends the main renderer — EITHER backend — so build slots can show the
+       * real model. The sidebar falls back to flat glyphs if this is absent or
+       * unusable, which is what a headless build gets.
        *
-       * NULL ON THE NODE PATH, AND THAT IS A REAL GAP RATHER THAN A CHOICE.
-       * `Cameos` renders each portrait into a render target and calls
-       * `renderer.readRenderTargetPixels` — a SYNCHRONOUS readback that exists
-       * only on `WebGLRenderer`. The node `Renderer` publishes
-       * `readRenderTargetPixelsAsync` and nothing synchronous, so the cameo
-       * generator would have to become async end to end. Under `?gpu=webgpu`
-       * the sidebar therefore falls back to its flat glyphs, exactly as it does
-       * on a machine whose context it cannot use. See the Stage F report.
+       * THIS READ `this.handle.webgl` AND THAT WAS THE WHOLE BUG. `webgl` is
+       * null under `?gpu=webgpu`, so every build slot on the node path fell
+       * back to a flat glyph and a player could not tell what they were
+       * building. `Cameos` renders each portrait into a render target and read
+       * it back with `readRenderTargetPixels`, which is synchronous and exists
+       * only on `WebGLRenderer`; the node `Renderer` has
+       * `readRenderTargetPixelsAsync` and nothing synchronous.
+       *
+       * It has both paths now. `frame()` was already incremental, so the async
+       * readback fits without changing its shape: a slot shows its glyph for a
+       * frame or two and then resolves into the model. `??` and not a branch —
+       * exactly one of these two is ever non-null (`RendererHandle.webgl`).
        */
-      renderer: this.handle.webgl,
+      renderer: this.handle.webgl ?? this.handle.node,
       callbacks: {
         selectTab: (tab) => this.selectTab(tab),
         activate: (tab, cameo) => this.onSlotActivate(tab, cameo),

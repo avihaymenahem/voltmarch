@@ -262,6 +262,124 @@ export interface NormalisedFrameInfo {
   readonly textures: number;
 }
 
+/* ==========================================================================
+ * THE READBACK — one picture, two byte layouts
+ *
+ * `src/ui/Cameos.ts` renders each portrait into a render target and copies the
+ * pixels back to a 2D canvas. That copy is the ONE place in the product where
+ * the two renderers hand back the same image in genuinely different bytes, and
+ * both differences are silent: the wrong one produces a picture, just not the
+ * right picture.
+ *
+ *   ROW ORDER. `gl.readPixels(0, 0, …)` starts at the BOTTOM-LEFT of the
+ *   framebuffer, so a WebGL readback arrives bottom-up and has to be flipped.
+ *   WebGPU's `copyTextureToBuffer` takes a texel origin, and a WebGPU texture's
+ *   origin is its TOP-LEFT — three's `WebGPUTextureUtils.copyTextureToBuffer`
+ *   passes our `y` straight through as `origin.y` — so that readback arrives
+ *   top-down and flipping it turns every cameo upside down.
+ *
+ *   ROW STRIDE. `WebGPUTextureUtils.copyTextureToBuffer` rounds `bytesPerRow`
+ *   up to 256 bytes, because `GPUCommandEncoder.copyTextureToBuffer` requires
+ *   it. A 202 px cameo therefore comes back with 808 bytes of pixels and 216
+ *   bytes of padding in every row, and a `set(subarray(y * w * 4, …))` blit
+ *   walks diagonally through the image. WebGL's rows are tight.
+ *
+ * Neither fact is inferred from the requested backend. `readbackStride` DERIVES
+ * the stride from the buffer it was actually given and refuses a length that
+ * matches no layout it knows — so a three upgrade that changes the padding rule
+ * fails loudly at the blit instead of skewing twenty portraits.
+ * ========================================================================== */
+
+/**
+ * Which end of the image a readback's FIRST row came from.
+ *
+ * `bottom-up` is `gl.readPixels`; `top-down` is `copyTextureToBuffer`. Named
+ * rather than a boolean because `flip: true` reads as a property of the blitter
+ * and this is a property of the source.
+ */
+export type ReadbackRowOrder = 'bottom-up' | 'top-down';
+
+/**
+ * WebGPU's mandatory `bytesPerRow` alignment for a texture-to-buffer copy.
+ * Fixed by the WebGPU specification, not by three.
+ */
+export const READBACK_ROW_ALIGNMENT = 256;
+
+/**
+ * The row order a given live backend's readback produces.
+ *
+ * `webgl2-fallback` answers `bottom-up` because it IS `gl.readPixels` —
+ * `WebGLTextureUtils.copyTextureToBuffer` in three's webgl-fallback backend.
+ * It is unreachable in this product (`assertBackend` refuses that renderer at
+ * boot) and answered anyway, because a function with a hole in it is worse than
+ * one nobody calls.
+ */
+export function readbackRowOrder(live: LiveBackend): ReadbackRowOrder {
+  return live === 'webgpu' ? 'top-down' : 'bottom-up';
+}
+
+/**
+ * The stride, in bytes, of one row of an RGBA8 readback buffer.
+ *
+ * DERIVED FROM THE BUFFER, NOT FROM THE BACKEND. Three layouts are recognised:
+ *
+ *   tight            `width * height * 4`                       (WebGL)
+ *   aligned, exact   `(height - 1) * stride + width * 4`        (three 0.185)
+ *   aligned, padded  `height * stride`                          (the obvious
+ *                                                                one, and what
+ *                                                                three did
+ *                                                                before #31658)
+ *
+ * Anything else throws. That is the point: the alternative is to assume a
+ * stride, and an assumed stride that is wrong by 216 bytes produces a sheared
+ * cameo that still looks like a rendering bug rather than a layout bug.
+ */
+export function readbackStride(width: number, height: number, byteLength: number): number {
+  if (width <= 0 || height <= 0) {
+    throw new Error(`[readback] refusing a ${width}x${height} readback`);
+  }
+  const tight = width * 4;
+  if (byteLength === tight * height) return tight;
+  const aligned =
+    Math.ceil(tight / READBACK_ROW_ALIGNMENT) * READBACK_ROW_ALIGNMENT;
+  if (byteLength === (height - 1) * aligned + tight) return aligned;
+  if (byteLength === height * aligned) return aligned;
+  throw new Error(
+    `[readback] ${byteLength} bytes matches no known layout for ${width}x${height} RGBA8 ` +
+      `(tight ${tight * height}, aligned ${(height - 1) * aligned + tight}); ` +
+      'three changed its copyTextureToBuffer packing.',
+  );
+}
+
+/**
+ * Copies a readback into a TIGHT, TOP-DOWN RGBA8 image — the layout
+ * `ImageData` wants.
+ *
+ * `dst` must hold `width * height * 4` bytes. Rows are copied whole through
+ * `TypedArray.set`, which is the same operation the WebGL path has always
+ * performed; with `stride === width * 4` and `bottom-up` this function is
+ * byte-for-byte the loop it replaced, and `tests/cameo-readback.spec.ts` pins
+ * that equivalence rather than assuming it.
+ */
+export function blitReadback(
+  src: Uint8Array,
+  dst: Uint8Array | Uint8ClampedArray,
+  width: number,
+  height: number,
+  stride: number,
+  rowOrder: ReadbackRowOrder,
+): void {
+  const rowBytes = width * 4;
+  if (dst.length < rowBytes * height) {
+    throw new Error(`[readback] destination holds ${dst.length} bytes, needs ${rowBytes * height}`);
+  }
+  const flip = rowOrder === 'bottom-up';
+  for (let y = 0; y < height; y++) {
+    const s = (flip ? height - 1 - y : y) * stride;
+    dst.set(src.subarray(s, s + rowBytes), y * rowBytes);
+  }
+}
+
 /**
  * Reads a frame's statistics out of either renderer.
  *

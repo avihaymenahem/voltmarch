@@ -82,7 +82,8 @@ import {
   type TooltipContent,
 } from './Chrome';
 import {
-  CameoRenderer, createCameoModelProvider, type CameoSubject,
+  CameoRenderer, createCameoModelProvider,
+  type CameoRendererTarget, type CameoSubject,
 } from './Cameos';
 import { iconForBuildable, makeIcon, setIcon, type IconName } from './icons';
 
@@ -581,8 +582,13 @@ export interface SidebarOptions {
   faction: Faction;
   callbacks: SidebarCallbacks;
   /**
-   * The main WebGL renderer, so build slots can show the ACTUAL MODEL instead
-   * of a flat glyph.
+   * The main renderer — EITHER backend — so build slots can show the ACTUAL
+   * MODEL instead of a flat glyph.
+   *
+   * This was `THREE.WebGLRenderer | null` and `Hud.ts` passed `handle.webgl`,
+   * which is null under `?gpu=webgpu`. The result was a whole sidebar of flat
+   * glyphs on the node path: you could not tell what you were building. Both
+   * renderers are accepted now; `CameoRenderer` picks the readback that exists.
    *
    * Optional, and the flat glyph stays underneath as the fallback: a headless
    * test, a context-lost frame, and any def whose model does not resolve all
@@ -590,7 +596,7 @@ export interface SidebarOptions {
    * cameo once into a cached render target and then never again, so an idle
    * sidebar costs zero GPU — see the header of `Cameos.ts`.
    */
-  renderer?: THREE.WebGLRenderer | null;
+  renderer?: CameoRendererTarget | null;
 }
 
 /**
@@ -2138,7 +2144,7 @@ class BuildPanel {
     private readonly cb: SidebarCallbacks,
     tipHost: HTMLElement,
     faction: Faction = Faction.Allies,
-    renderer: THREE.WebGLRenderer | null = null,
+    renderer: CameoRendererTarget | null = null,
   ) {
     this.faction = faction;
     if (renderer !== null) {
