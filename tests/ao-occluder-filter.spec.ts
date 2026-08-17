@@ -1,7 +1,16 @@
 /**
- * THE AO OCCLUDER FILTER, AND THE DRAW-CALL INSTRUMENT BESIDE IT.
+ * THE AO G-BUFFER, THE OCCLUDER FILTER, AND THE DRAW-CALL INSTRUMENT BESIDE THEM.
  *
- * Two things are pinned here, and neither has any other guard.
+ * READ THIS FIRST, BECAUSE THE FILTER'S SCOPE NARROWED. `installAoDepthGBuffer`
+ * hands `GTAOPass` the depth the colour pass already wrote and clears
+ * `_renderGBuffer`, so THERE IS NO NORMAL PREPASS on any path where three's
+ * internals are where `post.ts` expects them — and `_overrideVisibility`, which
+ * is where the filter lives, is that prepass's own fence. The filter therefore
+ * governs a FALLBACK, and `userData.vmAoOccluder` does not decide a shipped
+ * pixel. It is still tested, at full strength, because the fallback is what a
+ * three upgrade lands on and an unfiltered prepass is the black-decal defect.
+ *
+ * Three things are pinned here, and none has any other guard.
  *
  * 1. THE OPT-OUT IS A CROSS-FILE CONTRACT. A mesh stamps
  *    `userData.vmAoOccluder = false` where it is built; `aoOccluder` in
@@ -46,6 +55,95 @@ function stripComments(src: string): string {
 const POST_CODE = stripComments(POST_SRC);
 const DEBUG_CODE = stripComments(DEBUG_SRC);
 const SHOOT_CODE = stripComments(SHOOT_SRC);
+
+describe('AO G-buffer from the scene depth', () => {
+  /*
+   * THE WHOLE SAVING IS ONE CALL. `setGBuffer(depth, normal)` is what sets
+   * `_renderGBuffer = false`; without it `GTAOPass.render` opens with
+   * `_renderOverride(renderer, this.normalMaterial, ...)`, which is
+   * `renderer.render(scene, camera)` — 39-57 draw calls on the capture
+   * fixtures, 26.8-29.4% of the frame. Nothing throws if the call goes missing and
+   * nothing looks different; the draws simply come back. That is the exact
+   * shape of defect this repo keeps rediscovering, so it gets a test.
+   */
+  it('hands GTAO a depth texture instead of letting it re-render the scene', () => {
+    expect(POST_CODE).toContain('installAoDepthGBuffer');
+    expect(POST_CODE, 'setGBuffer is the only thing that clears _renderGBuffer')
+      .toMatch(/setGBuffer\.call\(p, seedDepth, normalTarget\.texture\)/);
+  });
+
+  it('attaches a depth texture to BOTH composer targets', () => {
+    /*
+     * `EffectComposer.render()` does not reset `readBuffer` between frames and
+     * this chain swaps an odd number of times, so the target `RenderPass` draws
+     * into alternates. One attachment would give the AO a correct depth buffer
+     * every other frame — a flicker with no error attached to it.
+     */
+    expect(POST_CODE).toMatch(/renderTarget1\.depthTexture = makeSceneDepthTexture\(/);
+    expect(POST_CODE).toMatch(/renderTarget2\.depthTexture = makeSceneDepthTexture\(/);
+  });
+
+  it('gives the MSAA scene target its own depth, and reads that when it is live', () => {
+    /*
+     * With MSAA on the scene goes into `sceneMsaa`, and the composer's read
+     * buffer receives a colour-only transfer quad through `renderer.render`,
+     * which CLEARS. So the read buffer's depth at AO time is 1.0, not the
+     * scene, and the depth has to come off the multisampled target — whose
+     * texture three fills by blitting `DEPTH_BUFFER_BIT` during the one resolve.
+     */
+    expect(POST_CODE).toMatch(/depthTexture: makeSceneDepthTexture\('SceneMSAADepth'\)/);
+    expect(POST_CODE).toMatch(
+      /sceneMsaa !== null \? sceneMsaa\.depthTexture : readBuffer\.depthTexture/,
+    );
+  });
+
+  it('reads the depth per frame rather than capturing it', () => {
+    // A captured texture survives a resize (which reallocates both composer
+    // targets) and a MSAA toggle (which allocates a new scene target) as a
+    // dangling reference to a buffer nothing draws into any more.
+    expect(POST_CODE, 'the live depth must be derived inside the render wrapper')
+      .toMatch(/p\.render = function depthGBufferRender/);
+    expect(POST_CODE).toMatch(/normalMat\.uniforms\.tDepth\.value = depth/);
+    expect(POST_CODE).toMatch(/gtao\.uniforms\.tDepth\.value = depth/);
+    expect(POST_CODE).toMatch(/pd\.uniforms\.tDepth\.value = depth/);
+  });
+
+  it('allocates nothing in the reconstruction path', () => {
+    /*
+     * `depthGBufferRender` runs once per frame. The projection inverse is the
+     * only thing that changes, and it is copied into a `Matrix4` built at
+     * install time — `new THREE.Matrix4()` inside the wrapper would be a
+     * per-frame allocation, which CLAUDE.md forbids outright.
+     */
+    const wrapper = POST_CODE.slice(POST_CODE.indexOf('function depthGBufferRender'));
+    const body = wrapper.slice(0, wrapper.indexOf('return true;'));
+    expect(body).toMatch(/\.copy\(p\.camera\.projectionMatrixInverse\)/);
+    expect(body, 'nothing may be constructed inside the per-frame wrapper')
+      .not.toMatch(/new THREE\./);
+  });
+
+  it('packs the reconstructed normal the way unpackRGBToNormal reads it', () => {
+    /*
+     * `setGBuffer` derives `NORMAL_VECTOR_TYPE = 1` from being given a normal
+     * texture, and that branch is `unpackRGBToNormal(texel.rgb)`, i.e.
+     * `2 * rgb - 1`. A quad writing a raw signed normal would come back
+     * doubled and biased, which is AO that looks plausible and is wrong.
+     */
+    expect(POST_CODE).toMatch(/normalize\(cross\(dpdx, dpdy\)\) \* 0\.5 \+ 0\.5/);
+  });
+
+  it('keeps the prepass as a real fallback rather than half-installing', () => {
+    // Six internals are resolved before anything is rewired. A partially
+    // installed G-buffer is a black or inverted AO term; the prepass it would
+    // have replaced still works, so returning false costs draws and nothing else.
+    expect(POST_CODE).toMatch(/function installAoDepthGBuffer\(pass: unknown\): boolean/);
+    expect(POST_CODE).toMatch(/if \(DEV\) console\.warn\('\[post\] AO depth G-buffer unavailable/);
+    // And the filter is installed BEFORE the attempt, so the fallback is the
+    // filtered prepass rather than the raw one.
+    expect(POST_CODE.indexOf('installAoOccluderFilter(p)'))
+      .toBeLessThan(POST_CODE.indexOf('installAoDepthGBuffer(p)'));
+  });
+});
 
 describe('AO occluder filter', () => {
   it('honours the vmAoOccluder opt-out, and does so strictly', () => {
