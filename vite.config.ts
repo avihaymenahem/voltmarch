@@ -30,7 +30,23 @@ export default defineConfig(({ command }) => ({
   },
 
   server: {
-    port: 5173,
+    /*
+     * 5173 UNLESS THE ENVIRONMENT NAMES ONE. A TCP port is machine-wide, and
+     * every `git worktree` of this repo runs the same dev server — so a second
+     * tree, or any tool already holding 5173, turned `npm run dev` into a hard
+     * failure. That is the collision `tools/shoot.mjs` records paying for on
+     * port 4317, one port over.
+     *
+     * `strictPort` STAYS ON, and that is the point rather than an oversight.
+     * A caller that names a port is waiting on that exact origin; drifting to
+     * 5174 in silence is how `desktop/dev.mjs` came to document Electron
+     * loading nothing. Refusing is the correct failure.
+     *
+     * `desktop/dev.mjs` is unaffected either way: it passes `--port` on the
+     * command line, which outranks this file, and carries its own
+     * `VM_DEV_PORT` override.
+     */
+    port: Number(process.env.PORT) || 5173,
     strictPort: true,
     open: false,
   },
