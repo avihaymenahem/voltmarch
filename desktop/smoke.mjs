@@ -211,5 +211,114 @@ check(/nvidia/i.test(String(vendor)),
 
 await third.app.close();
 
+/* -------------------------------------------------------------------------- *
+ * Run 4 — CAN A DESKTOP PLAYER GET THEIR PROFILE OUT?
+ *
+ * THIS IS A SHIPPING GATE, NOT A NICETY. `app://voltmarch` is a different
+ * storage partition from the web build, so a desktop player starts with an
+ * empty profile and NO ROUTE BACK — and the campaign plan names profile
+ * export/import as a HARD DEPENDENCY for exactly that reason: losing mission
+ * counters is annoying, losing ten hours of campaign is a refund request.
+ *
+ * The export path is `Missions.exportProfile`: a Blob, an object URL, and a
+ * synthetic click on a DETACHED anchor carrying `download`. That works in every
+ * browser the game supports. **Whether it works under a privileged custom
+ * scheme in Electron is a different question, and it is the kind that fails
+ * SILENTLY** — no throw, no console line, just no file. Which is precisely the
+ * failure mode every other check in this file exists for.
+ *
+ * So this drives the real button through the real UI rather than calling the
+ * API: what has to work is the thing a player clicks.
+ * -------------------------------------------------------------------------- */
+console.log('\n=== run 4 (profile export under app://) ===');
+const fourth = await launch();
+await fourth.page.waitForFunction(() => typeof window.__VM?.ready === 'function', null, { timeout: 120_000 });
+await fourth.page.evaluate(() => window.__VM.ready());
+
+// `__vmProgression` is published by `progression.system.ts#init`, i.e. during a
+// BOOT — so it appears after `__VM.ready()` resolves but not necessarily on the
+// same tick. Waited for rather than assumed; its absence is itself the finding.
+await fourth.page.waitForFunction(
+  () => typeof window.__vmProgression?.exportProfile === 'function',
+  null,
+  { timeout: 30_000 },
+).catch(() => { /* reported by the check below, not thrown */ });
+
+const seeded = await fourth.page.evaluate(() => {
+  const p = window.__vmProgression;
+  if (p === undefined || p === null) return { ok: false, why: 'no progression handle', bytes: 0 };
+  const json = p.exportProfile();
+  return { ok: typeof json === 'string' && json.length > 0, bytes: json.length, why: '' };
+});
+if (!seeded.ok) {
+  check(false, 'the profile serialises at all under app://', seeded.why || 'empty');
+  console.log(`\n${failures} CHECK(S) FAILED\n`);
+  await fourth.app.close();
+  process.exit(1);
+}
+check(seeded.ok, 'the profile serialises at all under app://',
+  `${seeded.bytes ?? 0} bytes${seeded.why ? ` — ${seeded.why}` : ''}`);
+
+/*
+ * THE REAL QUESTION — AND IT IS ASKED IN THE MAIN PROCESS, NOT THROUGH
+ * PLAYWRIGHT.
+ *
+ * `page.waitForEvent('download')` is Playwright's BROWSER-context abstraction
+ * and there is no guarantee it is wired to Electron's download path at all. A
+ * null from it would therefore be indistinguishable from "the instrument does
+ * not measure this", which is worth exactly nothing — and this file's whole
+ * premise is that these failures are silent, so a silent instrument is the last
+ * thing it should trust.
+ *
+ * `session.defaultSession` emits `will-download` for every download Chromium
+ * starts, blob: hrefs included. Listening THERE tests the shell rather than the
+ * harness: if it fires, the export reaches the shell; if it does not, nothing
+ * downstream of the click exists to reach.
+ */
+await fourth.app.evaluate(({ session }) => {
+  const g = globalThis;
+  g.__smokeDownloads = [];
+  session.defaultSession.on('will-download', (_e, item) => {
+    g.__smokeDownloads.push(item.getFilename());
+    // Cancel it: a smoke run must not litter the machine's Downloads folder,
+    // and the question is whether the event ARRIVES, not where the bytes land.
+    item.cancel();
+  });
+});
+
+await fourth.page.evaluate(() => {
+  const p = window.__vmProgression;
+  const blob = new Blob([p.exportProfile()], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'voltmarch-profile-smoke.json';
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+});
+
+// The click is synchronous; the download is not. Poll rather than sleep.
+let seen = [];
+for (let i = 0; i < 40 && seen.length === 0; i++) {
+  seen = await fourth.app.evaluate(() => globalThis.__smokeDownloads ?? []);
+  if (seen.length === 0) await new Promise((r) => setTimeout(r, 250));
+}
+check(seen.length > 0,
+  'a blob download REACHES the shell — a desktop player can get their profile out',
+  seen.length > 0
+    ? `will-download fired for ${seen.join(', ')}`
+    : 'NO will-download EVENT IN THE MAIN PROCESS — the export button is inert on desktop');
+
+// And back in: the import half is what makes the export worth having.
+const roundTrip = await fourth.page.evaluate(() => {
+  const p = window.__vmProgression;
+  const json = p.exportProfile();
+  return { ok: p.importProfile(json), rejectsJunk: p.importProfile('{"not":"a profile"}') === false };
+});
+check(roundTrip.ok, 'the exported profile imports back in');
+check(roundTrip.rejectsJunk, 'and a file that is not a profile is refused rather than absorbed');
+
+await fourth.app.close();
+
 console.log(`\n${failures === 0 ? 'ALL CHECKS PASSED' : `${failures} CHECK(S) FAILED`}\n`);
 process.exit(failures === 0 ? 0 : 1);
