@@ -1500,7 +1500,7 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   before   total 143–213   ao 39–57   colour 51–77
   after    total 105–157   ao      0  colour 51–77      (01-establishing-base: 207 -> 151)
   v2.12.0  total 105–157   ao      0  colour 54–77      (prop type cap 22 -> 30)
-  v2.16.0  total 108–159   ao      0  colour 56–79      (re-measured, not carried forward)
+  v2.15.1  total 108–159   ao      0  colour 56–79      (re-measured, not carried forward)
   ```
 
   So **the budget is met** — the colour pass is 51–77 against 130, and it did not move — and the
