@@ -116,7 +116,7 @@ function seedFlag(): number {
  *     deg = lerp(pitchAtMinDistance, pitchAtMaxDistance, t * t * (3 - 2t))
  *
  * with the shipping camera config (30 .. 140 m, 46 .. 58 deg). The test
- * re-derives all eleven from `RENDER_CONFIG` and from a live `CameraRig`, so a
+ * re-derives every row from `RENDER_CONFIG` and from a live `CameraRig`, so a
  * config change that invalidates the table is a red test, not a moved grade.
  *
  * STRUCTURED TO BE LIFTED. When `src/game/Scenarios.ts` and
@@ -138,6 +138,13 @@ export const SCENARIO_PITCH_DEG: Readonly<Record<string, number>> = {
   selection: 46.0464,         // d = 34
   blob: 47.0458,              // d = 50
   atoll: 48.4558,             // d = 62
+  // A FIXTURE-TABLE ROW, NOT A DESIGN CONSTRAINT ON 37 OPERATIONS.
+  // `applyCanonicalPose` writes pitch only when `enforced`, and off the harness
+  // path "pitch is NOT ours" — so this binds under `?shot=campaign` and nowhere
+  // else. It exists because `scenarioPitchDeg` warns and falls back for a name
+  // it does not know, and a warning on every campaign boot is noise that trains
+  // people to ignore the console.
+  campaign: 47.9367,          // d = 58, the same dolly as `skirmish`
 };
 
 /**

@@ -253,7 +253,7 @@ honestly.
 | --- | --- | --- |
 | Unit unlocks | 4 | **Yes.** The sidebar opens up. |
 | Structure unlocks | 4 | **Yes.** |
-| Map unlocks | 7 | **Yes.** The lobby unlocks the map. |
+| Map unlocks | 4 | **Yes.** The lobby unlocks the map. |
 | Commander powers | 0 | **Not a mission reward any more** — they are bought in the match. See below. |
 | Superweapon unlocks | 5 | **Gate nothing.** The superweapons themselves are real; these five ids are not what opens them. |
 | Objective credits | 13 | **No.** Nothing pays them (§3). |
@@ -265,6 +265,13 @@ nobody added them. They are the four unit groups (raider, tier-3 specialist,
 aircraft, commander hero) and the four structure groups (tech centre, specialist
 defence, anti-air emplacement, support pad). The naval groups that used to swell
 them are gone; three cosmetics arrived to replace what those missions paid.
+
+**Map unlocks read 7 for a while, and that was three cut battlefields still
+being counted.** *Saltpan Reach*, *Foundry Line* and *Glacier Shelf* each reused
+another map's preset verbatim and were removed from the roster; four earned maps
+remain, which is the same four §5 lists. Every count in the table above is now
+re-derived from the mission table by `tests/wiki-numbers.spec.ts`, so a reward
+class that gains or loses a payer fails a test instead of quietly rotting here.
 
 ### Commander powers
 

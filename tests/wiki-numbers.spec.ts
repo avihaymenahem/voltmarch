@@ -50,6 +50,9 @@
  *      `config.ts`.
  *   7. The blackout roster: which armed structures keep firing on a dead grid,
  *      derived from `BUILDINGS[].power` rather than restated.
+ *   8. `wiki/Campaign.md`'s three head counts of the mission table — its size,
+ *      its profile/match split, and §6's reward-class census — every one of
+ *      them re-derived from `MISSIONS[].reward` rather than restated.
  *
  * THE PARSER FAILS LOUDLY, WHICH IS HALF THE POINT
  * ------------------------------------------------
@@ -76,11 +79,13 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { BUILDINGS, UNITS, WEAPONS } from '../src/data/Defs';
+import { MISSIONS } from '../src/data/Missions';
 import { ARMOR_MATRIX, COMBAT_DAMAGE } from '../src/core/config';
 import {
   ORE_REGROW_NODE_BONUS, ORE_REGROW_RATE, ORE_REGROW_SPREAD,
 } from '../src/core/config';
 import type { BuildingDef, UnitDef, WeaponDef } from '../src/core/types';
+import type { Reward } from '../src/progression/types';
 
 const wiki = (page: string): string => readFileSync(
   join(__dirname, '..', 'wiki', `${page}.md`), 'utf8',
@@ -856,7 +861,195 @@ describe('the wiki names the right guns as blackout-proof', () => {
 });
 
 /* ==========================================================================
- * 8. CLAIMS THAT CANNOT BE MACHINE-CHECKED
+ * 8. THE MISSION TABLE — `wiki/Campaign.md`
+ *
+ * `Campaign.md` is the one page that is almost entirely counts: how many
+ * missions there are, how they split between the two scopes, and how many
+ * missions pay each class of reward. Every one of those is a second copy of
+ * something `src/data/Missions.ts` owns, and none of them was checked.
+ *
+ * IT HAD ALREADY ROTTED. §6 said there were **7 map unlocks**; there are four.
+ * The other three were `map.saltpan-reach`, `map.foundry-line` and
+ * `map.glacier-shelf`, cut with the three preset-clone battlefields that paid
+ * them — and §5 of the SAME PAGE says "Four of the seven battlefields are
+ * earned" and then lists exactly four. So the page disagreed with itself, two
+ * screens apart, and read as authoritative in both places.
+ *
+ * THE COUNT COLUMN IS CHECKED UNDER BOTH READINGS, DELIBERATELY. "Map unlocks:
+ * 4" could mean four unlock IDS or four MISSIONS that pay one, and the page
+ * never says which. Every class below is asserted against both, plus an
+ * assertion that the two agree — so today the ambiguity is harmless, and the
+ * day some class gains a second payer for one id, this fails and makes the page
+ * say which number it means rather than silently being right about one of them.
+ * ========================================================================== */
+
+/** Every reward emitted by every mission, flattened. */
+const ALL_REWARDS: readonly Reward[] = MISSIONS.flatMap((m) => m.reward);
+
+const isUnlockUnder = (r: Reward, prefix: string): boolean => (
+  r.kind === 'unlock' && r.unlockId.startsWith(prefix)
+);
+
+interface RewardClass {
+  /** Verbatim first cell of the row in `Campaign.md` §6. */
+  readonly row: string;
+  readonly is: (r: Reward) => boolean;
+  readonly why: string;
+}
+
+/**
+ * The seven rows of §6, each one a PREDICATE over `MISSIONS[].reward` rather
+ * than a number. Checked in both directions: a row on the page that is not
+ * declared here fails, and a declared row the page drops fails too.
+ */
+const REWARD_CLASSES: readonly RewardClass[] = [
+  {
+    row: 'Unit unlocks',
+    is: (r) => isUnlockUnder(r, 'unit.'),
+    why: 'raider, tier-3 specialist, aircraft, commander hero',
+  },
+  {
+    row: 'Structure unlocks',
+    // `struct.superweapon.*` is its own row below, so it must not be counted
+    // twice — that prefix is a SUBSET of `struct.` and the naive test scores 9.
+    is: (r) => isUnlockUnder(r, 'struct.') && !isUnlockUnder(r, 'struct.superweapon.'),
+    why: 'tech centre, specialist defence, anti-air emplacement, support pad',
+  },
+  {
+    row: 'Map unlocks',
+    is: (r) => isUnlockUnder(r, 'map.'),
+    why: 'Frozen Sector, Industrial Grid, Contested Strait, Coral Shore — and NOT the '
+      + 'three preset-clone maps that were cut, which is where the stale 7 came from',
+  },
+  {
+    row: 'Commander powers',
+    /*
+     * Zero, and it is derived rather than asserted flat. The `power` variant of
+     * `Reward` was DELETED when powers moved into the match (a Command Post
+     * buys them now), so the schema itself can no longer express one — the only
+     * way a power can come back as a mission reward is an unlock id in the old
+     * `power.` namespace, which is exactly what this looks for.
+     */
+    is: (r) => isUnlockUnder(r, 'power.'),
+    why: 'bought from a Command Post since v2.6.0; no mission pays one',
+  },
+  {
+    row: 'Superweapon unlocks',
+    is: (r) => isUnlockUnder(r, 'struct.superweapon.'),
+    why: 'five ids over six structures — siege covers two armies',
+  },
+  {
+    row: 'Objective credits',
+    is: (r) => r.kind === 'credits',
+    why: 'one per match objective, and nothing pays them out (§3 says so)',
+  },
+  {
+    row: 'Cosmetics',
+    is: (r) => r.kind === 'cosmetic',
+    why: 'insignia and decals, rendered by nothing',
+  },
+];
+
+describe('Campaign.md counts the mission table correctly', () => {
+  const text = wiki('Campaign');
+
+  it('has a mission table to count at all', () => {
+    // The vacuity guard for everything below: if `MISSIONS` ever came back
+    // empty, every count would be 0 and the page would fail for the wrong
+    // reason. Both scopes must be populated, because the split is a claim too.
+    expect(MISSIONS.length, 'MISSIONS is empty or tiny').toBeGreaterThanOrEqual(40);
+    expect(MISSIONS.filter((m) => m.scope === 'profile').length).toBeGreaterThanOrEqual(25);
+    expect(MISSIONS.filter((m) => m.scope === 'match').length).toBeGreaterThanOrEqual(10);
+    expect(ALL_REWARDS.length, 'no rewards were flattened out of the table')
+      .toBeGreaterThanOrEqual(MISSIONS.length);
+  });
+
+  it('opens with the size of the table, and §1 splits it by scope', () => {
+    expect(text, `Campaign.md's opening paragraph names the size of the mission table; `
+      + `MISSIONS has ${MISSIONS.length} rows`)
+      .toContain(`${MISSIONS.length}-row mission table`);
+
+    const t = parseTables(text).find(
+      (x) => x.headers[1] === 'Profile missions' && x.headers[2] === 'Match objectives',
+    );
+    expect(t, 'Campaign.md §1: the "Two scopes" table was not found').toBeDefined();
+    expect(t!.rows.length, 'Campaign.md §1: the two-scopes table lost most of its rows')
+      .toBeGreaterThanOrEqual(6);
+
+    const row = t!.rows.find((r) => r.cells[0].toLowerCase() === 'count');
+    expect(row, 'Campaign.md §1: the two-scopes table has no "Count" row').toBeDefined();
+    const profile = MISSIONS.filter((m) => m.scope === 'profile').length;
+    const match = MISSIONS.filter((m) => m.scope === 'match').length;
+    expect(num(row!.cells[1], 'Campaign.md §1 profile count'),
+      'Campaign.md §1: profile missions').toBe(profile);
+    expect(num(row!.cells[2], 'Campaign.md §1 match count'),
+      'Campaign.md §1: match objectives').toBe(match);
+    expect(profile + match, 'the two scopes must account for every mission')
+      .toBe(MISSIONS.length);
+  });
+
+  it('§3 lists every match objective and what each one pays', () => {
+    const t = parseTables(text).find(
+      (x) => x.headers[0] === 'Objective' && x.headers.includes('Pays'),
+    );
+    expect(t, 'Campaign.md §3: the match-objective table was not found').toBeDefined();
+
+    const objectives = MISSIONS.filter((m) => m.scope === 'match');
+    expect(t!.rows.length, `Campaign.md §3: the page tabulates ${t!.rows.length} objectives, `
+      + `the table ships ${objectives.length}`).toBe(objectives.length);
+
+    const iPays = col(t!, 'Pays', 'Campaign.md §3');
+    const byTitle = new Map(objectives.map((m) => [m.title, m]));
+    for (const row of t!.rows) {
+      const title = row.cells[0];
+      const where = `Campaign.md:${row.line} "${title}"`;
+      const m = byTitle.get(title);
+      expect(m, `${where}: no match objective is called that. A renamed objective must `
+        + 'move the page with it — this row cannot be skipped.').toBeDefined();
+      const paid = m!.reward.flatMap((r) => (r.kind === 'credits' ? [r.amount] : []));
+      expect(paid.length, `${where}: a match objective that pays no credits`).toBe(1);
+      expect(num(row.cells[iPays], `${where} pays`), `${where}: credits`).toBe(paid[0]);
+    }
+    expect(new Set(t!.rows.map((r) => r.cells[0])).size,
+      'Campaign.md §3: the table repeats an objective').toBe(objectives.length);
+  });
+
+  it('§6 counts each reward class the way MISSIONS[].reward does', () => {
+    const t = parseTables(text).find(
+      (x) => x.headers[0] === 'Reward class' && x.headers.includes('Count'),
+    );
+    expect(t, 'Campaign.md §6: the reward-class table was not found').toBeDefined();
+    expect(t!.rows.length, 'Campaign.md §6: the reward table lost rows')
+      .toBe(REWARD_CLASSES.length);
+
+    const iCount = col(t!, 'Count', 'Campaign.md §6');
+    const byRow = new Map(t!.rows.map((r) => [r.cells[0], r]));
+
+    // BOTH DIRECTIONS. A class on the page this file does not know how to derive
+    // is a finding, not a row to skip — that is how the stale 7 survived.
+    expect([...byRow.keys()].sort(), 'Campaign.md §6 must tabulate exactly the reward '
+      + 'classes REWARD_CLASSES derives, and nothing else. A new row needs a predicate '
+      + 'here; a deleted row needs its predicate removed.')
+      .toEqual(REWARD_CLASSES.map((c) => c.row).sort());
+
+    for (const c of REWARD_CLASSES) {
+      const row = byRow.get(c.row)!;
+      const where = `Campaign.md:${row.line} "${c.row}"`;
+      const rewards = ALL_REWARDS.filter(c.is).length;
+      const payers = MISSIONS.filter((m) => m.reward.some(c.is)).length;
+
+      expect(rewards, `${where}: ${rewards} rewards of this class are spread over ${payers} `
+        + 'missions, so the page\'s single "Count" is ambiguous. Say which number it means, '
+        + 'and split this assertion to match.').toBe(payers);
+      expect(num(row.cells[iCount], `${where} count`),
+        `${where}: the page says ${row.cells[iCount]}, MISSIONS pays this class ${rewards} `
+        + `times (${c.why})`).toBe(rewards);
+    }
+  });
+});
+
+/* ==========================================================================
+ * 9. CLAIMS THAT CANNOT BE MACHINE-CHECKED
  *
  * Not everything above is reachable from a table, and faking a check is worse
  * than declaring the gap. Each entry names a page and a verbatim phrase, and

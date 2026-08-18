@@ -277,10 +277,108 @@ export function unlockGateSuppressed(): boolean {
   return suppressed;
 }
 
+/* -- the campaign's roster ------------------------------------------------
+ *
+ * A CAMPAIGN OPERATION AUTHORS WHAT EACH SIDE MAY BUILD, AND THE TWO LISTS ARE
+ * DIFFERENT ON PURPOSE. "The enemy has Tesla Coils and you do not, go around
+ * them" is a mission; expressing it as a difficulty number instead is what
+ * makes scripted content read as a skirmish with a story pasted on.
+ *
+ * WHY NOT `suppressUnlockGate(true)`. Because it authors nothing: `isBuildable`
+ * short-circuits on it, so operation one would open both superweapons to a
+ * Brutal AI. It is the PvP hammer and the campaign is not PvP.
+ *
+ * WHY A SECOND MODULE-LEVEL FLAG RATHER THAN `setUnlockGate(campaignGate)`.
+ * The boot-order reason this file already documents for `suppressed`, verbatim:
+ * `progression.system.ts`'s `init()` runs during the same boot and installs a
+ * gate built from this browser's profile, silently undoing anything installed
+ * earlier. A flag is honoured whatever is installed and whenever.
+ *
+ * IT IS CONSULTED AHEAD OF `suppressed`, WHICH IS THE ONE ORDERING DECISION
+ * HERE. The operation's authored intent outranks a hammer left set by an
+ * earlier PvP match — and `suppressUnlockGate` has leaked exactly once already,
+ * so "that cannot happen" is not an argument this file gets to make.
+ *
+ * ONLY TAGGED CONTENT CAN BE RESTRICTED. `UNLOCK_TAGS` is 33 defs across 10
+ * tags; a def with no `unlockedBy` is day-one open and stays open. That is a
+ * real limit rather than an oversight — withholding an ungated Barracks would
+ * mean a `census`/`Production` re-derivation at launch for a premise nothing in
+ * the operation table needs — and `validateCampaign` refuses a roster that
+ * names an untagged def rather than letting it silently grant everything.
+ *
+ * THE ROSTER IS AN ALLOW-LIST, SO IT INVERTS THIS FILE'S OWN CENTRAL DEFAULT,
+ * AND THAT IS A REAL HAZARD RATHER THAN A CLEVER READING. The header above
+ * says a missing tag must mean OPEN, because "inverting the default would mean
+ * one forgotten tag locks a unit forever". Here, tagged-and-unlisted means
+ * REFUSED — which is the only way an operation can express "you do not have
+ * Tesla Coils yet" without a deny-list. The cost is that **adding an
+ * `UNLOCK_TAGS` entry to a def that did not have one retroactively withdraws it
+ * from BOTH SIDES OF EVERY SHIPPED OPERATION, silently**: no roster names it,
+ * so no roster allows it, and the gate's own `checkKnown` warning never fires
+ * because this branch returns before the gate is consulted.
+ *
+ * That is not fixable by changing the default without deleting the feature, so
+ * it is caught instead: `tests/campaign-data.spec.ts` pins the `UNLOCK_TAGS` id
+ * set BY VALUE, in the `OVER_BAND` shape this repo already uses. A new tag
+ * therefore fails one test whose message says what just happened and which
+ * operations need reviewing — once, loudly, at the moment the tag lands.
+ *
+ * THREE THINGS THE ROSTER DELIBERATELY DISCARDS, each of which is the gate's
+ * behaviour and not the operation's:
+ *
+ *   - **`unrestricted`.** `?unlockall` and the `?shot=` harness both build the
+ *     gate with it set, and both are inert while an operation is armed. An
+ *     operation's roster IS its authored content — a debugging flag that
+ *     silently widened it would make the thing on screen not the thing that
+ *     shipped.
+ *   - **`mirrorAI`.** The lobby's "AI mirrors your unlocks" toggle has no
+ *     effect here, because the operation states the AI's list outright. That is
+ *     the point of there being two lists.
+ *   - **Liveness.** The gate reads the profile through a closure on every
+ *     question; this is a SNAPSHOT taken at `setCampaignRoster`. Correct,
+ *     because mid-operation roster changes were cut on purpose — but two
+ *     opposite freshness semantics sit ten lines apart in this file, so it is
+ *     said out loud and pinned by `tests/campaign-roster.spec.ts`.
+ */
+interface CampaignRoster {
+  readonly player: ReadonlySet<string>;
+  readonly ai: ReadonlySet<string>;
+}
+
+let campaignRoster: CampaignRoster | null = null;
+
+/** Arm an operation's roster, or clear it. Cleared on EVERY exit from one. */
+export function setCampaignRoster(
+  roster: { readonly player: readonly string[]; readonly ai: readonly string[] } | null,
+): void {
+  campaignRoster = roster === null
+    ? null
+    : { player: new Set(roster.player), ai: new Set(roster.ai) };
+}
+
+/** True while an operation's roster is in force. */
+export function campaignRosterActive(): boolean {
+  return campaignRoster !== null;
+}
+
+/**
+ * `player === undefined` means the caller had no seat in hand — a cameo grid
+ * rebuild, a HUD query. It resolves against the HUMAN list, because that is
+ * whose sidebar is being drawn.
+ */
+function rosterAllows(def: Gateable | null | undefined, isHuman: boolean): boolean {
+  const r = campaignRoster;
+  if (r === null || def === null || def === undefined) return true;
+  const id = def.unlockedBy;
+  if (id === undefined || id === '') return true;
+  return (isHuman ? r.player : r.ai).has(id);
+}
+
 export function isBuildable(
   def: Gateable | null | undefined,
   player?: GatePlayer | null,
 ): boolean {
+  if (campaignRoster !== null) return rosterAllows(def, player?.isHuman ?? true);
   if (suppressed || active === null) return true;
   return player === undefined ? active.allows(def) : active.allowsFor(player, def);
 }
@@ -291,6 +389,13 @@ export function filterBuildable<T extends Gateable>(
   player?: GatePlayer | null,
   out?: T[],
 ): T[] {
+  if (campaignRoster !== null) {
+    const human = player?.isHuman ?? true;
+    const dst = out ?? [];
+    dst.length = 0;
+    for (let i = 0; i < defs.length; i++) if (rosterAllows(defs[i], human)) dst.push(defs[i]);
+    return dst;
+  }
   if (suppressed || active === null) {
     const dst = out ?? [];
     dst.length = 0;

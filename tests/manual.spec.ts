@@ -420,15 +420,25 @@ describe('internal links become navigation, not dead hrefs', () => {
     expect(plain, 'a link the reader cannot follow').toEqual([]);
   });
 
-  it('slugs a heading exactly the way wiki-links.spec.ts does', () => {
-    // Copied from that spec on purpose. If the two rules diverge, an anchor
-    // that the wiki gate validated scrolls nowhere in the game.
-    const theirs = (h: string): string =>
+  it('slugs a heading the way GitHub does, against an independent copy of the rule', () => {
+    // THE LAST HAND-WRITTEN COPY OF THE SLUG RULE, AND IT IS KEPT ON PURPOSE.
+    //
+    // This used to be named after `tests/wiki-links.spec.ts` and described as
+    // copied from it. That spec imports `slugify` now, so there is nothing left
+    // to mirror — and if this test were rewritten to import it too, all three
+    // consumers would agree with each other and nothing would be checking the
+    // rule itself. An independent re-implementation is the only thing that
+    // catches `slugify` being changed to something self-consistently wrong,
+    // which is the one failure mode a single definition cannot see.
+    //
+    // If GitHub's rule ever changes, BOTH sides change and this test is where
+    // the disagreement surfaces first.
+    const independent = (h: string): string =>
       h.trim().toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-');
     let checked = 0;
     for (const src of SOURCE.values()) {
       for (const [, h] of src.matchAll(/^#{1,6}\s+(.+)$/gm)) {
-        expect(slugify(h)).toBe(theirs(h));
+        expect(slugify(h)).toBe(independent(h));
         checked++;
       }
     }

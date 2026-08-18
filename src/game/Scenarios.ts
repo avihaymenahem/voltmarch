@@ -283,6 +283,18 @@ export const SCENARIO_NAMES = [
   'selection',
   'blob',
   'atoll',
+  /**
+   * ONE NAME FOR THE WHOLE CAMPAIGN, NOT THIRTY-SEVEN.
+   *
+   * The per-operation variation is carried by `OperationDef.layout`, which is
+   * a key into a module registry rather than a scenario name — so adding an
+   * operation adds no row here, no `SCENARIO_PITCH_DEG` row, and nothing to
+   * `tests/shot-camera.spec.ts`. It is also NOT a `?shot=` fixture: the
+   * campaign is never photographed, and the pitch row that exists for it is a
+   * fixture-table entry so the router is total, not a design constraint on 37
+   * operations.
+   */
+  'campaign',
 ] as const;
 
 export type ScenarioName = (typeof SCENARIO_NAMES)[number];
@@ -4453,6 +4465,36 @@ const PLANS: Record<string, ScenarioPlan> = {
     summary: 'An island beach mid-landing: dock, transport ashore, escort over the shoal.',
     build: buildAtoll,
   },
+
+  /**
+   * THE CAMPAIGN. One plan, 37 operations, and the variation is a REGISTRY.
+   *
+   * `map` and `armies` here are the unarmed defaults and are what a headless
+   * `buildScenario(world, 'campaign', …)` gets. That call is unreachable from
+   * the product — nothing selects this name without arming an operation first —
+   * and it exists so the router is TOTAL rather than so anybody uses it. A
+   * router with a hole answers a question wrongly instead of loudly.
+   *
+   * With an operation armed, `planScenario` has already replaced `map`,
+   * `armies` and the opening off `PlannedOperation`, and `build` below
+   * delegates to whatever `campaign-install.ts` registered.
+   */
+  campaign: {
+    map: 'temperate', distance: 58, yawDeg: 24, frozen: false, settleTicks: 0,
+    summary: 'A campaign operation.',
+    build(b, cx, cz, start) {
+      const layout = campaignLayout;
+      if (layout !== null) {
+        layout(b, cx, cz, start);
+        return;
+      }
+      // NOTHING REGISTERED. Fall through to the ordinary skirmish build rather
+      // than emitting an empty world: a world with no entities looks like a
+      // renderer fault and sends the next person to the wrong file entirely.
+      console.warn('[scenario] "campaign" built with no layout registered — falling back to skirmish.');
+      PLANS.skirmish.build(b, cx, cz, start);
+    },
+  },
 };
 
 /** Resolve a `?shot=` value to a known scenario, warning on a typo. */
@@ -4605,6 +4647,63 @@ export function plannedArmyOverride(): number | null {
  * while that table had exactly two entries and became a silent two-extra-shelf
  * regression on every map the moment it had four.
  */
+/* -- the campaign's plan ---------------------------------------------------
+ *
+ * `setPlannedOperation` MIRRORS `setPlannedArmies` EXACTLY, including living
+ * outside the `resetScenarioPlan()` memo — the memo is per-boot and this is the
+ * lobby's standing choice, so clearing it there would drop the operation on the
+ * second boot of a session.
+ *
+ * It carries only what the PLAN needs: which landform, how many seats, which
+ * opening. Everything else about an operation — its triggers, its prose, its
+ * objectives — is in the lazy chunk and this file must never see it.
+ */
+export interface PlannedOperation {
+  readonly id: string;
+  /** A `MAP_PRESETS` key. */
+  readonly preset: string;
+  readonly armies: number;
+  /**
+   * `'force'` means the layout hands out a fixed force and never calls
+   * `buildBaseFor`. It resolves to `'base'` as a `StartCondition` because
+   * `START_CONDITIONS` is NOT widened — a third member would put a "Fixed
+   * force" row in the SKIRMISH lobby, where nothing would ever build the base
+   * and the player would get an army with no way to produce. The layout reads
+   * its own opening off the operation and ignores the parameter.
+   */
+  readonly opening: 'mcv' | 'base' | 'force';
+}
+
+let plannedOp: PlannedOperation | null = null;
+
+/** Arm an operation for the next boot, or clear it. */
+export function setPlannedOperation(op: PlannedOperation | null): void {
+  plannedOp = op;
+}
+
+/** The armed operation's plan, or null. */
+export function plannedOperation(): PlannedOperation | null {
+  return plannedOp;
+}
+
+/**
+ * The build function for the armed operation's layout.
+ *
+ * A REGISTRY RATHER THAN AN IMPORT, and the reason is the bundle. Layouts live
+ * in the lazily-imported campaign chunk; `Scenarios.ts` is reachable from the
+ * entry chunk through `scenarios.system.ts`, so importing them here would put
+ * every operation's geometry in front of every player's first paint.
+ * `campaign-install.ts` sets this before the boot and clears it after.
+ */
+export type CampaignLayoutFn =
+  (b: ScenarioBuilder, cx: number, cz: number, start: StartCondition) => void;
+
+let campaignLayout: CampaignLayoutFn | null = null;
+
+export function setCampaignLayout(fn: CampaignLayoutFn | null): void {
+  campaignLayout = fn;
+}
+
 export function plannedStartPoints(): readonly { readonly x: number; readonly z: number }[] {
   const plan = plannedScenario();
   // `plan.seed` is the SIM seed and it is knowable here, which the first attempt
@@ -4648,11 +4747,25 @@ export function planScenario(
 ): ScenarioPlanSummary {
   const name = resolveScenarioName(shot);
   const plan = PLANS[name] ?? PLANS[SCENARIO_DEFAULT];
-  const mapKey = resolveMapName(map, plan.map);
+  // AN ARMED OPERATION OUTRANKS `?map=` FOR THE CAMPAIGN NAME ONLY. Every other
+  // name resolves exactly as it always did, which is what keeps
+  // `tests/match-start.spec.ts` and the whole `?shot=` table unmoved.
+  const op = name === 'campaign' ? plannedOp : null;
+  const mapKey = op !== null ? op.preset : resolveMapName(map, plan.map);
 
   // A posed fixture is pre-built by definition; nothing may talk it out of that.
-  const opening: StartCondition =
-    plan.frozen || name !== 'skirmish' ? 'base' : chooseStart(start, ai);
+  //
+  // THE CAMPAIGN IS THE ONE EXCEPTION AND IT IS NARROW ON PURPOSE. `'campaign'`
+  // with an armed operation takes the operation's declared opening; `'campaign'`
+  // with NOTHING armed still falls through to `'base'`, so the router is total
+  // and a headless `buildScenario(world, 'campaign', …)` behaves. That default
+  // is also what keeps `match-start.spec.ts` passing unchanged — and it is
+  // exactly the smell this repo distrusts, so `tests/campaign-scenario.spec.ts`
+  // asserts BOTH halves: an armed operation gets its own opening, and no other
+  // name can be talked out of `'base'`.
+  const opening: StartCondition = op !== null
+    ? (op.opening === 'mcv' ? 'mcv' : 'base')
+    : (plan.frozen || name !== 'skirmish' ? 'base' : chooseStart(start, ai));
 
   return {
     name,
@@ -4680,7 +4793,9 @@ export function planScenario(
     // be seated by the LOBBY — but a fixture may still declare its own, which
     // is how `atoll` gets four islands graded. `clampArmies(undefined)` is
     // `SKIRMISH_ARMIES_DEFAULT`, so every other plan is unchanged.
-    armies: name === 'skirmish' ? clampArmies(armiesOverride) : clampArmies(plan.armies),
+    armies: op !== null
+      ? clampArmies(op.armies)
+      : (name === 'skirmish' ? clampArmies(armiesOverride) : clampArmies(plan.armies)),
   };
 }
 
@@ -4865,9 +4980,15 @@ export function buildScenario(
    * channel and only to it.
    * -------------------------------------------------------------------- */
   const sea = getTerrain()?.seaSpec ?? plan.sea ?? MAP_SEAS[map] ?? null;
-  const armies = resolved === 'skirmish'
-    ? clampArmies(options.armies ?? plannedArmyOverride())
-    : clampArmies(plan.armies);
+  // The armed operation, resolved once and read by both `armies` and `start`
+  // below. It is null for every scenario name but `'campaign'`, so every other
+  // path is byte-identical to what it was.
+  const opForStart = resolved === 'campaign' ? plannedOperation() : null;
+  const armies = opForStart !== null
+    ? clampArmies(opForStart.armies)
+    : (resolved === 'skirmish'
+      ? clampArmies(options.armies ?? plannedArmyOverride())
+      : clampArmies(plan.armies));
 
   keyTable = new PerEntityObj<string>(world.store);
   const builder = new ScenarioBuilder(
@@ -4905,10 +5026,14 @@ export function buildScenario(
 
   // A fixture is pre-built by definition — `tools/shoot.mjs` photographs twelve
   // finished compositions and an option must never reach them.
-  const start: StartCondition =
-    plan.frozen || resolved !== 'skirmish'
+  // The second of the two start-forcing sites; `planScenario` is the first, and
+  // the campaign exception has to exist in BOTH or the plan and the build
+  // disagree about the opening the world was made for.
+  const start: StartCondition = opForStart !== null
+    ? (opForStart.opening === 'mcv' ? 'mcv' : 'base')
+    : (plan.frozen || resolved !== 'skirmish'
       ? 'base'
-      : options.start ?? chooseStartFromLocation();
+      : options.start ?? chooseStartFromLocation());
 
   try {
     plan.build(builder, cx, cz, start);

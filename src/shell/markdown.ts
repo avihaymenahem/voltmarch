@@ -78,10 +78,20 @@
  * `tests/manual.spec.ts` compares it against the literal in `wiki-links.spec`
  * so the two cannot drift apart in silence.
  *
- * `slugify` reproduces `wiki-links.spec.ts`'s heading-slug rule exactly, for
- * the same reason: that spec has already proved every same-page anchor in the
- * corpus resolves under that rule, and an anchor that scrolls nowhere in the
- * game while passing the wiki gate would be a defect only a player finds.
+ * **`slugify` IS the heading-slug rule; it no longer reproduces one.** This
+ * paragraph used to read the other way round, and pointed at a copy in
+ * `tests/wiki-links.spec.ts` that has since been deleted — that spec imports
+ * this function now, so there is one definition and the wiki gate and the
+ * in-game manual cannot disagree about where an anchor lands. The property
+ * that mattered is unchanged: an anchor which scrolls nowhere in the game
+ * while passing the wiki gate is a defect only a player finds.
+ *
+ * ONE HAND-WRITTEN COPY SURVIVES, in `tests/manual.spec.ts`'s "slugs a heading
+ * exactly the way wiki-links.spec.ts does", and its comment names a literal
+ * that is no longer there. It is kept deliberately: a test that re-implements
+ * the rule is the only thing that can catch this function being changed to
+ * something self-consistently wrong. **Its name and comment should say that,
+ * rather than naming a file it no longer mirrors.**
  * ============================================================================
  */
 
