@@ -46,12 +46,9 @@ import * as THREE from 'three';
 
 import { Terrain } from '../src/world/Terrain';
 import { BIOME_NAMES } from '../src/world/Biomes';
+import { BUILD_RADIUS, CELL, DEFAULT_SEED, MAP_CELLS, MAP_SIZE, TERRAIN_START_FLAT_RADIUS, TERRAIN_START_GUARD_RADIUS } from '../src/core/config';
 import {
-  BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE,
-  TERRAIN_START_FLAT_RADIUS, TERRAIN_START_GUARD_RADIUS,
-} from '../src/core/config';
-import {
-  SKIRMISH_ARMIES_DEFAULT, SKIRMISH_ARMIES_MAX, SKIRMISH_START_OFFSETS, startPointsFor,
+  SKIRMISH_ARMIES_DEFAULT, SKIRMISH_ARMIES_MAX, SKIRMISH_START_OFFSETS, seatedSlots, startPointsFor,
 } from '../src/game/Scenarios';
 
 const CX = MAP_SIZE * 0.5;
@@ -67,14 +64,26 @@ const CZ = MAP_SIZE * 0.5;
  * existence of slots 2 and 3, and a test that silently measured four starts on
  * a map with two reserved shelves would have found that out the hard way.
  */
-const SEATED = SKIRMISH_START_OFFSETS.slice(0, SKIRMISH_ARMIES_DEFAULT);
+/**
+ * The offsets a DEFAULT_SEED two-army boot actually sits on.
+ *
+ * THIS WAS `SKIRMISH_START_OFFSETS.slice(0, 2)` — a restatement, three lines
+ * above a comment boasting that the shelves come from "the ONE derivation, not
+ * restated". It was true for as long as a two-army match always took slots 0
+ * and 1, and the moment the seated pair began varying with the seed it silently
+ * became a second opinion: the terrain was levelled at the slots
+ * `startPointsFor` chose while buildability was measured at slots 0 and 1, and
+ * the sweep below reported 49.2% buildable ground at an opening nobody uses.
+ */
+const SEATED = seatedSlots(SKIRMISH_ARMIES_DEFAULT, DEFAULT_SEED)
+  .map((slot) => SKIRMISH_START_OFFSETS[slot]!);
 
 /**
  * The three shelves the generator is now asked to reserve — taken from the ONE
  * derivation `src/world/terrain-plan.ts` uses, not restated.
  */
 function shelvesFor(): { x: number; z: number }[] {
-  return startPointsFor(SKIRMISH_ARMIES_DEFAULT, null).map((p) => ({ x: p.x, z: p.z }));
+  return startPointsFor(SKIRMISH_ARMIES_DEFAULT, null, DEFAULT_SEED).map((p) => ({ x: p.x, z: p.z }));
 }
 
 /**
@@ -360,19 +369,29 @@ describe('the two sources of truth agree', () => {
     // assertion that mattered was never the length: it is that slots 0 and 1 are
     // an antipodal pair through the map centre, because `START_BISECTOR` — and
     // therefore the shoreline normal of both naval maps — is their perpendicular
-    // bisector. Adding slots 2 and 3 must not move that, and `SEATED` proves the
-    // two-army map still takes exactly those two.
+    // bisector.
+    //
+    // SLOTS 0 AND 1 BY INDEX, NOT `SEATED`. It used to read `SEATED` and mean
+    // the same thing, because a two-army match always took those two. It no
+    // longer does — the seated pair varies with the seed — and the bisector is
+    // still defined by slots 0 and 1 SPECIFICALLY, whoever ends up sitting in
+    // them. Written through `SEATED` this would have started asserting that
+    // whichever pair this seed happened to draw is antipodal, which is true of
+    // [0,1] and [2,3] and false of [0,2] and [1,3] — a test that passes or
+    // fails on the seed.
     expect(SKIRMISH_START_OFFSETS.length).toBe(SKIRMISH_ARMIES_MAX);
     expect(SEATED.length).toBe(2);
-    const [a, b] = SEATED;
-    expect(a!.dx).toBeCloseTo(-b!.dx, 10);
-    expect(a!.dz).toBeCloseTo(-b!.dz, 10);
+    const a = SKIRMISH_START_OFFSETS[0]!;
+    const b = SKIRMISH_START_OFFSETS[1]!;
+    expect(a.dx).toBeCloseTo(-b.dx, 10);
+    expect(a.dz).toBeCloseTo(-b.dz, 10);
   });
 
   it('completes a rectangle, so all four openings come out of one shape', () => {
     // Slots 2 and 3 are the other diagonal of the same rectangle rather than a
-    // fan on a new ellipse: every one of the four is `hypot(74, 62)` from the
-    // centre, so no seat is nearer the middle than another.
+    // fan on a new ellipse: every one of the four is `hypot(148, 124)` from the
+    // centre, so no seat is nearer the middle than another. (It said `hypot(74,
+    // 62)` until the x2 widening; the shape is what is asserted, not the size.)
     const r = SKIRMISH_START_OFFSETS.map((o) => Math.hypot(o.dx, o.dz));
     for (const d of r) expect(d).toBeCloseTo(r[0]!, 9);
     // ...and the four are distinct corners, not duplicates.
@@ -386,15 +405,15 @@ describe('the two sources of truth agree', () => {
     // `TerrainGenOptions.starts`, and every extra entry is another levelled,
     // ramped, pocket-filled disc — i.e. a different heightfield for every map in
     // the game. A two-army boot must ask for exactly three points.
-    expect(startPointsFor(2, null)).toEqual([
+    expect(startPointsFor(2, null, DEFAULT_SEED)).toEqual([
       { x: CX, z: CZ },
       { x: CX + SEATED[0]!.dx, z: CZ + SEATED[0]!.dz },
       { x: CX + SEATED[1]!.dx, z: CZ + SEATED[1]!.dz },
     ]);
-    expect(startPointsFor(4, null)).toHaveLength(5);
+    expect(startPointsFor(4, null, DEFAULT_SEED)).toHaveLength(5);
     // Out-of-range counts fold into the layouts that exist rather than throwing.
-    expect(startPointsFor(1, null)).toHaveLength(3);
-    expect(startPointsFor(9, null)).toHaveLength(5);
+    expect(startPointsFor(1, null, DEFAULT_SEED)).toHaveLength(3);
+    expect(startPointsFor(9, null, DEFAULT_SEED)).toHaveLength(5);
   });
 
   it('keeps both starts inside the map with a guard radius to spare', () => {
@@ -425,7 +444,7 @@ describe('the armies open the authored distance apart', () => {
    */
   it('puts the two armies the full diagonal apart, not half of it', async () => {
     const { startSpots } = await import('../src/game/Scenarios');
-    const spots = startSpots(CX, CZ, 2);
+    const spots = startSpots(CX, CZ, 2, null, DEFAULT_SEED);
     expect(spots).toHaveLength(2);
     const d = Math.hypot(spots[0]!.x - spots[1]!.x, spots[0]!.z - spots[1]!.z);
     // 2 x hypot(74, 62) = 193.1 m. `nudgeToBuildable` may shift a spot a few

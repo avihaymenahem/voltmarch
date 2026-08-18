@@ -37,9 +37,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  TERRAIN_CHUNK_METRES, TERRAIN_LOD_MAX_ERROR, TERRAIN_SEED,
-} from '../src/core/config';
+import { DEFAULT_SEED, TERRAIN_CHUNK_METRES, TERRAIN_LOD_MAX_ERROR, TERRAIN_SEED } from '../src/core/config';
 import {
   CHUNK_INDICES, CHUNK_LOD_INDICES, CHUNK_LOD_QUADS, CHUNK_N, CHUNK_QUADS,
   CHUNK_VERTS, GRID, GRID_STRIDE, INV_GRID, TERRAIN_CHUNKS, TerrainFields,
@@ -76,7 +74,7 @@ function cases(): readonly Case[] {
     if (m === undefined) throw new Error(`unknown map ${id}`);
     const sea = MAP_SEAS[m.preset] ?? null;
     const fields = new TerrainFields({
-      seed: m.mapSeed, biome: m.biome, sea, starts: startPointsFor(m.players, sea),
+      seed: m.mapSeed, biome: m.biome, sea, starts: startPointsFor(m.players, sea, DEFAULT_SEED),
     });
     fields.generate();
     cached.push({
@@ -143,7 +141,7 @@ describe('half-resolution terrain index — shape', () => {
     if (m === undefined) throw new Error('missing map');
     const sea = MAP_SEAS[m.preset] ?? null;
     const opts = {
-      seed: m.mapSeed, biome: m.biome, sea, starts: startPointsFor(m.players, sea),
+      seed: m.mapSeed, biome: m.biome, sea, starts: startPointsFor(m.players, sea, DEFAULT_SEED),
     };
     const build = (): readonly TerrainChunkData[] => {
       const f = new TerrainFields(opts);
@@ -429,11 +427,25 @@ describe('half-resolution terrain index — the gate', () => {
    * touching and each one straddles chunk boundaries instead, so fewer chunks
    * are wholly flat. Spreading the armies out costs this feature chunks. If a
    * later pass wants them back, the lever is chunk size, not the spread.
+   *
+   * IT FIRED A SECOND TIME, on the same day, for the seed-picked start pair —
+   * and the second reading is a better demonstration of the discriminator than
+   * the first, because only ONE number moved:
+   *
+   *     frozen-sector      3 -> 4     landlocked: seats [0,2] now, not [0,1]
+   *     temperate-valley   4 -> 4     landlocked, but the count happens to tie
+   *     contested-strait  14 -> 14    coastal: `dryPairs` leaves it two options
+   *                                   and DEFAULT_SEED still lands on [0,1]
+   *     sunder-atoll       6 -> 6     island layout, unreachable as before
+   *     shot-default       4 -> 4     no `starts`, unreachable as before
+   *
+   * A change that had actually broken the generator could not have left the
+   * atoll and the default roll alone twice running.
    */
   it('qualifies the number of chunks it qualified when this was measured', () => {
     const want: Record<string, number> = {
       'temperate-valley': 4,
-      'frozen-sector': 3,
+      'frozen-sector': 4,
       'contested-strait': 14,
       'sunder-atoll': 6,
       'shot-default': 4,

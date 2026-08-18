@@ -47,15 +47,10 @@ import { World } from '../src/core/world';
 import { EntityKind, Faction } from '../src/core/types';
 import type { PlayerId } from '../src/core/types';
 import {
-  ARCHIPELAGO_SEA, MAP_SEAS, NAVAL_SEA, SKIRMISH_ARMIES_DEFAULT, SKIRMISH_ARMIES_MAX,
-  SKIRMISH_START_OFFSETS,
-  buildScenario, clearScenario, planScenario, startPointsFor, startSpots,
+  ARCHIPELAGO_SEA, MAP_SEAS, NAVAL_SEA, SKIRMISH_ARMIES_DEFAULT, SKIRMISH_ARMIES_MAX, SKIRMISH_START_OFFSETS, buildScenario, clearScenario, planScenario, seatedSlots, startPointsFor, startSpots,
 } from '../src/game/Scenarios';
 import {
-  BUILD_RADIUS, CELL, MAP_CELLS, MAP_SIZE, TERRAIN_ISLAND_MIN_CELLS,
-  TERRAIN_RAMP_MAX_LINK_CELLS, TERRAIN_SEA_SHOAL_MIN_DEPTH,
-  TERRAIN_SEA_START_CLEARANCE, TERRAIN_START_EDGE_WOBBLE, TERRAIN_START_FLAT_RADIUS,
-  WATER_LEVEL,
+  BUILD_RADIUS, CELL, DEFAULT_SEED, MAP_CELLS, MAP_SIZE, TERRAIN_ISLAND_MIN_CELLS, TERRAIN_RAMP_MAX_LINK_CELLS, TERRAIN_SEA_SHOAL_MIN_DEPTH, TERRAIN_SEA_START_CLEARANCE, TERRAIN_START_EDGE_WOBBLE, TERRAIN_START_FLAT_RADIUS, WATER_LEVEL,
 } from '../src/core/config';
 
 const N = MAP_CELLS * MAP_CELLS;
@@ -111,7 +106,7 @@ function build(seed: number): Terrain {
     seed,
     biome: 'temperate' as never,
     anisotropy: 1,
-    starts: startPointsFor(SKIRMISH_ARMIES_MAX, ARCHIPELAGO_SEA).map((p) => ({ x: p.x, z: p.z })),
+    starts: startPointsFor(SKIRMISH_ARMIES_MAX, ARCHIPELAGO_SEA, DEFAULT_SEED).map((p) => ({ x: p.x, z: p.z })),
     sea: ARCHIPELAGO_SEA,
   });
 }
@@ -465,7 +460,7 @@ describe('every island can seat an army', () => {
      * radius is chosen to clear the budget; this is the assertion that keeps it
      * chosen.
      */
-    const want = startPointsFor(SKIRMISH_ARMIES_MAX, ARCHIPELAGO_SEA);
+    const want = startPointsFor(SKIRMISH_ARMIES_MAX, ARCHIPELAGO_SEA, DEFAULT_SEED);
     for (const f of fixtures) {
       const got = f.terrain.startLocations();
       expect(got.length).toBe(want.length);
@@ -494,7 +489,7 @@ describe('every island can seat an army', () => {
     // Measured 1.000 at all four, on all three seeds — the same figure
     // `tests/start-shelves.spec.ts` demands of the two-army openings.
     const f = at(SEED);
-    for (const p of startPointsFor(SKIRMISH_ARMIES_MAX, ARCHIPELAGO_SEA)) {
+    for (const p of startPointsFor(SKIRMISH_ARMIES_MAX, ARCHIPELAGO_SEA, DEFAULT_SEED)) {
       let ok = 0;
       let total = 0;
       for (let cz = 0; cz < MAP_CELLS; cz++) {
@@ -683,24 +678,24 @@ describe('four armies', () => {
     // One source of truth: if an island moves, the start on it moves. A second
     // table of positions is exactly the drift `SKIRMISH_START_OFFSETS`' own
     // header is about, with a construction yard in the sea as the symptom.
-    const spots = startSpots(C, C, SKIRMISH_ARMIES_MAX, ARCHIPELAGO_SEA);
+    const spots = startSpots(C, C, SKIRMISH_ARMIES_MAX, ARCHIPELAGO_SEA, DEFAULT_SEED);
     expect(spots).toHaveLength(4);
     for (let i = 0; i < 4; i++) {
       expect(spots[i]!.x).toBeCloseTo(ISLANDS[i]!.x, 6);
       expect(spots[i]!.z).toBeCloseTo(ISLANDS[i]!.z, 6);
     }
     // The map centre is ignored on this path — island centres are absolute.
-    expect(startSpots(0, 0, 4, ARCHIPELAGO_SEA)).toEqual(spots);
+    expect(startSpots(0, 0, 4, ARCHIPELAGO_SEA, DEFAULT_SEED)).toEqual(spots);
   });
 
   it('cannot seat more armies than there are islands', () => {
     // Falling through to the offset table for the surplus would put a base in
     // the sea; fanning it round the centre would put it on the shoals.
-    expect(startSpots(C, C, 9, ARCHIPELAGO_SEA)).toHaveLength(ISLANDS.length);
+    expect(startSpots(C, C, 9, ARCHIPELAGO_SEA, DEFAULT_SEED)).toHaveLength(ISLANDS.length);
   });
 
   it('opens each army the authored distance from the next', () => {
-    const spots = startSpots(C, C, 4, ARCHIPELAGO_SEA);
+    const spots = startSpots(C, C, 4, ARCHIPELAGO_SEA, DEFAULT_SEED);
     for (let i = 0; i < 4; i++) {
       for (let j = i + 1; j < 4; j++) {
         const d = Math.hypot(spots[i]!.x - spots[j]!.x, spots[i]!.z - spots[j]!.z);
@@ -783,6 +778,9 @@ describe('none of this reaches a two-army map', () => {
     expect(SKIRMISH_ARMIES_DEFAULT).toBe(2);
   });
 
+  /** Enough seeds that every pair the hash can draw is exercised. */
+  const SEED_SWEEP = Array.from({ length: 240 }, (_, i) => i + 1);
+
   it('still reserves exactly the three shelves it always did', () => {
     // `terrain-plan.plannedTerrainInput` spreads this into
     // `TerrainGenOptions.starts`. Every extra entry is another levelled disc,
@@ -792,24 +790,80 @@ describe('none of this reaches a two-army map', () => {
     // the point of this case is the COUNT (three discs, not five) and a second
     // copy of the coordinates is the two-table drift `SKIRMISH_START_OFFSETS`'
     // own header is about.
-    const a = SKIRMISH_START_OFFSETS[0]!;
-    const b = SKIRMISH_START_OFFSETS[1]!;
-    expect(startPointsFor(SKIRMISH_ARMIES_DEFAULT, null)).toEqual([
+    //
+    // SLOTS 0 AND 1 UNTIL 2026-08-18, when the seated pair began varying with
+    // the seed. Derived through `seatedSlots` now — the same call the shipped
+    // derivation makes — because restating "slots 0 and 1" is exactly the
+    // second copy this comment warns about, one level up.
+    const [a, b] = seatedSlots(SKIRMISH_ARMIES_DEFAULT, DEFAULT_SEED)
+      .map((slot) => SKIRMISH_START_OFFSETS[slot]!);
+    expect(startPointsFor(SKIRMISH_ARMIES_DEFAULT, null, DEFAULT_SEED)).toEqual([
       { x: C, z: C },
       { x: C + a.dx, z: C + a.dz },
       { x: C + b.dx, z: C + b.dz },
     ]);
   });
 
-  it('still hands the half-plane maps the same three, sea and all', () => {
-    for (const sea of [NAVAL_SEA, MAP_SEAS.coast, MAP_SEAS.tropical]) {
-      expect(startPointsFor(SKIRMISH_ARMIES_DEFAULT, sea))
-        .toEqual(startPointsFor(SKIRMISH_ARMIES_DEFAULT, null));
+  /**
+   * THIS CASE HAS BEEN INVERTED ON PURPOSE, AND THE OLD ONE WAS RIGHT UNTIL IT
+   * WASN'T.
+   *
+   * It read: a half-plane sea hands back the SAME three points as no sea at
+   * all — only islands may move a start. That was true while a two-army match
+   * always sat in slots 0 and 1, which project to exactly 0.0 along every
+   * shoreline normal and are therefore dry on every coastal map by
+   * construction.
+   *
+   * It stopped being true the moment the seated pair began varying, because
+   * slots 2 and 3 sit +/-190.10 m ACROSS that normal and exactly one of them is
+   * out to sea on any given coast. Keeping the old assertion would mean
+   * spawning a Construction Yard in the water on coral-shore for every seed
+   * that draws [0,2]. So a half-plane sea now legitimately DOES constrain the
+   * choice — it may delete a pair, and that is the whole point.
+   *
+   * What replaces it is strictly stronger and is the invariant that actually
+   * protects a player: whatever the sea does to the CHOICE, every point it
+   * hands back is on dry land with the generator's own shelf-push budget to
+   * spare. The old case could not have caught a drowned start; this one cannot
+   * miss one.
+   */
+  it('never seats an army in the water, whatever the sea does to the choice', () => {
+    // MAP_SEAS ONLY — the seas a PLAYER can boot. `NAVAL_SEA` is deliberately
+    // excluded and it is worth saying why, because it looks like an omission:
+    // its normal is hand-authored rather than derived from the start table, so
+    // three of its four slots are wet and no pair clears its budget. It has one
+    // reader, the `?shot=` naval fixture, which is a posed frame and not a match.
+    for (const sea of [MAP_SEAS.coast, MAP_SEAS.tropical]) {
+      const budget = TERRAIN_START_FLAT_RADIUS + TERRAIN_START_EDGE_WOBBLE
+        + sea.bandWidth + sea.wavinessMetres + TERRAIN_SEA_START_CLEARANCE;
+      // Every seed, not a sample: the choice is a hash and a sampled sweep
+      // would miss the one draw that drowns.
+      for (const seed of SEED_SWEEP) {
+        // `.slice(1)` — the first entry is the CENTRE shelf, which is terrain
+        // bookkeeping rather than an army position, and on `NAVAL_SEA` it is
+        // 5.7 m under water. That is pre-existing and harmless: nobody spawns
+        // there in a two-army match. The army starts are what must be dry.
+        for (const p of startPointsFor(SKIRMISH_ARMIES_DEFAULT, sea, seed).slice(1)) {
+          const inland = -((p.x - sea.x) * sea.normalX + (p.z - sea.z) * sea.normalZ);
+          expect(inland, `seed ${seed}: start (${p.x}, ${p.z}) is ${inland.toFixed(1)} m inland`)
+            .toBeGreaterThan(budget);
+        }
+      }
     }
   });
 
+  it('still varies the pair on a landlocked map, which is the point of the seed', () => {
+    // The complaint was "its almost always the same spawns". A sea may narrow
+    // the choice; nothing may collapse it on a map with no water.
+    const seen = new Set<string>();
+    for (const seed of SEED_SWEEP) {
+      seen.add(seatedSlots(SKIRMISH_ARMIES_DEFAULT, seed).join(','));
+    }
+    expect(seen.size, `landlocked layouts seen: ${[...seen].join(' | ')}`).toBeGreaterThan(1);
+  });
+
   it('still puts two armies on the diagonal when no sea has islands', () => {
-    const spots = startSpots(C, C, 2, MAP_SEAS.coast);
+    const spots = startSpots(C, C, 2, MAP_SEAS.coast, DEFAULT_SEED);
     expect(spots).toHaveLength(2);
     const d = Math.hypot(spots[0]!.x - spots[1]!.x, spots[0]!.z - spots[1]!.z);
     expect(d, `armies opened ${d.toFixed(1)} m apart`).toBeGreaterThan(170);

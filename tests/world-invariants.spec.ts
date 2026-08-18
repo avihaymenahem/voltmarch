@@ -44,7 +44,7 @@ import { World } from '../src/core/world';
 import { Terrain } from '../src/world/Terrain';
 import { BIOME_NAMES } from '../src/world/Biomes';
 import { EntityFlag, EntityKind } from '../src/core/types';
-import { CELL, MAP_SIZE } from '../src/core/config';
+import { CELL, DEFAULT_SEED, MAP_SIZE } from '../src/core/config';
 import { hashOnly } from '../src/game/Checksum';
 import { SKIRMISH_START_OFFSETS, buildScenario, startSpots } from '../src/game/Scenarios';
 
@@ -196,7 +196,7 @@ function freshScan(): FreshCase[] {
      * only reason this is a comment and not a mechanism.
      */
     const unbuildableStarts: string[] = [];
-    for (const spot of startSpots(CX, CZ, 2)) {
+    for (const spot of startSpots(CX, CZ, 2, null, DEFAULT_SEED)) {
       const cx = Math.floor(spot.x / CELL);
       const cz = Math.floor(spot.z / CELL);
       if (!world.terrain.isBuildable(cx, cz)) {
@@ -317,7 +317,7 @@ describe('the two armies open a real distance apart', () => {
    * the starts were.
    */
   it('is at least 170 m, on the authored two-army diagonal', () => {
-    const spots = startSpots(CX, CZ, 2);
+    const spots = startSpots(CX, CZ, 2, null, DEFAULT_SEED);
     const d = Math.hypot(spots[0]!.x - spots[1]!.x, spots[0]!.z - spots[1]!.z);
     expect(d, `armies opened ${d.toFixed(1)} m apart`).toBeGreaterThan(170);
   });
@@ -326,7 +326,7 @@ describe('the two armies open a real distance apart', () => {
     // No shipping map offers these, which is exactly why they are the ones
     // that would rot unnoticed.
     for (const n of [3, 4]) {
-      const spots = startSpots(CX, CZ, n);
+      const spots = startSpots(CX, CZ, n, null, DEFAULT_SEED);
       expect(spots).toHaveLength(n);
       for (let i = 0; i < n; i++) {
         for (let j = i + 1; j < n; j++) {
@@ -340,7 +340,7 @@ describe('the two armies open a real distance apart', () => {
 
   it('keeps every army inside the map', () => {
     for (const n of [2, 3, 4]) {
-      for (const spot of startSpots(CX, CZ, n)) {
+      for (const spot of startSpots(CX, CZ, n, null, DEFAULT_SEED)) {
         expect(spot.x).toBeGreaterThan(0);
         expect(spot.x).toBeLessThan(MAP_SIZE);
         expect(spot.z).toBeGreaterThan(0);

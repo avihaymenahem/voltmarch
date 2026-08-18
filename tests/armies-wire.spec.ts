@@ -33,6 +33,7 @@
  */
 
 import * as THREE from 'three';
+import { DEFAULT_SEED } from '../src/core/config';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { World } from '../src/core/world';
@@ -50,7 +51,7 @@ function build(armies: number): Terrain {
     seed: SEED,
     biome: 'temperate' as never,
     anisotropy: 1,
-    starts: startPointsFor(armies, null).map((p) => ({ x: p.x, z: p.z })),
+    starts: startPointsFor(armies, null, DEFAULT_SEED).map((p) => ({ x: p.x, z: p.z })),
     sea: null,
   });
 }

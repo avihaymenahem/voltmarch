@@ -72,7 +72,7 @@ import * as THREE from 'three';
 import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { Rng } from '../src/core/math';
-import { AI_BUILD } from '../src/core/config';
+import { AI_BUILD, DEFAULT_SEED } from '../src/core/config';
 import { BUILD_RADIUS, CELL, MAP_CELLS, PRODUCTION, SIM_DT } from '../src/core/config';
 import { EntityFlag, EntityKind, Faction, Locomotor } from '../src/core/types';
 import type { AvailabilityResult, EntityId, PlayerId, SimContext } from '../src/core/types';
@@ -116,7 +116,7 @@ beforeAll(() => {
     seed: MAP_SEED,
     biome: BIOME as never,
     anisotropy: 1,
-    starts: startPointsFor(SKIRMISH_ARMIES_MAX, MAP_SEAS[PRESET] ?? null).map(
+    starts: startPointsFor(SKIRMISH_ARMIES_MAX, MAP_SEAS[PRESET] ?? null, DEFAULT_SEED).map(
       (p) => ({ x: p.x, z: p.z }),
     ),
     sea: MAP_SEAS[PRESET] ?? null,

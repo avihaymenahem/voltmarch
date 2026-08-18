@@ -40,7 +40,7 @@ import { describe, expect, it } from 'vitest';
 import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { Rng } from '../src/core/math';
-import { CELL, MAP_SIZE } from '../src/core/config';
+import { CELL, DEFAULT_SEED, MAP_SIZE } from '../src/core/config';
 import {
   EntityFlag, EntityKind, Faction, Locomotor, NONE, OrderKind, UnitState,
 } from '../src/core/types';
@@ -598,7 +598,10 @@ describe('the hamlets are a symmetric, seeded proposition', () => {
     // `START_CLEAR_RADIUS` is the ground a deploying MCV needs; a civilian
     // block inside it would be the "im surrounded by rocks, i cant build at
     // all" report with a different noun.
-    const spots = startSpots(MAP_SIZE * 0.5, MAP_SIZE * 0.5, 2);
+    // 4242 BOTH SIDES. The hamlets are laid out against the spots the scenario
+    // built at THIS seed, so deriving the spots at a different one measures the
+    // clearance around openings nobody occupied.
+    const spots = startSpots(MAP_SIZE * 0.5, MAP_SIZE * 0.5, 2, null, 4242);
     for (const p of civiliansIn(4242)) {
       for (const s of spots) {
         expect(
@@ -614,7 +617,10 @@ describe('the hamlets are a symmetric, seeded proposition', () => {
     // is why the layout is derived from the two spots rather than authored as
     // an offset from the map centre. Per HAMLET, not per building: the three
     // structures inside one are deliberately not symmetric with each other.
-    const spots = startSpots(MAP_SIZE * 0.5, MAP_SIZE * 0.5, 2);
+    // 4242 BOTH SIDES — see the case above. With DEFAULT_SEED here the derricks
+    // sat on the bisector of one pair of openings and were measured against
+    // another, reading 254.8 m vs 203.1 m against a 12 m tolerance.
+    const spots = startSpots(MAP_SIZE * 0.5, MAP_SIZE * 0.5, 2, null, 4242);
     const placed = civiliansIn(4242);
     const derricks = placed.filter((p) => p.key === CIVILIAN_INCOME.key);
     expect(derricks.length).toBe(2);

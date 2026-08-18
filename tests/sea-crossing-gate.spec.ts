@@ -42,7 +42,7 @@ import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { Faction, Locomotor } from '../src/core/types';
 import type { AvailabilityResult, ITerrain, PlayerId } from '../src/core/types';
-import { MAP_CELLS, TERRAIN_ISLAND_MIN_CELLS } from '../src/core/config';
+import { DEFAULT_SEED, MAP_CELLS, TERRAIN_ISLAND_MIN_CELLS } from '../src/core/config';
 import { MAPS } from '../src/shell/settings-store';
 import { MAP_SEAS, clearScenario, resolveDefBinding, startPointsFor } from '../src/game/Scenarios';
 import { MISSION_UNLOCK_IDS, UNLOCKS } from '../src/data/Missions';
@@ -78,7 +78,7 @@ beforeAll(() => {
       seed: m.mapSeed,
       biome: m.biome as never,
       anisotropy: 1,
-      starts: startPointsFor(m.players, sea).map((p) => ({ x: p.x, z: p.z })),
+      starts: startPointsFor(m.players, sea, DEFAULT_SEED).map((p) => ({ x: p.x, z: p.z })),
       sea,
     }));
   }

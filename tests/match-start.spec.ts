@@ -39,7 +39,7 @@ import {
 import type {
   Command, EntityId, IOreField, IRng, PlayerId, SimContext,
 } from '../src/core/types';
-import { CELL, MAP_CELLS, SIM_DT } from '../src/core/config';
+import { CELL, DEFAULT_SEED, MAP_CELLS, SIM_DT } from '../src/core/config';
 import { Rng, cellToWorld, clampCell, worldToCell } from '../src/core/math';
 
 import {
@@ -268,7 +268,7 @@ describe('the MCV opening', () => {
   });
 
   it('sites the two armies apart and facing each other', () => {
-    const spots = startSpots(256, 256, 2);
+    const spots = startSpots(256, 256, 2, null, DEFAULT_SEED);
     expect(spots.length).toBe(2);
     const apart = Math.hypot(spots[0].x - spots[1].x, spots[0].z - spots[1].z);
     // Far enough that neither opening is inside the other's sight radius (the
@@ -287,7 +287,13 @@ describe('the MCV opening', () => {
     const world = makeWorld(Faction.Allies, Faction.Soviets);
     try {
       const spec = buildScenario(world, 'skirmish', 4242, { start: 'mcv' });
-      const spots = startSpots(256, 256, 2);
+      // THE SAME SEED THE SCENARIO WAS BUILT WITH. This re-derived the spots
+      // with DEFAULT_SEED while the ore was placed against seed 4242's, so it
+      // measured the distance from fields laid out for one pair of corners to
+      // an army standing in a different pair — 193.1 m against a 176 m bar.
+      // Re-deriving a seed-dependent quantity without threading the seed is the
+      // general shape of every failure this change produced.
+      const spots = startSpots(256, 256, 2, null, 4242);
       for (const spot of spots) {
         let nearest = Infinity;
         for (const field of spec.ore) {

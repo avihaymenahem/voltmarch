@@ -56,10 +56,9 @@
 import {
   BUILDING_DIMENSIONS, BUILD_RADIUS, CELL, HARVESTER_CAPACITY, MAP_PRESETS,
   MAP_PRESET_DEFAULT, MAP_SIZE, NAVAL_BUILDING_DIMENSIONS, NAVAL_UNIT_DIMENSIONS,
-  REFINERY_STORAGE, SCENARIO_DEFAULT, SCENARIO_SCATTER, SILO_STORAGE,
-  TERRAIN_ISLAND_MIN_CELLS,
-  UNIT_DIMENSIONS, ORE_CELL_MAX, WATER_LEVEL,
-  type SeaIsland, type SeaSpec,
+  ORE_CELL_MAX, REFINERY_STORAGE, SCENARIO_DEFAULT, SCENARIO_SCATTER, SILO_STORAGE,
+  TERRAIN_ISLAND_MIN_CELLS, TERRAIN_SEA_START_CLEARANCE, TERRAIN_START_EDGE_WOBBLE,
+  TERRAIN_START_FLAT_RADIUS, UNIT_DIMENSIONS, WATER_LEVEL, type SeaIsland, type SeaSpec
 } from '../core/config';
 import {
   ArmorClass, EntityFlag, EntityKind, Faction, Locomotor, NONE, OrderKind,
@@ -499,19 +498,33 @@ export function clampArmies(n: number | null | undefined): number {
  * There is no second list to drift: if an island moves, the start on it moves.
  */
 export function startPointsFor(
-  armies: number, sea: SeaSpec | null,
+  armies: number, sea: SeaSpec | null, seed: number,
 ): readonly { readonly x: number; readonly z: number }[] {
   const n = clampArmies(armies);
   const islands = sea?.islands;
   if (islands !== undefined && islands.length > 0) {
     return islands.slice(0, n).map((i) => ({ x: i.x, z: i.z }));
   }
+  // ONE SHELF PER SEATED ARMY, AT THE SLOTS THAT ARMY WILL ACTUALLY USE — never
+  // one per table entry. Reserving all four instead was tried and it drowns a
+  // shelf on both coastal maps: slots 0 and 1 DEFINE `START_BISECTOR`, so they
+  // project to exactly 0.0 along the sea normal, while slots 2 and 3 sit at
+  // +-190.10 m across it. Against a shelf-push budget of 98 m (coast) and 94 m
+  // (tropical) that is one slot at -78.10 and one at -90.10 — in the water.
+  //
+  // AND THE GUARD FOR IT CANNOT LIVE HERE. `sea` is a parameter, and three
+  // specs deliberately call this with `sea = null` on maps that have one, to
+  // assert that a half-plane sea changes nothing. So any predicate on `sea`
+  // inside this function is invisible at the call site that matters — measured,
+  // when scoping the reservation to `sea === null` left all six coastal
+  // failures untouched and broke a seventh test that exists to refuse exactly
+  // that shape.
   return [
     { x: MAP_SIZE * 0.5, z: MAP_SIZE * 0.5 },
-    ...SKIRMISH_START_OFFSETS.slice(0, n).map((o) => ({
-      x: MAP_SIZE * 0.5 + o.dx,
-      z: MAP_SIZE * 0.5 + o.dz,
-    })),
+    ...seatedSlots(n, seed, sea).map((slot) => {
+      const o = SKIRMISH_START_OFFSETS[slot]!;
+      return { x: MAP_SIZE * 0.5 + o.dx, z: MAP_SIZE * 0.5 + o.dz };
+    }),
   ];
 }
 
@@ -641,6 +654,151 @@ function localSlot(b: ScenarioBuilder, owners: readonly PlayerId[]): number {
  */
 function startOffset(seed: number, n: number): number {
   return Math.min(n - 1, Math.floor((hashU32(seed) / 0x1_0000_0000) * n));
+}
+
+/**
+ * ============================================================================
+ * WHICH SLOTS A MATCH SITS IN — the answer to "its almost always the same
+ * spawns", and the half of it that is NOT the owner rotation.
+ * ============================================================================
+ * `rotateStarts` already varies WHO gets which spot. It does not vary WHICH
+ * SPOTS ARE USED, and with two armies on a four-slot table that is the whole
+ * complaint: slots 0 and 1 were seated in every match ever played, and rotation
+ * only ever swapped the two players between them. Two positions, for the life
+ * of the game, on every landlocked map.
+ *
+ * THE FOUR PAIRS ARE THE FOUR WIDEST, AND THAT IS A RULE RATHER THAN A LIST.
+ * There are six ways to pick 2 of 4. On the authored diagonal they measure
+ *
+ *     [0,1] 386.2 m   [2,3] 386.2 m   [0,2] 296.0 m   [1,3] 296.0 m
+ *     [0,3] 248.0 m   [1,2] 248.0 m                   <- the short edges, cut
+ *
+ * so the table below is exactly "every pairing except the two adjacent ones".
+ * `tests/start-pairs.spec.ts` re-derives it from the offsets rather than
+ * restating it, because the day a map authors its own offsets the LIST would
+ * still look right while meaning something else.
+ */
+const START_PAIRS: readonly (readonly [number, number])[] = [[0, 1], [2, 3], [0, 2], [1, 3]];
+
+/**
+ * THE SALT IS LOAD-BEARING AND IT COST A MEASUREMENT TO FIND.
+ *
+ * `startOffset(seed, 2)` — which `rotateStarts` uses to decide who sits where —
+ * reads `hashU32(seed)` too. Unsalted, `floor(u * 4) >> 1 === floor(u * 2)` for
+ * EVERY seed (0 disagreements over 20 000), so the pair and the rotation move in
+ * lockstep. Measured occupancy of the LOCAL player over 20 000 seeds, without
+ * the salt:
+ *
+ *     slot 0 ~5015     slot 1 = 0     slot 2 ~9975     slot 3 ~5010
+ *
+ * One corner unreachable and another at even money — from the feature whose
+ * entire purpose is to stop the player seeing the same corner. The pair
+ * HISTOGRAM was uniform throughout (106/90/110/94 over seeds 1..400), so a test
+ * that checks which PAIR was drawn passes while the thing a player actually
+ * experiences is broken. Pin the corner, not the pair.
+ *
+ * 0x9e3779b9 is the golden-ratio constant, used here only as a decorrelating
+ * XOR; nothing depends on its value beyond it not being 0.
+ */
+function startPairFor(seed: number): number {
+  return Math.min(
+    START_PAIRS.length - 1,
+    Math.floor((hashU32(seed ^ 0x9e37_79b9) / 0x1_0000_0000) * START_PAIRS.length),
+  );
+}
+
+/**
+ * The authored slots a match of `armies` players occupies, for this seed.
+ *
+ * ONE DERIVATION, TWO CALLERS, and that is the whole reason it is a function.
+ * `startPointsFor` reserves the terrain shelves and `startSpots` places the
+ * bases; they must name the same slots or a base stands on unlevelled ground.
+ * The file already says this about `SKIRMISH_START_OFFSETS`; this is the same
+ * rule one level up.
+ *
+ * `clampArmies`, NOT `Math.max(1, n)` — `startSpots` used the latter, so at
+ * count 1 the two derivations disagreed about whether the pair gate applied.
+ */
+export function seatedSlots(
+  armies: number, seed: number, sea: SeaSpec | null = null,
+): readonly number[] {
+  const n = clampArmies(armies);
+  if (n !== 2) return Array.from({ length: n }, (_, i) => i);
+  const pairs = dryPairs(sea);
+  return pairs[startPairFor(seed) % pairs.length]!;
+}
+
+/**
+ * Inland metres between an authored slot and this sea's waterline. Negative
+ * means the slot is IN THE WATER.
+ *
+ * The same quantity `Terrain.resolveStarts` measures before it slides a shelf,
+ * restated here because the choice has to be made BEFORE the generator runs —
+ * a slot pushed 176 m inland is not the slot anybody reserved.
+ */
+function slotClearance(slot: number, sea: SeaSpec): number {
+  const o = SKIRMISH_START_OFFSETS[slot];
+  if (o === undefined) return Number.POSITIVE_INFINITY;
+  const px = MAP_SIZE * 0.5 + o.dx;
+  const pz = MAP_SIZE * 0.5 + o.dz;
+  // `normalX/normalZ` point OUT TO SEA, so a positive dot is metres of water.
+  return -((px - sea.x) * sea.normalX + (pz - sea.z) * sea.normalZ);
+}
+
+/**
+ * THE PAIRS THIS MAP'S WATER ACTUALLY ALLOWS.
+ *
+ * WHY THIS IS DERIVED AND NOT AUTHORED PER MAP. Slots 0 and 1 DEFINE
+ * `START_BISECTOR` and every half-plane sea is placed along it, so those two
+ * project to exactly 0.0 and are dry on every coastal map by construction.
+ * Slots 2 and 3 are the other corners of the same rectangle and sit at
+ * +/-190.10 m ACROSS that normal — so on any given coast, exactly one of them
+ * is out to sea. Measured on the shipped profiles:
+ *
+ *     coast     budget 98   slot0 112.00  slot1 112.00  slot2  302.10  slot3  -78.10
+ *     tropical  budget 94   slot0 100.00  slot1 100.00  slot2  -90.10  slot3  290.10
+ *
+ * so `coast` keeps [0,1] and [0,2], and `tropical` keeps [0,1] and [1,3]. Two
+ * layouts each rather than four, and NOT because anybody chose two — because
+ * that is how many the water leaves.
+ *
+ * A HAND-AUTHORED PER-MAP LIST WOULD HAVE BEEN WRONG THE FIRST TIME SOMEBODY
+ * MOVED A SHORELINE. The constraint is physical, so it is computed from the
+ * same numbers the generator will use, and `tests/spawn-variety.spec.ts` walks
+ * the whole roster asserting no seated slot is ever wet.
+ *
+ * The alternative — push the sea out until all four slots are dry — needs
+ * |offsetMetres| >= 288.1 m (coast) / 284.1 m (tropical) against the shipped
+ * 112 and 100, and `MAP_SEAS.tropical`'s own header records that merely 116 m
+ * costs 28 buildable dock sites against 81 at 100 m. It would trade the navy
+ * for spawn variety. Do not.
+ */
+function dryPairs(sea: SeaSpec | null): readonly (readonly [number, number])[] {
+  if (sea === null || (sea.islands !== undefined && sea.islands.length > 0)) return START_PAIRS;
+  const want = TERRAIN_START_FLAT_RADIUS + TERRAIN_START_EDGE_WOBBLE
+    + sea.bandWidth + sea.wavinessMetres + TERRAIN_SEA_START_CLEARANCE;
+  const dry = START_PAIRS.filter((p) => p.every((slot) => slotClearance(slot, sea) >= want));
+  /*
+   * THE FALLBACK IS NOT BELT-AND-BRACES; IT FIRES ON A REAL SEA WE SHIP.
+   *
+   * Slots 0 and 1 are dry by construction only for a sea placed by
+   * `seaOffMapCentre`, which derives its normal FROM those two slots. That
+   * covers every playable coastal map. It does NOT cover `NAVAL_SEA`, whose
+   * normal is hand-authored as (-SQRT1_2, -SQRT1_2) and is not perpendicular to
+   * the 0-1 axis at all. Measured against its own 95 m budget:
+   *
+   *     slot0  -22.6     slot1  +11.3     slot2  +186.7     slot3  -198.0
+   *
+   * — one slot dry, so NO pair survives the filter. That is pre-existing and it
+   * is fine: `NAVAL_SEA` has one reader, the `?shot=` naval fixture, which is a
+   * posed frame rather than a playable match and never had to clear the budget.
+   * What matters is that this returns [0,1] there, so the fixture keeps the
+   * exact layout it has always been photographed with.
+   *
+   * Returning an empty list instead would take `pairs[i % 0]` to `undefined` and
+   * put both armies on the map centre.
+   */
+  return dry.length > 0 ? dry : START_PAIRS.slice(0, 1);
 }
 
 export function rotateStarts<T>(owners: readonly T[], seed: number): T[] {
@@ -842,7 +1000,7 @@ export function nudgeToBuildable(
 }
 
 export function startSpots(
-  cx: number, cz: number, count: number, sea: SeaSpec | null = null,
+  cx: number, cz: number, count: number, sea: SeaSpec | null, seed: number,
 ): StartSpot[] {
   const islands = sea?.islands;
   /*
@@ -903,8 +1061,13 @@ export function startSpots(
     // `SKIRMISH_ARMIES_MAX` lands exactly on a shelf the generator reserved. A
     // saved seed frames the same valley it always did: slots 0 and 1 are the
     // same two literals the two-entry table held.
-    for (let i = pts.length; i < Math.min(n, SKIRMISH_START_OFFSETS.length); i++) {
-      const o = SKIRMISH_START_OFFSETS[i]!;
+    // `seatedSlots` is the SAME derivation `startPointsFor` used to reserve the
+    // shelves. Walking `i` directly — which is what this did — is what pinned
+    // every match to slots 0 and 1 forever; it would now also put a base on
+    // ground the generator never levelled, because the reservation moved.
+    const slots = seatedSlots(n, seed, sea);
+    for (let i = pts.length; i < Math.min(n, slots.length); i++) {
+      const o = SKIRMISH_START_OFFSETS[slots[i]!]!;
       pts.push({ x: clampWorld(cx + o.dx, 4), z: clampWorld(cz + o.dz, 4) });
     }
     // FIVE or more armies have no authored layout, so they fan around the
@@ -4117,7 +4280,7 @@ const PLANS: Record<string, ScenarioPlan> = {
       // contested patch between them, each turned to face the next round the
       // table. `b.armies` is 2 unless a lobby said otherwise, so this is the
       // same two spots and the same two owners it has always been.
-      const spots = startSpots(cx, cz, b.armies, b.sea);
+      const spots = startSpots(cx, cz, b.armies, b.sea, b.seed);
       // WHERE THE ISLAND IS, AND WHERE THE ARMY STANDS ON IT — see
       // `islandSeats`. Identical to `spots` on every map that is not an
       // archipelago, and the ORE below keeps reading `spots`: both fields are
@@ -4444,7 +4607,17 @@ export function plannedArmyOverride(): number | null {
  */
 export function plannedStartPoints(): readonly { readonly x: number; readonly z: number }[] {
   const plan = plannedScenario();
-  return startPointsFor(plan.armies, plan.sea);
+  // `plan.seed` is the SIM seed and it is knowable here, which the first attempt
+  // at this asserted it was not. It is resolved from `?seed=` in the same memo,
+  // at the same moment, as `armies` and `sea` — both of which this function
+  // already reads off the same object. The lobby writes it before hard-launch,
+  // so it is identical on both clients of a lockstep match.
+  //
+  // It has to reach this function or the whole design comes apart: the shelves
+  // reserved here and the bases placed by `startSpots` are two derivations of
+  // one answer, and a plan that reserved slots 0/1 while the match seated 2/3
+  // would put both armies on unlevelled ground.
+  return startPointsFor(plan.armies, plan.sea, plan.seed);
 }
 
 /**

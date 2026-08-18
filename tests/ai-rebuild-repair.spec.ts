@@ -71,7 +71,7 @@ import * as THREE from 'three';
 import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { Rng } from '../src/core/math';
-import { SIM_DT } from '../src/core/config';
+import { DEFAULT_SEED, SIM_DT } from '../src/core/config';
 import { EntityFlag, EntityKind, Faction, Locomotor, NONE, WarheadClass } from '../src/core/types';
 import type { AvailabilityResult, EntityId, PlayerId, SimContext } from '../src/core/types';
 
@@ -123,7 +123,7 @@ beforeAll(() => {
     seed: MAP_SEED,
     biome: BIOME as never,
     anisotropy: 1,
-    starts: startPointsFor(ARMIES, null).map((p) => ({ x: p.x, z: p.z })),
+    starts: startPointsFor(ARMIES, null, DEFAULT_SEED).map((p) => ({ x: p.x, z: p.z })),
     sea: null,
   });
   setActiveTerrain(terrain);

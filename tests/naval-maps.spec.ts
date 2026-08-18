@@ -50,11 +50,7 @@ import {
   MAP_SEAS, SKIRMISH_ARMIES_DEFAULT, SKIRMISH_START_OFFSETS, planScenario, startPointsFor,
 } from '../src/game/Scenarios';
 import { FlowFieldCache, MoveClass } from '../src/sim/Flowfield';
-import {
-  CELL, MAP_CELLS, MAP_SIZE, PRODUCTION,
-  TERRAIN_SEA_START_CLEARANCE, TERRAIN_START_EDGE_WOBBLE, TERRAIN_START_FLAT_RADIUS,
-  NAVAL_BUILDING_DIMENSIONS,
-} from '../src/core/config';
+import { CELL, DEFAULT_SEED, MAP_CELLS, MAP_SIZE, NAVAL_BUILDING_DIMENSIONS, PRODUCTION, TERRAIN_SEA_START_CLEARANCE, TERRAIN_START_EDGE_WOBBLE, TERRAIN_START_FLAT_RADIUS } from '../src/core/config';
 
 /**
  * The shipped battlefields whose preset carries a sea, with the exact `mapSeed`
@@ -88,8 +84,21 @@ const TOTAL_CELLS = MAP_CELLS * MAP_CELLS;
  * silently measured these maps against two extra levelled shelves. Taken from
  * the shipped derivation now, with the count the lobby actually seats.
  */
-function requestedStarts(): { x: number; z: number }[] {
-  return startPointsFor(SKIRMISH_ARMIES_DEFAULT, null).map((p) => ({ x: p.x, z: p.z }));
+function requestedStarts(preset: string): { x: number; z: number }[] {
+  // THE SEA, NOT `null`. This function's header claims it is "exactly what
+  // `terrain-plan.plannedTerrainInput` hands the generator", and passing `null`
+  // made that false: `build()` two lines down hands the generator
+  // `MAP_SEAS[preset]`, so the starts were derived for a map with no water and
+  // then measured against one with water.
+  //
+  // It was harmless for as long as `startPointsFor` read nothing off `sea` but
+  // `sea.islands`, and it stopped being harmless the moment the seated slots
+  // began depending on where the water is — which is exactly the change this
+  // guard exists to police. It also silently absorbed a fix aimed at it: a
+  // `sea === null` predicate added inside `startPointsFor` was invisible here,
+  // so six failures went untouched while a seventh test broke.
+  return startPointsFor(SKIRMISH_ARMIES_DEFAULT, MAP_SEAS[preset] ?? null, DEFAULT_SEED)
+    .map((p) => ({ x: p.x, z: p.z }));
 }
 
 function build(preset: string, biome: string, mapSeed: number): Terrain {
@@ -98,7 +107,7 @@ function build(preset: string, biome: string, mapSeed: number): Terrain {
     seed: mapSeed,
     biome: biome as never,
     anisotropy: 1,
-    starts: requestedStarts(),
+    starts: requestedStarts(preset),
     sea: MAP_SEAS[preset] ?? null,
   });
   t.generate();
@@ -429,7 +438,7 @@ describe('the land game did not move', () => {
       // non-zero push silently separates where the ground is guaranteed from
       // where the army lands. Every offset in `MAP_SEAS` clears the budget, and
       // this is the assertion that keeps it that way.
-      const want = requestedStarts();
+      const want = requestedStarts(m.preset);
       const got = fx(m.id).terrain.startLocations();
       expect(got.length).toBe(want.length);
       for (let i = 0; i < want.length; i++) {
@@ -445,7 +454,7 @@ describe('the land game did not move', () => {
       const sea = MAP_SEAS[m.preset];
       const budget = TERRAIN_START_FLAT_RADIUS + TERRAIN_START_EDGE_WOBBLE
         + sea.bandWidth + sea.wavinessMetres + TERRAIN_SEA_START_CLEARANCE;
-      for (const p of requestedStarts()) {
+      for (const p of requestedStarts(m.preset)) {
         const inland = -((p.x - sea.x) * sea.normalX + (p.z - sea.z) * sea.normalZ);
         expect(inland, `${m.id}: start (${p.x}, ${p.z}) is ${inland.toFixed(1)} m inland`)
           .toBeGreaterThan(budget);
@@ -457,7 +466,7 @@ describe('the land game did not move', () => {
       // boots. `tests/reachability.spec.ts` sweeps seeds and biomes but always
       // with the DEFAULT starts and no sea, so it cannot see this.
       const f = fx(m.id);
-      const spots = requestedStarts();
+      const spots = requestedStarts(m.preset);
       for (const p of spots) {
         const cx = Math.min(MAP_CELLS - 1, Math.max(0, Math.floor(p.x / CELL)));
         const cz = Math.min(MAP_CELLS - 1, Math.max(0, Math.floor(p.z / CELL)));
@@ -485,7 +494,7 @@ describe('the land game did not move', () => {
       let wet = 0;
       for (let i = 0; i < TOTAL_CELLS; i++) if (t.waterGrid[i] !== 0) wet++;
       expect(wet / TOTAL_CELLS, `${m.id} water fraction`).toBeLessThan(0.01);
-      const want = requestedStarts();
+      const want = requestedStarts(m.preset);
       const got = t.startLocations();
       for (let i = 0; i < want.length; i++) {
         expect(got[i].x).toBeCloseTo(want[i].x, 6);

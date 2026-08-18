@@ -51,9 +51,7 @@ import * as THREE from 'three';
 import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { Rng } from '../src/core/math';
-import {
-  AI_SQUAD_MIN, BUILD_RADIUS, CELL, MAP_CELLS, SIM_DT,
-} from '../src/core/config';
+import { AI_SQUAD_MIN, BUILD_RADIUS, CELL, DEFAULT_SEED, MAP_CELLS, SIM_DT } from '../src/core/config';
 import {
   BuildTab, CommandKind, EntityFlag, EntityKind, Faction, Locomotor,
 } from '../src/core/types';
@@ -580,7 +578,7 @@ describe('every opening on Sunder Atoll can found a dock without moving first', 
       seed: MAP_SEED,
       biome: 'temperate' as never,
       anisotropy: 1,
-      starts: startPointsFor(SKIRMISH_ARMIES_MAX, MAP_SEAS[PRESET] ?? null)
+      starts: startPointsFor(SKIRMISH_ARMIES_MAX, MAP_SEAS[PRESET] ?? null, DEFAULT_SEED)
         .map((p) => ({ x: p.x, z: p.z })),
       sea: MAP_SEAS[PRESET] ?? null,
     });

@@ -46,9 +46,7 @@ import {
   planScenario, startPointsFor,
 } from '../src/game/Scenarios';
 import { MAPS, MAX_ARMIES } from '../src/shell/settings-store';
-import {
-  BUILD_RADIUS, CELL, MAP_CELLS, MAP_PRESETS, NAVAL_BUILDING_DIMENSIONS, PRODUCTION,
-} from '../src/core/config';
+import { BUILD_RADIUS, CELL, DEFAULT_SEED, MAP_CELLS, MAP_PRESETS, NAVAL_BUILDING_DIMENSIONS, PRODUCTION } from '../src/core/config';
 
 /**
  * The lobby row, restated rather than only imported.
@@ -75,7 +73,7 @@ beforeAll(() => {
     seed: MAP_SEED,
     biome: BIOME as never,
     anisotropy: 1,
-    starts: startPointsFor(SKIRMISH_ARMIES_MAX, MAP_SEAS[PRESET] ?? null).map(
+    starts: startPointsFor(SKIRMISH_ARMIES_MAX, MAP_SEAS[PRESET] ?? null, DEFAULT_SEED).map(
       (p) => ({ x: p.x, z: p.z }),
     ),
     sea: MAP_SEAS[PRESET] ?? null,
@@ -128,7 +126,7 @@ describe('the lobby row and the generator agree', () => {
     // Not a coincidence and not a second declaration: `startPointsFor` slices
     // the island list, so the lobby's cap and the reserved shelves are the same
     // array counted twice.
-    expect(startPointsFor(row.players, ARCHIPELAGO_SEA)).toHaveLength(ISLANDS.length);
+    expect(startPointsFor(row.players, ARCHIPELAGO_SEA, DEFAULT_SEED)).toHaveLength(ISLANDS.length);
     expect(MAX_ARMIES).toBeGreaterThanOrEqual(4);
   });
 
@@ -186,7 +184,7 @@ describe('the shipped seed carves the map it advertises', () => {
   });
 
   it('opens all four armies on 100% buildable ground', () => {
-    for (const p of startPointsFor(SKIRMISH_ARMIES_MAX, ARCHIPELAGO_SEA)) {
+    for (const p of startPointsFor(SKIRMISH_ARMIES_MAX, ARCHIPELAGO_SEA, DEFAULT_SEED)) {
       let ok = 0;
       let total = 0;
       for (let cz = 0; cz < MAP_CELLS; cz++) {
