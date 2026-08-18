@@ -303,7 +303,25 @@ nothing on screen.
   waterline: a warship used to sit *on* the sea rather than in it. No prepass, stencil or mask was
   needed. `installAoOccluderFilter` is kept as the fallback path for the old prepass, and a non-zero
   `ao` in `_report.json` is the signal that it fired.
-- **Terrain LOD: built, correct, and DELIBERATELY NOT MERGED (decided 2026-08-17).** Branch
+- **Terrain LOD: built, parked on 2026-08-17, then MERGED on 2026-08-18** (commit `077f5fb`), which
+  OVERTURNS the "deliberately not merged" decision this entry recorded. The reasoning for parking it
+  stands and is kept below, because it is still true and still the reason not to expect much from it.
+  It was integrated anyway for a reason the measurement does not cover: it was the one branch
+  carrying unmerged work, and the merge cost nothing.
+
+  **THE MERGE IS THE ARGUMENT FOR `tests/terrain-lod.spec.ts` EXISTING.** Its pinned per-map chunk
+  counts fired immediately, twice. Under the start-spread widening three of five moved
+  (temperate-valley 7 -> 4, frozen-sector 5 -> 3, contested-strait 16 -> 14); under the seed-picked
+  start pair one more moved (frozen-sector 3 -> **4**, which is the value pinned today). Both times
+  the two fixtures a start change CANNOT reach — `sunder-atoll`, whose layout is its island list, and
+  `shot-default`, which passes no `starts` at all — did not move, and that is what made each one a
+  re-baseline rather than a regression waved through. Do not accept new numbers here without that
+  discriminator.
+
+  `TERRAIN_LOD_MAX_ERROR` is 0.15 m and a chunk is decimated on its own FLATNESS, once, at
+  generation. Nothing switches at runtime and there is still no `lodDistances`.
+
+  The original 2026-08-17 entry follows. Branch
   `terrain-halfres-lod`. A second index over the same vertices gives a flat chunk 2424 triangles
   instead of 8192 (−70.4%); the boundary ring stays at full resolution so every chunk-edge sample is
   still a triangle corner, which makes cracks *arithmetically impossible* rather than merely
@@ -372,7 +390,7 @@ which is a statement about `hemiSky` / `hemiGround` / the env probe.
 **So: it is a PAIRED change.** Go to 1.0 and re-balance the hemisphere in the same commit, then
 re-measure #9 and the shadow/lit ratio together. Do not raise it on the strength of the bible quote
 alone — the capture above is exactly what that costs. This is the one item from
-`VISUAL_GAP_PLAN.md` P0 that did not land clean, and it was deferred deliberately rather than
+the visual gap plan P0 that did not land clean, and it was deferred deliberately rather than
 bundled with the albedo and environment-response fixes, which did.
 
 Note also what this does NOT license: **there is no test pinning `shadowIntensity`.** Asserting 1.0
@@ -382,7 +400,7 @@ wrong thing.
 
 ---
 
-## 6c. Terrain `envMapIntensity` is INERT — `VISUAL_GAP_PLAN.md` P0-3 names the wrong lever
+## 6c. Terrain `envMapIntensity` is INERT — the visual gap plan P0-3 names the wrong lever
 
 **Measured 2026-08-17 on a booted page, whole-frame per-pixel diff, with `needsUpdate` forced so the
 uniform really was pushed.**
@@ -1531,3 +1549,127 @@ machine and one session, `before` = the pre-Stage-E `src/vfx/` against `after` =
 `tools/flash-stack.mjs`'s entire `cases` array is **byte-identical between the two arms**. Do not
 re-run it to clear a VFX MATERIAL change; do re-run it the moment anything touches the emitter
 gain path, which is the only thing that can move those numbers.
+
+
+---
+
+## 12. From the visual gap plan, before it was deleted
+
+Extracted 2026-08-18. Six of the plan’s eight scheduled items shipped in v2.12.0 and wrote
+their measurements into the files they changed; these are the findings that had no other home.
+
+### P1-10 — the mechanism behind the road-vs-terrain detail gap is a texture set
+
+**The mechanism behind §3's road-vs-terrain gap is a texture set, and it is one line to state.**
+`Roads.ts:1389-1408` builds its material from `materialTextureSet` — `map` + `normalMap` +
+`roughnessMap` + `aoMap`. `TerrainMaterial.ts` builds albedo plus a single scalar per splat layer
+(`TERRAIN_LAYER_ROUGH_DEFAULT`, six numbers, blended by splat weight at `:472`), and has no
+`normalMap` and no `roughnessMap` at all — the cliff normal is analytic, and the height channel of
+every field tile is written exactly 0.5 so that no future packer can resurrect the sandpaper
+specular. So there is **no specular breakup anywhere on 60-75% of the frame**, which is why a road
+measures 0.2100 edge coverage two hundred pixels from ground measuring 0.0000 in the same capture.
+Adding a normal map and spatial roughness through the existing `surfaces.ts` packer is the open
+route, and it is **structure only** — soil patches, wear paths, gravel, ruts. Anything amounting
+to raising per-pixel variance is the TV-static build again and is banned. One input to this has
+already moved: P0-1's splat fix means layer 0 is no longer ~96% of open temperate ground, so the
+roughness constant is no longer literally uniform. The missing maps are.
+
+### P2-12 — the team-colour validator counts one surface out of four; this OVERTURNS a live §3 claim
+
+**AND THE VALIDATOR IS ALSO UNDER-COUNTING — two defects, not one.** The paragraph above concluded
+"the validator is right and the camera is defeating it", and that is half the story.
+`MassList.ts:1486` is `const teamArea = visible.teamSlab ?? 0`, while `visibleArea` in the
+denominator is the sum over EVERY slot. `glass`, `insignia` and the building pad are in the
+denominator and in no numerator — and on the Allies all four are the same blue:
+
+```
+  teamSlab        #2A2ED0   hue 238   counted
+  insignia field  #1C169A   hue 244   NOT counted
+  glass           #0F2E60   hue 216   NOT counted
+  pad             #172231   hue 214   NOT counted (separate material)
+```
+
+Measured on an Allied tank crop: **52.2% of chromatic pixels at 220-240 degrees, plus 13.4% at
+200-220.** So R-T1's 8-14% band can read green while the camera sees a two-thirds blue vehicle.
+The camera pitch explains part of the discrepancy; this explains the rest, and it is the half that
+is fixable without re-deriving thirteen shot poses and `tests/shot-camera.spec.ts`. **Fix the
+accounting. Do not touch the pitch.**
+
+### P1-6 — clearcoat is a whole-model scalar, and the obvious fix is forbidden by R10
+
+**Clearcoat is a material scalar and there is no `clearcoatMap` in the tree.** `STRUCTURE_COATS`
+(`BuildingFactory.ts:1029`) is four presets — glaze / field / stone / scrap — each applied to a
+whole model, so **one uniform specular lobe sits over the grille, the rivet plate, the vent
+louvres and the hazard stripe alike**. That is the "moulded plastic" read on architecture. `grep
+-rn "clearcoatMap\|clearcoatRoughnessMap" src/` returns nothing.
+
+**The obvious remedy is refused, and the refusal is doctrine rather than taste.** Zeroing
+clearcoat on the non-paint tile classes is what an earlier plan proposed; R10 names a fully matte
+structure as its own failure, the four presets are a deliberate spread around ruling #3's 0.30 @
+0.38 / env 0.80, and `BuildingFactory.ts:1024` states that no branch may reach zero. The only fix
+that does not trade one wrong lobe for another is a real `clearcoatMap` packed into the atlas the
+greeble generator already writes — which is the same authoring work as wiring `SURFACES`.
+
+### P1-7 — wiring SURFACES is the priority claim, and it is the same job as the clearcoat map
+
+**`ArtDirection.surfaces` is the largest unwired specification in the project, and it is a
+MATERIAL system rather than a table of taste.** `config.ts:1301` declares
+`Record<SurfaceArchetype, SurfaceLook>` with per-class `roughnessMin/Max/variance, metalness,
+edgeWear, grime, clearcoat, rust, sheen`, including `buildingConcrete` and `buildingPanel`;
+`RA3_LOOK_BIBLE.md:1146-1162` defines eighteen classes (`CONCRETE_PAD` rough 0.90 clearcoat 0,
+`DECK_STEEL` metal 0.55, `TRACK_RUBBER` 0.85, `GLASS_CANOPY`, `GLOW_AMBER`). `SPEC_DRIFT_AUDIT.md`
+records that it has no readers. What that entry does not say is that **wiring it and fixing the
+uniform clearcoat lobe are the same work** — a `clearcoatMap` has to be authored from a
+per-tile-class material table, which is what this is — so they are one item, and doing them
+separately means authoring the class split twice.
+
+### P0-2 — how the 0.47 shadow/lit ratio splits between the multiplier and the hemisphere
+
+**How the 0.47 splits, which is what makes the pairing plannable.** Removing the leak alone takes
+the shadow/lit ratio from ~0.47 to ~0.40, against the bible's 0.33. So `shadowIntensity` owns
+roughly a third of the excess and `LIGHTING.hemiSkyIntensity` (0.60) owns the rest; a trim toward
+~0.48 alongside `shadowIntensity: 1.0` is the balanced first thing to measure. **The bracket on
+the low side is already measured and is not far away:** cutting `hemiSkyIntensity` to 0.26 put
+shadowed grass at 0.030 / 0.069 / 0.162 of lit, against §13 #7's required 0.20-0.26 / 0.29-0.35 /
+0.46-0.56 — shadows that dark are not contrasty, they are holes. That capture is why the note at
+`config.ts:705` was rewritten, and an older claim that the note quotes a dead-uniform-era
+measurement is no longer true. Any paired change lands between those two bounds, and scorecard
+#9's emerald window has to be re-read in the same pass.
+
+### P0-4 follow-up — one pad atlas and one pad material per faction
+
+**Every structure of a faction shares one pad, and only its SIZE varies.**
+`BuildingFactory.ts:1843,1860` key the pad atlas and material as `` `${list.faction}.pad` `` — one
+256 px atlas and one material across all 22+ structures of an army, every slab sampling the same
+`paintSmall` tile. That is cheap and deliberate (one material, one draw class), and it is why
+aprons still read as repeated after the albedo fix took the Allied pad from V 0.19 to V 0.66.
+Per-structure tile variation is the follow-up, scoped as separate from the colour fix on purpose:
+the colour was the half that could be measured against the ground beside it.
+
+### P3-14 — alpha-tested leaf cards were costed and refused on plumbing, not on look
+
+**Alpha-tested leaf cards: refused on plumbing, not on look.** `PropMesh.toGeometry()`
+(`PropLibrary.ts:779`) emits `position, normal, color, aSway, aEmit, aGloss` and an index — **no
+`uv`** — and `grep -rn "alphaTest" src/` finds no alpha-tested geometry anywhere in the project.
+Every primitive (`box, cyl, disc, blob, cone, blade, tri, quad`) would need a UV, and
+`mergePropGeometries` requires identical attribute sets, so it is all-or-nothing across the whole
+prop library. On top of that, `alphaTest` kills early-Z on the ANGLE/D3D11 path, and the geometry
+it would apply to is tall overlapping canopy quads with heavy overdraw — the worst case for that
+loss. Costed at 1-2 days with a real overdraw risk. §3 lists tree canopies as one of only two
+honest costs of the no-downloads rule; this is why the obvious way to pay it is not obviously
+worth paying. **The non-convex lobe canopy shipped instead** — 6-8 branch stubs each ending in 3-5
+`blob(r 0.6-1.1, 6, 3)` lobes, 26-32 lobes per tree, ~+44% triangles against a frame where
+triangles are not the constraint, 0 extra draw calls — and took enclosed sky from 0.0% to
+3.1-18.8% on every seed.
+
+### The weighted grade did not move for a correct eight-item art pass
+
+**A correct eight-item art pass moved the weighted grade by 0.0 points.** v2.11.0 to v2.12.0
+landed the splat quantile fix, the Allied pad, the facade albedo, the rust split, the prop-type
+cap and the lobe canopies; the grade stayed 92.0% with the same 13 failing checks, all #34, zero
+weight-3. The instruments that measure what actually changed did move — `edgeCoverage` improved on
+all 13 fixtures (`03-terrain` 0.1760 -> 0.1965, +11.6%) and `greenHueLeak` on 12 of 13, taking
+`08-naval-water` from 0.0171 to 0.0074 against a 0.02 ceiling. That is the third time a real
+visual change has scored 0.000000 on the weighted grade, alongside the AO prepass deletion. **The
+weighted grade is not the instrument for judging an art change**; `tools/shot-compare.mjs` and the
+individual metric rows are.

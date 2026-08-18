@@ -752,7 +752,7 @@ export function createTerrainMaterials(options: CreateTerrainMaterialOptions): T
      * THERE IS DELIBERATELY NO `envMapIntensity` HERE, AND IT IS NOT AN
      * OVERSIGHT — IT WAS MEASURED. Setting it does nothing on this material.
      *
-     * `VISUAL_GAP_PLAN.md` P0-3 asked for `envMapIntensity: 0.35` (bible 1159)
+     * the visual gap plan P0-3 asked for `envMapIntensity: 0.35` (bible 1159)
      * on the grounds that the unset default of 1.0 was admitting a flat ambient
      * over 60-75% of the frame. The premise is half right and the lever is
      * wrong. Measured on a booted page, whole-frame per-pixel diff, with

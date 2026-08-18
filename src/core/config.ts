@@ -8421,7 +8421,7 @@ export const SCATTER_LIMITS = {
    * submission. Quote `frame.drawCallsByPass.colour`, never `frame.drawCalls`.
    *
    * RAISED 22 -> 30, AND THE GAIN IS ONE TYPE TODAY, NOT EIGHT.
-   * `docs/VISUAL_GAP_PLAN.md` P1-9 says the harness logs "8 prop type(s)
+   * the visual gap plan P1-9 says the harness logs "8 prop type(s)
    * trimmed" on `03-terrain-closeup` and that raising the cap costs +8 colour
    * draws. Both halves are stale. The eight is the PRE-REORDER figure quoted in
    * `tests/scatter-trim-order.spec.ts`'s header, from when `trimTypes` ran

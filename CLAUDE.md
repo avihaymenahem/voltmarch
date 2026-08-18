@@ -1647,10 +1647,18 @@ do:
 - **`edgeCoverage` failing 13/13 is real** and must not be demoted: subject crops are in band, the
   ground is ~4× under, and the frame is 60–75% ground.
 
-**The ACTION PLAN that comes out of all this is [`docs/VISUAL_GAP_PLAN.md`](docs/VISUAL_GAP_PLAN.md)**
-— a prioritised, costed, parallelisable list of what to change to close the distance to the RA3
-reference, with the measurements inline so nobody re-derives them. Start there. Its P0 is four
-free fixes, the first of which is a 10x threshold bug in the terrain splat classifier.
+**The prioritised action plan that came out of all this has been executed and deleted.** Six of
+its eight scheduled items shipped in v2.12.0 and each wrote its measurement into the file it
+changed — the splat classifier's Gaussian-threshold bug in `terrain-gen.ts#patchQuantile`, the
+Allied pad and facade albedo in `config.ts`, the rust rule split in `greeble-gen.ts`, the
+prop-type cap in `config.ts`, the lobe canopy in `PropLibrary.ts`. The two that did not are
+`RENDER_FINDINGS.md` §6b (`shadowIntensity` is banned by the bible and still cannot be raised on
+its own) and §6c (terrain `envMapIntensity` is inert). **What is still open is in
+`RENDER_FINDINGS.md` §3 and §4**, and it is the same short list it has always been: the ground
+carries no normal map and one scalar roughness per layer while roads carry a full texture set;
+`ArtDirection.surfaces` specifies eighteen material classes and drives no pixel; the team-colour
+validator counts one surface out of four. Read §2 before touching `edgeCoverage` and §4 before
+retrying anything on it.
 
 `docs/SPEC_DRIFT_AUDIT.md` catalogues claims that stopped being true; `RENDER_FINDINGS.md` is the
 opposite — things that are true and cost a lot to establish. Overturn an entry by rewriting it, not
