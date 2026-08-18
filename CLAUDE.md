@@ -1100,6 +1100,158 @@ The three that are real gaps:
 - **`issueSell`.** `OreCrisis`'s `SellOut` branch is a documented route out of a dead economy that
   the AI structurally cannot take.
 
+### Aircraft, and the four rifles holding the whole air layer up
+
+Extracted from `docs/AERIAL_PLAN.md`, which is a PLAN and will be deleted; these are the
+measurements inside it that outlive it. The rework itself is not done.
+
+### A rifleman out-shoots a flak battery, and that is one inversion
+
+Reported as *"Redecide who can shoot drones and planes, they are being destroyed in nano seconds"*.
+**True in the massed case, false in the single-shooter case, and the gap between them is the whole
+finding.** Measured 2026-08-18 by bundling the shipped `Defs.ts`, `Combat.ts` and `config.ts` with
+esbuild and reading the tables. The convention is the one `Defs.ts` already uses — `cycle =
+burstCount > 1 ? (burstCount-1)*burstDelay + cooldown : cooldown`, `raw = burstCount*damage/cycle`,
+`vsAir = raw * ARMOR_MATRIX[warhead][ArmorClass.Light] * COMBAT_DAMAGE.globalMul` — so the table
+regenerates in twenty lines and must be re-derived rather than re-quoted after any weapon retune.
+Every `seconds` below is through `globalMul` 0.80; **no `dps/1000cr` ratio is, because a global
+scalar cancels out of a ratio.**
+
+```
+                                                     seconds to kill an aircraft
+  one AA turret (800 cr, purpose-built)                     1.81 - 2.41
+  one Flak Trooper (300 cr, the Soviet AA infantryman)      6.95 - 9.27
+  EIGHT CONSCRIPTS (800 cr, the cheapest unit in the game)  0.98 - 1.36
+  TWELVE CONSCRIPTS (1200 cr)                               0.65 - 0.91
+```
+
+**NOTHING SINGLE IS A NANOSECOND.** The worst case in the whole 21-row sweep is 1.81 s, and that is
+an 800-credit purpose-built AA turret against a 900-credit aircraft, which is what an AA turret is
+for. What is a nanosecond is the infantry screen a player already owns without ever deciding to.
+Per credit, against `ArmorClass.Light`, inside each army's own roster:
+
+```
+army       LINE infantryman         its best DEDICATED answer      inversion
+Allies     gi            115.3      aaTurret        124.4            0.93x   (the only one not inverted)
+Meridian   mrdWayfarer   117.9      mrdSkiff         99.5            1.18x
+Soviets    conscript     220.0      flakTrooper      86.3            2.55x
+Reclaim    rclPicker     209.1      rclSkimmer       60.0            3.49x
+```
+
+**THE MECHANISM IS THE RAW DPS, NOT THE MULTIPLIER, WHICH IS WHY THE AA ROWS ARE INNOCENT.** A rifle
+is balanced to kill infantry (SmallArms 1.00 vs Infantry) and therefore carries 46-52 raw dps; 55%
+of that is still 20-23. `flakBurst` is balanced as an infantryman and carries 32.4 raw at 100%. The
+purpose-built weapon's 1.6x multiplier and its 1.6x raw deficit **cancel exactly**. So the problem is
+not that 21 live rows carry `canTargetAir`; it is four of them — `rifle` (0), `conscriptRifle` (1),
+`pulseCarbine` (18), `arcProd` (28) — riding the unit each army has the most of. Cutting the
+dedicated rows would deepen the inversion, not fix it.
+
+The trade is one-sided in both directions: an aircraft flown at eight line infantry returns **22 to
+104 credits** of damage on a 900-1200 credit hull before dying. A MiG at eight Conscripts loses 935
+credits and kills two thirds of one man. Aircraft are also the thinnest hulls in the game at 180-240
+hp on 900-1200 credits, and that is deliberate and pinned (`air-layer.spec.ts` caps `maxHp < 300`) —
+contributory, not causal.
+
+**If this is ever fixed, fix it with a per-weapon air multiplier on those four rows and nothing
+else**, and see the floor rule below for why a multiplier rather than deleting the flag. Two traps in
+deriving the number: a per-credit anchor always flatters the cheapest unit in the game (the
+Reclamation bound is set by a 90-credit Scrap Picker), and after any such nerf the Multigunner AA
+turret becomes the dominant answer and must be RE-MEASURED — never in the same commit.
+
+### The anti-hang floor is four rifles, and it is the reason never to delete `canTargetAir`
+
+`WeaponDef.canTargetAir` defaults FALSE by design, so **an enemy reduced to nothing but aircraft is
+unkillable by a ground-only army and the match hangs forever.** `outcome.system.ts`'s header names
+that and deliberately refuses to fix it there, and the refusal is right: making `Viability.isBeaten`
+ask whether an opponent can be HURT puts a content question inside a deliberately structural survey,
+and gives the sell guard and the outcome poll two different copies of one rule — the exact failure
+`Viability`'s own header exists to prevent. It is a content question, and this is the content answer.
+
+Swept 2026-08-18 over the shipped `UNITS`, `BUILDINGS`, `UNLOCK_TAGS` and the transitive prereq
+closure of every air-capable entry, from a bare Construction Yard:
+
+> **EVERY STATIC AA EMPLACEMENT IN THE GAME IS PROGRESSION-GATED** — `aaTurret` behind
+> `struct.defence.aa`, and `teslaCoil` / `mrdHelios` / `rclPylon` behind
+> `struct.defence.specialist`. A fresh profile has **zero** static anti-air in all four armies. The
+> complete ungated non-naval AA roster is three infantry each for the Allies, Soviets and Pact, and
+> **two for the Reclamation — `rclPicker` and `rclDredger`, which both fire `arcProd`, its line
+> rifle.** That army has no other ungated answer to an aircraft of any kind.
+
+**The only thing keeping that from hanging matches today is an ORDERING ACCIDENT.**
+`struct.defence.aa` is paid by `combat.armour.1` ("destroy 60 enemy vehicles", difficulty 1, no
+`requires`) while `unit.air` is paid by `construction.armour.2` ("build 400 vehicles", difficulty 3,
+requires `construction.armour.1`), so static AA arrives long before anyone can fly. That is a
+property of the mission curve, not of the design, and **`aiMirrorsUnlocks: false` removes it** — the
+AI is then ungated against whatever the human happens to have earned.
+
+> **THE FLOOR: from every reachable tech state, every army must be able to produce something whose
+> weapon carries `canTargetAir`, with no progression gate and no map dependency.** Today the floor is
+> held up entirely by the four line-infantry rifles. Deleting `canTargetAir` from them is the
+> cleanest-looking answer to "too many things shoot planes" and it removes the floor in all four
+> armies at once. **Nerf them with a MULTIPLIER instead** — a weapon that still kills an aircraft
+> slowly keeps the floor by construction, and twenty Scrap Pickers at 0.30 still take a Hornet down
+> in about two seconds.
+
+The residual state this does NOT close: no Construction Yard, no barracks-equivalent, and no
+surviving air-capable unit. With a yard you rebuild the barracks; with a war factory you build the
+ungated `mcv` and get the yard back. Lose both and the route is gone and you are still not `beaten`,
+because aircraft are `EntityKind.Vehicle` and `Viability.UNIT_KINDS` counts them. That is the
+`OreCrisis` dead end in another costume, it is reachable in principle and there is **no evidence it
+occurs in play** — so if it ever matters, the honest fix is `OreCrisis`'s shape (a narrow multi-clause
+predicate with a standing structure redeeming a promise), enumerated exhaustively over the real
+catalog FIRST, and not a change to `isBeaten`.
+
+**ALTITUDE BUYS AN AIRCRAFT NOTHING, AND `AIR_CRUISE_ALTITUDE` IS NOT COVER.** `Combat.engage`
+computes `flat = Math.sqrt(dx*dx + dz*dz)` and `surfaceDist = max(0, flat - hitRadius(target))`;
+**`dy` is not in it.** So 22 m of vertical separation costs a ground shooter exactly zero range, and
+a rifleman standing directly beneath an aircraft is at `flat = 0`. Anyone reasoning about air combat
+from the picture on screen will get this wrong.
+
+Nothing pulls the aircraft back out, either. `Targeting` closes any attacker to `range *
+APPROACH_STOP_FRAC` (0.80) and **parks** it there (`APPROACH_PARKED`), publishing the goal exactly
+once, so an aircraft flies to 13.6-18.4 m of its target and stays until one of them is dead. That is
+the largest single multiplier on how fast aircraft die.
+
+**Do not "fix" it by forcing an attack run.** Measured at today's damage, one 19 m pass (`2R / v`,
+2.8-3.5 s) is worth 6-14% of a Power Plant and 17-41% of a main battle tank — a Vindicator's entire
+attack run takes **14% off a Power Plant**. An aircraft that cannot stop is not a unit class. The
+loiter is a problem because it is the ONLY behaviour, not because loitering is wrong: the fix is a
+way OUT that the player and the AI can both issue, never a rule forbidding staying.
+
+**FIVE ANSWERS TO "AIRCRAFT DIE TOO FAST" THAT WERE COSTED AND REJECTED**, recorded so nobody
+re-derives them. Overturn one by rewriting it with an argument, not by trying it.
+
+- **A seventh `ArmorClass` for aircraft.** `ARMOR_CLASS_COUNT` is 6, the matrix is 7x6,
+  `setArmorMatrix` hard-refuses any other shape, and `ARMOR_CLASS_COUNT` is **in
+  `structuralHash`** — so it refuses every save on disk, exactly as a new `BuildTab` does. It also
+  costs seven authored cells that every future warhead must fill. `Defs.ts` and `air-layer.spec.ts`
+  both already state the rule: the air/ground distinction is a TARGETING gate, never a seventh
+  armour row.
+- **A distinct `EntityKind.Aircraft`.** `ENTITY_KIND_COUNT` is in `structuralHash` too, `UnitDef.kind`
+  is typed `Infantry | Vehicle`, and the change would silently move `Viability.UNIT_KINDS`, the
+  Repair Depot's `byKind` walk and every `st.byKind[EntityKind.Vehicle]` loop in the tree.
+- **Moving `ARMOR_MATRIX[SmallArms][Light]` off 0.55.** That single cell also governs riflemen
+  against the IFV, Sandskiff, Spitter, Prism Tank, Zenith, Solarch, Slaghurler, Hydrofoil, Skimmer,
+  transports and every landing ship. `armorMultiplier(SmallArms, Infantry)` is pinned to exactly 1
+  as the counter-triangle's reference cell; **the Light cell is pinned by nothing, which is precisely
+  why it must not move** — a dozen ground relationships would shift silently. Use a gate that only
+  sees the air case.
+- **Raising aircraft HP.** They sit at 180-240 hp on 900-1200 credits, bottom of the whole vehicle
+  roster, and `air-layer.spec.ts` caps `maxHp < 300` on purpose. Making eight G.I.s need 3.7 s to
+  kill a Vindicator by HP alone needs **685 hp** — 2.9x, three times a Grizzly's hp-per-credit — and
+  it takes the AA turret from 2.41 s to 6.9 s. It fixes the symptom by deleting the counter.
+- **A dedicated `BuildTab.Aircraft`.** All four armies field exactly one aircraft (pinned), so the
+  tab holds ONE cameo per army while Vehicles drops 12 → 11 against a 14-slot cap — a container for
+  a decision between several things, with nothing to decide between. `BUILD_TAB_COUNT` is in
+  `structuralHash`, so every save on disk is refused; and `src/net/protocol.ts`'s `TABS` is an
+  ALLOWLIST, so omitting one line there makes `validateCommand` reject every aircraft order, which
+  the server FILTERS and the client **TRIPWIRES** — "I queued a plane" becomes "the match ended for
+  both of us". A prerequisite structure buys the same permission (*only this building can produce
+  planes* is a statement about permission, and permission is what `prereqs` is) for none of it.
+  **Revisit only when some army's air roster reaches three or more airframes AND its Vehicles tab is
+  within one slot of `BUILD_COLUMNS * BUILD_ROWS`** — Vehicles is at 12/14 for the Allies and the
+  Pact today.
+
 ## The roads were underground, and one number was doing four kinds of damage
 
 Reported as *"Look at the roads, all broken, 0 logic"* over a screenshot of a city map, with five
