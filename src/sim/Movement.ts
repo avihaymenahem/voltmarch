@@ -65,7 +65,7 @@ import { EntityFlag, EntityKind, FxKind, UpgradeLever } from '../core/types';
 import type { EntityId, SimContext } from '../core/types';
 import type { EntityStore, World } from '../core/world';
 import type { Channels } from '../core/events';
-import { angleDelta, clamp, isInMap, turnToward, worldToCell } from '../core/math';
+import { angleDelta, clamp, hashU32, isInMap, turnToward, worldToCell } from '../core/math';
 import { MoveClass, moveClassForLocomotor, movesShareSpace, type FlowFieldCache } from './Flowfield';
 import { crushPassesThrough } from './Crush';
 import { upgradeMul } from './Upgrades';
@@ -204,6 +204,25 @@ const wakeAccum = new Float32Array(MAX_ENTITIES);
 /* ==========================================================================
  * 4. THE INTEGRATOR
  * ========================================================================== */
+
+/**
+ * Eight unit directions for splitting a perfect stack, as EXACT constants.
+ *
+ * 0, +/-1 and +/-Math.SQRT1_2 — every component is exactly representable and
+ * every vector is exactly unit length, so no trigonometry is on the path and
+ * two machines in a lockstep match cannot disagree in the last mantissa bit.
+ * Eight rather than four so a pile of six does not open along one axis.
+ */
+const SEPARATE_DIRS = new Float64Array([
+  1, 0,
+  Math.SQRT1_2, Math.SQRT1_2,
+  0, 1,
+  -Math.SQRT1_2, Math.SQRT1_2,
+  -1, 0,
+  -Math.SQRT1_2, -Math.SQRT1_2,
+  0, -1,
+  Math.SQRT1_2, -Math.SQRT1_2,
+]);
 
 export class MovementIntegrator {
   /** Diagnostics. */
@@ -647,7 +666,49 @@ export class MovementIntegrator {
           const dz = pz - st.posZ[j];
           const want = ri + st.radius[j];
           const d2 = dx * dx + dz * dz;
-          if (d2 >= want * want || d2 < 1e-9) continue;
+          if (d2 >= want * want) continue;
+          /*
+           * TWO UNITS ON EXACTLY ONE POINT NEVER SEPARATE, AND THIS IS WHERE
+           * THAT WAS TRUE.
+           *
+           * Reported as "dont allow soldier to be on top of each other". The
+           * degenerate case used to fall out through `|| d2 < 1e-9` — it HAS
+           * to leave the normal path, because the division by `d` below is
+           * otherwise a divide by zero — and there was nothing behind it. Six
+           * infantry at identical coordinates were measured at 0.0000 m
+           * pairwise separation at 1, 10, 60, 300 AND 1800 ticks. Not slow to
+           * resolve: permanent.
+           *
+           * It is reachable today without any new code. `Transport.setDownNear`
+           * places passengers against terrain passability and `isOccupied`
+           * only, with no entity test at all, and is saved from stacking solely
+           * by `ordinal` rotating the starting spoke — so one refusal puts two
+           * men on one spoke at one radius. A save/load restores positions
+           * bit-exactly, so a stack survives it.
+           *
+           * THE DIRECTION MUST BE ANTISYMMETRIC IN (i, j) OR THE FIX MAKES IT
+           * WORSE. Each unit moves only ITSELF here, by design — the partner
+           * does the same on its own visit, which is what avoids an ordering
+           * hazard — so a direction derived symmetrically would send both the
+           * same way and translate the stack instead of splitting it. The pair
+           * hash is taken on (min, max) so both visits agree on the axis, and
+           * the sign is flipped for the higher index so they walk apart.
+           *
+           * EXACT ARITHMETIC ONLY, because this runs inside `simTick` on a
+           * lockstep path. The eight directions are 0, +/-1 and +/-SQRT1_2 —
+           * constants, not trigonometry — and `hashU32` is integer. Two
+           * machines cannot disagree about which way a stack opened.
+           */
+          if (d2 < 1e-9) {
+            const lo = i < j ? i : j;
+            const hi = i < j ? j : i;
+            const k = (hashU32(lo * 0x9e37 + hi) & 7) * 2;
+            const sign = i < j ? 1 : -1;
+            const push = want * 0.5 * RELAX_DAMPING;
+            dxSum += SEPARATE_DIRS[k] * sign * push;
+            dzSum += SEPARATE_DIRS[k + 1] * sign * push;
+            continue;
+          }
           const d = Math.sqrt(d2);
           // Each unit moves only ITSELF, by half the overlap; the partner does
           // the same on its own visit, which nets the full separation without
