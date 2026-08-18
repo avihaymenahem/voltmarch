@@ -132,8 +132,16 @@ Aircraft lift off the pad directly. Ground units spiral outward from the factory
 somewhere they fit, and retry a few times a second if the doorway is blocked. **A unit that cannot
 get out blocks the queue behind it**, so keep the front of your War Factory clear.
 
-**You cannot choose which factory a unit comes out of.** With two War Factories, the game picks
-one. There is no primary-factory control in the interface.
+**You choose which factory a unit comes out of.** Select one finished factory you own and press
+**Set Primary** in the selection panel; everything of its type then comes out of that building
+until you name another. The button is greyed out on the factory that already holds the flag.
+
+Until you name one, the game uses the **first one you built** — so a second War Factory raised at
+the front does nothing for you until you make it primary. That is the whole reason the control
+exists: a forward barracks is only forward if you tell the game to use it.
+
+Naming a primary is per **type**, not per building: setting a Barracks primary does not change
+where your tanks appear. A captured factory is never automatically your primary.
 
 ### Structures
 

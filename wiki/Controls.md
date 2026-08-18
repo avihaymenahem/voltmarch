@@ -220,17 +220,21 @@ you would go looking for "why does my trackpad zoom instead of pan".
 
 Stated plainly so you do not go hunting:
 
-- **There is no way to choose a primary factory.** The command exists in the engine; nothing in
-  the interface or on the keyboard issues it. With two War Factories, the game picks which one
-  units come out of.
 - **There is no player-placed map ping or marker.** The rings you see on the tactical map are
   automatic "under attack" pings.
 - **There is no in-game chat.**
-- **Commander support powers cannot be fired with a mouse.** The five mission-reward powers
-  (airstrike, orbital scan, emergency repair, ore boost, chronoshift) are fully implemented in the
-  simulation and have no button. They are callable from the browser console only. This is a known
-  gap, not a secret. The per-unit **faction ability** on `Shift+F` is a different thing and does
-  work — see [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs).
+
+Two entries that used to be on this list are **no longer true**, and they are corrected on their
+own pages rather than left here:
+
+- **Choosing a primary factory** now has a control. Select one finished factory you own and press
+  **Set Primary** in the selection panel — see
+  [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building).
+- **Commander support powers** are bought in a match from the Powers tab once you have a Command
+  Post, and are fired from the powers bar with the mouse. They stopped being mission rewards. See
+  [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building). The per-unit **faction ability** on
+  `Shift+F` remains a different thing — see
+  [Units and Verbs](/avihaymenahem/voltmarch/wiki/Units-and-Verbs).
 
 ---
 
