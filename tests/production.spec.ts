@@ -18,8 +18,7 @@ import {
 } from '../src/core/types';
 import type { PlayerId, ProductionItem, SimContext } from '../src/core/types';
 import {
-  BUILD_RADIUS, CELL, CONSTRUCTION_RISE_SECONDS, MAX_QUEUE_DEPTH, PLACEMENT,
-  SIM_DT,
+  BUILD_RADIUS, CELL, CONSTRUCTION_RISE_SECONDS, MAX_QUEUE_DEPTH, PLACEMENT, PRODUCTION, SIM_DT,
 } from '../src/core/config';
 
 import { BuildQueues, HoldReason, factorySpeed } from '../src/sim/BuildQueue';
@@ -453,8 +452,31 @@ describe('ProductionService — the whole loop', () => {
     const list = world.store.byKind[EntityKind.Vehicle];
     const tank = list[world.store.byKindCount[EntityKind.Vehicle] - 1];
     expect(world.store.state[tank]).toBe(UnitState.Moving);
-    expect(world.store.orderX[tank]).toBeCloseTo(rally[0], 3);
-    expect(world.store.orderZ[tank]).toBeCloseTo(rally[1], 3);
+    /*
+     * NEAR THE FLAG, NOT ON IT — and the difference is the fix for
+     * "they all spawn exactly at the same pixels".
+     *
+     * This asserted equality to three decimals, which was true because every
+     * unit off the line was handed the IDENTICAL rally point. That is exactly
+     * what made twenty riflemen settle inside a 3.1 m circle with the closest
+     * pair interpenetrating at 0.2305 m against a 0.468 m hull sum. Each unit
+     * now takes a slot on a packed lattice around the flag.
+     *
+     * The invariant that survives is the one this case was really about: the
+     * unit is sent TO THE RALLY, not left where it was born and not sent
+     * across the map. The bound is the outermost ring — two units of spacing,
+     * diagonally — so it fails just as loudly if the dispersal ever runs away.
+     */
+    const spread = Math.max(
+      PRODUCTION.rallyMinSpacing,
+      world.store.radius[tank] * 2 + PRODUCTION.rallyGap,
+    );
+    const off = Math.hypot(world.store.orderX[tank] - rally[0], world.store.orderZ[tank] - rally[1]);
+    expect(off, `sent ${off.toFixed(2)} m from the flag`).toBeLessThanOrEqual(Math.SQRT2 * 2 * spread + 1e-6);
+    // And it is genuinely heading for the flag rather than standing still.
+    const born = Math.hypot(world.store.orderX[tank] - world.store.posX[tank],
+      world.store.orderZ[tank] - world.store.posZ[tank]);
+    expect(born, 'ordered to where it already is').toBeGreaterThan(0);
     // It came out of the building, not inside it.
     expect(world.terrain.isOccupied(
       Math.floor(world.store.posX[tank] / CELL),

@@ -5125,6 +5125,22 @@ export const AUDIO_MUTE_IN_SHOT_MODE = true;
 
 export const PRODUCTION = {
   /**
+   * Metres between adjacent rally slots, floor and per-hull term.
+   *
+   * A factory used to hand every unit the IDENTICAL rally point, and
+   * `NAV_ARRIVE_SLACK` parks each of them within `radius + 1.1` m of it — so
+   * twenty riflemen settled inside a 3.1 m circle with the closest pair 0.2305
+   * m apart against a 0.468 m hull sum, i.e. interpenetrating. Each unit now
+   * takes a slot on a packed lattice around the flag.
+   *
+   * Spacing is `max(rallyMinSpacing, 2 * radius + rallyGap)` — derived from the
+   * hull that will actually stand there, so a Grizzly rank does not overlap and
+   * an infantry rank does not sprawl. Infantry (radius 0.234) land on the 2.0 m
+   * floor; a tank at 1.7 gets 4.8 m.
+   */
+  rallyMinSpacing: 2.0,
+  rallyGap: 1.4,
+  /**
    * Seconds a head item may crawl on partial payment before it flips to the
    * flashing ON HOLD state. Without a grace window a harvester unloading in
    * 40-credit dribbles would strobe the cameo once per tick.

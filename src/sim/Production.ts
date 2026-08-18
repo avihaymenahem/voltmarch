@@ -1983,6 +1983,28 @@ interface PlayerScratch {
   egressRetry: Float32Array;
 }
 
+/**
+ * A packed spiral of rally slots, as EXACT integer offsets in units of spacing.
+ *
+ * Rings 0, 1 and 2 of a square lattice: one centre, eight around it, sixteen
+ * around those. Integers, so scaling by a metric spacing is one multiply and
+ * cannot round differently on two machines — this runs inside `simTick` on a
+ * lockstep path and a divergence here would be a desync with no findable cause.
+ *
+ * Twenty-five is deliberately more than a factory produces before the first
+ * arrivals have walked clear, and the modulo means a long production run simply
+ * reuses the ring rather than marching off across the map.
+ */
+const RALLY_SLOTS = new Int8Array([
+  0, 0,
+  1, 0, 1, 1, 0, 1, -1, 1, -1, 0, -1, -1, 0, -1, 1, -1,
+  2, 0, 2, 1, 2, 2, 1, 2, 0, 2, -1, 2, -2, 2, -2, 1,
+  -2, 0, -2, -1, -2, -2, -1, -2, 0, -2, 1, -2, 2, -2, 2, -1,
+]);
+const RALLY_SLOT_COUNT = RALLY_SLOTS.length / 2;
+/** The lattice, for `tests/unit-stacking.spec.ts`. Not read by the product. */
+export const RALLY_SLOTS_FOR_TEST: Readonly<Int8Array> = RALLY_SLOTS;
+
 export class ProductionService implements QueueHooks {
   readonly queues: BuildQueues;
   /** HUD-facing snapshot for the LOCAL player. Rebuilt in place every tick. */
@@ -3584,10 +3606,50 @@ export class ProductionService implements QueueHooks {
     const rx = p.rallyX.get(factory as number);
     const rz = p.rallyZ.get(factory as number);
     if (rx !== undefined && rz !== undefined) {
+      /*
+       * EVERY UNIT OFF THE LINE USED TO GET THE SAME POINT, AND THAT IS THE
+       * "they all spawn exactly at the same pixels" REPORT.
+       *
+       * Measured before this: twenty G.I.s, one every 30 ticks, one rally flag,
+       * settled — closest pair 0.2305 m against a hull sum of 0.468, i.e.
+       * INTERPENETRATING, with all twenty inside a 3.1 m circle and only four
+       * of them within a metre of the flag they were sent to.
+       *
+       * `findEgressSpot` is innocent: it rejects an occupied cell and the units
+       * really are separated at birth. They re-collapse on the walk, because
+       * `NAV_ARRIVE_SLACK` parks each of them within `radius + 1.1` m of an
+       * IDENTICAL goal.
+       *
+       * IT CANNOT BE FIXED IN THE FORMATION CODE, which is where I looked
+       * first. `NavAssigner.assignFormations` runs from a loop gated on
+       * `seeksGoal`, and a unit that reached the rally has been through
+       * `finishOrder` and is `UnitState.Idle` — `seeksGoal` is false for Idle,
+       * so it is structurally invisible to the assigner. The unit that rolls
+       * off the line ninety ticks later can never be grouped with it however
+       * the grouping predicate is widened. The dispersal has to happen where
+       * the goal is written, which is here.
+       *
+       * THE ORDINAL IS `stats.unitsBuilt`, WHICH IS ALREADY SYNCED STATE. It
+       * advances once per unit on both clients of a lockstep match, so both
+       * derive the same slot without a new column, a new map or a new save
+       * field. A hash of the entity index would also have been deterministic
+       * but would collide; a monotonic counter cannot.
+       *
+       * SPACING IS A REAL METRIC DISTANCE, derived from the hull that is going
+       * to stand there rather than from a constant, so a tank rank does not
+       * overlap while an infantry rank sits 8 m apart for no reason.
+       */
+      const slot = (p.stats.unitsBuilt % RALLY_SLOT_COUNT) * 2;
+      const spread = Math.max(
+        PRODUCTION.rallyMinSpacing,
+        st.radius[i] * 2 + PRODUCTION.rallyGap,
+      );
       st.orderKind[i] = OrderKind.Move;
-      st.orderX[i] = rx;
-      st.orderZ[i] = rz;
+      st.orderX[i] = clampWorld(rx + RALLY_SLOTS[slot] * spread, 4);
+      st.orderZ[i] = clampWorld(rz + RALLY_SLOTS[slot + 1] * spread, 4);
       st.state[i] = UnitState.Moving;
+      // The guard anchor stays the FLAG, not the slot: a unit told to hold at
+      // the rally should defend the place the player pointed at.
       st.guardX[i] = rx;
       st.guardZ[i] = rz;
     }

@@ -42,11 +42,12 @@ import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { EntityFlag, EntityKind, Faction, Locomotor, UnitState } from '../src/core/types';
 import type { PlayerId, SimContext } from '../src/core/types';
-import { SIM_DT } from '../src/core/config';
+import { PRODUCTION, SIM_DT } from '../src/core/config';
 import { Rng } from '../src/core/math';
 import { FlowFieldCache, setActiveNav } from '../src/sim/Flowfield';
 import { NavAgents, NavAssigner, SteeringSolver } from '../src/sim/Steering';
 import { MovementIntegrator } from '../src/sim/Movement';
+import { RALLY_SLOTS_FOR_TEST } from '../src/sim/Production';
 
 const P0 = 0 as PlayerId;
 
@@ -231,5 +232,68 @@ describe('§3 it is deterministic, because a desync here has no findable cause',
     const table = src.slice(src.indexOf('const SEPARATE_DIRS'), src.indexOf(']);', src.indexOf('const SEPARATE_DIRS')));
     expect(table).not.toMatch(/Math\.(sin|cos|atan2|random)/);
     expect(table).toContain('Math.SQRT1_2');
+  });
+});
+
+/* ========================================================================== */
+
+/**
+ * A FACTORY DOES NOT PILE ITS OUTPUT ON ONE POINT.
+ *
+ * The other half of the same report — *"for example when spawning"*. Every unit
+ * off the line was handed the IDENTICAL rally point, and `NAV_ARRIVE_SLACK`
+ * parks each of them within `radius + 1.1` m of its goal, so they converged
+ * however well `findEgressSpot` had separated them at birth. Measured before
+ * the fix, twenty G.I.s one every 30 ticks at one flag:
+ *
+ *     min pairwise 0.2305   mean 1.2710   cluster radius 1.5515
+ *     within 1 m of the flag 4/20         within 2 m 20/20
+ *
+ * 0.2305 against a hull sum of 0.468 is interpenetration, and it is what
+ * `RELAX_SCAN_CAP` 12 lets through once twenty units are inside 3.1 m: an
+ * overlapping pair can be mutually invisible to the broadphase. The honest fix
+ * is to stop the blob forming, not to raise the cap on a hot loop.
+ *
+ * THIS IS TESTED THROUGH THE LATTICE RATHER THAN THROUGH A FULL MATCH, because
+ * a real ProductionService run needs a catalog, an economy and a factory. What
+ * is pinned is the property the lattice has to have — distinct, bounded, exact
+ * — plus the arithmetic the caller applies to it.
+ */
+describe('§4 rally slots are distinct, bounded and exact', () => {
+  const SLOTS = RALLY_SLOTS_FOR_TEST;
+
+  it('gives every slot in a ring a different offset', () => {
+    const seen = new Set<string>();
+    for (let k = 0; k < SLOTS.length; k += 2) seen.add(`${SLOTS[k]},${SLOTS[k + 1]}`);
+    expect(seen.size, 'two rally slots share an offset').toBe(SLOTS.length / 2);
+  });
+
+  it('spaces adjacent hulls past contact at the shipped spacing', () => {
+    // The floor is 2.0 m and infantry hulls are 0.234, so the tightest legal
+    // pair on the lattice is 2.0 m against a 0.468 m contact distance. A tank
+    // at radius 1.7 takes 2*1.7 + 1.4 = 4.8 m against 3.4.
+    for (const r of [0.234, 1.7]) {
+      const spread = Math.max(PRODUCTION.rallyMinSpacing, r * 2 + PRODUCTION.rallyGap);
+      expect(spread, `radius ${r} spacing`).toBeGreaterThan(r * 2);
+    }
+  });
+
+  it('is integer, so scaling by a metric spacing cannot round two ways', () => {
+    // Lockstep. The offsets are Int8; the only float operation is one multiply
+    // by a spacing both clients computed from the same radius.
+    for (let k = 0; k < SLOTS.length; k++) {
+      expect(Number.isInteger(SLOTS[k]), `slot component ${k} is not an integer`).toBe(true);
+    }
+  });
+
+  it('stays within a couple of hull-widths of the flag', () => {
+    // The player pointed at a place. A dispersal that marched units across the
+    // map would be a different bug: the furthest ring is 2 units of spacing,
+    // so infantry land at most 2.83 m from the flag and tanks 6.79 m.
+    let worst = 0;
+    for (let k = 0; k < SLOTS.length; k += 2) {
+      worst = Math.max(worst, Math.hypot(SLOTS[k], SLOTS[k + 1]));
+    }
+    expect(worst).toBeLessThanOrEqual(Math.SQRT2 * 2 + 1e-9);
   });
 });
