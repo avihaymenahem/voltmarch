@@ -128,7 +128,7 @@ paid for in hit points.
 | Structure | Cost | Time | Needs | HP | Power | Weapon | Range | Air |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Rampart | 100 | 2 s | Chapterhouse | 320 | 0 | — | — | — |
-| Glaive Post | 450 | 8 s | Chapterhouse | 480 | -10 | Glaive Repeater, 21 x5, small arms | 24 m | no |
+| Glaive Post | 450 | 8 s | Chapterhouse | 480 | -10 | Glaive Repeater, 12 x5, small arms | 24 m | no |
 | Helios Spire **(locked)** | 1500 | 16 s | Reliquary | 600 | -55 | Helios Lance, 116, prism | 33 m | **yes** |
 
 **The Pact has no gate.** The Rampart stops vehicles and nothing else, and there is no equivalent of
@@ -138,11 +138,17 @@ the shared-pool Gate to let your own column through a wall run — plan your per
 aircraft, but it is locked behind the Reliquary and draws 55 power. Below that tier your only
 answers to a gunship are the Sunlancer and the Kestrel.
 
-**Both Pact emplacements go dark in a brownout.** The Glaive Post and the Helios Spire each draw
-power and each fire a weapon flagged `needsPower`, and the rule needs all three parts to hold — the
-weapon asks for power, the structure draws it, and the structure is currently unpowered. Lose the
-grid and both stop. The Zenith Emitter keeps shooting, because it is a VEHICLE: it draws no power,
-so the second clause can never be true for it whatever the grid is doing.
+**Both Pact emplacements go dark in a brownout, and the Pact is the only army that has no third
+option.** Every other faction owns one emplacement that draws nothing — an Allied Pillbox, a Soviet
+Sentry Gun, a Reclamation Spitpost — and a gun with no draw cannot be switched off by a grid. Both
+Pact posts draw, so both stop.
+
+They stop *early*, too. The Glaive Repeater and the Helios Lance are both electric guns, and an
+electric gun on a structure refuses the moment your grid is in deficit at all — it does not wait to
+be picked by the shed order. A one-point shortfall silences the whole Pact belt.
+
+The Zenith Emitter keeps shooting, because it is a VEHICLE. A hull has no grid connection, so
+nothing about the grid can reach it whatever it is carrying.
 
 That matters more for the Pact than for anyone else. Two of your three static answers switch off
 together, and the mobile one is a 1500-credit siege hull you did not buy to sit at home.

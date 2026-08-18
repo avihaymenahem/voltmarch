@@ -15,7 +15,13 @@ If you have not built a base yet, start with [How to Play](/avihaymenahem/voltma
 Every shot carries a **warhead**. Every target has an **armour class**. The
 multiplier where they meet is the whole counter-triangle of this game.
 
-Damage dealt = `weapon damage x matrix multiplier x veterancy bonus x splash falloff`.
+Damage dealt = `weapon damage x matrix multiplier x veterancy bonus x splash falloff x 0.80`.
+
+That last figure is a single global scalar on every point of damage in the game,
+applied last. It is a **pace** knob and not a balance one: attacker and defender
+scale together, so it moves no matchup — it just makes the clock about a quarter
+longer. **Every damage and DPS figure on this page is stated before it. Every
+kill *time* anywhere in this wiki is after it.**
 
 | Warhead \ Armour | Infantry | Light | Medium | Heavy | Concrete | Wood |
 |---|---|---|---|---|---|---|
@@ -125,15 +131,20 @@ tank. Both elevate, so both are also anti-air.
 
 | Weapon | Structure | Damage | Warhead | Range | Cycle | Raw DPS | Needs power | Hits air |
 |---|---|---|---|---|---|---|---|---|
-| Emplaced MG | Pillbox, Sentry Gun | 20 x5 | Small Arms | 22 | 0.69 s | 145 | no | no |
+| Emplaced MG | Pillbox, Sentry Gun | 13 x5 | Small Arms | 22 | 0.79 s | 82 | no | no |
 | Flame Nozzle | Flame Tower | 26 | High Explosive | 18 | 0.50 s | 52 | no | no |
-| Glaive Repeater | Glaive Post | 21 x5 | Small Arms | 24 | 0.69 s | 152 | no | no |
+| Glaive Repeater | Glaive Post | 12 x5 | Small Arms | 24 | 0.79 s | 76 | **yes** | no |
 | Post Coil | Spitpost | 34 | Tesla | 20 | 0.85 s | 40 | no | no |
 | Flak Battery | Multigunner AA | 34 x3 | Autocannon | 26 | 0.82 s | 124 | no | **yes** |
 | Prism Cannon | Prism Tower | 115 | Prism | 34 | 3.00 s | 38 | **yes** | **yes** |
 | Tesla Coil | Tesla Coil | 120 | Tesla | 30 | 2.40 s | 50 | **yes** | **yes** |
 | Helios Lance | Helios Spire | 116 | Prism | 33 | 2.80 s | 41 | **yes** | **yes** |
 | Pylon Arc | Arc Pylon | 94 | Tesla | 28 | 2.20 s | 43 | no | **yes** |
+
+The **Needs power** column is the weapon's own flag and it is the *stricter* of
+two rules — see [Power](#3-how-a-shot-resolves) below. A "no" there does not mean
+the gun survives a blackout: only the Pillbox, the Sentry Gun and the Spitpost do,
+because only those three draw no power at all.
 
 The V4 Launcher (130 HE, 48 m, 6.5 splash, 12 m minimum range) exists in the
 armoury and no unit in the current roster carries it.
@@ -146,9 +157,10 @@ turret and never pull the trigger.
 
 **Can hit air:** every rifle and carbine — which includes all four swimmer
 infantry — the Arc Prod, the Javelin, the Flak Trooper, the Sunlancer, the IFV
-chaingun and the Hydrofoil that shares it, the Sandskiff's repeater, the Scrap
-Skimmer's coil, all four aircraft, the Dreadnought and the Sunmonitor, and the
-Multigunner AA, Prism Tower, Tesla Coil, Helios Spire and Arc Pylon.
+chaingun and the Hydrofoil that shares it, the Sandskiff's repeater, the coil the
+Arcspitter and the Scrap Skimmer share, all four aircraft, the Dreadnought and
+the Sunmonitor, and the Multigunner AA, Prism Tower, Tesla Coil, Helios Spire
+and Arc Pylon.
 
 **Cannot:** every tank cannon — including the one the Picket Boat carries to
 sea — every artillery piece, the flamethrower, the torpedo, the naval deck guns,
@@ -184,10 +196,22 @@ launcher must be stationary (under 0.45 m/s) to shoot.
 anything closer. A target that walks inside the dead zone stops being a target
 at all.
 
-**Power.** A weapon marked *needs power* is silent while its owner's grid is
-browned out. That covers both Pact beams, the Soviet Tesla Coil and the Allied
-Prism Tower — but **not** the Reclamation's coils, which fire through a
-blackout. The Pact pays for its cheap power by having its best guns go dark.
+**Power, in two tiers.** The first is about the *building*: an armed structure
+that draws power and is not currently getting any cannot fire, whatever its
+weapon is. That silences seven of the ten armed structures in the game. The three
+that keep shooting on a dead grid are the ones with **no draw at all** — the
+**Pillbox**, the **Sentry Gun** and the **Spitpost** — because there is no wire
+to cut on an MG in a concrete box. Three of the four armies therefore keep one
+cheap gun in a blackout; the Pact keeps none.
+
+The second tier is the *weapon*, and it is stricter. A gun marked **needs power**
+in the table above refuses while its owner's grid is in deficit **at all**, shed
+or not: the two Pact beams, the Glaive Repeater, the Soviet Tesla Coil and the
+Allied Prism Cannon. Since the shed order only darkens enough buildings to cover
+the shortfall, this is what stops a small deficit from leaving an electric gun
+lit. Nothing a *vehicle* carries is ever gated on power — a hull has no grid
+connection — which is why the Zenith Emitter keeps firing when the Helios Spire
+beside it does not.
 
 **Lead.** Travelling projectiles (bullets, shells, rockets) are aimed ahead of a
 moving target. Beams, hitscan and Tesla bolts are instantaneous and are not.
@@ -305,7 +329,7 @@ column.
 |---|---|---|
 | Arc Prod, Spit Coil, Post Coil | 1 | 100%, 60% |
 | Tesla Coil, Grinder Arc, Hornet Arc | 2 | 100%, 60%, 36% |
-| Arc Pylon | 3 | 100%, 60%, 36%, 21.6% |
+| Pylon Arc | 3 | 100%, 60%, 36%, 21.6% |
 
 Against Tesla's 1.60 multiplier on Infantry, an Arc Pylon aimed into a squad is
 doing 150 to the first man and still 32 to the fourth. Do not walk infantry into
@@ -403,6 +427,7 @@ see [Repair and sell](/avihaymenahem/voltmarch/wiki/Units-and-Verbs#repair-and-s
 | | |
 |---|---|
 | Simulation rate | 30 Hz |
+| Global damage scalar | x0.80, applied to every point of damage |
 | Longest gun in the roster | V4 Launcher, 48 m (unused) — then the Slag Mortar at 42 m |
 | Shortest | Attack Dog's jaws, 3.6 m |
 | Guard-range acquire / drop | 1.08x / 1.28x weapon range |

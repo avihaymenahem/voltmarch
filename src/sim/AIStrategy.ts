@@ -54,7 +54,7 @@
 
 import {
   AI_SKILL, AI_THREAT_CLASS_COUNT, BUILDING_DIMENSIONS, NAVAL_BUILDING_DIMENSIONS, SIM_HZ,
-  AI_DIFFICULTY, AI_PERSONALITY,
+  AI_DIFFICULTY, AI_PERSONALITY, FACTORY_SPEED_BONUS, FACTORY_SPEED_CAP,
 } from '../core/config';
 import { BuildTab, EntityKind, Faction, UpgradeLever, UpgradeScope } from '../core/types';
 import type { ArmorClass, DefTables, UnitDef, BuildingDef } from '../core/types';
@@ -1881,6 +1881,459 @@ export const AI_UPGRADE = {
    */
   reaskTicks: 1800,
 } as const;
+
+/**
+ * BUYING BUILD CAPABILITY — what a bank that is running ahead of the line is
+ * for.
+ *
+ * Reported as *"AI building capabilities should be according to his money"*,
+ * and the gap was exact: `BuildQueue` gives a queue to the PLAYER rather than
+ * to a building, so a second Barracks does not open a second queue — it makes
+ * the one queue `FACTORY_SPEED_BONUS` faster, compounding to `FACTORY_SPEED_CAP`.
+ * That is the game's whole money-for-tempo trade and it is identical for both
+ * sides. `AiBrain.chooseBuild` proposed a barracks or a war factory only while
+ * it owned NONE, so the AI's production line was a constant and its bank could
+ * not move it.
+ *
+ * These numbers deliberately have no per-rung row. The ladder is already in the
+ * money: `AI_SKILL[].creditFloor`, `maxRefineries` and `maxHarvesters` decide
+ * how rich a rung ever gets, and `AiBrain.considerExtraProducers` measures
+ * `spendable` (post-floor) rather than raw credits. An Easy brain running two
+ * refineries and leaving 1400 idle does not clear `bankMultiple` on a barracks;
+ * a Brutal brain with a finished economy clears it easily. Adding a
+ * `maxProducers` column to `AI_SKILL` would be the orthodox home for a rung
+ * knob if this ever needs one — see the note over that table — but it does not
+ * need one to ladder correctly, and a constant only one reader honours is how
+ * the ladder ends up flat again.
+ */
+/**
+ * FOCUS FIRE — the brain naming ONE target instead of pointing at a place.
+ *
+ * The audit that produced this found the brain issuing seven order kinds and
+ * `OrderKind.Attack` was not among them: every engagement in the game's history
+ * was an `AttackMove`, which hands target choice to `Targeting`'s automatic
+ * acquisition. Automatic acquisition is per-unit and range-first, so a line of
+ * twelve hulls spreads its damage across everything in front of it and kills
+ * nothing — the single most visible difference between an AI army and a
+ * player's, and the reason "0 skills" and "one objective forever" were the same
+ * gap wearing two hats.
+ *
+ * WHAT THIS IS NOT. It is not a micro suite. There is no kiting, no per-unit
+ * repositioning and no target juggling; the group is told what to kill and the
+ * existing movement, stance and retreat layers do everything else. A player can
+ * SEE this one — their wounded tank dies instead of limping away — which is the
+ * test the coordinator set for it.
+ *
+ * THE LADDER IS `AI_SKILL[].discipline`, WHICH ALREADY MEANS THIS. Its own
+ * declaration reads "how well it fights" and the retreat layer already rolls
+ * against it. Easy sits at 0.35 and is excluded outright by `minDiscipline`, so
+ * that rung is byte-identical; the other three roll `rng.chance(discipline)`
+ * every re-pick, so Normal concentrates two fights in three and Brutal every
+ * one. No new per-rung row, and nothing in `config.ts` had to move.
+ */
+/**
+ * THE OPENING GOVERNOR — the brain declines to spend the opening bank on
+ * ARMY AND DEFENCE before it has earned anything.
+ *
+ * THIS IS THE THIRD DELIBERATE AI ASYMMETRY, and the only one in this file.
+ * CLAUDE.md documents the other two — `AI_DIFFICULTY[].resourceBonus` on
+ * harvested income, and `aiMirrorsUnlocks` — and is emphatic that the "prebuilt
+ * AI base" is NOT one. It is not, and this does not add one: both sides start
+ * with an MCV and zero buildings, and the deploy layer is worth **-0.83 s** to
+ * the AI (a human pressing Deploy on tick 0 finishes their yard at t+1.60 s
+ * against the AI's t+2.43 s).
+ *
+ * WHAT A PLAYER IS ACTUALLY LOOKING AT IS THE 10 000-CREDIT OPENING BANK.
+ * Measured with nobody touching the controls, seed 7, Normal:
+ *
+ *     t+30s    1 bld   6 un   cr 9746      conyard    t+2.4s
+ *     t+60s    4 bld   6 un   cr 8900      power      t+37.4s
+ *     t+90s    7 bld  11 un   cr 4852      barracks   t+61.4s
+ *     t+240s  16 bld  27 un   cr    0      flameTower t+74.9s
+ *                                          refinery   t+90.4s
+ *
+ * By ninety seconds the AI has a seven-building base with a defence tower and
+ * eleven troops and HAS MINED ZERO ORE — its first refinery pays out at that
+ * exact moment. It is spending the same bank the player is holding and has not
+ * spent yet. The author's decision was to keep the 10 000 and slow the AI, so
+ * the player's economy is untouched and this is the whole of the change.
+ *
+ * IT IS PER-CANDIDATE, AND THE FIRST VERSION WAS NOT — THAT IS THE WHOLE
+ * LESSON. Capping `AiBrain.spendable` caps EVERY purchase, including the
+ * refinery that ends the governor, and that manufactures two failures that
+ * cannot both be tuned away:
+ *
+ *   THE DEADLOCK. Easy holds the largest `creditFloor` (1400), so a bank-wide
+ *   cap stacks with it. Measured at hold 0.75: allowance 2500 - floor 1400 =
+ *   1100 against a 2000 refinery. Easy sat on 9400 credits with three buildings
+ *   and zero ore for the entire match, permanently unable to buy the thing that
+ *   would have freed it.
+ *
+ *   THE FLOOR THAT UNDOES THE LADDER. Flooring the allowance at the refinery's
+ *   price fixes the deadlock and then IS the allowance for the tightest rung —
+ *   2000 of Easy's 2500 — so the floor becomes general room and Easy spent it
+ *   on a pillbox at t+50.1 s, BEFORE its own refinery finished at t+78.6 s.
+ *   That is the exact thing this feature exists to prevent.
+ *
+ * So the discrimination belongs where the brain already knows what it is
+ * buying. `AiBrain.consider` sees a `CatalogEntry` and therefore a role:
+ * economy and production measure against the ungoverned budget, everything
+ * else against the governed one. The governor STRUCTURALLY CANNOT block the
+ * refinery, so no floor is needed, no deadlock is possible, and Easy can be
+ * governed as hard as the ladder wants.
+ *
+ * IT IS A SPENDING POLICY, NOT A RULE ABOUT MONEY. It only lowers a number the
+ * brain uses to decide WHEN IT CHOOSES to issue a `ProductionStart`. It changes
+ * nothing about what credits can buy, binds the human nowhere, and lives
+ * entirely on the brain's side of `channels.command`. The same rule in
+ * `Production` or `Economy` would have bound both sides and been the wrong fix.
+ *
+ * IT CANNOT DESYNC A LOCKSTEP MATCH, and the next reader will ask, so: every
+ * input is sim state both clients compute identically (`p.credits`,
+ * `p.stats.oreMined`, `p.stats.creditsSpent`), there is no RNG draw, no wall
+ * clock and no profile read, and the only output is which command goes on the
+ * bus — replayed on both machines exactly as any other AI order is.
+ *
+ * IT RETIRES AT THE FIRST ORE, and latches. `oreMined > 0` is the earliest
+ * honest exit: the property bought is "the AI cannot field an army and a
+ * defence tower before its first refinery pays out", not "the AI is slow".
+ * Anything later would be a delay dressed up as a policy. Once retired the
+ * governed budget IS the ungoverned one, so every later decision in the match
+ * is bit-identical to a brain that never had a governor.
+ *
+ * THE LADDER IS WHAT MAKES IT DEFENSIBLE — a Brutal opponent spending its bank
+ * fast is a legitimate difficulty. The table lives here rather than in
+ * `AI_SKILL` for the same reason `AI_LATE_GAME` does: it is doctrine only this
+ * brain reads. Discretionary allowance against the shipped 10 000:
+ *
+ *     Easy    0.85    1500
+ *     Normal  0.70    3000
+ *     Hard    0.50    5000
+ *     Brutal  0.30    7000
+ */
+export const AI_OPENING = [
+  { holdFraction: 0.85 },
+  { holdFraction: 0.70 },
+  { holdFraction: 0.50 },
+  { holdFraction: 0.30 },
+] as const;
+
+/** Fraction of the opening bank a rung will not spend on army or defence. */
+export function openingHoldFor(difficulty: number): number {
+  const i = difficulty < 0 ? 0
+    : difficulty >= AI_OPENING.length ? AI_OPENING.length - 1
+      : difficulty | 0;
+  return AI_OPENING[i].holdFraction;
+}
+
+/**
+ * Is this role part of getting an economy standing, rather than something
+ * bought out of one?
+ *
+ * THE GOVERNOR NEVER SEES THESE, which is what makes the deadlock structurally
+ * impossible rather than merely tuned around. `Refinery` and `Harvester` are
+ * the exit condition itself; `Builder`/`Mcv` and `Power` are its prerequisites;
+ * `Barracks` and `WarFactory` are production CAPABILITY, which is the thing a
+ * player also builds before they have income and which produces nothing on its
+ * own — what comes OUT of them is army, and army is governed.
+ *
+ * Everything else is discretionary before the first ore lands: static defence,
+ * anti-air, radar and the tech lab, storage, the whole late-game tier, and
+ * every combat unit.
+ */
+export function isOpeningEconomyRole(role: BuildRole): boolean {
+  switch (role) {
+    case BuildRole.Builder:
+    case BuildRole.Mcv:
+    case BuildRole.Power:
+    case BuildRole.Refinery:
+    case BuildRole.Harvester:
+    case BuildRole.Barracks:
+    case BuildRole.WarFactory:
+      return true;
+    default:
+      return false;
+  }
+}
+
+/**
+ * THE SECOND FRONT — a few hulls sent at the enemy economy while the wave goes
+ * somewhere else.
+ *
+ * Reported as *"kinda boring"*, and the measurement behind that was blunt: the
+ * military-goal histogram over a 24-minute match reads `436x attacking with N
+ * at 314,226`. One objective, re-picked to the same coordinate for sixteen
+ * straight minutes, no harassment and no second front. The brain was not doing
+ * anything WRONG — it was doing one thing.
+ *
+ * BEING RAIDED IS THE MOST HUMAN THING AN OPPONENT DOES. A player who loses
+ * three harvesters to four tanks that appeared behind their refinery has met
+ * someone; a player whose base is attacked from the front for the ninth time
+ * has met a script. That is the whole justification for this layer, and it is
+ * why the target is the ECONOMY rather than whatever happens to be nearest.
+ *
+ * IT IS NOT A NEW STRATEGY LAYER. Everything it needs already existed: the
+ * brain remembers enemy structures BY ROLE (`memRole`), `OrderKind.Attack`
+ * arrived with focus fire, and the group tag that keeps a detachment out of
+ * `regroupSquads` is on its FOURTH use after the scout, the amphibious squad
+ * and the withdrawal. This block is the DECISION — whether to split, how many,
+ * how often — and nothing else.
+ *
+ * THE LADDER IS `AI_DIFFICULTY[].aggression`. It is the one per-rung knob that
+ * already means "how readily does this brain commit to an attack", and the only
+ * one not yet spoken for — `discipline` now carries the group retreat, the
+ * focus fire and the per-unit withdrawal, and loading a fourth behaviour onto
+ * it would make those four impossible to tune apart. It gates the rung AND
+ * scales the cadence, which is exactly the never / occasionally / routinely the
+ * ladder wants:
+ *
+ *     Easy    0.4   below `minAggression` — never raids
+ *     Normal  0.7   cooldown ~129 s
+ *     Hard    1.0   ~90 s
+ *     Brutal  1.3   ~69 s
+ *
+ * THAT COLUMN IS THE COOLDOWN, NOT THE PERIOD, and an earlier draft of this
+ * block quoted it as though it were the period. A raid RUNS for up to
+ * `maxTicks` (60 s) before the cooldown starts counting, and the cooldown runs
+ * from the moment it ENDS, so the real cycle is 60 s + cooldown and the ceiling
+ * over a twenty-minute match is roughly six to nine raids rather than the nine
+ * to seventeen the cooldown alone suggests. On top of that the gates in
+ * `considerRaid` are real: measured over 20 sim-minutes on seed 90210 the
+ * counts were 0 / 2 / 4 / 2 by rung. Easy's zero is structural and the rest is
+ * one seed — a raid needs a live reserve, and how often that exists is a fact
+ * about how the match is going rather than about this table.
+ *
+ * PERSONALITY IS DELIBERATELY NOT IN IT. `pers.push` already decides how big a
+ * wave has to be before it goes, so folding it in here too would make a Rusher
+ * both raid more and attack sooner off one number, and the rung would stop
+ * being the thing the player is actually setting.
+ */
+export const AI_RAID = {
+  /** Aggression below which a rung never opens a second front. Easy is 0.4. */
+  minAggression: 0.55,
+  /**
+   * Hulls in a raiding party.
+   *
+   * SMALL ON PURPOSE. A raid is meant to cost the enemy an economy, not to be a
+   * second wave — and the party is taken out of the strike group, so every hull
+   * here is one the main attack does not have. Three is enough to kill
+   * harvesters and not enough to crack a defended base, which is the right
+   * shape for the thing being built.
+   */
+  partySize: 3,
+  /**
+   * Base ticks between raids, DIVIDED by aggression. See the table above.
+   *
+   * Long, because a raid that re-forms the moment it dies is just a second wave
+   * with extra steps, and because the party comes out of the strike group:
+   * raiding too often is indistinguishable from attacking with a permanently
+   * smaller army.
+   */
+  cooldownTicks: 2700,
+  /**
+   * Ticks a raid runs before it is called off and folded back into the army.
+   *
+   * A raid with no expiry is a detachment permanently deleted from the wave —
+   * the same failure mode the withdrawal tag has, and the reason both have a
+   * release path. Sixty seconds is long enough to cross a map and kill
+   * something, and short enough that a party which achieved nothing comes home.
+   */
+  maxTicks: 1800,
+} as const;
+
+/**
+ * PULLING A NEARLY-DEAD HULL OUT OF THE FIGHT.
+ *
+ * Reported as *"0 skills"*, and the honest version of that is narrower than it
+ * sounds: the brain retreats ARMIES and has never retreated a UNIT. That gap is
+ * visible from the other side of the screen — a player watches an AI tank sit
+ * in the open at 8% health until it dies, and no human does that.
+ *
+ * ONE BEHAVIOUR, NOT A MICRO SUITE. There is no kiting, no focus-target
+ * juggling and no per-unit repositioning; a hull that is nearly dead AND
+ * currently being shot at walks to the rally point, and comes back when it is
+ * healthy. Everything else — pathing, the group retreat in `shouldRetreat`, the
+ * repair depot that happens to sit near the rally point and will mend whatever
+ * parks beside it — already exists and does the rest. A pile of invisible
+ * optimisations makes an AI harder without making it feel human, which is the
+ * opposite of what was asked for.
+ *
+ * IT IS THE PLAYER'S OWN VERB. `OrderKind.Move` to the rally point, through
+ * `channels.command`, costing an action out of the same APM budget. There is no
+ * "flee" flag to set: `UnitState.Fleeing` is declared in `core/types.ts` and
+ * ASSIGNED BY NOTHING IN THE ENTIRE CODEBASE — three call sites read it, none
+ * writes it — so the harvester layer's own retreat is likewise a plain Move,
+ * and this is the same mechanism pointed at a tank.
+ *
+ * THE LADDER IS `AI_SKILL[].discipline` again, for the same reason `AI_FOCUS`
+ * uses it: its declared meaning is "how well it fights" and the group retreat
+ * already rolls against it. Easy is 0.35 against `minDiscipline` 0.5 and is
+ * excluded before the roll, so that rung does not even consume a draw.
+ */
+export const AI_RETREAT = {
+  /** Health fraction below which a hull under fire is pulled out. */
+  hpFraction: 0.3,
+  /**
+   * Health fraction at which it rejoins the army.
+   *
+   * WELL ABOVE `hpFraction`, and the gap is the whole point: equal thresholds
+   * give a hull that oscillates between the rally point and the front every
+   * time it takes a graze, which reads as a broken unit rather than a cautious
+   * one and burns an action every pass.
+   */
+  rejoinHpFraction: 0.75,
+  /**
+   * Seconds since the last hit inside which a hull counts as "in the fight".
+   *
+   * Without it the brain walks every damaged hull home the moment it is
+   * tagged — including ones that have been sitting at 20% since a raid two
+   * minutes ago, which is a retreat from nothing. Same number and same reason
+   * as `AI_ECONOMY.harvesterThreatSec`.
+   */
+  underFireSeconds: 3.0,
+  /** Discipline below which a rung never withdraws a unit. Easy stays out. */
+  minDiscipline: 0.5,
+  /**
+   * Ceiling on how much of the strike group may be withdrawing at once.
+   *
+   * A rout is not micro. Without a cap, one bad engagement pulls every hull out
+   * at the same moment and the wave evaporates instead of trading — which is
+   * both worse play and, from the other side, far stranger to watch than the
+   * AI simply losing the fight.
+   */
+  maxFraction: 0.34,
+} as const;
+
+export const AI_FOCUS = {
+  /**
+   * Metres around the strike group's centre searched for a target worth naming.
+   *
+   * DELIBERATELY SHORT. An explicit attack order drives the unit to its target
+   * (`Targeting.approach`), so a generous radius would turn focus fire into a
+   * chase and pull the wave off its objective. At 34 m the group is already in
+   * contact and this only decides which of the things in front of it dies
+   * first. It is the same number as `VFX_GLARE.wide` by coincidence of scale,
+   * not by relation — roughly one screen at the default camera height.
+   */
+  radiusM: 34,
+  /**
+   * Discipline below which a rung never focuses. Easy is 0.35 and stays out.
+   */
+  minDiscipline: 0.5,
+  /**
+   * Ticks between re-picks. One second: long enough that the brain is not
+   * re-issuing a group order every squad tick out of an APM budget it shares
+   * with the build layer, short enough that a dead target is replaced before
+   * the group has finished standing still over the corpse.
+   */
+  retargetTicks: 30,
+  /**
+   * Class weights for "what is worth killing first".
+   *
+   * A harvester outranks a tank because killing it is worth a tank AND the
+   * income behind it, and because a player who loses harvesters to a raid
+   * notices; a defensive structure outranks a producer because it is the thing
+   * currently shooting back. Everything else is the fallback.
+   */
+  weightHarvester: 1.7,
+  weightDefence: 1.4,
+  weightProducer: 1.2,
+  weightUnit: 1.0,
+  weightOther: 0.5,
+  /**
+   * How much a wounded target is preferred, as a multiplier at zero health.
+   *
+   * `1 + woundBonus * (1 - hpFraction)`, so a target at 20% scores 1.8x its
+   * class weight at `woundBonus` 1. FINISHING THINGS OFF IS THE WHOLE POINT:
+   * damage spread across two half-dead tanks kills neither, and this is the
+   * term that turns a group order into concentration rather than a preference
+   * for whatever is biggest.
+   */
+  woundBonus: 1.0,
+} as const;
+
+export const AI_SAVING = {
+  /**
+   * Fraction of a saving target's price the build layer protects from the army.
+   *
+   * `AiBrain.consider` promotes a candidate the bank cannot yet cover into a
+   * saving target instead of dropping it, and `spendRemainder` takes this much
+   * of its price off `spendable` before the leftover goes to `buildUnits`. The
+   * number matters because the two failures either side of it are both real:
+   *
+   *   AT 0 the reserve does not exist and the highest-value purchase in the
+   *   game loses every pass to the cheapest — 1400 for a harvester against 200
+   *   for a rifleman, forever. That is the reported defect.
+   *
+   *   AT 1 the reserve is TOTAL whenever it fires, because a saving target is
+   *   by definition one whose price exceeds `spendable`. A brain that stops
+   *   producing army outright every time it wants a refinery loses the ramp,
+   *   which is the failure the scripted opening's own comment is about.
+   *
+   * A fraction degrades correctly in both directions on its own: a brain a long
+   * way short of the price holds everything it has (the leftover is negative
+   * and `canQueue` refuses), and a brain nearly there keeps a trickle of army
+   * going while it closes the gap. No clock, no timeout, no state.
+   *
+   * 0.75 is `AI_REBUILD.bankFraction`, deliberately — that constant answers the
+   * identical question for the Construction Vehicle ("hold most of the price
+   * back so the army does not eat it one rifleman at a time, and let the rest
+   * buy defence"), and it is a SEPARATE constant here rather than an import
+   * because the two are free to diverge: one protects the only route out of a
+   * lost base, this one protects an ordinary purchase.
+   */
+  holdFraction: 0.75,
+} as const;
+
+export const AI_PRODUCERS = {
+  /**
+   * Producers of one kind past which another buys literally nothing.
+   *
+   * DERIVED, NOT AUTHORED. `factorySpeed(n) = min(CAP, 1 + BONUS * (n - 1))`,
+   * so the multiplier saturates at `1 + ceil((CAP - 1) / BONUS)` — 4 at the
+   * shipped 0.35 / 2.0. Writing the 4 down here instead would be a third
+   * opinion that can disagree with the two constants that decide it.
+   */
+  maxUseful: 1 + Math.ceil((FACTORY_SPEED_CAP - 1) / FACTORY_SPEED_BONUS),
+  /**
+   * Cost multiple of `spendable` held before an EXTRA producer is bought.
+   *
+   * Higher than `AI_UPGRADE.bankMultiple`'s 1.6 for the reason that governs
+   * this whole block: a second war factory is worth nothing on its own, it is
+   * worth the units that go through it, so the bank has to still hold a
+   * queue's worth of purchases after the building is paid for. Below this the
+   * honest answer is that the money is already the constraint and another door
+   * does not help.
+   */
+  bankMultiple: 2.5,
+  /**
+   * Score in `chooseBuild`.
+   *
+   * BELOW every first-of-kind producer (1.5 / 1.8), below the harvester (1.6 x
+   * economy), below both refinery cases (1.4 x economy, 2.2 expanding) and
+   * below an upgrade (1.45). Above the 0.35 banking floor and above a
+   * quiet-base defence score. A second factory must never win a pass in which
+   * the brain still lacks a producer, a refinery or a truck — that ordering is
+   * the difference between spending a surplus and mortgaging an economy.
+   */
+  score: 0.9,
+} as const;
+
+/**
+ * The producers whose count the bank may raise, and the tab each one speeds up.
+ *
+ * The pairing is DOCTRINE and lives here rather than on `CatalogEntry`, which
+ * carries the tab a thing is BUILT FROM and has never carried the tab a
+ * building SERVICES. Two rows, because a Barracks and a War Factory are the
+ * only structures in the catalogue whose count is a build-speed multiplier the
+ * AI has any reason to raise: a Refinery's count is already `maxRefineries`, a
+ * Construction Yard's second copy is the MCV rebuild path, and everything else
+ * publishes a tab it is the sole publisher of.
+ */
+export const EXTRA_PRODUCERS: readonly { readonly role: BuildRole; readonly tab: BuildTab }[] = [
+  { role: BuildRole.Barracks, tab: BuildTab.Infantry },
+  { role: BuildRole.WarFactory, tab: BuildTab.Vehicles },
+];
 
 /**
  * Which superweapon each army builds, and IN WHICH ORDER.

@@ -20,6 +20,17 @@
 <link rel="preload" as="font" type="font/woff2" href="./fonts/rajdhani-400.woff2" crossorigin />
 <link rel="preload" as="font" type="font/woff2" href="./fonts/rajdhani-600.woff2" crossorigin />
 
+<!-- The boot splash. Preloaded because it is the ONLY thing on screen while the
+     2.7 MB entry chunk parses, and an image that arrives after the curtain it was
+     meant to fill is worse than no image: the player sees the gradient, then a
+     late flash of artwork, then the menu. `imagesrcset`/`imagesizes` are the
+     responsive form and must mirror the <img> below exactly or the browser
+     fetches a second copy. -->
+<link rel="preload" as="image" type="image/webp" fetchpriority="high"
+      href="/brand/splash-1600.webp"
+      imagesrcset="/brand/splash-640.webp 640w, /brand/splash-1600.webp 1600w"
+      imagesizes="100vw" />
+
 <style>
   /* ------------------------------------------------------------------ *
    * RAJDHANI, SELF-HOSTED.
@@ -157,11 +168,59 @@
     overflow: hidden;
   }
 
+  /* ------------------------------------------------------------------ *
+   * THE SPLASH KEY ART.
+   *
+   * A supplied illustration, NOT generated — one of the four exceptions
+   * listed in CLAUDE.md and credited on the title screen. Derived into
+   * WebP by `tools/splash.mjs`; see `public/brand/README.md`.
+   *
+   * It fades in on load rather than being painted immediately, and the
+   * gradient underneath is what shows until then. That ordering is the
+   * whole robustness story: every rule below keys off `.has-art`, which
+   * the boot script only sets once the image has actually decoded. A
+   * 404, a corrupt file or a byte-starved connection therefore degrades
+   * to EXACTLY the curtain that shipped before this existed, including
+   * the wordmark, rather than to a black rectangle with a progress bar.
+   * ------------------------------------------------------------------ */
+  #splash-art {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    width: 100%;
+    height: 100%;
+    /*
+     * `cover` crops, and the crop is chosen to protect the lockup.
+     *
+     * MEASURED off splash-1600.webp, not estimated: the artwork's own
+     * VOLTMARCH occupies x 0.310..0.687, y 0.030..0.346 of the frame.
+     * Those four numbers drive this line and the media query further down,
+     * and `tests/boot-splash.spec.ts` re-derives both from them.
+     *
+     * Vertical position only bites when the viewport is WIDER than the
+     * source's 16:9 — at or below it, cover scales by height and crops
+     * width instead, so this value does nothing at 16:9, 16:10 or any
+     * portrait window. Above it the visible band is `S/A` of the source
+     * height with its top edge at `pos x (1 - S/A)`, which must stay above
+     * 0.030. That bounds `pos <= 0.126` at 21:9. 10% clears it with margin
+     * and holds the lockup out to A = 2.54; beyond that — 32:9 — the wing
+     * tips do clip, and chasing it would mean anchoring at 6% and throwing
+     * away the foreground on every ordinary monitor to serve a rare one.
+     */
+    object-fit: cover;
+    object-position: 50% 10%;
+    opacity: 0;
+    transition: opacity 760ms cubic-bezier(.4,0,.2,1);
+    pointer-events: none;
+  }
+  #loading.has-art #splash-art { opacity: 1; }
+
   /* Faint diagonal mill-plate grain behind everything. */
   #loading::before {
     content: '';
     position: absolute;
     inset: -20%;
+    z-index: 1;
     background:
       repeating-linear-gradient(58deg,
         rgba(255,255,255,.020) 0px,
@@ -176,6 +235,7 @@
     content: '';
     position: absolute;
     inset: 0;
+    z-index: 1;
     background:
       repeating-linear-gradient(180deg,
         rgba(0,0,0,.34) 0px,
@@ -186,6 +246,46 @@
         transparent 40%, rgba(0,0,0,.72) 100%);
     pointer-events: none;
     mix-blend-mode: multiply;
+  }
+
+  /* ------------------------------------------------------------------ *
+   * The same two layers, retuned for artwork.
+   *
+   * The scanline pass is 34% black every third row, which is a deliberate
+   * CRT read over a near-black gradient and a wrecking ball over an
+   * illustration — it costs about a third of the midtones. Over art it
+   * drops to 15%, and `multiply` becomes `normal` so the bottom scrim can
+   * actually lay ink down instead of only darkening what is already there.
+   * The scrim is what makes the progress furniture legible over surf and
+   * muzzle flash; without it the status text sits on whatever the crop
+   * happened to put underneath.
+   * ------------------------------------------------------------------ */
+  #loading.has-art {
+    /* Top-scrim shape, as variables because the portrait branch far below
+       needs to retune it without restating the whole three-layer stack.
+       `knee` is where the alpha stops falling fast and `clear` is where it
+       reaches zero; both are positions, not alphas. */
+    --splash-scrim-top: .52;
+    --splash-scrim-upper: .10;
+    --splash-scrim-knee: 22%;
+    --splash-scrim-clear: 40%;
+  }
+  #loading.has-art::after {
+    background:
+      repeating-linear-gradient(180deg,
+        rgba(0,0,0,.15) 0px,
+        rgba(0,0,0,.15) 1px,
+        transparent 1px,
+        transparent 3px),
+      linear-gradient(180deg,
+        rgba(2,4,6,var(--splash-scrim-top))   0%,
+        rgba(2,4,6,var(--splash-scrim-upper)) var(--splash-scrim-knee),
+        rgba(2,4,6,0)   var(--splash-scrim-clear),
+        rgba(2,4,6,.72) 82%,
+        rgba(2,4,6,.94) 100%),
+      radial-gradient(ellipse 96% 82% at 50% 42%,
+        transparent 45%, rgba(0,0,0,.58) 100%);
+    mix-blend-mode: normal;
   }
 
   #loading.is-hidden { opacity: 0; pointer-events: none; }
@@ -200,6 +300,86 @@
     gap: 26px;
     padding: 0 24px;
     max-width: min(1100px, 94vw);
+  }
+
+  /* With art, the furniture drops to a lower third and stops competing with
+     the illustration for the centre of the frame. */
+  #loading.has-art { justify-content: flex-end; }
+  #loading.has-art .curtain-inner {
+    gap: 20px;
+    padding-bottom: clamp(26px, 6vh, 74px);
+  }
+
+  /*
+   * THE ARTWORK CONTAINS THE WORDMARK, so the DOM one is a duplicate — but
+   * only where the crop keeps it, and THE THRESHOLD IS DERIVED, NOT PICKED.
+   *
+   * This said 4:3 on the first pass, from an assumption that a portrait
+   * viewport clips the lockup early. It does not, and a screenshot at
+   * 569x595 showed two VOLTMARCHes stacked down the page. The real bound:
+   * for a viewport aspect A below the source's 16:9, `cover` scales to fill
+   * the height and shows the middle `A/S` of the source width, centred. The
+   * lockup spans x 0.310..0.687 — 0.190 either side of the midline at its
+   * widest — so it survives while A/(2S) >= 0.190, that is A >= 0.676, not
+   * 1.33. 17/25 is 0.68: the derived bound, rounded up by 0.65%.
+   *
+   * THE MARGIN GOES IN THE BOX, NOT IN THIS NUMBER, and the second attempt
+   * got that backwards too. Padding the threshold UPWARD to 4/5 opened a
+   * band from 0.676 to 0.8 where the artwork's lockup is whole and the <h1>
+   * is drawn anyway — the duplicate, back again, just narrower; a screenshot
+   * at 600x800 showed it. Slack belongs in LOCKUP, which was measured by
+   * cropping to those bounds and confirming a visible margin on all four
+   * sides, so 0.676 is already conservative and this number should sit on it.
+   *
+   * Below it — a phone held upright — the crop really does cut both ends of
+   * the lockup, so the <h1> IS the title and the art is scenery behind it.
+   *
+   * `:not([data-state])` scopes this to an ordinary boot. `__vmFail` sets
+   * that attribute, and the failure states want the wordmark back: they dim
+   * the art to let the panel read, and the alarm blink is attached to
+   * `.title img`, so hiding it would silently delete the alarm.
+   */
+  @media (aspect-ratio >= 17/25) {
+    #loading.has-art:not([data-state]) .title { display: none; }
+  }
+
+  /*
+   * PORTRAIT: THE ARTWORK STOPS TRYING TO BE THE TITLE.
+   *
+   * Below the threshold the crop cuts both ends of the painted lockup, so the
+   * <h1> comes back — and on its own that leaves a clipped VOLTMARCH sitting
+   * directly above a clean one, which is the duplicate again wearing a worse
+   * hat. It cannot be solved by moving the crop: at aspects under 16:9 cover
+   * fills by HEIGHT, nothing vertical is cut, and `object-position` has no
+   * axis left to work on.
+   *
+   * So the top scrim goes almost opaque instead. The clipped lockup sinks
+   * into the dark band the <h1> then sits on, the battle scene stays visible
+   * through the middle, and the frame reads as a designed portrait splash
+   * rather than a landscape one that has been squeezed.
+   *
+   * Range syntax rather than `max-aspect-ratio: 17/25`, because min- and max-
+   * are both inclusive and would BOTH match at exactly 0.68 — hiding the
+   * title and burying the artwork's, for a curtain with no title at all.
+   */
+  @media (aspect-ratio < 17/25) {
+    #loading.has-art {
+      /*
+       * THE KNEE HAS TO CLEAR THE LOCKUP, and the first attempt left it at
+       * the landscape 22% while the painted lockup runs to y 0.346. Its
+       * lower half — chevron and stars — sat under barely half the scrim and
+       * still read as a cut wordmark under the real one. In portrait there
+       * is no vertical crop, so those source fractions ARE viewport
+       * fractions: the knee moves to 40% so the whole band is covered at
+       * >= .90, then clears fast enough to leave the battle scene visible.
+       */
+      --splash-scrim-top: .97;
+      --splash-scrim-upper: .90;
+      --splash-scrim-knee: 40%;
+      --splash-scrim-clear: 62%;
+    }
+    /* The furniture STAYS at the bottom, where the bottom scrim is. Centring
+       it put the status line and the progress bar over open surf. */
   }
 
   /* --- Title treatment: industrial stencil, steel + volt-cyan --------- *
@@ -352,6 +532,12 @@
   #loading[data-state='error'] .title img { animation: alarm 1.1s steps(2) infinite; }
   @keyframes alarm { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
 
+  /* A failure is the one thing on this screen that has to be readable, so the
+     art stops being a backdrop and becomes a faint texture. Both states, not
+     just 'error' — a 'pending' panel is a wall of module names. */
+  #loading.has-art[data-state] { justify-content: center; }
+  #loading.has-art[data-state] #splash-art { opacity: .18; }
+
   /* Pending state: foundation modules not landed yet. Informational, not scary. */
   #loading[data-state='pending'] .progress-bar { animation: none; left: 0; width: 100%;
     background: linear-gradient(90deg, #2A3550, #3A86E0 60%, #8FD2FF); box-shadow: none; }
@@ -377,6 +563,12 @@
 
   <!-- Loading curtain -->
   <div id="loading" role="status" aria-live="polite">
+    <!-- Decorative: the <title>, the <h1> and #boot-status carry every word a
+         screen reader needs, so an alt here would only repeat them. -->
+    <img id="splash-art" alt="" aria-hidden="true" decoding="async" fetchpriority="high"
+         src="/brand/splash-1600.webp"
+         srcset="/brand/splash-640.webp 640w, /brand/splash-1600.webp 1600w"
+         sizes="100vw" />
     <div class="curtain-inner">
       <h1 class="title">
         <img src="/brand/logo-720.png" alt="Voltmarch" width="720" height="333" decoding="sync" />
@@ -434,6 +626,29 @@
         var s = document.getElementById('boot-status');
         if (s) s.textContent = state === 'pending' ? 'Awaiting modules' : 'Halted';
       };
+
+      /*
+       * Arm the splash only once the artwork has really decoded.
+       *
+       * `.complete` is checked FIRST and it is not belt-and-braces: this
+       * script runs after the <img> in document order, so on a warm cache
+       * (every launch after the first, and every desktop launch, where the
+       * file is on local disk behind a preload hint) the load event has
+       * already fired and `addEventListener` alone would never run. That is
+       * the case where the splash would be missing for the people who see it
+       * most often. `naturalWidth` guards the other direction — `complete` is
+       * also true for an image that failed.
+       */
+      (function () {
+        var art = document.getElementById('splash-art');
+        var curtain = document.getElementById('loading');
+        if (!art || !curtain) return;
+        var arm = function () {
+          if (art.naturalWidth > 0) curtain.classList.add('has-art');
+        };
+        if (art.complete) arm();
+        else art.addEventListener('load', arm, { once: true });
+      })();
 
       window.__vmStatus = function (text) {
         var s = document.getElementById('boot-status');

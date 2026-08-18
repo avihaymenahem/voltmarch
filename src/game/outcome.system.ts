@@ -68,14 +68,40 @@
  *   STRANDED  — assets, but nothing that can build. WARNED, not ended. An army
  *               with no base can still walk into the enemy's and win, and taking
  *               that away would be a worse bug than the one being fixed.
- *   BEATEN    — nothing that can build AND nothing but harvesters left. There is
- *               no sequence of inputs that changes the result. Held for
- *               `beatenGraceSeconds` (so a mid-deploy blink cannot trigger it),
- *               then the match resolves and says which way.
+ *   BEATEN    — nothing that can build AND nothing on the field but harvesters.
+ *               There is no sequence of inputs that changes the result. Held
+ *               for `beatenGraceSeconds` (so a mid-deploy blink cannot trigger
+ *               it), then the match resolves and says which way.
  *
  * The predicates live in `src/sim/Viability.ts` and are the SAME ones the sell
  * guard runs. One definition of "can this player still play", or the two rules
  * drift and you get a sell refused for a state the match will not end on.
+ *
+ * 3. THE MATCH THAT WOULD NOT FINISH
+ * ----------------------------------
+ * Reported as *"i killed every visible building and troops and game didnt
+ * finish"*. `isBeaten` is this module's VICTORY test as well as its defeat
+ * test, and it was reading `canContest` — which counted every non-harvester
+ * unit an opponent owned, including one carrying `EntityFlag.Garrisoned`. That
+ * flag is the only bit a live unit can hold that makes it BOTH undrawn
+ * (`RenderBridge.HIDDEN_MASK`) and untargetable (`TARGETABLE_REJECT_MASK`), so
+ * a squad indoors kept the match open against a player who had, quite
+ * literally, killed everything they could see. The argument for the fix and
+ * for what it costs is `surveyViability` §HELD; the reproduction is
+ * `tests/match-unfinishable.spec.ts`.
+ *
+ * TWO NEIGHBOURS THAT LOOK LIKE THE SAME BUG AND ARE NOT, so nobody re-derives
+ * them from this header:
+ *
+ *   - AIRCRAFT ARE COUNTED, and always were. There is no `EntityKind.Aircraft`
+ *     — `UnitDef.kind` is typed `Infantry | Vehicle` and every flyer is a
+ *     `Vehicle` carrying `Locomotor.Air` — so `Viability`'s `UNIT_KINDS` sees
+ *     the whole roster. An enemy down to gunships is NOT declared beaten.
+ *   - WHAT AN ENEMY DOWN TO GUNSHIPS *IS*, is unkillable by an army with no
+ *     anti-air, because `WeaponDef.canTargetAir` defaults to FALSE by design
+ *     (see the note on the field). That hangs a match too, and it is a content
+ *     question about AA availability rather than anything this file or
+ *     `Viability` can answer. Do not "fix" it here.
  *
  * WHY A RENDER-PHASE SYSTEM AND NOT A `simTick`
  * ---------------------------------------------
@@ -99,7 +125,7 @@ import { Faction, RenderPhase } from '../core/types';
 import type { PlayerId, RenderContext } from '../core/types';
 
 import {
-  hasAssets, isBeaten, isStranded, makeViabilitySurvey, surveyViability,
+  describeViability, hasAssets, isBeaten, isStranded, makeViabilitySurvey, surveyViability,
 } from '../sim/Viability';
 
 import { ctx, hasGameContext } from './context';
@@ -430,8 +456,9 @@ function evaluate(shell: ShellHost, dt: number): void {
     return;
   }
   if (localBeatenFor >= OUTCOME.beatenGraceSeconds) {
-    finish(shell, false, `no production, no construction vehicle and nothing but `
-      + `harvesters for ${OUTCOME.beatenGraceSeconds}s — the match cannot be won from here`);
+    finish(shell, false, `no production, no construction vehicle and nothing on the field `
+      + `but harvesters for ${OUTCOME.beatenGraceSeconds}s — the match cannot be won from `
+      + `here (${describeViability(localSurvey)})`);
   }
 }
 

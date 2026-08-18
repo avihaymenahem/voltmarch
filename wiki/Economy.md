@@ -35,16 +35,29 @@ looks bare, it is bare.
 Ore grows back, slowly and from the middle outward.
 
 Every field has a **node cell** at its centre, and every other cell knows its upstream neighbour —
-the one step nearer the node. A cell only regrows once its upstream neighbour is at least **30%
+the one step nearer the node. A cell only regrows once its upstream neighbour is at least **2.5%
 full**. The node itself regrows at three times the base rate, because nothing upstream can feed it.
 
-The base rate is **0.6 ore units per cell per second**. That means a stripped cell takes about
-twenty-five minutes to refill on its own, and it will not even start until the cell between it and
-the centre has recovered.
+The base rate is **0.6 ore units per cell per second**, and the gate above is what turns that into a
+wave rolling out from the middle rather than the whole patch fading back in at once.
 
-The practical consequence: **a patch mined from the near edge fills back in; a patch stripped to
-the rim takes a very long time to reach the rim again.** Which field you expand to is a real
-decision, not a lookup of which is closest.
+Measured on a field stripped to bare ground and then left completely alone:
+
+| Left alone for | Recovered |
+| --- | --- |
+| 1 minute | 4 % |
+| 2 minutes | 20 % |
+| 5 minutes | 58 % |
+| 10 minutes | 86 % |
+| 20 minutes | 99 % |
+
+So **a patch mined from the near edge fills back in behind you**, and a patch stripped to the rim
+comes back from the middle outward — you can go home and return to it.
+
+What a recovering field will *sustain* is the part that keeps expansion worth paying for. Its output
+peaks early and then collapses as the cells cap out: about **60 ore a second two minutes in**, which
+is roughly three harvesters' worth, down to **13 a second at ten minutes**, which is half of one.
+A field you left alone is a good place to come back to. It is not a second economy.
 
 ---
 

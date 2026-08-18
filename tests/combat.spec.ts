@@ -18,7 +18,7 @@ import {
 } from '../src/core/types';
 import type { EntityId, PlayerId, SimContext } from '../src/core/types';
 import {
-  ARMOR_MATRIX, COMBAT_DAMAGE, SIM_DT, VETERANCY_KILLS, MAX_PROJECTILES,
+  ARMOR_MATRIX, BURN_HP_THRESHOLD, COMBAT_DAMAGE, SIM_DT, VETERANCY_KILLS, MAX_PROJECTILES,
 } from '../src/core/config';
 
 import {
@@ -192,7 +192,14 @@ describe('damage application', () => {
     rig.damage.damageTick(rig.ctx());
 
     expect(seen).toBe(1);
-    expect(amount).toBeCloseTo(100 * armorMultiplier(WarheadClass.SmallArms, ArmorClass.Heavy), 4);
+    // The matrix is not the whole formula. `COMBAT_DAMAGE.globalMul` — the
+    // time-to-kill knob — is applied in `applyOne` alongside the armour
+    // multiplier, so an assertion that omits it is asserting a formula the
+    // game does not use, and would fail the moment anyone tunes the pace.
+    expect(amount).toBeCloseTo(
+      100 * armorMultiplier(WarheadClass.SmallArms, ArmorClass.Heavy) * COMBAT_DAMAGE.globalMul,
+      4,
+    );
     expect(rig.world.store.hp[rig.world.store.index(victim)]).toBeCloseTo(500 - amount, 4);
   });
 
@@ -295,8 +302,22 @@ describe('death, wrecks and veterancy', () => {
     st.maxHp[i] = 100;
     rig.world.spatial.rebuild();
 
-    // Knock it under the burn threshold.
-    rig.channels.damage.push(victim, 0 as EntityId, 80, WarheadClass.ArmorPiercing, 120, 0, 120);
+    /*
+     * Knock it under the burn threshold — with the raw damage DERIVED from the
+     * threshold rather than hard-coded.
+     *
+     * This was a literal 80, which crossed the line only because of what the
+     * armour matrix and `COMBAT_DAMAGE.globalMul` happened to be that day. The
+     * first time the time-to-kill knob was tuned, 80 stopped crossing and this
+     * test failed on its SETUP — reporting "should be burning under the
+     * threshold" for a test that is about the CLEAR path and had nothing to
+     * say about the change. Ask for enough damage to land at half the
+     * threshold and the setup stays true at any pace.
+     */
+    const perPoint = armorMultiplier(WarheadClass.ArmorPiercing, st.armorClass[i] as ArmorClass)
+      * COMBAT_DAMAGE.globalMul;
+    const raw = (100 * (1 - BURN_HP_THRESHOLD / 2)) / perPoint;
+    rig.channels.damage.push(victim, 0 as EntityId, raw, WarheadClass.ArmorPiercing, 120, 0, 120);
     rig.damage.damageTick(rig.ctx());
     expect(st.isAlive(victim)).toBe(true);
     expect(st.flags[i] & EntityFlag.Burning, 'should be burning under the threshold').toBeTruthy();

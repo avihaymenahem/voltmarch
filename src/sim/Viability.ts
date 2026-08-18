@@ -19,19 +19,22 @@
  *
  * THE VOCABULARY
  * --------------
- * A survey counts five things about one player and the three predicates below
+ * A survey counts six things about one player and the three predicates below
  * are the only interpretations of it anyone should write:
  *
  *   canRebuild  — owns a structure that produces something buildable, OR a
  *                 construction vehicle that unpacks into one. This is the test
  *                 the sell guard runs against the world MINUS the structure
  *                 being sold: if the answer is no, the sell is a soft lock.
- *   canContest  — owns at least one unit that is not a harvester. Deliberately
- *                 loose. A rifleman can still walk into an enemy base and an
+ *   canContest  — owns at least one unit that is ON THE FIELD and is not a
+ *                 harvester. Deliberately loose about what a field unit might
+ *                 achieve: a rifleman can still walk into an enemy base and an
  *                 engineer can still capture something, and ending a match a
  *                 player might yet play is a worse error than letting a hopeless
  *                 one run on with a warning on screen. Harvesters are excluded
- *                 because ore you cannot spend is not a comeback.
+ *                 because ore you cannot spend is not a comeback; units inside
+ *                 a garrison or a hull are excluded for the reason in
+ *                 `surveyViability` §HELD, which is the opposite error.
  *   isBeaten    — neither of the above. Nothing to build with, nothing to fight
  *                 with. There is no sequence of inputs that changes the result,
  *                 so the match should say so rather than sit there.
@@ -62,7 +65,7 @@ import { production } from './Production';
  * 1. THE SURVEY
  * ========================================================================== */
 
-/** What one player still owns, in the only five categories that decide a match. */
+/** What one player still owns, in the only six categories that decide a match. */
 export interface ViabilitySurvey {
   /** Player index this survey describes. -1 before the first fill. */
   player: number;
@@ -74,8 +77,20 @@ export interface ViabilitySurvey {
   producers: number;
   /** Units that unpack into a structure (MCV and its two cousins). */
   constructionVehicles: number;
-  /** Units that are not harvesters — anything that can go and do something. */
+  /**
+   * Field units that are not harvesters — anything that can go and do
+   * something. Excludes anything inside a garrison or a hull; see §HELD.
+   */
   contestingUnits: number;
+  /**
+   * Units inside a structure or a transport (`EntityFlag.Garrisoned`).
+   *
+   * Counted separately rather than dropped, because "the enemy still owns five
+   * men and every one of them is indoors" is the exact state that used to hang
+   * a match, and a survey that cannot say so leaves the next report as
+   * undiagnosable as the last one. `describeViability` prints it.
+   */
+  heldUnits: number;
 }
 
 /** A reusable survey. Fill it with `surveyViability`; never allocate per frame. */
@@ -87,6 +102,7 @@ export function makeViabilitySurvey(): ViabilitySurvey {
     producers: 0,
     constructionVehicles: 0,
     contestingUnits: 0,
+    heldUnits: 0,
   };
 }
 
@@ -150,6 +166,51 @@ export function defaultIsProducer(world: World, slot: number): boolean {
  * finishes on its own — nothing has to be alive to push it — so a player who has
  * one on the ground has a future, and a rule that said otherwise would end
  * matches during the ten seconds after a placement.
+ *
+ * §HELD — A UNIT INDOORS IS NOT AN ARMY, AND THIS IS WHY THE MATCH HUNG
+ * ---------------------------------------------------------------------
+ * Reported as *"i killed every visible building and troops and game didnt
+ * finish"*. `EntityFlag.Garrisoned` — set by `sim/Garrison.ts` on an occupant
+ * and by `sim/Transport.ts` on a passenger — is, measurably, THE ONLY BIT IN
+ * THE GAME that makes an owned, living unit both undrawn and untargetable:
+ * `RenderBridge.HIDDEN_MASK` is that flag and nothing else, and it is the only
+ * member of `TARGETABLE_REJECT_MASK` that a live unit can carry (`Cloaked` has
+ * no caller anywhere in `src/`, `NotATarget` is set only on props and wrecks,
+ * and `PendingDestroy` is filtered by the loop below before it gets here). So
+ * a survey that counted one as a contesting unit was keeping a match open on an
+ * asset the opponent cannot see and cannot shoot at.
+ *
+ * IT IS NOT "HELD THINGS ARE NOT REAL". The occupants of a garrison do real
+ * damage. But look at where that damage comes from: `GarrisonService.weaponsTick`
+ * resolves ONE target scan on the HOST, pushes the damage record with the HOST
+ * as the attacker and draws the muzzle flash on the HOST's wall. The men are
+ * that structure's ammunition, not a force in the field — and this engine has
+ * never let an armed structure keep a player in a match. A commander down to
+ * nothing but Pillboxes and Tesla Coils is BEATEN today, for everyone, because
+ * emplacements have never touched `contestingUnits`. A garrison is an
+ * emplacement whose firepower happens to be stored in five entities, and
+ * counting its ammunition as an army was the inconsistency. A transport
+ * passenger is the easier half: `sim/Transport.ts`'s header states that
+ * passengers deliberately do not shoot at all, and the HULL is itself a
+ * non-harvester vehicle that this loop already counts, so dropping its cargo
+ * changes no verdict while the hull lives.
+ *
+ * WHAT IT COSTS, STATED RATHER THAN GLOSSED. A player whose last force is a
+ * squad in a building is now beaten `beatenGraceSeconds` after their last field
+ * unit dies, where before they could have evacuated and gone raiding. They are
+ * already being warned every `warnRepeatSeconds` by `game/outcome.system.ts`
+ * (`isStranded` is unchanged — it reads `hasAssets`, which still counts them),
+ * and it binds the AI identically. `src/sim/AI.ts` never garrisons anything, so
+ * in a skirmish this can only ever bind a human, which is exactly why it must
+ * be written as one rule for both rather than as a victory-side special case.
+ *
+ * `constructionVehicles` DELIBERATELY STILL COUNTS A HELD UNIT, and the
+ * asymmetry has a reason rather than being an oversight. Only infantry can
+ * garrison (`Garrison.tally` and every scan there is `byKind[Infantry]`), so a
+ * held MCV is necessarily inside a HULL — a visible, targetable field vehicle
+ * that this same loop counts. There is no invisible-asset problem to fix, and
+ * `canRebuild` is the SELL GUARD's predicate (`Production.applySell`), which
+ * must not move on a change about match outcomes.
  */
 export function surveyViability(
   world: World,
@@ -169,6 +230,7 @@ export function surveyViability(
   out.producers = 0;
   out.constructionVehicles = 0;
   out.contestingUnits = 0;
+  out.heldUnits = 0;
 
   const dead = EntityFlag.PendingDestroy;
 
@@ -196,7 +258,12 @@ export function surveyViability(
       if ((flags & dead) !== 0) continue;
       if (ignore !== NONE && st.handleOf(i) === ignore) continue;
       out.units++;
-      if ((flags & EntityFlag.IsHarvester) === 0) out.contestingUnits++;
+      // §HELD. Inside a building or a hull: not on the field, so not a way to
+      // contest the map. Still `units`, so `hasAssets` and therefore
+      // `isStranded` and the wiped-out defeat are byte-identical.
+      const held = (flags & EntityFlag.Garrisoned) !== 0;
+      if (held) out.heldUnits++;
+      else if ((flags & EntityFlag.IsHarvester) === 0) out.contestingUnits++;
       if (isConVehicle(world, i)) out.constructionVehicles++;
     }
   }
@@ -218,7 +285,10 @@ export function canRebuild(s: ViabilitySurvey): boolean {
   return s.producers > 0 || s.constructionVehicles > 0;
 }
 
-/** Owns something that could still go and do damage. Harvesters do not count. */
+/**
+ * Owns something ON THE FIELD that could still go and do damage. Harvesters do
+ * not count, and neither does anything indoors — see `surveyViability` §HELD.
+ */
 export function canContest(s: ViabilitySurvey): boolean {
   return s.contestingUnits > 0;
 }
@@ -245,5 +315,6 @@ export function isBeaten(s: ViabilitySurvey): boolean {
 export function describeViability(s: ViabilitySurvey): string {
   return `p${s.player}: ${s.buildings}b/${s.units}u `
     + `prod ${s.producers} mcv ${s.constructionVehicles} contest ${s.contestingUnits} `
+    + `held ${s.heldUnits} `
     + `${isBeaten(s) ? 'BEATEN' : isStranded(s) ? 'stranded' : 'viable'}`;
 }

@@ -331,8 +331,13 @@ describe('flags and the columns that depend on them', () => {
   });
 
   it('only puts needsPower on a weapon something can actually honour', () => {
-    // `Combat.ts` gates firing on the weapon's `needsPower` AND
-    // `EntityFlag.NeedsPower` on the entity. Only structures ever get that flag
+    // `Combat.ts` gates firing in TWO tiers now. The universal one is the
+    // entity alone — any structure that draws power and is dark cannot fire,
+    // whatever its gun. `WeaponDef.needsPower` is the STRICTER second tier,
+    // for electric guns that also refuse during any grid deficit rather than
+    // only when the shed picked that particular tower, and it still requires
+    // `EntityFlag.NeedsPower` on the entity — which is what this test is
+    // about. Only structures ever get that flag
     // (`Scenarios.building()` and `mrdFlags`/`rclFlags` derive it from a
     // negative power draw), and `EntityFlag.Powered` is only ever written by
     // `PowerGrid.recompute`, which walks `byKind[EntityKind.Building]`. So a

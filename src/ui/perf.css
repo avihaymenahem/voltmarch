@@ -20,17 +20,23 @@
  *
  * THE HEIGHT IS ARITHMETIC, NOT A GUESS
  * -------------------------------------
- * Design units, 150u wide, seven rows:
+ * Design units, 150u wide, eight rows:
  *
  *   pad 4 + head 11 + gap 3 + primary 20 + gap 3 + verdict 11 + gap 3
- *         + 7 rows (11u) + 6 row gaps (1u) + pad 4                    = 142u
+ *         + 8 rows (11u) + 7 row gaps (1u) + pad 4                    = 154u
  *
  * `perfPanelHeightUnits()` in PerfHud.ts is the same sum in TypeScript and
  * `tests/perf-hud.spec.ts` pins the two against each other, so a row added here
  * without being added there fails a test rather than quietly overlapping the
  * toasts it was supposed to clear.
  *
- * At 1280x720 that is 150x142u = 2.31% of the frame. Well past what the look
+ * It was seven rows and 142u. The eighth is `device`, and it earns its 12u
+ * from `docs/RENDER_FINDINGS.md` §7g: `powerPreference: 'high-performance'` is
+ * a hint Windows ignores, so a frame-time reading can be about a GPU nobody
+ * chose. Which renderer produced the numbers goes on the header line instead,
+ * where `space-between` gives it a slot for free.
+ *
+ * At 1280x720 that is 150x154u = 2.51% of the frame. Well past what the look
  * bible allows a shipping HUD element — which is why this one is a diagnostic
  * that defaults to off and never appears in a capture.
  * ========================================================================== */
@@ -73,16 +79,37 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* The backend badge shares this line. Without a gap the two strings touch at
+     the one width where neither has to shrink. */
+  gap: calc(4 * var(--vm-u, 1px));
   height: calc(11 * var(--vm-u, 1px));
   border-bottom: 1px solid var(--vm-hairline-soft, rgba(255, 255, 255, 0.10));
 }
 
 .vm-perf-title {
+  /* The panel's name is never the part that gets cut. */
+  flex: 0 0 auto;
   font-size: calc(8 * var(--vm-u, 1px));
   font-weight: 700;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--vm-dim, #9dabba);
+}
+
+/* The LIVE renderer, right-aligned by the header's `space-between`. It is not
+   a number, so it is not `.vm-num`; it qualifies every number below it. Cut
+   with an ellipsis rather than allowed to push the title, because a backend
+   name that wraps is worse than one that is clipped. */
+.vm-perf-backend {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: calc(8 * var(--vm-u, 1px));
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--vm-faint, #74818f);
 }
 
 /* -- the headline number --------------------------------------------------- *
@@ -177,23 +204,45 @@
 }
 
 .vm-perf-k {
+  /* Never shrinks: the key names the row and the value is the part that can
+     afford to be cut. */
+  flex: 0 0 auto;
   color: var(--vm-faint, #74818f);
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-size: calc(8 * var(--vm-u, 1px));
 }
 
+/* `min-width: 0` is what makes the ellipsis reachable — a flex item's default
+   `min-width: auto` refuses to shrink below its content and the row overflows
+   the panel instead. The `device` row is why: a WebGL adapter string is
+   routinely wider than the whole panel even after `shortDevice` has cut it. */
 .vm-perf-v {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--vm-text, #eaf2fa);
   white-space: nowrap;
 }
 
 /* An over-budget number has to LOOK over budget. 130 draws is the documented
-   ceiling; the triangle line is advisory and says so by being amber, never
-   red. Row order is fixed by PerfHud.addRow: 4 is draws, 5 is tris. */
+   ceiling for the COLOUR PASS — not for the frame total this row also carries —
+   and `drawsOverBudget()` in PerfHud.ts is what decides. The triangle line is
+   advisory and says so by being amber, never red. Row order is fixed by
+   PerfHud.addRow: 4 is draws, 5 is tris. */
 .vm-perf.is-draws-over .vm-perf-row:nth-child(4) .vm-perf-v {
   color: var(--vm-danger, #ff4d3d);
   font-weight: 700;
+}
+
+/* THE BUDGET COULD NOT BE CHECKED, which is a third state and not a pass. The
+   node renderer has no seam between the shadow pass and the colour pass to
+   meter, so the row prints `n/a col / 130` and is dimmed to the key colour —
+   the same treatment every unmeasured thing on this panel gets, and visibly
+   not the white of a number that was read. */
+.vm-perf.is-draws-unknown .vm-perf-row:nth-child(4) .vm-perf-v {
+  color: var(--vm-faint, #74818f);
 }
 
 .vm-perf.is-tris-over .vm-perf-row:nth-child(5) .vm-perf-v {
@@ -204,7 +253,7 @@
  * One rule, active only while the panel is up. `hud.css` is untouched.         */
 
 .vm-hud.vm-perf-on .vm-toasts {
-  top: calc((10 + 142 + 6) * var(--vm-u, 1px));
+  top: calc((10 + 154 + 6) * var(--vm-u, 1px));
 }
 
 /* -- the other overlay in this corner -------------------------------------- *

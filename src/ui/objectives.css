@@ -322,12 +322,19 @@
   color: var(--vm-dim, #9dabba);
 }
 
-/* The panel is the first HUD element to go on a narrow frame (hud.css hides it
-   under 1000px); the beat goes with it, because a centre card on a frame that
-   narrow covers the battlefield rather than decorating it. */
-@media (max-width: 1000px) {
-  .vm-objdone-layer { display: none; }
-}
+/* The panel is the first HUD element to go on a narrow frame; the beat goes
+   with it, because a centre card on a frame that narrow covers the battlefield
+   rather than decorating it.
+ *
+ * THE TRIGGER MOVED AND THE RULE DID NOT. This was `@media (max-width: 1000px)`
+ * to match hud.css's own query, and that query has been replaced: the HUD's
+ * widths are multiples of `--vm-u`, which is derived from viewport HEIGHT, so a
+ * breakpoint in viewport WIDTH answers a different question than the one it
+ * looks like it answers. `data-top-fit='solo'` is the same decision asked in
+ * design units — see `topRowFit()` in `src/ui/Hud.ts`. The layer mounts into
+ * `.vm-hud` (`objectives.system.ts#resolveMount`), so this reaches it; when
+ * there is no HUD there is no attribute and the beat behaves as it always did. */
+.vm-hud[data-top-fit='solo'] .vm-objdone-layer { display: none; }
 
 @media (prefers-reduced-motion: reduce) {
   .vm-objdone.is-enter,

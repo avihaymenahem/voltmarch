@@ -1,0 +1,142 @@
+/**
+ * ============================================================================
+ * src/platform/desktop.ts — the game's half of the Electron bridge
+ * ============================================================================
+ * THIS FILE IS THE ONE THE PRELOAD HAS BEEN NAMING SINCE IT WAS WRITTEN.
+ * `desktop/src/preload.ts` documents "the accessor in `src/platform/desktop.ts`
+ * tests it by equality" as though this existed; it did not, and nothing in the
+ * renderer consumed the bridge at all — `contextBridge` was exposing seven
+ * methods to nobody. That is exactly the class of claim
+ * `docs/SPEC_DRIFT_AUDIT.md` catalogues, and it was in a file added the day
+ * before. Written now because the Display settings need it.
+ *
+ * ----------------------------------------------------------------------------
+ * IT IMPORTS NOTHING AND IT MUST STAY THAT WAY.
+ * ----------------------------------------------------------------------------
+ * This is game code. It cannot import from `desktop/` — `tests/desktop-shell.spec.ts`
+ * enforces that boundary in the other direction and the same reasoning applies
+ * here: the web build must not gain a byte because a desktop target exists.
+ * So the shapes below are declared, not shared, and
+ * `tests/desktop-shell.spec.ts` asserts they still match the shell's own types.
+ * A duplicated interface that a test compares is honest; an import across the
+ * boundary is not.
+ *
+ * ----------------------------------------------------------------------------
+ * `bridge` IS A VERSION, AND THE CHECK IS EQUALITY.
+ * ----------------------------------------------------------------------------
+ * A packaged app is one binary containing one preload and one bundle, so they
+ * normally move together — but an installer that half-fails, a portable exe run
+ * against an unpacked `dist/`, or a `desktop:build` that did not re-run leaves
+ * them mismatched. Equality means that degrades to WEB BEHAVIOUR: no Display
+ * section, no relaunch button, everything else exactly as the browser build.
+ * The alternative — `>= 1` — would let a v1 preload reach `displayState()` and
+ * throw `is not a function` inside the options screen.
+ *
+ * Same discipline as `REPLAY_FORMAT_VERSION` refusing a v1 file.
+ * ============================================================================
+ */
+
+/**
+ * 1 -> 2 when the display methods landed; 2 -> 3 when `alwaysOnTop` joined
+ * `DesktopDisplayState` and `DesktopDisplayPatch`.
+ *
+ * BUMP THIS whenever a method is added, removed or CHANGES SHAPE, and bump the
+ * matching literal in `desktop/src/preload.ts`. They are checked against each
+ * other by `tests/desktop-shell.spec.ts` — but note what that check can and
+ * cannot see: it compares the two LITERALS, so leaving both at 2 across a shape
+ * change is consistent and passes. That is exactly what happened when
+ * `alwaysOnTop` was added, and it was caught by a reader rather than by the
+ * gate.
+ *
+ * The hazard is narrow but real, and it is why the rule says SHAPE and not just
+ * methods: a v2 preload from an older packaged build, paired with a bundle that
+ * expects `alwaysOnTop`, hands back `undefined` and the toggle silently renders
+ * as off. Equality makes that degrade to web behaviour instead — no Display
+ * section at all, which is visibly wrong rather than quietly wrong.
+ */
+export const BRIDGE_VERSION = 3;
+
+export type WindowMode = 'windowed' | 'fullscreen';
+
+/** One monitor, as the options screen needs it. */
+export interface DesktopDisplayInfo {
+  readonly index: number;
+  /** Pre-formatted by the main process — electron's own label is often empty. */
+  readonly label: string;
+  readonly primary: boolean;
+}
+
+/** Everything the Display section renders from, in one round trip. */
+export interface DesktopDisplayState {
+  readonly mode: WindowMode;
+  readonly width: number;
+  readonly height: number;
+  readonly displayIndex: number;
+  /** Keep the window above every other app. Default OFF — see `display.ts`. */
+  readonly alwaysOnTop: boolean;
+  readonly displays: readonly DesktopDisplayInfo[];
+  /** Window sizes that fit the chosen monitor, from `sizesFor`. */
+  readonly sizes: ReadonlyArray<readonly [number, number]>;
+  readonly forceHighPerformanceGpu: boolean;
+  readonly unlockFrameRate: boolean;
+  /**
+   * A switch-backed setting has been changed since launch and is not in force.
+   *
+   * Computed in the main process by comparing what is persisted against what
+   * the process actually launched with, because that is the only place that
+   * knows the second one. Chromium switches are appended before
+   * `app.whenReady()`, so nothing the player toggles here can take effect
+   * until the app restarts — and a settings row that silently does nothing
+   * until some unstated future moment is the defect this flag exists to
+   * surface.
+   */
+  readonly relaunchPending: boolean;
+}
+
+export interface DesktopDisplayPatch {
+  readonly mode?: WindowMode;
+  readonly width?: number;
+  readonly height?: number;
+  readonly displayIndex?: number;
+  readonly alwaysOnTop?: boolean;
+  readonly forceHighPerformanceGpu?: boolean;
+  readonly unlockFrameRate?: boolean;
+}
+
+/** The object `contextBridge.exposeInMainWorld('voltmarch', ...)` installs. */
+export interface DesktopBridge {
+  readonly bridge: number;
+  readonly platform: string;
+  appVersion(): Promise<string>;
+  gpuInfo(kind?: 'basic' | 'complete'): Promise<unknown>;
+  displayFrequency(): Promise<number>;
+  quit(): void;
+  setFullscreen(on: boolean): Promise<void>;
+  isFullscreen(): Promise<boolean>;
+  revealUserData(): Promise<void>;
+  displayState(): Promise<DesktopDisplayState>;
+  setDisplayState(patch: DesktopDisplayPatch): Promise<DesktopDisplayState>;
+  relaunch(): void;
+}
+
+/**
+ * The bridge, or null in a browser.
+ *
+ * Called on every access rather than cached at module scope: this module is
+ * imported by the shell, and a module-level read would run at import time,
+ * which for a lazily-loaded chunk is not a moment with any defined relationship
+ * to preload injection. The check is three property reads; it is not worth
+ * memoising and being wrong about.
+ */
+export function desktopBridge(): DesktopBridge | null {
+  const host = globalThis as { voltmarch?: unknown };
+  const candidate = host.voltmarch;
+  if (typeof candidate !== 'object' || candidate === null) return null;
+  if ((candidate as { bridge?: unknown }).bridge !== BRIDGE_VERSION) return null;
+  return candidate as DesktopBridge;
+}
+
+/** True when running inside the Electron shell with a matching preload. */
+export function isDesktop(): boolean {
+  return desktopBridge() !== null;
+}

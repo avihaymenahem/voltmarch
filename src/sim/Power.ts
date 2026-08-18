@@ -34,6 +34,30 @@
  * reason power is interesting, and it is why this file is 300 lines instead of
  * a one-line subtraction.
  *
+ * WHAT THE `Powered` BIT NOW COSTS ITS OWNER
+ * ------------------------------------------
+ * Reported as *"If no electrcity left, buildings shouldnt be able to shoot /
+ * generate troops"*, and both halves are downstream of pass 2 below rather than
+ * of anything in this file:
+ *
+ *   - `Combat.engage` refuses to fire ANY weapon on a structure that carries
+ *     `NeedsPower` without `Powered`. It used to require the WEAPON to opt in
+ *     too, and only three rows in the armoury did.
+ *   - `Production.census` stops counting a dark structure as a factory, which
+ *     stalls its tab in `BuildQueue.advanceTab`. `Structures` and `Defense` are
+ *     exempt, which is what keeps the route out open.
+ *
+ * That makes the shed order below a balance surface rather than a cosmetic one.
+ * `defence` is class 0 and `factory` is class 3, so a shallow deficit costs you
+ * guns and a deep one costs you production, in that order, which is the order a
+ * player would choose. Do not reorder it without re-reading both of those.
+ *
+ * THE `never` CLASS IS NOW THE ANTI-SOFT-LOCK GUARANTEE, NOT A COURTESY.
+ * `EntityFlag.IsBuilder` is the only publisher of `BuildTab.Structures` in the
+ * game, so "a Construction Yard is never shed" is what makes "you can always
+ * build another Power Plant" true. `Production.census` exempts that tab as well,
+ * on purpose and redundantly — but this line is the first half of it.
+ *
  * COST
  * ----
  * A full rescan of every building, every POWER_RECOMPUTE_INTERVAL ticks, plus

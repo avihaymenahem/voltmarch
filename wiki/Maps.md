@@ -331,10 +331,11 @@ quickly. Cells under 14 ore round down to bare ground, so the visible edge of a 
 edge.
 
 **Fields regrow.** A cell recovers 0.6 ore per second, but only once the cell between it and the
-field's centre node is at least 30 % full, and the node itself regrows three times faster. Mine the
-near edge and it comes back first; strip the field to the rim and the regrowth has a long walk out.
-A field is therefore renewable at a rate you can outpace but not exhaust, provided you leave it
-alone occasionally.
+field's centre node is at least 2.5 % full, and the node itself regrows three times faster, because
+nothing upstream can feed it. Recovery therefore rolls outward from the middle: mine the near edge
+and it comes back first. A field stripped to bare ground and then left completely alone is about a
+fifth back after two minutes and effectively full after twenty. A field is renewable at a rate you
+can outpace but not exhaust, provided you leave it alone occasionally.
 
 Practical consequence: **the contested midpoint field is the map's tempo control.** Holding it is
 worth roughly a third of the map's total income, and it is the one patch neither player can defend

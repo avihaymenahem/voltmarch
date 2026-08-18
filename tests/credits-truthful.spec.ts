@@ -110,14 +110,28 @@ describe('the credits describe the product that actually ships', () => {
     }
 
     if (brand.length > 0) {
-      // `logo-full.png` IS the main-menu title and the loading curtain, and the
-      // `mark-*` files are every favicon. Calling the wordmark "generated" was
-      // false for as long as these have shipped.
+      // `logo-full.png` IS the main-menu title, and the `mark-*` files are
+      // every favicon. Calling the wordmark "generated" was false for as long
+      // as these have shipped.
       expect(
         allText,
         `public/brand ships ${brand.length} image(s) — the wordmark and app icons — `
         + 'so the credits must say so',
       ).toMatch(/wordmark|logo|brand/i);
+    }
+
+    // THE KEY ART IS A SECOND SUPPLIED IMAGE AND A SEPARATE CLAIM. It ships in
+    // the same directory as the lockup, so the assertion above passes on the
+    // lockup's own credit line whether or not the illustration is mentioned —
+    // which is precisely how a credit goes stale without anything noticing.
+    // Checked on its own filename instead.
+    const splash = assets.filter((f) => /^brand\/splash-/.test(f));
+    if (splash.length > 0) {
+      expect(
+        allText,
+        `public/brand ships ${splash.length} splash image(s) — a supplied illustration, `
+        + 'not generated art — so the credits must name it',
+      ).toMatch(/key art|illustration/i);
     }
   });
 

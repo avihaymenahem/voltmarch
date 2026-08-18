@@ -113,7 +113,7 @@ tech gate that holds back the Apocalypse.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Concrete Wall | 100 | 2 s | Barracks | 300 | 0 | — | — | — |
 | Gate | 150 | 3 s | Barracks | 400 | 0 | — | — | — |
-| Sentry Gun | 400 | 8 s | Barracks | 480 | 0 | Emplaced MG, 20 x5, small arms | 22 m | no |
+| Sentry Gun | 400 | 8 s | Barracks | 480 | 0 | Emplaced MG, 13 x5, small arms | 22 m | no |
 | Flame Tower | 600 | 10 s | Barracks | 550 | -20 | Flame Nozzle, 26, HE, 3.2 m splash | 18 m | no |
 | Tesla Coil **(locked)** | 1500 | 16 s | Radar Dome | 700 | -75 | Tesla Coil, 120, tesla, chains to 2 | 30 m | **yes** |
 
@@ -125,6 +125,11 @@ brutal against anything on foot.
 The Tesla Coil is your best emplacement and the only Soviet structure that shoots at aircraft. It
 needs power and draws 75 — brown out and it goes dark. It also unlocks off the Radar Dome rather
 than the Battle Lab, one tier earlier than the Allied Prism Tower.
+
+**The Sentry Gun is the only Soviet gun that survives a blackout**, because it is the only one that
+draws nothing. The Flame Tower's 20 is a small draw, but a dark building cannot shoot whatever its
+gun costs to run — so a grid failure leaves you with the cheapest emplacement you own and nothing
+else.
 
 ## Superweapons
 

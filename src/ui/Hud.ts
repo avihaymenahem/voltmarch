@@ -721,6 +721,114 @@ function commanderPowerSeam(): CommanderPowerSeamRead | null {
 /* `POWER_ICONS` lives in `./Sidebar` beside the bar that draws it. */
 
 /* ==========================================================================
+ * SECTION 2B — THE TOP ROW'S FIT
+ *
+ * Reported as "The top middle main hud, its getting huge and sometimes almost
+ * overlaaping with objectives".
+ *
+ * IT WAS NOT SOMETIMES. Measured in the real game at 1920x1080, on an empty
+ * match with nothing but the starting bank on screen: `--vm-u` = 1.5px, the
+ * resource strip runs x 369.75..1550.25, and the objective panel's left edge
+ * sits at 1518. A 32.25 px overlap, and the objectives are `z-index: 5`, so
+ * they paint over the INCOME readout. The strip is CENTRED, which makes the
+ * overlap symmetric — the same panel moved to the left edge collides by the
+ * same 32.25 px — so moving it is not a fix and this is where the fix belongs.
+ *
+ * WHY IT LOOKED INTERMITTENT, AND THE ONE REAL BUG UNDER IT
+ * --------------------------------------------------------
+ * `--vm-u` is `computeUiScale(viewportHeight)`. So EVERY width in the HUD is
+ * proportional to the viewport's HEIGHT, while the two responsive rules that
+ * were supposed to keep the top row from over-subscribing were written as
+ * `@media (max-width: 1180px)` and `@media (max-width: 1000px)` — viewport
+ * WIDTH, in CSS pixels. The two quantities are only equal at 720p. Measured
+ * consequences, with the objective panel present:
+ *
+ *   2560x1440  u=2     strip 1597 px  overlap  55 px   query cannot fire
+ *   1920x1080  u=1.5   strip 1199 px  overlap  42 px   query cannot fire
+ *   1600x900   u=1.25  strip 1000 px  overlap  35 px   query cannot fire
+ *   1280x720   u=1     strip  802 px  overlap  29 px   query cannot fire
+ *   1152x864   u=1     strip  582 px  clear  +17 px    query fired anyway
+ *
+ * So the question has to be asked in DESIGN UNITS — `viewportWidth / uiScale`,
+ * which is the same unit every dimension in `hud.css` is written in — and only
+ * JS knows `uiScale`. `Hud.resize()` publishes the answer as `data-top-fit` on
+ * the HUD root; `src/ui/hud.css` §5 carries the rules.
+ *
+ * THE THRESHOLDS ARE DERIVED, NOT CHOSEN
+ * --------------------------------------
+ * The strip is centred, so it may occupy the frame minus TWICE whatever the
+ * widest corner panel claims. That is the objective panel: `right: 10u` plus
+ * `--vm-rail-w` 240u, border-box, = 250u. Plus one house gutter (10u, the
+ * `--vm-gap` the rest of the HUD is spaced by) so the two do not merely touch.
+ *
+ *     threshold(tier) = stripWidth(tier) + 2 * (OBJECTIVE_COLUMN + GUTTER)
+ *
+ * `tests/hud-top-row.spec.ts` re-derives OBJECTIVE_COLUMN out of `hud.css` and
+ * re-runs that arithmetic against a viewport sweep, so a change to
+ * `--vm-rail-w` or to the panel's offset fails there rather than in a match.
+ * ========================================================================== */
+
+/**
+ * What the top row can hold at this width. Ordered widest-first; each tier is
+ * the one before it minus the least valuable thing left in the strip.
+ *
+ *  - `wide`  all six cells
+ *  - `tight` the three telltales (ARMY / BASE / INCOME) dropped — which is the
+ *            content decision the old 1180 px query already made, kept verbatim
+ *  - `bare`  also without the power STATE WORD; the meter beside it and the
+ *            `is-tight` / `is-down` recolour already carry that state
+ *  - `solo`  the row cannot hold both, so the objective panel goes — the rule
+ *            the old 1000 px query expressed, at a threshold that is derived
+ */
+export type TopRowFit = 'wide' | 'tight' | 'bare' | 'solo';
+
+/**
+ * MEASURED, not modelled. Chromium 1280x720, `--vm-u` = 1px, Rajdhani loaded,
+ * worst realistic content (bank at a seven-figure ceiling, four-figure power on
+ * both sides of the slash, an hours-long clock, three-digit telltales).
+ *
+ * TO RE-MEASURE: mount `ResourceStrip` under a `.vm-hud` with `--vm-u: 1px`,
+ * set `data-top-fit`, and read `.vm-resources`'s `getBoundingClientRect().width`.
+ * These are ceilings — a tier that measures WIDER than its entry here silently
+ * re-opens the overlap, so round up rather than down when you refresh them.
+ */
+export const TOP_STRIP_UNITS: Readonly<Record<Exclude<TopRowFit, 'solo'>, number>> = {
+  wide: 819,
+  tight: 599,
+  bare: 531,
+};
+
+/**
+ * The right-hand column the objective panel claims, in design units:
+ * `right: 10u` + `--vm-rail-w: 240u`, border-box. Restated here because the
+ * fit test needs it in TypeScript; the spec reads both numbers back out of
+ * `hud.css` and fails if they drift apart.
+ */
+export const TOP_OBJECTIVE_COLUMN = 250;
+
+/** One `--vm-gap`, so a fitting row has clearance rather than a shared edge. */
+export const TOP_ROW_GUTTER = 10;
+
+/** Design-unit width a tier needs, counting BOTH sides — the strip is centred. */
+export function topRowNeeds(stripUnits: number): number {
+  return stripUnits + 2 * (TOP_OBJECTIVE_COLUMN + TOP_ROW_GUTTER);
+}
+
+/**
+ * The widest tier that fits `designWidth` = viewport width / `uiScale`.
+ *
+ * Note what is NOT here: viewport height, aspect ratio and CSS pixels. The
+ * strip and the panel are both multiples of `--vm-u`, so once the width is
+ * expressed in the same unit the answer is one comparison per tier.
+ */
+export function topRowFit(designWidth: number): TopRowFit {
+  if (designWidth >= topRowNeeds(TOP_STRIP_UNITS.wide)) return 'wide';
+  if (designWidth >= topRowNeeds(TOP_STRIP_UNITS.tight)) return 'tight';
+  if (designWidth >= topRowNeeds(TOP_STRIP_UNITS.bare)) return 'bare';
+  return 'solo';
+}
+
+/* ==========================================================================
  * SECTION 3 — THE HUD
  * ========================================================================== */
 
@@ -2903,6 +3011,14 @@ export class Hud {
 
     // One design unit. Every dimension in hud.css is a multiple of it.
     this.root.style.setProperty('--vm-u', `${this.uiScale}px`);
+
+    /* WHICH IS WHY THE NEXT LINE IS HERE AND NOT IN A MEDIA QUERY. Every width
+     * in the HUD is a multiple of the unit above, and that unit comes from the
+     * viewport's HEIGHT — so "does the top row fit" is a question about
+     * `w / uiScale`, and CSS cannot ask it. See SECTION 2B. This runs on resize
+     * only: the early return at the head of this method is what keeps it out of
+     * the frame path, since `frame()` calls `resize(false)` every tick. */
+    this.root.dataset.topFit = topRowFit(w / this.uiScale);
 
     this.overlay.resize(w, h, dpr, this.uiScale);
 

@@ -50,7 +50,7 @@ import {
 } from '../core/config';
 import {
   BUILD_TAB_COUNT, BuildTab, CommandKind, CreditReason, EntityFlag, EntityKind, EvaLine,
-  Faction, FxKind, Locomotor, MatchPhase, NONE, OrderKind, Stance, UnitState,
+  FACTION_COUNT, Faction, FxKind, Locomotor, MatchPhase, NONE, OrderKind, Stance, UnitState,
 } from '../core/types';
 import type {
   AvailabilityResult, BuildingDef, Command, DefTables, EntityId, HudCameo, HudSnapshot,
@@ -1440,6 +1440,8 @@ export class ProductionCatalog {
   private readonly byPowerId = new Map<number, BuildEntry>();
   /** 1 where the entry needs a sea to exist. Indexed by `BuildEntry.index`. */
   private readonly seaBound: Uint8Array;
+  /** Each army's own bundling structure, or null. Indexed by `Faction`. See `bundlerFor`. */
+  private readonly bundlerByFaction: (BuildEntry | null)[] = [];
   /** True when a real DefTables was found and merged. */
   readonly bound: boolean;
 
@@ -1494,6 +1496,16 @@ export class ProductionCatalog {
           .sort((a, b) => a.sortOrder - b.sortOrder || a.index - b.index);
         this.byFactionTab.set(faction * BUILD_TAB_COUNT + t, list);
       }
+    }
+
+    // One bundling structure per army, resolved ONCE. See `bundlerFor`.
+    for (let f = 0; f < FACTION_COUNT; f++) {
+      const roster = this.roster(f as Faction, BuildTab.Structures);
+      let hit: BuildEntry | null = null;
+      for (let i = 0; i < roster.length && hit === null; i++) {
+        if (roster[i].kind === BuildKind.Building && roster[i].shipsWith !== '') hit = roster[i];
+      }
+      this.bundlerByFaction.push(hit);
     }
 
     this.seaBound = computeSeaBound(entries, this.byKeyMap);
@@ -1600,6 +1612,38 @@ export class ProductionCatalog {
   /** Everything `faction` may build in `tab`, in sidebar order. */
   roster(faction: Faction, tab: BuildTab): readonly BuildEntry[] {
     return this.byFactionTab.get(faction * BUILD_TAB_COUNT + (tab as number)) ?? EMPTY_ROSTER;
+  }
+
+  /**
+   * The structure in `faction`'s OWN roster that hands over a free unit — in
+   * practice its refinery — or null for an army that has none.
+   *
+   * THE ONE PLACE THAT ANSWERS "WHOSE REFINERY IS THIS ARMY'S", and it exists
+   * because three separate consumers wanted it and one of them got it wrong.
+   * `OreCrisis.refineryEntryFor` delegates here; `bundledUnitFor` below turns
+   * the answer into the hauler; `redeemBundledUnit` uses that to make sure a
+   * rescue delivers the PLAYER'S hull rather than the redeeming structure's.
+   *
+   * `roster` and NOT `entries`, and that is the whole subtlety. Scanning
+   * `entries` returns the NEUTRAL `refinery` for a Meridian player — it ships a
+   * harvester and it comes first in the list — so the Pact would be surveyed
+   * against the wrong structure and the wrong 1400-credit miner for its entire
+   * match. `roster` is the list that has already applied `SHARED_POOL_FACTIONS`,
+   * which is exactly the question being asked.
+   *
+   * Deliberately NOT a `Record<Faction, string>` table. Three refineries serve
+   * four armies (Allies and Soviets share `refinery`), and what MAKES a
+   * structure a refinery here is precisely that it hands over a hauler — which
+   * is authored, on the entry, once. A fifth army with a fourth refinery works
+   * the day it is added, and a hardcoded table is the thing
+   * `RepairSell.SURVIVOR_KEY` got wrong by being four long against
+   * `FACTION_COUNT` 5.
+   *
+   * Resolved once in the constructor because `surveyOreCrisis` asks twice a
+   * second for every player and the catalog is immutable after init.
+   */
+  bundlerFor(faction: Faction): BuildEntry | null {
+    return this.bundlerByFaction[faction as number] ?? null;
   }
 
   get count(): number { return this.entries.length; }
@@ -1950,8 +1994,21 @@ export class ProductionService implements QueueHooks {
   private readonly builtCount: Int32Array;
   /** Live-but-unfinished buildings per (player, catalog index). */
   private readonly buildingCount: Int32Array;
-  /** Factory count per (player, tab), recomputed every tick. */
+  /**
+   * WORKING factory count per (player, tab), recomputed every tick — completed,
+   * and, on a power-gated tab, lit. `BuildQueue.advanceTab` stalls the queue at
+   * zero and `availabilityOf` refuses the cameo, so this is the whole of "a dark
+   * base builds nothing".
+   */
   private readonly factories: Int32Array;
+  /**
+   * Its shadow: completed factories of that tab that a blackout has switched
+   * off. Only `availabilityOf` reads it, and only to tell the two cases apart —
+   * "you have no War Factory" and "your War Factory has no power" are different
+   * problems with different answers, and a cameo that reports the first for the
+   * second sends the player off to build a building they already own.
+   */
+  private readonly darkFactories: Int32Array;
   /** Chosen spawn factory per (player, tab). Slot index, or -1. */
   private readonly primaryFactory: Int32Array;
   /**
@@ -2017,6 +2074,7 @@ export class ProductionService implements QueueHooks {
     this.builtCount = new Int32Array(n);
     this.buildingCount = new Int32Array(n);
     this.factories = new Int32Array(MAX_PLAYERS * BUILD_TAB_COUNT);
+    this.darkFactories = new Int32Array(MAX_PLAYERS * BUILD_TAB_COUNT);
     this.primaryFactory = new Int32Array(MAX_PLAYERS * BUILD_TAB_COUNT).fill(-1);
     this.navalFactory = new Int32Array(MAX_PLAYERS * BUILD_TAB_COUNT).fill(-1);
 
@@ -2056,7 +2114,44 @@ export class ProductionService implements QueueHooks {
     channels.events.on('entity:killed', (ev) => {
       if (ev.kind === EntityKind.Building) this.onBuildingRemoved(ev.id, ev.player);
     });
-    channels.events.on('building:captured', () => { this.techDirty = true; });
+    channels.events.on('building:captured', (ev) => {
+      this.techDirty = true;
+      this.moveBuildingCount(ev.id, ev.fromPlayer, ev.toPlayer);
+    });
+  }
+
+  /**
+   * Move a captured structure between the two owners' `buildingCount` tallies.
+   *
+   * NEARLY EVERYTHING ECONOMIC SURVIVES A CAPTURE WITHOUT A HOOK, because it is
+   * a rescan rather than a running total: `census` refills `builtCount`,
+   * `factories` and `primaryFactory` off `st.owner[i]` every tick, `AiBrain.census`
+   * does the same for `roleCount`, and `OreCrisis` filters by owner per survey.
+   * `buildingCount` is the exception — it is maintained ONLY by the +1 in
+   * `onBuildingCompleted` and the -1 in `onBuildingRemoved`, and a capture is
+   * neither. So a captured structure stayed counted against the player who lost
+   * it, permanently, and the captor was never credited with it.
+   *
+   * The symptom is confined to presentation — `refreshSnapshot` and the sidebar
+   * cameo's `owned` badge are the only readers, and nothing in the simulation
+   * consults it — which is exactly why it went unnoticed. It is still a number
+   * that says something false about the world.
+   *
+   * `ev.defId` is a `publicId` and CANNOT be used here: `buildingCount` is
+   * indexed by the real def index, the same `entry.defId` the two functions
+   * above use. Resolve the entry instead.
+   */
+  private moveBuildingCount(id: EntityId, from: PlayerId, to: PlayerId): void {
+    const entry = this.entryOf(id);
+    if (entry === null || entry.defId < 0) return;
+    const loser = this.world.players[from as number];
+    const winner = this.world.players[to as number];
+    if (loser !== undefined && entry.defId < loser.buildingCount.length) {
+      loser.buildingCount[entry.defId] = Math.max(0, loser.buildingCount[entry.defId] - 1);
+    }
+    if (winner !== undefined && entry.defId < winner.buildingCount.length) {
+      winner.buildingCount[entry.defId]++;
+    }
   }
 
   /* ======================================================================
@@ -2212,11 +2307,19 @@ export class ProductionService implements QueueHooks {
       result.reason = `Requires ${req?.name ?? key}`;
       return result;
     }
-    if (this.factories[(player as number) * BUILD_TAB_COUNT + (entry.tab as number)] <= 0) {
+    const fi = (player as number) * BUILD_TAB_COUNT + (entry.tab as number);
+    if (this.factories[fi] <= 0) {
       result.ok = false;
+      // THREE ANSWERS, NOT TWO. `census` stops counting a factory the moment a
+      // blackout switches it off, so "0 factories" now covers a player whose War
+      // Factory is standing, finished and dark — and telling them they need a
+      // production structure would send them to buy a second one. `darkFactories`
+      // is the discriminator and it is the same scan, one tick fresh.
       result.reason = entry.tab === BuildTab.Structures || entry.tab === BuildTab.Defense
         ? 'Requires a Construction Yard'
-        : 'Requires a production structure';
+        : this.darkFactories[fi] > 0
+          ? 'Needs power'
+          : 'Requires a production structure';
       return result;
     }
     // THE HERO CAP. Last, because it is the only reason on this list that is
@@ -2431,6 +2534,7 @@ export class ProductionService implements QueueHooks {
     this.builtCount.fill(0);
     this.buildingCount.fill(0);
     this.factories.fill(0);
+    this.darkFactories.fill(0);
     this.primaryFactory.fill(-1);
     this.navalFactory.fill(-1);
 
@@ -2451,37 +2555,69 @@ export class ProductionService implements QueueHooks {
       const complete = (flags & EntityFlag.UnderConstruction) === 0 && st.buildProgress[i] >= 1;
       if (!complete) { this.buildingCount[base]++; continue; }
 
-      // NOTE: a brownout does NOT revoke a prerequisite here, even though
-      // BuildableDef.prereqs says "must exist (and be powered)". Gating
-      // construction on power soft-locks a player whose only route out of a
+      // NOTE: a brownout does NOT revoke a PREREQUISITE here, even though
+      // BuildableDef.prereqs says "must exist (and be powered)". Gating the
+      // prereq chain on power soft-locks a player whose only route out of a
       // blackout is building the Power Plant they are now forbidden from
-      // building. The blackout lever is POWER_BLACKOUT_MUL — production gets
-      // four times slower, never impossible. That is also why config says of
-      // it: "Never zero — that is a soft lock."
+      // building. That is why `builtCount` is incremented unconditionally, and
+      // it is a different question from the one the loop below asks — see the
+      // block there: a dark War Factory still SATISFIES `prereqs: ['warFactory']`
+      // for everything in the Structures tab, it simply cannot BUILD anything.
       this.builtCount[base]++;
+
+      /*
+       * A completed structure that DRAWS power and is not getting any — the
+       * same two bits, in the same order, as `PowerGrid.isDark` and the firing
+       * gate in `Combat.engage`. Three readers, one predicate, so they cannot
+       * drift apart.
+       *
+       * `NeedsPower` is not redundant here even though `PowerGrid.recompute`
+       * pass 1 re-powers every completed building before pass 2 sheds. It is
+       * what makes the test mean "draws power" rather than "has the bit set",
+       * and a structure with no draw never gets either bit. Testing `Powered`
+       * alone reads a hand-built test rig — or any spawner that forgets the
+       * flag — as a permanent blackout; `tests/air-layer.spec.ts` plants its
+       * War Factory that way and went red on exactly this.
+       */
+      const dark = (flags & (EntityFlag.NeedsPower | EntityFlag.Powered)) === EntityFlag.NeedsPower;
 
       for (let t = 0; t < entry.producesTabs.length; t++) {
         const tab = entry.producesTabs[t] as number;
         /*
-         * THE ONE TAB THAT NEEDS THE LIGHTS ON.
+         * A DARK FACTORY BUILDS NOTHING — the second half of *"If no electrcity
+         * left, buildings shouldnt be able to shoot / generate troops"*. Nothing
+         * used to gate production on power except the Powers tab; a base on a
+         * grid producing zero turned out tanks at three quarters speed
+         * (POWER_BLACKOUT_MUL 0.25 through `BuildQueue.advanceTab`) and the
+         * report is that this reads as no consequence at all.
          *
-         * Note the NOTE above: a brownout deliberately does not revoke a
-         * prerequisite, because gating construction on power soft-locks a player
-         * whose only way out of a blackout is the Power Plant they would then be
-         * forbidden from building. That argument is about the ROUTE OUT, and it
-         * does not reach here: nothing in the Powers tab is a route out of
-         * anything. A dark Command Post sells no powers, and the player's answer
-         * is the same answer it always was — build a plant, from the Structures
-         * tab, which is not gated on power and never will be.
+         * Not counting the factory is the whole mechanism, and it is deliberately
+         * not a new one: `BuildQueue.advanceTab` already stalls at
+         * `factoryCount <= 0` with `HoldReason.NoFactory`, charging nothing and
+         * advancing nothing, and it already auto-resumes the moment the count
+         * comes back. So the lights coming on resume a half-built tank exactly
+         * where it stopped, with no refund and no new state to save.
          *
-         * `EntityFlag.Powered` is the grid's own bit, cleared on a shed victim
-         * by `PowerGrid.recompute` (an unflagged consumer like this one is in
-         * the first class to go dark). `census` runs EVERY TICK, so the tab
-         * opens and closes with the grid rather than with an event contract
-         * somebody has to remember to fire.
+         * TWO TABS ARE EXEMPT AND THAT IS THE ANTI-SOFT-LOCK PROPERTY.
+         * `Structures` and `Defense` are published by the Construction Yard and
+         * by nothing else in the game (they are the only `producesTabs: [S, D]`
+         * rows, one per army), and `PowerGrid.shedPriority` returns `never` for
+         * `EntityFlag.IsBuilder`, so a yard cannot go dark however deep the
+         * deficit. The exemption is therefore belt AND braces: it can never fire
+         * today, and if it ever did it would be the exact soft-lock the NOTE
+         * above exists to prevent — a player forbidden from building the Power
+         * Plant that is their only way out. Do not "simplify" it away on the
+         * grounds that the yard is never shed; that is a fact about another file.
+         *
+         * The Powers tab keeps its own long-standing gate as a special case of
+         * this rule rather than as a rule of its own. Its argument was always
+         * that nothing in that tab is a route out of anything, which is still
+         * true and is now the general test.
          */
-        if ((tab as BuildTab) === BuildTab.Powers && (flags & EntityFlag.Powered) === 0) continue;
+        const gated = (tab as BuildTab) !== BuildTab.Structures
+          && (tab as BuildTab) !== BuildTab.Defense;
         const fi = owner * BUILD_TAB_COUNT + tab;
+        if (dark && gated) { this.darkFactories[fi]++; continue; }
         this.factories[fi]++;
         // Primary wins; otherwise the first one found. Deterministic either way
         // because byKind is a dense list in allocation order.
@@ -2694,6 +2830,83 @@ export class ProductionService implements QueueHooks {
   }
 
   /**
+   * Redeem the `shipsWith` promise of a structure that is ALREADY STANDING.
+   *
+   * The delivery above fires once, at `building:completed`. This is the same
+   * gift asked for later, by `orecrisis.system.ts`, on behalf of a player whose
+   * harvester is dead and who has been measured — not guessed — to be unable to
+   * raise the price of another by any sequence of sells. See `OreCrisis.ts` for
+   * that arithmetic and for why the state is reachable without playing badly.
+   *
+   * It refuses anything that is not the caller's own finished, live structure
+   * carrying a `shipsWith`, and returns whether a unit actually reached the
+   * ground — the caller must not start a cooldown on a delivery that never
+   * happened, or a refinery ringed by rocks would burn the rescue silently.
+   *
+   * ========================================================================
+   * WHOSE HAULER COMES OUT IS A QUESTION ABOUT THE PLAYER, NOT THE BUILDING.
+   *
+   * This used to deliver `entry.shipsWith` — the STRUCTURE'S promise — which is
+   * right at `building:completed`, where the structure was necessarily built
+   * from the caller's own roster. It is wrong here. Capture flips `owner` and
+   * leaves `defId` alone, `entryForSlot` resolves from `defId`, and nothing in
+   * the search that reaches this method cares which army the structure came
+   * from. So a Meridian Pact player holding a CAPTURED Allied refinery was
+   * handed the Allied `harvester`. Confirmed end to end for all four armies in
+   * `tests/ore-crisis-captured-refinery.spec.ts`, which fails on the old line.
+   *
+   * That is not a cosmetic mismatch. The two hulls differ in the things the
+   * game is made of — `Locomotor.Track` against `Hover`, `crushLevel` 5 against
+   * the Pact doctrine of 0 on every hull, 700 cargo against 450 (a +56%
+   * economy), and a model from the wrong army — and, decisively, the delivered
+   * hull IS NOT IN THE RECIPIENT'S ROSTER, so when it dies they cannot buy
+   * another. This method's one caller is the rescue in `orecrisis.system.ts`,
+   * whose entire purpose is to restart a stalled economy; handing over a hull
+   * the army can neither support nor replace is a worse outcome than the stall.
+   *
+   * WHICH STRUCTURE IT DRIVES OUT OF IS STILL FREE, deliberately. That is
+   * geometry — an exit point and a ring search — and a captured refinery is a
+   * perfectly good place for your own hauler to appear. Keeping every owned
+   * bundler in the caller's search is what lets the delivery survive a home
+   * refinery that is walled in.
+   *
+   * The fallback to the host's own promise covers exactly one case: an army
+   * with no bundling structure in its roster at all (an unbound catalog, or a
+   * future faction that ships nothing). Old behaviour, rather than silence.
+   * ========================================================================
+   */
+  redeemBundledUnit(player: PlayerId, building: EntityId): boolean {
+    const st = this.world.store;
+    const i = st.index(building);
+    if (i < 0 || st.kind[i] !== EntityKind.Building) return false;
+    if (st.owner[i] !== (player as number)) return false;
+    const f = st.flags[i];
+    if ((f & EntityFlag.Alive) === 0) return false;
+    if ((f & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) return false;
+    const entry = this.entryForSlot(i);
+    if (entry === null || entry.shipsWith === '') return false;
+    const p = this.world.players[player as number];
+    if (p === undefined) return false;
+    return this.deliverBundledUnit(p, i, entry, this.bundledUnitFor(player));
+  }
+
+  /**
+   * The hauler `player`'s OWN army's refinery ships, or null.
+   *
+   * Reads `catalog.bundlerFor(faction)`, which is the roster-aware answer — see
+   * its header for why scanning `catalog.entries` returns the Allied harvester
+   * for a Pact player.
+   */
+  bundledUnitFor(player: PlayerId): BuildEntry | null {
+    const p = this.world.players[player as number];
+    if (p === undefined) return null;
+    const bundler = this.catalog.bundlerFor(p.faction);
+    if (bundler === null) return null;
+    const unit = this.catalog.byKey(bundler.shipsWith);
+    return unit !== null && unit.kind === BuildKind.Unit ? unit : null;
+  }
+
+  /**
    * Hand over the unit a structure "ships with" — in practice, the refinery's
    * harvester. See `BuildEntry.shipsWith` for why this exists.
    *
@@ -2712,46 +2925,26 @@ export class ProductionService implements QueueHooks {
    * touches the RNG or a clock. Silently does nothing if there is nowhere to
    * put it — a refinery walled in on all sides is the player's problem, and a
    * harvester spawned inside a cliff would be worse.
-   */
-  /**
-   * Redeem the `shipsWith` promise of a structure that is ALREADY STANDING.
    *
-   * The delivery above fires once, at `building:completed`. This is the same
-   * gift asked for later, by `orecrisis.system.ts`, on behalf of a player whose
-   * harvester is dead and who has been measured — not guessed — to be unable to
-   * raise the price of another by any sequence of sells. See `OreCrisis.ts` for
-   * that arithmetic and for why the state is reachable without playing badly.
-   *
-   * It refuses anything that is not the caller's own finished, live structure
-   * carrying a `shipsWith`, and returns whether a unit actually reached the
-   * ground — the caller must not start a cooldown on a delivery that never
-   * happened, or a refinery ringed by rocks would burn the rescue silently.
+   * `host` and `override` are two parameters because they answer two questions:
+   * `host` is WHERE (its `exitX`/`exitZ`, rotated by the standing structure's
+   * yaw) and `override` is WHAT. They coincide on the completion path — where
+   * the structure was necessarily built from the owner's own roster — and they
+   * do not on the rescue path. See `redeemBundledUnit`. A null `override` falls
+   * back to the host's own promise.
    */
-  redeemBundledUnit(player: PlayerId, building: EntityId): boolean {
-    const st = this.world.store;
-    const i = st.index(building);
-    if (i < 0 || st.kind[i] !== EntityKind.Building) return false;
-    if (st.owner[i] !== (player as number)) return false;
-    const f = st.flags[i];
-    if ((f & EntityFlag.Alive) === 0) return false;
-    if ((f & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) return false;
-    const entry = this.entryForSlot(i);
-    if (entry === null || entry.shipsWith === '') return false;
-    const p = this.world.players[player as number];
-    if (p === undefined) return false;
-    return this.deliverBundledUnit(p, i, entry);
-  }
-
-  private deliverBundledUnit(p: PlayerState, i: number, entry: BuildEntry): boolean {
-    const unit = this.catalog.byKey(entry.shipsWith);
+  private deliverBundledUnit(
+    p: PlayerState, i: number, host: BuildEntry, override: BuildEntry | null = null,
+  ): boolean {
+    const unit = override ?? this.catalog.byKey(host.shipsWith);
     if (unit === null || unit.kind !== BuildKind.Unit) return false;
 
     const st = this.world.store;
     const yaw = st.yaw[i];
     const cos = Math.cos(yaw);
     const sin = Math.sin(yaw);
-    const ex = entry.exitX;
-    const ez = entry.exitZ;
+    const ex = host.exitX;
+    const ez = host.exitZ;
     const exitX = st.posX[i] + ex * cos + ez * sin;
     const exitZ = st.posZ[i] + ez * cos - ex * sin;
 

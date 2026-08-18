@@ -123,7 +123,9 @@ import type { EntityStore, World } from '../core/world';
 import { PerEntityU32 } from '../core/world';
 import { Rng, cellToWorld, clamp, clampCell, dist2, distSq2, hash2i, worldToCell } from '../core/math';
 import {
-  AI_DEPLOY, AI_NAVAL, AI_POWER, AI_POWER_BUY, AI_SUPERWEAPON, AI_UPGRADE, BUILD_ROLE_NAMES,
+  AI_DEPLOY, AI_FOCUS, AI_NAVAL, AI_POWER, AI_POWER_BUY, AI_PRODUCERS, AI_RAID, AI_RETREAT,
+  AI_SAVING, AI_SUPERWEAPON,
+  AI_UPGRADE, BUILD_ROLE_NAMES, EXTRA_PRODUCERS, isOpeningEconomyRole, openingHoldFor,
   BuildCatalog, BuildRole, THREAT_CLASS_NAMES, UpgradeAudience,
   classifyThreat, difficultyProfile, openingFor, personalityProfile, pickUnit,
   powerPlanFor, prereqsMet, superweaponPlanFor, upgradePlanFor,
@@ -180,6 +182,29 @@ const GROUP_SCOUT = 3;
  * back on dry land, which is what returns them to the ordinary strike group.
  */
 const GROUP_NAVAL = 4;
+
+/**
+ * Nearly dead, and walking to the rally point until it is not.
+ *
+ * A fifth tag for the third time and for the identical reason: `regroupSquads`
+ * re-files everything it finds into strike or reserve, so a hull with a job of
+ * its own must be INVISIBLE to that pass or it is re-tagged and immediately
+ * attack-moved back into the fight it was pulled out of. `withdrawWounded`
+ * clears the tag when the hull is healthy again or has arrived, which is what
+ * returns it to the ordinary strike group. See `AI_RETREAT`.
+ */
+const GROUP_WITHDRAW = 5;
+
+/**
+ * Detached to hit the enemy economy. See `AI_RAID`.
+ *
+ * The fourth tag for the fourth time and the same reason every time:
+ * `regroupSquads` re-files everything it finds, so a party with a job of its
+ * own has to be invisible to that pass or it is walked back to the rally point
+ * mid-raid. Cleared when the raid expires, its target is gone, or the party is
+ * dead — which is what returns the survivors to the ordinary strike group.
+ */
+const GROUP_RAID = 6;
 
 /** What an amphibious operation is currently doing. */
 const enum AmphibState {
@@ -269,6 +294,28 @@ const THREAT_DIM = Math.max(1, Math.floor(MAP_CELLS / AI_MEMORY.threatDiv));
 const THREAT_CELLS = THREAT_DIM * THREAT_DIM;
 /** Metres covered by one threat-grid bucket. */
 const THREAT_BUCKET_METRES = MAP_SIZE / THREAT_DIM;
+
+/**
+ * Published goal per `EXTRA_PRODUCERS` row, index-aligned with it.
+ *
+ * Literals rather than a template, because `consider` is on the build clock for
+ * every brain in the match and this file allocates nothing there.
+ */
+const EXTRA_PRODUCER_GOAL: readonly string[] = [
+  'bank is ahead of the barracks — adding another',
+  'bank is ahead of the war factory — adding another',
+];
+
+/**
+ * Ticks between re-stating a raiding party's focus target.
+ *
+ * `AI_FOCUS.retargetTicks`, not `AI_MILITARY.reissueTicks`: a raid is choosing
+ * WHAT to shoot among soft targets that die fast, which is the focus-fire
+ * question rather than the keep-the-wave-walking one. Held here rather than in
+ * `AI_RAID` because it is a property of the order cadence this file owns, not
+ * of the doctrine.
+ */
+const AI_RAID_REISSUE = AI_FOCUS.retargetTicks;
 
 /** Max commands the budget may bank, so a paused AI does not burst on resume. */
 const ACTION_BURST_CAP = 8;
@@ -473,6 +520,31 @@ export class AiBrain {
   private readonly rearmTicks: number;
   /** Last tick a gather order went out. Rate-limits the rally nudge. */
   private lastGatherTick = -1e9;
+  /**
+   * The one enemy the strike group has been told to kill, or NONE.
+   *
+   * See `AI_FOCUS`. Held across ticks so `pressAttack` can tell "the target is
+   * unchanged, do not spend an action re-saying it" from "the target died, go
+   * back to the objective" — and the second matters, because an explicit attack
+   * order pointed at a dead handle leaves the group standing over the corpse.
+   */
+  private focusTarget: EntityId = NONE;
+  private focusPickedTick = -1e9;
+  /** Explicit attack orders issued. Its own number: nothing else records one. */
+  private focusOrders = 0;
+  /** Hulls walked out of a fight. Its own number, for the same reason. */
+  private withdrawals = 0;
+  /* -- the second front (see `AI_RAID`) ----------------------------------- */
+  /** Party members, rebuilt from the tags every pass. Never the source of truth. */
+  private readonly raidIds = new Int32Array(AI_SQUAD_MAX * 2);
+  private raidX = -1;
+  private raidZ = -1;
+  private raidStartTick = 0;
+  private raidOrderTick = -1e9;
+  private lastRaidTick = -1e9;
+  /** True between launch and the party being untagged or wiped. */
+  private raidActive = false;
+  private raidsLaunched = 0;
   private rallyX = MAP_SIZE * 0.5;
   private rallyZ = MAP_SIZE * 0.5;
 
@@ -705,7 +777,40 @@ export class AiBrain {
   private bestEntry: CatalogEntry | null = null;
   private bestScore = 0;
   private bestGoal = '';
+  /**
+   * The best thing this pass WANTED and could not yet pay for. See `consider`.
+   * Held as fields for the same no-allocation reason as `bestEntry`.
+   */
+  private saveEntry: CatalogEntry | null = null;
+  private saveScore = 0;
+  private saveGoal = '';
+  /**
+   * Credits the saving target actually needs, which is NOT always its price.
+   *
+   * A commander power is gated on `AI_POWER_BUY.bankMultiple` rather than on
+   * its cost — the brain insists on change in the bank after buying a button
+   * that fields nothing — so banking toward the price alone would stop one
+   * threshold short of the purchase and hold there forever.
+   */
+  private saveNeed = 0;
+  /** Build passes that held a price back rather than spending it on army. */
+  private savedPasses = 0;
   private spendable = 0;
+  /* -- the opening governor (see `AI_OPENING`) ----------------------------- */
+  /**
+   * What the brain will commit to ARMY AND DEFENCE this pass.
+   *
+   * Equal to `spendable` for the whole match except before the first ore lands,
+   * which is the entire scope of the governor. `budgetFor` decides which of the
+   * two a candidate is measured against, by role.
+   */
+  private discretionary = 0;
+  /** Fraction of the opening bank this rung will not spend on army or defence. */
+  private readonly openingHold: number;
+  /** Highest balance seen while income was still zero. */
+  private openingBank = 0;
+  /** Latched true the first tick ore is banked. Never set back. */
+  private openingSpent = false;
 
   constructor(
     world: World,
@@ -723,6 +828,7 @@ export class AiBrain {
     const p = world.player(player);
     this.faction = p === undefined ? Faction.Neutral : p.faction;
     this.diff = difficultyProfile(p === undefined ? 1 : p.aiDifficulty);
+    this.openingHold = openingHoldFor(p === undefined ? 1 : p.aiDifficulty);
     this.pers = personalityProfile(p === undefined ? 0 : p.aiPersonality);
     // Every brain in a match draws from its own stream, so adding a second AI
     // cannot change the first one's decisions.
@@ -863,6 +969,9 @@ export class AiBrain {
     // the reason every offset in this function exists: no single tick may do
     // two layers' work for eight brains at once.
     if (t % AI_CADENCE.build === 6) this.repairBase(p);
+    // The second front, one slot ahead of the squad layer so it reads the
+    // PREVIOUS pass settled state and never splits a group mid-reform.
+    if (t % AI_CADENCE.squad === 1) this.raid(s);
     if (t % AI_CADENCE.squad === 3) this.squad(s);
     if (t % AI_CADENCE.scout === 4) this.scout(s);
     // The navy, on the squad clock one slot after the squad layer. It reads
@@ -1988,6 +2097,13 @@ export class AiBrain {
       // A wounded harvester under fire is worth more parked at home than dead
       // on the field: it is 1400 credits and the ore is not going anywhere.
       if (underFire && hpFrac < AI_ECONOMY.harvesterFleeHp) {
+        // A harvester already running for home must not be re-ordered every
+        // pass. NOTE: this guard is VACUOUS — `UnitState.Fleeing` is assigned by
+        // nothing in the codebase, so the test is always true and the brain
+        // re-issues the same Move at 2 Hz, spending an action each time. Left as
+        // it is deliberately: the fix is one word (`Moving`), but it returns APM
+        // to EVERY rung including Easy, whose 40 apm is the whole point of the
+        // rung, so it needs a per-rung measurement it has not had.
         if (st.state[i] !== UnitState.Fleeing) {
           this.issueOrder(OrderKind.Move, this.one(h), 1, this.baseX, this.baseZ, NONE);
         }
@@ -2534,10 +2650,64 @@ export class AiBrain {
     this.repairsOrdered++;
   }
 
-  /** Score one candidate into `bestEntry`. Allocation-free by construction. */
-  private consider(entry: CatalogEntry | undefined, score: number, why: string): void {
+  /**
+   * Score one candidate into `bestEntry`. Allocation-free by construction.
+   *
+   * A CANDIDATE THE BANK CANNOT YET COVER IS A SAVING TARGET, NOT A REJECTION,
+   * and that distinction is the whole of *"AI building capabilities should be
+   * according to his money"*.
+   *
+   * This function used to drop an unaffordable entry on the floor, and the
+   * caller then fell through to `buildUnits`, which buys the CHEAPEST thing
+   * that scores well. So the highest-value purchase in the game — a harvester
+   * at 1400 — lost every single pass to a 200-credit rifleman, forever, because
+   * a rifleman is what an empty bank can afford. Measured over a 16 sim-minute
+   * Normal match: the brain's own `wantHarvesters` sat at 8 while it bought 93
+   * riflemen and 3 harvesters, its fleet fell 7 -> 1, and `oreMined` FROZE at
+   * 47 874 for the last three minutes with 574 credits in the bank and no way
+   * to reach 1400 ever again. The brain never chose that; nothing in the file
+   * was capable of choosing otherwise.
+   *
+   * The reserve already existed TWICE — the scripted opening holds its next
+   * step's price back (`saving 2000 for warFactory`), and `AI_REBUILD
+   * .bankFraction` holds an MCV's back — and CLAUDE.md names it as "the half
+   * that makes it work" both times. This is the same mechanism on the adaptive
+   * layer, which is where the match actually spends its money.
+   *
+   * NOTE THE ORDER OF THE THREE TESTS. `score <= bestScore` first, so a
+   * candidate already beaten by something AFFORDABLE never becomes a saving
+   * target — you do not bank for a refinery when a harvester you can pay for
+   * right now scored higher. Then `available`, which is prereqs and is a real
+   * "look elsewhere". Then the queue, which is also a real "look elsewhere":
+   * saving for a tab that is full buys nothing but a stall.
+   */
+  private consider(
+    entry: CatalogEntry | undefined, score: number, why: string, wantCredits = 0,
+  ): void {
     if (entry === undefined || score <= this.bestScore) return;
-    if (!this.available(entry) || !this.canQueue(entry, this.spendable)) return;
+    if (!this.available(entry) || !this.queueHasRoom(entry)) return;
+    // `wantCredits` is for the callers whose own gate is stricter than the
+    // price — see `considerPowers`. Never LOWER than the price: a purchase the
+    // bank cannot cover is not a purchase.
+    const need = wantCredits > entry.cost ? wantCredits : entry.cost;
+    const budget = this.budgetFor(entry);
+    if (budget < need) {
+      // A PRICE THE BANK CANNOT PHYSICALLY REACH IS NOT A SAVING TARGET.
+      // `Economy.grant` clamps at `storageMax` and `spendable` is credits minus
+      // the rung's `creditFloor`, so an entry costing more than the difference
+      // can never become affordable however long the brain waits — and holding
+      // its price back would stop army production permanently. This is the one
+      // way the reserve could deadlock rather than merely take a while, and it
+      // is exact rather than a timeout.
+      if (need > this.savingCeiling()) return;
+      if (score > this.saveScore) {
+        this.saveEntry = entry;
+        this.saveScore = score;
+        this.saveGoal = why;
+        this.saveNeed = need;
+      }
+      return;
+    }
     this.bestEntry = entry;
     this.bestScore = score;
     this.bestGoal = why;
@@ -2550,11 +2720,12 @@ export class AiBrain {
    */
   private chooseBuild(s: SimContext, p: PlayerState): CatalogEntry | null {
     this.spendable = p.credits - this.diff.creditFloor;
+    this.governOpening(p);
 
     /* -- 1. power is an interrupt ----------------------------------------- */
     if (this.powerUrgent) {
       const power = this.catalog.forRole(BuildRole.Power, this.faction);
-      if (power !== undefined && this.available(power) && this.canQueue(power, this.spendable)) {
+      if (power !== undefined && this.available(power) && this.canQueue(power, this.budgetFor(power))) {
         this.buildGoal = 'power deficit — queueing a generator';
         return power;
       }
@@ -2582,7 +2753,7 @@ export class AiBrain {
     if (this.firstAirTick >= 0 && s.tick - this.firstAirTick >= this.diff.airReactionTicks
         && this.antiAirCount < airCap) {
       const aa = this.catalog.forRole(BuildRole.AntiAir, this.faction);
-      if (aa !== undefined && this.available(aa) && this.canQueue(aa, this.spendable)) {
+      if (aa !== undefined && this.available(aa) && this.canQueue(aa, this.budgetFor(aa))) {
         this.buildGoal = 'saw an aircraft — putting up anti-air';
         return aa;
       }
@@ -2600,7 +2771,7 @@ export class AiBrain {
         if (step.optional) { this.openingIndex++; continue; }
         break;
       }
-      if (!this.canQueue(entry, this.spendable)) {
+      if (!this.canQueue(entry, this.budgetFor(entry))) {
         // Cannot start the next scripted step yet. Do NOT stop here: hold the
         // step's cost back and let the adaptive layer spend whatever is left
         // over. An AI that sits on 3000 credits because it is "saving for a
@@ -2620,6 +2791,10 @@ export class AiBrain {
     // Floor: below this, banking beats building.
     this.bestScore = 0.35;
     this.bestGoal = '';
+    this.saveEntry = null;
+    this.saveScore = 0.35;
+    this.saveGoal = '';
+    this.saveNeed = 0;
 
     const refineries = this.roleCount[BuildRole.Refinery] + this.roleBuilding[BuildRole.Refinery];
     const safeTicks = s.tick - this.lastDamageTick;
@@ -2705,14 +2880,131 @@ export class AiBrain {
     this.considerUpgrades(s, p);
     this.considerCommandPost(p);
     this.considerPowers(s, p);
+    this.considerExtraProducers();
 
     if (this.bestEntry !== null) {
       this.buildGoal = this.bestGoal;
       return this.bestEntry;
     }
 
-    // Nothing structural is worth building: convert credits into army.
-    return this.buildUnits(s, p, false);
+    // Nothing affordable was worth building: either bank toward the thing that
+    // was, or convert the credits into army.
+    return this.spendRemainder(s, p);
+  }
+
+  /**
+   * HOLD THE PRICE OF THE THING THIS BANK IS ACTUALLY FOR, then spend what is
+   * left on army.
+   *
+   * The same move the scripted opening makes in `chooseBuild` step 3, on the
+   * layer that spends the rest of the match's money. Without it `buildUnits`
+   * converts the bank into whatever is cheap and the saving target is never
+   * reached — see the measurement in `consider`.
+   *
+   * `AI_SAVING.holdFraction` OF THE PRICE, NOT ALL OF IT, and that fraction is
+   * doing real work rather than hedging. A saving target is BY DEFINITION one
+   * whose price exceeds `spendable`, so holding the whole price back would
+   * always drive the remainder negative and stop army production outright every
+   * time the brain wanted a refinery — the failure the opening branch's own
+   * comment is about. At 0.75 the reserve is still total when the brain is a
+   * long way short (0.75 x 1400 = 1050 against 300 in the bank leaves nothing,
+   * correctly) and becomes a trickle as it closes the gap. That degradation is
+   * the whole reason it is a fraction and not a flag.
+   *
+   * A METHOD RATHER THAN A BLOCK, and that is not a style choice. `chooseBuild`
+   * opens by writing `this.saveEntry = null`, which narrows the field to `null`
+   * for the whole rest of that function — TypeScript does not un-narrow a
+   * `this` property across the `consider` calls that write it, and an annotated
+   * local does not help because the initializer is narrowed too. `bestEntry`
+   * has had the identical shape since it was written and gets away with it only
+   * because nothing ever reads a member off it. Reading the field in a
+   * different frame is the honest fix; a cast would be a lie about a field that
+   * really can hold either.
+   */
+  private spendRemainder(s: SimContext, p: PlayerState): CatalogEntry | null {
+    const saving = this.saveEntry;
+    if (saving === null) return this.buildUnits(s, p, false);
+    const need = this.saveNeed;
+    const held = need * AI_SAVING.holdFraction;
+    this.spendable -= held;
+    this.discretionary -= held;
+    this.savedPasses++;
+    const filler = this.buildUnits(s, p, false);
+    if (filler !== null) return filler;
+    this.buildGoal = `saving ${Math.round(need)} for ${saving.key}`;
+    return null;
+  }
+
+  /**
+   * A SECOND BARRACKS, A SECOND WAR FACTORY — the one lever in this game that
+   * converts money into BUILD CAPABILITY, and the brain never touched it.
+   *
+   * Reported as *"AI building capabilities should be according to his money"*.
+   * `src/sim/BuildQueue.ts` opens by saying the queues belong to the PLAYER:
+   * "a second Barracks does not give you a second queue, it makes the one queue
+   * 35% faster (`FACTORY_SPEED_BONUS`)", up to `FACTORY_SPEED_CAP` 2.0. That is
+   * the C&C money->tempo trade, it is available to both sides identically, and
+   * `chooseBuild` proposed a barracks or a war factory ONLY on
+   * `roleCount === 0`. So an AI holding 60 000 credits ran exactly the same
+   * production line as one holding 600.
+   *
+   * MEASURED, on a 14 sim-minute Brutal match opened with 60 000 credits: of
+   * 925 build passes taken with 5000+ in the bank, 903 were refused because
+   * BOTH unit tabs were already full. The brain was not short of money and it
+   * was not short of judgement; it was short of factories, and nothing in the
+   * file could buy one.
+   *
+   * FOUR GATES, and every one of them is about money rather than about skill:
+   *
+   *   ECONOMY FIRST. `wantHarvesters === 0` and no expansion pending and the
+   *   refinery count at the rung's cap. Buying a second war factory over a
+   *   third harvester is the classic way to lose with a full base, and it is
+   *   also what would make this a tempo cheat rather than a purchase.
+   *
+   *   THE QUEUE MUST BE SATURATED. `queueSaturated` — the money has to be
+   *   visibly backing up behind THIS producer. An idle tab does not want a
+   *   second factory, it wants a reason.
+   *
+   *   THE BANK MUST PLAINLY COVER IT, at `AI_PRODUCERS.bankMultiple`, measured
+   *   on `spendable` rather than on `credits`. That is what makes the rule
+   *   ladder itself with no per-rung row of its own: Easy leaves
+   *   `AI_SKILL[].creditFloor` 1400 sitting idle and runs a 2-refinery,
+   *   5-harvester economy, so its `spendable` never gets near a barracks at
+   *   2.5x, while a Brutal brain with a finished economy clears it easily.
+   *
+   *   THE CEILING IS THE GAME'S OWN. `AI_PRODUCERS.maxUseful` is derived from
+   *   `FACTORY_SPEED_BONUS` and `FACTORY_SPEED_CAP`, so it is the count past
+   *   which another factory buys literally nothing, and it can never drift out
+   *   of step with the two constants that decide it.
+   *
+   * Scored BELOW every first-of-kind and every economy candidate on purpose:
+   * this must never win a pass in which the brain still has a producer, a
+   * refinery or a harvester it does not own.
+   */
+  private considerExtraProducers(): void {
+    /* THE SATURATION GATE HAS TO MEAN SOMETHING, and at `queueDepth` 1 it does
+     * not: one item in the tab satisfies it, which is the state an Easy brain
+     * is in whenever it has bought anything at all. That rung's whole design is
+     * that it does NOT keep the line fed — `AI_SKILL`'s own note calls the gap
+     * between units "the texture of a human who is not paying attention" — so a
+     * brain that will not fill one queue has no business buying a second door.
+     * Measured without this: an Easy AI bought a second barracks off its
+     * opening bank, which is exactly the flat ladder that table exists to stop. */
+    if (this.diff.queueDepth < 2) return;
+    if (this.wantHarvesters > 0 || this.expandX >= 0) return;
+    if (this.roleCount[BuildRole.Refinery] < this.diff.maxRefineries) return;
+
+    for (let k = 0; k < EXTRA_PRODUCERS.length; k++) {
+      const row = EXTRA_PRODUCERS[k];
+      const owned = this.roleCount[row.role] + this.roleBuilding[row.role];
+      // Never the FIRST one: that is the branch above, at a much higher score.
+      if (owned < 1 || owned >= AI_PRODUCERS.maxUseful) continue;
+      if (!this.queueSaturated(row.tab as number)) continue;
+      const entry = this.catalog.forRole(row.role, this.faction);
+      if (entry === undefined) continue;
+      if (this.spendable < entry.cost * AI_PRODUCERS.bankMultiple) continue;
+      this.consider(entry, AI_PRODUCERS.score, EXTRA_PRODUCER_GOAL[k]);
+    }
   }
 
   /* -- "is there anywhere to put a dock", memoised on a tick stamp ---------- */
@@ -3063,8 +3355,34 @@ export class AiBrain {
    * checks, so the AI can never own a power it will not use or use one it has
    * not bought.
    *
-   * No `return` after a hit, like the upgrade layer: the five are not
-   * alternatives and the plan order only decides which is reached first.
+   * THE PLAN ORDER IS OBEYED, AND IT USED TO BE INVERTED BY PRICE. This loop
+   * ran to the end with no `return`, offering every unsettled power to
+   * `consider` at the IDENTICAL score — and `consider` breaks a tie in favour
+   * of the first candidate, so the plan order was supposed to decide. It did
+   * not, because the loop ALSO refused any power the bank could not cover at
+   * `bankMultiple` and simply moved on. The brain's bank sits near zero by
+   * design (it converts income into army), so the only threshold it ever
+   * cleared was the CHEAPEST power's, and the cheapest is Orbital Scan at 800
+   * against 1200-2500 for the rest.
+   *
+   * Measured over 24 sim-minutes, both brains, temperate, seed 90210, powers
+   * and their seam installed: a Hard brain built its Command Post at minute 8,
+   * bought Orbital Scan, and called a power ONCE in the whole match; a Normal
+   * brain built the Post at minute 8 and bought NOTHING for the remaining
+   * sixteen minutes; Brutal called four. Ore Boost — 2000 credits for 2500 —
+   * was never bought at any rung, which is the same deadlock in miniature: the
+   * one power that answers an empty bank is gated on having a full one.
+   *
+   * So the first power in the plan this brain still wants is the one it commits
+   * to, and it commits by SAVING for it rather than by walking past it. That is
+   * the `consider` reserve, with `bankMultiple` handed over as the target so the
+   * brain banks toward the threshold it will actually be bought at instead of
+   * stopping one gate short of it.
+   *
+   * `return` RATHER THAN `continue`, and it changes the outcome rather than the
+   * cost: only one candidate can win a build pass anyway, so the loop's only
+   * effect past the first wanted power was to let a cheaper, worse one take the
+   * pass off it.
    */
   private considerPowers(s: SimContext, p: PlayerState): void {
     if (this.diff.powerMask === 0) return;
@@ -3076,12 +3394,43 @@ export class AiBrain {
       const spec = powerByContentKey(plan[k]);
       if (spec === undefined) continue;
       if ((this.diff.powerMask & (1 << (spec.id as number))) === 0) continue;
+      if (!this.powerWindowOpen(spec.id as number)) continue;
       const entry = this.catalog.get(plan[k]);
       if (entry === undefined) continue;
       if (this.powerSettled(s, p, entry, spec.id as number)) continue;
-      if (p.credits < entry.cost * AI_POWER_BUY.bankMultiple) continue;
-      this.consider(entry, AI_POWER_BUY.score * this.pers.tech, `power: ${spec.key}`);
+      this.consider(
+        entry, AI_POWER_BUY.score * this.pers.tech, `power: ${spec.key}`,
+        entry.cost * AI_POWER_BUY.bankMultiple,
+      );
+      return;
     }
+  }
+
+  /**
+   * Could this power still ever be CALLED, or has its one window shut?
+   *
+   * `AI_POWER`'s header states the doctrine for firing — every rule there is a
+   * MINIMUM EFFECT test rather than a cost test — and this is the same question
+   * asked one step earlier, at the purchase. Four of the five are worth owning
+   * whenever they can be afforded: repair and the airstrike answer whatever is
+   * happening, the ore boost is worth the same 2500 at any minute, and a
+   * chronoshift waits for a posture that recurs.
+   *
+   * ORBITAL SCAN IS THE EXCEPTION AND IT IS THE ONE THE BRAIN KEPT BUYING.
+   * `tryScan` fires only while the AI does not know where the enemy lives, and
+   * says so: "once `memCount` is non-zero the enemy base is on the map and a
+   * second circle buys nothing". But a power cannot be bought before a Command
+   * Post exists, the Post lands at minute 4-8, and the scouting layer has found
+   * the enemy long before that — so the purchase and the only window it is
+   * useful in CANNOT OVERLAP in an ordinary match. Measured: bought by the Hard
+   * brain in every run of the probe, called zero times in any of them.
+   *
+   * The condition is `tryScan`'s own, verbatim, so the two cannot drift apart:
+   * if the scan is ever worth firing again it is worth buying again.
+   */
+  private powerWindowOpen(power: number): boolean {
+    if (power !== (CommanderPowerId.OrbitalScan as number)) return true;
+    return this.memCount === 0 && this.enemyBaseX < 0;
   }
 
   /**
@@ -3194,7 +3543,9 @@ export class AiBrain {
     // the yard-less path, where the thing being saved for is the Construction
     // Vehicle that ends the crippled state — see `build`. Without it that path
     // spends `p.credits` outright and the 3000 is never reached.
-    const spendable = immediate ? Math.max(0, p.credits - reserve) : this.spendable;
+    // ARMY IS DISCRETIONARY. The crippled path keeps using the raw bank: a
+    // brain with no Construction Yard is not opening, it is surviving.
+    const spendable = immediate ? Math.max(0, p.credits - reserve) : this.discretionary;
 
     // Candidates: everything armed this faction can actually field right now.
     const cands = this.candidates;
@@ -3271,7 +3622,21 @@ export class AiBrain {
 
   /** Affordable, and the tab has room. */
   private canQueue(entry: CatalogEntry, spendable: number): boolean {
-    if (spendable < entry.cost) return false;
+    return spendable >= entry.cost && this.queueHasRoom(entry);
+  }
+
+  /**
+   * THE HALF OF `canQueue` THAT IS NOT ABOUT MONEY, split out because the two
+   * refusals want opposite responses and this file used to give them the same
+   * one.
+   *
+   * "The tab is full" means look elsewhere; the money is not wanted here and
+   * spending it on something else is right. "I cannot pay for it YET" means
+   * SAVE — and merging the two is how the adaptive scorer came to convert a
+   * whole match's income into riflemen while its harvester fleet died. See the
+   * saving target in `consider`.
+   */
+  private queueHasRoom(entry: CatalogEntry): boolean {
     const tab = entry.tab as number;
     if (tab < 0 || tab >= BUILD_TAB_COUNT) return false;
     const p = this.world.player(this.player);
@@ -3281,6 +3646,72 @@ export class AiBrain {
     // cannot be placed until the first one is down.
     const cap = entry.isBuilding ? 1 : this.diff.queueDepth;
     return queued + this.inFlight[tab] < Math.min(cap, MAX_QUEUE_DEPTH);
+  }
+
+  /**
+   * Split the pass's budget in two: everything, and everything-except-army-and-
+   * defence. See `AI_OPENING` for the measurement and the argument.
+   *
+   * The governed number is the ONLY thing this writes, and it is equal to the
+   * ungoverned one from the first ore onward — so the governor exists for the
+   * opening and is bit-for-bit absent from the rest of the match.
+   *
+   * ONE-WAY, AND IT LATCHES. `openingSpent` is never set back to false: a
+   * refinery lost at minute twelve must not re-impose an opening policy on a
+   * brain that is by then playing a completely different game — that is what
+   * `OreCrisis` and the rebuild layer are for.
+   *
+   * THE BANK IS OBSERVED, NOT ASSUMED. `Shell.startMatch` writes the opening
+   * credits after `bootstrap()` returns and an Ore Boost can raise the bank
+   * later, so the baseline is the highest balance seen while income is still
+   * zero rather than a constant read from a lobby this file cannot see.
+   */
+  private governOpening(p: PlayerState): void {
+    this.discretionary = this.spendable;
+    if (this.openingSpent) return;
+    if (p.stats.oreMined > 0) { this.openingSpent = true; return; }
+    if (p.credits > this.openingBank) this.openingBank = p.credits;
+    const room = this.openingBank * (1 - this.openingHold) - p.stats.creditsSpent;
+    if (room < this.discretionary) this.discretionary = room;
+  }
+
+  /**
+   * Which budget this candidate is measured against.
+   *
+   * NO FLOOR AND NO SPECIAL CASE: an economy or production candidate simply
+   * never sees the governed number, so the purchase that retires the governor
+   * cannot be blocked by it. That is the whole reshape — the previous version
+   * capped one number for every purchase and needed a floor to avoid
+   * deadlocking Easy, and the floor then became general room that Easy spent on
+   * a defence tower before its own refinery finished.
+   */
+  private budgetFor(entry: CatalogEntry): number {
+    return isOpeningEconomyRole(entry.role) ? this.spendable : this.discretionary;
+  }
+
+  /**
+   * The most expensive thing this brain could ever save up for.
+   *
+   * `storageMax` is the hard ceiling on `credits` (`Economy.grant` clamps), and
+   * `creditFloor` is the part of it this rung refuses to spend, so their
+   * difference is the largest `spendable` that can ever exist. Zero storage
+   * means the cap is not established yet — treat everything as reachable rather
+   * than refusing to save at all, which is the boot state.
+   */
+  private savingCeiling(): number {
+    const p = this.world.player(this.player);
+    if (p === undefined || p.storageMax <= 0) return Number.POSITIVE_INFINITY;
+    return p.storageMax - this.diff.creditFloor;
+  }
+
+  /** Is this tab already holding everything this rung will let it hold? */
+  private queueSaturated(tab: number): boolean {
+    if (tab < 0 || tab >= BUILD_TAB_COUNT) return false;
+    const p = this.world.player(this.player);
+    const queue = p === undefined ? undefined : p.queues[tab];
+    const queued = queue === undefined ? 0 : queue.items.length;
+    const cap = Math.min(this.diff.queueDepth, MAX_QUEUE_DEPTH);
+    return queued + this.inFlight[tab] >= cap;
   }
 
   /**
@@ -3562,6 +3993,11 @@ export class AiBrain {
    * ====================================================================== */
 
   private squad(s: SimContext): void {
+    // BEFORE `regroupSquads`, and that ordering is the whole of the wiring. The
+    // tag is what makes a withdrawing hull invisible to the re-file, so setting
+    // it afterwards would leave the hull in `strikeIds` for one more pass and
+    // `pressAttack` would attack-move it back into the fight it just left.
+    this.withdrawWounded(s);
     this.regroupSquads();
 
     if (this.posture === AiPosture.Defeated) return;
@@ -3665,6 +4101,272 @@ export class AiBrain {
     return this.gatherIdle(this.strikeIds, this.strikeCount, x, z);
   }
 
+  /* ======================================================================
+   * 2.7b THE SECOND FRONT
+   * ====================================================================== */
+
+  /**
+   * Run the raiding party: sustain one if it exists, otherwise consider
+   * launching one. See `AI_RAID`.
+   *
+   * THE PARTY IS REBUILT FROM THE TAGS EVERY PASS rather than kept in a
+   * long-lived array, which is what makes death handling free: a hull that died
+   * is gone from `armyIds` and its tag went with the generation stamp, so a
+   * wiped party is simply a pass where the walk finds nobody. The alternative —
+   * a `raidIds` array with its own compaction — is a second source of truth
+   * about who is raiding, and the two would disagree the first time a hull was
+   * crushed.
+   *
+   * ITS OWN SQUAD SLOT (1), off the ones `squad` (3), `commanderAbility` (4) and
+   * `navy` (5) already use, for the reason every offset in `tick` exists: no
+   * single tick may do two layers' work for eight brains at once.
+   */
+  private raid(s: SimContext): void {
+    if (this.posture === AiPosture.Defeated) return;
+    if (this.diff.aggression < AI_RAID.minAggression) return;
+
+    const st = this.store;
+    let count = 0;
+    let cx = 0;
+    let cz = 0;
+    for (let a = 0; a < this.armyCount; a++) {
+      const h = this.armyIds[a] as EntityId;
+      const i = st.index(h);
+      if (i < 0) continue;
+      if (this.groupTag.getAt(i) !== GROUP_RAID) continue;
+      if (count < this.raidIds.length) this.raidIds[count] = h as number;
+      cx += st.posX[i];
+      cz += st.posZ[i];
+      count++;
+    }
+
+    if (count > 0) { this.pressRaid(s, count, cx / count, cz / count); return; }
+
+    // The party is gone — killed, or folded back by `endRaid`. Either way the
+    // cooldown runs from the moment the raid ENDED, not from when it launched,
+    // so a raid that dies instantly does not immediately spawn another.
+    if (this.raidActive) { this.raidActive = false; this.lastRaidTick = s.tick; }
+    this.considerRaid(s);
+  }
+
+  /** Keep a live raid pointed at something, and call it off when it is spent. */
+  private pressRaid(s: SimContext, count: number, cx: number, cz: number): void {
+    // EXPIRY FIRST. A raid with no end is a detachment deleted from the wave.
+    if (s.tick - this.raidStartTick > AI_RAID.maxTicks) { this.endRaid(s); return; }
+
+    this.militaryGoal = `${this.militaryGoal} + raiding with ${count}`;
+
+    // The economy is soft and the party is small, so what it shoots matters
+    // more than where it walks — and `pickFocusTarget` already scores a
+    // harvester above everything else on the field, which is exactly a raid's
+    // priority list. Reused rather than re-derived.
+    const focus = this.pickFocusTarget(cx, cz);
+    if (focus !== NONE) {
+      if (s.tick - this.raidOrderTick < AI_RAID_REISSUE) return;
+      if (this.issueOrder(OrderKind.Attack, this.raidIds, count, 0, 0, focus)) {
+        this.raidOrderTick = s.tick;
+      }
+      return;
+    }
+
+    // Nothing in reach: keep walking to the remembered target. If the memory of
+    // it has gone stale the raid has nowhere to be, so it comes home.
+    if (this.raidX < 0) { this.endRaid(s); return; }
+    if (s.tick - this.raidOrderTick < AI_MILITARY.reissueTicks) return;
+    if (this.moveGroup(this.raidIds, count, OrderKind.AttackMove, this.raidX, this.raidZ)) {
+      this.raidOrderTick = s.tick;
+    }
+  }
+
+  /** Untag the party. `regroupSquads` folds the survivors back next pass. */
+  private endRaid(s: SimContext): void {
+    const st = this.store;
+    for (let a = 0; a < this.armyCount; a++) {
+      const i = st.index(this.armyIds[a] as EntityId);
+      if (i < 0) continue;
+      if (this.groupTag.getAt(i) === GROUP_RAID) this.groupTag.setAt(i, GROUP_NONE);
+    }
+    this.raidActive = false;
+    this.lastRaidTick = s.tick;
+    this.raidX = -1;
+    this.raidZ = -1;
+  }
+
+  /**
+   * Should a party go out, and where?
+   *
+   * FOUR GATES, and the third is the one that keeps this from being a nerf.
+   *
+   *   CADENCE      `cooldownTicks / aggression` — the ladder, see `AI_RAID`.
+   *   A TARGET     a REMEMBERED enemy refinery or harvester. Vision-gated by
+   *                construction: `memRole` is only written by `observe`, which
+   *                never records anything the brain has not seen. No memory of
+   *                an economy means no raid — the brain does not go looking for
+   *                one, because that is what the scout is for.
+   *   THE HOME GUARD PAYS, NOT THE WAVE. The party is drawn from the RESERVE,
+   *                and enough of it must be left to still be a reserve
+   *                (`AI_MILITARY.reserveMin`).
+   *
+   *                MEASURED THE OTHER WAY FIRST, and it was wrong. Taking the
+   *                party from the strike group and requiring the remainder to
+   *                still clear `waveThreshold()` produced 2 / 1 / 0 raids at
+   *                Normal / Hard / Brutal over twenty minutes against a cadence
+   *                that should have allowed 9 / 13 / 17: the brain spends most
+   *                of a match BELOW its own threshold, massing, so a gate
+   *                phrased as "surplus above the wave" is a gate that is almost
+   *                never open — and it was open least often for Brutal, whose
+   *                `waveSizeMul` makes its threshold the highest. The ladder
+   *                came out backwards.
+   *
+   *                The reserve is the right source on its own merits anyway. It
+   *                is idle by construction — `regroupSquads` holds it back so
+   *                the base is not empty — so a slice of it costs the main
+   *                attack nothing, and what it does cost is exactly what should
+   *                be at risk: home defence. That is also the trade a human
+   *                makes when they notice six units standing around at home.
+   *   NOT WHILE LOSING. No second front while the base is being hit or the army
+   *                is regrouping: splitting a force that is already losing is
+   *                the single worst habit an RTS AI can have, and it is the
+   *                moment the reserve is actually needed for its day job.
+   */
+  private considerRaid(s: SimContext): void {
+    if (s.tick - this.lastRaidTick < AI_RAID.cooldownTicks / this.diff.aggression) return;
+    if (this.posture === AiPosture.Retreating || this.posture === AiPosture.Crippled) return;
+    if (this.basePressure > AI_MILITARY.gracePressureCancel) return;
+    if (this.reserveCount - AI_RAID.partySize < AI_MILITARY.reserveMin) return;
+
+    let bestX = -1;
+    let bestZ = -1;
+    let bestScore = 0;
+    for (let m = 0; m < this.memCount; m++) {
+      const role = this.memRole[m] as BuildRole;
+      // The economy only. A raid that walks into the war factory is a small
+      // attack, and a small attack on a defended base is a donation.
+      const value = role === BuildRole.Refinery ? 2.0
+        : role === BuildRole.Harvester ? 1.6 : 0;
+      if (value <= 0) continue;
+      // FURTHEST-BIASED, the opposite of `pickObjective`'s distance discount and
+      // deliberately so: the point of a second front is to arrive somewhere the
+      // defender's army is not, and the near edge of their base is exactly
+      // where the main wave already is.
+      const score = value * (1 + dist2(this.baseX, this.baseZ, this.memX[m], this.memZ[m]) / 400);
+      if (score > bestScore) { bestScore = score; bestX = this.memX[m]; bestZ = this.memZ[m]; }
+    }
+    if (bestX < 0) return;
+
+    const st = this.store;
+    let taken = 0;
+    for (let a = 0; a < this.armyCount && taken < AI_RAID.partySize; a++) {
+      const h = this.armyIds[a] as EntityId;
+      const i = st.index(h);
+      if (i < 0) continue;
+      if (this.groupTag.getAt(i) !== GROUP_RESERVE) continue;
+      const f = st.flags[i];
+      if ((f & ORDERABLE_REQUIRE) !== ORDERABLE_REQUIRE) continue;
+      if ((f & ORDERABLE_REJECT) !== 0) continue;
+      if ((f & EntityFlag.CanAttack) === 0) continue;
+      this.raidIds[taken++] = h as number;
+    }
+    if (taken < AI_RAID.partySize) return;
+
+    if (!this.moveGroup(this.raidIds, taken, OrderKind.AttackMove, bestX, bestZ)) return;
+    for (let k = 0; k < taken; k++) {
+      const i = st.index(this.raidIds[k] as EntityId);
+      if (i >= 0) this.groupTag.setAt(i, GROUP_RAID);
+    }
+    this.raidX = bestX;
+    this.raidZ = bestZ;
+    this.raidStartTick = s.tick;
+    this.raidOrderTick = s.tick;
+    this.raidActive = true;
+    this.raidsLaunched++;
+  }
+
+  /**
+   * Walk one nearly-dead hull out of the fight, and bring back the ones that
+   * have healed. See `AI_RETREAT`.
+   *
+   * ONE WALK OF `armyIds` DOING BOTH HALVES, because the release sweep and the
+   * candidate search need the same scan and this runs at 5 Hz for every brain
+   * in the match. Allocation-free: two accumulators and a best-so-far.
+   *
+   * ONE HULL PER PASS, worst first — the shape `repairBase` already uses, for
+   * the same reasons. It is a rate a human hand can match, it costs one action
+   * out of the shared APM budget, and it makes the cap below the thing that
+   * actually decides how much of a losing fight gets salvaged rather than the
+   * loop.
+   *
+   * THE RELEASE HALF IS NOT OPTIONAL. A tag with no clearing path is a unit
+   * permanently removed from the army — `regroupSquads` skips it forever, it
+   * never attacks again, and the AI quietly shrinks by one hull per bad
+   * engagement for the rest of the match. It comes back healed
+   * (`rejoinHpFraction`), or arrived, or not at all because it died on the way.
+   */
+  private withdrawWounded(s: SimContext): void {
+    if (this.diff.discipline < AI_RETREAT.minDiscipline) return;
+    if (this.posture === AiPosture.Defeated) return;
+
+    const st = this.store;
+    const arrive = AI_MILITARY.arriveRadius * AI_MILITARY.arriveRadius;
+
+    let withdrawing = 0;
+    let striking = 0;
+    let worst = NONE;
+    let worstFrac: number = AI_RETREAT.hpFraction;
+
+    for (let a = 0; a < this.armyCount; a++) {
+      const h = this.armyIds[a] as EntityId;
+      const i = st.index(h);
+      if (i < 0) continue;
+      const tag = this.groupTag.getAt(i);
+
+      if (tag === GROUP_WITHDRAW) {
+        const max = st.maxHp[i];
+        const frac = max > 0 ? st.hp[i] / max : 1;
+        const home = distSq2(st.posX[i], st.posZ[i], this.rallyX, this.rallyZ) < arrive;
+        // Back to `GROUP_NONE` rather than straight to `GROUP_STRIKE`: the
+        // reserve may be short, and `regroupSquads` is the one place that
+        // decides which group a free hull belongs to.
+        if (frac >= AI_RETREAT.rejoinHpFraction || home) this.groupTag.setAt(i, GROUP_NONE);
+        else withdrawing++;
+        continue;
+      }
+
+      if (tag !== GROUP_STRIKE) continue;
+      striking++;
+      const f = st.flags[i];
+      if ((f & ORDERABLE_REQUIRE) !== ORDERABLE_REQUIRE) continue;
+      if ((f & ORDERABLE_REJECT) !== 0) continue;
+      if ((f & EntityFlag.CanAttack) === 0) continue;
+      const max = st.maxHp[i];
+      if (max <= 0) continue;
+      // IN THE FIGHT, not merely damaged. Without this the brain walks home
+      // every hull still carrying a scratch from a raid two minutes ago.
+      if (s.time - st.lastHitTime[i] > AI_RETREAT.underFireSeconds) continue;
+      const frac = st.hp[i] / max;
+      // Strictly less than, so the FIRST of two equally hurt hulls in army
+      // order wins. Ties have to break the same way on both machines of a
+      // lockstep match, and roster order is the only ordering here that is.
+      if (frac < worstFrac) { worstFrac = frac; worst = h; }
+    }
+
+    if (worst === NONE) return;
+    // A ROUT IS NOT MICRO. Past this share the wave has stopped trading and
+    // started evaporating, which is both worse play and stranger to watch.
+    if (withdrawing + 1 > Math.max(1, Math.floor(striking * AI_RETREAT.maxFraction))) return;
+    // Discipline decides how OFTEN, not whether — the same roll `shouldRetreat`
+    // and `focusFire` make, from the brain's own stream so two clients agree.
+    if (!this.rng.chance(this.diff.discipline)) return;
+
+    const i = st.index(worst);
+    if (i < 0) return;
+    if (!this.issueOrder(OrderKind.Move, this.one(worst), 1, this.rallyX, this.rallyZ, NONE)) {
+      return;
+    }
+    this.groupTag.setAt(i, GROUP_WITHDRAW);
+    this.withdrawals++;
+  }
+
   /** Rebuild strike/reserve from the tagged army, and re-fill both. */
   private regroupSquads(): void {
     const st = this.store;
@@ -3690,7 +4392,10 @@ export class AiBrain {
       const i = st.index(h);
       if (i < 0) continue;
       const tag = this.groupTag.getAt(i);
-      if (tag === GROUP_SCOUT) continue;
+      // `GROUP_WITHDRAW` and `GROUP_RAID` alongside `GROUP_SCOUT`: all three are
+      // hulls with a job of their own, and filing any of them into the strike
+      // group would order it straight back into the main fight on this pass.
+      if (tag === GROUP_SCOUT || tag === GROUP_WITHDRAW || tag === GROUP_RAID) continue;
       if (tag === GROUP_STRIKE) this.strikeIds[this.strikeCount++] = h as number;
       else if (tag === GROUP_RESERVE) this.reserveIds[this.reserveCount++] = h as number;
     }
@@ -3787,11 +4492,125 @@ export class AiBrain {
     if (this.objectiveX < 0 || !this.objectiveStillWorthIt(s)) this.pickObjective();
     this.militaryGoal =
       `attacking with ${this.strikeCount} at ${this.objectiveX.toFixed(0)},${this.objectiveZ.toFixed(0)}`;
+
+    /* -- FOCUS FIRE, AHEAD OF THE ATTACK-MOVE -----------------------------
+     * Once the group is in contact, WHAT it kills matters more than where it
+     * is walking, and until this existed the brain had no way to say so — see
+     * `AI_FOCUS`. It runs in FRONT of the attack-move rather than beside it
+     * because the two write the same order column, so issuing both in one pass
+     * would mean the second silently erased the first. */
+    if (this.focusFire(s)) return;
+
     if (s.tick - this.objectiveIssuedTick < AI_MILITARY.reissueTicks) return;
     if (this.moveGroup(this.strikeIds, this.strikeCount, OrderKind.AttackMove,
       this.objectiveX, this.objectiveZ)) {
       this.objectiveIssuedTick = s.tick;
     }
+  }
+
+  /**
+   * Name ONE target for the whole strike group. True when an order went out or
+   * one is already standing — i.e. when the caller must not also attack-move.
+   *
+   * THREE STATES, and the middle one is why this returns a boolean rather than
+   * simply issuing:
+   *
+   *   HOLDING   a live focus target inside the re-pick window. Nothing is
+   *             issued (the units already carry the order) but the caller must
+   *             still not overwrite it.
+   *   RE-PICK   the window elapsed, or the target died. The dead case is the
+   *             one that has to be noticed promptly: `Targeting` falls back to
+   *             ordinary acquisition, but the unit "stops where it stands", so
+   *             a group left pointing at a corpse simply idles.
+   *   DECLINED  this rung does not focus, or nothing near the group is worth
+   *             naming. The caller falls through to the behaviour that shipped.
+   */
+  private focusFire(s: SimContext): boolean {
+    if (this.diff.discipline < AI_FOCUS.minDiscipline) return false;
+    if (this.strikeCount === 0) return false;
+
+    const st = this.store;
+    const held = st.index(this.focusTarget);
+    const alive = held >= 0
+      && (st.flags[held] & EntityFlag.Alive) !== 0
+      && (st.flags[held] & EntityFlag.PendingDestroy) === 0;
+    if (alive && s.tick - this.focusPickedTick < AI_FOCUS.retargetTicks) return true;
+    if (!alive) this.focusTarget = NONE;
+
+    // Discipline decides how OFTEN a rung concentrates, not whether it can.
+    // Rolled per re-pick rather than once per wave, so a Normal brain drifts in
+    // and out of focus the way an inattentive human does — and drawn from the
+    // brain's own stream, so two clients of a lockstep match agree.
+    if (!this.rng.chance(this.diff.discipline)) return alive;
+
+    let cx = 0;
+    let cz = 0;
+    let n = 0;
+    for (let k = 0; k < this.strikeCount; k++) {
+      const i = st.index(this.strikeIds[k] as EntityId);
+      if (i < 0) continue;
+      cx += st.posX[i];
+      cz += st.posZ[i];
+      n++;
+    }
+    if (n === 0) return false;
+
+    const pick = this.pickFocusTarget(cx / n, cz / n);
+    if (pick === NONE) return alive;
+    this.focusPickedTick = s.tick;
+    if (pick === this.focusTarget) return true;
+    if (!this.issueOrder(OrderKind.Attack, this.strikeIds, this.strikeCount, 0, 0, pick)) {
+      return alive;
+    }
+    this.focusTarget = pick;
+    this.focusOrders++;
+    return true;
+  }
+
+  /**
+   * The best thing to kill near a point, scored by class and by how nearly dead
+   * it already is. NONE when the circle holds nothing worth naming.
+   *
+   * VISION-GATED like every other enemy read in this class, and
+   * allocation-free: the spatial query writes into the world's shared scratch
+   * and the scan keeps two numbers.
+   */
+  private pickFocusTarget(cx: number, cz: number): EntityId {
+    const st = this.store;
+    const buf = this.world.queryScratchB;
+    const found = this.world.spatial.queryCircleFat(cx, cz, AI_FOCUS.radiusM, buf);
+    let best: EntityId = NONE;
+    let bestScore = 0;
+    for (let k = 0; k < found; k++) {
+      const e = buf[k];
+      const f = st.flags[e];
+      if ((f & EntityFlag.Alive) === 0) continue;
+      if ((f & (EntityFlag.PendingDestroy | EntityFlag.NotATarget)) !== 0) continue;
+      const kind = st.kind[e];
+      if (kind === EntityKind.Wreck || kind === EntityKind.Prop || kind === EntityKind.Crate) {
+        continue;
+      }
+      if (this.world.areAllied(this.player, st.owner[e] as PlayerId)) continue;
+      const h = st.handleOf(e);
+      if (!this.world.vision.canSee(this.player, h)) continue;
+
+      let weight: number;
+      if ((f & EntityFlag.IsHarvester) !== 0) weight = AI_FOCUS.weightHarvester;
+      else if (kind !== EntityKind.Building) weight = AI_FOCUS.weightUnit;
+      else if ((f & EntityFlag.CanAttack) !== 0) weight = AI_FOCUS.weightDefence;
+      else if ((f & (EntityFlag.IsFactory | EntityFlag.IsBuilder)) !== 0) {
+        weight = AI_FOCUS.weightProducer;
+      } else weight = AI_FOCUS.weightOther;
+
+      const max = st.maxHp[e];
+      const hpFrac = max > 0 ? st.hp[e] / max : 1;
+      const score = weight * (1 + AI_FOCUS.woundBonus * (1 - hpFrac));
+      // Strictly greater, so ties break on spatial-query order — stable for a
+      // given world state, and therefore identical on both machines of a
+      // lockstep match.
+      if (score > bestScore) { bestScore = score; best = h; }
+    }
+    return best;
   }
 
   /**
@@ -4869,6 +5688,37 @@ export class AiBrain {
    * structure list records that it ever happened.
    */
   get repairOrderCount(): number { return this.repairsOrdered; }
+  /**
+   * Build passes that held a price back for a saving target instead of
+   * converting the bank into whatever was cheap. See `consider`.
+   *
+   * Its own number for the same reason the counters above have theirs: a pass
+   * that deliberately buys nothing is INDISTINGUISHABLE from a pass that found
+   * nothing, and telling those two apart is the entire question this counter
+   * was added to answer.
+   */
+  get savedPassCount(): number { return this.savedPasses; }
+  /**
+   * Explicit `OrderKind.Attack` orders this brain has issued.
+   *
+   * Its own number because nothing else records one: a focus order leaves no
+   * entity, no queue item and no credit trace, and "the AI concentrated its
+   * fire" is otherwise only observable as a corpse.
+   */
+  get focusOrderCount(): number { return this.focusOrders; }
+  /**
+   * Hulls this brain has pulled out of a fight.
+   *
+   * Its own number because a withdrawal leaves nothing behind to count: a hull
+   * that survives is indistinguishable from one that was never shot at. The
+   * obvious thing to measure instead — `UnitState.Fleeing` — is ASSIGNED BY
+   * NOTHING in the codebase, which is exactly how `flee=0` got read as evidence
+   * about retreat behaviour for two whole tasks before anyone checked whether
+   * it could ever be non-zero.
+   */
+  get withdrawalCount(): number { return this.withdrawals; }
+  /** Raiding parties sent out. Its own number: a raid leaves no other trace. */
+  get raidCount(): number { return this.raidsLaunched; }
   /** Command Posts owned or under construction. */
   get commandPostCount(): number {
     return this.roleCount[BuildRole.CommandPost] + this.roleBuilding[BuildRole.CommandPost];

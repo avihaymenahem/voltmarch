@@ -100,6 +100,10 @@ tactical point of holding one.
 
 - Its production, its prerequisites and its build radius, immediately.
 - Its storage capacity, if it is a refinery or a silo.
+- **Its income, if it is a refinery.** Ore is sold at the dock that takes it and the money goes to
+  whoever holds that dock's deed — so a hopper already emptying into the bay when you take it pays
+  *you*, not the previous owner. Their other harvesters turn round and drive home; a refinery is a
+  place, not a fleet.
 - It is **never** automatically your primary factory.
 - Its rally point is discarded.
 

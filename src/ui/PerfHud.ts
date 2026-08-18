@@ -68,10 +68,55 @@
  * `pointer-events: none` on the root, inline as well as in the stylesheet, and
  * nothing inside it is interactive. `perfLayerFaults()` walks the built tree so
  * that is a test rather than a sentence.
+ *
+ * THERE ARE TWO RENDERERS, AND A ROW THAT CANNOT BE MEASURED SAYS SO
+ * -----------------------------------------------------------------
+ * `?gpu=webgpu` boots the real game on a TSL node renderer, and this panel was
+ * written when there was only one renderer to write for. A ZERO IS A CLAIM.
+ * `src/render/debug.ts` made that call first — it prints
+ * `${total} (no per-pass split)` rather than `0 col` — and this file follows it
+ * rather than inventing a second answer to the same question. Three rows
+ * changed, and one of them was wrong on BOTH backends:
+ *
+ *   draws   `drawCalls` is a SUM OVER EVERY SCENE SUBMISSION and `DRAW_BUDGET`
+ *           bounds the COLOUR PASS ALONE — CLAUDE.md is explicit that the two
+ *           are different quantities. This row printed `151 / 130` and went red
+ *           on a WebGL frame whose colour pass was 77 of 130, i.e. the panel
+ *           reported a permanent budget breach against a budget that was half
+ *           empty. It prints the colour count against the budget now, with the
+ *           total beside it as the content fingerprint it is. On the node path
+ *           there IS no colour count — the node `Renderer` has no seam between
+ *           the shadow pass and the colour pass to meter — so the slot reads
+ *           `n/a` and `is-draws-over` cannot fire. **Do not invent a split**: a
+ *           faked one looks like the WebGL number and means something else.
+ *   gpu     `EXT_disjoint_timer_query_webgl2` is a WEBGL extension. On the node
+ *           path there is no context to ask, so the timer is absent for a
+ *           reason that is a property of the RENDERER rather than of this
+ *           machine's browser — and a bare `n/a` for both conflates "Chrome
+ *           hides the extension here" with "this backend has no such thing".
+ *           The row names which one it is.
+ *   device  New, and the reason is `docs/RENDER_FINDINGS.md` §7g:
+ *           `powerPreference: 'high-performance'` is a HINT that Windows
+ *           ignores, so a frame-time reading can be about a GPU nobody chose
+ *           and nothing on this panel could say which. The live backend is on
+ *           the header line, the adapter is on this row, and both are READ off
+ *           the renderer rather than inferred from `?gpu=`.
+ *
+ * `classifyLoad` is deliberately untouched. Its "no gpu timer — frame time is
+ * the display, not the load" reason is exactly as true under WebGPU as under
+ * WebGL, and the WHY belongs on the row that is missing the measurement.
  * ============================================================================
  */
 
 import { el, label } from './Chrome';
+
+/**
+ * TYPE ONLY, and it stays that way. `src/render/backend.ts` imports no three
+ * and this import is erased at build time, so "the panel never imports the
+ * engine" survives intact — while the backend names stay a single spelling
+ * instead of a copy in this file that drifts from the renderer's.
+ */
+import type { LiveBackend } from '../render/backend';
 
 import './perf.css';
 
@@ -82,7 +127,16 @@ import './perf.css';
  * measurements in the header. Nothing is a feeling.
  * ========================================================================== */
 
-/** Draw-call ceiling. CLAUDE.md: "under 130 draw calls". Live matches: 194-203. */
+/**
+ * Draw-call ceiling — `MAX_DRAW_CALLS` in `src/core/config.ts`.
+ *
+ * **IT BOUNDS THE COLOUR PASS, NOT THE FRAME.** `renderer.info.autoReset` is
+ * false and the reset happens once per frame, so the total this panel also
+ * shows is a SUM over the shadow pass, the colour pass and whatever quads the
+ * post chain ran. Measured across the thirteen capture fixtures: total 105-157,
+ * colour 51-77. Comparing the first against 130 is what made this row read as a
+ * permanent overrun; `formatDraws` compares the second.
+ */
 export const DRAW_BUDGET = 130;
 
 /**
@@ -145,8 +199,8 @@ const VERDICT_UNITS = 11;
 const ROW_UNITS = 11;
 const ROW_GAP_UNITS = 1;
 const BLOCK_GAP_UNITS = 3;
-/** p95/min, cpu, gpu, draws, tris, tier, self. */
-export const PERF_ROW_COUNT = 7;
+/** p95/min, cpu, gpu, draws, tris, tier, device, self. */
+export const PERF_ROW_COUNT = 8;
 
 /**
  * Panel height in design units.
@@ -492,6 +546,29 @@ function isTimerExt(v: unknown): v is TimerExt {
 /** Queries in flight. Three is enough for a driver that lags two frames. */
 const TIMER_POOL = 3;
 
+/**
+ * Why the GPU row is or is not showing a number.
+ *
+ * A UNION RATHER THAN THE FOUR BARE STRINGS IT USED TO RETURN, because the
+ * panel now has to answer a second question about the same state — "absent for
+ * which reason" — and a `''`-means-ok convention cannot be exhaustively
+ * switched on. `formatGpuTime` is the only consumer.
+ *
+ * Every member is WEBGL VOCABULARY. `disjoint` is `GPU_DISJOINT_EXT`, which has
+ * no WebGPU counterpart at all; on the node path the timer is never constructed
+ * and the status is permanently `absent`. That is dead, not lying — but a row
+ * that reads a bare `n/a` on both backends says nothing about which.
+ */
+export type GpuTimerStatus =
+  /** No `EXT_disjoint_timer_query_webgl2` — or no WebGL context to ask. */
+  | 'absent'
+  /** The extension is live and no query has resolved yet. */
+  | 'waiting'
+  /** The GPU was preempted or its clock reset; the window was thrown away. */
+  | 'disjoint'
+  /** A real measurement is available. */
+  | 'ok';
+
 export class GpuTimer {
   /** Milliseconds of the most recently resolved frame, or null. */
   private lastMs: number | null = null;
@@ -531,10 +608,10 @@ export class GpuTimer {
   }
 
   /** Why the readout is empty, for the panel's own row. */
-  get status(): string {
-    if (this.ext === null) return 'n/a';
+  get status(): GpuTimerStatus {
+    if (this.ext === null) return 'absent';
     if (this.disjointSeen) return 'disjoint';
-    return this.lastMs === null ? 'waiting' : '';
+    return this.lastMs === null ? 'waiting' : 'ok';
   }
 
   /**
@@ -661,7 +738,23 @@ export function asTimerGl(gl: unknown): TimerQueryGl | null {
 
 /** Filled in place, once per text update. Never re-created. */
 export interface PerfReadout {
+  /**
+   * The frame's TOTAL draws, across every scene submission. A content
+   * fingerprint — "was that the same scene?" — and never a budget figure.
+   */
   drawCalls: number;
+  /**
+   * The COLOUR PASS alone, which is what `DRAW_BUDGET` bounds — or **null when
+   * the live renderer cannot split the frame**, which is the whole node path
+   * and any WebGL boot with no post chain to meter.
+   *
+   * NULL IS NOT ZERO AND MUST NOT BECOME ZERO. `src/render/post.ts` reports the
+   * node split as zeros with a true total precisely so that a consumer which
+   * reads the buckets raw gets an obviously impossible answer rather than a
+   * plausible wrong one; collapsing that to 0 here would hand the panel a
+   * plausible wrong one after all.
+   */
+  drawCallsColour: number | null;
   triangles: number;
   entities: number;
   /** Milliseconds of ONE fixed sim step. */
@@ -671,11 +764,25 @@ export interface PerfReadout {
   tier: string;
   resolution: string;
   pixelRatio: number;
+  /**
+   * The backend that is ACTUALLY LIVE, read off the renderer — never
+   * `requestedBackend()`, which is what the URL asked for. `webgl2-fallback`
+   * is a third answer and not a synonym for either of the other two.
+   *
+   * Null until the seam has managed one read, so the header says `—` rather
+   * than naming a renderer on no evidence.
+   */
+  backend: LiveBackend | null;
+  /**
+   * One line naming the GPU, already shortened for the row. See `shortDevice`.
+   */
+  device: string;
 }
 
 export function emptyReadout(): PerfReadout {
   return {
     drawCalls: 0,
+    drawCallsColour: null,
     triangles: 0,
     entities: 0,
     simMs: 0,
@@ -683,6 +790,8 @@ export function emptyReadout(): PerfReadout {
     tier: '—',
     resolution: '—',
     pixelRatio: 1,
+    backend: null,
+    device: '—',
   };
 }
 
@@ -753,6 +862,119 @@ export function formatSmallMs(ms: number): string {
   return ms < 1 ? `${(ms * 1000).toFixed(0)} µs` : `${ms.toFixed(2)} ms`;
 }
 
+/* -- the unavailable case -------------------------------------------------- *
+ * ONE TOKEN, SPELLED ONCE. Every row that cannot be measured on the live
+ * backend prints this in the slot the number would have occupied, so "there is
+ * no measurement here" is visually distinct from "the measurement is zero" and
+ * a test can assert the difference without matching prose.                     */
+
+/** What a row prints where a number it cannot measure would go. */
+export const UNAVAILABLE = 'n/a';
+
+/**
+ * The live backend, for the header line.
+ *
+ * `webgl2-fallback` is spelled out rather than folded into either neighbour:
+ * it is `WebGPURenderer` running node materials over WebGL2, a THIRD renderer,
+ * measured the slowest of the three (`docs/RENDER_FINDINGS.md` §7b).
+ * `assertBackend` refuses it at boot so it should be unreachable — which is
+ * exactly why it must be legible if it ever appears.
+ */
+export function formatBackend(backend: LiveBackend | null): string {
+  if (backend === null) return '—';
+  return backend === 'webgl2-fallback' ? 'WEBGL2 FALLBACK' : backend.toUpperCase();
+}
+
+/**
+ * The draws row: the colour pass against the budget, then the frame total.
+ *
+ * BOTH NUMBERS, BECAUSE THEY ANSWER DIFFERENT QUESTIONS and printing only one
+ * of them is how this row came to be wrong. The first is the budget figure; the
+ * second is the fingerprint `shots/_report.json` publishes. The shape is fixed,
+ * so on a renderer that cannot split the frame `n/a` sits in the exact slot the
+ * colour count occupies — never a `0`, which would read as a colour pass that
+ * drew nothing at all.
+ */
+export function formatDraws(
+  total: number,
+  colour: number | null,
+  budget: number = DRAW_BUDGET,
+): string {
+  const head = colour === null ? UNAVAILABLE : String(colour);
+  return `${head} col / ${budget} · ${total} all`;
+}
+
+/**
+ * Whether the draws row is over budget.
+ *
+ * FALSE WHENEVER THE SPLIT IS UNAVAILABLE, and that is not a hedge: with no
+ * colour count there is no number to compare, and both alternatives are lies —
+ * claiming a breach off the total means claiming one on every WebGL frame ever
+ * captured (105-157 total against a 51-77 colour pass), and claiming compliance
+ * asserts something nothing measured.
+ */
+export function drawsOverBudget(colour: number | null, budget: number = DRAW_BUDGET): boolean {
+  return colour !== null && colour > budget;
+}
+
+/**
+ * The GPU-time row.
+ *
+ * The measurement is `EXT_disjoint_timer_query_webgl2` and there is no second
+ * source. What differs between the backends is WHY it is missing, and that is
+ * the half worth printing: on WebGL the extension is usually withheld by the
+ * browser for timing-attack reasons and may appear on another machine, while on
+ * the node path there is no WebGL context to ask and nothing wired in its place
+ * — no machine will ever show a number here until one is.
+ *
+ * (WebGPU's counterpart is `timestamp-query`, which three surfaces through
+ * `renderer.info.render.timestamp` behind `trackTimestamp`. Neither field is on
+ * `NodeRendererLike` nor on `NormalisedFrameInfo`, so wiring it is a change in
+ * `src/render/`, not here. Until then this row is honestly empty rather than
+ * dishonestly full.)
+ */
+export function formatGpuTime(
+  status: GpuTimerStatus,
+  ms: number | null,
+  backend: LiveBackend | null,
+): string {
+  if (status === 'ok' && ms !== null) return `${ms.toFixed(1)} ms`;
+  if (status === 'disjoint') return 'disjoint';
+  if (status === 'waiting') return 'waiting';
+  // `absent`. Null backend is the pre-boot case, where "no extension" is the
+  // only thing actually known.
+  if (backend === null || backend === 'webgl') return `${UNAVAILABLE} · no timer ext`;
+  return `${UNAVAILABLE} · not on ${backend}`;
+}
+
+/**
+ * The GPU string, cut down to the part that fits a 150u row.
+ *
+ * A WebGPU adapter line comes from `describeAdapter` and is already short
+ * (`NVIDIA GeForce RTX 3080 Laptop GPU (nvidia ampere)`), so it passes through.
+ * The WebGL path's `WEBGL_debug_renderer_info` string is an ANGLE wrapper —
+ *
+ *     ANGLE (NVIDIA, NVIDIA GeForce RTX 3080 Laptop GPU Direct3D11 vs_5_0 ps_5_0, D3D11)
+ *
+ * — four times the width of the row, with the model in the middle field and a
+ * shader-model tail that names no hardware. Truncation is left to CSS; this
+ * removes the parts that are known not to be the answer, so what CSS truncates
+ * is the end of a model name rather than the word "ANGLE".
+ */
+export function shortDevice(raw: string): string {
+  const s = raw.trim();
+  if (s === '') return '—';
+  const angle = /^ANGLE \((.+)\)$/.exec(s);
+  if (angle === null) return s;
+  const parts = angle[1].split(', ');
+  const model = (parts.length >= 2 ? parts[1] : parts[0]).trim();
+  const trimmed = model
+    .replace(/\s+Direct3D\d+.*$/i, '')
+    .replace(/\s+\(0x[0-9A-Fa-f]+\)/g, '')
+    .trim();
+  return trimmed === '' ? s : trimmed;
+}
+
 /* ==========================================================================
  * SECTION 8 — THE PANEL
  * ========================================================================== */
@@ -792,6 +1014,8 @@ export class PerfHud {
 
   private readonly primary: Text;
   private readonly fps: Text;
+  /** The live backend, on the header line. See `formatBackend`. */
+  private readonly backendText: Text;
   private readonly verdictText: Text;
   private readonly reasonText: Text;
   private readonly verdictNode: HTMLElement;
@@ -836,6 +1060,10 @@ export class PerfHud {
 
     const head = el('div', 'vm-perf-head', this.root);
     el('span', 'vm-perf-title', head).textContent = 'PERFORMANCE';
+    // The header is `space-between`, so this lands at the right edge and costs
+    // the panel no height. Which renderer produced the numbers below is a
+    // property of the whole panel rather than of any one row.
+    this.backendText = label(head, 'vm-perf-backend', '—');
 
     const primaryRow = el('div', 'vm-perf-primary', this.root);
     this.primary = label(primaryRow, 'vm-perf-big vm-num', '—');
@@ -853,6 +1081,7 @@ export class PerfHud {
     this.addRow(rows, 'draws');
     this.addRow(rows, 'tris');
     this.addRow(rows, 'tier');
+    this.addRow(rows, 'device');
     this.addRow(rows, 'self');
 
     this.visible = options.visible ?? false;
@@ -1047,18 +1276,30 @@ export class PerfHud {
     const gfx = Math.max(0, s.cpuMedianMs - simTotal);
     this.write(1, `${s.cpuMedianMs.toFixed(1)} — sim ${simTotal.toFixed(1)} gfx ${gfx.toFixed(1)}`);
 
-    const gpuStatus = this.timer.status;
-    this.write(2, gpuStatus === '' && s.gpuMs !== null ? `${s.gpuMs.toFixed(1)} ms` : gpuStatus);
+    this.write(2, formatGpuTime(this.timer.status, s.gpuMs, r.backend));
 
-    this.write(3, `${r.drawCalls} / ${DRAW_BUDGET}`);
+    this.write(3, formatDraws(r.drawCalls, r.drawCallsColour));
     this.write(4, formatCount(r.triangles));
     this.write(5, `${r.tier} · ${r.entities} ents`);
+    this.write(6, r.device);
     this.write(
-      6,
+      7,
       `${formatSmallMs(this.sampleCostMs)}/f · ${formatSmallMs(this.updateCostMs)}/upd`,
     );
 
-    this.root.classList.toggle('is-draws-over', r.drawCalls > DRAW_BUDGET);
+    const badge = formatBackend(r.backend);
+    if (this.backendText.nodeValue !== badge) this.backendText.nodeValue = badge;
+
+    /*
+     * OFF THE COLOUR PASS, NOT THE TOTAL. This used to be `r.drawCalls > 130`,
+     * which is 105-157 against 130 on every WebGL frame in the capture set —
+     * the row was permanently red about a colour pass of 51-77. The unknown
+     * state gets its own class rather than borrowing either verdict: a panel
+     * that cannot check the budget must not look like one that checked it and
+     * approved.
+     */
+    this.root.classList.toggle('is-draws-over', drawsOverBudget(r.drawCallsColour));
+    this.root.classList.toggle('is-draws-unknown', r.drawCallsColour === null);
     this.root.classList.toggle('is-tris-over', r.triangles > TRIANGLE_ADVISORY);
 
     this.updateCostMs = this.now() - t0;

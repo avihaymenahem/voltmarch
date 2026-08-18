@@ -310,8 +310,9 @@ Defences:
 | Tesla Coil | Soviets | 1,500 | 16 s | −75 | Radar Dome |
 
 Note that the Pillbox, the Sentry Gun and the walls draw **no power at all** and therefore cannot
-be browned out. The Tesla Coil draws 75 and is first in the shedding order — it is the structure
-the phrase "dies in a brownout" was written for.
+be browned out. Everything else in that table can, the Flame Tower and the Multigunner AA included —
+a dark building does not shoot, whatever its gun costs to run. The Tesla Coil draws 75 and is first
+in the shedding order, so it is the structure the phrase "dies in a brownout" was written for.
 
 ### Meridian Pact
 
@@ -354,8 +355,9 @@ softest hulls in the game.
 | Spitpost | 420 | 8 s | — | 1×1 | Rookery |
 | Arc Pylon | 1,450 | 16 s | −90 | 1×1 | Spotter Mast |
 
-The Spitpost draws no power at all — it *"fires through a blackout"*, which no other faction's
-mid-tier emplacement does.
+The Spitpost draws no power at all — it *"fires through a blackout"*, as the Allied Pillbox and the
+Soviet Sentry Gun do. Three of the four armies keep one cheap gun alive on a dead grid. The Pact,
+whose Glaive Post draws ten, keeps none.
 
 ### Why a cameo is greyed out
 

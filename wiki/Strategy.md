@@ -220,8 +220,8 @@ Multiply the weapon's raw damage by the cell.
 
 Read the shape:
 
-- **Small arms cannot fight vehicles.** 0.10 against heavy armour. A lone G.I. needs eighty seconds
-  to kill a Rhino Tank and one hundred and fifty-three to kill an Apocalypse.
+- **Small arms cannot fight vehicles.** 0.10 against heavy armour. A lone G.I. needs **100 seconds**
+  to kill a Rhino Tank and 191 to kill an Apocalypse.
 - **Autocannon owns light armour** and is helpless against heavy (0.35) and against buildings (0.35).
 - **AP owns tanks** and wastes itself on infantry (0.35).
 - **HE is the building-killer** and the only warhead at 1.00 against concrete.
@@ -251,7 +251,10 @@ target under 40 % health ×1.25, the target you already had ×1.35, and a non-de
 ### Effective damage per second
 
 Cycle time is `(burst − 1) × burst delay + cooldown`; effective DPS is raw DPS times the matrix cell.
-These are single-unit, no-veterancy figures against a stationary target in range.
+These are single-unit, no-veterancy figures against a stationary target in range, and they are stated
+**before** the game's global x0.80 damage scalar — so every *time* on this page is a quarter longer
+than dividing hit points by one of these columns would suggest. See
+[Combat](/avihaymenahem/voltmarch/wiki/Combat).
 
 | Unit | Cost | HP / armour | Range | vs Infantry | vs Light | vs Medium | vs Heavy | vs Concrete |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -263,11 +266,11 @@ These are single-unit, no-veterancy figures against a stationary target in range
 | Sunlancer | 450 | 130 Inf | 26 | 13 | 23 | 22 | 23 | 22 |
 | Flak Trooper | 300 | 110 Inf | 20 | 26 | 32 | 21 | 11 | 11 |
 | Slagger | 380 | 115 Inf | 12 | 25 | 22 | 18 | 14 | **27** |
-| **Multigunner IFV** | 600 | 220 Light | 22 | **93** | **116** | **75** | 41 | 41 |
-| Sandskiff | 550 | 190 Light | 23 | 80 | 100 | 65 | 35 | 35 |
+| Multigunner IFV | 600 | 220 Light | 22 | 52 | 65 | 43 | 23 | 23 |
+| Sandskiff | 550 | 190 Light | 23 | 55 | 68 | 44 | 24 | 24 |
 | Arcspitter | 420 | 170 Light | 16 | 51 | 30 | 27 | 28 | 19 |
 | Grizzly Tank | 700 | 340 Med | 24 | 13 | 31 | 37 | 37 | 20 |
-| Rhino Tank | 900 | 420 Heavy | 26 | 14 | 33 | 39 | 39 | 22 |
+| Rhino Tank | 900 | 420 Heavy | 26 | 14 | 33 | 39 | 39 | 21 |
 | Solarch | 800 | 330 Light | 26 | 13 | 32 | 38 | 38 | 21 |
 | Grinder | 600 | 270 Med | **18** | 59 | 35 | 31 | 33 | 22 |
 | Apocalypse | 1,750 | 800 Heavy | 28 | 16 | 40 | 47 | 47 | 26 |
@@ -276,7 +279,7 @@ These are single-unit, no-veterancy figures against a stationary target in range
 | Slaghurler | 1,150 | 230 Light | **42** | 26 | 23 | 19 | 14 | **29** |
 | Swarmhornet *(air)* | 900 | 180 Light | 17 | 47 | 28 | 25 | 26 | 18 |
 | MiG Fighter *(air)* | 1,000 | 190 Light | 21 | 76 | **95** | 62 | 33 | 33 |
-| Kestrel Gunship *(air)* | 1,100 | 210 Light | 22 | 24 | 41 | 38 | 41 | 38 |
+| Kestrel Gunship *(air)* | 1,100 | 210 Light | 22 | 23 | 41 | 38 | 41 | 38 |
 | Vindicator *(air)* | 1,200 | 240 Light | 23 | 26 | 46 | 43 | **46** | **43** |
 
 Add to that: **Tesla weapons chain.** Each arc jumps up to 9 m from its last victim, retaining 60 %
@@ -290,13 +293,13 @@ Add also: **splash.** The Slaghurler's mortar is 5.8 m, the Slagger's satchel 2.
 
 | Matchup | Result |
 | --- | --- |
-| Grizzly vs Rhino | **Rhino wins** 1v1 (8.7 s vs 11.4 s) and outranges by 2 m. But at equal credits three Grizzlies beat two-and-a-third Rhinos on both HP and DPS. |
-| IFV vs Grizzly | **IFV wins**, 4.5 s to 7.1 s, at 100 credits less and 1.8 m/s faster. |
-| IFV vs Rhino | **Rhino wins**, 6.6 s to 10.4 s. Autocannon at 0.35 against heavy armour is the whole answer. |
+| Grizzly vs Rhino | **Rhino wins** 1v1 (10.9 s vs 14.3 s) and outranges by 2 m. But at equal credits three Grizzlies beat two-and-a-third Rhinos on both HP and DPS. |
+| IFV vs Grizzly | **Grizzly wins**, 8.8 s to 10.0 s. The IFV is 100 credits cheaper, 1.8 m/s faster and sees two metres further, and it still loses the straight fight — autocannon falls to 0.65 against medium armour and the tank has 120 more hit points. Raid with it; do not trade with it. |
+| IFV vs Rhino | **Rhino wins**, 8.3 s to 22.9 s. Autocannon at 0.35 against heavy armour is the whole answer. |
 | Solarch vs Grizzly | **Solarch wins** narrowly and outranges by 2 m. |
-| IFV vs Solarch | **Not close.** 2.9 s to 6.9 s. Autocannon at 1.00 against light armour deletes the entire Pact line. |
+| IFV vs Solarch | **IFV wins**, 6.3 s to 8.6 s. Autocannon at 1.00 against light armour is why a raider beats a main battle tank here and loses to the Allied one. |
 | Grinder vs Grizzly | **Grizzly wins** 1v1 and gets six metres of free fire first. At equal credits it is a coin flip, and the Grinder chains. |
-| Javelins vs Rhinos | **Javelins win on credits by a wide margin** — four Javelins (2,000 cr) kill a Rhino in 4.1 s. The counter-play is to drive over them: a Rhino crushes any infantryman it lines up on, which is why a Javelin screen needs its own screen. |
+| Javelins vs Rhinos | **Javelins win on credits by a wide margin** — four Javelins (2,000 cr) kill a Rhino in 5.1 s. The counter-play is to drive over them: a Rhino crushes any infantryman it lines up on, which is why a Javelin screen needs its own screen. |
 
 ### The three holes worth exploiting
 
@@ -307,10 +310,14 @@ Add also: **splash.** The Slaghurler's mortar is 5.8 m, the Slagger's satchel 2.
 2. **The Reclamation cannot take a base apart.** Tesla is 0.60 against concrete and every arc is
    14–20 m ranged. Its only real answers to a structure are the Slaghurler and the Slagger. Kill
    those two and a Reclamation army can stand in your base achieving very little.
-3. **Half the good weapons need power.** The Tesla Coil, Prism Tower, Helios Spire, Zenith Emitter and
-   both Pact beams all stop firing in a brownout. Kill power plants — Solar Arrays have 420 hp — and
-   a defensive belt goes dark without a single shot at the towers themselves. The exceptions are the
-   Reclamation's Spitpost (draws no power) and Arc Pylon (draws 90 and fires regardless).
+3. **Almost every emplacement in the game stops on a dead grid.** Seven of the ten armed structures
+   draw power, and a building that draws power and is not getting any cannot shoot, whatever gun it
+   holds. Kill power plants — Solar Arrays have 420 hp — and a defensive belt goes dark without a
+   single shot at the towers themselves. The three exceptions all draw *nothing*: the Allied Pillbox,
+   the Soviet Sentry Gun and the Reclamation Spitpost. The Pact has no such gun. Electric weapons go
+   further and refuse on any deficit at all — the Tesla Coil, the Prism Tower, the Helios Spire and
+   the Glaive Post — so a shallow shortfall disarms the Pact belt before the shed order reaches it.
+   The Zenith Emitter is the one beam that never cares: it is a vehicle, and a hull has no grid.
 
 ### Aircraft
 
@@ -345,10 +352,10 @@ naval deck guns, siege beams and the emplaced MG in a pillbox cannot. What can:
 | Rifles / carbines (G.I., Conscript, Wayfarer) | 17–20 | Free, and weak — but every army has them from minute one |
 | Scrap Picker, Arcspitter | 14 / 16 | The Reclamation's ground answers, both very short |
 | Flak Trooper | 20 | 300 cr, 32 DPS against Light |
-| Multigunner IFV, Sandskiff | 22 / 23 | Autocannon at 0.95 against an aircraft's Light armour |
+| Multigunner IFV, Sandskiff | 22 / 23 | Autocannon at 1.00 against an aircraft's Light armour |
 | Javelin, Sunlancer | 24 / 26 | 0.95 rocket multiplier, and they hit tanks too |
-| **Multigunner AA** | 26 | The only dedicated AA structure in the game — **Allied only** |
-| Arc Pylon | 28 | Chains three ways, and fires through a blackout |
+| **Multigunner AA** | 26 | The only dedicated AA structure in the game — **Allied only**. Draws 30, so it stops with the grid |
+| Arc Pylon | 28 | Chains three ways. Draws 90 — the heaviest load in the game, and the first thing off in a brownout |
 | Tesla Coil, Helios Spire, Prism Tower | 30–34 | All double as AA, all stop in a brownout |
 | Every aircraft | 17–23 | Air answers air — which is why owning the only gunship is not a win condition |
 
@@ -367,10 +374,12 @@ worth bombing.
 The honest general rule is a **2:1 line-to-answer ratio**, with the answer chosen from what you
 scouted. Concretely:
 
-**[Allied Forces](/avihaymenahem/voltmarch/wiki/Faction-Allies).** Grizzlies are the line. The Multigunner IFV is, on the numbers, the better tank
-against everything except heavy armour — cheaper, faster, longer-sighted and nearly twice the damage.
-Mix them roughly evenly and use Grizzlies as the anti-Rhino element. Javelins behind the armour, not
-in front: they have 24 m of range against a Rhino's 26 and have to walk into the gun. Prism Tanks
+**[Allied Forces](/avihaymenahem/voltmarch/wiki/Faction-Allies).** Grizzlies are the line, and the Multigunner IFV is not a cheap substitute for
+one: it loses the 1v1 both ways round, to a Grizzly and to a Rhino. What it is, is the best raider in
+the army — 1.00 against Light armour, faster than anything else with a turret, and two metres more
+sight than the tank. Point it at aircraft, at other raiders and at harvesters, and keep the Grizzlies
+for armour. Javelins behind the armour, not in front: they have 24 m of range against a Rhino's 26
+and have to walk into the gun. Prism Tanks
 must stop to fire and die to anything that reaches them — keep them behind the line at 30 m, and
 remember the Prism Tank is the one Allied hull that does **not** crush infantry. The Vindicator is
 your base-opener. On a map with a sea, the Heavy Transport is how four Grizzlies arrive on somebody

@@ -571,6 +571,43 @@
  * six cells and its centred position — going full-width would cover a great
  * deal more frame than the §38 budget has to spend, and the budget outranks the
  * reference where the two disagree.
+ *
+ * THE TOP ROW IS A CORRIDOR, AND IT WAS OVER-SUBSCRIBED
+ * ----------------------------------------------------
+ * Reported as "the top middle main hud, its getting huge and sometimes almost
+ * overlaaping with objectives". It was not "sometimes" and it was not "almost":
+ * measured in the real game at 1920x1080, `--vm-u` = 1.5px, the strip runs
+ * x 369.75..1550.25 and the objective panel's left edge is at 1518 — a **32.25 px
+ * overlap on an empty match**, with the objectives at `z-index: 5` painting over
+ * the INCOME readout.
+ *
+ * The strip is CENTRED, so the overlap is symmetric: moving the objective panel
+ * to the left edge produces the same 32.25 px on the other side. That is why
+ * "put objectives on the left" is not a fix on its own, and why the answer is
+ * here rather than in section 10B.
+ *
+ * WHY IT LOOKED INTERMITTENT. `--vm-u` is set from the viewport HEIGHT
+ * (`computeUiScale` in `src/ui/Chrome.ts`), so the strip's width in CSS pixels
+ * is proportional to HEIGHT — while the media query that used to drop the three
+ * telltales was written `@media (max-width: 1180px)`, i.e. in viewport WIDTH.
+ * The two units never meet. At 2560x1440 the strip is 1572 px wide and the query
+ * cannot fire; at 1152x864 it fires on a row that had 23 px to spare.
+ *
+ * So the fit test has to be asked in DESIGN UNITS — viewport width divided by
+ * `uiScale` — which only JS knows. `Hud.resize()` computes it (on resize only,
+ * never per frame) and publishes `data-top-fit` on the HUD root; the four tiers
+ * and their derivation live in `topRowFit()` in `src/ui/Hud.ts`, and
+ * `tests/hud-top-row.spec.ts` re-derives every threshold from the geometry in
+ * this file. Measured design-unit widths of the strip, at u=1, Rajdhani loaded,
+ * worst realistic content:
+ *
+ *   wide   six cells                                   818u
+ *   tight  telltales dropped                           598u
+ *   bare   telltales + the power STATE WORD dropped    530u
+ *   solo   as `bare`, and the objective panel is gone
+ *
+ * An absent `data-top-fit` — no HUD, or an older harness — is the `wide` layout,
+ * which is exactly what shipped before this existed.
  * ========================================================================== */
 
 .vm-hud .vm-resources {
@@ -798,11 +835,44 @@
 
 .vm-hud .vm-res-clock .vm-res-value { font-size: calc(14 * var(--vm-u)); }
 
-/* Below ~1180 css px the six cells stop fitting; the three telltales go first
-   because the HUD is still complete without them. */
-@media (max-width: 1180px) {
-  .vm-hud .vm-res-tell,
-  .vm-hud .vm-res-rule.is-tell { display: none; }
+/* -- THE FOUR TIERS ------------------------------------------------------- *
+ *
+ * Triggered by `data-top-fit` on the HUD root, which `Hud.resize()` derives
+ * from the viewport width IN DESIGN UNITS. This replaced
+ * `@media (max-width: 1180px)`, which asked the question in viewport pixels
+ * against a strip whose width scales with viewport HEIGHT — see the section
+ * header for the measurement, and for why that query fired on the frames that
+ * fitted and stayed silent on the ones that did not.
+ *
+ * The order the row gives things up is unchanged from that query's intent: the
+ * three telltales go first, "because the HUD is still complete without them".
+ *
+ * THE ORDER IS A CHOICE AND IT HAS A MEASURED PRICE. Every 16:9 frame is 1280
+ * design units wide — 1280x720, 1600x900, 1920x1080, 2560x1440 and 3840x2160
+ * all land on exactly that number, because `computeUiScale` quantises the
+ * height by quarters — so 16:9 sits in `tight` and loses ARMY / BASE / INCOME.
+ * At 1920x1080 that takes the strip from 1180 px to 851 px, which is the other
+ * half of the report ("its getting huge") answered.
+ *
+ * SWAPPING THE FIRST TWO TIERS IS THE ALTERNATIVE, and it was measured rather
+ * than dismissed: drop the power word first (819u -> 750u, threshold 1271u) and
+ * 16:9 keeps all six cells with 15u of clearance instead of 106u — but the strip
+ * stays 1125 px wide at 1080p, i.e. barely narrower than the thing that was
+ * reported. It is one swap of two entries in `TOP_STRIP_UNITS` plus the two
+ * rules below if that trade is ever preferred.
+ * ------------------------------------------------------------------------ */
+
+.vm-hud:is([data-top-fit='tight'], [data-top-fit='bare'], [data-top-fit='solo'])
+  :is(.vm-res-tell, .vm-res-rule.is-tell) {
+  display: none;
+}
+
+/* Second to go: the power STATE WORD. It is the most redundant 68u in the
+   strip — the segmented meter beside it already shows the load, and `is-tight`
+   / `is-down` already recolour both the meter and the value. Measured on the
+   whole strip: 598u with the word, 530u without, worst realistic content. */
+.vm-hud:is([data-top-fit='bare'], [data-top-fit='solo']) .vm-power-state {
+  display: none;
 }
 
 /* ==========================================================================
@@ -2532,6 +2602,14 @@
      scrolling, because the build rail's top offset is a constant and a
      ten-objective mission would otherwise grow down through it. */
   width: var(--vm-rail-w);
+  /* BORDER-BOX, and it is load-bearing rather than tidiness. Without it the
+     9u padding lands OUTSIDE the 240u width, so the panel rendered 258u wide
+     against the build rail's 240u (the rail is `.vm-dock`, which does state
+     border-box) — measured 1920-1518 = 402 px at u=1.5, i.e. 268u from the
+     right edge instead of 250u. The comment below and `tests/hud-layout.spec.ts`
+     both claim the two are one strip sharing a width; they were 18u apart, and
+     those 18u came out of the corridor the resource strip has to fit in. */
+  box-sizing: border-box;
   max-height: var(--vm-obj-max-h);
   overflow-y: auto;
   display: flex;
@@ -2695,10 +2773,17 @@
 }
 
 /* The panel is the first thing to go when the frame gets narrow: the bottom
-   docks are the interface, this is a reminder. */
-@media (max-width: 1000px) {
-  .vm-hud .vm-objectives { display: none; }
-}
+   docks are the interface, this is a reminder.
+ *
+ * "Narrow" is now asked in DESIGN UNITS (`data-top-fit='solo'`, set by
+ * `Hud.resize()`) rather than as `@media (max-width: 1000px)`. The old query
+ * was the same unit mistake as the resource strip's — this panel's width is
+ * `--vm-rail-w`, a multiple of `--vm-u`, which comes from viewport HEIGHT — so
+ * at 1024x768 the panel stayed up on a row that was 55 px short of holding it,
+ * and at 1600x900 it stayed up on a row 35 px short. `solo` is the tier at
+ * which even the `bare` strip cannot share the row, and it is derived rather
+ * than chosen; see `topRowFit()` in `src/ui/Hud.ts`. */
+.vm-hud[data-top-fit='solo'] .vm-objectives { display: none; }
 
 /* ==========================================================================
  * 11. ICONS, FOCUS AND MOTION

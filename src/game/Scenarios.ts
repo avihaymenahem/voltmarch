@@ -1370,9 +1370,19 @@ export const FALLBACK_BUILDINGS: Readonly<Record<string, FallbackBuilding>> = {
   /* -- THE MERIDIAN PACT --------------------------------------------------
    * Transcribed from `src/data/Defs.ts` §2. The Solar Array is the faction:
    * 350 credits for 160 power on 420 hp, against 300/100/800 for a Power
-   * Plant. Cheapest power in the game on the softest structure — and both Pact
-   * defences plus its siege hull carry `needsPower` weapons, so a power raid
-   * silences the belt while the economy keeps running.
+   * Plant. Cheapest power in the game on the softest structure — and BOTH PACT
+   * DEFENCES DRAW POWER, so a power raid silences the belt while the economy
+   * keeps running. That is the faction's risk profile in one line.
+   *
+   * This said "both Pact defences plus its siege HULL carry `needsPower`
+   * weapons", which was wrong twice over. `Combat.engage` requires
+   * `EntityFlag.NeedsPower` on the ENTITY and only structures ever get it, so
+   * a hull could never have been gated whatever its weapon row said — and
+   * `zenithBeam`'s flag had already been deleted for exactly that reason. The
+   * surviving claim is also no longer about the weapon: since the blackout
+   * work the gate is primarily the def's negative `power`, not
+   * `WeaponDef.needsPower`, so what puts a Pact defence on the grid is that it
+   * draws from it.
    * --------------------------------------------------------------------- */
   mrdConclave: building('mrdConclave', B.conYard, 1900, -20, 30,
     EntityFlag.IsBuilder | EntityFlag.IsFactory | EntityFlag.PrimaryFactory, Faction.Meridian),
@@ -1802,7 +1812,16 @@ const FACTION_KEY_MAP: Readonly<Record<string, readonly string[]>> = {
   submarine:        ['submarine',   'gunboat',    'submarine',  'mrdCorvette',      'rclScow'],
   destroyer:        ['destroyer',   'destroyer',  'dreadnought', 'mrdMonitor',      'rclHulk'],
   dreadnought:      ['dreadnought', 'destroyer',  'dreadnought', 'mrdMonitor',      'rclHulk'],
-  transport:        ['transport',   'transport',  'transport',  'mrdCarryall',      'rclCrawler'],
+  /* WAS `mrdCarryall` / `rclCrawler` FOR THE LAST TWO COLUMNS, AND BOTH ARE MCVs.
+   * They carry `U.mcv` and `deploysInto`, and they are already the entire `mcv`
+   * row above — so any scenario placing a `transport` key handed the Pact and
+   * the Reclamation a CONSTRUCTION VEHICLE instead of a landing ship. The
+   * shared `transport` is "Eight slots of anything, over open water"
+   * (`cargoSlots: 8`), and the eight-slot equivalents are `mrdArgosy` and
+   * `rclHauler` — which the `heavyLift` row four lines down already names
+   * correctly, against the same two columns. The four-slot tier is
+   * `mrdLighter` / `rclScow`, and it is the `landingCraft` row. */
+  transport:        ['transport',   'transport',  'transport',  'mrdArgosy',        'rclHauler'],
   /* the completed naval line: recon, the four-slot landing ship, the eight-slot
    * heavy, and the swimmer who needs none of them. `transport` is shared by the
    * Allied yard and the Soviet pen, so both columns name it. */

@@ -37,6 +37,59 @@
  * the RA behaviour, and it is what makes "which field do I expand to" a real
  * decision instead of a lookup of who is closest.
  *
+ * HOW LONG "A LONG TIME" IS, MEASURED
+ * -----------------------------------
+ * Reported as "Ore fields should regenerate over time". They do; nobody can see
+ * it. Two prose sites in this repo reason about regrowth on a scale of TENS OF
+ * SECONDS — config.ts's HARVESTER_LEASH_PATIENCE ("a stripped node is back over
+ * ORE_MIN_CLAIM (25) in about 14 s") and Harvesting.ts's LEASH_* block ("14 s at
+ * the node and 42 s anywhere else"). The first is true. The second is false, and
+ * it is false by an order of magnitude, because a non-node cell does not start
+ * at zero seconds — it starts when its UPSTREAM crosses ORE_REGROW_SPREAD of the
+ * upstream's own capacity.
+ *
+ * THAT GATE USED TO MAKE A WORKED FIELD UNRECOVERABLE, AND IT IS THE WHOLE OF
+ * *"ore fields should regenerate over time"*. The regrowth code below was
+ * correct and running the entire time; the defect was a RATIO between two
+ * constants in `config.ts` that had never been read together. A harvester
+ * claims a cell at `ORE_MIN_CLAIM` (25) and mines it to zero, so ~25 ore is the
+ * ceiling a worked cell ever sits at — while at `ORE_REGROW_SPREAD = 0.3` the
+ * wave needed that same cell to hold 138-160 ore before the cell behind it
+ * could grow at all. Five to six times over the bar, so on any field anyone was
+ * actually mining the wave never advanced past the source. Measured then:
+ *
+ *     t= 6 min   remaining    13  (0.1%)
+ *     t=25 min   remaining    15  (0.1%)     node 8.1 of 461
+ *
+ * Nineteen consecutive minutes at a tenth of a percent. `ORE_REGROW_SPREAD` is
+ * 0.025 now — chosen so `ORE_CELL_MAX * spread` stays under `ORE_MIN_CLAIM`,
+ * which makes the guarantee hold for the richest cell the generator can make
+ * rather than for the average one. The node-outward SHAPE is untouched; only
+ * the per-hop delay shrinks.
+ *
+ * Driven on the real class, stripped to zero and left completely alone, `regrow`
+ * on the shipped 15-tick interval:
+ *
+ *     r26 (113 cells, 22 327 ore)    1m  4.1%   2m 20.2%   5m 57.6%   10m 86.2%   20m 99.1%
+ *     r30 (149 cells, 29 682 ore)    1m  2.8%   2m 17.5%   5m 56.5%   10m 86.0%   20m 99.2%
+ *
+ * AND THE THROUGHPUT IS SELF-LIMITING, which is what keeps ore from becoming
+ * infinite. A recovering field's output peaks partway through and then collapses
+ * as its cells cap out — there is nothing left to grow. Measured on the r26
+ * field above, against a harvester's ~22 ore/s (`HARVESTER_CAPACITY` 700 over a
+ * ~32 s round trip):
+ *
+ *     2 min into recovery    60.3 ore/s     ~2.8 harvesters sustained
+ *     5 min                  33.9 ore/s     ~1.5
+ *    10 min                  12.6 ore/s     ~0.6
+ *    20 min (99% full)        1.2 ore/s     ~0.05
+ *
+ * So one field carries about three hulls while it is partly worked and fewer as
+ * it fills. Expansion still buys economy, which is the property that would have
+ * been lost had the gate simply been removed. **If ore ever feels too plentiful
+ * the lever is `ORE_REGROW_RATE`, not the spread gate** — the gate decides the
+ * SHAPE of recovery, the rate decides how much there is.
+ *
  * CLAIMS ARE TIMED, NOT REFERENCE-COUNTED
  * ---------------------------------------
  * A harvester claims a cell for ORE_CLAIM_TTL seconds and refreshes the claim
@@ -115,7 +168,34 @@ export interface OreStats {
 /** Fired the tick a field's last ore unit is taken. */
 export type OreExhaustedListener = (fieldId: number, x: number, z: number) => void;
 
-/** Cell amounts below this are snapped to zero so "visible" and "mineable" agree. */
+/**
+ * Cell amounts below this are snapped to zero so "visible" and "mineable" agree.
+ *
+ * IT DOES NOT AGREE WITH THE HARVESTER, AND THE GAP IS MEASURED AND LEFT.
+ * `acquireInLeash` and `acquireAnywhere` both run their scraps tier as
+ * `findFreeOre(..., minAmount = 1, ...)`, so a cell left holding anything in
+ * [0.5, 1.0) is invisible to every harvester in the game: no search returns it,
+ * so nothing drives to it, so nothing sweeps it — only `takeOre` sweeps, and
+ * `takeOre` only runs where a harvester is already standing — and it sits there
+ * for the rest of the match.
+ *
+ * Measured on a 115-cell r26 field worked to exhaustion by two harvesters: NINE
+ * such cells holding 6.7 ore between them, 0.03% of the field. The cost is not
+ * the ore. It is that `rec.remaining` never reaches zero, so `exhausted` never
+ * fires, `onOreExhausted` never tells anybody, and `nearestField` goes on
+ * offering a stripped field to `acquireAnywhere`'s third tier forever.
+ *
+ * RAISING IT TO 1.0 WAS TRIED AND REVERTED, on measurement rather than taste.
+ * A larger sweep empties every cell a fraction of a tick earlier and makes
+ * every harvester hop a fraction earlier, and `tests/harvester-soak.spec.ts` —
+ * three seeds, twelve hulls, 240 s each — went from 4 soft-stalled hulls to 6
+ * against its ceiling of 5. That file's own note says its 150 m bar is "a hard
+ * threshold on a continuous quantity", so this is drift rather than damage, but
+ * two hulls of drift is not worth 7 ore and a tidier `exhausted` edge.
+ *
+ * If the scraps tier's floor ever moves, revisit this WITH it: the two numbers
+ * are one decision, and today they disagree.
+ */
 const ORE_RESIDUE = 0.5;
 
 /**
@@ -626,7 +706,46 @@ export class OreField implements IOreField {
    * Advance regrowth by `dt` seconds. Called on a slow interval with the
    * elapsed time since the previous pass, not every tick — the growth rate is
    * measured in ore units per second either way.
-   */
+   *
+   * ============================ WHAT NOT TO TRY HERE =========================
+   * A worked field used to sit pinned at 0.1% of capacity for nineteen straight
+   * minutes, which looks like a bug in this function. It never was. The wave
+   * advanced exactly as designed; a harvester simply took each cell back below
+   * the gate before the gate could open. THE FIX WAS A CONSTANT — see the
+   * header — and these three were designed against the same measurement and are
+   * all wrong HERE. They are written down rather than left to be re-derived,
+   * because each one looks reasonable from inside this file.
+   *
+   *   1. RAISE `ORE_REGROW_RATE` to beat the gate. Does nothing. A dry
+   *      harvester re-searches every `DRY_RETRY` (2 s) and takes any cell
+   *      holding one unit, all of it, so a worked cell's steady state is
+   *      `rate * 2 s` for ANY rate. Clearing the old ~138 ore gate would have
+   *      needed 23 ore/s per cell, at which the whole field regrows at
+   *      3400 ore/s and there is no economy left.
+   *
+   *      (`ORE_REGROW_RATE` is still the right lever for HOW MUCH ore exists —
+   *      it sets how many harvesters a field carries. It was never the lever
+   *      for whether the wave advances.)
+   *
+   *   2. RESERVE THE SOURCE CELL — floor `takeOre` so `cells[0]` always keeps
+   *      `capacity * ORE_REGROW_SPREAD`. This DOES work and it was the smallest
+   *      mechanism that made the documented design function while the gate was
+   *      still 0.3. It changes what `takeOre` and `totalOre` mean on a stripped
+   *      field — this class's published contract, and four assertions in
+   *      `tests/economy.spec.ts`. Unnecessary now, and it would be a second
+   *      mechanism solving a problem the constant already solves.
+   *
+   *   3. CLOSE AN EXHAUSTED FIELD TO SEARCHES until it is `ORE_REGROW_SPREAD`
+   *      refilled. Rejected on its own terms: a player would watch crystals
+   *      grow back on ground their harvesters refuse to touch, with nothing on
+   *      screen explaining why. It also breaks `harvester-leash.spec.ts`'s
+   *      "re-arms the notice once the patch is worth working again".
+   *
+   * THE INVARIANT TO PRESERVE: `ORE_CELL_MAX * ORE_REGROW_SPREAD` must stay
+   * below `ORE_MIN_CLAIM`, or the wave cannot advance on a field anyone is
+   * mining and all of the above comes back. Both constants are in `config.ts`;
+   * `tests/ore-regrowth.spec.ts` pins the relationship.
+   * ========================================================================= */
   regrow(dt: number): void {
     if (ORE_REGROW_RATE <= 0 || dt <= 0) return;
     for (let f = 0; f < this.records.length; f++) {

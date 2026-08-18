@@ -107,7 +107,6 @@ import { SELL_REFUND } from '../core/config';
  */
 import { CIVILIAN_INCOME_KEYS } from '../data/Civilians';
 
-import { BuildKind } from './Production';
 import type { BuildEntry, ProductionService } from './Production';
 
 /* ==========================================================================
@@ -188,28 +187,23 @@ export function refundOf(entry: BuildEntry): number {
 /**
  * The player's refinery entry, chosen by `shipsWith` rather than by key.
  *
- * Deliberately NOT a `Record<Faction, string>` table. Three refineries serve
- * four armies (Allies and Soviets share `refinery`), and the fact that makes a
- * structure a refinery for this module's purposes is precisely that it hands
- * over a harvester — which is authored, on the entry, once. A fifth army with
- * a fourth refinery works here the day it is added, and a hardcoded table is
- * the thing `RepairSell.SURVIVOR_KEY` got wrong by being four long against
- * `FACTION_COUNT` 5.
+ * A thin read of `ProductionCatalog.bundlerFor`, which is where the answer and
+ * the argument for it now live — the roster-not-entries trap, and why this is
+ * not a `Record<Faction, string>` table. It moved because a SECOND consumer
+ * needed it and could not have it: `Production.redeemBundledUnit` was
+ * delivering the REDEEMING STRUCTURE'S hauler, so a Pact player holding a
+ * captured Allied refinery was rescued with an Allied harvester their Forgeyard
+ * can never replace. A rule with two askers and one implementation cannot drift
+ * apart; two implementations already had.
+ *
+ * Kept as a named function rather than inlined at its one call site because
+ * this module's vocabulary is "refinery" and the catalog's is "bundler", and
+ * the survey reads better in its own words.
  */
 export function refineryEntryFor(prod: ProductionService, player: PlayerId): BuildEntry | null {
   const p = prod.world.players[player as number];
   if (p === undefined) return null;
-  // `roster` and not `entries`, because it is the list that already applies
-  // SHARED_POOL_FACTIONS. Scanning `entries` directly returns the NEUTRAL
-  // `refinery` for a Meridian player — it ships a harvester and it matches on
-  // faction — and the Pact would have been surveyed against the wrong
-  // structure and the wrong 1400-credit harvester for its whole match.
-  const roster = prod.catalog.roster(p.faction, BuildTab.Structures);
-  for (let i = 0; i < roster.length; i++) {
-    const e = roster[i];
-    if (e.kind === BuildKind.Building && e.shipsWith !== '') return e;
-  }
-  return null;
+  return prod.catalog.bundlerFor(p.faction);
 }
 
 /* ==========================================================================

@@ -10,7 +10,7 @@ textures.
 
 That claim is about the GAME WORLD, and it is exactly true there: every mesh, material, texture,
 cameo and in-game icon is built from Three.js geometry, custom shaders and procedural canvas
-generators. **Three shipped assets are not generated**, all deliberate, all in `public/`:
+generators. **Four shipped assets are not generated**, all deliberate, all in `public/`:
 
 1. **Rajdhani** (OFL-1.1) in `public/fonts/` — the UI text face, Latin subset, four weights, 60 kB.
    Added 2026-08-05 at the user's request. The stack had named Rajdhani since it was written and
@@ -18,10 +18,35 @@ generators. **Three shipped assets are not generated**, all deliberate, all in `
    Medium — and the face the UI was designed around was never on screen.
 2. **The brand lockup** in `public/brand/` — seven PNGs derived by `tools/brand.mjs` from a
    `logo.png` the user supplied, which is kept as `tools/brand-source/logo-source.png`.
-   `logo-full.png` is the main-menu title and the loading curtain; `mark-*.png` are the favicons
-   and app icons. See `public/brand/README.md`. This said "eight PNGs derived by" while one of the
-   eight was the underived SOURCE, sitting in the shipped directory and being published unused.
-3. **Recorded audio** in `public/audio/` — 184 Ogg files, 6.9 MB, added 2026-08-09 at the user's
+   `logo-full.png` is the main-menu title; `logo-720.png` is the curtain's fallback wordmark;
+   `mark-*.png` are the favicons and app icons. See `public/brand/README.md`. This said "eight
+   PNGs derived by" while one of the eight was the underived SOURCE, sitting in the shipped
+   directory and being published unused. It also credited `logo-full.png` as the loading curtain,
+   which the markup has never used.
+3. **The loading screen key art** in `public/brand/` — `splash-1600.webp` and `splash-640.webp`,
+   derived by `tools/splash.mjs` from a `load.png` the user supplied on 2026-08-18, kept as
+   `tools/brand-source/splash-source.png`. It is the boot curtain's full-bleed backdrop.
+
+   **THE ARTWORK CARRIES ITS OWN WORDMARK, AND THAT IS THE WHOLE DESIGN PROBLEM.** Drawing the
+   DOM lockup on top of it gives two VOLTMARCHes stacked down the page — which is exactly what a
+   screenshot at 569x595 showed on the first attempt, because the threshold for hiding it had been
+   REASONED ("a portrait crop clips the painted one early") rather than measured. It does not. The
+   painted lockup occupies x 0.310..0.687, y 0.030..0.346 of the frame, measured by cropping to
+   those bounds and confirming it whole; from that, a centred `cover` crop keeps it down to
+   viewport aspect **0.676**, not the 1.33 that was assumed. `tests/boot-splash.spec.ts` holds
+   those four numbers and re-derives both the media-query threshold and the `object-position`
+   anchor from them. **Replace the artwork and you must re-measure the box.**
+
+   Two other things not to undo. The file is **WebP, alone in a directory of PNGs**, because it is
+   a photographic illustration rather than a logo — 2.83 MB of source becomes 265 kB — and it is
+   the one asset that blocks a first paint, so the spec holds a ceiling over it. And every art
+   rule keys off a `.has-art` class the boot script sets only after a real decode
+   (`naturalWidth > 0`, with `complete` tested FIRST because the script runs after the `<img>` and
+   a warm cache has already fired `load`), so a 404 degrades to precisely the curtain that shipped
+   before this existed, wordmark included, rather than to a black rectangle with a progress bar.
+
+   **`npm run shots` cannot see any of this.** The curtain is dismissed before a fixture is posed.
+4. **Recorded audio** in `public/audio/` — 184 Ogg files, 6.9 MB, added 2026-08-09 at the user's
    request. `sfx/` covers **all 39 sound-effect families** (CC0), `voice/` gives the unit barks two
    real voices (Kenney, CC0), and `eva/` is the announcer, **rendered speech** rather than found
    audio. Sources: Kenney, several CC0 libraries via
@@ -71,7 +96,7 @@ generators. **Three shipped assets are not generated**, all deliberate, all in `
    listed as CC0 on OpenGameArt shipped a `creativecommons.txt` reading CC-BY 3.0, under a
    different author's name than the page credited. It was rejected rather than shipped mislabelled.
 
-4. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
+5. **The README key art** in `docs/hero.png` — an illustration the user supplied on 2026-08-12,
    784 kB, downsampled to 1600px. It is the ONLY entry in this list that is **not shipped**: it
    lives in `docs/`, not `public/`, so it is in no bundle, reaches no player, and is deliberately
    NOT in the credits screen — `tests/credits-truthful.spec.ts` checks that screen against
@@ -99,9 +124,10 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 4027 across 155 files (+2 opt-in probes)
-                     #   3 of those only run when `dist/` exists — `webgpu-bundle-isolation`
-                     #   is `describe.runIf(haveDist)`, so a clean tree reports 4024.
+npm test             # vitest, currently 4520 across 179 files (+2 opt-in probes)
+                     #   6 of those are gated on `distIsCurrent()` — freshness, not mere
+                     #   existence — across BOTH `manual` and `webgpu-bundle-isolation`,
+                     #   so a tree with no current `dist/` reports 4514 and skips 8.
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -160,6 +186,17 @@ The assertion is `toBe(0)`, exactly, and both halves are load-bearing: restoring
 the test under `--max-semi-space-size=4`. The count tracked V8's new-space size rather than the
 code, which is why it moved with machine load. **Do not reintroduce a tolerance** — a non-zero
 `sampled` now means the sample path really did allocate.
+
+**`wiki/` IS A BUILD INPUT NOW.** The 17 player-wiki pages are the in-game manual
+(Options → Manual), reached through one lazy `import.meta.glob`, so editing a wiki page
+changes the bundle. `tests/manual.spec.ts` gates the two properties that matter: the corpus
+is NOT in the entry chunk (it is its own ~320 kB chunk fetched on first open, and the entry
+grew by **10 bytes**), and every page still renders — word-for-word, so a table divider the
+parser stops recognising fails rather than quietly becoming a paragraph. The dist-freshness
+`runIf` includes `wiki/**` for that reason. `tests/wiki-numbers.spec.ts` is the other half:
+every numeric claim on those pages is re-derived from `WEAPONS`/`UNITS`/`BUILDINGS`/
+`ARMOR_MATRIX`, because the moment they ship inside the game they stop being documentation
+and become claims the product makes.
 
 `npm run build` deliberately does **not** typecheck. esbuild strips types, so a type error must never
 stop the game from running. That is what `npm run typecheck` is for. Do not "helpfully" wire tsc into
@@ -575,9 +612,34 @@ destroyed, they are not rebuilding, not healing"*. Three symptoms, two defects, 
 - **THE PREBUILT BASE IS NOT AN AI AFFORDANCE AND THERE IS NO ASYMMETRY TO DELETE.** `Scenarios.ts`
   seeds every seat in ONE loop with no `isHuman`, no difficulty and no slot test;
   `START_CONDITION_DEFAULT` is **`'mcv'`**, both lobby blurbs read "Both sides start with…", and
-  `tests/match-start.spec.ts` already asserts both slots symmetrically under both openings. What a
-  player actually sees is the AI's construction vehicle unfolding at t≈0 — it has a deploy layer
-  ahead of its build script — while they are still driving theirs. Do not "fix" the scenario.
+  `tests/match-start.spec.ts` already asserts both slots symmetrically under both openings, and
+  `tests/opening-default.spec.ts` now asserts the DEFAULT rather than passing `{ start: 'mcv' }`
+  explicitly the way every case in the older file does. Do not "fix" the scenario.
+
+  **THE HEAD START IS -0.83 SECONDS, AND THIS BLOCK USED TO BLAME THE WRONG THING.** It said a
+  player sees "the AI's construction vehicle unfolding at t≈0 while they are still driving theirs".
+  The deploy layer is real and does fire at t≈0 — but measured on seed 7 through
+  `__VM.pause()`/`step()`, the AI's yard finishes at t+2.43 s and a human who presses Deploy on
+  tick 0 finishes at **t+1.60 s**. The player is AHEAD. The perceived head start was their own
+  orient-and-drive time, and the sentence sent two investigations at a deploy layer that was
+  innocent.
+
+  **WHAT A PLAYER IS ACTUALLY LOOKING AT IS THE 10 000-CREDIT OPENING BANK.** Nobody touching the
+  controls, seed 7, Normal:
+
+  ```
+  t+30s    1 bld   6 un   cr 9746      conyard    t+2.4s     refinery    t+90.4s
+  t+60s    4 bld   6 un   cr 8900      power      t+37.4s    warFactory  t+130.9s
+  t+90s    7 bld  11 un   cr 4852      barracks   t+61.4s
+  t+240s  16 bld  27 un   cr    0      flameTower t+74.9s
+  ```
+
+  By 90 seconds the AI has a seven-building base with a defence tower and eleven troops **and has
+  not mined a single ore to get there** — its first refinery completes at that exact moment. It is
+  spending the same bank the player is holding and not opening with. Reported twice as "the AI has
+  a ready base"; both times the scenario was innocent. `defaultSetup().startingCredits` is the
+  lever, `CREDIT_OPTIONS` already offers 5000 and 2000, and `MCV_MIN_CREDITS` 5000 is documented as
+  the smallest bank that can reach a refinery — so 5000 is the FLOOR, not a safe midpoint.
 
   The two REAL asymmetries are both documented and neither is a structure:
   `AI_DIFFICULTY[].resourceBonus` (0.8 / 1.0 / 1.15 / 1.35 on harvested income) and
@@ -613,6 +675,346 @@ destroyed, they are not rebuilding, not healing"*. Three symptoms, two defects, 
 - **`AI_SKILL[].maxRepairs` is a concurrency cap, not a switch.** Every rung mends, because a base
   that never heals is a broken opponent rather than a gentle one. Easy patches one building while
   the next two burn; Brutal answers the salvo.
+## Six balance reports, and three of them were the opposite of what they said
+
+One afternoon, six reports. Every number below is measured; where a report turned out to be
+false, the measurement is kept rather than the report.
+
+### Time-to-kill is one knob, and it is invariant on trades
+
+Reported as *"In general, killing and dying feels too fast in game"*. `COMBAT_DAMAGE.globalMul`
+is 0.80, applied **once**, in `Damage.applyOne` — the only function in the game that writes `hp`.
+
+```
+main battle tanks   8.62 - 10.77 s  ->  10.8 - 13.5 s
+line infantry        2.00 -  2.35 s  ->   2.5 -  2.9 s
+```
+
+**IT CANNOT DOUBLE-COUNT WITH A WEAPON RETUNE, AND THAT IS PROVABLE.** A squad assaulting an
+emplacement lands `36 x r x HP/D`; scaling attacker `r` and defender `D` by the same factor
+cancels. So this stretches the clock and moves no balance relationship at all. **Tune this for
+PACE and a weapon row for BALANCE** — they are different questions and this is the only knob for
+the first. Structures slow by the same factor (single-attacker 20-99 s -> 25-124 s); that is the
+number to revisit first if base-cracking drags.
+
+Not HP and not the armour matrix: `tests/data.spec.ts` pins every `def.maxHp` field-for-field
+against `Scenarios.FALLBACK_UNITS`, and `armorMultiplier(SmallArms, Infantry)` is pinned to
+exactly 1 because it is the counter-triangle's reference cell.
+
+### The gunner stations: the trigger pull, not the dps
+
+Reported as *"Gunner stations should be a less powerfull, one can destroy a full army in a
+second"*, and it was literal. The two CHEAPEST emplacements were the two highest-dps rows in the
+whole 42-row armoury. Five rounds left in 0.24 s, so one pull was 100-105 damage — at or above the
+full health of three of the four line infantrymen. **A burst was a man, 1.45 times a second.**
+
+```
+pillboxMg       5 x 20 / 0.69 s = 144.9 dps  ->  5 x 13 / 0.79 s = 82.3   (362 -> 206 per 1000 cr)
+glaiveRepeater  5 x 21 / 0.69 s = 152.2 dps  ->  5 x 12 / 0.79 s = 75.9   (338 -> 169 per 1000 cr)
+```
+
+**The target is DERIVED.** Eight G.I.s vs a 400-credit Pillbox: the post kills sequentially so its
+dps is flat while the squad's decays, and the squad landed 282 of 500 hp before dying — 1600
+credits of infantry, box keeps 44%. Break-even is 81.5 dps. `tests/emplacement-band.spec.ts` pins
+a price-normalised band (210 anti-infantry dps per 1000 credits) plus a one-shot rate floor, with
+a **now-empty** `OVER_BAND` exception table that fails in BOTH directions — a new exceeder fails,
+and fixing a declared one also fails, so nobody can land half of a pair and walk away.
+
+**`pillboxMg` is `DEFAULT_WEAPONS[11]` in `src/sim/Combat.ts`, not in `Defs.ts`** — `Defs.ts`
+borrows that table verbatim as its prefix and does not own it. Retune in place; re-pointing the
+two defs at an appended `REBALANCE_WEAPONS` row orphans row 11 and throws at import.
+
+### Ore already regrew. The gate was unreachable.
+
+Reported as *"Ore fields should regenerate over time"* — and they always did.
+`src/sim/Economy.ts` was correct and running the whole time. The defect was a **ratio between two
+constants 260 lines apart in `config.ts` that had never been read together**: a harvester claims a
+cell at `ORE_MIN_CLAIM` (25) and mines it to zero, so ~25 is the ceiling a worked cell sits at,
+while at `ORE_REGROW_SPREAD = 0.3` the wave needed 138-160 ore in that cell before the one behind
+it could grow. Five to six times over the bar, so on any field anyone was mining the wave never
+advanced past the source: **19 consecutive sim-minutes at 0.1% of a 22 381-ore field.**
+
+`ORE_REGROW_SPREAD` is **0.025**, and the constraint is arithmetic rather than taste:
+`ORE_CELL_MAX * spread` must stay under `ORE_MIN_CLAIM`, so the guarantee holds for the RICHEST
+cell the generator can make. **0.05 is wrong** — it gives a gate of 23-27 against a claim floor of
+25, which straddles, so the stall would survive on exactly the best fields.
+
+**Ore is not infinite, because throughput is self-limiting** — it peaks partway through recovery
+and collapses as cells cap out:
+
+```
+stripped r26:   1m 4.1%   2m 20.2%   5m 57.6%   10m 86.2%   20m 99.1%
+throughput      2m 60.3 ore/s (~2.8 harvesters)   10m 12.6 (~0.6)   20m 1.2 (~0.05)
+```
+
+So a field carries about three hulls while partly worked and fewer as it fills; expansion still
+buys economy. **If ore feels too plentiful the lever is `ORE_REGROW_RATE`, never the spread gate**
+— the gate sets the SHAPE of recovery, the rate sets how much there is.
+
+Three tests had encoded the stall and were rewritten around the measurement, not nudged green:
+one asserted a stripped field regrows at exactly the source rate (true only while the wave could
+not leave the source); one required the AI to abandon its home field, which became WRONG once two
+harvesters sat inside what a field sustains — its rig is six hulls now, past the ceiling; and the
+tripwire that deliberately pointed at the defect now pins the invariant.
+
+### A captured refinery pays the captor, and almost nothing needed a hook
+
+Reported as *"Occupying an enemy ore building should give me his income"*. Ownership transfer
+already worked: storage cap, power, prereqs, `AiBrain.roleCount` and `OreCrisis` are all
+**rescans over `store.owner`**, not running totals. The defect was two lines in
+`src/sim/Harvesting.ts` (`§DEED`): the dock guard required hauler and refinery to be allied, and
+the deposit was keyed on **the hauler's** owner rather than the refinery's. Measured on the old
+code, a full hopper docking at the instant of capture paid **victim +700, captor +0**.
+
+That miskeying was *unfalsifiable* rather than wrong — `allyMask` is only ever self plus Gaia and
+no Gaia structure is a refinery, so both names meant one player in every reachable state.
+
+Two deliberate limits: only a hull **already docked** is grandfathered (one still hauling
+re-points, because a harvester driving into an enemy base is the `§ANCHOR` defect), and the
+victim's harvesters do **not** transfer — `dockTarget` is a per-haul binding, so the set would be
+arbitrary. Capture cannot farm the `OreCrisis` free harvester: it satisfies the standing-refinery
+clause at a higher price than building one, and capturing adds the refund to the pot, which biases
+the survey toward `SellOut`. `PlayerState.buildingCount` is the one running total and now follows
+a capture — it is indexed by `entry.defId`, NOT the `publicId` the event carries.
+
+### A blackout has teeth now, and the literal request was refused
+
+Reported as *"If no electrcity left, buildings shouldnt be able to shoot / generate troops"*. The
+firing gate existed but was triple-conditional and only 4 weapon rows carry `needsPower`, so 6 of
+10 armed structures fired happily on a dead grid. It is two tiers now: **universal** — any
+structure that DRAWS power and is dark cannot fire — plus `WeaponDef.needsPower` kept as a
+stricter tier for electric guns during any deficit. 4/10 silent -> 7/10.
+
+**THE THREE THAT STILL FIRE DRAW ZERO POWER, AND THAT IS THE POINT.** `pillbox`, `sentryGun` and
+`rclSpitpost` are `power: 0`, so "no electricity" does not reach them — and `rclSpitpost`'s
+shipped blurb says *"Fires through a blackout"*, which `tests/content-truthful.spec.ts`
+independently enforces. The request as literally stated is therefore NOT what shipped.
+
+Production halts on the unit tabs only. `census` skips a dark structure for every tab except
+`Structures` and `Defense`; `BuildQueue.advanceTab` already stalls at `factoryCount <= 0`,
+charges nothing and auto-resumes, so no new machinery. **The anti-soft-lock is deliberately
+redundant** — `PowerGrid.shedPriority` returns `never` for `EntityFlag.IsBuilder` AND `census`
+exempts those two tabs by name. Do not simplify it to one.
+
+One real cost: the Reclamation's Arc Pylon (-90, the heaviest single load in the game) loses its
+grid-independence, and `Defs.ts`'s doctrine block was rewritten rather than worked around.
+
+### The AI does not cheat, and could not buy capability
+
+Reported as *"AI building capabilities should be according to his money"*. The plain reading is
+**false and measured**: Brutal at 16 sim-minutes had `oreMined` 56 010 + 10 000 opening against
+`creditsSpent` 66 010 and 0 banked. Credits are conserved to the credit; the AI pays through the
+same drip a player does. There is no credit cheat.
+
+The true reading is the opposite — build capability did not respond to the bank in EITHER
+direction, two defects in `AiBrain.chooseBuild`:
+
+- **An unaffordable candidate was dropped, not saved for.** `consider` ran one test for two
+  refusals — "tab full" (look elsewhere) and "cannot pay yet" (save up) — then fell through to
+  `buildUnits`, which buys the cheapest thing that scores. So the highest-return purchase lost
+  every pass to a rifleman, 1400 against 200, forever: **93 riflemen and 3 harvesters**, fleet
+  7 -> 1, `oreMined` frozen for the last three minutes with 574 banked. The reserve already
+  existed twice elsewhere and this file calls it "the half that makes it work" both times.
+- **Production throughput was a constant.** A second Barracks makes the one queue 35% faster to a
+  2.0 cap, but a producer was proposed only at `roleCount === 0`. Of **925 passes with >=5000
+  banked, 903 were refused because both unit tabs were already full.**
+
+**DO NOT DEEPEN `AI_SKILL[].queueDepth` TO MAKE THE AI SPEND FASTER** — `BuildQueue.advanceTab`
+only ever advances `items[0]`, so depth changes no rate. Only more factories do. And
+`AI_PRODUCERS.maxUseful` must stay DERIVED from `FACTORY_SPEED_BONUS`/`CAP`, never a literal.
+
+### The AI bought a Command Post and then bought nothing
+
+Reported as *"0 strategy, 0 skills, not using powers"*. Powers were the real bug:
+
+```
+              Command Post    powers bought / CALLED      after
+  Easy          never              0 / 0                  0 / 0     (mask 0, by design)
+  Normal        minute 8           0 / 0                  2 / 4
+  Hard          minute 8           3 / 1                  3 / 17
+  Brutal        minute 4           2 / 4                  4 / 20
+```
+
+Normal paid 1500 credits and 80 power for a Post and bought **nothing for sixteen minutes**. Two
+defects in `considerPowers`: the plan order was inverted by price (every power scored identically
+so `POWER_PLAN`'s order was meant to decide, but the loop also skipped anything the near-zero bank
+could not cover, so only the CHEAPEST — Orbital Scan, fourth in the plan — ever cleared), and
+**Orbital Scan can never be fired once bought** (`tryScan` returns at `memCount > 0`; a Post
+cannot exist before minute 4-8; scouting answers that in the first two). A power whose call-gate
+is permanently shut is no longer bought.
+
+**"0 strategy" is FALSE as stated** — there is a five-state posture machine, a scout with a
+waypoint route, a decaying threat grid, composition counter-play scaled per rung, expansion, an
+upgrade plan and a naval survey. **"0 skills" is TRUE for combat micro**: `flee=0` at every sample
+of every rung — only the harvester layer ever sets `UnitState.Fleeing`. The AI retreats ARMIES
+(`shouldRetreat`, gated by `discipline`), never units. What repeats, and is the honest cause of
+"boring", is the OBJECTIVE: one target for sixteen consecutive minutes, no harassment, no second
+front. That is a strategy-layer addition and it is not done.
+
+**`powerAskedTick` IS ZERO-INITIALISED**, so `powerSettled` treats every power as "asked at tick
+0" and refuses any ask before tick 1800. Harmless in a match; it costs an hour in a harness.
+
+### The opening bank built the AI's base, and the fix is per-CANDIDATE
+
+Reported twice as *"AI has ready base and troops when game barely started"*. The scenario was
+innocent both times — see the block above — and so was the deploy layer. **The cause is the
+10 000-credit opening bank**, which the brain spent into a seven-building base with a defence
+tower and eleven troops by t+90 s while its first refinery completed at t+90.4 s. It had mined
+nothing. It was spending the same bank the player is holding and has not spent yet.
+
+Offered the choice between cutting the default bank and pacing the brain, the author chose to keep
+10 000 and slow the AI. So this is a **THIRD deliberate AI asymmetry**, alongside
+`AI_DIFFICULTY[].resourceBonus` and `aiMirrorsUnlocks`, and it is deliberate rather than
+accidental — do not delete it as a bug.
+
+**IT LIVES IN THE BRAIN, NOT IN THE SIMULATION, AND THAT IS WHAT MAKES IT SAFE.** It only lowers
+the brain's own willingness to issue `ProductionStart`. A rule about what credits can BUY would be
+a sim rule, would bind the human, and would be wrong; a rule about when the AI chooses to spend
+binds nobody and cannot desync a lockstep match.
+
+**THE FIRST SHAPE WAS WRONG AND THE FAILURE IS THE REUSABLE PART.** A governor that caps
+`spendable` caps ONE number that every purchase reads — so it caps the economy too, including the
+refinery that retires it. Easy deadlocked outright:
+
+```
+             allowance  − creditFloor  = effective    refinery 2000
+  Easy   0.75   2500       1400           1100        DEADLOCK — 3 bld, 9400 cr,
+  Normal 0.60   4000        600           3400        ok        0 ore, frozen 240 s
+```
+
+And the obvious repair made it worse: flooring the allowance at the refinery's price is 80% of
+Easy's whole budget, so the floor became general spending room and Easy raised a defence tower at
+t+50.1 s against a refinery at t+78.6 s — the exact thing the feature exists to prevent.
+
+`AiBrain.governOpening` / `budgetFor` compute **two** budgets instead. `consider`, both interrupts,
+the scripted opening and `buildUnits` all route through `budgetFor(entry)`: economy and production
+roles see the ungoverned `spendable`, army and defence see the governed `discretionary`. **The
+refinery is never measured against the governed budget, so the governor structurally cannot block
+its own exit** — no floor, no deadlock, no tuning required to avoid one. It latches off at
+`oreMined > 0`, after which `discretionary === spendable` exactly and every later decision is
+bit-identical to a brain that never had one.
+
+```
+             first defence      first ore       units t+240    bld/units @ t+90
+  Easy    50.1s -> 107.6s    88.1 -> 96.8s      29 -> 10       9/14 -> 6/7
+  Normal  76.1s ->  88.6s    54.9 -> 77.9s      21 -> 18       8/12 -> 7/9
+  Hard    76.1s ->  76.1s    80.5 -> 76.9s      22 -> 19       8/12 -> 8/12
+  Brutal  76.1s ->  76.1s    77.7 -> 76.8s      17 -> 22       8/12 -> 8/12
+```
+
+Easy and Normal now raise their first defence AFTER their first ore lands; Hard and Brutal still
+beat it by 0.7-0.8 s, which is what the rungs are for. Two effects nobody predicted: Normal's
+**refinery moved 41 seconds EARLIER**, because governing discretionary spending pushes the economy
+to the front of the queue rather than merely delaying things — this is not only a brake. And the
+unit ladder **was not monotonic before** — Easy fielded the most units of any rung, 29 — and is now
+10 / 18 / 19 / 22.
+
+**`creditFloor` STACKS WITH ANY NEW SPENDING RESTRAINT, and Easy has the largest one**, so Easy is
+where a new constraint turns into a deadlock. It no longer can here, because `creditFloor` applies
+to the ungoverned budget the refinery uses. `tests/ai-opening-governor.spec.ts` pins that
+relationship, so changing either number reports rather than deadlocks.
+
+**TWO HARNESS TRAPS, both of which cost a cycle.** `DeployService` will not unfold a
+scenario-spawned MCV headlessly — the brain reports "deploying the construction yard" forever and
+the match never starts, which reads exactly like a broken feature. Hand the AI its yard at t=0
+instead; that is within 2.4 s of the real opening. And **the governor reads
+`p.stats.creditsSpent`, which only moves when `BuildQueue`'s drip actually charges** — a fast
+harness that echoes `production:started` without charging lets the brain spend against a counter
+that never rises, measured at 39 600 credits of army against a 3000 allowance.
+
+### The AI can name a target now, and `sw=0/0` was never the brain
+
+Reported as *"I just want the AI to feel like im against a human player, that can use everything i
+can"*. That reframes the question as CAPABILITY PARITY, which is measurable, because the AI issues
+commands through the same bus a player does. Audited against every verb:
+
+```
+uses:   Move  AttackMove  Deploy  Harvest  Enter  Unload  UseAbility
+        issueOrder  issuePlaceBuilding  issueProductionStart
+        issueRepairToggle  issueSetStance  issueUsePower
+
+NEVER:  Attack  ForceAttack  Stop  Guard  Capture  Repair  Scatter  Patrol
+        issueSell  issueSetRally  issueSetPrimary  issueRelocate
+        issueProductionCancel  issueProductionPause  issueSelfDestruct
+```
+
+**`OrderKind.Attack` was the headline and it is fixed.** The brain had never issued an explicit
+attack order — every engagement was `AttackMove`, which hands target choice to `Targeting`'s
+automatic acquisition. With no explicit target the AI cannot focus fire, cannot snipe a refinery,
+cannot hunt harvesters and cannot decide to kill the Construction Yard first, so "0 skills" and
+"one objective forever" were the same defect wearing two hats.
+
+`AiBrain.focusFire` / `pickFocusTarget`, doctrine in `AI_FOCUS`. Targets score by class (harvester
+1.7 > defence 1.4 > producer 1.2 > unit 1.0 > other 0.5) times `1 + (1 - hpFrac)`, so a unit at 20%
+outscores a healthy producer — that is what makes it CONCENTRATION rather than a preference for
+whatever is biggest. Three load-bearing details: it runs **in front of** the attack-move, because
+both write the same order column and issuing both silently erases the first; the search radius is
+**34 m** so focus never becomes a chase, since an explicit attack order drives the unit to its
+target; and a dead target is dropped promptly, because `Targeting` falls back to acquisition but
+the unit "stops where it stands", so a group pointed at a corpse just idles.
+
+Laddered on the EXISTING `AI_SKILL[].discipline` rather than a new column — its declared meaning is
+already "how well it fights". Explicit attack orders over 20 minutes: **Easy 0 / Normal 69 / Hard
+147 / Brutal 47**. The gate is the first statement so Easy does not even consume an RNG draw, and
+the whole Easy trace is byte-identical with the feature off. Brutal under Hard is not an inversion,
+it is how much combat that seed produced.
+
+**A MIRROR-MATCH A/B IS NOT EVIDENCE OF STRENGTH, and this is the trap to avoid when measuring any
+future AI change.** Both brains get the change, so `kills` tracks `enemyLost` in every row (Normal
+302/314, Hard 334/343, Brutal 259/268) and the exchange is zero-sum BY CONSTRUCTION. The behaviour
+above is verified correct and laddered; whether it makes the AI WIN more is unmeasured and needs an
+unchanged opponent.
+
+**`sw=0/0` IS WHAT A LOCKED PROFILE LOOKS LIKE, NOT A BROKEN BRAIN.** Three separate investigations
+concluded the AI never builds a superweapon. It does. The probes installed
+`new UnlockGate(() => [], …)` — a profile owning nothing — and superweapons are progression-gated
+(`struct.superweapon.strategic` / `.siege` / `.chronosphere`). With unlocks granted, Brutal builds
+BOTH allowed superweapons and fires two by minute 24, reaching them through the saving reserve. The
+same empty gate silently removes repair depots, prism tanks and the commander from the AI's reach,
+and the traces had been printing `blocked: repairDepot: Locked — complete a mission` for two tasks
+before anyone read it. **Any AI harness that stubs `UnlockGate` is measuring a different game.**
+
+On a fresh profile the AI genuinely cannot build one — and neither can the player, because
+`UnlockGate.mirrorAI` resolves the AI against the human's profile. Symmetric and deliberate.
+
+**A WOUNDED HULL WITHDRAWS NOW — AND `flee=0` WAS A VACUOUS METRIC.** Three separate reports
+cited "no combat unit ever enters `UnitState.Fleeing`" as evidence the AI had no retreat. That
+state is READ by three sites and **WRITTEN BY NONE**, anywhere in the codebase, so the number could
+never have been anything but zero and was evidence of nothing. A retreat is a plain `Move`, which
+is how the harvester layer has always done it. Check that a metric CAN move before citing it.
+
+`AiBrain.withdrawWounded` / `GROUP_WITHDRAW`, doctrine in `AI_RETREAT`: one hull per squad pass,
+worst-hurt first, below 30% health AND hit within the last 3 s, walks to the rally and returns at
+75%. It runs **before** `regroupSquads`, because the tag is what hides the hull from the re-file —
+tag it afterwards and it stays in `strikeIds` for one more pass and `pressAttack` attack-moves it
+straight back into the fight it just left. The release path is equally load-bearing: a tag with no
+clearing branch is a unit permanently deleted from the army.
+
+```
+  rung      withdrawals    own losses      Easy is byte-identical over the
+  Easy           0          121 -> 121     full trace — the discipline gate is
+  Normal        31          132 ->  66     the first statement, ahead of the
+  Hard         177          158 -> 125     RNG roll, so Easy does not even
+  Brutal       183          159 -> 144     consume a draw.
+```
+
+Losses fall at every retreating rung, and **strength is still not claimed** — mirror match, both
+sides get the change, `enemyLost` moved in both directions.
+
+**WHAT IS STILL MISSING, and the audit is a MAP, NOT A CHECKLIST.** `SelfDestruct`,
+`ProductionPause`, `ProductionCancel` and `Relocate` are deliberately skipped: a human almost never
+uses them and an AI cancelling and re-queueing production reads as indecision rather than skill.
+The three that are real gaps:
+
+- **The AI owns no engineer, so `Capture` is unreachable.** The def exists but its weight is 0 and
+  `buildUnits` filters `weight <= 0`, and nothing references `BuildRole.Support` for it. Giving the
+  brain the verb alone would hand it to a unit that never exists. Buying one, escorting it and
+  choosing a building is a FEATURE, not a verb.
+- **Per-unit retreat.** `flee=0` at every sample of every rung — only the harvester layer ever sets
+  `UnitState.Fleeing`. Group retreat (`shouldRetreat`) is real and should stay.
+- **`issueSell`.** `OreCrisis`'s `SellOut` branch is a documented route out of a dead economy that
+  the AI structurally cannot take.
+
 ## The roads were underground, and one number was doing four kinds of damage
 
 Reported as *"Look at the roads, all broken, 0 logic"* over a screenshot of a city map, with five
@@ -748,6 +1150,92 @@ that picks. **The default is still WebGL** and nothing in the product selects th
   across a 9x pixel range, because §9 had already established the frame is fill-rate bound and the
   sweep measured per-draw CPU cost. `docs/RENDER_FINDINGS.md` §7f is the measurement; §7b now
   carries the correction at its head.
+
+## There is a desktop build now, and the web build did not move an inch
+
+`desktop/` is an Electron shell around the UNMODIFIED `dist/`. Read
+[`desktop/README.md`](desktop/README.md) and [`docs/ELECTRON_PLAN.md`](docs/ELECTRON_PLAN.md)
+before touching it. The constraint was *"they should be able to live side by side. github pages
+deployment continue as is, and the desktop version wont run in ci for now"*, and it is satisfied
+**structurally, not by discipline**.
+
+- **`desktop/` HAS ITS OWN `package.json`, exactly like `server/`.** The `electron` package's
+  postinstall downloads a **144 MB** binary; in root devDependencies that lands on every Pages CI
+  run. Here, root `npm ci` never sees it and **`deploy.yml` needs zero edits**. The build proves it:
+  the entry chunk after all of this is `index-BoivCkEI.js`, the same hash as before.
+- **`npm run desktop:typecheck` IS A FIFTH INVOCATION AND IT IS DELIBERATELY NOT IN THE GATE.**
+  Appending it to `npm run typecheck` fails Pages CI on `TS2307: Cannot find module 'electron'`
+  unless `deploy.yml` also gains `npm ci --prefix desktop` — the file that must not change. Fold it
+  in on the same commit that puts desktop in CI. This is the `server/node_modules` trap again.
+- **THE GPU SWITCH WORKS, AND IT IS MEASURED TWICE.** `RENDER_FINDINGS.md` §7j. On the RTX 3080
+  laptop, both spellings work *alone*, and one switch moves **both** renderers:
+
+  ```
+  default          0x10de:0x249c   NVIDIA GeForce RTX 3080 Laptop GPU
+  --vm-safe-mode   0x1002:0x1638   AMD Radeon (integrated)
+  ```
+
+  `powerPreference: 'high-performance'` still cannot do this — that hint is ignored on Windows, which
+  is what §7g measured. Switches MUST be appended before `app.whenReady()`; the GPU process launches
+  after `ready` with the command line it had at launch, and a late append is a silent no-op. The
+  effect site is also conjoined with `&& system_device_id_high_perf`, so **read the adapter back**
+  rather than trusting that the switch was appended. `main.ts` logs it every boot.
+- **"EVERY FLAG ON BY DEFAULT" IS THE WRONG DEFAULT AND `flags.ts` SAYS WHY.** Three ship.
+  `--disable-frame-rate-limit` is opt-in because it removes the vsync-flat case *by construction*,
+  which breaks `HardwareCalibration`'s `not-fill-rate-bound` guard — the property CLAUDE.md already
+  calls "what makes it safe to ship on hardware nobody here owns" — and `graphics.calibrated` is
+  sticky, so the damage persists. `--enable-zero-copy` is not a Chromium switch at all.
+- **`app://`, NEVER `file://`, and `standard: true` is what keeps saves alive.** Electron disables
+  web storage for non-standard schemes. Without it `SaveStore.detectBackend()` hands back an
+  `IndexedDbBackend` that throws at WRITE time — `indexedDbOrNull()` only tests that the global
+  exists, it never calls `open()` — while `detectIndexStorage()` has no IndexedDB tier and falls to
+  `MemoryIndex`. Signature: saves error on write and the list is empty next launch. `secure: true` is
+  equally load-bearing: `navigator.gpu` is `[SecureContext]`-gated, so without it `?gpu=webgpu` is
+  permanently unreachable and the faster renderer is dead on desktop.
+- **A DENY-ALL `will-navigate` HANDLER BREAKS STARTING A MATCH.** `Shell.hardLaunch` calls
+  `location.assign`, and the GPU-failure panel's two buttons call `location.replace`. All three are
+  renderer-initiated, so they DO fire the event. And never compare `.origin` — Node's URL parser
+  returns the string `'null'` for `app://voltmarch/x`, because it knows nothing about a
+  privileged-scheme registration.
+- **THE DESKTOP TARGET IS OUTSIDE CI, SO EVERY DECISION LIVES OUTSIDE `main.ts`.**
+  `desktop/src/{flags,app-url,paths,display}.ts` import no electron and are tested by
+  `tests/desktop-shell.spec.ts` in the ordinary gate, including the path-traversal guard and an
+  import-boundary check that fails if the shell ever reaches into `src/`. Only the wiring needs a
+  binary, and that is `npm run desktop:smoke`.
+
+  **`desktop/build.mjs` resolved its entry points against the CALLER'S CWD**, and the repo root has
+  a `src/main.ts` of its own — the game's. So `node desktop/build.mjs` from the root pointed esbuild
+  at the wrong entry and began bundling the whole game into the Electron main process, announcing
+  itself only as a wall of `import.meta is not available with the "cjs" output format` warnings.
+  `npm run desktop:build` set the cwd correctly, which is why it stayed invisible. Paths resolve
+  from the file now, exactly as `tools/brand.mjs` documents having fixed for the same reason.
+- **THERE IS A DESKTOP-ONLY DISPLAY SECTION, and `src/platform/desktop.ts` is the seam.**
+  Window mode, window size, monitor, graphics processor, unlock frame rate, and a button to the
+  save folder — top of Options → Graphics, absent in a browser because the accessor returns null
+  there. **That file must import NOTHING**, which a test asserts: the game may not reach into
+  `desktop/`, so the IPC shapes are declared on both sides and `tests/desktop-shell.spec.ts`
+  compares the two declarations rather than letting an import paper over the boundary.
+
+  **`bridge` is a VERSION and the check is EQUALITY** — it went 1 → 2 with these methods. A bump on
+  one side only makes the game fall silently back to web behaviour: no Display section, no error,
+  nothing in the console. Correct at runtime, awful to debug, so the two literals are checked
+  against each other in the gate. The accessor the preload's own header had been describing since
+  the day it was written **did not exist** until this landed, and nothing in the renderer read the
+  bridge at all — seven methods exposed to nobody.
+
+  **TWO WINDOW MODES, NOT THREE, and that is a platform fact.** Chromium has no mode-setting path,
+  so `setFullScreen(true)` is a borderless window sized to the monitor; shipping both "Fullscreen"
+  and "Borderless Windowed" would be two labels for one behaviour. The row says so instead. And
+  window mode/size/monitor apply immediately while the GPU and frame-rate rows **cannot** — those
+  are switches, appended before `app.whenReady()` — so they set `relaunchPending`, compared against
+  what the process actually launched with rather than against defaults.
+- **WHAT IS STILL WEB-ONLY PROSE.** `README.md`, `package.json`, `index.html` and two wiki pages
+  describe this as a browser game; they are INCOMPLETE rather than false, and were deliberately left
+  until the desktop build is actually distributed. Two claims will need real care at that point:
+  `server/README.md:98` and `wiki/Multiplayer.md:58` say a browser refuses a plaintext socket from a
+  secure page, and that is the stated reason the relay needs no transport check of its own —
+  `pageIsPlaintext()` tests `location.protocol !== 'https:'`, which an `app:` origin passes. See
+  `ELECTRON_PLAN.md` §8.
 
 ## Hard rules
 

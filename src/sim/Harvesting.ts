@@ -337,9 +337,28 @@ const NEW_ORDER_EPS = 0.6;
  *
  * That gives the hysteresis for real rather than by a magic number: clearing
  * the dry state requires regrowth to lift one cell from 0 to 25, which at
- * ORE_REGROW_RATE 0.6/s takes 14 s at the node (ORE_REGROW_NODE_BONUS 3.0) and
- * 42 s anywhere else. HARVESTER_LEASH_PATIENCE is 30 s, so the node always gets
- * its chance before anyone concludes anything.
+ * ORE_REGROW_RATE 0.6/s takes 14 s at the node (ORE_REGROW_NODE_BONUS 3.0).
+ * HARVESTER_LEASH_PATIENCE is 30 s, so the node always gets its chance before
+ * anyone concludes anything.
+ *
+ * "AND 42 s ANYWHERE ELSE" WAS THE REST OF THAT SENTENCE AND IT WAS FALSE.
+ * 42 s is 25 / ORE_REGROW_RATE — the time a non-node cell takes once it is
+ * ALLOWED to grow. It is not allowed to grow at zero seconds: `OreField.regrow`
+ * gates every non-node cell on its upstream holding ORE_REGROW_SPREAD of the
+ * upstream's own capacity, and the node's capacity is ~460-535 ore, so ring one
+ * waits ~140 ore of exclusive node regrowth — 77-89 s — before its 42 s even
+ * starts. Measured on the real class, r30 field stripped to zero and left
+ * alone: ring one crosses 25 at 2.8 min, the rim at 23.9 min, and the field
+ * reaches 95% of capacity at 23.4 min. The single-cell claim (14 s at the node)
+ * is the only part of the original sentence that survives measurement, and it
+ * is the part this block actually depends on.
+ *
+ * AND THE SECOND TIER'S CLOCK IS NEVER READ, which looks like it should break
+ * all of this and does not. See the block above the LEASH_SCRAPS branch in
+ * `acquireOre` for the measurement; the short version is that `takeOre` sweeps
+ * a cell to exactly zero and the scraps floor is one unit, so a regrowing patch
+ * still reads as LEASH_EMPTY for ~1.7 s after every take and the escape matures
+ * through that window instead.
  * ------------------------------------------------------------------------ */
 /** Nothing in the leash, at any amount. */
 const LEASH_EMPTY = 0;
@@ -1205,6 +1224,43 @@ export class HarvesterController {
         this.rearmDryNotice(this.world.store.owner[i], this.anchorField(i));
         return true;
       }
+      /* ===================================================================
+       * SCRAPS RUN THE CLOCK AND NOTHING READS IT. LEAVE IT.
+       *
+       * `leashDryAt` is set here and read by exactly one site — the
+       * `LEASH_EMPTY` branch below, which this `return true` cannot reach. That
+       * is write-only state, and on the face of it the whole patience escape
+       * (the human's dry notice, the AI's re-anchor) should be unreachable on
+       * any patch holding a crumb, which after `OreField.regrow` lifts a
+       * stripped source off zero is EVERY seeded patch, forever.
+       *
+       * IT WAS OPENED, MEASURED AND REVERTED. Do not re-derive it. Two
+       * harvesters, one refinery, two r26 fields 90 m apart, 25 sim-minutes,
+       * regrowth running on the shipped interval:
+       *
+       *     escape shut (today)     AI mined 60 595   far field 100% -> 0%
+       *     escape open             AI mined 59 631   far field 100% -> 0%
+       *
+       * The AI already expands, and already comes back to the recovered field
+       * — because LEASH_EMPTY still fires. `takeOre` sweeps a cell to exactly
+       * zero and the scraps tier's floor is one unit, so for ~1.7 s after every
+       * take the source is below it and the patch reads as genuinely empty;
+       * `DRY_RETRY` is 2 s, so the retry lands in that window often enough to
+       * mature the clock. The unreachable branch is a smell, not a behaviour.
+       *
+       * Opening it for the HUMAN is worse than neutral: 25 843 ore against
+       * 25 844 with it shut — the same ore — plus 24 `EvaLine.HarvesterIdle`
+       * notices in 19 sim-minutes against the ONE the coalescing is designed
+       * for. `rearmDryNotice` fires on a single LEASH_WORTH_A_TRIP and regrowth
+       * lifts the source over ORE_MIN_CLAIM every ~14 s forever, so the patch
+       * reads as "recovered, died again" once a minute. Tightening the rearm
+       * instead needs a threshold between 25 and 216 that no constant names —
+       * `harvester-leash.spec.ts` deliberately revives a patch with 216 ore on
+       * one cell and requires the next notice to fire.
+       *
+       * `tests/ore-regrowth.spec.ts` is the rig that answers this, and it is
+       * the only one in the suite that runs the harvester FSM with regrowth on.
+       * =================================================================== */
       // Scraps count as a take but NOT as the patch being alive; the clock keeps
       // running underneath them. See the LEASH_* constants.
       if (got === LEASH_SCRAPS) {
@@ -1757,13 +1813,69 @@ export class HarvesterController {
     }
   }
 
+  /* ==========================================================================
+   * §DEED — ORE IS SOLD WHERE IT IS UNLOADED, AND THE DEED-HOLDER IS PAID
+   *
+   * Reported as "Occupying an enemy ore building should give me his income".
+   * The full audit of what does and does not follow a captured building is at
+   * `captureBuilding` in `src/sim/Capture.ts`. What changed is one guard and
+   * one deposit here, plus the split of `isUsableRefinery` below that gives the
+   * guard something to call.
+   *
+   * WHAT WAS TRUE BEFORE, AND IT WAS NOT SO MUCH WRONG AS UNFALSIFIABLE. The
+   * deposit was keyed on `store.owner[i]` — the HAULER. `isUsableRefinery`
+   * requires `areAllied`; the only alliance this game has is with yourself and
+   * with Gaia (`createPlayerState` seeds `allyMask` with the self bit and
+   * `Scenarios.addGaia` adds one more — nothing else writes that field); and no
+   * Gaia structure carries `EntityFlag.IsRefinery`. So "hauler's owner" and
+   * "refinery's owner" named the same player in every state the game could
+   * reach, and the requested feature had nowhere to live.
+   *
+   * THE RULE NOW: a load is sold at the dock that takes it, and the money goes
+   * to whoever holds that building's deed. That is the same argument
+   * `src/sim/civilian.system.ts` makes for a drip over a lump — the payout is a
+   * function of who holds the deed at the moment ore moves, and of nothing else
+   * — and it buys the same property: THERE IS NO CAPTURE EDGE TO FARM. Every
+   * credit paid here is a credit of ore `takeOre` removed from the ground, so
+   * capture on its own mints exactly zero and flipping a building back and
+   * forth pays nothing however fast it is done. A lump on `building:captured`
+   * would have been farmable through `GarrisonService.enter`/`releaseEmptied`,
+   * which is why Civilians.ts refuses one.
+   *
+   * THE GUARD IS `refineryCanTakeOre`, NOT `isUsableRefinery`, AND ONLY HERE.
+   * `UnitState.Docked` is entered by `tickReturn` alone and only ever at a
+   * refinery this harvester was ALLOWED to choose, so widening the test here
+   * cannot make anything drive anywhere: it grandfathers a hull already parked
+   * with its hopper emptying into a bay that changed hands underneath it. That
+   * ore is physically inside the building. It belongs to the building.
+   *
+   * DO NOT WIDEN IT TO `tickReturn` — §ANCHOR is the reason, in the file's own
+   * words ("sometimes they just suicide and going to enemy camp"). The victim's
+   * other miners re-pick and go home, which is what they should do.
+   *
+   * WHAT IT IS WORTH, MEASURED. One hopper, minus whatever was already banked
+   * before the flip: HARVESTER_CAPACITY 700 at ORE_VALUE 1.0 for the Allies and
+   * Soviets, 600 Reclamation, 450 Meridian. In `tests/capture-economy.spec.ts`
+   * a full Soviet hopper docked at the instant of capture pays the captor 700
+   * and the victim 0; before this change it paid the victim 700 and the captor
+   * 0. The rest of the swing is the building itself — `recomputeStorage` moves
+   * REFINERY_STORAGE (2000) of cap from one bank to the other on the capture
+   * tick — and the drive the victim's remaining miners now have to make.
+   *
+   * THE YIELD MULTIPLIER FOLLOWS THE BUYER, for the same reason the credits do:
+   * it is a property of the refinery doing the selling, not of the truck.
+   * `Economy.deposit` reads `resourceBonus` off the player it is paying, so the
+   * AI difficulty handicap follows on its own without a second decision here.
+   * ========================================================================== */
   private tickDock(i: number, id: EntityId, dt: number, time: number): void {
     const store = this.world.store;
     const refId = store.dockTarget[i] as EntityId;
     const ri = store.index(refId);
-    if (ri < 0 || !this.isUsableRefinery(ri, store.owner[i])) {
+    if (ri < 0 || !this.refineryCanTakeOre(ri)) {
       // The refinery died under us mid-unload. Keep whatever is left in the
-      // hopper and find another one.
+      // hopper and find another one. NOTE the structural guard: a refinery that
+      // merely changed HANDS is still a working dock and we finish the load
+      // into it — see §DEED. Only a dead, pending or unfinished one ends this.
       this.releaseDock(refId, id);
       store.dockTarget[i] = NONE as number;
       store.state[i] = UnitState.ReturnToRefinery;
@@ -1788,9 +1900,12 @@ export class HarvesterController {
       // at the dock, which is a pathing and traffic change dressed up as an
       // economy one; scaling the payout is exactly and only "every load is
       // worth more", which is what the blurb promises.
+      //
+      // AND THE BUYER IS THE REFINERY'S OWNER, NOT THE HAULER'S. See §DEED.
+      const buyer = store.owner[ri] as PlayerId;
       const credits = moved * ORE_VALUE
-        * upgradeGlobalMul(this.world.players[store.owner[i]], UpgradeLever.Yield);
-      this.economy.deposit(store.owner[i] as PlayerId, credits, CreditReason.Harvest);
+        * upgradeGlobalMul(this.world.players[buyer as number], UpgradeLever.Yield);
+      this.economy.deposit(buyer, credits, CreditReason.Harvest);
       this.deliveredTotal += credits;
     }
 
@@ -1871,14 +1986,36 @@ export class HarvesterController {
     return dx * dx + dz * dz <= r * r;
   }
 
-  private isUsableRefinery(ri: number, owner: number): boolean {
+  /**
+   * The STRUCTURAL half of "can ore be unloaded here": a finished, live
+   * refinery, with no question of whose it is.
+   *
+   * Split out of `isUsableRefinery` because the two halves are asked at
+   * different moments and they stopped being one question the day capture
+   * shipped. CHOOSING a dock is an ownership question. Being ALREADY PARKED at
+   * one, with the hopper emptying into its bay, is not. See §DEED at `tickDock`
+   * — this is its guard, and it has exactly that one caller.
+   */
+  private refineryCanTakeOre(ri: number): boolean {
     const store = this.world.store;
     const f = store.flags[ri];
     if ((f & EntityFlag.IsRefinery) === 0) return false;
     if ((f & EntityFlag.Alive) === 0) return false;
     if ((f & (EntityFlag.PendingDestroy | EntityFlag.UnderConstruction)) !== 0) return false;
-    if (store.buildProgress[ri] < 1) return false;
-    return this.world.areAllied(owner as PlayerId, store.owner[ri] as PlayerId);
+    return store.buildProgress[ri] >= 1;
+  }
+
+  /**
+   * ...plus the ownership half. This is the CHOOSING test — `pickRefinery`,
+   * `beginReturn`, `tickReturn` and `takeNewOrder` all go through it — and it
+   * must go on refusing an enemy refinery outright, for the reason §ANCHOR
+   * exists: a harvester that keeps hauling to a dock the enemy now holds is a
+   * harvester driving into the enemy base, which is the reported defect that
+   * whole section answers.
+   */
+  private isUsableRefinery(ri: number, owner: number): boolean {
+    if (!this.refineryCanTakeOre(ri)) return false;
+    return this.world.areAllied(owner as PlayerId, this.world.store.owner[ri] as PlayerId);
   }
 
   /** True if `holder` is still a live harvester actively using `ri`'s dock. */

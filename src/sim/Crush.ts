@@ -188,7 +188,7 @@ import {
 import type { PlayerId, SimContext } from '../core/types';
 import type { World } from '../core/world';
 import type { Channels } from '../core/events';
-import { MAX_QUERY_RESULTS, SQUISH_HALF_SIZE } from '../core/config';
+import { COMBAT_DAMAGE, MAX_QUERY_RESULTS, SQUISH_HALF_SIZE } from '../core/config';
 import { getScatter } from '../world/Scatter';
 import { armorMultiplier } from './Damage';
 
@@ -526,8 +526,21 @@ export class CrushResolver {
     // `tests/crush-infantry.spec.ts` is what stops it happening unnoticed.
     if (mult <= 0) return;
 
+    /*
+     * DIVIDED BACK THROUGH BOTH MULTIPLIERS `applyOne` WILL APPLY, not just
+     * the matrix one.
+     *
+     * `COMBAT_DAMAGE.globalMul` — the time-to-kill knob — was added to
+     * `applyOne` and is a second factor this line has to undo. It did not, and
+     * a crush landed at `hp x 0.80`: a tank needed THREE passes to flatten one
+     * rifleman, which `tests/crush-infantry.spec.ts` caught as "expected 3 to
+     * be 1". A crush is an instant-death mechanic rather than a damage
+     * exchange, so it must stay exactly lethal at any pace — the pace knob
+     * stretches firefights, and running a man over is not one.
+     */
     this.channels.damage.push(
-      st.handleOf(j), st.handleOf(i), st.hp[j] / mult + 1, CRUSH.warhead,
+      st.handleOf(j), st.handleOf(i),
+      st.hp[j] / (mult * COMBAT_DAMAGE.globalMul) + 1, CRUSH.warhead,
       st.posX[j], st.posY[j], st.posZ[j], 0, 0,
     );
 

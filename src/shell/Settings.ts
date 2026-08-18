@@ -68,6 +68,31 @@ import {
 } from './settings-store';
 
 import { HelpPanel } from './Help';
+import { ManualView } from './Manual';
+import {
+  BRIDGE_VERSION,
+  desktopBridge,
+  type DesktopDisplayPatch,
+  type DesktopDisplayState,
+} from '../platform/desktop';
+
+import {
+  buildDiagnostics,
+  formatDiagnostics,
+  redactBootFlags,
+  viabilityLines,
+  type DiagnosticsMatch,
+  type DiagnosticsRenderer,
+} from './Diagnostics';
+import { mapById } from './settings-store';
+import { plannedScenario } from '../game/Scenarios';
+import { buildVersion } from '../game/replay.system';
+import { production } from '../sim/Production';
+import {
+  setSessionUnlockAll,
+  unlockAllActive,
+  unlockAllFromBootFlag,
+} from './unlockall.system';
 
 import {
   button,
@@ -282,14 +307,120 @@ export function panelBlurHint(mode: PanelBlurChoice): string {
  * 2. SCREEN
  * ========================================================================== */
 
-type TabId = 'graphics' | 'audio' | 'gameplay' | 'controls';
+/*
+ * THE MANUAL IS A TAB, NOT A SECOND OVERLAY.
+ *
+ * `HelpPanel` — the "All Commands" button in the footer — already exists and is
+ * untouched by this. It is a KEYBIND REFERENCE: it resolves every action in
+ * `ActionCatalogue.ts` against the live store and marks the rows a player has
+ * rebound. That is a live view of this machine's configuration, and folding
+ * 306 kB of prose into it would bury the one screen that answers "which key did
+ * I put Attack Move on".
+ *
+ * The manual is the other thing: seventeen static pages about the GAME rather
+ * than about this installation of it. A tab is also what was asked for — "a
+ * dedicated help section in settings" — and it inherits the whole options
+ * screen for free: reachable from the title menu and from a paused match, one
+ * Escape from either.
+ *
+ * `folder` is the icon because the icon set has no book and this file may not
+ * grow one — `ICON_PATHS` lives in `Shell.ts`. An unknown name silently falls
+ * back to `info`, which the footer button already uses, so naming a real one
+ * is the difference between two distinct glyphs and two identical ones.
+ */
+/*
+ * THE SIXTH TAB SHIPS TO EVERYBODY, AND IT IS NOT CALLED "DEVELOPER".
+ *
+ * Asked for as a "Developer tab … to allow exporting game state", after a match
+ * that would not end. Two decisions were made about it deliberately and both
+ * are the author's:
+ *
+ *   IT IS ALWAYS VISIBLE. No boot flag, no hidden gesture, no gate. The bugs
+ *   this exists for are hit while PLAYING — most often on the packaged desktop
+ *   build, where there is no address bar to add a flag to and no source to edit
+ *   — so a tool that needs a rebuild to reach is a tool nobody has at the
+ *   moment they need it. The cost of that decision is that a non-technical
+ *   player will open it by accident, which is why the copy on this tab reads as
+ *   a status page rather than a console: it says what is happening, it names
+ *   what the export does and does not contain, and nothing on it can change the
+ *   match.
+ *
+ *   IT IS CALLED "DIAGNOSTICS", because that describes what is on the screen
+ *   rather than who it is for, and "Developer" tells a player the tab is not
+ *   for them — which stopped being true the moment it shipped to them.
+ *
+ * THE NAME COLLIDED WITH A SECTION INSIDE GRAPHICS, and the collision was
+ * resolved by MOVING that section's single row (Performance Overlay) here
+ * rather than by renaming anything. Every "tell me what is happening" control
+ * now lives in one place, and Graphics loses a section that existed to hold one
+ * toggle. The setting itself does NOT move: it is still `graphics.perfOverlay`,
+ * so there is no migration and no persisted-shape change — and it is on
+ * `settings-store.ts#CALIBRATION_EXEMPT`, so relocating its row cannot retire
+ * anybody's one-time hardware calibration.
+ *
+ * `gauge` is the icon: a readout, which is what the tab is. `ICON_PATHS` lives
+ * in `Shell.ts` and an unknown name silently degrades to `info`, so naming a
+ * real one is the difference between six distinct glyphs and five.
+ */
+type TabId = 'graphics' | 'audio' | 'gameplay' | 'controls' | 'manual' | 'diagnostics';
 
 const TABS: ReadonlyArray<{ id: TabId; label: string; icon: string }> = [
   { id: 'graphics', label: 'Graphics', icon: 'monitor' },
   { id: 'audio', label: 'Audio', icon: 'volume' },
   { id: 'gameplay', label: 'Gameplay', icon: 'target' },
   { id: 'controls', label: 'Controls', icon: 'keyboard' },
+  { id: 'manual', label: 'Manual', icon: 'folder' },
+  { id: 'diagnostics', label: 'Diagnostics', icon: 'gauge' },
 ];
+
+/* -- diagnostics helpers ---------------------------------------------------- *
+ * Module scope rather than methods: none of them touch the screen, and keeping
+ * them out of the class is what makes it obvious at a glance that the tab reads
+ * and never writes.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * How much of the export the preview shows.
+ *
+ * The full document can run to hundreds of kilobytes with the entity list on,
+ * and putting all of it into a live `<textarea>` costs a layout the options
+ * screen does not need to pay. The preview says what it cut and how much is
+ * really there, so it can never read as the whole thing.
+ */
+const DIAG_PREVIEW_CHARS = 8000;
+
+/**
+ * The seed the terrain was actually generated from, or 0.
+ *
+ * DUCK-TYPED, exactly as `game/replay.system.ts#terrainSeed` is and for the
+ * reason written there: `src/core/**` is frozen infrastructure and a report's
+ * need for an identity number is not a reason to widen `ITerrain`, which every
+ * null object and every test double would then have to satisfy. 0 means "this
+ * terrain does not carry one", and the caller falls back to the battlefield's
+ * pinned seed rather than printing a zero as if it were the answer.
+ */
+function terrainSeedOf(world: { terrain: unknown }): number {
+  const t = world.terrain as Partial<{ seed: number }>;
+  return typeof t.seed === 'number' ? t.seed : 0;
+}
+
+/** A paragraph of explanation above a group of rows. */
+function diagNote(text: string): HTMLElement {
+  return el('p', 'vm-diag-note', text);
+}
+
+/** A read-only value for the right-hand column of a `row()`. */
+function diagValue(text: string): HTMLElement {
+  return el('div', 'vm-diag-value', text);
+}
+
+/** `2026-08-18-1432`. Local time, because it is a filename for a human. */
+function diagStamp(): string {
+  const d = new Date();
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+    + `-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
 
 export class SettingsScreen implements Screen {
   readonly id = 'settings';
@@ -297,12 +428,52 @@ export class SettingsScreen implements Screen {
   private tab: TabId = 'graphics';
   private body: HTMLElement | null = null;
   private host: HTMLElement | null = null;
+  /**
+   * Desktop window state, or null on the web and until the first fetch lands.
+   *
+   * `renderGraphics` is synchronous and the bridge is not, so the section is
+   * simply absent for the one frame before the promise resolves, and the
+   * resolve re-renders the tab. That is preferable to a placeholder row: the
+   * fetch is a single IPC round trip on a local socket, so the gap is
+   * invisible, whereas a "Loading…" row that failed to resolve would be a
+   * permanent piece of furniture.
+   */
+  private desktop: DesktopDisplayState | null = null;
   /** The options frame itself, hidden while the help overlay is up. */
   private frameRoot: HTMLElement | null = null;
   private help: HelpPanel | null = null;
+  /** The wiki reader, alive only while its tab is the one showing. */
+  private manual: ManualView | null = null;
+  /**
+   * The manual page the reader was last on.
+   *
+   * `renderTab` tears the tab's DOM down and builds it again, so without this
+   * a trip to Audio and back would dump somebody out of Strategy.md and onto
+   * the front page. It is per-screen rather than persisted: reopening Options
+   * in a later session starting at the top of the manual is the right default.
+   */
+  private manualPage: string | null = null;
+  /** Restore Defaults, kept so the Manual tab can hide it. */
+  private resetButton: HTMLButtonElement | null = null;
   /** Keybind id currently waiting for a chord, or null. */
   private listening: string | null = null;
   private listeningButton: HTMLButtonElement | null = null;
+
+  /* -- diagnostics ------------------------------------------------------- */
+
+  /**
+   * Whether the export carries the per-entity list.
+   *
+   * PER-SCREEN, NOT PERSISTED. It is a property of one export rather than a
+   * preference — the summary is the tier you paste into a message and the full
+   * list is the tier you attach to a file — and persisting it would silently
+   * make somebody's next casual export a megabyte long.
+   */
+  private diagFull = false;
+  /** The exact text the Copy and Save buttons will hand over. */
+  private diagText = '';
+  /** The one-line result of the last Copy or Save, or ''. */
+  private diagStatus: HTMLElement | null = null;
 
   constructor(
     private readonly shell: Shell,
@@ -333,16 +504,44 @@ export class SettingsScreen implements Screen {
 
     this.body = frame.body;
     this.renderTab();
+    this.refreshDesktop();
 
     const reset = button('Restore Defaults', {
       iconName: 'restore',
       onClick: () => {
-        this.shell.settings.reset(this.tab === 'controls' ? 'controls' : this.tab);
+        // The Manual tab stores nothing, so there is nothing to restore and its
+        // button is hidden. The guard is here anyway because `button()` attaches
+        // its handler unconditionally — see the block in `Shell.ts#button`.
+        const tab = this.tab;
+        if (tab === 'manual') return;
+        /*
+         * DIAGNOSTICS OWNS EXACTLY ONE PERSISTED ROW — `graphics.perfOverlay`.
+         * `reset()` takes a SECTION, and the section this tab's row lives in is
+         * Graphics, so passing the tab id through would either be a type error
+         * or (worse, if it were coerced) would wipe every picture setting the
+         * player has from a tab they came to in order to read a number.
+         */
+        if (tab === 'diagnostics') {
+          this.shell.settings.patch({
+            graphics: { perfOverlay: defaultSettings().graphics.perfOverlay },
+          });
+          // The rest of this tab is session state rather than settings, and it
+          // is restored here anyway: "Restore Defaults" is the obvious place a
+          // player looks for the way out of Unlock Everything, and leaving the
+          // one control that changes what the game DOES untouched by the button
+          // labelled "put it back" would be the wrong surprise. A no-op when
+          // `?unlockall` is on the URL, which the row already says.
+          setSessionUnlockAll(false);
+          this.diagFull = false;
+          this.renderTab();
+          return;
+        }
+        this.shell.settings.reset(tab === 'controls' ? 'controls' : tab);
         // The Controls tab shows two different stores: the keybinds, which live
         // in `controls`, and the camera scheme, which lives in `gameplay`
         // because that is the section the engine already applies. Restoring
         // only half of a visible page is the kind of thing that reads as a bug.
-        if (this.tab === 'controls') {
+        if (tab === 'controls') {
           const d = defaultSettings().gameplay;
           this.shell.settings.patch({
             gameplay: {
@@ -364,6 +563,8 @@ export class SettingsScreen implements Screen {
         this.renderTab();
       },
     });
+    this.resetButton = reset;
+    this.syncFoot();
     frame.foot.appendChild(reset);
     frame.foot.appendChild(button('All Commands', {
       iconName: 'info',
@@ -378,7 +579,12 @@ export class SettingsScreen implements Screen {
 
   unmount(): void {
     this.closeHelp();
+    this.manual?.dispose();
+    this.manual = null;
+    this.resetButton = null;
     this.frameRoot = null;
+    this.diagStatus = null;
+    this.diagText = '';
     this.host?.classList.remove('vm-page', 'is-modal');
     this.host = null;
     this.body = null;
@@ -401,6 +607,11 @@ export class SettingsScreen implements Screen {
   /** While rebinding, the screen owns the whole keyboard. */
   onKeyDown(e: KeyboardEvent): boolean {
     if (this.help !== null) return this.help.onKeyDown(e);
+    // Page Up / Page Down / Home / End scroll the manual, the same four keys
+    // and the same reason as `HelpPanel`: the shell's ring owns Up and Down, and
+    // a 45 kB page needs a way down that is not forty arrow presses. Escape is
+    // deliberately NOT claimed — `onBack` still leaves the options screen.
+    if (this.manual !== null && this.manual.onKeyDown(e)) return true;
     if (this.listening === null) return false;
     if (e.code === 'Escape') {
       this.stopListening();
@@ -442,14 +653,48 @@ export class SettingsScreen implements Screen {
   private renderTab(): void {
     const body = this.body;
     if (body === null) return;
+    // The manual holds a load promise and a subtree; leaving the tab drops both
+    // rather than leaving a detached view listening for a chunk to arrive.
+    this.manual?.dispose();
+    this.manual = null;
+    // The status line belongs to the DOM that is about to be discarded; a
+    // pending clipboard promise resolving into a detached node would write into
+    // nothing and look like the copy having silently failed.
+    this.diagStatus = null;
     body.replaceChildren();
+    // The manual is its own two-pane scroller sized to the frame, so the frame
+    // must not also scroll. Every other tab is a plain flow and does.
+    body.classList.toggle('is-manual', this.tab === 'manual');
+    this.syncFoot();
     switch (this.tab) {
       case 'graphics': this.renderGraphics(body); break;
       case 'audio': this.renderAudio(body); break;
       case 'gameplay': this.renderGameplay(body); break;
       case 'controls': this.renderControls(body); break;
+      case 'manual': this.renderManual(body); break;
+      case 'diagnostics': this.renderDiagnostics(body); break;
       default: break;
     }
+  }
+
+  /** Footer buttons that are not offered on every tab. */
+  private syncFoot(): void {
+    if (this.resetButton !== null) this.resetButton.hidden = this.tab === 'manual';
+  }
+
+  /* -- manual -------------------------------------------------------------- *
+   * The whole wiki, from `wiki/*.md`, behind one dynamic import. `Manual.ts`
+   * and `manual-corpus.ts` carry the argument for the split; the short version
+   * is that 306 kB of prose must not sit in the chunk every player downloads.
+   * ------------------------------------------------------------------------ */
+
+  private renderManual(body: HTMLElement): void {
+    const view = new ManualView({
+      startPage: this.manualPage,
+      onPage: (slug) => { this.manualPage = slug; },
+    });
+    this.manual = view;
+    body.appendChild(view.root);
   }
 
   private section(parent: HTMLElement, title: string): HTMLElement {
@@ -457,6 +702,539 @@ export class SettingsScreen implements Screen {
     s.appendChild(el('h3', 'vm-h3', title));
     parent.appendChild(s);
     return s;
+  }
+
+  /* -- diagnostics --------------------------------------------------------- *
+   * The report itself is `src/shell/Diagnostics.ts`, which is DOM-free and
+   * pure so that a test can build a real world and assert on the real output.
+   * Everything here is the rendering of it, plus the two ways it leaves the
+   * app.
+   *
+   * NOTHING ON THIS TAB WRITES TO THE MATCH. The readout is a read over the
+   * entity store, the export is a read over the entity store, and the one
+   * control that persists anything is the Performance Overlay toggle, which
+   * writes a settings row. That has to stay true: this screen is reachable
+   * over a LIVE PvP match, where a stray write would be a desync with no
+   * findable cause.
+   * ------------------------------------------------------------------------ */
+
+  /**
+   * Assemble the report for the CURRENT state of the app.
+   *
+   * Called on every render of the tab, so the preview and the buttons can
+   * never disagree about what would be copied — the text is built once here
+   * and both read `this.diagText`.
+   */
+  private diagnosticsText(): string {
+    const game = this.shell.getGame();
+    const settings = this.shell.settings.get();
+    const g = settings.graphics;
+    const bridge = desktopBridge();
+
+    let renderer: DiagnosticsRenderer | null = null;
+    if (game !== null) {
+      const h = game.ctx.handle;
+      // `frameInfo()`, NEVER `renderer.info`: under the node renderer
+      // `info.render.calls` is a monotonic count of `render()` invocations
+      // since page load and `info.programs` is undefined. This is the only
+      // read that means the same thing on both backends.
+      const info = h.frameInfo();
+      const a = h.capabilities.adapter;
+      renderer = {
+        backend: h.backend,
+        gpu: h.capabilities.gpu,
+        // The adapter and the GPU string can disagree, and when they do the
+        // disagreement is the finding — see `DiagnosticsRenderer.adapter`.
+        adapter: a === null ? null : `${a.vendor} ${a.architecture} ${a.description}`.trim(),
+        drawCalls: info.drawCalls,
+        triangles: info.triangles,
+      };
+    }
+
+    let match: DiagnosticsMatch | null = null;
+    if (game !== null) {
+      const world = game.ctx.world;
+      const loop = game.ctx.loop;
+      const setup = this.shell.getSetup();
+      const choice = mapById(setup.map);
+      // `plannedScenario()` is memoised from the URL the running match booted
+      // with and `Shell.bootGame` resets it before every launch, so reading it
+      // here reports what the ENGINE parsed rather than what the lobby meant.
+      // Only ever called with a live game for that reason.
+      const plan = plannedScenario();
+      match = {
+        world,
+        kind: this.shell.isBackdrop() ? 'backdrop' : 'match',
+        simTick: loop.tick,
+        simSeconds: loop.simTime,
+        paused: loop.paused,
+        speed: loop.speed,
+        // THE TERRAIN ROLL, read off the terrain itself. Duck-typed exactly as
+        // `game/replay.system.ts#terrainSeed` does it and for the same reason:
+        // `src/core/**` is frozen and a report's need for an identity number is
+        // not a reason to widen `ITerrain` for every null object and test
+        // double. A terrain with no seed falls back to the battlefield's pinned
+        // one, which is what generated it on every ordinary boot.
+        mapSeed: terrainSeedOf(world) || choice.mapSeed,
+        // THE SCENARIO ROLL. A different number, and conflating the two is the
+        // documented defect that made a v1 replay reproduce the hills only.
+        simSeed: plan.seed,
+        mapId: setup.map,
+        mapName: choice.name,
+        mapPreset: plan.map,
+        biome: choice.biome,
+        opening: plan.start,
+        scenario: plan.name,
+        defs: production()?.bindingTables ?? null,
+      };
+    }
+
+    return formatDiagnostics(buildDiagnostics({
+      env: {
+        buildVersion: buildVersion(),
+        generatedAt: new Date().toISOString(),
+        shellState: this.shell.getState(),
+        platform: bridge === null ? 'web' : 'desktop',
+        bridgeVersion: bridge === null ? null : BRIDGE_VERSION,
+        userAgent: navigator.userAgent,
+        page: `${location.origin}${location.pathname}`,
+        bootFlags: redactBootFlags(location.search),
+        viewport: {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          dpr: window.devicePixelRatio,
+        },
+        unlockAll: unlockAllActive(),
+        renderer,
+        graphics: {
+          tier: g.tier === 'auto' ? `auto (${activeTierName().toLowerCase()})` : g.tier,
+          resolutionScale: g.resolutionScale,
+          adaptiveResolution: g.adaptiveResolution,
+          calibrated: g.calibrated,
+          shadows: g.shadows,
+          ao: g.ao,
+          bloom: g.bloom,
+          msaa: g.msaa,
+          perfOverlay: g.perfOverlay,
+        },
+      },
+      match,
+      includeEntities: this.diagFull,
+    }));
+  }
+
+  private renderDiagnostics(body: HTMLElement): void {
+    const game = this.shell.getGame();
+    this.diagText = this.diagnosticsText();
+
+    /* -- what the game currently thinks ---------------------------------- */
+
+    const live = this.section(body, 'Match State');
+    if (game === null) {
+      /*
+       * THE EMPTY STATE IS THE ONE MOST PEOPLE WILL SEE, because the title
+       * screen is where you go when you are not mid-crisis. It must not be a
+       * blank panel: it says what is missing, what is still in the export, and
+       * what to do to get the rest. A player who exports from here still gets a
+       * complete build/GPU/settings report, which is exactly what a graphics or
+       * boot complaint needs.
+       */
+      live.appendChild(diagNote(
+        'No match is running, so there is nothing to survey. The export below still carries the '
+        + 'build, the graphics settings and the GPU actually in use — which is what a rendering '
+        + 'or start-up report needs. For anything about units, buildings or how a match ended, '
+        + 'open this tab from inside the game (Escape -> Options).',
+      ));
+      const next = this.shell.getSetup();
+      const choice = mapById(next.map);
+      live.appendChild(row('Next Match', diagValue(
+        `${choice.name} · ${choice.biome} · ${next.opponents.length + 1} armies`,
+      )));
+      live.appendChild(row('Terrain Seed', diagValue(
+        `${choice.mapSeed} — the map seed. The simulation seed is rolled at launch.`,
+      )));
+    } else {
+      const world = game.ctx.world;
+      live.appendChild(diagNote(
+        'One line per player, from describeViability() — the same function the boot log prints '
+        + 'and the export carries. "held" is units inside a building or a transport: alive and '
+        + 'yours, but neither drawn nor targetable, so they do not count as an army. A match that '
+        + 'will not end usually shows a player with contest 0 and held above 0.',
+      ));
+      const lines = el('pre', 'vm-diag-lines');
+      lines.textContent = viabilityLines(world).join('\n');
+      live.appendChild(lines);
+      live.appendChild(row('Sim Tick', diagValue(
+        `${game.ctx.loop.tick} (${game.ctx.loop.simTime.toFixed(1)} s${game.ctx.loop.paused ? ', paused' : ''})`,
+      )));
+    }
+
+    /* -- the overlay, moved here from Graphics --------------------------- */
+
+    const overlay = this.section(body, 'On-Screen Readouts');
+    const gfx = this.shell.settings.get().graphics;
+    overlay.appendChild(row(
+      'Performance Overlay',
+      toggle(gfx.perfOverlay, (v) => {
+        this.shell.settings.patch({ graphics: { perfOverlay: v } });
+      }),
+      // The help text is the whole reason the row exists. A player who turns
+      // this on because the game feels heavy is owed the one sentence that
+      // stops them trusting a green 60: on a vsync-capped display the frame
+      // time is the MONITOR's number, not the game's, and only a GPU timer
+      // query tells the two apart. There is no `applySettings` branch for it —
+      // `src/ui/perf.system.ts` subscribes to the store directly.
+      'Top-left readout: frame time and its p95, the sim/render CPU split, draw '
+      + 'calls against the 130 budget, and whether a 60 fps reading has real '
+      + 'headroom or is only vsync capping a saturated GPU. It will say "headroom '
+      + 'unknown" rather than guess when the browser withholds GPU timing.',
+    ));
+
+    /* -- progression ----------------------------------------------------- *
+     * The one control on this tab that changes what the game DOES. It is here
+     * rather than in Gameplay deliberately: it is not a difficulty preference,
+     * it is a diagnostic — "show me the content that is gated" — and it belongs
+     * next to the readouts for the same reason `?unlockall` belongs next to
+     * `?seed=` rather than in the lobby.                                      */
+
+    const prog = this.section(body, 'Progression');
+    const bootFlag = unlockAllFromBootFlag();
+    const unlockRow = row(
+      'Unlock Everything',
+      toggle(unlockAllActive(), (v) => {
+        setSessionUnlockAll(v);
+        this.renderTab();
+      }),
+      /*
+       * THREE THINGS IN THE HELP TEXT, AND ALL THREE ARE LOAD-BEARING.
+       *
+       *   1. IT ENDS WITH THE SESSION. Not persisted, anywhere — see the header
+       *      of `unlockall.system.ts` for why a saved version of this is the
+       *      `suppressUnlockGate` leak with a settings row on it. A player has
+       *      to be told, or they will assume it stuck and wonder later why the
+       *      padlocks came back.
+       *   2. THE AI GETS IT TOO. `UnlockGate.mirrorAI` resolves the opponent
+       *      against the HUMAN's profile, so this is symmetric by construction
+       *      and not a bug — but a player who turns it on and is met with an
+       *      Apocalypse will read it as one unless it is stated first.
+       *   3. NOTHING IS EARNED. The gate only changes what `isUnlocked`
+       *      ANSWERS; it never writes the profile. That is what makes it safe
+       *      to ship to everyone, and it is the sentence that stops it reading
+       *      as a cheat menu.
+       */
+      bootFlag
+        ? 'Forced on by the ?unlockall boot flag on this URL — the toggle cannot turn it off. '
+          + 'Reload without the flag to get your real progression back.'
+        : 'Turns off every progression gate for THIS SESSION ONLY — nothing is saved and '
+          + 'nothing is earned, so restarting the game restores your real progression exactly. '
+          + 'It applies to the AI as well, because the opponent is resolved against your '
+          + 'unlocks: expect it to start fielding things you have not seen. On a fresh profile '
+          + 'neither side can build a superweapon at all, so this is how you see that content.',
+    );
+    prog.appendChild(unlockRow);
+    if (bootFlag) {
+      // The boot flag wins and the toggle cannot clear it, so the control is
+      // shown in its true state and made inert rather than lying about which
+      // way it can be moved.
+      const control = unlockRow.querySelector<HTMLElement>('.vm-toggle');
+      control?.setAttribute('aria-disabled', 'true');
+    }
+
+    /* -- the export ------------------------------------------------------ */
+
+    const exp = this.section(body, 'Export');
+    exp.appendChild(diagNote(
+      'A plain-text snapshot of what the game believes right now: the build, the seeds, every '
+      + 'player and what the match-outcome rule makes of them. Nothing in it identifies you — no '
+      + 'profile, no saves, no file paths, and a multiplayer relay address is replaced with '
+      + '"(set)". It is safe to paste into a bug report.',
+    ));
+    exp.appendChild(row(
+      'Include Every Entity',
+      toggle(this.diagFull, (v) => { this.diagFull = v; this.renderTab(); }),
+      'Adds one line per living unit, building and prop: owner, type, position, health, order '
+      + 'and its flags DECODED TO NAMES. Much larger, and the tier to attach as a file rather '
+      + 'than paste. Leave it off unless the question is about one specific thing on the map.',
+    ));
+
+    const status = el('p', 'vm-diag-status');
+    this.diagStatus = status;
+    this.sayDiag(`${this.diagText.length.toLocaleString('en-US')} characters ready.`);
+
+    const actions = el('div', 'vm-diag-actions');
+    actions.appendChild(button('Copy To Clipboard', {
+      variant: 'primary', iconName: 'check', onClick: () => this.copyDiagnostics(),
+    }));
+    actions.appendChild(button('Save To File', {
+      iconName: 'folder', onClick: () => this.saveDiagnostics(),
+    }));
+    actions.appendChild(button('Refresh', {
+      iconName: 'refresh', onClick: () => this.renderTab(),
+    }));
+    exp.appendChild(actions);
+    exp.appendChild(status);
+
+    /*
+     * THE PREVIEW SHOWS THE SAME DOCUMENT THE BUTTONS COPY, truncated only for
+     * the DOM's sake and only with the truncation stated. A preview that showed
+     * a different tier from the one being copied would make the screen lie
+     * about its own output, which in a diagnostic is the worst available bug.
+     *
+     * A `<textarea readonly>` and not a `<pre>`: it takes focus, so Ctrl+A then
+     * Ctrl+C works by hand. That is the guaranteed route out on any platform
+     * where the clipboard API is unavailable or refused.
+     */
+    const preview = el('textarea', 'vm-diag-preview');
+    preview.readOnly = true;
+    preview.spellcheck = false;
+    preview.value = this.diagText.length > DIAG_PREVIEW_CHARS
+      ? `${this.diagText.slice(0, DIAG_PREVIEW_CHARS)}\n\n… preview stops here. `
+        + `Copy and Save carry all ${this.diagText.length.toLocaleString('en-US')} characters.`
+      : this.diagText;
+    /*
+     * DELIBERATELY NOT `focusable()`, which is the one place this tab departs
+     * from the house pattern. `Shell.onKeyDown` returns early for ArrowUp and
+     * ArrowDown whenever the focused element is a TEXTAREA — correctly, so the
+     * caret can move — and the focus ring moves on exactly those two keys. A
+     * ring stop inside a textarea is therefore a stop a gamepad cannot leave.
+     * The element is natively tabbable and clickable either way, so a keyboard
+     * or mouse user loses nothing, and the ring-reachable route to the same
+     * text is the Copy button directly above it.
+     */
+    exp.appendChild(preview);
+  }
+
+  private sayDiag(text: string, bad = false): void {
+    const node = this.diagStatus;
+    if (node === null) return;
+    node.textContent = text;
+    node.classList.toggle('is-bad', bad);
+  }
+
+  /**
+   * The reliable route out.
+   *
+   * `navigator.clipboard` is `[SecureContext]`-gated, and the desktop shell
+   * registers `app://` with `secure: true` precisely so gated APIs work there.
+   * It can still be refused (an insecure origin, a permission policy), and the
+   * failure branch does not leave the player stuck: the preview below is a
+   * focusable textarea holding the same text.
+   */
+  private copyDiagnostics(): void {
+    const text = this.diagText;
+    const clip = (navigator as Partial<Navigator>).clipboard;
+    if (clip === undefined) {
+      this.sayDiag(
+        'This browser will not open the clipboard from a page. Click into the text below, '
+        + 'press Ctrl+A then Ctrl+C — or use Save To File.', true,
+      );
+      return;
+    }
+    void clip.writeText(text).then(
+      () => this.sayDiag(`Copied ${text.length.toLocaleString('en-US')} characters.`),
+      (err: unknown) => this.sayDiag(
+        `Copy was refused (${String(err)}). Click into the text below, press Ctrl+A then Ctrl+C.`,
+        true,
+      ),
+    );
+  }
+
+  /** The nicer route out, where it works. Same idiom as the profile export. */
+  private saveDiagnostics(): void {
+    try {
+      const text = this.diagText;
+      const blob = new Blob([text], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = el('a');
+      a.href = url;
+      a.download = `voltmarch-diagnostics-${diagStamp()}.json`;
+      // Detached on purpose: a synthetic click on an unattached anchor
+      // downloads in every browser the game supports and cannot disturb layout
+      // or the focus ring for the frame it exists.
+      a.click();
+      // One task later, so the navigation has taken the blob.
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      this.sayDiag(`Saved ${text.length.toLocaleString('en-US')} characters to your downloads.`);
+    } catch (err) {
+      this.sayDiag(`Save failed (${String(err)}). Use Copy To Clipboard instead.`, true);
+    }
+  }
+
+  /* -- display (desktop only) -------------------------------------------- */
+
+  /**
+   * Fetch the window state from the Electron main process.
+   *
+   * A no-op in a browser, and a failure leaves `this.desktop` null — which is
+   * the same state as "not desktop", so the section is simply absent rather
+   * than half-drawn. There is no error surface here on purpose: an options
+   * screen is not the place to report that an IPC channel is down, and the
+   * game is entirely playable without this section.
+   */
+  private refreshDesktop(): void {
+    const bridge = desktopBridge();
+    if (bridge === null) return;
+    void bridge
+      .displayState()
+      .then((state) => this.adoptDesktop(state))
+      .catch(() => undefined);
+  }
+
+  private patchDesktop(patch: DesktopDisplayPatch): void {
+    const bridge = desktopBridge();
+    if (bridge === null) return;
+    // The reply is the AUTHORITY, not the patch: choosing a smaller monitor can
+    // invalidate the current window size, and main returns the corrected state.
+    void bridge
+      .setDisplayState(patch)
+      .then((state) => this.adoptDesktop(state))
+      .catch(() => undefined);
+  }
+
+  private adoptDesktop(state: DesktopDisplayState): void {
+    this.desktop = state;
+    // Only re-render if the screen is still mounted and still on this tab —
+    // these resolve asynchronously and the player may have left either.
+    if (this.body !== null && this.tab === 'graphics') this.renderTab();
+  }
+
+  private renderDisplay(body: HTMLElement): void {
+    const d = this.desktop;
+    if (d === null) return;
+    const sec = this.section(body, 'Display');
+
+    sec.appendChild(row(
+      'Window Mode',
+      chooser(
+        [
+          { value: 'fullscreen' as const, label: 'Fullscreen' },
+          { value: 'windowed' as const, label: 'Windowed' },
+        ],
+        d.mode,
+        (v) => this.patchDesktop({ mode: v }),
+      ),
+      /*
+       * IT SAYS BORDERLESS BECAUSE IT IS BORDERLESS. Chromium has no
+       * mode-setting path, so this cannot be exclusive fullscreen however it
+       * is labelled — and a menu offering both "Fullscreen" and "Borderless"
+       * would be two names for one behaviour. Stating it is the honest
+       * version, and borderless is what most players want anyway.
+       */
+      'Borderless — Chromium has no exclusive fullscreen mode, so this alt-tabs '
+      + 'instantly. Changes the pixel count your calibration solved for.',
+    ));
+
+    if (d.mode === 'windowed' && d.sizes.length > 1) {
+      sec.appendChild(row(
+        'Window Size',
+        chooser(
+          d.sizes.map(([w, h]) => ({ value: `${w}x${h}`, label: `${w} × ${h}` })),
+          `${d.width}x${d.height}`,
+          (v) => {
+            const [w, h] = v.split('x');
+            if (w === undefined || h === undefined) return;
+            this.patchDesktop({ width: Number(w), height: Number(h) });
+          },
+        ),
+        'Only sizes that fit the chosen monitor, minus its taskbar, are offered.',
+      ));
+    }
+
+    // One monitor needs no chooser, and an "Automatic" row on a single-display
+    // machine is a control with nothing to control.
+    if (d.displays.length > 1) {
+      sec.appendChild(row(
+        'Monitor',
+        chooser(
+          [
+            { value: -1, label: 'Automatic' },
+            ...d.displays.map((m) => ({ value: m.index, label: m.label })),
+          ],
+          d.displayIndex,
+          (v) => this.patchDesktop({ displayIndex: v }),
+        ),
+        'Automatic leaves the window wherever the system last put it.',
+      ));
+    }
+
+    /*
+     * ALWAYS ON TOP — and the help text is deliberately not a sales pitch.
+     *
+     * Reported as *"when electron game is opened, the game window should be at
+     * always on top mode? because now when i select it on taskbar and another
+     * software opened, it exists in the back"*. This does fix that. It is also
+     * the heaviest possible fix for it: the window then cannot be covered by
+     * ANYTHING, ever — no browser, no chat window, no other app's file dialog —
+     * so it trades an intermittent annoyance for a permanent one, and a player
+     * has to be able to make that trade knowingly.
+     *
+     * IT IS ALSO PROBABLY A WORKAROUND RATHER THAN THE DIAGNOSIS.
+     * `desktop/src/display.ts` records the likely cause as borderless-fullscreen
+     * z-order on Windows — `setFullScreen(true)` is a borderless window sized to
+     * the monitor, there being no exclusive mode in Chromium — which is a
+     * different bug that this setting hides. Default OFF for both reasons.
+     *
+     * It applies immediately, like Window Mode and Monitor and unlike the two
+     * switch-backed rows below, which is why it is grouped up here.
+     */
+    sec.appendChild(row(
+      'Always On Top',
+      toggle(d.alwaysOnTop, (v) => this.patchDesktop({ alwaysOnTop: v })),
+      'Keeps the window in front of every other application. Off by default: it '
+      + 'stops the game being pushed behind other windows, but nothing can ever '
+      + 'cover it afterwards — including dialogs from other apps. Applies immediately.',
+    ));
+
+    sec.appendChild(row(
+      'Graphics Processor',
+      chooser(
+        [
+          { value: true, label: 'High Performance' },
+          { value: false, label: 'System Default' },
+        ],
+        d.forceHighPerformanceGpu,
+        (v) => this.patchDesktop({ forceHighPerformanceGpu: v }),
+      ),
+      'Forces the discrete GPU. This is the reason the desktop build exists — '
+      + 'Windows ignores the same request from a browser. Takes effect on restart.',
+    ));
+
+    sec.appendChild(row(
+      'Unlock Frame Rate',
+      toggle(d.unlockFrameRate, (v) => this.patchDesktop({ unlockFrameRate: v })),
+      /*
+       * The measured cost, stated. `desktop/src/flags.ts` carries the long
+       * form: disabling vsync removes the vsync-flat case by construction, so
+       * HardwareCalibration's not-fill-rate-bound guard stops firing and a
+       * machine that was fine starts having its resolution cut — permanently,
+       * because `graphics.calibrated` is sticky.
+       */
+      'Renders past your display\'s refresh rate. Off by default: it also stops '
+      + 'Hardware Calibration recognising a healthy frame, so re-calibrate after. '
+      + 'Takes effect on restart.',
+    ));
+
+    if (d.relaunchPending) {
+      sec.appendChild(row(
+        'Restart Required',
+        button('Relaunch Now', {
+          variant: 'primary',
+          iconName: 'restore',
+          onClick: () => desktopBridge()?.relaunch(),
+        }),
+        'Chromium takes its graphics settings at launch, so the changes above are '
+        + 'saved but not yet in force.',
+      ));
+    }
+
+    sec.appendChild(row(
+      'Game Files',
+      button('Open Folder', {
+        iconName: 'info',
+        onClick: () => void desktopBridge()?.revealUserData(),
+      }),
+      'Saves, replays and the desktop settings file.',
+    ));
   }
 
   /* -- graphics ---------------------------------------------------------- */
@@ -473,6 +1251,10 @@ export class SettingsScreen implements Screen {
     const set = (patch: Partial<typeof g>): void => {
       this.shell.settings.patch({ graphics: patch });
     };
+
+    // Desktop only, and first: it is the most physical thing on the tab, and
+    // window size is upstream of every pixel-count decision below it.
+    this.renderDisplay(body);
 
     const presets = this.section(body, 'Presets');
     presets.appendChild(row(
@@ -641,28 +1423,13 @@ export class SettingsScreen implements Screen {
       }),
     ));
 
-    /* -- diagnostics ----------------------------------------------------- *
-     * One row, and its help text is the whole reason the feature exists. A
-     * player who turns this on because the game feels heavy is owed the one
-     * sentence that stops them trusting a green 60: on a vsync-capped display
-     * the frame time is the MONITOR's number, not the game's, and only a GPU
-     * timer query can tell the two apart. The overlay says which of those it
-     * has; the row says why that matters before they open it.
-     *
-     * There is no `applySettings` branch for this. `src/ui/perf.system.ts`
-     * subscribes to the store directly — see the field comment in
-     * settings-store.ts — so the toggle takes effect on the next frame with no
-     * translation layer in between.                                          */
-
-    const diag = this.section(body, 'Diagnostics');
-    diag.appendChild(row(
-      'Performance Overlay',
-      toggle(g.perfOverlay, (v) => set({ perfOverlay: v })),
-      'Top-left readout: frame time and its p95, the sim/render CPU split, draw ' +
-      'calls against the 130 budget, and whether a 60 fps reading has real ' +
-      'headroom or is only vsync capping a saturated GPU. It will say "headroom ' +
-      'unknown" rather than guess when the browser withholds GPU timing.',
-    ));
+    /*
+     * THE `Diagnostics` SECTION THAT USED TO END THIS TAB HAS MOVED, whole, to
+     * the Diagnostics TAB — see `renderDiagnostics` and the block above `TabId`.
+     * It held one row (Performance Overlay), and a section that exists to hold
+     * one toggle is a section that wants to be somewhere else. The setting is
+     * unchanged and still lives at `graphics.perfOverlay`.
+     */
   }
 
   /* -- audio ------------------------------------------------------------- */

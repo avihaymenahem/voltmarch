@@ -49,9 +49,11 @@ structures draw 40 or more, and the Arc Pylon alone draws **90**, the heaviest s
 building that is not a superweapon. A Reclamation base is a sprawl of five or six furnaces, every
 one of them a target, and your own defensive belt is what browns you out.
 
-The good news about a brownout: it does not stop your guns. Nothing in the Reclamation armoury is
-power-gated. The Spitpost and the Arc Pylon both keep firing through a total blackout, which is
-exactly the opposite of a Tesla Coil or a Helios Spire.
+Not one gun in the Reclamation armoury is electric in the sense the grid cares about — no Reclamation
+weapon carries the flag that silences a Tesla Coil or a Helios Spire the instant its owner dips into
+deficit. What still gets you is the building underneath the gun: a structure that draws power and is
+not getting any cannot shoot, whatever it is holding. The Spitpost draws nothing and fires through a
+total blackout. The Arc Pylon draws ninety, and is the first thing on your base to go dark.
 
 You get in close or you do nothing. Every arc you can drive is 14–20 m against everyone else's
 22–26, and you have no turrets. Reclamation engagements are decided by whether you closed the
@@ -154,7 +156,8 @@ The Spitpost draws no power at all, so it fires through a total blackout. The Ar
 opposite kind of decision: 90 power, the heaviest single draw outside a superweapon, and it arrives
 a full tech tier before an Allied Prism Tower or a Pact Helios Spire because it hangs off the
 Spotter Mast rather than the Crucible. An early heavy defence that browns out your own base is a
-real trade — and the pylon then fires through the brownout it caused.
+real trade — and the pylon is the biggest draw in the first class the shed order touches, so it is
+also the first gun to go dark in the brownout it caused. Build the furnace before the pylon.
 
 Three chained arcs at 94 damage and 28 m, elevating, is also the closest thing the Reclamation has
 to anti-air. There is no dedicated AA turret.
@@ -193,7 +196,8 @@ commander in the game — and it is the faction's real economic engine, not the 
 - Chained tesla arcs at 1.60 against infantry, hitting one to three extra targets per shot. Massed
   infantry simply stops existing.
 - Every hull turns a full radian per second faster than the equivalent enemy chassis.
-- Nothing in the armoury is power-gated. Your defences fire through a blackout.
+- No Reclamation gun is electric in the way a Tesla Coil is, so a shallow deficit never disarms you
+  the way it disarms the Pact. The Spitpost draws nothing and fires through a total blackout.
 - The Slaghurler's 42 m mortar ties for the longest reach of any weapon in the game, level with the
   Soviet Dreadnought's cruise battery.
 - Salvage Call turns your own losses back into credits.
@@ -207,7 +211,7 @@ commander in the game — and it is the faction's real economic engine, not the 
   Slagger, and both are slow, soft and have to stop or walk right up to it.
 - The frailest hulls in the game at every price point.
 - The weakest power plant in the game at 80. Your base is a sprawl of furnaces, and the Arc Pylon
-  alone eats more than one furnace produces.
+  alone eats more than one furnace produces — and goes dark first when it cannot.
 - No gate and no dedicated anti-air emplacement.
 - **No escort hull.** Four hulls off the dock where every other army gets five, and the gap is the
   gunned ship that would screen a landing.

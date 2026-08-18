@@ -171,9 +171,24 @@ function hudToast(): HudToastSink | null {
  * finished, live structure carrying a `shipsWith`.
  *
  * FIRST IN STORE ORDER, not nearest or newest, and that is the determinism
- * clause — `byKind` is a dense list in allocation order, identical on every
- * client running the same command stream. "Nearest to the dead harvester"
- * would have been friendlier and would have depended on a corpse's position.
+ * clause — `byKind` is a dense list in allocation order with swap-removes,
+ * identical on every client running the same command stream. "Nearest to the
+ * dead harvester" would have been friendlier and would have depended on a
+ * corpse's position.
+ *
+ * THAT PICK DECIDES WHERE THE HULL APPEARS, AND NOTHING ELSE. It used to decide
+ * WHAT appeared too, and that was a bug: capture leaves `defId` alone, so a
+ * Meridian Pact player holding a captured Allied refinery got whichever hauler
+ * happened to sit earlier in the list — the Allied one, which is not in the
+ * Pact roster and could never be replaced. `redeemBundledUnit` now resolves the
+ * unit from the PLAYER's own army; see its header. So the search is left
+ * deliberately wide — every owned bundler, foreign or not — because a second
+ * standing refinery is a second chance at an egress spot and no longer a second
+ * answer to the question.
+ *
+ * Clause 4 is unaffected and is checked by the caller: `survey.refineries`
+ * counts only structures whose entry key is this player's OWN refinery, so a
+ * captured foreign one can deliver but can never satisfy the gate.
  */
 function redeemFrom(w: World, player: PlayerId): boolean {
   const prod = production();

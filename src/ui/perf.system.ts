@@ -75,6 +75,7 @@ import { defineSystem } from '../core/loop';
 import { RenderPhase, type RenderContext } from '../core/types';
 import { ctx } from '../game/context';
 import { liveChordFor, type ActionChord, type StoredBindings } from '../input/ActionCatalogue';
+import type { LiveBackend } from '../render/backend';
 
 import {
   DRAW_BUDGET,
@@ -82,6 +83,7 @@ import {
   asTimerGl,
   perfFrameShareOf,
   perfPanelHeightUnits,
+  shortDevice,
   type PerfReadout,
   type PerfSource,
 } from './PerfHud';
@@ -152,14 +154,51 @@ export function chordMatches(chord: ActionChord | null, e: KeyboardEvent): boole
  * THE ENGINE SEAM
  * ========================================================================== */
 
+/** The four buckets `stats()` publishes. Structural: nothing here imports post.ts. */
+export interface DrawSplitLike {
+  readonly shadow: number;
+  readonly colour: number;
+  readonly total: number;
+}
+
+/**
+ * The COLOUR-PASS draw count, or null when the live renderer cannot split the
+ * frame.
+ *
+ * **THE SAME TEST `src/render/debug.ts` MAKES, deliberately duplicated rather
+ * than re-derived.** A zero colour bucket underneath a non-zero total means the
+ * split is UNAVAILABLE, not that nothing drew: `src/render/post.ts` reports the
+ * node path as zeros with a true total because the node `Renderer` has no seam
+ * between the shadow pass and the colour pass to meter, and the WebGL path
+ * reports the same shape when there is no post chain to install the meters in.
+ * Two different answers to one question is how a fake split gets believed, so
+ * this is the F3 overlay's condition verbatim.
+ *
+ * A total of zero is left alone: nothing was submitted, and `0 col` is then the
+ * honest reading rather than a missing one.
+ */
+export function colourDrawsOf(split: DrawSplitLike): number | null {
+  if (split.total > 0 && split.colour === 0 && split.shadow === 0) return null;
+  return split.colour;
+}
+
 /**
  * Reads the panel's numbers off surfaces that already exist.
  *
  * `cpuMs()` is called every frame and is a single field read. `read()` is
  * called four times a second and is the only place `stats()` is touched — it
  * allocates a small object per call, which is why it is not on the hot path.
+ *
+ * THE GPU IDENTITY IS RESOLVED ONCE. Neither the live backend nor the adapter
+ * can change within a page — a lost WebGPU device does not come back and the
+ * route out is a reboot — so `shortDevice`'s regex work happens on the first
+ * successful read and never again, and the 4 Hz path assigns two cached fields.
  */
 class EngineSource implements PerfSource {
+  private backend: LiveBackend | null = null;
+  private device = '—';
+  private gpuResolved = false;
+
   cpuMs(): number {
     try {
       return ctx().registry.profiler.frameMs;
@@ -169,6 +208,7 @@ class EngineSource implements PerfSource {
   }
 
   read(out: PerfReadout): void {
+    this.resolveGpu();
     let s;
     try {
       s = ctx().debug.api.stats();
@@ -176,6 +216,7 @@ class EngineSource implements PerfSource {
       return;
     }
     out.drawCalls = s.drawCalls;
+    out.drawCallsColour = colourDrawsOf(s.drawCallsByPass);
     out.triangles = s.triangles;
     out.entities = s.counters.entities;
     out.simMs = s.counters.simMs;
@@ -183,6 +224,26 @@ class EngineSource implements PerfSource {
     out.tier = s.quality;
     out.resolution = s.resolution;
     out.pixelRatio = s.pixelRatio;
+    out.backend = this.backend;
+    out.device = this.device;
+  }
+
+  /**
+   * `handle.backend` is the READ — the live backend off the renderer object,
+   * never `requestedBackend()`. `handle.capabilities.gpu` is already the
+   * adapter's own account of itself with the WebGL probe as its fallback (see
+   * `createRenderer`), so this is one source rather than a second opinion.
+   */
+  private resolveGpu(): void {
+    if (this.gpuResolved) return;
+    try {
+      const handle = ctx().handle;
+      this.backend = handle.backend;
+      this.device = shortDevice(handle.capabilities.gpu);
+      this.gpuResolved = true;
+    } catch {
+      /* Before the context exists. Retried on the next update, 250 ms away. */
+    }
   }
 }
 
@@ -299,9 +360,20 @@ export default defineSystem({
 
     const chord = liveChordFor(PERF_ACTION_ID, undefined);
     const share = (perfFrameShareOf(1280, 720) * 100).toFixed(2);
+    // The LIVE backend, read off the renderer. A boot log that named the
+    // requested one would be the exact failure `src/render/backend.ts` exists
+    // to stop; and the timer's availability is a consequence of this line, so
+    // the two belong beside each other.
+    let live: string;
+    try {
+      live = ctx().handle.backend;
+    } catch {
+      live = 'unknown';
+    }
     console.info(
       `[perf] overlay mounted — off by default, ${perfPanelHeightUnits()}u tall ` +
-      `(${share}% of a 720p frame), draw budget ${DRAW_BUDGET}, ` +
+      `(${share}% of a 720p frame), colour-pass draw budget ${DRAW_BUDGET}, ` +
+      `backend ${live}, ` +
       `gpu timer ${hud.gpuTimerAvailable ? 'available' : 'unavailable (headroom cannot be proven)'}; ` +
       (chord === null
         ? `no key bound — add "${PERF_ACTION_ID}" to src/input/ActionCatalogue.ts and the ` +

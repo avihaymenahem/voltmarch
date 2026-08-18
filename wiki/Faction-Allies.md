@@ -113,13 +113,14 @@ the same tech gate that holds back the Prism Tank.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Concrete Wall | 100 | 2 s | Barracks | 300 | 0 | — | — | — |
 | Gate | 150 | 3 s | Barracks | 400 | 0 | — | — | — |
-| Pillbox | 400 | 8 s | Barracks | 500 | 0 | Emplaced MG, 20 x5, small arms | 22 m | no |
+| Pillbox | 400 | 8 s | Barracks | 500 | 0 | Emplaced MG, 13 x5, small arms | 22 m | no |
 | Multigunner AA **(locked)** | 800 | 12 s | Radar Dome | 550 | -30 | Flak Battery, 34 x3, autocannon | 26 m | **yes** |
 | Prism Tower **(locked)** | 1500 | 16 s | Battle Lab | 600 | -50 | Prism Cannon, 115, prism | 34 m | **yes** |
 
 The Wall stops vehicles and nothing else — infantry walk straight through a wall line, so a Gate is
-for your own convenience rather than theirs. The Prism Tower needs power: brown out and it goes
-dark. The Pillbox does not, which is why it stays useful all match.
+for your own convenience rather than theirs. **The Pillbox is the only Allied gun that survives a
+blackout**, because it is the only one that draws no power — the Prism Tower and the Multigunner AA
+both go dark with the grid. That is why a 400-credit box stays useful all match.
 
 **The Multigunner AA is the only dedicated anti-air emplacement any faction in the game has.** That
 is a genuine Allied advantage and worth building the moment aircraft appear.

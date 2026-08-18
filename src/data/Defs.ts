@@ -153,19 +153,32 @@ const MUZZLE_PAIR: readonly PartId[] = [PartId.MuzzleA, PartId.MuzzleB];
  *      whole belt without touching either tower. That is the faction's risk
  *      profile: the Solar Array is cheap, generous and made of glass.
  *
- *      `zenithBeam` USED TO CARRY IT TOO AND IT DID NOTHING. `Combat.ts` gates
- *      on the weapon's `needsPower` AND `EntityFlag.NeedsPower` on the ENTITY,
- *      and that flag is only ever set on structures — `Scenarios.building()`
- *      and `mrdFlags`/`rclFlags` below derive it from a negative power draw and
- *      nothing derives it for a hull. `EntityFlag.Powered` is worse: only
- *      `PowerGrid.recompute` sets it and that loop walks
- *      `byKind[EntityKind.Building]` and nothing else, so a vehicle carrying
- *      `NeedsPower` would be unpowered forever and its gun would never fire
- *      once. A brownout-able VEHICLE is a `Power.ts` feature, not a data flag;
- *      until somebody builds it, the honest table says the Zenith's beam is not
- *      on the grid. See the Zenith Emitter's own row for the blurb that made
- *      the same false promise. `glaiveRepeater` went the other way — the Glaive
- *      Post is a structure, so its claim was made TRUE rather than withdrawn.
+ *      WHAT `needsPower` MEANS CHANGED, AND THIS RULE IS NARROWER THAN IT
+ *      READS. Since *"If no electrcity left, buildings shouldnt be able to
+ *      shoot"*, `Combat.engage` silences EVERY structure carrying
+ *      `EntityFlag.NeedsPower` without `EntityFlag.Powered`, whatever its gun.
+ *      So a Flame Tower and an Arc Pylon go quiet in a blackout with no weapon
+ *      flag at all, and this field is no longer what puts a defence on the grid
+ *      — the def's negative `power` is. What the field buys now is the SECOND
+ *      tier: an electric gun refuses whenever its owner's grid is in deficit,
+ *      not only when `PowerGrid.shed` picked that particular tower. Which is
+ *      what makes the sentence above ("both defences go dark together") true
+ *      for the first time — shedding covers the shortfall and stops, so a small
+ *      deficit used to take the Helios Spire and leave the Glaive Post firing.
+ *
+ *      `zenithBeam` USED TO CARRY IT TOO AND IT DID NOTHING. Both tiers require
+ *      `EntityFlag.NeedsPower` on the ENTITY, and that flag is only ever set on
+ *      structures — `Scenarios.building()` and `mrdFlags`/`rclFlags` below
+ *      derive it from a negative power draw and nothing derives it for a hull.
+ *      `EntityFlag.Powered` is worse: only `PowerGrid.recompute` sets it and
+ *      that loop walks `byKind[EntityKind.Building]` and nothing else, so a
+ *      vehicle carrying `NeedsPower` would be unpowered forever and its gun
+ *      would never fire once. A brownout-able VEHICLE is a `Power.ts` feature,
+ *      not a data flag; until somebody builds it, the honest table says the
+ *      Zenith's beam is not on the grid. See the Zenith Emitter's own row for
+ *      the blurb that made the same false promise. `glaiveRepeater` went the
+ *      other way — the Glaive Post is a structure, so its claim was made TRUE
+ *      rather than withdrawn.
  *   3. Nothing here is `Tesla` or `SmallArms`-heavy. The Pact answers armour
  *      and structures well and answers massed infantry poorly, which is the
  *      hole the Soviets are built to exploit.
@@ -232,11 +245,38 @@ export const MERIDIAN_WEAPONS: readonly WeaponDef[] = [
   // Spire beside it went dark. Now both Pact defences fall together, which is
   // what the faction's own doctrine block above says they do.
   //
-  // It sheds LAST among Pact defences, not first: `PowerGrid.shed` orders by
-  // draw descending within a class, so a deficit takes the Spire's 55 before
-  // this one's 10. A player losing their cheap anti-infantry post while the
-  // heavy beam still runs would read as a bug.
-  /* 23 */ wpn('glaiveRepeater', 'Glaive Repeater', 21, WarheadClass.SmallArms, 24, 0.45,
+  // ON SHED ORDER, CORRECTED. This said the Glaive Post "sheds LAST among Pact
+  // defences, not first", because `PowerGrid.shed` orders by draw descending
+  // and a deficit takes the Spire's 55 before this one's 10. That was true of
+  // the SHED, and it stopped describing the outcome when the blackout gate grew
+  // its second tier: `needsPower` now also refuses to fire during ANY grid
+  // deficit, not merely when the shed picked this tower. So the post goes dark
+  // WITH the Spire rather than after it — see the second-tier block in
+  // `src/sim/Combat.ts`, which is the authority.
+  //
+  /*
+   * FOLLOWS `pillboxMg`, and must keep following it.
+   *
+   * This was 21 damage on a 0.45 s cooldown — 152.2 dps, the highest in the
+   * armoury — while rule 1 of the doctrine block above says Pact guns
+   * out-RANGE their opposite number and UNDER-DAMAGE it. Against the Pillbox
+   * the Glaive was taking both sides: +2 m of reach AND +5% damage, the only
+   * Pact gun doing so.
+   *
+   *     before   5 x 21 / 0.69 s = 152.2 dps    +5.0% against the Pillbox
+   *     after    5 x 12 / 0.79 s =  75.9 dps    -7.8%, back inside doctrine
+   *
+   * -7.8% sits with `pulseCarbine` (-10.5%), `sunLance` (-11%) and
+   * `zenithBeam` (-8.5%). It is 24 m against the Pillbox's 22, so the range
+   * half of the doctrine is intact.
+   *
+   * An intermediate pass took this to 18 ALONE, while `pillboxMg` was out of
+   * reach in `src/sim/Combat.ts`. That was a doctrine fix rather than the
+   * lethality fix, and shipping it by itself would have left the Pact post
+   * corrected against an Allied post that was still the real offender —
+   * fixing one army by breaking three.
+   */
+  /* 23 */ wpn('glaiveRepeater', 'Glaive Repeater', 12, WarheadClass.SmallArms, 24, 0.55,
     ProjectileKind.Bullet, 118,
     { burstCount: 5, burstDelay: 0.06, turretTurnRate: 260, needsPower: true,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactDirt }),
@@ -310,10 +350,25 @@ export const FACTION_RECLAIM = Faction.Reclaim;
  * whole chassis at what it wants to kill, from inside a range band where
  * everyone else is already shooting it.
  *
- * DELIBERATELY NOT `needsPower`. The Soviet coil and both Pact beams stop in a
- * brownout; these do not. The Reclamation pays for its guns in reach and in
- * facing, not in grid — and its Arc Pylon draws 90, the heaviest single load in
- * the game, so it browns out its OWN base instead.
+ * DELIBERATELY NOT `needsPower`, AND THAT NOW BUYS LESS THAN IT DID. This block
+ * used to read "The Soviet coil and both Pact beams stop in a brownout; these do
+ * not. The Reclamation pays for its guns in reach and in facing, not in grid."
+ * Half of that stopped being true with *"If no electrcity left, buildings
+ * shouldnt be able to shoot"*: `Combat.engage` gates on the ENTITY now, so the
+ * Arc Pylon goes dark like everything else that draws, and its own blurb
+ * ("Draws ninety power to do it") is the warning it always was — the heaviest
+ * single load in the game is now also the first defence in the game to go out.
+ *
+ * WHAT SURVIVES OF THE DOCTRINE, AND IT IS THE HALF THAT MATTERS: `postCoil` is
+ * mounted on a `power: 0` Spitpost, so it never carries `EntityFlag.NeedsPower`
+ * and genuinely FIRES THROUGH A BLACKOUT — which is what its blurb promises and
+ * what `tests/content-truthful.spec.ts` pins. The Reclamation therefore keeps a
+ * cheap gun on a dead grid, as do the Allies (`pillbox`) and the Soviets
+ * (`sentryGun`); the Pact is the one army with nothing, which is the risk
+ * profile its own doctrine block claims. Do NOT "restore the symmetry" by
+ * putting `needsPower` on `pylonArc` — that is the second tier, and it would
+ * take the Pylon out on any deficit rather than on the shed that already
+ * catches it first.
  */
 export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
   // An arc is not a rocket and there is not one guided round in this army, so
@@ -389,7 +444,7 @@ export const RECLAIM_WEAPONS: readonly WeaponDef[] = [
  *   SmallArms  [1.00 infantry, 0.55 light, 0.28 medium, 0.10 HEAVY, 0.18 concrete]
  *
  * Every buildable foot soldier those two armies field — G.I., Conscript,
- * Attack Dog — fires SmallArms. At 0.10 a lone G.I. needs **80 seconds** to
+ * Attack Dog — fires SmallArms. At 0.10 a lone G.I. needs **100 seconds** to
  * kill a Rhino and **153** to kill an Apocalypse, while `COMBAT_TARGETING`'s
  * `ineffective` penalty (0.35x at or below a 0.35 multiplier) means he will not
  * voluntarily aim at either one while any enemy infantryman stands within
@@ -546,7 +601,7 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
  *   - dps per 1000 credits, best in the whole roster among VEHICLES against
  *     Light (193), Medium (125), Heavy (68) AND Concrete (68). One unit, top of
  *     four of the six armour columns.
- *   - it beat a Grizzly 1v1 in **4.52 s** while the Grizzly needed **7.06 s** —
+ *   - it beat a Grizzly 1v1 in **5.65 s** while the Grizzly needed **8.82 s** —
  *     a 600-credit raider deleting a 700-credit main battle tank, faster,
  *     longer-sighted (32 against 30) and 100 credits cheaper.
  *   - it beat the Sandskiff, the MiG and the Solarch too. Only the Rhino won.
@@ -561,7 +616,7 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
  *
  * THE NEW NUMBERS, DERIVED AND NOT GUESSED. The binding constraint is the
  * Grizzly duel. The Grizzly's `lightCannon` does 55 x 0.85 (AP vs Light) every
- * 1.5 s = 31.2 dps, so it needs 220 / 31.2 = **7.06 s** to kill an IFV. For the
+ * 1.5 s = 31.2 dps, so it needs 220 / (31.2 x 0.80) = **8.82 s** to kill an IFV. For the
  * tank to win, the IFV must need longer than that on 340 hp of Medium armour:
  *
  *     raw x 0.65 < 340 / 7.06   ->   raw < 74.1
@@ -574,10 +629,18 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
  *
  * WHAT THAT BUYS, ALL FOUR COMPLAINTS ANSWERED:
  *
- *     vs Grizzly   7.99 s against the tank's 7.06 s   the TANK wins
+ *     vs Grizzly   9.99 s against the tank's 8.82 s   the TANK wins
+ *
+ * THE SECONDS ARE THROUGH `COMBAT_DAMAGE.globalMul` (0.80); THE DPS FIGURES ARE
+ * NOT. That scalar is applied once, in `Damage.applyOne`, so every damage and
+ * dps number in this file is the weapon's own and every wall-clock kill TIME is
+ * 1.25x what the raw arithmetic gives. Six times in this file were left at the
+ * pre-scalar value when the knob landed. The dps derivations around them were
+ * and remain correct — a global multiplier cancels out of every ratio — which
+ * is exactly why the stale ones were easy to miss.
  *     vs Light     65.5 dps, still the anti-air and anti-raider gun it is for
  *     vs Medium    42.6 dps  ->  5th per credit, behind the Sandskiff
- *     vs Heavy     22.9 dps  ->  nowhere near the top; a Rhino takes 18 s
+ *     vs Heavy     22.9 dps  ->  nowhere near the top; a Rhino takes 22.9 s
  *     vs Concrete  22.9 dps  ->  behind the Slagger, which IS the wall-breaker
  *
  * It keeps `canTargetAir`, its 22 m reach and its 200 deg/s turret, because
@@ -1110,7 +1173,7 @@ export const UNITS: readonly UnitDef[] = [
   }),
   // `ifvChaingun`, NOT `chaingun`. See `REBALANCE_WEAPONS` for the derivation:
   // the old gun made this 600-credit raider the best unit in the game per
-  // credit and let it kill a Grizzly 1v1 in 4.52 s. Every other number on the
+  // credit and let it kill a Grizzly 1v1 in 5.65 s. Every other number on the
   // row is unchanged — hp, armour, speed and sight are all duplicated in
   // `Scenarios.FALLBACK_UNITS` and asserted equal by `tests/data.spec.ts`, and
   // the gun was the thing that was wrong anyway.
@@ -1658,13 +1721,17 @@ export const UNITS: readonly UnitDef[] = [
   // HE FIRES `teslaBolt`, WHICH CARRIES `needsPower`, AND IT DOES NOT APPLY.
   // Kept, and correctly: row 9 is the TESLA COIL's gun, the coil is a structure
   // drawing -75, and "Melts armour. Dies in a brownout." is the truest blurb in
-  // the defence tab. The flag simply cannot reach a man — `Combat.ts` also
-  // requires `EntityFlag.NeedsPower` on the entity and infantry never carry it
-  // — so the Commissar fires through a blackout and always has. Noted rather
-  // than "fixed": stripping `needsPower` to tidy the sharing would silently
-  // switch the Tesla Coil on during a brownout, which is a real defence going
-  // from a decision to a freebie. The Zenith Emitter was the opposite case (its
-  // weapon had no other carrier) and that flag is gone.
+  // the defence tab. The flag simply cannot reach a man — BOTH power gates in
+  // `Combat.engage` require `EntityFlag.NeedsPower` on the entity, and infantry
+  // never carry it — so the Commissar fires through a blackout and always has.
+  // That is still true after the gate was widened to every structure that draws
+  // power: what widened is the tier that reads the ENTITY, and a man has no
+  // draw. Noted rather than "fixed": stripping `needsPower` to tidy the sharing
+  // would not switch the Tesla Coil back on any more (the entity tier catches
+  // it), but it WOULD relax the coil from "dark on any deficit" to "dark when
+  // shed", which is a real defensive decision loosened for a tidy-up. The Zenith
+  // Emitter was the opposite case (its weapon had no other carrier) and that
+  // flag is gone.
   unit({
     key: 'commissar', name: 'War Commissar', blurb: 'One only. Makes nearby troops untouchable.',
     faction: Faction.Soviets, kind: EntityKind.Infantry,
@@ -2216,9 +2283,13 @@ export const BUILDINGS: readonly BuildingDef[] = [
    * power in the game per credit (350 for 160, against 300 for 100) and the
    * most fragile structure any faction fields (420 hp against 800). The Pact
    * therefore reaches tier two a full Power Plant earlier than either rival —
-   * and both of its defences plus its siege tank carry `needsPower` weapons,
-   * so four Sandskiffs behind the lines can silence a whole defensive belt
-   * without touching a single Glaive Post.
+   * and both of its DEFENCES carry `needsPower` weapons, so four Sandskiffs
+   * behind the lines can silence a whole defensive belt without touching a
+   * single Glaive Post. (This said "plus its siege tank", which has not been
+   * true since `zenithBeam`'s flag was deleted for being unreachable on a hull.
+   * The raid still works and it is now the only army it fully disarms: the Pact
+   * is alone in having NO `power: 0` emplacement, so a dead grid leaves it with
+   * nothing standing, where the other three keep a cheap gun.)
    *
    * The rest of the line is deliberately NOT cheaper: every economy and tech
    * building is priced at the shared curve to the credit, because the faction

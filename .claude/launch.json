@@ -12,6 +12,18 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "preview"],
       "port": 4317
+    },
+    {
+      "name": "desktop-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "desktop:dev"],
+      "port": 5173
+    },
+    {
+      "name": "desktop-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "desktop:preview"],
+      "port": 4317
     }
   ]
 }

@@ -41,7 +41,7 @@
  */
 
 import {
-  COMBAT_PROJECTILES, COMBAT_WEAPONS, CELL,
+  COMBAT_PROJECTILES, COMBAT_WEAPONS, CELL, POWER_FULL_MUL,
 } from '../core/config';
 import {
   ArmorClass, EntityFlag, EntityKind, Faction, FxKind, Locomotor, OrderKind,
@@ -186,7 +186,34 @@ export const DEFAULT_WEAPONS: readonly WeaponDef[] = [
     { splashRadius: 3.2, splashFalloff: 0.45, turretTurnRate: 150,
       muzzleFx: FxKind.FlameJet, travelFx: FxKind.FlameJet, impactFx: FxKind.ExplosionSmall }),
 
-  /* 11 */ wpn('pillboxMg', 'Emplaced MG', 20, WarheadClass.SmallArms, 22, 0.45,
+  /*
+   * RETUNED 2026-08-18, from *"Gunner stations should be a less powerfull, one
+   * can destroy a full army in a second"*. That report is literal, and the
+   * cause was the TRIGGER PULL rather than the sustained dps.
+   *
+   * This row and `glaiveRepeater` were the two highest-damage-per-second
+   * entries in the whole 42-row armoury, on the two CHEAPEST emplacements in
+   * the game. Five rounds left in 0.24 s, so one pull was 100 damage — at or
+   * above the full health of three of the four line infantrymen (G.I. 120,
+   * Conscript 100, Wayfarer 110, Scrap Picker 85). A burst was a man, 1.45
+   * times a second.
+   *
+   *     before   5 x 20 / 0.69 s cycle = 144.9 dps   362 per 1000 credits
+   *     after    5 x 13 / 0.79 s cycle =  82.3 dps   206 per 1000 credits
+   *
+   * THE TARGET IS DERIVED, NOT PICKED. Eight G.I.s assault a 400-credit
+   * Pillbox: the post kills sequentially so its dps is flat, while the squad's
+   * decays as men drop. The squad lands `36 x r x 120/D`, where r is the
+   * squad's 9.43 dps into Concrete. At the shipped 144.9 the squad died having
+   * dealt 282 of the box's 500 hp — 1600 credits of infantry, and the box
+   * survives with 44%. Break-even is D = 81.5 dps, which is where this now
+   * sits. `tests/emplacement-band.spec.ts` pins the band and the pull.
+   *
+   * The cooldown carries part of it deliberately: dropping damage alone would
+   * have kept a 1.45 Hz trigger, and the complaint is about how fast a squad
+   * evaporates, not only about the total.
+   */
+  /* 11 */ wpn('pillboxMg', 'Emplaced MG', 13, WarheadClass.SmallArms, 22, 0.55,
     ProjectileKind.Bullet, 110,
     { burstCount: 5, burstDelay: 0.06, turretTurnRate: 260,
       muzzleFx: FxKind.MuzzleFlashSmall, travelFx: FxKind.TracerBullet, impactFx: FxKind.ImpactDirt }),
@@ -549,8 +576,83 @@ export class WeaponSystem {
     // already ran) — they simply never pull the trigger unless force-fired.
     if (st.stance[i] === Stance.HoldFire && st.orderKind[i] !== OrderKind.ForceAttack) return;
     if ((st.flags[i] & EntityFlag.UnderConstruction) !== 0) return;
+    /*
+     * A DARK BUILDING CANNOT SHOOT — reported as *"If no electrcity left,
+     * buildings shouldnt be able to shoot / generate troops"*.
+     *
+     * THIS USED TO BE A TRIPLE CONDITION and the first third of it was the
+     * defect: `w.needsPower && NeedsPower && !Powered`. Only FOUR weapon rows in
+     * the whole 42-row armoury carry `needsPower`, so of the ten armed
+     * structures in the game exactly 4/10 went quiet in a blackout and six kept
+     * firing on a grid producing nothing. It is 7/10 now, and the three that
+     * changed are the three that were drawing power while they fired:
+     *
+     *     flameTower   -20   flameJet     Soviets
+     *     aaTurret     -30   aaCannon     Allies
+     *     rclPylon     -90   pylonArc     Reclamation
+     *
+     * A tower drawing ninety points of a grid producing zero, still shooting,
+     * is the report verbatim.
+     *
+     * The gate is a fact about the ENTITY now. `EntityFlag.NeedsPower` is
+     * derived from a NEGATIVE POWER DRAW (`Scenarios.building()`,
+     * `mrdFlags`/`rclFlags`), and `EntityFlag.Powered` is written only by
+     * `PowerGrid.recompute` — pass 1 powers every completed structure, pass 2
+     * darkens shed victims in `POWER_SHED_ORDER`, where `defence` is class 0
+     * and goes first. So the pair reads exactly "this thing consumes
+     * electricity and is not getting any", which is the sentence in the report.
+     *
+     * BOTH BITS ARE LOAD-BEARING AND NEITHER CAN BE DROPPED. A vehicle or a
+     * rifleman never carries `Powered` — `PowerGrid` walks
+     * `byKind[EntityKind.Building]` and nothing else — so testing `Powered`
+     * alone would silence the entire mobile army the instant this line shipped.
+     *
+     * WHAT DELIBERATELY STILL FIRES: an armed structure with a draw of ZERO.
+     * `pillbox`, `sentryGun` and `rclSpitpost` are all `power: 0`, never carry
+     * `NeedsPower`, and are never shed — an MG in a concrete box has no wire to
+     * cut. That is also what keeps `rclSpitpost`'s blurb ("Fires through a
+     * blackout") true, and what stops a blackout from being an instant loss:
+     * three of the four armies keep one cheap gun. The Pact keeps none, which
+     * is its documented doctrine and not an oversight.
+     */
+    if ((st.flags[i] & (EntityFlag.NeedsPower | EntityFlag.Powered)) === EntityFlag.NeedsPower) {
+      return;
+    }
+    /*
+     * AND `WeaponDef.needsPower` IS THE SECOND, STRICTER TIER — the one thing
+     * the shed order cannot express.
+     *
+     * `PowerGrid.shed` darkens only ENOUGH structures to cover the shortfall,
+     * biggest draw first, so a one-point deficit takes the single heaviest
+     * defence and leaves the rest of the belt lit. Two files already describe
+     * the opposite as fact: `AIStrategy.ts` says of the Pact that "a brownout is
+     * not an inconvenience for this faction, it is a disarm", and `Defs.ts` that
+     * "four Sandskiffs behind the lines silence a whole defensive belt". Under
+     * the tier above alone both were false.
+     *
+     * So an ELECTRIC weapon on a structure refuses whenever its owner's grid is
+     * in deficit at all, shed victim or not. Measured over the shipped defence
+     * sets, this changes exactly one thing that the tier above did not already
+     * cover: the Glaive Post (-10) now goes dark with the Helios Spire (-55)
+     * instead of surviving small deficits. Every other `needsPower` carrier —
+     * `prismTower` -50, `teslaCoil` -75, `mrdHelios` -55 — is the biggest draw
+     * in its own defence class and was already shed first.
+     *
+     * `EntityFlag.NeedsPower` is re-tested and that is deliberate: it is what
+     * keeps the War Commissar firing. He carries `teslaBolt`, which is the Tesla
+     * COIL's row, and infantry never carry the flag — see the block above his
+     * def in `Defs.ts`.
+     *
+     * THE BROWNOUT PROBE IS `buildSpeedMul`, NOT `powerConsumed > powerProduced`.
+     * `PowerGrid.recompute` is the only writer of the former and pins it to
+     * exactly `POWER_FULL_MUL` whenever supply covers demand, whereas the two
+     * power fields are ALSO incremented optimistically by
+     * `Production.spawnBuilding` the moment a foundation is poured — so reading
+     * those would silence a defensive belt for one tick every time its owner
+     * placed a building.
+     */
     if (w.needsPower && (st.flags[i] & EntityFlag.NeedsPower) !== 0
-        && (st.flags[i] & EntityFlag.Powered) === 0) return;
+        && this.world.players[st.owner[i]].buildSpeedMul < POWER_FULL_MUL) return;
     if (w.requiresStop && st.speed[i] > COMBAT_WEAPONS.stoppedSpeed) return;
 
     const surfaceDist = Math.max(0, flat - hitRadius(st.footprintW[t], st.footprintH[t], st.radius[t]));

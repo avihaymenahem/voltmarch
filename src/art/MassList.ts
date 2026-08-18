@@ -1022,7 +1022,9 @@ export const BOXINESS = {
  * Where the roster sits, measured, so the next author knows what "good" looks
  * like without running anything. Score, then the axis sub-metric:
  *
- * Measured across all 50 units in all four armies. Worst first:
+ * Measured across all 65 units in all four armies, by `npx vite-node
+ * tools/boxscan.ts` — the command exists so this table can be regenerated
+ * rather than remembered. Worst first:
  *
  *   allied_prism          0.417 / 0.118   <- the whole game's ceiling
  *   allied_harvester      0.409 / 0.149   <- the whole game's worst axis
@@ -1037,12 +1039,13 @@ export const BOXINESS = {
  *   ------------------------------------ every other unit: axis EXACTLY 0.000
  *   meridian_zenith       0.339 / 0.000
  *   meridian_collector    0.310 / 0.000
- *   reclaim_slaghurler    0.274 / 0.000
- *   allied_vindicator     0.272 / 0.000   aircraft — every primary a tapered box
+ *   allied_vindicator     0.275 / 0.000   aircraft — every primary a tapered box
+ *   reclaim_slaghurler    0.275 / 0.000
  *   allied_destroyer      0.241 / 0.000
  *   soviet_dreadnought    0.236 / 0.000
  *   meridian_hierarch     0.229 / 0.000
  *   soviet_sickle         0.223 / 0.000
+ *   soviet_engineer       0.215 / 0.000   the Soviet half of the shared def
  *   allied_rifle          0.201 / 0.000
  *   allied_engineer       0.169 / 0.000
  *   reclaim_baron         0.162 / 0.000   the least boxy unit in the game

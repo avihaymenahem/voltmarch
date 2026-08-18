@@ -350,8 +350,15 @@ export class DamageSystem {
     // must land against the armour the target has WHEN IT ARRIVES, so an
     // upgrade bought while the round is in the air protects against that round.
     // The alternative would make the effect depend on projectile speed.
+    // `COMBAT_DAMAGE.globalMul` is the TIME-TO-KILL knob and this is its only
+    // application site — which is what makes it trustworthy, since this is the
+    // only function in the game that writes `hp`. It multiplies rather than
+    // replaces, so it is invariant on every trade ratio: scaling attacker and
+    // defender by the same factor cancels out of `36 x r x HP/D`. See the
+    // constant's own block in `config.ts` for the measured before/after.
     const mult = armorMultiplier(warhead, st.armorClass[i] as ArmorClass)
-      * upgradeMul(w.players[st.owner[i]], UpgradeLever.Armour, st.kind[i] as EntityKind);
+      * upgradeMul(w.players[st.owner[i]], UpgradeLever.Armour, st.kind[i] as EntityKind)
+      * COMBAT_DAMAGE.globalMul;
     const dealt = amount * mult;
     if (!(dealt > 0)) return;
 

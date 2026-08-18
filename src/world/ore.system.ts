@@ -60,9 +60,16 @@
  *
  * UPDATES COME FROM `drainDirty` ONLY. Never a rescan: the map is 16 384 cells
  * and the changed set is normally single digits. Regrowth is free, because
- * `OreField.regrow` marks the same dirty list. The instance matrix for a cell
- * at density 0 is written all-zero, which is this codebase's existing collapse
- * idiom (`InstanceBatcher`, `Decals`) and costs no branch in the shader.
+ * `OreField.regrow` marks the same dirty list — VERIFIED rather than asserted
+ * this time: one `regrow` pass on a stripped field leaves exactly 1 cell in
+ * `pendingDirty`, which is also the exact count of cells that moved. The
+ * instance matrix for a cell at density 0 is written all-zero, which is this
+ * codebase's existing collapse idiom (`InstanceBatcher`, `Decals`) and costs no
+ * branch in the shader.
+ *
+ * ONE cell, though — and that is why `CLUSTER_DROP` has an exemption now. The
+ * dirty plumbing was never the reason regrowth could not be seen; the drop was.
+ * See `drawsCluster`.
  *
  * THE SHROUD IS NOT OPTIONAL. Without `applyShroudTint` this module is a map
  * hack — every ore field on the map, visible through unexplored fog, which is
@@ -132,6 +139,30 @@ const CLUSTER_DROP = 0.62;
 
 /** Survivors carry the dropped cells' visual mass, so a rich patch still reads rich. */
 const CLUSTER_GAIN = 1.55;
+
+/**
+ * Does this cell draw a cluster at all? Pure, so the rule is testable without a
+ * renderer — `tests/ore-regrowth.spec.ts` asserts the source exemption.
+ *
+ * THE SOURCE CELL IS EXEMPT FROM THE DROP, AND THAT IS NOT A NICETY.
+ * `OreField.regrow` gates every other cell of a field on its upstream, so a
+ * field stripped to zero has EXACTLY ONE cell growing — `rec.cells[0]`, the
+ * source — for the first minute and a half. At `CLUSTER_DROP` 0.62 that cell
+ * draws nothing about two thirds of the time: measured over 400 seeded fields,
+ * the source drew a cluster in 136 of them, 34%. So on two fields out of three,
+ * the whole first stage of a field coming back was invisible — 1/149 cells
+ * holding ore at t=30 s and t=60 s, 0 of them drawn.
+ *
+ * That is a real part of "ore fields should regenerate over time": for most
+ * fields there was no pixel anywhere on the map that said they were.
+ *
+ * One exempt cell per field cannot rebuild the lattice the drop exists to
+ * break — it is one cluster in the middle of a 95-149 cell patch, and it is the
+ * cell a player is looking at when they ask whether the patch is coming back.
+ */
+export function drawsCluster(cx: number, cz: number, isSource: boolean): boolean {
+  return isSource || hashCell(cx + 977, cz + 313) >= CLUSTER_DROP;
+}
 
 /**
  * How far the cluster's base sits below the sampled ground height, as a
@@ -213,6 +244,15 @@ let geometry: THREE.BufferGeometry | null = null;
 /** Packed cell index -> instance slot, and back. Sized once at init. */
 let slotOfCell: Map<number, number> | null = null;
 let cellOfSlot: Int32Array | null = null;
+/**
+ * 1 for the slot holding a field's SOURCE cell (`OreFieldRecord.cells[0]`, the
+ * one `regrow` seeds from), 0 otherwise. Read by `stamp` to exempt that slot
+ * from `CLUSTER_DROP` — see `drawsCluster`.
+ *
+ * A flat array rather than a lookup on the field records, because `stamp` runs
+ * once per dirty cell per frame and must not touch the sim.
+ */
+let sourceSlot: Uint8Array | null = null;
 let instanceCount = 0;
 
 /** Scratch, reused every frame. Never allocated in `frame`. */
@@ -259,7 +299,7 @@ function stamp(slot: number, cx: number, cz: number, density: number): void {
 
   // A cell that holds no ore, or one this field deliberately does not draw,
   // collapses to a zero matrix — draws nothing, costs no branch in the shader.
-  if (density <= 0 || h3 < CLUSTER_DROP) {
+  if (density <= 0 || !drawsCluster(cx, cz, sourceSlot !== null && sourceSlot[slot] !== 0)) {
     MAT.set(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     im.setMatrixAt(slot, MAT);
     return;
@@ -324,6 +364,7 @@ function ensureSlots(ore: NonNullable<ReturnType<typeof getOreField>>): void {
 
   slotOfCell = new Map<number, number>();
   cellOfSlot = new Int32Array(MAX_ORE_INSTANCES);
+  sourceSlot = new Uint8Array(MAX_ORE_INSTANCES);
   let n = 0;
   let overflow = 0;
   for (let f = 0; f < ore.fieldCount; f++) {
@@ -336,6 +377,14 @@ function ensureSlots(ore: NonNullable<ReturnType<typeof getOreField>>): void {
       slotOfCell.set(packed, n);
       cellOfSlot[n] = packed;
       n++;
+    }
+    // `cells` is sorted by distance from the node, so `cells[0]` IS the source
+    // `regrow` seeds from — and it is not necessarily the node COORDINATE, which
+    // `seedField`'s `accept` predicate may have rejected (water, cliff, road).
+    // Taken from the record rather than recomputed for exactly that reason.
+    if (rec.cells.length > 0) {
+      const src = slotOfCell.get(rec.cells[0]);
+      if (src !== undefined) sourceSlot[src] = 1;
     }
   }
   instanceCount = n;
@@ -491,6 +540,7 @@ export default defineSystem({
     material = null;
     slotOfCell = null;
     cellOfSlot = null;
+    sourceSlot = null;
     instanceCount = 0;
     /* RESET THE BUILD LATCH, and this line is not optional.
      *

@@ -1,0 +1,30 @@
+{
+  "//": [
+    "Desktop shell only. NOT part of `npm run typecheck` — see docs/ELECTRON_PLAN.md §2:",
+    "adding a fifth invocation to the root script would fail the Pages CI job on",
+    "`TS2307: Cannot find module 'electron'` unless deploy.yml also gained",
+    "`npm ci --prefix desktop`, and deploy.yml is the file that must not change.",
+    "Run it with `npm run desktop:typecheck` from the repo root.",
+    "",
+    "`include` is the security boundary, exactly as server/tsconfig.json is:",
+    "the desktop shell may not import game code. It serves dist/ as opaque bytes."
+  ],
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node", "electron"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": false,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*.ts", "build.mjs"]
+}

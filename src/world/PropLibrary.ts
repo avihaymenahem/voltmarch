@@ -1398,6 +1398,30 @@ function buildHaystack(m: PropMesh, rng: Rng, p: PropPalette): void {
  *
  * The battens carry NO chamfer. A 0.06 m batten with a bevel band would be more
  * highlight than batten and the crisp line would turn into a smear.
+ *
+ * NOTHING HERE MAY BE FLUSH WITH ANYTHING ELSE, AND THAT COST A BUG REPORT.
+ * Reported as "the top boxes... when moving around or camera rotate, the top
+ * texture just jitter". Two of the three batten placements below were authored
+ * EXACTLY flush with the face they sit on:
+ *
+ *   - the top rail's top face was `y + s`, which is the body box's top face.
+ *     Same plane to the last bit, same +Y normal, and the rail's footprint
+ *     covers the whole lid, so 100% of every crate top was drawn twice at
+ *     identical depth. `tests/prop-coplanar.spec.ts` measured 2.95 m2 of it
+ *     across the five crates, tan body (linear L 0.15-0.30) against dark seam
+ *     (L 0.058-0.072). That value gap is the whole visible artefact.
+ *   - the rails' outer faces were `(s + t) / 2` from centre, which is exactly
+ *     where the corner battens' outer faces are. Another 0.37 m2, on the
+ *     FLANKS — and the reason the report says the sides look fine is that both
+ *     of those surfaces carry the same `seam` colour, so the identical defect
+ *     shades identically and cannot be seen. Do not read "the sides were fine"
+ *     as "the sides were right".
+ *
+ * So: the rails stand `0.3 t` proud of the corner battens (a hoop passes
+ * OUTSIDE the uprights, which is also how a real crate is banded), and the top
+ * rail's top face sits `w / 2` — 42-62 mm on the shipped sizes — below the lid.
+ * That leaves the tan slab and its bevel band as the visible top, which is what
+ * the first paragraph of this comment always said a crate looks like.
  */
 function crate(m: PropMesh, rng: Rng, p: PropPalette, x: number, y: number, z: number, s: number): void {
   const yaw = rng.range(-0.25, 0.25);
@@ -1421,9 +1445,13 @@ function crate(m: PropMesh, rng: Rng, p: PropPalette, x: number, y: number, z: n
         w + t, s * 0.98, w + t, 0, yaw);
     }
   }
-  // One rail all the way round at mid height, and one along the top lip.
-  m.box(x, cy, z, s + t, w, s + t, 0, yaw);
-  m.box(x, y + s - w * 0.5, z, s + t, w, s + t, 0, yaw);
+  // One rail all the way round at mid height, and one just under the top lip.
+  // `t * 1.6` clears the corner battens' `t * 1.0`; the second rail's CENTRE is
+  // a full `w` down, so its top face lands `w / 2` clear of the body's lid.
+  // See the header — both numbers are separations, not styling.
+  const rail = s + t * 1.6;
+  m.box(x, cy, z, rail, w, rail, 0, yaw);
+  m.box(x, y + s - w, z, rail, w, rail, 0, yaw);
   m.gloss(0);
 }
 
@@ -1456,13 +1484,19 @@ function buildContainerStack(m: PropMesh, rng: Rng, p: PropPalette): void {
       m.box(x, y + h * 0.5, oz + d * 0.5, 0.14, h - 0.34, 0.09, 0.02, oy);
       m.box(x, y + h * 0.5, oz - d * 0.5, 0.14, h - 0.34, 0.09, 0.02, oy);
     }
-    // Corner castings.
+    // Corner castings. Both rows are shifted UP by 0.03 off the face they were
+    // authored flush with — the same defect the `crate` header documents, and
+    // the second-largest instance of it in the roster: the top casting's lid
+    // was `y + h`, i.e. the container's own top face, 0.30 m2 of dark steel
+    // z-fighting the container paint at a linear-luminance gap of 0.07-0.24.
+    // Proud is also the truthful read: an ISO casting is what the box above
+    // stands on, and the 0.06 stacking gap below leaves room for it.
     m.color(p.darkSteel).gloss(0.35);
     for (const sx of [-1, 1]) {
       for (const sz of [-1, 1]) {
-        m.box(ox + sx * (w * 0.5 - 0.18), y + 0.16, oz + sz * (d * 0.5 - 0.18),
+        m.box(ox + sx * (w * 0.5 - 0.18), y + 0.19, oz + sz * (d * 0.5 - 0.18),
           0.34, 0.32, 0.34, 0.04, oy);
-        m.box(ox + sx * (w * 0.5 - 0.18), y + h - 0.16, oz + sz * (d * 0.5 - 0.18),
+        m.box(ox + sx * (w * 0.5 - 0.18), y + h - 0.13, oz + sz * (d * 0.5 - 0.18),
           0.34, 0.32, 0.34, 0.04, oy);
       }
     }
@@ -1588,7 +1622,12 @@ function car(m: PropMesh, rng: Rng, p: PropPalette, shape: CarShape): void {
     m.box(0, 1.44, -len * 0.05, len * 0.86, 1.10, wid * 0.96, 0.10);
     m.color(p.glass).gloss(1);
     // One band, not three panes: the RA3 read at 40 px is a dark ribbon.
-    m.box(-len * 0.06, 1.60, -len * 0.05, len * 0.74, 0.52, wid * 1.00, 0.03);
+    // 0.74 -> 0.70 is NOT styling. At 0.74 the band's front face landed on
+    // x = -2.236, which is exactly the cabin box's front face — 0.84 m2 of
+    // dark glass and body paint drawn at identical depth, the largest single
+    // z-fight in the roster after the crate lid. The sedan and the pickup both
+    // inset their glass on X by ~0.10 m; the van is now the same shape.
+    m.box(-len * 0.06, 1.60, -len * 0.05, len * 0.70, 0.52, wid * 1.00, 0.03);
     m.color(body).gloss(0.85);
   } else if (shape === 'pickup') {
     m.box(-len * 0.16, 1.30, 0, len * 0.36, 0.72, wid * 0.94, 0.09);
@@ -1609,12 +1648,19 @@ function car(m: PropMesh, rng: Rng, p: PropPalette, shape: CarShape): void {
   // second paint tone smeared over the flank.
   m.color(shadeOf(body, 0.42)).gloss(0.7);
   m.box(0, 0.42, 0, len * 0.98, 0.05, wid + 0.02, 0);
+  // The lamps sit PROUD of the nose and tail, and 0.49 -> 0.495 is what makes
+  // that true for all three shapes rather than two. The pickup is 5.0 m long,
+  // so `len * 0.49 + 0.10 * 0.5` came to exactly `len * 0.5` and its headlight
+  // face was coplanar with the body's — an EMISSIVE panel z-fighting the paint.
+  // The van cleared it by 2 mm and the sedan's tail lamp by 2 mm, which is
+  // inside the depth quantum at any real camera distance. All six are 19-29 mm
+  // proud now.
   m.color(p.paintWhite).emissive(0.30).gloss(1);
-  m.box(-len * 0.49, 0.72, wid * 0.30, 0.10, 0.18, 0.36, 0.03);
-  m.box(-len * 0.49, 0.72, -wid * 0.30, 0.10, 0.18, 0.36, 0.03);
+  m.box(-len * 0.495, 0.72, wid * 0.30, 0.10, 0.18, 0.36, 0.03);
+  m.box(-len * 0.495, 0.72, -wid * 0.30, 0.10, 0.18, 0.36, 0.03);
   m.color(p.signalRed).emissive(0.30);
-  m.box(len * 0.49, 0.76, wid * 0.32, 0.09, 0.16, 0.30, 0.03);
-  m.box(len * 0.49, 0.76, -wid * 0.32, 0.09, 0.16, 0.30, 0.03);
+  m.box(len * 0.495, 0.76, wid * 0.32, 0.09, 0.16, 0.30, 0.03);
+  m.box(len * 0.495, 0.76, -wid * 0.32, 0.09, 0.16, 0.30, 0.03);
   m.emissive(0).gloss(0);
   m.color(p.tyre);
   const ax = len * 0.32;
@@ -1779,8 +1825,12 @@ function statue(m: PropMesh, rng: Rng, p: PropPalette, equestrian: boolean): voi
   m.color(p.kerb).box(0, 0.46, 0, 3.8, 0.30, 2.8, 0.08);
   m.color(p.hedge);
   for (const s of [-1, 1]) {
+    // The two runs CROSS at the four corners, so their lids may not be level:
+    // at a shared 0.74 they were coplanar over 0.09 m2. Same colour, so it was
+    // never visible — and it is fixed anyway, because "invisible today" is a
+    // property of the palette rather than of the geometry.
     m.box(s * 2.10, 0.56, 0, 0.50, 0.74, 3.20, 0.10);
-    m.box(0, 0.56, s * 1.50, 4.40, 0.74, 0.50, 0.10);
+    m.box(0, 0.55, s * 1.50, 4.40, 0.70, 0.50, 0.10);
   }
   m.color(shadeOf(p.concrete, 1.08)).box(0, 1.12, 0, 1.9, 1.02, 1.5, 0.09);
   m.color(p.concrete).box(0, 1.74, 0, 1.6, 0.26, 1.25, 0.06);
@@ -1820,10 +1870,18 @@ function buildFlowerBed(m: PropMesh, rng: Rng, p: PropPalette): void {
   // magenta and yellow blooms in BLOCKED BANDS, not salt-and-pepper.
   const lx = 4.2, lz = 2.4;
   m.ao(0.55, 0, 0.7).sway(0, 0, 1);
-  m.color(p.soil).box(0, 0.14, 0, lx, 0.28, lz, 0.06);
+  // The soil slab is INSET from the hedge ring and its underside is BELOW it.
+  // Sharing `lx`/`lz` put the slab's four side faces on the same planes as the
+  // hedge runs' end faces (0.024 m2, soil against hedge, a linear-luminance gap
+  // of 0.10) and its underside on the same plane as all four hedge bottoms
+  // (0.25 m2). The lid still lands at 0.28, so the blooms have not moved.
+  m.color(p.soil).box(0, 0.12, 0, lx - 0.10, 0.32, lz - 0.10, 0.06);
   m.color(p.hedge);
-  m.box(0, 0.32, -lz * 0.5, lx, 0.64, 0.30, 0.07);
-  m.box(0, 0.32, lz * 0.5, lx, 0.64, 0.30, 0.07);
+  // The two runs cross at the corners, so — as on `statue` — their lids and
+  // their undersides may not share a plane. Same colour either side, so this
+  // one was never visible; it is levelled off anyway so the gate can read zero.
+  m.box(0, 0.32, -lz * 0.5, lx, 0.60, 0.30, 0.07);
+  m.box(0, 0.32, lz * 0.5, lx, 0.60, 0.30, 0.07);
   m.box(-lx * 0.5, 0.32, 0, 0.30, 0.64, lz, 0.07);
   m.box(lx * 0.5, 0.32, 0, 0.30, 0.64, lz, 0.07);
   m.sway(SCATTER_WIND.grassAmplitude * 0.7, 0.26, 0.80);

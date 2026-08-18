@@ -685,15 +685,28 @@ describe('PerfHud', () => {
     expect((hud.verdict as { state: string }).state).toBe('vsync-saturated');
   });
 
-  it('marks an over-budget draw count', () => {
+  it('marks an over-budget draw count — from the COLOUR pass, not the total', () => {
+    /*
+     * THIS TEST USED TO ENCODE THE DEFECT. It set `drawCalls` — the frame
+     * TOTAL, summed over every scene submission — and expected the budget
+     * class, because that is what `PerfHud` did. `MAX_DRAW_CALLS` budgets the
+     * COLOUR PASS alone, which runs 51-77 against 130, so the row sat
+     * permanently red against a budget that is half empty.
+     *
+     * It is the same confusion CLAUDE.md records having believed for three
+     * releases about `frame.drawCalls`, reproduced in the HUD. The inference
+     * only runs one way: total >= colour, so a total UNDER budget proves
+     * compliance, while a total OVER it proves nothing at all.
+     */
     const { hud, source, step } = makeHud();
     hud.setVisible(true);
+    source.values.drawCallsColour = DRAW_BUDGET + 1;
     step(60, VSYNC_60);
     const root = hud.root as unknown as StubElement;
     expect(root.classList.contains('is-draws-over')).toBe(true);
     expect(root.classList.contains('is-tris-over')).toBe(true);
 
-    source.values.drawCalls = DRAW_BUDGET - 1;
+    source.values.drawCallsColour = DRAW_BUDGET - 1;
     source.values.triangles = TRIANGLE_ADVISORY - 1;
     step(60, VSYNC_60);
     expect(root.classList.contains('is-draws-over')).toBe(false);

@@ -77,13 +77,19 @@ Every unit, building, material, texture, cameo and in-game icon is built from Th
 custom shaders and procedural canvas generators, which means the entire look can be retuned by
 editing values rather than reopening an art tool.
 
-Three shipped assets are not generated, all deliberate:
+Four shipped assets are not generated, all deliberate:
 
 - **Rajdhani** (OFL-1.1), the UI text face, self-hosted in `public/fonts/` — Latin subset, four
   weights, 60 kB — rather than loaded from a CDN, so there is no third-party request and the build
   still runs offline and from a `file://` path.
-- **The brand lockup** in `public/brand/` — the wordmark on the title screen and loading curtain,
-  and the favicons and app icons, derived by `tools/brand.mjs` from a supplied `logo.png`.
+- **The brand lockup** in `public/brand/` — the wordmark on the title screen, and the favicons and
+  app icons, derived by `tools/brand.mjs` from a supplied `logo.png`.
+- **The loading screen key art**, also in `public/brand/` — a supplied illustration, derived to
+  WebP by `tools/splash.mjs` and used full-bleed behind the boot curtain. It carries its own
+  painted wordmark, so the curtain hides the DOM one on any viewport whose crop keeps the painted
+  one whole; that threshold is measured off the artwork rather than picked, and
+  `tests/boot-splash.spec.ts` re-derives it. A missing or corrupt file degrades to exactly the
+  curtain that shipped before it, wordmark included.
 - **Recorded audio** in `public/audio/` — 184 Ogg files, 6.7 MB. `sfx/` covers **all 39 sound-effect
   families** and `voice/` gives the unit barks two real voices, all CC0 from
   [Kenney](https://kenney.nl), several CC0 libraries and Warfork by Team Forbidden. `eva/` is the

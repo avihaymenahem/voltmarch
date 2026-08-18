@@ -181,9 +181,19 @@
    extends the glow already painted into the artwork instead of tinting it. */
 .vm-shell .vm-logo {
   display: block;
-  width: clamp(260px, 42vw, 620px);
+  /* THE LOGO IS THE WIDTH OF THE MENU, BY CONSTRUCTION.
+     Was `clamp(260px, 42vw, 620px)`, which at 1280 rendered 538px against a
+     368px button column — the lockup overhung the menu it sat on. Asked for
+     half, then for "the size of the menu", which is what this is.
+     `100%` and not a number: `.vm-menu-inner` is `min(470px, 46vw)` with
+     `clamp()` padding and drops to full width under the narrow breakpoint, so
+     the column is a moving target and any literal would match it at exactly
+     one viewport. This tracks the rule and the buttons at every size. */
+  width: 100%;
   height: auto;
-  filter: drop-shadow(0 0 38px rgba(53, 200, 240, 0.32));
+  /* Scaled with it. A fixed-pixel blur left at 38px over artwork a third
+     smaller reads as smeared rather than lit. */
+  filter: drop-shadow(0 0 24px rgba(53, 200, 240, 0.32));
 }
 
 .vm-shell .vm-subtitle {
@@ -2326,4 +2336,530 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
    not a field. */
 .vm-shell .vm-setup-col > .vm-mp-code {
   margin: 0 18px 12px;
+}
+
+/* ==========================================================================
+ * 14. MANUAL — the player wiki, rendered in the options screen
+ *
+ * Options -> Manual mounts `src/shell/Manual.ts`, which renders `wiki/*.md`
+ * from an AST rather than from an HTML string. Everything here is new class
+ * names in the `vm-manual-` space; nothing existing is restyled, and nothing is
+ * shared with `src/ui/hud.css`.
+ *
+ * THE HEIGHT IS NOT A MAGIC NUMBER, AND THAT IS DELIBERATE. The manual is a
+ * two-pane scroller — a page rail and a document — and each pane has to scroll
+ * on its own inside a panel that is already `max-height: 92vh`. Subtracting a
+ * measured chrome height in `vh` would be a constant that silently stops being
+ * true the first time the footer wraps. Instead `.vm-page-body` becomes a flex
+ * container for this one tab, which makes its flex-resolved height definite,
+ * and `grid-template-rows: minmax(0, 1fr)` passes that height down so the two
+ * panes clamp instead of growing. `.vm-page-body` already carries
+ * `min-height: 0` — that is what lets it absorb the overflow rather than
+ * crushing the head and the tab strip, and it is why this works at all.
+ *
+ * NO `backdrop-filter` IS DECLARED HERE. The glass and its macOS gate belong to
+ * `.vm-panel`; a second, ungated blur is the exact defect section 13 exists to
+ * prevent. Same rule as `Help.ts`.
+ * ========================================================================== */
+
+.vm-shell .vm-page-body.is-manual {
+  display: flex;
+  overflow: hidden;
+}
+
+.vm-shell .vm-manual {
+  --vm-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(168px, 232px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+
+/* -- the page rail --------------------------------------------------------- */
+
+.vm-shell .vm-manual-rail {
+  min-height: 0;
+  padding: 10px 0 28px;
+  border-right: 1px solid var(--vm-line);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.vm-shell .vm-manual-rail::-webkit-scrollbar {
+  width: 6px;
+}
+
+.vm-shell .vm-manual-rail::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.vm-shell .vm-manual-page {
+  display: block;
+  width: 100%;
+  padding: 7px 14px;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--vm-text-faint);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-align: left;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 120ms linear, border-color 120ms linear;
+}
+
+.vm-shell .vm-manual-page:hover,
+.vm-shell .vm-manual-page.is-focus {
+  color: var(--vm-text-dim);
+}
+
+.vm-shell .vm-manual-page.is-current {
+  color: var(--vm-accent);
+  border-left-color: var(--vm-accent);
+}
+
+/* The `##` headings of the open page only. All seventeen at once is 156 rows
+   and stops being a rail. */
+.vm-shell .vm-manual-subs {
+  padding: 2px 0 10px;
+}
+
+.vm-shell .vm-manual-jump {
+  display: block;
+  width: 100%;
+  padding: 3px 14px 3px 26px;
+  border: 0;
+  background: transparent;
+  color: var(--vm-text-faint);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  text-align: left;
+  cursor: pointer;
+  transition: color 120ms linear;
+}
+
+.vm-shell .vm-manual-jump:hover,
+.vm-shell .vm-manual-jump.is-focus {
+  color: var(--vm-accent);
+}
+
+/* -- the document pane ----------------------------------------------------- */
+
+/* `position: relative` is load-bearing: `Manual.ts#scrollToAnchor` reads a
+   heading offsetTop, which is measured from its offset parent, and this is the
+   element it must be measured from. */
+.vm-shell .vm-manual-doc {
+  position: relative;
+  min-height: 0;
+  padding: 0 26px 40px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.vm-shell .vm-manual-doc::-webkit-scrollbar {
+  width: 6px;
+}
+
+.vm-shell .vm-manual-doc::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* Sticky so Back is reachable from the bottom of a 45 kB page. It carries the
+   glass colour the panel already uses rather than a new one — with the text
+   scrolling under it, transparent is not an option. */
+.vm-shell .vm-manual-crumb {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 8px;
+  background: var(--vm-glass-strong);
+  border-bottom: 1px solid var(--vm-line-soft);
+}
+
+.vm-shell .vm-manual-crumb-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+/* -- type ------------------------------------------------------------------ */
+
+.vm-shell .vm-manual-h1 {
+  margin: 20px 0 8px;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--vm-text);
+}
+
+.vm-shell .vm-manual-h2 {
+  margin: 26px 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--vm-accent);
+}
+
+.vm-shell .vm-manual-h3 {
+  margin: 18px 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--vm-text);
+}
+
+.vm-shell .vm-manual-h4 {
+  margin: 14px 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vm-text-dim);
+}
+
+/* 78ch is a measure, not a width. Tables and code deliberately opt out of it —
+   the warhead matrix is seven columns and the HUD diagram is drawn in spaces. */
+.vm-shell .vm-manual-p {
+  margin: 0 0 11px;
+  max-width: 78ch;
+  font-size: 13.5px;
+  line-height: 1.62;
+  letter-spacing: 0.015em;
+  color: var(--vm-text-dim);
+}
+
+.vm-shell .vm-manual-strong {
+  font-weight: 700;
+  color: var(--vm-text);
+}
+
+.vm-shell .vm-manual-em {
+  font-style: italic;
+  color: var(--vm-text);
+}
+
+.vm-shell .vm-manual-list {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  max-width: 78ch;
+}
+
+.vm-shell .vm-manual-list li {
+  margin: 0 0 6px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  letter-spacing: 0.015em;
+  color: var(--vm-text-dim);
+}
+
+.vm-shell .vm-manual-list li::marker {
+  color: var(--vm-accent-dim);
+}
+
+.vm-shell .vm-manual-quote {
+  margin: 0 0 14px;
+  padding: 2px 0 2px 14px;
+  max-width: 78ch;
+  border-left: 2px solid var(--vm-accent-dim);
+}
+
+.vm-shell .vm-manual-quote > .vm-manual-p:last-child {
+  margin-bottom: 0;
+}
+
+.vm-shell .vm-manual-rule {
+  height: 1px;
+  margin: 22px 0;
+  border: 0;
+  background: var(--vm-line);
+}
+
+/* -- code ------------------------------------------------------------------ */
+
+.vm-shell .vm-manual-code {
+  padding: 1px 5px;
+  border: 1px solid rgba(53, 200, 240, 0.16);
+  background: rgba(53, 200, 240, 0.09);
+  font-family: var(--vm-mono);
+  font-size: 0.9em;
+  color: var(--vm-accent);
+}
+
+/* `white-space: pre` and a monospace face are not decoration here — one of the
+   two fenced blocks in the corpus is a box-drawn diagram of the HUD, and it
+   only reads as one if the columns line up. */
+.vm-shell .vm-manual-pre {
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  border-left: 2px solid var(--vm-line);
+  background: rgba(255, 255, 255, 0.035);
+  font-family: var(--vm-mono);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--vm-text-dim);
+  white-space: pre;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+/* -- tables ---------------------------------------------------------------- */
+
+.vm-shell .vm-manual-tablewrap {
+  margin: 0 0 16px;
+  border: 1px solid var(--vm-line);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.vm-shell .vm-manual-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.vm-shell .vm-manual-table th {
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--vm-line);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-manual-table td {
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--vm-line-soft);
+  line-height: 1.45;
+  vertical-align: top;
+  color: var(--vm-text-dim);
+}
+
+.vm-shell .vm-manual-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* -- links ----------------------------------------------------------------- */
+
+.vm-shell .vm-manual-link {
+  border-bottom: 1px solid var(--vm-accent-dim);
+  color: var(--vm-accent);
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.vm-shell .vm-manual-link:hover,
+.vm-shell .vm-manual-link:focus-visible {
+  border-bottom-color: var(--vm-accent);
+  color: var(--vm-text);
+}
+
+.vm-shell .vm-manual-link .vm-icon {
+  vertical-align: -1px;
+}
+
+/* -- loading / failure ----------------------------------------------------- */
+
+.vm-shell .vm-manual-note {
+  padding: 26px 2px;
+  max-width: 60ch;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--vm-text-faint);
+}
+
+/* -- narrow ---------------------------------------------------------------- *
+ * Under 860px the rail stops being a column and becomes a wrapped strip above
+ * the document, the same move `Help.ts` makes at the same breakpoint. The
+ * section jumps go with it: they are a second level of navigation and there is
+ * no room for one.                                                            */
+
+@media (max-width: 860px) {
+  .vm-shell .vm-manual {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .vm-shell .vm-manual-rail {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    max-height: 124px;
+    padding: 8px 12px;
+    border-right: 0;
+    border-bottom: 1px solid var(--vm-line);
+  }
+
+  .vm-shell .vm-manual-page {
+    width: auto;
+    padding: 4px 8px;
+    border-left: 0;
+    border-bottom: 2px solid transparent;
+  }
+
+  .vm-shell .vm-manual-page.is-current {
+    border-left-color: transparent;
+    border-bottom-color: var(--vm-accent);
+  }
+
+  .vm-shell .vm-manual-subs {
+    display: none;
+  }
+
+  .vm-shell .vm-manual-doc {
+    padding: 0 16px 32px;
+  }
+}
+
+/* ==========================================================================
+ * 15. DIAGNOSTICS — the sixth options tab
+ *
+ * A STATUS PAGE, NOT A CONSOLE. It ships to every player (see the block above
+ * `TabId` in `Settings.ts`), so nothing here may read as a debug surface bolted
+ * onto a game: same section headers, same rows, same accent as every other tab.
+ * The only departures from the form language are the two places where a
+ * proportional face would actively destroy the information —
+ * `.vm-diag-lines`, where four players' survey lines only compare if their
+ * columns line up, and `.vm-diag-preview`, which is the export itself.
+ *
+ * The monospace stack is redeclared rather than reaching for the manual's
+ * `--vm-mono`: that variable is defined on `.vm-manual`, which is a sibling
+ * subtree, so inheriting it here would depend on the manual having been
+ * rendered. Two declarations of one font stack is cheaper than a variable that
+ * silently resolves to nothing on the tab that needs it.
+ *
+ * NO `backdrop-filter` ANYWHERE IN THIS SECTION. The glass and its macOS gate
+ * belong to `.vm-panel`; a second, ungated blur is the exact defect section 13
+ * exists to prevent.
+ * ========================================================================== */
+
+.vm-shell .vm-diag-note {
+  margin: 0;
+  padding: 0 18px 12px;
+  max-width: 74ch;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.6;
+  letter-spacing: 0.03em;
+  color: var(--vm-text-faint);
+}
+
+/* A read-only right-hand column. Matches a chooser's readout so a row that
+   states a fact and a row that changes one sit on the same optical line. */
+.vm-shell .vm-diag-value {
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: right;
+  color: var(--vm-text-dim);
+}
+
+/* -- the live survey ------------------------------------------------------- *
+ * One line per player, straight from `describeViability()`. Monospace and
+ * `white-space: pre` are load-bearing: the whole value of the readout is that
+ * `contest 0` on one row sits directly under `contest 12` on another, which is
+ * how "the enemy has nothing on the field but five men indoors" becomes visible
+ * at a glance instead of being a number somebody has to hunt for.             */
+
+.vm-shell .vm-diag-lines {
+  margin: 0 18px 12px;
+  padding: 12px 14px;
+  border-left: 2px solid var(--vm-accent-dim);
+  background: rgba(255, 255, 255, 0.035);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  letter-spacing: 0;
+  color: var(--vm-text);
+  white-space: pre;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+/* -- export controls ------------------------------------------------------- */
+
+.vm-shell .vm-diag-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 18px 6px;
+}
+
+.vm-shell .vm-diag-actions .vm-btn {
+  width: auto;
+  min-width: 172px;
+}
+
+.vm-shell .vm-diag-status {
+  margin: 0;
+  padding: 2px 18px 10px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--vm-text-dim);
+}
+
+.vm-shell .vm-diag-status.is-bad {
+  color: var(--vm-danger);
+}
+
+/* The export itself. A textarea and not a `<pre>` because it takes focus, so
+   Ctrl+A / Ctrl+C works by hand — the guaranteed way out on any platform that
+   refuses the clipboard API. `resize: vertical` because the one thing a reader
+   wants here is more of it. */
+.vm-shell .vm-diag-preview {
+  display: block;
+  width: calc(100% - 36px);
+  height: 260px;
+  margin: 0 18px 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--vm-line);
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.28);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  letter-spacing: 0;
+  color: var(--vm-text-dim);
+  white-space: pre;
+  overflow: auto;
+  resize: vertical;
+  scrollbar-width: thin;
+}
+
+.vm-shell .vm-diag-preview:focus-visible,
+.vm-shell .vm-diag-preview.is-focus {
+  border-color: var(--vm-accent);
+  color: var(--vm-text);
+}
+
+/* -- narrow ---------------------------------------------------------------- *
+ * Under 720px the action buttons stop competing for one line. Same breakpoint
+ * behaviour as the page footer, and the preview keeps its height so the tab
+ * does not become a scroll of nothing.                                        */
+
+@media (max-width: 720px) {
+  .vm-shell .vm-diag-actions .vm-btn {
+    width: 100%;
+    min-width: 0;
+  }
 }

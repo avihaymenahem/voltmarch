@@ -564,11 +564,38 @@ function infantry(o: InfantryOpts): UnitMassList {
         }),
     );
   } else if (o.weapon === 'tool') {
+    // TWO TOOLS, FOR THE SAME REASON THERE ARE TWO LAUNCHERS AND TWO RIFLES.
+    //
+    // This branch emitted ONE tool for both silhouette families, and for its
+    // whole life that was unfalsifiable: `allied_engineer` was the only unit in
+    // the game carrying `weapon: 'tool'`, because the Soviets had no engineer
+    // model at all — `units.system.ts` handed them the Allied one. Fixing that
+    // by adding a greatcoat with the identical tool would have shipped exactly
+    // the R12 failure this section's header describes, one silhouette family
+    // later.
+    //
+    // The two differ in ARM POSE, which is the only thing readable at the 57 px
+    // an infantryman occupies. The Allied engineer holds a slim powered wrench
+    // out FORWARD and level, at arm's length, clear of the body: a technician
+    // reaching into a panel. The Soviet holds a cutting torch DOWN and across
+    // the hip, short and fat and bell-mouthed, fed by the bottle on his back —
+    // one continuous diagonal from shoulder to knee, which is a silhouette the
+    // plated family cannot make.
     masses.push(
-      greeble('toolArm', 'cylinder', [0.16, 0.72, 0.16], [W * 0.52, torsoY - 0.10, 0.34], 'bareMetal', {
-        rot: [HALF_PI, 0, 0], group: 'weapon', shape: { segments: 8 },
-      }),
-      greeble('toolHead', 'chamferBox', [0.26, 0.22, 0.22], [W * 0.52, torsoY - 0.10, 0.74], 'paintTiny', { group: 'weapon' }),
+      coat
+        ? greeble('cutterLance', 'cylinder', [0.21, 0.50, 0.21], [W * 0.44, torsoY - 0.30, 0.26], 'bareMetal', {
+          rot: [1.16, 0, -0.22], group: 'weapon', shape: { segments: 10 },
+        })
+        : greeble('toolArm', 'cylinder', [0.16, 0.72, 0.16], [W * 0.52, torsoY - 0.10, 0.34], 'bareMetal', {
+          rot: [HALF_PI, 0, 0], group: 'weapon', shape: { segments: 8 },
+        }),
+      coat
+        // A flared bell, not a box: `rTop` 1.7 opens the cone the wrong way up
+        // so the wide end leads. That mouth is the whole tell at gameplay zoom.
+        ? greeble('cutterBell', 'cone', [0.32, 0.22, 0.32], [W * 0.42, torsoY - 0.62, 0.48], 'paintTiny', {
+          rot: [1.16, 0, -0.22], group: 'weapon', shape: { segments: 10, rTop: 1.7 },
+        })
+        : greeble('toolHead', 'chamferBox', [0.26, 0.22, 0.22], [W * 0.52, torsoY - 0.10, 0.74], 'paintTiny', { group: 'weapon' }),
     );
   } else {
     // The rifles differ too: the Peacekeeper carries a short bullpup with a
@@ -597,9 +624,20 @@ function infantry(o: InfantryOpts): UnitMassList {
       rot: [HALF_PI, 0, 0], group: 'pack', shape: { profile: DRUM_PROFILE, segments: 12 },
     }));
   } else if (o.pack === 'case') {
-    masses.push(greeble('toolcase', 'taperedBox', [W * 0.62, 0.42, 0.22], [0, torsoY + 0.06, -W * 0.42], 'paintSmall', {
-      group: 'pack', shape: { topScaleX: 0.90, topScaleZ: 0.84 },
-    }));
+    masses.push(coat
+      // THE GAS BOTTLE LIES ACROSS THE SHOULDERS. Every other back in the
+      // roster is vertical — the radio slab stands, the flak drum is a disc
+      // facing aft, the diver's twin bottles stand on end — so a single fat
+      // horizontal capsule is the one back profile left that reads as neither
+      // of them from behind, which is where a man walking away is seen. It is
+      // also what the torch in front of him is plumbed to, so the two halves of
+      // the Soviet engineer tell one story instead of being two option flips.
+      ? greeble('gasBottle', 'revolve', [0.27, W * 1.00, 0.27], [0, torsoY + 0.02, -W * 0.45], 'bareMetal', {
+        rot: [0, 0, HALF_PI], group: 'pack', shape: { profile: CAPSULE_PROFILE, segments: 10 },
+      })
+      : greeble('toolcase', 'taperedBox', [W * 0.62, 0.42, 0.22], [0, torsoY + 0.06, -W * 0.42], 'paintSmall', {
+        group: 'pack', shape: { topScaleX: 0.90, topScaleZ: 0.84 },
+      }));
   } else if (o.pack === 'rebreather') {
     // TWIN BOTTLES ACROSS THE SHOULDERS, not one slab. A single tank reads as
     // the radio pack it replaced; a pair with a manifold yoke over them is the
@@ -1947,6 +1985,19 @@ export const UNIT_MASS_LISTS: readonly UnitMassList[] = [
   /* -- Soviets ---------------------------------------------------------- */
   infantry({ key: 'soviet_conscript', name: 'Conscript', faction: 'soviets', hullNumber: 8188, weapon: 'rifle', pack: 'radio', build: 'greatcoat' }),
   infantry({ key: 'soviet_flak', name: 'Flak Trooper', faction: 'soviets', hullNumber: 8188, weapon: 'launcher', pack: 'drum', build: 'greatcoat' }),
+  // THE SOVIET ENGINEER, WHICH DID NOT EXIST. Reported as "the engineers among
+  // factions have all the same skin", and that was literally true for these two
+  // armies: `engineer` is ONE `Faction.Neutral` def that both of them build, and
+  // `units.system.ts` bound it at `FACTION_ANY` to `allied_engineer` — so a
+  // Soviet barracks turned out plated Allied technicians. (The Pact and the
+  // Reclamation were never affected: they reach the role through their own
+  // `mrdArtificer` / `rclTinker` defs in their own modules.)
+  //
+  // Same two option flips the anti-armour pair uses, on the other silhouette
+  // family: greatcoat, cutting torch, gas bottle. See the `tool` and `case`
+  // branches in `infantry()` — both fork on `coat` now, because a greatcoat
+  // holding the Allied wrench would be one mesh in two palettes.
+  infantry({ key: 'soviet_engineer', name: 'Combat Engineer', faction: 'soviets', hullNumber: 8188, weapon: 'tool', pack: 'case', build: 'greatcoat' }),
   infantry({ key: 'soviet_commissar', name: 'War Commissar', faction: 'soviets', hullNumber: 8188, weapon: 'rifle', pack: 'radio', build: 'greatcoat', officer: true }),
   attackDog(),
 

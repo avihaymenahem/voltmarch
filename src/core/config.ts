@@ -1857,7 +1857,21 @@ export const ORE_CELL_MAX = 900;
 
 /** Build speed multiplier when power is fully satisfied. */
 export const POWER_FULL_MUL = 1.0;
-/** Build speed multiplier at total blackout. Never zero — that is a soft lock. */
+/**
+ * Build speed multiplier at total blackout. Never zero — that is a soft lock.
+ *
+ * WHAT THIS STILL COVERS, AND WHAT IT NO LONGER DOES. It is applied by
+ * `BuildQueue.advanceTab` to every tab, but since the blackout gate in
+ * `Production.census` the only queues still RUNNING in a deep brownout are
+ * `Structures` and `Defense` — the Construction Yard's two, which are exempt
+ * because the Power Plant lives in the first of them and is the only way out.
+ * The Infantry, Vehicles and Powers queues stall outright at
+ * `factoryCount <= 0` once their producers go dark.
+ *
+ * So this is the RECOVERY speed now: how fast a blacked-out player rebuilds the
+ * plant. Lowering it does not make a blackout more punishing, it makes it
+ * longer, and the soft-lock argument above is precisely about that direction.
+ */
 export const POWER_BLACKOUT_MUL = 0.25;
 /** Max queue depth per tab. */
 export const MAX_QUEUE_DEPTH = 9;
@@ -3373,6 +3387,38 @@ export const COMBAT_PROJECTILES = {
 
 /** Damage, splash, death and the wreckage that outlives it. */
 export const COMBAT_DAMAGE = {
+  /**
+   * THE TIME-TO-KILL KNOB. Every point of damage in the game is multiplied by
+   * this, in `Damage.applyOne`, the one function that writes `hp`.
+   *
+   * Reported as *"In general, killing and dying feels too fast in game"*.
+   * Measured before the change, mirror matchups, all four armies:
+   *
+   *     main battle tanks   8.62 - 10.77 s   ->  10.8 - 13.5 s
+   *     line infantry        2.00 -  2.35 s  ->   2.5 -  2.9 s
+   *
+   * **IT IS INVARIANT ON TRADE RATIOS, WHICH IS THE WHOLE REASON IT IS SAFE.**
+   * A squad assaulting an emplacement lands `36 x r x HP/D`; scaling the
+   * squad's `r` and the defender's `D` by the same factor cancels. So this
+   * stretches the clock without touching a single balance relationship, and it
+   * composes with the per-weapon retunes in `Combat.ts` and `Defs.ts` rather
+   * than double-counting them. Tune this for PACE; tune a weapon row for
+   * BALANCE. They are different questions and this is the only knob for the
+   * first one.
+   *
+   * WHY NOT HP, AND WHY NOT THE ARMOUR MATRIX. `tests/data.spec.ts` pins every
+   * `def.maxHp` field-for-field against `Scenarios.FALLBACK_UNITS`, so raising
+   * health means editing two tables in lockstep forever. Scaling the matrix
+   * hits `tests/combat.spec.ts`, which pins `armorMultiplier(SmallArms,
+   * Infantry)` to exactly 1 — it is the counter-triangle's reference cell and
+   * must stay 1. One multiply in one function is the honest lever.
+   *
+   * Structures slow by the same factor (single-attacker structure TTK was
+   * 20-99 s and is now 25-124 s). If base-cracking starts to drag, that is the
+   * number to revisit first — but with more than one attacker it is rarely
+   * what anyone notices.
+   */
+  globalMul: 0.80,
   /** Fraction of splash damage an ALLIED or own-team victim takes. */
   friendlyFireMul: 0.5,
   /**
@@ -3507,9 +3553,39 @@ export const ORE_REGROW_INTERVAL = 15;
  * at least this fraction of its own capacity. That is what makes regrowth
  * spread outward from the node instead of the whole patch fading back in at
  * once — mine the near edge and it grows back first, strip the field to the
- * rim and it takes a long walk back out.
+ * rim and it takes a long walk back out. That shape is deliberate and is
+ * UNCHANGED by the value below; only the per-hop delay moves.
+ *
+ * ----------------------------------------------------------------------------
+ * IT WAS 0.3, AND THAT MADE A WORKED FIELD UNRECOVERABLE.
+ * ----------------------------------------------------------------------------
+ * Reported as *"Ore fields should regenerate over time"* — and they already
+ * did. The regrowth code was correct and enabled the whole time. What was
+ * wrong is the RATIO between this number and `ORE_MIN_CLAIM`, which live 260
+ * lines apart and had never been read together.
+ *
+ * A harvester claims any cell holding `ORE_MIN_CLAIM` (25) and mines it to
+ * zero. At 0.3, the wave needed that same cell to hold `0.3 x capacity` — 138
+ * to 160 ore on a node — before the cell BEHIND it could grow at all. So the
+ * gate sat 5-6x above the ceiling a working harvester leaves, and on any field
+ * a harvester could actually reach the wave never advanced past the first
+ * cell. Measured: 19 consecutive sim-minutes pinned at 0.1% of a 22 381-ore
+ * field, the source never once above 12 ore.
+ *
+ * THE CONSTRAINT IS ARITHMETIC, NOT TASTE: this value times the LARGEST cell
+ * capacity must stay below `ORE_MIN_CLAIM`, or the stall comes back for the
+ * fields that violate it. `ORE_CELL_MAX` is 900, so the bound is 25/900 =
+ * 0.0278. 0.025 clears it for every field the generator can produce.
+ *
+ * 0.05 was the first proposal and is REJECTED: it is fine for the shipped
+ * `ORE_FIELD_DEFAULT_RICHNESS` (node caps 461-535 give a gate of 23-27) but it
+ * straddles 25, so the richest fields would still pin while the rest
+ * recovered — the same bug, on fewer seeds, and harder to find.
+ *
+ * Undisturbed recovery barely moves (95% in ~14.2 min against 23.4 at 0.3),
+ * so this is not a rate change wearing a disguise.
  */
-export const ORE_REGROW_SPREAD = 0.3;
+export const ORE_REGROW_SPREAD = 0.025;
 /**
  * The node cell itself regrows this much faster than the rest of the field.
  * The node is the only cell with no upstream neighbour, so without a bonus it

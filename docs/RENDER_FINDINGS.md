@@ -1340,6 +1340,51 @@ breaks each red on exactly the tests naming them), including that the shipped bl
 byte-for-byte the loop it replaced when handed WebGL's layout. **It cannot establish the two facts
 in the table above** — only the probe can, and its verdict is here.
 
+## 7j. THE ADAPTER CAN BE FORCED, ONE SWITCH MOVES BOTH RENDERERS — measured 2026-08-17
+
+**`powerPreference` is a hint Windows ignores (§7g), but `--force-high-performance-gpu` is not, and it
+moves WebGL and WebGPU together.** Gate zero of [`ELECTRON_PLAN.md`](ELECTRON_PLAN.md) §1, on the RTX
+3080 laptop that produced the §7g observation:
+
+```
+arm            WebGPU adapter     WebGL unmasked renderer
+control        amd / gcn-5        AMD Radeon(TM) Graphics      <- reproduced twice, identical
+hyphen         nvidia / ampere    NVIDIA GeForce RTX 3080 Laptop GPU
+underscore     nvidia / ampere    NVIDIA GeForce RTX 3080 Laptop GPU
+both           nvidia / ampere    NVIDIA GeForce RTX 3080 Laptop GPU
+```
+
+Four things this settles, and one it does not.
+
+- **§7g's `amd`/`gcn-5` observation is CONFIRMED, not an artefact.** It reproduces on a browser
+  launched fresh, twice, and it is the unforced default on this hardware.
+- **The measurement is clean of the registry.** `HKCU\SOFTWARE\Microsoft\DirectX\UserGpuPreferences`
+  is keyed by EXECUTABLE PATH and holds `chrome.exe => GpuPreference=2;` on this machine — the user's
+  manual Windows Settings fix. **So Chrome cannot be a control here.** The probe therefore runs
+  **Edge**, which has no entry. Nothing was written to the registry to obtain this result, and nobody
+  needs to write to it to reproduce one.
+- **Both spellings work, and each works ALONE.** `--force-high-performance-gpu` is the browser-process
+  switch (`gpu/config/gpu_switches.cc`); `--force_high_performance_gpu` is the GPU driver-bug-workaround
+  name (`gpu_workaround_list.txt`). The browser process translates the first into the second and also
+  copies workaround switches through, which is why either suffices. Pass both; it costs nothing.
+- **One switch covers BOTH of this project's renderers.** This was the open question — `gpu_preferences.h`
+  defines a *separate* `WebGPUPowerPreference::kForceHighPerformance`, which suggested Dawn might not
+  follow the ANGLE/EGL effect site. On this hardware it follows. `--use-webgpu-power-preference` and
+  `--use-webgpu-adapter` remain the fallbacks if a machine is ever found where it does not.
+- **WHAT THIS DOES NOT ESTABLISH: that Electron passes the switch through.** This is Edge, i.e. plain
+  Chromium. `app.commandLine.appendSwitch` before `app.whenReady()` is a different call path and is
+  still unmeasured. It is a 30-minute test against a bare `main.js` and it should be done before any
+  enforcement ships.
+
+The effect site is `gpu/ipc/service/gpu_init.cc#SetupGLDisplayManagerEGL`, guarded
+`#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)`, and it is conjoined with `&& system_device_id_high_perf`
+— so on a machine where GPU-info collection finds no high-performance adapter it is a **silent** no-op
+with no log line. Verify by reading the adapter, never by observing that the switch was appended.
+
+Reproduce: `scratchpad/run-probe.mjs` (a ~50-line Playwright harness serving a page that reads
+`WEBGL_debug_renderer_info` and `GPUAdapter.info` side by side). Read `GPUAdapterInfo` field by field —
+its properties are on the prototype, so `{...info}` is `{}` on every real adapter.
+
 ## 8. Unverified — do not quote these as fact
 
 - **`GL_INVALID_OPERATION: glDrawElements: Mismatch between texture format and sampler type` is

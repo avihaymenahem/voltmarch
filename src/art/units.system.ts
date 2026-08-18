@@ -7,8 +7,11 @@
  * WHAT IT DOES AT BOOT
  *   1. Picks an atlas size from the quality tier.
  *   2. Generates one greeble atlas per faction (3 textures each + emissive).
- *   3. Builds all 18 mass lists into merged geometries, validating each against
- *      R8/R12 and REJECTING anything that misses.
+ *   3. Builds every list in `UNIT_MASS_LISTS` into a merged geometry, validating
+ *      each against R8/R12 and REJECTING anything that misses. (This said "all
+ *      18 mass lists" against a roster that has been 26 for several releases and
+ *      is 27 now — a count in prose is a claim that rots on the next unit, and
+ *      the boot line already prints the real figure.)
  *   4. Publishes them on `unitLibrary` and hands them to RenderBridge.
  *   5. Prints the scorecard line for every unit, so the critic loop has numbers
  *      instead of opinions.
@@ -38,8 +41,9 @@ import { defineSystem } from '../core/loop';
 import { QUALITY_PRESETS, RA3_UNIT_PALETTE, UNIT_GREEBLE, MAP_SIZE, type UnitPalette } from '../core/config';
 import { EntityKind, Faction, PartId, type QualityTier } from '../core/types';
 import { ctx } from '../game/context';
-import { resolveDefBinding } from '../game/Scenarios';
+import { resolveDefBinding, type DefBinding } from '../game/Scenarios';
 import { FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec } from '../render/RenderBridge';
+import { ARMY_ORDER, GAIA_SLOT, type PerArmy } from './faction-models';
 import { formatStats } from './MassList';
 import { UNIT_MASS_LISTS } from './UnitDefs';
 import { unitLibrary, type UnitModel } from './UnitFactory';
@@ -47,14 +51,24 @@ import { unitLibrary, type UnitModel } from './UnitFactory';
 interface BridgeGlobal { __vmUnits?: unknown; }
 
 /**
- * Content key -> model key. The content vocabulary is another module's, so this
- * is the one place the two namespaces meet; an unmapped content key falls back
- * to the per-faction default below rather than to a hazard box.
+ * Content key -> model key, for defs ONE ARMY OWNS.
+ *
+ * The content vocabulary is another module's, so this is the one place the two
+ * namespaces meet; an unmapped content key falls back to the per-faction default
+ * below rather than to a hazard box.
+ *
+ * EVERY KEY IN HERE MUST NAME A DEF WITH A REAL `faction`, because the whole
+ * table registers at `FACTION_ANY` — see the bind loop. `engineer` used to sit
+ * on the line below `javelin` and it is a `Faction.Neutral` def that BOTH
+ * original armies build, so every Soviet barracks turned out a plated Allied
+ * technician. That is the same defect `SHARED_CONTENT_TO_MODEL`'s own header
+ * describes for `harvester`, one table over, and it survived because nothing
+ * checked which table a key belonged in. Something does now: `assertNoSharedDefs`
+ * at the bottom of `init`, and `tests/faction-models-distinct.spec.ts`.
  */
-const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
+export const CONTENT_TO_MODEL: Readonly<Record<string, string>> = {
   gi: 'allied_rifle',
   javelin: 'allied_javelin',
-  engineer: 'allied_engineer',
   fieldMarshal: 'allied_marshal',
   grizzly: 'allied_guardian',
   ifv: 'allied_ifv',
@@ -105,19 +119,92 @@ const INFANTRY_CONTENT: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Content keys whose def is faction-NEUTRAL — one `defId` serves both armies.
+ * "This army does not draw this def" — it reaches the ROLE through its own def
+ * key, in its own art module, out of its own private library.
+ *
+ * NOT THE SAME AS LEAVING THE ARMY OUT, and that difference is the whole fix.
+ * An absent row and a wrong row are indistinguishable at the point of failure:
+ * both end with the bridge falling through to somebody else's model, in
+ * silence, on a battlefield. A row that says `OWN_ROSTER` says go and read the
+ * other module — and `tests/faction-models-distinct.spec.ts` checks the claim
+ * rather than taking it, because that army really must resolve the role
+ * somewhere, and to a DIFFERENT model.
+ */
+const OWN_ROSTER = null;
+
+/**
+ * Which model each army draws for one def, in `ARMY_ORDER`.
+ *
+ * THE ARITY IS THE MECHANISM. This was `readonly [string, string]` — a
+ * hand-written pair, `[allied, soviet]` — with no slot for a third army and no
+ * way to notice one was missing. `PerArmy` is DERIVED from `ARMY_ORDER`, so a
+ * fifth army turns every literal below into a compile error until somebody
+ * says, per def, what it draws. See `src/art/faction-models.ts`.
+ */
+type SharedModels = PerArmy<string | typeof OWN_ROSTER>;
+
+/**
+ * Content keys whose def is faction-NEUTRAL — one `defId` serves more than one
+ * army.
+ *
  * These cannot go in the table above: that one registers at `FACTION_ANY`, and
  * a FACTION_ANY entry for `harvester` would hand the Soviets the Allied hull
  * and leave `soviet_harvester` / `soviet_dozer` built but never drawn. Two
  * per-faction registrations at the same defId resolve ahead of it instead
  * (the bridge tries (kind, faction, defId) before (kind, ANY, defId)).
+ *
+ * `engineer` IS IN HERE NOW. It was in the FACTION_ANY table — the exact hazard
+ * the paragraph above describes, on the one def where it was reachable — and it
+ * is the report *"the engineers among factions have all the same skin"*.
+ * `soviet_engineer` is the model that had to be authored to close it; the other
+ * three rows already had both halves built.
+ *
+ * The Pact and the Reclamation take `OWN_ROSTER` on all four rows, because both
+ * are complete parallel trees down to their own construction yards: their
+ * barracks builds `mrdArtificer` / `rclTinker`, their factory builds
+ * `mrdCarryall` / `rclCrawler`, and neither can reach a `Faction.Neutral` def
+ * at all. `src/sim/Production.ts#SHARED_POOL_FACTIONS` is the sim-side
+ * statement of the same fact, and `src/game/Scenarios.ts#FACTION_KEY_MAP` the
+ * scenario-side one.
  */
-const SHARED_CONTENT_TO_MODEL: Readonly<Record<string, readonly [string, string]>> = {
-  //           [ allied model,       soviet model      ]
-  harvester:   ['allied_harvester',  'soviet_harvester'],
-  mcv:         ['allied_dozer',      'soviet_dozer'],
-  transport:   ['allied_transport',  'soviet_transport'],
+export const SHARED_CONTENT_TO_MODEL: Readonly<Record<string, SharedModels>> = {
+  //           [ allies,              soviets,             meridian,    reclaim   ]
+  engineer:    ['allied_engineer',   'soviet_engineer',   OWN_ROSTER,  OWN_ROSTER],
+  harvester:   ['allied_harvester',  'soviet_harvester',  OWN_ROSTER,  OWN_ROSTER],
+  mcv:         ['allied_dozer',      'soviet_dozer',      OWN_ROSTER,  OWN_ROSTER],
+  transport:   ['allied_transport',  'soviet_transport',  OWN_ROSTER,  OWN_ROSTER],
 };
+
+/**
+ * THE TRIPWIRE FOR THE CLASS OF BUG, not for the one instance of it.
+ *
+ * `CONTENT_TO_MODEL` registers at `FACTION_ANY`, which is correct for a def
+ * exactly one army can build and WRONG for a `Faction.Neutral` def, because a
+ * Neutral def is one row that several armies build and one wildcard entry
+ * answers for all of them. That is how the Soviet engineer came to be an Allied
+ * engineer for the whole life of the module.
+ *
+ * The two tables cannot tell the difference by themselves — a content key is a
+ * string in both — so the answer has to come from the def table, which arrives
+ * at `init` and only at `init`. A `console.error`, not a throw: a wrong model
+ * is a bad picture and the match must still run. `tests/faction-models-distinct.spec.ts`
+ * is the copy of this check that goes red in the gate.
+ */
+function assertNoSharedDefs(binding: DefBinding): void {
+  const tables = binding.tables;
+  if (tables === null) return;
+  const shared: string[] = [];
+  for (const contentKey of Object.keys(CONTENT_TO_MODEL)) {
+    const defId = binding.unitId[contentKey];
+    if (defId === undefined || defId < 0) continue;
+    if (tables.units[defId]?.faction === Faction.Neutral) shared.push(contentKey);
+  }
+  if (shared.length === 0) return;
+  console.error(
+    `[units] ${shared.join(', ')} ${shared.length === 1 ? 'is a' : 'are'} Faction.Neutral def(s) ` +
+    'registered at FACTION_ANY, so EVERY army that builds one draws the same model. ' +
+    'Move the key to SHARED_CONTENT_TO_MODEL and give each army its own row.');
+}
 
 /** The model each (kind, faction) falls back to when a defId is unknown. */
 const DEFAULTS: readonly { kind: EntityKind; faction: Faction; key: string }[] = [
@@ -311,14 +398,24 @@ export default defineSystem({
       bind(defId, modelKey, FACTION_ANY, contentKey);
       bound++;
     }
-    for (const [contentKey, pair] of Object.entries(SHARED_CONTENT_TO_MODEL)) {
+    for (const [contentKey, models] of Object.entries(SHARED_CONTENT_TO_MODEL)) {
       const defId = binding.unitId[contentKey];
       if (defId === undefined || defId < 0) continue;
-      bind(defId, pair[0], Faction.Allies, contentKey);
-      bind(defId, pair[1], Faction.Soviets, contentKey);
-      bind(defId, pair[0], Faction.Neutral, contentKey);
+      // ONE REGISTRATION PER ARMY THAT DRAWS THE DEF, and none for an army that
+      // does not — an `OWN_ROSTER` army must fall through to the model its own
+      // module bound, not to whatever this loop happened to register first.
+      ARMY_ORDER.forEach((f, i) => {
+        const modelKey = models[i];
+        if (modelKey === OWN_ROSTER) return;
+        bind(defId, modelKey, f, contentKey);
+      });
+      // Gaia owns entities without being an army; `GAIA_SLOT` names which row
+      // it reads instead of leaving it as "slot 0 of a tuple".
+      const gaia = models[GAIA_SLOT];
+      if (gaia !== OWN_ROSTER) bind(defId, gaia, Faction.Neutral, contentKey);
       bound++;
     }
+    assertNoSharedDefs(binding);
     if (bound === 0) {
       console.warn(
         '[units] no unit def table resolved, so every unit carries defId -1 and each army ' +

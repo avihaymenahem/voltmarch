@@ -318,7 +318,64 @@ export class CaptureService {
    *
    * The three existing `'building:captured'` listeners do the rest: Power
    * rebuilds the grid, Production marks tech dirty, Audio plays the line.
-   */
+   *
+   * ========================================================================
+   * §ECONOMY — WHAT ACTUALLY FOLLOWS THE DEED
+   *
+   * Reported as "Occupying an enemy ore building should give me his income".
+   * This is the audit, written down here because the answer is spread over
+   * five files and every one of them was asked and re-read to produce it.
+   * `tests/capture-economy.spec.ts` pins the parts that are behaviour.
+   *
+   * FOLLOWS, and none of it needed a hook, because every one of these is a
+   * RESCAN over `store.owner` rather than a running total:
+   *
+   *   storage cap    `Economy.recomputeStorage`, called below. A refinery moves
+   *                  REFINERY_STORAGE (2000) of cap between the two banks on
+   *                  this tick, and the victim's clamp confiscates any excess
+   *                  exactly as losing the building would.
+   *   power          `PowerGrid` sets `dirty` off the event we emit.
+   *   prerequisites  `ProductionService.census` refills `builtCount`,
+   *                  `factories` and `primaryFactory` from `store.owner` EVERY
+   *                  TICK. The `techDirty` flag the event sets only pulls
+   *                  `refreshTech` forward; it is not what makes this work.
+   *   AI roleCount   `AiBrain.census` is the same shape — `roleCount.fill(0)`
+   *                  then a walk filtered on `st.owner[i] !== me`. A captured
+   *                  refinery is a Refinery role for the captor on the next AI
+   *                  tick and stops being one for the victim.
+   *   OreCrisis      `measureRaisable` and `countIncomeStructures` both filter
+   *                  on `st.owner[i] !== owner` per survey. Nothing cached.
+   *   income         NOW follows, and it did not before: see §DEED in
+   *                  `src/sim/Harvesting.ts`. The load in the bay at the moment
+   *                  of capture is sold to the new owner; the victim's other
+   *                  miners re-pick a dock they still own and go home, which is
+   *                  deliberate and is §ANCHOR's rule.
+   *
+   * DOES NOT FOLLOW, and the fix is not in this file:
+   *
+   *   `PlayerState.buildingCount` is a RUNNING TOTAL — `+1` in
+   *   `Production.onBuildingCompleted`, `-1` in `onBuildingRemoved` — and
+   *   capture calls neither, so a captured structure stays counted against its
+   *   old owner and is never counted for its new one. It is read by
+   *   `refreshSnapshot` for the sidebar cameo's `owned` badge and by nothing in
+   *   the sim (prereqs use the private per-tick census above), so today it is a
+   *   cosmetic drift rather than a rules defect. It belongs in Production.ts.
+   *
+   * THE RESCUE CANNOT BE FARMED THROUGH THIS DOOR. `orecrisis.system.ts` hands
+   * a stranded player a free harvester off a standing refinery, so "capture a
+   * refinery, collect a miner" is the obvious exploit to look for. Three things
+   * close it and only the third is new. The four gate clauses are unchanged and
+   * a capture satisfies clause 4 at a HIGHER price than the 2000-credit
+   * refinery that normally satisfies it (an engineer, plus softening the target
+   * to `captureHpFrac` — up to three engineers, 1500 credits, delivered on
+   * foot into an enemy base). `RESCUE_COOLDOWN_TICKS` and the requirement to
+   * re-enter `Stranded` bound the rate identically either way. And the one
+   * mechanism that can flip a building repeatedly for free —
+   * `GarrisonService.enter` / `releaseEmptied` calling straight into this
+   * method — cannot reach a refinery at all: `GarrisonService.refusalFor`
+   * rejects `IsBuilder | IsFactory | IsRefinery | IsRadar` as a "production
+   * structure" before it gets here.
+   * ======================================================================== */
   captureBuilding(target: EntityId, toPlayer: PlayerId, by: EntityId = NONE): boolean {
     const w = this.world;
     const st = w.store;

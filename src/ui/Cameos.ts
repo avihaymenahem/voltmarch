@@ -114,6 +114,7 @@ import { FACTION_PALETTE, HUD_CAMEO } from '../core/config';
 import { hexToLinearRgb } from '../core/math';
 import { BuildTab, Faction, FACTION_PALETTE_KEYS } from '../core/types';
 import { buildingLibrary } from '../art/BuildingFactory';
+import { forArmy, type PerArmy } from '../art/faction-models';
 import { unitLibrary } from '../art/UnitFactory';
 import {
   blitReadback,
@@ -344,8 +345,57 @@ export function primeCameoPrototype(root: THREE.Object3D, teamColor: THREE.Color
  * but two buildings, and which one you get is the player's army.
  * ========================================================================== */
 
-/** `key` for a def with one model; `[allied, soviet]` for a faction-shared def. */
-type ModelBinding = string | readonly [string, string];
+/**
+ * `key` for a def one army builds; one model PER ARMY for a def the armies
+ * share.
+ *
+ * IT WAS `readonly [string, string]`, AND THAT PAIR IS THE BUG. Reported as
+ * *"the engineers among factions have all the same skin"*. A pair has no slot
+ * for a third army, so `bindingFor` read `faction === Soviets ? [1] : [0]` —
+ * every army that is not the Soviets got the ALLIED model, silently, and a
+ * fifth would have inherited the same. `PerArmy` is derived from `ARMY_ORDER`,
+ * so it is one element longer the day another army lands and every literal
+ * below stops compiling until somebody fills it in. See
+ * `src/art/faction-models.ts`, which holds the order and the exhaustiveness
+ * check, and is shared with `src/art/units.system.ts` so the two tables cannot
+ * drift the way they just did.
+ */
+type ModelBinding = string | PerArmy<string>;
+
+/**
+ * A STRUCTURE def both original armies build, in the two architectures it
+ * exists in.
+ *
+ * The Pact and the Reclamation never build one — they have their own
+ * Conclave/Foundry line all the way down — but they can CAPTURE one, and a
+ * captured Allied Refinery is still an Allied Refinery. So both of their slots
+ * take the Allied model, which is exactly what the old pair resolved to and is
+ * the right answer rather than an accident.
+ *
+ * THE HONEST LIMIT: this function is handed the OWNER, never the builder, so a
+ * Pact player who takes a SOVIET refinery gets its Allied twin in the portrait.
+ * Pre-existing, unchanged, and it needs the builder recorded on the entity to
+ * close — not a fifth column here.
+ *
+ * AND THE MODEL ON THE GROUND DOES NOT AGREE WITH THIS, which is a separate,
+ * older defect and deliberately not fixed here. `buildings.system.ts#SHARED_KEYS`
+ * is still the two-army pair this file just stopped being, and it registers only
+ * at Allies / Soviets / Neutral — so a Pact-owned conyard resolves
+ * (Building, Meridian, defId) miss, (Building, ANY, defId) miss, then
+ * (Building, Meridian, -1), which `Faction3Buildings.ts` binds to
+ * `meridian_chapterhouse`. A captured Construction Yard therefore redraws as a
+ * Chapterhouse on the battlefield while its portrait stays Allied. Fixing it is
+ * the same one-line-per-row change `SHARED_CONTENT_TO_MODEL` took, but it moves
+ * what a capture LOOKS like for two armies, which is a content decision and not
+ * this report's.
+ *
+ * Writing the pair as a helper rather than as 24 repeated model keys means a
+ * fifth army has to answer the question ONCE, here, instead of twelve times in
+ * silence.
+ */
+function builtBy(allied: string, soviet: string): PerArmy<string> {
+  return [allied, soviet, allied, allied];
+}
 
 /**
  * Unit content key -> model key. Mirrors `CONTENT_TO_MODEL` +
@@ -381,13 +431,27 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
   assaultBarge: 'soviet_lighter',
   navalInfantry: 'soviet_diver',
 
-  /* -- shared between the two original armies ---------------------------- */
-  // The Engineer is one model for both, which is a content fact and not an
-  // omission: `src/art/UnitDefs.ts` builds exactly one `allied_engineer`.
-  engineer: 'allied_engineer',
-  harvester: ['allied_harvester', 'soviet_harvester'],
-  mcv: ['allied_dozer', 'soviet_dozer'],
-  transport: ['allied_transport', 'soviet_transport'],
+  /* -- shared defs, one model per army ------------------------------------ *
+   * These four are the whole `Faction.Neutral` unit pool. Only the first two
+   * armies can BUILD them — the Pact and the Reclamation reach each role
+   * through their own def keys — but the columns are filled in for all four
+   * anyway, with each army's own equivalent, because `cameoModelKey` is asked
+   * for every army that could own a Neutral def and "the Pact's engineer" has
+   * a true answer that is not the Allied one.
+   *
+   * `engineer` READ `'allied_engineer'`, A BARE STRING, and the comment above
+   * it called that "a content fact and not an omission: `src/art/UnitDefs.ts`
+   * builds exactly one `allied_engineer`". The premise was true and the
+   * conclusion was backwards — one model existed BECAUSE nobody had authored
+   * the other, not because one was correct — and it is the second half of the
+   * report *"the engineers among factions have all the same skin"*: fixing the
+   * world model alone would have left the sidebar portrait Allied.
+   *
+   *          [ allies,             soviets,             meridian,             reclaim            ] */
+  engineer:  ['allied_engineer',   'soviet_engineer',   'meridian_artificer', 'reclaim_tinker'],
+  harvester: ['allied_harvester',  'soviet_harvester',  'meridian_collector', 'reclaim_scrapper'],
+  mcv:       ['allied_dozer',      'soviet_dozer',      'meridian_carryall',  'reclaim_crawler'],
+  transport: ['allied_transport',  'soviet_transport',  'meridian_argosy',    'reclaim_hauler'],
 
   /* -- the Meridian Pact ------------------------------------------------- */
   mrdWayfarer: 'meridian_wayfarer',
@@ -431,22 +495,24 @@ export const CAMEO_UNIT_MODELS: Readonly<Record<string, ModelBinding>> = {
  * `RECLAIM_STRUCTURE_MODELS` verbatim.
  */
 export const CAMEO_BUILDING_MODELS: Readonly<Record<string, ModelBinding>> = {
-  /* -- shared between the two original armies ---------------------------- */
-  conyard: ['allied_conyard', 'soviet_conyard'],
-  powerPlant: ['allied_power', 'soviet_power'],
-  refinery: ['allied_refinery', 'soviet_refinery'],
-  barracks: ['allied_barracks', 'soviet_barracks'],
-  warFactory: ['allied_warfactory', 'soviet_warfactory'],
-  radar: ['allied_radar', 'soviet_radar'],
-  battleLab: ['allied_tech', 'soviet_tech'],
-  commandPost: ['allied_commandpost', 'soviet_commandpost'],
-  oreSilo: ['allied_silo', 'soviet_silo'],
-  repairDepot: ['allied_depot', 'soviet_depot'],
-  wall: ['allied_wall', 'soviet_wall'],
+  /* -- shared between the two original armies ---------------------------- *
+   * `builtBy` is the ARCHITECTURE pair — see its own note for what the other
+   * two armies get and why that is right for a structure and wrong for a unit. */
+  conyard: builtBy('allied_conyard', 'soviet_conyard'),
+  powerPlant: builtBy('allied_power', 'soviet_power'),
+  refinery: builtBy('allied_refinery', 'soviet_refinery'),
+  barracks: builtBy('allied_barracks', 'soviet_barracks'),
+  warFactory: builtBy('allied_warfactory', 'soviet_warfactory'),
+  radar: builtBy('allied_radar', 'soviet_radar'),
+  battleLab: builtBy('allied_tech', 'soviet_tech'),
+  commandPost: builtBy('allied_commandpost', 'soviet_commandpost'),
+  oreSilo: builtBy('allied_silo', 'soviet_silo'),
+  repairDepot: builtBy('allied_depot', 'soviet_depot'),
+  wall: builtBy('allied_wall', 'soviet_wall'),
   // No `gate` row exists in `Defs.ts` today, but both models are built and the
   // key is already bound in `buildings.system.ts`. Listed so the def that
   // eventually lands does not arrive glyph-only.
-  gate: ['allied_gate', 'soviet_gate'],
+  gate: builtBy('allied_gate', 'soviet_gate'),
 
   /* -- single-army --------------------------------------------------------*/
   navalYard: 'allied_navalyard',
@@ -511,18 +577,19 @@ export const CAMEO_BUILDING_MODELS: Readonly<Record<string, ModelBinding>> = {
 };
 
 /**
- * Which half of a pair an army takes.
+ * Which row of a per-army binding an army takes.
  *
- * Only the two original armies share defs, and Neutral content (the Engineer,
- * the Harvester, the Construction Yard) appears in BOTH their sidebars — so a
- * Soviet player's `conyard` cameo has to be the Soviet one. Anything that is
- * not the Soviet army reads the first slot, which keeps Neutral-owned entities
- * (crates, civilian structures) on the Allied architecture exactly as
+ * This was `faction === Faction.Soviets ? binding[1] : binding[0]`, described
+ * as "anything that is not the Soviet army reads the first slot". That is a
+ * true description of a two-army game and it silently gave the Pact and the
+ * Reclamation Allied kit in a four-army one. `forArmy` indexes `ARMY_ORDER`
+ * instead, and keeps the ONE case the old sentence was actually about: Gaia is
+ * not an army, has no row, and reads `GAIA_SLOT` — which keeps crates and
+ * civilian structures on the Allied architecture exactly as
  * `buildings.system.ts` registers them.
  */
 function bindingFor(binding: ModelBinding, faction: Faction): string {
-  if (typeof binding === 'string') return binding;
-  return faction === Faction.Soviets ? binding[1] : binding[0];
+  return typeof binding === 'string' ? binding : forArmy(binding, faction);
 }
 
 /**

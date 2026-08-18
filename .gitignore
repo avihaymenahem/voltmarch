@@ -58,6 +58,15 @@ docs/surface-refs/ra3-*
 # inside itself. Scratch, always; `.claude/launch.json` beside it stays TRACKED.
 .claude/worktrees/
 
+# Desktop shell build output. `desktop/out/` is esbuild's bundle of the main
+# process and preload (regenerate with `npm run desktop:build`); `desktop/release/`
+# is the packaged installer, ~100 MB an artifact. `desktop/src/**` is TRACKED —
+# it is the source — and so is desktop/package.json, which is what keeps the
+# ~140 MB electron binary out of the root install and therefore out of Pages CI.
+desktop/out/
+desktop/release/
+desktop/*.log
+
 # vite / vitest caches
 .vite/
 node_modules/.vite/
