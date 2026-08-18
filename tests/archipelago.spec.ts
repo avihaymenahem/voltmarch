@@ -48,6 +48,7 @@ import { EntityKind, Faction } from '../src/core/types';
 import type { PlayerId } from '../src/core/types';
 import {
   ARCHIPELAGO_SEA, MAP_SEAS, NAVAL_SEA, SKIRMISH_ARMIES_DEFAULT, SKIRMISH_ARMIES_MAX,
+  SKIRMISH_START_OFFSETS,
   buildScenario, clearScenario, planScenario, startPointsFor, startSpots,
 } from '../src/game/Scenarios';
 import {
@@ -786,10 +787,17 @@ describe('none of this reaches a two-army map', () => {
     // `terrain-plan.plannedTerrainInput` spreads this into
     // `TerrainGenOptions.starts`. Every extra entry is another levelled disc,
     // i.e. a different heightfield for every map in the game.
+    // 74/62 until 2026-08-18, when the spread doubled — see the block over
+    // `START_SPREAD_X`. DERIVED from the table rather than restated, because
+    // the point of this case is the COUNT (three discs, not five) and a second
+    // copy of the coordinates is the two-table drift `SKIRMISH_START_OFFSETS`'
+    // own header is about.
+    const a = SKIRMISH_START_OFFSETS[0]!;
+    const b = SKIRMISH_START_OFFSETS[1]!;
     expect(startPointsFor(SKIRMISH_ARMIES_DEFAULT, null)).toEqual([
       { x: C, z: C },
-      { x: C - 74, z: C + 62 },
-      { x: C + 74, z: C - 62 },
+      { x: C + a.dx, z: C + a.dz },
+      { x: C + b.dx, z: C + b.dz },
     ]);
   });
 

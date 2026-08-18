@@ -381,10 +381,44 @@ export interface StartSpot {
   readonly facingDeg: number;
 }
 
-/** Half-diagonal of the fallback layout, metres. Measured, not guessed: two
- *  armies 96 m apart on a 512 m map are two screens apart at match dolly. */
-const START_SPREAD_X = 74;
-const START_SPREAD_Z = 62;
+/**
+ * Half-diagonal of the layout, metres.
+ *
+ * DOUBLED FROM 74/62 ON 2026-08-18. Reported as "we always spawn few meters
+ * away from enemy, even though maps are huge, we dont take advantage of that",
+ * and the measurement is worse than the report:
+ *
+ *     MAP_SIZE                      512 m
+ *     all four starts fit inside    148 x 124 m  =  7.0% of the map's AREA
+ *     unused margin                 182 m on every side
+ *     two-army opening              193.1 m
+ *     four-army ADJACENT pairs      124.0 m   <- under START_MIN_SEPARATION (150)
+ *
+ * That last line was a live inconsistency: `nudgeToBuildable` enforces a 150 m
+ * floor between openings while the authored table it protects sat below it.
+ *
+ * WHY EXACTLY x2. `START_BISECTOR` reads slots [0] and [1] and its normal
+ * places the sea on every coastal map; `tests/naval-maps.spec.ts` pins that
+ * normal to digits. The normal depends only on the RATIO 37:31, so any uniform
+ * scaling preserves it mathematically — and 2 is a power of two, so the
+ * squares, their sum and the sqrt are all exact in IEEE-754 and it is
+ * preserved BIT-FOR-BIT (verified: both components compare `===` against the
+ * pre-change values). Do not rescale by a non-power-of-two without re-checking
+ * that test.
+ *
+ *     two-army opening   386.2 m      closest pair   248.0 m
+ *     edge margin        108 m        (a sea shelf needs 96: 58 flat + 14
+ *                                      wobble + 6 band + 8 waviness + 10
+ *                                      TERRAIN_SEA_START_CLEARANCE)
+ *
+ * 108 is the binding constraint and it is why this is x2 rather than more. The
+ * four shelves also stop OVERLAPPING at this spread — 248 m apart against a
+ * 58 m flat radius — which retires the levelled-seam risk `terrain-plan.ts`
+ * documents having deferred once, and is why `tests/start-shelves.spec.ts`'
+ * overlap cases were rewritten rather than nudged.
+ */
+const START_SPREAD_X = 148;
+const START_SPREAD_Z = 124;
 
 /**
  * WHERE THE TWO ARMIES ACTUALLY START, as offsets from the map centre.

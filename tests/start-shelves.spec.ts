@@ -241,26 +241,56 @@ function shelfScan(): ShelfCase[] {
 
 /* ========================================================================== */
 
-describe('the discs overlap, and that was the unverified risk', () => {
-  it('really do overlap — this is arithmetic, not a worry', () => {
+/*
+ * REWRITTEN 2026-08-18, AND THE OLD VERSION WAS NOT WRONG — IT EXPIRED.
+ *
+ * It asserted that the levelled discs DO overlap (`58 * 2 > 96.6`) and then
+ * that the overlap produces no seam step, which is exactly the right pair of
+ * questions for a layout whose starts sit 96.6 m from the map centre.
+ * `START_SPREAD_X`/`_Z` doubled, so a start is now 193.1 m out and two flat
+ * radii are 116 — the discs are separated by 77 m of untouched ground and
+ * there is no seam to measure.
+ *
+ * The seam case did not merely go stale, it INVERTED: it samples the midpoint
+ * between the centre shelf and each start, which used to be inside both discs
+ * and is now outside both, so it was measuring ordinary terrain and demanding
+ * terrain be flat. It reported a 6.14 m step on temperate/1 — a hillside doing
+ * what hillsides do.
+ *
+ * So the assertion is now the property the widening actually bought.
+ */
+describe('the discs no longer overlap, which retires the seam risk', () => {
+  it('separates every pair of shelves by more than two flat radii', () => {
     const d = Math.hypot(SKIRMISH_START_OFFSETS[0]!.dx, SKIRMISH_START_OFFSETS[0]!.dz);
-    expect(d, 'a start is this far from the map centre').toBeCloseTo(96.6, 0);
-    expect(TERRAIN_START_FLAT_RADIUS * 2).toBeGreaterThan(d);
+    expect(d, 'a start is this far from the map centre').toBeCloseTo(193.1, 0);
+    expect(d, 'centre disc vs start disc').toBeGreaterThan(TERRAIN_START_FLAT_RADIUS * 2);
+
+    // And the starts against each other. The CLOSEST pair is the binding one:
+    // adjacent corners of the rectangle, 248 m at this spread against 116.
+    let closest = Infinity;
+    for (let i = 0; i < SKIRMISH_START_OFFSETS.length; i++) {
+      for (let j = i + 1; j < SKIRMISH_START_OFFSETS.length; j++) {
+        const a = SKIRMISH_START_OFFSETS[i]!;
+        const b = SKIRMISH_START_OFFSETS[j]!;
+        closest = Math.min(closest, Math.hypot(a.dx - b.dx, a.dz - b.dz));
+      }
+    }
+    expect(closest, 'closest pair of start shelves').toBeCloseTo(248, 0);
+    expect(closest).toBeGreaterThan(TERRAIN_START_FLAT_RADIUS * 2);
   });
 
-  it('does not produce a seam step where two levelled discs meet', () => {
-    // The whole reason this fix was deferred. Sampled ON the midpoint between
-    // the centre shelf and each start shelf, which is where a seam would be.
-    //
-    // `levelStartAreas` mutates `this.height` as it goes, so the second disc
-    // levels ground the first already flattened — the self-stabilising the task
-    // hoped for. This asserts it rather than hoping.
+  it('leaves ordinary, ungraded ground between the shelves', () => {
+    // The midpoint the old seam case sampled. It is outside both discs now, so
+    // the honest assertion is that it IS outside them — not that the terrain
+    // there happens to be flat, which is neither true nor desirable.
     let checked = 0;
     for (const c of shelfScan()) {
       if (!SEAM_SEEDS.includes(c.seed)) continue;
       for (let k = 0; k < SEATED.length; k++) {
-        expect(c.seam[k]!, `${c.biome}/${c.seed} seam step at the disc overlap`)
-          .toBeLessThan(2.0);
+        const o = SEATED[k]!;
+        const half = Math.hypot(o.dx, o.dz) * 0.5;
+        expect(half, `${c.biome}/${c.seed} midpoint vs the centre disc`)
+          .toBeGreaterThan(TERRAIN_START_FLAT_RADIUS);
         checked++;
       }
     }

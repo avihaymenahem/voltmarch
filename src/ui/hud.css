@@ -499,10 +499,33 @@
  * between the card and the build palette is battlefield — which is most of
  * what `hudCoverage()` gained over `hudFrameShare()`. `margin-right: auto`
  * keeps it beside the map rather than letting it drift to centre. */
+/* THE CAP IS A WIDTH BUDGET AND MUST BE DERIVED FROM THE WIDTH.
+ *
+ * It was `calc(520 * var(--vm-u))`, and `--vm-u` comes off the viewport HEIGHT.
+ * So the one dimension this constrains was pinned to the other one, and the
+ * panel got the same 520 px of room on a 1280-wide frame as on a 2560-wide one.
+ * Measured in a real page at 1280x720 with every action group present: the head
+ * row needs 944 px against 506 available, and `overflow: visible` then draws
+ * SELF-DESTRUCT 431 px past the panel's own painted frame — reported as "hud
+ * contents being cut", which is exactly what it looks like. There were 670 px
+ * of unused dock beside it at the time.
+ *
+ * Derived instead, from the row's own width minus the things actually in the
+ * way. 100% is the dock row (width-derived); everything subtracted is a fixed
+ * u-sized element, so the result tracks the aspect ratio rather than fighting
+ * it:
+ *
+ *     908 = 1280 - 90(map) - 240(build rail) - 42(12 left + 10 + 10 + 10)
+ *
+ * THIS DOES NOT MAKE THE PANEL BIGGER AT REST. `flex: 0 1 auto` still sizes to
+ * content — measured, an empty selection stays at its 265u floor and even the
+ * all-groups row settles at 884 px on a 1280 frame and 952 on a 1920 one, not
+ * 908 and not 1600. The cap is a ceiling nobody reaches, which is why raising
+ * it does not move `hudCoverage()`. */
 .vm-hud .vm-dock-selection {
   flex: 0 1 auto;
   min-width: calc(265 * var(--vm-u));
-  max-width: calc(520 * var(--vm-u));
+  max-width: calc(100% - (90 * var(--vm-u)) - var(--vm-rail-w) - (42 * var(--vm-u)));
   margin-right: auto;
 }
 
@@ -1079,12 +1102,37 @@
   height: calc(16 * var(--vm-u));
 }
 
+/* THE LAST RESORT, AND IT DROPS CAPTIONS RATHER THAN VERBS.
+ *
+ * The cap above is derived from the dock's real width, so on any ordinary frame
+ * the row fits and this never applies. It cannot fit on a narrow one — at the
+ * desktop shell's `MIN_WINDOW_W` of 1024 the room is 614 px against the 851 the
+ * row wants once the title has already truncated — so something has to give,
+ * and the choice of WHAT is the whole point.
+ *
+ * `.vm-stance-label` is the category caption: "Cargo", "Scuttle", "Factory".
+ * The BUTTON beside each one already says "Unload 0 / 8", "Destruct", "Set
+ * Primary". So the caption is the redundant half and the verb is the
+ * load-bearing half. Measured over the all-groups row, hiding the seven
+ * captions takes 851 px to 545 — more than the title and the rule together
+ * give up.
+ *
+ * Set by `Sidebar.fitHead` against a measured overflow, never by a media query:
+ * what overflows depends on WHICH action groups this selection shows, and no
+ * breakpoint can know that. */
+.vm-hud .vm-sel-head.is-tight .vm-stance-label { display: none; }
+
+/* `0 1 auto`, NOT `0 0 auto`. `.vm-sel-title` below carries `overflow: hidden`
+ * and `text-overflow: ellipsis`, and with the old `flex: 0 0 auto` on this
+ * parent that ellipsis COULD NOT FIRE — the name never gave up a pixel, so a
+ * long one pushed the action buttons off the panel instead of truncating
+ * itself. A clipped SELF-DESTRUCT is worse than "MIXED FOR…". */
 .vm-hud .vm-sel-id {
   display: flex;
   align-items: center;
   gap: calc(6 * var(--vm-u));
   min-width: 0;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
 }
 
 .vm-hud .vm-sel-title {
@@ -1100,9 +1148,12 @@
 
 /* The rule that runs right from the word, which is the reference's one
    consistent header device. */
+/* `min-width: 0` so the DECORATION yields before anything that carries meaning.
+ * It held a 6u floor, which is 6 px a truncating title had to pay for. It still
+ * takes all the slack at rest, which is the whole effect. */
 .vm-hud .vm-sel-rule {
   flex: 1 1 auto;
-  min-width: calc(6 * var(--vm-u));
+  min-width: 0;
   height: 1px;
   background: linear-gradient(90deg,
     rgba(var(--vm-accent-rgb), 0.55) 0%,
@@ -1150,6 +1201,24 @@
 }
 
 .vm-hud .vm-sel-cards::-webkit-scrollbar { height: 0; }
+
+/* "6 TYPES SELECTED" with five cameos visible, the fifth sliced by the edge.
+ *
+ * The strip has ALWAYS scrolled — `overflow-x: auto` is right there — but the
+ * scrollbar is hidden, so a sixth type off the end is indistinguishable from a
+ * strip that got cut off. Reported as the HUD cutting its contents, and the
+ * reading was fair: nothing on screen said there was more.
+ *
+ * A fade is the affordance rather than a restored scrollbar, because a track
+ * under a row of cameos is chrome inside chrome and the band is already 15.8%
+ * of the frame. The last card dissolving reads as "continues" at a glance and
+ * costs no layout.
+ *
+ * `is-clipped` is set by `Sidebar.fitHead` only when the strip actually
+ * overflows, so a selection of two types keeps a hard, honest right edge. */
+.vm-hud .vm-sel-cards.is-clipped {
+  mask-image: linear-gradient(90deg, #000 calc(100% - 22 * var(--vm-u)), transparent 100%);
+}
 
 /* Every property shell.css's bare `.vm-card` sets is restated here.  // shell guard */
 .vm-hud .vm-card {

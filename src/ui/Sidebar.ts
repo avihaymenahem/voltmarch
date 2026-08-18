@@ -1182,6 +1182,25 @@ class SelectionPanel {
   readonly root: HTMLElement;
 
   private readonly live: HTMLElement;
+
+  /** The name-and-verbs row. Held so `fitHead` can measure its overflow. */
+  private readonly headNode: HTMLElement;
+
+  /**
+   * What the last `fitHead` measured, so the common case costs one string
+   * compare instead of a forced reflow.
+   *
+   * `update()` runs every HUD tick and `fitHead` reads `scrollWidth`, which
+   * flushes layout. Doing that unconditionally would put a synchronous reflow
+   * in the frame path of a project whose stated budget is zero allocation and
+   * 200 units at 60 fps. Everything that can change the row's width is in the
+   * signature: which verb groups are shown, the name, the count, and the width
+   * the panel has to spend.
+   */
+  private lastFitSig = '';
+
+  /** Null in jsdom, which has no `ResizeObserver`. */
+  private fitObserver: ResizeObserver | null = null;
   private readonly idle: HTMLElement;
 
   private readonly titleNode: Text;
@@ -1266,6 +1285,7 @@ class SelectionPanel {
      * The rule is the reference's one consistent header device and it is what
      * ties this panel to the objectives panel and the build palette. */
     const head = el('div', 'vm-sel-head', this.live);
+    this.headNode = head;
     const idBlock = el('div', 'vm-sel-id', head);
     this.titleNode = label(idBlock, 'vm-sel-title');
     this.chevrons = el('span', 'vm-sel-vet', idBlock);
@@ -1518,6 +1538,19 @@ class SelectionPanel {
     /* -- the idle advisory --------------------------------------------- */
     this.idle.appendChild(makeIcon('info', 'vm-icon'));
     this.adviceNode = label(this.idle, 'vm-sel-advice', IDLE_HINT);
+
+    /* The only thing that tells `fitHead` the available width moved.
+     *
+     * It cannot come from `update()`: the signature there is deliberately free
+     * of layout reads, so a window resize with an unchanged selection would
+     * otherwise never re-measure and the row would keep whichever fit it
+     * happened to have. Clearing the signature is enough — the next tick
+     * re-measures. Guarded because `ResizeObserver` is absent in jsdom, where
+     * `tests/hud-top-row.spec.ts` builds this panel. */
+    if (typeof ResizeObserver === 'function') {
+      this.fitObserver = new ResizeObserver(() => { this.lastFitSig = ''; });
+      this.fitObserver.observe(this.root);
+    }
   }
 
   private buildCard(): CardCell {
@@ -1764,6 +1797,52 @@ class SelectionPanel {
     this.updateGarrison(view.garrison);
     this.updatePrimary(view.primary);
     this.updateDestruct(view.selfDestruct);
+    this.fitHead();
+  }
+
+  /**
+   * Keep the name-and-verbs row inside the panel.
+   *
+   * WHY THIS IS MEASURED AND NOT A BREAKPOINT. Which verb groups a selection
+   * shows is a property of the SELECTION, not of the viewport — a lone
+   * commander in a transport shows Ability and Cargo, a War Factory shows
+   * Factory, a mixed force shows neither — so the width the row wants changes
+   * without the window moving. No media query can see that. Reported as "hud
+   * contents being cut": SELF-DESTRUCT drawn 431 px past the panel's own frame,
+   * because `.vm-dock-selection` was capped at 520 px of a 1280 px frame while
+   * the row wanted 944 and nothing in it could shrink.
+   *
+   * ORDER MATTERS. `is-tight` is the thing that makes the row narrow, so
+   * measuring with it still applied reports the tight width, `scrollWidth`
+   * fits, and the class can never come back off — the row would stay
+   * captionless forever after one narrow moment. Strip it, measure the natural
+   * width, then decide.
+   *
+   * THE SIGNATURE HOLDS NO LAYOUT READ, deliberately. Putting `clientWidth` in
+   * it looks like the obvious way to notice a resize and is a trap: the rows
+   * above have already written text this tick, so reading any geometry flushes
+   * layout, and a HP readout that ticks would then force a synchronous reflow
+   * every frame. Width changes arrive through the `ResizeObserver` below
+   * instead, which fires only when the panel actually resizes.
+   */
+  private fitHead(): void {
+    const head = this.headNode;
+    const cards = this.cardRow;
+    const sig = `${this.stanceRow.hidden ? 0 : 1}${this.relocateRow.hidden ? 0 : 1}`
+      + `${this.abilityRow.hidden ? 0 : 1}${this.cargoRow.hidden ? 0 : 1}`
+      + `${this.garrisonRow.hidden ? 0 : 1}${this.primaryRow.hidden ? 0 : 1}`
+      + `${this.destructRow.hidden ? 0 : 1}`
+      + `|${this.titleNode.nodeValue ?? ''}|${this.countNode.nodeValue ?? ''}`;
+    if (sig === this.lastFitSig) return;
+    this.lastFitSig = sig;
+
+    head.classList.remove('is-tight');
+    if (head.scrollWidth > head.clientWidth) head.classList.add('is-tight');
+
+    // The strip has always scrolled; nothing ever said so. One pixel of slack
+    // because a fractional layout width rounds `scrollWidth` up on its own and
+    // would otherwise fade a strip that fits exactly.
+    cards.classList.toggle('is-clipped', cards.scrollWidth > cards.clientWidth + 1);
   }
 
   /**
@@ -1948,6 +2027,10 @@ class SelectionPanel {
   }
 
   dispose(): void {
+    // Before `this.root.remove()`, so the observer is not left holding a
+    // detached node for the rest of the session.
+    this.fitObserver?.disconnect();
+    this.fitObserver = null;
     this.root.remove();
   }
 }
