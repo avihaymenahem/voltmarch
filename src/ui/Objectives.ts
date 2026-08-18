@@ -711,6 +711,28 @@ export class ObjectivesPanel {
   /* internals                                                             */
   /* -------------------------------------------------------------------- */
 
+  /**
+   * Replace the source this panel reads.
+   *
+   * FOR THE CAMPAIGN, AND IT EXISTS BECAUSE THE CONSTRUCTOR IS TOO EARLY.
+   * `ui.objectives` and `game.campaign` are separate system modules and the
+   * registry does not promise which one's `init()` runs first — measured, it is
+   * this one, so `campaignSession()` is still null when the panel is built and
+   * an injected view resolved there is always null. The first frame is the
+   * earliest moment both halves exist.
+   *
+   * `null` restores the probe, so the panel falls back to `__vmProgression`
+   * exactly as it always did when an operation ends.
+   */
+  setProgression(next: ProgressionView | null): void {
+    if (this.progression === next) return;
+    this.progression = next ?? readProgression();
+    // `bind()` drops the previous subscription itself, so there is exactly one
+    // place that owns that lifetime and this cannot leak a second listener.
+    this.bind();
+    this.dirty = true;
+  }
+
   private bind(): void {
     this.unsubscribe?.();
     this.unsubscribe = null;

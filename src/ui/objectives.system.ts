@@ -55,9 +55,13 @@ import {
   objectivesFrameShareOf,
   objectivesPanelHeightUnits,
 } from './Objectives';
+import type { ActiveObjective, ProgressionView } from './Objectives';
+import { campaignSession } from '../campaign/session';
 
 let panel: ObjectivesPanel | null = null;
 let banner: ObjectiveBanner | null = null;
+/** Whether the panel is currently reading the campaign rather than the profile. */
+let injected = false;
 
 declare global {
   // eslint-disable-next-line no-var
@@ -80,6 +84,69 @@ function share(rows: number, view: 'collapsed' | 'summary' | 'expanded'): string
   return `${pct.toFixed(2)}%`;
 }
 
+/**
+ * The campaign's objectives, shaped as the five members `readProgression`
+ * duck-types for.
+ *
+ * Returns null when no operation is armed, so the panel falls back to
+ * `readProgression()` exactly as it always did and a skirmish is unchanged.
+ *
+ * `campaignSession()` comes from `src/campaign/session.ts`, which imports
+ * nothing — this module is a `*.system.ts` and therefore in the entry chunk, so
+ * reaching for anything heavier here would drag the Director and the whole
+ * operation table in front of every player's first paint.
+ */
+function campaignObjectiveView(): ProgressionView | null {
+  const session = campaignSession();
+  if (session === null) return null;
+
+  // `target: 1` and a 0/1 value, because a campaign objective is a FLAG rather
+  // than a counter: there is no "3 of 25" to report.
+  //
+  // THE PANEL STILL DRAWS "0 / 1" UNDER EACH ROW, and an earlier version of
+  // this comment claimed it did not. It renders `value / target` for every row
+  // it is given and has no notion of a boolean objective. That is cosmetic
+  // noise rather than a wrong number — and the honest fix is a flag on the row
+  // that `Objectives.ts` reads, not a lie here.
+  const rows = (): ActiveObjective[] => session.rows()
+    .filter((r) => r.status !== 'hidden')
+    .map((r) => ({
+      id: r.id,
+      scope: 'match' as const,
+      title: r.title,
+      description: '',
+      category: 'tactics' as const,
+      target: 1,
+      reward: [],
+      progress: {
+        id: r.id,
+        value: r.status === 'complete' ? 1 : 0,
+        target: 1,
+        complete: r.status === 'complete',
+        claimedAt: null,
+      },
+    }));
+
+  return {
+    // An EMPTY profile, not a fake one. This view owns no profile — the real
+    // one is still on `__vmProgression` and still correct; the panel simply
+    // never reads this member.
+    profile: () => ({ version: 0, unlocked: [], missions: [] }),
+    catalogue: () => [],
+    activeObjectives: rows,
+    drainPending: () => [],
+    isUnlocked: () => false,
+    // NOT a real subscription. The panel re-reads `activeObjectives()` on its
+    // own sample cadence, and a campaign objective changes a handful of times
+    // per operation — a push channel here would be a second mechanism doing
+    // what the poll already does.
+    subscribe: () => () => { /* nothing to unsubscribe */ },
+    resetProfile: () => { /* a campaign view owns no profile */ },
+    exportProfile: () => '',
+    importProfile: () => false,
+  };
+}
+
 export default defineSystem({
   id: 'ui.objectives',
   renderPhase: RenderPhase.Hud,
@@ -100,6 +167,31 @@ export default defineSystem({
     banner = beat;
     globalThis.__vmObjectiveBanner = beat;
 
+    /*
+     * A CAMPAIGN OPERATION PUBLISHES ITS OWN OBJECTIVES, BY INJECTION.
+     *
+     * `suppressProgression` means the profile handle has NOTHING to say during
+     * an operation — `activeObjectives()` is empty by design — so without this
+     * the panel is blank for the whole match and the player is told nothing
+     * about what they are meant to do.
+     *
+     * INJECTED, NEVER SWAPPED ONTO `globalThis.__vmProgression`. That singleton
+     * is the progression system's, and the pause menu's Missions board and
+     * `EndScreen.drainPending()` both read it — writing a campaign view over it
+     * would give one global two owners and make the end screen drain a source
+     * that has no rewards. `ObjectivesPanel` has taken an injected
+     * `progression` since it was written; it simply had no second caller until
+     * now.
+     *
+     * IT IS RESOLVED ON THE FIRST FRAME, NOT AT INIT, AND A FIRST ATTEMPT GOT
+     * THAT WRONG. `Shell.startOperation` does arm the operation before
+     * `bootstrap()` — but `campaignSession()` reads the LIVE slot, which
+     * `campaign.system.ts#init` fills by adopting the armed one, and the
+     * registry does not promise which module's `init` runs first. Measured, it
+     * is this one: the panel was built with a null view and stayed blank for
+     * the whole operation. Verified on a booted page, which is the only place
+     * that ordering is visible at all.
+     */
     panel = new ObjectivesPanel({
       mount,
       onComplete: (done) => { beat.announce(done); },
@@ -120,6 +212,13 @@ export default defineSystem({
   },
 
   frame(r: RenderContext): void {
+    // Once, on the frame the campaign first appears — and once more when it
+    // goes away, so the panel falls back to the profile for the next skirmish.
+    const armed = campaignSession() !== null;
+    if (panel !== null && armed !== injected) {
+      injected = armed;
+      panel.setProgression(armed ? campaignObjectiveView() : null);
+    }
     panel?.frame(r.dt);
     banner?.frame(r.dt);
   },
