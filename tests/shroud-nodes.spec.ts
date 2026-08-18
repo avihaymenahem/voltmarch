@@ -3,7 +3,7 @@
  * VOLTMARCH — tests/shroud-nodes.spec.ts
  * ============================================================================
  * THE GATE FOR THE TSL SHROUD **CARPET** (Stage E of
- * `docs/WEBGPU_MIGRATION_PLAN.md`).
+ * the WebGPU migration).
  *
  * The SELF-TINT half of `src/render/shroud-nodes.ts` is Stage D's and is gated
  * by `tests/stage-d-node-materials.spec.ts`. This file covers what Stage E

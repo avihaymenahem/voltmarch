@@ -1,7 +1,7 @@
 /**
  * VOLTMARCH — src/render/post-nodes.ts
  * =============================================================================
- * THE POST CHAIN AS ONE TSL GRAPH. Stage B of `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * THE POST CHAIN AS ONE TSL GRAPH. Stage B of the WebGPU migration.
  *
  * Same order as `post.ts`, and `PASS_ORDER` is imported rather than restated:
  *

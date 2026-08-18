@@ -1,5 +1,5 @@
 /**
- * THROWAWAY SPIKE — Stage A of docs/WEBGPU_MIGRATION_PLAN.md §5. NOT SHIPPED CODE.
+ * THROWAWAY SPIKE — Stage A of the WebGPU migration §5. NOT SHIPPED CODE.
  * DELETE THIS DIRECTORY once the verdict in the commit message is recorded.
  *
  *   node tools/webgpu-spike/run.mjs [--port 5303] [--headed] [--quick]

@@ -537,13 +537,44 @@ define at least 4 possible spawns in each map"*. Three complaints, three differe
   independently on both machines of a lockstep match, and that is a tick-zero desync. Permutation
   and power-of-two scaling are exact; angles are not.
 
-**A THREE- OR FOUR-ARMY SAVE RESTORES ONTO TWO-ARMY GROUND, AND NO GUARD CATCHES IT.** `Shell.bootGame` calls `setPlannedArmies(armyCount(this.setup))`, so the generator reserves one levelled shelf per army in the setup that booted — and `Shell.loadGame` deliberately boots with `opponents: [{ faction: c.aiFaction, … }]`, ONE entry, on the argument that `restoreSnapshot` re-seats the whole player table anyway. That argument is sound for the PLAYER TABLE and unsound for the GROUND: terrain, roads and scatter are regenerated rather than stored (`SaveGame.ts`, above `RestoreOptions`), so a four-way save comes back with its bases on a heightfield levelled for two. `requireMatchingWorld` cannot see it — it compares scenario, map and seed, and all three match. Before the army-count wire landed this was masked, because every boot planned two and the capture and the restore agreed by accident.
+**A THREE- OR FOUR-ARMY SAVE RESTORES ONTO TWO-ARMY GROUND, AND NO GUARD CATCHES IT.**
+`Shell.bootGame` calls `setPlannedArmies(armyCount(this.setup))`, so the generator reserves one
+levelled shelf per army in the setup that booted — and `Shell.loadGame` deliberately boots with
+`opponents: [{ faction: c.aiFaction, … }]`, ONE entry, on the argument that `restoreSnapshot`
+re-seats the whole player table anyway. That argument is sound for the PLAYER TABLE and unsound
+for the GROUND: terrain, roads and scatter are regenerated rather than stored (`SaveGame.ts`,
+above `RestoreOptions`), so a four-way save comes back with its bases on a heightfield levelled
+for two. `requireMatchingWorld` cannot see it — it compares scenario, map and seed, and all three
+match. Before the army-count wire landed this was masked, because every boot planned two and the
+capture and the restore agreed by accident.
 
-The fix is a field on `SaveContext` (`src/shell/LoadGame.ts`), and it is additive rather than a schema break: `SaveSlotInfo.extra` is explicitly opaque and `extraOf` falls back field by field, so rows already on disk degrade instead of failing. The `loadGame` comment's claim that growing the context 'would invalidate every slot already on disk' is stronger than the code requires and should be corrected in the same change. **The replay path is the model and already does this correctly** — `Shell.startReplay` rebuilds `opponents` from every non-Neutral slot in the header before it boots, precisely so `armyCount` answers the recording's number.
+The fix is a field on `SaveContext` (`src/shell/LoadGame.ts`), and it is additive rather than a
+schema break: `SaveSlotInfo.extra` is explicitly opaque and `extraOf` falls back field by field,
+so rows already on disk degrade instead of failing. The `loadGame` comment's claim that growing
+the context 'would invalidate every slot already on disk' is stronger than the code requires and
+should be corrected in the same change. **The replay path is the model and already does this
+correctly** — `Shell.startReplay` rebuilds `opponents` from every non-Neutral slot in the header
+before it boots, precisely so `armyCount` answers the recording's number.
 
-**THE TWO SEA MAPS ARE `players: 2` BY ARITHMETIC, NOT BY JUDGEMENT, AND THE NUMBER IS NOT REVISABLE BY PLAYTEST.** `MAP_SEAS.coast` and `.tropical` are half-planes whose waterline is offset along `START_BISECTOR` — the perpendicular bisector of slots 0 and 1 — because that is the one bearing on which both openings project to the same distance from the water. Slots 2 and 3 are the other two corners of the same rectangle and they lie ACROSS that bisector. At the shipped `START_SPREAD_X/Z` of 148/124 they project to ±190.1 m, against a waterline at −112 m on coast and +100 m on tropical: **slot 3 on Contested Strait is 78 m out to sea and slot 2 on Coral Shore is 90 m out to sea**, before `resolveStarts` slides anything.
+**THE TWO SEA MAPS ARE `players: 2` BY ARITHMETIC, NOT BY JUDGEMENT, AND THE NUMBER IS NOT
+REVISABLE BY PLAYTEST.** `MAP_SEAS.coast` and `.tropical` are half-planes whose waterline is
+offset along `START_BISECTOR` — the perpendicular bisector of slots 0 and 1 — because that is the
+one bearing on which both openings project to the same distance from the water. Slots 2 and 3 are
+the other two corners of the same rectangle and they lie ACROSS that bisector. At the shipped
+`START_SPREAD_X/Z` of 148/124 they project to ±190.1 m, against a waterline at −112 m on coast and
++100 m on tropical: **slot 3 on Contested Strait is 78 m out to sea and slot 2 on Coral Shore is
+90 m out to sea**, before `resolveStarts` slides anything.
 
-Measured on the pre-doubling table (74/62, projections ±95.05 m) the same seats were 16.95 m and 4.95 m of dry land from the waterline, and a genuinely built four-army `contested-strait` put slot 3 on 29.9% buildable ground with 31.8% of its build disc under water, one of five ore fields in the sea, and an 81 m shelf push the army never saw — `startSpots` deliberately does not read the reserved shelf list back, and `Scenarios.ts` records the v1.21.0 regression that came from reading it back. Doubling the spread made this two times worse, not better. A four-corner layout is incompatible with a bisector-aligned half-plane sea; giving either map four seats needs a different sea, not a different number. (`frozen-sector`'s 2 is the opposite case — measured at 83-89% buildable and zero shelf push at all four starts, so its number IS an authored judgement about how it plays and is revisable.)
+Measured on the pre-doubling table (74/62, projections ±95.05 m) the same seats were 16.95 m and
+4.95 m of dry land from the waterline, and a genuinely built four-army `contested-strait` put slot
+3 on 29.9% buildable ground with 31.8% of its build disc under water, one of five ore fields in
+the sea, and an 81 m shelf push the army never saw — `startSpots` deliberately does not read the
+reserved shelf list back, and `Scenarios.ts` records the v1.21.0 regression that came from reading
+it back. Doubling the spread made this two times worse, not better. A four-corner layout is
+incompatible with a bisector-aligned half-plane sea; giving either map four seats needs a
+different sea, not a different number. (`frozen-sector`'s 2 is the opposite case — measured at
+83-89% buildable and zero shelf push at all four starts, so its number IS an authored judgement
+about how it plays and is revisable.)
 
 ## Cargo is SLOTS, and a carrier is not a bench
 
@@ -1415,6 +1446,21 @@ that picks. **The default is still WebGL** and nothing in the product selects th
   across a 9x pixel range, because §9 had already established the frame is fill-rate bound and the
   sweep measured per-draw CPU cost. `docs/RENDER_FINDINGS.md` §7f is the measurement; §7b now
   carries the correction at its head.
+
+**NO SIMULATION OR WORLD-GENERATION WORK MAY MOVE TO A COMPUTE SHADER.** Compute is WebGPU's
+second headline win and it is the one this project cannot spend. GPU floating point is not
+bit-identical across vendors or drivers; terrain generates independently on both machines of a
+lockstep match and `s.rng` feeds every scenario decision, so a generation or sim pass moved onto
+the GPU is a tick-zero desync waiting for an NVIDIA machine and an AMD machine to meet. It is the
+axis-aligned-ellipse constraint one level down: ECMA-262 at least pins `+ - * /` and `Math.sqrt`,
+and nothing pins WGSL at all. Compute is confined to render-only work — particles, VFX, culling —
+where a per-machine difference is a pixel rather than a divergence.
+
+**"STAGE A".."STAGE F" IN ~35 SOURCE COMMENTS REFER TO A PLAN THAT NO LONGER EXISTS, AND THIS
+SECTION IS WHAT THEY POINT AT NOW.** `docs/WEBGPU_MIGRATION_PLAN.md` was deleted once the migration
+shipped; its measurements are in `RENDER_FINDINGS.md` §7 and §11, and its rules are here. The stage
+labels were left in place deliberately — they are accurate provenance for which pass ported which
+shader, and rewriting 35 comments to erase that would lose real information to gain tidiness.
 
 ## There is a desktop build now, and the web build did not move an inch
 

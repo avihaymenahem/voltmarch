@@ -8,7 +8,7 @@
  * `PropNodeMaterial.ts` is its TSL twin. They sway the same trees and must agree
  * about every coefficient, or a canopy leans one way on WebGL and another on
  * WebGPU — which is the "two grade baselines" risk in §4.5 of
- * `docs/WEBGPU_MIGRATION_PLAN.md`, arriving through the smallest possible door.
+ * the WebGPU migration, arriving through the smallest possible door.
  *
  * The numbers were literals inside a GLSL template string, which is a fine home
  * for a value with exactly one reader and a poor one for a value with two.

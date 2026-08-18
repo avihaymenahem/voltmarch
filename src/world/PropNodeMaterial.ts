@@ -3,7 +3,7 @@
  * VOLTMARCH — src/world/PropNodeMaterial.ts
  * ============================================================================
  * THE PROP MATERIAL, AS A TSL NODE GRAPH. Stage D of
- * `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * the WebGPU migration.
  *
  * `PropLibrary.createPropMaterial` is the shipping WebGL pair — one
  * `MeshPhysicalMaterial` for the whole roster with four `onBeforeCompile`

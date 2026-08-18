@@ -2,7 +2,7 @@
  * ============================================================================
  * VOLTMARCH — tests/stage-d-node-materials.spec.ts
  * ============================================================================
- * THE GATE FOR THE STAGE D TSL PORT (`docs/WEBGPU_MIGRATION_PLAN.md` §5):
+ * THE GATE FOR THE STAGE D TSL PORT (the WebGPU migration §5):
  * structures, units and props.
  *
  * The mechanism is Stage C's and is worth restating because it is what makes

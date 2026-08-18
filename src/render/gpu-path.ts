@@ -4,7 +4,7 @@
  * ============================================================================
  * THE ONE PLACE THE TWO RENDERERS MEET, AND THE REASON IT CONTAINS NO THREE.
  *
- * Stage F of `docs/WEBGPU_MIGRATION_PLAN.md`. Stages B..E ported every shader in
+ * Stage F of the WebGPU migration. Stages B..E ported every shader in
  * the project to a TSL node graph; each of those modules imports `three/webgpu`
  * at its top level, and `three/webgpu` is the WHOLE node system — the builders,
  * both backends, the node material library. Measured at Stage B: it is **absent

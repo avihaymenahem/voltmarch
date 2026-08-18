@@ -2,7 +2,7 @@
  * ============================================================================
  * VOLTMARCH — tests/terrain-node-material.spec.ts
  * ============================================================================
- * THE GATE FOR THE TSL TERRAIN PORT (`docs/WEBGPU_MIGRATION_PLAN.md` Stage C).
+ * THE GATE FOR THE TSL TERRAIN PORT (the WebGPU migration Stage C).
  *
  * THE THING THAT MAKES THIS FILE POSSIBLE, AND IT IS WORTH THE WHOLE MIGRATION
  * KNOWING ABOUT: **a TSL node graph compiles to WGSL and to GLSL in plain Node,

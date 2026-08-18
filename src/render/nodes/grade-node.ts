@@ -1,7 +1,7 @@
 /**
  * VOLTMARCH — src/render/nodes/grade-node.ts
  * =============================================================================
- * THE GRADE, AS A TSL NODE GRAPH. Stage B of `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * THE GRADE, AS A TSL NODE GRAPH. Stage B of the WebGPU migration.
  *
  * A port of `GRADE_FRAG` in `src/render/post.ts`, stage for stage:
  *

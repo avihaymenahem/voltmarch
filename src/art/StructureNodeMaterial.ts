@@ -3,7 +3,7 @@
  * VOLTMARCH — src/art/StructureNodeMaterial.ts
  * ============================================================================
  * THE STRUCTURE ANIMATION SHADER, AS A TSL NODE GRAPH. Stage D of
- * `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * the WebGPU migration.
  *
  * `BuildingFactory.applyStructureShader` is the shipping WebGL injection —
  * construction rise, bay doors, radar sweep, damage soot, interior fire, build

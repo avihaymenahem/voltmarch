@@ -3,7 +3,7 @@
  * VOLTMARCH — src/art/UnitNodeMaterial.ts
  * ============================================================================
  * THE UNIT MATERIAL, AS A TSL NODE GRAPH. Stage D of
- * `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * the WebGPU migration.
  *
  * `./UnitFactory.ts`'s `createUnitMaterial` is the shipping WebGL material: a
  * `MeshPhysicalMaterial` over the greeble atlas with one `onBeforeCompile` that

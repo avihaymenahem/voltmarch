@@ -3,7 +3,7 @@
  * VOLTMARCH — src/world/WaterNodeMaterial.ts
  * ============================================================================
  * THE WATER SHADER, AS A TSL NODE GRAPH. Stage E of
- * `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * the WebGPU migration.
  *
  * `./WaterMaterial.ts` is the shipping WebGL material and stays untouched. This
  * file draws the same sea for `WebGPURenderer` — on its WebGPU backend and on

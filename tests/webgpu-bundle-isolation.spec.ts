@@ -2,7 +2,7 @@
  * ============================================================================
  * WEBGPU BUNDLE ISOLATION — a WebGL player must not download the node system.
  * ============================================================================
- * Stage F of `docs/WEBGPU_MIGRATION_PLAN.md`. Stage B measured `three/webgpu` at
+ * Stage F of the WebGPU migration. Stage B measured `three/webgpu` at
  * **literally zero occurrences** in `dist/` and that was easy then, because
  * nothing imported the node chain. The cutover wires it in, and the whole point
  * of `src/render/gpu-path.ts` is that it stays zero.

@@ -960,7 +960,7 @@ export interface CreatePostOptions {
 }
 
 /**
- * THE NODE-BACKED CHAIN. Stage F of `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * THE NODE-BACKED CHAIN. Stage F of the WebGPU migration.
  *
  * `PostChain` has ONE type and two implementations rather than two types,
  * because everything downstream — `Bootstrap.present`, `Settings.applySettings`,

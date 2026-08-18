@@ -3,7 +3,7 @@
  * VOLTMARCH — src/world/TerrainNodeMaterial.ts
  * ============================================================================
  * THE GROUND SHADER, AS A TSL NODE GRAPH. Stage C of
- * `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * the WebGPU migration.
  *
  * `./TerrainMaterial.ts` is the shipping WebGL material: a
  * `MeshStandardMaterial` whose `onBeforeCompile` replaces four GLSL chunks.

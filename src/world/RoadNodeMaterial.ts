@@ -3,7 +3,7 @@
  * VOLTMARCH — src/world/RoadNodeMaterial.ts
  * ============================================================================
  * THE ROAD MARKING SHADERS, AS TSL NODE GRAPHS. Stage D2 of
- * `docs/WEBGPU_MIGRATION_PLAN.md` — the generator Stage D's recount found
+ * the WebGPU migration — the generator Stage D's recount found
  * assigned to no stage at all.
  *
  * `Roads.ts`'s `patchMaterial` is the shipping WebGL injection: three

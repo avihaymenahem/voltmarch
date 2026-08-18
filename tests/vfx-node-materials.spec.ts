@@ -2,7 +2,7 @@
  * ============================================================================
  * VOLTMARCH — tests/vfx-node-materials.spec.ts
  * ============================================================================
- * THE GATE FOR THE TSL VFX PORT (`docs/WEBGPU_MIGRATION_PLAN.md` Stage E).
+ * THE GATE FOR THE TSL VFX PORT (the WebGPU migration Stage E).
  *
  * ⚠️ WHAT THIS FILE IS REALLY GUARDING
  * ------------------------------------

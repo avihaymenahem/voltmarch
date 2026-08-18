@@ -1,5 +1,5 @@
 /**
- * THROWAWAY SPIKE — Stage A of docs/WEBGPU_MIGRATION_PLAN.md §5. NOT SHIPPED CODE.
+ * THROWAWAY SPIKE — Stage A of the WebGPU migration §5. NOT SHIPPED CODE.
  *
  * The three questions §4 says are the real risks, answered by experiment rather
  * than by reading release notes:

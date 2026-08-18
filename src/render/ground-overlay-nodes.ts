@@ -3,7 +3,7 @@
  * VOLTMARCH — src/render/ground-overlay-nodes.ts
  * ============================================================================
  * THE TWO MULTIPLY-BLENDED GROUND OVERLAYS, AS TSL NODE GRAPHS. Stage F of
- * `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * the WebGPU migration.
  *
  *   - the contact-shadow pool  (`./ContactShadows.ts`'s `CONTACT_FRAG`)
  *   - the decal field          (`../world/Decals.ts`'s `DECAL_FRAG`)

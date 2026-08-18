@@ -569,7 +569,7 @@ moved something** before trusting what it tells you about the treatment.
 This is the same shape as §5: the config block that reads authoritative is not always the one wired
 to the thing.
 
-## 7b. WebGPU on a SYNTHETIC scene — Stage A of `WEBGPU_MIGRATION_PLAN.md`, 2026-08-17
+## 7b. WebGPU on a SYNTHETIC scene — Stage A of the WebGPU migration, 2026-08-17
 
 > **THIS ENTRY'S VERDICT IS OVERTURNED FOR THE REAL GAME. READ §7f FIRST.**
 > Everything below is correct about the thing it measured — a stock-material
@@ -735,7 +735,7 @@ that arm to save a render.
 
 ### The AO scene submission does NOT have to be rebuilt, but the shader cost does
 
-`WEBGPU_MIGRATION_PLAN.md` §3 said the `installAoDepthGBuffer` saving "has no direct equivalent and
+the WebGPU migration §3 said the `installAoDepthGBuffer` saving "has no direct equivalent and
 would be redone from scratch". Half right, and the half that is wrong is the expensive half:
 
 - **The second scene submission is gone by construction.** `GTAONode` owns no scene and no prepass —
@@ -1405,19 +1405,52 @@ measurements inside it that outlive it.
 
 ### Per-slot team colour in the 3D world: the hue axis is closed, and the cheap version does not exist
 
-**PER-SLOT TEAM COLOUR IN THE WORLD IS A GRADE-WIDE CHANGE, AND A PER-SEAT HUE OFFSET IS ARITHMETICALLY IMPOSSIBLE.** There is exactly one site that writes the instance colour — `RenderBridge.ts` `batch.writeTeam(slot, TEAM_RGB[fi], …)` with `fi = s.faction[i] * 3` — and `s.owner[i]` is in the same struct-of-arrays, so swapping faction for owner really is one line. It would recolour the placeholder box, the building selection pulse and cameos, and NOTHING ELSE ON SCREEN: `createUnitMaterial` installs three hooks and touches `aTeamColor` in none of them, because a hull's colour is baked atlas texels (`specForPalette` feeds `teamColor`/`teamSecondary`/`insignia` to the greeble generator and the spec hash is the atlas cache key — one atlas per faction). Structures are the same, which is why a captured derrick does not repaint. Real per-slot identity means writing the team slab as a MASK the fragment shader multiplies `vRaTeam` into, which touches `greeble-gen.ts`, `UnitFactory.createUnitMaterial`, `BuildingFactory.applyStructureShader`, both atlas cache keys and `Cameos.ts`. One atlas per SLOT is the alternative and it multiplies texture memory and boot time by the army count and forks every batch.
+**PER-SLOT TEAM COLOUR IN THE WORLD IS A GRADE-WIDE CHANGE, AND A PER-SEAT HUE OFFSET IS
+ARITHMETICALLY IMPOSSIBLE.** There is exactly one site that writes the instance colour —
+`RenderBridge.ts` `batch.writeTeam(slot, TEAM_RGB[fi], …)` with `fi = s.faction[i] * 3` — and
+`s.owner[i]` is in the same struct-of-arrays, so swapping faction for owner really is one line. It
+would recolour the placeholder box, the building selection pulse and cameos, and NOTHING ELSE ON
+SCREEN: `createUnitMaterial` installs three hooks and touches `aTeamColor` in none of them,
+because a hull's colour is baked atlas texels (`specForPalette` feeds
+`teamColor`/`teamSecondary`/`insignia` to the greeble generator and the spec hash is the atlas
+cache key — one atlas per faction). Structures are the same, which is why a captured derrick does
+not repaint. Real per-slot identity means writing the team slab as a MASK the fragment shader
+multiplies `vRaTeam` into, which touches `greeble-gen.ts`, `UnitFactory.createUnitMaterial`,
+`BuildingFactory.applyStructureShader`, both atlas cache keys and `Cameos.ts`. One atlas per SLOT
+is the alternative and it multiplies texture memory and boot time by the army count and forks
+every batch.
 
-**Do not reach for a per-seat hue offset as the cheap version.** The four faction team hues — crimson 3°, jade 168°, cobalt 215°, arc-violet 287° — were chosen for a **72° minimum pairwise separation** with the 100-120° 'amateur emerald' window struck out by scorecard #9, and `config.ts` records that 72° is the best any fourth candidate scores. Four seats across four factions is sixteen hues on the same wheel, which cannot clear about 21°. If per-slot identity is wanted, move value or saturation, or add a non-colour marker (chevron or pennant count). And recolour SLABS only: `RA3_LOOK_BIBLE.md` risk R12 forbids team colour as a hull tint, `config.ts` enforces it, and a hull tint fails scorecard #10 as well.
+**Do not reach for a per-seat hue offset as the cheap version.** The four faction team hues —
+crimson 3°, jade 168°, cobalt 215°, arc-violet 287° — were chosen for a **72° minimum pairwise
+separation** with the 100-120° 'amateur emerald' window struck out by scorecard #9, and
+`config.ts` records that 72° is the best any fourth candidate scores. Four seats across four
+factions is sixteen hues on the same wheel, which cannot clear about 21°. If per-slot identity is
+wanted, move value or saturation, or add a non-colour marker (chevron or pennant count). And
+recolour SLABS only: `RA3_LOOK_BIBLE.md` risk R12 forbids team colour as a hull tint, `config.ts`
+enforces it, and a hull tint fails scorecard #10 as well.
 
 ### No four-army frame has ever been captured, and 13-atoll-crossing is not one
 
-**THE FOUR-ARMY DRAW-CALL QUESTION IS STILL OPEN, AND `13-atoll-crossing` DOES NOT ANSWER IT.** That fixture declares `armies: SKIRMISH_ARMIES_MAX` on its scenario plan and reports 60 colour draws (114 total) in `shots/_report.json`, which reads exactly like a four-army frame comfortably inside the 130 budget. It is not one: the `armies` field exists so the generator reserves four island shelves, and `buildAtoll` composes **two owners**, `b.allies` and `b.soviets`. Quoting 60 as the four-army figure would be quoting a duel.
+**THE FOUR-ARMY DRAW-CALL QUESTION IS STILL OPEN, AND `13-atoll-crossing` DOES NOT ANSWER IT.**
+That fixture declares `armies: SKIRMISH_ARMIES_MAX` on its scenario plan and reports 60 colour
+draws (114 total) in `shots/_report.json`, which reads exactly like a four-army frame comfortably
+inside the 130 budget. It is not one: the `armies` field exists so the generator reserves four
+island shelves, and `buildAtoll` composes **two owners**, `b.allies` and `b.soviets`. Quoting 60
+as the four-army figure would be quoting a duel.
 
-The concern it leaves open is structural. `RenderBridge` keys batching by `packKey(kind, faction, defId)`, so a batch is per-faction, and `withArmyCount` fills new armies from the factions nobody has taken — the natural four-way is four DIFFERENT factions, i.e. up to twice a duel's distinct batches. There is still no `?armies=` boot flag, so `tools/shoot.mjs`, `tools/metrics.mjs`, `tools/desync-probe.mjs` and `tools/replay-probe.mjs` cannot produce the number. Answering it needs either that flag or a fixture that composes four owners; until then the honest statement is that a four-army frame has never been photographed.
+The concern it leaves open is structural. `RenderBridge` keys batching by `packKey(kind, faction,
+defId)`, so a batch is per-faction, and `withArmyCount` fills new armies from the factions nobody
+has taken — the natural four-way is four DIFFERENT factions, i.e. up to twice a duel's distinct
+batches. There is still no `?armies=` boot flag, so `tools/shoot.mjs`, `tools/metrics.mjs`,
+`tools/desync-probe.mjs` and `tools/replay-probe.mjs` cannot produce the number. Answering it
+needs either that flag or a fixture that composes four owners; until then the honest statement is
+that a four-army frame has never been photographed.
 
 ### What four armies cost the sim — Vision is the per-army cost, the AI is not
 
-**FOUR ARMIES COST TWICE THE ARMY ENTITIES AND +67% OF VISION; THE AI IS NOT THE PROBLEM.** `temperate-valley`, seed 4242, `start: 'base'`, tick 0. `Vision.update()` timed over 200 calls after 20 warm-up, `AiDirector.tick()` over 600 ticks after 30:
+**FOUR ARMIES COST TWICE THE ARMY ENTITIES AND +67% OF VISION; THE AI IS NOT THE PROBLEM.**
+`temperate-valley`, seed 4242, `start: 'base'`, tick 0. `Vision.update()` timed over 200 calls
+after 20 warm-up, `AiDirector.tick()` over 600 ticks after 30:
 
 ```
                               2 armies    4 armies
@@ -1429,4 +1462,72 @@ The concern it leaves open is structural. `RenderBridge` keys batching by `packK
   AI commands over 600 ticks       13          39       x3
 ```
 
-The world grows only 36% because Gaia dominates the opening census and does not scale; the ARMIES grow 106%, and armies are the half that grows during a match. Three brains cost 22% more IN TOTAL than one because every brain is slow-ticked and phase-offset, at ~0.01 ms against a 33.3 ms budget — so the AI layer is not a player-count risk. **Vision is**: 4.2% -> 7.0% of a 30 Hz tick, and it is the per-player stamp loop rather than allocation, since `Vision` already allocates `MAX_PLAYERS` grids of `MAP_CELL_COUNT`. This is a STATIC OPENING CENSUS — nothing moving, no combat, no projectiles — so the absolutes are a floor and the shape is what should be carried forward. Movement, steering, pathfinding, targeting and damage were never timed at four armies at all.
+The world grows only 36% because Gaia dominates the opening census and does not scale; the ARMIES
+grow 106%, and armies are the half that grows during a match. Three brains cost 22% more IN TOTAL
+than one because every brain is slow-ticked and phase-offset, at ~0.01 ms against a 33.3 ms budget
+— so the AI layer is not a player-count risk. **Vision is**: 4.2% -> 7.0% of a 30 Hz tick, and it
+is the per-player stamp loop rather than allocation, since `Vision` already allocates
+`MAX_PLAYERS` grids of `MAP_CELL_COUNT`. This is a STATIC OPENING CENSUS — nothing moving, no
+combat, no projectiles — so the absolutes are a floor and the shape is what should be carried
+forward. Movement, steering, pathfinding, targeting and damage were never timed at four armies at
+all.
+
+
+---
+
+## 11. From the WebGPU migration plan, before it was deleted
+
+Extracted 2026-08-18. The migration shipped (stages A-F); these are the measurements inside
+the plan that outlive it.
+
+
+## 7d2. THE SHADER PORTS, MEASURED AGAINST A CONTROL AND A FLOOR — Stages C and D, 2026-08-17
+
+`tools/terrain-node-compare.mjs` and `tools/stage-d-node-compare.mjs`, real Chrome,
+`backend.isWebGPUBackend` asserted true per arm, 640x480, **dither off on both sides** — the
+ordered dither is a deliberate +/-0.5/255 and the two paths derive its grid from `gl_FragCoord`
+and from `screenCoordinate`, so with it on most of the frame reports as changed at max delta 1
+whether or not the shaders agree.
+
+**Stage C, terrain.** `tsl-webgl2` against the shipping `glsl-webgl` is **4.547% of pixels at max
+delta 11**, against a stock-material lighting floor of **4.191% at max 1** — the translation sits
+on the floor. The WebGPU arm's much larger residual (57.775% at max 31) is the BACKEND and not the
+shader: the identical graph across the two backends agrees within 1/255 on 99.9% of pixels.
+
+**Stage D, structures / units / props.**
+
+```
+                              changed   over 8/255   max    mean
+  tsl-webgpu   vs glsl-webgl    6.838%      0.799%     77   0.347
+  tsl-webgl2   vs glsl-webgl    5.595%      0.726%     77   0.318
+  glsl-webgpu  vs glsl-webgl   18.190%     17.682%    238  11.650   <- CONTROL
+  stock-webgpu vs stock-webgl   0.638%      0.000%      1   0.006   <- FLOOR
+```
+
+**THE CONTROL AND THE FLOOR ARE WHAT MAKE THE PORT'S NUMBER MEAN ANYTHING; A PORT A/B WITH NEITHER
+IS UNREADABLE.** The control is the shipping GLSL materials handed to the node renderer, where
+`onBeforeCompile` is silently dead — it differs VISIBLY on 17.682% of pixels against the port's
+0.799%, a factor of 22, and that is the frame-level measurement of a fact §7b established only by
+counting calls. The floor is two stock physical materials, one per renderer, at 0.638% and max
+delta **1**: unlike Stage C's terrain scene there is effectively no lighting-model gap to hide in,
+so Stage D's residual is the port's own. It is concentrated on silhouettes and normal-mapped
+curvature rather than on any of the ported branches — check that before calling a new residual a
+regression.
+
+**EVERY NUMBER IN THIS SECTION WAS TAKEN ON THE INTEGRATED RADEON, AND THAT IS THE ONE CAVEAT ON
+THE VERDICT.** A discrete GPU cuts the GPU side and leaves the CPU side where it is, so the 8.4x
+narrows — but 8.4x is an enormous margin to close, and the SLOPE (r2 0.995-1.000 against pixel
+count) is a property of what this frame draws rather than of the device that drew it. A
+discrete-GPU re-run is worth having before any large spend and is not worth waiting for before
+believing this. It is also cheap now: §7h took a WebGPU arm on this machine's NVIDIA part in real
+Chrome, and §7j moves both renderers onto it in the desktop shell, so the re-run is the same
+`tools/gpu-profile.mjs` command on the other adapter rather than on another machine.
+
+**THE STAGE E VFX PORT COULD NOT HAVE MOVED THESE NUMBERS, AND IT WAS MEASURED ANYWAY.**
+`src/vfx/FlashBudget.ts` is CPU arithmetic — `admitGlare` returns a multiplier, the emitters fold
+it into `EmitDesc`'s intensity envelope, and it reaches both material sets as the same `aTint.x`
+instance attribute. No shader reads it and no shader can change it. Measured regardless, one
+machine and one session, `before` = the pre-Stage-E `src/vfx/` against `after` = HEAD:
+`tools/flash-stack.mjs`'s entire `cases` array is **byte-identical between the two arms**. Do not
+re-run it to clear a VFX MATERIAL change; do re-run it the moment anything touches the emitter
+gain path, which is the only thing that can move those numbers.

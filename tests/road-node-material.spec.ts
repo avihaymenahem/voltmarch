@@ -2,7 +2,7 @@
  * ============================================================================
  * VOLTMARCH — tests/road-node-material.spec.ts
  * ============================================================================
- * THE GATE FOR THE STAGE D2 TSL PORT (`docs/WEBGPU_MIGRATION_PLAN.md` §5):
+ * THE GATE FOR THE STAGE D2 TSL PORT (the WebGPU migration §5):
  * `src/world/Roads.ts`'s three marking shaders.
  *
  * The mechanism is Stage C's and Stage D's: a TSL node graph compiles to WGSL

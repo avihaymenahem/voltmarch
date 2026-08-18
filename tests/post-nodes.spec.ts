@@ -29,7 +29,7 @@
  *     stop building — but the numeric A/B in `tools/grade-ab/` was taken on a
  *     WebGPU device only. What the WebGL2 backend renders from the same graph is
  *     unmeasured. Two backends means two grade baselines —
- *     `docs/WEBGPU_MIGRATION_PLAN.md` §4.5.
+ *     the WebGPU migration §4.5.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -824,7 +824,7 @@ describe('the assembled node chain', () => {
     /*
      * `WebGPURenderer` serves a WebGL2 backend to any browser without a device,
      * and that is a THIRD renderer: node materials over WebGL2, with its own
-     * generator (`GLSLNodeBuilder`). `WEBGPU_MIGRATION_PLAN.md` §4.5 — two
+     * generator (`GLSLNodeBuilder`). the WebGPU migration §4.5 — two
      * backends means two grade baselines, and a graph that only compiles for
      * WGSL would strand every one of those users on a black frame.
      *

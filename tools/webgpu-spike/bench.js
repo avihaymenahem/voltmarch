@@ -1,5 +1,5 @@
 /**
- * THROWAWAY SPIKE — Stage A of docs/WEBGPU_MIGRATION_PLAN.md §5. NOT SHIPPED CODE.
+ * THROWAWAY SPIKE — Stage A of the WebGPU migration §5. NOT SHIPPED CODE.
  *
  * The measurement harness. Exposes `window.__BENCH` for tools/webgpu-spike/run.mjs
  * to drive. Nothing here imports from `src/`, and nothing in `src/` imports this.

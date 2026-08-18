@@ -3,7 +3,7 @@
  * VOLTMARCH — src/vfx/vfx-node-materials.ts
  * ============================================================================
  * THE FOUR VFX MATERIALS, AS TSL NODE GRAPHS. Stage E of
- * `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * the WebGPU migration.
  *
  * `./Particles.ts` and `./Beams.ts` are the shipping WebGL implementations and
  * stay untouched. This file draws the same effects for `WebGPURenderer` — on its

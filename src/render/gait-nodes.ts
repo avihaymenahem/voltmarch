@@ -3,7 +3,7 @@
  * VOLTMARCH — src/render/gait-nodes.ts
  * ============================================================================
  * THE INFANTRY WALK CYCLE, AS A TSL NODE GRAPH. Stage D of
- * `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * the WebGPU migration.
  *
  * `./Gait.ts` is the shipping WebGL injection and carries the whole argument for
  * why the swing is a vertex shader rather than a skeleton. Read it first; this

@@ -9,7 +9,7 @@
  * They paint the same asphalt and must agree about every stripe width, every
  * dash period and every anti-aliasing constant, or the network reads one way on
  * WebGL and another on WebGPU. That is the "two grade baselines" risk in §4.5 of
- * `docs/WEBGPU_MIGRATION_PLAN.md`, and roads are the surface it would cost the
+ * the WebGPU migration, and roads are the surface it would cost the
  * most: `docs/RENDER_FINDINGS.md` measures this generator at 3.80% edge density
  * against terrain's 0.96-1.59%, so it is the one thing in the frame already
  * inside the look bible's detail band.

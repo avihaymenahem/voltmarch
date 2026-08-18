@@ -2,7 +2,7 @@
  * ============================================================================
  * VOLTMARCH — tests/water-node-material.spec.ts
  * ============================================================================
- * THE GATE FOR THE TSL WATER PORT (`docs/WEBGPU_MIGRATION_PLAN.md` Stage E).
+ * THE GATE FOR THE TSL WATER PORT (the WebGPU migration Stage E).
  *
  * Three jobs, and the second is the one that earns its keep:
  *

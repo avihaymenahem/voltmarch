@@ -2,7 +2,7 @@
  * ============================================================================
  * VOLTMARCH — src/render/gpu-path-install.ts
  * ============================================================================
- * THE NODE PATH, ASSEMBLED. Stage F of `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * THE NODE PATH, ASSEMBLED. Stage F of the WebGPU migration.
  *
  * **NOTHING MAY EVER IMPORT THIS STATICALLY.** It is reached from exactly one
  * place — the `await import('./gpu-path-install')` inside

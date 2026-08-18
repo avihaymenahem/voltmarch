@@ -3,7 +3,7 @@
  * VOLTMARCH — src/render/shroud-nodes.ts
  * ============================================================================
  * THE SHROUD, AS A TSL NODE GRAPH. §1-§4 are the SELF-TINT (Stage D of
- * `docs/WEBGPU_MIGRATION_PLAN.md`); §5-§7 are the CARPET (Stage E).
+ * the WebGPU migration); §5-§7 are the CARPET (Stage E).
  *
  * `./FogOfWar.ts`'s `applyShroudTint` is the shipping WebGL injection: five
  * uniforms, one `vShroudUv` varying derived from world XZ, and a tint applied to

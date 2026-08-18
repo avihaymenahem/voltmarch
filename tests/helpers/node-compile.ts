@@ -93,7 +93,7 @@ function stubRenderer(webgl: boolean): any {
 /**
  * The two backends `WebGPURenderer` can run, and both must be checked.
  *
- * `docs/WEBGPU_MIGRATION_PLAN.md` §4.5: a WebGPU build still serves the WebGL2
+ * the WebGPU migration §4.5: a WebGPU build still serves the WebGL2
  * fallback to browsers without a device, and that is a THIRD renderer — node
  * materials over WebGL2, with its own generator. Two backends means two grade
  * baselines. `GLSLNodeBuilder` is exported alongside `WGSLNodeBuilder` and runs

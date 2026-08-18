@@ -3,7 +3,7 @@
  * VOLTMARCH — src/render/sky-nodes.ts
  * ============================================================================
  * THE SKY DOME, AS A TSL NODE GRAPH. Stage F of
- * `docs/WEBGPU_MIGRATION_PLAN.md`.
+ * the WebGPU migration.
  *
  * `scene.ts`'s `createSkyMaterial` is the shipping WebGL twin: a raw
  * `ShaderMaterial` with nine uniforms, one `vDir` varying, and a fragment that

@@ -16,7 +16,7 @@
  * ---------------------------------------------------------------------------
  * THREE CLOCKS, BECAUSE "IS THIS CPU-BOUND" NEEDS ALL THREE
  * ---------------------------------------------------------------------------
- * `docs/WEBGPU_MIGRATION_PLAN.md` §1 turns on one comparison: WebGPU's headline
+ * the WebGPU migration §1 turns on one comparison: WebGPU's headline
  * win is cheaper draw SUBMISSION, which is CPU work, so it can only help a frame
  * whose CPU side is the long pole. Answering that needs three numbers that this
  * tool used to report one and a half of:
@@ -1264,7 +1264,7 @@ console.log(`wall ${fmt(baseWall)} ms (readPixels-serialised upper bound) → ${
 /* -------------------------------------------------------------------------- */
 
 /*
- * `docs/WEBGPU_MIGRATION_PLAN.md` §1's table, resolved against what was just
+ * the WebGPU migration §1's table, resolved against what was just
  * measured. Printed rather than left to a reader, because three of its four rows
  * say the migration does not help and the difference between them is a ratio
  * nobody should have to compute by eye.
