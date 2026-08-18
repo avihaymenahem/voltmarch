@@ -334,6 +334,79 @@ Three things worth keeping from how that was found and fixed:
   with the gate on and with the gate deleted. It opens the match honestly and latches afterwards
   now, which is the only ordering that reaches the rule.
 
+## There is a campaign now, and it is a SECOND CONSUMER of the engine
+
+`src/campaign/` is a story mode of authored operations: a declarative trigger table per operation,
+evaluated by a pure director inside `simTick`. **It is not a widening of the mission system and it
+shares no rule language with `MissionRule`** — `RULE_KINDS` evaluates counters over the EVENT STREAM
+outside `simTick`, an operation needs state predicates over the WORLD inside it, and those are two
+languages on opposite sides of the determinism boundary. `tutorial-steps.ts` refused the same merge
+first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposing a third way.
+
+- **THE VOCABULARY IS FROZEN: 12 conditions, 3 combinators, 11 effects.** Adding one after content
+  authoring begins is a schema change across every operation file. Two were considered and CUT with
+  the reasons written into `types.ts` so nobody re-derives them — `spawnBuildings` (no runtime
+  equivalent exists, and every premise that looked like it needed one is a structure the LAYOUT
+  places and a trigger reveals, repairs or captures) and `setInvulnerable` (an escort whose subject
+  cannot die is not an escort; what a designer wants from it is bought by not spawning the threat
+  until the first checkpoint).
+- **`campaign.system.ts` IS `Phase.Cleanup` ORDER 9000 AND THAT NUMBER IS WHAT MAKES REPLAY WORK.**
+  An order issued there lands on the bus AFTER the Command-phase drain and applies on tick N+1.
+  Recording: recorded at N+1, applied at N+1. Playback: the Director re-derives the same order at
+  Cleanup of tick N and `playback.system.ts` (Phase.Command order 1) HARVESTS the bus at the start
+  of N+1, throwing the copy away, before feeding the recorded one. Exactly once, same tick, either
+  way. **Move it ahead of the drain and every scripted order applies twice under playback** — trap 2
+  in `Replay.ts`, avoided by a phase number rather than a flag. One `order` serves both phases and
+  9000 is right on both sides; if they ever need to diverge, SPLIT THE MODULE.
+- **THE BUNDLE BOUNDARY IS THE FIRST CONSTRAINT, NOT A CLEANUP.** `src/game/Systems.ts` globs
+  `*.system.ts` with `eager: true` FROM THE ENTRY CHUNK, so `campaign.system.ts` imports
+  `campaign/{session,policy,types}.ts` and nothing else. The Director, the operation table, the
+  layouts and the prose arrive through ONE `await import('../campaign/campaign-install')` in
+  `Shell.startOperation`. Measured: entry +3.31 kB, campaign chunk 23.1 kB, Shell chunk +7.5 kB.
+  **Never `import` anything under `src/campaign/` from a `*.system.ts` except those three.**
+- **NO NEW `CommandKind`, AND `src/net/protocol.ts` IS NOT TOUCHED.** `spawnUnits` calls
+  `ProductionService.spawnUnit` directly inside `simTick`. A wire-legal spawn command would travel
+  to the relay, whose contract is *"stamps identity; the simulation enforces authority"* — and the
+  sim has no authority test that would refuse a PvP client conjuring an army.
+- **`elapsedSinceArmed` IS A HOLD TIMER AND THE DIRECTOR EVALUATES EVERY TRIGGER TWICE FOR IT.**
+  Pass one forces it true to decide whether the trigger's OTHER conditions hold, which sets or
+  clears the arm tick; pass two compares against that tick. Losing a derrick at minute five of a
+  six-minute hold therefore RESTARTS the clock. The other way round hands the player a win for
+  holding nothing, which is a failure in their favour and the direction nobody reports.
+- **`entityDead` IS TRUE BEFORE THE TAG HAS EVER EXISTED.** A mistyped `protect` fails the player on
+  tick one, silently. That is why a layout DECLARES its tags and `validateCampaign` refuses a
+  trigger naming one no layout produces — and why `campaign-maps.spec.ts` builds every operation
+  headless and checks the declaration against what actually landed, in both directions.
+- **AN ARMED OPERATION SELECTS THE SCENARIO.** `?shot=` is the only other thing that can name one
+  and the shell deletes it from every match query on purpose. `bootScenarioName` answers
+  `'campaign'` when `plannedOperation()` is non-null; there is no third flag, because a second
+  signal that has to agree with the first is how two of them come to disagree. Both start-forcing
+  sites in `Scenarios.ts` carry the campaign exception, and `'campaign'` with nothing armed still
+  resolves to `'base'` so the router is total.
+- **THE ROSTER IS AN ALLOW-LIST, WHICH INVERTS `UnlockGate`'s CENTRAL DEFAULT.** Tagged-and-unlisted
+  means REFUSED — the only way an operation can say "you do not have Tesla Coils yet" without a
+  deny-list. The cost is that adding an `UNLOCK_TAGS` entry to a def that had none retroactively
+  withdraws it from both sides of every shipped operation, silently. Not fixable by changing the
+  default without deleting the feature; caught instead by `index.ts` refusing a tag no `UNLOCKS` row
+  produces. `setCampaignRoster` is consulted AHEAD of the PvP `suppressed` flag, because the
+  operation's authored intent outranks a hammer an earlier match left set.
+- **NEITHER SHIPPED OUTCOME RULE MAY END AN OPERATION BY DEFAULT.** `Shell.pollOutcome` and
+  `outcome.system.ts` both read `campaign/policy.ts`. Four reachable failures against a scripted
+  match, all in shipped code: an eight-minute hold won at minute three; a seat whose forces arrive
+  at t+3 min handing an instant victory at t+10 s; a commando insertion defeated at t+10 s for
+  having no base; a defecting militia counted hostile forever. `validateCampaign` refuses an
+  operation with no authored win path AND no authored lose path AND no opt-in — that is a match
+  which cannot end, and it must be a build error.
+- **THE PROFILE IS DEAF FOR THE DURATION, AND THAT COST TWO FIXES TO ACTUALLY ACHIEVE.** See the
+  `beginMatch` section above: gating the lifecycle was not enough, and then the fix's own clearing
+  condition in `startMatch` undid it one line later. Ten hours of campaign advances no skirmish
+  unlock and no profile counter — verified by playing an operation to a win on a cleared profile and
+  finding `unlocked: []` with localStorage never written.
+- **`npm run shots` CANNOT SEE ANY OF THIS.** There is a `SCENARIO_PITCH_DEG.campaign` row so an
+  unknown-name warning does not fire on every campaign boot, and it binds under `?shot=campaign`
+  alone. No operation is photographed. Do not read an unchanged look-bible grade as evidence about
+  the campaign.
+
 ## An economy can stop dead, and one rule exists to unstick it
 
 Reported as *"if my ore harvester being smashed and i dont have any money left.. how can i make a
