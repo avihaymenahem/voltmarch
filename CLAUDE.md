@@ -1348,6 +1348,7 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   before   total 143–213   ao 39–57   colour 51–77
   after    total 105–157   ao      0  colour 51–77      (01-establishing-base: 207 -> 151)
   v2.12.0  total 105–157   ao      0  colour 54–77      (prop type cap 22 -> 30)
+  v2.16.0  total 108–159   ao      0  colour 56–79      (re-measured, not carried forward)
   ```
 
   So **the budget is met** — the colour pass is 51–77 against 130, and it did not move — and the
@@ -1528,6 +1529,34 @@ Because that decision is per page rather than per run, two runs CAN agree by cha
 matching HUD captures proves nothing. A recent pair came back 13/13 identical, HUD fixtures
 included; that is consistent with a coin landing the same way twice and is not evidence the
 variance is gone.
+
+**THE STANDING GRADE IS 91.1%, 14 FAILING CHECKS OVER 13 IMAGES, WITH ONE FATAL** —
+`01-establishing-base #12 far-minus-near saturation` at -0.0735 against a -0.05 floor. Measured
+2026-08-18 on the shipping WebGL path. The two other figures quoted further down (92.0%/13 for the
+roads A/B, 0.892308/16 for the AO ablation) are HISTORICAL A/B controls and should not be read as
+the current score.
+
+**AND THE FATAL IS PRE-EXISTING, WHICH IS ONLY KNOWABLE FROM A CONTROL CAPTURE.** The spawn work
+moved every start shelf twice, so the honest question was whether it caused that failure. Captured
+at the commit before it and byte-compared:
+
+```
+6 of 13 fixtures BYTE-IDENTICAL      01-establishing-base  08-naval-water  09-placement
+                                     11-dusk-mood  12-blob-readability  13-atoll-crossing
+7 changed                            02 03 04 05 06 07 10
+grade                                91.1% / 14 failures / same single FATAL, both sides
+```
+
+`01-establishing-base` is byte-identical, so the FATAL sits on a frame the change never touched.
+Two of the others are load-bearing confirmations rather than luck: **`08-naval-water` is identical
+because `NAVAL_SEA` has no dry pair and `dryPairs` falls back to [0,1]**, which is exactly what that
+function's comment promises, and **`13-atoll-crossing` is identical because an island layout cannot
+be reached by a slot change**. A change that had really broken start placement could not have left
+those two alone.
+
+**Do not read an unchanged weighted grade as "nothing moved".** More than half these frames changed
+while the grade did not move at all — it is a frame-wide statistic, and `tools/shot-compare.mjs`
+plus a control capture is the only thing that answers "did this fixture change".
 
 **The harness used to photograph other people's builds, and said `12/12 captured`.** It served the
 bundle on a fixed port 4317 and guarded it with a `fetch` probe that aborts after 1500 ms — a
