@@ -830,6 +830,8 @@ export class Shell {
     id: string;
     title: string;
     chapterTitle: string;
+    /** The next operation in this chapter, or null at the end of one. */
+    nextId: string | null;
     map: OperationBoot;
   } | null = null;
 
@@ -1177,6 +1179,8 @@ export class Shell {
         id: op.id,
         title: op.title,
         chapterTitle: install.chapterOf(op)?.title ?? op.chapter,
+        // A replay or a restored save has nowhere onward to offer.
+        nextId: null,
         map: op.map,
       };
     }
@@ -1277,12 +1281,19 @@ export class Shell {
       this.fail('Operation Not Found', new Error(`No campaign operation '${operationId}'.`));
       return;
     }
+    // RESOLVED ONCE, HERE, BECAUSE `buildResult` RUNS INSIDE A FRAME. The
+    // chapter title and the next operation both live in the lazily-imported
+    // table, and the end screen cannot await a chunk while it is being built.
+    const chapter = install.chapterOf(op);
     this.operation = {
       id: op.id,
       title: op.title,
-      // The chapter's own title, resolved once here. `buildResult` runs inside
-      // a frame and cannot await the lazy chunk to look it up.
-      chapterTitle: install.chapterOf(op)?.title ?? op.chapter,
+      chapterTitle: chapter?.title ?? op.chapter,
+      // THE NEXT OPERATION IN THIS CHAPTER, or null at the end of one. Offered
+      // on a win so the campaign has somewhere to go — an end screen whose only
+      // forward button is "Main Menu" makes a nine-operation chapter feel like
+      // nine separate skirmishes.
+      nextId: chapter?.operations.find((o) => o.index === op.index + 1)?.id ?? null,
       map: op.map,
     };
     this.campaignResult = null;
@@ -1375,6 +1386,7 @@ export class Shell {
       operationId: op.id,
       title: op.title,
       chapterTitle: op.chapterTitle,
+      nextOperationId: op.nextId,
       medal: result.medal,
       reason: result.reason,
       objectives: result.objectives,
@@ -2071,6 +2083,8 @@ export class Shell {
         id: op.id,
         title: op.title,
         chapterTitle: install.chapterOf(op)?.title ?? op.chapter,
+        // A replay or a restored save has nowhere onward to offer.
+        nextId: null,
         map: op.map,
       };
       suppressProgression(true);

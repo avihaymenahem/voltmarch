@@ -105,6 +105,14 @@ export interface CampaignResult {
   readonly operationId: string;
   readonly title: string;
   readonly chapterTitle: string;
+  /**
+   * The next operation in this chapter, or null at the end of one.
+   *
+   * RESOLVED WHEN THE OPERATION WAS ARMED, not here. The table is behind a lazy
+   * import and this screen is built inside a frame; the shell cannot await a
+   * chunk while assembling a result.
+   */
+  readonly nextOperationId: string | null;
   /** 0 none, 1 bronze, 2 silver, 3 gold. */
   readonly medal: number;
   /** The objective id a loss names, or ''. */
@@ -376,9 +384,22 @@ export class EndScreen implements Screen {
     //
     // Retry is also the most-pressed button in any campaign, so it leads.
     if (c !== undefined) {
+      // NEXT OPERATION LEADS ON A WIN, RETRY LEADS ON A LOSS, and the primary
+      // styling follows the same rule. An end screen whose only forward button
+      // is Main Menu makes a nine-operation chapter feel like nine separate
+      // skirmishes — and Retry is the most-pressed button in any campaign, so
+      // it never leaves the row, it just stops being the emphasis.
+      const next = r.won ? c.nextOperationId : null;
+      if (next !== null) {
+        foot.appendChild(button('Next Operation', {
+          iconName: 'swords',
+          variant: 'primary',
+          onClick: () => { void this.shell.startOperation(next); },
+        }));
+      }
       foot.appendChild(button('Retry', {
         iconName: 'refresh',
-        variant: r.won ? 'default' : 'primary',
+        variant: r.won || next !== null ? 'default' : 'primary',
         onClick: () => { void this.shell.retryOperation(); },
       }));
       foot.appendChild(button('Campaign', {
