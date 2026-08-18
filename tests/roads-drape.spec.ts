@@ -379,6 +379,16 @@ describe('road ends, bounded rather than fixed', () => {
  * on `build`). Treat a move here as a routing change to explain, not a number
  * to re-baseline.
  */
+/** Measured 2026-08-18, same terrain and caveat as CENSUS below. */
+const KERB_DASHES: Record<string, number> = {
+  'industrial-grid': 24,
+  'foundry-line': 0,
+  'temperate-valley': 69,
+  'contested-strait': 12,
+  'frozen-sector': 0,
+  'airbase-flats': 80,
+};
+
 const CENSUS: Record<string, number> = {
   'industrial-grid': 369,
   'foundry-line': 76,
@@ -424,5 +434,30 @@ describe('no chain paints markings on a carriageway another chain owns', () => {
     const got: Record<string, number> = {};
     for (const c of CASES) got[c.label] = build(c).net.stats().foreignPaintRows;
     expect(got).toEqual(CENSUS);
+  });
+
+  /**
+   * THE KERB IS NOT THE CARRIAGEWAY, AND THIS CAUGHT ONE REGRESSION ALREADY.
+   *
+   * `dEnd` carries a distance to the nearest junction mouth AND, since the
+   * overlap fix, a -1 sentinel meaning "this cross-section paints no markings".
+   * The kerb's yellow crossing dashes were keyed on `dEnd < ROAD_KERB_YELLOW_RUN`
+   * (7.0) — and -1 < 7.0. So every suppressed row also turned its kerb into a
+   * junction crossing. Measured on the commit that shipped it:
+   *
+   *     temperate-valley  587 of 1436 kerb samples dashed (40.9%)  ->  69 (4.8%)
+   *     industrial-grid   389 of  992 (39.2%)                      ->  24 (2.4%)
+   *     sunder-atoll      194 of  700 (27.7%)                      ->  12 (1.7%)
+   *
+   * The value grew a second meaning and one of its two readers was not told.
+   * A count is the cheapest thing that notices, so it is pinned rather than
+   * bounded: the dashes exist only within 7 m of a real mouth, mouths are
+   * sparse, and any coupling to something that is not a distance moves this by
+   * an order of magnitude.
+   */
+  it('dashes only the kerb that is actually near a junction mouth', () => {
+    const got: Record<string, number> = {};
+    for (const c of CASES) got[c.label] = build(c).net.stats().kerbDashRows;
+    expect(got).toEqual(KERB_DASHES);
   });
 });

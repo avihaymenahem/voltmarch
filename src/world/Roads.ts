@@ -1594,6 +1594,12 @@ export interface RoadStats {
   foreignPaintRows: number;
   /** Cross-sections emitted in total, so the above has a denominator. */
   ribbonRows: number;
+  /**
+   * Kerb samples carrying the crossing-dash paint. Only ever within
+   * ROAD_KERB_YELLOW_RUN of a real junction mouth, so this is small; a jump
+   * means something has coupled the kerb to a value that is not a distance.
+   */
+  kerbDashRows: number;
   /** Fraction of the map covered by the road corridor. */
   coverage: number;
   drawCalls: number;
@@ -1629,6 +1635,16 @@ export class RoadNetwork {
   private foreignPaintRows = 0;
   /** Cross-sections emitted, the denominator for the above. */
   private ribbonRows = 0;
+  /**
+   * Kerb samples carrying the crossing-dash paint.
+   *
+   * Reported so the kerb cannot silently re-couple to the carriageway's
+   * marking suppression. It did once: `dEnd` gained a -1 sentinel meaning
+   * "paint no markings here", the kerb was keyed on `dEnd < 7.0`, and yellow
+   * dashes appeared down a quarter of every kerb in the game. A count is the
+   * cheapest thing that notices.
+   */
+  private kerbDashRows = 0;
   /** Measured, for `stats()` and for the boot-log conformance line. */
   private cornerRadii: number[] = [];
   private bendRadii: number[] = [];
@@ -3147,8 +3163,13 @@ export class RoadNetwork {
 
       // Distance to the nearest junction mouth. Drives the crosswalk, the
       // stop bar and the yellow kerb dashes; 1e4 means "nowhere near one".
+      //
+      // KEPT SEPARATE FROM `dEnd` BECAUSE THEY STOPPED BEING THE SAME THING.
+      // `dEnd` is this distance OR the -1 sentinel that means "paint nothing
+      // here", and the kerb below wants the distance, never the sentinel.
       const dA = c.junctionA ? along : 1e4;
       const dB = c.junctionB ? total - along : 1e4;
+      const mouthDist = Math.min(dA, dB);
       /*
        * NO PAINT ON SOMEBODY ELSE'S TARMAC.
        *
@@ -3195,7 +3216,7 @@ export class RoadNetwork {
        * is to duplicate the boundary row rather than to widen this test.
        */
       const foreign = this.cover !== null && this.markingsAreForeign(region, along, w, lxw, lzw, rxw, rzw, x, z);
-      const dEnd = foreign ? -1 : Math.min(dA, dB);
+      const dEnd = foreign ? -1 : mouthDist;
       this.ribbonRows++;
       if (foreign) this.foreignPaintRows++;
 
@@ -3223,7 +3244,25 @@ export class RoadNetwork {
       for (let k = 0; k <= spans; k++) prev[k] = cur[k];
       havePrev = true;
 
-      const paint = dEnd < ROAD_KERB_YELLOW_RUN ? 2 : 0;
+      /*
+       * THE KERB READS THE DISTANCE, NOT THE SENTINEL.
+       *
+       * This said `dEnd`, and `dEnd` had just gained the value -1 to mean "this
+       * cross-section paints no carriageway markings". `ROAD_KERB_YELLOW_RUN`
+       * is 7.0 and -1 < 7.0, so every row the overlap fix suppressed also
+       * switched its kerb to `paint = 2` — the crossing-dash branch — and
+       * yellow dashes appeared down 26% of every kerb in the game, nowhere near
+       * a junction.
+       *
+       * `dEnd` HAD TWO CONSUMERS AND THE FIX GATED ONE. That is the same defect
+       * this file already carries a note about for `rw`, and the same shape as
+       * every stale-premise entry in docs/SPEC_DRIFT_AUDIT.md: a value quietly
+       * acquires a second meaning and the reader that wanted the first meaning
+       * is not updated. Another chain owning this tarmac does not move THIS
+       * chain's junction, so the kerb has no business knowing about it.
+       */
+      const paint = mouthDist < ROAD_KERB_YELLOW_RUN ? 2 : 0;
+      if (paint === 2) this.kerbDashRows++;
       left.pts.push(lxw, lzw); left.nrm.push(px, pz); left.paint.push(paint); left.arc.push(along);
       right.pts.push(rxw, rzw); right.nrm.push(-px, -pz); right.paint.push(paint);
       right.arc.push(along);
@@ -3839,6 +3878,7 @@ export class RoadNetwork {
       minOffAxisDegrees: this.minOffAxis,
       foreignPaintRows: this.foreignPaintRows,
       ribbonRows: this.ribbonRows,
+      kerbDashRows: this.kerbDashRows,
       coverage: covered / this.mask.length,
       drawCalls: 3,
     };
