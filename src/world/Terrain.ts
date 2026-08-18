@@ -41,7 +41,7 @@ import {
   createTerrainMaterials, type TerrainMaterialSet, type TerrainTextureData,
 } from './TerrainMaterial';
 import {
-  CHUNK_QUADS, SPLAT_N, TerrainFields, buildTerrainChunks, terrainGenKey,
+  SPLAT_N, TerrainFields, buildTerrainChunks, chunkCastsShadow, terrainGenKey,
   type TerrainFieldData, type TerrainGenOptions,
 } from './terrain-gen';
 
@@ -207,15 +207,25 @@ export class Terrain extends TerrainFields {
       ?? buildTerrainChunks(this.height, this.wallUp, this.wallTop);
     this.adoptedChunks = null;
 
-    const trisPerChunk = CHUNK_QUADS * CHUNK_QUADS * 2;
-
     for (const c of chunks) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(c.position, 3));
       geo.setAttribute('normal', new THREE.BufferAttribute(c.normal, 3));
       geo.setAttribute('aUp', new THREE.BufferAttribute(c.up, 1));
       geo.setAttribute('aTop', new THREE.BufferAttribute(c.top, 1));
-      geo.setIndex(new THREE.BufferAttribute(c.index, 1));
+      /*
+       * THE HALF-RESOLUTION INDEX WHEN THE CHUNK EARNED ONE — 2424 triangles
+       * against 8192, over the SAME position/normal/aUp/aTop buffers. There is
+       * no second geometry, no second upload and no runtime switch: which index
+       * a chunk draws was decided in `buildTerrainChunks`, off-thread, from the
+       * heightfield alone. Its own header explains why this cannot crack
+       * against a full-resolution neighbour.
+       *
+       * The unreferenced vertices stay in the buffer and cost nothing per
+       * frame — a draw touches the vertices its indices name, not the array's
+       * length — which is what makes an index-only LOD worth having at all.
+       */
+      geo.setIndex(new THREE.BufferAttribute(c.lodIndex ?? c.index, 1));
       geo.computeBoundingSphere();
       geo.computeBoundingBox();
 
@@ -227,7 +237,12 @@ export class Terrain extends TerrainFields {
       // far the cheapest draw call in the module to delete: a chunk whose
       // steep triangles cover under ~4% of its area has nothing a 38-degree
       // sun could throw far enough to notice.
-      mesh.castShadow = c.cliffTris >= trisPerChunk * 0.04;
+      //
+      // SAME PREDICATE THE LOD GATE CONSULTS, which is why it is a function in
+      // `terrain-gen.ts` rather than a literal here. A decimated chunk has no
+      // steep triangles at all, so it cannot reach this threshold and cannot
+      // cast a shadow from geometry it no longer draws.
+      mesh.castShadow = chunkCastsShadow(c.cliffTris);
       mesh.receiveShadow = true;
       mesh.renderOrder = RENDER_ORDER.TERRAIN;
       mesh.layers.set(LAYERS.DEFAULT);

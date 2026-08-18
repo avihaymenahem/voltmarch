@@ -2155,6 +2155,52 @@ export const TERRAIN_GROUND_NORMAL_CLAMP = 0.85;
 /** Max metres of height spread inside a cell for it to count as buildable. */
 export const TERRAIN_BUILD_FLATNESS = 1.1;
 
+/**
+ * Fraction of a chunk's triangles that must be steeper than `CLIFF_SLOPE`
+ * before the chunk is submitted to the shadow map.
+ *
+ * WAS A BARE `0.04` INSIDE `Terrain.buildMeshes` and is a named export now
+ * because a SECOND decision reads it: `buildTerrainChunks` refuses to decimate
+ * a chunk that would cast, so a chunk can never throw a shadow from triangles
+ * its index buffer no longer contains. Two literals in two files is exactly how
+ * those two decisions would drift apart. `chunkCastsShadow` in
+ * `src/world/terrain-gen.ts` is the one predicate both sides call.
+ */
+export const TERRAIN_SHADOW_CLIFF_FRACTION = 0.04;
+
+/**
+ * Metres of height error the half-resolution terrain index may introduce
+ * before a chunk is kept at full resolution.
+ *
+ * WHAT IT MEASURES. Decimating drops every odd-indexed heightfield sample
+ * inside a chunk; the drawn surface then runs straight between the samples that
+ * survive. The error is the largest gap between a dropped sample and the coarse
+ * edge (or cell diagonal) it used to sit on, and it is measured directly rather
+ * than inferred from a slope — `buildTerrainChunks` computes it for every
+ * chunk on every generation.
+ *
+ * WHY 0.15. Two independent ceilings, and this sits under both:
+ *
+ *  1. **The swell.** `RA3_LOOK_BIBLE` §6.4 authors playable ground as flat to
+ *     within 0.4-0.8 m of swell over 15-30 m. A decimation error at 0.4 would
+ *     be the whole of the smallest authored swell, i.e. the LOD would be
+ *     rewriting the landform rather than approximating it.
+ *  2. **Everything standing on the ground.** Props, structures and units are
+ *     placed at `terrain.heightAt`, which reads the HEIGHTFIELD — not the
+ *     drawn mesh. So the error is also the distance a tank's tracks may float
+ *     above, or sink below, the ground it is drawn on. 0.15 m is under the
+ *     ride height of every hull in the game and well inside the contact
+ *     shadow that hides the join.
+ *
+ * MEASURED, and it is very nearly not the binding gate at all: over the ten
+ * shipped battlefields plus the four `?shot=` seas, the set of chunks passing
+ * `error <= 0.15` and the set with zero cliff triangles agree to within four
+ * chunks on one map. Raising it to 0.4 admits chunks that DO hold a terrace
+ * face, which is the point at which the two gates stop agreeing and the second
+ * one starts mattering.
+ */
+export const TERRAIN_LOD_MAX_ERROR = 0.15;
+
 /* --------------------------------------------------------------------------
  * 20a. START AREAS — the reserved spawn plateaus
  *

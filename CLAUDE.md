@@ -124,10 +124,10 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 4520 across 179 files (+2 opt-in probes)
+npm test             # vitest, currently 4548 across 181 files (+2 opt-in probes)
                      #   6 of those are gated on `distIsCurrent()` — freshness, not mere
                      #   existence — across BOTH `manual` and `webgpu-bundle-isolation`,
-                     #   so a tree with no current `dist/` reports 4514 and skips 8.
+                     #   so a tree with no current `dist/` reports 4542 and skips 8.
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -1284,8 +1284,28 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   shadow camera, and the only other shadow-capable light — the ground bounce — sets
   `castShadow = false`. `QualitySettings.shadowCascades` used to be written and read by nobody; it
   is deleted now, along with `shadowResolution`, `lodBias`, `lodDistances`, `cascadeNear`,
-  `shadowColor`, `bloom.mips` and `lensDirt`. **There is still no LOD system** — `lodDistances` was
-  deleted rather than wired, so do not write code that assumes one exists.
+  `shadowColor`, `bloom.mips` and `lensDirt`.
+
+  **THERE IS ONE LOD, AND IT IS TERRAIN-ONLY.** This said "there is still no LOD system" until the
+  `terrain-halfres-lod` branch landed. `buildTerrainChunks` now emits a SECOND index over the same
+  vertices for chunks with no relief worth drawing at 1 m, bounded by `TERRAIN_LOD_MAX_ERROR`
+  (0.15 m). It is not a distance LOD and there is still no `lodDistances` — a chunk is decimated on
+  its own FLATNESS, once, at generation, and never switches at runtime. Do not write code that
+  assumes a general LOD system, a distance ladder, or per-frame selection.
+
+  Its one real risk is a T-junction crack, and it is excluded structurally rather than looked for:
+  every boundary edge of a coarse chunk spans exactly one grid step, so it draws the same polyline
+  a fine neighbour draws, vertex for vertex, against ANY neighbour. `tools/metrics.mjs` could never
+  have caught the alternative — a two-pixel seam moves no frame-wide statistic — which is why
+  `tests/terrain-lod.spec.ts` proves the geometry instead of scoring pixels.
+
+  **THE SAVING IS SMALL AND THE COUNTS ARE PINNED FOR A REASON.** Four to sixteen of sixty-four
+  chunks qualify depending on the map; on the landlocked roll ten of the thirteen capture fixtures
+  stand on, it is four, which is ~1.5% of the terrain and less of a frame. The counts are pinned
+  per-map so that any generator change announces itself — and it has already fired once, when the
+  start-spread widening pulled the four start shelves apart and cost three maps their fused central
+  flat blob. Read the header of that spec before re-baselining it: two of the five fixtures cannot
+  be reached by a start-point change at all, and if THOSE move, the generator is broken.
 
   InstancedMesh for anything repeated, pools for anything spawned, caller-supplied output arrays in
   query paths.

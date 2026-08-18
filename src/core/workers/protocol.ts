@@ -38,7 +38,8 @@ import {
 } from '../../art/greeble-gen';
 import { MAP_CELL_COUNT } from '../config';
 import {
-  CHUNK_INDICES, CHUNK_N, CHUNK_VERTS, GRID_COUNT, SPLAT_BYTES, TERRAIN_CHUNKS,
+  CHUNK_INDICES, CHUNK_LOD_INDICES, CHUNK_N, CHUNK_VERTS, GRID_COUNT, SPLAT_BYTES,
+  TERRAIN_CHUNKS,
   generateTerrainFields, heightAtGrid, terrainFieldTransfers,
   type TerrainFieldData, type TerrainGenOptions,
 } from '../../world/terrain-gen';
@@ -545,7 +546,19 @@ export function isTerrainReply(v: unknown): v is TerrainReply {
     if (!isFloats(c.normal, CHUNK_VERTS * 3)) return false;
     if (!isFloats(c.up, CHUNK_VERTS) || !isFloats(c.top, CHUNK_VERTS)) return false;
     if (!(c.index instanceof Uint16Array) || c.index.length !== CHUNK_INDICES) return false;
+    /*
+     * `lodIndex` is null on most chunks and NULL IS THE ONLY LEGAL ABSENCE —
+     * `undefined` is refused, because a field set built by an older worker
+     * would carry it and `c.lodIndex ?? c.index` would then silently draw the
+     * full mesh while every length check above still passed. The topology is
+     * fixed (see `CHUNK_LOD_INDICES`), so this is an exact length, not a range.
+     */
+    if (c.lodIndex !== null
+      && !(c.lodIndex instanceof Uint16Array && c.lodIndex.length === CHUNK_LOD_INDICES)) {
+      return false;
+    }
     if (!Number.isInteger(c.cliffTris) || (c.cliffTris as number) < 0) return false;
+    if (!isFiniteNumber(c.lodError) || (c.lodError as number) < 0) return false;
   }
   return true;
 }
