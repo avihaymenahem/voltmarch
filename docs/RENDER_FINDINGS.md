@@ -1394,3 +1394,39 @@ its properties are on the prototype, so `{...info}` is `{}` on every real adapte
   is why the artefacts alone could not settle it — that is worth fixing in the harness.)
 - `[roads] junction corner radii 3.1–6.0 m are outside scorecard #33's 4–8 m band` — self-reported by
   the harness, not independently checked.
+
+
+---
+
+## 10. Four armies — what the extra seats cost, and the one axis that is closed
+
+Extracted 2026-08-18 from `docs/N_ARMIES_PLAN.md` before that plan was deleted. These are the
+measurements inside it that outlive it.
+
+### Per-slot team colour in the 3D world: the hue axis is closed, and the cheap version does not exist
+
+**PER-SLOT TEAM COLOUR IN THE WORLD IS A GRADE-WIDE CHANGE, AND A PER-SEAT HUE OFFSET IS ARITHMETICALLY IMPOSSIBLE.** There is exactly one site that writes the instance colour — `RenderBridge.ts` `batch.writeTeam(slot, TEAM_RGB[fi], …)` with `fi = s.faction[i] * 3` — and `s.owner[i]` is in the same struct-of-arrays, so swapping faction for owner really is one line. It would recolour the placeholder box, the building selection pulse and cameos, and NOTHING ELSE ON SCREEN: `createUnitMaterial` installs three hooks and touches `aTeamColor` in none of them, because a hull's colour is baked atlas texels (`specForPalette` feeds `teamColor`/`teamSecondary`/`insignia` to the greeble generator and the spec hash is the atlas cache key — one atlas per faction). Structures are the same, which is why a captured derrick does not repaint. Real per-slot identity means writing the team slab as a MASK the fragment shader multiplies `vRaTeam` into, which touches `greeble-gen.ts`, `UnitFactory.createUnitMaterial`, `BuildingFactory.applyStructureShader`, both atlas cache keys and `Cameos.ts`. One atlas per SLOT is the alternative and it multiplies texture memory and boot time by the army count and forks every batch.
+
+**Do not reach for a per-seat hue offset as the cheap version.** The four faction team hues — crimson 3°, jade 168°, cobalt 215°, arc-violet 287° — were chosen for a **72° minimum pairwise separation** with the 100-120° 'amateur emerald' window struck out by scorecard #9, and `config.ts` records that 72° is the best any fourth candidate scores. Four seats across four factions is sixteen hues on the same wheel, which cannot clear about 21°. If per-slot identity is wanted, move value or saturation, or add a non-colour marker (chevron or pennant count). And recolour SLABS only: `RA3_LOOK_BIBLE.md` risk R12 forbids team colour as a hull tint, `config.ts` enforces it, and a hull tint fails scorecard #10 as well.
+
+### No four-army frame has ever been captured, and 13-atoll-crossing is not one
+
+**THE FOUR-ARMY DRAW-CALL QUESTION IS STILL OPEN, AND `13-atoll-crossing` DOES NOT ANSWER IT.** That fixture declares `armies: SKIRMISH_ARMIES_MAX` on its scenario plan and reports 60 colour draws (114 total) in `shots/_report.json`, which reads exactly like a four-army frame comfortably inside the 130 budget. It is not one: the `armies` field exists so the generator reserves four island shelves, and `buildAtoll` composes **two owners**, `b.allies` and `b.soviets`. Quoting 60 as the four-army figure would be quoting a duel.
+
+The concern it leaves open is structural. `RenderBridge` keys batching by `packKey(kind, faction, defId)`, so a batch is per-faction, and `withArmyCount` fills new armies from the factions nobody has taken — the natural four-way is four DIFFERENT factions, i.e. up to twice a duel's distinct batches. There is still no `?armies=` boot flag, so `tools/shoot.mjs`, `tools/metrics.mjs`, `tools/desync-probe.mjs` and `tools/replay-probe.mjs` cannot produce the number. Answering it needs either that flag or a fixture that composes four owners; until then the honest statement is that a four-army frame has never been photographed.
+
+### What four armies cost the sim — Vision is the per-army cost, the AI is not
+
+**FOUR ARMIES COST TWICE THE ARMY ENTITIES AND +67% OF VISION; THE AI IS NOT THE PROBLEM.** `temperate-valley`, seed 4242, `start: 'base'`, tick 0. `Vision.update()` timed over 200 calls after 20 warm-up, `AiDirector.tick()` over 600 ticks after 30:
+
+```
+                              2 armies    4 armies
+  army entities                    83         171     +106%
+  total alive (incl. Gaia)        232         316      +36%
+  ore fields                        3           5
+  Vision.update()  median     1.4035 ms   2.3471 ms    +67%
+  AiDirector.tick() over 600     4.9 ms      6.0 ms    +22%   (1 brain vs 3)
+  AI commands over 600 ticks       13          39       x3
+```
+
+The world grows only 36% because Gaia dominates the opening census and does not scale; the ARMIES grow 106%, and armies are the half that grows during a match. Three brains cost 22% more IN TOTAL than one because every brain is slow-ticked and phase-offset, at ~0.01 ms against a 33.3 ms budget — so the AI layer is not a player-count risk. **Vision is**: 4.2% -> 7.0% of a 30 Hz tick, and it is the per-player stamp loop rather than allocation, since `Vision` already allocates `MAX_PLAYERS` grids of `MAP_CELL_COUNT`. This is a STATIC OPENING CENSUS — nothing moving, no combat, no projectiles — so the absolutes are a floor and the shape is what should be carried forward. Movement, steering, pathfinding, targeting and damage were never timed at four armies at all.

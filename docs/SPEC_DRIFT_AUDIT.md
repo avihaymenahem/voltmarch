@@ -16,7 +16,7 @@ annotation is another claim that can rot, and this file has already demonstrated
 Check the finding against HEAD before acting on it. Confirmed-still-live as of 2026-08-07:
 findings 2, 3, 4, 6 and 7.
 
-**One finding was added after the audit: #62, at the end of §3.** It is the missing world-space ore
+**Findings were added after the audit: #62 at the end of §3, and #63-#65 in §10.** It is the missing world-space ore
 renderer — nine claims across five files, three of them flatly false. It is out of numbering order
 because it was found on 2026-08-12 rather than on 2026-08-05, and it is annotated with its state
 (fixed, with a named residue) against the rule above, because a finding added *after* its own fix
@@ -1162,3 +1162,25 @@ the wrong table. For these the only defences are:
   now holds a stale one-row score. Regenerate with
   `npm run shots && node tools/metrics.mjs shots/*.png --expect 12` — note the argument order, per
   finding 15.
+
+
+---
+
+## 10. Findings added after the original audit
+
+#62 was the first of these and sits at the end of §3. #63 onward are added here, from the
+2026-08-18 pass that extracted `docs/AERIAL_PLAN.md` and `docs/N_ARMIES_PLAN.md` before deleting
+them — each is a claim in the tree that stopped being true, found while reading those plans
+against the code.
+
+### 63. A Repair Depot already services an aircraft loitering above it, contradicting Defs.ts's "a hangar would have nothing to do"
+
+`src/data/Defs.ts` states the air doctrine as *"IT NEVER LANDS. There is no airfield, no rearm and no fuel in this game, and adding one would be a new subsystem rather than a def row… an idle aircraft LOITERS at 22 m over whatever it is standing above and a hangar would have nothing to do."* **The last clause is false, and repair-on-station has shipped unadvertised since the Repair Depot landed.** `RepairSell.tickRepairs` walks `store.byKind[EntityKind.Vehicle]` — which is where every flyer lives, because there is no `EntityKind.Aircraft` and `UnitDef.kind` is typed `Infantry | Vehicle` — filters on `maxHp`, `hp`, `Alive` and `PendingDestroy`, none of which an aircraft fails, and tests the pad with `dx * dx + dz * dz > r2`. **There is no Y term and no `Locomotor` reference anywhere in the file.** So an aircraft loitering 22 m above a friendly Repair Depot is being serviced right now, at `REPAIR_COST_PER_HP`, at `REPAIR_DEPOT.fractionPerSec` of max HP per second, without landing, without exposure, and with `EntityFlag.BeingRepaired` visible in the selection panel. Two consequences. A landing zone's "return to base to repair" half is not a new mechanic — it is a mechanic the game already has and never advertised, and the only missing piece is the ORDER that sends the aircraft there. And an aircraft healing for free with only an XZ radius to respect is almost certainly not what anyone designed, which is the kind of thing that reads as intended once a landing zone exists to justify it — decide whether it is a bug before building on it, not during. Established by code read on 2026-08-18; not observed in a running match. | LIVE |
+
+### 64. server/README.md still advertises 31 relay tests; there are 60
+
+`server/README.md:14` documents the relay's own suite as '`npm test` # 31 tests, no sockets, no timers'. There are 60, and CLAUDE.md's gate list already says 60. Flagged during the four-army audit in v2.5.0-era and still wrong. The count is the only claim on that line that can rot; the 'no sockets, no timers' half is still true.
+
+### 65. MapChoice.players' doc gives an obsolete reason for the numbers in its own table
+
+`MapChoice.players` in `src/shell/settings-store.ts` explains its 2s and 4s with 'Two armies open on the authored diagonal (`SKIRMISH_START_OFFSETS`); three or more fan around the map centre on the same ellipse, with no reserved terrain shelf.' That stopped being true when `SKIRMISH_START_OFFSETS` grew to four entries: `startSpots` walks the authored table for every slot up to `SKIRMISH_ARMIES_MAX` and the geometric fan is reached only at FIVE or more armies, which no shipped map offers. Slots 2 and 3 land on reserved shelves exactly as 0 and 1 do. The field's VALUES are still right — the real reasons are the sea arithmetic for `contested-strait`/`coral-shore` and an authored playtest judgement for `frozen-sector` — but the stated reason is one revision behind the code it sits next to.

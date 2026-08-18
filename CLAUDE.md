@@ -537,6 +537,14 @@ define at least 4 possible spawns in each map"*. Three complaints, three differe
   independently on both machines of a lockstep match, and that is a tick-zero desync. Permutation
   and power-of-two scaling are exact; angles are not.
 
+**A THREE- OR FOUR-ARMY SAVE RESTORES ONTO TWO-ARMY GROUND, AND NO GUARD CATCHES IT.** `Shell.bootGame` calls `setPlannedArmies(armyCount(this.setup))`, so the generator reserves one levelled shelf per army in the setup that booted — and `Shell.loadGame` deliberately boots with `opponents: [{ faction: c.aiFaction, … }]`, ONE entry, on the argument that `restoreSnapshot` re-seats the whole player table anyway. That argument is sound for the PLAYER TABLE and unsound for the GROUND: terrain, roads and scatter are regenerated rather than stored (`SaveGame.ts`, above `RestoreOptions`), so a four-way save comes back with its bases on a heightfield levelled for two. `requireMatchingWorld` cannot see it — it compares scenario, map and seed, and all three match. Before the army-count wire landed this was masked, because every boot planned two and the capture and the restore agreed by accident.
+
+The fix is a field on `SaveContext` (`src/shell/LoadGame.ts`), and it is additive rather than a schema break: `SaveSlotInfo.extra` is explicitly opaque and `extraOf` falls back field by field, so rows already on disk degrade instead of failing. The `loadGame` comment's claim that growing the context 'would invalidate every slot already on disk' is stronger than the code requires and should be corrected in the same change. **The replay path is the model and already does this correctly** — `Shell.startReplay` rebuilds `opponents` from every non-Neutral slot in the header before it boots, precisely so `armyCount` answers the recording's number.
+
+**THE TWO SEA MAPS ARE `players: 2` BY ARITHMETIC, NOT BY JUDGEMENT, AND THE NUMBER IS NOT REVISABLE BY PLAYTEST.** `MAP_SEAS.coast` and `.tropical` are half-planes whose waterline is offset along `START_BISECTOR` — the perpendicular bisector of slots 0 and 1 — because that is the one bearing on which both openings project to the same distance from the water. Slots 2 and 3 are the other two corners of the same rectangle and they lie ACROSS that bisector. At the shipped `START_SPREAD_X/Z` of 148/124 they project to ±190.1 m, against a waterline at −112 m on coast and +100 m on tropical: **slot 3 on Contested Strait is 78 m out to sea and slot 2 on Coral Shore is 90 m out to sea**, before `resolveStarts` slides anything.
+
+Measured on the pre-doubling table (74/62, projections ±95.05 m) the same seats were 16.95 m and 4.95 m of dry land from the waterline, and a genuinely built four-army `contested-strait` put slot 3 on 29.9% buildable ground with 31.8% of its build disc under water, one of five ore fields in the sea, and an 81 m shelf push the army never saw — `startSpots` deliberately does not read the reserved shelf list back, and `Scenarios.ts` records the v1.21.0 regression that came from reading it back. Doubling the spread made this two times worse, not better. A four-corner layout is incompatible with a bisector-aligned half-plane sea; giving either map four seats needs a different sea, not a different number. (`frozen-sector`'s 2 is the opposite case — measured at 83-89% buildable and zero shelf push at all four starts, so its number IS an authored judgement about how it plays and is revisable.)
+
 ## Cargo is SLOTS, and a carrier is not a bench
 
 Reported as *"limited to 1 type of ship only that carries 4 troops each"*. Exactly true:
@@ -1102,8 +1110,10 @@ The three that are real gaps:
 
 ### Aircraft, and the four rifles holding the whole air layer up
 
-Extracted from `docs/AERIAL_PLAN.md`, which is a PLAN and will be deleted; these are the
-measurements inside it that outlive it. The rework itself is not done.
+Extracted from `docs/AERIAL_PLAN.md`, which was a PLAN and has been DELETED. These are the
+measurements inside it that outlive it; the unexecuted design went to the task list, which is this
+repo's record-of-intent mechanism. **The rework itself is not done** — do not read any of this as
+describing shipped behaviour.
 
 ### A rifleman out-shoots a flak battery, and that is one inversion
 
@@ -1251,6 +1261,24 @@ re-derives them. Overturn one by rewriting it with an argument, not by trying it
   **Revisit only when some army's air roster reaches three or more airframes AND its Vehicles tab is
   within one slot of `BUILD_COLUMNS * BUILD_ROWS`** — Vehicles is at 12/14 for the Allies and the
   Pact today.
+
+**THE HARD-CODED FIVES ARE SIXTEEN DECLARATIONS, AND A GREP CANNOT FIND THEM.** Enumerated by hand
+2026-08-18: `BUILD_TAB_ORDER` in `core/config.ts` (the only one a test guards — `command-post.spec.ts`
+asserts it against `BUILD_TAB_COUNT`), the `TABS` allowlist in `net/protocol.ts`, then
+`cameoPool` / `cameoEntries` / `cameos` / `tabAlert` / `tabVisible` in `sim/Production.ts`,
+`localPool` / `gridRows` / `cameos` / `tabAlert` / `tabVisible` in `ui/Hud.ts`,
+`TAB_LABELS` / `TAB_SHORT` / `tabVisible` in `ui/Sidebar.ts`, and `BUILD_TAB_HOTKEYS` in
+`input/ActionCatalogue.ts`.
+
+**The silent one is `Sidebar.ts`'s `tabVisible`.** A sixth tab reads `undefined` there, which is
+falsy, so the tab is never drawn — no error, no log, and a full queue behind it. That is the
+`BuildTab.Powers` failure verbatim, re-armed and waiting.
+
+**The audit has to be manual and it is easy to get wrong.** Any regex tight enough to catch all
+sixteen also catches `sim/AIStrategy.ts`'s `NO_ANSWER = [0, 0, 0, 0, 0]`, which is a five-element
+**ThreatClass** array with nothing to do with tabs. And a careful first pass over this exact list
+found *fourteen* and missed two `tabVisible` declarations sitting within eight lines of entries it
+had already recorded.
 
 ## The roads were underground, and one number was doing four kinds of damage
 
