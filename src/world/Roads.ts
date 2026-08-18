@@ -174,6 +174,50 @@ export function resample(src: readonly number[], step: number, from: number, to:
  * into `radii` so `stats()` can report the measured band, and the tangent
  * length is clamped to 45% of the shorter leg so two corners can never eat
  * each other and produce a cusp.
+ *
+ * `rMin` IS A STARTING VALUE AND CANNOT BIND, WHICH IS NOT A DEFECT AND MUST
+ * NOT BE "FIXED" HERE. `r` is assigned exactly twice: `clamp((rMin + rMax) / 2,
+ * rMin, rMax)`, which for the shipped 15/40 is 27.5 and never touches either
+ * end, and `t / tanHalfTurn` in the tMax branch. So every radius this emits is
+ * either exactly 27.5 or forced by `0.45 * min(l1, l2)` — measured, `stats()`
+ * reports `bendRadiusMax` of exactly 27.50 on all seven battlefields — and
+ * `ROAD_BEND_RADIUS_MIN` is read by nothing that can hold a radius up.
+ * Measured `bendRadiusMin` on the shipped start layout: 4.05 m (coral-shore),
+ * 4.28 m (temperate-valley), against a 6.8 m arterial half-width.
+ *
+ * A FLOOR HERE IS UNIMPLEMENTABLE, and that is arithmetic rather than taste.
+ * Raising `r` back to `rMin` requires `t = r * tanHalfTurn > tMax`, which is
+ * precisely the cusp the 0.45 factor exists to prevent: the two fillets either
+ * side of a short leg would overlap. The only way to widen such a bend is to
+ * move the waypoints further apart, which is a ROUTING change — and the route
+ * is already the survivor of `routeLegal`, so the legs are short because the
+ * ground refused anything longer.
+ *
+ * WHAT A TIGHT BEND ACTUALLY COSTS, MEASURED, because it has been guessed at
+ * twice. It does not tear the tarmac open: `maxSafeOffset` clamps every offset
+ * to 0.85 of the local radius, so the OFFSET CURVE never inverts, the worst
+ * row-versus-along angle is 83.97 degrees (which is the central-difference
+ * normal doing its job, not a shear), and no interior hole correlates with a
+ * clamped row — the ten sub-cell slivers found by rasterising three maps at
+ * 0.5 m sit 120 to 334 m from the nearest one, and two of those maps have no
+ * clamped rows at all.
+ *
+ * TWO RIBBON QUADS DO WIND BACKWARDS, AND AN EARLIER DRAFT OF THIS BLOCK SAID
+ * ZERO because it measured the offset curve and then made a claim about the
+ * strip. They are not the same object: a ribbon quad spans two CONSECUTIVE
+ * rows, so where `wl` falls 5.22 m -> 3.42 m across one 1.95 m step the edge
+ * outruns the advance and the quad goes non-convex. One on coral-shore, one on
+ * temperate-valley, each on the tightest bend of the tightest chain on its map
+ * — 2 of roughly 8 900 quads, inside the 0.2% budget `makeRoadMaterial`
+ * already records, and the reason that material is `DoubleSide`. PINNED rather
+ * than zeroed: the honest fix is rate-limiting how fast `wl`/`wr` may move
+ * between rows, which is a change to `resolveChainEdges` with its own
+ * consequences.
+ *
+ * What a bend costs everywhere else is a PINCH: the row narrows to `wl + wr`,
+ * worst measured 9.57 m against a nominal 13.60 m. That pinch is the whole
+ * reason the paint frame in `buildChainRibbon` has to read `wl`/`wr` rather
+ * than `halfWidth`. `tests/roads-drape.spec.ts` bounds every number here.
  */
 export function filletPolyline(
   src: readonly number[], rMin: number, rMax: number, segMetres: number,
@@ -3110,18 +3154,32 @@ export class RoadNetwork {
    * OUT than the outermost paint — ground no marking occupies — and that alone
    * suppressed an extra 7.5% of temperate-valley's cross-sections. The edge
    * line is the widest thing drawn, so that is where the outer samples belong.
+   *
+   * THE INSET IS FROM THE ROW'S OWN EDGES, NOT FROM THE NOMINAL HALF-WIDTH,
+   * and that distinction only became visible once the ribbon stopped pretending
+   * its rows were symmetric. `resolveChainEdges` clamps each side separately,
+   * so a row on a tight bend spans `wl + wr` rather than `2 * halfWidth` — and
+   * on such a row the edge line at |u| = halfWidth - edgeInset is not drawn at
+   * all on the pinched side, because there is no tarmac out there to draw it
+   * on. `edgeInset` in from each EMITTED edge is therefore the outermost paint
+   * this row can actually carry, which is what the test wants to sample.
+   *
+   * On an unclamped row it is bit-for-bit the expression this replaces:
+   * `wl + wr` and `2 * w` are the same float when `wl === wr === w`.
    */
   private markingsAreForeign(
-    region: number, along: number, w: number,
+    region: number, along: number, wl: number, wr: number,
     lxw: number, lzw: number, rxw: number, rzw: number, cx: number, cz: number,
   ): boolean {
     const cover = this.cover;
     if (cover === null) return false;
     if (cover.outranked(region, along, cx, cz)) return true;
-    // `side = w - 2*w*t`, so the edge line at |side| = w - edgeInset is at
-    // these two t. Derived from the ribbon's own mapping rather than restated,
+    const span = wl + wr;
+    if (span <= 0) return false;
+    // `side = wl - span * t`, so `edgeInset` in from either edge is at these
+    // two t. Derived from the ribbon's own mapping rather than restated,
     // because the two must not drift apart.
-    const t = ROAD_MARKS.edgeInset / (2 * w);
+    const t = ROAD_MARKS.edgeInset / span;
     for (const u of [t, 1 - t]) {
       if (cover.outranked(region, along, lxw + (rxw - lxw) * u, lzw + (rzw - lzw) * u)) return true;
     }
@@ -3160,6 +3218,21 @@ export class RoadNetwork {
       const px = c.nrm[i * 2], pz = c.nrm[i * 2 + 1];
       const lxw = c.edgeL[i * 2], lzw = c.edgeL[i * 2 + 1];
       const rxw = c.edgeR[i * 2], rzw = c.edgeR[i * 2 + 1];
+      /*
+       * THE ROW'S OWN TWO HALF-WIDTHS, WHICH ARE NOT ALWAYS `w`.
+       *
+       * `resolveChainEdges` clamps each side INDEPENDENTLY through
+       * `maxSafeOffset`, so on a bend the emitted row spans `wl + wr` and the
+       * centreline sits at `wl` from the left edge rather than half way. The
+       * paint frame below is written against those two numbers; writing it
+       * against `w` puts u = 0 at the row's MIDPOINT, which is (wl - wr) / 2
+       * off the spline. Measured over the seven shipped battlefields at ten
+       * seeds 0..9 — 51 056 rows, of which 82 (0.161%) are clamped — the worst
+       * was 2.015 m on coral-shore at (255.9, 184.2), where wl 2.77 against
+       * wr 6.80 threw the double-yellow most of a lane off centre.
+       */
+      const wl = c.wl[i], wr = c.wr[i];
+      const span = wl + wr;
 
       // Distance to the nearest junction mouth. Drives the crosswalk, the
       // stop bar and the yellow kerb dashes; 1e4 means "nowhere near one".
@@ -3215,7 +3288,7 @@ export class RoadNetwork {
        * that case does not arise on the shipped maps. If it ever does, the fix
        * is to duplicate the boundary row rather than to widen this test.
        */
-      const foreign = this.cover !== null && this.markingsAreForeign(region, along, w, lxw, lzw, rxw, rzw, x, z);
+      const foreign = this.cover !== null && this.markingsAreForeign(region, along, wl, wr, lxw, lzw, rxw, rzw, x, z);
       const dEnd = foreign ? -1 : mouthDist;
       this.ribbonRows++;
       if (foreign) this.foreignPaintRows++;
@@ -3224,13 +3297,32 @@ export class RoadNetwork {
         const t = k / spans;
         const vx = lxw + (rxw - lxw) * t;
         const vz = lzw + (rzw - lzw) * t;
-        // `aRoad.x` is signed metres across, +halfWidth at the left kerb line
-        // and -halfWidth at the right. It is LINEAR in t, so subdividing the
-        // cross-section leaves every marking in ROAD_MARKING_GLSL evaluating to
-        // the value it evaluated to before — the paint does not move, only the
-        // surface it is painted on stops being underground.
-        const side = w - 2 * w * t;
+        // `aRoad.x` is signed metres across the carriageway, measured from the
+        // CENTRELINE: +wl at the left kerb line and -wr at the right. Those two
+        // are equal to `w` on all but 0.161% of rows, and unequal exactly where
+        // a bend made `maxSafeOffset` pull one side in.
+        //
+        // It is LINEAR in t, so subdividing the cross-section leaves every
+        // marking in ROAD_MARKING_GLSL evaluating to the value it evaluated to
+        // before — the paint does not move, only the surface it is painted on
+        // stops being underground. That property is why the fix is this one
+        // line and not a re-parameterisation: `wl - span * t` is affine in t
+        // exactly as `w - 2 * w * t` was.
+        //
+        // BIT-IDENTICAL WHERE THE CLAMP NEVER FIRED. When wl === wr === w,
+        // `wl + wr` and `2 * w` are the same float (both are an exponent
+        // increment, exact in IEEE-754), JS parses `2 * w * t` as `(2 * w) * t`
+        // so the operand order matches, and `wl - ...` is `w - ...`.
+        const side = wl - span * t;
         this.terrain.normalAt(vx, vz, this.nrmScratch);
+        // `aRoad.z` STAYS THE NOMINAL HALF-WIDTH and is deliberately not
+        // `span * 0.5`. The shader derives `lanes` from it, and the lane count
+        // of a road is a property of its CLASS — a per-row width would make a
+        // four-lane arterial drop to two lanes for three rows through a bend,
+        // moving the divider, the wheel paths and the arrow lane with it. What
+        // a pinched row loses is the outermost paint, which falls off the end
+        // of `side`'s range on its own: the edge line at |u| = w - edgeInset
+        // simply has no vertex out there to be interpolated onto.
         cur[k] = road.push(
           vx, this.surfaceY(vx, vz), vz,
           this.nrmScratch[0], this.nrmScratch[1], this.nrmScratch[2],

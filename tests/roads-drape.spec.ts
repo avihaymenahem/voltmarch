@@ -68,7 +68,12 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 
-import { MAP_SIZE, ROAD_CONFORM_METRES, ROAD_SURFACE_LIFT, SCATTER_DENSITY } from '../src/core/config';
+import {
+  MAP_SIZE, ROAD_BEND_RADIUS_MIN, ROAD_CONFORM_MAX_SPANS, ROAD_CONFORM_METRES,
+  ROAD_SURFACE_LIFT, SCATTER_DENSITY,
+} from '../src/core/config';
+import { MAP_SEAS, startPointsFor } from '../src/game/Scenarios';
+import { MAPS } from '../src/shell/settings-store';
 import { Terrain } from '../src/world/Terrain';
 import { RoadNetwork, isCarriageway, setActiveRoads } from '../src/world/Roads';
 import { Scatter } from '../src/world/Scatter';
@@ -460,4 +465,331 @@ describe('no chain paints markings on a carriageway another chain owns', () => {
     for (const c of CASES) got[c.label] = build(c).net.stats().kerbDashRows;
     expect(got).toEqual(KERB_DASHES);
   });
+});
+
+/**
+ * ============================================================================
+ * THE PAINT FRAME IS THE ROW IT IS WRITTEN ON
+ * ============================================================================
+ * `aRoad.x` is signed metres across the carriageway and every marking in
+ * `ROAD_MARKING_GLSL` is placed with it. `buildChainRibbon` wrote it as
+ * `w - 2 * w * t` with `w = c.halfWidth`, mapping t in [0,1] onto [+w, -w] —
+ * but `resolveChainEdges` clamps EACH EDGE INDEPENDENTLY through
+ * `maxSafeOffset`, so on a bend the emitted row spans `wl + wr` and not `2w`.
+ * u = 0 therefore landed on the row's MIDPOINT rather than on the spline, at
+ * `(wl - wr) / 2` off it, and the double-yellow went with it.
+ *
+ * Swept over the seven shipped battlefields at seeds 0..9 — 51 056 rows,
+ * of which 82 (0.161%) are clamped. Only four of the seven maps produce a
+ * clamped row at all; the worst in the sweep and the worst on each case below:
+ *
+ *     sweep worst    2.015 m   coral-shore seed 0, chain 0 at (255.9, 184.2)
+ *                              wl 2.77 against wr 6.80, half-width 6.8
+ *     coral-shore seed 3       1.7 m   (chain 0 row 49, wl 3.41 / wr 6.80)
+ *     temperate-valley seed 1  1.6 m   (chain 17 row 136, wl 3.55 / wr 6.80)
+ *
+ * 2.0 m is 30% of an arterial half-width: most of a lane. Those two numbers are
+ * what these tests print when the fix is reverted.
+ *
+ * IT MOVES NOTHING ANYWHERE ELSE, AND THAT IS MEASURED RATHER THAN ARGUED.
+ * Hashing the carriageway's `position` and `aRoad` buffers before and after,
+ * over six maps on the shipped layout: four are BIT-IDENTICAL in both
+ * (industrial-grid, airbase-flats, frozen-sector, sunder-atoll — the four with
+ * no clamped row), and the two that move change `aRoad` ONLY, at an unchanged
+ * vertex count and a byte-identical `position`. `foreignPaintRows` and
+ * `kerbDashRows` are unchanged on all six, so re-deriving `markingsAreForeign`'s
+ * sample points from `wl + wr` did not flip a single suppression decision.
+ *
+ * ---------------------------------------------------------------------------
+ * THIS FILE'S OTHER CASES BUILD A DIFFERENT MAP, WHICH IS WHY THIS BLOCK HAS
+ * ITS OWN BUILDER
+ * ---------------------------------------------------------------------------
+ * `build()` above constructs `Terrain` with no `starts` and no `sea`, so no
+ * start shelf is levelled and no shoreline is cut — and the router answers
+ * differently on that ground. Measured, same map seeds, no-starts against the
+ * shipped layout: temperate-valley 15 chains -> 19, industrial-grid 11 -> 16,
+ * airbase-flats 11 -> 18, coral-shore 2 -> 1. The bend radii move with it
+ * (airbase-flats 1.66 m -> 11.80 m). Neither map is wrong; they are two maps,
+ * and a frame claim has to be made about the one a player drives on. The older
+ * cases are deliberately NOT re-pointed — their numbers were measured on the
+ * bare build and re-basing them would lose the comparison they encode.
+ *
+ * ---------------------------------------------------------------------------
+ * WHAT IS DELIBERATELY *NOT* ASSERTED, AND WHY THE BEND HAS NO FLOOR
+ * ---------------------------------------------------------------------------
+ * `filletPolyline` emits radii well under `ROAD_BEND_RADIUS_MIN` (15) —
+ * measured 4.05 m on coral-shore, 4.28 m on temperate-valley, against a 6.8 m
+ * arterial half-width — and that constant is a starting value that cannot bind:
+ * `r` is only ever `clamp((15 + 40) / 2, 15, 40)` = 27.5 or `tMax / tanHalfTurn`,
+ * which is why `bendRadiusMax` reads exactly 27.50 on all seven maps. A floor
+ * there would need `t > 0.45 * min(l1, l2)`, i.e. the cusp that factor exists
+ * to prevent, so widening such a bend is a ROUTING change and not a geometry
+ * one.
+ *
+ * It was hypothesised that a bend that tight FOLDS the ribbon and punches a
+ * hole in the tarmac. It does not, and the measurement is kept rather than the
+ * hypothesis: `maxSafeOffset` clamps every offset to 0.85 of the local radius,
+ * so the emitted carriageway carries ZERO inverted triangles, its worst
+ * row-versus-along angle is 83.97 degrees (the central-difference normal, by
+ * design), and rasterising three maps at 0.5 m and flood-filling found the only
+ * enclosed empty regions to be city blocks plus ten sub-cell slivers — sitting
+ * 120 to 334 m from the nearest clamped row, on two maps that have no clamped
+ * rows at all. What a tight bend really costs is a PINCH, and the pinch is
+ * bounded below instead.
+ */
+describe('the carriageway paint frame matches the row it is written on', () => {
+  /** Same derivation the game boots with: shelves levelled, shoreline cut. */
+  function buildShipped(mapId: string, seed: number): { net: RoadNetwork; mesh: THREE.Mesh } {
+    const m = MAPS.find((x) => x.id === mapId);
+    expect(m).toBeDefined();
+    const sea = (MAP_SEAS as Record<string, unknown>)[m!.preset] as never ?? null;
+    const starts = startPointsFor(m!.players, sea, seed).map((p) => ({ x: p.x, z: p.z }));
+    const scene = new THREE.Scene();
+    const terrain = new Terrain({ scene, seed: m!.mapSeed, biome: m!.biome, starts, sea });
+    const net = new RoadNetwork({
+      scene, terrain, seed: (m!.mapSeed ^ 0x517cc1b7) | 0, decals: null,
+    });
+    net.generate();
+    let mesh: THREE.Mesh | null = null;
+    scene.traverse((o) => { if (o.name === 'road.carriageway') mesh = o as THREE.Mesh; });
+    expect(mesh).not.toBeNull();
+    return { net, mesh: mesh as unknown as THREE.Mesh };
+  }
+
+  interface Chain {
+    readonly id: number;
+    readonly pts: number[];
+    readonly wl: number[];
+    readonly wr: number[];
+    readonly edgeL: number[];
+    readonly edgeR: number[];
+    readonly halfWidth: number;
+  }
+  const chainsOf = (net: RoadNetwork): readonly Chain[] =>
+    (net as unknown as { chains: Chain[] }).chains;
+
+  /** `RoadNetwork.conformSpans`, which is private. Mirrored, not guessed. */
+  function conformSpans(metres: number): number {
+    const n = Math.ceil(metres / ROAD_CONFORM_METRES);
+    return n < 1 ? 1 : n > ROAD_CONFORM_MAX_SPANS ? ROAD_CONFORM_MAX_SPANS : n;
+  }
+
+  /**
+   * The two maps and seeds carrying the worst clamp found in the sweep, plus
+   * `industrial-grid` as the control: it has ZERO clamped rows, so every row on
+   * it must come out bit-identical to what shipped before this change.
+   */
+  const FRAME_CASES: readonly {
+    readonly map: string; readonly seed: number; readonly clamped: number;
+  }[] = [
+    { map: 'coral-shore', seed: 3, clamped: 6 },
+    { map: 'temperate-valley', seed: 1, clamped: 5 },
+    { map: 'industrial-grid', seed: 1, clamped: 0 },
+  ];
+
+  for (const c of FRAME_CASES) {
+    it(`${c.map} seed ${c.seed}: u = 0 lands on the spline, and u is affine in t`, () => {
+      const b = buildShipped(c.map, c.seed);
+      const pos = b.mesh.geometry.getAttribute('position');
+      const road = b.mesh.geometry.getAttribute('aRoad');
+      expect(road).toBeDefined();
+
+      // World XZ -> aRoad.x. `Math.fround`, NOT a rounded fixed-point key: a
+      // BufferAttribute is a Float32Array, and float32 eps at a 500 m
+      // coordinate is 3e-5 m, so a 0.1 mm key (the quantisation `vertexAt`
+      // uses, on values it computed itself in float64) misses whenever that
+      // error straddles a boundary. Measured, it missed 62% of the rows on
+      // industrial-grid. Narrowing the lookup instead of widening it keeps the
+      // match EXACT: `Math.fround` of the float64 sample position is bit-for-bit
+      // the float32 the buffer holds.
+      //
+      // A LIST PER KEY, NOT A VALUE, BECAUSE THE PAD WELDS ONTO THE RIBBON.
+      // `solveJunctionPad` builds its boundary from "the same points the ribbon
+      // already emitted", and a pad vertex carries u = 0 by design. So at a
+      // chain's two MOUTH rows the same world position holds two different u,
+      // and a plain Map would hand back whichever was written last — measured,
+      // that read u = 0 where the row's own value is -6.80. Ambiguous positions
+      // are refused below instead of averaged.
+      const uAt = new Map<string, number[]>();
+      for (let i = 0; i < pos.count; i++) {
+        const key = `${pos.getX(i)},${pos.getZ(i)}`;
+        const u = road.getX(i);
+        const seen = uAt.get(key);
+        if (seen === undefined) uAt.set(key, [u]);
+        else if (!seen.includes(u)) seen.push(u);
+      }
+
+      let rows = 0;
+      let clamped = 0;
+      let missing = 0;
+      let welded = 0;
+      let worstCentre = 0;
+      let worstCentreAt = '';
+      let worstAffine = 0;
+      let worstEnds = 0;
+      for (const ch of chainsOf(b.net)) {
+        const spans = conformSpans(ch.halfWidth * 2);
+        for (let i = 0; i < ch.pts.length / 2; i++) {
+          rows++;
+          const wl = ch.wl[i];
+          const wr = ch.wr[i];
+          if (wl !== ch.halfWidth || wr !== ch.halfWidth) clamped++;
+          const lxw = ch.edgeL[i * 2];
+          const lzw = ch.edgeL[i * 2 + 1];
+          const rxw = ch.edgeR[i * 2];
+          const rzw = ch.edgeR[i * 2 + 1];
+
+          // Every vertex of this row, addressed by the builder's own POSITION
+          // expression — which this change does not touch — so what comes back
+          // is purely the frame.
+          const us: number[] = [];
+          let ambiguous = false;
+          for (let k = 0; k <= spans; k++) {
+            const t = k / spans;
+            const vx = lxw + (rxw - lxw) * t;
+            const vz = lzw + (rzw - lzw) * t;
+            const hit = uAt.get(`${Math.fround(vx)},${Math.fround(vz)}`);
+            if (hit === undefined) { missing++; break; }
+            if (hit.length > 1) { ambiguous = true; break; }
+            us.push(hit[0]);
+          }
+          if (ambiguous) {
+            welded++;
+            // The weld is the junction seam and nothing else. If an INTERIOR
+            // row ever shares a position with a pad, the ribbon is running
+            // through a junction it does not belong to.
+            expect(`${c.map} welded row ${i} of ${ch.pts.length / 2}`)
+              .toBe(`${c.map} welded row ${i === 0 || i === ch.pts.length / 2 - 1 ? i : 'INTERIOR'} of ${ch.pts.length / 2}`);
+            continue;
+          }
+          if (us.length !== spans + 1) continue;
+
+          // 1. AFFINE IN t. `conformSpans` subdivides the cross-section and
+          //    every marking is placed off the interpolated attribute, so a
+          //    frame that is not a straight line in t moves the paint whenever
+          //    the subdivision count changes.
+          for (let k = 0; k <= spans; k++) {
+            const want = us[0] + (us[spans] - us[0]) * (k / spans);
+            worstAffine = Math.max(worstAffine, Math.abs(us[k] - want));
+          }
+
+          // 2. THE ENDS ARE THE ROW'S OWN CLAMPED HALF-WIDTHS. This is
+          //    "the emitted row width equals the attribute frame it carries" in
+          //    its most direct form: the frame spans wl + wr, never 2 * w.
+          worstEnds = Math.max(worstEnds, Math.abs(us[0] - wl), Math.abs(us[spans] + wr));
+
+          // 3. u = 0 IS THE SPLINE. Solved by interpolation rather than read at
+          //    a vertex, because u = 0 usually falls between two of them.
+          const f = us[0] / (us[0] - us[spans]);
+          const cx = lxw + (rxw - lxw) * f;
+          const cz = lzw + (rzw - lzw) * f;
+          const err = Math.hypot(cx - ch.pts[i * 2], cz - ch.pts[i * 2 + 1]);
+          if (err > worstCentre) {
+            worstCentre = err;
+            worstCentreAt = `chain ${ch.id} row ${i} wl ${wl.toFixed(2)} wr ${wr.toFixed(2)}`;
+          }
+        }
+      }
+
+      // A guard on the guard: if the row lookup ever stops hitting — a changed
+      // subdivision rule, a changed sample expression — the three assertions
+      // below would pass on an empty measurement.
+      expect(`${c.map}: ${missing} rows not found in the mesh`)
+        .toBe(`${c.map}: 0 rows not found in the mesh`);
+      expect(rows).toBeGreaterThan(80);
+      expect(welded).toBeLessThan(rows * 0.1);
+      expect(`${c.map}: ${clamped} clamped rows`).toBe(`${c.map}: ${c.clamped} clamped rows`);
+
+      // THE TOLERANCES ARE FLOAT32 NOISE, NOT SLACK. `aRoad` is a
+      // Float32Array, so a u of 6.8 carries ~5e-7 of quantisation and the
+      // interpolated centre point inherits it; measured residuals are 1.3e-7 m
+      // (coral-shore) and 1.7e-7 m (temperate-valley). The ceiling below is
+      // 0.1 mm, which is four orders of magnitude under the defect this
+      // replaces: 2.015 m on coral-shore seed 3, 1.624 m on temperate-valley
+      // seed 1. Tightening it further would pin float32 rounding, not the road.
+      expect(`${c.map} u=0 off spline by ${worstCentre.toExponential(1)} m (${worstCentreAt})`)
+        .toBe(`${c.map} u=0 off spline by ${Math.min(worstCentre, 1e-4).toExponential(1)} m (${worstCentreAt})`);
+      expect(worstEnds).toBeLessThan(1e-5);
+      expect(worstAffine).toBeLessThan(1e-5);
+
+      b.net.dispose();
+    }, 120000);
+  }
+
+  /**
+   * THE PINCH IS BOUNDED, BECAUSE IT IS WHAT A TIGHT BEND ACTUALLY COSTS.
+   *
+   * `maxSafeOffset` returns `radius * 0.85`, so a row is clamped exactly when
+   * the local discrete radius is under `halfWidth / 0.85` = 1.176 half-widths.
+   * That makes "clamped row" and "tight bend" the SAME SET by construction and
+   * not by coincidence, which is why one fix covers both and there is no second
+   * one to ship alongside it.
+   *
+   * Measured on the shipped layout: the narrowest emitted row is 9.57 m against
+   * a 13.60 m nominal (70.4%), and the tightest fillet radius is 4.05 m. Both
+   * are BOUNDED rather than pinned — the router is free to find gentler ground
+   * from one seed to the next — but a collapse toward zero is a real defect and
+   * this is where it reports.
+   *
+   * TWO INVERTED QUADS SURVIVE ACROSS THESE THREE MAPS AND THEY ARE PINNED, NOT
+   * ZEROED. The offset CURVE never inverts — that is what the 0.85 buys — but
+   * the ribbon is a strip of quads between consecutive rows, and where `wl`
+   * falls 5.22 m -> 3.42 m across one 1.95 m step the row's own left edge
+   * outruns the advance and the quad goes non-convex:
+   *
+   *     coral-shore      chain 0  row  46 of 181   second triangle -1.66 m2
+   *     temperate-valley chain 17 row 134 of 207   second triangle -2.15 m2
+   *
+   * Both sit on the tightest bend of the tightest chain on their map. That is
+   * 2 of roughly 8 900 ribbon quads, 0.02%, against the 0.2% budget
+   * `makeRoadMaterial` already records — and it is why that material is
+   * `THREE.DoubleSide`, so the back-facing triangle fills its pixels with
+   * slightly wrong lighting instead of leaving bare terrain showing through.
+   * Rasterising the carriageway at 0.5 m and flood-filling confirms it: no
+   * enclosed empty region anywhere near a clamped row. Fixing it properly means
+   * rate-limiting how fast `wl`/`wr` may move between rows, which is a change
+   * to `resolveChainEdges` with its own consequences; it is bounded here so it
+   * cannot grow unnoticed.
+   */
+  it('a tight bend pinches the ribbon and never folds it', () => {
+    const rows: string[] = [];
+    let inverted = 0;
+    let narrowest = Infinity;
+    let tightest = Infinity;
+    for (const c of FRAME_CASES) {
+      const b = buildShipped(c.map, c.seed);
+      const s = b.net.stats();
+      let narrow = Infinity;
+      for (const ch of chainsOf(b.net)) {
+        for (let i = 0; i < ch.pts.length / 2; i++) {
+          narrow = Math.min(narrow, (ch.wl[i] + ch.wr[i]) / (ch.halfWidth * 2));
+          if (i === 0) continue;
+          // The ribbon quad aL, aR, bR, bL walked in order. Both triangles wind
+          // the same way unless the row order has crossed over itself.
+          const q = [
+            ch.edgeL[i * 2 - 2], ch.edgeL[i * 2 - 1], ch.edgeR[i * 2 - 2], ch.edgeR[i * 2 - 1],
+            ch.edgeR[i * 2], ch.edgeR[i * 2 + 1], ch.edgeL[i * 2], ch.edgeL[i * 2 + 1],
+          ];
+          const area2 = (a: number, b2: number, c2: number): number =>
+            (q[b2 * 2] - q[a * 2]) * (q[c2 * 2 + 1] - q[a * 2 + 1])
+            - (q[b2 * 2 + 1] - q[a * 2 + 1]) * (q[c2 * 2] - q[a * 2]);
+          if (area2(0, 1, 2) < 0) inverted++;
+          if (area2(0, 2, 3) < 0) inverted++;
+        }
+      }
+      narrowest = Math.min(narrowest, narrow);
+      if (s.bendRadiusMin > 0) tightest = Math.min(tightest, s.bendRadiusMin);
+      rows.push(`${c.map}: narrowest row ${(narrow * 100).toFixed(1)}% of nominal, bendRadius `
+        + `${s.bendRadiusMin.toFixed(2)}..${s.bendRadiusMax.toFixed(2)}`);
+      b.net.dispose();
+    }
+
+    expect(`inverted ribbon triangles: ${inverted}`).toBe('inverted ribbon triangles: 2');
+    // 70.4% measured; a road that pinches below half its width is a kink.
+    expect(`${rows.join(' | ')} -- narrowest ${(narrowest * 100).toFixed(1)}%`)
+      .toBe(`${rows.join(' | ')} -- narrowest ${(Math.max(narrowest, 0.5) * 100).toFixed(1)}%`);
+    // 4.05 m measured, against a constant that reads 15 and cannot bind.
+    expect(tightest).toBeGreaterThan(3.5);
+    expect(tightest).toBeLessThan(ROAD_BEND_RADIUS_MIN);
+  }, 180000);
 });
