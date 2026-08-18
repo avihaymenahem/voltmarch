@@ -124,10 +124,10 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 4582 across 184 files (+3 opt-in probes)
+npm test             # vitest, currently 4599 across 185 files (+3 opt-in probes)
                      #   6 of those are gated on `distIsCurrent()` — freshness, not mere
                      #   existence — across BOTH `manual` and `webgpu-bundle-isolation`,
-                     #   so a tree with no current `dist/` reports 4576 and skips 9.
+                     #   so a tree with no current `dist/` reports 4593 and skips 9.
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -1246,7 +1246,9 @@ catalog FIRST, and not a change to `isBeaten`.
 computes `flat = Math.sqrt(dx*dx + dz*dz)` and `surfaceDist = max(0, flat - hitRadius(target))`;
 **`dy` is not in it.** So 22 m of vertical separation costs a ground shooter exactly zero range, and
 a rifleman standing directly beneath an aircraft is at `flat = 0`. Anyone reasoning about air combat
-from the picture on screen will get this wrong.
+from the picture on screen will get this wrong. **And being at `flat = 0` does not mean he can hit
+it** — see the elevation clamp under *A tank stopped killing aircraft* below, which is the opposite
+conclusion from the same fact and the one that decides engagements.
 
 Nothing pulls the aircraft back out, either. `Targeting` closes any attacker to `range *
 APPROACH_STOP_FRAC` (0.80) and **parks** it there (`APPROACH_PARKED`), publishing the goal exactly
@@ -1311,6 +1313,67 @@ sixteen also catches `sim/AIStrategy.ts`'s `NO_ANSWER = [0, 0, 0, 0, 0]`, which 
 found *fourteen* and missed two `tabVisible` declarations sitting within eight lines of entries it
 had already recorded.
 
+### A tank stopped killing aircraft, and measuring it moved two other numbers
+
+Reported as *"i still think we have unbalanced fights... 3 airplanes destroyed by 1 tank in a
+second... something is weird"*. **This one is SHIPPED behaviour, unlike the rest of this section.**
+`tests/aircraft-killer-probe.spec.ts` holds every figure below; re-run it rather than re-quoting it.
+
+- **`Damage.applySplash` WAS PURELY HORIZONTAL.** `y` was a parameter of that function read by
+  nothing but the crater decal, and the victim loop filters on Alive, PendingDestroy and Garrisoned
+  and asks nothing else. So every splash weapon in the game hit aircraft at FULL effect at cruise
+  altitude, including the three main battle tank cannons — 1.6 / 2.1 / 2.2 m of splash, none of
+  them carrying `canTargetAir`. `Combat.ts` gates TARGETING on that flag and this path never went
+  through targeting at all, which is exactly why the sweep above could not see it.
+- **THE FIX IS DISTANCE, NOT A `canTargetAir` GATE, AND THEY DIFFER WHERE IT MATTERS.** A gate
+  deletes incidental air damage outright, and the anti-hang floor is held up entirely by four
+  line-infantry rifles. Real distance — the vertical gap beyond the hull's own extent,
+  `|dy| - estimatedHeight * 0.5` — keeps that floor BY CONSTRUCTION: a weapon that can elevate puts
+  its blast AT the aircraft. Measured, `aaCannon`'s impact `y` lands within **2.36 m** of a plane
+  at 22 m, and all four ungated line infantries still take a MiG down with eight men (gi 0.97 s,
+  mrdWayfarer 1.60 s, conscript 1.67 s, rclPicker 3.50 s).
+- **THE STAGED INCIDENT, BEFORE AND AFTER.** A Rhino shelling a Grizzly with three MiGs parked over
+  the victim: **7 blasts under the flight, 0.0 damage, 3/3 still flying**. The falsifier that makes
+  that 0 a reading rather than a constant is the same rig with the flight at 5 m — **570 damage,
+  one blast touching all three, 0/3 still flying**. And end to end, 5800 credits of Allied position
+  against three MiGs kills all three with **no tank contributing a single point**: aaTurret 2 kills
+  / 338.7 damage / 100% via splash, gi 1 kill / 140.9 / 0% via splash, ifv 88.0.
+
+**AN AIRCRAFT DIRECTLY OVERHEAD CANNOT BE HIT AT ALL, AND THE BLOCK ABOVE IMPLIES THE OPPOSITE.**
+"A rifleman standing directly beneath an aircraft is at `flat = 0`" is true about RANGE and its
+natural reading is false about outcomes. `Combat.engage` clamps the launch pitch to
+`COMBAT_WEAPONS.maxElevationDeg` (62), so a projectile weapon fires at 62 degrees however steep the
+real bearing is; the round climbs 1.88 m per metre downrange and reaches the aircraft's band well
+beyond it. The gun tracks, the trigger releases, the tracer looks right, and nothing connects. One
+G.I. against one MiG at cruise:
+
+```
+  7 m horizontally     killed 0    0 damage in the whole window
+  8 m horizontally     killed 1    190 damage, first kill at 8.47 s
+```
+
+**QUOTE 8 m, NOT THE 11.70 THE GEOMETRY GIVES.** `AIR_CRUISE_ALTITUDE / tan(62 deg)` is 11.70 and
+that is the centre-line figure; the real edge is 8 because a round is accepted anywhere inside the
+airframe's hit disc and `Projectiles.sweep` tests a SPAN rather than a point — a derivation wrong by
+3 m, caught only because it was measured afterwards. Instant and Beam rows are exempt
+(`resolveInstant` launches nothing). **This is not a regression**, predates all of the above, and
+the splash fix does not touch it. The safest place for an aircraft is directly over the battery.
+
+**EVERY `seconds` IN THE SWEEP ABOVE IS A SINGLE-TARGET FIGURE, AND A FLIGHT DIES FASTER THAN IT
+SAYS.** That table is `raw * ARMOR_MATRIX[warhead][Light] * globalMul`, i.e. a PER-TARGET dps — but
+every row carrying both `canTargetAir` and a `splashRadius` delivers it to every aircraft inside the
+blast, and `movesShareSpace` lets aircraft share a point. Measured per aircraft rather than per
+engagement, a stacked flight of three dies **exactly 3.00x faster each** than one alone, for all
+three shooters tried (flakTrooper x1 11.10 s -> 3.70, flakTrooper x8 0.93 -> 0.31, aaTurret x1
+3.20 -> 1.07). The flight of three takes the same wall-clock as the single aircraft: massing
+aircraft against splash AA buys them nothing at all.
+
+**THE MULTIGUNNER RE-MEASUREMENT CAME BACK CONFIRMING THE FLAG.** The "187-261% of an aircraft's
+health on ONE 26 m pass" figure this file demanded be re-derived reproduces to the digit, from the
+shipped `aaCannon` row (3x34 / 0.82 s, range 26, splash 1.2, 99.5 dps vs air): vindicator 187%,
+mig 202%, mrdKestrel 205%, rclHornet 261%. Seconds-to-kill 1.81-2.41. Nothing to change; the claim
+was true and is now behind a test that fails if the row is retuned.
+
 ## The roads were underground, and one number was doing four kinds of damage
 
 Reported as *"Look at the roads, all broken, 0 logic"* over a screenshot of a city map, with five
@@ -1368,6 +1431,30 @@ argument for why draping rather than grading the heightfield.
   a test instead of changed. Likewise the residual burial (0.3-1.5%, worst 3.9 m) is a terrace FACE
   crossing the corridor, which no span size can drape over; the honest fix is routing — `classifyCells`
   erodes by ONE cell and guarantees flat ground only +/-6 m out, against a 10.28 m arterial corridor.
+- **THE PAINT FRAME READS THE ROW'S OWN TWO HALF-WIDTHS, NOT THE NOMINAL ONE.** `resolveChainEdges`
+  clamps each side of a cross-section INDEPENDENTLY through `maxSafeOffset` (0.85 of the local
+  radius), so on a tight bend the emitted row spans `wl + wr` and the centreline sits at `wl` from
+  the left edge rather than half way. `buildChainRibbon` wrote `aRoad.x` as `w - 2*w*t`, which puts
+  u = 0 at the row's MIDPOINT — off the spline by `(wl - wr) / 2`. Over the seven shipped
+  battlefields at seeds 0..9, 82 of 51 056 rows (0.161%) are clamped, and the worst threw the
+  double-yellow **2.015 m** — most of a lane — off centre on coral-shore. `aRoad.z` deliberately
+  stays the NOMINAL half-width: the shader derives `lanes` from it, and a per-row width would drop
+  a four-lane arterial to two lanes for three rows through a bend, moving the divider and the wheel
+  paths with it.
+- **`ROAD_BEND_RADIUS_MIN` READS 15, CANNOT BIND, AND A FLOOR THERE IS UNIMPLEMENTABLE.**
+  `filletPolyline` assigns `r` twice — `clamp((rMin + rMax) / 2, rMin, rMax)`, which is 27.5 for the
+  shipped 15/40 and never touches either end, and `t / tanHalfTurn` in the tMax branch. So every
+  radius is either exactly 27.5 or forced by `0.45 * min(l1, l2)`, and raising one back to `rMin`
+  requires precisely the cusp that 0.45 exists to prevent. Measured `bendRadiusMin` 4.05 m on
+  coral-shore against a 6.8 m arterial half-width. Widening such a bend is a ROUTING change, and the
+  route already survived `routeLegal` — the legs are short because the ground refused longer.
+- **A TIGHT BEND PINCHES THE RIBBON; IT DOES NOT TEAR IT OPEN.** Worst emitted row 9.57 m against a
+  13.60 m nominal (70.4%). Two ribbon quads of roughly 8 900 DO wind backwards, one each on
+  coral-shore and temperate-valley, both on the tightest bend of the tightest chain — inside the
+  0.2% budget `makeRoadMaterial` already records, and the reason that material is `DoubleSide`.
+  **Pinned rather than zeroed**: the honest fix rate-limits how fast `wl`/`wr` may move between
+  rows, in `resolveChainEdges`. An earlier draft of `filletPolyline`'s header claimed ZERO
+  inverted triangles because it measured the offset CURVE and then made a claim about the STRIP.
 
 ## There are two renderers now, and a WebGL player downloads exactly one of them
 
