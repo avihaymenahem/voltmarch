@@ -63,6 +63,17 @@ export interface CampaignFacts {
   readonly mapPresets: ReadonlySet<string>;
   /** Every id in `UNLOCK_TAGS`. A roster may name these and nothing else. */
   readonly unlockIds: ReadonlySet<string>;
+  /**
+   * Every key of `EVA_LINES`.
+   *
+   * A `do: 'eva'` naming a line that does not exist is silent at runtime — the
+   * announcer looks the id up, finds nothing, and says nothing. That is a beat
+   * the designer wrote, heard in their head, and will never hear on the
+   * machine. The first draft of S1 said `enemyUnitsApproaching`, which is not
+   * an id; this check is why that was caught before it shipped rather than by
+   * somebody noticing the silence.
+   */
+  readonly evaLines: ReadonlySet<string>;
   /** Layout id to the tag set that layout stamps. */
   readonly layoutTags: ReadonlyMap<string, ReadonlySet<string>>;
   /** Legal seat counts, inclusive. */
@@ -242,6 +253,11 @@ function checkEffect(
       break;
     case 'dialogue':
       if (e.speaker.trim() === '' || e.text.trim() === '') f.at(where, 'dialogue needs a speaker and a line');
+      break;
+    case 'eva':
+      if (!facts.evaLines.has(e.line)) {
+        f.at(where, `eva line '${e.line}' is not a key of EVA_LINES — the announcer would say nothing`);
+      }
       break;
     default:
       break;

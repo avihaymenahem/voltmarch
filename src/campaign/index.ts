@@ -28,6 +28,7 @@
 import { BUILDINGS, UNITS } from '../data/Defs';
 import { UNLOCKS } from '../data/Missions';
 import { MAP_PRESETS } from '../core/config';
+import { EVA_LINES } from '../audio/Eva';
 import { FALLBACK_UNITS, SKIRMISH_ARMIES_MAX } from '../game/Scenarios';
 import type { CampaignLayout } from './layout';
 import type { ChapterDef, OperationDef } from './types';
@@ -154,6 +155,7 @@ export function campaignFacts(): CampaignFacts {
     unitKeys: new Set(Object.keys(FALLBACK_UNITS)),
     mapPresets: new Set(Object.keys(MAP_PRESETS)),
     unlockIds: new Set(Object.values(UNLOCKS)),
+    evaLines: new Set(Object.keys(EVA_LINES)),
     layoutTags,
     minArmies: 2,
     maxArmies: SKIRMISH_ARMIES_MAX,

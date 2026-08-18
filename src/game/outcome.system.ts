@@ -129,6 +129,7 @@ import {
 } from '../sim/Viability';
 
 import { ctx, hasGameContext } from './context';
+import { campaignRunning } from '../campaign/policy';
 
 /* ==========================================================================
  * 1. TUNABLES
@@ -212,6 +213,29 @@ function hudToast(): HudToastSink | null {
 function tutorialRunning(): boolean {
   const g = globalThis as unknown as Record<string, unknown>;
   return g.__vmTutorial !== undefined && g.__vmTutorial !== null;
+}
+
+/**
+ * True while ANY scripted content owns the session — the tutorial or a campaign
+ * operation.
+ *
+ * FOUR LINES THAT BUY THREE THINGS AT ONCE, and all three are shipped defects
+ * against a scripted match rather than hypotheticals:
+ *
+ *   - the `isStranded` nag stops firing at a commando squad that legally has
+ *     no base and never will;
+ *   - `hasAssets` auto-defeat stops firing at t+10 s on an insertion whose
+ *     forces land at t+30 s;
+ *   - the all-enemies-beaten auto-win stops pre-empting an objective the player
+ *     has not met — an eight-minute hold declared won at minute three.
+ *
+ * `campaignRunning()` is a module-level boolean in `src/campaign/policy.ts`,
+ * which imports nothing, so reaching it costs the entry chunk nothing. The
+ * tutorial is a duck-typed global only because its halves straddle
+ * `src/shell/**` and `src/game/**`; the campaign's do not.
+ */
+function scriptedRunning(): boolean {
+  return tutorialRunning() || campaignRunning();
 }
 
 /* ==========================================================================
@@ -502,7 +526,7 @@ export default defineSystem({
     }
 
     if (state !== 'playing') return;
-    if (tutorialRunning()) return;
+    if (scriptedRunning()) return;
 
     pollAccum += r.dt;
     if (pollAccum < OUTCOME.pollSeconds) return;

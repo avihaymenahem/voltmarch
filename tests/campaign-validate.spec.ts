@@ -31,6 +31,7 @@ const FACTS: CampaignFacts = {
   unitKeys: new Set(['conscript', 'rhino', 'gi', 'grizzly']),
   mapPresets: new Set(['temperate', 'arid', 'snow', 'urban']),
   unlockIds: new Set(['struct.defence.aa', 'unit.specialist', 'struct.tech']),
+  evaLines: new Set(['reinforcements', 'unitLost', 'baseUnderAttack']),
   layoutTags: new Map([
     ['sov-01', new Set(['derrick', 'tap', 'office'])],
     ['sov-02', new Set(['column'])],
@@ -186,6 +187,34 @@ describe('the faults that would otherwise be invisible at runtime', () => {
         }],
       }],
     }, 'FALLBACK_UNITS');
+  });
+
+  it('an EVA line that is not a key of EVA_LINES — the announcer would say nothing', () => {
+    // The failure this catches is INAUDIBLE. The announcer looks the id up,
+    // finds nothing, and says nothing; the designer heard the beat in their
+    // head and never hears it on the machine. S1's first draft named
+    // `enemyUnitsApproaching`, which is not an id.
+    const op = operation();
+    expectOneFault({
+      ...op,
+      triggers: [...op.triggers, {
+        id: 't.eva',
+        when: { on: 'elapsed', ticks: 60 },
+        then: [{ do: 'eva', line: 'enemyUnitsApproaching' } as Effect],
+      }],
+    }, 'EVA_LINES');
+  });
+
+  it('and a real one passes, so the rule is not simply refusing every eva', () => {
+    const op = operation();
+    expect(faultsFor([{
+      ...op,
+      triggers: [...op.triggers, {
+        id: 't.eva',
+        when: { on: 'elapsed', ticks: 60 },
+        then: [{ do: 'eva', line: 'reinforcements' } as Effect],
+      }],
+    }])).toEqual([]);
   });
 
   it('elapsedSinceArmed under a not can never fire', () => {

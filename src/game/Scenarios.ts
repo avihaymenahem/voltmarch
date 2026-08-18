@@ -541,7 +541,7 @@ export function startPointsFor(
 }
 
 /** Fold a compass bearing into [0, 360). */
-function wrapDeg(deg: number): number {
+export function wrapDeg(deg: number): number {
   const d = deg % 360;
   return d < 0 ? d + 360 : d;
 }
@@ -3332,7 +3332,7 @@ interface ScenarioPlan {
  * The Pact takes the Allied layout: corbelled ceramic is engineered and
  * orthogonal, which is the Allied grid, not the Soviet sprawl.
  */
-function buildBaseFor(
+export function buildBaseFor(
   b: ScenarioBuilder, owner: PlayerId, cx: number, cz: number, options: BaseOptions,
 ): EntityId {
   const faction = b.world.player(owner).faction;
@@ -3416,7 +3416,7 @@ export const START_CLEAR_RADIUS = 13;
  */
 export const START_ESCORT_CLEAR_RADIUS = 12.5;
 
-function buildMcvStartFor(b: ScenarioBuilder, owner: PlayerId, spot: StartSpot): EntityId {
+export function buildMcvStartFor(b: ScenarioBuilder, owner: PlayerId, spot: StartSpot): EntityId {
   const faction = b.world.player(owner)?.faction ?? Faction.Neutral;
   const force = startForceFor(faction);
   const yaw = spot.facingDeg;
@@ -3461,7 +3461,7 @@ function buildMcvStartFor(b: ScenarioBuilder, owner: PlayerId, spot: StartSpot):
  * generator reserves a shelf somewhere else, and a refinery that cannot reach
  * ore is a dead economy in a match that has no second base to fall back on.
  */
-function addStartOre(
+export function addStartOre(
   b: ScenarioBuilder, spots: readonly StartSpot[], sea: SeaSpec | null = null,
 ): void {
   const islands = sea?.islands;
@@ -3805,7 +3805,7 @@ const MINE_BISECTOR_OFFSETS: readonly number[] = [128, 112, 96];
  * sees one and lets any army walk in, and `restoreOwner` has a neutral
  * caretaker to hand the building back to when the last man leaves.
  */
-function addCivilians(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
+export function addCivilians(b: ScenarioBuilder, spots: readonly StartSpot[]): void {
   /*
    * TWO OPENINGS EXACTLY, and that is a statement about the composition rather
    * than a limitation of the code. Everything below is derived from the LANE

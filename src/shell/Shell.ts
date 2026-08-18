@@ -92,6 +92,7 @@ import { preparePlayback } from '../game/Playback';
 import { currentReplay } from '../game/replay.system';
 import { suppressUnlockGate } from '../progression/UnlockGate';
 import { suppressProgression } from '../progression/suppress';
+import { outcomePolicy, seatIgnored } from '../campaign/policy';
 import type { MatchStart, Session } from '../net/Session';
 import { PauseMenuScreen, currentObjectives } from './PauseMenu';
 import { EndScreen, type MatchResult } from './EndScreen';
@@ -2484,20 +2485,36 @@ export class Shell {
     // never read as a defeat.
     if (game.ctx.loop.simTime < 10) return;
 
+    // THE OPERATION DECIDES WHAT MAY END IT. A skirmish answers with both rules
+    // on, which is byte-for-byte what this method always did; a campaign
+    // operation defaults to NEITHER, because every one of the four shipped
+    // failures below is reachable against a scripted match — a hold won at
+    // minute three, a defeat at t+10 s for an insertion that has not landed, a
+    // seat whose forces arrive at minute three handing an instant victory, and
+    // a defecting militia counted hostile forever. See `campaign/policy.ts`.
+    const policy = outcomePolicy();
+    if (!policy.annihilationWin && !policy.assetLossDefeat) return;
+
     const world = game.ctx.world;
     const local = world.localPlayer;
     const alive = countLivingAssets(game);
 
     if ((alive.get(local as number) ?? 0) > 0) {
+      if (!policy.annihilationWin) return;
       let enemiesLeft = 0;
       for (const p of world.players) {
         if (p.faction === Faction.Neutral) continue;
         if (world.areAllied(local, p.id)) continue;
+        // A seat an operation declared invisible decides nothing — that is how
+        // a scripted third party or a militia about to defect stops counting
+        // as an enemy who must be killed.
+        if (seatIgnored(p.id as number)) continue;
         if ((alive.get(p.id as number) ?? 0) > 0) enemiesLeft++;
       }
       if (enemiesLeft === 0) this.endMatch(this.buildResult(true));
       return;
     }
+    if (!policy.assetLossDefeat) return;
     this.endMatch(this.buildResult(false));
   }
 
