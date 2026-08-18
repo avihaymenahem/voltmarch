@@ -91,6 +91,7 @@ import type { ReplayFile } from '../game/Replay';
 import { preparePlayback } from '../game/Playback';
 import { currentReplay } from '../game/replay.system';
 import { suppressUnlockGate } from '../progression/UnlockGate';
+import { suppressProgression } from '../progression/suppress';
 import type { MatchStart, Session } from '../net/Session';
 import { PauseMenuScreen, currentObjectives } from './PauseMenu';
 import { EndScreen, type MatchResult } from './EndScreen';
@@ -1056,6 +1057,12 @@ export class Shell {
     this.replay = { file, bar: null };
     this.replayComplete = false;
     suppressUnlockGate(true);
+    // The profile is deaf for the duration. The carve-out in `startMatch`
+    // below was ALREADY THERE and already defeated: `MissionTracker` opens a
+    // match off the `match:started` bus event one frame later, so watching a
+    // recording of a win has been banking `wins` and `currentStreak` for as
+    // long as replays have existed. See `progression/suppress.ts`.
+    suppressProgression(true);
     preparePlayback(file);
 
     // A skirmish setup is still what boots the world; it is the CHANNEL, not
@@ -1128,6 +1135,7 @@ export class Shell {
     this.replayPaused = false;
     preparePlayback(null);
     suppressUnlockGate(false);
+    suppressProgression(false);
   }
 
   /**
@@ -1196,6 +1204,13 @@ export class Shell {
     // definition an ordinary one, so this is the single place that restores it
     // — without it, one replay left every later skirmish ungated.
     if (this.pvp === null && this.replay === null) suppressUnlockGate(false);
+    // Progression's latch restores on the same condition and for the same
+    // reason — PvP and playback are the two routes that set one, and an
+    // ordinary launch is the one place that can know it is ordinary. PvP never
+    // sets this one, so in practice this clears after a replay and after an
+    // operation; it is written against the same predicate so the two latches
+    // cannot drift apart.
+    if (this.pvp === null && this.replay === null) suppressProgression(false);
     // BEFORE the first await, deliberately. `requestFullscreen` needs transient
     // user activation, and every await between the click and the call spends
     // more of that window — `bootGame` below is seconds of shader compilation.

@@ -124,10 +124,10 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 4599 across 185 files (+3 opt-in probes)
+npm test             # vitest, currently 4607 across 186 files (+3 opt-in probes)
                      #   6 of those are gated on `distIsCurrent()` — freshness, not mere
                      #   existence — across BOTH `manual` and `webgpu-bundle-isolation`,
-                     #   so a tree with no current `dist/` reports 4593 and skips 9.
+                     #   so a tree with no current `dist/` reports 4601 and skips 9.
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -281,6 +281,34 @@ in-match strip, `src/game/Playback.ts` + `playback.system.ts` for the feeding.
 - **`buildVersion` warns and does not refuse.** It is a correlation, not a cause — most releases here
   touch art the sim cannot observe — and the real question is measured every 30 ticks by the
   checkpoint compare, which the bar puts on screen. See `Replay.buildWarning`.
+
+## `beginMatch` HAS TWO CALLERS, and the shell's carve-out could only ever see one
+
+**Watching a replay of a win banked `matchesPlayed`, `wins`, `currentStreak` and every
+kill/build/earn chain, in every shipped build since replays existed.** `Shell.startMatch` refused to
+open the mission board for a replay under a nine-line comment saying exactly why — *"Watching a
+recording is not playing a match: it must not count towards 'play 10 skirmishes'…"* — and that
+refusal did nothing, because `MissionTracker.attach` subscribes to `match:started` and opens a match
+ITSELF whenever none is open. `outcome.system.ts` emits that event edge-triggered on the shell
+entering `'playing'`, with no replay, campaign or tutorial exclusion anywhere on the path. The shell
+skipped its call; the bus made the same call one frame later.
+
+- **`suppressProgression` in `src/progression/suppress.ts` is the fix, and WHERE it is read is the
+  whole design.** It is read inside `MissionTracker.beginMatch` and `.endMatch` themselves, so it is
+  honoured no matter who calls them. It imports nothing and is a module-level boolean — deliberately
+  the twin of `UnlockGate`'s `suppressed`, which exists for the same reason on the same boot path.
+- **A GUARD THAT LIVES AT A CALL SITE CANNOT SEE A SECOND CALL SITE.** That is the general lesson
+  and it is why `tests/progression-suppress.spec.ts` emits `match:started` on a real `Channels` and
+  asks `inMatch()`, never whether the shell skipped a call. A test in the caller-checking shape
+  passes against the broken build — that is precisely how this shipped. The spec fails 5 of 8
+  against the old behaviour, and the 3 that pass either way are its falsifiers.
+- **Whoever sets it clears it.** `Shell.startReplay` sets, `clearReplay` clears, and `startMatch`
+  clears on the same guarded line that restores the unlock gate — `suppressUnlockGate` leaked
+  exactly once and left every later skirmish ungated, and this is written against the same predicate
+  so the two cannot drift apart.
+- **`endMatch` is gated in its own right**, not merely by `beginMatch` refusing. A latch set
+  mid-match must not let the lifetime record out on the way past, and `won`/`currentStreak` are
+  exactly what a replayed victory would otherwise bank.
 
 ## An economy can stop dead, and one rule exists to unstick it
 

@@ -66,6 +66,8 @@ import {
   type MissionRule, type Reward, type RuleKind,
 } from './types';
 
+import { progressionSuppressed } from './suppress';
+
 /* ==========================================================================
  * 1. WHAT THE TRACKER NEEDS FROM THE BUS
  *
@@ -390,6 +392,11 @@ export class MissionTracker {
    * Calling it while a match is live abandons that one first.
    */
   beginMatch(info: MatchStartInfo): void {
+    // THE LATCH IS READ HERE, NOT AT THE CALL SITE, AND THAT IS THE WHOLE FIX.
+    // This method has TWO callers — `Shell.startMatch` and this tracker's own
+    // `match:started` subscription below — and the shell's replay carve-out
+    // could only ever see one of them. See `./suppress` for what that cost.
+    if (progressionSuppressed()) return;
     if (this.match !== null) this.abandonMatch();
 
     this.matchRows.clear();
@@ -425,6 +432,12 @@ export class MissionTracker {
    * `winStreak`), updates the lifetime record and writes through.
    */
   endMatch(info: MatchEndInfo): void {
+    // Both halves of the lifetime record are gated, not just the opening one.
+    // A suppressed `beginMatch` leaves `this.match` null so the line below
+    // would already refuse — but a latch set MID-match must not let the
+    // lifetime stats through on the way out, and `won`/`currentStreak` are
+    // exactly what a replay of a victory would otherwise bank.
+    if (progressionSuppressed()) return;
     const m = this.match;
     if (m === null) return;
 
