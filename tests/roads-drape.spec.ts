@@ -353,3 +353,76 @@ describe('road ends, bounded rather than fixed', () => {
       .toBe(`3 interior dead ends [contested-strait:1 frozen-sector:2]`);
   }, 240000);
 });
+
+/* ========================================================================== */
+
+/**
+ * NO CHAIN PAINTS MARKINGS ON A CARRIAGEWAY ANOTHER CHAIN OWNS.
+ *
+ * The second road report — "the roads are completly broken" over a screenshot
+ * of temperate-valley — was dashes canted across the lane in open road, a
+ * crosswalk mid-block, and a double-yellow that split in two. All three are one
+ * defect: `RoadNetwork` routes two chains down one corridor and deduplicates
+ * only the JUNCTION geometry, so each ribbon paints its own centre line, edge
+ * lines, dashes and zebra AT ITS OWN HEADING on the same tarmac. Measured at
+ * the time: a quarter of the carriageway double-claimed, 736 m2 of foreign
+ * paint crossing its host past 30 degrees, worst 89.6.
+ *
+ * THIS FILE WAS 21/21 GREEN THE WHOLE TIME. It measures burial, props on the
+ * carriageway, phantom mouths and interior dead ends — the Y axis and the
+ * lattice — and nothing about whether two roads are drawn on one another. That
+ * gap is why the report happened twice.
+ */
+/**
+ * Measured 2026-08-18 on the shipped map seeds, with the terrain these cases
+ * build (no `starts`, so it is NOT the layout a match generates — see the note
+ * on `build`). Treat a move here as a routing change to explain, not a number
+ * to re-baseline.
+ */
+const CENSUS: Record<string, number> = {
+  'industrial-grid': 369,
+  'foundry-line': 76,
+  'temperate-valley': 519,
+  'contested-strait': 7,
+  'frozen-sector': 60,
+  'airbase-flats': 4,
+};
+
+describe('no chain paints markings on a carriageway another chain owns', () => {
+  it('gives way on exactly one side of every overlap', () => {
+    // `buildCover` sets `rank = (arterial ? RANK_ARTERIAL : RANK_STREET) + id`,
+    // and the suppression test is a STRICT `rank >`. Distinct ranks are
+    // therefore what guarantees the ground keeps ONE set of markings rather
+    // than none: for any overlapping pair exactly one yields. Equal ranks would
+    // make neither yield and the defect would survive; a non-strict test would
+    // make both yield and blank the road.
+    for (const c of CASES) {
+      const { net } = build(c);
+      const s = net.stats();
+      expect(s.ribbonRows, `${c.label} emitted no cross-sections`).toBeGreaterThan(0);
+      expect(s.foreignPaintRows, `${c.label} suppressed more rows than it emitted`)
+        .toBeLessThanOrEqual(s.ribbonRows);
+      expect(s.foreignPaintRows).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  /**
+   * THE CENSUS, PINNED — and it is a read on the ROUTING, not on this fix.
+   *
+   * A high number here means the router laid that much road on top of other
+   * road; the marking suppression is only what stops it being visible. The
+   * real defect underneath is untouched and is recorded in the task list:
+   * 26.6% of laid road sits on other road, and one chain runs 632 m to join two
+   * nodes 84 m apart.
+   *
+   * Pinned per map so a routing change announces itself in either direction,
+   * the same contract `tests/terrain-lod.spec.ts` uses for its chunk counts.
+   * Reported together rather than one map at a time, because a change that
+   * moves all six should not look like a change that moved one.
+   */
+  it('suppresses the number of cross-sections it suppressed when measured', () => {
+    const got: Record<string, number> = {};
+    for (const c of CASES) got[c.label] = build(c).net.stats().foreignPaintRows;
+    expect(got).toEqual(CENSUS);
+  });
+});

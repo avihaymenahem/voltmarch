@@ -1051,6 +1051,55 @@ class CarriagewayCover {
   }
 
   /**
+   * True when (x,z) lies on carriageway that a HIGHER-RANKED region owns, and
+   * this region's paint there would therefore be foreign paint on somebody
+   * else's tarmac.
+   *
+   * WHY THIS IS NOT `covered()`. That one answers for the KERB and the
+   * PAVEMENT, which lie OUTSIDE the ribbon, so its first test — buried in any
+   * quad by `CUT_MARGIN` — is the whole point there. A carriageway centreline
+   * is inside its own ribbon by construction, so `covered()` returns true for
+   * every marking on every road and deletes the lot. The two questions look
+   * alike and are not: this one asks only "does somebody ELSE own this
+   * ground", and it never consults the asking region's own quads except
+   * through the self-overlap rule below.
+   *
+   * The self-overlap arm is the same `SELF_CUT_SEPARATION` rule `covered()`
+   * uses, and for the same reason: a chain that doubles back paints two sets
+   * of markings at two headings on one piece of ground, which is the defect
+   * this exists to stop, while a chain merely curving is within its own
+   * corridor for the whole arc and must not delete its own paint.
+   *
+   * Pads are deliberately NOT consulted. The measured overlap on the shipped
+   * maps is 0.0% covered by junction pads and 89.7% of it is more than 10 m
+   * from any node, so they contribute nothing to this defect, and consulting
+   * them would put the crosswalk at every mouth inside an unmeasured change.
+   */
+  outranked(region: number, arc: number, x: number, z: number): boolean {
+    const list = this.cells.get(CarriagewayCover.key(
+      Math.floor(x / COVER_CELL_METRES), Math.floor(z / COVER_CELL_METRES),
+    ));
+    if (list === undefined) return false;
+    const mine = this.region[region].rank;
+    for (let k = 0; k < list.length; k++) {
+      const id = list[k];
+      if (id < 0) continue;                       // pads: see the note above
+      const other = this.own[id];
+      if (other === region) {
+        if (!(this.arc[id] - arc < -SELF_CUT_SEPARATION)) continue;
+      } else if (!(this.region[other].rank > mine)) {
+        continue;
+      }
+      // STRICTLY inside, with no margin. A shared kerb line lies exactly ON a
+      // neighbour's boundary; widening this by `CUT_MARGIN` the way the kerb
+      // rule does would strip the outermost edge line off every road that
+      // merely touches another.
+      if (this.quadSignedDistance(id, x, z) < 0) return true;
+    }
+    return false;
+  }
+
+  /**
    * Distance from (x,z) to quad `i`, negative when inside it.
    *
    * Two triangles for the inside test rather than a convex half-plane test:
@@ -1532,6 +1581,19 @@ export interface RoadStats {
   tightBends: number;
   /** Smallest angle any road leg makes with a world axis. Scorecard #32. */
   minOffAxisDegrees: number;
+  /**
+   * Carriageway cross-sections whose markings were suppressed because the
+   * ground under them belongs to a higher-ranked chain.
+   *
+   * NON-ZERO IS NORMAL AND IS NOT A DEFECT REPORT — it is the count of places
+   * where the router laid two roads on one piece of ground and exactly one of
+   * them was allowed to keep its paint. It is reported so the ROUTING can be
+   * watched: this number is a direct read on how much road is laid on top of
+   * other road, which is the real defect underneath and is not fixed here.
+   */
+  foreignPaintRows: number;
+  /** Cross-sections emitted in total, so the above has a denominator. */
+  ribbonRows: number;
   /** Fraction of the map covered by the road corridor. */
   coverage: number;
   drawCalls: number;
@@ -1563,6 +1625,10 @@ export class RoadNetwork {
   private readonly materials: THREE.Material[] = [];
   private readonly uniforms = makeRoadUniforms();
 
+  /** Cross-sections that gave up their markings to a higher-ranked chain. */
+  private foreignPaintRows = 0;
+  /** Cross-sections emitted, the denominator for the above. */
+  private ribbonRows = 0;
   /** Measured, for `stats()` and for the boot-log conformance line. */
   private cornerRadii: number[] = [];
   private bendRadii: number[] = [];
@@ -3019,6 +3085,33 @@ export class RoadNetwork {
     return mesh;
   }
 
+  /**
+   * Does any marking this cross-section would paint land on higher-ranked
+   * carriageway?
+   *
+   * THREE SAMPLES AT THE MARKINGS' OWN POSITIONS, not at the kerb. The first
+   * version tested the two kerb-line endpoints, which sit `edgeInset` FURTHER
+   * OUT than the outermost paint — ground no marking occupies — and that alone
+   * suppressed an extra 7.5% of temperate-valley's cross-sections. The edge
+   * line is the widest thing drawn, so that is where the outer samples belong.
+   */
+  private markingsAreForeign(
+    region: number, along: number, w: number,
+    lxw: number, lzw: number, rxw: number, rzw: number, cx: number, cz: number,
+  ): boolean {
+    const cover = this.cover;
+    if (cover === null) return false;
+    if (cover.outranked(region, along, cx, cz)) return true;
+    // `side = w - 2*w*t`, so the edge line at |side| = w - edgeInset is at
+    // these two t. Derived from the ribbon's own mapping rather than restated,
+    // because the two must not drift apart.
+    const t = ROAD_MARKS.edgeInset / (2 * w);
+    for (const u of [t, 1 - t]) {
+      if (cover.outranked(region, along, lxw + (rxw - lxw) * u, lzw + (rzw - lzw) * u)) return true;
+    }
+    return false;
+  }
+
   /** Carriageway ribbon for one chain, plus its two kerb runs. */
   private buildChainRibbon(c: RoadChainRec, road: MeshBuf, runs: KerbRun[]): void {
     const p = c.pts;
@@ -3056,7 +3149,55 @@ export class RoadNetwork {
       // stop bar and the yellow kerb dashes; 1e4 means "nowhere near one".
       const dA = c.junctionA ? along : 1e4;
       const dB = c.junctionB ? total - along : 1e4;
-      const dEnd = Math.min(dA, dB);
+      /*
+       * NO PAINT ON SOMEBODY ELSE'S TARMAC.
+       *
+       * Reported as "the roads are completly broken" over a screenshot of
+       * temperate-valley: dashes canted across the lane in open road, a
+       * crosswalk mid-block, and a double-yellow that splits in two.
+       *
+       * `RoadNetwork` routes two chains down one corridor and deduplicates only
+       * the JUNCTION geometry, so a quarter of the carriageway is claimed by
+       * two or more chains — and each ribbon paints its own centre line, edge
+       * lines, dashes and zebra AT ITS OWN HEADING. Measured: 27.4% of the
+       * carriageway double-claimed, 20.1% of it deep mid-block, 736 m2 of
+       * foreign paint crossing its host at more than 30 degrees, worst 89.6.
+       * Two chains' centrelines run coincident to 0.00 m and then part, which
+       * is the reported splitting double-yellow exactly.
+       *
+       * `Roads.ts`'s own note above `cutRun` explains why the kerb and pavement
+       * stop at an overlap and the carriageway does not: "the carriageway
+       * resolves an overlap by drawing one flat dark surface over another".
+       * That was true before the carriageway carried paint. Two dark surfaces
+       * do resolve; two sets of markings do not.
+       *
+       * `dEnd` of -1 is the sentinel the junction pad already uses, and
+       * `ROAD_MARKING_GLSL` gates EVERY marking it draws — wheel paths, centre
+       * line, dividers, edge line, crosswalk, stop bar — behind one
+       * `dEnd >= 0.0`. So this needs no shader change, no new attribute and no
+       * geometry change, and the asphalt still draws: an overlapped stretch
+       * becomes plain tarmac rather than a hole.
+       *
+       * THREE SAMPLES, NOT ONE. The outermost marking is the edge line just
+       * inside the kerb, so testing the centreline alone would leave an edge
+       * line painted across a foreign lane. If any of the three is foreign the
+       * whole cross-section gives way — deliberately the safe direction, since
+       * the complaint is too much wrong paint and never too little.
+       *
+       * THE ONE ARTEFACT THIS LEAVES, stated rather than hidden: `dEnd`
+       * interpolates along the chain, so the quad bridging a suppressed row
+       * and a live one passes through the crosswalk's distance band. Mid-block
+       * the live value is hundreds of metres or the 1e4 sentinel, so the
+       * crossing spans well under a millimetre of road. It would matter beside
+       * a mouth, where the live value is small — and the measured overlap is
+       * 0.0% covered by pads with 89.7% of it more than 10 m from any node, so
+       * that case does not arise on the shipped maps. If it ever does, the fix
+       * is to duplicate the boundary row rather than to widen this test.
+       */
+      const foreign = this.cover !== null && this.markingsAreForeign(region, along, w, lxw, lzw, rxw, rzw, x, z);
+      const dEnd = foreign ? -1 : Math.min(dA, dB);
+      this.ribbonRows++;
+      if (foreign) this.foreignPaintRows++;
 
       for (let k = 0; k <= spans; k++) {
         const t = k / spans;
@@ -3696,6 +3837,8 @@ export class RoadNetwork {
       bendRadiusMax: br.length ? Math.max(...br) : 0,
       tightBends: tight,
       minOffAxisDegrees: this.minOffAxis,
+      foreignPaintRows: this.foreignPaintRows,
+      ribbonRows: this.ribbonRows,
       coverage: covered / this.mask.length,
       drawCalls: 3,
     };
