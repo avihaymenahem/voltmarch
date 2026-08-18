@@ -20,7 +20,7 @@ everything away.
 
 | Decision | Choice |
 | --- | --- |
-| Content model | **Objective-driven skirmish.** No hand-authored story maps, no scripted triggers, no narrative. |
+| Content model | **Objective-driven skirmish** for the missions in this document. Hand-authored story maps and scripted triggers live in the CAMPAIGN, which is a separate system — see below. |
 | Unlocks gate | Specialist units & superweapons · maps & battlefields · commander powers & cosmetics |
 | Factions | **All four available from the start.** Explicitly *not* an unlock. |
 | AI | **Mirrors the player's unlock tier.** Difficulty scales through economy handicap and reaction time, as `AIStrategy` already does. |
@@ -28,6 +28,37 @@ everything away.
 The 4th faction being ungated was a deliberate call against the recommendation to make it a reward.
 It stays ungated; that is not up for re-litigation, but it does mean the unlock curve has to carry
 motivation on its own, which raises the bar on the reward table below.
+
+### The content-model row said "no scripted triggers", and two systems now have them
+
+That row read **"Objective-driven skirmish. No hand-authored story maps, no scripted triggers, no
+narrative"** from the day it was written, and it was a scope fence around THIS document rather than
+a claim about the engine. It stopped being readable that way the moment a second system wanted
+triggers, and it was cited as a prohibition twice before it was corrected here:
+
+- **The tutorial** (`src/shell/tutorial-steps.ts`) is scripted triggers and nothing else. Its header
+  cited this row as reason 1 of three for not reusing the mission model. **That reason is retired.**
+  Reasons 2 and 3 are the load-bearing ones and are untouched: a mission advances a COUNTER off an
+  event while a tutorial step measures a DELTA against a per-step baseline, which the rule language
+  has no concept of; and the objectives panel reads one global provider that the progression system
+  owns.
+- **The campaign** is a story mode of authored operations with a declarative trigger table evaluated
+  by a pure director inside `simTick`. It is a **second consumer of the engine**, not a widening of
+  the mission system, and it shares no rule language with `MissionRule` — deliberately, because
+  `RULE_KINDS` evaluates counters over the EVENT STREAM outside `simTick` while an operation needs
+  state predicates over the WORLD inside it. Two languages on opposite sides of the determinism
+  boundary is the whole argument, and it is the same one the tutorial made first.
+
+**What survives unchanged is the sentence that was actually doing work:** the missions in this
+document are counters and match objectives, they are drawn rather than authored, and nothing in
+`src/data/Missions.ts` is a story beat. Widening `MissionRule` to carry a campaign trigger is still
+refused, and `validateMissions` refuses a campaign rule kind outright rather than trusting the type.
+The fence moved; it did not come down.
+
+**A citation to this file must name a section, never a line number.** The row above was cited as
+"line 18" by `tutorial-steps.ts` and had drifted to line 23 by the time anyone checked — a pointer
+that silently stops pointing at the thing it names is the defect `docs/SPEC_DRIFT_AUDIT.md`
+catalogues, in miniature.
 
 ## Two scopes, one system
 

@@ -14,13 +14,22 @@
  * --------------------------------------
  * `src/progression/**` already has match-scope objectives with live HUD
  * tracking, so a tutorial looks like a mission chain from a distance. It is
- * not, for three reasons that are all load-bearing:
+ * not, for three reasons. The first has since been RETIRED by the very document
+ * it cited; the other two are load-bearing and are the whole reason this file
+ * exists:
  *
- *   1. `docs/MISSIONS_DESIGN.md` line 18 scopes missions to "objective-driven
- *      skirmish — no hand-authored story maps, NO SCRIPTED TRIGGERS". A
- *      tutorial is scripted triggers and nothing else. Reusing the mission
- *      model means reopening an agreed design doc to delete the one line that
- *      keeps that system small.
+ *   1. RETIRED — AND KEPT, BECAUSE IT IS A RECORD OF HOW A CITATION ROTS.
+ *      `docs/MISSIONS_DESIGN.md` §"Agreed scope" scoped missions to
+ *      "objective-driven skirmish — no hand-authored story maps, NO SCRIPTED
+ *      TRIGGERS", and this header read that as a prohibition on the ENGINE. It
+ *      was a scope fence around THAT DOCUMENT. The campaign is the second
+ *      system to want scripted triggers, it is a separate consumer rather than
+ *      a widening of the mission model, and the row now says so — see that
+ *      file's §"The content-model row said no scripted triggers". Nothing about
+ *      the tutorial changed when it moved: reasons 2 and 3 always did the work,
+ *      and widening `MissionRule` is still refused for exactly them.
+ *      The citation also read "line 18" for a line that had drifted to 23 by
+ *      the time anybody checked. **Cite a section, never a line number.**
  *   2. A mission advances a COUNTER off an event. A tutorial step has to know
  *      "the camera has travelled 30 m since this step began", "the rally flag
  *      of a factory that already had one has moved", "one harvester load has

@@ -1,7 +1,7 @@
 # Campaign
 
 VOLTMARCH has no story campaign. There are no scripted missions, no briefings, no map-by-map
-progression and no cutscenes. What it has instead is a **49-row mission table** that watches every
+progression and no cutscenes. What it has instead is a **46-row mission table** that watches every
 skirmish you play and pays out when you hit a number.
 
 That is a design decision rather than a shortfall, and it has one consequence worth stating up
@@ -17,7 +17,7 @@ prompts you through the verbs. It is not part of the mission table and grants no
 
 | | Profile missions | Match objectives |
 | --- | --- | --- |
-| Count | 36 | 13 |
+| Count | 33 | 13 |
 | Persist between matches | yes | no — reset every match |
 | Shown | Missions screen | objective panel, in match |
 | How many at once | all of them | **5**, drawn from the seed |
