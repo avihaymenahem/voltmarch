@@ -1351,11 +1351,18 @@ describe('splash measures the distance it actually is', () => {
   });
 
   it('still reaches a GROUND unit standing on the blast, unchanged', () => {
-    // THE PROPERTY THAT MAKES THIS A FIX AND NOT A STEALTH BALANCE CHANGE. The
-    // vertical term is guarded on `Locomotor.Air`, so ground combat is
-    // bit-identical. A hull's `posY` is its centre and sits above the terrain,
-    // so folding `dy` in unconditionally would have quietly weakened every
-    // artillery shell in the game against every tank.
+    // THE PROPERTY THAT MAKES THIS A FIX AND NOT A STEALTH BALANCE CHANGE, and
+    // the REASON given here was wrong for a whole release. This said the
+    // vertical term is "guarded on `Locomotor.Air`". It is not, and `Damage.ts`
+    // says so in terms: there is no `Locomotor` test anywhere in `applySplash`,
+    // and the `Locomotor.Air` version was the REJECTED first attempt, because
+    // it failed the mirror case of an AA burst splashing the ground beneath it.
+    //
+    // What actually keeps ground combat bit-identical is that the term is a
+    // DISTANCE: `gap = |dy| - estimatedHeight * 0.5`, folded in only when it is
+    // positive. A hull's `posY` is its centre, so a shell landing at a tank's
+    // feet is already inside that half-extent and contributes exactly zero. The
+    // conclusion below was always true; only this explanation of it was not.
     const rig = makeCombatRig();
     const a = spawnShooter(rig, P0, 0, 0, 0);
     const b = spawnShooter(rig, P1, 0, 0, 0);

@@ -202,17 +202,24 @@ export function resample(src: readonly number[], step: number, from: number, to:
  * 0.5 m sit 120 to 334 m from the nearest one, and two of those maps have no
  * clamped rows at all.
  *
- * TWO RIBBON QUADS DO WIND BACKWARDS, AND AN EARLIER DRAFT OF THIS BLOCK SAID
+ * SOME RIBBON QUADS DO WIND BACKWARDS, AND AN EARLIER DRAFT OF THIS BLOCK SAID
  * ZERO because it measured the offset curve and then made a claim about the
  * strip. They are not the same object: a ribbon quad spans two CONSECUTIVE
  * rows, so where `wl` falls 5.22 m -> 3.42 m across one 1.95 m step the edge
- * outruns the advance and the quad goes non-convex. One on coral-shore, one on
- * temperate-valley, each on the tightest bend of the tightest chain on its map
- * — 2 of roughly 8 900 quads, inside the 0.2% budget `makeRoadMaterial`
- * already records, and the reason that material is `DoubleSide`. PINNED rather
- * than zeroed: the honest fix is rate-limiting how fast `wl`/`wr` may move
- * between rows, which is a change to `resolveChainEdges` with its own
- * consequences.
+ * outruns the advance and the quad goes non-convex.
+ *
+ * Measured over all seven maps at seeds 0..9: 27 inverted triangles of 100 836
+ * (0.027%), across 50 418 quads. Confined to temperate-valley and coral-shore
+ * — but present at 10 of 10 seeds on both, so it is a standing property rather
+ * than a seed accident. The worst is -29.08 m2 on coral-shore chain 0 and it
+ * carries a +49.63 m2 partner, so the row order crosses over itself: a BOWTIE,
+ * not the thin sliver a single-map reading suggests. Inside the 0.2% budget
+ * `makeRoadMaterial` already records, and the reason that material is
+ * `DoubleSide`, so it fills its pixels with slightly wrong lighting rather than
+ * showing terrain through. PINNED rather than zeroed: the honest fix is
+ * rate-limiting how fast `wl`/`wr` may move between rows, which is a change to
+ * `resolveChainEdges` on a hot path with its own consequences, for a 0.03%
+ * cosmetic artefact that `DoubleSide` already covers.
  *
  * What a bend costs everywhere else is a PINCH: the row narrows to `wl + wr`,
  * worst measured 9.57 m against a nominal 13.60 m. That pinch is the whole

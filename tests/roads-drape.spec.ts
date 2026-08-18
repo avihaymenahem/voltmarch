@@ -731,18 +731,30 @@ describe('the carriageway paint frame matches the row it is written on', () => {
    * from one seed to the next — but a collapse toward zero is a real defect and
    * this is where it reports.
    *
-   * TWO INVERTED QUADS SURVIVE ACROSS THESE THREE MAPS AND THEY ARE PINNED, NOT
-   * ZEROED. The offset CURVE never inverts — that is what the 0.85 buys — but
+   * TWO INVERTED QUADS SURVIVE ACROSS THESE THREE CASES AND THEY ARE PINNED,
+   * NOT ZEROED — and see the roster figure below, because three cases is not
+   * the roster. The offset CURVE never inverts — that is what the 0.85 buys — but
    * the ribbon is a strip of quads between consecutive rows, and where `wl`
    * falls 5.22 m -> 3.42 m across one 1.95 m step the row's own left edge
    * outruns the advance and the quad goes non-convex:
    *
-   *     coral-shore      chain 0  row  46 of 181   second triangle -1.66 m2
-   *     temperate-valley chain 17 row 134 of 207   second triangle -2.15 m2
+   *     coral-shore      chain 0  row  46 of 181   second triangle -0.83 m2
+   *     temperate-valley chain 17 row 134 of 207   second triangle -1.08 m2
    *
-   * Both sit on the tightest bend of the tightest chain on their map. That is
-   * 2 of roughly 8 900 ribbon quads, 0.02%, against the 0.2% budget
-   * `makeRoadMaterial` already records — and it is why that material is
+   * Those two areas read -1.66 and -2.15 until they were checked: `area2` below
+   * returns the CROSS PRODUCT, which is twice the signed area. The pin only
+   * tests the sign, so the test was right and only the prose was doubled.
+   *
+   * Both sit on the tightest bend of the tightest chain on their map.
+   *
+   * THE ROSTER FIGURE IS LARGER AND THE ARTEFACT IS A BOWTIE, NOT A SLIVER.
+   * Over all seven maps at seeds 0..9: 27 inverted triangles of 100 836
+   * (0.027%), across 50 418 quads (0.054% of quads) — on temperate-valley and
+   * coral-shore only, but at 10 of 10 seeds on both, so this is a standing
+   * property and not a seed accident. The worst is -29.08 m2 at coral-shore
+   * chain 0, and it carries a +49.63 m2 partner: the row order crosses over
+   * itself, which is a bowtie rather than the thin sliver the two cases above
+   * suggest. Still inside the 0.2% budget `makeRoadMaterial` already records — and it is why that material is
    * `THREE.DoubleSide`, so the back-facing triangle fills its pixels with
    * slightly wrong lighting instead of leaving bare terrain showing through.
    * Rasterising the carriageway at 0.5 m and flood-filling confirms it: no

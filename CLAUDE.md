@@ -1330,7 +1330,12 @@ second... something is weird"*. **This one is SHIPPED behaviour, unlike the rest
   line-infantry rifles. Real distance — the vertical gap beyond the hull's own extent,
   `|dy| - estimatedHeight * 0.5` — keeps that floor BY CONSTRUCTION: a weapon that can elevate puts
   its blast AT the aircraft. Measured, `aaCannon`'s impact `y` lands within **2.36 m** of a plane
-  at 22 m, and all four ungated line infantries still take a MiG down with eight men (gi 0.97 s,
+  at 22 m, against a MiG half-extent of 2.0655 — so `gap` is **+0.296 m** and does NOT clamp to
+  zero, costing 3.63 m of reach against 3.62. A near miss, not a clamp, and the distinction is
+  worth the words because the clamp is the floor's only structural defence. `estimatedHeight` must
+  be called with `footprintW = 0` for a unit, or it takes its BUILDING branch and answers 4.60
+  instead of 4.131 — which is how one draft of this paragraph came to quote a gap of 0.06. And all
+  four ungated line infantries still take a MiG down with eight men (gi 0.97 s,
   mrdWayfarer 1.60 s, conscript 1.67 s, rclPicker 3.50 s).
 - **THE STAGED INCIDENT, BEFORE AND AFTER.** A Rhino shelling a Grizzly with three MiGs parked over
   the victim: **7 blasts under the flight, 0.0 damage, 3/3 still flying**. The falsifier that makes
@@ -1363,10 +1368,16 @@ the splash fix does not touch it. The safest place for an aircraft is directly o
 SAYS.** That table is `raw * ARMOR_MATRIX[warhead][Light] * globalMul`, i.e. a PER-TARGET dps — but
 every row carrying both `canTargetAir` and a `splashRadius` delivers it to every aircraft inside the
 blast, and `movesShareSpace` lets aircraft share a point. Measured per aircraft rather than per
-engagement, a stacked flight of three dies **exactly 3.00x faster each** than one alone, for all
-three shooters tried (flakTrooper x1 11.10 s -> 3.70, flakTrooper x8 0.93 -> 0.31, aaTurret x1
-3.20 -> 1.07). The flight of three takes the same wall-clock as the single aircraft: massing
-aircraft against splash AA buys them nothing at all.
+engagement, **a flight of three dies in the same wall-clock as a single aircraft** — measured
+identical `secondsToAll` for all three shooters tried (flakTrooper x1 11.10 s, flakTrooper x8
+0.93 s, aaTurret x1 3.20 s, each unchanged by adding two more planes). Massing aircraft against
+splash AA buys them nothing at all.
+
+**DO NOT QUOTE THE "3.00x PER AIRCRAFT" FORM OF THAT.** The probe divides the flight's clock by
+three, so a ratio of exactly 3.00 is what the arithmetic must produce whenever the wall-clock is
+unchanged — it would read 4.00 for a flight of four. The per-aircraft figure is a restatement of
+the sentence above and not a second finding, and an earlier draft of this block cited it as one.
+That is the vacuous-metric trap this file warns about twice elsewhere, walked into a third time.
 
 **THE MULTIGUNNER RE-MEASUREMENT CAME BACK CONFIRMING THE FLAG.** The "187-261% of an aircraft's
 health on ONE 26 m pass" figure this file demanded be re-derived reproduces to the digit, from the
@@ -1449,12 +1460,17 @@ argument for why draping rather than grading the heightfield.
   coral-shore against a 6.8 m arterial half-width. Widening such a bend is a ROUTING change, and the
   route already survived `routeLegal` — the legs are short because the ground refused longer.
 - **A TIGHT BEND PINCHES THE RIBBON; IT DOES NOT TEAR IT OPEN.** Worst emitted row 9.57 m against a
-  13.60 m nominal (70.4%). Two ribbon quads of roughly 8 900 DO wind backwards, one each on
-  coral-shore and temperate-valley, both on the tightest bend of the tightest chain — inside the
-  0.2% budget `makeRoadMaterial` already records, and the reason that material is `DoubleSide`.
-  **Pinned rather than zeroed**: the honest fix rate-limits how fast `wl`/`wr` may move between
-  rows, in `resolveChainEdges`. An earlier draft of `filletPolyline`'s header claimed ZERO
-  inverted triangles because it measured the offset CURVE and then made a claim about the STRIP.
+  13.60 m nominal (70.4%). Some ribbon quads DO wind backwards: over all seven maps at seeds 0..9,
+  **27 inverted triangles of 100 836** (0.027%), confined to temperate-valley and coral-shore but
+  present at **10 of 10 seeds on both**, so it is a standing property rather than a seed accident.
+  The worst is **-29.08 m2 with a +49.63 m2 partner** — the row order crosses over itself, so it is
+  a BOWTIE, not the thin sliver a single-map reading suggests. Inside the 0.2% budget
+  `makeRoadMaterial` records, and the reason that material is `DoubleSide`. **Pinned rather than
+  zeroed**: the honest fix rate-limits how fast `wl`/`wr` may move between rows, in
+  `resolveChainEdges`, on a hot path, for a 0.03% artefact `DoubleSide` already covers. Two earlier
+  drafts got this wrong in opposite directions — one claimed ZERO, by measuring the offset CURVE
+  and then making a claim about the STRIP; the next quoted two quads and doubled their areas, by
+  reading a three-case pin as a roster figure and a cross product as an area.
 
 ## There are two renderers now, and a WebGL player downloads exactly one of them
 

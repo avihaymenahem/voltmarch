@@ -982,11 +982,26 @@ describe('§5 the floor still holds after the splash fix', () => {
       const worst = ys.reduce((m, y) => Math.max(m, Math.abs(y - planeY)), 0);
       console.log(`[airkill §5] aaCannon impact y vs plane y=${planeY.toFixed(2)}: ${
         ys.length} records, worst |dy| ${worst.toFixed(2)} m`);
-      // Inside the airframe's own vertical extent, which is exactly the
-      // condition under which the fix's `gap` term clamps to zero.
+      // JUST OUTSIDE THE AIRFRAME'S OWN VERTICAL EXTENT, AND IT DOES NOT CLAMP.
+      // `estimatedHeight(0, radius, kind)` gives a MiG 4.131 m, so half is
+      // 2.0655 and a worst |dy| of 2.362 leaves `gap = +0.296 m` — small, and
+      // NOT zero. Reach falls 3.63 -> 3.62 m, which is why the floor is
+      // unharmed, but the term is live rather than clamped.
+      //
+      // Two drafts of this comment were wrong in opposite directions. The first
+      // claimed the gap clamps to zero, under `height * 0.5 + 1` — a metre of
+      // undeclared slack that could not tell a clamp from a near miss. The
+      // second put the half-extent at 2.30 by calling `estimatedHeight` with a
+      // NON-ZERO `footprintW`, which takes its BUILDING branch; a unit has no
+      // footprint and must pass 0. The bounds below bracket the gap on both
+      // sides so neither mistake can be made again in silence.
       const frame = AIRFRAMES.find((a) => a.key === 'mig')!;
       expect(worst, 'an elevating weapon is landing its blast off the target\'s altitude')
-        .toBeLessThan(frame.height * 0.5 + 1);
+        .toBeLessThan(frame.height * 0.5 + 0.5);
+      expect(
+        worst - frame.height * 0.5,
+        'the gap clamps to zero now — the vertical term has become unconditional',
+      ).toBeGreaterThan(0);
     } finally {
       rig.dispose();
     }
