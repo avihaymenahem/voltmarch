@@ -23,6 +23,7 @@
     "naval-proof": "node tools/naval-proof.mjs",
     "desync-probe": "node tools/desync-probe.mjs",
     "replay-probe": "node tools/replay-probe.mjs",
+    "op-harness": "node tools/op-harness.mjs",
     "desktop:dev": "node desktop/dev.mjs",
     "desktop:preview": "node desktop/preview.mjs"
   },
