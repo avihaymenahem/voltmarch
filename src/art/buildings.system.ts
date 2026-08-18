@@ -57,6 +57,9 @@ import { resolveDefBinding } from '../game/Scenarios';
 import { FACTION_ANY, registerKindMesh, type KindMesh, type SocketSpec } from '../render/RenderBridge';
 import { STRUCTURE_MASS_LISTS } from './BuildingDefs';
 import {
+  ARMY_ORDER, GAIA_SLOT, builtBy, type PerArmy,
+} from './faction-models';
+import {
   buildingLibrary,
   buildingTime,
   formatStructureStats,
@@ -67,27 +70,43 @@ import {
 interface BuildingGlobal { __vmBuildings?: unknown; }
 
 /**
- * Content key -> [allied model, soviet model], for the keys whose def is
- * faction-neutral. The content vocabulary belongs to `src/game/Scenarios.ts`,
- * so this is the one place the two namespaces meet.
+ * Content key -> one model PER ARMY, for the keys whose def is faction-neutral.
+ * The content vocabulary belongs to `src/game/Scenarios.ts`, so this is the one
+ * place the two namespaces meet.
+ *
+ * IT WAS `readonly [string, string]`, AND THE MISSING TWO SLOTS WERE A VISIBLE
+ * BUG. `resolve()` is keyed on (kind, FACTION, defId), and this table registered
+ * at Allies / Soviets / Neutral only. So a Pact-owned Construction Yard — which
+ * can only arise by CAPTURE, since the Pact builds `mrdConclave` and never this
+ * def — missed (Building, Meridian, defId), missed (Building, ANY, defId), and
+ * fell through to (Building, Meridian, -1), which `Faction3Buildings.ts` binds
+ * to `meridian_chapterhouse`. A captured Construction Yard redrew as a
+ * Chapterhouse on the battlefield while its sidebar portrait stayed Allied.
+ *
+ * `builtBy` is shared with `src/ui/Cameos.ts` precisely so those two cannot
+ * disagree again — it was defined privately there, widened to four slots for
+ * the engineer-skins fix, and this table was left at two. The decision it
+ * encodes (both newer armies take the ALLIED model, because a captured Allied
+ * Refinery is still an Allied Refinery) is argued at its definition, along with
+ * the limit that resolution never sees who BUILT the thing.
  */
-const SHARED_KEYS: Readonly<Record<string, readonly [string, string]>> = {
-  conyard: ['allied_conyard', 'soviet_conyard'],
-  powerPlant: ['allied_power', 'soviet_power'],
-  barracks: ['allied_barracks', 'soviet_barracks'],
-  refinery: ['allied_refinery', 'soviet_refinery'],
-  warFactory: ['allied_warfactory', 'soviet_warfactory'],
-  radar: ['allied_radar', 'soviet_radar'],
-  battleLab: ['allied_tech', 'soviet_tech'],
-  commandPost: ['allied_commandpost', 'soviet_commandpost'],
-  oreSilo: ['allied_silo', 'soviet_silo'],
-  repairDepot: ['allied_depot', 'soviet_depot'],
-  wall: ['allied_wall', 'soviet_wall'],
-  gate: ['allied_gate', 'soviet_gate'],
+export const SHARED_KEYS: Readonly<Record<string, PerArmy<string>>> = {
+  conyard: builtBy('allied_conyard', 'soviet_conyard'),
+  powerPlant: builtBy('allied_power', 'soviet_power'),
+  barracks: builtBy('allied_barracks', 'soviet_barracks'),
+  refinery: builtBy('allied_refinery', 'soviet_refinery'),
+  warFactory: builtBy('allied_warfactory', 'soviet_warfactory'),
+  radar: builtBy('allied_radar', 'soviet_radar'),
+  battleLab: builtBy('allied_tech', 'soviet_tech'),
+  commandPost: builtBy('allied_commandpost', 'soviet_commandpost'),
+  oreSilo: builtBy('allied_silo', 'soviet_silo'),
+  repairDepot: builtBy('allied_depot', 'soviet_depot'),
+  wall: builtBy('allied_wall', 'soviet_wall'),
+  gate: builtBy('allied_gate', 'soviet_gate'),
 };
 
 /** Content keys whose def already picks a side. Registered at FACTION_ANY. */
-const FACTION_KEYS: Readonly<Record<string, string>> = {
+export const FACTION_KEYS: Readonly<Record<string, string>> = {
   pillbox: 'allied_pillbox',
   // Real slewing crystal head, not the AA mount it stood in for.
   prismTower: 'allied_prismtower',
@@ -412,12 +431,19 @@ export default defineSystem({
     // (b) exact per-def registrations, the moment a def table exists.
     const binding = await resolveDefBinding();
     let bound = 0;
-    for (const [contentKey, pair] of Object.entries(SHARED_KEYS)) {
+    for (const [contentKey, models] of Object.entries(SHARED_KEYS)) {
       const defId = binding.buildingId[contentKey];
       if (defId === undefined || defId < 0) continue;
-      register(Faction.Allies, pair[0], defId);
-      register(Faction.Soviets, pair[1], defId);
-      register(Faction.Neutral, pair[0], defId);
+      // Every army in ARMY_ORDER, not just the two that BUILD these — the other
+      // two reach them by capture, and an unregistered (kind, faction, defId)
+      // falls through to that faction's (kind, faction, -1) default, which is a
+      // Chapterhouse for the Pact and a Foundry for the Reclamation. Driven off
+      // ARMY_ORDER rather than four named lines so a fifth army cannot be
+      // forgotten here while `PerArmy` forces the table above to grow.
+      for (let i = 0; i < ARMY_ORDER.length; i++) register(ARMY_ORDER[i], models[i], defId);
+      // Gaia holds no shared structure it did not inherit; it takes the Allied
+      // architecture for the same reason the (kind, Neutral, -1) default does.
+      register(Faction.Neutral, models[GAIA_SLOT], defId);
       bound++;
     }
     for (const [contentKey, modelKey] of Object.entries(FACTION_KEYS)) {

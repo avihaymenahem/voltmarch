@@ -114,7 +114,7 @@ import { FACTION_PALETTE, HUD_CAMEO } from '../core/config';
 import { hexToLinearRgb } from '../core/math';
 import { BuildTab, Faction, FACTION_PALETTE_KEYS } from '../core/types';
 import { buildingLibrary } from '../art/BuildingFactory';
-import { forArmy, type PerArmy } from '../art/faction-models';
+import { builtBy, forArmy, type PerArmy } from '../art/faction-models';
 import { unitLibrary } from '../art/UnitFactory';
 import {
   blitReadback,
@@ -362,40 +362,15 @@ export function primeCameoPrototype(root: THREE.Object3D, teamColor: THREE.Color
  */
 type ModelBinding = string | PerArmy<string>;
 
-/**
- * A STRUCTURE def both original armies build, in the two architectures it
- * exists in.
- *
- * The Pact and the Reclamation never build one — they have their own
- * Conclave/Foundry line all the way down — but they can CAPTURE one, and a
- * captured Allied Refinery is still an Allied Refinery. So both of their slots
- * take the Allied model, which is exactly what the old pair resolved to and is
- * the right answer rather than an accident.
- *
- * THE HONEST LIMIT: this function is handed the OWNER, never the builder, so a
- * Pact player who takes a SOVIET refinery gets its Allied twin in the portrait.
- * Pre-existing, unchanged, and it needs the builder recorded on the entity to
- * close — not a fifth column here.
- *
- * AND THE MODEL ON THE GROUND DOES NOT AGREE WITH THIS, which is a separate,
- * older defect and deliberately not fixed here. `buildings.system.ts#SHARED_KEYS`
- * is still the two-army pair this file just stopped being, and it registers only
- * at Allies / Soviets / Neutral — so a Pact-owned conyard resolves
- * (Building, Meridian, defId) miss, (Building, ANY, defId) miss, then
- * (Building, Meridian, -1), which `Faction3Buildings.ts` binds to
- * `meridian_chapterhouse`. A captured Construction Yard therefore redraws as a
- * Chapterhouse on the battlefield while its portrait stays Allied. Fixing it is
- * the same one-line-per-row change `SHARED_CONTENT_TO_MODEL` took, but it moves
- * what a capture LOOKS like for two armies, which is a content decision and not
- * this report's.
- *
- * Writing the pair as a helper rather than as 24 repeated model keys means a
- * fifth army has to answer the question ONCE, here, instead of twelve times in
- * silence.
+/*
+ * `builtBy` — the architecture pair, widened to four — now lives in
+ * `src/art/faction-models.ts` and is imported above. It was defined privately
+ * here, and while it was, `src/art/buildings.system.ts` went on registering the
+ * old two-army pair for the SAME twelve content keys. So the portrait resolved
+ * a captured Construction Yard to its Allied model while the thing on the
+ * ground fell through to `(Building, Meridian, -1)` and redrew as a
+ * Chapterhouse. One decision, two tables, and only one of them had been widened.
  */
-function builtBy(allied: string, soviet: string): PerArmy<string> {
-  return [allied, soviet, allied, allied];
-}
 
 /**
  * Unit content key -> model key. Mirrors `CONTENT_TO_MODEL` +

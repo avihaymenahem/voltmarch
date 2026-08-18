@@ -145,3 +145,35 @@ export function forArmy<T>(models: PerArmy<T>, faction: Faction): T {
   const i = armyIndex(faction);
   return (models as readonly T[])[i < 0 ? GAIA_SLOT : i];
 }
+
+/**
+ * THE ARCHITECTURE PAIR — a two-army model pair widened to four, for STRUCTURES.
+ *
+ * The Pact and the Reclamation never BUILD any of the shared structures; they
+ * run the Conclave/Foundry line all the way down. But they can CAPTURE one, and
+ * a captured Allied Refinery is still an Allied Refinery — capturing a building
+ * does not rebuild it. So both of their slots take the Allied model, which is
+ * also exactly what the old two-army pair resolved to, making this a widening
+ * rather than a change of behaviour.
+ *
+ * THIS IS FOR STRUCTURES ONLY. For a UNIT the pair means the army that operates
+ * it, and a Pact hull must not wear Allied paint — `src/art/Faction3Units.ts`
+ * is the authority there.
+ *
+ * THE HONEST LIMIT, and it is the same one in every consumer: resolution is
+ * keyed on the entity's CURRENT faction, never on who built it, so a Pact player
+ * who takes a SOVIET refinery gets its Allied twin. Closing that needs the
+ * builder recorded on the entity — a real saved, hashed column, with all the
+ * cost `store.carrierId` documents — not a fifth slot here. `gate` is the row
+ * where it shows most, since neither newer army has one at all.
+ *
+ * Written as a helper rather than as repeated model keys so that a fifth army
+ * answers the question ONCE, here, instead of twelve times in silence — in BOTH
+ * consumers. It lived privately in `src/ui/Cameos.ts` first, and while it did,
+ * `buildings.system.ts` went on registering the two-army pair, so the portrait
+ * and the model on the ground disagreed about what a captured Construction Yard
+ * looks like. That is why it is here and not there.
+ */
+export function builtBy(allied: string, soviet: string): PerArmy<string> {
+  return [allied, soviet, allied, allied];
+}
