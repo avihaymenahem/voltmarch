@@ -5,7 +5,8 @@ The Electron wrapper. **It contains no game code and never will** — it serves 
 file here ever imports from `src/` or from `three`. Same boundary, same reason, as
 [`server/README.md`](../server/README.md).
 
-The plan, the measurements and the arguments are [`docs/ELECTRON_PLAN.md`](../docs/ELECTRON_PLAN.md).
+The plan that produced it has been extracted and deleted; its rules are in `CLAUDE.md`, its
+measurements in `docs/RENDER_FINDINGS.md`, and what it left undone is in the task list.
 This file is how to run it.
 
 ```bash

@@ -3,7 +3,7 @@
  *
  * The renderer is NOT built here. It is the root `npm run build` (`vite build`)
  * output, used verbatim, so that the desktop and web targets are the same
- * bytes. That is the whole coexistence design — see docs/ELECTRON_PLAN.md §2.
+ * bytes. That is the whole coexistence design — see the Electron plan §2.
  *
  * Two bundles, both CommonJS, for two different reasons:
  *   main    — CJS because `registerSchemesAsPrivileged` and every appendSwitch
@@ -11,6 +11,18 @@
  *             asynchronous relative to app startup.
  *   preload — CJS because Electron runs SANDBOXED preloads "as plain JavaScript
  *             without an ESM context", so an `import` there is a syntax error.
+ *
+ * WHY NO STANDARD ELECTRON+VITE INTEGRATION — folded in when the Electron plan was deleted.
+ *
+ * `desktop/build.mjs`'s header says the renderer is not built there. Add why none of the
+ * standard integrations were used, because it will be proposed again: **electron-vite**
+ * *replaces* `vite build` and takes ownership of the renderer, which is the one thing that must
+ * not move if `dist/` is to stay byte-for-byte the Pages artifact. **Electron Forge's Vite
+ * plugin** is still marked experimental and mandates three config files plus a `main` pointing
+ * into `.vite/build`. **vite-plugin-electron** is a direct violation of the plugin-free rule
+ * stated in `vite.config.ts`. The main process here is small and imports only `electron`, so
+ * the correct seam is `vite build` unchanged plus a ~15-line standalone esbuild call — which is
+ * what this file is.
  */
 import { build } from 'esbuild';
 import path from 'node:path';

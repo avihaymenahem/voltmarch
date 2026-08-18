@@ -4,7 +4,7 @@
  * ============================================================================
  * THE DESKTOP SHELL'S DECISIONS, TESTED WITHOUT AN ELECTRON BINARY.
  *
- * `docs/ELECTRON_PLAN.md` §7 is the argument for this file's existence: the
+ * the Electron plan §7 is the argument for this file's existence: the
  * desktop target is deliberately outside CI, so **the only tests that will not
  * rot are the ones that need no Electron.** Everything the shell decides
  * therefore lives in `desktop/src/{flags,app-url,paths}.ts`, which import

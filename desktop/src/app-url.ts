@@ -4,7 +4,7 @@
  * ============================================================================
  * THE URL THE WINDOW LOADS, INCLUDING THE BOOT FLAGS.
  *
- * Imports nothing from electron. See `docs/ELECTRON_PLAN.md` §7.
+ * Imports nothing from electron. See the Electron plan §7.
  *
  * ----------------------------------------------------------------------------
  * THE QUERY STRING STAYS THE MECHANISM. DO NOT INVENT A SECOND ONE.
@@ -49,7 +49,7 @@ export const ORIGIN = `${SCHEME}://${HOST}`;
  * An allowlist rather than a passthrough. The renderer resolves `?relay=` into
  * a WebSocket it will connect to and `?shot=` into a harness path that skips
  * the shell, so "whatever the user typed" is not a safe input to widen to. A
- * flag added here is a deliberate act; `docs/ELECTRON_PLAN.md` §7 proposes a
+ * flag added here is a deliberate act; the Electron plan §7 proposes a
  * test that fails when an unregistered one appears.
  */
 export const ALLOWED_FLAGS: readonly string[] = [

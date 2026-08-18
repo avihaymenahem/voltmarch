@@ -1361,7 +1361,7 @@ in the table above** — only the probe can, and its verdict is here.
 ## 7j. THE ADAPTER CAN BE FORCED, ONE SWITCH MOVES BOTH RENDERERS — measured 2026-08-17
 
 **`powerPreference` is a hint Windows ignores (§7g), but `--force-high-performance-gpu` is not, and it
-moves WebGL and WebGPU together.** Gate zero of [`ELECTRON_PLAN.md`](ELECTRON_PLAN.md) §1, on the RTX
+moves WebGL and WebGPU together.** Gate zero of the Electron plan §1, on the RTX
 3080 laptop that produced the §7g observation:
 
 ```
@@ -1673,3 +1673,36 @@ all 13 fixtures (`03-terrain` 0.1760 -> 0.1965, +11.6%) and `greenHueLeak` on 12
 visual change has scored 0.000000 on the weighted grade, alongside the AO prepass deletion. **The
 weighted grade is not the instrument for judging an art change**; `tools/shot-compare.mjs` and the
 individual metric rows are.
+
+
+---
+
+## 13. From the Electron plan, before it was deleted
+
+Replace §7j's final bullet ("WHAT THIS DOES NOT ESTABLISH: that Electron passes the switch
+through… still unmeasured") with:
+
+-  **ELECTRON PASSES IT THROUGH — measured 2026-08-17, on the same laptop, inside the shipped
+  shell.** Gate zero was Edge, i.e. plain Chromium on the command line, and
+  `app.commandLine.appendSwitch` before `app.whenReady()` is a different call path. It reaches the
+  GPU process:
+
+  ```
+                   active adapter, read from the MAIN process via app.getGPUInfo('complete')
+  default          0x10de:0x249c   NVIDIA GeForce RTX 3080 Laptop GPU
+  --vm-safe-mode   0x1002:0x1638   AMD Radeon (integrated)
+  ```
+
+  Two independent reads agree, which is the standard: under `--webgpu` the renderer's own
+  `GPUAdapter.info` reports `nvidia`/`ampere` with `backend: 'webgpu'` while the main process
+  reports the NVIDIA device id. `desktop/src/main.ts` logs the active adapter on **every** boot
+  for exactly that reason — the effect site can no-op with no log line of its own, so the switch
+  having been appended is never the evidence.
+
+And at §7j's provenance line, replace "Gate zero of the Electron plan §1, on
+the RTX 3080 laptop that produced the §7g observation:" with "Measured on the RTX 3080 laptop that
+produced the §7g observation, with a ~50-line Playwright probe:".
+
+This is a rewrite rather than an append because §7j's own rule says so, and because CLAUDE.md
+already cites §7j as the proof that the switch works — leaving "still unmeasured" standing there
+points the next reader at an entry that contradicts the sentence that sent them to it.

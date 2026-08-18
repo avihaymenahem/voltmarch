@@ -4,7 +4,7 @@
  * ============================================================================
  * WINDOW MODE, WINDOW SIZE AND WHICH MONITOR. No electron import, so the whole
  * policy is visible to `npm test` without a binary — the same rule as
- * `flags.ts`, and for the same reason (`docs/ELECTRON_PLAN.md` §7).
+ * `flags.ts`, and for the same reason (the Electron plan §7).
  *
  * ----------------------------------------------------------------------------
  * THERE ARE TWO WINDOW MODES, NOT THREE, AND THAT IS A PLATFORM FACT.

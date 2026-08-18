@@ -1214,3 +1214,47 @@ which no shipped map offers. Slots 2 and 3 land on reserved shelves exactly as 0
 field's VALUES are still right — the real reasons are the sea arithmetic for
 `contested-strait`/`coral-shore` and an authored playtest judgement for `frozen-sector` — but the
 stated reason is one revision behind the code it sits next to.
+
+
+### 66. Eleven browser-only claims the desktop target made incomplete — **LIVE (doc)**
+
+## Finding 63 — the desktop target manufactures eleven browser-only claims, and `credits-truthful`
+cannot see the biggest one
+
+Added 2026-08-18, out of numbering order, like #62: the Electron shell shipped in v2.15.0 and this
+is the audit of what that made untrue. **Nothing here is fixed, and that is deliberate** — these
+are INCOMPLETE rather than false while the desktop build is undistributed, since every player
+still arrives through a browser. Re-verified line by line against HEAD; only one had drifted since
+the original grep.
+
+```
+CLAUDE.md:7             "an original browser RTS"
+README.md:6             "runs in the browser"
+README.md:12            the PLAY IN BROWSER badge
+README.md:42            "built for the browser"
+README.md:105           "'Shipped' means public/ — what the browser downloads"
+package.json:6          "for the browser"
+index.html:8            meta description "running in the browser"
+wiki/Home.md:3          "runs in a browser tab"
+wiki/Campaign.md:34     "stored per browser profile. Deleting site data resets it"
+server/README.md:98     "a browser blocks a plaintext socket from an https page"
+wiki/Multiplayer.md:58  "a browser refuses a plaintext socket from a secure page"
+```
+
+**The last two are the load-bearing ones.** They are the stated reason the relay carries no
+transport check of its own, and they are claims about what a *browser* enforces being relied on by
+a target that is not one: `pageIsPlaintext()` tests `location.protocol !== 'https:'`, which an
+`app:` origin passes, so our own refusal does not fire on desktop.
+
+**The one no test can catch is a fourth non-generated-asset category.** CLAUDE.md's list is
+Rajdhani, the brand PNGs, the splash art and the audio — about 9 MB, all in `public/`. The desktop
+build adds roughly 150 MB of Chromium, Node, V8 and ffmpeg to what reaches a player, carrying real
+attribution obligations: Electron ships `LICENSES.chromium.html` and its bundled ffmpeg is
+LGPL-2.1. The credits screen names none of it. The trap is mechanical rather than a matter of
+anyone forgetting: `tests/credits-truthful.spec.ts` walks `public/`, the Electron runtime is not
+in `public/`, so the test goes on passing at full green while the credits screen becomes
+materially less true — *a green build proving nothing*, already on this repo's list of things that
+have gone wrong. Extend it to require a desktop-runtime credit whenever a desktop target is
+configured.
+
+Then `CLAUDE.md`'s "WHAT IS STILL WEB-ONLY PROSE" bullet should point here instead of at the deleted plan.

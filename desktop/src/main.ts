@@ -7,7 +7,7 @@
  * Every judgement lives in `flags.ts`, `app-url.ts` or `paths.ts`, which import
  * no electron and are unit-tested in the ordinary `npm test` gate. This file is
  * the wiring that cannot be tested without a binary, and it is deliberately
- * thin — see `docs/ELECTRON_PLAN.md` §7, and the reason: the desktop target is
+ * thin — see the Electron plan §7, and the reason: the desktop target is
  * outside CI, so the only tests that will not rot are the ones needing no
  * Electron.
  *
@@ -524,7 +524,7 @@ if (!app.requestSingleInstanceLock()) {
     createWindow();
 
     /*
-     * THE ENFORCEMENT PROOF. `docs/ELECTRON_PLAN.md` §1.1: the switch was
+     * THE ENFORCEMENT PROOF. the Electron plan §1.1: the switch was
      * measured on plain Chromium, and whether Electron's appendSwitch path
      * reaches the GPU process is a separate question. Log the answer on every
      * boot so it is never assumed — and note the effect site in

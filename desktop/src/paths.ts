@@ -7,7 +7,7 @@
  * This file imports NOTHING from electron, on purpose. It is the whole of the
  * protocol handler's decision-making, so it can be unit-tested in the ordinary
  * `npm test` gate with no Electron binary present — which matters more here
- * than it usually would, because `docs/ELECTRON_PLAN.md` §7 records that the
+ * than it usually would, because the Electron plan §7 records that the
  * desktop target is deliberately outside CI. The only tests that will not rot
  * are the ones that need no Electron, so every decision lives in a module like
  * this one and `main.ts` is left with nothing to decide.

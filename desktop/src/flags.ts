@@ -6,7 +6,7 @@
  *
  * Imports nothing from electron. `main.ts` calls `switchesFor(settings)` and
  * appends the result; every judgement about WHAT to append is here, where a
- * test can see it without an Electron binary. See `docs/ELECTRON_PLAN.md` §7.
+ * test can see it without an Electron binary. See the Electron plan §7.
  *
  * ----------------------------------------------------------------------------
  * THE ASK WAS "EVERY FLAG WE MIGHT NEED, ON BY DEFAULT". THE ANSWER IS THREE.
@@ -44,6 +44,24 @@
  * Chromium switch — zero-copy raster is already the default and only the
  * disable side exists.
  * ============================================================================
+ *
+ * THE REST OF THE SWITCH RESEARCH, folded in when the Electron plan was deleted.
+ *
+ * DO NOT SHIP, each for a stated reason: `--in-process-gpu` removes the GPU sandbox and turns
+ * this project's carefully-handled device-loss path into a hard process exit.
+ * `--use-angle=<anything>` — the default is already d3d11, and `d3d9` no longer exists; keep it
+ * as a support escape hatch, never a default. `--disable-gpu-vsync` is implied by
+ * `--disable-frame-rate-limit`, so passing both is redundant. `--enable-unsafe-webgpu` — WebGPU
+ * is stable, so this only opens non-stable surface. `--enable-features=Vulkan` on Windows,
+ * `--no-sandbox` and `--disable-gpu-watchdog`: no.
+ *
+ * And three traps that show up in every "fix Electron GPU" thread. Renaming the executable to
+ * match an NVIDIA driver profile does nothing — the profile is consulted only for the DEFAULT
+ * adapter, while ANGLE selects by explicit device id — and it is indistinguishable from malware
+ * to a security product. Repeated `appendSwitch('enable-features', …)` calls **replace** rather
+ * than concatenate. And Electron has no `chrome://flags`, so anything a player "fixed with a
+ * flag in Chrome" has to be re-expressed as a switch in the main process; there is nowhere for
+ * them to toggle it.
  */
 
 /** What the user has chosen. Persisted next to the app, read BEFORE app ready. */

@@ -2,7 +2,7 @@
 # VOLTMARCH desktop — electron-builder
 # ============================================================================
 # Four values here are EXPENSIVE TO CHANGE after the first public build, and
-# docs/ELECTRON_PLAN.md §6 says to decide them up front rather than discover
+# the Electron plan §6 says to decide them up front rather than discover
 # them later:
 #
 #   appId         changing it orphans every existing install — the updater
@@ -55,7 +55,7 @@ win:
     - target: portable
       arch: [x64]
   # No `certificateFile` / `sign` block: this build is deliberately unsigned for
-  # now. docs/ELECTRON_PLAN.md §9 — Microsoft removed EV's instant SmartScreen
+  # now. the Electron plan §9 — Microsoft removed EV's instant SmartScreen
   # bypass around 2024, and the cheap option (Azure Artifact Signing, ~$10/mo)
   # has a geographic eligibility gate that is still an open question here.
 

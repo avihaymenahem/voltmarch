@@ -4,7 +4,7 @@
  * ============================================================================
  * THE ASSERTIONS THAT NEED A REAL ELECTRON, AND CANNOT LIVE IN THE GATE.
  *
- * `docs/ELECTRON_PLAN.md` §7. Tiers 1 and 3 are `tests/desktop-shell.spec.ts`
+ * the Electron plan §7. Tiers 1 and 3 are `tests/desktop-shell.spec.ts`
  * and run in `npm test`; this is tier 2 and needs the binary, so it is out of
  * CI along with the rest of the desktop target.
  *

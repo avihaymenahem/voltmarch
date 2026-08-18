@@ -1465,7 +1465,7 @@ shader, and rewriting 35 comments to erase that would lose real information to g
 ## There is a desktop build now, and the web build did not move an inch
 
 `desktop/` is an Electron shell around the UNMODIFIED `dist/`. Read
-[`desktop/README.md`](desktop/README.md) and [`docs/ELECTRON_PLAN.md`](docs/ELECTRON_PLAN.md)
+[`desktop/README.md`](desktop/README.md)
 before touching it. The constraint was *"they should be able to live side by side. github pages
 deployment continue as is, and the desktop version wont run in ci for now"*, and it is satisfied
 **structurally, not by discipline**.
@@ -1546,7 +1546,29 @@ deployment continue as is, and the desktop version wont run in ci for now"*, and
   `server/README.md:98` and `wiki/Multiplayer.md:58` say a browser refuses a plaintext socket from a
   secure page, and that is the stated reason the relay needs no transport check of its own —
   `pageIsPlaintext()` tests `location.protocol !== 'https:'`, which an `app:` origin passes. See
-  `ELECTRON_PLAN.md` §8.
+  the Electron plan §8.
+
+-  **WHAT THE WRAPPER DOES NOT BUY, so nobody re-derives it.** Electron 43 is Chromium M150 — the
+  same V8, the same ANGLE, the same Dawn — so there is no "native performance" here and **adapter
+  selection is the only real speed lever**. `performance.now()` is clamped to 100 µs in BOTH
+  targets. There is no exclusive fullscreen to get. The 5 MB localStorage quota was already
+  escaped: `SaveStore` puts blobs in IndexedDB, and the real storage win is a folder the player
+  can open, not headroom. Shader-cache warming is real but small, because `Bootstrap.ts` already
+  front-loads compilation with `.compile()` — **do not put a number on it in any doc until
+  somebody times boot-to-curtain-drop with the cache deleted against warm.** And one risk runs the
+  other way: **Electron's Chromium lags Chrome by two to three majors even when fully current**,
+  so the desktop `?gpu=webgpu` path runs an OLDER Dawn than the player's own browser does. That is
+  the first thing to check when a TSL defect arrives from a desktop build and not from the web
+  one.
+
+-  **`displayFrequency` IS EXPOSED AND HAS ZERO READERS, and `CALIBRATION.targetMs` is still
+  16.7.** `screen.getPrimaryDisplay().displayFrequency` has **no web equivalent**, which is the
+  whole reason it is on the bridge — `vm:display-frequency` in `desktop/src/main.ts`, declared at
+  `src/platform/desktop.ts:112` — and nothing in `src/` calls it. So a 144 Hz desktop player is
+  calibrated against a 60 Hz target exactly as a browser player is, and the one capability that
+  could fix it is already delivered. Same shape as `graphics.fpsCap`: persisted, plumbed, consumed
+  by nobody. Wiring it is a real change rather than a one-liner — the target is what the fitted
+  line is solved for, so it moves every scale the calibration produces.
 
 ## Hard rules
 
