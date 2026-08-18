@@ -1616,7 +1616,7 @@ greeble generator already writes — which is the same authoring work as wiring 
 MATERIAL system rather than a table of taste.** `config.ts:1301` declares
 `Record<SurfaceArchetype, SurfaceLook>` with per-class `roughnessMin/Max/variance, metalness,
 edgeWear, grime, clearcoat, rust, sheen`, including `buildingConcrete` and `buildingPanel`;
-`RA3_LOOK_BIBLE.md:1146-1162` defines eighteen classes (`CONCRETE_PAD` rough 0.90 clearcoat 0,
+`RA3_LOOK_BIBLE.md`’s `materialPresets` table defines eighteen classes (`CONCRETE_PAD` rough 0.90 clearcoat 0,
 `DECK_STEEL` metal 0.55, `TRACK_RUBBER` 0.85, `GLASS_CANOPY`, `GLOW_AMBER`). `SPEC_DRIFT_AUDIT.md`
 records that it has no readers. What that entry does not say is that **wiring it and fixing the
 uniform clearcoat lobe are the same work** — a `clearcoatMap` has to be authored from a

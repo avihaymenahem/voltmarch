@@ -354,7 +354,7 @@ describe('the hub plane stands proud of the band and clears the skirt', () => {
 
 describe('the compliant track numbers survive the relayout', () => {
   it('tracks protrude exactly trackOutboardFraction of hull width', () => {
-    // RA3_LOOK_BIBLE.md:1239 wants 0.08-0.14 and config says 0.11.
+    // RA3_LOOK_BIBLE.md `trackProudFractionOfHullWidth` wants 0.08-0.14 and config says 0.11.
     expect(UNIT_GEOMETRY.trackOutboardFraction).toBe(0.11);
     expect(UNIT_GEOMETRY.trackOutboardFraction).toBeGreaterThanOrEqual(0.08);
     expect(UNIT_GEOMETRY.trackOutboardFraction).toBeLessThanOrEqual(0.14);
@@ -382,7 +382,7 @@ describe('the compliant track numbers survive the relayout', () => {
   });
 
   it('trackHeightFraction is 0.22 and it is where the tank chassis comes from', () => {
-    // RA3_LOOK_BIBLE.md:1240 trackHeightFractionOfUnit [0.18, 0.25].
+    // RA3_LOOK_BIBLE.md `trackHeightFractionOfUnit` [0.18, 0.25].
     expect(UNIT_GEOMETRY.trackHeightFraction).toBe(0.22);
     expect(UNIT_GEOMETRY.trackHeightFraction).toBeGreaterThanOrEqual(0.18);
     expect(UNIT_GEOMETRY.trackHeightFraction).toBeLessThanOrEqual(0.25);
