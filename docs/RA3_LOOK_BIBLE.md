@@ -48,7 +48,7 @@ in code.
 | 5 | Bloom threshold | Lighting: 0.80 | VFX: 0.85 | **0.82** | Sunlit white Empire structures peak at 0.90 and must NOT halo; FX cores at ≥1.05 linear must. |
 | 6 | Tone-map exposure | Lighting: 0.90 | VFX: 1.05 | **0.92** | The lighting figure is back-solved from a measured lit/shadow albedo-cancelling pair. VFX read it off night frames which are exposure outliers. Night preset gets 1.05 separately. |
 | 7 | Water reflectivity | VFX: none, ever | Mission brief: "SSR on water" | **No sky reflection, no planar mirror. Grazing-angle SSR allowed at mix ≤ 0.10, fresnel exponent 5.0, and it must sample only geometry, never a skybox.** | RA3's water is absorption + refracted seabed + foam + tight glint. SSR above 0.10 destroys the dark-base contrast trick. See §12. |
-| 8 | Shadow softness | Lighting: keep hard, keep the stair-steps | Mission: "softer penumbra" | **Penumbra 2.0–2.5 px at 1440p (RA3's hardness), but stair-stepping eliminated** via 4096 maps + 3 CSM cascades + normalBias | Hardness is identity; texel aliasing is a 2008 limitation. Fix the limitation, keep the identity. |
+| 8 | Shadow softness | Lighting: keep hard, keep the stair-steps | Mission: "softer penumbra" | **Penumbra 2.0–2.5 px at 1440p (RA3's hardness), but stair-stepping eliminated** via 4096 maps + 3 CSM cascades + normalBias — **BUT THERE IS NO CASCADE CHAIN AND THE MAPS ARE 2048.** See §3.3. | Hardness is identity; texel aliasing is a 2008 limitation. Fix the limitation, keep the identity. |
 | 9 | Prop density | Environment: ≥55/ha city | Mission: beat RA3 | **City ≥ 75/ha, wilderness ≥ 260/ha** (≈1.3× RA3) | Instancing is free for us and it was not for them. This is our safest fidelity win. |
 
 Additional standing rulings:
@@ -77,6 +77,13 @@ world-parallel edge families drift **13.8–23.5°** in screen angle across a si
 | Projection | Perspective | non-negotiable |
 | vFOV | **34°** | fixed forever. **Never animate FOV.** Zoom = dolly. |
 | Pitch below horizontal | **39°** | constant at all zoom levels (fitted mean 37.9°, σ 3.5°) |
+
+> **OVERTURNED — THE SHIPPED RIG IS 52° AND IT RAMPS.** `RENDER_FINDINGS.md` §3 measured the live
+> camera at **46–58° with zoom** and yaw 12–34° across all thirteen fixtures, against
+> `CAMERA.pitchDeg 52` / `fovDeg 36` / `defaultDistance 55` in `config.ts`. It was ruled a
+> **PRODUCT DECISION, not a bug**: 52° was chosen so a tall shed would not hide the vehicle parked
+> under it. Do not "fix" the rig to 39°, and do not re-derive the thirteen shot poses or
+> `tests/shot-camera.spec.ts` to chase it. The number above records the REFERENCE, not the product.
 | Roll | **exactly 0** | `camera.up = (0,1,0)`; every vertical in every reference lands in the 90.00° orientation bin |
 | Yaw | free 0–2π, default **45°** | 5 of 7 fitted frames cluster at 45–53° off the build grid |
 | near / far | **1.0 / 600** | 600:1 ratio, no logarithmic depth needed |
@@ -163,6 +170,13 @@ reproduces it to ±0.03.
   p25 1.1, p75 2.4, identical on 1024- and 1440-wide frames. Target **2.0–2.5 px at 1440p**.
 - **Never black.** Shadowed surfaces keep **20–52% per channel** of their lit value; median
   luminance ratio **0.33**. **Never use a shadow-darkness multiplier** — the hemisphere fill does it.
+
+> **STILL BANNED, AND IT CANNOT BE REMOVED ON ITS OWN.** Setting `shadowIntensity` to 1.0 by itself
+> is measurably WORSE: weighted grade 91.1% → 90.2%, and `09-placement`'s `greenHueLeak` goes
+> 0.0123 → **0.0640** against a 0.02 ceiling on a weight-3 check — removing the warm key's leak into
+> shadow leaves the bluer fill to walk green albedo straight into check #9's 100–120° "amateur
+> emerald" window. It ships at **0.80**. Removal is a PAIRED change: the hemisphere must be
+> rebalanced in the same commit. `RENDER_FINDINGS.md` §6b and `config.ts:600-648` carry the bisect.
 - **Blue-tinted.** Normalised shadow/lit ratio ≈ **(0.44, 0.62, 1.00)** on the strongest map,
   (0.75, 0.80, 1.00) typical. B/R in shadow is 1.25–2.3× the lit B/R. This falls out of the
   hemisphere automatically — do not fake it with a tint.
@@ -174,6 +188,12 @@ reproduces it to ±0.03.
 - **Crease AO is baked, not screen-space.** Every panel gap and hatch seam is a 1–2 px near-black
   line in the source art. Bake into vertex colours or the canvas AO map, multiplying **ambient
   only** down to 0.35–0.50 in creases.
+
+> **OVERTURNED — THERE IS NO CSM.** `src/render/scene.ts` builds ONE `DirectionalLight` with ONE
+> orthographic shadow camera, and the only other shadow-capable light — the ground bounce — sets
+> `castShadow = false`. `cascadeResolution` is **2048, not 4096**, and
+> `QualitySettings.shadowCascades` was deleted as write-only along with `cascadeNear`. CLAUDE.md
+> carries this as a hard rule. The claim below is the ambition, and it was never built.
 
 **Where we beat RA3:** 3 CSM cascades at 4096 (RA3 had one low-res map with visible 3–5 px texel
 stepping), and shadows on *everything* including props, vegetation and small greebles. **Where we
@@ -863,6 +883,13 @@ that the baseline moved and by how much.
 | 32 | Roads curve | No axis-aligned straight road; corners radiused 4–8 m | 2 |
 | 33 | Kerb geometry | Extruded 0.15–0.20 m kerb casting its own shadow, with red paint on corner arcs | 2 |
 | 34 | Greeble density | Sobel \|∇\|>25 coverage 28–36% on units, 40–46% on buildings | 2 |
+
+> **READ `RENDER_FINDINGS.md` §2 BEFORE ACTING ON THIS NUMBER.** The band printed here is measured
+> on SUBJECT CROPS. `tools/metrics.mjs` scores the WHOLE FRAME, which is 60–75% ground, and the band
+> it actually enforces is **[0.5996, 0.8547]**, rebased from `docs/grade-baseline.json` because the
+> metric carries `baselineKey: true`. Two competent investigations once reached opposite conclusions
+> purely from measuring different things. It fails 13/13 today at 0.37–0.38 and **must not be
+> demoted**: subject crops are in band, the ground is ~4x under, and the ground is most of the frame.
 | 35 | Terraced relief | Relief is 4–8 m discrete steps with coping caps or striated cliffs; no smooth Perlin hills | 2 |
 | 36 | No CA / no grain | R/B-vs-G edge registration 0.0 px at corners; flat-patch noise is albedo detail only | 1 |
 | 37 | Vignette | Corner mean luminance 0.80–0.87 of centre, flat inside r=0.55 | 1 |
@@ -1156,7 +1183,7 @@ export const RA3 = {
       GLASS_CANOPY:  { color: 0x3E5A78, roughness: 0.10, metalness: 0.00, clearcoat: 0.60, clearcoatRoughness: 0.08, envMapIntensity: 1.00, transmission: 0.25 },
       GLOW_CYAN:     { color: 0x0A2A2A, emissive: 0x13E0D9, emissiveIntensity: 2.0, roughness: 0.30, metalness: 0.0 },
       GLOW_AMBER:    { color: 0x2A1405, emissive: 0xFF7A1E, emissiveIntensity: 2.2, roughness: 0.35, metalness: 0.0 },
-      TERRAIN:       { roughness: 0.88, metalness: 0.00, envMapIntensity: 0.35 },
+      TERRAIN:       { roughness: 0.88, metalness: 0.00, envMapIntensity: 0.35 },   // INERT — see below
       CONCRETE_PAD:  { color: 0xB0AC9E, roughness: 0.90, metalness: 0.00, envMapIntensity: 0.30 },
       DECK_STEEL:    { color: 0x7E7A6E, roughness: 0.62, metalness: 0.55, envMapIntensity: 0.70 },
       PAD_ALLIED:    { color: 0x141518, roughness: 0.80, metalness: 0.10, envMapIntensity: 0.25 },
