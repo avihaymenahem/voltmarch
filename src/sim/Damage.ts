@@ -291,7 +291,49 @@ export class DamageSystem {
 
       // Surface distance: the blast reaches the hull, not the origin point.
       const dx = st.posX[i] - x, dz = st.posZ[i] - z;
-      const surface = Math.max(0, Math.sqrt(dx * dx + dz * dz) - hitRadius(
+      let plan = dx * dx + dz * dz;
+      /*
+       * ALTITUDE COUNTS. THE VERTICAL GAP BEYOND THE HULL'S OWN EXTENT.
+       *
+       * Reported as "3 airplanes destroyed by 1 tank in a second". This query
+       * was PURELY HORIZONTAL — `y` was a parameter of this function and was
+       * read by nothing but the crater decal — and the victim loop filters on
+       * Alive, PendingDestroy and Garrisoned and asks nothing else. So every
+       * splash weapon in the game hit aircraft at FULL effect, including the
+       * ones whose whole doctrine is that they cannot elevate: all three main
+       * battle tank cannons carry splash (1.6 / 2.1 / 2.2 m) and none carries
+       * `canTargetAir`. `Combat.ts` gates TARGETING on that flag; this path
+       * never went through targeting at all, which is also why the aerial sweep
+       * recorded in CLAUDE.md could not see it and reported that nothing single
+       * kills an aircraft quickly.
+       *
+       * THE FIX IS DISTANCE, NOT A `canTargetAir` GATE, and they differ where
+       * it matters. A gate would delete incidental air damage outright, and
+       * CLAUDE.md's anti-hang floor — the rule that stops an enemy reduced to
+       * nothing but aircraft being unkillable — is held up entirely by four
+       * line-infantry rifles. Real distance keeps that floor BY CONSTRUCTION: a
+       * weapon that can elevate puts its blast AT the aircraft, so the gap is
+       * zero and nothing changes for it.
+       *
+       * `- height * 0.5` IS WHAT MAKES THIS A NO-OP ON THE GROUND, and it is
+       * why there is no `Locomotor.Air` special case here. A blast at a
+       * victim's own level is inside its hull vertically, the term clamps to
+       * zero, and ground combat is bit-identical — which a naked `dy` would NOT
+       * have been, because it would have quietly weakened every artillery shell
+       * in the game against every tank by whatever the impact point sits above
+       * the hull's origin. Shipping a balance change inside a bug fix is the
+       * thing to avoid here.
+       *
+       * It also fixes the mirror image nobody reported, and fixes it with the
+       * same arithmetic: an anti-air burst no longer splashes the infantry
+       * standing underneath its target.
+       */
+      const dy = st.posY[i] - y;
+      const gap = Math.abs(dy) - estimatedHeight(
+        st.footprintW[i], st.radius[i], st.kind[i] as EntityKind,
+      ) * 0.5;
+      if (gap > 0) plan += gap * gap;
+      const surface = Math.max(0, Math.sqrt(plan) - hitRadius(
         st.footprintW[i], st.footprintH[i], st.radius[i],
       ));
       if (surface >= radius) continue;

@@ -29,8 +29,7 @@ import { World } from '../src/core/world';
 import { Channels } from '../src/core/events';
 import { Rng } from '../src/core/math';
 import {
-  ARMOR_CLASS_COUNT, ArmorClass, BuildTab, CommandKind, EntityFlag, EntityKind, Faction,
-  FxKind, Locomotor, OrderKind, Stance, UnitState, WarheadClass,
+  ARMOR_CLASS_COUNT, ArmorClass, BuildTab, CommandKind, EntityFlag, EntityKind, Faction, FxKind, Locomotor, NONE, OrderKind, Stance, UnitState, WarheadClass,
 } from '../src/core/types';
 import type {
   Command, EntityId, IRng, ITerrain, PlayerId, SimContext, WeaponDef,
@@ -279,6 +278,9 @@ describe('cruise altitude vs the altitude the AI calls airborne', () => {
  * ========================================================================== */
 
 interface CombatRig {
+  /** Exposed so a test can queue one damage record and resolve it directly. */
+  readonly channels: Channels;
+  readonly damage: DamageSystem;
   world: World;
   step(n?: number): void;
 }
@@ -302,6 +304,8 @@ function makeCombatRig(): CombatRig {
 
   return {
     world,
+    channels,
+    damage,
     step(n = 1): void {
       for (let k = 0; k < n; k++) {
         tick++;
@@ -1285,5 +1289,108 @@ describe('an aircraft that dies at altitude', () => {
 
     expect(st.byKindCount[EntityKind.Wreck]).toBe(1);
     expect(st.posY[st.byKind[EntityKind.Wreck][0]]).toBeCloseTo(GROUND_Y + 3, 4);
+  });
+});
+
+/* ========================================================================== */
+
+/**
+ * A BLAST ON THE GROUND DOES NOT REACH AN AIRCRAFT 22 M ABOVE IT.
+ *
+ * Reported as "3 airplanes destroyed by 1 tank in a second". `applySplash` took
+ * a `y` parameter and read it for nothing but the crater decal: the candidate
+ * query was `queryCircleFat(x, z, ...)` and the acceptance test was
+ * `sqrt(dx*dx + dz*dz)`, both purely horizontal. Its victim loop filters on
+ * Alive, PendingDestroy and Garrisoned and asks nothing else — there is no
+ * airborne test and no `canTargetAir` test anywhere in it.
+ *
+ * So every splash weapon in the game hit aircraft at FULL effect, including the
+ * ones whose entire doctrine is that they cannot elevate: all three main battle
+ * tank cannons carry splash (1.6 / 2.1 / 2.2 m) and not one carries
+ * `canTargetAir`. `Combat.ts` gates TARGETING on that flag, and this path never
+ * went through targeting — which is also why the aerial sweep recorded in
+ * CLAUDE.md could not see it and concluded that nothing single kills an
+ * aircraft quickly. A measured claim with a hole exactly the shape of the bug.
+ *
+ * THE FIX IS DISTANCE, NOT A FLAG, and the two behave differently. A
+ * `canTargetAir` gate on splash would delete incidental air damage outright,
+ * and CLAUDE.md's anti-hang floor — the rule that stops an enemy reduced to
+ * nothing but aircraft from being unkillable — is held up entirely by four
+ * line-infantry rifles. Real distance keeps that floor BY CONSTRUCTION, which
+ * is what §3 below pins: a weapon that can elevate aims AT the aircraft, so the
+ * blast is at its altitude and nothing changes for it.
+ */
+describe('splash measures the distance it actually is', () => {
+  const AP = WarheadClass.ArmorPiercing;
+
+  /** Queue one splash event and resolve it, returning hp lost by `victim`. */
+  function blast(
+    rig: CombatRig, victim: EntityId, attacker: EntityId,
+    x: number, y: number, z: number, radius: number,
+  ): number {
+    const st = rig.world.store;
+    const before = st.hp[st.index(victim)];
+    rig.world.spatial.rebuild();
+    rig.channels.damage.push(NONE, attacker, 200, AP, x, y, z, radius, 0.3);
+    rig.damage.damageTick({ dt: SIM_DT, tick: 1, time: SIM_DT, rng: new Rng(1) });
+    const after = st.hp[st.index(victim)];
+    rig.channels.damage.clear();
+    return before - after;
+  }
+
+  it('does not reach an aircraft at cruise altitude from a blast on the ground', () => {
+    // THE REPORT. A tank shell landing directly beneath a gunship, with the
+    // largest main-battle-tank splash in the game.
+    const rig = makeCombatRig();
+    const tank = spawnShooter(rig, P0, 0, 0, 0);
+    const plane = spawnGunship(rig, P1, 0, 0);
+    expect(rig.world.store.posY[rig.world.store.index(plane)])
+      .toBeCloseTo(AIR_CRUISE_ALTITUDE, 1);
+    expect(blast(rig, plane, tank, 0, 0, 0, 2.2), 'ground blast reached cruise altitude')
+      .toBe(0);
+  });
+
+  it('still reaches a GROUND unit standing on the blast, unchanged', () => {
+    // THE PROPERTY THAT MAKES THIS A FIX AND NOT A STEALTH BALANCE CHANGE. The
+    // vertical term is guarded on `Locomotor.Air`, so ground combat is
+    // bit-identical. A hull's `posY` is its centre and sits above the terrain,
+    // so folding `dy` in unconditionally would have quietly weakened every
+    // artillery shell in the game against every tank.
+    const rig = makeCombatRig();
+    const a = spawnShooter(rig, P0, 0, 0, 0);
+    const b = spawnShooter(rig, P1, 0, 0, 0);
+    expect(blast(rig, b, a, 0, 0, 0, 2.2)).toBeGreaterThan(0);
+  });
+
+  it('still reaches an aircraft when the blast is at its own altitude', () => {
+    // THE ANTI-HANG FLOOR, PINNED. A weapon that can elevate puts its blast on
+    // the aircraft, so `dy` is ~0 and this change costs it nothing. If this
+    // ever fails, incidental air damage has been deleted and an enemy reduced
+    // to nothing but aircraft may have become unkillable.
+    const rig = makeCombatRig();
+    const aa = spawnShooter(rig, P0, 0, 0, 0);
+    const plane = spawnGunship(rig, P1, 0, 0);
+    expect(blast(rig, plane, aa, 0, AIR_CRUISE_ALTITUDE, 0, 2.2)).toBeGreaterThan(0);
+  });
+
+  it('does not splash the ground from a burst fired at an aircraft', () => {
+    // The mirror image, which nobody reported and which the same arithmetic
+    // fixes: an anti-air burst used to damage whatever was standing under its
+    // target.
+    const rig = makeCombatRig();
+    const aa = spawnShooter(rig, P0, 0, 0, 0);
+    const grunt = spawnShooter(rig, P1, 0, 0, 0);
+    expect(blast(rig, grunt, aa, 0, AIR_CRUISE_ALTITUDE, 0, 2.2)).toBe(0);
+  });
+
+  it('is horizontal again between two aircraft at the same altitude', () => {
+    // Two gunships side by side are as splashable as two tanks. The vertical
+    // term must not make aircraft immune to each other or to real AA splash.
+    const rig = makeCombatRig();
+    const aa = spawnShooter(rig, P0, 40, 40, 0);
+    const a = spawnGunship(rig, P1, 0, 0);
+    const b = spawnGunship(rig, P1, 1.5, 0);
+    expect(blast(rig, b, aa, 0, AIR_CRUISE_ALTITUDE, 0, 4)).toBeGreaterThan(0);
+    void a;
   });
 });
