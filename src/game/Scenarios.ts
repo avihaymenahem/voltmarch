@@ -4510,6 +4510,27 @@ export function resolveScenarioName(shot: string | null | undefined): string {
   return SCENARIO_DEFAULT;
 }
 
+/**
+ * THE NAME THIS BOOT WILL BUILD, and the one place that decides it.
+ *
+ * `resolveScenarioName` reads `?shot=` and only `?shot=`, which is correct for
+ * the harness and leaves the campaign unreachable on the product path — the
+ * shell deletes `?shot=` from every match query on purpose, and `main.ts`
+ * treats its presence as "this boot is a fixture, not a game".
+ *
+ * So ARMING AN OPERATION IS THE SELECTION. There is no third flag and no
+ * `setPlannedScenarioName`: an armed operation is exactly the state in which
+ * the answer should be `'campaign'`, and inventing a second signal that has to
+ * agree with the first is how two of them come to disagree.
+ *
+ * `?shot=` still wins outright when present. A fixture capture must never be
+ * talked into building an operation, whatever the lobby left armed.
+ */
+export function bootScenarioName(shot: string | null | undefined): string {
+  if (shot !== null && shot !== undefined && shot !== '') return resolveScenarioName(shot);
+  return plannedOp !== null ? 'campaign' : SCENARIO_DEFAULT;
+}
+
 /** Resolve a `?map=` value to a known preset, warning on a typo. */
 export function resolveMapName(map: string | null | undefined, fallback: string): string {
   if (!map) return fallback;
@@ -4745,7 +4766,7 @@ export function planScenario(
   start?: string | null,
   ai?: string | null,
 ): ScenarioPlanSummary {
-  const name = resolveScenarioName(shot);
+  const name = bootScenarioName(shot);
   const plan = PLANS[name] ?? PLANS[SCENARIO_DEFAULT];
   // AN ARMED OPERATION OUTRANKS `?map=` FOR THE CAMPAIGN NAME ONLY. Every other
   // name resolves exactly as it always did, which is what keeps

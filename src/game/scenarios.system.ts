@@ -70,7 +70,7 @@ import {
   buildScenario,
   clearScenario,
   resolveDefBinding,
-  resolveScenarioName,
+  bootScenarioName,
   SCENARIO_NAMES,
   type DefBinding,
   type ScenarioSpec,
@@ -288,7 +288,9 @@ export default defineSystem({
     // one signal that this boot is a fixture rather than a game.
     enforced = shotFlag !== null;
 
-    const name = resolveScenarioName(shotFlag);
+    // NOT `resolveScenarioName`. That reads `?shot=` alone, and the campaign is
+    // selected by having an operation armed — see `bootScenarioName`.
+    const name = bootScenarioName(shotFlag);
     const seed = seedFlag();
 
     // A def table may or may not exist yet; either way we get a binding.

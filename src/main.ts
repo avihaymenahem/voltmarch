@@ -92,6 +92,15 @@ const options = {
 const harnessMode = options.shot !== null;
 /** Land in a match with no title screen. */
 const skipMenu = boolFlag('skipmenu');
+/**
+ * `?campaign=<chapter>.<NN>.<slug>` — boot straight into one operation.
+ *
+ * Read here and handed to the SHELL, never to `bootstrap()`. `?tier=` is the
+ * cautionary example: it is parsed into `options` and never reaches the shell,
+ * so it has been harness-only for its whole life while this file's flag list
+ * implied otherwise.
+ */
+const campaign = flag('campaign');
 
 /* -------------------------------------------------------------------------- */
 /* Curtain                                                                     */
@@ -194,6 +203,7 @@ async function bootProduct(): Promise<void> {
     menuRoot: options.menuRoot,
     debugRoot: options.debugRoot,
     skipMenu,
+    campaign,
     status,
     onError: (title, detail) => fail(title, detail),
     onReady: () => {

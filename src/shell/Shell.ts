@@ -93,6 +93,32 @@ import { currentReplay } from '../game/replay.system';
 import { suppressUnlockGate } from '../progression/UnlockGate';
 import { suppressProgression } from '../progression/suppress';
 import { outcomePolicy, seatIgnored } from '../campaign/policy';
+
+/**
+ * The subset of `OperationDef.map` this file needs.
+ *
+ * DECLARED STRUCTURALLY RATHER THAN IMPORTED, so `Shell.ts` does not reach
+ * into `src/campaign/types.ts` for a shape it only reads four fields of. The
+ * same reason `save.system.ts` and `LoadGame.ts` each declare their own copy of
+ * `SaveContext`: two files that can be edited independently, each checked
+ * against its own copy, and `tests/campaign-gate.spec.ts` compares the two.
+ */
+/** One objective row the campaign publishes. Structural, same reason as above. */
+interface CampaignObjectiveRow {
+  readonly id: string;
+  readonly title: string;
+  readonly kind: 'primary' | 'secondary';
+  readonly status: 'hidden' | 'active' | 'complete' | 'failed';
+}
+
+interface OperationBoot {
+  readonly preset: string;
+  readonly biome: string;
+  readonly mapSeed: number;
+  readonly simSeed: number;
+  readonly armies: number;
+  readonly credits: number;
+}
 import type { MatchStart, Session } from '../net/Session';
 import { PauseMenuScreen, currentObjectives } from './PauseMenu';
 import { EndScreen, type MatchResult } from './EndScreen';
@@ -666,6 +692,8 @@ export interface ShellOptions {
   debugRoot: HTMLElement;
   /** Boot straight into a match, skipping the title screen. */
   skipMenu?: boolean;
+  /** `?campaign=` — boot straight into one operation. See `start()`. */
+  campaign?: string | null;
   /** Status text sink — the pre-module curtain in index.html. */
   status?: (text: string) => void;
   /** Called once the first real frame is on screen. */
@@ -767,6 +795,21 @@ export class Shell {
    * again would start the recording playing.
    */
   private replayPaused = false;
+
+  /**
+   * The armed campaign operation, or null.
+   *
+   * SHAPED LIKE `this.replay` AND `this.pvp`, and read by exactly the same
+   * guards — a campaign operation is a third kind of match that is not an
+   * ordinary skirmish, and every place that already asks "is this an ordinary
+   * launch" has to know about it. The def is held rather than only the id
+   * because `bootGame` needs its map before anything is loaded, and
+   * `endMatch` needs its objectives after everything is torn down.
+   */
+  private operation: { id: string; map: OperationBoot } | null = null;
+
+  /** The last objective rows the campaign published. Read by the end screen. */
+  private campaignRows: readonly CampaignObjectiveRow[] = [];
 
   private rafHandle = 0;
   private lastFrameMs = 0;
@@ -875,6 +918,23 @@ export class Shell {
 
   /** Boot the front end. Resolves once something is on screen. */
   async start(): Promise<void> {
+    // `?campaign=<chapter>.<NN>.<slug>` — straight into an operation.
+    //
+    // HANDED TO THE SHELL, NOT TO `options` FOR `bootstrap()`, and that is not
+    // a style choice: `?tier=` is the shipped example of the other way round —
+    // parsed in `main.ts`, put on the boot options, never handed to the shell,
+    // and therefore harness-only for its entire life while the documented flag
+    // list implied otherwise.
+    //
+    // It is also deliberately NOT in `MANAGED_FLAGS`. `buildMatchQuery` deletes
+    // every managed key on every boot, so a flag listed there would erase
+    // itself on the first `history.replaceState` and the operation would vanish
+    // one frame after it loaded.
+    const operation = this.options.campaign ?? null;
+    if (operation !== null && operation !== '') {
+      await this.startOperation(operation);
+      return;
+    }
     if (this.options.skipMenu === true) {
       await this.startMatch(this.setup);
       return;
@@ -1128,6 +1188,131 @@ export class Shell {
    * viewer who opens a second recording without going through the menu cannot
    * leave the first one's player feeding the new world.
    */
+  /**
+   * Launch a campaign operation.
+   *
+   * ARM, THEN BOOT, AND THE ORDER IS THE WHOLE THING. `armOperation` installs
+   * the scenario plan, the layout, the roster and the outcome policy, and every
+   * one of them has to be in place before `startMatch` builds a world:
+   *
+   *   - the plan, because the generator reserves one levelled shelf per seat
+   *     and reads that number before anything stands on it;
+   *   - the layout, because `PLANS.campaign.build` runs inside `bootstrap()`;
+   *   - the roster, because `Scenarios.ts` calls `isBuildable` WHILE SPAWNING
+   *     THE STARTING ARMY, and installing it afterwards hands the layout this
+   *     browser's profile instead of the operation's authored content — the
+   *     tick-zero desync CLAUDE.md documents twice;
+   *   - the policy, because `pollOutcome` starts asking at ten seconds of sim
+   *     time and a scripted insertion holds nothing long before that.
+   *
+   * The import is the ONLY one in the product that reaches
+   * `src/campaign/campaign-install`, and it is what keeps the Director, the
+   * operation table and every word of prose out of the entry chunk.
+   */
+  async startOperation(operationId: string): Promise<void> {
+    if (this.busy || this.disposed) return;
+
+    // Whatever was armed before, gone first. Arming twice without this leaves
+    // the previous operation's roster in force over the new one's world.
+    await this.abandonOperation();
+
+    const install = await import('../campaign/campaign-install');
+    const op = install.armOperation(operationId, this.setup.difficulty);
+    if (op === null) {
+      this.fail('Operation Not Found', new Error(`No campaign operation '${operationId}'.`));
+      return;
+    }
+    this.operation = { id: op.id, map: op.map };
+    // THE PROFILE IS DEAF FOR THE DURATION. A scripted operation's kill count
+    // is AUTHORED, so paying the profile chains at authored rates is a farm —
+    // and `struct.defence.aa` arriving before `unit.air` is an ordering
+    // accident of the mission curve that a campaign could otherwise invert.
+    suppressProgression(true);
+
+    const keys = playableFactions();
+    const keyOf = (faction: number): string | undefined =>
+      keys.find((f) => (f.id as number) === faction)?.key;
+
+    // THE LOBBY MAP ID HAS TO MOVE TOO, AND FORGETTING IT WAS VISIBLE ON THE
+    // FIRST SCREENSHOT: the victory panel read "Every hostile force on
+    // Temperate Valley has been destroyed" over an operation fought on arid
+    // ground. `bootGame`'s query override fixes what the GENERATOR builds;
+    // `setup.map` is what every LABEL reads — the pause menu, the results
+    // header, the save row and `buildResult`.
+    //
+    // Matched by preset rather than named, because an operation declares a
+    // `MAP_PRESETS` key and the lobby row is a different vocabulary. No match
+    // is survivable: the labels fall back to the lobby's last map, which is
+    // wrong-looking rather than broken, and `campaign-maps.spec.ts` would have
+    // to grow a rule the day an operation ships on a preset no lobby row uses.
+    const lobbyRow = MAPS.find((m) => m.preset === op.map.preset);
+    const setup: MatchSetup = {
+      ...this.setup,
+      map: lobbyRow?.id ?? this.setup.map,
+      seed: op.map.simSeed,
+      speed: 1,
+      personality: -1,
+      startingCredits: op.map.credits,
+      playerFaction: keyOf(op.faction as number) ?? this.setup.playerFaction,
+      // ONE OPPONENT PER EXTRA SEAT. `armyCount(setup)` is what `bootGame`
+      // hands `setPlannedArmies` and what `saveContext` records, so a
+      // four-seat operation whose setup says two would level ground for two —
+      // the defect `SaveContext.armies` exists to close, reintroduced through
+      // a different door.
+      opponents: Array.from({ length: Math.max(1, op.map.armies - 1) }, () => ({
+        faction: this.setup.aiFaction,
+        difficulty: this.setup.difficulty,
+        personality: -1,
+      })),
+    };
+
+    await this.startMatch(setup, { persist: false });
+    if (this.state !== 'playing' || this.game === null) {
+      await this.abandonOperation();
+      throw new Error('The operation could not be started.');
+    }
+  }
+
+  /**
+   * Clear every latch an operation set.
+   *
+   * CALLED ON WIN, LOSS, RETRY, ABANDON AND QUIT. A latch with no clearing
+   * branch is a permanent behaviour change wearing a temporary name, and
+   * `suppressUnlockGate` leaked exactly once and left every later skirmish
+   * ungated. `startMatch` clears `suppressProgression` for any ordinary launch
+   * as a second line of defence; this is the first.
+   *
+   * The import is `await`ed rather than held, so abandoning without ever having
+   * started one costs nothing and fetches nothing.
+   */
+  async abandonOperation(): Promise<void> {
+    if (this.operation === null) return;
+    this.operation = null;
+    this.campaignRows = [];
+    suppressProgression(false);
+    const install = await import('../campaign/campaign-install');
+    install.disarmOperation();
+  }
+
+  /** Objective rows the campaign published this frame, for the HUD. */
+  publishCampaignObjectives(rows: readonly CampaignObjectiveRow[]): void {
+    this.campaignRows = rows;
+  }
+
+  /** What the campaign wants shown. Dialogue and EVA for now; camera later. */
+  playCampaignBeat(event: { kind: string; speaker?: string; text?: string; line?: string }): void {
+    if (event.kind === 'dialogue' && event.text !== undefined) {
+      // A TOAST IS THE PLACEHOLDER AND IT IS DECLARED AS ONE. A briefing log
+      // with a speaker portrait is Phase 3 work; a line the player never sees
+      // is worse than a line in the wrong container, and this at least proves
+      // the sim half is producing them.
+      // Duck-typed on `__vmHud`, the same seam `outcome.system.ts` uses for its
+      // stranded warning. The shell may not import the HUD.
+      const g = globalThis as unknown as { __vmHud?: { toast?: (...a: unknown[]) => void } };
+      g.__vmHud?.toast?.('info', `campaign-${event.speaker ?? 'line'}`, event.speaker ?? '', event.text);
+    }
+  }
+
   private clearReplay(): void {
     const bar = this.replay?.bar ?? null;
     bar?.dispose();
@@ -1176,6 +1361,26 @@ export class Shell {
    * modules actually parse, recorded as they were parsed. So the lobby builds
    * a plausible query and this replaces the parts that must be exact.
    */
+  /**
+   * Force the boot flags an operation declares, exactly as a replay does.
+   *
+   * `buildMatchQuery` derives `map`/`biome`/`mapseed` from a `MapChoice` — a
+   * LOBBY row, which an operation is not. The campaign names a `MAP_PRESETS`
+   * key directly, so its flags are written over the top here, on the same line
+   * of `bootGame` the replay and tutorial overrides live on.
+   *
+   * `start` is deliberately NOT set: the opening reaches the generator through
+   * `setPlannedOperation`, which both start-forcing sites in `Scenarios.ts`
+   * read. Writing `?start=` as well would be a second channel saying the same
+   * thing, and the two would eventually disagree.
+   */
+  private applyCampaignQuery(query: URLSearchParams, boot: OperationBoot): void {
+    query.set('map', boot.preset);
+    query.set('biome', boot.biome);
+    query.set('mapseed', String(boot.mapSeed | 0));
+    query.set('seed', String(boot.simSeed >>> 0));
+  }
+
   private applyReplayQuery(query: URLSearchParams, header: ReplayFile['header']): void {
     if (header.mapPreset !== '') query.set('map', header.mapPreset);
     if (header.biome !== '') query.set('biome', header.biome);
@@ -1211,7 +1416,21 @@ export class Shell {
     // sets this one, so in practice this clears after a replay and after an
     // operation; it is written against the same predicate so the two latches
     // cannot drift apart.
-    if (this.pvp === null && this.replay === null) suppressProgression(false);
+    // A CAMPAIGN OPERATION IS THE THIRD ROUTE THAT SETS IT, AND OMITTING IT
+    // HERE UNDID THE LATCH ON THE LINE AFTER IT WAS SET.
+    //
+    // `startOperation` sets `suppressProgression(true)` and then calls this
+    // method, which is the ordinary-launch restore point — and with `pvp` and
+    // `replay` both null for a campaign, the condition was true and cleared it
+    // immediately. `beginMatch` then ran, the profile counted a scripted
+    // operation's authored kills and ore, and the end screen showed a "Rewards
+    // Earned" panel with four unlocks in it. Found by LOOKING AT THE SCREEN of
+    // a real boot; every test agreed with the broken build, because
+    // `inMatch()` reads false after `endMatch` whether the match was
+    // suppressed or merely finished.
+    if (this.pvp === null && this.replay === null && this.operation === null) {
+      suppressProgression(false);
+    }
     // BEFORE the first await, deliberately. `requestFullscreen` needs transient
     // user activation, and every await between the click and the call spends
     // more of that window — `bootGame` below is seconds of shader compilation.
@@ -1954,6 +2173,9 @@ export class Shell {
     // Playback is the third case of the same rule and the strictest: every flag
     // the world is built from comes off the recording, including the opening.
     if (!backdrop && this.replay !== null) this.applyReplayQuery(query, this.replay.file.header);
+    // A campaign operation is the fourth case of the same rule: the operation
+    // declares the ground and the lobby has no say in it.
+    if (!backdrop && this.operation !== null) this.applyCampaignQuery(query, this.operation.map);
     // `shot` is the screenshot harness's flag and must never appear here.
     query.delete('shot');
     query.delete('skipmenu');

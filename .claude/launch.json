@@ -18,7 +18,8 @@
         "run",
         "preview"
       ],
-      "port": 4317
+      "port": 4317,
+      "autoPort": true
     },
     {
       "name": "desktop-dev",

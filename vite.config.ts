@@ -52,8 +52,23 @@ export default defineConfig(({ command }) => ({
   },
 
   preview: {
-    // Matches the port tools/shoot.mjs serves the built bundle on.
-    port: 4317,
+    /*
+     * THE 4317 IS A DEFAULT, NOT A CONTRACT, AND THE COMMENT HERE SAID
+     * OTHERWISE FOR A LONG TIME.
+     *
+     * It read "matches the port tools/shoot.mjs serves the built bundle on",
+     * which was true once and is not now: `shoot.mjs` runs its OWN server
+     * (`tools/lib/serve.mjs`), treats 4317 as a hint, and walks to a free port
+     * when it is taken — precisely so two worktrees can capture at once. So
+     * nothing on this machine requires this process to hold that number, and
+     * `strictPort: true` only meant the preview refused to start whenever
+     * anything else already had it.
+     *
+     * A TCP port is machine-wide and this repo is worked in parallel
+     * worktrees, so "it is free on my machine" is not a property anybody can
+     * rely on. `PORT` overrides, exactly as the dev server does.
+     */
+    port: Number(process.env.PORT) || 4317,
     strictPort: true,
   },
 

@@ -124,10 +124,10 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 4719 across 192 files (+3 opt-in probes)
+npm test             # vitest, currently 4721 across 192 files (+3 opt-in probes)
                      #   6 of those are gated on `distIsCurrent()` — freshness, not mere
                      #   existence — across BOTH `manual` and `webgpu-bundle-isolation`,
-                     #   so a tree with no current `dist/` reports 4713 and skips 9.
+                     #   so a tree with no current `dist/` reports 4715 and skips 9.
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -309,6 +309,30 @@ skipped its call; the bus made the same call one frame later.
 - **`endMatch` is gated in its own right**, not merely by `beginMatch` refusing. A latch set
   mid-match must not let the lifetime record out on the way past, and `won`/`currentStreak` are
   exactly what a replayed victory would otherwise bank.
+- **`advance()` reads the latch too**, so "the profile is deaf" covers the COUNTER CHAINS and not
+  only the lifecycle. `attach()` subscribes to nine events and every one lands in `advance`, which
+  writes profile-scope rows and grants unlocks. `beginMatch` only ever reset the MATCH-scope rows.
+
+**AND THEN THE FIX'S OWN CLEARING CONDITION UNDID IT ONE LINE LATER.** `Shell.startOperation` sets
+the latch and calls `startMatch`, whose ordinary-launch restore read
+`if (this.pvp === null && this.replay === null)` — both null for a campaign, so it cleared the latch
+immediately. A scripted operation then counted its AUTHORED kills and ore onto the profile and the
+end screen showed a Rewards Earned panel with four unlocks in it.
+
+Three things worth keeping from how that was found and fixed:
+
+- **It was found by LOOKING AT THE SCREEN**, on a real boot, after every test was green. The screen
+  also showed the match named "Temperate Valley" while being fought on arid ground, because
+  `bootGame`'s query override fixes what the GENERATOR builds and `setup.map` is what every LABEL
+  reads. Two defects, one screenshot, neither reachable from a unit test.
+- **`inMatch() === false` PROVES NOTHING**, and it is what the first diagnosis leaned on. It reads
+  false after `endMatch` whether the match was suppressed or merely finished, so it agreed with the
+  broken build. Read the profile, not the flag.
+- **The first regression test was VACUOUS IN BOTH DIRECTIONS.** It suppressed, then emitted kills
+  and credits — but `entity:killed` and `economy:credits` both early-return when no match is open,
+  so with the lifecycle already gated the events never reached the counter path at all. It passed
+  with the gate on and with the gate deleted. It opens the match honestly and latches afterwards
+  now, which is the only ordering that reaches the rule.
 
 ## An economy can stop dead, and one rule exists to unstick it
 
@@ -1880,6 +1904,16 @@ default and what fills the gap: `src/render/HardwareCalibration.ts` plus `calibr
   never reaches the product path** — `main.ts` parses it and does not hand it to `Shell`, so it is
   harness-only while this file's boot-flag list implies otherwise.
 
+**`?campaign=` IS `?tier=`'S LESSON APPLIED, TWICE.** It is parsed in `main.ts` and handed to
+`Shell`, never to `bootstrap()` — a flag put on `options` and not handed to the shell is
+harness-only forever, which is exactly what happened above. And it is deliberately NOT in
+`MANAGED_FLAGS`: `buildMatchQuery` deletes every managed key on every boot, so a flag listed there
+would erase itself on the first `history.replaceState` and the operation would vanish one frame
+after it loaded. It also **SELECTS THE SCENARIO** — `?shot=` is the only other thing that can name
+one, and the shell deletes `?shot=` from every match query on purpose. There is no third signal:
+`bootScenarioName` answers `'campaign'` when an operation is armed, because arming one IS the
+selection, and a second flag that has to agree with the first is how two of them come to disagree.
+
 ## The look is measured, not judged
 
 [`docs/RA3_LOOK_BIBLE.md`](docs/RA3_LOOK_BIBLE.md) is the visual law: camera, lighting, palette,
@@ -2002,7 +2036,8 @@ primitives; do not reach for a plain box.
 breaks the entire visual-critique pipeline** — update both consumers.
 
 Boot flags: `?shot=<id>` (skips the menu, freezes the sim, poses the camera), `?map=`, `?art=`,
-`?tier=`, `?seed=`, `?mapseed=`, `?biome=`, `?fog=off`, `?relay=`, `?unlockall`. **`?seed=` and
+`?tier=`, `?seed=`, `?mapseed=`, `?biome=`, `?fog=off`, `?relay=`, `?unlockall`,
+`?campaign=<chapter>.<NN>.<slug>`. **`?seed=` and
 `?mapseed=` are different seeds** — the first drives the scenario layout and every draw of `s.rng`,
 the second is the terrain roll. Confusing them is what made a v1 replay reproduce the hills and
 nothing else. **`?tier=` is HARNESS-ONLY** and this line implied otherwise for its whole life:

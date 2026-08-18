@@ -662,6 +662,28 @@ export class MissionTracker {
    * it, a flag latches when it is positive.
    */
   private advance(def: MissionDef, amount: number): void {
+    // THE LATCH IS READ HERE TOO, AND GATING THE LIFECYCLE WAS NOT ENOUGH.
+    //
+    // `beginMatch` and `endMatch` were gated first, and that looked complete:
+    // no match opens, no match closes, `inMatch()` is false. It is not
+    // complete, because `attach()` subscribes to `entity:killed`,
+    // `building:completed`, `economy:credits` and six more, and every one of
+    // those lands HERE — which writes PROFILE-scope rows and grants unlocks
+    // whether a match is open or not. `beginMatch` only ever reset the
+    // MATCH-scope rows and drew the objective board.
+    //
+    // BELT AND BRACES, AND THE BRACES ARE `Shell.startMatch`. The observed
+    // leak — a won operation leaving four fresh unlocks and `economy.ore` at
+    // 700 on the profile — was NOT this path: `startMatch`'s ordinary-launch
+    // restore cleared the latch one line after `startOperation` set it, so a
+    // match legitimately opened and every counter ran. That is fixed there.
+    //
+    // This check stays because it makes the latch mean what its name says. The
+    // file's whole argument is that a guard at one call site cannot see a
+    // second one, and "the profile is deaf" has to hold for a latch set
+    // MID-match too — which the lifecycle gate alone does not buy, since
+    // `advance()` writes profile-scope rows with no match open at all.
+    if (progressionSuppressed()) return;
     if (!Number.isFinite(amount) || amount <= 0) return;
     const rule = def.rule;
     if (rule === undefined) return;

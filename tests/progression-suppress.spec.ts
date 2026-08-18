@@ -34,7 +34,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { Channels } from '../src/core/events';
-import { EntityKind, Faction } from '../src/core/types';
+import { CreditReason, EntityKind, Faction } from '../src/core/types';
 import type { EntityId, PlayerId } from '../src/core/types';
 import { MISSIONS } from '../src/data/Missions';
 import { MissionTracker } from '../src/progression/MissionTracker';
@@ -141,17 +141,80 @@ describe('a suppressed match banks nothing on the lifetime record', () => {
   });
 });
 
-describe('counter chains do not advance while the match never opened', () => {
-  it('kills credited during a suppressed match reach no match-scope row', () => {
-    const { tracker, channels } = rig();
-    suppressProgression(true);
-    busStart(channels);
-    for (let i = 0; i < 40; i++) {
+describe('THE PROFILE ITSELF DOES NOT MOVE, WHICH THE LIFECYCLE GATE DID NOT BUY', () => {
+  /**
+   * GATING `beginMatch` AND `endMatch` LOOKED COMPLETE AND WAS NOT.
+   *
+   * `attach()` subscribes to nine events and every one of them lands in
+   * `advance()`, which writes PROFILE-scope rows and grants unlocks whether a
+   * match is open or not — `beginMatch` only ever reset the MATCH-scope rows.
+   * So a campaign operation ran with the latch set, reported
+   * `inMatch() === false`, and still finished with four fresh unlocks and three
+   * advanced chains on the profile.
+   *
+   * It was found by LOOKING AT THE END SCREEN of a real boot, which showed a
+   * "Rewards Earned" panel it had no business showing. The earlier version of
+   * this file asserted `activeObjectiveIds()` — a MATCH-scope read — and
+   * therefore agreed with the broken build.
+   */
+  const kills = (channels: Channels, n: number): void => {
+    for (let i = 0; i < n; i++) {
       channels.events.emit('entity:killed', {
         id: 1 as EntityId, kind: EntityKind.Vehicle, defId: 0, player: P1,
         killer: 2 as EntityId, killerPlayer: P0, x: 0, z: 0, value: 100,
       });
     }
+  };
+
+  const advanced = (store: ProfileStore): string[] => Object.entries(store.get().missions)
+    .filter(([, m]) => (m.value ?? 0) > 0 || m.complete)
+    .map(([id]) => id);
+
+  /**
+   * SUPPRESS MID-MATCH, WHICH IS THE ONLY WAY TO REACH `advance()` AT ALL.
+   *
+   * The first version of this test suppressed FIRST and then emitted, and it
+   * passed against the broken build — because `entity:killed` and
+   * `economy:credits` both early-return when no match is open, so with the
+   * lifecycle already gated the events never reached the counter path and the
+   * test was vacuous in both directions. Opening the match honestly and
+   * latching afterwards is what actually exercises the rule.
+   */
+  it('no profile-scope counter moves and no unlock is granted', () => {
+    const { channels, store } = rig();
+    busStart(channels);
+    suppressProgression(true);
+    kills(channels, 300);
+    channels.events.emit('economy:credits', {
+      player: P0, credits: 12_000, delta: 12_000, storage: 12_000,
+      storageMax: 20_000, reason: CreditReason.Harvest, mined: 12_000,
+    });
+    store.flush();
+    expect(advanced(store), 'a suppressed match advanced a profile chain').toEqual([]);
+    expect(store.get().unlocked, 'a suppressed match granted an unlock').toEqual([]);
+  });
+
+  it('THE FALSIFIER: the same events on the same open match DO move it', () => {
+    const { channels, store } = rig();
+    busStart(channels);
+    kills(channels, 300);
+    channels.events.emit('economy:credits', {
+      player: P0, credits: 12_000, delta: 12_000, storage: 12_000,
+      storageMax: 20_000, reason: CreditReason.Harvest, mined: 12_000,
+    });
+    store.flush();
+    expect(
+      advanced(store).length,
+      'without this the test above passes against a tracker that counts nothing',
+    ).toBeGreaterThan(0);
+    expect(store.get().unlocked.length).toBeGreaterThan(0);
+  });
+
+  it('and nothing reaches a match-scope row either', () => {
+    const { tracker, channels } = rig();
+    suppressProgression(true);
+    busStart(channels);
+    kills(channels, 40);
     expect(tracker.activeObjectiveIds()).toEqual([]);
   });
 });
