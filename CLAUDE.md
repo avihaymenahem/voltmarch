@@ -402,6 +402,17 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   condition in `startMatch` undid it one line later. Ten hours of campaign advances no skirmish
   unlock and no profile counter — verified by playing an operation to a win on a cleared profile and
   finding `unlocked: []` with localStorage never written.
+- **THE REPLAY CLAIM IS MEASURED, NOT REASONED — `npm run replay-probe` HAS SIX PHASES NOW.** D
+  records a real operation, E replays it, F deletes one command and requires divergence. Run
+  2026-08-19 on `soviets.01.first-tap`: 299 commands over 5:04 of sim, header naming the operation,
+  and **every sampled tick identical between the recording and the playback — 200, 1800, 5400, 8940
+  and 9120**, the last two straddling the minute-five relief wave (alive +7 across it). F removed
+  the command at tick 9002 and the bar read `Diverged` at 9030.
+
+  **PHASE F IS THE ONE THAT MATTERS AND IT IS NOT OPTIONAL.** A matching hash alone is also produced
+  by a playback that fed the world nothing — the Director is deterministic from the same seed, so
+  it would re-derive an identical world with the command stream ignored entirely. Only the negative
+  control separates "the recording drives the match" from "the re-derivation happens to agree".
 - **`npm run shots` CANNOT SEE ANY OF THIS.** There is a `SCENARIO_PITCH_DEG.campaign` row so an
   unknown-name warning does not fire on every campaign boot, and it binds under `?shot=campaign`
   alone. No operation is photographed. Do not read an unchanged look-bible grade as evidence about
