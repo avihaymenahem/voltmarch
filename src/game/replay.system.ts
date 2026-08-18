@@ -32,6 +32,16 @@
  * placeholder players and called it the match. `ReplayRecorder.captureStart`
  * takes the rest on the first sim tick, which is the earliest moment all of it
  * is true and the latest moment none of it has changed.
+ *
+ * THE CAMPAIGN OPERATION IS TAKEN ON THAT SAME TICK AND FOR THAT SAME REASON.
+ * `Shell.startOperation` arms an operation and then boots, and
+ * `campaign.system.ts#init` adopts it during `registry.init()` — so `init()`
+ * here cannot see it and tick 1 can. It is written into the header because an
+ * operation's EFFECTS ARE NOT COMMANDS: the Director spawns, pays and reveals
+ * inside `simTick`, so a recording of an operation replays only if the same
+ * operation is armed for the playback boot and the Director re-runs. Same
+ * trade the file already makes for the heightfield, which is not in the replay
+ * either — `mapSeed` is.
  */
 
 import { defineSystem } from '../core/loop';
@@ -40,11 +50,18 @@ import type { SimContext } from '../core/types';
 import { ctx } from './context';
 import { checksum, describeDivergence } from './Checksum';
 import { plannedScenario } from './Scenarios';
-import { playbackActive, playbackVerify } from './Playback';
+import { playbackActive, playbackCampaignFault, playbackVerify } from './Playback';
 import {
   REPLAY_FORMAT_VERSION, ReplayPlayer, ReplayRecorder, parseReplay,
 } from './Replay';
-import type { ReplayFile, ReplayHeader } from './Replay';
+import type { ReplayCampaign, ReplayFile, ReplayHeader } from './Replay';
+// A MODULE-LEVEL SLOT WITH NO RUNTIME WEIGHT. `src/campaign/session.ts`
+// imports nothing but types, and `campaign.system.ts` already puts it in the
+// entry chunk — `Systems.ts` globs `*.system.ts` eagerly — so reaching it from
+// here adds zero bytes to a player who never opens the campaign. The Director,
+// the operation table and the layouts are behind `campaign-install` and stay
+// there; do not reach past this module.
+import { campaignSession } from '../campaign/session';
 
 declare const __APP_VERSION__: string;
 
@@ -72,6 +89,35 @@ function terrainSeed(): number {
 function flag(name: string): string {
   if (typeof location === 'undefined') return '';
   return new URLSearchParams(location.search).get(name) ?? '';
+}
+
+/**
+ * The operation this match is running, or null for a skirmish.
+ *
+ * READ ON THE FIRST SIM TICK, never at `init()`: `campaign.system.ts#init`
+ * adopts the armed session during the same `registry.init()` pass and system
+ * order within that pass is not something this file gets to depend on.
+ */
+function campaignIdentity(): ReplayCampaign | null {
+  const s = campaignSession();
+  return s === null ? null : { chapter: s.op.chapter, operation: s.op.id };
+}
+
+/**
+ * Say so, ONCE, if the recording being watched is not the match that booted.
+ *
+ * An operation's effects are not in the command stream, so a campaign recording
+ * booted without its operation armed plays as an ordinary skirmish on the
+ * operation's seed. It diverges — at tick zero, in the entity block, naming no
+ * cause. LOUD for the same reason `campaign-install.ts` shouts a short spawn
+ * wave: the alternative is a feature that is quietly and completely wrong while
+ * every instrument reports a simulation fault.
+ */
+function reportPlaybackOperation(): void {
+  if (!playbackActive()) return;
+  const fault = playbackCampaignFault(campaignSession()?.op.id ?? null);
+  if (fault === '') return;
+  console.error(`%c[replay]%c ${fault}`, 'color:#f66', 'color:inherit');
 }
 
 let recorder: ReplayRecorder | null = null;
@@ -147,10 +193,26 @@ export default defineSystem({
     const r = recorder;
     if (r === null) return;
     const { world } = ctx();
-    // The lobby's factions, the opening bank and the full player table — none
-    // of which existed when `init()` ran. Idempotent; only the first tick is
-    // taken, and on that tick Production (200) and Economy (300) have not run.
-    r.captureStart(world);
+    // ON THE FIRST TICK ONLY, and keyed off the recorder's own latch rather
+    // than a second flag, so the two cannot drift apart. This is the one moment
+    // at which the armed operation and the armed recording are both knowable
+    // and neither has done anything yet.
+    //
+    // THE OPENING CAPTURE IS INSIDE THAT LATCH RATHER THAN BESIDE IT, BECAUSE
+    // `campaignIdentity()` ALLOCATES. `captureStart` is idempotent and returns
+    // at its own `opened` flag — but an argument is evaluated before the call,
+    // so writing it unconditionally minted one throwaway `{chapter, operation}`
+    // per tick, thirty a second, for the whole of an operation, inside the
+    // fixed step, for a value the recorder had already discarded. Skipping the
+    // call once `started` is set is behaviourally identical to letting it
+    // early-return. It takes the lobby's factions, the opening bank, the full
+    // player table and the campaign operation — none of which existed when
+    // `init()` ran — and on that tick Production (200) and Economy (300) have
+    // not run.
+    if (!r.started) {
+      reportPlaybackOperation();
+      r.captureStart(world, campaignIdentity());
+    }
     r.maybeCheckpoint(world);
 
     // PLAYBACK'S CHECKPOINT COMPARE, and it has to happen HERE rather than in
@@ -227,6 +289,18 @@ function installGlobal(): void {
         // would report a desync on tick zero and teach nobody anything.
         return `this match is seed ${terrainSeed()}, the replay is `
           + `${file.header.mapSeed} — boot the same seed first`;
+      }
+      // THE SECOND WAY THIS CAN BE THE WRONG MATCH, AND THE SEED TEST CANNOT
+      // SEE IT. An operation declares its own `mapSeed`, so a skirmish booted
+      // with that `?mapseed=` passes the check above and then diverges on tick
+      // one — because the layout, the tags and every trigger only exist in one
+      // of the two. Refused rather than attempted, same as above.
+      const recordedOp = file.header.campaign?.operation ?? '';
+      const runningOp = campaignSession()?.op.id ?? '';
+      if (recordedOp !== runningOp) {
+        const name = (id: string): string => (id === '' ? 'a skirmish' : `operation ${id}`);
+        return `this match is ${name(runningOp)}, the replay is ${name(recordedOp)} `
+          + '— boot the same one first';
       }
       verifier = new ReplayPlayer(file);
       return '';

@@ -71,6 +71,7 @@ export interface ProgressionControl {
   abandonMatch(): void;
   inMatch(): boolean;
   flush(): void;
+  recordCampaignOperation(operationId: string, medal: number): boolean;
 }
 
 export type ProgressionHandle = ProgressionView & ProgressionControl;
@@ -225,6 +226,24 @@ export function abandonMatch(): void {
 }
 
 /** True between `beginMatch` and `endMatch`. False with no handle. */
+/**
+ * Record a finished campaign operation on the profile.
+ *
+ * FALSE when there is no progression layer, which is the same graceful
+ * degradation every helper in this file promises: the `?shot=` harness and a
+ * build with the system removed both play the campaign and record nothing,
+ * rather than throwing on the end screen.
+ */
+export function recordCampaignOperation(operationId: string, medal: number): boolean {
+  const h = progressionHandle();
+  if (h === null) return false;
+  try {
+    return h.recordCampaignOperation(operationId, medal);
+  } catch {
+    return false;
+  }
+}
+
 export function inMatch(): boolean {
   return progressionHandle()?.inMatch() ?? false;
 }

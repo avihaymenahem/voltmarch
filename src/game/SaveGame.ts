@@ -276,6 +276,24 @@ export interface SaveMeta {
   entityCount: number;
   /** Size of the whole blob. Filled in by `captureSnapshot`. */
   byteLength: number;
+  /**
+   * The campaign operation this match was, or absent for a skirmish.
+   *
+   * IT IS IN THE META RATHER THAN ONLY IN THE CHUNK BECAUSE IT IS AN IDENTITY,
+   * NOT A PAYLOAD. `requireMatchingWorld` compares scenario, map and seed —
+   * and two operations that share a `MAP_PRESET` and a seed compare EQUAL, so
+   * without this a save from operation 3 restores into operation 7's world with
+   * no refusal at all: same ground, different triggers, different objectives,
+   * and every trigger id resolving to a different trigger. The load screen also
+   * has to know which operation to arm BEFORE it boots, and the meta is the
+   * half of the file it can read without opening the body.
+   *
+   * OPTIONAL, and no `SAVE_SCHEMA_VERSION` bump — the meta is JSON and this is
+   * purely additive, exactly like `PlayerSection.upgradeKeys`. A save written
+   * before it arrives `undefined`, which reads as "not a campaign", which is
+   * the truth about every file that predates the campaign.
+   */
+  campaignOperationId?: string;
 }
 
 /* ==========================================================================
@@ -394,6 +412,42 @@ function hasFelledMask(v: ScatterAccess): v is ScatterAccess & FelledPropAccess 
     && typeof p.placementFingerprint === 'number';
 }
 
+/**
+ * The running campaign operation. `src/campaign/session.ts` supplies one
+ * through `save.system.ts`; this file has never heard of a Director.
+ *
+ * ============================================================================
+ * THE PAYLOAD IS DELIBERATELY `unknown`
+ * ============================================================================
+ * Every other port here names the shape it moves — a fog plane, an ore cell, a
+ * superweapon's seconds — because this file has to DO something with those
+ * numbers. It has nothing to do with an operation's trigger state, so naming
+ * the shape would buy nothing and cost the one property that matters: that
+ * `SaveGame.ts` is in the ENTRY CHUNK and may not learn what a campaign is.
+ * The chunk is written as JSON and handed straight back, exactly as
+ * `SaveSlotInfo.extra` is by the layer below.
+ *
+ * THE ONE THING IT DOES UNDERSTAND IS `operationId`, and that is an identity
+ * rather than a payload — see `SaveMeta.campaignOperationId`.
+ *
+ * **THE HANDLE REMAP IS THE PORT'S JOB, NOT THIS FILE'S.** Operation state
+ * holds `EntityId`s (the tag registry), and a raw handle stored across a
+ * restore resolves against whatever recycled the slot — the `carrierId` defect.
+ * So `snapshot` is handed the same slot-to-save-index map `writeEntities` uses
+ * and `restore` the same `handleOfLocal` that repairs `REF_COLUMNS`; the port
+ * maps its own handles with them. That keeps one remapping rule in the file
+ * that owns the index, without this file knowing which of the port's fields
+ * are handles.
+ */
+export interface CampaignAccess {
+  /** `OperationDef.id` of the running operation. Never empty. */
+  readonly operationId: string;
+  /** Opaque JSON. `localOf` yields a save-local index, or < 0 to drop. */
+  snapshot(localOf: (handle: EntityId) => number): unknown;
+  /** The inverse. `handleOf` yields a fresh handle, or `NONE`. */
+  restore(data: unknown, handleOf: (local: number) => EntityId): void;
+}
+
 /** One footprint that has ever been poured, in CELLS. */
 export interface ClearedFootprint {
   cx: number; cz: number; w: number; h: number;
@@ -453,6 +507,19 @@ export interface SnapshotHost {
   scatter: ScatterAccess | null;
   superweapons: SuperweaponAccess | null;
   commanderPowers: CommanderPowerAccess | null;
+  /**
+   * The running operation, or absent.
+   *
+   * OPTIONAL WHERE ITS SIBLINGS ARE NULLABLE-REQUIRED, and the difference is
+   * not laziness. Every other port names a SERVICE that may be missing from a
+   * build or from a test rig, so a host is made to say which it is. This one
+   * names a MODE, and the overwhelming majority of hosts — every skirmish, every
+   * PvP match, every fixture in `tests/savegame*.spec.ts` written before the
+   * campaign existed — will never have one. Making it required would have
+   * edited a dozen call sites to write `campaign: null` and taught none of them
+   * anything.
+   */
+  campaign?: CampaignAccess | null;
   /** Every footprint ever poured this match. See the header. */
   clearedFootprints: readonly ClearedFootprint[];
 }
@@ -495,6 +562,17 @@ const CHUNK_MISC = fourcc('MISC');
  * footprint replay — which is exactly what it did before the chunk existed.
  */
 const CHUNK_SCATTER = fourcc('SCTR');
+/**
+ * The campaign operation's trigger state and tag registry.
+ *
+ * ALSO NEEDS NO SCHEMA BUMP, AND FOR THE REASON DIRECTLY ABOVE. The stream is
+ * length-prefixed and `readSections`' `default` branch skips ids it does not
+ * know, so a build that predates the campaign reads every other section of a
+ * campaign save and steps over this one. It travels in the opposite direction
+ * too: a save with no such chunk leaves an armed operation at exactly the state
+ * `newOperationState` seeded, which is what such a file means.
+ */
+const CHUNK_CMPN = fourcc('CMPN');
 
 function fourcc(s: string): number {
   return (
@@ -971,6 +1049,10 @@ export function captureSnapshot(
     entityCount: n,
     byteLength: 0,
   };
+  // Written into the meta rather than only into the chunk: the load screen has
+  // to know which operation to arm BEFORE it boots a world to restore into.
+  const campaign = host.campaign ?? null;
+  if (campaign !== null) meta.campaignOperationId = campaign.operationId;
   writeJson(w, meta);
   const bodyStart = w.length;
 
@@ -1004,6 +1086,16 @@ export function captureSnapshot(
   if (host.scatter !== null && hasFelledMask(host.scatter)) {
     const chunk = captureFelledProps(host.scatter);
     if (chunk !== null) writeChunk(w, CHUNK_SCATTER, (c) => c.bytes(chunk));
+  }
+
+  if (campaign !== null) {
+    // `refOf` is the one place a handle becomes a save-local reference, and it
+    // is `index + 1` with 0 reserved for "nothing". The port's contract is a
+    // plain index with < 0 for "drop it", so the subtraction happens here and
+    // the campaign layer never learns about the sentinel.
+    writeChunk(w, CHUNK_CMPN, (c) => {
+      writeJson(c, campaign.snapshot((h) => refOf(store, localOf, h) - 1));
+    });
   }
 
   writeChunk(w, CHUNK_MISC, (c) => {
@@ -1593,6 +1685,22 @@ export function restoreSnapshot(
         'Start the right match first.',
       );
     }
+    /* THE OPERATION IS PART OF THE WORLD'S IDENTITY AND THE THREE FIELDS ABOVE
+     * CANNOT SEE IT. Operations share `MAP_PRESETS` keys and may share a seed —
+     * that is the point of a preset — so two of them compare EQUAL on scenario,
+     * map and seed. Restoring one into the other gives the player the right
+     * ground under the wrong triggers, wrong objectives, and trigger ids that
+     * resolve to different triggers. It is also how a skirmish save would land
+     * in an armed operation and how a campaign save would land in a skirmish. */
+    const savedOp = meta.campaignOperationId ?? '';
+    const liveOp = host.campaign?.operationId ?? '';
+    if (savedOp !== liveOp) {
+      return refuse(
+        'world-mismatch',
+        `This save is ${describeOperation(savedOp)}, but the running match is ` +
+        `${describeOperation(liveOp)}. Start the right one first.`,
+      );
+    }
   }
 
   let sections: Sections;
@@ -1638,6 +1746,11 @@ export function restoreSnapshot(
   };
 }
 
+/** For the refusal sentence, which a player reads. */
+function describeOperation(id: string): string {
+  return id === '' ? 'a skirmish' : `campaign operation "${id}"`;
+}
+
 /* -- section decoding ------------------------------------------------------ */
 
 interface EntityColumn {
@@ -1660,11 +1773,25 @@ interface Sections {
   ore: { cells: Int32Array; amounts: Float32Array } | null;
   misc: MiscSection | null;
   scatter: ScatterSection | null;
+  /**
+   * Wrapped rather than bare, because the payload is `unknown` and `null` is a
+   * legal value inside it — `{ data } | null` is the only encoding in which
+   * "the save has no campaign chunk" and "the chunk says null" are different
+   * answers.
+   */
+  campaign: { data: unknown } | null;
 }
 
 function readSections(bytes: Uint8Array, start: number, length: number): Sections {
   const out: Sections = {
-    match: null, entities: null, players: null, fog: [], ore: null, misc: null, scatter: null,
+    match: null,
+    entities: null,
+    players: null,
+    fog: [],
+    ore: null,
+    misc: null,
+    scatter: null,
+    campaign: null,
   };
   const r = new ByteReader(bytes.subarray(start, start + length));
 
@@ -1696,6 +1823,9 @@ function readSections(bytes: Uint8Array, start: number, length: number): Section
         break;
       case CHUNK_SCATTER:
         out.scatter = readScatterSection(payload);
+        break;
+      case CHUNK_CMPN:
+        out.campaign = { data: JSON.parse(readJsonText(payload)) as unknown };
         break;
       default:
         // An unknown chunk is a chunk a later build wrote. Skipping it is the
@@ -2059,6 +2189,19 @@ function applySections(
   const cleared = applyMisc(sections.misc, host, handleOfLocal, !felled);
   applyFog(sections.fog, host.vision);
   applyOre(sections.ore, host.ore);
+
+  /* -- 13. the campaign operation ----------------------------------------
+   * AFTER section 5's generation bump, because `handleOfLocal` is what makes a
+   * tag point at the entity that came back rather than at whatever recycled its
+   * slot. A save with no chunk leaves the armed operation exactly as
+   * `newOperationState` seeded it — which is what a file written before this
+   * existed actually meant — and calling `restore` with nothing would instead
+   * hand the port a `null` payload to make sense of. */
+  const campaignSection = sections.campaign;
+  const campaignPort = host.campaign ?? null;
+  if (campaignPort !== null && campaignSection !== null) {
+    campaignPort.restore(campaignSection.data, handleOfLocal);
+  }
 
   void meta;
   return { ok: true, value: cleared };

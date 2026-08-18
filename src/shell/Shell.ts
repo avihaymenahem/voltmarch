@@ -1154,6 +1154,33 @@ export class Shell {
     suppressProgression(true);
     preparePlayback(file);
 
+    // A CAMPAIGN RECORDING NEEDS ITS OPERATION ARMED BEFORE THE BOOT, because an
+    // operation's effects are NOT in the command stream — the Director spawns,
+    // pays and reveals inside `simTick` and re-runs under playback. Without this
+    // the layout never builds, no tag is stamped, no trigger fires, and the
+    // viewer watches an ordinary skirmish on the recording's seed: exactly the
+    // silent substitution `Playback.ts#detachPlayback` documents, by a second
+    // route.
+    const recordedOp = header.campaign?.operation ?? '';
+    if (recordedOp !== '') {
+      const install = await import('../campaign/campaign-install');
+      const op = install.armOperation(recordedOp, this.setup.difficulty);
+      if (op === null) {
+        this.clearReplay();
+        throw new Error(
+          `This recording is campaign operation "${recordedOp}", which this build does not have.`,
+        );
+      }
+      // `this.operation` and not just the arming: `bootGame` reads it for
+      // `applyCampaignQuery`, and `activeOperationId()` is what the probe prints.
+      this.operation = {
+        id: op.id,
+        title: op.title,
+        chapterTitle: install.chapterOf(op)?.title ?? op.chapter,
+        map: op.map,
+      };
+    }
+
     // A skirmish setup is still what boots the world; it is the CHANNEL, not
     // the authority. `bootGame` overwrites every flag that matters straight
     // from the header — see `applyReplayQuery` — and `seatReplayPlayers`
@@ -1352,6 +1379,14 @@ export class Shell {
       reason: result.reason,
       objectives: result.objectives,
     };
+    // THE ONLY PLACE AN OPERATION IS RECORDED, and it is here rather than in
+    // `endMatch` because this is where the medal arrives — `campaign.system.ts`
+    // grades it against the difficulty the match was actually played at, and a
+    // caller that recomputed it would need a second copy of `medalFor`.
+    //
+    // No outcome branch: medal 0 (a loss) writes nothing and returns false.
+    // Monotonic: replaying on Easy cannot take a gold away.
+    progression.recordCampaignOperation(op.id, result.medal);
   }
 
   /** The difficulty a medal is graded against. Read by `campaign.system.ts`. */
@@ -1410,6 +1445,11 @@ export class Shell {
     preparePlayback(null);
     suppressUnlockGate(false);
     suppressProgression(false);
+    // THE OPERATION A CAMPAIGN REPLAY ARMED IS A LATCH LIKE THE OTHER TWO.
+    // Left standing, the next skirmish boots with the operation's roster,
+    // layout and outcome policy in force — and `suppressUnlockGate` leaked
+    // exactly once already, which is why this is not left to `startMatch`.
+    if (this.operation !== null) void this.abandonOperation();
   }
 
   /**
@@ -1925,6 +1965,9 @@ export class Shell {
       // for the same reason `bootGame` does: the player table includes the
       // Neutral slot a skirmish always seats.
       armies: armyCount(this.setup),
+      // Absent for a skirmish. `contextOf` treats absent and empty alike, and
+      // `requireMatchingWorld` only compares when both sides name one.
+      campaignOperationId: this.operation?.id,
     };
   }
 
@@ -2009,6 +2052,29 @@ export class Shell {
     if (svc === null) throw new Error('The save system is not available in this build.');
 
     const c = slot.context;
+    // ARM BEFORE THE BOOT, for the four reasons `campaign-install.ts`'s header
+    // gives — the scenario plan, the layout, the roster and the outcome policy
+    // are all read during `bootstrap()`. Skipping it does not merely lose the
+    // objectives: the world is generated as a plain skirmish and
+    // `restoreSnapshot` then refuses with `world-mismatch` AFTER paying for a
+    // whole terrain generation.
+    const operationId = c.campaignOperationId ?? '';
+    if (operationId !== '') {
+      const install = await import('../campaign/campaign-install');
+      const op = install.armOperation(operationId, c.difficulty);
+      if (op === null) {
+        throw new Error(
+          `This save is campaign operation "${operationId}", which this build no longer has.`,
+        );
+      }
+      this.operation = {
+        id: op.id,
+        title: op.title,
+        chapterTitle: install.chapterOf(op)?.title ?? op.chapter,
+        map: op.map,
+      };
+      suppressProgression(true);
+    }
     await this.startMatch({
       ...this.setup,
       map: c.mapId,

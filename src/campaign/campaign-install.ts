@@ -119,11 +119,32 @@ class Session implements CampaignSession {
     });
   }
 
+  /**
+   * A RESTORE BRINGS ITS OWN `startTick`, AND THIS IS WHAT STOPS THE NEXT TICK
+   * OVERWRITING IT.
+   *
+   * `simTick` stamps `startTick` lazily, which is right for a fresh operation —
+   * a session is armed before `bootstrap()` and cannot know what tick the world
+   * will start on. It is catastrophic for a restored one: a save taken at
+   * minute nine, loaded before the session's first tick, would come back with
+   * `startTick` set to the tick of the LOAD. Every `elapsed` would restart from
+   * zero, and the arming pass on that same tick would disarm every hold timer
+   * the restore had just put back. One tick, permanent, and silent.
+   *
+   * `applyCampaignState` calls this the instant a restore lands.
+   */
+  adoptRestoredState(): void {
+    this.started = true;
+  }
+
   simTick(tick: number): void {
+    // BIND IS SEPARATE FROM THE STAMP NOW. They shared a branch, so a restored
+    // session — which arrives already `started` — would never have built its
+    // `WorldQuery` and would have evaluated nothing for the rest of the match.
+    if (this.q === null || this.sink === null) this.bind();
     if (!this.started) {
       this.started = true;
       this.state.startTick = tick;
-      this.bind();
     }
     const q = this.q;
     const sink = this.sink;

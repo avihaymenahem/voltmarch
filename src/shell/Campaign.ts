@@ -94,8 +94,15 @@ export function loadCampaign(): Promise<CampaignModule> {
  * 37 and spoil three campaigns.
  * ========================================================================== */
 
+/**
+ * A ROW IS A NUMBER. The store writes `Record<string, number>` and the first
+ * draft of this file declared `{ medal?: number }` — so `(3)?.medal` was
+ * `undefined`, the `?? 1` beneath it turned every completed operation into
+ * bronze, and gold was unreachable. Two shapes for one datum, authored on
+ * either side of a boundary neither compiler crossed.
+ */
 interface ProfileProbe {
-  profile(): { campaign?: Record<string, { medal?: number }> };
+  profile(): { campaign?: Readonly<Record<string, number>> };
 }
 
 function completionOf(): ReadonlyMap<string, number> {
@@ -105,7 +112,9 @@ function completionOf(): ReadonlyMap<string, number> {
   if (p === undefined || typeof p.profile !== 'function') return out;
   try {
     const rows = p.profile().campaign ?? {};
-    for (const [id, row] of Object.entries(rows)) out.set(id, row?.medal ?? 1);
+    for (const [id, medal] of Object.entries(rows)) {
+      if (typeof medal === 'number' && medal > 0) out.set(id, medal);
+    }
   } catch {
     // A profile that throws is a profile with nothing in it, as far as this
     // screen is concerned. It must not take the campaign down with it.

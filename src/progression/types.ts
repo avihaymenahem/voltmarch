@@ -115,6 +115,25 @@ export interface ProfileView {
   version: number;
   unlocked: readonly string[];
   missions: readonly MissionProgress[];
+  /**
+   * Campaign operation id -> the BEST medal ever earned. Empty for a player
+   * who has not opened the campaign.
+   *
+   * IT IS ON THE VIEW BECAUSE THE CAMPAIGN SCREEN IS A UI READER AND THE VIEW
+   * IS WHAT UI READERS GET. It was omitted on the first pass and the screen
+   * read `profile().campaign` anyway, through an `unknown` cast that `tsc`
+   * could not see past — so `completionOf()` returned an empty map for every
+   * profile that would ever exist. Symptom: no medal pips, a chapter count
+   * stuck at 0, and — the moment a second operation ships — every operation
+   * with a non-empty `requires` PERMANENTLY LOCKED, because `locked` is
+   * computed from exactly that map.
+   *
+   * A NUMBER PER ROW, NOT AN OBJECT. The store writes `Record<string, number>`
+   * and a reader expecting `{ medal }` gets `undefined` from `(3)?.medal`,
+   * which a `?? 1` then turns into bronze for everything and makes gold
+   * unreachable. Two shapes for one datum is how that happens; there is one.
+   */
+  campaign: Readonly<Record<string, number>>;
 }
 
 /** What the UI reads. Never mutate what this returns. */
@@ -328,6 +347,21 @@ export interface MatchEndInfo {
 
 /** The lifecycle half of the handle. The shell and a victory module both use it. */
 export interface ProgressionControl {
+  /**
+   * Record a finished campaign operation. Returns true when the profile moved.
+   *
+   * ON THE CONTROL HALF BECAUSE IT IS A WRITE, and on the handle at all because
+   * the shell has no other route to a `ProfileStore` — `progression-link.ts`
+   * reaches progression through the duck-typed `__vmProgression` view, which is
+   * reads only. The alternative was the shell importing
+   * `progression.system.ts` for its store accessor, which is a second way in to
+   * something that already has one.
+   *
+   * SAFE TO CALL ON A LOSS: medal 0 writes nothing and returns false, so the
+   * caller needs no outcome branch. And it is MONOTONIC — replaying on Easy
+   * cannot take a gold away.
+   */
+  recordCampaignOperation(operationId: string, medal: number): boolean;
   beginMatch(info: MatchStartInfo): void;
   endMatch(info: MatchEndInfo): void;
   /**

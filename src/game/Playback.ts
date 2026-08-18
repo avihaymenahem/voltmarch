@@ -141,6 +141,51 @@ export function playbackFile(): ReplayFile | null {
 }
 
 /**
+ * The disagreement between what the recording says it is and what this match
+ * actually booted as, or ''.
+ *
+ * ── WHY THIS IS WORTH A FUNCTION ───────────────────────────────────────────
+ *
+ * A campaign operation's effects are NOT in the command stream. `spawnUnits`,
+ * `grantCredits` and `revealArea` never touch the bus — they run inside
+ * `simTick` through the Director — so a recording of an operation replays only
+ * if the OPERATION IS ARMED BEFORE THE BOOT and the Director re-runs. This is
+ * the same trade the file already makes for the largest piece of state in the
+ * game: the heightfield is not in the replay, `mapSeed` is.
+ *
+ * Boot a campaign recording without arming the operation and nothing throws.
+ * The layout never builds, no tag is ever stamped, no trigger fires, and the
+ * viewer watches a perfectly ordinary skirmish on the operation's seed with the
+ * AI switched off — WORD FOR WORD the failure `detachPlayback` above exists to
+ * describe, reached by a second route. The checkpoints would diverge, but they
+ * would diverge at tick zero and report an entity block, which reads like a
+ * broken simulation rather than like a missing boot argument.
+ *
+ * So it is named. The caller supplies the running operation id because this
+ * module knows nothing about campaigns and is not going to start — the same
+ * division `ReplayPlayer` states as "THE CALLER OWNS THE WORLD".
+ *
+ * Silent when nothing is being played back: an ordinary match has no recording
+ * to disagree with.
+ */
+export function playbackCampaignFault(runningOperation: string | null): string {
+  const file = live?.replay;
+  if (file === undefined) return '';
+  const recorded = file.header.campaign?.operation ?? '';
+  const running = runningOperation ?? '';
+  if (recorded === running) return '';
+  if (recorded === '') {
+    return `this recording is a skirmish, but campaign operation '${running}' is armed`;
+  }
+  if (running === '') {
+    return `this recording is campaign operation '${recorded}' and no operation is armed — `
+      + 'the world was built as an ordinary skirmish on the operation\'s seed, so nothing '
+      + 'the operation scripts will happen';
+  }
+  return `this recording is campaign operation '${recorded}', but '${running}' is armed`;
+}
+
+/**
  * Empty the bus of anything issued locally, then re-issue the recording's
  * commands for this tick.
  *

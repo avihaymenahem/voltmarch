@@ -51,6 +51,13 @@ import {
 import { MissionTracker } from './MissionTracker';
 import { ProfileStore, browserStorage, memoryStorage } from './profile-store';
 import { UnlockGate, setUnlockGate } from './UnlockGate';
+// `campaign-store.ts` imports `profile-store` (already here) plus one TYPE from
+// `campaign/types.ts`, which is erased. So this costs the entry chunk nothing
+// and does not put the Director, the operation table or a layout anywhere near
+// it — `tests/campaign-bundle-isolation.spec.ts` is what says so rather than
+// this comment.
+import { recordOperation } from '../campaign/campaign-store';
+import type { Medal } from '../campaign/types';
 import {
   PROGRESSION_GLOBAL_KEY,
   type MatchEndInfo, type MatchStartInfo, type MissionEntry, type MissionProgress,
@@ -127,7 +134,7 @@ function buildHandle(t: MissionTracker, s: ProfileStore, g: UnlockGate): Progres
         if (def.scope !== 'profile') continue;
         missions.push(t.progressOf(def.id));
       }
-      return { version: p.version, unlocked: p.unlocked, missions };
+      return { version: p.version, unlocked: p.unlocked, missions, campaign: p.campaign };
     },
 
     catalogue(): readonly MissionEntry[] {
@@ -198,6 +205,12 @@ function buildHandle(t: MissionTracker, s: ProfileStore, g: UnlockGate): Progres
     },
 
     /* -- control -------------------------------------------------------- */
+
+    recordCampaignOperation(operationId: string, medal: number): boolean {
+      // The clamp and the monotonic rule both live in `recordOperation`; this
+      // is a pass-through so there is one definition of what a medal may be.
+      return recordOperation(s, operationId, Math.trunc(medal) as Medal);
+    },
 
     beginMatch(info: MatchStartInfo): void {
       t.beginMatch(info);

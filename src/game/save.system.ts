@@ -64,6 +64,11 @@ import type { World } from '../core/world';
 
 import { ctx } from './context';
 import { activeScenario, resolveDefBinding } from './Scenarios';
+// `src/campaign/session.ts` imports nothing but types — the same reason
+// `campaign.system.ts` is allowed to import it from the entry chunk. The
+// Director, the operation table and the layouts are all on the far side of
+// `campaign-install.ts` and are never reached from here.
+import { applyCampaignState, campaignSession, captureCampaignState } from '../campaign/session';
 import { getScatter } from '../world/Scatter';
 import { commanderPowers } from '../sim/CommanderPowers';
 import { superweapons } from '../sim/Superweapons';
@@ -86,6 +91,16 @@ export interface RequiredWorld {
   scenario: string;
   map: string;
   seed: number;
+  /**
+   * The campaign operation to arm before booting, or `''` for a skirmish.
+   *
+   * A FOURTH FIELD BECAUSE THE FIRST THREE CANNOT TELL TWO OPERATIONS APART.
+   * Operations reuse `MAP_PRESETS` keys and may share a seed, so scenario, map
+   * and seed all match across a pair of them; `restoreSnapshot` refuses on this
+   * field, and a caller that booted without arming the operation would get that
+   * refusal after paying for a whole world generation.
+   */
+  campaignOperationId: string;
 }
 
 /**
@@ -207,6 +222,31 @@ function visionAccessOf(world: World): SnapshotHost['vision'] {
   return null;
 }
 
+/**
+ * The running operation as `SaveGame.ts`'s structural port, or null.
+ *
+ * THIS IS WHERE THE SAVE LAYER'S IGNORANCE IS PURCHASED. `SaveGame.ts` is in
+ * the entry chunk and must not learn what a Director is, so it takes an opaque
+ * JSON payload plus one identity string; the flattening and the handle remap
+ * both live in `src/campaign/session.ts`, which owns the state. The shape is
+ * the same trade `visionAccessOf` above makes for fog.
+ *
+ * `world.store` is captured here rather than looked up inside the closures
+ * because `restoreSnapshot` calls `world.reset()`, which reuses the same
+ * `EntityStore` instance — so one lookup is correct for both directions and a
+ * per-call `ctx()` would be a second way to get the same object.
+ */
+function campaignAccessOf(world: World): SnapshotHost['campaign'] {
+  const session = campaignSession();
+  if (session === null) return null;
+  const store = world.store;
+  return {
+    operationId: session.op.id,
+    snapshot: (localOf) => captureCampaignState(session, store, localOf),
+    restore: (data, handleOf) => { applyCampaignState(session, data, handleOf); },
+  };
+}
+
 /** Everything a capture or a restore reads, gathered from the live context. */
 function makeHost(): SnapshotHost | null {
   const { world, loop, cameraRig } = ctx();
@@ -234,6 +274,8 @@ function makeHost(): SnapshotHost | null {
     // is simulation state and belongs in one exactly as the superweapon
     // timers do. See the header of `src/sim/CommanderPowers.ts`.
     commanderPowers: commanderPowers(),
+    // Null for every skirmish and every PvP match, which is the usual case.
+    campaign: campaignAccessOf(world),
     clearedFootprints: cleared,
   };
 }
@@ -454,7 +496,12 @@ function buildApi(): SaveApi {
     requiredWorldFor(slot): RequiredWorld | null {
       const meta = s.peek(slot);
       if (meta === null) return null;
-      return { scenario: meta.scenario, map: meta.map, seed: meta.seed };
+      return {
+        scenario: meta.scenario,
+        map: meta.map,
+        seed: meta.seed,
+        campaignOperationId: meta.campaignOperationId ?? '',
+      };
     },
 
     save: (slot, label) => storeSnapshot(slot, label),
@@ -540,6 +587,28 @@ interface ServiceContext {
    * and all three match.
    */
   readonly armies: number;
+  /**
+   * THE CAMPAIGN OPERATION. ABSENT MEANS SKIRMISH.
+   *
+   * `armies` above records what the GROUND was levelled for; this records what
+   * the MATCH was. `requireMatchingWorld` compares scenario, map and seed, and
+   * two operations sharing a `MAP_PRESET` and a seed compare equal on all
+   * three — so `restoreSnapshot` refuses on this instead, and the load screen
+   * needs it to arm the right operation BEFORE it boots a world to restore
+   * into. Additive exactly like `armies`, and per-field in `contextOf`, so a
+   * row already on disk degrades rather than failing.
+   *
+   * **OPTIONAL RATHER THAN DEFAULTED TO `''`, WHICH IS THE ONE PLACE THIS
+   * DIFFERS FROM `armies`.** `contextOf` defaults every other field because a
+   * missing one is dangerous — a silently-undefined `armies` reaches
+   * `armyCount` arithmetic and plans a world for NaN seats. A missing
+   * operation id is not dangerous: every consumer compares it for equality,
+   * and `undefined` fails to equal an operation exactly as `''` does. So the
+   * datum keeps ONE rule across both hops it makes — `SaveMeta` omits it for a
+   * skirmish too, because `JSON.stringify` drops `undefined` and a save
+   * written before the campaign genuinely has nothing to say here.
+   */
+  readonly campaignOperationId?: string;
 }
 
 interface ServiceSlotMeta {
@@ -608,6 +677,12 @@ export function contextOf(raw: unknown, info: SaveSlotInfo): ServiceContext {
   const c = (typeof raw === 'object' && raw !== null ? raw : {}) as Partial<ServiceContext>;
   const str = (v: unknown, fb: string): string => (typeof v === 'string' ? v : fb);
   const int = (v: unknown, fb: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : fb);
+  // THE BLOB HEADER IS THE BETTER FALLBACK for the operation, not the empty
+  // string. `captureSnapshot` writes the id into `SaveMeta` for every campaign
+  // save, so a row whose `extra` came from a shell that does not send the field
+  // still resolves to the right operation — the same shape as `mapId`, which
+  // falls back to `info.meta.map`.
+  const operation = str(c.campaignOperationId, info.meta.campaignOperationId ?? '');
   return {
     mapId: str(c.mapId, info.meta.map),
     playerFaction: str(c.playerFaction, EMPTY_CONTEXT.playerFaction),
@@ -616,6 +691,10 @@ export function contextOf(raw: unknown, info: SaveSlotInfo): ServiceContext {
     speed: int(c.speed, EMPTY_CONTEXT.speed),
     seed: int(c.seed, info.meta.seed),
     armies: Math.max(2, Math.trunc(int(c.armies, EMPTY_CONTEXT.armies))),
+    // ABSENT, NOT EMPTY, for a skirmish — see the field's own note. Every row
+    // already on disk lands here, and a row that says "" means the same thing
+    // as a row that says nothing.
+    campaignOperationId: operation === '' ? undefined : operation,
   };
 }
 

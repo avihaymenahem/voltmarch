@@ -28,9 +28,14 @@
  *   v2 — shipped. `missions` becomes full records with `claimedAt`, and the
  *        lifetime counters move into a `stats` object with a streak and a
  *        per-faction win tally.
+ *   v3 — shipped. `campaign` arrives: operation id -> the BEST medal ever
+ *        earned on it. Nothing is derived from v2, because nothing in v2 knows
+ *        what an operation is — the campaign did not exist. See
+ *        `PROFILE_VERSION` for why a purely additive field still bumped the
+ *        stamp, which this file's own rule would otherwise have refused.
  *
- * `migrateProfile` walks the ladder step by step, so v1 -> v4 will one day be
- * three functions and not one function that has to know about four formats.
+ * `migrateProfile` walks the ladder step by step, so v1 -> v4 is two functions
+ * today and three tomorrow, never one function that knows about four formats.
  *
  * FAIL SOFT, ALWAYS
  * -----------------
@@ -82,10 +87,37 @@ export interface Profile {
   unlocked: string[];
   missions: Record<string, ProfileMission>;
   stats: ProfileStats;
+  /**
+   * Campaign operation id -> the BEST medal ever earned on it, 1..3.
+   *
+   * **A ROW EXISTS IF AND ONLY IF THE OPERATION HAS BEEN WON.** Medal 0 means
+   * "not won", which is the same state as "no row", and storing both spellings
+   * would give `operationComplete` two answers to reconcile. `normalizeCampaign`
+   * enforces it by dropping any row that normalises to 0.
+   *
+   * TYPED `number`, NOT `Medal`, AND THAT IS DELIBERATE. `Medal` lives in
+   * `src/campaign/types.ts` and progression is the lower layer — the campaign
+   * imports the profile, never the reverse. `src/campaign/campaign-store.ts` is
+   * where the narrowing happens, in one function, so an out-of-range value from
+   * a hand-edited blob cannot reach a `switch` on medal.
+   */
+  campaign: Record<string, number>;
 }
 
-/** Bumped only when a migration cannot be expressed as "fill in the default". */
-export const PROFILE_VERSION = 2;
+/**
+ * Bumped when a migration cannot be expressed as "fill in the default" — OR
+ * when a new field will one day need migrating and nothing else could ever
+ * tell its generations apart.
+ *
+ * **v3 IS THE SECOND KIND, AND BY THE FIRST RULE ALONE IT WOULD NOT HAVE BEEN
+ * BUMPED**: `campaign` arrives empty and `normalizeProfile` would have
+ * defaulted it. It is stamped anyway because `missions` went from
+ * `id -> number` to `id -> record` in v1 -> v2, and the ONLY thing that made
+ * that step writable was the version saying which spelling was on disk. A
+ * field added without a stamp can never be migrated later, only sniffed — and
+ * a sniff is a guess that gets one blob wrong and loses that player's progress.
+ */
+export const PROFILE_VERSION = 3;
 
 /**
  * The storage key never carries the schema version — the `version` FIELD does.
@@ -165,8 +197,15 @@ function bool(v: unknown, fallback: boolean): boolean {
   return typeof v === 'boolean' ? v : fallback;
 }
 
-/** Ids are content keys: printable, bounded, and never absurd. */
-function isSaneId(v: unknown): v is string {
+/**
+ * Ids are content keys: printable, bounded, and never absurd.
+ *
+ * EXPORTED SO THERE IS ONE DEFINITION. `campaign-store.ts` guards the id it is
+ * about to write with the same predicate the normaliser will judge it by on the
+ * next load — otherwise a write that looks like it worked disappears at boot,
+ * which is the quiet divergence `docs/SPEC_DRIFT_AUDIT.md` catalogues.
+ */
+export function isSaneId(v: unknown): v is string {
   return typeof v === 'string' && v.length > 0 && v.length <= 96;
 }
 
@@ -175,6 +214,23 @@ const MAX_COUNTER = 1e12;
 /** Upper bound on stored rows, so an import cannot be used as a memory bomb. */
 const MAX_UNLOCKS = 512;
 const MAX_MISSION_ROWS = 2048;
+/**
+ * Same job for campaign rows. 37 operations ship; this bound is about a hostile
+ * blob rather than about the content, and it is exported because
+ * `campaign-store.ts` must refuse the row the normaliser would drop.
+ */
+export const MAX_CAMPAIGN_ROWS = 512;
+/**
+ * Gold. Kept here rather than imported from `campaign/types.ts` for the same
+ * layering reason `Profile.campaign` is typed `number`.
+ *
+ * A STORED MEDAL ABOVE THIS CLAMPS DOWN; IT IS NOT DROPPED. A future build that
+ * adds a fourth tier writes a 4, and a player who rolls back should keep the
+ * completion at gold rather than lose the operation entirely — "downgrading is
+ * lossy; wiping is worse", which is the rule `migrateProfile` already states for
+ * the whole blob.
+ */
+const MAX_MEDAL = 3;
 
 export function defaultStats(): ProfileStats {
   return {
@@ -195,6 +251,7 @@ export function defaultProfile(now = Date.now()): Profile {
     unlocked: [],
     missions: {},
     stats: defaultStats(),
+    campaign: {},
   };
 }
 
@@ -240,6 +297,29 @@ function normalizeMission(id: string, raw: unknown): ProfileMission {
 }
 
 /**
+ * Campaign rows, bounded and clamped.
+ *
+ * THE DROP AT 0 IS THE INVARIANT, NOT A TIDY-UP. `Profile.campaign` promises a
+ * row exists if and only if the operation was won, and `operationComplete` is
+ * `medal > 0` on the strength of it. A stored 0 — from a hand edit, from a
+ * negative that clamped, from a `null` — would be a row that claims completion
+ * to `Object.keys` and denies it to `medalOf`.
+ */
+function normalizeCampaign(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!isRecord(raw)) return out;
+  let n = 0;
+  for (const id of Object.keys(raw)) {
+    if (!isSaneId(id)) continue;
+    const medal = Math.floor(num(raw[id], 0, MAX_MEDAL, 0));
+    if (medal <= 0) continue;
+    out[id] = medal;
+    if (++n >= MAX_CAMPAIGN_ROWS) break;
+  }
+  return out;
+}
+
+/**
  * Total, defensive, order-independent. Returns a complete `Profile` for ANY
  * input. Never throws. Never returns a shared object.
  */
@@ -276,6 +356,11 @@ export function normalizeProfile(raw: unknown, now = Date.now()): Profile {
     unlocked,
     missions,
     stats: normalizeStats(raw.stats),
+    // REBUILT FROM THE DEFAULT LIKE EVERYTHING ELSE HERE. This function copies
+    // only what it recognises, so a field without a branch evaporates on every
+    // single load — silently, because nothing throws and the write still
+    // succeeds against the next blob.
+    campaign: normalizeCampaign(raw.campaign),
   };
 }
 
@@ -342,8 +427,26 @@ function migrateV1toV2(raw: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
+/**
+ * v2 -> v3.
+ *
+ * NOTHING IS DERIVED, BECAUSE THERE IS NOTHING TO DERIVE FROM. A v2 profile
+ * predates the campaign entirely; no counter, no unlock and no mission row
+ * carries any information about an operation, so seeding anything but an empty
+ * map would be inventing progress the player did not earn.
+ *
+ * `raw.campaign ?? {}` rather than a shape test, because STEPS NEVER VALIDATE —
+ * `normalizeProfile` runs afterwards and is the only thing allowed to have an
+ * opinion about what is in there. The `??` exists solely so a hand-pasted blob
+ * stamped `version: 2` that already carries campaign rows keeps them.
+ */
+function migrateV2toV3(raw: Record<string, unknown>): Record<string, unknown> {
+  return { ...raw, version: 3, campaign: raw.campaign ?? {} };
+}
+
 export const MIGRATIONS: readonly MigrationStep[] = [
   { from: 1, to: 2, run: migrateV1toV2 },
+  { from: 2, to: 3, run: migrateV2toV3 },
 ];
 
 /**
@@ -415,7 +518,7 @@ export function parseProfileExport(json: string, now = Date.now()): Profile | nu
   // an arbitrary JSON file would otherwise silently reset the player.
   const looksLikeProfile =
     Array.isArray(body.unlocked) || isRecord(body.missions) || isRecord(body.stats)
-    || typeof body.version === 'number';
+    || isRecord(body.campaign) || typeof body.version === 'number';
   if (!looksLikeProfile) return null;
 
   return normalizeProfile(migrateProfile(body), now);

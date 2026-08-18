@@ -79,10 +79,54 @@ import {
  * rather than half-read — a replay that silently drops a field it did not
  * recognise is a desync with extra steps.
  */
+/**
+ * The version a SKIRMISH recording is written at. Unchanged since v2 and it
+ * must stay that way — every replay a player owns is stamped with it, and
+ * every build that ever shipped reads it.
+ */
 export const REPLAY_FORMAT_VERSION = 2;
+
+/**
+ * The version a CAMPAIGN recording is written at.
+ *
+ * A campaign file is not readable by a build that predates the campaign — not
+ * because a field is missing, but because that build would boot the header's
+ * seeds, arm no operation, and play a plausible skirmish on the operation's
+ * ground while saying nothing. It has to guess, which is this file's own bump
+ * criterion. So it is stamped 3 and an old build refuses it by name.
+ */
+export const REPLAY_FORMAT_VERSION_CAMPAIGN = 3;
+
+/** Every version this build can read. */
+export const REPLAY_FORMAT_VERSIONS: readonly number[] = [
+  REPLAY_FORMAT_VERSION,
+  REPLAY_FORMAT_VERSION_CAMPAIGN,
+];
+
+/** The version a header with these contents should be written at. */
+export function formatVersionFor(campaign: ReplayCampaign | undefined): number {
+  return campaign === undefined ? REPLAY_FORMAT_VERSION : REPLAY_FORMAT_VERSION_CAMPAIGN;
+}
 
 /** How often a checksum is stamped into the stream, in ticks. */
 export const REPLAY_CHECKSUM_INTERVAL = 30;
+
+/**
+ * The campaign operation a recording was played in.
+ *
+ * TWO STRINGS, NOT ONE, EVEN THOUGH `operationById` RESOLVES THE SECOND FROM
+ * THE FIRST. A header is read by things that have deliberately not loaded the
+ * operation table — the Replays list labels a card before anything has fetched
+ * `campaign-install`, which is the whole point of that lazy boundary — so
+ * re-deriving the chapter there would drag 37 operations into the entry chunk
+ * to write one word on a tile.
+ */
+export interface ReplayCampaign {
+  /** `ChapterDef.id` — `soviets` | `allies` | `pact` | `reclamation`. */
+  readonly chapter: string;
+  /** `OperationDef.id` — `chapter.NN.slug`. */
+  readonly operation: string;
+}
 
 /** One slot of the starting world, index === PlayerId. */
 export interface ReplaySlot {
@@ -147,6 +191,43 @@ export interface ReplayHeader {
   localPlayer: number;
   /** Per-slot faction, difficulty and opening bank, index === PlayerId. */
   players: ReplaySlot[];
+  /**
+   * The campaign operation this match was, ABSENT for a skirmish.
+   *
+   * ── THE VERSION IS PER-FILE: 2 FOR A SKIRMISH, 3 WHEN THIS IS PRESENT ───
+   *
+   * The bump criterion this file runs on is stated in `parseReplay`: a version
+   * moves when a file "describes a match this build would have to GUESS at".
+   * **THAT TEST HAS TWO DIRECTIONS AND THE FIRST DRAFT OF THIS COMMENT ONLY
+   * ARGUED ONE OF THEM.**
+   *
+   * Old file, new build: `campaign: undefined` on a v2 file is A FACT — that
+   * match really was a skirmish. Nothing is inferred. So a blanket bump would
+   * refuse every replay a player owns to buy nothing, and that half of the
+   * argument was right.
+   *
+   * **New file, OLD build is the dangerous direction, and it was missed.** A
+   * campaign recording stamped `formatVersion: 2` is accepted IN FULL by a
+   * build that predates the campaign: `parseReplay` passes it, the boot takes
+   * the header's seeds and preset, no operation is armed, and the viewer
+   * watches a plausible skirmish on the operation's ground — `detachPlayback`'s
+   * failure exactly, in a build that has no `campaignFault` to name it. That
+   * build genuinely DOES have to guess, which is the bump criterion, met.
+   * It is reachable: `Replays.ts#onFileChosen` imports files from disk, and
+   * CLAUDE.md documents `buildVersion` as warn-not-refuse *because* cross-build
+   * files are expected.
+   *
+   * So the version is written PER FILE and read as a SET. A skirmish is still
+   * written `2` and every old build still plays it; a campaign recording is
+   * written `3` and an old build refuses it with an honest sentence instead of
+   * silently substituting a different match. Nothing on disk today is affected
+   * either way — which is the property the `SaveSlotInfo.extra` argument was
+   * really about.
+   *
+   * `missingHeaderField` therefore does NOT list it. `campaignFault` below
+   * does the other half: absent is fine, PRESENT AND UNUSABLE is refused.
+   */
+  campaign?: ReplayCampaign;
 }
 
 /**
@@ -229,10 +310,28 @@ export class ReplayRecorder {
    * not one credit has been spent or earned.
    *
    * Idempotent — only the first call is taken.
+   *
+   * `campaign` IS A PARAMETER RATHER THAN A LOOKUP, and that is the same rule
+   * `ReplayPlayer` states for the world: this file is pure, and the module that
+   * knows what a campaign session is is `replay.system.ts`. It is optional
+   * because a skirmish is the ordinary case and passing `null` for it at every
+   * call site in a test file is noise — and because the resulting header key is
+   * then genuinely absent from the JSON, which is what makes an older reader's
+   * `undefined` a fact rather than a default.
    */
-  captureStart(world: World): void {
+  captureStart(world: World, campaign: ReplayCampaign | null = null): void {
     if (this.opened) return;
     this.opened = true;
+    // `undefined`, never `null`: `JSON.stringify` DROPS an undefined property
+    // and writes `"campaign":null` for the other one, so this is the difference
+    // between a skirmish file that says nothing and one that says "no
+    // operation" in a shape no reader was written for.
+    this.header.campaign = campaign ?? undefined;
+    // THE VERSION IS DECIDED HERE, WHERE THE CONTENTS ARE KNOWN, and not in
+    // `headerFor()` — the recorder is constructed before the first tick and
+    // cannot know yet whether an operation is armed. A skirmish stays 2 so
+    // every build that ever shipped still reads it.
+    this.header.formatVersion = formatVersionFor(this.header.campaign);
     this.header.localPlayer = world.localPlayer as number;
     this.header.players = world.players.map((p) => ({
       faction: p.faction as number,
@@ -353,6 +452,11 @@ const STRING_FIELDS: readonly (keyof ReplayHeader)[] = ['mapPreset', 'biome', 's
  * `art` and `buildVersion` are deliberately NOT required. Neither can change
  * the simulation — one is a mood preset, the other is a string — so refusing a
  * file for their absence would reject a replay that plays back perfectly.
+ *
+ * `campaign` IS NOT LISTED EITHER, for a different reason: its absence is not
+ * a gap, it is the recording saying "this was a skirmish". Every v2 file
+ * written before the campaign existed says exactly that, truthfully. See the
+ * field's own comment, and `campaignFault` for the half that IS checked.
  */
 function missingHeaderField(h: Partial<ReplayHeader>): string {
   for (const key of NUMBER_FIELDS) {
@@ -370,6 +474,34 @@ function missingHeaderField(h: Partial<ReplayHeader>): string {
     if (typeof p.credits !== 'number' || !Number.isFinite(p.credits)) {
       return `opening bank for player ${i}`;
     }
+  }
+  return '';
+}
+
+/**
+ * A reason to refuse a header whose `campaign` is present and unusable, or ''.
+ *
+ * ABSENT AND MALFORMED ARE DIFFERENT QUESTIONS AND ONLY THE SECOND IS A FAULT.
+ * Absence is every pre-campaign v2 file telling the truth about itself. A
+ * `campaign` that is present but names no operation is a file claiming to be a
+ * recording of scripted content while withholding which script — the boot would
+ * arm nothing, the layout would never build, no tag would ever be stamped, and
+ * the viewer would get a plausible skirmish on the operation's seed. That is
+ * the failure `Playback.ts`'s header calls "the exact failure this whole
+ * feature is built to make impossible", so it is refused here rather than
+ * survived.
+ */
+function campaignFault(h: Partial<ReplayHeader>): string {
+  const c = h.campaign as Partial<ReplayCampaign> | null | undefined;
+  if (c === undefined) return '';
+  if (c === null || typeof c !== 'object') {
+    return 'header carries a campaign that is not an object';
+  }
+  if (typeof c.operation !== 'string' || c.operation === '') {
+    return 'header names a campaign operation but does not say which';
+  }
+  if (typeof c.chapter !== 'string' || c.chapter === '') {
+    return `header names campaign operation '${c.operation}' with no chapter`;
   }
   return '';
 }
@@ -393,10 +525,14 @@ export function parseReplay(text: string): ParseResult {
   const o = raw as Partial<ReplayFile>;
   const h = o.header;
   if (h === undefined || typeof h !== 'object') return { ok: false, reason: 'no header' };
-  if (h.formatVersion !== REPLAY_FORMAT_VERSION) {
+  // A SET, NOT A NUMBER. 2 is a skirmish and 3 carries a campaign operation;
+  // this build reads both. See `ReplayHeader.campaign` for why the version is
+  // per-file rather than per-build.
+  if (!REPLAY_FORMAT_VERSIONS.includes(h.formatVersion as number)) {
     return {
       ok: false,
-      reason: `format version ${String(h.formatVersion)}, this build reads ${REPLAY_FORMAT_VERSION}`,
+      reason: `format version ${String(h.formatVersion)}, `
+        + `this build reads ${REPLAY_FORMAT_VERSIONS.join(' or ')}`,
     };
   }
   // EVERY BOOT FIELD IS REQUIRED, and each one is checked by name so a refusal
@@ -407,6 +543,11 @@ export function parseReplay(text: string): ParseResult {
   // prevent.
   const missing = missingHeaderField(h);
   if (missing !== '') return { ok: false, reason: `header has no ${missing}` };
+  // The campaign field is OPTIONAL and its absence is a fact, so it is checked
+  // here rather than by name above — and checked at all, because a present-but-
+  // empty one is the one shape that would boot a scripted match as a skirmish.
+  const badCampaign = campaignFault(h);
+  if (badCampaign !== '') return { ok: false, reason: badCampaign };
 
   if (!Array.isArray(o.commands)) return { ok: false, reason: 'no command stream' };
   if (!Array.isArray(o.checks)) return { ok: false, reason: 'no checkpoints' };

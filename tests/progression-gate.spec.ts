@@ -572,12 +572,18 @@ describe('map unlocks', () => {
 
 describe('the shell control seam', () => {
   it('is assignable from the real ProgressionControl', () => {
+    // EVERY MEMBER, DELIBERATELY, WITH NO SPREAD AND NO `as`. This literal is
+    // the only thing stopping the shell's restatement drifting from the real
+    // contract, and it can only do that job by failing to compile when a member
+    // is added to one side and not the other. It did exactly that when
+    // `recordCampaignOperation` landed.
     const real: ProgressionControl = {
       beginMatch: () => {},
       endMatch: () => {},
       abandonMatch: () => {},
       inMatch: () => false,
       flush: () => {},
+      recordCampaignOperation: () => false,
     };
     const asShell: ShellControl = real;
     expect(typeof asShell.beginMatch).toBe('function');

@@ -124,10 +124,10 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 4721 across 192 files (+3 opt-in probes)
+npm test             # vitest, currently 4857 across 196 files (+3 opt-in probes)
                      #   6 of those are gated on `distIsCurrent()` — freshness, not mere
                      #   existence — across BOTH `manual` and `webgpu-bundle-isolation`,
-                     #   so a tree with no current `dist/` reports 4715 and skips 9.
+                     #   so a tree with no current `dist/` reports 4851 and skips 9.
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```

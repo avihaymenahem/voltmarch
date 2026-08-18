@@ -590,7 +590,25 @@ describe('the shell builds the world the recording describes', () => {
     // A brace matcher nobody has watched fail is a brace matcher nobody knows
     // works — and every assertion above rests on this one.
     const body = methodBody('private clearReplay(');
+
+    // THE STRUCTURAL HALF. `clearReplay` is followed by `captureReplay`, whose
+    // doc block and signature are the first things a runaway matcher would
+    // swallow. Naming the NEIGHBOUR is what makes this an over-run test rather
+    // than a size test — the length cap below is a smoke alarm, this is the
+    // measurement.
     expect(body).not.toContain('applyReplayQuery');
-    expect(body.length).toBeLessThan(600);
+    expect(body).not.toContain('captureReplay');
+    // AND IT ENDS ON THE METHOD'S OWN CLOSING BRACE. `methodBody` slices from
+    // the signature to the brace that balances it, so the last line is `  }`
+    // at class-member indent — anything else means the matcher kept going.
+    expect(body.trimEnd().split('\n').pop()).toBe('  }');
+
+    // A CEILING WITH REAL HEADROOM, RAISED ONCE ON PURPOSE. It was 600 against
+    // a 639-character body after `clearReplay` gained the campaign disarm; a
+    // cap that has to move every time the method gains a comment is a cap that
+    // gets bumped without being read. Running into `captureReplay` would add
+    // well over a thousand characters, so 1200 still catches the failure this
+    // exists for.
+    expect(body.length).toBeLessThan(1200);
   });
 });

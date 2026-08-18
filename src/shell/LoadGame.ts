@@ -130,6 +130,19 @@ export interface SaveContext {
    * planned two and the capture and the restore agreed by accident.
    */
   readonly armies: number;
+  /**
+   * The campaign operation this match is, or absent for a skirmish.
+   *
+   * `requireMatchingWorld` compares scenario, map and seed — and two operations
+   * sharing a `MAP_PRESET` and a seed compare EQUAL on all three, so a save from
+   * operation 3 would restore into operation 7's world with no refusal.
+   * `restoreSnapshot` refuses on this instead.
+   *
+   * ABSENT RATHER THAN `''`, matching `ServiceContext` and `SaveMeta`, and
+   * optional so every row already on disk degrades through `contextOf`'s
+   * per-field fallback instead of failing.
+   */
+  readonly campaignOperationId?: string;
 }
 
 /**
