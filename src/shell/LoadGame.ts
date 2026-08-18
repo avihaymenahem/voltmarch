@@ -116,6 +116,20 @@ export interface SaveContext {
   readonly speed: number;
   /** The RESOLVED sim seed — never 0, never "roll one". */
   readonly seed: number;
+  /**
+   * SEATS THE GROUND WAS LEVELLED FOR, human included. `armyCount(setup)`.
+   *
+   * Terrain, roads and scatter are regenerated on load rather than stored, and
+   * `Shell.bootGame` calls `setPlannedArmies(armyCount(this.setup))` — so the
+   * generator reserves one levelled shelf per army IN THE SETUP THAT BOOTED. A
+   * four-way save restored through a boot that planned two comes back with its
+   * bases on ground levelled for two, and `requireMatchingWorld` cannot catch
+   * it: it compares scenario, map and seed, and all three match.
+   *
+   * This was masked until the army-count wire landed, because every boot
+   * planned two and the capture and the restore agreed by accident.
+   */
+  readonly armies: number;
 }
 
 /**

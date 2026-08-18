@@ -1612,6 +1612,11 @@ export class Shell {
       difficulty: this.setup.difficulty,
       speed: this.setup.speed,
       seed: this.activeSeed,
+      // The number `bootGame` handed `setPlannedArmies`, so a restore can plan
+      // the same ground. Read off the setup rather than off `world.players`,
+      // for the same reason `bootGame` does: the player table includes the
+      // Neutral slot a skirmish always seats.
+      armies: armyCount(this.setup),
     };
   }
 
@@ -1704,14 +1709,32 @@ export class Shell {
       difficulty: c.difficulty,
       speed: c.speed,
       seed: c.seed,
-      // BOOT AS A DUEL WHATEVER THE LOBBY LAST HELD. `SaveContext` names one
-      // opponent — it is the save INDEX row, key-stable, and growing it would
-      // invalidate every slot already on disk — and it does not need to name
-      // more: `restoreSnapshot` calls `world.reset()` and re-seats the whole
-      // player table from the blob, so a four-way save comes back as a
-      // four-way. Carrying the current lobby's army list into this boot would
-      // only build bases the very next step deletes.
-      opponents: [{ faction: c.aiFaction, difficulty: c.difficulty, personality: -1 }],
+      // BOOT WITH THE SEAT COUNT THE SAVE WAS TAKEN AT.
+      //
+      // THIS USED TO BOOT AS A DUEL WHATEVER THE LOBBY HELD, and the argument
+      // for it was half right in a way that hid a real defect. It is true that
+      // `restoreSnapshot` calls `world.reset()` and re-seats the whole PLAYER
+      // TABLE from the blob, so the opponent list here is only a label. It is
+      // false for the GROUND: terrain, roads and scatter are regenerated rather
+      // than stored, and `bootGame` reserves one levelled shelf per army in the
+      // setup that booted. So a four-way save came back with its bases on a
+      // heightfield levelled for two — and `requireMatchingWorld` could not see
+      // it, because scenario, map and seed all matched.
+      //
+      // The same comment also claimed growing `SaveContext` "would invalidate
+      // every slot already on disk". It does not: `SaveSlotInfo.extra` is
+      // explicitly opaque and `extraOf` now falls back FIELD BY FIELD, so a row
+      // written before this degrades to two armies — which is exactly what it
+      // already booted as — instead of failing. That sentence was stronger than
+      // the code required and it is the reason this went unfixed.
+      //
+      // `startReplay` is the model and has always done this correctly: it
+      // rebuilds `opponents` from every non-Neutral slot in the header,
+      // precisely so `armyCount` answers the recording's number.
+      opponents: Array.from(
+        { length: Math.max(1, c.armies - 1) },
+        () => ({ faction: c.aiFaction, difficulty: c.difficulty, personality: -1 }),
+      ),
     }, { persist: false });
 
     if (this.state !== 'playing' || this.game === null) {

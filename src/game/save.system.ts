@@ -529,6 +529,17 @@ interface ServiceContext {
   readonly difficulty: number;
   readonly speed: number;
   readonly seed: number;
+  /**
+   * SEATS THE GROUND WAS LEVELLED FOR, human included.
+   *
+   * The terrain is regenerated on load, never stored, and the generator
+   * reserves one levelled shelf per army in the setup that BOOTED. A save
+   * taken in a four-way and restored through a boot that planned two comes
+   * back with its bases on a heightfield levelled for two, and
+   * `requireMatchingWorld` cannot see it — it compares scenario, map and seed,
+   * and all three match.
+   */
+  readonly armies: number;
 }
 
 interface ServiceSlotMeta {
@@ -574,8 +585,39 @@ interface SlotExtra {
 }
 
 const EMPTY_CONTEXT: ServiceContext = {
-  mapId: '', playerFaction: '', aiFaction: '', difficulty: 0, speed: 1, seed: 0,
+  mapId: '', playerFaction: '', aiFaction: '', difficulty: 0, speed: 1, seed: 0, armies: 2,
 };
+
+/**
+ * THE CONTEXT FALLS BACK FIELD BY FIELD, AND IT USED TO FALL BACK WHOLE.
+ *
+ * `kind` and `thumbnail` were already per-field; `context` was one `??` over
+ * the entire object. A row already on disk HAS a context object, so the `??`
+ * never fired for it — which meant any field added to `ServiceContext` read
+ * `undefined` at runtime on every existing save while typechecking as present.
+ * A silently-undefined `armies` would then reach `armyCount` arithmetic and
+ * plan a world for `NaN` seats.
+ *
+ * Per-field is the shape the doc comment on `SaveSlotInfo.extra` always
+ * promised. `armies` defaults to 2 for a legacy row because there is genuinely
+ * no information to do better with — `SaveMeta` carries no seat count and the
+ * blob is not open yet — and 2 is exactly what such a row already booted as,
+ * so nothing regresses. New rows carry the truth.
+ */
+export function contextOf(raw: unknown, info: SaveSlotInfo): ServiceContext {
+  const c = (typeof raw === 'object' && raw !== null ? raw : {}) as Partial<ServiceContext>;
+  const str = (v: unknown, fb: string): string => (typeof v === 'string' ? v : fb);
+  const int = (v: unknown, fb: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : fb);
+  return {
+    mapId: str(c.mapId, info.meta.map),
+    playerFaction: str(c.playerFaction, EMPTY_CONTEXT.playerFaction),
+    aiFaction: str(c.aiFaction, EMPTY_CONTEXT.aiFaction),
+    difficulty: int(c.difficulty, EMPTY_CONTEXT.difficulty),
+    speed: int(c.speed, EMPTY_CONTEXT.speed),
+    seed: int(c.seed, info.meta.seed),
+    armies: Math.max(2, Math.trunc(int(c.armies, EMPTY_CONTEXT.armies))),
+  };
+}
 
 function extraOf(info: SaveSlotInfo): SlotExtra {
   const e = info.extra as Partial<SlotExtra> | null;
@@ -584,7 +626,7 @@ function extraOf(info: SaveSlotInfo): SlotExtra {
       ? e.kind
       : (info.slot.startsWith('auto') ? 'auto' : 'manual'),
     thumbnail: typeof e?.thumbnail === 'string' ? e.thumbnail : null,
-    context: e?.context ?? { ...EMPTY_CONTEXT, mapId: info.meta.map, seed: info.meta.seed },
+    context: contextOf(e?.context, info),
   };
 }
 

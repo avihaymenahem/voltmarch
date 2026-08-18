@@ -124,10 +124,10 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 4607 across 186 files (+3 opt-in probes)
+npm test             # vitest, currently 4615 across 187 files (+3 opt-in probes)
                      #   6 of those are gated on `distIsCurrent()` — freshness, not mere
                      #   existence — across BOTH `manual` and `webgpu-bundle-isolation`,
-                     #   so a tree with no current `dist/` reports 4601 and skips 9.
+                     #   so a tree with no current `dist/` reports 4609 and skips 9.
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -565,24 +565,37 @@ define at least 4 possible spawns in each map"*. Three complaints, three differe
   independently on both machines of a lockstep match, and that is a tick-zero desync. Permutation
   and power-of-two scaling are exact; angles are not.
 
-**A THREE- OR FOUR-ARMY SAVE RESTORES ONTO TWO-ARMY GROUND, AND NO GUARD CATCHES IT.**
-`Shell.bootGame` calls `setPlannedArmies(armyCount(this.setup))`, so the generator reserves one
-levelled shelf per army in the setup that booted — and `Shell.loadGame` deliberately boots with
-`opponents: [{ faction: c.aiFaction, … }]`, ONE entry, on the argument that `restoreSnapshot`
-re-seats the whole player table anyway. That argument is sound for the PLAYER TABLE and unsound
-for the GROUND: terrain, roads and scatter are regenerated rather than stored (`SaveGame.ts`,
-above `RestoreOptions`), so a four-way save comes back with its bases on a heightfield levelled
-for two. `requireMatchingWorld` cannot see it — it compares scenario, map and seed, and all three
-match. Before the army-count wire landed this was masked, because every boot planned two and the
-capture and the restore agreed by accident.
+**A THREE- OR FOUR-ARMY SAVE RESTORED ONTO TWO-ARMY GROUND, AND NO GUARD COULD CATCH IT.** FIXED —
+`SaveContext.armies` now carries the seat count and `Shell.loadGame` rebuilds `opponents` from it.
+The defect is recorded because the ARGUMENT that produced it was half right, which is the part
+worth not repeating.
 
-The fix is a field on `SaveContext` (`src/shell/LoadGame.ts`), and it is additive rather than a
-schema break: `SaveSlotInfo.extra` is explicitly opaque and `extraOf` falls back field by field,
-so rows already on disk degrade instead of failing. The `loadGame` comment's claim that growing
-the context 'would invalidate every slot already on disk' is stronger than the code requires and
-should be corrected in the same change. **The replay path is the model and already does this
-correctly** — `Shell.startReplay` rebuilds `opponents` from every non-Neutral slot in the header
-before it boots, precisely so `armyCount` answers the recording's number.
+`Shell.bootGame` calls `setPlannedArmies(armyCount(this.setup))`, so the generator reserves one
+levelled shelf per army in the setup that booted — and `loadGame` deliberately booted with
+`opponents: [{ faction: c.aiFaction, … }]`, ONE entry, on the argument that `restoreSnapshot`
+re-seats the whole player table anyway. **That argument is sound for the PLAYER TABLE and unsound
+for the GROUND**: terrain, roads and scatter are regenerated rather than stored (`SaveGame.ts`,
+above `RestoreOptions`), so a four-way save came back with its bases on a heightfield levelled for
+two. `requireMatchingWorld` compares scenario, map and seed, and all three match. Before the
+army-count wire landed this was masked, because every boot planned two and the capture and the
+restore agreed by accident.
+
+- **`extraOf` DID NOT fall back field by field, and this file said it did.** That was true of
+  `kind` and `thumbnail` and false of `context`, which was one `??` over the whole object — and a
+  row on disk HAS a context object, so the `??` never fires for it. A newly-required field would
+  therefore have read `undefined` at runtime on every existing save while typechecking as present,
+  and `armies - 1` on `undefined` plans `NaN` seats. `contextOf` is per-field now, which is what
+  the doc comment on `SaveSlotInfo.extra` always promised, and every future field inherits it.
+- **A legacy row reads 2, and that is not a guess at the truth.** `SaveMeta` carries no seat count
+  and the blob is not open when the boot is planned, so there is nothing better to infer. 2 is the
+  behaviour that row already had, chosen so nothing regresses.
+- **The `loadGame` comment claiming growing `SaveContext` "would invalidate every slot already on
+  disk" was stronger than the code required, and it is the reason this went unfixed.** Corrected in
+  place. No `SAVE_SCHEMA_VERSION` bump; `structuralHash()` is untouched.
+- **The replay path was always the model** — `Shell.startReplay` rebuilds `opponents` from every
+  non-Neutral slot in the header before it boots, precisely so `armyCount` answers the recording's
+  number. `tests/save-army-count.spec.ts` pins that it still does, because `loadGame`'s fix is a
+  copy of it and two paths that must agree should fail together.
 
 **THE TWO SEA MAPS ARE `players: 2` BY ARITHMETIC, NOT BY JUDGEMENT, AND THE NUMBER IS NOT
 REVISABLE BY PLAYTEST.** `MAP_SEAS.coast` and `.tropical` are half-planes whose waterline is
