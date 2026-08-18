@@ -297,3 +297,57 @@ describe('§4 rally slots are distinct, bounded and exact', () => {
     expect(worst).toBeLessThanOrEqual(Math.SQRT2 * 2 + 1e-9);
   });
 });
+
+/* ========================================================================== */
+
+/**
+ * A FORMATION IS NOT CRUSHED OUT OF EXISTENCE FOR SMALL UNITS.
+ *
+ * `assignFormations` preserves the shape a group is standing in, scaled to fit
+ * an allowed radius. That radius was `sqrt(N) * meanRadius * NAV_FORMATION_SPACING`
+ * — a MULTIPLE OF THE HULL — and infantry carry radius 0.234, so six riflemen
+ * were allowed a 1.49 m disc: 0.61 m of centre spacing for a man drawn 1.75 m
+ * tall. Measured, six G.I.s given one move order settled at a cluster radius of
+ * 1.79 / 1.97 / 2.09 m from inputs 4 / 8 / 16 m wide — the input shape was
+ * irrelevant. Six TANKS from the same 8 m input settled at 19.22 m, untouched,
+ * because `allowed` scaled with their much larger radius.
+ *
+ * So the crush was infantry-specific, and it is why authoring a wedge would
+ * have been pointless for them: the shape existed and was then squeezed out.
+ */
+describe('§5 infantry keep a formation instead of collapsing into a blob', () => {
+  it('lets six riflemen hold a wider spread than the old hull-scaled disc', () => {
+    const rig = makeRig();
+    const men: number[] = [];
+    for (let k = 0; k < 6; k++) men.push(spawnMan(rig, CX - 10 + k * 4, CZ));
+    const st = rig.world.store;
+    for (const i of men) {
+      st.orderX[i] = CX;
+      st.orderZ[i] = CZ + 60;
+      st.state[i] = UnitState.Moving;
+    }
+    rig.step(900);
+
+    let cx = 0, cz = 0;
+    for (const i of men) { cx += st.posX[i]; cz += st.posZ[i]; }
+    cx /= men.length; cz /= men.length;
+    let radius = 0;
+    for (const i of men) {
+      radius = Math.max(radius, Math.hypot(st.posX[i] - cx, st.posZ[i] - cz));
+    }
+    // The old ceiling was sqrt(6) * 0.234 * 2.6 = 1.4903 and every measured
+    // settle landed under 2.1. The new allowance is sqrt(6) * 2.0 = 4.90.
+    expect(radius, `cluster radius ${radius.toFixed(3)} m`).toBeGreaterThan(2.2);
+  });
+
+  it('barely moves the tank case, which was never broken', () => {
+    // The control. `allowed` for six tanks goes 6*1.7 -> 2*1.7+1.4 = 4.8 per
+    // neighbour, i.e. 10.8 m -> 11.76 m. If this ever swings wide, the change
+    // has stopped being a fix for small units and become a global loosening.
+    const meanR = 1.7;
+    const before = Math.sqrt(6) * meanR * 2.6;
+    const after = Math.sqrt(6) * Math.max(2.0, meanR * 2 + 1.4);
+    expect(after / before).toBeGreaterThan(0.9);
+    expect(after / before).toBeLessThan(1.2);
+  });
+});

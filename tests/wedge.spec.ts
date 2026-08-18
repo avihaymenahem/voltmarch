@@ -318,10 +318,23 @@ describe('the assigner and the solver drive to the same point', () => {
     for (const i of units) orderTo(rig, i, C(64), C(64));
     rig.step(2);
 
-    // The precondition the bug needed. If the formation clamp ever shrinks
-    // below the old radius this test stops testing anything, so assert it.
+    /*
+     * THE PRECONDITION THE BUG NEEDED, stated as the thing it actually is.
+     *
+     * This read `toBeCloseTo(NAV_FORMATION_MAX_OFFSET, 5)` — i.e. the clamp
+     * SATURATES — which was true only because the old allowance was
+     * `sqrt(N) * meanRadius * NAV_FORMATION_SPACING`, a multiple of the hull,
+     * and nine harvester-sized hulls overshot the 30 m cap. Spacing is a metric
+     * distance now (`max(2.0, 2*meanR + 1.4)`), so the same nine land at ~27 m
+     * and no longer saturate. That is not a weaker test: what this case needs
+     * is a slot WIDER THAN THE 22 m RADIUS the solver used to gate on, which is
+     * the whole mechanism of the oscillation it guards. Saturation was an
+     * implementation detail of the old formula and asserting it made the case
+     * fail on a change that left the bug fully covered.
+     */
     const widest = Math.max(...units.map((i) => Math.hypot(ag.slotX[i], ag.slotZ[i])));
-    expect(widest).toBeCloseTo(NAV_FORMATION_MAX_OFFSET, 5);
+    expect(widest, `widest slot ${widest.toFixed(2)} m`).toBeGreaterThan(22);
+    expect(widest).toBeLessThanOrEqual(NAV_FORMATION_MAX_OFFSET + 1e-6);
 
     for (let t = 0; t < 3000; t++) rig.step(1);
 

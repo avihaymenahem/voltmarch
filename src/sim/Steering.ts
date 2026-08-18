@@ -77,6 +77,7 @@ import {
   NAV_WEDGE_SAMPLE_TICKS, NAV_WEDGE_METRES, NAV_WEDGE_STRIKES,
   NAV_WEDGE_MAX_NUDGES, NAV_WEDGE_SEARCH_CELLS,
   NAV_FORMATION_SPACING, NAV_FORMATION_MAX_OFFSET, NAV_FORMATION_GOAL_EPS,
+  NAV_FORMATION_MIN_SPACING, NAV_FORMATION_GAP,
   STEER_SEPARATION_WEIGHT, STEER_SEPARATION_RANGE_MUL, STEER_STATIC_PUSH_MUL,
   STEER_AVOID_WEIGHT, STEER_AVOID_LOOKAHEAD, STEER_AVOID_SIDE,
   STEER_QUEUE_COS, STEER_QUEUE_RANGE_MUL, STEER_QUEUE_BRAKE,
@@ -1401,15 +1402,42 @@ export class NavAssigner {
       if (members < 2) continue;
       cx /= members; cz /= members;
 
-      // Radius the formation is ALLOWED to occupy: enough area for `members`
-      // discs at NAV_FORMATION_SPACING, capped so a huge selection cannot smear
-      // across the whole map.
+      /*
+       * Radius the formation is ALLOWED to occupy, capped so a huge selection
+       * cannot smear across the whole map.
+       *
+       * SPACING IS A METRIC DISTANCE NOW, NOT A MULTIPLE OF THE HULL, and that
+       * is the fix for a measured absurdity: this read
+       * `sqrt(members) * meanR * NAV_FORMATION_SPACING`, and infantry carry
+       * `radius` 0.234, so six riflemen were allowed a disc of
+       * sqrt(6) * 0.234 * 2.6 = 1.49 m — 0.61 m of centre spacing for a man
+       * drawn 1.75 m tall. Measured settling of six G.I.s given a move order:
+       *
+       *     input shape        old allowed   settled cluster radius
+       *     line 4 m apart        1.4903            1.7901
+       *     line 8 m apart        1.4903            1.9734
+       *     line 16 m apart       1.4903            2.0924
+       *     6 TANKS, 8 m apart   24.6468           19.2238   <- control
+       *
+       * Whatever shape six riflemen were given they ended in a 2 m blob, while
+       * tanks passed through untouched because `allowed` scaled with their much
+       * larger radius. The crush was infantry-specific and it is why authoring
+       * a wedge would have been pointless for them.
+       *
+       * `2 * meanR + gap` is the distance two neighbours actually need — their
+       * two hulls plus room to walk — with a floor so a swarm of small units
+       * still reads as ranks. Infantry get 2.0 m against 0.61; tanks get 4.8 m
+       * against the 4.42 they had, so the control case barely moves.
+       */
       let rSum = 0;
       for (let m = 0; m < members; m++) rSum += st.radius[GROUP[m]];
       const meanR = rSum / members;
+      const spacing = Math.max(
+        NAV_FORMATION_MIN_SPACING, meanR * 2 + NAV_FORMATION_GAP,
+      );
       const allowed = Math.min(
         NAV_FORMATION_MAX_OFFSET,
-        Math.sqrt(members) * meanR * NAV_FORMATION_SPACING,
+        Math.sqrt(members) * spacing,
       );
 
       // Uniform shrink, not per-unit clamping: clamping each offset

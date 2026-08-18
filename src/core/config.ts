@@ -8023,6 +8023,17 @@ export const NAV_WEDGE_SEARCH_CELLS = 6;
 /** Formation slot spacing, as a multiple of the group's mean unit radius. */
 export const NAV_FORMATION_SPACING = 2.6;
 /** Hard cap on a formation slot offset, metres. */
+/**
+ * Metres between neighbours in a formation: a floor, and a per-hull term.
+ *
+ * `NAV_FORMATION_SPACING` below is a MULTIPLE OF THE HULL and is what made
+ * formations meaningless for infantry — `radius` 0.234 resolved to 0.61 m of
+ * centre spacing, so six riflemen collapsed into a 1.49 m disc whatever shape
+ * they were given, while tanks were untouched. Two neighbours need their two
+ * hulls plus room to walk, which is a DISTANCE, so it is written as one.
+ */
+export const NAV_FORMATION_MIN_SPACING = 2.0;
+export const NAV_FORMATION_GAP = 1.4;
 export const NAV_FORMATION_MAX_OFFSET = 30;
 /** Two order points closer than this (metres) count as the same group order. */
 export const NAV_FORMATION_GOAL_EPS = 0.6;
