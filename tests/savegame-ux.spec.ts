@@ -339,6 +339,7 @@ const CONTEXT: SaveContext = {
   difficulty: 1,
   speed: 1,
   seed: 0x1234,
+  armies: 2,
 };
 
 function meta(over: Partial<SaveSlotMeta> = {}): SaveSlotMeta {
@@ -1137,8 +1138,14 @@ describe('saving and loading leaves the profile alone', () => {
   it('the context a save carries has no unlock, mission or profile field in it', () => {
     // Everything the shell hands the store, enumerated. A future field that
     // smuggled profile state into a match save would fail here.
+    //
+    // `armies` joined this list when a four-way save was found to restore onto
+    // ground levelled for two. It is a fact about the WORLD the save was taken
+    // in — the same category as `mapId` and `seed`, and the same category the
+    // rule above is protecting: this list must stay free of unlocks, mission
+    // rows and anything else that lives on the profile.
     expect(Object.keys(CONTEXT).sort()).toEqual([
-      'aiFaction', 'difficulty', 'mapId', 'playerFaction', 'seed', 'speed',
+      'aiFaction', 'armies', 'difficulty', 'mapId', 'playerFaction', 'seed', 'speed',
     ]);
   });
 
