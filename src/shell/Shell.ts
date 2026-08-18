@@ -76,6 +76,8 @@ import {
   type OpponentSetup,
   type Settings,
 } from './settings-store';
+import { BriefingScreen, CampaignScreen } from './Campaign';
+import type { CampaignResult } from './EndScreen';
 
 import { armCalibration, disarmCalibration } from '../render/calibration.system';
 import { describeCalibration, type CalibrationResult } from '../render/HardwareCalibration';
@@ -156,7 +158,25 @@ export type ShellState =
   /** The save-slot list. Reachable from the title screen only. */
   | 'load'
   /** The recordings list. Reachable from the title screen only. */
-  | 'replays';
+  | 'replays'
+  /**
+   * The campaign's chapter and operation list.
+   *
+   * NEITHER OF THESE IS IN `MID_MATCH_STATES`, AND THAT IS A CLAIM ABOUT
+   * REACHABILITY RATHER THAN A PREFERENCE. `game/outcome.system.ts` treats any
+   * transition into `'playing'` from a state NOT on that list as a NEW MATCH
+   * and emits `match:started`. Both of these are reachable from the title
+   * screen only — there is no route from `'playing'` to either and back — so
+   * adding them would mean a mid-match round trip could not re-arm the
+   * campaign's own start triggers, which is a bug in the other direction.
+   *
+   * **If an in-match briefing log is ever built, it MUST go on that list.**
+   * `tests/campaign-gate.spec.ts` drives the state machine rather than reading
+   * the array, so the day one is added the test is what says so.
+   */
+  | 'campaign'
+  /** One operation's briefing. Reachable from `'campaign'` only. */
+  | 'briefing';
 
 /** One full-bleed layer of the front end. */
 export interface Screen {
@@ -806,7 +826,15 @@ export class Shell {
    * because `bootGame` needs its map before anything is loaded, and
    * `endMatch` needs its objectives after everything is torn down.
    */
-  private operation: { id: string; map: OperationBoot } | null = null;
+  private operation: {
+    id: string;
+    title: string;
+    chapterTitle: string;
+    map: OperationBoot;
+  } | null = null;
+
+  /** The finished operation, pushed by `campaign.system.ts` before `endMatch`. */
+  private campaignResult: CampaignResult | null = null;
 
   /** The last objective rows the campaign published. Read by the end screen. */
   private campaignRows: readonly CampaignObjectiveRow[] = [];
@@ -1222,7 +1250,15 @@ export class Shell {
       this.fail('Operation Not Found', new Error(`No campaign operation '${operationId}'.`));
       return;
     }
-    this.operation = { id: op.id, map: op.map };
+    this.operation = {
+      id: op.id,
+      title: op.title,
+      // The chapter's own title, resolved once here. `buildResult` runs inside
+      // a frame and cannot await the lazy chunk to look it up.
+      chapterTitle: install.chapterOf(op)?.title ?? op.chapter,
+      map: op.map,
+    };
+    this.campaignResult = null;
     // THE PROFILE IS DEAF FOR THE DURATION. A scripted operation's kill count
     // is AUTHORED, so paying the profile chains at authored rates is a farm —
     // and `struct.defence.aa` arriving before `unit.air` is an ordering
@@ -1299,6 +1335,30 @@ export class Shell {
     this.campaignRows = rows;
   }
 
+  /** The finished operation. Pushed immediately before `endMatch`; see there. */
+  publishCampaignResult(result: {
+    operationId: string;
+    medal: number;
+    reason: string;
+    objectives: readonly CampaignObjectiveRow[];
+  }): void {
+    const op = this.operation;
+    if (op === null || op.id !== result.operationId) return;
+    this.campaignResult = {
+      operationId: op.id,
+      title: op.title,
+      chapterTitle: op.chapterTitle,
+      medal: result.medal,
+      reason: result.reason,
+      objectives: result.objectives,
+    };
+  }
+
+  /** The difficulty a medal is graded against. Read by `campaign.system.ts`. */
+  matchDifficulty(): number {
+    return this.setup.difficulty;
+  }
+
   /** What the campaign wants shown. Dialogue and EVA for now; camera later. */
   playCampaignBeat(event: { kind: string; speaker?: string; text?: string; line?: string }): void {
     if (event.kind === 'dialogue' && event.text !== undefined) {
@@ -1311,6 +1371,34 @@ export class Shell {
       const g = globalThis as unknown as { __vmHud?: { toast?: (...a: unknown[]) => void } };
       g.__vmHud?.toast?.('info', `campaign-${event.speaker ?? 'line'}`, event.speaker ?? '', event.text);
     }
+  }
+
+  /** The chapter list. */
+  openCampaign(): void {
+    this.show(new CampaignScreen(this), 'campaign');
+  }
+
+  /** One operation's briefing. */
+  openBriefing(operationId: string): void {
+    this.show(new BriefingScreen(this, operationId), 'briefing');
+  }
+
+  /**
+   * Re-launch the operation that just ended, from the briefing.
+   *
+   * RETRY IS THE MOST-PRESSED BUTTON IN ANY CAMPAIGN and it must not cost a
+   * lobby round trip. `startOperation` disarms first, so this is safe to call
+   * from the end screen with an operation still armed.
+   */
+  async retryOperation(): Promise<void> {
+    const id = this.operation?.id ?? null;
+    if (id === null) return;
+    await this.startOperation(id);
+  }
+
+  /** The operation that is running, or null. Read by the end screen. */
+  activeOperationId(): string | null {
+    return this.operation?.id ?? null;
   }
 
   private clearReplay(): void {
@@ -2890,6 +2978,11 @@ export class Shell {
       mapName: mapById(this.setup.map).name,
       difficulty: this.setup.difficulty,
       speed: GAME_SPEEDS[this.setup.speed] ?? 1,
+      // Present only for an operation, and ONLY when the campaign actually
+      // published one. A campaign match that ended some other way — quit,
+      // abandoned — gets the skirmish copy, which is at least not a false
+      // claim about objectives nobody resolved.
+      campaign: this.campaignResult ?? undefined,
     };
   }
 

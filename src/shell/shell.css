@@ -2863,3 +2863,278 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
     min-width: 0;
   }
 }
+
+/* ==========================================================================
+ * 16. CAMPAIGN
+ *
+ * The chapter list and the briefing. EVERY SELECTOR IS ROOTED AT `.vm-shell`,
+ * as this whole file is — `.vm-*` is shared with `src/ui/hud.css` and ten
+ * names have already collided once. `tests/shell-scope.spec.ts` fails on the
+ * first unrooted selector here.
+ *
+ * The look borrows the missions board rather than inventing one: a card per
+ * chapter, a row per operation, and the same glass/notch tokens. A campaign
+ * screen that looked like a different product would be the first thing anybody
+ * saw of it.
+ * ========================================================================== */
+
+/* -- THE 18px INSET IS PER ELEMENT, AND THIS SECTION FORGOT IT TWICE ---------
+ *
+ * `.vm-page-body` carries NO padding — it is the scroll container, and padding
+ * on a scroll container puts the scrollbar 18px in from the panel edge. So
+ * every child supplies its own inset. That convention is stated in full in
+ * §"Multiplayer lobby" above, along with the note that THAT screen shipped once
+ * with the inset missing and everything flush against the panel edge.
+ *
+ * Both campaign screens then did it again, and both were caught by measuring a
+ * booted page rather than by looking: `.vm-camp-note` read `left: 18, padL: 0`
+ * against a header and cards at `left: 18, padL: 18px`, so its text started at
+ * x=18 and theirs at x=36. `.vm-camp-brief` had it worse — the chapter label,
+ * the title, the beat and every objective row were flush.
+ *
+ * A chapter CARD needs none of this: it is a `.vm-panel` spanning the body and
+ * carrying its own 18px, so its contents already land at 36.               */
+
+.vm-shell .vm-camp-note {
+  margin: 0 18px 18px;
+  color: var(--vm-text-dim);
+  font-size: 13px;
+  line-height: 1.55;
+  max-width: 62ch;
+}
+
+.vm-shell .vm-camp-note strong { color: var(--vm-text); font-weight: 600; }
+
+.vm-shell .vm-camp-loading {
+  margin: 24px 0;
+  color: var(--vm-text-faint);
+  font-size: 13px;
+}
+
+.vm-shell .vm-camp-chapters {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.vm-shell .vm-camp-chapter { padding: 16px 18px; }
+
+.vm-shell .vm-camp-chapter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vm-shell .vm-camp-chapter-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vm-text);
+}
+
+.vm-shell .vm-camp-chapter-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-camp-chapter-blurb {
+  margin: 6px 0 14px;
+  color: var(--vm-text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 68ch;
+}
+
+.vm-shell .vm-camp-ops {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* -- one operation --------------------------------------------------------- *
+ * A grid rather than flex, so the index, the par and the medal column line up
+ * down the whole list however long a title is. `minmax(0, 1fr)` on the text
+ * column is what stops a long beat line pushing the medals off the card.      */
+
+.vm-shell .vm-camp-op {
+  display: grid;
+  grid-template-columns: 2.2em minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border: 1px solid var(--vm-line-soft);
+  border-radius: var(--vm-notch-sm);
+  background: var(--vm-glass-soft);
+}
+
+.vm-shell .vm-camp-op.is-locked { opacity: 0.55; }
+
+.vm-shell .vm-camp-op-index {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-camp-op-text { min-width: 0; }
+
+.vm-shell .vm-camp-op-title {
+  display: block;
+  font-size: 14px;
+  color: var(--vm-text);
+}
+
+.vm-shell .vm-camp-op-beat {
+  display: block;
+  font-size: 12px;
+  color: var(--vm-text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vm-shell .vm-camp-op-par {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--vm-text-faint);
+}
+
+/* -- the medal ------------------------------------------------------------- *
+ * THREE PIPS, NEVER A NUMBER. A medal is a shape a player reads at a glance
+ * across a list of nine rows; "2" is a thing they have to decode. The
+ * `aria-label` on the wrapper carries the word for a screen reader.           */
+
+.vm-shell .vm-camp-medal { display: inline-flex; gap: 3px; }
+
+.vm-shell .vm-camp-pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid var(--vm-line);
+}
+
+.vm-shell .vm-camp-pip.is-on {
+  background: var(--vm-accent);
+  border-color: var(--vm-accent);
+  box-shadow: 0 0 6px var(--vm-accent-glow);
+}
+
+/* -- the briefing ---------------------------------------------------------- */
+
+.vm-shell .vm-camp-brief {
+  max-width: 68ch;
+  margin: 0 18px;
+}
+
+.vm-shell .vm-camp-brief-chapter {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vm-accent);
+}
+
+.vm-shell .vm-camp-brief-title {
+  margin: 6px 0 10px;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--vm-text);
+}
+
+.vm-shell .vm-camp-brief-beat {
+  margin: 0 0 22px;
+  color: var(--vm-text-dim);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.vm-shell .vm-camp-brief-h4 {
+  margin: 0 0 10px;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-camp-brief-objectives {
+  border-top: 1px solid var(--vm-line-soft);
+  padding-top: 16px;
+}
+
+.vm-shell .vm-camp-brief-obj {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 0;
+}
+
+.vm-shell .vm-camp-brief-tag {
+  flex: 0 0 4.6em;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-camp-brief-obj.is-primary .vm-camp-brief-tag { color: var(--vm-accent); }
+
+.vm-shell .vm-camp-brief-obj-text {
+  font-size: 14px;
+  color: var(--vm-text);
+}
+
+.vm-shell .vm-camp-brief-obj.is-secondary .vm-camp-brief-obj-text { color: var(--vm-text-dim); }
+
+/* -- narrow ---------------------------------------------------------------- *
+ * Under 720px the operation row stops trying to be one line: the beat and the
+ * par fold under the title rather than being ellipsed to nothing.             */
+
+@media (max-width: 720px) {
+  .vm-shell .vm-camp-op {
+    grid-template-columns: 2.2em minmax(0, 1fr) auto;
+    row-gap: 8px;
+  }
+
+  .vm-shell .vm-camp-op-par { grid-column: 2; }
+  .vm-shell .vm-camp-op-beat { white-space: normal; }
+}
+
+/* -- the operation result, on the end screen ------------------------------- *
+ * A tick, a cross or a dot per objective. Same 18px convention as everything
+ * else in this section, and the same reason.                                 */
+
+.vm-shell .vm-camp-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vm-line-soft);
+}
+
+.vm-shell .vm-camp-result-row {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--vm-text-dim);
+}
+
+.vm-shell .vm-camp-result-mark {
+  flex: 0 0 1em;
+  text-align: center;
+  color: var(--vm-text-faint);
+}
+
+.vm-shell .vm-camp-result-row.is-complete { color: var(--vm-text); }
+.vm-shell .vm-camp-result-row.is-complete .vm-camp-result-mark { color: var(--vm-accent); }
+.vm-shell .vm-camp-result-row.is-failed .vm-camp-result-mark { color: var(--vm-danger); }
+
+.vm-shell .vm-camp-result-tag {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--vm-text-faint);
+}

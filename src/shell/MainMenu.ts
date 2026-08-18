@@ -148,6 +148,16 @@ export class MainMenuScreen implements Screen {
       onClick: () => { void this.shell.startTutorial(); },
     }));
 
+    // ABOVE SKIRMISH, DELIBERATELY. The campaign is the authored content and
+    // the skirmish is the sandbox; a title screen whose first playable row is
+    // the sandbox tells a new player which one the game is about, and it would
+    // be telling them the wrong thing.
+    nav.appendChild(button('Campaign', {
+      iconName: 'flag',
+      hint: 'Four commanders',
+      onClick: () => this.shell.openCampaign(),
+    }));
+
     nav.appendChild(button('Skirmish', {
       iconName: 'swords',
       hint: 'vs AI',

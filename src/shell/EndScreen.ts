@@ -84,6 +84,77 @@ export interface MatchResult {
   mapName: string;
   difficulty: number;
   speed: number;
+  /**
+   * Present only when a campaign operation produced this result.
+   *
+   * WITHOUT IT THE SCREEN LIES BY DEFAULT. The skirmish copy is "Every hostile
+   * force on <map> has been destroyed" — which is a true sentence about a
+   * skirmish and a FALSE one about an operation won by destroying a single
+   * survey tap. It was on screen exactly once, in a screenshot, and that is
+   * how it was caught.
+   *
+   * `reason` is an OBJECTIVE ID, never free prose, so a loss can name which
+   * objective ended it and the screen resolves the id to that objective's own
+   * title. A string nobody can resolve is a string nobody can translate or
+   * test.
+   */
+  campaign?: CampaignResult;
+}
+
+export interface CampaignResult {
+  readonly operationId: string;
+  readonly title: string;
+  readonly chapterTitle: string;
+  /** 0 none, 1 bronze, 2 silver, 3 gold. */
+  readonly medal: number;
+  /** The objective id a loss names, or ''. */
+  readonly reason: string;
+  readonly objectives: readonly {
+    readonly id: string;
+    readonly title: string;
+    readonly kind: 'primary' | 'secondary';
+    readonly status: 'hidden' | 'active' | 'complete' | 'failed';
+  }[];
+}
+
+/* -- the campaign verdict --------------------------------------------------
+ *
+ * Two small renderers rather than branches inside `mount`. The end screen is
+ * already the most-crowded file in the shell and its header calls the reward
+ * drain "the single most breakable line"; adding a second conditional limb to
+ * that method is how it gets worse.                                          */
+
+/** One sentence naming the operation, and — on a loss — which objective ended it. */
+function campaignLine(c: CampaignResult, won: boolean): string {
+  const where = `${c.chapterTitle} · ${c.title}`;
+  if (won) {
+    const bonus = c.objectives.filter((o) => o.kind === 'secondary');
+    const kept = bonus.filter((o) => o.status === 'complete').length;
+    if (bonus.length === 0) return `${where}. Objective complete.`;
+    return `${where}. Objective complete, ${kept} of ${bonus.length} bonus objectives met.`;
+  }
+  // THE REASON IS AN ID AND IS RESOLVED HERE. A loss that says "you failed" is
+  // a loss the player cannot learn anything from.
+  const failed = c.objectives.find((o) => o.id === c.reason)
+    ?? c.objectives.find((o) => o.status === 'failed' && o.kind === 'primary');
+  return failed === undefined
+    ? `${where}. The operation could not be completed.`
+    : `${where}. ${failed.title} — not achieved.`;
+}
+
+/** Every objective and how it ended. Hidden ones stay hidden; they never fired. */
+function campaignObjectiveList(c: CampaignResult): HTMLElement {
+  const wrap = el('div', 'vm-camp-result');
+  for (const o of c.objectives) {
+    if (o.status === 'hidden') continue;
+    const line = el('div', `vm-camp-result-row is-${o.status}`);
+    line.appendChild(el('span', 'vm-camp-result-mark',
+      o.status === 'complete' ? '✓' : o.status === 'failed' ? '✕' : '·'));
+    line.appendChild(el('span', 'vm-camp-result-text', o.title));
+    if (o.kind === 'secondary') line.appendChild(el('span', 'vm-camp-result-tag', 'Bonus'));
+    wrap.appendChild(line);
+  }
+  return wrap;
 }
 
 interface StatCell {
@@ -237,11 +308,22 @@ export class EndScreen implements Screen {
     badge.appendChild(speedChip);
 
     head.appendChild(badge);
-    const verdict = el('h1', `vm-verdict ${r.won ? 'is-win' : 'is-loss'}`, r.won ? 'Victory' : 'Defeat');
+    const c = r.campaign;
+    const verdict = el('h1', `vm-verdict ${r.won ? 'is-win' : 'is-loss'}`,
+      c !== undefined ? (r.won ? 'Operation Complete' : 'Operation Failed')
+        : (r.won ? 'Victory' : 'Defeat'));
     head.appendChild(verdict);
-    head.appendChild(el('p', 'vm-body', r.won
-      ? `Every hostile force on ${r.mapName} has been destroyed. ${r.factionName} holds the field.`
-      : `${r.factionName} has no units and no structures remaining on ${r.mapName}.`));
+
+    // AN OPERATION SAYS WHAT HAPPENED TO IT, NOT WHAT HAPPENED TO THE MAP. The
+    // skirmish sentence below is true of a skirmish and false of an operation
+    // won by destroying one survey tap while the enemy base still stands.
+    head.appendChild(el('p', 'vm-body', c === undefined
+      ? (r.won
+        ? `Every hostile force on ${r.mapName} has been destroyed. ${r.factionName} holds the field.`
+        : `${r.factionName} has no units and no structures remaining on ${r.mapName}.`)
+      : campaignLine(c, r.won)));
+
+    if (c !== undefined) head.appendChild(campaignObjectiveList(c));
     p.appendChild(head);
 
     /* -- the reward reveal, above everything it was earned by --------------
@@ -283,21 +365,45 @@ export class EndScreen implements Screen {
 
     /* -- actions ----------------------------------------------------------- */
     const foot = el('div', 'vm-page-foot');
-    foot.appendChild(button('Rematch', {
-      iconName: 'refresh',
-      onClick: () => { void this.shell.restartMatch(); },
-    }));
-    if (this.catalogue.length > 0) {
-      foot.appendChild(button('Missions', {
-        iconName: 'trophy',
-        onClick: () => this.openMissions(),
+
+    // AN OPERATION OFFERS RETRY, NOT REMATCH, AND THAT IS NOT A WORDING
+    // CHANGE. `restartMatch` re-launches the SKIRMISH the lobby holds; an
+    // operation has to go back through `startOperation` so its plan, layout,
+    // roster and outcome policy are re-armed before the world is built.
+    // Pressing Rematch after an operation would drop the player into an
+    // ordinary skirmish on the operation's ground with no objectives — the
+    // exact silent substitution `Playback.ts#detachPlayback` documents.
+    //
+    // Retry is also the most-pressed button in any campaign, so it leads.
+    if (c !== undefined) {
+      foot.appendChild(button('Retry', {
+        iconName: 'refresh',
+        variant: r.won ? 'default' : 'primary',
+        onClick: () => { void this.shell.retryOperation(); },
       }));
+      foot.appendChild(button('Campaign', {
+        iconName: 'flag',
+        onClick: () => { void this.shell.quitToMenu().then(() => this.shell.openCampaign()); },
+      }));
+    } else {
+      foot.appendChild(button('Rematch', {
+        iconName: 'refresh',
+        onClick: () => { void this.shell.restartMatch(); },
+      }));
+      if (this.catalogue.length > 0) {
+        foot.appendChild(button('Missions', {
+          iconName: 'trophy',
+          onClick: () => this.openMissions(),
+        }));
+      }
     }
     foot.appendChild(el('div', 'vm-spacer'));
-    foot.appendChild(button('New Skirmish', {
-      iconName: 'swords',
-      onClick: () => { void this.shell.quitToMenu().then(() => this.shell.openSetup()); },
-    }));
+    if (c === undefined) {
+      foot.appendChild(button('New Skirmish', {
+        iconName: 'swords',
+        onClick: () => { void this.shell.quitToMenu().then(() => this.shell.openSetup()); },
+      }));
+    }
     foot.appendChild(button('Main Menu', {
       iconName: 'power',
       variant: 'primary',
@@ -379,6 +485,13 @@ export class EndScreen implements Screen {
    * progression module has nothing to say about any of them.
    */
   private buildProgress(): HTMLElement | null {
+    // A CAMPAIGN OPERATION FEEDS NONE OF THIS, SO IT MUST NOT SHOW ANY OF IT.
+    // `suppressProgression` means no objective advanced, no chain moved and no
+    // reward was earned — so a "Next Up" panel here would be advertising
+    // progress toward things the operation is DESIGNED never to advance. It
+    // read as a bug on the first screenshot and it would read as one to a
+    // player. The operation's own objective list sits in the header instead.
+    if (this.result.campaign !== undefined) return null;
     const advanced = advancedMissions(this.catalogue);
     const next = nextUpMissions(this.catalogue);
     if (this.objectives.length === 0 && advanced.length === 0 && next.length === 0) return null;

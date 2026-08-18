@@ -76,6 +76,21 @@ interface CampaignShellHost {
   publishCampaignObjectives?(rows: readonly ObjectiveRow[]): void;
   /** Dialogue, EVA and camera. Optional for the same reason. */
   playCampaignBeat?(event: PresentationEvent): void;
+  /**
+   * The finished operation, pushed IMMEDIATELY BEFORE `endMatch`.
+   *
+   * PUSHED FROM HERE RATHER THAN PULLED BY THE SHELL, because only this side
+   * can reach the session synchronously: the session lives behind the lazy
+   * `campaign-install` chunk and `Shell.buildResult` runs inside a frame. The
+   * alternative was a second copy of `medalFor`'s rule in the shell, which is
+   * exactly the drift this repo keeps cataloguing.
+   */
+  publishCampaignResult?(result: {
+    operationId: string;
+    medal: number;
+    reason: string;
+    objectives: readonly ObjectiveRow[];
+  }): void;
 }
 
 function shellHost(): CampaignShellHost | null {
@@ -107,6 +122,21 @@ function resetShellState(): void {
  * the panel rebuild walks the DOM; a per-frame republish would be the whole
  * cost of this feature on the render side.
  */
+/**
+ * The difficulty the medal is graded against.
+ *
+ * READ OFF THE SHELL, DUCK-TYPED, because `src/game/**` may not import
+ * `src/shell/**` and this is the one number the grading needs that the sim does
+ * not hold. A shell that cannot answer grades as Normal, which costs a gold
+ * rather than awarding one — the safe direction for a monotonic best-ever
+ * record that is never lowered.
+ */
+function difficultyOf(): number {
+  const g = globalThis as unknown as { __vmShell?: { matchDifficulty?: () => number } };
+  const d = g.__vmShell?.matchDifficulty?.();
+  return typeof d === 'number' && Number.isFinite(d) ? d : 1;
+}
+
 function rowsVersion(rows: readonly ObjectiveRow[]): string {
   let s = '';
   for (const r of rows) s += `${r.id}:${r.status};`;
@@ -175,6 +205,15 @@ export default defineSystem({
 
     if (session.outcome !== null && !ended) {
       ended = true;
+      // BEFORE `endMatch`, not after. `endMatch` builds the result and raises
+      // the screen in the same call, so a result published afterwards arrives
+      // for a screen that has already been drawn.
+      shell.publishCampaignResult?.({
+        operationId: session.op.id,
+        medal: session.medal(difficultyOf()),
+        reason: session.reason,
+        objectives: session.rows(),
+      });
       shell.endMatch({ won: session.outcome === 'won', reason: session.reason });
     }
   },
