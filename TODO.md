@@ -44,7 +44,8 @@ with no number is untracked, and that is itself the bug.
      decision and the titles usually need rewording. Affects `soviets.01` (`tap`, and a `derrick`
      secondary whose trigger reads ownership while its title says "standing"), `soviets.03`
      (`mast` — capturing a derrick for its 15 cr/s guarantees a DEFEAT at minute 9), `pact.01`
-     (`mast`), `pact.02` (`tap`), `reclamation.01` (`office`, `transformer`). **In progress.**
+     (`mast`), `pact.02` (`tap`), `reclamation.01` (`office`, `transformer`).
+     **`soviets.01` and `soviets.03` are DONE** (76b2683); the other three are not started.
   2. **Gaia-owned or protect-target, where the capture must simply not happen.** `ownerCount`
      cannot express it — `validateCampaign`'s seat check refuses a player index outside the seated
      range and Gaia is not a seat. `CaptureService.addVeto` is the hook: consulted inside
