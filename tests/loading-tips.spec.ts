@@ -33,6 +33,14 @@
  * mentions and nothing else. A lint nobody has seen fail is a lint nobody knows
  * works, and this one had to be written against a corpus that defeats the
  * existing one.
+ *
+ * IT LINTS EVERY AUTHORED TIP, NOT ONLY THE LOADING SCREEN'S. §7 runs the same
+ * two rules over the SITUATIONAL corpus in `src/sim/tips.system.ts`. That is
+ * one file and one lint on purpose: the rules are properties of tip PROSE, not
+ * of the screen it happens to be drawn on, and a second copy of the regexes
+ * living beside the second corpus is how the two would come to disagree. The
+ * file keeps its name because `Shell.TIPS` is still what §2 through §5 are
+ * about; add the next corpus to §7, never a new lint.
  * ============================================================================
  */
 
@@ -41,6 +49,7 @@ import { describe, expect, it } from 'vitest';
 import { TIPS, resolveTip, tipActionIds } from '../src/shell/Shell';
 import { actionById } from '../src/input/ActionCatalogue';
 import { codeLabel, defaultBindings, type Chord } from '../src/shell/settings-store';
+import { TIP_BROWNOUT } from '../src/sim/tips.system';
 
 /* ==========================================================================
  * 1. THE LINT
@@ -358,5 +367,53 @@ describe('tipActionIds', () => {
     expect(tipActionIds(t)).toEqual(tipActionIds(t));
     expect(resolveTip(t, defaultBindings(), false, codeLabel))
       .toBe(resolveTip(t, defaultBindings(), false, codeLabel));
+  });
+});
+
+/* ==========================================================================
+ * 7. THE SITUATIONAL CORPUS
+ *
+ * `src/sim/tips.system.ts` is the second place this product authors a tip, and
+ * it is subject to the identical two rules. It is linted HERE rather than in
+ * `tests/tips-brownout.spec.ts` because the lint is the property of the prose,
+ * not of the feature — a second copy of these regexes beside the second corpus
+ * is exactly how the loading screen and the in-match tips would come to
+ * disagree about what a key mention looks like.
+ *
+ * THE KEY RULE MATTERS MORE HERE, not less. An in-match tip has no
+ * `resolveTip` and no `{action.id}` mechanism behind it: there is nothing to
+ * resolve a placeholder against, so a key written into one of these strings
+ * cannot be fixed the way `Shell.TIPS`'s three were. It can only be a lie or
+ * be deleted. When a situational tip genuinely needs to name a key, the
+ * placeholder machinery has to come with it.
+ * ========================================================================== */
+
+describe('the situational tips obey the same two rules', () => {
+  const ROWS: readonly (readonly [string, string])[] = [
+    ['TIP_BROWNOUT.title', TIP_BROWNOUT.title],
+    ['TIP_BROWNOUT.detail', TIP_BROWNOUT.detail],
+  ];
+
+  it('names no key', () => {
+    const offenders = ROWS.flatMap(([id, t]) => keyOffences(t).map((o) => `${o} — in ${id}: ${t}`));
+    expect(offenders, 'nothing in this module resolves a key placeholder').toEqual([]);
+  });
+
+  it('contains no digits at all', () => {
+    const offenders = ROWS.filter(([, t]) => /\d/.test(t)).map(([id, t]) => `${id}: ${t}`);
+    expect(offenders, 'numbers retyped out of a table nothing compares them to').toEqual([]);
+  });
+
+  /**
+   * A tip that is empty, or that ends up in the toast as a placeholder, is the
+   * failure mode a lint on content alone cannot see. Both lines are required
+   * to be real prose; the LENGTH budget is `tests/tips-brownout.spec.ts` §4,
+   * which is where the toast's measured width lives.
+   */
+  it('is real prose in both lines', () => {
+    for (const [id, t] of ROWS) {
+      expect(t.trim().length, id).toBeGreaterThan(0);
+      expect(t, id).not.toMatch(/[{}]/);
+    }
   });
 });

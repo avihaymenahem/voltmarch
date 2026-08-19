@@ -223,6 +223,20 @@ export interface GameplaySettings {
   screenShake: number;
   /** Show the EVA/announcer subtitle line. */
   subtitles: boolean;
+  /**
+   * Situational in-match tips.
+   *
+   * ON by default, and READ — `src/sim/tips.system.ts` is its consumer and
+   * landed in the same commit as this row, deliberately: four rows on this
+   * interface are persisted, normalised and consumed by nobody, and a fifth
+   * would be indistinguishable from them. See `TIPS_BUILD_SPEC.md` §6.
+   *
+   * No `SETTINGS_VERSION` bump. `normalizeSettings` is total over any input,
+   * so a blob written before this row existed comes back with the default.
+   * The reader is written so that even the un-normalised absence is OFF rather
+   * than defaulted on; the reason is in its own header.
+   */
+  tips: boolean;
 }
 
 /** One physical chord. `code` is a `KeyboardEvent.code`, never a `key`. */
@@ -532,6 +546,7 @@ export function defaultSettings(): Settings {
       damageNumbers: false,
       screenShake: 1.0,
       subtitles: true,
+      tips: true,
     },
     controls: { bindings: defaultBindings() },
   };
@@ -706,6 +721,7 @@ export function normalizeSettings(raw: unknown): Settings {
       damageNumbers: bool(p.damageNumbers, d.gameplay.damageNumbers),
       screenShake: num(p.screenShake, 0, 2, d.gameplay.screenShake),
       subtitles: bool(p.subtitles, d.gameplay.subtitles),
+      tips: bool(p.tips, d.gameplay.tips),
     },
     controls: { bindings },
   };

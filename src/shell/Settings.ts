@@ -27,6 +27,11 @@
  * `window.__vmSettings` (see Shell) precisely so those modules can subscribe
  * without this file having to import them. They are NOT fake: the value is
  * real, stored and observable; only the reader is missing.
+ *
+ * `tips` is deliberately NOT on that list. It arrived WITH its consumer —
+ * `src/sim/tips.system.ts`, in the same commit — because four dead rows is a
+ * pattern and five is a habit. If a later row joins this section without a
+ * reader, add it above, not below.
  * ============================================================================
  */
 
@@ -1622,6 +1627,11 @@ export class SettingsScreen implements Screen {
       toggle(p.damageNumbers, (v) => set({ damageNumbers: v })),
     ));
     hud.appendChild(row('EVA Subtitles', toggle(p.subtitles, (v) => set({ subtitles: v }))));
+    // UNLIKE THE THREE ROWS ABOVE, THIS ONE IS READ. `src/sim/tips.system.ts`
+    // pulls it off `window.__vmSettings` and shows nothing when it is off; see
+    // the header note, which lists the rows that are still waiting for a
+    // consumer and no longer lists this one.
+    hud.appendChild(row('Battlefield Tips', toggle(p.tips, (v) => set({ tips: v }))));
     hud.appendChild(row('Screen Shake', slider({
       min: 0, max: 2, step: 0.1, value: p.screenShake,
       format: (v) => (v === 0 ? 'Off' : `${Math.round(v * 100)}%`),

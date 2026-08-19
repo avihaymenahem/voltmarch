@@ -2851,7 +2851,22 @@
  * at 1024x768 the panel stayed up on a row that was 55 px short of holding it,
  * and at 1600x900 it stayed up on a row 35 px short. `solo` is the tier at
  * which even the `bare` strip cannot share the row, and it is derived rather
- * than chosen; see `topRowFit()` in `src/ui/Hud.ts`. */
+ * than chosen; see `topRowFit()` in `src/ui/Hud.ts`.
+ *
+ * "THIS IS A REMINDER" WAS WRITTEN ABOUT SKIRMISH MISSION CHAINS, AND IT IS
+ * WEAKER FOR A CAMPAIGN OPERATION, where these rows are the only in-match
+ * statement of what the player must do — there is no mission board to go back
+ * to and no counter ticking up elsewhere. Observed on a real boot: at 743 px
+ * the tier is `solo`, `soviets.01.first-tap` runs with no visible objective
+ * anywhere on screen, and the panel reports itself active the whole time.
+ *
+ * It is still the right thing to drop, because the alternative is a row that
+ * does not fit. What makes it survivable is that the PAUSE MENU lists the
+ * operation's objectives in full — which only became true on 2026-08-19, when
+ * `currentObjectives()` stopped answering with the skirmish profile. Before
+ * that, a narrow-frame campaign player had nowhere at all to read their
+ * orders. Do not restore this panel at `solo` without first finding it room;
+ * do not remove the pause-menu path, which is now load-bearing. */
 .vm-hud[data-top-fit='solo'] .vm-objectives { display: none; }
 
 /* ==========================================================================
