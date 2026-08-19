@@ -27,6 +27,70 @@ with no number is untracked, and that is itself the bug.
   against 15:09.7 on the one operation where both exist). This is not a defect and it is not
   blocking authoring — it is the debt authoring is taking on, written down.
 
+- **THE CAPTURE HAZARD SWEEP — 7 of 17 operations, audited 2026-08-19.** `Capture.resolve`
+  consumes the capturing unit on EVERY non-refused outcome — capture, soften and friendly repair
+  alike — and a NEUTRAL structure has no health gate, so the flip is instant. The three
+  `canCapture` defs (`engineer`, `mrdArtificer`, `rclTinker`) carry **no `unlockedBy`**, so no
+  operation's roster can withhold them, and their prereqs stand at t=0 in every `opening: 'base'`
+  operation. `buildAlliedBase` even spawns one; `buildSovietBase` does not.
+
+  Two shapes, two fixes, and they are not interchangeable:
+
+  1. **Enemy-owned structure, trigger keyed on `entityDead`/`entityAlive`.** A captured structure
+     is still ALIVE, so the trigger is capture-blind. Fixed by migrating to
+     `ownerCount(foeSeat, tag, max: 0 / min: 1)` behind an `elapsed` settle guard — the
+     `soviets.06.demolition-order` pattern, which already did this and wrote down why. **It changes
+     what the objective MEANS** (captured counts as done), so each migration is an authoring
+     decision and the titles usually need rewording. Affects `soviets.01` (`tap`, and a `derrick`
+     secondary whose trigger reads ownership while its title says "standing"), `soviets.03`
+     (`mast` — capturing a derrick for its 15 cr/s guarantees a DEFEAT at minute 9), `pact.01`
+     (`mast`), `pact.02` (`tap`), `reclamation.01` (`office`, `transformer`). **In progress.**
+  2. **Gaia-owned or protect-target, where the capture must simply not happen.** `ownerCount`
+     cannot express it — `validateCampaign`'s seat check refuses a player index outside the seated
+     range and Gaia is not a seat. `CaptureService.addVeto` is the hook: consulted inside
+     `resolve()` ahead of both branches, and `refuse()` does NOT consume the engineer, so a vetoed
+     click costs a walk and nothing else. A per-layout `captureProof: readonly string[]` declared
+     beside `tags`, installed from `campaign-install.ts` and validated like trigger tags, is **not**
+     a vocabulary change — the freeze covers 12 conditions, 3 combinators and 11 effects and this
+     adds none. Affects `soviets.01`'s derricks, `soviets.06`'s `infirmary` (capture strips Gaia's
+     universal alliance permanently, and unlike garrison it never reverts), `pact.02`'s `count`
+     (a PRIMARY protect-target), and `allies.01`'s three `party` surveyors. **Not started.**
+
+  **Two costs to state before building the veto.** The cursor would still lie:
+  `Commands.ts` resolves the capture cursor from `isNeutralOwned`/`hoverEnemy`, and
+  `CaptureService.isCapturable` — the one query that consults the veto — has **zero production
+  callers**. Wire the cursor to it on the same commit. And a veto is a hard no where some cases
+  want a cost; `soviets.06`'s `works` must stay capturable.
+
+  **`pact.02.long-count`'s header documents a route that does not exist.** It says *"there is no
+  health threshold on an enemy structure"* — true of `isCapturable`, false of `resolve()`, which
+  softens above `captureHpFrac`. One Artificer into the reading post takes 180 hp off it and trips
+  `t.graze`, permanently failing the hidden 400-credit `quiet` secondary, before delivering
+  nothing. The header spends a block deriving which Pact guns could accidentally graze the post and
+  the unit that beats every one of those numbers has no weapon at all.
+
+  **Geometric mitigation is not a mechanism, and `allies.01` proved it** — its "14 m clear of the
+  disc" was 7.66 m on the built world, because `findClearFootprint` moved the mast after the number
+  was written. Fixed and pinned by `tests/sounding-line-clearance.spec.ts`; the general form wants
+  a layout-level declaration and is deliberately not built for one caller.
+
+- **A SINGLE ENGINEER IN A SELECTION TURNS EVERY RIGHT-CLICK ON A BUILDING INTO A CAPTURE.**
+  `Commands.ts` computes `caps.canCapture` as an OR over the selection (`:462`) and both capture
+  branches (`:752`, `:809`) read it for the whole group, so `resolveOrder` emits `OrderKind.Capture`
+  for every selected unit. `Capture.simTick` walks `byKind[Infantry]` ONLY: non-engineer infantry
+  gets `clearOrder` and stops where it stands, and a **VEHICLE is never visited at all**, so it
+  keeps the order and drives to the building instead of engaging it. An Allied player owns an
+  engineer from t=0, so Ctrl+A and a right-click on the enemy base is the ordinary way to hit this.
+
+  This is a skirmish and multiplayer defect, not a campaign one — and it is the mechanism that
+  defeats the "capture requires an explicit order" safety argument that `allies-sounding-line`,
+  `allies-misclosure` and `soviets-demolition-order` all lean on. **The likely fix is in
+  `Capture.simTick`, not in the cursor**: convert a non-engineer's `Capture` order to `Attack` on
+  the same target when the target is a valid enemy one, and keep `clearOrder` for a neutral target
+  so nobody's tanks open fire on a civilian block. One wire command, resolved per unit by the sim,
+  no protocol change. **Measure it before changing it** — the vehicle branch above is read off the
+  source and has not been driven.
+
 ---
 
 ## Tips
