@@ -380,3 +380,65 @@ describe('the loading curtain names what the player chose', () => {
     }
   });
 });
+
+/* ==========================================================================
+ * 7. THE TYPE IS DECLARED TWICE, AND NOTHING MADE THE COPIES AGREE
+ * ========================================================================== */
+
+describe('both declarations of PresentationEvent stay in step', () => {
+  /*
+   * `session.ts` and `runtime.ts` each declare `PresentationEvent`, and the
+   * duplication is FORCED rather than sloppy: `session.ts` is reachable from
+   * the entry chunk and may not import `runtime.ts`, which is the same
+   * constraint it already documents for `TagRegistry`. Nothing imports the
+   * `runtime.ts` copy at all.
+   *
+   * What made that dangerous is that the two are kept in step ONLY by
+   * structural typing, at `makeEffectSink`'s `present` parameter. Add a field
+   * to one and the mismatch surfaces — if it surfaces — as an argument-type
+   * error at a call site nowhere near the change, and an OPTIONAL field would
+   * not surface at all: `{ kind, at }` is assignable to a type with one more
+   * `readonly foo?: string`, in both directions. A `camera` beat carrying a
+   * duration the shell never receives would typecheck cleanly.
+   *
+   * A text comparison is crude and it is the right crude: it is the only thing
+   * that sees an optional field. If the two ever legitimately need to differ,
+   * this test is where that gets argued.
+   */
+  const body = (file: string): string => {
+    const text = src(file);
+    const at = text.indexOf('export interface PresentationEvent {');
+    expect(at, `${file} no longer declares PresentationEvent`).toBeGreaterThan(-1);
+    const end = text.indexOf(String.fromCharCode(10) + '}', at);
+    return stripComments(text.slice(at, end))
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  it('declare the same fields, field for field', () => {
+    const a = body('src/campaign/session.ts');
+    const b = body('src/campaign/runtime.ts');
+    expect(a, 'the two PresentationEvent declarations have drifted. They cannot be merged — '
+      + 'session.ts is entry-chunk reachable and may not import runtime.ts — so the copies have '
+      + 'to be edited together').toBe(b);
+  });
+
+  it('and the declaration is not empty, which both halves of the above would satisfy', () => {
+    // THE VACUITY GUARD. Two failed extractions produce two empty strings and
+    // a green comparison.
+    const a = body('src/campaign/session.ts');
+    expect(a).toContain('kind');
+    expect(a).toContain("'dialogue'");
+    expect(a.length, 'the extraction collapsed').toBeGreaterThan(80);
+  });
+
+  it('covers every kind the sink emits, in both copies', () => {
+    // Ties the declarations to section 1's measurement rather than to each
+    // other: a union that drops `camera` would still match its twin.
+    for (const kind of emit().map((e) => e.kind)) {
+      for (const f of ['src/campaign/session.ts', 'src/campaign/runtime.ts']) {
+        expect(body(f), `${f} declares no '${kind}' kind`).toContain(`'${kind}'`);
+      }
+    }
+  });
+});

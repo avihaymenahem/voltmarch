@@ -145,6 +145,32 @@ describe('S1 — what the conditions see on the first tick', () => {
     expect(r.q.ownerCount(1, 'building', 'derrick')).toBe(3);
   });
 
+  it('and REALLY skips a foundation — the tagged branch did not, until today', () => {
+    /*
+     * THE TEST ABOVE NAMED THE PROPERTY AND MEASURED THE BRANCH THAT LACKED IT.
+     *
+     * `ownerCount` has two branches. The untagged one refuses an
+     * `UnderConstruction` entity under a comment giving exactly this reason;
+     * the TAGGED one did not, and the tagged one is the spelling this file's
+     * own authoring guidance pushes people towards. `TagRegistry.live` drops
+     * dead and `PendingDestroy` entities, so the tagged branch looked complete
+     * — but it knows nothing about construction.
+     *
+     * Unreachable in the shipped table, because a layout places its structures
+     * finished, which is exactly why asserting `toBe(3)` passed either way. It
+     * arms the moment an operation counts something a trigger builds, captures
+     * or rebuilds. Flipping the bit by hand is the only way to reach it, and it
+     * is what makes the assertion above a measurement rather than a hope.
+     */
+    const r = rig();
+    const st = r.world.store;
+    const doomed = [...r.tags.live(st, 'derrick')][0];
+    expect(doomed, 'no derrick carries the tag — the rig changed').not.toBeUndefined();
+    st.flags[st.index(doomed)] |= EntityFlag.UnderConstruction;
+    expect(r.q.ownerCount(1, 'building', 'derrick'),
+      'a foundation was counted as a standing derrick').toBe(2);
+  });
+
   it('sees exactly one tap, alive', () => {
     const r = rig();
     expect(r.q.aliveWithTag('tap')).toBe(1);

@@ -233,6 +233,25 @@ export function makeWorldQuery(world: World, tags: TagRegistry): WorldQuery {
       if (tag !== null) {
         for (const slot of taggedSlots(tag, scratch)) {
           if (store.owner[slot] !== player) continue;
+          /*
+           * THE SAME GUARD THE UNTAGGED BRANCH BELOW CARRIES, AND IT WAS
+           * MISSING FROM THE PATH THIS FILE TELLS AUTHORS TO USE.
+           *
+           * `TagRegistry.live` already drops dead and `PendingDestroy`
+           * entities, which is why the tagged branch needs neither of those
+           * tests — but it knows nothing about construction. So the untagged
+           * branch refused to count a foundation, under a comment saying
+           * exactly why, while the tagged branch counted one; and the
+           * authoring guidance is *"tag the thing you mean"*, so the
+           * recommended spelling was the unguarded one.
+           *
+           * Unreachable today — a layout places its structures finished — which
+           * is the only reason it never fired. It is armed the moment an
+           * operation counts something a trigger builds, captures or rebuilds,
+           * and it would fire as a hold objective completing before the thing
+           * it holds exists.
+           */
+          if ((store.flags[slot] & EntityFlag.UnderConstruction) !== 0) continue;
           if (countRole(slot, role)) n++;
         }
         return n;
