@@ -145,7 +145,7 @@ const op: OperationDef = {
    * IS THE POINT.
    *
    * The other four name their enemy out loud — S1 "the Allies got there
-   * first", S2 "two Allied tanks are sitting on it", S3 "the Allies sitting on
+   * first", S2 "Three Allied guns are sitting on it", S3 "the Allies sitting on
    * it", A1's own spawn comment "Soviet keys because the antagonist of this
    * chapter is". Nothing in this file's prose or its layout's names an army:
    * it is "a garrison", "the district office", "the watch". The layout is

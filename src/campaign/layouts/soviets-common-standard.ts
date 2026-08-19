@@ -160,8 +160,16 @@ export const RELIEF_ROAD: Point = { x: CENTRE, z: CENTRE - 168 };
  */
 const COLUMN_HULLS = 8;
 
-/** Allied tanks parked on the vehicle park. The secondary's price, in hulls. */
-const DEPOT_GUARDS = 2;
+/**
+ * Allied guard posts on the vehicle park. The secondary's price, in concrete.
+ *
+ * **THREE IS DERIVED FROM THE TWO TANKS THIS REPLACED, NOT PICKED.** See the
+ * placement block below for the arithmetic; the short version is that a pillbox
+ * delivers about a third of what a Grizzly does to a Heavy hull, and three of
+ * them cost 1200 credits against the two tanks' 1400 — the same money, spent on
+ * concrete instead of hulls.
+ */
+const DEPOT_GUARDS = 3;
 
 /** Metres out from a nominal spot that `place` will search. Nearest first. */
 const PLACE_RINGS: readonly number[] = [0, 6, 12, 18, 26, 34];
@@ -321,7 +329,7 @@ export default layout({
     b.addOre(PAD.x, PAD.z, 30);
 
     /* -- the Works vehicle park ------------------------------------------
-     * A shed, two dead hulls for dressing, and two live Allied tanks sitting on
+     * A shed, two dead hulls for dressing, and an Allied guard post standing on
      * it. The guard is the secondary's PRICE and it is visible before the
      * player commits — `revealArea` shows it in the first minute — which is
      * what makes the detour a decision rather than a surprise.
@@ -336,11 +344,89 @@ export default layout({
     b.spawnWreck(DEPOT.x - 20, DEPOT.z + 12, b.world.player(foe).faction, false);
     b.spawnWreck(DEPOT.x + 17, DEPOT.z + 15, b.world.player(foe).faction, false);
 
+    /*
+     * THE GUARD IS EMPLACEMENTS, AND IT WAS TWO GRIZZLIES UNTIL IT WAS
+     * MEASURED. THIS IS THE ONE THING IN THIS FILE NOT TO UNDO.
+     *
+     * **A LAYOUT-PLACED HULL ON AN AI SEAT IS NOT PARKED. IT IS THE AI'S.**
+     * `AiBrain.census` walks `store.owner === me` and files every non-harvester,
+     * non-naval Infantry/Vehicle into `armyIds`; `regroupSquads` then walks
+     * `armyIds` and files everything it finds into the strike group or the
+     * reserve. Nothing in that pass knows the campaign exists, and there is no
+     * "leave this one alone" — `GROUP_SCOUT`, `GROUP_WITHDRAW` and `GROUP_RAID`
+     * are three tags that exist for precisely that reason, each with a header in
+     * `src/sim/AI.ts` saying so, and all three are AI-internal state a layout
+     * cannot reach.
+     *
+     * MEASURED 2026-08-19, one headless boot of this operation, guard positions
+     * read off `store` through the armed session's own `TagRegistry`:
+     *
+     *     t+  0s  (251, 408) d=24.5   (280, 410) d=32.4   OrderKind.Move -> (373, 360)
+     *     t+ 20s  (368, 399) d=116.6  (373, 377) d=129.2  — 117-129 m off the park
+     *     t+200s  attack-moving on the map centre with the rest of the army
+     *     t+240s  both dead, 127 m away, having never been on the park
+     *
+     * They were re-tasked inside the first four seconds — the order was already
+     * standing at the harness's first read. So the secondary degraded to "drive
+     * two hulls to an empty park", the price was silently transferred to the
+     * fight at the pad, and `entityDead: 'guard'` went on resolving because the
+     * AI's army eventually got them killed somewhere else entirely.
+     *
+     * **A BUILDING CANNOT BE RE-TASKED, AND THAT IS STRUCTURAL RATHER THAN
+     * LUCKY.** `census` forks on `EntityKind.Building` into `roleCount` and
+     * never touches `armyIds`, so `regroupSquads` cannot see one. The brain also
+     * has no `issueSell` — CLAUDE.md's capability audit lists it as one of the
+     * three real gaps — so it cannot remove the post either. The only thing that
+     * takes this off the park is the player shooting it, which is the whole
+     * point.
+     *
+     * **`pillbox` IS THE ONLY EMPLACEMENT THIS OPERATION'S ROSTER PERMITS, AND
+     * `power: 0` IS WHY IT IS ALSO THE RIGHT ONE.** `roster.ai` is `[]`, an
+     * allow-list, so `prismTower` and `aaTurret` (`struct.defence.specialist`
+     * and `.aa`) are refused by `isBuildable` inside `spawnBuilding` and would
+     * leave a silent gap here — the operation header says so in as many words.
+     * Both of them also draw power, and this operation opens both sides on
+     * `credits: 0`, so a brownout in the Allied base would put the park's guard
+     * out without a shot. A pillbox draws nothing and cannot be silenced.
+     *
+     * `keyFor` REMAPS THIS PER ARMY — pillbox / sentryGun / mrdGlaive /
+     * rclSpitpost — so the post survives a change of `op.foe`. The one caveat is
+     * that the Pact's Glaive Post carries a `needsPower` weapon, so a Meridian
+     * foe would reintroduce exactly the grid dependency the paragraph above
+     * rejects; re-read it before changing `foe`.
+     *
+     * **THREE, DERIVED.** Everything below is off the shipped tables
+     * (`DEFAULT_WEAPONS`, `ARMOR_MATRIX`, `COMBAT_DAMAGE.globalMul` 0.80) and
+     * must be re-derived rather than re-quoted after any weapon retune.
+     * `lightCannon` is 55 AP on a 1.5 s cooldown = 36.67 raw, and AP against
+     * Heavy is 1.00, so a Grizzly puts **29.3 dps** on a Rhino. `pillboxMg` is
+     * 5x13 over a 0.79 s cycle = 82.3 raw, and SmallArms against Heavy is 0.10,
+     * so a Pillbox puts **6.6 dps** on one — a ninth of the tank's, which is the
+     * honest cost of the only static gun this roster has. What closes most of
+     * the gap is survival: a Pillbox is 500 hp of Concrete (AP 0.55) against a
+     * Grizzly's 340 of Medium (AP 1.00), so it lives about three times as long
+     * under the same column. Integrating a sequential kill over the post,
+     * two tanks deliver ~250 damage and three pillboxes ~236. Two would deliver
+     * ~118 and would have been a decoration.
+     *
+     * IN A LINE ON THE PAD SIDE, 14 m APART, AND NOT SCATTERED ROUND THE PARK.
+     * `pillboxMg` reaches 22 m, so posts inside ~20 m of each other all bear on
+     * a column at the shed and the price is paid at once; spread round the
+     * perimeter they would be killed one at a time, each out of the others'
+     * reach, and the total would fall rather than rise.
+     *
+     * **AN EMPLACEMENT CAN BE OUTRANGED AND A TANK CANNOT, WHICH IS A REAL
+     * DISCOUNT AND IS LEFT IN.** A Rhino reaches 26 m against the post's 22, so
+     * a player who stops the column by hand at 24 m pays nothing. `Targeting`
+     * does not do that for them — it closes to `range * APPROACH_STOP_FRAC`
+     * (0.80) = 20.8 m and parks there, inside 22 — so the ordinary right-click
+     * pays the full price and only deliberate micro avoids it. That is a skill
+     * discount on a SECONDARY, which is the right place for one.
+     */
     for (let i = 0; i < DEPOT_GUARDS; i++) {
-      const gx = DEPOT.x + (i === 0 ? -14 : 14);
-      const gz = DEPOT.z - 16;
-      c.tag('guard', b.spawnUnit('grizzly', foe, gx, gz, { yawDeg: 180 }));
-      b.block(gx, gz, 8);
+      const at = place('pillbox', DEPOT.x + (i - 1) * 14, DEPOT.z - 16);
+      c.tag('guard', b.spawnBuilding('pillbox', foe, at.x, at.z, { yawDeg: 180 }));
+      b.block(at.x, at.z, 8);
     }
     b.block(DEPOT.x, DEPOT.z, 24);
 

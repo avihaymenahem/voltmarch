@@ -18,15 +18,35 @@
  * ============================================================================
  * Minute three, and the column is on the road. The Works vehicle park is 157 m
  * from the opening — 52 m BEHIND the line between the two starts, so the detour
- * is backwards before it is forwards — with two Allied tanks on it, and it holds
- * two mothballed hulls the column's own crews can start — the Works wrote the
- * standard both administrations still build to, which is the title and is also
- * why a Soviet crew can start an Allied-built machine. Taking it is +140 m of
- * driving and a tank fight; skipping it is two fewer mistakes for the rest of
- * the operation.
+ * is backwards before it is forwards — with an Allied guard post on it, and it
+ * holds two mothballed hulls the column's own crews can start — the Works wrote
+ * the standard both administrations still build to, which is the title and is
+ * also why a Soviet crew can start an Allied-built machine. Taking it is +140 m
+ * of driving and three emplacements to break; skipping it is two fewer mistakes
+ * for the rest of the operation.
  *
  * No skirmish contains that trade, because in a skirmish two more tanks is a
  * button. Here they are the only two that exist.
+ *
+ * **THE GUARD IS CONCRETE, NOT HULLS, AND THAT IS A FIX RATHER THAN A FLAVOUR
+ * CHOICE.** It was two parked Grizzlies until 2026-08-19, when a headless boot
+ * read their positions off the store: both were re-tasked inside the first four
+ * seconds, and by t+20 s they were 117 and 129 m from the park, standing at the
+ * AI's rally point. `AiBrain.census` files every AI-owned mobile hull into
+ * `armyIds` and `regroupSquads` files everything in `armyIds` into a squad, and
+ * there is no way for a layout to opt out — the three `GROUP_*` tags that exist
+ * for exactly this reason are AI-internal. So the secondary was really "drive
+ * two hulls to an empty park", the price was being paid at the pad instead
+ * without anybody naming it, and `entityDead: 'guard'` resolved anyway because
+ * the AI's own army eventually got them killed somewhere else. The full
+ * measurement and the arithmetic behind the count are in the layout, above the
+ * placement loop.
+ *
+ * The price is REDUCED and honestly so: three Pillboxes put ~236 damage into
+ * the column against the two tanks' ~250, and a player who stops the column by
+ * hand at 24 m outranges an emplacement and pays nothing at all. A tank could
+ * not be outranged, because a tank closes. That discount is left in — it is a
+ * skill discount on a secondary, which is the right place for one.
  *
  * **HIT POINTS ARE RENTED, HULLS ARE BOUGHT, AND ONLY ONE OF THOSE IS THE
  * BUDGET.** `sim/Regen.ts` heals an IDLE, out-of-combat unit at 2.5% of max per
@@ -141,7 +161,7 @@ const op: OperationDef = {
   id: 'soviets.02.common-standard',
   chapter: 'soviets',
   faction: Faction.Soviets,
-  // Named four times in the dialogue — "Two Allied tanks are sitting on it",
+  // Named four times in the dialogue — "Allied guns are sitting on it",
   // "Allied armour on the valley road" — and both relief waves spawn literal
   // `grizzly`/`javelin`. This is the operation the missing field was most
   // visibly wrong on: a player whose last skirmish row said Reclamation
@@ -226,8 +246,8 @@ const op: OperationDef = {
           do: 'dialogue',
           speaker: 'Vosk',
           text: 'Works vehicle park behind the line. Two hulls in it, mothballed, built to the '
-            + 'same standard as yours — our crews can start them. Two Allied tanks are sitting '
-            + 'on it.',
+            + 'same standard as yours — our crews can start them. Three Allied guns are sitting '
+            + 'on it, dug in.',
         },
         { do: 'revealArea', player: 0, area: DEPOT },
       ],
@@ -237,6 +257,14 @@ const op: OperationDef = {
      * Both clauses are needed and they mean different things: `entityDead`
      * says the guard is beaten, `unitsInArea` says the crews are actually
      * there. Driving past at speed does not start a mothballed tank.
+     *
+     * **AND THE CONJUNCTION IS WHY THE GUARD HAD TO STOP BEING A HULL.** Read
+     * together, these two say "beat the guard AT the park" — which is a claim
+     * about a place, and a mobile AI-owned hull does not stay in one.
+     * `regroupSquads` walked both of the Grizzlies that used to be here off the
+     * park in the first four seconds, so `entityDead` went on resolving while
+     * `unitsInArea` was counting hulls parked in an empty lot. Emplacements
+     * cannot leave; `campaign-maps.spec.ts` pins the rule.
      *
      * ABOVE `t.win`, which is the file's own ordering rule — `runDirector`
      * returns early once an outcome is set, so a secondary written below the

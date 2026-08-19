@@ -52,7 +52,7 @@ import { ProductionCatalog, ProductionService, setProduction } from '../src/sim/
 import { CAMPAIGNS, LAYOUTS } from '../src/campaign/index';
 import { TagRegistry, makeEffectSink } from '../src/campaign/runtime';
 import { tagsUsedByCondition } from '../src/campaign/validate';
-import type { OperationDef } from '../src/campaign/types';
+import type { Condition, OperationDef } from '../src/campaign/types';
 
 const ROOT = process.cwd();
 
@@ -271,6 +271,77 @@ describe('every operation builds a world its triggers can read', () => {
             const i = st.index(id);
             expect(i, `${tag} handle does not resolve`).toBeGreaterThanOrEqual(0);
             expect(Number.isFinite(st.posX[i]) && Number.isFinite(st.posZ[i]), tag).toBe(true);
+          }
+        }
+      });
+
+      /*
+       * A TAG AN `entity*` CONDITION READS ON AN AI SEAT MUST BE A BUILDING,
+       * BECAUSE A HULL ON AN AI SEAT BELONGS TO THE AI AND WILL BE MARCHED OFF.
+       *
+       * `AiBrain.census` walks `store.owner === me` and files every
+       * non-harvester, non-naval Infantry/Vehicle into `armyIds`;
+       * `regroupSquads` then files everything in `armyIds` into the strike group
+       * or the reserve and orders it to the rally point. Nothing on that path
+       * knows the campaign exists, and a layout has no way to opt out — the
+       * three tags that exist for exactly this purpose (`GROUP_SCOUT`,
+       * `GROUP_WITHDRAW`, `GROUP_RAID`, each with a header in `src/sim/AI.ts`
+       * saying why) are AI-internal state set by the brain itself.
+       *
+       * MEASURED, NOT REASONED. `soviets.02.common-standard` parked two Grizzlies
+       * on the Works vehicle park and hung its secondary on
+       * `all: [entityDead 'guard', unitsInArea DEPOT]`. A headless boot on
+       * 2026-08-19 read their positions off the store through the armed session's
+       * own `TagRegistry`: an `OrderKind.Move` to the AI rally was already
+       * standing at the first sample, and by t+20 s they were 116.6 m and 129.2 m
+       * from the park they were placed to guard. They died at t+240 s, 127 m
+       * away, having never been on it — so `entityDead` resolved, `unitsInArea`
+       * counted hulls in an empty lot, and the secondary silently became "drive
+       * two hulls to an empty park".
+       *
+       * THE OWNER CLAUSE IS WHAT KEEPS THIS RULE TRUE RATHER THAN TIDY. A
+       * PLAYER-owned tagged unit is fine — nothing re-tasks it — which is why
+       * `allies.01.sounding-line`'s `party` is exempt and must stay exempt. And
+       * it is scoped to the `entity*` conditions because those are the ones that
+       * treat the tag as a fixed feature of the ground; a tag a trigger only ever
+       * `orderTagged`s is a tag whose whole purpose is to move (that is
+       * `reclamation.01.held-paper`'s `watch`, which is walked off its post
+       * deliberately).
+       */
+      it('a tag an entity condition reads on an AI seat is a building, not a hull', () => {
+        const st = built.world.store;
+        const read = new Set<string>();
+        for (const t of op.triggers) {
+          const walk = (c: Condition): void => {
+            if (c.on === 'entityDead' || c.on === 'entityAlive' || c.on === 'entityHpBelow') {
+              read.add(c.tag);
+            } else if (c.on === 'all' || c.on === 'any') {
+              for (const sub of c.of) walk(sub);
+            } else if (c.on === 'not') {
+              walk(c.of);
+            }
+          };
+          walk(t.when);
+        }
+        for (const tag of read) {
+          for (const id of built.tags.get(tag) ?? []) {
+            const i = st.index(id);
+            if (i < 0) continue;
+            // Seat 0 is the player and Neutral is Gaia; neither has a brain.
+            // `st.faction` rather than a `world.player()` lookup because
+            // `store.owner` is a raw index and `PlayerId` is branded — the cast
+            // would be the only `as` in this file, to answer a question the
+            // store already holds a column for.
+            if (st.owner[i] === 0 || st.faction[i] === Faction.Neutral) continue;
+            expect(
+              st.kind[i],
+              `${op.id}: '${tag}' is read by an entity condition and is carried by a MOBILE hull `
+              + `(kind ${String(st.kind[i])}) on AI seat ${String(st.owner[i])}. `
+              + '`AiBrain.regroupSquads` files it into a squad on the first brain pass and drives '
+              + 'it to the rally point, so the trigger stops describing the ground the layout '
+              + 'dressed. Make it an emplacement, or give the AI a way to be told to leave it '
+              + 'alone — there is no third option a layout can reach.',
+            ).toBe(EntityKind.Building);
           }
         }
       });
