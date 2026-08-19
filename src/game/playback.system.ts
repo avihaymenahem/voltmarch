@@ -50,7 +50,7 @@ export default defineSystem({
   },
 
   /**
-   * `detachPlayback`, NOT `endPlayback`, and the difference is the whole
+   * `detachPlayback`, NOT `preparePlayback(null)`, and the difference is the whole
    * feature — see that function's header. `Shell.startReplay` arms a file and
    * then boots, and booting disposes the previous engine: clearing the ARMED
    * file here means the match that is starting never plays the recording, and

@@ -117,15 +117,21 @@ export function adoptPreparedPlayback(): void {
  *
  * `src/net/net.system.ts` has the same split for the same reason — its
  * `dispose` clears `session` and leaves `pending` alone.
+ *
+ * ── THE OTHER HALF OF THE SPLIT IS `preparePlayback(null)`, NOT A THIRD
+ *    FUNCTION ────────────────────────────────────────────────────────────────
+ *
+ * Stopping playback ENTIRELY — armed file included — is what `Shell.clearReplay`
+ * does, and it does it by disarming: `preparePlayback(null)` clears `pending`,
+ * clears `live` and resets the tick, which is the whole of it. There was an
+ * `endPlayback` here whose body was those three lines again and whose comment
+ * called it "the shell's exit path"; it had no caller in `src/` at all, and a
+ * reader comparing it against this function was being told a distinction existed
+ * between two things that do not differ. Deleted rather than wired up: one arming
+ * entry point that also disarms is fewer moving parts than two, and the shell was
+ * already using it.
  */
 export function detachPlayback(): void {
-  live = null;
-  atTick = 0;
-}
-
-/** Stop playback entirely, armed file included. The shell's exit path. */
-export function endPlayback(): void {
-  pending = null;
   live = null;
   atTick = 0;
 }

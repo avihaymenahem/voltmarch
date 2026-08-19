@@ -36,7 +36,6 @@ import {
 import type { ReplayFile, ReplayHeader } from '../src/game/Replay';
 import {
   adoptPreparedPlayback,
-  endPlayback,
   playbackActive,
   playbackIssue,
   playbackReport,
@@ -282,7 +281,10 @@ describe('the build version warns and does not refuse', () => {
 /* ========================================================================== */
 
 describe('playback feeds a live world and checks itself', () => {
-  beforeEach(() => { endPlayback(); });
+  // `preparePlayback(null)` is the full stop — armed file and live player both.
+  // It is what `Shell.clearReplay` calls, so this reset is the product's own
+  // exit path rather than a test-only affordance.
+  beforeEach(() => { preparePlayback(null); });
 
   it('is completely inert until something prepares a file', () => {
     // Discovery registers `game.playback` in every match. A skirmish must be
@@ -460,7 +462,7 @@ describe('playback feeds a live world and checks itself', () => {
     const { file } = recordRun();
     preparePlayback(file);
     adoptPreparedPlayback();
-    endPlayback();
+    preparePlayback(null);
     expect(playbackActive()).toBe(false);
 
     const world = makeWorld();

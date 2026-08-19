@@ -96,6 +96,11 @@ const CHAIN: readonly ChapterNode[] = [{
 const unlockedFor = (profile: Readonly<Profile>): ReadonlySet<string> =>
   unlockedOperations(CHAIN, profile);
 
+/** The menu hint, against the same fixture graph. `CHAIN` holds five operations. */
+const progressFor = (
+  profile: Readonly<Profile>,
+): { completed: number; golds: number; total: number } => campaignProgress(CHAIN, profile);
+
 /* ==========================================================================
  * 1. THE MIGRATION
  * ========================================================================== */
@@ -169,7 +174,14 @@ describe('The profile ladder reaches v3 and carries every earlier field with it'
     const b = makeStore(storage);
     expect(medalOf(b.get(), 'soviets.01.seam')).toBe(3);
     expect(medalOf(b.get(), 'soviets.02.yard')).toBe(1);
-    expect(campaignProgress(b.get())).toEqual({ completed: 2, golds: 1 });
+    // Counted against a graph that CONTAINS both, so this is the honest 2 —
+    // see the hostile-import case in §2 for what the row-walking version did.
+    expect(campaignProgress([{
+      operations: [
+        { id: 'soviets.01.seam', requires: [] },
+        { id: 'soviets.02.yard', requires: ['soviets.01.seam'] },
+      ],
+    }], b.get())).toEqual({ completed: 2, golds: 1, total: 2 });
   });
 
   it('keeps the campaign map of a FUTURE profile instead of wiping it', () => {
@@ -186,7 +198,9 @@ describe('The profile ladder reaches v3 and carries every earlier field with it'
 
   it('ships a default profile with an empty campaign map', () => {
     expect(defaultProfile(1).campaign).toEqual({});
-    expect(campaignProgress(defaultProfile(1))).toEqual({ completed: 0, golds: 0 });
+    // Nothing completed, and the five operations the build has are still the
+    // denominator — a fresh player reads "0 of 5", never "0 of 0".
+    expect(progressFor(defaultProfile(1))).toEqual({ completed: 0, golds: 0, total: 5 });
   });
 
   it('keeps the campaign rows a blob still stamped v2 already carried', () => {
@@ -295,7 +309,7 @@ describe('A hostile campaign map normalises rather than throwing', () => {
     }
     // And the reads over whatever came out of that are total too.
     const p = normalizeProfile({ version: 3, campaign: 'not a map' });
-    expect(campaignProgress(p)).toEqual({ completed: 0, golds: 0 });
+    expect(progressFor(p)).toEqual({ completed: 0, golds: 0, total: 5 });
     expect(medalOf(p, 'anything')).toBe(0);
   });
 });
@@ -441,6 +455,100 @@ describe('`requires` gates the next operation, and completion is the only key', 
     recordOperation(store, 'op1', 3);
     recordOperation(store, 'op2', 1);
     recordOperation(store, 'op3', 3);
-    expect(campaignProgress(store.get())).toEqual({ completed: 3, golds: 2 });
+    expect(progressFor(store.get())).toEqual({ completed: 3, golds: 2, total: 5 });
+  });
+});
+
+/* ==========================================================================
+ * 5. THE MENU HINT COUNTS THIS BUILD'S OPERATIONS, NOT THE BLOB'S ROWS
+ *
+ * `campaignProgress` used to walk `Object.keys(profile.campaign)`, which makes
+ * the STORED BLOB the authority on what the campaign contains. Measured against
+ * that version: a profile carrying 1024 fabricated ids normalises to
+ * MAX_CAMPAIGN_ROWS = 512 surviving rows and the function answered
+ * `{ completed: 512, golds: 512 }` — completions for operations no build has
+ * ever had. Every case here fails against it, in both directions.
+ * ========================================================================== */
+
+describe('Progress is measured against the operations this build has', () => {
+  /** 1024 sane ids, none of them an operation. Normalises to 512 rows. */
+  function hostileProfile(): Readonly<Profile> {
+    const campaign: Record<string, number> = {};
+    for (let i = 0; i < MAX_CAMPAIGN_ROWS * 2; i++) campaign[`not-an-operation-${i}`] = 3;
+    return normalizeProfile({ version: 3, campaign });
+  }
+
+  it('counts nothing at all for a blob full of ids no operation has', () => {
+    // THE REPORTED DEFECT, VERBATIM. The old function answered 512/512 here.
+    const p = hostileProfile();
+    expect(Object.keys(p.campaign).length, 'the rows really are on the profile')
+      .toBe(MAX_CAMPAIGN_ROWS);
+    expect(progressFor(p)).toEqual({ completed: 0, golds: 0, total: 5 });
+  });
+
+  it('still counts the real rows when the same blob also carries junk', () => {
+    /*
+     * NON-VACUITY, and it is the half that matters. "Counts nothing" also passes
+     * against a function that returns zero forever, so the hostile rows are
+     * planted ALONGSIDE two genuine completions and only those two may survive.
+     */
+    const campaign: Record<string, number> = { op1: 3, op2: 1 };
+    for (let i = 0; i < 40; i++) campaign[`not-an-operation-${i}`] = 3;
+    const p = normalizeProfile({ version: 3, campaign });
+    expect(progressFor(p)).toEqual({ completed: 2, golds: 1, total: 5 });
+  });
+
+  it('counts an operation the build HAS but the profile has never seen', () => {
+    // THE REVERSE DIRECTION. A denominator taken from the blob would read
+    // "1 of 1" here and tell a player who has beaten one operation of five that
+    // they have finished the campaign.
+    const store = makeStore(seededStorage());
+    recordOperation(store, 'op1', 2);
+    expect(progressFor(store.get())).toEqual({ completed: 1, golds: 0, total: 5 });
+  });
+
+  it('grows the denominator when the build grows, with the profile untouched', () => {
+    // The same profile, read against a longer table. Nothing about the stored
+    // rows changed; only what the build contains did.
+    const store = makeStore(seededStorage());
+    recordOperation(store, 'op1', 3);
+    const longer: readonly ChapterNode[] = [
+      ...CHAIN,
+      { operations: [{ id: 'chapter2.01', requires: ['finale'] }] },
+    ];
+    expect(campaignProgress(CHAIN, store.get())).toEqual({ completed: 1, golds: 1, total: 5 });
+    expect(campaignProgress(longer, store.get())).toEqual({ completed: 1, golds: 1, total: 6 });
+  });
+
+  it('answers 0 of 0 for an empty table rather than for an empty profile', () => {
+    // The degenerate case, pinned so it cannot become a divide-by-zero surprise
+    // in whatever draws the hint. A profile holding a gold reads 0 of 0 against
+    // a build with no campaign in it, which is the truthful answer.
+    const store = makeStore(seededStorage());
+    recordOperation(store, 'op1', 3);
+    expect(campaignProgress([], store.get())).toEqual({ completed: 0, golds: 0, total: 0 });
+  });
+
+  it('cannot be inflated by a table that lists one operation twice', () => {
+    const store = makeStore(seededStorage());
+    recordOperation(store, 'op1', 3);
+    const doubled: readonly ChapterNode[] = [
+      { operations: [{ id: 'op1', requires: [] }] },
+      { operations: [{ id: 'op1', requires: [] }] },
+    ];
+    expect(campaignProgress(doubled, store.get())).toEqual({ completed: 1, golds: 1, total: 1 });
+  });
+
+  it('reads an inherited key as absent rather than as a completion', () => {
+    // `Object.prototype` is on every profile forever, and an operation id is
+    // content. A table naming `constructor` must not report a gold.
+    const inherited: readonly ChapterNode[] = [{
+      operations: [
+        { id: 'constructor', requires: [] },
+        { id: 'toString', requires: [] },
+      ],
+    }];
+    expect(campaignProgress(inherited, defaultProfile(1)))
+      .toEqual({ completed: 0, golds: 0, total: 2 });
   });
 });

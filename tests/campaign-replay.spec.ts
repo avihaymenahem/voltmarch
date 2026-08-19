@@ -50,7 +50,7 @@ import {
 } from '../src/game/Replay';
 import type { ReplayCampaign, ReplayFile, ReplayHeader } from '../src/game/Replay';
 import {
-  adoptPreparedPlayback, endPlayback, playbackCampaignFault, playbackIssue, preparePlayback,
+  adoptPreparedPlayback, playbackCampaignFault, playbackIssue, preparePlayback,
 } from '../src/game/Playback';
 
 const P0 = 0 as PlayerId;
@@ -95,8 +95,14 @@ function spawn(w: World, x: number, z: number): EntityId {
   return h;
 }
 
-/** Module state in `Playback.ts` outlives a test; nothing here may leak. */
-afterEach(() => { endPlayback(); });
+/**
+ * Module state in `Playback.ts` outlives a test; nothing here may leak.
+ *
+ * `preparePlayback(null)` is the full stop — it clears the armed file AND the
+ * live player. It is what `Shell.clearReplay` calls, so the reset here is the
+ * product's own exit path rather than a test-only affordance.
+ */
+afterEach(() => { preparePlayback(null); });
 
 /**
  * Arm a recording exactly as the product does: `Shell.startReplay` calls
@@ -105,7 +111,7 @@ afterEach(() => { endPlayback(); });
  * would skip the split that `detachPlayback`'s header exists to protect.
  */
 function arm(file: ReplayFile): void {
-  endPlayback();
+  preparePlayback(null);
   preparePlayback(file);
   adoptPreparedPlayback();
 }
@@ -512,7 +518,7 @@ describe('playback names the mismatch instead of letting the checksum blame the 
     // THE FALSIFIER AGAINST A FUNCTION THAT SIMPLY ALWAYS COMPLAINS. Every
     // skirmish in the game runs with an operation armed exactly never and a
     // playback armed exactly never, and this must say nothing about either.
-    endPlayback();
+    preparePlayback(null);
     expect(playbackCampaignFault(null)).toBe('');
     expect(playbackCampaignFault('soviets.01.first-tap')).toBe('');
   });

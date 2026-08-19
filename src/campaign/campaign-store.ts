@@ -18,8 +18,22 @@
  * So this module imports exactly two things: `Medal` as a TYPE from `./types`,
  * and `profile-store`, which imports nothing at all. It is safe from the shell,
  * safe from `campaign-install.ts`, and adding an import of `./index` here would
- * put the whole campaign in front of every player's first paint —
- * `tests/campaign-bundle-isolation.spec.ts` is the file that notices.
+ * put the whole campaign in front of every player's first paint.
+ *
+ * IT IS THE ENTRY CHUNK AND NOT MERELY THE SHELL CHUNK, which is worse than the
+ * paragraph above says: `src/progression/progression.system.ts` imports
+ * `recordOperation` from here, and `src/game/Systems.ts` globs every
+ * `*.system.ts` with `eager: true` FROM THE ENTRY CHUNK.
+ *
+ * **AND NO TEST NOTICES.** This said "`tests/campaign-bundle-isolation.spec.ts`
+ * is the file that notices" and that is false, measured rather than reasoned:
+ * `import { CAMPAIGNS } from './index'` was added here and that spec passed
+ * 26/26. Its §1 sweep for heavy edges skips every file under `campaign/`, and
+ * its transitive closure is rooted at `campaign.system.ts`, which never reaches
+ * this file; only its §4 `dist/` scan would see it, and §4 is
+ * `runIf(distIsCurrent())`. So the boundary here is held up by the two functions
+ * below TAKING THE CHAPTER TABLE AS A PARAMETER, and by nothing else. Keep it
+ * that way, or close the gap in that spec first.
  *
  * ============================================================================
  * THE MEDAL IS MONOTONIC, AND THAT IS THE LOAD-BEARING RULE
@@ -124,23 +138,71 @@ export function operationComplete(profile: Readonly<Profile>, operationId: strin
 }
 
 /**
- * The menu hint. One walk of a map that holds at most one row per operation.
+ * The menu hint — "4 of 37, 1 gold".
  *
- * `completed` counts rows rather than trusting `Object.keys().length`, so a row
- * that somehow normalised to 0 cannot inflate the number the player reads.
+ * ============================================================================
+ * IT WALKS THE BUILD'S OPERATIONS, NOT THE PROFILE'S ROWS
+ * ============================================================================
+ * This used to iterate `Object.keys(profile.campaign)`, which makes the STORED
+ * BLOB the authority on what the campaign contains. Measured: a profile carrying
+ * 1024 fabricated ids normalises to `MAX_CAMPAIGN_ROWS` = 512 rows — every one
+ * of them within `isSaneId`, so nothing drops them — and the function answered
+ * `{ completed: 512, golds: 512 }` against a build holding a handful of
+ * operations. A hostile or merely STALE import (a blob written by a build whose
+ * operations were since renamed, an export from a fork) reads as completions the
+ * player never earned, and the number on the title screen is the one thing about
+ * the campaign a player sees before they open it.
+ *
+ * So both halves are derived from `chapters`: an operation this build does not
+ * contain counts for nothing whatever its row says, and an operation this build
+ * HAS counts in `total` whether or not the profile has ever heard of it. Ids are
+ * de-duplicated, so a chapter table that lists one twice cannot inflate either
+ * half — `validateCampaign` refuses that, and this must not be the second place
+ * it has to be true.
+ *
+ * ============================================================================
+ * WHY THE CALLER PASSES THE TABLE RATHER THAN THIS FILE IMPORTING `CAMPAIGNS`
+ * ============================================================================
+ * The header's rule, and the reason is stronger than it looks: `campaign-store`
+ * is in the ENTRY CHUNK. `src/progression/progression.system.ts` imports
+ * `recordOperation` from here, `src/game/Systems.ts` globs every `*.system.ts`
+ * with `eager: true` from the entry chunk, so an `import { CAMPAIGNS } from
+ * './index'` on line 55 would put the operation table, 37 layouts, the validator
+ * and every word of dialogue in front of every player's first paint.
+ *
+ * MEASURED, NOT ASSUMED, AND THE HEADER'S CLAIM ABOUT WHO NOTICES IS WRONG:
+ * that import was added here temporarily and
+ * `tests/campaign-bundle-isolation.spec.ts` passed 26/26 with it in place. §1's
+ * "only module outside src/campaign" sweep skips every file under `campaign/`,
+ * and §1's transitive closure is rooted at `campaign.system.ts`, which does not
+ * reach this file. Only §4 sees it, and §4 is `runIf(distIsCurrent())`. There is
+ * no source-level gate on this edge today — which is exactly why the parameter,
+ * and not a comment, is what keeps it out.
+ *
+ * `unlockedOperations` below already takes the table for the same reason, and
+ * `ChapterDef` satisfies `ChapterNode` structurally, so the shell writes
+ * `campaignProgress(CAMPAIGNS, profile)` with no cast and no adapter.
  */
 export function campaignProgress(
+  chapters: readonly ChapterNode[],
   profile: Readonly<Profile>,
-): { completed: number; golds: number } {
+): { completed: number; golds: number; total: number } {
+  const seen = new Set<string>();
   let completed = 0;
   let golds = 0;
-  for (const id of Object.keys(profile.campaign)) {
-    const medal = medalOf(profile, id);
-    if (medal <= 0) continue;
-    completed++;
-    if (medal >= GOLD) golds++;
+  for (const chapter of chapters) {
+    for (const op of chapter.operations) {
+      if (seen.has(op.id)) continue;
+      seen.add(op.id);
+      // The medal, never `hasOwnProperty`: a row that normalised to 0 is not a
+      // completion, and `medalOf` is the one place a stored number becomes one.
+      const medal = medalOf(profile, op.id);
+      if (medal <= 0) continue;
+      completed++;
+      if (medal >= GOLD) golds++;
+    }
   }
-  return { completed, golds };
+  return { completed, golds, total: seen.size };
 }
 
 /**
