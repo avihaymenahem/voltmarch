@@ -925,6 +925,15 @@ export class Shell {
     map: OperationBoot;
   } | null = null;
 
+  /**
+   * Monotonic, so no two dialogue chips can coalesce. See `playCampaignBeat`.
+   *
+   * Deliberately NOT reset between matches: it is an identity counter, not a
+   * count of anything, and a reset is the one thing that could make two beats
+   * collide again.
+   */
+  private campaignBeatSeq = 0;
+
   /** The finished operation, pushed by `campaign.system.ts` before `endMatch`. */
   private campaignResult: CampaignResult | null = null;
 
@@ -1562,7 +1571,38 @@ export class Shell {
         // Duck-typed on `__vmHud`, the same seam `outcome.system.ts` uses for its
         // stranded warning. The shell may not import the HUD.
         const g = globalThis as unknown as { __vmHud?: { toast?: (...a: unknown[]) => void } };
-        g.__vmHud?.toast?.('info', `campaign-${event.speaker ?? 'line'}`, event.speaker ?? '', event.text);
+        /*
+         * A UNIQUE KEY PER LINE, AND KEYING ON THE SPEAKER DESTROYED TEXT.
+         *
+         * `ToastStack.push` coalesces on `key` within `TOAST_MERGE` (6 s) and
+         * OVERWRITES the detail node — correct for its designed use, which is a
+         * repeat of one event ("Unit lost", x3). Its own doc says to pass
+         * "whatever makes two of them the same thing". **Two different lines of
+         * dialogue are not the same thing**, and this passed
+         * `campaign-${speaker}`, so a speaker with two lines inside six seconds
+         * had the FIRST ONE SILENTLY REPLACED by the second and an "x2" badge
+         * put on it. Nearly every shipped operation opens with two or three
+         * lines from one voice on adjacent ticks, so most of them were losing
+         * their opening sentence — found by an adversarial verifier reading
+         * `Chrome.ts`, because the surviving line looks perfectly correct.
+         *
+         * The counter is monotonic and never reused, so no two beats can merge.
+         * `TOAST_MAX` still retires the oldest at five on screen: a burst of
+         * dialogue can now scroll rather than overwrite, which is a content
+         * pacing problem an author can see and fix, not a silent deletion they
+         * cannot.
+         *
+         * It lives on the shell rather than in `Chrome.ts` because the merge
+         * rule is right for every other caller. This is the one that was
+         * lying about what its events mean.
+         */
+        this.campaignBeatSeq++;
+        g.__vmHud?.toast?.(
+          'info',
+          `campaign-${event.speaker ?? 'line'}-${this.campaignBeatSeq}`,
+          event.speaker ?? '',
+          event.text,
+        );
         return;
       }
       case 'eva': {

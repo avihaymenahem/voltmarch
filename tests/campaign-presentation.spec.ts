@@ -442,3 +442,46 @@ describe('both declarations of PresentationEvent stay in step', () => {
     }
   });
 });
+
+/* ==========================================================================
+ * 8. TWO LINES FROM ONE SPEAKER ARE TWO CHIPS, NOT ONE
+ * ========================================================================== */
+
+describe('a dialogue beat cannot overwrite the line before it', () => {
+  /*
+   * `ToastStack.push` coalesces on `key` within `TOAST_MERGE` and OVERWRITES
+   * the detail node. That is right for its designed use — a repeat of one
+   * event, badged "x3" — and its own doc says to pass "whatever makes two of
+   * them the same thing". Two different lines of dialogue are not the same
+   * thing, and `playCampaignBeat` used to pass `campaign-${speaker}`, so a
+   * speaker with two lines inside six seconds lost the first one silently.
+   * Nearly every shipped operation opens that way.
+   *
+   * This reads the source rather than driving a DOM, for the reason section 2
+   * gives: the suite is `environment: 'node'` and the surviving chip looks
+   * perfectly correct either way, so there is nothing a rendered assertion
+   * could see that this cannot.
+   */
+  const body = beatBody();
+
+  it('the toast key carries something per-beat, not just the speaker', () => {
+    const arm = body.slice(body.indexOf("case 'dialogue':"), body.indexOf("case 'eva':"));
+    expect(arm, 'the dialogue arm no longer raises a toast').toContain('__vmHud');
+    // The literal that broke it, by name: a template ending right after the
+    // speaker. Anything appended to it is enough to stop the merge.
+    expect(arm, "keying on `campaign-${speaker}` alone merges two lines of dialogue into one "
+      + 'chip and destroys the first — see the comment on the arm')
+      .not.toMatch(/`campaign-\$\{event\.speaker \?\? 'line'\}`/);
+  });
+
+  it('and the per-beat part is monotonic rather than reset', () => {
+    // A counter reset between matches would let two beats collide again, which
+    // is the one thing that could bring the defect back.
+    const shell = stripComments(src('src/shell/Shell.ts'));
+    expect(shell, 'Shell no longer declares the beat sequence').toContain('campaignBeatSeq');
+    expect(shell.match(/campaignBeatSeq\s*=\s*0/g) ?? [],
+      'campaignBeatSeq is assigned 0 more than once — a reset can make two beats collide')
+      .toHaveLength(1);
+    expect(shell, 'the sequence must advance on every beat').toContain('this.campaignBeatSeq++');
+  });
+});
