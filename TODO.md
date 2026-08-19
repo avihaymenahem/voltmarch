@@ -45,8 +45,11 @@ with no number is untracked, and that is itself the bug.
      secondary whose trigger reads ownership while its title says "standing"), `soviets.03`
      (`mast` — capturing a derrick for its 15 cr/s guarantees a DEFEAT at minute 9), `pact.01`
      (`mast`), `pact.02` (`tap`), `reclamation.01` (`office`, `transformer`).
-     **`soviets.01` and `soviets.03` are DONE** (76b2683); the other three are not started.
-  2. **Gaia-owned or protect-target, where the capture must simply not happen.** `ownerCount`
+     **ALL FIVE ARE DONE** — `soviets.01`/`soviets.03` in 76b2683, `pact.01`/`pact.02`/
+     `reclamation.01` in d3b0b81. Three `entityDead` thresholds are deliberately NOT migrated and
+     each says why at its trigger.
+  2. **Gaia-owned or protect-target, where the capture must simply not happen.** **THE ONLY HALF
+     STILL OPEN.** `ownerCount`
      cannot express it — `validateCampaign`'s seat check refuses a player index outside the seated
      range and Gaia is not a seat. `CaptureService.addVeto` is the hook: consulted inside
      `resolve()` ahead of both branches, and `refuse()` does NOT consume the engineer, so a vetoed
@@ -57,11 +60,16 @@ with no number is untracked, and that is itself the bug.
      universal alliance permanently, and unlike garrison it never reverts), `pact.02`'s `count`
      (a PRIMARY protect-target), and `allies.01`'s three `party` surveyors. **Not started.**
 
-  **Two costs to state before building the veto.** The cursor would still lie:
-  `Commands.ts` resolves the capture cursor from `isNeutralOwned`/`hoverEnemy`, and
-  `CaptureService.isCapturable` — the one query that consults the veto — has **zero production
-  callers**. Wire the cursor to it on the same commit. And a veto is a hard no where some cases
-  want a cost; `soviets.06`'s `works` must stay capturable.
+  **One cost left to state before building the veto: it is a hard NO where some cases want a
+  COST.** `soviets.06`'s `works` must stay capturable. The other prerequisite is **DONE** — the
+  cursor asks `CaptureService.isCapturable` now (300a00c), which also closed a live defect, since
+  `Garrison`'s veto had been invisible to it since the day it was written.
+
+  **AND THE PRICE OF A CAPTURE IS FOUR ENGINEERS, NEVER THREE, FOR EVERY STRUCTURE IN THE GAME.**
+  The soften lands `maxHp * softenFrac` (0.25) through `ARMOR_MATRIX[HighExplosive][Concrete]`
+  (1.00) and `COMBAT_DAMAGE.globalMul` (0.80) = 0.20 of max, against a 0.50 gate. Both are
+  fractions of max, so `maxHp` cancels and the count is hp-independent. Quoting `softenFrac`
+  without `globalMul` understates it by one engineer, and two headers shipped that way.
 
   **`pact.02.long-count`'s header documents a route that does not exist.** It says *"there is no
   health threshold on an enemy structure"* — true of `isCapturable`, false of `resolve()`, which
