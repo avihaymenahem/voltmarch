@@ -291,19 +291,28 @@ export default layout({
      * reach the water, and running it first means no later ring search can
      * have taken a cell out of it.
      *
-     * IT LANDS 50 SEGMENTS AT THIS OPERATION'S SEEDS, spanning p = -58.0 to
-     * +98.2 — 156 m of frontage for 39 cells' worth of ground, because the run
-     * is 40 degrees off the axes and the staircase enters a new cell every
-     * ~2.8 m rather than every 4.
+     * IT LANDS 68 SEGMENTS AT THIS OPERATION'S SEEDS, spanning p = -58.2 to
+     * +98.0 — 156 m of frontage, so the staircase enters a new cell every
+     * 2.3 m rather than every 4, because the run is 40 degrees off the axes.
+     * (This said 50 segments, p = -58.0 to +98.2, and "a new cell every
+     * ~2.8 m". Re-counted on the built world 2026-08-19: only the 156 m of
+     * frontage survived.)
      *
-     * **NINE OF THEM STAND ON GROUND `isBuildable` REFUSES AND THAT IS
-     * EXPECTED, NOT A DEFECT.** The build log says so on every boot. They are
-     * the last segments before the surf: the beach cone is deliberately not
-     * `buildGrid` ground on any roll of any seed, and a run that stopped at the
-     * last BUILDABLE cell instead of the last DRY one would leave a gap
-     * somebody could walk through. `spawnBuilding` counts the condition and
-     * plants the structure anyway, which is the behaviour its own header argues
-     * for — "a scenario is authored content rather than a player's click".
+     * **SEVEN OF THEM STAND ON GROUND `isBuildable` REFUSES AND THAT IS
+     * EXPECTED, NOT A DEFECT.** They are the last segments before the surf: the
+     * beach cone is deliberately not `buildGrid` ground on any roll of any
+     * seed, and a run that stopped at the last BUILDABLE cell instead of the
+     * last DRY one would leave a gap somebody could walk through.
+     * `spawnBuilding` counts the condition and plants the structure anyway,
+     * which is the behaviour its own header argues for — "a scenario is
+     * authored content rather than a player's click".
+     *
+     * **THE BUILD LOG SAYS NINE, AND TWO OF THOSE NINE ARE NOT THIS RUN.** The
+     * connectivity line counts the whole world, and `addCivilians` puts
+     * `civApartments` at 296,326 and `civOilDerrick` at 216,208 on ground the
+     * placement rule also refuses, nowhere near the beach. Both this file and
+     * the operation's header used to read the log's nine as "all nine are wall
+     * segments"; the COUNT was right and the ATTRIBUTION was invented.
      * ================================================================== */
     const cutN = len * CUT_ALONG;
     const wallKey = b.keyFor(allies, 'wall');
@@ -405,6 +414,35 @@ export default layout({
      * reach — so a hull that stopped to kill the mast auto-acquired the head
      * the instant the mast fell, and the secondary failed for doing the
      * primary. Separated past that reach, they are two targets and a choice.
+     *
+     * **AND THE SAME ERROR WAS THEN MADE A SECOND TIME, ONE OBJECTIVE ALONG.**
+     * `wade`'s `unitsInArea` disc was sited 36.9 m off the head and declared
+     * clear of `focusLance` on that number — which measures the CENTRE of a
+     * 24 m disc and leaves the radius out. Its nearest passable cell was
+     * 14.1 m from the head, and 73 of its 112 passable cells were inside a
+     * parked Solarch's reach. Fixing one instance of a mis-measurement is not
+     * fixing the class of it, so the class is a test now:
+     * `tests/campaign-zone-safety.spec.ts`.
+     *
+     * **AND 26 m IS NOT THE RIGHT BAR HERE EITHER, WHICH THIS BLOCK STILL
+     * IMPLIES.** Acquisition compares SURFACE distance — centre to centre less
+     * the target's `hitRadius`, 5.66 m for a 2x2 — against
+     * `max(range * 1.08, range * APPROACH_STOP_FRAC + STANCE_CHASE_METRES)`,
+     * and every unit spawns Aggressive, so a Solarch's real reach is 38.8 m of
+     * surface. 34 m of separation does NOT put the head outside that for a hull
+     * that came at the mast from the SEAWARD side; it does for one that came up
+     * the road, which is the approach the composition is laid out for
+     * (26.5 m short of the mast on the inland face is 60.9 m from the head,
+     * 55.2 m of surface).
+     *
+     * **THAT RESIDUAL IS DELIBERATE AND THE `wade` ONE WAS NOT, AND THE
+     * DIFFERENCE IS WHO CHOSE THE SPOT.** Where a hull parks to shoot the mast
+     * is the player's decision, and the operation's header argues at length
+     * that losing the head to your own carelessness on that beach is a failure
+     * this operation wants to be able to have. `wade` is the opposite: the
+     * operation NAMES the ground, pays for standing on it, and hides the
+     * objective until it is revealed — so a zone that costs the player another
+     * objective is the operation setting the trap itself.
      */
     raise(allies, 'civOreMine', spot(0, 0), 'bore', outward, 20);
     raise(allies, 'radar', spot(2, -34), 'mast', outward, 18);

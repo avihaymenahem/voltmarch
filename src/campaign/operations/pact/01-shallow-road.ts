@@ -18,42 +18,60 @@
  *     the men     Wayfarer, Sunlancer, ARTIFICER              do not
  *     the exception  Tidewalker, `Foot` + `amphibious`        walks on it
  *
- * The Allies have run a cut — fifty wall segments — from the surf to 58 m
- * inland of the opening axis, 156 m of frontage with one gap at the landward
- * end and a Refractor Tower sited on it. So there are two ways past, and the
- * operation is deciding which one you send what down.
+ * The Allies have run a cut — sixty-eight wall segments, counted on the built
+ * world; this said "fifty" and that number no longer reproduces — from the surf
+ * to 58 m inland of the opening axis, 156 m of frontage with one gap at the
+ * landward end and a Refractor Tower sited on it. So there are two ways past,
+ * and the operation is deciding which one you send what down.
  *
  * **BOTH ROUTES ARE MEASURED, ON A HEADLESS BUILD AT THIS OPERATION'S SEEDS**,
  * as a real 8-connected shortest path over the real `passGrid` and the real
- * structure occupancy, from the player's opening at (108, 380):
+ * structure occupancy, from the player's opening at (108, 380).
+ *
+ * **RE-MEASURED 2026-08-19 AND ALL FOUR LENGTHS MOVED.** The figures this block
+ * used to carry — 427.6 / 333.4 on foot and hovering to the compound, 460.9 /
+ * 329.4 to the landing — do not reproduce on the shipped build, and nothing
+ * recorded what they were taken against. What DOES reproduce, to the tenth, is
+ * every closest-approach figure, so the corridors are the ones this header
+ * always described and only the lengths were wrong. Quote the table, not the
+ * paragraph somebody remembers.
  *
  *                                        on foot        hovering
- *       to the bore compound              427.6 m        333.4 m
- *       to the landing in the shallows    460.9 m        329.4 m
+ *       to the bore compound              463.9 m        373.0 m
+ *       to the wade zone                  NO ROUTE       345.8 m
  *       closest it ever comes to the
- *         Refractor Tower                   4.0 m        169.7 m
- *         Pillbox                          16.0 m        192.3 m
+ *         Refractor Tower                   4.0 m        192.0 m
+ *         Pillbox                          16.0 m        208.0 m
  *
- * The straight line to the compound is 310.9 m, so the foot route runs 117 m
+ * "NO ROUTE" is literal rather than rhetorical: every one of the 112 cells
+ * inside `APRON`'s radius is water, so `MoveClass.Foot` cannot stand anywhere
+ * in the wade zone at all. See the hidden-secondary block below.
+ *
+ * The straight line to the compound is 316.6 m, so the foot route runs 147 m
  * over it — **and that overhead is the WALL rather than the ground**, which is
- * a control worth taking rather than assuming. On a beach point the cut does
- * not stand between, the foot route is 251.8 m against a 235.6 m straight line,
- * 6.9% over; apply the same 6.9% to 310.9 and an unwalled foot route would be
- * about 332 m. **So the cut is worth roughly 95 m, and it is spent four metres
- * from the tower.** The same beach point measured eleven metres FURTHER on —
- * past the cut — is 420.2 m on foot against 259.6 straight, which is the seal
- * stated twice from two directions.
+ * a control worth taking rather than assuming. Walked at the compound's own
+ * seaward offset, ten metres SHORT of the cut's line, the foot route is 271.1 m
+ * against a 241.0 m straight line: 12.5% over, which is what this ground costs.
+ * Ten metres PAST it the same walk is 433.2 m against 260.1 straight, 66.6%
+ * over. **Twenty metres of beach costs 162 m of walking.** Apply the 12.4%
+ * beach overhead to the 316.6 m straight line and an unwalled foot route to the
+ * compound would be about 356 m against the real 463.9 — so the cut is worth
+ * roughly 108 m, and it is spent four metres from the tower.
  *
  * `prismTowerBeam` reaches 34 m. The Pact's `focusLance` reaches 26 and its
  * `arcRepeater` 23, so a hull that takes the gap gives away eight metres before
  * it can answer, with 22 m of `pillboxMg` on top. A hull that takes the water
- * never comes inside 169.7 m of either.
+ * never comes inside 192 m of either.
  *
- * **AND THE PATHFINDER TAKES THE WATER ON ITS OWN.** 30 of the 73 cells in the
- * hover route are wet. Right-click the compound with a Solarch and it goes to
- * sea; right-click it with a Wayfarer and he walks into the gun. The operation
- * teaches itself by the two halves of one selection visibly diverging, which is
- * the only kind of teaching that survives a player who does not read.
+ * **AND THE PATHFINDER ROUNDS THE WALL ON ITS OWN — BUT IT DOES NOT PUT TO SEA,
+ * AND THIS BLOCK USED TO SAY IT DID.** Right-click the compound with a Solarch
+ * and the route is 81 cells of which exactly **three are wet**: it slips round
+ * the seaward end of the cut through the surf and then runs up the beach. The
+ * old claim here was "30 of the 73 cells in the hover route are wet", and the
+ * hover route to the COMPOUND has never looked like that. Right-click the same
+ * point with a Wayfarer and he walks 91 m further, in front of the gun. That
+ * divergence is the teaching and it is real; going to sea is a separate thing,
+ * it is what the wade zone pays for, and THAT route is 80 cells with 37 wet.
  *
  * **AND THE WATER CANNOT CARRY THE THING YOU CAME FOR.** The bore head is a
  * `civOreMine` on the Allied seat, so `CaptureService.isCapturable` says yes to
@@ -117,24 +135,80 @@
  * the answer in the same breath.
  *
  * It completes on `all: [entityAlive 'gun', unitsInArea(apron, 3)]` — three
- * units in the shallows off the bore head **while the cut is still standing**.
+ * units in the open water past the cut, off the compound's beach, **while the
+ * cut is still standing**.
  * Breaking the cut retires it rather than completing it, which is the whole
  * point: it pays for going ROUND, not for going through. Only the two
  * emplacements at the cut carry the `gun` tag; the compound's own Pillbox
  * deliberately does not, or a player who had already flattened the cut could
  * satisfy it from the road.
  *
- * The area's centre is a WET CELL, 36.9 m off the head. `passGrid` carries no
- * `PASS_FOOT` there, so the only things that can stand in it are the hulls, a
- * Tidewalker, and whoever is riding — which is the objective restated as a
- * property of the ground rather than as an instruction. 36.9 m is also outside
- * `focusLance`, so parking three Solarchs on the objective does not put them in
- * range of the head they are supposed to leave standing.
+ * **THE ZONE IS A DISC AND THIS BLOCK USED TO MEASURE ITS CENTRE. THAT IS THE
+ * SECOND TIME THIS EXACT ERROR WAS MADE IN THIS OPERATION** — the mast/head
+ * separation below records catching it once already, at 18 m, and the fix moved
+ * one objective and left the other one measured the same wrong way. The
+ * sentence that shipped read *"36.9 m is also outside `focusLance`, so parking
+ * three Solarchs on the objective does not put them in range of the head they
+ * are supposed to leave standing"*, and the radius is simply missing from that
+ * arithmetic: a unit anywhere in an `r = 24` disc whose CENTRE is 36.9 m away
+ * can be 12.9 m away. **Measured on the built world, the nearest hover-passable
+ * cell in the old disc was 14.14 m from the head, and 73 of the disc's 112
+ * hover-passable cells were inside a parked Solarch's engagement envelope.** A
+ * player doing the hidden bonus destroyed the paying one, and being hidden it
+ * gave no warning.
+ *
+ * **THE ENVELOPE IS NOT THE WEAPON RANGE, WHICH IS WHY 26 WAS THE WRONG BAR
+ * EVEN FOR THE CENTRE.** `Targeting.isValidTarget` compares a SURFACE distance
+ * — centre to centre minus the target's `hitRadius`, and the head's 2x2
+ * footprint is worth 5.66 m of that — against `max(reachOf, range * 1.08)`.
+ * `reachOf` for an Idle Aggressive hull that can drive is
+ * `range * APPROACH_STOP_FRAC + STANCE_CHASE_METRES[Aggressive]`, and every
+ * unit in the game spawns Aggressive. So the real reach on the head is:
+ *
+ *       Solarch    focusLance   26   ->  26*0.8 + 18 = 38.8 m of surface
+ *       Sandskiff  arcRepeater  23   ->  23*0.8 + 18 = 36.4
+ *       Zenith     zenithBeam   33   ->  33*0.8 + 18 = 44.4   (buildable here)
+ *       Monitor    monitorLance 40   ->  40*0.8 + 18 = 50.0   (waterOnly, and
+ *                                                              the wade zone is
+ *                                                              water)
+ *
+ * — and a hull that acquires does not merely fire, it DRIVES, so it leaves the
+ * disc as well as killing the head. The bar is therefore 50.0 m of surface,
+ * i.e. 55.7 m centre to centre, and it has to clear the whole disc rather than
+ * its centre.
+ *
+ * **`APRON` IS (420, 320) AND THE MEASUREMENT IS OF EVERY CELL IN IT.** At
+ * `r = 24`, on the built world:
+ *
+ *       centre to the bore head                      84.76 m
+ *       nearest hover-passable cell to the head      62.03 m centre to centre
+ *                                                    56.38 m of surface
+ *       margin over the widest envelope (50.0)        6.4 m
+ *       margin over a Solarch's (38.8)               17.6 m
+ *       hover-passable cells in the disc            112
+ *       of those, water                             112
+ *       foot-passable cells anywhere in the disc      0
+ *
+ * So no unit the Pact can field can engage the head from anywhere inside the
+ * wade zone, and no unit that walks can stand in it at all — which is the
+ * objective restated as a property of the ground rather than as an instruction,
+ * and is STRONGER than what shipped: 20 of the old disc's 112 cells were dry
+ * and foot-passable, so three Wayfarers could have collected this from the
+ * beach without a hull ever leaving the sand.
+ *
+ * Shrinking the radius was the other way to close it and it is the wrong one.
+ * The whole disc clears `focusLance` alone only at `r <= 10.9`, and
+ * `allies-sounding-line` already records why a disc a squad cannot all fit in
+ * is "a hold that restarts on its own". Its own head uses `r = 20` for three
+ * men; this asks for three hulls and keeps 24.
+ *
+ * `tests/campaign-zone-safety.spec.ts` is the general form of this, so the
+ * third occurrence fails a gate instead of a player's bonus.
  *
  * **AND IT EXPIRES BY BEING REVEALED LATE, WHICH IS WHY `t.cut` HAS A CEILING.**
- * The hover route never comes within 169.7 m of the cut, so a player who sends
- * only hulls could satisfy this before anything had revealed it. `t.cut` is
- * `any: [arrival, elapsed 4 min]` for that reason and no other.
+ * The hover route to the wade zone never comes within 192 m of the cut, so a
+ * player who sends only hulls could satisfy this before anything had revealed
+ * it. `t.cut` is `any: [arrival, elapsed 4 min]` for that reason and no other.
  *
  * ============================================================================
  * THE THREE FIXED NUMBERS
@@ -174,14 +248,16 @@
  * runs +98..+104 m off that axis, and the composition lands at:
  *
  *     bore   392, 240      mast    364, 220      tower   270, 178
- *     apron  416, 268      pillbox 254, 162      road    336, 135
+ *     apron  420, 320      pillbox 254, 162      road    336, 135
  *
- *     the cut   50 segments, p = -58.0 (inland) to +98.2 (the surf)
+ *     the cut   68 segments, p = -58.2 (inland) to +98.0 (the surf)
  *
  * `apron` is the only one of these that is not a structure: it is the point on
- * the water 36.9 m off the bore head that `wade` counts hulls in, and it is a
- * WET cell — `passGrid` has no `PASS_FOOT` there — which is what makes "come
- * round by water" a statement about the ground rather than about intent.
+ * the water 84.8 m off the bore head that `wade` counts hulls in, and EVERY
+ * cell inside its 24 m radius is water — `passGrid` has `PASS_FOOT` on none of
+ * them — which is what makes "come round by water" a statement about the ground
+ * rather than about intent. It was (416, 268), 36.9 m off the head, until the
+ * disc was measured rather than its centre; see the hidden-secondary block.
  *
  * **RE-MEASURE IF `mapSeed`, `simSeed` OR THE LAYOUT'S FRACTIONS MOVE.**
  * Nothing fails loudly if they drift: `unitsInArea` simply stops firing, the
@@ -200,8 +276,16 @@ import type { OperationDef } from '../../types';
 const HOME = { x: 108, z: 380 };
 /** The gap at the cut's landward end, and the Refractor Tower sited on it. */
 const GAP = { x: 270, z: 178 };
-/** The shallows off the bore head: a wet cell, 36.9 m from it. */
-const APRON = { x: 416, z: 268 };
+/**
+ * The open water past the cut, off the bore compound's beach. 84.8 m from the
+ * head, and every cell within `r = 24` of it is water with no `PASS_FOOT`.
+ *
+ * **THE DISTANCE IS SET BY THE DISC, NOT BY THIS POINT.** Moving it back toward
+ * the head is how the operation shipped a hidden bonus that destroyed the
+ * paying one; the block in the header headed "THE ZONE IS A DISC" has the
+ * arithmetic and `tests/campaign-zone-safety.spec.ts` has the gate.
+ */
+const APRON = { x: 420, z: 320 };
 /** Where the Allied road column forms up. Dry, unoccupied, 57 m off their base. */
 const ROAD = { x: 336, z: 135 };
 
@@ -258,7 +342,12 @@ const op: OperationDef = {
     // on the bore lot and 12 881 and 30 311 each foul one. Nothing is buildable
     // within a few metres of the surf on ANY roll — the beach cone is not
     // `buildGrid` ground — which is why the built world reports 9 structures on
-    // ground `isBuildable` refuses and why all nine are wall segments.
+    // ground `isBuildable` refuses. THE COUNT IS RIGHT AND THE ATTRIBUTION WAS
+    // NOT: this said "all nine are wall segments" and, counted on the built
+    // world, SEVEN are — the last of the cut before the surf, which is the
+    // expected case above. The other two are Gaia civilians `addCivilians`
+    // places off the composition entirely, `civApartments` at 296,326 and
+    // `civOilDerrick` at 216,208, and they have nothing to do with the beach.
     mapSeed: 12_880,
     // The PAIR is chosen by this seed and not by the map roll. `seatedSlots`
     // filters `START_PAIRS` against the water, and on `tropical` exactly two
@@ -367,9 +456,10 @@ const op: OperationDef = {
      * home.
      *
      * **THE FOUR-MINUTE CEILING IS NOT BELT AND BRACES.** The hover route to
-     * the compound never comes within 169.7 m of the cut, so a player who sent
-     * hulls and nothing else could satisfy `wade` on a run where the trigger
-     * that reveals it had never fired.
+     * the wade zone never comes within 192.0 m of the cut and the one to the
+     * compound never within 138.6 m, so a player who sent hulls and nothing
+     * else could satisfy `wade` on a run where the trigger that reveals it had
+     * never fired.
      *
      * The player is still PAID — `Session.setObjective` only refuses to
      * un-resolve, and `'hidden'` is not a resolved state, so the credits and
@@ -400,8 +490,8 @@ const op: OperationDef = {
           do: 'dialogue',
           speaker: 'Nael',
           text: 'The wall stops at the water, because that is where they think walls stop. '
-            + 'Point the hulls at the bore and they will take the sea themselves — nothing '
-            + 'we drive touches the ground. The men will walk into the gun. Put the '
+            + 'Point the hulls at the bore and they go round the end of it on their own — '
+            + 'nothing we drive touches the ground. The men will walk into the gun. Put the '
             + 'Artificer in a Sandskiff; it holds two.',
         },
         { do: 'setObjective', id: 'wade' },
@@ -429,7 +519,8 @@ const op: OperationDef = {
         {
           do: 'dialogue',
           speaker: 'Nael',
-          text: 'Ashore behind the cut. Their gun line is pointed at an empty road.',
+          text: 'Standing off, past the end of their wall. Their gun line is pointed at an '
+            + 'empty road.',
         },
         { do: 'completeObjective', id: 'wade' },
       ],
