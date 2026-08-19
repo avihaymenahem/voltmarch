@@ -11,34 +11,21 @@ with no number is untracked, and that is itself the bug.
 
 ## Campaign
 
-- **#64 — Gate M. CLOSED 2026-08-19.** S1 played through to a win in **11:00 against an authored
-  par of 13:00** — 0.846x. The operation is completable, par is achievable and beatable, and the
-  qualitative verdict was "feels great".
+- **#66 — Phases 6-7. 13 of a planned 37 operations are authored; 24 remain.** Chapters run
+  5 / 3 / 2 / 3 (Soviets, Allies, Pact, Reclamation) for 186 minutes of authored par against a
+  10-hour table. **180-320 person-hours, roughly 3-5x the engine**, of which ~35 hours is human
+  play no agent can do. That ratio is the single most important fact about the campaign.
 
-  The harness's own caveat is vindicated rather than contradicted: it LOST the same operation at
-  15:09.7 with the tap untouched at 99.3% health, having driven the skirmish brain, which has never
-  read an objective. "An informed player drives straight at the objective and is faster" is exactly
-  what the gap shows. **Do not read a harness figure as a play time; do not read this play time as a
-  harness bug.**
-- **#65 — Phase 5. DECIDED 2026-08-19: author at 37 and add more if it comes up short.** The
-  re-derivation gate was "stop and choose before authoring the other 32". The author's call is that
-  the choice does not need making first, because the cheapest of the three answers — more operations
-  — is also the one that can be taken LAST, after the table is timed. So authoring continues at the
-  planned 37 and the length claim is settled by measurement afterwards rather than by projection now.
+  **The length question is DECIDED and does not need re-deriving before authoring continues:** author
+  at 37 and add more if it comes up short, because the cheapest of the three answers is also the one
+  that can be taken LAST, after the table is timed. `tests/campaign-length.spec.ts` arms itself at
+  the 37th row and will force the question then regardless.
 
-  The projection that prompted it, kept because it is the only data there is: S1 played in 11:00
-  against a 13:00 par (0.846x), which extrapolates to 9.05 h across 37 against a claimed 10.7. ONE
-  point, on the shortest operation, by the person who built the game — a floor on play time, not a
-  median. `tests/campaign-length.spec.ts` arms itself at the 37th row and will force the question
-  then regardless.
-
-- **#66 — Phases 6-7.** The remaining 32 operations. **180-320 person-hours, roughly 3-5× the
-  engine**, of which ~35 hours is human play no agent can do. That ratio is the single most
-  important fact about the campaign.
-- **THE MERIDIAN PACT HAS NO CHAPTER AT ALL.** Three chapters exist — Soviets (3 operations), Allies
-  (1), Reclamation (1). One of the four playable armies has zero campaign content against a planned
-  nine. Shipping three chapters of four reads as an omission rather than a partial release, so this
-  is a SHIPPING gate in a way that "9 of 9 Soviet operations" is not.
+- **NO OPERATION PAST S1 HAS BEEN PLAYED BY A HUMAN.** Twelve are authored, adversarially verified
+  and gate-green; exactly one has a play time. Every par past S1 is an author's estimate, and
+  `tools/op-harness.mjs`'s header now records how far a harness figure sits from a play time (11:00
+  against 15:09.7 on the one operation where both exist). This is not a defect and it is not
+  blocking authoring — it is the debt authoring is taking on, written down.
 
 ---
 

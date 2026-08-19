@@ -41,6 +41,18 @@
  *      who has read the briefing drives at the objective and is faster; a human
  *      is also better at every fight along the way. The two errors point in
  *      opposite directions and neither is bounded. One number, one non-player.
+ *
+ *      **MEASURED, ONCE, AND THE GAP IS THE SIZE OF THE WHOLE CAVEAT.** On
+ *      2026-08-19 the author played `soviets.01.first-tap` to a win in
+ *      **11:00** against an authored par of 13:00 — 0.846x. This harness LOST
+ *      the same operation at **15:09.7** with the tap untouched at 99.3%
+ *      health. Same operation, same ground: a human took 73% of the harness's
+ *      clock and won where it could not finish at all. That is one point, on
+ *      the shortest operation, by the person who built the game — a floor on
+ *      play time rather than a median. **Do not read a harness figure as a
+ *      play time; do not read that play time as a harness bug.** The number
+ *      the harness produced is what a blind advance costs, and it is the
+ *      number this file is honest about producing.
  *   2. **A secondary the brain does not know about is scored anyway**, so the
  *      MEDAL printed here is the medal a player who ignored the briefing would
  *      earn. On `soviets.01.first-tap` the brain has no reason on earth to

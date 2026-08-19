@@ -398,6 +398,42 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   tick one, silently. That is why a layout DECLARES its tags and `validateCampaign` refuses a
   trigger naming one no layout produces — and why `campaign-maps.spec.ts` builds every operation
   headless and checks the declaration against what actually landed, in both directions.
+- **`Shell.playCampaignBeat` IS THE ONLY CONSUMER OF `PresentationEvent`, AND IT HANDLED ONE OF THE
+  THREE KINDS THAT ARE PRODUCED.** `EffectSink` pushes `dialogue`, `eva` and `camera`;
+  `campaign.system.ts` drains all three every frame and hands every one to that method, whose body
+  was a single `if` on `dialogue` under a doc comment reading *"Dialogue and EVA for now"*. **Every
+  scripted announcer line and every scripted `cameraMove` in all thirteen shipped operations was
+  authored, validated, evaluated, buffered, drained and dropped on that line.**
+
+  **NOTHING IN THE TREE COULD HAVE NOTICED, AND THAT IS THE GENERAL LESSON.** The producing half is
+  correct and tested. `validateCampaign` refuses an `eva` naming a line outside `EVA_LINES` on the
+  stated grounds that *"the announcer would say nothing"* — a guard on the NAME, sitting upstream of
+  a consumer that ignored the name. Both effects are silent by nature, so a dropped beat leaves no
+  exception, no console line and no pixel; and `npm run shots` never boots an operation. A guard on
+  a value cannot see a consumer that never reads the value.
+
+  It is a `switch` with a deliberately non-throwing `default` now — a future producer must not crash
+  a match mid-operation — and `tests/campaign-presentation.spec.ts` compares the kinds the real sink
+  EMITS against the kinds the switch NAMES, in both directions. **Its third section exists because
+  the first draft was vacuous:** commenting out the one line that reaches the announcer left the
+  suite 9/9 green, because `// sayEva(event.line);` still contains the token being matched. Every
+  structural read in that file strips comments first. Verify a spec CAN fail before believing it.
+- **A PRESET IS NOT A BIOME, AND `OperationMap.biome` WAS TYPED `string` UNTIL AN OPERATION SHIPPED
+  ON THE WRONG GROUND.** The two vocabularies overlap on three names — `temperate`, `snow`, `urban`
+  — and disagree on exactly one: the `MAP_PRESETS` key is **`arid`**, the `BiomeName` is
+  **`desert`**. `reclamation.03.sold-twice` was authored, measured and adversarially verified with
+  `biome: 'arid'`, and `getBiome` answers an unknown name with a `console.warn` and TEMPERATE — so
+  every number in its two headers is a number about temperate ground, and the operation whose
+  dialogue calls the ground "the pan" nine times rendered as grass. It reached the PRODUCT, not
+  merely the harness: `Shell.applyCampaignQuery` copies the string straight into `?biome=`.
+
+  **A biome is the LANDFORM, not a palette** — `tierCount`, `stepHeight`, `plateauMetres`,
+  `basinDepth` and every surface layer — so the fallback moved placements up to 32 m and put a
+  scripted hull on ground no tracked unit can stand on. `biome` is `BiomeName` now and tsc names the
+  file and the line. **`preset` stays a validated string because there is nothing to type it as** —
+  `MAP_PRESETS` is a `Record<string, MapPreset>`, so `validate.ts` checks it against
+  `facts.mapPresets` instead. That asymmetry is the reason the defect existed: of the two map-identity
+  strings, the guarded one was the one whose typo would have been harmless.
 - **AN ARMED OPERATION SELECTS THE SCENARIO.** `?shot=` is the only other thing that can name one
   and the shell deletes it from every match query on purpose. `bootScenarioName` answers
   `'campaign'` when `plannedOperation()` is non-null; there is no third flag, because a second

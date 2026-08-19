@@ -93,6 +93,7 @@ import type { CampaignResult } from './EndScreen';
 import { actionKeyRow } from './tutorial-steps';
 import { isApplePlatform, type StoredBindings } from '../input/ActionCatalogue';
 
+import { eva as sayEva } from '../audio/AudioEngine';
 import { armCalibration, disarmCalibration } from '../render/calibration.system';
 import { targetMsForCap } from '../render/HardwareCalibration';
 import { describeCalibration, type CalibrationResult } from '../render/HardwareCalibration';
@@ -1527,16 +1528,86 @@ export class Shell {
   }
 
   /** What the campaign wants shown. Dialogue and EVA for now; camera later. */
-  playCampaignBeat(event: { kind: string; speaker?: string; text?: string; line?: string }): void {
-    if (event.kind === 'dialogue' && event.text !== undefined) {
-      // A TOAST IS THE PLACEHOLDER AND IT IS DECLARED AS ONE. A briefing log
-      // with a speaker portrait is Phase 3 work; a line the player never sees
-      // is worse than a line in the wrong container, and this at least proves
-      // the sim half is producing them.
-      // Duck-typed on `__vmHud`, the same seam `outcome.system.ts` uses for its
-      // stranded warning. The shell may not import the HUD.
-      const g = globalThis as unknown as { __vmHud?: { toast?: (...a: unknown[]) => void } };
-      g.__vmHud?.toast?.('info', `campaign-${event.speaker ?? 'line'}`, event.speaker ?? '', event.text);
+  playCampaignBeat(event: {
+    kind: string;
+    speaker?: string;
+    text?: string;
+    line?: string;
+    at?: { readonly x: number; readonly z: number };
+  }): void {
+    /*
+     * THIS METHOD IS THE ONLY CONSUMER OF `PresentationEvent`, AND IT HANDLED
+     * ONE OF THE THREE KINDS THAT ARE PRODUCED.
+     *
+     * `EffectSink` pushes exactly three — `dialogue`, `eva` and `camera`
+     * (`runtime.ts`, the three `present.push` calls). `campaign.system.ts`
+     * drains all of them and hands every one here. Until 2026-08-19 the body
+     * below was an `if` on `dialogue` alone, under a doc comment that said
+     * "Dialogue and EVA for now", so **every scripted announcer line and every
+     * scripted camera move in all thirteen shipped operations was authored,
+     * validated by `validateCampaign`, evaluated by the Director, buffered,
+     * drained — and dropped on this line.** `validate.ts` even refuses an
+     * `eva` naming a line that is not a key of `EVA_LINES`, on the stated
+     * grounds that "the announcer would say nothing"; the announcer was saying
+     * nothing regardless of the name.
+     *
+     * Nothing could have noticed. The effects are silent by nature, the sim
+     * half is provably correct, `npm run shots` never boots an operation, and
+     * a dropped beat leaves no trace in any log. **A switch with a `default`
+     * that throws is the fix for the NEXT one** — the whole union is handled
+     * here now, and `tests/campaign-presentation.spec.ts` compares the kinds
+     * `runtime.ts` pushes against the kinds this body names, in both
+     * directions, so adding a fourth breaks a test rather than going quiet.
+     */
+    switch (event.kind) {
+      case 'dialogue': {
+        if (event.text === undefined) return;
+        // A TOAST IS THE PLACEHOLDER AND IT IS DECLARED AS ONE. A briefing log
+        // with a speaker portrait is Phase 3 work; a line the player never sees
+        // is worse than a line in the wrong container, and this at least proves
+        // the sim half is producing them.
+        // Duck-typed on `__vmHud`, the same seam `outcome.system.ts` uses for its
+        // stranded warning. The shell may not import the HUD.
+        const g = globalThis as unknown as { __vmHud?: { toast?: (...a: unknown[]) => void } };
+        g.__vmHud?.toast?.('info', `campaign-${event.speaker ?? 'line'}`, event.speaker ?? '', event.text);
+        return;
+      }
+      case 'eva': {
+        if (event.line === undefined) return;
+        /*
+         * THE FREE FUNCTION, NOT `world.audio.eva`. The port on the world
+         * takes a `PlayerId` and filters to the local one, because the sim
+         * calls it for whoever the event belongs to. A campaign beat is
+         * addressed to the person at the keyboard by construction — there is
+         * no other seat to mistake it for — so the extra argument would be a
+         * player id invented to satisfy a filter that has nothing to filter.
+         *
+         * It is a no-op before the audio module boots (`facade` is null), and
+         * `Eva.say` returns false on an unknown id rather than throwing, so
+         * this is silent in a headless harness and in a muted profile alike.
+         */
+        sayEva(event.line);
+        return;
+      }
+      case 'camera': {
+        if (event.at === undefined) return;
+        /*
+         * SMOOTH, NOT IMMEDIATE. `setFocus`'s third argument snaps, and a snap
+         * is right for "centre on my base" off a hotkey and wrong for a
+         * scripted beat — the player has to be able to tell that the camera
+         * moved rather than that the map cut. The rig's own easing is what
+         * makes a `cameraMove` read as direction instead of teleportation.
+         */
+        this.game?.ctx.cameraRig.setFocus(event.at.x, event.at.z);
+        return;
+      }
+      default:
+        // Deliberately silent rather than throwing: `PresentationEvent.kind`
+        // also declares `objectives` and `ended`, which nothing pushes today
+        // and which reach the shell by their own dedicated methods. Throwing
+        // here would turn a future producer into a crash mid-match; the spec
+        // named above turns it into a red build instead.
+        return;
     }
   }
 

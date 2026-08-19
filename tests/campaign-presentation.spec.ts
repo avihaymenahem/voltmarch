@@ -1,0 +1,219 @@
+/* ==========================================================================
+ * VOLTMARCH — tests/campaign-presentation.spec.ts
+ * ==========================================================================
+ * EVERY PRESENTATION BEAT THE CAMPAIGN PRODUCES MUST HAVE A CONSUMER.
+ *
+ * `EffectSink` pushes a `PresentationEvent` for three of the eleven frozen
+ * effects. `campaign.system.ts` drains the queue every frame and hands each one
+ * to `Shell.playCampaignBeat`, which is the ONLY consumer in the tree. Until
+ * 2026-08-19 that method's body was a single `if` on `dialogue` — so **every
+ * scripted `eva` line and every scripted `cameraMove` in all thirteen shipped
+ * operations was authored, validated, evaluated, buffered, drained and
+ * dropped.**
+ *
+ * NOTHING COULD HAVE CAUGHT IT, WHICH IS THE ONLY INTERESTING PART.
+ *
+ *   - The producing half is provably correct and has its own tests.
+ *   - `validateCampaign` refuses an `eva` naming a line outside `EVA_LINES`, on
+ *     the stated grounds that "the announcer would say nothing" — a guard on
+ *     the NAME, sitting upstream of a consumer that ignored the name entirely.
+ *   - Both effects are silent by nature. A dropped beat leaves no exception, no
+ *     console line and no pixel.
+ *   - `npm run shots` never boots an operation, so no capture could regress it.
+ *   - The method's own doc comment said "Dialogue and EVA for now", so a
+ *     reader was told the opposite of what the code did.
+ *
+ * So this spec is deliberately in TWO PARTS, and neither substitutes for the
+ * other. Section 1 proves BEHAVIOURALLY which kinds the real sink emits — it
+ * calls `makeEffectSink` rather than reading a literal, so a renamed kind is
+ * caught. Section 2 compares that set against the kinds the shell's switch
+ * NAMES, in BOTH directions: a produced kind with no case is a beat on the
+ * floor, and a case for a kind nothing pushes is dead code that will rot into a
+ * false comfort.
+ *
+ * Section 3 is the anti-stub clause. Section 2 alone passes against
+ * `case 'eva': return;`, which is the defect wearing a case label — so each arm
+ * is pinned to the seam it actually has to reach. THOSE THREE ASSERTIONS ARE
+ * THE BRITTLE ONES BY DESIGN: if a seam legitimately moves, update the expected
+ * token here in the same commit, and do not delete the assertion to make the
+ * move quiet.
+ * ========================================================================== */
+
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+import { World } from '../src/core/world';
+import { Channels } from '../src/core/events';
+import { makeEffectSink, TagRegistry } from '../src/campaign/runtime';
+import type { PresentationEvent } from '../src/campaign/runtime';
+
+const src = (rel: string): string => readFileSync(join(__dirname, '..', rel), 'utf8');
+
+/* ==========================================================================
+ * 1. WHAT THE REAL SINK ACTUALLY EMITS
+ * ========================================================================== */
+
+/**
+ * The three presentation-producing methods, called through the real factory.
+ *
+ * `makeEffectSink` reads `world.store` at construction and the three methods
+ * below touch neither the world nor the channels — they push and return — so a
+ * bare `World` is the honest fixture rather than a shortcut. Every OTHER effect
+ * needs a built scenario, which is what `campaign-runtime.spec.ts` is for.
+ */
+function emit(): readonly PresentationEvent[] {
+  const world = new World();
+  const present: PresentationEvent[] = [];
+  const sink = makeEffectSink(world, new Channels(), new TagRegistry(), present, {
+    onObjective() { /* unused here */ },
+    onEnd() { /* unused here */ },
+    onSpawnFault() { /* unused here */ },
+  });
+
+  sink.dialogue('Wend', 'The seam is short.');
+  sink.eva('missionAccomplished');
+  sink.cameraMove({ x: 128, z: 384 });
+  return present;
+}
+
+describe('the sink emits three presentation kinds, and they are these', () => {
+  it('pushes one event per call, in call order', () => {
+    const out = emit();
+    expect(out.map((e) => e.kind), 'the three presentation effects, in the order called')
+      .toEqual(['dialogue', 'eva', 'camera']);
+  });
+
+  it('carries the payload each kind needs, and the shell reads exactly these fields', () => {
+    const [d, e, c] = emit();
+    // `dialogue` is the only kind with two fields, and `speaker` is optional in
+    // the type while `text` is what the toast body shows.
+    expect(d.speaker).toBe('Wend');
+    expect(d.text).toBe('The seam is short.');
+    // `eva` carries a KEY OF `EVA_LINES`, not a sentence. `validate.ts` refuses
+    // anything else at build time; this pins that the sink passes it through
+    // unmodified, because the shell hands it straight to `Eva.say`.
+    expect(e.line).toBe('missionAccomplished');
+    // `camera` carries a ground point in WORLD metres — x/z, never x/y. The rig
+    // takes them in that order and a transposed pair looks like a working
+    // camera move to the wrong place.
+    expect(c.at).toEqual({ x: 128, z: 384 });
+  });
+});
+
+/* ==========================================================================
+ * 2. EVERY EMITTED KIND HAS A CONSUMER, AND EVERY CONSUMER HAS A PRODUCER
+ * ========================================================================== */
+
+/**
+ * Source with every comment removed.
+ *
+ * **THIS EXISTS BECAUSE THE FIRST VERSION OF THIS FILE WAS VACUOUS AND THE
+ * CONTROL RUN CAUGHT IT.** Commenting out the one line that reaches the
+ * announcer — turning the arm into the exact stub section 3 was written to
+ * refuse — left the suite 9/9 GREEN, because `// sayEva(event.line);` still
+ * contains the token `sayEva(`. An assertion that a commented-out call
+ * satisfies is not an assertion. Every structural read below goes through
+ * here; the two negative controls in the header of this section are what
+ * proved it necessary and what will prove it again.
+ */
+function stripComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/\/\/.*/g, ' ');
+}
+
+/** The body of `Shell.playCampaignBeat`, from its signature onward, decommented. */
+function beatBody(): string {
+  const shell = src('src/shell/Shell.ts');
+  const at = shell.indexOf('playCampaignBeat(event: {');
+  expect(at, 'Shell.playCampaignBeat was renamed or resignatured — this spec reads its body')
+    .toBeGreaterThan(-1);
+  // The switch is the first thing in the body. The slice is taken BEFORE
+  // stripping and is generous, because the arms carry long comments and
+  // removing them shortens the body a great deal.
+  return stripComments(shell.slice(at, at + 9000));
+}
+
+describe('the shell handles every kind the campaign produces', () => {
+  const produced = new Set<string>(emit().map((e) => e.kind));
+  const body = beatBody();
+  const handled = new Set([...body.matchAll(/case '([a-z]+)':/g)].map((m) => m[1]));
+
+  it('is not vacuous in either direction', () => {
+    // BOTH SETS, because an empty `handled` would make the subset assertion
+    // below fail loudly while an empty `produced` would make it PASS.
+    expect(produced.size, 'the sink emitted nothing — section 1 is broken, not the shell').toBe(3);
+    expect(handled.size, 'no case was found in playCampaignBeat — the regex or the switch '
+      + 'changed shape').toBeGreaterThan(0);
+  });
+
+  it('drops nothing: every produced kind is named by a case', () => {
+    const dropped = [...produced].filter((k) => !handled.has(k));
+    expect(dropped, `playCampaignBeat has no case for ${dropped.join(', ')} — the campaign `
+      + 'produces those beats every match and the shell is the only consumer, so they land on '
+      + 'the floor exactly as eva and camera did before 2026-08-19').toEqual([]);
+  });
+
+  it('carries nothing dead: every case is a kind something pushes', () => {
+    const orphan = [...handled].filter((k) => !produced.has(k));
+    expect(orphan, `playCampaignBeat handles ${orphan.join(', ')}, which no present.push in `
+      + 'runtime.ts produces. Either the sink stopped emitting it — in which case the arm is '
+      + 'dead and misleading — or it was never emitted at all.').toEqual([]);
+  });
+
+  it('has a total default arm, so a future kind is silent rather than fatal', () => {
+    // `PresentationEvent.kind` declares two more names than anything pushes.
+    // The arm must exist and must NOT throw: a producer added later would
+    // otherwise crash a match mid-operation, and the two assertions above are
+    // what turn that case into a red build instead.
+    expect(body, 'playCampaignBeat needs a default arm').toMatch(/default:/);
+    const tail = body.slice(body.indexOf('default:'));
+    expect(tail.slice(0, 400), 'the default arm must not throw — see the comment on it')
+      .not.toMatch(/throw /);
+  });
+});
+
+/* ==========================================================================
+ * 3. THE ANTI-STUB CLAUSE
+ * ========================================================================== */
+
+describe('each arm reaches the seam it is supposed to reach', () => {
+  /*
+   * SECTION 2 IS SATISFIED BY `case 'eva': return;`, WHICH IS THE ORIGINAL
+   * DEFECT WITH A LABEL ON IT. These three pin the actual destination. They are
+   * the most brittle assertions in the file and that is accepted: a seam that
+   * moves should cost one line here, in the commit that moves it.
+   */
+  const body = beatBody();
+
+  const arm = (kind: string): string => {
+    const at = body.indexOf(`case '${kind}':`);
+    expect(at, `no arm for ${kind}`).toBeGreaterThan(-1);
+    const next = body.indexOf('case ', at + 8);
+    return body.slice(at, next === -1 ? body.indexOf('default:') : next);
+  };
+
+  it('dialogue reaches the HUD toast, duck-typed because the shell may not import the HUD', () => {
+    expect(arm('dialogue')).toContain('__vmHud');
+  });
+
+  it('eva reaches the announcer', () => {
+    // The free function from `AudioEngine`, not `world.audio.eva` — a campaign
+    // beat is addressed to the person at the keyboard by construction, so the
+    // port's `PlayerId` filter would need a player id invented to satisfy it.
+    expect(arm('eva')).toContain('sayEva(');
+    expect(stripComments(src('src/shell/Shell.ts')),
+      'the announcer accessor must be imported by name')
+      .toContain("import { eva as sayEva } from '../audio/AudioEngine';");
+  });
+
+  it('camera reaches the rig, and does not snap', () => {
+    const a = arm('camera');
+    expect(a).toContain('cameraRig.setFocus(');
+    // `setFocus`'s third argument is `immediate`. Passing `true` is right for
+    // "centre on my base" off a hotkey and wrong for a scripted beat: the
+    // player has to be able to tell the camera moved rather than that the map
+    // cut. Two arguments means the default, which eases.
+    expect(a, 'a scripted cameraMove must not snap — pass x and z only')
+      .not.toMatch(/setFocus\([^)]*,[^)]*,[^)]*\)/);
+  });
+});

@@ -91,6 +91,7 @@
  * ========================================================================== */
 
 import type { Faction } from '../core/types';
+import type { BiomeName } from '../world/Biomes';
 
 /* ==========================================================================
  * 1. CLOCKS
@@ -182,8 +183,30 @@ export interface OperationMap {
   readonly simSeed: number;
   /** Seats, human included. Bounded by the map's own arithmetic, not by taste. */
   readonly armies: number;
-  /** `?biome=`. */
-  readonly biome: string;
+  /**
+   * `?biome=`, AND IT IS TYPED WHILE `preset` ABOVE IS NOT.
+   *
+   * A biome is the LANDFORM and the palette — `tierCount`, `stepHeight`,
+   * `plateauMetres`, `basinDepth` and every surface layer — so it is not a
+   * skin over the preset's relief numbers. The two vocabularies overlap on
+   * three names (`temperate`, `snow`, `urban`) and disagree on the fourth:
+   * the preset is `arid`, the biome is `desert`. `getBiome` answers an
+   * unknown name with a `console.warn` and TEMPERATE, so a typo here does
+   * not throw, does not fail a gate, and does not look wrong in any way a
+   * reader would connect to this line — it silently ships a different map.
+   *
+   * That is not hypothetical. `reclamation.03.sold-twice` was authored with
+   * `biome: 'arid'`, measured, verified, and every number in its two headers
+   * is a number about TEMPERATE ground, because that is what it was being
+   * built on. `Shell.applyCampaignQuery` copies this string straight into
+   * `?biome=`, so it reached the product and not merely the harness.
+   *
+   * `preset` stays a validated string because there is nothing to type it
+   * as — `MAP_PRESETS` is a `Record<string, MapPreset>`, so `validate.ts`
+   * checks it against `facts.mapPresets` instead. `BiomeName` is a real
+   * union, so this one is checked by tsc, which names the file and the line.
+   */
+  readonly biome: BiomeName;
   readonly opening: Opening;
   /** The local player's bank at t=0. */
   readonly credits: number;
