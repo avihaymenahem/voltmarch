@@ -26,8 +26,8 @@ with no number is untracked, and that is itself the bug.
 
 ## Campaign
 
-- **#66 — Phases 6-7. 20 of a planned 37 operations are authored; 17 remain.** Chapters run
-  7 / 5 / 4 / 4 (Soviets, Allies, Pact, Reclamation) for 303 minutes of authored par against a
+- **#66 — Phases 6-7. 22 of a planned 37 operations are authored; 15 remain.** Chapters run
+  7 / 5 / 5 / 5 (Soviets, Allies, Pact, Reclamation) for 337 minutes of authored par against a
   10-hour table. **180-320 person-hours, roughly 3-5x the engine**, of which ~35 hours is human
   play no agent can do. That ratio is the single most important fact about the campaign.
 
