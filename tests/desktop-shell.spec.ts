@@ -38,6 +38,7 @@ import {
   isOwnUrl,
 } from '../desktop/src/app-url';
 import { contentTypeFor, resolveAsset } from '../desktop/src/paths';
+import { activeAdapterLabel } from '../src/platform/desktop';
 import {
   DEFAULT_DISPLAY,
   MIN_WINDOW_H,
@@ -543,5 +544,70 @@ describe('desktop shell import boundary', () => {
       const src = readFileSync(path.join(DESKTOP_SRC, f), 'utf8');
       expect(/from\s+'electron'/.test(src), `${f} imports electron`).toBe(false);
     }
+  });
+});
+
+/* ==========================================================================
+ * THE ADAPTER THE SWITCH ACTUALLY GOT
+ * ==========================================================================
+ * `--force_high_performance_gpu` is a HINT. `main.ts` records that its effect
+ * site is conjoined with `&& system_device_id_high_perf`, and RENDER_FINDINGS
+ * §7g measured Windows ignoring the same request from a browser outright. So
+ * the setting reported itself through a `console.log` in the main process — a
+ * refusal nobody reads — and the Options row now states which adapter is live.
+ *
+ * This parses Chromium's reply, which crosses IPC, has no stability guarantee
+ * across Electron majors, and is therefore typed `unknown`. Every malformed
+ * shape must return null rather than throw or print `undefined` at a player.
+ * ========================================================================== */
+
+describe('activeAdapterLabel', () => {
+  it('names the ACTIVE adapter on a hybrid laptop, not the first one', () => {
+    // The measured case from CLAUDE.md: an RTX 3080 laptop that also reports
+    // integrated AMD, where `--vm-safe-mode` moves which one is active. Taking
+    // devices[0] would answer a different question and would look right.
+    expect(activeAdapterLabel({
+      gpuDevice: [
+        { vendorId: 0x1002, deviceId: 0x1638, active: false },
+        { vendorId: 0x10de, deviceId: 0x249c, active: true },
+      ],
+    })).toBe('NVIDIA (device 0x249c)');
+
+    expect(activeAdapterLabel({
+      gpuDevice: [
+        { vendorId: 0x1002, deviceId: 0x1638, active: true },
+        { vendorId: 0x10de, deviceId: 0x249c, active: false },
+      ],
+    })).toBe('AMD (device 0x1638)');
+  });
+
+  it('falls through to the hex for a vendor it does not know', () => {
+    // A vendor id is assigned once and never reused, so the table is a fact,
+    // not a guess — but an unknown one must still say something useful.
+    expect(activeAdapterLabel({ gpuDevice: [{ vendorId: 0xabcd, deviceId: 1, active: true }] }))
+      .toBe('vendor 0xabcd (device 0x1)');
+  });
+
+  it('returns null for every shape it cannot read, and never throws', () => {
+    // Each of these is reachable: a headless or software-rasteriser boot lists
+    // devices with none active, and an Electron major may rename the field.
+    for (const bad of [
+      null, undefined, 42, 'gpu', [],
+      {},
+      { gpuDevice: null },
+      { gpuDevice: 'nvidia' },
+      { gpuDevice: [] },
+      { gpuDevice: [{ vendorId: 0x10de, active: false }] },
+      { gpuDevice: [null, 7] },
+      { gpuDevice: [{ active: true }] },
+      { gpuDevice: [{ vendorId: '0x10de', active: true }] },
+    ]) {
+      expect(() => activeAdapterLabel(bad)).not.toThrow();
+      expect(activeAdapterLabel(bad), JSON.stringify(bad) ?? 'undefined').toBeNull();
+    }
+  });
+
+  it('names a vendor with no device id rather than printing undefined', () => {
+    expect(activeAdapterLabel({ gpuDevice: [{ vendorId: 0x8086, active: true }] })).toBe('Intel');
   });
 });

@@ -103,6 +103,60 @@ export interface DesktopDisplayPatch {
   readonly unlockFrameRate?: boolean;
 }
 
+/**
+ * PCI vendor ids, which are stable and public.
+ *
+ * Not a lookup table of GPU MODELS — that is the trap `HardwareCalibration`'s
+ * header warns about, a list that goes stale on hardware that did not exist
+ * when it was written. A vendor id is assigned once and never reused, so this
+ * is a fact rather than a guess, and anything unknown falls through to the
+ * hex, which is still more use to a player than nothing.
+ */
+const GPU_VENDORS: Readonly<Record<number, string>> = {
+  0x1002: 'AMD',
+  0x106b: 'Apple',
+  0x10de: 'NVIDIA',
+  0x13b5: 'ARM',
+  0x5143: 'Qualcomm',
+  0x8086: 'Intel',
+};
+
+/**
+ * Which adapter the GPU process is actually on, from `app.getGPUInfo('complete')`.
+ *
+ * Pure, defensive, and typed against `unknown` on purpose: this crosses an IPC
+ * boundary, the shape is Chromium's rather than ours, and it has no stability
+ * guarantee across Electron majors. A shape we do not recognise returns null
+ * and the caller says nothing, which is the same state as "not desktop" — the
+ * row simply omits the sentence rather than printing `undefined`.
+ *
+ * `active` is the field that matters. A hybrid laptop reports BOTH adapters
+ * with one marked active, so counting devices or taking the first would answer
+ * a different question — and the question here is the one a `console.log`
+ * was answering to nobody: which chip did the switch actually get us.
+ */
+export function activeAdapterLabel(info: unknown): string | null {
+  if (typeof info !== 'object' || info === null) return null;
+  const devices = (info as { gpuDevice?: unknown }).gpuDevice;
+  if (!Array.isArray(devices)) return null;
+
+  for (const d of devices) {
+    if (typeof d !== 'object' || d === null) continue;
+    const row = d as { vendorId?: unknown; deviceId?: unknown; active?: unknown };
+    if (row.active !== true) continue;
+    const vendor = typeof row.vendorId === 'number' ? row.vendorId : -1;
+    const device = typeof row.deviceId === 'number' ? row.deviceId : -1;
+    if (vendor < 0) return null;
+    const name = GPU_VENDORS[vendor] ?? `vendor 0x${vendor.toString(16)}`;
+    // The device id disambiguates two cards from one vendor, which is exactly
+    // the case somebody checking this setting is in.
+    return device >= 0 ? `${name} (device 0x${device.toString(16)})` : name;
+  }
+  // Devices listed but none active: a real state on a headless or software
+  // rasteriser boot, and NOT the same as an unparseable reply.
+  return null;
+}
+
 /** The object `contextBridge.exposeInMainWorld('voltmarch', ...)` installs. */
 export interface DesktopBridge {
   readonly bridge: number;

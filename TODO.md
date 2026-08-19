@@ -55,9 +55,6 @@ with no number is untracked, and that is itself the bug.
 
 ## Desktop
 
-- **#54 — GPU enforcement refuses in a console log nobody reads.** The switch works and is measured:
-  `--vm-safe-mode` moves both renderers between the RTX 3080 and the integrated AMD. The failure
-  path is invisible.
 - **#56 — desktop players start with an empty profile.** Partly closed: export/import verified
   working under `app://` on a real Electron launch. What remains is that nothing migrates
   automatically, the buttons sit on the Missions screen rather than Options, and an empty profile

@@ -565,8 +565,11 @@ if (!app.requestSingleInstanceLock()) {
     );
 
     const display = screen.getPrimaryDisplay();
-    // No web equivalent — HardwareCalibration currently hardcodes a 60 Hz
-    // target, so a 144 Hz player is being calibrated to the wrong number.
+    // No web equivalent, which is why it is on the bridge. It IS read now, by
+    // the Frame Rate Target row — but only to ANNOTATE it. See
+    // `HardwareCalibration#targetMsForCap`: a 144 Hz target is inert on hardware
+    // that could reach it and floors the picture on hardware that cannot, so the
+    // panel does not get to choose. The player does.
     console.log(`[vm] display: ${display.size.width}x${display.size.height} @ ${display.displayFrequency}Hz`);
 
     app.on('activate', () => {

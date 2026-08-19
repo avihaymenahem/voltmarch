@@ -72,6 +72,7 @@ import {
 import { HelpPanel } from './Help';
 import { ManualView } from './Manual';
 import {
+  activeAdapterLabel,
   BRIDGE_VERSION,
   desktopBridge,
   type DesktopDisplayPatch,
@@ -453,6 +454,20 @@ export class SettingsScreen implements Screen {
    * on each `DesktopDisplayInfo`, which is a bridge-version bump.
    */
   private displayHz: number | null = null;
+  /**
+   * The adapter the GPU process ACTUALLY got, or null in a browser.
+   *
+   * READ BACK, NEVER INFERRED FROM THE SWITCH. `--force_high_performance_gpu`
+   * is a HINT: `desktop/src/main.ts` records that its effect site is conjoined
+   * with `&& system_device_id_high_perf`, and `RENDER_FINDINGS.md` §7g measured
+   * Windows ignoring the same request from a browser outright. So the only
+   * honest way to answer "did it work" is to ask which adapter is active.
+   *
+   * Nor is the WebGL renderer string a substitute — it names whichever chip
+   * WebGL got, which on a hybrid laptop is not necessarily the one Chromium's
+   * GPU process is on. `app.getGPUInfo('complete')` is the process's own view.
+   */
+  private gpuActive: string | null = null;
   /** The options frame itself, hidden while the help overlay is up. */
   private frameRoot: HTMLElement | null = null;
   private help: HelpPanel | null = null;
@@ -1093,6 +1108,15 @@ export class SettingsScreen implements Screen {
       .then((state) => this.adoptDesktop(state))
       .catch(() => undefined);
     void bridge
+      .gpuInfo('complete')
+      .then((info) => {
+        const label = activeAdapterLabel(info);
+        if (label === null) return;
+        this.gpuActive = label;
+        if (this.body !== null && this.tab === 'graphics') this.renderTab();
+      })
+      .catch(() => undefined);
+    void bridge
       .displayFrequency()
       .then((hz) => {
         if (!Number.isFinite(hz) || hz <= 0) return;
@@ -1217,8 +1241,13 @@ export class SettingsScreen implements Screen {
         d.forceHighPerformanceGpu,
         (v) => this.patchDesktop({ forceHighPerformanceGpu: v }),
       ),
+      // THE RESULT, NOT THE REQUEST. This setting used to report itself only
+      // through a `console.log` in the main process — a refusal nobody reads,
+      // for a switch that is a hint the platform may ignore. The adapter is
+      // read back and stated here instead.
       'Forces the discrete GPU. This is the reason the desktop build exists — '
-      + 'Windows ignores the same request from a browser. Takes effect on restart.',
+      + 'Windows ignores the same request from a browser. Takes effect on restart.'
+      + (this.gpuActive !== null ? ` Running on ${this.gpuActive}.` : ''),
     ));
 
     sec.appendChild(row(
