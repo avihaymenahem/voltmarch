@@ -418,6 +418,15 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   the first draft was vacuous:** commenting out the one line that reaches the announcer left the
   suite 9/9 green, because `// sayEva(event.line);` still contains the token being matched. Every
   structural read in that file strips comments first. Verify a spec CAN fail before believing it.
+
+  **ASKING THE SAME QUESTION ONCE MORE FOUND TWO MORE.** *Does the rest of the campaign's authored
+  output reach a screen?* — `Shell.publishCampaignObjectives` stored the objective rows in a private
+  field read by nobody, while `campaign.system.ts` concatenated a fingerprint string PER FRAME to
+  decide whether to feed it; and `PauseMenu.currentObjectives()` read `__vmProgression`, so pressing
+  Escape during an operation listed the player's SKIRMISH mission chain under "Objectives" — from a
+  profile that is deaf for the duration. The panel was always right, because
+  `ui/objectives.system.ts` reads `campaignSession()` directly. **One provider, polled, is the
+  shape**; the dead channel is deleted and the pause menu reads the same view.
 - **A PRESET IS NOT A BIOME, AND `OperationMap.biome` WAS TYPED `string` UNTIL AN OPERATION SHIPPED
   ON THE WRONG GROUND.** The two vocabularies overlap on three names — `temperate`, `snow`, `urban`
   — and disagree on exactly one: the `MAP_PRESETS` key is **`arid`**, the `BiomeName` is
