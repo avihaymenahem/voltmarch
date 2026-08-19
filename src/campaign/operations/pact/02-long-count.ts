@@ -114,14 +114,27 @@
  * superweapon is `struct.superweapon.*` and is refused.
  *
  * **THE SOVIETS CANNOT DO IT EITHER, AND THAT WAS CHECKED RATHER THAN
- * ASSUMED.** Their largest ungated land blast is `heavyCannon` (Anvil Tank,
+ * ASSUMED.** Their largest ungated MOBILE blast is `heavyCannon` (Anvil Tank,
  * 2.1 m), which needs to land within 7.76 m of the post's centre; `artillery`
  * — the 6.5 m V4 Launcher — has **no carrier at all**, which `Defs.ts` states
- * in as many words. `flameTower` (3.2 m) and `teslaCoil` are both
- * `struct.defence.specialist` and `roster.ai` is empty. `isValidTarget` refuses
- * an allied target, so the AI never aims at it; the brain has no `issueSell`,
- * so it cannot remove it; and placement refuses occupied ground, so it cannot
- * build over it. **The only army that can break the reading post is yours.**
+ * in as many words. `isValidTarget` refuses an allied target, so the AI never
+ * aims at it; the brain has no `issueSell`, so it cannot remove it; and
+ * placement refuses occupied ground, so it cannot build over it. **The only
+ * army that can break the reading post is yours** — until you take the deed
+ * off them, which is what route B below is really selling.
+ *
+ * **ONE HALF OF THAT PARAGRAPH WAS WRONG AND THE CONCLUSION SURVIVED IT
+ * ANYWAY.** It read *"`flameTower` (3.2 m) and `teslaCoil` are both
+ * `struct.defence.specialist` and `roster.ai` is empty"*. `teslaCoil` is and
+ * is refused; **`flameTower` carries no `UNLOCK_TAGS` row at all**, and that
+ * table's own `struct.defence.specialist` block says *"NOT `flameTower`"* in as
+ * many words and gives the reason. So an empty `roster.ai` withholds nothing
+ * from it, and counted on the built world **two Flame Towers stand on the
+ * Soviet seat**. They do not touch the post: the nearer is **124.4 m** from it
+ * and the other 130.4 m, which is 39x and 41x their own 3.2 m blast, and an
+ * emplacement cannot close. The argument that holds is the DISTANCE, not the
+ * roster — which is the shape of claim to prefer here, because a roster is a
+ * list somebody can edit and a hundred and twenty metres is not.
  *
  * ============================================================================
  * THREE ROUTES, AND THE THIRD IS THE ONE NOBODY EXPECTS
@@ -138,20 +151,113 @@
  * approach and it is left in, exactly as `soviets-common-standard` leaves its
  * own.
  *
- * **B — TAKE THE DEED.** `CaptureService.isCapturable` refuses only an
+ * **B — TAKE THE DEED, AND IT DOES NOT EXIST AT THE PRICE THIS BLOCK USED TO
+ * QUOTE.** The old text read *"`CaptureService.isCapturable` refuses only an
  * already-owned building; there is no health threshold on an enemy structure.
  * A 500-credit Artificer who walks the 268.5 m makes the reading post PLAYER
- * property, and `isValidTarget` then refuses it to every gun you own — the
- * envelope stops existing. **It also hands it to the other side**: the post is
- * 94.3 m from the Soviet OPENING and 131.5 m from the Construction Yard that
- * opening raises — the nearest Soviet structure of any kind is 106.0 m away —
- * and every Soviet unit that walks past it now has a legal target. The loss
- * condition does not care who fired. (This read "94.3 m from the Soviet
- * Construction Yard". 94.3 is the distance to the START SPOT, which is what
- * the layout header's `foe ->` column measures and what this sentence
- * mislabelled; the yard itself lands at 402, 134.)
+ * property"*. The first clause is a true sentence about `isCapturable` and a
+ * false one about the capture: **`CaptureService.resolve` tests the health
+ * itself.** Above `CAPTURE.captureHpFrac` (0.5) an ENEMY structure takes the
+ * SOFTEN branch — `maxHp * CAPTURE.softenFrac` (0.25) pushed as a
+ * HighExplosive damage record, through `ARMOR_MATRIX[HighExplosive][Concrete]`
+ * (1.00) and `COMBAT_DAMAGE.globalMul` (0.80), so **0.20 of max lands and the
+ * Artificer is consumed for it**.
+ *
+ * Driven through the real `CaptureService` and the real `DamageSystem` on
+ * 2026-08-19, the 900 hp post walks **900 -> 720 -> 540 -> 360** — 0.400 of
+ * max, the first reading at or under the gate — and the FOURTH Artificer takes
+ * it. **Four engineers, 2000 credits**, 40% of the opening bank, delivered on
+ * foot across 268.5 m of Soviet ground. Bring a gun and it is one Artificer
+ * plus 450 hp of shooting, which at the 16.50 dps derived below is **27.3 s of
+ * one parked Solarch**: 500 credits and half a minute.
+ *
+ * **AND EVERY SPELLING OF IT SPENDS THE HIDDEN SECONDARY BEFORE IT DELIVERS
+ * ANYTHING.** `t.graze` is `entityHpBelow 'count' frac 1`, which is any damage
+ * at all, and the first soften is 180 of it; `Session.setObjective` opens with
+ * "A RESOLVED OBJECTIVE DOES NOT UN-RESOLVE", so `quiet` and its 400 credits
+ * are gone permanently on engineer one. The third soften puts the post under
+ * half and spends `t.hurt` as well. **There is no undamaged route.** A squad
+ * cannot take it instead: `GarrisonService.refusalFor` answers **'hostile'**
+ * for a structure whose owner is neither neutral nor allied, so the engineer is
+ * the only door and the soften branch is the only way through it.
+ *
+ * **WHAT IT BUYS IS WORSE THAN WHAT IT COSTS, WHICH IS WHY IT IS LEFT IN.**
+ * `isValidTarget` refuses an allied target, so a captured post is safe from
+ * every gun YOU own — and legal for every gun THEY own, because it stops being
+ * theirs. The post is 94.3 m from the Soviet OPENING and 131.5 m from the
+ * Construction Yard that opening raises, and `t.countLost` does not care who
+ * fired. So route B pays 400 credits of secondary plus 500-2000 of engineer to
+ * convert *my own gunners might kill it* into *theirs will*. `t.see`'s second
+ * line already warns about the envelope; the deed is a third way into the same
+ * loss, and the honest fix for it is a `CaptureService.addVeto` this operation
+ * has no way to install — see the block on `count` below.
+ *
+ * (Two corrections kept from the old paragraph. **94.3 m is the distance to the
+ * START SPOT**, not to the Construction Yard, which is what the layout header's
+ * `foe ->` column measures and what the sentence originally mislabelled; the
+ * yard itself lands at 402, 134. And the clause *"the nearest Soviet structure
+ * of any kind is 106.0 m away"* does not reproduce on the built world in either
+ * reading: **the nearest of any kind is the pump itself at 32.2 m**, and the
+ * nearest one that is not on this lot is a Flame Tower at 124.4 m.)
  *
  * **C — THE FAR SIDE.** Never viable. See row 3 of the table above.
+ *
+ * ============================================================================
+ * THE PUMP IS A DEED NOW. THE POST IS STILL A CORPSE, AND THAT IS DELIBERATE
+ * ============================================================================
+ * `t.win` and `t.quiet` were both `entityDead 'tap'`, and **a captured
+ * structure is still alive** — `aliveWithTag` counts it. The pump is
+ * `civOreMine` on the SOVIET seat: an enemy building, 700 hp, with the capture
+ * cursor over it (`input/Commands.ts` §5, the `hoverEnemy` arm) and a
+ * `CIVILIAN_INCOME_SOURCES` row paying its holder 5 cr/s. So walking an
+ * Artificer into the one structure this operation is named after made the only
+ * win condition in the table false forever, on an operation whose
+ * `annihilationWin` is off.
+ *
+ * **AND THERE WAS NO WAY BACK.** `civOreMine` goes through
+ * `Scenarios.civilian()`, which clears `EntityFlag.Sellable`, and
+ * `RepairSell.selfDestruct` refuses an `EntityKind.Building` — so unlike
+ * `pact.01.shallow-road`'s `radar`, a player who took this could not sell it
+ * back off their own books. The only undo was ctrl-force-firing onto a
+ * structure they had just paid four Artificers for.
+ *
+ * **EVERY PLAYER CAN MAKE THAT MISTAKE.** `mrdArtificer` carries no
+ * `UNLOCK_TAGS` row, so `roster.player: []` cannot withhold it; its prereqs —
+ * `mrdChapterhouse` and `mrdCistern` — both stand on the player's seat at t = 0
+ * under `opening: 'base'`, counted on the built world; and the player OPENS
+ * with one.
+ *
+ * So `t.win` and `t.quiet` count DEEDS — `ownerCount` on seat 1, one shared
+ * `TAP_OFF` object — and **capture satisfies the primary exactly as demolition
+ * does.** The primary's title and Calvane's two lines about taking the head off
+ * were rewritten to stop naming the one route the rule no longer requires.
+ * `quiet`'s title needed nothing: it has always read *"Take the pump without
+ * marking the reading post"*, and it is now true in both senses of "take".
+ *
+ * ----------------------------------------------------------------------------
+ * `count` IS NOT MIGRATED, AND MIGRATING IT WOULD BE THE WORSE BUG
+ * ----------------------------------------------------------------------------
+ * `t.countLost` stays `entityDead 'count'`, and `t.quiet`'s two guards stay
+ * `entityAlive` and `not entityHpBelow`. Spelling `t.countLost` as
+ * `ownerCount(1, 'building', 'count', max: 0)` would end the operation in a
+ * **LOSS on the tick the player captured the post** — a defeat for taking the
+ * four-hundred-year count into protective custody, which is a worse sentence
+ * than the one being fixed.
+ *
+ * **WHAT IS LEFT STANDING, STATED PRECISELY SO NOBODY HAS TO REDISCOVER IT.**
+ * Capturing `count` does not fail the operation by itself. What it does is
+ * strip the post's only protection: `isValidTarget` refuses an ALLIED target
+ * and nothing else, so a Soviet-owned post is unshootable by the Soviets and a
+ * player-owned one is not. Every Soviet hull that walks past it then has a
+ * legal target 94.3 m from their own opening, and `t.countLost` ends the match
+ * in a loss whoever fired. **That is a "must not be capturable" case and the
+ * vocabulary cannot express it**: the twelve conditions are all READS, so no
+ * trigger can refuse a capture, and the mechanism that could —
+ * `CaptureService.addVeto`, which `GarrisonService` already uses to protect an
+ * occupied strongpoint — has no campaign-side installer. Building one is a
+ * feature, not an edit to this file, and it would fix the same hazard in every
+ * operation that has a protect-target. Until then this is documented, not
+ * closed, and route B above prices it.
  *
  * ============================================================================
  * THE NUMBERS THE FIGHT IS MADE OF
@@ -197,6 +303,13 @@
  * plus 1280 hp of Barracks and Sentry Gun. It buys 500 credits, the Soviets'
  * second infantry queue, and the four Anvil Tanks `t.tide` would otherwise put
  * on the road at minute seven: 3600 credits of armour that never arrives.
+ *
+ * **AND IT CAN BE BOUGHT WITH AN ARTIFICER INSTEAD OF A SHELL**, which is the
+ * `STAGING_OFF` migration below: an 800 hp Barracks is four engineers on its
+ * own, or one behind any gun that has already halved it, and the buyer keeps a
+ * working infantry queue rather than a crater. All three of the things this
+ * paragraph says the objective buys are denied by the deed and not by the
+ * wreckage, so the threshold counts the deed.
  *
  * ============================================================================
  * THE ONE ZONE, AND WHY IT IS NOT CENTRED ON THE OBJECTIVE
@@ -290,7 +403,7 @@
 
 import { Faction } from '../../../core/types';
 import { minutes, seconds } from '../../types';
-import type { OperationDef } from '../../types';
+import type { Condition, OperationDef } from '../../types';
 
 /* -- the measured points -------------------------------------------------- */
 
@@ -302,6 +415,88 @@ const APPROACH = { x: 253, z: 317 };
 const PUMP = { x: 316, z: 268 };
 /** Where the relief column forms up. Standable at the centre and all four ring points. */
 const ROAD = { x: 200, z: 192 };
+
+/* -- the thresholds ------------------------------------------------------- */
+
+/**
+ * How long the layout is given to have placed the seam before a zero threshold
+ * over it is believed.
+ *
+ * **`ownerCount(1, 'building', 'tap', max: 0)` READS TRUE AGAINST AN EMPTY TAG
+ * REGISTRY**, exactly as `entityDead` does — the spelling changed and the
+ * hazard did not. Unguarded, `t.win` fires on the first tick the Director runs
+ * and the player is handed a victory they did not play, which is the one
+ * failure that reaches the end screen looking like a feature. `t.quiet` shares
+ * the same object, so it would pay 400 credits for it as well.
+ *
+ * **IT IS DEFENCE AGAINST A LAYOUT THAT PLACED NOTHING, NOT AGAINST A TICK-ONE
+ * READ THAT HAPPENS TODAY, AND SAYING WHICH MATTERS.** `scenarios.system.ts`
+ * builds the world inside `async init()` and `SystemRegistry.init` awaits every
+ * module's init in sequence before a tick is taken, so the registry is never
+ * empty when the Director first runs and the empty read is unreachable in the
+ * product. What IS reachable is a layout that stamped nothing — a wrong def
+ * key, a footprint that will not fit, a roster that refused the structure — and
+ * `tests/campaign-maps.spec.ts` and `tests/campaign-roster-ground.spec.ts` are
+ * the gates that catch those two causes. This is the guard that stops the
+ * symptom being instant.
+ *
+ * Twenty seconds is unmistakably past the build and unmistakably short of
+ * anything happening. Measured on the built world, the pump is **221.7 m** from
+ * the nearest player unit, and the fastest thing on the player's seat is a
+ * 7.6 m/s Solarch — **152 m of straight line in twenty seconds** — against
+ * 700 hp behind two Sentry Guns. `soviets.01.first-tap` and
+ * `soviets.03.deep-sector` guard their own thresholds with the same constant.
+ */
+const SETTLE: Condition = { on: 'elapsed', ticks: seconds(20) };
+
+/**
+ * The Soviets no longer hold the pumping head — levelled or taken, and the
+ * operation does not care which. See the header for why capture counts and for
+ * why the reading post is deliberately NOT spelled this way.
+ *
+ * **DEFINED ONCE BECAUSE TWO TRIGGERS MUST AGREE ON IT.** `t.quiet` has to
+ * resolve on the same tick as `t.win` or the medal loses a secondary that was
+ * earned — `runDirector` returns early once an outcome is set, so a completion
+ * that arrives one tick late arrives never. Two copies of one threshold are two
+ * copies that will disagree the first time either is tuned; `soviets.01`'s
+ * `TAP_TAKEN` is the same shape for the same reason.
+ */
+const TAP_OFF: Condition = {
+  on: 'all',
+  of: [SETTLE, { on: 'ownerCount', player: 1, role: 'building', tag: 'tap', max: 0 }],
+};
+
+/**
+ * The Soviets no longer hold the staging post, and its exact complement.
+ *
+ * **THE SAME DEFECT AS THE PUMP'S, ONE OBJECTIVE DOWN, AND IT COST THE PLAYER
+ * RATHER THAN THE MATCH.** `staging` is a `barracks` on seat 1 — capturable,
+ * and worth capturing, because it is a real producer whose second infantry
+ * queue is worth up to 35% on the one queue (`FACTORY_SPEED_BONUS`). Keyed on
+ * `entityDead`/`entityAlive` it produced two wrong answers at once: the
+ * 500-credit secondary did not complete for a post the Soviets had lost, and
+ * `t.tide` still put four Anvil Tanks on the road at minute seven **off a
+ * building the player owned**. The header prices this secondary by what it
+ * DENIES the Soviets — the second queue and the 3600 credits of armour — and
+ * capture denies both, so `entityDead` was under-counting its own stated rule.
+ *
+ * **DEFINED AS A PAIR BECAUSE THEY MUST PARTITION.** `max: 0` and `min: 1` over
+ * one count leave no world state in which the column arrives AND the secondary
+ * completes, or in which neither happens. `soviets.03.deep-sector`'s
+ * `MASTS_OFF`/`MASTS_HELD` is the same shape for the same reason.
+ *
+ * `STAGING_OFF` carries `SETTLE` because it PAYS. `STAGING_HELD` does not need
+ * it — `min: 1` reads FALSE against an empty registry, which withholds a
+ * scripted wave rather than granting a reward, and it is conjoined with a
+ * seven-minute `elapsed` in the only trigger that reads it.
+ */
+const STAGING_OFF: Condition = {
+  on: 'all',
+  of: [SETTLE, { on: 'ownerCount', player: 1, role: 'building', tag: 'staging', max: 0 }],
+};
+const STAGING_HELD: Condition = {
+  on: 'ownerCount', player: 1, role: 'building', tag: 'staging', min: 1,
+};
 
 const op: OperationDef = {
   id: 'pact.02.long-count',
@@ -414,12 +609,25 @@ const op: OperationDef = {
   roster: { player: [], ai: [] },
 
   objectives: [
-    { id: 'tap', kind: 'primary', title: 'Destroy the Soviet pumping head' },
+    // "TAKE … OFF THEM", NOT "DESTROY". `t.win` counts what seat 1 still owns,
+    // so walking an Artificer into the pump ends the operation exactly as
+    // levelling it does, and a title that said "destroy" would be naming the
+    // one route the rule does not require. See the header.
+    { id: 'tap', kind: 'primary', title: 'Take the Soviet pumping head off them' },
+    // UNCHANGED, AND IT IS THE ONE TITLE IN THIS FILE THAT MUST NOT MOVE.
+    // `t.countLost` still reads `entityDead`, deliberately — "standing" is
+    // exactly what it tests, and a post the player has CAPTURED is standing and
+    // still satisfies this. See the block on `count` in the header for what
+    // that leaves open and why it is not closable from a trigger table.
     { id: 'count', kind: 'primary', title: 'Leave the reading post standing' },
     {
       id: 'staging',
       kind: 'secondary',
-      title: 'Level the Soviet staging post',
+      // "TAKE … OFF THEM", NOT "LEVEL". `t.staging` counts what seat 1 still
+      // owns, so an Artificer answers this exactly as a shell does — and the
+      // header prices the objective by what it denies the Soviets, which
+      // capture denies more completely than demolition. See `STAGING_OFF`.
+      title: 'Take the Soviet staging post off them',
       credits: 500,
     },
     {
@@ -434,8 +642,8 @@ const op: OperationDef = {
   triggers: [
     /* -- the opening word -------------------------------------------------
      * Two lines: the job, then the constraint. A player who reads only the
-     * first still knows what to destroy; a player who reads only the second
-     * still knows what not to. Calvane states the reason out loud because it
+     * first still knows what to take; a player who reads only the second
+     * still knows what to leave. Calvane states the reason out loud because it
      * is the chapter's argument and an operation that hides its own mechanism
      * is a quiz.
      */
@@ -444,10 +652,13 @@ const op: OperationDef = {
       when: { on: 'elapsed', ticks: seconds(4) },
       then: [
         {
+          // "Take it off them" rather than "Take the head off it": `t.win`
+          // counts deeds, so breaking the pump and walking into it are one
+          // order, and the sentence has to be the one that covers both.
           do: 'dialogue',
           speaker: 'Calvane',
           text: 'Survey 33-017. They sank a pump on our crust eleven days ago and it is '
-            + 'running. Take the head off it.',
+            + 'running. Take it off them.',
         },
         {
           do: 'dialogue',
@@ -556,25 +767,36 @@ const op: OperationDef = {
       ],
     },
 
-    /* -- the staging post -------------------------------------------------- */
+    /* -- the staging post --------------------------------------------------
+     * `STAGING_OFF`, the exact complement of `t.tide`'s `STAGING_HELD`. See the
+     * constants: a captured barracks is a barracks the Soviets have lost, and
+     * this objective is priced by what it denies them.
+     */
     {
       id: 't.staging',
-      when: { on: 'entityDead', tag: 'staging' },
+      when: STAGING_OFF,
       then: [
         {
+          // "off them" rather than "flat", because a post an Artificer walked
+          // into is not flat — it is turning out Conscripts for you. The second
+          // sentence is the objective's real rule and is true either way.
           do: 'dialogue',
           speaker: 'Nael',
-          text: 'Staging post is flat. Nothing forms up on that road now.',
+          text: 'Staging post is off them. Nothing forms up on that road now.',
         },
         { do: 'completeObjective', id: 'staging' },
       ],
     },
 
     /* -- the road column --------------------------------------------------
-     * Seven minutes, and gated on the staging post STILL STANDING — which is
-     * what gives the secondary teeth beyond five hundred credits. It comes off
-     * the post and attack-moves the player's opening, so a player who has
-     * committed everything to the seam has to decide whether to come back.
+     * Seven minutes, and gated on the Soviets STILL HOLDING the staging post —
+     * which is what gives the secondary teeth beyond five hundred credits. It
+     * comes off the post and attack-moves the player's opening, so a player who
+     * has committed everything to the seam has to decide whether to come back.
+     *
+     * **`STAGING_HELD`, NOT `entityAlive`.** A captured post is alive, so the
+     * old spelling put four Anvils on the road off a building the player owned
+     * — punishing them for the exact play the secondary above rewards.
      *
      * `rhino` is the Anvil Tank, literal and unremapped: `EffectSink.spawnUnits`
      * resolves through `ProductionCatalog.byKey` with no `keyFor`, so an
@@ -589,7 +811,7 @@ const op: OperationDef = {
         on: 'all',
         of: [
           { on: 'elapsed', ticks: minutes(7) },
-          { on: 'entityAlive', tag: 'staging' },
+          STAGING_HELD,
         ],
       },
       then: [
@@ -633,7 +855,12 @@ const op: OperationDef = {
       when: {
         on: 'all',
         of: [
-          { on: 'entityDead', tag: 'tap' },
+          // `TAP_OFF`, THE SAME OBJECT `t.win` READS. Two spellings of one
+          // threshold are two spellings that drift, and the drift here is a
+          // paid secondary resolving one tick after the operation has already
+          // ended — i.e. never. The pump's two fates are one condition now;
+          // the post's two are still the pair below, deliberately.
+          TAP_OFF,
           { on: 'entityAlive', tag: 'count' },
           { on: 'not', of: { on: 'entityHpBelow', tag: 'count', frac: 1 } },
         ],
@@ -653,6 +880,18 @@ const op: OperationDef = {
      * a loss. That is the right answer and it is the only one the file's own
      * ordering can express: `runDirector` walks the triggers in declared order
      * and `Session.end` refuses a second outcome.
+     *
+     * **IT KEEPS `entityDead` WHILE `t.win` MOVED TO `ownerCount`, AND THE
+     * ASYMMETRY IS THE POINT.** The pump's threshold had to migrate because
+     * capture made a WIN unreachable; migrating this one would make a LOSS
+     * reachable by capture — the operation would end in defeat on the tick a
+     * player walked an engineer into the very thing it told them to protect.
+     * The objective says "standing", this tests standing, and a captured post
+     * is standing. What capture really costs here is documented at length in
+     * the header (`count` IS NOT MIGRATED): it strips the post's only
+     * protection, because `isValidTarget` refuses an allied target and nothing
+     * else, and this trigger does not care who fires. Closing that needs a
+     * `CaptureService.addVeto` installer that does not exist.
      */
     {
       id: 't.countLost',
@@ -670,18 +909,32 @@ const op: OperationDef = {
       ],
     },
 
-    /* -- the win ---------------------------------------------------------- */
+    /* -- the win ----------------------------------------------------------
+     * `TAP_OFF`, WHICH COUNTS DEEDS AND NOT CORPSES. This was
+     * `entityDead 'tap'`, and a captured pump is alive — so an Artificer put
+     * into the structure this operation is named after made the only win
+     * condition in the table false forever, with `annihilationWin` off, on a
+     * key `Scenarios.civilian()` strips `EntityFlag.Sellable` from so there was
+     * no way to undo it. See the header block.
+     *
+     * `SETTLE` lives inside `TAP_OFF` rather than being conjoined here, so the
+     * threshold and its guard travel together to `t.quiet` as one object.
+     */
     {
       id: 't.win',
-      when: { on: 'entityDead', tag: 'tap' },
+      when: TAP_OFF,
       then: [
         { do: 'completeObjective', id: 'tap' },
         { do: 'completeObjective', id: 'count' },
         {
+          // "off them" rather than "down": a pump an Artificer walked into is
+          // very much still running, and under new management. The second
+          // sentence is the operation's whole argument and is true either way.
           do: 'dialogue',
           speaker: 'Calvane',
-          text: 'Pump down, post standing. Log the depth against the count and send both to '
-            + 'the Reliquary. One day somebody will ask us to prove this, and now we can.',
+          text: 'Pump is off them, post standing. Log the depth against the count and send '
+            + 'both to the Reliquary. One day somebody will ask us to prove this, and now '
+            + 'we can.',
         },
         { do: 'endOperation', result: 'win' },
       ],

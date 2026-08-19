@@ -69,8 +69,17 @@
  * **THE COST OF THE CAPTURE ROUTE IS TIME, WHICH IS THIS OPERATION'S ONLY
  * CURRENCY, AND THAT IS WHAT KEEPS IT HONEST.** A 900 hp mast must be shot to
  * 450 WITHOUT being shot to 0 and then reached by an unarmed 500-credit hull —
- * or taken by three engineers at 1500 credits — and every second of that comes
- * off a nine-minute fuse whose backstop at fifteen cannot be moved. A player
+ * or taken by **four** engineers at **2000** credits — and every second of that
+ * comes off a nine-minute fuse whose backstop at fifteen cannot be moved.
+ *
+ * (Four, not the three this said. An engineer that arrives above
+ * `captureHpFrac` is spent SOFTENING, and the soften lands 20% of max rather
+ * than the raw `softenFrac` 0.25: `Capture.resolve` pushes `maxHp * 0.25` as a
+ * HighExplosive record and `Damage.applyOne` applies
+ * `ARMOR_MATRIX[HighExplosive][Concrete]` 1.00 and `COMBAT_DAMAGE.globalMul`
+ * 0.80. So 900 -> 720 -> 540 -> 360, and only the fourth arrival finds it at
+ * 0.40 and takes it. Quoting `softenFrac` without `globalMul` understates every
+ * capture price in the campaign by one engineer.) A player
  * who spends four minutes converting the camp into an economy has bought
  * 45 cr/s and lost most of the window the 45 cr/s was for.
  *

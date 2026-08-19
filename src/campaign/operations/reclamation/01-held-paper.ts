@@ -62,9 +62,88 @@
  * required, because an operation that fails a player for not knowing an
  * unwritten rule is a quiz.
  *
- * `t.dark` requires the transformer dead **while the mast still stands**. Kill
- * them in the other order and the objective simply never completes; that is the
- * honest reading of "before the mast falls" and it needs no extra condition.
+ * `t.dark` requires the transformer off the garrison's books **while the mast
+ * is still theirs**. Take them in the other order and the objective simply
+ * never completes; that is the honest reading of "before the mast falls" and it
+ * needs no extra condition — the two halves are exact complements over one
+ * count, so nothing can hold both.
+ *
+ * **AND THE MECHANISM THIS SECONDARY TEACHES DOES NOT ACTUALLY FIRE ON THE
+ * BUILT WORLD. MEASURED 2026-08-19, RECORDED RATHER THAN FIXED.** `PowerGrid`
+ * is PER PLAYER, not per lot: there is no such thing as "one transformer
+ * feeding both towers", only one seat's supply against that seat's draw.
+ * Counted on the built world, **seat 1 opens at supply 700 against draw 585**,
+ * and the transformer is 100 of that supply — so taking it off them leaves 600
+ * against 585 and `PowerGrid.recompute` sheds nothing, because `shed` runs only
+ * when `consumed > produced`. The two towers stay lit, and the objective
+ * completes anyway, because `t.dark` reads the transformer and not the towers.
+ *
+ * It is not nothing: the margin goes **115 to 15**, so the next consumer the
+ * garrison raises tips it into a deficit whose shed list is sorted from
+ * `POWER_SHED_ORDER.defence` upward. But *"kill the transformer and the towers
+ * are ornaments"* is not what the shipped grid does at t = 0. **This is not
+ * fixed here** — the fix is a LAYOUT change (fewer plants on that seat, or a
+ * compound that is its own seat) and it belongs in its own commit with its own
+ * measurement, next to the prior question of whether a per-player grid can
+ * express this beat at all. It is written down so the next reader does not have
+ * to measure it twice.
+ *
+ * ============================================================================
+ * EVERY THRESHOLD OVER THE COMPOUND COUNTS DEEDS, AND THEY COUNTED CORPSES
+ * ============================================================================
+ * `t.win` and `t.yardsKept` were `entityDead 'office'` and `t.dark` was
+ * `entityDead 'transformer'`, and **a captured structure is still alive** —
+ * `aliveWithTag` counts it. Both are garrison-owned buildings with the capture
+ * cursor over them (`input/Commands.ts` §5, the `hoverEnemy` arm): the office
+ * mast is a `radar` at 700 hp and the transformer a `powerPlant` at 800.
+ * `annihilationWin` is false and nothing else in the table ends this operation
+ * in a win, so an engineer walked into the mast produced a match that could not
+ * be won — and one walked into the transformer produced a 400-credit secondary
+ * that could no longer be collected.
+ *
+ * **AND THE PLAYER CAN DO IT FROM TICK ZERO, WHICH IS NOT OBVIOUS ON AN
+ * OPERATION WITH NO BASE.** `rclTinker` carries no `UNLOCK_TAGS` row, so
+ * `roster.player: ['unit.raider']` cannot withhold it, and its two prereqs are
+ * `rclRookery` and `rclSorter` — which are two of the four lots the player
+ * opens holding. The Rookery is `producesTab: BuildTab.Infantry` and lists
+ * `rclTinker` among its `produces`, and the four lots draw 70 against the
+ * Furnace's 80, so nothing is dark and nothing stalls. A Tinker is 500 credits
+ * of a 3000 bank: six of them, or one plus the nine Scrap Pickers the player
+ * already owns.
+ *
+ * **THE ENGINEER-ONLY PRICE IS FOUR, NOT ONE, AND IT WAS MEASURED RATHER THAN
+ * REASONED.** `CaptureService.isCapturable` carries no health test, but
+ * `resolve` does: above `CAPTURE.captureHpFrac` (0.5) an ENEMY structure takes
+ * the SOFTEN branch — `maxHp * CAPTURE.softenFrac` (0.25) as a HighExplosive
+ * damage record, through `ARMOR_MATRIX[HighExplosive][Concrete]` (1.00) and
+ * `COMBAT_DAMAGE.globalMul` (0.80), so **0.20 of max lands and the Tinker is
+ * consumed**. Driven through the real `CaptureService` and the real
+ * `DamageSystem`, the 700 hp office walks 700 -> 560 -> 420 -> 280 and the
+ * 800 hp transformer 800 -> 640 -> 480 -> 320; the fourth Tinker takes either.
+ * **2000 credits, two thirds of the opening bank** — or one Tinker behind any
+ * gun that has already halved it.
+ *
+ * **THE TRANSFORMER IS THE ONE ANYBODY WOULD ACTUALLY WANT.** This operation's
+ * opening line is that the Furnace is *"the only 80 there is"*, and a captured
+ * `powerPlant` is 100 more — more than doubling the player's supply, on the
+ * operation whose minute-three decision is whether to spend 63% of the bank on
+ * a Breaker Yard. The lure is not hypothetical; it is the thing the position is
+ * built to make the player want.
+ *
+ * So every threshold over the compound counts DEEDS now — `ownerCount` on
+ * seat 1 — and **capture satisfies both objectives exactly as demolition does.**
+ * That changes what they MEAN, so the primary's title, the hidden secondary's
+ * title and four of Tallow's and Cregg's lines were rewritten rather than left
+ * implying a rule the table no longer enforces. `soviets.01.first-tap` and
+ * `soviets.03.deep-sector` made the same migration for the same reason.
+ *
+ * **`t.noticed` KEEPS `entityHpBelow` AND NEEDS NO MIGRATION AT ALL**, which is
+ * worth stating because it is the one trigger here that looks like it should
+ * move. It reads DAMAGE — "somebody has taken a shot at it" — and a capture is
+ * damage: the soften branch is the only door onto an enemy structure at full
+ * health, so an engineer walking into the office trips the alarm on the tick he
+ * arrives, exactly as a rifle round would. The lever the player pulls is the
+ * same lever.
  *
  * ============================================================================
  * WHAT THE THREE FIXED NUMBERS ARE DOING
@@ -123,7 +202,7 @@
 
 import { Faction } from '../../../core/types';
 import { minutes, seconds } from '../../types';
-import type { OperationDef } from '../../types';
+import type { Condition, OperationDef } from '../../types';
 
 /* -- the measured points -------------------------------------------------- */
 
@@ -154,6 +233,83 @@ const RELIEF = { x: 180, z: 348 };
 const SORTER = { x: 166, z: 252 };
 /** The Rookery lot — the deepest yard, and what the watch is sent to break. */
 const ROOKERY = { x: 284, z: 292 };
+
+/* -- the thresholds ------------------------------------------------------- */
+
+/**
+ * How long the layout is given to have placed the compound before a zero
+ * threshold over it is believed.
+ *
+ * **`ownerCount(1, 'building', 'office', max: 0)` READS TRUE AGAINST AN EMPTY
+ * TAG REGISTRY**, exactly as `entityDead` does — the spelling changed and the
+ * hazard did not. Unguarded, `t.win` fires on the first tick the Director runs
+ * and hands the player a victory they did not play, and `t.dark` pays 400
+ * credits for a transformer nobody touched.
+ *
+ * **IT IS DEFENCE AGAINST A LAYOUT THAT PLACED NOTHING, NOT AGAINST A TICK-ONE
+ * READ THAT HAPPENS TODAY, AND SAYING WHICH MATTERS.** `scenarios.system.ts`
+ * builds the world inside `async init()` and `SystemRegistry.init` awaits every
+ * module's init in sequence before a tick is taken, so the registry is never
+ * empty when the Director first runs and the empty read is unreachable in the
+ * product. What IS reachable is a layout that stamped nothing — and this
+ * operation is the one most exposed to it, because BOTH compound tags sit
+ * behind `roster.ai: ['struct.defence.specialist']` company: a wrong def key, a
+ * footprint that will not fit on urban ground, or a roster that refuses the
+ * structure all end the same way. `tests/campaign-maps.spec.ts` and
+ * `tests/campaign-roster-ground.spec.ts` are the gates that catch the causes;
+ * this is the guard that stops the symptom being instant.
+ *
+ * Twenty seconds is unmistakably past the build and unmistakably short of
+ * anything happening. Measured on the built world the office is **104.8 m** from
+ * the nearest player unit, and the fastest thing on the player's seat is a
+ * 5.6 m/s Scrapjaw — 112 m of straight line in twenty seconds, and it is the
+ * harvester. What has to happen in that window is 700 hp taken to zero, or to
+ * 350 and then walked into by a Tinker that has to be bought first, by a player
+ * whose army at t = 0 is nine Scrap Pickers.
+ */
+const SETTLE: Condition = { on: 'elapsed', ticks: seconds(20) };
+
+/**
+ * The garrison no longer holds the district office mast — levelled or taken,
+ * and the operation does not care which. See the header for why capture counts.
+ *
+ * **DEFINED ONCE BECAUSE TWO TRIGGERS MUST AGREE ON IT.** `t.yardsKept` has to
+ * resolve on the same tick as `t.win` or the medal loses a secondary that was
+ * earned — `runDirector` returns early once an outcome is set, so a completion
+ * one tick late is a completion that never happens.
+ */
+const OFFICE_OFF: Condition = {
+  on: 'all',
+  of: [SETTLE, { on: 'ownerCount', player: 1, role: 'building', tag: 'office', max: 0 }],
+};
+
+/**
+ * The garrison still holds the mast. `OFFICE_OFF`'s inner count, inverted.
+ *
+ * **THE EXACT COMPLEMENT, AND IT CARRIES NO `SETTLE` ON PURPOSE.** `max: 0` and
+ * `min: 1` over one count partition every world state, so `t.dark` and `t.win`
+ * cannot both be true and cannot both be false — which is what "before the mast
+ * falls" has to mean once the mast can also change hands. And `min: 1` reads
+ * FALSE against an empty registry, which is the safe direction: a layout that
+ * placed nothing simply never completes the secondary, rather than paying for
+ * it. Guarding it would be a second constant to keep in step for nothing.
+ */
+const OFFICE_HELD: Condition = {
+  on: 'ownerCount', player: 1, role: 'building', tag: 'office', min: 1,
+};
+
+/**
+ * The garrison no longer holds the transformer — levelled or taken.
+ *
+ * `SETTLE` is conjoined because this one PAYS: 400 credits and a medal off a
+ * `max: 0` that an empty registry satisfies. `OFFICE_HELD` is not enough on its
+ * own to make that safe, because a world where the office placed and the
+ * transformer did not is exactly the mixed case that would collect it.
+ */
+const TRANSFORMER_OFF: Condition = {
+  on: 'all',
+  of: [SETTLE, { on: 'ownerCount', player: 1, role: 'building', tag: 'transformer', max: 0 }],
+};
 
 const op: OperationDef = {
   id: 'reclamation.01.held-paper',
@@ -232,10 +388,19 @@ const op: OperationDef = {
   },
 
   objectives: [
-    { id: 'mast', kind: 'primary', title: 'Destroy the district office mast' },
+    // "TAKE … OFF THEM", NOT "DESTROY". `t.win` counts what seat 1 still owns,
+    // so walking a Tinker into the mast ends the operation exactly as levelling
+    // it does, and a title that said "destroy" would name the one route the
+    // rule does not require. See the header.
+    { id: 'mast', kind: 'primary', title: 'Take the district office mast off them' },
     {
       id: 'yards',
       kind: 'secondary',
+      // UNCHANGED. This one counts the PLAYER's own holdings and always has —
+      // `t.yardLost` is `ownerCount(0, 'building', 'yard', max: 3)` — so the
+      // capture migration does not reach it. Nothing on the map can take a yard
+      // off the player either: the brain owns no engineer, which `src/sim/AI.ts`
+      // records as a capability gap rather than a choice.
       title: 'Finish with all four yards standing',
       credits: 600,
     },
@@ -243,7 +408,13 @@ const op: OperationDef = {
       id: 'dark',
       kind: 'secondary',
       hidden: true,
-      title: 'Cut the office transformer before the mast falls',
+      // "OFF THEIR GRID", NOT "CUT", AND "STILL THEIRS", NOT "FALLS". Both
+      // halves of `t.dark` count deeds now: the transformer is off the
+      // garrison's books however it got there, and the mast is measured by who
+      // holds it rather than by whether it is standing. The title names both
+      // because a hidden objective the player is judged against has to be
+      // readable the moment it is revealed.
+      title: 'Take the office transformer off their grid while the mast is still theirs',
       credits: 400,
     },
   ],
@@ -268,11 +439,15 @@ const op: OperationDef = {
             + 'countersigning the delivery notes for eleven months and reading none.',
         },
         {
+          // "Take it off them" rather than "Take it down": `t.win` counts
+          // deeds, so breaking the mast and walking into it are one order. The
+          // tail moved with it — "worth more than that office is worth flat"
+          // priced an outcome the rule no longer requires.
           do: 'dialogue',
           speaker: 'Tallow',
-          text: 'The mast on the district office is the only way left to check. Take it '
-            + 'down. Do not lose me a yard doing it — standing, they are worth more than '
-            + 'that office is worth flat.',
+          text: 'The mast on the district office is the only way left to check. Take it off '
+            + 'them. Do not lose me a yard doing it — standing, they are worth more than '
+            + 'that office will ever be.',
         },
       ],
     },
@@ -306,11 +481,19 @@ const op: OperationDef = {
       then: [
         { do: 'revealArea', player: 0, area: { x: OFFICE.x, z: OFFICE.z, r: 66 } },
         {
+          // "Take that transformer off their grid — break it or walk it"
+          // rather than "Kill the transformer": `t.dark` counts deeds now, so a
+          // Tinker answers it, and on this operation a captured `powerPlant` is
+          // 100 power on a seat whose whole supply is the Furnace's 80. The
+          // rest of the line is UNTOUCHED, deliberately — see the header block
+          // measuring what a per-player grid actually does when that plant
+          // changes hands. It is not this commit's claim to make stronger.
           do: 'dialogue',
           speaker: 'Cregg',
-          text: 'Two towers on that compound and one transformer feeding both. Kill the '
-            + 'transformer and the towers are ornaments. The concrete boxes draw nothing '
-            + 'and will keep firing — those you do the hard way.',
+          text: 'Two towers on that compound and one transformer feeding both. Take that '
+            + 'transformer off their grid — break it or walk it — and the towers are '
+            + 'ornaments. The concrete boxes draw nothing and will keep firing — those you '
+            + 'do the hard way.',
         },
         { do: 'setObjective', id: 'dark' },
       ],
@@ -330,6 +513,15 @@ const op: OperationDef = {
      * Sent to the Rookery because it is the deepest yard and the one that makes
      * the answer to the compound's wall. Breaking it is the correct move and
      * the garrison is not being stupid.
+     *
+     * **THE TWO `entityHpBelow` READS DID NOT MIGRATE WITH THE REST, AND THAT
+     * IS NOT AN OVERSIGHT.** They read DAMAGE, not ownership, and a capture IS
+     * damage: `CaptureService.resolve` sends an ENEMY structure through the
+     * SOFTEN branch at anything above `CAPTURE.captureHpFrac`, so the only door
+     * onto a full-health office is 0.20 of its max hp arriving as a
+     * HighExplosive record. A Tinker sent at the mast therefore trips the alarm
+     * on the tick he arrives, exactly as a rifle round would, and the lever the
+     * player pulls is the same lever whichever route they take.
      */
     {
       id: 't.noticed',
@@ -402,20 +594,31 @@ const op: OperationDef = {
      * returns immediately once an outcome is set, so a completion written below
      * the win trigger never fires and the medal never counts it.
      */
+    /*
+     * BOTH HALVES COUNT DEEDS. This was `entityDead 'transformer'` conjoined
+     * with `entityAlive 'office'`, and a captured structure is alive on both
+     * counts. A Tinker in the TRANSFORMER therefore made a 400-credit secondary
+     * permanently uncollectable; a Tinker in the MAST left this trigger armed
+     * forever, because `entityAlive` cannot tell "the mast still stands" from
+     * "the mast is mine now". Only the second was harmless, and only because
+     * the same capture had already made the operation unwinnable — which is not
+     * a defence. `TRANSFORMER_OFF` and `OFFICE_HELD` are exact complements of
+     * `OFFICE_OFF`'s inner count, so this and `t.win` partition every world
+     * state between them and "before the mast goes" is enforced rather than
+     * implied.
+     */
     {
       id: 't.dark',
-      when: {
-        on: 'all',
-        of: [
-          { on: 'entityDead', tag: 'transformer' },
-          { on: 'entityAlive', tag: 'office' },
-        ],
-      },
+      when: { on: 'all', of: [TRANSFORMER_OFF, OFFICE_HELD] },
       then: [
         {
+          // "off their board" rather than "is out": a transformer a Tinker
+          // walked into is running, for the player. The rest of the line is
+          // untouched — see the header on what the per-player grid actually
+          // does here.
           do: 'dialogue',
           speaker: 'Cregg',
-          text: 'Transformer is out. Both towers are cold. The boxes are not. Go.',
+          text: 'Transformer is off their board. Both towers are cold. The boxes are not. Go.',
         },
         { do: 'completeObjective', id: 'dark' },
       ],
@@ -425,23 +628,37 @@ const op: OperationDef = {
       when: {
         on: 'all',
         of: [
-          { on: 'entityDead', tag: 'office' },
+          // `OFFICE_OFF`, THE SAME OBJECT `t.win` READS. Two spellings of one
+          // threshold are two spellings that drift, and the drift here is a
+          // 600-credit secondary resolving one tick after the operation has
+          // already ended — i.e. never, because `runDirector` returns early
+          // once an outcome is set.
+          OFFICE_OFF,
           { on: 'ownerCount', player: 0, role: 'building', tag: 'yard', min: 4 },
         ],
       },
       then: [{ do: 'completeObjective', id: 'yards' }],
     },
 
-    /* -- the win ---------------------------------------------------------- */
+    /* -- the win ----------------------------------------------------------
+     * `OFFICE_OFF`, WHICH COUNTS DEEDS AND NOT CORPSES. This was
+     * `entityDead 'office'`, and a captured mast is alive — so a Tinker put
+     * into the one structure this operation is named after made the only win
+     * condition in the table false forever, with `annihilationWin` off. See the
+     * header block.
+     */
     {
       id: 't.win',
-      when: { on: 'entityDead', tag: 'office' },
+      when: OFFICE_OFF,
       then: [
         { do: 'completeObjective', id: 'mast' },
         {
+          // "off them" rather than "down". A mast a Tinker walked into is still
+          // standing — and on this operation it is standing on Tallow's paper,
+          // which is the joke the whole premise is built on.
           do: 'dialogue',
           speaker: 'Tallow',
-          text: 'Mast is down. Nobody in that district can ask a question now, and the '
+          text: 'Mast is off them. Nobody in that district can ask a question now, and the '
             + 'yards never stopped for a minute of it. Bill them for the morning.',
         },
         { do: 'endOperation', result: 'win' },

@@ -95,11 +95,18 @@
  * ============================================================================
  * WHY THE PRIMARY IS THE MAST AND NOT THE BORE
  * ============================================================================
- * A primary that could only be finished by one 500-credit man with 95 hit
+ * A primary that could ONLY be finished by one 500-credit man with 95 hit
  * points would be an escort wearing an assault's label, and `primaryType` is a
  * field precisely so that it can be checked rather than felt. So the primary is
- * the instrument — the mast comes down, the readings stop, the hulls do it —
- * and the head is a SECONDARY worth 500 credits.
+ * the instrument — the mast comes off them, the readings stop, and the hulls
+ * can do all of it — and the head is a SECONDARY worth 500 credits.
+ *
+ * **THAT ARGUMENT SURVIVES THE MAST BECOMING CAPTURABLE, AND IT IS WORTH
+ * SAYING WHY.** `t.win` counts deeds now (see the block below), so an Artificer
+ * IS one way to finish the primary. The word doing the work above is ONLY: the
+ * mast has a hull route and an engineer route, while the head has exactly one —
+ * no vehicle in any army carries `canCapture`, and shooting the head is the
+ * thing that FAILS its objective. One route is an escort; two is a choice.
  *
  * The layout then puts the two in the order each route meets them: the mast
  * lands 34.4 m INLAND of the head, so the road arrives at the primary first and
@@ -124,6 +131,67 @@
  * player capped ten minutes earlier. **The guard is on the DIALOGUE, not on the
  * objective**, and a version of this comment claiming otherwise was written
  * before anybody read the setter.
+ *
+ * ============================================================================
+ * THE MAST IS A DEED NOW, AND IT USED TO BE A CORPSE
+ * ============================================================================
+ * `t.win` was `entityDead 'mast'`, and **a captured structure is still alive**
+ * — `aliveWithTag` counts it — so that condition is false forever once an
+ * engineer walks in. The mast is `radar` on the ALLIED seat: an enemy building,
+ * 700 hp, with the capture cursor over it (`input/Commands.ts` §5, the
+ * `hoverEnemy` arm). `annihilationWin` is false and nothing else in the table
+ * ends this operation in a win. So one right-click produced a match that could
+ * not be won, with nothing on screen saying so.
+ *
+ * **AND EVERY PLAYER CAN MAKE IT.** `mrdArtificer` carries no `UNLOCK_TAGS`
+ * row, so no roster can withhold it, and its two prereqs — `mrdChapterhouse`
+ * and `mrdCistern` — both stand on the player's seat at t = 0 under this
+ * operation's `opening: 'base'`, counted on the built world. The player also
+ * OPENS with one, and half this file is about him: `bore` is a secondary only
+ * he can collect, and `t.cut` tells the player in as many words to put him in
+ * a Sandskiff. The operation spends its whole running time teaching capture
+ * and then lost itself to the lesson.
+ *
+ * **THE PRICE IS FOUR OF HIM, NOT ONE, AND IT WAS MEASURED RATHER THAN
+ * REASONED.** `CaptureService.isCapturable` carries no health test, but
+ * `resolve` does: above `CAPTURE.captureHpFrac` (0.5) an ENEMY structure takes
+ * the SOFTEN branch instead — `maxHp * CAPTURE.softenFrac` (0.25) pushed as a
+ * HighExplosive damage record, through `ARMOR_MATRIX[HighExplosive][Concrete]`
+ * (1.00) and `COMBAT_DAMAGE.globalMul` (0.80), so **0.20 of max lands and the
+ * engineer is consumed**. Driven through the real `CaptureService` and the real
+ * `DamageSystem` on 2026-08-19, a 700 hp mast walks 700 -> 560 -> 420 -> 280
+ * and the FOURTH Artificer takes it: **four engineers, 2000 credits**, half
+ * this operation's opening bank. Any gun the player already owns shortens that
+ * to one.
+ *
+ * **IT WAS SURVIVABLE, BY A TOOL THIS OPERATION NEVER MENTIONS.** `radar` is an
+ * army key and keeps `EntityFlag.Sellable`, unlike `bore` — whose `civOreMine`
+ * row goes through `Scenarios.civilian()`, which clears the bit — so a player
+ * who took the mast could sell the structure they had just paid for and
+ * satisfy `entityDead` after all. Selling the objective in order to win it is
+ * not a route; it is a rules accident that happened not to be fatal, and it is
+ * recorded here so nobody mistakes it for the design.
+ *
+ * So `t.win` counts DEEDS now — `ownerCount` on seat 1 — and **capture
+ * satisfies the primary exactly as demolition does.** That is a change in what
+ * the objective MEANS, so its title and Calvane's two lines about putting the
+ * mast down were rewritten rather than left implying a rule the table no longer
+ * enforces. `soviets.01.first-tap` and `soviets.03.deep-sector` made the same
+ * migration for the same reason.
+ *
+ * **AND IT IS THE BETTER RULE HERE, WHICH IS NOT TRUE OF EVERY MIGRATION.**
+ * This operation's own secondary is *"Take the bore head intact"*: Calvane
+ * wants the instrument in Pact hands rather than in pieces and says so out
+ * loud. An instrument mast walked off the Allies stops the readings as
+ * completely as a broken one does and leaves the Pact holding the thing that
+ * took them — which is the operation's argument, not a concession to it.
+ *
+ * **`t.boreLost` DELIBERATELY KEEPS `entityDead 'bore'`.** It is the FAILURE
+ * half of a pair whose completion half is already `structureCaptured`, so the
+ * two partition the head's fates between them and neither is guessing: taken is
+ * `t.boreTaken`, broken is `t.boreLost`, and a head still standing on the
+ * Allied seat is neither. Migrating it would fire "the head is broken" at a
+ * player who capped it.
  *
  * ============================================================================
  * THE HIDDEN SECONDARY IS THE TEACHING, AND IT EXPIRES
@@ -268,7 +336,7 @@
 
 import { Faction } from '../../../core/types';
 import { minutes, seconds } from '../../types';
-import type { OperationDef } from '../../types';
+import type { Condition, OperationDef } from '../../types';
 
 /* -- the measured points -------------------------------------------------- */
 
@@ -288,6 +356,55 @@ const GAP = { x: 270, z: 178 };
 const APRON = { x: 420, z: 320 };
 /** Where the Allied road column forms up. Dry, unoccupied, 57 m off their base. */
 const ROAD = { x: 336, z: 135 };
+
+/* -- the thresholds ------------------------------------------------------- */
+
+/**
+ * How long the layout is given to have placed the ground before a zero
+ * threshold over it is believed.
+ *
+ * **`ownerCount(1, 'building', 'mast', max: 0)` READS TRUE AGAINST AN EMPTY TAG
+ * REGISTRY**, exactly as `entityDead` does — the spelling changed and the
+ * hazard did not. Unguarded, `t.win` fires on the first tick the Director runs,
+ * and a win nobody played is the one failure that reaches the end screen
+ * looking like a feature.
+ *
+ * **IT IS DEFENCE AGAINST A LAYOUT THAT PLACED NOTHING, NOT AGAINST A TICK-ONE
+ * READ THAT HAPPENS TODAY, AND SAYING WHICH MATTERS.** `scenarios.system.ts`
+ * builds the world inside `async init()` and `SystemRegistry.init` awaits every
+ * module's init in sequence before a tick is taken, so the tag registry is
+ * never empty when the Director first runs and the empty-registry read is not
+ * reachable in the product. What IS reachable is a layout that stamped nothing
+ * — a wrong def key, a footprint that will not fit, a roster that refused the
+ * structure — and there twenty seconds is the difference between an operation
+ * that ends before the camera settles and one that at least shows the player
+ * the ground it is lying about. `tests/campaign-maps.spec.ts` and
+ * `tests/campaign-roster-ground.spec.ts` are the gates that catch the two
+ * causes; this is the guard that stops the symptom being instant.
+ *
+ * Twenty seconds is unmistakably past the build and unmistakably short of
+ * anything happening. Measured on the built world, the mast is **289.0 m** from
+ * the nearest player unit, and the fastest thing on the player's seat is a
+ * 9.2 m/s Sandskiff — **184 m of straight line in twenty seconds** — against
+ * 700 hp that has to be taken to zero, or to 350 and then walked into.
+ * `soviets.01.first-tap` and `soviets.03.deep-sector` guard their own primaries
+ * with the same constant for the same reason.
+ */
+const SETTLE: Condition = { on: 'elapsed', ticks: seconds(20) };
+
+/**
+ * The Allies no longer hold the instrument mast — levelled or taken, and the
+ * operation does not care which. See the header for why capture counts and for
+ * the four-Artificer price of making it happen.
+ *
+ * ONE READER TODAY (`t.win`), AND IT IS A NAMED CONSTANT ANYWAY, because the
+ * whole operation is this line: an edit that widens the primary has to be made
+ * here, once, where the argument for it is written down.
+ */
+const MAST_OFF: Condition = {
+  on: 'all',
+  of: [SETTLE, { on: 'ownerCount', player: 1, role: 'building', tag: 'mast', max: 0 }],
+};
 
 const op: OperationDef = {
   id: 'pact.01.shallow-road',
@@ -392,7 +509,13 @@ const op: OperationDef = {
   },
 
   objectives: [
-    { id: 'mast', kind: 'primary', title: 'Destroy the Allied instrument mast' },
+    // "TAKE … OFF THEM", NOT "DESTROY", AND THE WORDS ARE LOAD-BEARING. `t.win`
+    // counts what seat 1 still owns, so walking an Artificer into the mast ends
+    // the operation exactly as levelling it does. A title that said "destroy"
+    // would be naming the one route the rule does not require — and naming it
+    // in an operation whose other secondary is "take the head INTACT". See the
+    // header.
+    { id: 'mast', kind: 'primary', title: 'Take the Allied instrument mast off them' },
     {
       id: 'bore',
       kind: 'secondary',
@@ -428,9 +551,14 @@ const op: OperationDef = {
             + 'March moves at all.',
         },
         {
+          // "Take the mast off them" rather than "Take the mast down": `t.win`
+          // counts deeds, so breaking it and walking into it are one order, and
+          // the sentence has to be the one that covers both. The contrast the
+          // line is built on survives it and gets sharper — the mast may be
+          // taken however you like, the HEAD has to come off whole.
           do: 'dialogue',
           speaker: 'Calvane',
-          text: 'Take the mast down. Take the head off whole, so the hole can be capped — '
+          text: 'Take the mast off them. Take the head off whole, so the hole can be capped — '
             + 'and only an Artificer can do that. Nothing we drive touches the ground and '
             + 'nothing we field on foot leaves it. Use both.',
         },
@@ -539,6 +667,16 @@ const op: OperationDef = {
         { do: 'completeObjective', id: 'bore' },
       ],
     },
+    /*
+     * THE LAST `entityDead` IN THIS FILE, AND IT IS NOT AN OVERSIGHT. Every
+     * threshold over `mast` counts deeds because capture had to satisfy them;
+     * this one counts a corpse because its completion half above is already
+     * `structureCaptured`, so the pair partitions the head's fates between them
+     * — taken is `t.boreTaken`, broken is this, and standing on the Allied seat
+     * is neither. Migrating it to `ownerCount` would fire "the head is broken"
+     * at a player who capped it, which is the sentence this trigger exists to
+     * keep away from them.
+     */
     {
       id: 't.boreLost',
       when: {
@@ -601,16 +739,30 @@ const op: OperationDef = {
       ],
     },
 
-    /* -- the win ---------------------------------------------------------- */
+    /* -- the win ----------------------------------------------------------
+     * `MAST_OFF`, WHICH COUNTS DEEDS AND NOT CORPSES. This was
+     * `entityDead 'mast'`, and a captured mast is alive — so an Artificer put
+     * into the one structure the whole operation is named after made this
+     * condition false forever, and with `annihilationWin` off there was no
+     * other win path in the table. See the header block.
+     *
+     * `SETTLE` is inside `MAST_OFF` rather than conjoined here, because the
+     * threshold and its guard are one claim about one count and splitting them
+     * is how a second reader comes to take the count without the guard.
+     */
     {
       id: 't.win',
-      when: { on: 'entityDead', tag: 'mast' },
+      when: MAST_OFF,
       then: [
         { do: 'completeObjective', id: 'mast' },
         {
+          // "off them" rather than "down". A mast an Artificer walked into is
+          // very much still standing, and the second sentence — they will sink
+          // another — is the one that carries the operation's argument and is
+          // true of both endings.
           do: 'dialogue',
           speaker: 'Calvane',
-          text: 'The mast is down. They will sink another and we will come again. One day '
+          text: 'The mast is off them. They will sink another and we will come again. One day '
             + 'somebody will ask how we are so certain about what a cut does, and I would '
             + 'rather it were not today.',
         },

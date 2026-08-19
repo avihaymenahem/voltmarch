@@ -46,9 +46,29 @@
  * `hoverEnemy` arm), and nothing anywhere told the player it was a trap.
  *
  * Capture is not free — an ENEMY structure flips only at or below
- * `CAPTURE.captureHpFrac` (0.5), so a 900 hp derrick is three engineers
- * (1500 credits: 900 -> 675 -> 450 -> taken) or 450 damage plus one. It is a
- * priced decision, which is exactly why it must not also be an invisible one.
+ * `CAPTURE.captureHpFrac` (0.5), and every engineer that arrives above it is
+ * spent SOFTENING.
+ *
+ * **THE SOFTEN IS 20% OF MAX, NOT 25%, AND THE FIRST VERSION OF THIS PARAGRAPH
+ * QUOTED THE RAW CONSTANT.** `Capture.resolve` pushes `maxHp *
+ * CAPTURE.softenFrac` (0.25) as a HighExplosive record, and `Damage.applyOne`
+ * — the only function in the game that writes `hp` — then applies
+ * `ARMOR_MATRIX[HighExplosive][Concrete]` (**1.00**) and
+ * `COMBAT_DAMAGE.globalMul` (**0.80**). So 0.20 of max lands per engineer:
+ *
+ *     900 -> 720 -> 540 -> 360, and 360/900 = 0.40 is at last <= 0.5
+ *
+ * **FOUR engineers, 2000 credits** — not the three and 1500 this said, which is
+ * the same arithmetic slip in both directions: it made the trap look cheaper
+ * than it is AND the recovery look cheaper than it is. Or 450 damage from
+ * anything with a gun, plus one engineer.
+ *
+ * **AND THE ENGINEER COUNT IS THE SAME FOR EVERY STRUCTURE IN THE GAME**, which
+ * is worth knowing before anybody re-derives it per building: both the soften
+ * and the threshold are FRACTIONS OF MAX, so `maxHp` cancels. 0.20 per arrival
+ * against a 0.50 gate is four arrivals at 0.40, for a 700 hp radar and a 900 hp
+ * derrick alike. Only the credits differ, and only because engineers differ. It is a priced decision, which is
+ * exactly why it must not also be an invisible one.
  *
  * **SO EVERY THRESHOLD IN THIS FILE IS `ownerCount` ON SEAT 1, AND THAT
  * CHANGES WHAT TWO OBJECTIVES MEAN.** `ownerCount(1, ..., max: 0)` is
