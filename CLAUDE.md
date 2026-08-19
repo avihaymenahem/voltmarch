@@ -398,7 +398,17 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   six-minute hold therefore RESTARTS the clock. The other way round hands the player a win for
   holding nothing, which is a failure in their favour and the direction nobody reports.
 - **`entityDead` IS TRUE BEFORE THE TAG HAS EVER EXISTED.** A mistyped `protect` fails the player on
-  tick one, silently. That is why a layout DECLARES its tags and `validateCampaign` refuses a
+  tick one, silently. The same is true of `ownerCount(..., max: N)` and of `playerBeaten`, and
+  `soviets.06`'s `SETTLE` block is the pattern for guarding all three.
+
+  **BUT A CORRECTLY SPELLED TAG IS NEVER EMPTY WHEN THE DIRECTOR FIRST RUNS, AND TWO SEPARATE
+  INVESTIGATIONS HAVE NOW HAD TO DERIVE THAT.** `campaign.system.ts` is `Phase.Cleanup` order 9000
+  and `scenarios.system.ts` is order 10 000, which looks like the Director evaluating an empty
+  world on tick one — and it is not, because `game.scenario` builds the world inside `async init()`
+  and `SystemRegistry.init` awaits every module's init IN SEQUENCE before `initialised` is set. So
+  the settle guards are defence against a layout that placed NOTHING, which is reachable and which
+  `campaign-roster-ground.spec.ts` exists for. They are not a fix for a failure anyone has
+  observed. Say which when you write one. That is why a layout DECLARES its tags and `validateCampaign` refuses a
   trigger naming one no layout produces — and why `campaign-maps.spec.ts` builds every operation
   headless and checks the declaration against what actually landed, in both directions.
 - **THE AUTHORING CONTRACT WAS AUDITED CLAIM BY CLAIM: 124 CHECKED, 24 FALSE.** `types.ts`,
