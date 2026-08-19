@@ -71,6 +71,7 @@ import {
   FOG_EXPLORED_LEVEL, FOG_EXPLORED_ALPHA, FOG_UNEXPLORED_ALPHA,
   FOG_REVEAL_SECONDS, FOG_CONCEAL_SECONDS,
   FOG_EDGE_WARP, FOG_DITHER, FOG_UPLOAD_HZ,
+  TERRAIN_GRID,
 } from '../core/config';
 import type { ShroudLook } from '../core/types';
 import { hexToLinearRgb } from '../core/math';
@@ -195,6 +196,17 @@ void main() {
  *      surface sits at `WATER_LEVEL`, depth-writing, in an earlier render band.
  *   3. Tall scatter props would poke through: a forest inside the unexplored
  *      black would stay lit.
+ *
+ * THERE IS A FOURTH AND IT SHIPPED. The three above are about things standing
+ * ABOVE the ground. The fourth is the GROUND ITSELF: a carpet sampled every 4 m
+ * interpolates linearly across a terrace, which is a near-vertical step inside
+ * one span, so it cuts a diagonal ramp through the face and sits BELOW the
+ * terrain on the high side. Depth-tested, the terrain wins — measured at
+ * **5.0-7.0% of every map, by up to 6.59 m**, on all four biomes. That is the
+ * "lit islands of high ground inside the black, with their faces showing" a
+ * player reported. It is fixed in the GEOMETRY, in `drapeConservative` at §3,
+ * because a material fix would have to be written twice; read that header
+ * before touching either the grid resolution or the drape.
  *
  * So the fog stops being a screen-space layer and becomes what it actually is:
  * a property of a world XZ that anything drawing at that XZ can ask about.
@@ -627,14 +639,21 @@ export class FogOfWar {
     }
   }
 
-  /** Re-drape the carpet — call if the terrain heightfield is regenerated. */
+  /**
+   * Re-drape the carpet — call if the terrain heightfield is regenerated.
+   *
+   * Goes through `drapeConservative` rather than re-sampling `heightAt` at each
+   * stored vertex XZ, which is what it used to do. A per-vertex point sample
+   * here would silently undo the conservative drape on the first re-drape and
+   * hand back the poke-through the constructor exists to prevent. The vertex
+   * order is row-major in (iz, ix), which is exactly how `drapeConservative`
+   * indexes its output, so `y[v]` is vertex `v`.
+   */
   rebuildHeights(heightAt: (x: number, z: number) => number): void {
     const pos = this.geometry.getAttribute('position');
     const arr = pos.array as Float32Array;
-    for (let v = 0; v < pos.count; v++) {
-      const o = v * 3;
-      arr[o + 1] = heightAt(arr[o], arr[o + 2]) + FOG_MESH_LIFT;
-    }
+    const y = drapeConservative(heightAt);
+    for (let v = 0; v < pos.count; v++) arr[v * 3 + 1] = y[v];
     pos.needsUpdate = true;
     this.geometry.computeBoundingSphere();
   }
@@ -671,18 +690,159 @@ export class FogOfWar {
  * 3. GEOMETRY
  * ========================================================================== */
 
+/** 128 segments / 129 vertices / 4 m step at the shipped constants. */
+const FOG_SEGMENTS = MAP_CELLS * FOG_MESH_SAMPLES_PER_CELL;
+const FOG_GRID_N = FOG_SEGMENTS + 1;
+const FOG_STEP = MAP_SIZE / FOG_SEGMENTS;
+
+/**
+ * Sub-samples per carpet step when taking the conservative maximum.
+ *
+ * DERIVED FROM `TERRAIN_GRID`, NEVER A LITERAL. The guarantee below rests on
+ * the sample spacing being no coarser than the finest feature the ground
+ * sampler can express, and for the heightfield behind `heightAt` that is the
+ * terrain grid. At the shipped 4 m step over a 1 m grid this is 4, so the
+ * sample points land exactly on terrain grid nodes.
+ */
+const FOG_DRAPE_SUB = Math.max(1, Math.ceil(FOG_STEP / TERRAIN_GRID));
+
+/**
+ * Vertex heights for the carpet: the local MAXIMUM of the ground over each
+ * vertex's footprint, not its point value.
+ *
+ * WHY NOT THE POINT VALUE — THE FOURTH THING `depthTest: true` BROKE
+ * ------------------------------------------------------------------
+ * §1b lists three consequences of depth-testing the carpet. There is a fourth,
+ * and it is the one a player reported: a terrace is a near-vertical step, the
+ * carpet grid samples every `FOG_STEP` metres, and a linear span across a step
+ * cuts a DIAGONAL RAMP through it. On the low side the carpet is above the
+ * ground and shrouds correctly; on the high side it is BELOW the terrain, the
+ * depth test lets the terrain win, and never-explored high ground renders at
+ * full daylight — lit islands inside the black, with their terrace faces
+ * showing. Neither `TerrainMaterial` nor the road materials call
+ * `applyShroudTint` (both say so, deliberately, because the carpet owns the
+ * ground plane), so the roads on that island are revealed with it.
+ *
+ * Measured through the real generator over the whole map at 0.5 m, point drape:
+ * **5.0-7.0% of every map, worst overshoot 4.98-6.59 m**, on all four biomes.
+ * It is NOT urban-specific — urban was the mildest of the four — and the cause
+ * is confirmed by conditioning on slope: 2.3% of flat ground (|grad| < 0.1)
+ * overshoots against 40-46% of ground steeper than 0.5, with the mean overshoot
+ * climbing monotonically from 0.52 m to 1.27 m across the bands.
+ *
+ * THE GUARANTEE, AND WHY IT IS PROVED RATHER THAN MEASURED
+ * -------------------------------------------------------
+ * Vertex (ix, iz) is a corner of at most four quads, which together span
+ * `+/- FOG_STEP` in x and z. Give every vertex the maximum of the ground over
+ * that box and every corner of every quad is >= the ground at every point
+ * INSIDE that quad; the carpet's surface there is a convex combination of three
+ * such corners, so it is >= the ground too. The box is axis-aligned and its
+ * sample points land on terrain grid nodes, and the ground between nodes is
+ * planar, so the discrete maximum IS the continuous one. Nothing can poke
+ * through, at any grid resolution, on any terrain.
+ *
+ * RAISING `FOG_MESH_SAMPLES_PER_CELL` IS THE OTHER LEVER AND IT IS WORSE
+ * ---------------------------------------------------------------------
+ * No finite grid follows a discontinuity, so it only shrinks the artefact while
+ * multiplying triangles by the square of the factor. Measured on
+ * `soviets.07.right-of-entry`: point drape needs 2 097 152 triangles (64x) to
+ * reach 0.000%, and still leaves 0.015 m; this reaches 0.000% / 0.000 m at
+ * 32 768. See `FOG_MESH_SAMPLES_PER_CELL` in `config.ts` for the full sweep.
+ *
+ * WHAT IT COSTS, MEASURED RATHER THAN WAVED AT
+ * --------------------------------------------
+ * The carpet now FLOATS above low ground within one step of a rise — mean
+ * 0.686 m over the whole map, 16.3% of it by more than 1 m. The thing a player
+ * can actually see is not the float but the horizontal displacement of the
+ * shroud edge, which at `CAMERA.pitchDeg` 52 is `float / tan(52) = 0.781 x`:
+ * **mean 0.54 m, max 4.23 m, and only 1.05% of the map past one 4 m fog texel,
+ * 0.000% past two.** The fog texture is bilinear over 4 m texels with a
+ * two-octave noise warp on top of that, so a sub-texel shift is below the
+ * resolution of the thing being displaced. It darkens slightly MORE than it
+ * strictly should, which is the correct direction to be wrong in: the failure
+ * it replaces was revealing ground the player has never seen.
+ *
+ * THE ONE RESIDUAL, AND IT IS ON THE TWO COASTAL MAPS
+ * ---------------------------------------------------
+ * Raising the carpet at a shore cliff can lift the SEABED carpet through the
+ * water surface: over open water it went from 2.0% / 3.0% of wet area to
+ * 7.2% / 8.3% on `coast` / `tropical`, i.e. 5.2% newly emerged. Where that
+ * happens the carpet passes the depth test in front of the water instead of
+ * failing behind it, and both surfaces then tint from the same mask with the
+ * same formula (`WaterMaterial.ts` says so in as many words). At
+ * `FOG_UNEXPLORED_ALPHA` 1.0 that composite is bit-identical; on REMEMBERED
+ * shoreline the two 0.62 blends compound to 0.856, i.e. a slightly darker rim.
+ * Not fixed here on purpose — clamping the raise to `WATER_LEVEL` reopens the
+ * hole at exactly the shore cliffs it would be clamping for, and making the
+ * water and the carpet agree about who owns sub-water ground is a different
+ * change.
+ *
+ * COST TO BUILD: ~9 ms against ~1 ms, ONCE, at terrain build and on
+ * `rebuildHeights`. Never in the frame loop. The sliding maximum is separable
+ * and the naive inner loop is 9 comparisons wide at the shipped numbers; a
+ * monotonic deque would make it O(n) and is not worth the reader's time here.
+ */
+function drapeConservative(heightAt: (x: number, z: number) => number): Float32Array {
+  const sub = FOG_DRAPE_SUB;
+  const sn = FOG_SEGMENTS * sub + 1;
+  const ss = FOG_STEP / sub;
+
+  // 513x513 at the shipped numbers — the terrain's own grid, exactly.
+  const raw = new Float32Array(sn * sn);
+  for (let iz = 0; iz < sn; iz++) {
+    const z = iz * ss;
+    const row = iz * sn;
+    for (let ix = 0; ix < sn; ix++) raw[row + ix] = heightAt(ix * ss, z);
+  }
+
+  // Pass 1: maximum along x, evaluated ONLY at the columns a carpet vertex
+  // stands on. Every other column is discarded by pass 2, so computing them
+  // would be four times the work for nothing.
+  const colMax = new Float32Array(sn * FOG_GRID_N);
+  for (let iz = 0; iz < sn; iz++) {
+    const src = iz * sn;
+    const dst = iz * FOG_GRID_N;
+    for (let ix = 0; ix < FOG_GRID_N; ix++) {
+      const sx = ix * sub;
+      const lo = sx - sub < 0 ? 0 : sx - sub;
+      const hi = sx + sub > sn - 1 ? sn - 1 : sx + sub;
+      let m = raw[src + lo];
+      for (let k = lo + 1; k <= hi; k++) { const v = raw[src + k]; if (v > m) m = v; }
+      colMax[dst + ix] = m;
+    }
+  }
+
+  // Pass 2: maximum along z over pass 1, straight into the vertex heights.
+  const out = new Float32Array(FOG_GRID_N * FOG_GRID_N);
+  for (let iz = 0; iz < FOG_GRID_N; iz++) {
+    const sz = iz * sub;
+    const lo = sz - sub < 0 ? 0 : sz - sub;
+    const hi = sz + sub > sn - 1 ? sn - 1 : sz + sub;
+    const dst = iz * FOG_GRID_N;
+    for (let ix = 0; ix < FOG_GRID_N; ix++) {
+      let m = colMax[lo * FOG_GRID_N + ix];
+      for (let k = lo + 1; k <= hi; k++) {
+        const v = colMax[k * FOG_GRID_N + ix];
+        if (v > m) m = v;
+      }
+      out[dst + ix] = m + FOG_MESH_LIFT;
+    }
+  }
+  return out;
+}
+
 /**
  * A regular grid over the whole map, with every vertex lifted onto the ground.
  *
  * `FOG_MESH_SAMPLES_PER_CELL = 1` gives 129x129 vertices / 32768 triangles for
- * ONE draw call. That is deliberately coarse: the fog VALUE is bilinear in the
- * fragment shader, so this grid only has to follow the terrain silhouette. A
- * finer grid would quadruple the vertex cost and change nothing on screen.
+ * ONE draw call. The height of each vertex comes from `drapeConservative`, not
+ * from a point sample — read that function's header before changing either.
  */
 function buildDrapedGrid(heightAt: (x: number, z: number) => number): THREE.BufferGeometry {
-  const segments = MAP_CELLS * FOG_MESH_SAMPLES_PER_CELL;
-  const n = segments + 1;
-  const step = MAP_SIZE / segments;
+  const segments = FOG_SEGMENTS;
+  const n = FOG_GRID_N;
+  const step = FOG_STEP;
+  const y = drapeConservative(heightAt);
 
   const positions = new Float32Array(n * n * 3);
   const uvs = new Float32Array(n * n * 2);
@@ -696,7 +856,7 @@ function buildDrapedGrid(heightAt: (x: number, z: number) => number): THREE.Buff
     for (let ix = 0; ix < n; ix++) {
       const x = ix * step;
       positions[p] = x;
-      positions[p + 1] = heightAt(x, z) + FOG_MESH_LIFT;
+      positions[p + 1] = y[iz * n + ix];
       positions[p + 2] = z;
       p += 3;
       uvs[t] = x / MAP_SIZE;

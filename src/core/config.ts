@@ -5846,12 +5846,48 @@ export const FOG_MAX_DETECTORS = 64;
 
 /**
  * Ground samples per CELL along each axis in the shroud carpet. 1 gives a
- * 129x129 vertex grid (33k triangles, ONE draw call) which is plenty: the fog
- * value itself is bilinear-filtered in the fragment shader, so this grid only
- * has to follow the terrain SILHOUETTE, not the fog gradient.
+ * 129x129 vertex grid (33k triangles, ONE draw call) — one vertex every 4 m.
+ *
+ * **THIS SAID "1 IS PLENTY" AND GAVE A REASON THAT IS WRONG FOR TERRACED
+ * GROUND.** The reason was: *"the fog value itself is bilinear-filtered in the
+ * fragment shader, so this grid only has to follow the terrain SILHOUETTE, not
+ * the fog gradient."* Both halves are true and the conclusion does not follow.
+ * Following the silhouette is exactly what a 4 m grid cannot do over a terrace,
+ * which is a near-vertical step inside one span: the carpet interpolates
+ * LINEARLY across it and cuts a diagonal ramp through the face, so on the high
+ * side the carpet sits BELOW the ground, the depth test lets the terrain win,
+ * and never-explored high ground renders at full daylight.
+ *
+ * Measured through the real generator at 0.5 m over the whole map
+ * (`tests/fog-drape.spec.ts`): **5.0-7.0% of every map had terrain standing
+ * above the carpet, by up to 6.59 m**, on all four biomes — it is not urban-
+ * specific, and urban was the mildest of the four.
+ *
+ * **RAISING THIS NUMBER IS NOT THE FIX AND WAS MEASURED NOT TO BE.** No finite
+ * grid follows a discontinuity. Point-sampled, on `soviets.07.right-of-entry`:
+ *
+ * ```
+ *   spc=1  step 4.0 m   6.064% over, worst 4.930 m       32 768 tris
+ *   spc=2  step 2.0 m   3.181% over, worst 4.153 m      131 072 tris
+ *   spc=4  step 1.0 m   1.002% over, worst 0.813 m      524 288 tris
+ *   spc=8  step 0.5 m   0.000% over, worst 0.015 m    2 097 152 tris
+ * ```
+ *
+ * Sixty-four times the triangles to buy a residual, against a CONSERVATIVE
+ * drape which is exactly 0.000% / 0.000 m at this value. So the fix is in
+ * `FogOfWar.ts#drapeConservative` — the carpet takes the local MAXIMUM of the
+ * ground over each vertex's footprint instead of its point value — and this
+ * constant stays 1. See that function's header for the guarantee and its cost.
  */
 export const FOG_MESH_SAMPLES_PER_CELL = 1;
-/** Metres the carpet floats above the surface it samples. Cosmetic only. */
+/**
+ * Metres the carpet floats above the surface it samples.
+ *
+ * NOT cosmetic-only any more, and the old comment saying so was written when
+ * the carpet drew with `depthTest: false` and could not lose to the ground.
+ * It depth-tests now, so this is the z-fight margin over flat ground — the one
+ * place the conservative drape lands exactly ON the terrain.
+ */
 export const FOG_MESH_LIFT = 0.12;
 /**
  * Alpha of the shroud over explored-but-not-visible ground. The colour is
