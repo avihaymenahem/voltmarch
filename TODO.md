@@ -9,6 +9,21 @@ with no number is untracked, and that is itself the bug.
 
 ---
 
+## Render
+
+- **UNTRACKED — do scatter props render at full brightness inside never-explored ground?** Raised by
+  the shroud-carpet fix (97dab92) and NOT answered by it. Props self-tint via
+  `PropLibrary.ts:2212` and `FOG_UNEXPLORED_ALPHA` is **1.0**, so in never-seen territory a tree
+  should be pure black regardless of the carpet. The screenshot that reported the carpet defect also
+  appeared to show trees and benches legible over the void. Two readings and they need different
+  fixes: either that ground was *remembered* rather than never-seen (alpha 0.62, so 38% of lit
+  colour survives, and the props are simply bright against pure-black neighbours — correct
+  behaviour, nothing to do), or the prop tint is not being applied at all, which is a second defect
+  of the same family as the carpet. **Decidable from one screenshot of the new build**; do not
+  speculate a fix before seeing one.
+
+---
+
 ## Campaign
 
 - **#66 — Phases 6-7. 20 of a planned 37 operations are authored; 17 remain.** Chapters run
