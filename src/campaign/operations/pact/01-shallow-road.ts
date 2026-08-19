@@ -1,0 +1,545 @@
+/**
+ * ============================================================================
+ * P1 — THE SHALLOW ROAD
+ * ============================================================================
+ * The Allies have sunk a bore through Pact crust and been reading it for nine
+ * weeks. It stands on a beach behind a fortified cut. Calvane wants the
+ * instrument down and the hole capped, and those are two different jobs.
+ *
+ * ============================================================================
+ * THE DECISION THIS OPERATION OWNS
+ * ============================================================================
+ * **Every Meridian vehicle is `Locomotor.Hover` and every Meridian infantryman
+ * is `Locomotor.Foot`.** That is one line of `Flowfield.rebuildCost` — a wet
+ * cell is blocked for every ground class except `MoveClass.Hover` — and it is
+ * the entire operation:
+ *
+ *     the hulls   Solarch, Sandskiff, Collector, Carryall     cross water
+ *     the men     Wayfarer, Sunlancer, ARTIFICER              do not
+ *     the exception  Tidewalker, `Foot` + `amphibious`        walks on it
+ *
+ * The Allies have run a cut — fifty wall segments — from the surf to 58 m
+ * inland of the opening axis, 156 m of frontage with one gap at the landward
+ * end and a Refractor Tower sited on it. So there are two ways past, and the
+ * operation is deciding which one you send what down.
+ *
+ * **BOTH ROUTES ARE MEASURED, ON A HEADLESS BUILD AT THIS OPERATION'S SEEDS**,
+ * as a real 8-connected shortest path over the real `passGrid` and the real
+ * structure occupancy, from the player's opening at (108, 380):
+ *
+ *                                        on foot        hovering
+ *       to the bore compound              427.6 m        333.4 m
+ *       to the landing in the shallows    460.9 m        329.4 m
+ *       closest it ever comes to the
+ *         Refractor Tower                   4.0 m        169.7 m
+ *         Pillbox                          16.0 m        192.3 m
+ *
+ * The straight line to the compound is 310.9 m, so the foot route runs 117 m
+ * over it — **and that overhead is the WALL rather than the ground**, which is
+ * a control worth taking rather than assuming. On a beach point the cut does
+ * not stand between, the foot route is 251.8 m against a 235.6 m straight line,
+ * 6.9% over; apply the same 6.9% to 310.9 and an unwalled foot route would be
+ * about 332 m. **So the cut is worth roughly 95 m, and it is spent four metres
+ * from the tower.** The same beach point measured eleven metres FURTHER on —
+ * past the cut — is 420.2 m on foot against 259.6 straight, which is the seal
+ * stated twice from two directions.
+ *
+ * `prismTowerBeam` reaches 34 m. The Pact's `focusLance` reaches 26 and its
+ * `arcRepeater` 23, so a hull that takes the gap gives away eight metres before
+ * it can answer, with 22 m of `pillboxMg` on top. A hull that takes the water
+ * never comes inside 169.7 m of either.
+ *
+ * **AND THE PATHFINDER TAKES THE WATER ON ITS OWN.** 30 of the 73 cells in the
+ * hover route are wet. Right-click the compound with a Solarch and it goes to
+ * sea; right-click it with a Wayfarer and he walks into the gun. The operation
+ * teaches itself by the two halves of one selection visibly diverging, which is
+ * the only kind of teaching that survives a player who does not read.
+ *
+ * **AND THE WATER CANNOT CARRY THE THING YOU CAME FOR.** The bore head is a
+ * `civOreMine` on the Allied seat, so `CaptureService.isCapturable` says yes to
+ * an Artificer and no to every hull in the game — no vehicle in any army
+ * carries `canCapture`. The Pact's whole position is that a cut is what makes
+ * the March move, so the head has to be TAKEN and capped rather than broken.
+ * The Artificer is `Locomotor.Foot`. He walks the road, in front of the tower,
+ * or he rides: `mrdSkiff` is `unit.raider` on `roster.player` and holds two.
+ *
+ * That is the shape. **The hulls can go where the men cannot, and the men can
+ * do what the hulls cannot.** Nothing in the trigger table asserts either half;
+ * both are properties of the shipped simulation, which is why they are the
+ * right thing to build an operation out of.
+ *
+ * And the player already owns both halves on the first frame. Counted on the
+ * built world, the opening is **6 infantry and 8 vehicles**: five Wayfarers and
+ * one Artificer who cannot enter the water, four Solarchs, two Sandskiffs and
+ * two Collectors that can. Nothing has to be bought before the operation's
+ * question can be asked.
+ *
+ * ============================================================================
+ * WHY THE PRIMARY IS THE MAST AND NOT THE BORE
+ * ============================================================================
+ * A primary that could only be finished by one 500-credit man with 95 hit
+ * points would be an escort wearing an assault's label, and `primaryType` is a
+ * field precisely so that it can be checked rather than felt. So the primary is
+ * the instrument — the mast comes down, the readings stop, the hulls do it —
+ * and the head is a SECONDARY worth 500 credits.
+ *
+ * The layout then puts the two in the order each route meets them: the mast
+ * lands 34.4 m INLAND of the head, so the road arrives at the primary first and
+ * the water arrives at the secondary first. 34.4 rather than the 18 m the first
+ * draft measured, because 18 m is inside `focusLance`'s own 26 — a hull that
+ * stopped to kill the mast auto-acquired the head the instant the mast fell,
+ * and the secondary failed for doing the primary.
+ *
+ * The failure is the interesting half. `t.boreLost` fires on `entityDead
+ * 'bore'`, which is a thing the player's own hulls do to it by accident while
+ * shooting at everything else standing on the same beach. An operation about an
+ * army that will not crush anything (`crushLevel: 0` on every Pact hull, by
+ * doctrine) ought to be able to fail on carelessness, and this is the cheapest
+ * honest way to say so.
+ *
+ * It carries a `not objectiveComplete 'bore'` guard, AND THE OBVIOUS REASON FOR
+ * IT IS WRONG. The medal is safe without it: `Session.setObjective` opens with
+ * "A RESOLVED OBJECTIVE DOES NOT UN-RESOLVE" and returns early on anything
+ * already `complete` or `failed`, so a `failObjective` after a capture is a
+ * no-op at the session. What is NOT a no-op is the rest of the trigger — the
+ * effect list runs whole, so Calvane says "the head is broken" over a head the
+ * player capped ten minutes earlier. **The guard is on the DIALOGUE, not on the
+ * objective**, and a version of this comment claiming otherwise was written
+ * before anybody read the setter.
+ *
+ * ============================================================================
+ * THE HIDDEN SECONDARY IS THE TEACHING, AND IT EXPIRES
+ * ============================================================================
+ * `wade` is hidden, so it is not in the briefing — `briefingObjectives` filters
+ * hidden rows, which is what makes a hidden objective a surprise rather than a
+ * spoiler. It is revealed by ARRIVING at the cut: the player comes up the road,
+ * sees a wall running into the sea with a tower on the only gap, and Nael names
+ * the answer in the same breath.
+ *
+ * It completes on `all: [entityAlive 'gun', unitsInArea(apron, 3)]` — three
+ * units in the shallows off the bore head **while the cut is still standing**.
+ * Breaking the cut retires it rather than completing it, which is the whole
+ * point: it pays for going ROUND, not for going through. Only the two
+ * emplacements at the cut carry the `gun` tag; the compound's own Pillbox
+ * deliberately does not, or a player who had already flattened the cut could
+ * satisfy it from the road.
+ *
+ * The area's centre is a WET CELL, 36.9 m off the head. `passGrid` carries no
+ * `PASS_FOOT` there, so the only things that can stand in it are the hulls, a
+ * Tidewalker, and whoever is riding — which is the objective restated as a
+ * property of the ground rather than as an instruction. 36.9 m is also outside
+ * `focusLance`, so parking three Solarchs on the objective does not put them in
+ * range of the head they are supposed to leave standing.
+ *
+ * **AND IT EXPIRES BY BEING REVEALED LATE, WHICH IS WHY `t.cut` HAS A CEILING.**
+ * The hover route never comes within 169.7 m of the cut, so a player who sends
+ * only hulls could satisfy this before anything had revealed it. `t.cut` is
+ * `any: [arrival, elapsed 4 min]` for that reason and no other.
+ *
+ * ============================================================================
+ * THE THREE FIXED NUMBERS
+ * ============================================================================
+ * **`credits: 4000` binds BOTH seats.** `Shell.applyEconomyPostBoot` writes
+ * `setup.startingCredits` into every non-Neutral slot. It buys the player a
+ * Sandskiff (550) with room to spare and does not buy a Zenith; and it slows
+ * the Allied opening for the reason CLAUDE.md's measured block gives — a brain
+ * with a 10 000 bank raises a seven-building base and eleven troops before it
+ * has mined a single ore, which has been reported as a prebuilt base twice.
+ *
+ * **The roster is asymmetric and both halves are load-bearing.**
+ * `roster.ai: ['struct.defence.specialist']` is what puts the Refractor Tower
+ * on the cut's gap — remove that line and `spawnBuilding` refuses it and the
+ * road costs nothing. `roster.player: ['unit.raider']` is the Sandskiff, and it
+ * is the ONLY way an Artificer crosses water in this army. The player therefore
+ * has no tower of their own and the Allies do, which is `OperationRoster`'s own
+ * stated reason for having two lists.
+ *
+ * **`mapSeed` is the survey designation.** 12 880 is the number in the
+ * briefing. `tests/campaign-maps.spec.ts` pins it as a terrain fingerprint, and
+ * a generator change that re-rolls this ground moves the coast the whole
+ * composition is laid against.
+ *
+ * ============================================================================
+ * THE COORDINATES ARE READ OFF A BUILT WORLD, NOT RECOMPUTED
+ * ============================================================================
+ * The layout derives every position from the start spots — which move with the
+ * seed — and then walks each structure outward in rings to ground `isBuildable`
+ * accepts. The trigger table can see none of that and has to name world points.
+ *
+ * So the points below are taken from the same headless build
+ * `tests/campaign-maps.spec.ts` performs, at these exact seeds, reading
+ * `store.posX/posZ` of the tagged entities AFTER `spawnBuilding` has snapped
+ * each footprint to the placement grid. At `mapSeed` 12 880 / `simSeed` 3 101
+ * the openings are 386.2 m apart at (108, 380) and (404, 132), the waterline
+ * runs +98..+104 m off that axis, and the composition lands at:
+ *
+ *     bore   392, 240      mast    364, 220      tower   270, 178
+ *     apron  416, 268      pillbox 254, 162      road    336, 135
+ *
+ *     the cut   50 segments, p = -58.0 (inland) to +98.2 (the surf)
+ *
+ * `apron` is the only one of these that is not a structure: it is the point on
+ * the water 36.9 m off the bore head that `wade` counts hulls in, and it is a
+ * WET cell — `passGrid` has no `PASS_FOOT` there — which is what makes "come
+ * round by water" a statement about the ground rather than about intent.
+ *
+ * **RE-MEASURE IF `mapSeed`, `simSeed` OR THE LAYOUT'S FRACTIONS MOVE.**
+ * Nothing fails loudly if they drift: `unitsInArea` simply stops firing, the
+ * hidden objective never reveals, and the operation is still winnable, so no
+ * test and no player reports it. The radii below are wider than any wobble the
+ * ring search can produce (28 m) for exactly that reason.
+ * ========================================================================== */
+
+import { Faction } from '../../../core/types';
+import { minutes, seconds } from '../../types';
+import type { OperationDef } from '../../types';
+
+/* -- the measured points -------------------------------------------------- */
+
+/** The player's opening. `t.tide`'s column is pointed at it. */
+const HOME = { x: 108, z: 380 };
+/** The gap at the cut's landward end, and the Refractor Tower sited on it. */
+const GAP = { x: 270, z: 178 };
+/** The shallows off the bore head: a wet cell, 36.9 m from it. */
+const APRON = { x: 416, z: 268 };
+/** Where the Allied road column forms up. Dry, unoccupied, 57 m off their base. */
+const ROAD = { x: 336, z: 135 };
+
+const op: OperationDef = {
+  id: 'pact.01.shallow-road',
+  chapter: 'pact',
+  faction: Faction.Meridian,
+  /*
+   * THE ALLIES, AND THE LINE THAT DECIDES IT IS THE FIRST ONE CALVANE SPEAKS:
+   * *"The Allies sank a bore through our crust nine weeks ago and have been
+   * reading it ever since."*
+   *
+   * It is a reading bore, not a working one, and `CAMPAIGN_BUILD_SPEC.md` §2.1
+   * divides the Continental Works at the Split exactly there — "The Allies took
+   * the survey office and the instruments; the Soviets took the yards and the
+   * plate mills." An instrument mast on a beach is the Allied half on the nose.
+   * `soviets.01.first-tap` has already established that a tap on somebody
+   * else's ground is an Allied habit, and this is the same habit from the other
+   * side of it.
+   *
+   * It is also the answer that leaves the chapter room. §3.3 puts "Bramm
+   * confirms it" at P7 and the convergence at P9; an army the Pact is arguing
+   * WITH is more useful in operation one than an army it is merely fighting,
+   * and of the four the Allies are the only one that would change its mind if
+   * shown the numbers. That is Aubray's whole arc, and it is what makes P1's
+   * closing line land.
+   *
+   * MECHANICALLY IT PINS TWO THINGS. `t.tide` spawns `grizzly` — an Allied
+   * hull, literal and unremapped, which `validateCampaign` now checks against
+   * the seat's declared army — and the layout's `prismTower` resolves through
+   * `keyFor` to the Refractor Tower whose 34 m of reach the header measures
+   * against the Pact's 26. On a Soviet seat that becomes a Tesla Coil at 30 m
+   * and the whole road/water trade moves.
+   */
+  foe: Faction.Allies,
+  index: 1,
+  title: 'The Shallow Road',
+  beat: 'A bore sunk through Pact crust, and a wall run from the surf to the road.',
+  primaryType: 'assault',
+  // Multiple effect kinds — objective state, a reveal, a wave and an order — so
+  // 'bespoke' by the definition in `types.ts`. The label is about MECHANISM:
+  // what makes this operation what it is is the ground, and the ground is built
+  // before tick one.
+  archetype: 'bespoke',
+  parSec: 780,
+  requires: [],
+
+  map: {
+    preset: 'tropical',
+    // Fixed, and pinned by `tests/campaign-maps.spec.ts` as a terrain
+    // fingerprint. CHOSEN BY SURVEY RATHER THAN BY TASTE: five rolls were
+    // sampled at nine nominal points of this composition. 12 880 and 88 401
+    // returned dry, non-cliff, passable ground at all nine; 41 207 puts a cliff
+    // on the bore lot and 12 881 and 30 311 each foul one. Nothing is buildable
+    // within a few metres of the surf on ANY roll — the beach cone is not
+    // `buildGrid` ground — which is why the built world reports 9 structures on
+    // ground `isBuildable` refuses and why all nine are wall segments.
+    mapSeed: 12_880,
+    // The PAIR is chosen by this seed and not by the map roll. `seatedSlots`
+    // filters `START_PAIRS` against the water, and on `tropical` exactly two
+    // survive: [0,1] at 386.2 m with both openings 100 m off the waterline, and
+    // [1,3] at 296.0 m with one opening 100 m off it and the other 290 m.
+    // This operation needs the symmetric one, because its whole composition is
+    // a lane running PARALLEL to the coast — the cut, the compound and the
+    // water route are all authored as offsets off the opening-to-opening axis,
+    // and that only means anything while both ends of the axis are the same
+    // distance from the sea. Move this number to one that draws [1,3] and the
+    // coast slides out from under every measurement in this header.
+    simSeed: 3_101,
+    armies: 2,
+    // `tropical` is not a `BiomeName`; `BIOMES` has four members and the
+    // generator falls back to temperate with a console warning if asked for a
+    // fifth. This is the same pairing `MAPS.coral-shore` ships.
+    biome: 'temperate',
+    opening: 'base',
+    // Both seats. See the header — it is one number doing two jobs.
+    credits: 4_000,
+  },
+  layout: 'pact-shallow-road',
+
+  /*
+   * NEITHER SHIPPED RULE MAY END THIS.
+   *
+   * `annihilationWin` would hand the player a victory for flattening the Allied
+   * base while the mast, which stands 72.3 m outside it, went untouched — and
+   * the mast is the operation. `assetLossDefeat` is off for symmetry rather
+   * than for a measured failure: the player opens with a full base and could
+   * not plausibly hit zero assets before the authored loss reads, but a rule
+   * that can only end a scripted match by accident should not be armed at all.
+   */
+  outcome: { annihilationWin: false, assetLossDefeat: false, ignoreSeats: [] },
+
+  roster: {
+    // The Sandskiff. Two cargo slots, `Locomotor.Hover`, and the only way an
+    // Artificer crosses water in this army.
+    player: ['unit.raider'],
+    // The Refractor Tower on the cut's gap. Remove this and the road is free.
+    ai: ['struct.defence.specialist'],
+  },
+
+  objectives: [
+    { id: 'mast', kind: 'primary', title: 'Destroy the Allied instrument mast' },
+    {
+      id: 'bore',
+      kind: 'secondary',
+      title: 'Take the bore head intact',
+      credits: 500,
+    },
+    {
+      id: 'wade',
+      kind: 'secondary',
+      hidden: true,
+      title: 'Come round the cut by water',
+      credits: 400,
+    },
+  ],
+
+  triggers: [
+    /* -- the opening word -------------------------------------------------
+     * Two lines: the premise, then the order. A player who reads only the
+     * first should still know where they are, and a player who reads only the
+     * second should still know what to do. Calvane states the doctrine out
+     * loud in the second one because it is a fact about the army rather than
+     * a trick, and an operation that hides its own mechanism is a quiz.
+     */
+    {
+      id: 't.open',
+      when: { on: 'elapsed', ticks: seconds(4) },
+      then: [
+        {
+          do: 'dialogue',
+          speaker: 'Calvane',
+          text: 'Survey 12-880. The Allies sank a bore through our crust nine weeks ago and '
+            + 'have been reading it ever since. A bore is a cut, and a cut is why the '
+            + 'March moves at all.',
+        },
+        {
+          do: 'dialogue',
+          speaker: 'Calvane',
+          text: 'Take the mast down. Take the head off whole, so the hole can be capped — '
+            + 'and only an Artificer can do that. Nothing we drive touches the ground and '
+            + 'nothing we field on foot leaves it. Use both.',
+        },
+      ],
+    },
+
+    /* -- the cut, seen ----------------------------------------------------
+     * THE TEACHING TRIGGER, AND ARRIVING IS WHAT FIRES IT. 56 m is more than
+     * twice a Wayfarer's 26 m sight, so it reveals the wall a moment before the
+     * player would otherwise have driven into the tower's 34.
+     *
+     * AN UNTAGGED `unitsInArea` IS THE EXPENSIVE SPELLING and it is the right
+     * one: the question is whether ANY player unit has come up the road, and
+     * tagging would mean naming in advance which of them counted. It walks
+     * `store.alive` twice a tick — the arming pass and the real pass — until it
+     * fires, and `state.fired` then retires it for the rest of the match.
+     *
+     * **56 m IS BOUNDED BY THE NEAREST PLAYER UNIT AT t = 0, WHICH IS 247.5 m
+     * AWAY** — read off the built world rather than off the opening, because
+     * `buildAlliedGarrison` parks the escort forward of the yard and it is the
+     * escort that this counts. Move `CUT_ALONG` toward the player's opening and
+     * this fires on tick one, revealing the objective before anybody has left
+     * home.
+     *
+     * **THE FOUR-MINUTE CEILING IS NOT BELT AND BRACES.** The hover route to
+     * the compound never comes within 169.7 m of the cut, so a player who sent
+     * hulls and nothing else could satisfy `wade` on a run where the trigger
+     * that reveals it had never fired.
+     *
+     * The player is still PAID — `Session.setObjective` only refuses to
+     * un-resolve, and `'hidden'` is not a resolved state, so the credits and
+     * the medal land. What is lost is everything else: the objective appears on
+     * the panel already ticked, four hundred credits arrive with no explanation
+     * attached, and the two lines that are the entire point of the operation
+     * are never spoken. `reclamation-held-paper` needed the same ceiling for
+     * the same shape of reason and it is the same four minutes.
+     */
+    {
+      id: 't.cut',
+      when: {
+        on: 'any',
+        of: [
+          { on: 'unitsInArea', player: 0, area: { x: GAP.x, z: GAP.z, r: 56 }, min: 1 },
+          { on: 'elapsed', ticks: minutes(4) },
+        ],
+      },
+      then: [
+        { do: 'revealArea', player: 0, area: { x: GAP.x, z: GAP.z, r: 70 } },
+        {
+          do: 'dialogue',
+          speaker: 'Nael',
+          text: 'They have run a wall from the surf to the road and put a refractor on the '
+            + 'one gap. Thirty-four metres of reach on it. Our lance is twenty-six.',
+        },
+        {
+          do: 'dialogue',
+          speaker: 'Nael',
+          text: 'The wall stops at the water, because that is where they think walls stop. '
+            + 'Point the hulls at the bore and they will take the sea themselves — nothing '
+            + 'we drive touches the ground. The men will walk into the gun. Put the '
+            + 'Artificer in a Sandskiff; it holds two.',
+        },
+        { do: 'setObjective', id: 'wade' },
+      ],
+    },
+
+    /* -- the two secondaries, resolved before the win ---------------------
+     * ALL THREE OF THESE SIT ABOVE `t.win` AND THAT IS LOAD-BEARING.
+     * `runDirector` returns immediately once an outcome is set, so a
+     * completion written below the win trigger never fires and the medal never
+     * counts it.
+     */
+    {
+      id: 't.wade',
+      when: {
+        on: 'all',
+        of: [
+          // WHILE THE CUT STILL STANDS. Breaking it retires this rather than
+          // completing it: the objective pays for going round, not through.
+          { on: 'entityAlive', tag: 'gun' },
+          { on: 'unitsInArea', player: 0, area: { x: APRON.x, z: APRON.z, r: 24 }, min: 3 },
+        ],
+      },
+      then: [
+        {
+          do: 'dialogue',
+          speaker: 'Nael',
+          text: 'Ashore behind the cut. Their gun line is pointed at an empty road.',
+        },
+        { do: 'completeObjective', id: 'wade' },
+      ],
+    },
+    {
+      id: 't.boreTaken',
+      when: { on: 'structureCaptured', tag: 'bore', player: 0 },
+      then: [
+        { do: 'eva', line: 'buildingCaptured' },
+        {
+          do: 'dialogue',
+          speaker: 'Calvane',
+          text: 'Whole, and ours. Cap it and log the depth. That is the part of this I would '
+            + 'have come for myself.',
+        },
+        { do: 'completeObjective', id: 'bore' },
+      ],
+    },
+    {
+      id: 't.boreLost',
+      when: {
+        on: 'all',
+        of: [
+          { on: 'entityDead', tag: 'bore' },
+          // THE GUARD IS ON THE DIALOGUE, NOT ON THE OBJECTIVE.
+          // `Session.setObjective` already refuses to un-resolve a completed
+          // one, so the medal is safe either way — but the effect list runs
+          // whole, and without this Calvane reports a broken head over one the
+          // player capped ten minutes ago. See the header.
+          { on: 'not', of: { on: 'objectiveComplete', id: 'bore' } },
+        ],
+      },
+      then: [
+        { do: 'failObjective', id: 'bore' },
+        {
+          do: 'dialogue',
+          speaker: 'Calvane',
+          text: 'The head is broken. The hole stays open, and it will go on being open long '
+            + 'after everyone who argued about it is gone. Note the depth and finish the mast.',
+        },
+      ],
+    },
+
+    /* -- the road column --------------------------------------------------
+     * Six minutes, which is late enough that the player has committed to a
+     * route and early enough that it changes the answer. It comes down the
+     * ROAD and attack-moves the player's opening, so a player who has taken
+     * every hull out to sea has to decide whether to bring them back.
+     *
+     * `grizzly` is the Allied main battle tank, literal and unremapped —
+     * `EffectSink.spawnUnits` resolves through `ProductionCatalog.byKey` with
+     * no `keyFor`, so an authored key means that hull and `validateCampaign`
+     * checks it against `foe`. `spread` is a deterministic ring drawn from
+     * `s.rng`, not a scatter: the same wave has to land in the same shape in
+     * the recording, in the playback and in a designer's third run.
+     */
+    {
+      id: 't.tide',
+      when: { on: 'elapsed', ticks: minutes(6) },
+      then: [
+        { do: 'eva', line: 'forcesUnderAttack' },
+        {
+          do: 'dialogue',
+          speaker: 'Nael',
+          text: 'Column off the survey camp. They are not coming for the bore — they are '
+            + 'coming to keep the road open.',
+        },
+        {
+          do: 'spawnUnits',
+          player: 1,
+          key: 'grizzly',
+          count: 4,
+          at: ROAD,
+          spread: 14,
+          tag: 'column',
+        },
+        { do: 'orderTagged', tag: 'column', order: 'attackMove', at: HOME },
+      ],
+    },
+
+    /* -- the win ---------------------------------------------------------- */
+    {
+      id: 't.win',
+      when: { on: 'entityDead', tag: 'mast' },
+      then: [
+        { do: 'completeObjective', id: 'mast' },
+        {
+          do: 'dialogue',
+          speaker: 'Calvane',
+          text: 'The mast is down. They will sink another and we will come again. One day '
+            + 'somebody will ask how we are so certain about what a cut does, and I would '
+            + 'rather it were not today.',
+        },
+        { do: 'endOperation', result: 'win' },
+      ],
+    },
+
+    /* -- the loss ---------------------------------------------------------
+     * `playerBeaten` is `Viability.isBeaten` — nothing to build with and
+     * nothing to fight with — not "you have no buildings". The player opens
+     * with a full base here, so the two readings would agree for most of the
+     * match; they stop agreeing at exactly the moment it matters, which is a
+     * player down to one Chapterhouse and six Wayfarers who can still finish.
+     */
+    {
+      id: 't.lose',
+      when: { on: 'playerBeaten', player: 0 },
+      then: [{ do: 'endOperation', result: 'loss', reason: 'mast' }],
+    },
+  ],
+};
+
+export default op;

@@ -1180,10 +1180,23 @@ describe('Campaign.md describes the campaign that exists', () => {
      * anybody open this file.
      */
     const chapters = new Set(SHIPPED.map((op) => op.chapter));
-    expect(chapters.has('pact'), 'a Pact operation exists now — Campaign.md §1 still says the '
-      + 'chapter is unwritten, and the operations table needs the new row too').toBe(false);
-    expect(text, 'Campaign.md §1 must say the Pact chapter is empty while it is')
-      .toContain('has no operations written at all yet');
+    /*
+     * IT FIRED, AND THAT IS WHY IT NO LONGER READS THIS WAY. It used to assert
+     * `chapters.has('pact') === false` plus the page's sentence "has no
+     * operations written at all yet", precisely so that authoring the first
+     * Pact operation would break it. On 2026-08-19 it did.
+     *
+     * Pinning the next chapter by name would just re-arm the same trap for
+     * whichever one empties out, so the rule is stated generally instead: the
+     * page may not claim ANY chapter is unwritten while operations exist for
+     * every chapter, and it must say the opposite while that holds. A claim
+     * about ABSENCE is the kind that rots silently — nothing about authoring
+     * an operation would otherwise make anybody open this file.
+     */
+    expect(text, 'every chapter has content, so Campaign.md §1 may not say one is unwritten')
+      .not.toContain('has no operations written at all yet');
+    expect(text, 'Campaign.md §1 must say all four chapters have a card while they do')
+      .toContain('All four chapters now');
     // The chapter table and the operation table have to agree about how many
     // cards the screen draws — `CAMPAIGNS` drops a chapter with no operations.
     expect(CAMPAIGNS.length, 'a chapter carries no operations and is still in CAMPAIGNS')
@@ -1233,8 +1246,18 @@ describe('Campaign.md describes the campaign that exists', () => {
     const unpaid = SHIPPED.flatMap(
       (op) => secondariesOf(op).filter((o) => o.credits === undefined),
     ).length;
-    expect(unpaid, 'Campaign.md §2 says exactly one shipped bonus pays no credits').toBe(1);
-    expect(text).toContain('One shipped bonus pays no credits at all');
+    /*
+     * DERIVED, NOT SPELLED. This was `toBe(1)` against the literal sentence
+     * "One shipped bonus pays no credits at all", and it broke the moment a
+     * second unpaid bonus was authored — a true page failing because the count
+     * in it had moved. The count still has to be RIGHT; it just no longer has
+     * to be one. The word is spelled out because the page bans digits.
+     */
+    const WORDS = ['no', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
+    expect(unpaid, 'more unpaid bonuses than this assertion can spell').toBeLessThan(WORDS.length);
+    const noun = unpaid === 1 ? 'bonus pays' : 'bonuses pay';
+    expect(text, `${unpaid} shipped bonus objectives pay no credits`)
+      .toContain(`${WORDS[unpaid]} shipped ${noun} no credits at all`);
 
     // And that no primary does, which is a build-time rule rather than taste.
     const paidPrimaries = SHIPPED.flatMap(
