@@ -1845,6 +1845,9 @@ export class Shell {
         opponentName: factionByKey(this.setup.aiFaction)?.name ?? 'Opponent',
         mapName: mapById(this.setup.map).name,
         difficulty: this.setup.difficulty,
+        // NO WORLD TO READ, so no per-seat truth to publish. `opponentChips`
+        // falls back to the singular pair above rather than dropping the chip.
+        opponents: [],
         speed: GAME_SPEEDS[this.setup.speed] ?? 1,
       }
       : this.buildResult(result.won);
@@ -3039,6 +3042,19 @@ export class Shell {
     const game = this.game!;
     const world = game.ctx.world;
     const p = world.player(world.localPlayer);
+    // EVERY hostile army, not `players[1]`. In a four-way the end screen's one
+    // opponent chip was naming whoever happened to be seated second and silently
+    // omitting the other two. Neutral is skipped (Gaia is in this table) and so
+    // is anyone allied to the local player, so the chip reads "who was I
+    // fighting" rather than "who else was on the map".
+    //
+    // ONE FILTER, TWO FIELDS. `opponentName` and `opponents` are the same set in
+    // the same order — derived here rather than in two expressions, because a
+    // name list and a difficulty list that disagreed about which seats they
+    // covered would put the wrong setting under the right name.
+    const hostiles = world.players.filter(
+      (o) => o.faction !== Faction.Neutral && !world.areAllied(world.localPlayer, o.id),
+    );
     return {
       won,
       durationSec: game.ctx.loop.simTime,
@@ -3046,17 +3062,15 @@ export class Shell {
       stats: { ...p.stats },
       credits: Math.round(p.credits),
       factionName: factionByKey(this.setup.playerFaction)?.name ?? p.name,
-      // EVERY hostile army, not `players[1]`. In a four-way the end screen's
-      // one opponent chip was naming whoever happened to be seated second and
-      // silently omitting the other two. Neutral is skipped (Gaia is in this
-      // table) and so is anyone allied to the local player, so the chip reads
-      // "who was I fighting" rather than "who else was on the map".
-      opponentName: world.players
-        .filter((o) => o.faction !== Faction.Neutral && !world.areAllied(world.localPlayer, o.id))
-        .map((o) => o.name)
-        .join(' · ') || 'Opponent',
+      opponentName: hostiles.map((o) => o.name).join(' · ') || 'Opponent',
       mapName: mapById(this.setup.map).name,
       difficulty: this.setup.difficulty,
+      // `aiDifficulty` off the WORLD, not `setup.difficulty`: that column is
+      // what the brain actually read, `?ai=` rewrites it after the lobby has had
+      // its say, and a loaded save restores it from the blob.
+      opponents: hostiles.map((o) => ({
+        name: o.name, difficulty: o.aiDifficulty, isHuman: o.isHuman,
+      })),
       speed: GAME_SPEEDS[this.setup.speed] ?? 1,
       // Present only for an operation, and ONLY when the campaign actually
       // published one. A campaign match that ended some other way — quit,

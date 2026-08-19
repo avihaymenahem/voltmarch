@@ -12,7 +12,7 @@
  *   3. shroud: black over unexplored, a heavy multiply over explored-not-seen
  *   4. blips — faction-accent for yours, one colour per hostile ARMY, grey for
  *      neutral
- *   5. attack pings, a short expanding ring
+ *   5. attack pings, a short expanding ring, in the attacked ARMY's colour
  *   6. the camera viewport rectangle: 1 px, unfilled, accent
  *
  * COST MODEL
@@ -39,7 +39,10 @@
  * opponents, because "whose tanks are those" has no answer. `Chrome.hostileColor`
  * owns the table and explains why the colours are not the faction accents (two
  * armies may pick the same side, so an accent is not a unique key for an army).
- * `restyle` builds the per-player lookup once per redraw; the blip loops read it.
+ * `restyle` builds the per-player lookup once per redraw; the blip loops read
+ * it, AND SO DOES `drawPings` — an alert ring that stayed binary hostile/own
+ * while the blips underneath it went per-seat was the one mark on this map that
+ * could not say which army was being hit.
  * ============================================================================
  */
 
@@ -112,11 +115,15 @@ export interface MinimapOptions {
   playfield: () => { x: number; y: number; w: number; h: number };
 }
 
+/**
+ * One attack alert. `owner` is WHOSE THING IS BEING HIT, which is the same key
+ * the blips are coloured by — see `drawPings`.
+ */
 interface Ping {
   x: number;
   z: number;
   age: number;
-  hostile: boolean;
+  owner: PlayerId;
 }
 
 export class Minimap {
@@ -279,10 +286,17 @@ export class Minimap {
     this.bakeDirty = true;
   }
 
-  /** Fired by the HUD on `combat:underAttack`. */
-  ping(x: number, z: number, hostile: boolean): void {
+  /**
+   * Fired by the HUD on `combat:underAttack`. `owner` is `EvUnderAttack.player`
+   * — the VICTIM, which is the army whose colour the ring takes.
+   *
+   * The id is stored and resolved at DRAW time rather than resolved here,
+   * because `restyle` runs once per redraw and an ally mask can change while a
+   * ring is still on screen. A ping never disagrees with the blip underneath it.
+   */
+  ping(x: number, z: number, owner: PlayerId): void {
     if (this.pings.length >= HUD_RADAR.pingPool) this.pings.shift();
-    this.pings.push({ x, z, age: 0, hostile });
+    this.pings.push({ x, z, age: 0, owner });
   }
 
   onJumpRequest(fn: (x: number, z: number) => void): void {
@@ -708,7 +722,21 @@ export class Minimap {
     }
   }
 
-  /** A short expanding ring on attack alerts. */
+  /**
+   * A short expanding ring on attack alerts, IN THE SEAT'S OWN COLOUR.
+   *
+   * This was binary — your accent for a hit on you, one red for a hit on
+   * anybody else — while the blips underneath it had already gone per-seat.
+   * With three opponents that made the ring the one mark on the map that could
+   * not answer "who is fighting whom": three armies brawling in a corner drew
+   * the same red ring whoever was losing.
+   *
+   * `styleOf` is the SAME lookup `drawBlips` and `drawTerritory` use, so the
+   * three cannot drift apart, and the duel case is untouched: a hit on you is
+   * still your accent (`restyle` gives every allied seat the accent, and you
+   * are allied to yourself), and the only hostile in a duel is index 0, which
+   * is `SEMANTIC.danger` — the exact red this always drew.
+   */
   private drawPings(): void {
     if (this.pings.length === 0) return;
     const ctx = this.ctx;
@@ -719,7 +747,7 @@ export class Minimap {
     for (const p of this.pings) {
       const t = p.age / HUD_RADAR.pingSeconds;
       ctx.globalAlpha = 1 - t;
-      ctx.strokeStyle = p.hostile ? BLIP_ENEMY : this.accent;
+      ctx.strokeStyle = this.styleOf(p.owner);
       ctx.beginPath();
       ctx.arc(this.mapX + p.x * scale, this.mapY + p.z * scale, (2 + t * 14) * unitScale, 0, Math.PI * 2);
       ctx.stroke();

@@ -40,6 +40,7 @@ import {
   cloneSetup,
   codeLabel,
   conflictingIds,
+  controllerLabel,
   defaultBindings,
   defaultSettings,
   defaultSetup,
@@ -51,10 +52,12 @@ import {
   memoryStorage,
   normalizeSettings,
   normalizeSetup,
+  opponentChips,
   rollSeed,
   touched,
   withArmyCount,
   type Chord,
+  type OpponentSummary,
   type StorageLike,
 } from '../src/shell/settings-store';
 
@@ -262,10 +265,49 @@ describe('keybinds', () => {
 /* ========================================================================== */
 
 describe('match setup', () => {
-  it('never lets the opponent mirror the player', () => {
+  /*
+   * THIS TEST USED TO ASSERT THE OPPOSITE, and it was pinning a rule rather
+   * than a requirement: "never lets the opponent mirror the player", against
+   * two lines that moved `aiFaction` off the player's own side.
+   *
+   * The rule is deleted (see `normalizeSetup`) and this is rewritten rather
+   * than removed, because the interesting half of it survives: the setup that
+   * comes out has to be the setup that was ASKED FOR. What changed is that a
+   * mirror is now one of the things a player is allowed to ask for — the reason
+   * the rule existed (a mirror handed both scripted bases to one player) was
+   * fixed in `ScenarioBuilder`, and with four seats over four factions a
+   * no-repeat rule is not satisfiable in general anyway.
+   *
+   * Both halves are falsifiers: restore the rule and the first two expectations
+   * fail; leave the rule out but let the mirror leak past `opponents[0]` and the
+   * third fails.
+   */
+  it('lets a player fight their own side — a mirror is a legitimate match', () => {
     const setup = normalizeSetup({ playerFaction: 'soviets', aiFaction: 'soviets' }, ['allies', 'soviets']);
     expect(setup.playerFaction).toBe('soviets');
-    expect(setup.aiFaction).not.toBe('soviets');
+    expect(setup.aiFaction).toBe('soviets');
+    // The mirror fields and `opponents[0]` are one fact, so the army list must
+    // carry the mirror too — a lobby that painted Soviets and booted Allies is
+    // the defect the deleted rule actually was.
+    expect(setup.opponents[0].faction).toBe('soviets');
+  });
+
+  it('mirrors every seat when that is what was stored, not only seat 0', () => {
+    const roster = ['allies', 'soviets', 'meridian', 'reclaim'];
+    const setup = normalizeSetup({
+      playerFaction: 'reclaim',
+      aiFaction: 'reclaim',
+      map: 'sunder-atoll',
+      opponents: [
+        { faction: 'reclaim', difficulty: 1, personality: -1 },
+        { faction: 'reclaim', difficulty: 1, personality: -1 },
+        { faction: 'reclaim', difficulty: 1, personality: -1 },
+      ],
+    }, roster);
+    // Seats 1 and 2 could ALREADY mirror the player before this change —
+    // `normalizeOpponent` only ever clamped a faction to the roster — which is
+    // why the old rule was incoherent rather than merely strict.
+    expect(setup.opponents.map((o) => o.faction)).toEqual(['reclaim', 'reclaim', 'reclaim']);
   });
 
   it('accepts a faction it has never heard of only if the roster names it', () => {
@@ -452,6 +494,82 @@ describe('boot flags with more than one AI', () => {
     four.opponents[0].personality = 0;
     four.opponents[1].personality = 2;
     expect(buildMatchQuery(four, settings, '').has('aip')).toBe(false);
+  });
+});
+
+/* ==========================================================================
+ * THE END SCREEN'S OPPONENT CHIP
+ *
+ * It printed `MatchSetup.difficulty` — the mirror of opponent ONE — beside a
+ * name string that listed EVERY hostile army. In a duel that is exactly true;
+ * in a four-way it announces whichever setting happened to be seated first as
+ * though it were the table's, and nothing on the screen gives it away.
+ *
+ * `opponentChips` lives in `settings-store.ts` rather than in `EndScreen.ts`
+ * for the reason its own header gives: this is the shell module a node test can
+ * import. `src/shell/EndScreen.ts` pulls `Shell.ts` and therefore three and the
+ * whole engine — measured at over two minutes to transform, i.e. a timeout, so
+ * a selector left in there could not be tested at all.
+ * ========================================================================== */
+
+describe('opponent chips', () => {
+  const ai = (name: string, difficulty: number): OpponentSummary =>
+    ({ name, difficulty, isHuman: false });
+
+  it('collapses to the chip that always shipped when the table agrees', () => {
+    const chips = opponentChips([ai('Soviet AI', 1)], 'Soviet AI', 1);
+    expect(chips).toHaveLength(1);
+    expect(chips[0].text).toBe(`Soviet AI · ${DIFFICULTIES[1]}`);
+  });
+
+  it('keeps ONE chip for three armies that all played at one setting', () => {
+    const chips = opponentChips(
+      [ai('Soviet AI 1', 3), ai('Pact AI 2', 3), ai('Reclaim AI 3', 3)], 'x', 0,
+    );
+    expect(chips).toHaveLength(1);
+    expect(chips[0].text).toBe(`Soviet AI 1 · Pact AI 2 · Reclaim AI 3 · ${DIFFICULTIES[3]}`);
+  });
+
+  it('gives a chip PER SEAT the moment the difficulties differ', () => {
+    const list = [ai('Soviet AI 1', 0), ai('Pact AI 2', 1), ai('Reclaim AI 3', 3)];
+    const chips = opponentChips(list, 'x', 0);
+    expect(chips.map((c) => c.text)).toEqual([
+      `Soviet AI 1 · ${DIFFICULTIES[0]}`,
+      `Pact AI 2 · ${DIFFICULTIES[1]}`,
+      `Reclaim AI 3 · ${DIFFICULTIES[3]}`,
+    ]);
+    // THE FALSIFIER FOR THE OLD BEHAVIOUR. Seat 0's setting is what the screen
+    // used to print for the whole table; here it appears once, on seat 0.
+    const easy = chips.filter((c) => c.text.includes(DIFFICULTIES[0]));
+    expect(easy).toHaveLength(1);
+  });
+
+  it('never prints a difficulty for a human, and a PvP seat forces the split', () => {
+    const chips = opponentChips(
+      [{ name: 'Commander B', difficulty: 1, isHuman: true }, ai('Soviet AI 2', 1)], 'x', 0,
+    );
+    expect(chips.map((c) => c.text)).toEqual(['Commander B · Human', `Soviet AI 2 · ${DIFFICULTIES[1]}`]);
+    expect(controllerLabel({ name: 'p', difficulty: 3, isHuman: true })).toBe('Human');
+  });
+
+  it('carries the whole table on the tooltip even when it folds to one chip', () => {
+    const chips = opponentChips([ai('A', 2), ai('B', 2)], 'x', 0);
+    expect(chips).toHaveLength(1);
+    expect(chips[0].title).toBe(`Opponents:\nA · ${DIFFICULTIES[2]}\nB · ${DIFFICULTIES[2]}`);
+  });
+
+  it('falls back to the singular pair when there is no world to read', () => {
+    // `Shell.endMatch` builds a base result with `opponents: []` when no game is
+    // live. A chip that vanished there would be a worse regression than a coarse
+    // one, so the old single-chip shape is the floor.
+    const chips = opponentChips([], 'Soviet AI', 2);
+    expect(chips).toEqual([
+      { text: `Soviet AI · ${DIFFICULTIES[2]}`, title: 'Opponents: Soviet AI' },
+    ]);
+  });
+
+  it('never crashes on a difficulty index outside the table', () => {
+    expect(opponentChips([ai('Ghost', 99)], 'x', 0)[0].text).toBe('Ghost · —');
   });
 });
 

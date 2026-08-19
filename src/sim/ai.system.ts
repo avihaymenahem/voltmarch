@@ -29,8 +29,9 @@ import { Faction, Phase } from '../core/types';
 import type { AvailabilityResult, EntityId, PlayerId, SimContext } from '../core/types';
 import { DEFAULT_SEED } from '../core/config';
 import { ctx } from '../game/context';
+import type { DebugCounters } from '../render/debug';
 import { AiDirector } from './AI';
-import type { AiIntent } from './AI';
+import type { AiBrain, AiIntent } from './AI';
 import { difficultyByName, personalityByName } from './AIStrategy';
 import type { DefLookup, ProductionFacts, ProductionOracle } from './AIStrategy';
 import { BuildKind, production } from './Production';
@@ -129,9 +130,130 @@ function buildOracle(): ProductionOracle | null {
   };
 }
 
+/* --------------------------------------------------------------------------
+ * DEBUG COUNTERS — ONE ROW PER SEAT, NEVER ONE ROW PER MATCH
+ *
+ * This published `brains[0]` and called it "the AI". That was the whole truth
+ * in a duel and a lie the moment the lobby could seat four armies: `aiPosture`
+ * named one opponent of three and the other two were invisible, so "the AI
+ * never expanded" could not be told from "the ONE AI I happened to be reading
+ * never expanded". Nothing warned, because a first element always exists.
+ *
+ * EVERY FIELD IS SUFFIXED WITH THE SEAT — the `PlayerId`, not the brain index.
+ * `AiDirector.rebuild` sorts its brain list by player so the RNG streams are
+ * machine-independent, which means a brain removed mid-match renumbers every
+ * index after it and would silently re-point a row at a different army. The
+ * seat is the stable name; `ai1Posture` is player 1's posture for the whole
+ * match or it is absent.
+ *
+ * AND THE ROWS ARE RETIRED, because `DebugCounters` OUTLIVES THE MATCH. It is
+ * created once in `createDebug` and nothing clears it between boots, so a
+ * four-way followed by a duel would leave `ai2Posture` and `ai3Posture` frozen
+ * at whatever the last match ended on — two dead armies reading as live ones on
+ * the overlay and in `shots/_report.json`. `publishedSeats` is what makes the
+ * delete possible; `dispose` does the same sweep for the same reason.
+ * ------------------------------------------------------------------------ */
+
+/**
+ * The per-seat rows, as `[suffix, reader]`. A table rather than fifteen
+ * assignments so the retire path cannot go out of step with the publish path —
+ * they walk the same list.
+ *
+ * The four late-game rows are here because none of it is visible any other way:
+ * a superweapon strike leaves a crater and no counter, a commander power leaves
+ * nothing at all, and an upgrade never becomes an entity — so "the AI never
+ * used any of this" and "the AI used it and it did not help" look identical
+ * from outside without them.
+ */
+const BRAIN_ROWS: readonly (readonly [string, (b: AiBrain) => number])[] = [
+  ['Posture', (b) => b.postureCode],
+  ['Army', (b) => b.armySize],
+  ['Strike', (b) => b.strikeSize],
+  ['Reserve', (b) => b.reserveSize],
+  ['Harvesters', (b) => b.harvesterSize],
+  ['Refineries', (b) => b.refineryCount],
+  ['Wave', (b) => b.wave],
+  ['Pressure', (b) => Math.round(b.pressure * 100) / 100],
+  ['Memory', (b) => b.memorySize],
+  ['ObjectiveX', (b) => Math.round(b.objectiveXPos)],
+  ['ObjectiveZ', (b) => Math.round(b.objectiveZPos)],
+  ['Superweapons', (b) => b.superweaponCount],
+  ['SuperweaponsFired', (b) => b.superweaponFireCount],
+  ['PowersCalled', (b) => b.commanderPowerCount],
+  ['Upgrades', (b) => b.upgradeRequestCount],
+];
+
+/**
+ * `ai3Posture` built once per seat rather than fifteen times a sim tick.
+ *
+ * `simTick` runs at 30 Hz and this is the only place in the module that would
+ * otherwise concatenate strings, so the cache is the difference between zero
+ * steady-state allocation and a couple of thousand short-lived strings a
+ * second for a debug read almost nobody has open.
+ */
+const KEY_CACHE = new Map<number, readonly string[]>();
+
+function keysForSeat(seat: number): readonly string[] {
+  let keys = KEY_CACHE.get(seat);
+  if (keys === undefined) {
+    keys = BRAIN_ROWS.map((row) => `ai${seat}${row[0]}`);
+    KEY_CACHE.set(seat, keys);
+  }
+  return keys;
+}
+
+/** Seats whose rows are currently ON the counters object. Reused in place. */
+const publishedSeats: number[] = [];
+
+/**
+ * Write one row set per live brain and delete the rows of any seat that has
+ * gone. Exported so a test can drive it against a real brain list without
+ * standing up a whole engine — the defect this replaces was a subscript, and a
+ * subscript is exactly what a system-level test cannot see.
+ */
+export function publishAiCounters(
+  c: DebugCounters, brains: readonly AiBrain[], commandsIssued: number,
+): void {
+  c.aiBrains = brains.length;
+  c.aiCommands = commandsIssued;
+
+  for (let i = 0; i < publishedSeats.length; i++) {
+    const seat = publishedSeats[i];
+    let live = false;
+    for (let j = 0; j < brains.length; j++) {
+      if ((brains[j].player as number) === seat) { live = true; break; }
+    }
+    if (live) continue;
+    const keys = keysForSeat(seat);
+    for (let k = 0; k < keys.length; k++) delete c[keys[k]];
+  }
+
+  publishedSeats.length = brains.length;
+  for (let i = 0; i < brains.length; i++) {
+    const b = brains[i];
+    const seat = b.player as number;
+    publishedSeats[i] = seat;
+    const keys = keysForSeat(seat);
+    for (let k = 0; k < keys.length; k++) c[keys[k]] = BRAIN_ROWS[k][1](b);
+  }
+}
+
+/** Take every row this module owns back off the counters object. */
+export function clearAiCounters(c: DebugCounters): void {
+  for (let i = 0; i < publishedSeats.length; i++) {
+    const keys = keysForSeat(publishedSeats[i]);
+    for (let k = 0; k < keys.length; k++) delete c[keys[k]];
+  }
+  publishedSeats.length = 0;
+  c.aiBrains = 0;
+  c.aiCommands = 0;
+}
+
 /* -------------------------------------------------------------------------- */
 
 let director: AiDirector | null = null;
+/** The counters object, kept so `dispose` can retire its rows without `ctx()`. */
+let counters: DebugCounters | null = null;
 /** Player count the brain list was last built against. */
 let knownPlayers = -1;
 /** Set true once `?ai=off` is seen; the module then does nothing at all. */
@@ -148,6 +270,9 @@ export default defineSystem({
 
   async init(): Promise<void> {
     const { world, channels, debug } = ctx();
+    // Kept so `dispose` can retire the per-seat rows. `ctx()` is valid from
+    // `init` onward and a disposing module must not assume it still is.
+    counters = debug.counters;
 
     const aiFlag = flag('ai');
     if (aiFlag !== null && aiFlag.toLowerCase() === 'off') {
@@ -251,37 +376,15 @@ export default defineSystem({
 
     director.tick(s);
 
-    // Publish intent. Counters are numeric only, so the posture is an enum
-    // index — `__VM.hooks.ai()` is the readable form.
-    const c = debug.counters;
-    c.aiBrains = director.brains.length;
-    c.aiCommands = director.commandsIssued;
-    const b0 = director.brains[0];
-    if (b0 !== undefined) {
-      c.aiPosture = b0.postureCode;
-      c.aiArmy = b0.armySize;
-      c.aiStrike = b0.strikeSize;
-      c.aiReserve = b0.reserveSize;
-      c.aiHarvesters = b0.harvesterSize;
-      c.aiRefineries = b0.refineryCount;
-      c.aiWave = b0.wave;
-      c.aiPressure = Math.round(b0.pressure * 100) / 100;
-      c.aiMemory = b0.memorySize;
-      c.aiObjectiveX = Math.round(b0.objectiveXPos);
-      c.aiObjectiveZ = Math.round(b0.objectiveZPos);
-      // The late game. Published because none of it is visible any other way:
-      // a superweapon strike leaves a crater and no counter, a commander power
-      // leaves nothing at all, and an upgrade never becomes an entity — so
-      // "the AI never used any of this" and "the AI used it and it did not
-      // help" look identical from outside without these four.
-      c.aiSuperweapons = b0.superweaponCount;
-      c.aiSuperweaponsFired = b0.superweaponFireCount;
-      c.aiPowersCalled = b0.commanderPowerCount;
-      c.aiUpgrades = b0.upgradeRequestCount;
-    }
+    // Publish intent, ONE ROW SET PER SEAT. Counters are numeric only, so the
+    // posture is an enum index — `__VM.hooks.ai()` is the readable form, and it
+    // has always answered for every brain.
+    publishAiCounters(debug.counters, director.brains, director.commandsIssued);
   },
 
   dispose(): void {
+    if (counters !== null) clearAiCounters(counters);
+    counters = null;
     director?.dispose();
     director = null;
     knownPlayers = -1;

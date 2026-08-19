@@ -1302,7 +1302,12 @@ export class Hud {
 
     this.unsubs.push(bus.on('combat:underAttack', (e) => {
       const mine = isLocal(e.player);
-      this.minimap.ping(e.x, e.z, !mine);
+      // THE VICTIM'S SEAT, NOT A HOSTILE FLAG. This passed `!mine`, which the
+      // map turned into one red ring for every army that is not yours — while
+      // the blips under it had been per-seat since the four-army lobby landed.
+      // `Minimap.ping` resolves the colour through the same `restyle` lookup
+      // the blips use, so the ring cannot disagree with what it is drawn over.
+      this.minimap.ping(e.x, e.z, e.player);
       if (mine) this.lastAttackTime = this.world.time;
     }));
 

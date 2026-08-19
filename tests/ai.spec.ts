@@ -45,6 +45,7 @@ import {
   openingFor, personalityByName, pickUnit, prereqsMet, scoreComposition,
 } from '../src/sim/AIStrategy';
 import type { CatalogEntry, DefLookup, ProductionOracle } from '../src/sim/AIStrategy';
+import type { DebugCounters } from '../src/render/debug';
 
 /* ========================================================================== */
 /* Harness                                                                    */
@@ -882,6 +883,124 @@ describe('AiDirector', () => {
     expect(h.brain.resourceBonus).toBeGreaterThan(1);
     h.step(300);
     expect(h.world.player(P_AI).credits).toBe(before);
+  });
+});
+
+/* ==========================================================================
+ * THE DEBUG COUNTERS REPORT EVERY SEAT
+ *
+ * `ai.system.ts` published `director.brains[0]` and named the rows `aiPosture`,
+ * `aiArmy`, `aiObjectiveX`. That is the whole truth in a duel and one third of
+ * it in a four-way — the overlay and `shots/_report.json` described ONE
+ * opponent and read as though they described the opposition, with no warning
+ * possible because a first element always exists.
+ *
+ * The publication is exported as a pure function precisely so this can be
+ * driven: the defect was a SUBSCRIPT, and a subscript is exactly what a
+ * system-level test cannot see. `DebugCounters` is a plain object with a string
+ * index signature, so the fake below is the real thing.
+ * ========================================================================== */
+
+describe('ai.system — debug counters', () => {
+  /**
+   * A brain list without a director, because the shape is all `publishAiCounters`
+   * reads. Every field it publishes is a getter on `AiBrain`; a partial object
+   * carrying exactly those is the honest minimum, and `as unknown as AiBrain`
+   * rather than a real one keeps this out of a full match.
+   */
+  /** A fresh `DebugCounters` — the eight named fields, plus its string index. */
+  function emptyCounters(): DebugCounters {
+    return {
+      entities: 0, units: 0, buildings: 0, projectiles: 0,
+      particles: 0, batches: 0, simMs: 0, substeps: 0,
+    };
+  }
+
+  function fakeBrain(player: number, seed: number): AiBrain {
+    return {
+      player: player as PlayerId,
+      postureCode: seed,
+      armySize: seed * 10,
+      strikeSize: seed * 2,
+      reserveSize: seed * 3,
+      harvesterSize: seed * 4,
+      refineryCount: seed,
+      wave: seed * 5,
+      pressure: seed / 8,
+      memorySize: seed * 6,
+      objectiveXPos: seed * 7.4,
+      objectiveZPos: seed * 8.6,
+      superweaponCount: seed,
+      superweaponFireCount: seed + 1,
+      commanderPowerCount: seed + 2,
+      upgradeRequestCount: seed + 3,
+    } as unknown as AiBrain;
+  }
+
+  it('writes one row set per seat, keyed by PLAYER id and not by list index', async () => {
+    const { publishAiCounters, clearAiCounters } = await import('../src/sim/ai.system');
+    const c = emptyCounters();
+    // Seats 1, 2 and 3 — the four-way. Brain INDEX 0 is player 1, so a row
+    // named after the index would collide with the seat naming on seat 1 alone
+    // and disagree everywhere else.
+    publishAiCounters(c, [fakeBrain(1, 1), fakeBrain(2, 2), fakeBrain(3, 3)], 42);
+
+    expect(c.aiBrains).toBe(3);
+    expect(c.aiCommands).toBe(42);
+    expect(c.ai1Posture).toBe(1);
+    expect(c.ai2Posture).toBe(2);
+    expect(c.ai3Posture).toBe(3);
+    expect(c.ai2Army).toBe(20);
+    expect(c.ai3Harvesters).toBe(12);
+    // Rounding is preserved field for field: pressure to two places, the
+    // objective to whole metres.
+    expect(c.ai2Pressure).toBe(0.25);
+    expect(c.ai3ObjectiveX).toBe(22);
+    expect(c.ai3ObjectiveZ).toBe(26);
+    // AND NOTHING UNSUFFIXED EXCEPT THE TWO REAL AGGREGATES. `aiBrains` and
+    // `aiCommands` are facts about the whole table; `aiPosture` was not, and
+    // leaving it behind would keep a row that means "some AI" on a screen whose
+    // whole problem was not saying which.
+    const unsuffixed = Object.keys(c).filter((k) => /^ai[A-Z]/.test(k));
+    expect(unsuffixed.sort()).toEqual(['aiBrains', 'aiCommands']);
+
+    clearAiCounters(c);
+  });
+
+  it('RETIRES a seat that has left, because the counters object outlives a match', async () => {
+    const { publishAiCounters, clearAiCounters } = await import('../src/sim/ai.system');
+    const c = emptyCounters();
+    publishAiCounters(c, [fakeBrain(1, 1), fakeBrain(2, 2), fakeBrain(3, 3)], 10);
+    expect(c.ai3Posture).toBe(3);
+
+    // The next match is a duel. `debug.counters` is created once in
+    // `createDebug` and nothing clears it between boots, so without the retire
+    // sweep seats 2 and 3 would sit at their last values forever and read as two
+    // live armies that are not in the match.
+    publishAiCounters(c, [fakeBrain(1, 7)], 11);
+    expect(c.aiBrains).toBe(1);
+    expect(c.ai1Posture).toBe(7);
+    expect('ai2Posture' in c).toBe(false);
+    expect('ai3ObjectiveX' in c).toBe(false);
+
+    clearAiCounters(c);
+    expect(Object.keys(c).filter((k) => k.startsWith('ai') && k !== 'aiBrains' && k !== 'aiCommands'))
+      .toEqual([]);
+    expect(c.aiBrains).toBe(0);
+  });
+
+  it('allocates no new key strings on a steady-state republish', async () => {
+    const { publishAiCounters, clearAiCounters } = await import('../src/sim/ai.system');
+    const c = emptyCounters();
+    const brains = [fakeBrain(1, 1), fakeBrain(2, 2)];
+    publishAiCounters(c, brains, 0);
+    const first = Object.keys(c).slice();
+    for (let i = 0; i < 50; i++) publishAiCounters(c, brains, i);
+    // The key set is stable, which is what the per-seat cache buys: this runs
+    // inside `simTick` at 30 Hz and rebuilding thirty key strings a tick per
+    // brain is the kind of steady-state garbage this repo measures.
+    expect(Object.keys(c)).toEqual(first);
+    clearAiCounters(c);
   });
 });
 

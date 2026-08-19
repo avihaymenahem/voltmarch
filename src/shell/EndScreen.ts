@@ -45,7 +45,7 @@
  */
 
 import type { PlayerStats } from '../core/types';
-import { DIFFICULTIES } from './settings-store';
+import { opponentChips, type OpponentSummary } from './settings-store';
 import { formatClock, currentObjectives, objectiveLine } from './PauseMenu';
 import { MissionsPanel, humaniseId, rewardCopy } from './Missions';
 import {
@@ -82,7 +82,32 @@ export interface MatchResult {
    */
   opponentName: string;
   mapName: string;
+  /**
+   * MIRROR of `opponents[0].difficulty`, kept for the same reason
+   * `MatchSetup.difficulty` is: `endMatch` accepts a partial result and the
+   * save-index context, the load rows and two tests all reach the singular
+   * field. `opponentChips` reads the ARRAY and falls back to this.
+   */
   difficulty: number;
+  /**
+   * Every hostile army with the difficulty it ACTUALLY played at, in seat order
+   * — the same order and the same filter `opponentName` is joined from.
+   *
+   * ONE CHIP FOR N ARMIES WAS A LIE, and a quiet one: the screen printed
+   * `this.setup.difficulty`, which is the lobby's mirror of opponent ONE, over
+   * a name string listing all three. A four-way against Easy, Normal and Brutal
+   * reported "Brutal" for the table if Brutal happened to be seated first, and
+   * nothing on the screen said otherwise.
+   *
+   * Taken off `PlayerState.aiDifficulty` rather than off `MatchSetup`, because
+   * that column is what the brain read: `?ai=` overrides it after the lobby has
+   * had its say, and a load restores it from the blob. The lobby is what was
+   * asked for; this is what was played.
+   *
+   * May be empty — `endMatch` can be called with no live world — in which case
+   * `opponentChips` falls back to `opponentName` + `difficulty`.
+   */
+  opponents: readonly OpponentSummary[];
   speed: number;
   /**
    * Present only when a campaign operation produced this result.
@@ -301,14 +326,17 @@ export class EndScreen implements Screen {
     chip.appendChild(el('span', undefined, r.mapName));
     badge.appendChild(chip);
 
-    const oppChip = el('div', 'vm-chip');
-    oppChip.appendChild(icon('cpu', 14));
-    oppChip.appendChild(el('span', undefined, `${r.opponentName} · ${DIFFICULTIES[r.difficulty] ?? '—'}`));
-    // The chip is one line in a flex meta row, and three army names is more than
-    // that line has. The full list goes on the tooltip so nothing is lost if the
-    // text is clipped; the names themselves stay visible for the common case.
-    oppChip.title = `Opponents: ${r.opponentName}`;
-    badge.appendChild(oppChip);
+    // ONE CHIP PER ANSWER, not one chip per match. See `opponentChips`: a table
+    // that all played at one setting collapses to the chip that always shipped;
+    // a mixed table gets a chip each rather than the first seat's setting
+    // printed over everybody's names.
+    for (const c of opponentChips(r.opponents, r.opponentName, r.difficulty)) {
+      const oppChip = el('div', 'vm-chip');
+      oppChip.appendChild(icon('cpu', 14));
+      oppChip.appendChild(el('span', undefined, c.text));
+      oppChip.title = c.title;
+      badge.appendChild(oppChip);
+    }
 
     const speedChip = el('div', 'vm-chip');
     speedChip.appendChild(icon('gauge', 14));
