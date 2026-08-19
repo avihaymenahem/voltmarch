@@ -20,26 +20,18 @@ with no number is untracked, and that is itself the bug.
   read an objective. "An informed player drives straight at the objective and is faster" is exactly
   what the gap shows. **Do not read a harness figure as a play time; do not read this play time as a
   harness bug.**
-- **#65 — Phase 5, and the ten-hour claim is now in doubt on ONE data point.** Chapter one is
-  authored and `tools/op-harness` ships. The re-derivation gate is: mean ACTUAL must be >= 16.2 min
-  for 37 operations to reach ten hours. Projecting S1's 0.846x uniformly:
+- **#65 — Phase 5. DECIDED 2026-08-19: author at 37 and add more if it comes up short.** The
+  re-derivation gate was "stop and choose before authoring the other 32". The author's call is that
+  the choice does not need making first, because the cheapest of the three answers — more operations
+  — is also the one that can be taken LAST, after the table is timed. So authoring continues at the
+  planned 37 and the length claim is settled by measurement afterwards rather than by projection now.
 
-  ```
-    mean authored par across 37     17.4 min
-    mean actual at 0.846x           14.7 min      <- under the 16.2 gate
-    37-operation total               9.05 h       <- against a claimed 10.7
-  ```
+  The projection that prompted it, kept because it is the only data there is: S1 played in 11:00
+  against a 13:00 par (0.846x), which extrapolates to 9.05 h across 37 against a claimed 10.7. ONE
+  point, on the shortest operation, by the person who built the game — a floor on play time, not a
+  median. `tests/campaign-length.spec.ts` arms itself at the 37th row and will force the question
+  then regardless.
 
-  **THIS IS ONE POINT AND IT IS BIASED LOW — DO NOT ACT ON IT YET.** It is the SHORTEST operation in
-  the table (13 min against a ramp that ends at 24), played by the person who built the game, which
-  is the fastest possible player rather than a median one. It is a FLOOR on play time, not an
-  estimate of one. A player who does not know a Tesla Coil dies in a brownout is slower, and going
-  for gold is slower again.
-
-  **What would settle it:** two or three more operations timed, ideally including one by somebody who
-  did not build this. If the ratio holds at ~0.85 the honest options are the plan's own three — 41
-  operations instead of 37, a mean par of 19.2 min instead of 17.4, or saying nine hours out loud.
-  `tests/campaign-length.spec.ts` arms itself at the 37th row and will force the choice then anyway.
 - **#66 — Phases 6-7.** The remaining 32 operations. **180-320 person-hours, roughly 3-5× the
   engine**, of which ~35 hours is human play no agent can do. That ratio is the single most
   important fact about the campaign.
