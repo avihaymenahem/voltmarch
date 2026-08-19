@@ -444,7 +444,20 @@ describe('the import parser can be trusted with the rest of this file', () => {
     const types = join(SRC, 'campaign/types.ts');
     expect(SOURCE.get(types)!).toContain("await import('./campaign-install')");
     expect(dynamicSpecifiers(types)).toEqual([]);
-    expect(staticSpecifiers(types)).toEqual(['../core/types']);
+    /*
+     * BOTH OF THESE ARE `import type`, AND BOTH ARE LISTED ON PURPOSE. The
+     * closure follows type-only edges by design — the header says why, and it
+     * is the conservative direction — so this fixture has to list them too or
+     * it would be asserting a parser that behaves differently from the one the
+     * rules use.
+     *
+     * `../world/Biomes` arrived when `OperationMap.biome` stopped being
+     * `string` and became `BiomeName`. It costs nothing: the import is erased
+     * at build time, and `Biomes.ts` is already in the entry chunk because the
+     * terrain generator is. Verified against the build — `campaign-install`
+     * stayed 112.33 kB across the change.
+     */
+    expect(staticSpecifiers(types)).toEqual(['../core/types', '../world/Biomes']);
   });
 });
 
