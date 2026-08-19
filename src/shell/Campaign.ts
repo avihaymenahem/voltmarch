@@ -48,6 +48,29 @@ import type { Screen, Shell } from './Shell';
  * `SaveContext` / `ServiceContext` arrangement, for the same reason.
  * ========================================================================== */
 
+/**
+ * One authored objective, as the briefing needs to see it.
+ *
+ * **`hidden` IS ON THIS TYPE BECAUSE THE BRIEFING HAS TO FILTER ON IT.** It was
+ * missing, and `BriefingScreen`'s own header had forbidden listing a hidden
+ * objective since the file was written — so the guard was prose the compiler
+ * could not have let anyone write, and `reclamation.01.held-paper` shipped its
+ * hidden secondary on screen before the player had pressed anything. A
+ * structural type that omits a field does not merely fail to READ it: it makes
+ * the rule that needs it unexpressible.
+ *
+ * It mirrors `ObjectiveDef` in `src/campaign/types.ts` field for field —
+ * `credits` excepted, which no screen here shows. Both sides are checked
+ * against their own copy; keep the two in step.
+ */
+interface ObjectiveView {
+  readonly id: string;
+  readonly kind: 'primary' | 'secondary';
+  readonly title: string;
+  /** Hidden until a `setObjective` effect reveals it, IN THE MATCH. */
+  readonly hidden?: boolean;
+}
+
 interface OperationView {
   readonly id: string;
   readonly index: number;
@@ -55,7 +78,7 @@ interface OperationView {
   readonly beat: string;
   readonly parSec: number;
   readonly requires: readonly string[];
-  readonly objectives: readonly { id: string; kind: 'primary' | 'secondary'; title: string }[];
+  readonly objectives: readonly ObjectiveView[];
 }
 
 interface ChapterView {
@@ -267,11 +290,66 @@ function titleOf(ch: ChapterView, id: string): string {
  *
  * One operation: what it is, what it wants, and Deploy.
  *
- * THE OBJECTIVE LIST HERE IS THE AUTHORED ONE, NOT THE LIVE ONE. It shows
- * every objective the operation declares INCLUDING none of the hidden ones —
- * a briefing that listed a hidden objective would be the operation spoiling
- * its own turn before the player has pressed anything.
+ * THE OBJECTIVE LIST HERE IS THE AUTHORED ONE, NOT THE LIVE ONE — there is no
+ * match yet, so nothing has a status. It shows every objective the operation
+ * declares EXCEPT the hidden ones: a briefing that listed one would be the
+ * operation spoiling its own turn before the player has pressed anything.
+ *
+ * **THAT SENTENCE WAS HERE FIRST AND THE CODE DID NOT DO IT.** `OperationView`
+ * declared `{ id; kind; title }`, so `render` filtered on `kind` alone and
+ * `reclamation.01.held-paper` briefed all three of its objectives — the hidden
+ * secondary among them, which names the transformer, the mechanism and the
+ * whole discovery the operation is built around. `briefingObjectives` is the
+ * rule as code; see its own note for why the row is OMITTED rather than
+ * replaced by a placeholder.
  * ========================================================================== */
+
+/**
+ * The objectives a briefing may show: everything the operation declares that
+ * is not hidden, primaries first and authored order within each kind.
+ *
+ * ── A HIDDEN ROW IS OMITTED, NOT STUBBED, AND THE REST OF THE PRODUCT DECIDED
+ * ── THAT ALREADY ──────────────────────────────────────────────────────────
+ * The obvious alternative is a placeholder — "Bonus: undisclosed" — which
+ * admits something is there without saying what. It is refused because the two
+ * other screens that list these rows both OMIT, and three screens telling one
+ * story is worth more than any of them being individually clever:
+ *
+ *   - the in-match panel (`campaign-install.ts#rows`, and again in
+ *     `ui/objectives.system.ts`) drops any objective at status `'hidden'`, so
+ *     a placeholder here would announce a bonus that the player then cannot
+ *     find anywhere for the first several minutes of the match;
+ *   - the results screen (`EndScreen.ts#campaignObjectiveList`) drops it too —
+ *     "Hidden ones stay hidden; they never fired" — so one never revealed is
+ *     never mentioned at all, and a briefing that had counted it would be the
+ *     only screen claiming it existed.
+ *
+ * It also costs the operation the thing it is for. `01-held-paper`'s header
+ * argues its hidden secondary is a shipped rule most players never meet, worth
+ * a medal *because it is discovered*; a row saying "there is a secret here"
+ * turns the discovery into a search. The medal arithmetic is unaffected either
+ * way — silver already wants every bonus the operation DECLARES, revealed or
+ * not — so nothing is being hidden from the player that they are graded on
+ * without warning.
+ *
+ * Exported so the rule has one home and can be asserted without a DOM;
+ * `render` below is its only production caller.
+ */
+export function briefingObjectives(
+  objectives: readonly ObjectiveView[],
+): readonly ObjectiveView[] {
+  const out: ObjectiveView[] = [];
+  for (const kind of ['primary', 'secondary'] as const) {
+    for (const o of objectives) {
+      if (o.kind !== kind) continue;
+      // `hidden !== true`, never `!o.hidden`: the field is optional and an
+      // author who writes nothing means shown.
+      if (o.hidden === true) continue;
+      out.push(o);
+    }
+  }
+  return out;
+}
 
 export class BriefingScreen implements Screen {
   readonly id = 'briefing';
@@ -324,13 +402,11 @@ export class BriefingScreen implements Screen {
 
     const objectives = el('div', 'vm-camp-brief-objectives');
     objectives.appendChild(el('h4', 'vm-camp-brief-h4', 'Objectives'));
-    for (const kind of ['primary', 'secondary'] as const) {
-      for (const o of op.objectives.filter((x) => x.kind === kind)) {
-        const line = el('div', `vm-camp-brief-obj is-${kind}`);
-        line.appendChild(el('span', 'vm-camp-brief-tag', kind === 'primary' ? 'Primary' : 'Bonus'));
-        line.appendChild(el('span', 'vm-camp-brief-obj-text', o.title));
-        objectives.appendChild(line);
-      }
+    for (const o of briefingObjectives(op.objectives)) {
+      const line = el('div', `vm-camp-brief-obj is-${o.kind}`);
+      line.appendChild(el('span', 'vm-camp-brief-tag', o.kind === 'primary' ? 'Primary' : 'Bonus'));
+      line.appendChild(el('span', 'vm-camp-brief-obj-text', o.title));
+      objectives.appendChild(line);
     }
     wrap.appendChild(objectives);
     return wrap;

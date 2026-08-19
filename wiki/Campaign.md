@@ -66,7 +66,9 @@ say so, and not before.
 its operations you have finished; each operation is a row with its par time and your medal on it.
 
 - **Brief** opens the briefing — the chapter, the operation's one-line beat, and the objectives it
-  declares, primaries first.
+  declares, primaries first. **Hidden bonuses are not on it, and nothing stands in for one**: a
+  briefing that named one, or even admitted it was there, would be the operation spoiling its own
+  turn before you had pressed anything.
 - **Deploy** starts the match.
 - An operation whose prerequisites are unfinished is shown **locked, with the reason spelled out**
   — "complete *First Tap*" rather than a padlock. A row you cannot see is a row you cannot plan
@@ -112,9 +114,11 @@ nothing else.
 - **A primary never pays credits.** That is refused at build time rather than left to taste — being
   paid for playing the operation is not a bonus.
 - Some bonuses are **hidden** until something in the match reveals them. A hidden one is kept off
-  the in-match panel until it is revealed, and off the results screen entirely if it never was.
-  **It still counts against your medal**, though: silver wants every bonus the operation declares,
-  so one you never discovered costs you exactly what one you failed would have.
+  the briefing entirely, off the in-match panel until it is revealed, and off the results screen
+  entirely if it never was — three screens telling one story, with no placeholder row anywhere
+  hinting that something is there. **It still counts against your medal**, though: silver wants
+  every bonus the operation declares, so one you never discovered costs you exactly what one you
+  failed would have.
 
 > ### Where the objectives actually appear
 >
@@ -123,9 +127,12 @@ nothing else.
 > are filtered out of it until something reveals them. The match-objective board is not merely
 > covered up — it is switched off for the duration, because progression is (§3).
 >
-> The full list is also on the **briefing** before you deploy and on the **results screen** after,
-> where each row is marked met or not. In-mission dialogue arrives as a **toast** in the corner
-> rather than in a briefing log with a portrait; that part is a placeholder and the source says so.
+> The same list is on the **briefing** before you deploy and on the **results screen** after, where
+> each row is marked met or not. Neither is the *full* list where a hidden bonus is concerned: the
+> briefing never shows one, and the results screen shows it only if the match revealed it.
+>
+> In-mission dialogue arrives as a **toast** in the corner rather than in a briefing log with a
+> portrait; that part is a placeholder and the source says so.
 
 Medals are graded from the outcome, never stored as something payable:
 
