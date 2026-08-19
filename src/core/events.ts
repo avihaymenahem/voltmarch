@@ -287,8 +287,6 @@ export class CommandBus {
   private count = 0;
   /** Set while draining, so a handler cannot recursively issue into the ring. */
   private draining = false;
-  /** Commands issued during a drain, applied next tick. */
-  private readonly overflowBuffer: Command[] = [];
 
   /**
    * THE RECORDING TAP. One observer, called for every command as it is
@@ -336,8 +334,25 @@ export class CommandBus {
     try { fn(); } finally { this.reissuing = was; }
   }
 
-  /** Diagnostics: commands dropped because the ring or arena was full. */
+  /**
+   * Diagnostics: every command this bus refused, for any reason. Surfaced on
+   * the F3 overlay through `readChannelStats`.
+   *
+   * A DROP THAT DOES NOT LAND HERE IS THE BUG, NOT THE DROP. See `claim`.
+   */
   public droppedCommands = 0;
+
+  /**
+   * The subset of `droppedCommands` refused for being issued INSIDE a drain or
+   * a harvest. Separate from the ring-full count because the two mean opposite
+   * things: ring-full is pressure and tuning, this one is a caller in the wrong
+   * place and is always a defect in that caller.
+   */
+  public droppedMidDrain = 0;
+
+  /** One warning per bus, so a per-tick offender cannot flood the console. */
+  private warnedMidDrain = false;
+
   /** Monotonic tick stamp written onto every command. */
   public tick = 0;
 
@@ -385,10 +400,72 @@ export class CommandBus {
   }
 
   /**
-   * Claim the next command slot. Returns null when the ring is full (the
-   * command is dropped and counted — we never grow mid-match).
+   * Claim the next command slot. Returns null when the ring is full, or when
+   * the caller is inside a drain or a harvest. Either way the command is
+   * dropped AND COUNTED — we never grow mid-match, and we never lose one
+   * quietly.
+   *
+   * WHY A MID-DRAIN CLAIM IS REFUSED RATHER THAN BUFFERED
+   * -----------------------------------------------------
+   * This guard replaces an `overflowBuffer` field that was declared, cleared in
+   * two places, and NEVER WRITTEN TO, under a comment promising to "re-issue
+   * anything that arrived during the drain". A claim taken while `draining`
+   * went into the ring past the `n` the drain loop had already captured, was
+   * never delivered, and was then erased by the `count = 0` reset — without
+   * touching `droppedCommands`, which is the one number that would have shown
+   * it. Silence was the defect; the drop itself is correct, and here is why.
+   *
+   * MAKING THE BUFFER REAL PUTS THE COMMAND PAST BOTH SEAMS OF THE SAME TICK.
+   * The drainers run, in order:
+   *
+   *   Phase.Command    0     `net/net.system.ts`      HARVEST — the lockstep seam
+   *   Phase.Command    1     `game/playback.system.ts` HARVEST — the replay input lock
+   *   Phase.Command    9000  `input/Commands.ts`       drain
+   *   Phase.Production -100  `sim/features.system.ts`  drain
+   *   Phase.Production 0     `sim/Production.ts`       drain
+   *
+   * So "re-issue on the next drain" from the Command-9000 drain does NOT mean
+   * next tick — it means Production -100, THIS tick, after both harvests have
+   * already run. `net.system.ts`'s own header calls order 0 "the only order at
+   * which a local command can be intercepted before a consumer applies it": a
+   * command created after it applies locally and never reaches the relay, which
+   * is a desync with no findable cause. Under playback, `playback.system.ts`
+   * harvests at order 1 precisely to throw the locally re-derived copy away; a
+   * command created after that survives and applies ON TOP of the recorded
+   * stream — trap 2 in `src/game/Replay.ts`, reached by a third route.
+   *
+   * Pinning the flush to the seams instead does not work either: both seams are
+   * inert in a skirmish (`net.system.ts` until `attachSession`, playback until a
+   * file is armed), so the buffer would never empty at all. THERE IS NO POINT IN
+   * THE TICK AT WHICH RE-ISSUING AN OVERFLOW IS CORRECT FOR BOTH A SKIRMISH AND
+   * A LOCKSTEP MATCH, which is what makes this a refusal rather than a queue.
+   *
+   * THE HOUSE PATTERN ALREADY EXISTS AND NOTHING NEEDS THIS. Every consumer that
+   * wants to put a command back PARKS it and re-issues AFTER `drain()` returns —
+   * `input/Commands.ts#reissueParked` (called on the line after the drain),
+   * `sim/features.system.ts#reissue`, and both harvest sites, which apply their
+   * scheduled frame outside the harvest window. That is the supported way to
+   * issue "from" a handler, it is stamped through `markReissue`, and it is
+   * visible to the seams because it happens while `draining` is false.
+   *
+   * A caller that trips this is therefore in the wrong place, and the counter
+   * plus the one-shot warning are there to say so on the first occurrence rather
+   * than through a checksum mismatch on somebody else's machine.
    */
   private claim(kind: CommandKind, player: PlayerId): Command | null {
+    if (this.draining) {
+      this.droppedCommands++;
+      this.droppedMidDrain++;
+      if (!this.warnedMidDrain) {
+        this.warnedMidDrain = true;
+        console.warn(
+          `[CommandBus] refused a command (kind ${kind}, player ${player as number}) issued `
+          + 'from inside a drain or harvest. Park it and re-issue after the drain returns — '
+          + 'see CommandBus.claim.',
+        );
+      }
+      return null;
+    }
     if (this.count >= COMMAND_CAPACITY) {
       this.droppedCommands++;
       return null;
@@ -500,6 +577,10 @@ export class CommandBus {
     if (c === null) return;
     c.stance = stance;
     const n = Math.min(idCount, COMMAND_ENTITY_ARENA - this.arenaHead);
+    // Counted for the same reason `issueOrder` counts it: an entity list cut
+    // short by a full arena is a partly-lost command, and the whole point of
+    // `droppedCommands` is that no loss is silent. This line was missing.
+    if (n < idCount) this.droppedCommands++;
     const start = this.arenaHead;
     for (let i = 0; i < n; i++) this.arena[start + i] = ids[i];
     this.arenaHead += n;
@@ -615,9 +696,9 @@ export class CommandBus {
       this.draining = false;
       this.count = 0;
       this.arenaHead = 0;
-      // Re-issue anything that arrived during the drain (rare: an order handler
-      // that itself orders something, e.g. auto-rally on unit exit).
-      if (this.overflowBuffer.length > 0) this.overflowBuffer.length = 0;
+      // Nothing can have arrived during the window: `claim` refuses while
+      // `draining` and counts the refusal. A handler that wants to put a
+      // command back parks it and re-issues after this returns.
     }
   }
 
@@ -628,7 +709,6 @@ export class CommandBus {
   clear(): void {
     this.count = 0;
     this.arenaHead = 0;
-    this.overflowBuffer.length = 0;
   }
 }
 
