@@ -236,12 +236,22 @@ describe('Minimap — the alert ring is coloured by seat, like everything else',
     expect(r.redraw()[0].style).toBe(hostileColor(1));
 
     // Seat 2 changes sides mid-ring. The stored ping is an id, not a colour, so
-    // the ring re-resolves and lands on the local accent with the blips.
+    // the ring re-resolves and lands on the ALLY colour with the blips.
     // The mask is written the way `ScenarioBuilder.gaia` writes it — there is no
     // setter, alliances are bits.
+    //
+    // **THIS LINE EXPECTED `accentFor(Faction.Allies)` UNTIL `SEMANTIC.ally`
+    // EXISTED**, which is exactly the defect that colour was added for: a
+    // newly-allied army was painted in the LOCAL PLAYER'S OWN accent, so a 2v2
+    // could not tell your tanks from your team-mate's. What this test is
+    // actually about — the ring re-resolves through `restyle` rather than
+    // freezing a colour at ping time — is unchanged, and the falsifier above it
+    // (the same ring reading `hostileColor(1)` one redraw earlier) still is too.
     r.world.player(0 as PlayerId).allyMask |= 1 << 2;
     r.world.player(2 as PlayerId).allyMask |= 1 << 0;
-    expect(r.redraw()[0].style).toBe(accentFor(Faction.Allies));
+    expect(r.redraw()[0].style).toBe(SEMANTIC.ally);
+    expect(r.redraw()[0].style, 'and it is NOT the local accent any more')
+      .not.toBe(accentFor(Faction.Allies));
     r.map.dispose();
   });
 

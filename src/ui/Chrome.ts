@@ -723,6 +723,25 @@ export const SEMANTIC = {
   ore: '#C8A83C',
   /** Neutral / Gaia blips. */
   neutral: '#B9C2CC',
+  /**
+   * An ALLIED army's blips. Semantic, never faction-swapped.
+   *
+   * Same argument as `HOSTILE_COLORS` below and the same teeth: your own units
+   * keep your accent, so a duel and every `?shot=` fixture are untouched — only
+   * a team game makes this appear at all. Before it existed, `Minimap.restyle`
+   * gave every allied seat `this.accent`, so in a 2v2 YOUR TANKS AND YOUR
+   * ALLY'S WERE ONE COLOUR and the tactical map could not answer "is that mine".
+   *
+   * THE HUE IS DERIVED, NOT PICKED. Sweeping 0..359 against every saturated
+   * colour that can share the map — the four faction accents (3 / 166 / 213 /
+   * 285), the four `HOSTILE_COLORS` (5 / 27 / 173 / 274), and `ore` (46) — the
+   * freest hue is **93 at 47 degrees of separation**, and its one near
+   * neighbour is ore. This sits at 96 and holds ore apart on LIGHTNESS as well:
+   * relative luminance 0.60 against ore's 0.41. A green nearer the conventional
+   * 141 was rejected because it lands 25 degrees off the Pact accent, which is
+   * exactly the seat most likely to have an ally on this map.
+   */
+  ally: '#7BE137',
   /** Text at full strength. */
   text: '#E6EEF6',
   /** Secondary text and inactive labels. */

@@ -1402,17 +1402,28 @@ export class Hud {
    * the zero-allocation rule for the frame loop leaves room for. `setArmies`
    * compares its argument as well, so a redundant call is free.
    *
-   * A DUEL PASSES AN EMPTY LIST, which is the legend's "render the row you
+   * A DUEL PASSES TWO EMPTY LISTS, which is the legend's "render the row you
    * always did" case: one swatch in `--vm-danger`, captioned "Hostile". Naming
    * the single opponent would be a gratuitous change to every existing match for
    * information the player already has.
+   *
+   * **AN ALLY IS NAMED FROM THE FIRST ONE, not from the second**, and the two
+   * lists are gated differently on purpose. `Sidebar.renderLegend` carries the
+   * argument: an unnamed red swatch still says "hostile", and an unnamed green
+   * one says nothing at all.
+   *
+   * THE SIZE GATE CANNOT SEE AN ALLIANCE CHANGING WITHOUT THE TABLE CHANGING.
+   * Nothing does that today — teams are seated at boot and `restoreSnapshot`
+   * replaces the whole table — but if a diplomacy verb ever lands, this gate is
+   * where it has to be revisited, not `setArmies`, which already compares by
+   * value and is free to call.
    */
   private refreshArmyLegend(): void {
     const size = this.world.players.length;
     if (size === this.armyRosterSize) return;
     this.armyRosterSize = size;
     const hostiles = this.minimap.hostileArmies();
-    this.sidebar.setArmies(hostiles.length > 1 ? hostiles : []);
+    this.sidebar.setArmies(this.minimap.alliedArmies(), hostiles.length > 1 ? hostiles : []);
   }
 
   setSoundHook(fn: ((cue: HudSoundCue) => void) | null): void {

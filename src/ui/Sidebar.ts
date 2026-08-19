@@ -496,15 +496,24 @@ export interface SuperweaponView {
 /** Severity of the status board's advice line. */
 export type AdviceKind = 'info' | 'warn' | 'alert';
 
+/** Two legend lists, compared by value. Cheap enough to call every refresh. */
+function same(a: readonly ArmyLegendEntry[], b: readonly ArmyLegendEntry[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].color !== b[i].color || a[i].label !== b[i].label) return false;
+  }
+  return true;
+}
+
 /**
- * One opposing army in the map legend.
+ * One named army in the map legend — an ally or an opponent.
  *
  * `color` is whatever `Minimap` is actually painting that army's blips in, and
  * it is passed rather than recomputed on purpose — a legend that derives its own
  * colours is a legend that can disagree with the map it is a key for.
  */
 export interface ArmyLegendEntry {
-  /** The blip colour, from `Chrome.hostileColor`. */
+  /** The blip colour, from `Chrome.hostileColor` or `SEMANTIC.ally`. */
   readonly color: string;
   /** Short caption, e.g. `Soviet AI 2`. */
   readonly label: string;
@@ -3253,6 +3262,7 @@ export class Sidebar {
   private readonly legendEl: HTMLElement;
   /** Hostile armies, in the minimap's seat order. Empty = the default row. */
   private hostiles: readonly ArmyLegendEntry[] = [];
+  private allies: readonly ArmyLegendEntry[] = [];
   private faction: Faction;
   private radarOnline = true;
 
@@ -3363,26 +3373,20 @@ export class Sidebar {
   }
 
   /**
-   * Name and colour the opposing armies in the map legend.
+   * Name and colour the allied and opposing armies in the map legend.
    *
-   * Hand it an empty list for a duel and the legend renders exactly the four
+   * Hand it two empty lists for a duel and the legend renders exactly the four
    * rows it always did — a hostile swatch in `--vm-danger`, captioned "Hostile".
-   * Hand it three and the map key names all three, which is the difference
-   * between four colours on the radar and four colours nobody can identify.
+   * Hand it three hostiles and the map key names all three, which is the
+   * difference between four colours on the radar and four colours nobody can
+   * identify.
    *
    * CHEAP TO CALL WITH THE SAME THING TWICE: it compares first and returns
    * without touching the DOM, so the caller does not need its own dirty flag.
    */
-  setArmies(hostiles: readonly ArmyLegendEntry[]): void {
-    if (hostiles.length === this.hostiles.length) {
-      let same = true;
-      for (let i = 0; i < hostiles.length; i++) {
-        const a = hostiles[i];
-        const b = this.hostiles[i];
-        if (a.color !== b.color || a.label !== b.label) { same = false; break; }
-      }
-      if (same) return;
-    }
+  setArmies(allies: readonly ArmyLegendEntry[], hostiles: readonly ArmyLegendEntry[]): void {
+    if (same(allies, this.allies) && same(hostiles, this.hostiles)) return;
+    this.allies = allies.map((h) => ({ ...h }));
     this.hostiles = hostiles.map((h) => ({ ...h }));
     this.renderLegend();
   }
@@ -3390,17 +3394,25 @@ export class Sidebar {
   /**
    * Repaint the map key.
    *
-   * The three fixed rows are Yours, Ore and View; the hostile rows sit between
-   * the first and the second, which is where the single one always was. A
-   * custom colour is an INLINE style rather than a class, because there is no
-   * fixed set of them to write CSS for — `Chrome.hostileColor` owns the table
-   * and the seat index is what picks a row out of it.
+   * The three fixed rows are Yours, Ore and View. ALLY rows sit directly under
+   * Yours and the hostile rows under those, which is the order the player reads
+   * the fight in — mine, ours, theirs. A custom colour is an INLINE style rather
+   * than a class, because there is no fixed set of them to write CSS for —
+   * `Chrome.hostileColor` owns the hostile table and the seat index picks a row
+   * out of it.
+   *
+   * AN ALLY IS ALWAYS NAMED WHEN ONE EXISTS, unlike a hostile, which is named
+   * only once there are two or more (`Hud.refreshArmyLegend`). The asymmetry is
+   * deliberate: "Hostile" in red is a complete key when there is one opponent,
+   * but a green swatch with no name is not — the player has to be told whose it
+   * is, and there is exactly one thing it can be.
    */
   private renderLegend(): void {
     const legend = this.legendEl;
     legend.replaceChildren();
 
     const rows: Array<{ mod: string; name: string; color?: string }> = [{ mod: '', name: 'Yours' }];
+    for (const a of this.allies) rows.push({ mod: 'is-ally', name: a.label, color: a.color });
     if (this.hostiles.length === 0) {
       rows.push({ mod: 'is-enemy', name: 'Hostile' });
     } else {

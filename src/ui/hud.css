@@ -139,6 +139,10 @@
   --vm-warn: #f0b429;
   --vm-danger: #ff4d3d;
   --vm-gold: #f6c445;
+  /* An allied army's blips. Mirrors SEMANTIC.ally; tests/hud-palette.spec.ts
+     compares the two, because the canvas layers read the TS copy and this is
+     the fifth hex to be written down in both places. */
+  --vm-ally: #7be137;
 
   /* Type. Measured against the .94 fill: 8.9:1 and 5.4:1. */
   --vm-text: #eaf2fa;
@@ -1049,6 +1053,7 @@
   background: var(--vm-accent);
 }
 
+.vm-hud .vm-legend-row.is-ally .vm-legend-swatch { background: var(--vm-ally); }
 .vm-hud .vm-legend-row.is-enemy .vm-legend-swatch { background: var(--vm-danger); }
 .vm-hud .vm-legend-row.is-ore .vm-legend-swatch { background: var(--vm-gold); }
 .vm-hud .vm-legend-row.is-view .vm-legend-swatch {

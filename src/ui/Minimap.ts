@@ -90,6 +90,19 @@ const BLIP_ENEMY = SEMANTIC.danger;
  * greeble atlas and do not repaint (see `src/art/BuildingDefs.ts` §4b).
  */
 const BLIP_NEUTRAL = SEMANTIC.neutral;
+/**
+ * An ALLIED army's blips.
+ *
+ * `restyle` gave every seat `areAllied` answered true for the LOCAL ACCENT, so
+ * in a 2v2 a player could not tell their own tanks from their team-mate's —
+ * reported as exactly that. The rule is now three-valued rather than two:
+ * NEUTRALITY still wins over allied-ness (see `BLIP_NEUTRAL` above), then
+ * YOURS wins over allied, and only then is a seat an ally.
+ *
+ * A DUEL IS UNTOUCHED, and that is what makes this safe to land: with no ally
+ * seated, no blip reaches this colour and no `?shot=` fixture moves.
+ */
+const BLIP_ALLY = SEMANTIC.ally;
 /** The dark plate every blip is drawn on, so none of them relies on terrain. */
 const BLIP_PLATE = 'rgba(3,6,10,0.78)';
 
@@ -479,18 +492,26 @@ export class Minimap {
   /**
    * One colour per player, for this redraw.
    *
-   * THE ORDER OF THE THREE TESTS IS THE WHOLE RULE, and two of them predate
-   * four-army support:
+   * THE ORDER OF THE FOUR TESTS IS THE WHOLE RULE:
    *
-   *   1. NEUTRALITY BEATS ALLIED-NESS. Gaia is allied to everyone in both
+   *   1. NEUTRALITY BEATS EVERYTHING. Gaia is allied to everyone in both
    *      directions on purpose (`ScenarioBuilder.gaia`), so without this a
    *      civilian block would be painted in the player's own accent and
    *      capturing one would change nothing on the map. See `BLIP_NEUTRAL`.
-   *   2. ALLIED-NESS BEATS SEAT. Yours and a future ally's read as one force,
-   *      because that is what they are to the player reading the map.
-   *   3. EVERYONE ELSE GETS THEIR SEAT'S COLOUR, counted in player order among
+   *   2. YOURS BEATS ALLIED, and `areAllied(local, local)` is TRUE, so this
+   *      test has to sit ahead of the next one or it never fires.
+   *   3. AN ALLY IS ITS OWN COLOUR. **RULE 2 USED TO READ "ALLIED-NESS BEATS
+   *      SEAT — yours and a future ally's read as one force, because that is
+   *      what they are to the player reading the map."** That argument is right
+   *      about FRIEND-OR-FOE and wrong about the question a player actually
+   *      asks a tactical map, and it shipped a 2v2 in which your tanks and your
+   *      team-mate's were indistinguishable. Reported as exactly that.
+   *   4. EVERYONE ELSE GETS THEIR SEAT'S COLOUR, counted in player order among
    *      the hostiles. In a duel that is one hostile at index 0, which is
    *      `SEMANTIC.danger` — the exact red this has always drawn.
+   *
+   * A DUEL CANNOT REACH RULE 3, which is why this change moves no `?shot=`
+   * fixture and no 1v1 pixel.
    *
    * Note that the DEFEATED are not special-cased. A wiped army has no entities
    * to blip, so its colour simply stops appearing, which is the readable answer
@@ -506,8 +527,12 @@ export class Minimap {
       const p = players[i];
       if (p.faction === Faction.Neutral) {
         this.blipStyle[i] = BLIP_NEUTRAL;
-      } else if (world.areAllied(local, p.id)) {
+      } else if (p.id === local) {
+        // YOURS, and this test has to come before the ally test rather than
+        // after it: `areAllied` is true of the local player against itself.
         this.blipStyle[i] = this.accent;
+      } else if (world.areAllied(local, p.id)) {
+        this.blipStyle[i] = BLIP_ALLY;
       } else {
         this.blipStyle[i] = hostileColor(hostiles++);
       }
@@ -539,6 +564,36 @@ export class Minimap {
       if (p.faction === Faction.Neutral) continue;
       if (world.areAllied(world.localPlayer, p.id)) continue;
       out.push({ color: this.blipStyle[i] ?? BLIP_ENEMY, label: p.name });
+    }
+    return out;
+  }
+
+  /**
+   * The ALLIED armies, excluding the local player and excluding Gaia.
+   *
+   * A SEPARATE METHOD RATHER THAN A `kind` FIELD ON THE ONE ABOVE, because
+   * `hostileArmies` has a second consumer — `tests/minimap-pings.spec.ts` reads
+   * it as the published answer to "what colour is army N", and widening it to
+   * include allies would silently change what that assertion compares. Two
+   * methods with honest names beat one method with a discriminator that a
+   * caller can forget to filter on.
+   *
+   * Both call `restyle` first, so both are keyed off the SAME per-redraw table
+   * the blips are drawn from and neither can disagree with the map.
+   *
+   * ALLOCATES; see the note on `hostileArmies`. Same call site, same gate.
+   */
+  alliedArmies(): ArmyLegendEntry[] {
+    this.restyle();
+    const world = this.world;
+    const local = world.localPlayer;
+    const out: ArmyLegendEntry[] = [];
+    for (let i = 0; i < world.players.length; i++) {
+      const p = world.players[i];
+      if (p.faction === Faction.Neutral) continue;
+      if (p.id === local) continue;
+      if (!world.areAllied(local, p.id)) continue;
+      out.push({ color: this.blipStyle[i] ?? BLIP_ALLY, label: p.name });
     }
     return out;
   }
