@@ -49,8 +49,13 @@ with no number is untracked, and that is itself the bug.
      `reclamation.01` in d3b0b81, plus `pact.04`'s `camp` in e1524ad, which shipped with the
      same defect and was caught before the commit rather than after it. Three `entityDead` thresholds are deliberately NOT migrated and
      each says why at its trigger.
-  2. **Gaia-owned or protect-target, where the capture must simply not happen.** **THE ONLY HALF
-     STILL OPEN.** `ownerCount`
+  2. ~~**Gaia-owned or protect-target, where the capture must simply not happen.**~~ **CLOSED
+     2026-08-19 in 7e64079.** `OperationDef.captureProof?: readonly string[] | 'all'`, installed
+     from `campaign.system.ts` (NOT `armOperation` — the `CaptureService` does not exist yet when
+     the shell arms) and cleared in its `dispose`. Entry chunk +174 bytes, measured A/B. All four
+     hazards closed. One residual declared: `resolve()` tests the FRIENDLY branch ahead of the veto
+     loop, so a repair of an allied damaged structure still consumes the engineer even under
+     `'all'`, and the loop was deliberately not moved. `ownerCount`
      cannot express it — `validateCampaign`'s seat check refuses a player index outside the seated
      range and Gaia is not a seat. `CaptureService.addVeto` is the hook: consulted inside
      `resolve()` ahead of both branches, and `refuse()` does NOT consume the engineer, so a vetoed
@@ -61,8 +66,8 @@ with no number is untracked, and that is itself the bug.
      universal alliance permanently, and unlike garrison it never reverts), `pact.02`'s `count`
      (a PRIMARY protect-target), and `allies.01`'s three `party` surveyors. **Not started.**
 
-  **One cost left to state before building the veto: it is a hard NO where some cases want a
-  COST.** `soviets.06`'s `works` must stay capturable. The other prerequisite is **DONE** — the
+  **The cost that was stated before building it, and held:** a veto is a hard NO where some cases
+  want a COST. `soviets.06`'s `works` must stay capturable. The other prerequisite is **DONE** — the
   cursor asks `CaptureService.isCapturable` now (300a00c), which also closed a live defect, since
   `Garrison`'s veto had been invisible to it since the day it was written.
 
