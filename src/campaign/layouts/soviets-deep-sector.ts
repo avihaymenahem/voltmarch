@@ -69,11 +69,14 @@
  * civilian mass, and every mobile Allied force in this operation arrives from
  * the trigger table at the moment it is meant to.
  *
- * **EVERY TAG THIS STAMPS IS DECLARED ABOVE `build`.** `entityDead` reads TRUE
- * before a tag has ever existed, so a mast that fails to place is an operation
- * whose secondary completes on tick one and whose nine-minute fuse never lights.
- * `tests/campaign-maps.spec.ts` builds this headlessly and checks the
- * declaration against what actually landed, in both directions.
+ * **EVERY TAG THIS STAMPS IS DECLARED ABOVE `build`.** A zero threshold reads
+ * TRUE before a tag has ever existed — `entityDead` does, and so does the
+ * `ownerCount(1, ..., 'mast', max: 0)` the operation counts masts with now — so
+ * a mast that fails to place is an operation whose secondary completes early
+ * and whose nine-minute fuse never lights. `tests/campaign-maps.spec.ts` builds
+ * this headlessly and checks the declaration against what actually landed, in
+ * both directions; the operation's own `SETTLE` is the guard that stops the
+ * symptom landing on tick one.
  * ========================================================================== */
 
 import { CELL } from '../../core/config';
@@ -372,6 +375,16 @@ export default layout({
      * says they are. Blocked after each placement so the next mast's search
      * cannot land on top of it — `findClearFootprint` reads terrain occupancy,
      * and `block` is what keeps 150 props off them as well.
+     *
+     * **THE SILHOUETTE WAS THE ONLY REASON RECORDED AND IT IS NOT THE ONLY
+     * CONSEQUENCE.** `civOilDerrick` is a `CIVILIAN_INCOME_SOURCES` row, and
+     * `civilian.system.ts#payHolders` pays whoever holds the deed provided the
+     * owner is not Gaia — so these three, on seat 1, bank the Allies 15 cr/s
+     * each, 2700 credits a minute, from tick one of an 8000-credit operation.
+     * They are also ENEMY buildings rather than Gaia ones, so an engineer can
+     * take one at or below half health and turn that income around. The
+     * operation's thresholds count DEEDS for exactly this reason; a change of
+     * def key here changes what "break the survey" is worth in both directions.
      */
     for (let i = 0; i < MAST_OFFSETS.length; i++) {
       const at = place('civOilDerrick', offset(CAMP, MAST_OFFSETS[i]));

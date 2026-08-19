@@ -118,11 +118,19 @@ export default layout({
     if (tap !== NONE) b.block(tapAt.x, tapAt.z, 22);
 
     /* -- the town --------------------------------------------------------
-     * Three derricks the secondary objective asks you not to break. Owned by
-     * the enemy for a mechanical reason rather than a fictional one:
-     * `ownerCount` names a SEAT, and the Gaia slot sits outside the seat range
-     * an operation declares. The fiction survives it — they are the Allied
-     * survey camp's derricks, and the town works them either way.
+     * Three derricks the secondary objective asks you neither to break nor to
+     * take. Owned by the enemy for a mechanical reason rather than a fictional
+     * one: `ownerCount` names a SEAT, and the Gaia slot sits outside the seat
+     * range an operation declares. The fiction survives it — they are the
+     * Allied survey camp's derricks, and the town works them either way.
+     *
+     * **THAT SEAT IS ALSO WHY THEY ARE WORTH TAKING, WHICH IS THE HALF NOBODY
+     * WROTE DOWN.** A seat-1 derrick is an ENEMY building: the capture cursor
+     * comes up over it, `CaptureService` flips it at or below half health, and
+     * `civilian.system.ts` then pays the holder `CIVILIAN_INCOME` — 15 cr/s,
+     * 900 a minute, three of them. It is not a prop the trigger table happens
+     * to count; it is the most valuable thing on the map that is not a base,
+     * and the operation charges the secondary for it on purpose.
      */
     const town = at(TOWN_ALONG, TOWN_OFFSET);
     for (let i = 0; i < 3; i++) {

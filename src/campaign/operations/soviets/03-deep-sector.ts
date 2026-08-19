@@ -8,10 +8,10 @@
  * the argument is over — not because anyone won it, because it is written down.
  *
  * THE WHOLE OPERATION IS ONE SENTENCE: **take the tap before minute nine, or
- * bring the masts down before minute nine.** Do neither and the readings go out
- * and it is a loss. That is the fork, and the layout is what makes it a fork —
- * the camp sits 111 m off the line to the tap, so a column driving for one
- * never passes the other.
+ * take the masts off the Allies before minute nine.** Do neither and the
+ * readings go out and it is a loss. That is the fork, and the layout is what
+ * makes it a fork — the camp sits 111 m off the line to the tap, so a column
+ * driving for one never passes the other.
  *
  *   - **Take the tap** and it ends there, at whatever minute the hold lands.
  *     Fast, and it costs the secondary, so it is a bronze.
@@ -20,7 +20,7 @@
  *     instead — the second act only that route produces.
  *
  * **THE TWO ARE NOT EXCLUSIVE AND NOTHING MAKES THEM SO, WHICH IS THE HONEST
- * READING OF THE FORK.** Killing three undefended masts and THEN taking the tap
+ * READING OF THE FORK.** Taking three undefended masts and THEN taking the tap
  * pays 700 and a silver against the tap alone's bronze, so it dominates, and a
  * player with a base, twenty-five hulls at t=0 and a rail column at minute
  * three has time for both inside the nine. The consequence is that `t.contest`
@@ -28,8 +28,64 @@
  * who broke the survey and then FAILED to reach the tap by nine. **It is the
  * behind-schedule act, not the reward act.** What the fork really sets is an
  * ORDER OF OPERATIONS under one fuse, and the pressure is the fuse. Making it a
- * true fork needs a cost the vocabulary cannot express today — the masts alive
- * doing something to the player rather than only to the clock.
+ * true fork needs a cost the vocabulary cannot express today — the masts still
+ * theirs doing something to the player rather than only to the clock.
+ *
+ * ============================================================================
+ * A MAST IS A DERRICK AND A DERRICK CHANGES HANDS — THE FUSE COUNTED CORPSES
+ * ============================================================================
+ * The three masts are `civOilDerrick`s owned by seat 1, which makes each of
+ * them an ENEMY BUILDING an engineer can walk into: `CaptureService` flips one
+ * at or below `CAPTURE.captureHpFrac` (0.5), and the cursor says so
+ * (`input/Commands.ts` §5, the `hoverEnemy` arm). All three of `t.mastsDown`,
+ * `t.contest` and `t.filed` asked `entityDead` / `entityAlive`, and **a
+ * captured mast is alive** — so the operation had this reachable state:
+ *
+ *   > Break into the camp, take a mast for its income instead of shelling it,
+ *   > hold the camp and the ground around it, and **lose at minute nine** while
+ *   > standing on the objective, because `t.filed` still read one mast alive.
+ *
+ * `annihilationWin` is false, `civOilDerrick` is not `Sellable`
+ * (`Scenarios.civilian` clears the flag) and `RepairSell.selfDestruct` refuses
+ * a Building, so the only way back out was to force-fire onto a structure the
+ * player had just paid to take.
+ *
+ * **AND THE INCOME IS THE WHOLE REASON ANYBODY WOULD.** `CIVILIAN_INCOME` is 15
+ * cr/s and `civilian.system.ts#payHolders` pays whoever holds the deed, so the
+ * three masts are banking **2700 credits a minute for the Allies** from tick
+ * one, on an operation whose own bank is 8000. Nothing in either file said so
+ * before this paragraph; it means "break the survey" was already an economic
+ * attack as well as a clock one, and it means taking them instead is worth two
+ * thirds of the minute-three rail column every minute — that column is 4100
+ * credits, four `rhino` at 900 and five `conscript` at 100.
+ *
+ * So every threshold over `mast` counts DEEDS now — `ownerCount` on seat 1 —
+ * and **capture satisfies the objective exactly as demolition does.** That is a
+ * change in what the objective MEANS, so its title and Vosk's two lines about
+ * putting the masts down were rewritten rather than left to imply a rule the
+ * table no longer enforces. `soviets.06.demolition-order` made the same
+ * migration and renamed "destroy" to "take off the seam" for the same reason.
+ *
+ * **THE COST OF THE CAPTURE ROUTE IS TIME, WHICH IS THIS OPERATION'S ONLY
+ * CURRENCY, AND THAT IS WHAT KEEPS IT HONEST.** A 900 hp mast must be shot to
+ * 450 WITHOUT being shot to 0 and then reached by an unarmed 500-credit hull —
+ * or taken by three engineers at 1500 credits — and every second of that comes
+ * off a nine-minute fuse whose backstop at fifteen cannot be moved. A player
+ * who spends four minutes converting the camp into an economy has bought
+ * 45 cr/s and lost most of the window the 45 cr/s was for.
+ *
+ * **`t.headBlown` IS DELIBERATELY LEFT ON `entityDead`, AND IT IS THE ONE
+ * THRESHOLD HERE THAT REALLY DOES MEAN DESTROYED.** Its whole text is *"Bore-
+ * head is down. The ground under it has not moved. Hold it anyway"* — a
+ * correction addressed to somebody who has just levelled the structure and is
+ * waiting for a victory that is not coming. A player who CAPTURED the tap still
+ * has the bore-head standing in front of them and the objective row still reads
+ * *"Put four units on the deep tap and hold it"*, so the sentence they need is
+ * already on screen; firing a demolition correction at them would be the
+ * operation misreading its own board out loud. **What they get instead of a
+ * line is nothing**, which is the residual and is the right amount: it writes
+ * no state, it gates nothing, and `t.win` is a `unitsInArea` hold that a
+ * captured tap does not touch in either direction.
  *
  * **THE FAST ROUTE IS THE ONE YOU CANNOT SAFELY TAKE, AND THAT IS GEOMETRY.**
  * The tap is 129 m from the Allied opening. Holding it for seventy-five
@@ -72,7 +128,7 @@
 
 import { Faction } from '../../../core/types';
 import { minutes, seconds } from '../../types';
-import type { OperationDef } from '../../types';
+import type { Condition, OperationDef } from '../../types';
 import { APPROACH, CAMP, GATE_WATCH, STAGE, TAP, TAP_HOLD } from '../../layouts/soviets-deep-sector';
 
 /**
@@ -85,6 +141,69 @@ import { APPROACH, CAMP, GATE_WATCH, STAGE, TAP, TAP_HOLD } from '../../layouts/
  * eighty metres from its own objective — winnable, wrong, and invisible to
  * every gate. `layouts/soviets-deep-sector.ts` owns the geometry.
  */
+
+/**
+ * How long the layout is given to have placed the camp before a zero threshold
+ * over it is believed.
+ *
+ * **`ownerCount(1, 'building', 'mast', max: 0)` READS TRUE AGAINST AN EMPTY TAG
+ * REGISTRY**, which is `entityDead`'s trap in a different condition — the
+ * spelling changed and the hazard did not. Unguarded it completes the secondary
+ * on the first tick the Director runs, and because `t.filed` is its exact
+ * complement it would also disarm the nine-minute fuse the whole operation is
+ * built on. `soviets.06.demolition-order`'s `SETTLE` is the same constant for
+ * the same reason.
+ *
+ * **DEFENCE IN DEPTH RATHER THAN A MEASURED FAILURE.** `scenarios.system.ts`
+ * builds the world in `init()`, so the registry is full before tick one and the
+ * empty read is not reachable in the product today; what it IS reachable for is
+ * a layout that placed nothing, and `tests/campaign-maps.spec.ts` is the gate
+ * that catches that cause. Twenty seconds is unmistakably past the build and
+ * unmistakably short of anything happening: the nearest mast is 214.5 m from
+ * the player's yard, 83.0 m from the nearest hull of the forward column, and
+ * behind a wall.
+ *
+ * `t.contest` and `t.filed` need no such guard — `FILING` is nine minutes, and
+ * a guard inside a guard is a second number to keep in step for nothing.
+ *
+ * **TWO ZERO THRESHOLDS IN THIS FILE ARE STILL UNGUARDED, DELIBERATELY, AND
+ * THEY WERE MEASURED RATHER THAN WAVED AT.** Driven against an empty
+ * `WorldQuery` for sixty ticks, `t.headBlown` (`entityDead 'tap'`) and
+ * `t.columnGone` (`ownerCount(0, 'unit', 'column', max: 0)`) both fire at tick
+ * zero and `t.mastsDown` does not. Both are a single `dialogue` effect: they
+ * write no objective, arm no timer and cannot end the operation, so the whole
+ * consequence of the degenerate case is two lines spoken over a world that does
+ * not exist. Guarding a line costs a constant that has to stay in step with a
+ * threshold it does not decide anything about, and this file already carries
+ * three.
+ */
+const SETTLE: Condition = { on: 'elapsed', ticks: seconds(20) };
+
+/**
+ * When the readings go out. Nine minutes, and it is the number both halves of
+ * the fork are measured against.
+ */
+const FILING: Condition = { on: 'elapsed', ticks: minutes(9) };
+
+/**
+ * The survey camp is off the Allies' books — levelled or taken, and the
+ * operation does not care which. See the header for why capture counts.
+ *
+ * **`MASTS_OFF` AND `MASTS_HELD` ARE EXACT COMPLEMENTS AND ARE DEFINED
+ * TOGETHER BECAUSE OF IT.** `t.contest` and `t.filed` both fire at `FILING` and
+ * exactly one of them must: the first is the wave you earned, the second ends
+ * the operation in a loss. `max: 0` and `min: 1` over one count partition every
+ * world state between them, and a later edit that moved one and not the other
+ * would produce either two endings on one tick or none. That is the same
+ * argument `soviets.06`'s shared `WORKS_GONE` makes, run over a pair rather
+ * than over one condition used twice.
+ */
+const MASTS_OFF: Condition = {
+  on: 'ownerCount', player: 1, role: 'building', tag: 'mast', max: 0,
+};
+const MASTS_HELD: Condition = {
+  on: 'ownerCount', player: 1, role: 'building', tag: 'mast', min: 1,
+};
 
 const op: OperationDef = {
   id: 'soviets.03.deep-sector',
@@ -161,7 +280,11 @@ const op: OperationDef = {
     {
       id: 'masts',
       kind: 'secondary',
-      title: 'Bring down all three survey masts before the readings are filed',
+      // "TAKE … OFF", NOT "BRING DOWN". `t.mastsDown` counts what seat 1 still
+      // owns, so an engineer answers this objective exactly as a shell does —
+      // and a title that said "bring down" would be telling the player the one
+      // route the rule does not require. See the header.
+      title: 'Take all three survey masts off the Allies before the readings are filed',
       credits: 700,
     },
   ],
@@ -188,9 +311,14 @@ const op: OperationDef = {
         {
           do: 'dialogue',
           speaker: 'Vosk',
-          text: 'Take the tap before then, or put the masts down and the filing waits. The '
-            + 'front closes the sector at fifteen either way. Your column is at the staging '
-            + 'post; the yards have a second on the rail, three minutes out. That is all of it.',
+          // "take the masts off them" rather than "put the masts down": the
+          // filing waits on the Allies losing the instruments, not on the
+          // instruments being wreckage, and the trigger table has said so since
+          // `t.filed` stopped counting corpses.
+          text: 'Take the tap before then, or take the masts off them and the filing waits. '
+            + 'The front closes the sector at fifteen either way. Your column is at the '
+            + 'staging post; the yards have a second on the rail, three minutes out. That is '
+            + 'all of it.',
         },
         // The fork has to be KNOWN in minute three or it is not a decision.
         // Revealing both ends of it with the briefing is the cheapest way to
@@ -269,6 +397,13 @@ const op: OperationDef = {
      * The win is the GROUND, not the structure, and nothing on screen says so.
      * A player who levels the tap and then waits for a victory that is not
      * coming has been failed by the operation rather than by their own play.
+     *
+     * **THE LAST `entityDead` IN THIS FILE, AND IT IS NOT AN OVERSIGHT.** Every
+     * threshold over `mast` counts deeds because capture had to satisfy them;
+     * this one counts a corpse because its whole text is a correction to
+     * somebody who made a wreck. Migrating it to `ownerCount` would fire a
+     * demolition line at a player who walked an engineer in and has the
+     * bore-head standing in front of them. See the header block.
      */
     {
       id: 't.headBlown',
@@ -305,46 +440,47 @@ const op: OperationDef = {
     },
 
     /* -- the secondary, and it can only resolve one way -------------------
-     * `entityDead` is TRUE before a tag exists, so this fires on tick one if
-     * the layout failed to stamp a single mast — which would also disarm
-     * `t.filed` and leave an operation with no fuse. That is the exact
-     * failure `campaign-maps.spec.ts` builds every layout to catch.
+     * `ownerCount(1, ..., max: 0)` is TRUE before a tag exists, so without
+     * `SETTLE` this fires on tick one if the layout failed to stamp a single
+     * mast — which would also disarm `t.filed` and leave an operation with no
+     * fuse. `SETTLE` makes that twenty seconds rather than instant;
+     * `campaign-maps.spec.ts` is what catches the cause.
      *
      * ABOVE `t.win`, deliberately: `runDirector` returns early once an outcome
-     * is set, so a last mast that dies on the winning tick has to resolve
-     * before the operation ends or the medal does not count it. No time bound
-     * is needed — after minute nine there is no operation left to complete it
-     * in.
+     * is set, so a last mast that changes hands on the winning tick has to
+     * resolve before the operation ends or the medal does not count it. No
+     * upper time bound is needed — after minute nine there is no operation left
+     * to complete it in.
      */
     {
       id: 't.mastsDown',
-      when: { on: 'entityDead', tag: 'mast' },
+      when: { on: 'all', of: [SETTLE, MASTS_OFF] },
       then: [
         { do: 'completeObjective', id: 'masts' },
         {
+          // "off them" rather than "down", because a captured mast satisfies
+          // this trigger and is very much still standing. The notebook clause
+          // survives untouched and is true either way: what the survey party
+          // collected is on paper in a tent, and paper is not a filing.
           do: 'dialogue',
           speaker: 'Vosk',
-          text: 'Masts are down. What they had is in a notebook in a tent now, and a notebook '
-            + 'is not a filing. Take the tap properly.',
+          text: 'Masts are off them. What they had is in a notebook in a tent now, and a '
+            + 'notebook is not a filing. Take the tap properly.',
         },
       ],
     },
 
     /* -- minute nine, the half of the fork you earned ---------------------
-     * The exact complement of `t.filed` below. At nine the survey is either
-     * filed and this is over, or it is broken and the Allies stop arguing on
-     * paper — which is what stops "break the masts" from turning the last six
-     * minutes into a walk.
+     * The exact complement of `t.filed` below, and now provably so: both fire
+     * at `FILING` and their other halves are `MASTS_OFF` (`max: 0`) and
+     * `MASTS_HELD` (`min: 1`) over ONE count, which partitions every world
+     * state. At nine the survey is either filed and this is over, or the Allies
+     * have lost the instruments and stop arguing on paper — which is what stops
+     * "take the masts" from turning the last six minutes into a walk.
      */
     {
       id: 't.contest',
-      when: {
-        on: 'all',
-        of: [
-          { on: 'elapsed', ticks: minutes(9) },
-          { on: 'entityDead', tag: 'mast' },
-        ],
-      },
+      when: { on: 'all', of: [FILING, MASTS_OFF] },
       then: [
         {
           do: 'dialogue',
@@ -400,13 +536,7 @@ const op: OperationDef = {
     /* -- minute nine, the other half -------------------------------------- */
     {
       id: 't.filed',
-      when: {
-        on: 'all',
-        of: [
-          { on: 'elapsed', ticks: minutes(9) },
-          { on: 'entityAlive', tag: 'mast' },
-        ],
-      },
+      when: { on: 'all', of: [FILING, MASTS_HELD] },
       then: [
         { do: 'failObjective', id: 'masts' },
         {
