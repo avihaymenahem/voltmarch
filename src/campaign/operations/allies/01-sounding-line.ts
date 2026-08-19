@@ -180,6 +180,44 @@ const op: OperationDef = {
   // a fresh one, which a deny-list could not promise.
   roster: { player: [], ai: [] },
 
+  /*
+   * ============================================================================
+   * `'all'`, AND IT IS THE ONE OPERATION IN THE TABLE THAT NEEDS THE BLANKET
+   * ============================================================================
+   * THE SURVEY PARTY IS THE OBJECTIVE AND EVERY CAPTURE SPENDS ONE. `t.lost` is
+   * `entityDead 'party'` into `endOperation: 'loss'`, the three surveyors are
+   * `engineer`s, and `CaptureService.resolve` consumes the engineer on EVERY
+   * non-refused outcome — the capture branch and the SOFTEN branch alike. So
+   * three right-clicks on a structure are a stated defeat, with a
+   * build-complete burst and a colour change as the only feedback.
+   *
+   * **A TAG LIST CANNOT DO IT, BECAUSE THE HAZARDS ARE UNTAGGED.** The layout
+   * stamps exactly two tags — `party` and `sortie` — and neither is a building.
+   * The structures that eat surveyors are the two Works masts and the picket
+   * guns, and none of them is tagged, because nothing in this trigger table ever
+   * names one. Tagging three structures for the sole purpose of forbidding their
+   * capture would be a second, invisible copy of this field, and it would still
+   * miss the next structure a layout edit adds.
+   *
+   * **AND THERE IS NOTHING TO LOSE BY THE BLANKET.** No condition in this file
+   * is `structureCaptured` or `ownerCount`; no objective is satisfied by taking
+   * anything. `pact.02`, `pact.04` and `soviets.06` all take a LIST instead,
+   * precisely because each of them has a deed a player is meant to be able to
+   * take.
+   *
+   * ── WHAT IT DOES NOT COVER, MEASURED ───────────────────────────────────────
+   * `resolve` tests the FRIENDLY branch before it consults the vetoes, so a
+   * surveyor sent at a DAMAGED structure this player owns still repairs it and
+   * is still consumed. `opening: 'base'` means there are such structures.
+   * That is unchanged by this field and deliberately not closed here: moving the
+   * veto ahead of the friendly branch would change what `GarrisonService`'s veto
+   * means as well, and its rule is about taking a building rather than mending
+   * one. The reading discs are what this operation is played on and no friendly
+   * structure stands in either — `tests/sounding-line-clearance.spec.ts` is the
+   * gate on that, and it now measures the ground rather than pinning a caveat.
+   */
+  captureProof: 'all',
+
   objectives: [
     { id: 'sound', kind: 'primary', title: 'Sound the seam at the deep head' },
     { id: 'party', kind: 'primary', title: 'Bring the survey party through' },

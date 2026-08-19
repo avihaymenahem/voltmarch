@@ -99,6 +99,30 @@ export class TagRegistry {
     return list;
   }
 
+  /**
+   * Is `id` carried by any of `tags`?
+   *
+   * **IT TAKES NO STORE AND DOES NOT PRUNE, WHICH IS THE WHOLE REASON IT IS NOT
+   * `live()`.** Its one caller is `Session.isCaptureProof`, which is called from
+   * a `CaptureService` veto — and `isCapturable` consults every veto, so it runs
+   * on the CURSOR path, per frame, while a building is hovered. A handle is
+   * generation-stamped, so a stale entry can never equal a live `target`: a dead
+   * handle simply never matches, and pruning would buy correctness that the
+   * handle encoding already guarantees at the price of a store walk per hover.
+   *
+   * Linear in the entries of the named tags, which is 1..3 in all four shipped
+   * `captureProof` lists — no allocation, no `Set`, no map of ids to rebuild
+   * when `restore()` replaces every handle after a load.
+   */
+  anyCarries(tags: readonly string[], id: EntityId): boolean {
+    for (let t = 0; t < tags.length; t++) {
+      const list = this.byTag.get(tags[t]);
+      if (list === undefined) continue;
+      for (let i = 0; i < list.length; i++) if (list[i] === id) return true;
+    }
+    return false;
+  }
+
   /** Drop every tag. Between operations. */
   clear(): void {
     this.byTag.clear();

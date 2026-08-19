@@ -483,6 +483,15 @@ export default layout({
      * moment the last man leaves — see `src/data/Civilians.ts` — so it is a
      * firing position rather than a possession, and putting one inside it is the
      * player's own decision to put the thing they are protecting under fire.
+     *
+     * **AN ENGINEER IS NOT THE SAME BARGAIN, AND THIS BLOCK USED TO IMPLY IT
+     * WAS.** "Hands it back the moment the last man leaves" is true of a
+     * garrison and false of a capture: `CaptureService` writes `owner` and
+     * `faction` once and nothing ever writes them back, so one click strips
+     * Gaia's universal alliance permanently and leaves the shown secondary's
+     * subject standing 40.05 m from the device as a legal Allied target. The
+     * operation declares `captureProof: ['infirmary']` for that reason; the
+     * argument is next to the field in `operations/soviets/06-demolition-order.ts`.
      */
     {
       const at = place('civHospital', INFIRMARY);

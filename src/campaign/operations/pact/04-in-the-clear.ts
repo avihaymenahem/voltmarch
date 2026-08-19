@@ -759,6 +759,18 @@ const op: OperationDef = {
    */
   roster: { player: [], ai: [] },
 
+  /*
+   * THE MAST CANNOT BE WALKED INTO. See `t.mastLost`, whose comment used to end
+   * "Documented, not closed."
+   *
+   * ONE TAG, NOT `'all'`, AND THE OMISSION IS DELIBERATE IN BOTH DIRECTIONS.
+   * `camp` must stay capturable: `CAMP_OFF` is an `ownerCount` threshold, so an
+   * Artificer answers the secondary exactly as a shell does. `tap` is the
+   * player's own `civOreMine` and no veto reaches it anyway — `resolve` takes
+   * the FRIENDLY branch for an allied structure, ahead of the veto list.
+   */
+  captureProof: ['mast'],
+
   objectives: [
     {
       id: 'depth',
@@ -1133,20 +1145,25 @@ const op: OperationDef = {
      * the question. A player who captures the mast satisfies `t.win` exactly as
      * one who leaves it alone does, and that is the right answer.
      *
-     * **BUT CAPTURING IT IS A TRAP, AND THE VOCABULARY CANNOT CLOSE IT.**
-     * `Targeting.isValidTarget` refuses only ALLIES, so a mast the player owns
-     * becomes a legal Allied target standing in the middle of the Allied line —
-     * and this trigger does not care who fired. So the player takes it, the
-     * Allies shell it, `reading` fails, and nothing anywhere connects the two.
-     * Softening it is free of side effects (no `entityHpBelow` reads `mast`), so
-     * there is not even a warning on the way in.
+     * **CAPTURING IT WAS A TRAP, AND THE VOCABULARY STILL CANNOT CLOSE IT — A
+     * FIELD DOES.** `Targeting.isValidTarget` refuses only ALLIES, so a mast the
+     * player owns becomes a legal Allied target standing in the middle of the
+     * Allied line — and this trigger does not care who fired. So the player took
+     * it, the Allies shelled it, `reading` failed, and nothing anywhere
+     * connected the two. Softening it is free of side effects (no
+     * `entityHpBelow` reads `mast`), so there was not even a warning on the way
+     * in.
      *
-     * The twelve conditions are all READS; no trigger can refuse a capture. The
-     * fix is `CaptureService.addVeto` — consulted inside `resolve()` ahead of
-     * both branches, with `refuse()` NOT consuming the engineer, so a vetoed
-     * click costs a walk and nothing else — and it has no campaign-side
-     * installer yet. `pact.02.long-count`'s `count` is the same case and carries
-     * the same note. Documented, not closed.
+     * The twelve conditions are all READS; no trigger can refuse a capture.
+     * This comment ended *"it has no campaign-side installer yet … Documented,
+     * not closed."* It has one: **`OperationDef.captureProof`**, set to
+     * `['mast']` at the top of this file. It installs the
+     * `CaptureService.addVeto` this paragraph already named — consulted inside
+     * `resolve()` ahead of both the neutral and the enemy branch, with
+     * `refuse()` NOT consuming the engineer, so a vetoed click costs a walk and
+     * nothing else, and `isCapturable` refuses at the cursor so the walk never
+     * starts. `pact.02.long-count`'s `count` is the same case and took the same
+     * fix.
      */
     {
       id: 't.mastLost',

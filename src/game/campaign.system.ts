@@ -42,20 +42,31 @@
  * ============================================================================
  * IT IS INERT WITHOUT AN ARMED OPERATION, AND THAT COSTS ONE NULL CHECK
  * ============================================================================
- * `tutorial.system.ts` costs exactly the same and for the same reason. This
- * module imports `src/campaign/{session,policy,types}.ts` and NOTHING ELSE —
- * all three are types and module-level bindings with no runtime weight —
- * because `src/game/Systems.ts` globs `*.system.ts` with `eager: true` from the
- * entry chunk. The Director, the operation table, the layouts and every word of
- * prose arrive through one `await import('../campaign/campaign-install')` in
- * `Shell.startOperation`. `tests/campaign-bundle-isolation.spec.ts` fails when
- * that boundary is crossed, and it is written to fail rather than to be trusted.
+ * `tutorial.system.ts` costs exactly the same and for the same reason. Of the
+ * campaign this module imports `src/campaign/{session,policy,types}.ts` and
+ * NOTHING ELSE — all three are types and module-level bindings with no runtime
+ * weight — because `src/game/Systems.ts` globs `*.system.ts` with `eager: true`
+ * from the entry chunk. The Director, the operation table, the layouts and every
+ * word of prose arrive through one
+ * `await import('../campaign/campaign-install')` in `Shell.startOperation`.
+ * `tests/campaign-bundle-isolation.spec.ts` fails when that boundary is crossed,
+ * and it is written to fail rather than to be trusted.
+ *
+ * **THE ONE NON-CAMPAIGN IMPORT BEYOND `core/` AND `game/context` IS
+ * `sim/Capture.ts`**, and it is free: `sim/features.system.ts` is globbed
+ * eagerly too and constructs the `CaptureService`, so that module is in the
+ * entry chunk with or without this edge. §2b below is the argument; the spec
+ * carries the allow-list and asserts the "already in the entry chunk" half
+ * rather than taking it on trust. (This paragraph read "imports … and NOTHING
+ * ELSE" with no qualifier, which was a claim about the whole import list and
+ * true only of the campaign half of it.)
  * ========================================================================== */
 
 import { Phase, RenderPhase } from '../core/types';
 import type { RenderContext, SimContext } from '../core/types';
 import { defineSystem } from '../core/loop';
 import { hasGameContext } from './context';
+import { captureService } from '../sim/Capture';
 import { campaignRunning } from '../campaign/policy';
 import {
   adoptPreparedOperation, campaignSession, detachOperation,
@@ -131,6 +142,60 @@ function resetShellState(): void {
   ended = false;
 }
 
+/* ==========================================================================
+ * 2b. `captureProof` — THE ONE PIECE OF THE CAMPAIGN THAT REACHES THE SIM
+ *
+ * `OperationDef.captureProof` names structures an engineer may not walk into.
+ * The knowledge lives in `campaign-install.ts#Session.isCaptureProof`, behind
+ * the lazy boundary, because it needs the tag registry; all that lives here is
+ * the HOOK, and the hook has to live here for two reasons that point the same
+ * way.
+ *
+ * **`CaptureService` IS BUILT BY THE BOOT, SO THE VETO CANNOT BE ARMED BEFORE
+ * IT.** `Shell.startOperation` arms the operation and THEN boots;
+ * `sim/features.system.ts#init` constructs the service during that boot. A veto
+ * installed in `armOperation` would land on the previous match's service and the
+ * new one would carry none. This module's `init()` runs after
+ * `adoptPreparedOperation()` on the same engine — and after `features.system.ts`
+ * unconditionally, because `SystemRegistry.init` walks modules in PHASE order
+ * and `Phase.Cleanup` (1400) is far behind `Phase.Production` (200).
+ *
+ * **AND THE SIM IMPORT IS FREE HERE AND NOWHERE ELSE.** `sim/Capture.ts` is
+ * already in the entry chunk — `sim/features.system.ts` is globbed eagerly and
+ * imports it — so this edge costs no byte. It is the campaign's LIGHT half
+ * reaching a module the entry chunk already holds, not the heavy half reaching
+ * anything; `tests/campaign-bundle-isolation.spec.ts` §1 carries the widened
+ * allow-list and the argument for it.
+ *
+ * WHOEVER SETS IT CLEARS IT. `init` installs, `dispose` removes, and both go
+ * through these two functions so the pair cannot drift. A veto left installed
+ * after an operation ends is a rule the NEXT skirmish silently inherits — the
+ * `suppressUnlockGate` leak, in a different costume.
+ *
+ * The predicate re-reads `campaignSession()` rather than closing over the
+ * session it was installed for. That is the safe direction: if the two lifetimes
+ * ever disagree, a veto whose session has been detached answers "not proof" and
+ * the game behaves exactly as it does with no operation armed, rather than
+ * enforcing a dead operation's rule on a live match.
+ * ========================================================================== */
+
+let unhookCaptureProof: (() => void) | null = null;
+
+function armCaptureProof(): void {
+  clearCaptureProof();
+  // Nothing to enforce without an operation, and an inert veto on the list is a
+  // rule a reader has to check rather than a rule that is absent.
+  if (campaignSession() === null) return;
+  unhookCaptureProof = captureService()?.addVeto(
+    (target) => campaignSession()?.isCaptureProof(target) === true,
+  ) ?? null;
+}
+
+function clearCaptureProof(): void {
+  unhookCaptureProof?.();
+  unhookCaptureProof = null;
+}
+
 /**
  * The difficulty the medal is graded against.
  *
@@ -177,6 +242,9 @@ export default defineSystem({
     // `session.ts`, and `Playback.ts#detachPlayback` for the same split found
     // the expensive way.
     adoptPreparedOperation();
+    // AFTER the adopt, never before: `armCaptureProof` asks whether a session
+    // was taken, and the answer is only true on this side of that line.
+    armCaptureProof();
   },
 
   simTick(s: SimContext): void {
@@ -216,6 +284,13 @@ export default defineSystem({
 
   dispose(): void {
     resetShellState();
+    // THE VETO IS UNINSTALLED HERE AND NOT AT `endOperationSession`, and the
+    // difference matters in the direction `detachOperation` already documents.
+    // A veto belongs to the ENGINE that built the `CaptureService` it sits in,
+    // and this is the teardown of that engine — so it goes even when the next
+    // operation is already armed for the boot that follows. The next engine's
+    // `init` installs a fresh one.
+    clearCaptureProof();
     // `detachOperation`, NOT `endOperationSession`. See `session.ts`: the shell
     // arms an operation and then boots, and the boot disposes the engine that
     // was running. Clearing the ARMED session here hands the player an ordinary

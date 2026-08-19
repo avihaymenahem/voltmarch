@@ -14,9 +14,12 @@
  * `src/game/Systems.ts` globs `'../**\/*.system.ts'` with `eager: true` FROM
  * THE ENTRY CHUNK. That is the whole reason this file exists: without it,
  * `campaign.system.ts` would statically reach the Director, and the campaign
- * would be in front of every player's first paint. `campaign.system.ts` imports
- * `session.ts`, `policy.ts` and `types.ts` and nothing else, and
- * `tests/campaign-bundle-isolation.spec.ts` fails when that stops being true.
+ * would be in front of every player's first paint. Of `src/campaign/**`,
+ * `campaign.system.ts` imports `session.ts`, `policy.ts` and `types.ts` and
+ * nothing else, and `tests/campaign-bundle-isolation.spec.ts` fails when that
+ * stops being true. (It also imports `sim/Capture.ts`, which is not campaign
+ * code and is in the entry chunk regardless — see the `captureProof` note
+ * below.)
  *
  * ============================================================================
  * ARM, THEN BOOT — AND THE ORDER IS NOT NEGOTIABLE
@@ -43,6 +46,17 @@
  * latches' callers. A latch with no clearing branch is a permanent behaviour
  * change wearing a temporary name, and `suppressUnlockGate` has leaked once
  * already.
+ *
+ * **`captureProof` IS THE ONE THING THIS FILE DELIBERATELY DOES NOT INSTALL,
+ * AND THE REASON IS THE FIFTH ENTRY IN THAT LIST'S OWN ARGUMENT.** The other
+ * four are installed here because they must be in place BEFORE the world is
+ * built. A `CaptureService.addVeto` is the opposite: the service is constructed
+ * by `sim/features.system.ts#init` during the boot that has not happened yet, so
+ * a veto installed here would land on the OUTGOING match's service and the new
+ * one would carry none. `game/campaign.system.ts#init` installs it — after
+ * `adoptPreparedOperation`, on the same engine, and its `dispose` removes it.
+ * Session knowledge stays here (`Session.isCaptureProof`); only the hook is over
+ * there.
  * ========================================================================== */
 
 import { setCampaignRoster } from '../progression/UnlockGate';
@@ -135,6 +149,27 @@ class Session implements CampaignSession {
    */
   adoptRestoredState(): void {
     this.started = true;
+  }
+
+  /**
+   * `OperationDef.captureProof`, resolved against the tags on the ground.
+   *
+   * THE ONLY READER IS A `CaptureService` VETO INSTALLED BY
+   * `game/campaign.system.ts`, and this is the half that lives on this side of
+   * the bundle boundary because it needs the tag registry — which is
+   * `runtime.ts`, behind `await import('./campaign-install')`. The system module
+   * carries the hook and nothing else; the knowledge is here, which is the same
+   * split `CampaignSession` already uses for the Director.
+   *
+   * `'all'` short-circuits, so the operation that needs it (`allies.01`, whose
+   * hazards are untagged) pays one comparison per hovered frame. A list costs a
+   * walk of its own tags — see `TagRegistry.anyCarries`.
+   */
+  isCaptureProof(target: EntityId): boolean {
+    const proof = this.op.captureProof;
+    if (proof === undefined) return false;
+    if (proof === 'all') return true;
+    return this.tags.anyCarries(proof, target);
   }
 
   simTick(tick: number): void {

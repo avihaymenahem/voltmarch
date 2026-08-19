@@ -151,8 +151,14 @@
  * approach and it is left in, exactly as `soviets-common-standard` leaves its
  * own.
  *
- * **B — TAKE THE DEED, AND IT DOES NOT EXIST AT THE PRICE THIS BLOCK USED TO
- * QUOTE.** The old text read *"`CaptureService.isCapturable` refuses only an
+ * **B — TAKE THE DEED. IT IS REFUSED OUTRIGHT NOW, AND EVERYTHING BELOW IS THE
+ * PRICE IT USED TO CARRY.** `captureProof: ['count']` installs a
+ * `CaptureService` veto for the duration of this operation, so `isCapturable`
+ * answers false at the cursor and `resolve` refuses on arrival without
+ * consuming the Artificer. The arithmetic is kept rather than deleted because
+ * it is what made the case, and because the `tap` and `staging` deeds are
+ * priced by the same table. The old text read *"`CaptureService.isCapturable`
+ * refuses only an
  * already-owned building; there is no health threshold on an enemy structure.
  * A 500-credit Artificer who walks the 268.5 m makes the reading post PLAYER
  * property"*. The first clause is a true sentence about `isCapturable` and a
@@ -181,16 +187,19 @@
  * for a structure whose owner is neither neutral nor allied, so the engineer is
  * the only door and the soften branch is the only way through it.
  *
- * **WHAT IT BUYS IS WORSE THAN WHAT IT COSTS, WHICH IS WHY IT IS LEFT IN.**
- * `isValidTarget` refuses an allied target, so a captured post is safe from
- * every gun YOU own — and legal for every gun THEY own, because it stops being
- * theirs. The post is 94.3 m from the Soviet OPENING and 131.5 m from the
- * Construction Yard that opening raises, and `t.countLost` does not care who
- * fired. So route B pays 400 credits of secondary plus 500-2000 of engineer to
- * convert *my own gunners might kill it* into *theirs will*. `t.see`'s second
- * line already warns about the envelope; the deed is a third way into the same
- * loss, and the honest fix for it is a `CaptureService.addVeto` this operation
- * has no way to install — see the block on `count` below.
+ * **WHAT IT BOUGHT WAS WORSE THAN WHAT IT COST, WHICH IS WHY IT IS NOW REFUSED
+ * RATHER THAN LEFT IN.** `isValidTarget` refuses an allied target, so a
+ * captured post is safe from every gun YOU own — and legal for every gun THEY
+ * own, because it stops being theirs. The post is 94.3 m from the Soviet
+ * OPENING and 131.5 m from the Construction Yard that opening raises, and
+ * `t.countLost` does not care who fired. So route B paid 400 credits of
+ * secondary plus 500-2000 of engineer to convert *my own gunners might kill it*
+ * into *theirs will*. `t.see`'s second line already warns about the envelope;
+ * the deed was a third way into the same loss, and the sentence that stood here
+ * — *"the honest fix for it is a `CaptureService.addVeto` this operation has no
+ * way to install"* — named the right mechanism and the right gap.
+ * `OperationDef.captureProof` is that installer. See the block on `count`
+ * below.
  *
  * (Two corrections kept from the old paragraph. **94.3 m is the distance to the
  * START SPOT**, not to the Construction Yard, which is what the layout header's
@@ -244,20 +253,30 @@
  * four-hundred-year count into protective custody, which is a worse sentence
  * than the one being fixed.
  *
- * **WHAT IS LEFT STANDING, STATED PRECISELY SO NOBODY HAS TO REDISCOVER IT.**
- * Capturing `count` does not fail the operation by itself. What it does is
- * strip the post's only protection: `isValidTarget` refuses an ALLIED target
- * and nothing else, so a Soviet-owned post is unshootable by the Soviets and a
- * player-owned one is not. Every Soviet hull that walks past it then has a
- * legal target 94.3 m from their own opening, and `t.countLost` ends the match
- * in a loss whoever fired. **That is a "must not be capturable" case and the
- * vocabulary cannot express it**: the twelve conditions are all READS, so no
- * trigger can refuse a capture, and the mechanism that could —
- * `CaptureService.addVeto`, which `GarrisonService` already uses to protect an
- * occupied strongpoint — has no campaign-side installer. Building one is a
- * feature, not an edit to this file, and it would fix the same hazard in every
- * operation that has a protect-target. Until then this is documented, not
- * closed, and route B above prices it.
+ * **WHAT WAS LEFT STANDING, AND WHAT CLOSED IT.** This block ended
+ * *"documented, not closed"* and described the hazard precisely: capturing
+ * `count` does not fail the operation by itself, it STRIPS THE POST'S ONLY
+ * PROTECTION. `Targeting.isValidTarget` refuses an ALLIED target and nothing
+ * else, so a Soviet-owned post is unshootable by the Soviets and a player-owned
+ * one is not; every Soviet hull that walks past it then has a legal target
+ * 94.3 m from their own opening, and `t.countLost` ends the match in a loss
+ * whoever fired.
+ *
+ * The diagnosis was right and so was the refusal to fix it from a trigger — the
+ * twelve conditions are all READS, so no trigger can refuse a capture. What was
+ * missing was the installer, and it exists now: **`OperationDef.captureProof`**,
+ * which this operation sets to `['count']`. It puts one
+ * `CaptureService.addVeto` in front of `resolve()`, ahead of both the neutral
+ * and the enemy branch, and `refuse()` does NOT consume the engineer — so route
+ * B below costs a walk and nothing else, the Artificer walks home, and
+ * `isCapturable` refuses at the CURSOR so the player never starts the walk.
+ * `tests/campaign-capture-proof.spec.ts` drives it on this operation's own tag.
+ *
+ * Two consequences worth stating because they are improvements the fix was not
+ * aimed at. The hidden `quiet` secondary is no longer spent by an engineer:
+ * `t.graze` is `entityHpBelow frac 1`, i.e. any damage at all, and the first
+ * soften was 180 of it, so every spelling of route B used to burn 400 credits
+ * on the way in. And `t.hurt` no longer fires from three softens either.
  *
  * ============================================================================
  * THE NUMBERS THE FIGHT IS MADE OF
@@ -608,6 +627,18 @@ const op: OperationDef = {
    */
   roster: { player: [], ai: [] },
 
+  /*
+   * THE READING POST CANNOT BE WALKED INTO. See the header block on `count`,
+   * which used to end "documented, not closed" and no longer does.
+   *
+   * `tap` and `staging` stay capturable and must: both are `ownerCount`
+   * thresholds, so an Artificer satisfies them exactly as a shell does, and the
+   * two objective titles say "take … off them" because of it. This list is one
+   * tag on purpose — a blanket `'all'` here would take the primary's own second
+   * route away.
+   */
+  captureProof: ['count'],
+
   objectives: [
     // "TAKE … OFF THEM", NOT "DESTROY". `t.win` counts what seat 1 still owns,
     // so walking an Artificer into the pump ends the operation exactly as
@@ -617,8 +648,10 @@ const op: OperationDef = {
     // UNCHANGED, AND IT IS THE ONE TITLE IN THIS FILE THAT MUST NOT MOVE.
     // `t.countLost` still reads `entityDead`, deliberately — "standing" is
     // exactly what it tests, and a post the player has CAPTURED is standing and
-    // still satisfies this. See the block on `count` in the header for what
-    // that leaves open and why it is not closable from a trigger table.
+    // still satisfies this. What that USED to leave open — a captured post is a
+    // legal Soviet target 94.3 m from their opening — is closed by
+    // `captureProof: ['count']` above rather than by a trigger, because no
+    // trigger can refuse a capture. See the block on `count` in the header.
     { id: 'count', kind: 'primary', title: 'Leave the reading post standing' },
     {
       id: 'staging',
@@ -887,11 +920,17 @@ const op: OperationDef = {
      * reachable by capture — the operation would end in defeat on the tick a
      * player walked an engineer into the very thing it told them to protect.
      * The objective says "standing", this tests standing, and a captured post
-     * is standing. What capture really costs here is documented at length in
-     * the header (`count` IS NOT MIGRATED): it strips the post's only
+     * is standing. What capture really cost here is documented at length in
+     * the header (`count` IS NOT MIGRATED): it stripped the post's only
      * protection, because `isValidTarget` refuses an allied target and nothing
-     * else, and this trigger does not care who fires. Closing that needs a
-     * `CaptureService.addVeto` installer that does not exist.
+     * else, and this trigger does not care who fires.
+     *
+     * **THAT IS CLOSED, AND THIS COMMENT USED TO END "Closing that needs a
+     * `CaptureService.addVeto` installer that does not exist."** It exists:
+     * `OperationDef.captureProof`, set to `['count']` on this operation, which
+     * puts exactly that veto in front of `resolve()` for the duration. So this
+     * trigger keeps `entityDead` — which is still the right question — and the
+     * one route to it that no shell had fired is now refused before the walk.
      */
     {
       id: 't.countLost',

@@ -64,6 +64,11 @@
  *   - **`elapsedSinceArmed` under a `not`.** It reads true during the arming
  *     pass, so the negation reads false, so the trigger can never arm and can
  *     never fire. Defensible-looking and permanently dead.
+ *   - **A `captureProof` tag no layout stamps, and an empty `captureProof`
+ *     list.** Both are silent no-ops that leave the operation's own source
+ *     claiming a structure is protected. This is the `map.coral-shore` rule
+ *     applied to a second field: the well-spelled no-op is the dangerous
+ *     spelling, because the typo was already refused.
  * ========================================================================== */
 
 import { FACTION_COUNT, Faction } from '../core/types';
@@ -486,6 +491,37 @@ function checkOperation(op: OperationDef, f: Faults, facts: CampaignFacts): void
       if (!stamped.has(tag)) {
         f.at(where, `tag '${tag}' is named by a trigger and stamped by no layout entity — `
           + 'entityDead reads TRUE before a tag exists, so this fails on tick one');
+      }
+    }
+  }
+
+  /* -- captureProof ------------------------------------------------------
+   * SAME RULE AS A TRIGGER'S TAGS, AND FOR A SHARPER REASON. A trigger naming a
+   * tag nobody stamps fails LOUDLY on tick one (`entityDead` reads true before
+   * the tag exists). A `captureProof` naming one fails SILENTLY and forever:
+   * the veto simply matches nothing, the structure stays capturable, and the
+   * operation reads as protected in its own source. That is the
+   * `map.coral-shore` shape — a well-spelled no-op, accepted where the typo
+   * would have been refused — so it is refused here.
+   *
+   * `'all'` is deliberately unvalidatable and deliberately allowed: it names no
+   * tag because the hazard it exists for is UNTAGGED. See the field's block in
+   * `types.ts`.
+   */
+  const proof = op.captureProof;
+  if (proof !== undefined && proof !== 'all') {
+    if (proof.length === 0) {
+      f.at(where, 'captureProof is an empty list, which forbids nothing — omit the field, '
+        + "or say 'all' if that is what was meant");
+    }
+    const proofSeen = new Set<string>();
+    for (const tag of proof) {
+      if (proofSeen.has(tag)) f.at(where, `captureProof names tag '${tag}' twice`);
+      proofSeen.add(tag);
+      if (stamped !== undefined && !stamped.has(tag)) {
+        f.at(where, `captureProof names tag '${tag}', which layout '${op.layout}' never `
+          + 'stamps — the veto would match nothing and the structure would stay capturable, '
+          + 'silently, while this file claims otherwise');
       }
     }
   }

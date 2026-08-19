@@ -411,6 +411,31 @@ const op: OperationDef = {
     ai: ['struct.tech', 'struct.defence.specialist', 'struct.superweapon.siege'],
   },
 
+  /*
+   * THE INFIRMARY CANNOT BE WALKED INTO, AND `works` DELIBERATELY CAN.
+   *
+   * **A GARRISON IS A LOAN AND A CAPTURE IS A SALE, AND THE HOSPITAL IS THE ONE
+   * PLACE THAT DIFFERENCE ENDS AN OBJECTIVE.** The layout's own comment says a
+   * squad inside "holds it while it stands there and hands it back the moment
+   * the last man leaves — see `src/data/Civilians.ts` — so it is a firing
+   * position rather than a possession". An ENGINEER is the other verb, and it
+   * has no such reversion: `CaptureService.captureBuilding` writes `owner` and
+   * `faction` once, `GarrisonService.releaseEmptied` is the only thing that
+   * writes them BACK, and it only ever runs for a host it took itself. So one
+   * click permanently strips Gaia's universal alliance from a building standing
+   * 40.05 m from the device, `Targeting.isValidTarget` refuses only ALLIES, and
+   * every Allied gun on the works acquires the thing the shown secondary is
+   * about — which `t.infirmaryLost` then fails, whoever fired.
+   *
+   * `works`, `stack` and `device` are NOT listed and must not be. The primary is
+   * `ownerCount(1, 'building', 'works', max: 0)`, whose whole point is that an
+   * engineer into a plant at or below `CAPTURE.captureHpFrac` answers it exactly
+   * as levelling it does — the objective title says "take off the seam" because
+   * of it, and `t.spurTaken` reads `stack` the same way. A blanket `'all'` here
+   * would delete the primary's second route and make the title a lie.
+   */
+  captureProof: ['infirmary'],
+
   objectives: [
     {
       id: 'order',
@@ -687,6 +712,12 @@ const op: OperationDef = {
      * so the announcer says nothing, and there is no line in `EVA_LINES` about a
      * civilian block. The dialogue is the whole notice, which is the right weight
      * for it.
+     *
+     * **AND `entityDead` IS SAFE FROM THE ENGINEER NOW, WHICH IT WAS NOT.** A
+     * capture does not fire this trigger by itself — a captured hospital is
+     * alive — but it removes the only thing keeping the Ninth's guns off it, and
+     * then this trigger fires on their round. `captureProof: ['infirmary']` at
+     * the top of this file refuses the click; the argument is beside the field.
      */
     {
       id: 't.infirmaryLost',

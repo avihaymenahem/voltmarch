@@ -151,6 +151,16 @@ class FakeSession implements CampaignSession {
 
   drainPresentation(_out: PresentationEvent[]): number { return 0; }
   rows(): readonly ObjectiveRow[] { return []; }
+  /*
+   * `captureProof` is not what this file is about, and the fixture operations
+   * below declare none — so the honest double answers what the real
+   * `Session.isCaptureProof` answers for an operation with the field absent.
+   * `tests/campaign-capture-proof.spec.ts` is where the predicate itself is
+   * driven; this is here because the method is REQUIRED on `CampaignSession`
+   * rather than optional, deliberately, so that a session which cannot answer
+   * is a compile error instead of a silently granted permission.
+   */
+  isCaptureProof(): boolean { return false; }
   medal(_difficulty: number): Medal { return 0; }
   dispose(): void { this.tags.clear(); }
 

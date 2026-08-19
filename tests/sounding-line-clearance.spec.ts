@@ -29,17 +29,26 @@
  * is exactly why a number that is checked beats a number that is careful.
  *
  * ── WHAT THIS FILE IS AND IS NOT ────────────────────────────────────────────
- * It is NOT a claim that the geometry is sufficient. It is not: 7.66 m of open
+ * It was NOT a claim that the geometry is sufficient. It is not: 7.66 m of open
  * ground is a mitigation, and the real answer to "a right-click deletes a unit
- * the operation counts" is refusing the capture — `CaptureService.addVeto` is
- * the hook, it is consulted inside `resolve()` before the neutral branch, and
- * `refuse()` does not consume the engineer. That work is not done.
+ * the operation counts" is refusing the capture. This paragraph named the hook —
+ * `CaptureService.addVeto`, consulted inside `resolve()` before the neutral
+ * branch, with `refuse()` not consuming the engineer — and ended **"That work is
+ * not done."**
  *
- * What this file does is stop the MEASUREMENT from rotting while the mitigation
- * is what the operation is relying on. Every number in the layout's header about
- * a distance from a reading head is re-derived here from the built world, so a
- * layout edit that quietly pulls a capturable structure toward the ground three
- * unarmed men have to stand on fails here rather than in a player's match.
+ * **IT IS DONE.** `OperationDef.captureProof` is the campaign-side installer;
+ * `allies.01.sounding-line` declares `'all'`, because its hazards are UNTAGGED
+ * (this layout stamps `party` and `sortie`, neither of which is a building), and
+ * `game/campaign.system.ts` turns that into one veto at `init()` and removes it
+ * at `dispose()`. §5 below pins the declaration, and
+ * `tests/campaign-capture-proof.spec.ts` drives the veto itself through a real
+ * `CaptureService`.
+ *
+ * **THE MEASUREMENT DOES NOT RETIRE WITH THE HAZARD IT MITIGATED**, and that is
+ * the reason this file is edited rather than deleted. A structure inside a
+ * reading disc is still a structure three men have to walk around; the veto
+ * refuses a CLICK, not a footprint. Every number in the layout's header about a
+ * distance from a reading head is still re-derived here from the built world.
  *
  * **IT IS ONE OPERATION ON PURPOSE.** The general form — "no capturable
  * structure within N metres of an area a scripted unit must occupy" — wants a
@@ -218,11 +227,11 @@ describe('allies.01.sounding-line — the reading heads are clear of capturable 
 
   it('and the ONE enemy structure inside a disc is the declared picket gun', () => {
     /*
-     * ── FOUND BY WRITING THIS FILE, AND IT IS THE SHARPER HALF ──────────────
+     * ── FOUND BY WRITING THIS FILE, AND IT WAS THE SHARPER HALF ─────────────
      * An ENEMY structure above `CAPTURE.captureHpFrac` (0.5) does not flip — it
      * SOFTENS, and `resolve` consumes the engineer on that branch too. So the
      * picket gun the layout deliberately dug in at 19.21 m, INSIDE the 20 m
-     * control disc, is worth more surveyors than the mast is:
+     * control disc, was worth more surveyors than the mast:
      *
      *   `pillbox` maxHp 480, soften = 480 x 0.25 x ARMOR[HE][Concrete] 1.00
      *   x globalMul 0.80 = 96 delivered.
@@ -230,31 +239,35 @@ describe('allies.01.sounding-line — the reading heads are clear of capturable 
      *   two           -> 288/480 = 60%, still above 50%, `gradient` unreachable
      *   three         -> 192/480 = 40%, NOW capturable, and `t.lost` has fired
      *
-     * Three right-clicks on the gun that is shooting at them and the player has
-     * lost the operation to a verb nothing told them they had. It is worse in
+     * Three right-clicks on the gun that is shooting at them and the player had
+     * lost the operation to a verb nothing told them they had. It was worse in
      * combination with `src/input/Commands.ts`: `caps.canCapture` is true if ANY
-     * selected unit can capture, so a select-all right-click on that gun issues
-     * `OrderKind.Capture` to the WHOLE selection — the escort stops shooting and
-     * the surveyors walk in.
+     * selected unit can capture, so a select-all right-click on that gun issued
+     * `OrderKind.Capture` to the WHOLE selection — the escort stopped shooting
+     * and the surveyors walked in.
      *
-     * PINNED AS A DECLARED EXCEPTION RATHER THAN FIXED HERE, in the `OVER_BAND`
-     * shape this repo uses elsewhere: the honest fix is `CaptureService.addVeto`
-     * (consulted inside `resolve()` ahead of both branches, and `refuse()` does
-     * NOT consume the engineer), which is a campaign-runtime feature and not a
-     * layout edit. Moving the gun out of the disc would trade the operation's
-     * measured coverage design for a mitigation the veto makes redundant.
+     * ── THE DECLARED EXCEPTION IS GONE, AND THE COUNT IS NOT ────────────────
+     * This carried an `OVER_BAND`-shaped exception whose own text said it stood
+     * "until the veto exists". It exists: `captureProof: 'all'`, asserted by §5
+     * below, so the whole soften ladder above is unreachable — `refuse()` hands
+     * the surveyor back and `isCapturable` never offers the cursor.
      *
-     * THE TABLE FAILS IN BOTH DIRECTIONS. A second enemy structure inside a disc
-     * fails; so does this one leaving, which forces whoever fixes it to come
-     * back and delete the exception rather than leave a live caveat standing.
+     * WHAT IS ASSERTED HERE IS NO LONGER AN EXCEPTION BUT A COVERAGE FACT. The
+     * layout's whole design argument is that the picket is TWO guns and exactly
+     * one of them stands inside the control disc, leaving "two lobes of reading
+     * ground outside both guns: 193.1 m2, 15.4% of the disc". That number is
+     * worth pinning in both directions whatever the capture rules are — a second
+     * gun inside a disc changes what the secondary is worth, and this one
+     * leaving changes it back — so the assertion stays and only its reason
+     * moved.
      */
     const inside = [
       ...control.filter((b) => b.dist <= CONTROL_HEAD.r && b.owner !== GAIA_SEAT),
       ...deep.filter((b) => b.dist <= DEEP_HEAD.r && b.owner !== GAIA_SEAT),
     ];
     expect(inside.length, 'the set of enemy structures inside a reading disc has changed — '
-      + 'if one was ADDED it is a new surveyor sink; if the picket gun LEFT, delete this '
-      + 'exception and the paragraph in the layout that describes it').toBe(1);
+      + "if one was ADDED it eats into the layout's 193.1 m2 of open reading ground; if the "
+      + 'picket gun LEFT, the coverage argument in the layout has to be re-measured').toBe(1);
     expect(inside[0].maxHp, 'the exception is the 480 hp picket gun').toBe(480);
     expect(inside[0].dist, 'at the distance the layout already quotes').toBeCloseTo(19.21, 1);
   });
@@ -287,5 +300,42 @@ describe('allies.01.sounding-line — the reading heads are clear of capturable 
     expect(guns.length, 'the picket is two guns').toBe(2);
     expect(guns[0], "the layout's own 19.2").toBeCloseTo(19.21, 1);
     expect(guns[1], "the layout's own 21.9").toBeCloseTo(21.93, 1);
+  });
+});
+
+/* ==========================================================================
+ * 5. THE DEFENCE THE CLEARANCE IS NO LONGER STANDING IN FOR
+ *
+ * The exception in §4 stood "until the veto exists". This is the assertion that
+ * makes deleting the veto fail HERE, in the file whose whole premise was that
+ * the geometry was a stand-in for it — rather than only in the capture spec,
+ * which somebody removing a field from an operation has no reason to run.
+ * ========================================================================== */
+
+describe('and the geometry is a mitigation on top of a real refusal', () => {
+  it("declares captureProof 'all', so a right-click cannot spend a surveyor", () => {
+    /*
+     * `'all'` RATHER THAN A LIST, AND THE ASSERTION IS ON THE VALUE.
+     * This layout stamps two tags, `party` and `sortie`, and NEITHER IS A
+     * BUILDING — so a tag list is not a weaker form of this protection, it is
+     * an empty one. The second expectation is what would catch somebody
+     * "tidying" the blanket into a list.
+     */
+    expect(OP!.captureProof, 'the hazard this file measures is closed by a refusal, not by '
+      + 'clearance — see the layout header').toBe('all');
+  });
+
+  it('and takes nothing away, because no objective here is satisfied by a capture', () => {
+    /*
+     * THE FALSIFIER FOR THE BLANKET. `'all'` is the right answer only while
+     * nothing in this operation WANTS a deed: `pact.02`, `pact.04` and
+     * `soviets.06` all take a tag list precisely because each has one. A
+     * `structureCaptured` or an `ownerCount` appearing here means the blanket
+     * has started refusing the player their own objective.
+     */
+    const src = JSON.stringify(OP!.triggers);
+    expect(src, "a trigger now reads a deed, and `captureProof: 'all'` refuses every one")
+      .not.toContain('structureCaptured');
+    expect(src, 'same, for a seat-owner threshold').not.toContain('ownerCount');
   });
 });

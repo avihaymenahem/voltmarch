@@ -135,6 +135,27 @@ export interface CampaignSession {
    * `CampaignTagSet`; nothing about the session had to change to expose it.
    */
   readonly tags: CampaignTagSet;
+  /**
+   * Does `OperationDef.captureProof` forbid an engineer walking into `target`?
+   *
+   * **REQUIRED, NOT OPTIONAL, AND THAT IS THE OPPOSITE CALL FROM
+   * `adoptRestoredState` BELOW.** Both are methods a session could plausibly
+   * omit; the difference is which way the omission fails. A session that skips
+   * `adoptRestoredState` mis-restores a save, loudly, in the one place a test
+   * already watches. A session that skips this one PERMITS EVERY CAPTURE — the
+   * feature silently does nothing, on exactly the four operations whose headers
+   * now say it does something. There is one real implementation
+   * (`campaign-install.ts#Session`) and `tsc` naming a test double is cheaper
+   * than a permission nobody notices being granted.
+   *
+   * IT IS CALLED FROM INSIDE `simTick` AND FROM THE CURSOR. `game/campaign.system.ts`
+   * installs one `CaptureService.addVeto` that delegates here; `resolve()`
+   * consults the vetoes ahead of both the neutral and the enemy branch, and
+   * `isCapturable` consults them per frame while a building is hovered. So it
+   * must be a pure function of the operation and the tag registry: no clock, no
+   * profile, no allocation.
+   */
+  isCaptureProof(target: EntityId): boolean;
   /** Called from `Phase.Cleanup` order 9000, every tick, while armed. */
   simTick(tick: number): void;
   /** Move queued presentation into `out`. Called from the render side. */

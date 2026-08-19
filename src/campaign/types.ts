@@ -10,12 +10,17 @@
  * THE ENTRY CHUNK, so anything statically reachable from
  * `src/game/campaign.system.ts` is downloaded by every player before first
  * paint — on the title backdrop, on every `?shot=` boot, on a machine that
- * will never open the campaign. `campaign.system.ts` imports `session.ts` and
- * `policy.ts` AND NOTHING ELSE — it does not name this file at all; this file
- * is reached THROUGH both of them, type-only in each case. (This paragraph read
- * "imports this file and `policy.ts`" and was wrong in both directions: it
- * missed `session.ts`, which carries the whole shell-facing surface, and it
- * credited an import that does not exist.) The type-only hop is not an escape:
+ * will never open the campaign. OF THIS DIRECTORY, `campaign.system.ts` imports
+ * `session.ts` and `policy.ts` AND NOTHING ELSE — it does not name this file at
+ * all; this file is reached THROUGH both of them, type-only in each case. (This
+ * paragraph read "imports this file and `policy.ts`" and was wrong in both
+ * directions: it missed `session.ts`, which carries the whole shell-facing
+ * surface, and it credited an import that does not exist. The "OF THIS
+ * DIRECTORY" qualifier is a second correction: the sentence read as a claim
+ * about the whole import list, and `captureProof` gave that module a
+ * `sim/Capture.ts` edge — which costs nothing, because
+ * `sim/features.system.ts` puts that file in the entry chunk regardless.) The
+ * type-only hop is not an escape:
  * `tests/campaign-bundle-isolation.spec.ts` follows `import type` when it builds
  * its closure, deliberately, as the over-approximation that is SAFE for a rule
  * which forbids things — so this file is inside it and the constraint above is
@@ -93,6 +98,17 @@
  * set at launch and changing it forces a `census`/`Production` re-derivation for
  * a premise nothing needs) and **`setAllyMask`** (checksum-visible, overlaps the
  * teams task, and belongs there or nowhere).
+ *
+ * **`captureProof` IS A FIELD ON `OperationDef` AND NOT A THIRTEENTH
+ * CONDITION**, and the distinction is the reason the freeze survived it. Four
+ * shipped operations needed "this structure must not be capturable", and no
+ * condition at any vocabulary size can express it: the twelve conditions are
+ * READS evaluated once per tick by a pure director, and the refusal has to
+ * happen inside `CaptureService.resolve` — by the time a trigger could observe
+ * a capture, the engineer is spent and the deed is flipped. It installs a
+ * `CaptureService.addVeto`, which is the same hook `GarrisonService` has used
+ * since it was written, and it is set and cleared by the same module and on the
+ * same two lines as the operation itself. See the field's own block below.
  *
  * ============================================================================
  * EVERY TIMER IS A TICK COUNT
@@ -734,6 +750,80 @@ export interface OperationDef {
   readonly layout: string;
   readonly outcome: OutcomePolicy;
   readonly roster: OperationRoster;
+  /**
+   * Structures this operation refuses to let an engineer walk into.
+   *
+   * A LIST names layout tags; `'all'` forbids every capture for the duration;
+   * ABSENT is the shipped behaviour and adds no refusal, which is why the field
+   * is optional rather than defaulted.
+   *
+   * ============================================================================
+   * IT IS NOT A THIRTEENTH CONDITION AND IT COULD NOT HAVE BEEN ONE
+   * ============================================================================
+   * The vocabulary is frozen at 12 conditions, 3 combinators and 11 effects, and
+   * this adds none of them. That is not a technicality — the twelve conditions
+   * are all READS, evaluated by a pure director once per tick, and the thing
+   * that has to happen here is a REFUSAL at the moment
+   * `CaptureService.resolve` decides. No trigger can express that at any
+   * vocabulary size, because by the time a trigger could observe the capture the
+   * engineer is already spent and the deed is already flipped.
+   *
+   * ============================================================================
+   * WHAT IT IS FOR, MEASURED
+   * ============================================================================
+   * `Capture.resolve` consumes the engineer on EVERY non-refused outcome —
+   * capture, soften and friendly repair alike — and the only branch that hands
+   * it back is `refuse()`. The three `canCapture` defs carry no `unlockedBy`, so
+   * `OperationRoster` cannot withhold them, and their prereqs stand at t = 0 in
+   * every `opening: 'base'` operation. So the price of taking ANY structure in
+   * the game is four engineers: the soften lands
+   * `maxHp * CAPTURE.softenFrac` (0.25) through
+   * `ARMOR_MATRIX[HighExplosive][Concrete]` (1.00) and
+   * `COMBAT_DAMAGE.globalMul` (0.80) = 0.20 of max, against a
+   * `CAPTURE.captureHpFrac` gate of 0.50 — both fractions of max, so `maxHp`
+   * cancels and the count is the same for a 480 hp pillbox and a 1500 hp yard.
+   *
+   * That is a fine price for a structure an operation WANTS taken, and it is a
+   * trap for one it told the player to protect: `Targeting.isValidTarget`
+   * refuses only ALLIES, so a captured protect-target stops being the enemy's
+   * and becomes a legal target for every gun they own, while the trigger that
+   * ends the operation on `entityDead` does not care who fired.
+   *
+   * MIGRATING THE TRIGGER TO `ownerCount` DOES NOT FIX THAT AND IS SOMETIMES
+   * THE WORSE BUG. Five operations were migrated because capture made a WIN
+   * unreachable; for a protect-target the same migration makes a LOSS reachable
+   * by capture — defeat on the tick the player took the thing into protective
+   * custody. `pact.02.long-count`'s `t.countLost` says so at length. Those are
+   * the four cases this field exists for.
+   *
+   * ============================================================================
+   * A LIST IS VALIDATED; `'all'` CANNOT BE
+   * ============================================================================
+   * Every tag in a list is checked against the layout's declared `tags` at
+   * import, exactly as a trigger's tags are, so a typo is a build error rather
+   * than a silent no-op — the `map.coral-shore` lesson in `validate.ts`, where a
+   * well-spelled roster id restricted nothing and was accepted.
+   *
+   * `'all'` exists because `allies.01.sounding-line`'s hazards are UNTAGGED: its
+   * three surveyors ARE the objective, every capture spends one, and the
+   * structures that eat them are two Works masts and a picket gun standing
+   * INSIDE a reading disc — none of which the layout tags, because nothing in
+   * the trigger table ever names them. A tag list cannot protect an entity
+   * nobody tagged, and tagging three structures for the sole purpose of
+   * forbidding their capture would be a second, invisible copy of this field.
+   *
+   * ============================================================================
+   * WHAT IT DOES NOT COVER
+   * ============================================================================
+   * `Capture.resolve` tests the FRIENDLY branch before it consults the vetoes,
+   * so an engineer sent at a DAMAGED structure its own player is allied to still
+   * repairs it and is still consumed, under `'all'` as much as without it.
+   * Moving the veto ahead of that branch would change `GarrisonService`'s
+   * meaning too — its veto is "this strongpoint is occupied", which is a rule
+   * about taking a building and not about mending one — so the residual is
+   * declared here rather than closed by widening a hook two features share.
+   */
+  readonly captureProof?: readonly string[] | 'all';
   readonly objectives: readonly ObjectiveDef[];
   readonly triggers: readonly TriggerDef[];
 }

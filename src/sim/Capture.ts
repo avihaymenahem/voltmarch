@@ -43,9 +43,23 @@
  *      order cleared, because silently eating a 500-credit unit for nothing is
  *      the worst possible answer.
  *
- *   4. A structure still `UnderConstruction`, or one a veto says is busy (an
- *      occupied garrison — see Garrison.ts), is refused without consuming the
- *      engineer.
+ *   4. A structure still `UnderConstruction`, or one a veto refuses, is refused
+ *      without consuming the engineer.
+ *
+ *      TWO INSTALLERS NOW, AND THEY REFUSE FOR DIFFERENT REASONS.
+ *      `GarrisonService.attach` refuses an OCCUPIED strongpoint — clear it out
+ *      first, which is the whole tactical point of holding one. And
+ *      `src/game/campaign.system.ts` installs one for
+ *      `OperationDef.captureProof`, so an operation can declare a structure the
+ *      player must not take: four shipped operations protect a target they told
+ *      the player to defend, because `Targeting.isValidTarget` refuses ALLIES
+ *      and nothing else, so a captured protect-target becomes a legal target for
+ *      the army that used to own it.
+ *
+ *      **THE VETO LIST IS CONSULTED AFTER THE FRIENDLY BRANCH, NOT BEFORE IT**,
+ *      and both installers depend on that. A veto here means "you may not TAKE
+ *      this building"; mending one you are already allied to is a different
+ *      verb, and moving the loop up would silently change what both rules say.
  *
  * WRITE OWNERSHIP. This module writes `owner`, `faction` and `flags` on
  * BUILDINGS only, and `state`/`orderKind`/`orderX`/`orderZ` on the engineers it
@@ -180,8 +194,12 @@ export class CaptureService {
 
   /**
    * Install a predicate that can forbid captures. Returns an unsubscribe.
-   * Garrison.ts uses this so an occupied strongpoint has to be emptied before
-   * it changes hands.
+   *
+   * Two callers. `Garrison.ts` uses it so an occupied strongpoint has to be
+   * emptied before it changes hands, and `game/campaign.system.ts` uses it for
+   * `OperationDef.captureProof` — a structure an operation forbids taking at
+   * all. Both hold the unsubscribe and call it on teardown; a caller that drops
+   * one leaves a predicate on a list nothing can read back.
    */
   addVeto(fn: CaptureVeto): () => void {
     this.vetoes.push(fn);

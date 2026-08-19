@@ -519,16 +519,38 @@ describe('campaign.system.ts reaches only the light seam', () => {
     .filter((p): p is string => p !== null)
     .map(rel);
 
-  it('imports core, game/context and campaign/{policy,session} — and that is the whole list', () => {
+  it('imports core, game/context, sim/Capture and campaign/{policy,session}', () => {
     /*
      * A RULE, NOT A ROSTER. New `core/` imports are free — `core/**` is in the
      * entry chunk under every configuration — and so is `game/context.ts`,
      * which every system module already holds. Anything else has to be argued
      * for here, in this list, rather than added in a diff nobody reads.
+     *
+     * ── `sim/Capture.ts`, ARGUED ────────────────────────────────────────────
+     * `OperationDef.captureProof` names structures an engineer may not walk
+     * into, and it is enforced by ONE `CaptureService.addVeto` installed in this
+     * module's `init()` and removed in its `dispose()`. The knowledge stays
+     * behind the lazy boundary — `campaign-install.ts#Session.isCaptureProof`,
+     * which needs the tag registry — and only the hook is here.
+     *
+     * IT COSTS NO BYTE, WHICH IS THE ONLY QUESTION THIS FILE ASKS.
+     * `sim/Capture.ts` is already in `ENTRY`: `sim/features.system.ts` is
+     * globbed eagerly from `game/Systems.ts` and imports it to construct the
+     * service. The assertion below is that fact rather than a promise, so an
+     * edge that stops being free fails here.
+     *
+     * IT COULD NOT HAVE BEEN INSTALLED ANYWHERE ELSE. `armOperation` runs
+     * BEFORE the boot and the `CaptureService` is constructed DURING it, so a
+     * veto armed there lands on the outgoing match's service. `game/**` reaching
+     * `sim/**` is settled practice — `game/outcome.system.ts` and
+     * `game/save.system.ts` both do it — and the campaign-specific rule this
+     * file exists for is about the campaign's HEAVY half, which this edge does
+     * not touch in either direction.
      */
     const allowed = (id: string): boolean =>
       id.startsWith('core/')
       || id === 'game/context.ts'
+      || id === 'sim/Capture.ts'
       || id === 'campaign/policy.ts'
       || id === 'campaign/session.ts'
       || id === 'campaign/types.ts';
@@ -543,6 +565,12 @@ describe('campaign.system.ts reaches only the light seam', () => {
     expect(direct).toContain('campaign/session.ts');
     expect(direct).toContain('campaign/policy.ts');
     expect(direct).toContain('core/loop.ts');
+    // And the argument for the `sim/Capture.ts` exemption, checked rather than
+    // asserted in prose: it is exempt because it is ALREADY in the entry chunk,
+    // so the edge costs nothing. If that stops being true this fails and the
+    // exemption has to be re-argued.
+    expect(direct).toContain('sim/Capture.ts');
+    expect(ENTRY.has('sim/Capture.ts'), witness('sim/Capture.ts')).toBe(true);
   });
 
   it('names none of the Director, the table, the validator or any layout', () => {

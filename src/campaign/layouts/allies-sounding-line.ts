@@ -99,12 +99,26 @@
  * ground the surveyors stand on is bare earth. But it is half the margin the
  * layout believed it had, on the head that decides the win, and the mast's own
  * footprint eats into it further. **Clearance is not the real defence.** The
- * real defence is refusing the capture, and it is not built yet: every neutral
- * structure is taken outright at any health and the capture CONSUMES the
- * engineer, so `t.lost` (`entityDead party`) is three loose clicks away from a
- * stated loss. `CaptureService.addVeto` is the hook a fix would use — it is
- * consulted inside `resolve()` BEFORE the neutral branch and `refuse()` does not
- * consume the engineer, so a vetoed click costs a walk and nothing else.
+ * real defence is refusing the capture.
+ *
+ * **AND IT IS BUILT NOW. THIS PARAGRAPH ENDED "it is not built yet".** The
+ * operation declares `captureProof: 'all'` — a field on `OperationDef`, not a
+ * thirteenth condition — and `game/campaign.system.ts` turns it into one
+ * `CaptureService.addVeto` for the duration. It is exactly the hook this
+ * paragraph named: consulted inside `resolve()` BEFORE the neutral branch and
+ * before the enemy branch, with `refuse()` NOT consuming the engineer, so a
+ * vetoed click costs a walk and nothing else — and `isCapturable` consults the
+ * same vetoes, so the cursor never offers the capture and the walk never starts.
+ *
+ * `'all'` rather than a tag list, because the hazards here are UNTAGGED: this
+ * layout stamps `party` and `sortie` and neither is a building. The reasoning is
+ * written out beside the field in `operations/allies/01-sounding-line.ts`.
+ *
+ * **THE CLEARANCE NUMBERS STILL MATTER AND ARE STILL MEASURED.** A structure
+ * inside a reading disc is still a structure three men have to walk around, and
+ * `addCivilians` is still not called — the veto refuses a CLICK, not a
+ * footprint. `tests/sounding-line-clearance.spec.ts` keeps every distance in
+ * this header honest.
  *
  * ============================================================================
  * TAGS
@@ -370,19 +384,29 @@ export default layout({
      *     two   -> 288/480 = 60%, above 50%, `gradient` now unreachable
      *     three -> 192/480 = 40%, capturable at last, and `t.lost` has fired
      *
-     * So three right-clicks on the gun that is shooting at them loses the
-     * operation, and `src/input/Commands.ts` makes it worse rather than better:
+     * So three right-clicks on the gun that is shooting at them lost the
+     * operation, and `src/input/Commands.ts` made it worse rather than better:
      * `caps.canCapture` is true if ANY selected unit can capture, so a
-     * select-all right-click on that gun issues `OrderKind.Capture` to the WHOLE
-     * selection — the escort stops shooting and the surveyors walk in.
+     * select-all right-click on that gun issued `OrderKind.Capture` to the WHOLE
+     * selection — the escort stopped shooting and the surveyors walked in.
      *
-     * NOT MOVED, and the reason is that clearance is the wrong instrument. The
-     * gun's position is a measured coverage decision (see the paragraph above),
-     * and the hazard's real answer is `CaptureService.addVeto` — consulted
-     * inside `resolve()` ahead of BOTH branches, with `refuse()` not consuming
-     * the engineer, so a vetoed click costs a walk and nothing else. It is
-     * pinned as a declared, both-directions exception in
-     * `tests/sounding-line-clearance.spec.ts` until that exists.
+     * **THE GUN IS NOT MOVED AND THE HAZARD IS CLOSED — THE SECOND HALF USED TO
+     * READ "until that exists".** Clearance was the wrong instrument, and the
+     * gun's position is a measured coverage decision (see the paragraph above).
+     * The real answer is the one this comment already named:
+     * `CaptureService.addVeto`, consulted inside `resolve()` ahead of BOTH
+     * branches, with `refuse()` not consuming the engineer. The operation
+     * declares `captureProof: 'all'`, `game/campaign.system.ts` installs the
+     * veto at `init()` and removes it at `dispose()`, and `isCapturable` reads
+     * the same list — so a right-click on this gun resolves to Attack for the
+     * escort and Move for the surveyors, and the select-all case above is a
+     * misfire that costs nothing.
+     *
+     * `tests/sounding-line-clearance.spec.ts` no longer carries a declared
+     * exception for it. It asserts the picket gun is still the ONE enemy
+     * structure inside a disc — that number is a coverage fact worth pinning in
+     * both directions whatever the capture rules are — and it asserts the
+     * operation still declares the veto, so deleting the field fails there.
      *
      * THE RANGE IS 22 M WHICHEVER ARMY HOLDS THE SEAT, and an earlier draft of
      * this block invented a second number. `pillbox` and `sentryGun` both fire
