@@ -112,6 +112,10 @@ function withEngineers(world: World, ids: readonly EntityId[]): () => void {
     canCapture: (_w, i) => slots.has(i),
     canRepair: (_w, i) => slots.has(i),
     isHarvester: (w, i) => (w.store.flags[i] & EntityFlag.IsHarvester) !== 0,
+    // Nothing on this path reads it, but the interface requires it and a
+    // resolver that silently omitted a member would be a runtime hole rather
+    // than a compile error the day something does.
+    transportCapacity: () => 0,
   };
   setRoleResolver(r);
   return () => setRoleResolver(null);
