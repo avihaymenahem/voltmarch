@@ -87,16 +87,20 @@ its operations you have finished; each operation is a row with its par time and 
 | 02 | Common Standard | Hold the Seam | 14 | 1 | 1 |
 | 03 | Deep Sector | Hold the Seam | 15 | 1 | 1 |
 | 04 | Company Town | Hold the Seam | 16 | 1 | 2 |
+| 05 | Short Allocation | Hold the Seam | 17 | 1 | 2 |
 | 01 | Sounding Line | The Timetable | 13 | 2 | 1 |
 | 02 | Instrument Room | The Timetable | 14 | 2 | 1 |
+| 03 | Ground Truth | The Timetable | 15 | 1 | 1 |
 | 01 | The Shallow Road | The Crust | 13 | 1 | 2 |
+| 02 | The Long Count | The Crust | 14 | 2 | 2 |
 | 01 | Held Paper | Salvage Rights | 13 | 1 | 2 |
 | 02 | Written Off | Salvage Rights | 14 | 1 | 2 |
+| 03 | Sold Twice | Salvage Rights | 15 | 1 | 2 |
 
-**That is 9 of a planned 37 operations, and this page will not pretend otherwise.** The nine add up
-to 125 minutes of authored par; the full table is meant to reach 10 hours. All four chapters now
+**That is 13 of a planned 37 operations, and this page will not pretend otherwise.** The thirteen add
+up to 186 minutes of authored par; the full table is meant to reach 10 hours. All four chapters now
 have at least one operation, so all four have a card on the campaign screen — but none of them is
-finished, and the shortest is a single operation long.
+finished, and the shortest is two operations long.
 
 Read the table above as what exists, not the 37 as a promise. The number is the plan the content is
 being authored against, and it is quoted here because a manual that quietly implied a finished
@@ -114,7 +118,7 @@ nothing else.
   pay are worth 400 to 700 credits and they are granted rather than deposited, so a full silo
   cannot eat one. Each is paid **once**: reloading a save taken before you finished a bonus does
   not pay it a second time.
-- **Two shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
+- **Three shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
   is the better kind of reward.
 - **A primary never pays credits.** That is refused at build time rather than left to taste — being
   paid for playing the operation is not a bonus.
