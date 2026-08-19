@@ -84,17 +84,6 @@ with no number is untracked, and that is itself the bug.
 
 ---
 
-## Correctness
-
-- **#53 — four small N-army gaps** the four-army lobby made reachable: the debug overlay reports one
-  AI of three; the anti-mirror rule should be **deleted** rather than extended (and
-  `tests/shell.spec.ts` currently *pins the obsolete behaviour*); the end screen shows one difficulty
-  chip for N armies; minimap pings are binary hostile/own while blips are already per-seat. Plus an
-  undecided balance question — ore per army falls 1.5 → 1.25 from two armies to four, and nobody has
-  decided whether that is intended tightening or an accident of the formula.
-
----
-
 ## Renderer and docs
 
 - **#39 — real GPU time on WebGPU** via timestamp-query. `drawCallsByPass` is WebGL-only and the node
