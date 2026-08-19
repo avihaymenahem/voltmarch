@@ -634,18 +634,26 @@ describe('validateCampaign refuses a captureProof that cannot bite', () => {
 });
 
 /* ==========================================================================
- * 7. THE SHIPPED TABLE — the four, by name, in both directions
+ * 7. THE SHIPPED TABLE — the five, by name, in both directions
  * ========================================================================== */
 
-describe('exactly four operations declare captureProof', () => {
+describe('exactly five operations declare captureProof', () => {
   const ALL: readonly OperationDef[] = CAMPAIGNS.flatMap((c: ChapterDef) => c.operations);
 
-  it('and they are the four whose headers say so', () => {
+  it('and they are the five whose headers say so', () => {
     /*
-     * A ROSTER RATHER THAN A RULE, and both directions matter. A FIFTH operation
+     * A ROSTER RATHER THAN A RULE, and both directions matter. A NEW operation
      * arriving is a content decision somebody should have to write down; one of
-     * these four LEAVING silently reopens a documented hazard whose paragraph
-     * now says it is closed.
+     * these LEAVING silently reopens a documented hazard whose paragraph now
+     * says it is closed.
+     *
+     * `reclamation.05.closing-entry` was the fifth, and it is the second of the
+     * two shapes this list holds. Four of these protect a structure the OPPONENT
+     * owns; that one protects two the PLAYER owns — every threshold in the file
+     * counts what seat 0 holds, so a captured counting house reads as a lost one
+     * and ends the operation in a defeat on the tick it changes hands. Its
+     * header measures that seat 1 really does open holding an `mrdArtificer`,
+     * so this is not a well-spelled no-op waiting on a call site.
      */
     const declared = ALL
       .filter((o) => o.captureProof !== undefined)
@@ -655,6 +663,7 @@ describe('exactly four operations declare captureProof', () => {
       'allies.01.sounding-line = all',
       'pact.02.long-count = count',
       'pact.04.in-the-clear = mast',
+      'reclamation.05.closing-entry = house,ledger',
       'soviets.06.demolition-order = infirmary',
     ]);
   });
