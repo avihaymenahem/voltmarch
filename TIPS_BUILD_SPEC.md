@@ -115,7 +115,15 @@ four predicates are verified entry-chunk-reachable (`campaignRunning()` `policy.
 
 **PvP was cut by one report silently and asserted by another silently.** A tip is local-only DOM, it
 cannot desync, and a PvP player is arguably the one who most wants ore-crisis-shaped advice.
-**UNDECIDED-T1 — somebody decides this on the record.** Recommend: tips ON in PvP.
+
+**DECIDED 2026-08-19: TIPS ARE ON IN PvP.** So the suppression set is campaign, replay and tutorial —
+three predicates, not four. Each of those suppresses for a reason a PvP match does not share: a
+campaign operation authors its own guidance, a replay is not the viewer's match to advise on, and the
+tutorial is already saying something. None of that is true of a skirmish against a person.
+
+**A tip must therefore never read anything a peer does not have**, which is already guaranteed by the
+`pi === local` gate the `orecrisis.system.ts` shape uses — but it is now load-bearing rather than
+incidental, and the spec covering it should say so.
 
 Note also: `scriptedRunning()` lives in `outcome.system.ts`, a *system module*. A system-to-system
 import is a new edge shape — compose `campaignRunning()` and the `__vmTutorial` probe directly.
@@ -211,7 +219,6 @@ has failed for nothing** — and it will have cost one commit to find out.
 
 ## 7. OPEN
 
-- **UNDECIDED-T1** — tips in PvP? §4. Recommend yes.
 - **Who writes the corpus, and against what gate?** If the digits go (§2.3) the gate is the digit ban
   plus the key lint. If they stay, somebody hand-writes ~50 re-derivations, which becomes the
   majority of the feature's cost — `wiki-numbers.spec.ts`'s header prices that exercise at *"three
