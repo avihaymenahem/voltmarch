@@ -32,6 +32,18 @@
  * "Winnable in practice" is not answerable by building a world; it is answered
  * by playing it, and Gate M's definition of done says so. This file answers
  * "does the ground the operation was authored against actually exist".
+ *
+ * **AND IT ANSWERS IT UNROSTERED, WHICH IS A SECOND THING IT DOES NOT CLAIM.**
+ * `buildOperation` below installs the plan and the layout and nothing else: no
+ * `setCampaignRoster`, and no `defs`. Both omissions point the same way — an
+ * operation's roster is an ALLOW-LIST and `spawnBuilding` hands `isBuildable`
+ * the RESOLVED def, which is `undefined` under the empty binding and which
+ * `rosterAllows` therefore permits — so every structure lands here whatever the
+ * roster says, and a roster typo that deletes a tagged structure leaves this
+ * whole file green. That is `tests/campaign-roster-ground.spec.ts`'s job: the
+ * same builds with the tables bound and each operation's own roster armed,
+ * against an unrostered control. Do not read a pass here as a statement about
+ * the world a player actually gets.
  * ========================================================================== */
 
 import { describe, expect, it } from 'vitest';

@@ -500,6 +500,20 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   default without deleting the feature; caught instead by `index.ts` refusing a tag no `UNLOCKS` row
   produces. `setCampaignRoster` is consulted AHEAD of the PvP `suppressed` flag, because the
   operation's authored intent outranks a hammer an earlier match left set.
+
+  **A ROSTER TYPO WAS SILENT IN EVERY OPERATION UNTIL 2026-08-19, AND TESTING IT NEEDS TWO THINGS,
+  NOT ONE.** `ScenarioBuilder.spawnBuilding` asks `isBuildable` and SKIPS a refused def — no throw,
+  no log — so the structure never lands, the layout's tag never stamps, and `entityDead` on it reads
+  TRUE from tick one: an objective the player fails without seeing, or wins against a target that
+  does not exist. `campaign-maps.spec.ts` cannot see it, because it builds UNROSTERED. **And arming
+  `setCampaignRoster` there would not have been enough**: that file passes no `defs` either,
+  `spawnBuilding` hands `isBuildable` the RESOLVED def, and `rosterAllows` answers TRUE for an
+  `undefined` one — so the roster would have been inert and the test vacuous. Bind the tables AND
+  install the roster, or you are measuring a different game in a way that looks like a pass.
+  `tests/campaign-roster-ground.spec.ts` does both, builds every operation TWICE so a missing tag
+  can be attributed to the roster rather than to placement, and pins the guard case that catches its
+  own vacuity. 16 of 17 rosters measurably withhold content; the seventeenth is declared by name
+  with its reason, so a new permissive operation fails rather than quietly joining it.
 - **NEITHER SHIPPED OUTCOME RULE MAY END AN OPERATION BY DEFAULT.** `Shell.pollOutcome` and
   `outcome.system.ts` both read `campaign/policy.ts`. Four reachable failures against a scripted
   match, all in shipped code: an eight-minute hold won at minute three; a seat whose forces arrive

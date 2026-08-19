@@ -36,6 +36,17 @@
  * Director to the gate is still ahead of it. So these semantics have no
  * production witness and this file is the only one there is.
  *
+ * **BOTH HALVES OF THAT PARAGRAPH HAVE SINCE EXPIRED, AND IT IS KEPT RATHER
+ * THAN REWRITTEN BECAUSE IT EXPLAINS THE SHAPE OF EVERYTHING BELOW.**
+ * `campaign-install.ts#armOperation` calls `setCampaignRoster` before the boot
+ * now, and `tests/campaign-roster-ground.spec.ts` builds every shipped
+ * operation with its OWN roster installed and the def tables bound. That file
+ * is the GROUND — does the world a player gets still hold what the triggers
+ * read — and this one is the SEMANTICS: precedence over `suppressed` and over
+ * the installed gate, proved by counting reads of a spy gate, which needs a
+ * synthetic roster and no world at all. Neither subsumes the other, and
+ * nothing here is weakened by it.
+ *
  * FALSIFIERS, NOT AGREEMENTS. A roster that allowed everything and a roster
  * that denied everything would each satisfy a naive suite, so every claim below
  * is checked in both directions against ONE roster: `struct.tech` is in both
