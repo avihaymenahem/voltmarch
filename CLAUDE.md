@@ -588,6 +588,37 @@ original defect with a different noun.
   BEFORE the change, and the same shape as wall 3 in `ai-naval-yard.spec.ts`. Do not quote "all four
   armies land".
 
+## Ore per army falls with seat count, and that is the contested patch working
+
+Asked as: is the 1.5 -> 1.25 fields-per-army drop from two armies to four intended tightening or an
+accident of the formula? **It is correct by construction, nothing changed, and the ratio overstates
+it.** Measured 2026-08-19 through the real generator, real `OreField.seedField` and the real terrain
+predicate, `mapSeed 0x5e1ec7` / `simSeed 90210`, in CREDITS rather than field counts:
+
+```
+                2 armies      3 armies      4 armies     4-army vs 2
+  temperate     37 142        35 277        33 153         0.893
+  urban         30 625        28 341        27 319         0.892
+  arid          43 472        39 694        38 824         0.893
+  snow          39 384        36 667        34 616         0.879
+  atoll         42 246        42 652        42 416         1.004
+```
+
+- **The real erosion is ~11%, not the ~17% the field ratio implies**, and it is tightly clustered
+  across all four continental presets. `Scenarios.ts` gives each seat a home field of radius 30 and
+  lays ONE contested patch of radius 22 on the centroid, so the shared patch is worth ~55% of a
+  home field, not 100%.
+- **EACH ARMY'S OWN ORE IS CONSTANT.** Per-army is `H + C/N`: `H` is one home field (28-35 k) and
+  never moves, and only the shared patch's per-capita share falls 1/2 -> 1/4. A contested patch
+  whose per-head value drops as more heads contest it is the patch doing its job. **Do not "fix"
+  this by scaling the home field with seat count** — that would make the contest free.
+- **THE ARCHIPELAGO HAS NO EROSION AT ALL AND THAT IS ALSO RIGHT.** `addIslandOre` gives every
+  island a home field *and* an expansion, two per army at every seat count. It reads as an
+  inconsistency and is not one: on Sunder Atoll no two armies share a land route, so there is no
+  reachable contested patch to dilute, and the private expansion is the equivalent provision. The
+  two layouts agree in intent even though they disagree in shape. Neither is argued in the source,
+  which is why it is argued here.
+
 ## Spawns vary by seed now, and the water decides how much
 
 Reported as *"Our spawns are weird, we always spawn few meteres away from enemy, even thought maps
