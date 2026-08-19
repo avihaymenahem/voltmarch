@@ -27,19 +27,14 @@ with no number is untracked, and that is itself the bug.
 - **#66 — Phases 6-7.** The remaining 32 operations. **180-320 person-hours, roughly 3-5× the
   engine**, of which ~35 hours is human play no agent can do. That ratio is the single most
   important fact about the campaign.
-- **#72 — `campaign-bundle-isolation` cannot see an import added inside `src/campaign/`.** Measured:
-  a deliberate `CAMPAIGNS` import into the entry-chunk-reachable `campaign-store.ts` left the spec
-  green at 26/26. §1 skips anything under `campaign/` and roots its closure at `campaign.system.ts`
-  alone; §4 is gated on `distIsCurrent()`.
-- **#73 — a layout-placed guard is re-tasked by the AI and walks away.** S2's secondary hangs on two
-  tanks parked at the depot; `regroupSquads` files everything it finds, so they leave. Fourth
-  instance of the pattern `GROUP_SCOUT` / `GROUP_WITHDRAW` / `GROUP_RAID` each exist for. Preferred
-  answer is static content rather than an engine change. **Reasoned, not observed — confirm on a
-  real run first.**
-- The objectives panel renders `0 / 1` under each campaign objective; it has no notion of a boolean
-  objective. Cosmetic. The honest fix is a flag the panel reads, not a special case. *(untracked —
-  file it or drop it)*
-- `wiki/Campaign.md` still opens "VOLTMARCH has no story campaign". Phase 7.
+- **The briefing screen SPOILS hidden objectives.** `BriefingScreen.render` in
+  `src/shell/Campaign.ts` lists them, while its own header says it must not — *"a briefing that
+  listed a hidden objective would be the operation spoiling its own turn"*. It structurally cannot
+  obey: the `OperationView.objectives` type in that file declares `{ id; kind; title }` with no
+  `hidden` field to filter on. `reclamation.01.held-paper` ships a hidden secondary, so this is
+  LIVE, and `wiki/Campaign.md` currently documents the behaviour rather than the intent — fixing it
+  moves two bullets on that page. *(untracked — the task tool was disconnected when this was found;
+  needs a number)*
 
 ---
 
