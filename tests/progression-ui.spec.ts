@@ -185,10 +185,35 @@ describe('objective readouts', () => {
     expect(Number.isFinite(objectiveFraction(progress({ target: 0, value: 3 })))).toBe(true);
   });
 
-  it('reads a flag mission as a flag, not as 0 / 1 progress', () => {
+  /*
+   * The title of this case used to be "reads a flag mission as a flag, not as
+   * 0 / 1 progress" while asserting `'0 / 1'`. It was a counter readout the
+   * whole time, and the name is what let the campaign panel ship with a
+   * progress bar under every boolean objective. It says what it does now, and
+   * the flag behaviour it was named after has its own case below.
+   */
+  it('renders a counter for every objective that does not declare itself a flag', () => {
     expect(objectiveReadout(progress({ target: 1 }))).toBe('0 / 1');
     expect(objectiveReadout(progress({ target: 1, complete: true }))).toBe('DONE');
     expect(objectiveReadout(progress({ target: 25, value: 12.7 }))).toBe('12 / 25');
+  });
+
+  it('drops the counter entirely for a flag objective, and only for one', () => {
+    // The campaign shape: a done-or-not objective has no honest fraction to
+    // print, so it prints none.
+    expect(objectiveReadout(progress({ target: 1 }), true)).toBe('');
+    // DONE still lands — a flag suppresses the PROGRESS, never the completion.
+    expect(objectiveReadout(progress({ target: 1, complete: true }), true)).toBe('DONE');
+    // And the same progress, not declared a flag, is untouched.
+    expect(objectiveReadout(progress({ target: 1 }), false)).toBe('0 / 1');
+  });
+
+  it('is a declaration and not a target heuristic, in both directions', () => {
+    // A skirmish mission that legitimately counts to one of something keeps its
+    // counter. Reading `target === 1` instead of the flag would relabel it.
+    expect(objectiveReadout(progress({ target: 1, value: 0 }))).toBe('0 / 1');
+    // And a flag whose target reads as a count is still a flag.
+    expect(objectiveReadout(progress({ target: 60, value: 12 }), true)).toBe('');
   });
 });
 

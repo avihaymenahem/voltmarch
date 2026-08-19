@@ -95,19 +95,37 @@ function share(rows: number, view: 'collapsed' | 'summary' | 'expanded'): string
  * nothing — this module is a `*.system.ts` and therefore in the entry chunk, so
  * reaching for anything heavier here would drag the Director and the whole
  * operation table in front of every player's first paint.
+ *
+ * EXPORTED FOR THE SPEC AND FOR NOTHING ELSE. `frame()` below is its only
+ * production caller. What a test needs to reach is the SHAPE this hands the
+ * panel — a booted page is the only other place that is visible, and the
+ * `0 / 1` this used to produce survived precisely because nobody could see it
+ * from a test.
  */
-function campaignObjectiveView(): ProgressionView | null {
+export function campaignObjectiveView(): ProgressionView | null {
   const session = campaignSession();
   if (session === null) return null;
 
   // `target: 1` and a 0/1 value, because a campaign objective is a FLAG rather
   // than a counter: there is no "3 of 25" to report.
   //
-  // THE PANEL STILL DRAWS "0 / 1" UNDER EACH ROW, and an earlier version of
-  // this comment claimed it did not. It renders `value / target` for every row
-  // it is given and has no notion of a boolean objective. That is cosmetic
-  // noise rather than a wrong number — and the honest fix is a flag on the row
-  // that `Objectives.ts` reads, not a lie here.
+  // `flag: true` IS THAT FACT, CARRIED FROM THE SIDE THAT KNOWS IT. It is set
+  // unconditionally because it is true by CONSTRUCTION rather than by row:
+  // `ObjectiveDef` in `src/campaign/types.ts` declares id, kind, title, credits
+  // and hidden, and there is no count anywhere in the campaign vocabulary for
+  // an objective to carry. Nothing on `ObjectiveRow` already answered it —
+  // `kind` is `'primary' | 'secondary'`, which is how much an objective
+  // MATTERS, and both halves are flags — so adding a parallel always-true field
+  // to `ObjectiveRow` would buy nothing and give the fact two homes.
+  //
+  // Until this landed the panel drew "0 / 1" under every objective: a progress
+  // bar for something with no progress, and the first thing a player saw in
+  // every operation. IT NEVER DREW "1 / 1", and the brief that asked for this
+  // change said it did — `objectiveReadout` returns "DONE" on `complete` before
+  // it ever looks at the fraction, and a campaign row's `value` and its
+  // `complete` are the same `status === 'complete'` test, so "1 / 1" is
+  // unreachable. `Objectives.ts#objectiveReadout` reads the flag; a provider
+  // that omits it renders exactly as it always did.
   const rows = (): ActiveObjective[] => session.rows()
     .filter((r) => r.status !== 'hidden')
     .map((r) => ({
@@ -118,6 +136,7 @@ function campaignObjectiveView(): ProgressionView | null {
       category: 'tactics' as const,
       target: 1,
       reward: [],
+      flag: true,
       progress: {
         id: r.id,
         value: r.status === 'complete' ? 1 : 0,

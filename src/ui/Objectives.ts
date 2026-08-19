@@ -147,6 +147,32 @@ export interface MissionDef {
   /** `Faction` enum value, for faction-specific chains. */
   faction?: number;
   difficulty?: 1 | 2 | 3;
+  /**
+   * TRUE when this objective is DONE-OR-NOT rather than a count, so the row
+   * must not draw a counter. A campaign operation's objectives are all of this
+   * shape — "Destroy the Allied survey tap" has no "3 of 25" to report.
+   *
+   * OPTIONAL AND FALSY BY DEFAULT, WHICH IS THE WHOLE SAFETY ARGUMENT. Every
+   * skirmish mission row in `src/data/Missions.ts` is a counter and the count
+   * IS the point ("destroy 60 enemy vehicles"); a provider that has never heard
+   * of this field keeps the rendering it has always had, member for member.
+   * That is also what keeps this interface a structural RESTATEMENT of
+   * `src/progression/types.ts` rather than a second contract — the same reason
+   * `unlockSource?` below is optional.
+   *
+   * IT IS NOT `target === 1`, AND THAT DISTINCTION IS THE FIX. Reading the
+   * target is a heuristic that is wrong in both directions: a campaign
+   * objective is a flag whatever its target reads, and a skirmish mission that
+   * legitimately counts to one of something ("build a Battle Lab") is a counter
+   * and would be silently relabelled. `src/shell/PauseMenu.ts` still infers it
+   * from `target <= 1`; that is the sibling screen and outside this change.
+   *
+   * NO EXISTING FIELD ANSWERED THIS. `ObjectiveDef.kind` in
+   * `src/campaign/types.ts` is `'primary' | 'secondary'` — how much the
+   * objective MATTERS, not whether it counts, and both halves are flags.
+   * `category` is thematic and `scope` says where progress is banked.
+   */
+  flag?: boolean;
 }
 
 export interface MissionProgress {
@@ -343,9 +369,22 @@ export function objectiveFraction(p: MissionProgress): number {
   return f < 0 ? 0 : f > 1 ? 1 : f;
 }
 
-/** `12 / 25`, or `DONE` once it is complete. Targets of 1 read as a flag. */
-export function objectiveReadout(p: MissionProgress): string {
+/**
+ * `12 / 25`, or `DONE` once it is complete.
+ *
+ * `flag` is `MissionDef.flag` — a done-or-not objective, which renders an EMPTY
+ * readout until it is done. There is no honest counter to print for one: `0 / 1`
+ * is a progress bar for something that has no progress, and it was the first
+ * thing a player saw in every campaign operation. The row still carries the
+ * title, the tick and the bar, so the state is on screen; only the fake
+ * fraction is gone, and `DONE` still lands on completion for both shapes.
+ *
+ * DEFAULTS FALSE, so every existing caller — and every skirmish objective —
+ * gets exactly the string it got before, `0 / 1` for a target of 1 included.
+ */
+export function objectiveReadout(p: MissionProgress, flag = false): string {
   if (p.complete) return 'DONE';
+  if (flag) return '';
   if (p.target <= 1) return '0 / 1';
   const value = Math.max(0, Math.min(p.target, Math.floor(p.value)));
   return `${value} / ${p.target}`;
@@ -904,7 +943,13 @@ export class ObjectivesPanel {
       row.root.classList.remove('is-flash');
     }
 
-    row.value.textContent = objectiveReadout(o.progress);
+    // A flag objective reads empty until it is done, and the cell is HIDDEN
+    // rather than merely blanked: `.vm-obj-top` is a flex row with a 4u gap, so
+    // an empty span still spends a gap it has nothing to separate. Never empty
+    // for a counter, so a skirmish row is untouched by both lines.
+    const readout = objectiveReadout(o.progress, o.flag === true);
+    row.value.textContent = readout;
+    row.value.hidden = readout === '';
     row.fill.style.width = `${(objectiveFraction(o.progress) * 100).toFixed(1)}%`;
     row.root.classList.toggle('is-done', complete);
     row.tick.classList.toggle('is-on', complete);

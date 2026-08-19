@@ -32,7 +32,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 /* ==========================================================================
  * THE DOM STUB — installed before any test body runs
@@ -231,6 +231,21 @@ import {
   type ActiveObjective,
   type ProgressionView,
 } from '../src/ui/Objectives';
+
+/*
+ * The campaign half of the seam. `campaignObjectiveView` is the adapter that
+ * turns an `ObjectiveRow` into what the panel reads, and it is the only place
+ * that knows a campaign objective is done-or-not rather than a count.
+ */
+import { campaignObjectiveView } from '../src/ui/objectives.system';
+import {
+  adoptPreparedOperation,
+  endOperationSession,
+  prepareOperation,
+  type CampaignSession,
+  type ObjectiveRow,
+} from '../src/campaign/session';
+import type { ObjectiveStatus } from '../src/campaign/types';
 
 /* ==========================================================================
  * FIXTURES
@@ -858,6 +873,179 @@ describe('the completion tick', () => {
     expect(classCount('.vm-hud .vm-objectives .vm-obj-tick')).toBeGreaterThan(
       classCount('.vm-hud .vm-icon'),
     );
+  });
+});
+
+/* ==========================================================================
+ * PART 1c — A BOOLEAN OBJECTIVE HAS NO PROGRESS TO REPORT
+ *
+ * The panel rendered "0 / 1" under every campaign objective — a progress bar
+ * for something that has no progress, and the first thing a player sees in
+ * every operation. `objectives.system.ts` knew, and said so in a comment;
+ * nothing carried the fact across the seam.
+ *
+ * IT NEVER RENDERED "1 / 1", and both the brief and an earlier draft of this
+ * header said it did. `objectiveReadout` returns "DONE" on `complete` before it
+ * looks at the fraction at all, and a campaign row's `value` and `complete` are
+ * the same `status === 'complete'` test — the case below pins that "DONE" is
+ * what a finished flag reads, on both sides of this change.
+ *
+ * WHAT IS PINNED HERE IS THE DEFAULT AS MUCH AS THE FIX. `MissionDef.flag` is
+ * optional and falsy, so a skirmish objective — where the count IS the point,
+ * "destroy 60 enemy vehicles" — renders exactly the string it always did,
+ * including the `0 / 1` a target of 1 produces. Reading `target === 1` instead
+ * would have changed that row too, silently, which is why the flag is declared
+ * rather than inferred.
+ * ========================================================================== */
+
+/** The shape `campaignObjectiveView()` publishes: a done-or-not objective. */
+function flagObjective(id: string, complete = false): ActiveObjective {
+  return {
+    id,
+    scope: 'match',
+    title: `Title ${id}`,
+    description: '',
+    category: 'tactics',
+    target: 1,
+    reward: [],
+    flag: true,
+    progress: { id, value: complete ? 1 : 0, target: 1, complete, claimedAt: null },
+  };
+}
+
+/** The readout cells the panel is actually showing, in order. */
+function visibleReadouts(panel: ObjectivesPanel): { text: string; hidden: boolean }[] {
+  const rows = allByClass(panel.root as unknown as StubElement, 'vm-obj')
+    .filter((r) => !r.hidden);
+  return rows.map((r) => {
+    const cell = byClass(r, 'vm-obj-value');
+    if (cell === null) throw new Error('a row has no readout cell');
+    return { text: cell.textContent, hidden: cell.hidden };
+  });
+}
+
+describe('a campaign objective renders as a flag', () => {
+  it('draws no counter at all, rather than 0 / 1', () => {
+    const h = mountPanel([flagObjective('c1'), flagObjective('c2')]);
+    expect(visibleTitles(h.panel)).toEqual(['Title c1', 'Title c2']);
+    expect(visibleReadouts(h.panel)).toEqual([
+      { text: '', hidden: true },
+      { text: '', hidden: true },
+    ]);
+  });
+
+  it('still says DONE, and shows the cell again, once it completes', () => {
+    const h = mountPanel([flagObjective('c1')]);
+    expect(visibleReadouts(h.panel)).toEqual([{ text: '', hidden: true }]);
+
+    h.prog.active = [flagObjective('c1', true)];
+    h.panel.frame(0.6);
+    expect(visibleReadouts(h.panel)).toEqual([{ text: 'DONE', hidden: false }]);
+    // The completion beat is untouched by any of this.
+    expect(h.completions.map((c) => c.map((o) => o.id))).toEqual([['c1']]);
+  });
+
+  it('keeps the tick and the bar, which are what actually carry the state', () => {
+    const h = mountPanel([flagObjective('c1'), flagObjective('c2', true)]);
+    const rows = allByClass(h.panel.root as unknown as StubElement, 'vm-obj')
+      .filter((r) => !r.hidden);
+    // The completed one is held at the top of the list, so it is row 0.
+    expect(rows.map((r) => byClass(r, 'vm-obj-tick')?.classList.contains('is-on')))
+      .toEqual([true, false]);
+    expect(rows.map((r) => byClass(r, 'vm-obj-fill')?.style.width))
+      .toEqual(['100.0%', '0.0%']);
+  });
+
+  it('leaves the header count alone — that one was always about objectives', () => {
+    const h = mountPanel([flagObjective('c1', true), flagObjective('c2')]);
+    const count = byClass(h.panel.root as unknown as StubElement, 'vm-obj-count');
+    expect(count?.textContent).toBe('1/2');
+  });
+});
+
+describe('a skirmish objective is unchanged, member for member', () => {
+  it('still renders its counter, and shows the cell', () => {
+    const h = mountPanel([objective('m1', 12, 25), objective('m2', 25, 25, true)]);
+    // The completed one is held at the top of the list.
+    expect(visibleReadouts(h.panel)).toEqual([
+      { text: 'DONE', hidden: false },
+      { text: '12 / 25', hidden: false },
+    ]);
+  });
+
+  it('KEEPS 0 / 1 for a mission that legitimately counts to one', () => {
+    // The heuristic this fix deliberately did not use. A skirmish mission with
+    // a target of 1 declares no flag, so its readout must not move.
+    const h = mountPanel([objective('m1', 0, 1)]);
+    expect(visibleReadouts(h.panel)).toEqual([{ text: '0 / 1', hidden: false }]);
+  });
+
+  it('renders identically whether the provider has heard of the flag or not', () => {
+    // A provider that HAS heard of the field and declares this row a counter.
+    // `flag: false` is stated rather than left off: with it off on BOTH objects
+    // this case compares a row against a copy of itself and cannot fail.
+    const known: ActiveObjective = { ...objective('m1', 12, 25), flag: false };
+    expect('flag' in known).toBe(true);
+    // A provider predating the field: the property is simply absent.
+    const legacy = { ...known };
+    delete (legacy as { flag?: boolean }).flag;
+    expect('flag' in legacy).toBe(false);
+
+    const a = mountPanel([known]);
+    const b = mountPanel([legacy]);
+    expect(visibleReadouts(b.panel)).toEqual(visibleReadouts(a.panel));
+  });
+});
+
+describe('the campaign view carries the fact across the seam', () => {
+  /** A session with `rows()` and nothing else the panel ever touches. */
+  function fakeSession(rows: readonly ObjectiveRow[]): CampaignSession {
+    return {
+      rows: () => rows,
+      dispose: () => { /* nothing to release */ },
+    } as unknown as CampaignSession;
+  }
+
+  function row(id: string, status: ObjectiveStatus): ObjectiveRow {
+    return { id, title: `Title ${id}`, kind: 'primary', status };
+  }
+
+  afterEach(() => { endOperationSession(); });
+
+  it('returns null with no operation armed, so a skirmish falls through', () => {
+    expect(campaignObjectiveView()).toBe(null);
+  });
+
+  it('marks EVERY objective a flag — it is true by construction, not by row', () => {
+    prepareOperation(fakeSession([
+      row('c1', 'active'),
+      row('c2', 'complete'),
+      row('c3', 'failed'),
+      row('c4', 'hidden'),
+    ]));
+    adoptPreparedOperation();
+
+    const view = campaignObjectiveView();
+    if (view === null) throw new Error('an armed operation must publish a view');
+    const active = view.activeObjectives();
+    expect(active.map((o) => o.id)).toEqual(['c1', 'c2', 'c3']);
+    expect(active.map((o) => o.flag)).toEqual([true, true, true]);
+  });
+
+  it('drives the panel to a corner with no fractions in it', () => {
+    prepareOperation(fakeSession([row('c1', 'active'), row('c2', 'complete')]));
+    adoptPreparedOperation();
+    const view = campaignObjectiveView();
+    if (view === null) throw new Error('an armed operation must publish a view');
+
+    const mount = new StubElement('DIV');
+    const panel = new ObjectivesPanel({ mount: asHost(mount), progression: view });
+    // The completed one is held at the top of the list.
+    expect(visibleReadouts(panel)).toEqual([
+      { text: 'DONE', hidden: false },
+      { text: '', hidden: true },
+    ]);
+    for (const r of visibleReadouts(panel)) expect(r.text).not.toContain('/');
   });
 });
 
