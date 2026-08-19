@@ -31,6 +31,11 @@ with no number is untracked, and that is itself the bug.
   a deliberate `CAMPAIGNS` import into the entry-chunk-reachable `campaign-store.ts` left the spec
   green at 26/26. §1 skips anything under `campaign/` and roots its closure at `campaign.system.ts`
   alone; §4 is gated on `distIsCurrent()`.
+- **#73 — a layout-placed guard is re-tasked by the AI and walks away.** S2's secondary hangs on two
+  tanks parked at the depot; `regroupSquads` files everything it finds, so they leave. Fourth
+  instance of the pattern `GROUP_SCOUT` / `GROUP_WITHDRAW` / `GROUP_RAID` each exist for. Preferred
+  answer is static content rather than an engine change. **Reasoned, not observed — confirm on a
+  real run first.**
 - The objectives panel renders `0 / 1` under each campaign objective; it has no notion of a boolean
   objective. Cosmetic. The honest fix is a flag the panel reads, not a special case. *(untracked —
   file it or drop it)*
