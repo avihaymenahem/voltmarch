@@ -151,7 +151,7 @@ continent it merely happens to be spelled "one land region".
 ### What that means for your build
 
 - **A dock is a tech requirement, not a luxury.** It gates every carrier, and a carrier is how your
-  army leaves the island. Nothing on that branch is behind a campaign unlock — it was, once, and on
+  army leaves the island. Nothing on that branch is behind a mission unlock — it was, once, and on
   a fresh profile this map was a permanent stalemate for all four armies.
 - **A slot is not a seat, and that is why the vehicle roster exists here.** Infantry cost one slot,
   a vehicle costs two, so the four-slot landing ship carries two tanks and the eight-slot carrier

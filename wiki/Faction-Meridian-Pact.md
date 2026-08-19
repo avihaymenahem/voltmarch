@@ -102,7 +102,7 @@ The Sun Cutter carries the Corvette's gun on half the price and under half the
 hull — 170 hit points against 380. It is a scout that can be shot at, not a
 cheap warship.
 
-The Sunmonitor's **(locked)** is the Reliquary, not the campaign.
+The Sunmonitor's **(locked)** is the Reliquary, not the mission table.
 
 ## Structures
 
@@ -204,6 +204,6 @@ has to walk into a fight to be useful with 430 hit points.
   for the Slipway it does not strictly need.
 - One superweapon against the shared-pool armies' two.
 - The Sandskiff, Zenith Emitter, Kestrel, the Reliquary, the Helios Spire and the Heliograph are all
-  behind campaign unlocks on a fresh profile. The navy is not: the Slipway, its four lower hulls and
+  behind mission unlocks on a fresh profile. The navy is not: the Slipway, its four lower hulls and
   the Tidewalker are day-one — but the Sandskiff, which is the raider unlock, is also the Pact's
   only carrier that works away from a coast.

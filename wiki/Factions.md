@@ -115,8 +115,9 @@ and can field both at once. The Pact and the Reclamation get one apiece.
 ## Commanders
 
 One hero per army, one alive at a time, rebuildable the moment the last one dies. All four cost
-**1500 credits / 20 seconds** and all four need a barracks-equivalent plus a radar-equivalent. None
-is behind a campaign unlock.
+**1500 credits / 20 seconds** and all four need a barracks-equivalent plus a radar-equivalent. All
+four are behind one mission unlock — *Old Guard*, promote 15 units to elite rank — so a fresh
+profile has no commander at all.
 
 Every ability is self-centred — no target picking, no second click. Where you walk the commander is
 the aim.

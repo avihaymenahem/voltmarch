@@ -120,7 +120,7 @@ dock against everyone else's five.
 
 The Scow used to be able to drive inland and shell a base with that gun. It
 keeps the gun and has lost the beach — a dock-built hull no longer crosses dry
-ground. The Reclaimed Hulk's **(locked)** is the Crucible, not the campaign.
+ground. The Reclaimed Hulk's **(locked)** is the Crucible, not the mission table.
 
 ## Structures
 
@@ -217,5 +217,5 @@ commander in the game — and it is the faction's real economic engine, not the 
   gunned ship that would screen a landing.
 - One superweapon against the shared-pool armies' two.
 - The Arcspitter, Slaghurler, Swarmhornet, the Crucible, the Arc Pylon and the Stormworks are behind
-  campaign unlocks on a fresh profile. The navy is not: the Breaker Dock, its three lower hulls and
+  mission unlocks on a fresh profile. The navy is not: the Breaker Dock, its three lower hulls and
   the Dredger are all day-one.

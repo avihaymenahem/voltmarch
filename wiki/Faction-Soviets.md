@@ -77,7 +77,7 @@ you are the wrong faction; build a Dreadnought or an Apocalypse.
 ## Navy
 
 Built at the **Naval Pen**, which only offers itself on a map with a real sea.
-Four rungs, none of them behind a campaign unlock. **Every hull here is
+Four rungs, none of them behind a mission unlock. **Every hull here is
 water-only** — a carrier stands off the beach and puts its cargo on the sand
 rather than driving up it.
 
@@ -89,7 +89,7 @@ rather than driving up it.
 | Attack Submarine | 1000 | 14 s | Naval Pen | 500 | Light | 6.0 | Torpedo Tube, 105, rocket, 3.0 m splash | 30 m | no | Ambush hull. Heavy single-shot damage on a long cycle |
 | Dreadnought **(locked)** | 2000 | 24 s | Naval Pen, Battle Lab | 900 | Heavy | 4.0 | Cruise Battery, 120 x2, rocket, 4.5 m splash | **42 m** | yes | Siege ship. The longest naval reach in the game, Heavy armour, and its missiles elevate — the one Soviet hull that answers aircraft at range |
 
-The Dreadnought's **(locked)** is the Battle Lab, not the campaign — the same
+The Dreadnought's **(locked)** is the Battle Lab, not the mission table — the same
 tech gate that holds back the Apocalypse.
 
 ## Structures
@@ -171,12 +171,12 @@ anywhere.
 
 - Slow, at every tier. You almost never pick the ground.
 - No dedicated anti-air emplacement. Your only air-capable structure is the Tesla Coil, which is
-  locked behind campaign progress and needs power.
+  locked behind mission progress and needs power.
 - The Flak Trooper does not counter heavy armour and never will; your answer to a big tank is a
   bigger tank, and that is expensive.
 - The Attack Dog, your raider, is 70 hit points and only useful against infantry.
 - The Flame Tower's 18 m is the shortest range of any emplacement in the game — plenty of attackers
   will simply out-range it.
 - Attack Dog, Apocalypse, MiG, the Tesla Coil, the Battle Lab and both superweapons are behind
-  campaign unlocks on a fresh profile. The navy is not: the Pen, the hulls and the Naval Infantry
+  mission unlocks on a fresh profile. The navy is not: the Pen, the hulls and the Naval Infantry
   are all day-one.

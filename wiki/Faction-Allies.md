@@ -77,7 +77,7 @@ means it is safe from two thirds of the army and also doing nothing.
 ## Navy
 
 Built at the **Naval Yard**, which only offers itself on a map with a real sea.
-Four rungs, none of them behind a campaign unlock. **Every hull here is
+Four rungs, none of them behind a mission unlock. **Every hull here is
 water-only** — a carrier stands off the beach and puts its cargo on the sand
 rather than driving up it.
 
@@ -89,7 +89,7 @@ rather than driving up it.
 | Assault Destroyer | 1000 | 14 s | Naval Yard | 400 | Light | 7.0 | 5 in Deck Gun, 74, HE, 3.6 m splash | 34 m | no | Escort. High explosive at 1.00 against Concrete makes it a shore bombardment platform |
 | Aircraft Cruiser **(locked)** | 1800 | 22 s | Naval Yard, Battle Lab | 700 | Medium | 6.4 | 5 in Deck Gun, 74, HE, 3.6 m splash | 34 m | no | Capital ship. The same gun on far more hull |
 
-The Aircraft Cruiser's **(locked)** is the Battle Lab, not the campaign — it is
+The Aircraft Cruiser's **(locked)** is the Battle Lab, not the mission table — it is
 the same tech gate that holds back the Prism Tank.
 
 ## Structures
@@ -170,5 +170,5 @@ back together, or to yank a wounded column out of a fight in one motion.
 - Only one cheap early defence (the Pillbox) where the Soviets have two.
 - Only two of your units crush infantry (Grizzly, Harvester); the Prism Tank does not.
 - Much of the interesting roster — IFV, Prism Tank, Vindicator, the Battle Lab and everything behind
-  it — is behind campaign unlocks on a fresh profile. The navy is not: docks, hulls and the Frogman
+  it — is behind mission unlocks on a fresh profile. The navy is not: docks, hulls and the Frogman
   are all day-one.

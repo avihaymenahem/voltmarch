@@ -6,6 +6,12 @@ and take the other side's base apart before they take yours. Four playable facti
 a power grid that gates production, fog of war, engineer capture, neutral civilian structures worth
 fighting over, superweapons, and an AI opponent that plays a real game.
 
+There is a **story campaign** as well — authored operations, each with a briefing, a fixed map, its
+own objectives and a medal, reached from **Campaign** on the title screen. It is **partial**, and
+[Campaign](/avihaymenahem/voltmarch/wiki/Campaign) lists exactly which operations ship rather than
+describing the plan. It is also deliberately walled off from skirmish progression: an operation
+advances no mission and grants no unlock, and the same page says why.
+
 There is also deterministic-lockstep 1v1, with one caveat worth stating on the front page rather
 than burying: the relay is written and tested, but it is not deployed to any public server. You can
 play head-to-head today by running the relay yourself — see [Multiplayer](/avihaymenahem/voltmarch/wiki/Multiplayer) — and not by
@@ -36,7 +42,7 @@ superweapon, and they play nothing like the first two or like each other.
 | [The Reclamation](/avihaymenahem/voltmarch/wiki/Faction-Reclamation) | Welded out of other people's wrecks. No turrets, anywhere. |
 | [Maps](/avihaymenahem/voltmarch/wiki/Maps) | The seven battlefields and what each one rewards. |
 | [Sunder Atoll](/avihaymenahem/voltmarch/wiki/Sunder-Atoll) | Four islands, no land route. The map the navy exists for. |
-| [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) | Missions, unlocks, and what a fresh profile is missing. |
+| [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) | The story operations, the mission table, unlocks, and what a fresh profile is missing. |
 | [Strategy](/avihaymenahem/voltmarch/wiki/Strategy) | Openings, scouting, expansions, and how to lose less often. |
 | [Multiplayer](/avihaymenahem/voltmarch/wiki/Multiplayer) | Head-to-head 1v1, and what it takes to actually run a match. |
 
@@ -49,7 +55,9 @@ tank. What is held back is the *widening*: the tech building and everything hang
 fast-harass raider, the tier-3 specialist, aircraft, the repair pad, the commander hero and the
 expensive defences. Missions pay those out, and every unlock group is mirrored across all four
 armies — one mission grants "the raider" and every faction gets its raider — so switching sides
-never sends you back to the start of the curve. See [Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
+never sends you back to the start of the curve. **Only skirmishes pay them**: the story campaign
+advances none of it, and an operation's roster is authored rather than taken from your profile. See
+[Campaign](/avihaymenahem/voltmarch/wiki/Campaign).
 
 **The navy is not on that list.** Docks, landing ships, carriers, recon hulls and the swimmer
 infantry are all buildable in your first match; content you need in order to reach the enemy is

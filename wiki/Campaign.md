@@ -1,19 +1,199 @@
 # Campaign
 
-VOLTMARCH has no story campaign. There are no scripted missions, no briefings, no map-by-map
-progression and no cutscenes. What it has instead is a **46-row mission table** that watches every
-skirmish you play and pays out when you hit a number.
+Two different things share this page's name, and only one of them existed until this week.
 
-That is a design decision rather than a shortfall, and it has one consequence worth stating up
-front: **nothing is gated behind a mission you have to go and find.** You play skirmishes, the
-missions tick, and the roster widens.
+**The campaign** is a story mode: authored operations, each with a briefing, a fixed map, fixed
+objectives and a medal. It is reached from **Campaign** on the title screen, above Skirmish. It is
+real, it is playable, and it is **partial** — §1 says exactly how partial, in numbers.
+
+**Progression** is the other one: a 46-row mission table that watches every skirmish you play and
+pays out when you hit a number. It is what actually widens your roster, and none of it has changed —
+§4 onward is that table, exactly as it was.
+
+**The two do not touch, and that is deliberate rather than unfinished.** An operation advances
+nothing on your profile — no mission, no unlock, no win, no streak, no lifetime counter. §3 is that
+rule and the reason for it. If what you want is the Prism Tank, what you want is the mission table,
+and you get it by playing skirmishes.
 
 There is also a separate **tutorial** on the main menu — a director that watches a real match and
-prompts you through the verbs. It is not part of the mission table and grants nothing.
+prompts you through the verbs. It is neither of the above and grants nothing.
 
 ---
 
-## 1. Two scopes
+## 1. The campaign
+
+### What an operation is
+
+An operation is **authored, not generated**, and that is the whole difference. A skirmish rolls a
+map, a landform seed, a layout seed and an opponent; an operation declares every one of them, plus
+what stands on the ground when you arrive, what both sides are allowed to build, and a table of
+triggers that is evaluated inside the simulation on every tick.
+
+So the ground is the same for everybody. Two players on the same operation get the same hills, the
+same chokepoint, the same enemy in the same place — which is what makes a briefing able to say
+"take the seam" and mean a specific piece of dirt.
+
+What an operation declares for itself:
+
+- the map preset, the landform seed, the layout seed, the biome and the number of seats;
+- **the opening** — a pre-built base, a construction vehicle, or a **fixed force**, which is the
+  campaign's own and skips the base-building step entirely: what the layout put on the ground is
+  what you have;
+- **the starting bank, for both sides.** Most operations run on considerably less than a skirmish
+  opens with — one of them on nothing at all — and that number binds the enemy identically;
+- **your army and the enemy's.** Both are named on the operation, not taken from the lobby;
+- **what either side may build** — see §3, because this one is not what you would guess;
+- the objectives, and the triggers that complete, fail and reveal them.
+
+A trigger is a condition and a list of effects. Conditions only ever *read*: is that structure still
+alive, are four of your units standing inside this circle, has six minutes passed, does that
+building belong to you now, is the enemy beaten. Effects *write*: reveal ground, land
+reinforcements, order them somewhere, pay a bonus, speak a line, end the operation.
+
+One consequence of that worth knowing before it happens to you: **a hold clock restarts when you
+stop holding.** "Hold this for six minutes" is a condition about the last unbroken stretch, not
+about the total, so losing the position at minute five puts you back at zero rather than at five.
+
+**Destroying everything the enemy owns does not end an operation.** The annihilation rules that end
+a skirmish are switched off for every operation that ships, because a scripted match breaks them in
+both directions — an eight-minute hold would be "won" at minute three, and a commando insertion
+whose base does not exist would be a defeat ten seconds in. An operation ends when its own triggers
+say so, and not before.
+
+### How you reach one
+
+**Campaign** on the title screen opens the chapter list. Each chapter is a card showing how many of
+its operations you have finished; each operation is a row with its par time and your medal on it.
+
+- **Brief** opens the briefing — the chapter, the operation's one-line beat, and the objectives it
+  declares, primaries first.
+- **Deploy** starts the match.
+- An operation whose prerequisites are unfinished is shown **locked, with the reason spelled out**
+  — "complete *First Tap*" rather than a padlock. A row you cannot see is a row you cannot plan
+  toward.
+- Every chapter is open from first launch. The order they are listed in is a recommendation and not
+  a gate; within a chapter, the operations are a chain.
+- **Difficulty comes from the Skirmish lobby.** There is no difficulty row on the briefing screen,
+  and the setting you last chose for skirmishes is what a gold medal is graded against (§2). Game
+  speed is forced to 1x for the duration.
+
+### What ships today
+
+| # | Operation | Chapter | Par (min) | Primary | Bonus |
+| --- | --- | --- | --- | --- | --- |
+| 01 | First Tap | Hold the Seam | 13 | 1 | 1 |
+| 02 | Common Standard | Hold the Seam | 14 | 1 | 1 |
+| 03 | Deep Sector | Hold the Seam | 15 | 1 | 1 |
+| 01 | Sounding Line | The Timetable | 13 | 2 | 1 |
+| 01 | Held Paper | Salvage Rights | 13 | 1 | 2 |
+
+**That is 5 of a planned 37 operations, and this page will not pretend otherwise.** The five add up
+to 68 minutes of authored par; the full table is meant to reach 10 hours. The Meridian Pact's
+chapter has no operations written at all yet, so it has no card on the campaign screen.
+
+Read the table above as what exists, not the 37 as a promise. The number is the plan the content is
+being authored against, and it is quoted here because a manual that quietly implied a finished
+campaign would be the same defect this page was rewritten to fix.
+
+---
+
+## 2. Objectives, medals and difficulty
+
+Every operation has at least one **primary** objective — what the operation is *for* — and may have
+**bonus** objectives, which are optional in the sense that skipping one costs you a medal tier and
+nothing else.
+
+- **A bonus may pay credits into that match**, immediately, straight into your bank. The ones that
+  pay are worth 400 to 700 credits and they are granted rather than deposited, so a full silo
+  cannot eat one. Each is paid **once**: reloading a save taken before you finished a bonus does
+  not pay it a second time.
+- **One shipped bonus pays no credits at all.** What it pays is inside the operation itself, which
+  is the better kind of reward.
+- **A primary never pays credits.** That is refused at build time rather than left to taste — being
+  paid for playing the operation is not a bonus.
+- Some bonuses are **hidden** until something in the match reveals them. A hidden one is kept off
+  the in-match panel until it is revealed, and off the results screen entirely if it never was.
+  **It still counts against your medal**, though: silver wants every bonus the operation declares,
+  so one you never discovered costs you exactly what one you failed would have.
+
+> ### Where the objectives actually appear
+>
+> The corner panel that lists *match objectives* in a skirmish lists **the operation's** objectives
+> instead, for as long as one is armed, and hands itself back the moment it ends. Hidden bonuses
+> are filtered out of it until something reveals them. The match-objective board is not merely
+> covered up — it is switched off for the duration, because progression is (§3).
+>
+> The full list is also on the **briefing** before you deploy and on the **results screen** after,
+> where each row is marked met or not. In-mission dialogue arrives as a **toast** in the corner
+> rather than in a briefing log with a portrait; that part is a placeholder and the source says so.
+
+Medals are graded from the outcome, never stored as something payable:
+
+| Medal | What it takes |
+| --- | --- |
+| Bronze | Win the operation |
+| Silver | Win it with every bonus objective met |
+| Gold | Silver, on **Hard** or **Brutal** |
+
+**The best medal you have ever earned is kept, and it is never lowered.** Replaying a gold
+operation on Easy scores silver and takes nothing away. A reward you can lose by playing more is a
+reward nobody trusts, and the damage would be unrecoverable except by replaying on Hard.
+
+Losing records nothing at all — no medal, no partial credit, and no mark against you.
+
+---
+
+## 3. What an operation touches, and what it does not
+
+### Your profile is deaf for the duration
+
+**No mission advances, no unlock is granted, and no lifetime counter moves while an operation is
+running.** Not the match count, not wins, not the streak, not kills, not structures built, not ore
+mined. However long you play it, the campaign leaves your skirmish roster exactly where it was, and
+the results screen shows no Rewards Earned panel because there is nothing honest to put in one.
+
+That is deliberate. A scripted operation's kill count and ore total are **authored** — they are
+whatever the mission designer put on the map — so paying the profile chains at those rates would
+be a farm rather than progress. The rule is enforced inside the tracker itself rather than at the
+places that call it, because a guard at one call site cannot see a second one.
+
+The two things an operation *does* record: **your medal**, and the fact that the next operation in
+the chapter is now open.
+
+### Your unlocks do not apply either — in both directions
+
+An operation names what each side may build, and those lists **replace** your profile entirely for
+the duration. They are allow-lists over gated content, so an operation that names nothing holds
+*both* sides to the day-one catalogue: no tech building, no tier-3 specialist, no specialist
+defence, no raider, whatever your profile says.
+
+The point of that is that **the ground is identical on a finished account and a fresh one**. It
+also means an operation can hand the enemy something you cannot build — "they have Tesla Coils and
+you do not, go around them" is a mission, and it is stated on the operation rather than faked with
+a difficulty number.
+
+Your skirmish lobby is left alone too: the operation's map, seed, faction and starting bank are not
+written back over the settings you chose for skirmishes.
+
+### Saving, replaying and retrying
+
+- **Saving mid-operation works**, from Save Game in the pause menu, into the same slots a skirmish
+  uses. The save carries the operation with it and re-arms it on load, so the objectives, the
+  triggers you have already fired and the bonuses you have already been paid all come back as they
+  were. A save of an operation this build no longer contains is refused **by name** rather than
+  loading as some other match.
+- **Replays work.** Every match records itself, campaign included. The recording carries the
+  operation's name and re-runs its script on playback rather than storing what the script did — the
+  same trade the format already makes for the terrain. A build that does not have that operation
+  refuses the file by name instead of playing a plausible skirmish on its ground.
+- **Watching a replay of an operation records nothing**, for the same reason playing one records
+  almost nothing: watching is not playing.
+- The results screen offers **Retry** and, on a win, **Next Operation**. Retry re-arms the
+  operation properly; it is not the skirmish Rematch button wearing a different word.
+
+---
+
+## 4. Two scopes
 
 | | Profile missions | Match objectives |
 | --- | --- | --- |
@@ -36,7 +216,7 @@ resets it.
 
 ---
 
-## 2. The profile chains
+## 5. The profile chains
 
 ### Combat
 
@@ -45,7 +225,7 @@ resets it.
 | First Blood | destroy 25 units or structures | — | **Raider unit** |
 | Field Command | destroy 150 | First Blood | **Specialist defence** |
 | War Machine | destroy 500 | Field Command | **Tier-3 specialist unit** |
-| Total War | destroy 1,500 | War Machine | Strategic superweapon *(see §6)* + Warlord insignia |
+| Total War | destroy 1,500 | War Machine | Strategic superweapon *(see §9)* + Warlord insignia |
 | Can Opener | destroy 60 vehicles | — | **Anti-air emplacement** |
 | Demolition Crew | destroy 25 structures | — | **Support pad** |
 | Scorched Earth | destroy 100 structures | Demolition Crew | Warhead decal |
@@ -66,7 +246,7 @@ resets it.
 | Mission | Target | Requires | Reward |
 | --- | --- | --- | --- |
 | Groundworks | complete 50 structures | — | **Map: Industrial Grid** |
-| Continental Engineering | complete 300 structures | Groundworks | Siege superweapon *(see §6)* |
+| Continental Engineering | complete 300 structures | Groundworks | Siege superweapon *(see §9)* |
 | Production Line | train or build 100 units | — | Chevron decal |
 | Total Mobilisation | train or build 750 units | Production Line | **Map: Coral Shore** |
 | Motor Pool | build 200 vehicles | — | Laurel decal |
@@ -89,11 +269,11 @@ resets it.
 | Mission | Target | Requires | Reward |
 | --- | --- | --- | --- |
 | Allied Command | win 5 as the Allied Forces | — | Allied insignia |
-| Chronosphere Programme | win 20 as the Allied Forces | Allied Command | Chronosphere superweapon *(see §6)* |
+| Chronosphere Programme | win 20 as the Allied Forces | Allied Command | Chronosphere superweapon *(see §9)* |
 | Soviet Command | win 5 as the Soviet Union | — | Soviet insignia |
-| Iron Curtain Programme | win 20 as the Soviet Union | Soviet Command | Iron Curtain superweapon *(see §6)* |
+| Iron Curtain Programme | win 20 as the Soviet Union | Soviet Command | Iron Curtain superweapon *(see §9)* |
 | Pact Command | win 5 as the Meridian Pact | — | Meridian insignia |
-| Solar Lance Programme | win 20 as the Meridian Pact | Pact Command | Solar Lance superweapon *(see §6)* |
+| Solar Lance Programme | win 20 as the Meridian Pact | Pact Command | Solar Lance superweapon *(see §9)* |
 | Career Officer | finish 100 skirmishes | — | Star decal |
 
 > **There is no Reclamation mastery chain.** The Reclamation is fully playable from the first launch
@@ -110,7 +290,7 @@ resets it.
 
 ---
 
-## 3. The match objectives
+## 6. The match objectives
 
 Five of these thirteen are on the board each match, drawn from the match seed.
 
@@ -144,7 +324,7 @@ Five of these thirteen are on the board each match, drawn from the match seed.
 
 ---
 
-## 4. What an unlock actually does
+## 7. What an unlock actually does
 
 The rule is short: **a unit or structure with no unlock tag is available in your very first match.**
 Unlocks are an allow-list of exceptions, not a permission system.
@@ -208,7 +388,7 @@ have room for the load. Ore that lands in a full silo used to advance these miss
 the end screen credited it in full — one label over two numbers — so the target was priced in ore out
 of the ground and scored in credits that fitted. It is mined ore on both sides now. Silos are still
 worth building, because ore you cannot keep is still ore you cannot spend; they simply no longer
-decide how fast the campaign moves. The end screen reports both halves: **Ore Harvested** and the
+decide how fast the mission table moves. The end screen reports both halves: **Ore Harvested** and the
 part of it that never fitted, **Ore Wasted**.
 
 **Chains cost the sum of their rungs, not their last number.** A locked mission does not accumulate,
@@ -222,7 +402,7 @@ players get everything.
 
 ---
 
-## 5. Maps
+## 8. Maps
 
 Four of the seven battlefields are earned. See [Maps](/avihaymenahem/voltmarch/wiki/Maps) for what each one plays like.
 
@@ -243,7 +423,7 @@ fully wired and works.
 
 ---
 
-## 6. What the rewards actually do — the honest table
+## 9. What the rewards actually do — the honest table
 
 Most of the reward table is connected to something real. Three classes have a gap between what the
 reward says and what happens, and one mission cannot be finished at all. Here is the state of each,
@@ -256,7 +436,7 @@ honestly.
 | Map unlocks | 4 | **Yes.** The lobby unlocks the map. |
 | Commander powers | 0 | **Not a mission reward any more** — they are bought in the match. See below. |
 | Superweapon unlocks | 5 | **Gate nothing.** The superweapons themselves are real; these five ids are not what opens them. |
-| Objective credits | 13 | **No.** Nothing pays them (§3). |
+| Objective credits | 13 | **No.** Nothing pays them (§6). |
 | Cosmetics | 17 | **Display only.** |
 
 Those first two counts read 5 and 3 for a long time and were already too low
@@ -269,7 +449,7 @@ them are gone; three cosmetics arrived to replace what those missions paid.
 **Map unlocks read 7 for a while, and that was three cut battlefields still
 being counted.** *Saltpan Reach*, *Foundry Line* and *Glacier Shelf* each reused
 another map's preset verbatim and were removed from the roster; four earned maps
-remain, which is the same four §5 lists. Every count in the table above is now
+remain, which is the same four §8 lists. Every count in the table above is now
 re-derived from the mission table by `tests/wiki-numbers.spec.ts`, so a reward
 class that gains or loses a payer fails a test instead of quietly rotting here.
 
@@ -329,7 +509,7 @@ effects and [Base Building](/avihaymenahem/voltmarch/wiki/Base-Building#superwea
 
 **But the five superweapon rewards in the mission table are not what unlocks them.** Every
 superweapon structure is gated on its army's **tech building** — Battle Lab, Reliquary or Crucible —
-and on nothing else. The tech building *is* a campaign unlock (*Strip Mine*, 70,000 mined ore), so a
+and on nothing else. The tech building *is* a mission unlock (*Strip Mine*, 70,000 mined ore), so a
 fresh profile genuinely has no superweapons; but the moment you have the tech building you can build
 all of your faction's, whether or not you have finished *Total War*, *Continental Engineering* or the
 20-win mastery chains that claim to award them.
@@ -353,7 +533,7 @@ reachable like any other.
 
 ---
 
-## 7. A sensible order
+## 10. A sensible order
 
 If you want the roster open quickly, the cheap end of the table is:
 

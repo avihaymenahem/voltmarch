@@ -51,8 +51,20 @@
  *   7. The blackout roster: which armed structures keep firing on a dead grid,
  *      derived from `BUILDINGS[].power` rather than restated.
  *   8. `wiki/Campaign.md`'s three head counts of the mission table — its size,
- *      its profile/match split, and §6's reward-class census — every one of
+ *      its profile/match split, and §9's reward-class census — every one of
  *      them re-derived from `MISSIONS[].reward` rather than restated.
+ *   9. `wiki/Campaign.md` §1–§3, the STORY campaign: every shipped operation
+ *      tabulated in play order with its par and objective counts, how partial
+ *      the corpus is against `tests/campaign-length.spec.ts`'s own plan
+ *      constants, the bonus payouts, and the medal rule — the last derived by
+ *      RUNNING `medalFor` over each difficulty rung rather than by reading it.
+ *
+ * §8 AND §9 ARE THE SAME PAGE AND FAIL FOR OPPOSITE REASONS. The mission table
+ * is finished, so it rots when a row is RETUNED. The campaign is partial, so it
+ * rots when an operation is ADDED — and nothing about authoring one would
+ * otherwise bring anybody to this file. §9's counts are equalities, and its
+ * "the Pact chapter is unwritten" check is an assertion about absence, for
+ * exactly that reason.
  *
  * THE PARSER FAILS LOUDLY, WHICH IS HALF THE POINT
  * ------------------------------------------------
@@ -84,6 +96,11 @@ import { ARMOR_MATRIX, COMBAT_DAMAGE } from '../src/core/config';
 import {
   ORE_REGROW_NODE_BONUS, ORE_REGROW_RATE, ORE_REGROW_SPREAD,
 } from '../src/core/config';
+import { CAMPAIGNS } from '../src/campaign/index';
+import { medalFor, newOperationState } from '../src/campaign/Director';
+import { totalParSeconds } from '../src/campaign/validate';
+import { DIFFICULTIES, defaultSetup } from '../src/shell/settings-store';
+import type { ChapterDef, ObjectiveDef, OperationDef } from '../src/campaign/types';
 import type { BuildingDef, UnitDef, WeaponDef } from '../src/core/types';
 import type { Reward } from '../src/progression/types';
 
@@ -868,10 +885,10 @@ describe('the wiki names the right guns as blackout-proof', () => {
  * missions pay each class of reward. Every one of those is a second copy of
  * something `src/data/Missions.ts` owns, and none of them was checked.
  *
- * IT HAD ALREADY ROTTED. §6 said there were **7 map unlocks**; there are four.
+ * IT HAD ALREADY ROTTED. §9 said there were **7 map unlocks**; there are four.
  * The other three were `map.saltpan-reach`, `map.foundry-line` and
  * `map.glacier-shelf`, cut with the three preset-clone battlefields that paid
- * them — and §5 of the SAME PAGE says "Four of the seven battlefields are
+ * them — and §8 of the SAME PAGE says "Four of the seven battlefields are
  * earned" and then lists exactly four. So the page disagreed with itself, two
  * screens apart, and read as authoritative in both places.
  *
@@ -891,14 +908,14 @@ const isUnlockUnder = (r: Reward, prefix: string): boolean => (
 );
 
 interface RewardClass {
-  /** Verbatim first cell of the row in `Campaign.md` §6. */
+  /** Verbatim first cell of the row in `Campaign.md` §9. */
   readonly row: string;
   readonly is: (r: Reward) => boolean;
   readonly why: string;
 }
 
 /**
- * The seven rows of §6, each one a PREDICATE over `MISSIONS[].reward` rather
+ * The seven rows of §9, each one a PREDICATE over `MISSIONS[].reward` rather
  * than a number. Checked in both directions: a row on the page that is not
  * declared here fails, and a declared row the page drops fails too.
  */
@@ -941,7 +958,7 @@ const REWARD_CLASSES: readonly RewardClass[] = [
   {
     row: 'Objective credits',
     is: (r) => r.kind === 'credits',
-    why: 'one per match objective, and nothing pays them out (§3 says so)',
+    why: 'one per match objective, and nothing pays them out (§6 says so)',
   },
   {
     row: 'Cosmetics',
@@ -964,7 +981,7 @@ describe('Campaign.md counts the mission table correctly', () => {
       .toBeGreaterThanOrEqual(MISSIONS.length);
   });
 
-  it('opens with the size of the table, and §1 splits it by scope', () => {
+  it('opens with the size of the table, and §4 splits it by scope', () => {
     expect(text, `Campaign.md's opening paragraph names the size of the mission table; `
       + `MISSIONS has ${MISSIONS.length} rows`)
       .toContain(`${MISSIONS.length}-row mission table`);
@@ -972,33 +989,33 @@ describe('Campaign.md counts the mission table correctly', () => {
     const t = parseTables(text).find(
       (x) => x.headers[1] === 'Profile missions' && x.headers[2] === 'Match objectives',
     );
-    expect(t, 'Campaign.md §1: the "Two scopes" table was not found').toBeDefined();
-    expect(t!.rows.length, 'Campaign.md §1: the two-scopes table lost most of its rows')
+    expect(t, 'Campaign.md §4: the "Two scopes" table was not found').toBeDefined();
+    expect(t!.rows.length, 'Campaign.md §4: the two-scopes table lost most of its rows')
       .toBeGreaterThanOrEqual(6);
 
     const row = t!.rows.find((r) => r.cells[0].toLowerCase() === 'count');
-    expect(row, 'Campaign.md §1: the two-scopes table has no "Count" row').toBeDefined();
+    expect(row, 'Campaign.md §4: the two-scopes table has no "Count" row').toBeDefined();
     const profile = MISSIONS.filter((m) => m.scope === 'profile').length;
     const match = MISSIONS.filter((m) => m.scope === 'match').length;
-    expect(num(row!.cells[1], 'Campaign.md §1 profile count'),
-      'Campaign.md §1: profile missions').toBe(profile);
-    expect(num(row!.cells[2], 'Campaign.md §1 match count'),
-      'Campaign.md §1: match objectives').toBe(match);
+    expect(num(row!.cells[1], 'Campaign.md §4 profile count'),
+      'Campaign.md §4: profile missions').toBe(profile);
+    expect(num(row!.cells[2], 'Campaign.md §4 match count'),
+      'Campaign.md §4: match objectives').toBe(match);
     expect(profile + match, 'the two scopes must account for every mission')
       .toBe(MISSIONS.length);
   });
 
-  it('§3 lists every match objective and what each one pays', () => {
+  it('§6 lists every match objective and what each one pays', () => {
     const t = parseTables(text).find(
       (x) => x.headers[0] === 'Objective' && x.headers.includes('Pays'),
     );
-    expect(t, 'Campaign.md §3: the match-objective table was not found').toBeDefined();
+    expect(t, 'Campaign.md §6: the match-objective table was not found').toBeDefined();
 
     const objectives = MISSIONS.filter((m) => m.scope === 'match');
-    expect(t!.rows.length, `Campaign.md §3: the page tabulates ${t!.rows.length} objectives, `
+    expect(t!.rows.length, `Campaign.md §6: the page tabulates ${t!.rows.length} objectives, `
       + `the table ships ${objectives.length}`).toBe(objectives.length);
 
-    const iPays = col(t!, 'Pays', 'Campaign.md §3');
+    const iPays = col(t!, 'Pays', 'Campaign.md §6');
     const byTitle = new Map(objectives.map((m) => [m.title, m]));
     for (const row of t!.rows) {
       const title = row.cells[0];
@@ -1011,23 +1028,23 @@ describe('Campaign.md counts the mission table correctly', () => {
       expect(num(row.cells[iPays], `${where} pays`), `${where}: credits`).toBe(paid[0]);
     }
     expect(new Set(t!.rows.map((r) => r.cells[0])).size,
-      'Campaign.md §3: the table repeats an objective').toBe(objectives.length);
+      'Campaign.md §6: the table repeats an objective').toBe(objectives.length);
   });
 
-  it('§6 counts each reward class the way MISSIONS[].reward does', () => {
+  it('§9 counts each reward class the way MISSIONS[].reward does', () => {
     const t = parseTables(text).find(
       (x) => x.headers[0] === 'Reward class' && x.headers.includes('Count'),
     );
-    expect(t, 'Campaign.md §6: the reward-class table was not found').toBeDefined();
-    expect(t!.rows.length, 'Campaign.md §6: the reward table lost rows')
+    expect(t, 'Campaign.md §9: the reward-class table was not found').toBeDefined();
+    expect(t!.rows.length, 'Campaign.md §9: the reward table lost rows')
       .toBe(REWARD_CLASSES.length);
 
-    const iCount = col(t!, 'Count', 'Campaign.md §6');
+    const iCount = col(t!, 'Count', 'Campaign.md §9');
     const byRow = new Map(t!.rows.map((r) => [r.cells[0], r]));
 
     // BOTH DIRECTIONS. A class on the page this file does not know how to derive
     // is a finding, not a row to skip — that is how the stale 7 survived.
-    expect([...byRow.keys()].sort(), 'Campaign.md §6 must tabulate exactly the reward '
+    expect([...byRow.keys()].sort(), 'Campaign.md §9 must tabulate exactly the reward '
       + 'classes REWARD_CLASSES derives, and nothing else. A new row needs a predicate '
       + 'here; a deleted row needs its predicate removed.')
       .toEqual(REWARD_CLASSES.map((c) => c.row).sort());
@@ -1049,7 +1066,383 @@ describe('Campaign.md counts the mission table correctly', () => {
 });
 
 /* ==========================================================================
- * 9. CLAIMS THAT CANNOT BE MACHINE-CHECKED
+ * 9. THE CAMPAIGN — `wiki/Campaign.md` §1 to §3
+ *
+ * The page opened with "VOLTMARCH has no story campaign" for as long as that
+ * was true, and went on saying it after `src/campaign/` shipped. It is the
+ * IN-GAME MANUAL, so that sentence was the product telling a player a feature
+ * on its own title screen did not exist.
+ *
+ * Everything §1 to §3 quantifies is a second copy of something the operation
+ * table owns, and the shape of the rot is different from §8's: the mission
+ * table is finished and drifts by RETUNE, while the campaign is PARTIAL and
+ * drifts by CONTENT ARRIVING. So the checks below are written to fire when an
+ * operation is ADDED, not only when one is changed — the row count, the par
+ * total, the medal rule and the "the Pact has none yet" sentence all move the
+ * moment the sixth operation lands.
+ *
+ * THE PLAN'S TWO NUMBERS ARE READ OUT OF `tests/campaign-length.spec.ts`
+ * RATHER THAN RESTATED. 37 and ten hours are that file's constants; the wiki
+ * quotes them at a player, and a third copy here would be the copy that rots.
+ * This is the shape `tests/manual.spec.ts` already uses to compare its link
+ * prefix against `wiki-links.spec.ts` — grep the declaration, do not import it,
+ * so the two are genuinely compared rather than agreeing with themselves.
+ * ========================================================================== */
+
+const SHIPPED: readonly OperationDef[] = CAMPAIGNS.flatMap((c: ChapterDef) => c.operations);
+
+/** A constant declared in `tests/campaign-length.spec.ts`, by name. */
+function planConstant(name: string): number {
+  const src = readFileSync(join(__dirname, 'campaign-length.spec.ts'), 'utf8');
+  const m = new RegExp(`const ${name} = ([0-9_]+)`).exec(src);
+  expect(m, `campaign-length.spec.ts no longer declares ${name} — the wiki quotes it`)
+    .not.toBeNull();
+  return Number((m?.[1] ?? '').replace(/_/g, ''));
+}
+
+const secondariesOf = (op: OperationDef): readonly ObjectiveDef[] =>
+  op.objectives.filter((o) => o.kind === 'secondary');
+
+describe('Campaign.md describes the campaign that exists', () => {
+  const text = wiki('Campaign');
+
+  it('has a campaign to describe at all', () => {
+    // The vacuity guard. Every assertion below is about a table that must not
+    // be empty — and an empty one would make "5 of a planned 37" fail for the
+    // one reason that is not the page's fault, which is worth saying in the
+    // message rather than leaving to be diagnosed.
+    expect(SHIPPED.length, 'no operation is authored — CAMPAIGNS came back empty')
+      .toBeGreaterThan(0);
+    expect(CAMPAIGNS.length, 'no chapter carries an operation').toBeGreaterThan(0);
+    // AND THE OPPOSITE CLAIM, WHICH IS THE ONE THE OLD PAGE MADE. If this ever
+    // reads true again the page has to go back to saying so.
+    expect(text, 'Campaign.md still says the game has no story campaign')
+      .not.toContain('VOLTMARCH has no story campaign');
+  });
+
+  it('§1 tabulates every shipped operation, in order, with its par and objective counts', () => {
+    const t = parseTables(text).find(
+      (x) => x.headers[1] === 'Operation' && x.headers.includes('Par (min)'),
+    );
+    expect(t, 'Campaign.md §1: the shipped-operations table was not found').toBeDefined();
+    expect(t!.rows.length, `Campaign.md §1: the page tabulates ${t!.rows.length} operations, `
+      + `${SHIPPED.length} are authored. A new operation must be added to the page — that is `
+      + 'the whole reason this assertion counts rather than samples.').toBe(SHIPPED.length);
+
+    const iIndex = col(t!, '#', 'Campaign.md §1');
+    const iTitle = col(t!, 'Operation', 'Campaign.md §1');
+    const iChapter = col(t!, 'Chapter', 'Campaign.md §1');
+    const iPar = col(t!, 'Par (min)', 'Campaign.md §1');
+    const iPrimary = col(t!, 'Primary', 'Campaign.md §1');
+    const iBonus = col(t!, 'Bonus', 'Campaign.md §1');
+
+    // IN ORDER, not as a set. The table is the play order — chapter by chapter,
+    // index by index — and a page that listed the right five in the wrong
+    // sequence would be telling a player to start in the middle of a chain.
+    const chapterTitle = new Map<string, string>(
+      CAMPAIGNS.map((c: ChapterDef) => [c.id, c.title] as const),
+    );
+    for (let i = 0; i < SHIPPED.length; i++) {
+      const op = SHIPPED[i];
+      const row = t!.rows[i];
+      const where = `Campaign.md:${row.line} "${row.cells[iTitle]}"`;
+      expect(row.cells[iTitle], `${where}: expected ${op.title} in this position`).toBe(op.title);
+      expect(num(row.cells[iIndex], `${where} index`), `${where}: index`).toBe(op.index);
+      expect(row.cells[iChapter], `${where}: chapter`).toBe(chapterTitle.get(op.chapter));
+      expect(num(row.cells[iPar], `${where} par`), `${where}: par is ${op.parSec}s`)
+        .toBe(Math.round(op.parSec / 60));
+      expect(num(row.cells[iPrimary], `${where} primaries`), `${where}: primary objectives`)
+        .toBe(op.objectives.filter((o) => o.kind === 'primary').length);
+      expect(num(row.cells[iBonus], `${where} bonuses`), `${where}: bonus objectives`)
+        .toBe(secondariesOf(op).length);
+    }
+  });
+
+  it('§1 says how partial the campaign is, in the plan\'s own numbers', () => {
+    const planned = planConstant('PLANNED_OPERATIONS');
+    const tenHours = planConstant('TEN_HOURS_SEC');
+    const parMin = Math.round(totalParSeconds(CAMPAIGNS) / 60);
+
+    expect(text, `Campaign.md must say it ships ${SHIPPED.length} of ${planned} operations`)
+      .toContain(`${SHIPPED.length} of a planned ${planned} operations`);
+    expect(text, `Campaign.md must quote the authored par total, which is ${parMin} min`)
+      .toContain(`${parMin} minutes of authored par`);
+    expect(text, 'Campaign.md must quote the length the full table is authored against')
+      .toContain(`${tenHours / 3600} hours`);
+  });
+
+  it('§1 is right about which chapter is unwritten', () => {
+    /*
+     * BOTH DIRECTIONS, and this is the assertion that fires on the day Pact
+     * content lands rather than on the day somebody re-reads the page. The
+     * sentence is a claim about ABSENCE, which is exactly the kind that rots
+     * silently: nothing about authoring an operation would otherwise make
+     * anybody open this file.
+     */
+    const chapters = new Set(SHIPPED.map((op) => op.chapter));
+    expect(chapters.has('pact'), 'a Pact operation exists now — Campaign.md §1 still says the '
+      + 'chapter is unwritten, and the operations table needs the new row too').toBe(false);
+    expect(text, 'Campaign.md §1 must say the Pact chapter is empty while it is')
+      .toContain('has no operations written at all yet');
+    // The chapter table and the operation table have to agree about how many
+    // cards the screen draws — `CAMPAIGNS` drops a chapter with no operations.
+    expect(CAMPAIGNS.length, 'a chapter carries no operations and is still in CAMPAIGNS')
+      .toBe(chapters.size);
+  });
+
+  it('§1 is right about the opening banks', () => {
+    // Two claims, both cheap and both the kind that a single retune falsifies:
+    // most operations open on less than a skirmish does, and one opens on
+    // nothing. `defaultSetup()` owns the skirmish number; the page does not
+    // quote it, so only the COMPARISON is asserted here.
+    const bank = defaultSetup().startingCredits;
+    const leaner = SHIPPED.filter((op) => op.map.credits < bank).length;
+    expect(leaner, `${leaner} of ${SHIPPED.length} operations open under the skirmish ${bank}; `
+      + 'Campaign.md §1 says most of them do').toBeGreaterThan(SHIPPED.length / 2);
+    expect(SHIPPED.some((op) => op.map.credits === 0),
+      'Campaign.md §1 says one operation opens with no bank at all').toBe(true);
+    expect(text).toContain('one of them on nothing at all');
+  });
+
+  it('§1 is right that no shipped operation ends on annihilation', () => {
+    // The page tells the player that killing everything does not end an
+    // operation. That is `OutcomePolicy`, per operation, and an operation may
+    // legitimately opt back in — at which point this sentence stops being true
+    // for the whole campaign and the page has to say "every operation that
+    // ships today" differently.
+    const optedIn = SHIPPED.filter(
+      (op) => op.outcome.annihilationWin || op.outcome.assetLossDefeat,
+    ).map((op) => op.id);
+    expect(optedIn, 'these operations use the skirmish annihilation rules, which Campaign.md §1 '
+      + 'says none of them do').toEqual([]);
+    expect(text).toContain('Destroying everything the enemy owns does not end an operation');
+  });
+
+  it('§2 prices the bonus objectives the way the operations do', () => {
+    const paid = SHIPPED.flatMap(
+      (op) => secondariesOf(op).flatMap((o) => (o.credits === undefined ? [] : [o.credits])),
+    );
+    expect(paid.length, 'no shipped bonus objective pays credits, so §2 has nothing to price')
+      .toBeGreaterThan(0);
+    expect(text, `bonus payouts run ${Math.min(...paid)}..${Math.max(...paid)} credits`)
+      .toContain(`worth ${Math.min(...paid)} to ${Math.max(...paid)} credits`);
+
+    // The page also says one bonus pays nothing. Checked, because "one" is a
+    // count and because the sentence would be a lie the moment somebody priced
+    // the last unpaid bonus.
+    const unpaid = SHIPPED.flatMap(
+      (op) => secondariesOf(op).filter((o) => o.credits === undefined),
+    ).length;
+    expect(unpaid, 'Campaign.md §2 says exactly one shipped bonus pays no credits').toBe(1);
+    expect(text).toContain('One shipped bonus pays no credits at all');
+
+    // And that no primary does, which is a build-time rule rather than taste.
+    const paidPrimaries = SHIPPED.flatMap(
+      (op) => op.objectives.filter((o) => o.kind === 'primary' && o.credits !== undefined),
+    ).map((o) => o.id);
+    expect(paidPrimaries, 'a primary objective pays credits').toEqual([]);
+  });
+
+  it('§2 states the medal rule `medalFor` actually implements', () => {
+    /*
+     * DERIVED BY RUNNING THE GRADER, not by reading it. `medalFor` takes the
+     * difficulty threshold as a defaulted parameter, so the only honest way to
+     * quote "Hard or above" at a player is to ask it which rungs pay gold.
+     */
+    const op = SHIPPED.find((o) => secondariesOf(o).length > 0);
+    expect(op, 'no shipped operation has a bonus objective — silver cannot be exercised')
+      .toBeDefined();
+
+    const won = newOperationState(op as OperationDef, 0);
+    won.outcome = 'won';
+    const lost = newOperationState(op as OperationDef, 0);
+    lost.outcome = 'lost';
+
+    // Bronze: a win with a bonus outstanding. Nothing at all for a loss.
+    expect(medalFor(op as OperationDef, won, 3), 'bronze').toBe(1);
+    expect(medalFor(op as OperationDef, lost, 3), 'a loss must record nothing').toBe(0);
+
+    for (const o of secondariesOf(op as OperationDef)) won.objectives.set(o.id, 'complete');
+
+    const gold: number[] = [];
+    const silver: number[] = [];
+    for (let d = 0; d < DIFFICULTIES.length; d++) {
+      const m = medalFor(op as OperationDef, won, d);
+      if (m === 3) gold.push(d);
+      if (m === 2) silver.push(d);
+    }
+    expect(gold.length, 'no difficulty pays gold').toBeGreaterThan(0);
+    expect(silver.length, 'every difficulty pays gold — §2 says some do not').toBeGreaterThan(0);
+
+    /*
+     * AND THE HIDDEN CASE, WHICH THE PAGE GETS RIGHT ONLY BECAUSE IT WAS RUN.
+     * `medalFor` walks every declared secondary and wants `'complete'`, so an
+     * objective the operation never revealed blocks silver exactly as a failed
+     * one does. The natural sentence to write is the opposite — that something
+     * you were never shown cannot count against you — and a first draft of this
+     * page wrote it.
+     */
+    const withHidden = SHIPPED.find((o) => secondariesOf(o).some((s) => s.hidden === true));
+    expect(withHidden, 'no shipped operation declares a hidden bonus, so the rule §2 states '
+      + 'about them is unexercised — author one, or reword the page').toBeDefined();
+    const partial = newOperationState(withHidden as OperationDef, 0);
+    partial.outcome = 'won';
+    for (const o of secondariesOf(withHidden as OperationDef)) {
+      if (o.hidden !== true) partial.objectives.set(o.id, 'complete');
+    }
+    expect(medalFor(withHidden as OperationDef, partial, 3),
+      'an undiscovered hidden bonus must still cost silver').toBe(1);
+    expect(text).toContain('It still counts against your medal');
+
+    const t = parseTables(text).find((x) => x.headers[0] === 'Medal');
+    expect(t, 'Campaign.md §2: the medal table was not found').toBeDefined();
+    const row = t!.rows.find((r) => r.cells[0] === 'Gold');
+    expect(row, 'Campaign.md §2: the medal table has no Gold row').toBeDefined();
+    // BOTH DIRECTIONS: every rung that pays gold is named, and no rung that
+    // does not pay it is. Naming Normal would be the failure that matters.
+    for (const d of gold) {
+      expect(row!.cells[1], `Campaign.md §2: ${DIFFICULTIES[d]} pays gold and the row omits it`)
+        .toContain(DIFFICULTIES[d]);
+    }
+    for (const d of silver) {
+      expect(row!.cells[1], `Campaign.md §2: ${DIFFICULTIES[d]} does NOT pay gold`)
+        .not.toContain(DIFFICULTIES[d]);
+    }
+  });
+});
+
+/* ==========================================================================
+ * 9b. THE COMMANDER HERO IS GATED, AND TWO PAGES SAID IT WAS NOT
+ *
+ * `Factions.md` said "None is behind a mission unlock" and `Units-and-Verbs.md`
+ * said "Commanders are not mission-locked — you can build one in your first
+ * skirmish". Both were true when the four heroes shipped with no `unlockedBy`
+ * and both stopped being true the release `unit.commander` landed — paid by
+ * *Old Guard*, which `Campaign.md`'s own mission table has listed correctly the
+ * whole time. So the manual contradicted itself two pages apart and read as
+ * authoritative in both places, which is the §8 failure verbatim.
+ *
+ * THE ROT IS ONE-WAY AND THAT IS WHY IT SURVIVED THE REWORD. Both sentences
+ * were edited in the same pass that rewrote this page's campaign half — from
+ * "campaign unlock" to "mission unlock" — because the WORD was wrong. Nothing
+ * about that edit asks whether the CLAIM is, and no test did either.
+ * ========================================================================== */
+
+describe('the wiki is right about what gates the commander hero', () => {
+  /** The four heroes, by key. One per army; `maxAlive: 1`. */
+  const COMMANDER_KEYS: readonly string[] = ['fieldMarshal', 'commissar', 'mrdHierarch', 'rclBaron'];
+
+  const commanders = COMMANDER_KEYS.map((key) => {
+    const d = UNITS.find((u) => u.key === key);
+    expect(d, `no unit '${key}' — the commander roster moved and this file names it`)
+      .toBeDefined();
+    return d as UnitDef;
+  });
+
+  it('all four heroes are progression-gated, by one unlock, paid by one mission', () => {
+    // The state assertion. If a hero is ever ungated again, this fails with the
+    // key — and the two sentences below have to move back with it.
+    const ungated = commanders.filter((d) => (d.unlockedBy ?? '') === '').map((d) => d.key);
+    expect(ungated, 'a commander ships with no `unlockedBy`; Factions.md and Units-and-Verbs.md '
+      + 'both state that all four are gated, and would have to say so differently').toEqual([]);
+
+    expect(new Set(commanders.map((d) => d.unlockedBy)).size,
+      'the four heroes no longer share one unlock id; both pages say "all four by the same one"')
+      .toBe(1);
+  });
+
+  it('both pages name the mission that actually pays it, and neither says it is ungated', () => {
+    const unlockId = commanders[0].unlockedBy ?? '';
+    const payers = MISSIONS.filter(
+      (m) => m.reward.some((r) => r.kind === 'unlock' && r.unlockId === unlockId),
+    );
+    expect(payers.length, `exactly one mission must grant '${unlockId}'`).toBe(1);
+    const title = payers[0].title;
+
+    for (const page of ['Factions', 'Units-and-Verbs'] as const) {
+      const text = wiki(page);
+      expect(text, `${page}.md describes the commanders and must name '${title}', `
+        + `the mission that pays '${unlockId}'`).toContain(title);
+      // AND THE OPPOSITE CLAIM, VERBATIM, IN BOTH ITS SHIPPED SPELLINGS. These
+      // are the two sentences that were false; a revert has to fail here.
+      expect(text, `${page}.md still claims the commander is not gated`)
+        .not.toMatch(/not (?:mission|campaign)-locked/);
+      expect(text, `${page}.md still claims no commander is behind an unlock`)
+        .not.toMatch(/None\s+is behind a (?:mission|campaign) unlock/);
+    }
+  });
+});
+
+/* ==========================================================================
+ * 9c. `How-to-Play.md` ENUMERATES THE MAIN MENU, AND AN ENUMERATION ROTS BY
+ *     OMISSION — WHICH NO GREP FOR THE MISSING WORD CAN FIND
+ *
+ * "The main menu offers Tutorial, Skirmish, Multiplayer, …" did not name
+ * **Campaign**, and could not have: the sentence never contained the word, so
+ * the sweep that fixed every OTHER page — grep `wiki/` for "campaign" — was
+ * structurally blind to it. The page a new player opens first for "Starting a
+ * match" went on listing a title screen that had not existed for a week.
+ *
+ * DERIVED FROM `MainMenu.ts` BY READING IT, not by importing it: the module is
+ * DOM-side and the labels are string literals, so the grep IS the comparison.
+ * Same shape as `planConstant` above.
+ * ========================================================================== */
+
+/**
+ * A nav label the page deliberately does not list. FAILS IN BOTH DIRECTIONS —
+ * removing the button, or listing it on the page, fails here until the entry
+ * goes with it.
+ *
+ * `Quit` closes the game; the sentence is about what the menu OFFERS, and this
+ * omission predates the campaign and is recorded rather than quietly fixed.
+ */
+const MENU_LABELS_UNLISTED: readonly string[] = ['Quit'];
+
+describe('How-to-Play.md lists the main menu the shell actually builds', () => {
+  const menuSource = readFileSync(
+    join(__dirname, '..', 'src', 'shell', 'MainMenu.ts'), 'utf8',
+  );
+  const text = wiki('How-to-Play');
+
+  /** Every `button('X', {` label in `MainMenu.ts`, in source order. */
+  const labels = [...menuSource.matchAll(/\bbutton\('([A-Z][A-Za-z ]*)',\s*\{/g)]
+    .map((m) => m[1])
+    // `Back` is the page frame's own control, not a menu entry.
+    .filter((l) => l !== 'Back');
+
+  it('finds the menu to compare against', () => {
+    expect(labels.length, 'no menu buttons found — the `button(\'…\')` shape in MainMenu.ts '
+      + 'changed and this check silently stopped comparing anything').toBeGreaterThan(5);
+    expect(labels, 'MainMenu.ts no longer mounts a Campaign button; How-to-Play.md says it does')
+      .toContain('Campaign');
+  });
+
+  it('names every menu entry, and every declared omission is still omitted', () => {
+    const paragraph = /The main menu offers[^\n]*\n?[^\n]*\./.exec(text)?.[0] ?? '';
+    expect(paragraph, 'How-to-Play.md no longer has a "The main menu offers …" sentence')
+      .not.toBe('');
+
+    for (const label of labels) {
+      const listed = paragraph.includes(`**${label}**`);
+      if (MENU_LABELS_UNLISTED.includes(label)) {
+        expect(listed, `How-to-Play.md now lists "${label}" — drop it from `
+          + 'MENU_LABELS_UNLISTED').toBe(false);
+      } else {
+        expect(listed, `How-to-Play.md's main-menu sentence omits "${label}", which `
+          + 'MainMenu.ts mounts').toBe(true);
+      }
+    }
+
+    // The other direction: an exception for a button that no longer exists.
+    for (const label of MENU_LABELS_UNLISTED) {
+      expect(labels, `MENU_LABELS_UNLISTED names "${label}", which MainMenu.ts no longer mounts`)
+        .toContain(label);
+    }
+  });
+});
+
+/* ==========================================================================
+ * 10. CLAIMS THAT CANNOT BE MACHINE-CHECKED
  *
  * Not everything above is reachable from a table, and faking a check is worse
  * than declaring the gap. Each entry names a page and a verbatim phrase, and
@@ -1071,6 +1464,24 @@ const UNCHECKED_CLAIMS: readonly { page: string; phrase: string; why: string }[]
     why: 'The SHAPE of regrowth. Derivable only by driving `OreField.regrow` for '
       + 'sim-minutes, which `tests/ore-regrowth.spec.ts` already does; restating '
       + 'the measured curve here would be a third copy of it.',
+  },
+  {
+    page: 'Campaign',
+    phrase: 'No mission advances, no unlock is granted, and no lifetime counter moves',
+    why: 'The `suppressProgression` latch. Behavioural, not numeric, and it is already '
+      + 'driven end to end by `tests/progression-suppress.spec.ts` — which emits '
+      + '`match:started` on a real bus rather than checking that a caller skipped a '
+      + 'call, because a caller-shaped test passes against the broken build.',
+  },
+  {
+    page: 'Campaign',
+    phrase: 'lists **the operation\'s** objectives',
+    why: 'Where the objective panel gets its rows. `src/ui/objectives.system.ts` swaps '
+      + 'the progression view for `campaignObjectiveView()` while a session is armed; '
+      + '`tests/objectives-ux.spec.ts` drives that. A DOM behaviour is not reachable '
+      + 'from `DEF_TABLES`, and an earlier draft of this page asserted the OPPOSITE — '
+      + 'that nothing drew them — from a grep of the wrong seam. Pinned here so the '
+      + 'sentence cannot rot back.',
   },
   {
     page: 'Strategy',

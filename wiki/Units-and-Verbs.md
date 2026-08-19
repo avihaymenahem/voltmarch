@@ -38,7 +38,7 @@ ore → plain ground.
 
 ### What a fresh profile cannot do yet
 
-Some of the verbs below are behind campaign unlocks, and on a brand-new profile
+Some of the verbs below are behind mission unlocks, and on a brand-new profile
 they simply are not in the sidebar. See [Campaign](/avihaymenahem/voltmarch/wiki/Campaign) for which mission
 pays out what.
 
@@ -533,7 +533,7 @@ heaviest single draw in the game.
 
 Every one is gated on its army's tech building — Battle Lab, Reliquary or
 Crucible — so a superweapon is the last thing on the tree and never an opening.
-That tech building is itself a campaign unlock, so a fresh profile has no
+That tech building is itself a mission unlock, so a fresh profile has no
 superweapons at all.
 
 **2500 credits is not the real price; the grid is.** -150 power is the heaviest
@@ -599,7 +599,8 @@ commander is the aim**.
 | **Hierarch** | Meridian | Prism Focus | 18 m | 45 s | **210 Prism damage** to everything hostile in radius |
 | **Scrap Baron** | Reclamation | Salvage Call | 22 m | 40 s | Consumes up to **8 wrecks** for **120 credits each**, and heals friendlies in radius by **30% of max HP** |
 
-Commanders are not campaign-locked — you can build one in your first skirmish.
+Commanders are mission-locked, and all four by the same one — *Old Guard*,
+promote 15 units to elite rank — so a fresh profile cannot build any of them.
 They are also real combat units in their own right: 430–520 HP and a serious gun
 (the Field Marshal carries a Prism Emitter, the Commissar a Tesla bolt).
 
