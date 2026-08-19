@@ -117,6 +117,30 @@ function wipeSeatExcept(r: Rig, seat: number, keep: string): number {
  * forever, which is not what a match does. Mirrored here, and nothing else is:
  * objectives, credits and presentation stay the sink's business.
  */
+/**
+ * The first tick at which S1's ownership thresholds are believed.
+ *
+ * `soviets.01.first-tap` guards every `ownerCount` with `SETTLE` — twenty
+ * seconds, 600 ticks at 30 Hz — because a threshold over an EMPTY tag registry
+ * is true in both directions: `max: 0` would win the operation and `max: 2`
+ * would fail the derrick secondary. (It is defence against a layout that placed
+ * nothing, not against a tick-one read that happens today; `scenarios.system`
+ * builds the world inside `async init()` and the registry is never empty when
+ * the Director first runs. The operation's own header carries the argument.)
+ *
+ * **FOUR TESTS IN THIS FILE USED TO DRIVE TO TICK 200-400 AND ASSERT A WIN.**
+ * They were written against `entityDead 'tap'`, which had no guard, and they
+ * broke on the migration to `ownerCount` — correctly, because the behaviour
+ * really did change. They drive past the guard now, and the pair below pins the
+ * guard itself so the next change to it fails here by name rather than by four
+ * unexplained assertions.
+ *
+ * Note this delays nothing a player can reach: `SETTLE` is measured from the
+ * START of the operation, not from the kill, so an objective met at any point
+ * after the first twenty seconds resolves on the tick it is met.
+ */
+const SETTLE_TICK = 600;
+
 const tick = (r: Rig, op: OperationDef, at: number): readonly Effect[] => {
   const out: Effect[] = [];
   runDirector(op, r.state, r.q, at, out);
@@ -204,7 +228,11 @@ describe('S1 ends when the tap dies and not before', () => {
     expect(killTag(r, 'tap')).toBeGreaterThan(0);
     expect(r.q.aliveWithTag('tap')).toBe(0);
 
-    const fired = tick(r, S1, 200);
+    // NOT BEFORE THE GUARD, which is the half that would otherwise be silent:
+    // a win that fired at tick 200 would mean `SETTLE` had been dropped.
+    expect(tick(r, S1, SETTLE_TICK - 1), 'nothing resolves inside the settle').toEqual([]);
+
+    const fired = tick(r, S1, SETTLE_TICK);
     const kinds = fired.map((e) => e.do);
     // ORDER IS THE FILE'S ORDER, and it is load-bearing: `t.derricksKept` sits
     // above `t.win`, so the secondary completes before the operation ends.
@@ -259,13 +287,23 @@ describe('S1 — the derricks', () => {
     st.flushDestroyed();
     expect(r.q.ownerCount(1, 'building', 'derrick')).toBe(2);
 
-    const fired = tick(r, S1, 300);
+    // The guard binds in THIS direction too, and it is the direction that
+    // matters more: an empty registry answers `ownerCount` with 0, which is
+    // `<= 2`, so an unguarded `t.derricksLost` fails the secondary rather than
+    // winning the match — the player's least favourite direction, with a line
+    // accusing them of it.
+    // Narrowed to the FAILURE rather than to an empty set: this test does not
+    // drive the opening beats first, so `t.open` (an `elapsed` of 120) is
+    // still outstanding and fires its dialogue on this very tick.
+    expect(tick(r, S1, SETTLE_TICK - 1).filter((e) => e.do === 'failObjective'),
+      'no failure inside the settle either').toEqual([]);
+    const fired = tick(r, S1, SETTLE_TICK);
     expect(fired.some((e) => e.do === 'failObjective' && e.id === 'derricks')).toBe(true);
 
     // `t.derricksLost` is not `repeat`, so it latches. A dialogue line that
     // re-fired every tick for the rest of the operation would be the whole
     // reason the fired-set exists.
-    expect(tick(r, S1, 301)).toEqual([]);
+    expect(tick(r, S1, SETTLE_TICK + 1)).toEqual([]);
   });
 
   it('with a derrick down, killing the tap still wins but pays no bonus', () => {
@@ -273,10 +311,10 @@ describe('S1 — the derricks', () => {
     const st = r.world.store;
     st.markDead(r.tags.live(st, 'derrick')[0]);
     st.flushDestroyed();
-    tick(r, S1, 300);
+    tick(r, S1, SETTLE_TICK);
     killTag(r, 'tap');
 
-    const fired = tick(r, S1, 400);
+    const fired = tick(r, S1, SETTLE_TICK + 100);
     expect(fired.some((e) => e.do === 'endOperation' && e.result === 'win')).toBe(true);
     expect(
       fired.filter((e) => e.do === 'completeObjective' && e.id === 'derricks'),
@@ -308,7 +346,7 @@ describe('S1 — the relief column', () => {
     const r = rig();
     tick(r, S1, 120);
     killTag(r, 'tap');
-    tick(r, S1, 200);
+    tick(r, S1, SETTLE_TICK);
     expect(r.state.outcome).toBe('won');
     expect(
       tick(r, S1, minutes(5)),

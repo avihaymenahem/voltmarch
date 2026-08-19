@@ -324,17 +324,38 @@ export default layout({
      * 3. THE DISTRICT OFFICE
      *
      * The objective, and the reason the operation is an assault rather than
-     * a hold. A mast, the transformer that feeds it, two power-drawing
-     * towers, two that draw nothing, a watch detachment, and a wall across
-     * the face the player will arrive at.
+     * a hold. A mast, a power plant standing behind it, two specialist
+     * towers, two concrete boxes, a watch detachment, and a wall across the
+     * face the player will arrive at. "The transformer that FEEDS it" is
+     * what this line used to say and it is not a relation this engine has;
+     * see below.
      *
-     * THE TRANSFORMER IS A REAL MECHANISM AND NOT A PROP. Any structure
-     * that DRAWS power and is dark cannot fire (`src/sim/Combat.ts`, the
-     * universal tier), so killing the power plant silences the two
-     * specialist towers outright. The two `pillbox`-role emplacements are
-     * `power: 0` in every army's column and fire through a blackout, which
-     * is what keeps the cut an ADVANTAGE rather than an I-win button — the
-     * compound still has teeth, it just stops having the good ones.
+     * **THE TRANSFORMER IS A PRIZE, NOT A SWITCH, AND THIS BLOCK CLAIMED
+     * THE OPPOSITE.** It read: any structure that DRAWS power and is dark
+     * cannot fire (`src/sim/Combat.ts`, the universal tier), so killing
+     * this power plant silences the two specialist towers outright. The
+     * rule is real; the inference is false, because `PowerGrid` is PER
+     * PLAYER and not per lot. Measured on the built world, this plant is
+     * 100 of seat 1's 700 against a draw of 585, so taking it leaves 600
+     * against 585 and `shed` — which runs only when `consumed > produced`
+     * — never runs at all. The towers stay lit.
+     *
+     * **AND NO ARRANGEMENT OF THIS FILE CAN CHANGE THAT**, which is why
+     * the composition below is unchanged. Both bounds are outside the
+     * layout: 100 is a `powerPlant`, 75 is the `teslaCoil` the two towers
+     * resolve to (and `shed` needs a deficit ABOVE one tower's draw to
+     * darken the second), and 40 is `AI_ECONOMY.powerHeadroom`, which the
+     * garrison's brain restores as its FIRST build interrupt — measured,
+     * an opening margin of 15 is back to 195 one minute later. The
+     * operation file's header carries the full trace, the second wall (the
+     * garrison base's own three `teslaCoil` outrank these two on slot, so
+     * an induced deficit darkens coils 110 m up the road instead), and the
+     * configuration that WOULD work with the reason it was refused.
+     *
+     * What the plant IS, is the only structure on this map worth more to
+     * the player than to its owner: 100 power against seat 0's whole
+     * supply of 80, on the operation whose first real decision is a
+     * 1900-credit Breaker Yard drawing 40 against a margin of 10.
      *
      * ROLE KEYS THROUGHOUT, AND THE REASON CHANGED WITHOUT THE RULE
      * CHANGING. This used to read "the lobby's `aiFaction` decides who the
@@ -370,17 +391,19 @@ export default layout({
     // the thing it does not expect to be shot at.
     raise(garrison, 'powerPlant', spot(-24, 10), 'transformer', outward, 18);
 
-    // The two that go dark. `prismTower` is `struct.defence.specialist`, which
-    // is TAGGED — the operation's `roster.ai` names it, and if that line is ever
-    // removed `spawnBuilding` refuses these two and they silently do not exist.
-    // They sit on the flanks rather than on the axis, so the ends of the wall
-    // are what they cover.
+    // The two specialist towers. This said "the two that go dark" and they do
+    // not — see the block above. `prismTower` is `struct.defence.specialist`,
+    // which is TAGGED — the operation's `roster.ai` names it, and if that line
+    // is ever removed `spawnBuilding` refuses these two and they silently do not
+    // exist. They sit on the flanks rather than on the axis, so the ends of the
+    // wall are what they cover.
     raise(garrison, 'prismTower', spot(16, 20), null, outward, 14);
     raise(garrison, 'prismTower', spot(16, -20), null, outward, 14);
 
-    // The two that do not. Untagged content, so no roster can withhold them,
-    // and `power: 0` in every army's column so no blackout can quiet them.
-    // On the axis, behind the wall, covering the ground a breach opens onto.
+    // The two concrete boxes. Untagged content, so no roster can withhold them,
+    // and `power: 0` in every army's column — which was chosen so a blackout
+    // could not quiet them and is now simply the cheap end of the compound. On
+    // the axis, behind the wall, covering the ground a breach opens onto.
     raise(garrison, 'pillbox', spot(24, 7), null, outward, 12);
     raise(garrison, 'pillbox', spot(24, -7), null, outward, 12);
 

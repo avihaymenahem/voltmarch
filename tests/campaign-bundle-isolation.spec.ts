@@ -1060,7 +1060,14 @@ const FINGERPRINTS: readonly { readonly text: string; readonly why: string }[] =
   { text: 'soviets-first-tap', why: 'the layout id' },
   { text: 'Hold the Seam', why: "the chapter title, from index.ts's CHAPTER_META" },
   { text: 'The survey says the seam runs under that town.', why: 'authored dialogue' },
-  { text: 'Take the seam with all three derricks standing', why: 'an objective title' },
+  // REQUOTED 2026-08-19, and the requote is what this table is FOR. The old
+  // string was 'Take the seam with all three derricks standing', and it was
+  // renamed when `t.derricksLost` migrated to `ownerCount` — the trigger has
+  // always tested OWNERSHIP while the title said STANDING, so a captured
+  // derrick failed the objective with a line accusing the player of breaking
+  // one they had taken intact. The first test below caught the drift on the
+  // same run as the rename.
+  { text: 'Take the seam and leave the town its three derricks', why: 'an objective title' },
   { text: 'elapsedSinceArmed', why: "a condition kind from types.ts's runtime vocabulary" },
   { text: 'capture-hold', why: "a primary type from types.ts's runtime vocabulary" },
 ];

@@ -89,22 +89,25 @@ its operations you have finished; each operation is a row with its par time and 
 | 04 | Company Town | Hold the Seam | 16 | 1 | 2 |
 | 05 | Short Allocation | Hold the Seam | 17 | 1 | 2 |
 | 06 | Demolition Order | Hold the Seam | 18 | 1 | 2 |
+| 07 | Right of Entry | Hold the Seam | 19 | 1 | 2 |
 | 01 | Sounding Line | The Timetable | 13 | 2 | 1 |
 | 02 | Instrument Room | The Timetable | 14 | 2 | 1 |
 | 03 | Ground Truth | The Timetable | 15 | 1 | 1 |
 | 04 | Misclosure | The Timetable | 16 | 1 | 2 |
+| 05 | Forced Closure | The Timetable | 17 | 1 | 2 |
 | 01 | The Shallow Road | The Crust | 13 | 1 | 2 |
 | 02 | The Long Count | The Crust | 14 | 2 | 2 |
 | 03 | The Concession | The Crust | 15 | 2 | 2 |
+| 04 | In the Clear | The Crust | 16 | 2 | 2 |
 | 01 | Held Paper | Salvage Rights | 13 | 1 | 2 |
 | 02 | Written Off | Salvage Rights | 14 | 1 | 2 |
 | 03 | Sold Twice | Salvage Rights | 15 | 1 | 2 |
 | 04 | Served Notice | Salvage Rights | 16 | 2 | 1 |
 
-**That is 17 of a planned 37 operations, and this page will not pretend otherwise.** The seventeen add
-up to 251 minutes of authored par; the full table is meant to reach 10 hours. All four chapters now
+**That is 20 of a planned 37 operations, and this page will not pretend otherwise.** The twenty add
+up to 303 minutes of authored par; the full table is meant to reach 10 hours. All four chapters now
 have at least one operation, so all four have a card on the campaign screen — but none of them is
-finished, and the shortest is three operations long.
+finished, and the shortest is four operations long.
 
 Read the table above as what exists, not the 37 as a promise. The number is the plan the content is
 being authored against, and it is quoted here because a manual that quietly implied a finished
@@ -122,7 +125,7 @@ nothing else.
   pay are worth 400 to 700 credits and they are granted rather than deposited, so a full silo
   cannot eat one. Each is paid **once**: reloading a save taken before you finished a bonus does
   not pay it a second time.
-- **Five shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
+- **Six shipped bonuses pay no credits at all.** What they pay is inside the operation itself, which
   is the better kind of reward.
 - **A primary never pays credits.** That is refused at build time rather than left to taste — being
   paid for playing the operation is not a bonus.

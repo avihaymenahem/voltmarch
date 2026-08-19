@@ -53,40 +53,108 @@
  * would be dead content on a passive run.
  *
  * ============================================================================
- * THE HIDDEN SECONDARY TEACHES A SHIPPED RULE MOST PLAYERS NEVER MEET
+ * THE HIDDEN SECONDARY WAS A BLACKOUT. IT IS A CAPTURE, AND THE BLACKOUT IS
+ * MEASURED DEAD RATHER THAN QUIETLY DROPPED
  * ============================================================================
- * A structure that DRAWS power and is dark cannot fire. The office's two
- * specialist towers draw; its two concrete boxes are `power: 0` and fire
- * through a blackout. So cutting the transformer is a real tactical answer that
- * is neither free nor total — and it is worth a medal rather than being
- * required, because an operation that fails a player for not knowing an
- * unwritten rule is a quiz.
+ * **THE REFUTED CLAIM, KEPT BECAUSE IT SHIPPED AND BECAUSE IT IS THE OBVIOUS
+ * ONE TO RE-DERIVE.** This block used to read: a structure that DRAWS power and
+ * is dark cannot fire, the office's two specialist towers draw and its two
+ * concrete boxes are `power: 0`, so cutting the transformer silences the good
+ * half of the compound and leaves the cheap half firing. Every sentence of that
+ * is true about `src/sim/Power.ts` and `src/sim/Combat.ts`. **None of it
+ * happens here**, and TWO INDEPENDENT WALLS stop it — one of which no layout
+ * can move.
+ *
+ * The instrument for everything below is `tests/campaign-maps.spec.ts`'s
+ * builder with the def tables bound and this operation's own roster installed,
+ * driven first through the real `PowerGrid.recompute`/`shed` and then through
+ * the real `AiDirector` for fourteen sim-minutes at `aiDifficulty` 1 (Normal,
+ * the lobby default), at this operation's own seeds.
+ *
+ * **WALL 1 — THE DEFICIT IS TOO SMALL, AND ITS CEILING IS THE OPPONENT'S OWN
+ * DOCTRINE.** `PowerGrid` is PER PLAYER, not per lot: there is no such thing as
+ * "one transformer feeding both towers", only one seat's supply against that
+ * seat's draw. Seat 1 opens at **supply 700 against draw 585** — seven
+ * `powerPlant` (six in `buildSovietBase`'s core, one tagged `transformer` in the
+ * compound) against five `teslaCoil` at -75, two `flameTower`, a `radar`, a
+ * refinery, a war factory, a barracks, two silos and the yard. Taking the
+ * transformer leaves **600 against 585**, and `shed` runs only when
+ * `consumed > produced`, so nothing sheds and the objective completes anyway,
+ * because `t.dark` reads the transformer and not the towers.
+ *
+ * Lowering that opening margin does not help, and the reason is the opponent
+ * rather than the arithmetic. `shed` walks `POWER_SHED_ORDER.defence` while
+ * `covered < deficit`, so darkening BOTH towers needs a deficit ABOVE one
+ * tower's own draw — 75 — which needs the margin under 25 at the moment of the
+ * cut. `AI_ECONOMY.powerHeadroom` is **40**, and the power interrupt is the
+ * first thing `AiBrain.chooseBuild` considers — ahead of the scripted opening
+ * and every scored candidate, with no difficulty gate on it. So a margin under
+ * 25 is a state the garrison actively repairs, and it does:
+ *
+ *     lever                      margin t=0   margin t+1 min   seat-1 plants
+ *     shipped layout                 115          165          7 -> 8
+ *     one base plant removed          15          195          6 -> 8
+ *     two base plants removed        -85          195          5 -> 8
+ *
+ * Both of the levers that look available are in that table, and both are
+ * **undone inside the first minute** — long before a player whose nearest unit
+ * is 104.8 m from the compound can reach it. The second one also opens the
+ * garrison browned out, which is a different mission.
+ *
+ * Over the full fourteen minutes the shipped trace never falls below **65**
+ * (115, 165 x5, 135, 215, 135 x3, 95 x3, 65), so **the deepest deficit this cut
+ * can ever produce is 35 — under half of one tower's draw** — and it is
+ * NEGATIVE at eleven of the fifteen samples, i.e. most of the match produces no
+ * deficit at all. A `powerPlant` is also **300 credits
+ * and eight seconds** against a garrison that mined 26 600 ore in that window,
+ * so the denial is not a beat either.
+ *
+ * **WALL 2 — THE WRONG TOWERS GO DARK ANYWAY.** Seat 1 owns FIVE `teslaCoil`,
+ * not two: `SOVIET_DEFENCE` puts three on the line at the garrison base. All
+ * five draw 75, and `shed` sorts by (priority, draw descending, slot ascending)
+ * — so the base's three, spawned first, are permanently ahead of the compound's
+ * two. Driven at an induced deficit of 85, the real `shed` darkened the coils at
+ * (402, 154) and (390, 142) — **at the base, 116 m and 110 m from the office
+ * mast** — and left both compound towers lit. The garrison never builds a sixth
+ * over fourteen minutes, so that ordering is fixed for the whole match.
+ *
+ * **WHAT WOULD ACTUALLY WORK, AND WHY IT WAS REFUSED.** Beating the measured
+ * margin CEILING of 215 needs three tagged plants (300 of supply), and clearing
+ * wall 2 needs `buildBaseFor(..., { defended: false })`. That prices the
+ * secondary at three 800-hp structures instead of one — 6000 credits of Tinker
+ * at the four-per-structure rate measured below — against a garrison base
+ * stripped of three Tesla Coils, two Flame Towers and nine wall segments; and
+ * the deep end of the resulting shed (deficit up to 235) walks past the two
+ * towers into the mast, both silos and the war factory, which halts the
+ * opponent's Vehicles tab. That last figure is DERIVED rather than measured,
+ * because the configuration was refused before it was built. It is a large
+ * change to the fight in both directions to buy a hidden 400-credit secondary.
+ *
+ * **NO LAYOUT CHANGE THAT ONLY MOVES POWER CAN REACH THIS, BECAUSE NEITHER
+ * BOUND IS A LAYOUT VARIABLE**: 100 is a `powerPlant`, 75 is the `teslaCoil`
+ * these two towers resolve to, and 40 is doctrine in `src/core/config.ts`. The
+ * layout is therefore UNCHANGED, and what changed is the two lines that
+ * described a mechanism the world does not have.
+ *
+ * **SO THE SECONDARY PAYS IN THE ONE CURRENCY THIS OPERATION IS SHORT OF, AND
+ * IT ALREADY DID.** A captured `powerPlant` is **100 power on a seat whose whole
+ * supply is the Furnace's 80** — measured 80 -> 180, more than doubling it — on
+ * the operation whose minute-three decision is a 1900-credit Breaker Yard
+ * drawing 40 against an opening margin of 10. See THE TRANSFORMER IS THE ONE
+ * ANYBODY WOULD ACTUALLY WANT below: the lure was already there and already
+ * true, and it is what the reveal names now instead of a blackout.
+ *
+ * **THE `dark` IDS STAY.** `t.dark` and the objective row keep the name the
+ * blackout gave them, because they are identifiers rather than claims and the
+ * trigger itself is correct — it counts what seat 1 still owns, which is
+ * exactly the deed the objective is named after. Renaming them would edit two
+ * effects and a trigger to buy nothing.
  *
  * `t.dark` requires the transformer off the garrison's books **while the mast
  * is still theirs**. Take them in the other order and the objective simply
  * never completes; that is the honest reading of "before the mast falls" and it
  * needs no extra condition — the two halves are exact complements over one
  * count, so nothing can hold both.
- *
- * **AND THE MECHANISM THIS SECONDARY TEACHES DOES NOT ACTUALLY FIRE ON THE
- * BUILT WORLD. MEASURED 2026-08-19, RECORDED RATHER THAN FIXED.** `PowerGrid`
- * is PER PLAYER, not per lot: there is no such thing as "one transformer
- * feeding both towers", only one seat's supply against that seat's draw.
- * Counted on the built world, **seat 1 opens at supply 700 against draw 585**,
- * and the transformer is 100 of that supply — so taking it off them leaves 600
- * against 585 and `PowerGrid.recompute` sheds nothing, because `shed` runs only
- * when `consumed > produced`. The two towers stay lit, and the objective
- * completes anyway, because `t.dark` reads the transformer and not the towers.
- *
- * It is not nothing: the margin goes **115 to 15**, so the next consumer the
- * garrison raises tips it into a deficit whose shed list is sorted from
- * `POWER_SHED_ORDER.defence` upward. But *"kill the transformer and the towers
- * are ornaments"* is not what the shipped grid does at t = 0. **This is not
- * fixed here** — the fix is a LAYOUT change (fewer plants on that seat, or a
- * compound that is its own seat) and it belongs in its own commit with its own
- * measurement, next to the prior question of whether a per-player grid can
- * express this beat at all. It is written down so the next reader does not have
- * to measure it twice.
  *
  * ============================================================================
  * EVERY THRESHOLD OVER THE COMPOUND COUNTS DEEDS, AND THEY COUNTED CORPSES
@@ -157,9 +225,12 @@
  * A district that has not noticed anything should not be doing that.
  *
  * **`roster` is asymmetric and both halves are load-bearing.** The garrison has
- * `struct.defence.specialist`, which is what puts the two power-drawing towers
- * in the compound — remove that line and `spawnBuilding` refuses them and the
- * hidden secondary has nothing to switch off. The player has `unit.raider` and
+ * `struct.defence.specialist`, which is what puts the two specialist towers in
+ * the compound — remove that line and `spawnBuilding` refuses them and the
+ * compound's approach face is two concrete boxes and a wall. That reason USED
+ * to be "the hidden secondary has nothing to switch off"; the secondary
+ * switches nothing off, and the towers are load-bearing as the compound's teeth
+ * rather than as its fuse. The player has `unit.raider` and
  * nothing else, which is a Reclamation Arcspitter: fast, sixteen metres of
  * reach, no armour, and **only reachable by building the Breaker Yard**. The
  * grant is therefore an argument for the expensive branch rather than a gift.
@@ -481,19 +552,29 @@ const op: OperationDef = {
       then: [
         { do: 'revealArea', player: 0, area: { x: OFFICE.x, z: OFFICE.z, r: 66 } },
         {
-          // "Take that transformer off their grid — break it or walk it"
-          // rather than "Kill the transformer": `t.dark` counts deeds now, so a
-          // Tinker answers it, and on this operation a captured `powerPlant` is
-          // 100 power on a seat whose whole supply is the Furnace's 80. The
-          // rest of the line is UNTOUCHED, deliberately — see the header block
-          // measuring what a per-player grid actually does when that plant
-          // changes hands. It is not this commit's claim to make stronger.
+          /*
+           * THIS LINE OPENED WITH "one transformer feeding both" AND THAT IS
+           * NOT A THING THIS ENGINE HAS. `PowerGrid` is per PLAYER: one seat's
+           * supply against that seat's draw, with no wire between a plant and
+           * anything in particular. It went on to promise the towers would
+           * become ornaments, which the header measures as false in two
+           * independent ways. It says the opposite now, explicitly, because a
+           * player who has been told the towers go cold will walk into them.
+           *
+           * What replaces it is the thing that IS true and IS worth 400
+           * credits: `t.dark` counts deeds, so a Tinker answers it, and a
+           * captured `powerPlant` is 100 power on a seat whose entire supply is
+           * the Furnace's 80 (measured 80 -> 180). "Take it whole" is the
+           * method named outright — a hidden objective whose route the player
+           * has to guess is a quiz.
+           */
           do: 'dialogue',
           speaker: 'Cregg',
-          text: 'Two towers on that compound and one transformer feeding both. Take that '
-            + 'transformer off their grid — break it or walk it — and the towers are '
-            + 'ornaments. The concrete boxes draw nothing and will keep firing — those you '
-            + 'do the hard way.',
+          text: 'Two towers on that compound, and that box behind the mast is the district '
+            + 'transformer. It does not feed them — one district, one pool, and they keep '
+            + 'spares — so breaking it costs them a morning and nothing more. Walk a Tinker '
+            + 'into it and it is a hundred power standing on your paper, against the eighty '
+            + 'your Furnace makes. Take it whole.',
         },
         { do: 'setObjective', id: 'dark' },
       ],
@@ -612,13 +693,25 @@ const op: OperationDef = {
       when: { on: 'all', of: [TRANSFORMER_OFF, OFFICE_HELD] },
       then: [
         {
-          // "off their board" rather than "is out": a transformer a Tinker
-          // walked into is running, for the player. The rest of the line is
-          // untouched — see the header on what the per-player grid actually
-          // does here.
+          /*
+           * "Both towers are cold" WAS THE WORST SHAPE A FALSE LINE CAN TAKE:
+           * the game told the player the towers were out on the same tick they
+           * went on shooting. It fires on the TRIGGER, so whatever it says has
+           * to be true at that instant and not eventually — and the towers are
+           * lit at that instant, measured, every time.
+           *
+           * It is now true on both routes, which is what the trigger requires:
+           * `t.dark` counts a deed, so the transformer is off seat 1's books
+           * whether it was levelled or walked into, and "off their books" is
+           * exactly the state the count reports. "off their board" is kept from
+           * the old line for the same reason it was written — a transformer a
+           * Tinker walked into is running, for the player.
+           */
           do: 'dialogue',
           speaker: 'Cregg',
-          text: 'Transformer is off their board. Both towers are cold. The boxes are not. Go.',
+          text: 'Transformer is off their board. Their towers are still lit — one district, '
+            + 'one pool — so that is a hundred power off their books rather than a blackout. '
+            + 'It was the best thing in that compound anyway. Go.',
         },
         { do: 'completeObjective', id: 'dark' },
       ],
