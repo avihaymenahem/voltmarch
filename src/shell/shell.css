@@ -2893,7 +2893,19 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
  * the title, the beat and every objective row were flush.
  *
  * A chapter CARD needs none of this: it is a `.vm-panel` spanning the body and
- * carrying its own 18px, so its contents already land at 36.               */
+ * carrying its own 18px, so its contents already land at 36.
+ *
+ * THAT IS TRUE ABOUT THE CONTENTS AND WAS WRONG ABOUT THE CARD, WHICH IS THE
+ * THIRD TIME THIS SCREEN HAS SHIPPED FLUSH-LEFT. Measured on a booted page at
+ * 1100x860: the panel spans x 22..1078, `.vm-camp-note` starts at 40 (= 22+18)
+ * and so does the header content — and `.vm-camp-chapters` started at **22**,
+ * hard against the panel edge, ending at 1068. The cards were 18px out of
+ * alignment with everything else on the left and 10px in from it on the right:
+ * not a margin, an asymmetry.
+ *
+ * The card's own comment reasoned about where its TEXT lands and never about
+ * where its EDGE does. Both have to be checked; only one is visible in the
+ * source.                                                                 */
 
 .vm-shell .vm-camp-note {
   margin: 0 18px 18px;
@@ -2915,6 +2927,23 @@ html.vm-no-blur .vm-shell .vm-screen.is-modal {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  /* Aligns the card EDGE with `.vm-camp-note` and the header content. See the
+   * block above: without this the cards sit 18px left of everything else. */
+  margin: 0 18px 18px;
+}
+
+/*
+ * THE TASK, UNDER THE FLAVOUR. `.vm-camp-op-beat` is the situation; this is the
+ * primary objective — see `Campaign.ts` for why a row needs both. It wraps
+ * rather than ellipsing, because an assignment cut off mid-sentence is worse
+ * than one costing a second line.
+ */
+.vm-shell .vm-camp-op-task {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--vm-text);
+  opacity: 0.82;
 }
 
 .vm-shell .vm-camp-chapter { padding: 16px 18px; }

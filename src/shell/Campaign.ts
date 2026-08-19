@@ -255,6 +255,34 @@ export class CampaignScreen implements Screen {
       ? `Locked — complete ${missing.map((id) => titleOf(ch, id)).join(' and ')}`
       : op.beat;
     text.appendChild(el('span', 'vm-camp-op-beat', sub));
+    /*
+     * THE BEAT IS FLAVOUR AND THE PRIMARY IS THE TASK, AND A ROW NEEDS BOTH.
+     *
+     * Reported as "the small title is barely explainable", and the beat was
+     * already on the row — measured un-truncated at every width from 1100 to
+     * 1440, so this was never a clipping bug. The beat is doing the job it was
+     * authored for: `reclamation.01.held-paper`'s is "The yards are already
+     * yours. Nobody has read the paperwork." That is a situation, not an
+     * assignment, and a player scanning nine rows cannot tell from it what any
+     * of them will ask them to DO.
+     *
+     * The primary objective already says exactly that, in authored prose that
+     * `validateCampaign` checks and `campaign-maps.spec.ts` builds — "Destroy
+     * the Allied survey tap". So this costs no new content and cannot drift
+     * from the operation, which a second hand-written summary field would.
+     *
+     * `briefingObjectives` rather than `objectives[0]`: it puts primaries
+     * first AND drops hidden rows. A primary cannot be hidden today, so the
+     * filter is belt-and-braces — but this row must never be the one screen
+     * that leaks a hidden objective, which is the defect the briefing shipped
+     * with and that function exists to close.
+     */
+    if (!locked) {
+      const primary = briefingObjectives(op.objectives).find((o) => o.kind === 'primary');
+      if (primary !== undefined) {
+        text.appendChild(el('span', 'vm-camp-op-task', primary.title));
+      }
+    }
     rowEl.appendChild(text);
 
     rowEl.appendChild(el('span', 'vm-camp-op-par', parLabel(op.parSec)));
