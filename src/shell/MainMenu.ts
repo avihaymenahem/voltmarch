@@ -212,10 +212,6 @@ export class MainMenuScreen implements Screen {
       onClick: () => this.shell.openSettings('menu'),
     }));
 
-    nav.appendChild(button('Credits', {
-      iconName: 'info',
-      onClick: () => this.shell.openCredits(),
-    }));
 
     nav.appendChild(button('Quit', {
       iconName: 'power',
@@ -449,46 +445,3 @@ export const CREDITS: readonly CreditGroup[] = [
     ],
   },
 ];
-
-export class CreditsScreen implements Screen {
-  readonly id = 'credits';
-  private host: HTMLElement | null = null;
-
-  constructor(private readonly shell: Shell) {}
-
-  mount(host: HTMLElement): void {
-    this.host = host;
-    host.classList.add('vm-page');
-
-    const frame = pageFrame('Credits', () => this.shell.showMenu());
-    const wrap = el('div', 'vm-credits');
-
-    for (const group of CREDITS) {
-      const g = el('div', 'vm-credits-group');
-      g.appendChild(el('h3', 'vm-h3', group.title));
-      const list = el('ul', 'vm-credits-list');
-      for (const line of group.lines) list.appendChild(el('li', undefined, line));
-      g.appendChild(list);
-      wrap.appendChild(g);
-    }
-
-    frame.body.appendChild(wrap);
-    frame.foot.appendChild(el('div', 'vm-spacer'));
-    frame.foot.appendChild(button('Back', {
-      variant: 'primary',
-      onClick: () => this.shell.showMenu(),
-    }));
-
-    host.appendChild(frame.root);
-  }
-
-  unmount(): void {
-    this.host?.classList.remove('vm-page');
-    this.host = null;
-  }
-
-  onBack(): boolean {
-    this.shell.showMenu();
-    return true;
-  }
-}

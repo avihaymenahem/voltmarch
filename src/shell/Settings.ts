@@ -42,6 +42,7 @@ import {
   type RenderQualityTier,
 } from '../render/renderer';
 import { adaptiveLiveScale, setAdaptiveResolution } from '../render/adaptive-res.system';
+import { CREDITS } from './MainMenu';
 import { targetMsForCap } from '../render/HardwareCalibration';
 import { audio } from '../audio/AudioEngine';
 import { CAMERA_NAV } from '../core/config';
@@ -365,7 +366,7 @@ export function panelBlurHint(mode: PanelBlurChoice): string {
  * in `Shell.ts` and an unknown name silently degrades to `info`, so naming a
  * real one is the difference between six distinct glyphs and five.
  */
-type TabId = 'graphics' | 'audio' | 'gameplay' | 'controls' | 'manual' | 'diagnostics';
+type TabId = 'graphics' | 'audio' | 'gameplay' | 'controls' | 'manual' | 'credits' | 'diagnostics';
 
 const TABS: ReadonlyArray<{ id: TabId; label: string; icon: string }> = [
   { id: 'graphics', label: 'Graphics', icon: 'monitor' },
@@ -373,6 +374,7 @@ const TABS: ReadonlyArray<{ id: TabId; label: string; icon: string }> = [
   { id: 'gameplay', label: 'Gameplay', icon: 'target' },
   { id: 'controls', label: 'Controls', icon: 'keyboard' },
   { id: 'manual', label: 'Manual', icon: 'folder' },
+  { id: 'credits', label: 'Credits', icon: 'info' },
   { id: 'diagnostics', label: 'Diagnostics', icon: 'gauge' },
 ];
 
@@ -542,7 +544,7 @@ export class SettingsScreen implements Screen {
         // button is hidden. The guard is here anyway because `button()` attaches
         // its handler unconditionally — see the block in `Shell.ts#button`.
         const tab = this.tab;
-        if (tab === 'manual') return;
+        if (tab === 'manual' || tab === 'credits') return;
         /*
          * DIAGNOSTICS OWNS EXACTLY ONE PERSISTED ROW — `graphics.perfOverlay`.
          * `reset()` takes a SECTION, and the section this tab's row lives in is
@@ -701,6 +703,7 @@ export class SettingsScreen implements Screen {
       case 'gameplay': this.renderGameplay(body); break;
       case 'controls': this.renderControls(body); break;
       case 'manual': this.renderManual(body); break;
+      case 'credits': this.renderCredits(body); break;
       case 'diagnostics': this.renderDiagnostics(body); break;
       default: break;
     }
@@ -708,7 +711,11 @@ export class SettingsScreen implements Screen {
 
   /** Footer buttons that are not offered on every tab. */
   private syncFoot(): void {
-    if (this.resetButton !== null) this.resetButton.hidden = this.tab === 'manual';
+    // Neither the Manual nor the Credits tab stores anything, so neither has
+    // anything to restore.
+    if (this.resetButton !== null) {
+      this.resetButton.hidden = this.tab === 'manual' || this.tab === 'credits';
+    }
   }
 
   /* -- manual -------------------------------------------------------------- *
@@ -716,6 +723,33 @@ export class SettingsScreen implements Screen {
    * and `manual-corpus.ts` carry the argument for the split; the short version
    * is that 306 kB of prose must not sit in the chunk every player downloads.
    * ------------------------------------------------------------------------ */
+
+  /**
+   * The credits, as a tab rather than a top-level screen.
+   *
+   * MOVED OFF THE MAIN MENU BECAUSE THE MENU GREW. It was ten entries; Campaign
+   * and Replays both landed there this month, and Credits is the one nobody
+   * opens twice. It reads exactly as it did — same `CREDITS` table, same markup,
+   * same classes — so `shell.css`'s `.vm-credits*` rules are untouched.
+   *
+   * `CREDITS` STAYS IN `MainMenu.ts` DELIBERATELY. It is the data, not the
+   * screen, and `tests/credits-truthful.spec.ts` imports it from there to check
+   * every line against what is actually in `public/`. Moving the table to chase
+   * the view would have made that spec's import a lie about where the credits
+   * live, for no gain — this file already imports plenty from its siblings.
+   */
+  private renderCredits(body: HTMLElement): void {
+    const wrap = el('div', 'vm-credits');
+    for (const group of CREDITS) {
+      const g = el('div', 'vm-credits-group');
+      g.appendChild(el('h3', 'vm-h3', group.title));
+      const list = el('ul', 'vm-credits-list');
+      for (const line of group.lines) list.appendChild(el('li', undefined, line));
+      g.appendChild(list);
+      wrap.appendChild(g);
+    }
+    body.appendChild(wrap);
+  }
 
   private renderManual(body: HTMLElement): void {
     const view = new ManualView({

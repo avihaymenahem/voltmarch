@@ -84,7 +84,7 @@ import { targetMsForCap } from '../render/HardwareCalibration';
 import { describeCalibration, type CalibrationResult } from '../render/HardwareCalibration';
 
 import { applySettings, SettingsScreen } from './Settings';
-import { CreditsScreen, MainMenuScreen } from './MainMenu';
+import { MainMenuScreen } from './MainMenu';
 import { SkirmishSetupScreen } from './SkirmishSetup';
 import { MultiplayerSetup } from './MultiplayerSetup';
 import {
@@ -1943,9 +1943,6 @@ export class Shell {
     this.show(new SettingsScreen(this, returnTo), 'settings');
   }
 
-  openCredits(): void {
-    this.show(new CreditsScreen(this), 'credits');
-  }
 
   /**
    * Open the missions and unlocks board.
