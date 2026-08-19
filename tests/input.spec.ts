@@ -11,7 +11,7 @@
  * driven by a deterministic pinhole instead of a real CameraRig.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { CELL, MAX_SELECTION } from '../src/core/config';
 import { Channels } from '../src/core/events';
@@ -23,6 +23,7 @@ import {
 import type { Command, EntityId, ITerrain, PlayerId } from '../src/core/types';
 
 import { CursorKind } from '../src/input/Input';
+import { CaptureService, captureService, setCaptureService } from '../src/sim/Capture';
 import {
   Selection, SelectMode, isEnemyOf, pickEntity, type ScreenProjector,
 } from '../src/input/Selection';
@@ -70,8 +71,26 @@ function makeRig(): Rig {
   const me = world.addPlayer(Faction.Allies, 'Me', true, true);
   const foe = world.addPlayer(Faction.Soviets, 'Foe', false, false);
   const sel = new Selection(world, channels);
+  /*
+   * A REAL `CaptureService`, because the CURSOR now asks it.
+   *
+   * `resolveContextOrder`'s two capture branches call
+   * `CaptureService.isCapturable` — the only query that consults `addVeto`, and
+   * the one that also refuses `UnderConstruction` and `PendingDestroy`. It
+   * degrades to "not capturable" with no service installed, deliberately and on
+   * the same argument the garrison branch makes about itself: a world with no
+   * capture system genuinely cannot capture, and a cursor promising otherwise is
+   * a lie the walk cannot deliver.
+   *
+   * So this rig has to hold one or it is asking the resolver about a game the
+   * product does not ship. `tests/civilians.spec.ts` builds one for exactly the
+   * same reason.
+   */
+  setCaptureService(new CaptureService(world, channels));
   return { world, channels, sel, me, foe };
 }
+
+afterEach(() => { setCaptureService(null); });
 
 /** Spawn a tank-ish vehicle. */
 function tank(rig: Rig, owner: PlayerId, x: number, z: number, defId = 1): EntityId {
@@ -392,6 +411,50 @@ describe('resolveContextOrder', () => {
     const r = resolveAt(rig, b, 60, 60);
     expect(r.order).toBe(OrderKind.Capture);
     expect(r.target).toBe(b);
+  });
+
+  it('offers Attack, not Capture, when a VETO forbids taking that structure', () => {
+    /*
+     * `CaptureService.isCapturable` is the only query that consults `addVeto`,
+     * and until the cursor called it the hook was invisible to the player.
+     * `Garrison.ts` installs one in the shipped game — an occupied strongpoint
+     * must be emptied before it changes hands — so this was already live: the
+     * glyph said Capture, the engineer walked the whole way, and `resolve`
+     * refused it on arrival with nothing said in between.
+     */
+    const rig = makeRig();
+    rig.sel.select(engineer(rig, rig.me, 10, 10), SelectMode.Replace);
+    const b = building(rig, rig.foe, 60, 60);
+
+    // The falsifier first: without the veto this same click IS a capture, so a
+    // pass below cannot be the branch simply never firing.
+    expect(resolveAt(rig, b, 60, 60).order).toBe(OrderKind.Capture);
+
+    const off = captureService()!.addVeto((t) => t === b);
+    try {
+      const r = resolveAt(rig, b, 60, 60);
+      expect(r.order, 'a vetoed structure is not a capture').not.toBe(OrderKind.Capture);
+      expect(r.cursor).not.toBe(CursorKind.Capture);
+      // An ENGINEER-ONLY selection cannot shoot, so the honest fall-through is
+      // Move rather than Attack — `caps.canAttack` is false and the attack
+      // branch is skipped. Put a gun in the selection and it IS an attack,
+      // which is the pair that says the fall-through is reaching the right rule
+      // rather than merely leaving the capture branch.
+      expect(r.order).toBe(OrderKind.Move);
+      rig.sel.select(tank(rig, rig.me, 12, 12), SelectMode.Add);
+      expect(resolveAt(rig, b, 60, 60).order, 'with a gun in the group').toBe(OrderKind.Attack);
+    } finally { off(); }
+  });
+
+  it('offers Attack, not Capture, on a structure still UnderConstruction', () => {
+    // The other half `isCapturable` knows and the cursor did not. `resolve`
+    // refuses an unfinished building outright, so the walk was always wasted.
+    const rig = makeRig();
+    rig.sel.select(engineer(rig, rig.me, 10, 10), SelectMode.Replace);
+    const b = building(rig, rig.foe, 60, 60);
+    expect(resolveAt(rig, b, 60, 60).order, 'the falsifier').toBe(OrderKind.Capture);
+    rig.world.store.flags[rig.world.store.index(b)] |= EntityFlag.UnderConstruction;
+    expect(resolveAt(rig, b, 60, 60).order).not.toBe(OrderKind.Capture);
   });
 
   it('is Repair when an engineer points at a damaged friendly structure', () => {

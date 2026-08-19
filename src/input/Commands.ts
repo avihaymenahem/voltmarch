@@ -99,6 +99,7 @@ import { relocateSeamOf, snapRallyClear } from '../sim/Placement';
 // the wall and stand there, which is precisely the failure this module's
 // header says is "structurally impossible".
 import { GARRISON, garrisonService } from '../sim/Garrison';
+import { captureService } from '../sim/Capture';
 import { CursorKind } from './Input';
 import { canInteractWith, isEnemyOf } from './Selection';
 
@@ -598,6 +599,19 @@ export function gatherOccupiedGarrisons(
  * resolver needs is "allied because we are on the same side" versus "allied
  * because it is scenery", and only the faction can tell them apart.
  */
+/**
+ * Would `CaptureService` actually accept a capture of `target` right now?
+ *
+ * The cursor's own tests answer "is this a building somebody else owns"; this
+ * answers the question the SIM will ask when the engineer arrives — including
+ * `UnderConstruction`, `PendingDestroy` and every installed veto. Keeping the
+ * two in step is what stops the glyph promising something the walk cannot
+ * deliver.
+ */
+function capturableNow(world: World, target: EntityId): boolean {
+  return captureService()?.isCapturable(target, world.localPlayer) ?? false;
+}
+
 function isNeutralOwned(world: World, i: number): boolean {
   const p = world.players[world.store.owner[i]];
   return p !== undefined && p.faction === Faction.Neutral;
@@ -749,7 +763,22 @@ export function resolveContextOrder(
 
     if (hoverEnemy) {
       // An engineer takes a structure; everyone else shoots it.
-      if (isBuilding && caps.canCapture) {
+      //
+      // ASKS THE SERVICE RATHER THAN RE-DERIVING ELIGIBILITY, exactly as the
+      // garrison branch below does and for the same reason. `isCapturable` is
+      // the ONLY query that consults `addVeto`, and until this line it had
+      // **zero production callers** — so `Garrison`'s veto (an occupied
+      // strongpoint must be emptied before it changes hands) was already
+      // invisible to the cursor: the player got a Capture glyph, the engineer
+      // walked the whole way, and `resolve` refused it on arrival. It also
+      // refuses `UnderConstruction` and `PendingDestroy`, neither of which the
+      // cursor was testing.
+      //
+      // `?? false` when no service is installed, NOT `?? true`. A world with no
+      // capture system genuinely cannot capture, and the honest cursor for it is
+      // the one the player already gets — the garrison branch settles this
+      // question the same way in its own header.
+      if (isBuilding && caps.canCapture && capturableNow(world, hover)) {
         out.order = OrderKind.Capture;
         out.target = hover;
         out.cursor = CursorKind.Capture;
@@ -806,7 +835,8 @@ export function resolveContextOrder(
      * eligibility, and answers Move when no service is installed. That is not
      * a stub: a world with no garrison system genuinely cannot garrison, and
      * the honest cursor for it is the one the player already gets.            */
-    if (isBuilding && !hoverEnemy && !hoverOwn && caps.canCapture && isNeutralOwned(world, hi)) {
+    if (isBuilding && !hoverEnemy && !hoverOwn && caps.canCapture && isNeutralOwned(world, hi)
+      && capturableNow(world, hover)) {
       out.order = OrderKind.Capture;
       out.target = hover;
       out.cursor = CursorKind.Capture;
