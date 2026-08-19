@@ -190,15 +190,52 @@ with no number is untracked, and that is itself the bug.
   Battery is now too dominant is the open follow-up, and it is a question about its price and tier,
   not its row.**
 
-  What remains of #50, both behaviour rather than data:
+  **MEASURED END TO END 2026-08-19, AND THE LOITER ENTRY WAS WRONG.** It read *"the fix is a way
+  OUT the player and the AI can both issue"*. The player already has one and it works first try:
+  `Targeting.managesGoal` is false under `UnitState.Moving`, so a plain move order pulls a parked
+  aircraft out and nothing drags it back. Measured at 50% hp against eight G.I.s — left at 8.20 s,
+  survived at 32%, ended 138 m away, never returned.
 
-  - **The loiter has no way out.** `Targeting` parks an attacker at `range * 0.80` and it stays
-    until one side is dead, so an aircraft still cannot disengage. The multiplier bought it ~4×
-    longer to be wrong in; it did not give it a verb. The fix is a way OUT the player and the AI can
-    both issue — never a rule forbidding staying.
-  - **The 8 m overhead blind cone.** `COMBAT_WEAPONS.maxElevationDeg` is 62, so a projectile weapon
-    cannot hit an aircraft directly above it at all; the safest place for an aircraft is over the
-    battery. Measured, not derived — quote 8 m, not the 11.70 the centre-line geometry gives.
+  The pass also found a **third and worse defect, now CLOSED** (6f91cff): the Interceptor's
+  autocannon is the one aircraft weapon firing a plain `Bullet`, and `Combat.engage`'s
+  `minElevationDeg` clamp of -12 degrees against a required -53 meant it had **never landed a round
+  on the ground in any shipped build** — while `Targeting` acquired ground targets for it and
+  `approach` drove it into the anti-air. `WeaponDef.canTargetGround` closes it at zero balance cost.
+
+  What actually remains of #50:
+
+  - **A SHORT retreat is undone, and that is the real loiter complaint.** Pull an aircraft back 8 m
+    and it flies to 29.25 m, then `NavAssigner` re-takes the post at the arrival point and
+    `Targeting.holdPost` re-engages inside `STANCE_CHASE_METRES[Aggressive]` 18 + `range * 0.80`
+    = **36.4 m**, dragging it to 21.5 m and holding it there. At 25 m and 60 m it stays put. So the
+    natural gesture fails and the player must move it past ~36 m in ONE order.
+
+    Two answers and the cheap one may be enough. **Free:** Defensive already keeps a short retreat
+    (measured: stayed at 28.5 m), so the fix is telling players Defensive is the aircraft stance —
+    a wiki line or a tip row, not code. **Cheaper still and untested:** make Defensive the SPAWN
+    default for `Locomotor.Air` in `Production.ts`; `approach` closes on an explicit attack order
+    in every stance but `HoldGround`, so the hull loses nothing but the auto-chase. That is a sim
+    rule (stance is hashed world state) — deterministic, but it changes existing replays, and it
+    wants measuring before it is taken. **Sim fix, if the above is not enough:** skip
+    `Locomotor.Air` in `holdPost`'s chase branch.
+  - **The AI's air withdrawal.** `AiBrain.withdrawWounded` DOES reach aircraft — "the AI has no
+    aircraft micro" was a guess and it is false — but it has nothing air-aware: the measured window
+    under thirty percent is **2.07 s** against a 0.2 s poll that moves one hull per pass, rolls
+    against discipline, and lets any worse-off tank take the slot. In flight.
+  - **The overhead blind cone is PER ROUND, not one number.** Bullet 8–10 m, Rocket 2–9 m,
+    Beam/Tesla ~0. Only the exact zero-distance column fails for everything, which is degenerate.
+    And the severity is bounded: the smallest standoff `approach` produces is 13.6 m of surface
+    distance against a largest cone of 10 m, so **an aircraft that parks on its own target is never
+    inside the cone of a shooter standing at that target** — reaching the blind spot takes a manual
+    move. What it costs passively is that any defender within 8–10 m of the park point fires blanks,
+    invisibly. **Do not raise `maxElevationDeg` globally**: `MIN_ELEV`/`MAX_ELEV` are module-scope
+    and feed every launch vector, `ballisticArc`'s clamp for every Shell, and the rendered
+    `barrelPitch` — and closing the cone for the four line-infantry rifles re-opens ceiling B of
+    `air-multiplier.spec.ts`. Targeted shapes: exempt the clamp when exactly one of shooter/target
+    is airborne, or add per-row elevation overrides.
+  - **`AttackMove` does not loiter; only `OrderKind.Attack` does.** `holdPost` early-returns for any
+    state but Idle/Guarding. `AiBrain.pressAttack` sends waves with AttackMove, so the loiter is
+    overwhelmingly PLAYER-facing — a right-click on an enemy.
 - **#27 — the AI owns no engineer**, so `Capture` is unreachable for it. The def exists with weight 0
   and `buildUnits` filters `weight <= 0`. Giving the brain the verb alone would hand it to a unit
   that never exists; buying one, escorting it and choosing a building is a feature.
