@@ -99,15 +99,17 @@ its operations you have finished; each operation is a row with its par time and 
 | 02 | The Long Count | The Crust | 14 | 2 | 2 |
 | 03 | The Concession | The Crust | 15 | 2 | 2 |
 | 04 | In the Clear | The Crust | 16 | 2 | 2 |
+| 05 | The Open Count | The Crust | 17 | 2 | 2 |
 | 01 | Held Paper | Salvage Rights | 13 | 1 | 2 |
 | 02 | Written Off | Salvage Rights | 14 | 1 | 2 |
 | 03 | Sold Twice | Salvage Rights | 15 | 1 | 2 |
 | 04 | Served Notice | Salvage Rights | 16 | 2 | 1 |
+| 05 | Closing Entry | Salvage Rights | 17 | 2 | 1 |
 
-**That is 20 of a planned 37 operations, and this page will not pretend otherwise.** The twenty add
-up to 303 minutes of authored par; the full table is meant to reach 10 hours. All four chapters now
-have at least one operation, so all four have a card on the campaign screen — but none of them is
-finished, and the shortest is four operations long.
+**That is 22 of a planned 37 operations, and this page will not pretend otherwise.** The
+twenty-two add up to 337 minutes of authored par; the full table is meant to reach 10 hours.
+All four chapters now have at least one operation, so all four have a card on the campaign
+screen — but none of them is finished, and the shortest is five operations long.
 
 Read the table above as what exists, not the 37 as a promise. The number is the plan the content is
 being authored against, and it is quoted here because a manual that quietly implied a finished

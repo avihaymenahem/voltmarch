@@ -324,33 +324,47 @@ export default layout({
      * 3. THE DISTRICT OFFICE
      *
      * The objective, and the reason the operation is an assault rather than
-     * a hold. A mast, a power plant standing behind it, two specialist
-     * towers, two concrete boxes, a watch detachment, and a wall across the
-     * face the player will arrive at. "The transformer that FEEDS it" is
-     * what this line used to say and it is not a relation this engine has;
-     * see below.
+     * a hold. A mast, a power plant standing behind it, FOUR concrete gun
+     * posts, a watch detachment, and a wall across the face the player will
+     * arrive at. "The transformer that FEEDS it" is what this line used to
+     * say and it is not a relation this engine has; see below.
+     *
+     * **IT WAS TWO GUN POSTS AND TWO SPECIALIST TOWERS UNTIL 2026-08-19**,
+     * and the towers are what made the operation unplayable. The whole
+     * measurement is above the four `pillbox` calls below; the short version
+     * is that `keyFor` gives a SOVIET seat a Tesla Coil for that row, one
+     * bolt kills TWO 85 hp Reclamation infantrymen at a range nothing the
+     * player owns can answer, and every force the opening bank can buy died
+     * to the pair without scratching them.
      *
      * **THE TRANSFORMER IS A PRIZE, NOT A SWITCH, AND THIS BLOCK CLAIMED
      * THE OPPOSITE.** It read: any structure that DRAWS power and is dark
      * cannot fire (`src/sim/Combat.ts`, the universal tier), so killing
      * this power plant silences the two specialist towers outright. The
      * rule is real; the inference is false, because `PowerGrid` is PER
-     * PLAYER and not per lot. Measured on the built world, this plant is
-     * 100 of seat 1's 700 against a draw of 585, so taking it leaves 600
-     * against 585 and `shed` — which runs only when `consumed > produced`
-     * — never runs at all. The towers stay lit.
+     * PLAYER and not per lot. Measured on the built world at the time,
+     * this plant was 100 of seat 1's 700 against a draw of 585, so taking
+     * it left 600 against 585 and `shed` — which runs only when
+     * `consumed > produced` — never ran at all. The towers stayed lit.
      *
-     * **AND NO ARRANGEMENT OF THIS FILE CAN CHANGE THAT**, which is why
-     * the composition below is unchanged. Both bounds are outside the
-     * layout: 100 is a `powerPlant`, 75 is the `teslaCoil` the two towers
-     * resolve to (and `shed` needs a deficit ABOVE one tower's draw to
-     * darken the second), and 40 is `AI_ECONOMY.powerHeadroom`, which the
-     * garrison's brain restores as its FIRST build interrupt — measured,
-     * an opening margin of 15 is back to 195 one minute later. The
-     * operation file's header carries the full trace, the second wall (the
-     * garrison base's own three `teslaCoil` outrank these two on slot, so
-     * an induced deficit darkens coils 110 m up the road instead), and the
-     * configuration that WOULD work with the reason it was refused.
+     * **THAT ARGUMENT ONLY GOT STRONGER WHEN THE TOWERS LEFT.** The two
+     * coils drew 75 each, so seat 1's opening draw is **435** against the
+     * same supply of 700 — margin 265 rather than 115, re-measured on the
+     * built world — and there is now nothing in this compound that a
+     * blackout could silence at all: `pillbox` is `power: 0` in all four
+     * columns. Every margin figure in the operation file's WALL 1 trace is
+     * therefore a LOWER BOUND on what the shipped layout produces, +150.
+     *
+     * **AND NO ARRANGEMENT OF THIS FILE COULD EVER HAVE CHANGED IT.** Both
+     * bounds are outside the layout: 100 is a `powerPlant` and 40 is
+     * `AI_ECONOMY.powerHeadroom`, which the garrison's brain restores as
+     * its FIRST build interrupt — measured, an opening margin of 15 is back
+     * to 195 one minute later. The operation file's header carries the full
+     * trace, the second wall (the garrison base's own three `teslaCoil` —
+     * which are still there, and are what `roster.ai` is really protecting —
+     * outranked these two on slot, so an induced deficit darkened coils
+     * 110 m up the road instead), and the configuration that WOULD work
+     * with the reason it was refused.
      *
      * What the plant IS, is the only structure on this map worth more to
      * the player than to its owner: 100 power against seat 0's whole
@@ -364,10 +378,21 @@ export default layout({
      * fills every opponent seat from `op.foe`, which for this operation is
      * `Faction.Soviets`. Role keys stay anyway, because a LAYOUT is geometry
      * authored once and `keyFor` is what makes the same compound legible for
-     * whichever army the operation names — turning `prismTower` into that
-     * army's specialist tower and `radar` into its mast. Naming a def here
-     * would pin the ground to one foe in a second place, and two places that
-     * have to agree are how they come to disagree.
+     * whichever army the operation names — turning `pillbox` into that army's
+     * cheap emplacement and `radar` into its mast. Naming a def here would pin
+     * the ground to one foe in a second place, and two places that have to
+     * agree are how they come to disagree.
+     *
+     * **BUT A ROLE KEY IS A PROMISE ABOUT THE ROLE AND NOT ABOUT THE GUN, AND
+     * THAT IS WHAT COST THIS OPERATION ITS FIRST YEAR.** The four columns of
+     * the `pillbox` row all fire a ~50-per-pull single-target weapon at 20-24 m
+     * (`pillboxMg` / `pillboxMg` / `glaiveRepeater` / `postCoil`), so this
+     * composition means the same thing whoever is seated. The four columns of
+     * the `prismTower` row do NOT: 34 m of single-target beam for the Allies
+     * against 30 m of three-victim chain for the Soviets. **Check the resolved
+     * weapon of every emplacement a layout places, per seat, against the army
+     * the player is actually holding** — `tests/campaign-emplacement-reach.spec.ts`
+     * is the gate that does it now.
      * ================================================================== */
     const officeAt = at(OFFICE);
     // Facing back down the road at the player. Every structure in the compound
@@ -391,14 +416,102 @@ export default layout({
     // the thing it does not expect to be shot at.
     raise(garrison, 'powerPlant', spot(-24, 10), 'transformer', outward, 18);
 
-    // The two specialist towers. This said "the two that go dark" and they do
-    // not — see the block above. `prismTower` is `struct.defence.specialist`,
-    // which is TAGGED — the operation's `roster.ai` names it, and if that line
-    // is ever removed `spawnBuilding` refuses these two and they silently do not
-    // exist. They sit on the flanks rather than on the axis, so the ends of the
-    // wall are what they cover.
-    raise(garrison, 'prismTower', spot(16, 20), null, outward, 14);
-    raise(garrison, 'prismTower', spot(16, -20), null, outward, 14);
+    /*
+     * THE FLANK POSTS. **THESE WERE TWO `prismTower` KEYS UNTIL 2026-08-19 AND
+     * THE OPERATION WAS UNPLAYABLE BECAUSE OF THEM.** Reported as *"Held Paper
+     * is almost impossible if we won't balance the gunfighter insane amount of
+     * damage"*.
+     *
+     * `keyFor` resolves `prismTower` against the SEATED ARMY, and the four
+     * columns of that row are not four skins of one gun. Measured off the
+     * shipped tables, per trigger pull against `ArmorClass.Infantry` and
+     * through `COMBAT_DAMAGE.globalMul`:
+     *
+     *     army       def          weapon          range   per pull   victims
+     *     Allies     prismTower   prismTowerBeam    34      101.2        1
+     *     Meridian   mrdHelios    heliosLance       33      102.1        1
+     *     Soviets    teslaCoil    teslaBolt         30      153.6        3
+     *     Reclaim    rclPylon     pylonArc          28      120.3        4
+     *
+     * `op.foe` is `Faction.Soviets`, so this compound was raising **Tesla
+     * Coils**: `chainCount: 2`, so one pull writes three damage records at
+     * 153.6 / 92.2 / 55.3 (`COMBAT_WEAPONS.teslaChainFalloff` 0.6). A Scrap
+     * Picker and a Tinker are **85 hp**, so the SECOND link kills as well as
+     * the first — this army is one of only four infantry rows in the game a
+     * single bolt takes two of, and two of those four are the two units this
+     * operation is played with.
+     *
+     * **AND THE PLAYER HAS NOTHING THAT REACHES 30 m.** `arcProd` is 14,
+     * `slagCharge` 12, `spitCoil` 16, so a Picker walks 16 m under fire it
+     * cannot answer. Staged in the engine against the two towers ALONE —
+     * nothing else on the ground, attackers on the real bearing from the
+     * Rookery, real `Targeting`/`Combat`/`Projectiles`/`Damage`:
+     *
+     * **THE RIG IS GENEROUS TO THE PLAYER AND THAT IS THE POINT.** The approach
+     * is a straight line at each hull's own `maxSpeed` with no pathing, no
+     * crowding and the wall already flanked, and an armed attacker parks at
+     * `range * 0.80` exactly as `Targeting.approach` would. "Arrive" means
+     * reached the mast ground. So every figure below is a BEST CASE, and the
+     * left-hand column is a best case in which nothing survives.
+     *
+     *                          teslaCoil x2            pillbox->sentryGun x2
+     *     9 Scrap Pickers      9 dead, 12.5 s,         5 dead, 4 arrive,
+     *       (810 cr, the         0 damage dealt          one post destroyed
+     *        opening army)
+     *     20 Pickers           20 dead, 23.6 s          2 dead, 18 arrive
+     *     33 Pickers           33 dead, 32.6 s          6 dead, 27 arrive
+     *       (2970 cr, the
+     *        whole bank)
+     *     8 Slaggers           8 dead, 13.5 s,         2 dead, 6 arrive
+     *       (3040 cr)            27 of 1400 hp
+     *     8 Arcspitters        8 dead, 23.1 s          1 dead, 7 arrive
+     *       (3360 cr)
+     *
+     * Every force the 3000-credit bank can buy died to two structures, and the
+     * cheapest of them dealt ZERO damage doing it. That is the report, and it
+     * is a property of the WEAPON rather than of the compound: with the towers
+     * removed entirely the watch and the two boxes still kill nine Pickers in
+     * 15.1 s.
+     *
+     * **AND THE OPERATION'S OWN DESIGNED WIN ROUTE IS THE ONE THAT MOVED MOST.**
+     * `t.win` counts deeds, so four Tinkers taking the mast is the authored
+     * answer. Same rig, watch already cleared, escorted by the nine Pickers the
+     * player opens with:
+     *
+     *     four Tinkers + nine Pickers      reach the mast   lost   posts down
+     *       teslaCoil x2                        0 of 4       13         0
+     *       pillbox->sentryGun x2               4 of 4        6         1
+     *       no flank guns at all (control)      4 of 4        0         -
+     *
+     * Zero to four. **Unescorted, four Tinkers still die in both columns** (6.1 s
+     * against the coils, 12.0 s against the posts) — walking engineers into a
+     * live gun line is not supposed to work, and the fix does not make it work.
+     *
+     * **TWO OTHER CANDIDATES WERE MEASURED AND REJECTED, IN THE SAME RIG.**
+     * ONE Tesla Coil instead of two still kills all nine Pickers in 12.5 s —
+     * halving it is not the fix, because the 30 m envelope and the two-per-pull
+     * arithmetic are what does the work. `flameTower` (600 cr, `flameJet` at
+     * 18 m) is too soft the other way: 33 Pickers take ZERO losses and 8
+     * Slaggers take zero, so it cannot make the player pay for going round the
+     * end of the wall at all.
+     *
+     * So `pillbox` — the ROLE key, `sentryGun` on this seat — at 480 hp,
+     * `pillboxMg` at 22 m, `power: 0`, no chain, and 52.0 per pull, which is
+     * UNDER a Scrap Picker's 85. It kills sequentially and one pull is not one
+     * man. Four cheap posts hold the compound now rather than two posts and two
+     * towers, and 22 m against the Picker's 14 leaves 8 m of unanswered
+     * approach where the coils left 16.
+     *
+     * **THE COMPOUND KEEPS ITS TEETH AND THE WALL KEEPS ITS PRICE.** A column
+     * that goes round the end still arrives 14 m from a post, inside 22.
+     *
+     * `pillbox` is UNTAGGED in every army's column, so unlike the row it
+     * replaces no roster can withhold these — see the note on `roster.ai` in
+     * the operation file, which is about the garrison BASE's three Tesla Coils
+     * and not about anything in this compound.
+     */
+    raise(garrison, 'pillbox', spot(16, 20), null, outward, 14);
+    raise(garrison, 'pillbox', spot(16, -20), null, outward, 14);
 
     // The two concrete boxes. Untagged content, so no roster can withhold them,
     // and `power: 0` in every army's column — which was chosen so a blackout
@@ -412,8 +525,8 @@ export default layout({
      *
      * **IT DOES NOT SEAL THE COMPOUND AND IS NOT MEANT TO.** Sixty metres of
      * frontage against an open flank is not a barrier, it is a PRICE: a hull
-     * column that goes round the end arrives 14 m from a tower, at the range
-     * those towers are for, with no way to back out of it. Going through costs
+     * column that goes round the end arrives 14 m from a flank post, inside
+     * `pillboxMg`'s 22 m, with no way to back out of it. Going through costs
      * Slaggers, whose own blurb is "the only thing that hurts a wall" and who
      * come out of the Rookery the player already holds. Both answers are
      * ungated and affordable and neither is free, which is the whole of what
@@ -444,8 +557,12 @@ export default layout({
      * holds each id is exact by construction.
      *
      * Both files sit clear of every footprint above: the infantry rank at
-     * v = -26..-16 is 6.8 m off the near tower, the two hulls at v = +26 and
-     * +34 are 11.7 m off the far one.
+     * v = -26..-16 is 6.8 m off the near flank post, the two hulls at v = +26
+     * and +34 are 11.7 m off the far one. Those two clearances were measured
+     * against the Tesla Coil footprint the flanks used to carry, and they are
+     * unchanged: `teslaCoil` and `sentryGun` are both `w: 1, h: 1` in
+     * `BUILDING_DIMENSIONS`, and the built world puts the replacements on the
+     * same two points, 26.1 m from the mast.
      */
     for (let i = 0; i < 6; i++) {
       const p = spot(6 + (i / 3 | 0) * 5, -26 + (i % 3) * 5);

@@ -53,17 +53,59 @@
  * would be dead content on a passive run.
  *
  * ============================================================================
+ * `op.foe` CHOOSES THE GUN, NOT ONLY THE SILHOUETTE, AND THIS OPERATION SHIPPED
+ * UNWINNABLE BECAUSE NOBODY MEASURED WHICH GUN
+ * ============================================================================
+ * Reported as *"Held Paper is almost impossible if we won't balance the
+ * gunfighter insane amount of damage"*, 2026-08-19. True, and the cause was
+ * two `prismTower` keys in the layout.
+ *
+ * A layout writes ROLE keys and `ScenarioBuilder.keyFor` resolves them against
+ * the SEATED ARMY. For `pillbox` that is safe: all four columns are a ~50
+ * per-pull single-target gun at 20-24 m, so the composition means one thing
+ * whoever sits there. **For `prismTower` it is not.** The Allied and Pact
+ * columns are single-target beams at 34 and 33 m; the Soviet column is
+ * `teslaCoil`, 30 m of `teslaBolt` with `chainCount: 2`, writing three damage
+ * records of 153.6 / 92.2 / 55.3 against `ArmorClass.Infantry`. This
+ * operation's army is 85 hp Scrap Pickers and 85 hp Tinkers with 12-16 m of
+ * reach, so the SECOND link killed as well as the first and the player crossed
+ * 16 m with no answer at all.
+ *
+ * Staged in the engine against the two towers alone — no watch, no wall, no
+ * boxes — nine Scrap Pickers (the whole opening army) died in 12.5 s having
+ * dealt ZERO damage, and 3040 credits of Slaggers died in 13.5 s having taken
+ * 27 of 1400 hp. The full table, the two rejected alternatives and the after
+ * column are in the layout, above the four `pillbox` calls.
+ *
+ * **THE GENERAL LESSON IS THE ONE THIS FILE'S `foe` COMMENT GOT WRONG**: it
+ * checked that every column of the row held the same POWER shape and concluded
+ * the choice was "mechanically free". Check the resolved WEAPON — range, per
+ * pull against the armour class the player actually fields, and chain — against
+ * the reach the player's own roster affords.
+ * `tests/campaign-emplacement-reach.spec.ts` is the gate.
+ *
+ * ============================================================================
  * THE HIDDEN SECONDARY WAS A BLACKOUT. IT IS A CAPTURE, AND THE BLACKOUT IS
  * MEASURED DEAD RATHER THAN QUIETLY DROPPED
  * ============================================================================
  * **THE REFUTED CLAIM, KEPT BECAUSE IT SHIPPED AND BECAUSE IT IS THE OBVIOUS
  * ONE TO RE-DERIVE.** This block used to read: a structure that DRAWS power and
- * is dark cannot fire, the office's two specialist towers draw and its two
- * concrete boxes are `power: 0`, so cutting the transformer silences the good
+ * is dark cannot fire, the office's two specialist towers drew and its two
+ * concrete boxes were `power: 0`, so cutting the transformer silences the good
  * half of the compound and leaves the cheap half firing. Every sentence of that
  * is true about `src/sim/Power.ts` and `src/sim/Combat.ts`. **None of it
  * happens here**, and TWO INDEPENDENT WALLS stop it — one of which no layout
  * can move.
+ *
+ * **AND SINCE 2026-08-19 THE PREMISE IS GONE AS WELL AS THE INFERENCE.** The
+ * compound's two specialist towers came out for two more `pillbox`-role posts
+ * — the fight was unplayable, and the layout carries the whole measurement —
+ * so there is no longer ANYTHING in front of the player that draws power.
+ * Every figure in the two walls below was taken with the towers standing and
+ * is kept for exactly that reason: it is the argument that retired the
+ * blackout objective, and re-deriving it is the obvious thing for the next
+ * person to try. Where a number moved, the move is stated in place, and every
+ * one of them moves in the direction that makes the walls taller.
  *
  * The instrument for everything below is `tests/campaign-maps.spec.ts`'s
  * builder with the def tables bound and this operation's own roster installed,
@@ -74,13 +116,18 @@
  * **WALL 1 — THE DEFICIT IS TOO SMALL, AND ITS CEILING IS THE OPPONENT'S OWN
  * DOCTRINE.** `PowerGrid` is PER PLAYER, not per lot: there is no such thing as
  * "one transformer feeding both towers", only one seat's supply against that
- * seat's draw. Seat 1 opens at **supply 700 against draw 585** — seven
+ * seat's draw. Seat 1 opened at **supply 700 against draw 585** — seven
  * `powerPlant` (six in `buildSovietBase`'s core, one tagged `transformer` in the
  * compound) against five `teslaCoil` at -75, two `flameTower`, a `radar`, a
  * refinery, a war factory, a barracks, two silos and the yard. Taking the
- * transformer leaves **600 against 585**, and `shed` runs only when
- * `consumed > produced`, so nothing sheds and the objective completes anyway,
+ * transformer left **600 against 585**, and `shed` runs only when
+ * `consumed > produced`, so nothing shed and the objective completed anyway,
  * because `t.dark` reads the transformer and not the towers.
+ *
+ * **RE-MEASURED ON THE SHIPPED WORLD AFTER THE TOWERS LEFT: 700 AGAINST 435.**
+ * Seat 1 owns THREE `teslaCoil` now, all three at the garrison base, so the
+ * draw is 150 lighter and the opening margin is **265** rather than 115. Every
+ * margin figure below is therefore a lower bound on today's, +150.
  *
  * Lowering that opening margin does not help, and the reason is the opponent
  * rather than the arithmetic. `shed` walks `POWER_SHED_ORDER.defence` while
@@ -109,14 +156,19 @@
  * and eight seconds** against a garrison that mined 26 600 ore in that window,
  * so the denial is not a beat either.
  *
- * **WALL 2 — THE WRONG TOWERS GO DARK ANYWAY.** Seat 1 owns FIVE `teslaCoil`,
+ * **WALL 2 — THE WRONG TOWERS GO DARK ANYWAY.** Seat 1 owned FIVE `teslaCoil`,
  * not two: `SOVIET_DEFENCE` puts three on the line at the garrison base. All
- * five draw 75, and `shed` sorts by (priority, draw descending, slot ascending)
- * — so the base's three, spawned first, are permanently ahead of the compound's
+ * five drew 75, and `shed` sorts by (priority, draw descending, slot ascending)
+ * — so the base's three, spawned first, were permanently ahead of the compound's
  * two. Driven at an induced deficit of 85, the real `shed` darkened the coils at
  * (402, 154) and (390, 142) — **at the base, 116 m and 110 m from the office
  * mast** — and left both compound towers lit. The garrison never builds a sixth
- * over fourteen minutes, so that ordering is fixed for the whole match.
+ * over fourteen minutes, so that ordering was fixed for the whole match.
+ *
+ * **THIS WALL IS NOW ABSOLUTE RATHER THAN MERELY TALL.** The three survivors
+ * are the base's, and they are the only power-drawing defence seat 1 has. A
+ * shed of any depth can only darken guns 110 m up the road from the objective;
+ * there is nothing at the compound left to reach.
  *
  * **WHAT WOULD ACTUALLY WORK, AND WHY IT WAS REFUSED.** Beating the measured
  * margin CEILING of 215 needs three tagged plants (300 of supply), and clearing
@@ -131,10 +183,15 @@
  * change to the fight in both directions to buy a hidden 400-credit secondary.
  *
  * **NO LAYOUT CHANGE THAT ONLY MOVES POWER CAN REACH THIS, BECAUSE NEITHER
- * BOUND IS A LAYOUT VARIABLE**: 100 is a `powerPlant`, 75 is the `teslaCoil`
- * these two towers resolve to, and 40 is doctrine in `src/core/config.ts`. The
- * layout is therefore UNCHANGED, and what changed is the two lines that
- * described a mechanism the world does not have.
+ * BOUND IS A LAYOUT VARIABLE**: 100 is a `powerPlant`, 75 was the `teslaCoil`
+ * those two towers resolved to, and 40 is doctrine in `src/core/config.ts`. So
+ * the layout was left UNCHANGED here, and what changed was the two lines that
+ * described a mechanism the world does not have. **The layout DID change
+ * later, on 2026-08-19, and not for any reason in this section** — the towers
+ * came out because their gun was unanswerable, which is a damage question and
+ * is argued in the layout file. It removes the last power-drawing structure
+ * from the compound as a side effect, which is why both walls above got
+ * taller rather than shorter.
  *
  * **SO THE SECONDARY PAYS IN THE ONE CURRENCY THIS OPERATION IS SHORT OF, AND
  * IT ALREADY DID.** A captured `powerPlant` is **100 power on a seat whose whole
@@ -225,12 +282,18 @@
  * A district that has not noticed anything should not be doing that.
  *
  * **`roster` is asymmetric and both halves are load-bearing.** The garrison has
- * `struct.defence.specialist`, which is what puts the two specialist towers in
- * the compound — remove that line and `spawnBuilding` refuses them and the
- * compound's approach face is two concrete boxes and a wall. That reason USED
- * to be "the hidden secondary has nothing to switch off"; the secondary
- * switches nothing off, and the towers are load-bearing as the compound's teeth
- * rather than as its fuse. The player has `unit.raider` and
+ * `struct.defence.specialist`, and **its reason has now been wrong twice, in
+ * two different ways, so it is MEASURED here rather than asserted.** It first
+ * read "the hidden secondary has nothing to switch off" — false once the
+ * secondary migrated to counting deeds. It then read "it is what puts the two
+ * specialist towers in the compound; remove that line and the approach face is
+ * two concrete boxes and a wall" — true at the time, and wrong about WHICH
+ * structures depend on it. The compound has no tagged structure at all now;
+ * what the line actually protects is the garrison BASE's three `teslaCoil`,
+ * which `SOVIET_DEFENCE` places inside `buildBaseFor`. Built headless with
+ * `roster.ai: []`, seat 1 comes back with **zero** `teslaCoil` and a base whose
+ * only defence is two `flameTower` and two `sentryGun`. Delete the line and you
+ * disarm the base, 110 m up the road, silently. The player has `unit.raider` and
  * nothing else, which is a Reclamation Arcspitter: fast, sixteen metres of
  * reach, no armour, and **only reachable by building the Breaker Yard**. The
  * grant is therefore an argument for the expensive branch rather than a gift.
@@ -412,13 +475,28 @@ const op: OperationDef = {
    *     here spends R4's beat three operations early and leaves the Soviets
    *     unintroduced in a chapter that names them next.
    *
-   * MECHANICALLY IT IS FREE, WHICH IS WHY THE ARGUMENT IS ALLOWED TO BE
-   * LITERARY. `keyFor` gives the compound `teslaCoil` for
-   * `struct.defence.specialist` and `sentryGun` for the two `pillbox`-role
-   * boxes, and the hidden secondary needs exactly that split — a tower that
-   * draws power and a box at `power: 0`. Both hold in every army's column.
+   * **"MECHANICALLY IT IS FREE" WAS THE CLAIM HERE, AND IT WAS FALSE, AND IT
+   * COST THE OPERATION ITS FIGHT.** It read: `keyFor` gives the compound
+   * `teslaCoil` for `struct.defence.specialist` and `sentryGun` for the two
+   * `pillbox`-role boxes, and the hidden secondary needs exactly that split —
+   * a tower that draws power and a box at `power: 0` — and both hold in every
+   * army's column. Every clause of that is true ABOUT POWER. **`op.foe` also
+   * chooses the GUN, and the four columns of the `prismTower` row are not four
+   * skins of one weapon:** 34 m of single-target beam for the Allies, 33 for
+   * the Pact, and for the Soviets 30 m of `teslaBolt` — `chainCount: 2`,
+   * 153.6 / 92.2 / 55.3 per pull against `ArmorClass.Infantry`, so one trigger
+   * kills TWO of the 85 hp infantry this operation is played with. Measured in
+   * the engine, every force the 3000-credit bank buys died to that pair without
+   * scratching them. The compound is four `pillbox`-role posts now and the
+   * layout carries the whole table.
+   *
+   * The two consequences for THIS field: the split it justified no longer
+   * exists (nothing in the compound draws power), and it was never what the
+   * secondary needed anyway — `t.dark` counts deeds. So `foe` really is free
+   * now, and the argument really is allowed to be literary; it was not before.
    * **A briefing author who writes this chapter's prose may overturn this;
-   * they should change the field, not work around it.**
+   * they should change the field, not work around it — and then re-measure the
+   * compound's guns, because that is the half this comment got wrong.**
    */
   foe: Faction.Soviets,
   index: 1,
@@ -454,7 +532,10 @@ const op: OperationDef = {
   roster: {
     // The Arcspitter, and it is behind the 1900-credit branch. See the header.
     player: ['unit.raider'],
-    // The two towers in the office compound. Remove this and they do not exist.
+    // The garrison BASE's three `teslaCoil`, out of `SOVIET_DEFENCE`. Remove
+    // this and they do not exist — measured, `roster.ai: []` builds a base with
+    // none. It used to be the office compound's two towers as well; those are
+    // `pillbox`-role posts now and no roster can touch them. See the header.
     ai: ['struct.defence.specialist'],
   },
 
@@ -559,7 +640,13 @@ const op: OperationDef = {
            * anything in particular. It went on to promise the towers would
            * become ornaments, which the header measures as false in two
            * independent ways. It says the opposite now, explicitly, because a
-           * player who has been told the towers go cold will walk into them.
+           * player who has been told the guns go cold will walk into them.
+           *
+           * **"TWO TOWERS" BECAME "FOUR GUN POSTS" ON 2026-08-19**, when the
+           * layout's two `prismTower` keys — Tesla Coils on this seat — came
+           * out for `pillbox`. The compound draws no power at all now, which
+           * makes the sentence MORE true rather than less: there is nothing in
+           * front of the player that a transformer could have been feeding.
            *
            * What replaces it is the thing that IS true and IS worth 400
            * credits: `t.dark` counts deeds, so a Tinker answers it, and a
@@ -570,9 +657,9 @@ const op: OperationDef = {
            */
           do: 'dialogue',
           speaker: 'Cregg',
-          text: 'Two towers on that compound, and that box behind the mast is the district '
-            + 'transformer. It does not feed them — one district, one pool, and they keep '
-            + 'spares — so breaking it costs them a morning and nothing more. Walk a Tinker '
+          text: 'Four gun posts on that compound, and that box behind the mast is the district '
+            + 'transformer. It does not feed them — those posts run off nothing at all — so '
+            + 'breaking it costs them a morning and nothing more. Walk a Tinker '
             + 'into it and it is a hundred power standing on your paper, against the eighty '
             + 'your Furnace makes. Take it whole.',
         },
@@ -697,8 +784,14 @@ const op: OperationDef = {
            * "Both towers are cold" WAS THE WORST SHAPE A FALSE LINE CAN TAKE:
            * the game told the player the towers were out on the same tick they
            * went on shooting. It fires on the TRIGGER, so whatever it says has
-           * to be true at that instant and not eventually — and the towers are
+           * to be true at that instant and not eventually — and the towers were
            * lit at that instant, measured, every time.
+           *
+           * The towers are gone (2026-08-19, see the layout), so the line no
+           * longer talks about lit and cold at all: `pillbox` is `power: 0` in
+           * all four columns and the compound's four guns have never been on
+           * anybody's grid. "Off their board" still lands, because it is about
+           * the BOOKS.
            *
            * It is now true on both routes, which is what the trigger requires:
            * `t.dark` counts a deed, so the transformer is off seat 1's books
@@ -709,7 +802,7 @@ const op: OperationDef = {
            */
           do: 'dialogue',
           speaker: 'Cregg',
-          text: 'Transformer is off their board. Their towers are still lit — one district, '
+          text: 'Transformer is off their board. Their guns never ran off it — one district, '
             + 'one pool — so that is a hundred power off their books rather than a blackout. '
             + 'It was the best thing in that compound anyway. Go.',
         },
