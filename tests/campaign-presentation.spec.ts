@@ -59,6 +59,7 @@ import type { CampaignSession, ObjectiveRow } from '../src/campaign/session';
 import { CAMPAIGNS } from '../src/campaign/index';
 import { newOperationState } from '../src/campaign/Director';
 import { currentObjectives } from '../src/shell/PauseMenu';
+import { curtainLabels } from '../src/shell/Shell';
 import type { PresentationEvent } from '../src/campaign/runtime';
 
 const src = (rel: string): string => readFileSync(join(__dirname, '..', rel), 'utf8');
@@ -336,5 +337,46 @@ describe('the pause menu lists the operation, not the skirmish mission chain', (
       { id: 'secret', title: 'The thing nobody told you', kind: 'secondary', status: 'hidden' },
     ]);
     expect(currentObjectives().map((o) => o.id)).toEqual(['seen']);
+  });
+});
+
+/* ==========================================================================
+ * 6. THE LOADING CURTAIN NAMES THE OPERATION, NOT A BATTLEFIELD
+ * ========================================================================== */
+
+describe('the loading curtain names what the player chose', () => {
+  /*
+   * `startOperation` sets `setup.map` to the lobby row whose PRESET matches the
+   * operation's — deliberately, so that everything reading `setup.map` at least
+   * describes the right ground. But the curtain was reading that row's NAME, so
+   * a player who clicked "First Tap" on the briefing screen got a full-screen
+   * heading reading AIRBASE FLATS. Found by booting an operation and looking;
+   * nothing in the suite read the string.
+   */
+  it('shows the operation and its chapter while one is armed', () => {
+    expect(curtainLabels({ title: 'First Tap', chapterTitle: 'Hold the Seam' }, 'Airbase Flats'))
+      .toEqual({ kicker: 'Hold the Seam', heading: 'First Tap' });
+  });
+
+  it('is unchanged for a skirmish, which is the half that must not regress', () => {
+    // The battlefield IS the right answer here — there is nothing else the
+    // player named — and 'Loading' is the word the curtain has always shown.
+    expect(curtainLabels(null, 'Airbase Flats'))
+      .toEqual({ kicker: 'Loading', heading: 'Airbase Flats' });
+  });
+
+  it('quotes a real chapter and operation title from the shipped table', () => {
+    // THE FALSIFIER. The two cases above would pass against any pair of
+    // strings, including a pair no operation carries. This pins that the
+    // fields exist on the real table and are non-empty, so the curtain cannot
+    // be armed with a blank heading by an operation that forgot a title.
+    for (const chapter of CAMPAIGNS) {
+      expect(chapter.title.length, `chapter ${chapter.id} has no title`).toBeGreaterThan(0);
+      for (const op of chapter.operations) {
+        expect(op.title.length, `${op.id} has no title`).toBeGreaterThan(0);
+        expect(curtainLabels({ title: op.title, chapterTitle: chapter.title }, 'x').heading)
+          .toBe(op.title);
+      }
+    }
   });
 });

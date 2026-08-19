@@ -1768,11 +1768,32 @@ export class Shell {
       this.activeSeed = seed;
       const map = mapById(this.setup.map);
 
+      /*
+       * AN OPERATION NAMES ITSELF HERE. THE BATTLEFIELD DOES NOT.
+       *
+       * `startOperation` sets `setup.map` to the lobby row whose PRESET matches
+       * the operation's, deliberately, so that every label reading `setup.map`
+       * at least describes the right ground — its own comment says so. But the
+       * label is still a skirmish battlefield's name, and a player who just
+       * clicked "First Tap" on the briefing screen was shown a curtain reading
+       * AIRBASE FLATS. Observed on a real boot; nothing in the suite looks at
+       * this string.
+       *
+       * `this.operation` is written before `startMatch` is called on all three
+       * paths that arm one (launch, replay, restored save), so this is a plain
+       * read rather than an ordering assumption — and it carries the chapter,
+       * which lets the curtain use the same two-level heading the briefing
+       * screen does. The kicker gives up the word "Loading"; the bar and
+       * "Initialising" underneath it already say that, twice.
+       */
+      const curtain = curtainLabels(this.operation, map.name);
+
       this.show(
         new LoadingScreen(
-          map.name,
+          curtain.heading,
           factionByKey(this.setup.playerFaction)?.name ?? '',
           this.settings.get().controls.bindings,
+          curtain.kicker,
         ),
         'loading',
       );
@@ -3530,6 +3551,17 @@ export class LoadingScreen implements Screen {
     private readonly mapName: string,
     private readonly factionName: string,
     private readonly bindings: StoredBindings,
+    /**
+     * The kicker above the heading. 'Loading' for a skirmish; the CHAPTER for
+     * a campaign operation, so the curtain reads the way the briefing screen
+     * it was launched from does.
+     *
+     * Defaulted rather than required, unlike `bindings` above — the default is
+     * the string the screen has always shown, so a call site that forgets it
+     * gets the old behaviour rather than a silent lie. `bindings` had no safe
+     * default and that is why it has none.
+     */
+    private readonly kicker: string = 'Loading',
   ) {}
 
   mount(host: HTMLElement): void {
@@ -3537,7 +3569,7 @@ export class LoadingScreen implements Screen {
     this.root = host;
 
     const inner = el('div', 'vm-load-inner');
-    inner.appendChild(el('p', 'vm-subtitle', 'Loading'));
+    inner.appendChild(el('p', 'vm-subtitle', this.kicker));
     inner.appendChild(el('h1', 'vm-h2', this.mapName));
 
     const meta = el('div', 'vm-load-meta');
@@ -3568,6 +3600,25 @@ export class LoadingScreen implements Screen {
 /* ==========================================================================
  * 8. HELPERS
  * ========================================================================== */
+
+/**
+ * What the loading curtain says, derived rather than chosen at the call site.
+ *
+ * Exported and pure for `topRowFit`'s reason: the decision is worth a test and
+ * the screen it feeds needs a DOM, which this suite does not have.
+ *
+ * `operation` is `Shell.operation`, and it is written before `startMatch` runs
+ * on all three paths that arm one — launching from the briefing, opening a
+ * replay of one, and restoring a save of one — so a null here really does mean
+ * "not a campaign" rather than "not yet".
+ */
+export function curtainLabels(
+  operation: { title: string; chapterTitle: string } | null,
+  mapName: string,
+): { kicker: string; heading: string } {
+  if (operation === null) return { kicker: 'Loading', heading: mapName };
+  return { kicker: operation.chapterTitle, heading: operation.title };
+}
 
 /** True when a keyboard event matches a stored chord exactly. */
 export function matchesChord(e: KeyboardEvent, c: Chord | undefined): boolean {
