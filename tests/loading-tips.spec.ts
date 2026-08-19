@@ -35,12 +35,13 @@
  * existing one.
  *
  * IT LINTS EVERY AUTHORED TIP, NOT ONLY THE LOADING SCREEN'S. §7 runs the same
- * two rules over the SITUATIONAL corpus in `src/sim/tips.system.ts`. That is
- * one file and one lint on purpose: the rules are properties of tip PROSE, not
- * of the screen it happens to be drawn on, and a second copy of the regexes
- * living beside the second corpus is how the two would come to disagree. The
- * file keeps its name because `Shell.TIPS` is still what §2 through §5 are
- * about; add the next corpus to §7, never a new lint.
+ * two rules over the SITUATIONAL corpus — `TIP_ROWS` in `src/sim/tip-rows.ts`,
+ * reached through the director's re-export. That is one file and one lint on
+ * purpose: the rules are properties of tip PROSE, not of the screen it happens
+ * to be drawn on, and a second copy of the regexes living beside the second
+ * corpus is how the two would come to disagree. The file keeps its name because
+ * `Shell.TIPS` is still what §2 through §5 are about; add the next corpus to
+ * §7, never a new lint.
  * ============================================================================
  */
 
@@ -49,7 +50,7 @@ import { describe, expect, it } from 'vitest';
 import { TIPS, resolveTip, tipActionIds } from '../src/shell/Shell';
 import { actionById } from '../src/input/ActionCatalogue';
 import { codeLabel, defaultBindings, type Chord } from '../src/shell/settings-store';
-import { TIP_BROWNOUT } from '../src/sim/tips.system';
+import { TIP_BROWNOUT, TIP_ROWS } from '../src/sim/tips.system';
 
 /* ==========================================================================
  * 1. THE LINT
@@ -389,10 +390,25 @@ describe('tipActionIds', () => {
  * ========================================================================== */
 
 describe('the situational tips obey the same two rules', () => {
-  const ROWS: readonly (readonly [string, string])[] = [
-    ['TIP_BROWNOUT.title', TIP_BROWNOUT.title],
-    ['TIP_BROWNOUT.detail', TIP_BROWNOUT.detail],
-  ];
+  /**
+   * EVERY ROW IN THE CORPUS, DERIVED FROM THE TABLE RATHER THAN LISTED. This
+   * was two hand-written entries while the corpus was one row, and a
+   * hand-written list is a list that silently stops covering the eighth tip
+   * somebody adds. `TIP_ROWS` is the table the director iterates; if a row is
+   * in the game it is linted here.
+   */
+  const ROWS: readonly (readonly [string, string])[] = TIP_ROWS.flatMap((r) => [
+    [`${r.key}.title`, r.title] as const,
+    [`${r.key}.detail`, r.detail] as const,
+  ]);
+
+  it('covers the whole shipped corpus, not a copy of it', () => {
+    expect(ROWS).toHaveLength(TIP_ROWS.length * 2);
+    expect(TIP_ROWS.length, 'the corpus is six to twelve rows').toBeGreaterThanOrEqual(6);
+    // The brownout row is still reachable by name, because it is the one the
+    // rest of this feature's regression suite is written against.
+    expect(TIP_ROWS).toContain(TIP_BROWNOUT);
+  });
 
   it('names no key', () => {
     const offenders = ROWS.flatMap(([id, t]) => keyOffences(t).map((o) => `${o} — in ${id}: ${t}`));

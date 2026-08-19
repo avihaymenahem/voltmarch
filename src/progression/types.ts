@@ -158,6 +158,17 @@ export interface ProgressionView {
    * member, and under `?shot=` there is no handle at all.
    */
   unlockSource(unlockId: string): { missionId: string; title: string; objective: string } | null;
+  /**
+   * Has this situational tip already been shown to this player, in any match?
+   *
+   * ON THE VIEW BECAUSE IT IS A READ, and its writer `markTipSeen` is on the
+   * control half beside `recordCampaignOperation` for the mirror reason. The
+   * caller is `src/sim/tips.system.ts`, which duck-types both off
+   * `globalThis.__vmProgression` — an absent handle means nothing has been
+   * remembered, which is honestly "not muted", and is the state a `?shot=` boot
+   * and every headless test are in.
+   */
+  tipSeen(tipKey: string): boolean;
   subscribe(fn: () => void): () => void;
   resetProfile(): void;
   exportProfile(): string;
@@ -362,6 +373,21 @@ export interface ProgressionControl {
    * cannot take a gold away.
    */
   recordCampaignOperation(operationId: string, medal: number): boolean;
+  /**
+   * Mute a situational tip for good. Returns true when the profile moved.
+   *
+   * ON THE CONTROL HALF BECAUSE IT IS A WRITE — the same rule
+   * `recordCampaignOperation` states above, and the same reason: the only other
+   * route to a `ProfileStore` is importing `progression.system.ts`, which is a
+   * second way in to something that already has one.
+   *
+   * DELIBERATELY NOT ON `src/shell/progression-link.ts`'s restatement. That
+   * interface is the subset the SHELL uses, exactly as `src/ui/Objectives.ts`
+   * restates a subset of the view, and no screen mutes a tip. The assignability
+   * pin in `tests/progression-gate.spec.ts` still holds: it asserts the real
+   * contract is assignable TO the shell's, which a superset is.
+   */
+  markTipSeen(tipKey: string): boolean;
   beginMatch(info: MatchStartInfo): void;
   endMatch(info: MatchEndInfo): void;
   /**

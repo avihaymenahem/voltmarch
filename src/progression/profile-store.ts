@@ -33,9 +33,13 @@
  *        what an operation is — the campaign did not exist. See
  *        `PROFILE_VERSION` for why a purely additive field still bumped the
  *        stamp, which this file's own rule would otherwise have refused.
+ *   v4 — shipped. `tipsSeen` arrives: situational tip keys the player has
+ *        already been shown once. Additive, empty, and stamped for exactly the
+ *        reason v3 was — see `PROFILE_VERSION`.
  *
- * `migrateProfile` walks the ladder step by step, so v1 -> v4 is two functions
- * today and three tomorrow, never one function that knows about four formats.
+ * `migrateProfile` walks the ladder step by step, so v1 -> v5 is three
+ * functions today and four tomorrow, never one function that knows about five
+ * formats.
  *
  * FAIL SOFT, ALWAYS
  * -----------------
@@ -102,6 +106,29 @@ export interface Profile {
    * a hand-edited blob cannot reach a `switch` on medal.
    */
   campaign: Record<string, number>;
+  /**
+   * Situational tip keys (`TipRow.key`) the player has already been shown.
+   *
+   * **A ROW EXISTS IF AND ONLY IF THAT TIP HAS BEEN ON SCREEN ONCE.** The mute
+   * is automatic on first SHOWING and there is no "seen but not muted" state,
+   * because there is nowhere to express one: `.vm-toasts` is
+   * `pointer-events: none`, so a chip cannot be clicked and "dismiss" is not an
+   * act the player can perform. A mute that waited for an act would never fire.
+   * `src/sim/tips.system.ts` marks it inside `postTip`, after the chip is
+   * raised, so a tip refused by any gate has not been spent.
+   *
+   * TYPED `string[]`, NOT A TIP KEY UNION, for the same layering reason
+   * `campaign` is typed `number` rather than `Medal`: the simulation imports
+   * the profile through a duck-typed handle and never the reverse, and a union
+   * here would make deleting a row from the corpus a compile error in a save
+   * file. `isSaneId` is the only shape rule.
+   *
+   * THE ONLY ROUTE BACK IS `reset()`. A per-row "show me tips again" control
+   * would need a screen listing rows the player has seen — real UI for a
+   * feature whose whole surface is one chip — and it is the wider-chip /
+   * dismiss-affordance conversation, not this one.
+   */
+  tipsSeen: string[];
 }
 
 /**
@@ -116,8 +143,14 @@ export interface Profile {
  * that step writable was the version saying which spelling was on disk. A
  * field added without a stamp can never be migrated later, only sniffed — and
  * a sniff is a guess that gets one blob wrong and loses that player's progress.
+ *
+ * **v4 IS THE SECOND KIND AGAIN, AND FOLLOWS v3's REASONING RATHER THAN
+ * RE-ARGUING IT.** `tipsSeen` arrives empty and would have defaulted. It is
+ * stamped because the day this list needs to become `id -> { shownAt }` — the
+ * obvious next thing a mute list wants — the ONLY thing that will make that
+ * step writable is the version saying which spelling is on disk.
  */
-export const PROFILE_VERSION = 3;
+export const PROFILE_VERSION = 4;
 
 /**
  * The storage key never carries the schema version — the `version` FIELD does.
@@ -221,6 +254,13 @@ const MAX_MISSION_ROWS = 2048;
  */
 export const MAX_CAMPAIGN_ROWS = 512;
 /**
+ * Same job for tip mutes. `TIP_ROWS` is seven and
+ * `tests/tips-corpus-weight.spec.ts` caps the corpus at about fifteen; this
+ * bound is about a hostile blob rather than about the content, and it is well
+ * clear of any corpus that rule would ever permit.
+ */
+export const MAX_TIP_MUTES = 128;
+/**
  * Gold. Kept here rather than imported from `campaign/types.ts` for the same
  * layering reason `Profile.campaign` is typed `number`.
  *
@@ -252,6 +292,7 @@ export function defaultProfile(now = Date.now()): Profile {
     missions: {},
     stats: defaultStats(),
     campaign: {},
+    tipsSeen: [],
   };
 }
 
@@ -320,6 +361,28 @@ function normalizeCampaign(raw: unknown): Record<string, number> {
 }
 
 /**
+ * Tip mutes: sane ids, unique, sorted, bounded.
+ *
+ * SORTED AND DEDUPED FOR `unlocked`'s REASON — a stored blob whose byte content
+ * depends on the order the player happened to see things is a blob two builds
+ * can disagree about while meaning the same thing. Nothing compares profiles
+ * today; `exportJson` puts one in front of a human, which is enough.
+ */
+function normalizeTipsSeen(raw: unknown): string[] {
+  const out: string[] = [];
+  if (!Array.isArray(raw)) return out;
+  const seen = new Set<string>();
+  for (const id of raw) {
+    if (!isSaneId(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+    if (out.length >= MAX_TIP_MUTES) break;
+  }
+  out.sort();
+  return out;
+}
+
+/**
  * Total, defensive, order-independent. Returns a complete `Profile` for ANY
  * input. Never throws. Never returns a shared object.
  */
@@ -361,6 +424,7 @@ export function normalizeProfile(raw: unknown, now = Date.now()): Profile {
     // single load — silently, because nothing throws and the write still
     // succeeds against the next blob.
     campaign: normalizeCampaign(raw.campaign),
+    tipsSeen: normalizeTipsSeen(raw.tipsSeen),
   };
 }
 
@@ -444,9 +508,26 @@ function migrateV2toV3(raw: Record<string, unknown>): Record<string, unknown> {
   return { ...raw, version: 3, campaign: raw.campaign ?? {} };
 }
 
+/**
+ * v3 -> v4.
+ *
+ * NOTHING TO DERIVE, AGAIN, AND FOR A STRONGER REASON THAN v3's. A v3 profile
+ * predates situational tips entirely, so it cannot record which of them a
+ * player has seen — and the generous reading is the right one here in the
+ * opposite direction from v1's pending claims: an empty list means every tip is
+ * still available to a returning player, which costs them one chip each and
+ * never withholds something they never saw.
+ *
+ * `raw.tipsSeen ?? []` rather than a shape test, because STEPS NEVER VALIDATE.
+ */
+function migrateV3toV4(raw: Record<string, unknown>): Record<string, unknown> {
+  return { ...raw, version: 4, tipsSeen: raw.tipsSeen ?? [] };
+}
+
 export const MIGRATIONS: readonly MigrationStep[] = [
   { from: 1, to: 2, run: migrateV1toV2 },
   { from: 2, to: 3, run: migrateV2toV3 },
+  { from: 3, to: 4, run: migrateV3toV4 },
 ];
 
 /**
@@ -735,6 +816,28 @@ export function grantUnlock(profile: Profile, unlockId: string): boolean {
   if (profile.unlocked.length >= MAX_UNLOCKS) return false;
   profile.unlocked.push(unlockId);
   profile.unlocked.sort();
+  return true;
+}
+
+/** Has this situational tip already been shown to this player? */
+export function hasSeenTip(profile: Profile, tipKey: string): boolean {
+  return profile.tipsSeen.includes(tipKey);
+}
+
+/**
+ * Record that a tip has been shown. True when the profile actually moved.
+ *
+ * REFUSES SILENTLY AT `MAX_TIP_MUTES` rather than evicting, because eviction
+ * would make the oldest tip reappear and this list exists to stop that. A
+ * corpus that reaches the bound has already failed
+ * `tests/tips-corpus-weight.spec.ts` by a factor of eight.
+ */
+export function markTipSeen(profile: Profile, tipKey: string): boolean {
+  if (!isSaneId(tipKey)) return false;
+  if (profile.tipsSeen.includes(tipKey)) return false;
+  if (profile.tipsSeen.length >= MAX_TIP_MUTES) return false;
+  profile.tipsSeen.push(tipKey);
+  profile.tipsSeen.sort();
   return true;
 }
 

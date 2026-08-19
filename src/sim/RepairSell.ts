@@ -120,8 +120,13 @@ export function survivorKeyFor(faction: Faction): string {
  * Resolved to def ids once, against the live catalog. There is deliberately no
  * fallback list: a depot is content, and a boot with no content module has no
  * depots to find.
+ *
+ * EXPORTED SO THERE IS ONE DEFINITION. `src/sim/tip-rows.ts` names a depot to
+ * the player and has to select the same three entries this class services
+ * vehicles from; a private copy over there is how a fourth army's depot would
+ * come to exist on one side of the pair and not the other.
  */
-const DEPOT_KEYS: readonly string[] = ['repairDepot', 'mrdDepot', 'rclDepot'];
+export const DEPOT_KEYS: readonly string[] = ['repairDepot', 'mrdDepot', 'rclDepot'];
 
 export const REPAIR = {
   /** Seconds between repair sparks on a structure being mended. */

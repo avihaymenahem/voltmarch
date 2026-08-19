@@ -576,7 +576,14 @@ describe('the shell control seam', () => {
     // the only thing stopping the shell's restatement drifting from the real
     // contract, and it can only do that job by failing to compile when a member
     // is added to one side and not the other. It did exactly that when
-    // `recordCampaignOperation` landed.
+    // `recordCampaignOperation` landed, and again when `markTipSeen` did.
+    //
+    // WHAT IT PINS IS A SUBSET RELATION, NOT AN EQUALITY. `markTipSeen` is on
+    // the real contract and NOT on the shell's, because no screen mutes a tip —
+    // `src/sim/tips.system.ts` is the only writer and it reaches the handle
+    // through `globalThis.__vmProgression`. The assignment below still fails the
+    // moment the shell declares something the real contract does not have,
+    // which is the direction that would actually break a boot.
     const real: ProgressionControl = {
       beginMatch: () => {},
       endMatch: () => {},
@@ -584,6 +591,7 @@ describe('the shell control seam', () => {
       inMatch: () => false,
       flush: () => {},
       recordCampaignOperation: () => false,
+      markTipSeen: () => false,
     };
     const asShell: ShellControl = real;
     expect(typeof asShell.beginMatch).toBe('function');

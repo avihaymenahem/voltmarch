@@ -130,7 +130,7 @@ describe('The profile ladder reaches v3 and carries every earlier field with it'
     expect(p.campaign).toEqual({});
   });
 
-  it('walks BOTH rungs for a v1 blob rather than stopping at v2', () => {
+  it('walks EVERY rung for a v1 blob rather than stopping at v2', () => {
     // `normalizeProfile` stamps PROFILE_VERSION whatever happened, so reading
     // the finished profile cannot tell a walked ladder from a skipped one.
     // Read the RAW migration output instead: without a 2 -> 3 rung this is 2.
@@ -143,8 +143,15 @@ describe('The profile ladder reaches v3 and carries every earlier field with it'
       wins: 3,
     }) as Record<string, unknown>;
 
-    expect(raw.version).toBe(3);
-    expect(raw.campaign).toEqual({});
+    // PINNED TO `PROFILE_VERSION`, NOT TO A LITERAL. This read 3 while three
+    // was the top of the ladder, and the v4 rung made it a test about the
+    // ladder's HEIGHT rather than about it being walked. The two assertions
+    // below are what actually carry the claim: `campaign` is written by the
+    // 2 -> 3 rung and `tipsSeen` by the 3 -> 4 one, so a rung that stopped
+    // early leaves a field missing rather than a number small.
+    expect(raw.version).toBe(PROFILE_VERSION);
+    expect(raw.campaign, 'the 2 -> 3 rung ran').toEqual({});
+    expect(raw.tipsSeen, 'and so did 3 -> 4').toEqual([]);
     // And the v1 -> v2 rung still did its own job on the way past.
     expect((raw.missions as Record<string, { complete: boolean }>)['combat.kills.1'].complete)
       .toBe(true);

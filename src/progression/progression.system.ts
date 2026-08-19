@@ -49,7 +49,9 @@ import {
   unlockSource as unlockSourceOf,
 } from '../data/Missions';
 import { MissionTracker } from './MissionTracker';
-import { ProfileStore, browserStorage, memoryStorage } from './profile-store';
+import {
+  ProfileStore, browserStorage, hasSeenTip, markTipSeen as markTipSeenIn, memoryStorage,
+} from './profile-store';
 import { UnlockGate, setUnlockGate } from './UnlockGate';
 // `campaign-store.ts` imports `profile-store` (already here) plus one TYPE from
 // `campaign/types.ts`, which is erased. So this costs the entry chunk nothing
@@ -188,6 +190,10 @@ function buildHandle(t: MissionTracker, s: ProfileStore, g: UnlockGate): Progres
       return { missionId: src.missionId, title: src.title, objective: src.description };
     },
 
+    tipSeen(tipKey: string): boolean {
+      return hasSeenTip(s.get(), tipKey);
+    },
+
     subscribe(fn: () => void): () => void {
       return t.subscribe(fn);
     },
@@ -210,6 +216,17 @@ function buildHandle(t: MissionTracker, s: ProfileStore, g: UnlockGate): Progres
       // The clamp and the monotonic rule both live in `recordOperation`; this
       // is a pass-through so there is one definition of what a medal may be.
       return recordOperation(s, operationId, Math.trunc(medal) as Medal);
+    },
+
+    /**
+     * WRITTEN THROUGH, NOT BATCHED. `mutate`'s own rule is that anything a
+     * player would notice losing skips the debounce, and this is one: the whole
+     * point of the mute is that closing the tab after seeing a tip does not
+     * bring it back next match. It is also rare — at most once per row per
+     * profile, ever — so the write it costs is nothing.
+     */
+    markTipSeen(tipKey: string): boolean {
+      return s.mutateNow((draft) => markTipSeenIn(draft, tipKey));
     },
 
     beginMatch(info: MatchStartInfo): void {

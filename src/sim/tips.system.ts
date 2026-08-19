@@ -2,24 +2,16 @@
  * ============================================================================
  * VOLTMARCH — src/sim/tips.system.ts
  * ============================================================================
- * SITUATIONAL TIPS: ONE SITUATION, END TO END.
+ * SITUATIONAL TIPS: THE DIRECTOR.
  *
- * `TIPS_BUILD_SPEC.md` §6 Commit 2. This is the whole feature today — one
- * trigger, one string, one surface — and it exists to prove the four things
- * that every later tip inherits: the trigger cannot fire under `?shot=`, the
- * settings toggle has a reader, the suppression set is enforced where it
- * cannot be bypassed, and a boot with no shell is silent rather than
- * default-on.
- *
- * THE SITUATION: a brownout held for fifteen continuous seconds.
- * THE TIP: the shed order. Defences go dark first, and a plant brings them
- * back. Both halves are checkable against shipped code —
- * `POWER_SHED_ORDER.defence` is 0 and `.refinery` is 4, so defences are the
- * FIRST class `PowerGrid.shed` darkens and the refinery the last; and
- * `shedPriority` answers `never` for `EntityFlag.IsBuilder`, so the
- * Construction Yard cannot be darkened and the Structures tab — where the
- * plant lives — is exempt from `Production.census`'s blackout gate. The route
- * out is open by construction, which is exactly what the tip promises.
+ * `TIPS_BUILD_SPEC.md` §6 Commit 2 built one trigger, one string and one
+ * surface, to prove four things every later tip inherits: the trigger cannot
+ * fire under `?shot=`, the settings toggle has a reader, the suppression set
+ * is enforced where it cannot be bypassed, and a boot with no shell is silent
+ * rather than default-on. Commit 3 turned the trigger into a TABLE and left
+ * all four exactly where they were. The rows live in `src/sim/tip-rows.ts`;
+ * read that file's header for the content rules and the pair-of-predicates
+ * argument. This one is the machinery around them.
  *
  * WHY THIS IS SHAPED LIKE `orecrisis.system.ts`
  * ---------------------------------------------
@@ -30,37 +22,64 @@
  * DETERMINISM. `s.tick` only — no wall clock, no RNG, and this module writes
  * NOTHING to the world, queues no order and touches no entity. It is invisible
  * to the AI and to a peer: two clients of a lockstep match can disagree about
- * whether a tip was shown (one player has them off) and the simulation is
- * bit-identical either way. That is what makes it safe to leave tips ON in
- * PvP, which `TIPS_BUILD_SPEC.md` §4 decided deliberately after two surveys
- * assumed opposite answers in silence.
+ * whether a tip was shown (one player has them off, or has muted the row) and
+ * the simulation is bit-identical either way. That is what makes it safe to
+ * leave tips ON in PvP, which `TIPS_BUILD_SPEC.md` §4 decided deliberately
+ * after two surveys assumed opposite answers in silence.
  *
  * `?shot=` CANNOT REACH THIS, AND IT IS TRUE TWICE OVER. `GameLoop.advanceFrames`
  * — the 300 frames `tools/shoot.mjs` drives — calls `renderPass` alone and never
  * `stepSim`, so `simTick` does not run at all; a `dt`-driven card would have
  * fired in all three HUD fixtures, deterministically and permanently, which is
  * trap 1 in the spec. And a fixture's `settleTicks` (120 at the most) is a
- * quarter of the hold this module needs. The third guard is the settings read
- * below: a `?shot=` boot never loads the shell, so there is no store, so tips
- * are OFF.
+ * quarter of the SHORTEST hold in the corpus. The third guard is the settings
+ * read below: a `?shot=` boot never loads the shell, so there is no store, so
+ * tips are OFF.
  *
  * PHASE. `Phase.Economy` order 950 — one step behind `orecrisis.system.ts`, and
  * behind `economy.system.ts` at order 0, which is where `PowerGrid.simTick`
  * writes `powerProduced` / `powerConsumed` onto every `PlayerState`. So the
- * brownout this module reads is this tick's, not last tick's.
+ * brownout this module reads is this tick's, not last tick's. It is also
+ * behind `production.system.ts` (Phase.Production, 200), so the queues every
+ * `answered` predicate walks are this tick's too.
+ *
+ * THE SURFACE IS STILL THE TOAST, AND THE NEXT OPTION IS COSTED
+ * -------------------------------------------------------------
+ * `postTip` is the seam every later surface comes through: a card replaces the
+ * body of one function and the gates above it do not move. It is not a card
+ * yet because `Hud.hudFrameShare()` already measures 15.83% against
+ * `RA3_LOOK_BIBLE.md` §38's 12-16% ceiling, and a card is a FOURTH claimant
+ * (HUD + objectives + toasts + card) on a budget with no headroom. Any card
+ * lands with a frame-share number and a `tools/shot-compare.mjs` control
+ * capture, and neither is cheap: no `?shot=` fixture shows a tip, because
+ * `simTick` does not run under `advanceFrames`.
+ *
+ * **THE CHEAPER NEXT OPTION, IF 26/44 EVER PROVES TOO TIGHT, IS A WIDER CHIP
+ * AND NOT A CARD.** An `is-tip` variant on `.vm-toast` letting the DETAIL wrap
+ * to two or three lines fixes §2.1's actual cause — `white-space: nowrap` —
+ * inside a claimant the frame-share budget has already paid for. It was NOT
+ * taken now because the evidence says it is not needed: all seven rows say
+ * something true and useful inside 26 and 44 characters, seven of seven, and
+ * terse is the right register for something that interrupts a player
+ * mid-match. Widening on a hunch would buy prose nobody has asked for and cost
+ * a re-measurement of the one budget in the product that is already over.
  * ============================================================================
  */
 
 import { defineSystem } from '../core/loop';
-import { BuildTab, EntityFlag, EntityKind, Phase } from '../core/types';
-import type { PlayerState, SimContext } from '../core/types';
+import { Phase } from '../core/types';
+import type { SimContext } from '../core/types';
 import type { World } from '../core/world';
 import { ctx } from '../game/context';
 
 import { campaignRunning } from '../campaign/policy';
 import { playbackActive } from '../game/Playback';
 import { production } from './Production';
-import type { ProductionService } from './Production';
+import { TIP_BROWNOUT, TIP_ROWS } from './tip-rows';
+import type { Tip, TipContext, TipRow } from './tip-rows';
+
+export { TIP_ROWS, TIP_BROWNOUT } from './tip-rows';
+export type { Tip, TipContext, TipRow } from './tip-rows';
 
 /* ==========================================================================
  * 1. TUNING
@@ -75,121 +94,94 @@ import type { ProductionService } from './Production';
 export const TIP_SURVEY_INTERVAL = 15;
 
 /**
- * Ticks of CONTINUOUS brownout before the tip is offered. 450 = fifteen
- * seconds.
+ * Ticks of CONTINUOUS brownout before that tip is offered. 450 = fifteen
+ * seconds. Re-exported from the row rather than declared here, because it is a
+ * property of the row and `tests/tips-brownout.spec.ts` reads it by this name.
  *
  * NOT the moment the brownout starts. The HUD already says that: `Hud.ts`
  * toasts *"Low power"* with the two figures on the crossing edge, and
  * `PowerGrid` fires `EvaLine.LowPower` beside it. A tip repeating the alarm
  * fifteen seconds late is noise. What this window buys is the difference
  * between a player who has been told and a player who has not ACTED — and see
- * `answeringPower` below, which is the other half of that sentence and the
- * measurement that made this module honest.
+ * the row's `answered` predicate, which is the other half of that sentence and
+ * the measurement that made this module honest.
  */
-export const BROWNOUT_HOLD_TICKS = 450;
+export const BROWNOUT_HOLD_TICKS = TIP_BROWNOUT.holdTicks;
+
+/**
+ * Minimum ticks between any two tips. 900 = thirty seconds.
+ *
+ * A PACING RULE, NOT A MEASUREMENT, and it is stated as one. Every row is
+ * once-per-match and every hold is fifteen seconds to two minutes, so two tips
+ * maturing together is uncommon rather than impossible — a base in a brownout
+ * is also a base with a slow queue. Thirty seconds is about seven times the
+ * `TOAST_LIFE.info` a chip actually lives, so the first tip is long gone before
+ * the second arrives. Two chips of advice inside half a minute is a lecture.
+ */
+export const TIP_SPACING_TICKS = 900;
 
 /* ==========================================================================
- * 2. THE CORPUS — ONE ROW
+ * 2. STATE
  *
- * DELIBERATELY IN THIS FILE. `TIPS_BUILD_SPEC.md` §2.4 measured the leak that
- * a `tips.system.ts -> tips/rows.ts` edge would open: `src/game/Systems.ts`
- * globs `*.system.ts` with `eager: true` FROM THE ENTRY CHUNK, and nothing in
- * the tree catches an authored corpus arriving that way — `tutorial-steps.ts`
- * is 33 kB of prose sitting in `index-*.js` today. One row is not a corpus.
- * The moment a SECOND row lands, the bundle rule has to be written first and
- * the rows move to a lazily imported module behind it.
- *
- * TWO LINES BECAUSE THE TOAST IS TWO LINES, AND THE LENGTHS ARE MEASURED IN A
- * BROWSER RATHER THAN DERIVED FROM THE CSS. Both lines are
- * `white-space: nowrap` + `text-overflow: ellipsis` at
- * `font-size: calc(10 * var(--vm-u))` in a stack capped at `250 * var(--vm-u)`,
- * and reasoning from that gives one budget for both. IT IS TWO, AND THEY ARE
- * NOWHERE NEAR EACH OTHER:
- *
- *   .vm-toast-title    uppercase, weight 600, letter-spacing 0.18em   26 chars
- *   .vm-toast-detail   as authored, weight 400, 0.02em                44 chars
- *
- * Chromium at 1280x720, `--vm-u: 1px`, Rajdhani loaded, text box 203 px, the
- * capacity measured by growing an ordinary English sentence until
- * `scrollWidth > clientWidth`. The title inherits a caps transform and 1.8 px
- * of tracking, so it holds barely more than half what the detail does — and
- * the first draft of THIS FILE put a thirty-six-character sentence there (300
- * px against a 203 px box) with a test that agreed it fitted, because the test
- * had a reasoned budget in it instead of a measured one. The ratios are
- * scale-invariant: both the box and the type are multiples of `--vm-u`.
- *
- * The spec's single-sentence draft is seventy-one characters (337 px) and fits
- * neither line. `tests/tips-brownout.spec.ts` §4 holds both budgets. That is
- * §2.1 restated with two numbers, and it is why the toast is this slice's
- * surface and not the feature's home.
- *
- * THE DETAIL LEADS WITH THE VERB, which is the instruction
- * `orecrisis.system.ts` earned the hard way: its first chip put the whole
- * instruction past the ellipsis and a live capture is what found it.
- *
- * NO DIGIT AND NO KEY NAME. `tests/loading-tips.spec.ts` lints this row with
- * the same two rules it lints `Shell.TIPS` with; that file is the one place
- * either rule lives.
- *
- * AND THE KEY RULE IS STRICTER HERE THAN IT IS THERE. `Shell.TIPS` names keys
- * through `{action.id}` placeholders that `resolveTip` resolves against the
- * live bindings — that machinery is what fixed the three rebindable keys audit
- * #27 found. NONE OF IT EXISTS ON THIS SIDE: these strings go straight to the
- * chip, so a key written into one cannot be repaired the way those three were.
- * It can only be a lie or be deleted. A situational tip that genuinely needs
- * to name a key has to bring the placeholder machinery with it, which means a
- * fourth host seam for the live bindings.
- */
-export interface Tip {
-  /** Toast dedupe key. Prefixed `tip.` so nothing else can collide with it. */
-  readonly key: string;
-  readonly title: string;
-  readonly detail: string;
-}
-
-export const TIP_BROWNOUT: Tip = {
-  key: 'brownout',
-  title: 'Defences go dark first',
-  detail: 'Build a power plant to bring them back',
-};
-
-/* ==========================================================================
- * 3. STATE
- *
- * ONE COUNTER, NOT ONE PER PLAYER. `orecrisis.system.ts` keeps `MAX_PLAYERS`
- * of everything because its second consequence — the redeemed harvester —
- * binds every player including the AI. Nothing here does: a tip is local-only
- * DOM. A per-player array would be four counters advanced so that three of
- * them could never be read.
+ * ONE SET OF COUNTERS, NOT ONE PER PLAYER. `orecrisis.system.ts` keeps
+ * `MAX_PLAYERS` of everything because its second consequence — the redeemed
+ * harvester — binds every player including the AI. Nothing here does: a tip is
+ * local-only DOM. A per-player array would be four counters advanced so that
+ * three of them could never be read.
  * ========================================================================== */
 
 let world: World | null = null;
 
-/** Consecutive ticks the LOCAL player has been in brownout. */
-let brownoutFor = 0;
-/** True once the brownout tip has actually been shown this match. */
-let brownoutShown = false;
+/** Consecutive ticks each row's SITUATION has held. Parallel to `TIP_ROWS`. */
+const heldFor = new Int32Array(TIP_ROWS.length);
+/** True once a row has actually been SHOWN this match. Parallel to `TIP_ROWS`. */
+const shownThisMatch = TIP_ROWS.map(() => false);
+
+/**
+ * The tick the last tip was shown, for `TIP_SPACING_TICKS`.
+ *
+ * NEGATIVE INFINITY, NOT ZERO. Zero means "a tip was shown on tick zero", which
+ * would swallow every tip in the first thirty seconds of every match — and the
+ * brownout row's own regression suite posts at tick 465.
+ */
+let lastTipTick = Number.NEGATIVE_INFINITY;
 
 /** Tips posted this match. Read by tests. */
 export let tipsPosted = 0;
 
 function reset(): void {
-  brownoutFor = 0;
-  brownoutShown = false;
+  heldFor.fill(0);
+  shownThisMatch.fill(false);
+  lastTipTick = Number.NEGATIVE_INFINITY;
   tipsPosted = 0;
 }
 
 /* ==========================================================================
- * 4. THE THREE HOST SEAMS
+ * 3. THE HOST SEAMS
  *
  * All duck-typed off `globalThis`, none imported, exactly as
  * `orecrisis.system.ts`, `src/ui/Hud.ts` and `src/input/input.system.ts` all
- * do it: the sim must not import `src/ui`, and the settings store lives in the
- * lazily loaded shell chunk that a `?shot=` boot never loads at all.
+ * do it: the sim must not import `src/ui`, the settings store lives in the
+ * lazily loaded shell chunk that a `?shot=` boot never loads at all, and the
+ * progression handle is deliberately NOT published under `?shot=`.
  * ========================================================================== */
 
 interface HudToastSink {
   toast(kind: string, key: string, title: string, detail?: string): void;
+  /**
+   * Live chips of kind `alert` that are not already fading out.
+   *
+   * OPTIONAL, AND THE ABSENCE MEANS "NO STACK" RATHER THAN "NO ALERTS". That
+   * is the opposite polarity to `tipsEnabled` below, and the difference is
+   * real: the settings read decides whether the player CONSENTED, so an absent
+   * store must mean no. This one asks how loud a chip STACK is, and a sink
+   * that cannot answer is not a stack — it has no `TOAST_MAX`, no eviction and
+   * nothing to talk over. Refusing there would make the module untestable and
+   * would be refusing on the grounds of seeing no competing chips.
+   */
+  toastAlerts?(): number;
+  /** True when the stack is full, so pushing would EVICT somebody's chip. */
+  toastCrowded?(): boolean;
 }
 
 function hudToast(): HudToastSink | null {
@@ -233,6 +225,33 @@ function tipsEnabled(): boolean {
 }
 
 /**
+ * The persisted per-row mute, on `globalThis.__vmProgression`.
+ *
+ * A HANDLE THAT IS NOT THERE IS NOT A MEMORY THAT SAYS NO. Absence here means
+ * nothing has been remembered — a `?shot=` boot (where the handle is
+ * deliberately never published), a headless test, the menu before the first
+ * match — and "nothing remembered" is honestly "not muted". The consent gate
+ * above is the one that has to fail closed; this one is a diary.
+ *
+ * NOT WRAPPED IN `try`, unlike `tipsEnabled`. The settings store belongs to the
+ * SHELL and can be torn down under a live match, which is a real state that was
+ * hit. `progression.system.ts` deletes the whole global in `dispose`, so this
+ * probe answers null rather than throwing.
+ */
+interface TipMemory {
+  tipSeen(key: string): boolean;
+  markTipSeen(key: string): boolean;
+}
+
+function tipMemory(): TipMemory | null {
+  const g = globalThis as unknown as Record<string, unknown>;
+  const p = g.__vmProgression as Partial<TipMemory> | undefined;
+  if (p === undefined || p === null) return null;
+  if (typeof p.tipSeen !== 'function' || typeof p.markTipSeen !== 'function') return null;
+  return p as TipMemory;
+}
+
+/**
  * True while scripted content owns the session, and tips must stand down.
  *
  * THREE PREDICATES, NOT FOUR. Campaign, replay and tutorial — each suppresses
@@ -265,6 +284,30 @@ function suppressed(): boolean {
  * site"*. There is one caller today and there will be a dozen, and the answer
  * to "is this player being shown tips" must not depend on which one asked.
  *
+ * SIX GATES, IN THIS ORDER, AND THE ORDER IS THE ARGUMENT:
+ *
+ *   1. CONSENT      `gameplay.tips`. Nothing else is worth asking if the
+ *                   player has turned the feature off.
+ *   2. SCRIPTED     campaign / replay / tutorial. See `suppressed`.
+ *   3. MUTED        this row has been shown, and dismissed, in an earlier
+ *                   match. See `TipMemory`.
+ *   4. SPACING      a tip was shown within `TIP_SPACING_TICKS`.
+ *   5. HOST         there is a chip stack to post into at all.
+ *   6. ARBITER      the stack is holding something the player needs more.
+ *
+ * **GATE 6 IS THE ONE `TIPS_BUILD_SPEC.md` §7 ASKED FOR AND DID NOT HAVE.**
+ * `TOAST_MAX` is 5 and `EVA_TOASTS` turns fifteen announcer lines into chips,
+ * so a tip competes with *"Base under attack"* — and `ToastStack.push` retires
+ * the OLDEST chip when the stack is full, so a tip arriving at capacity does
+ * not merely queue behind an alert, it DELETES one. Two facts are read and
+ * both are refusals: a live alert, and a full stack. Neither is a guess about
+ * priority; an alert is `EVA_TOASTS`' own classification of the line, and a
+ * full stack is arithmetic.
+ *
+ * `hud.toast` has always been called here unguarded, so the two arbiter reads
+ * are too. A HUD that throws inside `simTick` is a defect in the HUD and
+ * swallowing it here would hide it.
+ *
  * Returns whether the tip was actually SHOWN, so a caller's once-per-match
  * latch records what the player saw rather than what the module attempted. A
  * tip suppressed by the campaign has not been spent.
@@ -272,74 +315,37 @@ function suppressed(): boolean {
 export function postTip(tip: Tip): boolean {
   if (!tipsEnabled()) return false;
   if (suppressed()) return false;
+
+  const memory = tipMemory();
+  if (memory !== null && memory.tipSeen(tip.key)) return false;
+
+  // NO CLOCK, NO SPACING. `world` is null when this is called outside a live
+  // match — the only caller that does is a test asking one question about one
+  // string — and a spacing rule with nothing to measure against is not a gate,
+  // it is a coin toss.
+  const w = world;
+  if (w !== null && w.tick - lastTipTick < TIP_SPACING_TICKS) return false;
+
   const hud = hudToast();
   if (hud === null) return false;
+  if (typeof hud.toastAlerts === 'function' && hud.toastAlerts() > 0) return false;
+  if (typeof hud.toastCrowded === 'function' && hud.toastCrowded()) return false;
+
   hud.toast('info', `tip.${tip.key}`, tip.title, tip.detail);
+  // THE MUTE IS AUTOMATIC ON FIRST SHOWING, AND THE SURFACE IS WHY. There is no
+  // click affordance on a chip — `.vm-toasts` is `pointer-events: none` — so
+  // "dismiss" is not an act the player can perform, and a mute that waited for
+  // one would never fire. Marked HERE rather than at the decision above,
+  // because a row refused by any gate above has not been spent.
+  memory?.markTipSeen(tip.key);
+  if (w !== null) lastTipTick = w.tick;
   tipsPosted++;
   return true;
 }
 
 /* ==========================================================================
- * 5. THE TRIGGER
+ * 4. THE DIRECTOR
  * ========================================================================== */
-
-/**
- * Is this player ALREADY answering the brownout?
- *
- * ============================ THE MEASUREMENT ============================
- * `TIPS_BUILD_SPEC.md` §6 ends: *"If that tip fires while the player is already
- * dragging a Power Plant onto the ground, the feature has failed for nothing."*
- * It does, and the arithmetic is not close.
- *
- * `powerPlant` is `buildTime: 8` (7 for the Reclamation's Furnace), and
- * `BuildQueue.advanceTab` divides that by `player.buildSpeedMul`, which
- * `PowerGrid` clamps to `POWER_BLACKOUT_MUL` 0.25 at the bottom. So the drip
- * alone is 8 s in a shallow deficit and up to 32 s in a deep one — the deficit
- * that caused the brownout is what slows the cure. Then the player places it,
- * and `CONSTRUCTION_RISE_SECONDS` is another 2. A player who reacts to the very
- * first *"Low power"* chip is still mid-answer at fifteen seconds in every
- * brownout deep enough to matter, and `tests/tips-brownout.spec.ts` §3 measures
- * exactly that in the engine rather than from these numbers.
- *
- * So the hold timer is necessary and not sufficient, and this is the other
- * half. A queued item stays in `q.items` until `completeHead` — which is called
- * when the structure is PLANTED — so "ready and being dragged onto the ground"
- * is in this walk, which is the reported failure case verbatim.
- *
- * Two passes, and both are needed: the queue covers the plant that is paid for
- * and not yet standing, and the construction walk covers the two seconds it is
- * rising, during which it is out of the queue and not yet making power.
- *
- * A NULL CATALOGUE IS A REFUSAL, NOT A PASS. If the production service is
- * missing we cannot tell whether the player is already answering, and speaking
- * over them is the failure this whole function exists to prevent.
- */
-function answeringPower(w: World, prod: ProductionService, p: PlayerState): boolean {
-  const q = p.queues[BuildTab.Structures as number];
-  if (q !== undefined) {
-    for (let i = 0; i < q.items.length; i++) {
-      const item = q.items[i];
-      const entry = prod.catalog.resolve(item.defId, item.isBuilding);
-      if (entry !== null && entry.power > 0) return true;
-    }
-  }
-
-  const st = w.store;
-  const list = st.byKind[EntityKind.Building];
-  const count = st.byKindCount[EntityKind.Building];
-  const owner = p.id as number;
-  for (let a = 0; a < count; a++) {
-    const i = list[a];
-    if (st.owner[i] !== owner) continue;
-    const f = st.flags[i];
-    if ((f & EntityFlag.Alive) === 0) continue;
-    if ((f & EntityFlag.UnderConstruction) === 0) continue;
-    if ((f & EntityFlag.PendingDestroy) !== 0) continue;
-    const entry = prod.entryOf(st.handleOf(i));
-    if (entry !== null && entry.power > 0) return true;
-  }
-  return false;
-}
 
 export default defineSystem({
   id: 'sim.tips',
@@ -355,31 +361,44 @@ export default defineSystem({
     const w = world;
     if (w === null) return;
     if (s.tick % TIP_SURVEY_INTERVAL !== 0) return;
-    if (brownoutShown) return;
 
     const p = w.players[w.localPlayer as number];
-    if (p === undefined || p.defeated) { brownoutFor = 0; return; }
-
-    // The identical expression `Production.ts` writes into
-    // `HudSnapshot.brownout`, read off the same `PlayerState` fields
-    // `PowerGrid` wrote this tick. The snapshot itself is not reachable from
-    // here and would be the wrong thing to reach for anyway — it is a
-    // presentation object rebuilt for the local player only.
-    if (p.powerConsumed <= p.powerProduced) { brownoutFor = 0; return; }
-
-    brownoutFor += TIP_SURVEY_INTERVAL;
-    if (brownoutFor < BROWNOUT_HOLD_TICKS) return;
+    if (p === undefined || p.defeated) { heldFor.fill(0); return; }
 
     const prod = production();
+    // A NULL CATALOGUE IS A REFUSAL, NOT A PASS, and it holds every clock where
+    // it is. With no catalogue no `answered` predicate can resolve an entry, so
+    // every row would look unanswered — which is precisely the state that
+    // speaks over a player who is already fixing it.
     if (prod === null) return;
-    // DELIBERATELY DOES NOT RESET THE TIMER. The hold is a fact about the
-    // brownout; this is a fact about the moment of speaking. A player who
-    // queues a plant at second ten and cancels it at second twenty has been in
-    // trouble for twenty seconds and has just abandoned the answer, which is
-    // precisely when the tip is worth saying.
-    if (answeringPower(w, prod, p)) return;
 
-    if (postTip(TIP_BROWNOUT)) brownoutShown = true;
+    // ONE OBJECT PER SURVEY, WHICH IS TWO A SECOND, AND THAT IS NOT THE
+    // ALLOCATION RULE'S SUBJECT. The house rule is zero allocation in the FRAME
+    // loop; a reused mutable scratch here would buy back two small objects a
+    // second at the price of making `TipContext` writable, and a context a row
+    // could write to is a row that can talk to the next row.
+    const c: TipContext = { world: w, prod, player: p };
+
+    for (let i = 0; i < TIP_ROWS.length; i++) {
+      if (shownThisMatch[i]) continue;
+      const row: TipRow = TIP_ROWS[i];
+
+      if (!row.situation(c)) { heldFor[i] = 0; continue; }
+      heldFor[i] += TIP_SURVEY_INTERVAL;
+      if (heldFor[i] < row.holdTicks) continue;
+
+      // DELIBERATELY DOES NOT RESET THE TIMER. The hold is a fact about the
+      // situation; this is a fact about the moment of speaking. A player who
+      // queues a plant at second ten and cancels it at second twenty has been
+      // in trouble for twenty seconds and has just abandoned the answer, which
+      // is precisely when the tip is worth saying.
+      if (row.answered(c)) continue;
+
+      // AT MOST ONE TIP PER SURVEY, and the loop stops on the first one SHOWN
+      // rather than the first one considered — a row refused by `postTip` has
+      // not spoken, so the next row is still entitled to.
+      if (postTip(row)) { shownThisMatch[i] = true; return; }
+    }
   },
 
   dispose(): void {

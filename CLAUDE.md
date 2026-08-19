@@ -557,6 +557,50 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   alone. No operation is photographed. Do not read an unchanged look-bible grade as evidence about
   the campaign.
 
+## Tips are a table of PAIRS, they ride in the entry chunk on purpose, and the mute is permanent
+
+`src/sim/tips.system.ts` is the director (`Phase.Economy` order 950, `orecrisis.system.ts`'s shape);
+`src/sim/tip-rows.ts` is seven authored rows. Read both headers before adding a row.
+
+- **A ROW IS TWO PREDICATES AND THE SECOND IS THE EXPENSIVE HALF.** `situation` says the player is in
+  this state; `answered` says they have not already dealt with it. The brownout tip fires on a player
+  who is *already holding a finished Power Plant*, because `BuildQueue.advanceTab` divides `buildTime`
+  by a `buildSpeedMul` the deficit itself drove down — the shortage that caused the brownout is what
+  slows the cure. **Where the cure has no latency the pair COLLAPSES** and the row is wrong content:
+  "a stopped harvester stays stopped" stops being true on the click, so there is nothing to detect.
+  Four candidates were cut on that test and are named in `tip-rows.ts`'s header. `answered` also
+  treats a MISSING SERVICE as a refusal, never a pass.
+- **THE ROWS LOAD EAGERLY AND `tests/tips-corpus-weight.spec.ts` IS THE PRICE.** `postTip` runs inside
+  `simTick`, where a dynamic `import()` cannot be awaited, so a lazily chunked corpus arrives after
+  the tip was decided and "the corpus had not arrived" is a SILENT NO-TIP. The caps are 1024 bytes of
+  authored copy (ships 477) and 10 240 of comment-stripped module (ships 6 777); both bite at about
+  fifteen rows, and the failure message names the lazy route. **Trip a cap and MOVE the corpus; do not
+  raise the number.** `src/shell/tutorial-steps.ts` is the declared leak not to repeat — 17 162 bytes
+  of stripped code carrying 5 511 of prose, in `index-*.js` today. (Its often-quoted "33 kB of prose"
+  is the RAW FILE SIZE; comments do not survive the bundler.)
+- **THE CHIP HOLDS 26 CHARACTERS OF TITLE AND 44 OF DETAIL, measured in Chromium, not derived.** The
+  title inherits `text-transform: uppercase`, weight 600 and 0.18em of tracking; the detail is as
+  authored. Reasoning from the box width gives ONE budget for both and ships a clipped title past a
+  green test. All seven rows fit, which is why the chip was not widened; the costed next option is an
+  `is-tip` variant letting the detail WRAP, never a card — a card is a fourth claimant on a HUD
+  frame-share budget already at 15.83% against §38's 12-16%, and **no `?shot=` fixture can photograph
+  a tip at all**, because `simTick` does not run under `advanceFrames`.
+- **A TIP YIELDS TO AN ALERT, AND THE STACK PUBLISHES FACTS WHILE `postTip` HOLDS THE POLICY.**
+  `ToastStack.alerts()` and `.crowded()` through `Hud.toastAlerts` / `.toastCrowded`. Crowding is a
+  refusal because `push` RETIRES THE OLDEST CHIP at `TOAST_MAX` — a tip arriving at capacity deletes
+  somebody's "Base under attack" rather than queuing behind it. Both reads are optional on the seam
+  and their ABSENCE means "this sink is not a stack", which is the opposite polarity to the settings
+  read and deliberately so.
+- **EVERY GATE LIVES INSIDE `postTip`. There are six** — consent, scripted content, mute, spacing,
+  host, arbiter — and none at a call site, for the `beginMatch` reason. It is still the only seam any
+  later surface comes through.
+- **`PROFILE_VERSION` IS 4: `Profile.tipsSeen` is a permanent per-row mute.** AUTOMATIC on first
+  SHOWING, because `.vm-toasts` is `pointer-events: none` — a chip cannot be clicked, so "dismiss" is
+  not an act the player can perform and a mute waiting for one would never fire. Marked AFTER the
+  chip is raised, so a row any gate refused has not been spent. The only route back is `resetProfile`.
+- **Tips stay ON in PvP** (`TIPS_BUILD_SPEC.md` §4) and the module writes NOTHING to the world, which
+  is what makes that safe. Suppression is three predicates — campaign, replay, tutorial — not four.
+
 ## An economy can stop dead, and one rule exists to unstick it
 
 Reported as *"if my ore harvester being smashed and i dont have any money left.. how can i make a

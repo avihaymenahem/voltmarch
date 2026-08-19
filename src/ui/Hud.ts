@@ -1436,6 +1436,27 @@ export class Hud {
   }
 
   /**
+   * Live `alert` chips, and whether the stack is full.
+   *
+   * THE ARBITER SEAM. `src/sim/tips.system.ts` reads both off `__vmHud` before
+   * posting a situational tip, and refuses on either — an alert means the
+   * player is losing something right now, and a full stack means `ToastStack
+   * .push` would retire somebody's chip to make room for advice. Read-only, and
+   * the same duck-typed route `toast` and `setOreCrisis` already travel: the
+   * sim names an intent, the HUD answers about its own surface.
+   *
+   * Two methods rather than one `toastBusy()` on purpose — see the note above
+   * `ToastStack.alerts`. The verdict belongs to the caller that has a policy.
+   */
+  toastAlerts(): number {
+    return this.toasts.alerts();
+  }
+
+  toastCrowded(): boolean {
+    return this.toasts.crowded();
+  }
+
+  /**
    * Mark the sell tool as the thing to press, or stop.
    *
    * The seam `src/sim/orecrisis.system.ts` reaches through, alongside `toast`

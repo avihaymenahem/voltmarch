@@ -122,18 +122,23 @@ with no number is untracked, and that is itself the bug.
 
 ## Tips
 
-- **Situational in-match tips — Commit 3 remains.** *(untracked; the plan is `TIPS_BUILD_SPEC.md`,
-  which names its own deletion condition.)* Commits 1 and 2 shipped: the loading-screen tips no
-  longer lie about rebound keys, and the brownout tip proves trigger, suppression, settings and the
-  `gameplay.tips` toggle end to end. What is left is the CARD (answers "where on screen", needs a
-  frame-share number and a control capture), the CORPUS and its lazy chunk (**the bundle rule in
-  §2.4 must be written BEFORE a second tip lands — nothing in the tree catches that leak today**),
-  the mute list (needs a `PROFILE_VERSION` bump), and the install path.
+- **Situational in-match tips — THE SURFACE is all that remains.** *(untracked; the plan is
+  `TIPS_BUILD_SPEC.md`, whose §6 is down to one row and which names its own deletion condition.)*
+  Commits 1, 2 and 3 shipped: the loading-screen tips no longer lie about rebound keys, and the
+  feature is now a seven-row corpus (`src/sim/tip-rows.ts`) driven by a table in
+  `src/sim/tips.system.ts`, with an entry-chunk weight cap, an arbiter that yields to alerts, and a
+  per-row mute persisted at `PROFILE_VERSION` 4.
 
-  Commit 2 taught one thing that changes the rest: **a tip is a PAIR of predicates**, the situation
-  and the answer not already being under way. The brownout tip fired while the player was already
-  holding a finished Power Plant, because `buildSpeedMul` is driven toward 0.25 by the very deficit
-  that caused the brownout. Every future tip needs its `answeringPower` equivalent.
+  What is left is ONE question, and it is not "build the card": a tip has one surface and two
+  candidate replacements at very different prices. **A wider chip** (`is-tip` on `.vm-toast`, the
+  detail wrapping) fixes §2.1's actual cause inside a claimant the frame-share budget already pays
+  for. **A card** is a fourth claimant on a budget measured at 15.83% against a 12-16% ceiling, and
+  it cannot be photographed at all — `simTick` does not run under `advanceFrames`, so no `?shot=`
+  fixture can show a tip without a new harness affordance.
+
+  **The trigger for widening is measured and has not fired.** The chip holds 26 characters of title
+  and 44 of detail, and seven of seven shipped rows fit — titles 22-25, details 27-40. The evidence
+  that would open this is a row that cannot say something true and useful inside those two numbers.
 
 ---
 

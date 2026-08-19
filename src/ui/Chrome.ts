@@ -589,6 +589,16 @@ interface ToastEntry {
   detailEl: HTMLElement;
   detailNode: Text;
   key: string;
+  /**
+   * Severity of the chip currently in this slot.
+   *
+   * STORED RATHER THAN DERIVED FROM `root.className`, which already carries it
+   * as `is-${kind}`. Reading it back out of a class string would be a second
+   * spelling of the same fact, and the pool reassigns `className` wholesale on
+   * every push — so the string is right by accident of ordering rather than by
+   * construction. `alerts()` below is the reader.
+   */
+  kind: ToastKind;
   age: number;
   life: number;
   count: number;
@@ -632,6 +642,7 @@ export class ToastStack {
 
     const entry = this.pool.pop() ?? this.build();
     entry.key = key;
+    entry.kind = kind;
     entry.age = 0;
     entry.life = TOAST_LIFE[kind];
     entry.count = 1;
@@ -663,8 +674,35 @@ export class ToastStack {
     const countNode = textNode(countEl);
     return {
       root, countEl, countNode, titleNode, detailEl, detailNode,
-      key: '', age: 0, life: 0, count: 1, dying: false,
+      key: '', kind: 'info', age: 0, life: 0, count: 1, dying: false,
     };
+  }
+
+  /* ------------------------------------------------------------------ *
+   * HOW LOUD IS THE STACK?
+   *
+   * Two reads, for one caller that must not talk over the player:
+   * `src/sim/tips.system.ts`, through `Hud.toastAlerts` / `Hud.toastCrowded`.
+   * A tip is the lowest-priority thing that can appear here, and `push` above
+   * RETIRES THE OLDEST CHIP when the stack is full — so a tip arriving at
+   * capacity does not queue behind an alert, it deletes one.
+   *
+   * Deliberately two narrow questions rather than one `busy()` boolean. The
+   * decision about what outranks a tip belongs to the module that owns tips;
+   * this class owns the facts. Publishing a verdict here would put the same
+   * rule in two places the first time a second caller wants a different one.
+   * ------------------------------------------------------------------ */
+
+  /** Live chips of kind `alert` that have not started fading out. */
+  alerts(): number {
+    let n = 0;
+    for (const t of this.live) if (!t.dying && t.kind === 'alert') n++;
+    return n;
+  }
+
+  /** True when the next push would evict a chip rather than join the stack. */
+  crowded(): boolean {
+    return this.live.length >= TOAST_MAX;
   }
 
   /** Age every chip. Called once per rendered frame. */
