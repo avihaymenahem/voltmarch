@@ -828,6 +828,36 @@ export interface WeaponDef {
    * torpedo tube, a naval deck gun and an emplaced MG cannot.
    */
   readonly canTargetAir: boolean;
+
+  /**
+   * May this weapon engage a target that is NOT airborne? Defaults TRUE.
+   *
+   * THE MIRROR OF `canTargetAir`, AND IT EXISTS BECAUSE ONE SHIPPED WEAPON WAS
+   * ALREADY GROUND-BLIND WITHOUT ANYTHING SAYING SO. `Combat.engage` clamps
+   * launch pitch to `COMBAT_WEAPONS.minElevationDeg` (-12 degrees), and an
+   * aircraft at `AIR_CRUISE_ALTITUDE` parked at the standoff `approach`
+   * produces needs **-50 to -58** to point at what it is shooting. Three of the
+   * four airframes escape the clamp only because their rounds are not straight
+   * lines — two fire homing `Rocket`s and one a `TeslaBolt`, which launches no
+   * projectile at all. `migCannon` is the only aircraft weapon that is a plain
+   * `Bullet`, so its round leaves at -12 and reaches ground level about a
+   * hundred metres downrange.
+   *
+   * Measured: an Interceptor parked over a Power Plant fires thirty-six rounds
+   * in ten seconds and lands **nothing**, at any separation from zero to
+   * twenty-four metres. Meanwhile `Targeting` acquired the target for it,
+   * `approach` drove it into the anti-air, and it pulled the trigger 3.6 times
+   * a second for as long as it lived. A silent no-op is not a design statement,
+   * and the Interceptor's own blurb — *"Owns the sky and nothing under it"* —
+   * was true only by accident.
+   *
+   * So this flag makes the shipped BEHAVIOUR intentional at zero balance cost.
+   * It deliberately does NOT give the hull a capability it has never had in any
+   * shipped build: letting the gun depress would take it from 0 to 26-76
+   * delivered dps against ground depending on armour class, which is a feature
+   * and belongs to whoever decides the Interceptor should have one.
+   */
+  readonly canTargetGround: boolean;
   /**
    * Damage scale applied ON TOP of the armour matrix, and ONLY when the victim
    * is airborne. 1 for every row that has not been told otherwise.

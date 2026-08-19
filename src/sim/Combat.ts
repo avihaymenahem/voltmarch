@@ -92,6 +92,9 @@ function wpn(
     // Opposite default to its sibling, and deliberately so — see WeaponDef.
     // A gun answers air only when its row SAYS it answers air.
     canTargetAir: extra?.canTargetAir ?? false,
+    // TRUE by default, unlike its sibling above: a gun shoots the ground unless
+    // its row says it cannot. Exactly one row says so — see `migCannon`.
+    canTargetGround: extra?.canTargetGround ?? true,
     // 1 = "this row's air damage is whatever the armour matrix says". Only the
     // four line-infantry rifles carry anything else; see `rifle` below.
     airMultiplier: extra?.airMultiplier ?? 1,
@@ -678,6 +681,12 @@ export class WeaponSystem {
     // elevate does not start being able to because somebody clicked on the
     // gunship. The turret still tracks — only the trigger is held.
     if (!w.canTargetAir && isAirborne(st, t)) return;
+    // The mirror. Redundant against acquisition — `weaponCanHurt` refuses the
+    // target upstream — and kept anyway for the reason the line above it is:
+    // a FORCE-FIRE reaches this function without going through acquisition at
+    // all, and a player force-firing an Interceptor at a building would
+    // otherwise get the pre-fix behaviour back, one click wide.
+    if (!w.canTargetGround && !isAirborne(st, t)) return;
     if (st.cooldown[i] > 0) return;
     // Hold-fire units still track a target with the turret (the gating above
     // already ran) — they simply never pull the trigger unless force-fired.
@@ -1053,6 +1062,11 @@ export function weaponCanHurt(
 ): boolean {
   if (armor === ArmorClass.Infantry && !w.canTargetInfantry) return false;
   if (airborne && !w.canTargetAir) return false;
+  // The mirror, and it gates ACQUISITION as well as damage because
+  // `Targeting.isValidTarget` is this function's only caller in the sim. That
+  // is the whole fix: a ground-blind weapon must not acquire a ground target,
+  // fly its hull into the anti-air answering it, and pull the trigger forever.
+  if (!airborne && !w.canTargetGround) return false;
   return armorMultiplier(w.warhead, armor) > 0.02;
 }
 

@@ -129,6 +129,8 @@ function wpn(
     // Same default as `sim/Combat.wpn`, and the opposite of its sibling's: a
     // gun answers air only when its row says so. See `WeaponDef.canTargetAir`.
     canTargetAir: extra?.canTargetAir ?? false,
+    // Defaults TRUE, unlike its sibling. See `WeaponDef.canTargetGround`.
+    canTargetGround: extra?.canTargetGround ?? true,
     // 1 = "the armour matrix is the whole story against an aircraft". Two rows
     // in this file say otherwise; see `pulseCarbine` and `arcProd`.
     airMultiplier: extra?.airMultiplier ?? 1,
@@ -599,10 +601,45 @@ export const AIRCRAFT_WEAPONS: readonly WeaponDef[] = [
   // 600-credit wheeled raider out-damaging a 1000-credit aircraft is not an
   // order, it is an inversion; `ifvChaingun` below is 65 raw dps now and this
   // row is the ceiling for a mobile burst weapon again.
+  /*
+   * THE ONE GROUND-BLIND ROW IN THE GAME, AND IT WAS ALREADY GROUND-BLIND
+   * BEFORE THE FLAG EXISTED.
+   *
+   * `migCannon` is the only aircraft weapon that fires a plain `Bullet` — a
+   * straight line, no gravity, no homing. `Combat.engage` clamps launch pitch
+   * to `COMBAT_WEAPONS.minElevationDeg` (-12 degrees), and an Interceptor at
+   * `AIR_CRUISE_ALTITUDE` parked at the standoff `Targeting.approach` produces
+   * needs -50 to -58 to point at what it is shooting. Measured: **thirty-six
+   * rounds in ten seconds, nothing landed, at every separation from zero to
+   * twenty-four metres.** The other three airframes escape the same clamp only
+   * because `vindicatorMissile` and `kestrelPod` are homing `Rocket`s and
+   * `hornetArc` is a `TeslaBolt`, which launches no projectile at all.
+   *
+   * So the hull's ground damage has been zero in every shipped build, while
+   * `Targeting` acquired ground targets for it, `approach` drove it into the
+   * anti-air answering them, and it pulled the trigger 3.6 times a second until
+   * it died. A 1000-credit air-superiority fighter, committing suicide against
+   * a Power Plant, in silence.
+   *
+   * `canTargetGround: false` makes that intentional at ZERO balance cost and
+   * stops the acquisition — which is the actual defect, since a unit that
+   * cannot hurt something must not fly to it. The blurb already said so:
+   * *"Owns the sky and nothing under it."*
+   *
+   * **THE 0.35 CELLS BELOW ARE NOT WHAT THIS ROW COSTS, AND THE COMMENT ON THE
+   * `mig` DEF USED TO IMPLY THEY WERE.** `ARMOR_MATRIX[AutoCannon][Heavy]` and
+   * `[Concrete]` are 0.35 and they have never delivered a point of damage from
+   * this weapon. Letting the gun depress — a per-row elevation override, which
+   * this codebase does not have — would take the hull from 0 to **26.5 dps
+   * against Concrete and 75.8 against Light**, which is a FEATURE and a large
+   * one. It belongs to whoever decides the Interceptor should have a ground
+   * role, with those two numbers in front of them.
+   */
   /* 40 */ wpn('migCannon', 'Interceptor Autocannon', 24, WarheadClass.AutoCannon, 21, 0.62,
     ProjectileKind.Bullet, 170,
     { burstCount: 3, burstDelay: 0.07, splashRadius: 0.9, splashFalloff: 0.45,
       turretTurnRate: 340, muzzleParts: MUZZLE_PAIR, canTargetAir: true,
+      canTargetGround: false,
       muzzleFx: FxKind.MuzzleFlashFlak, travelFx: FxKind.TracerBullet, impactFx: FxKind.Sparks }),
 ];
 
@@ -1897,8 +1934,13 @@ export const UNITS: readonly UnitDef[] = [
     model: 'soviet_mig',
     // Fastest thing on the map and the thinnest-skinned aircraft after the
     // Hornet. 1.00 AutoCannon vs Light is 1.00 against every aircraft in the
-    // game (they are all Light, and `air-layer.spec` keeps them that way), and
-    // 0.35 vs Heavy and Concrete is why it is not also a tank or a siege unit.
+    // game (they are all Light, and `air-layer.spec` keeps them that way).
+    //
+    // THIS COMMENT USED TO END "and 0.35 vs Heavy and Concrete is why it is not
+    // also a tank or a siege unit", WHICH DESCRIBED A CAPABILITY THAT HAS NEVER
+    // FUNCTIONED. `migCannon` carries `canTargetGround: false` now; its own
+    // block in the armoury above has the measurement and the reason. What keeps
+    // this hull off the ground is not a soft multiplier, it is the flag.
     maxHp: 190, armor: ArmorClass.Light, maxSpeed: 13.5, turnRate: 3.6,
     locomotor: Locomotor.Air, radius: hullRadius(U.ifv), sight: 32,
     weapons: [w('migCannon')], hasTurret: false, crushableBy: 0,
