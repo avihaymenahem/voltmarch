@@ -110,7 +110,7 @@
  * rest. `capFloor` starts at `STORAGE_BASE` = `max(BASE_STORAGE 1000,
  * START_CREDITS 10000)` = **10 000 for every player whatever the opening bank
  * is** (this operation's is 3000, written into every non-Neutral slot by
- * `Shell.applyEconomyPostBoot`), and structures add on top: `REFINERY_STORAGE`
+ * `Shell.applySimPostBoot`), and structures add on top: `REFINERY_STORAGE`
  * 2000 each, `SILO_STORAGE` 1500 each.
  *
  * Measured off the built world: the opening base is one Ore Sorter and **two
@@ -251,7 +251,7 @@ const op: OperationDef = {
     opening: 'base',
     /*
      * 3000, AND IT BINDS BOTH SEATS. `Shell.startOperation` writes this into
-     * `MatchSetup.startingCredits` and `applyEconomyPostBoot` writes that into
+     * `MatchSetup.startingCredits` and `applySimPostBoot` writes that into
      * every non-Neutral slot, so it is one number doing two jobs. It is a
      * fifth of the order, so the opening bank is a real down payment rather
      * than a rounding error — and it holds the Soviet brain to the pace

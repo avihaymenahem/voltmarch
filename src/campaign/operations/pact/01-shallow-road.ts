@@ -213,7 +213,7 @@
  * ============================================================================
  * THE THREE FIXED NUMBERS
  * ============================================================================
- * **`credits: 4000` binds BOTH seats.** `Shell.applyEconomyPostBoot` writes
+ * **`credits: 4000` binds BOTH seats.** `Shell.applySimPostBoot` writes
  * `setup.startingCredits` into every non-Neutral slot. It buys the player a
  * Sandskiff (550) with room to spare and does not buy a Zenith; and it slows
  * the Allied opening for the reason CLAUDE.md's measured block gives — a brain

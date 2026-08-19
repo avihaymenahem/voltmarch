@@ -359,7 +359,7 @@ const op: OperationDef = {
     biome: 'temperate',
     opening: 'base',
     /*
-     * BOTH SEATS. `Shell.applyEconomyPostBoot` writes `setup.startingCredits`
+     * BOTH SEATS. `Shell.applySimPostBoot` writes `setup.startingCredits`
      * into every non-Neutral slot, so this is one number doing two jobs.
      *
      * It buys the player six Solarchs with change, which is the force the

@@ -469,7 +469,7 @@ const op: OperationDef = {
      */
     opening: 'base',
     /*
-     * 4000, AND IT BINDS ALL THREE SEATS — `Shell.applyEconomyPostBoot` writes
+     * 4000, AND IT BINDS ALL THREE SEATS — `Shell.applySimPostBoot` writes
      * `startingCredits` into every non-Neutral slot, so this is a statement
      * about the operation's tempo rather than a handicap.
      *

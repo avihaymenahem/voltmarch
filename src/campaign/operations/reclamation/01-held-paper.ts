@@ -69,7 +69,7 @@
  * ============================================================================
  * WHAT THE THREE FIXED NUMBERS ARE DOING
  * ============================================================================
- * **`credits: 3000` binds BOTH seats.** `Shell.applyEconomyPostBoot` writes
+ * **`credits: 3000` binds BOTH seats.** `Shell.applySimPostBoot` writes
  * `setup.startingCredits` into every non-Neutral slot, so this is not a handicap
  * — it is one number doing two jobs. It makes the Breaker Yard a commitment for
  * the player, and it slows the garrison's opening for exactly the reason the
