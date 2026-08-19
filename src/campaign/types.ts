@@ -455,7 +455,38 @@ export type Effect =
     readonly key: string;
     readonly count: number;
     readonly at: Point;
-    /** Metres of scatter around `at`. Deterministic — drawn from `s.rng`. */
+    /**
+     * RADIUS OF A RING, NOT METRES OF SCATTER — AND THIS LINE SAID THE
+     * OPPOSITE FOR ITS WHOLE LIFE.
+     *
+     * It read *"Metres of scatter around `at`. Deterministic — drawn from
+     * `s.rng`."* while `runtime.ts#spawnUnits` says, in capitals, *"A
+     * DETERMINISTIC RING, NOT A RANDOM SCATTER"*. Unit `i` of `count` lands at
+     * exactly `angle = i / count * 2π`, radius `spread` — so a wave of four
+     * uses the four CARDINAL bearings and a wave of two uses due east and due
+     * west, every time. A fixed ring is what makes an operation tunable at
+     * all: the same wave lands in the same shape in the recording, in the
+     * playback and in a designer's third run.
+     *
+     * **THE WRONG SENTENCE HERE COST FOUR OPERATIONS AND EIGHTEEN DROPS.**
+     * Believing it, three separate layout headers justified their spawn points
+     * by SAMPLING a ring — *"8 of 12 samples on an 18 m ring"*, *"7 of 8
+     * samples of the spawn ring"* — which measures a distribution the engine
+     * never draws from. `ProductionService.spawnUnit` writes the computed
+     * point VERBATIM: no `connectedGround`, no egress search. A drop on rock
+     * is a hull that starts the fight inside a closed cell and has to be
+     * unwedged by `Movement`'s cliff branch and `Steering`'s pocket rescue.
+     * `reclamation.01.held-paper` was the worst of the four — its mercy column
+     * ringed a Foundry that backs onto impassable relief, so three of four
+     * hulls landed on rock at EVERY radius from 8 m to 44 m, and no value of
+     * this field could have fixed it.
+     *
+     * `tests/campaign-spawn-ground.spec.ts` now checks every point of every
+     * scripted wave against that wave's own locomotor. **Move the spawn point;
+     * do not tune this number to dodge terrain** — the radii are authored to
+     * the wave sizes, and a ring big enough to miss an obstacle is a wave that
+     * arrives spread across half a field.
+     */
     readonly spread?: number;
     readonly facingDeg?: number;
     /** Tag every unit this spawns, so a later trigger can name them. */
@@ -483,13 +514,26 @@ export type Effect =
   /**
    * A line of in-mission dialogue.
    *
-   * THE TEXT IS INLINE RATHER THAN A CORPUS KEY, and that is a deliberate
-   * reversal of where the briefing prose lives. Briefings and debriefs are
-   * ~450 words each and split into four lazily-imported chapter corpora;
-   * in-mission dialogue is a handful of short lines per operation, so keying it
-   * would buy about 8 kB and cost the import-time validator its ability to see
-   * the text at all — the corpus is a DIFFERENT lazy chunk, so a missing key
-   * could not be checked where every other authoring mistake is checked.
+   * THE TEXT IS INLINE RATHER THAN A CORPUS KEY.
+   *
+   * **THIS PARAGRAPH USED TO JUSTIFY THAT AS "a deliberate reversal of where
+   * the briefing prose lives", CITING BRIEFINGS AND DEBRIEFS OF ~450 WORDS
+   * "split into four lazily-imported chapter corpora". NO SUCH CORPUS
+   * EXISTS.** `src/campaign/index.ts` globs exactly two things, operations and
+   * layouts; there is no `Briefing.ts` and no `campaign-corpus-*.ts`. That is
+   * a PLANNED structure (`CAMPAIGN_BUILD_SPEC.md` §275 and §458) written up
+   * here in the present tense, which is the drift `docs/SPEC_DRIFT_AUDIT.md`
+   * catalogues — and it was load-bearing, because it was the premise of the
+   * comparison the decision rested on.
+   *
+   * The decision is still right, for a simpler reason: there is nothing to key
+   * INTO. Every word of authored campaign prose today is inline — `beat`,
+   * objective titles, and these lines — and the import-time validator can see
+   * all of it, which is how `validateCampaign` refuses an `eva` line that is
+   * not a key of `EVA_LINES` and an objective id no trigger names. Introduce a
+   * lazy corpus and that stops being true for whatever moves into it, because
+   * a different chunk cannot be checked where every other authoring mistake
+   * is.
    */
   | { readonly do: 'dialogue'; readonly speaker: string; readonly text: string }
   /**

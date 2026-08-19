@@ -129,8 +129,27 @@ import type { OperationDef } from '../../types';
 
 /** The district office mast. `revealArea` and the scouting trigger. */
 const OFFICE = { x: 296, z: 200 };
-/** The Foundry lot — where the player builds, and where a lost yard is repaid. */
-const FOUNDRY = { x: 190, z: 378 };
+/**
+ * Where a lost yard is repaid: 31.6 m north of the Foundry lot (190, 378), on
+ * the open ground between it and the Sorter — the direction the column is
+ * ordered to move the moment it lands.
+ *
+ * **IT IS NOT THE FOUNDRY LOT ITSELF, AND THE REASON IS THE GROUND RATHER THAN
+ * THE FOOTPRINT.** The wave used to be `at: FOUNDRY` with a 16 m spread, under
+ * a comment reasoning correctly about the building's 6 m radius and not at all
+ * about what the ring stands on. Measured on the built world, **the Foundry
+ * backs onto relief that no wheeled hull can cross: of the four cardinal
+ * bearings `spawnUnits` uses for a wave of four, only the westward one is open,
+ * at every radius from 8 m to 44 m.** Three of the four Grinders were therefore
+ * put down on rock, 8.0–17.0 m from the nearest cell they could enter, and no
+ * spread could have fixed it — the ring has four fixed bearings and three of
+ * them point into the hillside.
+ *
+ * Here, all four drops are passable with **6.32 m** of clearance each, which is
+ * uniform because this point is in open ground rather than against an edge.
+ * `tests/campaign-spawn-ground.spec.ts` is the gate.
+ */
+const RELIEF = { x: 180, z: 348 };
 /** The Sorter lot — the money, and where Tallow's column is pointed. */
 const SORTER = { x: 166, z: 252 };
 /** The Rookery lot — the deepest yard, and what the watch is sent to break. */
@@ -365,11 +384,12 @@ const op: OperationDef = {
           player: 0,
           key: 'rclGrinder',
           count: 4,
-          at: FOUNDRY,
-          // The ring has to clear the Foundry's own footprint: `spawnUnits`
-          // places on a fixed ring at `at` and `Production.spawnUnit` does no
-          // egress search, so a spread inside the building puts four hulls in
-          // the walls. 16 m against a 3x3 yard's 6 m radius.
+          at: RELIEF,
+          // 16 m of ring, and BOTH things it has to clear are measured rather
+          // than reasoned: the Foundry's own 3x3 footprint (6 m radius), and
+          // the ground under all four bearings. See `RELIEF` — clearing the
+          // footprint was the only test this used to pass, and the ring was on
+          // rock.
           spread: 16,
           tag: 'column',
         },

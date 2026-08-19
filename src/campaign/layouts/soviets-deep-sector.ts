@@ -159,15 +159,28 @@ export const GATE_WATCH: Area = { x: GATE.x, z: GATE.z, r: 40 };
 export const STAGE: Point = { x: 404, z: 260 };
 
 /**
- * The shoulder the Allies come round to reach the tap: 50 m short of it, 79 m
- * out from their own opening.
+ * The shoulder the Allies come round to reach the tap: **56.6 m short of it,
+ * 71.6 m out from their own START SPOT** (108, 132) — which is the opening, not
+ * the yard, and the two are different points.
  *
  * Reinforcements land HERE and not on the tap itself. Spawning them on the
  * disc would materialise a section inside a holding player's formation, which
- * reads as a cheat however correct the fiction is; fifty metres short reads as
- * a column arriving.
+ * reads as a cheat however correct the fiction is; fifty-odd metres short reads
+ * as a column arriving.
+ *
+ * **IT WAS AT (184, 110), WHICH IS ON A RIDGE, AND THE SPAWN IS A RING RATHER
+ * THAN A POINT.** `EffectSink.spawnUnits` puts unit `i` of `count` at
+ * `angle = i / count * 2pi` and radius `spread`, and `ProductionService.spawnUnit`
+ * writes that position verbatim — no egress search. So what has to be legal is
+ * four rings of fixed bearings, not one point: `t.dig` 5 G.I.s at 22 m and 2
+ * Grizzlies at 14 m, `t.contest` 6 at 24 m and 3 at 15 m. At the old point
+ * three of those sixteen drops were closed — two on a structure 12 m east, one
+ * on the ridge itself. Measured here through `ITerrain.isPassable` with each
+ * wave's own move class, **all sixteen are passable and the tightest has 5.59 m
+ * of clear ground**. `tests/campaign-spawn-ground.spec.ts` is the gate; the two
+ * distances above are prose and have none, so re-derive them if this moves.
  */
-export const APPROACH: Point = { x: 184, z: 110 };
+export const APPROACH: Point = { x: 172, z: 100 };
 
 /**
  * The seam itself — a rich field between the camp and the tap.

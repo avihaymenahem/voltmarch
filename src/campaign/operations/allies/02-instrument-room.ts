@@ -257,17 +257,27 @@ const CORDON: Area = { x: OFFICE.x, z: OFFICE.z, r: 96 };
 const OFFICE_HOLD: Area = { x: OFFICE.x, z: OFFICE.z, r: 26 };
 
 /**
- * Where the district's own watch comes out, 54.0 m behind the office on the
- * block side. Probed buildable at the point and on 7 of 8 samples of the
- * spawn ring, because `EffectSink.spawnUnits` places on a fixed ring and
- * `ProductionService.spawnUnit` does NO egress search — a scripted drop is
- * used verbatim, and `soviets-common-standard` put half a reward on a knoll
- * learning that.
+ * Where the district's own watch comes out, 64.1 m behind the office on the
+ * block side.
+ *
+ * **THE RING IS WHAT HAS TO BE PROBED, AND "8 SAMPLES" WAS NOT IT.** This said
+ * "probed buildable at the point and on 7 of 8 samples of the spawn ring", and
+ * the sample was of the author's own choosing rather than of the code's:
+ * `EffectSink.spawnUnits` puts unit `i` of `count` at `angle = i / count * 2pi`
+ * and radius `spread`, so this point is TWO rings — 4 conscripts at 16 m on
+ * bearings 0/90/180/270 and one Rhino at 22 m on bearing 0 — and never eight
+ * samples of anything. The 16 m ring's bearing-180 drop was on rock, because
+ * `ProductionService.spawnUnit` does NO egress search and a scripted drop is
+ * used verbatim. Re-measured through `ITerrain.isPassable` on the built world
+ * at this point: **all five drops passable, worst clearance 12.04 m** to the
+ * nearest cell that locomotor could not enter. `tests/campaign-spawn-ground.spec.ts`
+ * is the gate; the distance above is prose and has none, so re-derive it if
+ * this point moves.
  */
-const WATCH_OUT: Point = { x: 386, z: 285 };
+const WATCH_OUT: Point = { x: 395, z: 298 };
 
 /**
- * The relief, 106.0 m from the office on the yard road.
+ * The relief, 95.4 m from the office on the yard road.
  *
  * OFF A DIFFERENT BEARING FROM THE SOVIET BASE, WHICH IS THE WHOLE REASON IT
  * IS A SCRIPTED WAVE. `AiBrain` sends its own army out of its own yard, which
@@ -275,12 +285,20 @@ const WATCH_OUT: Point = { x: 386, z: 285 };
  * arriving from the same place would be indistinguishable from it and would
  * buy the operation nothing. This one comes in behind the player, on the flank
  * the quiet route uses.
+ *
+ * Two rings again — 5 conscripts at 16 m, 3 Rhinos at 22 m — **all eight
+ * passable, worst clearance 13.04 m**. It was 12 m east of here and the Rhino
+ * on bearing 0 stood on rock.
  */
-const RELIEF: Point = { x: 427, z: 333 };
+const RELIEF: Point = { x: 415, z: 333 };
 
 /**
- * The second column, 120.2 m from the office and 113.7 m from the Soviet yard
- * — up their own road, so the two waves are a pincer rather than a queue.
+ * The second column, 120.2 m from the office and 113.7 m from the Soviet
+ * Construction Yard at (402, 134) — up their own road, so the two waves are a
+ * pincer rather than a queue.
+ *
+ * Unmoved: its two rings (4 conscripts at 16 m, 2 Rhinos at 22 m) were already
+ * clean, worst clearance 7.28 m.
  */
 const PRESS: Point = { x: 443, z: 240 };
 
