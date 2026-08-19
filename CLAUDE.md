@@ -124,10 +124,10 @@ Every change must leave these green. Run them; do not assume.
 
 ```bash
 npm run typecheck    # must exit 0 — real fixes, never `any` or @ts-ignore
-npm test             # vitest, currently 4857 across 196 files (+3 opt-in probes)
+npm test             # vitest, currently 5372 across 216 files (+3 opt-in probes)
                      #   6 of those are gated on `distIsCurrent()` — freshness, not mere
                      #   existence — across BOTH `manual` and `webgpu-bundle-isolation`,
-                     #   so a tree with no current `dist/` reports 4851 and skips 9.
+                     #   so a tree with no current `dist/` reports 5366 and skips 9.
 npm run build        # must exit 0
 npm run server:test  # the relay's own 60, via node --test
 ```
@@ -383,7 +383,10 @@ first, for weaker reasons. Read `src/campaign/types.ts`'s header before proposin
   `*.system.ts` with `eager: true` FROM THE ENTRY CHUNK, so `campaign.system.ts` imports
   `campaign/{session,policy,types}.ts` and nothing else. The Director, the operation table, the
   layouts and the prose arrive through ONE `await import('../campaign/campaign-install')` in
-  `Shell.startOperation`. Measured: entry +3.31 kB, campaign chunk 23.1 kB, Shell chunk +7.5 kB.
+  `Shell.startOperation`. Measured at the time: entry +3.31 kB, campaign chunk 23.1 kB, Shell chunk +7.5 kB. **The
+  chunk figure is a snapshot of ONE operation, not a budget** — it is 150 kB at seventeen, and it
+  is meant to grow. The entry delta is the number that must not move, and
+  `campaign-bundle-isolation.spec.ts` is what holds it.
   **Never `import` anything under `src/campaign/` from a `*.system.ts` except those three.**
 - **NO NEW `CommandKind`, AND `src/net/protocol.ts` IS NOT TOUCHED.** `spawnUnits` calls
   `ProductionService.spawnUnit` directly inside `simTick`. A wire-legal spawn command would travel
