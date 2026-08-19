@@ -1477,6 +1477,32 @@ tag it afterwards and it stays in `strikeIds` for one more pass and `pressAttack
 straight back into the fight it just left. The release path is equally load-bearing: a tag with no
 clearing branch is a unit permanently deleted from the army.
 
+**AN AIRCRAFT GETS ITS OWN SLOT AND ITS OWN THRESHOLD, AND BOTH NUMBERS ARE MEASURED.** An aircraft
+parked over a defended ground target is under thirty percent for **2.07 seconds** (eight G.I.s;
+2.47 against conscripts) before it dies — against a poll every 0.2 s that moves ONE hull, picks it
+by worst health, and rolls against discipline. On a 1000-credit 190 hp hull that is a coin flip,
+and an aircraft at 45% loses the shared slot to any tank at 25%. So `AI_RETREAT.airHpFraction` is
+**0.5**, `worstAir` is tracked separately, and the air pass skips the rout cap.
+
+- **THE CAP IS EXEMPT IN THE NUMERATOR AND NOT IN THE DENOMINATOR, AND THE SYMMETRIC VERSION WAS
+  TRIED AND REVERTED.** `withdrawing` skips air (a parked airframe otherwise spends a ground slot
+  for as long as it sits there — exactly one ground withdrawal lost at every army size from 14 to
+  40 tanks). `striking` does NOT skip it: taking airframes out of the denominator lets an aircraft
+  that is merely PRESENT, at full health, move the ground line's cap, which breaks the identity
+  property below.
+- **A MATCH WITH NO AIRCRAFT DRAWS THE SEQUENCE IT ALWAYS DREW**, verified 12 ways against the
+  reverted build — 4 rungs x 3 health fractions, byte-identical command streams.
+  `tests/ai-air-withdraw.spec.ts` gates the PROPERTY rather than a golden stream, because once the
+  old build is gone the only way to fix a red literal is to copy whatever the new one produced.
+- **It fires, and it is rare.** 30 sim minutes, four armies, unlocks GRANTED — an empty
+  `UnlockGate` builds no aircraft and would measure zero, which is the `sw=0/0` mistake: Normal 3,
+  Brutal 3, Easy 0 of five aircraft owned, against 1-6 airframes per brain, i.e. 1.0-1.4% of all
+  withdrawals. **`npm run typecheck`-gated probe is opt-in behind `VM_AIR_PROBE`.**
+- **Both withdrawn Brutal aircraft died anyway**, at minutes three and five. Whether 0.5 is early
+  enough for a 190 hp hull to cross the ground home is UNMEASURED, and a match A/B cannot answer it
+  — the two matches diverge completely from the first differing withdrawal. It needs a staged
+  engagement.
+
 ```
   rung      withdrawals    own losses      Easy is byte-identical over the
   Easy           0          121 -> 121     full trace — the discipline gate is
